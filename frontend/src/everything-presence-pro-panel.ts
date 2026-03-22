@@ -4952,8 +4952,6 @@ export class EverythingPresenceProPanel extends LitElement {
 				continuous = dist <= MAX_MOVEMENT_CELLS;
 			}
 
-
-
 			const { trigger, renew, entryPoint } = this._getZoneThresholds(zid);
 			const st = this._localZoneState.get(zid);
 			const isOccupied = st?.occupied ?? false;
