@@ -405,7 +405,7 @@ class TestZoneEngineParity:
 
         # Same position but signal=0 (frame_count=0 → inactive in backend)
         # frame_count=0 means active=False, so target is treated as gone
-        result = engine._tick(_window([(X_OFF + 450, 450, 0)]), t + 1.0)
+        engine._tick(_window([(X_OFF + 450, 450, 0)]), t + 1.0)
         # With frame_count=0 the target is PENDING (zone 1 is now pending)
         # To get INACTIVE we must advance past timeout
         st = engine._zone_runtimes[1]
