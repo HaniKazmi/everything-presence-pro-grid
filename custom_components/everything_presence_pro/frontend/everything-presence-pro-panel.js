@@ -429,7 +429,7 @@ const he={attribute:!0,type:String,converter:b,reflect:!1,hasChanged:y},de=(e=he
       ${this._renderGridDimensions()}
     `}_renderTargetDots(e,t,i,o){return G`
       <div class="targets-overlay" style="pointer-events: none;">
-        ${this._targets.map((r,n)=>{if("inactive"===r.status)return V;const s="pending"===r.status&&this._targetPrevXY[n]?{...r,x:this._targetPrevXY[n].x,y:this._targetPrevXY[n].y}:r,a=this._mapTargetToGridCell(s);if(!a)return V;const l=Math.max(0,Math.min(100,(a.col-e)/i*100)),c=Math.max(0,Math.min(100,(a.row-t)/o*100));return G`
+        ${this._targets.map((r,n)=>{if("inactive"===r.status)return V;const s="pending"===r.status&&null==r.x&&this._targetPrevXY[n]?{...r,x:this._targetPrevXY[n].x,y:this._targetPrevXY[n].y}:r,a=this._mapTargetToGridCell(s);if(!a)return V;const l=Math.max(0,Math.min(100,(a.col-e)/i*100)),c=Math.max(0,Math.min(100,(a.row-t)/o*100));return G`
             <div
               class="target-dot"
               style="left: ${l}%; top: ${c}%; background: ${ni[n]||ni[0]}; opacity: ${"pending"===r.status?.3:1}; transition: opacity 0.5s ease;"
