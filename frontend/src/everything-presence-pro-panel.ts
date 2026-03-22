@@ -4784,7 +4784,7 @@ export class EverythingPresenceProPanel extends LitElement {
 			}
 		} else {
 			// Run local zone engine replica (matches backend zone_engine._tick)
-			occupancy = this._runLocalZoneEngine();
+			occupancy = this._runLocalZoneEngine().occupancy;
 		}
 
 		const cells = [];
@@ -4827,13 +4827,17 @@ export class EverythingPresenceProPanel extends LitElement {
 	}
 
 	/** Run local zone engine replica (matches backend zone_engine._tick). */
-	private _runLocalZoneEngine(): Record<number, boolean> {
+	private _runLocalZoneEngine(): {
+		occupancy: Record<number, boolean>;
+		targets: { status: "active" | "pending" | "inactive"; x: number; y: number; signal: number }[];
+	} {
 		const now = Date.now() / 1000;
 		const MAX_MOVEMENT_CELLS = 5;
 		const MAX_TARGETS = 3;
 
 		const zoneConfirmed: Map<number, boolean> = new Map();
 		const zoneSignal: Map<number, number> = new Map();
+		const targetSignal: Map<number, number> = new Map();
 		const targetZonePrev: (number | null)[] = [null, null, null];
 		const targetZoneCurr: (number | null)[] = [null, null, null];
 
@@ -4850,6 +4854,8 @@ export class EverythingPresenceProPanel extends LitElement {
 
 			const signal = t.signal;
 			if (signal <= 0) continue;
+
+			targetSignal.set(i, signal);
 
 			const pos = this._mapTargetToGridCell(t);
 			if (!pos) {
@@ -5009,6 +5015,55 @@ export class EverythingPresenceProPanel extends LitElement {
 				}
 			}
 		}
+		// Build per-target results (mirrors backend _tick lines 661-700)
+		const activeTargets = new Set<number>();
+		for (let i = 0; i < MAX_TARGETS && i < this._targets.length; i++) {
+			if (this._targets[i].x != null && this._targets[i].y != null) {
+				activeTargets.add(i);
+			}
+		}
+
+		const targetResults: { status: "active" | "pending" | "inactive"; x: number; y: number; signal: number }[] = [];
+		for (let i = 0; i < MAX_TARGETS && i < this._targets.length; i++) {
+			const sig = targetSignal.get(i) ?? 0;
+			if (activeTargets.has(i) && sig > 0) {
+				// Active target with signal (backend line 666-672)
+				targetResults.push({
+					status: "active",
+					x: this._targets[i].x,
+					y: this._targets[i].y,
+					signal: sig,
+				});
+			} else {
+				// Check if this target is pending in any zone (backend lines 674-691)
+				let isPending = false;
+				if (!activeTargets.has(i)) {
+					for (const [, st] of this._localZoneState) {
+						if (st.occupied && st.pendingSince !== null && st.confirmedTargets.has(i)) {
+							isPending = true;
+							break;
+						}
+					}
+				}
+				if (isPending) {
+					const xy = this._targetPrevXY[i];
+					targetResults.push({
+						status: "pending",
+						x: xy ? xy.x : 0,
+						y: xy ? xy.y : 0,
+						signal: 0,
+					});
+				} else {
+					targetResults.push({
+						status: "inactive",
+						x: 0,
+						y: 0,
+						signal: 0,
+					});
+				}
+			}
+		}
+
 		// Build debug log line (mirrors backend zone_engine._tick logging)
 		if (this._showDebugLog) {
 			const getZoneName = (zid: number): string => {
@@ -5040,7 +5095,7 @@ export class EverythingPresenceProPanel extends LitElement {
 				}
 			}
 			const body = `${targetParts.length ? targetParts.join(", ") : "no targets"} | ${zoneParts.length ? zoneParts.join(", ") : "all clear"}`;
-			if (body === this._debugLogPrev) return occupancy;
+			if (body === this._debugLogPrev) return { occupancy, targets: targetResults };
 			this._debugLogPrev = body;
 			const ts = new Date().toLocaleTimeString("en-GB", {
 				hour12: false,
@@ -5060,7 +5115,7 @@ export class EverythingPresenceProPanel extends LitElement {
 			this.requestUpdate();
 		}
 
-		return occupancy;
+		return { occupancy, targets: targetResults };
 	}
 
 	/** Compute rgba overlay colour per zone based on hit counts. */
