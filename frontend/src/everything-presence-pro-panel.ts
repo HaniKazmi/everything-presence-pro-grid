@@ -5044,8 +5044,9 @@ export class EverythingPresenceProPanel extends LitElement {
 		const targetResults: { status: "active" | "pending" | "inactive"; x: number; y: number; signal: number }[] = [];
 		for (let i = 0; i < MAX_TARGETS && i < this._targets.length; i++) {
 			const sig = targetSignal.get(i) ?? 0;
-			if (activeTargets.has(i) && sig > 0) {
-				// Active target with signal (backend line 666-672)
+			const inRoom = targetZoneCurr[i] !== null;
+			if (activeTargets.has(i) && sig > 0 && inRoom) {
+				// Active target with signal, in room (backend line 666-672)
 				targetResults.push({
 					status: "active",
 					x: this._targets[i].x,
@@ -5055,7 +5056,7 @@ export class EverythingPresenceProPanel extends LitElement {
 			} else {
 				// Check if this target is pending in any zone (backend lines 674-691)
 				let isPending = false;
-				if (!activeTargets.has(i)) {
+				if (!activeTargets.has(i) || !inRoom) {
 					for (const [, st] of this._localZoneState) {
 						if (st.occupied && st.pendingSince !== null && st.confirmedTargets.has(i)) {
 							isPending = true;

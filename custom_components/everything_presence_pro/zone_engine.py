@@ -661,7 +661,8 @@ class ZoneEngine:
         # Build per-target results
         active_targets = {i for i, tw in enumerate(window.targets) if tw.active}
         for i in range(len(window.targets)):
-            if i in active_targets and target_signal.get(i, 0) > 0:
+            in_room = target_zone_curr[i] is not None
+            if i in active_targets and target_signal.get(i, 0) > 0 and in_room:
                 tw = window.targets[i]
                 result.targets.append(
                     TargetResult(
@@ -674,7 +675,7 @@ class ZoneEngine:
             else:
                 # Check if this target is pending in any zone
                 is_pending = False
-                if i not in active_targets:
+                if i not in active_targets or not in_room:
                     for _zid, rt in self._zone_runtimes.items():
                         if rt.state == ZoneState.PENDING and i in rt.confirmed_targets:
                             is_pending = True

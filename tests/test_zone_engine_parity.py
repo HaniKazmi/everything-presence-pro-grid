@@ -303,12 +303,25 @@ class TestZoneEngineParity:
         result = engine._tick(_window([(X_OFF + 450, 450, 0)]), t + 7.0)
         assert result.targets[0].status == TargetStatus.INACTIVE
 
-    def test_active_target_outside_room(self):
-        """Active target outside room → still ACTIVE (tracking with signal)."""
+    def test_tracked_target_outside_room_no_prior(self):
+        """Tracked target outside room, no prior room presence → INACTIVE."""
         engine = _make_parity_engine()
         result = engine._tick(_window([(9000, 9000, 9)]), 100.0)
-        assert result.targets[0].status == TargetStatus.ACTIVE
-        assert result.targets[0].signal == 9
+        assert result.targets[0].status == TargetStatus.INACTIVE
+
+    def test_tracked_target_outside_room_with_prior(self):
+        """Tracked target outside room, with prior room presence → PENDING."""
+        engine = _make_parity_engine()
+        t = 100.0
+
+        # Occupy zone 1
+        engine._tick(_window([(X_OFF + 450, 450, 5)]), t)
+
+        # Target moves outside room but still tracked with signal
+        r2 = engine._tick(_window([(9000, 9000, 9)]), t + 1.0)
+        assert r2.targets[0].status == TargetStatus.PENDING
+        assert r2.targets[0].x == X_OFF + 450
+        assert r2.targets[0].y == 450
 
     def test_reappears_during_pending_back_to_active(self):
         """Target reappears during pending → status=ACTIVE at new position."""
@@ -354,18 +367,20 @@ class TestZoneEngineParity:
         assert r3.targets[1].y == 150
 
     def test_outside_room_then_stops_tracking_pending(self):
-        """Tracking outside room then sensor stops → pending at last in-room position."""
+        """Tracking outside room then sensor stops → pending throughout."""
         engine = _make_parity_engine()
         t = 100.0
 
         # Occupy zone 1
         engine._tick(_window([(X_OFF + 450, 450, 5)]), t)
 
-        # Target moves outside room (non-room cell) but still tracked with signal
+        # Target moves outside room — immediately pending at last in-room position
         r2 = engine._tick(_window([(9000, 9000, 9)]), t + 1.0)
-        assert r2.targets[0].status == TargetStatus.ACTIVE
+        assert r2.targets[0].status == TargetStatus.PENDING
+        assert r2.targets[0].x == X_OFF + 450
+        assert r2.targets[0].y == 450
 
-        # Sensor stops tracking (frame_count=0) → pending at last in-room position
+        # Sensor stops tracking → still pending at same position
         r3 = engine._tick(_window([(9000, 9000, 0)]), t + 2.0)
         assert r3.targets[0].status == TargetStatus.PENDING
         assert r3.targets[0].x == X_OFF + 450
