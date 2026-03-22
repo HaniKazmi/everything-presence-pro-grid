@@ -522,3 +522,72 @@ describe("Pending target position fallback (_renderTargetDots)", () => {
 		expect(dot!.topPct).toBeCloseTo(37.5, 0);
 	});
 });
+
+describe("Unsaved grid overrides backend status", () => {
+	let el: EverythingPresenceProPanel;
+	let a: any;
+
+	beforeEach(() => {
+		el = createParityPanel();
+		a = el as any;
+	});
+
+	function runEngineAndOverwrite() {
+		const engineResult = a._runLocalZoneEngine();
+		for (let i = 0; i < engineResult.targets.length && i < a._targets.length; i++) {
+			a._targets[i].status = engineResult.targets[i].status;
+		}
+		return engineResult;
+	}
+
+	it("backend says pending (saved grey cell) but unsaved grid has room → active", () => {
+		// Simulate: backend sees target on a saved grey cell and sends
+		// status=pending, signal=0. But the frontend unsaved grid has
+		// that cell as room. After the raw signal fix, the frontend
+		// receives the raw sensor signal (non-zero), not the zone
+		// engine's filtered signal.
+		//
+		// Target at (450, 450) → cell (9,1) = zone 1 (entrance) in parity grid.
+		// Backend would send status="pending" if cell was grey in saved grid.
+		// But unsaved grid has it as room (zone 1).
+		// Raw sensor signal = 5 (not filtered to 0 by backend zone engine).
+		a._targets = [makeTarget(450, 450, 5, "pending")];
+		runEngineAndOverwrite();
+
+		// Frontend zone engine should override to active
+		expect(a._targets[0].status).toBe("active");
+	});
+
+	it("backend says active but unsaved grid has grey cell → not active", () => {
+		// Opposite case: backend sees target on a saved room cell (active),
+		// but user deleted the room bit in the editor (now grey).
+		//
+		// First establish zone state so pending check can find a zone.
+		a._targets = [makeTarget(450, 450, 5)];
+		runEngineAndOverwrite(); // tick 1
+		runEngineAndOverwrite(); // tick 2: target in confirmedTargets
+
+		// Now remove the room bit from cell (9,1) — make it grey
+		a._grid[1 * 20 + 9] = 0;
+
+		// Backend still sends active (saved grid has room), signal=5
+		a._targets = [makeTarget(450, 450, 5, "active")];
+		runEngineAndOverwrite();
+
+		// Frontend zone engine should NOT show active — cell is grey
+		// in unsaved grid. Target is either pending (if zone is still
+		// pending with target in confirmedTargets) or inactive.
+		expect(a._targets[0].status).not.toBe("active");
+	});
+
+	it("backend says pending with raw signal → frontend overrides to active", () => {
+		// Backend sends raw sensor signal (non-zero) even for targets
+		// it considers pending. The frontend zone engine uses this raw
+		// signal to process the target against the unsaved grid.
+		a._targets = [makeTarget(450, 450, 7, "pending")];
+		runEngineAndOverwrite();
+
+		// Frontend grid has room at (450,450) → active despite backend pending
+		expect(a._targets[0].status).toBe("active");
+	});
+});
