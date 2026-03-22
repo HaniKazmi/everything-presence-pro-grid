@@ -98,14 +98,16 @@ describe("Zone engine parity (mirrors test_zone_engine_parity.py)", () => {
 
 	it("no targets → all zones clear", () => {
 		a._targets = [];
-		const occ = a._runLocalZoneEngine();
+		const occ = a._runLocalZoneEngine().occupancy;
 		expect(occ[0]).toBe(false);
 		expect(occ[1]).toBe(false);
 	});
 
 	it("inactive target → all zones clear", () => {
-		a._targets = [makeTarget(450, 450, 5, "inactive")];
-		const occ = a._runLocalZoneEngine();
+		// Engine uses signal=0 (not backend status) to detect inactivity,
+		// matching the backend which uses frame_count=0.
+		a._targets = [makeTarget(450, 450, 0, "inactive")];
+		const occ = a._runLocalZoneEngine().occupancy;
 		expect(occ[0]).toBe(false);
 		expect(occ[1]).toBe(false);
 	});
@@ -113,14 +115,14 @@ describe("Zone engine parity (mirrors test_zone_engine_parity.py)", () => {
 	it("target in zone 1 (entrance) with signal >= trigger → zone 1 occupied", () => {
 		// Entrance zone: trigger=3, entry_point=true
 		a._targets = [makeTarget(450, 450, 3)];
-		const occ = a._runLocalZoneEngine();
+		const occ = a._runLocalZoneEngine().occupancy;
 		expect(occ[1]).toBe(true);
 		expect(occ[0]).toBe(false);
 	});
 
 	it("target in zone 1 with signal < trigger → zone 1 stays clear", () => {
 		a._targets = [makeTarget(450, 450, 2)];
-		const occ = a._runLocalZoneEngine();
+		const occ = a._runLocalZoneEngine().occupancy;
 		expect(occ[1]).toBe(false);
 	});
 
@@ -128,11 +130,11 @@ describe("Zone engine parity (mirrors test_zone_engine_parity.py)", () => {
 		// Room zone 0: trigger=5, gated threshold = min(5+2, 8) = 7
 		// First tick: signal=7 meets gated threshold, gate_count=1
 		a._targets = [makeTarget(150, 150, 7)];
-		let occ = a._runLocalZoneEngine();
+		let occ = a._runLocalZoneEngine().occupancy;
 		expect(occ[0]).toBe(false); // not yet — need continuous or 2 gate ticks
 
 		// Second tick: continuous from tick 1, bypasses gating → confirmed
-		occ = a._runLocalZoneEngine();
+		occ = a._runLocalZoneEngine().occupancy;
 		expect(occ[0]).toBe(true);
 	});
 
@@ -140,25 +142,25 @@ describe("Zone engine parity (mirrors test_zone_engine_parity.py)", () => {
 		// Entrance zone 1: entry_point=true, trigger=3
 		// No previous position but entry point → no gating required
 		a._targets = [makeTarget(450, 450, 3)];
-		const occ = a._runLocalZoneEngine();
+		const occ = a._runLocalZoneEngine().occupancy;
 		expect(occ[1]).toBe(true); // immediate — no gating
 	});
 
 	it("zone transitions to PENDING then CLEAR after timeout", () => {
 		// Get zone 1 occupied first
 		a._targets = [makeTarget(450, 450, 5)];
-		let occ = a._runLocalZoneEngine();
+		let occ = a._runLocalZoneEngine().occupancy;
 		expect(occ[1]).toBe(true);
 
 		// Target disappears → PENDING
 		a._targets = [makeTarget(450, 450, 0, "inactive")];
-		occ = a._runLocalZoneEngine();
+		occ = a._runLocalZoneEngine().occupancy;
 		expect(occ[1]).toBe(true); // still occupied (PENDING)
 
 		// Fast-forward past timeout (entrance timeout=5s)
 		const st = a._localZoneState.get(1);
 		st.pendingSince = Date.now() / 1000 - 6; // 6 seconds ago
-		occ = a._runLocalZoneEngine();
+		occ = a._runLocalZoneEngine().occupancy;
 		expect(occ[1]).toBe(false); // cleared
 	});
 
@@ -169,12 +171,12 @@ describe("Zone engine parity (mirrors test_zone_engine_parity.py)", () => {
 
 		// Target gone → PENDING
 		a._targets = [makeTarget(450, 450, 0, "inactive")];
-		let occ = a._runLocalZoneEngine();
+		let occ = a._runLocalZoneEngine().occupancy;
 		expect(occ[1]).toBe(true); // PENDING
 
 		// Target reappears with signal >= renew (2)
 		a._targets = [makeTarget(450, 450, 2)];
-		occ = a._runLocalZoneEngine();
+		occ = a._runLocalZoneEngine().occupancy;
 		expect(occ[1]).toBe(true); // back to OCCUPIED
 	});
 
@@ -184,19 +186,19 @@ describe("Zone engine parity (mirrors test_zone_engine_parity.py)", () => {
 		a._targets = [makeTarget(450, 450, 5), makeTarget(150, 150, 7)];
 
 		// First tick: zone 1 immediate (entry point), zone 0 gating (count=1)
-		let occ = a._runLocalZoneEngine();
+		let occ = a._runLocalZoneEngine().occupancy;
 		expect(occ[1]).toBe(true);
 		expect(occ[0]).toBe(false);
 
 		// Second tick: zone 0 continuous → confirmed
-		occ = a._runLocalZoneEngine();
+		occ = a._runLocalZoneEngine().occupancy;
 		expect(occ[1]).toBe(true);
 		expect(occ[0]).toBe(true);
 	});
 
 	it("target outside grid → no zone occupancy", () => {
 		a._targets = [makeTarget(9000, 9000, 9)];
-		const occ = a._runLocalZoneEngine();
+		const occ = a._runLocalZoneEngine().occupancy;
 		for (const v of Object.values(occ)) {
 			expect(v).toBe(false);
 		}
@@ -206,7 +208,7 @@ describe("Zone engine parity (mirrors test_zone_engine_parity.py)", () => {
 		// Room is cols 8-11, rows 0-3. Target at x=-900 maps to col 5 (inside
 		// the 20x20 grid but not a room cell), hitting the cellIsInside branch.
 		a._targets = [makeTarget(-900, 150, 9)];
-		const occ = a._runLocalZoneEngine();
+		const occ = a._runLocalZoneEngine().occupancy;
 		for (const v of Object.values(occ)) {
 			expect(v).toBe(false);
 		}
@@ -220,7 +222,80 @@ describe("Zone engine parity (mirrors test_zone_engine_parity.py)", () => {
 
 		// Move to adjacent cell (still zone 0) — continuous, no re-gating needed
 		a._targets = [makeTarget(450, 150, 5)]; // col 9.5 row 0.5 → still zone 0
-		const occ = a._runLocalZoneEngine();
+		const occ = a._runLocalZoneEngine().occupancy;
 		expect(occ[0]).toBe(true); // stays occupied via renew
+	});
+});
+
+describe("Per-target status parity", () => {
+	let el: EverythingPresenceProPanel;
+	let a: any;
+
+	beforeEach(() => {
+		el = createParityPanel();
+		a = el as any;
+	});
+
+	it("active target in zone → status=active with position and signal", () => {
+		a._targets = [makeTarget(450, 450, 5)];
+		const result = a._runLocalZoneEngine();
+		expect(result.targets[0].status).toBe("active");
+		expect(result.targets[0].x).toBe(450);
+		expect(result.targets[0].y).toBe(450);
+		expect(result.targets[0].signal).toBe(5);
+	});
+
+	it("no targets → empty targets list", () => {
+		a._targets = [];
+		const result = a._runLocalZoneEngine();
+		expect(result.targets).toHaveLength(0);
+	});
+
+	it("inactive target (signal=0) → status=inactive", () => {
+		a._targets = [makeTarget(450, 450, 0, "inactive")];
+		const result = a._runLocalZoneEngine();
+		expect(result.targets[0].status).toBe("inactive");
+	});
+
+	it("target disappears while zone pending → status=pending with last position", () => {
+		// Two active ticks are needed: the first tick creates the zone state and
+		// occupies it; the second tick registers the target in confirmedTargets so
+		// the pending check can identify which target was last in the zone.
+		a._targets = [makeTarget(450, 450, 5)];
+		a._runLocalZoneEngine(); // tick 1: zone created and occupied
+		a._runLocalZoneEngine(); // tick 2: target added to confirmedTargets
+
+		// Target disappears (sensor stops tracking → x/y null)
+		a._targets = [{ x: null, y: null, speed: 0, status: "inactive" as const, signal: 0 }];
+		const result = a._runLocalZoneEngine();
+		expect(result.targets[0].status).toBe("pending");
+		expect(result.targets[0].x).toBe(450);
+		expect(result.targets[0].y).toBe(450);
+		expect(result.targets[0].signal).toBe(0);
+	});
+
+	it("zone clears after timeout → status=inactive", () => {
+		// Two active ticks to register the target in confirmedTargets (see above).
+		a._targets = [makeTarget(450, 450, 5)];
+		a._runLocalZoneEngine(); // tick 1: zone occupied
+		a._runLocalZoneEngine(); // tick 2: target in confirmedTargets
+
+		// Target disappears
+		a._targets = [{ x: null, y: null, speed: 0, status: "inactive" as const, signal: 0 }];
+		a._runLocalZoneEngine();
+
+		// Fast-forward past timeout
+		const st = a._localZoneState.get(1);
+		st.pendingSince = Date.now() / 1000 - 6;
+		const result = a._runLocalZoneEngine();
+		expect(result.targets[0].status).toBe("inactive");
+	});
+
+	it("active target outside room → still status=active", () => {
+		// Target at position outside room cells but tracked with signal
+		a._targets = [makeTarget(-900, 150, 9)];
+		const result = a._runLocalZoneEngine();
+		expect(result.targets[0].status).toBe("active");
+		expect(result.targets[0].signal).toBe(9);
 	});
 });

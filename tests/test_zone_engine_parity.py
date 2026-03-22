@@ -28,6 +28,7 @@ from custom_components.everything_presence_pro.const import RAW_FPS
 from custom_components.everything_presence_pro.const import ZONE_TYPE_ENTRANCE
 from custom_components.everything_presence_pro.const import ZONE_TYPE_NORMAL
 from custom_components.everything_presence_pro.zone_engine import Grid
+from custom_components.everything_presence_pro.zone_engine import TargetStatus
 from custom_components.everything_presence_pro.zone_engine import TargetWindow
 from custom_components.everything_presence_pro.zone_engine import WindowOutput
 from custom_components.everything_presence_pro.zone_engine import Zone
@@ -247,3 +248,64 @@ class TestZoneEngineParity:
         # (450, 150) → cell (9,0), 1 cell away from (8,0) → within MAX_MOVEMENT_CELLS
         r3 = engine._tick(_window([(X_OFF + 450, 150, 3)]), t + 2.0)
         assert r3.zone_occupancy[0] is True
+
+    # --- Per-target status parity ---
+
+    def test_active_target_status(self):
+        """Active target in zone → status=ACTIVE with position and signal."""
+        engine = _make_parity_engine()
+        result = engine._tick(_window([(X_OFF + 450, 450, 5)]), 100.0)
+        assert len(result.targets) >= 1
+        assert result.targets[0].status == TargetStatus.ACTIVE
+        assert result.targets[0].x == X_OFF + 450  # grid-space
+        assert result.targets[0].y == 450
+        assert result.targets[0].signal == 5
+
+    def test_no_targets_empty_list(self):
+        """No targets → empty targets list."""
+        engine = _make_parity_engine()
+        result = engine._tick(_window([]), 100.0)
+        assert result.targets == []
+
+    def test_inactive_target_status(self):
+        """Inactive target (signal=0) → status=INACTIVE."""
+        engine = _make_parity_engine()
+        result = engine._tick(_window([(X_OFF + 450, 450, 0)]), 100.0)
+        assert result.targets[0].status == TargetStatus.INACTIVE
+
+    def test_pending_target_status(self):
+        """Target disappears while zone pending → status=PENDING with last position."""
+        engine = _make_parity_engine()
+        t = 100.0
+
+        # Occupy zone 1
+        engine._tick(_window([(X_OFF + 450, 450, 5)]), t)
+
+        # Target disappears
+        result = engine._tick(_window([(X_OFF + 450, 450, 0)]), t + 1.0)
+        assert result.targets[0].status == TargetStatus.PENDING
+        assert result.targets[0].x == X_OFF + 450
+        assert result.targets[0].y == 450
+        assert result.targets[0].signal == 0
+
+    def test_inactive_after_timeout(self):
+        """Zone clears after timeout → status=INACTIVE."""
+        engine = _make_parity_engine()
+        t = 100.0
+
+        # Occupy zone 1
+        engine._tick(_window([(X_OFF + 450, 450, 5)]), t)
+
+        # Target disappears
+        engine._tick(_window([(X_OFF + 450, 450, 0)]), t + 1.0)
+
+        # Past timeout
+        result = engine._tick(_window([(X_OFF + 450, 450, 0)]), t + 7.0)
+        assert result.targets[0].status == TargetStatus.INACTIVE
+
+    def test_active_target_outside_room(self):
+        """Active target outside room → still ACTIVE (tracking with signal)."""
+        engine = _make_parity_engine()
+        result = engine._tick(_window([(9000, 9000, 9)]), 100.0)
+        assert result.targets[0].status == TargetStatus.ACTIVE
+        assert result.targets[0].signal == 9
