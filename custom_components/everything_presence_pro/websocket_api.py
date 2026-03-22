@@ -21,6 +21,7 @@ from .coordinator import SIGNAL_DISPLAY_UPDATED
 from .coordinator import EverythingPresenceProCoordinator
 from .zone_engine import DisplayTarget
 from .zone_engine import TargetResult
+from .zone_engine import TargetStatus
 from .zone_engine import Zone
 
 _REGISTERED: set[str] = set()
@@ -503,8 +504,10 @@ async def websocket_subscribe_grid_targets(
         return {
             "targets": [
                 {
-                    "x": d.x,
-                    "y": d.y,
+                    # Pending targets use zone engine position (last in-room),
+                    # not display buffer (which is null when not tracking).
+                    "x": t.x if t.status == TargetStatus.PENDING else d.x,
+                    "y": t.y if t.status == TargetStatus.PENDING else d.y,
                     "signal": t.signal,
                     "status": t.status.value,
                 }
