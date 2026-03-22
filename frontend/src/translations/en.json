@@ -65,7 +65,7 @@
 		"save_prompt": "Click Save to store this room's calibration, or click a corner above to re-mark it.",
 		"walk_instruction_full": "<strong>Walk to each corner</strong> in order (1 → 2 → 3 → 4) and click Mark. Stand still for a few seconds so the sensor can lock on.",
 		"cant_reach": "<strong>Can't reach a corner?</strong> Stand as close as you can and enter the distance from each wall in the offset fields — like corner 4 in the diagram above, where a plant is in the way.",
-		"corner_sensor_hint": "Corner 2 is where your sensor is mounted. You can stand right under it.",
+		"corner_sensor_hint": "In this example, your sensor is mounted in Corner 2, but it can be anywhere. You can stand right in front of it.",
 		"walk_instruction": "Walk to each corner of the room and click Mark. The sensor will record your position over {duration} seconds.",
 		"corner_step": "Corner {index}/4: Walk to the {corner}",
 		"distance_from": "Distance from:",

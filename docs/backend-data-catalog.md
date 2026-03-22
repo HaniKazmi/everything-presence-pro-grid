@@ -180,11 +180,22 @@ This area requires strict Python/JS sync. The frontend replicates the backend mo
 |-----------|---------------|
 | Tumbling window | 1s window, median position per target |
 | Target -> cell mapping | `xy_to_cell()` with origin offset |
+| Room gating (per-target) | target must map to a cell with the room flag set; see below |
 | Continuity check | Chebyshev distance <= 5 cells |
 | Entry point gating | 2 consecutive ticks at `min(threshold + 2, 8)` for non-entry zones |
 | Threshold conversion | `max(1, threshold)` -> frame count |
 | State machine | CLEAR/OCCUPIED/PENDING with trigger/renew/timeout |
 | Handoff | pending_since adjusted by `timeout - handoff_timeout` |
+
+### Per-Target Room Gating
+
+The zone engine (both backend and frontend replica) gates each target by the room grid. This determines per-target display status and is separate from zone occupancy:
+
+- **Active**: target maps to a cell with the room flag set → render solid at current position
+- **Pending**: target moves outside the room grid → render faded, clamped to last position inside the grid
+- **Inactive**: target stays outside long enough to time out → hide
+
+The backend produces `status` in `subscribe_grid_targets` for the live overview. The detection zone editor **overwrites** this backend `status` because the user may have unsaved grid/zone changes. The frontend zone engine (a line-by-line mirror of backend `_tick` lines 661-700) recalculates per-target status using the current (possibly unsaved) grid, then overwrites `_targets[].status` (and position for pending targets). Both the live overview and zone editor then use the same target rendering logic — the only difference is where `status` comes from (backend vs frontend zone engine).
 
 ### Room-Level Settings
 
@@ -363,7 +374,7 @@ Batch-renames zone entity IDs via the entity registry.
 | Room calibration | `subscribe_raw_targets` | `_rawTargets` | `raw_x`, `raw_y` | `set_setup` |
 | Live overview (FOV) | `subscribe_raw_targets` | `_rawTargets` | `raw_x`, `raw_y` | — |
 | Live overview (grid) | `subscribe_grid_targets` | `_targets` | all fields | `get_config` |
-| Detection zone editor | `subscribe_grid_targets` | `_targets` | `x`, `y`, `signal` (ignores `status`) | `set_room_layout`, `rename_zone_entities` |
+| Detection zone editor | `subscribe_grid_targets` | `_targets` | `x`, `y`, `signal` from backend; `status` overwritten by frontend zone engine using unsaved grid/zone config | `set_room_layout`, `rename_zone_entities` |
 | Reporting settings | — | — | — | `get_config`, `set_reporting` |
 
 ---
