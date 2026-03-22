@@ -4858,7 +4858,7 @@ export class EverythingPresenceProPanel extends LitElement {
 	/** Run local zone engine replica (matches backend zone_engine._tick). */
 	private _runLocalZoneEngine(): {
 		occupancy: Record<number, boolean>;
-		targets: { status: "active" | "pending" | "inactive"; x: number; y: number; signal: number }[];
+		targets: { status: "active" | "pending" | "inactive" }[];
 	} {
 		const now = Date.now() / 1000;
 		const MAX_MOVEMENT_CELLS = 5;
@@ -5052,20 +5052,16 @@ export class EverythingPresenceProPanel extends LitElement {
 			}
 		}
 
-		const targetResults: { status: "active" | "pending" | "inactive"; x: number; y: number; signal: number }[] = [];
+		// Build per-target status (mirrors backend _tick lines 661-700).
+		// Only status is needed — position for pending display is handled
+		// by _targetPrevXY in the rendering layer (_renderTargetDots).
+		const targetResults: { status: "active" | "pending" | "inactive" }[] = [];
 		for (let i = 0; i < MAX_TARGETS && i < this._targets.length; i++) {
 			const sig = targetSignal.get(i) ?? 0;
 			const inRoom = targetZoneCurr[i] !== null;
 			if (activeTargets.has(i) && sig > 0 && inRoom) {
-				// Active target with signal, in room (backend line 666-672)
-				targetResults.push({
-					status: "active",
-					x: this._targets[i].x,
-					y: this._targets[i].y,
-					signal: sig,
-				});
+				targetResults.push({ status: "active" });
 			} else {
-				// Check if this target is pending in any zone (backend lines 674-691)
 				let isPending = false;
 				if (!activeTargets.has(i) || !inRoom) {
 					for (const [, st] of this._localZoneState) {
@@ -5075,22 +5071,7 @@ export class EverythingPresenceProPanel extends LitElement {
 						}
 					}
 				}
-				if (isPending) {
-					const xy = this._targetPrevXY[i];
-					targetResults.push({
-						status: "pending",
-						x: xy ? xy.x : 0,
-						y: xy ? xy.y : 0,
-						signal: 0,
-					});
-				} else {
-					targetResults.push({
-						status: "inactive",
-						x: 0,
-						y: 0,
-						signal: 0,
-					});
-				}
+				targetResults.push({ status: isPending ? "pending" : "inactive" });
 			}
 		}
 

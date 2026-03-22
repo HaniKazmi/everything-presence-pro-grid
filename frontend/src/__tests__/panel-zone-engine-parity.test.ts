@@ -240,9 +240,7 @@ describe("Per-target status parity", () => {
 		a._targets = [makeTarget(450, 450, 5)];
 		const result = a._runLocalZoneEngine();
 		expect(result.targets[0].status).toBe("active");
-		expect(result.targets[0].x).toBe(450);
-		expect(result.targets[0].y).toBe(450);
-		expect(result.targets[0].signal).toBe(5);
+		// x/y/signal are display concerns handled by _renderTargetDots
 	});
 
 	it("no targets → empty targets list", () => {
@@ -269,9 +267,7 @@ describe("Per-target status parity", () => {
 		a._targets = [{ x: null, y: null, speed: 0, status: "inactive" as const, signal: 0 }];
 		const result = a._runLocalZoneEngine();
 		expect(result.targets[0].status).toBe("pending");
-		expect(result.targets[0].x).toBe(450);
-		expect(result.targets[0].y).toBe(450);
-		expect(result.targets[0].signal).toBe(0);
+		// Position/signal are display concerns handled by _renderTargetDots
 	});
 
 	it("zone clears after timeout → status=inactive", () => {
@@ -310,8 +306,6 @@ describe("Per-target status parity", () => {
 		a._targets = [makeTarget(-900, 150, 9)];
 		const result = a._runLocalZoneEngine();
 		expect(result.targets[0].status).toBe("pending");
-		expect(result.targets[0].x).toBe(450);
-		expect(result.targets[0].y).toBe(450);
 	});
 
 	it("target reappears during pending → back to active", () => {
@@ -329,9 +323,6 @@ describe("Per-target status parity", () => {
 		a._targets = [makeTarget(450, 450, 3)];
 		const r3 = a._runLocalZoneEngine();
 		expect(r3.targets[0].status).toBe("active");
-		expect(r3.targets[0].x).toBe(450);
-		expect(r3.targets[0].y).toBe(450);
-		expect(r3.targets[0].signal).toBe(3);
 	});
 
 	it("two targets, one leaves → mixed active/pending states", () => {
@@ -352,9 +343,6 @@ describe("Per-target status parity", () => {
 		const result = a._runLocalZoneEngine();
 		expect(result.targets[0].status).toBe("active");
 		expect(result.targets[1].status).toBe("pending");
-		// T1 pending x/y = last in-room position (room-space)
-		expect(result.targets[1].x).toBe(150);
-		expect(result.targets[1].y).toBe(150);
 	});
 
 	it("tracking outside room then sensor stops → pending throughout", () => {
@@ -368,15 +356,11 @@ describe("Per-target status parity", () => {
 		a._targets = [makeTarget(-900, 150, 9)];
 		const r2 = a._runLocalZoneEngine();
 		expect(r2.targets[0].status).toBe("pending");
-		expect(r2.targets[0].x).toBe(450);
-		expect(r2.targets[0].y).toBe(450);
 
 		// Sensor stops tracking (x/y null) → still pending at same position
 		a._targets = [{ x: null, y: null, speed: 0, status: "inactive" as const, signal: 0 }];
 		const r3 = a._runLocalZoneEngine();
 		expect(r3.targets[0].status).toBe("pending");
-		expect(r3.targets[0].x).toBe(450);
-		expect(r3.targets[0].y).toBe(450);
 	});
 
 	it("signal=0 but tracking (x/y non-null) in pending zone → status=pending", () => {
@@ -407,8 +391,6 @@ describe("Per-target status parity", () => {
 
 		// Target is active in zone 0 at new position.
 		expect(result.targets[0].status).toBe("active");
-		expect(result.targets[0].x).toBe(150);
-		expect(result.targets[0].y).toBe(150);
 
 		// Zone 1 is still occupied (pending) due to handoff.
 		expect(result.occupancy[0]).toBe(true);
