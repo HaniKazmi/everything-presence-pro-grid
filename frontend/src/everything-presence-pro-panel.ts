@@ -4884,7 +4884,6 @@ export class EverythingPresenceProPanel extends LitElement {
 		const MAX_TARGETS = 3;
 
 		const zoneConfirmed: Map<number, boolean> = new Map();
-		const zoneSignal: Map<number, number> = new Map();
 		const targetSignal: Map<number, number> = new Map();
 		const targetZonePrev: (number | null)[] = [null, null, null];
 		const targetZoneCurr: (number | null)[] = [null, null, null];
@@ -4953,7 +4952,7 @@ export class EverythingPresenceProPanel extends LitElement {
 				continuous = dist <= MAX_MOVEMENT_CELLS;
 			}
 
-			zoneSignal.set(zid, Math.max(zoneSignal.get(zid) ?? 0, signal));
+
 
 			const { trigger, renew, entryPoint } = this._getZoneThresholds(zid);
 			const st = this._localZoneState.get(zid);

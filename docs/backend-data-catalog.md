@@ -192,12 +192,12 @@ This area requires strict Python/JS sync. The frontend replicates the backend mo
 The zone engine (both backend and frontend replica) gates each target by the room grid. This determines per-target display status and is separate from zone occupancy:
 
 - **Active**: target maps to a cell with the room flag set → render solid at current position
-- **Pending**: target moves outside the room grid → render faded, clamped to last position inside the grid
+- **Pending**: target fails room gating but is still tracked → render faded. If its position is still within the visible grid (including non-room cells), render at its current position; if it has moved off-grid or is no longer tracked, render at its last position inside the room grid
 - **Inactive**: target stays outside long enough to time out → hide
 
 The backend produces `status` in `subscribe_grid_targets` for the live overview. The detection zone editor **overwrites** this backend `status` because the user may have unsaved grid/zone changes. The frontend zone engine recalculates per-target status using the current (possibly unsaved) grid, then overwrites `_targets[].status`. Both the live overview and zone editor use the same rendering logic (`_renderTargetDots`) — the only difference is where `status` comes from (backend vs frontend zone engine).
 
-Pending target display position (`_targetPrevXY`) is a frontend-only concern. It stores the last in-room position (room-space mm) and is used by the rendering layer to show faded dots. The backend API always sends raw DisplayBuffer x/y — it never sends zone engine positions.
+Pending target display position (`_targetPrevXY`) is a frontend-only concern. It stores the last in-room position (room-space mm). When a pending target's current position is still on the visible grid (even on non-room cells), the renderer uses that current position for the faded dot. When the position is off-grid or no longer available, the renderer falls back to `_targetPrevXY`. The backend API always sends raw DisplayBuffer x/y — it never sends zone engine positions.
 
 ### Room-Level Settings
 
