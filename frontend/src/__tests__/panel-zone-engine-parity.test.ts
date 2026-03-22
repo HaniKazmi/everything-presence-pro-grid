@@ -415,3 +415,128 @@ describe("Per-target status parity", () => {
 		expect(result.occupancy[1]).toBe(true);
 	});
 });
+
+describe("Pending target position fallback (_renderTargetDots)", () => {
+	let el: EverythingPresenceProPanel;
+	let a: any;
+
+	beforeEach(() => {
+		el = createParityPanel();
+		a = el as any;
+	});
+
+	/**
+	 * Run the zone engine and apply the status overwrite to _targets
+	 * (same as _renderVisibleCells does in the real component).
+	 */
+	function runEngineAndOverwrite() {
+		const engineResult = a._runLocalZoneEngine();
+		for (let i = 0; i < engineResult.targets.length && i < a._targets.length; i++) {
+			a._targets[i].status = engineResult.targets[i].status;
+		}
+		return engineResult;
+	}
+
+	/**
+	 * Compute the display position for target 0, replicating the
+	 * _renderTargetDots logic: if pending and off-grid, fall back to
+	 * _targetPrevXY; if pending and on-grid, use actual position.
+	 */
+	function getFirstDotPosition(): { leftPct: number; topPct: number } | null {
+		const minCol = 8, minRow = 0, visCols = 4, visRows = 4;
+		const t = a._targets[0];
+		if (!t || t.status === "inactive") return null;
+
+		const prevXY = a._targetPrevXY[0];
+		let pos = t.x != null ? a._mapTargetToGridCell(t) : null;
+		const onGrid = pos &&
+			pos.col >= minCol && pos.col <= minCol + visCols &&
+			pos.row >= minRow && pos.row <= minRow + visRows;
+		if (t.status === "pending" && !onGrid && prevXY) {
+			pos = a._mapTargetToGridCell({ ...t, x: prevXY.x, y: prevXY.y });
+		}
+		if (!pos) return null;
+		return {
+			leftPct: Math.max(0, Math.min(100, ((pos.col - minCol) / visCols) * 100)),
+			topPct: Math.max(0, Math.min(100, ((pos.row - minRow) / visRows) * 100)),
+		};
+	}
+
+	it("pending target on grey cell (on grid) → renders at actual position", () => {
+		// First occupy zone 1 and record _targetPrevXY
+		a._targets = [makeTarget(450, 450, 5)];
+		runEngineAndOverwrite();
+		runEngineAndOverwrite();
+		expect(a._targetPrevXY[0]).toEqual({ x: 450, y: 450 });
+
+		// Move target to a grey cell within the visible grid.
+		// Cell (8,0) is a room cell. Remove the room bit to make it grey.
+		a._grid[0 * 20 + 8] = 0; // clear room bit on cell (8,0)
+
+		// Target at (150, 150) → col 8.5, row 0.5 — on grid (cols 8-12, rows 0-4)
+		// but not a room cell → zone engine gives "pending"
+		a._targets = [makeTarget(150, 150, 9)];
+		runEngineAndOverwrite();
+		expect(a._targets[0].status).toBe("pending");
+
+		// Rendering should use actual position (on grid), not _targetPrevXY
+		const dot = getFirstDotPosition();
+		expect(dot).not.toBeNull();
+		// col 8.5 → leftPct = (8.5 - 8) / 4 * 100 = 12.5%
+		expect(dot!.leftPct).toBeCloseTo(12.5, 0);
+		// row 0.5 → topPct = (0.5 - 0) / 4 * 100 = 12.5%
+		expect(dot!.topPct).toBeCloseTo(12.5, 0);
+	});
+
+	it("pending target outside grid → renders at last in-room position", () => {
+		// First occupy zone 1 and record _targetPrevXY
+		a._targets = [makeTarget(450, 450, 5)];
+		runEngineAndOverwrite();
+		runEngineAndOverwrite();
+		expect(a._targetPrevXY[0]).toEqual({ x: 450, y: 450 });
+
+		// Target moves outside the visible grid entirely
+		// x=-900 → col = 8 + (-900/300) = 5 — below minCol=8
+		a._targets = [makeTarget(-900, 150, 9)];
+		runEngineAndOverwrite();
+		expect(a._targets[0].status).toBe("pending");
+
+		// Rendering should fall back to _targetPrevXY (450, 450)
+		const dot = getFirstDotPosition();
+		expect(dot).not.toBeNull();
+		// (450, 450) → col 9.5, row 1.5
+		// leftPct = (9.5 - 8) / 4 * 100 = 37.5%
+		expect(dot!.leftPct).toBeCloseTo(37.5, 0);
+		// topPct = (1.5 - 0) / 4 * 100 = 37.5%
+		expect(dot!.topPct).toBeCloseTo(37.5, 0);
+	});
+
+	it("pending target not tracked (x/y null) → renders at last in-room position", () => {
+		// First occupy zone 1 and record _targetPrevXY
+		a._targets = [makeTarget(450, 450, 5)];
+		runEngineAndOverwrite();
+		runEngineAndOverwrite();
+
+		// Sensor stops tracking
+		a._targets = [{ x: null, y: null, speed: 0, status: "inactive" as const, signal: 0 }];
+		runEngineAndOverwrite();
+		expect(a._targets[0].status).toBe("pending");
+
+		// Rendering should use _targetPrevXY
+		const dot = getFirstDotPosition();
+		expect(dot).not.toBeNull();
+		expect(dot!.leftPct).toBeCloseTo(37.5, 0);
+		expect(dot!.topPct).toBeCloseTo(37.5, 0);
+	});
+
+	it("active target → renders at actual position (no fallback)", () => {
+		a._targets = [makeTarget(450, 450, 5)];
+		runEngineAndOverwrite();
+		runEngineAndOverwrite();
+
+		const dot = getFirstDotPosition();
+		expect(dot).not.toBeNull();
+		expect(dot!.leftPct).toBeCloseTo(37.5, 0);
+		expect(dot!.topPct).toBeCloseTo(37.5, 0);
+	});
+});
