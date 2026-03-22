@@ -78,7 +78,7 @@ See [section 5](#subscriptions-live-data) for API details.
 |-------|------|-------|
 | `x` | float (mm) | calibrated room-space, rolling median smoothed |
 | `y` | float (mm) | calibrated room-space, rolling median smoothed |
-| `signal` | int 0-9 | from zone engine (cached, updates at 1Hz) |
+| `signal` | int 0-9 | raw sensor signal strength — always non-zero when sensor tracks |
 | `status` | string | `"active"`, `"pending"`, or `"inactive"` — room-gated (cached, 1Hz) |
 
 ### `_rawTargets[]` (up to 3, from `subscribe_raw_targets`)
@@ -195,7 +195,9 @@ The zone engine (both backend and frontend replica) gates each target by the roo
 - **Pending**: target moves outside the room grid → render faded, clamped to last position inside the grid
 - **Inactive**: target stays outside long enough to time out → hide
 
-The backend produces `status` in `subscribe_grid_targets` for the live overview. The detection zone editor **overwrites** this backend `status` because the user may have unsaved grid/zone changes. The frontend zone engine (a line-by-line mirror of backend `_tick` lines 661-700) recalculates per-target status using the current (possibly unsaved) grid, then overwrites `_targets[].status` (and position for pending targets). Both the live overview and zone editor then use the same target rendering logic — the only difference is where `status` comes from (backend vs frontend zone engine).
+The backend produces `status` in `subscribe_grid_targets` for the live overview. The detection zone editor **overwrites** this backend `status` because the user may have unsaved grid/zone changes. The frontend zone engine recalculates per-target status using the current (possibly unsaved) grid, then overwrites `_targets[].status`. Both the live overview and zone editor use the same rendering logic (`_renderTargetDots`) — the only difference is where `status` comes from (backend vs frontend zone engine).
+
+Pending target display position (`_targetPrevXY`) is a frontend-only concern. It stores the last in-room position (room-space mm) and is used by the rendering layer to show faded dots. The backend API always sends raw DisplayBuffer x/y — it never sends zone engine positions.
 
 ### Room-Level Settings
 
@@ -256,12 +258,12 @@ Used by the live overview grid view and the detection zone editor. Pushes positi
 |-------|------|-------|
 | `targets[].x` | float (mm) | calibrated room-space, rolling median smoothed — NOT room-gated (always populated when sensor tracks) |
 | `targets[].y` | float (mm) | calibrated room-space, rolling median smoothed — NOT room-gated |
-| `targets[].signal` | int 0-9 | from zone engine (cached, updates at 1 Hz) |
+| `targets[].signal` | int 0-9 | raw sensor signal strength — always non-zero when sensor tracks |
 | `targets[].status` | string | `"active"`, `"pending"`, or `"inactive"` — room-gated by backend (cached, 1 Hz) |
 | `sensors` | object | see [section 2 sensors table](#sensors) |
 | `zones` | object | see [section 2 zones table](#zones) |
 
-`x`/`y` are always populated when the sensor is tracking, regardless of room gating. `status` is room-gated by the backend zone engine.
+`x`/`y` and `signal` are always populated when the sensor is tracking, regardless of room gating. `status` is room-gated by the backend zone engine. The detection zone editor overwrites `status` using its own zone engine against the unsaved grid.
 
 **Used by:** live overview grid, detection zone editor.
 

@@ -264,7 +264,9 @@ describe("Per-target status parity", () => {
 		a._runLocalZoneEngine(); // tick 2: target added to confirmedTargets
 
 		// Target disappears (sensor stops tracking → x/y null)
-		a._targets = [{ x: null, y: null, speed: 0, status: "inactive" as const, signal: 0 }];
+		a._targets = [
+			{ x: null, y: null, speed: 0, status: "inactive" as const, signal: 0 },
+		];
 		const result = a._runLocalZoneEngine();
 		expect(result.targets[0].status).toBe("pending");
 		// Position/signal are display concerns handled by _renderTargetDots
@@ -277,7 +279,9 @@ describe("Per-target status parity", () => {
 		a._runLocalZoneEngine(); // tick 2: target in confirmedTargets
 
 		// Target disappears
-		a._targets = [{ x: null, y: null, speed: 0, status: "inactive" as const, signal: 0 }];
+		a._targets = [
+			{ x: null, y: null, speed: 0, status: "inactive" as const, signal: 0 },
+		];
 		a._runLocalZoneEngine();
 
 		// Fast-forward past timeout
@@ -315,7 +319,9 @@ describe("Per-target status parity", () => {
 		a._runLocalZoneEngine(); // tick 2: target added to confirmedTargets
 
 		// Target disappears → zone 1 pending
-		a._targets = [{ x: null, y: null, speed: 0, status: "inactive" as const, signal: 0 }];
+		a._targets = [
+			{ x: null, y: null, speed: 0, status: "inactive" as const, signal: 0 },
+		];
 		const r2 = a._runLocalZoneEngine();
 		expect(r2.targets[0].status).toBe("pending");
 
@@ -358,7 +364,9 @@ describe("Per-target status parity", () => {
 		expect(r2.targets[0].status).toBe("pending");
 
 		// Sensor stops tracking (x/y null) → still pending at same position
-		a._targets = [{ x: null, y: null, speed: 0, status: "inactive" as const, signal: 0 }];
+		a._targets = [
+			{ x: null, y: null, speed: 0, status: "inactive" as const, signal: 0 },
+		];
 		const r3 = a._runLocalZoneEngine();
 		expect(r3.targets[0].status).toBe("pending");
 	});
@@ -413,7 +421,11 @@ describe("Pending target position fallback (_renderTargetDots)", () => {
 	 */
 	function runEngineAndOverwrite() {
 		const engineResult = a._runLocalZoneEngine();
-		for (let i = 0; i < engineResult.targets.length && i < a._targets.length; i++) {
+		for (
+			let i = 0;
+			i < engineResult.targets.length && i < a._targets.length;
+			i++
+		) {
 			a._targets[i].status = engineResult.targets[i].status;
 		}
 		return engineResult;
@@ -425,15 +437,21 @@ describe("Pending target position fallback (_renderTargetDots)", () => {
 	 * _targetPrevXY; if pending and on-grid, use actual position.
 	 */
 	function getFirstDotPosition(): { leftPct: number; topPct: number } | null {
-		const minCol = 8, minRow = 0, visCols = 4, visRows = 4;
+		const minCol = 8,
+			minRow = 0,
+			visCols = 4,
+			visRows = 4;
 		const t = a._targets[0];
 		if (!t || t.status === "inactive") return null;
 
 		const prevXY = a._targetPrevXY[0];
 		let pos = t.x != null ? a._mapTargetToGridCell(t) : null;
-		const onGrid = pos &&
-			pos.col >= minCol && pos.col <= minCol + visCols &&
-			pos.row >= minRow && pos.row <= minRow + visRows;
+		const onGrid =
+			pos &&
+			pos.col >= minCol &&
+			pos.col <= minCol + visCols &&
+			pos.row >= minRow &&
+			pos.row <= minRow + visRows;
 		if (t.status === "pending" && !onGrid && prevXY) {
 			pos = a._mapTargetToGridCell({ ...t, x: prevXY.x, y: prevXY.y });
 		}
@@ -500,7 +518,9 @@ describe("Pending target position fallback (_renderTargetDots)", () => {
 		runEngineAndOverwrite();
 
 		// Sensor stops tracking
-		a._targets = [{ x: null, y: null, speed: 0, status: "inactive" as const, signal: 0 }];
+		a._targets = [
+			{ x: null, y: null, speed: 0, status: "inactive" as const, signal: 0 },
+		];
 		runEngineAndOverwrite();
 		expect(a._targets[0].status).toBe("pending");
 
@@ -534,7 +554,11 @@ describe("Unsaved grid overrides backend status", () => {
 
 	function runEngineAndOverwrite() {
 		const engineResult = a._runLocalZoneEngine();
-		for (let i = 0; i < engineResult.targets.length && i < a._targets.length; i++) {
+		for (
+			let i = 0;
+			i < engineResult.targets.length && i < a._targets.length;
+			i++
+		) {
 			a._targets[i].status = engineResult.targets[i].status;
 		}
 		return engineResult;

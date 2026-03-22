@@ -3858,27 +3858,42 @@ export class EverythingPresenceProPanel extends LitElement {
 					// within the visible grid, otherwise fall back to last
 					// in-room position.
 					let pos = t.x != null ? this._mapTargetToGridCell(t) : null;
-					const onGrid = pos &&
-						pos.col >= minCol && pos.col <= minCol + visCols &&
-						pos.row >= minRow && pos.row <= minRow + visRows;
+					const onGrid =
+						pos &&
+						pos.col >= minCol &&
+						pos.col <= minCol + visCols &&
+						pos.row >= minRow &&
+						pos.row <= minRow + visRows;
 					if (t.status === "pending" && !onGrid && this._targetPrevXY[i]) {
-						pos = this._mapTargetToGridCell(
-							{ ...t, x: this._targetPrevXY[i]!.x, y: this._targetPrevXY[i]!.y } as Target,
-						);
+						pos = this._mapTargetToGridCell({
+							...t,
+							x: this._targetPrevXY[i]!.x,
+							y: this._targetPrevXY[i]!.y,
+						} as Target);
 					}
 					if (!pos) return nothing;
-					const xPct = Math.max(0, Math.min(100, ((pos.col - minCol) / visCols) * 100));
-					const yPct = Math.max(0, Math.min(100, ((pos.row - minRow) / visRows) * 100));
+					const xPct = Math.max(
+						0,
+						Math.min(100, ((pos.col - minCol) / visCols) * 100),
+					);
+					const yPct = Math.max(
+						0,
+						Math.min(100, ((pos.row - minRow) / visRows) * 100),
+					);
 					return html`
             <div
               class="target-dot"
               style="left: ${xPct}%; top: ${yPct}%; background: ${TARGET_COLORS[i] || TARGET_COLORS[0]}; opacity: ${t.status === "pending" ? 0.3 : 1}; transition: opacity 0.5s ease;"
             ></div>
-            ${t.status === "active" && t.signal > 0 ? html`
+            ${
+							t.status === "active" && t.signal > 0
+								? html`
               <div style="position: absolute; left: ${xPct}%; top: ${yPct}%; transform: translate(-50%, -280%); background: rgba(0,0,0,0.7); color: #fff; font-size: 10px; font-weight: bold; padding: 0 4px; border-radius: 6px; pointer-events: none;">
                 ${t.signal}
               </div>
-            ` : nothing}
+            `
+								: nothing
+						}
           `;
 				})}
       </div>
@@ -4804,7 +4819,11 @@ export class EverythingPresenceProPanel extends LitElement {
 			// Overwrite _targets status from frontend zone engine.
 			// Position for pending targets is handled by the shared rendering
 			// logic using _targetPrevXY.
-			for (let i = 0; i < engineResult.targets.length && i < this._targets.length; i++) {
+			for (
+				let i = 0;
+				i < engineResult.targets.length && i < this._targets.length;
+				i++
+			) {
 				this._targets[i].status = engineResult.targets[i].status;
 			}
 
@@ -5065,7 +5084,11 @@ export class EverythingPresenceProPanel extends LitElement {
 				let isPending = false;
 				if (!activeTargets.has(i) || !inRoom) {
 					for (const [, st] of this._localZoneState) {
-						if (st.occupied && st.pendingSince !== null && st.confirmedTargets.has(i)) {
+						if (
+							st.occupied &&
+							st.pendingSince !== null &&
+							st.confirmedTargets.has(i)
+						) {
 							isPending = true;
 							break;
 						}
@@ -5106,7 +5129,8 @@ export class EverythingPresenceProPanel extends LitElement {
 				}
 			}
 			const body = `${targetParts.length ? targetParts.join(", ") : "no targets"} | ${zoneParts.length ? zoneParts.join(", ") : "all clear"}`;
-			if (body === this._debugLogPrev) return { occupancy, targets: targetResults };
+			if (body === this._debugLogPrev)
+				return { occupancy, targets: targetResults };
 			this._debugLogPrev = body;
 			const ts = new Date().toLocaleTimeString("en-GB", {
 				hour12: false,
@@ -5801,7 +5825,9 @@ export class EverythingPresenceProPanel extends LitElement {
         `,
 				)}
 
-        ${this._perspective ? html`
+        ${
+					this._perspective
+						? html`
         <hr style="border: none; border-top: 1px solid var(--divider-color, #eee); margin: 10px 12px;"/>
 
         <button class="live-section-header live-section-link" @click=${() => {
@@ -5832,7 +5858,9 @@ export class EverythingPresenceProPanel extends LitElement {
 					}
         `,
 				)}
-        ` : nothing}
+        `
+						: nothing
+				}
 
         <hr style="border: none; border-top: 1px solid var(--divider-color, #eee); margin: 10px 12px;"/>
 
