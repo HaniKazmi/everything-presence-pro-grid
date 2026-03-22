@@ -701,6 +701,12 @@ export class EverythingPresenceProPanel extends LitElement {
 		conn
 			.subscribeMessage(
 				(event: any) => {
+					(event.targets || []).forEach((t: any, i: number) => {
+						// Track last in-room position for pending display
+						if (t.x != null && t.y != null && t.status === "active") {
+							this._targetPrevXY[i] = { x: t.x, y: t.y };
+						}
+					});
 					this._targets = (event.targets || []).map((t: any) => ({
 						x: t.x,
 						y: t.y,
@@ -3829,10 +3835,26 @@ export class EverythingPresenceProPanel extends LitElement {
         ${this._renderVisibleCells(minCol, maxCol, minRow, maxRow, cellPx, true)}
       </div>
       ${this._renderFurnitureOverlay(cellPx, minCol, minRow, visCols, visRows)}
+      ${this._renderTargetDots(minCol, minRow, visCols, visRows)}
+      </div>
+      ${this._renderGridDimensions()}
+    `;
+	}
+
+	private _renderTargetDots(
+		minCol: number,
+		minRow: number,
+		visCols: number,
+		visRows: number,
+	) {
+		return html`
       <div class="targets-overlay" style="pointer-events: none;">
         ${this._targets.map((t, i) => {
 					if (t.status === "inactive") return nothing;
-					const pos = this._mapTargetToGridCell(t);
+					const dt = t.status === "pending" && this._targetPrevXY[i]
+						? { ...t, x: this._targetPrevXY[i]!.x, y: this._targetPrevXY[i]!.y }
+						: t;
+					const pos = this._mapTargetToGridCell(dt);
 					if (!pos) return nothing;
 					const xPct = Math.max(0, Math.min(100, ((pos.col - minCol) / visCols) * 100));
 					const yPct = Math.max(0, Math.min(100, ((pos.row - minRow) / visRows) * 100));
@@ -3841,11 +3863,14 @@ export class EverythingPresenceProPanel extends LitElement {
               class="target-dot"
               style="left: ${xPct}%; top: ${yPct}%; background: ${TARGET_COLORS[i] || TARGET_COLORS[0]}; opacity: ${t.status === "pending" ? 0.3 : 1}; transition: opacity 0.5s ease;"
             ></div>
+            ${t.status === "active" && t.signal > 0 ? html`
+              <div style="position: absolute; left: ${xPct}%; top: ${yPct}%; transform: translate(-50%, -280%); background: rgba(0,0,0,0.7); color: #fff; font-size: 10px; font-weight: bold; padding: 0 4px; border-radius: 6px; pointer-events: none;">
+                ${t.signal}
+              </div>
+            ` : nothing}
           `;
 				})}
       </div>
-      </div>
-      ${this._renderGridDimensions()}
     `;
 	}
 
@@ -4573,26 +4598,7 @@ export class EverythingPresenceProPanel extends LitElement {
               ${this._renderVisibleCells(minCol, maxCol, minRow, maxRow, cellPx)}
             </div>
             ${this._renderFurnitureOverlay(cellPx, minCol, minRow, visCols, visRows)}
-            <div class="targets-overlay" style="pointer-events: none;">
-              ${this._targets.map((t, i) => {
-								if (t.status === "inactive") return nothing;
-								const pos = this._mapTargetToGridCell(t);
-								if (!pos) return nothing;
-								const xPct = Math.max(0, Math.min(100, ((pos.col - minCol) / visCols) * 100));
-								const yPct = Math.max(0, Math.min(100, ((pos.row - minRow) / visRows) * 100));
-								return html`
-                    <div
-                      class="target-dot"
-                      style="left: ${xPct}%; top: ${yPct}%; background: ${TARGET_COLORS[i] || TARGET_COLORS[0]}; opacity: ${t.status === "pending" ? 0.3 : 1}; transition: opacity 0.5s ease;"
-                    ></div>
-                    ${t.status === "active" && t.signal > 0 ? html`
-                      <div style="position: absolute; left: ${xPct}%; top: ${yPct}%; transform: translate(-50%, -280%); background: rgba(0,0,0,0.7); color: #fff; font-size: 10px; font-weight: bold; padding: 0 4px; border-radius: 6px; pointer-events: none;">
-                        ${t.signal}
-                      </div>
-                    ` : nothing}
-                  `;
-							})}
-            </div>
+            ${this._renderTargetDots(minCol, minRow, visCols, visRows)}
             </div>
             ${this._renderGridDimensions()}
             ${this._sidebarTab === "zones" ? this._renderDebugLog() : nothing}
@@ -4784,17 +4790,11 @@ export class EverythingPresenceProPanel extends LitElement {
 			const engineResult = this._runLocalZoneEngine();
 			occupancy = engineResult.occupancy;
 
-			// Overwrite _targets with frontend zone engine results.
-			// For active: keep backend's 5Hz x/y, use engine's status.
-			// For pending: use engine's last-in-room x/y.
-			// For inactive: status is enough — rendering hides them.
+			// Overwrite _targets status from frontend zone engine.
+			// Position for pending targets is handled by the shared rendering
+			// logic using _targetPrevXY.
 			for (let i = 0; i < engineResult.targets.length && i < this._targets.length; i++) {
-				const tr = engineResult.targets[i];
-				this._targets[i].status = tr.status;
-				if (tr.status === "pending") {
-					this._targets[i].x = tr.x;
-					this._targets[i].y = tr.y;
-				}
+				this._targets[i].status = engineResult.targets[i].status;
 			}
 
 			// Derive sensors.occupancy from unsaved zone config
