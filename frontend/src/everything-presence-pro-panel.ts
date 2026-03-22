@@ -701,12 +701,6 @@ export class EverythingPresenceProPanel extends LitElement {
 		conn
 			.subscribeMessage(
 				(event: any) => {
-					(event.targets || []).forEach((t: any, i: number) => {
-						// Track last in-room position for pending display
-						if (t.x != null && t.y != null && t.status === "active") {
-							this._targetPrevXY[i] = { x: t.x, y: t.y };
-						}
-					});
 					this._targets = (event.targets || []).map((t: any) => ({
 						x: t.x,
 						y: t.y,
@@ -3825,6 +3819,15 @@ export class EverythingPresenceProPanel extends LitElement {
 			Math.floor(maxPx / visRows),
 			32,
 		);
+
+		// Track last in-room position for pending display (live overview
+		// uses backend status — active means target is in saved room grid)
+		for (let i = 0; i < this._targets.length; i++) {
+			const t = this._targets[i];
+			if (t.x != null && t.y != null && t.status === "active") {
+				this._targetPrevXY[i] = { x: t.x, y: t.y };
+			}
+		}
 
 		return html`
       <div class="grid-targets-wrapper">
