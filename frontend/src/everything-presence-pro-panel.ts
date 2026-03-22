@@ -458,6 +458,14 @@ export class EverythingPresenceProPanel extends LitElement {
 		null,
 	];
 	private _targetGateCount: number[] = [0, 0, 0];
+	// Last in-room position per target in room-space mm, for pending display.
+	// Only updated when the target is in a room cell; preserved when
+	// the target leaves the room so pending dots render at last known position.
+	private _targetPrevXY: ({ x: number; y: number } | null)[] = [
+		null,
+		null,
+		null,
+	];
 	@state() private _isPainting = false;
 	@state() private _paintAction: PaintAction = "set";
 	private _frozenBounds: {
@@ -2014,6 +2022,11 @@ export class EverythingPresenceProPanel extends LitElement {
       bottom: 0;
       pointer-events: none;
       z-index: 20;
+    }
+
+    .grid-targets-wrapper {
+      position: relative;
+      display: inline-block;
     }
 
     .target-dot {
@@ -3808,6 +3821,7 @@ export class EverythingPresenceProPanel extends LitElement {
 		);
 
 		return html`
+      <div class="grid-targets-wrapper">
       <div
         class="grid"
         style="grid-template-columns: repeat(${visCols}, ${cellPx}px); grid-template-rows: repeat(${visRows}, ${cellPx}px);"
@@ -3820,8 +3834,8 @@ export class EverythingPresenceProPanel extends LitElement {
 					if (t.status === "inactive") return nothing;
 					const pos = this._mapTargetToGridCell(t);
 					if (!pos) return nothing;
-					const xPct = ((pos.col - minCol) / visCols) * 100;
-					const yPct = ((pos.row - minRow) / visRows) * 100;
+					const xPct = Math.max(0, Math.min(100, ((pos.col - minCol) / visCols) * 100));
+					const yPct = Math.max(0, Math.min(100, ((pos.row - minRow) / visRows) * 100));
 					return html`
             <div
               class="target-dot"
@@ -3829,6 +3843,7 @@ export class EverythingPresenceProPanel extends LitElement {
             ></div>
           `;
 				})}
+      </div>
       </div>
       ${this._renderGridDimensions()}
     `;
@@ -4548,6 +4563,7 @@ export class EverythingPresenceProPanel extends LitElement {
 								this._selectedFurnitureId = null;
 							}
 						}}>
+            <div class="grid-targets-wrapper">
             <div
               class="grid"
               style="grid-template-columns: repeat(${visCols}, ${cellPx}px); grid-template-rows: repeat(${visRows}, ${cellPx}px);"
@@ -4558,28 +4574,28 @@ export class EverythingPresenceProPanel extends LitElement {
             </div>
             ${this._renderFurnitureOverlay(cellPx, minCol, minRow, visCols, visRows)}
             <div class="targets-overlay" style="pointer-events: none;">
-              ${this._targets.map((t, i) => {
-								if (t.x == null || t.y == null) return nothing;
-								const pos = this._mapTargetToGridCell(t);
-								if (!pos) return nothing;
-								const xPct = ((pos.col - minCol) / visCols) * 100;
-								const yPct = ((pos.row - minRow) / visRows) * 100;
+              ${this._targets.map((_t, i) => {
+								const ds = this._getTargetDisplayStatus(i);
+								if (ds.status === "inactive") return nothing;
+								const xPct = Math.max(0, Math.min(100, ((ds.col - minCol) / visCols) * 100));
+								const yPct = Math.max(0, Math.min(100, ((ds.row - minRow) / visRows) * 100));
 								return html`
                     <div
                       class="target-dot"
-                      style="left: ${xPct}%; top: ${yPct}%; background: ${TARGET_COLORS[i] || TARGET_COLORS[0]}; opacity: ${t.status === "pending" ? 0.3 : 1}; transition: opacity 0.5s ease;"
+                      style="left: ${xPct}%; top: ${yPct}%; background: ${TARGET_COLORS[i] || TARGET_COLORS[0]}; opacity: ${ds.status === "pending" ? 0.3 : 1}; transition: opacity 0.5s ease;"
                     ></div>
                     ${
-											t.signal > 0
+											ds.status === "active" && this._targets[i].signal > 0
 												? html`
                       <div style="position: absolute; left: ${xPct}%; top: ${yPct}%; transform: translate(-50%, -280%); background: rgba(0,0,0,0.7); color: #fff; font-size: 10px; font-weight: bold; padding: 0 4px; border-radius: 6px; pointer-events: none;">
-                        ${t.signal}
+                        ${this._targets[i].signal}
                       </div>
                     `
 												: nothing
 										}
                   `;
 							})}
+            </div>
             </div>
             ${this._renderGridDimensions()}
             ${this._sidebarTab === "zones" ? this._renderDebugLog() : nothing}
@@ -4824,7 +4840,9 @@ export class EverythingPresenceProPanel extends LitElement {
 		for (let i = 0; i < MAX_TARGETS && i < this._targets.length; i++) {
 			const t = this._targets[i];
 
-			if (t.status !== "active") {
+			// Check if sensor is tracking (x/y non-null), NOT backend status.
+			// The zone editor ignores backend status and recalculates its own.
+			if (t.x == null || t.y == null) {
 				this._targetPrev[i] = null;
 				this._targetGateCount[i] = 0;
 				continue;
@@ -4868,6 +4886,9 @@ export class EverythingPresenceProPanel extends LitElement {
 					targetZonePrev[i] = cellZone(this._grid[prevIdx]);
 				}
 			}
+
+			// Record last in-room position (room-space mm) for pending display
+			this._targetPrevXY[i] = { x: t.x, y: t.y };
 
 			let continuous = false;
 			if (prev !== null) {
@@ -4976,9 +4997,11 @@ export class EverythingPresenceProPanel extends LitElement {
 			}
 			occupancy[zid] = st.occupied;
 		}
-		// Clean up stale confirmed targets in non-pending zones
+		// Clean up stale confirmed targets in non-pending zones.
+		// Use sensor tracking (x/y non-null), not backend status.
 		for (let i = 0; i < MAX_TARGETS && i < this._targets.length; i++) {
-			if (this._targets[i].status !== "active") {
+			const ti = this._targets[i];
+			if (ti.x == null || ti.y == null) {
 				for (const st of this._localZoneState.values()) {
 					if (st.pendingSince === null) {
 						st.confirmedTargets.delete(i);
@@ -4996,7 +5019,7 @@ export class EverythingPresenceProPanel extends LitElement {
 			const targetParts: string[] = [];
 			for (let i = 0; i < MAX_TARGETS && i < this._targets.length; i++) {
 				const t = this._targets[i];
-				if (t.status !== "active") continue;
+				if (t.x == null || t.y == null) continue;
 				const sig = t.signal;
 				if (sig <= 0) continue;
 				const zid = targetZoneCurr[i];
@@ -5046,6 +5069,56 @@ export class EverythingPresenceProPanel extends LitElement {
 			this._zoneState.target_counts,
 			this._zoneConfigs,
 		);
+	}
+
+	/**
+	 * Derive per-target display status from the frontend zone engine state.
+	 * Mirrors backend zone_engine._tick target result logic (lines 661-700).
+	 *
+	 * Returns {status, col, row} where col/row is the display position:
+	 * - active: current grid cell
+	 * - pending: last in-room position (_targetPrev)
+	 * - inactive: hidden
+	 */
+	private _getTargetDisplayStatus(
+		i: number,
+	): { status: "active" | "pending" | "inactive"; col: number; row: number } {
+		const t = this._targets[i];
+		const tracking = t && t.x != null && t.y != null;
+
+		// If sensor is tracking, check if target is in a room cell
+		if (tracking) {
+			const pos = this._mapTargetToGridCell(t);
+			if (pos) {
+				const col = Math.floor(pos.col);
+				const row = Math.floor(pos.row);
+				if (
+					col >= 0 &&
+					col < GRID_COLS &&
+					row >= 0 &&
+					row < GRID_ROWS &&
+					cellIsInside(this._grid[row * GRID_COLS + col])
+				) {
+					return { status: "active", col: pos.col, row: pos.row };
+				}
+			}
+		}
+
+		// Target is outside the room OR sensor stopped tracking —
+		// check if it's pending in any zone (mirrors backend lines 674-691)
+		for (const [, st] of this._localZoneState) {
+			if (st.pendingSince !== null && st.confirmedTargets.has(i)) {
+				const xy = this._targetPrevXY[i];
+				if (xy) {
+					const pendingPos = this._mapTargetToGridCell({ x: xy.x, y: xy.y } as Target);
+					if (pendingPos) {
+						return { status: "pending", col: pendingPos.col, row: pendingPos.row };
+					}
+				}
+			}
+		}
+
+		return { status: "inactive", col: 0, row: 0 };
 	}
 
 	/** Get trigger/renew/timeout for a zone from the current editor state. */
