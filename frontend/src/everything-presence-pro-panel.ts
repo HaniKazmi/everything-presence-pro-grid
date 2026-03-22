@@ -3851,12 +3851,18 @@ export class EverythingPresenceProPanel extends LitElement {
       <div class="targets-overlay" style="pointer-events: none;">
         ${this._targets.map((t, i) => {
 					if (t.status === "inactive") return nothing;
-					// For pending targets: use actual position if still tracked
-				// (grey cell), fall back to last in-room position if not
-				const dt = t.status === "pending" && t.x == null && this._targetPrevXY[i]
-						? { ...t, x: this._targetPrevXY[i]!.x, y: this._targetPrevXY[i]!.y }
-						: t;
-					const pos = this._mapTargetToGridCell(dt);
+					// For pending targets: use actual position if it falls
+					// within the visible grid, otherwise fall back to last
+					// in-room position.
+					let pos = t.x != null ? this._mapTargetToGridCell(t) : null;
+					const onGrid = pos &&
+						pos.col >= minCol && pos.col <= minCol + visCols &&
+						pos.row >= minRow && pos.row <= minRow + visRows;
+					if (t.status === "pending" && !onGrid && this._targetPrevXY[i]) {
+						pos = this._mapTargetToGridCell(
+							{ ...t, x: this._targetPrevXY[i]!.x, y: this._targetPrevXY[i]!.y } as Target,
+						);
+					}
 					if (!pos) return nothing;
 					const xPct = Math.max(0, Math.min(100, ((pos.col - minCol) / visCols) * 100));
 					const yPct = Math.max(0, Math.min(100, ((pos.row - minRow) / visRows) * 100));
