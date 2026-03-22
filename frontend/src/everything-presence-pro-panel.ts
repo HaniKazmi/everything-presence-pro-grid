@@ -4574,25 +4574,22 @@ export class EverythingPresenceProPanel extends LitElement {
             </div>
             ${this._renderFurnitureOverlay(cellPx, minCol, minRow, visCols, visRows)}
             <div class="targets-overlay" style="pointer-events: none;">
-              ${this._targets.map((_t, i) => {
-								const ds = this._getTargetDisplayStatus(i);
-								if (ds.status === "inactive") return nothing;
-								const xPct = Math.max(0, Math.min(100, ((ds.col - minCol) / visCols) * 100));
-								const yPct = Math.max(0, Math.min(100, ((ds.row - minRow) / visRows) * 100));
+              ${this._targets.map((t, i) => {
+								if (t.status === "inactive") return nothing;
+								const pos = this._mapTargetToGridCell(t);
+								if (!pos) return nothing;
+								const xPct = Math.max(0, Math.min(100, ((pos.col - minCol) / visCols) * 100));
+								const yPct = Math.max(0, Math.min(100, ((pos.row - minRow) / visRows) * 100));
 								return html`
                     <div
                       class="target-dot"
-                      style="left: ${xPct}%; top: ${yPct}%; background: ${TARGET_COLORS[i] || TARGET_COLORS[0]}; opacity: ${ds.status === "pending" ? 0.3 : 1}; transition: opacity 0.5s ease;"
+                      style="left: ${xPct}%; top: ${yPct}%; background: ${TARGET_COLORS[i] || TARGET_COLORS[0]}; opacity: ${t.status === "pending" ? 0.3 : 1}; transition: opacity 0.5s ease;"
                     ></div>
-                    ${
-											ds.status === "active" && this._targets[i].signal > 0
-												? html`
+                    ${t.status === "active" && t.signal > 0 ? html`
                       <div style="position: absolute; left: ${xPct}%; top: ${yPct}%; transform: translate(-50%, -280%); background: rgba(0,0,0,0.7); color: #fff; font-size: 10px; font-weight: bold; padding: 0 4px; border-radius: 6px; pointer-events: none;">
-                        ${this._targets[i].signal}
+                        ${t.signal}
                       </div>
-                    `
-												: nothing
-										}
+                    ` : nothing}
                   `;
 							})}
             </div>
@@ -4784,7 +4781,28 @@ export class EverythingPresenceProPanel extends LitElement {
 			}
 		} else {
 			// Run local zone engine replica (matches backend zone_engine._tick)
-			occupancy = this._runLocalZoneEngine().occupancy;
+			const engineResult = this._runLocalZoneEngine();
+			occupancy = engineResult.occupancy;
+
+			// Overwrite _targets with frontend zone engine results.
+			// For active: keep backend's 5Hz x/y, use engine's status.
+			// For pending: use engine's last-in-room x/y.
+			// For inactive: status is enough — rendering hides them.
+			for (let i = 0; i < engineResult.targets.length && i < this._targets.length; i++) {
+				const tr = engineResult.targets[i];
+				this._targets[i].status = tr.status;
+				if (tr.status === "pending") {
+					this._targets[i].x = tr.x;
+					this._targets[i].y = tr.y;
+				}
+			}
+
+			// Derive sensors.occupancy from unsaved zone config
+			const roomOccupied = Object.values(occupancy).some((v) => v);
+			this._sensorState.occupancy =
+				this._sensorState.static_presence ||
+				this._sensorState.motion_presence ||
+				roomOccupied;
 		}
 
 		const cells = [];
@@ -5124,56 +5142,6 @@ export class EverythingPresenceProPanel extends LitElement {
 			this._zoneState.target_counts,
 			this._zoneConfigs,
 		);
-	}
-
-	/**
-	 * Derive per-target display status from the frontend zone engine state.
-	 * Mirrors backend zone_engine._tick target result logic (lines 661-700).
-	 *
-	 * Returns {status, col, row} where col/row is the display position:
-	 * - active: current grid cell
-	 * - pending: last in-room position (_targetPrev)
-	 * - inactive: hidden
-	 */
-	private _getTargetDisplayStatus(
-		i: number,
-	): { status: "active" | "pending" | "inactive"; col: number; row: number } {
-		const t = this._targets[i];
-		const tracking = t && t.x != null && t.y != null;
-
-		// If sensor is tracking, check if target is in a room cell
-		if (tracking) {
-			const pos = this._mapTargetToGridCell(t);
-			if (pos) {
-				const col = Math.floor(pos.col);
-				const row = Math.floor(pos.row);
-				if (
-					col >= 0 &&
-					col < GRID_COLS &&
-					row >= 0 &&
-					row < GRID_ROWS &&
-					cellIsInside(this._grid[row * GRID_COLS + col])
-				) {
-					return { status: "active", col: pos.col, row: pos.row };
-				}
-			}
-		}
-
-		// Target is outside the room OR sensor stopped tracking —
-		// check if it's pending in any zone (mirrors backend lines 674-691)
-		for (const [, st] of this._localZoneState) {
-			if (st.pendingSince !== null && st.confirmedTargets.has(i)) {
-				const xy = this._targetPrevXY[i];
-				if (xy) {
-					const pendingPos = this._mapTargetToGridCell({ x: xy.x, y: xy.y } as Target);
-					if (pendingPos) {
-						return { status: "pending", col: pendingPos.col, row: pendingPos.row };
-					}
-				}
-			}
-		}
-
-		return { status: "inactive", col: 0, row: 0 };
 	}
 
 	/** Get trigger/renew/timeout for a zone from the current editor state. */
