@@ -233,6 +233,15 @@ class TestZoneEngineParity:
         for v in result.zone_occupancy.values():
             assert v is False
 
+    def test_target_on_non_room_cell_no_occupancy(self):
+        """Target on non-room cell inside grid → no zone occupancy."""
+        engine = _make_parity_engine()
+        # Room is cols 8-11. Target at X_OFF + (-900) = 1500 → col 5.
+        # Col 5 is inside the 20x20 grid but not a room cell.
+        result = engine._tick(_window([(X_OFF + (-900), 150, 9)]), 100.0)
+        for v in result.zone_occupancy.values():
+            assert v is False
+
     def test_continuity_skips_gating(self):
         """Continuous movement within 5 cells skips gating for non-entry zone."""
         engine = _make_parity_engine()
