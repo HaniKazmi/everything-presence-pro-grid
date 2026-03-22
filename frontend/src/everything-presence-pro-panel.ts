@@ -5051,23 +5051,23 @@ export class EverythingPresenceProPanel extends LitElement {
 			}
 			occupancy[zid] = st.occupied;
 		}
-		// Clean up stale confirmed targets in non-pending zones.
-		// Use sensor tracking (x/y non-null), not backend status.
+		// activeTargets = sensor is tracking (mirrors backend tw.active)
+		const activeTargets = new Set<number>();
 		for (let i = 0; i < MAX_TARGETS && i < this._targets.length; i++) {
-			const ti = this._targets[i];
-			if (ti.x == null || ti.y == null) {
+			if (this._targets[i].x != null && this._targets[i].y != null) {
+				activeTargets.add(i);
+			}
+		}
+
+		// Clean up stale confirmed targets in non-pending zones
+		// (mirrors backend _tick lines 705-709)
+		for (let i = 0; i < MAX_TARGETS && i < this._targets.length; i++) {
+			if (!activeTargets.has(i)) {
 				for (const st of this._localZoneState.values()) {
 					if (st.pendingSince === null) {
 						st.confirmedTargets.delete(i);
 					}
 				}
-			}
-		}
-		// Build per-target results (mirrors backend _tick lines 661-700)
-		const activeTargets = new Set<number>();
-		for (let i = 0; i < MAX_TARGETS && i < this._targets.length; i++) {
-			if (this._targets[i].x != null && this._targets[i].y != null) {
-				activeTargets.add(i);
 			}
 		}
 
