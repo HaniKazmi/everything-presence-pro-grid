@@ -505,7 +505,7 @@ async def websocket_subscribe_grid_targets(
                 {
                     "x": d.x,
                     "y": d.y,
-                    "signal": t.signal,
+                    "signal": min(d.frame_count, 9) if d.active else 0,
                     "status": t.status.value,
                 }
                 for d, t in zip(display, ztargets, strict=False)

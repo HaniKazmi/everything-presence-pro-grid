@@ -4901,6 +4901,8 @@ export class EverythingPresenceProPanel extends LitElement {
 			}
 			const idx = row * GRID_COLS + col;
 			const cellVal = this._grid[idx];
+			// DEBUG: log cell mapping to diagnose grid/coordinate mismatch
+			console.log(`T${i}: x=${t.x} y=${t.y} → col=${col} row=${row} idx=${idx} cellVal=${cellVal} inside=${cellIsInside(cellVal)}`);
 			if (!cellIsInside(cellVal)) {
 				this._targetPrev[i] = null;
 				this._targetGateCount[i] = 0;
