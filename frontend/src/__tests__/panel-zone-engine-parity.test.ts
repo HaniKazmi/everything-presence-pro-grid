@@ -298,4 +298,100 @@ describe("Per-target status parity", () => {
 		expect(result.targets[0].status).toBe("active");
 		expect(result.targets[0].signal).toBe(9);
 	});
+
+	it("target reappears during pending → back to active", () => {
+		// Two active ticks to register target in confirmedTargets (lazy init).
+		a._targets = [makeTarget(450, 450, 5)];
+		a._runLocalZoneEngine(); // tick 1: zone created and occupied
+		a._runLocalZoneEngine(); // tick 2: target added to confirmedTargets
+
+		// Target disappears → zone 1 pending
+		a._targets = [{ x: null, y: null, speed: 0, status: "inactive" as const, signal: 0 }];
+		const r2 = a._runLocalZoneEngine();
+		expect(r2.targets[0].status).toBe("pending");
+
+		// Target reappears with signal >= renew (2) → back to active
+		a._targets = [makeTarget(450, 450, 3)];
+		const r3 = a._runLocalZoneEngine();
+		expect(r3.targets[0].status).toBe("active");
+		expect(r3.targets[0].x).toBe(450);
+		expect(r3.targets[0].y).toBe(450);
+		expect(r3.targets[0].signal).toBe(3);
+	});
+
+	it("two targets, one leaves → mixed active/pending states", () => {
+		// T0 in zone 1 (entry point, immediate), T1 in zone 0 (needs gating)
+		a._targets = [makeTarget(450, 450, 5), makeTarget(150, 150, 9)];
+
+		// Tick 1: zone 1 confirmed immediately; zone 0 gating (count=1)
+		a._runLocalZoneEngine();
+
+		// Tick 2: zone 0 continuous → both zones occupied and confirmedTargets populated
+		a._runLocalZoneEngine();
+
+		// T1 disappears (sensor stops tracking), T0 stays active
+		a._targets = [
+			makeTarget(450, 450, 5),
+			{ x: null, y: null, speed: 0, status: "inactive" as const, signal: 0 },
+		];
+		const result = a._runLocalZoneEngine();
+		expect(result.targets[0].status).toBe("active");
+		expect(result.targets[1].status).toBe("pending");
+		// T1 pending x/y = last in-room position (room-space)
+		expect(result.targets[1].x).toBe(150);
+		expect(result.targets[1].y).toBe(150);
+	});
+
+	it("tracking outside room then sensor stops → pending at last in-room position", () => {
+		// Two active ticks to register target in confirmedTargets.
+		a._targets = [makeTarget(450, 450, 5)];
+		a._runLocalZoneEngine(); // tick 1
+		a._runLocalZoneEngine(); // tick 2: target in confirmedTargets
+
+		// Target moves outside room but still tracked with signal
+		a._targets = [makeTarget(-900, 150, 9)];
+		const r2 = a._runLocalZoneEngine();
+		expect(r2.targets[0].status).toBe("active");
+
+		// Sensor stops tracking (x/y null) → pending at last in-room position
+		a._targets = [{ x: null, y: null, speed: 0, status: "inactive" as const, signal: 0 }];
+		const r3 = a._runLocalZoneEngine();
+		expect(r3.targets[0].status).toBe("pending");
+		expect(r3.targets[0].x).toBe(450);
+		expect(r3.targets[0].y).toBe(450);
+	});
+
+	it("signal=0 but tracking (x/y non-null) → status=inactive", () => {
+		// Occupy zone 1 first so zone has state.
+		a._targets = [makeTarget(450, 450, 5)];
+		a._runLocalZoneEngine(); // tick 1: zone occupied
+		a._runLocalZoneEngine(); // tick 2: target in confirmedTargets
+
+		// Same position but signal=0: activeTargets.has(i) is true (x/y non-null)
+		// but sig > 0 is false, and !activeTargets.has(i) is false → inactive.
+		a._targets = [makeTarget(450, 450, 0, "inactive")];
+		const result = a._runLocalZoneEngine();
+		expect(result.targets[0].status).toBe("inactive");
+	});
+
+	it("handoff: target moves from zone 1 to zone 0, zone 1 goes pending", () => {
+		// Establish zone 1 occupied (entry point → immediate, no gating needed).
+		a._targets = [makeTarget(450, 450, 5)];
+		a._runLocalZoneEngine(); // tick 1: zone 1 occupied
+		a._runLocalZoneEngine(); // tick 2: target in confirmedTargets for zone 1
+
+		// Target moves to zone 0; zone 0 needs 2 ticks to confirm via gating.
+		a._targets = [makeTarget(150, 150, 7)];
+		a._runLocalZoneEngine(); // tick 1 in zone 0: gating count=1; handoff triggers zone 1 → pending
+		const result = a._runLocalZoneEngine(); // tick 2 in zone 0: confirmed
+
+		// Target is active in zone 0 at new position.
+		expect(result.targets[0].status).toBe("active");
+		expect(result.targets[0].x).toBe(150);
+		expect(result.targets[0].y).toBe(150);
+
+		// Zone 1 is still occupied (pending) due to handoff.
+		expect(result.occupancy[0]).toBe(true);
+		expect(result.occupancy[1]).toBe(true);
+	});
 });

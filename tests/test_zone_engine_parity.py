@@ -309,3 +309,112 @@ class TestZoneEngineParity:
         result = engine._tick(_window([(9000, 9000, 9)]), 100.0)
         assert result.targets[0].status == TargetStatus.ACTIVE
         assert result.targets[0].signal == 9
+
+    def test_reappears_during_pending_back_to_active(self):
+        """Target reappears during pending → status=ACTIVE at new position."""
+        engine = _make_parity_engine()
+        t = 100.0
+
+        # Occupy zone 1
+        engine._tick(_window([(X_OFF + 450, 450, 5)]), t)
+
+        # Target disappears → zone 1 pending
+        r2 = engine._tick(_window([(X_OFF + 450, 450, 0)]), t + 1.0)
+        assert r2.targets[0].status == TargetStatus.PENDING
+
+        # Target reappears with signal >= renew (2) → back to active
+        r3 = engine._tick(_window([(X_OFF + 450, 450, 3)]), t + 2.0)
+        assert r3.targets[0].status == TargetStatus.ACTIVE
+        assert r3.targets[0].x == X_OFF + 450
+        assert r3.targets[0].y == 450
+        assert r3.targets[0].signal == 3
+
+    def test_two_targets_one_leaves_mixed_states(self):
+        """Two targets, one leaves → mixed active/pending states."""
+        engine = _make_parity_engine()
+        t = 100.0
+
+        # T0 in zone 1 (entry point, immediate), T1 in zone 0 (needs gating)
+        targets_both = [(X_OFF + 450, 450, 5), (X_OFF + 150, 150, 9)]
+
+        # Tick 1: zone 1 confirmed immediately, zone 0 gating
+        engine._tick(_window(targets_both), t)
+
+        # Tick 2: zone 0 continuous → both zones occupied
+        r2 = engine._tick(_window(targets_both), t + 1.0)
+        assert r2.zone_occupancy[1] is True
+        assert r2.zone_occupancy[0] is True
+
+        # T1 disappears, T0 stays active
+        r3 = engine._tick(_window([(X_OFF + 450, 450, 5), (X_OFF + 150, 150, 0)]), t + 2.0)
+        assert r3.targets[0].status == TargetStatus.ACTIVE
+        assert r3.targets[1].status == TargetStatus.PENDING
+        # T1 pending x/y = last in-room position (grid-space)
+        assert r3.targets[1].x == X_OFF + 150
+        assert r3.targets[1].y == 150
+
+    def test_outside_room_then_stops_tracking_pending(self):
+        """Tracking outside room then sensor stops → pending at last in-room position."""
+        engine = _make_parity_engine()
+        t = 100.0
+
+        # Occupy zone 1
+        engine._tick(_window([(X_OFF + 450, 450, 5)]), t)
+
+        # Target moves outside room (non-room cell) but still tracked with signal
+        r2 = engine._tick(_window([(9000, 9000, 9)]), t + 1.0)
+        assert r2.targets[0].status == TargetStatus.ACTIVE
+
+        # Sensor stops tracking (frame_count=0) → pending at last in-room position
+        r3 = engine._tick(_window([(9000, 9000, 0)]), t + 2.0)
+        assert r3.targets[0].status == TargetStatus.PENDING
+        assert r3.targets[0].x == X_OFF + 450
+        assert r3.targets[0].y == 450
+
+    def test_signal_zero_but_tracking_inactive(self):
+        """Signal=0 with x/y non-null (tracked but no signal) → INACTIVE."""
+        engine = _make_parity_engine()
+        t = 100.0
+
+        # Occupy zone 1 first so zone has state
+        engine._tick(_window([(X_OFF + 450, 450, 5)]), t)
+
+        # Same position but signal=0 (frame_count=0 → inactive in backend)
+        # frame_count=0 means active=False, so target is treated as gone
+        result = engine._tick(_window([(X_OFF + 450, 450, 0)]), t + 1.0)
+        # With frame_count=0 the target is PENDING (zone 1 is now pending)
+        # To get INACTIVE we must advance past timeout
+        st = engine._zone_runtimes[1]
+        st.pending_since = t + 1.0 - 7.0  # past timeout
+        result2 = engine._tick(_window([(X_OFF + 450, 450, 0)]), t + 2.0)
+        assert result2.targets[0].status == TargetStatus.INACTIVE
+
+    def test_handoff_target_moves_between_zones(self):
+        """Handoff: target moves from zone 1 to zone 0, zone 1 goes pending.
+
+        Zone 1 handoff_timeout=1.0s means it stays pending for 1 second after
+        the target leaves.  We verify the pending state immediately on the tick
+        that triggers the handoff (t+1.0), then confirm zone 0 occupancy on a
+        subsequent tick (t+1.5) before zone 1's accelerated timeout expires.
+        """
+        engine = _make_parity_engine()
+        t = 100.0
+
+        # Establish zone 1 occupied (entry point → immediate)
+        engine._tick(_window([(X_OFF + 450, 450, 5)]), t)
+
+        # Target moves to zone 0 → handoff fires immediately, zone 1 → pending
+        r2 = engine._tick(_window([(X_OFF + 150, 150, 7)]), t + 1.0)
+        # Handoff tick: target is active (signal=7 ≥ gated threshold for zone 0),
+        # zone 1 is pending (occupied=True), zone 0 still gating (not yet confirmed)
+        assert r2.targets[0].status == TargetStatus.ACTIVE
+        assert r2.targets[0].x == X_OFF + 150
+        assert r2.targets[0].y == 150
+        assert r2.zone_occupancy[1] is True  # zone 1 pending immediately after handoff
+
+        # Second tick in zone 0 (0.5s later, within handoff_timeout=1.0s window):
+        # zone 0 continuous → confirmed; zone 1 still pending (elapsed ≈ 0.5 + offset)
+        r3 = engine._tick(_window([(X_OFF + 150, 150, 7)]), t + 1.5)
+        assert r3.targets[0].status == TargetStatus.ACTIVE
+        assert r3.zone_occupancy[0] is True
+        assert r3.zone_occupancy[1] is True  # zone 1 still pending within handoff window
