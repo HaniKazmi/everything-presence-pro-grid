@@ -6,7 +6,7 @@ import json from "@rollup/plugin-json";
 export default {
   input: "src/index.ts",
   output: {
-    file: "../custom_components/everything_presence_pro/frontend/everything-presence-pro-panel.js",
+    file: "../custom_components/eppgrid/frontend/eppgrid-panel.js",
     format: "es",
     sourcemap: false,
   },

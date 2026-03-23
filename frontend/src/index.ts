@@ -1,1 +1,1 @@
-export { EverythingPresenceProPanel } from "./everything-presence-pro-panel";
+export { EPPGridPanel } from "./eppgrid-panel";
