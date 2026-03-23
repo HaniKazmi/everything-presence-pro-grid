@@ -98,13 +98,13 @@ describe("_toggleAccordion", () => {
 		expect(a._openAccordions.has("detection")).toBe(false);
 	});
 
-	it("can handle multiple accordions", () => {
+	it("opening one accordion closes the other", () => {
 		const a = createPanel() as any;
 		a._openAccordions = new Set(["detection"]);
 
 		a._toggleAccordion("sensitivity");
 
-		expect(a._openAccordions.has("detection")).toBe(true);
+		expect(a._openAccordions.has("detection")).toBe(false);
 		expect(a._openAccordions.has("sensitivity")).toBe(true);
 	});
 });

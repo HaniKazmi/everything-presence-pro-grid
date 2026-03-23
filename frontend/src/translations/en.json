@@ -121,7 +121,7 @@
 		"illuminance_offset": "Illuminance offset",
 		"humidity_offset": "Humidity offset",
 		"temperature_offset": "Temperature offset",
-		"furthest_point": "Current furthest point from sensor: {distance}m"
+		"furthest_point": "Current furthest point from sensor:"
 	},
 	"sidebar": {
 		"detection_zones": "Detection zones",
@@ -218,8 +218,8 @@
 		"co2": "SCD40 CO₂ sensor (optional module)."
 	},
 	"dimensions": {
-		"width_mm": "W (mm)",
-		"height_mm": "H (mm)",
+		"width_cm": "W (cm)",
+		"height_cm": "H (cm)",
 		"rotation": "Rot"
 	}
 }

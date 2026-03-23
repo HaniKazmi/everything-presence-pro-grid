@@ -951,11 +951,12 @@ describe("_renderFurnitureSidebar DOM events", () => {
 			".furn-dims input",
 		) as NodeListOf<HTMLInputElement>;
 		if (inputs.length >= 3) {
-			inputs[0].value = "1200";
+			// Width/height inputs are in cm, stored internally as mm
+			inputs[0].value = "120";
 			inputs[0].dispatchEvent(new Event("change"));
 			expect(a._furniture[0].width).toBe(1200);
 
-			inputs[1].value = "1000";
+			inputs[1].value = "100";
 			inputs[1].dispatchEvent(new Event("change"));
 			expect(a._furniture[0].height).toBe(1000);
 

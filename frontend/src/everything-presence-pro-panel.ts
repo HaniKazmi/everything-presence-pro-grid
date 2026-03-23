@@ -4328,13 +4328,9 @@ export class EverythingPresenceProPanel extends LitElement {
 	}
 
 	private _toggleAccordion(id: string) {
-		const next = new Set(this._openAccordions);
-		if (next.has(id)) {
-			next.delete(id);
-		} else {
-			next.add(id);
-		}
-		this._openAccordions = next;
+		this._openAccordions = this._openAccordions.has(id)
+			? new Set()
+			: new Set([id]);
 	}
 
 	/** Get the sensor position in room-space mm by transforming sensor origin (0,0). */
@@ -4354,6 +4350,11 @@ export class EverythingPresenceProPanel extends LitElement {
 	private _renderSettings() {
 		const sections: { id: string; label: string; icon: string }[] = [
 			{
+				id: "reporting",
+				label: "settings.entities",
+				icon: "mdi:format-list-checks",
+			},
+			{
 				id: "detection",
 				label: "settings.detection_ranges",
 				icon: "mdi:signal-distance-variant",
@@ -4362,11 +4363,6 @@ export class EverythingPresenceProPanel extends LitElement {
 				id: "sensitivity",
 				label: "settings.sensor_calibration",
 				icon: "mdi:tune-vertical",
-			},
-			{
-				id: "reporting",
-				label: "settings.entities",
-				icon: "mdi:format-list-checks",
 			},
 		];
 
@@ -4492,7 +4488,7 @@ export class EverythingPresenceProPanel extends LitElement {
 		const autoStyle = "opacity: 0.5; pointer-events: none;";
 		return html`
       <div class="settings-section">
-        ${metrics ? html`<p style="font-size: 13px; color: var(--secondary-text-color, #757575); margin: 0 0 12px;">${this._localize("settings.furthest_point", { distance: metrics.furthestM })}</p>` : nothing}
+        ${metrics ? html`<p style="font-size: 13px; color: var(--secondary-text-color, #757575); margin: 0 0 12px;">${this._localize("settings.furthest_point")} <span style="font-weight: 700; color: var(--error-color, #db4437);">${metrics.furthestM}m</span></p>` : nothing}
         <div class="setting-group">
           <h4>${this._localize("settings.target_sensor")}</h4>
           <div class="setting-row">
@@ -4500,9 +4496,11 @@ export class EverythingPresenceProPanel extends LitElement {
             <label class="toggle-switch">
               <input type="checkbox" ?checked=${this._targetAutoRange}
                 @change=${(e: Event) => {
-									this._targetAutoRange = (
-										e.target as HTMLInputElement
-									).checked;
+									const checked = (e.target as HTMLInputElement).checked;
+									if (!checked) {
+										this._targetMaxDistance = targetVal;
+									}
+									this._targetAutoRange = checked;
 								}} />
               <span class="toggle-slider"></span>
             </label>
@@ -4526,9 +4524,11 @@ export class EverythingPresenceProPanel extends LitElement {
             <label class="toggle-switch">
               <input type="checkbox" ?checked=${this._staticAutoRange}
                 @change=${(e: Event) => {
-									this._staticAutoRange = (
-										e.target as HTMLInputElement
-									).checked;
+									const checked = (e.target as HTMLInputElement).checked;
+									if (!checked) {
+										this._staticMaxDistance = staticMaxVal;
+									}
+									this._staticAutoRange = checked;
 								}} />
               <span class="toggle-slider"></span>
             </label>
@@ -5993,15 +5993,15 @@ export class EverythingPresenceProPanel extends LitElement {
           </div>
           <div class="furn-dims">
             <label>
-              ${this._localize("dimensions.width_mm")}
-              <input type="number" min="100" step="50" .value=${String(Math.round(selected.width))}
-                @change=${(e: Event) => this._updateFurniture(selected.id, { width: parseInt((e.target as HTMLInputElement).value) })}
+              ${this._localize("dimensions.width_cm")}
+              <input type="number" min="10" step="5" .value=${String(Math.round(selected.width / 10))}
+                @change=${(e: Event) => this._updateFurniture(selected.id, { width: parseInt((e.target as HTMLInputElement).value) * 10 })}
               />
             </label>
             <label>
-              ${this._localize("dimensions.height_mm")}
-              <input type="number" min="100" step="50" .value=${String(Math.round(selected.height))}
-                @change=${(e: Event) => this._updateFurniture(selected.id, { height: parseInt((e.target as HTMLInputElement).value) })}
+              ${this._localize("dimensions.height_cm")}
+              <input type="number" min="10" step="5" .value=${String(Math.round(selected.height / 10))}
+                @change=${(e: Event) => this._updateFurniture(selected.id, { height: parseInt((e.target as HTMLInputElement).value) * 10 })}
               />
             </label>
             <label>
