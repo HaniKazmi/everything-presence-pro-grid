@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import type { EverythingPresenceProPanel } from "../everything-presence-pro-panel.js";
-import "../everything-presence-pro-panel.js";
+import type { EPPGridPanel } from "../eppgrid-panel.js";
+import "../eppgrid-panel.js";
 import {
 	CELL_ROOM_BIT,
 	cellSetZone,
@@ -11,10 +11,10 @@ import { ZONE_COLORS } from "../lib/zone-defaults.js";
 
 const MAX_ZONES = 7;
 
-function createPanel(): EverythingPresenceProPanel {
+function createPanel(): EPPGridPanel {
 	const el = document.createElement(
-		"everything-presence-pro-panel",
-	) as EverythingPresenceProPanel;
+		"eppgrid-panel",
+	) as EPPGridPanel;
 	el.hass = { callWS: async () => ({}) };
 	const a = el as any;
 	a._grid = new Uint8Array(GRID_CELL_COUNT);
@@ -26,7 +26,7 @@ function createPanel(): EverythingPresenceProPanel {
 }
 
 describe("_addZone", () => {
-	let el: EverythingPresenceProPanel;
+	let el: EPPGridPanel;
 
 	beforeEach(() => {
 		el = createPanel();
@@ -108,7 +108,7 @@ describe("_addZone", () => {
 });
 
 describe("_removeZone", () => {
-	let el: EverythingPresenceProPanel;
+	let el: EPPGridPanel;
 
 	beforeEach(() => {
 		el = createPanel();

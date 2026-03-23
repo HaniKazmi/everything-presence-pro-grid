@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import type { EverythingPresenceProPanel } from "../everything-presence-pro-panel.js";
-import "../everything-presence-pro-panel.js";
+import type { EPPGridPanel } from "../eppgrid-panel.js";
+import "../eppgrid-panel.js";
 import {
 	CELL_ROOM_BIT,
 	cellIsInside,
@@ -11,10 +11,10 @@ import {
 	GRID_COLS,
 } from "../lib/grid.js";
 
-function createPanel(): EverythingPresenceProPanel {
+function createPanel(): EPPGridPanel {
 	const el = document.createElement(
-		"everything-presence-pro-panel",
-	) as EverythingPresenceProPanel;
+		"eppgrid-panel",
+	) as EPPGridPanel;
 	el.hass = { callWS: async () => ({}) };
 	const a = el as any;
 	a._grid = new Uint8Array(GRID_CELL_COUNT);
@@ -30,7 +30,7 @@ function createPanel(): EverythingPresenceProPanel {
 }
 
 describe("boundary painting (activeZone=0)", () => {
-	let el: EverythingPresenceProPanel;
+	let el: EPPGridPanel;
 
 	beforeEach(() => {
 		el = createPanel();
@@ -101,7 +101,7 @@ describe("boundary painting (activeZone=0)", () => {
 });
 
 describe("boundary clearing", () => {
-	let el: EverythingPresenceProPanel;
+	let el: EPPGridPanel;
 
 	beforeEach(() => {
 		el = createPanel();
@@ -137,7 +137,7 @@ describe("boundary clearing", () => {
 });
 
 describe("zone painting (activeZone=N on inside cell)", () => {
-	let el: EverythingPresenceProPanel;
+	let el: EPPGridPanel;
 
 	beforeEach(() => {
 		el = createPanel();
@@ -203,7 +203,7 @@ describe("zone painting (activeZone=N on inside cell)", () => {
 });
 
 describe("zone clearing", () => {
-	let el: EverythingPresenceProPanel;
+	let el: EPPGridPanel;
 
 	beforeEach(() => {
 		el = createPanel();
@@ -226,7 +226,7 @@ describe("zone clearing", () => {
 });
 
 describe("room dimensions update after boundary change", () => {
-	let el: EverythingPresenceProPanel;
+	let el: EPPGridPanel;
 
 	beforeEach(() => {
 		el = createPanel();
@@ -275,7 +275,7 @@ describe("room dimensions update after boundary change", () => {
 });
 
 describe("painting guards", () => {
-	let el: EverythingPresenceProPanel;
+	let el: EPPGridPanel;
 
 	beforeEach(() => {
 		el = createPanel();

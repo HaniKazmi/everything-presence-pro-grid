@@ -1,12 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { EverythingPresenceProPanel } from "../everything-presence-pro-panel.js";
-import "../everything-presence-pro-panel.js";
+import type { EPPGridPanel } from "../eppgrid-panel.js";
+import "../eppgrid-panel.js";
 import { GRID_CELL_COUNT } from "../lib/grid.js";
 
-function createPanel(): EverythingPresenceProPanel {
+function createPanel(): EPPGridPanel {
 	const el = document.createElement(
-		"everything-presence-pro-panel",
-	) as EverythingPresenceProPanel;
+		"eppgrid-panel",
+	) as EPPGridPanel;
 	el.hass = { callWS: vi.fn().mockResolvedValue({}) };
 	const a = el as any;
 	a._grid = new Uint8Array(GRID_CELL_COUNT);
@@ -36,7 +36,7 @@ function createPanel(): EverythingPresenceProPanel {
 }
 
 describe("_subscribeTargets", () => {
-	let el: EverythingPresenceProPanel;
+	let el: EPPGridPanel;
 
 	beforeEach(() => {
 		el = createPanel();
@@ -76,7 +76,7 @@ describe("_subscribeTargets", () => {
 		expect(el.hass.connection.subscribeMessage).toHaveBeenCalledWith(
 			expect.any(Function),
 			{
-				type: "everything_presence_pro/subscribe_grid_targets",
+				type: "eppgrid/subscribe_grid_targets",
 				entry_id: "e1",
 			},
 		);
@@ -441,7 +441,7 @@ describe("_subscribeDisplay", () => {
 		expect(el.hass.connection.subscribeMessage).toHaveBeenCalledWith(
 			expect.any(Function),
 			{
-				type: "everything_presence_pro/subscribe_raw_targets",
+				type: "eppgrid/subscribe_raw_targets",
 				entry_id: "e1",
 			},
 		);

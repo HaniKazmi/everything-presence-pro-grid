@@ -4,8 +4,8 @@
 
 import { render } from "lit";
 import { describe, expect, it, vi } from "vitest";
-import type { EverythingPresenceProPanel } from "../everything-presence-pro-panel.js";
-import "../everything-presence-pro-panel.js";
+import type { EPPGridPanel } from "../eppgrid-panel.js";
+import "../eppgrid-panel.js";
 import {
 	CELL_ROOM_BIT,
 	cellSetZone,
@@ -19,8 +19,8 @@ import { setupLocalize } from "../localize.js";
 
 function createPanel() {
 	const el = document.createElement(
-		"everything-presence-pro-panel",
-	) as EverythingPresenceProPanel;
+		"eppgrid-panel",
+	) as EPPGridPanel;
 	el.hass = { callWS: vi.fn().mockResolvedValue({}) };
 	const a = el as any;
 	a._grid = initGridFromRoom(3000, 4000);
@@ -1409,7 +1409,7 @@ describe("zone sidebar occupancy glow branch", () => {
 // =========================================================
 describe("customElements registration guard", () => {
 	it("does not re-register if already defined", () => {
-		const Ctor = customElements.get("everything-presence-pro-panel");
+		const Ctor = customElements.get("eppgrid-panel");
 		expect(Ctor).toBeDefined();
 	});
 });

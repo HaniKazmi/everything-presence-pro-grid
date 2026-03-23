@@ -15,8 +15,8 @@
  */
 
 import { beforeEach, describe, expect, it } from "vitest";
-import type { EverythingPresenceProPanel } from "../everything-presence-pro-panel.js";
-import "../everything-presence-pro-panel.js";
+import type { EPPGridPanel } from "../eppgrid-panel.js";
+import "../eppgrid-panel.js";
 import {
 	CELL_ROOM_BIT,
 	cellSetZone,
@@ -60,10 +60,10 @@ function makeTarget(
 	return { x, y, raw_x: x, raw_y: y, status, signal, speed: 0 };
 }
 
-function createParityPanel(): EverythingPresenceProPanel {
+function createParityPanel(): EPPGridPanel {
 	const el = document.createElement(
-		"everything-presence-pro-panel",
-	) as EverythingPresenceProPanel;
+		"eppgrid-panel",
+	) as EPPGridPanel;
 	el.hass = { callWS: async () => ({}) };
 	const a = el as any;
 	a._grid = makeParityGrid();
@@ -88,7 +88,7 @@ function createParityPanel(): EverythingPresenceProPanel {
 }
 
 describe("Zone engine parity (mirrors test_zone_engine_parity.py)", () => {
-	let el: EverythingPresenceProPanel;
+	let el: EPPGridPanel;
 	let a: any;
 
 	beforeEach(() => {
@@ -228,7 +228,7 @@ describe("Zone engine parity (mirrors test_zone_engine_parity.py)", () => {
 });
 
 describe("Per-target status parity", () => {
-	let el: EverythingPresenceProPanel;
+	let el: EPPGridPanel;
 	let a: any;
 
 	beforeEach(() => {
@@ -407,7 +407,7 @@ describe("Per-target status parity", () => {
 });
 
 describe("Pending target position fallback (_renderTargetDots)", () => {
-	let el: EverythingPresenceProPanel;
+	let el: EPPGridPanel;
 	let a: any;
 
 	beforeEach(() => {
@@ -544,7 +544,7 @@ describe("Pending target position fallback (_renderTargetDots)", () => {
 });
 
 describe("Unsaved grid overrides backend status", () => {
-	let el: EverythingPresenceProPanel;
+	let el: EPPGridPanel;
 	let a: any;
 
 	beforeEach(() => {

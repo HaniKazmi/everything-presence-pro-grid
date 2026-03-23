@@ -1,12 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { EverythingPresenceProPanel } from "../everything-presence-pro-panel.js";
-import "../everything-presence-pro-panel.js";
+import type { EPPGridPanel } from "../eppgrid-panel.js";
+import "../eppgrid-panel.js";
 import { GRID_CELL_COUNT } from "../lib/grid.js";
 
-function createPanel(): EverythingPresenceProPanel {
+function createPanel(): EPPGridPanel {
 	const el = document.createElement(
-		"everything-presence-pro-panel",
-	) as EverythingPresenceProPanel;
+		"eppgrid-panel",
+	) as EPPGridPanel;
 	el.hass = { callWS: vi.fn().mockResolvedValue({}) };
 	const a = el as any;
 	a._grid = new Uint8Array(GRID_CELL_COUNT);
@@ -243,7 +243,7 @@ describe("_wizardFinish", () => {
 
 		expect(el.hass.callWS).toHaveBeenCalledWith(
 			expect.objectContaining({
-				type: "everything_presence_pro/set_setup",
+				type: "eppgrid/set_setup",
 				entry_id: "e1",
 				perspective: [1, 0, 0, 0, 1, 0, 0, 0],
 				room_width: 3000,

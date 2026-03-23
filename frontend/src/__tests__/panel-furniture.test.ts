@@ -1,12 +1,12 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import type { EverythingPresenceProPanel } from "../everything-presence-pro-panel.js";
-import "../everything-presence-pro-panel.js";
+import type { EPPGridPanel } from "../eppgrid-panel.js";
+import "../eppgrid-panel.js";
 import { GRID_CELL_COUNT, initGridFromRoom } from "../lib/grid.js";
 
-function createPanel(): EverythingPresenceProPanel {
+function createPanel(): EPPGridPanel {
 	const el = document.createElement(
-		"everything-presence-pro-panel",
-	) as EverythingPresenceProPanel;
+		"eppgrid-panel",
+	) as EPPGridPanel;
 	el.hass = { callWS: async () => ({}) };
 	const a = el as any;
 	a._grid = initGridFromRoom(6000, 6000);
@@ -22,7 +22,7 @@ function createPanel(): EverythingPresenceProPanel {
 }
 
 describe("_addFurniture", () => {
-	let el: EverythingPresenceProPanel;
+	let el: EPPGridPanel;
 
 	beforeEach(() => {
 		el = createPanel();
@@ -144,7 +144,7 @@ describe("_addFurniture", () => {
 });
 
 describe("_removeFurniture", () => {
-	let el: EverythingPresenceProPanel;
+	let el: EPPGridPanel;
 
 	beforeEach(() => {
 		el = createPanel();
@@ -225,7 +225,7 @@ describe("_removeFurniture", () => {
 });
 
 describe("_updateFurniture", () => {
-	let el: EverythingPresenceProPanel;
+	let el: EPPGridPanel;
 
 	beforeEach(() => {
 		el = createPanel();
@@ -290,7 +290,7 @@ describe("_updateFurniture", () => {
 });
 
 describe("_addCustomFurniture", () => {
-	let el: EverythingPresenceProPanel;
+	let el: EPPGridPanel;
 
 	beforeEach(() => {
 		el = createPanel();
@@ -320,7 +320,7 @@ describe("_addCustomFurniture", () => {
 });
 
 describe("_onKeyDown furniture shortcuts", () => {
-	let el: EverythingPresenceProPanel;
+	let el: EPPGridPanel;
 	let a: any;
 
 	function makeEvent(

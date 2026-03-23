@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { EverythingPresenceProPanel } from "../everything-presence-pro-panel.js";
-import "../everything-presence-pro-panel.js";
+import type { EPPGridPanel } from "../eppgrid-panel.js";
+import "../eppgrid-panel.js";
 import {
 	CELL_ROOM_BIT,
 	cellSetZone,
@@ -9,10 +9,10 @@ import {
 } from "../lib/grid.js";
 import { ZONE_TYPE_DEFAULTS } from "../lib/zone-defaults.js";
 
-function createPanel(): EverythingPresenceProPanel {
+function createPanel(): EPPGridPanel {
 	const el = document.createElement(
-		"everything-presence-pro-panel",
-	) as EverythingPresenceProPanel;
+		"eppgrid-panel",
+	) as EPPGridPanel;
 	el.hass = { callWS: vi.fn().mockResolvedValue({}) };
 	const a = el as any;
 	a._grid = new Uint8Array(GRID_CELL_COUNT);
@@ -50,7 +50,7 @@ function createPanel(): EverythingPresenceProPanel {
 }
 
 describe("_initialize", () => {
-	let el: EverythingPresenceProPanel;
+	let el: EPPGridPanel;
 
 	beforeEach(() => {
 		el = createPanel();
@@ -76,10 +76,10 @@ describe("_initialize", () => {
 		];
 		el.hass = {
 			callWS: vi.fn().mockImplementation((msg: any) => {
-				if (msg.type === "everything_presence_pro/list_entries") {
+				if (msg.type === "eppgrid/list_entries") {
 					return Promise.resolve(entries);
 				}
-				if (msg.type === "everything_presence_pro/get_config") {
+				if (msg.type === "eppgrid/get_config") {
 					return Promise.resolve({
 						calibration: { perspective: null, room_width: 0, room_depth: 0 },
 						room_layout: {},
@@ -100,7 +100,7 @@ describe("_initialize", () => {
 });
 
 describe("_loadEntries", () => {
-	let el: EverythingPresenceProPanel;
+	let el: EPPGridPanel;
 
 	beforeEach(() => {
 		el = createPanel();
@@ -213,7 +213,7 @@ describe("_loadEntries", () => {
 });
 
 describe("_loadEntryConfig", () => {
-	let el: EverythingPresenceProPanel;
+	let el: EPPGridPanel;
 
 	beforeEach(() => {
 		el = createPanel();
@@ -239,7 +239,7 @@ describe("_loadEntryConfig", () => {
 		await a._loadEntryConfig("e1");
 
 		expect(el.hass.callWS).toHaveBeenCalledWith({
-			type: "everything_presence_pro/get_config",
+			type: "eppgrid/get_config",
 			entry_id: "e1",
 		});
 		expect(el.hass.connection.subscribeMessage).toHaveBeenCalled();
@@ -260,7 +260,7 @@ describe("_loadEntryConfig", () => {
 });
 
 describe("_applyConfig", () => {
-	let el: EverythingPresenceProPanel;
+	let el: EPPGridPanel;
 
 	beforeEach(() => {
 		el = createPanel();
@@ -360,7 +360,7 @@ describe("_applyConfig", () => {
 });
 
 describe("_applyLayout", () => {
-	let el: EverythingPresenceProPanel;
+	let el: EPPGridPanel;
 
 	beforeEach(() => {
 		el = createPanel();
@@ -385,7 +385,7 @@ describe("_applyLayout", () => {
 
 		expect(el.hass.callWS).toHaveBeenCalledWith(
 			expect.objectContaining({
-				type: "everything_presence_pro/set_room_layout",
+				type: "eppgrid/set_room_layout",
 				entry_id: "e1",
 			}),
 		);
@@ -456,7 +456,7 @@ describe("_applyLayout", () => {
 });
 
 describe("_saveSettings", () => {
-	let el: EverythingPresenceProPanel;
+	let el: EPPGridPanel;
 
 	beforeEach(() => {
 		el = createPanel();
@@ -489,7 +489,7 @@ describe("_saveSettings", () => {
 });
 
 describe("_applyRenames", () => {
-	let el: EverythingPresenceProPanel;
+	let el: EPPGridPanel;
 
 	beforeEach(() => {
 		el = createPanel();
@@ -524,7 +524,7 @@ describe("_applyRenames", () => {
 
 		expect(el.hass.callWS).toHaveBeenCalledWith(
 			expect.objectContaining({
-				type: "everything_presence_pro/rename_zone_entities",
+				type: "eppgrid/rename_zone_entities",
 				entry_id: "e1",
 			}),
 		);
@@ -591,7 +591,7 @@ describe("_dismissRenameDialog", () => {
 });
 
 describe("_deleteCalibration", () => {
-	let el: EverythingPresenceProPanel;
+	let el: EPPGridPanel;
 
 	beforeEach(() => {
 		el = createPanel();

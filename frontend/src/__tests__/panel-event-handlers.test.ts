@@ -4,8 +4,8 @@
  * the handler body logic directly on the panel state.
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { EverythingPresenceProPanel } from "../everything-presence-pro-panel.js";
-import "../everything-presence-pro-panel.js";
+import type { EPPGridPanel } from "../eppgrid-panel.js";
+import "../eppgrid-panel.js";
 import {
 	CELL_ROOM_BIT,
 	cellSetZone,
@@ -16,10 +16,10 @@ import {
 } from "../lib/grid.js";
 import { ZONE_COLORS, ZONE_TYPE_DEFAULTS } from "../lib/zone-defaults.js";
 
-function createPanel(): EverythingPresenceProPanel {
+function createPanel(): EPPGridPanel {
 	const el = document.createElement(
-		"everything-presence-pro-panel",
-	) as EverythingPresenceProPanel;
+		"eppgrid-panel",
+	) as EPPGridPanel;
 	el.hass = { callWS: vi.fn().mockResolvedValue({}) };
 	const a = el as any;
 	a._grid = new Uint8Array(GRID_CELL_COUNT);
@@ -118,13 +118,13 @@ describe("_renderHeader inline handlers", () => {
 		const val = "__add__";
 		if (val === "__add__") {
 			window.open(
-				"/config/integrations/integration/everything_presence_pro",
+				"/config/integrations/integration/eppgrid",
 				"_blank",
 			);
 		}
 
 		expect(openSpy).toHaveBeenCalledWith(
-			"/config/integrations/integration/everything_presence_pro",
+			"/config/integrations/integration/eppgrid",
 			"_blank",
 		);
 		openSpy.mockRestore();
