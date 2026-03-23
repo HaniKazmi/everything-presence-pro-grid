@@ -387,6 +387,7 @@ export class EverythingPresenceProPanel extends LitElement {
 	@state() private _customIconValue = "";
 	@state() private _furniture: FurnitureItem[] = [];
 	@state() private _selectedFurnitureId: string | null = null;
+	private _furnitureClipboard: FurnitureItem | null = null;
 	private _dragState: {
 		type: "move" | "resize" | "rotate";
 		id: string;
@@ -467,6 +468,7 @@ export class EverythingPresenceProPanel extends LitElement {
 		null,
 	];
 	@state() private _isPainting = false;
+	private _justPainted = false;
 	@state() private _paintAction: PaintAction = "set";
 	private _frozenBounds: {
 		minCol: number;
@@ -550,11 +552,73 @@ export class EverythingPresenceProPanel extends LitElement {
 			: "";
 	}
 
+	private _onKeyDown = (e: KeyboardEvent): void => {
+		if (this._view !== "editor" || this._sidebarTab !== "furniture") return;
+		if (!this._selectedFurnitureId) return;
+
+		// Ignore if user is typing in an editable element (including shadow DOM)
+		const editable = e.composedPath().some((el) => {
+			if (!(el instanceof HTMLElement)) return false;
+			const tag = el.tagName;
+			return (
+				tag === "INPUT" ||
+				tag === "TEXTAREA" ||
+				tag === "SELECT" ||
+				el.isContentEditable
+			);
+		});
+		if (editable) return;
+
+		if (e.key === "Backspace" || e.key === "Delete") {
+			e.preventDefault();
+			this._removeFurniture(this._selectedFurnitureId);
+		} else if (e.key === "Escape") {
+			e.preventDefault();
+			this._selectedFurnitureId = null;
+		} else if (e.key === "c" && (e.ctrlKey || e.metaKey)) {
+			const item = this._furniture.find(
+				(f) => f.id === this._selectedFurnitureId,
+			);
+			if (item) this._furnitureClipboard = { ...item };
+		} else if (e.key === "x" && (e.ctrlKey || e.metaKey)) {
+			const item = this._furniture.find(
+				(f) => f.id === this._selectedFurnitureId,
+			);
+			if (item) {
+				this._furnitureClipboard = { ...item };
+				this._removeFurniture(item.id);
+			}
+		} else if (e.key === "v" && (e.ctrlKey || e.metaKey)) {
+			if (!this._furnitureClipboard) return;
+			e.preventDefault();
+			const id = `f_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+			const cb = this._furnitureClipboard;
+			const bounds = this._getRoomBounds();
+			const roomCols = Math.ceil(this._roomWidth / GRID_CELL_MM);
+			const startCol = Math.floor((GRID_COLS - roomCols) / 2);
+			const visMinX = (bounds.minCol - startCol) * GRID_CELL_MM;
+			const visMaxX = (bounds.maxCol + 1 - startCol) * GRID_CELL_MM;
+			const visMinY = bounds.minRow * GRID_CELL_MM;
+			const visMaxY = (bounds.maxRow + 1) * GRID_CELL_MM;
+			const offset = 300; // 1 cell offset so paste is visible
+			const newItem: FurnitureItem = {
+				...cb,
+				id,
+				x: Math.max(visMinX, Math.min(visMaxX - cb.width, cb.x + offset)),
+				y: Math.max(visMinY, Math.min(visMaxY - cb.height, cb.y + offset)),
+			};
+			this._furniture = [...this._furniture, newItem];
+			this._selectedFurnitureId = newItem.id;
+			this._dirty = true;
+		}
+	};
+
 	connectedCallback(): void {
 		super.connectedCallback();
 		this._initialize();
 		window.addEventListener("beforeunload", this._beforeUnloadHandler);
 		window.addEventListener("click", this._dismissTooltips);
+		window.addEventListener("keydown", this._onKeyDown);
 
 		// Intercept HA's client-side routing (pushState/replaceState)
 		this._originalPushState = history.pushState.bind(history);
@@ -587,6 +651,7 @@ export class EverythingPresenceProPanel extends LitElement {
 		this._unsubscribeTargets();
 		window.removeEventListener("beforeunload", this._beforeUnloadHandler);
 		window.removeEventListener("click", this._dismissTooltips);
+		window.removeEventListener("keydown", this._onKeyDown);
 
 		// Restore original history methods
 		if (this._originalPushState) history.pushState = this._originalPushState;
@@ -821,6 +886,13 @@ export class EverythingPresenceProPanel extends LitElement {
 		);
 
 		this._applyPaintToCell(index);
+
+		// Listen on window so releasing outside the grid ends the paint
+		const onUp = () => {
+			this._onCellMouseUp();
+			window.removeEventListener("mouseup", onUp);
+		};
+		window.addEventListener("mouseup", onUp);
 	}
 
 	private _onCellMouseEnter(index: number): void {
@@ -830,6 +902,13 @@ export class EverythingPresenceProPanel extends LitElement {
 	}
 
 	private _onCellMouseUp(): void {
+		if (this._isPainting) {
+			// Flag to prevent the panel click handler from deselecting the zone
+			this._justPainted = true;
+			requestAnimationFrame(() => {
+				this._justPainted = false;
+			});
+		}
 		this._isPainting = false;
 		this._frozenBounds = null;
 	}
@@ -1025,6 +1104,14 @@ export class EverythingPresenceProPanel extends LitElement {
 
 		if (ds.type === "move") {
 			const item = this._furniture.find((f) => f.id === ds.id);
+			// Compute visible grid bounds in room-relative mm
+			const bounds = this._getRoomBounds();
+			const roomCols = Math.ceil(this._roomWidth / GRID_CELL_MM);
+			const startCol = Math.floor((GRID_COLS - roomCols) / 2);
+			const visMinX = (bounds.minCol - startCol) * GRID_CELL_MM;
+			const visMaxX = (bounds.maxCol + 1 - startCol) * GRID_CELL_MM;
+			const visMinY = bounds.minRow * GRID_CELL_MM; // startRow = 0
+			const visMaxY = (bounds.maxRow + 1) * GRID_CELL_MM;
 			const pos = clampFurnitureMove(
 				ds.origX,
 				ds.origY,
@@ -1033,8 +1120,10 @@ export class EverythingPresenceProPanel extends LitElement {
 				cellPx,
 				item?.width ?? 0,
 				item?.height ?? 0,
-				this._roomWidth,
-				this._roomDepth,
+				visMinX,
+				visMaxX,
+				visMinY,
+				visMaxY,
 			);
 			this._updateFurniture(ds.id, pos);
 		} else if (ds.type === "resize" && ds.handle) {
@@ -1662,7 +1751,7 @@ export class EverythingPresenceProPanel extends LitElement {
       position: relative;
       display: inline-block;
       max-width: 100%;
-      overflow: hidden;
+      overflow: visible;
     }
 
     .grid {
@@ -1829,7 +1918,8 @@ export class EverythingPresenceProPanel extends LitElement {
     }
 
     .furniture-item.selected {
-      border: 2px solid var(--primary-color, #03a9f4);
+      outline: 2px solid var(--primary-color, #03a9f4);
+      outline-offset: -1px;
       box-shadow: 0 0 8px rgba(3, 169, 244, 0.4);
       z-index: 10;
     }
@@ -3114,6 +3204,104 @@ export class EverythingPresenceProPanel extends LitElement {
 
 	// -- Render methods --
 
+	private _renderGlobalDialogs() {
+		return html`
+      ${this._showTemplateSave ? this._renderTemplateSaveDialog() : nothing}
+      ${this._showTemplateLoad ? this._renderTemplateLoadDialog() : nothing}
+      ${
+				this._showRenameDialog
+					? html`
+          <div class="template-dialog">
+            <div class="template-dialog-card" style="max-width: 520px;">
+              <h3>${this._localize("dialogs.update_entity_ids")}</h3>
+              <p class="overlay-help">${this._localize("dialogs.update_entity_ids_body")}</p>
+              <div style="max-height: 300px; overflow-y: auto; margin: 12px 0;">
+                ${this._pendingRenames.map((r) => {
+									const oldShort =
+										r.old_entity_id.split(".")[1] || r.old_entity_id;
+									const newShort =
+										r.new_entity_id.split(".")[1] || r.new_entity_id;
+									const platform = r.old_entity_id.split(".")[0] || "";
+									return html`
+                    <div style="
+                      padding: 8px 12px; margin: 4px 0;
+                      background: var(--secondary-background-color, #f5f5f5);
+                      border-radius: 8px; font-family: monospace; font-size: 12px;
+                    ">
+                      <div style="color: var(--secondary-text-color, #888); font-size: 11px; margin-bottom: 4px; font-family: var(--paper-font-body1_-_font-family, sans-serif);">
+                        ${platform}
+                      </div>
+                      <div style="text-decoration: line-through; color: var(--secondary-text-color, #888); word-break: break-all;">
+                        ${oldShort}
+                      </div>
+                      <div style="font-weight: 500; word-break: break-all; margin-top: 2px;">
+                        → ${newShort}
+                      </div>
+                    </div>
+                  `;
+								})}
+              </div>
+              <div class="template-dialog-actions">
+                <button class="wizard-btn wizard-btn-back"
+                  @click=${this._dismissRenameDialog}
+                >${this._localize("common.skip")}</button>
+                <button class="wizard-btn wizard-btn-primary"
+                  @click=${this._applyRenames}
+                >${this._localize("common.rename")}</button>
+              </div>
+            </div>
+          </div>
+        `
+					: nothing
+			}
+      ${
+				this._showUnsavedDialog
+					? html`
+          <div class="template-dialog">
+            <div class="template-dialog-card">
+              <h3>${this._localize("dialogs.unsaved_changes")}</h3>
+              <p class="overlay-help">${this._localize("dialogs.unsaved_changes_body")}</p>
+              <div class="template-dialog-actions">
+                <button class="wizard-btn wizard-btn-back"
+                  @click=${() => {
+										this._showUnsavedDialog = false;
+										this._pendingNavigation = null;
+									}}
+                >${this._localize("common.cancel")}</button>
+                <button class="wizard-btn wizard-btn-primary" style="background: var(--error-color, #f44336);"
+                  @click=${this._discardAndNavigate}
+                >${this._localize("common.discard")}</button>
+              </div>
+            </div>
+          </div>
+        `
+					: nothing
+			}
+      ${
+				this._showDeleteCalibrationDialog
+					? html`
+          <div class="template-dialog">
+            <div class="template-dialog-card">
+              <h3>${this._localize("dialogs.delete_calibration_title")}</h3>
+              <p class="overlay-help">${this._localize("dialogs.delete_calibration_body")}</p>
+              <div class="template-dialog-actions">
+                <button class="wizard-btn wizard-btn-back"
+                  @click=${() => {
+										this._showDeleteCalibrationDialog = false;
+									}}
+                >${this._localize("common.cancel")}</button>
+                <button class="wizard-btn wizard-btn-primary" style="background: var(--error-color, #f44336);"
+                  @click=${this._deleteCalibration}
+                >${this._localize("common.delete")}</button>
+              </div>
+            </div>
+          </div>
+        `
+					: nothing
+			}
+    `;
+	}
+
 	render() {
 		if (this._loading) {
 			return html`<div class="loading-container">${this._localize("common.loading")}</div>`;
@@ -3127,39 +3315,14 @@ export class EverythingPresenceProPanel extends LitElement {
 			return this._renderWizard();
 		}
 
-		if (this._view === "settings") {
-			return this._renderSettings();
-		}
+		const content =
+			this._view === "settings"
+				? this._renderSettings()
+				: this._view === "editor" && this._perspective
+					? this._renderEditor()
+					: this._renderLiveOverview();
 
-		if (this._view === "editor" && this._perspective) {
-			return this._renderEditor();
-		}
-
-		return html`
-      ${this._renderLiveOverview()}
-      ${
-				this._showDeleteCalibrationDialog
-					? html`
-        <div class="template-dialog">
-          <div class="template-dialog-card">
-            <h3>${this._localize("dialogs.delete_calibration_title")}</h3>
-            <p class="overlay-help">${this._localize("dialogs.delete_calibration_body")}</p>
-            <div class="template-dialog-actions">
-              <button class="wizard-btn wizard-btn-back"
-                @click=${() => {
-									this._showDeleteCalibrationDialog = false;
-								}}
-              >${this._localize("common.cancel")}</button>
-              <button class="wizard-btn wizard-btn-primary" style="background: var(--error-color, #f44336);"
-                @click=${this._deleteCalibration}
-              >${this._localize("common.delete")}</button>
-            </div>
-          </div>
-        </div>
-      `
-					: nothing
-			}
-    `;
+		return html`${content}${this._renderGlobalDialogs()}`;
 	}
 
 	private async _deleteCalibration(): Promise<void> {
@@ -4598,6 +4761,7 @@ export class EverythingPresenceProPanel extends LitElement {
 
 		return html`
       <div class="panel" @click=${(e: Event) => {
+				if (this._justPainted) return;
 				const el = e.target as HTMLElement;
 				if (!el.closest(".grid") && !el.closest(".zone-sidebar")) {
 					this._activeZone = null;
@@ -4619,7 +4783,6 @@ export class EverythingPresenceProPanel extends LitElement {
               class="grid"
               style="grid-template-columns: repeat(${visCols}, ${cellPx}px); grid-template-rows: repeat(${visRows}, ${cellPx}px);"
               @mouseup=${this._onCellMouseUp}
-              @mouseleave=${this._onCellMouseUp}
             >
               ${this._renderVisibleCells(minCol, maxCol, minRow, maxRow, cellPx)}
             </div>
@@ -4644,77 +4807,6 @@ export class EverythingPresenceProPanel extends LitElement {
         </div>
 
 
-        ${this._showTemplateSave ? this._renderTemplateSaveDialog() : nothing}
-        ${this._showTemplateLoad ? this._renderTemplateLoadDialog() : nothing}
-        ${
-					this._showRenameDialog
-						? html`
-          <div class="template-dialog">
-            <div class="template-dialog-card" style="max-width: 520px;">
-              <h3>${this._localize("dialogs.update_entity_ids")}</h3>
-              <p class="overlay-help">${this._localize("dialogs.update_entity_ids_body")}</p>
-              <div style="max-height: 300px; overflow-y: auto; margin: 12px 0;">
-                ${this._pendingRenames.map((r) => {
-									const oldShort =
-										r.old_entity_id.split(".")[1] || r.old_entity_id;
-									const newShort =
-										r.new_entity_id.split(".")[1] || r.new_entity_id;
-									const platform = r.old_entity_id.split(".")[0] || "";
-									return html`
-                    <div style="
-                      padding: 8px 12px; margin: 4px 0;
-                      background: var(--secondary-background-color, #f5f5f5);
-                      border-radius: 8px; font-family: monospace; font-size: 12px;
-                    ">
-                      <div style="color: var(--secondary-text-color, #888); font-size: 11px; margin-bottom: 4px; font-family: var(--paper-font-body1_-_font-family, sans-serif);">
-                        ${platform}
-                      </div>
-                      <div style="text-decoration: line-through; color: var(--secondary-text-color, #888); word-break: break-all;">
-                        ${oldShort}
-                      </div>
-                      <div style="font-weight: 500; word-break: break-all; margin-top: 2px;">
-                        → ${newShort}
-                      </div>
-                    </div>
-                  `;
-								})}
-              </div>
-              <div class="template-dialog-actions">
-                <button class="wizard-btn wizard-btn-back"
-                  @click=${this._dismissRenameDialog}
-                >${this._localize("common.skip")}</button>
-                <button class="wizard-btn wizard-btn-primary"
-                  @click=${this._applyRenames}
-                >${this._localize("common.rename")}</button>
-              </div>
-            </div>
-          </div>
-        `
-						: nothing
-				}
-        ${
-					this._showUnsavedDialog
-						? html`
-          <div class="template-dialog">
-            <div class="template-dialog-card">
-              <h3>${this._localize("dialogs.unsaved_changes")}</h3>
-              <p class="overlay-help">${this._localize("dialogs.unsaved_changes_body")}</p>
-              <div class="template-dialog-actions">
-                <button class="wizard-btn wizard-btn-back"
-                  @click=${() => {
-										this._showUnsavedDialog = false;
-										this._pendingNavigation = null;
-									}}
-                >${this._localize("common.cancel")}</button>
-                <button class="wizard-btn wizard-btn-primary" style="background: var(--error-color, #f44336);"
-                  @click=${this._discardAndNavigate}
-                >${this._localize("common.discard")}</button>
-              </div>
-            </div>
-          </div>
-        `
-						: nothing
-				}
       </div>
     `;
 	}
@@ -5582,6 +5674,7 @@ export class EverythingPresenceProPanel extends LitElement {
 									const configs = [...this._zoneConfigs];
 									configs[i] = { ...zone, name: val };
 									this._zoneConfigs = configs;
+									this._dirty = true;
 								}}
                 @click=${(e: Event) => {
 									e.stopPropagation();

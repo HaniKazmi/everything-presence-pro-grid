@@ -882,12 +882,78 @@ describe("editor rename dialog DOM events", () => {
 				new_entity_id: "binary_sensor.kitchen_presence",
 			},
 		];
-		const tpl = a._renderEditor();
+		const tpl = a._renderGlobalDialogs();
 		const c = renderTo(tpl);
 
 		// Find skip/rename buttons in the dialog
 		const dialogs = c.querySelectorAll(".template-dialog");
 		expect(dialogs.length).toBeGreaterThan(0);
+		document.body.removeChild(c);
+	});
+});
+
+// =========================================================
+// _renderGlobalDialogs: template and unsaved dialogs
+// =========================================================
+describe("_renderGlobalDialogs branch coverage", () => {
+	it("renders template save dialog", () => {
+		const a = createPanel() as any;
+		a._showTemplateSave = true;
+		a._templateName = "test";
+		const tpl = a._renderGlobalDialogs();
+		const c = renderTo(tpl);
+		expect(c.querySelectorAll(".template-dialog").length).toBeGreaterThan(0);
+		document.body.removeChild(c);
+	});
+
+	it("renders template load dialog", () => {
+		const a = createPanel() as any;
+		a._showTemplateLoad = true;
+		const tpl = a._renderGlobalDialogs();
+		const c = renderTo(tpl);
+		expect(c.querySelectorAll(".template-dialog").length).toBeGreaterThan(0);
+		document.body.removeChild(c);
+	});
+
+	it("renders unsaved changes dialog", () => {
+		const a = createPanel() as any;
+		a._showUnsavedDialog = true;
+		const tpl = a._renderGlobalDialogs();
+		const c = renderTo(tpl);
+		expect(c.querySelectorAll(".template-dialog").length).toBeGreaterThan(0);
+		document.body.removeChild(c);
+	});
+
+	it("renders delete calibration dialog", () => {
+		const a = createPanel() as any;
+		a._showDeleteCalibrationDialog = true;
+		const tpl = a._renderGlobalDialogs();
+		const c = renderTo(tpl);
+		expect(c.querySelectorAll(".template-dialog").length).toBeGreaterThan(0);
+		document.body.removeChild(c);
+	});
+
+	it("renders nothing when no dialogs are active", () => {
+		const a = createPanel() as any;
+		const tpl = a._renderGlobalDialogs();
+		const c = renderTo(tpl);
+		expect(c.querySelectorAll(".template-dialog").length).toBe(0);
+		document.body.removeChild(c);
+	});
+});
+
+// =========================================================
+// render(): view branching
+// =========================================================
+describe("render view branching", () => {
+	it("renders settings view", () => {
+		const a = createPanel() as any;
+		a._view = "settings";
+		a._entries = [{ entry_id: "e1", title: "T", state: "loaded" }];
+		a._selectedEntryId = "e1";
+		const tpl = a.render();
+		const c = renderTo(tpl);
+		expect(c.innerHTML).not.toBe("");
 		document.body.removeChild(c);
 	});
 });
