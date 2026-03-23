@@ -409,6 +409,10 @@ class TestTargetXYPositionSensor:
         sensor = EverythingPresenceProTargetXYPositionSensor(mock_coordinator, 0)
         assert sensor.name == "Target 1 XY"
 
+    def test_unique_id(self, mock_coordinator):
+        sensor = EverythingPresenceProTargetXYPositionSensor(mock_coordinator, 0)
+        assert sensor.unique_id == "test_entry_target_1_xy"
+
 
 # ---------------------------------------------------------------------------
 # Per-target angle sensor
