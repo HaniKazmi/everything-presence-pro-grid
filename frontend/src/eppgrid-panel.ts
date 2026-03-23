@@ -353,7 +353,7 @@ const CAPTURE_DURATION_S = 5;
 // Target dot colors (1 per target, high contrast)
 const TARGET_COLORS = ["#2196F3", "#FF5722", "#4CAF50"]; // blue, red-orange, green
 
-export class EverythingPresenceProPanel extends LitElement {
+export class EPPGridPanel extends LitElement {
 	@property({ attribute: false }) hass: any;
 	private _localize: (
 		key: string,
@@ -698,7 +698,7 @@ export class EverythingPresenceProPanel extends LitElement {
 	private async _loadEntries(): Promise<void> {
 		try {
 			const result = await this.hass.callWS({
-				type: "everything_presence_pro/list_entries",
+				type: "eppgrid/list_entries",
 			});
 			// Sort alphabetically by title
 			this._entries = (result as EntryInfo[]).sort((a, b) =>
@@ -720,7 +720,7 @@ export class EverythingPresenceProPanel extends LitElement {
 	private async _loadEntryConfig(entryId: string): Promise<void> {
 		try {
 			const config = await this.hass.callWS({
-				type: "everything_presence_pro/get_config",
+				type: "eppgrid/get_config",
 				entry_id: entryId,
 			});
 			this._applyConfig(config);
@@ -805,10 +805,10 @@ export class EverythingPresenceProPanel extends LitElement {
 								this._backendDebugLogLines.push(`${ts} ${body}`);
 								if (
 									this._backendDebugLogLines.length >
-									EverythingPresenceProPanel._DEBUG_LOG_MAX
+									EPPGridPanel._DEBUG_LOG_MAX
 								) {
 									this._backendDebugLogLines = this._backendDebugLogLines.slice(
-										-EverythingPresenceProPanel._DEBUG_LOG_MAX,
+										-EPPGridPanel._DEBUG_LOG_MAX,
 									);
 								}
 								this.requestUpdate();
@@ -817,7 +817,7 @@ export class EverythingPresenceProPanel extends LitElement {
 					}
 				},
 				{
-					type: "everything_presence_pro/subscribe_grid_targets",
+					type: "eppgrid/subscribe_grid_targets",
 					entry_id: entryId,
 				},
 			)
@@ -852,7 +852,7 @@ export class EverythingPresenceProPanel extends LitElement {
 					}));
 				},
 				{
-					type: "everything_presence_pro/subscribe_raw_targets",
+					type: "eppgrid/subscribe_raw_targets",
 					entry_id: entryId,
 				},
 			)
@@ -1197,7 +1197,7 @@ export class EverythingPresenceProPanel extends LitElement {
 		this._saving = true;
 		try {
 			const result = await this.hass.callWS({
-				type: "everything_presence_pro/set_room_layout",
+				type: "eppgrid/set_room_layout",
 				entry_id: this._selectedEntryId,
 				grid_bytes: Array.from(this._grid),
 				room_type: this._roomType,
@@ -1268,7 +1268,7 @@ export class EverythingPresenceProPanel extends LitElement {
 				});
 
 			await this.hass.callWS({
-				type: "everything_presence_pro/set_reporting",
+				type: "eppgrid/set_reporting",
 				entry_id: this._selectedEntryId,
 				reporting,
 				offsets,
@@ -1289,7 +1289,7 @@ export class EverythingPresenceProPanel extends LitElement {
 		if (!this._pendingRenames.length) return;
 		try {
 			const result = await this.hass.callWS({
-				type: "everything_presence_pro/rename_zone_entities",
+				type: "eppgrid/rename_zone_entities",
 				entry_id: this._selectedEntryId,
 				renames: this._pendingRenames,
 			});
@@ -1645,7 +1645,7 @@ export class EverythingPresenceProPanel extends LitElement {
 		this._wizardSaving = true;
 		try {
 			await this.hass.callWS({
-				type: "everything_presence_pro/set_setup",
+				type: "eppgrid/set_setup",
 				entry_id: this._selectedEntryId,
 				perspective: this._perspective,
 				room_width: this._wizardRoomWidth,
@@ -3342,14 +3342,14 @@ export class EverythingPresenceProPanel extends LitElement {
 		// Clear calibration and layout on the backend
 		try {
 			await this.hass.callWS({
-				type: "everything_presence_pro/set_setup",
+				type: "eppgrid/set_setup",
 				entry_id: this._selectedEntryId,
 				perspective: [0, 0, 0, 0, 0, 0, 0, 0],
 				room_width: 0,
 				room_depth: 0,
 			});
 			await this.hass.callWS({
-				type: "everything_presence_pro/set_room_layout",
+				type: "eppgrid/set_room_layout",
 				entry_id: this._selectedEntryId,
 				grid_bytes: Array.from(this._grid),
 				zone_slots: this._zoneConfigs.map(() => null),
@@ -3386,7 +3386,7 @@ export class EverythingPresenceProPanel extends LitElement {
 						const val = (e.target as HTMLSelectElement).value;
 						if (val === "__add__") {
 							window.open(
-								"/config/integrations/integration/everything_presence_pro",
+								"/config/integrations/integration/eppgrid",
 								"_blank",
 							);
 							(e.target as HTMLSelectElement).value = this._selectedEntryId;
@@ -3771,13 +3771,13 @@ export class EverythingPresenceProPanel extends LitElement {
 	/** Sensor FOV view showing raw target positions during corner marking */
 	private _renderMiniSensorView() {
 		// SVG uses real mm coordinates: sensor at (0,0), FOV opens downward
-		const halfX = EverythingPresenceProPanel.FOV_X_EXTENT; // ~5196
+		const halfX = EPPGridPanel.FOV_X_EXTENT; // ~5196
 		const R = MAX_RANGE; // 6000
 		const pad = 200; // small padding
 
 		// FOV edge points at max range
 		const lx = -halfX,
-			ly = R * Math.cos(EverythingPresenceProPanel.FOV_HALF_ANGLE); // (-5196, 3000)
+			ly = R * Math.cos(EPPGridPanel.FOV_HALF_ANGLE); // (-5196, 3000)
 		const rx = halfX,
 			ry = ly; // (5196, 3000)
 
@@ -3786,8 +3786,8 @@ export class EverythingPresenceProPanel extends LitElement {
 
 		// Range ring arcs (2m and 4m)
 		const ringPaths = [2000, 4000].map((r) => {
-			const ex = r * Math.sin(EverythingPresenceProPanel.FOV_HALF_ANGLE);
-			const ey = r * Math.cos(EverythingPresenceProPanel.FOV_HALF_ANGLE);
+			const ex = r * Math.sin(EPPGridPanel.FOV_HALF_ANGLE);
+			const ey = r * Math.cos(EPPGridPanel.FOV_HALF_ANGLE);
 			return `M ${-ex} ${ey} A ${r} ${r} 0 0 0 ${ex} ${ey}`;
 		});
 
@@ -5205,10 +5205,10 @@ export class EverythingPresenceProPanel extends LitElement {
 			});
 			this._debugLogLines.push(`${ts} ${body}`);
 			if (
-				this._debugLogLines.length > EverythingPresenceProPanel._DEBUG_LOG_MAX
+				this._debugLogLines.length > EPPGridPanel._DEBUG_LOG_MAX
 			) {
 				this._debugLogLines = this._debugLogLines.slice(
-					-EverythingPresenceProPanel._DEBUG_LOG_MAX,
+					-EPPGridPanel._DEBUG_LOG_MAX,
 				);
 			}
 			this.requestUpdate();
@@ -6060,15 +6060,15 @@ export class EverythingPresenceProPanel extends LitElement {
 	}
 }
 
-if (!customElements.get("everything-presence-pro-panel")) {
+if (!customElements.get("eppgrid-panel")) {
 	customElements.define(
-		"everything-presence-pro-panel",
-		EverythingPresenceProPanel,
+		"eppgrid-panel",
+		EPPGridPanel,
 	);
 }
 
 declare global {
 	interface HTMLElementTagNameMap {
-		"everything-presence-pro-panel": EverythingPresenceProPanel;
+		"eppgrid-panel": EPPGridPanel;
 	}
 }
