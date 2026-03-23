@@ -1,4 +1,4 @@
 {
-  "name": "Everything Presence Pro",
-  "render_readme": true
+  "name": "Everything Presence Pro Grid",
+  "homeassistant": "2025.2.0b0"
 }
