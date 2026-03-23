@@ -1,6 +1,6 @@
 """Constants for the Everything Presence Pro integration."""
 
-DOMAIN = "everything_presence_pro"
+DOMAIN = "eppgrid"
 
 # Grid
 GRID_COLS = 20
