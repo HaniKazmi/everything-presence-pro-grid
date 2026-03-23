@@ -4328,13 +4328,9 @@ export class EverythingPresenceProPanel extends LitElement {
 	}
 
 	private _toggleAccordion(id: string) {
-		const next = new Set(this._openAccordions);
-		if (next.has(id)) {
-			next.delete(id);
-		} else {
-			next.add(id);
-		}
-		this._openAccordions = next;
+		this._openAccordions = this._openAccordions.has(id)
+			? new Set()
+			: new Set([id]);
 	}
 
 	/** Get the sensor position in room-space mm by transforming sensor origin (0,0). */
@@ -4354,6 +4350,11 @@ export class EverythingPresenceProPanel extends LitElement {
 	private _renderSettings() {
 		const sections: { id: string; label: string; icon: string }[] = [
 			{
+				id: "reporting",
+				label: "settings.entities",
+				icon: "mdi:format-list-checks",
+			},
+			{
 				id: "detection",
 				label: "settings.detection_ranges",
 				icon: "mdi:signal-distance-variant",
@@ -4362,11 +4363,6 @@ export class EverythingPresenceProPanel extends LitElement {
 				id: "sensitivity",
 				label: "settings.sensor_calibration",
 				icon: "mdi:tune-vertical",
-			},
-			{
-				id: "reporting",
-				label: "settings.entities",
-				icon: "mdi:format-list-checks",
 			},
 		];
 
@@ -4492,7 +4488,7 @@ export class EverythingPresenceProPanel extends LitElement {
 		const autoStyle = "opacity: 0.5; pointer-events: none;";
 		return html`
       <div class="settings-section">
-        ${metrics ? html`<p style="font-size: 13px; color: var(--secondary-text-color, #757575); margin: 0 0 12px;">${this._localize("settings.furthest_point", { distance: metrics.furthestM })}</p>` : nothing}
+        ${metrics ? html`<p style="font-size: 13px; color: var(--secondary-text-color, #757575); margin: 0 0 12px;">${this._localize("settings.furthest_point")} <span style="font-weight: 700; color: var(--error-color, #db4437);">${metrics.furthestM}m</span></p>` : nothing}
         <div class="setting-group">
           <h4>${this._localize("settings.target_sensor")}</h4>
           <div class="setting-row">
@@ -4500,9 +4496,11 @@ export class EverythingPresenceProPanel extends LitElement {
             <label class="toggle-switch">
               <input type="checkbox" ?checked=${this._targetAutoRange}
                 @change=${(e: Event) => {
-									this._targetAutoRange = (
-										e.target as HTMLInputElement
-									).checked;
+									const checked = (e.target as HTMLInputElement).checked;
+									if (!checked) {
+										this._targetMaxDistance = targetVal;
+									}
+									this._targetAutoRange = checked;
 								}} />
               <span class="toggle-slider"></span>
             </label>
@@ -4526,9 +4524,11 @@ export class EverythingPresenceProPanel extends LitElement {
             <label class="toggle-switch">
               <input type="checkbox" ?checked=${this._staticAutoRange}
                 @change=${(e: Event) => {
-									this._staticAutoRange = (
-										e.target as HTMLInputElement
-									).checked;
+									const checked = (e.target as HTMLInputElement).checked;
+									if (!checked) {
+										this._staticMaxDistance = staticMaxVal;
+									}
+									this._staticAutoRange = checked;
 								}} />
               <span class="toggle-slider"></span>
             </label>
@@ -4679,61 +4679,36 @@ export class EverythingPresenceProPanel extends LitElement {
         <div class="setting-group">
           <h4>${this._localize("entities.target_level")}</h4>
           <div class="setting-row">
-            <label>${this._localize("entities.xy_sensor")}</label>
-            <label class="toggle-switch"><input type="checkbox" data-report-key="target_xy_sensor" ?checked=${isOn("target_xy_sensor", false)} /><span class="toggle-slider"></span></label>
-            ${this._infoTip(this._localize("info.xy_sensor"))}
-          </div>
-          <div class="setting-row">
-            <label>${this._localize("entities.xy_grid")}</label>
-            <label class="toggle-switch"><input type="checkbox" data-report-key="target_xy_grid" ?checked=${isOn("target_xy_grid", false)} /><span class="toggle-slider"></span></label>
-            ${this._infoTip(this._localize("info.xy_grid"))}
+            <label>${this._localize("entities.xy")}</label>
+            <label class="toggle-switch"><input type="checkbox" data-report-key="target_xy" ?checked=${isOn("target_xy", false)} /><span class="toggle-slider"></span></label>
+            ${this._infoTip(this._localize("info.xy"))}
           </div>
           <div class="setting-row">
             <label>${this._localize("entities.active")}</label>
             <label class="toggle-switch"><input type="checkbox" data-report-key="target_active" ?checked=${isOn("target_active", false)} /><span class="toggle-slider"></span></label>
             ${this._infoTip(this._localize("info.active"))}
           </div>
-          <div class="setting-row">
-            <label>${this._localize("entities.distance")}</label>
-            <label class="toggle-switch"><input type="checkbox" data-report-key="target_distance" ?checked=${isOn("target_distance", false)} /><span class="toggle-slider"></span></label>
-            ${this._infoTip(this._localize("info.distance"))}
-          </div>
-          <div class="setting-row">
-            <label>${this._localize("entities.angle")}</label>
-            <label class="toggle-switch"><input type="checkbox" data-report-key="target_angle" ?checked=${isOn("target_angle", false)} /><span class="toggle-slider"></span></label>
-            ${this._infoTip(this._localize("info.angle"))}
-          </div>
-          <div class="setting-row">
-            <label>${this._localize("entities.speed")}</label>
-            <label class="toggle-switch"><input type="checkbox" data-report-key="target_speed" ?checked=${isOn("target_speed", false)} /><span class="toggle-slider"></span></label>
-            ${this._infoTip(this._localize("info.speed"))}
-          </div>
-          <div class="setting-row">
-            <label>${this._localize("entities.resolution")}</label>
-            <label class="toggle-switch"><input type="checkbox" data-report-key="target_resolution" ?checked=${isOn("target_resolution", false)} /><span class="toggle-slider"></span></label>
-            ${this._infoTip(this._localize("info.resolution"))}
-          </div>
         </div>
         <div class="setting-group">
           <h4>${this._localize("settings.environmental")}</h4>
           <div class="setting-row">
             <label>${this._localize("entities.illuminance")}</label>
-            <label class="toggle-switch"><input type="checkbox" data-report-key="env_illuminance" ?checked=${isOn("env_illuminance", true)} /><span class="toggle-slider"></span></label>
+            <label class="toggle-switch"><input type="checkbox" data-report-key="env_illuminance" ?checked=${isOn("env_illuminance", false)} /><span class="toggle-slider"></span></label>
             ${this._infoTip(this._localize("info.illuminance"))}
           </div>
           <div class="setting-row">
             <label>${this._localize("entities.humidity")}</label>
-            <label class="toggle-switch"><input type="checkbox" data-report-key="env_humidity" ?checked=${isOn("env_humidity", true)} /><span class="toggle-slider"></span></label>
+            <label class="toggle-switch"><input type="checkbox" data-report-key="env_humidity" ?checked=${isOn("env_humidity", false)} /><span class="toggle-slider"></span></label>
             ${this._infoTip(this._localize("info.humidity"))}
           </div>
           <div class="setting-row">
             <label>${this._localize("entities.temperature")}</label>
-            <label class="toggle-switch"><input type="checkbox" data-report-key="env_temperature" ?checked=${isOn("env_temperature", true)} /><span class="toggle-slider"></span></label>
+            <label class="toggle-switch"><input type="checkbox" data-report-key="env_temperature" ?checked=${isOn("env_temperature", false)} /><span class="toggle-slider"></span></label>
             ${this._infoTip(this._localize("info.temperature"))}
           </div>
           <div class="setting-row">
             <label>${this._localize("entities.co2")}</label>
-            <label class="toggle-switch"><input type="checkbox" data-report-key="env_co2" ?checked=${isOn("env_co2", true)} /><span class="toggle-slider"></span></label>
+            <label class="toggle-switch"><input type="checkbox" data-report-key="env_co2" ?checked=${isOn("env_co2", false)} /><span class="toggle-slider"></span></label>
             ${this._infoTip(this._localize("info.co2"))}
           </div>
         </div>
@@ -5993,15 +5968,15 @@ export class EverythingPresenceProPanel extends LitElement {
           </div>
           <div class="furn-dims">
             <label>
-              ${this._localize("dimensions.width_mm")}
-              <input type="number" min="100" step="50" .value=${String(Math.round(selected.width))}
-                @change=${(e: Event) => this._updateFurniture(selected.id, { width: parseInt((e.target as HTMLInputElement).value) })}
+              ${this._localize("dimensions.width_cm")}
+              <input type="number" min="10" step="5" .value=${String(Math.round(selected.width / 10))}
+                @change=${(e: Event) => this._updateFurniture(selected.id, { width: parseInt((e.target as HTMLInputElement).value) * 10 })}
               />
             </label>
             <label>
-              ${this._localize("dimensions.height_mm")}
-              <input type="number" min="100" step="50" .value=${String(Math.round(selected.height))}
-                @change=${(e: Event) => this._updateFurniture(selected.id, { height: parseInt((e.target as HTMLInputElement).value) })}
+              ${this._localize("dimensions.height_cm")}
+              <input type="number" min="10" step="5" .value=${String(Math.round(selected.height / 10))}
+                @change=${(e: Event) => this._updateFurniture(selected.id, { height: parseInt((e.target as HTMLInputElement).value) * 10 })}
               />
             </label>
             <label>

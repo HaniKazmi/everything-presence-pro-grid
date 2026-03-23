@@ -121,7 +121,7 @@
 		"illuminance_offset": "Illuminance offset",
 		"humidity_offset": "Humidity offset",
 		"temperature_offset": "Temperature offset",
-		"furthest_point": "Current furthest point from sensor: {distance}m"
+		"furthest_point": "Current furthest point from sensor:"
 	},
 	"sidebar": {
 		"detection_zones": "Detection zones",
@@ -169,7 +169,7 @@
 		"zone_presence": "Presence",
 		"zone_target_count": "Target count",
 		"xy_sensor": "XY position, relative to sensor",
-		"xy_grid": "XY position, relative to grid",
+		"xy": "XY position",
 		"active": "Active",
 		"distance": "Distance",
 		"angle": "Angle",
@@ -206,7 +206,7 @@
 		"zone_presence": "Per-zone occupancy based on target tracking.",
 		"zone_target_count": "Number of targets in each zone.",
 		"xy_sensor": "Raw XY coordinates from the sensor.",
-		"xy_grid": "XY coordinates mapped to the room grid.",
+		"xy": "XY coordinates mapped to the room grid.",
 		"active": "Whether each target slot is actively tracking.",
 		"distance": "Distance from sensor to each target.",
 		"angle": "Angle from sensor to each target.",
@@ -218,8 +218,8 @@
 		"co2": "SCD40 CO₂ sensor (optional module)."
 	},
 	"dimensions": {
-		"width_mm": "W (mm)",
-		"height_mm": "H (mm)",
+		"width_cm": "W (cm)",
+		"height_cm": "H (cm)",
 		"rotation": "Rot"
 	}
 }

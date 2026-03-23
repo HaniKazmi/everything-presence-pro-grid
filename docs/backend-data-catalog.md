@@ -30,7 +30,7 @@ All data comes from ESPHome API subscriptions via the coordinator.
 | Data | Type | Source |
 |------|------|--------|
 | `xy_sensor` | string "{x},{y}" (mm) | raw LD2450 coordinates |
-| `xy_grid` | string "{x},{y}" (mm) | perspective-transformed coordinates |
+| `xy` | string "{x},{y}" (mm) | perspective-transformed coordinates |
 | `distance` | float (mm) | Euclidean distance from sensor |
 | `angle` | float (°) | bearing from sensor |
 | `speed` | float (mm/s) | LD2450 velocity |
@@ -51,7 +51,7 @@ All data comes from ESPHome API subscriptions via the coordinator.
 18 boolean flags in `config.reporting` controlling which entities get created:
 
 - Room level: `room_occupancy`, `room_static_presence`, `room_motion_presence`, `room_target_presence`, `room_target_count`
-- Target level: `target_xy_sensor`, `target_xy_grid`, `target_active`, `target_distance`, `target_angle`, `target_speed`, `target_resolution`
+- Target level: `target_xy_sensor`, `target_xy`, `target_active`, `target_distance`, `target_angle`, `target_speed`, `target_resolution`
 - Zone level: `zone_presence`, `zone_target_count`
 - Environmental: `env_illuminance`, `env_humidity`, `env_temperature`, `env_co2`
 

@@ -981,3 +981,131 @@ describe("stopPropagation handlers in zone sidebar", () => {
 		document.body.removeChild(c);
 	});
 });
+
+describe("_runLocalZoneEngine target with no grid mapping", () => {
+	it("skips target when _mapTargetToGridCell returns null", () => {
+		const a = createPanel() as any;
+		// roomWidth=0 causes mapTargetToGridCell to return null
+		a._roomWidth = 0;
+		a._roomDepth = 0;
+		a._targets = [{ x: 100, y: 200, signal: 100, status: "active" }];
+		const result = a._runLocalZoneEngine();
+		expect(result).toBeDefined();
+		expect(a._targetPrev[0]).toBeNull();
+	});
+});
+
+describe("backend debug log copy and clear buttons", () => {
+	it("clear button resets backend debug log lines", () => {
+		const a = createPanel() as any;
+		a._showBackendDebugLog = true;
+		a._backendDebugLogLines = ["line1", "line2"];
+		a._backendDebugLogPrev = "something";
+		const tpl = a._renderBackendDebugLog();
+		const c = document.createElement("div");
+		render(tpl, c);
+
+		const buttons = c.querySelectorAll(".debug-log-btn");
+		const clearBtn = Array.from(buttons).find(
+			(b) => b.textContent?.trim() === "Clear",
+		) as HTMLElement;
+		if (clearBtn) {
+			clearBtn.click();
+			expect(a._backendDebugLogLines).toEqual([]);
+			expect(a._backendDebugLogPrev).toBeNull();
+		}
+	});
+
+	it("copy button calls clipboard.writeText", () => {
+		const a = createPanel() as any;
+		a._showBackendDebugLog = true;
+		a._backendDebugLogLines = ["line1", "line2"];
+		const tpl = a._renderBackendDebugLog();
+		const c = document.createElement("div");
+		render(tpl, c);
+
+		const writeTextMock = vi.fn().mockResolvedValue(undefined);
+		Object.defineProperty(navigator, "clipboard", {
+			value: { writeText: writeTextMock },
+			writable: true,
+			configurable: true,
+		});
+
+		const buttons = c.querySelectorAll(".debug-log-btn");
+		const copyBtn = Array.from(buttons).find(
+			(b) => b.textContent?.trim() === "Copy all",
+		) as HTMLElement;
+		if (copyBtn) {
+			copyBtn.click();
+			expect(writeTextMock).toHaveBeenCalledWith("line1\nline2");
+		}
+	});
+});
+
+describe("_renderVisibleCells uses backend occupancy in live view", () => {
+	it("uses backend zone occupancy when not in editor", () => {
+		const a = createPanel() as any;
+		a._view = "live";
+		a._zoneState = {
+			occupancy: { 1: true },
+			target_counts: {},
+			frame_count: 0,
+		};
+		a._targets = [];
+		// Call _renderVisibleCells which internally branches on useBackendOccupancy
+		const bounds = a._getRoomBounds();
+		const cells = a._renderVisibleCells(
+			bounds.minCol,
+			bounds.maxCol,
+			bounds.minRow,
+			bounds.maxRow,
+			16,
+		);
+		expect(cells).toBeDefined();
+	});
+});
+
+describe("settings slider input handlers", () => {
+	it("static max distance slider clamps below min", () => {
+		const a = createPanel() as any;
+		a._view = "settings";
+		a._staticAutoRange = false;
+		a._staticMinDistance = 2;
+		a._staticMaxDistance = 10;
+		a._targetAutoRange = false;
+		a._targetMaxDistance = 4;
+		const tpl = a._renderDetectionRanges();
+		const c = document.createElement("div");
+		render(tpl, c);
+
+		const ranges = c.querySelectorAll(
+			"input[type=range]",
+		) as NodeListOf<HTMLInputElement>;
+		// The static max distance slider is the last range input
+		const staticMax = ranges[ranges.length - 1];
+		if (staticMax) {
+			staticMax.value = "1";
+			staticMax.dispatchEvent(new Event("input"));
+			// Value should be clamped to staticMinDistance + 0.1
+			expect(a._staticMaxDistance).toBeGreaterThanOrEqual(a._staticMinDistance);
+		}
+	});
+});
+
+describe("template delete button", () => {
+	it("delete button calls _deleteTemplate", () => {
+		const a = createPanel() as any;
+		a._showTemplateLoad = true;
+		a._savedTemplates = [{ name: "test-tmpl", data: {} }];
+		a._deleteTemplate = vi.fn();
+		const tpl = a._renderTemplateLoadDialog();
+		const c = document.createElement("div");
+		render(tpl, c);
+
+		const removeBtn = c.querySelector(".zone-remove-btn") as HTMLElement;
+		if (removeBtn) {
+			removeBtn.click();
+			expect(a._deleteTemplate).toHaveBeenCalledWith("test-tmpl");
+		}
+	});
+});

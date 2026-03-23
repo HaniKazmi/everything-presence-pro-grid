@@ -52,7 +52,7 @@ async def async_setup_entry(
     # Per-target sensors (disabled by default)
     for idx in range(MAX_TARGETS):
         entities.append(EverythingPresenceProTargetXYSensorSensor(coordinator, idx))
-        entities.append(EverythingPresenceProTargetXYGridSensor(coordinator, idx))
+        entities.append(EverythingPresenceProTargetXYPositionSensor(coordinator, idx))
         entities.append(EverythingPresenceProTargetDistanceSensor(coordinator, idx))
         entities.append(EverythingPresenceProTargetAngleSensor(coordinator, idx))
         entities.append(EverythingPresenceProTargetSpeedSensor(coordinator, idx))
@@ -324,17 +324,17 @@ class EverythingPresenceProTargetXYSensorSensor(_PerTargetSensor):
         return {"x_mm": round(x), "y_mm": round(y)}
 
 
-class EverythingPresenceProTargetXYGridSensor(_PerTargetSensor):
+class EverythingPresenceProTargetXYPositionSensor(_PerTargetSensor):
     """Per-target XY position relative to grid (mm)."""
 
     def __init__(self, coordinator: EverythingPresenceProCoordinator, index: int) -> None:
         """Initialize."""
-        super().__init__(coordinator, index, "xy_grid")
+        super().__init__(coordinator, index, "xy")
 
     @property
     def name(self) -> str:
         """Return the sensor name."""
-        return f"Target {self._index + 1} XY grid"
+        return f"Target {self._index + 1} XY"
 
     @property
     def native_value(self) -> str | None:

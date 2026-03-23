@@ -24,7 +24,7 @@ from custom_components.everything_presence_pro.sensor import EverythingPresenceP
 from custom_components.everything_presence_pro.sensor import EverythingPresenceProTargetDistanceSensor
 from custom_components.everything_presence_pro.sensor import EverythingPresenceProTargetResolutionSensor
 from custom_components.everything_presence_pro.sensor import EverythingPresenceProTargetSpeedSensor
-from custom_components.everything_presence_pro.sensor import EverythingPresenceProTargetXYGridSensor
+from custom_components.everything_presence_pro.sensor import EverythingPresenceProTargetXYPositionSensor
 from custom_components.everything_presence_pro.sensor import EverythingPresenceProTargetXYSensorSensor
 from custom_components.everything_presence_pro.sensor import EverythingPresenceProTemperatureSensor
 from custom_components.everything_presence_pro.sensor import EverythingPresenceProZoneTargetCountSensor
@@ -382,32 +382,36 @@ class TestTargetXYSensorSensor:
 
 
 # ---------------------------------------------------------------------------
-# Per-target XY grid sensor (calibrated coordinates)
+# Per-target XY position sensor (calibrated coordinates)
 # ---------------------------------------------------------------------------
 
 
-class TestTargetXYGridSensor:
+class TestTargetXYPositionSensor:
     def test_value_active(self, mock_coordinator):
-        sensor = EverythingPresenceProTargetXYGridSensor(mock_coordinator, 0)
+        sensor = EverythingPresenceProTargetXYPositionSensor(mock_coordinator, 0)
         assert sensor.native_value == "3000,4000"
 
     def test_value_inactive(self, mock_coordinator):
-        sensor = EverythingPresenceProTargetXYGridSensor(mock_coordinator, 1)
+        sensor = EverythingPresenceProTargetXYPositionSensor(mock_coordinator, 1)
         assert sensor.native_value is None
 
     def test_extra_attributes_active(self, mock_coordinator):
-        sensor = EverythingPresenceProTargetXYGridSensor(mock_coordinator, 0)
+        sensor = EverythingPresenceProTargetXYPositionSensor(mock_coordinator, 0)
         attrs = sensor.extra_state_attributes
         assert attrs["x_mm"] == 3000
         assert attrs["y_mm"] == 4000
 
     def test_extra_attributes_inactive(self, mock_coordinator):
-        sensor = EverythingPresenceProTargetXYGridSensor(mock_coordinator, 1)
+        sensor = EverythingPresenceProTargetXYPositionSensor(mock_coordinator, 1)
         assert sensor.extra_state_attributes is None
 
     def test_name(self, mock_coordinator):
-        sensor = EverythingPresenceProTargetXYGridSensor(mock_coordinator, 0)
-        assert sensor.name == "Target 1 XY grid"
+        sensor = EverythingPresenceProTargetXYPositionSensor(mock_coordinator, 0)
+        assert sensor.name == "Target 1 XY"
+
+    def test_unique_id(self, mock_coordinator):
+        sensor = EverythingPresenceProTargetXYPositionSensor(mock_coordinator, 0)
+        assert sensor.unique_id == "test_entry_target_1_xy"
 
 
 # ---------------------------------------------------------------------------
