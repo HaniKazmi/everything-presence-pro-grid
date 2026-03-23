@@ -24,7 +24,7 @@ HOST_SCHEMA = vol.Schema(
 )
 
 
-class EverythingPresenceProConfigFlow(ConfigFlow, domain=DOMAIN):
+class EPPGridConfigFlow(ConfigFlow, domain=DOMAIN):
     """Handle a config flow for Everything Presence Pro."""
 
     VERSION = 1

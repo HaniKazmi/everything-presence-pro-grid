@@ -26,7 +26,7 @@ from .zone_engine import Zone
 _REGISTERED: set[str] = set()
 
 
-def _get_coordinator(hass: HomeAssistant, entry_id: str) -> EverythingPresenceProCoordinator | None:
+def _get_coordinator(hass: HomeAssistant, entry_id: str) -> EPPGridCoordinator | None:
     """Look up the coordinator for a config entry."""
     entry = hass.config_entries.async_get_entry(entry_id)
     if entry is None:

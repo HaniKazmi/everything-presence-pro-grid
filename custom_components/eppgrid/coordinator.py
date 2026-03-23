@@ -43,7 +43,7 @@ SIGNAL_SENSORS_UPDATED = f"{DOMAIN}_sensors_updated"
 SIGNAL_DISPLAY_UPDATED = f"{DOMAIN}_display_updated"
 
 
-class EverythingPresenceProCoordinator:
+class EPPGridCoordinator:
     """Manage connection to an Everything Presence Pro device."""
 
     def __init__(

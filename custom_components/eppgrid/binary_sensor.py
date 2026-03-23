@@ -10,53 +10,53 @@ from homeassistant.helpers.dispatcher import async_dispatcher_connect
 from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
-from . import EverythingPresenceProConfigEntry
+from . import EPPGridConfigEntry
 from .const import DOMAIN
 from .const import MAX_TARGETS
 from .const import MAX_ZONES
 from .coordinator import SIGNAL_SENSORS_UPDATED
 from .coordinator import SIGNAL_TARGETS_UPDATED
-from .coordinator import EverythingPresenceProCoordinator
+from .coordinator import EPPGridCoordinator
 from .zone_engine import TargetStatus
 
 
 async def async_setup_entry(
     hass: HomeAssistant,
-    entry: EverythingPresenceProConfigEntry,
+    entry: EPPGridConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Set up binary sensor entities from a config entry."""
-    coordinator: EverythingPresenceProCoordinator = entry.runtime_data
+    coordinator: EPPGridCoordinator = entry.runtime_data
 
     entities: list[BinarySensorEntity] = [
-        EverythingPresenceProOccupancySensor(coordinator),
-        EverythingPresenceProMotionSensor(coordinator),
-        EverythingPresenceProStaticPresenceSensor(coordinator),
-        EverythingPresenceProTargetPresenceSensor(coordinator),
+        EPPGridOccupancySensor(coordinator),
+        EPPGridMotionSensor(coordinator),
+        EPPGridStaticPresenceSensor(coordinator),
+        EPPGridTargetPresenceSensor(coordinator),
     ]
 
     # Pre-create per-target active sensors (disabled by default)
     for idx in range(MAX_TARGETS):
-        entities.append(EverythingPresenceProTargetActiveSensor(coordinator, idx))
+        entities.append(EPPGridTargetActiveSensor(coordinator, idx))
 
     # Zone 0 = "rest of room" occupancy (disabled by default)
-    entities.append(EverythingPresenceProZoneOccupancySensor(coordinator, 0))
+    entities.append(EPPGridZoneOccupancySensor(coordinator, 0))
 
     # Pre-create all 7 zone occupancy entities (disabled by default)
     for slot in range(1, MAX_ZONES + 1):
-        entities.append(EverythingPresenceProZoneOccupancySensor(coordinator, slot))
+        entities.append(EPPGridZoneOccupancySensor(coordinator, slot))
 
     async_add_entities(entities)
 
 
-class EverythingPresenceProOccupancySensor(BinarySensorEntity):
+class EPPGridOccupancySensor(BinarySensorEntity):
     """Combined device occupancy sensor (PIR + static + tracking)."""
 
     _attr_has_entity_name = True
     _attr_device_class = BinarySensorDeviceClass.OCCUPANCY
     _attr_translation_key = "occupancy"
 
-    def __init__(self, coordinator: EverythingPresenceProCoordinator) -> None:
+    def __init__(self, coordinator: EPPGridCoordinator) -> None:
         """Initialize the occupancy sensor."""
         self._coordinator = coordinator
         self._attr_unique_id = f"{coordinator.entry.entry_id}_occupancy"
@@ -92,14 +92,14 @@ class EverythingPresenceProOccupancySensor(BinarySensorEntity):
         self.async_write_ha_state()
 
 
-class EverythingPresenceProMotionSensor(BinarySensorEntity):
+class EPPGridMotionSensor(BinarySensorEntity):
     """PIR motion sensor."""
 
     _attr_has_entity_name = True
     _attr_device_class = BinarySensorDeviceClass.MOTION
     _attr_translation_key = "motion"
 
-    def __init__(self, coordinator: EverythingPresenceProCoordinator) -> None:
+    def __init__(self, coordinator: EPPGridCoordinator) -> None:
         """Initialize the motion sensor."""
         self._coordinator = coordinator
         self._attr_unique_id = f"{coordinator.entry.entry_id}_motion"
@@ -128,14 +128,14 @@ class EverythingPresenceProMotionSensor(BinarySensorEntity):
         self.async_write_ha_state()
 
 
-class EverythingPresenceProStaticPresenceSensor(BinarySensorEntity):
+class EPPGridStaticPresenceSensor(BinarySensorEntity):
     """Static mmWave presence sensor."""
 
     _attr_has_entity_name = True
     _attr_device_class = BinarySensorDeviceClass.OCCUPANCY
     _attr_translation_key = "static_presence"
 
-    def __init__(self, coordinator: EverythingPresenceProCoordinator) -> None:
+    def __init__(self, coordinator: EPPGridCoordinator) -> None:
         """Initialize the static presence sensor."""
         self._coordinator = coordinator
         self._attr_unique_id = f"{coordinator.entry.entry_id}_static_presence"
@@ -164,7 +164,7 @@ class EverythingPresenceProStaticPresenceSensor(BinarySensorEntity):
         self.async_write_ha_state()
 
 
-class EverythingPresenceProTargetPresenceSensor(BinarySensorEntity):
+class EPPGridTargetPresenceSensor(BinarySensorEntity):
     """Whether any target is actively tracked."""
 
     _attr_has_entity_name = True
@@ -172,7 +172,7 @@ class EverythingPresenceProTargetPresenceSensor(BinarySensorEntity):
     _attr_translation_key = "target_presence"
     _attr_entity_registry_enabled_default = False
 
-    def __init__(self, coordinator: EverythingPresenceProCoordinator) -> None:
+    def __init__(self, coordinator: EPPGridCoordinator) -> None:
         """Initialize the target presence sensor."""
         self._coordinator = coordinator
         self._attr_unique_id = f"{coordinator.entry.entry_id}_target_presence"
@@ -201,14 +201,14 @@ class EverythingPresenceProTargetPresenceSensor(BinarySensorEntity):
         self.async_write_ha_state()
 
 
-class EverythingPresenceProTargetActiveSensor(BinarySensorEntity):
+class EPPGridTargetActiveSensor(BinarySensorEntity):
     """Per-target active binary sensor. Pre-created disabled."""
 
     _attr_has_entity_name = True
     _attr_device_class = BinarySensorDeviceClass.OCCUPANCY
     _attr_entity_registry_enabled_default = False
 
-    def __init__(self, coordinator: EverythingPresenceProCoordinator, index: int) -> None:
+    def __init__(self, coordinator: EPPGridCoordinator, index: int) -> None:
         """Initialize the per-target active sensor."""
         self._coordinator = coordinator
         self._index = index
@@ -247,14 +247,14 @@ class EverythingPresenceProTargetActiveSensor(BinarySensorEntity):
         self.async_write_ha_state()
 
 
-class EverythingPresenceProZoneOccupancySensor(BinarySensorEntity):
+class EPPGridZoneOccupancySensor(BinarySensorEntity):
     """Per-zone occupancy sensor. One per slot (1-7), pre-created disabled."""
 
     _attr_has_entity_name = True
     _attr_device_class = BinarySensorDeviceClass.OCCUPANCY
     _attr_entity_registry_enabled_default = False
 
-    def __init__(self, coordinator: EverythingPresenceProCoordinator, slot: int) -> None:
+    def __init__(self, coordinator: EPPGridCoordinator, slot: int) -> None:
         """Initialize the zone occupancy sensor."""
         self._coordinator = coordinator
         self._slot = slot

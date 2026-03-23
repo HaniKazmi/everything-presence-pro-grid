@@ -14,7 +14,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers import device_registry as dr
 
 from .const import DOMAIN
-from .coordinator import EverythingPresenceProCoordinator
+from .coordinator import EPPGridCoordinator
 from .websocket_api import async_register_websocket_commands
 
 _LOGGER = logging.getLogger(__name__)
@@ -30,10 +30,10 @@ def _hash_file(path: str) -> str:
         return hashlib.md5(f.read()).hexdigest()[:8]
 
 
-type EverythingPresenceProConfigEntry = ConfigEntry[EverythingPresenceProCoordinator]
+type EPPGridConfigEntry = ConfigEntry[EPPGridCoordinator]
 
 
-async def async_setup_entry(hass: HomeAssistant, entry: EverythingPresenceProConfigEntry) -> bool:
+async def async_setup_entry(hass: HomeAssistant, entry: EPPGridConfigEntry) -> bool:
     """Set up Everything Presence Pro from a config entry."""
     async_register_websocket_commands(hass)
 
@@ -49,7 +49,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: EverythingPresenceProCon
             ]
         )
         # Cache-bust: hash the JS file so browser reloads on rebuild
-        js_path = os.path.join(FRONTEND_DIR, "everything-presence-pro-panel.js")
+        js_path = os.path.join(FRONTEND_DIR, "eppgrid-panel.js")
         try:
             js_hash = await hass.async_add_executor_job(_hash_file, js_path)
         except OSError:
@@ -57,9 +57,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: EverythingPresenceProCon
         await panel_custom.async_register_panel(
             hass=hass,
             frontend_url_path=DOMAIN,
-            webcomponent_name="everything-presence-pro-panel",
-            module_url=f"/{DOMAIN}_static/everything-presence-pro-panel.js?v={js_hash}",
-            sidebar_title="EP Pro",
+            webcomponent_name="eppgrid-panel",
+            module_url=f"/{DOMAIN}_static/eppgrid-panel.js?v={js_hash}",
+            sidebar_title="Everything Presence Pro Grid",
             sidebar_icon="mdi:radar",
             require_admin=False,
             config={},
@@ -80,7 +80,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: EverythingPresenceProCon
         model="Everything Presence Pro",
     )
 
-    coordinator = EverythingPresenceProCoordinator(hass, entry)
+    coordinator = EPPGridCoordinator(hass, entry)
     coordinator.load_config_data(entry.options.get("config", {}))
     await coordinator.async_connect()
     entry.runtime_data = coordinator
@@ -88,10 +88,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: EverythingPresenceProCon
     return True
 
 
-async def async_unload_entry(hass: HomeAssistant, entry: EverythingPresenceProConfigEntry) -> bool:
+async def async_unload_entry(hass: HomeAssistant, entry: EPPGridConfigEntry) -> bool:
     """Unload a config entry."""
     unload_ok = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
     if unload_ok:
-        coordinator: EverythingPresenceProCoordinator = entry.runtime_data
+        coordinator: EPPGridCoordinator = entry.runtime_data
         await coordinator.async_disconnect()
     return unload_ok
