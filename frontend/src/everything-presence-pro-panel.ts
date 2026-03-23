@@ -4679,61 +4679,36 @@ export class EverythingPresenceProPanel extends LitElement {
         <div class="setting-group">
           <h4>${this._localize("entities.target_level")}</h4>
           <div class="setting-row">
-            <label>${this._localize("entities.xy_sensor")}</label>
-            <label class="toggle-switch"><input type="checkbox" data-report-key="target_xy_sensor" ?checked=${isOn("target_xy_sensor", false)} /><span class="toggle-slider"></span></label>
-            ${this._infoTip(this._localize("info.xy_sensor"))}
-          </div>
-          <div class="setting-row">
-            <label>${this._localize("entities.xy_grid")}</label>
-            <label class="toggle-switch"><input type="checkbox" data-report-key="target_xy_grid" ?checked=${isOn("target_xy_grid", false)} /><span class="toggle-slider"></span></label>
-            ${this._infoTip(this._localize("info.xy_grid"))}
+            <label>${this._localize("entities.xy")}</label>
+            <label class="toggle-switch"><input type="checkbox" data-report-key="target_xy" ?checked=${isOn("target_xy", false)} /><span class="toggle-slider"></span></label>
+            ${this._infoTip(this._localize("info.xy"))}
           </div>
           <div class="setting-row">
             <label>${this._localize("entities.active")}</label>
             <label class="toggle-switch"><input type="checkbox" data-report-key="target_active" ?checked=${isOn("target_active", false)} /><span class="toggle-slider"></span></label>
             ${this._infoTip(this._localize("info.active"))}
           </div>
-          <div class="setting-row">
-            <label>${this._localize("entities.distance")}</label>
-            <label class="toggle-switch"><input type="checkbox" data-report-key="target_distance" ?checked=${isOn("target_distance", false)} /><span class="toggle-slider"></span></label>
-            ${this._infoTip(this._localize("info.distance"))}
-          </div>
-          <div class="setting-row">
-            <label>${this._localize("entities.angle")}</label>
-            <label class="toggle-switch"><input type="checkbox" data-report-key="target_angle" ?checked=${isOn("target_angle", false)} /><span class="toggle-slider"></span></label>
-            ${this._infoTip(this._localize("info.angle"))}
-          </div>
-          <div class="setting-row">
-            <label>${this._localize("entities.speed")}</label>
-            <label class="toggle-switch"><input type="checkbox" data-report-key="target_speed" ?checked=${isOn("target_speed", false)} /><span class="toggle-slider"></span></label>
-            ${this._infoTip(this._localize("info.speed"))}
-          </div>
-          <div class="setting-row">
-            <label>${this._localize("entities.resolution")}</label>
-            <label class="toggle-switch"><input type="checkbox" data-report-key="target_resolution" ?checked=${isOn("target_resolution", false)} /><span class="toggle-slider"></span></label>
-            ${this._infoTip(this._localize("info.resolution"))}
-          </div>
         </div>
         <div class="setting-group">
           <h4>${this._localize("settings.environmental")}</h4>
           <div class="setting-row">
             <label>${this._localize("entities.illuminance")}</label>
-            <label class="toggle-switch"><input type="checkbox" data-report-key="env_illuminance" ?checked=${isOn("env_illuminance", true)} /><span class="toggle-slider"></span></label>
+            <label class="toggle-switch"><input type="checkbox" data-report-key="env_illuminance" ?checked=${isOn("env_illuminance", false)} /><span class="toggle-slider"></span></label>
             ${this._infoTip(this._localize("info.illuminance"))}
           </div>
           <div class="setting-row">
             <label>${this._localize("entities.humidity")}</label>
-            <label class="toggle-switch"><input type="checkbox" data-report-key="env_humidity" ?checked=${isOn("env_humidity", true)} /><span class="toggle-slider"></span></label>
+            <label class="toggle-switch"><input type="checkbox" data-report-key="env_humidity" ?checked=${isOn("env_humidity", false)} /><span class="toggle-slider"></span></label>
             ${this._infoTip(this._localize("info.humidity"))}
           </div>
           <div class="setting-row">
             <label>${this._localize("entities.temperature")}</label>
-            <label class="toggle-switch"><input type="checkbox" data-report-key="env_temperature" ?checked=${isOn("env_temperature", true)} /><span class="toggle-slider"></span></label>
+            <label class="toggle-switch"><input type="checkbox" data-report-key="env_temperature" ?checked=${isOn("env_temperature", false)} /><span class="toggle-slider"></span></label>
             ${this._infoTip(this._localize("info.temperature"))}
           </div>
           <div class="setting-row">
             <label>${this._localize("entities.co2")}</label>
-            <label class="toggle-switch"><input type="checkbox" data-report-key="env_co2" ?checked=${isOn("env_co2", true)} /><span class="toggle-slider"></span></label>
+            <label class="toggle-switch"><input type="checkbox" data-report-key="env_co2" ?checked=${isOn("env_co2", false)} /><span class="toggle-slider"></span></label>
             ${this._infoTip(this._localize("info.co2"))}
           </div>
         </div>

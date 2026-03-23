@@ -609,7 +609,7 @@ _REPORTING_ENTITIES: dict[str, list[tuple[str, str]]] = {
     # Zone level (handled separately per slot)
     # Target level (expanded per target index)
     "target_xy_sensor": [(f"_target_{i + 1}_xy_sensor", "sensor") for i in range(MAX_TARGETS)],
-    "target_xy_grid": [(f"_target_{i + 1}_xy_grid", "sensor") for i in range(MAX_TARGETS)],
+    "target_xy": [(f"_target_{i + 1}_xy", "sensor") for i in range(MAX_TARGETS)],
     "target_active": [(f"_target_{i + 1}_active", "binary_sensor") for i in range(MAX_TARGETS)],
     "target_distance": [(f"_target_{i + 1}_distance", "sensor") for i in range(MAX_TARGETS)],
     "target_angle": [(f"_target_{i + 1}_angle", "sensor") for i in range(MAX_TARGETS)],
