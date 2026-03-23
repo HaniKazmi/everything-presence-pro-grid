@@ -18,7 +18,7 @@ from .const import MAX_ZONES
 from .const import ZONE_TYPE_DEFAULTS
 from .const import ZONE_TYPE_NORMAL
 from .coordinator import SIGNAL_DISPLAY_UPDATED
-from .coordinator import EverythingPresenceProCoordinator
+from .coordinator import EPPGridCoordinator
 from .zone_engine import DisplayTarget
 from .zone_engine import TargetResult
 from .zone_engine import Zone
@@ -54,7 +54,7 @@ def async_register_websocket_commands(hass: HomeAssistant) -> None:
 
 @websocket_api.websocket_command(
     {
-        vol.Required("type"): "everything_presence_pro/list_entries",
+        vol.Required("type"): "eppgrid/list_entries",
     }
 )
 @callback
@@ -83,7 +83,7 @@ def websocket_list_entries(
 
 @websocket_api.websocket_command(
     {
-        vol.Required("type"): "everything_presence_pro/set_setup",
+        vol.Required("type"): "eppgrid/set_setup",
         vol.Required("entry_id"): str,
         vol.Required("perspective"): vol.All([vol.Coerce(float)], vol.Length(min=8, max=8)),
         vol.Required("room_width"): vol.Coerce(float),
@@ -138,7 +138,7 @@ async def websocket_set_setup(
 
 @websocket_api.websocket_command(
     {
-        vol.Required("type"): "everything_presence_pro/get_config",
+        vol.Required("type"): "eppgrid/get_config",
         vol.Required("entry_id"): str,
     }
 )
@@ -159,7 +159,7 @@ def websocket_get_config(
 
 @websocket_api.websocket_command(
     {
-        vol.Required("type"): "everything_presence_pro/set_zones",
+        vol.Required("type"): "eppgrid/set_zones",
         vol.Required("entry_id"): str,
         vol.Required("zones"): [
             {
@@ -233,7 +233,7 @@ async def websocket_set_zones(
 
 @websocket_api.websocket_command(
     {
-        vol.Required("type"): "everything_presence_pro/set_room_layout",
+        vol.Required("type"): "eppgrid/set_room_layout",
         vol.Required("entry_id"): str,
         vol.Required("grid_bytes"): [int],
         vol.Optional("zone_slots", default=[None] * MAX_ZONES): vol.All(
@@ -437,7 +437,7 @@ async def websocket_set_room_layout(
 
 @websocket_api.websocket_command(
     {
-        vol.Required("type"): "everything_presence_pro/subscribe_raw_targets",
+        vol.Required("type"): "eppgrid/subscribe_raw_targets",
         vol.Required("entry_id"): str,
     }
 )
@@ -486,7 +486,7 @@ async def websocket_subscribe_raw_targets(
 
 @websocket_api.websocket_command(
     {
-        vol.Required("type"): "everything_presence_pro/subscribe_grid_targets",
+        vol.Required("type"): "eppgrid/subscribe_grid_targets",
         vol.Required("entry_id"): str,
     }
 )
@@ -564,7 +564,7 @@ async def websocket_subscribe_grid_targets(
 
 @websocket_api.websocket_command(
     {
-        vol.Required("type"): "everything_presence_pro/rename_zone_entities",
+        vol.Required("type"): "eppgrid/rename_zone_entities",
         vol.Required("entry_id"): str,
         vol.Required("renames"): [
             {
@@ -631,7 +631,7 @@ _ZONE_REPORTING: dict[str, list[tuple[str, str]]] = {
 
 @websocket_api.websocket_command(
     {
-        vol.Required("type"): "everything_presence_pro/set_reporting",
+        vol.Required("type"): "eppgrid/set_reporting",
         vol.Required("entry_id"): str,
         vol.Required("reporting"): dict,
         vol.Optional("offsets"): {
