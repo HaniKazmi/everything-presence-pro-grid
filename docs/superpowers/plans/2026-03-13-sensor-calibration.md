@@ -16,11 +16,11 @@
 
 | File | Action | Responsibility |
 |------|--------|---------------|
-| `custom_components/everything_presence_pro/calibration.py` | Rewrite | `ld2450_correct()` pure function + `SensorTransform` class |
+| `custom_components/eppgrid/calibration.py` | Rewrite | `ld2450_correct()` pure function + `SensorTransform` class |
 | `tests/test_calibration.py` | Rewrite | Tests for distortion correction, transform pipeline, recalibration |
-| `custom_components/everything_presence_pro/coordinator.py` | Modify | Replace `CalibrationTransform` usage with `SensorTransform` |
-| `custom_components/everything_presence_pro/websocket_api.py` | Modify | Replace `set_calibration` with `recalibrate`, update `set_setup` |
-| `frontend/src/everything-presence-pro-panel.ts` | Modify | Replace `_sensorToRoom()` with pipeline, add recalibrate UI |
+| `custom_components/eppgrid/coordinator.py` | Modify | Replace `CalibrationTransform` usage with `SensorTransform` |
+| `custom_components/eppgrid/websocket_api.py` | Modify | Replace `set_calibration` with `recalibrate`, update `set_setup` |
+| `frontend/src/eppgrid-panel.ts` | Modify | Replace `_sensorToRoom()` with pipeline, add recalibrate UI |
 
 ---
 
@@ -166,7 +166,7 @@ Replace the entire contents of `tests/test_calibration.py` with:
 
 import math
 
-from custom_components.everything_presence_pro.calibration import (
+from custom_components.eppgrid.calibration import (
     ld2450_correct,
     SensorTransform,
 )
@@ -315,7 +315,7 @@ git commit -m "test: add failing tests for sensor calibration pipeline"
 ### Task 3: Implement `ld2450_correct()` and `SensorTransform`
 
 **Files:**
-- Rewrite: `custom_components/everything_presence_pro/calibration.py`
+- Rewrite: `custom_components/eppgrid/calibration.py`
 
 - [ ] **Step 1: Implement calibration.py**
 
@@ -468,7 +468,7 @@ Expected: ALL tests PASS. If any test fails, adjust the implementation. The `tes
 - [ ] **Step 4: Commit**
 
 ```bash
-git add custom_components/everything_presence_pro/calibration.py tests/test_calibration.py
+git add custom_components/eppgrid/calibration.py tests/test_calibration.py
 git commit -m "feat: implement LD2450 distortion correction and SensorTransform pipeline"
 ```
 
@@ -477,7 +477,7 @@ git commit -m "feat: implement LD2450 distortion correction and SensorTransform 
 ### Task 4: Update coordinator to use SensorTransform
 
 **Files:**
-- Modify: `custom_components/everything_presence_pro/coordinator.py`
+- Modify: `custom_components/eppgrid/coordinator.py`
 
 - [ ] **Step 1: Update the import**
 
@@ -587,7 +587,7 @@ No other files reference these names.
 - [ ] **Step 9: Commit**
 
 ```bash
-git add custom_components/everything_presence_pro/coordinator.py
+git add custom_components/eppgrid/coordinator.py
 git commit -m "refactor: replace CalibrationTransform with SensorTransform in coordinator"
 ```
 
@@ -596,7 +596,7 @@ git commit -m "refactor: replace CalibrationTransform with SensorTransform in co
 ### Task 5: Update websocket API
 
 **Files:**
-- Modify: `custom_components/everything_presence_pro/websocket_api.py`
+- Modify: `custom_components/eppgrid/websocket_api.py`
 
 - [ ] **Step 1: Update imports**
 
@@ -618,7 +618,7 @@ Replace the entire `websocket_set_calibration` function (lines 196-241) with:
 ```python
 @websocket_api.websocket_command(
     {
-        vol.Required("type"): "everything_presence_pro/recalibrate",
+        vol.Required("type"): "eppgrid/recalibrate",
         vol.Required("entry_id"): str,
         vol.Required("sensor_x"): vol.Coerce(float),
         vol.Required("sensor_y"): vol.Coerce(float),
@@ -723,7 +723,7 @@ Expected: All tests pass.
 - [ ] **Step 6: Commit**
 
 ```bash
-git add custom_components/everything_presence_pro/websocket_api.py
+git add custom_components/eppgrid/websocket_api.py
 git commit -m "feat: replace set_calibration WS command with recalibrate"
 ```
 
@@ -734,7 +734,7 @@ git commit -m "feat: replace set_calibration WS command with recalibrate"
 ### Task 6: Replace `_sensorToRoom()` with transform pipeline in frontend
 
 **Files:**
-- Modify: `frontend/src/everything-presence-pro-panel.ts`
+- Modify: `frontend/src/eppgrid-panel.ts`
 
 - [ ] **Step 1: Replace `SIN45` constant and add distortion correction**
 
@@ -998,7 +998,7 @@ In the `_wizardFinish` method (line ~498), add the `calibration` parameter to th
 
 ```typescript
       await this.hass.callWS({
-        type: "everything_presence_pro/set_setup",
+        type: "eppgrid/set_setup",
         entry_id: this._selectedEntryId,
         room_name: this._wizardRoomName.trim(),
         placement: this._wizardPlacement,
@@ -1039,7 +1039,7 @@ Expected: Build succeeds with no TypeScript errors.
 - [ ] **Step 12: Commit**
 
 ```bash
-git add frontend/src/everything-presence-pro-panel.ts
+git add frontend/src/eppgrid-panel.ts
 git commit -m "feat: replace _sensorToRoom with three-stage calibration pipeline in frontend"
 ```
 
@@ -1048,7 +1048,7 @@ git commit -m "feat: replace _sensorToRoom with three-stage calibration pipeline
 ### Task 7: Add recalibration UI to frontend panel
 
 **Files:**
-- Modify: `frontend/src/everything-presence-pro-panel.ts`
+- Modify: `frontend/src/eppgrid-panel.ts`
 
 - [ ] **Step 1: Add recalibrate button to the panel toolbar**
 
@@ -1128,7 +1128,7 @@ Note: This uses `this._mirrored` (the runtime mirror property, line 93), not `_w
     // Send recalibrate command and update local state
     try {
       await this.hass.callWS({
-        type: "everything_presence_pro/recalibrate",
+        type: "eppgrid/recalibrate",
         entry_id: this._selectedEntryId,
         sensor_x: tx,
         sensor_y: active.y,
@@ -1161,14 +1161,14 @@ Expected: Build succeeds with no TypeScript errors.
 
 Search the built output for the recalibrate overlay and WS message type to confirm they're included:
 
-Run: `grep -c "recalibrate-overlay" /workspaces/ha-dev/everythingpro/.worktrees/layout/frontend/src/everything-presence-pro-panel.ts && grep -c "everything_presence_pro/recalibrate" /workspaces/ha-dev/everythingpro/.worktrees/layout/frontend/src/everything-presence-pro-panel.ts`
+Run: `grep -c "recalibrate-overlay" /workspaces/ha-dev/everythingpro/.worktrees/layout/frontend/src/eppgrid-panel.ts && grep -c "eppgrid/recalibrate" /workspaces/ha-dev/everythingpro/.worktrees/layout/frontend/src/eppgrid-panel.ts`
 
 Expected: Both counts are >= 1, confirming the overlay and WS command are present.
 
 - [ ] **Step 8: Commit**
 
 ```bash
-git add frontend/src/everything-presence-pro-panel.ts
+git add frontend/src/eppgrid-panel.ts
 git commit -m "feat: add one-click recalibration UI to panel"
 ```
 

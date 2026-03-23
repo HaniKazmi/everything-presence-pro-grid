@@ -7,14 +7,14 @@ select = ["E", "F", "W", "I", "UP", "B", "SIM", "RUF"]
 
 [tool.ruff.lint.isort]
 force-single-line = true
-known-first-party = ["custom_components.everything_presence_pro"]
+known-first-party = ["custom_components.eppgrid"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
 
 [tool.coverage.run]
-source = ["custom_components/everything_presence_pro"]
+source = ["custom_components/eppgrid"]
 
 [tool.coverage.report]
 show_missing = true

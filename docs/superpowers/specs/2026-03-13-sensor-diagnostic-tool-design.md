@@ -43,7 +43,7 @@ HA's WebSocket API requires a specific handshake:
 
 **Subscribe to targets:**
 ```json
-{"id": 1, "type": "everything_presence_pro/subscribe_targets", "entry_id": "<entry_id>"}
+{"id": 1, "type": "eppgrid/subscribe_targets", "entry_id": "<entry_id>"}
 ```
 Response: initial `{"id": 1, "type": "result", "success": true}`, then ongoing events:
 ```json
@@ -53,7 +53,7 @@ The `targets` array always contains 3 entries (one per LD2450 tracking slot). In
 
 **Get config:**
 ```json
-{"id": 2, "type": "everything_presence_pro/get_config", "entry_id": "<entry_id>"}
+{"id": 2, "type": "eppgrid/get_config", "entry_id": "<entry_id>"}
 ```
 Response includes (among other fields):
 - `placement` — `"wall"`, `"left_corner"`, or `"right_corner"`

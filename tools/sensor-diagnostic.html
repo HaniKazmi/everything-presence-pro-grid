@@ -605,7 +605,7 @@ function connect() {
         return;
       }
       // Filter for our domain
-      const entries = (msg.result || []).filter(e => e.domain === 'everything_presence_pro');
+      const entries = (msg.result || []).filter(e => e.domain === 'eppgrid');
       const select = document.getElementById('entry-id');
       select.innerHTML = '';
       if (entries.length === 0) {
@@ -681,11 +681,11 @@ function subscribeToEntry(entryId) {
 
   const cfgId = nextId();
   ws.send(JSON.stringify({
-    id: cfgId, type: 'everything_presence_pro/get_config', entry_id: entryId
+    id: cfgId, type: 'eppgrid/get_config', entry_id: entryId
   }));
   const subId = nextId();
   ws.send(JSON.stringify({
-    id: subId, type: 'everything_presence_pro/subscribe_targets', entry_id: entryId
+    id: subId, type: 'eppgrid/subscribe_targets', entry_id: entryId
   }));
 }
 

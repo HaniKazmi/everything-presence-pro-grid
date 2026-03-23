@@ -25,7 +25,7 @@
 | `tests/test_zone_engine.py` | Create | Tests for all zone engine changes |
 | `tests/test_coordinator.py` | Create | Tests for tumbling window and config serialization |
 
-All paths relative to: `custom_components/everything_presence_pro/`
+All paths relative to: `custom_components/eppgrid/`
 
 ---
 
@@ -42,7 +42,7 @@ Create `tests/test_zone_engine.py`:
 ```python
 """Tests for zone engine constants and helpers."""
 
-from custom_components.everything_presence_pro.const import (
+from custom_components.eppgrid.const import (
     CELL_ROOM_BIT,
     CELL_ZONE_MASK,
     CELL_ZONE_SHIFT,
@@ -185,8 +185,8 @@ git commit -m "feat: new cell encoding and zone type constants"
 Append to `tests/test_zone_engine.py`:
 
 ```python
-from custom_components.everything_presence_pro.zone_engine import Grid, Zone
-from custom_components.everything_presence_pro.const import (
+from custom_components.eppgrid.zone_engine import Grid, Zone
+from custom_components.eppgrid.const import (
     CELL_ROOM_BIT,
     CELL_ZONE_SHIFT,
     ZONE_TYPES,
@@ -312,11 +312,11 @@ Append to `tests/test_zone_engine.py`:
 import time
 from unittest.mock import patch
 
-from custom_components.everything_presence_pro.zone_engine import (
+from custom_components.eppgrid.zone_engine import (
     OccupancyState,
     ZoneStateMachine,
 )
-from custom_components.everything_presence_pro.const import sensitivity_to_threshold
+from custom_components.eppgrid.const import sensitivity_to_threshold
 
 
 def test_clear_to_occupied():
@@ -479,11 +479,11 @@ git commit -m "feat: three-state occupancy state machine (CLEAR/OCCUPIED/PENDING
 Append to `tests/test_zone_engine.py`:
 
 ```python
-from custom_components.everything_presence_pro.zone_engine import (
+from custom_components.eppgrid.zone_engine import (
     ZoneEngine,
     ProcessingResult,
 )
-from custom_components.everything_presence_pro.const import CELL_ROOM_BIT, CELL_ZONE_SHIFT
+from custom_components.eppgrid.const import CELL_ROOM_BIT, CELL_ZONE_SHIFT
 
 
 def _make_grid_with_zones() -> Grid:
@@ -709,7 +709,7 @@ Create `tests/test_coordinator.py`:
 ```python
 """Tests for coordinator config serialization with zone types."""
 
-from custom_components.everything_presence_pro.zone_engine import Zone
+from custom_components.eppgrid.zone_engine import Zone
 
 
 def test_zone_serialization_round_trip():
@@ -1161,7 +1161,7 @@ git commit -m "feat: expose zone state (clear/occupied/pending) in results and w
 ## Task 9: Frontend — zone type dropdown replacing sensitivity
 
 **Files:**
-- Modify: `frontend/everything-presence-pro-panel.js`
+- Modify: `frontend/eppgrid-panel.js`
 
 This task updates the frontend to send zone type instead of sensitivity int, and to show type-specific controls.
 
@@ -1219,7 +1219,7 @@ Remove the entrance/exit overlay tool (cyan, index -1) and interference source o
 
 - [ ] **Step 5: Build frontend**
 
-Run: `cd /workspaces/ha-dev/everythingpro/.worktrees/layout/custom_components/everything_presence_pro/frontend && npm run build`
+Run: `cd /workspaces/ha-dev/everythingpro/.worktrees/layout/custom_components/eppgrid/frontend && npm run build`
 Expected: Build succeeds.
 
 - [ ] **Step 6: Commit**

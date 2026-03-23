@@ -91,11 +91,11 @@ Shown when Apply detects zone name changes where current entity_ids don't reflec
 
 ## Files to modify
 
-- `frontend/src/everything-presence-pro-panel.ts` — zone model, add/remove logic, sidebar, apply dialog
-- `custom_components/everything_presence_pro/sensor.py` — pre-create 7 target count entities
-- `custom_components/everything_presence_pro/binary_sensor.py` — pre-create 7 occupancy entities
-- `custom_components/everything_presence_pro/websocket_api.py` — zone_slots field, rename command
-- `custom_components/everything_presence_pro/coordinator.py` — zone slot storage, entity registration
+- `frontend/src/eppgrid-panel.ts` — zone model, add/remove logic, sidebar, apply dialog
+- `custom_components/eppgrid/sensor.py` — pre-create 7 target count entities
+- `custom_components/eppgrid/binary_sensor.py` — pre-create 7 occupancy entities
+- `custom_components/eppgrid/websocket_api.py` — zone_slots field, rename command
+- `custom_components/eppgrid/coordinator.py` — zone slot storage, entity registration
 - `tests/test_zone_engine.py` — verify sparse zone IDs work correctly
 - `tests/test_binary_sensor.py` — test enable/disable lifecycle
 - `tests/test_sensor.py` — test enable/disable lifecycle

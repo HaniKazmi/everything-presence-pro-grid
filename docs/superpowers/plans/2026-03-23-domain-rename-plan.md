@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Rename the integration domain from `everything_presence_pro` to `eppgrid`, class prefix from `EverythingPresencePro` to `EPPGrid`, and panel from `everything-presence-pro-panel` to `eppgrid-panel`. Display name becomes "Everything Presence Pro Grid".
+**Goal:** Rename the integration domain from `eppgrid` to `eppgrid`, class prefix from `EPPGrid` to `EPPGrid`, and panel from `eppgrid-panel` to `eppgrid-panel`. Display name becomes "Everything Presence Pro Grid".
 
 **Architecture:** Mechanical rename across Python, TypeScript, tests, build config, and docs. No logic changes. Directory rename first, then batch find-and-replace by category, verify with tests after each major group.
 
@@ -15,13 +15,13 @@
 ### Task 1: Rename component directory
 
 **Files:**
-- Rename: `custom_components/everything_presence_pro/` → `custom_components/eppgrid/`
+- Rename: `custom_components/eppgrid/` → `custom_components/eppgrid/`
 
 - [ ] **Step 1: git mv the component directory**
 
 ```bash
 cd /workspaces/ha-dev/everything-presence-pro-grid
-git mv custom_components/everything_presence_pro custom_components/eppgrid
+git mv custom_components/eppgrid custom_components/eppgrid
 ```
 
 - [ ] **Step 2: Commit**
@@ -43,11 +43,11 @@ git commit -m "rename: mv component directory to eppgrid"
 
 - [ ] **Step 1: Update DOMAIN in const.py**
 
-Line 3: `DOMAIN = "everything_presence_pro"` → `DOMAIN = "eppgrid"`
+Line 3: `DOMAIN = "eppgrid"` → `DOMAIN = "eppgrid"`
 
 - [ ] **Step 2: Update manifest.json domain and name**
 
-Line 2: `"domain": "everything_presence_pro"` → `"domain": "eppgrid"`
+Line 2: `"domain": "eppgrid"` → `"domain": "eppgrid"`
 Line 3: `"name": "Everything Presence Pro"` → `"name": "Everything Presence Pro Grid"`
 
 - [ ] **Step 3: Update strings.json product name**
@@ -72,7 +72,7 @@ git commit -m "rename: update domain to eppgrid, display name to Everything Pres
 
 ### Task 3: Rename Python classes and panel references in source files
 
-Rename all `EverythingPresencePro` → `EPPGrid` and update panel filename references.
+Rename all `EPPGrid` → `EPPGrid` and update panel filename references.
 
 **Files:**
 - Modify: `custom_components/eppgrid/__init__.py`
@@ -84,45 +84,45 @@ Rename all `EverythingPresencePro` → `EPPGrid` and update panel filename refer
 
 - [ ] **Step 1: Update __init__.py**
 
-Class prefix replacements (`EverythingPresencePro` → `EPPGrid`):
-- Line 17: `from .coordinator import EverythingPresenceProCoordinator` → `from .coordinator import EPPGridCoordinator`
-- Line 33: `EverythingPresenceProConfigEntry` → `EPPGridConfigEntry`
-- Lines 36, 83, 91, 95: all `EverythingPresencePro` references → `EPPGrid`
+Class prefix replacements (`EPPGrid` → `EPPGrid`):
+- Line 17: `from .coordinator import EPPGridCoordinator` → `from .coordinator import EPPGridCoordinator`
+- Line 33: `EPPGridConfigEntry` → `EPPGridConfigEntry`
+- Lines 36, 83, 91, 95: all `EPPGrid` references → `EPPGrid`
 
 Panel and sidebar changes:
-- Line 52: `"everything-presence-pro-panel.js"` → `"eppgrid-panel.js"`
-- Line 60: `webcomponent_name="everything-presence-pro-panel"` → `webcomponent_name="eppgrid-panel"`
-- Line 61: `"everything-presence-pro-panel.js"` → `"eppgrid-panel.js"`
+- Line 52: `"eppgrid-panel.js"` → `"eppgrid-panel.js"`
+- Line 60: `webcomponent_name="eppgrid-panel"` → `webcomponent_name="eppgrid-panel"`
+- Line 61: `"eppgrid-panel.js"` → `"eppgrid-panel.js"`
 - Line 62: `sidebar_title="EP Pro"` → `sidebar_title="Everything Presence Pro Grid"`
 
 - [ ] **Step 2: Update config_flow.py**
 
-Line 27: `EverythingPresenceProConfigFlow` → `EPPGridConfigFlow`
+Line 27: `EPPGridConfigFlow` → `EPPGridConfigFlow`
 
 - [ ] **Step 3: Update coordinator.py**
 
-Line 46: `EverythingPresenceProCoordinator` → `EPPGridCoordinator`
+Line 46: `EPPGridCoordinator` → `EPPGridCoordinator`
 
 (Signal strings on lines 40-43 use `DOMAIN` constant — they update automatically.)
 
 - [ ] **Step 4: Update websocket_api.py class references**
 
-Lines 21, 29: `EverythingPresenceProCoordinator` → `EPPGridCoordinator`
+Lines 21, 29: `EPPGridCoordinator` → `EPPGridCoordinator`
 
 - [ ] **Step 5: Update binary_sensor.py**
 
-Replace all `EverythingPresencePro` with `EPPGrid` throughout the file. Classes:
+Replace all `EPPGrid` with `EPPGrid` throughout the file. Classes:
 `EPPGridConfigEntry`, `EPPGridCoordinator`, `EPPGridOccupancySensor`, `EPPGridMotionSensor`, `EPPGridStaticPresenceSensor`, `EPPGridTargetPresenceSensor`, `EPPGridTargetActiveSensor`, `EPPGridZoneOccupancySensor`
 
 - [ ] **Step 6: Update sensor.py**
 
-Replace all `EverythingPresencePro` with `EPPGrid` throughout the file. Classes:
+Replace all `EPPGrid` with `EPPGrid` throughout the file. Classes:
 `EPPGridConfigEntry`, `EPPGridCoordinator`, `EPPGridIlluminanceSensor`, `EPPGridTemperatureSensor`, `EPPGridHumiditySensor`, `EPPGridCO2Sensor`, `EPPGridRoomTargetCountSensor`, `EPPGridTargetXYSensorSensor`, `EPPGridTargetXYPositionSensor`, `EPPGridTargetDistanceSensor`, `EPPGridTargetAngleSensor`, `EPPGridTargetSpeedSensor`, `EPPGridTargetResolutionSensor`, `EPPGridZoneTargetCountSensor`
 
 - [ ] **Step 7: Verify no old class names remain**
 
 ```bash
-grep -r "EverythingPresencePro" custom_components/ --include="*.py"
+grep -r "EPPGrid" custom_components/ --include="*.py"
 ```
 
 Expected: no results.
@@ -131,7 +131,7 @@ Expected: no results.
 
 ```bash
 git add custom_components/
-git commit -m "rename: EverythingPresencePro classes to EPPGrid, panel to eppgrid-panel"
+git commit -m "rename: EPPGrid classes to EPPGrid, panel to eppgrid-panel"
 ```
 
 ---
@@ -143,7 +143,7 @@ git commit -m "rename: EverythingPresencePro classes to EPPGrid, panel to eppgri
 
 - [ ] **Step 1: Replace all WS command prefixes**
 
-Replace `"everything_presence_pro/` with `"eppgrid/` on lines: 57, 86, 141, 162, 236, 440, 489, 567, 634.
+Replace `"eppgrid/` with `"eppgrid/` on lines: 57, 86, 141, 162, 236, 440, 489, 567, 634.
 
 All 9 commands: `eppgrid/list_entries`, `eppgrid/set_setup`, `eppgrid/get_config`, `eppgrid/set_zones`, `eppgrid/set_room_layout`, `eppgrid/subscribe_raw_targets`, `eppgrid/subscribe_grid_targets`, `eppgrid/rename_zone_entities`, `eppgrid/set_reporting`
 
@@ -175,17 +175,17 @@ git commit -m "rename: update WebSocket command prefixes to eppgrid/"
 - [ ] **Step 1: Replace import paths in all test files**
 
 In every file under `tests/`, replace:
-- `custom_components.everything_presence_pro` → `custom_components.eppgrid` (import paths and mock paths)
+- `custom_components.eppgrid` → `custom_components.eppgrid` (import paths and mock paths)
 
 - [ ] **Step 2: Replace class name references in all test files**
 
 In every file under `tests/`, replace:
-- `EverythingPresencePro` → `EPPGrid`
+- `EPPGrid` → `EPPGrid`
 
 - [ ] **Step 3: Replace WS command strings in test files**
 
 In `tests/test_websocket_api.py` and `tests/test_e2e.py`, replace:
-- `"everything_presence_pro/` → `"eppgrid/`
+- `"eppgrid/` → `"eppgrid/`
 
 - [ ] **Step 4: Update tests/__init__.py docstring**
 
@@ -194,8 +194,8 @@ Replace `Everything Presence Pro` → `Everything Presence Pro Grid` if present.
 - [ ] **Step 5: Verify no old references remain**
 
 ```bash
-grep -r "everything_presence_pro" tests/ --include="*.py"
-grep -r "EverythingPresencePro" tests/ --include="*.py"
+grep -r "eppgrid" tests/ --include="*.py"
+grep -r "EPPGrid" tests/ --include="*.py"
 ```
 
 Expected: no results.
@@ -239,7 +239,7 @@ git commit -m "style: ruff format after rename"
 ### Task 7: Rename frontend panel source file and update config
 
 **Files:**
-- Rename: `frontend/src/everything-presence-pro-panel.ts` → `frontend/src/eppgrid-panel.ts`
+- Rename: `frontend/src/eppgrid-panel.ts` → `frontend/src/eppgrid-panel.ts`
 - Modify: `frontend/src/index.ts`
 - Modify: `frontend/rollup.config.js`
 - Modify: `frontend/package.json`
@@ -248,7 +248,7 @@ git commit -m "style: ruff format after rename"
 
 ```bash
 cd /workspaces/ha-dev/everything-presence-pro-grid
-git mv frontend/src/everything-presence-pro-panel.ts frontend/src/eppgrid-panel.ts
+git mv frontend/src/eppgrid-panel.ts frontend/src/eppgrid-panel.ts
 ```
 
 - [ ] **Step 2: Update index.ts export**
@@ -259,7 +259,7 @@ export { EPPGridPanel } from "./eppgrid-panel";
 
 - [ ] **Step 3: Update rollup.config.js output path**
 
-Line 9: `"../custom_components/everything_presence_pro/frontend/everything-presence-pro-panel.js"` →
+Line 9: `"../custom_components/eppgrid/frontend/eppgrid-panel.js"` →
 `"../custom_components/eppgrid/frontend/eppgrid-panel.js"`
 
 - [ ] **Step 4: Update package.json name**
@@ -282,19 +282,19 @@ git commit -m "rename: mv panel source to eppgrid-panel"
 
 - [ ] **Step 1: Replace class name**
 
-Replace all `EverythingPresenceProPanel` → `EPPGridPanel` throughout the file (class definition, static property refs like `._DEBUG_LOG_MAX`, `.FOV_*`, customElements.define, HTMLElementTagNameMap).
+Replace all `EPPGridPanel` → `EPPGridPanel` throughout the file (class definition, static property refs like `._DEBUG_LOG_MAX`, `.FOV_*`, customElements.define, HTMLElementTagNameMap).
 
 - [ ] **Step 2: Replace custom element tag**
 
-Replace `"everything-presence-pro-panel"` → `"eppgrid-panel"` (in customElements.define and HTMLElementTagNameMap)
+Replace `"eppgrid-panel"` → `"eppgrid-panel"` (in customElements.define and HTMLElementTagNameMap)
 
 - [ ] **Step 3: Replace WS command prefixes**
 
-Replace all `"everything_presence_pro/` → `"eppgrid/` throughout the file.
+Replace all `"eppgrid/` → `"eppgrid/` throughout the file.
 
 - [ ] **Step 4: Replace integration URL path**
 
-`"/config/integrations/integration/everything_presence_pro"` → `"/config/integrations/integration/eppgrid"`
+`"/config/integrations/integration/eppgrid"` → `"/config/integrations/integration/eppgrid"`
 
 - [ ] **Step 5: Commit**
 
@@ -313,23 +313,23 @@ git commit -m "rename: update panel class, element tag, WS commands to eppgrid"
 - [ ] **Step 1: Update import paths**
 
 In every `frontend/src/__tests__/*.test.ts`, replace:
-- `from "../everything-presence-pro-panel.js"` → `from "../eppgrid-panel.js"`
-- `EverythingPresenceProPanel` → `EPPGridPanel`
+- `from "../eppgrid-panel.js"` → `from "../eppgrid-panel.js"`
+- `EPPGridPanel` → `EPPGridPanel`
 
 - [ ] **Step 2: Update WS command strings**
 
-Replace `"everything_presence_pro/` → `"eppgrid/` in all test files.
+Replace `"eppgrid/` → `"eppgrid/` in all test files.
 
 - [ ] **Step 3: Update integration URL paths**
 
-Replace `"/config/integrations/integration/everything_presence_pro"` → `"/config/integrations/integration/eppgrid"`
+Replace `"/config/integrations/integration/eppgrid"` → `"/config/integrations/integration/eppgrid"`
 
 - [ ] **Step 4: Verify no old references remain**
 
 ```bash
-grep -r "everything_presence_pro" frontend/src/ --include="*.ts"
-grep -r "EverythingPresencePro" frontend/src/ --include="*.ts"
-grep -r "everything-presence-pro-panel" frontend/src/ --include="*.ts"
+grep -r "eppgrid" frontend/src/ --include="*.ts"
+grep -r "EPPGrid" frontend/src/ --include="*.ts"
+grep -r "eppgrid-panel" frontend/src/ --include="*.ts"
 ```
 
 Expected: no results.
@@ -348,7 +348,7 @@ git commit -m "rename: update frontend test imports and references to eppgrid"
 - [ ] **Step 1: Delete old JS artifact**
 
 ```bash
-rm -f custom_components/eppgrid/frontend/everything-presence-pro-panel.js
+rm -f custom_components/eppgrid/frontend/eppgrid-panel.js
 ```
 
 - [ ] **Step 2: Build new JS bundle**
@@ -394,30 +394,30 @@ git commit -m "build: rebuild frontend JS bundle as eppgrid-panel.js"
 
 - [ ] **Step 1: Update pyproject.toml**
 
-Line 10: `"custom_components.everything_presence_pro"` → `"custom_components.eppgrid"`
-Line 17: `"custom_components/everything_presence_pro"` → `"custom_components/eppgrid"`
+Line 10: `"custom_components.eppgrid"` → `"custom_components.eppgrid"`
+Line 17: `"custom_components/eppgrid"` → `"custom_components/eppgrid"`
 
 - [ ] **Step 2: Update CI workflow**
 
-Line 45: `--cov=custom_components/everything_presence_pro` → `--cov=custom_components/eppgrid`
+Line 45: `--cov=custom_components/eppgrid` → `--cov=custom_components/eppgrid`
 
 - [ ] **Step 3: Update README.md**
 
-Replace `custom_components/everything_presence_pro` → `custom_components/eppgrid`
+Replace `custom_components/eppgrid` → `custom_components/eppgrid`
 Update integration name references to "Everything Presence Pro Grid".
 
 - [ ] **Step 4: Update tools/sensor-diagnostic.html**
 
-Line 608: `'everything_presence_pro'` → `'eppgrid'`
-Line 684: `'everything_presence_pro/get_config'` → `'eppgrid/get_config'`
-Line 688: `'everything_presence_pro/subscribe_targets'` → `'eppgrid/subscribe_targets'`
+Line 608: `'eppgrid'` → `'eppgrid'`
+Line 684: `'eppgrid/get_config'` → `'eppgrid/get_config'`
+Line 688: `'eppgrid/subscribe_targets'` → `'eppgrid/subscribe_targets'`
 
 - [ ] **Step 5: Update docs/**
 
 In all `docs/**/*.md` files (including `docs/plans/`, `docs/superpowers/plans/`, `docs/superpowers/specs/`), replace:
-- `everything_presence_pro` → `eppgrid` (domain references)
-- `EverythingPresencePro` → `EPPGrid` (class references)
-- `everything-presence-pro-panel` → `eppgrid-panel` (panel references)
+- `eppgrid` → `eppgrid` (domain references)
+- `EPPGrid` → `EPPGrid` (class references)
+- `eppgrid-panel` → `eppgrid-panel` (panel references)
 
 - [ ] **Step 6: Commit**
 
@@ -435,11 +435,11 @@ git commit -m "rename: update build config, tools, and docs to eppgrid"
 ```bash
 cd /workspaces/ha-dev/everything-presence-pro-grid
 # Old domain
-grep -rP "everything_presence_pro" . --include="*.py" --include="*.ts" --include="*.json" --include="*.html" --include="*.toml" --include="*.yml" | grep -v node_modules | grep -v ".git/"
+grep -rP "eppgrid" . --include="*.py" --include="*.ts" --include="*.json" --include="*.html" --include="*.toml" --include="*.yml" | grep -v node_modules | grep -v ".git/"
 # Old class prefix
-grep -r "EverythingPresencePro" . --include="*.py" --include="*.ts" | grep -v node_modules | grep -v ".git/"
+grep -r "EPPGrid" . --include="*.py" --include="*.ts" | grep -v node_modules | grep -v ".git/"
 # Old panel name
-grep -r "everything-presence-pro-panel" . --include="*.py" --include="*.ts" --include="*.js" --include="*.json" --include="*.html" | grep -v node_modules | grep -v ".git/"
+grep -r "eppgrid-panel" . --include="*.py" --include="*.ts" --include="*.js" --include="*.json" --include="*.html" | grep -v node_modules | grep -v ".git/"
 ```
 
 Expected: no results. Fix any hits found.
@@ -479,7 +479,7 @@ Only if needed.
 - [ ] **Step 1: Remove old symlink**
 
 ```bash
-rm /workspaces/ha-dev/homeassistant-core/config/custom_components/everything_presence_pro
+rm /workspaces/ha-dev/homeassistant-core/config/custom_components/eppgrid
 ```
 
 - [ ] **Step 2: Create new symlink**

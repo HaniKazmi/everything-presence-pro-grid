@@ -16,10 +16,10 @@
 
 | Action | File | Responsibility |
 |--------|------|---------------|
-| Modify | `custom_components/everything_presence_pro/zone_engine.py` | Add `DisplayTarget`, `DisplaySnapshot`, `DisplayBuffer` classes |
-| Modify | `custom_components/everything_presence_pro/coordinator.py` | Add display buffer, coalescing, 5 Hz throttle, subscriber count |
-| Modify | `custom_components/everything_presence_pro/websocket_api.py` | Add `subscribe_display` command |
-| Modify | `frontend/src/everything-presence-pro-panel.ts` | Dual subscription, merge display + targets streams |
+| Modify | `custom_components/eppgrid/zone_engine.py` | Add `DisplayTarget`, `DisplaySnapshot`, `DisplayBuffer` classes |
+| Modify | `custom_components/eppgrid/coordinator.py` | Add display buffer, coalescing, 5 Hz throttle, subscriber count |
+| Modify | `custom_components/eppgrid/websocket_api.py` | Add `subscribe_display` command |
+| Modify | `frontend/src/eppgrid-panel.ts` | Dual subscription, merge display + targets streams |
 | Modify | `tests/test_zone_engine.py` | Tests for `DisplayBuffer` |
 | Modify | `tests/test_coordinator.py` | Tests for display coalescing and throttle |
 | Modify | `tests/test_websocket_api.py` | Tests for `subscribe_display` |
@@ -30,7 +30,7 @@
 ## Task 1: DisplayBuffer — dataclasses and class
 
 **Files:**
-- Modify: `custom_components/everything_presence_pro/zone_engine.py` (add after `TumblingWindow` class, ~line 312)
+- Modify: `custom_components/eppgrid/zone_engine.py` (add after `TumblingWindow` class, ~line 312)
 - Test: `tests/test_zone_engine.py`
 
 ### Step 1.1: Write failing test — DisplayBuffer returns snapshot on first feed
@@ -38,9 +38,9 @@
 - [ ] Add test to `tests/test_zone_engine.py`:
 
 ```python
-from custom_components.everything_presence_pro.zone_engine import DisplayBuffer
-from custom_components.everything_presence_pro.zone_engine import DisplaySnapshot
-from custom_components.everything_presence_pro.zone_engine import DisplayTarget
+from custom_components.eppgrid.zone_engine import DisplayBuffer
+from custom_components.eppgrid.zone_engine import DisplaySnapshot
+from custom_components.eppgrid.zone_engine import DisplayTarget
 
 
 class TestDisplayBuffer:
@@ -289,7 +289,7 @@ Expected: All PASS
 - [ ] Commit:
 
 ```bash
-git add custom_components/everything_presence_pro/zone_engine.py tests/test_zone_engine.py
+git add custom_components/eppgrid/zone_engine.py tests/test_zone_engine.py
 git commit -m "feat: add DisplayBuffer rolling median for display updates"
 ```
 
@@ -298,7 +298,7 @@ git commit -m "feat: add DisplayBuffer rolling median for display updates"
 ## Task 2: Coordinator — display buffer, coalescing, and 5 Hz throttle
 
 **Files:**
-- Modify: `custom_components/everything_presence_pro/coordinator.py`
+- Modify: `custom_components/eppgrid/coordinator.py`
 - Test: `tests/test_coordinator.py`
 
 ### Step 2.1: Write failing test — coordinator has display buffer
@@ -306,7 +306,7 @@ git commit -m "feat: add DisplayBuffer rolling median for display updates"
 - [ ] Add test to `tests/test_coordinator.py`:
 
 ```python
-from custom_components.everything_presence_pro.zone_engine import DisplayBuffer
+from custom_components.eppgrid.zone_engine import DisplayBuffer
 
 
 class TestDisplayBuffer:
@@ -519,7 +519,7 @@ Expected: All PASS
 - [ ] Commit:
 
 ```bash
-git add custom_components/everything_presence_pro/coordinator.py tests/test_coordinator.py
+git add custom_components/eppgrid/coordinator.py tests/test_coordinator.py
 git commit -m "feat: coordinator display buffer with coalescing and 5Hz throttle"
 ```
 
@@ -528,7 +528,7 @@ git commit -m "feat: coordinator display buffer with coalescing and 5Hz throttle
 ## Task 3: Websocket — subscribe_display command
 
 **Files:**
-- Modify: `custom_components/everything_presence_pro/websocket_api.py`
+- Modify: `custom_components/eppgrid/websocket_api.py`
 - Test: `tests/test_websocket_api.py`
 
 ### Step 3.1: Write failing test — subscribe_display returns initial state
@@ -543,7 +543,7 @@ async def test_subscribe_display(hass: HomeAssistant, hass_ws_client, setup_inte
 
     await ws_client.send_json({
         "id": 1,
-        "type": "everything_presence_pro/subscribe_display",
+        "type": "eppgrid/subscribe_display",
         "entry_id": entry.entry_id,
     })
 
@@ -607,7 +607,7 @@ Note: `TargetResult` is already imported at line 23.
 ```python
 @websocket_api.websocket_command(
     {
-        vol.Required("type"): "everything_presence_pro/subscribe_display",
+        vol.Required("type"): "eppgrid/subscribe_display",
         vol.Required("entry_id"): str,
     }
 )
@@ -722,7 +722,7 @@ async def test_subscribe_display_tracks_subscriber_count(
 
     await ws_client.send_json({
         "id": 1,
-        "type": "everything_presence_pro/subscribe_display",
+        "type": "eppgrid/subscribe_display",
         "entry_id": entry.entry_id,
     })
     await ws_client.receive_json()  # result
@@ -758,7 +758,7 @@ Expected: All PASS (existing tests unaffected)
 - [ ] Commit:
 
 ```bash
-git add custom_components/everything_presence_pro/websocket_api.py tests/test_websocket_api.py
+git add custom_components/eppgrid/websocket_api.py tests/test_websocket_api.py
 git commit -m "feat: add subscribe_display websocket command for 5Hz position updates"
 ```
 
@@ -767,7 +767,7 @@ git commit -m "feat: add subscribe_display websocket command for 5Hz position up
 ## Task 4: Frontend — dual subscription
 
 **Files:**
-- Modify: `frontend/src/everything-presence-pro-panel.ts`
+- Modify: `frontend/src/eppgrid-panel.ts`
 - Test: `frontend/src/__tests__/panel-targets.test.ts`
 
 ### Step 4.1: Write failing test — panel subscribes to display
@@ -776,7 +776,7 @@ git commit -m "feat: add subscribe_display websocket command for 5Hz position up
 
 ```typescript
 describe("_subscribeDisplay", () => {
-    let el: EverythingPresenceProPanel;
+    let el: EPPGridPanel;
 
     beforeEach(() => {
         el = createPanel();
@@ -797,7 +797,7 @@ describe("_subscribeDisplay", () => {
         expect(el.hass.connection.subscribeMessage).toHaveBeenCalledWith(
             expect.any(Function),
             {
-                type: "everything_presence_pro/subscribe_display",
+                type: "eppgrid/subscribe_display",
                 entry_id: "e1",
             },
         );
@@ -857,7 +857,7 @@ Expected: FAIL — `_subscribeDisplay is not a function`
 					});
 				},
 				{
-					type: "everything_presence_pro/subscribe_display",
+					type: "eppgrid/subscribe_display",
 					entry_id: entryId,
 				},
 			)
@@ -980,7 +980,7 @@ Expected: All PASS
 - [ ] Commit:
 
 ```bash
-git add frontend/src/everything-presence-pro-panel.ts frontend/src/__tests__/panel-targets.test.ts
+git add frontend/src/eppgrid-panel.ts frontend/src/__tests__/panel-targets.test.ts
 git commit -m "feat: frontend dual subscription for 5Hz display updates"
 ```
 

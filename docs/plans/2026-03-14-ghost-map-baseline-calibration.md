@@ -60,11 +60,11 @@ Specifically, in `process_targets()`:
 
 #### 3. `websocket_api.py` — new commands
 
-- `everything_presence_pro/start_calibration` — begins manual calibration (params: `entry_id`, optional `duration` defaulting to 60s)
-- `everything_presence_pro/stop_calibration` — ends calibration early
-- `everything_presence_pro/set_ghost_map_config` — enable/disable manual and continuous learning independently (params: `entry_id`, `manual_enabled`, `continuous_enabled`)
-- `everything_presence_pro/clear_ghost_map` — reset all ghost scores to zero
-- `everything_presence_pro/get_ghost_map` — return current ghost scores array (for frontend visualization)
+- `eppgrid/start_calibration` — begins manual calibration (params: `entry_id`, optional `duration` defaulting to 60s)
+- `eppgrid/stop_calibration` — ends calibration early
+- `eppgrid/set_ghost_map_config` — enable/disable manual and continuous learning independently (params: `entry_id`, `manual_enabled`, `continuous_enabled`)
+- `eppgrid/clear_ghost_map` — reset all ghost scores to zero
+- `eppgrid/get_ghost_map` — return current ghost scores array (for frontend visualization)
 
 #### 4. `const.py` — new constants
 
@@ -109,7 +109,7 @@ Loaded in `coordinator.load_config_data()`, saved after calibration completes an
 | `coordinator.py` | Subscribe to speed data, feed ghost map in `_do_rebuild()`, manage calibration lifecycle |
 | `websocket_api.py` | 4 new WS commands for calibration control and ghost map access |
 | `const.py` | Ghost map constants (thresholds, rates, defaults) |
-| `frontend/src/everything-presence-pro-panel.ts` | Calibration UI section, ghost heatmap overlay |
+| `frontend/src/eppgrid-panel.ts` | Calibration UI section, ghost heatmap overlay |
 | `tests/test_ghost_map.py` (new) | Unit tests for `GhostMap` |
 | `tests/test_zone_engine.py` | Tests for ghost-boosted thresholds |
 

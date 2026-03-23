@@ -54,7 +54,7 @@ Lit-based frontend panel for calibration, zone editing, and live visualization.
 
 ```
 everything-presence-pro-grid/
-├── custom_components/everything_presence_pro/
+├── custom_components/eppgrid/
 │   ├── __init__.py            # Entry point: setup, panel registration
 │   ├── manifest.json          # Integration metadata
 │   ├── const.py               # Constants, grid geometry, zone defaults
@@ -66,10 +66,10 @@ everything-presence-pro-grid/
 │   ├── sensor.py              # Environment, target position/speed, zone counts
 │   ├── websocket_api.py       # Frontend ↔ backend commands and subscriptions
 │   └── frontend/
-│       └── everything-presence-pro-panel.js   # Built JS bundle
+│       └── eppgrid-panel.js   # Built JS bundle
 ├── frontend/
 │   ├── src/
-│   │   ├── everything-presence-pro-panel.ts   # Main Lit element
+│   │   ├── eppgrid-panel.ts   # Main Lit element
 │   │   ├── index.ts                           # Export entry point
 │   │   └── lib/
 │   │       ├── perspective.ts     # Homography math
@@ -262,13 +262,13 @@ entry.options.config:
 ### Build System
 
 Rollup bundles `src/index.ts` → minified ES module at
-`custom_components/.../frontend/everything-presence-pro-panel.js`.
+`custom_components/.../frontend/eppgrid-panel.js`.
 TypeScript with strict mode and experimental decorators for Lit.
 Biome for linting/formatting.
 
-### Main Panel (`everything-presence-pro-panel.ts`)
+### Main Panel (`eppgrid-panel.ts`)
 
-A Lit `LitElement` registered as `<everything-presence-pro-panel>`. It has
+A Lit `LitElement` registered as `<eppgrid-panel>`. It has
 three views: live overview, editor, and settings.
 
 **Initialization:** On connect, loads entries via `list_entries`, loads

@@ -136,7 +136,7 @@ New signal:
 
 ### Component: Websocket — new `subscribe_display` command
 
-**Command:** `everything_presence_pro/subscribe_display`
+**Command:** `eppgrid/subscribe_display`
 
 Lightweight, display-only subscription. Sends only target positions at 5 Hz:
 

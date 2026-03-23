@@ -171,11 +171,11 @@ Both are the same TypeScript + Lit web component, registered as both a panel and
 
 | Command | Purpose |
 |---|---|
-| `everything_presence_pro/get_config` | Get zones, calibration, room layout, furniture |
-| `everything_presence_pro/set_zones` | Save zone definitions |
-| `everything_presence_pro/set_calibration` | Save calibration points and transform |
-| `everything_presence_pro/set_room_layout` | Save room cells and furniture |
-| `everything_presence_pro/subscribe_targets` | Stream live calibrated target positions |
+| `eppgrid/get_config` | Get zones, calibration, room layout, furniture |
+| `eppgrid/set_zones` | Save zone definitions |
+| `eppgrid/set_calibration` | Save calibration points and transform |
+| `eppgrid/set_room_layout` | Save room cells and furniture |
+| `eppgrid/subscribe_targets` | Stream live calibrated target positions |
 
 ## Project structure
 
@@ -183,7 +183,7 @@ Single repo containing both backend integration and frontend source:
 
 ```
 everythingpro/
-├── custom_components/everything_presence_pro/
+├── custom_components/eppgrid/
 │   ├── __init__.py          # Setup, aioesphomeapi connection
 │   ├── manifest.json        # HACS metadata, dependencies
 │   ├── const.py             # Constants, grid dimensions
@@ -197,7 +197,7 @@ everythingpro/
 │   ├── strings.json         # Translations
 │   ├── translations/
 │   └── frontend/            # Built JS served by the integration
-│       └── everything-presence-pro-panel.js
+│       └── eppgrid-panel.js
 ├── frontend/                # Frontend source
 │   ├── src/
 │   ├── package.json

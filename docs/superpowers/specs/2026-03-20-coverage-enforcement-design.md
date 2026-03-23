@@ -31,7 +31,7 @@ Current per-file coverage (measured 2026-03-20):
 | perspective.ts | 96% | **83%** | 100% | 100% |
 | coordinates.ts | 97% | **93%** | 100% | 96% |
 | index.ts | 100% | 100% | 100% | 100% |
-| everything-presence-pro-panel.ts | 18% | **7%** | 9% | 16% |
+| eppgrid-panel.ts | 18% | **7%** | 9% | 16% |
 
 ## 1. Python Coverage Enforcement
 
@@ -39,7 +39,7 @@ Current per-file coverage (measured 2026-03-20):
 
 ```toml
 [tool.coverage.run]
-source = ["custom_components/everything_presence_pro"]
+source = ["custom_components/eppgrid"]
 
 [tool.coverage.report]
 show_missing = true
@@ -66,11 +66,11 @@ Replace the current pytest line:
 ```yaml
 # Before
 - name: Pytest
-  run: pytest tests/ --cov=custom_components/everything_presence_pro --cov-report=xml -v
+  run: pytest tests/ --cov=custom_components/eppgrid --cov-report=xml -v
 
 # After
 - name: Pytest
-  run: pytest tests/ --cov=custom_components/everything_presence_pro --cov-report=term-missing --cov-report=json -v
+  run: pytest tests/ --cov=custom_components/eppgrid --cov-report=term-missing --cov-report=json -v
 - name: Check per-file coverage
   run: python scripts/check_coverage.py
 ```
@@ -172,7 +172,7 @@ Missing coverage (~10 lines):
 
 Branch coverage is at 83% due to untested degenerate-input guards in `getInversePerspective` (lines 84-98 — the `if (Math.abs(...) < 1e-10) return null` paths). Add tests for near-singular matrices to cover these branches.
 
-**everything-presence-pro-panel.ts (16% -> 90%)**
+**eppgrid-panel.ts (16% -> 90%)**
 
 This 5,809-line monolith requires extraction before testing is practical. Logic to extract into new lib modules:
 

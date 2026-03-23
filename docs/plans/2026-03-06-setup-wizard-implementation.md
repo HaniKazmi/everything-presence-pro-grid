@@ -4,7 +4,7 @@
 
 **Goal:** Rewrite the setup wizard so all coordinates are in room space, the grid represents the physical room regardless of sensor placement, and room layouts survive placement changes.
 
-**Architecture:** Single-file frontend rewrite of `everything-presence-pro-panel.ts`. The sensor→room transform is applied at capture time (bounds) and display time (live targets). The 20×16 grid maps to physical room coordinates. No backend changes needed.
+**Architecture:** Single-file frontend rewrite of `eppgrid-panel.ts`. The sensor→room transform is applied at capture time (bounds) and display time (live targets). The 20×16 grid maps to physical room coordinates. No backend changes needed.
 
 **Tech Stack:** TypeScript, Lit 3, Rollup
 
@@ -17,7 +17,7 @@
 The current `_sensorToRoom()` at line 346 does basic 45° rotation but doesn't account for sensor position offset. Rewrite it to produce correct room coordinates per the design doc.
 
 **Files:**
-- Modify: `frontend/src/everything-presence-pro-panel.ts:346-368`
+- Modify: `frontend/src/eppgrid-panel.ts:346-368`
 
 **Step 1: Replace `_sensorToRoom()` with the new transform**
 
@@ -110,7 +110,7 @@ Expected: builds without errors.
 
 ```bash
 cd /workspaces/everythingpro
-git add frontend/src/everything-presence-pro-panel.ts
+git add frontend/src/eppgrid-panel.ts
 git commit -m "fix: rewrite sensorToRoom transform with correct room-space math"
 ```
 
@@ -121,7 +121,7 @@ git commit -m "fix: rewrite sensorToRoom transform with correct room-space math"
 The current method at line 370 has separate branches for each placement. Replace with a single room-space mapping that works uniformly.
 
 **Files:**
-- Modify: `frontend/src/everything-presence-pro-panel.ts:370-411`
+- Modify: `frontend/src/eppgrid-panel.ts:370-411`
 
 **Step 1: Replace `_mapTargetToPercent()`**
 
@@ -175,7 +175,7 @@ cd /workspaces/everythingpro/frontend && npm run build
 
 ```bash
 cd /workspaces/everythingpro
-git add frontend/src/everything-presence-pro-panel.ts
+git add frontend/src/eppgrid-panel.ts
 git commit -m "refactor: simplify mapTargetToPercent to use room-space coords"
 ```
 
@@ -186,7 +186,7 @@ git commit -m "refactor: simplify mapTargetToPercent to use room-space coords"
 The current method at line 450 already calls `_sensorToRoom()`, but needs to use the updated signature and ensure room coords are stored correctly.
 
 **Files:**
-- Modify: `frontend/src/everything-presence-pro-panel.ts:450-498`
+- Modify: `frontend/src/eppgrid-panel.ts:450-498`
 
 **Step 1: Update `_markBoundsPoint()`**
 
@@ -257,7 +257,7 @@ cd /workspaces/everythingpro/frontend && npm run build
 
 ```bash
 cd /workspaces/everythingpro
-git add frontend/src/everything-presence-pro-panel.ts
+git add frontend/src/eppgrid-panel.ts
 git commit -m "fix: markBoundsPoint uses room coords with updated transform"
 ```
 
@@ -268,7 +268,7 @@ git commit -m "fix: markBoundsPoint uses room coords with updated transform"
 These helper methods need to work with room-space coordinates consistently.
 
 **Files:**
-- Modify: `frontend/src/everything-presence-pro-panel.ts:567-593`
+- Modify: `frontend/src/eppgrid-panel.ts:567-593`
 
 **Step 1: Simplify `_getWizardCapturedStyle()`**
 
@@ -313,7 +313,7 @@ cd /workspaces/everythingpro/frontend && npm run build
 
 ```bash
 cd /workspaces/everythingpro
-git add frontend/src/everything-presence-pro-panel.ts
+git add frontend/src/eppgrid-panel.ts
 git commit -m "refactor: simplify wizard style helpers to use room coords"
 ```
 
@@ -324,7 +324,7 @@ git commit -m "refactor: simplify wizard style helpers to use room coords"
 When the wizard reaches the preview step, auto-fill grid cells based on room bounds.
 
 **Files:**
-- Modify: `frontend/src/everything-presence-pro-panel.ts`
+- Modify: `frontend/src/eppgrid-panel.ts`
 
 **Step 1: Add `_autoFillGrid()` method**
 
@@ -384,7 +384,7 @@ cd /workspaces/everythingpro/frontend && npm run build
 
 ```bash
 cd /workspaces/everythingpro
-git add frontend/src/everything-presence-pro-panel.ts
+git add frontend/src/eppgrid-panel.ts
 git commit -m "feat: auto-fill grid cells as room when bounds are captured"
 ```
 
@@ -395,7 +395,7 @@ git commit -m "feat: auto-fill grid cells as room when bounds are captured"
 When the wizard finishes, save the new placement/bounds. If there was a previously saved room layout, reload it on top of the auto-filled grid.
 
 **Files:**
-- Modify: `frontend/src/everything-presence-pro-panel.ts:501-523`
+- Modify: `frontend/src/eppgrid-panel.ts:501-523`
 
 **Step 1: Update `_wizardFinish()`**
 
@@ -406,7 +406,7 @@ private async _wizardFinish(): Promise<void> {
   this._wizardSaving = true;
   try {
     await this.hass.callWS({
-      type: "everything_presence_pro/set_setup",
+      type: "eppgrid/set_setup",
       entry_id: this._selectedEntryId,
       room_name: this._wizardRoomName.trim(),
       placement: this._wizardPlacement,
@@ -440,7 +440,7 @@ cd /workspaces/everythingpro/frontend && npm run build
 
 ```bash
 cd /workspaces/everythingpro
-git add frontend/src/everything-presence-pro-panel.ts
+git add frontend/src/eppgrid-panel.ts
 git commit -m "feat: reload saved room layout after wizard re-run"
 ```
 
@@ -451,7 +451,7 @@ git commit -m "feat: reload saved room layout after wizard re-run"
 The sensor overlay on the main grid needs to show the sensor at the correct room-space position with the FOV at the correct angle.
 
 **Files:**
-- Modify: `frontend/src/everything-presence-pro-panel.ts:527-551` (`_getSensorPosition`, `_getFovAngles`)
+- Modify: `frontend/src/eppgrid-panel.ts:527-551` (`_getSensorPosition`, `_getFovAngles`)
 
 **Step 1: Update `_getSensorPosition()`**
 
@@ -484,7 +484,7 @@ cd /workspaces/everythingpro/frontend && npm run build
 The mini-grid sensor dot position should match the placement. Currently correct — verify.
 
 **Files:**
-- Verify: `frontend/src/everything-presence-pro-panel.ts:555-564`
+- Verify: `frontend/src/eppgrid-panel.ts:555-564`
 
 Current code:
 - Left corner: `left: 0; top: 0;` ✓
@@ -503,13 +503,13 @@ No changes needed.
 cd /workspaces/everythingpro/frontend && npm run build
 ```
 
-Expected: no errors, output at `custom_components/everything_presence_pro/frontend/everything-presence-pro-panel.js`
+Expected: no errors, output at `custom_components/eppgrid/frontend/eppgrid-panel.js`
 
 **Step 2: Deploy to HA**
 
 ```bash
-cp -r /workspaces/everythingpro/custom_components/everything_presence_pro/ \
-  /workspaces/homeassistant-core.worktrees/everythingpro/config/custom_components/everything_presence_pro/
+cp -r /workspaces/everythingpro/custom_components/eppgrid/ \
+  /workspaces/homeassistant-core.worktrees/everythingpro/config/custom_components/eppgrid/
 ```
 
 **Step 3: Manual verification checklist**

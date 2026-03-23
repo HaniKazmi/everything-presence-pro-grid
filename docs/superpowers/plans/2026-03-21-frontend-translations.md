@@ -22,7 +22,7 @@
 | Modify | `frontend/tsconfig.json` | Add `resolveJsonModule`, `esModuleInterop` |
 | Modify | `frontend/rollup.config.js` | Add `@rollup/plugin-json` |
 | Modify | `frontend/package.json` | Add `intl-messageformat`, `@rollup/plugin-json` |
-| Modify | `frontend/src/everything-presence-pro-panel.ts` | Replace all hardcoded strings with `_localize()` calls |
+| Modify | `frontend/src/eppgrid-panel.ts` | Replace all hardcoded strings with `_localize()` calls |
 | Modify | `frontend/src/__tests__/panel-coverage-gaps.test.ts` | Update string assertions |
 | Modify | `frontend/src/__tests__/panel-dom-events.test.ts` | Update string assertions |
 
@@ -63,7 +63,7 @@ import json from "@rollup/plugin-json";
 export default {
   input: "src/index.ts",
   output: {
-    file: "../custom_components/everything_presence_pro/frontend/everything-presence-pro-panel.js",
+    file: "../custom_components/eppgrid/frontend/eppgrid-panel.js",
     format: "es",
     sourcemap: false,
   },
@@ -312,7 +312,7 @@ git commit -m "feat: add localize module with English translations and tests"
 **Files:**
 - Modify: `frontend/src/translations/en.json`
 
-This task extracts ALL human-visible strings from `everything-presence-pro-panel.ts` into the translation JSON. The complete JSON below is organized by UI section.
+This task extracts ALL human-visible strings from `eppgrid-panel.ts` into the translation JSON. The complete JSON below is organized by UI section.
 
 - [ ] **Step 1: Write the complete `en.json`**
 
@@ -342,7 +342,7 @@ Sections to include:
 
 **Verification:** After writing `en.json`, grep the panel source for remaining English text in templates to catch any missed strings:
 ```bash
-grep -nE "'[A-Z][a-z]+" src/everything-presence-pro-panel.ts | grep -v '//' | grep -v 'import' | head -30
+grep -nE "'[A-Z][a-z]+" src/eppgrid-panel.ts | grep -v '//' | grep -v 'import' | head -30
 ```
 
 - [ ] **Step 2: Verify the JSON is valid**
@@ -375,13 +375,13 @@ git commit -m "feat: complete English translation strings for all panel UI text"
 ### Task 4: Wire up `_localize` in the panel component
 
 **Files:**
-- Modify: `frontend/src/everything-presence-pro-panel.ts` (lines ~1-10 imports, ~345-400 class properties, ~560 `updated()` area)
+- Modify: `frontend/src/eppgrid-panel.ts` (lines ~1-10 imports, ~345-400 class properties, ~560 `updated()` area)
 
 This task adds the localize plumbing to the panel without changing any templates yet.
 
 - [ ] **Step 1: Add import**
 
-At the top of `everything-presence-pro-panel.ts`, add after the existing imports:
+At the top of `eppgrid-panel.ts`, add after the existing imports:
 
 ```typescript
 import { setupLocalize } from "./localize.js";
@@ -389,7 +389,7 @@ import { setupLocalize } from "./localize.js";
 
 - [ ] **Step 2: Add `_localize` property and `_currentLang` tracking field**
 
-Inside the `EverythingPresenceProPanel` class, after the `@property` for `hass` (line ~346), add:
+Inside the `EPPGridPanel` class, after the `@property` for `hass` (line ~346), add:
 
 ```typescript
 private _localize: (key: string, params?: Record<string, string | number>) => string = (k) => k;
@@ -424,7 +424,7 @@ Expected: Build succeeds, all tests pass. No templates changed yet.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add frontend/src/everything-presence-pro-panel.ts
+git add frontend/src/eppgrid-panel.ts
 git commit -m "feat: wire up localize function in panel component"
 ```
 
@@ -433,7 +433,7 @@ git commit -m "feat: wire up localize function in panel component"
 ### Task 5: Replace strings in constants and simple render methods
 
 **Files:**
-- Modify: `frontend/src/everything-presence-pro-panel.ts`
+- Modify: `frontend/src/eppgrid-panel.ts`
 
 Replace hardcoded strings in top-level constants and simple render methods. These are the low-risk, high-count changes.
 
@@ -561,7 +561,7 @@ Expected: Build succeeds. Some tests may fail if they check for English string c
 - [ ] **Step 9: Commit**
 
 ```bash
-git add frontend/src/everything-presence-pro-panel.ts
+git add frontend/src/eppgrid-panel.ts
 git commit -m "feat: replace strings in constants, header, save/cancel, furniture sidebar"
 ```
 
@@ -570,7 +570,7 @@ git commit -m "feat: replace strings in constants, header, save/cancel, furnitur
 ### Task 6: Replace strings in wizard flow
 
 **Files:**
-- Modify: `frontend/src/everything-presence-pro-panel.ts`
+- Modify: `frontend/src/eppgrid-panel.ts`
 
 Replace all hardcoded strings in `_renderWizard()`, `_renderWizardGuide()`, `_renderWizardCorners()`, `_renderUncalibratedFov()`, and `_renderNeedsCalibration()`.
 
@@ -668,7 +668,7 @@ npm run build && npm test
 - [ ] **Step 6: Commit**
 
 ```bash
-git add frontend/src/everything-presence-pro-panel.ts
+git add frontend/src/eppgrid-panel.ts
 git commit -m "feat: replace strings in wizard and positioning guide"
 ```
 
@@ -677,7 +677,7 @@ git commit -m "feat: replace strings in wizard and positioning guide"
 ### Task 7: Replace strings in settings and reporting
 
 **Files:**
-- Modify: `frontend/src/everything-presence-pro-panel.ts`
+- Modify: `frontend/src/eppgrid-panel.ts`
 
 Replace all strings in `_renderSettings()`, `_renderDetectionRanges()`, `_renderSensitivities()`, and `_renderReporting()`.
 
@@ -754,7 +754,7 @@ npm run build && npm test
 - [ ] **Step 6: Commit**
 
 ```bash
-git add frontend/src/everything-presence-pro-panel.ts
+git add frontend/src/eppgrid-panel.ts
 git commit -m "feat: replace strings in settings, sensitivities, and reporting"
 ```
 
@@ -763,7 +763,7 @@ git commit -m "feat: replace strings in settings, sensitivities, and reporting"
 ### Task 8: Replace strings in live view and zone sidebar
 
 **Files:**
-- Modify: `frontend/src/everything-presence-pro-panel.ts`
+- Modify: `frontend/src/eppgrid-panel.ts`
 
 Replace all strings in `_renderLiveOverview()`, `_renderLiveSidebar()`, `_renderZoneSidebar()`, `_renderBoundaryTypeControls()`, and `_renderZoneTypeControls()`.
 
@@ -874,7 +874,7 @@ npm run build && npm test
 - [ ] **Step 6: Commit**
 
 ```bash
-git add frontend/src/everything-presence-pro-panel.ts frontend/src/translations/en.json
+git add frontend/src/eppgrid-panel.ts frontend/src/translations/en.json
 git commit -m "feat: replace strings in live view, zones, editor, and template dialogs"
 ```
 
@@ -946,16 +946,16 @@ Search broadly for remaining hardcoded English strings in templates:
 cd /workspaces/ha-dev/everything-presence-pro-grid.worktrees/ts_translations/frontend
 
 # Common button/label text still in angle brackets
-grep -nE '>[A-Z][a-z]{2,}[^<]*</' src/everything-presence-pro-panel.ts | grep -v '_localize' | grep -v '//' | grep -v 'class=' | head -30
+grep -nE '>[A-Z][a-z]{2,}[^<]*</' src/eppgrid-panel.ts | grep -v '_localize' | grep -v '//' | grep -v 'class=' | head -30
 
 # Quoted English strings in template literals (not CSS, not identifiers)
-grep -nE '"[A-Z][a-z]{3,}[^"]*"' src/everything-presence-pro-panel.ts | grep -v 'import\|icon\|class\|style\|type\|data-\|mdi:\|event\|color\|font' | head -30
+grep -nE '"[A-Z][a-z]{3,}[^"]*"' src/eppgrid-panel.ts | grep -v 'import\|icon\|class\|style\|type\|data-\|mdi:\|event\|color\|font' | head -30
 
 # Placeholder attributes with English text
-grep -nE 'placeholder="[A-Z]' src/everything-presence-pro-panel.ts | head -10
+grep -nE 'placeholder="[A-Z]' src/eppgrid-panel.ts | head -10
 
 # SVG <text> elements with hardcoded strings
-grep -nE '<text[^>]*>[A-Z]' src/everything-presence-pro-panel.ts | grep -v '_localize' | head -10
+grep -nE '<text[^>]*>[A-Z]' src/eppgrid-panel.ts | grep -v '_localize' | head -10
 ```
 
 If any remain, add them to `en.json` and replace with `_localize()` calls.

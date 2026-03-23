@@ -129,7 +129,7 @@ Stored in `entry.options["config"]`:
 
 | File | Changes |
 |------|---------|
-| `everything-presence-pro-panel.ts` | Rewrite coordinate mapping, wizard flow, auto-fill logic |
+| `eppgrid-panel.ts` | Rewrite coordinate mapping, wizard flow, auto-fill logic |
 | `coordinator.py` | No changes needed (fields already exist) |
 | `websocket_api.py` | No changes needed (schema already accepts dict for room_bounds) |
 

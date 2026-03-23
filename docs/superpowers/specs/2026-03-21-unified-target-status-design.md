@@ -159,7 +159,7 @@ simplicity and can be revisited if needed.
 - `binary_sensor.py` / `sensor.py` — update any reads of ProcessingResult fields
 
 **Frontend:**
-- `frontend/src/everything-presence-pro-panel.ts` — Target interface, subscribe handler, local zone engine, rendering guards
+- `frontend/src/eppgrid-panel.ts` — Target interface, subscribe handler, local zone engine, rendering guards
 
 **Tests:**
 - `tests/test_zone_engine.py` — assertions on pending_targets, target_signals → targets

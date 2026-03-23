@@ -17,7 +17,7 @@ Targets are invisible during room calibration because the backend's grid has no 
 
 Sensor-space positions for the FOV overlay and room calibration wizard.
 
-**Request:** `{ "type": "everything_presence_pro/subscribe_raw_targets", "entry_id": str }`
+**Request:** `{ "type": "eppgrid/subscribe_raw_targets", "entry_id": str }`
 
 **Event payload:**
 
@@ -47,7 +47,7 @@ Sensor-space positions for the FOV overlay and room calibration wizard.
 
 Calibrated room-space positions plus zone engine state for the grid view and detection zone editor.
 
-**Request:** `{ "type": "everything_presence_pro/subscribe_grid_targets", "entry_id": str }`
+**Request:** `{ "type": "eppgrid/subscribe_grid_targets", "entry_id": str }`
 
 **Event payload:**
 

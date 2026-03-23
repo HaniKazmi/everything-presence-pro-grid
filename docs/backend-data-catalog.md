@@ -225,7 +225,7 @@ Pending target display position (`_targetPrevXY`) is a frontend-only concern. It
 
 ## 5. WebSocket API
 
-All frontend-backend communication uses HA websocket commands under the `everything_presence_pro/` namespace. Defined in `websocket_api.py`.
+All frontend-backend communication uses HA websocket commands under the `eppgrid/` namespace. Defined in `websocket_api.py`.
 
 ### Subscriptions (live data)
 
@@ -233,7 +233,7 @@ All frontend-backend communication uses HA websocket commands under the `everyth
 
 Used by the room calibration wizard and the FOV overlay on the live overview screen. Pushes at up to 5 Hz via the DisplayBuffer rolling median. Only active when at least one subscriber is connected (opt-in to avoid unnecessary work).
 
-**Request:** `{ "type": "everything_presence_pro/subscribe_raw_targets", "entry_id": str }`
+**Request:** `{ "type": "eppgrid/subscribe_raw_targets", "entry_id": str }`
 
 **Event payload:**
 
@@ -250,7 +250,7 @@ No `target_count` field — the frontend derives the count by filtering for non-
 
 Used by the live overview grid view and the detection zone editor. Pushes positions at up to 5 Hz; zone state (`signal`, `status`) is cached from the zone engine and updates at ~1 Hz.
 
-**Request:** `{ "type": "everything_presence_pro/subscribe_grid_targets", "entry_id": str }`
+**Request:** `{ "type": "eppgrid/subscribe_grid_targets", "entry_id": str }`
 
 **Event payload:**
 
@@ -273,7 +273,7 @@ Used by the live overview grid view and the detection zone editor. Pushes positi
 
 Returns all configured EPP devices with setup status flags.
 
-**Request:** `{ "type": "everything_presence_pro/list_entries" }`
+**Request:** `{ "type": "eppgrid/list_entries" }`
 
 **Response:**
 
@@ -288,7 +288,7 @@ Returns all configured EPP devices with setup status flags.
 
 Returns the full config for a device (calibration, zones, grid, layout, reporting, offsets).
 
-**Request:** `{ "type": "everything_presence_pro/get_config", "entry_id": str }`
+**Request:** `{ "type": "eppgrid/get_config", "entry_id": str }`
 
 **Response:** the coordinator's `get_config_data()` dict — contains calibration, grid, zones, room_layout, reporting, and offsets.
 
@@ -385,7 +385,7 @@ Batch-renames zone entity IDs via the entity registry.
 
 | Python | JS/TS | What |
 |--------|-------|------|
-| `zone_engine.py` | `everything-presence-pro-panel.ts` (~lines 4814-5050) | State machine, gating, handoff, continuity |
+| `zone_engine.py` | `eppgrid-panel.ts` (~lines 4814-5050) | State machine, gating, handoff, continuity |
 | `const.py` | `zone-defaults.ts` | Zone type defaults, bit masks |
 | `calibration.py` | `perspective.ts` | Perspective transform |
 | `zone_engine.py` Grid class | `grid.ts` | Cell encoding, bit ops |

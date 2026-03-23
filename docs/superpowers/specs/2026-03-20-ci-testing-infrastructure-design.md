@@ -25,7 +25,7 @@ Steps per matrix entry:
 4. `pip install -r requirements_test.txt`
 5. `ruff check custom_components/ tests/`
 6. `ruff format --check custom_components/ tests/`
-7. `pytest tests/ --cov=custom_components/everything_presence_pro --cov-report=xml`
+7. `pytest tests/ --cov=custom_components/eppgrid --cov-report=xml`
 
 **Frontend job** (single runner, Node 20):
 1. Checkout repo
@@ -44,7 +44,7 @@ Brands check disabled via the `ignore` input (set to `brands`).
 
 Triggered on push and PR.
 
-Uses `home-assistant/actions/hassfest@master` pointed at `custom_components/everything_presence_pro`.
+Uses `home-assistant/actions/hassfest@master` pointed at `custom_components/eppgrid`.
 
 ## 2. Python Tooling
 
@@ -276,12 +276,12 @@ These instantiate the Lit element in happy-dom and test interactions.
 - `frontend/src/__tests__/panel-render.test.ts`
 
 ### Modified files
-- `frontend/src/everything-presence-pro-panel.ts` — import from `lib/` instead of inline definitions
+- `frontend/src/eppgrid-panel.ts` — import from `lib/` instead of inline definitions
 - `tests/conftest.py` — rewrite with pytest-homeassistant-custom-component fixtures
 - `tests/test_*.py` — rewrite all 8 test files against real HA fixtures
 - `frontend/vitest.config.ts` — update if needed for coverage
 - `hacs.json` — no changes needed (already correct)
 
 ### No changes
-- `custom_components/everything_presence_pro/manifest.json` — already HACS-compatible
+- `custom_components/eppgrid/manifest.json` — already HACS-compatible
 - `frontend/biome.json` — already configured

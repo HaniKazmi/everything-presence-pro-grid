@@ -17,8 +17,8 @@
 ### Task 1: Replace SensorTransform with perspective transform
 
 **Files:**
-- Modify: `custom_components/everything_presence_pro/calibration.py`
-- Modify: `custom_components/everything_presence_pro/const.py`
+- Modify: `custom_components/eppgrid/calibration.py`
+- Modify: `custom_components/eppgrid/const.py`
 
 - [ ] **Step 1: Rewrite calibration.py**
 
@@ -98,7 +98,7 @@ Remove old grid/placement constants, add new ones:
 ```python
 """Constants for the Everything Presence Pro integration."""
 
-DOMAIN = "everything_presence_pro"
+DOMAIN = "eppgrid"
 
 # Grid
 GRID_CELL_SIZE_MM = 300  # Fixed 300mm × 300mm cells
@@ -149,23 +149,23 @@ CO2_PATTERN = "co2"
 
 - [ ] **Step 3: Verify syntax**
 
-Run: `python -c "import ast; ast.parse(open('custom_components/everything_presence_pro/calibration.py').read()); print('OK')"`
+Run: `python -c "import ast; ast.parse(open('custom_components/eppgrid/calibration.py').read()); print('OK')"`
 
 - [ ] **Step 4: Commit**
 
 ```bash
-git add custom_components/everything_presence_pro/calibration.py custom_components/everything_presence_pro/const.py
+git add custom_components/eppgrid/calibration.py custom_components/eppgrid/const.py
 git commit -m "feat: replace polar calibration with perspective transform"
 ```
 
 ### Task 2: Add TargetSmoother to coordinator.py
 
 **Files:**
-- Modify: `custom_components/everything_presence_pro/coordinator.py`
+- Modify: `custom_components/eppgrid/coordinator.py`
 
 - [ ] **Step 1: Add TargetSmoother class**
 
-Add `time`, `statistics.median`, `SMOOTH_WINDOW_S`, and `CELL_FLAG_ROOM` to the existing imports at the top of coordinator.py. The `MAX_TARGETS` import already exists. Then add the class before `EverythingPresenceProCoordinator`:
+Add `time`, `statistics.median`, `SMOOTH_WINDOW_S`, and `CELL_FLAG_ROOM` to the existing imports at the top of coordinator.py. The `MAX_TARGETS` import already exists. Then add the class before `EPPGridCoordinator`:
 
 Also add `from .zone_engine import Grid` to the imports (alongside the existing `ProcessingResult`, `Zone`, `ZoneEngine` imports).
 
@@ -381,12 +381,12 @@ Update `load_config_data`:
 
 - [ ] **Step 6: Verify syntax**
 
-Run: `python -c "import ast; ast.parse(open('custom_components/everything_presence_pro/coordinator.py').read()); print('OK')"`
+Run: `python -c "import ast; ast.parse(open('custom_components/eppgrid/coordinator.py').read()); print('OK')"`
 
 - [ ] **Step 7: Commit**
 
 ```bash
-git add custom_components/everything_presence_pro/coordinator.py
+git add custom_components/eppgrid/coordinator.py
 git commit -m "feat: add TargetSmoother and integrate perspective transform in coordinator"
 ```
 
@@ -395,7 +395,7 @@ git commit -m "feat: add TargetSmoother and integrate perspective transform in c
 ### Task 3: Update websocket_api.py
 
 **Files:**
-- Modify: `custom_components/everything_presence_pro/websocket_api.py`
+- Modify: `custom_components/eppgrid/websocket_api.py`
 
 - [ ] **Step 1: Update set_setup command**
 
@@ -404,7 +404,7 @@ Replace the `websocket_set_setup` function and its decorator (lines 76-149):
 ```python
 @websocket_api.websocket_command(
     {
-        vol.Required("type"): "everything_presence_pro/set_setup",
+        vol.Required("type"): "eppgrid/set_setup",
         vol.Required("entry_id"): str,
         vol.Required("perspective"): vol.All(
             [vol.Coerce(float)], vol.Length(min=8, max=8)
@@ -467,7 +467,7 @@ Replace `placement` with `has_perspective`:
 ```python
 @websocket_api.websocket_command(
     {
-        vol.Required("type"): "everything_presence_pro/list_entries",
+        vol.Required("type"): "eppgrid/list_entries",
     }
 )
 @callback
@@ -500,19 +500,19 @@ def websocket_list_entries(
 
 - [ ] **Step 4: Verify syntax**
 
-Run: `python -c "import ast; ast.parse(open('custom_components/everything_presence_pro/websocket_api.py').read()); print('OK')"`
+Run: `python -c "import ast; ast.parse(open('custom_components/eppgrid/websocket_api.py').read()); print('OK')"`
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add custom_components/everything_presence_pro/websocket_api.py
+git add custom_components/eppgrid/websocket_api.py
 git commit -m "feat: update websocket API for perspective transform setup"
 ```
 
 ### Task 4: Update zone_engine.py for room-space grid
 
 **Files:**
-- Modify: `custom_components/everything_presence_pro/zone_engine.py`
+- Modify: `custom_components/eppgrid/zone_engine.py`
 
 - [ ] **Step 1: Rewrite Grid class for room-space coordinates**
 
@@ -770,12 +770,12 @@ class ZoneEngine:
 
 - [ ] **Step 2: Verify syntax**
 
-Run: `python -c "import ast; ast.parse(open('custom_components/everything_presence_pro/zone_engine.py').read()); print('OK')"`
+Run: `python -c "import ast; ast.parse(open('custom_components/eppgrid/zone_engine.py').read()); print('OK')"`
 
 - [ ] **Step 3: Commit**
 
 ```bash
-git add custom_components/everything_presence_pro/zone_engine.py
+git add custom_components/eppgrid/zone_engine.py
 git commit -m "feat: rewrite zone engine for room-space grid with byte array cells"
 ```
 
@@ -784,10 +784,10 @@ git commit -m "feat: rewrite zone engine for room-space grid with byte array cel
 After changing Zone.id from str to int and removing old constants, fix any broken references.
 
 **Files:**
-- Modify: `custom_components/everything_presence_pro/coordinator.py` (Zone import, zone id types)
-- Modify: `custom_components/everything_presence_pro/websocket_api.py` (Zone creation, set_zones schema)
-- Modify: `custom_components/everything_presence_pro/sensor.py` (zone id references)
-- Modify: `custom_components/everything_presence_pro/binary_sensor.py` (zone id references)
+- Modify: `custom_components/eppgrid/coordinator.py` (Zone import, zone id types)
+- Modify: `custom_components/eppgrid/websocket_api.py` (Zone creation, set_zones schema)
+- Modify: `custom_components/eppgrid/sensor.py` (zone id references)
+- Modify: `custom_components/eppgrid/binary_sensor.py` (zone id references)
 
 - [ ] **Step 1: Update websocket_api.py set_zones to use int zone ids**
 
@@ -866,19 +866,19 @@ In zone_engine.py, the old imports (`CELL_OUTSIDE`, `CELL_ROOM`, `GRID_COLS`, `G
 
 - [ ] **Step 4: Verify full import chain**
 
-Run: `cd custom_components/everything_presence_pro && python -c "from . import calibration, coordinator, websocket_api, zone_engine; print('All imports OK')"`
+Run: `cd custom_components/eppgrid && python -c "from . import calibration, coordinator, websocket_api, zone_engine; print('All imports OK')"`
 
 If that fails due to HA dependencies, at minimum verify each file parses:
 
 ```bash
 for f in calibration.py coordinator.py websocket_api.py zone_engine.py const.py; do
-  python -c "import ast; ast.parse(open('custom_components/everything_presence_pro/$f').read()); print('$f OK')"
+  python -c "import ast; ast.parse(open('custom_components/eppgrid/$f').read()); print('$f OK')"
 done
 ```
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add custom_components/everything_presence_pro/
+git add custom_components/eppgrid/
 git commit -m "fix: update imports and zone id types for perspective transform"
 ```

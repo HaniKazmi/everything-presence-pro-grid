@@ -196,7 +196,7 @@ One person, one corner, one click. Works for all placement types.
 - `load_config_data()` / `get_config_data()` updated for new calibration dict format
 
 ### `websocket_api.py`
-- Replace `everything_presence_pro/set_calibration` with `everything_presence_pro/recalibrate`
+- Replace `eppgrid/set_calibration` with `eppgrid/recalibrate`
   - Takes: `entry_id`, `sensor_x`, `sensor_y`, `expected_room_x`, `expected_room_y`
   - `sensor_x/y` are raw sensor coordinates; `expected_room_x/y` are room-frame coordinates
   - Calls `coordinator.sensor_transform.recalibrate()`

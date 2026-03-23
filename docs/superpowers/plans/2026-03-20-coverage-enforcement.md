@@ -27,7 +27,7 @@ Append after the existing `[tool.pytest.ini_options]` block:
 
 ```toml
 [tool.coverage.run]
-source = ["custom_components/everything_presence_pro"]
+source = ["custom_components/eppgrid"]
 
 [tool.coverage.report]
 show_missing = true
@@ -84,7 +84,7 @@ coverage.json
 
 - [ ] **Step 4: Verify the script works locally**
 
-Run: `cd /workspaces/ha-dev/everything-presence-pro-grid && pytest tests/ --cov=custom_components/everything_presence_pro --cov-report=json -v && python scripts/check_coverage.py`
+Run: `cd /workspaces/ha-dev/everything-presence-pro-grid && pytest tests/ --cov=custom_components/eppgrid --cov-report=json -v && python scripts/check_coverage.py`
 
 Expected: FAIL listing coordinator.py, websocket_api.py, sensor.py below 90%. This confirms the script works — the tests we write later will make it pass.
 
@@ -154,7 +154,7 @@ frontend/coverage/
 
 Run: `cd /workspaces/ha-dev/everything-presence-pro-grid/frontend && npm run test:coverage`
 
-Expected: FAIL on `everything-presence-pro-panel.ts` (16% lines < 90%) and possibly `perspective.ts` (83% branches < 90%). This is expected — later tasks fix these.
+Expected: FAIL on `eppgrid-panel.ts` (16% lines < 90%) and possibly `perspective.ts` (83% branches < 90%). This is expected — later tasks fix these.
 
 - [ ] **Step 6: Commit**
 
@@ -176,7 +176,7 @@ Replace the existing `Pytest` step (line 43-44) with two steps:
 
 ```yaml
       - name: Pytest
-        run: pytest tests/ --cov=custom_components/everything_presence_pro --cov-report=term-missing --cov-report=json -v
+        run: pytest tests/ --cov=custom_components/eppgrid --cov-report=term-missing --cov-report=json -v
       - name: Check per-file coverage
         run: python scripts/check_coverage.py
 ```
@@ -223,14 +223,14 @@ class TestConnectionLifecycle:
     async def test_async_connect_creates_client_and_starts_reconnect(self, mock_hass, mock_entry):
         """async_connect creates APIClient and starts ReconnectLogic."""
         with (
-            patch("custom_components.everything_presence_pro.coordinator.APIClient") as mock_api_cls,
-            patch("custom_components.everything_presence_pro.coordinator.ReconnectLogic") as mock_rl_cls,
+            patch("custom_components.eppgrid.coordinator.APIClient") as mock_api_cls,
+            patch("custom_components.eppgrid.coordinator.ReconnectLogic") as mock_rl_cls,
         ):
             mock_rl = AsyncMock()
             mock_rl_cls.return_value = mock_rl
             mock_api_cls.return_value = AsyncMock()
 
-            coord = EverythingPresenceProCoordinator(mock_hass, mock_entry)
+            coord = EPPGridCoordinator(mock_hass, mock_entry)
             await coord.async_connect()
 
             mock_api_cls.assert_called_once_with(
@@ -241,7 +241,7 @@ class TestConnectionLifecycle:
 
     async def test_on_connect_sets_connected_and_subscribes(self, mock_hass, mock_entry):
         """_on_connect sets connected=True and calls subscribe_targets."""
-        coord = EverythingPresenceProCoordinator(mock_hass, mock_entry)
+        coord = EPPGridCoordinator(mock_hass, mock_entry)
         coord._client = AsyncMock()
         coord._client.list_entities_services = AsyncMock(return_value=([], []))
         coord._client.subscribe_states = AsyncMock()
@@ -252,7 +252,7 @@ class TestConnectionLifecycle:
 
     async def test_on_disconnect_unexpected(self, mock_hass, mock_entry):
         """_on_disconnect sets connected=False for unexpected disconnect."""
-        coord = EverythingPresenceProCoordinator(mock_hass, mock_entry)
+        coord = EPPGridCoordinator(mock_hass, mock_entry)
         coord._connected = True
 
         await coord._on_disconnect(expected_disconnect=False)
@@ -261,7 +261,7 @@ class TestConnectionLifecycle:
 
     async def test_on_disconnect_expected(self, mock_hass, mock_entry):
         """_on_disconnect sets connected=False for expected disconnect."""
-        coord = EverythingPresenceProCoordinator(mock_hass, mock_entry)
+        coord = EPPGridCoordinator(mock_hass, mock_entry)
         coord._connected = True
 
         await coord._on_disconnect(expected_disconnect=True)
@@ -270,14 +270,14 @@ class TestConnectionLifecycle:
 
     async def test_on_connect_error(self, mock_hass, mock_entry):
         """_on_connect_error logs and doesn't crash."""
-        coord = EverythingPresenceProCoordinator(mock_hass, mock_entry)
+        coord = EPPGridCoordinator(mock_hass, mock_entry)
         await coord._on_connect_error(ConnectionError("test"))
         # No exception raised, connected stays False
         assert coord.connected is False
 
     async def test_async_disconnect_stops_reconnect_and_disconnects(self, mock_hass, mock_entry):
         """async_disconnect stops reconnect logic and disconnects client."""
-        coord = EverythingPresenceProCoordinator(mock_hass, mock_entry)
+        coord = EPPGridCoordinator(mock_hass, mock_entry)
         mock_rl = AsyncMock()
         mock_client = AsyncMock()
         coord._reconnect_logic = mock_rl
@@ -294,7 +294,7 @@ class TestConnectionLifecycle:
 
     async def test_async_disconnect_handles_client_error(self, mock_hass, mock_entry):
         """async_disconnect handles disconnect error gracefully."""
-        coord = EverythingPresenceProCoordinator(mock_hass, mock_entry)
+        coord = EPPGridCoordinator(mock_hass, mock_entry)
         mock_client = AsyncMock()
         mock_client.disconnect.side_effect = OSError("Connection lost")
         coord._client = mock_client
@@ -306,7 +306,7 @@ class TestConnectionLifecycle:
 
     async def test_async_disconnect_no_client(self, mock_hass, mock_entry):
         """async_disconnect is safe when client is None."""
-        coord = EverythingPresenceProCoordinator(mock_hass, mock_entry)
+        coord = EPPGridCoordinator(mock_hass, mock_entry)
         await coord.async_disconnect()
         assert coord.connected is False
 ```
@@ -343,7 +343,7 @@ These methods call `async_dispatcher_send` internally (via `_dispatch_sensor_upd
 from aioesphomeapi import BinarySensorState, SensorState
 
 
-@patch("custom_components.everything_presence_pro.coordinator.async_dispatcher_send")
+@patch("custom_components.eppgrid.coordinator.async_dispatcher_send")
 class TestStateHandling:
     """Tests for _on_state, _handle_binary_sensor, _handle_sensor.
 
@@ -477,7 +477,7 @@ These methods call `async_dispatcher_send`, which requires a real HA dispatcher 
 class TestScheduleAndExpiry:
     """Tests for _schedule_rebuild, _expiry_tick, _do_display_update."""
 
-    @patch("custom_components.everything_presence_pro.coordinator.async_dispatcher_send")
+    @patch("custom_components.eppgrid.coordinator.async_dispatcher_send")
     def test_do_display_update_dispatches(self, mock_dispatch, mock_hass, mock_entry):
         """_do_display_update clears flag and dispatches signal."""
         coord = _coordinator_with_grid(mock_hass, mock_entry)
@@ -492,7 +492,7 @@ class TestScheduleAndExpiry:
         assert coord._targets[0][2] is True  # inside room
         mock_dispatch.assert_called_once()
 
-    @patch("custom_components.everything_presence_pro.coordinator.async_dispatcher_send")
+    @patch("custom_components.eppgrid.coordinator.async_dispatcher_send")
     def test_schedule_rebuild_feeds_zone_engine(self, mock_dispatch, mock_hass, mock_entry):
         """_schedule_rebuild feeds calibrated targets to zone engine."""
         coord = _coordinator_with_grid(mock_hass, mock_entry)
@@ -523,7 +523,7 @@ class TestScheduleAndExpiry:
 
         mock_timer.cancel.assert_called_once()
 
-    @patch("custom_components.everything_presence_pro.coordinator.async_dispatcher_send")
+    @patch("custom_components.eppgrid.coordinator.async_dispatcher_send")
     def test_expiry_tick_clears_timer_and_feeds_empty(self, mock_dispatch, mock_hass, mock_entry):
         """_expiry_tick clears the timer and feeds empty targets."""
         coord = _coordinator_with_grid(mock_hass, mock_entry)
@@ -542,7 +542,7 @@ Expected: All tests PASS.
 
 - [ ] **Step 3: Check coordinator coverage**
 
-Run: `cd /workspaces/ha-dev/everything-presence-pro-grid && pytest tests/test_coordinator.py --cov=custom_components/everything_presence_pro/coordinator --cov-report=term-missing -v`
+Run: `cd /workspaces/ha-dev/everything-presence-pro-grid && pytest tests/test_coordinator.py --cov=custom_components/eppgrid/coordinator --cov-report=term-missing -v`
 
 Expected: Coverage should be >= 90%. If not, add tests for any remaining uncovered lines.
 
@@ -579,7 +579,7 @@ async def test_rename_zone_entities(hass: HomeAssistant, hass_ws_client, setup_i
     await ws_client.send_json(
         {
             "id": 1,
-            "type": "everything_presence_pro/rename_zone_entities",
+            "type": "eppgrid/rename_zone_entities",
             "entry_id": entry.entry_id,
             "renames": [
                 {
@@ -608,7 +608,7 @@ async def test_rename_zone_entities_conflict(hass: HomeAssistant, hass_ws_client
     await ws_client.send_json(
         {
             "id": 1,
-            "type": "everything_presence_pro/rename_zone_entities",
+            "type": "eppgrid/rename_zone_entities",
             "entry_id": entry.entry_id,
             "renames": [
                 {
@@ -632,7 +632,7 @@ async def test_rename_zone_entities_empty(hass: HomeAssistant, hass_ws_client, s
     await ws_client.send_json(
         {
             "id": 1,
-            "type": "everything_presence_pro/rename_zone_entities",
+            "type": "eppgrid/rename_zone_entities",
             "entry_id": entry.entry_id,
             "renames": [],
         }
@@ -675,7 +675,7 @@ async def test_set_reporting(hass: HomeAssistant, hass_ws_client, setup_integrat
     await ws_client.send_json(
         {
             "id": 1,
-            "type": "everything_presence_pro/set_reporting",
+            "type": "eppgrid/set_reporting",
             "entry_id": entry.entry_id,
             "reporting": {
                 "room_occupancy": True,
@@ -700,7 +700,7 @@ async def test_set_reporting_with_offsets(hass: HomeAssistant, hass_ws_client, s
     await ws_client.send_json(
         {
             "id": 1,
-            "type": "everything_presence_pro/set_reporting",
+            "type": "eppgrid/set_reporting",
             "entry_id": entry.entry_id,
             "reporting": {},
             "offsets": {
@@ -730,7 +730,7 @@ async def test_set_reporting_not_found(hass: HomeAssistant, hass_ws_client, setu
     await ws_client.send_json(
         {
             "id": 1,
-            "type": "everything_presence_pro/set_reporting",
+            "type": "eppgrid/set_reporting",
             "entry_id": "bad_id",
             "reporting": {},
         }
@@ -748,7 +748,7 @@ async def test_set_reporting_zone_entities(hass: HomeAssistant, hass_ws_client, 
     await ws_client.send_json(
         {
             "id": 1,
-            "type": "everything_presence_pro/set_reporting",
+            "type": "eppgrid/set_reporting",
             "entry_id": entry.entry_id,
             "reporting": {
                 "zone_presence": True,
@@ -793,7 +793,7 @@ async def test_set_setup(hass: HomeAssistant, hass_ws_client, setup_integration)
     await ws_client.send_json(
         {
             "id": 1,
-            "type": "everything_presence_pro/set_setup",
+            "type": "eppgrid/set_setup",
             "entry_id": entry.entry_id,
             "perspective": [1.0, 0.0, 100.0, 0.0, 1.0, 200.0, 0.0, 0.0],
             "room_width": 3000.0,
@@ -816,7 +816,7 @@ async def test_set_setup_not_found(hass: HomeAssistant, hass_ws_client, setup_in
     await ws_client.send_json(
         {
             "id": 1,
-            "type": "everything_presence_pro/set_setup",
+            "type": "eppgrid/set_setup",
             "entry_id": "bad_id",
             "perspective": [1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0],
             "room_width": 3000.0,
@@ -829,7 +829,7 @@ async def test_set_setup_not_found(hass: HomeAssistant, hass_ws_client, setup_in
 
 - [ ] **Step 2: Run tests and check coverage**
 
-Run: `cd /workspaces/ha-dev/everything-presence-pro-grid && pytest tests/test_websocket_api.py --cov=custom_components/everything_presence_pro/websocket_api --cov-report=term-missing -v`
+Run: `cd /workspaces/ha-dev/everything-presence-pro-grid && pytest tests/test_websocket_api.py --cov=custom_components/eppgrid/websocket_api --cov-report=term-missing -v`
 
 Expected: Coverage >= 90%. If not, identify remaining uncovered lines and add targeted tests.
 
@@ -867,7 +867,7 @@ async def test_async_setup_entry_with_co2(
     hass.http = mock_http
 
     with patch(
-        "custom_components.everything_presence_pro.panel_custom.async_register_panel",
+        "custom_components.eppgrid.panel_custom.async_register_panel",
         new_callable=AsyncMock,
     ):
         await hass.config_entries.async_setup(mock_config_entry.entry_id)
@@ -886,12 +886,12 @@ async def test_async_setup_entry_with_co2(
 Add to `tests/test_sensor.py`:
 
 ```python
-from custom_components.everything_presence_pro.sensor import (
-    EverythingPresenceProTargetAngleSensor,
-    EverythingPresenceProTargetSpeedSensor,
-    EverythingPresenceProTargetResolutionSensor,
-    EverythingPresenceProTargetXYSensorSensor,
-    EverythingPresenceProTargetXYGridSensor,
+from custom_components.eppgrid.sensor import (
+    EPPGridTargetAngleSensor,
+    EPPGridTargetSpeedSensor,
+    EPPGridTargetResolutionSensor,
+    EPPGridTargetXYSensorSensor,
+    EPPGridTargetXYGridSensor,
 )
 
 
@@ -899,29 +899,29 @@ class TestTargetXYSensorSensor:
     """Tests for per-target XY sensor (raw coordinates)."""
 
     def test_value_active(self, mock_coordinator):
-        sensor = EverythingPresenceProTargetXYSensorSensor(mock_coordinator, 0)
+        sensor = EPPGridTargetXYSensorSensor(mock_coordinator, 0)
         assert sensor.native_value == "3000,4000"
 
     def test_value_inactive(self, mock_coordinator):
-        sensor = EverythingPresenceProTargetXYSensorSensor(mock_coordinator, 1)
+        sensor = EPPGridTargetXYSensorSensor(mock_coordinator, 1)
         assert sensor.native_value is None
 
     def test_extra_attributes_active(self, mock_coordinator):
-        sensor = EverythingPresenceProTargetXYSensorSensor(mock_coordinator, 0)
+        sensor = EPPGridTargetXYSensorSensor(mock_coordinator, 0)
         attrs = sensor.extra_state_attributes
         assert attrs["x_mm"] == 3000
         assert attrs["y_mm"] == 4000
 
     def test_extra_attributes_inactive(self, mock_coordinator):
-        sensor = EverythingPresenceProTargetXYSensorSensor(mock_coordinator, 1)
+        sensor = EPPGridTargetXYSensorSensor(mock_coordinator, 1)
         assert sensor.extra_state_attributes is None
 
     def test_name(self, mock_coordinator):
-        sensor = EverythingPresenceProTargetXYSensorSensor(mock_coordinator, 0)
+        sensor = EPPGridTargetXYSensorSensor(mock_coordinator, 0)
         assert sensor.name == "Target 1 XY sensor"
 
     def test_unique_id(self, mock_coordinator):
-        sensor = EverythingPresenceProTargetXYSensorSensor(mock_coordinator, 0)
+        sensor = EPPGridTargetXYSensorSensor(mock_coordinator, 0)
         assert sensor.unique_id == "test_entry_target_1_xy_sensor"
 
 
@@ -929,25 +929,25 @@ class TestTargetXYGridSensor:
     """Tests for per-target XY grid sensor (calibrated coordinates)."""
 
     def test_value_active(self, mock_coordinator):
-        sensor = EverythingPresenceProTargetXYGridSensor(mock_coordinator, 0)
+        sensor = EPPGridTargetXYGridSensor(mock_coordinator, 0)
         assert sensor.native_value == "3000,4000"
 
     def test_value_inactive(self, mock_coordinator):
-        sensor = EverythingPresenceProTargetXYGridSensor(mock_coordinator, 1)
+        sensor = EPPGridTargetXYGridSensor(mock_coordinator, 1)
         assert sensor.native_value is None
 
     def test_extra_attributes_active(self, mock_coordinator):
-        sensor = EverythingPresenceProTargetXYGridSensor(mock_coordinator, 0)
+        sensor = EPPGridTargetXYGridSensor(mock_coordinator, 0)
         attrs = sensor.extra_state_attributes
         assert attrs["x_mm"] == 3000
         assert attrs["y_mm"] == 4000
 
     def test_extra_attributes_inactive(self, mock_coordinator):
-        sensor = EverythingPresenceProTargetXYGridSensor(mock_coordinator, 1)
+        sensor = EPPGridTargetXYGridSensor(mock_coordinator, 1)
         assert sensor.extra_state_attributes is None
 
     def test_name(self, mock_coordinator):
-        sensor = EverythingPresenceProTargetXYGridSensor(mock_coordinator, 0)
+        sensor = EPPGridTargetXYGridSensor(mock_coordinator, 0)
         assert sensor.name == "Target 1 XY grid"
 
 
@@ -955,15 +955,15 @@ class TestTargetAngleSensor:
     """Tests for per-target angle sensor."""
 
     def test_value_active(self, mock_coordinator):
-        sensor = EverythingPresenceProTargetAngleSensor(mock_coordinator, 0)
+        sensor = EPPGridTargetAngleSensor(mock_coordinator, 0)
         assert sensor.native_value == 45.0
 
     def test_value_inactive(self, mock_coordinator):
-        sensor = EverythingPresenceProTargetAngleSensor(mock_coordinator, 1)
+        sensor = EPPGridTargetAngleSensor(mock_coordinator, 1)
         assert sensor.native_value is None
 
     def test_name(self, mock_coordinator):
-        sensor = EverythingPresenceProTargetAngleSensor(mock_coordinator, 0)
+        sensor = EPPGridTargetAngleSensor(mock_coordinator, 0)
         assert sensor.name == "Target 1 angle"
 
 
@@ -971,15 +971,15 @@ class TestTargetSpeedSensor:
     """Tests for per-target speed sensor."""
 
     def test_value_active(self, mock_coordinator):
-        sensor = EverythingPresenceProTargetSpeedSensor(mock_coordinator, 0)
+        sensor = EPPGridTargetSpeedSensor(mock_coordinator, 0)
         assert sensor.native_value == 100.0
 
     def test_value_inactive(self, mock_coordinator):
-        sensor = EverythingPresenceProTargetSpeedSensor(mock_coordinator, 1)
+        sensor = EPPGridTargetSpeedSensor(mock_coordinator, 1)
         assert sensor.native_value is None
 
     def test_name(self, mock_coordinator):
-        sensor = EverythingPresenceProTargetSpeedSensor(mock_coordinator, 0)
+        sensor = EPPGridTargetSpeedSensor(mock_coordinator, 0)
         assert sensor.name == "Target 1 speed"
 
 
@@ -987,21 +987,21 @@ class TestTargetResolutionSensor:
     """Tests for per-target resolution sensor."""
 
     def test_value_active(self, mock_coordinator):
-        sensor = EverythingPresenceProTargetResolutionSensor(mock_coordinator, 0)
+        sensor = EPPGridTargetResolutionSensor(mock_coordinator, 0)
         assert sensor.native_value == 75.0
 
     def test_value_inactive(self, mock_coordinator):
-        sensor = EverythingPresenceProTargetResolutionSensor(mock_coordinator, 1)
+        sensor = EPPGridTargetResolutionSensor(mock_coordinator, 1)
         assert sensor.native_value is None
 
     def test_name(self, mock_coordinator):
-        sensor = EverythingPresenceProTargetResolutionSensor(mock_coordinator, 0)
+        sensor = EPPGridTargetResolutionSensor(mock_coordinator, 0)
         assert sensor.name == "Target 1 resolution"
 ```
 
 - [ ] **Step 3: Run tests and check coverage**
 
-Run: `cd /workspaces/ha-dev/everything-presence-pro-grid && pytest tests/test_sensor.py --cov=custom_components/everything_presence_pro/sensor --cov-report=term-missing -v`
+Run: `cd /workspaces/ha-dev/everything-presence-pro-grid && pytest tests/test_sensor.py --cov=custom_components/eppgrid/sensor --cov-report=term-missing -v`
 
 Expected: Coverage >= 90%. If specific lines are still uncovered, add targeted tests.
 
@@ -1020,7 +1020,7 @@ git commit -m "test: add per-target sensor tests and async_setup_entry for full 
 
 - [ ] **Step 1: Run full Python test suite with per-file check**
 
-Run: `cd /workspaces/ha-dev/everything-presence-pro-grid && pytest tests/ --cov=custom_components/everything_presence_pro --cov-report=term-missing --cov-report=json -v && python scripts/check_coverage.py`
+Run: `cd /workspaces/ha-dev/everything-presence-pro-grid && pytest tests/ --cov=custom_components/eppgrid --cov-report=term-missing --cov-report=json -v && python scripts/check_coverage.py`
 
 Expected: `OK: all files >= 90% coverage`. If any file still fails, go back and add targeted tests for the uncovered lines shown in the term-missing report.
 
@@ -1091,7 +1091,7 @@ Extract sensor FOV, room metrics, and detection range calculations.
 **Files:**
 - Create: `frontend/src/lib/room-geometry.ts`
 - Create: `frontend/src/lib/__tests__/room-geometry.test.ts`
-- Modify: `frontend/src/everything-presence-pro-panel.ts`
+- Modify: `frontend/src/eppgrid-panel.ts`
 
 - [ ] **Step 1: Create lib/room-geometry.ts**
 
@@ -1328,7 +1328,7 @@ Expected: All tests PASS (existing + new).
 
 ```bash
 cd /workspaces/ha-dev/everything-presence-pro-grid
-git add frontend/src/lib/room-geometry.ts frontend/src/lib/__tests__/room-geometry.test.ts frontend/src/everything-presence-pro-panel.ts
+git add frontend/src/lib/room-geometry.ts frontend/src/lib/__tests__/room-geometry.test.ts frontend/src/eppgrid-panel.ts
 git commit -m "refactor: extract room geometry logic into lib/room-geometry.ts"
 ```
 
@@ -1339,7 +1339,7 @@ git commit -m "refactor: extract room geometry logic into lib/room-geometry.ts"
 **Files:**
 - Create: `frontend/src/lib/furniture.ts`
 - Create: `frontend/src/lib/__tests__/furniture.test.ts`
-- Modify: `frontend/src/everything-presence-pro-panel.ts`
+- Modify: `frontend/src/eppgrid-panel.ts`
 
 - [ ] **Step 1: Create lib/furniture.ts**
 
@@ -1557,7 +1557,7 @@ Expected: All tests PASS.
 
 ```bash
 cd /workspaces/ha-dev/everything-presence-pro-grid
-git add frontend/src/lib/furniture.ts frontend/src/lib/__tests__/furniture.test.ts frontend/src/everything-presence-pro-panel.ts
+git add frontend/src/lib/furniture.ts frontend/src/lib/__tests__/furniture.test.ts frontend/src/eppgrid-panel.ts
 git commit -m "refactor: extract furniture logic into lib/furniture.ts"
 ```
 
@@ -1568,7 +1568,7 @@ git commit -m "refactor: extract furniture logic into lib/furniture.ts"
 **Files:**
 - Create: `frontend/src/lib/config-serialization.ts`
 - Create: `frontend/src/lib/__tests__/config-serialization.test.ts`
-- Modify: `frontend/src/everything-presence-pro-panel.ts`
+- Modify: `frontend/src/eppgrid-panel.ts`
 
 Extract the config parsing logic from `_applyConfig()` (lines 607-678) and template serialization/deserialization.
 
@@ -1590,7 +1590,7 @@ Run: `cd /workspaces/ha-dev/everything-presence-pro-grid/frontend && npx vitest 
 
 ```bash
 cd /workspaces/ha-dev/everything-presence-pro-grid
-git add frontend/src/lib/config-serialization.ts frontend/src/lib/__tests__/config-serialization.test.ts frontend/src/everything-presence-pro-panel.ts
+git add frontend/src/lib/config-serialization.ts frontend/src/lib/__tests__/config-serialization.test.ts frontend/src/eppgrid-panel.ts
 git commit -m "refactor: extract config serialization into lib/config-serialization.ts"
 ```
 
@@ -1601,7 +1601,7 @@ git commit -m "refactor: extract config serialization into lib/config-serializat
 **Files:**
 - Create: `frontend/src/lib/cell-painting.ts`
 - Create: `frontend/src/lib/__tests__/cell-painting.test.ts`
-- Modify: `frontend/src/everything-presence-pro-panel.ts`
+- Modify: `frontend/src/eppgrid-panel.ts`
 
 Extract the grid cell painting and zone clearing logic from `_applyPaintToCell()` and `_removeZone()`.
 
@@ -1621,7 +1621,7 @@ Test boundary painting, zone painting, zone clearing, edge cases.
 
 ```bash
 cd /workspaces/ha-dev/everything-presence-pro-grid
-git add frontend/src/lib/cell-painting.ts frontend/src/lib/__tests__/cell-painting.test.ts frontend/src/everything-presence-pro-panel.ts
+git add frontend/src/lib/cell-painting.ts frontend/src/lib/__tests__/cell-painting.test.ts frontend/src/eppgrid-panel.ts
 git commit -m "refactor: extract cell painting logic into lib/cell-painting.ts"
 ```
 
@@ -1632,7 +1632,7 @@ git commit -m "refactor: extract cell painting logic into lib/cell-painting.ts"
 **Files:**
 - Create: `frontend/src/lib/heatmap.ts`
 - Create: `frontend/src/lib/__tests__/heatmap.test.ts`
-- Modify: `frontend/src/everything-presence-pro-panel.ts`
+- Modify: `frontend/src/eppgrid-panel.ts`
 
 Extract `_computeHeatmapColors()` and `_getCellColor()`.
 
@@ -1648,7 +1648,7 @@ Test color mapping for various zone states, edge cases.
 
 ```bash
 cd /workspaces/ha-dev/everything-presence-pro-grid
-git add frontend/src/lib/heatmap.ts frontend/src/lib/__tests__/heatmap.test.ts frontend/src/everything-presence-pro-panel.ts
+git add frontend/src/lib/heatmap.ts frontend/src/lib/__tests__/heatmap.test.ts frontend/src/eppgrid-panel.ts
 git commit -m "refactor: extract heatmap color logic into lib/heatmap.ts"
 ```
 
@@ -1705,7 +1705,7 @@ git commit -m "test: expand panel component tests for 90% coverage"
 
 - [ ] **Step 1: Run Python coverage check**
 
-Run: `cd /workspaces/ha-dev/everything-presence-pro-grid && pytest tests/ --cov=custom_components/everything_presence_pro --cov-report=term-missing --cov-report=json -v && python scripts/check_coverage.py`
+Run: `cd /workspaces/ha-dev/everything-presence-pro-grid && pytest tests/ --cov=custom_components/eppgrid --cov-report=term-missing --cov-report=json -v && python scripts/check_coverage.py`
 
 Expected: `OK: all files >= 90% coverage`
 

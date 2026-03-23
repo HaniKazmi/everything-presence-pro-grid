@@ -1,21 +1,21 @@
-# Domain Rename: everything_presence_pro → eppgrid
+# Domain Rename: eppgrid → eppgrid
 
 ## Summary
 
-Rename the integration domain from `everything_presence_pro` to `eppgrid` to use a short, consistent identifier. The display name remains "Everything Presence Pro Grid". This is a mechanical rename with no logic changes.
+Rename the integration domain from `eppgrid` to `eppgrid` to use a short, consistent identifier. The display name remains "Everything Presence Pro Grid". This is a mechanical rename with no logic changes.
 
 ## Rename Map
 
 | Category | From | To |
 |----------|------|----|
-| Domain constant | `everything_presence_pro` | `eppgrid` |
-| Component directory | `custom_components/everything_presence_pro/` | `custom_components/eppgrid/` |
-| Python class prefix | `EverythingPresencePro` | `EPPGrid` |
-| WebSocket commands | `everything_presence_pro/…` | `eppgrid/…` |
-| Panel element + files | `everything-presence-pro-panel` | `eppgrid-panel` |
+| Domain constant | `eppgrid` | `eppgrid` |
+| Component directory | `custom_components/eppgrid/` | `custom_components/eppgrid/` |
+| Python class prefix | `EPPGrid` | `EPPGrid` |
+| WebSocket commands | `eppgrid/…` | `eppgrid/…` |
+| Panel element + files | `eppgrid-panel` | `eppgrid-panel` |
 | Integration display name | `Everything Presence Pro` | `Everything Presence Pro Grid` |
 | Sidebar title | `EP Pro` | `Everything Presence Pro Grid` |
-| Python imports | `custom_components.everything_presence_pro` | `custom_components.eppgrid` |
+| Python imports | `custom_components.eppgrid` | `custom_components.eppgrid` |
 
 ## Scope
 
@@ -24,7 +24,7 @@ Rename the integration domain from `everything_presence_pro` to `eppgrid` to use
 - `git mv` the directory
 - Update `DOMAIN` in `const.py`
 - Update `domain` and `name` in `manifest.json`
-- Rename all classes: `EverythingPresencePro*` → `EPPGrid*`
+- Rename all classes: `EPPGrid*` → `EPPGrid*`
 - Relative imports (e.g. `from .const import DOMAIN`) stay as-is
 - Update all 9 WebSocket command type strings
 - Update `strings.json` and `translations/en.json` product name references
@@ -33,14 +33,14 @@ Rename the integration domain from `everything_presence_pro` to `eppgrid` to use
 
 ### Tests (tests/)
 
-- Update all `from custom_components.everything_presence_pro` imports
+- Update all `from custom_components.eppgrid` imports
 - Update all class name references
 - Update WebSocket command strings in test assertions
 - Update any mock paths
 
 ### Frontend (frontend/)
 
-- Rename `everything-presence-pro-panel.ts` → `eppgrid-panel.ts`
+- Rename `eppgrid-panel.ts` → `eppgrid-panel.ts`
 - Update `frontend/src/index.ts` export path and class name
 - Update custom element registration tag and `HTMLElementTagNameMap`
 - Update WebSocket message type strings
@@ -69,7 +69,7 @@ Rename the integration domain from `everything_presence_pro` to `eppgrid` to use
 ### Symlink
 
 ```bash
-rm homeassistant-core/config/custom_components/everything_presence_pro
+rm homeassistant-core/config/custom_components/eppgrid
 ln -s /workspaces/ha-dev/everything-presence-pro-grid/custom_components/eppgrid \
       homeassistant-core/config/custom_components/eppgrid
 ```
@@ -91,9 +91,9 @@ ln -s /workspaces/ha-dev/everything-presence-pro-grid/custom_components/eppgrid 
 
 ## Verification
 
-1. `grep -rP "everything_presence_pro" . --include="*.py" --include="*.ts" --include="*.json" --include="*.html" --include="*.toml" --include="*.yml" | grep -v node_modules | grep -v ".git/"` returns no hits
-2. `grep -r "EverythingPresencePro" . --include="*.py" --include="*.ts" | grep -v node_modules | grep -v ".git/"` returns no hits
-3. `grep -r "everything-presence-pro-panel" . --include="*.py" --include="*.ts" --include="*.js" --include="*.json" --include="*.html" | grep -v node_modules | grep -v ".git/"` returns no hits
+1. `grep -rP "eppgrid" . --include="*.py" --include="*.ts" --include="*.json" --include="*.html" --include="*.toml" --include="*.yml" | grep -v node_modules | grep -v ".git/"` returns no hits
+2. `grep -r "EPPGrid" . --include="*.py" --include="*.ts" | grep -v node_modules | grep -v ".git/"` returns no hits
+3. `grep -r "eppgrid-panel" . --include="*.py" --include="*.ts" --include="*.js" --include="*.json" --include="*.html" | grep -v node_modules | grep -v ".git/"` returns no hits
 4. All Python tests pass
 5. All frontend tests pass
 6. Frontend JS builds successfully
@@ -101,6 +101,6 @@ ln -s /workspaces/ha-dev/everything-presence-pro-grid/custom_components/eppgrid 
 
 ## Risks
 
-- **Breaking change for existing installs**: Users with `everything_presence_pro` config entries will need to remove and re-add. No migration path provided.
+- **Breaking change for existing installs**: Users with `eppgrid` config entries will need to remove and re-add. No migration path provided.
 - **Built JS artifact**: Must be rebuilt after TS rename, not just copied.
 - **Dispatcher signals**: Change automatically via `DOMAIN` constant.

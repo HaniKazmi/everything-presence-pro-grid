@@ -15,7 +15,7 @@
 ### Task 1: Add TargetStatus and TargetResult to zone engine
 
 **Files:**
-- Modify: `custom_components/everything_presence_pro/zone_engine.py:60-75`
+- Modify: `custom_components/eppgrid/zone_engine.py:60-75`
 
 - [ ] **Step 1: Add TargetStatus enum and TargetResult dataclass**
 
@@ -59,13 +59,13 @@ class ProcessingResult:
 
 - [ ] **Step 3: Verify imports compile**
 
-Run: `python -c "from custom_components.everything_presence_pro.zone_engine import TargetStatus, TargetResult, ProcessingResult"`
+Run: `python -c "from custom_components.eppgrid.zone_engine import TargetStatus, TargetResult, ProcessingResult"`
 Expected: no errors
 
 - [ ] **Step 4: Commit**
 
 ```bash
-git add custom_components/everything_presence_pro/zone_engine.py
+git add custom_components/eppgrid/zone_engine.py
 git commit -m "feat: add TargetStatus enum and TargetResult dataclass"
 ```
 
@@ -74,7 +74,7 @@ git commit -m "feat: add TargetStatus enum and TargetResult dataclass"
 ### Task 2: Update zone engine _tick() to build TargetResult list
 
 **Files:**
-- Modify: `custom_components/everything_presence_pro/zone_engine.py:390-581`
+- Modify: `custom_components/eppgrid/zone_engine.py:390-581`
 
 - [ ] **Step 1: Replace target_signals accumulation with TargetResult list**
 
@@ -155,7 +155,7 @@ Expected: `TestPendingTargets` tests fail (they assert on `result.pending_target
 - [ ] **Step 5: Commit**
 
 ```bash
-git add custom_components/everything_presence_pro/zone_engine.py
+git add custom_components/eppgrid/zone_engine.py
 git commit -m "feat: zone engine _tick() builds TargetResult list"
 ```
 
@@ -171,7 +171,7 @@ git commit -m "feat: zone engine _tick() builds TargetResult list"
 Add import at top of file:
 
 ```python
-from custom_components.everything_presence_pro.zone_engine import TargetStatus
+from custom_components.eppgrid.zone_engine import TargetStatus
 ```
 
 Rewrite `TestPendingTargets` class. Rename to `TestTargetStatus`:
@@ -310,7 +310,7 @@ git commit -m "test: update zone engine tests for TargetResult"
 ### Task 4: Update coordinator
 
 **Files:**
-- Modify: `custom_components/everything_presence_pro/coordinator.py`
+- Modify: `custom_components/eppgrid/coordinator.py`
 
 - [ ] **Step 1: Add TargetStatus import**
 
@@ -440,7 +440,7 @@ def _expiry_tick(self) -> None:
 
 Search for any other `self._targets =` assignments. There's one at line 573 (`self._targets = self._build_calibrated_targets()`). This was in `_do_display_update` which is now deleted. Check if there are others — e.g., in `_handle_grid_update` or similar methods that set `self._targets`:
 
-Run: `grep -n "self._targets" custom_components/everything_presence_pro/coordinator.py`
+Run: `grep -n "self._targets" custom_components/eppgrid/coordinator.py`
 
 Fix any remaining references.
 
@@ -452,7 +452,7 @@ Expected: some failures from `test_default_pending_targets` and potentially othe
 - [ ] **Step 12: Commit**
 
 ```bash
-git add custom_components/everything_presence_pro/coordinator.py
+git add custom_components/eppgrid/coordinator.py
 git commit -m "feat: coordinator uses TargetResult, remove inter-tick dispatch"
 ```
 
@@ -466,7 +466,7 @@ git commit -m "feat: coordinator uses TargetResult, remove inter-tick dispatch"
 - [ ] **Step 1: Add imports**
 
 ```python
-from custom_components.everything_presence_pro.zone_engine import TargetResult, TargetStatus, ProcessingResult
+from custom_components.eppgrid.zone_engine import TargetResult, TargetStatus, ProcessingResult
 ```
 
 - [ ] **Step 2: Remove test_default_pending_targets**
@@ -514,7 +514,7 @@ git commit -m "test: update coordinator tests for unified target status"
 ### Task 6: Update websocket API
 
 **Files:**
-- Modify: `custom_components/everything_presence_pro/websocket_api.py:446-493`
+- Modify: `custom_components/eppgrid/websocket_api.py:446-493`
 
 - [ ] **Step 1: Update _forward_state to use TargetResult**
 
@@ -574,7 +574,7 @@ Expected: failure on `assert "pending_targets" in event` and `assert "active" in
 - [ ] **Step 4: Commit**
 
 ```bash
-git add custom_components/everything_presence_pro/websocket_api.py
+git add custom_components/eppgrid/websocket_api.py
 git commit -m "feat: websocket sends unified target status format"
 ```
 
@@ -636,7 +636,7 @@ git commit -m "test: update websocket and entity tests for unified target status
 - [ ] **Step 1: Add TargetStatus import**
 
 ```python
-from custom_components.everything_presence_pro.zone_engine import TargetStatus
+from custom_components.eppgrid.zone_engine import TargetStatus
 ```
 
 - [ ] **Step 2: Update parity assertions**
@@ -660,7 +660,7 @@ git commit -m "test: update Python parity tests for TargetResult"
 ### Task 9: Update frontend Target interface and subscribe handler
 
 **Files:**
-- Modify: `frontend/src/everything-presence-pro-panel.ts:70-79,674-708`
+- Modify: `frontend/src/eppgrid-panel.ts:70-79,674-708`
 
 - [ ] **Step 1: Add TargetStatus type**
 
@@ -750,7 +750,7 @@ Expected: no type errors
 - [ ] **Step 7: Commit**
 
 ```bash
-git add frontend/src/everything-presence-pro-panel.ts
+git add frontend/src/eppgrid-panel.ts
 git commit -m "feat: frontend uses unified target status"
 ```
 

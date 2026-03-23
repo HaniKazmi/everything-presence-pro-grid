@@ -15,11 +15,11 @@
 ### Task 1: Project scaffolding and constants
 
 **Files:**
-- Create: `custom_components/everything_presence_pro/__init__.py`
-- Create: `custom_components/everything_presence_pro/manifest.json`
-- Create: `custom_components/everything_presence_pro/const.py`
-- Create: `custom_components/everything_presence_pro/strings.json`
-- Create: `custom_components/everything_presence_pro/translations/en.json`
+- Create: `custom_components/eppgrid/__init__.py`
+- Create: `custom_components/eppgrid/manifest.json`
+- Create: `custom_components/eppgrid/const.py`
+- Create: `custom_components/eppgrid/strings.json`
+- Create: `custom_components/eppgrid/translations/en.json`
 - Create: `hacs.json`
 - Create: `tests/conftest.py`
 - Create: `tests/__init__.py`
@@ -28,7 +28,7 @@
 
 ```json
 {
-  "domain": "everything_presence_pro",
+  "domain": "eppgrid",
   "name": "Everything Presence Pro",
   "codeowners": ["@clintongormley"],
   "config_flow": true,
@@ -46,7 +46,7 @@
 ```python
 """Constants for the Everything Presence Pro integration."""
 
-DOMAIN = "everything_presence_pro"
+DOMAIN = "eppgrid"
 
 # Grid dimensions (Aqara-style 320-cell grid)
 GRID_COLS = 20
@@ -116,18 +116,18 @@ from homeassistant.core import HomeAssistant
 
 from .const import DOMAIN
 
-type EverythingPresenceProConfigEntry = ConfigEntry[None]
+type EPPGridConfigEntry = ConfigEntry[None]
 
 
 async def async_setup_entry(
-    hass: HomeAssistant, entry: EverythingPresenceProConfigEntry
+    hass: HomeAssistant, entry: EPPGridConfigEntry
 ) -> bool:
     """Set up Everything Presence Pro from a config entry."""
     return True
 
 
 async def async_unload_entry(
-    hass: HomeAssistant, entry: EverythingPresenceProConfigEntry
+    hass: HomeAssistant, entry: EPPGridConfigEntry
 ) -> bool:
     """Unload a config entry."""
     return True
@@ -206,7 +206,7 @@ git commit -m "feat: initial project scaffolding for Everything Presence Pro int
 ### Task 2: Config flow (discovery + manual setup)
 
 **Files:**
-- Create: `custom_components/everything_presence_pro/config_flow.py`
+- Create: `custom_components/eppgrid/config_flow.py`
 - Create: `tests/test_config_flow.py`
 
 **Step 1: Write failing test for manual config flow**
@@ -224,7 +224,7 @@ from aioesphomeapi import (
     InvalidAuthAPIError,
 )
 
-from custom_components.everything_presence_pro.const import DOMAIN
+from custom_components.eppgrid.const import DOMAIN
 
 
 @pytest.fixture
@@ -242,7 +242,7 @@ def mock_device_info():
 async def test_user_flow_success(hass, mock_device_info):
     """Test successful manual setup flow."""
     with patch(
-        "custom_components.everything_presence_pro.config_flow.APIClient"
+        "custom_components.eppgrid.config_flow.APIClient"
     ) as mock_client_cls:
         client = AsyncMock()
         client.connect = AsyncMock()
@@ -268,7 +268,7 @@ async def test_user_flow_success(hass, mock_device_info):
 async def test_user_flow_cannot_connect(hass):
     """Test manual setup with connection failure."""
     with patch(
-        "custom_components.everything_presence_pro.config_flow.APIClient"
+        "custom_components.eppgrid.config_flow.APIClient"
     ) as mock_client_cls:
         client = AsyncMock()
         client.connect = AsyncMock(side_effect=APIConnectionError("timeout"))
@@ -289,7 +289,7 @@ async def test_user_flow_cannot_connect(hass):
 async def test_user_flow_invalid_auth(hass, mock_device_info):
     """Test manual setup with invalid auth."""
     with patch(
-        "custom_components.everything_presence_pro.config_flow.APIClient"
+        "custom_components.eppgrid.config_flow.APIClient"
     ) as mock_client_cls:
         client = AsyncMock()
         client.connect = AsyncMock(side_effect=InvalidAuthAPIError("bad key"))
@@ -315,7 +315,7 @@ Expected: FAIL — config_flow module doesn't exist yet
 **Step 3: Implement config flow**
 
 ```python
-# custom_components/everything_presence_pro/config_flow.py
+# custom_components/eppgrid/config_flow.py
 """Config flow for Everything Presence Pro."""
 
 from __future__ import annotations
@@ -344,7 +344,7 @@ USER_SCHEMA = vol.Schema(
 )
 
 
-class EverythingPresenceProConfigFlow(ConfigFlow, domain=DOMAIN):
+class EPPGridConfigFlow(ConfigFlow, domain=DOMAIN):
     """Handle a config flow for Everything Presence Pro."""
 
     VERSION = 1
@@ -406,7 +406,7 @@ Expected: PASS
 **Step 5: Commit**
 
 ```bash
-git add custom_components/everything_presence_pro/config_flow.py tests/test_config_flow.py
+git add custom_components/eppgrid/config_flow.py tests/test_config_flow.py
 git commit -m "feat: add config flow with manual setup and validation"
 ```
 
@@ -415,7 +415,7 @@ git commit -m "feat: add config flow with manual setup and validation"
 ### Task 3: Zone engine (grid + cell mapping + sensitivity)
 
 **Files:**
-- Create: `custom_components/everything_presence_pro/zone_engine.py`
+- Create: `custom_components/eppgrid/zone_engine.py`
 - Create: `tests/test_zone_engine.py`
 
 **Step 1: Write failing tests**
@@ -424,12 +424,12 @@ git commit -m "feat: add config flow with manual setup and validation"
 # tests/test_zone_engine.py
 """Tests for the zone engine."""
 
-from custom_components.everything_presence_pro.zone_engine import (
+from custom_components.eppgrid.zone_engine import (
     Grid,
     Zone,
     ZoneEngine,
 )
-from custom_components.everything_presence_pro.const import (
+from custom_components.eppgrid.const import (
     CELL_OUTSIDE,
     CELL_ROOM,
     GRID_COLS,
@@ -592,7 +592,7 @@ Expected: FAIL — zone_engine module doesn't exist
 **Step 3: Implement zone engine**
 
 ```python
-# custom_components/everything_presence_pro/zone_engine.py
+# custom_components/eppgrid/zone_engine.py
 """Zone engine for grid-based presence detection."""
 
 from __future__ import annotations
@@ -809,7 +809,7 @@ Expected: PASS
 **Step 5: Commit**
 
 ```bash
-git add custom_components/everything_presence_pro/zone_engine.py tests/test_zone_engine.py
+git add custom_components/eppgrid/zone_engine.py tests/test_zone_engine.py
 git commit -m "feat: add zone engine with grid-based cell mapping and sensitivity"
 ```
 
@@ -818,7 +818,7 @@ git commit -m "feat: add zone engine with grid-based cell mapping and sensitivit
 ### Task 4: Calibration engine
 
 **Files:**
-- Create: `custom_components/everything_presence_pro/calibration.py`
+- Create: `custom_components/eppgrid/calibration.py`
 - Create: `tests/test_calibration.py`
 
 **Step 1: Write failing tests**
@@ -829,7 +829,7 @@ git commit -m "feat: add zone engine with grid-based cell mapping and sensitivit
 
 import math
 
-from custom_components.everything_presence_pro.calibration import (
+from custom_components.eppgrid.calibration import (
     CalibrationPoint,
     CalibrationTransform,
 )
@@ -915,7 +915,7 @@ Expected: FAIL
 **Step 3: Implement calibration**
 
 ```python
-# custom_components/everything_presence_pro/calibration.py
+# custom_components/eppgrid/calibration.py
 """Calibration engine for sensor coordinate correction."""
 
 from __future__ import annotations
@@ -1092,7 +1092,7 @@ Expected: PASS
 **Step 5: Commit**
 
 ```bash
-git add custom_components/everything_presence_pro/calibration.py tests/test_calibration.py
+git add custom_components/eppgrid/calibration.py tests/test_calibration.py
 git commit -m "feat: add calibration engine with affine transform correction"
 ```
 
@@ -1101,9 +1101,9 @@ git commit -m "feat: add calibration engine with affine transform correction"
 ### Task 5: Coordinator (device connection + state subscription)
 
 **Files:**
-- Create: `custom_components/everything_presence_pro/coordinator.py`
+- Create: `custom_components/eppgrid/coordinator.py`
 - Create: `tests/test_coordinator.py`
-- Modify: `custom_components/everything_presence_pro/__init__.py`
+- Modify: `custom_components/eppgrid/__init__.py`
 
 **Step 1: Write failing tests**
 
@@ -1115,10 +1115,10 @@ from unittest.mock import AsyncMock, MagicMock, patch, call
 
 import pytest
 
-from custom_components.everything_presence_pro.coordinator import (
-    EverythingPresenceProCoordinator,
+from custom_components.eppgrid.coordinator import (
+    EPPGridCoordinator,
 )
-from custom_components.everything_presence_pro.const import DOMAIN
+from custom_components.eppgrid.const import DOMAIN
 
 
 @pytest.fixture
@@ -1147,16 +1147,16 @@ def mock_device_info():
 
 async def test_coordinator_creation(hass, mock_entry):
     """Test coordinator can be created."""
-    coordinator = EverythingPresenceProCoordinator(hass, mock_entry)
+    coordinator = EPPGridCoordinator(hass, mock_entry)
     assert coordinator is not None
     assert coordinator.zones == []
 
 
 async def test_coordinator_set_zones(hass, mock_entry):
     """Test setting zones on coordinator."""
-    from custom_components.everything_presence_pro.zone_engine import Zone
+    from custom_components.eppgrid.zone_engine import Zone
 
-    coordinator = EverythingPresenceProCoordinator(hass, mock_entry)
+    coordinator = EPPGridCoordinator(hass, mock_entry)
     zones = [
         Zone(id="z1", name="Desk", sensitivity="normal", cells=[10, 11, 12]),
     ]
@@ -1173,7 +1173,7 @@ Expected: FAIL
 **Step 3: Implement coordinator**
 
 ```python
-# custom_components/everything_presence_pro/coordinator.py
+# custom_components/eppgrid/coordinator.py
 """Data coordinator for Everything Presence Pro."""
 
 from __future__ import annotations
@@ -1211,7 +1211,7 @@ SIGNAL_ZONES_UPDATED = f"{DOMAIN}_zones_updated"
 SIGNAL_TARGETS_UPDATED = f"{DOMAIN}_targets_updated"
 
 
-class EverythingPresenceProCoordinator:
+class EPPGridCoordinator:
     """Manage connection and data processing for an EP Pro device."""
 
     def __init__(
@@ -1522,7 +1522,7 @@ class EverythingPresenceProCoordinator:
 **Step 4: Update `__init__.py` to use coordinator**
 
 ```python
-# custom_components/everything_presence_pro/__init__.py
+# custom_components/eppgrid/__init__.py
 """Integration for Everything Presence Pro."""
 
 from __future__ import annotations
@@ -1534,22 +1534,22 @@ from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
 
 from .const import DOMAIN
-from .coordinator import EverythingPresenceProCoordinator
+from .coordinator import EPPGridCoordinator
 
 _LOGGER = logging.getLogger(__name__)
 
 PLATFORMS = [Platform.BINARY_SENSOR, Platform.SENSOR]
 
-type EverythingPresenceProConfigEntry = ConfigEntry[
-    EverythingPresenceProCoordinator
+type EPPGridConfigEntry = ConfigEntry[
+    EPPGridCoordinator
 ]
 
 
 async def async_setup_entry(
-    hass: HomeAssistant, entry: EverythingPresenceProConfigEntry
+    hass: HomeAssistant, entry: EPPGridConfigEntry
 ) -> bool:
     """Set up Everything Presence Pro from a config entry."""
-    coordinator = EverythingPresenceProCoordinator(hass, entry)
+    coordinator = EPPGridCoordinator(hass, entry)
 
     # Load stored configuration
     coordinator.load_config_data(entry.options.get("config", {}))
@@ -1565,14 +1565,14 @@ async def async_setup_entry(
 
 
 async def async_unload_entry(
-    hass: HomeAssistant, entry: EverythingPresenceProConfigEntry
+    hass: HomeAssistant, entry: EPPGridConfigEntry
 ) -> bool:
     """Unload a config entry."""
     unload_ok = await hass.config_entries.async_unload_platforms(
         entry, PLATFORMS
     )
     if unload_ok:
-        coordinator: EverythingPresenceProCoordinator = entry.runtime_data
+        coordinator: EPPGridCoordinator = entry.runtime_data
         await coordinator.async_disconnect()
 
     return unload_ok
@@ -1586,7 +1586,7 @@ Expected: PASS
 **Step 6: Commit**
 
 ```bash
-git add custom_components/everything_presence_pro/coordinator.py custom_components/everything_presence_pro/__init__.py tests/test_coordinator.py
+git add custom_components/eppgrid/coordinator.py custom_components/eppgrid/__init__.py tests/test_coordinator.py
 git commit -m "feat: add coordinator with device connection and state processing"
 ```
 
@@ -1595,7 +1595,7 @@ git commit -m "feat: add coordinator with device connection and state processing
 ### Task 6: Binary sensor entities
 
 **Files:**
-- Create: `custom_components/everything_presence_pro/binary_sensor.py`
+- Create: `custom_components/eppgrid/binary_sensor.py`
 - Create: `tests/test_binary_sensor.py`
 
 **Step 1: Write failing tests**
@@ -1608,13 +1608,13 @@ from unittest.mock import MagicMock, AsyncMock, patch
 
 import pytest
 
-from custom_components.everything_presence_pro.binary_sensor import (
-    EverythingPresenceProOccupancySensor,
-    EverythingPresenceProMotionSensor,
-    EverythingPresenceProStaticPresenceSensor,
-    EverythingPresenceProZoneOccupancySensor,
+from custom_components.eppgrid.binary_sensor import (
+    EPPGridOccupancySensor,
+    EPPGridMotionSensor,
+    EPPGridStaticPresenceSensor,
+    EPPGridZoneOccupancySensor,
 )
-from custom_components.everything_presence_pro.zone_engine import (
+from custom_components.eppgrid.zone_engine import (
     Zone,
     ProcessingResult,
 )
@@ -1639,26 +1639,26 @@ def mock_coordinator():
 
 def test_occupancy_sensor_is_on(mock_coordinator):
     """Test device occupancy sensor reflects coordinator state."""
-    sensor = EverythingPresenceProOccupancySensor(mock_coordinator)
+    sensor = EPPGridOccupancySensor(mock_coordinator)
     assert sensor.is_on is True
 
 
 def test_motion_sensor_is_off(mock_coordinator):
     """Test motion sensor reflects PIR state."""
-    sensor = EverythingPresenceProMotionSensor(mock_coordinator)
+    sensor = EPPGridMotionSensor(mock_coordinator)
     assert sensor.is_on is False
 
 
 def test_static_presence_sensor(mock_coordinator):
     """Test static presence sensor reflects SEN0609 state."""
-    sensor = EverythingPresenceProStaticPresenceSensor(mock_coordinator)
+    sensor = EPPGridStaticPresenceSensor(mock_coordinator)
     assert sensor.is_on is True
 
 
 def test_zone_occupancy_sensor(mock_coordinator):
     """Test zone occupancy sensor reflects zone state."""
     zone = Zone(id="z1", name="Desk", sensitivity="normal", cells=[10])
-    sensor = EverythingPresenceProZoneOccupancySensor(mock_coordinator, zone)
+    sensor = EPPGridZoneOccupancySensor(mock_coordinator, zone)
     assert sensor.is_on is True
     assert sensor.name == "Desk"
 
@@ -1667,7 +1667,7 @@ def test_zone_occupancy_sensor_off(mock_coordinator):
     """Test zone occupancy sensor when zone is empty."""
     mock_coordinator.last_result.zone_occupancy["z2"] = False
     zone = Zone(id="z2", name="Sofa", sensitivity="normal", cells=[20])
-    sensor = EverythingPresenceProZoneOccupancySensor(mock_coordinator, zone)
+    sensor = EPPGridZoneOccupancySensor(mock_coordinator, zone)
     assert sensor.is_on is False
 ```
 
@@ -1679,7 +1679,7 @@ Expected: FAIL
 **Step 3: Implement binary sensors**
 
 ```python
-# custom_components/everything_presence_pro/binary_sensor.py
+# custom_components/eppgrid/binary_sensor.py
 """Binary sensor entities for Everything Presence Pro."""
 
 from __future__ import annotations
@@ -1697,35 +1697,35 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .const import DOMAIN
 from .coordinator import (
-    EverythingPresenceProCoordinator,
+    EPPGridCoordinator,
     SIGNAL_TARGETS_UPDATED,
     SIGNAL_ZONES_UPDATED,
 )
 from .zone_engine import Zone
 
 if TYPE_CHECKING:
-    from . import EverythingPresenceProConfigEntry
+    from . import EPPGridConfigEntry
 
 
 async def async_setup_entry(
     hass: HomeAssistant,
-    entry: EverythingPresenceProConfigEntry,
+    entry: EPPGridConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Set up binary sensor entities."""
-    coordinator: EverythingPresenceProCoordinator = entry.runtime_data
+    coordinator: EPPGridCoordinator = entry.runtime_data
 
     # Static entities (always present)
     entities: list[BinarySensorEntity] = [
-        EverythingPresenceProOccupancySensor(coordinator),
-        EverythingPresenceProMotionSensor(coordinator),
-        EverythingPresenceProStaticPresenceSensor(coordinator),
+        EPPGridOccupancySensor(coordinator),
+        EPPGridMotionSensor(coordinator),
+        EPPGridStaticPresenceSensor(coordinator),
     ]
 
     # Zone entities (dynamic)
     for zone in coordinator.zones:
         entities.append(
-            EverythingPresenceProZoneOccupancySensor(coordinator, zone)
+            EPPGridZoneOccupancySensor(coordinator, zone)
         )
 
     async_add_entities(entities)
@@ -1736,7 +1736,7 @@ async def async_setup_entry(
         new_entities = []
         for zone in coordinator.zones:
             new_entities.append(
-                EverythingPresenceProZoneOccupancySensor(coordinator, zone)
+                EPPGridZoneOccupancySensor(coordinator, zone)
             )
         async_add_entities(new_entities)
 
@@ -1747,13 +1747,13 @@ async def async_setup_entry(
     )
 
 
-class EverythingPresenceProBaseEntity(BinarySensorEntity):
+class EPPGridBaseEntity(BinarySensorEntity):
     """Base entity for EP Pro binary sensors."""
 
     _attr_has_entity_name = True
 
     def __init__(
-        self, coordinator: EverythingPresenceProCoordinator
+        self, coordinator: EPPGridCoordinator
     ) -> None:
         """Initialize the entity."""
         self._coordinator = coordinator
@@ -1777,14 +1777,14 @@ class EverythingPresenceProBaseEntity(BinarySensorEntity):
         self.async_write_ha_state()
 
 
-class EverythingPresenceProOccupancySensor(EverythingPresenceProBaseEntity):
+class EPPGridOccupancySensor(EPPGridBaseEntity):
     """Combined device occupancy sensor."""
 
     _attr_device_class = BinarySensorDeviceClass.OCCUPANCY
     _attr_translation_key = "occupancy"
 
     def __init__(
-        self, coordinator: EverythingPresenceProCoordinator
+        self, coordinator: EPPGridCoordinator
     ) -> None:
         """Initialize the sensor."""
         super().__init__(coordinator)
@@ -1796,14 +1796,14 @@ class EverythingPresenceProOccupancySensor(EverythingPresenceProBaseEntity):
         return self._coordinator.device_occupied
 
 
-class EverythingPresenceProMotionSensor(EverythingPresenceProBaseEntity):
+class EPPGridMotionSensor(EPPGridBaseEntity):
     """PIR motion sensor."""
 
     _attr_device_class = BinarySensorDeviceClass.MOTION
     _attr_translation_key = "motion"
 
     def __init__(
-        self, coordinator: EverythingPresenceProCoordinator
+        self, coordinator: EPPGridCoordinator
     ) -> None:
         """Initialize the sensor."""
         super().__init__(coordinator)
@@ -1815,8 +1815,8 @@ class EverythingPresenceProMotionSensor(EverythingPresenceProBaseEntity):
         return self._coordinator.pir_motion
 
 
-class EverythingPresenceProStaticPresenceSensor(
-    EverythingPresenceProBaseEntity
+class EPPGridStaticPresenceSensor(
+    EPPGridBaseEntity
 ):
     """Static mmWave presence sensor (SEN0609)."""
 
@@ -1824,7 +1824,7 @@ class EverythingPresenceProStaticPresenceSensor(
     _attr_translation_key = "static_presence"
 
     def __init__(
-        self, coordinator: EverythingPresenceProCoordinator
+        self, coordinator: EPPGridCoordinator
     ) -> None:
         """Initialize the sensor."""
         super().__init__(coordinator)
@@ -1838,8 +1838,8 @@ class EverythingPresenceProStaticPresenceSensor(
         return self._coordinator.static_present
 
 
-class EverythingPresenceProZoneOccupancySensor(
-    EverythingPresenceProBaseEntity
+class EPPGridZoneOccupancySensor(
+    EPPGridBaseEntity
 ):
     """Zone occupancy sensor."""
 
@@ -1847,7 +1847,7 @@ class EverythingPresenceProZoneOccupancySensor(
 
     def __init__(
         self,
-        coordinator: EverythingPresenceProCoordinator,
+        coordinator: EPPGridCoordinator,
         zone: Zone,
     ) -> None:
         """Initialize the zone sensor."""
@@ -1883,7 +1883,7 @@ Expected: PASS
 **Step 5: Commit**
 
 ```bash
-git add custom_components/everything_presence_pro/binary_sensor.py tests/test_binary_sensor.py
+git add custom_components/eppgrid/binary_sensor.py tests/test_binary_sensor.py
 git commit -m "feat: add binary sensor entities for occupancy, motion, and zones"
 ```
 
@@ -1892,7 +1892,7 @@ git commit -m "feat: add binary sensor entities for occupancy, motion, and zones
 ### Task 7: Sensor entities (environment + zone target counts)
 
 **Files:**
-- Create: `custom_components/everything_presence_pro/sensor.py`
+- Create: `custom_components/eppgrid/sensor.py`
 - Create: `tests/test_sensor.py`
 
 **Step 1: Write failing tests**
@@ -1903,13 +1903,13 @@ git commit -m "feat: add binary sensor entities for occupancy, motion, and zones
 
 from unittest.mock import MagicMock
 
-from custom_components.everything_presence_pro.sensor import (
-    EverythingPresenceProIlluminanceSensor,
-    EverythingPresenceProTemperatureSensor,
-    EverythingPresenceProHumiditySensor,
-    EverythingPresenceProZoneTargetCountSensor,
+from custom_components.eppgrid.sensor import (
+    EPPGridIlluminanceSensor,
+    EPPGridTemperatureSensor,
+    EPPGridHumiditySensor,
+    EPPGridZoneTargetCountSensor,
 )
-from custom_components.everything_presence_pro.zone_engine import (
+from custom_components.eppgrid.zone_engine import (
     Zone,
     ProcessingResult,
 )
@@ -1938,26 +1938,26 @@ import pytest
 
 def test_illuminance_sensor(mock_coordinator):
     """Test illuminance sensor value."""
-    sensor = EverythingPresenceProIlluminanceSensor(mock_coordinator)
+    sensor = EPPGridIlluminanceSensor(mock_coordinator)
     assert sensor.native_value == 350.0
 
 
 def test_temperature_sensor(mock_coordinator):
     """Test temperature sensor value."""
-    sensor = EverythingPresenceProTemperatureSensor(mock_coordinator)
+    sensor = EPPGridTemperatureSensor(mock_coordinator)
     assert sensor.native_value == 22.5
 
 
 def test_humidity_sensor(mock_coordinator):
     """Test humidity sensor value."""
-    sensor = EverythingPresenceProHumiditySensor(mock_coordinator)
+    sensor = EPPGridHumiditySensor(mock_coordinator)
     assert sensor.native_value == 45.0
 
 
 def test_zone_target_count_sensor(mock_coordinator):
     """Test zone target count sensor."""
     zone = Zone(id="z1", name="Desk", sensitivity="normal", cells=[10])
-    sensor = EverythingPresenceProZoneTargetCountSensor(
+    sensor = EPPGridZoneTargetCountSensor(
         mock_coordinator, zone
     )
     assert sensor.native_value == 2
@@ -1971,7 +1971,7 @@ Expected: FAIL
 **Step 3: Implement sensor entities**
 
 ```python
-# custom_components/everything_presence_pro/sensor.py
+# custom_components/eppgrid/sensor.py
 """Sensor entities for Everything Presence Pro."""
 
 from __future__ import annotations
@@ -1996,49 +1996,49 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .const import DOMAIN
 from .coordinator import (
-    EverythingPresenceProCoordinator,
+    EPPGridCoordinator,
     SIGNAL_TARGETS_UPDATED,
     SIGNAL_ZONES_UPDATED,
 )
 from .zone_engine import Zone
 
 if TYPE_CHECKING:
-    from . import EverythingPresenceProConfigEntry
+    from . import EPPGridConfigEntry
 
 
 async def async_setup_entry(
     hass: HomeAssistant,
-    entry: EverythingPresenceProConfigEntry,
+    entry: EPPGridConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Set up sensor entities."""
-    coordinator: EverythingPresenceProCoordinator = entry.runtime_data
+    coordinator: EPPGridCoordinator = entry.runtime_data
 
     entities: list[SensorEntity] = [
-        EverythingPresenceProIlluminanceSensor(coordinator),
-        EverythingPresenceProTemperatureSensor(coordinator),
-        EverythingPresenceProHumiditySensor(coordinator),
+        EPPGridIlluminanceSensor(coordinator),
+        EPPGridTemperatureSensor(coordinator),
+        EPPGridHumiditySensor(coordinator),
     ]
 
     if coordinator.co2 is not None:
-        entities.append(EverythingPresenceProCO2Sensor(coordinator))
+        entities.append(EPPGridCO2Sensor(coordinator))
 
     for zone in coordinator.zones:
         entities.append(
-            EverythingPresenceProZoneTargetCountSensor(coordinator, zone)
+            EPPGridZoneTargetCountSensor(coordinator, zone)
         )
 
     async_add_entities(entities)
 
 
-class EverythingPresenceProBaseSensor(SensorEntity):
+class EPPGridBaseSensor(SensorEntity):
     """Base sensor entity."""
 
     _attr_has_entity_name = True
     _attr_state_class = SensorStateClass.MEASUREMENT
 
     def __init__(
-        self, coordinator: EverythingPresenceProCoordinator
+        self, coordinator: EPPGridCoordinator
     ) -> None:
         """Initialize the sensor."""
         self._coordinator = coordinator
@@ -2062,8 +2062,8 @@ class EverythingPresenceProBaseSensor(SensorEntity):
         self.async_write_ha_state()
 
 
-class EverythingPresenceProIlluminanceSensor(
-    EverythingPresenceProBaseSensor
+class EPPGridIlluminanceSensor(
+    EPPGridBaseSensor
 ):
     """Illuminance sensor."""
 
@@ -2072,7 +2072,7 @@ class EverythingPresenceProIlluminanceSensor(
     _attr_translation_key = "illuminance"
 
     def __init__(
-        self, coordinator: EverythingPresenceProCoordinator
+        self, coordinator: EPPGridCoordinator
     ) -> None:
         """Initialize the sensor."""
         super().__init__(coordinator)
@@ -2084,8 +2084,8 @@ class EverythingPresenceProIlluminanceSensor(
         return self._coordinator.illuminance
 
 
-class EverythingPresenceProTemperatureSensor(
-    EverythingPresenceProBaseSensor
+class EPPGridTemperatureSensor(
+    EPPGridBaseSensor
 ):
     """Temperature sensor."""
 
@@ -2094,7 +2094,7 @@ class EverythingPresenceProTemperatureSensor(
     _attr_translation_key = "temperature"
 
     def __init__(
-        self, coordinator: EverythingPresenceProCoordinator
+        self, coordinator: EPPGridCoordinator
     ) -> None:
         """Initialize the sensor."""
         super().__init__(coordinator)
@@ -2106,7 +2106,7 @@ class EverythingPresenceProTemperatureSensor(
         return self._coordinator.temperature
 
 
-class EverythingPresenceProHumiditySensor(EverythingPresenceProBaseSensor):
+class EPPGridHumiditySensor(EPPGridBaseSensor):
     """Humidity sensor."""
 
     _attr_device_class = SensorDeviceClass.HUMIDITY
@@ -2114,7 +2114,7 @@ class EverythingPresenceProHumiditySensor(EverythingPresenceProBaseSensor):
     _attr_translation_key = "humidity"
 
     def __init__(
-        self, coordinator: EverythingPresenceProCoordinator
+        self, coordinator: EPPGridCoordinator
     ) -> None:
         """Initialize the sensor."""
         super().__init__(coordinator)
@@ -2126,7 +2126,7 @@ class EverythingPresenceProHumiditySensor(EverythingPresenceProBaseSensor):
         return self._coordinator.humidity
 
 
-class EverythingPresenceProCO2Sensor(EverythingPresenceProBaseSensor):
+class EPPGridCO2Sensor(EPPGridBaseSensor):
     """CO2 sensor."""
 
     _attr_device_class = SensorDeviceClass.CO2
@@ -2134,7 +2134,7 @@ class EverythingPresenceProCO2Sensor(EverythingPresenceProBaseSensor):
     _attr_translation_key = "co2"
 
     def __init__(
-        self, coordinator: EverythingPresenceProCoordinator
+        self, coordinator: EPPGridCoordinator
     ) -> None:
         """Initialize the sensor."""
         super().__init__(coordinator)
@@ -2146,8 +2146,8 @@ class EverythingPresenceProCO2Sensor(EverythingPresenceProBaseSensor):
         return self._coordinator.co2
 
 
-class EverythingPresenceProZoneTargetCountSensor(
-    EverythingPresenceProBaseSensor
+class EPPGridZoneTargetCountSensor(
+    EPPGridBaseSensor
 ):
     """Zone target count sensor."""
 
@@ -2155,7 +2155,7 @@ class EverythingPresenceProZoneTargetCountSensor(
 
     def __init__(
         self,
-        coordinator: EverythingPresenceProCoordinator,
+        coordinator: EPPGridCoordinator,
         zone: Zone,
     ) -> None:
         """Initialize the zone target count sensor."""
@@ -2182,7 +2182,7 @@ Expected: PASS
 **Step 5: Commit**
 
 ```bash
-git add custom_components/everything_presence_pro/sensor.py tests/test_sensor.py
+git add custom_components/eppgrid/sensor.py tests/test_sensor.py
 git commit -m "feat: add sensor entities for illuminance, temperature, humidity, CO2, zone counts"
 ```
 
@@ -2191,7 +2191,7 @@ git commit -m "feat: add sensor entities for illuminance, temperature, humidity,
 ### Task 8: WebSocket API
 
 **Files:**
-- Create: `custom_components/everything_presence_pro/websocket_api.py`
+- Create: `custom_components/eppgrid/websocket_api.py`
 - Create: `tests/test_websocket_api.py`
 
 **Step 1: Write failing tests**
@@ -2204,11 +2204,11 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from custom_components.everything_presence_pro.websocket_api import (
+from custom_components.eppgrid.websocket_api import (
     websocket_get_config,
     websocket_set_zones,
 )
-from custom_components.everything_presence_pro.zone_engine import Zone
+from custom_components.eppgrid.zone_engine import Zone
 
 
 @pytest.fixture
@@ -2234,7 +2234,7 @@ def test_websocket_get_config_returns_data(mock_coordinator):
     )
 
     connection = MagicMock()
-    msg = {"id": 1, "type": "everything_presence_pro/get_config", "entry_id": "test_entry"}
+    msg = {"id": 1, "type": "eppgrid/get_config", "entry_id": "test_entry"}
 
     websocket_get_config(hass, connection, msg)
     connection.send_result.assert_called_once_with(1, {
@@ -2253,7 +2253,7 @@ Expected: FAIL
 **Step 3: Implement WebSocket API**
 
 ```python
-# custom_components/everything_presence_pro/websocket_api.py
+# custom_components/eppgrid/websocket_api.py
 """WebSocket API for Everything Presence Pro."""
 
 from __future__ import annotations
@@ -2266,7 +2266,7 @@ from homeassistant.components import websocket_api
 from homeassistant.core import HomeAssistant, callback
 
 from .const import DOMAIN
-from .coordinator import EverythingPresenceProCoordinator
+from .coordinator import EPPGridCoordinator
 from .calibration import CalibrationPoint, CalibrationTransform
 from .zone_engine import Zone
 
@@ -2282,7 +2282,7 @@ def async_register_websocket_commands(hass: HomeAssistant) -> None:
 
 def _get_coordinator(
     hass: HomeAssistant, entry_id: str
-) -> EverythingPresenceProCoordinator | None:
+) -> EPPGridCoordinator | None:
     """Get coordinator for an entry."""
     entry = hass.config_entries.async_get_entry(entry_id)
     if entry is None:
@@ -2292,7 +2292,7 @@ def _get_coordinator(
 
 @websocket_api.websocket_command(
     {
-        vol.Required("type"): "everything_presence_pro/get_config",
+        vol.Required("type"): "eppgrid/get_config",
         vol.Required("entry_id"): str,
     }
 )
@@ -2313,7 +2313,7 @@ def websocket_get_config(
 
 @websocket_api.websocket_command(
     {
-        vol.Required("type"): "everything_presence_pro/set_zones",
+        vol.Required("type"): "eppgrid/set_zones",
         vol.Required("entry_id"): str,
         vol.Required("zones"): [
             {
@@ -2360,7 +2360,7 @@ async def websocket_set_zones(
 
 @websocket_api.websocket_command(
     {
-        vol.Required("type"): "everything_presence_pro/set_calibration",
+        vol.Required("type"): "eppgrid/set_calibration",
         vol.Required("entry_id"): str,
         vol.Required("points"): [
             {
@@ -2409,7 +2409,7 @@ async def websocket_set_calibration(
 
 @websocket_api.websocket_command(
     {
-        vol.Required("type"): "everything_presence_pro/set_room_layout",
+        vol.Required("type"): "eppgrid/set_room_layout",
         vol.Required("entry_id"): str,
         vol.Required("room_cells"): [str],
         vol.Optional("furniture", default=[]): [
@@ -2447,7 +2447,7 @@ async def websocket_set_room_layout(
 
 @websocket_api.websocket_command(
     {
-        vol.Required("type"): "everything_presence_pro/subscribe_targets",
+        vol.Required("type"): "eppgrid/subscribe_targets",
         vol.Required("entry_id"): str,
     }
 )
@@ -2504,7 +2504,7 @@ Expected: PASS
 **Step 6: Commit**
 
 ```bash
-git add custom_components/everything_presence_pro/websocket_api.py custom_components/everything_presence_pro/__init__.py tests/test_websocket_api.py
+git add custom_components/eppgrid/websocket_api.py custom_components/eppgrid/__init__.py tests/test_websocket_api.py
 git commit -m "feat: add WebSocket API for zone CRUD, calibration, room layout, and live targets"
 ```
 
@@ -2519,7 +2519,7 @@ git commit -m "feat: add WebSocket API for zone CRUD, calibration, room layout, 
 - Create: `frontend/tsconfig.json`
 - Create: `frontend/rollup.config.js`
 - Create: `frontend/src/index.ts`
-- Create: `frontend/src/everything-presence-pro-panel.ts`
+- Create: `frontend/src/eppgrid-panel.ts`
 
 **Step 1: Create package.json**
 
@@ -2578,7 +2578,7 @@ import { terser } from "rollup-plugin-terser";
 export default {
   input: "src/index.ts",
   output: {
-    file: "../custom_components/everything_presence_pro/frontend/everything-presence-pro-panel.js",
+    file: "../custom_components/eppgrid/frontend/eppgrid-panel.js",
     format: "es",
     sourcemap: false,
   },
@@ -2594,11 +2594,11 @@ export default {
 
 ```typescript
 // frontend/src/index.ts
-export { EverythingPresenceProPanel } from "./everything-presence-pro-panel";
+export { EPPGridPanel } from "./eppgrid-panel";
 ```
 
 ```typescript
-// frontend/src/everything-presence-pro-panel.ts
+// frontend/src/eppgrid-panel.ts
 import { LitElement, html, css, PropertyValues } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
 
@@ -2622,8 +2622,8 @@ interface Config {
   furniture: Array<{ type: string; cells: number[]; label: string }>;
 }
 
-@customElement("everything-presence-pro-panel")
-export class EverythingPresenceProPanel extends LitElement {
+@customElement("eppgrid-panel")
+export class EPPGridPanel extends LitElement {
   @property({ attribute: false }) hass: any;
   @property({ type: String }) entryId = "";
 
@@ -2918,7 +2918,7 @@ cd frontend && npm install && npm run build
 **Step 6: Commit**
 
 ```bash
-git add frontend/ custom_components/everything_presence_pro/frontend/
+git add frontend/ custom_components/eppgrid/frontend/
 git commit -m "feat: add frontend scaffolding with grid editor and live target overlay"
 ```
 
@@ -2927,7 +2927,7 @@ git commit -m "feat: add frontend scaffolding with grid editor and live target o
 ### Task 10: Panel registration in integration
 
 **Files:**
-- Modify: `custom_components/everything_presence_pro/__init__.py`
+- Modify: `custom_components/eppgrid/__init__.py`
 
 **Step 1: Add panel registration**
 
@@ -2941,7 +2941,7 @@ import os
 FRONTEND_DIR = os.path.join(os.path.dirname(__file__), "frontend")
 
 async def async_setup_entry(
-    hass: HomeAssistant, entry: EverythingPresenceProConfigEntry
+    hass: HomeAssistant, entry: EPPGridConfigEntry
 ) -> bool:
     """Set up Everything Presence Pro from a config entry."""
     # Register WebSocket commands (idempotent)
@@ -2958,8 +2958,8 @@ async def async_setup_entry(
     await panel_custom.async_register_panel(
         hass=hass,
         frontend_url_path=DOMAIN,
-        webcomponent_name="everything-presence-pro-panel",
-        module_url=f"/{DOMAIN}_static/everything-presence-pro-panel.js",
+        webcomponent_name="eppgrid-panel",
+        module_url=f"/{DOMAIN}_static/eppgrid-panel.js",
         sidebar_title="EP Pro",
         sidebar_icon="mdi:radar",
         require_admin=False,
@@ -2967,7 +2967,7 @@ async def async_setup_entry(
     )
 
     # Set up coordinator
-    coordinator = EverythingPresenceProCoordinator(hass, entry)
+    coordinator = EPPGridCoordinator(hass, entry)
     coordinator.load_config_data(entry.options.get("config", {}))
     await coordinator.async_connect()
     entry.runtime_data = coordinator
@@ -2979,7 +2979,7 @@ async def async_setup_entry(
 **Step 2: Commit**
 
 ```bash
-git add custom_components/everything_presence_pro/__init__.py
+git add custom_components/eppgrid/__init__.py
 git commit -m "feat: register custom panel for zone editor in HA sidebar"
 ```
 
@@ -3002,7 +3002,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from custom_components.everything_presence_pro.const import DOMAIN
+from custom_components.eppgrid.const import DOMAIN
 
 
 @pytest.fixture
@@ -3024,7 +3024,7 @@ def mock_config_entry(hass):
 async def test_setup_and_unload(hass, mock_config_entry):
     """Test integration setup and teardown."""
     with patch(
-        "custom_components.everything_presence_pro.coordinator.APIClient"
+        "custom_components.eppgrid.coordinator.APIClient"
     ) as mock_client_cls:
         client = AsyncMock()
         client.connect = AsyncMock()
@@ -3040,7 +3040,7 @@ async def test_setup_and_unload(hass, mock_config_entry):
         mock_client_cls.return_value = client
 
         # Test setup
-        from custom_components.everything_presence_pro import (
+        from custom_components.eppgrid import (
             async_setup_entry,
             async_unload_entry,
         )
@@ -3077,8 +3077,8 @@ git commit -m "feat: add end-to-end integration setup/teardown test"
 ### Task 12: Final polish and documentation
 
 **Files:**
-- Modify: `custom_components/everything_presence_pro/strings.json` (add all translation keys)
-- Create: `custom_components/everything_presence_pro/translations/en.json`
+- Modify: `custom_components/eppgrid/strings.json` (add all translation keys)
+- Create: `custom_components/eppgrid/translations/en.json`
 
 **Step 1: Finalize strings**
 

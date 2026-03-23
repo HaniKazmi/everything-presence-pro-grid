@@ -335,7 +335,7 @@ import json from "@rollup/plugin-json";
 export default {
   input: "src/index.ts",
   output: {
-    file: "../custom_components/everything_presence_pro/frontend/everything-presence-pro-panel.js",
+    file: "../custom_components/eppgrid/frontend/eppgrid-panel.js",
     format: "es",
     sourcemap: false,
   },
@@ -366,7 +366,7 @@ New dependencies:
 
 `intl-messageformat` is ~5KB gzipped. It's the same library HA core uses.
 
-### Changes to `everything-presence-pro-panel.ts`
+### Changes to `eppgrid-panel.ts`
 
 1. **Import:** `import { setupLocalize } from "./localize.js";`
 2. **Property:** Add `private _localize: (key: string, params?: Record<string, string | number>) => string = (k) => k;` — identity function as initial value

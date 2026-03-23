@@ -33,7 +33,7 @@
 - `frontend/src/__tests__/panel-render.test.ts` — Render smoke tests
 
 ### Modified files
-- `frontend/src/everything-presence-pro-panel.ts` — Import from `lib/` instead of inline
+- `frontend/src/eppgrid-panel.ts` — Import from `lib/` instead of inline
 - `tests/conftest.py` — Rewrite with real HA fixtures
 - `tests/test_calibration.py` — Fix collection error, expand coverage
 - `tests/test_zone_engine.py` — Expand with edge cases
@@ -64,7 +64,7 @@ select = ["E", "F", "W", "I", "UP", "B", "SIM", "RUF"]
 
 [tool.ruff.lint.isort]
 force-single-line = true
-known-first-party = ["custom_components.everything_presence_pro"]
+known-first-party = ["custom_components.eppgrid"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
@@ -153,7 +153,7 @@ jobs:
       - name: Ruff format
         run: ruff format --check custom_components/ tests/
       - name: Pytest
-        run: pytest tests/ --cov=custom_components/everything_presence_pro --cov-report=xml -v
+        run: pytest tests/ --cov=custom_components/eppgrid --cov-report=xml -v
 
   frontend:
     runs-on: ubuntu-latest
@@ -243,7 +243,7 @@ import pytest
 from homeassistant.core import HomeAssistant
 from homeassistant.config_entries import ConfigEntry
 
-from custom_components.everything_presence_pro.const import DOMAIN
+from custom_components.eppgrid.const import DOMAIN
 
 
 @pytest.fixture
@@ -270,9 +270,9 @@ def mock_config_entry(hass: HomeAssistant) -> ConfigEntry:
 def mock_esphome_client():
     """Create a mock ESPHome API client and patch its constructor."""
     with patch(
-        "custom_components.everything_presence_pro.coordinator.APIClient"
+        "custom_components.eppgrid.coordinator.APIClient"
     ) as mock_cls, patch(
-        "custom_components.everything_presence_pro.coordinator.ReconnectLogic"
+        "custom_components.eppgrid.coordinator.ReconnectLogic"
     ) as mock_reconnect_cls:
         client = AsyncMock()
         client.device_info = AsyncMock(
@@ -299,7 +299,7 @@ def mock_esphome_client():
 def mock_config_flow_client():
     """Create a mock ESPHome client for config flow tests."""
     with patch(
-        "custom_components.everything_presence_pro.config_flow.APIClient"
+        "custom_components.eppgrid.config_flow.APIClient"
     ) as mock_cls:
         client = AsyncMock()
         client.connect = AsyncMock()
@@ -615,11 +615,11 @@ git commit -m "test: rewrite websocket API tests with real HA fixtures"
 
 **Files:**
 - Create: `frontend/src/lib/grid.ts`
-- Modify: `frontend/src/everything-presence-pro-panel.ts`
+- Modify: `frontend/src/eppgrid-panel.ts`
 
 - [ ] **Step 1: Create frontend/src/lib/grid.ts**
 
-Extract from `everything-presence-pro-panel.ts` lines 120-146 and 809-828, 979-1006, 588-596, 1157-1170. These are the cell bitmask constants, cell functions, and grid computation functions.
+Extract from `eppgrid-panel.ts` lines 120-146 and 809-828, 979-1006, 588-596, 1157-1170. These are the cell bitmask constants, cell functions, and grid computation functions.
 
 ```typescript
 // Cell byte encoding
@@ -741,7 +741,7 @@ export function updateRoomDimensionsFromGrid(grid: Uint8Array): {
 
 - [ ] **Step 2: Update panel to import from lib/grid.ts**
 
-In `everything-presence-pro-panel.ts`, replace the inline constants and functions (lines ~120-146, plus the method bodies) with imports from `./lib/grid.ts`. Keep the private methods on the class but have them delegate to the imported functions.
+In `eppgrid-panel.ts`, replace the inline constants and functions (lines ~120-146, plus the method bodies) with imports from `./lib/grid.ts`. Keep the private methods on the class but have them delegate to the imported functions.
 
 Remove the module-level `const CELL_ROOM_BIT`, `CELL_ZONE_MASK`, `CELL_ZONE_SHIFT`, `MAX_ZONES`, `cellIsInside`, `cellZone`, `cellSetInside`, `cellSetZone`, `GRID_COLS`, `GRID_ROWS`, `GRID_CELL_COUNT`, `GRID_CELL_MM`, `MAX_RANGE` and replace with:
 
@@ -764,7 +764,7 @@ Expected: Build succeeds.
 - [ ] **Step 4: Commit**
 
 ```bash
-git add frontend/src/lib/grid.ts frontend/src/everything-presence-pro-panel.ts
+git add frontend/src/lib/grid.ts frontend/src/eppgrid-panel.ts
 git commit -m "refactor: extract grid functions into lib/grid.ts"
 ```
 
@@ -774,7 +774,7 @@ git commit -m "refactor: extract grid functions into lib/grid.ts"
 
 **Files:**
 - Create: `frontend/src/lib/perspective.ts`
-- Modify: `frontend/src/everything-presence-pro-panel.ts`
+- Modify: `frontend/src/eppgrid-panel.ts`
 
 - [ ] **Step 1: Create frontend/src/lib/perspective.ts**
 
@@ -890,7 +890,7 @@ Expected: Build succeeds.
 - [ ] **Step 4: Commit**
 
 ```bash
-git add frontend/src/lib/perspective.ts frontend/src/everything-presence-pro-panel.ts
+git add frontend/src/lib/perspective.ts frontend/src/eppgrid-panel.ts
 git commit -m "refactor: extract perspective math into lib/perspective.ts"
 ```
 
@@ -900,7 +900,7 @@ git commit -m "refactor: extract perspective math into lib/perspective.ts"
 
 **Files:**
 - Create: `frontend/src/lib/coordinates.ts`
-- Modify: `frontend/src/everything-presence-pro-panel.ts`
+- Modify: `frontend/src/eppgrid-panel.ts`
 
 - [ ] **Step 1: Create frontend/src/lib/coordinates.ts**
 
@@ -999,7 +999,7 @@ Expected: Build succeeds.
 - [ ] **Step 4: Commit**
 
 ```bash
-git add frontend/src/lib/coordinates.ts frontend/src/everything-presence-pro-panel.ts
+git add frontend/src/lib/coordinates.ts frontend/src/eppgrid-panel.ts
 git commit -m "refactor: extract coordinate functions into lib/coordinates.ts"
 ```
 
@@ -1009,7 +1009,7 @@ git commit -m "refactor: extract coordinate functions into lib/coordinates.ts"
 
 **Files:**
 - Create: `frontend/src/lib/zone-defaults.ts`
-- Modify: `frontend/src/everything-presence-pro-panel.ts`
+- Modify: `frontend/src/eppgrid-panel.ts`
 
 - [ ] **Step 1: Create frontend/src/lib/zone-defaults.ts**
 
@@ -1126,7 +1126,7 @@ Expected: Build succeeds.
 - [ ] **Step 4: Commit**
 
 ```bash
-git add frontend/src/lib/zone-defaults.ts frontend/src/everything-presence-pro-panel.ts
+git add frontend/src/lib/zone-defaults.ts frontend/src/eppgrid-panel.ts
 git commit -m "refactor: extract zone defaults into lib/zone-defaults.ts"
 ```
 

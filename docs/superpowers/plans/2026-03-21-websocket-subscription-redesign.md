@@ -15,7 +15,7 @@
 ### Task 1: Add `subscribe_raw_targets` handler
 
 **Files:**
-- Modify: `custom_components/everything_presence_pro/websocket_api.py`
+- Modify: `custom_components/eppgrid/websocket_api.py`
 
 - [ ] **Step 1: Write the failing test**
 
@@ -35,7 +35,7 @@ async def test_subscribe_raw_targets(hass: HomeAssistant, hass_ws_client, setup_
     await ws_client.send_json(
         {
             "id": 1,
-            "type": "everything_presence_pro/subscribe_raw_targets",
+            "type": "eppgrid/subscribe_raw_targets",
             "entry_id": entry.entry_id,
         }
     )
@@ -63,7 +63,7 @@ async def test_subscribe_raw_targets_not_found(hass: HomeAssistant, hass_ws_clie
     await ws_client.send_json(
         {
             "id": 1,
-            "type": "everything_presence_pro/subscribe_raw_targets",
+            "type": "eppgrid/subscribe_raw_targets",
             "entry_id": "bad_id",
         }
     )
@@ -83,7 +83,7 @@ async def test_subscribe_raw_targets_tracks_subscriber_count(hass: HomeAssistant
     await ws_client.send_json(
         {
             "id": 1,
-            "type": "everything_presence_pro/subscribe_raw_targets",
+            "type": "eppgrid/subscribe_raw_targets",
             "entry_id": entry.entry_id,
         }
     )
@@ -115,7 +115,7 @@ In `websocket_api.py`, add the handler and register it. The handler:
 ```python
 @websocket_api.websocket_command(
     {
-        vol.Required("type"): "everything_presence_pro/subscribe_raw_targets",
+        vol.Required("type"): "eppgrid/subscribe_raw_targets",
         vol.Required("entry_id"): str,
     }
 )
@@ -182,7 +182,7 @@ Expected: PASS
 - [ ] **Step 5: Commit**
 
 ```bash
-git add tests/test_websocket_api.py custom_components/everything_presence_pro/websocket_api.py
+git add tests/test_websocket_api.py custom_components/eppgrid/websocket_api.py
 git commit -m "feat: add subscribe_raw_targets websocket subscription (5Hz sensor-space)"
 ```
 
@@ -191,7 +191,7 @@ git commit -m "feat: add subscribe_raw_targets websocket subscription (5Hz senso
 ### Task 2: Add `subscribe_grid_targets` handler
 
 **Files:**
-- Modify: `custom_components/everything_presence_pro/websocket_api.py`
+- Modify: `custom_components/eppgrid/websocket_api.py`
 - Modify: `tests/test_websocket_api.py`
 
 - [ ] **Step 1: Write the failing tests**
@@ -212,7 +212,7 @@ async def test_subscribe_grid_targets(hass: HomeAssistant, hass_ws_client, setup
     await ws_client.send_json(
         {
             "id": 1,
-            "type": "everything_presence_pro/subscribe_grid_targets",
+            "type": "eppgrid/subscribe_grid_targets",
             "entry_id": entry.entry_id,
         }
     )
@@ -263,7 +263,7 @@ async def test_subscribe_grid_targets_not_found(hass: HomeAssistant, hass_ws_cli
     await ws_client.send_json(
         {
             "id": 1,
-            "type": "everything_presence_pro/subscribe_grid_targets",
+            "type": "eppgrid/subscribe_grid_targets",
             "entry_id": "bad_id",
         }
     )
@@ -283,7 +283,7 @@ async def test_subscribe_grid_targets_tracks_subscriber_count(hass: HomeAssistan
     await ws_client.send_json(
         {
             "id": 1,
-            "type": "everything_presence_pro/subscribe_grid_targets",
+            "type": "eppgrid/subscribe_grid_targets",
             "entry_id": entry.entry_id,
         }
     )
@@ -311,7 +311,7 @@ The handler subscribes to `SIGNAL_DISPLAY_UPDATED` (5Hz for positions). It reads
 ```python
 @websocket_api.websocket_command(
     {
-        vol.Required("type"): "everything_presence_pro/subscribe_grid_targets",
+        vol.Required("type"): "eppgrid/subscribe_grid_targets",
         vol.Required("entry_id"): str,
     }
 )
@@ -406,7 +406,7 @@ Expected: PASS
 - [ ] **Step 5: Commit**
 
 ```bash
-git add tests/test_websocket_api.py custom_components/everything_presence_pro/websocket_api.py
+git add tests/test_websocket_api.py custom_components/eppgrid/websocket_api.py
 git commit -m "feat: add subscribe_grid_targets websocket subscription (5Hz grid + 1Hz state)"
 ```
 
@@ -415,7 +415,7 @@ git commit -m "feat: add subscribe_grid_targets websocket subscription (5Hz grid
 ### Task 3: Remove old subscriptions
 
 **Files:**
-- Modify: `custom_components/everything_presence_pro/websocket_api.py`
+- Modify: `custom_components/eppgrid/websocket_api.py`
 - Modify: `tests/test_websocket_api.py`
 
 - [ ] **Step 1: Remove old tests**
@@ -456,14 +456,14 @@ Expected: All tests pass. No references to old subscription names remain.
 
 - [ ] **Step 4: Verify no stale references**
 
-Run: `grep -r "subscribe_targets\|subscribe_display" custom_components/everything_presence_pro/ tests/ --include="*.py"`
+Run: `grep -r "subscribe_targets\|subscribe_display" custom_components/eppgrid/ tests/ --include="*.py"`
 
 Expected: Only references to `subscribe_raw_targets` and `subscribe_grid_targets`.
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add custom_components/everything_presence_pro/websocket_api.py tests/test_websocket_api.py
+git add custom_components/eppgrid/websocket_api.py tests/test_websocket_api.py
 git commit -m "refactor: remove old subscribe_targets and subscribe_display websocket handlers"
 ```
 
@@ -512,6 +512,6 @@ Expected: All tests pass.
 
 - [ ] **Step 2: Verify syntax**
 
-Run: `python -c "import ast; ast.parse(open('custom_components/everything_presence_pro/websocket_api.py').read()); print('OK')"`
+Run: `python -c "import ast; ast.parse(open('custom_components/eppgrid/websocket_api.py').read()); print('OK')"`
 
 Expected: `OK`

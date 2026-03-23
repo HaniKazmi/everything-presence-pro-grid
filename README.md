@@ -1,4 +1,4 @@
-# Everything Presence Pro
+# Everything Presence Pro Grid
 
 [![Tests](https://github.com/clintongormley/everything-presence-pro-grid/actions/workflows/tests.yml/badge.svg)](https://github.com/clintongormley/everything-presence-pro-grid/actions/workflows/tests.yml)
 [![HACS Validation](https://github.com/clintongormley/everything-presence-pro-grid/actions/workflows/hacs.yml/badge.svg)](https://github.com/clintongormley/everything-presence-pro-grid/actions/workflows/hacs.yml)
@@ -12,12 +12,12 @@ A Home Assistant custom integration for the Everything Presence Pro radar sensor
 
 1. Open HACS in Home Assistant
 2. Add this repository as a custom repository
-3. Search for "Everything Presence Pro" and install
+3. Search for "Everything Presence Pro Grid" and install
 4. Restart Home Assistant
 
 ### Manual
 
-Copy the `custom_components/everything_presence_pro` directory to your Home Assistant `custom_components` folder.
+Copy the `custom_components/eppgrid` directory to your Home Assistant `custom_components` folder.
 
 ## Features
 

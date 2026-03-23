@@ -9,8 +9,8 @@
 **Tech Stack:** TypeScript/Lit, rollup build
 
 **Key files:**
-- Backend zone engine: `custom_components/everything_presence_pro/zone_engine.py` — `_tick` method (lines 481-735)
-- Frontend zone engine: `frontend/src/everything-presence-pro-panel.ts` — `_runLocalZoneEngine` method
+- Backend zone engine: `custom_components/eppgrid/zone_engine.py` — `_tick` method (lines 481-735)
+- Frontend zone engine: `frontend/src/eppgrid-panel.ts` — `_runLocalZoneEngine` method
 - Data catalog: `docs/backend-data-catalog.md`
 
 ---
@@ -38,7 +38,7 @@
 ### Task 1: Make `_targetLastInRoomPos` store room-space mm (match backend `_target_prev_xy`)
 
 **Files:**
-- Modify: `frontend/src/everything-presence-pro-panel.ts`
+- Modify: `frontend/src/eppgrid-panel.ts`
 
 - [ ] **Step 1: Rename and change type**
 
@@ -82,7 +82,7 @@ git commit -m "refactor: rename _targetLastInRoomPos to _targetPrevXY, store roo
 ### Task 2: Add per-target result output to `_runLocalZoneEngine`
 
 **Files:**
-- Modify: `frontend/src/everything-presence-pro-panel.ts` — `_runLocalZoneEngine` method
+- Modify: `frontend/src/eppgrid-panel.ts` — `_runLocalZoneEngine` method
 
 Mirror backend `_tick` lines 661-700: after the state machine, build per-target results.
 
@@ -194,7 +194,7 @@ git commit -m "feat: add per-target results to frontend zone engine, mirroring b
 ### Task 3: Apply target overwrites, unify rendering, delete dead code
 
 **Files:**
-- Modify: `frontend/src/everything-presence-pro-panel.ts`
+- Modify: `frontend/src/eppgrid-panel.ts`
 
 - [ ] **Step 1: Update caller of `_runLocalZoneEngine` to apply overwrites**
 

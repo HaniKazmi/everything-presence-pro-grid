@@ -17,8 +17,8 @@
 ### Task 1: Add MAX_ZONES constant usage in zone engine
 
 **Files:**
-- Modify: `custom_components/everything_presence_pro/const.py` (already has `MAX_ZONES = 7`)
-- Modify: `custom_components/everything_presence_pro/zone_engine.py`
+- Modify: `custom_components/eppgrid/const.py` (already has `MAX_ZONES = 7`)
+- Modify: `custom_components/eppgrid/zone_engine.py`
 - Test: `tests/test_zone_engine.py`
 
 - [ ] **Step 1: Write test for sparse zone IDs**
@@ -66,8 +66,8 @@ git commit -m "test: verify zone engine handles sparse zone IDs"
 ### Task 2: Pre-create zone entities in binary_sensor.py
 
 **Files:**
-- Modify: `custom_components/everything_presence_pro/binary_sensor.py`
-- Modify: `custom_components/everything_presence_pro/const.py`
+- Modify: `custom_components/eppgrid/binary_sensor.py`
+- Modify: `custom_components/eppgrid/const.py`
 - Test: `tests/test_binary_sensor.py`
 
 - [ ] **Step 1: Write test for pre-created disabled zone entities**
@@ -77,10 +77,10 @@ In `tests/test_binary_sensor.py`, add:
 ```python
 def test_zone_occupancy_precreated_disabled(mock_coordinator):
     """Test all 7 zone occupancy entities are pre-created and disabled."""
-    from custom_components.everything_presence_pro.const import MAX_ZONES
+    from custom_components.eppgrid.const import MAX_ZONES
 
     mock_coordinator.zones = []  # No zones configured yet
-    sensor = EverythingPresenceProZoneOccupancySensor(
+    sensor = EPPGridZoneOccupancySensor(
         mock_coordinator, slot=1
     )
     assert sensor.unique_id == "test_entry_zone_1"
@@ -94,10 +94,10 @@ Expected: FAIL — constructor doesn't accept `slot` parameter yet
 
 - [ ] **Step 3: Rewrite ZoneOccupancySensor to use slot-based model**
 
-In `binary_sensor.py`, replace `EverythingPresenceProZoneOccupancySensor`:
+In `binary_sensor.py`, replace `EPPGridZoneOccupancySensor`:
 
 ```python
-class EverythingPresenceProZoneOccupancySensor(BinarySensorEntity):
+class EPPGridZoneOccupancySensor(BinarySensorEntity):
     """Per-zone occupancy sensor. One per slot (1-7), pre-created disabled."""
 
     _attr_has_entity_name = True
@@ -105,7 +105,7 @@ class EverythingPresenceProZoneOccupancySensor(BinarySensorEntity):
     _attr_entity_registry_enabled_default = False
 
     def __init__(
-        self, coordinator: EverythingPresenceProCoordinator, slot: int
+        self, coordinator: EPPGridCoordinator, slot: int
     ) -> None:
         """Initialize the zone occupancy sensor."""
         self._coordinator = coordinator
@@ -162,22 +162,22 @@ Replace the zone entity creation in `async_setup_entry`:
 ```python
 async def async_setup_entry(
     hass: HomeAssistant,
-    entry: EverythingPresenceProConfigEntry,
+    entry: EPPGridConfigEntry,
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Set up binary sensor entities from a config entry."""
-    coordinator: EverythingPresenceProCoordinator = entry.runtime_data
+    coordinator: EPPGridCoordinator = entry.runtime_data
 
     entities: list[BinarySensorEntity] = [
-        EverythingPresenceProOccupancySensor(coordinator),
-        EverythingPresenceProMotionSensor(coordinator),
-        EverythingPresenceProStaticPresenceSensor(coordinator),
+        EPPGridOccupancySensor(coordinator),
+        EPPGridMotionSensor(coordinator),
+        EPPGridStaticPresenceSensor(coordinator),
     ]
 
     # Pre-create all 7 zone occupancy entities (disabled by default)
     for slot in range(1, MAX_ZONES + 1):
         entities.append(
-            EverythingPresenceProZoneOccupancySensor(coordinator, slot)
+            EPPGridZoneOccupancySensor(coordinator, slot)
         )
 
     async_add_entities(entities)
@@ -205,7 +205,7 @@ Expected: PASS
 
 - [ ] **Step 7: Fix remaining binary sensor tests for new constructor**
 
-Update all existing tests that create `EverythingPresenceProZoneOccupancySensor` to use `slot=` instead of `zone=`. Update assertions for the new name format.
+Update all existing tests that create `EPPGridZoneOccupancySensor` to use `slot=` instead of `zone=`. Update assertions for the new name format.
 
 - [ ] **Step 8: Run all binary sensor tests**
 
@@ -215,8 +215,8 @@ Expected: All PASS
 - [ ] **Step 9: Commit**
 
 ```bash
-git add custom_components/everything_presence_pro/binary_sensor.py \
-        custom_components/everything_presence_pro/coordinator.py \
+git add custom_components/eppgrid/binary_sensor.py \
+        custom_components/eppgrid/coordinator.py \
         tests/test_binary_sensor.py
 git commit -m "feat: pre-create zone occupancy entities with stable slot IDs"
 ```
@@ -224,7 +224,7 @@ git commit -m "feat: pre-create zone occupancy entities with stable slot IDs"
 ### Task 3: Pre-create zone target count entities in sensor.py
 
 **Files:**
-- Modify: `custom_components/everything_presence_pro/sensor.py`
+- Modify: `custom_components/eppgrid/sensor.py`
 - Test: `tests/test_sensor.py`
 
 - [ ] **Step 1: Rewrite ZoneTargetCountSensor to use slot-based model**
@@ -232,7 +232,7 @@ git commit -m "feat: pre-create zone occupancy entities with stable slot IDs"
 Same pattern as binary_sensor — replace `zone: Zone` param with `slot: int`, add `_attr_entity_registry_enabled_default = False`, look up zone name from coordinator.
 
 ```python
-class EverythingPresenceProZoneTargetCountSensor(SensorEntity):
+class EPPGridZoneTargetCountSensor(SensorEntity):
     """Per-zone target count sensor. One per slot (1-7), pre-created disabled."""
 
     _attr_has_entity_name = True
@@ -240,7 +240,7 @@ class EverythingPresenceProZoneTargetCountSensor(SensorEntity):
     _attr_entity_registry_enabled_default = False
 
     def __init__(
-        self, coordinator: EverythingPresenceProCoordinator, slot: int
+        self, coordinator: EPPGridCoordinator, slot: int
     ) -> None:
         """Initialize the zone target count sensor."""
         self._coordinator = coordinator
@@ -289,7 +289,7 @@ class EverythingPresenceProZoneTargetCountSensor(SensorEntity):
 # Pre-create all 7 zone target count entities (disabled by default)
 for slot in range(1, MAX_ZONES + 1):
     entities.append(
-        EverythingPresenceProZoneTargetCountSensor(coordinator, slot)
+        EPPGridZoneTargetCountSensor(coordinator, slot)
     )
 ```
 
@@ -297,7 +297,7 @@ Remove the `_on_zones_updated` callback and `SIGNAL_ZONES_UPDATED` import.
 
 - [ ] **Step 3: Fix sensor tests for new constructor**
 
-Update tests that create `EverythingPresenceProZoneTargetCountSensor` to use `slot=` instead of `zone=`.
+Update tests that create `EPPGridZoneTargetCountSensor` to use `slot=` instead of `zone=`.
 
 - [ ] **Step 4: Run all sensor tests**
 
@@ -307,7 +307,7 @@ Expected: All PASS
 - [ ] **Step 5: Commit**
 
 ```bash
-git add custom_components/everything_presence_pro/sensor.py \
+git add custom_components/eppgrid/sensor.py \
         tests/test_sensor.py
 git commit -m "feat: pre-create zone target count entities with stable slot IDs"
 ```
@@ -315,7 +315,7 @@ git commit -m "feat: pre-create zone target count entities with stable slot IDs"
 ### Task 4: Update websocket API for zone_slots
 
 **Files:**
-- Modify: `custom_components/everything_presence_pro/websocket_api.py`
+- Modify: `custom_components/eppgrid/websocket_api.py`
 
 - [ ] **Step 1: Update set_room_layout schema**
 
@@ -374,7 +374,7 @@ layout = {
 ```python
 @websocket_api.websocket_command(
     {
-        vol.Required("type"): "everything_presence_pro/rename_zone_entities",
+        vol.Required("type"): "eppgrid/rename_zone_entities",
         vol.Required("entry_id"): str,
         vol.Required("renames"): [
             {
@@ -413,7 +413,7 @@ Register it in `async_register_websocket_commands`.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add custom_components/everything_presence_pro/websocket_api.py
+git add custom_components/eppgrid/websocket_api.py
 git commit -m "feat: add zone_slots to layout API and entity rename command"
 ```
 
@@ -424,7 +424,7 @@ git commit -m "feat: add zone_slots to layout API and entity rename command"
 ### Task 5: Change _zoneConfigs to sparse 7-element array
 
 **Files:**
-- Modify: `frontend/src/everything-presence-pro-panel.ts`
+- Modify: `frontend/src/eppgrid-panel.ts`
 
 - [ ] **Step 1: Update state declaration**
 
@@ -544,14 +544,14 @@ ${this._zoneConfigs.some((z) => z === null)
 - [ ] **Step 10: Commit**
 
 ```bash
-git add frontend/src/everything-presence-pro-panel.ts
+git add frontend/src/eppgrid-panel.ts
 git commit -m "feat: sparse zone slots in frontend — no renumbering on delete"
 ```
 
 ### Task 6: Entity rename dialog
 
 **Files:**
-- Modify: `frontend/src/everything-presence-pro-panel.ts`
+- Modify: `frontend/src/eppgrid-panel.ts`
 
 - [ ] **Step 1: Add rename dialog state**
 
@@ -571,7 +571,7 @@ Dialog lists each rename, with three buttons: Cancel, Apply without renaming IDs
 - [ ] **Step 4: Commit**
 
 ```bash
-git add frontend/src/everything-presence-pro-panel.ts
+git add frontend/src/eppgrid-panel.ts
 git commit -m "feat: entity ID rename dialog on zone name changes"
 ```
 
@@ -593,6 +593,6 @@ Expected: All PASS
 - [ ] **Step 3: Commit built JS**
 
 ```bash
-git add custom_components/everything_presence_pro/frontend/everything-presence-pro-panel.js
+git add custom_components/eppgrid/frontend/eppgrid-panel.js
 git commit -m "build: regenerate frontend JS"
 ```

@@ -14,7 +14,7 @@
 
 ### File map
 
-- **Modify:** `frontend/src/everything-presence-pro-panel.ts`
+- **Modify:** `frontend/src/eppgrid-panel.ts`
   - Lines 231: Replace `_settingsSection` state with `_openAccordions` set
   - Lines 2410–2511: Replace dropdown CSS with accordion CSS
   - Lines 3342–3596: Replace `_renderSettings()` and `_renderSettingsSection()` with accordion-based methods
@@ -26,8 +26,8 @@ No new files. No backend changes.
 ### Task 1: Add accordion CSS and state
 
 **Files:**
-- Modify: `frontend/src/everything-presence-pro-panel.ts:231` (state)
-- Modify: `frontend/src/everything-presence-pro-panel.ts:2410-2511` (CSS)
+- Modify: `frontend/src/eppgrid-panel.ts:231` (state)
+- Modify: `frontend/src/eppgrid-panel.ts:2410-2511` (CSS)
 
 - [ ] **Step 1: Replace `_settingsSection` state with accordion open-set**
 
@@ -136,7 +136,7 @@ Expected: Build succeeds (the old render methods still reference `_settingsSecti
 - [ ] **Step 5: Commit**
 
 ```bash
-git add frontend/src/everything-presence-pro-panel.ts
+git add frontend/src/eppgrid-panel.ts
 git commit -m "feat: add accordion CSS and state for settings page"
 ```
 
@@ -145,7 +145,7 @@ git commit -m "feat: add accordion CSS and state for settings page"
 ### Task 2: Replace `_renderSettings()` with accordion layout
 
 **Files:**
-- Modify: `frontend/src/everything-presence-pro-panel.ts:3342-3375`
+- Modify: `frontend/src/eppgrid-panel.ts:3342-3375`
 
 - [ ] **Step 1: Add accordion toggle helper**
 
@@ -210,7 +210,7 @@ Expected: Builds (the old `_renderSettingsSection` still exists and works as fal
 - [ ] **Step 4: Commit**
 
 ```bash
-git add frontend/src/everything-presence-pro-panel.ts
+git add frontend/src/eppgrid-panel.ts
 git commit -m "feat: replace settings dropdown with accordion layout"
 ```
 
@@ -219,7 +219,7 @@ git commit -m "feat: replace settings dropdown with accordion layout"
 ### Task 3: Replace `_renderSettingsSection()` with new content
 
 **Files:**
-- Modify: `frontend/src/everything-presence-pro-panel.ts:3378-3596`
+- Modify: `frontend/src/eppgrid-panel.ts:3378-3596`
 
 - [ ] **Step 1: Compute auto-detection range helper**
 
@@ -442,7 +442,7 @@ Expected: Build succeeds, no errors.
 - [ ] **Step 4: Commit**
 
 ```bash
-git add frontend/src/everything-presence-pro-panel.ts
+git add frontend/src/eppgrid-panel.ts
 git commit -m "feat: implement settings page sections — detection, sensitivity, reporting"
 ```
 
@@ -451,7 +451,7 @@ git commit -m "feat: implement settings page sections — detection, sensitivity
 ### Task 4: Clean up removed CSS and final build
 
 **Files:**
-- Modify: `frontend/src/everything-presence-pro-panel.ts`
+- Modify: `frontend/src/eppgrid-panel.ts`
 
 - [ ] **Step 1: Remove the `.settings-section-select` CSS**
 
@@ -479,6 +479,6 @@ Expected: Build succeeds, compiled JS updated.
 - [ ] **Step 3: Commit**
 
 ```bash
-git add frontend/src/everything-presence-pro-panel.ts custom_components/everything_presence_pro/frontend/everything-presence-pro-panel.js
+git add frontend/src/eppgrid-panel.ts custom_components/eppgrid/frontend/eppgrid-panel.js
 git commit -m "feat: clean up old settings CSS, final build"
 ```

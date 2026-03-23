@@ -101,7 +101,7 @@ The perspective transform is computed on the frontend (same Gaussian elimination
 
 ```python
 @websocket_api.websocket_command({
-    vol.Required("type"): "everything_presence_pro/set_setup",
+    vol.Required("type"): "eppgrid/set_setup",
     vol.Required("entry_id"): str,
     vol.Required("perspective"): vol.All([vol.Coerce(float)], vol.Length(min=8, max=8)),
     vol.Required("room_width"): vol.Coerce(float),     # mm
@@ -299,8 +299,8 @@ The `grid` field is a base64-encoded byte array (grid_rows × grid_cols bytes). 
 
 ## File changes
 
-- `custom_components/everything_presence_pro/calibration.py` — replace SensorTransform entirely
-- `custom_components/everything_presence_pro/coordinator.py` — add TargetSmoother, update target processing
-- `custom_components/everything_presence_pro/websocket_api.py` — update set_setup, remove recalibrate, update get_config
-- `custom_components/everything_presence_pro/zone_engine.py` — update grid to use dynamic dimensions and room-space coordinates
-- `frontend/src/everything-presence-pro-panel.ts` — rewrite setup wizard, add perspective solve, update coordinate mapping and room view
+- `custom_components/eppgrid/calibration.py` — replace SensorTransform entirely
+- `custom_components/eppgrid/coordinator.py` — add TargetSmoother, update target processing
+- `custom_components/eppgrid/websocket_api.py` — update set_setup, remove recalibrate, update get_config
+- `custom_components/eppgrid/zone_engine.py` — update grid to use dynamic dimensions and room-space coordinates
+- `frontend/src/eppgrid-panel.ts` — rewrite setup wizard, add perspective solve, update coordinate mapping and room view

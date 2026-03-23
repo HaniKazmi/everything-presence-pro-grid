@@ -157,12 +157,12 @@ function connect() {
       // Get config
       const cfgId = nextId();
       ws.send(JSON.stringify({
-        id: cfgId, type: 'everything_presence_pro/get_config', entry_id: entryId
+        id: cfgId, type: 'eppgrid/get_config', entry_id: entryId
       }));
       // Subscribe to targets
       const subId = nextId();
       ws.send(JSON.stringify({
-        id: subId, type: 'everything_presence_pro/subscribe_targets', entry_id: entryId
+        id: subId, type: 'eppgrid/subscribe_targets', entry_id: entryId
       }));
     } else if (msg.type === 'auth_invalid') {
       setStatus('Auth failed: ' + (msg.message || 'invalid token'), false);
