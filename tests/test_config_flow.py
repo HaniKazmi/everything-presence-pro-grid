@@ -10,7 +10,7 @@ from aioesphomeapi import APIConnectionError
 from aioesphomeapi import InvalidAuthAPIError
 from homeassistant.core import HomeAssistant
 
-from custom_components.everything_presence_pro.const import DOMAIN
+from custom_components.eppgrid.const import DOMAIN
 
 
 @pytest.fixture

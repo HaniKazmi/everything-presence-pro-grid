@@ -19,20 +19,20 @@ matching the frontend's target.signal as frame_count.
 
 from __future__ import annotations
 
-from custom_components.everything_presence_pro.const import CELL_ROOM_BIT
-from custom_components.everything_presence_pro.const import CELL_ZONE_SHIFT
-from custom_components.everything_presence_pro.const import GRID_CELL_SIZE_MM
-from custom_components.everything_presence_pro.const import GRID_COLS
-from custom_components.everything_presence_pro.const import GRID_ROWS
-from custom_components.everything_presence_pro.const import RAW_FPS
-from custom_components.everything_presence_pro.const import ZONE_TYPE_ENTRANCE
-from custom_components.everything_presence_pro.const import ZONE_TYPE_NORMAL
-from custom_components.everything_presence_pro.zone_engine import Grid
-from custom_components.everything_presence_pro.zone_engine import TargetStatus
-from custom_components.everything_presence_pro.zone_engine import TargetWindow
-from custom_components.everything_presence_pro.zone_engine import WindowOutput
-from custom_components.everything_presence_pro.zone_engine import Zone
-from custom_components.everything_presence_pro.zone_engine import ZoneEngine
+from custom_components.eppgrid.const import CELL_ROOM_BIT
+from custom_components.eppgrid.const import CELL_ZONE_SHIFT
+from custom_components.eppgrid.const import GRID_CELL_SIZE_MM
+from custom_components.eppgrid.const import GRID_COLS
+from custom_components.eppgrid.const import GRID_ROWS
+from custom_components.eppgrid.const import RAW_FPS
+from custom_components.eppgrid.const import ZONE_TYPE_ENTRANCE
+from custom_components.eppgrid.const import ZONE_TYPE_NORMAL
+from custom_components.eppgrid.zone_engine import Grid
+from custom_components.eppgrid.zone_engine import TargetStatus
+from custom_components.eppgrid.zone_engine import TargetWindow
+from custom_components.eppgrid.zone_engine import WindowOutput
+from custom_components.eppgrid.zone_engine import Zone
+from custom_components.eppgrid.zone_engine import ZoneEngine
 
 # ---------------------------------------------------------------------------
 # Shared helpers matching the TS parity test setup

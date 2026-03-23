@@ -9,8 +9,8 @@ from unittest.mock import patch
 import pytest
 from homeassistant.core import HomeAssistant
 
-from custom_components.everything_presence_pro.const import DOMAIN
-from custom_components.everything_presence_pro.const import MAX_ZONES
+from custom_components.eppgrid.const import DOMAIN
+from custom_components.eppgrid.const import MAX_ZONES
 
 
 @pytest.fixture(autouse=True)
@@ -22,7 +22,7 @@ def _clear_ws_registered():
     instance, so we must reset the guard so commands are registered on
     the new instance.
     """
-    from custom_components.everything_presence_pro import websocket_api
+    from custom_components.eppgrid import websocket_api
 
     websocket_api._REGISTERED.discard(DOMAIN)
     yield
@@ -37,7 +37,7 @@ async def setup_integration(hass: HomeAssistant, mock_config_entry, mock_esphome
     hass.http = mock_http
 
     with patch(
-        "custom_components.everything_presence_pro.panel_custom.async_register_panel",
+        "custom_components.eppgrid.panel_custom.async_register_panel",
         new_callable=AsyncMock,
     ):
         await hass.config_entries.async_setup(mock_config_entry.entry_id)
@@ -55,7 +55,7 @@ async def test_list_entries(hass: HomeAssistant, hass_ws_client, setup_integrati
     entry = setup_integration
     ws_client = await hass_ws_client(hass)
 
-    await ws_client.send_json({"id": 1, "type": "everything_presence_pro/list_entries"})
+    await ws_client.send_json({"id": 1, "type": "eppgrid/list_entries"})
     msg = await ws_client.receive_json()
 
     assert msg["id"] == 1
@@ -81,7 +81,7 @@ async def test_get_config(hass: HomeAssistant, hass_ws_client, setup_integration
     await ws_client.send_json(
         {
             "id": 1,
-            "type": "everything_presence_pro/get_config",
+            "type": "eppgrid/get_config",
             "entry_id": entry.entry_id,
         }
     )
@@ -102,7 +102,7 @@ async def test_get_config_not_found(hass: HomeAssistant, hass_ws_client, setup_i
     await ws_client.send_json(
         {
             "id": 1,
-            "type": "everything_presence_pro/get_config",
+            "type": "eppgrid/get_config",
             "entry_id": "nonexistent_id",
         }
     )
@@ -125,7 +125,7 @@ async def test_set_zones(hass: HomeAssistant, hass_ws_client, setup_integration)
     await ws_client.send_json(
         {
             "id": 1,
-            "type": "everything_presence_pro/set_zones",
+            "type": "eppgrid/set_zones",
             "entry_id": entry.entry_id,
             "zones": [
                 {"id": 1, "name": "Desk", "type": "normal"},
@@ -154,7 +154,7 @@ async def test_set_zones_not_found(hass: HomeAssistant, hass_ws_client, setup_in
     await ws_client.send_json(
         {
             "id": 1,
-            "type": "everything_presence_pro/set_zones",
+            "type": "eppgrid/set_zones",
             "entry_id": "bad_id",
             "zones": [],
         }
@@ -183,7 +183,7 @@ async def test_set_room_layout(hass: HomeAssistant, hass_ws_client, setup_integr
     await ws_client.send_json(
         {
             "id": 1,
-            "type": "everything_presence_pro/set_room_layout",
+            "type": "eppgrid/set_room_layout",
             "entry_id": entry.entry_id,
             "grid_bytes": grid_bytes,
             "zone_slots": zone_slots,
@@ -209,7 +209,7 @@ async def test_set_room_layout_not_found(hass: HomeAssistant, hass_ws_client, se
     await ws_client.send_json(
         {
             "id": 1,
-            "type": "everything_presence_pro/set_room_layout",
+            "type": "eppgrid/set_room_layout",
             "entry_id": "bad_id",
             "grid_bytes": [0] * 400,
         }
@@ -230,7 +230,7 @@ async def test_rename_zone_entities(hass: HomeAssistant, hass_ws_client, setup_i
     await ws_client.send_json(
         {
             "id": 1,
-            "type": "everything_presence_pro/rename_zone_entities",
+            "type": "eppgrid/rename_zone_entities",
             "entry_id": entry.entry_id,
             "renames": [{"old_entity_id": "binary_sensor.nonexistent", "new_entity_id": "binary_sensor.renamed"}],
         }
@@ -251,7 +251,7 @@ async def test_rename_zone_entities_conflict(hass: HomeAssistant, hass_ws_client
     await ws_client.send_json(
         {
             "id": 1,
-            "type": "everything_presence_pro/rename_zone_entities",
+            "type": "eppgrid/rename_zone_entities",
             "entry_id": entry.entry_id,
             "renames": [{"old_entity_id": entity_ids[0], "new_entity_id": entity_ids[1]}],
         }
@@ -269,7 +269,7 @@ async def test_rename_zone_entities_empty(hass: HomeAssistant, hass_ws_client, s
     await ws_client.send_json(
         {
             "id": 1,
-            "type": "everything_presence_pro/rename_zone_entities",
+            "type": "eppgrid/rename_zone_entities",
             "entry_id": entry.entry_id,
             "renames": [],
         }
@@ -291,7 +291,7 @@ async def test_set_reporting(hass: HomeAssistant, hass_ws_client, setup_integrat
     await ws_client.send_json(
         {
             "id": 1,
-            "type": "everything_presence_pro/set_reporting",
+            "type": "eppgrid/set_reporting",
             "entry_id": entry.entry_id,
             "reporting": {"room_occupancy": True, "room_target_count": False},
         }
@@ -310,7 +310,7 @@ async def test_set_reporting_with_offsets(hass: HomeAssistant, hass_ws_client, s
     await ws_client.send_json(
         {
             "id": 1,
-            "type": "everything_presence_pro/set_reporting",
+            "type": "eppgrid/set_reporting",
             "entry_id": entry.entry_id,
             "reporting": {},
             "offsets": {"illuminance": 10.0, "temperature": -1.5, "humidity": 3.0},
@@ -330,7 +330,7 @@ async def test_set_reporting_not_found(hass: HomeAssistant, hass_ws_client, setu
     await ws_client.send_json(
         {
             "id": 1,
-            "type": "everything_presence_pro/set_reporting",
+            "type": "eppgrid/set_reporting",
             "entry_id": "bad_id",
             "reporting": {},
         }
@@ -347,7 +347,7 @@ async def test_set_reporting_zone_entities(hass: HomeAssistant, hass_ws_client, 
     await ws_client.send_json(
         {
             "id": 1,
-            "type": "everything_presence_pro/set_reporting",
+            "type": "eppgrid/set_reporting",
             "entry_id": entry.entry_id,
             "reporting": {"zone_presence": True, "zone_target_count": False},
         }
@@ -368,7 +368,7 @@ async def test_set_setup(hass: HomeAssistant, hass_ws_client, setup_integration)
     await ws_client.send_json(
         {
             "id": 1,
-            "type": "everything_presence_pro/set_setup",
+            "type": "eppgrid/set_setup",
             "entry_id": entry.entry_id,
             "perspective": [1.0, 0.0, 100.0, 0.0, 1.0, 200.0, 0.0, 0.0],
             "room_width": 3000.0,
@@ -388,7 +388,7 @@ async def test_set_setup_not_found(hass: HomeAssistant, hass_ws_client, setup_in
     await ws_client.send_json(
         {
             "id": 1,
-            "type": "everything_presence_pro/set_setup",
+            "type": "eppgrid/set_setup",
             "entry_id": "bad_id",
             "perspective": [1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0],
             "room_width": 3000.0,
@@ -412,7 +412,7 @@ async def test_subscribe_grid_targets(hass: HomeAssistant, hass_ws_client, setup
     await ws_client.send_json(
         {
             "id": 1,
-            "type": "everything_presence_pro/subscribe_grid_targets",
+            "type": "eppgrid/subscribe_grid_targets",
             "entry_id": entry.entry_id,
         }
     )
@@ -463,7 +463,7 @@ async def test_subscribe_grid_targets_not_found(hass: HomeAssistant, hass_ws_cli
     await ws_client.send_json(
         {
             "id": 1,
-            "type": "everything_presence_pro/subscribe_grid_targets",
+            "type": "eppgrid/subscribe_grid_targets",
             "entry_id": "bad_id",
         }
     )
@@ -483,7 +483,7 @@ async def test_subscribe_grid_targets_tracks_subscriber_count(hass: HomeAssistan
     await ws_client.send_json(
         {
             "id": 1,
-            "type": "everything_presence_pro/subscribe_grid_targets",
+            "type": "eppgrid/subscribe_grid_targets",
             "entry_id": entry.entry_id,
         }
     )
@@ -511,7 +511,7 @@ async def test_subscribe_raw_targets(hass: HomeAssistant, hass_ws_client, setup_
     await ws_client.send_json(
         {
             "id": 1,
-            "type": "everything_presence_pro/subscribe_raw_targets",
+            "type": "eppgrid/subscribe_raw_targets",
             "entry_id": entry.entry_id,
         }
     )
@@ -539,7 +539,7 @@ async def test_subscribe_raw_targets_not_found(hass: HomeAssistant, hass_ws_clie
     await ws_client.send_json(
         {
             "id": 1,
-            "type": "everything_presence_pro/subscribe_raw_targets",
+            "type": "eppgrid/subscribe_raw_targets",
             "entry_id": "bad_id",
         }
     )
@@ -559,7 +559,7 @@ async def test_subscribe_raw_targets_tracks_subscriber_count(hass: HomeAssistant
     await ws_client.send_json(
         {
             "id": 1,
-            "type": "everything_presence_pro/subscribe_raw_targets",
+            "type": "eppgrid/subscribe_raw_targets",
             "entry_id": entry.entry_id,
         }
     )

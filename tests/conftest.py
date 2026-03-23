@@ -10,7 +10,7 @@ import pytest
 from homeassistant.core import HomeAssistant
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
-from custom_components.everything_presence_pro.const import DOMAIN
+from custom_components.eppgrid.const import DOMAIN
 
 
 @pytest.fixture(autouse=True)
@@ -41,10 +41,10 @@ def mock_esphome_client():
     """Patch coordinator's APIClient and ReconnectLogic so setup doesn't hit the network."""
     with (
         patch(
-            "custom_components.everything_presence_pro.coordinator.APIClient",
+            "custom_components.eppgrid.coordinator.APIClient",
         ) as mock_client_cls,
         patch(
-            "custom_components.everything_presence_pro.coordinator.ReconnectLogic",
+            "custom_components.eppgrid.coordinator.ReconnectLogic",
         ) as mock_rl_cls,
     ):
         client = AsyncMock()
@@ -67,7 +67,7 @@ def mock_esphome_client():
 def mock_config_flow_client():
     """Patch config_flow's APIClient for flow tests."""
     with patch(
-        "custom_components.everything_presence_pro.config_flow.APIClient",
+        "custom_components.eppgrid.config_flow.APIClient",
     ) as mock_client_cls:
         client = AsyncMock()
         client.connect = AsyncMock()

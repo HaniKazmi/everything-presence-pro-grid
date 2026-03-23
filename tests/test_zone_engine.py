@@ -4,23 +4,23 @@ from __future__ import annotations
 
 import pytest
 
-from custom_components.everything_presence_pro.const import CELL_ROOM_BIT
-from custom_components.everything_presence_pro.const import CELL_ZONE_SHIFT
-from custom_components.everything_presence_pro.const import RAW_FPS
-from custom_components.everything_presence_pro.const import ZONE_TYPE_DEFAULTS
-from custom_components.everything_presence_pro.const import ZONE_TYPE_ENTRANCE
-from custom_components.everything_presence_pro.const import ZONE_TYPE_NORMAL
-from custom_components.everything_presence_pro.const import threshold_to_frame_count
-from custom_components.everything_presence_pro.zone_engine import DisplayBuffer
-from custom_components.everything_presence_pro.zone_engine import DisplaySnapshot
-from custom_components.everything_presence_pro.zone_engine import Grid
-from custom_components.everything_presence_pro.zone_engine import TargetStatus
-from custom_components.everything_presence_pro.zone_engine import TargetWindow
-from custom_components.everything_presence_pro.zone_engine import TumblingWindow
-from custom_components.everything_presence_pro.zone_engine import WindowOutput
-from custom_components.everything_presence_pro.zone_engine import Zone
-from custom_components.everything_presence_pro.zone_engine import ZoneEngine
-from custom_components.everything_presence_pro.zone_engine import ZoneState
+from custom_components.eppgrid.const import CELL_ROOM_BIT
+from custom_components.eppgrid.const import CELL_ZONE_SHIFT
+from custom_components.eppgrid.const import RAW_FPS
+from custom_components.eppgrid.const import ZONE_TYPE_DEFAULTS
+from custom_components.eppgrid.const import ZONE_TYPE_ENTRANCE
+from custom_components.eppgrid.const import ZONE_TYPE_NORMAL
+from custom_components.eppgrid.const import threshold_to_frame_count
+from custom_components.eppgrid.zone_engine import DisplayBuffer
+from custom_components.eppgrid.zone_engine import DisplaySnapshot
+from custom_components.eppgrid.zone_engine import Grid
+from custom_components.eppgrid.zone_engine import TargetStatus
+from custom_components.eppgrid.zone_engine import TargetWindow
+from custom_components.eppgrid.zone_engine import TumblingWindow
+from custom_components.eppgrid.zone_engine import WindowOutput
+from custom_components.eppgrid.zone_engine import Zone
+from custom_components.eppgrid.zone_engine import ZoneEngine
+from custom_components.eppgrid.zone_engine import ZoneState
 
 # ---------------------------------------------------------------------------
 # Helpers

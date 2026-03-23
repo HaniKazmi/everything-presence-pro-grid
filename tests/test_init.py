@@ -9,8 +9,8 @@ from unittest.mock import patch
 import pytest
 from homeassistant.core import HomeAssistant
 
-from custom_components.everything_presence_pro.const import DOMAIN
-from custom_components.everything_presence_pro.coordinator import EverythingPresenceProCoordinator
+from custom_components.eppgrid.const import DOMAIN
+from custom_components.eppgrid.coordinator import EPPGridCoordinator
 
 
 @pytest.fixture(autouse=True)
@@ -21,7 +21,7 @@ def _patch_frontend(hass: HomeAssistant):
     hass.http = mock_http
 
     with patch(
-        "custom_components.everything_presence_pro.panel_custom.async_register_panel",
+        "custom_components.eppgrid.panel_custom.async_register_panel",
         new_callable=AsyncMock,
     ):
         yield
@@ -37,7 +37,7 @@ async def test_setup_creates_coordinator(
     await hass.async_block_till_done()
 
     assert mock_config_entry.runtime_data is not None
-    assert isinstance(mock_config_entry.runtime_data, EverythingPresenceProCoordinator)
+    assert isinstance(mock_config_entry.runtime_data, EPPGridCoordinator)
 
 
 async def test_setup_forwards_platforms(

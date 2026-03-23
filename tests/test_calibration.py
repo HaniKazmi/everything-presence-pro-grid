@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from custom_components.everything_presence_pro.calibration import SensorTransform
+from custom_components.eppgrid.calibration import SensorTransform
 
 # ---------------------------------------------------------------------------
 # SensorTransform.apply

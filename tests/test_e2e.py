@@ -22,13 +22,13 @@ from aioesphomeapi import BinarySensorState
 from aioesphomeapi import SensorState
 from homeassistant.core import HomeAssistant
 
-from custom_components.everything_presence_pro.calibration import SensorTransform
-from custom_components.everything_presence_pro.const import CELL_ROOM_BIT
-from custom_components.everything_presence_pro.const import CELL_ZONE_SHIFT
-from custom_components.everything_presence_pro.const import DOMAIN
-from custom_components.everything_presence_pro.const import GRID_COLS
-from custom_components.everything_presence_pro.const import GRID_ROWS
-from custom_components.everything_presence_pro.zone_engine import Zone
+from custom_components.eppgrid.calibration import SensorTransform
+from custom_components.eppgrid.const import CELL_ROOM_BIT
+from custom_components.eppgrid.const import CELL_ZONE_SHIFT
+from custom_components.eppgrid.const import DOMAIN
+from custom_components.eppgrid.const import GRID_COLS
+from custom_components.eppgrid.const import GRID_ROWS
+from custom_components.eppgrid.zone_engine import Zone
 
 # ---------------------------------------------------------------------------
 # ESPHome entity key constants (arbitrary, consistent within tests)
@@ -76,7 +76,7 @@ _BINARY_SENSOR_KEY_MAP = {
 @pytest.fixture(autouse=True)
 def _clear_ws_registered():
     """Reset WS registration guard between tests."""
-    from custom_components.everything_presence_pro import websocket_api
+    from custom_components.eppgrid import websocket_api
 
     websocket_api._REGISTERED.discard(DOMAIN)
     yield
@@ -113,7 +113,7 @@ async def _setup_base(hass, mock_config_entry, mock_esphome_client):
     hass.http = mock_http
 
     with patch(
-        "custom_components.everything_presence_pro.panel_custom.async_register_panel",
+        "custom_components.eppgrid.panel_custom.async_register_panel",
         new_callable=AsyncMock,
     ):
         await hass.config_entries.async_setup(mock_config_entry.entry_id)
@@ -225,7 +225,7 @@ async def _subscribe_raw(ws_client, entry_id: str, msg_id: int = 1):
     await ws_client.send_json(
         {
             "id": msg_id,
-            "type": "everything_presence_pro/subscribe_raw_targets",
+            "type": "eppgrid/subscribe_raw_targets",
             "entry_id": entry_id,
         }
     )
@@ -241,7 +241,7 @@ async def _subscribe_grid(ws_client, entry_id: str, msg_id: int = 1):
     await ws_client.send_json(
         {
             "id": msg_id,
-            "type": "everything_presence_pro/subscribe_grid_targets",
+            "type": "eppgrid/subscribe_grid_targets",
             "entry_id": entry_id,
         }
     )
@@ -268,7 +268,7 @@ async def test_raw_subscription_shows_target(hass: HomeAssistant, hass_ws_client
     # No target_count in raw subscription — derived frontend-side
     assert "target_count" not in initial
 
-    with patch("custom_components.everything_presence_pro.coordinator.time") as mock_time:
+    with patch("custom_components.eppgrid.coordinator.time") as mock_time:
         mock_time.monotonic.return_value = 100.0
 
         # Activate target 1 at (1500, 2000)
@@ -295,7 +295,7 @@ async def test_grid_subscription_shows_target_after_tick(hass: HomeAssistant, ha
 
     await _subscribe_grid(ws_client, entry.entry_id)
 
-    with patch("custom_components.everything_presence_pro.coordinator.time") as mock_time:
+    with patch("custom_components.eppgrid.coordinator.time") as mock_time:
         mock_time.monotonic.return_value = 100.0
 
         # Feed target 1 at (1500, 1500) — inside zone 1
@@ -336,7 +336,7 @@ async def test_no_calibration_raw_still_visible(hass: HomeAssistant, hass_ws_cli
 
     await _subscribe_raw(ws_client, entry.entry_id)
 
-    with patch("custom_components.everything_presence_pro.coordinator.time") as mock_time:
+    with patch("custom_components.eppgrid.coordinator.time") as mock_time:
         mock_time.monotonic.return_value = 100.0
 
         _feed_target(coordinator, 0, 2000, 3000)
@@ -360,7 +360,7 @@ async def test_no_calibration_grid_shows_inactive(hass: HomeAssistant, hass_ws_c
 
     await _subscribe_grid(ws_client, entry.entry_id)
 
-    with patch("custom_components.everything_presence_pro.coordinator.time") as mock_time:
+    with patch("custom_components.eppgrid.coordinator.time") as mock_time:
         mock_time.monotonic.return_value = 100.0
 
         _feed_target(coordinator, 0, 2000, 3000)
@@ -395,7 +395,7 @@ async def test_room_gating_inside_vs_outside(hass: HomeAssistant, hass_ws_client
 
     await _subscribe_grid(ws_client, entry.entry_id)
 
-    with patch("custom_components.everything_presence_pro.coordinator.time") as mock_time:
+    with patch("custom_components.eppgrid.coordinator.time") as mock_time:
         mock_time.monotonic.return_value = 100.0
 
         # Target 1 inside zone 1 at (1500, 1500)
@@ -438,7 +438,7 @@ async def test_zone_becomes_occupied(hass: HomeAssistant, hass_ws_client, setup_
 
     await _subscribe_grid(ws_client, entry.entry_id)
 
-    with patch("custom_components.everything_presence_pro.coordinator.time") as mock_time:
+    with patch("custom_components.eppgrid.coordinator.time") as mock_time:
         mock_time.monotonic.return_value = 100.0
 
         # Target 1 at (1500, 1500) — zone 1
@@ -470,7 +470,7 @@ async def test_zone_target_count_reflects_signal(hass: HomeAssistant, hass_ws_cl
 
     await _subscribe_grid(ws_client, entry.entry_id)
 
-    with patch("custom_components.everything_presence_pro.coordinator.time") as mock_time:
+    with patch("custom_components.eppgrid.coordinator.time") as mock_time:
         mock_time.monotonic.return_value = 100.0
 
         # Target 1 in zone 1 with many frames (high signal)
@@ -516,7 +516,7 @@ async def test_zone_handoff(hass: HomeAssistant, hass_ws_client, setup_e2e):
 
     t = [100.0]
 
-    with patch("custom_components.everything_presence_pro.coordinator.time") as mock_time:
+    with patch("custom_components.eppgrid.coordinator.time") as mock_time:
         mock_time.monotonic.side_effect = lambda: t[0]
 
         # --- Window 1: target in zone 1 ---
@@ -568,7 +568,7 @@ async def test_target_disappears(hass: HomeAssistant, hass_ws_client, setup_e2e)
 
     t = [100.0]
 
-    with patch("custom_components.everything_presence_pro.coordinator.time") as mock_time:
+    with patch("custom_components.eppgrid.coordinator.time") as mock_time:
         mock_time.monotonic.side_effect = lambda: t[0]
 
         # --- Window 1: target present in zone 1 ---
@@ -634,7 +634,7 @@ async def test_sensor_updates_in_grid_subscription(hass: HomeAssistant, hass_ws_
     assert initial["sensors"]["illuminance"] is None
     assert initial["sensors"]["temperature"] is None
 
-    with patch("custom_components.everything_presence_pro.coordinator.time") as mock_time:
+    with patch("custom_components.eppgrid.coordinator.time") as mock_time:
         mock_time.monotonic.return_value = 100.0
 
         # Feed environment sensor values
@@ -668,7 +668,7 @@ async def test_binary_sensor_updates_in_grid_subscription(hass: HomeAssistant, h
     assert initial["sensors"]["static_presence"] is False
     assert initial["sensors"]["motion_presence"] is False
 
-    with patch("custom_components.everything_presence_pro.coordinator.time") as mock_time:
+    with patch("custom_components.eppgrid.coordinator.time") as mock_time:
         mock_time.monotonic.return_value = 100.0
 
         coordinator._on_state(BinarySensorState(key=KEY_STATIC, state=True))
@@ -707,7 +707,7 @@ async def test_full_pipeline_target_lifecycle(hass: HomeAssistant, hass_ws_clien
     await _subscribe_grid(ws_client, entry.entry_id, msg_id=2)
 
     # --- Phase 1: target appears in zone 1 ---
-    with patch("custom_components.everything_presence_pro.coordinator.time") as mock_time:
+    with patch("custom_components.eppgrid.coordinator.time") as mock_time:
         mock_time.monotonic.return_value = 200.0
         _feed_target(coordinator, 0, 1500, 1500)
         _pulse_target(coordinator, 0, n=8)

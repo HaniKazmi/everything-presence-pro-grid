@@ -10,18 +10,18 @@ import pytest
 from aioesphomeapi import BinarySensorState
 from aioesphomeapi import SensorState
 
-from custom_components.everything_presence_pro.calibration import SensorTransform
-from custom_components.everything_presence_pro.const import CELL_ROOM_BIT
-from custom_components.everything_presence_pro.const import GRID_CELL_SIZE_MM
-from custom_components.everything_presence_pro.const import GRID_COLS
-from custom_components.everything_presence_pro.const import GRID_ROWS
-from custom_components.everything_presence_pro.coordinator import EverythingPresenceProCoordinator
-from custom_components.everything_presence_pro.zone_engine import DisplayBuffer
-from custom_components.everything_presence_pro.zone_engine import Grid
-from custom_components.everything_presence_pro.zone_engine import ProcessingResult
-from custom_components.everything_presence_pro.zone_engine import TargetResult
-from custom_components.everything_presence_pro.zone_engine import TargetStatus
-from custom_components.everything_presence_pro.zone_engine import Zone
+from custom_components.eppgrid.calibration import SensorTransform
+from custom_components.eppgrid.const import CELL_ROOM_BIT
+from custom_components.eppgrid.const import GRID_CELL_SIZE_MM
+from custom_components.eppgrid.const import GRID_COLS
+from custom_components.eppgrid.const import GRID_ROWS
+from custom_components.eppgrid.coordinator import EPPGridCoordinator
+from custom_components.eppgrid.zone_engine import DisplayBuffer
+from custom_components.eppgrid.zone_engine import Grid
+from custom_components.eppgrid.zone_engine import ProcessingResult
+from custom_components.eppgrid.zone_engine import TargetResult
+from custom_components.eppgrid.zone_engine import TargetStatus
+from custom_components.eppgrid.zone_engine import Zone
 
 
 @pytest.fixture
@@ -48,7 +48,7 @@ def mock_hass():
 @pytest.fixture
 def coordinator(mock_hass, mock_entry):
     """Create a coordinator instance for testing."""
-    return EverythingPresenceProCoordinator(mock_hass, mock_entry)
+    return EPPGridCoordinator(mock_hass, mock_entry)
 
 
 # ---------------------------------------------------------------------------
@@ -117,7 +117,7 @@ class TestCoordinatorConfig:
 
     def test_config_roundtrip(self, mock_hass, mock_entry):
         """Config data serialization roundtrip preserves zones."""
-        coordinator = EverythingPresenceProCoordinator(mock_hass, mock_entry)
+        coordinator = EPPGridCoordinator(mock_hass, mock_entry)
         zones = [
             Zone(id=1, name="Desk", type="normal", trigger=5, renew=7, timeout=10.0),
         ]
@@ -128,7 +128,7 @@ class TestCoordinatorConfig:
         assert data["zones"][0]["name"] == "Desk"
         assert data["zones"][0]["type"] == "normal"
 
-        coordinator2 = EverythingPresenceProCoordinator(mock_hass, mock_entry)
+        coordinator2 = EPPGridCoordinator(mock_hass, mock_entry)
         coordinator2.load_config_data(data)
         assert len(coordinator2.zones) == 1
         assert coordinator2.zones[0].name == "Desk"
@@ -140,7 +140,7 @@ class TestCoordinatorConfig:
 
     def test_load_config_data_with_calibration(self, mock_hass, mock_entry):
         """load_config_data restores calibration transform."""
-        coord = EverythingPresenceProCoordinator(mock_hass, mock_entry)
+        coord = EPPGridCoordinator(mock_hass, mock_entry)
         transform = SensorTransform(
             perspective=[1, 0, 100, 0, 1, 200, 0, 0],
             room_width=3000,
@@ -149,7 +149,7 @@ class TestCoordinatorConfig:
         coord.set_sensor_transform(transform)
         data = coord.get_config_data()
 
-        coord2 = EverythingPresenceProCoordinator(mock_hass, mock_entry)
+        coord2 = EPPGridCoordinator(mock_hass, mock_entry)
         coord2.load_config_data(data)
         assert coord2.sensor_transform.perspective == [1, 0, 100, 0, 1, 200, 0, 0]
         assert coord2.sensor_transform.room_width == 3000
@@ -343,7 +343,7 @@ class TestOffsets:
             }
         }
         hass = MagicMock()
-        coord = EverythingPresenceProCoordinator(hass, entry)
+        coord = EPPGridCoordinator(hass, entry)
         assert coord._illuminance_offset == 5.0
         assert coord._temperature_offset == -2.0
         assert coord._humidity_offset == 1.5
@@ -382,7 +382,7 @@ def _make_room_grid(room_width_mm: float, room_depth_mm: float) -> Grid:
 
 def _coordinator_with_grid(mock_hass, mock_entry, room_w=3000, room_d=3000):
     """Create a coordinator with an identity perspective and a room grid."""
-    coord = EverythingPresenceProCoordinator(mock_hass, mock_entry)
+    coord = EPPGridCoordinator(mock_hass, mock_entry)
     # Identity perspective: calibrated coords == raw coords
     transform = SensorTransform(
         perspective=[1, 0, 0, 0, 1, 0, 0, 0],
@@ -509,20 +509,20 @@ class TestConnectionLifecycle:
 
     async def test_async_connect_creates_client_and_starts_reconnect(self, mock_hass, mock_entry):
         with (
-            patch("custom_components.everything_presence_pro.coordinator.APIClient") as mock_api_cls,
-            patch("custom_components.everything_presence_pro.coordinator.ReconnectLogic") as mock_rl_cls,
+            patch("custom_components.eppgrid.coordinator.APIClient") as mock_api_cls,
+            patch("custom_components.eppgrid.coordinator.ReconnectLogic") as mock_rl_cls,
         ):
             mock_rl = AsyncMock()
             mock_rl_cls.return_value = mock_rl
             mock_api_cls.return_value = AsyncMock()
-            coord = EverythingPresenceProCoordinator(mock_hass, mock_entry)
+            coord = EPPGridCoordinator(mock_hass, mock_entry)
             await coord.async_connect()
             mock_api_cls.assert_called_once_with("192.168.1.100", 6053, "", noise_psk="test_key")
             mock_rl_cls.assert_called_once()
             mock_rl.start.assert_awaited_once()
 
     async def test_on_connect_sets_connected_and_subscribes(self, mock_hass, mock_entry):
-        coord = EverythingPresenceProCoordinator(mock_hass, mock_entry)
+        coord = EPPGridCoordinator(mock_hass, mock_entry)
         coord._client = AsyncMock()
         coord._client.list_entities_services = AsyncMock(return_value=([], []))
         coord._client.subscribe_states = MagicMock()
@@ -530,24 +530,24 @@ class TestConnectionLifecycle:
         assert coord.connected is True
 
     async def test_on_disconnect_unexpected(self, mock_hass, mock_entry):
-        coord = EverythingPresenceProCoordinator(mock_hass, mock_entry)
+        coord = EPPGridCoordinator(mock_hass, mock_entry)
         coord._connected = True
         await coord._on_disconnect(expected_disconnect=False)
         assert coord.connected is False
 
     async def test_on_disconnect_expected(self, mock_hass, mock_entry):
-        coord = EverythingPresenceProCoordinator(mock_hass, mock_entry)
+        coord = EPPGridCoordinator(mock_hass, mock_entry)
         coord._connected = True
         await coord._on_disconnect(expected_disconnect=True)
         assert coord.connected is False
 
     async def test_on_connect_error(self, mock_hass, mock_entry):
-        coord = EverythingPresenceProCoordinator(mock_hass, mock_entry)
+        coord = EPPGridCoordinator(mock_hass, mock_entry)
         await coord._on_connect_error(ConnectionError("test"))
         assert coord.connected is False
 
     async def test_async_disconnect_stops_reconnect_and_disconnects(self, mock_hass, mock_entry):
-        coord = EverythingPresenceProCoordinator(mock_hass, mock_entry)
+        coord = EPPGridCoordinator(mock_hass, mock_entry)
         mock_rl = AsyncMock()
         mock_client = AsyncMock()
         coord._reconnect_logic = mock_rl
@@ -561,7 +561,7 @@ class TestConnectionLifecycle:
         assert coord._reconnect_logic is None
 
     async def test_async_disconnect_handles_client_error(self, mock_hass, mock_entry):
-        coord = EverythingPresenceProCoordinator(mock_hass, mock_entry)
+        coord = EPPGridCoordinator(mock_hass, mock_entry)
         mock_client = AsyncMock()
         mock_client.disconnect.side_effect = OSError("Connection lost")
         coord._client = mock_client
@@ -570,7 +570,7 @@ class TestConnectionLifecycle:
         assert coord._client is None
 
     async def test_async_disconnect_no_client(self, mock_hass, mock_entry):
-        coord = EverythingPresenceProCoordinator(mock_hass, mock_entry)
+        coord = EPPGridCoordinator(mock_hass, mock_entry)
         await coord.async_disconnect()
         assert coord.connected is False
 
@@ -580,7 +580,7 @@ class TestConnectionLifecycle:
 # ---------------------------------------------------------------------------
 
 
-@patch("custom_components.everything_presence_pro.coordinator.async_dispatcher_send")
+@patch("custom_components.eppgrid.coordinator.async_dispatcher_send")
 class TestStateHandling:
     """Tests for _on_state, _handle_binary_sensor, _handle_sensor."""
 
@@ -665,7 +665,7 @@ class TestStateHandling:
 class TestScheduleAndExpiry:
     """Tests for _schedule_rebuild and _expiry_tick."""
 
-    @patch("custom_components.everything_presence_pro.coordinator.async_dispatcher_send")
+    @patch("custom_components.eppgrid.coordinator.async_dispatcher_send")
     def test_schedule_rebuild_feeds_zone_engine(self, mock_dispatch, mock_hass, mock_entry):
         coord = _coordinator_with_grid(mock_hass, mock_entry)
         coord._target_active = [True, False, False]
@@ -686,7 +686,7 @@ class TestScheduleAndExpiry:
         coord._schedule_expiry_tick()
         mock_timer.cancel.assert_called_once()
 
-    @patch("custom_components.everything_presence_pro.coordinator.async_dispatcher_send")
+    @patch("custom_components.eppgrid.coordinator.async_dispatcher_send")
     def test_expiry_tick_clears_timer_and_feeds_empty(self, mock_dispatch, mock_hass, mock_entry):
         coord = _coordinator_with_grid(mock_hass, mock_entry)
         coord._window_timer = MagicMock()
@@ -704,7 +704,7 @@ class TestAdditionalProperties:
 
     def test_last_result_property(self, coordinator):
         """last_result returns the ProcessingResult object."""
-        from custom_components.everything_presence_pro.zone_engine import ProcessingResult
+        from custom_components.eppgrid.zone_engine import ProcessingResult
 
         result = coordinator.last_result
         assert isinstance(result, ProcessingResult)
@@ -766,8 +766,8 @@ class TestRoomLayout:
 
     def test_set_room_layout_with_grid_bytes(self, mock_hass, mock_entry):
         """set_room_layout with grid_bytes calls _load_frontend_grid."""
-        from custom_components.everything_presence_pro.const import GRID_COLS
-        from custom_components.everything_presence_pro.const import GRID_ROWS
+        from custom_components.eppgrid.const import GRID_COLS
+        from custom_components.eppgrid.const import GRID_ROWS
 
         coord = _coordinator_with_grid(mock_hass, mock_entry)
         grid_bytes = [0] * (GRID_COLS * GRID_ROWS)
@@ -776,7 +776,7 @@ class TestRoomLayout:
 
     def test_rebuild_grid_no_perspective(self, mock_hass, mock_entry):
         """_rebuild_grid is a no-op when perspective is None."""
-        coord = EverythingPresenceProCoordinator(mock_hass, mock_entry)
+        coord = EPPGridCoordinator(mock_hass, mock_entry)
         coord._sensor_transform = SensorTransform()  # perspective is None by default
         coord._rebuild_grid()  # should not raise
 
@@ -791,7 +791,7 @@ class TestSubscribeTargets:
 
     async def test_subscribe_targets_no_client(self, mock_hass, mock_entry):
         """subscribe_targets exits early when client is None."""
-        coord = EverythingPresenceProCoordinator(mock_hass, mock_entry)
+        coord = EPPGridCoordinator(mock_hass, mock_entry)
         coord._client = None
         await coord.subscribe_targets()  # should return without error
 
@@ -800,7 +800,7 @@ class TestSubscribeTargets:
         from aioesphomeapi import BinarySensorInfo
         from aioesphomeapi import SensorInfo
 
-        coord = EverythingPresenceProCoordinator(mock_hass, mock_entry)
+        coord = EPPGridCoordinator(mock_hass, mock_entry)
         bs = BinarySensorInfo(object_id="ep_pro_abc_mmwave", key=42)
         si = SensorInfo(object_id="ep_pro_abc_illuminance", key=99)
         mock_client = AsyncMock()
@@ -815,7 +815,7 @@ class TestSubscribeTargets:
         """subscribe_targets skips entities that don't classify."""
         from aioesphomeapi import SensorInfo
 
-        coord = EverythingPresenceProCoordinator(mock_hass, mock_entry)
+        coord = EPPGridCoordinator(mock_hass, mock_entry)
         unknown = SensorInfo(object_id="firmware_version", key=1)
         mock_client = AsyncMock()
         mock_client.list_entities_services = AsyncMock(return_value=([unknown], []))
@@ -830,7 +830,7 @@ class TestSubscribeTargets:
 # ---------------------------------------------------------------------------
 
 
-@patch("custom_components.everything_presence_pro.coordinator.async_dispatcher_send")
+@patch("custom_components.eppgrid.coordinator.async_dispatcher_send")
 class TestScheduleRebuildWindowTick:
     """Tests for _schedule_rebuild when a window result is produced."""
 
@@ -848,7 +848,7 @@ class TestScheduleRebuildWindowTick:
         # Feed twice so zone engine has a first window to compare against
         coord._schedule_rebuild()
         # Advance time past the window
-        with patch("custom_components.everything_presence_pro.coordinator.time") as mock_time:
+        with patch("custom_components.eppgrid.coordinator.time") as mock_time:
             mock_time.monotonic.return_value = time.monotonic() + 10.0
             coord._schedule_rebuild()
 
@@ -870,7 +870,7 @@ class TestScheduleRebuildWindowTick:
         coord._schedule_rebuild()
 
         # Run expiry tick — feed empty at a much later time
-        with patch("custom_components.everything_presence_pro.coordinator.time") as mock_time:
+        with patch("custom_components.eppgrid.coordinator.time") as mock_time:
             mock_time.monotonic.return_value = time.monotonic() + 100.0
             coord._expiry_tick()
 
@@ -887,7 +887,7 @@ class TestLoadConfigDataPaths:
 
     def test_load_config_data_with_perspective_no_grid(self, mock_hass, mock_entry):
         """load_config_data calls _rebuild_grid when calibration has perspective but no grid."""
-        coord = EverythingPresenceProCoordinator(mock_hass, mock_entry)
+        coord = EPPGridCoordinator(mock_hass, mock_entry)
         data = {
             "calibration": {
                 "perspective": [1, 0, 0, 0, 1, 0, 0, 0],
@@ -902,8 +902,8 @@ class TestLoadConfigDataPaths:
 
     def test_load_config_data_room_layout_with_grid_bytes(self, mock_hass, mock_entry):
         """load_config_data calls _load_frontend_grid when room_layout has grid_bytes."""
-        from custom_components.everything_presence_pro.const import GRID_COLS
-        from custom_components.everything_presence_pro.const import GRID_ROWS
+        from custom_components.eppgrid.const import GRID_COLS
+        from custom_components.eppgrid.const import GRID_ROWS
 
         coord = _coordinator_with_grid(mock_hass, mock_entry)
         grid_bytes = [0] * (GRID_COLS * GRID_ROWS)
@@ -915,7 +915,7 @@ class TestLoadConfigDataPaths:
 
     def test_load_config_data_zone_slots_format(self, mock_hass, mock_entry):
         """load_config_data reads zones from room_layout.zone_slots (new format)."""
-        coord = EverythingPresenceProCoordinator(mock_hass, mock_entry)
+        coord = EPPGridCoordinator(mock_hass, mock_entry)
         data = {
             "room_layout": {
                 "zone_slots": [

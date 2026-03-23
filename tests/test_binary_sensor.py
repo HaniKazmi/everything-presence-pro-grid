@@ -10,16 +10,16 @@ import pytest
 from homeassistant.components.binary_sensor import BinarySensorDeviceClass
 from homeassistant.core import HomeAssistant
 
-from custom_components.everything_presence_pro.binary_sensor import EverythingPresenceProMotionSensor
-from custom_components.everything_presence_pro.binary_sensor import EverythingPresenceProOccupancySensor
-from custom_components.everything_presence_pro.binary_sensor import EverythingPresenceProStaticPresenceSensor
-from custom_components.everything_presence_pro.binary_sensor import EverythingPresenceProTargetActiveSensor
-from custom_components.everything_presence_pro.binary_sensor import EverythingPresenceProTargetPresenceSensor
-from custom_components.everything_presence_pro.binary_sensor import EverythingPresenceProZoneOccupancySensor
-from custom_components.everything_presence_pro.zone_engine import ProcessingResult
-from custom_components.everything_presence_pro.zone_engine import TargetResult
-from custom_components.everything_presence_pro.zone_engine import TargetStatus
-from custom_components.everything_presence_pro.zone_engine import Zone
+from custom_components.eppgrid.binary_sensor import EPPGridMotionSensor
+from custom_components.eppgrid.binary_sensor import EPPGridOccupancySensor
+from custom_components.eppgrid.binary_sensor import EPPGridStaticPresenceSensor
+from custom_components.eppgrid.binary_sensor import EPPGridTargetActiveSensor
+from custom_components.eppgrid.binary_sensor import EPPGridTargetPresenceSensor
+from custom_components.eppgrid.binary_sensor import EPPGridZoneOccupancySensor
+from custom_components.eppgrid.zone_engine import ProcessingResult
+from custom_components.eppgrid.zone_engine import TargetResult
+from custom_components.eppgrid.zone_engine import TargetStatus
+from custom_components.eppgrid.zone_engine import Zone
 
 
 @pytest.fixture
@@ -61,20 +61,20 @@ class TestOccupancySensor:
     """Tests for the combined occupancy binary sensor."""
 
     def test_is_on(self, mock_coordinator):
-        sensor = EverythingPresenceProOccupancySensor(mock_coordinator)
+        sensor = EPPGridOccupancySensor(mock_coordinator)
         assert sensor.is_on is True
 
     def test_is_off(self, mock_coordinator):
         mock_coordinator.device_occupied = False
-        sensor = EverythingPresenceProOccupancySensor(mock_coordinator)
+        sensor = EPPGridOccupancySensor(mock_coordinator)
         assert sensor.is_on is False
 
     def test_device_class(self, mock_coordinator):
-        sensor = EverythingPresenceProOccupancySensor(mock_coordinator)
+        sensor = EPPGridOccupancySensor(mock_coordinator)
         assert sensor.device_class == BinarySensorDeviceClass.OCCUPANCY
 
     def test_unique_id(self, mock_coordinator):
-        sensor = EverythingPresenceProOccupancySensor(mock_coordinator)
+        sensor = EPPGridOccupancySensor(mock_coordinator)
         assert sensor.unique_id == "test_entry_occupancy"
 
 
@@ -87,20 +87,20 @@ class TestMotionSensor:
     """Tests for the PIR motion binary sensor."""
 
     def test_is_off(self, mock_coordinator):
-        sensor = EverythingPresenceProMotionSensor(mock_coordinator)
+        sensor = EPPGridMotionSensor(mock_coordinator)
         assert sensor.is_on is False
 
     def test_is_on(self, mock_coordinator):
         mock_coordinator.pir_motion = True
-        sensor = EverythingPresenceProMotionSensor(mock_coordinator)
+        sensor = EPPGridMotionSensor(mock_coordinator)
         assert sensor.is_on is True
 
     def test_device_class(self, mock_coordinator):
-        sensor = EverythingPresenceProMotionSensor(mock_coordinator)
+        sensor = EPPGridMotionSensor(mock_coordinator)
         assert sensor.device_class == BinarySensorDeviceClass.MOTION
 
     def test_unique_id(self, mock_coordinator):
-        sensor = EverythingPresenceProMotionSensor(mock_coordinator)
+        sensor = EPPGridMotionSensor(mock_coordinator)
         assert sensor.unique_id == "test_entry_motion"
 
 
@@ -113,20 +113,20 @@ class TestStaticPresenceSensor:
     """Tests for the static mmWave presence sensor."""
 
     def test_is_on(self, mock_coordinator):
-        sensor = EverythingPresenceProStaticPresenceSensor(mock_coordinator)
+        sensor = EPPGridStaticPresenceSensor(mock_coordinator)
         assert sensor.is_on is True
 
     def test_is_off(self, mock_coordinator):
         mock_coordinator.static_present = False
-        sensor = EverythingPresenceProStaticPresenceSensor(mock_coordinator)
+        sensor = EPPGridStaticPresenceSensor(mock_coordinator)
         assert sensor.is_on is False
 
     def test_device_class(self, mock_coordinator):
-        sensor = EverythingPresenceProStaticPresenceSensor(mock_coordinator)
+        sensor = EPPGridStaticPresenceSensor(mock_coordinator)
         assert sensor.device_class == BinarySensorDeviceClass.OCCUPANCY
 
     def test_unique_id(self, mock_coordinator):
-        sensor = EverythingPresenceProStaticPresenceSensor(mock_coordinator)
+        sensor = EPPGridStaticPresenceSensor(mock_coordinator)
         assert sensor.unique_id == "test_entry_static_presence"
 
 
@@ -139,20 +139,20 @@ class TestTargetPresenceSensor:
     """Tests for the target presence binary sensor."""
 
     def test_is_on(self, mock_coordinator):
-        sensor = EverythingPresenceProTargetPresenceSensor(mock_coordinator)
+        sensor = EPPGridTargetPresenceSensor(mock_coordinator)
         assert sensor.is_on is True
 
     def test_is_off(self, mock_coordinator):
         mock_coordinator.target_present = False
-        sensor = EverythingPresenceProTargetPresenceSensor(mock_coordinator)
+        sensor = EPPGridTargetPresenceSensor(mock_coordinator)
         assert sensor.is_on is False
 
     def test_unique_id(self, mock_coordinator):
-        sensor = EverythingPresenceProTargetPresenceSensor(mock_coordinator)
+        sensor = EPPGridTargetPresenceSensor(mock_coordinator)
         assert sensor.unique_id == "test_entry_target_presence"
 
     def test_disabled_by_default(self, mock_coordinator):
-        sensor = EverythingPresenceProTargetPresenceSensor(mock_coordinator)
+        sensor = EPPGridTargetPresenceSensor(mock_coordinator)
         assert sensor.entity_registry_enabled_default is False
 
 
@@ -165,23 +165,23 @@ class TestTargetActiveSensor:
     """Tests for per-target active binary sensors."""
 
     def test_is_on_for_active_target(self, mock_coordinator):
-        sensor = EverythingPresenceProTargetActiveSensor(mock_coordinator, 0)
+        sensor = EPPGridTargetActiveSensor(mock_coordinator, 0)
         assert sensor.is_on is True
 
     def test_is_off_for_inactive_target(self, mock_coordinator):
-        sensor = EverythingPresenceProTargetActiveSensor(mock_coordinator, 1)
+        sensor = EPPGridTargetActiveSensor(mock_coordinator, 1)
         assert sensor.is_on is False
 
     def test_unique_id(self, mock_coordinator):
-        sensor = EverythingPresenceProTargetActiveSensor(mock_coordinator, 0)
+        sensor = EPPGridTargetActiveSensor(mock_coordinator, 0)
         assert sensor.unique_id == "test_entry_target_1_active"
 
     def test_name(self, mock_coordinator):
-        sensor = EverythingPresenceProTargetActiveSensor(mock_coordinator, 2)
+        sensor = EPPGridTargetActiveSensor(mock_coordinator, 2)
         assert sensor.name == "Target 3 active"
 
     def test_disabled_by_default(self, mock_coordinator):
-        sensor = EverythingPresenceProTargetActiveSensor(mock_coordinator, 0)
+        sensor = EPPGridTargetActiveSensor(mock_coordinator, 0)
         assert sensor.entity_registry_enabled_default is False
 
 
@@ -194,43 +194,43 @@ class TestZoneOccupancySensor:
     """Tests for per-zone occupancy binary sensors."""
 
     def test_is_on_for_occupied_zone(self, mock_coordinator):
-        sensor = EverythingPresenceProZoneOccupancySensor(mock_coordinator, slot=1)
+        sensor = EPPGridZoneOccupancySensor(mock_coordinator, slot=1)
         assert sensor.is_on is True
 
     def test_is_off_for_empty_zone(self, mock_coordinator):
-        sensor = EverythingPresenceProZoneOccupancySensor(mock_coordinator, slot=2)
+        sensor = EPPGridZoneOccupancySensor(mock_coordinator, slot=2)
         assert sensor.is_on is False
 
     def test_name_with_configured_zone(self, mock_coordinator):
-        sensor = EverythingPresenceProZoneOccupancySensor(mock_coordinator, slot=1)
+        sensor = EPPGridZoneOccupancySensor(mock_coordinator, slot=1)
         assert sensor.name == "Desk occupancy"
 
     def test_name_without_configured_zone(self, mock_coordinator):
-        sensor = EverythingPresenceProZoneOccupancySensor(mock_coordinator, slot=5)
+        sensor = EPPGridZoneOccupancySensor(mock_coordinator, slot=5)
         assert sensor.name == "Zone 5 occupancy"
 
     def test_rest_of_room_name(self, mock_coordinator):
-        sensor = EverythingPresenceProZoneOccupancySensor(mock_coordinator, slot=0)
+        sensor = EPPGridZoneOccupancySensor(mock_coordinator, slot=0)
         assert sensor.name == "Rest of room occupancy"
 
     def test_unique_id_named_zone(self, mock_coordinator):
-        sensor = EverythingPresenceProZoneOccupancySensor(mock_coordinator, slot=1)
+        sensor = EPPGridZoneOccupancySensor(mock_coordinator, slot=1)
         assert sensor.unique_id == "test_entry_zone_1"
 
     def test_unique_id_rest_of_room(self, mock_coordinator):
-        sensor = EverythingPresenceProZoneOccupancySensor(mock_coordinator, slot=0)
+        sensor = EPPGridZoneOccupancySensor(mock_coordinator, slot=0)
         assert sensor.unique_id == "test_entry_rest_of_room"
 
     def test_extra_state_attributes(self, mock_coordinator):
-        sensor = EverythingPresenceProZoneOccupancySensor(mock_coordinator, slot=1)
+        sensor = EPPGridZoneOccupancySensor(mock_coordinator, slot=1)
         assert sensor.extra_state_attributes["target_count"] == 1
 
     def test_disabled_by_default(self, mock_coordinator):
-        sensor = EverythingPresenceProZoneOccupancySensor(mock_coordinator, slot=5)
+        sensor = EPPGridZoneOccupancySensor(mock_coordinator, slot=5)
         assert sensor.entity_registry_enabled_default is False
 
     def test_device_class(self, mock_coordinator):
-        sensor = EverythingPresenceProZoneOccupancySensor(mock_coordinator, slot=1)
+        sensor = EPPGridZoneOccupancySensor(mock_coordinator, slot=1)
         assert sensor.device_class == BinarySensorDeviceClass.OCCUPANCY
 
 
@@ -250,7 +250,7 @@ async def test_async_setup_entry_creates_entities(
     hass.http = mock_http
 
     with patch(
-        "custom_components.everything_presence_pro.panel_custom.async_register_panel",
+        "custom_components.eppgrid.panel_custom.async_register_panel",
         new_callable=AsyncMock,
     ):
         await hass.config_entries.async_setup(mock_config_entry.entry_id)
