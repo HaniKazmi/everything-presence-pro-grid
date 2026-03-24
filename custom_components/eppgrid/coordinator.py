@@ -13,6 +13,8 @@ from aioesphomeapi import BinarySensorState
 from aioesphomeapi import ReconnectLogic
 from aioesphomeapi import SensorInfo
 from aioesphomeapi import SensorState
+from aioesphomeapi import TextSensorInfo
+from aioesphomeapi import TextSensorState
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.dispatcher import async_dispatcher_send
 
@@ -109,6 +111,13 @@ class EPPGridCoordinator:
         # ESPHome entity key mapping (populated during subscription)
         self._sensor_key_map: dict[int, str] = {}
         self._binary_sensor_key_map: dict[int, str] = {}
+        self._text_sensor_key_map: dict[int, str] = {}
+
+        # Firmware zone engine detection and state
+        self._has_firmware_zone_engine: bool = False
+        self._firmware_result: ProcessingResult | None = None
+        self._firmware_zone_occ: dict[int, bool] = {}
+        self._firmware_targets: list[TargetResult | None] = [None] * MAX_TARGETS
 
     # -- Public properties --
 
@@ -229,6 +238,16 @@ class EPPGridCoordinator:
         import math
 
         return math.degrees(math.atan2(t.x, t.y))
+
+    @property
+    def has_firmware_zone_engine(self) -> bool:
+        """Return whether the device firmware has a zone engine."""
+        return self._has_firmware_zone_engine
+
+    @property
+    def firmware_result(self) -> ProcessingResult | None:
+        """Return the last firmware zone engine result."""
+        return self._firmware_result
 
     @property
     def connected(self) -> bool:
@@ -360,6 +379,8 @@ class EPPGridCoordinator:
         _LOGGER.debug("Connected to %s", self._host)
         self._sensor_key_map.clear()
         self._binary_sensor_key_map.clear()
+        self._text_sensor_key_map.clear()
+        self._has_firmware_zone_engine = False
         await self.subscribe_targets()
 
     async def _on_disconnect(self, expected_disconnect: bool) -> None:
@@ -421,6 +442,14 @@ class EPPGridCoordinator:
                     key,
                     name,
                 )
+            elif isinstance(entity_info, TextSensorInfo):
+                self._text_sensor_key_map[key] = name
+                _LOGGER.debug(
+                    "Mapped text sensor %s (key=%s) -> %s",
+                    object_id,
+                    key,
+                    name,
+                )
 
         self._client.subscribe_states(self._on_state)
 
@@ -452,6 +481,19 @@ class EPPGridCoordinator:
         if "pir" in lower or "motion" in lower:
             return "pir_motion"
 
+        # Firmware zone engine sensors (must match before generic environment
+        # sensors to avoid false positives on substrings)
+        if "epp_firmware_version" in lower:
+            return "fw_version"
+        if "epp_zone_tracking" in lower:
+            return "fw_zone_tracking"
+        for n in range(8):
+            if f"epp_zone_{n}_occupancy" in lower:
+                return f"fw_zone_{n}_occupancy"
+        for n in range(MAX_TARGETS):
+            if f"epp_target_{n}_position" in lower:
+                return f"fw_target_{n}_position"
+
         # Environment sensors
         if "illuminance" in lower or "illumination" in lower:
             return "illuminance"
@@ -470,8 +512,12 @@ class EPPGridCoordinator:
         if key is None:
             return
 
-        # Look up in both key maps
-        name = self._sensor_key_map.get(key) or self._binary_sensor_key_map.get(key)
+        # Look up in all key maps
+        name = (
+            self._sensor_key_map.get(key)
+            or self._binary_sensor_key_map.get(key)
+            or self._text_sensor_key_map.get(key)
+        )
         if name is None:
             return
 
@@ -479,6 +525,8 @@ class EPPGridCoordinator:
             self._handle_binary_sensor(name, state.state)
         elif isinstance(state, SensorState):
             self._handle_sensor(name, state.state)
+        elif isinstance(state, TextSensorState):
+            self._handle_text_sensor(name, state.state)
 
     def _handle_binary_sensor(self, name: str, value: bool) -> None:
         """Handle a binary sensor state update."""
@@ -493,6 +541,14 @@ class EPPGridCoordinator:
             if idx is not None:
                 self._target_active[idx] = value
                 self._schedule_rebuild()
+        elif name.startswith("fw_zone_") and name.endswith("_occupancy"):
+            # Firmware zone occupancy: fw_zone_0_occupancy .. fw_zone_7_occupancy
+            zone_id = self._fw_zone_index(name)
+            if zone_id is not None:
+                self._firmware_zone_occ[zone_id] = value
+        elif name == "fw_zone_tracking":
+            # Trigger sensor: firmware zone engine tick complete
+            self._build_firmware_result(value)
 
     def _handle_sensor(self, name: str, value: float) -> None:
         """Handle a sensor state update."""
@@ -528,6 +584,73 @@ class EPPGridCoordinator:
             if idx is not None:
                 self._target_resolution[idx] = value
                 self._schedule_rebuild()
+
+    def _handle_text_sensor(self, name: str, value: str) -> None:
+        """Handle a text sensor state update."""
+        if name == "fw_version":
+            if "zone_engine" in value:
+                self._has_firmware_zone_engine = True
+                _LOGGER.info("Firmware zone engine detected: %s", value)
+            else:
+                self._has_firmware_zone_engine = False
+        elif name.startswith("fw_target_") and name.endswith("_position"):
+            idx = self._fw_target_index(name)
+            if idx is not None:
+                self._firmware_targets[idx] = self._parse_fw_target_position(value)
+
+    @staticmethod
+    def _parse_fw_target_position(value: str) -> TargetResult | None:
+        """Parse a firmware target position string 'x,y,signal,status'."""
+        parts = value.split(",")
+        if len(parts) != 4:
+            return None
+        try:
+            x = float(parts[0])
+            y = float(parts[1])
+            signal = int(parts[2])
+            status_str = parts[3].strip()
+            status = TargetStatus(status_str)
+        except (ValueError, KeyError):
+            return None
+        return TargetResult(x=x, y=y, signal=signal, status=status)
+
+    def _fw_zone_index(self, name: str) -> int | None:
+        """Extract zone index from fw_zone_N_occupancy."""
+        # name format: fw_zone_0_occupancy
+        parts = name.split("_")
+        if len(parts) >= 3:
+            try:
+                return int(parts[2])
+            except ValueError:
+                pass
+        return None
+
+    def _fw_target_index(self, name: str) -> int | None:
+        """Extract 0-based target index from fw_target_N_position."""
+        # name format: fw_target_0_position
+        parts = name.split("_")
+        if len(parts) >= 3:
+            try:
+                n = int(parts[2])
+                if 0 <= n < MAX_TARGETS:
+                    return n
+            except ValueError:
+                pass
+        return None
+
+    def _build_firmware_result(self, tracking_present: bool) -> None:
+        """Build a ProcessingResult from accumulated firmware state.
+
+        Called when the fw_zone_tracking binary sensor updates, which
+        fires on every zone engine tick in firmware.
+        """
+        result = ProcessingResult(
+            device_tracking_present=tracking_present,
+            zone_occupancy=dict(self._firmware_zone_occ),
+            targets=[t if t is not None else TargetResult() for t in self._firmware_targets],
+        )
+        self._firmware_result = result
+        async_dispatcher_send(self.hass, f"{SIGNAL_TARGETS_UPDATED}_{self.entry.entry_id}")
 
     def _dispatch_sensor_update(self) -> None:
         """Dispatch a signal for environment sensor updates only."""

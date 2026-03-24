@@ -20,6 +20,7 @@ from .const import ZONE_TYPE_NORMAL
 from .coordinator import SIGNAL_DISPLAY_UPDATED
 from .coordinator import EPPGridCoordinator
 from .zone_engine import DisplayTarget
+from .zone_engine import ProcessingResult
 from .zone_engine import TargetResult
 from .zone_engine import Zone
 
@@ -488,6 +489,7 @@ async def websocket_subscribe_raw_targets(
     {
         vol.Required("type"): "eppgrid/subscribe_grid_targets",
         vol.Required("entry_id"): str,
+        vol.Optional("source", default="firmware"): vol.In(["firmware", "python"]),
     }
 )
 @websocket_api.async_response
@@ -502,10 +504,20 @@ async def websocket_subscribe_grid_targets(
         connection.send_error(msg["id"], "not_found", "Config entry not found")
         return
 
+    source = msg.get("source", "firmware")
+
+    def _pick_result() -> "ProcessingResult":
+        """Select the zone engine result based on source preference."""
+        if source == "firmware" and coordinator.has_firmware_zone_engine:
+            fw = coordinator.firmware_result
+            if fw is not None:
+                return fw
+        return coordinator.last_result
+
     def _build_payload() -> dict[str, Any]:
         snap = coordinator.last_display_snapshot
         display = snap.targets if snap else [DisplayTarget()] * MAX_TARGETS
-        result = coordinator.last_result
+        result = _pick_result()
         ztargets = list(result.targets) if result else []
         while len(ztargets) < MAX_TARGETS:
             ztargets.append(TargetResult())
