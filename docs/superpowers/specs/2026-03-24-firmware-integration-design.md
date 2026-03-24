@@ -126,7 +126,7 @@ everything-presence-pro-grid/
 ### Design Principles
 
 - **Pure C++** — no ESPHome, no Arduino, no platform dependencies. Standard C++ only (`<cstdint>`, `<cmath>`, `<array>`, `<cstring>`).
-- **No heap allocation in hot path** — fixed-size arrays for grid cells (400 bytes), targets (3), zones (8).
+- **No heap allocation in hot path** — fixed-size arrays sized to compile-time maximums (grid: 400 cells, targets: 3, zones: 8 slots including zone 0).
 - **Identical algorithms** — direct port of `zone_engine.py`. Same constants, same logic, same edge cases.
 - **Host-testable** — compiles and runs on any machine with a C++ compiler.
 
@@ -134,11 +134,13 @@ everything-presence-pro-grid/
 
 | C++ | Python | Purpose |
 |-----|--------|---------|
-| `Grid` | `Grid` | 20×20 byte array, `xy_to_cell()`, cell bit operations |
+| `Grid` | `Grid` | Fixed 20×20 byte array (400 cells), `xy_to_cell()`, cell bit operations |
 | `TumblingWindow` | `TumblingWindow` | 1s accumulator, per-target median position + frame count |
 | `ZoneEngine` | `ZoneEngine` | `tick()` → target evaluation, entry-point gating, continuity check, handoff, state machine |
 | `SensorTransform` | `SensorTransform` | 8-coefficient perspective homography `apply(x, y)` |
-| `ProcessingResult` | `ProcessingResult` | Output: zone occupancy, target status/position/signal |
+| `ProcessingResult` | `ProcessingResult` | Output struct: zone occupancy, target status/position/signal |
+
+The grid is always 20×20 cells (matching the frontend). The Python backend has a legacy `compute_extent()` method for dynamic grid sizing; this is not ported to C++.
 
 ### Shared Constants
 
@@ -146,44 +148,91 @@ Canonical values used across C++, Python, and TypeScript:
 
 - `GRID_COLS = 20`, `GRID_ROWS = 20`, `GRID_CELL_SIZE_MM = 300`
 - `CELL_ROOM_BIT = 0x01`, `CELL_ZONE_SHIFT = 1`, `CELL_ZONE_MASK = 0x0E`
-- `MAX_TARGETS = 3`, `MAX_ZONES = 8`
+- `CELL_TRAINING_MASK = 0xF0`, `CELL_TRAINING_SHIFT = 4` (bits 4-7 reserved for future AI training data)
+- `MAX_TARGETS = 3`, `MAX_ZONES = 7` (named zones 1-7; zone 0 is the implicit rest-of-room zone)
 - `MAX_MOVEMENT_CELLS = 5` (continuity Chebyshev threshold)
 - Zone type defaults: trigger/renew/timeout per type (normal, entrance, thoroughfare, rest, custom)
+
+### Memory Budget (ESP32)
+
+ESP32 has ~320KB RAM shared with WiFi/BLE/ESPHome runtime. Zone engine allocation:
+- Grid: 400 bytes (fixed)
+- TumblingWindow: ~720 bytes (3 targets × 10 frames × 2 floats × 4 bytes per float)
+- ZoneEngine state: ~256 bytes (8 zone runtimes, per-target tracking)
+- NVS config cache: ~600 bytes (perspective 32B + grid 400B + zone configs ~160B)
+- Total: ~2KB — negligible vs. available RAM even with BLE proxy active
 
 ## ESPHome Component Wrapper
 
 The `epp` external component adapts the C++ library to ESPHome's lifecycle.
 
-### Inputs
+### Inputs — LD2450 Frame Acquisition
 
-From existing ESPHome sensors (ld2450-base.yaml UART parser):
-- LD2450 raw target positions (x, y, speed, resolution × 3)
-- PIR binary sensor (GPIO36)
-- SEN0609 binary sensor (GPIO34)
-- Environmental sensors (BH1750, SHTC3, SCD4x)
+The existing `ld2450-base.yaml` parses the LD2450 UART binary protocol and exposes individual ESPHome sensors (`target_1_x`, `target_1_y`, etc.). However, the zone engine needs all 3 targets' data simultaneously per frame. The `epp` component registers an `on_target` callback on the LD2450 custom UART component to receive complete parsed frames (all 3 targets in one callback) at ~10Hz, avoiding the overhead and timing issues of subscribing to individual sensor state changes.
+
+Other inputs received via standard ESPHome sensor state callbacks:
+- PIR binary sensor (GPIO36) — for presence fusion
+- SEN0609 binary sensor (GPIO34) — for presence fusion
+- Environmental sensors (BH1750, SHTC3, SCD4x) — passed through to HA
+
+Note: SEN0609 and PIR are NOT inputs to the zone engine. They participate in presence fusion only (the combined `occupancy` signal = PIR OR SEN0609 OR zone_engine.device_tracking_present). This fusion runs on-device in the LED/relay control script, same as the original firmware.
 
 ### Outputs
 
 Exposed via ESPHome native API:
-- Per-zone occupancy binary sensors (×8)
-- Per-zone target counts (×8)
+
+**Zone engine results (ESPHome sensors, ~1Hz on window tick):**
+- Per-zone occupancy binary sensors (zone 0 rest-of-room + zones 1-7)
+- Per-zone target counts (0-9 signal strength per zone)
+- Room-level: `device_tracking_present` (any zone occupied — zone-engine-only, before PIR/SEN0609 fusion)
+
+**Target positions (ESPHome text sensors, ~5Hz rolling median):**
 - Per-target: calibrated x/y, status (active/pending/inactive), signal strength (×3)
-- Room-level: `device_tracking_present`, combined occupancy
-- Raw target data pass-through (for dev mode in HA)
+- Serialized as a single text sensor per target: `"x,y,signal,status"` (e.g., `"1500,2000,7,active"`)
+- When inactive: `"0,0,0,inactive"`
+
+**Raw target pass-through (ESPHome text sensors, at sensor rate ~10Hz):**
+- Per-target: raw x/y/speed/resolution from LD2450 — for Python dev engine + display buffer
+- Serialized as: `"raw_x,raw_y,speed,resolution"` per target
+- These are the pre-transform sensor-space coordinates
+
+**Capability advertisement:**
+- ESPHome text sensor `epp_firmware_version`: reports firmware version + capability flags (e.g., `"1.0.0:zone_engine"`)
+- The coordinator uses this to detect that the device runs custom firmware with zone engine (vs. stock firmware). If absent, coordinator falls back to Python-only mode (current behavior), ensuring graceful compatibility with stock devices.
 
 ### Configuration Services
 
-Received from HA via ESPHome custom services:
-- `set_perspective(float[8], room_width, room_depth)`
-- `set_grid(bytes[400], origin_x, origin_y)`
-- `set_zones(json)` — zone configs with trigger/renew/timeout/etc.
+Received from HA via ESPHome custom services. ESPHome services support basic types (int, float, string, bool) but not arrays, so complex data is serialized as strings:
+
+- `epp_set_perspective(perspective: string, room_width: float, room_depth: float)` — `perspective` is 8 comma-separated floats: `"a,b,c,d,e,f,g,h"`
+- `epp_set_grid(grid_data: string, origin_x: float, origin_y: float)` — `grid_data` is base64-encoded 400 bytes (matching the existing Python `Grid.to_base64()` format)
+- `epp_set_zones(zones_json: string)` — JSON string parsed on-device with a lightweight parser (ArduinoJson, which is an ESPHome dependency already). Schema matches the existing `set_room_layout` zone_slots format:
+  ```json
+  [
+    null,
+    {"id":1,"name":"Kitchen","type":"entrance","trigger":3,"renew":2,"timeout":5.0,"handoff_timeout":1.0,"entry_point":true},
+    null, null, null, null, null, null
+  ]
+  ```
+  Plus room-level fields: `room_type`, `room_trigger`, `room_renew`, `room_timeout`, `room_handoff_timeout`, `room_entry_point`.
 
 All configuration persisted to ESP32 NVS so device operates standalone.
+
+### NVS Storage Layout
+
+| NVS Key | Format | Content |
+|---------|--------|---------|
+| `epp_version` | uint8 | Schema version (starts at 1). Checked on boot; if missing or mismatched, config is cleared (clean start). |
+| `epp_persp` | blob (40 bytes) | 8 floats (perspective) + 2 floats (room_width, room_depth) |
+| `epp_grid` | blob (408 bytes) | 400 cell bytes + 2 floats (origin_x, origin_y) |
+| `epp_zones` | blob (variable) | Serialized zone configs (compact binary, not JSON — JSON is only the service interface) |
+
+On OTA update: if `epp_version` in NVS matches the firmware's expected version, config is preserved. If it doesn't match, config is cleared and the device waits for configuration from HA. This avoids complex migration logic.
 
 ### Behavioral Properties
 
 - Device runs autonomously once configured — if HA goes down, zones still evaluate, relay still triggers, LED still responds to occupancy
-- Raw LD2450 frames always forwarded to HA (for Python dev engine + display buffer)
+- Raw LD2450 frames always forwarded to HA via text sensors (for Python dev engine + display buffer)
 - Zone engine results sent at ~1 Hz (on tumbling window tick)
 - Target positions sent at ~5 Hz (rolling median, matching current display buffer cadence)
 
@@ -216,10 +265,13 @@ All configuration persisted to ESP32 NVS so device operates standalone.
 |-----------|---------|
 | `epp_zone_engine` C++ library | Grid, TumblingWindow, ZoneEngine, SensorTransform |
 | `epp` ESPHome component | Wrapper: sensor data → library → ESPHome sensors/services |
-| Configuration services | `set_perspective`, `set_grid`, `set_zones` from HA |
-| Raw data forwarding | LD2450 frames to HA at sensor rate |
+| Configuration services | `epp_set_perspective`, `epp_set_grid`, `epp_set_zones` from HA |
+| Raw data forwarding | LD2450 frames to HA via text sensors at sensor rate |
 | LD2450 angle reset | Force angle to 0° on init |
 | NVS persistence | Grid, zones, calibration in flash |
+| Capability advertisement | `epp_firmware_version` text sensor for coordinator detection |
+
+**Breaking change:** Removing LD2450 polygon zones means users with existing polygon zone configurations will lose them on firmware update. They will need to reconfigure zones through the grid editor. This is acceptable — our grid-based zone system is the replacement.
 
 ## Dual Mode Integration
 
@@ -296,15 +348,51 @@ ESPHome `http_request` update component (from original firmware). Manifest URL p
 
 ### Layer 2: Shared Parity Fixtures (CI)
 
-A JSON fixture file (`tests/fixtures/parity_scenarios.json`) defines test scenarios consumed by all three languages. Each scenario specifies grid setup, zone configs, a sequence of ticks with target positions, and expected zone occupancy + target status outputs.
+A JSON fixture file (`tests/fixtures/parity_scenarios.json`) defines test scenarios consumed by all three languages. Schema:
 
-All three test suites read the same fixtures and assert the same results. When an algorithm changes, update the fixture — if any language diverges, CI fails.
+```json
+{
+  "scenarios": {
+    "<test_name>": {
+      "grid": {
+        "room_cells": [[col, row], ...],
+        "zone_cells": {"<zone_id>": [[col, row], ...]}
+      },
+      "zones": [
+        {"id": 1, "type": "entrance", "trigger": 3, "renew": 2,
+         "timeout": 5.0, "handoff_timeout": 1.0, "entry_point": true}
+      ],
+      "room": {"type": "normal", "trigger": 5, "renew": 3,
+               "timeout": 10.0, "handoff_timeout": 3.0, "entry_point": false},
+      "ticks": [
+        {"t": 100.0, "targets": [{"x": 2850, "y": 450, "frames": 3}]}
+      ],
+      "expected": [
+        {
+          "zone_occupancy": {"0": false, "1": true},
+          "targets": [{"status": "active", "x": 2850, "y": 450, "signal": 3}]
+        }
+      ]
+    }
+  }
+}
+```
+
+Each tick in `ticks` corresponds to the same index in `expected`. Target x/y values are in grid-space (including origin offset). All three test suites read the same fixtures and assert the same results. When an algorithm changes, update the fixture — if any language diverges, CI fails.
 
 ### Layer 3: Replay Tool (Dev Tool)
 
-Recording: coordinator dumps raw LD2450 frames to JSONL when recording enabled.
+**Recording:** The coordinator dumps raw LD2450 frames to a JSONL file when a recording flag is set (websocket command or dev mode UI toggle). Each line:
+```json
+{"t": 1711234567.123, "targets": [{"x": 1234, "y": 2100, "speed": 50, "res": 300}, ...], "pir": false, "static": true}
+```
 
-Replay: Python script feeds JSONL through Python engine + C++ engine (via subprocess or C extension), outputs diff report. Optional frontend replay mode for visual comparison.
+**Replay:** A standalone C++ CLI binary (built from the same `epp_zone_engine` library + a thin `main.cpp` that reads JSONL from stdin) runs the C++ engine. A Python script orchestrates:
+1. Feed JSONL → Python engine → capture per-tick output
+2. Feed JSONL → C++ CLI binary (subprocess) → capture per-tick output
+3. Diff the two output streams, report any divergent ticks
+
+The C++ CLI binary is a natural byproduct of the host-testable library design — it's just another consumer of the library. Optional: visual replay in the frontend (play back positions on the grid at recorded timestamps).
 
 Not in CI — a hands-on diagnostic tool for algorithm tuning.
 
