@@ -23,7 +23,12 @@ if(EPP_BUILD_TESTS)
         GIT_REPOSITORY https://github.com/doctest/doctest.git
         GIT_TAG v2.4.11
     )
-    FetchContent_MakeAvailable(doctest)
+    FetchContent_Declare(
+        json
+        GIT_REPOSITORY https://github.com/nlohmann/json.git
+        GIT_TAG v3.11.3
+    )
+    FetchContent_MakeAvailable(doctest json)
 
     add_subdirectory(tests)
 endif()
