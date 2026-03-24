@@ -140,7 +140,7 @@ everything-presence-pro-grid/
 | `SensorTransform` | `SensorTransform` | 8-coefficient perspective homography `apply(x, y)` |
 | `ProcessingResult` | `ProcessingResult` | Output struct: zone occupancy, target status/position/signal |
 
-The grid is always 20×20 cells (matching the frontend). The Python backend has a legacy `compute_extent()` method for dynamic grid sizing; this is not ported to C++.
+The grid is always 20×20 cells (matching the frontend). The Python backend uses `compute_extent()` to generate an initial grid after calibration (before the user paints a room layout); the firmware does not need this because it receives the painted 20×20 grid from HA via `epp_set_grid`.
 
 ### Shared Constants
 
@@ -157,10 +157,10 @@ Canonical values used across C++, Python, and TypeScript:
 
 ESP32 has ~320KB RAM shared with WiFi/BLE/ESPHome runtime. Zone engine allocation:
 - Grid: 400 bytes (fixed)
-- TumblingWindow: ~720 bytes (3 targets × 10 frames × 2 floats × 4 bytes per float)
+- TumblingWindow: ~240 bytes (3 targets × 10 frames × 2 floats × 4 bytes per float)
 - ZoneEngine state: ~256 bytes (8 zone runtimes, per-target tracking)
 - NVS config cache: ~600 bytes (perspective 32B + grid 400B + zone configs ~160B)
-- Total: ~2KB — negligible vs. available RAM even with BLE proxy active
+- Total: ~1.5KB — negligible vs. available RAM even with BLE proxy active
 
 ## ESPHome Component Wrapper
 
@@ -209,11 +209,11 @@ Received from HA via ESPHome custom services. ESPHome services support basic typ
 - `epp_set_zones(zones_json: string)` — JSON string parsed on-device with a lightweight parser (ArduinoJson, which is an ESPHome dependency already). Schema matches the existing `set_room_layout` zone_slots format:
   ```json
   [
-    null,
     {"id":1,"name":"Kitchen","type":"entrance","trigger":3,"renew":2,"timeout":5.0,"handoff_timeout":1.0,"entry_point":true},
     null, null, null, null, null, null
   ]
   ```
+  Array has 7 elements (MAX_ZONES=7), where index 0 = zone 1, index 1 = zone 2, etc. Zone 0 (rest-of-room) is implicit and configured via the room-level fields.
   Plus room-level fields: `room_type`, `room_trigger`, `room_renew`, `room_timeout`, `room_handoff_timeout`, `room_entry_point`.
 
 All configuration persisted to ESP32 NVS so device operates standalone.
