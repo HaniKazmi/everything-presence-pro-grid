@@ -847,6 +847,11 @@ uart:
           bool p3_detected = *((uint16_t *)(&bytes[26])) != 0;
           bool target_masked = false;
 
+          // Outer-scope target coords for EPP component
+          float epp_x1 = 0, epp_y1 = 0;
+          float epp_x2 = 0, epp_y2 = 0;
+          float epp_x3 = 0, epp_y3 = 0;
+
           if (p1_detected) {
             int16_t p1_x = *((int16_t *)(&bytes[4]));
             if (p1_x < 0) p1_x += MIN_INT16_VAL;
@@ -874,6 +879,7 @@ uart:
                 p1_x = p1_distance * cos(angle);
                 p1_y = p1_distance * sin(angle);
               }
+              epp_x1 = p1_x; epp_y1 = p1_y;
               if (point_in_poly(p1_x, p1_y, poly_exclusions[0])) {
                 zone_exclusion_counts[0]++;
                 p1_detected = false;
@@ -984,6 +990,7 @@ uart:
                 p2_x = p2_distance * cos(angle);
                 p2_y = p2_distance * sin(angle);
               }
+              epp_x2 = p2_x; epp_y2 = p2_y;
               if (point_in_poly(p2_x, p2_y, poly_exclusions[0])) {
                 zone_exclusion_counts[0]++;
                 p2_detected = false;
@@ -1093,6 +1100,7 @@ uart:
                 p3_x = p3_distance * cos(angle);
                 p3_y = p3_distance * sin(angle);
               }
+              epp_x3 = p3_x; epp_y3 = p3_y;
               if (point_in_poly(p3_x, p3_y, poly_exclusions[0])) {
                 zone_exclusion_counts[0]++;
                 p3_detected = false;
@@ -1173,6 +1181,12 @@ uart:
                 }
             }
           }
+
+          // Feed parsed target data to EPP zone engine
+          id(epp_component).feed_targets(
+              epp_x1, epp_y1, p1_detected,
+              epp_x2, epp_y2, p2_detected,
+              epp_x3, epp_y3, p3_detected);
 
           if (update_entities && id(extra_entities) >= 2) {
             if (id(ld2450_zone1_target_count).state != zone_counts[0]) {
