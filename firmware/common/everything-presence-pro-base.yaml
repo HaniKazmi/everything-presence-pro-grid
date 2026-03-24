@@ -17,6 +17,14 @@ esphome:
             white: 0%
             effect: "Network Connecting"
 
+external_components:
+  - source:
+      type: local
+      path: ../components
+    components: [epp]
+
+epp:
+
 # Enable logging
 logger:
 
