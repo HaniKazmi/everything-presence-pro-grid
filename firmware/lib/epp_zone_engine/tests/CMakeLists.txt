@@ -1,0 +1,7 @@
+add_executable(epp_tests
+    test_grid.cpp
+)
+target_link_libraries(epp_tests PRIVATE epp_zone_engine doctest::doctest)
+
+include(${doctest_SOURCE_DIR}/scripts/cmake/doctest.cmake)
+doctest_discover_tests(epp_tests)
