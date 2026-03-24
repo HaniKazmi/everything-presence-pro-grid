@@ -44,9 +44,9 @@ esphome:
             id(firmware_co2).publish_state("Disabled");
             id(firmware_ble).publish_state("Disabled");
 
-#update:
-#  - platform: http_request
-#    id: update_http_request
-#    name: Firmware Update
-#    source: http://docs.everythingsmart.io/update/everything-presence-pro/everything-presence-pro-ethernet-manifest.json
+update:
+  - platform: http_request
+    id: update_http_request
+    name: Firmware Update
+    source: https://github.com/clintongormley/everything-presence-pro-grid/releases/latest/download/placeholder-manifest.json
 #
