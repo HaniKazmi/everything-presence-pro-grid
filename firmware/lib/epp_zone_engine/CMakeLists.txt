@@ -13,22 +13,32 @@ add_library(epp_zone_engine
 )
 target_include_directories(epp_zone_engine PUBLIC include)
 
+# JSON library (needed by tools and tests)
+include(FetchContent)
+FetchContent_Declare(
+    json
+    GIT_REPOSITORY https://github.com/nlohmann/json.git
+    GIT_TAG v3.11.3
+)
+FetchContent_MakeAvailable(json)
+
+# Replay tool (host binary, not for ESP32)
+option(EPP_BUILD_TOOLS "Build host tools" ON)
+if(EPP_BUILD_TOOLS)
+    add_executable(replay tools/replay.cpp)
+    target_link_libraries(replay PRIVATE epp_zone_engine nlohmann_json::nlohmann_json)
+endif()
+
 # Tests
 option(EPP_BUILD_TESTS "Build tests" ON)
 if(EPP_BUILD_TESTS)
     enable_testing()
-    include(FetchContent)
     FetchContent_Declare(
         doctest
         GIT_REPOSITORY https://github.com/doctest/doctest.git
         GIT_TAG v2.4.11
     )
-    FetchContent_Declare(
-        json
-        GIT_REPOSITORY https://github.com/nlohmann/json.git
-        GIT_TAG v3.11.3
-    )
-    FetchContent_MakeAvailable(doctest json)
+    FetchContent_MakeAvailable(doctest)
 
     add_subdirectory(tests)
 endif()

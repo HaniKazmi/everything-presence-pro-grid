@@ -6,6 +6,7 @@ import json
 import logging
 import math
 import time
+from typing import IO
 from typing import Any
 
 from aioesphomeapi import APIClient
@@ -127,6 +128,10 @@ class EPPGridCoordinator:
 
         # Dev mode: when True, always run the Python zone engine
         self._dev_mode: bool = False
+
+        # Recording mode: dump raw LD2450 frames to JSONL
+        self._recording: bool = False
+        self._recording_file: IO[str] | None = None
 
     # -- Public properties --
 
@@ -278,6 +283,30 @@ class EPPGridCoordinator:
         """Enable or disable dev mode."""
         self._dev_mode = enabled
         _LOGGER.info("Dev mode %s", "enabled" if enabled else "disabled")
+
+    def start_recording(self, path: str) -> None:
+        """Start recording raw LD2450 frames to a JSONL file."""
+        if self._recording:
+            self.stop_recording()
+        self._recording_file = open(path, "w", encoding="utf-8")  # noqa: SIM115
+        self._recording = True
+        _LOGGER.info("Recording started: %s", path)
+
+    def stop_recording(self) -> str | None:
+        """Stop recording and return the file path."""
+        if not self._recording or self._recording_file is None:
+            return None
+        path = self._recording_file.name
+        self._recording_file.close()
+        self._recording_file = None
+        self._recording = False
+        _LOGGER.info("Recording stopped: %s", path)
+        return path
+
+    @property
+    def recording(self) -> bool:
+        """Return whether recording is active."""
+        return self._recording
 
     @property
     def connected(self) -> bool:
@@ -809,6 +838,26 @@ class EPPGridCoordinator:
         active = [self._target_active[i] and self._target_y[i] != 0 for i in range(MAX_TARGETS)]
         calibrated = self._build_calibrated_targets(active)
         raw = [(self._target_x[i], self._target_y[i], active[i]) for i in range(MAX_TARGETS)]
+
+        # Write raw frame to JSONL when recording
+        if self._recording and self._recording_file is not None:
+            record = {
+                "t": time.time(),
+                "targets": [
+                    {
+                        "x": self._target_x[i],
+                        "y": self._target_y[i],
+                        "speed": self._target_speed[i],
+                        "res": self._target_resolution[i],
+                        "active": active[i],
+                    }
+                    for i in range(MAX_TARGETS)
+                ],
+                "pir": self._pir_motion,
+                "static": self._static_present,
+            }
+            self._recording_file.write(json.dumps(record) + "\n")
+            self._recording_file.flush()
 
         # Only run the Python zone engine when in dev mode or no firmware
         if self._dev_mode or not self._has_firmware_zone_engine:

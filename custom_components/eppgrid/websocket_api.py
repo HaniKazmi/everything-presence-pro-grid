@@ -52,6 +52,8 @@ def async_register_websocket_commands(hass: HomeAssistant) -> None:
     websocket_api.async_register_command(hass, websocket_rename_zone_entities)
     websocket_api.async_register_command(hass, websocket_set_reporting)
     websocket_api.async_register_command(hass, websocket_set_dev_mode)
+    websocket_api.async_register_command(hass, websocket_start_recording)
+    websocket_api.async_register_command(hass, websocket_stop_recording)
 
 
 @websocket_api.websocket_command(
@@ -782,3 +784,49 @@ def websocket_set_dev_mode(
         return
     coordinator.set_dev_mode(msg["enabled"])
     connection.send_result(msg["id"])
+
+
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): "eppgrid/start_recording",
+        vol.Required("entry_id"): str,
+        vol.Required("filename"): str,
+    }
+)
+@callback
+def websocket_start_recording(
+    hass: HomeAssistant,
+    connection: websocket_api.ActiveConnection,
+    msg: dict[str, Any],
+) -> None:
+    """Start recording raw LD2450 frames to a JSONL file."""
+    coordinator = _get_coordinator(hass, msg["entry_id"])
+    if coordinator is None:
+        connection.send_error(msg["id"], "not_found", "Entry not found")
+        return
+    import os
+
+    path = os.path.join(hass.config.config_dir, msg["filename"])
+    coordinator.start_recording(path)
+    connection.send_result(msg["id"], {"path": path})
+
+
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): "eppgrid/stop_recording",
+        vol.Required("entry_id"): str,
+    }
+)
+@callback
+def websocket_stop_recording(
+    hass: HomeAssistant,
+    connection: websocket_api.ActiveConnection,
+    msg: dict[str, Any],
+) -> None:
+    """Stop recording and return path to recorded file."""
+    coordinator = _get_coordinator(hass, msg["entry_id"])
+    if coordinator is None:
+        connection.send_error(msg["id"], "not_found", "Entry not found")
+        return
+    path = coordinator.stop_recording()
+    connection.send_result(msg["id"], {"path": path})
