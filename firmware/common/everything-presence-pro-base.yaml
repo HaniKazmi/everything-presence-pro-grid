@@ -25,6 +25,44 @@ external_components:
 
 epp:
   id: epp_component
+  device_tracking:
+    id: epp_zone_tracking
+    name: "Zone Tracking"
+    device_class: occupancy
+  firmware_version:
+    name: "Zone Engine Version"
+  zone_occupancy:
+    zone_0:
+      name: "Zone 0 Occupancy"
+      device_class: occupancy
+    zone_1:
+      name: "Zone 1 Occupancy"
+      device_class: occupancy
+    zone_2:
+      name: "Zone 2 Occupancy"
+      device_class: occupancy
+    zone_3:
+      name: "Zone 3 Occupancy"
+      device_class: occupancy
+    zone_4:
+      name: "Zone 4 Occupancy"
+      device_class: occupancy
+    zone_5:
+      name: "Zone 5 Occupancy"
+      device_class: occupancy
+    zone_6:
+      name: "Zone 6 Occupancy"
+      device_class: occupancy
+    zone_7:
+      name: "Zone 7 Occupancy"
+      device_class: occupancy
+  target_positions:
+    target_0:
+      name: "Target 0 Position"
+    target_1:
+      name: "Target 1 Position"
+    target_2:
+      name: "Target 2 Position"
 
 # Enable logging
 logger:
@@ -45,6 +83,28 @@ api:
         - update.perform:
             id: update_http_request
             force_update: true
+    - action: epp_set_perspective
+      variables:
+        perspective: string
+        room_width: float
+        room_depth: float
+      then:
+        - lambda: |-
+            id(epp_component).set_perspective(perspective, room_width, room_depth);
+    - action: epp_set_grid
+      variables:
+        grid_data: string
+        origin_x: float
+        origin_y: float
+      then:
+        - lambda: |-
+            id(epp_component).set_grid(grid_data, origin_x, origin_y);
+    - action: epp_set_zones
+      variables:
+        zones_json: string
+      then:
+        - lambda: |-
+            id(epp_component).set_zones(zones_json);
     - action: get_build_flags
       then:
         - api.respond:
@@ -192,15 +252,10 @@ binary_sensor:
     filters:
       - delayed_off: !lambda 'return id(occupancy_off_delay).state * 1000.0;'
     lambda: |-
-      if ( id(dfrobot_presence).state or id(pir_motion).state) {
+      if (id(dfrobot_presence).state || id(pir_motion).state || id(epp_zone_tracking).state) {
         return true;
       }
-      else if (id(dfrobot_presence).state == 0 and id(pir_motion).state == 0) {
-        return false;
-      }
-      else {
-        return id(ld2450_occupancy).state;
-      }
+      return false;
     on_state:
       then:
         - lambda: |-
@@ -227,7 +282,7 @@ binary_sensor:
     filters:
       - delayed_off: !lambda 'return id(occupancy_off_delay).state * 1000.0;'
     lambda: |-
-      return id(dfrobot_presence).state || id(ld2450_occupancy).state;
+      return id(dfrobot_presence).state || id(epp_zone_tracking).state;
 
 light:
   - platform: esp32_rmt_led_strip
