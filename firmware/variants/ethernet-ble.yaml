@@ -49,5 +49,4 @@ update:
   - platform: http_request
     id: update_http_request
     name: Firmware Update
-    source: https://github.com/clintongormley/everything-presence-pro-grid/releases/latest/download/placeholder-manifest.json
-#
+    source: https://github.com/clintongormley/everything-presence-pro-grid/releases/latest/download/everything-presence-pro-ethernet-ble-manifest.json
