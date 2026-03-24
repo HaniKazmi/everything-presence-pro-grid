@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import logging
 import math
 import time
@@ -15,6 +16,7 @@ from aioesphomeapi import SensorInfo
 from aioesphomeapi import SensorState
 from aioesphomeapi import TextSensorInfo
 from aioesphomeapi import TextSensorState
+from aioesphomeapi import UserService
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.dispatcher import async_dispatcher_send
 
@@ -26,6 +28,7 @@ from .const import GRID_CELL_SIZE_MM
 from .const import GRID_COLS
 from .const import GRID_ROWS
 from .const import MAX_TARGETS
+from .const import MAX_ZONES
 from .const import ZONE_TYPE_DEFAULTS
 from .const import ZONE_TYPE_NORMAL
 from .zone_engine import DisplayBuffer
@@ -119,6 +122,12 @@ class EPPGridCoordinator:
         self._firmware_zone_occ: dict[int, bool] = {}
         self._firmware_targets: list[TargetResult | None] = [None] * MAX_TARGETS
 
+        # ESPHome user service cache (populated during subscribe_targets)
+        self._services: dict[str, UserService] = {}
+
+        # Dev mode: when True, always run the Python zone engine
+        self._dev_mode: bool = False
+
     # -- Public properties --
 
     @property
@@ -135,7 +144,18 @@ class EPPGridCoordinator:
 
     @property
     def last_result(self) -> ProcessingResult:
-        """Return the last processing result."""
+        """Return the active processing result.
+
+        In production (firmware available, dev mode off): firmware result.
+        In dev mode or no firmware: Python result.
+        """
+        if self._has_firmware_zone_engine and not self._dev_mode and self._firmware_result is not None:
+            return self._firmware_result
+        return self._last_result
+
+    @property
+    def python_result(self) -> ProcessingResult:
+        """Return the Python zone engine result (always)."""
         return self._last_result
 
     @property
@@ -195,7 +215,7 @@ class EPPGridCoordinator:
     @property
     def device_occupied(self) -> bool:
         """Return whether the room is occupied (PIR or static or tracking)."""
-        return self._pir_motion or self._static_present or self._last_result.device_tracking_present
+        return self._pir_motion or self._static_present or self.last_result.device_tracking_present
 
     @property
     def target_present(self) -> bool:
@@ -250,6 +270,16 @@ class EPPGridCoordinator:
         return self._firmware_result
 
     @property
+    def dev_mode(self) -> bool:
+        """Return whether dev mode is enabled."""
+        return self._dev_mode
+
+    def set_dev_mode(self, enabled: bool) -> None:
+        """Enable or disable dev mode."""
+        self._dev_mode = enabled
+        _LOGGER.info("Dev mode %s", "enabled" if enabled else "disabled")
+
+    @property
     def connected(self) -> bool:
         """Return whether the device is connected."""
         return self._connected
@@ -257,7 +287,8 @@ class EPPGridCoordinator:
     @property
     def targets(self) -> list[TargetResult]:
         """Return the current target results from zone engine."""
-        return list(self._last_result.targets) if self._last_result else []
+        result = self.last_result
+        return list(result.targets) if result else []
 
     @property
     def raw_targets(self) -> list[tuple[float, float, bool]]:
@@ -352,6 +383,114 @@ class EPPGridCoordinator:
                     grid.cells[r * cols + c] = CELL_ROOM_BIT
         self._zone_engine.set_grid(grid)
 
+    # -- Config push to firmware device --
+
+    def _get_service(self, name: str) -> UserService | None:
+        """Get a cached ESPHome user service by name."""
+        return self._services.get(name)
+
+    async def push_config_to_device(self) -> None:
+        """Push all configuration to the firmware device."""
+        if not self._has_firmware_zone_engine or self._client is None:
+            return
+        await self._push_perspective_to_device()
+        await self._push_grid_to_device()
+        await self._push_zones_to_device()
+
+    async def _push_perspective_to_device(self) -> None:
+        """Push perspective calibration to the device."""
+        if not self._has_firmware_zone_engine or self._client is None:
+            return
+        t = self._sensor_transform
+        if t.perspective is None:
+            return
+        persp_str = ",".join(str(c) for c in t.perspective)
+        service = self._get_service("epp_set_perspective")
+        if service is None:
+            _LOGGER.debug("epp_set_perspective service not available")
+            return
+        try:
+            await self._client.execute_service(
+                service,
+                {
+                    "perspective": persp_str,
+                    "room_width": t.room_width,
+                    "room_depth": t.room_depth,
+                },
+            )
+        except Exception:
+            _LOGGER.warning("Failed to push perspective to device")
+
+    async def _push_grid_to_device(self) -> None:
+        """Push grid configuration to the device."""
+        if not self._has_firmware_zone_engine or self._client is None:
+            return
+        grid = self._zone_engine.grid
+        grid_b64 = grid.to_base64()
+        service = self._get_service("epp_set_grid")
+        if service is None:
+            _LOGGER.debug("epp_set_grid service not available")
+            return
+        try:
+            await self._client.execute_service(
+                service,
+                {
+                    "grid_data": grid_b64,
+                    "origin_x": grid.origin_x,
+                    "origin_y": grid.origin_y,
+                },
+            )
+        except Exception:
+            _LOGGER.warning("Failed to push grid to device")
+
+    async def _push_zones_to_device(self) -> None:
+        """Push zone configuration to the device."""
+        if not self._has_firmware_zone_engine or self._client is None:
+            return
+        zone_data = self._build_zones_payload()
+        service = self._get_service("epp_set_zones")
+        if service is None:
+            _LOGGER.debug("epp_set_zones service not available")
+            return
+        try:
+            await self._client.execute_service(
+                service,
+                {"zones_json": json.dumps(zone_data)},
+            )
+        except Exception:
+            _LOGGER.warning("Failed to push zones to device")
+
+    def _build_zones_payload(self) -> dict[str, Any]:
+        """Build JSON payload for epp_set_zones service."""
+        zone_slots: list[dict[str, Any] | None] = []
+        for z in self._zones:
+            if z.id == 0:
+                continue
+            zone_slots.append(
+                {
+                    "id": z.id,
+                    "type": z.type,
+                    "trigger": z.trigger,
+                    "renew": z.renew,
+                    "timeout": z.timeout,
+                    "handoff_timeout": z.handoff_timeout,
+                    "entry_point": z.entry_point,
+                }
+            )
+        # Pad to MAX_ZONES slots
+        while len(zone_slots) < MAX_ZONES:
+            zone_slots.append(None)
+        layout = self._room_layout
+        return {
+            "zone_slots": zone_slots,
+            "room_type": layout.get("room_type", "normal"),
+            "room_trigger": layout.get("room_trigger", 5),
+            "room_renew": layout.get("room_renew", 3),
+            "room_timeout": layout.get("room_timeout", 10.0),
+            "room_handoff_timeout": layout.get("room_handoff_timeout", 3.0),
+            "room_entry_point": layout.get("room_entry_point", False),
+        }
+
     # -- Connection management --
 
     async def async_connect(self) -> None:
@@ -381,7 +520,10 @@ class EPPGridCoordinator:
         self._binary_sensor_key_map.clear()
         self._text_sensor_key_map.clear()
         self._has_firmware_zone_engine = False
+        self._services.clear()
         await self.subscribe_targets()
+        # Push configuration to device on (re)connect
+        await self.push_config_to_device()
 
     async def _on_disconnect(self, expected_disconnect: bool) -> None:
         """Handle disconnection — ReconnectLogic will auto-retry."""
@@ -413,7 +555,10 @@ class EPPGridCoordinator:
         if self._client is None:
             return
 
-        entities, _ = await self._client.list_entities_services()
+        entities, services = await self._client.list_entities_services()
+
+        # Cache user service definitions for config push
+        self._services = {s.name: s for s in services}
 
         # Build key maps from entity list
         for entity_info in entities:
@@ -665,19 +810,22 @@ class EPPGridCoordinator:
         calibrated = self._build_calibrated_targets(active)
         raw = [(self._target_x[i], self._target_y[i], active[i]) for i in range(MAX_TARGETS)]
 
-        result = self._zone_engine.feed_raw(calibrated, now)
+        # Only run the Python zone engine when in dev mode or no firmware
+        if self._dev_mode or not self._has_firmware_zone_engine:
+            result = self._zone_engine.feed_raw(calibrated, now)
 
-        if result is not None:
-            # Window ticked — update state and dispatch
-            self._last_result = result
-            async_dispatcher_send(self.hass, f"{SIGNAL_TARGETS_UPDATED}_{self.entry.entry_id}")
+            if result is not None:
+                # Window ticked — update state and dispatch
+                self._last_result = result
+                async_dispatcher_send(self.hass, f"{SIGNAL_TARGETS_UPDATED}_{self.entry.entry_id}")
 
         # Always feed the display buffer so smoothed positions are
         # available to subscribe_raw_targets and subscribe_grid_targets.
         self._last_display_snapshot = self._display_buffer.feed(calibrated, raw)
 
         # Schedule a single callback at the soonest pending zone expiry
-        self._schedule_expiry_tick()
+        if self._dev_mode or not self._has_firmware_zone_engine:
+            self._schedule_expiry_tick()
 
         # Safety: if sensor updates stop (unchanged values = no callbacks),
         # _last_result would go stale.  Schedule a fallback tick so the zone
@@ -800,6 +948,8 @@ class EPPGridCoordinator:
                 "temperature": self._temperature_offset,
                 "humidity": self._humidity_offset,
             },
+            "dev_mode": self._dev_mode,
+            "has_firmware_zone_engine": self._has_firmware_zone_engine,
         }
 
     def load_config_data(self, data: dict[str, Any]) -> None:

@@ -51,6 +51,7 @@ def async_register_websocket_commands(hass: HomeAssistant) -> None:
     websocket_api.async_register_command(hass, websocket_subscribe_grid_targets)
     websocket_api.async_register_command(hass, websocket_rename_zone_entities)
     websocket_api.async_register_command(hass, websocket_set_reporting)
+    websocket_api.async_register_command(hass, websocket_set_dev_mode)
 
 
 @websocket_api.websocket_command(
@@ -133,6 +134,10 @@ async def websocket_set_setup(
     config["grid_rows"] = grid.rows
 
     hass.config_entries.async_update_entry(entry, options={**entry.options, "config": config})
+
+    # Push perspective + grid to firmware device
+    await coordinator._push_perspective_to_device()
+    await coordinator._push_grid_to_device()
 
     connection.send_result(msg["id"])
 
@@ -332,6 +337,10 @@ async def websocket_set_room_layout(
         config["room_layout"] = layout
         hass.config_entries.async_update_entry(entry, options={**entry.options, "config": config})
 
+    # Push grid + zones to firmware device
+    await coordinator._push_grid_to_device()
+    await coordinator._push_zones_to_device()
+
     # Enable/disable zone entities based on slot occupancy AND reporting toggles
     registry = entity_registry.async_get(hass)
     entry_id = msg["entry_id"]
@@ -508,11 +517,13 @@ async def websocket_subscribe_grid_targets(
 
     def _pick_result() -> "ProcessingResult":
         """Select the zone engine result based on source preference."""
-        if source == "firmware" and coordinator.has_firmware_zone_engine:
+        if source == "python":
+            return coordinator.python_result
+        if coordinator.has_firmware_zone_engine:
             fw = coordinator.firmware_result
             if fw is not None:
                 return fw
-        return coordinator.last_result
+        return coordinator.python_result
 
     def _build_payload() -> dict[str, Any]:
         snap = coordinator.last_display_snapshot
@@ -748,4 +759,26 @@ def websocket_set_reporting(
                             disabled_by=entity_registry.RegistryEntryDisabler.INTEGRATION,
                         )
 
+    connection.send_result(msg["id"])
+
+
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): "eppgrid/set_dev_mode",
+        vol.Required("entry_id"): str,
+        vol.Required("enabled"): bool,
+    }
+)
+@callback
+def websocket_set_dev_mode(
+    hass: HomeAssistant,
+    connection: websocket_api.ActiveConnection,
+    msg: dict[str, Any],
+) -> None:
+    """Set dev mode on/off."""
+    coordinator = _get_coordinator(hass, msg["entry_id"])
+    if coordinator is None:
+        connection.send_error(msg["id"], "not_found", "Entry not found")
+        return
+    coordinator.set_dev_mode(msg["enabled"])
     connection.send_result(msg["id"])

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from typing import Any
 from unittest.mock import AsyncMock
 from unittest.mock import MagicMock
 from unittest.mock import patch
@@ -12,7 +13,11 @@ from aioesphomeapi import BinarySensorState
 from aioesphomeapi import SensorInfo
 from aioesphomeapi import TextSensorInfo
 from aioesphomeapi import TextSensorState
+from aioesphomeapi import UserService
+from aioesphomeapi import UserServiceArg
+from aioesphomeapi import UserServiceArgType
 
+from custom_components.eppgrid.calibration import SensorTransform
 from custom_components.eppgrid.const import DOMAIN
 from custom_components.eppgrid.const import MAX_TARGETS
 from custom_components.eppgrid.const import MAX_ZONES
@@ -20,6 +25,7 @@ from custom_components.eppgrid.coordinator import EPPGridCoordinator
 from custom_components.eppgrid.zone_engine import ProcessingResult
 from custom_components.eppgrid.zone_engine import TargetResult
 from custom_components.eppgrid.zone_engine import TargetStatus
+from custom_components.eppgrid.zone_engine import Zone
 
 
 @pytest.fixture
@@ -532,3 +538,365 @@ class TestSubscribeGridTargetsSource:
         # Should use Python result (frame_count 0 = default empty)
         assert event["zones"]["frame_count"] == 0
         assert event["zones"]["debug_log"] == ""
+
+
+# ---------------------------------------------------------------------------
+# Task 4: Configuration push to device
+# ---------------------------------------------------------------------------
+
+
+def _make_user_service(name: str, arg_names: list[str]) -> UserService:
+    """Create a UserService with string args for testing."""
+    return UserService(
+        name=name,
+        key=0,
+        args=[UserServiceArg(name=n, type=UserServiceArgType.STRING) for n in arg_names],
+    )
+
+
+def _firmware_services() -> list[UserService]:
+    """Create the firmware ESPHome user services."""
+    return [
+        _make_user_service("epp_set_perspective", ["perspective", "room_width", "room_depth"]),
+        _make_user_service("epp_set_grid", ["grid_data", "origin_x", "origin_y"]),
+        _make_user_service("epp_set_zones", ["zones_json"]),
+    ]
+
+
+class TestConfigPush:
+    """Tests for configuration push to firmware device."""
+
+    async def test_push_config_skipped_no_firmware(self, coordinator: EPPGridCoordinator) -> None:
+        """push_config_to_device is a no-op when no firmware zone engine."""
+        client = AsyncMock()
+        coordinator._client = client
+        coordinator._has_firmware_zone_engine = False
+
+        await coordinator.push_config_to_device()
+        client.execute_service.assert_not_called()
+
+    async def test_push_config_skipped_no_client(self, coordinator: EPPGridCoordinator) -> None:
+        """push_config_to_device is a no-op when client is None."""
+        coordinator._has_firmware_zone_engine = True
+        coordinator._client = None
+
+        await coordinator.push_config_to_device()
+        # No exception, nothing to assert — just verifying no crash
+
+    async def test_push_perspective_calls_execute_service(
+        self, coordinator: EPPGridCoordinator
+    ) -> None:
+        """Push perspective calls execute_service with correct data."""
+        client = AsyncMock()
+        coordinator._client = client
+        coordinator._has_firmware_zone_engine = True
+        coordinator._services = {s.name: s for s in _firmware_services()}
+        coordinator._sensor_transform = SensorTransform(
+            perspective=[1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0],
+            room_width=5000.0,
+            room_depth=4000.0,
+        )
+
+        await coordinator._push_perspective_to_device()
+
+        client.execute_service.assert_called_once()
+        call_args = client.execute_service.call_args
+        service = call_args[0][0]
+        data = call_args[0][1]
+        assert service.name == "epp_set_perspective"
+        assert data["perspective"] == "1.0,0.0,0.0,0.0,1.0,0.0,0.0,0.0"
+        assert data["room_width"] == 5000.0
+        assert data["room_depth"] == 4000.0
+
+    async def test_push_perspective_skipped_no_perspective(
+        self, coordinator: EPPGridCoordinator
+    ) -> None:
+        """Push perspective is skipped when no perspective transform is set."""
+        client = AsyncMock()
+        coordinator._client = client
+        coordinator._has_firmware_zone_engine = True
+        coordinator._services = {s.name: s for s in _firmware_services()}
+        # Default SensorTransform has perspective=None
+
+        await coordinator._push_perspective_to_device()
+        client.execute_service.assert_not_called()
+
+    async def test_push_grid_calls_execute_service(
+        self, coordinator: EPPGridCoordinator
+    ) -> None:
+        """Push grid calls execute_service with correct data."""
+        client = AsyncMock()
+        coordinator._client = client
+        coordinator._has_firmware_zone_engine = True
+        coordinator._services = {s.name: s for s in _firmware_services()}
+
+        await coordinator._push_grid_to_device()
+
+        client.execute_service.assert_called_once()
+        call_args = client.execute_service.call_args
+        service = call_args[0][0]
+        data = call_args[0][1]
+        assert service.name == "epp_set_grid"
+        assert "grid_data" in data
+        assert "origin_x" in data
+        assert "origin_y" in data
+
+    async def test_push_zones_calls_execute_service(
+        self, coordinator: EPPGridCoordinator
+    ) -> None:
+        """Push zones calls execute_service with correct data."""
+        client = AsyncMock()
+        coordinator._client = client
+        coordinator._has_firmware_zone_engine = True
+        coordinator._services = {s.name: s for s in _firmware_services()}
+        coordinator.set_zones([
+            Zone(id=1, name="Kitchen", type="normal"),
+            Zone(id=2, name="Living", type="rest"),
+        ])
+
+        await coordinator._push_zones_to_device()
+
+        client.execute_service.assert_called_once()
+        call_args = client.execute_service.call_args
+        service = call_args[0][0]
+        data = call_args[0][1]
+        assert service.name == "epp_set_zones"
+        import json
+        zones_payload = json.loads(data["zones_json"])
+        assert len(zones_payload["zone_slots"]) == MAX_ZONES
+        assert zones_payload["zone_slots"][0]["id"] == 1
+        assert zones_payload["zone_slots"][1]["id"] == 2
+        # Remaining slots should be None
+        assert zones_payload["zone_slots"][2] is None
+
+    async def test_push_config_service_not_found(
+        self, coordinator: EPPGridCoordinator
+    ) -> None:
+        """Push methods gracefully handle missing services."""
+        client = AsyncMock()
+        coordinator._client = client
+        coordinator._has_firmware_zone_engine = True
+        coordinator._services = {}  # No services cached
+        coordinator._sensor_transform = SensorTransform(
+            perspective=[1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0],
+            room_width=5000.0,
+            room_depth=4000.0,
+        )
+
+        # Should not raise, should not call execute_service
+        await coordinator.push_config_to_device()
+        client.execute_service.assert_not_called()
+
+    async def test_push_config_execute_service_error(
+        self, coordinator: EPPGridCoordinator
+    ) -> None:
+        """Push methods handle execute_service errors gracefully."""
+        client = AsyncMock()
+        client.execute_service = AsyncMock(side_effect=Exception("connection lost"))
+        coordinator._client = client
+        coordinator._has_firmware_zone_engine = True
+        coordinator._services = {s.name: s for s in _firmware_services()}
+        coordinator._sensor_transform = SensorTransform(
+            perspective=[1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0],
+            room_width=5000.0,
+            room_depth=4000.0,
+        )
+
+        # Should not raise
+        await coordinator._push_perspective_to_device()
+
+    async def test_subscribe_targets_caches_services(
+        self, coordinator: EPPGridCoordinator
+    ) -> None:
+        """subscribe_targets populates the service cache."""
+        entities = _firmware_entity_list()
+        services = _firmware_services()
+        client = AsyncMock()
+        client.list_entities_services = AsyncMock(return_value=(entities, services))
+        client.subscribe_states = MagicMock()
+        coordinator._client = client
+
+        await coordinator.subscribe_targets()
+
+        assert "epp_set_perspective" in coordinator._services
+        assert "epp_set_grid" in coordinator._services
+        assert "epp_set_zones" in coordinator._services
+
+    def test_build_zones_payload(self, coordinator: EPPGridCoordinator) -> None:
+        """_build_zones_payload builds correct structure."""
+        coordinator.set_zones([
+            Zone(id=1, name="Zone A", type="normal"),
+        ])
+        coordinator._room_layout = {"room_type": "entrance", "room_trigger": 3}
+
+        payload = coordinator._build_zones_payload()
+
+        assert len(payload["zone_slots"]) == MAX_ZONES
+        assert payload["zone_slots"][0]["id"] == 1
+        assert payload["zone_slots"][0]["type"] == "normal"
+        assert payload["zone_slots"][1] is None
+        assert payload["room_type"] == "entrance"
+        assert payload["room_trigger"] == 3
+
+
+# ---------------------------------------------------------------------------
+# Task 5: Dev mode toggle
+# ---------------------------------------------------------------------------
+
+
+class TestDevMode:
+    """Tests for dev mode toggle."""
+
+    def test_dev_mode_default_off(self, coordinator: EPPGridCoordinator) -> None:
+        """Dev mode is off by default."""
+        assert coordinator.dev_mode is False
+
+    def test_set_dev_mode_on(self, coordinator: EPPGridCoordinator) -> None:
+        """set_dev_mode enables dev mode."""
+        coordinator.set_dev_mode(True)
+        assert coordinator.dev_mode is True
+
+    def test_set_dev_mode_off(self, coordinator: EPPGridCoordinator) -> None:
+        """set_dev_mode disables dev mode."""
+        coordinator.set_dev_mode(True)
+        coordinator.set_dev_mode(False)
+        assert coordinator.dev_mode is False
+
+    async def test_websocket_set_dev_mode(
+        self,
+        hass: "HomeAssistant",
+        hass_ws_client: Any,
+        setup_integration: "MockConfigEntry",
+    ) -> None:
+        """Websocket command sets dev mode on coordinator."""
+        entry = setup_integration
+        coordinator = entry.runtime_data
+        assert coordinator.dev_mode is False
+
+        ws_client = await hass_ws_client(hass)
+
+        await ws_client.send_json(
+            {
+                "id": 1,
+                "type": "eppgrid/set_dev_mode",
+                "entry_id": entry.entry_id,
+                "enabled": True,
+            }
+        )
+        msg = await ws_client.receive_json()
+        assert msg["success"] is True
+        assert coordinator.dev_mode is True
+
+        # Disable
+        await ws_client.send_json(
+            {
+                "id": 2,
+                "type": "eppgrid/set_dev_mode",
+                "entry_id": entry.entry_id,
+                "enabled": False,
+            }
+        )
+        msg = await ws_client.receive_json()
+        assert msg["success"] is True
+        assert coordinator.dev_mode is False
+
+    async def test_websocket_set_dev_mode_not_found(
+        self,
+        hass: "HomeAssistant",
+        hass_ws_client: Any,
+        setup_integration: "MockConfigEntry",
+    ) -> None:
+        """Websocket command returns error for invalid entry_id."""
+        ws_client = await hass_ws_client(hass)
+
+        await ws_client.send_json(
+            {
+                "id": 1,
+                "type": "eppgrid/set_dev_mode",
+                "entry_id": "nonexistent",
+                "enabled": True,
+            }
+        )
+        msg = await ws_client.receive_json()
+        assert msg["success"] is False
+
+
+# ---------------------------------------------------------------------------
+# Task 6: Entity source switching (last_result returns firmware/python)
+# ---------------------------------------------------------------------------
+
+
+class TestEntitySourceSwitching:
+    """Tests for last_result source switching based on firmware and dev mode."""
+
+    def test_last_result_default_python(self, coordinator: EPPGridCoordinator) -> None:
+        """Without firmware, last_result returns the Python result."""
+        assert coordinator.has_firmware_zone_engine is False
+        result = coordinator.last_result
+        # Should be the default ProcessingResult
+        assert result.frame_count == 0
+
+    def test_last_result_firmware_when_available(self, coordinator: EPPGridCoordinator) -> None:
+        """With firmware and no dev mode, last_result returns firmware result."""
+        coordinator._has_firmware_zone_engine = True
+        fw_result = ProcessingResult(
+            device_tracking_present=True,
+            frame_count=42,
+            zone_occupancy={1: True},
+        )
+        coordinator._firmware_result = fw_result
+
+        result = coordinator.last_result
+        assert result is fw_result
+        assert result.frame_count == 42
+
+    def test_last_result_firmware_none_falls_back(self, coordinator: EPPGridCoordinator) -> None:
+        """With firmware but None firmware_result, falls back to Python result."""
+        coordinator._has_firmware_zone_engine = True
+        coordinator._firmware_result = None
+
+        result = coordinator.last_result
+        assert result.frame_count == 0
+
+    def test_last_result_dev_mode_uses_python(self, coordinator: EPPGridCoordinator) -> None:
+        """With firmware and dev mode on, last_result returns Python result."""
+        coordinator._has_firmware_zone_engine = True
+        coordinator._dev_mode = True
+        coordinator._firmware_result = ProcessingResult(frame_count=99)
+        coordinator._last_result = ProcessingResult(frame_count=7)
+
+        result = coordinator.last_result
+        assert result.frame_count == 7
+
+    def test_targets_property_uses_active_result(self, coordinator: EPPGridCoordinator) -> None:
+        """targets property follows last_result source switching."""
+        fw_target = TargetResult(x=100.0, y=200.0, signal=5, status=TargetStatus.ACTIVE)
+        coordinator._has_firmware_zone_engine = True
+        coordinator._firmware_result = ProcessingResult(
+            targets=[fw_target, TargetResult(), TargetResult()],
+        )
+
+        targets = coordinator.targets
+        assert len(targets) == 3
+        assert targets[0].x == 100.0
+        assert targets[0].status == TargetStatus.ACTIVE
+
+    def test_device_occupied_uses_active_result(self, coordinator: EPPGridCoordinator) -> None:
+        """device_occupied uses the active result's tracking present flag."""
+        coordinator._has_firmware_zone_engine = True
+        coordinator._firmware_result = ProcessingResult(device_tracking_present=True)
+
+        assert coordinator.device_occupied is True
+
+    def test_zone_occupancy_sensor_uses_active_result(
+        self, coordinator: EPPGridCoordinator
+    ) -> None:
+        """Zone occupancy binary sensor reads from the active result."""
+        coordinator._has_firmware_zone_engine = True
+        coordinator._firmware_result = ProcessingResult(
+            zone_occupancy={1: True, 2: False},
+        )
+
+        result = coordinator.last_result
+        assert result.zone_occupancy.get(1) is True
+        assert result.zone_occupancy.get(2) is False
