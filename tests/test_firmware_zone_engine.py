@@ -22,6 +22,7 @@ from custom_components.eppgrid.const import DOMAIN
 from custom_components.eppgrid.const import MAX_TARGETS
 from custom_components.eppgrid.const import MAX_ZONES
 from custom_components.eppgrid.coordinator import EPPGridCoordinator
+from custom_components.eppgrid.coordinator import SIGNAL_TARGETS_UPDATED
 from custom_components.eppgrid.zone_engine import ProcessingResult
 from custom_components.eppgrid.zone_engine import TargetResult
 from custom_components.eppgrid.zone_engine import TargetStatus
@@ -308,13 +309,15 @@ class TestFirmwareResultParsing:
 
     def test_build_firmware_result_dispatches_signal(self, coordinator: EPPGridCoordinator) -> None:
         """_build_firmware_result dispatches SIGNAL_TARGETS_UPDATED."""
-        coordinator._build_firmware_result(False)
-
-        coordinator.hass.bus.async_fire.assert_not_called()  # It uses dispatcher, not bus
-        # Check that async_dispatcher_send was called
-        from homeassistant.helpers.dispatcher import async_dispatcher_send
-
-        coordinator.hass.assert_not_called()  # hass is a MagicMock — dispatcher_send calls it
+        with patch(
+            "custom_components.eppgrid.coordinator.async_dispatcher_send"
+        ) as mock_dispatch:
+            coordinator._build_firmware_result(False)
+            mock_dispatch.assert_called_once_with(
+                coordinator.hass,
+                f"{SIGNAL_TARGETS_UPDATED}_{coordinator.entry.entry_id}",
+            )
+            assert coordinator.firmware_result is not None
 
     def test_full_firmware_state_cycle(self, coordinator: EPPGridCoordinator) -> None:
         """Full cycle: text + binary sensor updates, then trigger builds result."""
@@ -900,3 +903,59 @@ class TestEntitySourceSwitching:
         result = coordinator.last_result
         assert result.zone_occupancy.get(1) is True
         assert result.zone_occupancy.get(2) is False
+
+    def test_get_config_data_includes_dev_mode(self, coordinator: EPPGridCoordinator) -> None:
+        """get_config_data includes dev_mode and has_firmware_zone_engine."""
+        data = coordinator.get_config_data()
+        assert "dev_mode" in data
+        assert data["dev_mode"] is False
+        assert "has_firmware_zone_engine" in data
+        assert data["has_firmware_zone_engine"] is False
+
+        coordinator.set_dev_mode(True)
+        coordinator._has_firmware_zone_engine = True
+        data = coordinator.get_config_data()
+        assert data["dev_mode"] is True
+        assert data["has_firmware_zone_engine"] is True
+
+
+# ---------------------------------------------------------------------------
+# Task 5 additional: Python zone engine gating in _schedule_rebuild
+# ---------------------------------------------------------------------------
+
+
+class TestZoneEngineGating:
+    """Tests that _schedule_rebuild gates the Python zone engine correctly."""
+
+    def test_python_engine_runs_without_firmware(self, coordinator: EPPGridCoordinator) -> None:
+        """Python zone engine runs when no firmware zone engine is detected."""
+        coordinator._has_firmware_zone_engine = False
+        coordinator._dev_mode = False
+
+        with patch.object(
+            coordinator._zone_engine, "feed_raw", return_value=None
+        ) as mock_feed:
+            coordinator._schedule_rebuild()
+            mock_feed.assert_called_once()
+
+    def test_python_engine_runs_in_dev_mode(self, coordinator: EPPGridCoordinator) -> None:
+        """Python zone engine runs when dev mode is enabled, even with firmware."""
+        coordinator._has_firmware_zone_engine = True
+        coordinator._dev_mode = True
+
+        with patch.object(
+            coordinator._zone_engine, "feed_raw", return_value=None
+        ) as mock_feed:
+            coordinator._schedule_rebuild()
+            mock_feed.assert_called_once()
+
+    def test_python_engine_skipped_with_firmware(self, coordinator: EPPGridCoordinator) -> None:
+        """Python zone engine is skipped when firmware detected and dev mode off."""
+        coordinator._has_firmware_zone_engine = True
+        coordinator._dev_mode = False
+
+        with patch.object(
+            coordinator._zone_engine, "feed_raw", return_value=None
+        ) as mock_feed:
+            coordinator._schedule_rebuild()
+            mock_feed.assert_not_called()
