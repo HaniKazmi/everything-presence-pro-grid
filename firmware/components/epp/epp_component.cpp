@@ -47,6 +47,27 @@ void EPPComponent::loop() {
   if (ticked) {
     const auto &result = zone_engine_.tick(window_.output(), ts);
 
+    // Log state transitions
+    if (result.device_tracking_present != prev_tracking_) {
+      ESP_LOGI(TAG, "Tracking: %s", result.device_tracking_present ? "present" : "clear");
+      prev_tracking_ = result.device_tracking_present;
+    }
+    for (int i = 0; i < MAX_ZONE_SLOTS; i++) {
+      if (result.zone_occupancy[i] != prev_zone_occ_[i]) {
+        ESP_LOGI(TAG, "Zone %d: %s", i, result.zone_occupancy[i] ? "occupied" : "clear");
+        prev_zone_occ_[i] = result.zone_occupancy[i];
+      }
+    }
+
+    // Log target activity
+    for (int i = 0; i < result.target_count && i < MAX_TARGETS; i++) {
+      if (result.targets[i].status != epp::TargetStatus::INACTIVE) {
+        ESP_LOGD(TAG, "T%d: (%.0f,%.0f) signal=%d status=%d",
+                 i, result.targets[i].x, result.targets[i].y,
+                 result.targets[i].signal, static_cast<int>(result.targets[i].status));
+      }
+    }
+
     // Publish device tracking binary sensor
     if (device_tracking_sensor_ != nullptr) {
       device_tracking_sensor_->publish_state(result.device_tracking_present);

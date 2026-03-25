@@ -98,7 +98,27 @@
       }
     },
     {
-      "label": "Firmware: Logs",
+      "label": "Firmware: Logs (WiFi)",
+      "type": "shell",
+      "command": "source .venv/bin/activate && esphome logs --device 192.168.20.214 firmware/variants/wifi.yaml",
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated"
+      }
+    },
+    {
+      "label": "Firmware: Logs (WiFi, Zone Engine)",
+      "type": "shell",
+      "command": "source .venv/bin/activate && esphome logs --device 192.168.20.214 firmware/variants/wifi.yaml 2>&1 | grep --line-buffered '\\[epp:'",
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated"
+      }
+    },
+    {
+      "label": "Firmware: Logs (USB)",
       "type": "shell",
       "command": "source .venv/bin/activate && esphome logs firmware/variants/${input:firmwareVariant}.yaml",
       "problemMatcher": [],
