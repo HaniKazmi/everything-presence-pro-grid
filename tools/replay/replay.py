@@ -17,7 +17,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import math
 import subprocess
 import sys
 import time
@@ -28,16 +27,14 @@ _project_root = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(_project_root))
 
 from custom_components.eppgrid.calibration import SensorTransform
-from custom_components.eppgrid.const import (
-    CELL_ROOM_BIT,
-    GRID_CELL_SIZE_MM,
-    GRID_COLS,
-    GRID_ROWS,
-    MAX_TARGETS,
-    ZONE_TYPE_DEFAULTS,
-    ZONE_TYPE_NORMAL,
-)
-from custom_components.eppgrid.zone_engine import Grid, Zone, ZoneEngine
+from custom_components.eppgrid.const import GRID_COLS
+from custom_components.eppgrid.const import GRID_ROWS
+from custom_components.eppgrid.const import MAX_TARGETS
+from custom_components.eppgrid.const import ZONE_TYPE_DEFAULTS
+from custom_components.eppgrid.const import ZONE_TYPE_NORMAL
+from custom_components.eppgrid.zone_engine import Grid
+from custom_components.eppgrid.zone_engine import Zone
+from custom_components.eppgrid.zone_engine import ZoneEngine
 
 
 def load_config(config_path: str) -> dict:
@@ -143,9 +140,7 @@ def run_python_replay(
                 results.append(
                     {
                         "t": t,
-                        "zone_occupancy": {
-                            str(k): v for k, v in result.zone_occupancy.items()
-                        },
+                        "zone_occupancy": {str(k): v for k, v in result.zone_occupancy.items()},
                         "tracking_present": result.device_tracking_present,
                         "targets": [
                             {
@@ -191,17 +186,13 @@ def run_cpp_replay(
     return results
 
 
-def compare_results(
-    py_results: list[dict], cpp_results: list[dict]
-) -> tuple[int, list[str]]:
+def compare_results(py_results: list[dict], cpp_results: list[dict]) -> tuple[int, list[str]]:
     """Compare Python and C++ results tick-by-tick. Returns (total_ticks, divergences)."""
     divergences: list[str] = []
     n = min(len(py_results), len(cpp_results))
 
     if len(py_results) != len(cpp_results):
-        divergences.append(
-            f"Tick count mismatch: Python={len(py_results)}, C++={len(cpp_results)}"
-        )
+        divergences.append(f"Tick count mismatch: Python={len(py_results)}, C++={len(cpp_results)}")
 
     for i in range(n):
         py = py_results[i]
@@ -216,41 +207,30 @@ def compare_results(
             py_val = py_occ.get(zid, False)
             cpp_val = cpp_occ.get(zid, False)
             if py_val != cpp_val:
-                tick_divs.append(
-                    f"zone {zid}: Python={py_val}, C++={cpp_val}"
-                )
+                tick_divs.append(f"zone {zid}: Python={py_val}, C++={cpp_val}")
 
         # Compare tracking_present
         if py.get("tracking_present") != cpp.get("tracking_present"):
             tick_divs.append(
-                f"tracking_present: Python={py.get('tracking_present')}, "
-                f"C++={cpp.get('tracking_present')}"
+                f"tracking_present: Python={py.get('tracking_present')}, C++={cpp.get('tracking_present')}"
             )
 
         # Compare target count and statuses
         py_targets = py.get("targets", [])
         cpp_targets = cpp.get("targets", [])
         if len(py_targets) != len(cpp_targets):
-            tick_divs.append(
-                f"target count: Python={len(py_targets)}, C++={len(cpp_targets)}"
-            )
+            tick_divs.append(f"target count: Python={len(py_targets)}, C++={len(cpp_targets)}")
         else:
             for j in range(len(py_targets)):
                 pt = py_targets[j]
                 ct = cpp_targets[j]
                 if pt.get("status") != ct.get("status"):
-                    tick_divs.append(
-                        f"target {j} status: Python={pt.get('status')}, "
-                        f"C++={ct.get('status')}"
-                    )
+                    tick_divs.append(f"target {j} status: Python={pt.get('status')}, C++={ct.get('status')}")
                 # Compare positions with tolerance (float precision)
                 px, py_y = pt.get("x", 0), pt.get("y", 0)
                 cx, cy = ct.get("x", 0), ct.get("y", 0)
                 if abs(px - cx) > 1.0 or abs(py_y - cy) > 1.0:
-                    tick_divs.append(
-                        f"target {j} position: Python=({px:.1f},{py_y:.1f}), "
-                        f"C++=({cx:.1f},{cy:.1f})"
-                    )
+                    tick_divs.append(f"target {j} position: Python=({px:.1f},{py_y:.1f}), C++=({cx:.1f},{cy:.1f})")
 
         if tick_divs:
             t = py.get("t", i)
@@ -260,15 +240,9 @@ def compare_results(
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(
-        description="Replay LD2450 recordings through Python and C++ zone engines"
-    )
-    parser.add_argument(
-        "--recording", required=True, help="Path to JSONL recording file"
-    )
-    parser.add_argument(
-        "--config", required=True, help="Path to zone engine config JSON"
-    )
+    parser = argparse.ArgumentParser(description="Replay LD2450 recordings through Python and C++ zone engines")
+    parser.add_argument("--recording", required=True, help="Path to JSONL recording file")
+    parser.add_argument("--config", required=True, help="Path to zone engine config JSON")
     parser.add_argument(
         "--cpp-binary",
         default=None,
@@ -305,14 +279,7 @@ def main() -> None:
 
     if args.cpp_binary is None:
         # Try default build location
-        default_path = (
-            Path(__file__).resolve().parents[2]
-            / "firmware"
-            / "lib"
-            / "epp_zone_engine"
-            / "build"
-            / "replay"
-        )
+        default_path = Path(__file__).resolve().parents[2] / "firmware" / "lib" / "epp_zone_engine" / "build" / "replay"
         if default_path.exists():
             args.cpp_binary = str(default_path)
         else:
@@ -337,9 +304,9 @@ def main() -> None:
 
     # Compare
     total, divergences = compare_results(py_results, cpp_results)
-    print(f"\n{'='*60}")
+    print(f"\n{'=' * 60}")
     print(f"Comparison: {total} ticks, {len(divergences)} divergences")
-    print(f"{'='*60}")
+    print(f"{'=' * 60}")
 
     if divergences:
         for d in divergences:

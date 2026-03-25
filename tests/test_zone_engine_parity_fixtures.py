@@ -56,9 +56,7 @@ def build_grid(grid_config: dict) -> Grid:
     for zone_id_str, cells in grid_config["zone_cells"].items():
         zone_id = int(zone_id_str)
         for col, row in cells:
-            grid.cells[row * GRID_COLS + col] = CELL_ROOM_BIT | (
-                zone_id << CELL_ZONE_SHIFT
-            )
+            grid.cells[row * GRID_COLS + col] = CELL_ROOM_BIT | (zone_id << CELL_ZONE_SHIFT)
     return grid
 
 
@@ -118,9 +116,7 @@ def test_parity_scenario(name: str) -> None:
         for zid_str, exp_occ in expected["zone_occupancy"].items():
             zid = int(zid_str)
             actual = result.zone_occupancy.get(zid, False)
-            assert actual == exp_occ, (
-                f"Tick {i}: zone {zid} occupancy: expected {exp_occ}, got {actual}"
-            )
+            assert actual == exp_occ, f"Tick {i}: zone {zid} occupancy: expected {exp_occ}, got {actual}"
 
         # Check target status if specified
         if "targets" in expected:
@@ -128,17 +124,10 @@ def test_parity_scenario(name: str) -> None:
                 assert j < len(result.targets), f"Tick {i}: missing target {j}"
                 actual_t = result.targets[j]
                 assert actual_t.status == exp_t["status"], (
-                    f"Tick {i}: target {j} status: "
-                    f"expected {exp_t['status']}, got {actual_t.status}"
+                    f"Tick {i}: target {j} status: expected {exp_t['status']}, got {actual_t.status}"
                 )
                 if "x" in exp_t:
-                    assert actual_t.x == pytest.approx(exp_t["x"]), (
-                        f"Tick {i}: target {j} x"
-                    )
-                    assert actual_t.y == pytest.approx(exp_t["y"]), (
-                        f"Tick {i}: target {j} y"
-                    )
+                    assert actual_t.x == pytest.approx(exp_t["x"]), f"Tick {i}: target {j} x"
+                    assert actual_t.y == pytest.approx(exp_t["y"]), f"Tick {i}: target {j} y"
                 if "signal" in exp_t:
-                    assert actual_t.signal == exp_t["signal"], (
-                        f"Tick {i}: target {j} signal"
-                    )
+                    assert actual_t.signal == exp_t["signal"], f"Tick {i}: target {j} signal"

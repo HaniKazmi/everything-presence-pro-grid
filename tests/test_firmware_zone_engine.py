@@ -21,8 +21,8 @@ from custom_components.eppgrid.calibration import SensorTransform
 from custom_components.eppgrid.const import DOMAIN
 from custom_components.eppgrid.const import MAX_TARGETS
 from custom_components.eppgrid.const import MAX_ZONES
-from custom_components.eppgrid.coordinator import EPPGridCoordinator
 from custom_components.eppgrid.coordinator import SIGNAL_TARGETS_UPDATED
+from custom_components.eppgrid.coordinator import EPPGridCoordinator
 from custom_components.eppgrid.zone_engine import ProcessingResult
 from custom_components.eppgrid.zone_engine import TargetResult
 from custom_components.eppgrid.zone_engine import TargetStatus
@@ -288,9 +288,7 @@ class TestFirmwareResultParsing:
         # Accumulate some state
         coordinator._firmware_zone_occ[0] = True
         coordinator._firmware_zone_occ[1] = False
-        coordinator._firmware_targets[0] = TargetResult(
-            x=1000.0, y=2000.0, signal=7, status=TargetStatus.ACTIVE
-        )
+        coordinator._firmware_targets[0] = TargetResult(x=1000.0, y=2000.0, signal=7, status=TargetStatus.ACTIVE)
 
         # Trigger build
         coordinator._build_firmware_result(True)
@@ -309,9 +307,7 @@ class TestFirmwareResultParsing:
 
     def test_build_firmware_result_dispatches_signal(self, coordinator: EPPGridCoordinator) -> None:
         """_build_firmware_result dispatches SIGNAL_TARGETS_UPDATED."""
-        with patch(
-            "custom_components.eppgrid.coordinator.async_dispatcher_send"
-        ) as mock_dispatch:
+        with patch("custom_components.eppgrid.coordinator.async_dispatcher_send") as mock_dispatch:
             coordinator._build_firmware_result(False)
             mock_dispatch.assert_called_once_with(
                 coordinator.hass,
@@ -371,8 +367,8 @@ def _clear_ws_registered():
 
 @pytest.fixture
 async def setup_integration(
-    hass: "HomeAssistant", mock_config_entry: "MockConfigEntry", mock_esphome_client: AsyncMock
-) -> "MockConfigEntry":
+    hass: HomeAssistant, mock_config_entry: MockConfigEntry, mock_esphome_client: AsyncMock
+) -> MockConfigEntry:
     """Set up the integration for WS tests and return the entry."""
     mock_http = MagicMock()
     mock_http.async_register_static_paths = AsyncMock()
@@ -391,7 +387,7 @@ class TestSubscribeGridTargetsSource:
     """Tests for the source parameter on subscribe_grid_targets."""
 
     async def test_subscribe_default_source(
-        self, hass: "HomeAssistant", hass_ws_client: "Any", setup_integration: "MockConfigEntry"
+        self, hass: HomeAssistant, hass_ws_client: Any, setup_integration: MockConfigEntry
     ) -> None:
         """Default source parameter is 'firmware'."""
         entry = setup_integration
@@ -413,7 +409,7 @@ class TestSubscribeGridTargetsSource:
         assert "zones" in msg["event"]
 
     async def test_subscribe_source_python(
-        self, hass: "HomeAssistant", hass_ws_client: "Any", setup_integration: "MockConfigEntry"
+        self, hass: HomeAssistant, hass_ws_client: Any, setup_integration: MockConfigEntry
     ) -> None:
         """Explicitly requesting source=python uses the Python engine result."""
         entry = setup_integration
@@ -435,7 +431,7 @@ class TestSubscribeGridTargetsSource:
         assert "zones" in msg["event"]
 
     async def test_subscribe_source_firmware_fallback_to_python(
-        self, hass: "HomeAssistant", hass_ws_client: "Any", setup_integration: "MockConfigEntry"
+        self, hass: HomeAssistant, hass_ws_client: Any, setup_integration: MockConfigEntry
     ) -> None:
         """source=firmware falls back to Python when firmware not available."""
         entry = setup_integration
@@ -462,7 +458,7 @@ class TestSubscribeGridTargetsSource:
         assert event["zones"]["frame_count"] == 0
 
     async def test_subscribe_source_firmware_uses_firmware_result(
-        self, hass: "HomeAssistant", hass_ws_client: "Any", setup_integration: "MockConfigEntry"
+        self, hass: HomeAssistant, hass_ws_client: Any, setup_integration: MockConfigEntry
     ) -> None:
         """source=firmware uses firmware result when available."""
         entry = setup_integration
@@ -508,7 +504,7 @@ class TestSubscribeGridTargetsSource:
         assert event["targets"][0]["status"] == "active"
 
     async def test_subscribe_source_python_ignores_firmware(
-        self, hass: "HomeAssistant", hass_ws_client: "Any", setup_integration: "MockConfigEntry"
+        self, hass: HomeAssistant, hass_ws_client: Any, setup_integration: MockConfigEntry
     ) -> None:
         """source=python always uses Python engine even when firmware is available."""
         entry = setup_integration
@@ -586,9 +582,7 @@ class TestConfigPush:
         await coordinator.push_config_to_device()
         # No exception, nothing to assert — just verifying no crash
 
-    async def test_push_perspective_calls_execute_service(
-        self, coordinator: EPPGridCoordinator
-    ) -> None:
+    async def test_push_perspective_calls_execute_service(self, coordinator: EPPGridCoordinator) -> None:
         """Push perspective calls execute_service with correct data."""
         client = AsyncMock()
         coordinator._client = client
@@ -611,9 +605,7 @@ class TestConfigPush:
         assert data["room_width"] == 5000.0
         assert data["room_depth"] == 4000.0
 
-    async def test_push_perspective_skipped_no_perspective(
-        self, coordinator: EPPGridCoordinator
-    ) -> None:
+    async def test_push_perspective_skipped_no_perspective(self, coordinator: EPPGridCoordinator) -> None:
         """Push perspective is skipped when no perspective transform is set."""
         client = AsyncMock()
         coordinator._client = client
@@ -624,9 +616,7 @@ class TestConfigPush:
         await coordinator._push_perspective_to_device()
         client.execute_service.assert_not_called()
 
-    async def test_push_grid_calls_execute_service(
-        self, coordinator: EPPGridCoordinator
-    ) -> None:
+    async def test_push_grid_calls_execute_service(self, coordinator: EPPGridCoordinator) -> None:
         """Push grid calls execute_service with correct data."""
         client = AsyncMock()
         coordinator._client = client
@@ -644,18 +634,18 @@ class TestConfigPush:
         assert "origin_x" in data
         assert "origin_y" in data
 
-    async def test_push_zones_calls_execute_service(
-        self, coordinator: EPPGridCoordinator
-    ) -> None:
+    async def test_push_zones_calls_execute_service(self, coordinator: EPPGridCoordinator) -> None:
         """Push zones calls execute_service with correct data."""
         client = AsyncMock()
         coordinator._client = client
         coordinator._has_firmware_zone_engine = True
         coordinator._services = {s.name: s for s in _firmware_services()}
-        coordinator.set_zones([
-            Zone(id=1, name="Kitchen", type="normal"),
-            Zone(id=2, name="Living", type="rest"),
-        ])
+        coordinator.set_zones(
+            [
+                Zone(id=1, name="Kitchen", type="normal"),
+                Zone(id=2, name="Living", type="rest"),
+            ]
+        )
 
         await coordinator._push_zones_to_device()
 
@@ -665,6 +655,7 @@ class TestConfigPush:
         data = call_args[0][1]
         assert service.name == "epp_set_zones"
         import json
+
         zones_payload = json.loads(data["zones_json"])
         assert len(zones_payload["zone_slots"]) == MAX_ZONES
         assert zones_payload["zone_slots"][0]["id"] == 1
@@ -672,9 +663,7 @@ class TestConfigPush:
         # Remaining slots should be None
         assert zones_payload["zone_slots"][2] is None
 
-    async def test_push_config_service_not_found(
-        self, coordinator: EPPGridCoordinator
-    ) -> None:
+    async def test_push_config_service_not_found(self, coordinator: EPPGridCoordinator) -> None:
         """Push methods gracefully handle missing services."""
         client = AsyncMock()
         coordinator._client = client
@@ -690,9 +679,7 @@ class TestConfigPush:
         await coordinator.push_config_to_device()
         client.execute_service.assert_not_called()
 
-    async def test_push_config_execute_service_error(
-        self, coordinator: EPPGridCoordinator
-    ) -> None:
+    async def test_push_config_execute_service_error(self, coordinator: EPPGridCoordinator) -> None:
         """Push methods handle execute_service errors gracefully."""
         client = AsyncMock()
         client.execute_service = AsyncMock(side_effect=Exception("connection lost"))
@@ -708,9 +695,7 @@ class TestConfigPush:
         # Should not raise
         await coordinator._push_perspective_to_device()
 
-    async def test_subscribe_targets_caches_services(
-        self, coordinator: EPPGridCoordinator
-    ) -> None:
+    async def test_subscribe_targets_caches_services(self, coordinator: EPPGridCoordinator) -> None:
         """subscribe_targets populates the service cache."""
         entities = _firmware_entity_list()
         services = _firmware_services()
@@ -727,9 +712,11 @@ class TestConfigPush:
 
     def test_build_zones_payload(self, coordinator: EPPGridCoordinator) -> None:
         """_build_zones_payload builds correct structure."""
-        coordinator.set_zones([
-            Zone(id=1, name="Zone A", type="normal"),
-        ])
+        coordinator.set_zones(
+            [
+                Zone(id=1, name="Zone A", type="normal"),
+            ]
+        )
         coordinator._room_layout = {"room_type": "entrance", "room_trigger": 3}
 
         payload = coordinator._build_zones_payload()
@@ -767,9 +754,9 @@ class TestDevMode:
 
     async def test_websocket_set_dev_mode(
         self,
-        hass: "HomeAssistant",
+        hass: HomeAssistant,
         hass_ws_client: Any,
-        setup_integration: "MockConfigEntry",
+        setup_integration: MockConfigEntry,
     ) -> None:
         """Websocket command sets dev mode on coordinator."""
         entry = setup_integration
@@ -805,9 +792,9 @@ class TestDevMode:
 
     async def test_websocket_set_dev_mode_not_found(
         self,
-        hass: "HomeAssistant",
+        hass: HomeAssistant,
         hass_ws_client: Any,
-        setup_integration: "MockConfigEntry",
+        setup_integration: MockConfigEntry,
     ) -> None:
         """Websocket command returns error for invalid entry_id."""
         ws_client = await hass_ws_client(hass)
@@ -891,9 +878,7 @@ class TestEntitySourceSwitching:
 
         assert coordinator.device_occupied is True
 
-    def test_zone_occupancy_sensor_uses_active_result(
-        self, coordinator: EPPGridCoordinator
-    ) -> None:
+    def test_zone_occupancy_sensor_uses_active_result(self, coordinator: EPPGridCoordinator) -> None:
         """Zone occupancy binary sensor reads from the active result."""
         coordinator._has_firmware_zone_engine = True
         coordinator._firmware_result = ProcessingResult(
@@ -932,9 +917,7 @@ class TestZoneEngineGating:
         coordinator._has_firmware_zone_engine = False
         coordinator._dev_mode = False
 
-        with patch.object(
-            coordinator._zone_engine, "feed_raw", return_value=None
-        ) as mock_feed:
+        with patch.object(coordinator._zone_engine, "feed_raw", return_value=None) as mock_feed:
             coordinator._schedule_rebuild()
             mock_feed.assert_called_once()
 
@@ -943,9 +926,7 @@ class TestZoneEngineGating:
         coordinator._has_firmware_zone_engine = True
         coordinator._dev_mode = True
 
-        with patch.object(
-            coordinator._zone_engine, "feed_raw", return_value=None
-        ) as mock_feed:
+        with patch.object(coordinator._zone_engine, "feed_raw", return_value=None) as mock_feed:
             coordinator._schedule_rebuild()
             mock_feed.assert_called_once()
 
@@ -954,8 +935,6 @@ class TestZoneEngineGating:
         coordinator._has_firmware_zone_engine = True
         coordinator._dev_mode = False
 
-        with patch.object(
-            coordinator._zone_engine, "feed_raw", return_value=None
-        ) as mock_feed:
+        with patch.object(coordinator._zone_engine, "feed_raw", return_value=None) as mock_feed:
             coordinator._schedule_rebuild()
             mock_feed.assert_not_called()

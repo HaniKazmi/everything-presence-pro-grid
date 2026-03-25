@@ -1,0 +1,122 @@
+{
+  "version": "2.0.0",
+  "inputs": [
+    {
+      "id": "firmwareVariant",
+      "type": "pickString",
+      "description": "Select firmware variant",
+      "options": [
+        "wifi",
+        "wifi-ble",
+        "wifi-co2",
+        "wifi-ble-co2",
+        "ethernet",
+        "ethernet-ble",
+        "ethernet-co2",
+        "ethernet-ble-co2"
+      ],
+      "default": "wifi"
+    }
+  ],
+  "tasks": [
+    {
+      "label": "Setup: Firmware development",
+      "type": "shell",
+      "command": "(test -d .venv || python3 -m venv .venv) && source .venv/bin/activate && pip install -e '.[firmware]' && (command -v cmake >/dev/null || brew install cmake)",
+      "group": "build",
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "panel": "shared"
+      }
+    },
+    {
+      "label": "Setup: HA integration tests",
+      "type": "shell",
+      "command": "(test -d .venv || python3 -m venv .venv) && source .venv/bin/activate && pip install -e '.[test]'",
+      "group": "build",
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "panel": "shared"
+      }
+    },
+    {
+      "label": "Test: C++ zone engine",
+      "type": "shell",
+      "command": "cd firmware/lib/epp_zone_engine && cmake -B build -DCMAKE_BUILD_TYPE=Debug && cmake --build build && ctest --test-dir build --output-on-failure",
+      "group": "test",
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "panel": "shared"
+      }
+    },
+    {
+      "label": "Test: Python",
+      "type": "shell",
+      "command": "source .venv/bin/activate && pytest",
+      "group": "test",
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "panel": "shared"
+      }
+    },
+    {
+      "label": "Firmware: Compile",
+      "type": "shell",
+      "command": "source .venv/bin/activate && esphome compile firmware/variants/${input:firmwareVariant}.yaml",
+      "group": {
+        "kind": "build",
+        "isDefault": true
+      },
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "panel": "shared"
+      }
+    },
+    {
+      "label": "Firmware: Upload (USB)",
+      "type": "shell",
+      "command": "source .venv/bin/activate && esphome upload firmware/variants/${input:firmwareVariant}.yaml",
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "panel": "shared"
+      }
+    },
+    {
+      "label": "Firmware: Compile & Upload",
+      "type": "shell",
+      "command": "source .venv/bin/activate && esphome run firmware/variants/${input:firmwareVariant}.yaml",
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "panel": "shared"
+      }
+    },
+    {
+      "label": "Firmware: Logs",
+      "type": "shell",
+      "command": "source .venv/bin/activate && esphome logs firmware/variants/${input:firmwareVariant}.yaml",
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated"
+      }
+    },
+    {
+      "label": "Lint: Ruff",
+      "type": "shell",
+      "command": "source .venv/bin/activate && ruff check . && ruff format --check .",
+      "group": "test",
+      "problemMatcher": [],
+      "presentation": {
+        "reveal": "always",
+        "panel": "shared"
+      }
+    }
+  ]
+}

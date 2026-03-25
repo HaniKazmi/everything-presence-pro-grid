@@ -42,9 +42,7 @@ def coordinator(mock_hass: MagicMock, mock_entry: MagicMock) -> EPPGridCoordinat
 class TestRecordingStartStop:
     """Tests for start_recording and stop_recording."""
 
-    def test_start_recording_creates_file(
-        self, coordinator: EPPGridCoordinator
-    ) -> None:
+    def test_start_recording_creates_file(self, coordinator: EPPGridCoordinator) -> None:
         """Start recording creates a file and sets recording state."""
         with tempfile.TemporaryDirectory() as tmpdir:
             path = os.path.join(tmpdir, "test_recording.jsonl")
@@ -55,9 +53,7 @@ class TestRecordingStartStop:
 
             coordinator.stop_recording()
 
-    def test_stop_recording_returns_path(
-        self, coordinator: EPPGridCoordinator
-    ) -> None:
+    def test_stop_recording_returns_path(self, coordinator: EPPGridCoordinator) -> None:
         """Stop recording returns the file path and clears state."""
         with tempfile.TemporaryDirectory() as tmpdir:
             path = os.path.join(tmpdir, "test_recording.jsonl")
@@ -67,16 +63,12 @@ class TestRecordingStartStop:
             assert result == path
             assert coordinator.recording is False
 
-    def test_stop_recording_when_not_recording(
-        self, coordinator: EPPGridCoordinator
-    ) -> None:
+    def test_stop_recording_when_not_recording(self, coordinator: EPPGridCoordinator) -> None:
         """Stop recording when not recording returns None."""
         result = coordinator.stop_recording()
         assert result is None
 
-    def test_start_recording_stops_previous(
-        self, coordinator: EPPGridCoordinator
-    ) -> None:
+    def test_start_recording_stops_previous(self, coordinator: EPPGridCoordinator) -> None:
         """Starting a new recording stops the previous one."""
         with tempfile.TemporaryDirectory() as tmpdir:
             path1 = os.path.join(tmpdir, "recording1.jsonl")
@@ -95,9 +87,7 @@ class TestRecordingStartStop:
 class TestRecordingContent:
     """Tests for JSONL recording content."""
 
-    def test_frames_written_during_recording(
-        self, coordinator: EPPGridCoordinator
-    ) -> None:
+    def test_frames_written_during_recording(self, coordinator: EPPGridCoordinator) -> None:
         """Raw frames are written as JSONL during recording."""
         with tempfile.TemporaryDirectory() as tmpdir:
             path = os.path.join(tmpdir, "test_recording.jsonl")
@@ -125,9 +115,7 @@ class TestRecordingContent:
             assert "static" in frame
             assert isinstance(frame["t"], float)
 
-    def test_jsonl_format_correct(
-        self, coordinator: EPPGridCoordinator
-    ) -> None:
+    def test_jsonl_format_correct(self, coordinator: EPPGridCoordinator) -> None:
         """Verify the JSONL format matches the specification."""
         with tempfile.TemporaryDirectory() as tmpdir:
             path = os.path.join(tmpdir, "test_recording.jsonl")
@@ -170,9 +158,7 @@ class TestRecordingContent:
             assert frame["pir"] is False
             assert frame["static"] is False
 
-    def test_no_recording_without_start(
-        self, coordinator: EPPGridCoordinator
-    ) -> None:
+    def test_no_recording_without_start(self, coordinator: EPPGridCoordinator) -> None:
         """No file is written when recording is not started."""
         coordinator._target_x[0] = 1234.0
         coordinator._target_y[0] = 2100.0
@@ -182,9 +168,7 @@ class TestRecordingContent:
         # Recording should not be active
         assert coordinator.recording is False
 
-    def test_multiple_frames_recorded(
-        self, coordinator: EPPGridCoordinator
-    ) -> None:
+    def test_multiple_frames_recorded(self, coordinator: EPPGridCoordinator) -> None:
         """Multiple frames are recorded as separate JSONL lines."""
         with tempfile.TemporaryDirectory() as tmpdir:
             path = os.path.join(tmpdir, "test_recording.jsonl")
@@ -210,9 +194,7 @@ class TestRecordingContent:
                 assert "t" in frame
                 assert "targets" in frame
 
-    def test_y_zero_gating_reflected(
-        self, coordinator: EPPGridCoordinator
-    ) -> None:
+    def test_y_zero_gating_reflected(self, coordinator: EPPGridCoordinator) -> None:
         """Targets with y==0 are recorded with active=False due to gating."""
         with tempfile.TemporaryDirectory() as tmpdir:
             path = os.path.join(tmpdir, "test_recording.jsonl")

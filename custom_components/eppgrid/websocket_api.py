@@ -517,7 +517,7 @@ async def websocket_subscribe_grid_targets(
 
     source = msg.get("source", "firmware")
 
-    def _pick_result() -> "ProcessingResult":
+    def _pick_result() -> ProcessingResult:
         """Select the zone engine result based on source preference."""
         if source == "python":
             return coordinator.python_result

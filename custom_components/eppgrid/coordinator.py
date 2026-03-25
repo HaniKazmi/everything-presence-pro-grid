@@ -688,9 +688,7 @@ class EPPGridCoordinator:
 
         # Look up in all key maps
         name = (
-            self._sensor_key_map.get(key)
-            or self._binary_sensor_key_map.get(key)
-            or self._text_sensor_key_map.get(key)
+            self._sensor_key_map.get(key) or self._binary_sensor_key_map.get(key) or self._text_sensor_key_map.get(key)
         )
         if name is None:
             return

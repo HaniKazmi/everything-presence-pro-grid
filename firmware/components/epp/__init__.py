@@ -4,7 +4,8 @@ import os
 
 import esphome.codegen as cg
 import esphome.config_validation as cv
-from esphome.components import binary_sensor, text_sensor
+from esphome.components import binary_sensor
+from esphome.components import text_sensor
 from esphome.const import CONF_ID
 
 CODEOWNERS = ["@clintongormley"]
@@ -18,19 +19,9 @@ CONF_FIRMWARE_VERSION = "firmware_version"
 CONF_ZONE_OCCUPANCY = "zone_occupancy"
 CONF_TARGET_POSITIONS = "target_positions"
 
-ZONE_OCCUPANCY_SCHEMA = cv.Schema(
-    {
-        cv.Optional(f"zone_{i}"): binary_sensor.binary_sensor_schema()
-        for i in range(8)
-    }
-)
+ZONE_OCCUPANCY_SCHEMA = cv.Schema({cv.Optional(f"zone_{i}"): binary_sensor.binary_sensor_schema() for i in range(8)})
 
-TARGET_POSITIONS_SCHEMA = cv.Schema(
-    {
-        cv.Optional(f"target_{i}"): text_sensor.text_sensor_schema()
-        for i in range(3)
-    }
-)
+TARGET_POSITIONS_SCHEMA = cv.Schema({cv.Optional(f"target_{i}"): text_sensor.text_sensor_schema() for i in range(3)})
 
 CONFIG_SCHEMA = cv.Schema(
     {
@@ -48,9 +39,7 @@ async def to_code(config):
     await cg.register_component(var, config)
 
     # Add zone engine library
-    lib_dir = os.path.abspath(
-        os.path.join(os.path.dirname(__file__), "..", "..", "lib")
-    )
+    lib_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "lib"))
     cg.add_platformio_option("lib_extra_dirs", lib_dir)
     cg.add_library("epp_zone_engine", None)
 
