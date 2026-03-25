@@ -509,27 +509,11 @@ uart:
       sequence:
       # - lambda: UARTDebug::log_hex(direction, bytes, ' ');
       - lambda: |-
-          unsigned long now = millis();
-          if ((now - id(mmwave_update_time)) <= id(mmwave_update_interval)) {
-            return;
-          };
-          id(mmwave_update_time) = now;
-
           if (bytes.size() != 30) {
             ESP_LOGW("LD2450", "Expected 30 bytes but received %hu!", bytes.size());
             return;
           }
 
-          bool update_entities = false;
-          if(id(extra_entities) != 0) {
-            id(entities_update_count) += 1;
-            update_entities = id(entities_update_count) >= id(entities_update_max_count);
-            if (update_entities) {
-              id(entities_update_count) = 0;
-            }
-          }
-
-          const static float RADIANS_TO_DEGREES = 180.0 / 3.14159265358979323846;
           const static float DEGREES_TO_RADIANS = 3.14159265358979323846 / 180.0;
           const static int16_t MIN_INT16_VAL = -32768;
 
@@ -541,9 +525,56 @@ uart:
           float epp_x2 = 0, epp_y2 = 0;
           float epp_x3 = 0, epp_y3 = 0;
 
-          bool p1_detected = *((uint16_t *)(&bytes[10])) != 0;
-          bool p2_detected = *((uint16_t *)(&bytes[18])) != 0;
-          bool p3_detected = *((uint16_t *)(&bytes[26])) != 0;
+          // Quick-parse targets for EPP zone engine (runs at full LD2450 rate)
+          auto parse_target = [&](int offset, float &ex, float &ey) -> bool {
+            bool detected = *((uint16_t *)(&bytes[offset + 6])) != 0;
+            if (!detected) return false;
+            int16_t px = *((int16_t *)(&bytes[offset]));
+            if (px < 0) px += MIN_INT16_VAL; else px = -px;
+            int16_t py = *((int16_t *)(&bytes[offset + 2]));
+            if (py < 0) py += MIN_INT16_VAL; else py = -py;
+            float dist = sqrt(px * px + py * py);
+            if (dist > max_distance) return false;
+            if (!id(ld2450_upside_down).state) px = -px;
+            if (installation_angle != 0) {
+              float angle = atan2(py, px) - installation_angle;
+              px = dist * cos(angle);
+              py = dist * sin(angle);
+            }
+            ex = px; ey = py;
+            return true;
+          };
+
+          bool p1_det = parse_target(4, epp_x1, epp_y1);
+          bool p2_det = parse_target(12, epp_x2, epp_y2);
+          bool p3_det = parse_target(20, epp_x3, epp_y3);
+
+          // Feed EPP zone engine at full rate (before entity throttle)
+          id(epp_component).feed_targets(
+              epp_x1, epp_y1, p1_det,
+              epp_x2, epp_y2, p2_det,
+              epp_x3, epp_y3, p3_det);
+
+          // Throttle entity updates
+          unsigned long now = millis();
+          if ((now - id(mmwave_update_time)) <= id(mmwave_update_interval)) {
+            return;
+          };
+          id(mmwave_update_time) = now;
+
+          const static float RADIANS_TO_DEGREES = 180.0 / 3.14159265358979323846;
+
+          bool update_entities = false;
+          if(id(extra_entities) != 0) {
+            id(entities_update_count) += 1;
+            update_entities = id(entities_update_count) >= id(entities_update_max_count);
+            if (update_entities) {
+              id(entities_update_count) = 0;
+            }
+          }
+
+          // Re-use already-parsed values for entity updates
+          bool p1_detected = p1_det, p2_detected = p2_det, p3_detected = p3_det;
 
           if (p1_detected) {
             int16_t p1_x = *((int16_t *)(&bytes[4]));
@@ -828,12 +859,6 @@ uart:
                 }
             }
           }
-
-          // Feed parsed target data to EPP zone engine
-          id(epp_component).feed_targets(
-              epp_x1, epp_y1, p1_detected,
-              epp_x2, epp_y2, p2_detected,
-              epp_x3, epp_y3, p3_detected);
 
           bool any_detected = p1_detected || p2_detected || p3_detected;
           id(ld2450_occupancy).publish_state(any_detected);

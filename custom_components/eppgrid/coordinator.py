@@ -432,7 +432,9 @@ class EPPGridCoordinator:
             return
         t = self._sensor_transform
         if t.perspective is None:
+            _LOGGER.debug("No perspective calibration to push")
             return
+        _LOGGER.info("Pushing perspective to device: room %.0fx%.0f", t.room_width, t.room_depth)
         persp_str = ",".join(str(c) for c in t.perspective)
         service = self._get_service("epp_set_perspective")
         if service is None:
@@ -455,7 +457,12 @@ class EPPGridCoordinator:
         if not self._has_firmware_zone_engine or self._client is None:
             return
         grid = self._zone_engine.grid
+        if grid is None:
+            _LOGGER.debug("No grid data to push")
+            return
         grid_b64 = grid.to_base64()
+        _LOGGER.info("Pushing grid to device: %d cells, base64 len=%d, origin=(%.0f, %.0f)",
+                     len(grid.cells), len(grid_b64), grid.origin_x, grid.origin_y)
         service = self._get_service("epp_set_grid")
         if service is None:
             _LOGGER.debug("epp_set_grid service not available")
@@ -551,8 +558,6 @@ class EPPGridCoordinator:
         self._has_firmware_zone_engine = False
         self._services.clear()
         await self.subscribe_targets()
-        # Push configuration to device on (re)connect
-        await self.push_config_to_device()
 
     async def _on_disconnect(self, expected_disconnect: bool) -> None:
         """Handle disconnection — ReconnectLogic will auto-retry."""
@@ -598,6 +603,7 @@ class EPPGridCoordinator:
 
             name = self._classify_entity(object_id)
             if name is None:
+                _LOGGER.debug("Skipped entity %s (unclassified)", object_id)
                 continue
 
             if isinstance(entity_info, BinarySensorInfo):
@@ -625,7 +631,19 @@ class EPPGridCoordinator:
                     name,
                 )
 
+        # Detect firmware zone engine by presence of the version text sensor
+        has_fw = "fw_version" in self._text_sensor_key_map.values()
+        if has_fw and not self._has_firmware_zone_engine:
+            self._has_firmware_zone_engine = True
+            _LOGGER.info("Firmware zone engine detected (entity present)")
+        elif not has_fw:
+            self._has_firmware_zone_engine = False
+
         self._client.subscribe_states(self._on_state)
+
+        # Push config after detection and subscription are complete
+        if self._has_firmware_zone_engine:
+            await self.push_config_to_device()
 
     def _classify_entity(self, object_id: str) -> str | None:
         """Classify an ESPHome entity object_id to an internal name.
@@ -657,15 +675,15 @@ class EPPGridCoordinator:
 
         # Firmware zone engine sensors (must match before generic environment
         # sensors to avoid false positives on substrings)
-        if "epp_firmware_version" in lower:
+        if lower.endswith("zone_engine_version"):
             return "fw_version"
-        if "epp_zone_tracking" in lower:
+        if lower.endswith("zone_tracking"):
             return "fw_zone_tracking"
         for n in range(8):
-            if f"epp_zone_{n}_occupancy" in lower:
+            if lower.endswith(f"zone_{n}_occupancy"):
                 return f"fw_zone_{n}_occupancy"
         for n in range(MAX_TARGETS):
-            if f"epp_target_{n}_position" in lower:
+            if lower.endswith(f"target_{n}_position"):
                 return f"fw_target_{n}_position"
 
         # Environment sensors
@@ -759,10 +777,16 @@ class EPPGridCoordinator:
 
     def _handle_text_sensor(self, name: str, value: str) -> None:
         """Handle a text sensor state update."""
+        _LOGGER.debug("Text sensor %s = %r", name, value)
         if name == "fw_version":
             if "zone_engine" in value:
-                self._has_firmware_zone_engine = True
-                _LOGGER.info("Firmware zone engine detected: %s", value)
+                if not self._has_firmware_zone_engine:
+                    self._has_firmware_zone_engine = True
+                    _LOGGER.info("Firmware zone engine detected: %s", value)
+                    try:
+                        self.hass.async_create_task(self.push_config_to_device())
+                    except Exception:
+                        _LOGGER.exception("Failed to schedule config push")
             else:
                 self._has_firmware_zone_engine = False
         elif name.startswith("fw_target_") and name.endswith("_position"):
@@ -1012,14 +1036,24 @@ class EPPGridCoordinator:
         # Load grid
         grid_data = data.get("grid")
         if grid_data and data.get("grid_cols"):
-            grid = Grid.from_base64(
-                grid_data,
-                cols=data["grid_cols"],
-                rows=data["grid_rows"],
-                origin_x=data.get("grid_origin_x", 0.0),
-                origin_y=data.get("grid_origin_y", 0.0),
-            )
-            self._zone_engine.set_grid(grid)
+            cols = data["grid_cols"]
+            rows = data["grid_rows"]
+            if cols <= GRID_COLS and rows <= GRID_ROWS:
+                grid = Grid.from_base64(
+                    grid_data,
+                    cols=cols,
+                    rows=rows,
+                    origin_x=data.get("grid_origin_x", 0.0),
+                    origin_y=data.get("grid_origin_y", 0.0),
+                )
+                self._zone_engine.set_grid(grid)
+            else:
+                _LOGGER.warning(
+                    "Saved grid %dx%d exceeds max %dx%d, rebuilding",
+                    cols, rows, GRID_COLS, GRID_ROWS,
+                )
+                if cal_data and cal_data.get("perspective"):
+                    self._rebuild_grid()
         elif cal_data and cal_data.get("perspective"):
             # No saved grid — compute from perspective
             self._rebuild_grid()
