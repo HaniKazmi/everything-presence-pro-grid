@@ -16,9 +16,7 @@ import {
 import { ZONE_COLORS, ZONE_TYPE_DEFAULTS } from "../lib/zone-defaults.js";
 
 function createPanel(): EPPGridPanel {
-	const el = document.createElement(
-		"eppgrid-panel",
-	) as EPPGridPanel;
+	const el = document.createElement("eppgrid-panel") as EPPGridPanel;
 	el.hass = { callWS: vi.fn().mockResolvedValue({}) };
 	const a = el as any;
 	a._grid = new Uint8Array(GRID_CELL_COUNT);

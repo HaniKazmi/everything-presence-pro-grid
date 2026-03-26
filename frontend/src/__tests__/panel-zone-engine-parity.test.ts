@@ -61,9 +61,7 @@ function makeTarget(
 }
 
 function createParityPanel(): EPPGridPanel {
-	const el = document.createElement(
-		"eppgrid-panel",
-	) as EPPGridPanel;
+	const el = document.createElement("eppgrid-panel") as EPPGridPanel;
 	el.hass = { callWS: async () => ({}) };
 	const a = el as any;
 	a._grid = makeParityGrid();

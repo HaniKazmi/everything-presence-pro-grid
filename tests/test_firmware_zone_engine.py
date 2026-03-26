@@ -16,6 +16,8 @@ from aioesphomeapi import TextSensorState
 from aioesphomeapi import UserService
 from aioesphomeapi import UserServiceArg
 from aioesphomeapi import UserServiceArgType
+from homeassistant.core import HomeAssistant
+from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.eppgrid.calibration import SensorTransform
 from custom_components.eppgrid.const import DOMAIN

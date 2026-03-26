@@ -18,9 +18,7 @@ import { ZONE_COLORS, ZONE_TYPE_DEFAULTS } from "../lib/zone-defaults.js";
 import { setupLocalize } from "../localize.js";
 
 function createPanel() {
-	const el = document.createElement(
-		"eppgrid-panel",
-	) as EPPGridPanel;
+	const el = document.createElement("eppgrid-panel") as EPPGridPanel;
 	el.hass = { callWS: vi.fn().mockResolvedValue({}) };
 	const a = el as any;
 	a._grid = initGridFromRoom(3000, 4000);

@@ -17,9 +17,7 @@ import {
 import { ZONE_COLORS, ZONE_TYPE_DEFAULTS } from "../lib/zone-defaults.js";
 
 function createPanel(): EPPGridPanel {
-	const el = document.createElement(
-		"eppgrid-panel",
-	) as EPPGridPanel;
+	const el = document.createElement("eppgrid-panel") as EPPGridPanel;
 	el.hass = { callWS: vi.fn().mockResolvedValue({}) };
 	const a = el as any;
 	a._grid = new Uint8Array(GRID_CELL_COUNT);
@@ -117,10 +115,7 @@ describe("_renderHeader inline handlers", () => {
 		// Simulate the handler for __add__ selection
 		const val = "__add__";
 		if (val === "__add__") {
-			window.open(
-				"/config/integrations/integration/eppgrid",
-				"_blank",
-			);
+			window.open("/config/integrations/integration/eppgrid", "_blank");
 		}
 
 		expect(openSpy).toHaveBeenCalledWith(
