@@ -29,6 +29,9 @@ const Grid& ZoneEngine::grid() const {
 }
 
 void ZoneEngine::set_zones(const ZoneConfig zones[], int count) {
+    // Clear all slots
+    std::memset(zone_enabled_, 0, sizeof(zone_enabled_));
+
     // Always include zone 0 (room-level) with normal type defaults.
     ZoneTypeDefaults defaults = zone_type_defaults(ZoneType::NORMAL);
     zones_[0] = ZoneRuntime{};
@@ -39,6 +42,7 @@ void ZoneEngine::set_zones(const ZoneConfig zones[], int count) {
     zones_[0].config.timeout = defaults.timeout;
     zones_[0].config.handoff_timeout = defaults.handoff_timeout;
     zones_[0].config.entry_point = false;
+    zone_enabled_[0] = true;
     zone_count_ = 1;
 
     for (int i = 0; i < count; ++i) {
@@ -53,6 +57,7 @@ void ZoneEngine::set_zones(const ZoneConfig zones[], int count) {
         } else {
             zones_[idx] = ZoneRuntime{};
             zones_[idx].config = zc;
+            zone_enabled_[idx] = true;
             if (idx >= zone_count_) {
                 zone_count_ = idx + 1;
             }
@@ -69,8 +74,7 @@ void ZoneEngine::set_zones(const ZoneConfig zones[], int count) {
 
 int ZoneEngine::find_zone_index(int zone_id) const {
     if (zone_id < 0 || zone_id >= zone_count_) return -1;
-    // Zone slots are indexed by zone_id directly. Check if it has been
-    // configured by verifying it exists within zone_count_.
+    if (!zone_enabled_[zone_id]) return -1;
     return zone_id;
 }
 
@@ -260,6 +264,7 @@ const ProcessingResult& ZoneEngine::tick(const WindowOutput& window, float times
     // Step 3: State machine per zone (Python lines 635-659)
     // -----------------------------------------------------------------------
     for (int zi = 0; zi < zone_count_; ++zi) {
+        if (!zone_enabled_[zi]) continue;
         ZoneRuntime& rt = zones_[zi];
         int zone_id = rt.config.id;
         bool confirmed = zone_confirmed[zone_id];
@@ -367,6 +372,7 @@ const ProcessingResult& ZoneEngine::tick(const WindowOutput& window, float times
     // -----------------------------------------------------------------------
     result_.device_tracking_present = false;
     for (int zi = 0; zi < zone_count_; ++zi) {
+        if (!zone_enabled_[zi]) continue;
         if (result_.zone_occupancy[zones_[zi].config.id]) {
             result_.device_tracking_present = true;
             break;

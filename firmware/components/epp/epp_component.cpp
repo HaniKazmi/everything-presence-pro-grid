@@ -29,10 +29,12 @@ void EPPComponent::loop() {
   frame_ready_ = false;
   frame_count_++;
 
-  // Apply perspective transform to get room-space coordinates
+  // Apply perspective transform to get room-space coordinates.
+  // Gate out targets with y==0 — the LD2450 reports this transiently
+  // before it has a range fix, producing a bogus initial position.
   TargetInput inputs[MAX_TARGETS];
   for (int i = 0; i < NUM_TARGETS; i++) {
-    if (targets_[i].detected) {
+    if (targets_[i].detected && targets_[i].y != 0.0f) {
       auto [rx, ry] = transform_.apply(targets_[i].x, targets_[i].y);
       inputs[i] = {rx, ry, true};
     } else {

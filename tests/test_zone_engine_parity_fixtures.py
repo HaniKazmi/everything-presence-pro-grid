@@ -120,6 +120,9 @@ def test_parity_scenario(name: str) -> None:
 
         # Check target status if specified
         if "targets" in expected:
+            assert len(result.targets) == len(expected["targets"]), (
+                f"Tick {i}: expected {len(expected['targets'])} targets, got {len(result.targets)}"
+            )
             for j, exp_t in enumerate(expected["targets"]):
                 assert j < len(result.targets), f"Tick {i}: missing target {j}"
                 actual_t = result.targets[j]

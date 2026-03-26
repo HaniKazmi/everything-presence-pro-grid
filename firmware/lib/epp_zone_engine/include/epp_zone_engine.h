@@ -67,7 +67,8 @@ public:
 private:
     Grid grid_;
     ZoneRuntime zones_[MAX_ZONE_SLOTS]{};
-    int zone_count_ = 0;  // number of active zone slots (including zone 0)
+    bool zone_enabled_[MAX_ZONE_SLOTS]{};  // which slots are configured
+    int zone_count_ = 0;  // highest configured zone_id + 1
 
     // Per-target tracking state
     int target_prev_col_[MAX_TARGETS]{};
