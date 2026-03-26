@@ -96,7 +96,7 @@ def _firmware_entity_list() -> list:
     key = 100
 
     # Firmware version text sensor
-    entities.append(_make_text_sensor_info("epp_firmware_version", key))
+    entities.append(_make_text_sensor_info("zone_engine_version", key))
     key += 1
 
     # Zone tracking binary sensor
@@ -143,7 +143,7 @@ class TestFirmwareDetection:
 
     async def test_classify_firmware_entities(self, coordinator: EPPGridCoordinator) -> None:
         """_classify_entity recognises firmware sensor object_ids."""
-        assert coordinator._classify_entity("epp_firmware_version") == "fw_version"
+        assert coordinator._classify_entity("zone_engine_version") == "fw_version"
         assert coordinator._classify_entity("epp_zone_tracking") == "fw_zone_tracking"
         assert coordinator._classify_entity("epp_zone_0_occupancy") == "fw_zone_0_occupancy"
         assert coordinator._classify_entity("epp_zone_7_occupancy") == "fw_zone_7_occupancy"
@@ -152,7 +152,7 @@ class TestFirmwareDetection:
 
     async def test_classify_prefixed_firmware_entities(self, coordinator: EPPGridCoordinator) -> None:
         """_classify_entity recognises prefixed firmware sensor object_ids."""
-        assert coordinator._classify_entity("everything_presence_pro_abc_epp_firmware_version") == "fw_version"
+        assert coordinator._classify_entity("everything_presence_pro_abc_zone_engine_version") == "fw_version"
         assert coordinator._classify_entity("my_device_epp_zone_tracking") == "fw_zone_tracking"
         assert coordinator._classify_entity("dev_epp_zone_3_occupancy") == "fw_zone_3_occupancy"
         assert coordinator._classify_entity("dev_epp_target_1_position") == "fw_target_1_position"
@@ -180,7 +180,7 @@ class TestFirmwareDetection:
 
     def test_firmware_version_with_zone_engine(self, coordinator: EPPGridCoordinator) -> None:
         """Receiving firmware version with 'zone_engine' enables detection."""
-        coordinator._handle_text_sensor("fw_version", "1.0.0-zone_engine")
+        coordinator._handle_text_sensor("fw_version", "1.0.0-zone-engine")
         assert coordinator.has_firmware_zone_engine is True
 
     def test_firmware_version_without_zone_engine(self, coordinator: EPPGridCoordinator) -> None:
@@ -328,7 +328,7 @@ class TestFirmwareResultParsing:
         coordinator._binary_sensor_key_map[22] = "fw_zone_tracking"
 
         # Firmware version arrives
-        coordinator._on_state(TextSensorState(key=10, state="1.0.0-zone_engine"))
+        coordinator._on_state(TextSensorState(key=10, state="1.0.0-zone-engine"))
         assert coordinator.has_firmware_zone_engine is True
 
         # Zone occupancy updates
