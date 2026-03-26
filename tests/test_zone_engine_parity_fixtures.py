@@ -122,13 +122,11 @@ def test_parity_scenario(name: str) -> None:
             actual = result.zone_occupancy.get(zid, False)
             assert actual == exp_occ, f"Tick {i}: zone {zid} occupancy: expected {exp_occ}, got {actual}"
 
-        # Check target status if specified
+        # Check target status if specified (fixtures list only targets they
+        # care about; engine always returns MAX_TARGETS padded with inactive)
         if "targets" in expected:
-            assert len(result.targets) == len(expected["targets"]), (
-                f"Tick {i}: expected {len(expected['targets'])} targets, got {len(result.targets)}"
-            )
             for j, exp_t in enumerate(expected["targets"]):
-                assert j < len(result.targets), f"Tick {i}: missing target {j}"
+                assert j < len(result.targets), f"Tick {i}: missing target slot {j}"
                 actual_t = result.targets[j]
                 assert actual_t.status == exp_t["status"], (
                     f"Tick {i}: target {j} status: expected {exp_t['status']}, got {actual_t.status}"
