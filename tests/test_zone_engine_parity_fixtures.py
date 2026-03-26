@@ -18,6 +18,7 @@ from custom_components.eppgrid.const import CELL_ZONE_SHIFT
 from custom_components.eppgrid.const import GRID_CELL_SIZE_MM
 from custom_components.eppgrid.const import GRID_COLS
 from custom_components.eppgrid.const import GRID_ROWS
+from custom_components.eppgrid.const import MAX_TARGETS
 from custom_components.eppgrid.const import RAW_FPS
 from custom_components.eppgrid.zone_engine import Grid
 from custom_components.eppgrid.zone_engine import TargetWindow
@@ -81,7 +82,7 @@ def build_zones(zone_configs: dict) -> list[Zone]:
 
 
 def build_window(tick_data: dict) -> WindowOutput:
-    """Build a WindowOutput from a fixture tick."""
+    """Build a WindowOutput from a fixture tick, padded to MAX_TARGETS."""
     targets: list[TargetWindow] = []
     for t in tick_data.get("targets", []):
         fc = t["frames"]
@@ -93,6 +94,9 @@ def build_window(tick_data: dict) -> WindowOutput:
                 active=fc > 0,
             )
         )
+    # Pad to MAX_TARGETS with inactive entries (matches production TumblingWindow output)
+    while len(targets) < MAX_TARGETS:
+        targets.append(TargetWindow(median_x=0.0, median_y=0.0, frame_count=0, active=False))
     return WindowOutput(targets=targets, total_frames=RAW_FPS)
 
 
