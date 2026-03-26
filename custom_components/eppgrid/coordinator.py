@@ -462,8 +462,13 @@ class EPPGridCoordinator:
             _LOGGER.debug("No grid data to push")
             return
         grid_b64 = grid.to_base64()
-        _LOGGER.info("Pushing grid to device: %d cells, base64 len=%d, origin=(%.0f, %.0f)",
-                     len(grid.cells), len(grid_b64), grid.origin_x, grid.origin_y)
+        _LOGGER.info(
+            "Pushing grid to device: %d cells, base64 len=%d, origin=(%.0f, %.0f)",
+            len(grid.cells),
+            len(grid_b64),
+            grid.origin_x,
+            grid.origin_y,
+        )
         service = self._get_service("epp_set_grid")
         if service is None:
             _LOGGER.debug("epp_set_grid service not available")
@@ -1059,7 +1064,10 @@ class EPPGridCoordinator:
             else:
                 _LOGGER.warning(
                     "Saved grid %dx%d exceeds max %dx%d, rebuilding",
-                    cols, rows, GRID_COLS, GRID_ROWS,
+                    cols,
+                    rows,
+                    GRID_COLS,
+                    GRID_ROWS,
                 )
                 if cal_data and cal_data.get("perspective"):
                     self._rebuild_grid()
