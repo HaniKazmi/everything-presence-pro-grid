@@ -522,9 +522,7 @@ async def websocket_subscribe_grid_targets(
         if source == "python":
             return coordinator.python_result
         if coordinator.has_firmware_zone_engine:
-            fw = coordinator.firmware_result
-            if fw is not None:
-                return fw
+            return coordinator.firmware_result or ProcessingResult()
         return coordinator.python_result
 
     def _build_payload() -> dict[str, Any]:

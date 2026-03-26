@@ -121,6 +121,7 @@ class EPPGridCoordinator:
         self._has_firmware_zone_engine: bool = False
         self._firmware_result: ProcessingResult | None = None
         self._firmware_zone_occ: dict[int, bool] = {}
+        self._firmware_tracking: bool = False
         self._firmware_targets: list[TargetResult | None] = [None] * MAX_TARGETS
 
         # ESPHome user service cache (populated during subscribe_targets)
@@ -151,11 +152,11 @@ class EPPGridCoordinator:
     def last_result(self) -> ProcessingResult:
         """Return the active processing result.
 
-        In production (firmware available, dev mode off): firmware result.
-        In dev mode or no firmware: Python result.
+        Firmware mode: firmware result (empty if not yet received).
+        Dev mode or no firmware: Python result.
         """
-        if self._has_firmware_zone_engine and not self._dev_mode and self._firmware_result is not None:
-            return self._firmware_result
+        if self._has_firmware_zone_engine and not self._dev_mode:
+            return self._firmware_result or ProcessingResult()
         return self._last_result
 
     @property
@@ -488,6 +489,8 @@ class EPPGridCoordinator:
         if service is None:
             _LOGGER.debug("epp_set_zones service not available")
             return
+        named = [s for s in zone_data.get("zone_slots", []) if s is not None]
+        _LOGGER.info("Pushing zones to device: %d named zones", len(named))
         try:
             await self._client.execute_service(
                 service,
@@ -736,8 +739,10 @@ class EPPGridCoordinator:
             zone_id = self._fw_zone_index(name)
             if zone_id is not None:
                 self._firmware_zone_occ[zone_id] = value
+                self._build_firmware_result(self._firmware_tracking)
         elif name == "fw_zone_tracking":
             # Trigger sensor: firmware zone engine tick complete
+            self._firmware_tracking = value
             self._build_firmware_result(value)
 
     def _handle_sensor(self, name: str, value: float) -> None:
@@ -779,7 +784,7 @@ class EPPGridCoordinator:
         """Handle a text sensor state update."""
         _LOGGER.debug("Text sensor %s = %r", name, value)
         if name == "fw_version":
-            if "zone_engine" in value:
+            if "zone-engine" in value:
                 if not self._has_firmware_zone_engine:
                     self._has_firmware_zone_engine = True
                     _LOGGER.info("Firmware zone engine detected: %s", value)
@@ -787,7 +792,9 @@ class EPPGridCoordinator:
                         self.hass.async_create_task(self.push_config_to_device())
                     except Exception:
                         _LOGGER.exception("Failed to schedule config push")
-            else:
+            elif value:
+                # Only disable if we received a real (non-empty) version string
+                # without "zone_engine". Ignore empty/missing initial states.
                 self._has_firmware_zone_engine = False
         elif name.startswith("fw_target_") and name.endswith("_position"):
             idx = self._fw_target_index(name)
@@ -944,6 +951,8 @@ class EPPGridCoordinator:
     def _expiry_tick(self) -> None:
         """Feed empty targets at timeout expiry to clear zone entity states."""
         self._window_timer = None
+        if self._has_firmware_zone_engine and not self._dev_mode:
+            return
         now = time.monotonic()
         empty = [(0.0, 0.0, False)] * MAX_TARGETS
         result = self._zone_engine.feed_raw(empty, now)
