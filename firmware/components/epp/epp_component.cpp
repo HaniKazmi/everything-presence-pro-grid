@@ -82,13 +82,24 @@ void EPPComponent::loop() {
       }
     }
 
-    // Publish target position text sensors as "x,y,status"
+    // Publish target position text sensors as "x,y,signal,status"
     for (int i = 0; i < result.target_count && i < MAX_TARGETS; i++) {
       if (target_position_sensors_[i] != nullptr) {
         char buf[64];
-        snprintf(buf, sizeof(buf), "%.0f,%.0f,%d",
+        const char *status_str = "inactive";
+        switch (result.targets[i].status) {
+          case epp::TargetStatus::ACTIVE:
+            status_str = "active";
+            break;
+          case epp::TargetStatus::PENDING:
+            status_str = "pending";
+            break;
+          default:
+            break;
+        }
+        snprintf(buf, sizeof(buf), "%.0f,%.0f,%d,%s",
                  result.targets[i].x, result.targets[i].y,
-                 static_cast<int>(result.targets[i].status));
+                 result.targets[i].signal, status_str);
         target_position_sensors_[i]->publish_state(buf);
       }
     }
