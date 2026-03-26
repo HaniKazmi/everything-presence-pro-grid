@@ -8,3 +8,16 @@ dist/
 .coverage
 coverage.json
 frontend/coverage/
+
+# ESPHome build artifacts
+firmware/.esphome/
+firmware/build/
+
+# C++ build artifacts
+firmware/lib/epp_zone_engine/build/
+
+# Virtual environment
+.venv/
+
+# Egg info
+*.egg-info/

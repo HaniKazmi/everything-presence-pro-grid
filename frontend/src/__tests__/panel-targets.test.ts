@@ -4,9 +4,7 @@ import "../eppgrid-panel.js";
 import { GRID_CELL_COUNT } from "../lib/grid.js";
 
 function createPanel(): EPPGridPanel {
-	const el = document.createElement(
-		"eppgrid-panel",
-	) as EPPGridPanel;
+	const el = document.createElement("eppgrid-panel") as EPPGridPanel;
 	el.hass = { callWS: vi.fn().mockResolvedValue({}) };
 	const a = el as any;
 	a._grid = new Uint8Array(GRID_CELL_COUNT);

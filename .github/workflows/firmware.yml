@@ -1,0 +1,49 @@
+name: Firmware
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'firmware/**'
+      - '.github/workflows/firmware.yml'
+  pull_request:
+    paths:
+      - 'firmware/**'
+      - '.github/workflows/firmware.yml'
+
+jobs:
+  cpp-tests:
+    runs-on: ubuntu-latest
+    name: C++ Tests
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install CMake
+        run: sudo apt-get update && sudo apt-get install -y cmake
+      - name: Build and test
+        run: |
+          cd firmware/lib/epp_zone_engine
+          cmake -B build -DCMAKE_BUILD_TYPE=Debug
+          cmake --build build
+          cd build && ctest --output-on-failure
+
+  compile:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        variant:
+          - wifi
+          - wifi-ble
+          - wifi-co2
+          - wifi-ble-co2
+          - ethernet
+          - ethernet-ble
+          - ethernet-co2
+          - ethernet-ble-co2
+    name: "Compile ${{ matrix.variant }}"
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install ESPHome
+        run: pip install esphome
+      - name: Compile firmware
+        run: esphome compile firmware/variants/${{ matrix.variant }}.yaml

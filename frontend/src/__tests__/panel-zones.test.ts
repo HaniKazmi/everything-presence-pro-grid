@@ -12,9 +12,7 @@ import { ZONE_COLORS } from "../lib/zone-defaults.js";
 const MAX_ZONES = 7;
 
 function createPanel(): EPPGridPanel {
-	const el = document.createElement(
-		"eppgrid-panel",
-	) as EPPGridPanel;
+	const el = document.createElement("eppgrid-panel") as EPPGridPanel;
 	el.hass = { callWS: async () => ({}) };
 	const a = el as any;
 	a._grid = new Uint8Array(GRID_CELL_COUNT);

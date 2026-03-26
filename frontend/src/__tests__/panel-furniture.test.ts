@@ -4,9 +4,7 @@ import "../eppgrid-panel.js";
 import { GRID_CELL_COUNT, initGridFromRoom } from "../lib/grid.js";
 
 function createPanel(): EPPGridPanel {
-	const el = document.createElement(
-		"eppgrid-panel",
-	) as EPPGridPanel;
+	const el = document.createElement("eppgrid-panel") as EPPGridPanel;
 	el.hass = { callWS: async () => ({}) };
 	const a = el as any;
 	a._grid = initGridFromRoom(6000, 6000);

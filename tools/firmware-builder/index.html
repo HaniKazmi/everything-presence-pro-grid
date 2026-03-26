@@ -1,0 +1,1030 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Everything Presence Pro Grid — Firmware Installer</title>
+  <script type="module" src="https://unpkg.com/esp-web-tools@10/dist/web/install-button.js?module"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #0f1117;
+      --surface: #1a1d27;
+      --surface-alt: #222535;
+      --border: #2e3347;
+      --accent: #4f8ef7;
+      --accent-hover: #6ba3ff;
+      --text: #e2e6f0;
+      --text-muted: #8b91a8;
+      --green: #34d399;
+      --yellow: #fbbf24;
+      --red: #f87171;
+      --radius: 10px;
+    }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      min-height: 100vh;
+      display: flex;
+      align-items: flex-start;
+      justify-content: center;
+      padding: 2rem 1rem;
+    }
+
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 2.5rem 2rem;
+      max-width: 720px;
+      width: 100%;
+    }
+
+    .logo {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      margin-bottom: 1.5rem;
+    }
+
+    .logo-icon {
+      width: 80px;
+      height: 80px;
+      border-radius: 12px;
+      flex-shrink: 0;
+      object-fit: cover;
+      order: 1;
+      margin-left: auto;
+      filter: brightness(1.4) saturate(1.3);
+    }
+
+    h1 {
+      font-size: 1.15rem;
+      font-weight: 600;
+      line-height: 1.3;
+    }
+
+    h1 span {
+      display: block;
+      font-size: 0.8rem;
+      font-weight: 400;
+      color: var(--text-muted);
+      margin-top: 2px;
+    }
+
+    h2 {
+      font-size: 0.75rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--text-muted);
+      margin-bottom: 0.75rem;
+    }
+
+    .section { margin-bottom: 1.5rem; }
+
+    /* Tabs */
+    .tabs {
+      display: flex;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 3px;
+      gap: 3px;
+      margin-bottom: 1.75rem;
+    }
+
+    .tab-btn {
+      flex: 1;
+      text-align: center;
+      padding: 0.55rem 0.5rem;
+      border-radius: 6px;
+      font-size: 0.82rem;
+      font-weight: 500;
+      cursor: pointer;
+      border: none;
+      background: none;
+      color: var(--text-muted);
+      transition: background 0.15s, color 0.15s;
+      user-select: none;
+    }
+
+    .tab-btn.active {
+      background: var(--accent);
+      color: #fff;
+    }
+
+    .tab-panel { display: none; }
+    .tab-panel.active { display: block; }
+
+    /* Radio toggle */
+    .toggle-group {
+      display: flex;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 3px;
+      gap: 3px;
+    }
+
+    .toggle-group label {
+      flex: 1;
+      text-align: center;
+      padding: 0.5rem 1rem;
+      border-radius: 6px;
+      font-size: 0.9rem;
+      font-weight: 500;
+      cursor: pointer;
+      transition: background 0.15s, color 0.15s;
+      color: var(--text-muted);
+      user-select: none;
+    }
+
+    .toggle-group input[type="radio"] { display: none; }
+
+    .toggle-group input[type="radio"]:checked + label {
+      background: var(--accent);
+      color: #fff;
+    }
+
+    /* Checkboxes */
+    .checkbox-list {
+      display: flex;
+      flex-direction: column;
+      gap: 0.6rem;
+    }
+
+    .checkbox-item {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 0.75rem 1rem;
+      cursor: pointer;
+      transition: border-color 0.15s;
+      user-select: none;
+    }
+
+    .checkbox-item:hover { border-color: var(--accent); }
+
+    .checkbox-item input[type="checkbox"] {
+      appearance: none;
+      width: 18px;
+      height: 18px;
+      border: 2px solid var(--border);
+      border-radius: 4px;
+      cursor: pointer;
+      flex-shrink: 0;
+      position: relative;
+      transition: background 0.15s, border-color 0.15s;
+    }
+
+    .checkbox-item input[type="checkbox"]:checked {
+      background: var(--accent);
+      border-color: var(--accent);
+    }
+
+    .checkbox-item input[type="checkbox"]:checked::after {
+      content: '';
+      position: absolute;
+      left: 3px; top: 0px;
+      width: 6px; height: 10px;
+      border: 2px solid #fff;
+      border-top: none; border-left: none;
+      transform: rotate(45deg);
+    }
+
+    .checkbox-label { flex: 1; }
+    .checkbox-label strong { display: block; font-size: 0.9rem; font-weight: 500; }
+    .checkbox-label small { display: block; font-size: 0.78rem; color: var(--text-muted); margin-top: 1px; }
+
+    /* Variant display */
+    .variant-display {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 0.65rem 1rem;
+      font-size: 0.85rem;
+      color: var(--text-muted);
+    }
+
+    .variant-display code {
+      color: var(--accent);
+      font-family: 'SFMono-Regular', Consolas, monospace;
+      font-size: 0.85rem;
+    }
+
+    /* Install button */
+    .install-section {
+      margin-top: 1.75rem;
+      display: flex;
+      flex-direction: column;
+      align-items: stretch;
+      gap: 0.5rem;
+    }
+
+    esp-web-install-button { display: block; }
+
+    esp-web-install-button::part(button) {
+      width: 100%;
+      background: var(--accent);
+      color: #fff;
+      border: none;
+      border-radius: var(--radius);
+      padding: 0.85rem 1.5rem;
+      font-size: 1rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+
+    esp-web-install-button::part(button):hover { background: var(--accent-hover); }
+
+    .note {
+      font-size: 0.75rem;
+      color: var(--text-muted);
+      text-align: center;
+    }
+
+    .note a { color: var(--accent); text-decoration: none; }
+    .note a:hover { text-decoration: underline; }
+
+    hr {
+      border: none;
+      border-top: 1px solid var(--border);
+      margin: 1.5rem 0;
+    }
+
+    /* Buttons */
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.5rem;
+      background: var(--accent);
+      color: #fff;
+      border: none;
+      border-radius: 8px;
+      padding: 0.7rem 1.25rem;
+      font-size: 0.9rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.15s;
+      width: 100%;
+    }
+
+    .btn:hover { background: var(--accent-hover); }
+    .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+    .btn-sm {
+      padding: 0.45rem 0.85rem;
+      font-size: 0.8rem;
+      width: auto;
+    }
+
+    .btn-outline {
+      background: transparent;
+      border: 1px solid var(--border);
+      color: var(--text-muted);
+    }
+
+    .btn-outline:hover { border-color: var(--accent); color: var(--text); background: transparent; }
+
+    .btn-danger {
+      background: var(--red);
+    }
+
+    .btn-danger:hover { background: #ef4444; }
+
+    /* Form inputs */
+    .form-group { margin-bottom: 1rem; }
+
+    .form-group label {
+      display: block;
+      font-size: 0.8rem;
+      font-weight: 500;
+      color: var(--text-muted);
+      margin-bottom: 0.35rem;
+    }
+
+    .form-group input[type="text"],
+    .form-group input[type="password"] {
+      width: 100%;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 0.65rem 0.85rem;
+      color: var(--text);
+      font-size: 0.9rem;
+      outline: none;
+      transition: border-color 0.15s;
+    }
+
+    .form-group input:focus { border-color: var(--accent); }
+
+    /* Connection bar */
+    .connection-bar {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      padding: 0.65rem 1rem;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      font-size: 0.85rem;
+      margin-bottom: 1.25rem;
+    }
+
+    .connection-bar .status-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+
+    .connection-bar .spacer { flex: 1; }
+
+    .status-dot.disconnected { background: var(--text-muted); }
+    .status-dot.connected { background: var(--green); }
+    .status-dot.busy { background: var(--yellow); }
+    .status-dot.error { background: var(--red); }
+
+    /* Log viewer */
+    .log-viewer {
+      background: #000;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 0.75rem;
+      font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', monospace;
+      font-size: 0.75rem;
+      line-height: 1.5;
+      height: 350px;
+      overflow-y: auto;
+      white-space: pre-wrap;
+      word-break: break-all;
+      color: #d4d4d4;
+      margin-bottom: 0.75rem;
+    }
+
+    .log-toolbar {
+      display: flex;
+      gap: 0.5rem;
+      align-items: center;
+    }
+
+    .log-toolbar .spacer { flex: 1; }
+
+    /* WiFi status box */
+    .wifi-status-box {
+      display: flex;
+      align-items: center;
+      gap: 0.6rem;
+      padding: 0.85rem 1rem;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      font-size: 0.9rem;
+      margin-top: 1.25rem;
+      transition: border-color 0.3s;
+    }
+
+    .wifi-status-box.success {
+      border-color: var(--green);
+    }
+
+    .wifi-status-box.error {
+      border-color: var(--red);
+    }
+
+    .wifi-status-ip {
+      margin-left: auto;
+      font-family: 'SFMono-Regular', Consolas, monospace;
+      font-weight: 600;
+      color: var(--green);
+      font-size: 0.9rem;
+    }
+
+    /* Collapsible firmware options */
+    .firmware-options {
+      overflow: hidden;
+      transition: max-height 0.4s ease, opacity 0.3s ease, margin-bottom 0.4s ease;
+      max-height: 500px;
+      opacity: 1;
+      margin-bottom: 0;
+    }
+
+    .firmware-options.collapsed {
+      max-height: 0;
+      opacity: 0;
+      margin-bottom: -0.5rem;
+      pointer-events: none;
+    }
+
+    .variant-display {
+      display: flex;
+      align-items: center;
+    }
+
+    /* Disabled content overlay */
+    .content-area {
+      position: relative;
+      transition: opacity 0.2s;
+    }
+
+    .content-area.disabled {
+      opacity: 0.35;
+      pointer-events: none;
+    }
+
+    .hidden { display: none !important; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="logo">
+      <img class="logo-icon" src="icon.png" alt="EPP Grid" />
+      <h1>
+        Everything Presence Pro Grid
+        <span>Firmware Installer</span>
+      </h1>
+    </div>
+
+    <!-- Firmware selection (collapsible) -->
+    <div id="firmware-options" class="firmware-options">
+      <div class="section">
+        <h2>Firmware Options</h2>
+        <div class="toggle-group">
+          <input type="radio" name="network" id="net-wifi" value="wifi" checked />
+          <label for="net-wifi">WiFi</label>
+          <input type="radio" name="network" id="net-ethernet" value="ethernet" />
+          <label for="net-ethernet">Ethernet</label>
+        </div>
+      </div>
+
+      <div class="section">
+        <div class="checkbox-list">
+          <label class="checkbox-item">
+            <input type="checkbox" id="ble" />
+            <div class="checkbox-label">
+              <strong>Bluetooth (BLE)</strong>
+              <small>Enable Bluetooth proxy and BLE tracking</small>
+            </div>
+          </label>
+          <label class="checkbox-item">
+            <input type="checkbox" id="co2" />
+            <div class="checkbox-label">
+              <strong>CO2 Sensor</strong>
+              <small>Enable CO2 monitoring (requires hardware add-on)</small>
+            </div>
+          </label>
+        </div>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="variant-display" id="variant-bar">
+        Firmware:&nbsp; <code id="variant-label">wifi</code>
+        <button class="btn btn-sm" id="variant-confirm-btn" style="margin-left: auto;">Confirm</button>
+        <button class="btn btn-sm btn-outline hidden" id="variant-change-btn" style="margin-left: auto;">Change</button>
+      </div>
+    </div>
+
+    <!-- Content area — disabled until firmware confirmed -->
+    <div id="content-area" class="content-area disabled">
+
+    <hr />
+
+    <!-- Tabs -->
+    <div class="tabs">
+      <button class="tab-btn active" data-tab="install">Install</button>
+      <button class="tab-btn" data-tab="wifi">Network &amp; Logs</button>
+    </div>
+
+    <!-- ============ INSTALL TAB ============ -->
+    <div id="tab-install" class="tab-panel active">
+      <div class="install-section">
+        <esp-web-install-button id="install-btn" manifest="">
+          <button slot="activate" class="btn">Install Firmware</button>
+        </esp-web-install-button>
+        <p class="note">
+          Requires a Chromium-based browser (Chrome, Edge, Opera).
+          <a href="https://github.com/clintongormley/everything-presence-pro-grid/releases/latest" target="_blank">View all releases</a>
+        </p>
+      </div>
+    </div>
+
+    <!-- ============ NETWORK & LOGS TAB ============ -->
+    <div id="tab-wifi" class="tab-panel">
+
+      <!-- USB connection bar -->
+      <div id="connection-bar" class="connection-bar">
+        <span class="status-dot disconnected" id="conn-dot"></span>
+        <span id="conn-text">Not connected</span>
+        <span class="spacer"></span>
+        <button class="btn btn-sm" id="conn-btn">Connect USB</button>
+        <button class="btn btn-sm btn-danger hidden" id="disconn-btn">Disconnect</button>
+      </div>
+
+      <!-- WiFi (no BLE) — improv serial over USB -->
+      <div id="net-mode-wifi" class="hidden">
+        <p class="note" style="margin-bottom: 1.25rem; text-align: left;">
+          Configure WiFi credentials over USB using the Improv Serial protocol.
+        </p>
+        <div id="wifi-form-section" class="hidden">
+          <div class="form-group">
+            <label for="wifi-ssid">WiFi Network (SSID)</label>
+            <input type="text" id="wifi-ssid" placeholder="Enter your WiFi network name" />
+          </div>
+          <div class="form-group">
+            <label for="wifi-pass">Password</label>
+            <input type="password" id="wifi-pass" placeholder="Enter your WiFi password" />
+          </div>
+          <button class="btn" id="wifi-provision-btn">Configure WiFi</button>
+        </div>
+      </div>
+
+      <!-- WiFi + BLE — HA discovers via Bluetooth -->
+      <div id="net-mode-wifi-ble" class="hidden">
+        <p class="note" style="margin-bottom: 1.25rem; text-align: left;">
+          Your device broadcasts via Bluetooth and will be automatically discovered by Home Assistant.
+          Open Home Assistant and follow the prompts to configure WiFi.
+        </p>
+        <p class="note" style="text-align: left;">
+          Alternatively, connect via USB below to monitor the device log and get the IP address.
+        </p>
+      </div>
+
+      <!-- Ethernet — just plug in the cable -->
+      <div id="net-mode-ethernet" class="hidden">
+        <p class="note" style="margin-bottom: 1.25rem; text-align: left;">
+          Connect the ethernet cable to your device. It will obtain an IP address automatically via DHCP.
+        </p>
+        <p class="note" style="text-align: left;">
+          Connect via USB below to monitor the device log and get the IP address.
+        </p>
+      </div>
+
+      <div id="wifi-status-box" class="wifi-status-box hidden">
+        <span class="status-dot disconnected" id="wifi-status-dot"></span>
+        <span id="wifi-status-text"></span>
+        <span class="wifi-status-ip" id="wifi-status-ip"></span>
+      </div>
+
+      <!-- Device log -->
+      <div id="logs-viewer-section" class="hidden" style="margin-top: 1.25rem;">
+        <div class="log-toolbar" style="margin-bottom: 0.5rem;">
+          <h2 style="margin-bottom: 0;">Device Log</h2>
+          <select id="logs-filter" style="background: var(--bg); border: 1px solid var(--border); border-radius: 6px; padding: 0.4rem 0.6rem; color: var(--text); font-size: 0.8rem; outline: none; margin-left: 0.75rem;">
+            <option value="all">All</option>
+            <option value="epp">Zone Engine</option>
+            <option value="sensors">Sensors</option>
+            <option value="network">Network</option>
+          </select>
+          <span class="spacer"></span>
+          <button class="btn btn-sm btn-outline" id="logs-copy-btn">Copy</button>
+          <button class="btn btn-sm btn-outline" id="logs-clear-btn">Clear</button>
+          <label style="font-size: 0.8rem; color: var(--text-muted); display: flex; align-items: center; gap: 0.4rem;">
+            <input type="checkbox" id="logs-autoscroll" checked style="accent-color: var(--accent);" /> Auto-scroll
+          </label>
+        </div>
+        <div class="log-viewer" id="log-output"></div>
+      </div>
+    </div>
+    </div><!-- /content-area -->
+  </div>
+
+  <script>
+    // ── Shared serial connection ──
+    let port = null;
+    let activeReader = null;
+    let logsRunning = false;
+
+    const connDot = document.getElementById('conn-dot');
+    const connText = document.getElementById('conn-text');
+    const connBtn = document.getElementById('conn-btn');
+    const disconnBtn = document.getElementById('disconn-btn');
+    const connBar = document.getElementById('connection-bar');
+
+    function isConnected() { return port !== null; }
+
+    function setConnStatus(state, text) {
+      connDot.className = 'status-dot ' + state;
+      connText.textContent = text;
+    }
+
+    let firmwareConfirmed = false;
+
+    function updateConnUI() {
+      if (isConnected()) {
+        connBtn.classList.add('hidden');
+        disconnBtn.classList.remove('hidden');
+        setConnStatus('connected', 'Connected');
+      } else {
+        connBtn.classList.remove('hidden');
+        disconnBtn.classList.add('hidden');
+        setConnStatus('disconnected', 'Not connected — plug in device via USB');
+      }
+    }
+
+    function confirmFirmware() {
+      firmwareConfirmed = true;
+      document.getElementById('content-area').classList.remove('disabled');
+      document.getElementById('firmware-options').classList.add('collapsed');
+      document.getElementById('variant-confirm-btn').classList.add('hidden');
+      document.getElementById('variant-change-btn').classList.remove('hidden');
+    }
+
+    function changeFirmware() {
+      firmwareConfirmed = false;
+      document.getElementById('content-area').classList.add('disabled');
+      document.getElementById('firmware-options').classList.remove('collapsed');
+      document.getElementById('variant-confirm-btn').classList.remove('hidden');
+      document.getElementById('variant-change-btn').classList.add('hidden');
+    }
+
+    document.getElementById('variant-confirm-btn').addEventListener('click', confirmFirmware);
+    document.getElementById('variant-change-btn').addEventListener('click', changeFirmware);
+
+    async function stopActiveReader() {
+      logsRunning = false;
+      if (activeReader) {
+        try { await activeReader.cancel(); } catch (_) {}
+        try { activeReader.releaseLock(); } catch (_) {}
+        activeReader = null;
+      }
+    }
+
+    async function serialConnect() {
+      try {
+        port = await navigator.serial.requestPort();
+        await port.open({ baudRate: 115200 });
+
+        document.getElementById('logs-filter').value = 'network';
+        updateConnUI();
+        onTabActivated(currentTab);
+      } catch (e) {
+        if (e.name !== 'NotFoundError') setConnStatus('error', 'Failed: ' + e.message);
+      }
+    }
+
+    async function serialDisconnect() {
+      await stopActiveReader();
+      try { if (port) { await port.close(); } } catch (_) {}
+      port = null;
+      updateConnUI();
+      onTabActivated(currentTab);
+    }
+
+    connBtn.addEventListener('click', serialConnect);
+    disconnBtn.addEventListener('click', serialDisconnect);
+
+    // ── Tab switching ──
+    let currentTab = 'install';
+
+    function getNetMode() {
+      const network = document.querySelector('input[name="network"]:checked').value;
+      const ble = document.getElementById('ble').checked;
+      if (network === 'ethernet') return 'ethernet';
+      if (ble) return 'wifi-ble';
+      return 'wifi';
+    }
+
+    function updateNetworkTab() {
+      const mode = getNetMode();
+      document.getElementById('net-mode-wifi').classList.toggle('hidden', mode !== 'wifi');
+      document.getElementById('net-mode-wifi-ble').classList.toggle('hidden', mode !== 'wifi-ble');
+      document.getElementById('net-mode-ethernet').classList.toggle('hidden', mode !== 'ethernet');
+    }
+
+    function onTabActivated(tab) {
+      const mode = getNetMode();
+      const onNetTab = tab === 'wifi';
+      const connected = isConnected();
+
+      // Update network tab content based on variant selection
+      updateNetworkTab();
+
+      // WiFi form only for non-BLE WiFi mode when connected
+      document.getElementById('wifi-form-section').classList.toggle('hidden', !connected || !onNetTab || mode !== 'wifi');
+
+      // Logs viewer
+      document.getElementById('logs-viewer-section').classList.toggle('hidden', !connected || !onNetTab);
+
+      // Start/stop log streaming
+      if (onNetTab && connected && !wifiProvisioning) {
+        startLogStream();
+      } else {
+        stopLogStream();
+      }
+    }
+
+    document.querySelectorAll('.tab-btn').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const newTab = btn.dataset.tab;
+        if (newTab === currentTab) return;
+
+        // Stop any active reader before switching
+        await stopActiveReader();
+
+        document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+        document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+        btn.classList.add('active');
+        document.getElementById('tab-' + newTab).classList.add('active');
+        currentTab = newTab;
+        onTabActivated(newTab);
+      });
+    });
+
+    // ── Install tab ──
+    function getVariant() {
+      const network = document.querySelector('input[name="network"]:checked').value;
+      const ble = document.getElementById('ble').checked;
+      const co2 = document.getElementById('co2').checked;
+      let variant = network;
+      if (ble) variant += '-ble';
+      if (co2) variant += '-co2';
+      return variant;
+    }
+
+    function updateManifest() {
+      const variant = getVariant();
+      const url = `https://github.com/clintongormley/everything-presence-pro-grid/releases/latest/download/everything-presence-pro-${variant}-manifest.json`;
+      document.getElementById('install-btn').setAttribute('manifest', url);
+      document.getElementById('variant-label').textContent = variant;
+    }
+
+    function onVariantChange() {
+      updateManifest();
+      updateNetworkTab();
+    }
+
+    document.querySelectorAll('input[name="network"]').forEach(el => el.addEventListener('change', onVariantChange));
+    document.getElementById('ble').addEventListener('change', onVariantChange);
+    document.getElementById('co2').addEventListener('change', onVariantChange);
+    onVariantChange();
+
+    // ── Improv Serial protocol ──
+    const IMPROV_HEADER = [0x49, 0x4D, 0x50, 0x52, 0x4F, 0x56];
+    const TYPE_RPC_COMMAND = 0x03;
+    const CMD_WIFI_SETTINGS = 0x01;
+
+    function buildImprovPacket(type, data) {
+      const pkt = [...IMPROV_HEADER, 0x01, type, data.length, ...data];
+      let checksum = 0;
+      for (let i = 0; i < pkt.length; i++) checksum = (checksum + pkt[i]) & 0xFF;
+      pkt.push(checksum);
+      return new Uint8Array(pkt);
+    }
+
+    function buildWifiCommand(ssid, password) {
+      const enc = new TextEncoder();
+      const ssidBytes = enc.encode(ssid);
+      const passBytes = enc.encode(password);
+      const data = [CMD_WIFI_SETTINGS, ssidBytes.length + passBytes.length + 2,
+                    ssidBytes.length, ...ssidBytes,
+                    passBytes.length, ...passBytes];
+      return buildImprovPacket(TYPE_RPC_COMMAND, data);
+    }
+
+    // ── WiFi tab ──
+    let wifiProvisioning = false;
+
+    function setWifiStatus(state, text, ip) {
+      const box = document.getElementById('wifi-status-box');
+      const dot = document.getElementById('wifi-status-dot');
+      const txt = document.getElementById('wifi-status-text');
+      const ipEl = document.getElementById('wifi-status-ip');
+      box.classList.remove('hidden', 'success', 'error');
+      if (state === 'connected') box.classList.add('success');
+      if (state === 'error') box.classList.add('error');
+      dot.className = 'status-dot ' + state;
+      txt.textContent = text;
+      ipEl.textContent = ip || '';
+    }
+
+    document.getElementById('wifi-provision-btn').addEventListener('click', async () => {
+      const ssid = document.getElementById('wifi-ssid').value.trim();
+      const pass = document.getElementById('wifi-pass').value;
+      if (!ssid || !port?.writable) return;
+
+      // Stop any background wifi log stream
+      await stopActiveReader();
+
+      const btn = document.getElementById('wifi-provision-btn');
+      btn.disabled = true;
+      btn.textContent = 'Configuring...';
+      wifiProvisioning = true;
+      setWifiStatus('busy', 'Sending WiFi credentials...');
+      const logOutput = document.getElementById('log-output');
+      logOutput.innerHTML = '';
+      logOutput._currentColor = null;
+      document.getElementById('logs-filter').value = 'network';
+
+      try {
+        // Drain any pending bytes so we don't read stale improv packets
+        activeReader = port.readable.getReader();
+        try {
+          while (true) {
+            const r = await Promise.race([
+              activeReader.read(),
+              new Promise(res => setTimeout(() => res({ value: null, done: true }), 200))
+            ]);
+            if (r.done || !r.value) break;
+          }
+        } finally {
+          activeReader.releaseLock();
+          activeReader = null;
+        }
+
+        const packet = buildWifiCommand(ssid, pass);
+        console.log('Improv packet:', Array.from(packet).map(b => b.toString(16).padStart(2,'0')).join(' '));
+        const writer = port.writable.getWriter();
+        await writer.write(packet);
+        writer.releaseLock();
+
+        setWifiStatus('busy', 'Waiting for WiFi connection...');
+        activeReader = port.readable.getReader();
+        const decoder = new TextDecoder();
+        let textBuf = '';
+        let lineBuf = '';
+        const deadline = Date.now() + 60000; // 60s — WiFi reconnect can be slow
+        setWifiStatus('busy', 'Waiting for WiFi connection...');
+
+        while (Date.now() < deadline) {
+          const { value, done } = await Promise.race([
+            activeReader.read(),
+            new Promise(r => setTimeout(() => r({ value: null, done: true }), 60000))
+          ]);
+          if (done || !value) break;
+
+          const chunk = decoder.decode(value);
+          textBuf += chunk;
+
+          // Pipe lines into the log viewer (filter is set to 'network')
+          lineBuf += chunk;
+          const lines = lineBuf.split('\n');
+          lineBuf = lines.pop();
+          for (const line of lines) {
+            if (matchesLogFilter(line)) {
+              const ts = new Date().toLocaleTimeString('en-GB', {hour12: false, hour:'2-digit', minute:'2-digit', second:'2-digit', fractionalSecondDigits: 3});
+              const span = document.createElement('span');
+              span.textContent = ts + '  ';
+              span.style.color = '#666';
+              logOutput.appendChild(span);
+              appendAnsiText(logOutput, line + '\n');
+              logOutput.scrollTop = logOutput.scrollHeight;
+            }
+          }
+
+          // Look for ESPHome's WiFi connected log line: "IP Address: x.x.x.x"
+          const ipMatch = textBuf.match(/IP Address:\s*(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})/);
+          if (ipMatch) {
+            const ip = ipMatch[1];
+            setWifiStatus('connected', 'Connected', ip);
+            btn.disabled = false;
+            btn.textContent = 'Configure WiFi';
+            activeReader.releaseLock(); activeReader = null;
+            return;
+          }
+
+          // Also detect connection failure
+          if (textBuf.includes('Unable to connect') || textBuf.includes('UNABLE_TO_CONNECT')) {
+            setWifiStatus('error', 'Unable to connect — check SSID and password');
+            btn.disabled = false;
+            btn.textContent = 'Configure WiFi';
+            activeReader.releaseLock(); activeReader = null;
+            return;
+          }
+
+          // Keep only the last 4KB to avoid unbounded growth
+          if (textBuf.length > 4096) textBuf = textBuf.slice(-2048);
+        }
+
+        setWifiStatus('error', 'Timed out waiting for WiFi connection');
+        btn.disabled = false;
+        btn.textContent = 'Configure WiFi';
+        if (activeReader) { activeReader.releaseLock(); activeReader = null; }
+
+      } catch (e) {
+        setWifiStatus('error', e.message);
+        btn.disabled = false;
+        btn.textContent = 'Configure WiFi';
+        if (activeReader) { try { activeReader.releaseLock(); } catch(_) {} activeReader = null; }
+      } finally {
+        wifiProvisioning = false;
+        if (isConnected()) startLogStream();
+      }
+    });
+
+    // ── Logs tab ──
+    const ANSI_COLORS = {
+      '30': '#555', '31': '#f87171', '32': '#34d399', '33': '#fbbf24',
+      '34': '#60a5fa', '35': '#c084fc', '36': '#22d3ee', '37': '#e2e6f0',
+    };
+
+    const WIFI_LOG_PATTERNS = /\[wifi[:\s_]|IP Address:|SSID:|BSSID:|Hostname:|Signal strength:|Subnet:|Gateway:|DNS|Channel:|ethernet|\[ethernet/i;
+
+    function isWifiLogLine(line) {
+      return WIFI_LOG_PATTERNS.test(line);
+    }
+
+    const LOG_FILTERS = {
+      epp:     /\[epp[:\s]|\[epp_/i,
+      sensors: /\[sensor[:\s]|\[binary_sensor[:\s]|\[text_sensor[:\s]|\[bh1750|\[shtcx|\[light[:\s]/i,
+      network: WIFI_LOG_PATTERNS,
+    };
+
+    function matchesLogFilter(line) {
+      const filter = document.getElementById('logs-filter').value;
+      if (filter === 'all') return true;
+      return LOG_FILTERS[filter]?.test(line) ?? true;
+    }
+
+    function appendAnsiText(output, text) {
+      const parts = text.split(/\x1B\[([0-9;]*)m/);
+      for (let i = 0; i < parts.length; i++) {
+        if (i % 2 === 0) {
+          if (parts[i]) {
+            const span = document.createElement('span');
+            span.textContent = parts[i];
+            if (output._currentColor) span.style.color = output._currentColor;
+            output.appendChild(span);
+          }
+        } else {
+          const codes = parts[i].split(';');
+          const colorCode = codes.find(c => ANSI_COLORS[c]);
+          output._currentColor = colorCode ? ANSI_COLORS[colorCode] : null;
+        }
+      }
+    }
+
+    function startLogStream() {
+      if (logsRunning || !port?.readable) return;
+      logsRunning = true;
+      const decoder = new TextDecoder();
+      const output = document.getElementById('log-output');
+      output._currentColor = null;
+      let lineBuf = '';
+
+      (async () => {
+        try {
+          activeReader = port.readable.getReader();
+          while (logsRunning) {
+            const { value, done } = await activeReader.read();
+            if (done) break;
+            lineBuf += decoder.decode(value);
+            const lines = lineBuf.split('\n');
+            lineBuf = lines.pop();
+            for (const line of lines) {
+              if (matchesLogFilter(line)) {
+                const ts = new Date().toLocaleTimeString('en-GB', {hour12: false, hour:'2-digit', minute:'2-digit', second:'2-digit', fractionalSecondDigits: 3});
+                const span = document.createElement('span');
+                span.textContent = ts + '  ';
+                span.style.color = '#666';
+                output.appendChild(span);
+                appendAnsiText(output, line + '\n');
+              }
+            }
+            if (document.getElementById('logs-autoscroll').checked) {
+              output.scrollTop = output.scrollHeight;
+            }
+          }
+        } catch (e) {
+          if (logsRunning) setConnStatus('error', 'Read error: ' + e.message);
+        } finally {
+          if (activeReader) { try { activeReader.releaseLock(); } catch(_) {} activeReader = null; }
+        }
+      })();
+    }
+
+    function stopLogStream() {
+      logsRunning = false;
+    }
+
+    document.getElementById('logs-copy-btn').addEventListener('click', async () => {
+      const text = document.getElementById('log-output').innerText;
+      await navigator.clipboard.writeText(text);
+      const btn = document.getElementById('logs-copy-btn');
+      btn.textContent = 'Copied!';
+      setTimeout(() => btn.textContent = 'Copy', 1500);
+    });
+
+    document.getElementById('logs-clear-btn').addEventListener('click', () => {
+      const el = document.getElementById('log-output');
+      el.innerHTML = '';
+      el._currentColor = null;
+    });
+
+    document.getElementById('logs-filter').addEventListener('change', () => {
+      const el = document.getElementById('log-output');
+      el.innerHTML = '';
+      el._currentColor = null;
+    });
+  </script>
+</body>
+</html>

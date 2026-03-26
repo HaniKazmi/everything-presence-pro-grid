@@ -23,6 +23,8 @@ from .const import CELL_ZONE_SHIFT
 from .const import ENTRY_POINT_ZONE_TYPES
 from .const import FOV_DEGREES
 from .const import GRID_CELL_SIZE_MM
+from .const import GRID_COLS
+from .const import GRID_ROWS
 from .const import MAX_MOVEMENT_CELLS
 from .const import MAX_RANGE_MM
 from .const import MAX_TARGETS
@@ -211,8 +213,8 @@ class Grid:
         end_x = math.ceil(max_x / cell_size) * cell_size
         end_y = math.ceil(max_y / cell_size) * cell_size
 
-        cols = max(1, int((end_x - origin_x) / cell_size))
-        rows = max(1, int((end_y - origin_y) / cell_size))
+        cols = max(1, min(GRID_COLS, int((end_x - origin_x) / cell_size)))
+        rows = max(1, min(GRID_ROWS, int((end_y - origin_y) / cell_size)))
         return origin_x, origin_y, cols, rows
 
 

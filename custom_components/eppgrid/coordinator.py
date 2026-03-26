@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import json
 import logging
 import math
 import time
+from typing import IO
 from typing import Any
 
 from aioesphomeapi import APIClient
@@ -13,6 +15,9 @@ from aioesphomeapi import BinarySensorState
 from aioesphomeapi import ReconnectLogic
 from aioesphomeapi import SensorInfo
 from aioesphomeapi import SensorState
+from aioesphomeapi import TextSensorInfo
+from aioesphomeapi import TextSensorState
+from aioesphomeapi import UserService
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.dispatcher import async_dispatcher_send
 
@@ -24,6 +29,7 @@ from .const import GRID_CELL_SIZE_MM
 from .const import GRID_COLS
 from .const import GRID_ROWS
 from .const import MAX_TARGETS
+from .const import MAX_ZONES
 from .const import ZONE_TYPE_DEFAULTS
 from .const import ZONE_TYPE_NORMAL
 from .zone_engine import DisplayBuffer
@@ -109,6 +115,24 @@ class EPPGridCoordinator:
         # ESPHome entity key mapping (populated during subscription)
         self._sensor_key_map: dict[int, str] = {}
         self._binary_sensor_key_map: dict[int, str] = {}
+        self._text_sensor_key_map: dict[int, str] = {}
+
+        # Firmware zone engine detection and state
+        self._has_firmware_zone_engine: bool = False
+        self._firmware_result: ProcessingResult | None = None
+        self._firmware_zone_occ: dict[int, bool] = {}
+        self._firmware_tracking: bool = False
+        self._firmware_targets: list[TargetResult | None] = [None] * MAX_TARGETS
+
+        # ESPHome user service cache (populated during subscribe_targets)
+        self._services: dict[str, UserService] = {}
+
+        # Dev mode: when True, always run the Python zone engine
+        self._dev_mode: bool = False
+
+        # Recording mode: dump raw LD2450 frames to JSONL
+        self._recording: bool = False
+        self._recording_file: IO[str] | None = None
 
     # -- Public properties --
 
@@ -126,7 +150,18 @@ class EPPGridCoordinator:
 
     @property
     def last_result(self) -> ProcessingResult:
-        """Return the last processing result."""
+        """Return the active processing result.
+
+        Firmware mode: firmware result (empty if not yet received).
+        Dev mode or no firmware: Python result.
+        """
+        if self._has_firmware_zone_engine and not self._dev_mode:
+            return self._firmware_result or ProcessingResult()
+        return self._last_result
+
+    @property
+    def python_result(self) -> ProcessingResult:
+        """Return the Python zone engine result (always)."""
         return self._last_result
 
     @property
@@ -186,7 +221,7 @@ class EPPGridCoordinator:
     @property
     def device_occupied(self) -> bool:
         """Return whether the room is occupied (PIR or static or tracking)."""
-        return self._pir_motion or self._static_present or self._last_result.device_tracking_present
+        return self._pir_motion or self._static_present or self.last_result.device_tracking_present
 
     @property
     def target_present(self) -> bool:
@@ -231,6 +266,50 @@ class EPPGridCoordinator:
         return math.degrees(math.atan2(t.x, t.y))
 
     @property
+    def has_firmware_zone_engine(self) -> bool:
+        """Return whether the device firmware has a zone engine."""
+        return self._has_firmware_zone_engine
+
+    @property
+    def firmware_result(self) -> ProcessingResult | None:
+        """Return the last firmware zone engine result."""
+        return self._firmware_result
+
+    @property
+    def dev_mode(self) -> bool:
+        """Return whether dev mode is enabled."""
+        return self._dev_mode
+
+    def set_dev_mode(self, enabled: bool) -> None:
+        """Enable or disable dev mode."""
+        self._dev_mode = enabled
+        _LOGGER.info("Dev mode %s", "enabled" if enabled else "disabled")
+
+    def start_recording(self, path: str) -> None:
+        """Start recording raw LD2450 frames to a JSONL file."""
+        if self._recording:
+            self.stop_recording()
+        self._recording_file = open(path, "w", encoding="utf-8")  # noqa: SIM115
+        self._recording = True
+        _LOGGER.info("Recording started: %s", path)
+
+    def stop_recording(self) -> str | None:
+        """Stop recording and return the file path."""
+        if not self._recording or self._recording_file is None:
+            return None
+        path = self._recording_file.name
+        self._recording_file.close()
+        self._recording_file = None
+        self._recording = False
+        _LOGGER.info("Recording stopped: %s", path)
+        return path
+
+    @property
+    def recording(self) -> bool:
+        """Return whether recording is active."""
+        return self._recording
+
+    @property
     def connected(self) -> bool:
         """Return whether the device is connected."""
         return self._connected
@@ -238,7 +317,8 @@ class EPPGridCoordinator:
     @property
     def targets(self) -> list[TargetResult]:
         """Return the current target results from zone engine."""
-        return list(self._last_result.targets) if self._last_result else []
+        result = self.last_result
+        return list(result.targets) if result else []
 
     @property
     def raw_targets(self) -> list[tuple[float, float, bool]]:
@@ -333,6 +413,128 @@ class EPPGridCoordinator:
                     grid.cells[r * cols + c] = CELL_ROOM_BIT
         self._zone_engine.set_grid(grid)
 
+    # -- Config push to firmware device --
+
+    def _get_service(self, name: str) -> UserService | None:
+        """Get a cached ESPHome user service by name."""
+        return self._services.get(name)
+
+    async def push_config_to_device(self) -> None:
+        """Push all configuration to the firmware device."""
+        if not self._has_firmware_zone_engine or self._client is None:
+            return
+        await self._push_perspective_to_device()
+        await self._push_grid_to_device()
+        await self._push_zones_to_device()
+
+    async def _push_perspective_to_device(self) -> None:
+        """Push perspective calibration to the device."""
+        if not self._has_firmware_zone_engine or self._client is None:
+            return
+        t = self._sensor_transform
+        if t.perspective is None:
+            _LOGGER.debug("No perspective calibration to push")
+            return
+        _LOGGER.info("Pushing perspective to device: room %.0fx%.0f", t.room_width, t.room_depth)
+        persp_str = ",".join(str(c) for c in t.perspective)
+        service = self._get_service("epp_set_perspective")
+        if service is None:
+            _LOGGER.debug("epp_set_perspective service not available")
+            return
+        try:
+            await self._client.execute_service(
+                service,
+                {
+                    "perspective": persp_str,
+                    "room_width": t.room_width,
+                    "room_depth": t.room_depth,
+                },
+            )
+        except Exception:
+            _LOGGER.warning("Failed to push perspective to device")
+
+    async def _push_grid_to_device(self) -> None:
+        """Push grid configuration to the device."""
+        if not self._has_firmware_zone_engine or self._client is None:
+            return
+        grid = self._zone_engine.grid
+        if grid is None:
+            _LOGGER.debug("No grid data to push")
+            return
+        grid_b64 = grid.to_base64()
+        _LOGGER.info(
+            "Pushing grid to device: %d cells, base64 len=%d, origin=(%.0f, %.0f)",
+            len(grid.cells),
+            len(grid_b64),
+            grid.origin_x,
+            grid.origin_y,
+        )
+        service = self._get_service("epp_set_grid")
+        if service is None:
+            _LOGGER.debug("epp_set_grid service not available")
+            return
+        try:
+            await self._client.execute_service(
+                service,
+                {
+                    "grid_data": grid_b64,
+                    "origin_x": grid.origin_x,
+                    "origin_y": grid.origin_y,
+                },
+            )
+        except Exception:
+            _LOGGER.warning("Failed to push grid to device")
+
+    async def _push_zones_to_device(self) -> None:
+        """Push zone configuration to the device."""
+        if not self._has_firmware_zone_engine or self._client is None:
+            return
+        zone_data = self._build_zones_payload()
+        service = self._get_service("epp_set_zones")
+        if service is None:
+            _LOGGER.debug("epp_set_zones service not available")
+            return
+        named = [s for s in zone_data.get("zone_slots", []) if s is not None]
+        _LOGGER.info("Pushing zones to device: %d named zones", len(named))
+        try:
+            await self._client.execute_service(
+                service,
+                {"zones_json": json.dumps(zone_data)},
+            )
+        except Exception:
+            _LOGGER.warning("Failed to push zones to device")
+
+    def _build_zones_payload(self) -> dict[str, Any]:
+        """Build JSON payload for epp_set_zones service."""
+        zone_slots: list[dict[str, Any] | None] = []
+        for z in self._zones:
+            if z.id == 0:
+                continue
+            zone_slots.append(
+                {
+                    "id": z.id,
+                    "type": z.type,
+                    "trigger": z.trigger,
+                    "renew": z.renew,
+                    "timeout": z.timeout,
+                    "handoff_timeout": z.handoff_timeout,
+                    "entry_point": z.entry_point,
+                }
+            )
+        # Pad to MAX_ZONES slots
+        while len(zone_slots) < MAX_ZONES:
+            zone_slots.append(None)
+        layout = self._room_layout
+        return {
+            "zone_slots": zone_slots,
+            "room_type": layout.get("room_type", "normal"),
+            "room_trigger": layout.get("room_trigger", 5),
+            "room_renew": layout.get("room_renew", 3),
+            "room_timeout": layout.get("room_timeout", 10.0),
+            "room_handoff_timeout": layout.get("room_handoff_timeout", 3.0),
+            "room_entry_point": layout.get("room_entry_point", False),
+        }
+
     # -- Connection management --
 
     async def async_connect(self) -> None:
@@ -360,6 +562,9 @@ class EPPGridCoordinator:
         _LOGGER.debug("Connected to %s", self._host)
         self._sensor_key_map.clear()
         self._binary_sensor_key_map.clear()
+        self._text_sensor_key_map.clear()
+        self._has_firmware_zone_engine = False
+        self._services.clear()
         await self.subscribe_targets()
 
     async def _on_disconnect(self, expected_disconnect: bool) -> None:
@@ -392,7 +597,10 @@ class EPPGridCoordinator:
         if self._client is None:
             return
 
-        entities, _ = await self._client.list_entities_services()
+        entities, services = await self._client.list_entities_services()
+
+        # Cache user service definitions for config push
+        self._services = {s.name: s for s in services}
 
         # Build key maps from entity list
         for entity_info in entities:
@@ -403,6 +611,7 @@ class EPPGridCoordinator:
 
             name = self._classify_entity(object_id)
             if name is None:
+                _LOGGER.debug("Skipped entity %s (unclassified)", object_id)
                 continue
 
             if isinstance(entity_info, BinarySensorInfo):
@@ -421,8 +630,28 @@ class EPPGridCoordinator:
                     key,
                     name,
                 )
+            elif isinstance(entity_info, TextSensorInfo):
+                self._text_sensor_key_map[key] = name
+                _LOGGER.debug(
+                    "Mapped text sensor %s (key=%s) -> %s",
+                    object_id,
+                    key,
+                    name,
+                )
+
+        # Detect firmware zone engine by presence of the version text sensor
+        has_fw = "fw_version" in self._text_sensor_key_map.values()
+        if has_fw and not self._has_firmware_zone_engine:
+            self._has_firmware_zone_engine = True
+            _LOGGER.info("Firmware zone engine detected (entity present)")
+        elif not has_fw:
+            self._has_firmware_zone_engine = False
 
         self._client.subscribe_states(self._on_state)
+
+        # Push config after detection and subscription are complete
+        if self._has_firmware_zone_engine:
+            await self.push_config_to_device()
 
     def _classify_entity(self, object_id: str) -> str | None:
         """Classify an ESPHome entity object_id to an internal name.
@@ -452,6 +681,19 @@ class EPPGridCoordinator:
         if "pir" in lower or "motion" in lower:
             return "pir_motion"
 
+        # Firmware zone engine sensors (must match before generic environment
+        # sensors to avoid false positives on substrings)
+        if lower.endswith("zone_engine_version"):
+            return "fw_version"
+        if lower.endswith("zone_tracking"):
+            return "fw_zone_tracking"
+        for n in range(8):
+            if lower.endswith(f"zone_{n}_occupancy"):
+                return f"fw_zone_{n}_occupancy"
+        for n in range(MAX_TARGETS):
+            if lower.endswith(f"target_{n}_position"):
+                return f"fw_target_{n}_position"
+
         # Environment sensors
         if "illuminance" in lower or "illumination" in lower:
             return "illuminance"
@@ -470,8 +712,10 @@ class EPPGridCoordinator:
         if key is None:
             return
 
-        # Look up in both key maps
-        name = self._sensor_key_map.get(key) or self._binary_sensor_key_map.get(key)
+        # Look up in all key maps
+        name = (
+            self._sensor_key_map.get(key) or self._binary_sensor_key_map.get(key) or self._text_sensor_key_map.get(key)
+        )
         if name is None:
             return
 
@@ -479,6 +723,8 @@ class EPPGridCoordinator:
             self._handle_binary_sensor(name, state.state)
         elif isinstance(state, SensorState):
             self._handle_sensor(name, state.state)
+        elif isinstance(state, TextSensorState):
+            self._handle_text_sensor(name, state.state)
 
     def _handle_binary_sensor(self, name: str, value: bool) -> None:
         """Handle a binary sensor state update."""
@@ -493,6 +739,16 @@ class EPPGridCoordinator:
             if idx is not None:
                 self._target_active[idx] = value
                 self._schedule_rebuild()
+        elif name.startswith("fw_zone_") and name.endswith("_occupancy"):
+            # Firmware zone occupancy: fw_zone_0_occupancy .. fw_zone_7_occupancy
+            zone_id = self._fw_zone_index(name)
+            if zone_id is not None:
+                self._firmware_zone_occ[zone_id] = value
+                self._build_firmware_result(self._firmware_tracking)
+        elif name == "fw_zone_tracking":
+            # Trigger sensor: firmware zone engine tick complete
+            self._firmware_tracking = value
+            self._build_firmware_result(value)
 
     def _handle_sensor(self, name: str, value: float) -> None:
         """Handle a sensor state update."""
@@ -529,6 +785,81 @@ class EPPGridCoordinator:
                 self._target_resolution[idx] = value
                 self._schedule_rebuild()
 
+    def _handle_text_sensor(self, name: str, value: str) -> None:
+        """Handle a text sensor state update."""
+        _LOGGER.debug("Text sensor %s = %r", name, value)
+        if name == "fw_version":
+            if "zone-engine" in value:
+                if not self._has_firmware_zone_engine:
+                    self._has_firmware_zone_engine = True
+                    _LOGGER.info("Firmware zone engine detected: %s", value)
+                    try:
+                        self.hass.async_create_task(self.push_config_to_device())
+                    except Exception:
+                        _LOGGER.exception("Failed to schedule config push")
+            elif value:
+                # Only disable if we received a real (non-empty) version string
+                # without "zone_engine". Ignore empty/missing initial states.
+                self._has_firmware_zone_engine = False
+        elif name.startswith("fw_target_") and name.endswith("_position"):
+            idx = self._fw_target_index(name)
+            if idx is not None:
+                self._firmware_targets[idx] = self._parse_fw_target_position(value)
+
+    @staticmethod
+    def _parse_fw_target_position(value: str) -> TargetResult | None:
+        """Parse a firmware target position string 'x,y,signal,status'."""
+        parts = value.split(",")
+        if len(parts) != 4:
+            return None
+        try:
+            x = float(parts[0])
+            y = float(parts[1])
+            signal = int(parts[2])
+            status_str = parts[3].strip()
+            status = TargetStatus(status_str)
+        except (ValueError, KeyError):
+            return None
+        return TargetResult(x=x, y=y, signal=signal, status=status)
+
+    def _fw_zone_index(self, name: str) -> int | None:
+        """Extract zone index from fw_zone_N_occupancy."""
+        # name format: fw_zone_0_occupancy
+        parts = name.split("_")
+        if len(parts) >= 3:
+            try:
+                return int(parts[2])
+            except ValueError:
+                pass
+        return None
+
+    def _fw_target_index(self, name: str) -> int | None:
+        """Extract 0-based target index from fw_target_N_position."""
+        # name format: fw_target_0_position
+        parts = name.split("_")
+        if len(parts) >= 3:
+            try:
+                n = int(parts[2])
+                if 0 <= n < MAX_TARGETS:
+                    return n
+            except ValueError:
+                pass
+        return None
+
+    def _build_firmware_result(self, tracking_present: bool) -> None:
+        """Build a ProcessingResult from accumulated firmware state.
+
+        Called when the fw_zone_tracking binary sensor updates, which
+        fires on every zone engine tick in firmware.
+        """
+        result = ProcessingResult(
+            device_tracking_present=tracking_present,
+            zone_occupancy=dict(self._firmware_zone_occ),
+            targets=[t if t is not None else TargetResult() for t in self._firmware_targets],
+        )
+        self._firmware_result = result
+        async_dispatcher_send(self.hass, f"{SIGNAL_TARGETS_UPDATED}_{self.entry.entry_id}")
+
     def _dispatch_sensor_update(self) -> None:
         """Dispatch a signal for environment sensor updates only."""
         async_dispatcher_send(self.hass, f"{SIGNAL_SENSORS_UPDATED}_{self.entry.entry_id}")
@@ -542,19 +873,42 @@ class EPPGridCoordinator:
         calibrated = self._build_calibrated_targets(active)
         raw = [(self._target_x[i], self._target_y[i], active[i]) for i in range(MAX_TARGETS)]
 
-        result = self._zone_engine.feed_raw(calibrated, now)
+        # Write raw frame to JSONL when recording
+        if self._recording and self._recording_file is not None:
+            record = {
+                "t": time.time(),
+                "targets": [
+                    {
+                        "x": self._target_x[i],
+                        "y": self._target_y[i],
+                        "speed": self._target_speed[i],
+                        "res": self._target_resolution[i],
+                        "active": active[i],
+                    }
+                    for i in range(MAX_TARGETS)
+                ],
+                "pir": self._pir_motion,
+                "static": self._static_present,
+            }
+            self._recording_file.write(json.dumps(record) + "\n")
+            self._recording_file.flush()
 
-        if result is not None:
-            # Window ticked — update state and dispatch
-            self._last_result = result
-            async_dispatcher_send(self.hass, f"{SIGNAL_TARGETS_UPDATED}_{self.entry.entry_id}")
+        # Only run the Python zone engine when in dev mode or no firmware
+        if self._dev_mode or not self._has_firmware_zone_engine:
+            result = self._zone_engine.feed_raw(calibrated, now)
+
+            if result is not None:
+                # Window ticked — update state and dispatch
+                self._last_result = result
+                async_dispatcher_send(self.hass, f"{SIGNAL_TARGETS_UPDATED}_{self.entry.entry_id}")
 
         # Always feed the display buffer so smoothed positions are
         # available to subscribe_raw_targets and subscribe_grid_targets.
         self._last_display_snapshot = self._display_buffer.feed(calibrated, raw)
 
         # Schedule a single callback at the soonest pending zone expiry
-        self._schedule_expiry_tick()
+        if self._dev_mode or not self._has_firmware_zone_engine:
+            self._schedule_expiry_tick()
 
         # Safety: if sensor updates stop (unchanged values = no callbacks),
         # _last_result would go stale.  Schedule a fallback tick so the zone
@@ -602,6 +956,8 @@ class EPPGridCoordinator:
     def _expiry_tick(self) -> None:
         """Feed empty targets at timeout expiry to clear zone entity states."""
         self._window_timer = None
+        if self._has_firmware_zone_engine and not self._dev_mode:
+            return
         now = time.monotonic()
         empty = [(0.0, 0.0, False)] * MAX_TARGETS
         result = self._zone_engine.feed_raw(empty, now)
@@ -677,6 +1033,8 @@ class EPPGridCoordinator:
                 "temperature": self._temperature_offset,
                 "humidity": self._humidity_offset,
             },
+            "dev_mode": self._dev_mode,
+            "has_firmware_zone_engine": self._has_firmware_zone_engine,
         }
 
     def load_config_data(self, data: dict[str, Any]) -> None:
@@ -692,14 +1050,27 @@ class EPPGridCoordinator:
         # Load grid
         grid_data = data.get("grid")
         if grid_data and data.get("grid_cols"):
-            grid = Grid.from_base64(
-                grid_data,
-                cols=data["grid_cols"],
-                rows=data["grid_rows"],
-                origin_x=data.get("grid_origin_x", 0.0),
-                origin_y=data.get("grid_origin_y", 0.0),
-            )
-            self._zone_engine.set_grid(grid)
+            cols = data["grid_cols"]
+            rows = data["grid_rows"]
+            if cols <= GRID_COLS and rows <= GRID_ROWS:
+                grid = Grid.from_base64(
+                    grid_data,
+                    cols=cols,
+                    rows=rows,
+                    origin_x=data.get("grid_origin_x", 0.0),
+                    origin_y=data.get("grid_origin_y", 0.0),
+                )
+                self._zone_engine.set_grid(grid)
+            else:
+                _LOGGER.warning(
+                    "Saved grid %dx%d exceeds max %dx%d, rebuilding",
+                    cols,
+                    rows,
+                    GRID_COLS,
+                    GRID_ROWS,
+                )
+                if cal_data and cal_data.get("perspective"):
+                    self._rebuild_grid()
         elif cal_data and cal_data.get("perspective"):
             # No saved grid — compute from perspective
             self._rebuild_grid()

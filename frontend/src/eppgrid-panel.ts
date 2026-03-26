@@ -3385,10 +3385,7 @@ export class EPPGridPanel extends LitElement {
           @change=${(e: Event) => {
 						const val = (e.target as HTMLSelectElement).value;
 						if (val === "__add__") {
-							window.open(
-								"/config/integrations/integration/eppgrid",
-								"_blank",
-							);
+							window.open("/config/integrations/integration/eppgrid", "_blank");
 							(e.target as HTMLSelectElement).value = this._selectedEntryId;
 							return;
 						}
@@ -5204,9 +5201,7 @@ export class EPPGridPanel extends LitElement {
 				fractionalSecondDigits: 1,
 			});
 			this._debugLogLines.push(`${ts} ${body}`);
-			if (
-				this._debugLogLines.length > EPPGridPanel._DEBUG_LOG_MAX
-			) {
+			if (this._debugLogLines.length > EPPGridPanel._DEBUG_LOG_MAX) {
 				this._debugLogLines = this._debugLogLines.slice(
 					-EPPGridPanel._DEBUG_LOG_MAX,
 				);
@@ -6061,10 +6056,7 @@ export class EPPGridPanel extends LitElement {
 }
 
 if (!customElements.get("eppgrid-panel")) {
-	customElements.define(
-		"eppgrid-panel",
-		EPPGridPanel,
-	);
+	customElements.define("eppgrid-panel", EPPGridPanel);
 }
 
 declare global {

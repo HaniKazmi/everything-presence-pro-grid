@@ -3,30 +3,31 @@
 Diagnostic data captured from a real sensor in a 3.5m x 4.45m room,
 sensor in left corner.
 """
+
 import math
 
 # Raw sensor readings for 4 room corners
 CORNERS = {
-    "near_left":  {"sx": -79,   "sy": 243},
-    "near_right": {"sx": 2250,  "sy": 1908},
-    "far_right":  {"sx": 401,   "sy": 5012},
-    "far_left":   {"sx": -2818, "sy": 2283},
+    "near_left": {"sx": -79, "sy": 243},
+    "near_right": {"sx": 2250, "sy": 1908},
+    "far_right": {"sx": 401, "sy": 5012},
+    "far_left": {"sx": -2818, "sy": 2283},
 }
 
-ROOM_WIDTH = 3500   # mm
-ROOM_DEPTH = 4450   # mm
+ROOM_WIDTH = 3500  # mm
+ROOM_DEPTH = 4450  # mm
+
 
 def reported_angle(sx, sy):
     """Sensor-frame angle: atan2(x, y), 0 = straight ahead."""
     return math.atan2(sx, sy)
 
+
 def main():
     # Step 1: Estimate sensor angle from far-right corner (minimal distortion)
     # Far-right is at room coords (ROOM_WIDTH, ROOM_DEPTH) for left-corner sensor
     expected_room_angle_fr = math.atan2(ROOM_WIDTH, ROOM_DEPTH)
-    reported_angle_fr = reported_angle(
-        CORNERS["far_right"]["sx"], CORNERS["far_right"]["sy"]
-    )
+    reported_angle_fr = reported_angle(CORNERS["far_right"]["sx"], CORNERS["far_right"]["sy"])
 
     # Initial sensor angle estimate (iterative refinement)
     sensor_angle = reported_angle_fr - expected_room_angle_fr
@@ -35,10 +36,10 @@ def main():
     # Step 2: Compute expected sensor-frame angles for all corners
     # Room-frame positions (left-corner sensor at room origin 0,0)
     room_positions = {
-        "near_left":  (0, 0),  # sensor corner — too close, skip
+        "near_left": (0, 0),  # sensor corner — too close, skip
         "near_right": (ROOM_WIDTH, 0),
-        "far_right":  (ROOM_WIDTH, ROOM_DEPTH),
-        "far_left":   (0, ROOM_DEPTH),
+        "far_right": (ROOM_WIDTH, ROOM_DEPTH),
+        "far_left": (0, ROOM_DEPTH),
     }
 
     # Step 3: Iteratively refine scale factor
@@ -50,9 +51,7 @@ def main():
             # Expected angle in sensor frame = room angle - sensor angle
             room_angle = math.atan2(rx, ry)
             expected_sensor_angle = room_angle - sensor_angle
-            rep_angle = reported_angle(
-                CORNERS[name]["sx"], CORNERS[name]["sy"]
-            )
+            rep_angle = reported_angle(CORNERS[name]["sx"], CORNERS[name]["sy"])
             if abs(expected_sensor_angle) > 0.01:
                 ratio = rep_angle / expected_sensor_angle
                 ratios.append(ratio)
@@ -89,11 +88,8 @@ def main():
         rx = cx * cos_a + cy * sin_a
         ry = -cx * sin_a + cy * cos_a
         expected_rx, expected_ry = room_positions[name]
-        err = math.sqrt((rx - expected_rx)**2 + (ry - expected_ry)**2)
-        print(
-            f"  {name}: room=({rx:.0f}, {ry:.0f}), "
-            f"expected=({expected_rx}, {expected_ry}), error={err:.0f}mm"
-        )
+        err = math.sqrt((rx - expected_rx) ** 2 + (ry - expected_ry) ** 2)
+        print(f"  {name}: room=({rx:.0f}, {ry:.0f}), expected=({expected_rx}, {expected_ry}), error={err:.0f}mm")
 
 
 if __name__ == "__main__":

@@ -20,6 +20,7 @@ from .const import ZONE_TYPE_NORMAL
 from .coordinator import SIGNAL_DISPLAY_UPDATED
 from .coordinator import EPPGridCoordinator
 from .zone_engine import DisplayTarget
+from .zone_engine import ProcessingResult
 from .zone_engine import TargetResult
 from .zone_engine import Zone
 
@@ -50,6 +51,9 @@ def async_register_websocket_commands(hass: HomeAssistant) -> None:
     websocket_api.async_register_command(hass, websocket_subscribe_grid_targets)
     websocket_api.async_register_command(hass, websocket_rename_zone_entities)
     websocket_api.async_register_command(hass, websocket_set_reporting)
+    websocket_api.async_register_command(hass, websocket_set_dev_mode)
+    websocket_api.async_register_command(hass, websocket_start_recording)
+    websocket_api.async_register_command(hass, websocket_stop_recording)
 
 
 @websocket_api.websocket_command(
@@ -132,6 +136,10 @@ async def websocket_set_setup(
     config["grid_rows"] = grid.rows
 
     hass.config_entries.async_update_entry(entry, options={**entry.options, "config": config})
+
+    # Push perspective + grid to firmware device
+    await coordinator._push_perspective_to_device()
+    await coordinator._push_grid_to_device()
 
     connection.send_result(msg["id"])
 
@@ -331,6 +339,10 @@ async def websocket_set_room_layout(
         config["room_layout"] = layout
         hass.config_entries.async_update_entry(entry, options={**entry.options, "config": config})
 
+    # Push grid + zones to firmware device
+    await coordinator._push_grid_to_device()
+    await coordinator._push_zones_to_device()
+
     # Enable/disable zone entities based on slot occupancy AND reporting toggles
     registry = entity_registry.async_get(hass)
     entry_id = msg["entry_id"]
@@ -488,6 +500,7 @@ async def websocket_subscribe_raw_targets(
     {
         vol.Required("type"): "eppgrid/subscribe_grid_targets",
         vol.Required("entry_id"): str,
+        vol.Optional("source", default="firmware"): vol.In(["firmware", "python"]),
     }
 )
 @websocket_api.async_response
@@ -502,10 +515,20 @@ async def websocket_subscribe_grid_targets(
         connection.send_error(msg["id"], "not_found", "Config entry not found")
         return
 
+    source = msg.get("source", "firmware")
+
+    def _pick_result() -> ProcessingResult:
+        """Select the zone engine result based on source preference."""
+        if source == "python":
+            return coordinator.python_result
+        if coordinator.has_firmware_zone_engine:
+            return coordinator.firmware_result or ProcessingResult()
+        return coordinator.python_result
+
     def _build_payload() -> dict[str, Any]:
         snap = coordinator.last_display_snapshot
         display = snap.targets if snap else [DisplayTarget()] * MAX_TARGETS
-        result = coordinator.last_result
+        result = _pick_result()
         ztargets = list(result.targets) if result else []
         while len(ztargets) < MAX_TARGETS:
             ztargets.append(TargetResult())
@@ -737,3 +760,71 @@ def websocket_set_reporting(
                         )
 
     connection.send_result(msg["id"])
+
+
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): "eppgrid/set_dev_mode",
+        vol.Required("entry_id"): str,
+        vol.Required("enabled"): bool,
+    }
+)
+@callback
+def websocket_set_dev_mode(
+    hass: HomeAssistant,
+    connection: websocket_api.ActiveConnection,
+    msg: dict[str, Any],
+) -> None:
+    """Set dev mode on/off."""
+    coordinator = _get_coordinator(hass, msg["entry_id"])
+    if coordinator is None:
+        connection.send_error(msg["id"], "not_found", "Entry not found")
+        return
+    coordinator.set_dev_mode(msg["enabled"])
+    connection.send_result(msg["id"])
+
+
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): "eppgrid/start_recording",
+        vol.Required("entry_id"): str,
+        vol.Required("filename"): str,
+    }
+)
+@callback
+def websocket_start_recording(
+    hass: HomeAssistant,
+    connection: websocket_api.ActiveConnection,
+    msg: dict[str, Any],
+) -> None:
+    """Start recording raw LD2450 frames to a JSONL file."""
+    coordinator = _get_coordinator(hass, msg["entry_id"])
+    if coordinator is None:
+        connection.send_error(msg["id"], "not_found", "Entry not found")
+        return
+    import os
+
+    path = os.path.join(hass.config.config_dir, msg["filename"])
+    coordinator.start_recording(path)
+    connection.send_result(msg["id"], {"path": path})
+
+
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): "eppgrid/stop_recording",
+        vol.Required("entry_id"): str,
+    }
+)
+@callback
+def websocket_stop_recording(
+    hass: HomeAssistant,
+    connection: websocket_api.ActiveConnection,
+    msg: dict[str, Any],
+) -> None:
+    """Stop recording and return path to recorded file."""
+    coordinator = _get_coordinator(hass, msg["entry_id"])
+    if coordinator is None:
+        connection.send_error(msg["id"], "not_found", "Entry not found")
+        return
+    path = coordinator.stop_recording()
+    connection.send_result(msg["id"], {"path": path})

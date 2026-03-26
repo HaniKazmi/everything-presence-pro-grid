@@ -5,9 +5,7 @@ import { GRID_CELL_COUNT } from "../lib/grid.js";
 
 describe("panel element creation", () => {
 	it("can be created via document.createElement", () => {
-		const el = document.createElement(
-			"eppgrid-panel",
-		) as EPPGridPanel;
+		const el = document.createElement("eppgrid-panel") as EPPGridPanel;
 		expect(el).toBeInstanceOf(HTMLElement);
 	});
 
@@ -17,9 +15,7 @@ describe("panel element creation", () => {
 	});
 
 	it("can be connected to the DOM", () => {
-		const el = document.createElement(
-			"eppgrid-panel",
-		) as EPPGridPanel;
+		const el = document.createElement("eppgrid-panel") as EPPGridPanel;
 		// Mock hass to prevent WS calls during connectedCallback
 		el.hass = { callWS: async () => ({}) };
 		document.body.appendChild(el);
@@ -30,17 +26,13 @@ describe("panel element creation", () => {
 
 describe("panel loading state", () => {
 	it("starts in loading state by default", () => {
-		const el = document.createElement(
-			"eppgrid-panel",
-		) as EPPGridPanel;
+		const el = document.createElement("eppgrid-panel") as EPPGridPanel;
 		const a = el as any;
 		expect(a._loading).toBe(true);
 	});
 
 	it("has empty entries by default", () => {
-		const el = document.createElement(
-			"eppgrid-panel",
-		) as EPPGridPanel;
+		const el = document.createElement("eppgrid-panel") as EPPGridPanel;
 		const a = el as any;
 		expect(a._entries).toEqual([]);
 	});
@@ -48,9 +40,7 @@ describe("panel loading state", () => {
 
 describe("panel renders without throwing", () => {
 	it("renders loading state when _loading is true", () => {
-		const el = document.createElement(
-			"eppgrid-panel",
-		) as EPPGridPanel;
+		const el = document.createElement("eppgrid-panel") as EPPGridPanel;
 		el.hass = { callWS: async () => ({}) };
 		const a = el as any;
 		a._loading = true;
@@ -61,9 +51,7 @@ describe("panel renders without throwing", () => {
 	});
 
 	it("renders loading state when _entries is empty", () => {
-		const el = document.createElement(
-			"eppgrid-panel",
-		) as EPPGridPanel;
+		const el = document.createElement("eppgrid-panel") as EPPGridPanel;
 		el.hass = { callWS: async () => ({}) };
 		const a = el as any;
 		a._loading = false;
@@ -74,18 +62,14 @@ describe("panel renders without throwing", () => {
 	});
 
 	it("has default grid of correct size", () => {
-		const el = document.createElement(
-			"eppgrid-panel",
-		) as EPPGridPanel;
+		const el = document.createElement("eppgrid-panel") as EPPGridPanel;
 		const a = el as any;
 		expect(a._grid).toBeInstanceOf(Uint8Array);
 		expect(a._grid.length).toBe(GRID_CELL_COUNT);
 	});
 
 	it("has default zone configs array of length 7", () => {
-		const el = document.createElement(
-			"eppgrid-panel",
-		) as EPPGridPanel;
+		const el = document.createElement("eppgrid-panel") as EPPGridPanel;
 		const a = el as any;
 		expect(a._zoneConfigs).toHaveLength(7);
 		for (const cfg of a._zoneConfigs) {
@@ -94,9 +78,7 @@ describe("panel renders without throwing", () => {
 	});
 
 	it("has _dirty = false by default", () => {
-		const el = document.createElement(
-			"eppgrid-panel",
-		) as EPPGridPanel;
+		const el = document.createElement("eppgrid-panel") as EPPGridPanel;
 		const a = el as any;
 		expect(a._dirty).toBe(false);
 	});

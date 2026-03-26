@@ -1,0 +1,365 @@
+{
+  "grid": {
+    "room_cells": [
+      [8, 0], [9, 0], [10, 0], [11, 0],
+      [8, 1], [9, 1], [10, 1], [11, 1],
+      [8, 2], [9, 2], [10, 2], [11, 2],
+      [8, 3], [9, 3], [10, 3], [11, 3]
+    ],
+    "zone_cells": {
+      "1": [[9, 1]]
+    }
+  },
+  "zones": {
+    "0": {"type": "normal", "trigger": 5, "renew": 3, "timeout": 10.0, "handoff_timeout": 3.0, "entry_point": false},
+    "1": {"type": "entrance", "trigger": 3, "renew": 2, "timeout": 5.0, "handoff_timeout": 1.0, "entry_point": true}
+  },
+  "scenarios": {
+    "test_no_targets_all_clear": {
+      "ticks": [
+        {"t": 100.0, "targets": []}
+      ],
+      "expected": [
+        {
+          "zone_occupancy": {"0": false, "1": false}
+        }
+      ]
+    },
+    "test_inactive_target_all_clear": {
+      "ticks": [
+        {"t": 100.0, "targets": [{"x": 2850, "y": 450, "frames": 0}]}
+      ],
+      "expected": [
+        {
+          "zone_occupancy": {"0": false, "1": false}
+        }
+      ]
+    },
+    "test_target_in_entrance_zone_occupied": {
+      "ticks": [
+        {"t": 100.0, "targets": [{"x": 2850, "y": 450, "frames": 3}]}
+      ],
+      "expected": [
+        {
+          "zone_occupancy": {"0": false, "1": true}
+        }
+      ]
+    },
+    "test_target_below_trigger_stays_clear": {
+      "ticks": [
+        {"t": 100.0, "targets": [{"x": 2850, "y": 450, "frames": 2}]}
+      ],
+      "expected": [
+        {
+          "zone_occupancy": {"1": false}
+        }
+      ]
+    },
+    "test_zone_0_gating": {
+      "ticks": [
+        {"t": 100.0, "targets": [{"x": 2550, "y": 150, "frames": 7}]},
+        {"t": 101.0, "targets": [{"x": 2550, "y": 150, "frames": 7}]}
+      ],
+      "expected": [
+        {
+          "zone_occupancy": {"0": false}
+        },
+        {
+          "zone_occupancy": {"0": true}
+        }
+      ]
+    },
+    "test_entry_point_bypasses_gating": {
+      "ticks": [
+        {"t": 100.0, "targets": [{"x": 2850, "y": 450, "frames": 3}]}
+      ],
+      "expected": [
+        {
+          "zone_occupancy": {"1": true}
+        }
+      ]
+    },
+    "test_pending_then_clear_after_timeout": {
+      "ticks": [
+        {"t": 100.0, "targets": [{"x": 2850, "y": 450, "frames": 5}]},
+        {"t": 101.0, "targets": [{"x": 2850, "y": 450, "frames": 0}]},
+        {"t": 107.0, "targets": [{"x": 2850, "y": 450, "frames": 0}]}
+      ],
+      "expected": [
+        {
+          "zone_occupancy": {"1": true}
+        },
+        {
+          "zone_occupancy": {"1": true}
+        },
+        {
+          "zone_occupancy": {"1": false}
+        }
+      ]
+    },
+    "test_target_reappears_during_pending": {
+      "ticks": [
+        {"t": 100.0, "targets": [{"x": 2850, "y": 450, "frames": 5}]},
+        {"t": 101.0, "targets": [{"x": 2850, "y": 450, "frames": 0}]},
+        {"t": 102.0, "targets": [{"x": 2850, "y": 450, "frames": 2}]}
+      ],
+      "expected": [
+        {
+          "zone_occupancy": {"1": true}
+        },
+        {
+          "zone_occupancy": {"1": true}
+        },
+        {
+          "zone_occupancy": {"1": true}
+        }
+      ]
+    },
+    "test_two_targets_different_zones": {
+      "ticks": [
+        {"t": 100.0, "targets": [{"x": 2850, "y": 450, "frames": 5}, {"x": 2550, "y": 150, "frames": 7}]},
+        {"t": 101.0, "targets": [{"x": 2850, "y": 450, "frames": 5}, {"x": 2550, "y": 150, "frames": 7}]}
+      ],
+      "expected": [
+        {
+          "zone_occupancy": {"0": false, "1": true}
+        },
+        {
+          "zone_occupancy": {"0": true, "1": true}
+        }
+      ]
+    },
+    "test_target_outside_grid_no_occupancy": {
+      "ticks": [
+        {"t": 100.0, "targets": [{"x": 9000, "y": 9000, "frames": 9}]}
+      ],
+      "expected": [
+        {
+          "zone_occupancy": {"0": false, "1": false}
+        }
+      ]
+    },
+    "test_target_on_non_room_cell_no_occupancy": {
+      "ticks": [
+        {"t": 100.0, "targets": [{"x": 1500, "y": 150, "frames": 9}]}
+      ],
+      "expected": [
+        {
+          "zone_occupancy": {"0": false, "1": false}
+        }
+      ]
+    },
+    "test_continuity_skips_gating": {
+      "ticks": [
+        {"t": 100.0, "targets": [{"x": 2550, "y": 150, "frames": 9}]},
+        {"t": 101.0, "targets": [{"x": 2550, "y": 150, "frames": 9}]},
+        {"t": 102.0, "targets": [{"x": 2850, "y": 150, "frames": 3}]}
+      ],
+      "expected": [
+        {
+          "zone_occupancy": {"0": false}
+        },
+        {
+          "zone_occupancy": {"0": true}
+        },
+        {
+          "zone_occupancy": {"0": true}
+        }
+      ]
+    },
+    "test_active_target_status": {
+      "ticks": [
+        {"t": 100.0, "targets": [{"x": 2850, "y": 450, "frames": 5}]}
+      ],
+      "expected": [
+        {
+          "zone_occupancy": {},
+          "targets": [{"status": "active", "x": 2850, "y": 450, "signal": 5}]
+        }
+      ]
+    },
+    "test_no_targets_empty_list": {
+      "ticks": [
+        {"t": 100.0, "targets": []}
+      ],
+      "expected": [
+        {
+          "zone_occupancy": {},
+          "targets": []
+        }
+      ]
+    },
+    "test_inactive_target_status": {
+      "ticks": [
+        {"t": 100.0, "targets": [{"x": 2850, "y": 450, "frames": 0}]}
+      ],
+      "expected": [
+        {
+          "zone_occupancy": {},
+          "targets": [{"status": "inactive"}]
+        }
+      ]
+    },
+    "test_pending_target_status": {
+      "ticks": [
+        {"t": 100.0, "targets": [{"x": 2850, "y": 450, "frames": 5}]},
+        {"t": 101.0, "targets": [{"x": 2850, "y": 450, "frames": 0}]}
+      ],
+      "expected": [
+        {
+          "zone_occupancy": {}
+        },
+        {
+          "zone_occupancy": {},
+          "targets": [{"status": "pending", "x": 2850, "y": 450, "signal": 0}]
+        }
+      ]
+    },
+    "test_inactive_after_timeout": {
+      "ticks": [
+        {"t": 100.0, "targets": [{"x": 2850, "y": 450, "frames": 5}]},
+        {"t": 101.0, "targets": [{"x": 2850, "y": 450, "frames": 0}]},
+        {"t": 107.0, "targets": [{"x": 2850, "y": 450, "frames": 0}]}
+      ],
+      "expected": [
+        {
+          "zone_occupancy": {}
+        },
+        {
+          "zone_occupancy": {}
+        },
+        {
+          "zone_occupancy": {},
+          "targets": [{"status": "inactive"}]
+        }
+      ]
+    },
+    "test_tracked_target_outside_room_no_prior": {
+      "ticks": [
+        {"t": 100.0, "targets": [{"x": 9000, "y": 9000, "frames": 9}]}
+      ],
+      "expected": [
+        {
+          "zone_occupancy": {},
+          "targets": [{"status": "inactive"}]
+        }
+      ]
+    },
+    "test_tracked_target_outside_room_with_prior": {
+      "ticks": [
+        {"t": 100.0, "targets": [{"x": 2850, "y": 450, "frames": 5}]},
+        {"t": 101.0, "targets": [{"x": 9000, "y": 9000, "frames": 9}]}
+      ],
+      "expected": [
+        {
+          "zone_occupancy": {}
+        },
+        {
+          "zone_occupancy": {},
+          "targets": [{"status": "pending", "x": 2850, "y": 450}]
+        }
+      ]
+    },
+    "test_reappears_during_pending_back_to_active": {
+      "ticks": [
+        {"t": 100.0, "targets": [{"x": 2850, "y": 450, "frames": 5}]},
+        {"t": 101.0, "targets": [{"x": 2850, "y": 450, "frames": 0}]},
+        {"t": 102.0, "targets": [{"x": 2850, "y": 450, "frames": 3}]}
+      ],
+      "expected": [
+        {
+          "zone_occupancy": {}
+        },
+        {
+          "zone_occupancy": {},
+          "targets": [{"status": "pending"}]
+        },
+        {
+          "zone_occupancy": {},
+          "targets": [{"status": "active", "x": 2850, "y": 450, "signal": 3}]
+        }
+      ]
+    },
+    "test_two_targets_one_leaves_mixed_states": {
+      "ticks": [
+        {"t": 100.0, "targets": [{"x": 2850, "y": 450, "frames": 5}, {"x": 2550, "y": 150, "frames": 9}]},
+        {"t": 101.0, "targets": [{"x": 2850, "y": 450, "frames": 5}, {"x": 2550, "y": 150, "frames": 9}]},
+        {"t": 102.0, "targets": [{"x": 2850, "y": 450, "frames": 5}, {"x": 2550, "y": 150, "frames": 0}]}
+      ],
+      "expected": [
+        {
+          "zone_occupancy": {}
+        },
+        {
+          "zone_occupancy": {"0": true, "1": true}
+        },
+        {
+          "zone_occupancy": {},
+          "targets": [
+            {"status": "active"},
+            {"status": "pending", "x": 2550, "y": 150}
+          ]
+        }
+      ]
+    },
+    "test_outside_room_then_stops_tracking_pending": {
+      "ticks": [
+        {"t": 100.0, "targets": [{"x": 2850, "y": 450, "frames": 5}]},
+        {"t": 101.0, "targets": [{"x": 9000, "y": 9000, "frames": 9}]},
+        {"t": 102.0, "targets": [{"x": 9000, "y": 9000, "frames": 0}]}
+      ],
+      "expected": [
+        {
+          "zone_occupancy": {}
+        },
+        {
+          "zone_occupancy": {},
+          "targets": [{"status": "pending", "x": 2850, "y": 450}]
+        },
+        {
+          "zone_occupancy": {},
+          "targets": [{"status": "pending", "x": 2850, "y": 450}]
+        }
+      ]
+    },
+    "test_signal_zero_but_tracking_inactive": {
+      "ticks": [
+        {"t": 100.0, "targets": [{"x": 2850, "y": 450, "frames": 5}]},
+        {"t": 101.0, "targets": [{"x": 2850, "y": 450, "frames": 0}]},
+        {"t": 107.0, "targets": [{"x": 2850, "y": 450, "frames": 0}]}
+      ],
+      "expected": [
+        {
+          "zone_occupancy": {}
+        },
+        {
+          "zone_occupancy": {}
+        },
+        {
+          "zone_occupancy": {},
+          "targets": [{"status": "inactive"}]
+        }
+      ]
+    },
+    "test_handoff_target_moves_between_zones": {
+      "ticks": [
+        {"t": 100.0, "targets": [{"x": 2850, "y": 450, "frames": 5}]},
+        {"t": 101.0, "targets": [{"x": 2550, "y": 150, "frames": 7}]},
+        {"t": 101.5, "targets": [{"x": 2550, "y": 150, "frames": 7}]}
+      ],
+      "expected": [
+        {
+          "zone_occupancy": {}
+        },
+        {
+          "zone_occupancy": {"1": true},
+          "targets": [{"status": "active", "x": 2550, "y": 150}]
+        },
+        {
+          "zone_occupancy": {"0": true, "1": true},
+          "targets": [{"status": "active"}]
+        }
+      ]
+    }
+  }
+}
