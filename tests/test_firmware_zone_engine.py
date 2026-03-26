@@ -194,7 +194,7 @@ class TestFirmwareDetection:
         # Set up key map as if subscribe_targets ran
         coordinator._text_sensor_key_map[42] = "fw_version"
 
-        state = TextSensorState(key=42, state="2.1.0-zone_engine-beta")
+        state = TextSensorState(key=42, state="2.1.0-zone-engine-beta")
         coordinator._on_state(state)
 
         assert coordinator.has_firmware_zone_engine is True
