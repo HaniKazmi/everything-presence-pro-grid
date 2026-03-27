@@ -260,3 +260,87 @@ TEST_CASE("reset clears all state") {
     CHECK(out.targets[0].median_x == doctest::Approx(300.0f));
     CHECK(out.targets[0].median_y == doctest::Approx(400.0f));
 }
+
+// TEST 13: Empty frame (target_count=0) counts as a frame but no active targets
+TEST_CASE("empty frame with target_count=0 counts as frame") {
+    RollingWindow rw(1000);
+
+    TargetInput empty[MAX_TARGETS] = {};
+    rw.feed(empty, 0, 0);
+
+    auto out = rw.output();
+    CHECK(out.total_frames == 1);
+    for (int i = 0; i < MAX_TARGETS; ++i) {
+        CHECK_FALSE(out.targets[i].active);
+        CHECK(out.targets[i].frame_count == 0);
+    }
+}
+
+// TEST 14: target_count > MAX_TARGETS is truncated
+TEST_CASE("target_count greater than MAX_TARGETS is truncated") {
+    RollingWindow rw(1000);
+
+    // Provide 5 targets but only first MAX_TARGETS should be stored
+    TargetInput frame[5] = {
+        {10.0f, 20.0f, true},
+        {30.0f, 40.0f, true},
+        {50.0f, 60.0f, true},
+        {70.0f, 80.0f, true},   // should be ignored
+        {90.0f, 100.0f, true},  // should be ignored
+    };
+    rw.feed(frame, 5, 0);
+
+    auto out = rw.output();
+    CHECK(out.total_frames == 1);
+    CHECK(out.targets[0].active);
+    CHECK(out.targets[0].median_x == doctest::Approx(10.0f));
+    CHECK(out.targets[1].active);
+    CHECK(out.targets[1].median_x == doctest::Approx(30.0f));
+    CHECK(out.targets[2].active);
+    CHECK(out.targets[2].median_x == doctest::Approx(50.0f));
+}
+
+// TEST 15: Multiple targets compute independent medians
+TEST_CASE("multiple targets compute independent medians") {
+    RollingWindow rw(1000);
+
+    for (int i = 0; i < 5; ++i) {
+        TargetInput frame[MAX_TARGETS] = {
+            {static_cast<float>(i * 10), 100.0f, true},
+            {static_cast<float>(i * 100 + 500), 200.0f, true},
+            {static_cast<float>(i * 2), 300.0f, (i % 2 == 0)},
+        };
+        rw.feed(frame, MAX_TARGETS, static_cast<uint32_t>(i * 100));
+    }
+
+    auto out = rw.output();
+    // Target 0: x = 0,10,20,30,40 → median = 20
+    CHECK(out.targets[0].median_x == doctest::Approx(20.0f));
+    CHECK(out.targets[0].frame_count == 5);
+    // Target 1: x = 500,600,700,800,900 → median = 700
+    CHECK(out.targets[1].median_x == doctest::Approx(700.0f));
+    CHECK(out.targets[1].frame_count == 5);
+    // Target 2: active on frames 0,2,4 → x = 0,4,8 → median = 4
+    CHECK(out.targets[2].median_x == doctest::Approx(4.0f));
+    CHECK(out.targets[2].frame_count == 3);
+}
+
+// TEST 16: feed after full expiry starts fresh
+TEST_CASE("feed after all frames expired starts fresh") {
+    RollingWindow rw(500);
+
+    TargetInput frame[MAX_TARGETS];
+    make_frame(frame, 100.0f, 200.0f, true);
+    rw.feed(frame, MAX_TARGETS, 0);
+    rw.feed(frame, MAX_TARGETS, 100);
+
+    CHECK(rw.output().total_frames == 2);
+
+    // Feed well after window expires
+    make_frame(frame, 999.0f, 888.0f, true);
+    rw.feed(frame, MAX_TARGETS, 5000);
+
+    auto out = rw.output();
+    CHECK(out.total_frames == 1);
+    CHECK(out.targets[0].median_x == doctest::Approx(999.0f));
+}

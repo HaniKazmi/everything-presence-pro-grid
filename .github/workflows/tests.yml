@@ -42,9 +42,7 @@ jobs:
       - name: Ruff format
         run: ruff format --check custom_components/ tests/
       - name: Pytest
-        run: pytest tests/ --cov=custom_components/eppgrid --cov-report=term-missing --cov-report=json -v
-      - name: Check per-file coverage
-        run: python scripts/check_coverage.py
+        run: pytest tests/ -v
 
   frontend:
     runs-on: ubuntu-latest

@@ -21,7 +21,7 @@ target_link_libraries(epp_zone_engine_tests PRIVATE epp_zone_engine doctest::doc
 add_executable(epp_parity_tests test_parity.cpp)
 target_link_libraries(epp_parity_tests PRIVATE epp_zone_engine doctest::doctest nlohmann_json::nlohmann_json)
 target_compile_definitions(epp_parity_tests PRIVATE
-    EPP_FIXTURE_PATH="${CMAKE_SOURCE_DIR}/../../../tests/fixtures/parity_scenarios.json"
+    EPP_FIXTURE_PATH="${CMAKE_CURRENT_SOURCE_DIR}/fixtures/parity_scenarios.json"
 )
 
 add_executable(epp_rolling_window_tests
