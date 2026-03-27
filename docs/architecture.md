@@ -132,10 +132,12 @@ via MD5 hash of the JS bundle).
 
 ### Device Manager (`device_manager.py`)
 
-Discovers ESPHome devices with `zone_engine_version` entities. Manages
-on-demand aioesphomeapi connections for frontend sessions. Pushes stored
-config to devices on save and on reconnect. Manages ESPHome zone entity
-enable/disable/rename.
+Discovers ESPHome devices with `zone_engine_version` entities. Reads the
+`Config Protocol` sensor to determine firmware-integration compatibility
+(see [config protocol versioning spec](superpowers/specs/2026-03-27-config-protocol-versioning-design.md)).
+Manages on-demand aioesphomeapi connections for frontend sessions. Pushes
+stored config to devices on save and on reconnect. Manages ESPHome zone
+entity enable/disable/rename.
 
 ### Storage (`storage.py`)
 
@@ -150,8 +152,9 @@ subscriptions parse ESPHome text sensor updates into structured events:
 - `subscribe_raw_targets` — sensor-space positions for calibration
 - `subscribe_grid_targets` — grid positions + zone state + sensor data
 
-Config commands (`set_setup`, `set_room_layout`, etc.) save to storage and
-push to the device.
+Config commands (`set_setup`, `set_room_layout`, etc.) check config protocol
+compatibility before executing, then save to storage and push to the device.
+An `update_firmware` command triggers OTA for firmware-behind devices.
 
 See [backend-data-catalog.md](backend-data-catalog.md) for the complete
 data field inventory.
