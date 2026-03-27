@@ -53,14 +53,14 @@ class TestEPPGridStore:
         store.devices["AA:BB:CC:DD:EE:FF"] = config
         assert store.get_device("AA:BB:CC:DD:EE:FF") is config
 
-    async def test_multiple_devices(self, store: EPPGridStore) -> None:
+    async def test_multiple_devices(self, hass: HomeAssistant, store: EPPGridStore) -> None:
         """Store handles multiple devices independently."""
         await store.async_load()
         store.devices["AA:BB:CC:DD:EE:01"] = {"name": "device1"}
         store.devices["AA:BB:CC:DD:EE:02"] = {"name": "device2"}
         await store.async_save()
 
-        store2 = EPPGridStore(store._hass)
+        store2 = EPPGridStore(hass)
         await store2.async_load()
         assert store2.devices["AA:BB:CC:DD:EE:01"]["name"] == "device1"
         assert store2.devices["AA:BB:CC:DD:EE:02"]["name"] == "device2"

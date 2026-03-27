@@ -473,3 +473,113 @@ class TestWebSocketEntityEnabled:
                 "binary_sensor.epp_zone_1_occupancy",
                 disabled_by=RegistryEntryDisabler.INTEGRATION,
             )
+
+
+class TestWebSocketSubscriptions:
+    """Tests for subscription commands (subscribe_device, subscribe_raw_targets, subscribe_grid_targets)."""
+
+    async def test_subscribe_device_opens_session(self, hass: HomeAssistant, config_entry: MockConfigEntry) -> None:
+        """subscribe_device opens a session and registers unsubscribe."""
+        mock_dm = await setup_integration(hass, config_entry)
+        mock_conn = MagicMock()
+        mock_dm.async_open_session = AsyncMock(return_value=mock_conn)
+
+        from custom_components.eppgrid.websocket_api import websocket_subscribe_device
+
+        connection = MagicMock()
+        connection.subscriptions = {}
+        msg = {"id": 20, "type": "eppgrid/subscribe_device", "mac": "AA:BB:CC:DD:EE:FF"}
+
+        await call_async_handler(hass, websocket_subscribe_device, connection, msg)
+
+        mock_dm.async_open_session.assert_awaited_with("AA:BB:CC:DD:EE:FF")
+        connection.send_result.assert_called_once_with(20)
+        assert 20 in connection.subscriptions
+
+    async def test_subscribe_device_not_found(self, hass: HomeAssistant, config_entry: MockConfigEntry) -> None:
+        """subscribe_device returns error when device not available."""
+        mock_dm = await setup_integration(hass, config_entry)
+        mock_dm.async_open_session = AsyncMock(return_value=None)
+
+        from custom_components.eppgrid.websocket_api import websocket_subscribe_device
+
+        connection = MagicMock()
+        msg = {"id": 21, "type": "eppgrid/subscribe_device", "mac": "00:00:00:00:00:00"}
+
+        await call_async_handler(hass, websocket_subscribe_device, connection, msg)
+
+        connection.send_error.assert_called_once_with(21, "not_found", "Device not available")
+
+    async def test_subscribe_raw_targets_no_session(self, hass: HomeAssistant, config_entry: MockConfigEntry) -> None:
+        """subscribe_raw_targets returns error without active session."""
+        await setup_integration(hass, config_entry)
+
+        from custom_components.eppgrid.websocket_api import websocket_subscribe_raw_targets
+
+        connection = MagicMock()
+        msg = {"id": 22, "type": "eppgrid/subscribe_raw_targets", "mac": "AA:BB:CC:DD:EE:FF"}
+
+        await call_async_handler(hass, websocket_subscribe_raw_targets, connection, msg)
+
+        connection.send_error.assert_called_once_with(
+            22, "no_session", "No active session — call subscribe_device first"
+        )
+
+    async def test_subscribe_raw_targets_with_session(self, hass: HomeAssistant, config_entry: MockConfigEntry) -> None:
+        """subscribe_raw_targets registers state callback and unsubscribe."""
+        mock_dm = await setup_integration(hass, config_entry)
+
+        mock_device_conn = MagicMock()
+        mock_device_conn._entities = []
+        mock_device_conn.subscribe_states = MagicMock()
+        mock_device_conn.unsubscribe_states = MagicMock()
+        mock_dm.get_session = MagicMock(return_value=mock_device_conn)
+
+        from custom_components.eppgrid.websocket_api import websocket_subscribe_raw_targets
+
+        connection = MagicMock()
+        connection.subscriptions = {}
+        msg = {"id": 23, "type": "eppgrid/subscribe_raw_targets", "mac": "AA:BB:CC:DD:EE:FF"}
+
+        await call_async_handler(hass, websocket_subscribe_raw_targets, connection, msg)
+
+        connection.send_result.assert_called_once_with(23)
+        mock_device_conn.subscribe_states.assert_called_once()
+        assert 23 in connection.subscriptions
+
+    async def test_subscribe_grid_targets_no_session(self, hass: HomeAssistant, config_entry: MockConfigEntry) -> None:
+        """subscribe_grid_targets returns error without active session."""
+        await setup_integration(hass, config_entry)
+
+        from custom_components.eppgrid.websocket_api import websocket_subscribe_grid_targets
+
+        connection = MagicMock()
+        msg = {"id": 24, "type": "eppgrid/subscribe_grid_targets", "mac": "AA:BB:CC:DD:EE:FF"}
+
+        await call_async_handler(hass, websocket_subscribe_grid_targets, connection, msg)
+
+        connection.send_error.assert_called_once()
+
+    async def test_subscribe_grid_targets_with_session(
+        self, hass: HomeAssistant, config_entry: MockConfigEntry
+    ) -> None:
+        """subscribe_grid_targets registers state callback and unsubscribe."""
+        mock_dm = await setup_integration(hass, config_entry)
+
+        mock_device_conn = MagicMock()
+        mock_device_conn._entities = []
+        mock_device_conn.subscribe_states = MagicMock()
+        mock_device_conn.unsubscribe_states = MagicMock()
+        mock_dm.get_session = MagicMock(return_value=mock_device_conn)
+
+        from custom_components.eppgrid.websocket_api import websocket_subscribe_grid_targets
+
+        connection = MagicMock()
+        connection.subscriptions = {}
+        msg = {"id": 25, "type": "eppgrid/subscribe_grid_targets", "mac": "AA:BB:CC:DD:EE:FF"}
+
+        await call_async_handler(hass, websocket_subscribe_grid_targets, connection, msg)
+
+        connection.send_result.assert_called_once_with(25)
+        mock_device_conn.subscribe_states.assert_called_once()
+        assert 25 in connection.subscriptions

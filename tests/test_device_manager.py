@@ -10,6 +10,7 @@ import pytest
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers import entity_registry as er
+from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.eppgrid.device_manager import DeviceConnection
 from custom_components.eppgrid.device_manager import DeviceManager
@@ -23,7 +24,7 @@ from custom_components.eppgrid.storage import EPPGridStore
 
 @pytest.fixture
 def store(hass: HomeAssistant) -> EPPGridStore:
-    """Create a loaded store."""
+    """Create a store instance."""
     s = EPPGridStore(hass)
     return s
 
@@ -169,10 +170,12 @@ class TestDeviceManager:
         ent_reg = er.async_get(hass)
 
         # Create a config entry for the ESPHome device
-        esphome_entry = MagicMock()
-        esphome_entry.entry_id = "esphome_entry_1"
-        esphome_entry.data = {"host": "192.168.1.50"}
-        hass.config_entries._entries[esphome_entry.entry_id] = esphome_entry
+        esphome_entry = MockConfigEntry(
+            domain="esphome",
+            data={"host": "192.168.1.50"},
+            title="EPP Living Room",
+        )
+        esphome_entry.add_to_hass(hass)
 
         device = dev_reg.async_get_or_create(
             config_entry_id=esphome_entry.entry_id,
@@ -201,10 +204,12 @@ class TestDeviceManager:
         dev_reg = dr.async_get(hass)
         ent_reg = er.async_get(hass)
 
-        esphome_entry = MagicMock()
-        esphome_entry.entry_id = "esphome_entry_2"
-        esphome_entry.data = {"host": "192.168.1.60"}
-        hass.config_entries._entries[esphome_entry.entry_id] = esphome_entry
+        esphome_entry = MockConfigEntry(
+            domain="esphome",
+            data={"host": "192.168.1.60"},
+            title="Random Sensor",
+        )
+        esphome_entry.add_to_hass(hass)
 
         device = dev_reg.async_get_or_create(
             config_entry_id=esphome_entry.entry_id,
