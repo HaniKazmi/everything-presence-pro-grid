@@ -41,6 +41,7 @@ def async_register_websocket_commands(hass: HomeAssistant, manager: Any) -> None
     websocket_api.async_register_command(hass, websocket_set_tracking)
     websocket_api.async_register_command(hass, websocket_set_static_presence)
     websocket_api.async_register_command(hass, websocket_set_pipeline)
+    websocket_api.async_register_command(hass, websocket_update_firmware)
 
 
 def _get_manager(hass: HomeAssistant) -> Any:
@@ -825,3 +826,58 @@ async def websocket_set_pipeline(
     await manager._store.async_save()
     await manager._push_config_to_device(mac)
     connection.send_result(msg["id"])
+
+
+# -- update_firmware (trigger OTA) --
+
+
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): "eppgrid/update_firmware",
+        vol.Required("mac"): str,
+    }
+)
+@websocket_api.async_response
+async def websocket_update_firmware(
+    hass: HomeAssistant,
+    connection: websocket_api.ActiveConnection,
+    msg: dict[str, Any],
+) -> None:
+    """Trigger firmware OTA update for a device."""
+    manager = _get_manager(hass)
+    if manager is None:
+        connection.send_error(msg["id"], "not_ready", "Integration not loaded")
+        return
+
+    mac = msg["mac"]
+    dev = manager.devices.get(mac)
+    if dev is None or dev.device_id is None:
+        connection.send_error(msg["id"], "not_found", "Device not found")
+        return
+
+    # Find the update entity for this device
+    ent_reg = er.async_get(hass)
+    update_entity_id = None
+    for entry in ent_reg.entities.values():
+        if (
+            entry.device_id == dev.device_id
+            and entry.platform == "esphome"
+            and entry.domain == "update"
+        ):
+            update_entity_id = entry.entity_id
+            break
+
+    if update_entity_id is None:
+        connection.send_error(msg["id"], "no_update_entity", "No update entity found for device")
+        return
+
+    try:
+        await hass.services.async_call(
+            "update",
+            "install",
+            {"entity_id": update_entity_id},
+            blocking=False,
+        )
+        connection.send_result(msg["id"])
+    except Exception as err:
+        connection.send_error(msg["id"], "update_failed", str(err))
