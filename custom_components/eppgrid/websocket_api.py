@@ -133,8 +133,7 @@ async def websocket_set_setup(
         connection.send_error(
             msg["id"],
             proto_err,
-            "Firmware update required" if proto_err == "firmware_behind"
-            else "Integration update required",
+            "Firmware update required" if proto_err == "firmware_behind" else "Integration update required",
         )
         return
     mac = msg["mac"]
@@ -194,8 +193,7 @@ async def websocket_set_room_layout(
         connection.send_error(
             msg["id"],
             proto_err,
-            "Firmware update required" if proto_err == "firmware_behind"
-            else "Integration update required",
+            "Firmware update required" if proto_err == "firmware_behind" else "Integration update required",
         )
         return
     mac = msg["mac"]
@@ -598,8 +596,7 @@ def websocket_set_entity_enabled(
         connection.send_error(
             msg["id"],
             proto_err,
-            "Firmware update required" if proto_err == "firmware_behind"
-            else "Integration update required",
+            "Firmware update required" if proto_err == "firmware_behind" else "Integration update required",
         )
         return
     ent_reg = er.async_get(hass)
@@ -638,8 +635,7 @@ async def websocket_set_env_calibration(
         connection.send_error(
             msg["id"],
             proto_err,
-            "Firmware update required" if proto_err == "firmware_behind"
-            else "Integration update required",
+            "Firmware update required" if proto_err == "firmware_behind" else "Integration update required",
         )
         return
     mac = msg["mac"]
@@ -680,8 +676,7 @@ async def websocket_set_motion_timeout(
         connection.send_error(
             msg["id"],
             proto_err,
-            "Firmware update required" if proto_err == "firmware_behind"
-            else "Integration update required",
+            "Firmware update required" if proto_err == "firmware_behind" else "Integration update required",
         )
         return
     mac = msg["mac"]
@@ -718,8 +713,7 @@ async def websocket_set_tracking(
         connection.send_error(
             msg["id"],
             proto_err,
-            "Firmware update required" if proto_err == "firmware_behind"
-            else "Integration update required",
+            "Firmware update required" if proto_err == "firmware_behind" else "Integration update required",
         )
         return
     mac = msg["mac"]
@@ -763,8 +757,7 @@ async def websocket_set_static_presence(
         connection.send_error(
             msg["id"],
             proto_err,
-            "Firmware update required" if proto_err == "firmware_behind"
-            else "Integration update required",
+            "Firmware update required" if proto_err == "firmware_behind" else "Integration update required",
         )
         return
     mac = msg["mac"]
@@ -812,8 +805,7 @@ async def websocket_set_pipeline(
         connection.send_error(
             msg["id"],
             proto_err,
-            "Firmware update required" if proto_err == "firmware_behind"
-            else "Integration update required",
+            "Firmware update required" if proto_err == "firmware_behind" else "Integration update required",
         )
         return
     mac = msg["mac"]
@@ -859,11 +851,7 @@ async def websocket_update_firmware(
     ent_reg = er.async_get(hass)
     update_entity_id = None
     for entry in ent_reg.entities.values():
-        if (
-            entry.device_id == dev.device_id
-            and entry.platform == "esphome"
-            and entry.domain == "update"
-        ):
+        if entry.device_id == dev.device_id and entry.platform == "esphome" and entry.domain == "update":
             update_entity_id = entry.entity_id
             break
 

@@ -363,9 +363,7 @@ class TestProtocolVersion:
         result = manager.list_devices()
         assert result[0]["config_protocol_status"] == "firmware_ahead"
 
-    async def test_discover_reads_config_protocol_from_state(
-        self, hass: HomeAssistant, manager: DeviceManager
-    ) -> None:
+    async def test_discover_reads_config_protocol_from_state(self, hass: HomeAssistant, manager: DeviceManager) -> None:
         """async_discover reads Config Protocol sensor state into config_protocol field."""
         from custom_components.eppgrid.const import CONFIG_PROTOCOL_VERSION
 

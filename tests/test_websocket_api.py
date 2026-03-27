@@ -609,9 +609,7 @@ class TestWebSocketSubscriptions:
 class TestUpdateFirmware:
     """Tests for eppgrid/update_firmware."""
 
-    async def test_update_firmware_calls_install(
-        self, hass: HomeAssistant, config_entry: MockConfigEntry
-    ) -> None:
+    async def test_update_firmware_calls_install(self, hass: HomeAssistant, config_entry: MockConfigEntry) -> None:
         """update_firmware triggers OTA via hass.services.async_call."""
         from homeassistant.helpers import device_registry as dr
         from homeassistant.helpers import entity_registry as er
@@ -626,9 +624,7 @@ class TestUpdateFirmware:
             name="EPP Grid",
         )
 
-        mock_dm.devices = {
-            "AA:BB:CC:DD:EE:FF": MagicMock(device_id=device.id)
-        }
+        mock_dm.devices = {"AA:BB:CC:DD:EE:FF": MagicMock(device_id=device.id)}
 
         # Register a mock update entity in the entity registry for this device
         ent_reg = er.async_get(hass)
@@ -651,9 +647,7 @@ class TestUpdateFirmware:
 
         connection.send_result.assert_called_once()
 
-    async def test_update_firmware_device_not_found(
-        self, hass: HomeAssistant, config_entry: MockConfigEntry
-    ) -> None:
+    async def test_update_firmware_device_not_found(self, hass: HomeAssistant, config_entry: MockConfigEntry) -> None:
         """update_firmware returns error when device not found."""
         mock_dm = await setup_integration(hass, config_entry)
         mock_dm.devices = {}
@@ -667,14 +661,10 @@ class TestUpdateFirmware:
 
         connection.send_error.assert_called_once_with(21, "not_found", "Device not found")
 
-    async def test_update_firmware_no_update_entity(
-        self, hass: HomeAssistant, config_entry: MockConfigEntry
-    ) -> None:
+    async def test_update_firmware_no_update_entity(self, hass: HomeAssistant, config_entry: MockConfigEntry) -> None:
         """update_firmware returns error when no update entity found."""
         mock_dm = await setup_integration(hass, config_entry)
-        mock_dm.devices = {
-            "AA:BB:CC:DD:EE:FF": MagicMock(device_id="device_123")
-        }
+        mock_dm.devices = {"AA:BB:CC:DD:EE:FF": MagicMock(device_id="device_123")}
 
         from custom_components.eppgrid.websocket_api import websocket_update_firmware
 
@@ -683,13 +673,9 @@ class TestUpdateFirmware:
 
         await call_async_handler(hass, websocket_update_firmware, connection, msg)
 
-        connection.send_error.assert_called_once_with(
-            22, "no_update_entity", "No update entity found for device"
-        )
+        connection.send_error.assert_called_once_with(22, "no_update_entity", "No update entity found for device")
 
-    async def test_update_firmware_not_ready(
-        self, hass: HomeAssistant
-    ) -> None:
+    async def test_update_firmware_not_ready(self, hass: HomeAssistant) -> None:
         """update_firmware returns error when integration not loaded."""
         from custom_components.eppgrid.websocket_api import websocket_update_firmware
 
@@ -772,9 +758,7 @@ class TestProtocolVersionGuard:
         args = connection.send_error.call_args[0]
         assert args[1] == "firmware_ahead"
 
-    async def test_set_setup_allowed_when_compatible(
-        self, hass: HomeAssistant, config_entry: MockConfigEntry
-    ) -> None:
+    async def test_set_setup_allowed_when_compatible(self, hass: HomeAssistant, config_entry: MockConfigEntry) -> None:
         """set_setup proceeds normally when protocol versions match."""
         from custom_components.eppgrid.const import CONFIG_PROTOCOL_VERSION
         from custom_components.eppgrid.device_manager import ManagedDevice

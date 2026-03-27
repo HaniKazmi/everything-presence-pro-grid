@@ -393,8 +393,10 @@ class DeviceManager:
                     "available": dev.available,
                     "configured": config is not None,
                     "config_protocol_status": (
-                        "compatible" if dev.config_protocol == CONFIG_PROTOCOL_VERSION
-                        else "firmware_behind" if dev.config_protocol < CONFIG_PROTOCOL_VERSION
+                        "compatible"
+                        if dev.config_protocol == CONFIG_PROTOCOL_VERSION
+                        else "firmware_behind"
+                        if dev.config_protocol < CONFIG_PROTOCOL_VERSION
                         else "firmware_ahead"
                     ),
                 }
