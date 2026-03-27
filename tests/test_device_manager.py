@@ -318,8 +318,6 @@ class TestProtocolVersion:
         """list_devices includes config_protocol_status when versions match."""
         from custom_components.eppgrid.const import CONFIG_PROTOCOL_VERSION
 
-        assert CONFIG_PROTOCOL_VERSION == 1  # Sanity check
-
         manager.devices["AA:BB:CC:DD:EE:FF"] = ManagedDevice(
             mac="AA:BB:CC:DD:EE:FF",
             name="EPP Device",

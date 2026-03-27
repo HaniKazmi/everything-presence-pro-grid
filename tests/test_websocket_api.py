@@ -794,7 +794,10 @@ class TestProtocolVersionGuard:
     @pytest.mark.parametrize(
         "handler_name,extra_fields",
         [
-            ("websocket_set_room_layout", {"grid_bytes": [0] * 400, "zone_slots": [None] * 7}),
+            (
+                "websocket_set_room_layout",
+                {"grid_bytes": [0] * 400, "zone_slots": [None] * 7, "room_type": "normal"},
+            ),
             (
                 "websocket_set_entity_enabled",
                 {"entity_id": "binary_sensor.test", "enabled": True},

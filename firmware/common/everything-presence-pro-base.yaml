@@ -36,7 +36,6 @@ epp:
   config_protocol:
     name: "Config Protocol"
     entity_category: diagnostic
-    disabled_by_default: true
   zone_occupancy:
     zone_0:
       name: "Zone 0 Occupancy"
