@@ -215,7 +215,7 @@ class DeviceManager:
             if (
                 entry.device_id == device_id
                 and entry.platform == "esphome"
-                and "config_protocol" in entry.unique_id
+                and entry.unique_id.endswith("config_protocol")
             ):
                 state = self._hass.states.get(entry.entity_id)
                 if state is not None and state.state not in (None, "unknown", "unavailable", ""):
