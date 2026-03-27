@@ -22,7 +22,7 @@ void EPPComponent::setup() {
 
   // Publish config protocol version
   if (config_protocol_sensor_ != nullptr) {
-    config_protocol_sensor_->publish_state(1.0f);
+    config_protocol_sensor_->publish_state(static_cast<float>(CONFIG_PROTOCOL_VERSION));
   }
 
   restore_from_nvs_();
