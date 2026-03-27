@@ -18,8 +18,6 @@ from .websocket_api import async_register_websocket_commands
 
 _LOGGER = logging.getLogger(__name__)
 
-DEV_MODE = bool(os.environ.get("EPPGRID_DEV_MODE"))
-
 FRONTEND_DIR = os.path.join(os.path.dirname(__file__), "frontend")
 
 
@@ -43,10 +41,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     hass.data[DOMAIN] = manager
     async_register_websocket_commands(hass, manager)
     await manager.async_start()
-
-    if DEV_MODE:
-        _LOGGER.info("Dev mode enabled — loading Python zone engine and recording tools")
-        from .coordinator import EPPGridCoordinator  # noqa: F401
 
     return True
 

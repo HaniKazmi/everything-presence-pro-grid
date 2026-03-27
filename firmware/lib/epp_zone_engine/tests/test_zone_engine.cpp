@@ -353,3 +353,143 @@ TEST_CASE("two targets one leaves → mixed active/pending states") {
     CHECK(r3.targets[1].x == doctest::Approx(X_OFF + 150));
     CHECK(r3.targets[1].y == doctest::Approx(150));
 }
+
+// ---------------------------------------------------------------------------
+// Additional tests
+// ---------------------------------------------------------------------------
+
+TEST_CASE("grid accessor returns the configured grid") {
+    ZoneEngine engine = make_parity_engine();
+    const Grid& g = engine.grid();
+    // Cell at (9,1) should be room + zone 1
+    int cell = 1 * GRID_COLS + 9;
+    CHECK(g.cell_is_room(cell));
+    CHECK(g.cell_zone(cell) == 1);
+    // Cell at (0,0) should NOT be a room cell
+    CHECK_FALSE(g.cell_is_room(0));
+}
+
+TEST_CASE("set_zones with count=0 initializes zone 0 with normal defaults") {
+    ZoneEngine engine;
+    engine.set_grid(make_parity_grid());
+    engine.set_zones(nullptr, 0);
+    // Zone 0 room cell at (8,0), needs gating (2 qualifying ticks at threshold 7)
+    float t = 100.0f;
+    // Signal 7 meets gated threshold min(5+2,8)=7
+    const ProcessingResult& r1 = engine.tick(make_window_1(X_OFF + 150, 150, 7), t);
+    CHECK_FALSE(r1.zone_occupancy[0]);  // gating: first tick
+    const ProcessingResult& r2 = engine.tick(make_window_1(X_OFF + 150, 150, 7), t + 1.0f);
+    CHECK(r2.zone_occupancy[0]);  // continuous → confirmed
+}
+
+TEST_CASE("set_zones skips invalid zone IDs") {
+    ZoneEngine engine;
+    engine.set_grid(make_parity_grid());
+    ZoneConfig bad{};
+    bad.id = 99;  // out of range (MAX_ZONE_SLOTS=8)
+    bad.type = ZoneType::ENTRANCE;
+    bad.trigger = 1;
+    bad.entry_point = true;
+    engine.set_zones(&bad, 1);
+    // Only zone 0 should exist; zone 1 cell should not trigger zone 1 occupancy
+    const ProcessingResult& r = engine.tick(make_window_1(X_OFF + 450, 450, 9), 100.0f);
+    CHECK_FALSE(r.zone_occupancy[1]);
+}
+
+TEST_CASE("set_zones resets per-target gating state") {
+    ZoneEngine engine = make_parity_engine();
+    float t = 100.0f;
+    // First gating tick for zone 0
+    engine.tick(make_window_1(X_OFF + 150, 150, 7), t);
+    // Re-configure zones → should reset gate count
+    ZoneConfig zone1{};
+    zone1.id = 1; zone1.type = ZoneType::ENTRANCE; zone1.trigger = 3;
+    zone1.renew = 2; zone1.timeout = 5.0f; zone1.handoff_timeout = 1.0f;
+    zone1.entry_point = true;
+    engine.set_zones(&zone1, 1);
+    // Next tick should be treated as first gating tick again (not second)
+    const ProcessingResult& r = engine.tick(make_window_1(X_OFF + 150, 150, 7), t + 1.0f);
+    CHECK_FALSE(r.zone_occupancy[0]);  // still gating, gate count was reset
+}
+
+TEST_CASE("gate count resets when signal drops below gated threshold") {
+    ZoneEngine engine = make_parity_engine();
+    float t = 100.0f;
+    // Tick 1: signal=7 meets gated threshold → gate_count=1; records position
+    engine.tick(make_window_1(X_OFF + 150, 150, 7), t);
+    // Target disappears: clears target_has_prev_ and gate_count
+    engine.tick(make_window_0(), t + 0.5f);
+    // Tick 2: target reappears at same position but no prev → gating restarts from 0
+    // signal=3 below gated threshold (7) → gate_count stays 0, position not recorded
+    engine.tick(make_window_1(X_OFF + 150, 150, 3), t + 1.0f);
+    // Tick 3: signal=7 but no prev position (cleared above) → gate_count=1
+    const ProcessingResult& r = engine.tick(make_window_1(X_OFF + 150, 150, 7), t + 2.0f);
+    CHECK_FALSE(r.zone_occupancy[0]);  // still just gate_count=1, not confirmed yet
+}
+
+TEST_CASE("continuity at exact MAX_MOVEMENT_CELLS distance") {
+    ZoneEngine engine = make_parity_engine();
+    float t = 100.0f;
+    // Use zone 1 entry point to establish tracking: target in zone 1 at (9,1)
+    engine.tick(make_window_1(X_OFF + 450, 450, 5), t);
+    // Move to zone 0 cell (8,0) — distance = max(|8-9|, |0-1|) = 1 cell → continuous
+    // Since zone 0 is OCCUPIED/PENDING from handoff, renew threshold (3) applies
+    const ProcessingResult& r = engine.tick(make_window_1(X_OFF + 150, 150, 3), t + 1.0f);
+    CHECK(r.targets[0].status == TargetStatus::ACTIVE);
+}
+
+TEST_CASE("signal is computed on 0-9 scale from frame count") {
+    ZoneEngine engine = make_parity_engine();
+    // frame_count=10 out of total_frames=10 → signal = min((10*9+5)/10, 9) = 9
+    const ProcessingResult& r1 = engine.tick(make_window_1(X_OFF + 450, 450, 10), 100.0f);
+    CHECK(r1.targets[0].signal == 9);
+    // frame_count=1 out of 10 → signal = min((1*9+5)/10, 9) = 1
+    ZoneEngine engine2 = make_parity_engine();
+    const ProcessingResult& r2 = engine2.tick(make_window_1(X_OFF + 450, 450, 1), 100.0f);
+    CHECK(r2.targets[0].signal == 1);
+    // frame_count=5 out of 10 → signal = min((5*9+5)/10, 9) = 5
+    ZoneEngine engine3 = make_parity_engine();
+    const ProcessingResult& r3 = engine3.tick(make_window_1(X_OFF + 450, 450, 5), 100.0f);
+    CHECK(r3.targets[0].signal == 5);
+}
+
+TEST_CASE("handoff: source zone clears after handoff_timeout") {
+    ZoneEngine engine = make_parity_engine();
+    float t = 100.0f;
+    // Occupy zone 1 (entry point, immediate)
+    engine.tick(make_window_1(X_OFF + 450, 450, 5), t);
+    // Target moves directly to zone 0 → handoff fires:
+    //   zone 1 becomes PENDING_CLEAR with pending_since = t+1 - (5.0 - 1.0) = t-3
+    //   so it will clear at pending_since + timeout = (t-3) + 5 = t+2
+    const ProcessingResult& r2 = engine.tick(make_window_1(X_OFF + 150, 150, 9), t + 1.0f);
+    CHECK(r2.zone_occupancy[1]);  // zone 1 still pending at t+1
+    // At t+2.5: elapsed since pending_since = 2.5 - (-3) = 5.5 >= 5.0 → CLEAR
+    const ProcessingResult& r = engine.tick(make_window_1(X_OFF + 150, 150, 9), t + 2.5f);
+    CHECK_FALSE(r.zone_occupancy[1]);  // zone 1 cleared via accelerated timeout
+}
+
+TEST_CASE("device_tracking_present is true with pending zones") {
+    ZoneEngine engine = make_parity_engine();
+    float t = 100.0f;
+    // Occupy zone 1
+    engine.tick(make_window_1(X_OFF + 450, 450, 5), t);
+    // Target disappears → PENDING
+    const ProcessingResult& r = engine.tick(make_window_0(), t + 1.0f);
+    CHECK(r.device_tracking_present);  // pending counts as tracking
+    CHECK(r.zone_occupancy[1]);
+}
+
+TEST_CASE("set_zones resets zone occupancy state") {
+    ZoneEngine engine = make_parity_engine();
+    // Occupy zone 1
+    engine.tick(make_window_1(X_OFF + 450, 450, 5), 100.0f);
+    // Reconfigure
+    ZoneConfig zone1{};
+    zone1.id = 1; zone1.type = ZoneType::ENTRANCE; zone1.trigger = 3;
+    zone1.renew = 2; zone1.timeout = 5.0f; zone1.handoff_timeout = 1.0f;
+    zone1.entry_point = true;
+    engine.set_zones(&zone1, 1);
+    // Zone state should be reset to CLEAR
+    const ProcessingResult& r = engine.tick(make_window_0(), 101.0f);
+    CHECK_FALSE(r.zone_occupancy[1]);
+}
