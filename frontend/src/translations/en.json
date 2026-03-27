@@ -221,5 +221,10 @@
 		"width_cm": "W (cm)",
 		"height_cm": "H (cm)",
 		"rotation": "Rot"
+	},
+	"protocol": {
+		"firmware_behind": "This sensor's firmware needs to be updated to work with this version of the integration.",
+		"firmware_ahead": "This sensor's firmware is newer than the integration. Update the EPP Grid integration to the latest version.",
+		"update_firmware": "Update Firmware"
 	}
 }

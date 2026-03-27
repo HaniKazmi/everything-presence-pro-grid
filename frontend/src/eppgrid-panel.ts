@@ -57,6 +57,7 @@ import {
 	dialogStyles,
 	hostStyles,
 	panelStyles,
+	protocolBannerStyles,
 } from "./styles.js";
 import type { DeviceInfo, RawTarget, SetupStep, Target } from "./types.js";
 
@@ -707,6 +708,7 @@ export class EPPGridPanel extends LitElement {
 		panelStyles,
 		dialogStyles,
 		buttonStyles,
+		protocolBannerStyles,
 		css`
     .cell {
       cursor: pointer;
@@ -910,14 +912,17 @@ export class EPPGridPanel extends LitElement {
       `;
 		}
 
+		const dev = this._devices.find((d) => d.mac === this._selectedMac);
+		const protocolOk = !dev || dev.config_protocol_status === "compatible";
+
 		const content =
-			this._view === "settings"
+			this._view === "settings" && protocolOk
 				? this._renderSettings()
-				: this._view === "editor" && this._perspective
+				: this._view === "editor" && this._perspective && protocolOk
 					? this._renderEditor()
 					: this._renderLiveOverview();
 
-		return html`${content}${this._renderGlobalDialogs()}`;
+		return html`${this._renderProtocolBanner()}${content}${this._renderGlobalDialogs()}`;
 	}
 
 	private async _deleteCalibration(): Promise<void> {
@@ -994,6 +999,42 @@ export class EPPGridPanel extends LitElement {
         ${headerBtns}
       </div>
     `;
+	}
+
+	private _renderProtocolBanner() {
+		const dev = this._devices.find((d) => d.mac === this._selectedMac);
+		if (!dev || dev.config_protocol_status === "compatible") return nothing;
+
+		if (dev.config_protocol_status === "firmware_behind") {
+			return html`
+				<div class="protocol-banner protocol-banner-warning">
+					<ha-icon icon="mdi:alert-circle-outline"></ha-icon>
+					<span>${this._localize("protocol.firmware_behind")}</span>
+					<button class="wizard-btn wizard-btn-primary"
+						@click=${() => this._updateFirmware()}
+					>${this._localize("protocol.update_firmware")}</button>
+				</div>
+			`;
+		}
+
+		return html`
+			<div class="protocol-banner protocol-banner-info">
+				<ha-icon icon="mdi:information-outline"></ha-icon>
+				<span>${this._localize("protocol.firmware_ahead")}</span>
+			</div>
+		`;
+	}
+
+	private async _updateFirmware(): Promise<void> {
+		if (!this._selectedMac || !this.hass) return;
+		try {
+			await this.hass.callWS({
+				type: "eppgrid/update_firmware",
+				mac: this._selectedMac,
+			});
+		} catch (err) {
+			console.error("Firmware update failed:", err);
+		}
 	}
 
 	private _renderLiveGrid() {
