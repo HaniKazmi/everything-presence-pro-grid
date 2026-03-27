@@ -790,3 +790,74 @@ class TestProtocolVersionGuard:
         # Should not send error — proceeds to save config
         connection.send_error.assert_not_called()
         connection.send_result.assert_called_once()
+
+    @pytest.mark.parametrize(
+        "handler_name,extra_fields",
+        [
+            ("websocket_set_room_layout", {"grid_bytes": [0] * 400, "zone_slots": [None] * 7}),
+            (
+                "websocket_set_entity_enabled",
+                {"entity_id": "binary_sensor.test", "enabled": True},
+            ),
+            (
+                "websocket_set_env_calibration",
+                {"temperature_offset": 0.0, "humidity_offset": 0.0, "illuminance_offset": 0.0},
+            ),
+            ("websocket_set_motion_timeout", {"timeout": 5.0}),
+            ("websocket_set_tracking", {"max_range": 6000.0}),
+            (
+                "websocket_set_static_presence",
+                {
+                    "min_range": 0.0,
+                    "max_range": 6000.0,
+                    "trigger_range": 2500.0,
+                    "sustain_sensitivity": 3,
+                    "trigger_sensitivity": 5,
+                    "timeout": 10.0,
+                    "on_delay": 0.0,
+                    "led_enabled": True,
+                },
+            ),
+            (
+                "websocket_set_pipeline",
+                {"display_interval_ms": 200, "zone_publish_interval_ms": 1000, "window_duration_ms": 1000},
+            ),
+        ],
+    )
+    async def test_protocol_guard_blocks_all_config_commands(
+        self,
+        hass: HomeAssistant,
+        config_entry: MockConfigEntry,
+        handler_name: str,
+        extra_fields: dict,
+    ) -> None:
+        """All config commands are blocked when firmware protocol is behind."""
+        from custom_components.eppgrid.device_manager import ManagedDevice
+
+        mock_dm = await setup_integration(hass, config_entry)
+        mock_dm.devices = {
+            "AA:BB:CC:DD:EE:FF": ManagedDevice(
+                mac="AA:BB:CC:DD:EE:FF",
+                name="EPP",
+                host="192.168.1.50",
+                config_protocol=0,
+            )
+        }
+
+        import custom_components.eppgrid.websocket_api as ws
+
+        handler = getattr(ws, handler_name)
+        connection = MagicMock()
+        msg = {"id": 100, "type": f"eppgrid/{handler_name.replace('websocket_', '')}", "mac": "AA:BB:CC:DD:EE:FF"}
+        msg.update(extra_fields)
+
+        if hasattr(handler, "__wrapped__"):
+            # async_response handlers
+            await call_async_handler(hass, handler, connection, msg)
+        else:
+            # sync handlers
+            handler(hass, connection, msg)
+
+        connection.send_error.assert_called_once()
+        args = connection.send_error.call_args[0]
+        assert args[1] == "firmware_behind"

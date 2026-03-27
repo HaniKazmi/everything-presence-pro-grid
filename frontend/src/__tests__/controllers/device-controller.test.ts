@@ -174,7 +174,14 @@ describe("DeviceController", () => {
 
 		it("calls host.requestUpdate after loading", async () => {
 			const devices: DeviceInfo[] = [
-				{ mac: "aa", name: "A", host: null, available: true, configured: true, config_protocol_status: "compatible" },
+				{
+					mac: "aa",
+					name: "A",
+					host: null,
+					available: true,
+					configured: true,
+					config_protocol_status: "compatible",
+				},
 			];
 			ctrl.hass = mockHass(devices);
 			await ctrl.loadDevices();
