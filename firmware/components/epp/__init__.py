@@ -9,7 +9,8 @@ from esphome.components import text_sensor
 from esphome.const import CONF_ID
 
 CODEOWNERS = ["@clintongormley"]
-DEPENDENCIES = ["binary_sensor", "text_sensor", "json"]
+DEPENDENCIES = ["json"]
+AUTO_LOAD = ["binary_sensor", "text_sensor"]
 
 epp_ns = cg.esphome_ns.namespace("epp")
 EPPComponent = epp_ns.class_("EPPComponent", cg.Component)
@@ -18,10 +19,16 @@ CONF_DEVICE_TRACKING = "device_tracking"
 CONF_FIRMWARE_VERSION = "firmware_version"
 CONF_ZONE_OCCUPANCY = "zone_occupancy"
 CONF_TARGET_POSITIONS = "target_positions"
+CONF_RAW_TARGET_POSITIONS = "raw_target_positions"
+CONF_ZONE_STATE = "zone_state"
 
 ZONE_OCCUPANCY_SCHEMA = cv.Schema({cv.Optional(f"zone_{i}"): binary_sensor.binary_sensor_schema() for i in range(8)})
 
 TARGET_POSITIONS_SCHEMA = cv.Schema({cv.Optional(f"target_{i}"): text_sensor.text_sensor_schema() for i in range(3)})
+
+RAW_TARGET_POSITIONS_SCHEMA = cv.Schema(
+    {cv.Optional(f"target_{i}"): text_sensor.text_sensor_schema() for i in range(3)}
+)
 
 CONFIG_SCHEMA = cv.Schema(
     {
@@ -30,6 +37,8 @@ CONFIG_SCHEMA = cv.Schema(
         cv.Optional(CONF_FIRMWARE_VERSION): text_sensor.text_sensor_schema(),
         cv.Optional(CONF_ZONE_OCCUPANCY): ZONE_OCCUPANCY_SCHEMA,
         cv.Optional(CONF_TARGET_POSITIONS): TARGET_POSITIONS_SCHEMA,
+        cv.Optional(CONF_RAW_TARGET_POSITIONS): RAW_TARGET_POSITIONS_SCHEMA,
+        cv.Optional(CONF_ZONE_STATE): text_sensor.text_sensor_schema(),
     }
 ).extend(cv.COMPONENT_SCHEMA)
 
@@ -54,6 +63,7 @@ async def to_code(config):
         cg.add(var.set_firmware_version_sensor(sens))
 
     # Zone occupancy binary sensors (zones 0-7)
+    # Force stable object_id "zone_N_occupancy" regardless of display name
     if CONF_ZONE_OCCUPANCY in config:
         zone_conf = config[CONF_ZONE_OCCUPANCY]
         for i in range(8):
@@ -70,3 +80,17 @@ async def to_code(config):
             if key in target_conf:
                 sens = await text_sensor.new_text_sensor(target_conf[key])
                 cg.add(var.set_target_position_sensor(i, sens))
+
+    # Raw target position text sensors (targets 0-2, pre-transform)
+    if CONF_RAW_TARGET_POSITIONS in config:
+        raw_conf = config[CONF_RAW_TARGET_POSITIONS]
+        for i in range(3):
+            key = f"target_{i}"
+            if key in raw_conf:
+                sens = await text_sensor.new_text_sensor(raw_conf[key])
+                cg.add(var.set_raw_target_sensor(i, sens))
+
+    # Zone state text sensor (JSON at 1Hz)
+    if CONF_ZONE_STATE in config:
+        sens = await text_sensor.new_text_sensor(config[CONF_ZONE_STATE])
+        cg.add(var.set_zone_state_sensor(sens))

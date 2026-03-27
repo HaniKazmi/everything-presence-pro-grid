@@ -82,12 +82,12 @@ interface RawTarget {
 	raw_y: number | null;
 }
 
-interface EntryInfo {
-	entry_id: string;
-	title: string;
-	room_name: string;
-	has_perspective: boolean;
-	has_layout: boolean;
+interface DeviceInfo {
+	mac: string;
+	name: string;
+	host: string | null;
+	available: boolean;
+	configured: boolean;
 }
 
 interface WizardCorner {
@@ -403,11 +403,6 @@ export class EPPGridPanel extends LitElement {
 		centerY?: number;
 		startAngle?: number; // angle at drag start
 	} | null = null;
-	@state() private _pendingRenames: {
-		old_entity_id: string;
-		new_entity_id: string;
-	}[] = [];
-	@state() private _showRenameDialog = false;
 	@state() private _targets: Target[] = [];
 	@state() private _rawTargets: RawTarget[] = [];
 	@state() private _sensorState: {
@@ -485,8 +480,8 @@ export class EPPGridPanel extends LitElement {
 	@state() private _templateName = "";
 
 	// Multi-device support
-	@state() private _entries: EntryInfo[] = [];
-	@state() private _selectedEntryId = "";
+	@state() private _devices: DeviceInfo[] = [];
+	@state() private _selectedMac = "";
 	@state() private _loading = true;
 
 	// Setup wizard — perspective corner marking
@@ -515,7 +510,8 @@ export class EPPGridPanel extends LitElement {
 	@state() private _roomWidth = 0; // mm
 	@state() private _roomDepth = 0; // mm
 
-	// Target subscription
+	// Device session + target subscriptions
+	private _unsubDevice?: () => void;
 	private _unsubTargets?: () => void;
 	private _unsubDisplay?: () => void;
 
@@ -648,7 +644,7 @@ export class EPPGridPanel extends LitElement {
 
 	disconnectedCallback(): void {
 		super.disconnectedCallback();
-		this._unsubscribeTargets();
+		this._closeDeviceSession();
 		window.removeEventListener("beforeunload", this._beforeUnloadHandler);
 		window.removeEventListener("click", this._dismissTooltips);
 		window.removeEventListener("keydown", this._onKeyDown);
@@ -671,8 +667,11 @@ export class EPPGridPanel extends LitElement {
 
 	updated(changedProps: PropertyValues): void {
 		if (changedProps.has("hass") && this.hass) {
-			if (this._loading && !this._entries.length) {
+			if (this._loading && !this._devices.length) {
 				this._initialize();
+			} else if (this._selectedMac && !this._unsubDevice) {
+				// Session lost (e.g. after HA reconnect) — re-open
+				this._loadDeviceConfig(this._selectedMac);
 			}
 		}
 		if (this._showDebugLog) {
@@ -688,46 +687,47 @@ export class EPPGridPanel extends LitElement {
 	private async _initialize(): Promise<void> {
 		if (!this.hass) return;
 		this._loading = true;
-		await this._loadEntries();
-		if (this._selectedEntryId) {
-			await this._loadEntryConfig(this._selectedEntryId);
+		await this._loadDevices();
+		if (this._selectedMac) {
+			await this._loadDeviceConfig(this._selectedMac);
 		}
 		this._loading = false;
 	}
 
-	private async _loadEntries(): Promise<void> {
+	private async _loadDevices(): Promise<void> {
 		try {
 			const result = await this.hass.callWS({
-				type: "eppgrid/list_entries",
+				type: "eppgrid/list_devices",
 			});
-			// Sort alphabetically by title
-			this._entries = (result as EntryInfo[]).sort((a, b) =>
-				(a.title || "").localeCompare(b.title || ""),
+			this._devices = ((result as any).devices as DeviceInfo[]).sort((a, b) =>
+				(a.name || "").localeCompare(b.name || ""),
 			);
 		} catch {
-			this._entries = [];
+			this._devices = [];
 			return;
 		}
 
-		const stored = localStorage.getItem("epp_selected_entry");
+		const stored = localStorage.getItem("epp_selected_mac");
 		const match =
-			stored && this._entries.find((e: EntryInfo) => e.entry_id === stored);
-		this._selectedEntryId = match
-			? stored!
-			: (this._entries[0]?.entry_id ?? "");
+			stored && this._devices.find((d: DeviceInfo) => d.mac === stored);
+		this._selectedMac = match ? stored! : (this._devices[0]?.mac ?? "");
 	}
 
-	private async _loadEntryConfig(entryId: string): Promise<void> {
+	private async _loadDeviceConfig(mac: string): Promise<void> {
 		try {
-			const config = await this.hass.callWS({
+			const result = await this.hass.callWS({
 				type: "eppgrid/get_config",
-				entry_id: entryId,
+				mac,
 			});
-			this._applyConfig(config);
+			this._applyConfig((result as any).config);
 		} catch {
-			// Entry may not be ready yet
+			// Device may not be ready yet
 		}
-		this._subscribeTargets(entryId);
+		// Open device session, then subscribe to data streams
+		await this._openDeviceSession(mac);
+		if (this._unsubDevice) {
+			this._subscribeTargets(mac);
+		}
 	}
 
 	private _applyConfig(config: any): void {
@@ -757,9 +757,38 @@ export class EPPGridPanel extends LitElement {
 		(this as any)._offsetsConfig = parsed.offsetsConfig;
 	}
 
-	private _subscribeTargets(entryId: string): void {
+	private async _openDeviceSession(mac: string): Promise<void> {
+		this._closeDeviceSession();
+		if (!this.hass || !mac) return;
+		try {
+			this._unsubDevice = await this.hass.connection.subscribeMessage(
+				() => {}, // session has no events, just lifecycle
+				{ type: "eppgrid/subscribe_device", mac },
+			);
+		} catch (e) {
+			console.warn("Failed to open device session:", e);
+		}
+	}
+
+	private _closeDeviceSession(): void {
 		this._unsubscribeTargets();
-		if (!this.hass || !entryId) return;
+		if (this._unsubDevice) {
+			try {
+				this._unsubDevice();
+			} catch {
+				/* stale subscription */
+			}
+			this._unsubDevice = undefined;
+		}
+	}
+
+	private _subscribeTargets(mac: string): void {
+		this._unsubscribeDisplay();
+		if (this._unsubTargets) {
+			this._unsubTargets();
+			this._unsubTargets = undefined;
+		}
+		if (!this.hass || !mac) return;
 
 		const conn = this.hass.connection;
 
@@ -792,7 +821,7 @@ export class EPPGridPanel extends LitElement {
 							frame_count: event.zones.frame_count ?? 0,
 						};
 						if (this._showBackendDebugLog && event.zones.debug_log) {
-							const body = event.zones.debug_log;
+							const body = this._enrichDebugLog(event.zones.debug_log);
 							if (body !== this._backendDebugLogPrev) {
 								this._backendDebugLogPrev = body;
 								const ts = new Date().toLocaleTimeString("en-GB", {
@@ -818,32 +847,34 @@ export class EPPGridPanel extends LitElement {
 				},
 				{
 					type: "eppgrid/subscribe_grid_targets",
-					entry_id: entryId,
+					mac,
 				},
 			)
 			.then((unsub: () => void) => {
 				this._unsubTargets = unsub;
 			});
-		this._subscribeDisplay(entryId);
+		this._subscribeDisplay(mac);
 	}
 
 	private _unsubscribeTargets(): void {
 		this._unsubscribeDisplay();
 		if (this._unsubTargets) {
-			this._unsubTargets();
+			try {
+				this._unsubTargets();
+			} catch {
+				/* stale subscription */
+			}
 			this._unsubTargets = undefined;
 		}
 		this._targets = [];
 		this._rawTargets = [];
 	}
 
-	private _subscribeDisplay(entryId: string): void {
+	private _subscribeDisplay(mac: string): void {
 		this._unsubscribeDisplay();
-		if (!this.hass || !entryId) return;
+		if (!this.hass || !mac) return;
 
-		const conn = this.hass.connection;
-
-		conn
+		this.hass.connection
 			.subscribeMessage(
 				(event: any) => {
 					this._rawTargets = (event.targets || []).map((t: any) => ({
@@ -853,7 +884,7 @@ export class EPPGridPanel extends LitElement {
 				},
 				{
 					type: "eppgrid/subscribe_raw_targets",
-					entry_id: entryId,
+					mac,
 				},
 			)
 			.then((unsub: () => void) => {
@@ -863,7 +894,11 @@ export class EPPGridPanel extends LitElement {
 
 	private _unsubscribeDisplay(): void {
 		if (this._unsubDisplay) {
-			this._unsubDisplay();
+			try {
+				this._unsubDisplay();
+			} catch {
+				/* stale subscription */
+			}
 			this._unsubDisplay = undefined;
 		}
 	}
@@ -1196,9 +1231,9 @@ export class EPPGridPanel extends LitElement {
 
 		this._saving = true;
 		try {
-			const result = await this.hass.callWS({
+			await this.hass.callWS({
 				type: "eppgrid/set_room_layout",
-				entry_id: this._selectedEntryId,
+				mac: this._selectedMac,
 				grid_bytes: Array.from(this._grid),
 				room_type: this._roomType,
 				room_trigger: this._roomTrigger,
@@ -1234,13 +1269,6 @@ export class EPPGridPanel extends LitElement {
 			});
 			this._dirty = false;
 			this._view = "live";
-
-			// Show rename dialog if backend detected entity_id mismatches
-			const renames = result?.entity_id_renames || [];
-			if (renames.length > 0) {
-				this._pendingRenames = renames;
-				this._showRenameDialog = true;
-			}
 		} finally {
 			this._saving = false;
 		}
@@ -1249,62 +1277,14 @@ export class EPPGridPanel extends LitElement {
 	private async _saveSettings(): Promise<void> {
 		this._saving = true;
 		try {
-			// Collect reporting toggle states
-			const container = this.shadowRoot!.querySelector(".settings-container");
-			if (!container) return;
-			const reporting: Record<string, boolean> = {};
-			container
-				.querySelectorAll<HTMLInputElement>("[data-report-key]")
-				.forEach((el) => {
-					reporting[el.dataset.reportKey!] = el.checked;
-				});
-
-			// Collect offset values
-			const offsets: Record<string, number> = {};
-			container
-				.querySelectorAll<HTMLInputElement>("[data-offset-key]")
-				.forEach((el) => {
-					offsets[el.dataset.offsetKey!] = parseFloat(el.value);
-				});
-
-			await this.hass.callWS({
-				type: "eppgrid/set_reporting",
-				entry_id: this._selectedEntryId,
-				reporting,
-				offsets,
-			});
-
-			(this as any)._reportingConfig = reporting;
-			(this as any)._offsetsConfig = offsets;
+			// TODO: Settings page will be reimplemented using the new
+			// set_env_calibration, set_motion_timeout, set_tracking,
+			// set_static_presence websocket commands
 			this._dirty = false;
 			this._view = "live";
 		} finally {
 			this._saving = false;
 		}
-	}
-
-	// -- Entity rename --
-
-	private async _applyRenames(): Promise<void> {
-		if (!this._pendingRenames.length) return;
-		try {
-			const result = await this.hass.callWS({
-				type: "eppgrid/rename_zone_entities",
-				entry_id: this._selectedEntryId,
-				renames: this._pendingRenames,
-			});
-			if (result.errors?.length) {
-				console.warn("Entity rename errors:", result.errors);
-			}
-		} finally {
-			this._showRenameDialog = false;
-			this._pendingRenames = [];
-		}
-	}
-
-	private _dismissRenameDialog(): void {
-		this._showRenameDialog = false;
-		this._pendingRenames = [];
 	}
 
 	// -- Template management (localStorage) --
@@ -1490,12 +1470,12 @@ export class EPPGridPanel extends LitElement {
 
 	private async _onDeviceChange(e: Event): Promise<void> {
 		const select = e.target as HTMLSelectElement;
-		const entryId = select.value;
+		const mac = select.value;
 		this._guardNavigation(async () => {
-			this._unsubscribeTargets();
-			this._selectedEntryId = entryId;
-			localStorage.setItem("epp_selected_entry", entryId);
-			await this._loadEntryConfig(entryId);
+			this._closeDeviceSession();
+			this._selectedMac = mac;
+			localStorage.setItem("epp_selected_mac", mac);
+			await this._loadDeviceConfig(mac);
 		});
 	}
 
@@ -1646,7 +1626,7 @@ export class EPPGridPanel extends LitElement {
 		try {
 			await this.hass.callWS({
 				type: "eppgrid/set_setup",
-				entry_id: this._selectedEntryId,
+				mac: this._selectedMac,
 				perspective: this._perspective,
 				room_width: this._wizardRoomWidth,
 				room_depth: this._wizardRoomDepth,
@@ -2886,6 +2866,7 @@ export class EPPGridPanel extends LitElement {
     .debug-log-container {
       max-height: 200px;
       overflow-y: auto;
+      overflow-x: hidden;
       background: var(--card-background-color, #1e1e1e);
       border: 1px solid var(--divider-color, #333);
       border-radius: 6px;
@@ -3209,52 +3190,6 @@ export class EPPGridPanel extends LitElement {
       ${this._showTemplateSave ? this._renderTemplateSaveDialog() : nothing}
       ${this._showTemplateLoad ? this._renderTemplateLoadDialog() : nothing}
       ${
-				this._showRenameDialog
-					? html`
-          <div class="template-dialog">
-            <div class="template-dialog-card" style="max-width: 520px;">
-              <h3>${this._localize("dialogs.update_entity_ids")}</h3>
-              <p class="overlay-help">${this._localize("dialogs.update_entity_ids_body")}</p>
-              <div style="max-height: 300px; overflow-y: auto; margin: 12px 0;">
-                ${this._pendingRenames.map((r) => {
-									const oldShort =
-										r.old_entity_id.split(".")[1] || r.old_entity_id;
-									const newShort =
-										r.new_entity_id.split(".")[1] || r.new_entity_id;
-									const platform = r.old_entity_id.split(".")[0] || "";
-									return html`
-                    <div style="
-                      padding: 8px 12px; margin: 4px 0;
-                      background: var(--secondary-background-color, #f5f5f5);
-                      border-radius: 8px; font-family: monospace; font-size: 12px;
-                    ">
-                      <div style="color: var(--secondary-text-color, #888); font-size: 11px; margin-bottom: 4px; font-family: var(--paper-font-body1_-_font-family, sans-serif);">
-                        ${platform}
-                      </div>
-                      <div style="text-decoration: line-through; color: var(--secondary-text-color, #888); word-break: break-all;">
-                        ${oldShort}
-                      </div>
-                      <div style="font-weight: 500; word-break: break-all; margin-top: 2px;">
-                        → ${newShort}
-                      </div>
-                    </div>
-                  `;
-								})}
-              </div>
-              <div class="template-dialog-actions">
-                <button class="wizard-btn wizard-btn-back"
-                  @click=${this._dismissRenameDialog}
-                >${this._localize("common.skip")}</button>
-                <button class="wizard-btn wizard-btn-primary"
-                  @click=${this._applyRenames}
-                >${this._localize("common.rename")}</button>
-              </div>
-            </div>
-          </div>
-        `
-					: nothing
-			}
-      ${
 				this._showUnsavedDialog
 					? html`
           <div class="template-dialog">
@@ -3307,7 +3242,7 @@ export class EPPGridPanel extends LitElement {
 			return html`<div class="loading-container">${this._localize("common.loading")}</div>`;
 		}
 
-		if (!this._entries.length) {
+		if (!this._devices.length) {
 			return html`<div class="loading-container">${this._localize("common.loading")}</div>`;
 		}
 
@@ -3343,16 +3278,17 @@ export class EPPGridPanel extends LitElement {
 		try {
 			await this.hass.callWS({
 				type: "eppgrid/set_setup",
-				entry_id: this._selectedEntryId,
+				mac: this._selectedMac,
 				perspective: [0, 0, 0, 0, 0, 0, 0, 0],
 				room_width: 0,
 				room_depth: 0,
 			});
 			await this.hass.callWS({
 				type: "eppgrid/set_room_layout",
-				entry_id: this._selectedEntryId,
+				mac: this._selectedMac,
 				grid_bytes: Array.from(this._grid),
 				zone_slots: this._zoneConfigs.map(() => null),
+				room_type: "normal",
 				furniture: [],
 			});
 		} catch (e) {
@@ -3381,21 +3317,21 @@ export class EPPGridPanel extends LitElement {
       <div class="panel-header">
         <select
           class="device-select"
-          .value=${this._selectedEntryId}
+          .value=${this._selectedMac}
           @change=${(e: Event) => {
 						const val = (e.target as HTMLSelectElement).value;
 						if (val === "__add__") {
 							window.open("/config/integrations/integration/eppgrid", "_blank");
-							(e.target as HTMLSelectElement).value = this._selectedEntryId;
+							(e.target as HTMLSelectElement).value = this._selectedMac;
 							return;
 						}
 						this._onDeviceChange(e);
 					}}
         >
-          ${this._entries.map(
-						(e) => html`
-              <option value=${e.entry_id}>
-                ${e.title}${e.room_name ? ` \u2014 ${e.room_name}` : ""}
+          ${this._devices.map(
+						(d) => html`
+              <option value=${d.mac}>
+                ${d.name}
               </option>
             `,
 					)}
@@ -3854,7 +3790,7 @@ export class EPPGridPanel extends LitElement {
           @click=${() => {
 						this._dirty = false;
 						this._view = "live";
-						this._loadEntryConfig(this._selectedEntryId);
+						this._loadDeviceConfig(this._selectedMac);
 					}}
         >${this._localize("common.cancel")}</button>
         <button class="wizard-btn wizard-btn-primary"
@@ -4762,8 +4698,8 @@ export class EPPGridPanel extends LitElement {
             ${this._renderTargetDots(minCol, minRow, visCols, visRows)}
             </div>
             ${this._renderGridDimensions()}
-            ${this._sidebarTab === "zones" ? this._renderDebugLog() : nothing}
           </div>
+            ${this._sidebarTab === "zones" ? this._renderDebugLog() : nothing}
           </div>
 
           <!-- Sidebar -->
@@ -5159,13 +5095,19 @@ export class EPPGridPanel extends LitElement {
 			}
 		}
 
-		// Build debug log line (mirrors backend zone_engine._tick logging)
+		// Build raw debug log (same format as firmware)
 		if (this._showDebugLog) {
-			const getZoneName = (zid: number): string => {
-				if (zid === 0) return "Room";
-				const cfg = this._zoneConfigs[zid - 1];
-				return cfg ? cfg.name : `Zone ${zid}`;
-			};
+			// Compute best signal per zone (matches firmware zone_signal[])
+			const zoneSignal: Map<number, number> = new Map();
+			for (let i = 0; i < MAX_TARGETS && i < this._targets.length; i++) {
+				const t = this._targets[i];
+				if (t.x == null || t.y == null || t.signal <= 0) continue;
+				const zid = targetZoneCurr[i];
+				if (zid !== null) {
+					zoneSignal.set(zid, Math.max(zoneSignal.get(zid) ?? 0, t.signal));
+				}
+			}
+
 			const targetParts: string[] = [];
 			for (let i = 0; i < MAX_TARGETS && i < this._targets.length; i++) {
 				const t = this._targets[i];
@@ -5173,43 +5115,79 @@ export class EPPGridPanel extends LitElement {
 				const sig = t.signal;
 				if (sig <= 0) continue;
 				const zid = targetZoneCurr[i];
-				const zname = zid !== null ? getZoneName(zid) : "outside";
-				const conf =
-					zid !== null && (zoneConfirmed.get(zid) ?? false) ? "Y" : "N";
-				targetParts.push(
-					`T${i}: signal=${sig} zone='${zname}' confirmed=${conf}`,
-				);
+				const s = targetResults[i]?.status === "pending" ? "P" : "A";
+				targetParts.push(`T${i}:Z${zid ?? 0}:${s}:${sig}`);
 			}
 			const zoneParts: string[] = [];
 			for (const zid of allZoneIds) {
 				const st = this._localZoneState.get(zid);
 				if (st?.occupied) {
-					const state = st.pendingSince !== null ? "pending" : "occupied";
-					const n = st.confirmedTargets.size;
-					zoneParts.push(`${getZoneName(zid)}: ${state} (${n})`);
+					const state = st.pendingSince !== null ? "P" : "O";
+					zoneParts.push(`Z${zid}:${state}:${zoneSignal.get(zid) ?? 0}`);
 				}
 			}
-			const body = `${targetParts.length ? targetParts.join(", ") : "no targets"} | ${zoneParts.length ? zoneParts.join(", ") : "all clear"}`;
-			if (body === this._debugLogPrev)
-				return { occupancy, targets: targetResults };
-			this._debugLogPrev = body;
-			const ts = new Date().toLocaleTimeString("en-GB", {
-				hour12: false,
-				hour: "2-digit",
-				minute: "2-digit",
-				second: "2-digit",
-				fractionalSecondDigits: 1,
-			});
-			this._debugLogLines.push(`${ts} ${body}`);
-			if (this._debugLogLines.length > EPPGridPanel._DEBUG_LOG_MAX) {
-				this._debugLogLines = this._debugLogLines.slice(
-					-EPPGridPanel._DEBUG_LOG_MAX,
-				);
+			const raw = `${targetParts.join(" ")}|${zoneParts.join(" ")}`;
+			const body = this._enrichDebugLog(raw);
+			if (body !== this._debugLogPrev) {
+				this._debugLogPrev = body;
+				const ts = new Date().toLocaleTimeString("en-GB", {
+					hour12: false,
+					hour: "2-digit",
+					minute: "2-digit",
+					second: "2-digit",
+					fractionalSecondDigits: 1,
+				});
+				this._debugLogLines.push(`${ts} ${body}`);
+				if (this._debugLogLines.length > EPPGridPanel._DEBUG_LOG_MAX) {
+					this._debugLogLines = this._debugLogLines.slice(
+						-EPPGridPanel._DEBUG_LOG_MAX,
+					);
+				}
+				this.requestUpdate();
 			}
-			this.requestUpdate();
 		}
 
 		return { occupancy, targets: targetResults };
+	}
+
+	/** Enrich a raw debug log string (from firmware or frontend zone engine)
+	 *  by replacing zone IDs with zone names.
+	 *  Raw format: "T0:Z1:A:5 T1:Z0:P:3|Z0:O:1 Z1:O:1"
+	 *  Enriched:   "T0→Entrance(active,5) T1→Room(pending,3) | Entrance: occupied(1)"
+	 */
+	private _enrichDebugLog(raw: string): string {
+		const zoneName = (zid: number): string => {
+			if (zid === 0) return "Room";
+			const cfg = this._zoneConfigs[zid - 1];
+			return cfg ? cfg.name : `Zone ${zid}`;
+		};
+		const statusName: Record<string, string> = {
+			A: "active",
+			P: "pending",
+			O: "occupied",
+		};
+		const [targetPart, zonePart] = raw.split("|");
+		const targets = (targetPart || "")
+			.trim()
+			.split(/\s+/)
+			.filter(Boolean)
+			.map((s) => {
+				const [t, z, st, sig] = s.split(":");
+				const zid = parseInt(z?.replace("Z", "") ?? "0");
+				return `${t}→${zoneName(zid)}(${statusName[st] ?? st},${sig})`;
+			});
+		const zones = (zonePart || "")
+			.trim()
+			.split(/\s+/)
+			.filter(Boolean)
+			.map((s) => {
+				const [z, st, cnt] = s.split(":");
+				const zid = parseInt(z?.replace("Z", "") ?? "0");
+				return `${zoneName(zid)}: ${statusName[st] ?? st}(${cnt})`;
+			});
+		const tStr = targets.length ? targets.join(" ") : "no targets";
+		const zStr = zones.length ? zones.join(", ") : "all clear";
+		return `${tStr} | ${zStr}`;
 	}
 
 	/** Compute rgba overlay colour per zone based on hit counts. */
@@ -5473,7 +5451,7 @@ export class EPPGridPanel extends LitElement {
 
 	private _renderBackendDebugLog() {
 		return html`
-      <div style="margin-top: 8px;">
+      <div style="margin-top: 8px; min-width: 0;">
         <button
           class="live-section-header live-section-link"
           style="font-size: 12px; gap: 4px;"
@@ -5527,7 +5505,7 @@ export class EPPGridPanel extends LitElement {
 
 	private _renderDebugLog() {
 		return html`
-      <div style="padding: 0 16px; margin-top: 8px;">
+      <div style="margin-top: 8px; min-width: 0;">
         <button
           class="live-section-header live-section-link"
           style="font-size: 12px; gap: 4px;"

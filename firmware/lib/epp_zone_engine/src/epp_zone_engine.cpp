@@ -120,7 +120,8 @@ const ProcessingResult& ZoneEngine::tick(const WindowOutput& window, float times
         }
 
         target_active[i] = true;
-        int signal = std::min(tw.frame_count, 9);
+        // Signal = proportion of frames target was active (0-9 scale, rounded)
+        int signal = (frames > 0) ? std::min((tw.frame_count * 9 + frames / 2) / frames, 9) : 0;
         int cell = grid_.xy_to_cell(tw.median_x, tw.median_y);
 
         if (cell == -1 || !grid_.cell_is_room(cell)) {
@@ -299,6 +300,7 @@ const ProcessingResult& ZoneEngine::tick(const WindowOutput& window, float times
         }
 
         result_.zone_occupancy[zone_id] = (rt.state != ZoneState::CLEAR);
+        result_.zone_states[zone_id] = rt.state;
     }
 
     // -----------------------------------------------------------------------
@@ -336,16 +338,16 @@ const ProcessingResult& ZoneEngine::tick(const WindowOutput& window, float times
                     tr.x = target_prev_x_[i];
                     tr.y = target_prev_y_[i];
                 } else {
-                    tr.x = 0.0f;
-                    tr.y = 0.0f;
+                    tr.x = NAN;
+                    tr.y = NAN;
                 }
                 tr.status = TargetStatus::PENDING;
                 tr.signal = 0;
                 result_.target_count++;
             } else {
                 TargetResult& tr = result_.targets[result_.target_count];
-                tr.x = 0.0f;
-                tr.y = 0.0f;
+                tr.x = NAN;
+                tr.y = NAN;
                 tr.status = TargetStatus::INACTIVE;
                 tr.signal = 0;
                 result_.target_count++;

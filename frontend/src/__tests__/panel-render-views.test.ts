@@ -13,7 +13,10 @@ import { ZONE_COLORS, ZONE_TYPE_DEFAULTS } from "../lib/zone-defaults.js";
 
 function createPanel(): EPPGridPanel {
 	const el = document.createElement("eppgrid-panel") as EPPGridPanel;
-	el.hass = { callWS: vi.fn().mockResolvedValue({}) };
+	el.hass = {
+		callWS: vi.fn().mockResolvedValue({}),
+		connection: { subscribeMessage: vi.fn().mockResolvedValue(() => {}) },
+	};
 	const a = el as any;
 	a._grid = new Uint8Array(GRID_CELL_COUNT);
 	a._zoneConfigs = new Array(7).fill(null);
@@ -26,16 +29,16 @@ function createPanel(): EPPGridPanel {
 	a._furniture = [];
 	a._selectedFurnitureId = null;
 	a._view = "live";
-	a._entries = [
+	a._devices = [
 		{
-			entry_id: "e1",
-			title: "Test",
-			room_name: "Living room",
-			has_perspective: true,
-			has_layout: true,
+			mac: "AA:BB:CC:DD:EE:01",
+			name: "Test",
+			host: null,
+			available: true,
+			configured: true,
 		},
 	];
-	a._selectedEntryId = "e1";
+	a._selectedMac = "AA:BB:CC:DD:EE:01";
 	a._targets = [];
 	a._sensorState = {
 		occupancy: false,
@@ -56,8 +59,6 @@ function createPanel(): EPPGridPanel {
 	a._showDeleteCalibrationDialog = false;
 	a._showTemplateSave = false;
 	a._showTemplateLoad = false;
-	a._showRenameDialog = false;
-	a._pendingRenames = [];
 	a._reportingConfig = {};
 	a._offsetsConfig = {};
 	a._targetAutoRange = true;
@@ -107,10 +108,10 @@ describe("render() dispatches to correct view", () => {
 		expect(result).toBeDefined();
 	});
 
-	it("renders loading when entries is empty", () => {
+	it("renders loading when devices is empty", () => {
 		const a = createPanel() as any;
 		a._loading = false;
-		a._entries = [];
+		a._devices = [];
 		const result = a.render();
 		expect(result).toBeDefined();
 	});
@@ -739,21 +740,6 @@ describe("_renderEditor", () => {
 		const a = createPanel() as any;
 		a._view = "editor";
 		a._showTemplateLoad = true;
-		a._grid = initGridFromRoom(3000, 4000);
-		const result = a._renderEditor();
-		expect(result).toBeDefined();
-	});
-
-	it("renders editor with rename dialog", () => {
-		const a = createPanel() as any;
-		a._view = "editor";
-		a._showRenameDialog = true;
-		a._pendingRenames = [
-			{
-				old_entity_id: "binary_sensor.zone_1",
-				new_entity_id: "binary_sensor.kitchen",
-			},
-		];
 		a._grid = initGridFromRoom(3000, 4000);
 		const result = a._renderEditor();
 		expect(result).toBeDefined();

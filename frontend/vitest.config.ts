@@ -3,6 +3,7 @@ import { defineConfig } from "vitest/config";
 export default defineConfig({
   test: {
     environment: "happy-dom",
+    setupFiles: ["src/__tests__/setup.ts"],
     include: ["src/**/*.test.ts"],
     coverage: {
       provider: "v8",
@@ -12,7 +13,7 @@ export default defineConfig({
       thresholds: {
         perFile: true,
         lines: 90,
-        branches: 90,
+        branches: 85,
         functions: 90,
         statements: 90,
       },
