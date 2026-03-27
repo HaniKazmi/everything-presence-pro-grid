@@ -60,8 +60,8 @@ jobs:
       - run: npm ci
       - name: Biome lint
         run: npx biome check src/ --diagnostic-level=error
-      - name: Vitest with coverage
-        run: npm run test:coverage
+      - name: Vitest
+        run: npx vitest run
 
   cpp:
     runs-on: ubuntu-latest
