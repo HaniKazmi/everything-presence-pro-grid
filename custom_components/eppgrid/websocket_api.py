@@ -48,6 +48,20 @@ def _get_manager(hass: HomeAssistant) -> Any:
     return hass.data.get(DOMAIN)
 
 
+def _check_protocol(manager: Any, mac: str) -> str | None:
+    """Check config protocol compatibility. Returns error code or None if OK."""
+    from .const import CONFIG_PROTOCOL_VERSION
+
+    dev = manager.devices.get(mac)
+    if dev is None:
+        return None  # Unknown device — let the command handle it
+    if dev.config_protocol < CONFIG_PROTOCOL_VERSION:
+        return "firmware_behind"
+    if dev.config_protocol > CONFIG_PROTOCOL_VERSION:
+        return "firmware_ahead"
+    return None
+
+
 # -- list_devices --
 
 
@@ -113,6 +127,15 @@ async def websocket_set_setup(
     if manager is None:
         connection.send_error(msg["id"], "not_ready", "Integration not loaded")
         return
+    proto_err = _check_protocol(manager, msg["mac"])
+    if proto_err:
+        connection.send_error(
+            msg["id"],
+            proto_err,
+            "Firmware update required" if proto_err == "firmware_behind"
+            else "Integration update required",
+        )
+        return
     mac = msg["mac"]
     device_config = manager._store.devices.setdefault(mac, {})
     device_config["calibration"] = {
@@ -164,6 +187,15 @@ async def websocket_set_room_layout(
     manager = _get_manager(hass)
     if manager is None:
         connection.send_error(msg["id"], "not_ready", "Integration not loaded")
+        return
+    proto_err = _check_protocol(manager, msg["mac"])
+    if proto_err:
+        connection.send_error(
+            msg["id"],
+            proto_err,
+            "Firmware update required" if proto_err == "firmware_behind"
+            else "Integration update required",
+        )
         return
     mac = msg["mac"]
     device_config = manager._store.devices.setdefault(mac, {})
@@ -556,6 +588,19 @@ def websocket_set_entity_enabled(
     msg: dict[str, Any],
 ) -> None:
     """Enable or disable an ESPHome entity on a managed device."""
+    manager = _get_manager(hass)
+    if manager is None:
+        connection.send_error(msg["id"], "not_ready", "Integration not loaded")
+        return
+    proto_err = _check_protocol(manager, msg["mac"])
+    if proto_err:
+        connection.send_error(
+            msg["id"],
+            proto_err,
+            "Firmware update required" if proto_err == "firmware_behind"
+            else "Integration update required",
+        )
+        return
     ent_reg = er.async_get(hass)
     if msg["enabled"]:
         ent_reg.async_update_entity(msg["entity_id"], disabled_by=None)
@@ -586,6 +631,15 @@ async def websocket_set_env_calibration(
     manager = _get_manager(hass)
     if manager is None:
         connection.send_error(msg["id"], "not_ready", "Integration not loaded")
+        return
+    proto_err = _check_protocol(manager, msg["mac"])
+    if proto_err:
+        connection.send_error(
+            msg["id"],
+            proto_err,
+            "Firmware update required" if proto_err == "firmware_behind"
+            else "Integration update required",
+        )
         return
     mac = msg["mac"]
     device_config = manager._store.devices.setdefault(mac, {})
@@ -620,6 +674,15 @@ async def websocket_set_motion_timeout(
     if manager is None:
         connection.send_error(msg["id"], "not_ready", "Integration not loaded")
         return
+    proto_err = _check_protocol(manager, msg["mac"])
+    if proto_err:
+        connection.send_error(
+            msg["id"],
+            proto_err,
+            "Firmware update required" if proto_err == "firmware_behind"
+            else "Integration update required",
+        )
+        return
     mac = msg["mac"]
     device_config = manager._store.devices.setdefault(mac, {})
     device_config["motion_timeout"] = {"timeout": msg["timeout"]}
@@ -648,6 +711,15 @@ async def websocket_set_tracking(
     manager = _get_manager(hass)
     if manager is None:
         connection.send_error(msg["id"], "not_ready", "Integration not loaded")
+        return
+    proto_err = _check_protocol(manager, msg["mac"])
+    if proto_err:
+        connection.send_error(
+            msg["id"],
+            proto_err,
+            "Firmware update required" if proto_err == "firmware_behind"
+            else "Integration update required",
+        )
         return
     mac = msg["mac"]
     device_config = manager._store.devices.setdefault(mac, {})
@@ -684,6 +756,15 @@ async def websocket_set_static_presence(
     manager = _get_manager(hass)
     if manager is None:
         connection.send_error(msg["id"], "not_ready", "Integration not loaded")
+        return
+    proto_err = _check_protocol(manager, msg["mac"])
+    if proto_err:
+        connection.send_error(
+            msg["id"],
+            proto_err,
+            "Firmware update required" if proto_err == "firmware_behind"
+            else "Integration update required",
+        )
         return
     mac = msg["mac"]
     device_config = manager._store.devices.setdefault(mac, {})
@@ -724,6 +805,15 @@ async def websocket_set_pipeline(
     manager = _get_manager(hass)
     if manager is None:
         connection.send_error(msg["id"], "not_ready", "Integration not loaded")
+        return
+    proto_err = _check_protocol(manager, msg["mac"])
+    if proto_err:
+        connection.send_error(
+            msg["id"],
+            proto_err,
+            "Firmware update required" if proto_err == "firmware_behind"
+            else "Integration update required",
+        )
         return
     mac = msg["mac"]
     device_config = manager._store.devices.setdefault(mac, {})
