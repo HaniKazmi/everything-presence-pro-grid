@@ -335,7 +335,6 @@ class TestProtocolVersion:
         self, hass: HomeAssistant, manager: DeviceManager
     ) -> None:
         """list_devices reports firmware_behind when device protocol is lower."""
-        from custom_components.eppgrid.const import CONFIG_PROTOCOL_VERSION
 
         manager.devices["AA:BB:CC:DD:EE:FF"] = ManagedDevice(
             mac="AA:BB:CC:DD:EE:FF",
