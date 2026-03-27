@@ -6,7 +6,7 @@
  */
 
 import { render } from "lit";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { EPPGridPanel } from "../eppgrid-panel.js";
 import "../eppgrid-panel.js";
 import "../components/epp-editor-view.js";
@@ -18,7 +18,7 @@ import "../components/epp-live-view.js";
 import "../components/epp-settings-view.js";
 import "../components/epp-wizard.js";
 import "../components/epp-zone-sidebar.js";
-import { GRID_COLS, initGridFromRoom } from "../lib/grid.js";
+import { GRID_CELL_COUNT, GRID_COLS, initGridFromRoom } from "../lib/grid.js";
 import { ZONE_TYPE_DEFAULTS } from "../lib/zone-defaults.js";
 import { createZoneEngineState } from "../lib/zone-engine.js";
 
@@ -107,9 +107,17 @@ function createPanel(): EPPGridPanel {
 	return el;
 }
 
+const containers: HTMLDivElement[] = [];
+
+afterEach(() => {
+	for (const c of containers) c.remove();
+	containers.length = 0;
+});
+
 function renderPanel(el: EPPGridPanel): HTMLDivElement {
 	const container = document.createElement("div");
 	document.body.appendChild(container);
+	containers.push(container);
 	render((el as any).render(), container);
 	return container;
 }
@@ -566,7 +574,7 @@ describe("Navigation guards", () => {
 		a._roomWidth = 3000;
 		a._roomDepth = 4000;
 		a._initGridFromRoom();
-		expect(a._grid.length).toBe(GRID_COLS * GRID_COLS); // GRID_CELL_COUNT
+		expect(a._grid.length).toBe(GRID_CELL_COUNT);
 		// Verify it matches the standalone function
 		const expected = initGridFromRoom(3000, 4000);
 		expect(a._grid).toEqual(expected);
