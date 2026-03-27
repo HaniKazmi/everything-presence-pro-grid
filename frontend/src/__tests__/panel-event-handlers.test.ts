@@ -6,6 +6,8 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { EPPGridPanel } from "../eppgrid-panel.js";
 import "../eppgrid-panel.js";
+import "../components/epp-live-sidebar.js";
+import "../components/epp-live-view.js";
 import {
 	CELL_ROOM_BIT,
 	cellSetZone,
@@ -15,6 +17,7 @@ import {
 	initGridFromRoom,
 } from "../lib/grid.js";
 import { ZONE_COLORS, ZONE_TYPE_DEFAULTS } from "../lib/zone-defaults.js";
+import { createZoneEngineState } from "../lib/zone-engine.js";
 
 function createPanel(): EPPGridPanel {
 	const el = document.createElement("eppgrid-panel") as EPPGridPanel;
@@ -60,7 +63,7 @@ function createPanel(): EPPGridPanel {
 	a._showUnsavedDialog = false;
 	a._pendingNavigation = null;
 	a._saving = false;
-	a._showLiveMenu = false;
+
 	a._showDeleteCalibrationDialog = false;
 	a._showTemplateSave = false;
 	a._showTemplateLoad = false;
@@ -78,10 +81,7 @@ function createPanel(): EPPGridPanel {
 	a._roomHandoffTimeout = ZONE_TYPE_DEFAULTS.normal.handoff_timeout;
 	a._roomEntryPoint = false;
 	a._showHitCounts = false;
-	a._expandedSensorInfo = null;
-	a._localZoneState = new Map();
-	a._targetPrev = [null, null, null];
-	a._targetGateCount = [0, 0, 0];
+	a._zoneEngineState = createZoneEngineState();
 	a._showCustomIconPicker = false;
 	a._customIconValue = "";
 	a._isPainting = false;
@@ -237,21 +237,27 @@ describe("_renderWizardCorners inline handlers", () => {
 		expect(a._setupStep).toBeNull();
 	});
 
-	it("save button calls computeWizardPerspective and wizardFinish", async () => {
-		const a = createPanel() as any;
-		a._wizardCorners = [
+	it("save button calls computeWizardPerspective and wizardFinish (via EppWizard)", async () => {
+		const { EppWizard } = await import("../components/epp-wizard.js");
+		const el = document.createElement("epp-wizard") as any;
+		el.hass = { callWS: vi.fn().mockResolvedValue({}) };
+		el.selectedMac = "AA:BB:CC:DD:EE:01";
+		el.rawTargets = [];
+		el.sensorState = { occupancy: false };
+		el.devices = [];
+		el.localize = (k: string) => k;
+		el._wizardCorners = [
 			{ raw_x: -1500, raw_y: 1000, offset_side: 0, offset_fb: 0 },
 			{ raw_x: 1500, raw_y: 1000, offset_side: 0, offset_fb: 0 },
 			{ raw_x: 2000, raw_y: 4000, offset_side: 0, offset_fb: 0 },
 			{ raw_x: -2000, raw_y: 4000, offset_side: 0, offset_fb: 0 },
 		];
-		a._wizardRoomWidth = 3000;
-		a._wizardRoomDepth = 4000;
+		el._wizardRoomWidth = 3000;
+		el._wizardRoomDepth = 4000;
 
-		// Replicate handler (line 3426-3428)
-		a._computeWizardPerspective();
+		el._computeWizardPerspective();
 
-		expect(a._perspective).not.toBeNull();
+		expect(el._perspective).not.toBeNull();
 	});
 });
 
@@ -287,19 +293,20 @@ describe("_renderLiveOverview inline handlers", () => {
 		expect(a._showHitCounts).toBe(false);
 	});
 
-	it("live menu toggle", () => {
-		const a = createPanel() as any;
-		// Replicate handler (line 3578-3579)
-		a._showLiveMenu = !a._showLiveMenu;
-		expect(a._showLiveMenu).toBe(true);
+	it("live menu toggle (epp-live-view)", () => {
+		const lv = document.createElement("epp-live-view") as any;
+		lv.showMenu = false;
+		// Replicate component handler
+		lv.showMenu = !lv.showMenu;
+		expect(lv.showMenu).toBe(true);
 	});
 
-	it("live menu close on click", () => {
-		const a = createPanel() as any;
-		a._showLiveMenu = true;
-		// Replicate handler (line 3586-3587)
-		a._showLiveMenu = false;
-		expect(a._showLiveMenu).toBe(false);
+	it("live menu close on click (epp-live-view)", () => {
+		const lv = document.createElement("epp-live-view") as any;
+		lv.showMenu = true;
+		// Replicate component handler
+		lv.showMenu = false;
+		expect(lv.showMenu).toBe(false);
 	});
 
 	it("detection zones button", () => {
@@ -860,49 +867,67 @@ describe("render delete calibration dialog inline handler", () => {
 });
 
 // ========================
-// _renderLiveSidebar inline handlers
+// epp-live-sidebar inline handlers
 // ========================
-describe("_renderLiveSidebar inline handlers", () => {
+describe("epp-live-sidebar inline handlers", () => {
 	it("sensor info toggle expands/collapses", () => {
-		const a = createPanel() as any;
+		const el = document.createElement("epp-live-sidebar") as any;
 		const id = "occupancy";
-		// Replicate handler (line 5383-5385)
-		a._expandedSensorInfo = a._expandedSensorInfo === id ? null : id;
-		expect(a._expandedSensorInfo).toBe("occupancy");
+		// Replicate handler logic
+		el._expandedSensorInfo = el._expandedSensorInfo === id ? null : id;
+		expect(el._expandedSensorInfo).toBe("occupancy");
 
-		a._expandedSensorInfo = a._expandedSensorInfo === id ? null : id;
-		expect(a._expandedSensorInfo).toBeNull();
+		el._expandedSensorInfo = el._expandedSensorInfo === id ? null : id;
+		expect(el._expandedSensorInfo).toBeNull();
 	});
 
-	it("detection zones link navigates to editor", () => {
-		const a = createPanel() as any;
-		// Replicate handler (line 5403-5405)
-		a._view = "editor";
-		a._sidebarTab = "zones";
-		expect(a._view).toBe("editor");
+	it("detection zones link fires view-change event", () => {
+		const el = document.createElement("epp-live-sidebar") as any;
+		let detail: any = null;
+		el.addEventListener("view-change", (e: CustomEvent) => {
+			detail = e.detail;
+		});
+		el.dispatchEvent(
+			new CustomEvent("view-change", {
+				detail: { view: "editor", sidebarTab: "zones" },
+				bubbles: true,
+				composed: true,
+			}),
+		);
+		expect(detail.view).toBe("editor");
+		expect(detail.sidebarTab).toBe("zones");
 	});
 
 	it("zone sensor info toggle", () => {
-		const a = createPanel() as any;
+		const el = document.createElement("epp-live-sidebar") as any;
 		const id = "zone_1";
-		// Replicate handler (line 5416-5418)
-		a._expandedSensorInfo = a._expandedSensorInfo === id ? null : id;
-		expect(a._expandedSensorInfo).toBe("zone_1");
+		// Replicate handler logic
+		el._expandedSensorInfo = el._expandedSensorInfo === id ? null : id;
+		expect(el._expandedSensorInfo).toBe("zone_1");
 	});
 
-	it("add zones button navigates", () => {
-		const a = createPanel() as any;
-		// Replicate handler (line 5434-5436)
-		a._view = "editor";
-		a._sidebarTab = "zones";
-		expect(a._view).toBe("editor");
+	it("add zones button navigates via view-change event", () => {
+		const el = document.createElement("epp-live-sidebar") as any;
+		let detail: any = null;
+		el.addEventListener("view-change", (e: CustomEvent) => {
+			detail = e.detail;
+		});
+		el.dispatchEvent(
+			new CustomEvent("view-change", {
+				detail: { view: "editor", sidebarTab: "zones" },
+				bubbles: true,
+				composed: true,
+			}),
+		);
+		expect(detail.view).toBe("editor");
+		expect(detail.sidebarTab).toBe("zones");
 	});
 });
 
 // ========================
-// _renderFurnitureSidebar inline handlers
+// Furniture sidebar panel handler methods
 // ========================
-describe("_renderFurnitureSidebar inline handlers", () => {
+describe("furniture sidebar panel handler methods", () => {
 	it("custom icon picker toggle", () => {
 		const a = createPanel() as any;
 		// Replicate handler (line 5523-5524)

@@ -1,6 +1,19 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { EPPGridPanel } from "../eppgrid-panel.js";
 import "../eppgrid-panel.js";
+import "../components/epp-live-sidebar.js";
+import "../components/epp-live-view.js";
+import "../components/epp-editor-view.js";
+import "../components/epp-zone-sidebar.js";
+import "../components/epp-furniture-sidebar.js";
+import "../components/epp-settings-view.js";
+import "../components/epp-wizard.js";
+import "../components/epp-grid.js";
+import type { EppFurnitureSidebar } from "../components/epp-furniture-sidebar.js";
+import type { EppGrid } from "../components/epp-grid.js";
+import type { EppSettingsView } from "../components/epp-settings-view.js";
+import type { EppWizard } from "../components/epp-wizard.js";
+import type { EppZoneSidebar } from "../components/epp-zone-sidebar.js";
 import {
 	CELL_ROOM_BIT,
 	cellSetZone,
@@ -10,6 +23,7 @@ import {
 	initGridFromRoom,
 } from "../lib/grid.js";
 import { ZONE_COLORS, ZONE_TYPE_DEFAULTS } from "../lib/zone-defaults.js";
+import { createZoneEngineState } from "../lib/zone-engine.js";
 
 function createPanel(): EPPGridPanel {
 	const el = document.createElement("eppgrid-panel") as EPPGridPanel;
@@ -55,7 +69,7 @@ function createPanel(): EPPGridPanel {
 	a._showUnsavedDialog = false;
 	a._pendingNavigation = null;
 	a._saving = false;
-	a._showLiveMenu = false;
+
 	a._showDeleteCalibrationDialog = false;
 	a._showTemplateSave = false;
 	a._showTemplateLoad = false;
@@ -73,10 +87,7 @@ function createPanel(): EPPGridPanel {
 	a._roomHandoffTimeout = ZONE_TYPE_DEFAULTS.normal.handoff_timeout;
 	a._roomEntryPoint = false;
 	a._showHitCounts = false;
-	a._expandedSensorInfo = null;
-	a._localZoneState = new Map();
-	a._targetPrev = [null, null, null];
-	a._targetGateCount = [0, 0, 0];
+	a._zoneEngineState = createZoneEngineState();
 	a._showCustomIconPicker = false;
 	a._customIconValue = "";
 	a._isPainting = false;
@@ -97,6 +108,77 @@ function createPanel(): EPPGridPanel {
 	a._templateName = "";
 	a._fovCache = null;
 	a._fovPerspective = null;
+	return el;
+}
+
+function createSettingsView(
+	overrides?: Partial<Record<string, unknown>>,
+): EppSettingsView {
+	const el = document.createElement("epp-settings-view") as EppSettingsView;
+	el.grid = new Uint8Array(GRID_CELL_COUNT);
+	el.perspective = [1, 0, 0, 0, 1, 0, 0, 0];
+	el.roomWidth = 3000;
+	el.roomDepth = 4000;
+	el.openAccordions = new Set();
+	el.reportingConfig = {};
+	el.offsetsConfig = {};
+	if (overrides) {
+		for (const [k, v] of Object.entries(overrides)) {
+			(el as any)[k] = v;
+		}
+	}
+	return el;
+}
+
+function createWizard(overrides?: Partial<Record<string, unknown>>): EppWizard {
+	const el = document.createElement("epp-wizard") as EppWizard;
+	const a = el as any;
+	a.hass = { callWS: vi.fn().mockResolvedValue({}) };
+	a.selectedMac = "AA:BB:CC:DD:EE:01";
+	a.rawTargets = [];
+	a.sensorState = { occupancy: false };
+	a.devices = [{ mac: "AA:BB:CC:DD:EE:01", name: "Test" }];
+	a.localize = (k: string) => k;
+	a.initialRoomWidth = 0;
+	a.initialRoomDepth = 0;
+	a.mode = "wizard";
+	a._setupStep = "guide";
+	a._wizardCornerIndex = 0;
+	a._wizardCorners = [null, null, null, null];
+	a._wizardRoomWidth = 3000;
+	a._wizardRoomDepth = 4000;
+	a._wizardCapturing = false;
+	a._wizardCaptureProgress = 0;
+	a._wizardCapturePaused = false;
+	a._wizardCaptureCancelled = false;
+	a._wizardOffsetSide = "";
+	a._wizardOffsetFb = "";
+	a._wizardSaving = false;
+	a._smoothBuffer = [];
+	a._perspective = null;
+	if (overrides) {
+		for (const [k, v] of Object.entries(overrides)) {
+			(el as any)[k] = v;
+		}
+	}
+	return el;
+}
+
+function createGrid(overrides?: Partial<Record<string, unknown>>): EppGrid {
+	const el = document.createElement("epp-grid") as EppGrid;
+	el.grid = initGridFromRoom(3000, 4000);
+	el.zoneConfigs = new Array(7).fill(null);
+	el.targets = [];
+	el.roomWidth = 3000;
+	el.roomDepth = 4000;
+	el.perspective = [1, 0, 0, 0, 1, 0, 0, 0];
+	el.furniture = [];
+	el.localize = (k: string) => k;
+	if (overrides) {
+		for (const [k, v] of Object.entries(overrides)) {
+			(el as any)[k] = v;
+		}
+	}
 	return el;
 }
 
@@ -164,23 +246,23 @@ describe("_renderHeader", () => {
 	});
 });
 
-describe("_renderWizard", () => {
+describe("_renderWizard (via EppWizard)", () => {
 	it("renders guide step", () => {
-		const a = createPanel() as any;
+		const a = createWizard() as any;
 		a._setupStep = "guide";
 		const result = a._renderWizard();
 		expect(result).toBeDefined();
 	});
 
 	it("renders corners step", () => {
-		const a = createPanel() as any;
+		const a = createWizard() as any;
 		a._setupStep = "corners";
-		const result = a._renderWizard();
+		const result = a._renderWizardCorners();
 		expect(result).toBeDefined();
 	});
 
 	it("renders with capture in progress", () => {
-		const a = createPanel() as any;
+		const a = createWizard() as any;
 		a._setupStep = "corners";
 		a._wizardCapturing = true;
 		a._wizardCaptureProgress = 0.5;
@@ -189,7 +271,7 @@ describe("_renderWizard", () => {
 	});
 
 	it("renders with capture paused", () => {
-		const a = createPanel() as any;
+		const a = createWizard() as any;
 		a._setupStep = "corners";
 		a._wizardCapturing = true;
 		a._wizardCapturePaused = true;
@@ -198,67 +280,41 @@ describe("_renderWizard", () => {
 	});
 });
 
-describe("_renderWizardGuide", () => {
+describe("_renderWizardGuide (via EppWizard)", () => {
 	it("renders guide content", () => {
-		const a = createPanel() as any;
+		const a = createWizard() as any;
 		const result = a._renderWizardGuide();
 		expect(result).toBeDefined();
 	});
 });
 
-describe("_renderWizardCorners", () => {
+describe("_renderWizardCorners (via EppWizard)", () => {
 	it("renders corner marking step with no targets", () => {
-		const a = createPanel() as any;
-		a._targets = [];
+		const a = createWizard() as any;
+		a.rawTargets = [];
 		const result = a._renderWizardCorners();
 		expect(result).toBeDefined();
 	});
 
 	it("renders with active target", () => {
-		const a = createPanel() as any;
-		a._targets = [
-			{
-				x: 100,
-				y: 200,
-				raw_x: 100,
-				raw_y: 200,
-				speed: 0,
-				status: "active" as const,
-				signal: 5,
-			},
-		];
+		const a = createWizard() as any;
+		a.rawTargets = [{ raw_x: 100, raw_y: 200 }];
 		const result = a._renderWizardCorners();
 		expect(result).toBeDefined();
 	});
 
 	it("renders with too many targets", () => {
-		const a = createPanel() as any;
-		a._targets = [
-			{
-				x: 100,
-				y: 200,
-				raw_x: 100,
-				raw_y: 200,
-				speed: 0,
-				status: "active" as const,
-				signal: 5,
-			},
-			{
-				x: 300,
-				y: 400,
-				raw_x: 300,
-				raw_y: 400,
-				speed: 0,
-				status: "active" as const,
-				signal: 5,
-			},
+		const a = createWizard() as any;
+		a.rawTargets = [
+			{ raw_x: 100, raw_y: 200 },
+			{ raw_x: 300, raw_y: 400 },
 		];
 		const result = a._renderWizardCorners();
 		expect(result).toBeDefined();
 	});
 
 	it("renders when all corners marked", () => {
-		const a = createPanel() as any;
+		const a = createWizard() as any;
 		a._wizardCorners = [
 			{ raw_x: -1000, raw_y: 1000, offset_side: 0, offset_fb: 0 },
 			{ raw_x: 1000, raw_y: 1000, offset_side: 0, offset_fb: 0 },
@@ -270,7 +326,7 @@ describe("_renderWizardCorners", () => {
 	});
 
 	it("renders wizard saving state", () => {
-		const a = createPanel() as any;
+		const a = createWizard() as any;
 		a._wizardCorners = [
 			{ raw_x: -1000, raw_y: 1000, offset_side: 0, offset_fb: 0 },
 			{ raw_x: 1000, raw_y: 1000, offset_side: 0, offset_fb: 0 },
@@ -283,27 +339,17 @@ describe("_renderWizardCorners", () => {
 	});
 });
 
-describe("_renderMiniSensorView", () => {
+describe("_renderMiniSensorView (via EppWizard)", () => {
 	it("renders sensor FOV view without targets", () => {
-		const a = createPanel() as any;
-		a._targets = [];
+		const a = createWizard() as any;
+		a.rawTargets = [];
 		const result = a._renderMiniSensorView();
 		expect(result).toBeDefined();
 	});
 
 	it("renders with targets on the FOV view", () => {
-		const a = createPanel() as any;
-		a._targets = [
-			{
-				x: 100,
-				y: 200,
-				raw_x: 500,
-				raw_y: 1000,
-				speed: 0,
-				status: "active" as const,
-				signal: 5,
-			},
-		];
+		const a = createWizard() as any;
+		a.rawTargets = [{ raw_x: 500, raw_y: 1000 }];
 		a._wizardCorners = [
 			{ raw_x: -1000, raw_y: 1000, offset_side: 0, offset_fb: 0 },
 			null,
@@ -347,18 +393,19 @@ describe("_renderLiveOverview", () => {
 		expect(result).toBeDefined();
 	});
 
-	it("renders with live menu open", () => {
-		const a = createPanel() as any;
-		a._showLiveMenu = true;
-		const result = a._renderLiveOverview();
+	it("renders with live menu open (epp-live-view)", () => {
+		const lv = document.createElement("epp-live-view") as any;
+		lv.perspective = [1, 0, 0, 0, 1, 0, 0, 0];
+		lv.showMenu = true;
+		const result = lv.render();
 		expect(result).toBeDefined();
 	});
 
-	it("renders with live menu open and no perspective", () => {
-		const a = createPanel() as any;
-		a._showLiveMenu = true;
-		a._perspective = null;
-		const result = a._renderLiveOverview();
+	it("renders with live menu open and no perspective (epp-live-view)", () => {
+		const lv = document.createElement("epp-live-view") as any;
+		lv.perspective = null;
+		lv.showMenu = true;
+		const result = lv.render();
 		expect(result).toBeDefined();
 	});
 });
@@ -409,89 +456,59 @@ describe("_renderLiveGrid", () => {
 	});
 });
 
-describe("_renderGridDimensions", () => {
+describe("_renderGridDimensions (via EppGrid)", () => {
 	it("returns nothing when no metrics", () => {
-		const a = createPanel() as any;
-		a._grid = new Uint8Array(GRID_CELL_COUNT);
-		a._roomWidth = 0;
-		a._perspective = null;
+		const a = createGrid({
+			grid: new Uint8Array(GRID_CELL_COUNT),
+			roomWidth: 0,
+			perspective: null,
+		}) as any;
 		const result = a._renderGridDimensions();
 		expect(result).toBeDefined();
 	});
 });
 
-describe("_renderUncalibratedFov", () => {
+describe("_renderUncalibratedFov (via EppWizard)", () => {
 	it("renders FOV view with no occupancy", () => {
-		const a = createPanel() as any;
-		a._sensorState.occupancy = false;
-		a._targets = [];
+		const a = createWizard({ mode: "uncalibrated-fov" }) as any;
+		a.sensorState = { occupancy: false };
+		a.rawTargets = [];
 		const result = a._renderUncalibratedFov();
 		expect(result).toBeDefined();
 	});
 
 	it("renders FOV view with occupancy", () => {
-		const a = createPanel() as any;
-		a._sensorState.occupancy = true;
+		const a = createWizard({ mode: "uncalibrated-fov" }) as any;
+		a.sensorState = { occupancy: true };
 		const result = a._renderUncalibratedFov();
 		expect(result).toBeDefined();
 	});
 
 	it("renders with active targets", () => {
-		const a = createPanel() as any;
-		a._targets = [
-			{
-				x: 100,
-				y: 200,
-				raw_x: 500,
-				raw_y: 1000,
-				speed: 0,
-				status: "active" as const,
-				signal: 5,
-			},
-		];
+		const a = createWizard({ mode: "uncalibrated-fov" }) as any;
+		a.rawTargets = [{ raw_x: 500, raw_y: 1000 }];
 		const result = a._renderUncalibratedFov();
 		expect(result).toBeDefined();
 	});
 
 	it("skips targets with null raw positions", () => {
-		const a = createPanel() as any;
-		a._targets = [
-			{
-				x: null,
-				y: null,
-				raw_x: null,
-				raw_y: null,
-				speed: 0,
-				status: "inactive" as const,
-				signal: 0,
-			},
-		];
+		const a = createWizard({ mode: "uncalibrated-fov" }) as any;
+		a.rawTargets = [{ raw_x: null, raw_y: null }];
 		const result = a._renderUncalibratedFov();
 		expect(result).toBeDefined();
 	});
 
 	it("shows targets with raw positions even if status is inactive", () => {
-		const a = createPanel() as any;
-		a._targets = [
-			{
-				x: 0,
-				y: 0,
-				raw_x: 500,
-				raw_y: 1000,
-				speed: 0,
-				status: "inactive" as const,
-				signal: 0,
-			},
-		];
-		// Target has raw positions — should render even though status is inactive
+		const a = createWizard({ mode: "uncalibrated-fov" }) as any;
+		a.rawTargets = [{ raw_x: 500, raw_y: 1000 }];
 		const result = a._renderUncalibratedFov();
 		expect(result).toBeDefined();
 	});
 });
 
-describe("_renderNeedsCalibration", () => {
+describe("_renderNeedsCalibration (via EppWizard)", () => {
 	it("renders calibration guide", () => {
-		const a = createPanel() as any;
+		const a = createWizard({ mode: "needs-calibration" }) as any;
 		const result = a._renderNeedsCalibration();
 		expect(result).toBeDefined();
 	});
@@ -539,70 +556,70 @@ describe("_renderSettings", () => {
 	});
 });
 
-describe("_renderSettingsSection", () => {
+describe("_renderSettingsSection (via EppSettingsView)", () => {
 	it("renders detection section", () => {
-		const a = createPanel() as any;
-		const result = a._renderSettingsSection("detection");
+		const sv = createSettingsView() as any;
+		const result = sv.renderSettingsSection("detection");
 		expect(result).toBeDefined();
 	});
 
 	it("renders sensitivity section", () => {
-		const a = createPanel() as any;
-		const result = a._renderSettingsSection("sensitivity");
+		const sv = createSettingsView() as any;
+		const result = sv.renderSettingsSection("sensitivity");
 		expect(result).toBeDefined();
 	});
 
 	it("renders reporting section", () => {
-		const a = createPanel() as any;
-		const result = a._renderSettingsSection("reporting");
+		const sv = createSettingsView() as any;
+		const result = sv.renderSettingsSection("reporting");
 		expect(result).toBeDefined();
 	});
 
 	it("returns nothing for unknown section", () => {
-		const a = createPanel() as any;
-		const result = a._renderSettingsSection("unknown");
+		const sv = createSettingsView() as any;
+		const result = sv.renderSettingsSection("unknown");
 		expect(result).toBeDefined();
 	});
 });
 
-describe("_renderDetectionRanges", () => {
+describe("_renderDetectionRanges (via EppSettingsView)", () => {
 	it("renders with auto range enabled", () => {
-		const a = createPanel() as any;
-		a._targetAutoRange = true;
-		a._staticAutoRange = true;
-		const result = a._renderDetectionRanges();
+		const sv = createSettingsView({
+			targetAutoRange: true,
+			staticAutoRange: true,
+		});
+		const result = (sv as any).renderDetectionRanges();
 		expect(result).toBeDefined();
 	});
 
 	it("renders with auto range disabled", () => {
-		const a = createPanel() as any;
-		a._targetAutoRange = false;
-		a._staticAutoRange = false;
-		const result = a._renderDetectionRanges();
+		const sv = createSettingsView({
+			targetAutoRange: false,
+			staticAutoRange: false,
+		});
+		const result = (sv as any).renderDetectionRanges();
 		expect(result).toBeDefined();
 	});
 
 	it("renders with grid room metrics", () => {
-		const a = createPanel() as any;
-		a._grid = initGridFromRoom(3000, 4000);
-		const result = a._renderDetectionRanges();
+		const sv = createSettingsView({ grid: initGridFromRoom(3000, 4000) });
+		const result = (sv as any).renderDetectionRanges();
 		expect(result).toBeDefined();
 	});
 });
 
-describe("_renderSensitivities", () => {
+describe("_renderSensitivities (via EppSettingsView)", () => {
 	it("renders sensitivity section with sensor state", () => {
-		const a = createPanel() as any;
-		const result = a._renderSensitivities();
+		const sv = createSettingsView();
+		const result = (sv as any).renderSensitivities();
 		expect(result).toBeDefined();
 	});
 });
 
-describe("_renderEnvOffset", () => {
+describe("_renderEnvOffset (via EppSettingsView)", () => {
 	it("renders offset control with a reading", () => {
-		const a = createPanel() as any;
-		a._offsetsConfig = { illuminance: 10 };
-		const result = a._renderEnvOffset(
+		const sv = createSettingsView({ offsetsConfig: { illuminance: 10 } });
+		const result = (sv as any).renderEnvOffset(
 			"Illuminance offset",
 			150,
 			"illuminance",
@@ -617,15 +634,15 @@ describe("_renderEnvOffset", () => {
 	});
 
 	it("renders offset control with null reading", () => {
-		const a = createPanel() as any;
-		const result = a._renderEnvOffset(
+		const sv = createSettingsView();
+		const result = (sv as any).renderEnvOffset(
 			"Temperature offset",
 			null,
 			"temperature",
 			-20,
 			20,
 			0.1,
-			"°C",
+			"\u00b0C",
 			1,
 			"Adjust temperature.",
 		);
@@ -633,9 +650,8 @@ describe("_renderEnvOffset", () => {
 	});
 
 	it("renders with no saved offset", () => {
-		const a = createPanel() as any;
-		a._offsetsConfig = {};
-		const result = a._renderEnvOffset(
+		const sv = createSettingsView({ offsetsConfig: {} });
+		const result = (sv as any).renderEnvOffset(
 			"Humidity offset",
 			45,
 			"humidity",
@@ -650,29 +666,29 @@ describe("_renderEnvOffset", () => {
 	});
 });
 
-describe("_infoTip", () => {
+describe("_infoTip (via EppSettingsView)", () => {
 	it("returns defined result", () => {
-		const a = createPanel() as any;
-		const result = a._infoTip("Some tip text");
+		const sv = createSettingsView();
+		const result = (sv as any).infoTip("Some tip text");
 		expect(result).toBeDefined();
 	});
 });
 
-describe("_renderReporting", () => {
+describe("_renderReporting (via EppSettingsView)", () => {
 	it("renders reporting toggles", () => {
-		const a = createPanel() as any;
-		a._reportingConfig = {
-			room_occupancy: true,
-			room_static_presence: false,
-		};
-		const result = a._renderReporting();
+		const sv = createSettingsView({
+			reportingConfig: {
+				room_occupancy: true,
+				room_static_presence: false,
+			},
+		});
+		const result = (sv as any).renderReporting();
 		expect(result).toBeDefined();
 	});
 
 	it("renders with empty reporting config", () => {
-		const a = createPanel() as any;
-		a._reportingConfig = {};
-		const result = a._renderReporting();
+		const sv = createSettingsView({ reportingConfig: {} });
+		const result = (sv as any).renderReporting();
 		expect(result).toBeDefined();
 	});
 });
@@ -909,109 +925,132 @@ describe("_renderVisibleCells", () => {
 	});
 });
 
-describe("_renderBoundaryTypeControls", () => {
+describe("epp-zone-sidebar renders boundary type controls", () => {
 	it("renders for normal type", () => {
-		const a = createPanel() as any;
-		a._roomType = "normal";
-		const result = a._renderBoundaryTypeControls();
+		const el = document.createElement("epp-zone-sidebar") as any;
+		el.roomType = "normal";
+		el.activeZone = 0;
+		el.zoneConfigs = new Array(7).fill(null);
+		const result = el.render();
 		expect(result).toBeDefined();
 	});
 
 	it("renders for custom type", () => {
-		const a = createPanel() as any;
-		a._roomType = "custom";
-		const result = a._renderBoundaryTypeControls();
+		const el = document.createElement("epp-zone-sidebar") as any;
+		el.roomType = "custom";
+		el.activeZone = 0;
+		el.zoneConfigs = new Array(7).fill(null);
+		const result = el.render();
 		expect(result).toBeDefined();
 	});
 
 	it("renders for entrance type", () => {
-		const a = createPanel() as any;
-		a._roomType = "entrance";
-		const result = a._renderBoundaryTypeControls();
+		const el = document.createElement("epp-zone-sidebar") as any;
+		el.roomType = "entrance";
+		el.activeZone = 0;
+		el.zoneConfigs = new Array(7).fill(null);
+		const result = el.render();
 		expect(result).toBeDefined();
 	});
 });
 
-describe("_renderZoneTypeControls", () => {
+describe("epp-zone-sidebar renders zone type controls", () => {
 	it("renders for normal zone", () => {
-		const a = createPanel() as any;
-		const zone = { name: "Zone 1", color: "#ff0000", type: "normal" };
-		const result = a._renderZoneTypeControls(zone, 0);
+		const el = document.createElement("epp-zone-sidebar") as any;
+		el.zoneConfigs = [
+			{ name: "Zone 1", color: "#ff0000", type: "normal" },
+			...new Array(6).fill(null),
+		];
+		el.activeZone = 1;
+		const result = el.render();
 		expect(result).toBeDefined();
 	});
 
 	it("renders for custom zone with explicit thresholds", () => {
-		const a = createPanel() as any;
-		const zone = {
-			name: "Zone 1",
-			color: "#ff0000",
-			type: "custom",
-			trigger: 7,
-			renew: 4,
-			timeout: 15,
-			handoff_timeout: 5,
-			entry_point: true,
-		};
-		const result = a._renderZoneTypeControls(zone, 0);
+		const el = document.createElement("epp-zone-sidebar") as any;
+		el.zoneConfigs = [
+			{
+				name: "Zone 1",
+				color: "#ff0000",
+				type: "custom",
+				trigger: 7,
+				renew: 4,
+				timeout: 15,
+				handoff_timeout: 5,
+				entry_point: true,
+			},
+			...new Array(6).fill(null),
+		];
+		el.activeZone = 1;
+		const result = el.render();
 		expect(result).toBeDefined();
 	});
 });
 
-describe("_renderZoneSidebar", () => {
+describe("epp-zone-sidebar renders zone sidebar", () => {
 	it("renders with no zones configured", () => {
-		const a = createPanel() as any;
-		a._zoneConfigs = new Array(7).fill(null);
-		const result = a._renderZoneSidebar();
+		const el = document.createElement("epp-zone-sidebar") as any;
+		el.zoneConfigs = new Array(7).fill(null);
+		const result = el.render();
 		expect(result).toBeDefined();
 	});
 
 	it("renders with zones configured", () => {
-		const a = createPanel() as any;
-		a._zoneConfigs[0] = {
+		const el = document.createElement("epp-zone-sidebar") as any;
+		el.zoneConfigs = new Array(7).fill(null);
+		el.zoneConfigs[0] = {
 			name: "Kitchen",
 			color: ZONE_COLORS[0],
 			type: "normal",
 		};
-		a._zoneConfigs[1] = {
+		el.zoneConfigs[1] = {
 			name: "Living",
 			color: ZONE_COLORS[1],
 			type: "entrance",
 		};
-		a._activeZone = 1;
-		const result = a._renderZoneSidebar();
+		el.activeZone = 1;
+		const result = el.render();
 		expect(result).toBeDefined();
 	});
 
 	it("renders with active boundary zone", () => {
-		const a = createPanel() as any;
-		a._activeZone = 0;
-		const result = a._renderZoneSidebar();
+		const el = document.createElement("epp-zone-sidebar") as any;
+		el.zoneConfigs = new Array(7).fill(null);
+		el.activeZone = 0;
+		const result = el.render();
 		expect(result).toBeDefined();
 	});
 
 	it("renders with zone occupancy glow", () => {
-		const a = createPanel() as any;
-		a._zoneConfigs[0] = { name: "Z1", color: ZONE_COLORS[0], type: "normal" };
-		a._activeZone = 1;
-		a._localZoneState.set(1, {
-			occupied: true,
-			pendingSince: null,
-			confirmedTargets: new Set(),
-		});
-		const result = a._renderZoneSidebar();
+		const el = document.createElement("epp-zone-sidebar") as any;
+		el.zoneConfigs = new Array(7).fill(null);
+		el.zoneConfigs[0] = { name: "Z1", color: ZONE_COLORS[0], type: "normal" };
+		el.activeZone = 1;
+		el.localZoneState = new Map([
+			[
+				1,
+				{
+					occupied: true,
+					pendingSince: null,
+					confirmedTargets: new Set(),
+				},
+			],
+		]);
+		const result = el.render();
 		expect(result).toBeDefined();
 	});
 
 	it("renders with all zones full (no add button)", () => {
-		const a = createPanel() as any;
+		const el = document.createElement("epp-zone-sidebar") as any;
+		el.zoneConfigs = new Array(7).fill(null);
 		for (let i = 0; i < 7; i++) {
-			a._zoneConfigs[i] = {
+			el.zoneConfigs[i] = {
 				name: `Zone ${i + 1}`,
 				color: ZONE_COLORS[i % ZONE_COLORS.length],
 				type: "normal",
 			};
 		}
-		const result = a._renderZoneSidebar();
+		const result = el.render();
 		expect(result).toBeDefined();
 	});
 });
@@ -1090,101 +1129,119 @@ describe("_renderFurnitureOverlay", () => {
 	});
 });
 
-describe("_renderLiveSidebar", () => {
+describe("epp-live-sidebar via panel", () => {
 	it("renders live sidebar with basic sensors", () => {
-		const a = createPanel() as any;
-		const result = a._renderLiveSidebar();
+		const el = document.createElement("epp-live-sidebar") as any;
+		const result = el.render();
 		expect(result).toBeDefined();
 	});
 
 	it("renders with zone occupancy", () => {
-		const a = createPanel() as any;
-		a._zoneConfigs[0] = {
+		const el = document.createElement("epp-live-sidebar") as any;
+		el.zoneConfigs = new Array(7).fill(null);
+		el.zoneConfigs[0] = {
 			name: "Kitchen",
 			color: ZONE_COLORS[0],
 			type: "normal",
 		};
-		a._zoneState = {
+		el.zoneState = {
 			occupancy: { 1: true },
 			target_counts: { 1: 2 },
 			frame_count: 50,
 		};
-		const result = a._renderLiveSidebar();
+		const result = el.render();
 		expect(result).toBeDefined();
 	});
 
 	it("renders with no env sensors", () => {
-		const a = createPanel() as any;
-		a._sensorState = {
+		const el = document.createElement("epp-live-sidebar") as any;
+		el.sensorState = {
 			occupancy: false,
 			static_presence: false,
 			motion_presence: false,
+			target_presence: false,
 			illuminance: null,
 			temperature: null,
 			humidity: null,
 			co2: null,
 		};
-		const result = a._renderLiveSidebar();
+		const result = el.render();
 		expect(result).toBeDefined();
 	});
 
 	it("renders with expanded sensor info", () => {
-		const a = createPanel() as any;
-		a._expandedSensorInfo = "occupancy";
-		const result = a._renderLiveSidebar();
+		const el = document.createElement("epp-live-sidebar") as any;
+		el._expandedSensorInfo = "occupancy";
+		const result = el.render();
 		expect(result).toBeDefined();
 	});
 
 	it("renders without configured zones (still shows rest-of-room)", () => {
-		const a = createPanel() as any;
-		a._zoneConfigs = new Array(7).fill(null);
-		const result = a._renderLiveSidebar();
+		const el = document.createElement("epp-live-sidebar") as any;
+		el.zoneConfigs = new Array(7).fill(null);
+		const result = el.render();
 		expect(result).toBeDefined();
 	});
 });
 
-describe("_renderFurnitureSidebar", () => {
+describe("epp-furniture-sidebar renders via component", () => {
+	function createFurnSidebar(
+		overrides: Record<string, any> = {},
+	): EppFurnitureSidebar {
+		const el = document.createElement("epp-furniture-sidebar") as any;
+		el.furniture = [];
+		el.selectedFurnitureId = null;
+		el.hass = {};
+		el.localize = (k: string) => k;
+		el.showCustomIconPicker = false;
+		el.customIconValue = "";
+		Object.assign(el, overrides);
+		return el as EppFurnitureSidebar;
+	}
+
 	it("renders furniture catalog", () => {
-		const a = createPanel() as any;
-		a._furniture = [];
-		const result = a._renderFurnitureSidebar();
+		const el = createFurnSidebar();
+		const result = (el as any)._renderFurnitureSidebar();
 		expect(result).toBeDefined();
 	});
 
 	it("renders with selected furniture", () => {
-		const a = createPanel() as any;
-		a._furniture = [
-			{
-				id: "f1",
-				type: "svg",
-				icon: "armchair",
-				label: "Chair",
-				x: 100,
-				y: 200,
-				width: 800,
-				height: 800,
-				rotation: 45,
-				lockAspect: false,
-			},
-		];
-		a._selectedFurnitureId = "f1";
-		const result = a._renderFurnitureSidebar();
+		const el = createFurnSidebar({
+			furniture: [
+				{
+					id: "f1",
+					type: "svg",
+					icon: "armchair",
+					label: "Chair",
+					x: 100,
+					y: 200,
+					width: 800,
+					height: 800,
+					rotation: 45,
+					lockAspect: false,
+				},
+			],
+			selectedFurnitureId: "f1",
+		});
+		const result = (el as any)._renderFurnitureSidebar();
 		expect(result).toBeDefined();
 	});
 
 	it("renders with custom icon picker open", () => {
-		const a = createPanel() as any;
-		a._showCustomIconPicker = true;
-		a._customIconValue = "mdi:lamp";
-		const result = a._renderFurnitureSidebar();
+		const el = createFurnSidebar({
+			showCustomIconPicker: true,
+			customIconValue: "mdi:lamp",
+		});
+		const result = (el as any)._renderFurnitureSidebar();
 		expect(result).toBeDefined();
 	});
 
 	it("renders with empty custom icon value", () => {
-		const a = createPanel() as any;
-		a._showCustomIconPicker = true;
-		a._customIconValue = "";
-		const result = a._renderFurnitureSidebar();
+		const el = createFurnSidebar({
+			showCustomIconPicker: true,
+			customIconValue: "",
+		});
+		const result = (el as any)._renderFurnitureSidebar();
 		expect(result).toBeDefined();
 	});
 });

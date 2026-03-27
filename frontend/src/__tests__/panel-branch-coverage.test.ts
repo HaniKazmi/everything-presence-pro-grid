@@ -6,6 +6,13 @@ import { render } from "lit";
 import { describe, expect, it, vi } from "vitest";
 import type { EPPGridPanel } from "../eppgrid-panel.js";
 import "../eppgrid-panel.js";
+import "../components/epp-editor-view.js";
+import "../components/epp-live-sidebar.js";
+import "../components/epp-zone-sidebar.js";
+import "../components/epp-settings-view.js";
+import "../components/epp-wizard.js";
+import type { EppSettingsView } from "../components/epp-settings-view.js";
+import type { EppWizard } from "../components/epp-wizard.js";
 import {
 	CELL_ROOM_BIT,
 	cellSetZone,
@@ -15,6 +22,7 @@ import {
 	initGridFromRoom,
 } from "../lib/grid.js";
 import { ZONE_COLORS, ZONE_TYPE_DEFAULTS } from "../lib/zone-defaults.js";
+import { createZoneEngineState } from "../lib/zone-engine.js";
 import { setupLocalize } from "../localize.js";
 
 function createPanel() {
@@ -61,7 +69,6 @@ function createPanel() {
 	a._showUnsavedDialog = false;
 	a._pendingNavigation = null;
 	a._saving = false;
-	a._showLiveMenu = false;
 	a._showDeleteCalibrationDialog = false;
 	a._showTemplateSave = false;
 	a._showTemplateLoad = false;
@@ -79,10 +86,7 @@ function createPanel() {
 	a._roomHandoffTimeout = ZONE_TYPE_DEFAULTS.normal.handoff_timeout;
 	a._roomEntryPoint = false;
 	a._showHitCounts = false;
-	a._expandedSensorInfo = null;
-	a._localZoneState = new Map();
-	a._targetPrev = [null, null, null];
-	a._targetGateCount = [0, 0, 0];
+	a._zoneEngineState = createZoneEngineState();
 	a._showCustomIconPicker = false;
 	a._customIconValue = "";
 	a._isPainting = false;
@@ -104,6 +108,25 @@ function createPanel() {
 	a._fovCache = null;
 	a._fovPerspective = null;
 	a._localize = setupLocalize();
+	return el;
+}
+
+function createSettingsView(
+	overrides?: Partial<Record<string, unknown>>,
+): EppSettingsView {
+	const el = document.createElement("epp-settings-view") as EppSettingsView;
+	el.grid = initGridFromRoom(3000, 4000);
+	el.perspective = [1, 0, 0, 0, 1, 0, 0, 0];
+	el.roomWidth = 3000;
+	el.roomDepth = 4000;
+	el.openAccordions = new Set();
+	el.reportingConfig = {};
+	el.offsetsConfig = {};
+	if (overrides) {
+		for (const [k, v] of Object.entries(overrides)) {
+			(el as any)[k] = v;
+		}
+	}
 	return el;
 }
 
@@ -289,11 +312,11 @@ describe("zone engine branch coverage", () => {
 				signal: 5,
 			},
 		];
-		a._targetPrev = [{ col: 5, row: 5 }, null, null]; // had previous valid position
+		a._zoneEngineState.targetPrev = [{ col: 5, row: 5 }, null, null]; // had previous valid position
 
 		a._renderVisibleCells(0, GRID_COLS - 1, 0, GRID_ROWS - 1, 10);
 		// Target should have been cleared
-		expect(a._targetPrev[0]).toBeNull();
+		expect(a._zoneEngineState.targetPrev[0]).toBeNull();
 	});
 
 	it("zone engine with occupied pending timeout via handoff", () => {
@@ -314,7 +337,7 @@ describe("zone engine branch coverage", () => {
 		};
 
 		// Set zone as occupied with handoff pending that has expired
-		a._localZoneState.set(1, {
+		a._zoneEngineState.localZoneState.set(1, {
 			occupied: true,
 			pendingSince: Date.now() / 1000 - 100, // well past timeout
 			confirmedTargets: new Set(),
@@ -325,7 +348,7 @@ describe("zone engine branch coverage", () => {
 		a._renderVisibleCells(0, GRID_COLS - 1, 0, GRID_ROWS - 1, 10);
 
 		// Zone should have been cleared by timeout
-		const st = a._localZoneState.get(1);
+		const st = a._zoneEngineState.localZoneState.get(1);
 		expect(st?.occupied).toBe(false);
 	});
 
@@ -347,7 +370,7 @@ describe("zone engine branch coverage", () => {
 		};
 
 		// Zone is in pending state
-		a._localZoneState.set(1, {
+		a._zoneEngineState.localZoneState.set(1, {
 			occupied: true,
 			pendingSince: Date.now() / 1000,
 			confirmedTargets: new Set(),
@@ -366,7 +389,7 @@ describe("zone engine branch coverage", () => {
 
 		a._renderVisibleCells(0, GRID_COLS - 1, 0, GRID_ROWS - 1, 10);
 
-		const st = a._localZoneState.get(1);
+		const st = a._zoneEngineState.localZoneState.get(1);
 		expect(st?.occupied).toBe(true);
 		expect(st?.pendingSince).toBeNull();
 	});
@@ -389,7 +412,7 @@ describe("zone engine branch coverage", () => {
 		};
 
 		// Zone is occupied, no pending
-		a._localZoneState.set(1, {
+		a._zoneEngineState.localZoneState.set(1, {
 			occupied: true,
 			pendingSince: null,
 			confirmedTargets: new Set([0]),
@@ -400,7 +423,7 @@ describe("zone engine branch coverage", () => {
 
 		a._renderVisibleCells(0, GRID_COLS - 1, 0, GRID_ROWS - 1, 10);
 
-		const st = a._localZoneState.get(1);
+		const st = a._zoneEngineState.localZoneState.get(1);
 		expect(st?.occupied).toBe(true);
 		expect(st?.pendingSince).not.toBeNull(); // now pending
 	});
@@ -418,8 +441,8 @@ describe("zone engine branch coverage", () => {
 		};
 
 		// No previous position (non-continuous) and zone is clear -> gating
-		a._targetPrev = [null, null, null];
-		a._targetGateCount = [1, 0, 0]; // already 1, next will be 2 -> confirmed
+		a._zoneEngineState.targetPrev = [null, null, null];
+		a._zoneEngineState.targetGateCount = [1, 0, 0]; // already 1, next will be 2 -> confirmed
 
 		a._targets = [
 			{
@@ -434,7 +457,7 @@ describe("zone engine branch coverage", () => {
 		a._renderVisibleCells(0, GRID_COLS - 1, 0, GRID_ROWS - 1, 10);
 
 		// Gate should be 0 after confirming
-		expect(a._targetGateCount[0]).toBe(0);
+		expect(a._zoneEngineState.targetGateCount[0]).toBe(0);
 	});
 
 	it("handles target with previous position on inside cell for zone tracking", () => {
@@ -456,8 +479,8 @@ describe("zone engine branch coverage", () => {
 		}
 
 		// Set previous position in zone 1 (valid inside cell)
-		a._targetPrev = [{ col: 10, row: 3 }, null, null];
-		a._localZoneState.set(1, {
+		a._zoneEngineState.targetPrev = [{ col: 10, row: 3 }, null, null];
+		a._zoneEngineState.localZoneState.set(1, {
 			occupied: true,
 			pendingSince: null,
 			confirmedTargets: new Set([0]),
@@ -505,19 +528,26 @@ describe("zone engine branch coverage", () => {
 // =========================================================
 // _renderWizardCorners: branches for offset update on null corner
 // =========================================================
-describe("wizard corner offset edge cases", () => {
+describe("wizard corner offset edge cases (via EppWizard)", () => {
 	it("offset input on null corner does nothing", () => {
-		const a = createPanel() as any;
-		a._wizardCorners = [null, null, null, null];
-		a._wizardCornerIndex = 0;
-		a._rawTargets = [
-			{
-				raw_x: 0,
-				raw_y: 0,
-			},
-		];
+		const el = document.createElement("epp-wizard") as any;
+		el.hass = { callWS: vi.fn().mockResolvedValue({}) };
+		el.selectedMac = "";
+		el.rawTargets = [{ raw_x: 0, raw_y: 0 }];
+		el.sensorState = { occupancy: false };
+		el.devices = [];
+		el.localize = (k: string) => k;
+		el._setupStep = "corners";
+		el._wizardCornerIndex = 0;
+		el._wizardCorners = [null, null, null, null];
+		el._wizardRoomWidth = 3000;
+		el._wizardRoomDepth = 4000;
+		el._wizardCapturing = false;
+		el._wizardOffsetSide = "";
+		el._wizardOffsetFb = "";
+		el._smoothBuffer = [];
 
-		const tpl = a._renderWizardCorners();
+		const tpl = el._renderWizardCorners();
 		const c = document.createElement("div");
 		document.body.appendChild(c);
 		render(tpl, c);
@@ -731,22 +761,26 @@ describe("_renderSaveCancelButtons save handler branch", () => {
 // =========================================================
 describe("_renderDetectionRanges auto range edge cases", () => {
 	it("target auto with zero autoRange", () => {
-		const a = createPanel() as any;
-		a._targetAutoRange = true;
-		a._roomWidth = 0;
-		a._roomDepth = 0;
-		a._perspective = null;
-		const tpl = a._renderDetectionRanges();
+		const sv = createSettingsView({
+			targetAutoRange: true,
+			roomWidth: 0,
+			roomDepth: 0,
+			perspective: null,
+			grid: new Uint8Array(GRID_CELL_COUNT),
+		});
+		const tpl = (sv as any).renderDetectionRanges();
 		expect(tpl).toBeDefined();
 	});
 
 	it("static auto with zero autoRange", () => {
-		const a = createPanel() as any;
-		a._staticAutoRange = true;
-		a._roomWidth = 0;
-		a._roomDepth = 0;
-		a._perspective = null;
-		const tpl = a._renderDetectionRanges();
+		const sv = createSettingsView({
+			staticAutoRange: true,
+			roomWidth: 0,
+			roomDepth: 0,
+			perspective: null,
+			grid: new Uint8Array(GRID_CELL_COUNT),
+		});
+		const tpl = (sv as any).renderDetectionRanges();
 		expect(tpl).toBeDefined();
 	});
 });
@@ -756,20 +790,19 @@ describe("_renderDetectionRanges auto range edge cases", () => {
 // =========================================================
 describe("_renderReporting fallback branches", () => {
 	it("uses fallback values when reporting config is empty", () => {
-		const a = createPanel() as any;
-		a._reportingConfig = {};
-		const tpl = a._renderReporting();
+		const sv = createSettingsView({ reportingConfig: {} });
+		const tpl = (sv as any).renderReporting();
 		expect(tpl).toBeDefined();
 	});
 });
 
 // =========================================================
-// _renderLiveSidebar: env sensor partial branches
+// epp-live-sidebar: env sensor partial branches
 // =========================================================
-describe("_renderLiveSidebar env sensor branches", () => {
+describe("epp-live-sidebar env sensor branches", () => {
 	it("renders with only illuminance available", () => {
-		const a = createPanel() as any;
-		a._sensorState = {
+		const el = document.createElement("epp-live-sidebar") as any;
+		el.sensorState = {
 			occupancy: true,
 			static_presence: true,
 			motion_presence: true,
@@ -779,19 +812,20 @@ describe("_renderLiveSidebar env sensor branches", () => {
 			humidity: null,
 			co2: null,
 		};
-		const tpl = a._renderLiveSidebar();
+		const tpl = el.render();
 		expect(tpl).toBeDefined();
 	});
 
 	it("renders zone with target count = 1 (singular)", () => {
-		const a = createPanel() as any;
-		a._zoneConfigs[0] = { name: "Z1", color: ZONE_COLORS[0], type: "normal" };
-		a._zoneState = {
+		const el = document.createElement("epp-live-sidebar") as any;
+		el.zoneConfigs = new Array(7).fill(null);
+		el.zoneConfigs[0] = { name: "Z1", color: ZONE_COLORS[0], type: "normal" };
+		el.zoneState = {
 			occupancy: { 1: true },
 			target_counts: { 1: 1 },
 			frame_count: 10,
 		};
-		const tpl = a._renderLiveSidebar();
+		const tpl = el.render();
 		expect(tpl).toBeDefined();
 	});
 });
@@ -801,13 +835,27 @@ describe("_renderLiveSidebar env sensor branches", () => {
 // =========================================================
 describe("_renderZoneSidebar boundary occupancy glow", () => {
 	it("renders boundary with occupancy glow", () => {
-		const a = createPanel() as any;
-		a._localZoneState.set(0, {
-			occupied: true,
-			pendingSince: null,
-			confirmedTargets: new Set(),
-		});
-		const tpl = a._renderZoneSidebar();
+		const el = document.createElement("epp-zone-sidebar") as any;
+		el.zoneConfigs = new Array(7).fill(null);
+		el.activeZone = 0;
+		el.roomType = "normal";
+		el.roomTrigger = ZONE_TYPE_DEFAULTS.normal.trigger;
+		el.roomRenew = ZONE_TYPE_DEFAULTS.normal.renew;
+		el.roomTimeout = ZONE_TYPE_DEFAULTS.normal.timeout;
+		el.roomHandoffTimeout = ZONE_TYPE_DEFAULTS.normal.handoff_timeout;
+		el.roomEntryPoint = false;
+		el.localZoneState = new Map([
+			[
+				0,
+				{
+					occupied: true,
+					pendingSince: null,
+					confirmedTargets: new Set(),
+				},
+			],
+		]);
+		el.localize = (k: string) => k;
+		const tpl = el._renderZoneSidebar();
 		expect(tpl).toBeDefined();
 	});
 });
@@ -816,10 +864,25 @@ describe("_renderZoneSidebar boundary occupancy glow", () => {
 // stopPropagation handlers on boundary/zone type controls
 // =========================================================
 describe("stopPropagation handlers coverage", () => {
+	function createSidebar(overrides: Record<string, any> = {}) {
+		const el = document.createElement("epp-zone-sidebar") as any;
+		el.zoneConfigs = new Array(7).fill(null);
+		el.activeZone = 0;
+		el.roomType = "normal";
+		el.roomTrigger = ZONE_TYPE_DEFAULTS.normal.trigger;
+		el.roomRenew = ZONE_TYPE_DEFAULTS.normal.renew;
+		el.roomTimeout = ZONE_TYPE_DEFAULTS.normal.timeout;
+		el.roomHandoffTimeout = ZONE_TYPE_DEFAULTS.normal.handoff_timeout;
+		el.roomEntryPoint = false;
+		el.localZoneState = new Map();
+		el.localize = (k: string) => k;
+		Object.assign(el, overrides);
+		return el;
+	}
+
 	it("boundary type select click calls stopPropagation", () => {
-		const a = createPanel() as any;
-		a._roomType = "custom";
-		const tpl = a._renderBoundaryTypeControls();
+		const s = createSidebar({ roomType: "custom" });
+		const tpl = (s as any)._renderBoundaryTypeControls();
 		const c = document.createElement("div");
 		document.body.appendChild(c);
 		render(tpl, c);
@@ -854,7 +917,7 @@ describe("stopPropagation handlers coverage", () => {
 	});
 
 	it("zone type controls click calls stopPropagation", () => {
-		const a = createPanel() as any;
+		const s = createSidebar();
 		const zone = {
 			name: "Z1",
 			color: "#ff0000",
@@ -864,8 +927,7 @@ describe("stopPropagation handlers coverage", () => {
 			timeout: 10,
 			handoff_timeout: 3,
 		};
-		a._zoneConfigs[0] = zone;
-		const tpl = a._renderZoneTypeControls(zone, 0);
+		const tpl = (s as any)._renderZoneTypeControls(zone, 0);
 		const c = document.createElement("div");
 		document.body.appendChild(c);
 		render(tpl, c);
@@ -926,18 +988,33 @@ describe("furniture overlay all handle events", () => {
 			.spyOn(window, "addEventListener")
 			.mockImplementation(() => {});
 
-		const handles = c.querySelectorAll(".furn-handle");
-		handles.forEach((h: any) => {
-			h.dispatchEvent(
-				new PointerEvent("pointerdown", { clientX: 500, clientY: 300 }),
-			);
-		});
+		const overlay = c.querySelector("epp-furniture-overlay") as any;
+		if (overlay?.shadowRoot) {
+			const handles = overlay.shadowRoot.querySelectorAll(".furn-handle");
+			handles.forEach((h: any) => {
+				h.dispatchEvent(
+					new PointerEvent("pointerdown", {
+						clientX: 500,
+						clientY: 300,
+						bubbles: true,
+						composed: true,
+					}),
+				);
+			});
 
-		const rotateHandle = c.querySelector(".furn-rotate-handle");
-		if (rotateHandle) {
-			rotateHandle.dispatchEvent(
-				new PointerEvent("pointerdown", { clientX: 500, clientY: 300 }),
+			const rotateHandle = overlay.shadowRoot.querySelector(
+				".furn-rotate-handle",
 			);
+			if (rotateHandle) {
+				rotateHandle.dispatchEvent(
+					new PointerEvent("pointerdown", {
+						clientX: 500,
+						clientY: 300,
+						bubbles: true,
+						composed: true,
+					}),
+				);
+			}
 		}
 
 		addSpy.mockRestore();
@@ -950,11 +1027,11 @@ describe("furniture overlay all handle events", () => {
 // =========================================================
 describe("_infoTip DOM click handler", () => {
 	it("click toggles tooltip display", () => {
-		const a = createPanel() as any;
+		const sv = createSettingsView() as any;
 
 		// Create mock shadowRoot that will be used by the handler
 		const tooltips: HTMLElement[] = [];
-		Object.defineProperty(a, "shadowRoot", {
+		Object.defineProperty(sv, "shadowRoot", {
 			value: {
 				querySelectorAll: (sel: string) => {
 					if (sel === ".setting-info-tooltip") return tooltips;
@@ -964,7 +1041,7 @@ describe("_infoTip DOM click handler", () => {
 			configurable: true,
 		});
 
-		const tpl = a._infoTip("Test tip");
+		const tpl = sv.infoTip("Test tip");
 		const c = document.createElement("div");
 		document.body.appendChild(c);
 		render(tpl, c);
@@ -1239,23 +1316,31 @@ describe("_onFurnitureDrag edge case branches", () => {
 // =========================================================
 // _renderWizardCorners: branches for corner chip offset restore
 // =========================================================
-describe("corner chip click with null offsets", () => {
+describe("corner chip click with null offsets (via EppWizard)", () => {
 	it("corner chip click on corner with zero offsets", () => {
-		const a = createPanel() as any;
-		a._wizardCorners = [
+		const el = document.createElement("epp-wizard") as any;
+		el.hass = { callWS: vi.fn().mockResolvedValue({}) };
+		el.selectedMac = "";
+		el.rawTargets = [{ raw_x: 0, raw_y: 0 }];
+		el.sensorState = { occupancy: false };
+		el.devices = [];
+		el.localize = (k: string) => k;
+		el._setupStep = "corners";
+		el._wizardCornerIndex = 0;
+		el._wizardCorners = [
 			{ raw_x: 100, raw_y: 200, offset_side: 0, offset_fb: 0 },
 			null,
 			null,
 			null,
 		];
-		a._rawTargets = [
-			{
-				raw_x: 0,
-				raw_y: 0,
-			},
-		];
+		el._wizardRoomWidth = 3000;
+		el._wizardRoomDepth = 4000;
+		el._wizardCapturing = false;
+		el._wizardOffsetSide = "";
+		el._wizardOffsetFb = "";
+		el._smoothBuffer = [];
 
-		const tpl = a._renderWizardCorners();
+		const tpl = el._renderWizardCorners();
 		const c = document.createElement("div");
 		document.body.appendChild(c);
 		render(tpl, c);
@@ -1264,8 +1349,8 @@ describe("corner chip click with null offsets", () => {
 		if (chips.length > 0) {
 			(chips[0] as HTMLElement).click();
 			// offset_side and offset_fb are 0 -> empty strings
-			expect(a._wizardOffsetSide).toBe("");
-			expect(a._wizardOffsetFb).toBe("");
+			expect(el._wizardOffsetSide).toBe("");
+			expect(el._wizardOffsetFb).toBe("");
 		}
 		document.body.removeChild(c);
 	});
@@ -1294,18 +1379,19 @@ describe("save cancel buttons: saving state branch", () => {
 });
 
 // =========================================================
-// _renderLiveSidebar: zone with target_counts singular/plural
+// epp-live-sidebar: zone with target_counts singular/plural
 // =========================================================
-describe("_renderLiveSidebar target count branches", () => {
+describe("epp-live-sidebar target count branches", () => {
 	it("renders zone with 0 targets", () => {
-		const a = createPanel() as any;
-		a._zoneConfigs[0] = { name: "Z1", color: ZONE_COLORS[0], type: "normal" };
-		a._zoneState = {
+		const el = document.createElement("epp-live-sidebar") as any;
+		el.zoneConfigs = new Array(7).fill(null);
+		el.zoneConfigs[0] = { name: "Z1", color: ZONE_COLORS[0], type: "normal" };
+		el.zoneState = {
 			occupancy: { 1: false },
 			target_counts: { 1: 0 },
 			frame_count: 10,
 		};
-		const tpl = a._renderLiveSidebar();
+		const tpl = el.render();
 		expect(tpl).toBeDefined();
 	});
 });
@@ -1335,25 +1421,22 @@ describe("editor target signal display branches", () => {
 // =========================================================
 // _renderUncalibratedFov: target color fallback
 // =========================================================
-describe("uncalibrated FOV target color", () => {
+describe("uncalibrated FOV target color (via EppWizard)", () => {
 	it("uses fallback color for target index >= 3", () => {
-		const a = createPanel() as any;
-		a._perspective = null;
-		a._rawTargets = [
-			{
-				raw_x: 100,
-				raw_y: 200,
-			},
-			{
-				raw_x: 200,
-				raw_y: 300,
-			},
-			{
-				raw_x: 300,
-				raw_y: 400,
-			},
+		const el = document.createElement("epp-wizard") as any;
+		el.hass = { callWS: vi.fn().mockResolvedValue({}) };
+		el.selectedMac = "";
+		el.rawTargets = [
+			{ raw_x: 100, raw_y: 200 },
+			{ raw_x: 200, raw_y: 300 },
+			{ raw_x: 300, raw_y: 400 },
 		];
-		const tpl = a._renderUncalibratedFov();
+		el.sensorState = { occupancy: false };
+		el.devices = [];
+		el.localize = (k: string) => k;
+		el.mode = "uncalibrated-fov";
+
+		const tpl = el._renderUncalibratedFov();
 		expect(tpl).toBeDefined();
 	});
 });
@@ -1400,27 +1483,61 @@ describe("live grid hit count and signal", () => {
 // =========================================================
 describe("zone sidebar occupancy glow branch", () => {
 	it("zone color dot shows glow when zone is occupied", () => {
-		const a = createPanel() as any;
-		a._zoneConfigs[0] = { name: "Z1", color: ZONE_COLORS[0], type: "normal" };
-		a._activeZone = 0; // boundary selected, not zone 1
-		a._localZoneState.set(1, {
-			occupied: true,
-			pendingSince: null,
-			confirmedTargets: new Set(),
-		});
+		const el = document.createElement("epp-zone-sidebar") as any;
+		el.zoneConfigs = [
+			{ name: "Z1", color: ZONE_COLORS[0], type: "normal" },
+			null,
+			null,
+			null,
+			null,
+			null,
+			null,
+		];
+		el.activeZone = 0; // boundary selected, not zone 1
+		el.roomType = "normal";
+		el.roomTrigger = ZONE_TYPE_DEFAULTS.normal.trigger;
+		el.roomRenew = ZONE_TYPE_DEFAULTS.normal.renew;
+		el.roomTimeout = ZONE_TYPE_DEFAULTS.normal.timeout;
+		el.roomHandoffTimeout = ZONE_TYPE_DEFAULTS.normal.handoff_timeout;
+		el.roomEntryPoint = false;
+		el.localZoneState = new Map([
+			[
+				1,
+				{
+					occupied: true,
+					pendingSince: null,
+					confirmedTargets: new Set(),
+				},
+			],
+		]);
+		el.localize = (k: string) => k;
 
-		const tpl = a._renderZoneSidebar();
+		const tpl = el._renderZoneSidebar();
 		expect(tpl).toBeDefined();
 	});
 
 	it("boundary dot shows glow when boundary zone occupied", () => {
-		const a = createPanel() as any;
-		a._localZoneState.set(0, {
-			occupied: true,
-			pendingSince: null,
-			confirmedTargets: new Set(),
-		});
-		const tpl = a._renderZoneSidebar();
+		const el = document.createElement("epp-zone-sidebar") as any;
+		el.zoneConfigs = new Array(7).fill(null);
+		el.activeZone = 0;
+		el.roomType = "normal";
+		el.roomTrigger = ZONE_TYPE_DEFAULTS.normal.trigger;
+		el.roomRenew = ZONE_TYPE_DEFAULTS.normal.renew;
+		el.roomTimeout = ZONE_TYPE_DEFAULTS.normal.timeout;
+		el.roomHandoffTimeout = ZONE_TYPE_DEFAULTS.normal.handoff_timeout;
+		el.roomEntryPoint = false;
+		el.localZoneState = new Map([
+			[
+				0,
+				{
+					occupied: true,
+					pendingSince: null,
+					confirmedTargets: new Set(),
+				},
+			],
+		]);
+		el.localize = (k: string) => k;
+		const tpl = el._renderZoneSidebar();
 		expect(tpl).toBeDefined();
 	});
 });
@@ -1803,9 +1920,9 @@ describe("_renderVisibleCells debug log branches", () => {
 				signal: 5,
 			},
 		];
-		a._targetPrev = [null, null, null];
-		a._targetGateCount = [0, 0, 0];
-		a._localZoneState = new Map();
+		a._zoneEngineState.targetPrev = [null, null, null];
+		a._zoneEngineState.targetGateCount = [0, 0, 0];
+		a._zoneEngineState.localZoneState = new Map();
 
 		a._renderVisibleCells(0, GRID_COLS - 1, 0, GRID_ROWS - 1, 10);
 
@@ -1821,9 +1938,9 @@ describe("_renderVisibleCells debug log branches", () => {
 		// Set prev to "no targets | all clear" so the next call with no targets returns early
 		a._debugLogPrev = "no targets | all clear";
 		a._targets = [];
-		a._targetPrev = [null, null, null];
-		a._targetGateCount = [0, 0, 0];
-		a._localZoneState = new Map();
+		a._zoneEngineState.targetPrev = [null, null, null];
+		a._zoneEngineState.targetGateCount = [0, 0, 0];
+		a._zoneEngineState.localZoneState = new Map();
 
 		const result = a._renderVisibleCells(
 			0,
@@ -1854,9 +1971,9 @@ describe("_renderVisibleCells debug log branches", () => {
 		a._debugLogLines = [];
 		a._debugLogPrev = null;
 		a._targets = [];
-		a._targetPrev = [null, null, null];
-		a._targetGateCount = [0, 0, 0];
-		a._localZoneState = new Map([
+		a._zoneEngineState.targetPrev = [null, null, null];
+		a._zoneEngineState.targetGateCount = [0, 0, 0];
+		a._zoneEngineState.localZoneState = new Map([
 			[
 				1,
 				{
@@ -1884,9 +2001,9 @@ describe("_renderVisibleCells debug log branches", () => {
 		a._debugLogLines = [];
 		a._debugLogPrev = null;
 		a._targets = [];
-		a._targetPrev = [null, null, null];
-		a._targetGateCount = [0, 0, 0];
-		a._localZoneState = new Map([
+		a._zoneEngineState.targetPrev = [null, null, null];
+		a._zoneEngineState.targetGateCount = [0, 0, 0];
+		a._zoneEngineState.localZoneState = new Map([
 			[
 				1,
 				{
@@ -1910,9 +2027,9 @@ describe("_renderVisibleCells debug log branches", () => {
 		a._debugLogLines = new Array(100).fill("old");
 		a._debugLogPrev = null;
 		a._targets = [];
-		a._targetPrev = [null, null, null];
-		a._targetGateCount = [0, 0, 0];
-		a._localZoneState = new Map();
+		a._zoneEngineState.targetPrev = [null, null, null];
+		a._zoneEngineState.targetGateCount = [0, 0, 0];
+		a._zoneEngineState.localZoneState = new Map();
 
 		a._renderVisibleCells(0, GRID_COLS - 1, 0, GRID_ROWS - 1, 10);
 
@@ -1926,9 +2043,9 @@ describe("_renderVisibleCells debug log branches", () => {
 		a._debugLogLines = [];
 		a._debugLogPrev = null;
 		a._targets = [];
-		a._targetPrev = [null, null, null];
-		a._targetGateCount = [0, 0, 0];
-		a._localZoneState = new Map();
+		a._zoneEngineState.targetPrev = [null, null, null];
+		a._zoneEngineState.targetGateCount = [0, 0, 0];
+		a._zoneEngineState.localZoneState = new Map();
 
 		a._renderVisibleCells(0, GRID_COLS - 1, 0, GRID_ROWS - 1, 10);
 
@@ -1954,9 +2071,9 @@ describe("_renderVisibleCells debug log branches", () => {
 				signal: 0, // zero signal — skipped
 			},
 		];
-		a._targetPrev = [null, null, null];
-		a._targetGateCount = [0, 0, 0];
-		a._localZoneState = new Map();
+		a._zoneEngineState.targetPrev = [null, null, null];
+		a._zoneEngineState.targetGateCount = [0, 0, 0];
+		a._zoneEngineState.localZoneState = new Map();
 
 		a._renderVisibleCells(0, GRID_COLS - 1, 0, GRID_ROWS - 1, 10);
 

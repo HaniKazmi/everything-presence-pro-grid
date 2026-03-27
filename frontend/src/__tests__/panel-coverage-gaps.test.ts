@@ -7,6 +7,16 @@ import { render } from "lit";
 import { describe, expect, it, vi } from "vitest";
 import type { EPPGridPanel } from "../eppgrid-panel.js";
 import "../eppgrid-panel.js";
+import "../components/epp-live-sidebar.js";
+import "../components/epp-live-view.js";
+import type { EppLiveView } from "../components/epp-live-view.js";
+import "../components/epp-zone-sidebar.js";
+import "../components/epp-furniture-sidebar.js";
+import "../components/epp-settings-view.js";
+import "../components/epp-wizard.js";
+import "../components/epp-grid.js";
+import type { EppFurnitureSidebar } from "../components/epp-furniture-sidebar.js";
+import type { EppSettingsView } from "../components/epp-settings-view.js";
 import {
 	CELL_ROOM_BIT,
 	cellSetZone,
@@ -16,6 +26,7 @@ import {
 	initGridFromRoom,
 } from "../lib/grid.js";
 import { ZONE_COLORS, ZONE_TYPE_DEFAULTS } from "../lib/zone-defaults.js";
+import { createZoneEngineState } from "../lib/zone-engine.js";
 
 function createPanel(): EPPGridPanel {
 	const el = document.createElement("eppgrid-panel") as EPPGridPanel;
@@ -61,7 +72,6 @@ function createPanel(): EPPGridPanel {
 	a._showUnsavedDialog = false;
 	a._pendingNavigation = null;
 	a._saving = false;
-	a._showLiveMenu = false;
 	a._showDeleteCalibrationDialog = false;
 	a._showTemplateSave = false;
 	a._showTemplateLoad = false;
@@ -79,10 +89,7 @@ function createPanel(): EPPGridPanel {
 	a._roomHandoffTimeout = ZONE_TYPE_DEFAULTS.normal.handoff_timeout;
 	a._roomEntryPoint = false;
 	a._showHitCounts = false;
-	a._expandedSensorInfo = null;
-	a._localZoneState = new Map();
-	a._targetPrev = [null, null, null];
-	a._targetGateCount = [0, 0, 0];
+	a._zoneEngineState = createZoneEngineState();
 	a._showCustomIconPicker = false;
 	a._customIconValue = "";
 	a._isPainting = false;
@@ -106,11 +113,44 @@ function createPanel(): EPPGridPanel {
 	return el;
 }
 
+function createSettingsView(
+	overrides?: Partial<Record<string, unknown>>,
+): EppSettingsView {
+	const el = document.createElement("epp-settings-view") as EppSettingsView;
+	el.grid = initGridFromRoom(3000, 4000);
+	el.perspective = [1, 0, 0, 0, 1, 0, 0, 0];
+	el.roomWidth = 3000;
+	el.roomDepth = 4000;
+	el.openAccordions = new Set();
+	el.reportingConfig = {};
+	el.offsetsConfig = {};
+	if (overrides) {
+		for (const [k, v] of Object.entries(overrides)) {
+			(el as any)[k] = v;
+		}
+	}
+	return el;
+}
+
 function renderTo(tpl: any): HTMLDivElement {
 	const c = document.createElement("div");
 	document.body.appendChild(c);
 	render(tpl, c);
 	return c;
+}
+
+function createLiveView(
+	overrides?: Partial<Record<string, unknown>>,
+): EppLiveView {
+	const el = document.createElement("epp-live-view") as EppLiveView;
+	el.perspective = [1, 0, 0, 0, 1, 0, 0, 0];
+	el.zoneConfigs = new Array(7).fill(null);
+	if (overrides) {
+		for (const [k, v] of Object.entries(overrides)) {
+			(el as any)[k] = v;
+		}
+	}
+	return el;
 }
 
 // =========================================================
@@ -245,22 +285,25 @@ describe("_renderLiveGrid target rendering branches", () => {
 		expect(tpl).toBeDefined();
 	});
 
-	it("renders with grid metrics", () => {
-		const a = createPanel() as any;
-		const tpl = a._renderGridDimensions();
+	it("renders with grid metrics (via EppGrid)", () => {
+		const el = document.createElement("epp-grid") as any;
+		el.grid = initGridFromRoom(3000, 4000);
+		el.roomWidth = 3000;
+		el.roomDepth = 4000;
+		el.perspective = [1, 0, 0, 0, 1, 0, 0, 0];
+		el.localize = (k: string) => k;
+		const tpl = el._renderGridDimensions();
 		expect(tpl).toBeDefined();
 	});
 });
 
 // =========================================================
-// _renderLiveOverview: live menu with perspective branches
+// epp-live-view menu branches (extracted from _renderLiveOverview)
 // =========================================================
-describe("_renderLiveOverview menu branches", () => {
+describe("epp-live-view menu branches", () => {
 	it("renders menu with furniture button when perspective exists", () => {
-		const a = createPanel() as any;
-		a._showLiveMenu = true;
-		a._perspective = [1, 0, 0, 0, 1, 0, 0, 0];
-		const tpl = a._renderLiveOverview();
+		const lv = createLiveView({ showMenu: true });
+		const tpl = lv.render();
 		const c = renderTo(tpl);
 
 		const items = c.querySelectorAll(".sidebar-menu-item");
@@ -269,10 +312,8 @@ describe("_renderLiveOverview menu branches", () => {
 	});
 
 	it("renders menu without zone/furniture buttons when no perspective", () => {
-		const a = createPanel() as any;
-		a._showLiveMenu = true;
-		a._perspective = null;
-		const tpl = a._renderLiveOverview();
+		const lv = createLiveView({ perspective: null, showMenu: true });
+		const tpl = lv.render();
 		const c = renderTo(tpl);
 
 		// Should have fewer menu items
@@ -281,94 +322,105 @@ describe("_renderLiveOverview menu branches", () => {
 		document.body.removeChild(c);
 	});
 
-	it("furniture menu item navigates to editor furniture tab", () => {
-		const a = createPanel() as any;
-		a._showLiveMenu = true;
-		a._perspective = [1, 0, 0, 0, 1, 0, 0, 0];
-		const tpl = a._renderLiveOverview();
+	it("furniture menu item fires navigate-view event", () => {
+		const lv = createLiveView({ showMenu: true });
+		const tpl = lv.render();
 		const c = renderTo(tpl);
 
 		const items = c.querySelectorAll(".sidebar-menu-item");
-		// Click furniture item (usually index 1)
+		let detail: any = null;
+		lv.addEventListener("navigate-view", ((e: CustomEvent) => {
+			detail = e.detail;
+		}) as EventListener);
 		for (let i = 0; i < items.length; i++) {
 			const text = items[i].textContent || "";
-			if (text.includes("Furniture")) {
+			if (text.includes("menu.furniture")) {
 				(items[i] as HTMLElement).click();
-				expect(a._view).toBe("editor");
-				expect(a._sidebarTab).toBe("furniture");
+				expect(detail).toEqual({ view: "editor", sidebarTab: "furniture" });
 				break;
 			}
 		}
 		document.body.removeChild(c);
 	});
 
-	it("settings menu item navigates to settings", () => {
-		const a = createPanel() as any;
-		a._showLiveMenu = true;
-		const tpl = a._renderLiveOverview();
+	it("settings menu item fires navigate-view event", () => {
+		const lv = createLiveView({ showMenu: true });
+		const tpl = lv.render();
 		const c = renderTo(tpl);
 
 		const items = c.querySelectorAll(".sidebar-menu-item");
+		let detail: any = null;
+		lv.addEventListener("navigate-view", ((e: CustomEvent) => {
+			detail = e.detail;
+		}) as EventListener);
 		for (let i = 0; i < items.length; i++) {
 			const text = items[i].textContent || "";
-			if (text.includes("Settings")) {
+			if (text.includes("menu.settings")) {
 				(items[i] as HTMLElement).click();
-				expect(a._view).toBe("settings");
+				expect(detail).toEqual({ view: "settings", sidebarTab: undefined });
 				break;
 			}
 		}
 		document.body.removeChild(c);
 	});
 
-	it("delete calibration menu item shows dialog", () => {
-		const a = createPanel() as any;
-		a._showLiveMenu = true;
-		a._perspective = [1, 0, 0, 0, 1, 0, 0, 0];
-		const tpl = a._renderLiveOverview();
+	it("delete calibration menu item fires live-view-action event", () => {
+		const lv = createLiveView({ showMenu: true });
+		const tpl = lv.render();
 		const c = renderTo(tpl);
 
 		const items = c.querySelectorAll(".sidebar-menu-item");
+		let detail: any = null;
+		lv.addEventListener("live-view-action", ((e: CustomEvent) => {
+			detail = e.detail;
+		}) as EventListener);
 		for (let i = 0; i < items.length; i++) {
 			const text = items[i].textContent || "";
-			if (text.includes("Delete")) {
+			if (text.includes("menu.delete_calibration")) {
 				(items[i] as HTMLElement).click();
-				expect(a._showDeleteCalibrationDialog).toBe(true);
+				expect(detail).toEqual({ action: "show-delete-calibration" });
 				break;
 			}
 		}
 		document.body.removeChild(c);
 	});
 
-	it("save template menu item shows dialog", () => {
-		const a = createPanel() as any;
-		a._showLiveMenu = true;
-		const tpl = a._renderLiveOverview();
+	it("save template menu item fires live-view-action event", () => {
+		const lv = createLiveView({ showMenu: true });
+		const tpl = lv.render();
 		const c = renderTo(tpl);
 
 		const items = c.querySelectorAll(".sidebar-menu-item");
+		let detail: any = null;
+		lv.addEventListener("live-view-action", ((e: CustomEvent) => {
+			detail = e.detail;
+		}) as EventListener);
 		for (let i = 0; i < items.length; i++) {
 			const text = items[i].textContent || "";
-			if (text.includes("Save template")) {
+			if (text.includes("dialogs.save_template")) {
 				(items[i] as HTMLElement).click();
-				expect(a._showTemplateSave).toBe(true);
+				expect(detail).toEqual({ action: "show-template-save" });
 				break;
 			}
 		}
 		document.body.removeChild(c);
 	});
 
-	it("load template menu item shows dialog", () => {
-		const a = createPanel() as any;
-		a._showLiveMenu = true;
-		const tpl = a._renderLiveOverview();
+	it("load template menu item fires live-view-action event", () => {
+		const lv = createLiveView({ showMenu: true });
+		const tpl = lv.render();
 		const c = renderTo(tpl);
 
 		const items = c.querySelectorAll(".sidebar-menu-item");
+		let detail: any = null;
+		lv.addEventListener("live-view-action", ((e: CustomEvent) => {
+			detail = e.detail;
+		}) as EventListener);
 		for (let i = 0; i < items.length; i++) {
 			const text = items[i].textContent || "";
-			if (text.includes("Load template")) {
+			if (text.includes("dialogs.load_template")) {
 				(items[i] as HTMLElement).click();
-				expect(a._showTemplateLoad).toBe(true);
+				expect(detail).toEqual({ action: "show-template-load" });
 				break;
 			}
 		}
@@ -381,9 +433,8 @@ describe("_renderLiveOverview menu branches", () => {
 // =========================================================
 describe("_renderDetectionRanges branches", () => {
 	it("renders with auto range and static auto range toggling", () => {
-		const a = createPanel() as any;
-		a._staticAutoRange = true;
-		const tpl = a._renderDetectionRanges();
+		const sv = createSettingsView({ staticAutoRange: true });
+		const tpl = (sv as any).renderDetectionRanges();
 		const c = renderTo(tpl);
 
 		// Find static auto range toggle
@@ -392,15 +443,14 @@ describe("_renderDetectionRanges branches", () => {
 			const staticCb = checkboxes[1] as HTMLInputElement;
 			staticCb.checked = false;
 			staticCb.dispatchEvent(new Event("change"));
-			expect(a._staticAutoRange).toBe(false);
+			expect(sv.staticAutoRange).toBe(false);
 		}
 		document.body.removeChild(c);
 	});
 
 	it("static min distance slider updates", () => {
-		const a = createPanel() as any;
-		a._staticAutoRange = false;
-		const tpl = a._renderDetectionRanges();
+		const sv = createSettingsView({ staticAutoRange: false });
+		const tpl = (sv as any).renderDetectionRanges();
 		const c = renderTo(tpl);
 
 		const ranges = c.querySelectorAll(".setting-range");
@@ -420,9 +470,8 @@ describe("_renderDetectionRanges branches", () => {
 	});
 
 	it("static max distance slider updates", () => {
-		const a = createPanel() as any;
-		a._staticAutoRange = false;
-		const tpl = a._renderDetectionRanges();
+		const sv = createSettingsView({ staticAutoRange: false });
+		const tpl = (sv as any).renderDetectionRanges();
 		const c = renderTo(tpl);
 
 		const ranges = c.querySelectorAll(".setting-range");
@@ -446,8 +495,8 @@ describe("_renderDetectionRanges branches", () => {
 // =========================================================
 describe("_renderSensitivities DOM events", () => {
 	it("all range inputs fire input handler without error", () => {
-		const a = createPanel() as any;
-		const tpl = a._renderSensitivities();
+		const sv = createSettingsView();
+		const tpl = (sv as any).renderSensitivities();
 		const c = renderTo(tpl);
 
 		const ranges = c.querySelectorAll(".setting-range");
@@ -472,9 +521,8 @@ describe("_renderSensitivities DOM events", () => {
 // =========================================================
 describe("_renderEnvOffset null reading branch", () => {
 	it("handles null reading with adjusted display as dash", () => {
-		const a = createPanel() as any;
-		a._offsetsConfig = {};
-		const tpl = a._renderEnvOffset(
+		const sv = createSettingsView({ offsetsConfig: {} });
+		const tpl = (sv as any).renderEnvOffset(
 			"Test",
 			null,
 			"test_key",
@@ -490,15 +538,14 @@ describe("_renderEnvOffset null reading branch", () => {
 		// Should render with dash for adjusted value
 		const valueSpan = c.querySelector(".setting-value");
 		if (valueSpan) {
-			expect(valueSpan.textContent).toContain("—");
+			expect(valueSpan.textContent).toContain("\u2014");
 		}
 		document.body.removeChild(c);
 	});
 
 	it("fires input handler with null reading", () => {
-		const a = createPanel() as any;
-		a._offsetsConfig = {};
-		const tpl = a._renderEnvOffset(
+		const sv = createSettingsView({ offsetsConfig: {} });
+		const tpl = (sv as any).renderEnvOffset(
 			"Test",
 			null,
 			"test_key",
@@ -515,47 +562,49 @@ describe("_renderEnvOffset null reading branch", () => {
 		if (range && range.nextElementSibling) {
 			range.value = "5";
 			range.dispatchEvent(new Event("input"));
-			// With null reading, adjusted should show "—"
-			expect(range.nextElementSibling.textContent).toBe("—");
+			// With null reading, adjusted should show em-dash
+			expect(range.nextElementSibling.textContent).toBe("\u2014");
 		}
 		document.body.removeChild(c);
 	});
 });
 
 // =========================================================
-// _renderLiveSidebar zone sensor info toggle
+// epp-live-sidebar zone sensor info toggle
 // =========================================================
-describe("_renderLiveSidebar zone info toggles", () => {
+describe("epp-live-sidebar zone info toggles", () => {
 	it("toggles zone sensor info", () => {
-		const a = createPanel() as any;
-		a._zoneConfigs[0] = {
+		const el = document.createElement("epp-live-sidebar") as any;
+		el.zoneConfigs = new Array(7).fill(null);
+		el.zoneConfigs[0] = {
 			name: "Kitchen",
 			color: ZONE_COLORS[0],
 			type: "normal",
 		};
-		a._zoneState = {
+		el.perspective = [1, 0, 0, 0, 1, 0, 0, 0];
+		el.zoneState = {
 			occupancy: { 1: true },
 			target_counts: { 1: 2 },
 			frame_count: 50,
 		};
-		const tpl = a._renderLiveSidebar();
+		const tpl = el.render();
 		const c = renderTo(tpl);
 
 		const infoBtns = c.querySelectorAll(".live-sensor-info-btn");
 		// Zone info should be beyond first 4 sensor buttons (occupancy, static, motion, target)
 		if (infoBtns.length > 4) {
 			(infoBtns[4] as HTMLElement).click();
-			expect(a._expandedSensorInfo).toBe("zone_1");
+			expect(el._expandedSensorInfo).toBe("zone_1");
 		}
 		document.body.removeChild(c);
 	});
 });
 
 // =========================================================
-// _renderFurnitureOverlay pointerdown events
+// _renderFurnitureOverlay pointerdown events (via epp-furniture-overlay component)
 // =========================================================
 describe("_renderFurnitureOverlay DOM events", () => {
-	it("pointerdown on furniture item triggers move", () => {
+	it("pointerdown on furniture item triggers move via furniture-select event", () => {
 		const a = createPanel() as any;
 		a._furniture = [
 			{
@@ -577,16 +626,27 @@ describe("_renderFurnitureOverlay DOM events", () => {
 		const tpl = a._renderFurnitureOverlay(28, 0, 0, 20, 20);
 		const c = renderTo(tpl);
 
-		const item = c.querySelector(".furniture-item") as HTMLElement;
-		if (item) {
-			const addSpy = vi
-				.spyOn(window, "addEventListener")
-				.mockImplementation(() => {});
-			item.dispatchEvent(
-				new PointerEvent("pointerdown", { clientX: 500, clientY: 300 }),
-			);
-			expect(a._selectedFurnitureId).toBe("f1");
-			addSpy.mockRestore();
+		const overlay = c.querySelector("epp-furniture-overlay") as any;
+		if (overlay) {
+			const item = overlay.shadowRoot?.querySelector(
+				".furniture-item",
+			) as HTMLElement;
+			if (item) {
+				const addSpy = vi
+					.spyOn(window, "addEventListener")
+					.mockImplementation(() => {});
+				item.dispatchEvent(
+					new PointerEvent("pointerdown", {
+						clientX: 500,
+						clientY: 300,
+						bubbles: true,
+						composed: true,
+					}),
+				);
+				// The overlay fires furniture-select which the panel listens for
+				expect(a._selectedFurnitureId).toBe("f1");
+				addSpy.mockRestore();
+			}
 		}
 		document.body.removeChild(c);
 	});
@@ -613,16 +673,24 @@ describe("_renderFurnitureOverlay DOM events", () => {
 		const tpl = a._renderFurnitureOverlay(28, 0, 0, 20, 20);
 		const c = renderTo(tpl);
 
-		const handles = c.querySelectorAll(".furn-handle");
-		if (handles.length > 0) {
-			const addSpy = vi
-				.spyOn(window, "addEventListener")
-				.mockImplementation(() => {});
-			handles[0].dispatchEvent(
-				new PointerEvent("pointerdown", { clientX: 500, clientY: 300 }),
-			);
-			expect(a._dragState).not.toBeNull();
-			addSpy.mockRestore();
+		const overlay = c.querySelector("epp-furniture-overlay") as any;
+		if (overlay) {
+			const handles = overlay.shadowRoot?.querySelectorAll(".furn-handle");
+			if (handles && handles.length > 0) {
+				const addSpy = vi
+					.spyOn(window, "addEventListener")
+					.mockImplementation(() => {});
+				handles[0].dispatchEvent(
+					new PointerEvent("pointerdown", {
+						clientX: 500,
+						clientY: 300,
+						bubbles: true,
+						composed: true,
+					}),
+				);
+				expect(a._dragState).not.toBeNull();
+				addSpy.mockRestore();
+			}
 		}
 		document.body.removeChild(c);
 	});
@@ -649,16 +717,26 @@ describe("_renderFurnitureOverlay DOM events", () => {
 		const tpl = a._renderFurnitureOverlay(28, 0, 0, 20, 20);
 		const c = renderTo(tpl);
 
-		const rotateHandle = c.querySelector(".furn-rotate-handle") as HTMLElement;
-		if (rotateHandle) {
-			const addSpy = vi
-				.spyOn(window, "addEventListener")
-				.mockImplementation(() => {});
-			rotateHandle.dispatchEvent(
-				new PointerEvent("pointerdown", { clientX: 500, clientY: 300 }),
-			);
-			expect(a._dragState?.type).toBe("rotate");
-			addSpy.mockRestore();
+		const overlay = c.querySelector("epp-furniture-overlay") as any;
+		if (overlay) {
+			const rotateHandle = overlay.shadowRoot?.querySelector(
+				".furn-rotate-handle",
+			) as HTMLElement;
+			if (rotateHandle) {
+				const addSpy = vi
+					.spyOn(window, "addEventListener")
+					.mockImplementation(() => {});
+				rotateHandle.dispatchEvent(
+					new PointerEvent("pointerdown", {
+						clientX: 500,
+						clientY: 300,
+						bubbles: true,
+						composed: true,
+					}),
+				);
+				expect(a._dragState?.type).toBe("rotate");
+				addSpy.mockRestore();
+			}
 		}
 		document.body.removeChild(c);
 	});
@@ -685,12 +763,17 @@ describe("_renderFurnitureOverlay DOM events", () => {
 		const tpl = a._renderFurnitureOverlay(28, 0, 0, 20, 20);
 		const c = renderTo(tpl);
 
-		const deleteBtn = c.querySelector(".furn-delete-btn") as HTMLElement;
-		if (deleteBtn) {
-			deleteBtn.dispatchEvent(
-				new PointerEvent("pointerdown", { bubbles: true }),
-			);
-			expect(a._furniture.length).toBe(0);
+		const overlay = c.querySelector("epp-furniture-overlay") as any;
+		if (overlay) {
+			const deleteBtn = overlay.shadowRoot?.querySelector(
+				".furn-delete-btn",
+			) as HTMLElement;
+			if (deleteBtn) {
+				deleteBtn.dispatchEvent(
+					new PointerEvent("pointerdown", { bubbles: true, composed: true }),
+				);
+				expect(a._furniture.length).toBe(0);
+			}
 		}
 		document.body.removeChild(c);
 	});
@@ -770,14 +853,22 @@ describe("_renderTemplateSaveDialog DOM events", () => {
 });
 
 // =========================================================
-// _renderFurnitureSidebar: ha-icon-picker value-changed
+// epp-furniture-sidebar: ha-icon-picker value-changed
 // =========================================================
-describe("_renderFurnitureSidebar icon picker event", () => {
-	it("value-changed updates custom icon value", () => {
-		const a = createPanel() as any;
-		a._showCustomIconPicker = true;
-		a._customIconValue = "";
-		const tpl = a._renderFurnitureSidebar();
+describe("epp-furniture-sidebar icon picker event", () => {
+	it("value-changed fires custom-icon-change", () => {
+		const el = document.createElement("epp-furniture-sidebar") as any;
+		el.furniture = [];
+		el.selectedFurnitureId = null;
+		el.hass = {};
+		el.localize = (k: string) => k;
+		el.showCustomIconPicker = true;
+		el.customIconValue = "";
+
+		const handler = vi.fn();
+		el.addEventListener("custom-icon-change", handler);
+
+		const tpl = el._renderFurnitureSidebar();
 		const c = renderTo(tpl);
 
 		const picker = c.querySelector("ha-icon-picker") as HTMLElement;
@@ -785,7 +876,8 @@ describe("_renderFurnitureSidebar icon picker event", () => {
 			picker.dispatchEvent(
 				new CustomEvent("value-changed", { detail: { value: "mdi:lamp" } }),
 			);
-			expect(a._customIconValue).toBe("mdi:lamp");
+			expect(handler).toHaveBeenCalledTimes(1);
+			expect(handler.mock.calls[0][0].detail).toBe("mdi:lamp");
 		}
 		document.body.removeChild(c);
 	});
@@ -820,23 +912,33 @@ describe("_loadTemplate backwards compat", () => {
 // =========================================================
 // _renderWizard with capturing in progress
 // =========================================================
-describe("_renderWizard capture overlay branches", () => {
+describe("_renderWizard capture overlay branches (via EppWizard)", () => {
+	function createWiz() {
+		const el = document.createElement("epp-wizard") as any;
+		el.hass = { callWS: vi.fn().mockResolvedValue({}) };
+		el.selectedMac = "";
+		el.rawTargets = [{ raw_x: 100, raw_y: 200 }];
+		el.sensorState = { occupancy: false };
+		el.devices = [];
+		el.localize = (k: string) => k;
+		el.mode = "wizard";
+		el._setupStep = "corners";
+		el._wizardCornerIndex = 0;
+		el._wizardCorners = [null, null, null, null];
+		el._wizardRoomWidth = 3000;
+		el._wizardRoomDepth = 4000;
+		el._wizardOffsetSide = "";
+		el._wizardOffsetFb = "";
+		el._smoothBuffer = [];
+		el._perspective = null;
+		return el;
+	}
+
 	it("renders capture overlay", () => {
-		const a = createPanel() as any;
-		a._setupStep = "corners";
+		const a = createWiz();
 		a._wizardCapturing = true;
 		a._wizardCaptureProgress = 0.5;
-		a._targets = [
-			{
-				x: 100,
-				y: 200,
-				raw_x: 100,
-				raw_y: 200,
-				speed: 0,
-				status: "active" as const,
-				signal: 5,
-			},
-		];
+		a._wizardCapturePaused = false;
 		const tpl = a._renderWizard();
 		const c = renderTo(tpl);
 
@@ -847,21 +949,9 @@ describe("_renderWizard capture overlay branches", () => {
 	});
 
 	it("renders paused capture overlay", () => {
-		const a = createPanel() as any;
-		a._setupStep = "corners";
+		const a = createWiz();
 		a._wizardCapturing = true;
 		a._wizardCapturePaused = true;
-		a._targets = [
-			{
-				x: 100,
-				y: 200,
-				raw_x: 100,
-				raw_y: 200,
-				speed: 0,
-				status: "active" as const,
-				signal: 5,
-			},
-		];
 		const tpl = a._renderWizard();
 		expect(tpl).toBeDefined();
 	});
@@ -948,10 +1038,26 @@ describe("render view branching", () => {
 // =========================================================
 describe("stopPropagation handlers in zone sidebar", () => {
 	it("color picker click event has stopPropagation", () => {
-		const a = createPanel() as any;
-		a._zoneConfigs[0] = { name: "Z1", color: "#ff0000", type: "normal" };
-		a._activeZone = 1;
-		const tpl = a._renderZoneSidebar();
+		const el = document.createElement("epp-zone-sidebar") as any;
+		el.zoneConfigs = [
+			{ name: "Z1", color: "#ff0000", type: "normal" },
+			null,
+			null,
+			null,
+			null,
+			null,
+			null,
+		];
+		el.activeZone = 1;
+		el.roomType = "normal";
+		el.roomTrigger = ZONE_TYPE_DEFAULTS.normal.trigger;
+		el.roomRenew = ZONE_TYPE_DEFAULTS.normal.renew;
+		el.roomTimeout = ZONE_TYPE_DEFAULTS.normal.timeout;
+		el.roomHandoffTimeout = ZONE_TYPE_DEFAULTS.normal.handoff_timeout;
+		el.roomEntryPoint = false;
+		el.localZoneState = new Map();
+		el.localize = (k: string) => k;
+		const tpl = el._renderZoneSidebar();
 		const c = renderTo(tpl);
 
 		const colorPicker = c.querySelector(
@@ -976,7 +1082,7 @@ describe("_runLocalZoneEngine target with no grid mapping", () => {
 		a._targets = [{ x: 100, y: 200, signal: 100, status: "active" }];
 		const result = a._runLocalZoneEngine();
 		expect(result).toBeDefined();
-		expect(a._targetPrev[0]).toBeNull();
+		expect(a._zoneEngineState.targetPrev[0]).toBeNull();
 	});
 });
 
@@ -1052,14 +1158,14 @@ describe("_renderVisibleCells uses backend occupancy in live view", () => {
 
 describe("settings slider input handlers", () => {
 	it("static max distance slider clamps below min", () => {
-		const a = createPanel() as any;
-		a._view = "settings";
-		a._staticAutoRange = false;
-		a._staticMinDistance = 2;
-		a._staticMaxDistance = 10;
-		a._targetAutoRange = false;
-		a._targetMaxDistance = 4;
-		const tpl = a._renderDetectionRanges();
+		const sv = createSettingsView({
+			staticAutoRange: false,
+			staticMinDistance: 2,
+			staticMaxDistance: 10,
+			targetAutoRange: false,
+			targetMaxDistance: 4,
+		});
+		const tpl = (sv as any).renderDetectionRanges();
 		const c = document.createElement("div");
 		render(tpl, c);
 
@@ -1072,7 +1178,7 @@ describe("settings slider input handlers", () => {
 			staticMax.value = "1";
 			staticMax.dispatchEvent(new Event("input"));
 			// Value should be clamped to staticMinDistance + 0.1
-			expect(a._staticMaxDistance).toBeGreaterThanOrEqual(a._staticMinDistance);
+			expect(sv.staticMaxDistance).toBeGreaterThanOrEqual(sv.staticMinDistance);
 		}
 	});
 });

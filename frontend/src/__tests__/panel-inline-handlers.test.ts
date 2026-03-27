@@ -14,6 +14,7 @@ import {
 	initGridFromRoom,
 } from "../lib/grid.js";
 import { ZONE_COLORS, ZONE_TYPE_DEFAULTS } from "../lib/zone-defaults.js";
+import { createZoneEngineState } from "../lib/zone-engine.js";
 
 function createPanel(): EPPGridPanel {
 	const el = document.createElement("eppgrid-panel") as EPPGridPanel;
@@ -60,7 +61,6 @@ function createPanel(): EPPGridPanel {
 	a._showUnsavedDialog = false;
 	a._pendingNavigation = null;
 	a._saving = false;
-	a._showLiveMenu = false;
 	a._showDeleteCalibrationDialog = false;
 	a._showTemplateSave = false;
 	a._showTemplateLoad = false;
@@ -78,10 +78,7 @@ function createPanel(): EPPGridPanel {
 	a._roomHandoffTimeout = ZONE_TYPE_DEFAULTS.normal.handoff_timeout;
 	a._roomEntryPoint = false;
 	a._showHitCounts = false;
-	a._expandedSensorInfo = null;
-	a._localZoneState = new Map();
-	a._targetPrev = [null, null, null];
-	a._targetGateCount = [0, 0, 0];
+	a._zoneEngineState = createZoneEngineState();
 	a._showCustomIconPicker = false;
 	a._customIconValue = "";
 	a._isPainting = false;
@@ -224,8 +221,8 @@ describe("zone engine in _renderVisibleCells", () => {
 		}
 
 		// Set previous target position for continuity check
-		a._targetPrev = [{ col: 10, row: 5 }, null, null];
-		a._targetGateCount = [0, 0, 0];
+		a._zoneEngineState.targetPrev = [{ col: 10, row: 5 }, null, null];
+		a._zoneEngineState.targetGateCount = [0, 0, 0];
 
 		a._targets = [
 			{
@@ -256,8 +253,8 @@ describe("zone engine in _renderVisibleCells", () => {
 		}
 
 		// No previous position -> gating triggers
-		a._targetPrev = [null, null, null];
-		a._targetGateCount = [0, 0, 0];
+		a._zoneEngineState.targetPrev = [null, null, null];
+		a._zoneEngineState.targetGateCount = [0, 0, 0];
 
 		a._targets = [
 			{
@@ -275,7 +272,7 @@ describe("zone engine in _renderVisibleCells", () => {
 		// Second call - gating should complete
 		a._renderVisibleCells(5, 15, 0, 10, 20);
 
-		expect(a._targetGateCount[0]).toBe(0); // should be 0 after completing gate
+		expect(a._zoneEngineState.targetGateCount[0]).toBe(0); // should be 0 after completing gate
 	});
 
 	it("handles zone state machine transitions (clear->occupied->pending->clear)", () => {
@@ -397,8 +394,8 @@ describe("zone engine in _renderVisibleCells", () => {
 		}
 
 		// No previous position, not entry point -> gating
-		a._targetPrev = [null, null, null];
-		a._targetGateCount = [1, 0, 0]; // 1 gate count already
+		a._zoneEngineState.targetPrev = [null, null, null];
+		a._zoneEngineState.targetGateCount = [1, 0, 0]; // 1 gate count already
 
 		a._targets = [
 			{
@@ -412,7 +409,7 @@ describe("zone engine in _renderVisibleCells", () => {
 
 		a._renderVisibleCells(5, 15, 0, 10, 20);
 		// Gate count should be reset due to low signal
-		expect(a._targetGateCount[0]).toBe(0);
+		expect(a._zoneEngineState.targetGateCount[0]).toBe(0);
 	});
 
 	it("handles signal below baseTrigger for non-gated path", () => {
@@ -468,7 +465,7 @@ describe("zone engine in _renderVisibleCells", () => {
 		}
 
 		// Set up zone state: occupied with pending timeout
-		a._localZoneState.set(1, {
+		a._zoneEngineState.localZoneState.set(1, {
 			occupied: true,
 			pendingSince: Date.now() / 1000 - 1,
 			confirmedTargets: new Set(),
@@ -488,7 +485,7 @@ describe("zone engine in _renderVisibleCells", () => {
 		a._renderVisibleCells(5, 15, 0, 10, 20);
 
 		// Zone should be back to occupied (pending cleared)
-		const st = a._localZoneState.get(1);
+		const st = a._zoneEngineState.localZoneState.get(1);
 		expect(st?.occupied).toBe(true);
 		expect(st?.pendingSince).toBeNull();
 	});
@@ -571,14 +568,14 @@ describe("zone engine in _renderVisibleCells", () => {
 		}
 
 		// Set up zone 1 as occupied with target 0 confirmed
-		a._localZoneState.set(1, {
+		a._zoneEngineState.localZoneState.set(1, {
 			occupied: true,
 			pendingSince: null,
 			confirmedTargets: new Set([0]),
 		});
 
 		// Target moves from zone 1 to zone 2
-		a._targetPrev = [{ col: 10, row: 3 }, null, null]; // was in zone 1
+		a._zoneEngineState.targetPrev = [{ col: 10, row: 3 }, null, null]; // was in zone 1
 		a._targets = [
 			{
 				x: 3000,
@@ -591,7 +588,7 @@ describe("zone engine in _renderVisibleCells", () => {
 
 		a._renderVisibleCells(0, GRID_COLS - 1, 0, GRID_ROWS - 1, 10);
 
-		const st = a._localZoneState.get(1);
+		const st = a._zoneEngineState.localZoneState.get(1);
 		// Zone 1 should be in pending state since target moved away
 		if (st && st.occupied && st.pendingSince !== null) {
 			expect(st.pendingSince).not.toBeNull();
@@ -888,23 +885,34 @@ describe("_applyLayout zone/furniture serialization", () => {
 	});
 });
 
-describe("_wizardStartCapture cancellation", () => {
+describe("_wizardStartCapture cancellation (via EppWizard)", () => {
 	it("cancels capture when _wizardCaptureCancelled is set", async () => {
-		const a = createPanel() as any;
-		a._rawTargets = [
-			{
-				raw_x: 100,
-				raw_y: 200,
-			},
-		];
+		await import("../components/epp-wizard.js");
+		const el = document.createElement("epp-wizard") as any;
+		el.hass = { callWS: vi.fn().mockResolvedValue({}) };
+		el.selectedMac = "";
+		el.rawTargets = [{ raw_x: 100, raw_y: 200 }];
+		el.sensorState = { occupancy: false };
+		el.devices = [];
+		el.localize = (k: string) => k;
+		el._setupStep = "corners";
+		el._wizardCornerIndex = 0;
+		el._wizardCorners = [null, null, null, null];
+		el._wizardCapturing = false;
+		el._wizardCaptureCancelled = false;
+		el._wizardCapturePaused = false;
+		el._wizardCaptureProgress = 0;
+		el._wizardOffsetSide = "";
+		el._wizardOffsetFb = "";
+		el._smoothBuffer = [];
 
-		a._wizardStartCapture();
-		expect(a._wizardCapturing).toBe(true);
+		el._wizardStartCapture();
+		expect(el._wizardCapturing).toBe(true);
 
 		// Cancel immediately
-		a._wizardCancelCapture();
-		expect(a._wizardCapturing).toBe(false);
-		expect(a._wizardCaptureCancelled).toBe(true);
+		el._wizardCancelCapture();
+		expect(el._wizardCapturing).toBe(false);
+		expect(el._wizardCaptureCancelled).toBe(true);
 	});
 });
 

@@ -7,12 +7,24 @@ import { render } from "lit";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { EPPGridPanel } from "../eppgrid-panel.js";
 import "../eppgrid-panel.js";
+import "../components/epp-live-sidebar.js";
+import "../components/epp-live-view.js";
+import type { EppLiveView } from "../components/epp-live-view.js";
+import "../components/epp-editor-view.js";
+import "../components/epp-zone-sidebar.js";
+import "../components/epp-furniture-sidebar.js";
+import "../components/epp-settings-view.js";
+import "../components/epp-wizard.js";
+import type { EppFurnitureSidebar } from "../components/epp-furniture-sidebar.js";
+import type { EppSettingsView } from "../components/epp-settings-view.js";
+import type { EppWizard } from "../components/epp-wizard.js";
 import {
 	CELL_ROOM_BIT,
 	GRID_CELL_COUNT,
 	initGridFromRoom,
 } from "../lib/grid.js";
 import { ZONE_COLORS, ZONE_TYPE_DEFAULTS } from "../lib/zone-defaults.js";
+import { createZoneEngineState } from "../lib/zone-engine.js";
 
 function createPanel(): EPPGridPanel {
 	const el = document.createElement("eppgrid-panel") as EPPGridPanel;
@@ -58,7 +70,6 @@ function createPanel(): EPPGridPanel {
 	a._showUnsavedDialog = false;
 	a._pendingNavigation = null;
 	a._saving = false;
-	a._showLiveMenu = false;
 	a._showDeleteCalibrationDialog = false;
 	a._showTemplateSave = false;
 	a._showTemplateLoad = false;
@@ -76,10 +87,7 @@ function createPanel(): EPPGridPanel {
 	a._roomHandoffTimeout = ZONE_TYPE_DEFAULTS.normal.handoff_timeout;
 	a._roomEntryPoint = false;
 	a._showHitCounts = false;
-	a._expandedSensorInfo = null;
-	a._localZoneState = new Map();
-	a._targetPrev = [null, null, null];
-	a._targetGateCount = [0, 0, 0];
+	a._zoneEngineState = createZoneEngineState();
 	a._showCustomIconPicker = false;
 	a._customIconValue = "";
 	a._isPainting = false;
@@ -109,6 +117,54 @@ afterEach(() => {
 	if (container?.isConnected) document.body.removeChild(container);
 });
 
+function createSettingsView(
+	overrides?: Partial<Record<string, unknown>>,
+): EppSettingsView {
+	const el = document.createElement("epp-settings-view") as EppSettingsView;
+	el.grid = initGridFromRoom(3000, 4000);
+	el.perspective = [1, 0, 0, 0, 1, 0, 0, 0];
+	el.roomWidth = 3000;
+	el.roomDepth = 4000;
+	el.openAccordions = new Set();
+	el.reportingConfig = {};
+	el.offsetsConfig = {};
+	if (overrides) {
+		for (const [k, v] of Object.entries(overrides)) {
+			(el as any)[k] = v;
+		}
+	}
+	return el;
+}
+
+function createWizard(): EppWizard {
+	const el = document.createElement("epp-wizard") as EppWizard;
+	const a = el as any;
+	a.hass = { callWS: vi.fn().mockResolvedValue({}) };
+	a.selectedMac = "AA:BB:CC:DD:EE:01";
+	a.rawTargets = [];
+	a.sensorState = { occupancy: false };
+	a.devices = [{ mac: "AA:BB:CC:DD:EE:01", name: "Test" }];
+	a.localize = (k: string) => k;
+	a.initialRoomWidth = 0;
+	a.initialRoomDepth = 0;
+	a.mode = "wizard";
+	a._setupStep = "guide";
+	a._wizardCornerIndex = 0;
+	a._wizardCorners = [null, null, null, null];
+	a._wizardRoomWidth = 3000;
+	a._wizardRoomDepth = 4000;
+	a._wizardCapturing = false;
+	a._wizardCaptureProgress = 0;
+	a._wizardCapturePaused = false;
+	a._wizardCaptureCancelled = false;
+	a._wizardOffsetSide = "";
+	a._wizardOffsetFb = "";
+	a._wizardSaving = false;
+	a._smoothBuffer = [];
+	a._perspective = null;
+	return el;
+}
+
 function renderTo(template: any): HTMLDivElement {
 	container = document.createElement("div");
 	document.body.appendChild(container);
@@ -116,101 +172,103 @@ function renderTo(template: any): HTMLDivElement {
 	return container;
 }
 
-describe("_renderLiveOverview DOM events", () => {
-	it("clicking hit counts toggle changes state", () => {
-		const a = createPanel() as any;
-		const tpl = a._renderLiveOverview();
-		const c = renderTo(tpl);
-
-		// Find and click the hit counts button
-		const btn = c.querySelector(
-			'[title="Show signal strength"]',
-		) as HTMLElement;
-		if (btn) {
-			btn.click();
-			expect(a._showHitCounts).toBe(true);
+describe("epp-live-view DOM events", () => {
+	function createLiveView(
+		overrides?: Partial<Record<string, unknown>>,
+	): EppLiveView {
+		const el = document.createElement("epp-live-view") as EppLiveView;
+		el.perspective = [1, 0, 0, 0, 1, 0, 0, 0];
+		el.zoneConfigs = new Array(7).fill(null);
+		if (overrides) {
+			for (const [k, v] of Object.entries(overrides)) {
+				(el as any)[k] = v;
+			}
 		}
-	});
+		return el;
+	}
 
-	it("clicking menu dots toggles live menu", () => {
-		const a = createPanel() as any;
-		const tpl = a._renderLiveOverview();
+	it("clicking menu dots toggles showMenu", () => {
+		const lv = createLiveView();
+		const tpl = lv.render();
 		const c = renderTo(tpl);
 
 		const menuBtns = c.querySelectorAll(".sidebar-menu-btn");
 		const menuBtn = menuBtns[menuBtns.length - 1] as HTMLElement;
 		if (menuBtn) {
 			menuBtn.click();
-			expect(a._showLiveMenu).toBe(true);
+			expect(lv.showMenu).toBe(true);
 		}
 	});
 
-	it("live menu items navigate correctly", () => {
-		const a = createPanel() as any;
-		a._showLiveMenu = true;
-		const tpl = a._renderLiveOverview();
+	it("live menu items fire navigate-view event", () => {
+		const lv = createLiveView({ showMenu: true });
+		const tpl = lv.render();
 		const c = renderTo(tpl);
 
 		const items = c.querySelectorAll(".sidebar-menu-item");
+		let detail: any = null;
+		lv.addEventListener("navigate-view", ((e: CustomEvent) => {
+			detail = e.detail;
+		}) as EventListener);
 		if (items.length > 0) {
 			// First item should be "Detection zones" (if perspective exists)
 			(items[0] as HTMLElement).click();
+			expect(detail).toEqual({ view: "editor", sidebarTab: "zones" });
 		}
 	});
 
-	it("sensor info button toggles info", () => {
+	it("live view renders epp-live-sidebar component", () => {
+		const lv = createLiveView();
+		const tpl = lv.render();
+		const c = renderTo(tpl);
+
+		const sidebar = c.querySelector("epp-live-sidebar");
+		expect(sidebar).not.toBeNull();
+	});
+
+	it("panel _renderLiveOverview returns epp-live-view element", () => {
 		const a = createPanel() as any;
 		const tpl = a._renderLiveOverview();
 		const c = renderTo(tpl);
 
-		const infoBtn = c.querySelector(".live-sensor-info-btn") as HTMLElement;
-		if (infoBtn) {
-			infoBtn.click();
-			expect(a._expandedSensorInfo).not.toBeNull();
-		}
-	});
-
-	it("detection zones link navigates", () => {
-		const a = createPanel() as any;
-		const tpl = a._renderLiveOverview();
-		const c = renderTo(tpl);
-
-		const link = c.querySelector(
-			".zone-sidebar .live-section-link",
-		) as HTMLElement;
-		if (link) {
-			link.click();
-			expect(a._view).toBe("editor");
-			expect(a._sidebarTab).toBe("zones");
-		}
+		const liveView = c.querySelector("epp-live-view");
+		expect(liveView).not.toBeNull();
 	});
 });
 
-describe("_renderLiveSidebar DOM events", () => {
+describe("epp-live-sidebar DOM events", () => {
 	it("sensor info buttons toggle", () => {
-		const a = createPanel() as any;
-		const tpl = a._renderLiveSidebar();
+		const el = document.createElement("epp-live-sidebar") as any;
+		const tpl = el.render();
 		const c = renderTo(tpl);
 
 		const infoBtns = c.querySelectorAll(".live-sensor-info-btn");
 		if (infoBtns.length > 0) {
 			(infoBtns[0] as HTMLElement).click();
-			expect(a._expandedSensorInfo).not.toBeNull();
+			expect(el._expandedSensorInfo).not.toBeNull();
 			(infoBtns[0] as HTMLElement).click();
-			expect(a._expandedSensorInfo).toBeNull();
+			expect(el._expandedSensorInfo).toBeNull();
 		}
 	});
 
-	it("add zones link works when no zones configured", () => {
-		const a = createPanel() as any;
-		a._zoneConfigs = new Array(7).fill(null);
-		const tpl = a._renderLiveSidebar();
+	it("detection zones link fires view-change event", () => {
+		const el = document.createElement("epp-live-sidebar") as any;
+		el.zoneConfigs = new Array(7).fill(null);
+		el.perspective = [1, 0, 0, 0, 1, 0, 0, 0];
+		const tpl = el.render();
 		const c = renderTo(tpl);
 
-		const addLink = c.querySelector(".live-nav-link") as HTMLElement;
-		if (addLink) {
-			addLink.click();
-			expect(a._view).toBe("editor");
+		let detail: any = null;
+		el.addEventListener("view-change", (e: CustomEvent) => {
+			detail = e.detail;
+		});
+
+		const link = c.querySelector(".live-section-link") as HTMLElement;
+		if (link) {
+			link.click();
+			expect(detail).not.toBeNull();
+			expect(detail.view).toBe("editor");
+			expect(detail.sidebarTab).toBe("zones");
 		}
 	});
 });
@@ -242,22 +300,27 @@ describe("_renderHeader DOM events", () => {
 	});
 });
 
-describe("_renderWizardGuide DOM events", () => {
-	it("cancel button resets wizard", () => {
-		const a = createPanel() as any;
+describe("_renderWizardGuide DOM events (via EppWizard)", () => {
+	it("cancel button fires wizard-cancel event", () => {
+		const a = createWizard() as any;
 		a._setupStep = "guide";
 		const tpl = a._renderWizardGuide();
 		const c = renderTo(tpl);
 
+		let cancelFired = false;
+		a.addEventListener("wizard-cancel", () => {
+			cancelFired = true;
+		});
+
 		const backBtn = c.querySelector(".wizard-btn-back") as HTMLElement;
 		if (backBtn) {
 			backBtn.click();
-			expect(a._setupStep).toBeNull();
+			expect(cancelFired).toBe(true);
 		}
 	});
 
 	it("begin marking button advances to corners", () => {
-		const a = createPanel() as any;
+		const a = createWizard() as any;
 		const tpl = a._renderWizardGuide();
 		const c = renderTo(tpl);
 
@@ -269,26 +332,16 @@ describe("_renderWizardGuide DOM events", () => {
 	});
 });
 
-describe("_renderWizardCorners DOM events", () => {
+describe("_renderWizardCorners DOM events (via EppWizard)", () => {
 	it("corner chip click resets corner", () => {
-		const a = createPanel() as any;
+		const a = createWizard() as any;
 		a._wizardCorners = [
 			{ raw_x: 100, raw_y: 200, offset_side: 500, offset_fb: 300 },
 			null,
 			null,
 			null,
 		];
-		a._targets = [
-			{
-				x: 100,
-				y: 200,
-				raw_x: 100,
-				raw_y: 200,
-				speed: 0,
-				status: "active" as const,
-				signal: 5,
-			},
-		];
+		a.rawTargets = [{ raw_x: 100, raw_y: 200 }];
 		const tpl = a._renderWizardCorners();
 		const c = renderTo(tpl);
 
@@ -300,24 +353,14 @@ describe("_renderWizardCorners DOM events", () => {
 	});
 
 	it("offset input updates corner offsets", () => {
-		const a = createPanel() as any;
+		const a = createWizard() as any;
 		a._wizardCorners = [
 			{ raw_x: 100, raw_y: 200, offset_side: 0, offset_fb: 0 },
 			null,
 			null,
 			null,
 		];
-		a._targets = [
-			{
-				x: 100,
-				y: 200,
-				raw_x: 100,
-				raw_y: 200,
-				speed: 0,
-				status: "active" as const,
-				signal: 5,
-			},
-		];
+		a.rawTargets = [{ raw_x: 100, raw_y: 200 }];
 		const tpl = a._renderWizardCorners();
 		const c = renderTo(tpl);
 
@@ -335,42 +378,27 @@ describe("_renderWizardCorners DOM events", () => {
 		}
 	});
 
-	it("cancel button on corners step exits wizard", () => {
-		const a = createPanel() as any;
-		a._targets = [
-			{
-				x: 100,
-				y: 200,
-				raw_x: 100,
-				raw_y: 200,
-				speed: 0,
-				status: "active" as const,
-				signal: 5,
-			},
-		];
+	it("cancel button on corners step fires wizard-cancel", () => {
+		const a = createWizard() as any;
+		a.rawTargets = [{ raw_x: 100, raw_y: 200 }];
 		const tpl = a._renderWizardCorners();
 		const c = renderTo(tpl);
+
+		let cancelFired = false;
+		a.addEventListener("wizard-cancel", () => {
+			cancelFired = true;
+		});
 
 		const backBtn = c.querySelector(".wizard-btn-back") as HTMLElement;
 		if (backBtn) {
 			backBtn.click();
-			expect(a._setupStep).toBeNull();
+			expect(cancelFired).toBe(true);
 		}
 	});
 
 	it("mark button starts capture", () => {
-		const a = createPanel() as any;
-		a._targets = [
-			{
-				x: 100,
-				y: 200,
-				raw_x: 100,
-				raw_y: 200,
-				speed: 0,
-				status: "active" as const,
-				signal: 5,
-			},
-		];
+		const a = createWizard() as any;
+		a.rawTargets = [{ raw_x: 100, raw_y: 200 }];
 		const tpl = a._renderWizardCorners();
 		const c = renderTo(tpl);
 
@@ -384,24 +412,14 @@ describe("_renderWizardCorners DOM events", () => {
 	});
 
 	it("save button when all corners marked", () => {
-		const a = createPanel() as any;
+		const a = createWizard() as any;
 		a._wizardCorners = [
 			{ raw_x: -1500, raw_y: 1000, offset_side: 0, offset_fb: 0 },
 			{ raw_x: 1500, raw_y: 1000, offset_side: 0, offset_fb: 0 },
 			{ raw_x: 2000, raw_y: 4000, offset_side: 0, offset_fb: 0 },
 			{ raw_x: -2000, raw_y: 4000, offset_side: 0, offset_fb: 0 },
 		];
-		a._targets = [
-			{
-				x: 100,
-				y: 200,
-				raw_x: 100,
-				raw_y: 200,
-				speed: 0,
-				status: "active" as const,
-				signal: 5,
-			},
-		];
+		a.rawTargets = [{ raw_x: 100, raw_y: 200 }];
 		const tpl = a._renderWizardCorners();
 		const c = renderTo(tpl);
 
@@ -438,51 +456,58 @@ describe("_renderSaveCancelButtons DOM events", () => {
 	});
 });
 
-describe("_renderSettings DOM events", () => {
+describe("_renderSettings DOM events (via EppSettingsView)", () => {
 	it("accordion header click toggles", () => {
-		const a = createPanel() as any;
-		const tpl = a._renderSettings();
+		const sv = createSettingsView();
+		const tpl = sv.render();
 		const c = renderTo(tpl);
 
 		const headers = c.querySelectorAll(".accordion-header");
 		if (headers.length > 0) {
 			(headers[0] as HTMLElement).click();
-			expect(a._openAccordions.size).toBe(1);
+			expect(sv.openAccordions.size).toBe(1);
 		}
 	});
 
-	it("settings container input sets dirty", () => {
-		const a = createPanel() as any;
-		a._dirty = false;
-		const tpl = a._renderSettings();
+	it("settings container input fires dirty event", () => {
+		const sv = createSettingsView();
+		const tpl = sv.render();
 		const c = renderTo(tpl);
+
+		let dirtyFired = false;
+		sv.addEventListener("dirty", () => {
+			dirtyFired = true;
+		});
 
 		const container = c.querySelector(".settings-container") as HTMLElement;
 		if (container) {
 			container.dispatchEvent(new Event("input", { bubbles: true }));
-			expect(a._dirty).toBe(true);
+			expect(dirtyFired).toBe(true);
 		}
 	});
 
-	it("settings container change sets dirty", () => {
-		const a = createPanel() as any;
-		a._dirty = false;
-		const tpl = a._renderSettings();
+	it("settings container change fires dirty event", () => {
+		const sv = createSettingsView();
+		const tpl = sv.render();
 		const c = renderTo(tpl);
+
+		let dirtyFired = false;
+		sv.addEventListener("dirty", () => {
+			dirtyFired = true;
+		});
 
 		const container = c.querySelector(".settings-container") as HTMLElement;
 		if (container) {
 			container.dispatchEvent(new Event("change", { bubbles: true }));
-			expect(a._dirty).toBe(true);
+			expect(dirtyFired).toBe(true);
 		}
 	});
 });
 
 describe("_renderDetectionRanges DOM events", () => {
 	it("target auto range toggle changes state", () => {
-		const a = createPanel() as any;
-		a._targetAutoRange = true;
-		const tpl = a._renderDetectionRanges();
+		const sv = createSettingsView({ targetAutoRange: true });
+		const tpl = (sv as any).renderDetectionRanges();
 		const c = renderTo(tpl);
 
 		const checkboxes = c.querySelectorAll('input[type="checkbox"]');
@@ -490,14 +515,13 @@ describe("_renderDetectionRanges DOM events", () => {
 			const cb = checkboxes[0] as HTMLInputElement;
 			cb.checked = false;
 			cb.dispatchEvent(new Event("change"));
-			expect(a._targetAutoRange).toBe(false);
+			expect(sv.targetAutoRange).toBe(false);
 		}
 	});
 
 	it("max distance slider updates state", () => {
-		const a = createPanel() as any;
-		a._targetAutoRange = false;
-		const tpl = a._renderDetectionRanges();
+		const sv = createSettingsView({ targetAutoRange: false });
+		const tpl = (sv as any).renderDetectionRanges();
 		const c = renderTo(tpl);
 
 		const ranges = c.querySelectorAll(".setting-range");
@@ -509,120 +533,198 @@ describe("_renderDetectionRanges DOM events", () => {
 			span.textContent = "6";
 			range.parentNode?.insertBefore(span, range.nextSibling);
 			range.dispatchEvent(new Event("input"));
-			expect(a._targetMaxDistance).toBe(4.5);
+			expect(sv.targetMaxDistance).toBe(4.5);
 		}
 	});
 });
 
 describe("_renderBoundaryTypeControls DOM events", () => {
+	function createSidebar(overrides: Record<string, any> = {}) {
+		const el = document.createElement("epp-zone-sidebar") as any;
+		el.zoneConfigs = new Array(7).fill(null);
+		el.activeZone = 0;
+		el.roomType = "normal";
+		el.roomTrigger = ZONE_TYPE_DEFAULTS.normal.trigger;
+		el.roomRenew = ZONE_TYPE_DEFAULTS.normal.renew;
+		el.roomTimeout = ZONE_TYPE_DEFAULTS.normal.timeout;
+		el.roomHandoffTimeout = ZONE_TYPE_DEFAULTS.normal.handoff_timeout;
+		el.roomEntryPoint = false;
+		el.localZoneState = new Map();
+		el.localize = (k: string) => k;
+		Object.assign(el, overrides);
+		return el;
+	}
+
 	it("room type select changes type", () => {
-		const a = createPanel() as any;
-		const tpl = a._renderBoundaryTypeControls();
+		const s = createSidebar();
+		const tpl = (s as any)._renderBoundaryTypeControls();
 		const c = renderTo(tpl);
+
+		const events: CustomEvent[] = [];
+		s.addEventListener("room-config-change", (e: Event) =>
+			events.push(e as CustomEvent),
+		);
+		s.addEventListener("dirty", (e: Event) => events.push(e as CustomEvent));
 
 		const select = c.querySelector(".sensitivity-select") as HTMLSelectElement;
 		if (select) {
 			select.value = "entrance";
-			select.dispatchEvent(new Event("change"));
-			expect(a._roomType).toBe("entrance");
-			expect(a._dirty).toBe(true);
+			select.dispatchEvent(new Event("change", { bubbles: true }));
+			expect(
+				events.some(
+					(e) =>
+						e.type === "room-config-change" &&
+						e.detail.updates.roomType === "entrance",
+				),
+			).toBe(true);
+			expect(events.some((e) => e.type === "dirty")).toBe(true);
 		}
 	});
 
 	it("trigger range input updates", () => {
-		const a = createPanel() as any;
-		a._roomType = "custom";
-		const tpl = a._renderBoundaryTypeControls();
+		const s = createSidebar({ roomType: "custom" });
+		const tpl = (s as any)._renderBoundaryTypeControls();
 		const c = renderTo(tpl);
+
+		const events: CustomEvent[] = [];
+		s.addEventListener("room-config-change", (e: Event) =>
+			events.push(e as CustomEvent),
+		);
 
 		const ranges = c.querySelectorAll('input[type="range"]');
 		if (ranges.length > 0) {
 			const range = ranges[0] as HTMLInputElement;
 			range.value = "7";
-			range.dispatchEvent(new Event("input"));
-			expect(a._roomTrigger).toBe(7);
+			range.dispatchEvent(new Event("input", { bubbles: true }));
+			expect(events.some((e) => e.detail.updates.roomTrigger === 7)).toBe(true);
 		}
 	});
 
 	it("renew range input updates", () => {
-		const a = createPanel() as any;
-		a._roomType = "custom";
-		const tpl = a._renderBoundaryTypeControls();
+		const s = createSidebar({ roomType: "custom" });
+		const tpl = (s as any)._renderBoundaryTypeControls();
 		const c = renderTo(tpl);
+
+		const events: CustomEvent[] = [];
+		s.addEventListener("room-config-change", (e: Event) =>
+			events.push(e as CustomEvent),
+		);
 
 		const ranges = c.querySelectorAll('input[type="range"]');
 		if (ranges.length >= 2) {
 			const range = ranges[1] as HTMLInputElement;
 			range.value = "4";
-			range.dispatchEvent(new Event("input"));
-			expect(a._roomRenew).toBe(4);
+			range.dispatchEvent(new Event("input", { bubbles: true }));
+			expect(events.some((e) => e.detail.updates.roomRenew === 4)).toBe(true);
 		}
 	});
 
 	it("presence timeout number input updates", () => {
-		const a = createPanel() as any;
-		a._roomType = "custom";
-		const tpl = a._renderBoundaryTypeControls();
+		const s = createSidebar({ roomType: "custom" });
+		const tpl = (s as any)._renderBoundaryTypeControls();
 		const c = renderTo(tpl);
+
+		const events: CustomEvent[] = [];
+		s.addEventListener("room-config-change", (e: Event) =>
+			events.push(e as CustomEvent),
+		);
 
 		const numbers = c.querySelectorAll('input[type="number"]');
 		if (numbers.length > 0) {
 			const input = numbers[0] as HTMLInputElement;
 			input.value = "15";
-			input.dispatchEvent(new Event("input"));
-			expect(a._roomTimeout).toBe(15);
+			input.dispatchEvent(new Event("input", { bubbles: true }));
+			expect(events.some((e) => e.detail.updates.roomTimeout === 15)).toBe(
+				true,
+			);
 		}
 	});
 
 	it("handoff timeout number input updates", () => {
-		const a = createPanel() as any;
-		a._roomType = "custom";
-		const tpl = a._renderBoundaryTypeControls();
+		const s = createSidebar({ roomType: "custom" });
+		const tpl = (s as any)._renderBoundaryTypeControls();
 		const c = renderTo(tpl);
+
+		const events: CustomEvent[] = [];
+		s.addEventListener("room-config-change", (e: Event) =>
+			events.push(e as CustomEvent),
+		);
 
 		const numbers = c.querySelectorAll('input[type="number"]');
 		if (numbers.length >= 2) {
 			const input = numbers[1] as HTMLInputElement;
 			input.value = "5";
-			input.dispatchEvent(new Event("input"));
-			expect(a._roomHandoffTimeout).toBe(5);
+			input.dispatchEvent(new Event("input", { bubbles: true }));
+			expect(
+				events.some((e) => e.detail.updates.roomHandoffTimeout === 5),
+			).toBe(true);
 		}
 	});
 
 	it("entry point checkbox toggles", () => {
-		const a = createPanel() as any;
-		a._roomType = "custom";
-		const tpl = a._renderBoundaryTypeControls();
+		const s = createSidebar({ roomType: "custom" });
+		const tpl = (s as any)._renderBoundaryTypeControls();
 		const c = renderTo(tpl);
+
+		const events: CustomEvent[] = [];
+		s.addEventListener("room-config-change", (e: Event) =>
+			events.push(e as CustomEvent),
+		);
 
 		const toggles = c.querySelectorAll('.toggle-switch input[type="checkbox"]');
 		if (toggles.length > 0) {
 			const last = toggles[toggles.length - 1] as HTMLInputElement;
 			last.checked = true;
-			last.dispatchEvent(new Event("change"));
-			expect(a._roomEntryPoint).toBe(true);
+			last.dispatchEvent(new Event("change", { bubbles: true }));
+			expect(events.some((e) => e.detail.updates.roomEntryPoint === true)).toBe(
+				true,
+			);
 		}
 	});
 });
 
 describe("_renderZoneTypeControls DOM events", () => {
+	function createSidebar(overrides: Record<string, any> = {}) {
+		const el = document.createElement("epp-zone-sidebar") as any;
+		el.zoneConfigs = new Array(7).fill(null);
+		el.activeZone = 0;
+		el.roomType = "normal";
+		el.roomTrigger = ZONE_TYPE_DEFAULTS.normal.trigger;
+		el.roomRenew = ZONE_TYPE_DEFAULTS.normal.renew;
+		el.roomTimeout = ZONE_TYPE_DEFAULTS.normal.timeout;
+		el.roomHandoffTimeout = ZONE_TYPE_DEFAULTS.normal.handoff_timeout;
+		el.roomEntryPoint = false;
+		el.localZoneState = new Map();
+		el.localize = (k: string) => k;
+		Object.assign(el, overrides);
+		return el;
+	}
+
 	it("zone type select changes zone config", () => {
-		const a = createPanel() as any;
+		const s = createSidebar();
 		const zone = { name: "Z1", color: "#ff0000", type: "normal" as const };
-		a._zoneConfigs[0] = zone;
-		const tpl = a._renderZoneTypeControls(zone, 0);
+		const tpl = (s as any)._renderZoneTypeControls(zone, 0);
 		const c = renderTo(tpl);
+
+		const events: CustomEvent[] = [];
+		s.addEventListener("zone-config-change", (e: Event) =>
+			events.push(e as CustomEvent),
+		);
 
 		const select = c.querySelector(".sensitivity-select") as HTMLSelectElement;
 		if (select) {
 			select.value = "rest";
-			select.dispatchEvent(new Event("change"));
-			expect(a._zoneConfigs[0].type).toBe("rest");
+			select.dispatchEvent(new Event("change", { bubbles: true }));
+			expect(
+				events.some(
+					(e) => e.detail.index === 0 && e.detail.updates.type === "rest",
+				),
+			).toBe(true);
 		}
 	});
 
 	it("zone trigger input updates zone config", () => {
-		const a = createPanel() as any;
+		const s = createSidebar();
 		const zone = {
 			name: "Z1",
 			color: "#ff0000",
@@ -632,21 +734,25 @@ describe("_renderZoneTypeControls DOM events", () => {
 			timeout: 10,
 			handoff_timeout: 3,
 		};
-		a._zoneConfigs[0] = zone;
-		const tpl = a._renderZoneTypeControls(zone, 0);
+		const tpl = (s as any)._renderZoneTypeControls(zone, 0);
 		const c = renderTo(tpl);
+
+		const events: CustomEvent[] = [];
+		s.addEventListener("zone-config-change", (e: Event) =>
+			events.push(e as CustomEvent),
+		);
 
 		const ranges = c.querySelectorAll('input[type="range"]');
 		if (ranges.length > 0) {
 			const range = ranges[0] as HTMLInputElement;
 			range.value = "8";
-			range.dispatchEvent(new Event("input"));
-			expect(a._zoneConfigs[0].trigger).toBe(8);
+			range.dispatchEvent(new Event("input", { bubbles: true }));
+			expect(events.some((e) => e.detail.updates.trigger === 8)).toBe(true);
 		}
 	});
 
 	it("zone renew input updates", () => {
-		const a = createPanel() as any;
+		const s = createSidebar();
 		const zone = {
 			name: "Z1",
 			color: "#ff0000",
@@ -656,21 +762,25 @@ describe("_renderZoneTypeControls DOM events", () => {
 			timeout: 10,
 			handoff_timeout: 3,
 		};
-		a._zoneConfigs[0] = zone;
-		const tpl = a._renderZoneTypeControls(zone, 0);
+		const tpl = (s as any)._renderZoneTypeControls(zone, 0);
 		const c = renderTo(tpl);
+
+		const events: CustomEvent[] = [];
+		s.addEventListener("zone-config-change", (e: Event) =>
+			events.push(e as CustomEvent),
+		);
 
 		const ranges = c.querySelectorAll('input[type="range"]');
 		if (ranges.length >= 2) {
 			const range = ranges[1] as HTMLInputElement;
 			range.value = "6";
-			range.dispatchEvent(new Event("input"));
-			expect(a._zoneConfigs[0].renew).toBe(6);
+			range.dispatchEvent(new Event("input", { bubbles: true }));
+			expect(events.some((e) => e.detail.updates.renew === 6)).toBe(true);
 		}
 	});
 
 	it("zone timeout input updates", () => {
-		const a = createPanel() as any;
+		const s = createSidebar();
 		const zone = {
 			name: "Z1",
 			color: "#ff0000",
@@ -680,21 +790,25 @@ describe("_renderZoneTypeControls DOM events", () => {
 			timeout: 10,
 			handoff_timeout: 3,
 		};
-		a._zoneConfigs[0] = zone;
-		const tpl = a._renderZoneTypeControls(zone, 0);
+		const tpl = (s as any)._renderZoneTypeControls(zone, 0);
 		const c = renderTo(tpl);
+
+		const events: CustomEvent[] = [];
+		s.addEventListener("zone-config-change", (e: Event) =>
+			events.push(e as CustomEvent),
+		);
 
 		const numbers = c.querySelectorAll('input[type="number"]');
 		if (numbers.length > 0) {
 			const input = numbers[0] as HTMLInputElement;
 			input.value = "20";
-			input.dispatchEvent(new Event("input"));
-			expect(a._zoneConfigs[0].timeout).toBe(20);
+			input.dispatchEvent(new Event("input", { bubbles: true }));
+			expect(events.some((e) => e.detail.updates.timeout === 20)).toBe(true);
 		}
 	});
 
 	it("zone handoff timeout input updates", () => {
-		const a = createPanel() as any;
+		const s = createSidebar();
 		const zone = {
 			name: "Z1",
 			color: "#ff0000",
@@ -704,293 +818,457 @@ describe("_renderZoneTypeControls DOM events", () => {
 			timeout: 10,
 			handoff_timeout: 3,
 		};
-		a._zoneConfigs[0] = zone;
-		const tpl = a._renderZoneTypeControls(zone, 0);
+		const tpl = (s as any)._renderZoneTypeControls(zone, 0);
 		const c = renderTo(tpl);
+
+		const events: CustomEvent[] = [];
+		s.addEventListener("zone-config-change", (e: Event) =>
+			events.push(e as CustomEvent),
+		);
 
 		const numbers = c.querySelectorAll('input[type="number"]');
 		if (numbers.length >= 2) {
 			const input = numbers[1] as HTMLInputElement;
 			input.value = "7";
-			input.dispatchEvent(new Event("input"));
-			expect(a._zoneConfigs[0].handoff_timeout).toBe(7);
+			input.dispatchEvent(new Event("input", { bubbles: true }));
+			expect(events.some((e) => e.detail.updates.handoff_timeout === 7)).toBe(
+				true,
+			);
 		}
 	});
 
 	it("zone entry point toggle updates", () => {
-		const a = createPanel() as any;
+		const s = createSidebar();
 		const zone = { name: "Z1", color: "#ff0000", type: "custom" as const };
-		a._zoneConfigs[0] = zone;
-		const tpl = a._renderZoneTypeControls(zone, 0);
+		const tpl = (s as any)._renderZoneTypeControls(zone, 0);
 		const c = renderTo(tpl);
+
+		const events: CustomEvent[] = [];
+		s.addEventListener("zone-config-change", (e: Event) =>
+			events.push(e as CustomEvent),
+		);
 
 		const toggles = c.querySelectorAll('.toggle-switch input[type="checkbox"]');
 		if (toggles.length > 0) {
 			const last = toggles[toggles.length - 1] as HTMLInputElement;
 			last.checked = true;
-			last.dispatchEvent(new Event("change"));
-			expect(a._zoneConfigs[0].entry_point).toBe(true);
+			last.dispatchEvent(new Event("change", { bubbles: true }));
+			expect(events.some((e) => e.detail.updates.entry_point === true)).toBe(
+				true,
+			);
 		}
 	});
 });
 
 describe("_renderZoneSidebar DOM events", () => {
+	function createSidebar(overrides: Record<string, any> = {}) {
+		const el = document.createElement("epp-zone-sidebar") as any;
+		el.zoneConfigs = new Array(7).fill(null);
+		el.activeZone = 0;
+		el.roomType = "normal";
+		el.roomTrigger = ZONE_TYPE_DEFAULTS.normal.trigger;
+		el.roomRenew = ZONE_TYPE_DEFAULTS.normal.renew;
+		el.roomTimeout = ZONE_TYPE_DEFAULTS.normal.timeout;
+		el.roomHandoffTimeout = ZONE_TYPE_DEFAULTS.normal.handoff_timeout;
+		el.roomEntryPoint = false;
+		el.localZoneState = new Map();
+		el.localize = (k: string) => k;
+		Object.assign(el, overrides);
+		return el;
+	}
+
 	it("boundary zone click", () => {
-		const a = createPanel() as any;
-		a._activeZone = null;
-		const tpl = a._renderZoneSidebar();
+		const s = createSidebar({ activeZone: null });
+		const tpl = (s as any)._renderZoneSidebar();
 		const c = renderTo(tpl);
+
+		const events: CustomEvent[] = [];
+		s.addEventListener("zone-select", (e: Event) =>
+			events.push(e as CustomEvent),
+		);
 
 		const zoneItems = c.querySelectorAll(".zone-item");
 		if (zoneItems.length > 0) {
 			(zoneItems[0] as HTMLElement).click();
-			expect(a._activeZone).toBe(0);
+			expect(events.some((e) => e.detail.zone === 0)).toBe(true);
 		}
 	});
 
 	it("named zone click", () => {
-		const a = createPanel() as any;
-		a._zoneConfigs[0] = { name: "Z1", color: "#ff0000", type: "normal" };
-		const tpl = a._renderZoneSidebar();
+		const s = createSidebar();
+		s.zoneConfigs = [
+			{ name: "Z1", color: "#ff0000", type: "normal" },
+			null,
+			null,
+			null,
+			null,
+			null,
+			null,
+		];
+		const tpl = (s as any)._renderZoneSidebar();
 		const c = renderTo(tpl);
+
+		const events: CustomEvent[] = [];
+		s.addEventListener("zone-select", (e: Event) =>
+			events.push(e as CustomEvent),
+		);
 
 		const zoneItems = c.querySelectorAll(".zone-item");
 		if (zoneItems.length > 1) {
 			(zoneItems[1] as HTMLElement).click();
-			expect(a._activeZone).toBe(1);
+			expect(events.some((e) => e.detail.zone === 1)).toBe(true);
 		}
 	});
 
 	it("add zone button exists", () => {
-		const a = createPanel() as any;
-		const tpl = a._renderZoneSidebar();
+		const s = createSidebar();
+		const tpl = (s as any)._renderZoneSidebar();
 		const c = renderTo(tpl);
 
 		const addBtn = c.querySelector(".add-zone-btn") as HTMLElement;
 		expect(addBtn).not.toBeNull();
-		// Cannot click directly due to lit method binding; tested via _addZone() in panel-zones.test.ts
 	});
 
 	it("zone remove button", () => {
-		const a = createPanel() as any;
-		a._zoneConfigs[0] = { name: "Z1", color: "#ff0000", type: "normal" };
-		a._activeZone = 1;
-		const tpl = a._renderZoneSidebar();
+		const s = createSidebar({ activeZone: 1 });
+		s.zoneConfigs = [
+			{ name: "Z1", color: "#ff0000", type: "normal" },
+			null,
+			null,
+			null,
+			null,
+			null,
+			null,
+		];
+		const tpl = (s as any)._renderZoneSidebar();
 		const c = renderTo(tpl);
+
+		const events: CustomEvent[] = [];
+		s.addEventListener("zone-remove", (e: Event) =>
+			events.push(e as CustomEvent),
+		);
 
 		const removeBtn = c.querySelector(".zone-remove-btn") as HTMLElement;
 		if (removeBtn) {
 			removeBtn.click();
-			expect(a._zoneConfigs[0]).toBeNull();
+			expect(events.some((e) => e.detail.slot === 1)).toBe(true);
 		}
 	});
 
 	it("zone name input focus", () => {
-		const a = createPanel() as any;
-		a._zoneConfigs[0] = { name: "Z1", color: "#ff0000", type: "normal" };
-		a._activeZone = 0;
-		const tpl = a._renderZoneSidebar();
+		const s = createSidebar({ activeZone: 0 });
+		s.zoneConfigs = [
+			{ name: "Z1", color: "#ff0000", type: "normal" },
+			null,
+			null,
+			null,
+			null,
+			null,
+			null,
+		];
+		const tpl = (s as any)._renderZoneSidebar();
 		const c = renderTo(tpl);
+
+		const events: CustomEvent[] = [];
+		s.addEventListener("zone-select", (e: Event) =>
+			events.push(e as CustomEvent),
+		);
 
 		const nameInput = c.querySelector(".zone-name-input") as HTMLInputElement;
 		if (nameInput) {
-			nameInput.dispatchEvent(new Event("focus"));
-			expect(a._activeZone).toBe(1);
+			nameInput.dispatchEvent(new Event("focus", { bubbles: true }));
+			expect(events.some((e) => e.detail.zone === 1)).toBe(true);
 		}
 	});
 
 	it("zone name input click sets active", () => {
-		const a = createPanel() as any;
-		a._zoneConfigs[0] = { name: "Z1", color: "#ff0000", type: "normal" };
-		a._activeZone = 0;
-		const tpl = a._renderZoneSidebar();
+		const s = createSidebar({ activeZone: 0 });
+		s.zoneConfigs = [
+			{ name: "Z1", color: "#ff0000", type: "normal" },
+			null,
+			null,
+			null,
+			null,
+			null,
+			null,
+		];
+		const tpl = (s as any)._renderZoneSidebar();
 		const c = renderTo(tpl);
+
+		const events: CustomEvent[] = [];
+		s.addEventListener("zone-select", (e: Event) =>
+			events.push(e as CustomEvent),
+		);
 
 		const nameInput = c.querySelector(".zone-name-input") as HTMLInputElement;
 		if (nameInput) {
 			nameInput.click();
-			expect(a._activeZone).toBe(1);
+			expect(events.some((e) => e.detail.zone === 1)).toBe(true);
 		}
 	});
 
 	it("zone name input changes name", () => {
-		const a = createPanel() as any;
-		a._zoneConfigs[0] = { name: "Z1", color: "#ff0000", type: "normal" };
-		const tpl = a._renderZoneSidebar();
+		const s = createSidebar();
+		s.zoneConfigs = [
+			{ name: "Z1", color: "#ff0000", type: "normal" },
+			null,
+			null,
+			null,
+			null,
+			null,
+			null,
+		];
+		const tpl = (s as any)._renderZoneSidebar();
 		const c = renderTo(tpl);
+
+		const events: CustomEvent[] = [];
+		s.addEventListener("zone-config-change", (e: Event) =>
+			events.push(e as CustomEvent),
+		);
 
 		const nameInput = c.querySelector(".zone-name-input") as HTMLInputElement;
 		if (nameInput) {
 			nameInput.value = "Kitchen";
-			nameInput.dispatchEvent(new Event("input"));
-			expect(a._zoneConfigs[0].name).toBe("Kitchen");
+			nameInput.dispatchEvent(new Event("input", { bubbles: true }));
+			expect(
+				events.some(
+					(e) => e.detail.index === 0 && e.detail.updates.name === "Kitchen",
+				),
+			).toBe(true);
 		}
 	});
 
 	it("zone color picker input", () => {
-		const a = createPanel() as any;
-		a._zoneConfigs[0] = { name: "Z1", color: "#ff0000", type: "normal" };
-		a._activeZone = 1;
-		const tpl = a._renderZoneSidebar();
+		const s = createSidebar({ activeZone: 1 });
+		s.zoneConfigs = [
+			{ name: "Z1", color: "#ff0000", type: "normal" },
+			null,
+			null,
+			null,
+			null,
+			null,
+			null,
+		];
+		const tpl = (s as any)._renderZoneSidebar();
 		const c = renderTo(tpl);
+
+		const events: CustomEvent[] = [];
+		s.addEventListener("zone-config-change", (e: Event) =>
+			events.push(e as CustomEvent),
+		);
 
 		const colorPicker = c.querySelector(
 			".zone-color-picker",
 		) as HTMLInputElement;
 		if (colorPicker) {
 			colorPicker.value = "#00ff00";
-			colorPicker.dispatchEvent(new Event("input"));
-			expect(a._zoneConfigs[0].color).toBe("#00ff00");
+			colorPicker.dispatchEvent(new Event("input", { bubbles: true }));
+			expect(
+				events.some(
+					(e) => e.detail.index === 0 && e.detail.updates.color === "#00ff00",
+				),
+			).toBe(true);
 		}
 	});
 });
 
-describe("_renderFurnitureSidebar DOM events", () => {
-	it("clicking a sticker adds furniture", () => {
-		const a = createPanel() as any;
-		const tpl = a._renderFurnitureSidebar();
+describe("epp-furniture-sidebar DOM events", () => {
+	function createFurnSidebar(
+		overrides: Record<string, any> = {},
+	): EppFurnitureSidebar {
+		const el = document.createElement("epp-furniture-sidebar") as any;
+		el.furniture = [];
+		el.selectedFurnitureId = null;
+		el.hass = {};
+		el.localize = (k: string) => k;
+		el.showCustomIconPicker = false;
+		el.customIconValue = "";
+		Object.assign(el, overrides);
+		return el as EppFurnitureSidebar;
+	}
+
+	it("clicking a sticker fires furniture-add event", () => {
+		const el = createFurnSidebar();
+		const handler = vi.fn();
+		el.addEventListener("furniture-add", handler);
+
+		const tpl = (el as any)._renderFurnitureSidebar();
 		const c = renderTo(tpl);
 
 		const stickers = c.querySelectorAll(".furn-sticker:not(.furn-custom)");
 		if (stickers.length > 0) {
 			(stickers[0] as HTMLElement).click();
-			expect(a._furniture.length).toBeGreaterThan(0);
+			expect(handler).toHaveBeenCalledTimes(1);
 		}
 	});
 
-	it("custom icon button toggles picker", () => {
-		const a = createPanel() as any;
-		const tpl = a._renderFurnitureSidebar();
+	it("custom icon button fires custom-icon-toggle", () => {
+		const el = createFurnSidebar();
+		const handler = vi.fn();
+		el.addEventListener("custom-icon-toggle", handler);
+
+		const tpl = (el as any)._renderFurnitureSidebar();
 		const c = renderTo(tpl);
 
 		const customBtn = c.querySelector(".furn-custom") as HTMLElement;
 		if (customBtn) {
 			customBtn.click();
-			expect(a._showCustomIconPicker).toBe(true);
+			expect(handler).toHaveBeenCalledTimes(1);
 		}
 	});
 
-	it("custom icon picker cancel", () => {
-		const a = createPanel() as any;
-		a._showCustomIconPicker = true;
-		a._customIconValue = "mdi:lamp";
-		const tpl = a._renderFurnitureSidebar();
+	it("custom icon picker cancel fires events", () => {
+		const el = createFurnSidebar({
+			showCustomIconPicker: true,
+			customIconValue: "mdi:lamp",
+		});
+		const toggleHandler = vi.fn();
+		const changeHandler = vi.fn();
+		el.addEventListener("custom-icon-toggle", toggleHandler);
+		el.addEventListener("custom-icon-change", changeHandler);
+
+		const tpl = (el as any)._renderFurnitureSidebar();
 		const c = renderTo(tpl);
 
 		const backBtn = c.querySelector(".wizard-btn-back") as HTMLElement;
 		if (backBtn) {
 			backBtn.click();
-			expect(a._showCustomIconPicker).toBe(false);
+			expect(toggleHandler).toHaveBeenCalledTimes(1);
+			expect(changeHandler).toHaveBeenCalledTimes(1);
+			expect(changeHandler.mock.calls[0][0].detail).toBe("");
 		}
 	});
 
-	it("custom icon picker add", () => {
-		const a = createPanel() as any;
-		a._showCustomIconPicker = true;
-		a._customIconValue = "mdi:star";
-		const tpl = a._renderFurnitureSidebar();
+	it("custom icon picker add fires furniture-add-custom", () => {
+		const el = createFurnSidebar({
+			showCustomIconPicker: true,
+			customIconValue: "mdi:star",
+		});
+		const handler = vi.fn();
+		el.addEventListener("furniture-add-custom", handler);
+
+		const tpl = (el as any)._renderFurnitureSidebar();
 		const c = renderTo(tpl);
 
 		const primaryBtn = c.querySelector(".wizard-btn-primary") as HTMLElement;
 		if (primaryBtn) {
 			primaryBtn.click();
-			expect(a._furniture.length).toBe(1);
-			expect(a._showCustomIconPicker).toBe(false);
+			expect(handler).toHaveBeenCalledTimes(1);
+			expect(handler.mock.calls[0][0].detail).toBe("mdi:star");
 		}
 	});
 
-	it("furniture remove button on selected item", () => {
-		const a = createPanel() as any;
-		a._furniture = [
-			{
-				id: "f1",
-				type: "svg",
-				icon: "armchair",
-				label: "Chair",
-				x: 100,
-				y: 200,
-				width: 800,
-				height: 800,
-				rotation: 0,
-				lockAspect: false,
-			},
-		];
-		a._selectedFurnitureId = "f1";
-		const tpl = a._renderFurnitureSidebar();
+	it("furniture remove button fires furniture-remove", () => {
+		const el = createFurnSidebar({
+			furniture: [
+				{
+					id: "f1",
+					type: "svg" as const,
+					icon: "armchair",
+					label: "Chair",
+					x: 100,
+					y: 200,
+					width: 800,
+					height: 800,
+					rotation: 0,
+					lockAspect: false,
+				},
+			],
+			selectedFurnitureId: "f1",
+		});
+		const handler = vi.fn();
+		el.addEventListener("furniture-remove", handler);
+
+		const tpl = (el as any)._renderFurnitureSidebar();
 		const c = renderTo(tpl);
 
 		const removeBtn = c.querySelector(".zone-remove-btn") as HTMLElement;
 		if (removeBtn) {
 			removeBtn.click();
-			expect(a._furniture.length).toBe(0);
+			expect(handler).toHaveBeenCalledTimes(1);
+			expect(handler.mock.calls[0][0].detail).toBe("f1");
 		}
 	});
 
-	it("furniture dimension inputs", () => {
-		const a = createPanel() as any;
-		a._furniture = [
-			{
-				id: "f1",
-				type: "svg",
-				icon: "armchair",
-				label: "Chair",
-				x: 100,
-				y: 200,
-				width: 800,
-				height: 800,
-				rotation: 0,
-				lockAspect: false,
-			},
-		];
-		a._selectedFurnitureId = "f1";
-		const tpl = a._renderFurnitureSidebar();
+	it("furniture dimension inputs fire furniture-update", () => {
+		const el = createFurnSidebar({
+			furniture: [
+				{
+					id: "f1",
+					type: "svg" as const,
+					icon: "armchair",
+					label: "Chair",
+					x: 100,
+					y: 200,
+					width: 800,
+					height: 800,
+					rotation: 0,
+					lockAspect: false,
+				},
+			],
+			selectedFurnitureId: "f1",
+		});
+		const handler = vi.fn();
+		el.addEventListener("furniture-update", handler);
+
+		const tpl = (el as any)._renderFurnitureSidebar();
 		const c = renderTo(tpl);
 
 		const inputs = c.querySelectorAll(
 			".furn-dims input",
 		) as NodeListOf<HTMLInputElement>;
 		if (inputs.length >= 3) {
-			// Width/height inputs are in cm, stored internally as mm
 			inputs[0].value = "120";
 			inputs[0].dispatchEvent(new Event("change"));
-			expect(a._furniture[0].width).toBe(1200);
+			expect(handler.mock.calls[0][0].detail.updates.width).toBe(1200);
 
 			inputs[1].value = "100";
 			inputs[1].dispatchEvent(new Event("change"));
-			expect(a._furniture[0].height).toBe(1000);
+			expect(handler.mock.calls[1][0].detail.updates.height).toBe(1000);
 
 			inputs[2].value = "45";
 			inputs[2].dispatchEvent(new Event("change"));
-			expect(a._furniture[0].rotation).toBe(45);
+			expect(handler.mock.calls[2][0].detail.updates.rotation).toBe(45);
 		}
 	});
 });
 
-describe("_renderUncalibratedFov DOM events", () => {
-	it("calibrate button starts wizard", () => {
-		const a = createPanel() as any;
-		a._perspective = null;
+describe("_renderUncalibratedFov DOM events (via EppWizard)", () => {
+	it("calibrate button fires start-calibration event", () => {
+		const a = createWizard() as any;
+		a.mode = "uncalibrated-fov";
 		const tpl = a._renderUncalibratedFov();
 		const c = renderTo(tpl);
+
+		let startFired = false;
+		a.addEventListener("start-calibration", () => {
+			startFired = true;
+		});
 
 		const link = c.querySelector(".live-nav-link") as HTMLElement;
 		if (link) {
 			link.click();
-			expect(a._setupStep).toBe("guide");
+			expect(startFired).toBe(true);
 		}
 	});
 });
 
-describe("_renderNeedsCalibration DOM events", () => {
-	it("start calibration button works", () => {
-		const a = createPanel() as any;
+describe("_renderNeedsCalibration DOM events (via EppWizard)", () => {
+	it("start calibration button fires start-calibration event", () => {
+		const a = createWizard() as any;
+		a.mode = "needs-calibration";
 		const tpl = a._renderNeedsCalibration();
 		const c = renderTo(tpl);
+
+		let startFired = false;
+		a.addEventListener("start-calibration", () => {
+			startFired = true;
+		});
 
 		const btn = c.querySelector(".wizard-btn-primary") as HTMLElement;
 		if (btn) {
 			btn.click();
-			expect(a._setupStep).toBe("guide");
+			expect(startFired).toBe(true);
 		}
 	});
 });
@@ -1101,44 +1379,50 @@ describe("render delete calibration dialog event", () => {
 });
 
 describe("_renderEditor DOM events", () => {
-	it("editor panel click deselects active zone", () => {
+	it("editor panel click deselects active zone via event", () => {
 		const a = createPanel() as any;
 		a._view = "editor";
 		a._activeZone = 2;
 		const tpl = a._renderEditor();
 		const c = renderTo(tpl);
 
-		const panel = c.querySelector(".panel") as HTMLElement;
-		if (panel) {
-			panel.click();
-			expect(a._activeZone).toBeNull();
-		}
+		const editorView = c.querySelector("epp-editor-view") as HTMLElement;
+		expect(editorView).not.toBeNull();
+		// Dispatch the custom event that the component fires on panel click
+		editorView.dispatchEvent(
+			new CustomEvent("editor-panel-click", { bubbles: true, composed: true }),
+		);
+		expect(a._activeZone).toBeNull();
 	});
 
-	it("grid container click deselects furniture", () => {
+	it("grid container click deselects furniture via event", () => {
 		const a = createPanel() as any;
 		a._view = "editor";
 		a._selectedFurnitureId = "f1";
 		const tpl = a._renderEditor();
 		const c = renderTo(tpl);
 
-		const gridContainer = c.querySelector(".grid-container") as HTMLElement;
-		if (gridContainer) {
-			gridContainer.click();
-			expect(a._selectedFurnitureId).toBeNull();
-		}
+		const editorView = c.querySelector("epp-editor-view") as HTMLElement;
+		expect(editorView).not.toBeNull();
+		// Dispatch the custom event that the component fires on grid container click
+		editorView.dispatchEvent(
+			new CustomEvent("editor-grid-container-click", {
+				bubbles: true,
+				composed: true,
+			}),
+		);
+		expect(a._selectedFurnitureId).toBeNull();
 	});
 
-	it("grid mouseup and mouseleave are bound", () => {
+	it("renders epp-editor-view with epp-grid inside", () => {
 		const a = createPanel() as any;
 		a._view = "editor";
 		const tpl = a._renderEditor();
 		const c = renderTo(tpl);
 
-		const grid = c.querySelector(".grid") as HTMLElement;
-		expect(grid).not.toBeNull();
-		// mouseup/mouseleave use method refs that have `this` binding issues in external render
-		// Tested via _onCellMouseUp() directly in panel-settings.test.ts
+		// The epp-editor-view element should be rendered
+		const editorView = c.querySelector("epp-editor-view");
+		expect(editorView).not.toBeNull();
 	});
 
 	it("unsaved dialog cancel", () => {
@@ -1146,7 +1430,8 @@ describe("_renderEditor DOM events", () => {
 		a._view = "editor";
 		a._showUnsavedDialog = true;
 		a._pendingNavigation = () => {};
-		const tpl = a._renderEditor();
+		// Unsaved dialog is rendered by _renderGlobalDialogs, not _renderEditor
+		const tpl = a._renderGlobalDialogs();
 		const c = renderTo(tpl);
 
 		// Find cancel button inside unsaved dialog
@@ -1165,8 +1450,8 @@ describe("_renderEditor DOM events", () => {
 
 describe("_renderSensitivities DOM events", () => {
 	it("range inputs update next sibling text", () => {
-		const a = createPanel() as any;
-		const tpl = a._renderSensitivities();
+		const sv = createSettingsView();
+		const tpl = (sv as any).renderSensitivities();
 		const c = renderTo(tpl);
 
 		const ranges = c.querySelectorAll(".setting-range");
@@ -1184,9 +1469,8 @@ describe("_renderSensitivities DOM events", () => {
 
 describe("_renderEnvOffset DOM events", () => {
 	it("offset range input updates preview", () => {
-		const a = createPanel() as any;
-		a._offsetsConfig = { illuminance: 0 };
-		const tpl = a._renderEnvOffset(
+		const sv = createSettingsView({ offsetsConfig: { illuminance: 0 } });
+		const tpl = (sv as any).renderEnvOffset(
 			"Illuminance",
 			100,
 			"illuminance",
