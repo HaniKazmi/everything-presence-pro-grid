@@ -10,3 +10,7 @@ GRID_CELL_SIZE_MM = 300  # Fixed 300mm x 300mm cells
 DEFAULT_PORT = 6053
 
 MAX_ZONES = 7
+
+# Config protocol version — must match firmware's Config Protocol sensor value.
+# Bump in lockstep with firmware when the config push interface changes.
+CONFIG_PROTOCOL_VERSION = 1
