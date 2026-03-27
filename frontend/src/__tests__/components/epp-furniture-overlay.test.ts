@@ -1,5 +1,5 @@
 import { render } from "lit";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import "../../components/epp-furniture-overlay.js";
 import type { EppFurnitureOverlay } from "../../components/epp-furniture-overlay.js";
 import type { FurnitureItem } from "../../lib/furniture.js";
@@ -355,5 +355,80 @@ describe("epp-furniture-overlay events", () => {
 		}
 
 		document.body.removeChild(c);
+	});
+});
+
+describe("epp-furniture-overlay shadow DOM resize handles", () => {
+	let el: EppFurnitureOverlay;
+
+	afterEach(() => {
+		if (el?.parentNode) el.parentNode.removeChild(el);
+	});
+
+	const DIRECTIONS = ["n", "s", "e", "w", "ne", "nw", "se", "sw"] as const;
+
+	for (const dir of DIRECTIONS) {
+		it(`fires furniture-pointer-down with resize handle "${dir}" via shadow DOM`, async () => {
+			el = createOverlay({
+				furniture: [SAMPLE_FURNITURE],
+				selectedFurnitureId: "f1",
+			});
+			document.body.appendChild(el);
+			await el.updateComplete;
+
+			const handler = vi.fn();
+			el.addEventListener("furniture-pointer-down", handler);
+
+			const handle = el.shadowRoot!.querySelector(
+				`.furn-handle-${dir}`,
+			) as HTMLElement;
+			expect(handle).not.toBeNull();
+
+			handle.dispatchEvent(
+				new PointerEvent("pointerdown", {
+					bubbles: true,
+					composed: true,
+					clientX: 100,
+					clientY: 100,
+				}),
+			);
+
+			// The event bubbles from handle -> parent item, so the handler
+			// fires twice: once for resize (handle) and once for move (item).
+			// The resize event fires first because the handle is deeper in the DOM.
+			expect(handler).toHaveBeenCalled();
+			const resizeCall = handler.mock.calls.find(
+				(c: any) => c[0].detail.type === "resize",
+			);
+			expect(resizeCall).toBeDefined();
+			const detail = resizeCall![0].detail;
+			expect(detail.id).toBe("f1");
+			expect(detail.type).toBe("resize");
+			expect(detail.handle).toBe(dir);
+		});
+	}
+});
+
+describe("epp-furniture-overlay default localize", () => {
+	let el: EppFurnitureOverlay;
+
+	afterEach(() => {
+		if (el?.parentNode) el.parentNode.removeChild(el);
+	});
+
+	it("uses default localize identity function when none is provided", () => {
+		el = document.createElement("epp-furniture-overlay") as EppFurnitureOverlay;
+		el.furniture = [];
+		el.selectedFurnitureId = null;
+		el.roomWidth = 3000;
+		el.cellPx = 28;
+		el.minCol = 0;
+		el.minRow = 0;
+		el.visCols = 20;
+		el.visRows = 20;
+		el.sidebarTab = "furniture";
+		// Do NOT set localize — use the default
+		expect(el.localize("test_key")).toBe("test_key");
+		expect(el.localize("another.key")).toBe("another.key");
 	});
 });

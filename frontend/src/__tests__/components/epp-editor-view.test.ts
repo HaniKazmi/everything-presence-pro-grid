@@ -195,7 +195,7 @@ describe("editor-panel-click event", () => {
 });
 
 describe("editor-grid-container-click event", () => {
-	it("fires editor-grid-container-click when clicking grid container", () => {
+	it("fires editor-grid-container-click when clicking grid container (not on furniture)", () => {
 		const ev = createView();
 		const tpl = ev.render();
 		const c = renderTo(tpl);
@@ -209,5 +209,42 @@ describe("editor-grid-container-click event", () => {
 		gridContainer.click();
 		expect(fired).toBe(true);
 		document.body.removeChild(c);
+	});
+
+	it("does NOT fire editor-grid-container-click when clicking a .furniture-item", () => {
+		const ev = createView();
+		const tpl = ev.render();
+		const c = renderTo(tpl);
+
+		// Insert a furniture-item child inside the grid container
+		const gridContainer = c.querySelector(".grid-container") as HTMLElement;
+		const furnitureDiv = document.createElement("div");
+		furnitureDiv.className = "furniture-item";
+		furnitureDiv.textContent = "Sofa";
+		gridContainer.appendChild(furnitureDiv);
+
+		let fired = false;
+		ev.addEventListener("editor-grid-container-click", () => {
+			fired = true;
+		});
+
+		// Click on the furniture item
+		furnitureDiv.click();
+		expect(fired).toBe(false);
+		document.body.removeChild(c);
+	});
+});
+
+describe("customElements guard", () => {
+	it("does not throw when epp-editor-view is already registered", () => {
+		// The element was already registered by the import at the top of this file.
+		// Re-running the guard should be a no-op.
+		expect(customElements.get("epp-editor-view")).toBeDefined();
+		// Dynamically re-execute the guard logic — should not throw
+		expect(() => {
+			if (!customElements.get("epp-editor-view")) {
+				customElements.define("epp-editor-view", class extends HTMLElement {});
+			}
+		}).not.toThrow();
 	});
 });

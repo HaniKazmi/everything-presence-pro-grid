@@ -264,9 +264,13 @@ Tests live in `frontend/src/__tests__/` with happy-dom for DOM simulation.
 | `components/*.test.ts` | All 9 extracted components |
 | `lib/*.test.ts` | Pure-function modules (grid, coordinates, perspective, zone-engine, etc.) |
 
+### Python (pytest)
+
+Tests in `tests/`: init lifecycle, storage, device manager, websocket API.
+
 ### CI (.github/workflows/)
 
-- **tests.yml** — Frontend lint + vitest, C++ cmake build + ctest
+- **tests.yml** — Python tests (3 HA versions), frontend lint + vitest + coverage, C++ ctest
 - **firmware.yml** — C++ tests + ESPHome compilation for all 8 variants
 - **hacs.yml** — HACS repository structure validation
 - **hassfest.yml** — manifest.json schema validation
