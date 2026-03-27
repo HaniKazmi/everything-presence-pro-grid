@@ -5,12 +5,13 @@ import os
 import esphome.codegen as cg
 import esphome.config_validation as cv
 from esphome.components import binary_sensor
+from esphome.components import sensor
 from esphome.components import text_sensor
 from esphome.const import CONF_ID
 
 CODEOWNERS = ["@clintongormley"]
 DEPENDENCIES = ["json"]
-AUTO_LOAD = ["binary_sensor", "text_sensor"]
+AUTO_LOAD = ["binary_sensor", "sensor", "text_sensor"]
 
 epp_ns = cg.esphome_ns.namespace("epp")
 EPPComponent = epp_ns.class_("EPPComponent", cg.Component)
@@ -21,6 +22,7 @@ CONF_ZONE_OCCUPANCY = "zone_occupancy"
 CONF_TARGET_POSITIONS = "target_positions"
 CONF_RAW_TARGET_POSITIONS = "raw_target_positions"
 CONF_ZONE_STATE = "zone_state"
+CONF_CONFIG_PROTOCOL = "config_protocol"
 
 ZONE_OCCUPANCY_SCHEMA = cv.Schema({cv.Optional(f"zone_{i}"): binary_sensor.binary_sensor_schema() for i in range(8)})
 
@@ -39,6 +41,7 @@ CONFIG_SCHEMA = cv.Schema(
         cv.Optional(CONF_TARGET_POSITIONS): TARGET_POSITIONS_SCHEMA,
         cv.Optional(CONF_RAW_TARGET_POSITIONS): RAW_TARGET_POSITIONS_SCHEMA,
         cv.Optional(CONF_ZONE_STATE): text_sensor.text_sensor_schema(),
+        cv.Optional(CONF_CONFIG_PROTOCOL): sensor.sensor_schema(),
     }
 ).extend(cv.COMPONENT_SCHEMA)
 
@@ -94,3 +97,8 @@ async def to_code(config):
     if CONF_ZONE_STATE in config:
         sens = await text_sensor.new_text_sensor(config[CONF_ZONE_STATE])
         cg.add(var.set_zone_state_sensor(sens))
+
+    # Config protocol numeric sensor
+    if CONF_CONFIG_PROTOCOL in config:
+        sens = await sensor.new_sensor(config[CONF_CONFIG_PROTOCOL])
+        cg.add(var.set_config_protocol_sensor(sens))

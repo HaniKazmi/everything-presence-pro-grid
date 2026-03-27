@@ -20,6 +20,11 @@ void EPPComponent::setup() {
     firmware_version_sensor_->publish_state("1.0.0-zone-engine");
   }
 
+  // Publish config protocol version
+  if (config_protocol_sensor_ != nullptr) {
+    config_protocol_sensor_->publish_state(1.0f);
+  }
+
   restore_from_nvs_();
 }
 
