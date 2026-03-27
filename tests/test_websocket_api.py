@@ -206,8 +206,16 @@ class TestWebSocketSetRoomLayout:
 
     async def test_set_room_layout(self, hass: HomeAssistant, config_entry: MockConfigEntry) -> None:
         """set_room_layout saves layout and pushes to device."""
+        from custom_components.eppgrid.const import CONFIG_PROTOCOL_VERSION
+        from custom_components.eppgrid.device_manager import ManagedDevice
+
         mock_dm = await setup_integration(hass, config_entry)
-        mock_dm.devices["AA:BB:CC:DD:EE:FF"] = MagicMock(host="192.168.1.50")
+        mock_dm.devices["AA:BB:CC:DD:EE:FF"] = ManagedDevice(
+            mac="AA:BB:CC:DD:EE:FF",
+            name="EPP",
+            host="192.168.1.50",
+            config_protocol=CONFIG_PROTOCOL_VERSION,
+        )
 
         from custom_components.eppgrid.websocket_api import websocket_set_room_layout
 
@@ -596,3 +604,268 @@ class TestWebSocketSubscriptions:
         connection.send_result.assert_called_once_with(25)
         mock_device_conn.subscribe_states.assert_called_once()
         assert 25 in connection.subscriptions
+
+
+class TestUpdateFirmware:
+    """Tests for eppgrid/update_firmware."""
+
+    async def test_update_firmware_calls_install(self, hass: HomeAssistant, config_entry: MockConfigEntry) -> None:
+        """update_firmware triggers OTA via hass.services.async_call."""
+        from homeassistant.helpers import device_registry as dr
+        from homeassistant.helpers import entity_registry as er
+
+        mock_dm = await setup_integration(hass, config_entry)
+
+        # Register a real device in the device registry
+        dev_reg = dr.async_get(hass)
+        device = dev_reg.async_get_or_create(
+            config_entry_id=config_entry.entry_id,
+            identifiers={("eppgrid", "AA:BB:CC:DD:EE:FF")},
+            name="EPP Grid",
+        )
+
+        mock_dm.devices = {"AA:BB:CC:DD:EE:FF": MagicMock(device_id=device.id)}
+
+        # Register a mock update entity in the entity registry for this device
+        ent_reg = er.async_get(hass)
+        ent_reg.async_get_or_create(
+            domain="update",
+            platform="esphome",
+            unique_id="device_123_firmware",
+            suggested_object_id="epp_firmware",
+            config_entry=config_entry,
+            device_id=device.id,
+        )
+
+        from custom_components.eppgrid.websocket_api import websocket_update_firmware
+
+        connection = MagicMock()
+        msg = {"id": 20, "type": "eppgrid/update_firmware", "mac": "AA:BB:CC:DD:EE:FF"}
+
+        with patch("homeassistant.core.ServiceRegistry.async_call", new_callable=AsyncMock) as mock_async_call:
+            await call_async_handler(hass, websocket_update_firmware, connection, msg)
+
+        connection.send_result.assert_called_once()
+        mock_async_call.assert_awaited_once()
+        call_args = mock_async_call.call_args
+        assert call_args[0][0] == "update"
+        assert call_args[0][1] == "install"
+        assert "entity_id" in call_args[0][2]
+
+    async def test_update_firmware_device_not_found(self, hass: HomeAssistant, config_entry: MockConfigEntry) -> None:
+        """update_firmware returns error when device not found."""
+        mock_dm = await setup_integration(hass, config_entry)
+        mock_dm.devices = {}
+
+        from custom_components.eppgrid.websocket_api import websocket_update_firmware
+
+        connection = MagicMock()
+        msg = {"id": 21, "type": "eppgrid/update_firmware", "mac": "AA:BB:CC:DD:EE:FF"}
+
+        await call_async_handler(hass, websocket_update_firmware, connection, msg)
+
+        connection.send_error.assert_called_once_with(21, "not_found", "Device not found")
+
+    async def test_update_firmware_no_update_entity(self, hass: HomeAssistant, config_entry: MockConfigEntry) -> None:
+        """update_firmware returns error when no update entity found."""
+        mock_dm = await setup_integration(hass, config_entry)
+        mock_dm.devices = {"AA:BB:CC:DD:EE:FF": MagicMock(device_id="device_123")}
+
+        from custom_components.eppgrid.websocket_api import websocket_update_firmware
+
+        connection = MagicMock()
+        msg = {"id": 22, "type": "eppgrid/update_firmware", "mac": "AA:BB:CC:DD:EE:FF"}
+
+        await call_async_handler(hass, websocket_update_firmware, connection, msg)
+
+        connection.send_error.assert_called_once_with(22, "no_update_entity", "No update entity found for device")
+
+    async def test_update_firmware_not_ready(self, hass: HomeAssistant) -> None:
+        """update_firmware returns error when integration not loaded."""
+        from custom_components.eppgrid.websocket_api import websocket_update_firmware
+
+        connection = MagicMock()
+        msg = {"id": 23, "type": "eppgrid/update_firmware", "mac": "AA:BB:CC:DD:EE:FF"}
+
+        await call_async_handler(hass, websocket_update_firmware, connection, msg)
+
+        connection.send_error.assert_called_once_with(23, "not_ready", "Integration not loaded")
+
+
+class TestProtocolVersionGuard:
+    """Config commands are blocked when protocol versions don't match."""
+
+    async def test_set_setup_blocked_when_firmware_behind(
+        self, hass: HomeAssistant, config_entry: MockConfigEntry
+    ) -> None:
+        """set_setup returns error when firmware protocol is behind."""
+        from custom_components.eppgrid.device_manager import ManagedDevice
+
+        mock_dm = await setup_integration(hass, config_entry)
+        mock_dm.devices = {
+            "AA:BB:CC:DD:EE:FF": ManagedDevice(
+                mac="AA:BB:CC:DD:EE:FF",
+                name="EPP",
+                host="192.168.1.50",
+                config_protocol=0,  # behind
+            )
+        }
+
+        from custom_components.eppgrid.websocket_api import websocket_set_setup
+
+        connection = MagicMock()
+        msg = {
+            "id": 10,
+            "type": "eppgrid/set_setup",
+            "mac": "AA:BB:CC:DD:EE:FF",
+            "perspective": [1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0],
+            "room_width": 3000.0,
+            "room_depth": 4000.0,
+        }
+
+        await call_async_handler(hass, websocket_set_setup, connection, msg)
+
+        connection.send_error.assert_called_once()
+        args = connection.send_error.call_args[0]
+        assert args[1] == "firmware_behind"
+
+    async def test_set_setup_blocked_when_firmware_ahead(
+        self, hass: HomeAssistant, config_entry: MockConfigEntry
+    ) -> None:
+        """set_setup returns error when firmware protocol is ahead."""
+        from custom_components.eppgrid.device_manager import ManagedDevice
+
+        mock_dm = await setup_integration(hass, config_entry)
+        mock_dm.devices = {
+            "AA:BB:CC:DD:EE:FF": ManagedDevice(
+                mac="AA:BB:CC:DD:EE:FF",
+                name="EPP",
+                host="192.168.1.50",
+                config_protocol=99,  # ahead
+            )
+        }
+
+        from custom_components.eppgrid.websocket_api import websocket_set_setup
+
+        connection = MagicMock()
+        msg = {
+            "id": 11,
+            "type": "eppgrid/set_setup",
+            "mac": "AA:BB:CC:DD:EE:FF",
+            "perspective": [1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0],
+            "room_width": 3000.0,
+            "room_depth": 4000.0,
+        }
+
+        await call_async_handler(hass, websocket_set_setup, connection, msg)
+
+        connection.send_error.assert_called_once()
+        args = connection.send_error.call_args[0]
+        assert args[1] == "firmware_ahead"
+
+    async def test_set_setup_allowed_when_compatible(self, hass: HomeAssistant, config_entry: MockConfigEntry) -> None:
+        """set_setup proceeds normally when protocol versions match."""
+        from custom_components.eppgrid.const import CONFIG_PROTOCOL_VERSION
+        from custom_components.eppgrid.device_manager import ManagedDevice
+
+        mock_dm = await setup_integration(hass, config_entry)
+        mock_dm.devices = {
+            "AA:BB:CC:DD:EE:FF": ManagedDevice(
+                mac="AA:BB:CC:DD:EE:FF",
+                name="EPP",
+                host="192.168.1.50",
+                config_protocol=CONFIG_PROTOCOL_VERSION,
+            )
+        }
+
+        from custom_components.eppgrid.websocket_api import websocket_set_setup
+
+        connection = MagicMock()
+        msg = {
+            "id": 12,
+            "type": "eppgrid/set_setup",
+            "mac": "AA:BB:CC:DD:EE:FF",
+            "perspective": [1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0],
+            "room_width": 3000.0,
+            "room_depth": 4000.0,
+        }
+
+        await call_async_handler(hass, websocket_set_setup, connection, msg)
+
+        # Should not send error — proceeds to save config
+        connection.send_error.assert_not_called()
+        connection.send_result.assert_called_once()
+
+    @pytest.mark.parametrize(
+        "handler_name,extra_fields",
+        [
+            (
+                "websocket_set_room_layout",
+                {"grid_bytes": [0] * 400, "zone_slots": [None] * 7, "room_type": "normal"},
+            ),
+            (
+                "websocket_set_entity_enabled",
+                {"entity_id": "binary_sensor.test", "enabled": True},
+            ),
+            (
+                "websocket_set_env_calibration",
+                {"temperature_offset": 0.0, "humidity_offset": 0.0, "illuminance_offset": 0.0},
+            ),
+            ("websocket_set_motion_timeout", {"timeout": 5.0}),
+            ("websocket_set_tracking", {"max_range": 6000.0}),
+            (
+                "websocket_set_static_presence",
+                {
+                    "min_range": 0.0,
+                    "max_range": 6000.0,
+                    "trigger_range": 2500.0,
+                    "sustain_sensitivity": 3,
+                    "trigger_sensitivity": 5,
+                    "timeout": 10.0,
+                    "on_delay": 0.0,
+                    "led_enabled": True,
+                },
+            ),
+            (
+                "websocket_set_pipeline",
+                {"display_interval_ms": 200, "zone_publish_interval_ms": 1000, "window_duration_ms": 1000},
+            ),
+        ],
+    )
+    async def test_protocol_guard_blocks_all_config_commands(
+        self,
+        hass: HomeAssistant,
+        config_entry: MockConfigEntry,
+        handler_name: str,
+        extra_fields: dict,
+    ) -> None:
+        """All config commands are blocked when firmware protocol is behind."""
+        from custom_components.eppgrid.device_manager import ManagedDevice
+
+        mock_dm = await setup_integration(hass, config_entry)
+        mock_dm.devices = {
+            "AA:BB:CC:DD:EE:FF": ManagedDevice(
+                mac="AA:BB:CC:DD:EE:FF",
+                name="EPP",
+                host="192.168.1.50",
+                config_protocol=0,
+            )
+        }
+
+        import custom_components.eppgrid.websocket_api as ws
+
+        handler = getattr(ws, handler_name)
+        connection = MagicMock()
+        msg = {"id": 100, "type": f"eppgrid/{handler_name.replace('websocket_', '')}", "mac": "AA:BB:CC:DD:EE:FF"}
+        msg.update(extra_fields)
+
+        if hasattr(handler, "__wrapped__"):
+            # async_response handlers
+            await call_async_handler(hass, handler, connection, msg)
+        else:
+            # sync handlers
+            handler(hass, connection, msg)
+
+        connection.send_error.assert_called_once()
+        args = connection.send_error.call_args[0]
+        assert args[1] == "firmware_behind"

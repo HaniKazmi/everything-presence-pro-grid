@@ -2,6 +2,7 @@
 
 #include "esphome/core/component.h"
 #include "esphome/components/binary_sensor/binary_sensor.h"
+#include "esphome/components/sensor/sensor.h"
 #include "esphome/components/text_sensor/text_sensor.h"
 
 #include "epp_calibration.h"
@@ -58,6 +59,9 @@ class EPPComponent : public esphome::Component {
   void set_zone_state_sensor(esphome::text_sensor::TextSensor *sensor) {
     zone_state_sensor_ = sensor;
   }
+  void set_config_protocol_sensor(esphome::sensor::Sensor *sensor) {
+    config_protocol_sensor_ = sensor;
+  }
   void set_window_duration(uint32_t ms) { window_.set_window_duration(ms); }
   void set_display_interval(uint32_t ms) { display_interval_ms_ = ms; }
   void set_zone_publish_interval(uint32_t ms) { zone_publish_interval_ms_ = ms; }
@@ -65,6 +69,7 @@ class EPPComponent : public esphome::Component {
  protected:
   static constexpr int NUM_TARGETS = 3;
   static constexpr uint8_t NVS_SCHEMA_VERSION = 1;
+  static constexpr uint8_t CONFIG_PROTOCOL_VERSION = 1;
 
   // Target data from LD2450
   ParsedTarget targets_[NUM_TARGETS]{};
@@ -105,6 +110,9 @@ class EPPComponent : public esphome::Component {
 
   // Zone state text sensor (JSON at 1Hz)
   esphome::text_sensor::TextSensor *zone_state_sensor_{nullptr};
+
+  // Config protocol version sensor
+  esphome::sensor::Sensor *config_protocol_sensor_{nullptr};
 
   // Publish throttle intervals (ms)
   uint32_t display_interval_ms_ = 200;

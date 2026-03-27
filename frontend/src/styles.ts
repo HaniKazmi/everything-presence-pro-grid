@@ -304,6 +304,36 @@ export const toggleStyles = css`
   }
 `;
 
+export const protocolBannerStyles = css`
+  .protocol-banner {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 16px;
+    margin: 0 16px 8px;
+    border-radius: 8px;
+    font-size: 14px;
+  }
+  .protocol-banner-warning {
+    background: var(--warning-color, #ff9800);
+    color: white;
+  }
+  .protocol-banner-info {
+    background: var(--info-color, #2196f3);
+    color: white;
+  }
+  .protocol-banner ha-icon {
+    --mdc-icon-size: 24px;
+    flex-shrink: 0;
+  }
+  .protocol-banner span {
+    flex: 1;
+  }
+  .protocol-banner button {
+    flex-shrink: 0;
+  }
+`;
+
 export const tooltipStyles = css`
   .setting-info {
     position: relative;

@@ -18,6 +18,7 @@ from homeassistant.core import callback
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers import entity_registry as er
 
+from .const import CONFIG_PROTOCOL_VERSION
 from .const import DEFAULT_PORT
 from .const import GRID_CELL_SIZE_MM
 from .const import GRID_COLS
@@ -174,6 +175,7 @@ class ManagedDevice:
     esphome_config_entry_id: str | None = None
     device_id: str | None = None
     available: bool = False
+    config_protocol: int = 0  # 0 = legacy/unknown firmware
 
 
 class DeviceManager:
@@ -206,6 +208,24 @@ class DeviceManager:
             await conn.async_disconnect()
         self._active_connections.clear()
 
+    def _read_config_protocol(self, device_id: str) -> int:
+        """Read the Config Protocol sensor value for a device, defaulting to 0."""
+        ent_reg = er.async_get(self._hass)
+        for entry in ent_reg.entities.values():
+            if (
+                entry.device_id == device_id
+                and entry.platform == "esphome"
+                and entry.unique_id.endswith("config_protocol")
+            ):
+                state = self._hass.states.get(entry.entity_id)
+                if state is not None and state.state not in (None, "unknown", "unavailable", ""):
+                    try:
+                        return int(float(state.state))
+                    except (ValueError, TypeError):
+                        pass
+                return 0
+        return 0
+
     async def async_discover(self) -> None:
         """Scan entity registry for ESPHome devices with zone_engine_version."""
         ent_reg = er.async_get(self._hass)
@@ -228,6 +248,7 @@ class DeviceManager:
                 continue
 
             host = _extract_host(device, entry.config_entry_id, self._hass)
+            proto = self._read_config_protocol(device.id)
 
             is_new = mac not in self.devices
             self.devices[mac] = ManagedDevice(
@@ -236,6 +257,7 @@ class DeviceManager:
                 host=host,
                 esphome_config_entry_id=entry.config_entry_id,
                 device_id=device.id,
+                config_protocol=proto,
             )
 
             if is_new:
@@ -370,6 +392,13 @@ class DeviceManager:
                     "host": dev.host,
                     "available": dev.available,
                     "configured": config is not None,
+                    "config_protocol_status": (
+                        "compatible"
+                        if dev.config_protocol == CONFIG_PROTOCOL_VERSION
+                        else "firmware_behind"
+                        if dev.config_protocol < CONFIG_PROTOCOL_VERSION
+                        else "firmware_ahead"
+                    ),
                 }
             )
         return result

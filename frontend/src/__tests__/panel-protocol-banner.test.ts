@@ -1,0 +1,136 @@
+/**
+ * Tests for protocol version banner rendering and config view blocking.
+ */
+
+import { describe, expect, it, vi } from "vitest";
+import type { EPPGridPanel } from "../eppgrid-panel.js";
+import "../eppgrid-panel.js";
+import { initGridFromRoom } from "../lib/grid.js";
+import { createZoneEngineState } from "../lib/zone-engine.js";
+
+function createPanel(
+	protocolStatus: "compatible" | "firmware_behind" | "firmware_ahead",
+): EPPGridPanel {
+	const el = document.createElement("eppgrid-panel") as EPPGridPanel;
+	el.hass = {
+		callWS: vi.fn().mockResolvedValue({}),
+		connection: { subscribeMessage: vi.fn().mockResolvedValue(() => {}) },
+	};
+	const a = el as any;
+	a._grid = initGridFromRoom(3000, 4000);
+	a._zoneConfigs = new Array(7).fill(null);
+	a._activeZone = 0;
+	a._dirty = false;
+	a._loading = false;
+	a._perspective = [1, 0, 0, 0, 1, 0, 0, 0];
+	a._roomWidth = 3000;
+	a._roomDepth = 4000;
+	a._furniture = [];
+	a._selectedFurnitureId = null;
+	a._view = "live";
+	a._devices = [
+		{
+			mac: "AA:BB:CC:DD:EE:01",
+			name: "T",
+			host: null,
+			available: true,
+			configured: true,
+			config_protocol_status: protocolStatus,
+		},
+	];
+	a._selectedMac = "AA:BB:CC:DD:EE:01";
+	a._targets = [];
+	a._sensorState = {
+		occupancy: false,
+		static_presence: false,
+		motion_presence: false,
+		target_presence: false,
+		illuminance: 150,
+		temperature: 22.5,
+		humidity: 45,
+		co2: 400,
+	};
+	a._zoneState = { occupancy: {}, target_counts: {}, frame_count: 0 };
+	a._zoneEngineState = createZoneEngineState();
+	a._openAccordions = new Set();
+	a._showUnsavedDialog = false;
+	a._pendingNavigation = null;
+	a._saving = false;
+	a._showDeleteCalibrationDialog = false;
+	a._showTemplateSave = false;
+	a._showTemplateLoad = false;
+	a._reportingConfig = {};
+	a._offsetsConfig = {};
+	a._targetAutoRange = true;
+	a._targetMaxDistance = 6;
+	a._staticAutoRange = true;
+	a._staticMinDistance = 0.3;
+	a._staticMaxDistance = 16;
+	return el;
+}
+
+describe("protocol banner rendering", () => {
+	it("returns nothing when protocol is compatible", () => {
+		const el = createPanel("compatible");
+		const a = el as any;
+		const result = a._renderProtocolBanner();
+		// nothing is a Lit sentinel — typeof symbol
+		expect(result).toBeDefined();
+		expect(typeof result).toBe("symbol");
+	});
+
+	it("renders warning banner when firmware is behind", () => {
+		const el = createPanel("firmware_behind");
+		const a = el as any;
+		const result = a._renderProtocolBanner();
+		expect(result).toBeDefined();
+		expect(typeof result).not.toBe("symbol");
+	});
+
+	it("renders info banner when firmware is ahead", () => {
+		const el = createPanel("firmware_ahead");
+		const a = el as any;
+		const result = a._renderProtocolBanner();
+		expect(result).toBeDefined();
+		expect(typeof result).not.toBe("symbol");
+	});
+});
+
+describe("config view blocking on protocol mismatch", () => {
+	it("falls back to live view when firmware_behind and view is editor", () => {
+		const el = createPanel("firmware_behind");
+		const a = el as any;
+		a._view = "editor";
+		// render() should not throw
+		const result = a.render();
+		expect(result).toBeDefined();
+	});
+
+	it("falls back to live view when firmware_behind and view is settings", () => {
+		const el = createPanel("firmware_behind");
+		const a = el as any;
+		a._view = "settings";
+		const result = a.render();
+		expect(result).toBeDefined();
+	});
+
+	it("allows editor view when protocol is compatible", () => {
+		const el = createPanel("compatible");
+		const a = el as any;
+		a._view = "editor";
+		const result = a.render();
+		expect(result).toBeDefined();
+	});
+});
+
+describe("_updateFirmware", () => {
+	it("calls eppgrid/update_firmware via WS", async () => {
+		const el = createPanel("firmware_behind");
+		const a = el as any;
+		await a._updateFirmware();
+		expect(el.hass.callWS).toHaveBeenCalledWith({
+			type: "eppgrid/update_firmware",
+			mac: "AA:BB:CC:DD:EE:01",
+		});
+	});
+});

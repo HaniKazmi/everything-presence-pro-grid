@@ -33,6 +33,9 @@ epp:
   firmware_version:
     name: "Zone Engine Version"
     entity_category: diagnostic
+  config_protocol:
+    name: "Config Protocol"
+    entity_category: diagnostic
   zone_occupancy:
     zone_0:
       name: "Zone 0 Occupancy"

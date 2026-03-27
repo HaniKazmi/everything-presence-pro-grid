@@ -51,6 +51,7 @@ All entities are created by ESPHome firmware with `disabled_by_default` where ap
 |--------|------|--------|
 | Occupancy | binary_sensor | PIR OR static OR tracking (combined) |
 | Zone Engine Version | text_sensor | firmware version string |
+| Config Protocol | sensor | config protocol version integer (e.g. `1`) |
 
 ### Disabled by Default
 
@@ -141,7 +142,23 @@ Parses Target Position, Zone State, and sensor entity updates into structured ev
 Returns discovered EPP devices.
 
 **Request:** `{ "type": "eppgrid/list_devices" }`
-**Response:** `{ "devices": [{"mac", "name", "host", "available", "configured"}] }`
+**Response:**
+```json
+{
+    "devices": [
+        {
+            "mac": "AA:BB:CC:DD:EE:FF",
+            "name": "Living Room Sensor",
+            "host": "192.168.1.50",
+            "available": true,
+            "configured": true,
+            "config_protocol_status": "compatible"
+        }
+    ]
+}
+```
+
+`config_protocol_status` is `"compatible"`, `"firmware_behind"`, or `"firmware_ahead"` — comparing the device's `Config Protocol` sensor value to the integration's `CONFIG_PROTOCOL_VERSION`.
 
 ### `get_config`
 
@@ -149,6 +166,16 @@ Returns stored config for a device.
 
 **Request:** `{ "type": "eppgrid/get_config", "mac": str }`
 **Response:** `{ "config": {...} }` — calibration, room_layout, env_calibration, etc.
+
+### `update_firmware`
+
+Triggers OTA firmware update on a device via its ESPHome update entity.
+
+**Request:** `{ "type": "eppgrid/update_firmware", "mac": str }`
+
+### Protocol Version Guard
+
+All config commands (`set_setup`, `set_room_layout`, `set_entity_enabled`, `set_env_calibration`, `set_motion_timeout`, `set_tracking`, `set_static_presence`, `set_pipeline`) check `config_protocol_status` before executing. On mismatch, they return an error with code `"firmware_behind"` or `"firmware_ahead"`.
 
 ### `set_setup`
 
