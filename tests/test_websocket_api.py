@@ -642,10 +642,15 @@ class TestUpdateFirmware:
         connection = MagicMock()
         msg = {"id": 20, "type": "eppgrid/update_firmware", "mac": "AA:BB:CC:DD:EE:FF"}
 
-        with patch("homeassistant.core.ServiceRegistry.async_call", new_callable=AsyncMock):
+        with patch("homeassistant.core.ServiceRegistry.async_call", new_callable=AsyncMock) as mock_async_call:
             await call_async_handler(hass, websocket_update_firmware, connection, msg)
 
         connection.send_result.assert_called_once()
+        mock_async_call.assert_awaited_once()
+        call_args = mock_async_call.call_args
+        assert call_args[0][0] == "update"
+        assert call_args[0][1] == "install"
+        assert "entity_id" in call_args[0][2]
 
     async def test_update_firmware_device_not_found(self, hass: HomeAssistant, config_entry: MockConfigEntry) -> None:
         """update_firmware returns error when device not found."""

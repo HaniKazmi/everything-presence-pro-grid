@@ -142,7 +142,21 @@ Parses Target Position, Zone State, and sensor entity updates into structured ev
 Returns discovered EPP devices.
 
 **Request:** `{ "type": "eppgrid/list_devices" }`
-**Response:** `{ "devices": [{"mac", "name", "host", "available", "configured", "config_protocol_status"}] }`
+**Response:**
+```json
+{
+    "devices": [
+        {
+            "mac": "AA:BB:CC:DD:EE:FF",
+            "name": "Living Room Sensor",
+            "host": "192.168.1.50",
+            "available": true,
+            "configured": true,
+            "config_protocol_status": "compatible"
+        }
+    ]
+}
+```
 
 `config_protocol_status` is `"compatible"`, `"firmware_behind"`, or `"firmware_ahead"` — comparing the device's `Config Protocol` sensor value to the integration's `CONFIG_PROTOCOL_VERSION`.
 

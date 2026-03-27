@@ -864,7 +864,8 @@ async def websocket_update_firmware(
             "update",
             "install",
             {"entity_id": update_entity_id},
-            blocking=False,
+            blocking=True,
+            context=connection.context,
         )
         connection.send_result(msg["id"])
     except Exception as err:
