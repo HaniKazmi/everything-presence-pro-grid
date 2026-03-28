@@ -1,7 +1,7 @@
 import { css, html, LitElement, nothing, type TemplateResult } from "lit";
 import { property, state } from "lit/decorators.js";
-import { headerStyles } from "../styles.js";
 import type { ZoneConfig } from "../lib/zone-defaults.js";
+import { headerStyles } from "../styles.js";
 import "./epp-live-sidebar.js";
 
 export interface LiveViewSensorState {

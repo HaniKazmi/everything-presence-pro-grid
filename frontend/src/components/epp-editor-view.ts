@@ -1,8 +1,8 @@
 import { css, html, LitElement, nothing, type TemplateResult } from "lit";
 import { property } from "lit/decorators.js";
-import { headerStyles } from "../styles.js";
 import type { FurnitureItem } from "../lib/furniture.js";
 import type { ZoneConfig } from "../lib/zone-defaults.js";
+import { headerStyles } from "../styles.js";
 import type { LocalZoneInfo } from "./epp-zone-sidebar.js";
 import "./epp-zone-sidebar.js";
 import "./epp-furniture-sidebar.js";
