@@ -32,71 +32,98 @@ function createPanel(): EPPGridPanel {
 		co2: null,
 	};
 	a._zoneState = { occupancy: {}, target_counts: {}, frame_count: 0 };
-	a._unsubTargets = undefined;
 	return el;
 }
 
-describe("_subscribeTargets", () => {
+/** Set up callbacks as _loadDeviceConfig does, then subscribe to targets */
+function subscribeTargets(el: EPPGridPanel, mac: string): void {
+	const a = el as any;
+	a._deviceCtrl.hass = el.hass;
+	a._deviceCtrl.onTargetData = (data: any) =>
+		a._targetCtrl.handleTargetData(data);
+	a._deviceCtrl.onRawTargetData = (rawTargets: any) =>
+		a._targetCtrl.handleRawTargetData(rawTargets);
+	a._deviceCtrl.subscribeTargets(mac);
+}
+
+/** Set up raw target callback, then subscribe to display */
+function subscribeDisplay(el: EPPGridPanel, mac: string): void {
+	const a = el as any;
+	a._deviceCtrl.hass = el.hass;
+	a._deviceCtrl.onRawTargetData = (rawTargets: any) =>
+		a._targetCtrl.handleRawTargetData(rawTargets);
+	a._deviceCtrl.subscribeDisplay(mac);
+}
+
+describe("_loadDeviceConfig sets up callbacks before subscribing", () => {
+	it("sets onTargetData and onRawTargetData before subscribeTargets runs", async () => {
+		const el = createPanel();
+		const a = el as any;
+
+		let callbacksSetBeforeSubscribe = false;
+		const origSubscribe = a._deviceCtrl.subscribeTargets.bind(a._deviceCtrl);
+		a._deviceCtrl.subscribeTargets = vi
+			.fn()
+			.mockImplementation((mac: string) => {
+				callbacksSetBeforeSubscribe =
+					typeof a._deviceCtrl.onTargetData === "function" &&
+					typeof a._deviceCtrl.onRawTargetData === "function";
+				return origSubscribe(mac);
+			});
+
+		el.hass = {
+			callWS: vi.fn().mockResolvedValue({ config: null }),
+			connection: { subscribeMessage: vi.fn().mockResolvedValue(vi.fn()) },
+		};
+
+		await a._loadDeviceConfig("AA:BB");
+
+		expect(a._deviceCtrl.subscribeTargets).toHaveBeenCalled();
+		expect(callbacksSetBeforeSubscribe).toBe(true);
+	});
+
+	it("target and raw data flows from WS events to panel state", async () => {
+		const el = createPanel();
+		const a = el as any;
+
+		let gridHandler: (event: any) => void;
+		let rawHandler: (event: any) => void;
+		el.hass = {
+			callWS: vi.fn().mockResolvedValue({ config: null }),
+			connection: {
+				subscribeMessage: vi.fn().mockImplementation((cb: any, msg: any) => {
+					if (msg.type === "eppgrid/subscribe_grid_targets") gridHandler = cb;
+					if (msg.type === "eppgrid/subscribe_raw_targets") rawHandler = cb;
+					return Promise.resolve(vi.fn());
+				}),
+			},
+		};
+
+		await a._loadDeviceConfig("AA:BB");
+
+		// Fire grid targets event
+		gridHandler!({
+			targets: [{ x: 100, y: 200, status: "active", signal: 5 }],
+			sensors: { occupancy: true },
+		});
+		expect(a._targets).toHaveLength(1);
+		expect(a._targets[0].x).toBe(100);
+		expect(a._sensorState.occupancy).toBe(true);
+
+		// Fire raw targets event
+		rawHandler!({
+			targets: [{ raw_x: 50, raw_y: 100 }],
+		});
+		expect(a._rawTargets).toHaveLength(1);
+		expect(a._rawTargets[0].raw_x).toBe(50);
+	});
+});
+
+describe("target data flow via DeviceController", () => {
 	let el: EPPGridPanel;
 
 	beforeEach(() => {
 		el = createPanel();
-	});
-
-	it("does nothing when hass is not set", () => {
-		const a = el as any;
-		el.hass = null;
-
-		a._subscribeTargets("e1");
-		expect(a._unsubTargets).toBeUndefined();
-	});
-
-	it("does nothing when entryId is empty", () => {
-		const a = el as any;
-		el.hass = {
-			callWS: vi.fn(),
-			connection: { subscribeMessage: vi.fn() },
-		};
-
-		a._subscribeTargets("");
-		expect(el.hass.connection.subscribeMessage).not.toHaveBeenCalled();
-	});
-
-	it("subscribes when hass and entryId are provided", () => {
-		const a = el as any;
-		const unsubFn = vi.fn();
-		el.hass = {
-			callWS: vi.fn(),
-			connection: {
-				subscribeMessage: vi.fn().mockResolvedValue(unsubFn),
-			},
-		};
-
-		a._subscribeTargets("e1");
-
-		expect(el.hass.connection.subscribeMessage).toHaveBeenCalledWith(
-			expect.any(Function),
-			{
-				type: "eppgrid/subscribe_grid_targets",
-				mac: "e1",
-			},
-		);
-	});
-
-	it("unsubscribes existing subscription before subscribing", () => {
-		const a = el as any;
-		const oldUnsub = vi.fn();
-		a._unsubTargets = oldUnsub;
-
-		el.hass = {
-			callWS: vi.fn(),
-			connection: {
-				subscribeMessage: vi.fn().mockResolvedValue(() => {}),
-			},
-		};
-
-		a._subscribeTargets("e1");
-		expect(oldUnsub).toHaveBeenCalled();
 	});
 
 	it("processes target events correctly", async () => {
@@ -113,7 +140,7 @@ describe("_subscribeTargets", () => {
 			},
 		};
 
-		a._subscribeTargets("e1");
+		subscribeTargets(el, "e1");
 
 		// Trigger event
 		handler!({
@@ -167,7 +194,7 @@ describe("_subscribeTargets", () => {
 			},
 		};
 
-		a._subscribeTargets("e1");
+		subscribeTargets(el, "e1");
 
 		handler!({
 			targets: [{ x: 150, y: 250, status: "pending", signal: 0 }],
@@ -191,7 +218,7 @@ describe("_subscribeTargets", () => {
 			},
 		};
 
-		a._subscribeTargets("e1");
+		subscribeTargets(el, "e1");
 
 		handler!({
 			targets: [{ x: 100, y: 200, status: "active", signal: 5 }],
@@ -215,7 +242,7 @@ describe("_subscribeTargets", () => {
 			},
 		};
 
-		a._subscribeTargets("e1");
+		subscribeTargets(el, "e1");
 
 		handler!({
 			targets: [{ x: 100, y: 200, status: "active", signal: 3 }],
@@ -227,12 +254,10 @@ describe("_subscribeTargets", () => {
 	});
 });
 
-describe("_unsubscribeTargets", () => {
-	it("calls unsub function and clears targets", () => {
+describe("_closeDeviceSession", () => {
+	it("clears targets and rawTargets", () => {
 		const el = createPanel();
 		const a = el as any;
-		const unsub = vi.fn();
-		a._unsubTargets = unsub;
 		a._targets = [
 			{
 				x: 1,
@@ -242,22 +267,24 @@ describe("_unsubscribeTargets", () => {
 				signal: 5,
 			},
 		];
+		a._rawTargets = [{ raw_x: 10, raw_y: 20 }];
 
-		a._unsubscribeTargets();
+		a._closeDeviceSession();
 
-		expect(unsub).toHaveBeenCalled();
-		expect(a._unsubTargets).toBeUndefined();
 		expect(a._targets).toEqual([]);
+		expect(a._rawTargets).toEqual([]);
 	});
 
-	it("handles no existing subscription gracefully", () => {
+	it("delegates to deviceCtrl.closeDeviceSession", () => {
 		const el = createPanel();
 		const a = el as any;
-		a._unsubTargets = undefined;
+		const spy = vi
+			.spyOn(a._deviceCtrl, "closeDeviceSession")
+			.mockImplementation(() => {});
 
-		// Should not throw
-		a._unsubscribeTargets();
-		expect(a._targets).toEqual([]);
+		a._closeDeviceSession();
+
+		expect(spy).toHaveBeenCalled();
 	});
 });
 
@@ -382,77 +409,7 @@ describe("_getGridRoomMetrics", () => {
 	});
 });
 
-describe("_subscribeDisplay", () => {
-	it("returns early when hass is not set", () => {
-		const el = createPanel();
-		const a = el as any;
-		el.hass = null;
-		a._unsubDisplay = undefined;
-
-		a._subscribeDisplay("e1");
-
-		expect(a._unsubDisplay).toBeUndefined();
-	});
-
-	it("returns early when entryId is empty", () => {
-		const el = createPanel();
-		const a = el as any;
-		const subscribeMock = vi.fn().mockResolvedValue(() => {});
-		el.hass = {
-			callWS: vi.fn(),
-			connection: { subscribeMessage: subscribeMock },
-		};
-
-		a._subscribeDisplay("");
-
-		expect(subscribeMock).not.toHaveBeenCalled();
-	});
-
-	it("calls unsubscribeDisplay before subscribing", () => {
-		const el = createPanel();
-		const a = el as any;
-		const oldUnsub = vi.fn();
-		a._unsubDisplay = oldUnsub;
-
-		el.hass = {
-			callWS: vi.fn(),
-			connection: {
-				subscribeMessage: vi.fn().mockResolvedValue(() => {}),
-			},
-		};
-
-		a._subscribeDisplay("e1");
-
-		expect(oldUnsub).toHaveBeenCalled();
-	});
-
-	it("subscribes to display topic and stores unsub", async () => {
-		const el = createPanel();
-		const a = el as any;
-		const unsubFn = vi.fn();
-		el.hass = {
-			callWS: vi.fn(),
-			connection: {
-				subscribeMessage: vi.fn().mockResolvedValue(unsubFn),
-			},
-		};
-
-		a._subscribeDisplay("e1");
-
-		expect(el.hass.connection.subscribeMessage).toHaveBeenCalledWith(
-			expect.any(Function),
-			{
-				type: "eppgrid/subscribe_raw_targets",
-				mac: "e1",
-			},
-		);
-
-		// Wait for the promise to resolve so _unsubDisplay is set
-		await Promise.resolve();
-
-		expect(a._unsubDisplay).toBe(unsubFn);
-	});
-
+describe("raw target display subscription", () => {
 	it("writes raw positions directly to _rawTargets", async () => {
 		const el = createPanel();
 		const a = el as any;
@@ -485,7 +442,7 @@ describe("_subscribeDisplay", () => {
 			},
 		];
 
-		a._subscribeDisplay("e1");
+		subscribeDisplay(el, "e1");
 
 		// Fire a raw targets event
 		displayHandler!({
@@ -542,7 +499,7 @@ describe("_subscribeDisplay", () => {
 			},
 		];
 
-		a._subscribeDisplay("e1");
+		subscribeDisplay(el, "e1");
 
 		// Raw targets event provides only one target
 		displayHandler!({
@@ -583,7 +540,7 @@ describe("_subscribeDisplay", () => {
 			},
 		];
 
-		a._subscribeDisplay("e1");
+		subscribeDisplay(el, "e1");
 
 		// Fire event with no targets field (falls back to [])
 		displayHandler!({});
@@ -591,44 +548,6 @@ describe("_subscribeDisplay", () => {
 		// _rawTargets is empty, _targets unchanged
 		expect(a._rawTargets).toEqual([]);
 		expect(a._targets[0].x).toBe(100);
-	});
-});
-
-describe("_unsubscribeDisplay", () => {
-	it("calls and clears _unsubDisplay when set", () => {
-		const el = createPanel();
-		const a = el as any;
-		const unsub = vi.fn();
-		a._unsubDisplay = unsub;
-
-		a._unsubscribeDisplay();
-
-		expect(unsub).toHaveBeenCalled();
-		expect(a._unsubDisplay).toBeUndefined();
-	});
-
-	it("does nothing when _unsubDisplay is not set", () => {
-		const el = createPanel();
-		const a = el as any;
-		a._unsubDisplay = undefined;
-
-		// Should not throw
-		expect(() => a._unsubscribeDisplay()).not.toThrow();
-		expect(a._unsubDisplay).toBeUndefined();
-	});
-
-	it("is called during _unsubscribeTargets", () => {
-		const el = createPanel();
-		const a = el as any;
-		const displayUnsub = vi.fn();
-		a._unsubDisplay = displayUnsub;
-		a._unsubTargets = vi.fn();
-		a._targets = [];
-
-		a._unsubscribeTargets();
-
-		expect(displayUnsub).toHaveBeenCalled();
-		expect(a._unsubDisplay).toBeUndefined();
 	});
 });
 
@@ -720,7 +639,7 @@ describe("raw targets event writing", () => {
 				}),
 			},
 		};
-		a._subscribeDisplay("e1");
+		subscribeDisplay(el, "e1");
 
 		// Fire raw targets event
 		callback!({

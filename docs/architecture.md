@@ -197,7 +197,10 @@ device selector, global dialogs, navigation guards, controller creation.
 
 **State flow:** Controllers own cross-cutting state (device, grid, targets).
 Components receive data as properties, fire `CustomEvent`s for mutations.
-The orchestrator wires events to controller methods.
+The orchestrator wires events to controller methods. On device load, the
+orchestrator sets `DeviceController.onTargetData` and `onRawTargetData`
+callbacks that route incoming WS data through `TargetController` to the
+panel's reactive state — these must be set before subscriptions start.
 
 **Navigation protection:** Intercepts `beforeunload` and
 `history.pushState/replaceState` when unsaved changes exist.

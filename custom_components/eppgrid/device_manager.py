@@ -175,7 +175,7 @@ class ManagedDevice:
     esphome_config_entry_id: str | None = None
     device_id: str | None = None
     available: bool = False
-    config_protocol: int = 0  # 0 = legacy/unknown firmware
+    config_protocol: int = 0  # deprecated; use DeviceManager._read_config_protocol()
 
 
 class DeviceManager:
@@ -208,8 +208,10 @@ class DeviceManager:
             await conn.async_disconnect()
         self._active_connections.clear()
 
-    def _read_config_protocol(self, device_id: str) -> int:
+    def _read_config_protocol(self, device_id: str | None) -> int:
         """Read the Config Protocol sensor value for a device, defaulting to 0."""
+        if device_id is None:
+            return 0
         ent_reg = er.async_get(self._hass)
         for entry in ent_reg.entities.values():
             if (
@@ -248,7 +250,6 @@ class DeviceManager:
                 continue
 
             host = _extract_host(device, entry.config_entry_id, self._hass)
-            proto = self._read_config_protocol(device.id)
 
             is_new = mac not in self.devices
             self.devices[mac] = ManagedDevice(
@@ -257,7 +258,6 @@ class DeviceManager:
                 host=host,
                 esphome_config_entry_id=entry.config_entry_id,
                 device_id=device.id,
-                config_protocol=proto,
             )
 
             if is_new:
@@ -385,6 +385,7 @@ class DeviceManager:
         result = []
         for mac, dev in self.devices.items():
             config = self._store.get_device(mac)
+            proto = self._read_config_protocol(dev.device_id)
             result.append(
                 {
                     "mac": mac,
@@ -394,9 +395,9 @@ class DeviceManager:
                     "configured": config is not None,
                     "config_protocol_status": (
                         "compatible"
-                        if dev.config_protocol == CONFIG_PROTOCOL_VERSION
+                        if proto == CONFIG_PROTOCOL_VERSION
                         else "firmware_behind"
-                        if dev.config_protocol < CONFIG_PROTOCOL_VERSION
+                        if proto < CONFIG_PROTOCOL_VERSION
                         else "firmware_ahead"
                     ),
                 }

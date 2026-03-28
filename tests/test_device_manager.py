@@ -315,15 +315,41 @@ class TestProtocolVersion:
     async def test_list_devices_includes_protocol_status_compatible(
         self, hass: HomeAssistant, manager: DeviceManager
     ) -> None:
-        """list_devices includes config_protocol_status when versions match."""
+        """list_devices reads live state and reports compatible when versions match."""
         from custom_components.eppgrid.const import CONFIG_PROTOCOL_VERSION
+
+        dev_reg = dr.async_get(hass)
+        ent_reg = er.async_get(hass)
+
+        esphome_entry = MockConfigEntry(
+            domain="esphome",
+            data={"host": "192.168.1.50"},
+            title="EPP Device",
+        )
+        esphome_entry.add_to_hass(hass)
+
+        device = dev_reg.async_get_or_create(
+            config_entry_id=esphome_entry.entry_id,
+            connections={("mac", "aa:bb:cc:dd:ee:ff")},
+            name="EPP Device",
+        )
+
+        proto_entry = ent_reg.async_get_or_create(
+            "sensor",
+            "esphome",
+            unique_id="esphome_aabbccddeeff_config_protocol",
+            suggested_object_id="epp_config_protocol",
+            config_entry=esphome_entry,
+            device_id=device.id,
+        )
+        hass.states.async_set(proto_entry.entity_id, str(CONFIG_PROTOCOL_VERSION))
 
         manager.devices["AA:BB:CC:DD:EE:FF"] = ManagedDevice(
             mac="AA:BB:CC:DD:EE:FF",
             name="EPP Device",
             host="192.168.1.50",
             available=True,
-            config_protocol=CONFIG_PROTOCOL_VERSION,
+            device_id=device.id,
         )
         result = manager.list_devices()
         assert len(result) == 1
@@ -332,14 +358,13 @@ class TestProtocolVersion:
     async def test_list_devices_protocol_status_firmware_behind(
         self, hass: HomeAssistant, manager: DeviceManager
     ) -> None:
-        """list_devices reports firmware_behind when device protocol is lower."""
-
+        """list_devices reports firmware_behind when no protocol entity exists."""
         manager.devices["AA:BB:CC:DD:EE:FF"] = ManagedDevice(
             mac="AA:BB:CC:DD:EE:FF",
             name="EPP Device",
             host="192.168.1.50",
             available=True,
-            config_protocol=0,  # Legacy/unknown firmware
+            device_id="fake_device_id",
         )
         result = manager.list_devices()
         assert result[0]["config_protocol_status"] == "firmware_behind"
@@ -350,18 +375,91 @@ class TestProtocolVersion:
         """list_devices reports firmware_ahead when device protocol is higher."""
         from custom_components.eppgrid.const import CONFIG_PROTOCOL_VERSION
 
+        dev_reg = dr.async_get(hass)
+        ent_reg = er.async_get(hass)
+
+        esphome_entry = MockConfigEntry(
+            domain="esphome",
+            data={"host": "192.168.1.50"},
+            title="EPP Device",
+        )
+        esphome_entry.add_to_hass(hass)
+
+        device = dev_reg.async_get_or_create(
+            config_entry_id=esphome_entry.entry_id,
+            connections={("mac", "aa:bb:cc:dd:ee:ff")},
+            name="EPP Device",
+        )
+
+        proto_entry = ent_reg.async_get_or_create(
+            "sensor",
+            "esphome",
+            unique_id="esphome_aabbccddeeff_config_protocol",
+            suggested_object_id="epp_config_protocol",
+            config_entry=esphome_entry,
+            device_id=device.id,
+        )
+        hass.states.async_set(proto_entry.entity_id, str(CONFIG_PROTOCOL_VERSION + 1))
+
         manager.devices["AA:BB:CC:DD:EE:FF"] = ManagedDevice(
             mac="AA:BB:CC:DD:EE:FF",
             name="EPP Device",
             host="192.168.1.50",
             available=True,
-            config_protocol=CONFIG_PROTOCOL_VERSION + 1,
+            device_id=device.id,
         )
         result = manager.list_devices()
         assert result[0]["config_protocol_status"] == "firmware_ahead"
 
-    async def test_discover_reads_config_protocol_from_state(self, hass: HomeAssistant, manager: DeviceManager) -> None:
-        """async_discover reads Config Protocol sensor state into config_protocol field."""
+    async def test_list_devices_reads_protocol_live(self, hass: HomeAssistant, manager: DeviceManager) -> None:
+        """list_devices picks up protocol changes without re-discovery."""
+        from custom_components.eppgrid.const import CONFIG_PROTOCOL_VERSION
+
+        dev_reg = dr.async_get(hass)
+        ent_reg = er.async_get(hass)
+
+        esphome_entry = MockConfigEntry(
+            domain="esphome",
+            data={"host": "192.168.1.50"},
+            title="EPP Device",
+        )
+        esphome_entry.add_to_hass(hass)
+
+        device = dev_reg.async_get_or_create(
+            config_entry_id=esphome_entry.entry_id,
+            connections={("mac", "aa:bb:cc:dd:ee:ff")},
+            name="EPP Device",
+        )
+
+        proto_entry = ent_reg.async_get_or_create(
+            "sensor",
+            "esphome",
+            unique_id="esphome_aabbccddeeff_config_protocol",
+            suggested_object_id="epp_config_protocol",
+            config_entry=esphome_entry,
+            device_id=device.id,
+        )
+
+        manager.devices["AA:BB:CC:DD:EE:FF"] = ManagedDevice(
+            mac="AA:BB:CC:DD:EE:FF",
+            name="EPP Device",
+            host="192.168.1.50",
+            available=True,
+            device_id=device.id,
+        )
+
+        # State starts unavailable → firmware_behind
+        hass.states.async_set(proto_entry.entity_id, "unavailable")
+        result = manager.list_devices()
+        assert result[0]["config_protocol_status"] == "firmware_behind"
+
+        # State updates to compatible version → compatible (no re-discovery needed)
+        hass.states.async_set(proto_entry.entity_id, str(CONFIG_PROTOCOL_VERSION))
+        result = manager.list_devices()
+        assert result[0]["config_protocol_status"] == "compatible"
+
+    async def test_discover_does_not_cache_config_protocol(self, hass: HomeAssistant, manager: DeviceManager) -> None:
+        """async_discover no longer caches config_protocol on the device."""
         from custom_components.eppgrid.const import CONFIG_PROTOCOL_VERSION
 
         dev_reg = dr.async_get(hass)
@@ -380,7 +478,6 @@ class TestProtocolVersion:
             name="EPP Living Room",
         )
 
-        # Create zone_engine_version entity (required for discovery)
         ent_reg.async_get_or_create(
             "sensor",
             "esphome",
@@ -390,7 +487,6 @@ class TestProtocolVersion:
             device_id=device.id,
         )
 
-        # Create config_protocol entity and set its HA state
         proto_entry = ent_reg.async_get_or_create(
             "sensor",
             "esphome",
@@ -404,13 +500,14 @@ class TestProtocolVersion:
         await manager.async_discover()
 
         assert "AA:BB:CC:DD:EE:FF" in manager.devices
-        dev = manager.devices["AA:BB:CC:DD:EE:FF"]
-        assert dev.config_protocol == CONFIG_PROTOCOL_VERSION
+        # Protocol is read live, so list_devices should report compatible
+        result = manager.list_devices()
+        assert result[0]["config_protocol_status"] == "compatible"
 
-    async def test_discover_defaults_config_protocol_to_zero_when_missing(
+    async def test_discover_no_protocol_entity_reports_firmware_behind(
         self, hass: HomeAssistant, manager: DeviceManager
     ) -> None:
-        """async_discover defaults config_protocol to 0 when no sensor entity exists."""
+        """list_devices reports firmware_behind when no config_protocol entity exists."""
         dev_reg = dr.async_get(hass)
         ent_reg = er.async_get(hass)
 
@@ -440,5 +537,5 @@ class TestProtocolVersion:
         await manager.async_discover()
 
         assert "AA:BB:CC:DD:EE:FF" in manager.devices
-        dev = manager.devices["AA:BB:CC:DD:EE:FF"]
-        assert dev.config_protocol == 0
+        result = manager.list_devices()
+        assert result[0]["config_protocol_status"] == "firmware_behind"

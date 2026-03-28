@@ -273,33 +273,6 @@ describe("epp-live-sidebar DOM events", () => {
 	});
 });
 
-describe("_renderHeader DOM events", () => {
-	it("device select __add__ opens new window", () => {
-		const a = createPanel() as any;
-		a._devices = [
-			{
-				mac: "AA:BB:CC:DD:EE:01",
-				name: "Sensor",
-				host: null,
-				available: true,
-				configured: true,
-			},
-		];
-		const tpl = a._renderHeader();
-		const c = renderTo(tpl);
-
-		const select = c.querySelector(".device-select") as HTMLSelectElement;
-		if (select) {
-			const openSpy = vi.spyOn(window, "open").mockReturnValue(null);
-			// Set to __add__ and fire change
-			select.value = "__add__";
-			select.dispatchEvent(new Event("change"));
-			expect(openSpy).toHaveBeenCalled();
-			openSpy.mockRestore();
-		}
-	});
-});
-
 describe("_renderWizardGuide DOM events (via EppWizard)", () => {
 	it("cancel button fires wizard-cancel event", () => {
 		const a = createWizard() as any;

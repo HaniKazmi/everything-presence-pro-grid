@@ -22,6 +22,7 @@ Frontend (eppgrid-panel.ts — orchestrator)
   ├── subscribe_device → opens session connection
   ├── subscribe_grid_targets → structured events (positions, zones, sensors)
   ├── subscribe_raw_targets → raw sensor-space positions
+  ├── orchestrator wires DeviceController callbacks → TargetController → panel state
   ├── commands: set_setup, set_room_layout, set_env_calibration, etc.
   ├── controllers/
   │   ├── device-controller.ts — WS subscriptions, device loading

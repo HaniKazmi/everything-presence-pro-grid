@@ -137,6 +137,17 @@ function renderTo(tpl: any) {
 	return c;
 }
 
+/** Set up callbacks and subscribe to targets via DeviceController */
+function subscribeTargets(el: EPPGridPanel, mac: string): void {
+	const a = el as any;
+	a._deviceCtrl.hass = el.hass;
+	a._deviceCtrl.onTargetData = (data: any) =>
+		a._targetCtrl.handleTargetData(data);
+	a._deviceCtrl.onRawTargetData = (rawTargets: any) =>
+		a._targetCtrl.handleRawTargetData(rawTargets);
+	a._deviceCtrl.subscribeTargets(mac);
+}
+
 // =========================================================
 // Target subscription: exercise ?? branches (null coalescing)
 // =========================================================
@@ -155,7 +166,7 @@ describe("target subscription null coalescing branches", () => {
 			},
 		};
 
-		a._subscribeTargets("e1");
+		subscribeTargets(a, "e1");
 
 		// Fire event with targets missing raw_x, raw_y, signal
 		handler!({
@@ -193,7 +204,7 @@ describe("target subscription null coalescing branches", () => {
 			},
 		};
 
-		a._subscribeTargets("e1");
+		subscribeTargets(a, "e1");
 
 		// Fire event with target missing status field -> ?? "inactive" branch
 		handler!({
@@ -220,7 +231,7 @@ describe("target subscription null coalescing branches", () => {
 			},
 		};
 
-		a._subscribeTargets("e1");
+		subscribeTargets(a, "e1");
 
 		// Fire raw event with empty target objects
 		rawHandler!({
@@ -248,7 +259,7 @@ describe("target subscription null coalescing branches", () => {
 			},
 		};
 
-		a._subscribeTargets("e1");
+		subscribeTargets(a, "e1");
 
 		// null targets -> || [] fallback on grid subscription
 		gridHandler!({ targets: null });
@@ -1767,7 +1778,7 @@ describe("_subscribeTargets backend debug log", () => {
 			},
 		};
 
-		a._subscribeTargets("e1");
+		subscribeTargets(a, "e1");
 
 		// Raw format: "T0:Z0:A:5|Z0:O:5"
 		targetsHandler!({
@@ -1806,7 +1817,7 @@ describe("_subscribeTargets backend debug log", () => {
 			},
 		};
 
-		a._subscribeTargets("e1");
+		subscribeTargets(a, "e1");
 
 		targetsHandler!({
 			targets: [],
@@ -1838,7 +1849,7 @@ describe("_subscribeTargets backend debug log", () => {
 			},
 		};
 
-		a._subscribeTargets("e1");
+		subscribeTargets(a, "e1");
 
 		targetsHandler!({
 			targets: [],
@@ -1871,7 +1882,7 @@ describe("_subscribeTargets backend debug log", () => {
 			},
 		};
 
-		a._subscribeTargets("e1");
+		subscribeTargets(a, "e1");
 
 		targetsHandler!({
 			targets: [],

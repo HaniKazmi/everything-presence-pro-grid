@@ -108,24 +108,6 @@ function createPanel(): EPPGridPanel {
 // ========================
 // _renderHeader inline handlers
 // ========================
-describe("_renderHeader inline handlers", () => {
-	it("device select __add__ option opens new window", () => {
-		const a = createPanel() as any;
-		const openSpy = vi.spyOn(window, "open").mockImplementation(() => null);
-
-		// Simulate the handler for __add__ selection
-		const val = "__add__";
-		if (val === "__add__") {
-			window.open("/config/integrations/integration/eppgrid", "_blank");
-		}
-
-		expect(openSpy).toHaveBeenCalledWith(
-			"/config/integrations/integration/eppgrid",
-			"_blank",
-		);
-		openSpy.mockRestore();
-	});
-});
 
 // ========================
 // _renderWizardGuide inline handlers
