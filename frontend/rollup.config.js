@@ -16,4 +16,11 @@ export default {
     typescript(),
     terser(),
   ],
+  onwarn(warning, warn) {
+    // Suppress circular dependency warning from @formatjs internals
+    if (warning.code === "CIRCULAR_DEPENDENCY" && warning.ids?.some(id => id.includes("@formatjs/"))) return;
+    // Suppress sourcemap warning — we intentionally disable sourcemaps in production
+    if (warning.code === "PLUGIN_WARNING" && warning.message?.includes("sourcemap")) return;
+    warn(warning);
+  },
 };
