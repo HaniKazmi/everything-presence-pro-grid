@@ -68,11 +68,41 @@ jobs:
     name: C++ Tests
     steps:
       - uses: actions/checkout@v4
-      - name: Install CMake
-        run: sudo apt-get update && sudo apt-get install -y cmake
-      - name: Build and test
+      - name: Install CMake and lcov
+        run: sudo apt-get update && sudo apt-get install -y cmake lcov
+      - name: Build with coverage
+        working-directory: firmware/lib/epp_zone_engine
         run: |
-          cd firmware/lib/epp_zone_engine
-          cmake -B build -DCMAKE_BUILD_TYPE=Debug
+          cmake -B build -DCMAKE_BUILD_TYPE=Coverage
           cmake --build build
-          cd build && ctest --output-on-failure
+      - name: Run tests
+        working-directory: firmware/lib/epp_zone_engine/build
+        run: ctest --output-on-failure
+      - name: Check coverage
+        working-directory: firmware/lib/epp_zone_engine
+        run: |
+          lcov --capture --directory build --output-file build/coverage.info \
+              --ignore-errors inconsistent,format
+          lcov --extract build/coverage.info '*/src/*.cpp' \
+              --output-file build/coverage-filtered.info \
+              --ignore-errors unused
+          lcov --summary build/coverage-filtered.info
+          COV=$(lcov --summary build/coverage-filtered.info 2>&1 \
+              | grep 'lines\.\.\.\.\.\.\.' | sed 's/.*: *\([0-9]*\.[0-9]*\)%.*/\1/')
+          echo "C++ line coverage: ${COV}%"
+          if [ "$(echo "$COV < 90" | bc)" -eq 1 ]; then
+            echo "::error::C++ coverage ${COV}% is below 90% threshold"
+            exit 1
+          fi
+      - name: Generate HTML report
+        if: always()
+        working-directory: firmware/lib/epp_zone_engine
+        run: |
+          genhtml build/coverage-filtered.info --output-directory build/coverage-html \
+              --ignore-errors inconsistent
+      - name: Upload coverage report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cpp-coverage-report
+          path: firmware/lib/epp_zone_engine/build/coverage-html/
