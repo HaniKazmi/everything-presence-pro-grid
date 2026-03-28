@@ -304,7 +304,7 @@ export const toggleStyles = css`
   }
 `;
 
-export const protocolBannerStyles = css`
+export const protocolFullpageStyles = css`
   .protocol-fullpage {
     display: flex;
     flex-direction: column;

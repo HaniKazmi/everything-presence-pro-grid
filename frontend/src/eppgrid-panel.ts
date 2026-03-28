@@ -58,7 +58,7 @@ import {
 	headerStyles,
 	hostStyles,
 	panelStyles,
-	protocolBannerStyles,
+	protocolFullpageStyles,
 } from "./styles.js";
 import type { DeviceInfo, RawTarget, SetupStep, Target } from "./types.js";
 
@@ -657,7 +657,7 @@ export class EPPGridPanel extends LitElement {
 		dialogStyles,
 		buttonStyles,
 		headerStyles,
-		protocolBannerStyles,
+		protocolFullpageStyles,
 		css`
     .cell {
       cursor: pointer;
