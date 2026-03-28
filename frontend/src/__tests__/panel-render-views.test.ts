@@ -2,8 +2,6 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { EPPGridPanel } from "../eppgrid-panel.js";
 import "../eppgrid-panel.js";
 import "../components/epp-live-sidebar.js";
-import "../components/epp-live-view.js";
-import "../components/epp-editor-view.js";
 import "../components/epp-zone-sidebar.js";
 import "../components/epp-furniture-sidebar.js";
 import "../components/epp-settings-view.js";
@@ -393,19 +391,19 @@ describe("_renderLiveOverview", () => {
 		expect(result).toBeDefined();
 	});
 
-	it("renders with live menu open (epp-live-view)", () => {
-		const lv = document.createElement("epp-live-view") as any;
-		lv.perspective = [1, 0, 0, 0, 1, 0, 0, 0];
-		lv.showMenu = true;
-		const result = lv.render();
+	it("renders with live menu open on panel", () => {
+		const a = createPanel() as any;
+		a._perspective = [1, 0, 0, 0, 1, 0, 0, 0];
+		a._showLiveMenu = true;
+		const result = a._renderLiveOverview();
 		expect(result).toBeDefined();
 	});
 
-	it("renders with live menu open and no perspective (epp-live-view)", () => {
-		const lv = document.createElement("epp-live-view") as any;
-		lv.perspective = null;
-		lv.showMenu = true;
-		const result = lv.render();
+	it("renders with live menu open and no perspective on panel", () => {
+		const a = createPanel() as any;
+		a._perspective = null;
+		a._showLiveMenu = true;
+		const result = a._renderLiveOverview();
 		expect(result).toBeDefined();
 	});
 });

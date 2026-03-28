@@ -175,7 +175,7 @@ class ManagedDevice:
     esphome_config_entry_id: str | None = None
     device_id: str | None = None
     available: bool = False
-    config_protocol: int = 0  # deprecated; use DeviceManager._read_config_protocol()
+    config_protocol: int = 0  # deprecated; use DeviceManager.read_config_protocol()
 
 
 class DeviceManager:
@@ -208,17 +208,13 @@ class DeviceManager:
             await conn.async_disconnect()
         self._active_connections.clear()
 
-    def _read_config_protocol(self, device_id: str | None) -> int:
+    def read_config_protocol(self, device_id: str | None) -> int:
         """Read the Config Protocol sensor value for a device, defaulting to 0."""
         if device_id is None:
             return 0
         ent_reg = er.async_get(self._hass)
-        for entry in ent_reg.entities.values():
-            if (
-                entry.device_id == device_id
-                and entry.platform == "esphome"
-                and entry.unique_id.endswith("config_protocol")
-            ):
+        for entry in er.async_entries_for_device(ent_reg, device_id, include_disabled_entities=True):
+            if entry.platform == "esphome" and entry.unique_id.endswith("config_protocol"):
                 state = self._hass.states.get(entry.entity_id)
                 if state is not None and state.state not in (None, "unknown", "unavailable", ""):
                     try:
@@ -385,7 +381,7 @@ class DeviceManager:
         result = []
         for mac, dev in self.devices.items():
             config = self._store.get_device(mac)
-            proto = self._read_config_protocol(dev.device_id)
+            proto = self.read_config_protocol(dev.device_id)
             result.append(
                 {
                     "mac": mac,

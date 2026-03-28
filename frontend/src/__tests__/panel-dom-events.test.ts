@@ -8,9 +8,6 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { EPPGridPanel } from "../eppgrid-panel.js";
 import "../eppgrid-panel.js";
 import "../components/epp-live-sidebar.js";
-import "../components/epp-live-view.js";
-import type { EppLiveView } from "../components/epp-live-view.js";
-import "../components/epp-editor-view.js";
 import "../components/epp-zone-sidebar.js";
 import "../components/epp-furniture-sidebar.js";
 import "../components/epp-settings-view.js";
@@ -172,67 +169,43 @@ function renderTo(template: any): HTMLDivElement {
 	return container;
 }
 
-describe("epp-live-view DOM events", () => {
-	function createLiveView(
-		overrides?: Partial<Record<string, unknown>>,
-	): EppLiveView {
-		const el = document.createElement("epp-live-view") as EppLiveView;
-		el.perspective = [1, 0, 0, 0, 1, 0, 0, 0];
-		el.zoneConfigs = new Array(7).fill(null);
-		if (overrides) {
-			for (const [k, v] of Object.entries(overrides)) {
-				(el as any)[k] = v;
-			}
-		}
-		return el;
-	}
-
-	it("clicking menu dots toggles showMenu", () => {
-		const lv = createLiveView();
-		const tpl = lv.render();
+describe("live overview DOM events (panel inline)", () => {
+	it("clicking menu dots toggles _showLiveMenu", () => {
+		const a = createPanel() as any;
+		a._showLiveMenu = false;
+		const tpl = a._renderLiveOverview();
 		const c = renderTo(tpl);
 
 		const menuBtns = c.querySelectorAll(".sidebar-menu-btn");
 		const menuBtn = menuBtns[menuBtns.length - 1] as HTMLElement;
 		if (menuBtn) {
 			menuBtn.click();
-			expect(lv.showMenu).toBe(true);
+			expect(a._showLiveMenu).toBe(true);
 		}
 	});
 
-	it("live menu items fire navigate-view event", () => {
-		const lv = createLiveView({ showMenu: true });
-		const tpl = lv.render();
+	it("live menu items set _view and _sidebarTab directly", () => {
+		const a = createPanel() as any;
+		a._showLiveMenu = true;
+		const tpl = a._renderLiveOverview();
 		const c = renderTo(tpl);
 
 		const items = c.querySelectorAll(".sidebar-menu-item");
-		let detail: any = null;
-		lv.addEventListener("navigate-view", ((e: CustomEvent) => {
-			detail = e.detail;
-		}) as EventListener);
 		if (items.length > 0) {
 			// First item should be "Detection zones" (if perspective exists)
 			(items[0] as HTMLElement).click();
-			expect(detail).toEqual({ view: "editor", sidebarTab: "zones" });
+			expect(a._view).toBe("editor");
+			expect(a._sidebarTab).toBe("zones");
 		}
 	});
 
-	it("live view renders epp-live-sidebar component", () => {
-		const lv = createLiveView();
-		const tpl = lv.render();
-		const c = renderTo(tpl);
-
-		const sidebar = c.querySelector("epp-live-sidebar");
-		expect(sidebar).not.toBeNull();
-	});
-
-	it("panel _renderLiveOverview returns epp-live-view element", () => {
+	it("panel _renderLiveOverview renders epp-live-sidebar directly", () => {
 		const a = createPanel() as any;
 		const tpl = a._renderLiveOverview();
 		const c = renderTo(tpl);
 
-		const liveView = c.querySelector("epp-live-view");
-		expect(liveView).not.toBeNull();
+		const sidebar = c.querySelector("epp-live-sidebar");
+		expect(sidebar).not.toBeNull();
 	});
 });
 
@@ -1352,50 +1325,43 @@ describe("render delete calibration dialog event", () => {
 });
 
 describe("_renderEditor DOM events", () => {
-	it("editor panel click deselects active zone via event", () => {
+	it("editor panel click deselects active zone", () => {
 		const a = createPanel() as any;
 		a._view = "editor";
 		a._activeZone = 2;
 		const tpl = a._renderEditor();
 		const c = renderTo(tpl);
 
-		const editorView = c.querySelector("epp-editor-view") as HTMLElement;
-		expect(editorView).not.toBeNull();
-		// Dispatch the custom event that the component fires on panel click
-		editorView.dispatchEvent(
-			new CustomEvent("editor-panel-click", { bubbles: true, composed: true }),
-		);
+		const panel = c.querySelector(".panel") as HTMLElement;
+		expect(panel).not.toBeNull();
+		// Click on the panel (outside grid and sidebar) to deselect
+		panel.dispatchEvent(new MouseEvent("click", { bubbles: true }));
 		expect(a._activeZone).toBeNull();
 	});
 
-	it("grid container click deselects furniture via event", () => {
+	it("grid container click deselects furniture", () => {
 		const a = createPanel() as any;
 		a._view = "editor";
 		a._selectedFurnitureId = "f1";
 		const tpl = a._renderEditor();
 		const c = renderTo(tpl);
 
-		const editorView = c.querySelector("epp-editor-view") as HTMLElement;
-		expect(editorView).not.toBeNull();
-		// Dispatch the custom event that the component fires on grid container click
-		editorView.dispatchEvent(
-			new CustomEvent("editor-grid-container-click", {
-				bubbles: true,
-				composed: true,
-			}),
-		);
+		const gridContainer = c.querySelector(".grid-container") as HTMLElement;
+		expect(gridContainer).not.toBeNull();
+		// Click on the grid container to deselect furniture
+		gridContainer.dispatchEvent(new MouseEvent("click", { bubbles: true }));
 		expect(a._selectedFurnitureId).toBeNull();
 	});
 
-	it("renders epp-editor-view with epp-grid inside", () => {
+	it("renders epp-grid directly in editor", () => {
 		const a = createPanel() as any;
 		a._view = "editor";
 		const tpl = a._renderEditor();
 		const c = renderTo(tpl);
 
-		// The epp-editor-view element should be rendered
-		const editorView = c.querySelector("epp-editor-view");
-		expect(editorView).not.toBeNull();
+		// epp-grid should be rendered directly (no epp-editor-view wrapper)
+		const grid = c.querySelector("epp-grid");
+		expect(grid).not.toBeNull();
 	});
 
 	it("unsaved dialog cancel", () => {

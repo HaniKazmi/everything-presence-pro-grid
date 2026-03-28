@@ -41,8 +41,6 @@ export class EppGrid extends LitElement {
 	) => string = (k) => k;
 	/** Maximum pixel size for the grid (live=480, editor=520) */
 	@property({ type: Number }) maxGridPx = 480;
-	/** Width fraction of parent element to use (default 0.55) */
-	@property({ type: Number }) widthFraction = 0.55;
 	/** Frozen bounds during painting (editor only) */
 	@property({ attribute: false }) frozenBounds: {
 		minCol: number;
@@ -53,7 +51,7 @@ export class EppGrid extends LitElement {
 
 	static styles = css`
 		:host {
-			display: contents;
+			display: block;
 		}
 
 		.grid-targets-wrapper {
@@ -127,12 +125,9 @@ export class EppGrid extends LitElement {
 		const maxRow = noRoom ? bounds.maxRow : bounds.maxRow;
 		const visCols = maxCol - minCol + 1;
 		const visRows = maxRow - minRow + 1;
-		const parentWidth =
-			this.offsetWidth || this.parentElement?.offsetWidth || 800;
-		const maxPx = Math.min(this.maxGridPx, parentWidth * this.widthFraction);
 		const cellPx = Math.min(
-			Math.floor(maxPx / visCols),
-			Math.floor(maxPx / visRows),
+			Math.floor(this.maxGridPx / visCols),
+			Math.floor(this.maxGridPx / visRows),
 			32,
 		);
 

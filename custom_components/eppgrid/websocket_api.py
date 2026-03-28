@@ -56,7 +56,7 @@ def _check_protocol(manager: Any, mac: str) -> str | None:
     dev = manager.devices.get(mac)
     if dev is None:
         return None  # Unknown device — let the command handle it
-    proto = manager._read_config_protocol(dev.device_id)
+    proto = manager.read_config_protocol(dev.device_id)
     if proto < CONFIG_PROTOCOL_VERSION:
         return "firmware_behind"
     if proto > CONFIG_PROTOCOL_VERSION:

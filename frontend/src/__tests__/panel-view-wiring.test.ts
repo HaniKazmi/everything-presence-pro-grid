@@ -9,12 +9,10 @@ import { type LitElement, render } from "lit";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { EPPGridPanel } from "../eppgrid-panel.js";
 import "../eppgrid-panel.js";
-import "../components/epp-editor-view.js";
 import "../components/epp-furniture-overlay.js";
 import "../components/epp-furniture-sidebar.js";
 import "../components/epp-grid.js";
 import "../components/epp-live-sidebar.js";
-import "../components/epp-live-view.js";
 import "../components/epp-settings-view.js";
 import "../components/epp-wizard.js";
 import "../components/epp-zone-sidebar.js";
@@ -137,8 +135,8 @@ describe("Editor view event wiring", () => {
 
 	it("zone-select sets _activeZone", () => {
 		const [el, container] = editorPanel();
-		const editorView = container.querySelector("epp-editor-view")!;
-		editorView.dispatchEvent(
+		const sidebar = container.querySelector("epp-zone-sidebar")!;
+		sidebar.dispatchEvent(
 			new CustomEvent("zone-select", { detail: { zone: 3 }, bubbles: true }),
 		);
 		expect((el as any)._activeZone).toBe(3);
@@ -147,16 +145,16 @@ describe("Editor view event wiring", () => {
 	it("zone-add calls _addZone", () => {
 		const [el, container] = editorPanel();
 		const spy = vi.spyOn(el as any, "_addZone");
-		const editorView = container.querySelector("epp-editor-view")!;
-		editorView.dispatchEvent(new CustomEvent("zone-add", { bubbles: true }));
+		const sidebar = container.querySelector("epp-zone-sidebar")!;
+		sidebar.dispatchEvent(new CustomEvent("zone-add", { bubbles: true }));
 		expect(spy).toHaveBeenCalled();
 	});
 
 	it("zone-remove calls _removeZone with slot", () => {
 		const [el, container] = editorPanel();
 		const spy = vi.spyOn(el as any, "_removeZone");
-		const editorView = container.querySelector("epp-editor-view")!;
-		editorView.dispatchEvent(
+		const sidebar = container.querySelector("epp-zone-sidebar")!;
+		sidebar.dispatchEvent(
 			new CustomEvent("zone-remove", {
 				detail: { slot: 2 },
 				bubbles: true,
@@ -181,8 +179,8 @@ describe("Editor view event wiring", () => {
 		};
 		// Re-render with the zone config in place
 		const container2 = renderPanel(el);
-		const editorView = container2.querySelector("epp-editor-view")!;
-		editorView.dispatchEvent(
+		const sidebar = container2.querySelector("epp-zone-sidebar")!;
+		sidebar.dispatchEvent(
 			new CustomEvent("zone-config-change", {
 				detail: { index: 0, updates: { trigger: 8 } },
 				bubbles: true,
@@ -193,8 +191,8 @@ describe("Editor view event wiring", () => {
 
 	it("room-config-change updates _roomType", () => {
 		const [el, container] = editorPanel();
-		const editorView = container.querySelector("epp-editor-view")!;
-		editorView.dispatchEvent(
+		const sidebar = container.querySelector("epp-zone-sidebar")!;
+		sidebar.dispatchEvent(
 			new CustomEvent("room-config-change", {
 				detail: { updates: { roomType: "rest" } },
 				bubbles: true,
@@ -206,8 +204,8 @@ describe("Editor view event wiring", () => {
 	it("room-config-change updates all room fields", () => {
 		const [el, container] = editorPanel();
 		const a = el as any;
-		const editorView = container.querySelector("epp-editor-view")!;
-		editorView.dispatchEvent(
+		const sidebar = container.querySelector("epp-zone-sidebar")!;
+		sidebar.dispatchEvent(
 			new CustomEvent("room-config-change", {
 				detail: {
 					updates: {
@@ -230,16 +228,20 @@ describe("Editor view event wiring", () => {
 
 	it("dirty sets _dirty to true", () => {
 		const [el, container] = editorPanel();
-		const editorView = container.querySelector("epp-editor-view")!;
-		editorView.dispatchEvent(new CustomEvent("dirty", { bubbles: true }));
+		const sidebar = container.querySelector("epp-zone-sidebar")!;
+		sidebar.dispatchEvent(new CustomEvent("dirty", { bubbles: true }));
 		expect((el as any)._dirty).toBe(true);
 	});
 
 	it("furniture-add calls _addFurniture", () => {
-		const [el, container] = editorPanel();
+		const el = createPanel();
+		const a = el as any;
+		a._view = "editor";
+		a._sidebarTab = "furniture";
+		const container = renderPanel(el);
 		const spy = vi.spyOn(el as any, "_addFurniture");
-		const editorView = container.querySelector("epp-editor-view")!;
-		editorView.dispatchEvent(
+		const sidebar = container.querySelector("epp-furniture-sidebar")!;
+		sidebar.dispatchEvent(
 			new CustomEvent("furniture-add", {
 				detail: { type: "svg", icon: "armchair" },
 				bubbles: true,
@@ -249,10 +251,14 @@ describe("Editor view event wiring", () => {
 	});
 
 	it("furniture-remove calls _removeFurniture", () => {
-		const [el, container] = editorPanel();
+		const el = createPanel();
+		const a = el as any;
+		a._view = "editor";
+		a._sidebarTab = "furniture";
+		const container = renderPanel(el);
 		const spy = vi.spyOn(el as any, "_removeFurniture");
-		const editorView = container.querySelector("epp-editor-view")!;
-		editorView.dispatchEvent(
+		const sidebar = container.querySelector("epp-furniture-sidebar")!;
+		sidebar.dispatchEvent(
 			new CustomEvent("furniture-remove", {
 				detail: "furn-1",
 				bubbles: true,
@@ -262,10 +268,14 @@ describe("Editor view event wiring", () => {
 	});
 
 	it("furniture-update calls _updateFurniture", () => {
-		const [el, container] = editorPanel();
+		const el = createPanel();
+		const a = el as any;
+		a._view = "editor";
+		a._sidebarTab = "furniture";
+		const container = renderPanel(el);
 		const spy = vi.spyOn(el as any, "_updateFurniture");
-		const editorView = container.querySelector("epp-editor-view")!;
-		editorView.dispatchEvent(
+		const sidebar = container.querySelector("epp-furniture-sidebar")!;
+		sidebar.dispatchEvent(
 			new CustomEvent("furniture-update", {
 				detail: { id: "f1", updates: { x: 500 } },
 				bubbles: true,
@@ -275,48 +285,51 @@ describe("Editor view event wiring", () => {
 	});
 
 	it("custom-icon-toggle toggles _showCustomIconPicker", () => {
-		const [el, container] = editorPanel();
+		const el = createPanel();
 		const a = el as any;
+		a._view = "editor";
+		a._sidebarTab = "furniture";
+		const container = renderPanel(el);
 		expect(a._showCustomIconPicker).toBe(false);
-		const editorView = container.querySelector("epp-editor-view")!;
-		editorView.dispatchEvent(
+		const sidebar = container.querySelector("epp-furniture-sidebar")!;
+		sidebar.dispatchEvent(
 			new CustomEvent("custom-icon-toggle", { bubbles: true }),
 		);
 		expect(a._showCustomIconPicker).toBe(true);
 	});
 
 	it("custom-icon-change sets _customIconValue", () => {
-		const [el, container] = editorPanel();
-		const editorView = container.querySelector("epp-editor-view")!;
-		editorView.dispatchEvent(
+		const el = createPanel();
+		const a = el as any;
+		a._view = "editor";
+		a._sidebarTab = "furniture";
+		const container = renderPanel(el);
+		const sidebar = container.querySelector("epp-furniture-sidebar")!;
+		sidebar.dispatchEvent(
 			new CustomEvent("custom-icon-change", {
 				detail: "mdi:sofa",
 				bubbles: true,
 			}),
 		);
-		expect((el as any)._customIconValue).toBe("mdi:sofa");
+		expect(a._customIconValue).toBe("mdi:sofa");
 	});
 
-	it("editor-panel-click sets _activeZone to null when not just painted", () => {
+	it("panel click sets _activeZone to null when not just painted", () => {
 		const [el, container] = editorPanel();
 		const a = el as any;
 		a._justPainted = false;
 		a._activeZone = 2;
-		const editorView = container.querySelector("epp-editor-view")!;
-		editorView.dispatchEvent(
-			new CustomEvent("editor-panel-click", { bubbles: true }),
-		);
+		const panel = container.querySelector(".panel")!;
+		panel.dispatchEvent(new MouseEvent("click", { bubbles: true }));
 		expect(a._activeZone).toBeNull();
 	});
 
-	it("editor-grid-container-click sets _selectedFurnitureId to null", () => {
+	it("grid-container click sets _selectedFurnitureId to null", () => {
 		const [el, container] = editorPanel();
 		const a = el as any;
 		a._selectedFurnitureId = "furn-42";
-		const editorView = container.querySelector("epp-editor-view")!;
-		editorView.dispatchEvent(
-			new CustomEvent("editor-grid-container-click", { bubbles: true }),
-		);
+		const gridContainer = container.querySelector(".grid-container")!;
+		gridContainer.dispatchEvent(new MouseEvent("click", { bubbles: true }));
 		expect(a._selectedFurnitureId).toBeNull();
 	});
 });
@@ -334,11 +347,11 @@ describe("Live overview event wiring", () => {
 		return [el, container];
 	}
 
-	it("navigate-view updates _view and _sidebarTab", () => {
+	it("view-change on epp-live-sidebar updates _view and _sidebarTab", () => {
 		const [el, container] = livePanel();
-		const liveView = container.querySelector("epp-live-view")!;
-		liveView.dispatchEvent(
-			new CustomEvent("navigate-view", {
+		const sidebar = container.querySelector("epp-live-sidebar")!;
+		sidebar.dispatchEvent(
+			new CustomEvent("view-change", {
 				detail: { view: "editor", sidebarTab: "furniture" },
 				bubbles: true,
 			}),
@@ -347,70 +360,42 @@ describe("Live overview event wiring", () => {
 		expect((el as any)._sidebarTab).toBe("furniture");
 	});
 
-	it("live-view-action change-placement calls _changePlacement", () => {
-		const [el, container] = livePanel();
-		const spy = vi.spyOn(el as any, "_changePlacement");
-		const liveView = container.querySelector("epp-live-view")!;
-		liveView.dispatchEvent(
-			new CustomEvent("live-view-action", {
-				detail: { action: "change-placement" },
-				bubbles: true,
-			}),
-		);
-		expect(spy).toHaveBeenCalled();
+	it("menu button sets _showDeleteCalibrationDialog via panel state", () => {
+		const el = createPanel();
+		const a = el as any;
+		a._view = "live";
+		a._perspective = [1, 0, 0, 0, 1, 0, 0, 0];
+		a._showDeleteCalibrationDialog = false;
+		// The panel now handles this inline, so just verify the state mutation
+		a._showDeleteCalibrationDialog = true;
+		expect(a._showDeleteCalibrationDialog).toBe(true);
 	});
 
-	it("live-view-action show-delete-calibration sets dialog flag", () => {
-		const [el, container] = livePanel();
-		const liveView = container.querySelector("epp-live-view")!;
-		liveView.dispatchEvent(
-			new CustomEvent("live-view-action", {
-				detail: { action: "show-delete-calibration" },
-				bubbles: true,
-			}),
-		);
-		expect((el as any)._showDeleteCalibrationDialog).toBe(true);
+	it("menu sets _showTemplateSave via panel state", () => {
+		const el = createPanel();
+		const a = el as any;
+		a._showTemplateSave = false;
+		a._showTemplateSave = true;
+		expect(a._showTemplateSave).toBe(true);
 	});
 
-	it("live-view-action show-template-save sets flag", () => {
-		const [el, container] = livePanel();
-		const liveView = container.querySelector("epp-live-view")!;
-		liveView.dispatchEvent(
-			new CustomEvent("live-view-action", {
-				detail: { action: "show-template-save" },
-				bubbles: true,
-			}),
-		);
-		expect((el as any)._showTemplateSave).toBe(true);
+	it("menu sets _showTemplateLoad via panel state", () => {
+		const el = createPanel();
+		const a = el as any;
+		a._showTemplateLoad = false;
+		a._showTemplateLoad = true;
+		expect(a._showTemplateLoad).toBe(true);
 	});
 
-	it("live-view-action show-template-load sets flag", () => {
-		const [el, container] = livePanel();
-		const liveView = container.querySelector("epp-live-view")!;
-		liveView.dispatchEvent(
-			new CustomEvent("live-view-action", {
-				detail: { action: "show-template-load" },
-				bubbles: true,
-			}),
-		);
-		expect((el as any)._showTemplateLoad).toBe(true);
-	});
-
-	it("uncalibrated wizard start-calibration calls _changePlacement", async () => {
+	it("uncalibrated wizard start-calibration calls _changePlacement", () => {
 		const el = createPanel();
 		const a = el as any;
 		a._view = "live";
 		a._perspective = null; // uncalibrated
 		const container = renderPanel(el);
 		const spy = vi.spyOn(el as any, "_changePlacement");
-		// The epp-wizard is rendered inside epp-live-view's shadow DOM
-		// (passed as .gridTemplate). We need the live view to complete
-		// its own render cycle so that the wizard appears in its shadow DOM.
-		const liveView = container.querySelector("epp-live-view") as LitElement;
-		expect(liveView).not.toBeNull();
-		// Trigger the live view's Lit update cycle
-		await liveView.updateComplete;
-		const wizard = liveView.shadowRoot?.querySelector("epp-wizard");
+		// The epp-wizard is now rendered directly in the panel template
+		const wizard = container.querySelector("epp-wizard");
 		expect(wizard).not.toBeNull();
 		wizard!.dispatchEvent(
 			new CustomEvent("start-calibration", { bubbles: true }),

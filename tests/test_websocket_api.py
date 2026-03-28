@@ -51,7 +51,7 @@ async def setup_integration(hass: HomeAssistant, config_entry: MockConfigEntry) 
         mock_dm.async_open_session = AsyncMock(return_value=None)
         mock_dm.async_close_session = AsyncMock()
         mock_dm.get_session = MagicMock(return_value=None)
-        mock_dm._read_config_protocol.return_value = CONFIG_PROTOCOL_VERSION
+        mock_dm.read_config_protocol.return_value = CONFIG_PROTOCOL_VERSION
 
         await async_setup_entry(hass, config_entry)
 
@@ -218,7 +218,7 @@ class TestWebSocketSetRoomLayout:
             name="EPP",
             host="192.168.1.50",
         )
-        mock_dm._read_config_protocol.return_value = CONFIG_PROTOCOL_VERSION
+        mock_dm.read_config_protocol.return_value = CONFIG_PROTOCOL_VERSION
 
         from custom_components.eppgrid.websocket_api import websocket_set_room_layout
 
@@ -712,7 +712,7 @@ class TestProtocolVersionGuard:
                 host="192.168.1.50",
             )
         }
-        mock_dm._read_config_protocol.return_value = 0  # behind
+        mock_dm.read_config_protocol.return_value = 0  # behind
 
         from custom_components.eppgrid.websocket_api import websocket_set_setup
 
@@ -746,7 +746,7 @@ class TestProtocolVersionGuard:
                 host="192.168.1.50",
             )
         }
-        mock_dm._read_config_protocol.return_value = 99  # ahead
+        mock_dm.read_config_protocol.return_value = 99  # ahead
 
         from custom_components.eppgrid.websocket_api import websocket_set_setup
 
@@ -779,7 +779,7 @@ class TestProtocolVersionGuard:
                 host="192.168.1.50",
             )
         }
-        mock_dm._read_config_protocol.return_value = CONFIG_PROTOCOL_VERSION
+        mock_dm.read_config_protocol.return_value = CONFIG_PROTOCOL_VERSION
 
         from custom_components.eppgrid.websocket_api import websocket_set_setup
 
@@ -853,7 +853,7 @@ class TestProtocolVersionGuard:
                 host="192.168.1.50",
             )
         }
-        mock_dm._read_config_protocol.return_value = 0
+        mock_dm.read_config_protocol.return_value = 0
 
         import custom_components.eppgrid.websocket_api as ws
 

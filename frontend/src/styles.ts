@@ -387,3 +387,98 @@ export const tooltipStyles = css`
     pointer-events: none;
   }
 `;
+
+export const layoutStyles = css`
+  .editor-layout {
+    display: flex;
+    gap: 24px;
+    align-items: flex-start;
+  }
+
+  .grid-container {
+    position: relative;
+    max-width: 100%;
+    overflow: visible;
+  }
+
+  .zone-sidebar {
+    width: 240px;
+    max-height: 70vh;
+    background: var(--card-background-color, #fff);
+    border-left: 1px solid var(--divider-color, #e0e0e0);
+    padding: 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    overflow: hidden;
+  }
+
+  .sidebar-title {
+    font-size: 15px;
+    font-weight: 600;
+    padding: 10px 12px 8px;
+    color: var(--primary-text-color, #212121);
+  }
+`;
+
+export const liveMenuStyles = css`
+  .sidebar-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 6px 4px 4px 12px;
+  }
+
+  .sidebar-header .sidebar-title {
+    padding: 0;
+  }
+
+  .sidebar-menu-wrapper {
+    position: relative;
+  }
+
+  .sidebar-menu-btn {
+    background: none;
+    border: none;
+    color: var(--secondary-text-color, #757575);
+    cursor: pointer;
+    padding: 4px;
+    border-radius: 6px;
+    display: flex;
+  }
+
+  .sidebar-menu-btn:hover {
+    background: var(--secondary-background-color, #f0f0f0);
+  }
+
+  .sidebar-menu {
+    position: absolute;
+    top: 100%;
+    right: 0;
+    background: var(--card-background-color, #fff);
+    border: 1px solid var(--divider-color, #e0e0e0);
+    border-radius: 10px;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+    z-index: 100;
+    min-width: 220px;
+    padding: 4px 0;
+  }
+
+  .sidebar-menu-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+    padding: 8px 14px;
+    border: none;
+    background: none;
+    color: var(--primary-text-color, #212121);
+    font-size: 13px;
+    cursor: pointer;
+    text-align: left;
+  }
+
+  .sidebar-menu-item:hover {
+    background: var(--secondary-background-color, #f5f5f5);
+  }
+`;

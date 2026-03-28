@@ -7,7 +7,6 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { EPPGridPanel } from "../eppgrid-panel.js";
 import "../eppgrid-panel.js";
 import "../components/epp-live-sidebar.js";
-import "../components/epp-live-view.js";
 import {
 	CELL_ROOM_BIT,
 	cellSetZone,
@@ -275,20 +274,20 @@ describe("_renderLiveOverview inline handlers", () => {
 		expect(a._showHitCounts).toBe(false);
 	});
 
-	it("live menu toggle (epp-live-view)", () => {
-		const lv = document.createElement("epp-live-view") as any;
-		lv.showMenu = false;
-		// Replicate component handler
-		lv.showMenu = !lv.showMenu;
-		expect(lv.showMenu).toBe(true);
+	it("live menu toggle on panel", () => {
+		const a = createPanel() as any;
+		a._showLiveMenu = false;
+		// Replicate panel inline handler
+		a._showLiveMenu = !a._showLiveMenu;
+		expect(a._showLiveMenu).toBe(true);
 	});
 
-	it("live menu close on click (epp-live-view)", () => {
-		const lv = document.createElement("epp-live-view") as any;
-		lv.showMenu = true;
-		// Replicate component handler
-		lv.showMenu = false;
-		expect(lv.showMenu).toBe(false);
+	it("live menu close on click on panel", () => {
+		const a = createPanel() as any;
+		a._showLiveMenu = true;
+		// Replicate panel inline handler
+		a._showLiveMenu = false;
+		expect(a._showLiveMenu).toBe(false);
 	});
 
 	it("detection zones button", () => {
