@@ -17,7 +17,7 @@ import {
 	autoComputeRoomDimensions,
 	medianPoint,
 } from "../lib/room-geometry.js";
-import { buttonStyles, settingStyles } from "../styles.js";
+import { buttonStyles, headerStyles, settingStyles } from "../styles.js";
 import type { RawTarget, SetupStep, WizardCorner } from "../types.js";
 
 export class EppWizard extends LitElement {
@@ -267,6 +267,7 @@ export class EppWizard extends LitElement {
 	// --- Styles ---
 	static styles = [
 		buttonStyles,
+		headerStyles,
 		settingStyles,
 		css`
       :host {
@@ -529,28 +530,6 @@ export class EppWizard extends LitElement {
         white-space: nowrap;
       }
 
-      .panel-header {
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        gap: 12px;
-        font-size: 20px;
-        font-weight: 500;
-        margin-bottom: 16px;
-        text-align: center;
-      }
-
-      .device-select {
-        padding: 6px 10px;
-        border-radius: 8px;
-        border: 1px solid var(--divider-color, #e0e0e0);
-        background: var(--card-background-color, #fff);
-        color: var(--primary-text-color, #212121);
-        font-size: 16px;
-        font-weight: 500;
-        cursor: pointer;
-      }
-
       .live-nav-link {
         display: flex;
         align-items: center;
@@ -587,27 +566,11 @@ export class EppWizard extends LitElement {
 	private _renderHeader() {
 		return html`
       <div class="panel-header">
-        <select
-          class="device-select"
+        <ha-select
           .value=${this.selectedMac}
-          @change=${(e: Event) => {
-						const val = (e.target as HTMLSelectElement).value;
-						if (val === "__add__") {
-							window.open("/config/integrations/integration/eppgrid", "_blank");
-							(e.target as HTMLSelectElement).value = this.selectedMac;
-							return;
-						}
-					}}
-        >
-          ${this.devices.map(
-						(d) => html`
-              <option value=${d.mac}>
-                ${d.name}
-              </option>
-            `,
-					)}
-          <option value="__add__">${this.localize("common.add_another_sensor")}</option>
-        </select>
+          .disabled=${true}
+          .options=${this.devices.map((d) => ({ value: d.mac, label: d.name }))}
+        ></ha-select>
       </div>
     `;
 	}

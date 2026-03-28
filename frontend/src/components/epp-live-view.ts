@@ -1,5 +1,6 @@
 import { css, html, LitElement, nothing, type TemplateResult } from "lit";
 import { property, state } from "lit/decorators.js";
+import { headerStyles } from "../styles.js";
 import type { ZoneConfig } from "../lib/zone-defaults.js";
 import "./epp-live-sidebar.js";
 
@@ -64,7 +65,7 @@ export class EppLiveView extends LitElement {
 
 	@state() showMenu = false;
 
-	static styles = css`
+	static styles = [headerStyles, css`
     :host {
       display: block;
     }
@@ -167,7 +168,7 @@ export class EppLiveView extends LitElement {
     .sidebar-menu-item:hover {
       background: var(--secondary-background-color, #f5f5f5);
     }
-  `;
+  `];
 
 	render() {
 		return html`

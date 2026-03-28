@@ -1,5 +1,6 @@
 import { css, html, LitElement, nothing, type TemplateResult } from "lit";
 import { property } from "lit/decorators.js";
+import { headerStyles } from "../styles.js";
 import type { FurnitureItem } from "../lib/furniture.js";
 import type { ZoneConfig } from "../lib/zone-defaults.js";
 import type { LocalZoneInfo } from "./epp-zone-sidebar.js";
@@ -53,7 +54,7 @@ export class EppEditorView extends LitElement {
 		| TemplateResult
 		| typeof nothing = nothing;
 
-	static styles = css`
+	static styles = [headerStyles, css`
     :host {
       display: block;
     }
@@ -96,7 +97,7 @@ export class EppEditorView extends LitElement {
       padding: 10px 12px 8px;
       color: var(--primary-text-color, #212121);
     }
-  `;
+  `];
 
 	render() {
 		return html`

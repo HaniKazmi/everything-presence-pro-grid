@@ -305,32 +305,53 @@ export const toggleStyles = css`
 `;
 
 export const protocolBannerStyles = css`
-  .protocol-banner {
+  .protocol-fullpage {
     display: flex;
+    flex-direction: column;
     align-items: center;
-    gap: 12px;
-    padding: 12px 16px;
-    margin: 0 16px 8px;
-    border-radius: 8px;
-    font-size: 14px;
+    justify-content: center;
+    gap: 16px;
+    padding: 48px 24px;
+    margin: 16px;
+    border-radius: 12px;
+    text-align: center;
+    flex: 1;
   }
-  .protocol-banner-warning {
+  .protocol-fullpage-warning {
     background: var(--warning-color, #ff9800);
     color: white;
   }
-  .protocol-banner-info {
+  .protocol-fullpage-info {
     background: var(--info-color, #2196f3);
     color: white;
   }
-  .protocol-banner ha-icon {
-    --mdc-icon-size: 24px;
-    flex-shrink: 0;
+  .protocol-fullpage ha-icon {
+    --mdc-icon-size: 48px;
   }
-  .protocol-banner span {
-    flex: 1;
+  .protocol-fullpage p {
+    margin: 0;
+    font-size: 16px;
+    max-width: 480px;
+    line-height: 1.5;
   }
-  .protocol-banner button {
-    flex-shrink: 0;
+`;
+
+export const headerStyles = css`
+  .panel-header {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    font-size: 20px;
+    font-weight: 500;
+    margin-bottom: 16px;
+    text-align: center;
+  }
+
+  .panel-header ha-select {
+    --mdc-typography-subtitle1-font-size: 16px;
+    --mdc-typography-subtitle1-font-weight: 500;
+    min-width: 200px;
   }
 `;
 

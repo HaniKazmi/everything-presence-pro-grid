@@ -31,6 +31,8 @@ def _clear_registered():
 
 async def setup_integration(hass: HomeAssistant, config_entry: MockConfigEntry) -> MagicMock:
     """Set up the integration with a mocked DeviceManager and return the mock."""
+    from custom_components.eppgrid.const import CONFIG_PROTOCOL_VERSION
+
     with (
         patch("custom_components.eppgrid.DeviceManager") as mock_dm_cls,
         patch("custom_components.eppgrid._register_panel", new_callable=AsyncMock),
@@ -49,6 +51,7 @@ async def setup_integration(hass: HomeAssistant, config_entry: MockConfigEntry) 
         mock_dm.async_open_session = AsyncMock(return_value=None)
         mock_dm.async_close_session = AsyncMock()
         mock_dm.get_session = MagicMock(return_value=None)
+        mock_dm._read_config_protocol.return_value = CONFIG_PROTOCOL_VERSION
 
         await async_setup_entry(hass, config_entry)
 
@@ -214,8 +217,8 @@ class TestWebSocketSetRoomLayout:
             mac="AA:BB:CC:DD:EE:FF",
             name="EPP",
             host="192.168.1.50",
-            config_protocol=CONFIG_PROTOCOL_VERSION,
         )
+        mock_dm._read_config_protocol.return_value = CONFIG_PROTOCOL_VERSION
 
         from custom_components.eppgrid.websocket_api import websocket_set_room_layout
 
@@ -707,9 +710,9 @@ class TestProtocolVersionGuard:
                 mac="AA:BB:CC:DD:EE:FF",
                 name="EPP",
                 host="192.168.1.50",
-                config_protocol=0,  # behind
             )
         }
+        mock_dm._read_config_protocol.return_value = 0  # behind
 
         from custom_components.eppgrid.websocket_api import websocket_set_setup
 
@@ -741,9 +744,9 @@ class TestProtocolVersionGuard:
                 mac="AA:BB:CC:DD:EE:FF",
                 name="EPP",
                 host="192.168.1.50",
-                config_protocol=99,  # ahead
             )
         }
+        mock_dm._read_config_protocol.return_value = 99  # ahead
 
         from custom_components.eppgrid.websocket_api import websocket_set_setup
 
@@ -774,9 +777,9 @@ class TestProtocolVersionGuard:
                 mac="AA:BB:CC:DD:EE:FF",
                 name="EPP",
                 host="192.168.1.50",
-                config_protocol=CONFIG_PROTOCOL_VERSION,
             )
         }
+        mock_dm._read_config_protocol.return_value = CONFIG_PROTOCOL_VERSION
 
         from custom_components.eppgrid.websocket_api import websocket_set_setup
 
@@ -848,9 +851,9 @@ class TestProtocolVersionGuard:
                 mac="AA:BB:CC:DD:EE:FF",
                 name="EPP",
                 host="192.168.1.50",
-                config_protocol=0,
             )
         }
+        mock_dm._read_config_protocol.return_value = 0
 
         import custom_components.eppgrid.websocket_api as ws
 

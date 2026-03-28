@@ -80,35 +80,6 @@ describe("connectedCallback", () => {
 	});
 });
 
-describe("__add__ device selector", () => {
-	it("opens integrations URL when __add__ is selected", async () => {
-		const openSpy = vi.spyOn(window, "open").mockImplementation(() => null);
-		try {
-			const el = createWizard({ mode: "wizard" });
-			// Ensure wizard step is visible so header renders
-			(el as any)._setupStep = "guide";
-			document.body.appendChild(el);
-			await el.updateComplete;
-
-			const root = el.shadowRoot!;
-			const select = root.querySelector(
-				"select.device-select",
-			) as HTMLSelectElement;
-			expect(select).not.toBeNull();
-
-			// Set value to __add__ and dispatch change
-			select.value = "__add__";
-			select.dispatchEvent(new Event("change", { bubbles: true }));
-
-			expect(openSpy).toHaveBeenCalledWith(
-				"/config/integrations/integration/eppgrid",
-				"_blank",
-			);
-		} finally {
-			openSpy.mockRestore();
-		}
-	});
-});
 
 describe("capture cancel click", () => {
 	it("resets capturing state when cancel button is clicked", async () => {

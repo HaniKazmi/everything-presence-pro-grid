@@ -55,6 +55,7 @@ import { setupLocalize } from "./localize.js";
 import {
 	buttonStyles,
 	dialogStyles,
+	headerStyles,
 	hostStyles,
 	panelStyles,
 	protocolBannerStyles,
@@ -690,17 +691,6 @@ export class EPPGridPanel extends LitElement {
 		}
 	}
 
-	private async _onDeviceChange(e: Event): Promise<void> {
-		const select = e.target as HTMLSelectElement;
-		const mac = select.value;
-		this._guardNavigation(async () => {
-			this._closeDeviceSession();
-			this._selectedMac = mac;
-			localStorage.setItem("epp_selected_mac", mac);
-			await this._loadDeviceConfig(mac);
-		});
-	}
-
 	// -- Styles --
 
 	static styles = [
@@ -708,6 +698,7 @@ export class EPPGridPanel extends LitElement {
 		panelStyles,
 		dialogStyles,
 		buttonStyles,
+		headerStyles,
 		protocolBannerStyles,
 		css`
     .cell {
@@ -723,28 +714,6 @@ export class EPPGridPanel extends LitElement {
       font-size: 13px;
       color: var(--secondary-text-color, #757575);
       margin: 0;
-    }
-
-    .panel-header {
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      gap: 12px;
-      font-size: 20px;
-      font-weight: 500;
-      margin-bottom: 16px;
-      text-align: center;
-    }
-
-    .device-select {
-      padding: 6px 10px;
-      border-radius: 8px;
-      border: 1px solid var(--divider-color, #e0e0e0);
-      background: var(--card-background-color, #fff);
-      color: var(--primary-text-color, #212121);
-      font-size: 16px;
-      font-weight: 500;
-      cursor: pointer;
     }
 
     .loading-container {
@@ -915,14 +884,24 @@ export class EPPGridPanel extends LitElement {
 		const dev = this._devices.find((d) => d.mac === this._selectedMac);
 		const protocolOk = !dev || dev.config_protocol_status === "compatible";
 
+		if (!protocolOk) {
+			return html`
+				<div class="panel">
+					${this._renderHeader()}
+					${this._renderProtocolBanner()}
+				</div>
+				${this._renderGlobalDialogs()}
+			`;
+		}
+
 		const content =
-			this._view === "settings" && protocolOk
+			this._view === "settings"
 				? this._renderSettings()
-				: this._view === "editor" && this._perspective && protocolOk
+				: this._view === "editor" && this._perspective
 					? this._renderEditor()
 					: this._renderLiveOverview();
 
-		return html`${this._renderProtocolBanner()}${content}${this._renderGlobalDialogs()}`;
+		return html`${content}${this._renderGlobalDialogs()}`;
 	}
 
 	private async _deleteCalibration(): Promise<void> {
@@ -970,33 +949,24 @@ export class EPPGridPanel extends LitElement {
 	}
 
 	private _renderHeader() {
-		const headerBtns = nothing;
-
 		return html`
       <div class="panel-header">
-        <select
-          class="device-select"
+        <ha-select
           .value=${this._selectedMac}
-          @change=${(e: Event) => {
-						const val = (e.target as HTMLSelectElement).value;
-						if (val === "__add__") {
-							window.open("/config/integrations/integration/eppgrid", "_blank");
-							(e.target as HTMLSelectElement).value = this._selectedMac;
-							return;
-						}
-						this._onDeviceChange(e);
+          .options=${this._devices.map((d) => ({ value: d.mac, label: d.name }))}
+          @selected=${(e: Event) => {
+						const select = e.target as any;
+						const val = select.value;
+						if (!val || val === this._selectedMac) return;
+						this._guardNavigation(async () => {
+							this._closeDeviceSession();
+							this._selectedMac = val;
+							localStorage.setItem("epp_selected_mac", val);
+							await this._loadDeviceConfig(val);
+						});
 					}}
-        >
-          ${this._devices.map(
-						(d) => html`
-              <option value=${d.mac}>
-                ${d.name}
-              </option>
-            `,
-					)}
-          <option value="__add__">${this._localize("common.add_another_sensor")}</option>
-        </select>
-        ${headerBtns}
+          @closed=${(e: Event) => e.stopPropagation()}
+        ></ha-select>
       </div>
     `;
 	}
@@ -1005,22 +975,20 @@ export class EPPGridPanel extends LitElement {
 		const dev = this._devices.find((d) => d.mac === this._selectedMac);
 		if (!dev || dev.config_protocol_status === "compatible") return nothing;
 
-		if (dev.config_protocol_status === "firmware_behind") {
-			return html`
-				<div class="protocol-banner protocol-banner-warning">
-					<ha-icon icon="mdi:alert-circle-outline"></ha-icon>
-					<span>${this._localize("protocol.firmware_behind")}</span>
-					<button class="wizard-btn wizard-btn-primary"
-						@click=${() => this._updateFirmware()}
-					>${this._localize("protocol.update_firmware")}</button>
-				</div>
-			`;
-		}
+		const isBehind = dev.config_protocol_status === "firmware_behind";
+		const message = isBehind
+			? this._localize("protocol.firmware_behind")
+			: this._localize("protocol.firmware_ahead");
 
 		return html`
-			<div class="protocol-banner protocol-banner-info">
-				<ha-icon icon="mdi:information-outline"></ha-icon>
-				<span>${this._localize("protocol.firmware_ahead")}</span>
+			<div class="protocol-fullpage protocol-fullpage-${isBehind ? "warning" : "info"}">
+				<ha-icon icon=${isBehind ? "mdi:alert-circle-outline" : "mdi:information-outline"}></ha-icon>
+				<p>${message}</p>
+				${isBehind
+					? html`<button class="wizard-btn wizard-btn-primary"
+						@click=${() => this._updateFirmware()}
+					>${this._localize("protocol.update_firmware")}</button>`
+					: nothing}
 			</div>
 		`;
 	}

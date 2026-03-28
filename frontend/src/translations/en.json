@@ -12,8 +12,7 @@
 		"discard": "Discard",
 		"apply": "Apply",
 		"load": "Load",
-		"loading": "Loading...",
-		"add_another_sensor": "+ Add another sensor"
+		"loading": "Loading..."
 	},
 	"furniture": {
 		"armchair": "Armchair",
