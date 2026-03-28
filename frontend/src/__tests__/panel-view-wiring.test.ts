@@ -5,7 +5,7 @@
  * CustomEvent, then asserts the panel state changed accordingly.
  */
 
-import { render } from "lit";
+import { type LitElement, render } from "lit";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { EPPGridPanel } from "../eppgrid-panel.js";
 import "../eppgrid-panel.js";
@@ -406,7 +406,7 @@ describe("Live overview event wiring", () => {
 		// The epp-wizard is rendered inside epp-live-view's shadow DOM
 		// (passed as .gridTemplate). We need the live view to complete
 		// its own render cycle so that the wizard appears in its shadow DOM.
-		const liveView = container.querySelector("epp-live-view")!;
+		const liveView = container.querySelector("epp-live-view") as LitElement;
 		expect(liveView).not.toBeNull();
 		// Trigger the live view's Lit update cycle
 		await liveView.updateComplete;

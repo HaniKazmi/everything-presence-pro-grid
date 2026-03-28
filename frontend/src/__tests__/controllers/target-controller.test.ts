@@ -357,7 +357,7 @@ describe("TargetController", () => {
 	// -------------------------------------------------------------------------
 	describe("runLocalZoneEngine", () => {
 		/** Build a simple grid with all interior cells set to zone 0 (room). */
-		function makeSimpleGrid(): Uint8Array {
+		function makeSimpleGrid(): Uint8Array<ArrayBuffer> {
 			const grid = new Uint8Array(GRID_CELL_COUNT);
 			for (let i = 0; i < GRID_CELL_COUNT; i++) {
 				grid[i] = CELL_ROOM_BIT;
