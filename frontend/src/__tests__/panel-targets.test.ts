@@ -61,8 +61,7 @@ describe("_loadDeviceConfig sets up callbacks before subscribing", () => {
 		const a = el as any;
 
 		let callbacksSetBeforeSubscribe = false;
-		const origSubscribe =
-			a._deviceCtrl.subscribeTargets.bind(a._deviceCtrl);
+		const origSubscribe = a._deviceCtrl.subscribeTargets.bind(a._deviceCtrl);
 		a._deviceCtrl.subscribeTargets = vi
 			.fn()
 			.mockImplementation((mac: string) => {
@@ -92,15 +91,11 @@ describe("_loadDeviceConfig sets up callbacks before subscribing", () => {
 		el.hass = {
 			callWS: vi.fn().mockResolvedValue({ config: null }),
 			connection: {
-				subscribeMessage: vi
-					.fn()
-					.mockImplementation((cb: any, msg: any) => {
-						if (msg.type === "eppgrid/subscribe_grid_targets")
-							gridHandler = cb;
-						if (msg.type === "eppgrid/subscribe_raw_targets")
-							rawHandler = cb;
-						return Promise.resolve(vi.fn());
-					}),
+				subscribeMessage: vi.fn().mockImplementation((cb: any, msg: any) => {
+					if (msg.type === "eppgrid/subscribe_grid_targets") gridHandler = cb;
+					if (msg.type === "eppgrid/subscribe_raw_targets") rawHandler = cb;
+					return Promise.resolve(vi.fn());
+				}),
 			},
 		};
 

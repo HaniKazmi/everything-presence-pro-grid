@@ -80,7 +80,6 @@ describe("connectedCallback", () => {
 	});
 });
 
-
 describe("capture cancel click", () => {
 	it("resets capturing state when cancel button is clicked", async () => {
 		const el = createWizard({ mode: "wizard" });

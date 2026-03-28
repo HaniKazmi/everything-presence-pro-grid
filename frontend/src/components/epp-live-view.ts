@@ -65,7 +65,9 @@ export class EppLiveView extends LitElement {
 
 	@state() showMenu = false;
 
-	static styles = [headerStyles, css`
+	static styles = [
+		headerStyles,
+		css`
     :host {
       display: block;
     }
@@ -168,7 +170,8 @@ export class EppLiveView extends LitElement {
     .sidebar-menu-item:hover {
       background: var(--secondary-background-color, #f5f5f5);
     }
-  `];
+  `,
+	];
 
 	render() {
 		return html`

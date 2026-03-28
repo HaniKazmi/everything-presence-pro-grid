@@ -956,11 +956,13 @@ export class EPPGridPanel extends LitElement {
 			<div class="protocol-fullpage protocol-fullpage-${isBehind ? "warning" : "info"}">
 				<ha-icon icon=${isBehind ? "mdi:alert-circle-outline" : "mdi:information-outline"}></ha-icon>
 				<p>${message}</p>
-				${isBehind
-					? html`<button class="wizard-btn wizard-btn-primary"
+				${
+					isBehind
+						? html`<button class="wizard-btn wizard-btn-primary"
 						@click=${() => this._updateFirmware()}
 					>${this._localize("protocol.update_firmware")}</button>`
-					: nothing}
+						: nothing
+				}
 			</div>
 		`;
 	}

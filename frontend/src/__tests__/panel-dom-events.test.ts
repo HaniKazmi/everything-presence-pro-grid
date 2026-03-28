@@ -273,7 +273,6 @@ describe("epp-live-sidebar DOM events", () => {
 	});
 });
 
-
 describe("_renderWizardGuide DOM events (via EppWizard)", () => {
 	it("cancel button fires wizard-cancel event", () => {
 		const a = createWizard() as any;

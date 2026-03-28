@@ -411,9 +411,7 @@ class TestProtocolVersion:
         result = manager.list_devices()
         assert result[0]["config_protocol_status"] == "firmware_ahead"
 
-    async def test_list_devices_reads_protocol_live(
-        self, hass: HomeAssistant, manager: DeviceManager
-    ) -> None:
+    async def test_list_devices_reads_protocol_live(self, hass: HomeAssistant, manager: DeviceManager) -> None:
         """list_devices picks up protocol changes without re-discovery."""
         from custom_components.eppgrid.const import CONFIG_PROTOCOL_VERSION
 
@@ -460,9 +458,7 @@ class TestProtocolVersion:
         result = manager.list_devices()
         assert result[0]["config_protocol_status"] == "compatible"
 
-    async def test_discover_does_not_cache_config_protocol(
-        self, hass: HomeAssistant, manager: DeviceManager
-    ) -> None:
+    async def test_discover_does_not_cache_config_protocol(self, hass: HomeAssistant, manager: DeviceManager) -> None:
         """async_discover no longer caches config_protocol on the device."""
         from custom_components.eppgrid.const import CONFIG_PROTOCOL_VERSION
 

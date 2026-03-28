@@ -54,7 +54,9 @@ export class EppEditorView extends LitElement {
 		| TemplateResult
 		| typeof nothing = nothing;
 
-	static styles = [headerStyles, css`
+	static styles = [
+		headerStyles,
+		css`
     :host {
       display: block;
     }
@@ -97,7 +99,8 @@ export class EppEditorView extends LitElement {
       padding: 10px 12px 8px;
       color: var(--primary-text-color, #212121);
     }
-  `];
+  `,
+	];
 
 	render() {
 		return html`
