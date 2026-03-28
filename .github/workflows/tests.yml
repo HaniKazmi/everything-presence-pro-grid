@@ -68,8 +68,8 @@ jobs:
     name: C++ Tests
     steps:
       - uses: actions/checkout@v4
-      - name: Install CMake and lcov
-        run: sudo apt-get update && sudo apt-get install -y cmake lcov
+      - name: Install CMake, lcov, and bc
+        run: sudo apt-get update && sudo apt-get install -y cmake lcov bc
       - name: Build with coverage
         working-directory: firmware/lib/epp_zone_engine
         run: |
@@ -88,7 +88,11 @@ jobs:
               --ignore-errors unused
           lcov --summary build/coverage-filtered.info
           COV=$(lcov --summary build/coverage-filtered.info 2>&1 \
-              | grep 'lines\.\.\.\.\.\.\.' | sed 's/.*: *\([0-9]*\.[0-9]*\)%.*/\1/')
+              | grep 'lines\.\.\.\.\.\.\.' | sed 's/.*: *\([0-9][0-9]*\(\.[0-9][0-9]*\)\?\)%.*/\1/')
+          if ! echo "$COV" | grep -q '^[0-9][0-9]*\(\.[0-9][0-9]*\)\?$'; then
+            echo "::error::Failed to parse C++ coverage percentage from lcov output (got: '$COV')"
+            exit 1
+          fi
           echo "C++ line coverage: ${COV}%"
           if [ "$(echo "$COV < 90" | bc)" -eq 1 ]; then
             echo "::error::C++ coverage ${COV}% is below 90% threshold"
