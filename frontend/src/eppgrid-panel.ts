@@ -192,20 +192,6 @@ export class EPPGridPanel extends LitElement {
 	@state() private _roomDepth = 0; // mm
 
 	// Device session + target subscriptions (delegated to _deviceCtrl)
-	// Getter/setter proxies for _unsubTargets and _unsubDisplay so that
-	// existing tests can read/write them via (el as any)._unsubTargets etc.
-	private get _unsubTargets(): (() => void) | undefined {
-		return (this._deviceCtrl as any)._unsubTargets;
-	}
-	private set _unsubTargets(v: (() => void) | undefined) {
-		(this._deviceCtrl as any)._unsubTargets = v;
-	}
-	private get _unsubDisplay(): (() => void) | undefined {
-		return (this._deviceCtrl as any)._unsubDisplay;
-	}
-	private set _unsubDisplay(v: (() => void) | undefined) {
-		(this._deviceCtrl as any)._unsubDisplay = v;
-	}
 
 	private _beforeUnloadHandler = (e: BeforeUnloadEvent) => {
 		if (this._dirty) {

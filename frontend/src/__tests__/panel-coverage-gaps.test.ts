@@ -177,9 +177,34 @@ describe("disconnectedCallback restores history methods", () => {
 		const a = createPanel() as any;
 		a._originalPushState = null;
 		a._originalReplaceState = null;
-		a._unsubTargets = undefined;
 
 		// Should not throw
+		a.disconnectedCallback();
+	});
+
+	it("stores pending navigation when pushState is intercepted with dirty state", () => {
+		const a = createPanel() as any;
+		a.connectedCallback();
+		a._dirty = true;
+
+		history.pushState({}, "", "/test-push");
+		expect(a._pendingNavigation).toBeInstanceOf(Function);
+		// Execute the pending navigation to cover the lambda
+		a._pendingNavigation();
+		a._pendingNavigation = null;
+		a.disconnectedCallback();
+	});
+
+	it("stores pending navigation when replaceState is intercepted with dirty state", () => {
+		const a = createPanel() as any;
+		a.connectedCallback();
+		a._dirty = true;
+
+		history.replaceState({}, "", "/test-replace");
+		expect(a._pendingNavigation).toBeInstanceOf(Function);
+		// Execute the pending navigation to cover the lambda
+		a._pendingNavigation();
+		a._pendingNavigation = null;
 		a.disconnectedCallback();
 	});
 });
@@ -1198,5 +1223,42 @@ describe("template delete button", () => {
 			removeBtn.click();
 			expect(a._deleteTemplate).toHaveBeenCalledWith("test-tmpl");
 		}
+	});
+});
+
+// =========================================================
+// _renderHeader: ha-select event handlers
+// =========================================================
+describe("_renderHeader ha-select handlers", () => {
+	it("stops propagation of closed event", () => {
+		const a = createPanel() as any;
+		const tpl = a._renderHeader();
+		const c = document.createElement("div");
+		render(tpl, c);
+
+		const select = c.querySelector("ha-select");
+		expect(select).not.toBeNull();
+
+		const event = new Event("closed", { bubbles: true });
+		const spy = vi.spyOn(event, "stopPropagation");
+		select!.dispatchEvent(event);
+		expect(spy).toHaveBeenCalled();
+	});
+
+	it("@selected ignores empty or same-mac selection", () => {
+		const a = createPanel() as any;
+		const tpl = a._renderHeader();
+		const c = document.createElement("div");
+		render(tpl, c);
+
+		const select = c.querySelector("ha-select") as any;
+		expect(select).not.toBeNull();
+
+		// Simulate selecting the same mac — should be a no-op
+		select.value = a._selectedMac;
+		select.dispatchEvent(new Event("selected", { bubbles: true }));
+
+		// No device change should have occurred
+		expect(a._selectedMac).toBe("AA:BB:CC:DD:EE:01");
 	});
 });
