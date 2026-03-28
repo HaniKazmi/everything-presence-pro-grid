@@ -559,16 +559,6 @@ describe("Navigation guards", () => {
 		expect(a._showUnsavedDialog).toBe(true);
 	});
 
-	it("_openDeviceSession delegates to _deviceCtrl.openDeviceSession", async () => {
-		const el = createPanel();
-		const a = el as any;
-		const spy = vi
-			.spyOn(a._deviceCtrl, "openDeviceSession")
-			.mockResolvedValue(undefined);
-		await a._openDeviceSession("AA:BB");
-		expect(spy).toHaveBeenCalledWith("AA:BB");
-	});
-
 	it("_initGridFromRoom produces grid with correct length", () => {
 		const el = createPanel();
 		const a = el as any;

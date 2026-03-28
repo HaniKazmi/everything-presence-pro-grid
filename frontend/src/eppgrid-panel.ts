@@ -387,6 +387,12 @@ export class EPPGridPanel extends LitElement {
 
 	private async _loadDeviceConfig(mac: string): Promise<void> {
 		this._deviceCtrl.hass = this.hass;
+		this._deviceCtrl.onTargetData = (data) => {
+			this._targetCtrl.handleTargetData(data);
+		};
+		this._deviceCtrl.onRawTargetData = (rawTargets) => {
+			this._targetCtrl.handleRawTargetData(rawTargets);
+		};
 		const config = await this._deviceCtrl.loadDeviceConfig(mac);
 		if (config) {
 			this._applyConfig(config);
@@ -420,44 +426,10 @@ export class EPPGridPanel extends LitElement {
 		(this as any)._offsetsConfig = parsed.offsetsConfig;
 	}
 
-	private async _openDeviceSession(mac: string): Promise<void> {
-		this._deviceCtrl.hass = this.hass;
-		await this._deviceCtrl.openDeviceSession(mac);
-	}
-
 	private _closeDeviceSession(): void {
 		this._deviceCtrl.closeDeviceSession();
 		this._targets = [];
 		this._rawTargets = [];
-	}
-
-	private _subscribeTargets(mac: string): void {
-		this._deviceCtrl.hass = this.hass;
-		this._deviceCtrl.onTargetData = (data) => {
-			this._targetCtrl.handleTargetData(data);
-		};
-		this._deviceCtrl.onRawTargetData = (rawTargets) => {
-			this._targetCtrl.handleRawTargetData(rawTargets);
-		};
-		this._deviceCtrl.subscribeTargets(mac);
-	}
-
-	private _unsubscribeTargets(): void {
-		this._deviceCtrl.unsubscribeTargets();
-		this._targets = [];
-		this._rawTargets = [];
-	}
-
-	private _subscribeDisplay(mac: string): void {
-		this._deviceCtrl.hass = this.hass;
-		this._deviceCtrl.onRawTargetData = (rawTargets) => {
-			this._targetCtrl.handleRawTargetData(rawTargets);
-		};
-		this._deviceCtrl.subscribeDisplay(mac);
-	}
-
-	private _unsubscribeDisplay(): void {
-		this._deviceCtrl.unsubscribeDisplay();
 	}
 
 	// -- Grid cell painting --
