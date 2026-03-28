@@ -15,6 +15,7 @@ firmware/build/
 
 # C++ build artifacts
 firmware/lib/epp_zone_engine/build/
+firmware/lib/epp_zone_engine/build-coverage/
 
 # Virtual environment
 .venv/
