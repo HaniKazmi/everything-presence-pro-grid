@@ -4,6 +4,11 @@ project(epp_zone_engine LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
+if(CMAKE_BUILD_TYPE STREQUAL "Coverage")
+    add_compile_options(--coverage)
+    add_link_options(--coverage)
+endif()
+
 # Library
 add_library(epp_zone_engine
     src/epp_grid.cpp
