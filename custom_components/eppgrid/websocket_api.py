@@ -364,7 +364,7 @@ def _get_entity_states(hass: HomeAssistant, mac: str) -> dict[str, bool]:
     if dev is None or dev.device_id is None:
         return {}
     ent_reg = er.async_get(hass)
-    entries = er.async_entries_for_device(ent_reg, dev.device_id)
+    entries = er.async_entries_for_device(ent_reg, dev.device_id, include_disabled_entities=True)
 
     result: dict[str, bool] = {}
     for entry in entries:
@@ -390,14 +390,15 @@ def _apply_entity_states(hass: HomeAssistant, mac: str, entities: dict[str, bool
     if dev is None or dev.device_id is None:
         return
     ent_reg = er.async_get(hass)
-    entries = er.async_entries_for_device(ent_reg, dev.device_id)
+    entries = er.async_entries_for_device(ent_reg, dev.device_id, include_disabled_entities=True)
 
     for entry in entries:
         object_id = _object_id_from_unique_id(entry.unique_id)
         key = _entity_key_for_object_id(object_id)
         if key is None or key not in entities:
             continue
-        if entities[key]:
+        desired = entities[key]
+        if desired:
             ent_reg.async_update_entity(entry.entity_id, disabled_by=None)
         else:
             ent_reg.async_update_entity(
