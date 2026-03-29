@@ -319,7 +319,10 @@ export function runLocalZoneEngine(
 	} else if (state.staticState === "active") {
 		state.staticState = "pending";
 		state.staticPendingSince = now;
-	} else if (state.staticState === "pending" && state.staticPendingSince !== null) {
+	} else if (
+		state.staticState === "pending" &&
+		state.staticPendingSince !== null
+	) {
 		if (now - state.staticPendingSince >= staticTimeout) {
 			state.staticState = "inactive";
 			state.staticPendingSince = null;
@@ -333,7 +336,10 @@ export function runLocalZoneEngine(
 	} else if (state.motionState === "active") {
 		state.motionState = "pending";
 		state.motionPendingSince = now;
-	} else if (state.motionState === "pending" && state.motionPendingSince !== null) {
+	} else if (
+		state.motionState === "pending" &&
+		state.motionPendingSince !== null
+	) {
 		if (now - state.motionPendingSince >= motionTimeout) {
 			state.motionState = "inactive";
 			state.motionPendingSince = null;
@@ -343,8 +349,11 @@ export function runLocalZoneEngine(
 	// Force-clear: when both sensors inactive and no zones OCCUPIED, clear pending zones
 	// Only applies when sensors have been active at some point (prevents force-clear
 	// on sensor-free deployments where sensors are always default-inactive)
-	if (state.sensorsEverActive &&
-		state.staticState === "inactive" && state.motionState === "inactive") {
+	if (
+		state.sensorsEverActive &&
+		state.staticState === "inactive" &&
+		state.motionState === "inactive"
+	) {
 		let anyOccupied = false;
 		for (const [, st] of state.localZoneState) {
 			if (st.occupied && st.pendingSince === null) {

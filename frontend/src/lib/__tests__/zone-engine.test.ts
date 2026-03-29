@@ -380,122 +380,251 @@ describe("runLocalZoneEngine", () => {
 
 	it("sensor state: static pending when sensor goes off", () => {
 		const now = Date.now() / 1000;
-		runLocalZoneEngine(state, makeDefaultParams({
-			targets: [], staticPresence: true, staticTimeout: 5, now,
-		}));
-		const result = runLocalZoneEngine(state, makeDefaultParams({
-			targets: [], staticPresence: false, staticTimeout: 5, now: now + 1,
-		}));
+		runLocalZoneEngine(
+			state,
+			makeDefaultParams({
+				targets: [],
+				staticPresence: true,
+				staticTimeout: 5,
+				now,
+			}),
+		);
+		const result = runLocalZoneEngine(
+			state,
+			makeDefaultParams({
+				targets: [],
+				staticPresence: false,
+				staticTimeout: 5,
+				now: now + 1,
+			}),
+		);
 		expect(result.staticState).toBe("pending");
 	});
 
 	it("sensor state: static inactive after timeout", () => {
 		const now = Date.now() / 1000;
-		runLocalZoneEngine(state, makeDefaultParams({
-			targets: [], staticPresence: true, staticTimeout: 5, now,
-		}));
-		runLocalZoneEngine(state, makeDefaultParams({
-			targets: [], staticPresence: false, staticTimeout: 5, now: now + 1,
-		}));
-		const result = runLocalZoneEngine(state, makeDefaultParams({
-			targets: [], staticPresence: false, staticTimeout: 5, now: now + 7,
-		}));
+		runLocalZoneEngine(
+			state,
+			makeDefaultParams({
+				targets: [],
+				staticPresence: true,
+				staticTimeout: 5,
+				now,
+			}),
+		);
+		runLocalZoneEngine(
+			state,
+			makeDefaultParams({
+				targets: [],
+				staticPresence: false,
+				staticTimeout: 5,
+				now: now + 1,
+			}),
+		);
+		const result = runLocalZoneEngine(
+			state,
+			makeDefaultParams({
+				targets: [],
+				staticPresence: false,
+				staticTimeout: 5,
+				now: now + 7,
+			}),
+		);
 		expect(result.staticState).toBe("inactive");
 	});
 
 	it("sensor state: static reactivates during pending", () => {
 		const now = Date.now() / 1000;
-		runLocalZoneEngine(state, makeDefaultParams({
-			targets: [], staticPresence: true, staticTimeout: 5, now,
-		}));
-		runLocalZoneEngine(state, makeDefaultParams({
-			targets: [], staticPresence: false, staticTimeout: 5, now: now + 1,
-		}));
-		const result = runLocalZoneEngine(state, makeDefaultParams({
-			targets: [], staticPresence: true, staticTimeout: 5, now: now + 2,
-		}));
+		runLocalZoneEngine(
+			state,
+			makeDefaultParams({
+				targets: [],
+				staticPresence: true,
+				staticTimeout: 5,
+				now,
+			}),
+		);
+		runLocalZoneEngine(
+			state,
+			makeDefaultParams({
+				targets: [],
+				staticPresence: false,
+				staticTimeout: 5,
+				now: now + 1,
+			}),
+		);
+		const result = runLocalZoneEngine(
+			state,
+			makeDefaultParams({
+				targets: [],
+				staticPresence: true,
+				staticTimeout: 5,
+				now: now + 2,
+			}),
+		);
 		expect(result.staticState).toBe("active");
 	});
 
 	it("sensor state: motion follows same lifecycle", () => {
 		const now = Date.now() / 1000;
-		const r1 = runLocalZoneEngine(state, makeDefaultParams({
-			targets: [], motionPresence: true, motionTimeout: 3, now,
-		}));
+		const r1 = runLocalZoneEngine(
+			state,
+			makeDefaultParams({
+				targets: [],
+				motionPresence: true,
+				motionTimeout: 3,
+				now,
+			}),
+		);
 		expect(r1.motionState).toBe("active");
-		const r2 = runLocalZoneEngine(state, makeDefaultParams({
-			targets: [], motionPresence: false, motionTimeout: 3, now: now + 1,
-		}));
+		const r2 = runLocalZoneEngine(
+			state,
+			makeDefaultParams({
+				targets: [],
+				motionPresence: false,
+				motionTimeout: 3,
+				now: now + 1,
+			}),
+		);
 		expect(r2.motionState).toBe("pending");
-		const r3 = runLocalZoneEngine(state, makeDefaultParams({
-			targets: [], motionPresence: false, motionTimeout: 3, now: now + 5,
-		}));
+		const r3 = runLocalZoneEngine(
+			state,
+			makeDefaultParams({
+				targets: [],
+				motionPresence: false,
+				motionTimeout: 3,
+				now: now + 5,
+			}),
+		);
 		expect(r3.motionState).toBe("inactive");
 	});
 
 	it("sensor state: defaults to inactive when not provided", () => {
-		const result = runLocalZoneEngine(state, makeDefaultParams({ targets: [] }));
+		const result = runLocalZoneEngine(
+			state,
+			makeDefaultParams({ targets: [] }),
+		);
 		expect(result.staticState).toBe("inactive");
 		expect(result.motionState).toBe("inactive");
 	});
 
 	it("force-clear: pending zones cleared when sensors inactive and no active zones", () => {
 		const now = Date.now() / 1000;
-		runLocalZoneEngine(state, makeDefaultParams({
-			targets: [makeTarget(450, 450, 5)],
-			staticPresence: true, staticTimeout: 5,
-			motionPresence: true, motionTimeout: 3, now,
-		}));
-		runLocalZoneEngine(state, makeDefaultParams({
-			targets: [makeNullTarget()],
-			staticPresence: true, staticTimeout: 5,
-			motionPresence: true, motionTimeout: 3, now: now + 1,
-		}));
-		runLocalZoneEngine(state, makeDefaultParams({
-			targets: [makeNullTarget()],
-			staticPresence: false, staticTimeout: 5,
-			motionPresence: false, motionTimeout: 3, now: now + 2,
-		}));
-		const result = runLocalZoneEngine(state, makeDefaultParams({
-			targets: [makeNullTarget()],
-			staticPresence: false, staticTimeout: 5,
-			motionPresence: false, motionTimeout: 3, now: now + 8,
-		}));
+		runLocalZoneEngine(
+			state,
+			makeDefaultParams({
+				targets: [makeTarget(450, 450, 5)],
+				staticPresence: true,
+				staticTimeout: 5,
+				motionPresence: true,
+				motionTimeout: 3,
+				now,
+			}),
+		);
+		runLocalZoneEngine(
+			state,
+			makeDefaultParams({
+				targets: [makeNullTarget()],
+				staticPresence: true,
+				staticTimeout: 5,
+				motionPresence: true,
+				motionTimeout: 3,
+				now: now + 1,
+			}),
+		);
+		runLocalZoneEngine(
+			state,
+			makeDefaultParams({
+				targets: [makeNullTarget()],
+				staticPresence: false,
+				staticTimeout: 5,
+				motionPresence: false,
+				motionTimeout: 3,
+				now: now + 2,
+			}),
+		);
+		const result = runLocalZoneEngine(
+			state,
+			makeDefaultParams({
+				targets: [makeNullTarget()],
+				staticPresence: false,
+				staticTimeout: 5,
+				motionPresence: false,
+				motionTimeout: 3,
+				now: now + 8,
+			}),
+		);
 		expect(result.occupancy[1]).toBe(false);
 	});
 
 	it("force-clear: does NOT clear if a zone has active targets", () => {
 		const now = Date.now() / 1000;
-		runLocalZoneEngine(state, makeDefaultParams({
-			targets: [makeTarget(450, 450, 5)],
-			staticPresence: true, staticTimeout: 2, now,
-		}));
-		runLocalZoneEngine(state, makeDefaultParams({
-			targets: [makeTarget(450, 450, 5)],
-			staticPresence: false, staticTimeout: 2, now: now + 1,
-		}));
-		const result = runLocalZoneEngine(state, makeDefaultParams({
-			targets: [makeTarget(450, 450, 5)],
-			staticPresence: false, staticTimeout: 2, now: now + 4,
-		}));
+		runLocalZoneEngine(
+			state,
+			makeDefaultParams({
+				targets: [makeTarget(450, 450, 5)],
+				staticPresence: true,
+				staticTimeout: 2,
+				now,
+			}),
+		);
+		runLocalZoneEngine(
+			state,
+			makeDefaultParams({
+				targets: [makeTarget(450, 450, 5)],
+				staticPresence: false,
+				staticTimeout: 2,
+				now: now + 1,
+			}),
+		);
+		const result = runLocalZoneEngine(
+			state,
+			makeDefaultParams({
+				targets: [makeTarget(450, 450, 5)],
+				staticPresence: false,
+				staticTimeout: 2,
+				now: now + 4,
+			}),
+		);
 		expect(result.occupancy[1]).toBe(true);
 	});
 
 	it("occupancy result: true when sensor active/pending, false when all inactive", () => {
 		const now = Date.now() / 1000;
-		const r1 = runLocalZoneEngine(state, makeDefaultParams({ targets: [], now }));
+		const r1 = runLocalZoneEngine(
+			state,
+			makeDefaultParams({ targets: [], now }),
+		);
 		expect(r1.sensorOccupancy).toBe(false);
-		const r2 = runLocalZoneEngine(state, makeDefaultParams({
-			targets: [], staticPresence: true, staticTimeout: 5, now: now + 1,
-		}));
+		const r2 = runLocalZoneEngine(
+			state,
+			makeDefaultParams({
+				targets: [],
+				staticPresence: true,
+				staticTimeout: 5,
+				now: now + 1,
+			}),
+		);
 		expect(r2.sensorOccupancy).toBe(true);
-		const r3 = runLocalZoneEngine(state, makeDefaultParams({
-			targets: [], staticPresence: false, staticTimeout: 5, now: now + 2,
-		}));
+		const r3 = runLocalZoneEngine(
+			state,
+			makeDefaultParams({
+				targets: [],
+				staticPresence: false,
+				staticTimeout: 5,
+				now: now + 2,
+			}),
+		);
 		expect(r3.sensorOccupancy).toBe(true);
-		const r4 = runLocalZoneEngine(state, makeDefaultParams({
-			targets: [], staticPresence: false, staticTimeout: 5, now: now + 8,
-		}));
+		const r4 = runLocalZoneEngine(
+			state,
+			makeDefaultParams({
+				targets: [],
+				staticPresence: false,
+				staticTimeout: 5,
+				now: now + 8,
+			}),
+		);
 		expect(r4.sensorOccupancy).toBe(false);
 	});
 });

@@ -3,14 +3,13 @@ import { DEBUG_LOG_MAX } from "../constants.js";
 import { mapTargetToGridCell } from "../lib/coordinates.js";
 import { cellIsInside, cellZone, GRID_COLS, GRID_ROWS } from "../lib/grid.js";
 import { computeHeatmapColors } from "../lib/heatmap.js";
-import type { ZoneConfig } from "../lib/zone-defaults.js";
 import {
 	createZoneEngineState,
 	runLocalZoneEngine,
 	type ZoneEngineResult,
 	type ZoneEngineState,
 } from "../lib/zone-engine.js";
-import type { RawTarget, Target } from "../types.js";
+import type { RawTarget } from "../types.js";
 import type { TargetData } from "./device-controller.js";
 
 /**
@@ -179,8 +178,10 @@ export class TargetController implements ReactiveController {
 			for (const tok of sensorTokens) {
 				const [key, val] = tok.split(":");
 				if (key === "S") sensorLabels.push(`Static: ${statusName[val] ?? val}`);
-				else if (key === "M") sensorLabels.push(`Motion: ${statusName[val] ?? val}`);
-				else if (key === "Occ") sensorLabels.push(`Occ: ${val === "1" ? "on" : "off"}`);
+				else if (key === "M")
+					sensorLabels.push(`Motion: ${statusName[val] ?? val}`);
+				else if (key === "Occ")
+					sensorLabels.push(`Occ: ${val === "1" ? "on" : "off"}`);
 			}
 			sStr = sensorLabels.join(", ");
 		}
@@ -192,7 +193,7 @@ export class TargetController implements ReactiveController {
 			.filter(Boolean)
 			.map((s) => {
 				const [t, z, st, sig] = s.split(":");
-				const zid = parseInt(z?.replace("Z", "") ?? "0");
+				const zid = parseInt(z?.replace("Z", "") ?? "0", 10);
 				return `${t}→${zoneName(zid)}(${statusName[st] ?? st},${sig})`;
 			});
 
@@ -203,7 +204,7 @@ export class TargetController implements ReactiveController {
 			.filter(Boolean)
 			.map((s) => {
 				const [z, st, cnt] = s.split(":");
-				const zid = parseInt(z?.replace("Z", "") ?? "0");
+				const zid = parseInt(z?.replace("Z", "") ?? "0", 10);
 				return `${zoneName(zid)}: ${statusName[st] ?? st}(${cnt})`;
 			});
 
@@ -358,8 +359,18 @@ export class TargetController implements ReactiveController {
 			}
 		}
 		// Sensor state prefix
-		const staticCode = result.staticState === "active" ? "A" : result.staticState === "pending" ? "P" : "I";
-		const motionCode = result.motionState === "active" ? "A" : result.motionState === "pending" ? "P" : "I";
+		const staticCode =
+			result.staticState === "active"
+				? "A"
+				: result.staticState === "pending"
+					? "P"
+					: "I";
+		const motionCode =
+			result.motionState === "active"
+				? "A"
+				: result.motionState === "pending"
+					? "P"
+					: "I";
 		const occCode = result.sensorOccupancy ? "1" : "0";
 		const sensorPrefix = `S:${staticCode} M:${motionCode} Occ:${occCode}`;
 
