@@ -65,7 +65,14 @@ export class DeviceController implements ReactiveController {
 		return this._hass;
 	}
 	set hass(value: any) {
+		const oldConn = this._hass?.connection;
 		this._hass = value;
+		if (value?.connection && value.connection !== oldConn && oldConn) {
+			// Connection changed — stale subscriptions are dead
+			this._unsubDevice = undefined;
+			this._unsubTargets = undefined;
+			this._unsubDisplay = undefined;
+		}
 	}
 
 	// --- Public: whether a device session is currently open ---

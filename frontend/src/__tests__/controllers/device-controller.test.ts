@@ -69,7 +69,7 @@ describe("DeviceController", () => {
 					available: true,
 					configured: true,
 					config_protocol_status: "compatible",
-					api_client_count: null,
+					current_connection_count: null,
 				},
 				{
 					mac: "aa",
@@ -78,7 +78,7 @@ describe("DeviceController", () => {
 					available: true,
 					configured: true,
 					config_protocol_status: "compatible",
-					api_client_count: null,
+					current_connection_count: null,
 				},
 			];
 			ctrl.hass = mockHass(devices);
@@ -98,7 +98,7 @@ describe("DeviceController", () => {
 					available: true,
 					configured: true,
 					config_protocol_status: "compatible",
-					api_client_count: null,
+					current_connection_count: null,
 				},
 				{
 					mac: "aa",
@@ -107,7 +107,7 @@ describe("DeviceController", () => {
 					available: true,
 					configured: true,
 					config_protocol_status: "compatible",
-					api_client_count: null,
+					current_connection_count: null,
 				},
 			];
 			ctrl.hass = mockHass(devices);
@@ -127,7 +127,7 @@ describe("DeviceController", () => {
 					available: true,
 					configured: true,
 					config_protocol_status: "compatible",
-					api_client_count: null,
+					current_connection_count: null,
 				},
 				{
 					mac: "aa",
@@ -136,7 +136,7 @@ describe("DeviceController", () => {
 					available: true,
 					configured: true,
 					config_protocol_status: "compatible",
-					api_client_count: null,
+					current_connection_count: null,
 				},
 			];
 			ctrl.hass = mockHass(devices);
@@ -155,7 +155,7 @@ describe("DeviceController", () => {
 					available: true,
 					configured: true,
 					config_protocol_status: "compatible",
-					api_client_count: null,
+					current_connection_count: null,
 				},
 			];
 			ctrl.hass = mockHass(devices);
@@ -188,7 +188,7 @@ describe("DeviceController", () => {
 					available: true,
 					configured: true,
 					config_protocol_status: "compatible",
-					api_client_count: null,
+					current_connection_count: null,
 				},
 			];
 			ctrl.hass = mockHass(devices);
@@ -243,21 +243,37 @@ describe("DeviceController", () => {
 
 		it("closes previous session before opening new one", async () => {
 			const unsub1 = vi.fn();
+			const conn = { subscribeMessage: vi.fn().mockResolvedValue(unsub1) };
+			ctrl.hass = {
+				callWS: vi.fn(),
+				connection: conn,
+			};
+			await ctrl.openDeviceSession("aa");
+
+			// Same connection — unsub1 should be called when opening new session
+			conn.subscribeMessage.mockResolvedValue(vi.fn());
+			await ctrl.openDeviceSession("bb");
+
+			expect(unsub1).toHaveBeenCalled();
+			expect(ctrl.hasDeviceSession).toBe(true);
+		});
+
+		it("clears stale subscriptions when connection changes", async () => {
+			const unsub1 = vi.fn();
 			ctrl.hass = {
 				callWS: vi.fn(),
 				connection: { subscribeMessage: vi.fn().mockResolvedValue(unsub1) },
 			};
 			await ctrl.openDeviceSession("aa");
+			expect(ctrl.hasDeviceSession).toBe(true);
 
-			const unsub2 = vi.fn();
+			// New connection — stale sub is cleared without calling unsub
 			ctrl.hass = {
 				callWS: vi.fn(),
-				connection: { subscribeMessage: vi.fn().mockResolvedValue(unsub2) },
+				connection: { subscribeMessage: vi.fn().mockResolvedValue(vi.fn()) },
 			};
-			await ctrl.openDeviceSession("bb");
-
-			expect(unsub1).toHaveBeenCalled();
-			expect(ctrl.hasDeviceSession).toBe(true);
+			expect(ctrl.hasDeviceSession).toBe(false);
+			expect(unsub1).not.toHaveBeenCalled();
 		});
 
 		it("does nothing when mac is empty", async () => {

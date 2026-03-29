@@ -990,7 +990,7 @@ export class EPPGridPanel extends LitElement {
 		if (!this._deviceCtrl.connectionFailed) return nothing;
 
 		const dev = this._devices.find((d) => d.mac === this._selectedMac);
-		const count = dev?.api_client_count;
+		const count = dev?.current_connection_count;
 		const countMsg =
 			count != null ? this._localize("connection.client_count", { count }) : "";
 

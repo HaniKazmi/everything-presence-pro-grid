@@ -24,7 +24,7 @@ export interface DeviceInfo {
 		| "firmware_behind"
 		| "firmware_ahead"
 		| "unavailable";
-	api_client_count: number | null;
+	current_connection_count: number | null;
 }
 
 export interface WizardCorner {

@@ -115,7 +115,7 @@ globals:
   - id: zone_publish_interval_ms
     type: uint32_t
     initial_value: '1000'
-  - id: api_client_count
+  - id: current_connection_count
     type: int
     initial_value: '0'
 
@@ -260,8 +260,8 @@ api:
   on_client_connected:
     then:
       - lambda: |-
-          id(api_client_count) += 1;
-          id(api_client_count_sensor).publish_state(id(api_client_count));
+          id(current_connection_count) += 1;
+          id(current_connection_count_sensor).publish_state(id(current_connection_count));
       # Wait until client has subscribed
       - wait_until:
           condition:
@@ -319,9 +319,9 @@ api:
   on_client_disconnected:
     then:
       - lambda: |-
-          id(api_client_count) -= 1;
-          if (id(api_client_count) < 0) id(api_client_count) = 0;
-          id(api_client_count_sensor).publish_state(id(api_client_count));
+          id(current_connection_count) -= 1;
+          if (id(current_connection_count) < 0) id(current_connection_count) = 0;
+          id(current_connection_count_sensor).publish_state(id(current_connection_count));
       - script.execute: control_leds
 
 http_request:
@@ -334,8 +334,8 @@ ota:
 
 sensor:
   - platform: template
-    name: "API Client Count"
-    id: api_client_count_sensor
+    name: "Current Connections"
+    id: current_connection_count_sensor
     accuracy_decimals: 0
     entity_category: diagnostic
 

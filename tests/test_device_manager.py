@@ -247,7 +247,7 @@ class TestDeviceManager:
         assert result[0]["name"] == "EPP Device"
         assert result[0]["available"] is True
         assert result[0]["configured"] is False
-        assert result[0]["api_client_count"] is None
+        assert result[0]["current_connection_count"] is None
 
     async def test_list_devices_with_stored_config(
         self, hass: HomeAssistant, store: EPPGridStore, manager: DeviceManager
@@ -387,8 +387,8 @@ class TestDeviceManager:
 
             mock_conn.async_disconnect.assert_awaited()
 
-    async def test_read_api_client_count_returns_value(self, hass: HomeAssistant, manager: DeviceManager) -> None:
-        """read_api_client_count returns the integer sensor value."""
+    async def test_read_current_connection_count_returns_value(self, hass: HomeAssistant, manager: DeviceManager) -> None:
+        """read_current_connection_count returns the integer sensor value."""
         dev_reg = dr.async_get(hass)
         ent_reg = er.async_get(hass)
 
@@ -408,27 +408,27 @@ class TestDeviceManager:
         entry = ent_reg.async_get_or_create(
             "sensor",
             "esphome",
-            unique_id="esphome_aabbccddeeff_api_client_count",
-            suggested_object_id="epp_api_client_count",
+            unique_id="esphome_aabbccddeeff_current_connections",
+            suggested_object_id="epp_current_connections",
             config_entry=esphome_entry,
             device_id=device.id,
         )
         hass.states.async_set(entry.entity_id, "2")
 
-        result = manager.read_api_client_count(device.id)
+        result = manager.read_current_connection_count(device.id)
         assert result == 2
 
-    async def test_read_api_client_count_returns_none_when_device_missing(
+    async def test_read_current_connection_count_returns_none_when_device_missing(
         self, hass: HomeAssistant, manager: DeviceManager
     ) -> None:
-        """read_api_client_count returns None when device_id is None."""
-        result = manager.read_api_client_count(None)
+        """read_current_connection_count returns None when device_id is None."""
+        result = manager.read_current_connection_count(None)
         assert result is None
 
-    async def test_read_api_client_count_returns_none_when_sensor_unavailable(
+    async def test_read_current_connection_count_returns_none_when_sensor_unavailable(
         self, hass: HomeAssistant, manager: DeviceManager
     ) -> None:
-        """read_api_client_count returns None when the sensor state is unavailable."""
+        """read_current_connection_count returns None when the sensor state is unavailable."""
         dev_reg = dr.async_get(hass)
         ent_reg = er.async_get(hass)
 
@@ -448,14 +448,14 @@ class TestDeviceManager:
         entry = ent_reg.async_get_or_create(
             "sensor",
             "esphome",
-            unique_id="esphome_aabbccddeeff_api_client_count",
-            suggested_object_id="epp_api_client_count",
+            unique_id="esphome_aabbccddeeff_current_connections",
+            suggested_object_id="epp_current_connections",
             config_entry=esphome_entry,
             device_id=device.id,
         )
         hass.states.async_set(entry.entity_id, "unavailable")
 
-        result = manager.read_api_client_count(device.id)
+        result = manager.read_current_connection_count(device.id)
         assert result is None
 
 
