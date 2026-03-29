@@ -289,17 +289,49 @@ describe("DeviceController", () => {
 			warn.mockRestore();
 		});
 
-		it("sets connectionFailed when subscription fails", async () => {
+		it("sets connectionFailed when subscription fails with connection_failed code", async () => {
 			const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+			const err = Object.assign(new Error("fail"), {
+				code: "connection_failed",
+			});
 			ctrl.hass = {
 				callWS: vi.fn(),
 				connection: {
-					subscribeMessage: vi.fn().mockRejectedValue(new Error("fail")),
+					subscribeMessage: vi.fn().mockRejectedValue(err),
 				},
 			};
 			expect(ctrl.connectionFailed).toBe(false);
 			await ctrl.openDeviceSession("aa");
 			expect(ctrl.connectionFailed).toBe(true);
+			warn.mockRestore();
+		});
+
+		it("sets connectionFailed when subscription fails with not_found code", async () => {
+			const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+			const err = Object.assign(new Error("fail"), { code: "not_found" });
+			ctrl.hass = {
+				callWS: vi.fn(),
+				connection: {
+					subscribeMessage: vi.fn().mockRejectedValue(err),
+				},
+			};
+			expect(ctrl.connectionFailed).toBe(false);
+			await ctrl.openDeviceSession("aa");
+			expect(ctrl.connectionFailed).toBe(true);
+			warn.mockRestore();
+		});
+
+		it("does not set connectionFailed for unrelated errors", async () => {
+			const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+			ctrl.hass = {
+				callWS: vi.fn(),
+				connection: {
+					subscribeMessage: vi.fn().mockRejectedValue(new Error("unrelated")),
+				},
+			};
+			expect(ctrl.connectionFailed).toBe(false);
+			await ctrl.openDeviceSession("aa");
+			expect(ctrl.connectionFailed).toBe(false);
 			warn.mockRestore();
 		});
 

@@ -992,12 +992,7 @@ export class EPPGridPanel extends LitElement {
 		const dev = this._devices.find((d) => d.mac === this._selectedMac);
 		const count = dev?.api_client_count;
 		const countMsg =
-			count != null
-				? this._localize("connection.client_count").replace(
-						"{count}",
-						String(count),
-					)
-				: "";
+			count != null ? this._localize("connection.client_count", { count }) : "";
 
 		return html`
 			<div class="protocol-fullpage protocol-fullpage-warning">

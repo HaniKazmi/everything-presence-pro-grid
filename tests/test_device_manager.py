@@ -418,11 +418,44 @@ class TestDeviceManager:
         result = manager.read_api_client_count(device.id)
         assert result == 2
 
-    async def test_read_api_client_count_returns_none_when_unavailable(
+    async def test_read_api_client_count_returns_none_when_device_missing(
         self, hass: HomeAssistant, manager: DeviceManager
     ) -> None:
-        """read_api_client_count returns None when sensor is unavailable."""
+        """read_api_client_count returns None when device_id is None."""
         result = manager.read_api_client_count(None)
+        assert result is None
+
+    async def test_read_api_client_count_returns_none_when_sensor_unavailable(
+        self, hass: HomeAssistant, manager: DeviceManager
+    ) -> None:
+        """read_api_client_count returns None when the sensor state is unavailable."""
+        dev_reg = dr.async_get(hass)
+        ent_reg = er.async_get(hass)
+
+        esphome_entry = MockConfigEntry(
+            domain="esphome",
+            data={"host": "192.168.1.50"},
+            title="EPP Test",
+        )
+        esphome_entry.add_to_hass(hass)
+
+        device = dev_reg.async_get_or_create(
+            config_entry_id=esphome_entry.entry_id,
+            connections={("mac", "aa:bb:cc:dd:ee:ff")},
+            name="EPP Test",
+        )
+
+        entry = ent_reg.async_get_or_create(
+            "sensor",
+            "esphome",
+            unique_id="esphome_aabbccddeeff_api_client_count",
+            suggested_object_id="epp_api_client_count",
+            config_entry=esphome_entry,
+            device_id=device.id,
+        )
+        hass.states.async_set(entry.entity_id, "unavailable")
+
+        result = manager.read_api_client_count(device.id)
         assert result is None
 
 
@@ -1070,7 +1103,7 @@ class TestEventCallbacks:
                 manager, "_push_config_to_device", new_callable=AsyncMock, side_effect=push_results
             ) as mock_push,
             patch.object(manager, "async_close_session", new_callable=AsyncMock) as mock_close,
-            patch("asyncio.sleep", new_callable=AsyncMock) as mock_sleep,
+            patch("custom_components.eppgrid.device_manager.asyncio.sleep", new_callable=AsyncMock) as mock_sleep,
         ):
             await manager._on_device_available(mac)
 
@@ -1092,7 +1125,7 @@ class TestEventCallbacks:
         with (
             patch.object(manager, "_push_config_to_device", new_callable=AsyncMock, return_value=False) as mock_push,
             patch.object(manager, "async_close_session", new_callable=AsyncMock),
-            patch("asyncio.sleep", new_callable=AsyncMock),
+            patch("custom_components.eppgrid.device_manager.asyncio.sleep", new_callable=AsyncMock),
         ):
             await manager._on_device_available(mac)
 

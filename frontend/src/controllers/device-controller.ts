@@ -114,6 +114,7 @@ export class DeviceController implements ReactiveController {
 	async loadDeviceConfig(mac: string): Promise<any> {
 		if (this._reconnecting) return null;
 		this._reconnecting = true;
+		this._host.requestUpdate();
 		try {
 			let config: any = null;
 			try {
@@ -133,6 +134,7 @@ export class DeviceController implements ReactiveController {
 			return config;
 		} finally {
 			this._reconnecting = false;
+			this._host.requestUpdate();
 		}
 	}
 
@@ -146,9 +148,13 @@ export class DeviceController implements ReactiveController {
 				{ type: "eppgrid/subscribe_device", mac },
 			);
 			this._connectionFailed = false;
+			this._host.requestUpdate();
 		} catch (e) {
 			console.warn("Failed to open device session:", e);
-			this._connectionFailed = true;
+			const err = e as Record<string, unknown>;
+			this._connectionFailed =
+				err?.code === "connection_failed" || err?.code === "not_found";
+			this._host.requestUpdate();
 		}
 	}
 
