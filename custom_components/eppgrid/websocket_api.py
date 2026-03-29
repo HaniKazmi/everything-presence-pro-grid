@@ -556,14 +556,14 @@ async def websocket_subscribe_grid_targets(
                     sensors["target_presence"] = zs.get("zones", {}).get("tracking", False)
                     # Parse sensor presence states from firmware
                     static_state = zs.get("static_state")
-                    if static_state:
-                        zones["static_state"] = static_state
+                    if static_state is not None:
+                        sensors["static_state"] = static_state
                     motion_state = zs.get("motion_state")
-                    if motion_state:
-                        zones["motion_state"] = motion_state
+                    if motion_state is not None:
+                        sensors["motion_state"] = motion_state
                     fw_occupancy = zs.get("occupancy")
                     if fw_occupancy is not None:
-                        zones["occupancy_state"] = fw_occupancy
+                        sensors["occupancy_state"] = fw_occupancy
                 except (ValueError, KeyError):
                     pass
 

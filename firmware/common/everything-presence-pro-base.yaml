@@ -176,6 +176,8 @@ api:
         timeout: float
       then:
         - lambda: |-
+            // motion_timeout is a fixed 1s PIR debounce; the real timeout
+            // is managed by the zone engine via set_motion_timeout()
             id(motion_timeout) = 1;
             id(epp_component).set_motion_timeout(timeout);
     - action: epp_set_tracking
