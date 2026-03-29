@@ -1801,8 +1801,9 @@ describe("_subscribeTargets backend debug log", () => {
 		const a = createPanel() as any;
 		a._showBackendDebugLog = true;
 		a._backendDebugLogLines = [];
-		// Pre-set prev to the enriched form of "T0:Z0:A:5|Z0:O:5"
-		const enriched = a._enrichDebugLog("T0:Z0:A:5|Z0:O:5");
+		// Pre-set prev to the enriched form of "T0:Z0:A:5|Z0:O:5" with sensor prefix
+		// (sensorState is null → S:I M:I Occ:0 prepended by appendBackendDebugLog)
+		const enriched = a._enrichDebugLog("S:I M:I Occ:0|T0:Z0:A:5|Z0:O:5");
 		a._backendDebugLogPrev = enriched;
 		let targetsHandler: (event: any) => void;
 		let callCount = 0;
@@ -1945,8 +1946,9 @@ describe("_renderVisibleCells debug log branches", () => {
 		a._grid = initGridFromRoom(3000, 4000);
 		a._showDebugLog = true;
 		a._debugLogLines = [];
-		// Set prev to "no targets | all clear" so the next call with no targets returns early
-		a._debugLogPrev = "no targets | all clear";
+		// Set prev to the new sensor-prefixed format so the next call with no targets returns early
+		// (no sensor state → S:I M:I Occ:0 → "Static: inactive, Motion: inactive, Occ: off")
+		a._debugLogPrev = "Static: inactive, Motion: inactive, Occ: off | no targets | all clear";
 		a._targets = [];
 		a._zoneEngineState.targetPrev = [null, null, null];
 		a._zoneEngineState.targetGateCount = [0, 0, 0];
