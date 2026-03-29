@@ -36,10 +36,7 @@ def async_register_websocket_commands(hass: HomeAssistant, manager: Any) -> None
     websocket_api.async_register_command(hass, websocket_subscribe_grid_targets)
     websocket_api.async_register_command(hass, websocket_subscribe_raw_targets)
     websocket_api.async_register_command(hass, websocket_set_entity_enabled)
-    websocket_api.async_register_command(hass, websocket_set_env_calibration)
-    websocket_api.async_register_command(hass, websocket_set_motion_timeout)
-    websocket_api.async_register_command(hass, websocket_set_tracking)
-    websocket_api.async_register_command(hass, websocket_set_static_presence)
+    websocket_api.async_register_command(hass, websocket_set_settings)
     websocket_api.async_register_command(hass, websocket_set_pipeline)
     websocket_api.async_register_command(hass, websocket_update_firmware)
 
@@ -637,25 +634,52 @@ def websocket_set_entity_enabled(
     connection.send_result(msg["id"])
 
 
-# -- set_env_calibration --
+# -- set_settings (unified settings command) --
+
+_SETTINGS_KEYS = (
+    "temperature_offset",
+    "humidity_offset",
+    "illuminance_offset",
+    "motion_timeout",
+    "target_auto_distance",
+    "target_max_distance",
+    "static_auto_distance",
+    "static_min_distance",
+    "static_max_distance",
+    "static_trigger_threshold",
+    "static_renew_threshold",
+    "static_timeout",
+    "static_on_delay",
+)
 
 
 @websocket_api.websocket_command(
     {
-        vol.Required("type"): "eppgrid/set_env_calibration",
+        vol.Required("type"): "eppgrid/set_settings",
         vol.Required("mac"): str,
         vol.Required("temperature_offset"): vol.Coerce(float),
         vol.Required("humidity_offset"): vol.Coerce(float),
         vol.Required("illuminance_offset"): vol.Coerce(float),
+        vol.Required("motion_timeout"): vol.Coerce(float),
+        vol.Required("target_auto_distance"): bool,
+        vol.Required("target_max_distance"): vol.Coerce(float),
+        vol.Required("static_auto_distance"): bool,
+        vol.Required("static_min_distance"): vol.Coerce(float),
+        vol.Required("static_max_distance"): vol.Coerce(float),
+        vol.Required("static_trigger_threshold"): vol.Coerce(int),
+        vol.Required("static_renew_threshold"): vol.Coerce(int),
+        vol.Required("static_timeout"): vol.Coerce(float),
+        vol.Required("static_on_delay"): vol.Coerce(float),
+        vol.Optional("entities"): {str: bool},
     }
 )
 @websocket_api.async_response
-async def websocket_set_env_calibration(
+async def websocket_set_settings(
     hass: HomeAssistant,
     connection: websocket_api.ActiveConnection,
     msg: dict[str, Any],
 ) -> None:
-    """Save environment calibration offsets."""
+    """Save all device settings in one call."""
     manager = _get_manager(hass)
     if manager is None:
         connection.send_error(msg["id"], "not_ready", "Integration not loaded")
@@ -670,140 +694,10 @@ async def websocket_set_env_calibration(
         return
     mac = msg["mac"]
     device_config = manager._store.devices.setdefault(mac, {})
-    device_config["env_calibration"] = {
-        "temperature_offset": msg["temperature_offset"],
-        "humidity_offset": msg["humidity_offset"],
-        "illuminance_offset": msg["illuminance_offset"],
-    }
+    device_config["settings"] = {k: msg[k] for k in _SETTINGS_KEYS}
     await manager._store.async_save()
     await manager._push_config_to_device(mac)
-    connection.send_result(msg["id"])
-
-
-# -- set_motion_timeout --
-
-
-@websocket_api.websocket_command(
-    {
-        vol.Required("type"): "eppgrid/set_motion_timeout",
-        vol.Required("mac"): str,
-        vol.Required("timeout"): vol.Coerce(float),
-    }
-)
-@websocket_api.async_response
-async def websocket_set_motion_timeout(
-    hass: HomeAssistant,
-    connection: websocket_api.ActiveConnection,
-    msg: dict[str, Any],
-) -> None:
-    """Save motion timeout."""
-    manager = _get_manager(hass)
-    if manager is None:
-        connection.send_error(msg["id"], "not_ready", "Integration not loaded")
-        return
-    proto_err = _check_protocol(manager, msg["mac"])
-    if proto_err:
-        connection.send_error(
-            msg["id"],
-            proto_err,
-            "Firmware update required" if proto_err == "firmware_behind" else "Integration update required",
-        )
-        return
-    mac = msg["mac"]
-    device_config = manager._store.devices.setdefault(mac, {})
-    device_config["motion_timeout"] = {"timeout": msg["timeout"]}
-    await manager._store.async_save()
-    await manager._push_config_to_device(mac)
-    connection.send_result(msg["id"])
-
-
-# -- set_tracking --
-
-
-@websocket_api.websocket_command(
-    {
-        vol.Required("type"): "eppgrid/set_tracking",
-        vol.Required("mac"): str,
-        vol.Required("max_range"): vol.Coerce(float),
-    }
-)
-@websocket_api.async_response
-async def websocket_set_tracking(
-    hass: HomeAssistant,
-    connection: websocket_api.ActiveConnection,
-    msg: dict[str, Any],
-) -> None:
-    """Save tracking sensor configuration."""
-    manager = _get_manager(hass)
-    if manager is None:
-        connection.send_error(msg["id"], "not_ready", "Integration not loaded")
-        return
-    proto_err = _check_protocol(manager, msg["mac"])
-    if proto_err:
-        connection.send_error(
-            msg["id"],
-            proto_err,
-            "Firmware update required" if proto_err == "firmware_behind" else "Integration update required",
-        )
-        return
-    mac = msg["mac"]
-    device_config = manager._store.devices.setdefault(mac, {})
-    device_config["tracking"] = {"max_range": msg["max_range"]}
-    await manager._store.async_save()
-    await manager._push_config_to_device(mac)
-    connection.send_result(msg["id"])
-
-
-# -- set_static_presence --
-
-
-@websocket_api.websocket_command(
-    {
-        vol.Required("type"): "eppgrid/set_static_presence",
-        vol.Required("mac"): str,
-        vol.Required("min_range"): vol.Coerce(float),
-        vol.Required("max_range"): vol.Coerce(float),
-        vol.Required("trigger_range"): vol.Coerce(float),
-        vol.Required("sustain_sensitivity"): vol.Coerce(int),
-        vol.Required("trigger_sensitivity"): vol.Coerce(int),
-        vol.Required("timeout"): vol.Coerce(float),
-        vol.Required("on_delay"): vol.Coerce(float),
-        vol.Required("led_enabled"): bool,
-    }
-)
-@websocket_api.async_response
-async def websocket_set_static_presence(
-    hass: HomeAssistant,
-    connection: websocket_api.ActiveConnection,
-    msg: dict[str, Any],
-) -> None:
-    """Save static presence sensor configuration."""
-    manager = _get_manager(hass)
-    if manager is None:
-        connection.send_error(msg["id"], "not_ready", "Integration not loaded")
-        return
-    proto_err = _check_protocol(manager, msg["mac"])
-    if proto_err:
-        connection.send_error(
-            msg["id"],
-            proto_err,
-            "Firmware update required" if proto_err == "firmware_behind" else "Integration update required",
-        )
-        return
-    mac = msg["mac"]
-    device_config = manager._store.devices.setdefault(mac, {})
-    device_config["static_presence"] = {
-        "min_range": msg["min_range"],
-        "max_range": msg["max_range"],
-        "trigger_range": msg["trigger_range"],
-        "sustain_sensitivity": msg["sustain_sensitivity"],
-        "trigger_sensitivity": msg["trigger_sensitivity"],
-        "timeout": msg["timeout"],
-        "on_delay": msg["on_delay"],
-        "led_enabled": msg["led_enabled"],
-    }
-    await manager._store.async_save()
-    await manager._push_config_to_device(mac)
+    # Entity enable/disable is handled in Task 4
     connection.send_result(msg["id"])
 
 
