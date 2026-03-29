@@ -564,6 +564,18 @@ async def websocket_subscribe_grid_targets(
                     fw_occupancy = zs.get("occupancy")
                     if fw_occupancy is not None:
                         sensors["occupancy_state"] = fw_occupancy
+                    # Send event on zone state update (not just target position updates)
+                    # so sensor state changes appear in the log without delay
+                    connection.send_message(
+                        websocket_api.event_message(
+                            msg["id"],
+                            {
+                                "targets": list(targets),
+                                "sensors": dict(sensors),
+                                "zones": dict(zones),
+                            },
+                        )
+                    )
                 except (ValueError, KeyError):
                     pass
 

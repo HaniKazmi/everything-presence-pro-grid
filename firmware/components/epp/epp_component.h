@@ -71,6 +71,15 @@ class EPPComponent : public esphome::Component {
   void set_motion_presence_sensor(esphome::binary_sensor::BinarySensor *sensor) {
     motion_presence_sensor_ = sensor;
   }
+  void set_static_presence_output(esphome::binary_sensor::BinarySensor *sensor) {
+    static_presence_output_ = sensor;
+  }
+  void set_motion_presence_output(esphome::binary_sensor::BinarySensor *sensor) {
+    motion_presence_output_ = sensor;
+  }
+  void set_occupancy_output(esphome::binary_sensor::BinarySensor *sensor) {
+    occupancy_output_ = sensor;
+  }
   void set_static_timeout(float timeout) { static_timeout_ = timeout; }
   void set_motion_timeout(float timeout) { motion_timeout_ = timeout; }
 
@@ -122,11 +131,16 @@ class EPPComponent : public esphome::Component {
   // Config protocol version sensor
   esphome::sensor::Sensor *config_protocol_sensor_{nullptr};
 
-  // Sensor presence inputs (references to existing binary sensors)
+  // Sensor presence inputs (references to raw hardware binary sensors)
   esphome::binary_sensor::BinarySensor *static_presence_sensor_{nullptr};
   esphome::binary_sensor::BinarySensor *motion_presence_sensor_{nullptr};
   float static_timeout_{10.0f};
   float motion_timeout_{10.0f};
+
+  // Sensor presence outputs (zone engine processed state)
+  esphome::binary_sensor::BinarySensor *static_presence_output_{nullptr};
+  esphome::binary_sensor::BinarySensor *motion_presence_output_{nullptr};
+  esphome::binary_sensor::BinarySensor *occupancy_output_{nullptr};
 
   // Publish throttle intervals (ms)
   uint32_t display_interval_ms_ = 200;

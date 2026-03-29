@@ -25,6 +25,9 @@ CONF_ZONE_STATE = "zone_state"
 CONF_CONFIG_PROTOCOL = "config_protocol"
 CONF_STATIC_PRESENCE = "static_presence"
 CONF_MOTION_PRESENCE = "motion_presence"
+CONF_STATIC_PRESENCE_OUTPUT = "static_presence_output"
+CONF_MOTION_PRESENCE_OUTPUT = "motion_presence_output"
+CONF_OCCUPANCY_OUTPUT = "occupancy_output"
 
 ZONE_OCCUPANCY_SCHEMA = cv.Schema({cv.Optional(f"zone_{i}"): binary_sensor.binary_sensor_schema() for i in range(8)})
 
@@ -46,6 +49,9 @@ CONFIG_SCHEMA = cv.Schema(
         cv.Optional(CONF_CONFIG_PROTOCOL): sensor.sensor_schema(),
         cv.Optional(CONF_STATIC_PRESENCE): cv.use_id(binary_sensor.BinarySensor),
         cv.Optional(CONF_MOTION_PRESENCE): cv.use_id(binary_sensor.BinarySensor),
+        cv.Optional(CONF_STATIC_PRESENCE_OUTPUT): binary_sensor.binary_sensor_schema(),
+        cv.Optional(CONF_MOTION_PRESENCE_OUTPUT): binary_sensor.binary_sensor_schema(),
+        cv.Optional(CONF_OCCUPANCY_OUTPUT): binary_sensor.binary_sensor_schema(),
     }
 ).extend(cv.COMPONENT_SCHEMA)
 
@@ -116,3 +122,16 @@ async def to_code(config):
     if CONF_MOTION_PRESENCE in config:
         sens = await cg.get_variable(config[CONF_MOTION_PRESENCE])
         cg.add(var.set_motion_presence_sensor(sens))
+
+    # Sensor presence outputs (zone engine processed state)
+    if CONF_STATIC_PRESENCE_OUTPUT in config:
+        sens = await binary_sensor.new_binary_sensor(config[CONF_STATIC_PRESENCE_OUTPUT])
+        cg.add(var.set_static_presence_output(sens))
+
+    if CONF_MOTION_PRESENCE_OUTPUT in config:
+        sens = await binary_sensor.new_binary_sensor(config[CONF_MOTION_PRESENCE_OUTPUT])
+        cg.add(var.set_motion_presence_output(sens))
+
+    if CONF_OCCUPANCY_OUTPUT in config:
+        sens = await binary_sensor.new_binary_sensor(config[CONF_OCCUPANCY_OUTPUT])
+        cg.add(var.set_occupancy_output(sens))

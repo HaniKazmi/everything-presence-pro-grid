@@ -132,6 +132,14 @@ void EPPComponent::loop() {
     if (device_tracking_sensor_ != nullptr)
       device_tracking_sensor_->publish_state(result.device_tracking_present);
 
+    // Publish zone-engine-processed sensor presence (active/pending = on, inactive = off)
+    if (static_presence_output_ != nullptr)
+      static_presence_output_->publish_state(result.static_state != SensorPresenceState::INACTIVE);
+    if (motion_presence_output_ != nullptr)
+      motion_presence_output_->publish_state(result.motion_state != SensorPresenceState::INACTIVE);
+    if (occupancy_output_ != nullptr)
+      occupancy_output_->publish_state(result.occupancy);
+
     // Publish zone state as compact JSON
     if (zone_state_sensor_ != nullptr) {
       // Compute sensor state codes (used in JSON fields and debug log)

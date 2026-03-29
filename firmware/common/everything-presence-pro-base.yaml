@@ -94,6 +94,17 @@ epp:
     disabled_by_default: true
   static_presence: dfrobot_presence
   motion_presence: pir_motion
+  static_presence_output:
+    name: "Static Presence"
+    device_class: occupancy
+    disabled_by_default: true
+  motion_presence_output:
+    name: "Motion Presence"
+    device_class: motion
+    disabled_by_default: true
+  occupancy_output:
+    name: "Occupancy"
+    device_class: occupancy
 
 # Enable logging
 logger:
@@ -386,10 +397,8 @@ i2c:
 
 binary_sensor:
   - platform: gpio
-    name: "Motion Presence"
     id: pir_motion
-    device_class: motion
-    disabled_by_default: true
+    internal: true
     pin:
       number: GPIO36
     filters:
@@ -409,9 +418,8 @@ binary_sensor:
             }
 
   - platform: template
-    name: Occupancy
     id: occupancy
-    device_class: occupancy
+    internal: true
     lambda: |-
       if (id(dfrobot_presence).state || id(pir_motion).state || id(epp_zone_tracking).state) {
         return true;
