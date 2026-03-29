@@ -19,7 +19,11 @@ export interface DeviceInfo {
 	host: string | null;
 	available: boolean;
 	configured: boolean;
-	config_protocol_status: "compatible" | "firmware_behind" | "firmware_ahead";
+	config_protocol_status:
+		| "compatible"
+		| "firmware_behind"
+		| "firmware_ahead"
+		| "unavailable";
 }
 
 export interface WizardCorner {

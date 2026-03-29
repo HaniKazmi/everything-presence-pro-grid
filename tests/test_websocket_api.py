@@ -520,6 +520,22 @@ class TestWebSocketSubscriptions:
         connection.send_result.assert_called_once_with(20)
         assert 20 in connection.subscriptions
 
+    async def test_subscribe_device_connection_error(self, hass: HomeAssistant, config_entry: MockConfigEntry) -> None:
+        """subscribe_device returns connection_failed when device rejects connection."""
+        from aioesphomeapi.core import SocketClosedAPIError
+
+        mock_dm = await setup_integration(hass, config_entry)
+        mock_dm.async_open_session = AsyncMock(side_effect=SocketClosedAPIError("EOF received"))
+
+        from custom_components.eppgrid.websocket_api import websocket_subscribe_device
+
+        connection = MagicMock()
+        msg = {"id": 25, "type": "eppgrid/subscribe_device", "mac": "AA:BB:CC:DD:EE:FF"}
+
+        await call_async_handler(hass, websocket_subscribe_device, connection, msg)
+
+        connection.send_error.assert_called_once_with(25, "connection_failed", "Failed to connect to device")
+
     async def test_subscribe_device_not_found(self, hass: HomeAssistant, config_entry: MockConfigEntry) -> None:
         """subscribe_device returns error when device not available."""
         mock_dm = await setup_integration(hass, config_entry)
