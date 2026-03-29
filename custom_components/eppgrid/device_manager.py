@@ -364,21 +364,33 @@ class DeviceManager:
                 self._pushing.discard(mac)
 
     async def _push_config_to_device(self, mac: str) -> bool:
-        """Push config to device using a temporary connection."""
+        """Push config to device, preferring an existing session connection."""
         config = self._store.get_device(mac)
         if config is None:
             return True
         dev = self.devices.get(mac)
         if dev is None or dev.host is None:
             return False
+
+        # Prefer existing session connection (avoids ESP32 concurrent connection limit)
+        session_conn = self.get_session(mac)
+        if session_conn is not None:
+            try:
+                await session_conn.async_push_config(config)
+                return True
+            except Exception:
+                _LOGGER.warning("Failed to push config to %s (%s) via session", dev.name, mac, exc_info=True)
+                await self.async_close_session(mac)
+                return False
+
+        # No active session — use temporary connection (e.g., on-boot push)
         conn = DeviceConnection(dev.host)
         try:
             await conn.async_connect()
             await conn.async_push_config(config)
             return True
         except Exception:
-            name = dev.name if dev else mac
-            _LOGGER.warning("Failed to push config to %s (%s)", name, mac, exc_info=True)
+            _LOGGER.warning("Failed to push config to %s (%s)", dev.name, mac, exc_info=True)
             return False
         finally:
             await conn.async_disconnect()

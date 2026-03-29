@@ -1104,6 +1104,96 @@ class TestEventCallbacks:
         result = await manager._push_config_to_device("AA:BB:CC:DD:EE:FF")
         assert result is False
 
+    async def test_push_config_uses_session_when_available(
+        self, hass: HomeAssistant, store: EPPGridStore, manager: DeviceManager
+    ) -> None:
+        """_push_config_to_device uses existing session connection instead of temporary."""
+        mac = "AA:BB:CC:DD:EE:FF"
+        store.devices[mac] = {"calibration": {"perspective": [1.0] * 8}}
+        manager.devices[mac] = ManagedDevice(mac=mac, name="EPP", host="192.168.1.50")
+
+        session_conn = MagicMock()
+        session_conn.connected = True
+        session_conn.async_push_config = AsyncMock()
+        manager._active_connections[mac] = session_conn
+
+        result = await manager._push_config_to_device(mac)
+
+        assert result is True
+        session_conn.async_push_config.assert_awaited_once()
+
+    async def test_push_config_falls_back_to_temporary_when_no_session(
+        self, hass: HomeAssistant, store: EPPGridStore, manager: DeviceManager
+    ) -> None:
+        """_push_config_to_device creates temporary connection when no session exists."""
+        mac = "AA:BB:CC:DD:EE:FF"
+        store.devices[mac] = {"calibration": {"perspective": [1.0] * 8}}
+        manager.devices[mac] = ManagedDevice(mac=mac, name="EPP", host="192.168.1.50")
+
+        # No session in _active_connections
+        mock_conn = MagicMock()
+        mock_conn.async_connect = AsyncMock()
+        mock_conn.async_push_config = AsyncMock()
+        mock_conn.async_disconnect = AsyncMock()
+
+        with patch(
+            "custom_components.eppgrid.device_manager.DeviceConnection",
+            return_value=mock_conn,
+        ):
+            result = await manager._push_config_to_device(mac)
+
+        assert result is True
+        mock_conn.async_connect.assert_awaited_once()
+        mock_conn.async_push_config.assert_awaited_once()
+        mock_conn.async_disconnect.assert_awaited_once()
+
+    async def test_push_config_skips_disconnected_session(
+        self, hass: HomeAssistant, store: EPPGridStore, manager: DeviceManager
+    ) -> None:
+        """_push_config_to_device ignores disconnected session and uses temporary."""
+        mac = "AA:BB:CC:DD:EE:FF"
+        store.devices[mac] = {"calibration": {"perspective": [1.0] * 8}}
+        manager.devices[mac] = ManagedDevice(mac=mac, name="EPP", host="192.168.1.50")
+
+        stale_conn = MagicMock()
+        stale_conn.connected = False
+        manager._active_connections[mac] = stale_conn
+
+        mock_conn = MagicMock()
+        mock_conn.async_connect = AsyncMock()
+        mock_conn.async_push_config = AsyncMock()
+        mock_conn.async_disconnect = AsyncMock()
+
+        with patch(
+            "custom_components.eppgrid.device_manager.DeviceConnection",
+            return_value=mock_conn,
+        ):
+            result = await manager._push_config_to_device(mac)
+
+        assert result is True
+        mock_conn.async_connect.assert_awaited_once()
+        mock_conn.async_push_config.assert_awaited_once()
+        mock_conn.async_disconnect.assert_awaited_once()
+
+    async def test_push_config_session_failure_returns_false(
+        self, hass: HomeAssistant, store: EPPGridStore, manager: DeviceManager
+    ) -> None:
+        """_push_config_to_device returns False when session push raises."""
+        mac = "AA:BB:CC:DD:EE:FF"
+        store.devices[mac] = {"calibration": {"perspective": [1.0] * 8}}
+        manager.devices[mac] = ManagedDevice(mac=mac, name="EPP", host="192.168.1.50")
+
+        session_conn = MagicMock()
+        session_conn.connected = True
+        session_conn.async_push_config = AsyncMock(side_effect=ConnectionError("lost"))
+        session_conn.async_disconnect = AsyncMock()
+        manager._active_connections[mac] = session_conn
+
+        result = await manager._push_config_to_device(mac)
+
+        assert result is False
+        assert mac not in manager._active_connections
+
     async def test_on_device_available_retries_after_stale_connection(
         self, hass: HomeAssistant, store: EPPGridStore, manager: DeviceManager
     ) -> None:
