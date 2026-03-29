@@ -6,34 +6,3 @@ esp32_ble_tracker:
 
 bluetooth_proxy:
   active: true
-
-select:
-  - platform: template
-    name: "BLE Log Level"
-    id: log_level_ble
-    icon: "mdi:math-log"
-    entity_category: config
-    optimistic: true
-    restore_value: true
-    initial_option: "Warning"
-    options:
-      - "None"
-      - "Error"
-      - "Warning"
-      - "Info"
-      - "Debug"
-    on_value:
-      then:
-        - lambda: |-
-            esp_log_level_t level;
-            if (x == "None") level = ESP_LOG_NONE;
-            else if (x == "Error") level = ESP_LOG_ERROR;
-            else if (x == "Warning") level = ESP_LOG_WARN;
-            else if (x == "Info") level = ESP_LOG_INFO;
-            else level = ESP_LOG_DEBUG;
-            esp_log_level_set("bt", level);
-            esp_log_level_set("btm", level);
-            esp_log_level_set("bta", level);
-            esp_log_level_set("hci", level);
-            esp_log_level_set("gap", level);
-            esp_log_level_set("controller", level);
