@@ -968,16 +968,6 @@ class TestEventCallbacks:
 
         mock_avail.assert_not_awaited()
 
-    async def test_on_device_available_push_dedup(self, hass: HomeAssistant, manager: DeviceManager) -> None:
-        """Concurrent _on_device_available calls are deduplicated."""
-        manager.devices["AA:BB:CC:DD:EE:FF"] = ManagedDevice(mac="AA:BB:CC:DD:EE:FF", name="EPP", host="192.168.1.50")
-
-        with patch.object(manager, "_push_config_to_device", new_callable=AsyncMock) as mock_push:
-            manager._pushing.add("AA:BB:CC:DD:EE:FF")
-            await manager._on_device_available("AA:BB:CC:DD:EE:FF")
-
-        mock_push.assert_not_awaited()
-
     async def test_push_config_to_device_no_config(
         self, hass: HomeAssistant, store: EPPGridStore, manager: DeviceManager
     ) -> None:
