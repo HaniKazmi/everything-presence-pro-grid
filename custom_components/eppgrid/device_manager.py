@@ -150,20 +150,61 @@ class DeviceConnection:
             )
             _LOGGER.info("Pushed %d zones to %s", len(named), self._host)
 
-        # Push device settings
-        for key, action_name in (
-            ("env_calibration", "epp_set_env_calibration"),
-            ("motion_timeout", "epp_set_motion_timeout"),
-            ("tracking", "epp_set_tracking"),
-            ("static_presence", "epp_set_static_presence"),
-            ("pipeline", "epp_set_pipeline"),
-        ):
-            data = config.get(key)
-            if data:
-                service = self._services.get(action_name)
-                if service:
-                    await self._client.execute_service(service, data)
-                    _LOGGER.info("Pushed %s to %s", key, self._host)
+        # Push device settings from unified settings key
+        settings = config.get("settings")
+        if settings:
+            svc = self._services.get("epp_set_env_calibration")
+            if svc:
+                await self._client.execute_service(
+                    svc,
+                    {
+                        "temperature_offset": settings.get("temperature_offset", 0.0),
+                        "humidity_offset": settings.get("humidity_offset", 0.0),
+                        "illuminance_offset": settings.get("illuminance_offset", 0.0),
+                    },
+                )
+                _LOGGER.info("Pushed env_calibration to %s", self._host)
+
+            svc = self._services.get("epp_set_motion_timeout")
+            if svc:
+                await self._client.execute_service(
+                    svc,
+                    {"timeout": settings.get("motion_timeout", 5.0)},
+                )
+                _LOGGER.info("Pushed motion_timeout to %s", self._host)
+
+            svc = self._services.get("epp_set_tracking")
+            if svc:
+                await self._client.execute_service(
+                    svc,
+                    {"max_range": settings.get("target_max_distance", 6.0)},
+                )
+                _LOGGER.info("Pushed tracking to %s", self._host)
+
+            svc = self._services.get("epp_set_static_presence")
+            if svc:
+                await self._client.execute_service(
+                    svc,
+                    {
+                        "min_range": settings.get("static_min_distance", 0.0),
+                        "max_range": settings.get("static_max_distance", 6.0),
+                        "trigger_range": settings.get("static_max_distance", 6.0),
+                        "trigger_sensitivity": 10 - settings.get("static_trigger_threshold", 5),
+                        "sustain_sensitivity": 10 - settings.get("static_renew_threshold", 5),
+                        "timeout": settings.get("static_timeout", 10.0),
+                        "on_delay": settings.get("static_on_delay", 0.0),
+                        "led_enabled": True,
+                    },
+                )
+                _LOGGER.info("Pushed static_presence to %s", self._host)
+
+        # Push pipeline (separate from settings)
+        pipeline = config.get("pipeline")
+        if pipeline:
+            svc = self._services.get("epp_set_pipeline")
+            if svc:
+                await self._client.execute_service(svc, pipeline)
+                _LOGGER.info("Pushed pipeline to %s", self._host)
 
 
 @dataclass
