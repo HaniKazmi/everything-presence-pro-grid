@@ -1,3 +1,4 @@
+import { nothing } from "lit";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { EPPGridPanel } from "../eppgrid-panel.js";
 import "../eppgrid-panel.js";
@@ -592,5 +593,39 @@ describe("_deleteCalibration", () => {
 		expect(err).toHaveBeenCalled();
 		expect(a._dirty).toBe(false);
 		err.mockRestore();
+	});
+});
+
+describe("_renderConnectionBanner", () => {
+	it("renders connection banner when connectionFailed is true", () => {
+		const el = createPanel();
+		const a = el as any;
+		a._deviceCtrl._connectionFailed = true;
+		a._devices = [
+			{
+				mac: "AA:BB:CC:DD:EE:01",
+				name: "T",
+				host: null,
+				available: true,
+				configured: true,
+				config_protocol_status: "compatible",
+				api_client_count: 3,
+			},
+		];
+		a._selectedMac = "AA:BB:CC:DD:EE:01";
+
+		const result = a._renderConnectionBanner();
+		expect(result).not.toBe(undefined);
+		const str = (result as any).strings.join("");
+		expect(str).toContain("protocol-fullpage");
+	});
+
+	it("returns nothing when connectionFailed is false", () => {
+		const el = createPanel();
+		const a = el as any;
+		a._deviceCtrl._connectionFailed = false;
+
+		const result = a._renderConnectionBanner();
+		expect(result).toBe(nothing);
 	});
 });

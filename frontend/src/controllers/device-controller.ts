@@ -47,6 +47,7 @@ export class DeviceController implements ReactiveController {
 	private _unsubTargets?: () => void;
 	private _unsubDisplay?: () => void;
 	private _reconnecting = false;
+	private _connectionFailed = false;
 
 	constructor(host: ReactiveControllerHost) {
 		this._host = host;
@@ -75,6 +76,11 @@ export class DeviceController implements ReactiveController {
 	// --- Public: whether a loadDeviceConfig/openDeviceSession is in progress ---
 	get reconnecting(): boolean {
 		return this._reconnecting;
+	}
+
+	// --- Public: whether the last connection attempt failed ---
+	get connectionFailed(): boolean {
+		return this._connectionFailed;
 	}
 
 	// --- Device loading ---
@@ -139,8 +145,10 @@ export class DeviceController implements ReactiveController {
 				() => {}, // session has no events, just lifecycle
 				{ type: "eppgrid/subscribe_device", mac },
 			);
+			this._connectionFailed = false;
 		} catch (e) {
 			console.warn("Failed to open device session:", e);
+			this._connectionFailed = true;
 		}
 	}
 
@@ -271,6 +279,7 @@ export class DeviceController implements ReactiveController {
 	// --- Device selection ---
 	selectDevice(mac: string): void {
 		this.selectedMac = mac;
+		this._connectionFailed = false;
 		localStorage.setItem("epp_selected_mac", mac);
 		this._host.requestUpdate();
 	}

@@ -226,5 +226,11 @@
 		"firmware_ahead": "This sensor's firmware is newer than the integration. Update the EPP Grid integration to the latest version.",
 		"unavailable": "Device is offline — firmware version cannot be determined.",
 		"update_firmware": "Update Firmware"
+	},
+	"connection": {
+		"failed": "Cannot connect to device. The sensor supports a maximum of 3 simultaneous connections.",
+		"client_count": "{count} client(s) are currently connected.",
+		"check_connections": "Check for other browser tabs with this panel open, ESPHome log sessions, or additional Home Assistant instances.",
+		"retry": "Retry"
 	}
 }

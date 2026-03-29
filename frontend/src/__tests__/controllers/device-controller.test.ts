@@ -280,6 +280,26 @@ describe("DeviceController", () => {
 			);
 			warn.mockRestore();
 		});
+
+		it("sets connectionFailed when subscription fails", async () => {
+			const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+			ctrl.hass = {
+				callWS: vi.fn(),
+				connection: {
+					subscribeMessage: vi.fn().mockRejectedValue(new Error("fail")),
+				},
+			};
+			expect(ctrl.connectionFailed).toBe(false);
+			await ctrl.openDeviceSession("aa");
+			expect(ctrl.connectionFailed).toBe(true);
+			warn.mockRestore();
+		});
+
+		it("clears connectionFailed on successful session", async () => {
+			(ctrl as any)._connectionFailed = true;
+			await ctrl.openDeviceSession("aa");
+			expect(ctrl.connectionFailed).toBe(false);
+		});
 	});
 
 	describe("closeDeviceSession", () => {
