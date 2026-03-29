@@ -1,5 +1,5 @@
 import { css, html, LitElement, nothing } from "lit";
-import { property } from "lit/decorators.js";
+import { property, state } from "lit/decorators.js";
 import {
 	autoDetectionRange,
 	getGridRoomMetrics,
@@ -60,6 +60,7 @@ export class EppSettingsView extends LitElement {
 	@property({ type: Number }) staticRenewThreshold = 3;
 	@property({ type: Number }) staticOnDelay = 0;
 	@property({ attribute: false }) entitiesConfig: Record<string, boolean> = {};
+	@state() private _entityOverrides: Record<string, boolean> = {};
 
 	@property({ attribute: false }) localize: (
 		key: string,
@@ -126,9 +127,15 @@ export class EppSettingsView extends LitElement {
                 <span class="accordion-title">${this.localize(s.label)}</span>
                 <ha-icon class="accordion-chevron" icon="mdi:chevron-down" ?data-open=${open}></ha-icon>
               </button>
-              <div class="accordion-body" style="${open ? "" : "display:none"}">
+              ${
+								open
+									? html`
+                <div class="accordion-body">
                   ${this.renderSettingsSection(s.id)}
                 </div>
+              `
+									: nothing
+							}
             </div>
           `;
 				})}
@@ -191,6 +198,7 @@ export class EppSettingsView extends LitElement {
 					const off = parseFloat(el.value);
 					const val = raw != null ? (raw + off).toFixed(precision) : "\u2014";
 					el.nextElementSibling!.textContent = val;
+					(this as any)[`${offsetKey}Offset`] = off;
 					this._fireDirty();
 				}} /><span class="setting-value">${adjusted}</span> ${unit}</span>
         ${this.infoTip(tip)}
@@ -404,9 +412,10 @@ export class EppSettingsView extends LitElement {
 	}
 
 	renderEntities() {
-		// Load saved entity state from config
+		// Check overrides first, then saved config, then fallback
 		const saved: Record<string, boolean> = this.entitiesConfig || {};
-		const isOn = (key: string, fallback: boolean) => saved[key] ?? fallback;
+		const isOn = (key: string, fallback: boolean) =>
+			this._entityOverrides[key] ?? saved[key] ?? fallback;
 
 		return html`
       <div class="settings-section">
@@ -414,27 +423,27 @@ export class EppSettingsView extends LitElement {
           <h4>${this.localize("entities.room_level")}</h4>
           <div class="setting-row">
             <label>${this.localize("entities.occupancy")}</label>
-            <label class="toggle-switch"><input type="checkbox" @change=${() => this._fireDirty()} data-entity-key="room_occupancy" ?checked=${isOn("room_occupancy", true)} /><span class="toggle-slider"></span></label>
+            <label class="toggle-switch"><input type="checkbox" @change=${(e: Event) => { const el = e.target as HTMLInputElement; const key = el.dataset.entityKey!; this._entityOverrides = { ...this._entityOverrides, [key]: el.checked }; this._fireDirty(); }} data-entity-key="room_occupancy" ?checked=${isOn("room_occupancy", true)} /><span class="toggle-slider"></span></label>
             ${this.infoTip(this.localize("info.room_occupancy"))}
           </div>
           <div class="setting-row">
             <label>${this.localize("entities.static_presence")}</label>
-            <label class="toggle-switch"><input type="checkbox" @change=${() => this._fireDirty()} data-entity-key="room_static_presence" ?checked=${isOn("room_static_presence", false)} /><span class="toggle-slider"></span></label>
+            <label class="toggle-switch"><input type="checkbox" @change=${(e: Event) => { const el = e.target as HTMLInputElement; const key = el.dataset.entityKey!; this._entityOverrides = { ...this._entityOverrides, [key]: el.checked }; this._fireDirty(); }} data-entity-key="room_static_presence" ?checked=${isOn("room_static_presence", false)} /><span class="toggle-slider"></span></label>
             ${this.infoTip(this.localize("info.room_static"))}
           </div>
           <div class="setting-row">
             <label>${this.localize("entities.motion_presence")}</label>
-            <label class="toggle-switch"><input type="checkbox" @change=${() => this._fireDirty()} data-entity-key="room_motion_presence" ?checked=${isOn("room_motion_presence", false)} /><span class="toggle-slider"></span></label>
+            <label class="toggle-switch"><input type="checkbox" @change=${(e: Event) => { const el = e.target as HTMLInputElement; const key = el.dataset.entityKey!; this._entityOverrides = { ...this._entityOverrides, [key]: el.checked }; this._fireDirty(); }} data-entity-key="room_motion_presence" ?checked=${isOn("room_motion_presence", false)} /><span class="toggle-slider"></span></label>
             ${this.infoTip(this.localize("info.room_motion"))}
           </div>
           <div class="setting-row">
             <label>${this.localize("entities.target_presence")}</label>
-            <label class="toggle-switch"><input type="checkbox" @change=${() => this._fireDirty()} data-entity-key="room_target_presence" ?checked=${isOn("room_target_presence", false)} /><span class="toggle-slider"></span></label>
+            <label class="toggle-switch"><input type="checkbox" @change=${(e: Event) => { const el = e.target as HTMLInputElement; const key = el.dataset.entityKey!; this._entityOverrides = { ...this._entityOverrides, [key]: el.checked }; this._fireDirty(); }} data-entity-key="room_target_presence" ?checked=${isOn("room_target_presence", false)} /><span class="toggle-slider"></span></label>
             ${this.infoTip(this.localize("info.room_target_presence"))}
           </div>
           <div class="setting-row">
             <label>${this.localize("entities.target_count")}</label>
-            <label class="toggle-switch"><input type="checkbox" @change=${() => this._fireDirty()} data-entity-key="room_target_count" ?checked=${isOn("room_target_count", false)} /><span class="toggle-slider"></span></label>
+            <label class="toggle-switch"><input type="checkbox" @change=${(e: Event) => { const el = e.target as HTMLInputElement; const key = el.dataset.entityKey!; this._entityOverrides = { ...this._entityOverrides, [key]: el.checked }; this._fireDirty(); }} data-entity-key="room_target_count" ?checked=${isOn("room_target_count", false)} /><span class="toggle-slider"></span></label>
             ${this.infoTip(this.localize("info.room_target_count"))}
           </div>
         </div>
@@ -442,12 +451,12 @@ export class EppSettingsView extends LitElement {
           <h4>${this.localize("entities.zone_level")}</h4>
           <div class="setting-row">
             <label>${this.localize("entities.zone_presence")}</label>
-            <label class="toggle-switch"><input type="checkbox" @change=${() => this._fireDirty()} data-entity-key="zone_presence" ?checked=${isOn("zone_presence", true)} /><span class="toggle-slider"></span></label>
+            <label class="toggle-switch"><input type="checkbox" @change=${(e: Event) => { const el = e.target as HTMLInputElement; const key = el.dataset.entityKey!; this._entityOverrides = { ...this._entityOverrides, [key]: el.checked }; this._fireDirty(); }} data-entity-key="zone_presence" ?checked=${isOn("zone_presence", true)} /><span class="toggle-slider"></span></label>
             ${this.infoTip(this.localize("info.zone_presence"))}
           </div>
           <div class="setting-row">
             <label>${this.localize("entities.target_count")}</label>
-            <label class="toggle-switch"><input type="checkbox" @change=${() => this._fireDirty()} data-entity-key="zone_target_count" ?checked=${isOn("zone_target_count", false)} /><span class="toggle-slider"></span></label>
+            <label class="toggle-switch"><input type="checkbox" @change=${(e: Event) => { const el = e.target as HTMLInputElement; const key = el.dataset.entityKey!; this._entityOverrides = { ...this._entityOverrides, [key]: el.checked }; this._fireDirty(); }} data-entity-key="zone_target_count" ?checked=${isOn("zone_target_count", false)} /><span class="toggle-slider"></span></label>
             ${this.infoTip(this.localize("info.zone_target_count"))}
           </div>
         </div>
@@ -455,12 +464,12 @@ export class EppSettingsView extends LitElement {
           <h4>${this.localize("entities.target_level")}</h4>
           <div class="setting-row">
             <label>${this.localize("entities.xy")}</label>
-            <label class="toggle-switch"><input type="checkbox" @change=${() => this._fireDirty()} data-entity-key="target_xy" ?checked=${isOn("target_xy", false)} /><span class="toggle-slider"></span></label>
+            <label class="toggle-switch"><input type="checkbox" @change=${(e: Event) => { const el = e.target as HTMLInputElement; const key = el.dataset.entityKey!; this._entityOverrides = { ...this._entityOverrides, [key]: el.checked }; this._fireDirty(); }} data-entity-key="target_xy" ?checked=${isOn("target_xy", false)} /><span class="toggle-slider"></span></label>
             ${this.infoTip(this.localize("info.xy"))}
           </div>
           <div class="setting-row">
             <label>${this.localize("entities.active")}</label>
-            <label class="toggle-switch"><input type="checkbox" @change=${() => this._fireDirty()} data-entity-key="target_active" ?checked=${isOn("target_active", false)} /><span class="toggle-slider"></span></label>
+            <label class="toggle-switch"><input type="checkbox" @change=${(e: Event) => { const el = e.target as HTMLInputElement; const key = el.dataset.entityKey!; this._entityOverrides = { ...this._entityOverrides, [key]: el.checked }; this._fireDirty(); }} data-entity-key="target_active" ?checked=${isOn("target_active", false)} /><span class="toggle-slider"></span></label>
             ${this.infoTip(this.localize("info.active"))}
           </div>
         </div>
@@ -468,22 +477,22 @@ export class EppSettingsView extends LitElement {
           <h4>${this.localize("settings.environmental")}</h4>
           <div class="setting-row">
             <label>${this.localize("entities.illuminance")}</label>
-            <label class="toggle-switch"><input type="checkbox" @change=${() => this._fireDirty()} data-entity-key="env_illuminance" ?checked=${isOn("env_illuminance", false)} /><span class="toggle-slider"></span></label>
+            <label class="toggle-switch"><input type="checkbox" @change=${(e: Event) => { const el = e.target as HTMLInputElement; const key = el.dataset.entityKey!; this._entityOverrides = { ...this._entityOverrides, [key]: el.checked }; this._fireDirty(); }} data-entity-key="env_illuminance" ?checked=${isOn("env_illuminance", false)} /><span class="toggle-slider"></span></label>
             ${this.infoTip(this.localize("info.illuminance"))}
           </div>
           <div class="setting-row">
             <label>${this.localize("entities.humidity")}</label>
-            <label class="toggle-switch"><input type="checkbox" @change=${() => this._fireDirty()} data-entity-key="env_humidity" ?checked=${isOn("env_humidity", false)} /><span class="toggle-slider"></span></label>
+            <label class="toggle-switch"><input type="checkbox" @change=${(e: Event) => { const el = e.target as HTMLInputElement; const key = el.dataset.entityKey!; this._entityOverrides = { ...this._entityOverrides, [key]: el.checked }; this._fireDirty(); }} data-entity-key="env_humidity" ?checked=${isOn("env_humidity", false)} /><span class="toggle-slider"></span></label>
             ${this.infoTip(this.localize("info.humidity"))}
           </div>
           <div class="setting-row">
             <label>${this.localize("entities.temperature")}</label>
-            <label class="toggle-switch"><input type="checkbox" @change=${() => this._fireDirty()} data-entity-key="env_temperature" ?checked=${isOn("env_temperature", false)} /><span class="toggle-slider"></span></label>
+            <label class="toggle-switch"><input type="checkbox" @change=${(e: Event) => { const el = e.target as HTMLInputElement; const key = el.dataset.entityKey!; this._entityOverrides = { ...this._entityOverrides, [key]: el.checked }; this._fireDirty(); }} data-entity-key="env_temperature" ?checked=${isOn("env_temperature", false)} /><span class="toggle-slider"></span></label>
             ${this.infoTip(this.localize("info.temperature"))}
           </div>
           <div class="setting-row">
             <label>${this.localize("entities.co2")}</label>
-            <label class="toggle-switch"><input type="checkbox" @change=${() => this._fireDirty()} data-entity-key="env_co2" ?checked=${isOn("env_co2", false)} /><span class="toggle-slider"></span></label>
+            <label class="toggle-switch"><input type="checkbox" @change=${(e: Event) => { const el = e.target as HTMLInputElement; const key = el.dataset.entityKey!; this._entityOverrides = { ...this._entityOverrides, [key]: el.checked }; this._fireDirty(); }} data-entity-key="env_co2" ?checked=${isOn("env_co2", false)} /><span class="toggle-slider"></span></label>
             ${this.infoTip(this.localize("info.co2"))}
           </div>
         </div>
@@ -515,19 +524,8 @@ export class EppSettingsView extends LitElement {
 	}
 
 	private _emitSave() {
-		// Collect offsets from DOM
-		const offsets: Record<string, number> = {};
-		this.shadowRoot?.querySelectorAll("[data-offset-key]").forEach((el) => {
-			const key = (el as HTMLElement).dataset.offsetKey;
-			if (key) offsets[key] = parseFloat((el as HTMLInputElement).value);
-		});
-
-		// Collect entities from DOM
-		const entities: Record<string, boolean> = {};
-		this.shadowRoot?.querySelectorAll("[data-entity-key]").forEach((el) => {
-			const key = (el as HTMLElement).dataset.entityKey;
-			if (key) entities[key] = (el as HTMLInputElement).checked;
-		});
+		// Merge entity overrides with saved config
+		const entities = { ...this.entitiesConfig, ...this._entityOverrides };
 
 		this.dispatchEvent(
 			new CustomEvent("save", {
@@ -542,9 +540,9 @@ export class EppSettingsView extends LitElement {
 					static_trigger_threshold: this.staticTriggerThreshold,
 					static_renew_threshold: this.staticRenewThreshold,
 					static_on_delay: this.staticOnDelay,
-					temperature_offset: offsets.temperature ?? this.temperatureOffset,
-					humidity_offset: offsets.humidity ?? this.humidityOffset,
-					illuminance_offset: offsets.illuminance ?? this.illuminanceOffset,
+					temperature_offset: this.temperatureOffset,
+					humidity_offset: this.humidityOffset,
+					illuminance_offset: this.illuminanceOffset,
 					entities,
 				},
 				bubbles: true,

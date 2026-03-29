@@ -66,18 +66,13 @@ describe("render()", () => {
 		document.body.removeChild(c);
 	});
 
-	it("renders all accordion bodies, only open one is visible", () => {
+	it("renders with open accordion showing body", () => {
 		const sv = createView({ openAccordions: new Set(["detection"]) });
 		const tpl = sv.render();
 		const c = renderTo(tpl);
 
 		const bodies = c.querySelectorAll(".accordion-body");
-		expect(bodies.length).toBe(3);
-		// Only the open one should be visible (no display:none)
-		const visible = Array.from(bodies).filter(
-			(b) => (b as HTMLElement).style.display !== "none",
-		);
-		expect(visible.length).toBe(1);
+		expect(bodies.length).toBe(1);
 		document.body.removeChild(c);
 	});
 
