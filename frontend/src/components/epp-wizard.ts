@@ -1272,4 +1272,6 @@ export class EppWizard extends LitElement {
 	}
 }
 
-customElements.define("epp-wizard", EppWizard);
+if (!customElements.get("epp-wizard")) {
+	customElements.define("epp-wizard", EppWizard);
+}

@@ -531,4 +531,6 @@ export class EppSettingsView extends LitElement {
 	}
 }
 
-customElements.define("epp-settings-view", EppSettingsView);
+if (!customElements.get("epp-settings-view")) {
+	customElements.define("epp-settings-view", EppSettingsView);
+}
