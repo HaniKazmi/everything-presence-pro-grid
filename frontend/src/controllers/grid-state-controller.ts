@@ -507,14 +507,19 @@ export class GridStateController implements ReactiveController {
 		}
 	}
 
-	async saveSettings(): Promise<void> {
+	async saveSettings(payload: Record<string, any>): Promise<void> {
 		this.host._saving = true;
 		try {
-			// TODO: Settings page will be reimplemented using the new
-			// set_env_calibration, set_motion_timeout, set_tracking,
-			// set_static_presence websocket commands
+			await this.host.hass.callWS({
+				type: "eppgrid/set_settings",
+				mac: this.host._selectedMac,
+				...payload,
+			});
 			this.host._dirty = false;
 			this.host._view = "live";
+		} catch (e) {
+			console.error("Failed to save settings:", e);
+			// Stay on settings page, keep dirty
 		} finally {
 			this.host._saving = false;
 		}

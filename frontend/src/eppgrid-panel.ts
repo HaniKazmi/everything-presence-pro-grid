@@ -539,8 +539,8 @@ export class EPPGridPanel extends LitElement {
 		return this._gridCtrl.applyLayout();
 	}
 
-	private async _saveSettings(): Promise<void> {
-		return this._gridCtrl.saveSettings();
+	private async _saveSettings(payload?: Record<string, any>): Promise<void> {
+		return this._gridCtrl.saveSettings(payload || {});
 	}
 
 	// -- Template management (localStorage) --
@@ -1276,7 +1276,7 @@ export class EPPGridPanel extends LitElement {
           @dirty=${() => {
 						this._dirty = true;
 					}}
-          @save=${this._saveSettings}
+          @save=${(e: CustomEvent) => this._saveSettings(e.detail)}
           @cancel=${() => {
 						this._dirty = false;
 						this._view = "live";

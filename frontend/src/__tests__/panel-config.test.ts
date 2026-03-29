@@ -542,28 +542,58 @@ describe("_saveSettings", () => {
 		el = createPanel();
 	});
 
-	it("resets saving flag even when container is missing", async () => {
+	it("calls set_settings WS command with payload", async () => {
 		const a = el as any;
 		a._selectedMac = "AA:BB:CC:DD:EE:01";
 		a._dirty = true;
-		a._saving = false;
 
 		const callWS = vi.fn().mockResolvedValue({});
 		el.hass = { callWS };
 
-		// Provide a minimal shadowRoot mock with no .settings-container
-		Object.defineProperty(el, "shadowRoot", {
-			value: {
-				querySelector: () => null,
-				querySelectorAll: () => [],
-			},
-			configurable: true,
+		const payload = {
+			target_auto_distance: true,
+			target_max_distance: 6.0,
+			static_auto_distance: true,
+			static_min_distance: 0.3,
+			static_max_distance: 16.0,
+			motion_timeout: 5,
+			static_timeout: 30,
+			static_trigger_threshold: 3,
+			static_renew_threshold: 3,
+			static_on_delay: 0,
+			temperature_offset: 0,
+			humidity_offset: 0,
+			illuminance_offset: 0,
+			entities: { room_occupancy: true },
+		};
+
+		await a._saveSettings(payload);
+
+		expect(callWS).toHaveBeenCalledWith({
+			type: "eppgrid/set_settings",
+			mac: "AA:BB:CC:DD:EE:01",
+			...payload,
 		});
-
-		await a._saveSettings();
-
-		// _saveSettings is now a stub that just resets state
+		expect(a._dirty).toBe(false);
+		expect(a._view).toBe("live");
 		expect(a._saving).toBe(false);
+	});
+
+	it("stays on settings page on WS error", async () => {
+		const a = el as any;
+		a._selectedMac = "AA:BB:CC:DD:EE:01";
+		a._dirty = true;
+		a._view = "settings";
+
+		el.hass = {
+			callWS: vi.fn().mockRejectedValue(new Error("validation")),
+		};
+
+		await a._saveSettings({});
+
+		expect(a._saving).toBe(false);
+		expect(a._view).toBe("settings");
+		expect(a._dirty).toBe(true);
 	});
 });
 
