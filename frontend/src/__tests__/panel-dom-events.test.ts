@@ -414,8 +414,8 @@ describe("_renderSettings DOM events (via EppSettingsView)", () => {
 		}
 	});
 
-	it("settings container input fires dirty event", () => {
-		const sv = createSettingsView();
+	it("entity checkbox change fires dirty event", () => {
+		const sv = createSettingsView({ entitiesConfig: { room_occupancy: true } });
 		const tpl = sv.render();
 		const c = renderTo(tpl);
 
@@ -424,26 +424,10 @@ describe("_renderSettings DOM events (via EppSettingsView)", () => {
 			dirtyFired = true;
 		});
 
-		const container = c.querySelector(".settings-container") as HTMLElement;
-		if (container) {
-			container.dispatchEvent(new Event("input", { bubbles: true }));
-			expect(dirtyFired).toBe(true);
-		}
-	});
-
-	it("settings container change fires dirty event", () => {
-		const sv = createSettingsView();
-		const tpl = sv.render();
-		const c = renderTo(tpl);
-
-		let dirtyFired = false;
-		sv.addEventListener("dirty", () => {
-			dirtyFired = true;
-		});
-
-		const container = c.querySelector(".settings-container") as HTMLElement;
-		if (container) {
-			container.dispatchEvent(new Event("change", { bubbles: true }));
+		const checkbox = c.querySelector("[data-entity-key]") as HTMLInputElement;
+		if (checkbox) {
+			checkbox.checked = false;
+			checkbox.dispatchEvent(new Event("change", { bubbles: true }));
 			expect(dirtyFired).toBe(true);
 		}
 	});

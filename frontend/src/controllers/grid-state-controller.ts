@@ -534,6 +534,14 @@ export class GridStateController implements ReactiveController {
 				mac: this.host._selectedMac,
 				...payload,
 			});
+			// Update panel state with saved values so settings page shows
+			// correct state if reopened before a full config reload
+			if (payload.entities) {
+				this.host._entitiesConfig = payload.entities;
+			}
+			this.host._temperatureOffset = payload.temperature_offset ?? this.host._temperatureOffset;
+			this.host._humidityOffset = payload.humidity_offset ?? this.host._humidityOffset;
+			this.host._illuminanceOffset = payload.illuminance_offset ?? this.host._illuminanceOffset;
 			this.host._dirty = false;
 			this.host._view = "live";
 		} catch (e) {

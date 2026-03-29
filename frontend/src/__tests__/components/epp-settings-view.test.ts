@@ -505,25 +505,7 @@ describe("renderSaveCancelButtons", () => {
 });
 
 describe("dirty event", () => {
-	it("fires dirty event on input in settings container", () => {
-		const sv = createView();
-		const tpl = sv.render();
-		const c = renderTo(tpl);
-
-		let dirtyFired = false;
-		sv.addEventListener("dirty", () => {
-			dirtyFired = true;
-		});
-
-		const container = c.querySelector(".settings-container") as HTMLElement;
-		if (container) {
-			container.dispatchEvent(new Event("input", { bubbles: true }));
-			expect(dirtyFired).toBe(true);
-		}
-		document.body.removeChild(c);
-	});
-
-	it("fires dirty when a sensitivity slider changes (event bubbles from child)", () => {
+	it("fires dirty when a sensitivity slider changes", () => {
 		// Render with sensitivity accordion open so sliders are visible
 		const sv = createView({ openAccordions: new Set(["sensitivity"]) });
 		const tpl = sv.render();
