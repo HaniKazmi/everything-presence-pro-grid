@@ -103,9 +103,10 @@ def websocket_get_config(
         connection.send_error(msg["id"], "not_ready", "Integration not loaded")
         return
     config = manager._store.get_device(msg["mac"])
-    result = {"config": config or {}}
-    result["config"]["entities"] = _get_entity_states(hass, msg["mac"])
-    connection.send_result(msg["id"], result)
+    # Return a shallow copy to avoid mutating the stored config
+    response = dict(config) if config else {}
+    response["entities"] = _get_entity_states(hass, msg["mac"])
+    connection.send_result(msg["id"], {"config": response})
 
 
 # -- set_setup (perspective calibration) --
