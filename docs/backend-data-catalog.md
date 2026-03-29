@@ -264,4 +264,7 @@ The frontend enricher replaces zone IDs with names for display.
 }
 ```
 
-All config is pushed to the device on save and on reconnect.
+All config is pushed to the device on save and on reconnect. The push
+prefers the existing frontend session connection when one is active
+(avoids the ESP32 concurrent connection limit); otherwise it creates a
+temporary connection (e.g., on-boot push when no frontend is open).
