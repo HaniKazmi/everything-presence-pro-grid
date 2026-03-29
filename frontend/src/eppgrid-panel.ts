@@ -90,11 +90,20 @@ export class EPPGridPanel extends LitElement {
 	@state() private _roomHandoffTimeout: number =
 		ZONE_TYPE_DEFAULTS.normal.handoff_timeout;
 	@state() private _roomEntryPoint = false;
-	@state() private _targetAutoRange = true;
+	@state() private _targetAutoDistance = true;
 	@state() private _targetMaxDistance = 6.0;
-	@state() private _staticAutoRange = true;
+	@state() private _staticAutoDistance = true;
 	@state() private _staticMinDistance = 0.3;
 	@state() private _staticMaxDistance = 16.0;
+	@state() private _temperatureOffset = 0;
+	@state() private _humidityOffset = 0;
+	@state() private _illuminanceOffset = 0;
+	@state() private _motionTimeout = 5;
+	@state() private _staticTimeout = 30;
+	@state() private _staticTriggerThreshold = 3;
+	@state() private _staticRenewThreshold = 3;
+	@state() private _staticOnDelay = 0;
+	@state() private _entitiesConfig: Record<string, any> = {};
 	@state() private _sidebarTab: "zones" | "furniture" | "live" = "zones";
 	@state() private _showDeleteCalibrationDialog = false;
 	@state() private _showLiveMenu = false;
@@ -412,9 +421,22 @@ export class EPPGridPanel extends LitElement {
 		this._roomHandoffTimeout = parsed.roomThresholds.roomHandoffTimeout;
 		this._roomEntryPoint = parsed.roomThresholds.roomEntryPoint;
 
-		// Load reporting config and offsets
-		(this as any)._reportingConfig = parsed.reportingConfig;
-		(this as any)._offsetsConfig = parsed.offsetsConfig;
+		// Apply settings
+		const s = parsed.settings;
+		this._temperatureOffset = s.temperatureOffset;
+		this._humidityOffset = s.humidityOffset;
+		this._illuminanceOffset = s.illuminanceOffset;
+		this._motionTimeout = s.motionTimeout;
+		this._targetAutoDistance = s.targetAutoDistance;
+		this._targetMaxDistance = s.targetMaxDistance;
+		this._staticAutoDistance = s.staticAutoDistance;
+		this._staticMinDistance = s.staticMinDistance;
+		this._staticMaxDistance = s.staticMaxDistance;
+		this._staticTriggerThreshold = s.staticTriggerThreshold;
+		this._staticRenewThreshold = s.staticRenewThreshold;
+		this._staticTimeout = s.staticTimeout;
+		this._staticOnDelay = s.staticOnDelay;
+		this._entitiesConfig = s.entities;
 	}
 
 	private _closeDeviceSession(): void {
@@ -595,7 +617,7 @@ export class EPPGridPanel extends LitElement {
 		const fov = this._getSensorFov();
 		const autoRange = this._autoDetectionRange();
 		const maxRangeMm = computeMaxRangeMm(
-			this._targetAutoRange,
+			this._targetAutoDistance,
 			autoRange,
 			this._targetMaxDistance,
 		);
@@ -1222,9 +1244,9 @@ export class EPPGridPanel extends LitElement {
         ${this._renderHeader()}
         <epp-settings-view
           .sensorState=${this._sensorState}
-          .targetAutoRange=${this._targetAutoRange}
+          .targetAutoDistance=${this._targetAutoDistance}
           .targetMaxDistance=${this._targetMaxDistance}
-          .staticAutoRange=${this._staticAutoRange}
+          .staticAutoDistance=${this._staticAutoDistance}
           .staticMinDistance=${this._staticMinDistance}
           .staticMaxDistance=${this._staticMaxDistance}
           .openAccordions=${this._openAccordions}
@@ -1234,8 +1256,15 @@ export class EPPGridPanel extends LitElement {
           .grid=${this._grid}
           .saving=${this._saving}
           .dirty=${this._dirty}
-          .reportingConfig=${(this as any)._reportingConfig || {}}
-          .offsetsConfig=${(this as any)._offsetsConfig || {}}
+          .entitiesConfig=${this._entitiesConfig || {}}
+          .temperatureOffset=${this._temperatureOffset}
+          .humidityOffset=${this._humidityOffset}
+          .illuminanceOffset=${this._illuminanceOffset}
+          .motionTimeout=${this._motionTimeout}
+          .staticTimeout=${this._staticTimeout}
+          .staticTriggerThreshold=${this._staticTriggerThreshold}
+          .staticRenewThreshold=${this._staticRenewThreshold}
+          .staticOnDelay=${this._staticOnDelay}
           .localize=${this._localize}
           @accordion-toggle=${(e: CustomEvent) => {
 						this._openAccordions = e.detail;

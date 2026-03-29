@@ -418,19 +418,43 @@ describe("_applyConfig", () => {
 		expect(a._roomEntryPoint).toBe(true);
 	});
 
-	it("applies reporting and offsets config", () => {
+	it("applies settings from config", () => {
 		const a = el as any;
 		const config = {
 			calibration: { perspective: null, room_width: 0, room_depth: 0 },
 			room_layout: {},
-			reporting: { room_occupancy: true },
-			offsets: { illuminance: 10 },
+			settings: {
+				temperature_offset: -1.5,
+				humidity_offset: 2.0,
+				illuminance_offset: -10,
+				motion_timeout: 10,
+				target_auto_distance: false,
+				target_max_distance: 4,
+				static_auto_distance: false,
+				static_min_distance: 1,
+				static_max_distance: 8,
+				static_trigger_threshold: 5,
+				static_renew_threshold: 4,
+				static_timeout: 60,
+				static_on_delay: 2,
+			},
+			entities: { room_occupancy: true },
 		};
-
 		a._applyConfig(config);
-
-		expect(a._reportingConfig).toEqual({ room_occupancy: true });
-		expect(a._offsetsConfig).toEqual({ illuminance: 10 });
+		expect(a._temperatureOffset).toBe(-1.5);
+		expect(a._humidityOffset).toBe(2.0);
+		expect(a._illuminanceOffset).toBe(-10);
+		expect(a._motionTimeout).toBe(10);
+		expect(a._targetAutoDistance).toBe(false);
+		expect(a._targetMaxDistance).toBe(4);
+		expect(a._staticAutoDistance).toBe(false);
+		expect(a._staticMinDistance).toBe(1);
+		expect(a._staticMaxDistance).toBe(8);
+		expect(a._staticTriggerThreshold).toBe(5);
+		expect(a._staticRenewThreshold).toBe(4);
+		expect(a._staticTimeout).toBe(60);
+		expect(a._staticOnDelay).toBe(2);
+		expect(a._entitiesConfig).toEqual({ room_occupancy: true });
 	});
 });
 
