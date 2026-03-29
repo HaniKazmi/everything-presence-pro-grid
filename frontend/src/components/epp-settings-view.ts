@@ -565,6 +565,7 @@ export class EppSettingsView extends LitElement {
 	}
 
 	private _fireDirty() {
+		this.dirty = true;
 		this.dispatchEvent(
 			new CustomEvent("dirty", {
 				bubbles: true,
