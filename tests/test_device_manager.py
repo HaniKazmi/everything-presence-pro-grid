@@ -1054,17 +1054,24 @@ class TestEventCallbacks:
     async def test_push_config_to_device_opens_session(
         self, hass: HomeAssistant, store: EPPGridStore, manager: DeviceManager
     ) -> None:
-        """_push_config_to_device opens session and pushes."""
+        """_push_config_to_device creates a temporary connection and pushes."""
         store.devices["AA:BB:CC:DD:EE:FF"] = {"calibration": {"perspective": [1.0] * 8}}
         manager.devices["AA:BB:CC:DD:EE:FF"] = ManagedDevice(mac="AA:BB:CC:DD:EE:FF", name="EPP", host="192.168.1.50")
 
         mock_conn = MagicMock()
+        mock_conn.async_connect = AsyncMock()
         mock_conn.async_push_config = AsyncMock()
+        mock_conn.async_disconnect = AsyncMock()
 
-        with patch.object(manager, "async_open_session", new_callable=AsyncMock, return_value=mock_conn):
+        with patch(
+            "custom_components.eppgrid.device_manager.DeviceConnection",
+            return_value=mock_conn,
+        ):
             await manager._push_config_to_device("AA:BB:CC:DD:EE:FF")
 
+        mock_conn.async_connect.assert_awaited_once()
         mock_conn.async_push_config.assert_awaited_once()
+        mock_conn.async_disconnect.assert_awaited_once()
 
     async def test_push_config_to_device_handles_error(
         self, hass: HomeAssistant, store: EPPGridStore, manager: DeviceManager
@@ -1074,21 +1081,28 @@ class TestEventCallbacks:
         manager.devices["AA:BB:CC:DD:EE:FF"] = ManagedDevice(mac="AA:BB:CC:DD:EE:FF", name="EPP", host="192.168.1.50")
 
         mock_conn = MagicMock()
+        mock_conn.async_connect = AsyncMock()
         mock_conn.async_push_config = AsyncMock(side_effect=ConnectionError("timeout"))
+        mock_conn.async_disconnect = AsyncMock()
 
-        with patch.object(manager, "async_open_session", new_callable=AsyncMock, return_value=mock_conn):
+        with patch(
+            "custom_components.eppgrid.device_manager.DeviceConnection",
+            return_value=mock_conn,
+        ):
             # Should not raise
             await manager._push_config_to_device("AA:BB:CC:DD:EE:FF")
 
-    async def test_push_config_to_device_no_session(
+        mock_conn.async_disconnect.assert_awaited_once()
+
+    async def test_push_config_to_device_no_host(
         self, hass: HomeAssistant, store: EPPGridStore, manager: DeviceManager
     ) -> None:
-        """_push_config_to_device is a no-op when session cannot be opened."""
+        """_push_config_to_device returns False when device has no host."""
         store.devices["AA:BB:CC:DD:EE:FF"] = {"calibration": {"perspective": [1.0] * 8}}
-        manager.devices["AA:BB:CC:DD:EE:FF"] = ManagedDevice(mac="AA:BB:CC:DD:EE:FF", name="EPP", host="192.168.1.50")
+        manager.devices["AA:BB:CC:DD:EE:FF"] = ManagedDevice(mac="AA:BB:CC:DD:EE:FF", name="EPP", host=None)
 
-        with patch.object(manager, "async_open_session", new_callable=AsyncMock, return_value=None):
-            await manager._push_config_to_device("AA:BB:CC:DD:EE:FF")
+        result = await manager._push_config_to_device("AA:BB:CC:DD:EE:FF")
+        assert result is False
 
     async def test_on_device_available_retries_after_stale_connection(
         self, hass: HomeAssistant, store: EPPGridStore, manager: DeviceManager

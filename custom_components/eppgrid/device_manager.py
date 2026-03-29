@@ -364,25 +364,24 @@ class DeviceManager:
                 self._pushing.discard(mac)
 
     async def _push_config_to_device(self, mac: str) -> bool:
-        """Push config to device. Returns True on success, False on failure."""
+        """Push config to device using a temporary connection."""
         config = self._store.get_device(mac)
         if config is None:
             return True
-        had_session = mac in self._active_connections
-        conn = await self.async_open_session(mac)
-        if conn is None:
+        dev = self.devices.get(mac)
+        if dev is None or dev.host is None:
             return False
+        conn = DeviceConnection(dev.host)
         try:
+            await conn.async_connect()
             await conn.async_push_config(config)
             return True
         except Exception:
-            dev = self.devices.get(mac)
             name = dev.name if dev else mac
             _LOGGER.warning("Failed to push config to %s (%s)", name, mac, exc_info=True)
             return False
         finally:
-            if not had_session:
-                await self.async_close_session(mac)
+            await conn.async_disconnect()
 
     async def async_open_session(self, mac: str) -> DeviceConnection | None:
         """Open a persistent connection for a frontend session.
