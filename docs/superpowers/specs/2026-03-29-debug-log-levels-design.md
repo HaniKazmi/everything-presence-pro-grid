@@ -6,83 +6,66 @@ The ESP sensor transmits all debug-level logs over the network to Home Assistant
 
 ## Solution
 
-Six runtime-controllable log level selects exposed as Home Assistant entities. Each select controls a category of log output by calling `esp_log_level_set()` at runtime. The firmware continues to compile at DEBUG level (all log calls present in binary), but runtime filtering suppresses transmission of messages below the selected level.
+A single API action (`epp_set_log_level`) that accepts a category and level, calling `esp_log_level_set()` at runtime for the appropriate ESP-IDF tags. The firmware compiles at DEBUG level (all log calls present in binary), but runtime filtering suppresses transmission of messages below the selected level.
+
+The frontend settings panel will provide the UI for calling this action (implemented separately after rebasing on the settings branch).
 
 ## Categories
 
-| Category | Select ID | Tags | Location |
-|----------|-----------|------|----------|
-| **epp** | `log_level_epp` | `"epp"` | `everything-presence-pro-base.yaml` |
-| **led** | `log_level_led` | `"control_leds"` | `everything-presence-pro-base.yaml` |
-| **networking** | `log_level_networking` | WiFi: `"wifi"`, `"esp_netif"`, `"dhcp"` / Ethernet: `"eth"`, `"esp_eth"`, `"phy"` | `everything-presence-pro-base.yaml` |
-| **ble** | `log_level_ble` | `"bt"`, `"btm"`, `"bta"`, `"hci"`, `"gap"`, `"controller"` | `bluetooth-base.yaml` |
-| **co2** | `log_level_co2` | `"scd4x"` | `co2-base.yaml` |
-| **system** | `log_level_system` | `"*"` (wildcard catch-all) | `everything-presence-pro-base.yaml` |
+| Category | Tags |
+|----------|------|
+| **epp** | `"epp"` |
+| **led** | `"control_leds"` |
+| **networking** | `"wifi"`, `"esp_netif"`, `"dhcp"`, `"eth"`, `"esp_eth"`, `"phy"` |
+| **ble** | `"bt"`, `"btm"`, `"bta"`, `"hci"`, `"gap"`, `"controller"` |
+| **co2** | `"scd4x"` |
+| **system** | `"*"` (wildcard catch-all) |
 
 ### Notes
 
 - **system** uses the `"*"` wildcard, which sets the default level for any tag not explicitly overridden by another category. Tags like `"fw"`, `"api"`, `"ota"`, `"mdns"`, `"i2c"`, sensor tags, etc. all fall under system.
-- **networking** uses a compile-time conditional to select WiFi vs Ethernet tags based on the `ethernet_enabled` device config flag.
-- **ble** and **co2** selects only exist in variants that include those features (gated by existing `bluetooth_enabled` / `co2_enabled` device config flags in the variant YAML files).
+- **networking** sets both WiFi and Ethernet tags regardless of variant (unused tags are harmless no-ops).
+- **ble** and **co2** categories are handled by the same action — the frontend should only show controls for categories relevant to the device's variant.
 - The BLE tag list may be incomplete — ESP-IDF's Bluetooth stack may use additional tags. Unmatched tags fall through to system's `"*"` wildcard.
 
-## Select Configuration
-
-Each select follows the existing template select pattern used by `led_mode_select`, `relay_contact_mode`, etc:
+## API Action
 
 ```yaml
-select:
-  - platform: template
-    name: "EPP Log Level"
-    id: log_level_epp
-    icon: "mdi:bug"
-    entity_category: config
-    optimistic: true
-    restore_value: true
-    initial_option: "Warning"
-    options:
-      - "None"
-      - "Error"
-      - "Warning"
-      - "Info"
-      - "Debug"
-    on_value:
-      then:
-        - lambda: |-
-            auto level = ESP_LOG_WARN;
-            if (x == "None") level = ESP_LOG_NONE;
-            else if (x == "Error") level = ESP_LOG_ERROR;
-            else if (x == "Warning") level = ESP_LOG_WARN;
-            else if (x == "Info") level = ESP_LOG_INFO;
-            else if (x == "Debug") level = ESP_LOG_DEBUG;
-            esp_log_level_set("epp", level);
+- action: epp_set_log_level
+  variables:
+    category: string   # system, epp, led, networking, ble, co2
+    level: string       # None, Error, Warning, Info, Debug
+  then:
+    - lambda: |-
+        # Maps level string to esp_log_level_t, then calls
+        # esp_log_level_set() for each tag in the category
 ```
+
+Valid levels: None, Error, Warning, Info, Debug
 
 ## Boot Sequence
 
-1. **Early `on_boot` handler** (priority 200 — after hardware init, before network): Sets `esp_log_level_set("*", ESP_LOG_WARN)` to suppress noisy framework logs during initialization, before select components have restored their values.
-2. **Select restore**: Each select restores its persisted value (or `initial_option: "Warning"` on first boot) and fires `on_value`, calling `esp_log_level_set()` for its tags.
+1. **Early `on_boot` handler** (priority 200 — after hardware init, before network): Sets `esp_log_level_set("*", ESP_LOG_WARN)` to suppress noisy framework logs during initialization.
+2. **Frontend** sends `epp_set_log_level` actions after connecting to set per-category levels based on user preferences.
 
 ### Order of Operations
 
-`esp_log_level_set()` per-tag always takes precedence over the `"*"` wildcard. So when system sets `"*"` to one level and epp overrides `"epp"` to another, the per-tag override wins. No re-apply of other categories is needed when system changes.
+`esp_log_level_set()` per-tag always takes precedence over the `"*"` wildcard. So when system sets `"*"` to one level and epp overrides `"epp"` to another, the per-tag override wins.
 
 ## Implementation Location
 
-- **`firmware/common/everything-presence-pro-base.yaml`**: epp, led, networking, and system selects + `on_boot` handler
-- **`firmware/common/bluetooth-base.yaml`**: ble select
-- **`firmware/common/co2-base.yaml`**: co2 select
+- **`firmware/common/everything-presence-pro-base.yaml`**: `epp_set_log_level` API action + `on_boot` handler
+- **Frontend settings panel**: UI controls (to be implemented after rebasing on settings branch)
 
-No C++ changes required. All implementation is in YAML lambdas.
+No C++ changes required. All firmware implementation is in YAML lambdas.
 
 ## Testing
 
 Manual testing on device:
 
-1. Flash firmware with all selects at Warning (default)
-2. Verify only WARNING/ERROR level logs appear in HA
-3. Change epp to Debug — verify EPP debug logs appear, others remain quiet
-4. Change epp back to Warning — verify EPP debug logs stop
-5. Change system to Error — verify only errors come through from framework
-6. Change system to Error, epp to Debug — verify EPP debug logs flow while framework stays at Error only
-7. Reboot device — verify selects restore their values and levels are correctly reapplied
+1. Flash firmware — device defaults to Warning level (on_boot handler)
+2. Call `epp_set_log_level` with category=epp, level=Debug — verify EPP debug logs appear
+3. Call with category=epp, level=Warning — verify EPP debug logs stop
+4. Call with category=system, level=Error — verify only errors from framework
+5. Call with category=system, level=Error then category=epp, level=Debug — verify EPP debug logs flow while framework stays at Error only
+6. Reboot device — levels reset to Warning (no persistence without frontend re-sending)
