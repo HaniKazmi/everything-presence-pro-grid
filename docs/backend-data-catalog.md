@@ -53,6 +53,7 @@ All entities are created by ESPHome firmware with `disabled_by_default` where ap
 | Occupancy | binary_sensor | PIR OR static OR tracking (combined) |
 | Zone Engine Version | text_sensor | firmware version string |
 | Config Protocol | sensor | config protocol version integer (e.g. `1`) |
+| Current Connections | sensor | current API client count (diagnostic, accuracy_decimals=0) |
 
 ### Disabled by Default
 
@@ -153,7 +154,8 @@ Returns discovered EPP devices.
             "host": "192.168.1.50",
             "available": true,
             "configured": true,
-            "config_protocol_status": "compatible"
+            "config_protocol_status": "compatible",
+            "current_connection_count": 1
         }
     ]
 }
