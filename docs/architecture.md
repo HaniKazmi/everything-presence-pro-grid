@@ -136,8 +136,9 @@ Discovers ESPHome devices with `zone_engine_version` entities. Reads the
 `Config Protocol` sensor to determine firmware-integration compatibility
 (see [config protocol versioning spec](superpowers/specs/2026-03-27-config-protocol-versioning-design.md)).
 Manages on-demand aioesphomeapi connections for frontend sessions. Pushes
-stored config to devices on save and on reconnect. Manages ESPHome zone
-entity enable/disable/rename.
+stored config to devices on save and on reconnect via temporary connections
+(separate from the frontend session to avoid consuming API slots or racing
+with UI subscriptions). Manages ESPHome zone entity enable/disable/rename.
 
 ### Storage (`storage.py`)
 

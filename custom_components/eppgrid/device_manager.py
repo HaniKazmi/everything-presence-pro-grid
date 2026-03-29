@@ -232,8 +232,8 @@ class DeviceManager:
                 return None
         return 0
 
-    def read_api_client_count(self, device_id: str | None) -> int | None:
-        """Read the API Client Count sensor value for a device.
+    def read_current_connection_count(self, device_id: str | None) -> int | None:
+        """Read the Current Connections sensor value for a device.
 
         Returns the count (int), or None if the entity is missing or unavailable.
         """
@@ -241,7 +241,7 @@ class DeviceManager:
             return None
         ent_reg = er.async_get(self._hass)
         for entry in er.async_entries_for_device(ent_reg, device_id, include_disabled_entities=True):
-            if entry.platform == "esphome" and entry.unique_id.endswith("api_client_count"):
+            if entry.platform == "esphome" and entry.unique_id.endswith("current_connections"):
                 state = self._hass.states.get(entry.entity_id)
                 if state is not None and state.state not in (None, "unknown", "unavailable", ""):
                     try:
@@ -364,21 +364,24 @@ class DeviceManager:
                 self._pushing.discard(mac)
 
     async def _push_config_to_device(self, mac: str) -> bool:
-        """Push config to device. Returns True on success, False on failure."""
+        """Push config to device using a temporary connection."""
         config = self._store.get_device(mac)
         if config is None:
             return True
-        conn = await self.async_open_session(mac)
-        if conn is None:
+        dev = self.devices.get(mac)
+        if dev is None or dev.host is None:
             return False
+        conn = DeviceConnection(dev.host)
         try:
+            await conn.async_connect()
             await conn.async_push_config(config)
             return True
         except Exception:
-            dev = self.devices.get(mac)
             name = dev.name if dev else mac
             _LOGGER.warning("Failed to push config to %s (%s)", name, mac, exc_info=True)
             return False
+        finally:
+            await conn.async_disconnect()
 
     async def async_open_session(self, mac: str) -> DeviceConnection | None:
         """Open a persistent connection for a frontend session.
@@ -438,7 +441,7 @@ class DeviceManager:
                         if proto < CONFIG_PROTOCOL_VERSION
                         else "firmware_ahead"
                     ),
-                    "api_client_count": self.read_api_client_count(dev.device_id),
+                    "current_connection_count": self.read_current_connection_count(dev.device_id),
                 }
             )
         return result

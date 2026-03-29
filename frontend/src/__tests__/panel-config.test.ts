@@ -609,7 +609,7 @@ describe("_renderConnectionBanner", () => {
 				available: true,
 				configured: true,
 				config_protocol_status: "compatible",
-				api_client_count: 3,
+				current_connection_count: 3,
 			},
 		];
 		a._selectedMac = "AA:BB:CC:DD:EE:01";

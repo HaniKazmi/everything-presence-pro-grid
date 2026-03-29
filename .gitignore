@@ -24,3 +24,5 @@ firmware/lib/epp_zone_engine/build-coverage/
 *.egg-info/
 .venv
 docs/EppGrid TODO.txt
+docs/superpowers/
+docs/handoffs/
