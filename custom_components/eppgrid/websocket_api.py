@@ -554,6 +554,16 @@ async def websocket_subscribe_grid_targets(
                     if debug_log:
                         zones["debug_log"] = debug_log
                     sensors["target_presence"] = zs.get("zones", {}).get("tracking", False)
+                    # Parse sensor presence states from firmware
+                    static_state = zs.get("static_state")
+                    if static_state:
+                        zones["static_state"] = static_state
+                    motion_state = zs.get("motion_state")
+                    if motion_state:
+                        zones["motion_state"] = motion_state
+                    fw_occupancy = zs.get("occupancy")
+                    if fw_occupancy is not None:
+                        zones["occupancy_state"] = fw_occupancy
                 except (ValueError, KeyError):
                     pass
 
