@@ -7,14 +7,13 @@ from unittest.mock import MagicMock
 from unittest.mock import patch
 
 import pytest
+from homeassistant.const import STATE_UNAVAILABLE
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers import entity_registry as er
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
-from homeassistant.const import STATE_UNAVAILABLE
-
-from custom_components.eppgrid.const import DOMAIN, MAX_ZONES
+from custom_components.eppgrid.const import MAX_ZONES
 from custom_components.eppgrid.device_manager import DeviceConnection
 from custom_components.eppgrid.device_manager import DeviceManager
 from custom_components.eppgrid.device_manager import ManagedDevice
@@ -568,9 +567,7 @@ class TestPushConfig:
         with patch("custom_components.eppgrid.device_manager.APIClient") as mock_cls:
             mock_client = mock_cls.return_value
             mock_client.connect = AsyncMock()
-            mock_client.list_entities_services = AsyncMock(
-                return_value=([], [mock_perspective, mock_grid, mock_zones])
-            )
+            mock_client.list_entities_services = AsyncMock(return_value=([], [mock_perspective, mock_grid, mock_zones]))
             mock_client.execute_service = AsyncMock()
             mock_client.disconnect = AsyncMock()
 
@@ -793,9 +790,7 @@ class TestEventCallbacks:
 
         mock_discover.assert_not_awaited()
 
-    async def test_on_state_changed_pushes_config(
-        self, hass: HomeAssistant, manager: DeviceManager
-    ) -> None:
+    async def test_on_state_changed_pushes_config(self, hass: HomeAssistant, manager: DeviceManager) -> None:
         """Device coming online triggers config push."""
         dev_reg = dr.async_get(hass)
         ent_reg = er.async_get(hass)
@@ -863,9 +858,7 @@ class TestEventCallbacks:
 
         mock_avail.assert_not_awaited()
 
-    async def test_on_state_changed_ignores_none_states(
-        self, hass: HomeAssistant, manager: DeviceManager
-    ) -> None:
+    async def test_on_state_changed_ignores_none_states(self, hass: HomeAssistant, manager: DeviceManager) -> None:
         """Missing old/new state is ignored."""
         event = MagicMock()
         event.data = {"entity_id": "sensor.test", "old_state": None, "new_state": MagicMock()}
@@ -876,9 +869,7 @@ class TestEventCallbacks:
 
         mock_avail.assert_not_awaited()
 
-    async def test_on_state_changed_ignores_non_esphome(
-        self, hass: HomeAssistant, manager: DeviceManager
-    ) -> None:
+    async def test_on_state_changed_ignores_non_esphome(self, hass: HomeAssistant, manager: DeviceManager) -> None:
         """State change on non-ESPHome entity is ignored."""
         ent_reg = er.async_get(hass)
         other_entry = MockConfigEntry(domain="other", data={}, title="Other")
@@ -898,13 +889,9 @@ class TestEventCallbacks:
 
         mock_avail.assert_not_awaited()
 
-    async def test_on_device_available_push_dedup(
-        self, hass: HomeAssistant, manager: DeviceManager
-    ) -> None:
+    async def test_on_device_available_push_dedup(self, hass: HomeAssistant, manager: DeviceManager) -> None:
         """Concurrent _on_device_available calls are deduplicated."""
-        manager.devices["AA:BB:CC:DD:EE:FF"] = ManagedDevice(
-            mac="AA:BB:CC:DD:EE:FF", name="EPP", host="192.168.1.50"
-        )
+        manager.devices["AA:BB:CC:DD:EE:FF"] = ManagedDevice(mac="AA:BB:CC:DD:EE:FF", name="EPP", host="192.168.1.50")
 
         with patch.object(manager, "_push_config_to_device", new_callable=AsyncMock) as mock_push:
             manager._pushing.add("AA:BB:CC:DD:EE:FF")
@@ -916,9 +903,7 @@ class TestEventCallbacks:
         self, hass: HomeAssistant, store: EPPGridStore, manager: DeviceManager
     ) -> None:
         """_push_config_to_device is a no-op when no stored config."""
-        manager.devices["AA:BB:CC:DD:EE:FF"] = ManagedDevice(
-            mac="AA:BB:CC:DD:EE:FF", name="EPP", host="192.168.1.50"
-        )
+        manager.devices["AA:BB:CC:DD:EE:FF"] = ManagedDevice(mac="AA:BB:CC:DD:EE:FF", name="EPP", host="192.168.1.50")
         # store has no config for this MAC
         await manager._push_config_to_device("AA:BB:CC:DD:EE:FF")
         # Should not raise
@@ -928,9 +913,7 @@ class TestEventCallbacks:
     ) -> None:
         """_push_config_to_device opens session and pushes."""
         store.devices["AA:BB:CC:DD:EE:FF"] = {"calibration": {"perspective": [1.0] * 8}}
-        manager.devices["AA:BB:CC:DD:EE:FF"] = ManagedDevice(
-            mac="AA:BB:CC:DD:EE:FF", name="EPP", host="192.168.1.50"
-        )
+        manager.devices["AA:BB:CC:DD:EE:FF"] = ManagedDevice(mac="AA:BB:CC:DD:EE:FF", name="EPP", host="192.168.1.50")
 
         mock_conn = MagicMock()
         mock_conn.async_push_config = AsyncMock()
@@ -945,9 +928,7 @@ class TestEventCallbacks:
     ) -> None:
         """_push_config_to_device logs warning on push failure."""
         store.devices["AA:BB:CC:DD:EE:FF"] = {"calibration": {"perspective": [1.0] * 8}}
-        manager.devices["AA:BB:CC:DD:EE:FF"] = ManagedDevice(
-            mac="AA:BB:CC:DD:EE:FF", name="EPP", host="192.168.1.50"
-        )
+        manager.devices["AA:BB:CC:DD:EE:FF"] = ManagedDevice(mac="AA:BB:CC:DD:EE:FF", name="EPP", host="192.168.1.50")
 
         mock_conn = MagicMock()
         mock_conn.async_push_config = AsyncMock(side_effect=ConnectionError("timeout"))
@@ -961,9 +942,7 @@ class TestEventCallbacks:
     ) -> None:
         """_push_config_to_device is a no-op when session cannot be opened."""
         store.devices["AA:BB:CC:DD:EE:FF"] = {"calibration": {"perspective": [1.0] * 8}}
-        manager.devices["AA:BB:CC:DD:EE:FF"] = ManagedDevice(
-            mac="AA:BB:CC:DD:EE:FF", name="EPP", host="192.168.1.50"
-        )
+        manager.devices["AA:BB:CC:DD:EE:FF"] = ManagedDevice(mac="AA:BB:CC:DD:EE:FF", name="EPP", host="192.168.1.50")
 
         with patch.object(manager, "async_open_session", new_callable=AsyncMock, return_value=None):
             await manager._push_config_to_device("AA:BB:CC:DD:EE:FF")
@@ -979,9 +958,7 @@ class TestSessionLifecycle:
 
     async def test_open_session_stale_reconnects(self, hass: HomeAssistant, manager: DeviceManager) -> None:
         """Open session cleans up stale connection and reconnects."""
-        manager.devices["AA:BB:CC:DD:EE:FF"] = ManagedDevice(
-            mac="AA:BB:CC:DD:EE:FF", name="EPP", host="192.168.1.50"
-        )
+        manager.devices["AA:BB:CC:DD:EE:FF"] = ManagedDevice(mac="AA:BB:CC:DD:EE:FF", name="EPP", host="192.168.1.50")
 
         with patch("custom_components.eppgrid.device_manager.DeviceConnection") as mock_conn_cls:
             stale_conn = MagicMock()
@@ -1004,9 +981,7 @@ class TestSessionLifecycle:
         new_conn.async_connect.assert_awaited_once()
         assert result is new_conn
 
-    async def test_async_start_registers_listeners(
-        self, hass: HomeAssistant, manager: DeviceManager
-    ) -> None:
+    async def test_async_start_registers_listeners(self, hass: HomeAssistant, manager: DeviceManager) -> None:
         """async_start discovers devices and registers event listeners."""
         with patch.object(manager, "async_discover", new_callable=AsyncMock):
             await manager.async_start()

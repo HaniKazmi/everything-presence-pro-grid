@@ -2,13 +2,14 @@
 
 from __future__ import annotations
 
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock
+from unittest.mock import MagicMock
 
-import pytest
 from homeassistant.core import HomeAssistant
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
-from custom_components.eppgrid.config_flow import EPPGridConfigFlow, EPPGridOptionsFlow
+from custom_components.eppgrid.config_flow import EPPGridConfigFlow
+from custom_components.eppgrid.config_flow import EPPGridOptionsFlow
 from custom_components.eppgrid.const import DOMAIN
 
 

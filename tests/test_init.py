@@ -108,8 +108,6 @@ async def test_register_panel_hash_oserror(hass: HomeAssistant) -> None:
     hass.http = MagicMock()
     hass.http.async_register_static_paths = AsyncMock()
 
-    original_add_executor_job = hass.async_add_executor_job
-
     async def executor_raises(func, *args):
         raise OSError("not found")
 

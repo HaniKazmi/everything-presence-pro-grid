@@ -710,16 +710,41 @@ class TestNotReadyGuards:
             ("websocket_subscribe_raw_targets", {"mac": "AA:BB"}, True),
             ("websocket_subscribe_grid_targets", {"mac": "AA:BB"}, True),
             ("websocket_set_entity_enabled", {"mac": "AA:BB", "entity_id": "e", "enabled": True}, False),
-            ("websocket_set_env_calibration", {"mac": "AA:BB", "temperature_offset": 0, "humidity_offset": 0, "illuminance_offset": 0}, True),
+            (
+                "websocket_set_env_calibration",
+                {"mac": "AA:BB", "temperature_offset": 0, "humidity_offset": 0, "illuminance_offset": 0},
+                True,
+            ),
             ("websocket_set_motion_timeout", {"mac": "AA:BB", "timeout": 5.0}, True),
             ("websocket_set_tracking", {"mac": "AA:BB", "max_range": 6000.0}, True),
-            ("websocket_set_static_presence", {"mac": "AA:BB", "min_range": 0, "max_range": 6000, "trigger_range": 2500, "sustain_sensitivity": 3, "trigger_sensitivity": 5, "timeout": 10, "on_delay": 0, "led_enabled": True}, True),
-            ("websocket_set_pipeline", {"mac": "AA:BB", "display_interval_ms": 200, "zone_publish_interval_ms": 1000, "window_duration_ms": 1000}, True),
+            (
+                "websocket_set_static_presence",
+                {
+                    "mac": "AA:BB",
+                    "min_range": 0,
+                    "max_range": 6000,
+                    "trigger_range": 2500,
+                    "sustain_sensitivity": 3,
+                    "trigger_sensitivity": 5,
+                    "timeout": 10,
+                    "on_delay": 0,
+                    "led_enabled": True,
+                },
+                True,
+            ),
+            (
+                "websocket_set_pipeline",
+                {
+                    "mac": "AA:BB",
+                    "display_interval_ms": 200,
+                    "zone_publish_interval_ms": 1000,
+                    "window_duration_ms": 1000,
+                },
+                True,
+            ),
         ],
     )
-    async def test_not_ready(
-        self, hass: HomeAssistant, handler_name: str, extra_fields: dict, is_async: bool
-    ) -> None:
+    async def test_not_ready(self, hass: HomeAssistant, handler_name: str, extra_fields: dict, is_async: bool) -> None:
         """Handler returns not_ready when integration not loaded."""
         import custom_components.eppgrid.websocket_api as ws
 
@@ -770,19 +795,6 @@ class TestSubscriptionCallbacks:
         # Get the registered _on_state callback
         on_state = mock_device_conn.subscribe_states.call_args[0][0]
 
-        # Simulate a TextSensorState update
-        from unittest.mock import patch as p
-
-        text_state = MagicMock()
-        text_state.__class__.__name__ = "TextSensorState"
-        text_state.key = 100
-        text_state.state = "1500.5,2300.2"
-
-        with p("custom_components.eppgrid.websocket_api.TextSensorState", create=True) as MockTSS:
-            # We need to mock the isinstance check — use the actual import path
-            pass
-
-        # Actually invoke via aioesphomeapi types
         from aioesphomeapi import TextSensorState
 
         state = TextSensorState(key=100, state="1500.5,2300.2", missing_state=False)
@@ -794,9 +806,7 @@ class TestSubscriptionCallbacks:
         # event_message returns a dict
         assert "targets" in event_data.get("event", event_data)
 
-    async def test_raw_targets_on_state_empty_clears(
-        self, hass: HomeAssistant, config_entry: MockConfigEntry
-    ) -> None:
+    async def test_raw_targets_on_state_empty_clears(self, hass: HomeAssistant, config_entry: MockConfigEntry) -> None:
         """Empty state clears raw target to null coordinates."""
         mock_dm = await setup_integration(hass, config_entry)
 
@@ -860,9 +870,7 @@ class TestSubscriptionCallbacks:
 
         connection.send_message.assert_not_called()
 
-    async def test_raw_targets_unsub(
-        self, hass: HomeAssistant, config_entry: MockConfigEntry
-    ) -> None:
+    async def test_raw_targets_unsub(self, hass: HomeAssistant, config_entry: MockConfigEntry) -> None:
         """Unsubscribe callback removes state subscription."""
         mock_dm = await setup_integration(hass, config_entry)
 
@@ -1069,14 +1077,11 @@ class TestSubscriptionCallbacks:
         on_state(state)
 
         # NaN handling
-        import math
 
         nan_state = SensorState(key=500, state=float("nan"), missing_state=False)
         on_state(nan_state)
 
-    async def test_grid_targets_unsub(
-        self, hass: HomeAssistant, config_entry: MockConfigEntry
-    ) -> None:
+    async def test_grid_targets_unsub(self, hass: HomeAssistant, config_entry: MockConfigEntry) -> None:
         """Unsubscribe callback removes state subscription."""
         mock_dm = await setup_integration(hass, config_entry)
 
@@ -1097,9 +1102,7 @@ class TestSubscriptionCallbacks:
         connection.subscriptions[45]()
         mock_device_conn.unsubscribe_states.assert_called_once()
 
-    async def test_subscribe_device_unsub(
-        self, hass: HomeAssistant, config_entry: MockConfigEntry
-    ) -> None:
+    async def test_subscribe_device_unsub(self, hass: HomeAssistant, config_entry: MockConfigEntry) -> None:
         """subscribe_device unsub callback closes session."""
         mock_dm = await setup_integration(hass, config_entry)
         mock_conn = MagicMock()
