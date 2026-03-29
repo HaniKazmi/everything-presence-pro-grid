@@ -222,7 +222,9 @@ api:
         - uart.write:
             id: uart_bus_dfrobot
             data: !lambda |-
-              auto ms = str_sprintf("setLatency %.2f %.0f\r\n", on_delay, timeout);
+              // Hardware timeout fixed at 1s for debounce; the real timeout
+              // is managed by the zone engine via set_static_timeout()
+              auto ms = str_sprintf("setLatency %.2f 1\r\n", on_delay);
               return std::vector<unsigned char>(ms.begin(), ms.end());
         - delay: 1s
         - uart.write:
