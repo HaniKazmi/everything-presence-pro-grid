@@ -380,6 +380,7 @@ class DeviceManager:
                 return True
             except Exception:
                 _LOGGER.warning("Failed to push config to %s (%s) via session", dev.name, mac, exc_info=True)
+                await self.async_close_session(mac)
                 return False
 
         # No active session — use temporary connection (e.g., on-boot push)

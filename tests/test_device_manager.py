@@ -1186,11 +1186,13 @@ class TestEventCallbacks:
         session_conn = MagicMock()
         session_conn.connected = True
         session_conn.async_push_config = AsyncMock(side_effect=ConnectionError("lost"))
+        session_conn.async_disconnect = AsyncMock()
         manager._active_connections[mac] = session_conn
 
         result = await manager._push_config_to_device(mac)
 
         assert result is False
+        assert mac not in manager._active_connections
 
     async def test_on_device_available_retries_after_stale_connection(
         self, hass: HomeAssistant, store: EPPGridStore, manager: DeviceManager
