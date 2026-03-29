@@ -388,7 +388,7 @@ describe("_isCellInSensorRange", () => {
 		const a = el as any;
 		a._perspective = [1, 0, 0, 0, 1, 0, 0, 0];
 		a._roomWidth = 3000;
-		a._targetAutoRange = false;
+		a._targetAutoDistance = false;
 		a._targetMaxDistance = 6;
 
 		const result = a._isCellInSensorRange(10, 10);

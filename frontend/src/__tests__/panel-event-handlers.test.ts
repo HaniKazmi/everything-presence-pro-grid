@@ -66,11 +66,10 @@ function createPanel(): EPPGridPanel {
 	a._showDeleteCalibrationDialog = false;
 	a._showTemplateSave = false;
 	a._showTemplateLoad = false;
-	a._reportingConfig = {};
-	a._offsetsConfig = {};
-	a._targetAutoRange = true;
+	a._entitiesConfig = {};
+	a._targetAutoDistance = true;
 	a._targetMaxDistance = 6;
-	a._staticAutoRange = true;
+	a._staticAutoDistance = true;
 	a._staticMinDistance = 0.3;
 	a._staticMaxDistance = 16;
 	a._roomType = "normal";
@@ -393,8 +392,8 @@ describe("_renderDetectionRanges inline handlers", () => {
 	it("target auto range toggle", () => {
 		const a = createPanel() as any;
 		// Replicate handler (line 4136-4139)
-		a._targetAutoRange = false;
-		expect(a._targetAutoRange).toBe(false);
+		a._targetAutoDistance = false;
+		expect(a._targetAutoDistance).toBe(false);
 	});
 
 	it("target max distance slider", () => {
@@ -407,8 +406,8 @@ describe("_renderDetectionRanges inline handlers", () => {
 	it("static auto range toggle", () => {
 		const a = createPanel() as any;
 		// Replicate handler (line 4162-4165)
-		a._staticAutoRange = false;
-		expect(a._staticAutoRange).toBe(false);
+		a._staticAutoDistance = false;
+		expect(a._staticAutoDistance).toBe(false);
 	});
 
 	it("static min distance slider", () => {

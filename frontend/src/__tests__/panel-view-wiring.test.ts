@@ -68,11 +68,10 @@ function createPanel(): EPPGridPanel {
 	a._showDeleteCalibrationDialog = false;
 	a._showTemplateSave = false;
 	a._showTemplateLoad = false;
-	a._reportingConfig = {};
-	a._offsetsConfig = {};
-	a._targetAutoRange = true;
+	a._entitiesConfig = {};
+	a._targetAutoDistance = true;
 	a._targetMaxDistance = 6;
-	a._staticAutoRange = true;
+	a._staticAutoDistance = true;
 	a._staticMinDistance = 0.3;
 	a._staticMaxDistance = 16;
 	a._roomType = "normal";

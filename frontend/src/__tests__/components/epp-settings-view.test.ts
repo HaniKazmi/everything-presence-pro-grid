@@ -20,8 +20,15 @@ function createView(
 	el.roomWidth = 3000;
 	el.roomDepth = 4000;
 	el.openAccordions = new Set();
-	el.reportingConfig = {};
-	el.offsetsConfig = {};
+	el.entitiesConfig = {};
+	el.temperatureOffset = 0;
+	el.humidityOffset = 0;
+	el.illuminanceOffset = 0;
+	el.motionTimeout = 5;
+	el.staticTimeout = 30;
+	el.staticTriggerThreshold = 3;
+	el.staticRenewThreshold = 3;
+	el.staticOnDelay = 0;
 	if (overrides) {
 		for (const [k, v] of Object.entries(overrides)) {
 			(el as any)[k] = v;
@@ -139,13 +146,13 @@ describe("renderSettingsSection", () => {
 
 describe("renderDetectionRanges", () => {
 	it("renders with auto range enabled", () => {
-		const sv = createView({ targetAutoRange: true, staticAutoRange: true });
+		const sv = createView({ targetAutoDistance: true, staticAutoDistance: true });
 		const result = (sv as any).renderDetectionRanges();
 		expect(result).toBeDefined();
 	});
 
 	it("renders with auto range disabled", () => {
-		const sv = createView({ targetAutoRange: false, staticAutoRange: false });
+		const sv = createView({ targetAutoDistance: false, staticAutoDistance: false });
 		const result = (sv as any).renderDetectionRanges();
 		expect(result).toBeDefined();
 	});
@@ -158,8 +165,8 @@ describe("renderDetectionRanges", () => {
 
 	it("renders with zero auto range (no perspective)", () => {
 		const sv = createView({
-			targetAutoRange: true,
-			staticAutoRange: true,
+			targetAutoDistance: true,
+			staticAutoDistance: true,
 			perspective: null,
 			roomWidth: 0,
 			roomDepth: 0,
@@ -170,7 +177,7 @@ describe("renderDetectionRanges", () => {
 	});
 
 	it("target auto range toggle updates state and fires event", () => {
-		const sv = createView({ targetAutoRange: true });
+		const sv = createView({ targetAutoDistance: true });
 		const tpl = (sv as any).renderDetectionRanges();
 		const c = renderTo(tpl);
 
@@ -184,14 +191,14 @@ describe("renderDetectionRanges", () => {
 			const cb = checkboxes[0] as HTMLInputElement;
 			cb.checked = false;
 			cb.dispatchEvent(new Event("change"));
-			expect(sv.targetAutoRange).toBe(false);
-			expect(firedKey).toBe("targetAutoRange");
+			expect(sv.targetAutoDistance).toBe(false);
+			expect(firedKey).toBe("targetAutoDistance");
 		}
 		document.body.removeChild(c);
 	});
 
 	it("max distance slider updates state", () => {
-		const sv = createView({ targetAutoRange: false });
+		const sv = createView({ targetAutoDistance: false });
 		const tpl = (sv as any).renderDetectionRanges();
 		const c = renderTo(tpl);
 
@@ -210,7 +217,7 @@ describe("renderDetectionRanges", () => {
 
 	it("static min distance slider clamps at max", () => {
 		const sv = createView({
-			staticAutoRange: false,
+			staticAutoDistance: false,
 			staticMinDistance: 0.3,
 			staticMaxDistance: 5,
 		});
@@ -235,7 +242,7 @@ describe("renderDetectionRanges", () => {
 
 	it("static max distance slider clamps at min", () => {
 		const sv = createView({
-			staticAutoRange: false,
+			staticAutoDistance: false,
 			staticMinDistance: 5,
 			staticMaxDistance: 10,
 		});
@@ -281,7 +288,7 @@ describe("renderSensitivities", () => {
 
 describe("renderEnvOffset", () => {
 	it("renders with a reading", () => {
-		const sv = createView({ offsetsConfig: { illuminance: 10 } });
+		const sv = createView({ illuminanceOffset: 10 });
 		const result = (sv as any).renderEnvOffset(
 			"Illuminance offset",
 			150,
@@ -318,7 +325,7 @@ describe("renderEnvOffset", () => {
 	});
 
 	it("range input with null reading shows dash on update", () => {
-		const sv = createView({ offsetsConfig: {} });
+		const sv = createView();
 		const tpl = (sv as any).renderEnvOffset(
 			"Test",
 			null,
@@ -341,7 +348,7 @@ describe("renderEnvOffset", () => {
 	});
 
 	it("range input with a reading updates preview", () => {
-		const sv = createView({ offsetsConfig: { illuminance: 0 } });
+		const sv = createView({ illuminanceOffset: 0 });
 		const tpl = (sv as any).renderEnvOffset(
 			"Illuminance",
 			100,
@@ -397,15 +404,15 @@ describe("infoTip", () => {
 	});
 });
 
-describe("renderReporting", () => {
-	it("renders all reporting toggles", () => {
+describe("renderEntities", () => {
+	it("renders all entity toggles", () => {
 		const sv = createView({
-			reportingConfig: {
+			entitiesConfig: {
 				room_occupancy: true,
 				room_static_presence: false,
 			},
 		});
-		const tpl = (sv as any).renderReporting();
+		const tpl = (sv as any).renderEntities();
 		const c = renderTo(tpl);
 
 		const toggles = c.querySelectorAll('input[type="checkbox"]');
@@ -414,8 +421,8 @@ describe("renderReporting", () => {
 	});
 
 	it("uses fallback values with empty config", () => {
-		const sv = createView({ reportingConfig: {} });
-		const result = (sv as any).renderReporting();
+		const sv = createView({ entitiesConfig: {} });
+		const result = (sv as any).renderEntities();
 		expect(result).toBeDefined();
 	});
 });
@@ -514,7 +521,7 @@ describe("dirty event", () => {
 
 describe("setting-change event", () => {
 	it("fires setting-change on target auto range toggle", () => {
-		const sv = createView({ targetAutoRange: true });
+		const sv = createView({ targetAutoDistance: true });
 		const tpl = (sv as any).renderDetectionRanges();
 		const c = renderTo(tpl);
 
@@ -528,8 +535,46 @@ describe("setting-change event", () => {
 			const cb = checkboxes[0] as HTMLInputElement;
 			cb.checked = false;
 			cb.dispatchEvent(new Event("change"));
-			expect(events.some((e) => e.key === "targetAutoRange")).toBe(true);
+			expect(events.some((e) => e.key === "targetAutoDistance")).toBe(true);
 		}
 		document.body.removeChild(c);
+	});
+});
+
+describe("save event payload", () => {
+	it("emits all settings values in save event", () => {
+		const sv = createView({
+			dirty: true,
+			targetAutoDistance: false,
+			targetMaxDistance: 4.0,
+			staticAutoDistance: false,
+			staticMinDistance: 1.0,
+			staticMaxDistance: 8.0,
+			motionTimeout: 10,
+			staticTimeout: 60,
+			staticTriggerThreshold: 5,
+			staticRenewThreshold: 4,
+			staticOnDelay: 2,
+			temperatureOffset: -1.5,
+			humidityOffset: 2.0,
+			illuminanceOffset: -10,
+			entitiesConfig: { room_occupancy: true },
+		});
+
+		let payload: any = null;
+		sv.addEventListener("save", ((e: CustomEvent) => {
+			payload = e.detail;
+		}) as EventListener);
+
+		(sv as any)._emitSave();
+
+		expect(payload).not.toBeNull();
+		expect(payload.target_auto_distance).toBe(false);
+		expect(payload.target_max_distance).toBe(4.0);
+		expect(payload.motion_timeout).toBe(10);
+		expect(payload.static_trigger_threshold).toBe(5);
+		expect(payload.static_renew_threshold).toBe(4);
+		expect(payload.static_on_delay).toBe(2);
+		expect(payload.temperature_offset).toBe(-1.5);
 	});
 });

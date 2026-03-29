@@ -71,11 +71,10 @@ function createPanel(): EPPGridPanel {
 	a._showDeleteCalibrationDialog = false;
 	a._showTemplateSave = false;
 	a._showTemplateLoad = false;
-	a._reportingConfig = {};
-	a._offsetsConfig = {};
-	a._targetAutoRange = true;
+	a._entitiesConfig = {};
+	a._targetAutoDistance = true;
 	a._targetMaxDistance = 6;
-	a._staticAutoRange = true;
+	a._staticAutoDistance = true;
 	a._staticMinDistance = 0.3;
 	a._staticMaxDistance = 16;
 	a._roomType = "normal";
@@ -118,8 +117,8 @@ function createSettingsView(
 	el.roomWidth = 3000;
 	el.roomDepth = 4000;
 	el.openAccordions = new Set();
-	el.reportingConfig = {};
-	el.offsetsConfig = {};
+	el.entitiesConfig = {};
+	
 	if (overrides) {
 		for (const [k, v] of Object.entries(overrides)) {
 			(el as any)[k] = v;
@@ -583,8 +582,8 @@ describe("_renderSettingsSection (via EppSettingsView)", () => {
 describe("_renderDetectionRanges (via EppSettingsView)", () => {
 	it("renders with auto range enabled", () => {
 		const sv = createSettingsView({
-			targetAutoRange: true,
-			staticAutoRange: true,
+			targetAutoDistance: true,
+			staticAutoDistance: true,
 		});
 		const result = (sv as any).renderDetectionRanges();
 		expect(result).toBeDefined();
@@ -592,8 +591,8 @@ describe("_renderDetectionRanges (via EppSettingsView)", () => {
 
 	it("renders with auto range disabled", () => {
 		const sv = createSettingsView({
-			targetAutoRange: false,
-			staticAutoRange: false,
+			targetAutoDistance: false,
+			staticAutoDistance: false,
 		});
 		const result = (sv as any).renderDetectionRanges();
 		expect(result).toBeDefined();
@@ -616,7 +615,7 @@ describe("_renderSensitivities (via EppSettingsView)", () => {
 
 describe("_renderEnvOffset (via EppSettingsView)", () => {
 	it("renders offset control with a reading", () => {
-		const sv = createSettingsView({ offsetsConfig: { illuminance: 10 } });
+		const sv = createSettingsView({ illuminanceOffset: 10 });
 		const result = (sv as any).renderEnvOffset(
 			"Illuminance offset",
 			150,
@@ -648,7 +647,7 @@ describe("_renderEnvOffset (via EppSettingsView)", () => {
 	});
 
 	it("renders with no saved offset", () => {
-		const sv = createSettingsView({ offsetsConfig: {} });
+		const sv = createSettingsView();
 		const result = (sv as any).renderEnvOffset(
 			"Humidity offset",
 			45,
@@ -672,21 +671,21 @@ describe("_infoTip (via EppSettingsView)", () => {
 	});
 });
 
-describe("_renderReporting (via EppSettingsView)", () => {
+describe("_renderEntities (via EppSettingsView)", () => {
 	it("renders reporting toggles", () => {
 		const sv = createSettingsView({
-			reportingConfig: {
+			entitiesConfig: {
 				room_occupancy: true,
 				room_static_presence: false,
 			},
 		});
-		const result = (sv as any).renderReporting();
+		const result = (sv as any).renderEntities();
 		expect(result).toBeDefined();
 	});
 
 	it("renders with empty reporting config", () => {
-		const sv = createSettingsView({ reportingConfig: {} });
-		const result = (sv as any).renderReporting();
+		const sv = createSettingsView({ entitiesConfig: {} });
+		const result = (sv as any).renderEntities();
 		expect(result).toBeDefined();
 	});
 });

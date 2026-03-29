@@ -73,11 +73,10 @@ function createPanel(): EPPGridPanel {
 	a._showDeleteCalibrationDialog = false;
 	a._showTemplateSave = false;
 	a._showTemplateLoad = false;
-	a._reportingConfig = {};
-	a._offsetsConfig = {};
-	a._targetAutoRange = true;
+	a._entitiesConfig = {};
+	a._targetAutoDistance = true;
 	a._targetMaxDistance = 6;
-	a._staticAutoRange = true;
+	a._staticAutoDistance = true;
 	a._staticMinDistance = 0.3;
 	a._staticMaxDistance = 16;
 	a._roomType = "normal";
@@ -120,8 +119,8 @@ function createSettingsView(
 	el.roomWidth = 3000;
 	el.roomDepth = 4000;
 	el.openAccordions = new Set();
-	el.reportingConfig = {};
-	el.offsetsConfig = {};
+	el.entitiesConfig = {};
+	
 	if (overrides) {
 		for (const [k, v] of Object.entries(overrides)) {
 			(el as any)[k] = v;
@@ -437,7 +436,7 @@ describe("live overview menu branches (panel inline)", () => {
 // =========================================================
 describe("_renderDetectionRanges branches", () => {
 	it("renders with auto range and static auto range toggling", () => {
-		const sv = createSettingsView({ staticAutoRange: true });
+		const sv = createSettingsView({ staticAutoDistance: true });
 		const tpl = (sv as any).renderDetectionRanges();
 		const c = renderTo(tpl);
 
@@ -447,13 +446,13 @@ describe("_renderDetectionRanges branches", () => {
 			const staticCb = checkboxes[1] as HTMLInputElement;
 			staticCb.checked = false;
 			staticCb.dispatchEvent(new Event("change"));
-			expect(sv.staticAutoRange).toBe(false);
+			expect(sv.staticAutoDistance).toBe(false);
 		}
 		document.body.removeChild(c);
 	});
 
 	it("static min distance slider updates", () => {
-		const sv = createSettingsView({ staticAutoRange: false });
+		const sv = createSettingsView({ staticAutoDistance: false });
 		const tpl = (sv as any).renderDetectionRanges();
 		const c = renderTo(tpl);
 
@@ -474,7 +473,7 @@ describe("_renderDetectionRanges branches", () => {
 	});
 
 	it("static max distance slider updates", () => {
-		const sv = createSettingsView({ staticAutoRange: false });
+		const sv = createSettingsView({ staticAutoDistance: false });
 		const tpl = (sv as any).renderDetectionRanges();
 		const c = renderTo(tpl);
 
@@ -525,7 +524,7 @@ describe("_renderSensitivities DOM events", () => {
 // =========================================================
 describe("_renderEnvOffset null reading branch", () => {
 	it("handles null reading with adjusted display as dash", () => {
-		const sv = createSettingsView({ offsetsConfig: {} });
+		const sv = createSettingsView();
 		const tpl = (sv as any).renderEnvOffset(
 			"Test",
 			null,
@@ -548,7 +547,7 @@ describe("_renderEnvOffset null reading branch", () => {
 	});
 
 	it("fires input handler with null reading", () => {
-		const sv = createSettingsView({ offsetsConfig: {} });
+		const sv = createSettingsView();
 		const tpl = (sv as any).renderEnvOffset(
 			"Test",
 			null,
@@ -1163,10 +1162,10 @@ describe("_renderVisibleCells uses backend occupancy in live view", () => {
 describe("settings slider input handlers", () => {
 	it("static max distance slider clamps below min", () => {
 		const sv = createSettingsView({
-			staticAutoRange: false,
+			staticAutoDistance: false,
 			staticMinDistance: 2,
 			staticMaxDistance: 10,
-			targetAutoRange: false,
+			targetAutoDistance: false,
 			targetMaxDistance: 4,
 		});
 		const tpl = (sv as any).renderDetectionRanges();

@@ -71,11 +71,10 @@ function createPanel() {
 	a._showDeleteCalibrationDialog = false;
 	a._showTemplateSave = false;
 	a._showTemplateLoad = false;
-	a._reportingConfig = {};
-	a._offsetsConfig = {};
-	a._targetAutoRange = true;
+	a._entitiesConfig = {};
+	a._targetAutoDistance = true;
 	a._targetMaxDistance = 6;
-	a._staticAutoRange = true;
+	a._staticAutoDistance = true;
 	a._staticMinDistance = 0.3;
 	a._staticMaxDistance = 16;
 	a._roomType = "normal";
@@ -119,8 +118,8 @@ function createSettingsView(
 	el.roomWidth = 3000;
 	el.roomDepth = 4000;
 	el.openAccordions = new Set();
-	el.reportingConfig = {};
-	el.offsetsConfig = {};
+	el.entitiesConfig = {};
+	
 	if (overrides) {
 		for (const [k, v] of Object.entries(overrides)) {
 			(el as any)[k] = v;
@@ -772,7 +771,7 @@ describe("_renderSaveCancelButtons save handler branch", () => {
 describe("_renderDetectionRanges auto range edge cases", () => {
 	it("target auto with zero autoRange", () => {
 		const sv = createSettingsView({
-			targetAutoRange: true,
+			targetAutoDistance: true,
 			roomWidth: 0,
 			roomDepth: 0,
 			perspective: null,
@@ -784,7 +783,7 @@ describe("_renderDetectionRanges auto range edge cases", () => {
 
 	it("static auto with zero autoRange", () => {
 		const sv = createSettingsView({
-			staticAutoRange: true,
+			staticAutoDistance: true,
 			roomWidth: 0,
 			roomDepth: 0,
 			perspective: null,
@@ -796,12 +795,12 @@ describe("_renderDetectionRanges auto range edge cases", () => {
 });
 
 // =========================================================
-// _renderReporting: isOn with fallback
+// _renderEntities: isOn with fallback
 // =========================================================
-describe("_renderReporting fallback branches", () => {
+describe("_renderEntities fallback branches", () => {
 	it("uses fallback values when reporting config is empty", () => {
-		const sv = createSettingsView({ reportingConfig: {} });
-		const tpl = (sv as any).renderReporting();
+		const sv = createSettingsView({ entitiesConfig: {} });
+		const tpl = (sv as any).renderEntities();
 		expect(tpl).toBeDefined();
 	});
 });
