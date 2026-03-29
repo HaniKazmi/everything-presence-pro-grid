@@ -368,6 +368,7 @@ class DeviceManager:
         config = self._store.get_device(mac)
         if config is None:
             return True
+        had_session = mac in self._active_connections
         conn = await self.async_open_session(mac)
         if conn is None:
             return False
@@ -380,7 +381,8 @@ class DeviceManager:
             _LOGGER.warning("Failed to push config to %s (%s)", name, mac, exc_info=True)
             return False
         finally:
-            await self.async_close_session(mac)
+            if not had_session:
+                await self.async_close_session(mac)
 
     async def async_open_session(self, mac: str) -> DeviceConnection | None:
         """Open a persistent connection for a frontend session.
