@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import base64
 import contextlib
 import json
@@ -189,6 +190,7 @@ class DeviceManager:
         self._pushing: set[str] = set()
         # One connection per device, kept alive for the frontend session
         self._active_connections: dict[str, DeviceConnection] = {}
+        self._session_locks: dict[str, asyncio.Lock] = {}
 
     async def async_start(self) -> None:
         """Start discovery and event listeners."""
@@ -208,8 +210,13 @@ class DeviceManager:
             await conn.async_disconnect()
         self._active_connections.clear()
 
-    def read_config_protocol(self, device_id: str | None) -> int:
-        """Read the Config Protocol sensor value for a device, defaulting to 0."""
+    def read_config_protocol(self, device_id: str | None) -> int | None:
+        """Read the Config Protocol sensor value for a device.
+
+        Returns the protocol version (int), or None if the entity exists
+        but the state is unavailable/unknown (device offline).
+        Returns 0 if no config_protocol entity exists (old firmware).
+        """
         if device_id is None:
             return 0
         ent_reg = er.async_get(self._hass)
@@ -221,7 +228,8 @@ class DeviceManager:
                         return int(float(state.state))
                     except (ValueError, TypeError):
                         pass
-                return 0
+                    return 0
+                return None
         return 0
 
     async def async_discover(self) -> None:
@@ -294,8 +302,6 @@ class DeviceManager:
         old_state: State | None = event.data.get("old_state")
         if new_state is None or old_state is None:
             return
-        if old_state.state != STATE_UNAVAILABLE or new_state.state == STATE_UNAVAILABLE:
-            return
 
         # Check if this entity belongs to a managed ESPHome device
         ent_reg = er.async_get(self._hass)
@@ -309,22 +315,29 @@ class DeviceManager:
             return
 
         mac = _extract_mac(device)
-        if mac and mac in self.devices:
+        if not mac or mac not in self.devices:
+            return
+
+        if new_state.state == STATE_UNAVAILABLE:
+            # Device went offline — allow a fresh push when it comes back
+            self._pushing.discard(mac)
+            return
+
+        if old_state.state != STATE_UNAVAILABLE:
+            return
+
+        # Device came online — push config once
+        if mac not in self._pushing:
+            self._pushing.add(mac)
             self._hass.async_create_task(self._on_device_available(mac))
 
     async def _on_device_available(self, mac: str) -> None:
         """Push stored config when a managed device comes online."""
-        if mac in self._pushing:
-            return
         dev = self.devices.get(mac)
         if dev is not None:
             dev.available = True
-        self._pushing.add(mac)
-        try:
-            _LOGGER.info("Device %s became available, pushing config", mac)
-            await self._push_config_to_device(mac)
-        finally:
-            self._pushing.discard(mac)
+        _LOGGER.info("Device %s became available, pushing config", mac)
+        await self._push_config_to_device(mac)
 
     async def _push_config_to_device(self, mac: str) -> None:
         """Push config to device. Opens a session if none exists."""
@@ -344,21 +357,23 @@ class DeviceManager:
     async def async_open_session(self, mac: str) -> DeviceConnection | None:
         """Open a persistent connection for a frontend session.
         Returns the connection, or None if the device is not available."""
-        if mac in self._active_connections:
-            conn = self._active_connections[mac]
-            if conn.connected:
-                return conn
-            # Stale connection — clean up
-            await conn.async_disconnect()
+        lock = self._session_locks.setdefault(mac, asyncio.Lock())
+        async with lock:
+            if mac in self._active_connections:
+                conn = self._active_connections[mac]
+                if conn.connected:
+                    return conn
+                # Stale connection — clean up
+                await conn.async_disconnect()
 
-        dev = self.devices.get(mac)
-        if dev is None or dev.host is None:
-            return None
-        conn = DeviceConnection(dev.host)
-        await conn.async_connect()
-        self._active_connections[mac] = conn
-        _LOGGER.info("Opened session for %s (%s)", dev.name, mac)
-        return conn
+            dev = self.devices.get(mac)
+            if dev is None or dev.host is None:
+                return None
+            conn = DeviceConnection(dev.host)
+            await conn.async_connect()
+            self._active_connections[mac] = conn
+            _LOGGER.info("Opened session for %s (%s)", dev.name, mac)
+            return conn
 
     async def async_close_session(self, mac: str) -> None:
         """Close the frontend session connection for a device."""
@@ -390,7 +405,9 @@ class DeviceManager:
                     "available": dev.available,
                     "configured": config is not None,
                     "config_protocol_status": (
-                        "compatible"
+                        "unavailable"
+                        if proto is None
+                        else "compatible"
                         if proto == CONFIG_PROTOCOL_VERSION
                         else "firmware_behind"
                         if proto < CONFIG_PROTOCOL_VERSION

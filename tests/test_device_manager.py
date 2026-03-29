@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from unittest.mock import AsyncMock
 from unittest.mock import MagicMock
 from unittest.mock import patch
@@ -292,6 +293,85 @@ class TestDeviceManager:
         conn = await manager.async_open_session("AA:BB:CC:DD:EE:FF")
         assert conn is None
 
+    async def test_concurrent_open_session_connects_once(self, hass: HomeAssistant, manager: DeviceManager) -> None:
+        """Concurrent open_session calls for same MAC only connect once."""
+        manager.devices["AA:BB:CC:DD:EE:FF"] = ManagedDevice(mac="AA:BB:CC:DD:EE:FF", name="EPP", host="192.168.1.50")
+
+        connect_count = 0
+
+        async def slow_connect():
+            nonlocal connect_count
+            connect_count += 1
+            await asyncio.sleep(0.01)  # yield so other tasks interleave
+
+        with patch("custom_components.eppgrid.device_manager.DeviceConnection") as mock_conn_cls:
+            mock_conn = mock_conn_cls.return_value
+            mock_conn.async_connect = slow_connect
+            mock_conn.async_disconnect = AsyncMock()
+            mock_conn.connected = True
+
+            results = await asyncio.gather(
+                manager.async_open_session("AA:BB:CC:DD:EE:FF"),
+                manager.async_open_session("AA:BB:CC:DD:EE:FF"),
+                manager.async_open_session("AA:BB:CC:DD:EE:FF"),
+            )
+
+            # All three should get the same connection
+            assert all(r is mock_conn for r in results)
+            # Only one connect attempt
+            assert connect_count == 1
+
+    async def test_multiple_state_changes_push_config_once(self, hass: HomeAssistant, manager: DeviceManager) -> None:
+        """Multiple entities becoming available should only push config once."""
+        dev_reg = dr.async_get(hass)
+        ent_reg = er.async_get(hass)
+
+        esphome_entry = MockConfigEntry(
+            domain="esphome",
+            data={"host": "192.168.1.50"},
+            title="EPP Device",
+        )
+        esphome_entry.add_to_hass(hass)
+
+        device = dev_reg.async_get_or_create(
+            config_entry_id=esphome_entry.entry_id,
+            connections={("mac", "aa:bb:cc:dd:ee:ff")},
+            name="EPP Device",
+        )
+
+        # Create multiple entities on the same device
+        entities = []
+        for i in range(5):
+            entry = ent_reg.async_get_or_create(
+                "sensor",
+                "esphome",
+                unique_id=f"esphome_aabbccddeeff_sensor_{i}",
+                config_entry=esphome_entry,
+                device_id=device.id,
+            )
+            entities.append(entry)
+
+        manager.devices["AA:BB:CC:DD:EE:FF"] = ManagedDevice(
+            mac="AA:BB:CC:DD:EE:FF", name="EPP Device", host="192.168.1.50"
+        )
+
+        # Register the state_changed listener
+        manager._on_state_changed  # ensure method exists
+        hass.bus.async_listen("state_changed", manager._on_state_changed)
+
+        with patch.object(manager, "_push_config_to_device", new_callable=AsyncMock) as mock_push:
+            # Fire state_changed for all entities in the same tick
+            # (unavailable → available)
+            for entry in entities:
+                hass.states.async_set(entry.entity_id, "unavailable")
+            await hass.async_block_till_done()
+
+            for entry in entities:
+                hass.states.async_set(entry.entity_id, "online")
+            await hass.async_block_till_done()
+
+            mock_push.assert_called_once_with("AA:BB:CC:DD:EE:FF")
+
     async def test_stop_closes_connections(self, hass: HomeAssistant, manager: DeviceManager) -> None:
         """async_stop closes all active connections."""
         manager.devices["AA:BB:CC:DD:EE:FF"] = ManagedDevice(mac="AA:BB:CC:DD:EE:FF", name="EPP", host="192.168.1.50")
@@ -452,10 +532,10 @@ class TestProtocolVersion:
             device_id=device.id,
         )
 
-        # State starts unavailable → firmware_behind
+        # State starts unavailable → unavailable (not firmware_behind)
         hass.states.async_set(proto_entry.entity_id, "unavailable")
         result = manager.list_devices()
-        assert result[0]["config_protocol_status"] == "firmware_behind"
+        assert result[0]["config_protocol_status"] == "unavailable"
 
         # State updates to compatible version → compatible (no re-discovery needed)
         hass.states.async_set(proto_entry.entity_id, str(CONFIG_PROTOCOL_VERSION))

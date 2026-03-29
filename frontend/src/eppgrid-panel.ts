@@ -936,10 +936,14 @@ export class EPPGridPanel extends LitElement {
 		const dev = this._devices.find((d) => d.mac === this._selectedMac);
 		if (!dev || dev.config_protocol_status === "compatible") return nothing;
 
-		const isBehind = dev.config_protocol_status === "firmware_behind";
-		const message = isBehind
-			? this._localize("protocol.firmware_behind")
-			: this._localize("protocol.firmware_ahead");
+		const status = dev.config_protocol_status;
+		const isBehind = status === "firmware_behind";
+		const isUnavailable = status === "unavailable";
+		const message = isUnavailable
+			? this._localize("protocol.unavailable")
+			: isBehind
+				? this._localize("protocol.firmware_behind")
+				: this._localize("protocol.firmware_ahead");
 
 		return html`
 			<div class="protocol-fullpage protocol-fullpage-${isBehind ? "warning" : "info"}">

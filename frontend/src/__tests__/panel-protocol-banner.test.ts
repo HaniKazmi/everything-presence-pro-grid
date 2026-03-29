@@ -9,7 +9,11 @@ import { initGridFromRoom } from "../lib/grid.js";
 import { createZoneEngineState } from "../lib/zone-engine.js";
 
 function createPanel(
-	protocolStatus: "compatible" | "firmware_behind" | "firmware_ahead",
+	protocolStatus:
+		| "compatible"
+		| "firmware_behind"
+		| "firmware_ahead"
+		| "unavailable",
 ): EPPGridPanel {
 	const el = document.createElement("eppgrid-panel") as EPPGridPanel;
 	el.hass = {
@@ -93,6 +97,19 @@ describe("protocol banner rendering", () => {
 		const result = a._renderProtocolBanner();
 		expect(result).toBeDefined();
 		expect(typeof result).not.toBe("symbol");
+	});
+
+	it("renders info banner with unavailable message when device is offline", () => {
+		const el = createPanel("unavailable");
+		const a = el as any;
+		const result = a._renderProtocolBanner();
+		expect(result).toBeDefined();
+		expect(typeof result).not.toBe("symbol");
+		// Should show the unavailable message, not firmware_behind or firmware_ahead
+		const rendered = JSON.stringify(result);
+		expect(rendered).toContain("protocol.unavailable");
+		expect(rendered).not.toContain("protocol.firmware_behind");
+		expect(rendered).not.toContain("protocol.firmware_ahead");
 	});
 });
 

@@ -347,7 +347,11 @@ async def websocket_subscribe_device(
         connection.send_error(msg["id"], "not_ready", "Integration not loaded")
         return
     mac = msg["mac"]
-    device_conn = await manager.async_open_session(mac)
+    try:
+        device_conn = await manager.async_open_session(mac)
+    except Exception:
+        connection.send_error(msg["id"], "connection_failed", "Failed to connect to device")
+        return
     if device_conn is None:
         connection.send_error(msg["id"], "not_found", "Device not available")
         return
