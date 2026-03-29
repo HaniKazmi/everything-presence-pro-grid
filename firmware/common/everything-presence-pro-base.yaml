@@ -92,6 +92,8 @@ epp:
   zone_state:
     name: "Zone State"
     disabled_by_default: true
+  static_presence: dfrobot_presence
+  motion_presence: pir_motion
 
 # Enable logging
 logger:
@@ -108,7 +110,7 @@ globals:
     initial_value: '0'
   - id: motion_timeout
     type: float
-    initial_value: '10'
+    initial_value: '1'
   - id: display_interval_ms
     type: uint32_t
     initial_value: '200'
@@ -174,7 +176,8 @@ api:
         timeout: float
       then:
         - lambda: |-
-            id(motion_timeout) = timeout;
+            id(motion_timeout) = 1;
+            id(epp_component).set_motion_timeout_value(timeout);
     - action: epp_set_tracking
       variables:
         max_range: float
@@ -235,6 +238,8 @@ api:
             id: uart_bus_dfrobot
             data: "sensorStart\r\n"
         - delay: 1s
+        - lambda: |-
+            id(epp_component).set_static_timeout(timeout);
     - action: epp_set_pipeline
       variables:
         display_interval: int

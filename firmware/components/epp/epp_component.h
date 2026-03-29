@@ -65,6 +65,14 @@ class EPPComponent : public esphome::Component {
   void set_window_duration(uint32_t ms) { window_.set_window_duration(ms); }
   void set_display_interval(uint32_t ms) { display_interval_ms_ = ms; }
   void set_zone_publish_interval(uint32_t ms) { zone_publish_interval_ms_ = ms; }
+  void set_static_presence_sensor(esphome::binary_sensor::BinarySensor *sensor) {
+    static_presence_sensor_ = sensor;
+  }
+  void set_motion_presence_sensor(esphome::binary_sensor::BinarySensor *sensor) {
+    motion_presence_sensor_ = sensor;
+  }
+  void set_static_timeout(float timeout) { static_timeout_ = timeout; }
+  void set_motion_timeout_value(float timeout) { motion_timeout_ = timeout; }
 
  protected:
   static constexpr int NUM_TARGETS = 3;
@@ -113,6 +121,12 @@ class EPPComponent : public esphome::Component {
 
   // Config protocol version sensor
   esphome::sensor::Sensor *config_protocol_sensor_{nullptr};
+
+  // Sensor presence inputs (references to existing binary sensors)
+  esphome::binary_sensor::BinarySensor *static_presence_sensor_{nullptr};
+  esphome::binary_sensor::BinarySensor *motion_presence_sensor_{nullptr};
+  float static_timeout_{10.0f};
+  float motion_timeout_{10.0f};
 
   // Publish throttle intervals (ms)
   uint32_t display_interval_ms_ = 200;
