@@ -1264,8 +1264,16 @@ describe("_onFurnitureDrag edge case branches", () => {
 		Object.defineProperty(a, "shadowRoot", {
 			value: {
 				querySelector: (sel: string) => {
-					if (sel === ".grid")
-						return { firstElementChild: { offsetWidth: 28 } };
+					if (sel === "epp-grid") {
+						return {
+							shadowRoot: {
+								querySelector: (s: string) =>
+									s === ".grid"
+										? { firstElementChild: { offsetWidth: 28 } }
+										: null,
+							},
+						};
+					}
 					return null;
 				},
 				querySelectorAll: () => [],
@@ -1309,7 +1317,16 @@ describe("_onFurnitureDrag edge case branches", () => {
 		Object.defineProperty(a, "shadowRoot", {
 			value: {
 				querySelector: (sel: string) => {
-					if (sel === ".grid") return { firstElementChild: null }; // no child -> use fallback 28
+					if (sel === "epp-grid") {
+						return {
+							shadowRoot: {
+								querySelector: (s: string) =>
+									s === ".grid"
+										? { firstElementChild: null } // no child -> use fallback 28
+										: null,
+							},
+						};
+					}
 					return null;
 				},
 				querySelectorAll: () => [],

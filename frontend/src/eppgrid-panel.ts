@@ -1100,7 +1100,7 @@ export class EPPGridPanel extends LitElement {
 			}}>
         ${this._renderHeader()}
         <div class="editor-layout">
-          <div style="min-width: 0;">
+          <div class="grid-column">
             <div class="grid-container">
               ${gridContent}
             </div>
@@ -1176,17 +1176,20 @@ export class EPPGridPanel extends LitElement {
 								}
               </div>
             </div>
-            <epp-live-sidebar
-              .sensorState=${this._sensorState}
-              .zoneState=${this._zoneState}
-              .zoneConfigs=${this._zoneConfigs}
-              .perspective=${this._perspective}
-              .localize=${this._localize}
-              @view-change=${(e: CustomEvent) => {
-								this._view = e.detail.view;
-								if (e.detail.sidebarTab) this._sidebarTab = e.detail.sidebarTab;
-							}}
-            ></epp-live-sidebar>
+            <div class="sidebar-scroll">
+              <epp-live-sidebar
+                .sensorState=${this._sensorState}
+                .zoneState=${this._zoneState}
+                .zoneConfigs=${this._zoneConfigs}
+                .perspective=${this._perspective}
+                .localize=${this._localize}
+                @view-change=${(e: CustomEvent) => {
+									this._view = e.detail.view;
+									if (e.detail.sidebarTab)
+										this._sidebarTab = e.detail.sidebarTab;
+								}}
+              ></epp-live-sidebar>
+            </div>
           </div>
         </div>
       </div>
@@ -1285,9 +1288,16 @@ export class EPPGridPanel extends LitElement {
 			}}>
         ${this._renderHeader()}
         <div class="editor-layout">
-          <div style="min-width: 0;">
+          <div class="grid-column">
             <div class="grid-container" @click=${(e: Event) => {
-							if (!(e.target as HTMLElement).closest(".furniture-item")) {
+							const onFurniture = e
+								.composedPath()
+								.some(
+									(el) =>
+										el instanceof HTMLElement &&
+										el.classList.contains("furniture-item"),
+								);
+							if (!onFurniture) {
 								this._selectedFurnitureId = null;
 							}
 						}}>
@@ -1332,6 +1342,7 @@ export class EPPGridPanel extends LitElement {
           </div>
           <div class="zone-sidebar">
             <div class="sidebar-title">${this._sidebarTab === "furniture" ? this._localize("sidebar.furniture") : this._localize("sidebar.detection_zones")}</div>
+            <div class="sidebar-scroll">
             ${
 							this._sidebarTab === "zones"
 								? html`<epp-zone-sidebar
@@ -1412,6 +1423,7 @@ export class EPPGridPanel extends LitElement {
 										}}
                   ></epp-furniture-sidebar>`
 						}
+            </div>
             ${this._renderSaveCancelButtons()}
           </div>
         </div>

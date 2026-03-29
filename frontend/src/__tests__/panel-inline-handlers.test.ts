@@ -629,9 +629,14 @@ describe("_onFurnitureDrag with active drag state", () => {
 		Object.defineProperty(a, "shadowRoot", {
 			value: {
 				querySelector: (sel: string) => {
-					if (sel === ".grid") {
+					if (sel === "epp-grid") {
 						return {
-							firstElementChild: { offsetWidth: 28 },
+							shadowRoot: {
+								querySelector: (s: string) =>
+									s === ".grid"
+										? { firstElementChild: { offsetWidth: 28 } }
+										: null,
+							},
 						};
 					}
 					return null;
@@ -678,9 +683,14 @@ describe("_onFurnitureDrag with active drag state", () => {
 		Object.defineProperty(a, "shadowRoot", {
 			value: {
 				querySelector: (sel: string) => {
-					if (sel === ".grid") {
+					if (sel === "epp-grid") {
 						return {
-							firstElementChild: { offsetWidth: 28 },
+							shadowRoot: {
+								querySelector: (s: string) =>
+									s === ".grid"
+										? { firstElementChild: { offsetWidth: 28 } }
+										: null,
+							},
 						};
 					}
 					return null;
@@ -729,9 +739,14 @@ describe("_onFurnitureDrag with active drag state", () => {
 		Object.defineProperty(a, "shadowRoot", {
 			value: {
 				querySelector: (sel: string) => {
-					if (sel === ".grid") {
+					if (sel === "epp-grid") {
 						return {
-							firstElementChild: { offsetWidth: 28 },
+							shadowRoot: {
+								querySelector: (s: string) =>
+									s === ".grid"
+										? { firstElementChild: { offsetWidth: 28 } }
+										: null,
+							},
 						};
 					}
 					return null;
@@ -934,21 +949,28 @@ describe("_onFurniturePointerDown with rotate type", () => {
 			},
 		];
 
+		// Mock nested shadow DOM: host -> epp-grid -> epp-furniture-overlay -> .furniture-item
+		const mockFurnitureItem = {
+			getBoundingClientRect: () => ({
+				left: 100,
+				top: 100,
+				width: 200,
+				height: 200,
+			}),
+		};
+		const overlayShadow = {
+			querySelector: (sel: string) =>
+				sel.includes("f1") ? mockFurnitureItem : null,
+		};
+		const overlay = { shadowRoot: overlayShadow };
+		const eppGridShadow = {
+			querySelector: (sel: string) =>
+				sel === "epp-furniture-overlay" ? overlay : null,
+		};
+		const eppGrid = { shadowRoot: eppGridShadow };
 		Object.defineProperty(a, "shadowRoot", {
 			value: {
-				querySelector: (sel: string) => {
-					if (sel.includes("f1")) {
-						return {
-							getBoundingClientRect: () => ({
-								left: 100,
-								top: 100,
-								width: 200,
-								height: 200,
-							}),
-						};
-					}
-					return null;
-				},
+				querySelector: (sel: string) => (sel === "epp-grid" ? eppGrid : null),
 				querySelectorAll: () => [],
 			},
 			configurable: true,
