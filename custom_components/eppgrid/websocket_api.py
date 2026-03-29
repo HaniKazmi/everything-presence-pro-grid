@@ -57,6 +57,8 @@ def _check_protocol(manager: Any, mac: str) -> str | None:
     if dev is None:
         return None  # Unknown device — let the command handle it
     proto = manager.read_config_protocol(dev.device_id)
+    if proto is None:
+        return "unavailable"
     if proto < CONFIG_PROTOCOL_VERSION:
         return "firmware_behind"
     if proto > CONFIG_PROTOCOL_VERSION:
@@ -350,6 +352,7 @@ async def websocket_subscribe_device(
     try:
         device_conn = await manager.async_open_session(mac)
     except Exception:
+        _LOGGER.warning("Failed to open session for %s", mac, exc_info=True)
         connection.send_error(msg["id"], "connection_failed", "Failed to connect to device")
         return
     if device_conn is None:

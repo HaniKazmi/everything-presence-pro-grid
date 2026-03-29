@@ -337,22 +337,26 @@ class DeviceManager:
         if dev is not None:
             dev.available = True
         _LOGGER.info("Device %s became available, pushing config", mac)
-        await self._push_config_to_device(mac)
+        if not await self._push_config_to_device(mac):
+            # Clear the guard so the next availability event can retry
+            self._pushing.discard(mac)
 
-    async def _push_config_to_device(self, mac: str) -> None:
-        """Push config to device. Opens a session if none exists."""
+    async def _push_config_to_device(self, mac: str) -> bool:
+        """Push config to device. Returns True on success, False on failure."""
         config = self._store.get_device(mac)
         if config is None:
-            return
+            return True
         conn = await self.async_open_session(mac)
         if conn is None:
-            return
+            return False
         try:
             await conn.async_push_config(config)
+            return True
         except Exception:
             dev = self.devices.get(mac)
             name = dev.name if dev else mac
             _LOGGER.warning("Failed to push config to %s (%s)", name, mac, exc_info=True)
+            return False
 
     async def async_open_session(self, mac: str) -> DeviceConnection | None:
         """Open a persistent connection for a frontend session.

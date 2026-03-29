@@ -106,10 +106,12 @@ describe("protocol banner rendering", () => {
 		expect(result).toBeDefined();
 		expect(typeof result).not.toBe("symbol");
 		// Should show the unavailable message, not firmware_behind or firmware_ahead
-		const rendered = JSON.stringify(result);
-		expect(rendered).toContain("protocol.unavailable");
-		expect(rendered).not.toContain("protocol.firmware_behind");
-		expect(rendered).not.toContain("protocol.firmware_ahead");
+		const values = ((result as any).values ?? []).map((v: unknown) =>
+			String(v),
+		);
+		expect(values).toContain("protocol.unavailable");
+		expect(values).not.toContain("protocol.firmware_behind");
+		expect(values).not.toContain("protocol.firmware_ahead");
 	});
 });
 
