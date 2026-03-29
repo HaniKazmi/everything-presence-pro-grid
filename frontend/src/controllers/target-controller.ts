@@ -21,6 +21,7 @@ import type { TargetData } from "./device-controller.js";
  * don't want yet.  The controller is a method-organizer — it groups related
  * logic while the reactive state stays on the panel.
  */
+// biome-ignore lint/suspicious/noExplicitAny: host properties are private @state on the panel
 export type TargetHost = ReactiveControllerHost & Record<string, any>;
 
 /**
