@@ -347,4 +347,6 @@ export class EppLiveSidebar extends LitElement {
 	}
 }
 
-customElements.define("epp-live-sidebar", EppLiveSidebar);
+if (!customElements.get("epp-live-sidebar")) {
+	customElements.define("epp-live-sidebar", EppLiveSidebar);
+}
