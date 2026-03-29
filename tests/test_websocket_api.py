@@ -507,6 +507,62 @@ class TestWebSocketSettings:
         assert pipeline["window_duration"] == 1000
 
 
+class TestEntityMapping:
+    """Tests for entity object_id mapping with real unique_id patterns."""
+
+    def test_object_id_extraction(self) -> None:
+        """_object_id_from_unique_id extracts the part after the last dash."""
+        from custom_components.eppgrid.websocket_api import _object_id_from_unique_id
+
+        assert _object_id_from_unique_id("E0:8C:FE:D3:FD:C8-binary_sensor-occupancy") == "occupancy"
+        assert _object_id_from_unique_id("E0:8C:FE:D3:FD:C8-binary_sensor-motion_presence") == "motion_presence"
+        assert _object_id_from_unique_id("E0:8C:FE:D3:FD:C8-binary_sensor-zone_0_occupancy") == "zone_0_occupancy"
+        assert _object_id_from_unique_id("E0:8C:FE:D3:FD:C8-sensor-temperature") == "temperature"
+        assert _object_id_from_unique_id("E0:8C:FE:D3:FD:C8-text_sensor-target_0_position") == "target_0_position"
+
+    def test_entity_key_mapping_room_entities(self) -> None:
+        """Room-level entities map to their correct keys."""
+        from custom_components.eppgrid.websocket_api import _entity_key_for_object_id
+
+        assert _entity_key_for_object_id("occupancy") == "room_occupancy"
+        assert _entity_key_for_object_id("static_presence") == "room_static_presence"
+        assert _entity_key_for_object_id("motion_presence") == "room_motion_presence"
+        assert _entity_key_for_object_id("tracking_presence") == "room_target_presence"
+
+    def test_entity_key_mapping_env_sensors(self) -> None:
+        """Environmental sensors map to their correct keys."""
+        from custom_components.eppgrid.websocket_api import _entity_key_for_object_id
+
+        assert _entity_key_for_object_id("temperature") == "env_temperature"
+        assert _entity_key_for_object_id("humidity") == "env_humidity"
+        assert _entity_key_for_object_id("illuminance") == "env_illuminance"
+
+    def test_entity_key_mapping_zone_entities(self) -> None:
+        """Zone occupancy entities map to zone_presence category."""
+        from custom_components.eppgrid.websocket_api import _entity_key_for_object_id
+
+        assert _entity_key_for_object_id("zone_0_occupancy") == "zone_presence"
+        assert _entity_key_for_object_id("zone_7_occupancy") == "zone_presence"
+        # zone_tracking is a separate entity, not a zone occupancy
+        assert _entity_key_for_object_id("zone_tracking") is None
+
+    def test_entity_key_mapping_target_entities(self) -> None:
+        """Target entities map to target_xy category."""
+        from custom_components.eppgrid.websocket_api import _entity_key_for_object_id
+
+        assert _entity_key_for_object_id("target_0_position") == "target_xy"
+        assert _entity_key_for_object_id("target_2_position") == "target_xy"
+
+    def test_entity_key_mapping_unknown(self) -> None:
+        """Unknown object_ids return None."""
+        from custom_components.eppgrid.websocket_api import _entity_key_for_object_id
+
+        assert _entity_key_for_object_id("config_protocol") is None
+        assert _entity_key_for_object_id("zone_engine_version") is None
+        assert _entity_key_for_object_id("led") is None
+        assert _entity_key_for_object_id("relay_output") is None
+
+
 class TestWebSocketEntityEnabled:
     """Tests for eppgrid/set_entity_enabled."""
 

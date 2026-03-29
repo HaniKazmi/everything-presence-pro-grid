@@ -319,17 +319,40 @@ async def websocket_apply_template(
 # -- Helper --
 
 
-_ENTITY_MAP = {
+# Map ESPHome entity object_ids to frontend entity keys.
+# unique_id format: {MAC}-{platform}-{object_id}
+# Single object_ids map 1:1; prefix patterns (ending with _) match multiple
+# entities (e.g. zone_0_occupancy, zone_1_occupancy, ...).
+_ENTITY_OBJECT_ID_MAP: dict[str, str] = {
     "occupancy": "room_occupancy",
     "static_presence": "room_static_presence",
-    "motion": "room_motion_presence",
-    "target_presence": "room_target_presence",
-    "target_count": "room_target_count",
-    "illuminance": "env_illuminance",
-    "humidity": "env_humidity",
+    "motion_presence": "room_motion_presence",
+    "tracking_presence": "room_target_presence",
     "temperature": "env_temperature",
-    "co2": "env_co2",
+    "humidity": "env_humidity",
+    "illuminance": "env_illuminance",
 }
+
+# Prefix patterns: object_ids starting with these prefixes map to a category key.
+_ENTITY_PREFIX_MAP: list[tuple[str, str]] = [
+    ("zone_", "_occupancy", "zone_presence"),   # zone_0_occupancy, zone_1_occupancy, ...
+    ("target_", "_position", "target_xy"),      # target_0_position, target_1_position, ...
+]
+
+
+def _object_id_from_unique_id(unique_id: str) -> str:
+    """Extract the object_id from an ESPHome unique_id (after last '-')."""
+    return unique_id.rsplit("-", 1)[-1] if "-" in unique_id else unique_id
+
+
+def _entity_key_for_object_id(object_id: str) -> str | None:
+    """Map an ESPHome object_id to its frontend entity key, or None."""
+    if object_id in _ENTITY_OBJECT_ID_MAP:
+        return _ENTITY_OBJECT_ID_MAP[object_id]
+    for prefix, suffix, key in _ENTITY_PREFIX_MAP:
+        if object_id.startswith(prefix) and object_id.endswith(suffix):
+            return key
+    return None
 
 
 def _get_entity_states(hass: HomeAssistant, mac: str) -> dict[str, bool]:
@@ -345,10 +368,17 @@ def _get_entity_states(hass: HomeAssistant, mac: str) -> dict[str, bool]:
 
     result: dict[str, bool] = {}
     for entry in entries:
-        for suffix, key in _ENTITY_MAP.items():
-            if entry.unique_id.endswith(f"_{suffix}"):
-                result[key] = entry.disabled_by is None
-                break
+        object_id = _object_id_from_unique_id(entry.unique_id)
+        key = _entity_key_for_object_id(object_id)
+        if key is None:
+            continue
+        enabled = entry.disabled_by is None
+        # For category keys (zone_presence, target_xy), all must be enabled
+        # for the category to show as enabled.  Use AND logic.
+        if key in result:
+            result[key] = result[key] and enabled
+        else:
+            result[key] = enabled
     return result
 
 
@@ -364,15 +394,16 @@ def _apply_entity_states(hass: HomeAssistant, mac: str, entities: dict[str, bool
     entries = er.async_entries_for_device(ent_reg, dev.device_id)
 
     for entry in entries:
-        for suffix, key in _ENTITY_MAP.items():
-            if entry.unique_id.endswith(f"_{suffix}") and key in entities:
-                if entities[key]:
-                    ent_reg.async_update_entity(entry.entity_id, disabled_by=None)
-                else:
-                    ent_reg.async_update_entity(
-                        entry.entity_id, disabled_by=er.RegistryEntryDisabler.INTEGRATION
-                    )
-                break
+        object_id = _object_id_from_unique_id(entry.unique_id)
+        key = _entity_key_for_object_id(object_id)
+        if key is None or key not in entities:
+            continue
+        if entities[key]:
+            ent_reg.async_update_entity(entry.entity_id, disabled_by=None)
+        else:
+            ent_reg.async_update_entity(
+                entry.entity_id, disabled_by=er.RegistryEntryDisabler.INTEGRATION
+            )
 
 
 def _build_entity_key_map(entities: list) -> dict[str, int]:

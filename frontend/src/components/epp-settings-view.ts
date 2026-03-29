@@ -130,15 +130,9 @@ export class EppSettingsView extends LitElement {
                 <span class="accordion-title">${this.localize(s.label)}</span>
                 <ha-icon class="accordion-chevron" icon="mdi:chevron-down" ?data-open=${open}></ha-icon>
               </button>
-              ${
-								open
-									? html`
-                <div class="accordion-body">
+              <div class="accordion-body" style="${open ? "" : "display:none"}">
                   ${this.renderSettingsSection(s.id)}
                 </div>
-              `
-									: nothing
-							}
             </div>
           `;
 				})}

@@ -1133,11 +1133,9 @@ const dt={attribute:!0,type:String,converter:b,reflect:!1,hasChanged:y},ut=(t=dt
                 <span class="accordion-title">${this.localize(t.label)}</span>
                 <ha-icon class="accordion-chevron" icon="mdi:chevron-down" ?data-open=${e}></ha-icon>
               </button>
-              ${e?W`
-                <div class="accordion-body">
+              <div class="accordion-body" style="${e?"":"display:none"}">
                   ${this.renderSettingsSection(t.id)}
                 </div>
-              `:V}
             </div>
           `})}
         ${this.renderSaveCancelButtons()}
