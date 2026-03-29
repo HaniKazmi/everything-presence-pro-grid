@@ -356,7 +356,6 @@ class TestDeviceManager:
         )
 
         # Register the state_changed listener
-        manager._on_state_changed  # ensure method exists
         hass.bus.async_listen("state_changed", manager._on_state_changed)
 
         with patch.object(manager, "_push_config_to_device", new_callable=AsyncMock) as mock_push:

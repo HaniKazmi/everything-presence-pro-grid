@@ -534,9 +534,7 @@ class TestWebSocketSubscriptions:
 
         await call_async_handler(hass, websocket_subscribe_device, connection, msg)
 
-        connection.send_error.assert_called_once_with(
-            25, "connection_failed", "Failed to connect to device"
-        )
+        connection.send_error.assert_called_once_with(25, "connection_failed", "Failed to connect to device")
 
     async def test_subscribe_device_not_found(self, hass: HomeAssistant, config_entry: MockConfigEntry) -> None:
         """subscribe_device returns error when device not available."""
