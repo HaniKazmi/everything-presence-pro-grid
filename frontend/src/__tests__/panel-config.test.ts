@@ -521,6 +521,35 @@ describe("_applyLayout", () => {
 		expect(a._zoneConfigs[1]).toBeNull();
 	});
 
+	it("saves settings after layout", async () => {
+		const a = el as any;
+		a._selectedMac = "AA:BB:CC:DD:EE:01";
+		a._dirty = true;
+		a._targetAutoDistance = true;
+		a._targetMaxDistance = 6;
+		a._staticAutoDistance = true;
+		a._staticMinDistance = 0.3;
+		a._staticMaxDistance = 16;
+		a._temperatureOffset = 0;
+		a._humidityOffset = 0;
+		a._illuminanceOffset = 0;
+		a._motionTimeout = 5;
+		a._staticTimeout = 30;
+		a._staticTriggerThreshold = 3;
+		a._staticRenewThreshold = 3;
+		a._staticOnDelay = 0;
+		a._entitiesConfig = {};
+
+		const callWS = vi.fn().mockResolvedValue({});
+		el.hass = { callWS };
+
+		await a._applyLayout();
+
+		const types = callWS.mock.calls.map((c: any) => c[0].type);
+		expect(types).toContain("eppgrid/set_room_layout");
+		expect(types).toContain("eppgrid/set_settings");
+	});
+
 	it("resets _saving on error", async () => {
 		const a = el as any;
 		a._selectedMac = "AA:BB:CC:DD:EE:01";

@@ -500,6 +500,25 @@ export class GridStateController implements ReactiveController {
 					lockAspect: f.lockAspect,
 				})),
 			});
+			// Save settings after layout (auto distances may have changed)
+			await this.host.hass.callWS({
+				type: "eppgrid/set_settings",
+				mac: this.host._selectedMac,
+				temperature_offset: this.host._temperatureOffset,
+				humidity_offset: this.host._humidityOffset,
+				illuminance_offset: this.host._illuminanceOffset,
+				motion_timeout: this.host._motionTimeout,
+				target_auto_distance: this.host._targetAutoDistance,
+				target_max_distance: this.host._targetMaxDistance,
+				static_auto_distance: this.host._staticAutoDistance,
+				static_min_distance: this.host._staticMinDistance,
+				static_max_distance: this.host._staticMaxDistance,
+				static_trigger_threshold: this.host._staticTriggerThreshold,
+				static_renew_threshold: this.host._staticRenewThreshold,
+				static_timeout: this.host._staticTimeout,
+				static_on_delay: this.host._staticOnDelay,
+				entities: this.host._entitiesConfig || {},
+			});
 			this.host._dirty = false;
 			this.host._view = "live";
 		} finally {
