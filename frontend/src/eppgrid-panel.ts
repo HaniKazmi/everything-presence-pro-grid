@@ -339,7 +339,11 @@ export class EPPGridPanel extends LitElement {
 			this._deviceCtrl.hass = this.hass;
 			if (this._loading && !this._devices.length) {
 				this._initialize();
-			} else if (this._selectedMac && !this._deviceCtrl.hasDeviceSession) {
+			} else if (
+				this._selectedMac &&
+				!this._deviceCtrl.hasDeviceSession &&
+				!this._deviceCtrl.reconnecting
+			) {
 				// Session lost (e.g. after HA reconnect) — re-open
 				this._loadDeviceConfig(this._selectedMac);
 			}
@@ -842,6 +846,16 @@ export class EPPGridPanel extends LitElement {
       `;
 		}
 
+		if (this._deviceCtrl.connectionFailed) {
+			return html`
+				<div class="panel">
+					${this._renderHeader()}
+					${this._renderConnectionBanner()}
+				</div>
+				${this._renderGlobalDialogs()}
+			`;
+		}
+
 		const dev = this._devices.find((d) => d.mac === this._selectedMac);
 		const protocolOk = !dev || dev.config_protocol_status === "compatible";
 
@@ -969,6 +983,33 @@ export class EPPGridPanel extends LitElement {
 			});
 		} catch (err) {
 			console.error("Firmware update failed:", err);
+		}
+	}
+
+	private _renderConnectionBanner() {
+		if (!this._deviceCtrl.connectionFailed) return nothing;
+
+		const dev = this._devices.find((d) => d.mac === this._selectedMac);
+		const count = dev?.api_client_count;
+		const countMsg =
+			count != null ? this._localize("connection.client_count", { count }) : "";
+
+		return html`
+			<div class="protocol-fullpage protocol-fullpage-warning">
+				<ha-icon icon="mdi:connection"></ha-icon>
+				<p>${this._localize("connection.failed")}</p>
+				${countMsg ? html`<p>${countMsg}</p>` : nothing}
+				<p style="opacity: 0.7; font-size: 0.9em">${this._localize("connection.check_connections")}</p>
+				<button class="wizard-btn wizard-btn-primary"
+					@click=${() => this._retryConnection()}
+				>${this._localize("connection.retry")}</button>
+			</div>
+		`;
+	}
+
+	private _retryConnection(): void {
+		if (this._selectedMac) {
+			this._loadDeviceConfig(this._selectedMac);
 		}
 	}
 

@@ -247,6 +247,7 @@ class TestDeviceManager:
         assert result[0]["name"] == "EPP Device"
         assert result[0]["available"] is True
         assert result[0]["configured"] is False
+        assert result[0]["api_client_count"] is None
 
     async def test_list_devices_with_stored_config(
         self, hass: HomeAssistant, store: EPPGridStore, manager: DeviceManager
@@ -385,6 +386,77 @@ class TestDeviceManager:
             await manager.async_stop()
 
             mock_conn.async_disconnect.assert_awaited()
+
+    async def test_read_api_client_count_returns_value(self, hass: HomeAssistant, manager: DeviceManager) -> None:
+        """read_api_client_count returns the integer sensor value."""
+        dev_reg = dr.async_get(hass)
+        ent_reg = er.async_get(hass)
+
+        esphome_entry = MockConfigEntry(
+            domain="esphome",
+            data={"host": "192.168.1.50"},
+            title="EPP Test",
+        )
+        esphome_entry.add_to_hass(hass)
+
+        device = dev_reg.async_get_or_create(
+            config_entry_id=esphome_entry.entry_id,
+            connections={("mac", "aa:bb:cc:dd:ee:ff")},
+            name="EPP Test",
+        )
+
+        entry = ent_reg.async_get_or_create(
+            "sensor",
+            "esphome",
+            unique_id="esphome_aabbccddeeff_api_client_count",
+            suggested_object_id="epp_api_client_count",
+            config_entry=esphome_entry,
+            device_id=device.id,
+        )
+        hass.states.async_set(entry.entity_id, "2")
+
+        result = manager.read_api_client_count(device.id)
+        assert result == 2
+
+    async def test_read_api_client_count_returns_none_when_device_missing(
+        self, hass: HomeAssistant, manager: DeviceManager
+    ) -> None:
+        """read_api_client_count returns None when device_id is None."""
+        result = manager.read_api_client_count(None)
+        assert result is None
+
+    async def test_read_api_client_count_returns_none_when_sensor_unavailable(
+        self, hass: HomeAssistant, manager: DeviceManager
+    ) -> None:
+        """read_api_client_count returns None when the sensor state is unavailable."""
+        dev_reg = dr.async_get(hass)
+        ent_reg = er.async_get(hass)
+
+        esphome_entry = MockConfigEntry(
+            domain="esphome",
+            data={"host": "192.168.1.50"},
+            title="EPP Test",
+        )
+        esphome_entry.add_to_hass(hass)
+
+        device = dev_reg.async_get_or_create(
+            config_entry_id=esphome_entry.entry_id,
+            connections={("mac", "aa:bb:cc:dd:ee:ff")},
+            name="EPP Test",
+        )
+
+        entry = ent_reg.async_get_or_create(
+            "sensor",
+            "esphome",
+            unique_id="esphome_aabbccddeeff_api_client_count",
+            suggested_object_id="epp_api_client_count",
+            config_entry=esphome_entry,
+            device_id=device.id,
+        )
+        hass.states.async_set(entry.entity_id, "unavailable")
+
+        result = manager.read_api_client_count(device.id)
+        assert result is None
 
 
 # ---------------------------------------------------------------------------
@@ -1015,6 +1087,50 @@ class TestEventCallbacks:
 
         with patch.object(manager, "async_open_session", new_callable=AsyncMock, return_value=None):
             await manager._push_config_to_device("AA:BB:CC:DD:EE:FF")
+
+    async def test_on_device_available_retries_after_stale_connection(
+        self, hass: HomeAssistant, store: EPPGridStore, manager: DeviceManager
+    ) -> None:
+        """_on_device_available closes stale session and retries once on push failure."""
+        mac = "AA:BB:CC:DD:EE:FF"
+        store.devices[mac] = {"calibration": {"perspective": [1.0] * 8}}
+        manager.devices[mac] = ManagedDevice(mac=mac, name="EPP", host="192.168.1.50")
+
+        manager._pushing.add(mac)
+        push_results = [False, True]  # first push fails, retry succeeds
+        with (
+            patch.object(
+                manager, "_push_config_to_device", new_callable=AsyncMock, side_effect=push_results
+            ) as mock_push,
+            patch.object(manager, "async_close_session", new_callable=AsyncMock) as mock_close,
+            patch("custom_components.eppgrid.device_manager.asyncio.sleep", new_callable=AsyncMock) as mock_sleep,
+        ):
+            await manager._on_device_available(mac)
+
+        assert mock_push.await_count == 2
+        mock_close.assert_awaited_once_with(mac)
+        mock_sleep.assert_awaited_once_with(5)
+        # Guard stays set on success (not discarded)
+        assert mac in manager._pushing
+
+    async def test_on_device_available_clears_guard_after_both_failures(
+        self, hass: HomeAssistant, store: EPPGridStore, manager: DeviceManager
+    ) -> None:
+        """_on_device_available clears _pushing guard only after both attempts fail."""
+        mac = "AA:BB:CC:DD:EE:FF"
+        store.devices[mac] = {"calibration": {"perspective": [1.0] * 8}}
+        manager.devices[mac] = ManagedDevice(mac=mac, name="EPP", host="192.168.1.50")
+        manager._pushing.add(mac)
+
+        with (
+            patch.object(manager, "_push_config_to_device", new_callable=AsyncMock, return_value=False) as mock_push,
+            patch.object(manager, "async_close_session", new_callable=AsyncMock),
+            patch("custom_components.eppgrid.device_manager.asyncio.sleep", new_callable=AsyncMock),
+        ):
+            await manager._on_device_available(mac)
+
+        assert mock_push.await_count == 2
+        assert mac not in manager._pushing
 
 
 # ---------------------------------------------------------------------------

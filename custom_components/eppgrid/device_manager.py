@@ -232,6 +232,25 @@ class DeviceManager:
                 return None
         return 0
 
+    def read_api_client_count(self, device_id: str | None) -> int | None:
+        """Read the API Client Count sensor value for a device.
+
+        Returns the count (int), or None if the entity is missing or unavailable.
+        """
+        if device_id is None:
+            return None
+        ent_reg = er.async_get(self._hass)
+        for entry in er.async_entries_for_device(ent_reg, device_id, include_disabled_entities=True):
+            if entry.platform == "esphome" and entry.unique_id.endswith("api_client_count"):
+                state = self._hass.states.get(entry.entity_id)
+                if state is not None and state.state not in (None, "unknown", "unavailable", ""):
+                    try:
+                        return int(float(state.state))
+                    except (ValueError, TypeError):
+                        pass
+                return None
+        return None
+
     async def async_discover(self) -> None:
         """Scan entity registry for ESPHome devices with zone_engine_version."""
         ent_reg = er.async_get(self._hass)
@@ -338,8 +357,11 @@ class DeviceManager:
             dev.available = True
         _LOGGER.info("Device %s became available, pushing config", mac)
         if not await self._push_config_to_device(mac):
-            # Clear the guard so the next availability event can retry
-            self._pushing.discard(mac)
+            # Close stale connection and retry after device stabilises
+            await self.async_close_session(mac)
+            await asyncio.sleep(5)
+            if not await self._push_config_to_device(mac):
+                self._pushing.discard(mac)
 
     async def _push_config_to_device(self, mac: str) -> bool:
         """Push config to device. Returns True on success, False on failure."""
@@ -416,6 +438,7 @@ class DeviceManager:
                         if proto < CONFIG_PROTOCOL_VERSION
                         else "firmware_ahead"
                     ),
+                    "api_client_count": self.read_api_client_count(dev.device_id),
                 }
             )
         return result

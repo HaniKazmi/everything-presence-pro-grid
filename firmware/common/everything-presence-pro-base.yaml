@@ -115,6 +115,9 @@ globals:
   - id: zone_publish_interval_ms
     type: uint32_t
     initial_value: '1000'
+  - id: api_client_count
+    type: int
+    initial_value: '0'
 
 # Enable Home Assistant API
 api:
@@ -256,6 +259,9 @@ api:
 
   on_client_connected:
     then:
+      - lambda: |-
+          id(api_client_count) += 1;
+          id(api_client_count_sensor).publish_state(id(api_client_count));
       # Wait until client has subscribed
       - wait_until:
           condition:
@@ -312,6 +318,10 @@ api:
 
   on_client_disconnected:
     then:
+      - lambda: |-
+          id(api_client_count) -= 1;
+          if (id(api_client_count) < 0) id(api_client_count) = 0;
+          id(api_client_count_sensor).publish_state(id(api_client_count));
       - script.execute: control_leds
 
 http_request:
@@ -323,6 +333,12 @@ ota:
     id: ota_http_request
 
 sensor:
+  - platform: template
+    name: "API Client Count"
+    id: api_client_count_sensor
+    accuracy_decimals: 0
+    entity_category: diagnostic
+
   - platform: shtcx
     id: "shtc3_sensor"
     i2c_id: bus_a
