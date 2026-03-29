@@ -40,6 +40,13 @@ enum class ZoneState : uint8_t {
     PENDING_CLEAR = 2,
 };
 
+// Sensor presence state (software-managed timeout)
+enum class SensorPresenceState : uint8_t {
+    INACTIVE = 0,
+    ACTIVE = 1,
+    PENDING = 2,
+};
+
 // Zone type — matches Python const.py ZONE_TYPE_* constants
 enum class ZoneType : uint8_t {
     NORMAL = 0,

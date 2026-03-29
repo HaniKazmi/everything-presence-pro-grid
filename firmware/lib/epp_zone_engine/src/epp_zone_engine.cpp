@@ -82,7 +82,8 @@ int ZoneEngine::find_zone_index(int zone_id) const {
 // tick() — the core state machine, matching Python ZoneEngine._tick()
 // ---------------------------------------------------------------------------
 
-const ProcessingResult& ZoneEngine::tick(const WindowOutput& window, float timestamp) {
+const ProcessingResult& ZoneEngine::tick(const WindowOutput& window, float timestamp,
+                                         const SensorInput& sensors) {
     int frames = std::max(window.total_frames, RAW_FPS);
 
     // Clear result
