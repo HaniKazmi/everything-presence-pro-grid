@@ -112,7 +112,12 @@ All signal processing runs on-device in the C++ zone engine:
 1. **LD2450 UART** (~10Hz raw frames) → rolling median filter
 2. **Perspective transform** maps sensor coords to room coords
 3. **Zone engine** processes through tumbling window + state machine
-4. **Publishing**: raw targets (5Hz), grid targets (5Hz), zone state (1Hz)
+4. **Sensor presence** — static (SEN0609) and motion (PIR) binary sensors are
+   fed into the zone engine with software-managed timeouts (active→pending→inactive).
+   Hardware timeouts are set to 1s for debounce; the zone engine manages the real
+   timeout. When both sensors are inactive and no zones have active targets,
+   pending zones are force-cleared immediately.
+5. **Publishing**: raw targets (5Hz), grid targets (5Hz), zone state (1Hz)
 
 Config (perspective coefficients, grid bytes, zone slots) is received via
 ESPHome API actions and persisted in NVS.
@@ -238,6 +243,7 @@ state machine for live preview in the editor. It implements the same algorithms:
 - Trigger/renew threshold comparison
 - CLEAR/OCCUPIED/PENDING state machine with timeouts
 - Handoff detection with accelerated timeout
+- Sensor presence state machine (active→pending→inactive) with force-clear
 
 **Keeping the C++ and TypeScript implementations in sync is critical.**
 
@@ -250,6 +256,7 @@ The zone engine must behave identically in firmware and frontend:
 | Cell encoding | `epp_grid.h` | `grid.ts` |
 | Target → cell | `epp_zone_engine.cpp` | `coordinates.ts` |
 | Zone state machine | `epp_zone_engine.cpp` | `lib/zone-engine.ts` |
+| Sensor state machine | `epp_zone_engine.cpp` | `lib/zone-engine.ts` |
 | Zone type defaults | `epp_component.cpp` | `zone-defaults.ts` |
 | Perspective transform | `epp_calibration.h` | `perspective.ts` |
 

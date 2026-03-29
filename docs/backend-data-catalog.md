@@ -118,6 +118,9 @@ Parses Target Position, Zone State, and sensor entity updates into structured ev
         "static_presence": false,
         "motion_presence": false,
         "target_presence": true,
+        "static_state": "inactive",
+        "motion_state": "pending",
+        "occupancy_state": true,
         "temperature": 22.5,
         "humidity": 45.0,
         "illuminance": 120.0,
@@ -127,7 +130,7 @@ Parses Target Position, Zone State, and sensor entity updates into structured ev
         "occupancy": {"0": true, "1": false},
         "target_counts": {},
         "frame_count": 10,
-        "debug_log": "T0:Z1:A:9|Z1:O:9"
+        "debug_log": "S:I M:P Occ:1|T0:Z1:A:9|Z1:O:9"
     }
 }
 ```

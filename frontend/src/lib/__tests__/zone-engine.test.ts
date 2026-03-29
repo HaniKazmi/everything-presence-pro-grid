@@ -510,51 +510,56 @@ describe("runLocalZoneEngine", () => {
 
 	it("force-clear: pending zones cleared when sensors inactive and no active zones", () => {
 		const now = Date.now() / 1000;
+		// Use short sensor timeouts (1s) so they expire well before zone timeout (5s)
 		runLocalZoneEngine(
 			state,
 			makeDefaultParams({
 				targets: [makeTarget(450, 450, 5)],
 				staticPresence: true,
-				staticTimeout: 5,
+				staticTimeout: 1,
 				motionPresence: true,
-				motionTimeout: 3,
+				motionTimeout: 1,
 				now,
 			}),
 		);
+		// Target disappears at now+1, zone 1 goes PENDING_CLEAR (timeout=5s, expires at now+6)
 		runLocalZoneEngine(
 			state,
 			makeDefaultParams({
 				targets: [makeNullTarget()],
 				staticPresence: true,
-				staticTimeout: 5,
+				staticTimeout: 1,
 				motionPresence: true,
-				motionTimeout: 3,
+				motionTimeout: 1,
 				now: now + 1,
 			}),
 		);
+		// Sensors go off at now+2
 		runLocalZoneEngine(
 			state,
 			makeDefaultParams({
 				targets: [makeNullTarget()],
 				staticPresence: false,
-				staticTimeout: 5,
+				staticTimeout: 1,
 				motionPresence: false,
-				motionTimeout: 3,
+				motionTimeout: 1,
 				now: now + 2,
 			}),
 		);
+		// At now+3.5: sensors expired (1s timeout from now+2), zone still has 2.5s left
+		// Force-clear should fire and clear the zone immediately
 		const result = runLocalZoneEngine(
 			state,
 			makeDefaultParams({
 				targets: [makeNullTarget()],
 				staticPresence: false,
-				staticTimeout: 5,
+				staticTimeout: 1,
 				motionPresence: false,
-				motionTimeout: 3,
-				now: now + 8,
+				motionTimeout: 1,
+				now: now + 3.5,
 			}),
 		);
-		expect(result.occupancy[1]).toBe(false);
+		expect(result.occupancy[1]).toBe(false); // force-cleared before zone timeout
 	});
 
 	it("force-clear: does NOT clear if a zone has active targets", () => {

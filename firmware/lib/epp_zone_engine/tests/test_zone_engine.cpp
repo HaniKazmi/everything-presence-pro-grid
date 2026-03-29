@@ -572,31 +572,29 @@ TEST_CASE("force-clear: pending zones cleared when sensors inactive and no activ
     ZoneEngine engine = make_parity_engine();
     float t = 100.0f;
     SensorInput sensors;
+    // Use short sensor timeouts (1s) so they expire well before zone timeout (5s)
     sensors.static_on = true;
-    sensors.static_timeout = 5.0f;
+    sensors.static_timeout = 1.0f;
     sensors.motion_on = true;
-    sensors.motion_timeout = 3.0f;
+    sensors.motion_timeout = 1.0f;
 
     // Occupy zone 1 with target + sensors active
     engine.tick(make_window_1(X_OFF + 450, 450, 5), t, sensors);
 
-    // Target disappears, sensors still active -> zone 1 pending
+    // Target disappears at t+1, zone 1 goes PENDING_CLEAR (timeout=5s, expires at t+6)
     const ProcessingResult& r1 = engine.tick(make_window_0(), t + 1.0f, sensors);
     CHECK(r1.zone_occupancy[1]);  // still occupied (pending)
 
-    // Sensors go off -> both pending
+    // Sensors go off at t+2 -> both pending (1s timeout)
     sensors.static_on = false;
     sensors.motion_on = false;
     const ProcessingResult& r2 = engine.tick(make_window_0(), t + 2.0f, sensors);
     CHECK(r2.zone_occupancy[1]);  // sensors pending, zone still pending
 
-    // Motion timeout expires (3s) -> motion inactive, static still pending
-    const ProcessingResult& r3 = engine.tick(make_window_0(), t + 5.5f, sensors);
-    CHECK(r3.zone_occupancy[1]);  // static still pending, so no force-clear
-
-    // Static timeout expires (5s from t+1) -> both inactive, no active zones -> force-clear
-    const ProcessingResult& r4 = engine.tick(make_window_0(), t + 7.0f, sensors);
-    CHECK_FALSE(r4.zone_occupancy[1]);  // force-cleared!
+    // At t+3.5: sensors expired (1s from t+2), zone still has 2.5s left on its timeout
+    // Force-clear should fire and clear the zone immediately
+    const ProcessingResult& r3 = engine.tick(make_window_0(), t + 3.5f, sensors);
+    CHECK_FALSE(r3.zone_occupancy[1]);  // force-cleared before zone timeout!
 }
 
 TEST_CASE("force-clear: does NOT clear if a zone has active targets") {
