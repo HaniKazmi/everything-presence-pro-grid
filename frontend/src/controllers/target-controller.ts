@@ -3,14 +3,13 @@ import { DEBUG_LOG_MAX } from "../constants.js";
 import { mapTargetToGridCell } from "../lib/coordinates.js";
 import { cellIsInside, cellZone, GRID_COLS, GRID_ROWS } from "../lib/grid.js";
 import { computeHeatmapColors } from "../lib/heatmap.js";
-import type { ZoneConfig } from "../lib/zone-defaults.js";
 import {
 	createZoneEngineState,
 	runLocalZoneEngine,
 	type ZoneEngineResult,
 	type ZoneEngineState,
 } from "../lib/zone-engine.js";
-import type { RawTarget, Target } from "../types.js";
+import type { RawTarget } from "../types.js";
 import type { TargetData } from "./device-controller.js";
 
 /**
@@ -22,6 +21,7 @@ import type { TargetData } from "./device-controller.js";
  * don't want yet.  The controller is a method-organizer — it groups related
  * logic while the reactive state stays on the panel.
  */
+// biome-ignore lint/suspicious/noExplicitAny: host properties are private @state on the panel
 export type TargetHost = ReactiveControllerHost & Record<string, any>;
 
 /**
@@ -101,6 +101,7 @@ export class TargetController implements ReactiveController {
 	 * Also builds and appends the frontend debug log when _showDebugLog is on.
 	 */
 	runLocalZoneEngine(): ZoneEngineResult {
+		const ss = this.host._sensorState;
 		const result = runLocalZoneEngine(this._zoneEngineState, {
 			targets: this.host._targets,
 			grid: this.host._grid,
@@ -113,6 +114,12 @@ export class TargetController implements ReactiveController {
 			roomTimeout: this.host._roomTimeout,
 			roomHandoffTimeout: this.host._roomHandoffTimeout,
 			roomEntryPoint: this.host._roomEntryPoint,
+			staticPresence: ss?.static_presence ?? false,
+			motionPresence: ss?.motion_presence ?? false,
+			// Timeouts default to 10s — the real timeout logic runs on the firmware.
+			// The frontend zone engine is a local replica for the zone editor preview.
+			staticTimeout: 10,
+			motionTimeout: 10,
 		});
 
 		// Build raw debug log (same format as firmware)
@@ -130,8 +137,9 @@ export class TargetController implements ReactiveController {
 	/**
 	 * Enrich a raw debug log string (from firmware or frontend zone engine)
 	 * by replacing zone IDs with zone names.
-	 * Raw format: "T0:Z1:A:5 T1:Z0:P:3|Z0:O:1 Z1:O:1"
-	 * Enriched:   "T0->Entrance(active,5) T1->Room(pending,3) | Entrance: occupied(1)"
+	 * Raw format: "S:A M:P Occ:1|T0:Z1:A:5 T1:Z0:P:3|Z0:O:1 Z1:O:1"
+	 * Legacy:     "T0:Z1:A:5 T1:Z0:P:3|Z0:O:1 Z1:O:1"
+	 * Enriched:   "Static: active, Motion: pending, Occ: on | T0→Entrance(active,5) | Entrance: occupied(1)"
 	 */
 	enrichDebugLog(raw: string): string {
 		const zoneName = (zid: number): string => {
@@ -142,29 +150,72 @@ export class TargetController implements ReactiveController {
 		const statusName: Record<string, string> = {
 			A: "active",
 			P: "pending",
+			I: "inactive",
 			O: "occupied",
 		};
-		const [targetPart, zonePart] = raw.split("|");
+
+		const parts = raw.split("|");
+
+		// New 3-section format: sensors|targets|zones
+		// Legacy 2-section format: targets|zones
+		let sensorPart: string;
+		let targetPart: string;
+		let zonePart: string;
+
+		if (parts.length >= 3) {
+			sensorPart = parts[0];
+			targetPart = parts[1];
+			zonePart = parts[2];
+		} else {
+			sensorPart = "";
+			targetPart = parts[0] || "";
+			zonePart = parts[1] || "";
+		}
+
+		// Sensors section
+		let sStr = "";
+		if (sensorPart.trim()) {
+			const sensorTokens = sensorPart.trim().split(/\s+/);
+			const sensorLabels: string[] = [];
+			for (const tok of sensorTokens) {
+				const [key, val] = tok.split(":");
+				if (key === "S") sensorLabels.push(`Static: ${statusName[val] ?? val}`);
+				else if (key === "M")
+					sensorLabels.push(`Motion: ${statusName[val] ?? val}`);
+				else if (key === "Occ")
+					sensorLabels.push(`Occ: ${val === "1" ? "on" : "off"}`);
+			}
+			sStr = sensorLabels.join(", ");
+		}
+
+		// Targets section
 		const targets = (targetPart || "")
 			.trim()
 			.split(/\s+/)
 			.filter(Boolean)
 			.map((s) => {
 				const [t, z, st, sig] = s.split(":");
-				const zid = parseInt(z?.replace("Z", "") ?? "0");
+				const zid = parseInt(z?.replace("Z", "") ?? "0", 10);
 				return `${t}→${zoneName(zid)}(${statusName[st] ?? st},${sig})`;
 			});
+
+		// Zones section
 		const zones = (zonePart || "")
 			.trim()
 			.split(/\s+/)
 			.filter(Boolean)
 			.map((s) => {
 				const [z, st, cnt] = s.split(":");
-				const zid = parseInt(z?.replace("Z", "") ?? "0");
+				const zid = parseInt(z?.replace("Z", "") ?? "0", 10);
 				return `${zoneName(zid)}: ${statusName[st] ?? st}(${cnt})`;
 			});
+
 		const tStr = targets.length ? targets.join(" ") : "no targets";
 		const zStr = zones.length ? zones.join(", ") : "all clear";
+
+		if (sStr) {
+			return `${sStr} | ${tStr} | ${zStr}`;
+		}
 		return `${tStr} | ${zStr}`;
 	}
 
@@ -191,7 +242,19 @@ export class TargetController implements ReactiveController {
 	 * Deduplicates against previous line and caps at DEBUG_LOG_MAX.
 	 */
 	appendBackendDebugLog(rawDebugLog: string): void {
-		const body = this.enrichDebugLog(rawDebugLog);
+		// If the firmware log doesn't have the sensor prefix (no 3-section format),
+		// prepend sensor state from the host's sensorState
+		let enrichedRaw = rawDebugLog;
+		const parts = rawDebugLog.split("|");
+		if (parts.length < 3) {
+			const ss = this.host._sensorState;
+			const staticCode = ss?.static_presence ? "A" : "I";
+			const motionCode = ss?.motion_presence ? "A" : "I";
+			const occCode = ss?.occupancy ? "1" : "0";
+			enrichedRaw = `S:${staticCode} M:${motionCode} Occ:${occCode}|${rawDebugLog}`;
+		}
+
+		const body = this.enrichDebugLog(enrichedRaw);
 		if (body !== this.host._backendDebugLogPrev) {
 			this.host._backendDebugLogPrev = body;
 			const ts = new Date().toLocaleTimeString("en-GB", {
@@ -297,7 +360,23 @@ export class TargetController implements ReactiveController {
 				zoneParts.push(`Z${zid}:${state}:${zoneSignal.get(zid) ?? 0}`);
 			}
 		}
-		const raw = `${targetParts.join(" ")}|${zoneParts.join(" ")}`;
+		// Sensor state prefix
+		const staticCode =
+			result.staticState === "active"
+				? "A"
+				: result.staticState === "pending"
+					? "P"
+					: "I";
+		const motionCode =
+			result.motionState === "active"
+				? "A"
+				: result.motionState === "pending"
+					? "P"
+					: "I";
+		const occCode = result.sensorOccupancy ? "1" : "0";
+		const sensorPrefix = `S:${staticCode} M:${motionCode} Occ:${occCode}`;
+
+		const raw = `${sensorPrefix}|${targetParts.join(" ")}|${zoneParts.join(" ")}`;
 		const body = this.enrichDebugLog(raw);
 		this._appendFrontendDebugLog(body);
 	}

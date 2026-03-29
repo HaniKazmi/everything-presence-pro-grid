@@ -38,11 +38,21 @@ struct ProcessingResult {
     int frame_count = 0;
     TargetResult targets[MAX_TARGETS];
     int target_count = 0;
+    SensorPresenceState static_state = SensorPresenceState::INACTIVE;
+    SensorPresenceState motion_state = SensorPresenceState::INACTIVE;
+    bool occupancy = false;
 };
 
 // ---------------------------------------------------------------------------
 // Internal runtime state per zone
 // ---------------------------------------------------------------------------
+
+struct SensorInput {
+    bool static_on = false;
+    bool motion_on = false;
+    float static_timeout = 10.0f;   // seconds
+    float motion_timeout = 10.0f;   // seconds
+};
 
 struct ZoneRuntime {
     ZoneConfig config;
@@ -63,7 +73,8 @@ public:
     void set_grid(const Grid& grid);
     const Grid& grid() const;
     void set_zones(const ZoneConfig zones[], int count);
-    const ProcessingResult& tick(const WindowOutput& window, float timestamp);
+    const ProcessingResult& tick(const WindowOutput& window, float timestamp,
+                                 const SensorInput& sensors = SensorInput{});
 
 private:
     Grid grid_;
@@ -79,6 +90,13 @@ private:
     float target_prev_y_[MAX_TARGETS]{};
     bool target_has_prev_xy_[MAX_TARGETS]{};
     int target_gate_count_[MAX_TARGETS]{};
+
+    // Sensor presence state tracking
+    SensorPresenceState static_state_ = SensorPresenceState::INACTIVE;
+    SensorPresenceState motion_state_ = SensorPresenceState::INACTIVE;
+    float static_pending_since_ = -1.0f;
+    float motion_pending_since_ = -1.0f;
+    bool sensors_ever_active_ = false;  // true once any sensor has been ACTIVE
 
     ProcessingResult result_;
 

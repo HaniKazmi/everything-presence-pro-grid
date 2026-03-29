@@ -554,6 +554,28 @@ async def websocket_subscribe_grid_targets(
                     if debug_log:
                         zones["debug_log"] = debug_log
                     sensors["target_presence"] = zs.get("zones", {}).get("tracking", False)
+                    # Parse sensor presence states from firmware
+                    static_state = zs.get("static_state")
+                    if static_state is not None:
+                        sensors["static_state"] = static_state
+                    motion_state = zs.get("motion_state")
+                    if motion_state is not None:
+                        sensors["motion_state"] = motion_state
+                    fw_occupancy = zs.get("occupancy")
+                    if fw_occupancy is not None:
+                        sensors["occupancy_state"] = fw_occupancy
+                    # Send event on zone state update (not just target position updates)
+                    # so sensor state changes appear in the log without delay
+                    connection.send_message(
+                        websocket_api.event_message(
+                            msg["id"],
+                            {
+                                "targets": list(targets),
+                                "sensors": dict(sensors),
+                                "zones": dict(zones),
+                            },
+                        )
+                    )
                 except (ValueError, KeyError):
                     pass
 

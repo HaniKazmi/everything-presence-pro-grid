@@ -68,7 +68,16 @@ void EPPComponent::loop() {
     zone_input.targets[i].median_x = grid_inputs[i].x;
     zone_input.targets[i].median_y = grid_inputs[i].y;
   }
-  const auto &result = zone_engine_.tick(zone_input, ts);
+  // Build sensor input for zone engine
+  SensorInput sensor_input;
+  if (static_presence_sensor_ != nullptr)
+    sensor_input.static_on = static_presence_sensor_->state;
+  if (motion_presence_sensor_ != nullptr)
+    sensor_input.motion_on = motion_presence_sensor_->state;
+  sensor_input.static_timeout = static_timeout_;
+  sensor_input.motion_timeout = motion_timeout_;
+
+  const auto &result = zone_engine_.tick(zone_input, ts, sensor_input);
   last_zone_result_ = result;
 
   // === PUBLISH THROTTLES (do not affect processing) ===
@@ -123,9 +132,23 @@ void EPPComponent::loop() {
     if (device_tracking_sensor_ != nullptr)
       device_tracking_sensor_->publish_state(result.device_tracking_present);
 
+    // Publish zone-engine-processed sensor presence (active/pending = on, inactive = off)
+    if (static_presence_output_ != nullptr)
+      static_presence_output_->publish_state(result.static_state != SensorPresenceState::INACTIVE);
+    if (motion_presence_output_ != nullptr)
+      motion_presence_output_->publish_state(result.motion_state != SensorPresenceState::INACTIVE);
+    if (occupancy_output_ != nullptr)
+      occupancy_output_->publish_state(result.occupancy);
+
     // Publish zone state as compact JSON
     if (zone_state_sensor_ != nullptr) {
-      char json[384];
+      // Compute sensor state codes (used in JSON fields and debug log)
+      const char *static_code = result.static_state == SensorPresenceState::ACTIVE ? "A" :
+                                 result.static_state == SensorPresenceState::PENDING ? "P" : "I";
+      const char *motion_code = result.motion_state == SensorPresenceState::ACTIVE ? "A" :
+                                 result.motion_state == SensorPresenceState::PENDING ? "P" : "I";
+
+      char json[512];
       int pos = snprintf(json, sizeof(json),
           "{\"targets\":[");
       for (int i = 0; i < NUM_TARGETS; i++) {
@@ -150,10 +173,18 @@ void EPPComponent::loop() {
             result.zone_occupancy[i] ? "true" : "false");
       }
       pos += snprintf(json + pos, sizeof(json) - pos,
-          "],\"tracking\":%s},\"frame_count\":%d,\"debug_log\":\"",
+          "],\"tracking\":%s},"
+          "\"static_state\":\"%s\",\"motion_state\":\"%s\",\"occupancy\":%s,"
+          "\"frame_count\":%d,\"debug_log\":\"",
           result.device_tracking_present ? "true" : "false",
+          static_code, motion_code,
+          result.occupancy ? "true" : "false",
           result.frame_count);
-      // Build debug log: "T0:Z1:A:5 T1:Z0:P:3|Z0:O:1 Z1:O:1"
+
+      // Debug log: "S:A M:P Occ:1|T0:Z1:A:5|Z0:O:1 Z1:O:1"
+      // Sensor prefix
+      pos += snprintf(json + pos, sizeof(json) - pos,
+          "S:%s M:%s Occ:%d|", static_code, motion_code, result.occupancy ? 1 : 0);
       // Targets part
       bool first_target = true;
       for (int i = 0; i < result.target_count && i < NUM_TARGETS; i++) {

@@ -5,10 +5,8 @@ globals:
 
 binary_sensor:
   - platform: gpio
-    name: Static Presence
     id: dfrobot_presence
-    device_class: occupancy
-    disabled_by_default: true
+    internal: true
     pin:
       number: GPIO34
 

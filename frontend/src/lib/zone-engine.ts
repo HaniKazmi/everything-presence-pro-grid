@@ -21,6 +21,11 @@ export interface ZoneEngineState {
 	targetPrev: ({ col: number; row: number } | null)[];
 	targetGateCount: number[];
 	targetPrevXY: ({ x: number; y: number } | null)[];
+	staticState: "active" | "pending" | "inactive";
+	motionState: "active" | "pending" | "inactive";
+	staticPendingSince: number | null;
+	motionPendingSince: number | null;
+	sensorsEverActive: boolean;
 }
 
 export interface ZoneEngineParams {
@@ -41,12 +46,19 @@ export interface ZoneEngineParams {
 	roomTimeout: number;
 	roomHandoffTimeout: number;
 	roomEntryPoint: boolean;
+	staticPresence?: boolean;
+	motionPresence?: boolean;
+	staticTimeout?: number; // seconds
+	motionTimeout?: number; // seconds
 	now?: number; // seconds (defaults to Date.now() / 1000)
 }
 
 export interface ZoneEngineResult {
 	occupancy: Record<number, boolean>;
 	targets: { status: "active" | "pending" | "inactive" }[];
+	staticState: "active" | "pending" | "inactive";
+	motionState: "active" | "pending" | "inactive";
+	sensorOccupancy: boolean;
 }
 
 // ---- Factory ----
@@ -57,6 +69,11 @@ export function createZoneEngineState(): ZoneEngineState {
 		targetPrev: [null, null, null],
 		targetGateCount: [0, 0, 0],
 		targetPrevXY: [null, null, null],
+		staticState: "inactive",
+		motionState: "inactive",
+		staticPendingSince: null,
+		motionPendingSince: null,
+		sensorsEverActive: false,
 	};
 }
 
@@ -289,6 +306,79 @@ export function runLocalZoneEngine(
 		}
 	}
 
+	// Sensor presence state machine
+	const staticOn = params.staticPresence ?? false;
+	const motionOn = params.motionPresence ?? false;
+	const staticTimeout = params.staticTimeout ?? 10;
+	const motionTimeout = params.motionTimeout ?? 10;
+
+	if (staticOn) {
+		state.staticState = "active";
+		state.staticPendingSince = null;
+		state.sensorsEverActive = true;
+	} else if (state.staticState === "active") {
+		state.staticState = "pending";
+		state.staticPendingSince = now;
+	} else if (
+		state.staticState === "pending" &&
+		state.staticPendingSince !== null
+	) {
+		if (now - state.staticPendingSince >= staticTimeout) {
+			state.staticState = "inactive";
+			state.staticPendingSince = null;
+		}
+	}
+
+	if (motionOn) {
+		state.motionState = "active";
+		state.motionPendingSince = null;
+		state.sensorsEverActive = true;
+	} else if (state.motionState === "active") {
+		state.motionState = "pending";
+		state.motionPendingSince = now;
+	} else if (
+		state.motionState === "pending" &&
+		state.motionPendingSince !== null
+	) {
+		if (now - state.motionPendingSince >= motionTimeout) {
+			state.motionState = "inactive";
+			state.motionPendingSince = null;
+		}
+	}
+
+	// Force-clear: when both sensors inactive and no zones OCCUPIED, clear pending zones
+	// Only applies when sensors have been active at some point (prevents force-clear
+	// on sensor-free deployments where sensors are always default-inactive)
+	if (
+		state.sensorsEverActive &&
+		state.staticState === "inactive" &&
+		state.motionState === "inactive"
+	) {
+		let anyOccupied = false;
+		for (const [, st] of state.localZoneState) {
+			if (st.occupied && st.pendingSince === null) {
+				anyOccupied = true;
+				break;
+			}
+		}
+		if (!anyOccupied) {
+			for (const [zid, st] of state.localZoneState) {
+				if (st.occupied && st.pendingSince !== null) {
+					st.occupied = false;
+					st.pendingSince = null;
+					st.confirmedTargets.clear();
+					occupancy[zid] = false;
+				}
+			}
+		}
+	}
+
+	// Compute sensor occupancy
+	const sensorOccupancy =
+		state.staticState !== "inactive" ||
+		state.motionState !== "inactive" ||
+		Object.values(occupancy).some((v) => v);
+
 	// Build per-target status (mirrors backend _tick lines 661-700).
 	// Only status is needed — position for pending display is handled
 	// by targetPrevXY in the rendering layer.
@@ -316,5 +406,11 @@ export function runLocalZoneEngine(
 		}
 	}
 
-	return { occupancy, targets: targetResults };
+	return {
+		occupancy,
+		targets: targetResults,
+		staticState: state.staticState,
+		motionState: state.motionState,
+		sensorOccupancy,
+	};
 }

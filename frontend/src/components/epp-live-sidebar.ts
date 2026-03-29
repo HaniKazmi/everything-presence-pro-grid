@@ -8,6 +8,9 @@ export interface SensorState {
 	static_presence: boolean;
 	motion_presence: boolean;
 	target_presence: boolean;
+	static_state?: string; // "active" | "pending" | "inactive"
+	motion_state?: string; // "active" | "pending" | "inactive"
+	occupancy_state?: boolean;
 	illuminance: number | null;
 	temperature: number | null;
 	humidity: number | null;
@@ -177,19 +180,19 @@ export class EppLiveSidebar extends LitElement {
 			{
 				id: "occupancy",
 				label: this.localize("live.occupancy"),
-				on: ss.occupancy,
+				on: ss.occupancy_state ?? ss.occupancy,
 				info: this.localize("info.occupancy"),
 			},
 			{
 				id: "static",
 				label: this.localize("live.static_presence"),
-				on: ss.static_presence,
+				on: ss.static_state ? ss.static_state !== "I" : ss.static_presence,
 				info: this.localize("info.static_presence"),
 			},
 			{
 				id: "motion",
 				label: this.localize("live.motion_presence"),
-				on: ss.motion_presence,
+				on: ss.motion_state ? ss.motion_state !== "I" : ss.motion_presence,
 				info: this.localize("info.motion_presence"),
 			},
 			{

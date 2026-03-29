@@ -193,6 +193,96 @@ describe("epp-live-sidebar element", () => {
 		document.body.removeChild(c2);
 	});
 
+	it("shows static as detected when static_state is 'A' (active)", () => {
+		const el = document.createElement("epp-live-sidebar") as any;
+		el.sensorState = {
+			occupancy: false,
+			static_presence: false, // raw binary is off
+			motion_presence: false,
+			target_presence: false,
+			static_state: "A", // but zone engine says active
+			illuminance: null,
+			temperature: null,
+			humidity: null,
+			co2: null,
+		};
+		const tpl = el.render();
+		const c = renderTo(tpl);
+		const dots = c.querySelectorAll(".live-sensor-dot");
+		// dot[1] = static — should be "on" because state is "A"
+		expect(dots[1].classList.contains("on")).toBe(true);
+		document.body.removeChild(c);
+	});
+
+	it("shows static as detected when static_state is 'P' (pending)", () => {
+		const el = document.createElement("epp-live-sidebar") as any;
+		el.sensorState = {
+			occupancy: false,
+			static_presence: false,
+			motion_presence: false,
+			target_presence: false,
+			static_state: "P",
+			illuminance: null,
+			temperature: null,
+			humidity: null,
+			co2: null,
+		};
+		const tpl = el.render();
+		const c = renderTo(tpl);
+		const dots = c.querySelectorAll(".live-sensor-dot");
+		expect(dots[1].classList.contains("on")).toBe(true);
+		document.body.removeChild(c);
+	});
+
+	it("shows static as clear when static_state is 'I' (inactive)", () => {
+		const el = document.createElement("epp-live-sidebar") as any;
+		el.sensorState = {
+			occupancy: false,
+			static_presence: false,
+			motion_presence: false,
+			target_presence: false,
+			static_state: "I",
+			illuminance: null,
+			temperature: null,
+			humidity: null,
+			co2: null,
+		};
+		const tpl = el.render();
+		const c = renderTo(tpl);
+		const dots = c.querySelectorAll(".live-sensor-dot");
+		expect(dots[1].classList.contains("off")).toBe(true);
+		document.body.removeChild(c);
+	});
+
+	it("shows motion as detected during pending, clear when inactive", () => {
+		const el = document.createElement("epp-live-sidebar") as any;
+		el.sensorState = {
+			occupancy: false,
+			static_presence: false,
+			motion_presence: false,
+			target_presence: false,
+			motion_state: "P",
+			illuminance: null,
+			temperature: null,
+			humidity: null,
+			co2: null,
+		};
+		const tpl = el.render();
+		const c = renderTo(tpl);
+		const dots = c.querySelectorAll(".live-sensor-dot");
+		// dot[2] = motion — pending should show as "on"
+		expect(dots[2].classList.contains("on")).toBe(true);
+		document.body.removeChild(c);
+
+		// Now inactive
+		el.sensorState = { ...el.sensorState, motion_state: "I" };
+		const tpl2 = el.render();
+		const c2 = renderTo(tpl2);
+		const dots2 = c2.querySelectorAll(".live-sensor-dot");
+		expect(dots2[2].classList.contains("off")).toBe(true);
+		document.body.removeChild(c2);
+	});
+
 	it("renders rest-of-room zone even with no configured zones", () => {
 		const el = document.createElement("epp-live-sidebar") as any;
 		el.perspective = [1, 0, 0, 0, 1, 0, 0, 0];

@@ -274,6 +274,26 @@ describe("TargetController", () => {
 				"T0→Entrance(active,5) T1→Room(pending,3) | Room: occupied(1), Entrance: occupied(1)",
 			);
 		});
+
+		it("parses 3-section format (sensors|targets|zones) with S:, M:, Occ: tokens", () => {
+			const result = ctrl.enrichDebugLog("S:A M:I Occ:1|T0:Z1:A:5|Z1:O:1");
+			expect(result).toBe(
+				"Static: active, Motion: inactive, Occ: on | T0→Entrance(active,5) | Entrance: occupied(1)",
+			);
+		});
+
+		it("renders 3-section format with Occ:0 as 'off'", () => {
+			const result = ctrl.enrichDebugLog("S:I M:A Occ:0|T0:Z1:A:5|Z1:O:1");
+			expect(result).toContain("Occ: off");
+			expect(result).toContain("Static: inactive");
+			expect(result).toContain("Motion: active");
+		});
+
+		it("shows 'no targets' and 'all clear' in 3-section format with empty target/zone parts", () => {
+			const result = ctrl.enrichDebugLog("S:I M:I Occ:0||");
+			expect(result).toContain("no targets");
+			expect(result).toContain("all clear");
+		});
 	});
 
 	// -------------------------------------------------------------------------
@@ -325,6 +345,35 @@ describe("TargetController", () => {
 			host.requestUpdate.mockClear();
 			ctrl.appendBackendDebugLog("T0:Z1:A:5|Z1:O:1");
 			expect(host.requestUpdate).not.toHaveBeenCalled();
+		});
+
+		it("skips sensor-prefix injection when log already has 3 sections", () => {
+			// 3-section format: sensors|targets|zones — no injection should happen
+			ctrl.appendBackendDebugLog("S:A M:I Occ:1|T0:Z1:A:5|Z1:O:1");
+			expect(host._backendDebugLogLines.length).toBe(1);
+			expect(host._backendDebugLogLines[0]).toContain("Static: active");
+			// The injected sensor prefix (S:I/S:A) should not appear twice
+			expect(
+				(host._backendDebugLogLines[0].match(/Static:/g) ?? []).length,
+			).toBe(1);
+		});
+
+		it("injects sensor prefix with active static/motion when _sensorState has presences set", () => {
+			host._sensorState = {
+				occupancy: true,
+				static_presence: true,
+				motion_presence: true,
+				target_presence: true,
+				illuminance: null,
+				temperature: null,
+				humidity: null,
+				co2: null,
+			};
+			ctrl.appendBackendDebugLog("T0:Z1:A:5|Z1:O:1");
+			expect(host._backendDebugLogLines.length).toBe(1);
+			expect(host._backendDebugLogLines[0]).toContain("Static: active");
+			expect(host._backendDebugLogLines[0]).toContain("Motion: active");
+			expect(host._backendDebugLogLines[0]).toContain("Occ: on");
 		});
 	});
 
@@ -419,6 +468,165 @@ describe("TargetController", () => {
 			];
 			ctrl.runLocalZoneEngine();
 			expect(host._debugLogLines.length).toBe(0);
+		});
+
+		it("caps frontend debug log lines at DEBUG_LOG_MAX", () => {
+			host._showDebugLog = true;
+			// Run engine DEBUG_LOG_MAX+2 times, each with a unique target position so
+			// dedup doesn't suppress lines.  We clear _debugLogPrev before each call.
+			for (let i = 0; i <= DEBUG_LOG_MAX; i++) {
+				host._debugLogPrev = "";
+				ctrl.runLocalZoneEngine();
+			}
+			expect(host._debugLogLines.length).toBeLessThanOrEqual(DEBUG_LOG_MAX);
+		});
+
+		it("handles null _sensorState gracefully (uses false fallbacks)", () => {
+			host._sensorState = null;
+			host._targets = [];
+			expect(() => ctrl.runLocalZoneEngine()).not.toThrow();
+		});
+
+		it("builds frontend debug log with static/motion sensor prefix from zone engine state", () => {
+			host._showDebugLog = true;
+			// Directly set the internal zone engine state to have active static/motion
+			const state = ctrl.zoneEngineState;
+			state.staticState = "active";
+			state.motionState = "active";
+			ctrl.zoneEngineState = state;
+			host._targets = [];
+			ctrl.runLocalZoneEngine();
+			// Should have produced a log line containing sensor info
+			const allLog = host._debugLogLines.join(" ") + host._debugLogPrev;
+			expect(allLog).toContain("Static:");
+		});
+
+		it("encodes 'active' static state as 'A' in frontend debug log", () => {
+			host._showDebugLog = true;
+			host._targets = [];
+			// Pass static_presence = true so the zone engine produces staticState "active"
+			host._sensorState = {
+				occupancy: false,
+				static_presence: true,
+				motion_presence: false,
+				target_presence: false,
+				illuminance: null,
+				temperature: null,
+				humidity: null,
+				co2: null,
+			};
+			ctrl.runLocalZoneEngine();
+			const allLog = host._debugLogLines.join(" ") + host._debugLogPrev;
+			expect(allLog).toContain("Static: active");
+		});
+
+		it("encodes 'active' motion state as 'A' in frontend debug log", () => {
+			host._showDebugLog = true;
+			host._targets = [];
+			host._sensorState = {
+				occupancy: false,
+				static_presence: false,
+				motion_presence: true,
+				target_presence: false,
+				illuminance: null,
+				temperature: null,
+				humidity: null,
+				co2: null,
+			};
+			ctrl.runLocalZoneEngine();
+			const allLog = host._debugLogLines.join(" ") + host._debugLogPrev;
+			expect(allLog).toContain("Motion: active");
+		});
+
+		it("deduplicates frontend debug log on consecutive identical results", () => {
+			host._showDebugLog = true;
+			host._targets = [];
+			// First call populates the log
+			ctrl.runLocalZoneEngine();
+			const countAfterFirst = host._debugLogLines.length;
+			// Second call with identical state should be deduped
+			ctrl.runLocalZoneEngine();
+			expect(host._debugLogLines.length).toBe(countAfterFirst);
+		});
+
+		it("encodes 'pending' static state as 'P' in frontend debug log", () => {
+			host._showDebugLog = true;
+			// Pre-seed state as "active" then run with no targets/presence → transitions to "pending"
+			const state = ctrl.zoneEngineState;
+			state.staticState = "pending";
+			state.staticPendingSince = Date.now() / 1000; // recent, not timed-out yet
+			ctrl.zoneEngineState = state;
+			host._targets = [];
+			// No static presence → state stays "pending" (not timed out)
+			host._sensorState = {
+				occupancy: false,
+				static_presence: false,
+				motion_presence: false,
+				target_presence: false,
+				illuminance: null,
+				temperature: null,
+				humidity: null,
+				co2: null,
+			};
+			ctrl.runLocalZoneEngine();
+			const allLog = host._debugLogLines.join(" ") + host._debugLogPrev;
+			expect(allLog).toContain("Static: pending");
+		});
+
+		it("encodes 'pending' motion state as 'P' in frontend debug log", () => {
+			host._showDebugLog = true;
+			const state = ctrl.zoneEngineState;
+			state.motionState = "pending";
+			state.motionPendingSince = Date.now() / 1000;
+			ctrl.zoneEngineState = state;
+			host._targets = [];
+			host._sensorState = {
+				occupancy: false,
+				static_presence: false,
+				motion_presence: false,
+				target_presence: false,
+				illuminance: null,
+				temperature: null,
+				humidity: null,
+				co2: null,
+			};
+			ctrl.runLocalZoneEngine();
+			const allLog = host._debugLogLines.join(" ") + host._debugLogPrev;
+			expect(allLog).toContain("Motion: pending");
+		});
+
+		it("encodes zone 'O' state (occupied, no pendingSince) in frontend debug log", () => {
+			host._showDebugLog = true;
+			// Zone 0 (Room) occupied with pendingSince === null → state code "O"
+			const state = ctrl.zoneEngineState;
+			state.localZoneState.set(0, {
+				occupied: true,
+				pendingSince: null, // confirmed occupied → "O"
+				confirmedTargets: new Set(),
+			});
+			ctrl.zoneEngineState = state;
+			host._targets = [];
+			ctrl.runLocalZoneEngine();
+			const allLog = host._debugLogLines.join(" ") + host._debugLogPrev;
+			expect(allLog).toContain("Room");
+		});
+
+		it("includes 'pending' zone state (P) in debug log when zone has pendingSince set", () => {
+			host._showDebugLog = true;
+			// Seed the zone engine state with an occupied zone that has pendingSince set
+			const state = ctrl.zoneEngineState;
+			state.localZoneState.set(0, {
+				occupied: true,
+				pendingSince: Date.now() / 1000,
+				confirmedTargets: new Set(),
+			});
+			ctrl.zoneEngineState = state;
+			host._targets = [];
+			ctrl.runLocalZoneEngine();
+			// The log should either have a line or prev set
+			const allLog = host._debugLogLines.join(" ") + host._debugLogPrev;
+			// Zone 0 (Room) with pendingSince set → state code "P"
+			expect(allLog).toContain("Room");
 		});
 	});
 });

@@ -1024,8 +1024,12 @@ class TestSubscriptionCallbacks:
         state = TextSensorState(key=300, state=zone_json, missing_state=False)
         on_state(state)
 
-        # Zone state doesn't trigger send_message directly (only target positions do)
-        connection.send_message.assert_not_called()
+        # Zone state now triggers send_message so sensor state changes
+        # appear in the detection log without delay
+        connection.send_message.assert_called_once()
+        event = connection.send_message.call_args[0][0]
+        assert event["event"]["zones"]["debug_log"] == "test debug"
+        assert event["event"]["sensors"]["target_presence"] is True
 
     async def test_grid_targets_on_state_binary_sensor(
         self, hass: HomeAssistant, config_entry: MockConfigEntry

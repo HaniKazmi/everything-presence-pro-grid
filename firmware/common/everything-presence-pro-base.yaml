@@ -92,6 +92,19 @@ epp:
   zone_state:
     name: "Zone State"
     disabled_by_default: true
+  static_presence: dfrobot_presence
+  motion_presence: pir_motion
+  static_presence_output:
+    name: "Static Presence"
+    device_class: occupancy
+    disabled_by_default: true
+  motion_presence_output:
+    name: "Motion Presence"
+    device_class: motion
+    disabled_by_default: true
+  occupancy_output:
+    name: "Occupancy"
+    device_class: occupancy
 
 # Enable logging
 logger:
@@ -108,7 +121,7 @@ globals:
     initial_value: '0'
   - id: motion_timeout
     type: float
-    initial_value: '10'
+    initial_value: '1'
   - id: display_interval_ms
     type: uint32_t
     initial_value: '200'
@@ -174,7 +187,10 @@ api:
         timeout: float
       then:
         - lambda: |-
-            id(motion_timeout) = timeout;
+            // motion_timeout is a fixed 1s PIR debounce; the real timeout
+            // is managed by the zone engine via set_motion_timeout()
+            id(motion_timeout) = 1;
+            id(epp_component).set_motion_timeout(timeout);
     - action: epp_set_tracking
       variables:
         max_range: float
@@ -217,7 +233,9 @@ api:
         - uart.write:
             id: uart_bus_dfrobot
             data: !lambda |-
-              auto ms = str_sprintf("setLatency %.2f %.0f\r\n", on_delay, timeout);
+              // Hardware timeout fixed at 1s for debounce; the real timeout
+              // is managed by the zone engine via set_static_timeout()
+              auto ms = str_sprintf("setLatency %.2f 1\r\n", on_delay);
               return std::vector<unsigned char>(ms.begin(), ms.end());
         - delay: 1s
         - uart.write:
@@ -235,6 +253,8 @@ api:
             id: uart_bus_dfrobot
             data: "sensorStart\r\n"
         - delay: 1s
+        - lambda: |-
+            id(epp_component).set_static_timeout(timeout);
     - action: epp_set_pipeline
       variables:
         display_interval: int
@@ -377,10 +397,8 @@ i2c:
 
 binary_sensor:
   - platform: gpio
-    name: "Motion Presence"
     id: pir_motion
-    device_class: motion
-    disabled_by_default: true
+    internal: true
     pin:
       number: GPIO36
     filters:
@@ -400,9 +418,8 @@ binary_sensor:
             }
 
   - platform: template
-    name: Occupancy
     id: occupancy
-    device_class: occupancy
+    internal: true
     lambda: |-
       if (id(dfrobot_presence).state || id(pir_motion).state || id(epp_zone_tracking).state) {
         return true;
