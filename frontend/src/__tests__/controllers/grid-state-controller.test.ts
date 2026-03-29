@@ -596,4 +596,149 @@ describe("GridStateController", () => {
 			expect(() => ctrl.hostDisconnected()).not.toThrow();
 		});
 	});
+
+	describe("onFurniturePointerDown rotation", () => {
+		it("finds furniture item through nested shadow DOMs for rotation center", () => {
+			const item: FurnitureItem = {
+				id: "f1",
+				type: "sofa-2" as any,
+				x: 500,
+				y: 500,
+				width: 600,
+				height: 300,
+				rotation: 45,
+			};
+			host._furniture = [item];
+
+			// Mock furniture item element with getBoundingClientRect
+			const furnitureEl = document.createElement("div");
+			furnitureEl.classList.add("furniture-item");
+			furnitureEl.setAttribute("data-id", "f1");
+			furnitureEl.getBoundingClientRect = () => ({
+				left: 200,
+				top: 100,
+				width: 60,
+				height: 30,
+				right: 260,
+				bottom: 130,
+				x: 200,
+				y: 100,
+				toJSON: () => {},
+			});
+
+			// Build nested shadow DOM mock:
+			// host.shadowRoot -> epp-grid -> shadowRoot -> epp-furniture-overlay -> shadowRoot -> .furniture-item
+			const overlayShadow = document.createElement("div");
+			overlayShadow.appendChild(furnitureEl);
+
+			const overlay = document.createElement("div");
+			Object.defineProperty(overlay, "shadowRoot", { value: overlayShadow });
+
+			const eppGridShadow = document.createElement("div");
+			eppGridShadow.appendChild(overlay);
+			const origGridQS = eppGridShadow.querySelector.bind(eppGridShadow);
+			eppGridShadow.querySelector = ((sel: string) => {
+				if (sel === "epp-furniture-overlay") return overlay;
+				return origGridQS(sel);
+			}) as any;
+
+			const eppGrid = document.createElement("div");
+			Object.defineProperty(eppGrid, "shadowRoot", { value: eppGridShadow });
+
+			const hostShadow = document.createElement("div");
+			hostShadow.appendChild(eppGrid);
+			const origHostQS = hostShadow.querySelector.bind(hostShadow);
+			hostShadow.querySelector = ((sel: string) => {
+				if (sel === "epp-grid") return eppGrid;
+				return origHostQS(sel);
+			}) as any;
+
+			host.shadowRoot = hostShadow as any;
+
+			// Simulate pointerdown for rotation at (250, 130) - right of center
+			const ev = new PointerEvent("pointerdown", {
+				clientX: 250,
+				clientY: 130,
+			});
+
+			// Need to mock addEventListener on window
+			const addSpy = vi
+				.spyOn(window, "addEventListener")
+				.mockImplementation(() => {});
+
+			ctrl.onFurniturePointerDown(ev, "f1", "rotate");
+
+			addSpy.mockRestore();
+
+			// Verify drag state was created with correct center
+			expect(host._dragState).not.toBeNull();
+			expect(host._dragState.centerX).toBe(230); // 200 + 60/2
+			expect(host._dragState.centerY).toBe(115); // 100 + 30/2
+			expect(host._dragState.startAngle).not.toBe(0);
+		});
+	});
+
+	describe("onFurnitureDrag", () => {
+		it("finds .grid through nested epp-grid shadow DOM", () => {
+			// Set up a furniture item and drag state
+			const item: FurnitureItem = {
+				id: "f1",
+				type: "sofa-2" as any,
+				x: 500,
+				y: 500,
+				width: 600,
+				height: 300,
+				rotation: 0,
+			};
+			host._furniture = [item];
+			host._dragState = {
+				id: "f1",
+				type: "move",
+				startX: 100,
+				startY: 100,
+				origX: 500,
+				origY: 500,
+				origW: 600,
+				origH: 300,
+				origRot: 0,
+			};
+
+			// Mock the nested shadow DOM: host.shadowRoot -> epp-grid -> shadowRoot -> .grid -> cell
+			const cellEl = document.createElement("div");
+			Object.defineProperty(cellEl, "offsetWidth", { value: 30 });
+
+			const gridDiv = document.createElement("div");
+			gridDiv.classList.add("grid");
+			gridDiv.appendChild(cellEl);
+
+			const eppGridShadow = document.createElement("div");
+			eppGridShadow.appendChild(gridDiv);
+
+			const eppGrid = document.createElement("div");
+			// Mock epp-grid's shadowRoot
+			Object.defineProperty(eppGrid, "shadowRoot", { value: eppGridShadow });
+
+			const hostShadow = document.createElement("div");
+			hostShadow.appendChild(eppGrid);
+			// querySelector("epp-grid") needs to find our mock element
+			const origQS = hostShadow.querySelector.bind(hostShadow);
+			hostShadow.querySelector = ((sel: string) => {
+				if (sel === "epp-grid") return eppGrid;
+				return origQS(sel);
+			}) as any;
+
+			host.shadowRoot = hostShadow as any;
+
+			// Simulate a drag event
+			const ev = new PointerEvent("pointermove", {
+				clientX: 130,
+				clientY: 120,
+			});
+			ctrl.onFurnitureDrag(ev);
+
+			// The furniture item should have moved (not silently aborted)
+			const updated = host._furniture[0];
+			expect(updated.x).not.toBe(500);
+		});
+	});
 });

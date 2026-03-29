@@ -395,14 +395,27 @@ export const layoutStyles = css`
     align-items: flex-start;
   }
 
+  .grid-column {
+    min-width: 0;
+    max-width: min-content;
+    overflow: hidden;
+  }
+
   .grid-container {
     position: relative;
     max-width: 100%;
     overflow: visible;
   }
 
+  .sidebar-scroll {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+  }
+
   .zone-sidebar {
     width: 240px;
+    flex-shrink: 0;
     max-height: 70vh;
     background: var(--card-background-color, #fff);
     border-left: 1px solid var(--divider-color, #e0e0e0);
@@ -410,7 +423,7 @@ export const layoutStyles = css`
     display: flex;
     flex-direction: column;
     gap: 6px;
-    overflow: hidden;
+    overflow: visible;
   }
 
   .sidebar-title {

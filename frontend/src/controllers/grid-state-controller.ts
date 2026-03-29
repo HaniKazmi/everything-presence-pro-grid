@@ -247,9 +247,13 @@ export class GridStateController implements ReactiveController {
 			centerY = 0,
 			startAngle = 0;
 		if (type === "rotate") {
-			const el = this.host.shadowRoot?.querySelector(
-				`.furniture-item[data-id="${id}"]`,
-			) as HTMLElement | null;
+			// Pierce through epp-grid -> epp-furniture-overlay shadow DOMs
+			const el = this.host.shadowRoot
+				?.querySelector("epp-grid")
+				?.shadowRoot?.querySelector("epp-furniture-overlay")
+				?.shadowRoot?.querySelector(
+					`.furniture-item[data-id="${id}"]`,
+				) as HTMLElement | null;
 			if (el) {
 				const rect = el.getBoundingClientRect();
 				centerX = rect.left + rect.width / 2;
@@ -290,10 +294,10 @@ export class GridStateController implements ReactiveController {
 		if (!this.host._dragState) return;
 		const ds = this.host._dragState;
 
-		// Get cellPx from the grid container
-		const gridEl = this.host.shadowRoot?.querySelector(
-			".grid",
-		) as HTMLElement | null;
+		// Get cellPx from the grid container (pierce epp-grid's shadow DOM)
+		const gridEl = this.host.shadowRoot
+			?.querySelector("epp-grid")
+			?.shadowRoot?.querySelector(".grid") as HTMLElement | null;
 		if (!gridEl) return;
 		const cellPx = gridEl.firstElementChild
 			? (gridEl.firstElementChild as HTMLElement).offsetWidth
