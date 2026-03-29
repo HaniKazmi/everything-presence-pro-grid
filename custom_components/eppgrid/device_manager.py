@@ -88,6 +88,34 @@ class DeviceConnection:
         for cb in self._state_subscribers:
             cb(state)
 
+    async def async_push_detection_preview(self, preview: dict[str, Any]) -> None:
+        """Push detection distance preview to device without persisting."""
+        if self._client is None:
+            return
+        service = self._services.get("epp_set_tracking")
+        if service:
+            await self._client.execute_service(
+                service,
+                {
+                    "max_range": preview.get("target_max_distance", 6.0),
+                },
+            )
+        service = self._services.get("epp_set_static_presence")
+        if service:
+            await self._client.execute_service(
+                service,
+                {
+                    "min_range": preview.get("static_min_distance", 0.3),
+                    "max_range": preview.get("static_max_distance", 16.0),
+                    "trigger_range": preview.get("static_max_distance", 16.0),
+                    "trigger_sensitivity": 10 - preview.get("static_trigger_threshold", 3),
+                    "sustain_sensitivity": 10 - preview.get("static_renew_threshold", 3),
+                    "timeout": preview.get("static_timeout", 30.0),
+                    "on_delay": preview.get("static_on_delay", 0.0),
+                    "led_enabled": True,
+                },
+            )
+
     async def async_push_config(self, config: dict[str, Any]) -> None:
         """Push perspective, grid, and zones to the device."""
         if self._client is None:

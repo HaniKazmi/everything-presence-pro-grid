@@ -757,6 +757,16 @@ class TestNotReadyGuards:
                 },
                 True,
             ),
+            (
+                "websocket_set_detection_preview",
+                {
+                    "mac": "AA:BB",
+                    "target_max_distance": 3.0,
+                    "static_min_distance": 0.5,
+                    "static_max_distance": 6.0,
+                },
+                True,
+            ),
         ],
     )
     async def test_not_ready(self, hass: HomeAssistant, handler_name: str, extra_fields: dict, is_async: bool) -> None:
@@ -1189,6 +1199,79 @@ class TestUpdateFirmwareError:
         args = connection.send_error.call_args[0]
         assert args[1] == "update_failed"
         assert "OTA failed" in args[2]
+
+
+class TestWebSocketDetectionPreview:
+    """Tests for eppgrid/set_detection_preview."""
+
+    async def test_set_detection_preview_pushes_without_saving(
+        self, hass: HomeAssistant, config_entry: MockConfigEntry
+    ) -> None:
+        """set_detection_preview pushes merged preview to device without persisting."""
+        mock_dm = await setup_integration(hass, config_entry)
+        mock_dm._store.devices["AA:BB:CC:DD:EE:FF"] = {
+            "settings": {
+                "static_trigger_threshold": 5,
+                "static_renew_threshold": 4,
+                "static_timeout": 20.0,
+                "static_on_delay": 1.0,
+            }
+        }
+
+        mock_session = MagicMock()
+        mock_session.async_push_detection_preview = AsyncMock()
+        mock_dm.get_session.return_value = mock_session
+
+        from custom_components.eppgrid.websocket_api import websocket_set_detection_preview
+
+        connection = MagicMock()
+        msg = {
+            "id": 20,
+            "type": "eppgrid/set_detection_preview",
+            "mac": "AA:BB:CC:DD:EE:FF",
+            "target_max_distance": 3.0,
+            "static_min_distance": 0.5,
+            "static_max_distance": 6.0,
+        }
+
+        await call_async_handler(hass, websocket_set_detection_preview, connection, msg)
+
+        # Verify merged preview was pushed (preview distances + stored non-distance settings)
+        mock_session.async_push_detection_preview.assert_awaited_once()
+        preview = mock_session.async_push_detection_preview.call_args[0][0]
+        assert preview["target_max_distance"] == 3.0
+        assert preview["static_min_distance"] == 0.5
+        assert preview["static_max_distance"] == 6.0
+        assert preview["static_trigger_threshold"] == 5
+        assert preview["static_renew_threshold"] == 4
+        assert preview["static_timeout"] == 20.0
+        assert preview["static_on_delay"] == 1.0
+
+        # Must NOT persist
+        mock_dm._store.async_save.assert_not_awaited()
+
+        connection.send_result.assert_called_once_with(20)
+
+    async def test_set_detection_preview_no_session(self, hass: HomeAssistant, config_entry: MockConfigEntry) -> None:
+        """set_detection_preview is a no-op when no session exists."""
+        mock_dm = await setup_integration(hass, config_entry)
+        mock_dm.get_session.return_value = None
+
+        from custom_components.eppgrid.websocket_api import websocket_set_detection_preview
+
+        connection = MagicMock()
+        msg = {
+            "id": 20,
+            "type": "eppgrid/set_detection_preview",
+            "mac": "AA:BB:CC:DD:EE:FF",
+            "target_max_distance": 3.0,
+            "static_min_distance": 0.5,
+            "static_max_distance": 6.0,
+        }
+
+        await call_async_handler(hass, websocket_set_detection_preview, connection, msg)
+
+        connection.send_result.assert_called_once_with(20)
 
 
 class TestProtocolVersionGuard:

@@ -37,6 +37,7 @@ def async_register_websocket_commands(hass: HomeAssistant, manager: Any) -> None
     websocket_api.async_register_command(hass, websocket_subscribe_raw_targets)
     websocket_api.async_register_command(hass, websocket_set_entity_enabled)
     websocket_api.async_register_command(hass, websocket_set_settings)
+    websocket_api.async_register_command(hass, websocket_set_detection_preview)
     websocket_api.async_register_command(hass, websocket_set_pipeline)
     websocket_api.async_register_command(hass, websocket_update_firmware)
 
@@ -698,6 +699,50 @@ async def websocket_set_settings(
     await manager._store.async_save()
     await manager._push_config_to_device(mac)
     # Entity enable/disable is handled in Task 4
+    connection.send_result(msg["id"])
+
+
+# -- set_detection_preview (live range preview, no persist) --
+
+
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): "eppgrid/set_detection_preview",
+        vol.Required("mac"): str,
+        vol.Required("target_max_distance"): vol.Coerce(float),
+        vol.Required("static_min_distance"): vol.Coerce(float),
+        vol.Required("static_max_distance"): vol.Coerce(float),
+    }
+)
+@websocket_api.async_response
+async def websocket_set_detection_preview(
+    hass: HomeAssistant,
+    connection: websocket_api.ActiveConnection,
+    msg: dict[str, Any],
+) -> None:
+    """Push detection distance preview to device without persisting."""
+    manager = _get_manager(hass)
+    if manager is None:
+        connection.send_error(msg["id"], "not_ready", "Integration not loaded")
+        return
+    mac = msg["mac"]
+    session = manager.get_session(mac)
+    if session is None:
+        connection.send_result(msg["id"])
+        return
+    # Merge preview distances with stored non-distance settings
+    device_config = manager._store.devices.get(mac, {})
+    stored_settings = device_config.get("settings", {})
+    preview = {
+        "target_max_distance": msg["target_max_distance"],
+        "static_min_distance": msg["static_min_distance"],
+        "static_max_distance": msg["static_max_distance"],
+        "static_trigger_threshold": stored_settings.get("static_trigger_threshold", 3),
+        "static_renew_threshold": stored_settings.get("static_renew_threshold", 3),
+        "static_timeout": stored_settings.get("static_timeout", 30.0),
+        "static_on_delay": stored_settings.get("static_on_delay", 0.0),
+    }
+    await session.async_push_detection_preview(preview)
     connection.send_result(msg["id"])
 
 
