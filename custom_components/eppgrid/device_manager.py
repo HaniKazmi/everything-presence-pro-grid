@@ -361,6 +361,9 @@ class DeviceManager:
     async def async_open_session(self, mac: str) -> DeviceConnection | None:
         """Open a persistent connection for a frontend session.
         Returns the connection, or None if the device is not available."""
+        dev = self.devices.get(mac)
+        if dev is None or dev.host is None:
+            return None
         lock = self._session_locks.setdefault(mac, asyncio.Lock())
         async with lock:
             if mac in self._active_connections:
@@ -369,10 +372,6 @@ class DeviceManager:
                     return conn
                 # Stale connection — clean up
                 await conn.async_disconnect()
-
-            dev = self.devices.get(mac)
-            if dev is None or dev.host is None:
-                return None
             conn = DeviceConnection(dev.host)
             await conn.async_connect()
             self._active_connections[mac] = conn
