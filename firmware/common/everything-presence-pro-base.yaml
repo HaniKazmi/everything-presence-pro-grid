@@ -3,6 +3,10 @@ esphome:
     name: EverythingSmartTechnology.Everything Presence Pro
     version: "1.2.0"
   on_boot:
+    - priority: 200
+      then:
+        - lambda: |-
+            esp_log_level_set("*", ESP_LOG_WARN);
     - priority: 375
       then:
         - delay: 200ms
@@ -587,6 +591,111 @@ select:
     on_value:
       then:
         - script.execute: control_leds
+
+  - platform: template
+    name: "System Log Level"
+    id: log_level_system
+    icon: "mdi:math-log"
+    entity_category: config
+    optimistic: true
+    restore_value: true
+    initial_option: "Warning"
+    options:
+      - "None"
+      - "Error"
+      - "Warning"
+      - "Info"
+      - "Debug"
+    on_value:
+      then:
+        - lambda: |-
+            esp_log_level_t level;
+            if (x == "None") level = ESP_LOG_NONE;
+            else if (x == "Error") level = ESP_LOG_ERROR;
+            else if (x == "Warning") level = ESP_LOG_WARN;
+            else if (x == "Info") level = ESP_LOG_INFO;
+            else level = ESP_LOG_DEBUG;
+            esp_log_level_set("*", level);
+
+  - platform: template
+    name: "EPP Log Level"
+    id: log_level_epp
+    icon: "mdi:math-log"
+    entity_category: config
+    optimistic: true
+    restore_value: true
+    initial_option: "Warning"
+    options:
+      - "None"
+      - "Error"
+      - "Warning"
+      - "Info"
+      - "Debug"
+    on_value:
+      then:
+        - lambda: |-
+            esp_log_level_t level;
+            if (x == "None") level = ESP_LOG_NONE;
+            else if (x == "Error") level = ESP_LOG_ERROR;
+            else if (x == "Warning") level = ESP_LOG_WARN;
+            else if (x == "Info") level = ESP_LOG_INFO;
+            else level = ESP_LOG_DEBUG;
+            esp_log_level_set("epp", level);
+
+  - platform: template
+    name: "LED Log Level"
+    id: log_level_led
+    icon: "mdi:math-log"
+    entity_category: config
+    optimistic: true
+    restore_value: true
+    initial_option: "Warning"
+    options:
+      - "None"
+      - "Error"
+      - "Warning"
+      - "Info"
+      - "Debug"
+    on_value:
+      then:
+        - lambda: |-
+            esp_log_level_t level;
+            if (x == "None") level = ESP_LOG_NONE;
+            else if (x == "Error") level = ESP_LOG_ERROR;
+            else if (x == "Warning") level = ESP_LOG_WARN;
+            else if (x == "Info") level = ESP_LOG_INFO;
+            else level = ESP_LOG_DEBUG;
+            esp_log_level_set("control_leds", level);
+
+  - platform: template
+    name: "Network Log Level"
+    id: log_level_networking
+    icon: "mdi:math-log"
+    entity_category: config
+    optimistic: true
+    restore_value: true
+    initial_option: "Warning"
+    options:
+      - "None"
+      - "Error"
+      - "Warning"
+      - "Info"
+      - "Debug"
+    on_value:
+      then:
+        - lambda: |-
+            esp_log_level_t level;
+            if (x == "None") level = ESP_LOG_NONE;
+            else if (x == "Error") level = ESP_LOG_ERROR;
+            else if (x == "Warning") level = ESP_LOG_WARN;
+            else if (x == "Info") level = ESP_LOG_INFO;
+            else level = ESP_LOG_DEBUG;
+            esp_log_level_set("wifi", level);
+            esp_log_level_set("esp_netif", level);
+            esp_log_level_set("dhcp", level);
+            esp_log_level_set("eth", level);
+            esp_log_level_set("esp_eth", level);
+            esp_log_level_set("phy", level);
 
 script:
   - id: update_relay_state
