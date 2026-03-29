@@ -387,7 +387,9 @@ class TestDeviceManager:
 
             mock_conn.async_disconnect.assert_awaited()
 
-    async def test_read_current_connection_count_returns_value(self, hass: HomeAssistant, manager: DeviceManager) -> None:
+    async def test_read_current_connection_count_returns_value(
+        self, hass: HomeAssistant, manager: DeviceManager
+    ) -> None:
         """read_current_connection_count returns the integer sensor value."""
         dev_reg = dr.async_get(hass)
         ent_reg = er.async_get(hass)
