@@ -493,3 +493,161 @@ TEST_CASE("set_zones resets zone occupancy state") {
     const ProcessingResult& r = engine.tick(make_window_0(), 101.0f);
     CHECK_FALSE(r.zone_occupancy[1]);
 }
+
+// ---------------------------------------------------------------------------
+// Sensor presence state tests
+// ---------------------------------------------------------------------------
+
+TEST_CASE("sensor state: static active when binary sensor on") {
+    ZoneEngine engine = make_parity_engine();
+    SensorInput sensors;
+    sensors.static_on = true;
+    sensors.static_timeout = 5.0f;
+    const ProcessingResult& r = engine.tick(make_window_0(), 100.0f, sensors);
+    CHECK(r.static_state == SensorPresenceState::ACTIVE);
+}
+
+TEST_CASE("sensor state: static pending when binary sensor goes off") {
+    ZoneEngine engine = make_parity_engine();
+    SensorInput sensors;
+    sensors.static_on = true;
+    sensors.static_timeout = 5.0f;
+    engine.tick(make_window_0(), 100.0f, sensors);
+    sensors.static_on = false;
+    const ProcessingResult& r = engine.tick(make_window_0(), 101.0f, sensors);
+    CHECK(r.static_state == SensorPresenceState::PENDING);
+}
+
+TEST_CASE("sensor state: static inactive after timeout") {
+    ZoneEngine engine = make_parity_engine();
+    SensorInput sensors;
+    sensors.static_on = true;
+    sensors.static_timeout = 5.0f;
+    engine.tick(make_window_0(), 100.0f, sensors);
+    sensors.static_on = false;
+    engine.tick(make_window_0(), 101.0f, sensors);
+    const ProcessingResult& r = engine.tick(make_window_0(), 107.0f, sensors);
+    CHECK(r.static_state == SensorPresenceState::INACTIVE);
+}
+
+TEST_CASE("sensor state: static reactivates during pending") {
+    ZoneEngine engine = make_parity_engine();
+    SensorInput sensors;
+    sensors.static_on = true;
+    sensors.static_timeout = 5.0f;
+    engine.tick(make_window_0(), 100.0f, sensors);
+    sensors.static_on = false;
+    engine.tick(make_window_0(), 101.0f, sensors);
+    sensors.static_on = true;
+    const ProcessingResult& r = engine.tick(make_window_0(), 102.0f, sensors);
+    CHECK(r.static_state == SensorPresenceState::ACTIVE);
+}
+
+TEST_CASE("sensor state: motion follows same lifecycle as static") {
+    ZoneEngine engine = make_parity_engine();
+    SensorInput sensors;
+    sensors.motion_on = true;
+    sensors.motion_timeout = 3.0f;
+    const ProcessingResult& r1 = engine.tick(make_window_0(), 100.0f, sensors);
+    CHECK(r1.motion_state == SensorPresenceState::ACTIVE);
+    sensors.motion_on = false;
+    const ProcessingResult& r2 = engine.tick(make_window_0(), 101.0f, sensors);
+    CHECK(r2.motion_state == SensorPresenceState::PENDING);
+    const ProcessingResult& r3 = engine.tick(make_window_0(), 105.0f, sensors);
+    CHECK(r3.motion_state == SensorPresenceState::INACTIVE);
+}
+
+TEST_CASE("sensor state: default SensorInput gives inactive for both") {
+    ZoneEngine engine = make_parity_engine();
+    const ProcessingResult& r = engine.tick(make_window_0(), 100.0f);
+    CHECK(r.static_state == SensorPresenceState::INACTIVE);
+    CHECK(r.motion_state == SensorPresenceState::INACTIVE);
+}
+
+// ---------------------------------------------------------------------------
+// Force-clear and occupancy tests
+// ---------------------------------------------------------------------------
+
+TEST_CASE("force-clear: pending zones cleared when sensors inactive and no active zones") {
+    ZoneEngine engine = make_parity_engine();
+    float t = 100.0f;
+    SensorInput sensors;
+    sensors.static_on = true;
+    sensors.static_timeout = 5.0f;
+    sensors.motion_on = true;
+    sensors.motion_timeout = 3.0f;
+
+    // Occupy zone 1 with target + sensors active
+    engine.tick(make_window_1(X_OFF + 450, 450, 5), t, sensors);
+
+    // Target disappears, sensors still active -> zone 1 pending
+    const ProcessingResult& r1 = engine.tick(make_window_0(), t + 1.0f, sensors);
+    CHECK(r1.zone_occupancy[1]);  // still occupied (pending)
+
+    // Sensors go off -> both pending
+    sensors.static_on = false;
+    sensors.motion_on = false;
+    const ProcessingResult& r2 = engine.tick(make_window_0(), t + 2.0f, sensors);
+    CHECK(r2.zone_occupancy[1]);  // sensors pending, zone still pending
+
+    // Motion timeout expires (3s) -> motion inactive, static still pending
+    const ProcessingResult& r3 = engine.tick(make_window_0(), t + 5.5f, sensors);
+    CHECK(r3.zone_occupancy[1]);  // static still pending, so no force-clear
+
+    // Static timeout expires (5s from t+1) -> both inactive, no active zones -> force-clear
+    const ProcessingResult& r4 = engine.tick(make_window_0(), t + 7.0f, sensors);
+    CHECK_FALSE(r4.zone_occupancy[1]);  // force-cleared!
+}
+
+TEST_CASE("force-clear: does NOT clear if a zone has active targets") {
+    ZoneEngine engine = make_parity_engine();
+    float t = 100.0f;
+    SensorInput sensors;
+    sensors.static_on = true;
+    sensors.static_timeout = 2.0f;
+    sensors.motion_timeout = 2.0f;
+
+    // Occupy zone 1 with target + static sensor
+    engine.tick(make_window_1(X_OFF + 450, 450, 5), t, sensors);
+
+    // Static goes off, but target is still active in zone 1
+    sensors.static_on = false;
+    engine.tick(make_window_1(X_OFF + 450, 450, 5), t + 1.0f, sensors);
+
+    // Static timeout expires -> sensors inactive, but zone 1 is OCCUPIED (active target)
+    const ProcessingResult& r = engine.tick(make_window_1(X_OFF + 450, 450, 5), t + 4.0f, sensors);
+    CHECK(r.zone_occupancy[1]);  // NOT force-cleared, zone has active target
+}
+
+TEST_CASE("occupancy: true when any zone occupied or sensor active/pending") {
+    ZoneEngine engine = make_parity_engine();
+    float t = 100.0f;
+    SensorInput sensors;
+
+    // No sensors, no targets -> occupancy false
+    const ProcessingResult& r1 = engine.tick(make_window_0(), t, sensors);
+    CHECK_FALSE(r1.occupancy);
+
+    // Static on -> occupancy true
+    sensors.static_on = true;
+    sensors.static_timeout = 5.0f;
+    const ProcessingResult& r2 = engine.tick(make_window_0(), t + 1.0f, sensors);
+    CHECK(r2.occupancy);
+
+    // Static off -> pending -> occupancy still true
+    sensors.static_on = false;
+    const ProcessingResult& r3 = engine.tick(make_window_0(), t + 2.0f, sensors);
+    CHECK(r3.occupancy);
+
+    // Past timeout -> inactive -> occupancy false
+    const ProcessingResult& r4 = engine.tick(make_window_0(), t + 8.0f, sensors);
+    CHECK_FALSE(r4.occupancy);
+}
+
+TEST_CASE("occupancy: true when zone occupied even if sensors inactive") {
+    ZoneEngine engine = make_parity_engine();
+    SensorInput sensors;  // both off
+    const ProcessingResult& r = engine.tick(make_window_1(X_OFF + 450, 450, 5), 100.0f, sensors);
+    CHECK(r.zone_occupancy[1]);
+    CHECK(r.occupancy);  // zone occupied -> occupancy true
+}

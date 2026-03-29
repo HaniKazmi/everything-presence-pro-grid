@@ -70,6 +70,13 @@ void ZoneEngine::set_zones(const ZoneConfig zones[], int count) {
         target_has_prev_xy_[i] = false;
         target_gate_count_[i] = 0;
     }
+
+    // Reset sensor state
+    static_state_ = SensorPresenceState::INACTIVE;
+    motion_state_ = SensorPresenceState::INACTIVE;
+    static_pending_since_ = -1.0f;
+    motion_pending_since_ = -1.0f;
+    sensors_ever_active_ = false;
 }
 
 int ZoneEngine::find_zone_index(int zone_id) const {
@@ -366,6 +373,90 @@ const ProcessingResult& ZoneEngine::tick(const WindowOutput& window, float times
                 if (zones_[zi].state != ZoneState::PENDING_CLEAR) {
                     zones_[zi].confirmed_targets &= ~(1 << i);
                 }
+            }
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // Step 5b: Sensor presence state machine
+    // -----------------------------------------------------------------------
+    if (sensors.static_on) {
+        static_state_ = SensorPresenceState::ACTIVE;
+        static_pending_since_ = -1.0f;
+        sensors_ever_active_ = true;
+    } else if (static_state_ == SensorPresenceState::ACTIVE) {
+        static_state_ = SensorPresenceState::PENDING;
+        static_pending_since_ = timestamp;
+    } else if (static_state_ == SensorPresenceState::PENDING) {
+        if (static_pending_since_ >= 0.0f &&
+            (timestamp - static_pending_since_) >= sensors.static_timeout) {
+            static_state_ = SensorPresenceState::INACTIVE;
+            static_pending_since_ = -1.0f;
+        }
+    }
+
+    if (sensors.motion_on) {
+        motion_state_ = SensorPresenceState::ACTIVE;
+        motion_pending_since_ = -1.0f;
+        sensors_ever_active_ = true;
+    } else if (motion_state_ == SensorPresenceState::ACTIVE) {
+        motion_state_ = SensorPresenceState::PENDING;
+        motion_pending_since_ = timestamp;
+    } else if (motion_state_ == SensorPresenceState::PENDING) {
+        if (motion_pending_since_ >= 0.0f &&
+            (timestamp - motion_pending_since_) >= sensors.motion_timeout) {
+            motion_state_ = SensorPresenceState::INACTIVE;
+            motion_pending_since_ = -1.0f;
+        }
+    }
+
+    result_.static_state = static_state_;
+    result_.motion_state = motion_state_;
+
+    // -----------------------------------------------------------------------
+    // Step 5c: Force-clear pending zones when all sensors inactive
+    // Only applies once sensors have been seen as active (prevents force-clear
+    // in sensor-free deployments where sensors are always INACTIVE by default).
+    // -----------------------------------------------------------------------
+    if (sensors_ever_active_ &&
+        static_state_ == SensorPresenceState::INACTIVE &&
+        motion_state_ == SensorPresenceState::INACTIVE) {
+        bool any_occupied = false;
+        for (int zi = 0; zi < zone_count_; ++zi) {
+            if (!zone_enabled_[zi]) continue;
+            if (zones_[zi].state == ZoneState::OCCUPIED) {
+                any_occupied = true;
+                break;
+            }
+        }
+        if (!any_occupied) {
+            for (int zi = 0; zi < zone_count_; ++zi) {
+                if (!zone_enabled_[zi]) continue;
+                if (zones_[zi].state == ZoneState::PENDING_CLEAR) {
+                    zones_[zi].state = ZoneState::CLEAR;
+                    zones_[zi].pending_since = -1.0f;
+                    zones_[zi].confirmed_targets = 0;
+                    int zid = zones_[zi].config.id;
+                    result_.zone_occupancy[zid] = false;
+                    result_.zone_states[zid] = ZoneState::CLEAR;
+                }
+            }
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // Step 5d: Compute occupancy (any zone occupied/pending OR sensor active/pending)
+    // -----------------------------------------------------------------------
+    result_.occupancy = false;
+    if (static_state_ != SensorPresenceState::INACTIVE ||
+        motion_state_ != SensorPresenceState::INACTIVE) {
+        result_.occupancy = true;
+    } else {
+        for (int zi = 0; zi < zone_count_; ++zi) {
+            if (!zone_enabled_[zi]) continue;
+            if (result_.zone_occupancy[zones_[zi].config.id]) {
+                result_.occupancy = true;
+                break;
             }
         }
     }

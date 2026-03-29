@@ -96,6 +96,7 @@ private:
     SensorPresenceState motion_state_ = SensorPresenceState::INACTIVE;
     float static_pending_since_ = -1.0f;
     float motion_pending_since_ = -1.0f;
+    bool sensors_ever_active_ = false;  // true once any sensor has been ACTIVE
 
     ProcessingResult result_;
 
