@@ -650,6 +650,73 @@ describe("_deleteCalibration", () => {
 	});
 });
 
+describe("detection preview", () => {
+	it("calls set_detection_preview on distance change", async () => {
+		const el = createPanel();
+		const a = el as any;
+		a._selectedMac = "AA:BB:CC:DD:EE:01";
+		a._targetMaxDistance = 4.0;
+		a._staticMinDistance = 1.0;
+		a._staticMaxDistance = 8.0;
+
+		const callWS = vi.fn().mockResolvedValue({});
+		el.hass = { callWS };
+
+		a._onDetectionDistanceChange();
+
+		expect(callWS).toHaveBeenCalledWith({
+			type: "eppgrid/set_detection_preview",
+			mac: "AA:BB:CC:DD:EE:01",
+			target_max_distance: 4.0,
+			static_min_distance: 1.0,
+			static_max_distance: 8.0,
+		});
+	});
+});
+
+describe("settings cancel", () => {
+	it("reloads config then reverts detection preview on cancel", async () => {
+		const el = createPanel();
+		const a = el as any;
+		a._selectedMac = "AA:BB:CC:DD:EE:01";
+		a._targetMaxDistance = 4.0;
+		a._staticMinDistance = 1.0;
+		a._staticMaxDistance = 8.0;
+		a._view = "settings";
+		a._dirty = true;
+
+		const savedSettings = {
+			target_max_distance: 6.0,
+			static_min_distance: 0.3,
+			static_max_distance: 16.0,
+		};
+		const callWS = vi.fn().mockResolvedValue({
+			config: {
+				calibration: { perspective: null, room_width: 0, room_depth: 0 },
+				room_layout: {},
+				settings: savedSettings,
+			},
+		});
+		el.hass = {
+			callWS,
+			connection: { subscribeMessage: vi.fn().mockResolvedValue(() => {}) },
+		};
+
+		await a._cancelSettings();
+
+		// Should have called get_config (via _loadDeviceConfig) then set_detection_preview
+		const types = callWS.mock.calls.map((c: any) => c[0].type);
+		expect(types).toContain("eppgrid/get_config");
+		expect(types).toContain("eppgrid/set_detection_preview");
+
+		// Preview should use the reloaded saved values (6.0, not 4.0)
+		const previewCall = callWS.mock.calls.find(
+			(c: any) => c[0].type === "eppgrid/set_detection_preview",
+		);
+		expect(previewCall[0].target_max_distance).toBe(6.0);
+	});
+});
+
 describe("_renderConnectionBanner", () => {
 	it("renders connection banner when connectionFailed is true", () => {
 		const el = createPanel();

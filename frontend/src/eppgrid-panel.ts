@@ -543,6 +543,35 @@ export class EPPGridPanel extends LitElement {
 		return this._gridCtrl.saveSettings(payload || {});
 	}
 
+	private _onDetectionDistanceChange(): void {
+		this.hass
+			?.callWS({
+				type: "eppgrid/set_detection_preview",
+				mac: this._selectedMac,
+				target_max_distance: this._targetMaxDistance,
+				static_min_distance: this._staticMinDistance,
+				static_max_distance: this._staticMaxDistance,
+			})
+			.catch(() => {});
+	}
+
+	private async _cancelSettings(): Promise<void> {
+		this._dirty = false;
+		this._view = "live";
+		// Reload saved config first — this restores panel state to saved values
+		await this._loadDeviceConfig(this._selectedMac);
+		// Now push saved values to device to revert any preview
+		this.hass
+			?.callWS({
+				type: "eppgrid/set_detection_preview",
+				mac: this._selectedMac,
+				target_max_distance: this._targetMaxDistance,
+				static_min_distance: this._staticMinDistance,
+				static_max_distance: this._staticMaxDistance,
+			})
+			.catch(() => {});
+	}
+
 	// -- Template management (localStorage) --
 
 	private _getTemplates() {
@@ -1272,16 +1301,15 @@ export class EPPGridPanel extends LitElement {
           @setting-change=${(e: CustomEvent) => {
 						const { key, value } = e.detail;
 						(this as any)[`_${key}`] = value;
+						if (key.includes("Distance") || key.includes("Auto")) {
+							this._onDetectionDistanceChange();
+						}
 					}}
           @dirty=${() => {
 						this._dirty = true;
 					}}
           @save=${(e: CustomEvent) => this._saveSettings(e.detail)}
-          @cancel=${() => {
-						this._dirty = false;
-						this._view = "live";
-						this._loadDeviceConfig(this._selectedMac);
-					}}
+          @cancel=${() => this._cancelSettings()}
         ></epp-settings-view>
       </div>
     `;
