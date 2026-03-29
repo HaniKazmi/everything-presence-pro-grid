@@ -50,7 +50,7 @@ All entities are created by ESPHome firmware with `disabled_by_default` where ap
 
 | Entity | Type | Source |
 |--------|------|--------|
-| Occupancy | binary_sensor | PIR OR static OR tracking (combined) |
+| Occupancy | binary_sensor | zone engine processed (active/pending = on, inactive = off) |
 | Zone Engine Version | text_sensor | firmware version string |
 | Config Protocol | sensor | config protocol version integer (e.g. `1`) |
 | Current Connections | sensor | current API client count (diagnostic, accuracy_decimals=0) |
@@ -62,8 +62,8 @@ All entities are created by ESPHome firmware with `disabled_by_default` where ap
 | Temperature | sensor | SHTC3 + calibration offset |
 | Humidity | sensor | SHTC3 + calibration offset |
 | Illuminance | sensor | BH1750 + calibration offset |
-| Motion Presence | binary_sensor | PIR sensor |
-| Static Presence | binary_sensor | SEN0609 GPIO |
+| Motion Presence | binary_sensor | zone engine processed (active/pending = on, inactive = off) |
+| Static Presence | binary_sensor | zone engine processed (active/pending = on, inactive = off) |
 | Tracking Presence | binary_sensor | LD2450 any-target-detected |
 | mmWave Presence | binary_sensor | static OR tracking combined |
 | Zone 0-7 Occupancy | binary_sensor | zone engine per-zone state |
@@ -137,8 +137,8 @@ Parses Target Position, Zone State, and sensor entity updates into structured ev
 
 **Data rates:**
 - Target positions: 5Hz (from firmware display_interval)
-- Zone state + signal/status: 1Hz (from firmware zone_publish_interval)
-- Sensor values: on change
+- Zone state + signal/status + sensor state: 1Hz (from firmware zone_publish_interval)
+- Sensor binary values: on change (accumulated, sent with next target or zone state event)
 
 ## 3. Commands
 
