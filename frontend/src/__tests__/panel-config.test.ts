@@ -271,6 +271,68 @@ describe("_loadDeviceConfig", () => {
 	});
 });
 
+describe("updated() reconnecting guard", () => {
+	it("does not call _loadDeviceConfig when reconnecting is true", () => {
+		const el = createPanel();
+		const a = el as any;
+		a._loading = false;
+		a._devices = [
+			{
+				mac: "AA:BB:CC:DD:EE:01",
+				name: "T",
+				host: null,
+				available: true,
+				configured: true,
+			},
+		];
+		a._selectedMac = "AA:BB:CC:DD:EE:01";
+
+		// Simulate: no active session but reconnecting in progress
+		a._deviceCtrl.closeDeviceSession();
+		a._deviceCtrl._reconnecting = true;
+
+		const loadSpy = vi
+			.spyOn(a, "_loadDeviceConfig")
+			.mockResolvedValue(undefined);
+
+		const changed = new Map<string, any>([["hass", undefined]]);
+		a.updated(changed);
+
+		expect(loadSpy).not.toHaveBeenCalled();
+		loadSpy.mockRestore();
+		a._deviceCtrl._reconnecting = false;
+	});
+
+	it("calls _loadDeviceConfig when session is lost and not reconnecting", () => {
+		const el = createPanel();
+		const a = el as any;
+		a._loading = false;
+		a._devices = [
+			{
+				mac: "AA:BB:CC:DD:EE:01",
+				name: "T",
+				host: null,
+				available: true,
+				configured: true,
+			},
+		];
+		a._selectedMac = "AA:BB:CC:DD:EE:01";
+
+		// Simulate: no active session and not reconnecting
+		a._deviceCtrl.closeDeviceSession();
+
+		const loadSpy = vi
+			.spyOn(a, "_loadDeviceConfig")
+			.mockResolvedValue(undefined);
+
+		const changed = new Map<string, any>([["hass", undefined]]);
+		a.updated(changed);
+
+		expect(loadSpy).toHaveBeenCalledWith("AA:BB:CC:DD:EE:01");
+		loadSpy.mockRestore();
+	});
+});
+
 describe("_applyConfig", () => {
 	let el: EPPGridPanel;
 

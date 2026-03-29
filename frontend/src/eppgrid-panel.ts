@@ -339,7 +339,11 @@ export class EPPGridPanel extends LitElement {
 			this._deviceCtrl.hass = this.hass;
 			if (this._loading && !this._devices.length) {
 				this._initialize();
-			} else if (this._selectedMac && !this._deviceCtrl.hasDeviceSession) {
+			} else if (
+				this._selectedMac &&
+				!this._deviceCtrl.hasDeviceSession &&
+				!this._deviceCtrl.reconnecting
+			) {
 				// Session lost (e.g. after HA reconnect) — re-open
 				this._loadDeviceConfig(this._selectedMac);
 			}

@@ -536,4 +536,88 @@ describe("DeviceController", () => {
 			expect(ctrl.hass).toBe(h);
 		});
 	});
+
+	// --- reconnecting guard ---
+	describe("reconnecting", () => {
+		it("is false initially", () => {
+			expect(ctrl.reconnecting).toBe(false);
+		});
+
+		it("is true while loadDeviceConfig is in progress", async () => {
+			let resolveSubscribe!: (unsub: () => void) => void;
+			ctrl.hass = {
+				callWS: vi.fn().mockResolvedValue({ config: {} }),
+				connection: {
+					subscribeMessage: vi.fn().mockImplementation(
+						() =>
+							new Promise<() => void>((resolve) => {
+								resolveSubscribe = resolve;
+							}),
+					),
+				},
+			};
+
+			const promise = ctrl.loadDeviceConfig("aa");
+			// Allow callWS to resolve and openDeviceSession to start
+			await new Promise((r) => setTimeout(r, 0));
+
+			expect(ctrl.reconnecting).toBe(true);
+
+			resolveSubscribe(vi.fn());
+			await promise;
+
+			expect(ctrl.reconnecting).toBe(false);
+		});
+
+		it("is false after loadDeviceConfig fails", async () => {
+			ctrl.hass = {
+				callWS: vi.fn().mockRejectedValue(new Error("fail")),
+				connection: {
+					subscribeMessage: vi.fn().mockRejectedValue(new Error("no connect")),
+				},
+			};
+			vi.spyOn(console, "warn").mockImplementation(() => {});
+
+			await ctrl.loadDeviceConfig("aa");
+			expect(ctrl.reconnecting).toBe(false);
+
+			vi.restoreAllMocks();
+		});
+
+		it("prevents duplicate subscribe_device calls during async gap", async () => {
+			let resolveFirst!: (unsub: () => void) => void;
+			const subscribeMock = vi
+				.fn()
+				.mockImplementationOnce(
+					() =>
+						new Promise<() => void>((resolve) => {
+							resolveFirst = resolve;
+						}),
+				)
+				.mockResolvedValue(vi.fn());
+
+			ctrl.hass = {
+				callWS: vi.fn().mockResolvedValue({ config: {} }),
+				connection: { subscribeMessage: subscribeMock },
+			};
+
+			// First call — starts the async subscribe
+			const p1 = ctrl.loadDeviceConfig("aa");
+			await new Promise((r) => setTimeout(r, 0));
+
+			// Second call while first is pending — should be blocked by guard
+			expect(ctrl.reconnecting).toBe(true);
+			const p2 = ctrl.loadDeviceConfig("aa");
+
+			resolveFirst(vi.fn());
+			await p1;
+			await p2;
+
+			// Only ONE subscribe_device call should have been made
+			const deviceSubs = subscribeMock.mock.calls.filter(
+				(c: any[]) => c[1]?.type === "eppgrid/subscribe_device",
+			);
+			expect(deviceSubs).toHaveLength(1);
+		});
+	});
 });

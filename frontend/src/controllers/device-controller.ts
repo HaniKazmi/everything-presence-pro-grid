@@ -46,6 +46,7 @@ export class DeviceController implements ReactiveController {
 	private _unsubDevice?: () => void;
 	private _unsubTargets?: () => void;
 	private _unsubDisplay?: () => void;
+	private _reconnecting = false;
 
 	constructor(host: ReactiveControllerHost) {
 		this._host = host;
@@ -69,6 +70,11 @@ export class DeviceController implements ReactiveController {
 	// --- Public: whether a device session is currently open ---
 	get hasDeviceSession(): boolean {
 		return !!this._unsubDevice;
+	}
+
+	// --- Public: whether a loadDeviceConfig/openDeviceSession is in progress ---
+	get reconnecting(): boolean {
+		return this._reconnecting;
 	}
 
 	// --- Device loading ---
@@ -100,22 +106,28 @@ export class DeviceController implements ReactiveController {
 	 * Also opens the device session and subscribes to data streams.
 	 */
 	async loadDeviceConfig(mac: string): Promise<any> {
-		let config: any = null;
+		if (this._reconnecting) return null;
+		this._reconnecting = true;
 		try {
-			const result = await this._hass.callWS({
-				type: "eppgrid/get_config",
-				mac,
-			});
-			config = (result as any).config;
-		} catch {
-			// Device may not be ready yet
+			let config: any = null;
+			try {
+				const result = await this._hass.callWS({
+					type: "eppgrid/get_config",
+					mac,
+				});
+				config = (result as any).config;
+			} catch {
+				// Device may not be ready yet
+			}
+			// Open device session, then subscribe to data streams
+			await this.openDeviceSession(mac);
+			if (this._unsubDevice) {
+				this.subscribeTargets(mac);
+			}
+			return config;
+		} finally {
+			this._reconnecting = false;
 		}
-		// Open device session, then subscribe to data streams
-		await this.openDeviceSession(mac);
-		if (this._unsubDevice) {
-			this.subscribeTargets(mac);
-		}
-		return config;
 	}
 
 	// --- Session management ---

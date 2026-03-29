@@ -1016,6 +1016,52 @@ class TestEventCallbacks:
         with patch.object(manager, "async_open_session", new_callable=AsyncMock, return_value=None):
             await manager._push_config_to_device("AA:BB:CC:DD:EE:FF")
 
+    async def test_on_device_available_retries_after_stale_connection(
+        self, hass: HomeAssistant, store: EPPGridStore, manager: DeviceManager
+    ) -> None:
+        """_on_device_available closes stale session and retries once on push failure."""
+        mac = "AA:BB:CC:DD:EE:FF"
+        store.devices[mac] = {"calibration": {"perspective": [1.0] * 8}}
+        manager.devices[mac] = ManagedDevice(mac=mac, name="EPP", host="192.168.1.50")
+
+        manager._pushing.add(mac)
+        push_results = [False, True]  # first push fails, retry succeeds
+        with (
+            patch.object(
+                manager, "_push_config_to_device", new_callable=AsyncMock, side_effect=push_results
+            ) as mock_push,
+            patch.object(manager, "async_close_session", new_callable=AsyncMock) as mock_close,
+            patch("asyncio.sleep", new_callable=AsyncMock) as mock_sleep,
+        ):
+            await manager._on_device_available(mac)
+
+        assert mock_push.await_count == 2
+        mock_close.assert_awaited_once_with(mac)
+        mock_sleep.assert_awaited_once_with(5)
+        # Guard stays set on success (not discarded)
+        assert mac in manager._pushing
+
+    async def test_on_device_available_clears_guard_after_both_failures(
+        self, hass: HomeAssistant, store: EPPGridStore, manager: DeviceManager
+    ) -> None:
+        """_on_device_available clears _pushing guard only after both attempts fail."""
+        mac = "AA:BB:CC:DD:EE:FF"
+        store.devices[mac] = {"calibration": {"perspective": [1.0] * 8}}
+        manager.devices[mac] = ManagedDevice(mac=mac, name="EPP", host="192.168.1.50")
+        manager._pushing.add(mac)
+
+        with (
+            patch.object(
+                manager, "_push_config_to_device", new_callable=AsyncMock, return_value=False
+            ) as mock_push,
+            patch.object(manager, "async_close_session", new_callable=AsyncMock),
+            patch("asyncio.sleep", new_callable=AsyncMock),
+        ):
+            await manager._on_device_available(mac)
+
+        assert mock_push.await_count == 2
+        assert mac not in manager._pushing
+
 
 # ---------------------------------------------------------------------------
 # Stale connection and start/stop tests

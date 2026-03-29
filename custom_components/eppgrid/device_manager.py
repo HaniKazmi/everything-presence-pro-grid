@@ -338,8 +338,11 @@ class DeviceManager:
             dev.available = True
         _LOGGER.info("Device %s became available, pushing config", mac)
         if not await self._push_config_to_device(mac):
-            # Clear the guard so the next availability event can retry
-            self._pushing.discard(mac)
+            # Close stale connection and retry after device stabilises
+            await self.async_close_session(mac)
+            await asyncio.sleep(5)
+            if not await self._push_config_to_device(mac):
+                self._pushing.discard(mac)
 
     async def _push_config_to_device(self, mac: str) -> bool:
         """Push config to device. Returns True on success, False on failure."""
