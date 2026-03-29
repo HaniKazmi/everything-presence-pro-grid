@@ -373,8 +373,8 @@ class DeviceManager:
             return False
 
         # Prefer existing session connection (avoids ESP32 concurrent connection limit)
-        session_conn = self._active_connections.get(mac)
-        if session_conn and session_conn.connected:
+        session_conn = self.get_session(mac)
+        if session_conn is not None:
             try:
                 await session_conn.async_push_config(config)
                 return True
