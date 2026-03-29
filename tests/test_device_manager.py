@@ -581,7 +581,7 @@ class TestPushConfig:
                     },
                     "room_layout": {
                         "grid_bytes": [0] * 100,
-                        "zone_slots": [{"name": "Office"}, None, None, None, None, None, None],
+                        "zone_slots": [{"name": "Office"}] + [None] * (MAX_ZONES - 1),
                         "room_type": "normal",
                     },
                 }
@@ -611,7 +611,7 @@ class TestPushConfig:
             await conn.async_push_config(
                 {
                     "room_layout": {
-                        "zone_slots": [{"name": "Living"}, None, None, None, None, None, None],
+                        "zone_slots": [{"name": "Living"}] + [None] * (MAX_ZONES - 1),
                         "room_type": "hallway",
                         "room_trigger": 3,
                         "room_renew": 2,
@@ -1043,7 +1043,7 @@ class TestZoneEntities:
         )
         manager._store.devices["AA:BB:CC:DD:EE:FF"] = {"calibration": {"perspective": [1.0] * 8}}
 
-        zone_slots = [{"name": "Office"}, None, None, None, None, None, None]
+        zone_slots = [{"name": "Office"}] + [None] * (MAX_ZONES - 1)
         await manager.async_update_zone_entities("AA:BB:CC:DD:EE:FF", zone_slots)
 
         # Zone 0 should be enabled with name "Rest of Room Occupancy"

@@ -696,7 +696,7 @@ class TestUpdateFirmware:
 
 
 class TestNotReadyGuards:
-    """All handlers return not_ready when integration not loaded."""
+    """Handlers not covered by per-class tests return not_ready when integration not loaded."""
 
     @pytest.mark.parametrize(
         "handler_name,extra_fields,is_async",
@@ -1009,7 +1009,7 @@ class TestSubscriptionCallbacks:
         on_state(state)
 
         # Zone state doesn't trigger send_message directly (only target positions do)
-        # but the internal state should be updated — no crash is the test
+        connection.send_message.assert_not_called()
 
     async def test_grid_targets_on_state_binary_sensor(
         self, hass: HomeAssistant, config_entry: MockConfigEntry
@@ -1043,7 +1043,7 @@ class TestSubscriptionCallbacks:
         on_state(state)
 
         # Binary sensor updates don't trigger send_message (only target positions do)
-        # but internal state should update without error
+        connection.send_message.assert_not_called()
 
     async def test_grid_targets_on_state_numeric_sensor(
         self, hass: HomeAssistant, config_entry: MockConfigEntry
@@ -1076,10 +1076,12 @@ class TestSubscriptionCallbacks:
         state = SensorState(key=500, state=22.5, missing_state=False)
         on_state(state)
 
-        # NaN handling
-
+        # NaN handling — should not trigger send_message either
         nan_state = SensorState(key=500, state=float("nan"), missing_state=False)
         on_state(nan_state)
+
+        # Numeric sensor updates don't trigger send_message (only target positions do)
+        connection.send_message.assert_not_called()
 
     async def test_grid_targets_unsub(self, hass: HomeAssistant, config_entry: MockConfigEntry) -> None:
         """Unsubscribe callback removes state subscription."""
