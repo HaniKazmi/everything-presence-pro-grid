@@ -839,7 +839,7 @@ class TestPushConfig:
 
             # tracking
             tracking_data = call_by_service["epp_set_tracking"]
-            assert tracking_data["max_range"] == 4.0
+            assert tracking_data["max_range"] == 4000.0  # meters → mm
 
             # static presence: firmware inversion
             static_data = call_by_service["epp_set_static_presence"]

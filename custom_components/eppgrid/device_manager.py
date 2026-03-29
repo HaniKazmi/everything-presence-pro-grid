@@ -97,7 +97,7 @@ class DeviceConnection:
             await self._client.execute_service(
                 service,
                 {
-                    "max_range": preview.get("target_max_distance", 6.0),
+                    "max_range": preview.get("target_max_distance", 6.0) * 1000,
                 },
             )
         service = self._services.get("epp_set_static_presence")
@@ -182,7 +182,7 @@ class DeviceConnection:
         settings = config.get("settings")
         if settings:
             svc = self._services.get("epp_set_env_calibration")
-            if svc:
+            if svc:  # BISECT: enabled
                 await self._client.execute_service(
                     svc,
                     {
@@ -194,7 +194,7 @@ class DeviceConnection:
                 _LOGGER.info("Pushed env_calibration to %s", self._host)
 
             svc = self._services.get("epp_set_motion_timeout")
-            if svc:
+            if svc:  # BISECT: enabled
                 await self._client.execute_service(
                     svc,
                     {"timeout": settings.get("motion_timeout", 5.0)},
@@ -205,7 +205,7 @@ class DeviceConnection:
             if svc:
                 await self._client.execute_service(
                     svc,
-                    {"max_range": settings.get("target_max_distance", 6.0)},
+                    {"max_range": settings.get("target_max_distance", 6.0) * 1000},
                 )
                 _LOGGER.info("Pushed tracking to %s", self._host)
 
