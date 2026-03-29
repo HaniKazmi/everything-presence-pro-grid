@@ -28,3 +28,29 @@ button:
       - scd4x.perform_forced_calibration:
           value: 419
           id: scd40
+
+select:
+  - platform: template
+    name: "CO2 Log Level"
+    id: log_level_co2
+    icon: "mdi:math-log"
+    entity_category: config
+    optimistic: true
+    restore_value: true
+    initial_option: "Warning"
+    options:
+      - "None"
+      - "Error"
+      - "Warning"
+      - "Info"
+      - "Debug"
+    on_value:
+      then:
+        - lambda: |-
+            esp_log_level_t level;
+            if (x == "None") level = ESP_LOG_NONE;
+            else if (x == "Error") level = ESP_LOG_ERROR;
+            else if (x == "Warning") level = ESP_LOG_WARN;
+            else if (x == "Info") level = ESP_LOG_INFO;
+            else level = ESP_LOG_DEBUG;
+            esp_log_level_set("scd4x", level);
