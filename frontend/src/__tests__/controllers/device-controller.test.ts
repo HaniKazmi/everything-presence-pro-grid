@@ -69,6 +69,7 @@ describe("DeviceController", () => {
 					available: true,
 					configured: true,
 					config_protocol_status: "compatible",
+					api_client_count: null,
 				},
 				{
 					mac: "aa",
@@ -77,6 +78,7 @@ describe("DeviceController", () => {
 					available: true,
 					configured: true,
 					config_protocol_status: "compatible",
+					api_client_count: null,
 				},
 			];
 			ctrl.hass = mockHass(devices);
@@ -96,6 +98,7 @@ describe("DeviceController", () => {
 					available: true,
 					configured: true,
 					config_protocol_status: "compatible",
+					api_client_count: null,
 				},
 				{
 					mac: "aa",
@@ -104,6 +107,7 @@ describe("DeviceController", () => {
 					available: true,
 					configured: true,
 					config_protocol_status: "compatible",
+					api_client_count: null,
 				},
 			];
 			ctrl.hass = mockHass(devices);
@@ -123,6 +127,7 @@ describe("DeviceController", () => {
 					available: true,
 					configured: true,
 					config_protocol_status: "compatible",
+					api_client_count: null,
 				},
 				{
 					mac: "aa",
@@ -131,6 +136,7 @@ describe("DeviceController", () => {
 					available: true,
 					configured: true,
 					config_protocol_status: "compatible",
+					api_client_count: null,
 				},
 			];
 			ctrl.hass = mockHass(devices);
@@ -149,6 +155,7 @@ describe("DeviceController", () => {
 					available: true,
 					configured: true,
 					config_protocol_status: "compatible",
+					api_client_count: null,
 				},
 			];
 			ctrl.hass = mockHass(devices);
@@ -181,6 +188,7 @@ describe("DeviceController", () => {
 					available: true,
 					configured: true,
 					config_protocol_status: "compatible",
+					api_client_count: null,
 				},
 			];
 			ctrl.hass = mockHass(devices);
