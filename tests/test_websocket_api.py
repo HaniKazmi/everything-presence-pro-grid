@@ -122,6 +122,31 @@ class TestWebSocketGetConfig:
         result = connection.send_result.call_args[0]
         assert result[1]["config"]["calibration"]["perspective"] == [1.0] * 8
 
+    async def test_get_config_includes_entity_states(
+        self, hass: HomeAssistant, config_entry: MockConfigEntry
+    ) -> None:
+        """get_config includes entity enabled/disabled states from HA registry."""
+        mock_dm = await setup_integration(hass, config_entry)
+        mock_dm._store.devices["AA:BB:CC:DD:EE:FF"] = {"settings": {}}
+        mock_dm._store.get_device = MagicMock(return_value={"settings": {}})
+
+        from custom_components.eppgrid.websocket_api import websocket_get_config
+
+        entity_states = {"room_occupancy": True, "zone_presence": False}
+
+        with patch(
+            "custom_components.eppgrid.websocket_api._get_entity_states",
+            return_value=entity_states,
+        ) as mock_get_entities:
+            connection = MagicMock()
+            msg = {"id": 2, "type": "eppgrid/get_config", "mac": "AA:BB:CC:DD:EE:FF"}
+
+            websocket_get_config(hass, connection, msg)
+
+            mock_get_entities.assert_called_once_with(hass, "AA:BB:CC:DD:EE:FF")
+            result = connection.send_result.call_args[0]
+            assert result[1]["config"]["entities"] == entity_states
+
     async def test_get_config_not_ready(self, hass: HomeAssistant) -> None:
         """get_config returns error when integration not loaded."""
         from custom_components.eppgrid.websocket_api import websocket_get_config
@@ -387,6 +412,44 @@ class TestWebSocketSettings:
         mock_dm._store.async_save.assert_awaited()
         mock_dm._push_config_to_device.assert_awaited_with("AA:BB:CC:DD:EE:FF")
         connection.send_result.assert_called_once_with(11)
+
+    async def test_set_settings_applies_entity_changes(
+        self, hass: HomeAssistant, config_entry: MockConfigEntry
+    ) -> None:
+        """set_settings calls _apply_entity_states when entities dict is provided."""
+        await setup_integration(hass, config_entry)
+
+        from custom_components.eppgrid.websocket_api import websocket_set_settings
+
+        with patch(
+            "custom_components.eppgrid.websocket_api._apply_entity_states"
+        ) as mock_apply:
+            connection = MagicMock()
+            msg = {
+                "id": 11,
+                "type": "eppgrid/set_settings",
+                "mac": "AA:BB:CC:DD:EE:FF",
+                "temperature_offset": -1.5,
+                "humidity_offset": 2.0,
+                "illuminance_offset": -10.0,
+                "motion_timeout": 5.0,
+                "target_auto_distance": True,
+                "target_max_distance": 4.0,
+                "static_auto_distance": False,
+                "static_min_distance": 0.3,
+                "static_max_distance": 8.0,
+                "static_trigger_threshold": 3,
+                "static_renew_threshold": 3,
+                "static_timeout": 30.0,
+                "static_on_delay": 0.0,
+                "entities": {"room_occupancy": True, "env_illuminance": False},
+            }
+
+            await call_async_handler(hass, websocket_set_settings, connection, msg)
+
+            mock_apply.assert_called_once_with(
+                hass, "AA:BB:CC:DD:EE:FF", {"room_occupancy": True, "env_illuminance": False}
+            )
 
     async def test_set_settings_entities_not_stored(self, hass: HomeAssistant, config_entry: MockConfigEntry) -> None:
         """entities dict from the message is NOT stored in device_config['settings']."""

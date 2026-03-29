@@ -103,7 +103,9 @@ def websocket_get_config(
         connection.send_error(msg["id"], "not_ready", "Integration not loaded")
         return
     config = manager._store.get_device(msg["mac"])
-    connection.send_result(msg["id"], {"config": config})
+    result = {"config": config or {}}
+    result["config"]["entities"] = _get_entity_states(hass, msg["mac"])
+    connection.send_result(msg["id"], result)
 
 
 # -- set_setup (perspective calibration) --
@@ -315,6 +317,62 @@ async def websocket_apply_template(
 
 
 # -- Helper --
+
+
+_ENTITY_MAP = {
+    "occupancy": "room_occupancy",
+    "static_presence": "room_static_presence",
+    "motion": "room_motion_presence",
+    "target_presence": "room_target_presence",
+    "target_count": "room_target_count",
+    "illuminance": "env_illuminance",
+    "humidity": "env_humidity",
+    "temperature": "env_temperature",
+    "co2": "env_co2",
+}
+
+
+def _get_entity_states(hass: HomeAssistant, mac: str) -> dict[str, bool]:
+    """Read entity enabled/disabled states from HA entity registry."""
+    manager = _get_manager(hass)
+    if manager is None:
+        return {}
+    dev = manager.devices.get(mac)
+    if dev is None or dev.device_id is None:
+        return {}
+    ent_reg = er.async_get(hass)
+    entries = er.async_entries_for_device(ent_reg, dev.device_id)
+
+    result: dict[str, bool] = {}
+    for entry in entries:
+        for suffix, key in _ENTITY_MAP.items():
+            if entry.unique_id.endswith(f"_{suffix}"):
+                result[key] = entry.disabled_by is None
+                break
+    return result
+
+
+def _apply_entity_states(hass: HomeAssistant, mac: str, entities: dict[str, bool]) -> None:
+    """Apply entity enable/disable changes to HA entity registry (idempotent)."""
+    manager = _get_manager(hass)
+    if manager is None:
+        return
+    dev = manager.devices.get(mac)
+    if dev is None or dev.device_id is None:
+        return
+    ent_reg = er.async_get(hass)
+    entries = er.async_entries_for_device(ent_reg, dev.device_id)
+
+    for entry in entries:
+        for suffix, key in _ENTITY_MAP.items():
+            if entry.unique_id.endswith(f"_{suffix}") and key in entities:
+                if entities[key]:
+                    ent_reg.async_update_entity(entry.entity_id, disabled_by=None)
+                else:
+                    ent_reg.async_update_entity(
+                        entry.entity_id, disabled_by=er.RegistryEntryDisabler.INTEGRATION
+                    )
+                break
 
 
 def _build_entity_key_map(entities: list) -> dict[str, int]:
@@ -698,7 +756,9 @@ async def websocket_set_settings(
     device_config["settings"] = {k: msg[k] for k in _SETTINGS_KEYS}
     await manager._store.async_save()
     await manager._push_config_to_device(mac)
-    # Entity enable/disable is handled in Task 4
+    entities = msg.get("entities")
+    if entities:
+        _apply_entity_states(hass, mac, entities)
     connection.send_result(msg["id"])
 
 
