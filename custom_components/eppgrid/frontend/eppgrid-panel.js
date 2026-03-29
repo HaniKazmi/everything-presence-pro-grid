@@ -588,7 +588,6 @@ const dt={attribute:!0,type:String,converter:v,reflect:!1,hasChanged:y},ut=(t=dt
   .grid-column {
     min-width: 0;
     max-width: min-content;
-    overflow: hidden;
   }
 
   .grid-container {

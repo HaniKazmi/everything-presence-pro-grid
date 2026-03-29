@@ -398,7 +398,6 @@ export const layoutStyles = css`
   .grid-column {
     min-width: 0;
     max-width: min-content;
-    overflow: hidden;
   }
 
   .grid-container {

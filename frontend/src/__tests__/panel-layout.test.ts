@@ -1,6 +1,7 @@
+import { render } from "lit";
 import { describe, expect, it, vi } from "vitest";
 import type { EPPGridPanel } from "../eppgrid-panel.js";
-import { layoutStyles, liveMenuStyles } from "../styles.js";
+import { layoutStyles } from "../styles.js";
 import "../eppgrid-panel.js";
 import "../components/epp-live-sidebar.js";
 import "../components/epp-zone-sidebar.js";
@@ -8,7 +9,7 @@ import "../components/epp-furniture-sidebar.js";
 import "../components/epp-settings-view.js";
 import "../components/epp-wizard.js";
 import "../components/epp-grid.js";
-import { GRID_CELL_COUNT, initGridFromRoom } from "../lib/grid.js";
+import { GRID_CELL_COUNT } from "../lib/grid.js";
 import { ZONE_TYPE_DEFAULTS } from "../lib/zone-defaults.js";
 import { createZoneEngineState } from "../lib/zone-engine.js";
 
@@ -120,9 +121,10 @@ describe("layout styles", () => {
 		const match = layoutCss.match(/\.grid-column\s*\{([^}]+)\}/);
 		expect(match).not.toBeNull();
 		const gridColCss = match![1];
-		expect(gridColCss).toMatch(/overflow:\s*hidden/);
 		expect(gridColCss).toMatch(/min-width:\s*0/);
 		expect(gridColCss).toMatch(/max-width:\s*min-content/);
+		// No overflow:hidden — would clip furniture resize/rotate handles
+		expect(gridColCss).not.toMatch(/overflow:\s*hidden/);
 	});
 
 	it("has scrollable sidebar-scroll wrapper", () => {
@@ -144,7 +146,6 @@ describe("live overview layout structure", () => {
 
 		// Render to a temp container to inspect DOM
 		const container = document.createElement("div");
-		const { render } = require("lit");
 		render(result, container);
 
 		const editorLayout = container.querySelector(".editor-layout");
@@ -160,7 +161,6 @@ describe("live overview layout structure", () => {
 		const result = a._renderLiveOverview();
 
 		const container = document.createElement("div");
-		const { render } = require("lit");
 		render(result, container);
 
 		const editorLayout = container.querySelector(".editor-layout");
@@ -176,7 +176,6 @@ describe("live overview layout structure", () => {
 		const result = a._renderLiveOverview();
 
 		const container = document.createElement("div");
-		const { render } = require("lit");
 		render(result, container);
 
 		const sidebar = container.querySelector(".zone-sidebar");
@@ -196,7 +195,6 @@ describe("editor layout structure", () => {
 		const result = a._renderEditor();
 
 		const container = document.createElement("div");
-		const { render } = require("lit");
 		render(result, container);
 
 		const editorLayout = container.querySelector(".editor-layout");
@@ -212,7 +210,6 @@ describe("editor layout structure", () => {
 		const result = a._renderEditor();
 
 		const container = document.createElement("div");
-		const { render } = require("lit");
 		render(result, container);
 
 		const sidebar = container.querySelector(".zone-sidebar");
@@ -230,7 +227,6 @@ describe("editor layout structure", () => {
 
 		const result = a._renderEditor();
 		const container = document.createElement("div");
-		const { render } = require("lit");
 		render(result, container);
 
 		const gridContainer = container.querySelector(
@@ -259,7 +255,6 @@ describe("editor layout structure", () => {
 
 		const result = a._renderEditor();
 		const container = document.createElement("div");
-		const { render } = require("lit");
 		render(result, container);
 
 		const gridContainer = container.querySelector(
