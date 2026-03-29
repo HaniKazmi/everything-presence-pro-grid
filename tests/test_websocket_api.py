@@ -695,6 +695,478 @@ class TestUpdateFirmware:
         connection.send_error.assert_called_once_with(23, "not_ready", "Integration not loaded")
 
 
+class TestNotReadyGuards:
+    """All handlers return not_ready when integration not loaded."""
+
+    @pytest.mark.parametrize(
+        "handler_name,extra_fields,is_async",
+        [
+            ("websocket_set_room_layout", {"mac": "AA:BB", "grid_bytes": [], "zone_slots": [], "room_type": "n"}, True),
+            ("websocket_list_templates", {}, False),
+            ("websocket_save_template", {"name": "t", "template": {}}, True),
+            ("websocket_delete_template", {"name": "t"}, True),
+            ("websocket_apply_template", {"mac": "AA:BB", "template_name": "t"}, True),
+            ("websocket_subscribe_device", {"mac": "AA:BB"}, True),
+            ("websocket_subscribe_raw_targets", {"mac": "AA:BB"}, True),
+            ("websocket_subscribe_grid_targets", {"mac": "AA:BB"}, True),
+            ("websocket_set_entity_enabled", {"mac": "AA:BB", "entity_id": "e", "enabled": True}, False),
+            ("websocket_set_env_calibration", {"mac": "AA:BB", "temperature_offset": 0, "humidity_offset": 0, "illuminance_offset": 0}, True),
+            ("websocket_set_motion_timeout", {"mac": "AA:BB", "timeout": 5.0}, True),
+            ("websocket_set_tracking", {"mac": "AA:BB", "max_range": 6000.0}, True),
+            ("websocket_set_static_presence", {"mac": "AA:BB", "min_range": 0, "max_range": 6000, "trigger_range": 2500, "sustain_sensitivity": 3, "trigger_sensitivity": 5, "timeout": 10, "on_delay": 0, "led_enabled": True}, True),
+            ("websocket_set_pipeline", {"mac": "AA:BB", "display_interval_ms": 200, "zone_publish_interval_ms": 1000, "window_duration_ms": 1000}, True),
+        ],
+    )
+    async def test_not_ready(
+        self, hass: HomeAssistant, handler_name: str, extra_fields: dict, is_async: bool
+    ) -> None:
+        """Handler returns not_ready when integration not loaded."""
+        import custom_components.eppgrid.websocket_api as ws
+
+        handler = getattr(ws, handler_name)
+        connection = MagicMock()
+        msg = {"id": 1, "type": f"eppgrid/{handler_name.replace('websocket_', '')}"}
+        msg.update(extra_fields)
+
+        if is_async:
+            await call_async_handler(hass, handler, connection, msg)
+        else:
+            handler(hass, connection, msg)
+
+        connection.send_error.assert_called_once_with(1, "not_ready", "Integration not loaded")
+
+
+class TestSubscriptionCallbacks:
+    """Tests for _on_state callbacks in subscribe_raw_targets and subscribe_grid_targets."""
+
+    async def test_raw_targets_on_state_parses_position(
+        self, hass: HomeAssistant, config_entry: MockConfigEntry
+    ) -> None:
+        """_on_state in subscribe_raw_targets parses TextSensorState with coordinates."""
+        mock_dm = await setup_integration(hass, config_entry)
+
+        # Create mock entities with key and name attributes
+        raw0 = MagicMock()
+        raw0.key = 100
+        raw0.name = "Raw Target 0"
+        raw1 = MagicMock()
+        raw1.key = 101
+        raw1.name = "Raw Target 1"
+
+        mock_device_conn = MagicMock()
+        mock_device_conn._entities = [raw0, raw1]
+        mock_device_conn.subscribe_states = MagicMock()
+        mock_device_conn.unsubscribe_states = MagicMock()
+        mock_dm.get_session = MagicMock(return_value=mock_device_conn)
+
+        from custom_components.eppgrid.websocket_api import websocket_subscribe_raw_targets
+
+        connection = MagicMock()
+        connection.subscriptions = {}
+        msg = {"id": 30, "type": "eppgrid/subscribe_raw_targets", "mac": "AA:BB:CC:DD:EE:FF"}
+
+        await call_async_handler(hass, websocket_subscribe_raw_targets, connection, msg)
+
+        # Get the registered _on_state callback
+        on_state = mock_device_conn.subscribe_states.call_args[0][0]
+
+        # Simulate a TextSensorState update
+        from unittest.mock import patch as p
+
+        text_state = MagicMock()
+        text_state.__class__.__name__ = "TextSensorState"
+        text_state.key = 100
+        text_state.state = "1500.5,2300.2"
+
+        with p("custom_components.eppgrid.websocket_api.TextSensorState", create=True) as MockTSS:
+            # We need to mock the isinstance check — use the actual import path
+            pass
+
+        # Actually invoke via aioesphomeapi types
+        from aioesphomeapi import TextSensorState
+
+        state = TextSensorState(key=100, state="1500.5,2300.2", missing_state=False)
+        on_state(state)
+
+        # Should have sent a message with parsed targets
+        connection.send_message.assert_called_once()
+        event_data = connection.send_message.call_args[0][0]
+        # event_message returns a dict
+        assert "targets" in event_data.get("event", event_data)
+
+    async def test_raw_targets_on_state_empty_clears(
+        self, hass: HomeAssistant, config_entry: MockConfigEntry
+    ) -> None:
+        """Empty state clears raw target to null coordinates."""
+        mock_dm = await setup_integration(hass, config_entry)
+
+        raw0 = MagicMock()
+        raw0.key = 100
+        raw0.name = "Raw Target 0"
+
+        mock_device_conn = MagicMock()
+        mock_device_conn._entities = [raw0]
+        mock_device_conn.subscribe_states = MagicMock()
+        mock_device_conn.unsubscribe_states = MagicMock()
+        mock_dm.get_session = MagicMock(return_value=mock_device_conn)
+
+        from custom_components.eppgrid.websocket_api import websocket_subscribe_raw_targets
+
+        connection = MagicMock()
+        connection.subscriptions = {}
+        msg = {"id": 31, "type": "eppgrid/subscribe_raw_targets", "mac": "AA:BB:CC:DD:EE:FF"}
+
+        await call_async_handler(hass, websocket_subscribe_raw_targets, connection, msg)
+
+        on_state = mock_device_conn.subscribe_states.call_args[0][0]
+
+        from aioesphomeapi import TextSensorState
+
+        state = TextSensorState(key=100, state="", missing_state=False)
+        on_state(state)
+
+        connection.send_message.assert_called_once()
+
+    async def test_raw_targets_on_state_ignores_non_text(
+        self, hass: HomeAssistant, config_entry: MockConfigEntry
+    ) -> None:
+        """Non-TextSensorState is ignored."""
+        mock_dm = await setup_integration(hass, config_entry)
+
+        raw0 = MagicMock()
+        raw0.key = 100
+        raw0.name = "Raw Target 0"
+
+        mock_device_conn = MagicMock()
+        mock_device_conn._entities = [raw0]
+        mock_device_conn.subscribe_states = MagicMock()
+        mock_device_conn.unsubscribe_states = MagicMock()
+        mock_dm.get_session = MagicMock(return_value=mock_device_conn)
+
+        from custom_components.eppgrid.websocket_api import websocket_subscribe_raw_targets
+
+        connection = MagicMock()
+        connection.subscriptions = {}
+        msg = {"id": 32, "type": "eppgrid/subscribe_raw_targets", "mac": "AA:BB:CC:DD:EE:FF"}
+
+        await call_async_handler(hass, websocket_subscribe_raw_targets, connection, msg)
+
+        on_state = mock_device_conn.subscribe_states.call_args[0][0]
+
+        from aioesphomeapi import BinarySensorState
+
+        state = BinarySensorState(key=100, state=True, missing_state=False)
+        on_state(state)
+
+        connection.send_message.assert_not_called()
+
+    async def test_raw_targets_unsub(
+        self, hass: HomeAssistant, config_entry: MockConfigEntry
+    ) -> None:
+        """Unsubscribe callback removes state subscription."""
+        mock_dm = await setup_integration(hass, config_entry)
+
+        mock_device_conn = MagicMock()
+        mock_device_conn._entities = []
+        mock_device_conn.subscribe_states = MagicMock()
+        mock_device_conn.unsubscribe_states = MagicMock()
+        mock_dm.get_session = MagicMock(return_value=mock_device_conn)
+
+        from custom_components.eppgrid.websocket_api import websocket_subscribe_raw_targets
+
+        connection = MagicMock()
+        connection.subscriptions = {}
+        msg = {"id": 33, "type": "eppgrid/subscribe_raw_targets", "mac": "AA:BB:CC:DD:EE:FF"}
+
+        await call_async_handler(hass, websocket_subscribe_raw_targets, connection, msg)
+
+        # Call unsubscribe
+        connection.subscriptions[33]()
+        mock_device_conn.unsubscribe_states.assert_called_once()
+
+    async def test_grid_targets_on_state_target_position(
+        self, hass: HomeAssistant, config_entry: MockConfigEntry
+    ) -> None:
+        """_on_state in subscribe_grid_targets parses target position TextSensorState."""
+        mock_dm = await setup_integration(hass, config_entry)
+
+        target0 = MagicMock()
+        target0.key = 200
+        target0.name = "Target 0 Position"
+
+        mock_device_conn = MagicMock()
+        mock_device_conn._entities = [target0]
+        mock_device_conn.subscribe_states = MagicMock()
+        mock_device_conn.unsubscribe_states = MagicMock()
+        mock_dm.get_session = MagicMock(return_value=mock_device_conn)
+
+        from custom_components.eppgrid.websocket_api import websocket_subscribe_grid_targets
+
+        connection = MagicMock()
+        connection.subscriptions = {}
+        msg = {"id": 40, "type": "eppgrid/subscribe_grid_targets", "mac": "AA:BB:CC:DD:EE:FF"}
+
+        await call_async_handler(hass, websocket_subscribe_grid_targets, connection, msg)
+
+        on_state = mock_device_conn.subscribe_states.call_args[0][0]
+
+        from aioesphomeapi import TextSensorState
+
+        # Position with status field
+        state = TextSensorState(key=200, state="1500.0,2000.0,active", missing_state=False)
+        on_state(state)
+
+        connection.send_message.assert_called_once()
+        event_msg = connection.send_message.call_args[0][0]
+        event = event_msg.get("event", event_msg)
+        assert "targets" in event
+        assert "sensors" in event
+        assert "zones" in event
+
+    async def test_grid_targets_on_state_empty_position(
+        self, hass: HomeAssistant, config_entry: MockConfigEntry
+    ) -> None:
+        """Empty position resets target to inactive."""
+        mock_dm = await setup_integration(hass, config_entry)
+
+        target0 = MagicMock()
+        target0.key = 200
+        target0.name = "Target 0 Position"
+
+        mock_device_conn = MagicMock()
+        mock_device_conn._entities = [target0]
+        mock_device_conn.subscribe_states = MagicMock()
+        mock_device_conn.unsubscribe_states = MagicMock()
+        mock_dm.get_session = MagicMock(return_value=mock_device_conn)
+
+        from custom_components.eppgrid.websocket_api import websocket_subscribe_grid_targets
+
+        connection = MagicMock()
+        connection.subscriptions = {}
+        msg = {"id": 41, "type": "eppgrid/subscribe_grid_targets", "mac": "AA:BB:CC:DD:EE:FF"}
+
+        await call_async_handler(hass, websocket_subscribe_grid_targets, connection, msg)
+
+        on_state = mock_device_conn.subscribe_states.call_args[0][0]
+
+        from aioesphomeapi import TextSensorState
+
+        state = TextSensorState(key=200, state="", missing_state=False)
+        on_state(state)
+
+        connection.send_message.assert_called_once()
+
+    async def test_grid_targets_on_state_zone_state_json(
+        self, hass: HomeAssistant, config_entry: MockConfigEntry
+    ) -> None:
+        """Zone state JSON is parsed for occupancy and target signal/status."""
+        import json
+
+        mock_dm = await setup_integration(hass, config_entry)
+
+        zone_state_entity = MagicMock()
+        zone_state_entity.key = 300
+        zone_state_entity.name = "Zone State"
+
+        mock_device_conn = MagicMock()
+        mock_device_conn._entities = [zone_state_entity]
+        mock_device_conn.subscribe_states = MagicMock()
+        mock_device_conn.unsubscribe_states = MagicMock()
+        mock_dm.get_session = MagicMock(return_value=mock_device_conn)
+
+        from custom_components.eppgrid.websocket_api import websocket_subscribe_grid_targets
+
+        connection = MagicMock()
+        connection.subscriptions = {}
+        msg = {"id": 42, "type": "eppgrid/subscribe_grid_targets", "mac": "AA:BB:CC:DD:EE:FF"}
+
+        await call_async_handler(hass, websocket_subscribe_grid_targets, connection, msg)
+
+        on_state = mock_device_conn.subscribe_states.call_args[0][0]
+
+        from aioesphomeapi import TextSensorState
+
+        zone_json = json.dumps(
+            {
+                "targets": [
+                    {"signal": 80, "status": "active"},
+                    {"signal": 0, "status": "inactive"},
+                ],
+                "zones": {"occupancy": [True, False, False], "tracking": True},
+                "frame_count": 42,
+                "debug_log": "test debug",
+            }
+        )
+        state = TextSensorState(key=300, state=zone_json, missing_state=False)
+        on_state(state)
+
+        # Zone state doesn't trigger send_message directly (only target positions do)
+        # but the internal state should be updated — no crash is the test
+
+    async def test_grid_targets_on_state_binary_sensor(
+        self, hass: HomeAssistant, config_entry: MockConfigEntry
+    ) -> None:
+        """BinarySensorState updates sensor data."""
+        mock_dm = await setup_integration(hass, config_entry)
+
+        occupancy = MagicMock()
+        occupancy.key = 400
+        occupancy.name = "Occupancy"
+
+        mock_device_conn = MagicMock()
+        mock_device_conn._entities = [occupancy]
+        mock_device_conn.subscribe_states = MagicMock()
+        mock_device_conn.unsubscribe_states = MagicMock()
+        mock_dm.get_session = MagicMock(return_value=mock_device_conn)
+
+        from custom_components.eppgrid.websocket_api import websocket_subscribe_grid_targets
+
+        connection = MagicMock()
+        connection.subscriptions = {}
+        msg = {"id": 43, "type": "eppgrid/subscribe_grid_targets", "mac": "AA:BB:CC:DD:EE:FF"}
+
+        await call_async_handler(hass, websocket_subscribe_grid_targets, connection, msg)
+
+        on_state = mock_device_conn.subscribe_states.call_args[0][0]
+
+        from aioesphomeapi import BinarySensorState
+
+        state = BinarySensorState(key=400, state=True, missing_state=False)
+        on_state(state)
+
+        # Binary sensor updates don't trigger send_message (only target positions do)
+        # but internal state should update without error
+
+    async def test_grid_targets_on_state_numeric_sensor(
+        self, hass: HomeAssistant, config_entry: MockConfigEntry
+    ) -> None:
+        """SensorState updates numeric sensor data."""
+        mock_dm = await setup_integration(hass, config_entry)
+
+        temp = MagicMock()
+        temp.key = 500
+        temp.name = "Temperature"
+
+        mock_device_conn = MagicMock()
+        mock_device_conn._entities = [temp]
+        mock_device_conn.subscribe_states = MagicMock()
+        mock_device_conn.unsubscribe_states = MagicMock()
+        mock_dm.get_session = MagicMock(return_value=mock_device_conn)
+
+        from custom_components.eppgrid.websocket_api import websocket_subscribe_grid_targets
+
+        connection = MagicMock()
+        connection.subscriptions = {}
+        msg = {"id": 44, "type": "eppgrid/subscribe_grid_targets", "mac": "AA:BB:CC:DD:EE:FF"}
+
+        await call_async_handler(hass, websocket_subscribe_grid_targets, connection, msg)
+
+        on_state = mock_device_conn.subscribe_states.call_args[0][0]
+
+        from aioesphomeapi import SensorState
+
+        state = SensorState(key=500, state=22.5, missing_state=False)
+        on_state(state)
+
+        # NaN handling
+        import math
+
+        nan_state = SensorState(key=500, state=float("nan"), missing_state=False)
+        on_state(nan_state)
+
+    async def test_grid_targets_unsub(
+        self, hass: HomeAssistant, config_entry: MockConfigEntry
+    ) -> None:
+        """Unsubscribe callback removes state subscription."""
+        mock_dm = await setup_integration(hass, config_entry)
+
+        mock_device_conn = MagicMock()
+        mock_device_conn._entities = []
+        mock_device_conn.subscribe_states = MagicMock()
+        mock_device_conn.unsubscribe_states = MagicMock()
+        mock_dm.get_session = MagicMock(return_value=mock_device_conn)
+
+        from custom_components.eppgrid.websocket_api import websocket_subscribe_grid_targets
+
+        connection = MagicMock()
+        connection.subscriptions = {}
+        msg = {"id": 45, "type": "eppgrid/subscribe_grid_targets", "mac": "AA:BB:CC:DD:EE:FF"}
+
+        await call_async_handler(hass, websocket_subscribe_grid_targets, connection, msg)
+
+        connection.subscriptions[45]()
+        mock_device_conn.unsubscribe_states.assert_called_once()
+
+    async def test_subscribe_device_unsub(
+        self, hass: HomeAssistant, config_entry: MockConfigEntry
+    ) -> None:
+        """subscribe_device unsub callback closes session."""
+        mock_dm = await setup_integration(hass, config_entry)
+        mock_conn = MagicMock()
+        mock_dm.async_open_session = AsyncMock(return_value=mock_conn)
+
+        from custom_components.eppgrid.websocket_api import websocket_subscribe_device
+
+        connection = MagicMock()
+        connection.subscriptions = {}
+        msg = {"id": 46, "type": "eppgrid/subscribe_device", "mac": "AA:BB:CC:DD:EE:FF"}
+
+        await call_async_handler(hass, websocket_subscribe_device, connection, msg)
+
+        # Call the unsub callback
+        connection.subscriptions[46]()
+        await hass.async_block_till_done()
+
+        mock_dm.async_close_session.assert_called()
+
+
+class TestUpdateFirmwareError:
+    """Test update_firmware exception path."""
+
+    async def test_update_firmware_service_error(self, hass: HomeAssistant, config_entry: MockConfigEntry) -> None:
+        """update_firmware returns error when service call raises."""
+        from homeassistant.helpers import device_registry as dr
+        from homeassistant.helpers import entity_registry as er
+
+        mock_dm = await setup_integration(hass, config_entry)
+
+        dev_reg = dr.async_get(hass)
+        device = dev_reg.async_get_or_create(
+            config_entry_id=config_entry.entry_id,
+            identifiers={("eppgrid", "AA:BB:CC:DD:EE:FF")},
+            name="EPP Grid",
+        )
+
+        mock_dm.devices = {"AA:BB:CC:DD:EE:FF": MagicMock(device_id=device.id)}
+
+        ent_reg = er.async_get(hass)
+        ent_reg.async_get_or_create(
+            domain="update",
+            platform="esphome",
+            unique_id="device_err_firmware",
+            suggested_object_id="epp_firmware_err",
+            config_entry=config_entry,
+            device_id=device.id,
+        )
+
+        from custom_components.eppgrid.websocket_api import websocket_update_firmware
+
+        connection = MagicMock()
+        msg = {"id": 50, "type": "eppgrid/update_firmware", "mac": "AA:BB:CC:DD:EE:FF"}
+
+        with patch(
+            "homeassistant.core.ServiceRegistry.async_call",
+            new_callable=AsyncMock,
+            side_effect=Exception("OTA failed"),
+        ):
+            await call_async_handler(hass, websocket_update_firmware, connection, msg)
+
+        connection.send_error.assert_called_once()
+        args = connection.send_error.call_args[0]
+        assert args[1] == "update_failed"
+        assert "OTA failed" in args[2]
+
+
 class TestProtocolVersionGuard:
     """Config commands are blocked when protocol versions don't match."""
 

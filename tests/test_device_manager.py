@@ -12,9 +12,14 @@ from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers import entity_registry as er
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
+from homeassistant.const import STATE_UNAVAILABLE
+
+from custom_components.eppgrid.const import DOMAIN, MAX_ZONES
 from custom_components.eppgrid.device_manager import DeviceConnection
 from custom_components.eppgrid.device_manager import DeviceManager
 from custom_components.eppgrid.device_manager import ManagedDevice
+from custom_components.eppgrid.device_manager import _extract_host
+from custom_components.eppgrid.device_manager import _extract_mac
 from custom_components.eppgrid.storage import EPPGridStore
 
 # ---------------------------------------------------------------------------
@@ -539,3 +544,635 @@ class TestProtocolVersion:
         assert "AA:BB:CC:DD:EE:FF" in manager.devices
         result = manager.list_devices()
         assert result[0]["config_protocol_status"] == "firmware_behind"
+
+
+# ---------------------------------------------------------------------------
+# Push config tests
+# ---------------------------------------------------------------------------
+
+
+class TestPushConfig:
+    """Tests for DeviceConnection.async_push_config — grid, zones, settings."""
+
+    async def test_push_config_grid(self) -> None:
+        """push_config sends base64-encoded grid data with origin."""
+        conn = DeviceConnection("192.168.1.100")
+
+        mock_perspective = MagicMock()
+        mock_perspective.name = "epp_set_perspective"
+        mock_grid = MagicMock()
+        mock_grid.name = "epp_set_grid"
+        mock_zones = MagicMock()
+        mock_zones.name = "epp_set_zones"
+
+        with patch("custom_components.eppgrid.device_manager.APIClient") as mock_cls:
+            mock_client = mock_cls.return_value
+            mock_client.connect = AsyncMock()
+            mock_client.list_entities_services = AsyncMock(
+                return_value=([], [mock_perspective, mock_grid, mock_zones])
+            )
+            mock_client.execute_service = AsyncMock()
+            mock_client.disconnect = AsyncMock()
+
+            await conn.async_connect()
+            await conn.async_push_config(
+                {
+                    "calibration": {
+                        "perspective": [1.0] * 8,
+                        "room_width": 3000.0,
+                        "room_depth": 4000.0,
+                    },
+                    "room_layout": {
+                        "grid_bytes": [0] * 100,
+                        "zone_slots": [{"name": "Office"}, None, None, None, None, None, None],
+                        "room_type": "normal",
+                    },
+                }
+            )
+
+            # Should have called perspective, grid, and zones
+            assert mock_client.execute_service.await_count == 3
+            # Check grid call has grid_data (base64)
+            grid_call = mock_client.execute_service.call_args_list[1]
+            assert "grid_data" in grid_call[0][1]
+            assert "origin_x" in grid_call[0][1]
+
+    async def test_push_config_zones(self) -> None:
+        """push_config sends zone configuration JSON."""
+        conn = DeviceConnection("192.168.1.100")
+
+        mock_zones = MagicMock()
+        mock_zones.name = "epp_set_zones"
+
+        with patch("custom_components.eppgrid.device_manager.APIClient") as mock_cls:
+            mock_client = mock_cls.return_value
+            mock_client.connect = AsyncMock()
+            mock_client.list_entities_services = AsyncMock(return_value=([], [mock_zones]))
+            mock_client.execute_service = AsyncMock()
+
+            await conn.async_connect()
+            await conn.async_push_config(
+                {
+                    "room_layout": {
+                        "zone_slots": [{"name": "Living"}, None, None, None, None, None, None],
+                        "room_type": "hallway",
+                        "room_trigger": 3,
+                        "room_renew": 2,
+                        "room_timeout": 5.0,
+                        "room_handoff_timeout": 2.0,
+                        "room_entry_point": True,
+                    },
+                }
+            )
+
+            mock_client.execute_service.assert_awaited_once()
+            call_data = mock_client.execute_service.call_args[0][1]
+            assert "zones_json" in call_data
+
+    async def test_push_config_settings(self) -> None:
+        """push_config pushes device settings (env_calibration, motion_timeout, etc.)."""
+        conn = DeviceConnection("192.168.1.100")
+
+        mock_env = MagicMock()
+        mock_env.name = "epp_set_env_calibration"
+        mock_motion = MagicMock()
+        mock_motion.name = "epp_set_motion_timeout"
+
+        with patch("custom_components.eppgrid.device_manager.APIClient") as mock_cls:
+            mock_client = mock_cls.return_value
+            mock_client.connect = AsyncMock()
+            mock_client.list_entities_services = AsyncMock(return_value=([], [mock_env, mock_motion]))
+            mock_client.execute_service = AsyncMock()
+
+            await conn.async_connect()
+            await conn.async_push_config(
+                {
+                    "env_calibration": {"temperature_offset": -1.5},
+                    "motion_timeout": {"timeout": 30.0},
+                }
+            )
+
+            assert mock_client.execute_service.await_count == 2
+
+    async def test_push_config_already_connected_noop(self) -> None:
+        """async_connect is a no-op when already connected."""
+        conn = DeviceConnection("192.168.1.100")
+
+        with patch("custom_components.eppgrid.device_manager.APIClient") as mock_cls:
+            mock_client = mock_cls.return_value
+            mock_client.connect = AsyncMock()
+            mock_client.list_entities_services = AsyncMock(return_value=([], []))
+
+            await conn.async_connect()
+            assert conn.connected
+
+            # Second connect should be a no-op
+            await conn.async_connect()
+            mock_client.connect.assert_awaited_once()
+
+
+# ---------------------------------------------------------------------------
+# Event callback tests
+# ---------------------------------------------------------------------------
+
+
+class TestEventCallbacks:
+    """Tests for _on_entity_registry_updated, _on_state_changed, _on_device_available."""
+
+    async def test_on_entity_registry_updated_triggers_discover(
+        self, hass: HomeAssistant, manager: DeviceManager
+    ) -> None:
+        """New ESPHome entity creation triggers re-discovery."""
+        dev_reg = dr.async_get(hass)
+        ent_reg = er.async_get(hass)
+
+        esphome_entry = MockConfigEntry(
+            domain="esphome",
+            data={"host": "192.168.1.50"},
+            title="EPP New",
+        )
+        esphome_entry.add_to_hass(hass)
+
+        device = dev_reg.async_get_or_create(
+            config_entry_id=esphome_entry.entry_id,
+            connections={("mac", "ff:ee:dd:cc:bb:aa")},
+            name="EPP New",
+        )
+
+        entity = ent_reg.async_get_or_create(
+            "sensor",
+            "esphome",
+            unique_id="esphome_new_zone_engine_version",
+            config_entry=esphome_entry,
+            device_id=device.id,
+        )
+
+        with patch.object(manager, "async_discover", new_callable=AsyncMock) as mock_discover:
+            event = MagicMock()
+            event.data = {"action": "create", "entity_id": entity.entity_id}
+            manager._on_entity_registry_updated(event)
+            await hass.async_block_till_done()
+
+        mock_discover.assert_awaited_once()
+
+    async def test_on_entity_registry_updated_ignores_non_create(
+        self, hass: HomeAssistant, manager: DeviceManager
+    ) -> None:
+        """Non-create actions are ignored."""
+        event = MagicMock()
+        event.data = {"action": "update", "entity_id": "sensor.test"}
+
+        with patch.object(manager, "async_discover", new_callable=AsyncMock) as mock_discover:
+            manager._on_entity_registry_updated(event)
+            await hass.async_block_till_done()
+
+        mock_discover.assert_not_awaited()
+
+    async def test_on_entity_registry_updated_ignores_known_device(
+        self, hass: HomeAssistant, manager: DeviceManager
+    ) -> None:
+        """Entities belonging to already-discovered devices are skipped."""
+        dev_reg = dr.async_get(hass)
+        ent_reg = er.async_get(hass)
+
+        esphome_entry = MockConfigEntry(
+            domain="esphome",
+            data={"host": "192.168.1.50"},
+            title="EPP Known",
+        )
+        esphome_entry.add_to_hass(hass)
+
+        device = dev_reg.async_get_or_create(
+            config_entry_id=esphome_entry.entry_id,
+            connections={("mac", "aa:bb:cc:dd:ee:ff")},
+            name="EPP Known",
+        )
+
+        entity = ent_reg.async_get_or_create(
+            "sensor",
+            "esphome",
+            unique_id="esphome_known_something",
+            config_entry=esphome_entry,
+            device_id=device.id,
+        )
+
+        # Pre-populate the device as already discovered
+        manager.devices["AA:BB:CC:DD:EE:FF"] = ManagedDevice(
+            mac="AA:BB:CC:DD:EE:FF", name="EPP Known", host="192.168.1.50"
+        )
+
+        with patch.object(manager, "async_discover", new_callable=AsyncMock) as mock_discover:
+            event = MagicMock()
+            event.data = {"action": "create", "entity_id": entity.entity_id}
+            manager._on_entity_registry_updated(event)
+            await hass.async_block_till_done()
+
+        mock_discover.assert_not_awaited()
+
+    async def test_on_entity_registry_updated_ignores_non_esphome(
+        self, hass: HomeAssistant, manager: DeviceManager
+    ) -> None:
+        """Non-ESPHome entities are ignored."""
+        ent_reg = er.async_get(hass)
+
+        other_entry = MockConfigEntry(domain="other", data={}, title="Other")
+        other_entry.add_to_hass(hass)
+
+        entity = ent_reg.async_get_or_create(
+            "sensor",
+            "other",
+            unique_id="other_sensor_1",
+            config_entry=other_entry,
+        )
+
+        with patch.object(manager, "async_discover", new_callable=AsyncMock) as mock_discover:
+            event = MagicMock()
+            event.data = {"action": "create", "entity_id": entity.entity_id}
+            manager._on_entity_registry_updated(event)
+            await hass.async_block_till_done()
+
+        mock_discover.assert_not_awaited()
+
+    async def test_on_state_changed_pushes_config(
+        self, hass: HomeAssistant, manager: DeviceManager
+    ) -> None:
+        """Device coming online triggers config push."""
+        dev_reg = dr.async_get(hass)
+        ent_reg = er.async_get(hass)
+
+        esphome_entry = MockConfigEntry(
+            domain="esphome",
+            data={"host": "192.168.1.50"},
+            title="EPP Device",
+        )
+        esphome_entry.add_to_hass(hass)
+
+        device = dev_reg.async_get_or_create(
+            config_entry_id=esphome_entry.entry_id,
+            connections={("mac", "aa:bb:cc:dd:ee:ff")},
+            name="EPP Device",
+        )
+
+        entity = ent_reg.async_get_or_create(
+            "sensor",
+            "esphome",
+            unique_id="esphome_aabbccddeeff_temperature",
+            config_entry=esphome_entry,
+            device_id=device.id,
+        )
+
+        manager.devices["AA:BB:CC:DD:EE:FF"] = ManagedDevice(
+            mac="AA:BB:CC:DD:EE:FF", name="EPP", host="192.168.1.50", device_id=device.id
+        )
+
+        with patch.object(manager, "_push_config_to_device", new_callable=AsyncMock) as mock_push:
+            old_state = MagicMock()
+            old_state.state = STATE_UNAVAILABLE
+            new_state = MagicMock()
+            new_state.state = "25.5"
+
+            event = MagicMock()
+            event.data = {
+                "entity_id": entity.entity_id,
+                "old_state": old_state,
+                "new_state": new_state,
+            }
+            manager._on_state_changed(event)
+            await hass.async_block_till_done()
+
+        mock_push.assert_awaited_once_with("AA:BB:CC:DD:EE:FF")
+
+    async def test_on_state_changed_ignores_still_unavailable(
+        self, hass: HomeAssistant, manager: DeviceManager
+    ) -> None:
+        """State change from unavailable to unavailable is ignored."""
+        with patch.object(manager, "_on_device_available", new_callable=AsyncMock) as mock_avail:
+            old_state = MagicMock()
+            old_state.state = STATE_UNAVAILABLE
+            new_state = MagicMock()
+            new_state.state = STATE_UNAVAILABLE
+
+            event = MagicMock()
+            event.data = {
+                "entity_id": "sensor.test",
+                "old_state": old_state,
+                "new_state": new_state,
+            }
+            manager._on_state_changed(event)
+            await hass.async_block_till_done()
+
+        mock_avail.assert_not_awaited()
+
+    async def test_on_state_changed_ignores_none_states(
+        self, hass: HomeAssistant, manager: DeviceManager
+    ) -> None:
+        """Missing old/new state is ignored."""
+        event = MagicMock()
+        event.data = {"entity_id": "sensor.test", "old_state": None, "new_state": MagicMock()}
+
+        with patch.object(manager, "_on_device_available", new_callable=AsyncMock) as mock_avail:
+            manager._on_state_changed(event)
+            await hass.async_block_till_done()
+
+        mock_avail.assert_not_awaited()
+
+    async def test_on_state_changed_ignores_non_esphome(
+        self, hass: HomeAssistant, manager: DeviceManager
+    ) -> None:
+        """State change on non-ESPHome entity is ignored."""
+        ent_reg = er.async_get(hass)
+        other_entry = MockConfigEntry(domain="other", data={}, title="Other")
+        other_entry.add_to_hass(hass)
+        entity = ent_reg.async_get_or_create("sensor", "other", unique_id="other_1", config_entry=other_entry)
+
+        with patch.object(manager, "_on_device_available", new_callable=AsyncMock) as mock_avail:
+            old_state = MagicMock()
+            old_state.state = STATE_UNAVAILABLE
+            new_state = MagicMock()
+            new_state.state = "20.0"
+
+            event = MagicMock()
+            event.data = {"entity_id": entity.entity_id, "old_state": old_state, "new_state": new_state}
+            manager._on_state_changed(event)
+            await hass.async_block_till_done()
+
+        mock_avail.assert_not_awaited()
+
+    async def test_on_device_available_push_dedup(
+        self, hass: HomeAssistant, manager: DeviceManager
+    ) -> None:
+        """Concurrent _on_device_available calls are deduplicated."""
+        manager.devices["AA:BB:CC:DD:EE:FF"] = ManagedDevice(
+            mac="AA:BB:CC:DD:EE:FF", name="EPP", host="192.168.1.50"
+        )
+
+        with patch.object(manager, "_push_config_to_device", new_callable=AsyncMock) as mock_push:
+            manager._pushing.add("AA:BB:CC:DD:EE:FF")
+            await manager._on_device_available("AA:BB:CC:DD:EE:FF")
+
+        mock_push.assert_not_awaited()
+
+    async def test_push_config_to_device_no_config(
+        self, hass: HomeAssistant, store: EPPGridStore, manager: DeviceManager
+    ) -> None:
+        """_push_config_to_device is a no-op when no stored config."""
+        manager.devices["AA:BB:CC:DD:EE:FF"] = ManagedDevice(
+            mac="AA:BB:CC:DD:EE:FF", name="EPP", host="192.168.1.50"
+        )
+        # store has no config for this MAC
+        await manager._push_config_to_device("AA:BB:CC:DD:EE:FF")
+        # Should not raise
+
+    async def test_push_config_to_device_opens_session(
+        self, hass: HomeAssistant, store: EPPGridStore, manager: DeviceManager
+    ) -> None:
+        """_push_config_to_device opens session and pushes."""
+        store.devices["AA:BB:CC:DD:EE:FF"] = {"calibration": {"perspective": [1.0] * 8}}
+        manager.devices["AA:BB:CC:DD:EE:FF"] = ManagedDevice(
+            mac="AA:BB:CC:DD:EE:FF", name="EPP", host="192.168.1.50"
+        )
+
+        mock_conn = MagicMock()
+        mock_conn.async_push_config = AsyncMock()
+
+        with patch.object(manager, "async_open_session", new_callable=AsyncMock, return_value=mock_conn):
+            await manager._push_config_to_device("AA:BB:CC:DD:EE:FF")
+
+        mock_conn.async_push_config.assert_awaited_once()
+
+    async def test_push_config_to_device_handles_error(
+        self, hass: HomeAssistant, store: EPPGridStore, manager: DeviceManager
+    ) -> None:
+        """_push_config_to_device logs warning on push failure."""
+        store.devices["AA:BB:CC:DD:EE:FF"] = {"calibration": {"perspective": [1.0] * 8}}
+        manager.devices["AA:BB:CC:DD:EE:FF"] = ManagedDevice(
+            mac="AA:BB:CC:DD:EE:FF", name="EPP", host="192.168.1.50"
+        )
+
+        mock_conn = MagicMock()
+        mock_conn.async_push_config = AsyncMock(side_effect=ConnectionError("timeout"))
+
+        with patch.object(manager, "async_open_session", new_callable=AsyncMock, return_value=mock_conn):
+            # Should not raise
+            await manager._push_config_to_device("AA:BB:CC:DD:EE:FF")
+
+    async def test_push_config_to_device_no_session(
+        self, hass: HomeAssistant, store: EPPGridStore, manager: DeviceManager
+    ) -> None:
+        """_push_config_to_device is a no-op when session cannot be opened."""
+        store.devices["AA:BB:CC:DD:EE:FF"] = {"calibration": {"perspective": [1.0] * 8}}
+        manager.devices["AA:BB:CC:DD:EE:FF"] = ManagedDevice(
+            mac="AA:BB:CC:DD:EE:FF", name="EPP", host="192.168.1.50"
+        )
+
+        with patch.object(manager, "async_open_session", new_callable=AsyncMock, return_value=None):
+            await manager._push_config_to_device("AA:BB:CC:DD:EE:FF")
+
+
+# ---------------------------------------------------------------------------
+# Stale connection and start/stop tests
+# ---------------------------------------------------------------------------
+
+
+class TestSessionLifecycle:
+    """Tests for session edge cases and async_start/async_stop."""
+
+    async def test_open_session_stale_reconnects(self, hass: HomeAssistant, manager: DeviceManager) -> None:
+        """Open session cleans up stale connection and reconnects."""
+        manager.devices["AA:BB:CC:DD:EE:FF"] = ManagedDevice(
+            mac="AA:BB:CC:DD:EE:FF", name="EPP", host="192.168.1.50"
+        )
+
+        with patch("custom_components.eppgrid.device_manager.DeviceConnection") as mock_conn_cls:
+            stale_conn = MagicMock()
+            stale_conn.connected = False
+            stale_conn.async_disconnect = AsyncMock()
+
+            new_conn = MagicMock()
+            new_conn.async_connect = AsyncMock()
+            new_conn.connected = True
+
+            # First call returns stale, second returns new
+            mock_conn_cls.return_value = new_conn
+
+            # Pre-populate with stale connection
+            manager._active_connections["AA:BB:CC:DD:EE:FF"] = stale_conn
+
+            result = await manager.async_open_session("AA:BB:CC:DD:EE:FF")
+
+        stale_conn.async_disconnect.assert_awaited_once()
+        new_conn.async_connect.assert_awaited_once()
+        assert result is new_conn
+
+    async def test_async_start_registers_listeners(
+        self, hass: HomeAssistant, manager: DeviceManager
+    ) -> None:
+        """async_start discovers devices and registers event listeners."""
+        with patch.object(manager, "async_discover", new_callable=AsyncMock):
+            await manager.async_start()
+
+        assert len(manager._unsub_listeners) == 2
+
+        # Cleanup
+        await manager.async_stop()
+        assert len(manager._unsub_listeners) == 0
+
+
+# ---------------------------------------------------------------------------
+# Zone entity management tests
+# ---------------------------------------------------------------------------
+
+
+class TestZoneEntities:
+    """Tests for async_update_zone_entities."""
+
+    async def test_update_zone_entities_calibrated(self, hass: HomeAssistant, manager: DeviceManager) -> None:
+        """Calibrated device enables zone 0 as 'Rest of Room Occupancy'."""
+        dev_reg = dr.async_get(hass)
+        ent_reg = er.async_get(hass)
+
+        esphome_entry = MockConfigEntry(domain="esphome", data={"host": "192.168.1.50"}, title="EPP")
+        esphome_entry.add_to_hass(hass)
+
+        device = dev_reg.async_get_or_create(
+            config_entry_id=esphome_entry.entry_id,
+            connections={("mac", "aa:bb:cc:dd:ee:ff")},
+            name="EPP",
+        )
+
+        # Create zone entities and keep references
+        zone0_entry = ent_reg.async_get_or_create(
+            "binary_sensor",
+            "esphome",
+            unique_id="esphome_aabbccddeeff_zone_0_occupancy",
+            config_entry=esphome_entry,
+            device_id=device.id,
+        )
+        zone1_entry = ent_reg.async_get_or_create(
+            "binary_sensor",
+            "esphome",
+            unique_id="esphome_aabbccddeeff_zone_1_occupancy",
+            config_entry=esphome_entry,
+            device_id=device.id,
+        )
+        zone2_entry = ent_reg.async_get_or_create(
+            "binary_sensor",
+            "esphome",
+            unique_id="esphome_aabbccddeeff_zone_2_occupancy",
+            config_entry=esphome_entry,
+            device_id=device.id,
+        )
+
+        manager.devices["AA:BB:CC:DD:EE:FF"] = ManagedDevice(
+            mac="AA:BB:CC:DD:EE:FF", name="EPP", host="192.168.1.50", device_id=device.id
+        )
+        manager._store.devices["AA:BB:CC:DD:EE:FF"] = {"calibration": {"perspective": [1.0] * 8}}
+
+        zone_slots = [{"name": "Office"}, None, None, None, None, None, None]
+        await manager.async_update_zone_entities("AA:BB:CC:DD:EE:FF", zone_slots)
+
+        # Zone 0 should be enabled with name "Rest of Room Occupancy"
+        zone0 = ent_reg.async_get(zone0_entry.entity_id)
+        assert zone0.disabled_by is None
+        assert zone0.name == "Rest of Room Occupancy"
+
+        # Zone 1 should be enabled and renamed "Office"
+        zone1 = ent_reg.async_get(zone1_entry.entity_id)
+        assert zone1.disabled_by is None
+        assert zone1.name == "Office"
+
+        # Zone 2 should be disabled (unused)
+        zone2 = ent_reg.async_get(zone2_entry.entity_id)
+        assert zone2.disabled_by == er.RegistryEntryDisabler.INTEGRATION
+
+    async def test_update_zone_entities_uncalibrated(self, hass: HomeAssistant, manager: DeviceManager) -> None:
+        """Uncalibrated device disables zone 0."""
+        dev_reg = dr.async_get(hass)
+        ent_reg = er.async_get(hass)
+
+        esphome_entry = MockConfigEntry(domain="esphome", data={"host": "192.168.1.50"}, title="EPP")
+        esphome_entry.add_to_hass(hass)
+
+        device = dev_reg.async_get_or_create(
+            config_entry_id=esphome_entry.entry_id,
+            connections={("mac", "aa:bb:cc:dd:ee:ff")},
+            name="EPP",
+        )
+
+        zone0_entry = ent_reg.async_get_or_create(
+            "binary_sensor",
+            "esphome",
+            unique_id="esphome_aabbccddeeff_zone_0_occupancy",
+            config_entry=esphome_entry,
+            device_id=device.id,
+        )
+
+        manager.devices["AA:BB:CC:DD:EE:FF"] = ManagedDevice(
+            mac="AA:BB:CC:DD:EE:FF", name="EPP", host="192.168.1.50", device_id=device.id
+        )
+        # No calibration in store
+
+        zone_slots = [None] * MAX_ZONES
+        await manager.async_update_zone_entities("AA:BB:CC:DD:EE:FF", zone_slots)
+
+        zone0 = ent_reg.async_get(zone0_entry.entity_id)
+        assert zone0.disabled_by == er.RegistryEntryDisabler.INTEGRATION
+
+    async def test_update_zone_entities_unknown_device(self, hass: HomeAssistant, manager: DeviceManager) -> None:
+        """Unknown device is a no-op."""
+        await manager.async_update_zone_entities("00:00:00:00:00:00", [None] * MAX_ZONES)
+        # Should not raise
+
+
+# ---------------------------------------------------------------------------
+# Helper function tests
+# ---------------------------------------------------------------------------
+
+
+class TestHelpers:
+    """Tests for _extract_mac, _extract_host."""
+
+    async def test_extract_mac_no_mac_connection(self, hass: HomeAssistant) -> None:
+        """Returns None when device has no MAC connection."""
+        dev_reg = dr.async_get(hass)
+        entry = MockConfigEntry(domain="test", data={}, title="Test")
+        entry.add_to_hass(hass)
+        device = dev_reg.async_get_or_create(
+            config_entry_id=entry.entry_id,
+            identifiers={("test", "123")},
+            name="No MAC Device",
+        )
+        assert _extract_mac(device) is None
+
+    async def test_extract_host_no_config_entry(self, hass: HomeAssistant) -> None:
+        """Returns None when config_entry_id is None."""
+        dev_reg = dr.async_get(hass)
+        entry = MockConfigEntry(domain="test", data={}, title="Test")
+        entry.add_to_hass(hass)
+        device = dev_reg.async_get_or_create(
+            config_entry_id=entry.entry_id,
+            identifiers={("test", "456")},
+        )
+        assert _extract_host(device, None, hass) is None
+
+    async def test_extract_host_missing_entry(self, hass: HomeAssistant) -> None:
+        """Returns None when config entry doesn't exist."""
+        dev_reg = dr.async_get(hass)
+        entry = MockConfigEntry(domain="test", data={}, title="Test")
+        entry.add_to_hass(hass)
+        device = dev_reg.async_get_or_create(
+            config_entry_id=entry.entry_id,
+            identifiers={("test", "789")},
+        )
+        assert _extract_host(device, "nonexistent_entry_id", hass) is None
+
+    async def test_extract_host_returns_host(self, hass: HomeAssistant) -> None:
+        """Returns host from ESPHome config entry."""
+        dev_reg = dr.async_get(hass)
+        esphome_entry = MockConfigEntry(domain="esphome", data={"host": "192.168.1.99"}, title="EPP")
+        esphome_entry.add_to_hass(hass)
+        device = dev_reg.async_get_or_create(
+            config_entry_id=esphome_entry.entry_id,
+            identifiers={("esphome", "abc")},
+        )
+        assert _extract_host(device, esphome_entry.entry_id, hass) == "192.168.1.99"
