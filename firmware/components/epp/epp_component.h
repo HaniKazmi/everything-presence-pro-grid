@@ -72,7 +72,7 @@ class EPPComponent : public esphome::Component {
     motion_presence_sensor_ = sensor;
   }
   void set_static_timeout(float timeout) { static_timeout_ = timeout; }
-  void set_motion_timeout_value(float timeout) { motion_timeout_ = timeout; }
+  void set_motion_timeout(float timeout) { motion_timeout_ = timeout; }
 
  protected:
   static constexpr int NUM_TARGETS = 3;

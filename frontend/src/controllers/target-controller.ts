@@ -137,8 +137,9 @@ export class TargetController implements ReactiveController {
 	/**
 	 * Enrich a raw debug log string (from firmware or frontend zone engine)
 	 * by replacing zone IDs with zone names.
-	 * Raw format: "T0:Z1:A:5 T1:Z0:P:3|Z0:O:1 Z1:O:1"
-	 * Enriched:   "T0->Entrance(active,5) T1->Room(pending,3) | Entrance: occupied(1)"
+	 * Raw format: "S:A M:P Occ:1|T0:Z1:A:5 T1:Z0:P:3|Z0:O:1 Z1:O:1"
+	 * Legacy:     "T0:Z1:A:5 T1:Z0:P:3|Z0:O:1 Z1:O:1"
+	 * Enriched:   "Static: active, Motion: pending, Occ: on | T0→Entrance(active,5) | Entrance: occupied(1)"
 	 */
 	enrichDebugLog(raw: string): string {
 		const zoneName = (zid: number): string => {

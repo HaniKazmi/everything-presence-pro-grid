@@ -177,7 +177,7 @@ api:
       then:
         - lambda: |-
             id(motion_timeout) = 1;
-            id(epp_component).set_motion_timeout_value(timeout);
+            id(epp_component).set_motion_timeout(timeout);
     - action: epp_set_tracking
       variables:
         max_range: float
