@@ -5,6 +5,7 @@ import {
 	parseFurniture,
 	parseGrid,
 	parseRoomThresholds,
+	parseSettings,
 	parseZoneConfigs,
 } from "../config-serialization.js";
 import { cellIsInside, GRID_CELL_COUNT, MAX_ZONES } from "../grid.js";
@@ -317,6 +318,62 @@ describe("parseRoomThresholds", () => {
 	});
 });
 
+describe("parseSettings", () => {
+	it("returns defaults when settings is undefined", () => {
+		const s = parseSettings(undefined);
+		expect(s.temperatureOffset).toBe(0);
+		expect(s.humidityOffset).toBe(0);
+		expect(s.illuminanceOffset).toBe(0);
+		expect(s.motionTimeout).toBe(5);
+		expect(s.targetAutoDistance).toBe(true);
+		expect(s.targetMaxDistance).toBe(6);
+		expect(s.staticAutoDistance).toBe(true);
+		expect(s.staticMinDistance).toBe(0.3);
+		expect(s.staticMaxDistance).toBe(16);
+		expect(s.staticTriggerThreshold).toBe(3);
+		expect(s.staticRenewThreshold).toBe(3);
+		expect(s.staticTimeout).toBe(30);
+		expect(s.staticOnDelay).toBe(0);
+		expect(s.entities).toEqual({});
+	});
+
+	it("reads values from settings object", () => {
+		const s = parseSettings({
+			temperature_offset: -1.5,
+			humidity_offset: 2.0,
+			illuminance_offset: -10,
+			motion_timeout: 10,
+			target_auto_distance: false,
+			target_max_distance: 4,
+			static_auto_distance: false,
+			static_min_distance: 1,
+			static_max_distance: 8,
+			static_trigger_threshold: 5,
+			static_renew_threshold: 4,
+			static_timeout: 60,
+			static_on_delay: 2,
+		});
+		expect(s.temperatureOffset).toBe(-1.5);
+		expect(s.humidityOffset).toBe(2.0);
+		expect(s.illuminanceOffset).toBe(-10);
+		expect(s.motionTimeout).toBe(10);
+		expect(s.targetAutoDistance).toBe(false);
+		expect(s.targetMaxDistance).toBe(4);
+		expect(s.staticAutoDistance).toBe(false);
+		expect(s.staticMinDistance).toBe(1);
+		expect(s.staticMaxDistance).toBe(8);
+		expect(s.staticTriggerThreshold).toBe(5);
+		expect(s.staticRenewThreshold).toBe(4);
+		expect(s.staticTimeout).toBe(60);
+		expect(s.staticOnDelay).toBe(2);
+	});
+
+	it("passes entities from separate argument", () => {
+		const s = parseSettings({}, { room_occupancy: true, room_presence: false });
+		expect(s.entities).toEqual({ room_occupancy: true, room_presence: false });
+	});
+});
+
 describe("parseConfig", () => {
 	it("parses a complete config", () => {
 		const config = {
@@ -332,8 +389,11 @@ describe("parseConfig", () => {
 				room_type: "rest",
 				room_entry_point: false,
 			},
-			reporting: { some_key: true },
-			offsets: { offset_x: 10 },
+			settings: {
+				temperature_offset: 5,
+				motion_timeout: 10,
+			},
+			entities: { room_occupancy: true },
 		};
 		const result = parseConfig(config);
 		expect(result.calibration.perspective).toEqual([
@@ -344,8 +404,9 @@ describe("parseConfig", () => {
 		expect(result.grid.length).toBe(GRID_CELL_COUNT);
 		expect(result.zoneConfigs[0]!.name).toBe("Zone A");
 		expect(result.roomThresholds.roomType).toBe("rest");
-		expect(result.reportingConfig).toEqual({ some_key: true });
-		expect(result.offsetsConfig).toEqual({ offset_x: 10 });
+		expect(result.settings.temperatureOffset).toBe(5);
+		expect(result.settings.motionTimeout).toBe(10);
+		expect(result.settings.entities).toEqual({ room_occupancy: true });
 	});
 
 	it("handles minimal config", () => {
@@ -355,8 +416,9 @@ describe("parseConfig", () => {
 		expect(result.grid.length).toBe(GRID_CELL_COUNT);
 		expect(result.zoneConfigs.every((z) => z === null)).toBe(true);
 		expect(result.roomThresholds.roomType).toBe("normal");
-		expect(result.reportingConfig).toEqual({});
-		expect(result.offsetsConfig).toEqual({});
+		expect(result.settings.temperatureOffset).toBe(0);
+		expect(result.settings.motionTimeout).toBe(5);
+		expect(result.settings.entities).toEqual({});
 	});
 
 	it("handles null config", () => {
