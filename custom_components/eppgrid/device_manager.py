@@ -232,6 +232,25 @@ class DeviceManager:
                 return None
         return 0
 
+    def read_api_client_count(self, device_id: str | None) -> int | None:
+        """Read the API Client Count sensor value for a device.
+
+        Returns the count (int), or None if the entity is missing or unavailable.
+        """
+        if device_id is None:
+            return None
+        ent_reg = er.async_get(self._hass)
+        for entry in er.async_entries_for_device(ent_reg, device_id, include_disabled_entities=True):
+            if entry.platform == "esphome" and entry.unique_id.endswith("api_client_count"):
+                state = self._hass.states.get(entry.entity_id)
+                if state is not None and state.state not in (None, "unknown", "unavailable", ""):
+                    try:
+                        return int(float(state.state))
+                    except (ValueError, TypeError):
+                        pass
+                return None
+        return None
+
     async def async_discover(self) -> None:
         """Scan entity registry for ESPHome devices with zone_engine_version."""
         ent_reg = er.async_get(self._hass)
@@ -419,6 +438,7 @@ class DeviceManager:
                         if proto < CONFIG_PROTOCOL_VERSION
                         else "firmware_ahead"
                     ),
+                    "api_client_count": self.read_api_client_count(dev.device_id),
                 }
             )
         return result
