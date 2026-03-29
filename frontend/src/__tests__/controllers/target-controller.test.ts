@@ -276,18 +276,14 @@ describe("TargetController", () => {
 		});
 
 		it("parses 3-section format (sensors|targets|zones) with S:, M:, Occ: tokens", () => {
-			const result = ctrl.enrichDebugLog(
-				"S:A M:I Occ:1|T0:Z1:A:5|Z1:O:1",
-			);
+			const result = ctrl.enrichDebugLog("S:A M:I Occ:1|T0:Z1:A:5|Z1:O:1");
 			expect(result).toBe(
 				"Static: active, Motion: inactive, Occ: on | T0→Entrance(active,5) | Entrance: occupied(1)",
 			);
 		});
 
 		it("renders 3-section format with Occ:0 as 'off'", () => {
-			const result = ctrl.enrichDebugLog(
-				"S:I M:A Occ:0|T0:Z1:A:5|Z1:O:1",
-			);
+			const result = ctrl.enrichDebugLog("S:I M:A Occ:0|T0:Z1:A:5|Z1:O:1");
 			expect(result).toContain("Occ: off");
 			expect(result).toContain("Static: inactive");
 			expect(result).toContain("Motion: active");

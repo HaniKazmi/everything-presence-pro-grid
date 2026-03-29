@@ -1948,7 +1948,8 @@ describe("_renderVisibleCells debug log branches", () => {
 		a._debugLogLines = [];
 		// Set prev to the new sensor-prefixed format so the next call with no targets returns early
 		// (no sensor state → S:I M:I Occ:0 → "Static: inactive, Motion: inactive, Occ: off")
-		a._debugLogPrev = "Static: inactive, Motion: inactive, Occ: off | no targets | all clear";
+		a._debugLogPrev =
+			"Static: inactive, Motion: inactive, Occ: off | no targets | all clear";
 		a._targets = [];
 		a._zoneEngineState.targetPrev = [null, null, null];
 		a._zoneEngineState.targetGateCount = [0, 0, 0];
