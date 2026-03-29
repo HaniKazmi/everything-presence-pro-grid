@@ -186,17 +186,13 @@ export class EppLiveSidebar extends LitElement {
 			{
 				id: "static",
 				label: this.localize("live.static_presence"),
-				on: ss.static_state
-					? ss.static_state !== "inactive"
-					: ss.static_presence,
+				on: ss.static_state ? ss.static_state !== "I" : ss.static_presence,
 				info: this.localize("info.static_presence"),
 			},
 			{
 				id: "motion",
 				label: this.localize("live.motion_presence"),
-				on: ss.motion_state
-					? ss.motion_state !== "inactive"
-					: ss.motion_presence,
+				on: ss.motion_state ? ss.motion_state !== "I" : ss.motion_presence,
 				info: this.localize("info.motion_presence"),
 			},
 			{
