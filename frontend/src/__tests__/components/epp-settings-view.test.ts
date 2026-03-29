@@ -522,6 +522,28 @@ describe("dirty event", () => {
 		}
 		document.body.removeChild(c);
 	});
+
+	it("fires dirty when a sensitivity slider changes (event bubbles from child)", () => {
+		// Render with sensitivity accordion open so sliders are visible
+		const sv = createView({ openAccordions: new Set(["sensitivity"]) });
+		const tpl = sv.render();
+		const c = renderTo(tpl);
+
+		let dirtyFired = false;
+		sv.addEventListener("dirty", () => {
+			dirtyFired = true;
+		});
+
+		// Find the first range input inside the sensitivity section
+		const ranges = c.querySelectorAll(".setting-range");
+		expect(ranges.length).toBeGreaterThan(0);
+		const slider = ranges[0] as HTMLInputElement;
+		slider.value = "10";
+		slider.dispatchEvent(new Event("input", { bubbles: true }));
+
+		expect(dirtyFired).toBe(true);
+		document.body.removeChild(c);
+	});
 });
 
 describe("setting-change event", () => {

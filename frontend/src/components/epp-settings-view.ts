@@ -195,6 +195,7 @@ export class EppSettingsView extends LitElement {
 					const off = parseFloat(el.value);
 					const val = raw != null ? (raw + off).toFixed(precision) : "\u2014";
 					el.nextElementSibling!.textContent = val;
+					this._fireDirty();
 				}} /><span class="setting-value">${adjusted}</span> ${unit}</span>
         ${this.infoTip(tip)}
       </div>
@@ -348,6 +349,7 @@ export class EppSettingsView extends LitElement {
 							const el = e.target as HTMLInputElement;
 							this.motionTimeout = Number(el.value);
 							el.nextElementSibling!.textContent = el.value;
+							this._fireDirty();
 						}} /><span class="setting-value">${this.motionTimeout}</span><span class="setting-unit">s</span></span>
             ${this.infoTip(this.localize("info.motion_timeout"))}
           </div>
@@ -360,6 +362,7 @@ export class EppSettingsView extends LitElement {
 							const el = e.target as HTMLInputElement;
 							this.staticTimeout = Number(el.value);
 							el.nextElementSibling!.textContent = el.value;
+							this._fireDirty();
 						}} /><span class="setting-value">${this.staticTimeout}</span><span class="setting-unit">s</span></span>
             ${this.infoTip(this.localize("info.static_timeout"))}
           </div>
@@ -369,6 +372,7 @@ export class EppSettingsView extends LitElement {
 							const el = e.target as HTMLInputElement;
 							this.staticTriggerThreshold = Number(el.value);
 							el.nextElementSibling!.textContent = el.value;
+							this._fireDirty();
 						}} /><span class="setting-value">${this.staticTriggerThreshold}</span><span class="setting-unit"></span></span>
             ${this.infoTip(this.localize("info.trigger_threshold"))}
           </div>
@@ -378,6 +382,7 @@ export class EppSettingsView extends LitElement {
 							const el = e.target as HTMLInputElement;
 							this.staticRenewThreshold = Number(el.value);
 							el.nextElementSibling!.textContent = el.value;
+							this._fireDirty();
 						}} /><span class="setting-value">${this.staticRenewThreshold}</span><span class="setting-unit"></span></span>
             ${this.infoTip(this.localize("info.renew_threshold"))}
           </div>
@@ -387,6 +392,7 @@ export class EppSettingsView extends LitElement {
 							const el = e.target as HTMLInputElement;
 							this.staticOnDelay = Number(el.value);
 							el.nextElementSibling!.textContent = el.value;
+							this._fireDirty();
 						}} /><span class="setting-value">${this.staticOnDelay}</span><span class="setting-unit">s</span></span>
             ${this.infoTip(this.localize("info.presence_delay"))}
           </div>

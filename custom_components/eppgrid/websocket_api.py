@@ -373,10 +373,9 @@ def _get_entity_states(hass: HomeAssistant, mac: str) -> dict[str, bool]:
         if key is None:
             continue
         enabled = entry.disabled_by is None
-        # For category keys (zone_presence, target_xy), all must be enabled
-        # for the category to show as enabled.  Use AND logic.
+        # For category keys (zone_presence, target_xy), any enabled = category enabled.
         if key in result:
-            result[key] = result[key] and enabled
+            result[key] = result[key] or enabled
         else:
             result[key] = enabled
     return result
@@ -790,6 +789,17 @@ async def websocket_set_settings(
     entities = msg.get("entities")
     if entities:
         _apply_entity_states(hass, mac, entities)
+        # Zone presence needs layout-aware handling: enable zone_0 + named zones
+        if "zone_presence" in entities:
+            from .const import MAX_ZONES
+
+            layout = device_config.get("room_layout", {})
+            zone_slots = layout.get("zone_slots", [None] * MAX_ZONES)
+            if entities["zone_presence"]:
+                await manager.async_update_zone_entities(mac, zone_slots)
+            else:
+                # Disable all zone entities
+                await manager.async_update_zone_entities(mac, [None] * MAX_ZONES)
     connection.send_result(msg["id"])
 
 
