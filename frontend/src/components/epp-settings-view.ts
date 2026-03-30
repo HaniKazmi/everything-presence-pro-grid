@@ -521,8 +521,8 @@ export class EppSettingsView extends LitElement {
 						);
 					}}
         >${this.localize("common.cancel")}</button>
-        <button class="wizard-btn wizard-btn-primary"
-          ?disabled=${this.saving}
+        <button class="wizard-btn wizard-btn-primary save-btn"
+          ?disabled=${this.saving || !this.dirty}
           @click=${() => {
 						this._emitSave();
 					}}
@@ -571,6 +571,10 @@ export class EppSettingsView extends LitElement {
 	}
 
 	private _fireDirty() {
+		// Enable save button directly via DOM — setting reactive properties
+		// here crashes Lit when combined with the panel's 5Hz re-renders.
+		const btn = this.shadowRoot?.querySelector(".save-btn") as HTMLButtonElement;
+		if (btn) btn.disabled = false;
 		this.dispatchEvent(
 			new CustomEvent("dirty", {
 				bubbles: true,

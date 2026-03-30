@@ -438,14 +438,14 @@ describe("renderSaveCancelButtons", () => {
 		document.body.removeChild(c);
 	});
 
-	it("save button is enabled when not saving", () => {
-		const sv = createView({ saving: false });
+	it("save button is disabled when not dirty", () => {
+		const sv = createView({ dirty: false });
 		const tpl = (sv as any).renderSaveCancelButtons();
 		const c = renderTo(tpl);
 
 		const saveBtn = c.querySelector(".wizard-btn-primary") as HTMLButtonElement;
 		if (saveBtn) {
-			expect(saveBtn.disabled).toBe(false);
+			expect(saveBtn.disabled).toBe(true);
 		}
 		document.body.removeChild(c);
 	});
