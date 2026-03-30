@@ -1429,6 +1429,22 @@ describe("logging accordion", () => {
 		document.body.removeChild(c);
 	});
 
+	it("shows CO2 row when co2Enabled is true", async () => {
+		const sv = createView({
+			openAccordions: new Set(["logging"]),
+			logLevels: {},
+			co2Enabled: true,
+		});
+		document.body.appendChild(sv);
+		await sv.updateComplete;
+		const body = sv.shadowRoot!.querySelector(".accordion-body");
+		const labels = Array.from(body!.querySelectorAll(".setting-row label")).map(
+			(l) => l.textContent,
+		);
+		expect(labels).toContain("settings.log_co2");
+		document.body.removeChild(sv);
+	});
+
 	it("marks dirty when dropdown changes", () => {
 		const sv = createView({
 			logLevels: { system: "Warning" },
@@ -1498,6 +1514,8 @@ describe("logging accordion", () => {
 			configurable: true,
 		});
 
+		const requestUpdateSpy = vi.spyOn(sv, "requestUpdate");
+
 		const tpl = (sv as any).renderLogging();
 		const c = renderTo(tpl);
 
@@ -1508,6 +1526,7 @@ describe("logging accordion", () => {
 		(resetBtns[0] as HTMLElement).click();
 
 		expect((sv as any)._overrides.logLevels?.system).toBe("Warning");
+		expect(requestUpdateSpy).toHaveBeenCalled();
 		document.body.removeChild(c);
 	});
 });
