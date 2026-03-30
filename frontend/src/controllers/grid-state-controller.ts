@@ -555,6 +555,7 @@ export class GridStateController implements ReactiveController {
 				payload.static_renew_threshold ?? this.host._staticRenewThreshold;
 			this.host._staticOnDelay =
 				payload.static_on_delay ?? this.host._staticOnDelay;
+			this.host._logLevels = payload.log_levels ?? this.host._logLevels;
 			this.host._targetAutoDistance =
 				payload.target_auto_distance ?? this.host._targetAutoDistance;
 			this.host._targetMaxDistance =
