@@ -700,6 +700,7 @@ export class EppSettingsView extends LitElement {
                 <label>${this.localize(c.label)}</label>
                 <ha-select
                   .value=${current}
+                  .options=${LOG_LEVELS.map((l) => ({ value: l, label: l }))}
                   @selected=${(e: Event) => {
 										const select = e.target as any;
 										const val = select.value;
@@ -709,11 +710,7 @@ export class EppSettingsView extends LitElement {
 										this._fireDirty();
 									}}
                   @closed=${(e: Event) => e.stopPropagation()}
-                >
-                  ${LOG_LEVELS.map(
-										(l) => html`<ha-list-item .value=${l}>${l}</ha-list-item>`,
-									)}
-                </ha-select>
+                ></ha-select>
                 <button type="button" class="setting-info" aria-label="Reset to default" title="Reset to default" @click=${(e: Event) => {
 									e.stopPropagation();
 									if (!this._overrides.logLevels) this._overrides.logLevels = {};
