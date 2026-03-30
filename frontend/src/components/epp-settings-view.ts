@@ -259,6 +259,7 @@ export class EppSettingsView extends LitElement {
 			e.stopPropagation();
 			const row = (e.currentTarget as HTMLElement).closest(".setting-row") as HTMLElement;
 			if (row) this._resetSlider(row, defaultValue, key);
+			if (key) this._fireChange(key, defaultValue);
 		}}><ha-icon icon="mdi:restart"></ha-icon></span>`;
 	}
 
@@ -297,15 +298,13 @@ export class EppSettingsView extends LitElement {
 			this.roomWidth,
 			this.perspective,
 		);
+		const targetAutoVal = autoRange > 0 ? Math.min(autoRange, 6) : 6;
+		const staticMaxAutoVal = autoRange > 0 ? Math.min(autoRange, 16) : 16;
 		const targetVal = this.targetAutoDistance
-			? autoRange > 0
-				? Math.min(autoRange, 6)
-				: 6
+			? targetAutoVal
 			: this.targetMaxDistance;
 		const staticMaxVal = this.staticAutoDistance
-			? autoRange > 0
-				? Math.min(autoRange, 16)
-				: 16
+			? staticMaxAutoVal
 			: this.staticMaxDistance;
 		const autoStyle = "opacity: 0.5; pointer-events: none;";
 		return html`
@@ -340,7 +339,7 @@ export class EppSettingsView extends LitElement {
 								this._fireChange("targetMaxDistance", v);
 								this._setText(el.nextElementSibling!, v.toFixed(1));
 							}} /><span class="setting-value">${targetVal}</span><span class="setting-unit">m</span></span>
-            ${this.resetBtn(6, "targetMaxDistance")}${this.infoTip(this.localize("info.target_max_distance"))}
+            ${this.resetBtn(targetAutoVal, "targetMaxDistance")}${this.infoTip(this.localize("info.target_max_distance"))}
           </div>
         </div>
         <div class="setting-group">
@@ -394,7 +393,7 @@ export class EppSettingsView extends LitElement {
 								this._fireChange("staticMaxDistance", v);
 								this._setText(el.nextElementSibling!, v.toFixed(1));
 							}} /><span class="setting-value">${staticMaxVal}</span><span class="setting-unit">m</span></span>
-            ${this.resetBtn(16, "staticMaxDistance")}${this.infoTip(this.localize("info.static_max_distance"))}
+            ${this.resetBtn(staticMaxAutoVal, "staticMaxDistance")}${this.infoTip(this.localize("info.static_max_distance"))}
           </div>
         </div>
       </div>
