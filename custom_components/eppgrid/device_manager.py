@@ -11,6 +11,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from aioesphomeapi import APIClient
+from aioesphomeapi import LogLevel
 from aioesphomeapi import UserService
 from homeassistant.const import STATE_UNAVAILABLE
 from homeassistant.core import HomeAssistant
@@ -27,6 +28,18 @@ from .const import MAX_ZONES
 from .storage import EPPGridStore
 
 _LOGGER = logging.getLogger(__name__)
+_DEVICE_LOGGER = logging.getLogger(f"{__name__}.device_logs")
+
+# Map aioesphomeapi LogLevel values to Python logging levels
+_ESPHOME_TO_PYTHON_LOG = {
+    LogLevel.LOG_LEVEL_ERROR: logging.ERROR,
+    LogLevel.LOG_LEVEL_WARN: logging.WARNING,
+    LogLevel.LOG_LEVEL_INFO: logging.INFO,
+    LogLevel.LOG_LEVEL_CONFIG: logging.INFO,
+    LogLevel.LOG_LEVEL_DEBUG: logging.DEBUG,
+    LogLevel.LOG_LEVEL_VERBOSE: logging.DEBUG,
+    LogLevel.LOG_LEVEL_VERY_VERBOSE: logging.DEBUG,
+}
 
 
 class DeviceConnection:
@@ -41,6 +54,7 @@ class DeviceConnection:
         self._entities: list = []
         self._state_subscribers: list[Any] = []
         self._states_subscribed: bool = False
+        self._unsub_logs: Any = None
         self.connected: bool = False
 
     async def async_connect(self) -> None:
@@ -62,6 +76,7 @@ class DeviceConnection:
 
     async def async_disconnect(self) -> None:
         """Disconnect from the device."""
+        self.unsubscribe_logs()
         if self._client is not None:
             await self._client.disconnect()
         self._client = None
@@ -87,6 +102,32 @@ class DeviceConnection:
         """Fan out state updates to all subscribers."""
         for cb in self._state_subscribers:
             cb(state)
+
+    def subscribe_logs(self) -> None:
+        """Subscribe to device log messages and re-emit via Python logger."""
+        if self._unsub_logs is not None or self._client is None:
+            return
+
+        def _on_log(msg: Any) -> None:
+            py_level = _ESPHOME_TO_PYTHON_LOG.get(msg.level)
+            if py_level is None:
+                return
+            text = msg.message
+            if isinstance(text, bytes):
+                text = text.decode("utf-8", errors="replace")
+            text = text.rstrip()
+            if text:
+                _DEVICE_LOGGER.log(py_level, "[%s] %s", self._host, text)
+
+        self._unsub_logs = self._client.subscribe_logs(_on_log)
+        _LOGGER.debug("Subscribed to device logs from %s", self._host)
+
+    def unsubscribe_logs(self) -> None:
+        """Stop receiving device log messages."""
+        if self._unsub_logs is not None:
+            self._unsub_logs()
+            self._unsub_logs = None
+            _LOGGER.debug("Unsubscribed from device logs from %s", self._host)
 
     async def async_fetch_build_flags(self) -> dict[str, Any]:
         """Fetch build flags from device via get_build_flags action."""
@@ -459,6 +500,30 @@ class DeviceManager:
             if not await self._push_config_to_device(mac):
                 self._pushing.discard(mac)
 
+    @staticmethod
+    def _manage_log_subscription(
+        conn: DeviceConnection, config: dict[str, Any]
+    ) -> None:
+        """Subscribe/unsubscribe device logs based on stored log levels."""
+        log_levels = config.get("log_levels", {})
+        any_enabled = any(v != "None" for v in log_levels.values())
+        if any_enabled:
+            # Set the Python logger level to the most permissive requested
+            level_map = {
+                "Error": logging.ERROR,
+                "Warning": logging.WARNING,
+                "Info": logging.INFO,
+                "Debug": logging.DEBUG,
+            }
+            min_level = min(
+                (level_map.get(v, logging.WARNING) for v in log_levels.values() if v != "None"),
+                default=logging.WARNING,
+            )
+            _DEVICE_LOGGER.setLevel(min_level)
+            conn.subscribe_logs()
+        else:
+            conn.unsubscribe_logs()
+
     async def _push_config_to_device(self, mac: str) -> bool:
         """Push config to device, preferring an existing session connection."""
         config = self._store.get_device(mac)
@@ -476,6 +541,7 @@ class DeviceManager:
                 flags = await session_conn.async_fetch_build_flags()
                 if flags:
                     self._build_flags[mac] = flags
+                self._manage_log_subscription(session_conn, config)
                 return True
             except Exception:
                 _LOGGER.warning("Failed to push config to %s (%s) via session", dev.name, mac, exc_info=True)
