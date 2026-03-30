@@ -522,7 +522,7 @@ export class EppSettingsView extends LitElement {
 					}}
         >${this.localize("common.cancel")}</button>
         <button class="wizard-btn wizard-btn-primary"
-          ?disabled=${this.saving || !this.dirty}
+          ?disabled=${this.saving}
           @click=${() => {
 						this._emitSave();
 					}}
@@ -571,7 +571,6 @@ export class EppSettingsView extends LitElement {
 	}
 
 	private _fireDirty() {
-		this.dirty = true;
 		this.dispatchEvent(
 			new CustomEvent("dirty", {
 				bubbles: true,
