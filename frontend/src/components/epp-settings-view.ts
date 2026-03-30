@@ -338,7 +338,7 @@ export class EppSettingsView extends LitElement {
 								const v = Number(el.value);
 								this._overrides.targetMaxDistance = v;
 								this._fireChange("targetMaxDistance", v);
-								this._setText(el.nextElementSibling!, el.value);
+								this._setText(el.nextElementSibling!, v.toFixed(1));
 							}} /><span class="setting-value">${targetVal}</span><span class="setting-unit">m</span></span>
             ${this.resetBtn(6, "targetMaxDistance")}${this.infoTip(this.localize("info.target_max_distance"))}
           </div>
@@ -370,12 +370,12 @@ export class EppSettingsView extends LitElement {
 								let v = Number(el.value);
 								const maxD = this._overrides.staticMaxDistance ?? this.staticMaxDistance;
 								if (v >= maxD) {
-									v = maxD - 0.1;
+									v = Math.round((maxD - 0.1) * 10) / 10;
 									el.value = String(v);
 								}
 								this._overrides.staticMinDistance = v;
 								this._fireChange("staticMinDistance", v);
-								this._setText(el.nextElementSibling!, String(v));
+								this._setText(el.nextElementSibling!, v.toFixed(1));
 							}} /><span class="setting-value">${this.staticAutoDistance ? 0.3 : this.staticMinDistance}</span><span class="setting-unit">m</span></span>
             ${this.resetBtn(0.3, "staticMinDistance")}${this.infoTip(this.localize("info.static_min_distance"))}
           </div>
@@ -387,12 +387,12 @@ export class EppSettingsView extends LitElement {
 								let v = Number(el.value);
 								const minD = this._overrides.staticMinDistance ?? this.staticMinDistance;
 								if (v <= minD) {
-									v = minD + 0.1;
+									v = Math.round((minD + 0.1) * 10) / 10;
 									el.value = String(v);
 								}
 								this._overrides.staticMaxDistance = v;
 								this._fireChange("staticMaxDistance", v);
-								this._setText(el.nextElementSibling!, String(v));
+								this._setText(el.nextElementSibling!, v.toFixed(1));
 							}} /><span class="setting-value">${staticMaxVal}</span><span class="setting-unit">m</span></span>
             ${this.resetBtn(16, "staticMaxDistance")}${this.infoTip(this.localize("info.static_max_distance"))}
           </div>
