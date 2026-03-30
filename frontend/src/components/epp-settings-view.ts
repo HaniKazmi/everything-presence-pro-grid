@@ -801,14 +801,38 @@ export class EppSettingsView extends LitElement {
 		const o = this._overrides;
 		const entities = { ...this.entitiesConfig, ...(o.entities || {}) };
 
+		const targetAuto = o.targetAutoDistance ?? this.targetAutoDistance;
+		const staticAuto = o.staticAutoDistance ?? this.staticAutoDistance;
+
+		// When auto is on, compute distances from room geometry
+		let targetMaxDist = o.targetMaxDistance ?? this.targetMaxDistance;
+		let staticMinDist = o.staticMinDistance ?? this.staticMinDistance;
+		let staticMaxDist = o.staticMaxDistance ?? this.staticMaxDistance;
+
+		if (targetAuto || staticAuto) {
+			const autoRange = autoDetectionRange(
+				this.roomWidth,
+				this.roomDepth,
+				this.perspective,
+				this.grid,
+			);
+			if (targetAuto) {
+				targetMaxDist = autoRange > 0 ? Math.min(autoRange, 6) : 6;
+			}
+			if (staticAuto) {
+				staticMinDist = 0.3;
+				staticMaxDist = autoRange > 0 ? Math.min(autoRange, 16) : 16;
+			}
+		}
+
 		this.dispatchEvent(
 			new CustomEvent("save", {
 				detail: {
-					target_auto_distance: o.targetAutoDistance ?? this.targetAutoDistance,
-					target_max_distance: o.targetMaxDistance ?? this.targetMaxDistance,
-					static_auto_distance: o.staticAutoDistance ?? this.staticAutoDistance,
-					static_min_distance: o.staticMinDistance ?? this.staticMinDistance,
-					static_max_distance: o.staticMaxDistance ?? this.staticMaxDistance,
+					target_auto_distance: targetAuto,
+					target_max_distance: targetMaxDist,
+					static_auto_distance: staticAuto,
+					static_min_distance: staticMinDist,
+					static_max_distance: staticMaxDist,
 					motion_timeout: o.motionTimeout ?? this.motionTimeout,
 					static_timeout: o.staticTimeout ?? this.staticTimeout,
 					static_trigger_threshold:
