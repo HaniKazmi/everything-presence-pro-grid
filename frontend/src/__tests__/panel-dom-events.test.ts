@@ -444,7 +444,7 @@ describe("_renderDetectionRanges DOM events", () => {
 			const cb = checkboxes[0] as HTMLInputElement;
 			cb.checked = false;
 			cb.dispatchEvent(new Event("change"));
-			expect(sv.targetAutoDistance).toBe(false);
+			expect((sv as any)._overrides.targetAutoDistance).toBe(false);
 		}
 	});
 
@@ -462,7 +462,7 @@ describe("_renderDetectionRanges DOM events", () => {
 			span.textContent = "6";
 			range.parentNode?.insertBefore(span, range.nextSibling);
 			range.dispatchEvent(new Event("input"));
-			expect(sv.targetMaxDistance).toBe(4.5);
+			expect((sv as any)._overrides.targetMaxDistance).toBe(4.5);
 		}
 	});
 });

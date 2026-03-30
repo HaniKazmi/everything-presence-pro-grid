@@ -446,7 +446,7 @@ describe("_renderDetectionRanges branches", () => {
 			const staticCb = checkboxes[1] as HTMLInputElement;
 			staticCb.checked = false;
 			staticCb.dispatchEvent(new Event("change"));
-			expect(sv.staticAutoDistance).toBe(false);
+			expect((sv as any)._overrides.staticAutoDistance).toBe(false);
 		}
 		document.body.removeChild(c);
 	});

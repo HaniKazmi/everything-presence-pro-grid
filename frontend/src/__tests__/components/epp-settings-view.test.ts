@@ -191,7 +191,7 @@ describe("renderDetectionRanges", () => {
 			const cb = checkboxes[0] as HTMLInputElement;
 			cb.checked = false;
 			cb.dispatchEvent(new Event("change"));
-			expect(sv.targetAutoDistance).toBe(false);
+			expect((sv as any)._overrides.targetAutoDistance).toBe(false);
 			expect(firedKey).toBe("targetAutoDistance");
 		}
 		document.body.removeChild(c);
@@ -210,7 +210,7 @@ describe("renderDetectionRanges", () => {
 			span.textContent = "6";
 			range.parentNode?.insertBefore(span, range.nextSibling);
 			range.dispatchEvent(new Event("input"));
-			expect(sv.targetMaxDistance).toBe(4.5);
+			expect((sv as any)._overrides.targetMaxDistance).toBe(4.5);
 		}
 		document.body.removeChild(c);
 	});
@@ -233,7 +233,7 @@ describe("renderDetectionRanges", () => {
 				r.parentNode?.insertBefore(span, r.nextSibling);
 				r.value = "6";
 				r.dispatchEvent(new Event("input"));
-				expect(sv.staticMinDistance).toBeLessThan(sv.staticMaxDistance);
+				expect((sv as any)._overrides.staticMinDistance).toBeLessThan(sv.staticMaxDistance);
 				break;
 			}
 		}
@@ -254,7 +254,7 @@ describe("renderDetectionRanges", () => {
 		if (staticMax) {
 			staticMax.value = "1";
 			staticMax.dispatchEvent(new Event("input"));
-			expect(sv.staticMaxDistance).toBeGreaterThan(sv.staticMinDistance);
+			expect((sv as any)._overrides.staticMaxDistance).toBeGreaterThan(sv.staticMinDistance);
 		}
 		document.body.removeChild(c);
 	});
