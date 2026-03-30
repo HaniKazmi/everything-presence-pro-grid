@@ -502,11 +502,6 @@ export class EppSettingsView extends LitElement {
             <label class="toggle-switch"><input type="checkbox" @change=${(e: Event) => { const el = e.target as HTMLInputElement; const key = el.dataset.entityKey!; if (!this._overrides.entities) this._overrides.entities = {}; this._overrides.entities[key] = el.checked; this._fireDirty(); }} data-entity-key="room_target_presence" .checked=${isOn("room_target_presence", false)} /><span class="toggle-slider"></span></label>
             ${this.infoTip(this.localize("info.room_target_presence"))}
           </div>
-          <div class="setting-row">
-            <label>${this.localize("entities.target_count")}</label>
-            <label class="toggle-switch"><input type="checkbox" @change=${(e: Event) => { const el = e.target as HTMLInputElement; const key = el.dataset.entityKey!; if (!this._overrides.entities) this._overrides.entities = {}; this._overrides.entities[key] = el.checked; this._fireDirty(); }} data-entity-key="room_target_count" .checked=${isOn("room_target_count", false)} /><span class="toggle-slider"></span></label>
-            ${this.infoTip(this.localize("info.room_target_count"))}
-          </div>
         </div>
         <div class="setting-group">
           <h4>${this.localize("entities.zone_level")}</h4>
@@ -514,11 +509,6 @@ export class EppSettingsView extends LitElement {
             <label>${this.localize("entities.zone_presence")}</label>
             <label class="toggle-switch"><input type="checkbox" @change=${(e: Event) => { const el = e.target as HTMLInputElement; const key = el.dataset.entityKey!; if (!this._overrides.entities) this._overrides.entities = {}; this._overrides.entities[key] = el.checked; this._fireDirty(); }} data-entity-key="zone_presence" .checked=${isOn("zone_presence", true)} /><span class="toggle-slider"></span></label>
             ${this.infoTip(this.localize("info.zone_presence"))}
-          </div>
-          <div class="setting-row">
-            <label>${this.localize("entities.target_count")}</label>
-            <label class="toggle-switch"><input type="checkbox" @change=${(e: Event) => { const el = e.target as HTMLInputElement; const key = el.dataset.entityKey!; if (!this._overrides.entities) this._overrides.entities = {}; this._overrides.entities[key] = el.checked; this._fireDirty(); }} data-entity-key="zone_target_count" .checked=${isOn("zone_target_count", false)} /><span class="toggle-slider"></span></label>
-            ${this.infoTip(this.localize("info.zone_target_count"))}
           </div>
         </div>
         <div class="setting-group">

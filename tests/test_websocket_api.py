@@ -603,7 +603,7 @@ class TestEntityMapping:
         assert _entity_key_for_object_id("occupancy") == "room_occupancy"
         assert _entity_key_for_object_id("static_presence") == "room_static_presence"
         assert _entity_key_for_object_id("motion_presence") == "room_motion_presence"
-        assert _entity_key_for_object_id("tracking_presence") == "room_target_presence"
+        assert _entity_key_for_object_id("target_presence") == "room_target_presence"
 
     def test_entity_key_mapping_env_sensors(self) -> None:
         """Environmental sensors map to their correct keys."""
