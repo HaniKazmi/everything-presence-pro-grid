@@ -182,7 +182,7 @@ class DeviceConnection:
         settings = config.get("settings")
         if settings:
             svc = self._services.get("epp_set_env_calibration")
-            if svc:  # BISECT: enabled
+            if svc:
                 await self._client.execute_service(
                     svc,
                     {
@@ -194,7 +194,7 @@ class DeviceConnection:
                 _LOGGER.info("Pushed env_calibration to %s", self._host)
 
             svc = self._services.get("epp_set_motion_timeout")
-            if svc:  # BISECT: enabled
+            if svc:
                 await self._client.execute_service(
                     svc,
                     {"timeout": settings.get("motion_timeout", 5.0)},
@@ -214,12 +214,12 @@ class DeviceConnection:
                 await self._client.execute_service(
                     svc,
                     {
-                        "min_range": settings.get("static_min_distance", 0.0),
-                        "max_range": settings.get("static_max_distance", 6.0),
-                        "trigger_range": settings.get("static_max_distance", 6.0),
-                        "trigger_sensitivity": 10 - settings.get("static_trigger_threshold", 5),
-                        "sustain_sensitivity": 10 - settings.get("static_renew_threshold", 5),
-                        "timeout": settings.get("static_timeout", 10.0),
+                        "min_range": settings.get("static_min_distance", 0.3),
+                        "max_range": settings.get("static_max_distance", 16.0),
+                        "trigger_range": settings.get("static_max_distance", 16.0),
+                        "trigger_sensitivity": 10 - settings.get("static_trigger_threshold", 3),
+                        "sustain_sensitivity": 10 - settings.get("static_renew_threshold", 3),
+                        "timeout": settings.get("static_timeout", 30.0),
                         "on_delay": settings.get("static_on_delay", 0.0),
                         "led_enabled": True,
                     },
@@ -547,11 +547,11 @@ class DeviceManager:
 
             if i == 0:
                 # Zone 0 "rest of room" — enable if calibrated, but don't
-                # re-enable if already disabled by integration (settings may
-                # have explicitly disabled zone_presence).  When enabling from
-                # settings, _apply_entity_states clears disabled_by first.
+                # re-enable if already disabled by integration or user (settings
+                # may have explicitly disabled zone_presence).  When enabling
+                # from settings, _apply_entity_states clears disabled_by first.
                 entry_obj = ent_reg.async_get(entity_id)
-                already_disabled = entry_obj and entry_obj.disabled_by == er.RegistryEntryDisabler.INTEGRATION
+                already_disabled = entry_obj and entry_obj.disabled_by is not None
                 if is_calibrated and not already_disabled:
                     ent_reg.async_update_entity(entity_id, disabled_by=None, name="Rest of Room Occupancy")
                 elif not is_calibrated:
@@ -559,7 +559,7 @@ class DeviceManager:
             elif i <= len(zone_slots) and zone_slots[i - 1] is not None:
                 # Named zone — enable and rename (same guard as zone 0)
                 entry_obj = ent_reg.async_get(entity_id)
-                already_disabled = entry_obj and entry_obj.disabled_by == er.RegistryEntryDisabler.INTEGRATION
+                already_disabled = entry_obj and entry_obj.disabled_by is not None
                 if not already_disabled:
                     zone = zone_slots[i - 1]
                     ent_reg.async_update_entity(entity_id, disabled_by=None, name=zone["name"])

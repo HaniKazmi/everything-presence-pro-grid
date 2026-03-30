@@ -270,7 +270,11 @@ export class EppSettingsView extends LitElement {
 				".setting-row",
 			) as HTMLElement;
 			if (row) this._resetSlider(row, defaultValue, key);
-			if (key) this._fireChange(key, defaultValue);
+			if (key) {
+				this._fireChange(key, defaultValue);
+			} else {
+				this._fireDirty();
+			}
 		}}><ha-icon icon="mdi:restart"></ha-icon></span>`;
 	}
 

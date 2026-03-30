@@ -335,7 +335,7 @@ _ENTITY_OBJECT_ID_MAP: dict[str, str] = {
 }
 
 # Prefix patterns: object_ids starting with these prefixes map to a category key.
-_ENTITY_PREFIX_MAP: list[tuple[str, str]] = [
+_ENTITY_PREFIX_MAP: list[tuple[str, str, str]] = [
     ("zone_", "_occupancy", "zone_presence"),  # zone_0_occupancy, zone_1_occupancy, ...
     ("target_", "_position", "target_xy"),  # target_0_position, target_1_position, ...
 ]
@@ -840,6 +840,14 @@ async def websocket_set_detection_preview(
     manager = _get_manager(hass)
     if manager is None:
         connection.send_error(msg["id"], "not_ready", "Integration not loaded")
+        return
+    proto_err = _check_protocol(manager, msg["mac"])
+    if proto_err:
+        connection.send_error(
+            msg["id"],
+            proto_err,
+            "Firmware update required" if proto_err == "firmware_behind" else "Integration update required",
+        )
         return
     mac = msg["mac"]
     session = manager.get_session(mac)
