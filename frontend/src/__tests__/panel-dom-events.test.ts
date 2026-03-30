@@ -70,11 +70,10 @@ function createPanel(): EPPGridPanel {
 	a._showDeleteCalibrationDialog = false;
 	a._showTemplateSave = false;
 	a._showTemplateLoad = false;
-	a._reportingConfig = {};
-	a._offsetsConfig = {};
-	a._targetAutoRange = true;
+	a._entitiesConfig = {};
+	a._targetAutoDistance = true;
 	a._targetMaxDistance = 6;
-	a._staticAutoRange = true;
+	a._staticAutoDistance = true;
 	a._staticMinDistance = 0.3;
 	a._staticMaxDistance = 16;
 	a._roomType = "normal";
@@ -123,8 +122,8 @@ function createSettingsView(
 	el.roomWidth = 3000;
 	el.roomDepth = 4000;
 	el.openAccordions = new Set();
-	el.reportingConfig = {};
-	el.offsetsConfig = {};
+	el.entitiesConfig = {};
+
 	if (overrides) {
 		for (const [k, v] of Object.entries(overrides)) {
 			(el as any)[k] = v;
@@ -415,8 +414,8 @@ describe("_renderSettings DOM events (via EppSettingsView)", () => {
 		}
 	});
 
-	it("settings container input fires dirty event", () => {
-		const sv = createSettingsView();
+	it("entity checkbox change fires dirty event", () => {
+		const sv = createSettingsView({ entitiesConfig: { room_occupancy: true } });
 		const tpl = sv.render();
 		const c = renderTo(tpl);
 
@@ -425,26 +424,10 @@ describe("_renderSettings DOM events (via EppSettingsView)", () => {
 			dirtyFired = true;
 		});
 
-		const container = c.querySelector(".settings-container") as HTMLElement;
-		if (container) {
-			container.dispatchEvent(new Event("input", { bubbles: true }));
-			expect(dirtyFired).toBe(true);
-		}
-	});
-
-	it("settings container change fires dirty event", () => {
-		const sv = createSettingsView();
-		const tpl = sv.render();
-		const c = renderTo(tpl);
-
-		let dirtyFired = false;
-		sv.addEventListener("dirty", () => {
-			dirtyFired = true;
-		});
-
-		const container = c.querySelector(".settings-container") as HTMLElement;
-		if (container) {
-			container.dispatchEvent(new Event("change", { bubbles: true }));
+		const checkbox = c.querySelector("[data-entity-key]") as HTMLInputElement;
+		if (checkbox) {
+			checkbox.checked = false;
+			checkbox.dispatchEvent(new Event("change", { bubbles: true }));
 			expect(dirtyFired).toBe(true);
 		}
 	});
@@ -452,7 +435,7 @@ describe("_renderSettings DOM events (via EppSettingsView)", () => {
 
 describe("_renderDetectionRanges DOM events", () => {
 	it("target auto range toggle changes state", () => {
-		const sv = createSettingsView({ targetAutoRange: true });
+		const sv = createSettingsView({ targetAutoDistance: true });
 		const tpl = (sv as any).renderDetectionRanges();
 		const c = renderTo(tpl);
 
@@ -461,12 +444,12 @@ describe("_renderDetectionRanges DOM events", () => {
 			const cb = checkboxes[0] as HTMLInputElement;
 			cb.checked = false;
 			cb.dispatchEvent(new Event("change"));
-			expect(sv.targetAutoRange).toBe(false);
+			expect((sv as any)._overrides.targetAutoDistance).toBe(false);
 		}
 	});
 
 	it("max distance slider updates state", () => {
-		const sv = createSettingsView({ targetAutoRange: false });
+		const sv = createSettingsView({ targetAutoDistance: false });
 		const tpl = (sv as any).renderDetectionRanges();
 		const c = renderTo(tpl);
 
@@ -479,7 +462,7 @@ describe("_renderDetectionRanges DOM events", () => {
 			span.textContent = "6";
 			range.parentNode?.insertBefore(span, range.nextSibling);
 			range.dispatchEvent(new Event("input"));
-			expect(sv.targetMaxDistance).toBe(4.5);
+			expect((sv as any)._overrides.targetMaxDistance).toBe(4.5);
 		}
 	});
 });
@@ -1408,7 +1391,7 @@ describe("_renderSensitivities DOM events", () => {
 
 describe("_renderEnvOffset DOM events", () => {
 	it("offset range input updates preview", () => {
-		const sv = createSettingsView({ offsetsConfig: { illuminance: 0 } });
+		const sv = createSettingsView({ illuminanceOffset: 0 });
 		const tpl = (sv as any).renderEnvOffset(
 			"Illuminance",
 			100,

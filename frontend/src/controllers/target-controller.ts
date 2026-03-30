@@ -71,6 +71,7 @@ export class TargetController implements ReactiveController {
 	 * Updates host's _targets, _sensorState, _zoneState, and debug log.
 	 */
 	handleTargetData(data: TargetData): void {
+		if (this.host._view === "settings") return;
 		this.host._targets = data.targets;
 		this.host._sensorState = data.sensors;
 		if (data.zones) {
@@ -89,6 +90,7 @@ export class TargetController implements ReactiveController {
 	 * Process incoming raw target data from the display subscription.
 	 */
 	handleRawTargetData(rawTargets: RawTarget[]): void {
+		if (this.host._view === "settings") return;
 		this.host._rawTargets = rawTargets;
 	}
 
@@ -255,23 +257,26 @@ export class TargetController implements ReactiveController {
 		}
 
 		const body = this.enrichDebugLog(enrichedRaw);
-		if (body !== this.host._backendDebugLogPrev) {
-			this.host._backendDebugLogPrev = body;
-			const ts = new Date().toLocaleTimeString("en-GB", {
-				hour12: false,
-				hour: "2-digit",
-				minute: "2-digit",
-				second: "2-digit",
-				fractionalSecondDigits: 1,
-			});
-			this.host._backendDebugLogLines.push(`${ts} ${body}`);
-			if (this.host._backendDebugLogLines.length > DEBUG_LOG_MAX) {
-				this.host._backendDebugLogLines = this.host._backendDebugLogLines.slice(
-					-DEBUG_LOG_MAX,
-				);
-			}
-			this.host.requestUpdate();
+		if (body === this.host._backendDebugLogPrev) return;
+
+		this.host._backendDebugLogPrev = body;
+		const ts = new Date().toLocaleTimeString("en-GB", {
+			hour12: false,
+			hour: "2-digit",
+			minute: "2-digit",
+			second: "2-digit",
+			fractionalSecondDigits: 1,
+		});
+		const line = `${ts} ${body}`;
+		this.host._backendDebugLogLines.push(line);
+		if (this.host._backendDebugLogLines.length > DEBUG_LOG_MAX) {
+			this.host._backendDebugLogLines = this.host._backendDebugLogLines.slice(
+				-DEBUG_LOG_MAX,
+			);
 		}
+
+		// Direct DOM append — no Lit re-render needed
+		this._appendToLogContainer("backend-debug-log-scroll", line);
 	}
 
 	/**
@@ -279,23 +284,47 @@ export class TargetController implements ReactiveController {
 	 * Deduplicates against previous line and caps at DEBUG_LOG_MAX.
 	 */
 	private _appendFrontendDebugLog(body: string): void {
-		if (body !== this.host._debugLogPrev) {
-			this.host._debugLogPrev = body;
-			const ts = new Date().toLocaleTimeString("en-GB", {
-				hour12: false,
-				hour: "2-digit",
-				minute: "2-digit",
-				second: "2-digit",
-				fractionalSecondDigits: 1,
-			});
-			this.host._debugLogLines.push(`${ts} ${body}`);
-			if (this.host._debugLogLines.length > DEBUG_LOG_MAX) {
-				this.host._debugLogLines = this.host._debugLogLines.slice(
-					-DEBUG_LOG_MAX,
-				);
-			}
-			this.host.requestUpdate();
+		if (body === this.host._debugLogPrev) return;
+
+		this.host._debugLogPrev = body;
+		const ts = new Date().toLocaleTimeString("en-GB", {
+			hour12: false,
+			hour: "2-digit",
+			minute: "2-digit",
+			second: "2-digit",
+			fractionalSecondDigits: 1,
+		});
+		const line = `${ts} ${body}`;
+		this.host._debugLogLines.push(line);
+		if (this.host._debugLogLines.length > DEBUG_LOG_MAX) {
+			this.host._debugLogLines = this.host._debugLogLines.slice(-DEBUG_LOG_MAX);
 		}
+
+		// Direct DOM append — no Lit re-render needed
+		this._appendToLogContainer("debug-log-scroll", line);
+	}
+
+	/**
+	 * Append a log line to a scrollable debug-log container by ID.
+	 * Clears any placeholder on first real line and caps at DEBUG_LOG_MAX.
+	 */
+	private _appendToLogContainer(containerId: string, line: string): void {
+		const container = this.host.shadowRoot?.getElementById(containerId);
+		if (!container) return;
+		if (
+			container.children.length === 1 &&
+			!container.children[0].classList.contains("debug-log-line")
+		) {
+			container.innerHTML = "";
+		}
+		const div = document.createElement("div");
+		div.className = "debug-log-line";
+		div.textContent = line;
+		container.appendChild(div);
+		while (container.children.length > DEBUG_LOG_MAX) {
+			container.firstChild?.remove();
+		}
+		container.scrollTop = container.scrollHeight;
 	}
 
 	/**

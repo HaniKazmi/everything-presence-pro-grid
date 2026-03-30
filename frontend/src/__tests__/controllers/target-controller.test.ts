@@ -53,6 +53,23 @@ function mockHost() {
 		_showBackendDebugLog: false,
 		_backendDebugLogLines: [] as string[],
 		_backendDebugLogPrev: "",
+
+		// View mode
+		_view: "live" as "live" | "editor" | "settings",
+
+		// Shadow root mock for DOM-based debug log
+		_mockBackendContainer: null as HTMLDivElement | null,
+		_mockFrontendContainer: null as HTMLDivElement | null,
+		get shadowRoot() {
+			return {
+				getElementById: (id: string) => {
+					if (id === "backend-debug-log-scroll")
+						return this._mockBackendContainer;
+					if (id === "debug-log-scroll") return this._mockFrontendContainer;
+					return null;
+				},
+			} as any;
+		},
 	};
 }
 
@@ -214,6 +231,72 @@ describe("TargetController", () => {
 			);
 			expect(host._backendDebugLogLines.length).toBe(0);
 		});
+
+		it("skips all state updates when host._view is 'settings'", () => {
+			host._view = "settings";
+			const originalTargets = host._targets;
+			const originalSensorState = host._sensorState;
+			const originalZoneState = host._zoneState;
+			ctrl.handleTargetData(
+				makeTargetData({
+					targets: [
+						{ x: 1, y: 2, speed: 0, status: "active", signal: 50 },
+					] as any,
+					sensors: {
+						occupancy: true,
+						static_presence: true,
+						motion_presence: true,
+						target_presence: true,
+						illuminance: 100,
+						temperature: 22,
+						humidity: 50,
+						co2: 400,
+					},
+					zones: {
+						occupancy: { 1: true },
+						target_counts: { 1: 2 },
+						frame_count: 7,
+						debug_log: "T0:Z1:A:5|Z1:O:1",
+					},
+				}),
+			);
+			expect(host._targets).toBe(originalTargets);
+			expect(host._sensorState).toBe(originalSensorState);
+			expect(host._zoneState).toBe(originalZoneState);
+		});
+
+		it("resumes state updates when host._view is not 'settings'", () => {
+			host._view = "settings";
+			ctrl.handleTargetData(
+				makeTargetData({
+					targets: [
+						{ x: 1, y: 2, speed: 0, status: "active", signal: 50 },
+					] as any,
+				}),
+			);
+			const frozenTargets = host._targets;
+
+			host._view = "live";
+			const newTargets = [
+				{ x: 3, y: 4, speed: 0, status: "active", signal: 80 },
+			] as any;
+			const newSensors = {
+				occupancy: true,
+				static_presence: false,
+				motion_presence: true,
+				target_presence: true,
+				illuminance: null,
+				temperature: 23,
+				humidity: null,
+				co2: null,
+			};
+			ctrl.handleTargetData(
+				makeTargetData({ targets: newTargets, sensors: newSensors }),
+			);
+			expect(host._targets).toBe(newTargets);
+			expect(host._targets).not.toBe(frozenTargets);
+			expect(host._sensorState).toBe(newSensors);
+		});
 	});
 
 	// -------------------------------------------------------------------------
@@ -224,6 +307,23 @@ describe("TargetController", () => {
 			const raw = [{ raw_x: 10, raw_y: 20 }];
 			ctrl.handleRawTargetData(raw as any);
 			expect(host._rawTargets).toBe(raw);
+		});
+
+		it("skips update when host._view is 'settings'", () => {
+			host._view = "settings";
+			const original = host._rawTargets;
+			ctrl.handleRawTargetData([{ raw_x: 10, raw_y: 20 }] as any);
+			expect(host._rawTargets).toBe(original);
+		});
+
+		it("resumes update when host._view is not 'settings'", () => {
+			host._view = "settings";
+			ctrl.handleRawTargetData([{ raw_x: 10, raw_y: 20 }] as any);
+
+			host._view = "live";
+			const newRaw = [{ raw_x: 30, raw_y: 40 }] as any;
+			ctrl.handleRawTargetData(newRaw);
+			expect(host._rawTargets).toBe(newRaw);
 		});
 	});
 
@@ -300,59 +400,95 @@ describe("TargetController", () => {
 	// appendBackendDebugLog
 	// -------------------------------------------------------------------------
 	describe("appendBackendDebugLog", () => {
+		let container: HTMLDivElement;
+
 		beforeEach(() => {
 			host._zoneConfigs = [{ name: "Lounge", color: "#fff", type: "normal" }];
+			container = document.createElement("div");
+			container.id = "backend-debug-log-scroll";
+			host._mockBackendContainer = container;
 		});
 
-		it("appends an enriched line with a timestamp", () => {
+		it("appends a div to the container with enriched content", () => {
+			ctrl.appendBackendDebugLog("T0:Z1:A:5|Z1:O:1");
+			expect(container.children.length).toBe(1);
+			expect(container.children[0].textContent).toContain("Lounge");
+			expect(container.children[0].className).toBe("debug-log-line");
+		});
+
+		it("still maintains the data array for copy-all", () => {
 			ctrl.appendBackendDebugLog("T0:Z1:A:5|Z1:O:1");
 			expect(host._backendDebugLogLines.length).toBe(1);
-			// Line should contain enriched content
 			expect(host._backendDebugLogLines[0]).toContain("Lounge");
 		});
 
 		it("deduplicates consecutive identical lines", () => {
 			ctrl.appendBackendDebugLog("T0:Z1:A:5|Z1:O:1");
 			ctrl.appendBackendDebugLog("T0:Z1:A:5|Z1:O:1");
+			expect(container.children.length).toBe(1);
 			expect(host._backendDebugLogLines.length).toBe(1);
 		});
 
 		it("appends when line differs from previous", () => {
 			ctrl.appendBackendDebugLog("T0:Z1:A:5|Z1:O:1");
 			ctrl.appendBackendDebugLog("|");
+			expect(container.children.length).toBe(2);
 			expect(host._backendDebugLogLines.length).toBe(2);
 		});
 
-		it("caps lines at DEBUG_LOG_MAX", () => {
-			// Use unique lines to avoid deduplication
+		it("removes excess DOM children when over DEBUG_LOG_MAX", () => {
 			for (let i = 0; i <= DEBUG_LOG_MAX; i++) {
-				// Reset prev so every push goes through
 				host._backendDebugLogPrev = "";
 				ctrl.appendBackendDebugLog(`T0:Z1:A:${i}|`);
 			}
+			expect(container.children.length).toBeLessThanOrEqual(DEBUG_LOG_MAX);
 			expect(host._backendDebugLogLines.length).toBeLessThanOrEqual(
 				DEBUG_LOG_MAX,
 			);
 		});
 
-		it("calls host.requestUpdate after appending", () => {
-			ctrl.appendBackendDebugLog("T0:Z1:A:5|Z1:O:1");
-			expect(host.requestUpdate).toHaveBeenCalled();
-		});
-
-		it("does NOT call requestUpdate when line is duplicate", () => {
-			ctrl.appendBackendDebugLog("T0:Z1:A:5|Z1:O:1");
-			host.requestUpdate.mockClear();
+		it("does NOT call host.requestUpdate", () => {
 			ctrl.appendBackendDebugLog("T0:Z1:A:5|Z1:O:1");
 			expect(host.requestUpdate).not.toHaveBeenCalled();
 		});
 
+		it("does NOT call requestUpdate when line is duplicate", () => {
+			ctrl.appendBackendDebugLog("T0:Z1:A:5|Z1:O:1");
+			ctrl.appendBackendDebugLog("T0:Z1:A:5|Z1:O:1");
+			expect(host.requestUpdate).not.toHaveBeenCalled();
+		});
+
+		it("auto-scrolls the container to bottom", () => {
+			Object.defineProperty(container, "scrollHeight", {
+				value: 500,
+				configurable: true,
+			});
+			ctrl.appendBackendDebugLog("T0:Z1:A:5|Z1:O:1");
+			expect(container.scrollTop).toBe(500);
+		});
+
+		it("clears placeholder children before first append", () => {
+			const placeholder = document.createElement("div");
+			placeholder.textContent = "Waiting for events...";
+			container.appendChild(placeholder);
+
+			ctrl.appendBackendDebugLog("T0:Z1:A:5|Z1:O:1");
+			expect(container.children.length).toBe(1);
+			expect(container.children[0].textContent).toContain("Lounge");
+		});
+
+		it("handles missing container gracefully", () => {
+			host._mockBackendContainer = null;
+			expect(() =>
+				ctrl.appendBackendDebugLog("T0:Z1:A:5|Z1:O:1"),
+			).not.toThrow();
+			expect(host._backendDebugLogLines.length).toBe(1);
+		});
+
 		it("skips sensor-prefix injection when log already has 3 sections", () => {
-			// 3-section format: sensors|targets|zones — no injection should happen
 			ctrl.appendBackendDebugLog("S:A M:I Occ:1|T0:Z1:A:5|Z1:O:1");
 			expect(host._backendDebugLogLines.length).toBe(1);
 			expect(host._backendDebugLogLines[0]).toContain("Static: active");
-			// The injected sensor prefix (S:I/S:A) should not appear twice
 			expect(
 				(host._backendDebugLogLines[0].match(/Static:/g) ?? []).length,
 			).toBe(1);
@@ -627,6 +763,66 @@ describe("TargetController", () => {
 			const allLog = host._debugLogLines.join(" ") + host._debugLogPrev;
 			// Zone 0 (Room) with pendingSince set → state code "P"
 			expect(allLog).toContain("Room");
+		});
+
+		// -----------------------------------------------------------------------
+		// frontend debug log DOM behavior
+		// -----------------------------------------------------------------------
+		describe("frontend debug log DOM behavior", () => {
+			let container: HTMLDivElement;
+
+			beforeEach(() => {
+				host._showDebugLog = true;
+				host._grid = makeSimpleGrid();
+				container = document.createElement("div");
+				host._mockFrontendContainer = container;
+				// Ensure a unique log line is generated each test (no dedup suppression)
+				host._debugLogPrev = "";
+			});
+
+			it("appends a div to the frontend container", () => {
+				ctrl.runLocalZoneEngine();
+				expect(container.children.length).toBeGreaterThanOrEqual(1);
+				for (const child of Array.from(container.children)) {
+					expect(child.className).toBe("debug-log-line");
+				}
+			});
+
+			it("does NOT call requestUpdate", () => {
+				host.requestUpdate.mockClear();
+				ctrl.runLocalZoneEngine();
+				expect(host.requestUpdate).not.toHaveBeenCalled();
+			});
+
+			it("clears placeholder on first append", () => {
+				const placeholder = document.createElement("div");
+				placeholder.textContent = "Waiting for events...";
+				container.appendChild(placeholder);
+
+				ctrl.runLocalZoneEngine();
+
+				// Placeholder should be gone; only debug-log-line divs remain
+				expect(container.children.length).toBeGreaterThanOrEqual(1);
+				for (const child of Array.from(container.children)) {
+					expect(child.className).toBe("debug-log-line");
+				}
+			});
+
+			it("handles missing container gracefully", () => {
+				host._mockFrontendContainer = null;
+				expect(() => ctrl.runLocalZoneEngine()).not.toThrow();
+				// Data array should still be populated
+				expect(host._debugLogLines.length).toBeGreaterThanOrEqual(1);
+			});
+
+			it("auto-scrolls the container", () => {
+				Object.defineProperty(container, "scrollHeight", {
+					value: 500,
+					configurable: true,
+				});
+				ctrl.runLocalZoneEngine();
+				expect(container.scrollTop).toBe(500);
+			});
 		});
 	});
 });

@@ -28,6 +28,26 @@ export interface ParsedRoomThresholds {
 }
 
 /**
+ * Parsed settings data from config.
+ */
+export interface ParsedSettings {
+	temperatureOffset: number;
+	humidityOffset: number;
+	illuminanceOffset: number;
+	motionTimeout: number;
+	targetAutoDistance: boolean;
+	targetMaxDistance: number;
+	staticAutoDistance: boolean;
+	staticMinDistance: number;
+	staticMaxDistance: number;
+	staticTriggerThreshold: number;
+	staticRenewThreshold: number;
+	staticTimeout: number;
+	staticOnDelay: number;
+	entities: Record<string, boolean>;
+}
+
+/**
  * Full parsed config result — pure data, no side effects.
  */
 export interface ParsedConfig {
@@ -36,8 +56,7 @@ export interface ParsedConfig {
 	grid: Uint8Array;
 	zoneConfigs: (ZoneConfig | null)[];
 	roomThresholds: ParsedRoomThresholds;
-	reportingConfig: Record<string, unknown>;
-	offsetsConfig: Record<string, unknown>;
+	settings: ParsedSettings;
 }
 
 /**
@@ -146,6 +165,33 @@ export function parseRoomThresholds(layout: any): ParsedRoomThresholds {
 }
 
 /**
+ * Parse settings from raw config object, applying defaults.
+ *
+ * @param raw Raw settings object (may be undefined)
+ * @param entities Entity states from backend (may be undefined)
+ * @returns Parsed settings with defaults applied
+ */
+export function parseSettings(raw: any, entities?: any): ParsedSettings {
+	const s = raw || {};
+	return {
+		temperatureOffset: s.temperature_offset ?? 0,
+		humidityOffset: s.humidity_offset ?? 0,
+		illuminanceOffset: s.illuminance_offset ?? 0,
+		motionTimeout: s.motion_timeout ?? 5,
+		targetAutoDistance: s.target_auto_distance ?? true,
+		targetMaxDistance: s.target_max_distance ?? 6,
+		staticAutoDistance: s.static_auto_distance ?? true,
+		staticMinDistance: s.static_min_distance ?? 0.3,
+		staticMaxDistance: s.static_max_distance ?? 16,
+		staticTriggerThreshold: s.static_trigger_threshold ?? 3,
+		staticRenewThreshold: s.static_renew_threshold ?? 3,
+		staticTimeout: s.static_timeout ?? 30,
+		staticOnDelay: s.static_on_delay ?? 0,
+		entities: entities || {},
+	};
+}
+
+/**
  * Parse the full config object into structured data.
  * This is a pure function: no side effects, no DOM, no `this`.
  *
@@ -167,7 +213,6 @@ export function parseConfig(config: any): ParsedConfig {
 		grid,
 		zoneConfigs,
 		roomThresholds,
-		reportingConfig: config?.reporting || {},
-		offsetsConfig: config?.offsets || {},
+		settings: parseSettings(config?.settings, config?.entities),
 	};
 }

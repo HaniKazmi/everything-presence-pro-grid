@@ -500,6 +500,25 @@ export class GridStateController implements ReactiveController {
 					lockAspect: f.lockAspect,
 				})),
 			});
+			// Save settings after layout (auto distances may have changed)
+			await this.host.hass.callWS({
+				type: "eppgrid/set_settings",
+				mac: this.host._selectedMac,
+				temperature_offset: this.host._temperatureOffset,
+				humidity_offset: this.host._humidityOffset,
+				illuminance_offset: this.host._illuminanceOffset,
+				motion_timeout: this.host._motionTimeout,
+				target_auto_distance: this.host._targetAutoDistance,
+				target_max_distance: this.host._targetMaxDistance,
+				static_auto_distance: this.host._staticAutoDistance,
+				static_min_distance: this.host._staticMinDistance,
+				static_max_distance: this.host._staticMaxDistance,
+				static_trigger_threshold: this.host._staticTriggerThreshold,
+				static_renew_threshold: this.host._staticRenewThreshold,
+				static_timeout: this.host._staticTimeout,
+				static_on_delay: this.host._staticOnDelay,
+				entities: this.host._entitiesConfig || {},
+			});
 			this.host._dirty = false;
 			this.host._view = "live";
 		} finally {
@@ -507,14 +526,50 @@ export class GridStateController implements ReactiveController {
 		}
 	}
 
-	async saveSettings(): Promise<void> {
+	async saveSettings(payload: Record<string, any>): Promise<void> {
 		this.host._saving = true;
 		try {
-			// TODO: Settings page will be reimplemented using the new
-			// set_env_calibration, set_motion_timeout, set_tracking,
-			// set_static_presence websocket commands
+			await this.host.hass.callWS({
+				type: "eppgrid/set_settings",
+				mac: this.host._selectedMac,
+				...payload,
+			});
+			// Update panel state with saved values so settings page shows
+			// correct state if reopened before a full config reload
+			if (payload.entities) {
+				this.host._entitiesConfig = payload.entities;
+			}
+			this.host._temperatureOffset =
+				payload.temperature_offset ?? this.host._temperatureOffset;
+			this.host._humidityOffset =
+				payload.humidity_offset ?? this.host._humidityOffset;
+			this.host._illuminanceOffset =
+				payload.illuminance_offset ?? this.host._illuminanceOffset;
+			this.host._motionTimeout =
+				payload.motion_timeout ?? this.host._motionTimeout;
+			this.host._staticTimeout =
+				payload.static_timeout ?? this.host._staticTimeout;
+			this.host._staticTriggerThreshold =
+				payload.static_trigger_threshold ?? this.host._staticTriggerThreshold;
+			this.host._staticRenewThreshold =
+				payload.static_renew_threshold ?? this.host._staticRenewThreshold;
+			this.host._staticOnDelay =
+				payload.static_on_delay ?? this.host._staticOnDelay;
+			this.host._targetAutoDistance =
+				payload.target_auto_distance ?? this.host._targetAutoDistance;
+			this.host._targetMaxDistance =
+				payload.target_max_distance ?? this.host._targetMaxDistance;
+			this.host._staticAutoDistance =
+				payload.static_auto_distance ?? this.host._staticAutoDistance;
+			this.host._staticMinDistance =
+				payload.static_min_distance ?? this.host._staticMinDistance;
+			this.host._staticMaxDistance =
+				payload.static_max_distance ?? this.host._staticMaxDistance;
 			this.host._dirty = false;
 			this.host._view = "live";
+		} catch (e) {
+			console.error("Failed to save settings:", e);
+			// Stay on settings page, keep dirty
 		} finally {
 			this.host._saving = false;
 		}

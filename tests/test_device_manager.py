@@ -780,29 +780,77 @@ class TestPushConfig:
             assert "zones_json" in call_data
 
     async def test_push_config_settings(self) -> None:
-        """push_config pushes device settings (env_calibration, motion_timeout, etc.)."""
+        """push_config reads unified settings key and pushes to 4 firmware actions."""
         conn = DeviceConnection("192.168.1.100")
 
         mock_env = MagicMock()
         mock_env.name = "epp_set_env_calibration"
         mock_motion = MagicMock()
         mock_motion.name = "epp_set_motion_timeout"
+        mock_tracking = MagicMock()
+        mock_tracking.name = "epp_set_tracking"
+        mock_static = MagicMock()
+        mock_static.name = "epp_set_static_presence"
 
         with patch("custom_components.eppgrid.device_manager.APIClient") as mock_cls:
             mock_client = mock_cls.return_value
             mock_client.connect = AsyncMock()
-            mock_client.list_entities_services = AsyncMock(return_value=([], [mock_env, mock_motion]))
+            mock_client.list_entities_services = AsyncMock(
+                return_value=([], [mock_env, mock_motion, mock_tracking, mock_static])
+            )
             mock_client.execute_service = AsyncMock()
 
             await conn.async_connect()
             await conn.async_push_config(
                 {
-                    "env_calibration": {"temperature_offset": -1.5},
-                    "motion_timeout": {"timeout": 30.0},
+                    "settings": {
+                        "temperature_offset": -1.5,
+                        "humidity_offset": 2.0,
+                        "illuminance_offset": -10.0,
+                        "motion_timeout": 5.0,
+                        "target_max_distance": 4.0,
+                        "static_min_distance": 0.3,
+                        "static_max_distance": 8.0,
+                        "static_trigger_threshold": 3,
+                        "static_renew_threshold": 3,
+                        "static_timeout": 30.0,
+                        "static_on_delay": 0.0,
+                    },
                 }
             )
 
-            assert mock_client.execute_service.await_count == 2
+            # All 4 firmware actions should be called
+            assert mock_client.execute_service.await_count == 4
+
+            calls = mock_client.execute_service.call_args_list
+
+            # Find calls by service mock object
+            call_by_service = {call[0][0].name: call[0][1] for call in calls}
+
+            # env calibration: values passed through
+            env_data = call_by_service["epp_set_env_calibration"]
+            assert env_data["temperature_offset"] == -1.5
+            assert env_data["humidity_offset"] == 2.0
+            assert env_data["illuminance_offset"] == -10.0
+
+            # motion timeout
+            motion_data = call_by_service["epp_set_motion_timeout"]
+            assert motion_data["timeout"] == 5.0
+
+            # tracking
+            tracking_data = call_by_service["epp_set_tracking"]
+            assert tracking_data["max_range"] == 4000.0  # meters → mm
+
+            # static presence: firmware inversion
+            static_data = call_by_service["epp_set_static_presence"]
+            assert static_data["min_range"] == 0.3
+            assert static_data["max_range"] == 8.0
+            assert static_data["trigger_range"] == 8.0  # same as max_range
+            assert static_data["trigger_sensitivity"] == 7  # 10 - 3
+            assert static_data["sustain_sensitivity"] == 7  # 10 - 3
+            assert static_data["timeout"] == 30.0
+            assert static_data["on_delay"] == 0.0
+            assert static_data["led_enabled"] is True
 
     async def test_push_config_already_connected_noop(self) -> None:
         """async_connect is a no-op when already connected."""

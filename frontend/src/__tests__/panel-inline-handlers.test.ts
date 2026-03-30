@@ -64,11 +64,18 @@ function createPanel(): EPPGridPanel {
 	a._showDeleteCalibrationDialog = false;
 	a._showTemplateSave = false;
 	a._showTemplateLoad = false;
-	a._reportingConfig = {};
-	a._offsetsConfig = {};
-	a._targetAutoRange = true;
+	a._entitiesConfig = {};
+	a._temperatureOffset = 0;
+	a._humidityOffset = 0;
+	a._illuminanceOffset = 0;
+	a._motionTimeout = 5;
+	a._staticTimeout = 30;
+	a._staticTriggerThreshold = 3;
+	a._staticRenewThreshold = 3;
+	a._staticOnDelay = 0;
+	a._targetAutoDistance = true;
 	a._targetMaxDistance = 6;
-	a._staticAutoRange = true;
+	a._staticAutoDistance = true;
 	a._staticMinDistance = 0.3;
 	a._staticMaxDistance = 16;
 	a._roomType = "normal";
@@ -789,8 +796,8 @@ describe("_onFurnitureDrag with active drag state", () => {
 	});
 });
 
-describe("_saveSettings with proper shadow root", () => {
-	it("collects reporting and offsets from DOM elements", async () => {
+describe("_saveSettings delegation", () => {
+	it("delegates to _gridCtrl.saveSettings with payload", async () => {
 		const a = createPanel() as any;
 		a._selectedMac = "AA:BB:CC:DD:EE:01";
 		a._dirty = true;
@@ -798,54 +805,16 @@ describe("_saveSettings with proper shadow root", () => {
 		const callWS = vi.fn().mockResolvedValue({});
 		a.hass = { callWS };
 
-		// Create a mock settings container with toggle elements
-		const reportInputs = [
-			{ dataset: { reportKey: "room_occupancy" }, checked: true },
-			{ dataset: { reportKey: "zone_presence" }, checked: false },
-		];
-		const offsetInputs = [
-			{ dataset: { offsetKey: "illuminance" }, value: "10" },
-			{ dataset: { offsetKey: "temperature" }, value: "-0.5" },
-		];
+		const payload = { motion_timeout: 10 };
+		await a._saveSettings(payload);
 
-		Object.defineProperty(a, "shadowRoot", {
-			value: {
-				querySelector: (sel: string) => {
-					if (sel === ".settings-container") {
-						return {
-							querySelectorAll: (s: string) => {
-								if (s === "[data-report-key]") return reportInputs;
-								if (s === "[data-offset-key]") return offsetInputs;
-								return [];
-							},
-						};
-					}
-					return null;
-				},
-				querySelectorAll: () => [],
-			},
-			configurable: true,
-		});
-
-		await a._saveSettings();
-
-		// _saveSettings is now a stub that just resets state
-		expect(a._dirty).toBe(false);
-		expect(a._view).toBe("live");
-		expect(a._saving).toBe(false);
-	});
-
-	it("resets saving flag (stub implementation)", async () => {
-		const a = createPanel() as any;
-		a._selectedMac = "AA:BB:CC:DD:EE:01";
-		a._dirty = true;
-
-		await a._saveSettings();
-
-		// _saveSettings is now a stub that just resets state
-		expect(a._saving).toBe(false);
-		expect(a._dirty).toBe(false);
-		expect(a._view).toBe("live");
+		expect(callWS).toHaveBeenCalledWith(
+			expect.objectContaining({
+				type: "eppgrid/set_settings",
+				mac: "AA:BB:CC:DD:EE:01",
+				motion_timeout: 10,
+			}),
+		);
 	});
 });
 

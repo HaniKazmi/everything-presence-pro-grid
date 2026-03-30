@@ -122,6 +122,29 @@ class TestWebSocketGetConfig:
         result = connection.send_result.call_args[0]
         assert result[1]["config"]["calibration"]["perspective"] == [1.0] * 8
 
+    async def test_get_config_includes_entity_states(self, hass: HomeAssistant, config_entry: MockConfigEntry) -> None:
+        """get_config includes entity enabled/disabled states from HA registry."""
+        mock_dm = await setup_integration(hass, config_entry)
+        mock_dm._store.devices["AA:BB:CC:DD:EE:FF"] = {"settings": {}}
+        mock_dm._store.get_device = MagicMock(return_value={"settings": {}})
+
+        from custom_components.eppgrid.websocket_api import websocket_get_config
+
+        entity_states = {"room_occupancy": True, "zone_presence": False}
+
+        with patch(
+            "custom_components.eppgrid.websocket_api._get_entity_states",
+            return_value=entity_states,
+        ) as mock_get_entities:
+            connection = MagicMock()
+            msg = {"id": 2, "type": "eppgrid/get_config", "mac": "AA:BB:CC:DD:EE:FF"}
+
+            websocket_get_config(hass, connection, msg)
+
+            mock_get_entities.assert_called_once_with(hass, "AA:BB:CC:DD:EE:FF")
+            result = connection.send_result.call_args[0]
+            assert result[1]["config"]["entities"] == entity_states
+
     async def test_get_config_not_ready(self, hass: HomeAssistant) -> None:
         """get_config returns error when integration not loaded."""
         from custom_components.eppgrid.websocket_api import websocket_get_config
@@ -339,85 +362,194 @@ class TestWebSocketTemplates:
 
 
 class TestWebSocketSettings:
-    """Tests for settings commands (env_calibration, motion_timeout, etc.)."""
+    """Tests for the unified eppgrid/set_settings command."""
 
-    async def test_set_env_calibration(self, hass: HomeAssistant, config_entry: MockConfigEntry) -> None:
-        """set_env_calibration saves offsets and pushes to device."""
+    async def test_set_settings_stores_all_values(self, hass: HomeAssistant, config_entry: MockConfigEntry) -> None:
+        """set_settings stores all values under device_config['settings']."""
         mock_dm = await setup_integration(hass, config_entry)
 
-        from custom_components.eppgrid.websocket_api import websocket_set_env_calibration
+        from custom_components.eppgrid.websocket_api import websocket_set_settings
 
         connection = MagicMock()
         msg = {
             "id": 11,
-            "type": "eppgrid/set_env_calibration",
+            "type": "eppgrid/set_settings",
             "mac": "AA:BB:CC:DD:EE:FF",
             "temperature_offset": -1.5,
             "humidity_offset": 2.0,
             "illuminance_offset": -10.0,
+            "motion_timeout": 5.0,
+            "target_auto_distance": True,
+            "target_max_distance": 4.0,
+            "static_auto_distance": False,
+            "static_min_distance": 0.3,
+            "static_max_distance": 8.0,
+            "static_trigger_threshold": 3,
+            "static_renew_threshold": 3,
+            "static_timeout": 30.0,
+            "static_on_delay": 0.0,
+            "entities": {"room_occupancy": True, "zone_presence": False},
         }
 
-        await call_async_handler(hass, websocket_set_env_calibration, connection, msg)
+        await call_async_handler(hass, websocket_set_settings, connection, msg)
 
-        env = mock_dm._store.devices["AA:BB:CC:DD:EE:FF"]["env_calibration"]
-        assert env["temperature_offset"] == -1.5
-        assert env["humidity_offset"] == 2.0
+        settings = mock_dm._store.devices["AA:BB:CC:DD:EE:FF"]["settings"]
+        assert settings["temperature_offset"] == -1.5
+        assert settings["humidity_offset"] == 2.0
+        assert settings["illuminance_offset"] == -10.0
+        assert settings["motion_timeout"] == 5.0
+        assert settings["target_auto_distance"] is True
+        assert settings["target_max_distance"] == 4.0
+        assert settings["static_auto_distance"] is False
+        assert settings["static_min_distance"] == 0.3
+        assert settings["static_max_distance"] == 8.0
+        assert settings["static_trigger_threshold"] == 3
+        assert settings["static_renew_threshold"] == 3
+        assert settings["static_timeout"] == 30.0
+        assert settings["static_on_delay"] == 0.0
         mock_dm._store.async_save.assert_awaited()
-        mock_dm._push_config_to_device.assert_awaited()
+        mock_dm._push_config_to_device.assert_awaited_with("AA:BB:CC:DD:EE:FF")
+        connection.send_result.assert_called_once_with(11)
 
-    async def test_set_motion_timeout(self, hass: HomeAssistant, config_entry: MockConfigEntry) -> None:
-        """set_motion_timeout saves and pushes."""
+    async def test_set_settings_applies_entity_changes(
+        self, hass: HomeAssistant, config_entry: MockConfigEntry
+    ) -> None:
+        """set_settings calls _apply_entity_states when entities dict is provided."""
+        await setup_integration(hass, config_entry)
+
+        from custom_components.eppgrid.websocket_api import websocket_set_settings
+
+        with patch("custom_components.eppgrid.websocket_api._apply_entity_states") as mock_apply:
+            connection = MagicMock()
+            msg = {
+                "id": 11,
+                "type": "eppgrid/set_settings",
+                "mac": "AA:BB:CC:DD:EE:FF",
+                "temperature_offset": -1.5,
+                "humidity_offset": 2.0,
+                "illuminance_offset": -10.0,
+                "motion_timeout": 5.0,
+                "target_auto_distance": True,
+                "target_max_distance": 4.0,
+                "static_auto_distance": False,
+                "static_min_distance": 0.3,
+                "static_max_distance": 8.0,
+                "static_trigger_threshold": 3,
+                "static_renew_threshold": 3,
+                "static_timeout": 30.0,
+                "static_on_delay": 0.0,
+                "entities": {"room_occupancy": True, "env_illuminance": False},
+            }
+
+            await call_async_handler(hass, websocket_set_settings, connection, msg)
+
+            mock_apply.assert_called_once_with(
+                hass, "AA:BB:CC:DD:EE:FF", {"room_occupancy": True, "env_illuminance": False}
+            )
+
+    async def test_set_settings_zone_presence_false_does_not_reenable_zone0(
+        self, hass: HomeAssistant, config_entry: MockConfigEntry
+    ) -> None:
+        """zone_presence=false should NOT call async_update_zone_entities (which re-enables zone 0)."""
         mock_dm = await setup_integration(hass, config_entry)
 
-        from custom_components.eppgrid.websocket_api import websocket_set_motion_timeout
-
-        connection = MagicMock()
-        msg = {"id": 12, "type": "eppgrid/set_motion_timeout", "mac": "AA:BB:CC:DD:EE:FF", "timeout": 30.0}
-
-        await call_async_handler(hass, websocket_set_motion_timeout, connection, msg)
-
-        assert mock_dm._store.devices["AA:BB:CC:DD:EE:FF"]["motion_timeout"]["timeout"] == 30.0
-        connection.send_result.assert_called_once_with(12)
-
-    async def test_set_tracking(self, hass: HomeAssistant, config_entry: MockConfigEntry) -> None:
-        """set_tracking saves max_range and pushes."""
-        mock_dm = await setup_integration(hass, config_entry)
-
-        from custom_components.eppgrid.websocket_api import websocket_set_tracking
-
-        connection = MagicMock()
-        msg = {"id": 13, "type": "eppgrid/set_tracking", "mac": "AA:BB:CC:DD:EE:FF", "max_range": 5000.0}
-
-        await call_async_handler(hass, websocket_set_tracking, connection, msg)
-
-        assert mock_dm._store.devices["AA:BB:CC:DD:EE:FF"]["tracking"]["max_range"] == 5000.0
-
-    async def test_set_static_presence(self, hass: HomeAssistant, config_entry: MockConfigEntry) -> None:
-        """set_static_presence saves full config and pushes."""
-        mock_dm = await setup_integration(hass, config_entry)
-
-        from custom_components.eppgrid.websocket_api import websocket_set_static_presence
+        from custom_components.eppgrid.websocket_api import websocket_set_settings
 
         connection = MagicMock()
         msg = {
-            "id": 14,
-            "type": "eppgrid/set_static_presence",
+            "id": 11,
+            "type": "eppgrid/set_settings",
             "mac": "AA:BB:CC:DD:EE:FF",
-            "min_range": 0.0,
-            "max_range": 6000.0,
-            "trigger_range": 3000.0,
-            "sustain_sensitivity": 3,
-            "trigger_sensitivity": 5,
-            "timeout": 10.0,
-            "on_delay": 0.5,
-            "led_enabled": True,
+            "temperature_offset": 0,
+            "humidity_offset": 0,
+            "illuminance_offset": 0,
+            "motion_timeout": 5.0,
+            "target_auto_distance": True,
+            "target_max_distance": 6.0,
+            "static_auto_distance": True,
+            "static_min_distance": 0.3,
+            "static_max_distance": 16.0,
+            "static_trigger_threshold": 3,
+            "static_renew_threshold": 3,
+            "static_timeout": 30.0,
+            "static_on_delay": 0.0,
+            "entities": {"zone_presence": False},
         }
 
-        await call_async_handler(hass, websocket_set_static_presence, connection, msg)
+        with patch("custom_components.eppgrid.websocket_api._apply_entity_states"):
+            mock_dm.async_update_zone_entities = AsyncMock()
+            await call_async_handler(hass, websocket_set_settings, connection, msg)
 
-        sp = mock_dm._store.devices["AA:BB:CC:DD:EE:FF"]["static_presence"]
-        assert sp["max_range"] == 6000.0
-        assert sp["led_enabled"] is True
+            # async_update_zone_entities should NOT be called when disabling zones
+            # — _apply_entity_states already disabled all zone entities
+            mock_dm.async_update_zone_entities.assert_not_awaited()
+
+    async def test_set_settings_zone_presence_true_calls_update_zone_entities(
+        self, hass: HomeAssistant, config_entry: MockConfigEntry
+    ) -> None:
+        """zone_presence=true should call async_update_zone_entities with layout."""
+        mock_dm = await setup_integration(hass, config_entry)
+
+        from custom_components.eppgrid.websocket_api import websocket_set_settings
+
+        connection = MagicMock()
+        msg = {
+            "id": 11,
+            "type": "eppgrid/set_settings",
+            "mac": "AA:BB:CC:DD:EE:FF",
+            "temperature_offset": 0,
+            "humidity_offset": 0,
+            "illuminance_offset": 0,
+            "motion_timeout": 5.0,
+            "target_auto_distance": True,
+            "target_max_distance": 6.0,
+            "static_auto_distance": True,
+            "static_min_distance": 0.3,
+            "static_max_distance": 16.0,
+            "static_trigger_threshold": 3,
+            "static_renew_threshold": 3,
+            "static_timeout": 30.0,
+            "static_on_delay": 0.0,
+            "entities": {"zone_presence": True},
+        }
+
+        with patch("custom_components.eppgrid.websocket_api._apply_entity_states"):
+            mock_dm.async_update_zone_entities = AsyncMock()
+            await call_async_handler(hass, websocket_set_settings, connection, msg)
+
+            mock_dm.async_update_zone_entities.assert_awaited_once()
+
+    async def test_set_settings_entities_not_stored(self, hass: HomeAssistant, config_entry: MockConfigEntry) -> None:
+        """entities dict from the message is NOT stored in device_config['settings']."""
+        mock_dm = await setup_integration(hass, config_entry)
+
+        from custom_components.eppgrid.websocket_api import websocket_set_settings
+
+        connection = MagicMock()
+        msg = {
+            "id": 11,
+            "type": "eppgrid/set_settings",
+            "mac": "AA:BB:CC:DD:EE:FF",
+            "temperature_offset": -1.5,
+            "humidity_offset": 2.0,
+            "illuminance_offset": -10.0,
+            "motion_timeout": 5.0,
+            "target_auto_distance": True,
+            "target_max_distance": 4.0,
+            "static_auto_distance": False,
+            "static_min_distance": 0.3,
+            "static_max_distance": 8.0,
+            "static_trigger_threshold": 3,
+            "static_renew_threshold": 3,
+            "static_timeout": 30.0,
+            "static_on_delay": 0.0,
+            "entities": {"room_occupancy": True, "zone_presence": False},
+        }
+
+        await call_async_handler(hass, websocket_set_settings, connection, msg)
+
+        settings = mock_dm._store.devices["AA:BB:CC:DD:EE:FF"]["settings"]
+        assert "entities" not in settings
 
     async def test_set_pipeline(self, hass: HomeAssistant, config_entry: MockConfigEntry) -> None:
         """set_pipeline saves pipeline settings and pushes."""
@@ -441,6 +573,80 @@ class TestWebSocketSettings:
         assert pipeline["display_interval"] == 200
         assert pipeline["zone_publish_interval"] == 1000
         assert pipeline["window_duration"] == 1000
+
+
+class TestEntityMapping:
+    """Tests for entity object_id mapping with real unique_id patterns."""
+
+    def test_object_id_extraction(self) -> None:
+        """_object_id_from_unique_id extracts the part after the last dash."""
+        from custom_components.eppgrid.websocket_api import _object_id_from_unique_id
+
+        assert _object_id_from_unique_id("E0:8C:FE:D3:FD:C8-binary_sensor-occupancy") == "occupancy"
+        assert _object_id_from_unique_id("E0:8C:FE:D3:FD:C8-binary_sensor-motion_presence") == "motion_presence"
+        assert _object_id_from_unique_id("E0:8C:FE:D3:FD:C8-binary_sensor-zone_0_occupancy") == "zone_0_occupancy"
+        assert _object_id_from_unique_id("E0:8C:FE:D3:FD:C8-sensor-temperature") == "temperature"
+        assert _object_id_from_unique_id("E0:8C:FE:D3:FD:C8-text_sensor-target_0_position") == "target_0_position"
+
+    def test_entity_key_mapping_room_entities(self) -> None:
+        """Room-level entities map to their correct keys."""
+        from custom_components.eppgrid.websocket_api import _entity_key_for_object_id
+
+        assert _entity_key_for_object_id("occupancy") == "room_occupancy"
+        assert _entity_key_for_object_id("static_presence") == "room_static_presence"
+        assert _entity_key_for_object_id("motion_presence") == "room_motion_presence"
+        assert _entity_key_for_object_id("target_presence") == "room_target_presence"
+
+    def test_entity_key_mapping_env_sensors(self) -> None:
+        """Environmental sensors map to their correct keys."""
+        from custom_components.eppgrid.websocket_api import _entity_key_for_object_id
+
+        assert _entity_key_for_object_id("temperature") == "env_temperature"
+        assert _entity_key_for_object_id("humidity") == "env_humidity"
+        assert _entity_key_for_object_id("illuminance") == "env_illuminance"
+        assert _entity_key_for_object_id("co2") == "env_co2"
+
+    def test_entity_key_mapping_zone_entities(self) -> None:
+        """Zone occupancy entities map to zone_presence category."""
+        from custom_components.eppgrid.websocket_api import _entity_key_for_object_id
+
+        assert _entity_key_for_object_id("zone_0_occupancy") == "zone_presence"
+        assert _entity_key_for_object_id("zone_7_occupancy") == "zone_presence"
+        # zone_tracking is a separate entity, not a zone occupancy
+        assert _entity_key_for_object_id("zone_tracking") is None
+
+    def test_entity_key_mapping_target_entities(self) -> None:
+        """Target entities map to target_xy category."""
+        from custom_components.eppgrid.websocket_api import _entity_key_for_object_id
+
+        assert _entity_key_for_object_id("target_0_position") == "target_xy"
+        assert _entity_key_for_object_id("target_2_position") == "target_xy"
+
+    def test_entity_key_mapping_underscore_format(self) -> None:
+        """Full unique_ids with underscore format (older ESPHome) map correctly."""
+        from custom_components.eppgrid.websocket_api import _entity_key_for_object_id
+
+        # Room-level entities
+        assert _entity_key_for_object_id("esphome_aabbccddeeff_occupancy") == "room_occupancy"
+        assert _entity_key_for_object_id("esphome_aabbccddeeff_static_presence") == "room_static_presence"
+        assert _entity_key_for_object_id("esphome_aabbccddeeff_motion_presence") == "room_motion_presence"
+        assert _entity_key_for_object_id("esphome_aabbccddeeff_temperature") == "env_temperature"
+        assert _entity_key_for_object_id("esphome_aabbccddeeff_co2") == "env_co2"
+        # Zone entities
+        assert _entity_key_for_object_id("esphome_aabbccddeeff_zone_0_occupancy") == "zone_presence"
+        assert _entity_key_for_object_id("esphome_aabbccddeeff_zone_7_occupancy") == "zone_presence"
+        # Target entities
+        assert _entity_key_for_object_id("esphome_aabbccddeeff_target_0_position") == "target_xy"
+
+    def test_entity_key_mapping_unknown(self) -> None:
+        """Unknown object_ids return None."""
+        from custom_components.eppgrid.websocket_api import _entity_key_for_object_id
+
+        assert _entity_key_for_object_id("config_protocol") is None
+        assert _entity_key_for_object_id("zone_engine_version") is None
+        assert _entity_key_for_object_id("esphome_aabbccddeeff_zone_engine_version") is None
+        assert _entity_key_for_object_id("led") is None
+        assert _entity_key_for_object_id("relay_output") is None
 
 
 class TestWebSocketEntityEnabled:
@@ -727,24 +933,22 @@ class TestNotReadyGuards:
             ("websocket_subscribe_grid_targets", {"mac": "AA:BB"}, True),
             ("websocket_set_entity_enabled", {"mac": "AA:BB", "entity_id": "e", "enabled": True}, False),
             (
-                "websocket_set_env_calibration",
-                {"mac": "AA:BB", "temperature_offset": 0, "humidity_offset": 0, "illuminance_offset": 0},
-                True,
-            ),
-            ("websocket_set_motion_timeout", {"mac": "AA:BB", "timeout": 5.0}, True),
-            ("websocket_set_tracking", {"mac": "AA:BB", "max_range": 6000.0}, True),
-            (
-                "websocket_set_static_presence",
+                "websocket_set_settings",
                 {
                     "mac": "AA:BB",
-                    "min_range": 0,
-                    "max_range": 6000,
-                    "trigger_range": 2500,
-                    "sustain_sensitivity": 3,
-                    "trigger_sensitivity": 5,
-                    "timeout": 10,
-                    "on_delay": 0,
-                    "led_enabled": True,
+                    "temperature_offset": 0,
+                    "humidity_offset": 0,
+                    "illuminance_offset": 0,
+                    "motion_timeout": 5.0,
+                    "target_auto_distance": True,
+                    "target_max_distance": 4.0,
+                    "static_auto_distance": False,
+                    "static_min_distance": 0.3,
+                    "static_max_distance": 8.0,
+                    "static_trigger_threshold": 3,
+                    "static_renew_threshold": 3,
+                    "static_timeout": 30.0,
+                    "static_on_delay": 0.0,
                 },
                 True,
             ),
@@ -755,6 +959,16 @@ class TestNotReadyGuards:
                     "display_interval_ms": 200,
                     "zone_publish_interval_ms": 1000,
                     "window_duration_ms": 1000,
+                },
+                True,
+            ),
+            (
+                "websocket_set_detection_preview",
+                {
+                    "mac": "AA:BB",
+                    "target_max_distance": 3.0,
+                    "static_min_distance": 0.5,
+                    "static_max_distance": 6.0,
                 },
                 True,
             ),
@@ -1192,6 +1406,79 @@ class TestUpdateFirmwareError:
         assert "OTA failed" in args[2]
 
 
+class TestWebSocketDetectionPreview:
+    """Tests for eppgrid/set_detection_preview."""
+
+    async def test_set_detection_preview_pushes_without_saving(
+        self, hass: HomeAssistant, config_entry: MockConfigEntry
+    ) -> None:
+        """set_detection_preview pushes merged preview to device without persisting."""
+        mock_dm = await setup_integration(hass, config_entry)
+        mock_dm._store.devices["AA:BB:CC:DD:EE:FF"] = {
+            "settings": {
+                "static_trigger_threshold": 5,
+                "static_renew_threshold": 4,
+                "static_timeout": 20.0,
+                "static_on_delay": 1.0,
+            }
+        }
+
+        mock_session = MagicMock()
+        mock_session.async_push_detection_preview = AsyncMock()
+        mock_dm.get_session.return_value = mock_session
+
+        from custom_components.eppgrid.websocket_api import websocket_set_detection_preview
+
+        connection = MagicMock()
+        msg = {
+            "id": 20,
+            "type": "eppgrid/set_detection_preview",
+            "mac": "AA:BB:CC:DD:EE:FF",
+            "target_max_distance": 3.0,
+            "static_min_distance": 0.5,
+            "static_max_distance": 6.0,
+        }
+
+        await call_async_handler(hass, websocket_set_detection_preview, connection, msg)
+
+        # Verify merged preview was pushed (preview distances + stored non-distance settings)
+        mock_session.async_push_detection_preview.assert_awaited_once()
+        preview = mock_session.async_push_detection_preview.call_args[0][0]
+        assert preview["target_max_distance"] == 3.0
+        assert preview["static_min_distance"] == 0.5
+        assert preview["static_max_distance"] == 6.0
+        assert preview["static_trigger_threshold"] == 5
+        assert preview["static_renew_threshold"] == 4
+        assert preview["static_timeout"] == 20.0
+        assert preview["static_on_delay"] == 1.0
+
+        # Must NOT persist
+        mock_dm._store.async_save.assert_not_awaited()
+
+        connection.send_result.assert_called_once_with(20)
+
+    async def test_set_detection_preview_no_session(self, hass: HomeAssistant, config_entry: MockConfigEntry) -> None:
+        """set_detection_preview is a no-op when no session exists."""
+        mock_dm = await setup_integration(hass, config_entry)
+        mock_dm.get_session.return_value = None
+
+        from custom_components.eppgrid.websocket_api import websocket_set_detection_preview
+
+        connection = MagicMock()
+        msg = {
+            "id": 20,
+            "type": "eppgrid/set_detection_preview",
+            "mac": "AA:BB:CC:DD:EE:FF",
+            "target_max_distance": 3.0,
+            "static_min_distance": 0.5,
+            "static_max_distance": 6.0,
+        }
+
+        await call_async_handler(hass, websocket_set_detection_preview, connection, msg)
+
+        connection.send_result.assert_called_once_with(20)
+
+
 class TestProtocolVersionGuard:
     """Config commands are blocked when protocol versions don't match."""
 
@@ -1308,22 +1595,21 @@ class TestProtocolVersionGuard:
                 {"entity_id": "binary_sensor.test", "enabled": True},
             ),
             (
-                "websocket_set_env_calibration",
-                {"temperature_offset": 0.0, "humidity_offset": 0.0, "illuminance_offset": 0.0},
-            ),
-            ("websocket_set_motion_timeout", {"timeout": 5.0}),
-            ("websocket_set_tracking", {"max_range": 6000.0}),
-            (
-                "websocket_set_static_presence",
+                "websocket_set_settings",
                 {
-                    "min_range": 0.0,
-                    "max_range": 6000.0,
-                    "trigger_range": 2500.0,
-                    "sustain_sensitivity": 3,
-                    "trigger_sensitivity": 5,
-                    "timeout": 10.0,
-                    "on_delay": 0.0,
-                    "led_enabled": True,
+                    "temperature_offset": 0.0,
+                    "humidity_offset": 0.0,
+                    "illuminance_offset": 0.0,
+                    "motion_timeout": 5.0,
+                    "target_auto_distance": True,
+                    "target_max_distance": 4.0,
+                    "static_auto_distance": False,
+                    "static_min_distance": 0.3,
+                    "static_max_distance": 8.0,
+                    "static_trigger_threshold": 3,
+                    "static_renew_threshold": 3,
+                    "static_timeout": 30.0,
+                    "static_on_delay": 0.0,
                 },
             ),
             (

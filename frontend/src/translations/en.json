@@ -120,6 +120,7 @@
 		"illuminance_offset": "Illuminance offset",
 		"humidity_offset": "Humidity offset",
 		"temperature_offset": "Temperature offset",
+		"presence_delay": "Presence delay",
 		"furthest_point": "Current furthest point from sensor:"
 	},
 	"sidebar": {
@@ -197,6 +198,7 @@
 		"illuminance_offset": "Adjust the illuminance reading by a fixed amount.",
 		"humidity_offset": "Adjust the humidity reading by a fixed amount.",
 		"temperature_offset": "Adjust the temperature reading by a fixed amount.",
+		"presence_delay": "Delay before reporting presence after initial detection. Helps filter brief false positives.",
 		"room_occupancy": "Combined room occupancy from all sensors.",
 		"room_static": "mmWave static presence detection.",
 		"room_motion": "PIR motion detection.",

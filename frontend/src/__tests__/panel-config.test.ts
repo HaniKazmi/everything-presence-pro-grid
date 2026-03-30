@@ -418,19 +418,43 @@ describe("_applyConfig", () => {
 		expect(a._roomEntryPoint).toBe(true);
 	});
 
-	it("applies reporting and offsets config", () => {
+	it("applies settings from config", () => {
 		const a = el as any;
 		const config = {
 			calibration: { perspective: null, room_width: 0, room_depth: 0 },
 			room_layout: {},
-			reporting: { room_occupancy: true },
-			offsets: { illuminance: 10 },
+			settings: {
+				temperature_offset: -1.5,
+				humidity_offset: 2.0,
+				illuminance_offset: -10,
+				motion_timeout: 10,
+				target_auto_distance: false,
+				target_max_distance: 4,
+				static_auto_distance: false,
+				static_min_distance: 1,
+				static_max_distance: 8,
+				static_trigger_threshold: 5,
+				static_renew_threshold: 4,
+				static_timeout: 60,
+				static_on_delay: 2,
+			},
+			entities: { room_occupancy: true },
 		};
-
 		a._applyConfig(config);
-
-		expect(a._reportingConfig).toEqual({ room_occupancy: true });
-		expect(a._offsetsConfig).toEqual({ illuminance: 10 });
+		expect(a._temperatureOffset).toBe(-1.5);
+		expect(a._humidityOffset).toBe(2.0);
+		expect(a._illuminanceOffset).toBe(-10);
+		expect(a._motionTimeout).toBe(10);
+		expect(a._targetAutoDistance).toBe(false);
+		expect(a._targetMaxDistance).toBe(4);
+		expect(a._staticAutoDistance).toBe(false);
+		expect(a._staticMinDistance).toBe(1);
+		expect(a._staticMaxDistance).toBe(8);
+		expect(a._staticTriggerThreshold).toBe(5);
+		expect(a._staticRenewThreshold).toBe(4);
+		expect(a._staticTimeout).toBe(60);
+		expect(a._staticOnDelay).toBe(2);
+		expect(a._entitiesConfig).toEqual({ room_occupancy: true });
 	});
 });
 
@@ -497,6 +521,35 @@ describe("_applyLayout", () => {
 		expect(a._zoneConfigs[1]).toBeNull();
 	});
 
+	it("saves settings after layout", async () => {
+		const a = el as any;
+		a._selectedMac = "AA:BB:CC:DD:EE:01";
+		a._dirty = true;
+		a._targetAutoDistance = true;
+		a._targetMaxDistance = 6;
+		a._staticAutoDistance = true;
+		a._staticMinDistance = 0.3;
+		a._staticMaxDistance = 16;
+		a._temperatureOffset = 0;
+		a._humidityOffset = 0;
+		a._illuminanceOffset = 0;
+		a._motionTimeout = 5;
+		a._staticTimeout = 30;
+		a._staticTriggerThreshold = 3;
+		a._staticRenewThreshold = 3;
+		a._staticOnDelay = 0;
+		a._entitiesConfig = {};
+
+		const callWS = vi.fn().mockResolvedValue({});
+		el.hass = { callWS };
+
+		await a._applyLayout();
+
+		const types = callWS.mock.calls.map((c: any) => c[0].type);
+		expect(types).toContain("eppgrid/set_room_layout");
+		expect(types).toContain("eppgrid/set_settings");
+	});
+
 	it("resets _saving on error", async () => {
 		const a = el as any;
 		a._selectedMac = "AA:BB:CC:DD:EE:01";
@@ -518,28 +571,107 @@ describe("_saveSettings", () => {
 		el = createPanel();
 	});
 
-	it("resets saving flag even when container is missing", async () => {
+	it("calls set_settings WS command with payload", async () => {
 		const a = el as any;
 		a._selectedMac = "AA:BB:CC:DD:EE:01";
 		a._dirty = true;
-		a._saving = false;
 
 		const callWS = vi.fn().mockResolvedValue({});
 		el.hass = { callWS };
 
-		// Provide a minimal shadowRoot mock with no .settings-container
-		Object.defineProperty(el, "shadowRoot", {
-			value: {
-				querySelector: () => null,
-				querySelectorAll: () => [],
-			},
-			configurable: true,
+		const payload = {
+			target_auto_distance: true,
+			target_max_distance: 6.0,
+			static_auto_distance: true,
+			static_min_distance: 0.3,
+			static_max_distance: 16.0,
+			motion_timeout: 5,
+			static_timeout: 30,
+			static_trigger_threshold: 3,
+			static_renew_threshold: 3,
+			static_on_delay: 0,
+			temperature_offset: 0,
+			humidity_offset: 0,
+			illuminance_offset: 0,
+			entities: { room_occupancy: true },
+		};
+
+		await a._saveSettings(payload);
+
+		expect(callWS).toHaveBeenCalledWith({
+			type: "eppgrid/set_settings",
+			mac: "AA:BB:CC:DD:EE:01",
+			...payload,
 		});
-
-		await a._saveSettings();
-
-		// _saveSettings is now a stub that just resets state
+		expect(a._dirty).toBe(false);
+		expect(a._view).toBe("live");
 		expect(a._saving).toBe(false);
+	});
+
+	it("syncs all settings back to panel state after save", async () => {
+		const a = el as any;
+		a._selectedMac = "AA:BB:CC:DD:EE:01";
+		a._dirty = true;
+		// Set initial panel state to different values
+		a._motionTimeout = 5;
+		a._staticTimeout = 30;
+		a._staticTriggerThreshold = 3;
+		a._staticRenewThreshold = 3;
+		a._staticOnDelay = 0;
+		a._targetAutoDistance = true;
+		a._targetMaxDistance = 6.0;
+		a._staticAutoDistance = true;
+		a._staticMinDistance = 0.3;
+		a._staticMaxDistance = 16.0;
+
+		el.hass = { callWS: vi.fn().mockResolvedValue({}) };
+
+		const payload = {
+			motion_timeout: 10,
+			static_timeout: 60,
+			static_trigger_threshold: 5,
+			static_renew_threshold: 7,
+			static_on_delay: 2,
+			target_auto_distance: false,
+			target_max_distance: 4.0,
+			static_auto_distance: false,
+			static_min_distance: 1.0,
+			static_max_distance: 8.0,
+			temperature_offset: 1.5,
+			humidity_offset: -3,
+			illuminance_offset: 50,
+			entities: { room_occupancy: true },
+		};
+
+		await a._saveSettings(payload);
+
+		expect(a._motionTimeout).toBe(10);
+		expect(a._staticTimeout).toBe(60);
+		expect(a._staticTriggerThreshold).toBe(5);
+		expect(a._staticRenewThreshold).toBe(7);
+		expect(a._staticOnDelay).toBe(2);
+		expect(a._targetAutoDistance).toBe(false);
+		expect(a._targetMaxDistance).toBe(4.0);
+		expect(a._staticAutoDistance).toBe(false);
+		expect(a._staticMinDistance).toBe(1.0);
+		expect(a._staticMaxDistance).toBe(8.0);
+	});
+
+	it("stays on settings page on WS error", async () => {
+		const a = el as any;
+		a._selectedMac = "AA:BB:CC:DD:EE:01";
+		a._dirty = true;
+		a._view = "settings";
+
+		el.hass = {
+			callWS: vi.fn().mockRejectedValue(new Error("validation")),
+		};
+
+		await a._saveSettings({});
+
+		expect(a._saving).toBe(false);
+		expect(a._view).toBe("settings");
+		expect(a._dirty).toBe(true);
 	});
 });
 
@@ -593,6 +725,73 @@ describe("_deleteCalibration", () => {
 		expect(err).toHaveBeenCalled();
 		expect(a._dirty).toBe(false);
 		err.mockRestore();
+	});
+});
+
+describe("detection preview", () => {
+	it("calls set_detection_preview on distance change", async () => {
+		const el = createPanel();
+		const a = el as any;
+		a._selectedMac = "AA:BB:CC:DD:EE:01";
+		a._targetMaxDistance = 4.0;
+		a._staticMinDistance = 1.0;
+		a._staticMaxDistance = 8.0;
+
+		const callWS = vi.fn().mockResolvedValue({});
+		el.hass = { callWS };
+
+		a._onDetectionDistanceChange();
+
+		expect(callWS).toHaveBeenCalledWith({
+			type: "eppgrid/set_detection_preview",
+			mac: "AA:BB:CC:DD:EE:01",
+			target_max_distance: 4.0,
+			static_min_distance: 1.0,
+			static_max_distance: 8.0,
+		});
+	});
+});
+
+describe("settings cancel", () => {
+	it("reloads config then reverts detection preview on cancel", async () => {
+		const el = createPanel();
+		const a = el as any;
+		a._selectedMac = "AA:BB:CC:DD:EE:01";
+		a._targetMaxDistance = 4.0;
+		a._staticMinDistance = 1.0;
+		a._staticMaxDistance = 8.0;
+		a._view = "settings";
+		a._dirty = true;
+
+		const savedSettings = {
+			target_max_distance: 6.0,
+			static_min_distance: 0.3,
+			static_max_distance: 16.0,
+		};
+		const callWS = vi.fn().mockResolvedValue({
+			config: {
+				calibration: { perspective: null, room_width: 0, room_depth: 0 },
+				room_layout: {},
+				settings: savedSettings,
+			},
+		});
+		el.hass = {
+			callWS,
+			connection: { subscribeMessage: vi.fn().mockResolvedValue(() => {}) },
+		};
+
+		await a._cancelSettings();
+
+		// Should have called get_config (via _loadDeviceConfig) then set_detection_preview
+		const types = callWS.mock.calls.map((c: any) => c[0].type);
+		expect(types).toContain("eppgrid/get_config");
+		expect(types).toContain("eppgrid/set_detection_preview");
+
+		// Preview should use the reloaded saved values (6.0, not 4.0)
+		const previewCall = callWS.mock.calls.find(
+			(c: any) => c[0].type === "eppgrid/set_detection_preview",
+		);
+		expect(previewCall[0].target_max_distance).toBe(6.0);
 	});
 });
 

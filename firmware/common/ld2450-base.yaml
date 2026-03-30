@@ -6,7 +6,7 @@ globals:
 
 binary_sensor:
   - platform: template
-    name: "Tracking Presence"
+    name: "Target Presence"
     device_class: occupancy
     id: ld2450_occupancy
     disabled_by_default: true

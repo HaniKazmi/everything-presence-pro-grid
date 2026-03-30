@@ -71,11 +71,10 @@ function createPanel() {
 	a._showDeleteCalibrationDialog = false;
 	a._showTemplateSave = false;
 	a._showTemplateLoad = false;
-	a._reportingConfig = {};
-	a._offsetsConfig = {};
-	a._targetAutoRange = true;
+	a._entitiesConfig = {};
+	a._targetAutoDistance = true;
 	a._targetMaxDistance = 6;
-	a._staticAutoRange = true;
+	a._staticAutoDistance = true;
 	a._staticMinDistance = 0.3;
 	a._staticMaxDistance = 16;
 	a._roomType = "normal";
@@ -119,8 +118,8 @@ function createSettingsView(
 	el.roomWidth = 3000;
 	el.roomDepth = 4000;
 	el.openAccordions = new Set();
-	el.reportingConfig = {};
-	el.offsetsConfig = {};
+	el.entitiesConfig = {};
+
 	if (overrides) {
 		for (const [k, v] of Object.entries(overrides)) {
 			(el as any)[k] = v;
@@ -772,7 +771,7 @@ describe("_renderSaveCancelButtons save handler branch", () => {
 describe("_renderDetectionRanges auto range edge cases", () => {
 	it("target auto with zero autoRange", () => {
 		const sv = createSettingsView({
-			targetAutoRange: true,
+			targetAutoDistance: true,
 			roomWidth: 0,
 			roomDepth: 0,
 			perspective: null,
@@ -784,7 +783,7 @@ describe("_renderDetectionRanges auto range edge cases", () => {
 
 	it("static auto with zero autoRange", () => {
 		const sv = createSettingsView({
-			staticAutoRange: true,
+			staticAutoDistance: true,
 			roomWidth: 0,
 			roomDepth: 0,
 			perspective: null,
@@ -796,12 +795,12 @@ describe("_renderDetectionRanges auto range edge cases", () => {
 });
 
 // =========================================================
-// _renderReporting: isOn with fallback
+// _renderEntities: isOn with fallback
 // =========================================================
-describe("_renderReporting fallback branches", () => {
+describe("_renderEntities fallback branches", () => {
 	it("uses fallback values when reporting config is empty", () => {
-		const sv = createSettingsView({ reportingConfig: {} });
-		const tpl = (sv as any).renderReporting();
+		const sv = createSettingsView({ entitiesConfig: {} });
+		const tpl = (sv as any).renderEntities();
 		expect(tpl).toBeDefined();
 	});
 });
@@ -1689,90 +1688,6 @@ describe("willUpdate language change branch", () => {
 	});
 });
 
-describe("updated debug-log-scroll branch", () => {
-	it("scrolls debug-log-scroll when _showDebugLog is true", () => {
-		const a = createPanel() as any;
-		a._showDebugLog = true;
-		// Prevent _initialize from triggering subscriptions
-		a._loading = false;
-		a._devices = [
-			{
-				mac: "AA:BB:CC:DD:EE:01",
-				name: "T",
-				host: null,
-				available: true,
-				configured: true,
-			},
-		];
-
-		const mockEl = { scrollTop: 0, scrollHeight: 500 };
-		const shadowRootSpy = vi.spyOn(a, "shadowRoot", "get").mockReturnValue({
-			getElementById: (id: string) =>
-				id === "debug-log-scroll" ? mockEl : null,
-		} as any);
-
-		// Call updated() directly without attaching to DOM
-		const changed = new Map<string, any>([["other", true]]);
-		a.updated(changed);
-
-		expect(mockEl.scrollTop).toBe(500);
-		shadowRootSpy.mockRestore();
-	});
-
-	it("scrolls backend-debug-log-scroll when _showBackendDebugLog is true", () => {
-		const a = createPanel() as any;
-		a._showBackendDebugLog = true;
-		a._loading = false;
-		a._devices = [
-			{
-				mac: "AA:BB:CC:DD:EE:01",
-				name: "T",
-				host: null,
-				available: true,
-				configured: true,
-			},
-		];
-
-		const mockEl = { scrollTop: 0, scrollHeight: 300 };
-		const shadowRootSpy = vi.spyOn(a, "shadowRoot", "get").mockReturnValue({
-			getElementById: (id: string) =>
-				id === "backend-debug-log-scroll" ? mockEl : null,
-		} as any);
-
-		const changed = new Map<string, any>([["other", true]]);
-		a.updated(changed);
-
-		expect(mockEl.scrollTop).toBe(300);
-		shadowRootSpy.mockRestore();
-	});
-
-	it("handles missing debug-log-scroll element gracefully", () => {
-		const a = createPanel() as any;
-		a._showDebugLog = true;
-		a._showBackendDebugLog = true;
-		a._loading = false;
-		a._devices = [
-			{
-				mac: "AA:BB:CC:DD:EE:01",
-				name: "T",
-				host: null,
-				available: true,
-				configured: true,
-			},
-		];
-
-		const shadowRootSpy = vi.spyOn(a, "shadowRoot", "get").mockReturnValue({
-			getElementById: (_id: string) => null,
-		} as any);
-
-		// Should not throw even if elements are not found
-		const changed = new Map<string, any>([["other", true]]);
-		expect(() => a.updated(changed)).not.toThrow();
-
-		shadowRootSpy.mockRestore();
-	});
-});
-
 // =========================================================
 // _subscribeTargets: backend debug log branches (lines 720-742)
 // =========================================================
@@ -2119,13 +2034,12 @@ describe("_renderBackendDebugLog render branches", () => {
 	it("renders with _showBackendDebugLog=false (collapsed state)", () => {
 		const a = createPanel() as any;
 		a._showBackendDebugLog = false;
-		a._backendDebugLogLines = [];
 
 		const tpl = a._renderBackendDebugLog();
 		expect(tpl).toBeDefined();
 	});
 
-	it("renders with _showBackendDebugLog=true and empty log lines", () => {
+	it("renders empty container with placeholder when expanded and no lines", () => {
 		const a = createPanel() as any;
 		a._showBackendDebugLog = true;
 		a._backendDebugLogLines = [];
@@ -2135,22 +2049,25 @@ describe("_renderBackendDebugLog render branches", () => {
 		document.body.appendChild(c);
 		render(tpl, c);
 
-		// Should contain the "waiting" placeholder
-		expect(c.textContent).toContain("Waiting for events");
+		const container = c.querySelector("#backend-debug-log-scroll");
+		expect(container).toBeTruthy();
+		expect(container!.textContent).toContain("Waiting for events");
 		document.body.removeChild(c);
 	});
 
-	it("renders with _showBackendDebugLog=true and log lines present", () => {
+	it("does NOT render log lines via Lit template (container has only placeholder)", () => {
 		const a = createPanel() as any;
 		a._showBackendDebugLog = true;
-		a._backendDebugLogLines = ["12:00:00.0 zone tick: occupied"];
+		a._backendDebugLogLines = ["12:00:00.0 some log line"];
 
 		const tpl = a._renderBackendDebugLog();
 		const c = document.createElement("div");
 		document.body.appendChild(c);
 		render(tpl, c);
 
-		expect(c.textContent).toContain("zone tick: occupied");
+		const container = c.querySelector("#backend-debug-log-scroll");
+		expect(container).toBeTruthy();
+		expect(container!.querySelectorAll(".debug-log-line").length).toBe(0);
 		document.body.removeChild(c);
 	});
 
@@ -2175,6 +2092,53 @@ describe("_renderBackendDebugLog render branches", () => {
 		expect(a._backendDebugLogPrev).toBeNull();
 		document.body.removeChild(c);
 	});
+
+	it("Clear button resets data array and prev state", () => {
+		const a = createPanel() as any;
+		a._showBackendDebugLog = true;
+		a._backendDebugLogLines = ["line 1", "line 2"];
+		a._backendDebugLogPrev = "line 2";
+
+		const tpl = a._renderBackendDebugLog();
+		const c = document.createElement("div");
+		document.body.appendChild(c);
+		render(tpl, c);
+
+		const clearBtn = Array.from(
+			c.querySelectorAll("button.debug-log-btn"),
+		).find((b) => b.textContent?.trim() === "Clear") as HTMLButtonElement;
+		clearBtn?.click();
+
+		expect(a._backendDebugLogLines).toHaveLength(0);
+		expect(a._backendDebugLogPrev).toBeNull();
+		document.body.removeChild(c);
+	});
+
+	it("Copy all button reads from data array", () => {
+		const a = createPanel() as any;
+		a._showBackendDebugLog = true;
+		a._backendDebugLogLines = ["line 1", "line 2"];
+
+		const tpl = a._renderBackendDebugLog();
+		const c = document.createElement("div");
+		document.body.appendChild(c);
+		render(tpl, c);
+
+		const writeText = vi.fn().mockResolvedValue(undefined);
+		Object.defineProperty(navigator, "clipboard", {
+			value: { writeText },
+			writable: true,
+			configurable: true,
+		});
+
+		const copyBtn = Array.from(c.querySelectorAll("button.debug-log-btn")).find(
+			(b) => b.textContent?.trim() === "Copy all",
+		) as HTMLButtonElement;
+		copyBtn?.click();
+
+		expect(writeText).toHaveBeenCalledWith("line 1\nline 2");
+		document.body.removeChild(c);
+	});
 });
 
 // =========================================================
@@ -2184,13 +2148,12 @@ describe("_renderDebugLog render branches", () => {
 	it("renders with _showDebugLog=false (collapsed state)", () => {
 		const a = createPanel() as any;
 		a._showDebugLog = false;
-		a._debugLogLines = [];
 
 		const tpl = a._renderDebugLog();
 		expect(tpl).toBeDefined();
 	});
 
-	it("renders with _showDebugLog=true and empty log lines", () => {
+	it("renders empty container with placeholder when expanded", () => {
 		const a = createPanel() as any;
 		a._showDebugLog = true;
 		a._debugLogLines = [];
@@ -2200,23 +2163,24 @@ describe("_renderDebugLog render branches", () => {
 		document.body.appendChild(c);
 		render(tpl, c);
 
-		expect(c.textContent).toContain("Waiting for events");
+		const container = c.querySelector("#debug-log-scroll");
+		expect(container).toBeTruthy();
+		expect(container!.textContent).toContain("Waiting for events");
 		document.body.removeChild(c);
 	});
 
-	it("renders with _showDebugLog=true and log lines present", () => {
+	it("does NOT render log lines via Lit template", () => {
 		const a = createPanel() as any;
 		a._showDebugLog = true;
-		a._debugLogLines = [
-			"12:00:00.0 T0: signal=5 zone='Room' confirmed=N | all clear",
-		];
+		a._debugLogLines = ["12:00:00.0 some log line"];
 
 		const tpl = a._renderDebugLog();
 		const c = document.createElement("div");
 		document.body.appendChild(c);
 		render(tpl, c);
 
-		expect(c.textContent).toContain("T0: signal=5");
+		const container = c.querySelector("#debug-log-scroll");
+		expect(container!.querySelectorAll(".debug-log-line").length).toBe(0);
 		document.body.removeChild(c);
 	});
 
@@ -2242,7 +2206,7 @@ describe("_renderDebugLog render branches", () => {
 		document.body.removeChild(c);
 	});
 
-	it("Clear button clears debug log lines", () => {
+	it("Clear button resets data array and prev state", () => {
 		const a = createPanel() as any;
 		a._showDebugLog = true;
 		a._debugLogLines = ["line 1", "line 2"];
