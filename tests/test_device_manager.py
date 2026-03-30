@@ -1471,6 +1471,25 @@ class TestEventCallbacks:
         assert mock_push.await_count == 2
         assert mac not in manager._pushing
 
+    async def test_on_device_available_skips_push_when_entity_update_guard_set(
+        self, hass: HomeAssistant, store: EPPGridStore, manager: DeviceManager
+    ) -> None:
+        """_on_device_available skips push when entity update guard is set."""
+        mac = "AA:BB:CC:DD:EE:FF"
+        store.devices[mac] = {"calibration": {"perspective": [1.0] * 8}}
+        manager.devices[mac] = ManagedDevice(mac=mac, name="EPP", host="192.168.1.50")
+
+        # Simulate: entity update guard was set by websocket_set_settings
+        manager._entity_update_macs.add(mac)
+        manager._pushing.add(mac)
+
+        with patch.object(manager, "_push_config_to_device", new_callable=AsyncMock) as mock_push:
+            await manager._on_device_available(mac)
+
+        mock_push.assert_not_awaited()
+        assert mac not in manager._entity_update_macs
+        assert mac not in manager._pushing
+
 
 # ---------------------------------------------------------------------------
 # Stale connection and start/stop tests

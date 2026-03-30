@@ -47,6 +47,7 @@ async def setup_integration(hass: HomeAssistant, config_entry: MockConfigEntry) 
         mock_dm.devices = {}
         mock_dm.list_devices.return_value = []
         mock_dm._push_config_to_device = AsyncMock()
+        mock_dm._entity_update_macs = set()
         mock_dm.async_update_zone_entities = AsyncMock()
         mock_dm.async_open_session = AsyncMock(return_value=None)
         mock_dm.async_close_session = AsyncMock()
@@ -624,6 +625,71 @@ class TestWebSocketSettings:
         device_config = mock_dm._store.devices["AA:BB:CC:DD:EE:FF"]
         # Existing log_levels should remain untouched
         assert device_config["log_levels"] == {"epp": "Debug"}
+
+    async def test_set_settings_with_entities_sets_entity_update_guard(
+        self, hass: HomeAssistant, config_entry: MockConfigEntry
+    ) -> None:
+        """set_settings with entities sets the entity update guard to suppress reconnect push."""
+        mock_dm = await setup_integration(hass, config_entry)
+
+        from custom_components.eppgrid.websocket_api import websocket_set_settings
+
+        connection = MagicMock()
+        msg = {
+            "id": 11,
+            "type": "eppgrid/set_settings",
+            "mac": "AA:BB:CC:DD:EE:FF",
+            "temperature_offset": 0.0,
+            "humidity_offset": 0.0,
+            "illuminance_offset": 0.0,
+            "motion_timeout": 5.0,
+            "target_auto_distance": True,
+            "target_max_distance": 6.0,
+            "static_auto_distance": True,
+            "static_min_distance": 0.3,
+            "static_max_distance": 16.0,
+            "static_trigger_threshold": 3,
+            "static_renew_threshold": 3,
+            "static_timeout": 30.0,
+            "static_on_delay": 0.0,
+            "entities": {"room_occupancy": True},
+        }
+
+        await call_async_handler(hass, websocket_set_settings, connection, msg)
+
+        assert "AA:BB:CC:DD:EE:FF" in mock_dm._entity_update_macs
+
+    async def test_set_settings_without_entities_no_guard(
+        self, hass: HomeAssistant, config_entry: MockConfigEntry
+    ) -> None:
+        """set_settings without entities does not set the entity update guard."""
+        mock_dm = await setup_integration(hass, config_entry)
+
+        from custom_components.eppgrid.websocket_api import websocket_set_settings
+
+        connection = MagicMock()
+        msg = {
+            "id": 11,
+            "type": "eppgrid/set_settings",
+            "mac": "AA:BB:CC:DD:EE:FF",
+            "temperature_offset": 0.0,
+            "humidity_offset": 0.0,
+            "illuminance_offset": 0.0,
+            "motion_timeout": 5.0,
+            "target_auto_distance": True,
+            "target_max_distance": 6.0,
+            "static_auto_distance": True,
+            "static_min_distance": 0.3,
+            "static_max_distance": 16.0,
+            "static_trigger_threshold": 3,
+            "static_renew_threshold": 3,
+            "static_timeout": 30.0,
+            "static_on_delay": 0.0,
+        }
+
+        await call_async_handler(hass, websocket_set_settings, connection, msg)
+
+        assert "AA:BB:CC:DD:EE:FF" not in mock_dm._entity_update_macs
 
     async def test_set_pipeline(self, hass: HomeAssistant, config_entry: MockConfigEntry) -> None:
         """set_pipeline saves pipeline settings and pushes."""

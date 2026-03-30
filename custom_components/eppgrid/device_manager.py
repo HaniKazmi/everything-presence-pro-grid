@@ -329,6 +329,7 @@ class DeviceManager:
         self.devices: dict[str, ManagedDevice] = {}
         self._unsub_listeners: list[Any] = []
         self._pushing: set[str] = set()
+        self._entity_update_macs: set[str] = set()
         self._build_flags: dict[str, dict[str, Any]] = {}
         # One connection per device, kept alive for the frontend session
         self._active_connections: dict[str, DeviceConnection] = {}
@@ -497,6 +498,14 @@ class DeviceManager:
         dev = self.devices.get(mac)
         if dev is not None:
             dev.available = True
+
+        # Skip push if we caused this reconnect via entity registry updates
+        if mac in self._entity_update_macs:
+            self._entity_update_macs.discard(mac)
+            self._pushing.discard(mac)
+            _LOGGER.debug("Skipping redundant push for %s (entity update guard)", mac)
+            return
+
         _LOGGER.info("Device %s became available, pushing config", mac)
         if not await self._push_config_to_device(mac):
             # Close stale connection and retry after device stabilises

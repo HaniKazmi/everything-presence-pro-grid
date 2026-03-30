@@ -812,6 +812,8 @@ async def websocket_set_settings(
         manager._manage_log_subscription(session_conn, device_config)
     entities = msg.get("entities")
     if entities:
+        manager._entity_update_macs.add(mac)
+        hass.loop.call_later(60, manager._entity_update_macs.discard, mac)
         _apply_entity_states(hass, mac, entities)
         # Zone presence needs layout-aware handling: enable zone_0 + named zones
         if entities.get("zone_presence"):
