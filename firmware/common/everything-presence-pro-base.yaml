@@ -219,8 +219,8 @@ api:
         led_enabled: bool
       then:
         - lambda: |-
-            ESP_LOGI("epp", "epp_set_static_presence: min_range=%.1f max_range=%.1f trigger_range=%.1f trigger_sensitivity=%d sustain_sensitivity=%d timeout=%.1f on_delay=%.1f led_enabled=%s",
-                     min_range, max_range, trigger_range, trigger_sensitivity, sustain_sensitivity, timeout, on_delay, led_enabled ? "true" : "false");
+            ESP_LOGI("epp", "epp_set_static_presence: min_range=%.1f max_range=%.1f trigger_range=%.1f sustain_sensitivity=%d trigger_sensitivity=%d timeout=%.1f on_delay=%.2f led_enabled=%s",
+                     min_range, max_range, trigger_range, sustain_sensitivity, trigger_sensitivity, timeout, on_delay, led_enabled ? "true" : "false");
         - uart.write:
             id: uart_bus_dfrobot
             data: "sensorStop\r\n"

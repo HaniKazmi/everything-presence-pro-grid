@@ -201,29 +201,25 @@ class TestDeviceConnection:
                 }
             )
 
-            assert mock_client.execute_service.await_count == 4
             calls = mock_client.execute_service.await_args_list
+            payloads = {c.args[0].name: c.args[1] for c in calls}
 
             # env_calibration: values passed through unchanged
-            assert calls[0][0][0] == svc_env
-            assert calls[0][0][1] == {
+            assert payloads["epp_set_env_calibration"] == {
                 "temperature_offset": 1.5,
                 "humidity_offset": -2.0,
                 "illuminance_offset": 10.0,
             }
 
             # motion_timeout: value passed through
-            assert calls[1][0][0] == svc_motion
-            assert calls[1][0][1] == {"timeout": 8.0}
+            assert payloads["epp_set_motion_timeout"] == {"timeout": 8.0}
 
             # tracking: meters converted to millimeters
-            assert calls[2][0][0] == svc_tracking
-            assert calls[2][0][1] == {"max_range": 4500.0}
+            assert payloads["epp_set_tracking"] == {"max_range": 4500.0}
 
             # static_presence: thresholds inverted (10 - value),
             # trigger_range set to max_distance, led_enabled hardcoded True
-            assert calls[3][0][0] == svc_static
-            assert calls[3][0][1] == {
+            assert payloads["epp_set_static_presence"] == {
                 "min_range": 0.5,
                 "max_range": 12.0,
                 "trigger_range": 12.0,
@@ -259,17 +255,17 @@ class TestDeviceConnection:
             # Only provide one key — rest should use defaults
             await conn.async_push_config({"settings": {"temperature_offset": 2.0}})
 
-            assert mock_client.execute_service.await_count == 4
             calls = mock_client.execute_service.await_args_list
+            payloads = {c.args[0].name: c.args[1] for c in calls}
 
-            assert calls[0][0][1] == {
+            assert payloads["epp_set_env_calibration"] == {
                 "temperature_offset": 2.0,
                 "humidity_offset": 0.0,
                 "illuminance_offset": 0.0,
             }
-            assert calls[1][0][1] == {"timeout": 5.0}
-            assert calls[2][0][1] == {"max_range": 6000.0}
-            assert calls[3][0][1] == {
+            assert payloads["epp_set_motion_timeout"] == {"timeout": 5.0}
+            assert payloads["epp_set_tracking"] == {"max_range": 6000.0}
+            assert payloads["epp_set_static_presence"] == {
                 "min_range": 0.3,
                 "max_range": 16.0,
                 "trigger_range": 16.0,
