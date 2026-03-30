@@ -198,7 +198,7 @@ export class EppSettingsView extends LitElement {
 		return html`
       <div class="setting-row">
         <label>${label}</label>
-        <span class="setting-input-unit"><input type="range" class="setting-range" data-offset-key=${offsetKey} data-precision=${precision} data-display-min=${displayMin} data-display-max=${displayMax} .value=${String(offset)} min=${min} max=${max} step=${step} @input=${(
+        <span class="setting-input-unit"><input type="range" class="setting-range" data-offset-key=${offsetKey} data-precision=${precision} data-display-min=${displayMin} data-display-max=${displayMax} min=${min} max=${max} step=${step} .value=${String(offset)} @input=${(
 					e: Event,
 				) => {
 					const el = e.target as HTMLInputElement;

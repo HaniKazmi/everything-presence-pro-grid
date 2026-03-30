@@ -489,6 +489,32 @@ describe("renderEnvOffset", () => {
 		expect(valueSpan?.textContent).toBe("100.3");
 		document.body.removeChild(c);
 	});
+
+	it("reset with large offset (>100) shows correct raw value", () => {
+		// Reproduces bug: offset=389 exceeds default input range [0,100]
+		// If .value is set before min/max, browser clamps 389→100
+		const sv = createView({ illuminanceOffset: 389 });
+		sv.sensorState = {
+			occupancy: false, static_presence: false, motion_presence: false,
+			target_presence: false, illuminance: 425, // raw=36, firmware applied +389
+			temperature: null, humidity: null, co2: null,
+		};
+		const tpl = (sv as any).renderEnvOffset(
+			"Illuminance", sv.sensorState.illuminance, "illuminance",
+			-500, 500, 1, "lux", 1, "Tip", 0,
+		);
+		const c = renderTo(tpl);
+		// Verify slider value is correctly set to 389 (not clamped to 100)
+		const slider = c.querySelector(".setting-range") as HTMLInputElement;
+		expect(slider.value).toBe("389");
+		// Reset to 0
+		const row = c.querySelector(".setting-row") as HTMLElement;
+		(sv as any)._resetSlider(row, 0);
+		const valueSpan = c.querySelector(".setting-value");
+		// Should show raw value ~36, not 325 (which you get if slider was clamped to 100)
+		expect(valueSpan?.textContent).toBe("36.0");
+		document.body.removeChild(c);
+	});
 });
 
 describe("infoTip", () => {
