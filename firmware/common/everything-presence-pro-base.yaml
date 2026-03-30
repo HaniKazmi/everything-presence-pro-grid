@@ -6,7 +6,7 @@ esphome:
     - priority: 200
       then:
         - lambda: |-
-            id(logger_id).set_log_level(ESPHOME_LOG_LEVEL_WARN);
+            id(logger_id).set_log_level(ESPHOME_LOG_LEVEL_NONE);
     - priority: 375
       then:
         - delay: 200ms

@@ -699,7 +699,7 @@ export class EppSettingsView extends LitElement {
         <div class="setting-group">
           ${categories.filter(c => c.show).map((c) => {
 						const overrides = this._overrides.logLevels || {};
-						const current = overrides[c.key] ?? this.logLevels[c.key] ?? "Warning";
+						const current = overrides[c.key] ?? this.logLevels[c.key] ?? "None";
 						return html`
               <div class="setting-row">
                 <label>${this.localize(c.label)}</label>
@@ -719,7 +719,7 @@ export class EppSettingsView extends LitElement {
                 <button type="button" class="setting-info" aria-label="Reset to default" title="Reset to default" @click=${(e: Event) => {
 									e.stopPropagation();
 									if (!this._overrides.logLevels) this._overrides.logLevels = {};
-									this._overrides.logLevels[c.key] = "Warning";
+									this._overrides.logLevels[c.key] = "None";
 									this._fireDirty();
 									this.requestUpdate();
 								}}><ha-icon icon="mdi:restart"></ha-icon></button>
