@@ -1704,11 +1704,14 @@ export class EPPGridPanel extends LitElement {
               @click=${() => {
 								this._backendDebugLogLines = [];
 								this._backendDebugLogPrev = null;
-								const el = this.shadowRoot?.getElementById("backend-debug-log-scroll");
+								const el = this.shadowRoot?.getElementById(
+									"backend-debug-log-scroll",
+								);
 								if (el) {
 									el.innerHTML = "";
 									const placeholder = document.createElement("div");
-									placeholder.style.cssText = "color: var(--secondary-text-color, #999); font-style: italic;";
+									placeholder.style.cssText =
+										"color: var(--secondary-text-color, #999); font-style: italic;";
 									placeholder.textContent = "Waiting for events...";
 									el.appendChild(placeholder);
 								}
@@ -1761,7 +1764,8 @@ export class EPPGridPanel extends LitElement {
 								if (el) {
 									el.innerHTML = "";
 									const placeholder = document.createElement("div");
-									placeholder.style.cssText = "color: var(--secondary-text-color, #999); font-style: italic;";
+									placeholder.style.cssText =
+										"color: var(--secondary-text-color, #999); font-style: italic;";
 									placeholder.textContent = "Waiting for events...";
 									el.appendChild(placeholder);
 								}

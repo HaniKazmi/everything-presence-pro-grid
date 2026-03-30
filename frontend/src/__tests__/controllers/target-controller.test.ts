@@ -63,7 +63,8 @@ function mockHost() {
 		get shadowRoot() {
 			return {
 				getElementById: (id: string) => {
-					if (id === "backend-debug-log-scroll") return this._mockBackendContainer;
+					if (id === "backend-debug-log-scroll")
+						return this._mockBackendContainer;
 					if (id === "debug-log-scroll") return this._mockFrontendContainer;
 					return null;
 				},
@@ -236,25 +237,29 @@ describe("TargetController", () => {
 			const originalTargets = host._targets;
 			const originalSensorState = host._sensorState;
 			const originalZoneState = host._zoneState;
-			ctrl.handleTargetData(makeTargetData({
-				targets: [{ x: 1, y: 2, speed: 0, status: "active", signal: 50 }] as any,
-				sensors: {
-					occupancy: true,
-					static_presence: true,
-					motion_presence: true,
-					target_presence: true,
-					illuminance: 100,
-					temperature: 22,
-					humidity: 50,
-					co2: 400,
-				},
-				zones: {
-					occupancy: { 1: true },
-					target_counts: { 1: 2 },
-					frame_count: 7,
-					debug_log: "T0:Z1:A:5|Z1:O:1",
-				},
-			}));
+			ctrl.handleTargetData(
+				makeTargetData({
+					targets: [
+						{ x: 1, y: 2, speed: 0, status: "active", signal: 50 },
+					] as any,
+					sensors: {
+						occupancy: true,
+						static_presence: true,
+						motion_presence: true,
+						target_presence: true,
+						illuminance: 100,
+						temperature: 22,
+						humidity: 50,
+						co2: 400,
+					},
+					zones: {
+						occupancy: { 1: true },
+						target_counts: { 1: 2 },
+						frame_count: 7,
+						debug_log: "T0:Z1:A:5|Z1:O:1",
+					},
+				}),
+			);
 			expect(host._targets).toBe(originalTargets);
 			expect(host._sensorState).toBe(originalSensorState);
 			expect(host._zoneState).toBe(originalZoneState);
@@ -262,13 +267,19 @@ describe("TargetController", () => {
 
 		it("resumes state updates when host._view is not 'settings'", () => {
 			host._view = "settings";
-			ctrl.handleTargetData(makeTargetData({
-				targets: [{ x: 1, y: 2, speed: 0, status: "active", signal: 50 }] as any,
-			}));
+			ctrl.handleTargetData(
+				makeTargetData({
+					targets: [
+						{ x: 1, y: 2, speed: 0, status: "active", signal: 50 },
+					] as any,
+				}),
+			);
 			const frozenTargets = host._targets;
 
 			host._view = "live";
-			const newTargets = [{ x: 3, y: 4, speed: 0, status: "active", signal: 80 }] as any;
+			const newTargets = [
+				{ x: 3, y: 4, speed: 0, status: "active", signal: 80 },
+			] as any;
 			const newSensors = {
 				occupancy: true,
 				static_presence: false,
@@ -279,7 +290,9 @@ describe("TargetController", () => {
 				humidity: null,
 				co2: null,
 			};
-			ctrl.handleTargetData(makeTargetData({ targets: newTargets, sensors: newSensors }));
+			ctrl.handleTargetData(
+				makeTargetData({ targets: newTargets, sensors: newSensors }),
+			);
 			expect(host._targets).toBe(newTargets);
 			expect(host._targets).not.toBe(frozenTargets);
 			expect(host._sensorState).toBe(newSensors);
@@ -429,7 +442,9 @@ describe("TargetController", () => {
 				ctrl.appendBackendDebugLog(`T0:Z1:A:${i}|`);
 			}
 			expect(container.children.length).toBeLessThanOrEqual(DEBUG_LOG_MAX);
-			expect(host._backendDebugLogLines.length).toBeLessThanOrEqual(DEBUG_LOG_MAX);
+			expect(host._backendDebugLogLines.length).toBeLessThanOrEqual(
+				DEBUG_LOG_MAX,
+			);
 		});
 
 		it("does NOT call host.requestUpdate", () => {
@@ -444,7 +459,10 @@ describe("TargetController", () => {
 		});
 
 		it("auto-scrolls the container to bottom", () => {
-			Object.defineProperty(container, "scrollHeight", { value: 500, configurable: true });
+			Object.defineProperty(container, "scrollHeight", {
+				value: 500,
+				configurable: true,
+			});
 			ctrl.appendBackendDebugLog("T0:Z1:A:5|Z1:O:1");
 			expect(container.scrollTop).toBe(500);
 		});
@@ -461,7 +479,9 @@ describe("TargetController", () => {
 
 		it("handles missing container gracefully", () => {
 			host._mockBackendContainer = null;
-			expect(() => ctrl.appendBackendDebugLog("T0:Z1:A:5|Z1:O:1")).not.toThrow();
+			expect(() =>
+				ctrl.appendBackendDebugLog("T0:Z1:A:5|Z1:O:1"),
+			).not.toThrow();
 			expect(host._backendDebugLogLines.length).toBe(1);
 		});
 

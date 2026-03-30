@@ -146,13 +146,19 @@ describe("renderSettingsSection", () => {
 
 describe("renderDetectionRanges", () => {
 	it("renders with auto range enabled", () => {
-		const sv = createView({ targetAutoDistance: true, staticAutoDistance: true });
+		const sv = createView({
+			targetAutoDistance: true,
+			staticAutoDistance: true,
+		});
 		const result = (sv as any).renderDetectionRanges();
 		expect(result).toBeDefined();
 	});
 
 	it("renders with auto range disabled", () => {
-		const sv = createView({ targetAutoDistance: false, staticAutoDistance: false });
+		const sv = createView({
+			targetAutoDistance: false,
+			staticAutoDistance: false,
+		});
 		const result = (sv as any).renderDetectionRanges();
 		expect(result).toBeDefined();
 	});
@@ -233,7 +239,9 @@ describe("renderDetectionRanges", () => {
 				r.parentNode?.insertBefore(span, r.nextSibling);
 				r.value = "6";
 				r.dispatchEvent(new Event("input"));
-				expect((sv as any)._overrides.staticMinDistance).toBeLessThan(sv.staticMaxDistance);
+				expect((sv as any)._overrides.staticMinDistance).toBeLessThan(
+					sv.staticMaxDistance,
+				);
 				break;
 			}
 		}
@@ -254,7 +262,9 @@ describe("renderDetectionRanges", () => {
 		if (staticMax) {
 			staticMax.value = "1";
 			staticMax.dispatchEvent(new Event("input"));
-			expect((sv as any)._overrides.staticMaxDistance).toBeGreaterThan(sv.staticMinDistance);
+			expect((sv as any)._overrides.staticMaxDistance).toBeGreaterThan(
+				sv.staticMinDistance,
+			);
 		}
 		document.body.removeChild(c);
 	});
@@ -288,12 +298,26 @@ describe("renderSensitivities", () => {
 	it("slider DOM update preserves Lit text node for safe re-render", () => {
 		const sv = createView({ illuminanceOffset: 0 });
 		sv.sensorState = {
-			occupancy: false, static_presence: false, motion_presence: false,
-			target_presence: false, illuminance: 100, temperature: null,
-			humidity: null, co2: null,
+			occupancy: false,
+			static_presence: false,
+			motion_presence: false,
+			target_presence: false,
+			illuminance: 100,
+			temperature: null,
+			humidity: null,
+			co2: null,
 		};
 		const tpl = (sv as any).renderEnvOffset(
-			"Illuminance", 100, "illuminance", -500, 500, 1, "lux", 1, "Tip", 0,
+			"Illuminance",
+			100,
+			"illuminance",
+			-500,
+			500,
+			1,
+			"lux",
+			1,
+			"Tip",
+			0,
 		);
 		const c = renderTo(tpl);
 		const span = c.querySelector(".setting-value")!;
@@ -435,13 +459,26 @@ describe("renderEnvOffset", () => {
 		// Raw reading is 5, offset is -10 → adjusted would be -5 without clamp
 		const sv = createView({ illuminanceOffset: -10 });
 		sv.sensorState = {
-			occupancy: false, static_presence: false, motion_presence: false,
-			target_presence: false, illuminance: -5, temperature: null,
-			humidity: null, co2: null,
+			occupancy: false,
+			static_presence: false,
+			motion_presence: false,
+			target_presence: false,
+			illuminance: -5,
+			temperature: null,
+			humidity: null,
+			co2: null,
 		};
 		const tpl = (sv as any).renderEnvOffset(
-			"Illuminance", sv.sensorState.illuminance, "illuminance",
-			-500, 500, 1, "lux", 1, "Tip", 0,
+			"Illuminance",
+			sv.sensorState.illuminance,
+			"illuminance",
+			-500,
+			500,
+			1,
+			"lux",
+			1,
+			"Tip",
+			0,
 		);
 		const c = renderTo(tpl);
 		const valueSpan = c.querySelector(".setting-value");
@@ -453,13 +490,26 @@ describe("renderEnvOffset", () => {
 		// Raw=5, current offset=0, user drags to -10 → adjusted=-5 → clamp to 0
 		const sv = createView({ illuminanceOffset: 0 });
 		sv.sensorState = {
-			occupancy: false, static_presence: false, motion_presence: false,
-			target_presence: false, illuminance: 5, temperature: null,
-			humidity: null, co2: null,
+			occupancy: false,
+			static_presence: false,
+			motion_presence: false,
+			target_presence: false,
+			illuminance: 5,
+			temperature: null,
+			humidity: null,
+			co2: null,
 		};
 		const tpl = (sv as any).renderEnvOffset(
-			"Illuminance", sv.sensorState.illuminance, "illuminance",
-			-500, 500, 1, "lux", 1, "Tip", 0,
+			"Illuminance",
+			sv.sensorState.illuminance,
+			"illuminance",
+			-500,
+			500,
+			1,
+			"lux",
+			1,
+			"Tip",
+			0,
 		);
 		const c = renderTo(tpl);
 		const range = c.querySelector(".setting-range") as HTMLInputElement;
@@ -475,13 +525,27 @@ describe("renderEnvOffset", () => {
 		// Raw=95, offset=10 → adjusted=105 → clamp to 100
 		const sv = createView({ humidityOffset: 10 });
 		sv.sensorState = {
-			occupancy: false, static_presence: false, motion_presence: false,
-			target_presence: false, illuminance: null, temperature: null,
-			humidity: 105, co2: null,
+			occupancy: false,
+			static_presence: false,
+			motion_presence: false,
+			target_presence: false,
+			illuminance: null,
+			temperature: null,
+			humidity: 105,
+			co2: null,
 		};
 		const tpl = (sv as any).renderEnvOffset(
-			"Humidity", sv.sensorState.humidity, "humidity",
-			-50, 50, 0.1, "%", 1, "Tip", 0, 100,
+			"Humidity",
+			sv.sensorState.humidity,
+			"humidity",
+			-50,
+			50,
+			0.1,
+			"%",
+			1,
+			"Tip",
+			0,
+			100,
 		);
 		const c = renderTo(tpl);
 		const valueSpan = c.querySelector(".setting-value");
@@ -527,13 +591,26 @@ describe("renderEnvOffset", () => {
 		// If .value is set before min/max, browser clamps 389→100
 		const sv = createView({ illuminanceOffset: 389 });
 		sv.sensorState = {
-			occupancy: false, static_presence: false, motion_presence: false,
-			target_presence: false, illuminance: 425, // raw=36, firmware applied +389
-			temperature: null, humidity: null, co2: null,
+			occupancy: false,
+			static_presence: false,
+			motion_presence: false,
+			target_presence: false,
+			illuminance: 425, // raw=36, firmware applied +389
+			temperature: null,
+			humidity: null,
+			co2: null,
 		};
 		const tpl = (sv as any).renderEnvOffset(
-			"Illuminance", sv.sensorState.illuminance, "illuminance",
-			-500, 500, 1, "lux", 1, "Tip", 0,
+			"Illuminance",
+			sv.sensorState.illuminance,
+			"illuminance",
+			-500,
+			500,
+			1,
+			"lux",
+			1,
+			"Tip",
+			0,
 		);
 		const c = renderTo(tpl);
 		// Verify slider value is correctly set to 389 (not clamped to 100)
@@ -768,7 +845,9 @@ describe("renderEntities entity toggle @change handlers", () => {
 		const c = renderTo(tpl);
 
 		let dirtyFired = false;
-		sv.addEventListener("dirty", () => { dirtyFired = true; });
+		sv.addEventListener("dirty", () => {
+			dirtyFired = true;
+		});
 
 		const checkboxes = c.querySelectorAll('input[type="checkbox"]');
 		const occupancyCb = [...checkboxes].find(
@@ -791,7 +870,8 @@ describe("renderEntities entity toggle @change handlers", () => {
 
 		const checkboxes = c.querySelectorAll('input[type="checkbox"]');
 		const cb = [...checkboxes].find(
-			(cb) => (cb as HTMLInputElement).dataset.entityKey === "room_static_presence",
+			(cb) =>
+				(cb as HTMLInputElement).dataset.entityKey === "room_static_presence",
 		) as HTMLInputElement | undefined;
 		if (cb) {
 			cb.checked = true;
@@ -808,7 +888,8 @@ describe("renderEntities entity toggle @change handlers", () => {
 
 		const checkboxes = c.querySelectorAll('input[type="checkbox"]');
 		const cb = [...checkboxes].find(
-			(cb) => (cb as HTMLInputElement).dataset.entityKey === "room_motion_presence",
+			(cb) =>
+				(cb as HTMLInputElement).dataset.entityKey === "room_motion_presence",
 		) as HTMLInputElement | undefined;
 		if (cb) {
 			cb.checked = true;
@@ -825,7 +906,8 @@ describe("renderEntities entity toggle @change handlers", () => {
 
 		const checkboxes = c.querySelectorAll('input[type="checkbox"]');
 		const cb = [...checkboxes].find(
-			(cb) => (cb as HTMLInputElement).dataset.entityKey === "room_target_presence",
+			(cb) =>
+				(cb as HTMLInputElement).dataset.entityKey === "room_target_presence",
 		) as HTMLInputElement | undefined;
 		if (cb) {
 			cb.checked = true;
@@ -1015,13 +1097,26 @@ describe("resetBtn click handler", () => {
 	it("resetBtn click without key does not fire setting-change", () => {
 		const sv = createView({ illuminanceOffset: 5 });
 		sv.sensorState = {
-			occupancy: false, static_presence: false, motion_presence: false,
-			target_presence: false, illuminance: 105, temperature: null,
-			humidity: null, co2: null,
+			occupancy: false,
+			static_presence: false,
+			motion_presence: false,
+			target_presence: false,
+			illuminance: 105,
+			temperature: null,
+			humidity: null,
+			co2: null,
 		};
 		// renderEnvOffset uses resetBtn(0) without a key
 		const tpl = (sv as any).renderEnvOffset(
-			"Illuminance", 105, "illuminance", -500, 500, 1, "lux", 1, "Tip",
+			"Illuminance",
+			105,
+			"illuminance",
+			-500,
+			500,
+			1,
+			"lux",
+			1,
+			"Tip",
 		);
 		const c = renderTo(tpl);
 
@@ -1058,7 +1153,9 @@ describe("_resetSlider edge cases", () => {
 		slider.value = "3";
 		row.appendChild(slider);
 		// No sibling after slider — display will be null
-		expect(() => (sv as any)._resetSlider(row, 5, "motionTimeout")).not.toThrow();
+		expect(() =>
+			(sv as any)._resetSlider(row, 5, "motionTimeout"),
+		).not.toThrow();
 		// Override should still be set
 		expect((sv as any)._overrides.motionTimeout).toBe(5);
 	});
@@ -1101,7 +1198,9 @@ describe("_resetSlider edge cases", () => {
 		btn.className = "save-btn";
 		btn.disabled = true;
 		Object.defineProperty(sv, "shadowRoot", {
-			value: { querySelector: (sel: string) => sel === ".save-btn" ? btn : null },
+			value: {
+				querySelector: (sel: string) => (sel === ".save-btn" ? btn : null),
+			},
 			configurable: true,
 		});
 
@@ -1243,7 +1342,9 @@ describe("_fireDirty with save-btn in shadowRoot", () => {
 		btn.disabled = true;
 
 		Object.defineProperty(sv, "shadowRoot", {
-			value: { querySelector: (sel: string) => sel === ".save-btn" ? btn : null },
+			value: {
+				querySelector: (sel: string) => (sel === ".save-btn" ? btn : null),
+			},
 			configurable: true,
 		});
 

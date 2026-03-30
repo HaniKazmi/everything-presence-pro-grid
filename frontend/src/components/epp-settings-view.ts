@@ -194,7 +194,8 @@ export class EppSettingsView extends LitElement {
 		// so subtract it to get the raw value
 		const raw = reading != null ? reading - offset : null;
 		const clamp = (v: number) => Math.max(displayMin, Math.min(displayMax, v));
-		const adjusted = raw != null ? clamp(raw + offset).toFixed(precision) : "\u2014";
+		const adjusted =
+			raw != null ? clamp(raw + offset).toFixed(precision) : "\u2014";
 		return html`
       <div class="setting-row">
         <label>${label}</label>
@@ -203,7 +204,8 @@ export class EppSettingsView extends LitElement {
 				) => {
 					const el = e.target as HTMLInputElement;
 					const off = parseFloat(el.value);
-					const val = raw != null ? clamp(raw + off).toFixed(precision) : "\u2014";
+					const val =
+						raw != null ? clamp(raw + off).toFixed(precision) : "\u2014";
 					this._setText(el.nextElementSibling!, val);
 					this._overrides[`${offsetKey}Offset`] = off;
 					this._fireDirty();
@@ -226,7 +228,9 @@ export class EppSettingsView extends LitElement {
 	}
 
 	private _resetSlider(settingRow: HTMLElement, value: number, key?: string) {
-		const slider = settingRow.querySelector(".setting-range") as HTMLInputElement;
+		const slider = settingRow.querySelector(
+			".setting-range",
+		) as HTMLInputElement;
 		if (!slider) return;
 		const oldSliderVal = parseFloat(slider.value);
 		slider.value = String(value);
@@ -239,7 +243,10 @@ export class EppSettingsView extends LitElement {
 				const precision = parseInt(slider.dataset.precision ?? "0", 10);
 				const dMin = parseFloat(slider.dataset.displayMin ?? "-Infinity");
 				const dMax = parseFloat(slider.dataset.displayMax ?? "Infinity");
-				const adjusted = Math.max(dMin, Math.min(dMax, oldDisplay - oldSliderVal + value));
+				const adjusted = Math.max(
+					dMin,
+					Math.min(dMax, oldDisplay - oldSliderVal + value),
+				);
 				this._setText(display, adjusted.toFixed(precision));
 				this._overrides[`${slider.dataset.offsetKey}Offset`] = value;
 			} else {
@@ -250,14 +257,18 @@ export class EppSettingsView extends LitElement {
 			this._overrides[key] = value;
 		}
 		// Enable save button directly — no events, no reactive changes
-		const btn = this.shadowRoot?.querySelector(".save-btn") as HTMLButtonElement;
+		const btn = this.shadowRoot?.querySelector(
+			".save-btn",
+		) as HTMLButtonElement;
 		if (btn) btn.disabled = false;
 	}
 
 	resetBtn(defaultValue: number, key?: string) {
 		return html`<span class="setting-info" @click=${(e: Event) => {
 			e.stopPropagation();
-			const row = (e.currentTarget as HTMLElement).closest(".setting-row") as HTMLElement;
+			const row = (e.currentTarget as HTMLElement).closest(
+				".setting-row",
+			) as HTMLElement;
 			if (row) this._resetSlider(row, defaultValue, key);
 			if (key) this._fireChange(key, defaultValue);
 		}}><ha-icon icon="mdi:restart"></ha-icon></span>`;
@@ -369,7 +380,8 @@ export class EppSettingsView extends LitElement {
               @input=${(e: Event) => {
 								const el = e.target as HTMLInputElement;
 								let v = Number(el.value);
-								const maxD = this._overrides.staticMaxDistance ?? this.staticMaxDistance;
+								const maxD =
+									this._overrides.staticMaxDistance ?? this.staticMaxDistance;
 								if (v >= maxD) {
 									v = Math.round((maxD - 0.1) * 10) / 10;
 									el.value = String(v);
@@ -386,7 +398,8 @@ export class EppSettingsView extends LitElement {
               @input=${(e: Event) => {
 								const el = e.target as HTMLInputElement;
 								let v = Number(el.value);
-								const minD = this._overrides.staticMinDistance ?? this.staticMinDistance;
+								const minD =
+									this._overrides.staticMinDistance ?? this.staticMinDistance;
 								if (v <= minD) {
 									v = Math.round((minD + 0.1) * 10) / 10;
 									el.value = String(v);
@@ -409,7 +422,9 @@ export class EppSettingsView extends LitElement {
           <h4>${this.localize("settings.motion_sensor")}</h4>
           <div class="setting-row">
             <label>${this.localize("settings.presence_timeout")}</label>
-            <span class="setting-input-unit"><input type="range" class="setting-range" .value=${String(this.motionTimeout)} min="0" max="120" step="1" @input=${(e: Event) => {
+            <span class="setting-input-unit"><input type="range" class="setting-range" .value=${String(this.motionTimeout)} min="0" max="120" step="1" @input=${(
+							e: Event,
+						) => {
 							const el = e.target as HTMLInputElement;
 							this._overrides.motionTimeout = Number(el.value);
 							this._setText(el.nextElementSibling!, el.value);
@@ -422,7 +437,9 @@ export class EppSettingsView extends LitElement {
           <h4>${this.localize("settings.static_sensor")}</h4>
           <div class="setting-row">
             <label>${this.localize("settings.presence_timeout")}</label>
-            <span class="setting-input-unit"><input type="range" class="setting-range" .value=${String(this.staticTimeout)} min="0" max="120" step="1" @input=${(e: Event) => {
+            <span class="setting-input-unit"><input type="range" class="setting-range" .value=${String(this.staticTimeout)} min="0" max="120" step="1" @input=${(
+							e: Event,
+						) => {
 							const el = e.target as HTMLInputElement;
 							this._overrides.staticTimeout = Number(el.value);
 							this._setText(el.nextElementSibling!, el.value);
@@ -432,7 +449,9 @@ export class EppSettingsView extends LitElement {
           </div>
           <div class="setting-row">
             <label>${this.localize("settings.trigger_threshold")}</label>
-            <span class="setting-input-unit"><input type="range" class="setting-range" min="0" max="9" .value=${String(this.staticTriggerThreshold)} @input=${(e: Event) => {
+            <span class="setting-input-unit"><input type="range" class="setting-range" min="0" max="9" .value=${String(this.staticTriggerThreshold)} @input=${(
+							e: Event,
+						) => {
 							const el = e.target as HTMLInputElement;
 							this._overrides.staticTriggerThreshold = Number(el.value);
 							this._setText(el.nextElementSibling!, el.value);
@@ -442,7 +461,9 @@ export class EppSettingsView extends LitElement {
           </div>
           <div class="setting-row">
             <label>${this.localize("settings.renew_threshold")}</label>
-            <span class="setting-input-unit"><input type="range" class="setting-range" min="0" max="9" .value=${String(this.staticRenewThreshold)} @input=${(e: Event) => {
+            <span class="setting-input-unit"><input type="range" class="setting-range" min="0" max="9" .value=${String(this.staticRenewThreshold)} @input=${(
+							e: Event,
+						) => {
 							const el = e.target as HTMLInputElement;
 							this._overrides.staticRenewThreshold = Number(el.value);
 							this._setText(el.nextElementSibling!, el.value);
@@ -452,7 +473,9 @@ export class EppSettingsView extends LitElement {
           </div>
           <div class="setting-row">
             <label>${this.localize("settings.presence_delay")}</label>
-            <span class="setting-input-unit"><input type="range" class="setting-range" .value=${String(this.staticOnDelay)} min="0" max="30" step="0.5" @input=${(e: Event) => {
+            <span class="setting-input-unit"><input type="range" class="setting-range" .value=${String(this.staticOnDelay)} min="0" max="30" step="0.5" @input=${(
+							e: Event,
+						) => {
 							const el = e.target as HTMLInputElement;
 							this._overrides.staticOnDelay = Number(el.value);
 							this._setText(el.nextElementSibling!, el.value);
@@ -484,22 +507,54 @@ export class EppSettingsView extends LitElement {
           <h4>${this.localize("entities.room_level")}</h4>
           <div class="setting-row">
             <label>${this.localize("entities.occupancy")}</label>
-            <label class="toggle-switch"><input type="checkbox" @change=${(e: Event) => { const el = e.target as HTMLInputElement; const key = el.dataset.entityKey!; if (!this._overrides.entities) this._overrides.entities = {}; this._overrides.entities[key] = el.checked; this._fireDirty(); }} data-entity-key="room_occupancy" .checked=${isOn("room_occupancy", true)} /><span class="toggle-slider"></span></label>
+            <label class="toggle-switch"><input type="checkbox" @change=${(
+							e: Event,
+						) => {
+							const el = e.target as HTMLInputElement;
+							const key = el.dataset.entityKey!;
+							if (!this._overrides.entities) this._overrides.entities = {};
+							this._overrides.entities[key] = el.checked;
+							this._fireDirty();
+						}} data-entity-key="room_occupancy" .checked=${isOn("room_occupancy", true)} /><span class="toggle-slider"></span></label>
             ${this.infoTip(this.localize("info.room_occupancy"))}
           </div>
           <div class="setting-row">
             <label>${this.localize("entities.static_presence")}</label>
-            <label class="toggle-switch"><input type="checkbox" @change=${(e: Event) => { const el = e.target as HTMLInputElement; const key = el.dataset.entityKey!; if (!this._overrides.entities) this._overrides.entities = {}; this._overrides.entities[key] = el.checked; this._fireDirty(); }} data-entity-key="room_static_presence" .checked=${isOn("room_static_presence", false)} /><span class="toggle-slider"></span></label>
+            <label class="toggle-switch"><input type="checkbox" @change=${(
+							e: Event,
+						) => {
+							const el = e.target as HTMLInputElement;
+							const key = el.dataset.entityKey!;
+							if (!this._overrides.entities) this._overrides.entities = {};
+							this._overrides.entities[key] = el.checked;
+							this._fireDirty();
+						}} data-entity-key="room_static_presence" .checked=${isOn("room_static_presence", false)} /><span class="toggle-slider"></span></label>
             ${this.infoTip(this.localize("info.room_static"))}
           </div>
           <div class="setting-row">
             <label>${this.localize("entities.motion_presence")}</label>
-            <label class="toggle-switch"><input type="checkbox" @change=${(e: Event) => { const el = e.target as HTMLInputElement; const key = el.dataset.entityKey!; if (!this._overrides.entities) this._overrides.entities = {}; this._overrides.entities[key] = el.checked; this._fireDirty(); }} data-entity-key="room_motion_presence" .checked=${isOn("room_motion_presence", false)} /><span class="toggle-slider"></span></label>
+            <label class="toggle-switch"><input type="checkbox" @change=${(
+							e: Event,
+						) => {
+							const el = e.target as HTMLInputElement;
+							const key = el.dataset.entityKey!;
+							if (!this._overrides.entities) this._overrides.entities = {};
+							this._overrides.entities[key] = el.checked;
+							this._fireDirty();
+						}} data-entity-key="room_motion_presence" .checked=${isOn("room_motion_presence", false)} /><span class="toggle-slider"></span></label>
             ${this.infoTip(this.localize("info.room_motion"))}
           </div>
           <div class="setting-row">
             <label>${this.localize("entities.target_presence")}</label>
-            <label class="toggle-switch"><input type="checkbox" @change=${(e: Event) => { const el = e.target as HTMLInputElement; const key = el.dataset.entityKey!; if (!this._overrides.entities) this._overrides.entities = {}; this._overrides.entities[key] = el.checked; this._fireDirty(); }} data-entity-key="room_target_presence" .checked=${isOn("room_target_presence", false)} /><span class="toggle-slider"></span></label>
+            <label class="toggle-switch"><input type="checkbox" @change=${(
+							e: Event,
+						) => {
+							const el = e.target as HTMLInputElement;
+							const key = el.dataset.entityKey!;
+							if (!this._overrides.entities) this._overrides.entities = {};
+							this._overrides.entities[key] = el.checked;
+							this._fireDirty();
+						}} data-entity-key="room_target_presence" .checked=${isOn("room_target_presence", false)} /><span class="toggle-slider"></span></label>
             ${this.infoTip(this.localize("info.room_target_presence"))}
           </div>
         </div>
@@ -507,7 +562,15 @@ export class EppSettingsView extends LitElement {
           <h4>${this.localize("entities.zone_level")}</h4>
           <div class="setting-row">
             <label>${this.localize("entities.zone_presence")}</label>
-            <label class="toggle-switch"><input type="checkbox" @change=${(e: Event) => { const el = e.target as HTMLInputElement; const key = el.dataset.entityKey!; if (!this._overrides.entities) this._overrides.entities = {}; this._overrides.entities[key] = el.checked; this._fireDirty(); }} data-entity-key="zone_presence" .checked=${isOn("zone_presence", true)} /><span class="toggle-slider"></span></label>
+            <label class="toggle-switch"><input type="checkbox" @change=${(
+							e: Event,
+						) => {
+							const el = e.target as HTMLInputElement;
+							const key = el.dataset.entityKey!;
+							if (!this._overrides.entities) this._overrides.entities = {};
+							this._overrides.entities[key] = el.checked;
+							this._fireDirty();
+						}} data-entity-key="zone_presence" .checked=${isOn("zone_presence", true)} /><span class="toggle-slider"></span></label>
             ${this.infoTip(this.localize("info.zone_presence"))}
           </div>
         </div>
@@ -515,12 +578,28 @@ export class EppSettingsView extends LitElement {
           <h4>${this.localize("entities.target_level")}</h4>
           <div class="setting-row">
             <label>${this.localize("entities.xy")}</label>
-            <label class="toggle-switch"><input type="checkbox" @change=${(e: Event) => { const el = e.target as HTMLInputElement; const key = el.dataset.entityKey!; if (!this._overrides.entities) this._overrides.entities = {}; this._overrides.entities[key] = el.checked; this._fireDirty(); }} data-entity-key="target_xy" .checked=${isOn("target_xy", false)} /><span class="toggle-slider"></span></label>
+            <label class="toggle-switch"><input type="checkbox" @change=${(
+							e: Event,
+						) => {
+							const el = e.target as HTMLInputElement;
+							const key = el.dataset.entityKey!;
+							if (!this._overrides.entities) this._overrides.entities = {};
+							this._overrides.entities[key] = el.checked;
+							this._fireDirty();
+						}} data-entity-key="target_xy" .checked=${isOn("target_xy", false)} /><span class="toggle-slider"></span></label>
             ${this.infoTip(this.localize("info.xy"))}
           </div>
           <div class="setting-row">
             <label>${this.localize("entities.active")}</label>
-            <label class="toggle-switch"><input type="checkbox" @change=${(e: Event) => { const el = e.target as HTMLInputElement; const key = el.dataset.entityKey!; if (!this._overrides.entities) this._overrides.entities = {}; this._overrides.entities[key] = el.checked; this._fireDirty(); }} data-entity-key="target_active" .checked=${isOn("target_active", false)} /><span class="toggle-slider"></span></label>
+            <label class="toggle-switch"><input type="checkbox" @change=${(
+							e: Event,
+						) => {
+							const el = e.target as HTMLInputElement;
+							const key = el.dataset.entityKey!;
+							if (!this._overrides.entities) this._overrides.entities = {};
+							this._overrides.entities[key] = el.checked;
+							this._fireDirty();
+						}} data-entity-key="target_active" .checked=${isOn("target_active", false)} /><span class="toggle-slider"></span></label>
             ${this.infoTip(this.localize("info.active"))}
           </div>
         </div>
@@ -528,22 +607,54 @@ export class EppSettingsView extends LitElement {
           <h4>${this.localize("settings.environmental")}</h4>
           <div class="setting-row">
             <label>${this.localize("entities.illuminance")}</label>
-            <label class="toggle-switch"><input type="checkbox" @change=${(e: Event) => { const el = e.target as HTMLInputElement; const key = el.dataset.entityKey!; if (!this._overrides.entities) this._overrides.entities = {}; this._overrides.entities[key] = el.checked; this._fireDirty(); }} data-entity-key="env_illuminance" .checked=${isOn("env_illuminance", false)} /><span class="toggle-slider"></span></label>
+            <label class="toggle-switch"><input type="checkbox" @change=${(
+							e: Event,
+						) => {
+							const el = e.target as HTMLInputElement;
+							const key = el.dataset.entityKey!;
+							if (!this._overrides.entities) this._overrides.entities = {};
+							this._overrides.entities[key] = el.checked;
+							this._fireDirty();
+						}} data-entity-key="env_illuminance" .checked=${isOn("env_illuminance", false)} /><span class="toggle-slider"></span></label>
             ${this.infoTip(this.localize("info.illuminance"))}
           </div>
           <div class="setting-row">
             <label>${this.localize("entities.humidity")}</label>
-            <label class="toggle-switch"><input type="checkbox" @change=${(e: Event) => { const el = e.target as HTMLInputElement; const key = el.dataset.entityKey!; if (!this._overrides.entities) this._overrides.entities = {}; this._overrides.entities[key] = el.checked; this._fireDirty(); }} data-entity-key="env_humidity" .checked=${isOn("env_humidity", false)} /><span class="toggle-slider"></span></label>
+            <label class="toggle-switch"><input type="checkbox" @change=${(
+							e: Event,
+						) => {
+							const el = e.target as HTMLInputElement;
+							const key = el.dataset.entityKey!;
+							if (!this._overrides.entities) this._overrides.entities = {};
+							this._overrides.entities[key] = el.checked;
+							this._fireDirty();
+						}} data-entity-key="env_humidity" .checked=${isOn("env_humidity", false)} /><span class="toggle-slider"></span></label>
             ${this.infoTip(this.localize("info.humidity"))}
           </div>
           <div class="setting-row">
             <label>${this.localize("entities.temperature")}</label>
-            <label class="toggle-switch"><input type="checkbox" @change=${(e: Event) => { const el = e.target as HTMLInputElement; const key = el.dataset.entityKey!; if (!this._overrides.entities) this._overrides.entities = {}; this._overrides.entities[key] = el.checked; this._fireDirty(); }} data-entity-key="env_temperature" .checked=${isOn("env_temperature", false)} /><span class="toggle-slider"></span></label>
+            <label class="toggle-switch"><input type="checkbox" @change=${(
+							e: Event,
+						) => {
+							const el = e.target as HTMLInputElement;
+							const key = el.dataset.entityKey!;
+							if (!this._overrides.entities) this._overrides.entities = {};
+							this._overrides.entities[key] = el.checked;
+							this._fireDirty();
+						}} data-entity-key="env_temperature" .checked=${isOn("env_temperature", false)} /><span class="toggle-slider"></span></label>
             ${this.infoTip(this.localize("info.temperature"))}
           </div>
           <div class="setting-row">
             <label>${this.localize("entities.co2")}</label>
-            <label class="toggle-switch"><input type="checkbox" @change=${(e: Event) => { const el = e.target as HTMLInputElement; const key = el.dataset.entityKey!; if (!this._overrides.entities) this._overrides.entities = {}; this._overrides.entities[key] = el.checked; this._fireDirty(); }} data-entity-key="env_co2" .checked=${isOn("env_co2", false)} /><span class="toggle-slider"></span></label>
+            <label class="toggle-switch"><input type="checkbox" @change=${(
+							e: Event,
+						) => {
+							const el = e.target as HTMLInputElement;
+							const key = el.dataset.entityKey!;
+							if (!this._overrides.entities) this._overrides.entities = {};
+							this._overrides.entities[key] = el.checked;
+							this._fireDirty();
+						}} data-entity-key="env_co2" .checked=${isOn("env_co2", false)} /><span class="toggle-slider"></span></label>
             ${this.infoTip(this.localize("info.co2"))}
           </div>
         </div>
@@ -588,8 +699,10 @@ export class EppSettingsView extends LitElement {
 					static_max_distance: o.staticMaxDistance ?? this.staticMaxDistance,
 					motion_timeout: o.motionTimeout ?? this.motionTimeout,
 					static_timeout: o.staticTimeout ?? this.staticTimeout,
-					static_trigger_threshold: o.staticTriggerThreshold ?? this.staticTriggerThreshold,
-					static_renew_threshold: o.staticRenewThreshold ?? this.staticRenewThreshold,
+					static_trigger_threshold:
+						o.staticTriggerThreshold ?? this.staticTriggerThreshold,
+					static_renew_threshold:
+						o.staticRenewThreshold ?? this.staticRenewThreshold,
 					static_on_delay: o.staticOnDelay ?? this.staticOnDelay,
 					temperature_offset: o.temperatureOffset ?? this.temperatureOffset,
 					humidity_offset: o.humidityOffset ?? this.humidityOffset,
@@ -616,7 +729,9 @@ export class EppSettingsView extends LitElement {
 	private _fireDirty() {
 		// Enable save button directly via DOM — setting reactive properties
 		// here crashes Lit when combined with the panel's 5Hz re-renders.
-		const btn = this.shadowRoot?.querySelector(".save-btn") as HTMLButtonElement;
+		const btn = this.shadowRoot?.querySelector(
+			".save-btn",
+		) as HTMLButtonElement;
 		if (btn) btn.disabled = false;
 		this.dispatchEvent(
 			new CustomEvent("dirty", {

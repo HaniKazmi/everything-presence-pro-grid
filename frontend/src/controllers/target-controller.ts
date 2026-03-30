@@ -297,9 +297,7 @@ export class TargetController implements ReactiveController {
 		const line = `${ts} ${body}`;
 		this.host._debugLogLines.push(line);
 		if (this.host._debugLogLines.length > DEBUG_LOG_MAX) {
-			this.host._debugLogLines = this.host._debugLogLines.slice(
-				-DEBUG_LOG_MAX,
-			);
+			this.host._debugLogLines = this.host._debugLogLines.slice(-DEBUG_LOG_MAX);
 		}
 
 		// Direct DOM append — no Lit re-render needed

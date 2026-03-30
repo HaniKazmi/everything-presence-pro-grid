@@ -118,7 +118,7 @@ function createSettingsView(
 	el.roomDepth = 4000;
 	el.openAccordions = new Set();
 	el.entitiesConfig = {};
-	
+
 	if (overrides) {
 		for (const [k, v] of Object.entries(overrides)) {
 			(el as any)[k] = v;
