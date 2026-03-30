@@ -179,9 +179,7 @@ class TestDeviceConnection:
         with patch("custom_components.eppgrid.device_manager.APIClient") as mock_cls:
             mock_client = mock_cls.return_value
             mock_client.connect = AsyncMock()
-            mock_client.list_entities_services = AsyncMock(
-                return_value=([], services)
-            )
+            mock_client.list_entities_services = AsyncMock(return_value=([], services))
             mock_client.execute_service = AsyncMock()
 
             await conn.async_connect()
@@ -254,16 +252,12 @@ class TestDeviceConnection:
         with patch("custom_components.eppgrid.device_manager.APIClient") as mock_cls:
             mock_client = mock_cls.return_value
             mock_client.connect = AsyncMock()
-            mock_client.list_entities_services = AsyncMock(
-                return_value=([], services)
-            )
+            mock_client.list_entities_services = AsyncMock(return_value=([], services))
             mock_client.execute_service = AsyncMock()
 
             await conn.async_connect()
             # Only provide one key — rest should use defaults
-            await conn.async_push_config(
-                {"settings": {"temperature_offset": 2.0}}
-            )
+            await conn.async_push_config({"settings": {"temperature_offset": 2.0}})
 
             assert mock_client.execute_service.await_count == 4
             calls = mock_client.execute_service.await_args_list
