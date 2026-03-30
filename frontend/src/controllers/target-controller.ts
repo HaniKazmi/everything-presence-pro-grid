@@ -276,26 +276,7 @@ export class TargetController implements ReactiveController {
 		}
 
 		// Direct DOM append — no Lit re-render needed
-		const container = this.host.shadowRoot?.getElementById(
-			"backend-debug-log-scroll",
-		);
-		if (container) {
-			// Clear placeholder on first real line
-			if (
-				container.children.length === 1 &&
-				!container.children[0].classList.contains("debug-log-line")
-			) {
-				container.innerHTML = "";
-			}
-			const div = document.createElement("div");
-			div.className = "debug-log-line";
-			div.textContent = line;
-			container.appendChild(div);
-			while (container.children.length > DEBUG_LOG_MAX) {
-				container.firstChild?.remove();
-			}
-			container.scrollTop = container.scrollHeight;
-		}
+		this._appendToLogContainer("backend-debug-log-scroll", line);
 	}
 
 	/**
@@ -322,25 +303,30 @@ export class TargetController implements ReactiveController {
 		}
 
 		// Direct DOM append — no Lit re-render needed
-		const container = this.host.shadowRoot?.getElementById(
-			"debug-log-scroll",
-		);
-		if (container) {
-			if (
-				container.children.length === 1 &&
-				!container.children[0].classList.contains("debug-log-line")
-			) {
-				container.innerHTML = "";
-			}
-			const div = document.createElement("div");
-			div.className = "debug-log-line";
-			div.textContent = line;
-			container.appendChild(div);
-			while (container.children.length > DEBUG_LOG_MAX) {
-				container.firstChild?.remove();
-			}
-			container.scrollTop = container.scrollHeight;
+		this._appendToLogContainer("debug-log-scroll", line);
+	}
+
+	/**
+	 * Append a log line to a scrollable debug-log container by ID.
+	 * Clears any placeholder on first real line and caps at DEBUG_LOG_MAX.
+	 */
+	private _appendToLogContainer(containerId: string, line: string): void {
+		const container = this.host.shadowRoot?.getElementById(containerId);
+		if (!container) return;
+		if (
+			container.children.length === 1 &&
+			!container.children[0].classList.contains("debug-log-line")
+		) {
+			container.innerHTML = "";
 		}
+		const div = document.createElement("div");
+		div.className = "debug-log-line";
+		div.textContent = line;
+		container.appendChild(div);
+		while (container.children.length > DEBUG_LOG_MAX) {
+			container.firstChild?.remove();
+		}
+		container.scrollTop = container.scrollHeight;
 	}
 
 	/**

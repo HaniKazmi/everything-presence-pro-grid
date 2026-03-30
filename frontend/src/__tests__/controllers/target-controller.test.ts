@@ -744,5 +744,65 @@ describe("TargetController", () => {
 			// Zone 0 (Room) with pendingSince set → state code "P"
 			expect(allLog).toContain("Room");
 		});
+
+		// -----------------------------------------------------------------------
+		// frontend debug log DOM behavior
+		// -----------------------------------------------------------------------
+		describe("frontend debug log DOM behavior", () => {
+			let container: HTMLDivElement;
+
+			beforeEach(() => {
+				host._showDebugLog = true;
+				host._grid = makeSimpleGrid();
+				container = document.createElement("div");
+				host._mockFrontendContainer = container;
+				// Ensure a unique log line is generated each test (no dedup suppression)
+				host._debugLogPrev = "";
+			});
+
+			it("appends a div to the frontend container", () => {
+				ctrl.runLocalZoneEngine();
+				expect(container.children.length).toBeGreaterThanOrEqual(1);
+				for (const child of Array.from(container.children)) {
+					expect(child.className).toBe("debug-log-line");
+				}
+			});
+
+			it("does NOT call requestUpdate", () => {
+				host.requestUpdate.mockClear();
+				ctrl.runLocalZoneEngine();
+				expect(host.requestUpdate).not.toHaveBeenCalled();
+			});
+
+			it("clears placeholder on first append", () => {
+				const placeholder = document.createElement("div");
+				placeholder.textContent = "Waiting for events...";
+				container.appendChild(placeholder);
+
+				ctrl.runLocalZoneEngine();
+
+				// Placeholder should be gone; only debug-log-line divs remain
+				expect(container.children.length).toBeGreaterThanOrEqual(1);
+				for (const child of Array.from(container.children)) {
+					expect(child.className).toBe("debug-log-line");
+				}
+			});
+
+			it("handles missing container gracefully", () => {
+				host._mockFrontendContainer = null;
+				expect(() => ctrl.runLocalZoneEngine()).not.toThrow();
+				// Data array should still be populated
+				expect(host._debugLogLines.length).toBeGreaterThanOrEqual(1);
+			});
+
+			it("auto-scrolls the container", () => {
+				Object.defineProperty(container, "scrollHeight", {
+					value: 500,
+					configurable: true,
+				});
+				ctrl.runLocalZoneEngine();
+				expect(container.scrollTop).toBe(500);
+			});
+		});
 	});
 });
