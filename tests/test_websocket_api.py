@@ -451,6 +451,82 @@ class TestWebSocketSettings:
                 hass, "AA:BB:CC:DD:EE:FF", {"room_occupancy": True, "env_illuminance": False}
             )
 
+    async def test_set_settings_zone_presence_false_does_not_reenable_zone0(
+        self, hass: HomeAssistant, config_entry: MockConfigEntry
+    ) -> None:
+        """zone_presence=false should NOT call async_update_zone_entities (which re-enables zone 0)."""
+        mock_dm = await setup_integration(hass, config_entry)
+
+        from custom_components.eppgrid.websocket_api import websocket_set_settings
+
+        connection = MagicMock()
+        msg = {
+            "id": 11,
+            "type": "eppgrid/set_settings",
+            "mac": "AA:BB:CC:DD:EE:FF",
+            "temperature_offset": 0,
+            "humidity_offset": 0,
+            "illuminance_offset": 0,
+            "motion_timeout": 5.0,
+            "target_auto_distance": True,
+            "target_max_distance": 6.0,
+            "static_auto_distance": True,
+            "static_min_distance": 0.3,
+            "static_max_distance": 16.0,
+            "static_trigger_threshold": 3,
+            "static_renew_threshold": 3,
+            "static_timeout": 30.0,
+            "static_on_delay": 0.0,
+            "entities": {"zone_presence": False},
+        }
+
+        with patch(
+            "custom_components.eppgrid.websocket_api._apply_entity_states"
+        ):
+            mock_dm.async_update_zone_entities = AsyncMock()
+            await call_async_handler(hass, websocket_set_settings, connection, msg)
+
+            # async_update_zone_entities should NOT be called when disabling zones
+            # — _apply_entity_states already disabled all zone entities
+            mock_dm.async_update_zone_entities.assert_not_awaited()
+
+    async def test_set_settings_zone_presence_true_calls_update_zone_entities(
+        self, hass: HomeAssistant, config_entry: MockConfigEntry
+    ) -> None:
+        """zone_presence=true should call async_update_zone_entities with layout."""
+        mock_dm = await setup_integration(hass, config_entry)
+
+        from custom_components.eppgrid.websocket_api import websocket_set_settings
+
+        connection = MagicMock()
+        msg = {
+            "id": 11,
+            "type": "eppgrid/set_settings",
+            "mac": "AA:BB:CC:DD:EE:FF",
+            "temperature_offset": 0,
+            "humidity_offset": 0,
+            "illuminance_offset": 0,
+            "motion_timeout": 5.0,
+            "target_auto_distance": True,
+            "target_max_distance": 6.0,
+            "static_auto_distance": True,
+            "static_min_distance": 0.3,
+            "static_max_distance": 16.0,
+            "static_trigger_threshold": 3,
+            "static_renew_threshold": 3,
+            "static_timeout": 30.0,
+            "static_on_delay": 0.0,
+            "entities": {"zone_presence": True},
+        }
+
+        with patch(
+            "custom_components.eppgrid.websocket_api._apply_entity_states"
+        ):
+            mock_dm.async_update_zone_entities = AsyncMock()
+            await call_async_handler(hass, websocket_set_settings, connection, msg)
+
+            mock_dm.async_update_zone_entities.assert_awaited_once()
+
     async def test_set_settings_entities_not_stored(self, hass: HomeAssistant, config_entry: MockConfigEntry) -> None:
         """entities dict from the message is NOT stored in device_config['settings']."""
         mock_dm = await setup_integration(hass, config_entry)

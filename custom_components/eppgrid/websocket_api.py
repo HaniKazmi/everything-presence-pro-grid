@@ -792,16 +792,16 @@ async def websocket_set_settings(
     if entities:
         _apply_entity_states(hass, mac, entities)
         # Zone presence needs layout-aware handling: enable zone_0 + named zones
-        if "zone_presence" in entities:
+        if "zone_presence" in entities and entities["zone_presence"]:
+            # Enable zone entities with layout-aware naming
+            layout = device_config.get("room_layout", {})
             from .const import MAX_ZONES
 
-            layout = device_config.get("room_layout", {})
             zone_slots = layout.get("zone_slots", [None] * MAX_ZONES)
-            if entities["zone_presence"]:
-                await manager.async_update_zone_entities(mac, zone_slots)
-            else:
-                # Disable all zone entities
-                await manager.async_update_zone_entities(mac, [None] * MAX_ZONES)
+            await manager.async_update_zone_entities(mac, zone_slots)
+            # When zone_presence is false, _apply_entity_states already
+            # disabled all zone entities — don't call async_update_zone_entities
+            # which would re-enable zone_0 for calibrated devices.
     connection.send_result(msg["id"])
 
 
