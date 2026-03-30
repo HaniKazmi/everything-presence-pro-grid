@@ -708,6 +708,7 @@ export class EppSettingsView extends LitElement {
 										if (!this._overrides.logLevels) this._overrides.logLevels = {};
 										this._overrides.logLevels[c.key] = val;
 										this._fireDirty();
+										this.requestUpdate();
 									}}
                   @closed=${(e: Event) => e.stopPropagation()}
                 ></ha-select>
