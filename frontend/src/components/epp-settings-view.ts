@@ -185,22 +185,25 @@ export class EppSettingsView extends LitElement {
 		unit: string,
 		precision: number,
 		tip: string,
+		displayMin = -Infinity,
+		displayMax = Infinity,
 	) {
 		const propName = `${offsetKey}Offset` as keyof this;
 		const offset = (this as any)[propName] ?? 0;
 		// reading already has the saved offset applied by the coordinator,
 		// so subtract it to get the raw value
 		const raw = reading != null ? reading - offset : null;
-		const adjusted = raw != null ? (raw + offset).toFixed(precision) : "\u2014";
+		const clamp = (v: number) => Math.max(displayMin, Math.min(displayMax, v));
+		const adjusted = raw != null ? clamp(raw + offset).toFixed(precision) : "\u2014";
 		return html`
       <div class="setting-row">
         <label>${label}</label>
-        <span class="setting-input-unit"><input type="range" class="setting-range" data-offset-key=${offsetKey} .value=${String(offset)} min=${min} max=${max} step=${step} @input=${(
+        <span class="setting-input-unit"><input type="range" class="setting-range" data-offset-key=${offsetKey} data-precision=${precision} data-display-min=${displayMin} data-display-max=${displayMax} .value=${String(offset)} min=${min} max=${max} step=${step} @input=${(
 					e: Event,
 				) => {
 					const el = e.target as HTMLInputElement;
 					const off = parseFloat(el.value);
-					const val = raw != null ? (raw + off).toFixed(precision) : "\u2014";
+					const val = raw != null ? clamp(raw + off).toFixed(precision) : "\u2014";
 					el.nextElementSibling!.textContent = val;
 					this._overrides[`${offsetKey}Offset`] = off;
 					this._fireDirty();
@@ -221,9 +224,11 @@ export class EppSettingsView extends LitElement {
 			if (slider.dataset.offsetKey && !Number.isNaN(oldDisplay)) {
 				// Env offset: display shows adjusted reading (raw + offset).
 				// Compute raw from current state and apply new offset.
-				const step = parseFloat(slider.step) || 1;
-				const precision = step < 1 ? 1 : 0;
-				display.textContent = (oldDisplay - oldSliderVal + value).toFixed(precision);
+				const precision = parseInt(slider.dataset.precision ?? "0", 10);
+				const dMin = parseFloat(slider.dataset.displayMin ?? "-Infinity");
+				const dMax = parseFloat(slider.dataset.displayMax ?? "Infinity");
+				const adjusted = Math.max(dMin, Math.min(dMax, oldDisplay - oldSliderVal + value));
+				display.textContent = adjusted.toFixed(precision);
 				this._overrides[`${slider.dataset.offsetKey}Offset`] = value;
 			} else {
 				display.textContent = String(value);
@@ -445,8 +450,8 @@ export class EppSettingsView extends LitElement {
         </div>
         <div class="setting-group">
           <h4>${this.localize("settings.environmental")}</h4>
-          ${this.renderEnvOffset(this.localize("settings.illuminance_offset"), this.sensorState.illuminance, "illuminance", -500, 500, 1, "lux", 0, this.localize("info.illuminance_offset"))}
-          ${this.renderEnvOffset(this.localize("settings.humidity_offset"), this.sensorState.humidity, "humidity", -50, 50, 0.1, "%", 1, this.localize("info.humidity_offset"))}
+          ${this.renderEnvOffset(this.localize("settings.illuminance_offset"), this.sensorState.illuminance, "illuminance", -500, 500, 1, "lux", 1, this.localize("info.illuminance_offset"), 0)}
+          ${this.renderEnvOffset(this.localize("settings.humidity_offset"), this.sensorState.humidity, "humidity", -50, 50, 0.1, "%", 1, this.localize("info.humidity_offset"), 0, 100)}
           ${this.renderEnvOffset(this.localize("settings.temperature_offset"), this.sensorState.temperature, "temperature", -20, 20, 0.1, "\u00b0C", 1, this.localize("info.temperature_offset"))}
         </div>
       </div>

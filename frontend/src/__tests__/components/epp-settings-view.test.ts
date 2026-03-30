@@ -297,7 +297,7 @@ describe("renderEnvOffset", () => {
 			500,
 			1,
 			"lux",
-			0,
+			1,
 			"Adjust illuminance.",
 		);
 		expect(result).toBeDefined();
@@ -357,7 +357,7 @@ describe("renderEnvOffset", () => {
 			500,
 			1,
 			"lux",
-			0,
+			1,
 			"Tip",
 		);
 		const c = renderTo(tpl);
@@ -367,6 +367,126 @@ describe("renderEnvOffset", () => {
 			range.dispatchEvent(new Event("input"));
 			expect(range.nextElementSibling.textContent).toBeDefined();
 		}
+		document.body.removeChild(c);
+	});
+
+	it("illuminance displays adjusted value with 1 decimal place", () => {
+		const sv = createView({ illuminanceOffset: 5 });
+		sv.sensorState = {
+			occupancy: false,
+			static_presence: false,
+			motion_presence: false,
+			target_presence: false,
+			illuminance: 105.3, // raw=100.3, offset=5 applied by coordinator
+			temperature: null,
+			humidity: null,
+			co2: null,
+		};
+		const tpl = (sv as any).renderEnvOffset(
+			"Illuminance",
+			sv.sensorState.illuminance,
+			"illuminance",
+			-500,
+			500,
+			1,
+			"lux",
+			1, // precision=1
+			"Tip",
+		);
+		const c = renderTo(tpl);
+		const valueSpan = c.querySelector(".setting-value");
+		expect(valueSpan?.textContent).toBe("105.3");
+		document.body.removeChild(c);
+	});
+
+	it("illuminance display is clamped to >= 0", () => {
+		// Raw reading is 5, offset is -10 → adjusted would be -5 without clamp
+		const sv = createView({ illuminanceOffset: -10 });
+		sv.sensorState = {
+			occupancy: false, static_presence: false, motion_presence: false,
+			target_presence: false, illuminance: -5, temperature: null,
+			humidity: null, co2: null,
+		};
+		const tpl = (sv as any).renderEnvOffset(
+			"Illuminance", sv.sensorState.illuminance, "illuminance",
+			-500, 500, 1, "lux", 1, "Tip", 0,
+		);
+		const c = renderTo(tpl);
+		const valueSpan = c.querySelector(".setting-value");
+		expect(valueSpan?.textContent).toBe("0.0");
+		document.body.removeChild(c);
+	});
+
+	it("illuminance slider input clamps adjusted display to >= 0", () => {
+		// Raw=5, current offset=0, user drags to -10 → adjusted=-5 → clamp to 0
+		const sv = createView({ illuminanceOffset: 0 });
+		sv.sensorState = {
+			occupancy: false, static_presence: false, motion_presence: false,
+			target_presence: false, illuminance: 5, temperature: null,
+			humidity: null, co2: null,
+		};
+		const tpl = (sv as any).renderEnvOffset(
+			"Illuminance", sv.sensorState.illuminance, "illuminance",
+			-500, 500, 1, "lux", 1, "Tip", 0,
+		);
+		const c = renderTo(tpl);
+		const range = c.querySelector(".setting-range") as HTMLInputElement;
+		if (range && range.nextElementSibling) {
+			range.value = "-10";
+			range.dispatchEvent(new Event("input"));
+			expect(range.nextElementSibling.textContent).toBe("0.0");
+		}
+		document.body.removeChild(c);
+	});
+
+	it("humidity display is clamped to 0-100", () => {
+		// Raw=95, offset=10 → adjusted=105 → clamp to 100
+		const sv = createView({ humidityOffset: 10 });
+		sv.sensorState = {
+			occupancy: false, static_presence: false, motion_presence: false,
+			target_presence: false, illuminance: null, temperature: null,
+			humidity: 105, co2: null,
+		};
+		const tpl = (sv as any).renderEnvOffset(
+			"Humidity", sv.sensorState.humidity, "humidity",
+			-50, 50, 0.1, "%", 1, "Tip", 0, 100,
+		);
+		const c = renderTo(tpl);
+		const valueSpan = c.querySelector(".setting-value");
+		expect(valueSpan?.textContent).toBe("100.0");
+		document.body.removeChild(c);
+	});
+
+	it("reset button on env offset uses correct precision from data attribute", () => {
+		const sv = createView({ illuminanceOffset: 5 });
+		sv.sensorState = {
+			occupancy: false,
+			static_presence: false,
+			motion_presence: false,
+			target_presence: false,
+			illuminance: 105.3,
+			temperature: null,
+			humidity: null,
+			co2: null,
+		};
+		const tpl = (sv as any).renderEnvOffset(
+			"Illuminance",
+			sv.sensorState.illuminance,
+			"illuminance",
+			-500,
+			500,
+			1,
+			"lux",
+			1,
+			"Tip",
+		);
+		const c = renderTo(tpl);
+		const row = c.querySelector(".setting-row") as HTMLElement;
+		// Simulate reset to default (0)
+		(sv as any)._resetSlider(row, 0);
+		const valueSpan = c.querySelector(".setting-value");
+		// Should show raw value (100.3) with 1 decimal place
+		expect(valueSpan?.textContent).toBe("100.3");
 		document.body.removeChild(c);
 	});
 });
