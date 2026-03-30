@@ -727,18 +727,6 @@ export class EppSettingsView extends LitElement {
     `;
 	}
 
-	private _onLogLevelSelected(e: Event) {
-		const select = e.target as any;
-		const val = select.value;
-		const key = select.dataset?.category;
-		if (!val || !key) return;
-		const prev = (this._overrides.logLevels || {})[key] ?? this.logLevels[key] ?? "Warning";
-		if (val === prev) return;
-		if (!this._overrides.logLevels) this._overrides.logLevels = {};
-		this._overrides.logLevels[key] = val;
-		this._fireDirty();
-		this.requestUpdate();
-	}
 
 	renderSaveCancelButtons() {
 		return html`
