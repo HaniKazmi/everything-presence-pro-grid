@@ -219,6 +219,10 @@ export function parseConfig(config: any): ParsedConfig {
 		grid,
 		zoneConfigs,
 		roomThresholds,
-		settings: parseSettings(config?.settings, config?.entities, config?.log_levels),
+		settings: parseSettings(
+			config?.settings,
+			config?.entities,
+			config?.log_levels,
+		),
 	};
 }

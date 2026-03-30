@@ -392,7 +392,7 @@ export class EPPGridPanel extends LitElement {
 		if (config) {
 			this._applyConfig(config);
 		}
-		const dev = this._devices.find(d => d.mac === mac);
+		const dev = this._devices.find((d) => d.mac === mac);
 		if (dev) {
 			this._bluetoothEnabled = dev.bluetooth_enabled ?? false;
 			this._co2Enabled = dev.co2_enabled ?? false;

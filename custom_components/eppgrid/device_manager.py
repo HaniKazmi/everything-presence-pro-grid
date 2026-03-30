@@ -509,9 +509,7 @@ class DeviceManager:
                 self._pushing.discard(mac)
 
     @staticmethod
-    def _manage_log_subscription(
-        conn: DeviceConnection, config: dict[str, Any]
-    ) -> None:
+    def _manage_log_subscription(conn: DeviceConnection, config: dict[str, Any]) -> None:
         """Subscribe/unsubscribe device logs based on stored log levels."""
         log_levels = config.get("log_levels", {})
         any_enabled = any(v != "None" for v in log_levels.values())

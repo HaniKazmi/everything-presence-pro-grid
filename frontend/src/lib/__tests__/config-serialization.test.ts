@@ -374,11 +374,10 @@ describe("parseSettings", () => {
 	});
 
 	it("parses log_levels from third argument", () => {
-		const result = parseSettings(
-			{ temperature_offset: 0 },
-			undefined,
-			{ epp: "Debug", system: "Warning" },
-		);
+		const result = parseSettings({ temperature_offset: 0 }, undefined, {
+			epp: "Debug",
+			system: "Warning",
+		});
 		expect(result.logLevels).toEqual({ epp: "Debug", system: "Warning" });
 	});
 

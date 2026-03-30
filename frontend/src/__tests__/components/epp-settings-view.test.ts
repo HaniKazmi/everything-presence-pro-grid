@@ -1370,7 +1370,12 @@ describe("logging accordion", () => {
 	it("renders all base log level rows when open", () => {
 		const sv = createView({
 			openAccordions: new Set(["logging"]),
-			logLevels: { system: "Warning", epp: "Warning", led: "Warning", networking: "Warning" },
+			logLevels: {
+				system: "Warning",
+				epp: "Warning",
+				led: "Warning",
+				networking: "Warning",
+			},
 		});
 		const tpl = sv.render();
 		const c = renderTo(tpl);
@@ -1471,7 +1476,12 @@ describe("logging accordion", () => {
 		const selects = c.querySelectorAll("ha-select");
 		expect(selects.length).toBeGreaterThan(0);
 		const select = selects[0] as any;
-		select.dispatchEvent(new CustomEvent("selected", { bubbles: true, detail: { value: "Debug" } }));
+		select.dispatchEvent(
+			new CustomEvent("selected", {
+				bubbles: true,
+				detail: { value: "Debug" },
+			}),
+		);
 
 		expect(dirtyFired).toBe(true);
 		expect((sv as any)._overrides.logLevels?.system).toBe("Debug");

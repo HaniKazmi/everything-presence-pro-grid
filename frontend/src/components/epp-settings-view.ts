@@ -685,22 +685,60 @@ export class EppSettingsView extends LitElement {
 
 	renderLogging() {
 		const LOG_LEVELS = ["None", "Error", "Warning", "Info", "Debug"];
-		const categories: { key: string; label: string; tip: string; show: boolean }[] = [
-			{ key: "system", label: "settings.log_system", tip: "info.log_system", show: true },
-			{ key: "epp", label: "settings.log_epp", tip: "info.log_epp", show: true },
-			{ key: "led", label: "settings.log_led", tip: "info.log_led", show: true },
-			{ key: "networking", label: "settings.log_networking", tip: "info.log_networking", show: true },
-			{ key: "ble", label: "settings.log_ble", tip: "info.log_ble", show: this.bluetoothEnabled },
-			{ key: "co2", label: "settings.log_co2", tip: "info.log_co2", show: this.co2Enabled },
+		const categories: {
+			key: string;
+			label: string;
+			tip: string;
+			show: boolean;
+		}[] = [
+			{
+				key: "system",
+				label: "settings.log_system",
+				tip: "info.log_system",
+				show: true,
+			},
+			{
+				key: "epp",
+				label: "settings.log_epp",
+				tip: "info.log_epp",
+				show: true,
+			},
+			{
+				key: "led",
+				label: "settings.log_led",
+				tip: "info.log_led",
+				show: true,
+			},
+			{
+				key: "networking",
+				label: "settings.log_networking",
+				tip: "info.log_networking",
+				show: true,
+			},
+			{
+				key: "ble",
+				label: "settings.log_ble",
+				tip: "info.log_ble",
+				show: this.bluetoothEnabled,
+			},
+			{
+				key: "co2",
+				label: "settings.log_co2",
+				tip: "info.log_co2",
+				show: this.co2Enabled,
+			},
 		];
 
 		return html`
       <div class="settings-section">
         <div class="setting-group">
-          ${categories.filter(c => c.show).map((c) => {
-						const overrides = this._overrides.logLevels || {};
-						const current = overrides[c.key] ?? this.logLevels[c.key] ?? "None";
-						return html`
+          ${categories
+						.filter((c) => c.show)
+						.map((c) => {
+							const overrides = this._overrides.logLevels || {};
+							const current =
+								overrides[c.key] ?? this.logLevels[c.key] ?? "None";
+							return html`
               <div class="setting-row">
                 <label>${this.localize(c.label)}</label>
                 <ha-select
@@ -709,16 +747,20 @@ export class EppSettingsView extends LitElement {
                   @selected=${(e: CustomEvent<{ value: string }>) => {
 										const val = e.detail.value;
 										if (!val || val === current) return;
-										if (!this._overrides.logLevels) this._overrides.logLevels = {};
+										if (!this._overrides.logLevels)
+											this._overrides.logLevels = {};
 										this._overrides.logLevels[c.key] = val;
 										this._fireDirty();
 										this.requestUpdate();
 									}}
                   @closed=${(e: Event) => e.stopPropagation()}
                 ></ha-select>
-                <button type="button" class="setting-info" aria-label="Reset to default" title="Reset to default" @click=${(e: Event) => {
+                <button type="button" class="setting-info" aria-label="Reset to default" title="Reset to default" @click=${(
+									e: Event,
+								) => {
 									e.stopPropagation();
-									if (!this._overrides.logLevels) this._overrides.logLevels = {};
+									if (!this._overrides.logLevels)
+										this._overrides.logLevels = {};
 									this._overrides.logLevels[c.key] = "None";
 									this._fireDirty();
 									this.requestUpdate();
@@ -726,12 +768,11 @@ export class EppSettingsView extends LitElement {
                 ${this.infoTip(this.localize(c.tip))}
               </div>
             `;
-					})}
+						})}
         </div>
       </div>
     `;
 	}
-
 
 	renderSaveCancelButtons() {
 		return html`
