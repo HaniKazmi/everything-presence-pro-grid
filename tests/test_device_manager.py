@@ -852,6 +852,71 @@ class TestPushConfig:
             assert static_data["on_delay"] == 0.0
             assert static_data["led_enabled"] is True
 
+    async def test_push_config_log_levels(self) -> None:
+        """push_config sends each log level category/level pair via epp_set_log_level."""
+        conn = DeviceConnection("192.168.1.100")
+
+        mock_log_level = MagicMock()
+        mock_log_level.name = "epp_set_log_level"
+
+        with patch("custom_components.eppgrid.device_manager.APIClient") as mock_cls:
+            mock_client = mock_cls.return_value
+            mock_client.connect = AsyncMock()
+            mock_client.list_entities_services = AsyncMock(return_value=([], [mock_log_level]))
+            mock_client.execute_service = AsyncMock()
+
+            await conn.async_connect()
+            await conn.async_push_config(
+                {
+                    "log_levels": {"zone_engine": "DEBUG", "tracking": "VERBOSE"},
+                }
+            )
+
+            assert mock_client.execute_service.await_count == 2
+            calls = mock_client.execute_service.call_args_list
+            call_data = [call[0][1] for call in calls]
+            assert {"category": "zone_engine", "level": "DEBUG"} in call_data
+            assert {"category": "tracking", "level": "VERBOSE"} in call_data
+
+    async def test_push_config_log_levels_no_service(self) -> None:
+        """push_config skips log levels when epp_set_log_level service is not available."""
+        conn = DeviceConnection("192.168.1.100")
+
+        with patch("custom_components.eppgrid.device_manager.APIClient") as mock_cls:
+            mock_client = mock_cls.return_value
+            mock_client.connect = AsyncMock()
+            mock_client.list_entities_services = AsyncMock(return_value=([], []))
+            mock_client.execute_service = AsyncMock()
+
+            await conn.async_connect()
+            await conn.async_push_config(
+                {
+                    "log_levels": {"zone_engine": "DEBUG"},
+                }
+            )
+
+            # No service available, so no calls
+            mock_client.execute_service.assert_not_awaited()
+
+    async def test_push_config_no_log_levels(self) -> None:
+        """push_config does nothing for log levels when config has no log_levels key."""
+        conn = DeviceConnection("192.168.1.100")
+
+        mock_log_level = MagicMock()
+        mock_log_level.name = "epp_set_log_level"
+
+        with patch("custom_components.eppgrid.device_manager.APIClient") as mock_cls:
+            mock_client = mock_cls.return_value
+            mock_client.connect = AsyncMock()
+            mock_client.list_entities_services = AsyncMock(return_value=([], [mock_log_level]))
+            mock_client.execute_service = AsyncMock()
+
+            await conn.async_connect()
+            await conn.async_push_config({"settings": {}})
+
+            # No log levels in config, no calls
+            mock_client.execute_service.assert_not_awaited()
+
     async def test_push_config_already_connected_noop(self) -> None:
         """async_connect is a no-op when already connected."""
         conn = DeviceConnection("192.168.1.100")

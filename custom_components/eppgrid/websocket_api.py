@@ -776,6 +776,7 @@ _SETTINGS_KEYS = (
         vol.Required("static_timeout"): vol.Coerce(float),
         vol.Required("static_on_delay"): vol.Coerce(float),
         vol.Optional("entities"): {str: bool},
+        vol.Optional("log_levels"): {str: str},
     }
 )
 @websocket_api.async_response
@@ -800,6 +801,9 @@ async def websocket_set_settings(
     mac = msg["mac"]
     device_config = manager._store.devices.setdefault(mac, {})
     device_config["settings"] = {k: msg[k] for k in _SETTINGS_KEYS}
+    log_levels = msg.get("log_levels")
+    if log_levels is not None:
+        device_config["log_levels"] = log_levels
     await manager._store.async_save()
     await manager._push_config_to_device(mac)
     entities = msg.get("entities")

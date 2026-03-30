@@ -248,6 +248,18 @@ class DeviceConnection:
                 await self._client.execute_service(svc, pipeline)
                 _LOGGER.info("Pushed pipeline to %s", self._host)
 
+        # Push log levels
+        log_levels = config.get("log_levels")
+        if log_levels:
+            svc = self._services.get("epp_set_log_level")
+            if svc:
+                for category, level in log_levels.items():
+                    await self._client.execute_service(
+                        svc,
+                        {"category": category, "level": level},
+                    )
+                _LOGGER.info("Pushed log levels to %s", self._host)
+
 
 @dataclass
 class ManagedDevice:
