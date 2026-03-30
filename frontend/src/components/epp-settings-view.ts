@@ -93,6 +93,11 @@ export class EppSettingsView extends LitElement {
         box-sizing: border-box;
       }
 
+      .setting-row ha-select {
+        width: 140px;
+        flex-shrink: 0;
+      }
+
       .save-cancel-bar {
         display: flex;
         justify-content: space-between;
