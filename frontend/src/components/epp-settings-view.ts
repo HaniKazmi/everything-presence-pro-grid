@@ -351,6 +351,8 @@ export class EppSettingsView extends LitElement {
                 @change=${(e: Event) => {
 									const checked = (e.target as HTMLInputElement).checked;
 									if (!checked) {
+										this._overrides.staticMinDistance = 0.3;
+										this._fireChange("staticMinDistance", 0.3);
 										this._overrides.staticMaxDistance = staticMaxVal;
 										this._fireChange("staticMaxDistance", staticMaxVal);
 									}
