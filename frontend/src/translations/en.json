@@ -121,7 +121,14 @@
 		"humidity_offset": "Humidity offset",
 		"temperature_offset": "Temperature offset",
 		"presence_delay": "Presence delay",
-		"furthest_point": "Current furthest point from sensor:"
+		"furthest_point": "Current furthest point from sensor:",
+		"logging": "Logging",
+		"log_system": "System",
+		"log_epp": "EPP",
+		"log_led": "LED",
+		"log_networking": "Network",
+		"log_ble": "Bluetooth",
+		"log_co2": "CO2"
 	},
 	"sidebar": {
 		"detection_zones": "Detection zones",
@@ -216,7 +223,13 @@
 		"illuminance": "BH1750 illuminance sensor.",
 		"humidity": "SHTC3 humidity sensor.",
 		"temperature": "SHTC3 temperature sensor.",
-		"co2": "SCD40 CO₂ sensor (optional module)."
+		"co2": "SCD40 CO₂ sensor (optional module).",
+		"log_system": "Framework logs including OTA, API, mDNS, I2C, and sensor drivers.",
+		"log_epp": "Zone engine logs — zone detection, target tracking, and configuration.",
+		"log_led": "LED control script logs — mode transitions and decision tree.",
+		"log_networking": "WiFi or Ethernet connection and DHCP logs.",
+		"log_ble": "Bluetooth Low Energy scanner and proxy logs.",
+		"log_co2": "CO2 sensor (SCD4x) logs."
 	},
 	"dimensions": {
 		"width_cm": "W (cm)",
