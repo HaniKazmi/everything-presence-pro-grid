@@ -62,7 +62,7 @@ describe("render()", () => {
 		const c = renderTo(tpl);
 
 		expect(c.querySelector(".settings-container")).not.toBeNull();
-		expect(c.querySelectorAll(".accordion").length).toBe(3);
+		expect(c.querySelectorAll(".accordion").length).toBe(4);
 		document.body.removeChild(c);
 	});
 
@@ -1350,5 +1350,164 @@ describe("_fireDirty with save-btn in shadowRoot", () => {
 
 		(sv as any)._fireDirty();
 		expect(btn.disabled).toBe(false);
+	});
+});
+
+describe("logging accordion", () => {
+	it("renders logging section in accordion list", () => {
+		const sv = createView();
+		const tpl = sv.render();
+		const c = renderTo(tpl);
+
+		const headers = c.querySelectorAll(".accordion-header");
+		const titles = [...headers].map(
+			(h) => h.querySelector(".accordion-title")?.textContent,
+		);
+		expect(titles).toContain("settings.logging");
+		document.body.removeChild(c);
+	});
+
+	it("renders all base log level rows when open", () => {
+		const sv = createView({
+			openAccordions: new Set(["logging"]),
+			logLevels: { system: "Warning", epp: "Warning", led: "Warning", networking: "Warning" },
+		});
+		const tpl = sv.render();
+		const c = renderTo(tpl);
+
+		const labels = c.querySelectorAll(".setting-row label");
+		const texts = [...labels].map((l) => l.textContent);
+		expect(texts).toContain("settings.log_system");
+		expect(texts).toContain("settings.log_epp");
+		expect(texts).toContain("settings.log_led");
+		expect(texts).toContain("settings.log_networking");
+		document.body.removeChild(c);
+	});
+
+	it("hides BLE row when bluetooth_enabled is false", () => {
+		const sv = createView({
+			openAccordions: new Set(["logging"]),
+			logLevels: { ble: "Warning" },
+			bluetoothEnabled: false,
+		});
+		const tpl = sv.render();
+		const c = renderTo(tpl);
+
+		const labels = c.querySelectorAll(".setting-row label");
+		const texts = [...labels].map((l) => l.textContent);
+		expect(texts).not.toContain("settings.log_ble");
+		document.body.removeChild(c);
+	});
+
+	it("shows BLE row when bluetooth_enabled is true", () => {
+		const sv = createView({
+			openAccordions: new Set(["logging"]),
+			logLevels: { ble: "Warning" },
+			bluetoothEnabled: true,
+		});
+		const tpl = sv.render();
+		const c = renderTo(tpl);
+
+		const labels = c.querySelectorAll(".setting-row label");
+		const texts = [...labels].map((l) => l.textContent);
+		expect(texts).toContain("settings.log_ble");
+		document.body.removeChild(c);
+	});
+
+	it("hides CO2 row when co2_enabled is false", () => {
+		const sv = createView({
+			openAccordions: new Set(["logging"]),
+			logLevels: { co2: "Warning" },
+			co2Enabled: false,
+		});
+		const tpl = sv.render();
+		const c = renderTo(tpl);
+
+		const labels = c.querySelectorAll(".setting-row label");
+		const texts = [...labels].map((l) => l.textContent);
+		expect(texts).not.toContain("settings.log_co2");
+		document.body.removeChild(c);
+	});
+
+	it("marks dirty when dropdown changes", () => {
+		const sv = createView({
+			logLevels: { system: "Warning" },
+		});
+
+		let dirtyFired = false;
+		sv.addEventListener("dirty", () => {
+			dirtyFired = true;
+		});
+
+		// Mock shadowRoot for _fireDirty
+		Object.defineProperty(sv, "shadowRoot", {
+			value: {
+				querySelector: () => null,
+				querySelectorAll: () => [],
+			},
+			configurable: true,
+		});
+
+		const tpl = (sv as any).renderLogging();
+		const c = renderTo(tpl);
+
+		// Find the ha-select and simulate a selected event
+		const selects = c.querySelectorAll("ha-select");
+		expect(selects.length).toBeGreaterThan(0);
+		const select = selects[0] as any;
+		select.value = "Debug";
+		select.dispatchEvent(new Event("selected", { bubbles: true }));
+
+		expect(dirtyFired).toBe(true);
+		expect((sv as any)._overrides.logLevels?.system).toBe("Debug");
+		document.body.removeChild(c);
+	});
+
+	it("includes log_levels in save payload", () => {
+		const sv = createView({
+			dirty: true,
+			logLevels: { system: "Warning", epp: "Info" },
+		});
+		// Set an override for one category
+		(sv as any)._overrides.logLevels = { system: "Debug" };
+
+		let payload: any = null;
+		sv.addEventListener("save", ((e: CustomEvent) => {
+			payload = e.detail;
+		}) as EventListener);
+
+		(sv as any)._emitSave();
+
+		expect(payload).not.toBeNull();
+		expect(payload.log_levels).toBeDefined();
+		expect(payload.log_levels.system).toBe("Debug"); // override wins
+		expect(payload.log_levels.epp).toBe("Info"); // original preserved
+	});
+
+	it("reset button sets dropdown to Warning", () => {
+		const sv = createView({
+			logLevels: { system: "Debug" },
+		});
+
+		// Mock shadowRoot for _fireDirty
+		Object.defineProperty(sv, "shadowRoot", {
+			value: {
+				querySelector: () => null,
+				querySelectorAll: () => [],
+			},
+			configurable: true,
+		});
+
+		const tpl = (sv as any).renderLogging();
+		const c = renderTo(tpl);
+
+		// Find the reset button (mdi:restart icon)
+		const resetBtns = c.querySelectorAll(".setting-info");
+		// First .setting-info in each row is the reset button
+		expect(resetBtns.length).toBeGreaterThan(0);
+		(resetBtns[0] as HTMLElement).click();
+
+		expect((sv as any)._overrides.logLevels?.system).toBe("Warning");
+		document.body.removeChild(c);
 	});
 });

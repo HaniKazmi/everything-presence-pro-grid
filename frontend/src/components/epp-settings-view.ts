@@ -60,6 +60,9 @@ export class EppSettingsView extends LitElement {
 	@property({ type: Number }) staticRenewThreshold = 3;
 	@property({ type: Number }) staticOnDelay = 0;
 	@property({ attribute: false }) entitiesConfig: Record<string, boolean> = {};
+	@property({ attribute: false }) logLevels: Record<string, string> = {};
+	@property({ type: Boolean }) bluetoothEnabled = false;
+	@property({ type: Boolean }) co2Enabled = false;
 
 	// Non-reactive overrides — stores user edits without triggering Lit re-renders.
 	// The 5Hz target data stream re-renders the panel at high frequency; if slider
@@ -117,6 +120,11 @@ export class EppSettingsView extends LitElement {
 				label: "settings.sensor_calibration",
 				icon: "mdi:tune-vertical",
 			},
+			{
+				id: "logging",
+				label: "settings.logging",
+				icon: "mdi:math-log",
+			},
 		];
 
 		return html`
@@ -170,6 +178,8 @@ export class EppSettingsView extends LitElement {
 				return this.renderSensitivities();
 			case "reporting":
 				return this.renderEntities();
+			case "logging":
+				return this.renderLogging();
 			default:
 				return nothing;
 		}
@@ -668,6 +678,58 @@ export class EppSettingsView extends LitElement {
     `;
 	}
 
+	renderLogging() {
+		const LOG_LEVELS = ["None", "Error", "Warning", "Info", "Debug"];
+		const categories: { key: string; label: string; tip: string; show: boolean }[] = [
+			{ key: "system", label: "settings.log_system", tip: "info.log_system", show: true },
+			{ key: "epp", label: "settings.log_epp", tip: "info.log_epp", show: true },
+			{ key: "led", label: "settings.log_led", tip: "info.log_led", show: true },
+			{ key: "networking", label: "settings.log_networking", tip: "info.log_networking", show: true },
+			{ key: "ble", label: "settings.log_ble", tip: "info.log_ble", show: this.bluetoothEnabled },
+			{ key: "co2", label: "settings.log_co2", tip: "info.log_co2", show: this.co2Enabled },
+		];
+
+		return html`
+      <div class="settings-section">
+        <div class="setting-group">
+          ${categories.filter(c => c.show).map((c) => {
+						const overrides = this._overrides.logLevels || {};
+						const current = overrides[c.key] ?? this.logLevels[c.key] ?? "Warning";
+						return html`
+              <div class="setting-row">
+                <label>${this.localize(c.label)}</label>
+                <ha-select
+                  .value=${current}
+                  @selected=${(e: Event) => {
+										const select = e.target as any;
+										const val = select.value;
+										if (!val || val === current) return;
+										if (!this._overrides.logLevels) this._overrides.logLevels = {};
+										this._overrides.logLevels[c.key] = val;
+										this._fireDirty();
+									}}
+                  @closed=${(e: Event) => e.stopPropagation()}
+                >
+                  ${LOG_LEVELS.map(
+										(l) => html`<ha-list-item .value=${l}>${l}</ha-list-item>`,
+									)}
+                </ha-select>
+                <button type="button" class="setting-info" aria-label="Reset to default" title="Reset to default" @click=${(e: Event) => {
+									e.stopPropagation();
+									if (!this._overrides.logLevels) this._overrides.logLevels = {};
+									this._overrides.logLevels[c.key] = "Warning";
+									this._fireDirty();
+									this.requestUpdate();
+								}}><ha-icon icon="mdi:restart"></ha-icon></button>
+                ${this.infoTip(this.localize(c.tip))}
+              </div>
+            `;
+					})}
+        </div>
+      </div>
+    `;
+	}
+
 	renderSaveCancelButtons() {
 		return html`
       <div class="save-cancel-bar">
@@ -714,6 +776,10 @@ export class EppSettingsView extends LitElement {
 					humidity_offset: o.humidityOffset ?? this.humidityOffset,
 					illuminance_offset: o.illuminanceOffset ?? this.illuminanceOffset,
 					entities,
+					log_levels: {
+						...this.logLevels,
+						...(o.logLevels || {}),
+					},
 				},
 				bubbles: true,
 				composed: true,
