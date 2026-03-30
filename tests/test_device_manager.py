@@ -1109,6 +1109,7 @@ class TestEventCallbacks:
         mock_conn = MagicMock()
         mock_conn.async_connect = AsyncMock()
         mock_conn.async_push_config = AsyncMock()
+        mock_conn.async_fetch_build_flags = AsyncMock(return_value={})
         mock_conn.async_disconnect = AsyncMock()
 
         with patch(
@@ -1163,6 +1164,7 @@ class TestEventCallbacks:
         session_conn = MagicMock()
         session_conn.connected = True
         session_conn.async_push_config = AsyncMock()
+        session_conn.async_fetch_build_flags = AsyncMock(return_value={})
         manager._active_connections[mac] = session_conn
 
         result = await manager._push_config_to_device(mac)
@@ -1182,6 +1184,7 @@ class TestEventCallbacks:
         mock_conn = MagicMock()
         mock_conn.async_connect = AsyncMock()
         mock_conn.async_push_config = AsyncMock()
+        mock_conn.async_fetch_build_flags = AsyncMock(return_value={})
         mock_conn.async_disconnect = AsyncMock()
 
         with patch(
@@ -1210,6 +1213,7 @@ class TestEventCallbacks:
         mock_conn = MagicMock()
         mock_conn.async_connect = AsyncMock()
         mock_conn.async_push_config = AsyncMock()
+        mock_conn.async_fetch_build_flags = AsyncMock(return_value={})
         mock_conn.async_disconnect = AsyncMock()
 
         with patch(
@@ -1490,3 +1494,199 @@ class TestHelpers:
             identifiers={("esphome", "abc")},
         )
         assert _extract_host(device, esphome_entry.entry_id, hass) == "192.168.1.99"
+
+
+# ---------------------------------------------------------------------------
+# Build flags tests
+# ---------------------------------------------------------------------------
+
+
+class TestBuildFlags:
+    """Tests for async_fetch_build_flags, caching, and list_devices exposure."""
+
+    async def test_fetch_build_flags_returns_dict(self) -> None:
+        """async_fetch_build_flags returns response dict from get_build_flags action."""
+        conn = DeviceConnection("192.168.1.100")
+
+        mock_svc = MagicMock()
+        mock_svc.name = "get_build_flags"
+
+        expected_flags = {
+            "bluetooth_enabled": True,
+            "co2_enabled": False,
+            "ethernet_enabled": True,
+            "board_revision": "1.1",
+            "sensor_variant": "ld2450",
+            "firmware_channel": "stable",
+            "model": "pro",
+        }
+
+        with patch("custom_components.eppgrid.device_manager.APIClient") as mock_cls:
+            mock_client = mock_cls.return_value
+            mock_client.connect = AsyncMock()
+            mock_client.list_entities_services = AsyncMock(return_value=([], [mock_svc]))
+            mock_client.execute_service = AsyncMock(return_value=expected_flags)
+            mock_client.disconnect = AsyncMock()
+
+            await conn.async_connect()
+            result = await conn.async_fetch_build_flags()
+
+        assert result == expected_flags
+
+    async def test_fetch_build_flags_no_service(self) -> None:
+        """async_fetch_build_flags returns empty dict when service not available."""
+        conn = DeviceConnection("192.168.1.100")
+
+        with patch("custom_components.eppgrid.device_manager.APIClient") as mock_cls:
+            mock_client = mock_cls.return_value
+            mock_client.connect = AsyncMock()
+            mock_client.list_entities_services = AsyncMock(return_value=([], []))
+            mock_client.disconnect = AsyncMock()
+
+            await conn.async_connect()
+            result = await conn.async_fetch_build_flags()
+
+        assert result == {}
+
+    async def test_fetch_build_flags_exception_returns_empty(self) -> None:
+        """async_fetch_build_flags returns empty dict on exception."""
+        conn = DeviceConnection("192.168.1.100")
+
+        mock_svc = MagicMock()
+        mock_svc.name = "get_build_flags"
+
+        with patch("custom_components.eppgrid.device_manager.APIClient") as mock_cls:
+            mock_client = mock_cls.return_value
+            mock_client.connect = AsyncMock()
+            mock_client.list_entities_services = AsyncMock(return_value=([], [mock_svc]))
+            mock_client.execute_service = AsyncMock(side_effect=ConnectionError("timeout"))
+            mock_client.disconnect = AsyncMock()
+
+            await conn.async_connect()
+            result = await conn.async_fetch_build_flags()
+
+        assert result == {}
+
+    async def test_fetch_build_flags_non_dict_returns_empty(self) -> None:
+        """async_fetch_build_flags returns empty dict when response is not a dict."""
+        conn = DeviceConnection("192.168.1.100")
+
+        mock_svc = MagicMock()
+        mock_svc.name = "get_build_flags"
+
+        with patch("custom_components.eppgrid.device_manager.APIClient") as mock_cls:
+            mock_client = mock_cls.return_value
+            mock_client.connect = AsyncMock()
+            mock_client.list_entities_services = AsyncMock(return_value=([], [mock_svc]))
+            mock_client.execute_service = AsyncMock(return_value=None)
+            mock_client.disconnect = AsyncMock()
+
+            await conn.async_connect()
+            result = await conn.async_fetch_build_flags()
+
+        assert result == {}
+
+    async def test_push_config_caches_build_flags_temporary_conn(
+        self, hass: HomeAssistant, store: EPPGridStore, manager: DeviceManager
+    ) -> None:
+        """_push_config_to_device caches build flags after push via temporary connection."""
+        mac = "AA:BB:CC:DD:EE:FF"
+        store.devices[mac] = {"calibration": {"perspective": [1.0] * 8}}
+        manager.devices[mac] = ManagedDevice(mac=mac, name="EPP", host="192.168.1.50")
+
+        expected_flags = {"bluetooth_enabled": True, "model": "pro"}
+
+        mock_conn = MagicMock()
+        mock_conn.async_connect = AsyncMock()
+        mock_conn.async_push_config = AsyncMock()
+        mock_conn.async_fetch_build_flags = AsyncMock(return_value=expected_flags)
+        mock_conn.async_disconnect = AsyncMock()
+
+        with patch(
+            "custom_components.eppgrid.device_manager.DeviceConnection",
+            return_value=mock_conn,
+        ):
+            result = await manager._push_config_to_device(mac)
+
+        assert result is True
+        mock_conn.async_fetch_build_flags.assert_awaited_once()
+        assert manager._build_flags[mac] == expected_flags
+
+    async def test_push_config_caches_build_flags_session_conn(
+        self, hass: HomeAssistant, store: EPPGridStore, manager: DeviceManager
+    ) -> None:
+        """_push_config_to_device caches build flags after push via session connection."""
+        mac = "AA:BB:CC:DD:EE:FF"
+        store.devices[mac] = {"calibration": {"perspective": [1.0] * 8}}
+        manager.devices[mac] = ManagedDevice(mac=mac, name="EPP", host="192.168.1.50")
+
+        expected_flags = {"co2_enabled": True, "board_revision": "1.2"}
+
+        session_conn = MagicMock()
+        session_conn.connected = True
+        session_conn.async_push_config = AsyncMock()
+        session_conn.async_fetch_build_flags = AsyncMock(return_value=expected_flags)
+        manager._active_connections[mac] = session_conn
+
+        result = await manager._push_config_to_device(mac)
+
+        assert result is True
+        session_conn.async_fetch_build_flags.assert_awaited_once()
+        assert manager._build_flags[mac] == expected_flags
+
+    async def test_push_config_empty_flags_not_cached(
+        self, hass: HomeAssistant, store: EPPGridStore, manager: DeviceManager
+    ) -> None:
+        """_push_config_to_device does not cache empty build flags."""
+        mac = "AA:BB:CC:DD:EE:FF"
+        store.devices[mac] = {"calibration": {"perspective": [1.0] * 8}}
+        manager.devices[mac] = ManagedDevice(mac=mac, name="EPP", host="192.168.1.50")
+
+        mock_conn = MagicMock()
+        mock_conn.async_connect = AsyncMock()
+        mock_conn.async_push_config = AsyncMock()
+        mock_conn.async_fetch_build_flags = AsyncMock(return_value={})
+        mock_conn.async_disconnect = AsyncMock()
+
+        with patch(
+            "custom_components.eppgrid.device_manager.DeviceConnection",
+            return_value=mock_conn,
+        ):
+            await manager._push_config_to_device(mac)
+
+        assert mac not in manager._build_flags
+
+    async def test_list_devices_includes_build_flags(self, hass: HomeAssistant, manager: DeviceManager) -> None:
+        """list_devices spreads cached build flags into device info."""
+        mac = "AA:BB:CC:DD:EE:FF"
+        manager.devices[mac] = ManagedDevice(mac=mac, name="EPP Device", host="192.168.1.50", available=True)
+        manager._build_flags[mac] = {
+            "bluetooth_enabled": True,
+            "co2_enabled": False,
+            "ethernet_enabled": True,
+            "board_revision": "1.1",
+            "sensor_variant": "ld2450",
+            "firmware_channel": "stable",
+            "model": "pro",
+        }
+
+        result = manager.list_devices()
+        assert len(result) == 1
+        assert result[0]["bluetooth_enabled"] is True
+        assert result[0]["co2_enabled"] is False
+        assert result[0]["ethernet_enabled"] is True
+        assert result[0]["board_revision"] == "1.1"
+        assert result[0]["sensor_variant"] == "ld2450"
+        assert result[0]["firmware_channel"] == "stable"
+        assert result[0]["model"] == "pro"
+
+    async def test_list_devices_no_build_flags(self, hass: HomeAssistant, manager: DeviceManager) -> None:
+        """list_devices works without cached build flags (no extra keys)."""
+        mac = "AA:BB:CC:DD:EE:FF"
+        manager.devices[mac] = ManagedDevice(mac=mac, name="EPP Device", host="192.168.1.50", available=True)
+        # No build flags cached
+
+        result = manager.list_devices()
+        assert len(result) == 1
+        assert "bluetooth_enabled" not in result[0]
+        assert "model" not in result[0]

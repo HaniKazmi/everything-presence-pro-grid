@@ -88,6 +88,18 @@ class DeviceConnection:
         for cb in self._state_subscribers:
             cb(state)
 
+    async def async_fetch_build_flags(self) -> dict[str, Any]:
+        """Fetch build flags from device via get_build_flags action."""
+        svc = self._services.get("get_build_flags")
+        if svc is None:
+            return {}
+        try:
+            resp = await self._client.execute_service(svc, {})
+            return resp if isinstance(resp, dict) else {}
+        except Exception:
+            _LOGGER.debug("Failed to fetch build flags from %s", self._host)
+            return {}
+
     async def async_push_detection_preview(self, preview: dict[str, Any]) -> None:
         """Push detection distance preview to device without persisting."""
         if self._client is None:
@@ -257,6 +269,7 @@ class DeviceManager:
         self.devices: dict[str, ManagedDevice] = {}
         self._unsub_listeners: list[Any] = []
         self._pushing: set[str] = set()
+        self._build_flags: dict[str, dict[str, Any]] = {}
         # One connection per device, kept alive for the frontend session
         self._active_connections: dict[str, DeviceConnection] = {}
         self._session_locks: dict[str, asyncio.Lock] = {}
@@ -446,6 +459,9 @@ class DeviceManager:
         if session_conn is not None:
             try:
                 await session_conn.async_push_config(config)
+                flags = await session_conn.async_fetch_build_flags()
+                if flags:
+                    self._build_flags[mac] = flags
                 return True
             except Exception:
                 _LOGGER.warning("Failed to push config to %s (%s) via session", dev.name, mac, exc_info=True)
@@ -457,6 +473,9 @@ class DeviceManager:
         try:
             await conn.async_connect()
             await conn.async_push_config(config)
+            flags = await conn.async_fetch_build_flags()
+            if flags:
+                self._build_flags[mac] = flags
             return True
         except Exception:
             _LOGGER.warning("Failed to push config to %s (%s)", dev.name, mac, exc_info=True)
@@ -523,6 +542,7 @@ class DeviceManager:
                         else "firmware_ahead"
                     ),
                     "current_connection_count": self.read_current_connection_count(dev.device_id),
+                    **self._build_flags.get(mac, {}),
                 }
             )
         return result
