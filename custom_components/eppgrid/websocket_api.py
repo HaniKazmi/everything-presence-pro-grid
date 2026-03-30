@@ -332,6 +332,7 @@ _ENTITY_OBJECT_ID_MAP: dict[str, str] = {
     "temperature": "env_temperature",
     "humidity": "env_humidity",
     "illuminance": "env_illuminance",
+    "co2": "env_co2",
 }
 
 # Prefix patterns: object_ids starting with these prefixes map to a category key.

@@ -556,6 +556,15 @@ const dt={attribute:!0,type:String,converter:b,reflect:!1,hasChanged:y},ut=(t=dt
     margin-left: 8px;
   }
 
+  button.setting-info {
+    background: none;
+    border: none;
+    padding: 0;
+    cursor: pointer;
+    color: inherit;
+    font: inherit;
+  }
+
   .setting-info ha-icon {
     --mdc-icon-size: 18px;
     color: var(--primary-text-color, #212121);
@@ -1160,9 +1169,9 @@ const dt={attribute:!0,type:String,converter:b,reflect:!1,hasChanged:y},ut=(t=dt
         <span class="setting-input-unit"><input type="range" class="setting-range" data-offset-key=${i} data-precision=${a} data-display-min=${c} data-display-max=${h} min=${o} max=${s} step=${r} .value=${String(d)} @input=${t=>{const e=t.target,o=parseFloat(e.value),s=null!=u?p(u+o).toFixed(a):"—";this._setText(e.nextElementSibling,s),this._overrides[`${i}Offset`]=o,this._fireDirty()}} /><span class="setting-value">${g}</span> ${n}</span>
         ${this.resetBtn(0)}${this.infoTip(l)}
       </div>
-    `}_setText(t,e){const i=document.createTreeWalker(t,NodeFilter.SHOW_TEXT).nextNode();i?i.data=e:t.textContent=e}_resetSlider(t,e,i){const o=t.querySelector(".setting-range");if(!o)return;const s=parseFloat(o.value);o.value=String(e);const r=o.nextElementSibling;if(r){const t=parseFloat(r.textContent||"");if(o.dataset.offsetKey&&!Number.isNaN(t)){const i=parseInt(o.dataset.precision??"0",10),n=parseFloat(o.dataset.displayMin??"-Infinity"),a=parseFloat(o.dataset.displayMax??"Infinity"),l=Math.max(n,Math.min(a,t-s+e));this._setText(r,l.toFixed(i)),this._overrides[`${o.dataset.offsetKey}Offset`]=e}else this._setText(r,String(e))}i&&(this._overrides[i]=e);const n=this.shadowRoot?.querySelector(".save-btn");n&&(n.disabled=!1)}resetBtn(t,e){return W`<span class="setting-info" @click=${i=>{i.stopPropagation();const o=i.currentTarget.closest(".setting-row");o&&this._resetSlider(o,t,e),e?this._fireChange(e,t):this._fireDirty()}}><ha-icon icon="mdi:restart"></ha-icon></span>`}infoTip(t){return W`<span class="setting-info"
+    `}_setText(t,e){const i=document.createTreeWalker(t,NodeFilter.SHOW_TEXT).nextNode();i?i.data=e:t.textContent=e}_resetSlider(t,e,i){const o=t.querySelector(".setting-range");if(!o)return;const s=parseFloat(o.value);o.value=String(e);const r=o.nextElementSibling;if(r){const t=parseFloat(r.textContent||"");if(o.dataset.offsetKey&&!Number.isNaN(t)){const i=parseInt(o.dataset.precision??"0",10),n=parseFloat(o.dataset.displayMin??"-Infinity"),a=parseFloat(o.dataset.displayMax??"Infinity"),l=Math.max(n,Math.min(a,t-s+e));this._setText(r,l.toFixed(i)),this._overrides[`${o.dataset.offsetKey}Offset`]=e}else this._setText(r,String(e))}i&&(this._overrides[i]=e);const n=this.shadowRoot?.querySelector(".save-btn");n&&(n.disabled=!1)}resetBtn(t,e){return W`<button type="button" class="setting-info" aria-label="Reset to default" title="Reset to default" @click=${i=>{i.stopPropagation();const o=i.currentTarget.closest(".setting-row");o&&this._resetSlider(o,t,e),e?this._fireChange(e,t):this._fireDirty()}}><ha-icon icon="mdi:restart"></ha-icon></button>`}infoTip(t){return W`<button type="button" class="setting-info" aria-label="Show info" title="Show info"
       @click=${t=>{t.stopPropagation();const e=t.currentTarget,i=e.querySelector(".setting-info-tooltip");if(!i)return;const o="block"===i.style.display;if(this.shadowRoot.querySelectorAll(".setting-info-tooltip").forEach(t=>{t.style.display="none"}),o)return;const s=e.getBoundingClientRect();i.style.display="block",i.style.left=`${Math.max(8,Math.min(s.right-240,window.innerWidth-256))}px`,i.style.top=`${s.bottom+6}px`}}
-    ><ha-icon icon="mdi:help-circle-outline"></ha-icon><span class="setting-info-tooltip">${t}</span></span>`}renderDetectionRanges(){const t=he(this.roomWidth,this.roomDepth,this.perspective,this.grid),e=ue(this.grid,this.roomWidth,this.perspective),i=t>0?Math.min(t,6):6,o=t>0?Math.min(t,16):16,s=this.targetAutoDistance?i:this.targetMaxDistance,r=this.staticAutoDistance?o:this.staticMaxDistance,n="opacity: 0.5; pointer-events: none;";return W`
+    ><ha-icon icon="mdi:help-circle-outline"></ha-icon><span class="setting-info-tooltip">${t}</span></button>`}renderDetectionRanges(){const t=he(this.roomWidth,this.roomDepth,this.perspective,this.grid),e=ue(this.grid,this.roomWidth,this.perspective),i=t>0?Math.min(t,6):6,o=t>0?Math.min(t,16):16,s=this.targetAutoDistance?i:this.targetMaxDistance,r=this.staticAutoDistance?o:this.staticMaxDistance,n="opacity: 0.5; pointer-events: none;";return W`
       <div class="settings-section">
         ${e?W`<p style="font-size: 13px; color: var(--secondary-text-color, #757575); margin: 0 0 12px;">${this.localize("settings.furthest_point")} <span style="font-weight: 700; color: var(--error-color, #db4437);">${e.furthestM}m</span></p>`:V}
         <div class="setting-group">

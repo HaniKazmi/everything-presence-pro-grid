@@ -364,6 +364,15 @@ export const tooltipStyles = css`
     margin-left: 8px;
   }
 
+  button.setting-info {
+    background: none;
+    border: none;
+    padding: 0;
+    cursor: pointer;
+    color: inherit;
+    font: inherit;
+  }
+
   .setting-info ha-icon {
     --mdc-icon-size: 18px;
     color: var(--primary-text-color, #212121);

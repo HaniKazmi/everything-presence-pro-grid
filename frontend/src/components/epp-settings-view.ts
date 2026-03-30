@@ -264,7 +264,9 @@ export class EppSettingsView extends LitElement {
 	}
 
 	resetBtn(defaultValue: number, key?: string) {
-		return html`<span class="setting-info" @click=${(e: Event) => {
+		return html`<button type="button" class="setting-info" aria-label="Reset to default" title="Reset to default" @click=${(
+			e: Event,
+		) => {
 			e.stopPropagation();
 			const row = (e.currentTarget as HTMLElement).closest(
 				".setting-row",
@@ -275,11 +277,11 @@ export class EppSettingsView extends LitElement {
 			} else {
 				this._fireDirty();
 			}
-		}}><ha-icon icon="mdi:restart"></ha-icon></span>`;
+		}}><ha-icon icon="mdi:restart"></ha-icon></button>`;
 	}
 
 	infoTip(text: string) {
-		return html`<span class="setting-info"
+		return html`<button type="button" class="setting-info" aria-label="Show info" title="Show info"
       @click=${(e: Event) => {
 				e.stopPropagation();
 				const icon = e.currentTarget as HTMLElement;
@@ -298,7 +300,7 @@ export class EppSettingsView extends LitElement {
 				tip.style.left = `${Math.max(8, Math.min(rect.right - 240, window.innerWidth - 256))}px`;
 				tip.style.top = `${rect.bottom + 6}px`;
 			}}
-    ><ha-icon icon="mdi:help-circle-outline"></ha-icon><span class="setting-info-tooltip">${text}</span></span>`;
+    ><ha-icon icon="mdi:help-circle-outline"></ha-icon><span class="setting-info-tooltip">${text}</span></button>`;
 	}
 
 	renderDetectionRanges() {

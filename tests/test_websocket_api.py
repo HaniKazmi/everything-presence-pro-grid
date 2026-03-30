@@ -604,6 +604,7 @@ class TestEntityMapping:
         assert _entity_key_for_object_id("temperature") == "env_temperature"
         assert _entity_key_for_object_id("humidity") == "env_humidity"
         assert _entity_key_for_object_id("illuminance") == "env_illuminance"
+        assert _entity_key_for_object_id("co2") == "env_co2"
 
     def test_entity_key_mapping_zone_entities(self) -> None:
         """Zone occupancy entities map to zone_presence category."""
@@ -630,6 +631,7 @@ class TestEntityMapping:
         assert _entity_key_for_object_id("esphome_aabbccddeeff_static_presence") == "room_static_presence"
         assert _entity_key_for_object_id("esphome_aabbccddeeff_motion_presence") == "room_motion_presence"
         assert _entity_key_for_object_id("esphome_aabbccddeeff_temperature") == "env_temperature"
+        assert _entity_key_for_object_id("esphome_aabbccddeeff_co2") == "env_co2"
         # Zone entities
         assert _entity_key_for_object_id("esphome_aabbccddeeff_zone_0_occupancy") == "zone_presence"
         assert _entity_key_for_object_id("esphome_aabbccddeeff_zone_7_occupancy") == "zone_presence"
