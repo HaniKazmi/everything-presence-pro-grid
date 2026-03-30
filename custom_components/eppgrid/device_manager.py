@@ -90,6 +90,8 @@ class DeviceConnection:
 
     async def async_fetch_build_flags(self) -> dict[str, Any]:
         """Fetch build flags from device via get_build_flags action."""
+        if self._client is None:
+            return {}
         svc = self._services.get("get_build_flags")
         if svc is None:
             return {}
