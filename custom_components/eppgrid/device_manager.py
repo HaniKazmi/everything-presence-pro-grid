@@ -103,10 +103,15 @@ class DeviceConnection:
         for cb in self._state_subscribers:
             cb(state)
 
-    def subscribe_logs(self) -> None:
+    def subscribe_logs(self, log_level: LogLevel = LogLevel.LOG_LEVEL_DEBUG) -> None:
         """Subscribe to device log messages and re-emit via Python logger."""
-        if self._unsub_logs is not None or self._client is None:
+        if self._client is None:
             return
+
+        # If already subscribed, unsubscribe first (level may have changed)
+        if self._unsub_logs is not None:
+            self._unsub_logs()
+            self._unsub_logs = None
 
         def _on_log(msg: Any) -> None:
             py_level = _ESPHOME_TO_PYTHON_LOG.get(msg.level)
@@ -119,12 +124,15 @@ class DeviceConnection:
             if text:
                 _DEVICE_LOGGER.log(py_level, "[%s] %s", self._host, text)
 
-        self._unsub_logs = self._client.subscribe_logs(_on_log)
-        _LOGGER.debug("Subscribed to device logs from %s", self._host)
+        self._unsub_logs = self._client.subscribe_logs(_on_log, log_level=log_level)
+        _LOGGER.debug("Subscribed to device logs from %s (level=%s)", self._host, log_level)
 
     def unsubscribe_logs(self) -> None:
         """Stop receiving device log messages."""
         if self._unsub_logs is not None:
+            # Tell device to stop sending logs
+            if self._client is not None:
+                self._client.subscribe_logs(lambda _: None, log_level=LogLevel.LOG_LEVEL_NONE)
             self._unsub_logs()
             self._unsub_logs = None
             _LOGGER.debug("Unsubscribed from device logs from %s", self._host)
@@ -508,19 +516,31 @@ class DeviceManager:
         log_levels = config.get("log_levels", {})
         any_enabled = any(v != "None" for v in log_levels.values())
         if any_enabled:
-            # Set the Python logger level to the most permissive requested
-            level_map = {
+            # Map our level strings to aioesphomeapi LogLevel and Python logging
+            esphome_level_map = {
+                "Error": LogLevel.LOG_LEVEL_ERROR,
+                "Warning": LogLevel.LOG_LEVEL_WARN,
+                "Info": LogLevel.LOG_LEVEL_INFO,
+                "Debug": LogLevel.LOG_LEVEL_DEBUG,
+            }
+            python_level_map = {
                 "Error": logging.ERROR,
                 "Warning": logging.WARNING,
                 "Info": logging.INFO,
                 "Debug": logging.DEBUG,
             }
-            min_level = min(
-                (level_map.get(v, logging.WARNING) for v in log_levels.values() if v != "None"),
+            # Find the most permissive level (highest LogLevel value = most verbose)
+            active_levels = [v for v in log_levels.values() if v != "None"]
+            esphome_level = max(
+                (esphome_level_map.get(v, LogLevel.LOG_LEVEL_WARN) for v in active_levels),
+                default=LogLevel.LOG_LEVEL_WARN,
+            )
+            python_level = min(
+                (python_level_map.get(v, logging.WARNING) for v in active_levels),
                 default=logging.WARNING,
             )
-            _DEVICE_LOGGER.setLevel(min_level)
-            conn.subscribe_logs()
+            _DEVICE_LOGGER.setLevel(python_level)
+            conn.subscribe_logs(esphome_level)
         else:
             conn.unsubscribe_logs()
 
