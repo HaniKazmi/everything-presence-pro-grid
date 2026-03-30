@@ -357,14 +357,6 @@ export class EPPGridPanel extends LitElement {
 				this._loadDeviceConfig(this._selectedMac);
 			}
 		}
-		if (this._showDebugLog) {
-			const el = this.shadowRoot?.getElementById("debug-log-scroll");
-			if (el) el.scrollTop = el.scrollHeight;
-		}
-		if (this._showBackendDebugLog) {
-			const el = this.shadowRoot?.getElementById("backend-debug-log-scroll");
-			if (el) el.scrollTop = el.scrollHeight;
-		}
 	}
 
 	private async _initialize(): Promise<void> {
@@ -1712,18 +1704,19 @@ export class EPPGridPanel extends LitElement {
               @click=${() => {
 								this._backendDebugLogLines = [];
 								this._backendDebugLogPrev = null;
-								this.requestUpdate();
+								const el = this.shadowRoot?.getElementById("backend-debug-log-scroll");
+								if (el) {
+									el.innerHTML = "";
+									const placeholder = document.createElement("div");
+									placeholder.style.cssText = "color: var(--secondary-text-color, #999); font-style: italic;";
+									placeholder.textContent = "Waiting for events...";
+									el.appendChild(placeholder);
+								}
 							}}
             >Clear</button>
           </div>
           <div class="debug-log-container" id="backend-debug-log-scroll">
-            ${
-							this._backendDebugLogLines.length === 0
-								? html`<div style="color: var(--secondary-text-color, #999); font-style: italic;">Waiting for events...</div>`
-								: this._backendDebugLogLines.map(
-										(line) => html`<div class="debug-log-line">${line}</div>`,
-									)
-						}
+            <div style="color: var(--secondary-text-color, #999); font-style: italic;">Waiting for events...</div>
           </div>
         `
 						: nothing
@@ -1764,18 +1757,19 @@ export class EPPGridPanel extends LitElement {
               @click=${() => {
 								this._debugLogLines = [];
 								this._debugLogPrev = null;
-								this.requestUpdate();
+								const el = this.shadowRoot?.getElementById("debug-log-scroll");
+								if (el) {
+									el.innerHTML = "";
+									const placeholder = document.createElement("div");
+									placeholder.style.cssText = "color: var(--secondary-text-color, #999); font-style: italic;";
+									placeholder.textContent = "Waiting for events...";
+									el.appendChild(placeholder);
+								}
 							}}
             >Clear</button>
           </div>
           <div class="debug-log-container" id="debug-log-scroll">
-            ${
-							this._debugLogLines.length === 0
-								? html`<div style="color: var(--secondary-text-color, #999); font-style: italic;">Waiting for events...</div>`
-								: this._debugLogLines.map(
-										(line) => html`<div class="debug-log-line">${line}</div>`,
-									)
-						}
+            <div style="color: var(--secondary-text-color, #999); font-style: italic;">Waiting for events...</div>
           </div>
         `
 						: nothing
