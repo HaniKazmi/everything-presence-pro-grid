@@ -562,6 +562,37 @@ describe("_applyLayout", () => {
 		await expect(a._applyLayout()).rejects.toThrow("fail");
 		expect(a._saving).toBe(false);
 	});
+
+	it("sends auto-computed distances in set_settings when auto is on", async () => {
+		const a = el as any;
+		a._selectedMac = "AA:BB:CC:DD:EE:01";
+		a._dirty = true;
+		a._grid = initGridFromRoom(3000, 4000);
+		a._perspective = [1, 0, 0, 0, 1, 0, 0, 0];
+		a._roomWidth = 3000;
+		a._roomDepth = 4000;
+		a._targetAutoDistance = true;
+		a._targetMaxDistance = 99; // stale — should be replaced
+		a._staticAutoDistance = true;
+		a._staticMinDistance = 5.0; // stale — should be replaced with 0.3
+		a._staticMaxDistance = 99; // stale — should be replaced
+		a._zoneConfigs = new Array(8).fill(null);
+
+		el.hass = {
+			callWS: vi.fn().mockResolvedValue({}),
+		};
+
+		await a._applyLayout();
+
+		// Second callWS is the set_settings call
+		const settingsCall = el.hass.callWS.mock.calls[1][0];
+		expect(settingsCall.type).toBe("eppgrid/set_settings");
+		expect(settingsCall.target_max_distance).not.toBe(99);
+		expect(settingsCall.target_max_distance).toBeLessThanOrEqual(6);
+		expect(settingsCall.static_min_distance).toBe(0.3);
+		expect(settingsCall.static_max_distance).not.toBe(99);
+		expect(settingsCall.static_max_distance).toBeLessThanOrEqual(16);
+	});
 });
 
 describe("_saveSettings", () => {
