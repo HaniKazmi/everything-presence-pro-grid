@@ -608,6 +608,55 @@ describe("_saveSettings", () => {
 		expect(a._saving).toBe(false);
 	});
 
+	it("syncs all settings back to panel state after save", async () => {
+		const a = el as any;
+		a._selectedMac = "AA:BB:CC:DD:EE:01";
+		a._dirty = true;
+		// Set initial panel state to different values
+		a._motionTimeout = 5;
+		a._staticTimeout = 30;
+		a._staticTriggerThreshold = 3;
+		a._staticRenewThreshold = 3;
+		a._staticOnDelay = 0;
+		a._targetAutoDistance = true;
+		a._targetMaxDistance = 6.0;
+		a._staticAutoDistance = true;
+		a._staticMinDistance = 0.3;
+		a._staticMaxDistance = 16.0;
+
+		el.hass = { callWS: vi.fn().mockResolvedValue({}) };
+
+		const payload = {
+			motion_timeout: 10,
+			static_timeout: 60,
+			static_trigger_threshold: 5,
+			static_renew_threshold: 7,
+			static_on_delay: 2,
+			target_auto_distance: false,
+			target_max_distance: 4.0,
+			static_auto_distance: false,
+			static_min_distance: 1.0,
+			static_max_distance: 8.0,
+			temperature_offset: 1.5,
+			humidity_offset: -3,
+			illuminance_offset: 50,
+			entities: { room_occupancy: true },
+		};
+
+		await a._saveSettings(payload);
+
+		expect(a._motionTimeout).toBe(10);
+		expect(a._staticTimeout).toBe(60);
+		expect(a._staticTriggerThreshold).toBe(5);
+		expect(a._staticRenewThreshold).toBe(7);
+		expect(a._staticOnDelay).toBe(2);
+		expect(a._targetAutoDistance).toBe(false);
+		expect(a._targetMaxDistance).toBe(4.0);
+		expect(a._staticAutoDistance).toBe(false);
+		expect(a._staticMinDistance).toBe(1.0);
+		expect(a._staticMaxDistance).toBe(8.0);
+	});
+
 	it("stays on settings page on WS error", async () => {
 		const a = el as any;
 		a._selectedMac = "AA:BB:CC:DD:EE:01";

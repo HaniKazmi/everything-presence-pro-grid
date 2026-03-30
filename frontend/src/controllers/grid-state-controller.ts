@@ -542,6 +542,16 @@ export class GridStateController implements ReactiveController {
 			this.host._temperatureOffset = payload.temperature_offset ?? this.host._temperatureOffset;
 			this.host._humidityOffset = payload.humidity_offset ?? this.host._humidityOffset;
 			this.host._illuminanceOffset = payload.illuminance_offset ?? this.host._illuminanceOffset;
+			this.host._motionTimeout = payload.motion_timeout ?? this.host._motionTimeout;
+			this.host._staticTimeout = payload.static_timeout ?? this.host._staticTimeout;
+			this.host._staticTriggerThreshold = payload.static_trigger_threshold ?? this.host._staticTriggerThreshold;
+			this.host._staticRenewThreshold = payload.static_renew_threshold ?? this.host._staticRenewThreshold;
+			this.host._staticOnDelay = payload.static_on_delay ?? this.host._staticOnDelay;
+			this.host._targetAutoDistance = payload.target_auto_distance ?? this.host._targetAutoDistance;
+			this.host._targetMaxDistance = payload.target_max_distance ?? this.host._targetMaxDistance;
+			this.host._staticAutoDistance = payload.static_auto_distance ?? this.host._staticAutoDistance;
+			this.host._staticMinDistance = payload.static_min_distance ?? this.host._staticMinDistance;
+			this.host._staticMaxDistance = payload.static_max_distance ?? this.host._staticMaxDistance;
 			this.host._dirty = false;
 			this.host._view = "live";
 		} catch (e) {
