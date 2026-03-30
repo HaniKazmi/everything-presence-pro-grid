@@ -1509,7 +1509,7 @@ describe("logging accordion", () => {
 		expect(payload.log_levels.epp).toBe("Info"); // original preserved
 	});
 
-	it("reset button sets dropdown to Warning", () => {
+	it("reset button sets dropdown to None", () => {
 		const sv = createView({
 			logLevels: { system: "Debug" },
 		});
@@ -1534,7 +1534,7 @@ describe("logging accordion", () => {
 		expect(resetBtns.length).toBeGreaterThan(0);
 		(resetBtns[0] as HTMLElement).click();
 
-		expect((sv as any)._overrides.logLevels?.system).toBe("Warning");
+		expect((sv as any)._overrides.logLevels?.system).toBe("None");
 		expect(requestUpdateSpy).toHaveBeenCalled();
 		document.body.removeChild(c);
 	});
