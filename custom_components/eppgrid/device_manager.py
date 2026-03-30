@@ -546,15 +546,23 @@ class DeviceManager:
                 continue
 
             if i == 0:
-                # Zone 0 "rest of room" — enable if device is calibrated
-                if is_calibrated:
+                # Zone 0 "rest of room" — enable if calibrated, but don't
+                # re-enable if already disabled by integration (settings may
+                # have explicitly disabled zone_presence).  When enabling from
+                # settings, _apply_entity_states clears disabled_by first.
+                entry_obj = ent_reg.async_get(entity_id)
+                already_disabled = entry_obj and entry_obj.disabled_by == er.RegistryEntryDisabler.INTEGRATION
+                if is_calibrated and not already_disabled:
                     ent_reg.async_update_entity(entity_id, disabled_by=None, name="Rest of Room Occupancy")
-                else:
+                elif not is_calibrated:
                     ent_reg.async_update_entity(entity_id, disabled_by=er.RegistryEntryDisabler.INTEGRATION)
             elif i <= len(zone_slots) and zone_slots[i - 1] is not None:
-                # Named zone — enable and rename
-                zone = zone_slots[i - 1]
-                ent_reg.async_update_entity(entity_id, disabled_by=None, name=zone["name"])
+                # Named zone — enable and rename (same guard as zone 0)
+                entry_obj = ent_reg.async_get(entity_id)
+                already_disabled = entry_obj and entry_obj.disabled_by == er.RegistryEntryDisabler.INTEGRATION
+                if not already_disabled:
+                    zone = zone_slots[i - 1]
+                    ent_reg.async_update_entity(entity_id, disabled_by=None, name=zone["name"])
             else:
                 # Unused zone — disable
                 ent_reg.async_update_entity(entity_id, disabled_by=er.RegistryEntryDisabler.INTEGRATION)
