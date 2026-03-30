@@ -130,9 +130,6 @@ class DeviceConnection:
     def unsubscribe_logs(self) -> None:
         """Stop receiving device log messages."""
         if self._unsub_logs is not None:
-            # Tell device to stop sending logs
-            if self._client is not None:
-                self._client.subscribe_logs(lambda _: None, log_level=LogLevel.LOG_LEVEL_NONE)
             self._unsub_logs()
             self._unsub_logs = None
             _LOGGER.debug("Unsubscribed from device logs from %s", self._host)
@@ -514,18 +511,11 @@ class DeviceManager:
         log_levels = config.get("log_levels", {})
         any_enabled = any(v != "None" for v in log_levels.values())
         if any_enabled:
-            # Map our level strings to aioesphomeapi LogLevel and Python logging
             esphome_level_map = {
                 "Error": LogLevel.LOG_LEVEL_ERROR,
                 "Warning": LogLevel.LOG_LEVEL_WARN,
                 "Info": LogLevel.LOG_LEVEL_INFO,
                 "Debug": LogLevel.LOG_LEVEL_DEBUG,
-            }
-            python_level_map = {
-                "Error": logging.ERROR,
-                "Warning": logging.WARNING,
-                "Info": logging.INFO,
-                "Debug": logging.DEBUG,
             }
             # Find the most permissive level (highest LogLevel value = most verbose)
             active_levels = [v for v in log_levels.values() if v != "None"]
@@ -533,11 +523,9 @@ class DeviceManager:
                 (esphome_level_map.get(v, LogLevel.LOG_LEVEL_WARN) for v in active_levels),
                 default=LogLevel.LOG_LEVEL_WARN,
             )
-            python_level = min(
-                (python_level_map.get(v, logging.WARNING) for v in active_levels),
-                default=logging.WARNING,
-            )
-            _DEVICE_LOGGER.setLevel(python_level)
+            # Set Python logger to DEBUG so HA doesn't filter any messages;
+            # firmware-side filtering controls what actually gets sent.
+            _DEVICE_LOGGER.setLevel(logging.DEBUG)
             conn.subscribe_logs(esphome_level)
         else:
             conn.unsubscribe_logs()

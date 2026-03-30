@@ -776,7 +776,7 @@ _SETTINGS_KEYS = (
         vol.Required("static_timeout"): vol.Coerce(float),
         vol.Required("static_on_delay"): vol.Coerce(float),
         vol.Optional("entities"): {str: bool},
-        vol.Optional("log_levels"): {str: str},
+        vol.Optional("log_levels"): {str: vol.In(["None", "Error", "Warning", "Info", "Debug"])},
     }
 )
 @websocket_api.async_response

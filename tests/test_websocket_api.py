@@ -575,13 +575,13 @@ class TestWebSocketSettings:
             "static_renew_threshold": 3,
             "static_timeout": 30.0,
             "static_on_delay": 0.0,
-            "log_levels": {"zone_engine": "DEBUG", "tracking": "VERBOSE"},
+            "log_levels": {"epp": "Debug", "system": "Info"},
         }
 
         await call_async_handler(hass, websocket_set_settings, connection, msg)
 
         device_config = mock_dm._store.devices["AA:BB:CC:DD:EE:FF"]
-        assert device_config["log_levels"] == {"zone_engine": "DEBUG", "tracking": "VERBOSE"}
+        assert device_config["log_levels"] == {"epp": "Debug", "system": "Info"}
         # log_levels should NOT be in settings
         assert "log_levels" not in device_config["settings"]
         mock_dm._store.async_save.assert_awaited()
@@ -594,7 +594,7 @@ class TestWebSocketSettings:
         mock_dm = await setup_integration(hass, config_entry)
         # Pre-populate log_levels
         mock_dm._store.devices["AA:BB:CC:DD:EE:FF"] = {
-            "log_levels": {"zone_engine": "DEBUG"},
+            "log_levels": {"epp": "Debug"},
         }
 
         from custom_components.eppgrid.websocket_api import websocket_set_settings
@@ -623,7 +623,7 @@ class TestWebSocketSettings:
 
         device_config = mock_dm._store.devices["AA:BB:CC:DD:EE:FF"]
         # Existing log_levels should remain untouched
-        assert device_config["log_levels"] == {"zone_engine": "DEBUG"}
+        assert device_config["log_levels"] == {"epp": "Debug"}
 
     async def test_set_pipeline(self, hass: HomeAssistant, config_entry: MockConfigEntry) -> None:
         """set_pipeline saves pipeline settings and pushes."""

@@ -868,15 +868,15 @@ class TestPushConfig:
             await conn.async_connect()
             await conn.async_push_config(
                 {
-                    "log_levels": {"zone_engine": "DEBUG", "tracking": "VERBOSE"},
+                    "log_levels": {"system": "Debug", "networking": "Info"},
                 }
             )
 
             assert mock_client.execute_service.await_count == 2
             calls = mock_client.execute_service.call_args_list
             call_data = [call[0][1] for call in calls]
-            assert {"category": "zone_engine", "level": "DEBUG"} in call_data
-            assert {"category": "tracking", "level": "VERBOSE"} in call_data
+            assert {"category": "system", "level": "Debug"} in call_data
+            assert {"category": "networking", "level": "Info"} in call_data
 
     async def test_push_config_log_levels_no_service(self) -> None:
         """push_config skips log levels when epp_set_log_level service is not available."""
@@ -891,7 +891,7 @@ class TestPushConfig:
             await conn.async_connect()
             await conn.async_push_config(
                 {
-                    "log_levels": {"zone_engine": "DEBUG"},
+                    "log_levels": {"epp": "Debug"},
                 }
             )
 
