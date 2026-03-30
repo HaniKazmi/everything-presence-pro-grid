@@ -204,13 +204,25 @@ export class EppSettingsView extends LitElement {
 					const el = e.target as HTMLInputElement;
 					const off = parseFloat(el.value);
 					const val = raw != null ? clamp(raw + off).toFixed(precision) : "\u2014";
-					el.nextElementSibling!.textContent = val;
+					this._setText(el.nextElementSibling!, val);
 					this._overrides[`${offsetKey}Offset`] = off;
 					this._fireDirty();
 				}} /><span class="setting-value">${adjusted}</span> ${unit}</span>
         ${this.resetBtn(0)}${this.infoTip(tip)}
       </div>
     `;
+	}
+
+	/**
+	 * Update display text without replacing Lit's tracked text node.
+	 * Setting .textContent destroys child nodes and breaks Lit's ChildPart
+	 * references, causing "Cannot set properties of null" on the next re-render.
+	 */
+	private _setText(el: Element, text: string): void {
+		const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+		const node = walker.nextNode();
+		if (node) (node as Text).data = text;
+		else el.textContent = text;
 	}
 
 	private _resetSlider(settingRow: HTMLElement, value: number, key?: string) {
@@ -228,10 +240,10 @@ export class EppSettingsView extends LitElement {
 				const dMin = parseFloat(slider.dataset.displayMin ?? "-Infinity");
 				const dMax = parseFloat(slider.dataset.displayMax ?? "Infinity");
 				const adjusted = Math.max(dMin, Math.min(dMax, oldDisplay - oldSliderVal + value));
-				display.textContent = adjusted.toFixed(precision);
+				this._setText(display, adjusted.toFixed(precision));
 				this._overrides[`${slider.dataset.offsetKey}Offset`] = value;
 			} else {
-				display.textContent = String(value);
+				this._setText(display, String(value));
 			}
 		}
 		if (key) {
@@ -326,7 +338,7 @@ export class EppSettingsView extends LitElement {
 								const v = Number(el.value);
 								this._overrides.targetMaxDistance = v;
 								this._fireChange("targetMaxDistance", v);
-								el.nextElementSibling!.textContent = el.value;
+								this._setText(el.nextElementSibling!, el.value);
 							}} /><span class="setting-value">${targetVal}</span><span class="setting-unit">m</span></span>
             ${this.resetBtn(6, "targetMaxDistance")}${this.infoTip(this.localize("info.target_max_distance"))}
           </div>
@@ -363,7 +375,7 @@ export class EppSettingsView extends LitElement {
 								}
 								this._overrides.staticMinDistance = v;
 								this._fireChange("staticMinDistance", v);
-								el.nextElementSibling!.textContent = String(v);
+								this._setText(el.nextElementSibling!, String(v));
 							}} /><span class="setting-value">${this.staticAutoDistance ? 0.3 : this.staticMinDistance}</span><span class="setting-unit">m</span></span>
             ${this.resetBtn(0.3, "staticMinDistance")}${this.infoTip(this.localize("info.static_min_distance"))}
           </div>
@@ -380,7 +392,7 @@ export class EppSettingsView extends LitElement {
 								}
 								this._overrides.staticMaxDistance = v;
 								this._fireChange("staticMaxDistance", v);
-								el.nextElementSibling!.textContent = String(v);
+								this._setText(el.nextElementSibling!, String(v));
 							}} /><span class="setting-value">${staticMaxVal}</span><span class="setting-unit">m</span></span>
             ${this.resetBtn(16, "staticMaxDistance")}${this.infoTip(this.localize("info.static_max_distance"))}
           </div>
@@ -399,7 +411,7 @@ export class EppSettingsView extends LitElement {
             <span class="setting-input-unit"><input type="range" class="setting-range" .value=${String(this.motionTimeout)} min="0" max="120" step="1" @input=${(e: Event) => {
 							const el = e.target as HTMLInputElement;
 							this._overrides.motionTimeout = Number(el.value);
-							el.nextElementSibling!.textContent = el.value;
+							this._setText(el.nextElementSibling!, el.value);
 							this._fireDirty();
 						}} /><span class="setting-value">${this.motionTimeout}</span><span class="setting-unit">s</span></span>
             ${this.resetBtn(5, "motionTimeout")}${this.infoTip(this.localize("info.motion_timeout"))}
@@ -412,7 +424,7 @@ export class EppSettingsView extends LitElement {
             <span class="setting-input-unit"><input type="range" class="setting-range" .value=${String(this.staticTimeout)} min="0" max="120" step="1" @input=${(e: Event) => {
 							const el = e.target as HTMLInputElement;
 							this._overrides.staticTimeout = Number(el.value);
-							el.nextElementSibling!.textContent = el.value;
+							this._setText(el.nextElementSibling!, el.value);
 							this._fireDirty();
 						}} /><span class="setting-value">${this.staticTimeout}</span><span class="setting-unit">s</span></span>
             ${this.resetBtn(30, "staticTimeout")}${this.infoTip(this.localize("info.static_timeout"))}
@@ -422,7 +434,7 @@ export class EppSettingsView extends LitElement {
             <span class="setting-input-unit"><input type="range" class="setting-range" min="0" max="9" .value=${String(this.staticTriggerThreshold)} @input=${(e: Event) => {
 							const el = e.target as HTMLInputElement;
 							this._overrides.staticTriggerThreshold = Number(el.value);
-							el.nextElementSibling!.textContent = el.value;
+							this._setText(el.nextElementSibling!, el.value);
 							this._fireDirty();
 						}} /><span class="setting-value">${this.staticTriggerThreshold}</span><span class="setting-unit"></span></span>
             ${this.resetBtn(3, "staticTriggerThreshold")}${this.infoTip(this.localize("info.trigger_threshold"))}
@@ -432,7 +444,7 @@ export class EppSettingsView extends LitElement {
             <span class="setting-input-unit"><input type="range" class="setting-range" min="0" max="9" .value=${String(this.staticRenewThreshold)} @input=${(e: Event) => {
 							const el = e.target as HTMLInputElement;
 							this._overrides.staticRenewThreshold = Number(el.value);
-							el.nextElementSibling!.textContent = el.value;
+							this._setText(el.nextElementSibling!, el.value);
 							this._fireDirty();
 						}} /><span class="setting-value">${this.staticRenewThreshold}</span><span class="setting-unit"></span></span>
             ${this.resetBtn(3, "staticRenewThreshold")}${this.infoTip(this.localize("info.renew_threshold"))}
@@ -442,7 +454,7 @@ export class EppSettingsView extends LitElement {
             <span class="setting-input-unit"><input type="range" class="setting-range" .value=${String(this.staticOnDelay)} min="0" max="30" step="0.5" @input=${(e: Event) => {
 							const el = e.target as HTMLInputElement;
 							this._overrides.staticOnDelay = Number(el.value);
-							el.nextElementSibling!.textContent = el.value;
+							this._setText(el.nextElementSibling!, el.value);
 							this._fireDirty();
 						}} /><span class="setting-value">${this.staticOnDelay}</span><span class="setting-unit">s</span></span>
             ${this.resetBtn(0, "staticOnDelay")}${this.infoTip(this.localize("info.presence_delay"))}

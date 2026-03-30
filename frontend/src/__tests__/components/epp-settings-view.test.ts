@@ -284,6 +284,38 @@ describe("renderSensitivities", () => {
 		}
 		document.body.removeChild(c);
 	});
+
+	it("slider DOM update preserves Lit text node for safe re-render", () => {
+		const sv = createView({ illuminanceOffset: 0 });
+		sv.sensorState = {
+			occupancy: false, static_presence: false, motion_presence: false,
+			target_presence: false, illuminance: 100, temperature: null,
+			humidity: null, co2: null,
+		};
+		const tpl = (sv as any).renderEnvOffset(
+			"Illuminance", 100, "illuminance", -500, 500, 1, "lux", 1, "Tip", 0,
+		);
+		const c = renderTo(tpl);
+		const span = c.querySelector(".setting-value")!;
+		// Capture Lit's original text node
+		const origTextNode = [...span.childNodes].find(
+			(n) => n.nodeType === Node.TEXT_NODE,
+		);
+		expect(origTextNode).toBeDefined();
+
+		// Simulate slider interaction — this should NOT replace the text node
+		const range = c.querySelector(".setting-range") as HTMLInputElement;
+		range.value = "10";
+		range.dispatchEvent(new Event("input"));
+
+		// The SAME text node should still be in the DOM (not replaced)
+		const afterTextNode = [...span.childNodes].find(
+			(n) => n.nodeType === Node.TEXT_NODE,
+		);
+		expect(afterTextNode).toBe(origTextNode);
+		expect(afterTextNode!.textContent).toBe("110.0");
+		document.body.removeChild(c);
+	});
 });
 
 describe("renderEnvOffset", () => {
