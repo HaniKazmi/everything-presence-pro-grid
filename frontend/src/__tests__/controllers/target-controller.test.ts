@@ -56,6 +56,19 @@ function mockHost() {
 
 		// View mode
 		_view: "live" as "live" | "editor" | "settings",
+
+		// Shadow root mock for DOM-based debug log
+		_mockBackendContainer: null as HTMLDivElement | null,
+		_mockFrontendContainer: null as HTMLDivElement | null,
+		get shadowRoot() {
+			return {
+				getElementById: (id: string) => {
+					if (id === "backend-debug-log-scroll") return this._mockBackendContainer;
+					if (id === "debug-log-scroll") return this._mockFrontendContainer;
+					return null;
+				},
+			} as any;
+		},
 	};
 }
 
@@ -374,59 +387,88 @@ describe("TargetController", () => {
 	// appendBackendDebugLog
 	// -------------------------------------------------------------------------
 	describe("appendBackendDebugLog", () => {
+		let container: HTMLDivElement;
+
 		beforeEach(() => {
 			host._zoneConfigs = [{ name: "Lounge", color: "#fff", type: "normal" }];
+			container = document.createElement("div");
+			container.id = "backend-debug-log-scroll";
+			host._mockBackendContainer = container;
 		});
 
-		it("appends an enriched line with a timestamp", () => {
+		it("appends a div to the container with enriched content", () => {
+			ctrl.appendBackendDebugLog("T0:Z1:A:5|Z1:O:1");
+			expect(container.children.length).toBe(1);
+			expect(container.children[0].textContent).toContain("Lounge");
+			expect(container.children[0].className).toBe("debug-log-line");
+		});
+
+		it("still maintains the data array for copy-all", () => {
 			ctrl.appendBackendDebugLog("T0:Z1:A:5|Z1:O:1");
 			expect(host._backendDebugLogLines.length).toBe(1);
-			// Line should contain enriched content
 			expect(host._backendDebugLogLines[0]).toContain("Lounge");
 		});
 
 		it("deduplicates consecutive identical lines", () => {
 			ctrl.appendBackendDebugLog("T0:Z1:A:5|Z1:O:1");
 			ctrl.appendBackendDebugLog("T0:Z1:A:5|Z1:O:1");
+			expect(container.children.length).toBe(1);
 			expect(host._backendDebugLogLines.length).toBe(1);
 		});
 
 		it("appends when line differs from previous", () => {
 			ctrl.appendBackendDebugLog("T0:Z1:A:5|Z1:O:1");
 			ctrl.appendBackendDebugLog("|");
+			expect(container.children.length).toBe(2);
 			expect(host._backendDebugLogLines.length).toBe(2);
 		});
 
-		it("caps lines at DEBUG_LOG_MAX", () => {
-			// Use unique lines to avoid deduplication
+		it("removes excess DOM children when over DEBUG_LOG_MAX", () => {
 			for (let i = 0; i <= DEBUG_LOG_MAX; i++) {
-				// Reset prev so every push goes through
 				host._backendDebugLogPrev = "";
 				ctrl.appendBackendDebugLog(`T0:Z1:A:${i}|`);
 			}
-			expect(host._backendDebugLogLines.length).toBeLessThanOrEqual(
-				DEBUG_LOG_MAX,
-			);
+			expect(container.children.length).toBeLessThanOrEqual(DEBUG_LOG_MAX);
+			expect(host._backendDebugLogLines.length).toBeLessThanOrEqual(DEBUG_LOG_MAX);
 		});
 
-		it("calls host.requestUpdate after appending", () => {
-			ctrl.appendBackendDebugLog("T0:Z1:A:5|Z1:O:1");
-			expect(host.requestUpdate).toHaveBeenCalled();
-		});
-
-		it("does NOT call requestUpdate when line is duplicate", () => {
-			ctrl.appendBackendDebugLog("T0:Z1:A:5|Z1:O:1");
-			host.requestUpdate.mockClear();
+		it("does NOT call host.requestUpdate", () => {
 			ctrl.appendBackendDebugLog("T0:Z1:A:5|Z1:O:1");
 			expect(host.requestUpdate).not.toHaveBeenCalled();
 		});
 
+		it("does NOT call requestUpdate when line is duplicate", () => {
+			ctrl.appendBackendDebugLog("T0:Z1:A:5|Z1:O:1");
+			ctrl.appendBackendDebugLog("T0:Z1:A:5|Z1:O:1");
+			expect(host.requestUpdate).not.toHaveBeenCalled();
+		});
+
+		it("auto-scrolls the container to bottom", () => {
+			Object.defineProperty(container, "scrollHeight", { value: 500, configurable: true });
+			ctrl.appendBackendDebugLog("T0:Z1:A:5|Z1:O:1");
+			expect(container.scrollTop).toBe(500);
+		});
+
+		it("clears placeholder children before first append", () => {
+			const placeholder = document.createElement("div");
+			placeholder.textContent = "Waiting for events...";
+			container.appendChild(placeholder);
+
+			ctrl.appendBackendDebugLog("T0:Z1:A:5|Z1:O:1");
+			expect(container.children.length).toBe(1);
+			expect(container.children[0].textContent).toContain("Lounge");
+		});
+
+		it("handles missing container gracefully", () => {
+			host._mockBackendContainer = null;
+			expect(() => ctrl.appendBackendDebugLog("T0:Z1:A:5|Z1:O:1")).not.toThrow();
+			expect(host._backendDebugLogLines.length).toBe(1);
+		});
+
 		it("skips sensor-prefix injection when log already has 3 sections", () => {
-			// 3-section format: sensors|targets|zones — no injection should happen
 			ctrl.appendBackendDebugLog("S:A M:I Occ:1|T0:Z1:A:5|Z1:O:1");
 			expect(host._backendDebugLogLines.length).toBe(1);
 			expect(host._backendDebugLogLines[0]).toContain("Static: active");
-			// The injected sensor prefix (S:I/S:A) should not appear twice
 			expect(
 				(host._backendDebugLogLines[0].match(/Static:/g) ?? []).length,
 			).toBe(1);

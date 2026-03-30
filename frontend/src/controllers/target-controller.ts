@@ -257,22 +257,44 @@ export class TargetController implements ReactiveController {
 		}
 
 		const body = this.enrichDebugLog(enrichedRaw);
-		if (body !== this.host._backendDebugLogPrev) {
-			this.host._backendDebugLogPrev = body;
-			const ts = new Date().toLocaleTimeString("en-GB", {
-				hour12: false,
-				hour: "2-digit",
-				minute: "2-digit",
-				second: "2-digit",
-				fractionalSecondDigits: 1,
-			});
-			this.host._backendDebugLogLines.push(`${ts} ${body}`);
-			if (this.host._backendDebugLogLines.length > DEBUG_LOG_MAX) {
-				this.host._backendDebugLogLines = this.host._backendDebugLogLines.slice(
-					-DEBUG_LOG_MAX,
-				);
+		if (body === this.host._backendDebugLogPrev) return;
+
+		this.host._backendDebugLogPrev = body;
+		const ts = new Date().toLocaleTimeString("en-GB", {
+			hour12: false,
+			hour: "2-digit",
+			minute: "2-digit",
+			second: "2-digit",
+			fractionalSecondDigits: 1,
+		});
+		const line = `${ts} ${body}`;
+		this.host._backendDebugLogLines.push(line);
+		if (this.host._backendDebugLogLines.length > DEBUG_LOG_MAX) {
+			this.host._backendDebugLogLines = this.host._backendDebugLogLines.slice(
+				-DEBUG_LOG_MAX,
+			);
+		}
+
+		// Direct DOM append — no Lit re-render needed
+		const container = this.host.shadowRoot?.getElementById(
+			"backend-debug-log-scroll",
+		);
+		if (container) {
+			// Clear placeholder on first real line
+			if (
+				container.children.length === 1 &&
+				!container.children[0].classList.contains("debug-log-line")
+			) {
+				container.innerHTML = "";
 			}
-			this.host.requestUpdate();
+			const div = document.createElement("div");
+			div.className = "debug-log-line";
+			div.textContent = line;
+			container.appendChild(div);
+			while (container.children.length > DEBUG_LOG_MAX) {
+				container.firstChild?.remove();
+			}
+			container.scrollTop = container.scrollHeight;
 		}
 	}
 
@@ -281,22 +303,43 @@ export class TargetController implements ReactiveController {
 	 * Deduplicates against previous line and caps at DEBUG_LOG_MAX.
 	 */
 	private _appendFrontendDebugLog(body: string): void {
-		if (body !== this.host._debugLogPrev) {
-			this.host._debugLogPrev = body;
-			const ts = new Date().toLocaleTimeString("en-GB", {
-				hour12: false,
-				hour: "2-digit",
-				minute: "2-digit",
-				second: "2-digit",
-				fractionalSecondDigits: 1,
-			});
-			this.host._debugLogLines.push(`${ts} ${body}`);
-			if (this.host._debugLogLines.length > DEBUG_LOG_MAX) {
-				this.host._debugLogLines = this.host._debugLogLines.slice(
-					-DEBUG_LOG_MAX,
-				);
+		if (body === this.host._debugLogPrev) return;
+
+		this.host._debugLogPrev = body;
+		const ts = new Date().toLocaleTimeString("en-GB", {
+			hour12: false,
+			hour: "2-digit",
+			minute: "2-digit",
+			second: "2-digit",
+			fractionalSecondDigits: 1,
+		});
+		const line = `${ts} ${body}`;
+		this.host._debugLogLines.push(line);
+		if (this.host._debugLogLines.length > DEBUG_LOG_MAX) {
+			this.host._debugLogLines = this.host._debugLogLines.slice(
+				-DEBUG_LOG_MAX,
+			);
+		}
+
+		// Direct DOM append — no Lit re-render needed
+		const container = this.host.shadowRoot?.getElementById(
+			"debug-log-scroll",
+		);
+		if (container) {
+			if (
+				container.children.length === 1 &&
+				!container.children[0].classList.contains("debug-log-line")
+			) {
+				container.innerHTML = "";
 			}
-			this.host.requestUpdate();
+			const div = document.createElement("div");
+			div.className = "debug-log-line";
+			div.textContent = line;
+			container.appendChild(div);
+			while (container.children.length > DEBUG_LOG_MAX) {
+				container.firstChild?.remove();
+			}
+			container.scrollTop = container.scrollHeight;
 		}
 	}
 
