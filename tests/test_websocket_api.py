@@ -629,12 +629,28 @@ class TestEntityMapping:
         assert _entity_key_for_object_id("target_0_position") == "target_xy"
         assert _entity_key_for_object_id("target_2_position") == "target_xy"
 
+    def test_entity_key_mapping_underscore_format(self) -> None:
+        """Full unique_ids with underscore format (older ESPHome) map correctly."""
+        from custom_components.eppgrid.websocket_api import _entity_key_for_object_id
+
+        # Room-level entities
+        assert _entity_key_for_object_id("esphome_aabbccddeeff_occupancy") == "room_occupancy"
+        assert _entity_key_for_object_id("esphome_aabbccddeeff_static_presence") == "room_static_presence"
+        assert _entity_key_for_object_id("esphome_aabbccddeeff_motion_presence") == "room_motion_presence"
+        assert _entity_key_for_object_id("esphome_aabbccddeeff_temperature") == "env_temperature"
+        # Zone entities
+        assert _entity_key_for_object_id("esphome_aabbccddeeff_zone_0_occupancy") == "zone_presence"
+        assert _entity_key_for_object_id("esphome_aabbccddeeff_zone_7_occupancy") == "zone_presence"
+        # Target entities
+        assert _entity_key_for_object_id("esphome_aabbccddeeff_target_0_position") == "target_xy"
+
     def test_entity_key_mapping_unknown(self) -> None:
         """Unknown object_ids return None."""
         from custom_components.eppgrid.websocket_api import _entity_key_for_object_id
 
         assert _entity_key_for_object_id("config_protocol") is None
         assert _entity_key_for_object_id("zone_engine_version") is None
+        assert _entity_key_for_object_id("esphome_aabbccddeeff_zone_engine_version") is None
         assert _entity_key_for_object_id("led") is None
         assert _entity_key_for_object_id("relay_output") is None
 
