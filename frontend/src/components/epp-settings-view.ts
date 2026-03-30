@@ -205,9 +205,44 @@ export class EppSettingsView extends LitElement {
 					this._overrides[`${offsetKey}Offset`] = off;
 					this._fireDirty();
 				}} /><span class="setting-value">${adjusted}</span> ${unit}</span>
-        ${this.infoTip(tip)}
+        ${this.resetBtn(0)}${this.infoTip(tip)}
       </div>
     `;
+	}
+
+	private _resetSlider(settingRow: HTMLElement, value: number, key?: string) {
+		const slider = settingRow.querySelector(".setting-range") as HTMLInputElement;
+		if (!slider) return;
+		const oldSliderVal = parseFloat(slider.value);
+		slider.value = String(value);
+		const display = slider.nextElementSibling as HTMLElement;
+		if (display) {
+			const oldDisplay = parseFloat(display.textContent || "");
+			if (slider.dataset.offsetKey && !Number.isNaN(oldDisplay)) {
+				// Env offset: display shows adjusted reading (raw + offset).
+				// Compute raw from current state and apply new offset.
+				const step = parseFloat(slider.step) || 1;
+				const precision = step < 1 ? 1 : 0;
+				display.textContent = (oldDisplay - oldSliderVal + value).toFixed(precision);
+				this._overrides[`${slider.dataset.offsetKey}Offset`] = value;
+			} else {
+				display.textContent = String(value);
+			}
+		}
+		if (key) {
+			this._overrides[key] = value;
+		}
+		// Enable save button directly — no events, no reactive changes
+		const btn = this.shadowRoot?.querySelector(".save-btn") as HTMLButtonElement;
+		if (btn) btn.disabled = false;
+	}
+
+	resetBtn(defaultValue: number, key?: string) {
+		return html`<span class="setting-info" @click=${(e: Event) => {
+			e.stopPropagation();
+			const row = (e.currentTarget as HTMLElement).closest(".setting-row") as HTMLElement;
+			if (row) this._resetSlider(row, defaultValue, key);
+		}}><ha-icon icon="mdi:restart"></ha-icon></span>`;
 	}
 
 	infoTip(text: string) {
@@ -288,7 +323,7 @@ export class EppSettingsView extends LitElement {
 								this._fireChange("targetMaxDistance", v);
 								el.nextElementSibling!.textContent = el.value;
 							}} /><span class="setting-value">${targetVal}</span><span class="setting-unit">m</span></span>
-            ${this.infoTip(this.localize("info.target_max_distance"))}
+            ${this.resetBtn(6, "targetMaxDistance")}${this.infoTip(this.localize("info.target_max_distance"))}
           </div>
         </div>
         <div class="setting-group">
@@ -325,7 +360,7 @@ export class EppSettingsView extends LitElement {
 								this._fireChange("staticMinDistance", v);
 								el.nextElementSibling!.textContent = String(v);
 							}} /><span class="setting-value">${this.staticAutoDistance ? 0.3 : this.staticMinDistance}</span><span class="setting-unit">m</span></span>
-            ${this.infoTip(this.localize("info.static_min_distance"))}
+            ${this.resetBtn(0.3, "staticMinDistance")}${this.infoTip(this.localize("info.static_min_distance"))}
           </div>
           <div class="setting-row" style="${this.staticAutoDistance ? autoStyle : ""}">
             <label>${this.localize("settings.max_distance")}</label>
@@ -342,7 +377,7 @@ export class EppSettingsView extends LitElement {
 								this._fireChange("staticMaxDistance", v);
 								el.nextElementSibling!.textContent = String(v);
 							}} /><span class="setting-value">${staticMaxVal}</span><span class="setting-unit">m</span></span>
-            ${this.infoTip(this.localize("info.static_max_distance"))}
+            ${this.resetBtn(16, "staticMaxDistance")}${this.infoTip(this.localize("info.static_max_distance"))}
           </div>
         </div>
       </div>
@@ -362,7 +397,7 @@ export class EppSettingsView extends LitElement {
 							el.nextElementSibling!.textContent = el.value;
 							this._fireDirty();
 						}} /><span class="setting-value">${this.motionTimeout}</span><span class="setting-unit">s</span></span>
-            ${this.infoTip(this.localize("info.motion_timeout"))}
+            ${this.resetBtn(5, "motionTimeout")}${this.infoTip(this.localize("info.motion_timeout"))}
           </div>
         </div>
         <div class="setting-group">
@@ -375,7 +410,7 @@ export class EppSettingsView extends LitElement {
 							el.nextElementSibling!.textContent = el.value;
 							this._fireDirty();
 						}} /><span class="setting-value">${this.staticTimeout}</span><span class="setting-unit">s</span></span>
-            ${this.infoTip(this.localize("info.static_timeout"))}
+            ${this.resetBtn(30, "staticTimeout")}${this.infoTip(this.localize("info.static_timeout"))}
           </div>
           <div class="setting-row">
             <label>${this.localize("settings.trigger_threshold")}</label>
@@ -385,7 +420,7 @@ export class EppSettingsView extends LitElement {
 							el.nextElementSibling!.textContent = el.value;
 							this._fireDirty();
 						}} /><span class="setting-value">${this.staticTriggerThreshold}</span><span class="setting-unit"></span></span>
-            ${this.infoTip(this.localize("info.trigger_threshold"))}
+            ${this.resetBtn(3, "staticTriggerThreshold")}${this.infoTip(this.localize("info.trigger_threshold"))}
           </div>
           <div class="setting-row">
             <label>${this.localize("settings.renew_threshold")}</label>
@@ -395,7 +430,7 @@ export class EppSettingsView extends LitElement {
 							el.nextElementSibling!.textContent = el.value;
 							this._fireDirty();
 						}} /><span class="setting-value">${this.staticRenewThreshold}</span><span class="setting-unit"></span></span>
-            ${this.infoTip(this.localize("info.renew_threshold"))}
+            ${this.resetBtn(3, "staticRenewThreshold")}${this.infoTip(this.localize("info.renew_threshold"))}
           </div>
           <div class="setting-row">
             <label>${this.localize("settings.presence_delay")}</label>
@@ -405,7 +440,7 @@ export class EppSettingsView extends LitElement {
 							el.nextElementSibling!.textContent = el.value;
 							this._fireDirty();
 						}} /><span class="setting-value">${this.staticOnDelay}</span><span class="setting-unit">s</span></span>
-            ${this.infoTip(this.localize("info.presence_delay"))}
+            ${this.resetBtn(0, "staticOnDelay")}${this.infoTip(this.localize("info.presence_delay"))}
           </div>
         </div>
         <div class="setting-group">
