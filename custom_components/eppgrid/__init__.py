@@ -52,6 +52,7 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         await manager.async_stop()
     # Allow WS commands to be re-registered on next setup
     from .websocket_api import _REGISTERED
+
     _REGISTERED.discard(DOMAIN)
     return True
 

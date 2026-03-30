@@ -336,8 +336,8 @@ _ENTITY_OBJECT_ID_MAP: dict[str, str] = {
 
 # Prefix patterns: object_ids starting with these prefixes map to a category key.
 _ENTITY_PREFIX_MAP: list[tuple[str, str]] = [
-    ("zone_", "_occupancy", "zone_presence"),   # zone_0_occupancy, zone_1_occupancy, ...
-    ("target_", "_position", "target_xy"),      # target_0_position, target_1_position, ...
+    ("zone_", "_occupancy", "zone_presence"),  # zone_0_occupancy, zone_1_occupancy, ...
+    ("target_", "_position", "target_xy"),  # target_0_position, target_1_position, ...
 ]
 
 
@@ -417,9 +417,7 @@ def _apply_entity_states(hass: HomeAssistant, mac: str, entities: dict[str, bool
         if desired:
             ent_reg.async_update_entity(entry.entity_id, disabled_by=None)
         else:
-            ent_reg.async_update_entity(
-                entry.entity_id, disabled_by=er.RegistryEntryDisabler.INTEGRATION
-            )
+            ent_reg.async_update_entity(entry.entity_id, disabled_by=er.RegistryEntryDisabler.INTEGRATION)
 
 
 def _build_entity_key_map(entities: list) -> dict[str, int]:
@@ -807,7 +805,7 @@ async def websocket_set_settings(
     if entities:
         _apply_entity_states(hass, mac, entities)
         # Zone presence needs layout-aware handling: enable zone_0 + named zones
-        if "zone_presence" in entities and entities["zone_presence"]:
+        if entities.get("zone_presence"):
             # Enable zone entities with layout-aware naming
             layout = device_config.get("room_layout", {})
             from .const import MAX_ZONES

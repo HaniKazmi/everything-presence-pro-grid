@@ -122,9 +122,7 @@ class TestWebSocketGetConfig:
         result = connection.send_result.call_args[0]
         assert result[1]["config"]["calibration"]["perspective"] == [1.0] * 8
 
-    async def test_get_config_includes_entity_states(
-        self, hass: HomeAssistant, config_entry: MockConfigEntry
-    ) -> None:
+    async def test_get_config_includes_entity_states(self, hass: HomeAssistant, config_entry: MockConfigEntry) -> None:
         """get_config includes entity enabled/disabled states from HA registry."""
         mock_dm = await setup_integration(hass, config_entry)
         mock_dm._store.devices["AA:BB:CC:DD:EE:FF"] = {"settings": {}}
@@ -421,9 +419,7 @@ class TestWebSocketSettings:
 
         from custom_components.eppgrid.websocket_api import websocket_set_settings
 
-        with patch(
-            "custom_components.eppgrid.websocket_api._apply_entity_states"
-        ) as mock_apply:
+        with patch("custom_components.eppgrid.websocket_api._apply_entity_states") as mock_apply:
             connection = MagicMock()
             msg = {
                 "id": 11,
@@ -480,9 +476,7 @@ class TestWebSocketSettings:
             "entities": {"zone_presence": False},
         }
 
-        with patch(
-            "custom_components.eppgrid.websocket_api._apply_entity_states"
-        ):
+        with patch("custom_components.eppgrid.websocket_api._apply_entity_states"):
             mock_dm.async_update_zone_entities = AsyncMock()
             await call_async_handler(hass, websocket_set_settings, connection, msg)
 
@@ -519,9 +513,7 @@ class TestWebSocketSettings:
             "entities": {"zone_presence": True},
         }
 
-        with patch(
-            "custom_components.eppgrid.websocket_api._apply_entity_states"
-        ):
+        with patch("custom_components.eppgrid.websocket_api._apply_entity_states"):
             mock_dm.async_update_zone_entities = AsyncMock()
             await call_async_handler(hass, websocket_set_settings, connection, msg)
 
