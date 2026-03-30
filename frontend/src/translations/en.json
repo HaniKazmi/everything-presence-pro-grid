@@ -124,7 +124,7 @@
 		"furthest_point": "Current furthest point from sensor:",
 		"logging": "Logging",
 		"log_system": "System",
-		"log_epp": "EPP",
+		"log_epp": "Zone Engine",
 		"log_led": "LED",
 		"log_networking": "Network",
 		"log_ble": "Bluetooth",

@@ -288,7 +288,7 @@ api:
             if (category == "system") {
               logger.set_log_level(log_level);
             } else if (category == "epp") {
-              logger.set_log_level("epp", log_level);
+              logger.set_log_level("zones", log_level);
             } else if (category == "led") {
               logger.set_log_level("control_leds", log_level);
             } else if (category == "networking") {
