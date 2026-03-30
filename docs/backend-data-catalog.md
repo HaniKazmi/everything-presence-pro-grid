@@ -158,13 +158,22 @@ Returns discovered EPP devices.
             "available": true,
             "configured": true,
             "config_protocol_status": "compatible",
-            "current_connection_count": 1
+            "current_connection_count": 1,
+            "bluetooth_enabled": false,
+            "co2_enabled": true,
+            "ethernet_enabled": false,
+            "board_revision": "v2",
+            "sensor_variant": "ld2450",
+            "firmware_channel": "stable",
+            "model": "epp-pro"
         }
     ]
 }
 ```
 
 `config_protocol_status` is `"compatible"`, `"firmware_behind"`, or `"firmware_ahead"` — comparing the device's `Config Protocol` sensor value to the integration's `CONFIG_PROTOCOL_VERSION`.
+
+The build flag fields (`bluetooth_enabled`, `co2_enabled`, `ethernet_enabled`, `board_revision`, `sensor_variant`, `firmware_channel`, `model`) are optional — they are only present after the device has connected and build flags have been fetched via the `get_build_flags` API action.
 
 ### `get_config`
 

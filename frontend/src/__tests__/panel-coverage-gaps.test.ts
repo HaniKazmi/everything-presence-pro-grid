@@ -1233,8 +1233,12 @@ describe("_renderHeader ha-select handlers", () => {
 		expect(select).not.toBeNull();
 
 		// Simulate selecting the same mac — should be a no-op
-		select.value = a._selectedMac;
-		select.dispatchEvent(new Event("selected", { bubbles: true }));
+		select.dispatchEvent(
+			new CustomEvent("selected", {
+				bubbles: true,
+				detail: { value: a._selectedMac },
+			}),
+		);
 
 		// No device change should have occurred
 		expect(a._selectedMac).toBe("AA:BB:CC:DD:EE:01");

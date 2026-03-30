@@ -103,6 +103,9 @@ export class EPPGridPanel extends LitElement {
 	@state() private _staticTriggerThreshold = 3;
 	@state() private _staticRenewThreshold = 3;
 	@state() private _staticOnDelay = 0;
+	@state() private _logLevels: Record<string, string> = {};
+	@state() private _bluetoothEnabled = false;
+	@state() private _co2Enabled = false;
 	@state() private _entitiesConfig: Record<string, any> = {};
 	@state() private _sidebarTab: "zones" | "furniture" | "live" = "zones";
 	@state() private _showDeleteCalibrationDialog = false;
@@ -389,6 +392,11 @@ export class EPPGridPanel extends LitElement {
 		if (config) {
 			this._applyConfig(config);
 		}
+		const dev = this._devices.find((d) => d.mac === mac);
+		if (dev) {
+			this._bluetoothEnabled = dev.bluetooth_enabled ?? false;
+			this._co2Enabled = dev.co2_enabled ?? false;
+		}
 	}
 
 	private _applyConfig(config: any): void {
@@ -429,6 +437,8 @@ export class EPPGridPanel extends LitElement {
 		this._staticTimeout = s.staticTimeout;
 		this._staticOnDelay = s.staticOnDelay;
 		this._entitiesConfig = s.entities;
+		// Apply log levels
+		this._logLevels = parsed.settings.logLevels;
 	}
 
 	private _closeDeviceSession(): void {
@@ -972,9 +982,8 @@ export class EPPGridPanel extends LitElement {
         <ha-select
           .value=${this._selectedMac}
           .options=${this._devices.map((d) => ({ value: d.mac, label: d.name }))}
-          @selected=${(e: Event) => {
-						const select = e.target as any;
-						const val = select.value;
+          @selected=${(e: CustomEvent<{ value: string }>) => {
+						const val = e.detail.value;
 						if (!val || val === this._selectedMac) return;
 						this._guardNavigation(async () => {
 							this._closeDeviceSession();
@@ -1286,6 +1295,9 @@ export class EPPGridPanel extends LitElement {
           .staticTriggerThreshold=${this._staticTriggerThreshold}
           .staticRenewThreshold=${this._staticRenewThreshold}
           .staticOnDelay=${this._staticOnDelay}
+          .logLevels=${this._logLevels}
+          .bluetoothEnabled=${this._bluetoothEnabled}
+          .co2Enabled=${this._co2Enabled}
           .localize=${this._localize}
           @accordion-toggle=${(e: CustomEvent) => {
 						this._openAccordions = e.detail;

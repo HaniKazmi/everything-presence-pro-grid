@@ -144,6 +144,9 @@ Manages on-demand aioesphomeapi connections for frontend sessions. Pushes
 stored config to devices on save and on reconnect via temporary connections
 (separate from the frontend session to avoid consuming API slots or racing
 with UI subscriptions). Manages ESPHome zone entity enable/disable/rename.
+Fetches build flags from firmware on connect. Subscribes to device log
+stream when any log category is set above None, re-emitting messages under
+`custom_components.eppgrid.device_manager.device_logs`.
 
 ### Storage (`storage.py`)
 
@@ -191,7 +194,7 @@ device selector, global dialogs, navigation guards, controller creation.
 **Composite views:**
 - `<epp-live-view>` — live grid + sidebar + menu dropdown
 - `<epp-editor-view>` — editable grid + zone/furniture sidebars + debug log
-- `<epp-settings-view>` — accordion panels for detection ranges, reporting, env offsets
+- `<epp-settings-view>` — accordion panels for detection ranges, reporting, env offsets, log levels
 - `<epp-wizard>` — calibration flow (guide, 4-corner capture, perspective solve)
 
 **Shared components:**

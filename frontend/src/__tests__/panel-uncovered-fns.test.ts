@@ -367,12 +367,13 @@ describe("_renderHeader device selector", () => {
 		const tpl = a._renderHeader();
 		const c = renderTo(tpl);
 		const select = c.querySelector("ha-select")!;
-		// The @selected handler reads e.target.value
-		Object.defineProperty(select, "value", {
-			value: "AA:BB:CC:DD:EE:02",
-			writable: true,
-		});
-		select.dispatchEvent(new Event("selected", { bubbles: true }));
+		// The @selected handler reads e.detail.value
+		select.dispatchEvent(
+			new CustomEvent("selected", {
+				bubbles: true,
+				detail: { value: "AA:BB:CC:DD:EE:02" },
+			}),
+		);
 
 		expect(guardSpy).toHaveBeenCalled();
 	});

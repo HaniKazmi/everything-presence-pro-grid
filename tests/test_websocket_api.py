@@ -551,6 +551,80 @@ class TestWebSocketSettings:
         settings = mock_dm._store.devices["AA:BB:CC:DD:EE:FF"]["settings"]
         assert "entities" not in settings
 
+    async def test_set_settings_persists_log_levels(self, hass: HomeAssistant, config_entry: MockConfigEntry) -> None:
+        """set_settings stores log_levels in device_config['log_levels'], separate from settings."""
+        mock_dm = await setup_integration(hass, config_entry)
+
+        from custom_components.eppgrid.websocket_api import websocket_set_settings
+
+        connection = MagicMock()
+        msg = {
+            "id": 11,
+            "type": "eppgrid/set_settings",
+            "mac": "AA:BB:CC:DD:EE:FF",
+            "temperature_offset": 0.0,
+            "humidity_offset": 0.0,
+            "illuminance_offset": 0.0,
+            "motion_timeout": 5.0,
+            "target_auto_distance": True,
+            "target_max_distance": 6.0,
+            "static_auto_distance": False,
+            "static_min_distance": 0.3,
+            "static_max_distance": 8.0,
+            "static_trigger_threshold": 3,
+            "static_renew_threshold": 3,
+            "static_timeout": 30.0,
+            "static_on_delay": 0.0,
+            "log_levels": {"epp": "Debug", "system": "Info"},
+        }
+
+        await call_async_handler(hass, websocket_set_settings, connection, msg)
+
+        device_config = mock_dm._store.devices["AA:BB:CC:DD:EE:FF"]
+        assert device_config["log_levels"] == {"epp": "Debug", "system": "Info"}
+        # log_levels should NOT be in settings
+        assert "log_levels" not in device_config["settings"]
+        mock_dm._store.async_save.assert_awaited()
+        connection.send_result.assert_called_once_with(11)
+
+    async def test_set_settings_without_log_levels_does_not_overwrite(
+        self, hass: HomeAssistant, config_entry: MockConfigEntry
+    ) -> None:
+        """set_settings without log_levels does not clear existing log_levels."""
+        mock_dm = await setup_integration(hass, config_entry)
+        # Pre-populate log_levels
+        mock_dm._store.devices["AA:BB:CC:DD:EE:FF"] = {
+            "log_levels": {"epp": "Debug"},
+        }
+
+        from custom_components.eppgrid.websocket_api import websocket_set_settings
+
+        connection = MagicMock()
+        msg = {
+            "id": 12,
+            "type": "eppgrid/set_settings",
+            "mac": "AA:BB:CC:DD:EE:FF",
+            "temperature_offset": 0.0,
+            "humidity_offset": 0.0,
+            "illuminance_offset": 0.0,
+            "motion_timeout": 5.0,
+            "target_auto_distance": True,
+            "target_max_distance": 6.0,
+            "static_auto_distance": False,
+            "static_min_distance": 0.3,
+            "static_max_distance": 8.0,
+            "static_trigger_threshold": 3,
+            "static_renew_threshold": 3,
+            "static_timeout": 30.0,
+            "static_on_delay": 0.0,
+        }
+
+        await call_async_handler(hass, websocket_set_settings, connection, msg)
+
+        device_config = mock_dm._store.devices["AA:BB:CC:DD:EE:FF"]
+        # Existing log_levels should remain untouched
+        assert device_config["log_levels"] == {"epp": "Debug"}
+
     async def test_set_pipeline(self, hass: HomeAssistant, config_entry: MockConfigEntry) -> None:
         """set_pipeline saves pipeline settings and pushes."""
         mock_dm = await setup_integration(hass, config_entry)

@@ -3,6 +3,10 @@ esphome:
     name: EverythingSmartTechnology.Everything Presence Pro
     version: "1.2.0"
   on_boot:
+    - priority: 200
+      then:
+        - lambda: |-
+            id(logger_id).set_log_level(ESPHOME_LOG_LEVEL_NONE);
     - priority: 375
       then:
         - delay: 200ms
@@ -108,6 +112,8 @@ epp:
 
 # Enable logging
 logger:
+  id: logger_id
+  runtime_tag_levels: true
 
 globals:
   - id: env_temp_offset
@@ -265,6 +271,43 @@ api:
             id(display_interval_ms) = display_interval;
             id(zone_publish_interval_ms) = zone_publish_interval;
             id(epp_component).set_window_duration(window_duration);
+    - action: epp_set_log_level
+      variables:
+        category: string
+        level: string
+      then:
+        - lambda: |-
+            int log_level;
+            if (level == "None") log_level = ESPHOME_LOG_LEVEL_NONE;
+            else if (level == "Error") log_level = ESPHOME_LOG_LEVEL_ERROR;
+            else if (level == "Warning") log_level = ESPHOME_LOG_LEVEL_WARN;
+            else if (level == "Info") log_level = ESPHOME_LOG_LEVEL_INFO;
+            else log_level = ESPHOME_LOG_LEVEL_DEBUG;
+
+            auto &logger = *id(logger_id);
+            if (category == "system") {
+              logger.set_log_level(log_level);
+            } else if (category == "epp") {
+              logger.set_log_level("zones", log_level);
+            } else if (category == "led") {
+              logger.set_log_level("control_leds", log_level);
+            } else if (category == "networking") {
+              logger.set_log_level("wifi", log_level);
+              logger.set_log_level("esp_netif", log_level);
+              logger.set_log_level("dhcp", log_level);
+              logger.set_log_level("eth", log_level);
+              logger.set_log_level("esp_eth", log_level);
+              logger.set_log_level("phy", log_level);
+            } else if (category == "ble") {
+              logger.set_log_level("bt", log_level);
+              logger.set_log_level("btm", log_level);
+              logger.set_log_level("bta", log_level);
+              logger.set_log_level("hci", log_level);
+              logger.set_log_level("gap", log_level);
+              logger.set_log_level("controller", log_level);
+            } else if (category == "co2") {
+              logger.set_log_level("scd4x", log_level);
+            }
     - action: get_build_flags
       then:
         - api.respond:

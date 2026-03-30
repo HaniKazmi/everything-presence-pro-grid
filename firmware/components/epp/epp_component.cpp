@@ -9,7 +9,7 @@
 
 namespace epp {
 
-static const char *const TAG = "epp";
+static const char *const TAG = "zones";
 static const char *const NVS_NAMESPACE = "epp";
 
 void EPPComponent::setup() {

@@ -11,6 +11,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from aioesphomeapi import APIClient
+from aioesphomeapi import LogLevel
 from aioesphomeapi import UserService
 from homeassistant.const import STATE_UNAVAILABLE
 from homeassistant.core import HomeAssistant
@@ -27,6 +28,18 @@ from .const import MAX_ZONES
 from .storage import EPPGridStore
 
 _LOGGER = logging.getLogger(__name__)
+_DEVICE_LOGGER = logging.getLogger(f"{__name__}.device_logs")
+
+# Map aioesphomeapi LogLevel values to Python logging levels
+_ESPHOME_TO_PYTHON_LOG = {
+    LogLevel.LOG_LEVEL_ERROR: logging.ERROR,
+    LogLevel.LOG_LEVEL_WARN: logging.WARNING,
+    LogLevel.LOG_LEVEL_INFO: logging.INFO,
+    LogLevel.LOG_LEVEL_CONFIG: logging.INFO,
+    LogLevel.LOG_LEVEL_DEBUG: logging.DEBUG,
+    LogLevel.LOG_LEVEL_VERBOSE: logging.DEBUG,
+    LogLevel.LOG_LEVEL_VERY_VERBOSE: logging.DEBUG,
+}
 
 
 class DeviceConnection:
@@ -41,6 +54,7 @@ class DeviceConnection:
         self._entities: list = []
         self._state_subscribers: list[Any] = []
         self._states_subscribed: bool = False
+        self._unsub_logs: Any = None
         self.connected: bool = False
 
     async def async_connect(self) -> None:
@@ -62,6 +76,7 @@ class DeviceConnection:
 
     async def async_disconnect(self) -> None:
         """Disconnect from the device."""
+        self.unsubscribe_logs()
         if self._client is not None:
             await self._client.disconnect()
         self._client = None
@@ -87,6 +102,51 @@ class DeviceConnection:
         """Fan out state updates to all subscribers."""
         for cb in self._state_subscribers:
             cb(state)
+
+    def subscribe_logs(self, log_level: LogLevel = LogLevel.LOG_LEVEL_DEBUG) -> None:
+        """Subscribe to device log messages and re-emit via Python logger."""
+        if self._client is None:
+            return
+
+        # If already subscribed, unsubscribe first (level may have changed)
+        if self._unsub_logs is not None:
+            self._unsub_logs()
+            self._unsub_logs = None
+
+        def _on_log(msg: Any) -> None:
+            py_level = _ESPHOME_TO_PYTHON_LOG.get(msg.level)
+            if py_level is None:
+                return
+            text = msg.message
+            if isinstance(text, bytes):
+                text = text.decode("utf-8", errors="replace")
+            text = text.rstrip()
+            if text:
+                _DEVICE_LOGGER.log(py_level, "[%s] %s", self._host, text)
+
+        self._unsub_logs = self._client.subscribe_logs(_on_log, log_level=log_level)
+        _LOGGER.debug("Subscribed to device logs from %s (level=%s)", self._host, log_level)
+
+    def unsubscribe_logs(self) -> None:
+        """Stop receiving device log messages."""
+        if self._unsub_logs is not None:
+            self._unsub_logs()
+            self._unsub_logs = None
+            _LOGGER.debug("Unsubscribed from device logs from %s", self._host)
+
+    async def async_fetch_build_flags(self) -> dict[str, Any]:
+        """Fetch build flags from device via get_build_flags action."""
+        if self._client is None:
+            return {}
+        svc = self._services.get("get_build_flags")
+        if svc is None:
+            return {}
+        try:
+            resp = await self._client.execute_service(svc, {})
+            return resp if isinstance(resp, dict) else {}
+        except Exception:
+            _LOGGER.debug("Failed to fetch build flags from %s", self._host)
+            return {}
 
     async def async_push_detection_preview(self, preview: dict[str, Any]) -> None:
         """Push detection distance preview to device without persisting."""
@@ -234,6 +294,18 @@ class DeviceConnection:
                 await self._client.execute_service(svc, pipeline)
                 _LOGGER.info("Pushed pipeline to %s", self._host)
 
+        # Push log levels
+        log_levels = config.get("log_levels")
+        if log_levels:
+            svc = self._services.get("epp_set_log_level")
+            if svc:
+                for category, level in log_levels.items():
+                    await self._client.execute_service(
+                        svc,
+                        {"category": category, "level": level},
+                    )
+                _LOGGER.info("Pushed log levels to %s", self._host)
+
 
 @dataclass
 class ManagedDevice:
@@ -257,6 +329,7 @@ class DeviceManager:
         self.devices: dict[str, ManagedDevice] = {}
         self._unsub_listeners: list[Any] = []
         self._pushing: set[str] = set()
+        self._build_flags: dict[str, dict[str, Any]] = {}
         # One connection per device, kept alive for the frontend session
         self._active_connections: dict[str, DeviceConnection] = {}
         self._session_locks: dict[str, asyncio.Lock] = {}
@@ -432,6 +505,31 @@ class DeviceManager:
             if not await self._push_config_to_device(mac):
                 self._pushing.discard(mac)
 
+    @staticmethod
+    def _manage_log_subscription(conn: DeviceConnection, config: dict[str, Any]) -> None:
+        """Subscribe/unsubscribe device logs based on stored log levels."""
+        log_levels = config.get("log_levels", {})
+        any_enabled = any(v != "None" for v in log_levels.values())
+        if any_enabled:
+            esphome_level_map = {
+                "Error": LogLevel.LOG_LEVEL_ERROR,
+                "Warning": LogLevel.LOG_LEVEL_WARN,
+                "Info": LogLevel.LOG_LEVEL_INFO,
+                "Debug": LogLevel.LOG_LEVEL_DEBUG,
+            }
+            # Find the most permissive level (highest LogLevel value = most verbose)
+            active_levels = [v for v in log_levels.values() if v != "None"]
+            esphome_level = max(
+                (esphome_level_map.get(v, LogLevel.LOG_LEVEL_WARN) for v in active_levels),
+                default=LogLevel.LOG_LEVEL_WARN,
+            )
+            # Set Python logger to DEBUG so HA doesn't filter any messages;
+            # firmware-side filtering controls what actually gets sent.
+            _DEVICE_LOGGER.setLevel(logging.DEBUG)
+            conn.subscribe_logs(esphome_level)
+        else:
+            conn.unsubscribe_logs()
+
     async def _push_config_to_device(self, mac: str) -> bool:
         """Push config to device, preferring an existing session connection."""
         config = self._store.get_device(mac)
@@ -446,6 +544,10 @@ class DeviceManager:
         if session_conn is not None:
             try:
                 await session_conn.async_push_config(config)
+                flags = await session_conn.async_fetch_build_flags()
+                if flags:
+                    self._build_flags[mac] = flags
+                self._manage_log_subscription(session_conn, config)
                 return True
             except Exception:
                 _LOGGER.warning("Failed to push config to %s (%s) via session", dev.name, mac, exc_info=True)
@@ -457,6 +559,9 @@ class DeviceManager:
         try:
             await conn.async_connect()
             await conn.async_push_config(config)
+            flags = await conn.async_fetch_build_flags()
+            if flags:
+                self._build_flags[mac] = flags
             return True
         except Exception:
             _LOGGER.warning("Failed to push config to %s (%s)", dev.name, mac, exc_info=True)
@@ -482,6 +587,10 @@ class DeviceManager:
             await conn.async_connect()
             self._active_connections[mac] = conn
             _LOGGER.info("Opened session for %s (%s)", dev.name, mac)
+            # Subscribe to device logs if log levels are configured
+            config = self._store.get_device(mac)
+            if config:
+                self._manage_log_subscription(conn, config)
             return conn
 
     async def async_close_session(self, mac: str) -> None:
@@ -523,6 +632,7 @@ class DeviceManager:
                         else "firmware_ahead"
                     ),
                     "current_connection_count": self.read_current_connection_count(dev.device_id),
+                    **self._build_flags.get(mac, {}),
                 }
             )
         return result
