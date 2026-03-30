@@ -45,6 +45,7 @@ export interface ParsedSettings {
 	staticTimeout: number;
 	staticOnDelay: number;
 	entities: Record<string, boolean>;
+	logLevels: Record<string, string>;
 }
 
 /**
@@ -188,6 +189,7 @@ export function parseSettings(raw: any, entities?: any): ParsedSettings {
 		staticTimeout: s.static_timeout ?? 30,
 		staticOnDelay: s.static_on_delay ?? 0,
 		entities: entities || {},
+		logLevels: s.log_levels ?? {},
 	};
 }
 
