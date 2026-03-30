@@ -806,6 +806,10 @@ async def websocket_set_settings(
         device_config["log_levels"] = log_levels
     await manager._store.async_save()
     await manager._push_config_to_device(mac)
+    # Manage device log subscription on the active session (if any)
+    session_conn = manager.get_session(mac)
+    if session_conn is not None:
+        manager._manage_log_subscription(session_conn, device_config)
     entities = msg.get("entities")
     if entities:
         _apply_entity_states(hass, mac, entities)

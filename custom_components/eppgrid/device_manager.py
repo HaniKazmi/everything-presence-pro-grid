@@ -581,6 +581,10 @@ class DeviceManager:
             await conn.async_connect()
             self._active_connections[mac] = conn
             _LOGGER.info("Opened session for %s (%s)", dev.name, mac)
+            # Subscribe to device logs if log levels are configured
+            config = self._store.get_device(mac)
+            if config:
+                self._manage_log_subscription(conn, config)
             return conn
 
     async def async_close_session(self, mac: str) -> None:
