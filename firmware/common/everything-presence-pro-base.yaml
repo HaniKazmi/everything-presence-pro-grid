@@ -6,7 +6,7 @@ esphome:
     - priority: 200
       then:
         - lambda: |-
-            esp_log_level_set("*", ESP_LOG_WARN);
+            id(logger_id).set_log_level(ESPHOME_LOG_LEVEL_WARN);
     - priority: 375
       then:
         - delay: 200ms
@@ -112,6 +112,8 @@ epp:
 
 # Enable logging
 logger:
+  id: logger_id
+  runtime_tag_levels: true
 
 globals:
   - id: env_temp_offset
@@ -275,35 +277,36 @@ api:
         level: string
       then:
         - lambda: |-
-            esp_log_level_t log_level;
-            if (level == "None") log_level = ESP_LOG_NONE;
-            else if (level == "Error") log_level = ESP_LOG_ERROR;
-            else if (level == "Warning") log_level = ESP_LOG_WARN;
-            else if (level == "Info") log_level = ESP_LOG_INFO;
-            else log_level = ESP_LOG_DEBUG;
+            int log_level;
+            if (level == "None") log_level = ESPHOME_LOG_LEVEL_NONE;
+            else if (level == "Error") log_level = ESPHOME_LOG_LEVEL_ERROR;
+            else if (level == "Warning") log_level = ESPHOME_LOG_LEVEL_WARN;
+            else if (level == "Info") log_level = ESPHOME_LOG_LEVEL_INFO;
+            else log_level = ESPHOME_LOG_LEVEL_DEBUG;
 
+            auto &logger = *id(logger_id);
             if (category == "system") {
-              esp_log_level_set("*", log_level);
+              logger.set_log_level(log_level);
             } else if (category == "epp") {
-              esp_log_level_set("epp", log_level);
+              logger.set_log_level("epp", log_level);
             } else if (category == "led") {
-              esp_log_level_set("control_leds", log_level);
+              logger.set_log_level("control_leds", log_level);
             } else if (category == "networking") {
-              esp_log_level_set("wifi", log_level);
-              esp_log_level_set("esp_netif", log_level);
-              esp_log_level_set("dhcp", log_level);
-              esp_log_level_set("eth", log_level);
-              esp_log_level_set("esp_eth", log_level);
-              esp_log_level_set("phy", log_level);
+              logger.set_log_level("wifi", log_level);
+              logger.set_log_level("esp_netif", log_level);
+              logger.set_log_level("dhcp", log_level);
+              logger.set_log_level("eth", log_level);
+              logger.set_log_level("esp_eth", log_level);
+              logger.set_log_level("phy", log_level);
             } else if (category == "ble") {
-              esp_log_level_set("bt", log_level);
-              esp_log_level_set("btm", log_level);
-              esp_log_level_set("bta", log_level);
-              esp_log_level_set("hci", log_level);
-              esp_log_level_set("gap", log_level);
-              esp_log_level_set("controller", log_level);
+              logger.set_log_level("bt", log_level);
+              logger.set_log_level("btm", log_level);
+              logger.set_log_level("bta", log_level);
+              logger.set_log_level("hci", log_level);
+              logger.set_log_level("gap", log_level);
+              logger.set_log_level("controller", log_level);
             } else if (category == "co2") {
-              esp_log_level_set("scd4x", log_level);
+              logger.set_log_level("scd4x", log_level);
             }
     - action: get_build_flags
       then:
