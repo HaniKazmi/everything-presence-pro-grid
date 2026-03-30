@@ -71,6 +71,7 @@ export class TargetController implements ReactiveController {
 	 * Updates host's _targets, _sensorState, _zoneState, and debug log.
 	 */
 	handleTargetData(data: TargetData): void {
+		if (this.host._view === "settings") return;
 		this.host._targets = data.targets;
 		this.host._sensorState = data.sensors;
 		if (data.zones) {
@@ -89,6 +90,7 @@ export class TargetController implements ReactiveController {
 	 * Process incoming raw target data from the display subscription.
 	 */
 	handleRawTargetData(rawTargets: RawTarget[]): void {
+		if (this.host._view === "settings") return;
 		this.host._rawTargets = rawTargets;
 	}
 

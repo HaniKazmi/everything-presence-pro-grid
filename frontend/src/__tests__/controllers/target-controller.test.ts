@@ -53,6 +53,9 @@ function mockHost() {
 		_showBackendDebugLog: false,
 		_backendDebugLogLines: [] as string[],
 		_backendDebugLogPrev: "",
+
+		// View mode
+		_view: "live" as "live" | "editor" | "settings",
 	};
 }
 
@@ -214,6 +217,60 @@ describe("TargetController", () => {
 			);
 			expect(host._backendDebugLogLines.length).toBe(0);
 		});
+
+		it("skips all state updates when host._view is 'settings'", () => {
+			host._view = "settings";
+			const originalTargets = host._targets;
+			const originalSensorState = host._sensorState;
+			const originalZoneState = host._zoneState;
+			ctrl.handleTargetData(makeTargetData({
+				targets: [{ x: 1, y: 2, speed: 0, status: "active", signal: 50 }] as any,
+				sensors: {
+					occupancy: true,
+					static_presence: true,
+					motion_presence: true,
+					target_presence: true,
+					illuminance: 100,
+					temperature: 22,
+					humidity: 50,
+					co2: 400,
+				},
+				zones: {
+					occupancy: { 1: true },
+					target_counts: { 1: 2 },
+					frame_count: 7,
+					debug_log: "T0:Z1:A:5|Z1:O:1",
+				},
+			}));
+			expect(host._targets).toBe(originalTargets);
+			expect(host._sensorState).toBe(originalSensorState);
+			expect(host._zoneState).toBe(originalZoneState);
+		});
+
+		it("resumes state updates when host._view is not 'settings'", () => {
+			host._view = "settings";
+			ctrl.handleTargetData(makeTargetData({
+				targets: [{ x: 1, y: 2, speed: 0, status: "active", signal: 50 }] as any,
+			}));
+			const frozenTargets = host._targets;
+
+			host._view = "live";
+			const newTargets = [{ x: 3, y: 4, speed: 0, status: "active", signal: 80 }] as any;
+			const newSensors = {
+				occupancy: true,
+				static_presence: false,
+				motion_presence: true,
+				target_presence: true,
+				illuminance: null,
+				temperature: 23,
+				humidity: null,
+				co2: null,
+			};
+			ctrl.handleTargetData(makeTargetData({ targets: newTargets, sensors: newSensors }));
+			expect(host._targets).toBe(newTargets);
+			expect(host._targets).not.toBe(frozenTargets);
+			expect(host._sensorState).toBe(newSensors);
+		});
 	});
 
 	// -------------------------------------------------------------------------
@@ -224,6 +281,23 @@ describe("TargetController", () => {
 			const raw = [{ raw_x: 10, raw_y: 20 }];
 			ctrl.handleRawTargetData(raw as any);
 			expect(host._rawTargets).toBe(raw);
+		});
+
+		it("skips update when host._view is 'settings'", () => {
+			host._view = "settings";
+			const original = host._rawTargets;
+			ctrl.handleRawTargetData([{ raw_x: 10, raw_y: 20 }] as any);
+			expect(host._rawTargets).toBe(original);
+		});
+
+		it("resumes update when host._view is not 'settings'", () => {
+			host._view = "settings";
+			ctrl.handleRawTargetData([{ raw_x: 10, raw_y: 20 }] as any);
+
+			host._view = "live";
+			const newRaw = [{ raw_x: 30, raw_y: 40 }] as any;
+			ctrl.handleRawTargetData(newRaw);
+			expect(host._rawTargets).toBe(newRaw);
 		});
 	});
 
