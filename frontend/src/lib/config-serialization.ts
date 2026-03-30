@@ -172,7 +172,11 @@ export function parseRoomThresholds(layout: any): ParsedRoomThresholds {
  * @param entities Entity states from backend (may be undefined)
  * @returns Parsed settings with defaults applied
  */
-export function parseSettings(raw: any, entities?: any): ParsedSettings {
+export function parseSettings(
+	raw: any,
+	entities?: any,
+	logLevels?: any,
+): ParsedSettings {
 	const s = raw || {};
 	return {
 		temperatureOffset: s.temperature_offset ?? 0,
@@ -189,7 +193,7 @@ export function parseSettings(raw: any, entities?: any): ParsedSettings {
 		staticTimeout: s.static_timeout ?? 30,
 		staticOnDelay: s.static_on_delay ?? 0,
 		entities: entities || {},
-		logLevels: s.log_levels ?? {},
+		logLevels: logLevels ?? {},
 	};
 }
 
@@ -215,6 +219,6 @@ export function parseConfig(config: any): ParsedConfig {
 		grid,
 		zoneConfigs,
 		roomThresholds,
-		settings: parseSettings(config?.settings, config?.entities),
+		settings: parseSettings(config?.settings, config?.entities, config?.log_levels),
 	};
 }

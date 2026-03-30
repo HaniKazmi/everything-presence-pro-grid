@@ -373,11 +373,12 @@ describe("parseSettings", () => {
 		expect(s.entities).toEqual({ room_occupancy: true, room_presence: false });
 	});
 
-	it("parses log_levels from settings", () => {
-		const result = parseSettings({
-			temperature_offset: 0,
-			log_levels: { epp: "Debug", system: "Warning" },
-		});
+	it("parses log_levels from third argument", () => {
+		const result = parseSettings(
+			{ temperature_offset: 0 },
+			undefined,
+			{ epp: "Debug", system: "Warning" },
+		);
 		expect(result.logLevels).toEqual({ epp: "Debug", system: "Warning" });
 	});
 

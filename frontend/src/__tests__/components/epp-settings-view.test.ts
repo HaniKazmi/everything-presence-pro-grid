@@ -1467,12 +1467,11 @@ describe("logging accordion", () => {
 		const tpl = (sv as any).renderLogging();
 		const c = renderTo(tpl);
 
-		// Find the ha-select and simulate a selected event
+		// Find the ha-select and simulate a selected event with detail.value
 		const selects = c.querySelectorAll("ha-select");
 		expect(selects.length).toBeGreaterThan(0);
 		const select = selects[0] as any;
-		select.value = "Debug";
-		select.dispatchEvent(new Event("selected", { bubbles: true }));
+		select.dispatchEvent(new CustomEvent("selected", { bubbles: true, detail: { value: "Debug" } }));
 
 		expect(dirtyFired).toBe(true);
 		expect((sv as any)._overrides.logLevels?.system).toBe("Debug");
