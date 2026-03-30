@@ -328,7 +328,7 @@ _ENTITY_OBJECT_ID_MAP: dict[str, str] = {
     "occupancy": "room_occupancy",
     "static_presence": "room_static_presence",
     "motion_presence": "room_motion_presence",
-    "tracking_presence": "room_target_presence",
+    "tracking_presence": "room_target_presence",  # ESPHome name; renamed to "Target Presence" in registry
     "temperature": "env_temperature",
     "humidity": "env_humidity",
     "illuminance": "env_illuminance",
@@ -397,6 +397,12 @@ def _get_entity_states(hass: HomeAssistant, mac: str) -> dict[str, bool]:
     return result
 
 
+# Rename ESPHome entities to user-friendly names in the HA entity registry.
+_ENTITY_RENAME_MAP: dict[str, str] = {
+    "room_target_presence": "Target Presence",
+}
+
+
 def _apply_entity_states(hass: HomeAssistant, mac: str, entities: dict[str, bool]) -> None:
     """Apply entity enable/disable changes to HA entity registry (idempotent)."""
     manager = _get_manager(hass)
@@ -414,8 +420,9 @@ def _apply_entity_states(hass: HomeAssistant, mac: str, entities: dict[str, bool
         if key is None or key not in entities:
             continue
         desired = entities[key]
+        name = _ENTITY_RENAME_MAP.get(key)
         if desired:
-            ent_reg.async_update_entity(entry.entity_id, disabled_by=None)
+            ent_reg.async_update_entity(entry.entity_id, disabled_by=None, **({"name": name} if name else {}))
         else:
             ent_reg.async_update_entity(
                 entry.entity_id, disabled_by=er.RegistryEntryDisabler.INTEGRATION
