@@ -315,7 +315,7 @@ export class EppSettingsView extends LitElement {
           <div class="setting-row">
             <label>${this.localize("settings.auto")}</label>
             <label class="toggle-switch">
-              <input type="checkbox" ?checked=${this.targetAutoDistance}
+              <input type="checkbox" .checked=${this.targetAutoDistance}
                 @change=${(e: Event) => {
 									const checked = (e.target as HTMLInputElement).checked;
 									if (!checked) {
@@ -347,7 +347,7 @@ export class EppSettingsView extends LitElement {
           <div class="setting-row">
             <label>${this.localize("settings.auto")}</label>
             <label class="toggle-switch">
-              <input type="checkbox" ?checked=${this.staticAutoDistance}
+              <input type="checkbox" .checked=${this.staticAutoDistance}
                 @change=${(e: Event) => {
 									const checked = (e.target as HTMLInputElement).checked;
 									if (!checked) {
@@ -484,27 +484,27 @@ export class EppSettingsView extends LitElement {
           <h4>${this.localize("entities.room_level")}</h4>
           <div class="setting-row">
             <label>${this.localize("entities.occupancy")}</label>
-            <label class="toggle-switch"><input type="checkbox" @change=${(e: Event) => { const el = e.target as HTMLInputElement; const key = el.dataset.entityKey!; if (!this._overrides.entities) this._overrides.entities = {}; this._overrides.entities[key] = el.checked; this._fireDirty(); }} data-entity-key="room_occupancy" ?checked=${isOn("room_occupancy", true)} /><span class="toggle-slider"></span></label>
+            <label class="toggle-switch"><input type="checkbox" @change=${(e: Event) => { const el = e.target as HTMLInputElement; const key = el.dataset.entityKey!; if (!this._overrides.entities) this._overrides.entities = {}; this._overrides.entities[key] = el.checked; this._fireDirty(); }} data-entity-key="room_occupancy" .checked=${isOn("room_occupancy", true)} /><span class="toggle-slider"></span></label>
             ${this.infoTip(this.localize("info.room_occupancy"))}
           </div>
           <div class="setting-row">
             <label>${this.localize("entities.static_presence")}</label>
-            <label class="toggle-switch"><input type="checkbox" @change=${(e: Event) => { const el = e.target as HTMLInputElement; const key = el.dataset.entityKey!; if (!this._overrides.entities) this._overrides.entities = {}; this._overrides.entities[key] = el.checked; this._fireDirty(); }} data-entity-key="room_static_presence" ?checked=${isOn("room_static_presence", false)} /><span class="toggle-slider"></span></label>
+            <label class="toggle-switch"><input type="checkbox" @change=${(e: Event) => { const el = e.target as HTMLInputElement; const key = el.dataset.entityKey!; if (!this._overrides.entities) this._overrides.entities = {}; this._overrides.entities[key] = el.checked; this._fireDirty(); }} data-entity-key="room_static_presence" .checked=${isOn("room_static_presence", false)} /><span class="toggle-slider"></span></label>
             ${this.infoTip(this.localize("info.room_static"))}
           </div>
           <div class="setting-row">
             <label>${this.localize("entities.motion_presence")}</label>
-            <label class="toggle-switch"><input type="checkbox" @change=${(e: Event) => { const el = e.target as HTMLInputElement; const key = el.dataset.entityKey!; if (!this._overrides.entities) this._overrides.entities = {}; this._overrides.entities[key] = el.checked; this._fireDirty(); }} data-entity-key="room_motion_presence" ?checked=${isOn("room_motion_presence", false)} /><span class="toggle-slider"></span></label>
+            <label class="toggle-switch"><input type="checkbox" @change=${(e: Event) => { const el = e.target as HTMLInputElement; const key = el.dataset.entityKey!; if (!this._overrides.entities) this._overrides.entities = {}; this._overrides.entities[key] = el.checked; this._fireDirty(); }} data-entity-key="room_motion_presence" .checked=${isOn("room_motion_presence", false)} /><span class="toggle-slider"></span></label>
             ${this.infoTip(this.localize("info.room_motion"))}
           </div>
           <div class="setting-row">
             <label>${this.localize("entities.target_presence")}</label>
-            <label class="toggle-switch"><input type="checkbox" @change=${(e: Event) => { const el = e.target as HTMLInputElement; const key = el.dataset.entityKey!; if (!this._overrides.entities) this._overrides.entities = {}; this._overrides.entities[key] = el.checked; this._fireDirty(); }} data-entity-key="room_target_presence" ?checked=${isOn("room_target_presence", false)} /><span class="toggle-slider"></span></label>
+            <label class="toggle-switch"><input type="checkbox" @change=${(e: Event) => { const el = e.target as HTMLInputElement; const key = el.dataset.entityKey!; if (!this._overrides.entities) this._overrides.entities = {}; this._overrides.entities[key] = el.checked; this._fireDirty(); }} data-entity-key="room_target_presence" .checked=${isOn("room_target_presence", false)} /><span class="toggle-slider"></span></label>
             ${this.infoTip(this.localize("info.room_target_presence"))}
           </div>
           <div class="setting-row">
             <label>${this.localize("entities.target_count")}</label>
-            <label class="toggle-switch"><input type="checkbox" @change=${(e: Event) => { const el = e.target as HTMLInputElement; const key = el.dataset.entityKey!; if (!this._overrides.entities) this._overrides.entities = {}; this._overrides.entities[key] = el.checked; this._fireDirty(); }} data-entity-key="room_target_count" ?checked=${isOn("room_target_count", false)} /><span class="toggle-slider"></span></label>
+            <label class="toggle-switch"><input type="checkbox" @change=${(e: Event) => { const el = e.target as HTMLInputElement; const key = el.dataset.entityKey!; if (!this._overrides.entities) this._overrides.entities = {}; this._overrides.entities[key] = el.checked; this._fireDirty(); }} data-entity-key="room_target_count" .checked=${isOn("room_target_count", false)} /><span class="toggle-slider"></span></label>
             ${this.infoTip(this.localize("info.room_target_count"))}
           </div>
         </div>
@@ -512,12 +512,12 @@ export class EppSettingsView extends LitElement {
           <h4>${this.localize("entities.zone_level")}</h4>
           <div class="setting-row">
             <label>${this.localize("entities.zone_presence")}</label>
-            <label class="toggle-switch"><input type="checkbox" @change=${(e: Event) => { const el = e.target as HTMLInputElement; const key = el.dataset.entityKey!; if (!this._overrides.entities) this._overrides.entities = {}; this._overrides.entities[key] = el.checked; this._fireDirty(); }} data-entity-key="zone_presence" ?checked=${isOn("zone_presence", true)} /><span class="toggle-slider"></span></label>
+            <label class="toggle-switch"><input type="checkbox" @change=${(e: Event) => { const el = e.target as HTMLInputElement; const key = el.dataset.entityKey!; if (!this._overrides.entities) this._overrides.entities = {}; this._overrides.entities[key] = el.checked; this._fireDirty(); }} data-entity-key="zone_presence" .checked=${isOn("zone_presence", true)} /><span class="toggle-slider"></span></label>
             ${this.infoTip(this.localize("info.zone_presence"))}
           </div>
           <div class="setting-row">
             <label>${this.localize("entities.target_count")}</label>
-            <label class="toggle-switch"><input type="checkbox" @change=${(e: Event) => { const el = e.target as HTMLInputElement; const key = el.dataset.entityKey!; if (!this._overrides.entities) this._overrides.entities = {}; this._overrides.entities[key] = el.checked; this._fireDirty(); }} data-entity-key="zone_target_count" ?checked=${isOn("zone_target_count", false)} /><span class="toggle-slider"></span></label>
+            <label class="toggle-switch"><input type="checkbox" @change=${(e: Event) => { const el = e.target as HTMLInputElement; const key = el.dataset.entityKey!; if (!this._overrides.entities) this._overrides.entities = {}; this._overrides.entities[key] = el.checked; this._fireDirty(); }} data-entity-key="zone_target_count" .checked=${isOn("zone_target_count", false)} /><span class="toggle-slider"></span></label>
             ${this.infoTip(this.localize("info.zone_target_count"))}
           </div>
         </div>
@@ -525,12 +525,12 @@ export class EppSettingsView extends LitElement {
           <h4>${this.localize("entities.target_level")}</h4>
           <div class="setting-row">
             <label>${this.localize("entities.xy")}</label>
-            <label class="toggle-switch"><input type="checkbox" @change=${(e: Event) => { const el = e.target as HTMLInputElement; const key = el.dataset.entityKey!; if (!this._overrides.entities) this._overrides.entities = {}; this._overrides.entities[key] = el.checked; this._fireDirty(); }} data-entity-key="target_xy" ?checked=${isOn("target_xy", false)} /><span class="toggle-slider"></span></label>
+            <label class="toggle-switch"><input type="checkbox" @change=${(e: Event) => { const el = e.target as HTMLInputElement; const key = el.dataset.entityKey!; if (!this._overrides.entities) this._overrides.entities = {}; this._overrides.entities[key] = el.checked; this._fireDirty(); }} data-entity-key="target_xy" .checked=${isOn("target_xy", false)} /><span class="toggle-slider"></span></label>
             ${this.infoTip(this.localize("info.xy"))}
           </div>
           <div class="setting-row">
             <label>${this.localize("entities.active")}</label>
-            <label class="toggle-switch"><input type="checkbox" @change=${(e: Event) => { const el = e.target as HTMLInputElement; const key = el.dataset.entityKey!; if (!this._overrides.entities) this._overrides.entities = {}; this._overrides.entities[key] = el.checked; this._fireDirty(); }} data-entity-key="target_active" ?checked=${isOn("target_active", false)} /><span class="toggle-slider"></span></label>
+            <label class="toggle-switch"><input type="checkbox" @change=${(e: Event) => { const el = e.target as HTMLInputElement; const key = el.dataset.entityKey!; if (!this._overrides.entities) this._overrides.entities = {}; this._overrides.entities[key] = el.checked; this._fireDirty(); }} data-entity-key="target_active" .checked=${isOn("target_active", false)} /><span class="toggle-slider"></span></label>
             ${this.infoTip(this.localize("info.active"))}
           </div>
         </div>
@@ -538,22 +538,22 @@ export class EppSettingsView extends LitElement {
           <h4>${this.localize("settings.environmental")}</h4>
           <div class="setting-row">
             <label>${this.localize("entities.illuminance")}</label>
-            <label class="toggle-switch"><input type="checkbox" @change=${(e: Event) => { const el = e.target as HTMLInputElement; const key = el.dataset.entityKey!; if (!this._overrides.entities) this._overrides.entities = {}; this._overrides.entities[key] = el.checked; this._fireDirty(); }} data-entity-key="env_illuminance" ?checked=${isOn("env_illuminance", false)} /><span class="toggle-slider"></span></label>
+            <label class="toggle-switch"><input type="checkbox" @change=${(e: Event) => { const el = e.target as HTMLInputElement; const key = el.dataset.entityKey!; if (!this._overrides.entities) this._overrides.entities = {}; this._overrides.entities[key] = el.checked; this._fireDirty(); }} data-entity-key="env_illuminance" .checked=${isOn("env_illuminance", false)} /><span class="toggle-slider"></span></label>
             ${this.infoTip(this.localize("info.illuminance"))}
           </div>
           <div class="setting-row">
             <label>${this.localize("entities.humidity")}</label>
-            <label class="toggle-switch"><input type="checkbox" @change=${(e: Event) => { const el = e.target as HTMLInputElement; const key = el.dataset.entityKey!; if (!this._overrides.entities) this._overrides.entities = {}; this._overrides.entities[key] = el.checked; this._fireDirty(); }} data-entity-key="env_humidity" ?checked=${isOn("env_humidity", false)} /><span class="toggle-slider"></span></label>
+            <label class="toggle-switch"><input type="checkbox" @change=${(e: Event) => { const el = e.target as HTMLInputElement; const key = el.dataset.entityKey!; if (!this._overrides.entities) this._overrides.entities = {}; this._overrides.entities[key] = el.checked; this._fireDirty(); }} data-entity-key="env_humidity" .checked=${isOn("env_humidity", false)} /><span class="toggle-slider"></span></label>
             ${this.infoTip(this.localize("info.humidity"))}
           </div>
           <div class="setting-row">
             <label>${this.localize("entities.temperature")}</label>
-            <label class="toggle-switch"><input type="checkbox" @change=${(e: Event) => { const el = e.target as HTMLInputElement; const key = el.dataset.entityKey!; if (!this._overrides.entities) this._overrides.entities = {}; this._overrides.entities[key] = el.checked; this._fireDirty(); }} data-entity-key="env_temperature" ?checked=${isOn("env_temperature", false)} /><span class="toggle-slider"></span></label>
+            <label class="toggle-switch"><input type="checkbox" @change=${(e: Event) => { const el = e.target as HTMLInputElement; const key = el.dataset.entityKey!; if (!this._overrides.entities) this._overrides.entities = {}; this._overrides.entities[key] = el.checked; this._fireDirty(); }} data-entity-key="env_temperature" .checked=${isOn("env_temperature", false)} /><span class="toggle-slider"></span></label>
             ${this.infoTip(this.localize("info.temperature"))}
           </div>
           <div class="setting-row">
             <label>${this.localize("entities.co2")}</label>
-            <label class="toggle-switch"><input type="checkbox" @change=${(e: Event) => { const el = e.target as HTMLInputElement; const key = el.dataset.entityKey!; if (!this._overrides.entities) this._overrides.entities = {}; this._overrides.entities[key] = el.checked; this._fireDirty(); }} data-entity-key="env_co2" ?checked=${isOn("env_co2", false)} /><span class="toggle-slider"></span></label>
+            <label class="toggle-switch"><input type="checkbox" @change=${(e: Event) => { const el = e.target as HTMLInputElement; const key = el.dataset.entityKey!; if (!this._overrides.entities) this._overrides.entities = {}; this._overrides.entities[key] = el.checked; this._fireDirty(); }} data-entity-key="env_co2" .checked=${isOn("env_co2", false)} /><span class="toggle-slider"></span></label>
             ${this.infoTip(this.localize("info.co2"))}
           </div>
         </div>
