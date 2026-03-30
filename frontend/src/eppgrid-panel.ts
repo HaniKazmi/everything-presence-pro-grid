@@ -982,9 +982,8 @@ export class EPPGridPanel extends LitElement {
         <ha-select
           .value=${this._selectedMac}
           .options=${this._devices.map((d) => ({ value: d.mac, label: d.name }))}
-          @selected=${(e: Event) => {
-						const select = e.target as any;
-						const val = select.value;
+          @selected=${(e: CustomEvent<{ value: string }>) => {
+						const val = e.detail.value;
 						if (!val || val === this._selectedMac) return;
 						this._guardNavigation(async () => {
 							this._closeDeviceSession();

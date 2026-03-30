@@ -701,9 +701,8 @@ export class EppSettingsView extends LitElement {
                 <ha-select
                   .value=${current}
                   .options=${LOG_LEVELS.map((l) => ({ value: l, label: l }))}
-                  @selected=${(e: Event) => {
-										const select = e.target as any;
-										const val = select.value;
+                  @selected=${(e: CustomEvent<{ value: string }>) => {
+										const val = e.detail.value;
 										if (!val || val === current) return;
 										if (!this._overrides.logLevels) this._overrides.logLevels = {};
 										this._overrides.logLevels[c.key] = val;
@@ -726,6 +725,19 @@ export class EppSettingsView extends LitElement {
         </div>
       </div>
     `;
+	}
+
+	private _onLogLevelSelected(e: Event) {
+		const select = e.target as any;
+		const val = select.value;
+		const key = select.dataset?.category;
+		if (!val || !key) return;
+		const prev = (this._overrides.logLevels || {})[key] ?? this.logLevels[key] ?? "Warning";
+		if (val === prev) return;
+		if (!this._overrides.logLevels) this._overrides.logLevels = {};
+		this._overrides.logLevels[key] = val;
+		this._fireDirty();
+		this.requestUpdate();
 	}
 
 	renderSaveCancelButtons() {
