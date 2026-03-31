@@ -1487,8 +1487,8 @@ class TestEventCallbacks:
             await manager._on_device_available(mac)
 
         mock_push.assert_not_awaited()
-        assert mac not in manager._entity_update_macs
-        # _pushing stays set to block subsequent availability events
+        # Guard stays set — cleared by 60-second timer, not by skip path
+        assert mac in manager._entity_update_macs
         assert mac in manager._pushing
 
 

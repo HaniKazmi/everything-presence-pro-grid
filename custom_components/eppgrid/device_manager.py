@@ -500,9 +500,10 @@ class DeviceManager:
             dev.available = True
 
         # Skip push if we caused this reconnect via entity registry updates.
-        # Keep _pushing set so subsequent availability events are also blocked.
+        # Don't clear the guard here — multiple entities cycle through
+        # unavailable→available during an ESPHome reload, creating multiple
+        # tasks.  The 60-second timer in websocket_set_settings handles cleanup.
         if mac in self._entity_update_macs:
-            self._entity_update_macs.discard(mac)
             _LOGGER.debug("Skipping redundant push for %s (entity update guard)", mac)
             return
 
