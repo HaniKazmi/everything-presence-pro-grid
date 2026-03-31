@@ -291,18 +291,14 @@ describe("_renderLiveOverview inline handlers", () => {
 
 	it("detection zones button", () => {
 		const a = createPanel() as any;
-		// Replicate handler (line 3592-3594)
-		a._view = "editor";
-		a._sidebarTab = "zones";
+		a._enterEditor("zones");
 		expect(a._view).toBe("editor");
 		expect(a._sidebarTab).toBe("zones");
 	});
 
 	it("furniture button", () => {
 		const a = createPanel() as any;
-		// Replicate handler (line 3598-3600)
-		a._view = "editor";
-		a._sidebarTab = "furniture";
+		a._enterEditor("furniture");
 		expect(a._view).toBe("editor");
 		expect(a._sidebarTab).toBe("furniture");
 	});
@@ -312,6 +308,71 @@ describe("_renderLiveOverview inline handlers", () => {
 		// Replicate handler (line 3607-3608)
 		a._view = "settings";
 		expect(a._view).toBe("settings");
+	});
+
+	describe("editor entry distance override", () => {
+		it("calls set_distance_override with widened ranges when target auto is on", () => {
+			const a = createPanel() as any;
+			a._selectedMac = "AA:BB:CC:DD:EE:01";
+			a._targetAutoDistance = true;
+			a._targetMaxDistance = 3.5;
+			a._staticAutoDistance = false;
+			a._staticMinDistance = 1.0;
+			a._staticMaxDistance = 8.0;
+
+			const callWS = vi.fn().mockResolvedValue({});
+			a.hass = { callWS };
+
+			a._enterEditor("zones");
+
+			expect(a._view).toBe("editor");
+			expect(a._sidebarTab).toBe("zones");
+			expect(callWS).toHaveBeenCalledWith({
+				type: "eppgrid/set_distance_override",
+				mac: "AA:BB:CC:DD:EE:01",
+				target_max_distance: 6,
+				static_min_distance: 1.0,
+				static_max_distance: 8.0,
+			});
+		});
+
+		it("calls set_distance_override with widened ranges when static auto is on", () => {
+			const a = createPanel() as any;
+			a._selectedMac = "AA:BB:CC:DD:EE:01";
+			a._targetAutoDistance = false;
+			a._targetMaxDistance = 3.5;
+			a._staticAutoDistance = true;
+			a._staticMinDistance = 1.0;
+			a._staticMaxDistance = 8.0;
+
+			const callWS = vi.fn().mockResolvedValue({});
+			a.hass = { callWS };
+
+			a._enterEditor("zones");
+
+			expect(callWS).toHaveBeenCalledWith({
+				type: "eppgrid/set_distance_override",
+				mac: "AA:BB:CC:DD:EE:01",
+				target_max_distance: 3.5,
+				static_min_distance: 0.3,
+				static_max_distance: 16,
+			});
+		});
+
+		it("does not call set_distance_override when both auto flags are off", () => {
+			const a = createPanel() as any;
+			a._selectedMac = "AA:BB:CC:DD:EE:01";
+			a._targetAutoDistance = false;
+			a._staticAutoDistance = false;
+
+			const callWS = vi.fn().mockResolvedValue({});
+			a.hass = { callWS };
+
+			a._enterEditor("zones");
+
+			expect(a._view).toBe("editor");
+			expect(callWS).not.toHaveBeenCalled();
+		});
 	});
 
 	it("delete calibration button shows dialog", () => {

@@ -552,6 +552,29 @@ export class EPPGridPanel extends LitElement {
 		await this._loadDeviceConfig(this._selectedMac);
 	}
 
+	private _enterEditor(tab: "zones" | "furniture"): void {
+		this._view = "editor";
+		this._sidebarTab = tab;
+
+		if (this._targetAutoDistance || this._staticAutoDistance) {
+			this.hass
+				?.callWS({
+					type: "eppgrid/set_distance_override",
+					mac: this._selectedMac,
+					target_max_distance: this._targetAutoDistance
+						? 6
+						: this._targetMaxDistance,
+					static_min_distance: this._staticAutoDistance
+						? 0.3
+						: this._staticMinDistance,
+					static_max_distance: this._staticAutoDistance
+						? 16
+						: this._staticMaxDistance,
+				})
+				.catch(() => {});
+		}
+	}
+
 	// -- Template management (localStorage) --
 
 	private _getTemplates() {
@@ -1155,14 +1178,12 @@ export class EPPGridPanel extends LitElement {
 											this._perspective
 												? html`
                       <button class="sidebar-menu-item" @click=${() => {
-												this._view = "editor";
-												this._sidebarTab = "zones";
+												this._enterEditor("zones");
 											}}>
                         <ha-icon icon="mdi:vector-square" style="--mdc-icon-size: 18px;"></ha-icon> ${this._localize("menu.detection_zones")}
                       </button>
                       <button class="sidebar-menu-item" @click=${() => {
-												this._view = "editor";
-												this._sidebarTab = "furniture";
+												this._enterEditor("furniture");
 											}}>
                         <ha-icon icon="mdi:sofa" style="--mdc-icon-size: 18px;"></ha-icon> ${this._localize("menu.furniture")}
                       </button>
