@@ -148,30 +148,28 @@ class DeviceConnection:
             _LOGGER.debug("Failed to fetch build flags from %s", self._host)
             return {}
 
-    async def async_push_detection_preview(self, preview: dict[str, Any]) -> None:
-        """Push detection distance preview to device without persisting."""
+    async def async_push_distance_override(self, override: dict[str, Any]) -> None:
+        """Push distance override to device without persisting."""
         if self._client is None:
             return
-        service = self._services.get("epp_set_tracking")
-        if service:
+        svc = self._services.get("epp_set_tracking")
+        if svc:
             await self._client.execute_service(
-                service,
-                {
-                    "max_range": preview.get("target_max_distance", 6.0) * 1000,
-                },
+                svc,
+                {"max_range": override.get("target_max_distance", 6.0) * 1000},
             )
-        service = self._services.get("epp_set_static_presence")
-        if service:
+        svc = self._services.get("epp_set_static_presence")
+        if svc:
             await self._client.execute_service(
-                service,
+                svc,
                 {
-                    "min_range": preview.get("static_min_distance", 0.3),
-                    "max_range": preview.get("static_max_distance", 16.0),
-                    "trigger_range": preview.get("static_max_distance", 16.0),
-                    "trigger_sensitivity": 10 - preview.get("static_trigger_threshold", 3),
-                    "sustain_sensitivity": 10 - preview.get("static_renew_threshold", 3),
-                    "timeout": preview.get("static_timeout", 30.0),
-                    "on_delay": preview.get("static_on_delay", 0.0),
+                    "min_range": override.get("static_min_distance", 0.3),
+                    "max_range": override.get("static_max_distance", 16.0),
+                    "trigger_range": override.get("static_max_distance", 16.0),
+                    "trigger_sensitivity": 10 - override.get("static_trigger_threshold", 3),
+                    "sustain_sensitivity": 10 - override.get("static_renew_threshold", 3),
+                    "timeout": override.get("static_timeout", 30.0),
+                    "on_delay": override.get("static_on_delay", 0.0),
                     "led_enabled": True,
                 },
             )
@@ -329,6 +327,7 @@ class DeviceManager:
         self.devices: dict[str, ManagedDevice] = {}
         self._unsub_listeners: list[Any] = []
         self._pushing: set[str] = set()
+        self._entity_update_macs: set[str] = set()
         self._build_flags: dict[str, dict[str, Any]] = {}
         # One connection per device, kept alive for the frontend session
         self._active_connections: dict[str, DeviceConnection] = {}
@@ -497,6 +496,15 @@ class DeviceManager:
         dev = self.devices.get(mac)
         if dev is not None:
             dev.available = True
+
+        # Skip push if we caused this reconnect via entity registry updates.
+        # Don't clear the guard here — multiple entities cycle through
+        # unavailable→available during an ESPHome reload, creating multiple
+        # tasks.  The 60-second timer in websocket_set_settings handles cleanup.
+        if mac in self._entity_update_macs:
+            _LOGGER.debug("Skipping redundant push for %s (entity update guard)", mac)
+            return
+
         _LOGGER.info("Device %s became available, pushing config", mac)
         if not await self._push_config_to_device(mac):
             # Close stale connection and retry after device stabilises

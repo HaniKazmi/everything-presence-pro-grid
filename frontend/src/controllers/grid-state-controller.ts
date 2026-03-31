@@ -25,6 +25,7 @@ import {
 	MAX_ZONES,
 	updateRoomDimensionsFromGrid,
 } from "../lib/grid.js";
+import { autoDetectionRange } from "../lib/room-geometry.js";
 import { ZONE_COLORS, type ZoneConfig } from "../lib/zone-defaults.js";
 
 /**
@@ -500,25 +501,48 @@ export class GridStateController implements ReactiveController {
 					lockAspect: f.lockAspect,
 				})),
 			});
-			// Save settings after layout (auto distances may have changed)
-			await this.host.hass.callWS({
-				type: "eppgrid/set_settings",
-				mac: this.host._selectedMac,
-				temperature_offset: this.host._temperatureOffset,
-				humidity_offset: this.host._humidityOffset,
-				illuminance_offset: this.host._illuminanceOffset,
-				motion_timeout: this.host._motionTimeout,
-				target_auto_distance: this.host._targetAutoDistance,
-				target_max_distance: this.host._targetMaxDistance,
-				static_auto_distance: this.host._staticAutoDistance,
-				static_min_distance: this.host._staticMinDistance,
-				static_max_distance: this.host._staticMaxDistance,
-				static_trigger_threshold: this.host._staticTriggerThreshold,
-				static_renew_threshold: this.host._staticRenewThreshold,
-				static_timeout: this.host._staticTimeout,
-				static_on_delay: this.host._staticOnDelay,
-				entities: this.host._entitiesConfig || {},
-			});
+			// Save settings after layout — only needed when auto distances
+			// may have changed; manual distances don't change with layout.
+			if (this.host._targetAutoDistance || this.host._staticAutoDistance) {
+				const autoRange = autoDetectionRange(
+					this.host._roomWidth,
+					this.host._roomDepth,
+					this.host._perspective,
+					this.host._grid,
+				);
+				const targetMaxDist = this.host._targetAutoDistance
+					? autoRange > 0
+						? Math.min(autoRange, 6)
+						: 6
+					: this.host._targetMaxDistance;
+				const staticMinDist = this.host._staticAutoDistance
+					? 0.3
+					: this.host._staticMinDistance;
+				const staticMaxDist = this.host._staticAutoDistance
+					? autoRange > 0
+						? Math.min(autoRange, 16)
+						: 16
+					: this.host._staticMaxDistance;
+
+				await this.host.hass.callWS({
+					type: "eppgrid/set_settings",
+					mac: this.host._selectedMac,
+					temperature_offset: this.host._temperatureOffset,
+					humidity_offset: this.host._humidityOffset,
+					illuminance_offset: this.host._illuminanceOffset,
+					motion_timeout: this.host._motionTimeout,
+					target_auto_distance: this.host._targetAutoDistance,
+					target_max_distance: targetMaxDist,
+					static_auto_distance: this.host._staticAutoDistance,
+					static_min_distance: staticMinDist,
+					static_max_distance: staticMaxDist,
+					static_trigger_threshold: this.host._staticTriggerThreshold,
+					static_renew_threshold: this.host._staticRenewThreshold,
+					static_timeout: this.host._staticTimeout,
+					static_on_delay: this.host._staticOnDelay,
+					entities: this.host._entitiesConfig || {},
+				});
+			}
 			this.host._dirty = false;
 			this.host._view = "live";
 		} finally {

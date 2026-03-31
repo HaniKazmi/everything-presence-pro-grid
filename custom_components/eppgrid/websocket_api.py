@@ -37,7 +37,7 @@ def async_register_websocket_commands(hass: HomeAssistant, manager: Any) -> None
     websocket_api.async_register_command(hass, websocket_subscribe_raw_targets)
     websocket_api.async_register_command(hass, websocket_set_entity_enabled)
     websocket_api.async_register_command(hass, websocket_set_settings)
-    websocket_api.async_register_command(hass, websocket_set_detection_preview)
+    websocket_api.async_register_command(hass, websocket_set_distance_override)
     websocket_api.async_register_command(hass, websocket_set_pipeline)
     websocket_api.async_register_command(hass, websocket_update_firmware)
 
@@ -214,11 +214,6 @@ async def websocket_set_room_layout(
         "furniture": msg.get("furniture", []),
     }
     await manager._store.async_save()
-
-    # Push config to device if connected
-    dev = manager.devices.get(mac)
-    if dev and dev.host:
-        await manager._push_config_to_device(mac)
 
     # Update ESPHome entity enable/disable/rename
     await manager.async_update_zone_entities(mac, msg["zone_slots"])
@@ -805,13 +800,16 @@ async def websocket_set_settings(
     if log_levels is not None:
         device_config["log_levels"] = log_levels
     await manager._store.async_save()
-    await manager._push_config_to_device(mac)
+    push_ok = await manager._push_config_to_device(mac)
     # Manage device log subscription on the active session (if any)
     session_conn = manager.get_session(mac)
     if session_conn is not None:
         manager._manage_log_subscription(session_conn, device_config)
     entities = msg.get("entities")
     if entities:
+        if push_ok:
+            manager._entity_update_macs.add(mac)
+            hass.loop.call_later(60, manager._entity_update_macs.discard, mac)
         _apply_entity_states(hass, mac, entities)
         # Zone presence needs layout-aware handling: enable zone_0 + named zones
         if entities.get("zone_presence"):
@@ -827,12 +825,12 @@ async def websocket_set_settings(
     connection.send_result(msg["id"])
 
 
-# -- set_detection_preview (live range preview, no persist) --
+# -- set_distance_override (temporary range push, no persist) --
 
 
 @websocket_api.websocket_command(
     {
-        vol.Required("type"): "eppgrid/set_detection_preview",
+        vol.Required("type"): "eppgrid/set_distance_override",
         vol.Required("mac"): str,
         vol.Required("target_max_distance"): vol.Coerce(float),
         vol.Required("static_min_distance"): vol.Coerce(float),
@@ -840,12 +838,12 @@ async def websocket_set_settings(
     }
 )
 @websocket_api.async_response
-async def websocket_set_detection_preview(
+async def websocket_set_distance_override(
     hass: HomeAssistant,
     connection: websocket_api.ActiveConnection,
     msg: dict[str, Any],
 ) -> None:
-    """Push detection distance preview to device without persisting."""
+    """Push distance override to device without persisting."""
     manager = _get_manager(hass)
     if manager is None:
         connection.send_error(msg["id"], "not_ready", "Integration not loaded")
@@ -863,10 +861,9 @@ async def websocket_set_detection_preview(
     if session is None:
         connection.send_result(msg["id"])
         return
-    # Merge preview distances with stored non-distance settings
     device_config = manager._store.devices.get(mac, {})
     stored_settings = device_config.get("settings", {})
-    preview = {
+    override = {
         "target_max_distance": msg["target_max_distance"],
         "static_min_distance": msg["static_min_distance"],
         "static_max_distance": msg["static_max_distance"],
@@ -875,7 +872,7 @@ async def websocket_set_detection_preview(
         "static_timeout": stored_settings.get("static_timeout", 30.0),
         "static_on_delay": stored_settings.get("static_on_delay", 0.0),
     }
-    await session.async_push_detection_preview(preview)
+    await session.async_push_distance_override(override)
     connection.send_result(msg["id"])
 
 

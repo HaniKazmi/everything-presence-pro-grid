@@ -562,6 +562,60 @@ describe("_applyLayout", () => {
 		await expect(a._applyLayout()).rejects.toThrow("fail");
 		expect(a._saving).toBe(false);
 	});
+
+	it("sends auto-computed distances in set_settings when auto is on", async () => {
+		const a = el as any;
+		a._selectedMac = "AA:BB:CC:DD:EE:01";
+		a._dirty = true;
+		a._grid = initGridFromRoom(3000, 4000);
+		a._perspective = [1, 0, 0, 0, 1, 0, 0, 0];
+		a._roomWidth = 3000;
+		a._roomDepth = 4000;
+		a._targetAutoDistance = true;
+		a._targetMaxDistance = 99; // stale — should be replaced
+		a._staticAutoDistance = true;
+		a._staticMinDistance = 5.0; // stale — should be replaced with 0.3
+		a._staticMaxDistance = 99; // stale — should be replaced
+		a._zoneConfigs = new Array(8).fill(null);
+
+		el.hass = {
+			callWS: vi.fn().mockResolvedValue({}),
+		};
+
+		await a._applyLayout();
+
+		// Second callWS is the set_settings call
+		const settingsCall = el.hass.callWS.mock.calls[1][0];
+		expect(settingsCall.type).toBe("eppgrid/set_settings");
+		expect(settingsCall.target_max_distance).not.toBe(99);
+		expect(settingsCall.target_max_distance).toBeLessThanOrEqual(6);
+		expect(settingsCall.static_min_distance).toBe(0.3);
+		expect(settingsCall.static_max_distance).not.toBe(99);
+		expect(settingsCall.static_max_distance).toBeLessThanOrEqual(16);
+	});
+
+	it("does not call set_settings when both auto flags are off", async () => {
+		const a = el as any;
+		a._selectedMac = "AA:BB:CC:DD:EE:01";
+		a._dirty = true;
+		a._grid = initGridFromRoom(3000, 4000);
+		a._targetAutoDistance = false;
+		a._staticAutoDistance = false;
+		a._targetMaxDistance = 4.0;
+		a._staticMinDistance = 1.0;
+		a._staticMaxDistance = 8.0;
+		a._zoneConfigs = new Array(8).fill(null);
+
+		el.hass = {
+			callWS: vi.fn().mockResolvedValue({}),
+		};
+
+		await a._applyLayout();
+
+		const calls = el.hass.callWS.mock.calls.map((c: any) => c[0].type);
+		expect(calls).toContain("eppgrid/set_room_layout");
+		expect(calls).not.toContain("eppgrid/set_settings");
+	});
 });
 
 describe("_saveSettings", () => {
@@ -728,51 +782,19 @@ describe("_deleteCalibration", () => {
 	});
 });
 
-describe("detection preview", () => {
-	it("calls set_detection_preview on distance change", async () => {
-		const el = createPanel();
-		const a = el as any;
-		a._selectedMac = "AA:BB:CC:DD:EE:01";
-		a._targetMaxDistance = 4.0;
-		a._staticMinDistance = 1.0;
-		a._staticMaxDistance = 8.0;
-
-		const callWS = vi.fn().mockResolvedValue({});
-		el.hass = { callWS };
-
-		a._onDetectionDistanceChange();
-
-		expect(callWS).toHaveBeenCalledWith({
-			type: "eppgrid/set_detection_preview",
-			mac: "AA:BB:CC:DD:EE:01",
-			target_max_distance: 4.0,
-			static_min_distance: 1.0,
-			static_max_distance: 8.0,
-		});
-	});
-});
-
 describe("settings cancel", () => {
-	it("reloads config then reverts detection preview on cancel", async () => {
+	it("reloads config on cancel", async () => {
 		const el = createPanel();
 		const a = el as any;
 		a._selectedMac = "AA:BB:CC:DD:EE:01";
-		a._targetMaxDistance = 4.0;
-		a._staticMinDistance = 1.0;
-		a._staticMaxDistance = 8.0;
 		a._view = "settings";
 		a._dirty = true;
 
-		const savedSettings = {
-			target_max_distance: 6.0,
-			static_min_distance: 0.3,
-			static_max_distance: 16.0,
-		};
 		const callWS = vi.fn().mockResolvedValue({
 			config: {
 				calibration: { perspective: null, room_width: 0, room_depth: 0 },
 				room_layout: {},
-				settings: savedSettings,
+				settings: {},
 			},
 		});
 		el.hass = {
@@ -782,16 +804,10 @@ describe("settings cancel", () => {
 
 		await a._cancelSettings();
 
-		// Should have called get_config (via _loadDeviceConfig) then set_detection_preview
 		const types = callWS.mock.calls.map((c: any) => c[0].type);
 		expect(types).toContain("eppgrid/get_config");
-		expect(types).toContain("eppgrid/set_detection_preview");
-
-		// Preview should use the reloaded saved values (6.0, not 4.0)
-		const previewCall = callWS.mock.calls.find(
-			(c: any) => c[0].type === "eppgrid/set_detection_preview",
-		);
-		expect(previewCall[0].target_max_distance).toBe(6.0);
+		expect(a._dirty).toBe(false);
+		expect(a._view).toBe("live");
 	});
 });
 

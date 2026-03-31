@@ -47,6 +47,7 @@ async def setup_integration(hass: HomeAssistant, config_entry: MockConfigEntry) 
         mock_dm.devices = {}
         mock_dm.list_devices.return_value = []
         mock_dm._push_config_to_device = AsyncMock()
+        mock_dm._entity_update_macs = set()
         mock_dm.async_update_zone_entities = AsyncMock()
         mock_dm.async_open_session = AsyncMock(return_value=None)
         mock_dm.async_close_session = AsyncMock()
@@ -263,7 +264,7 @@ class TestWebSocketSetRoomLayout:
         assert layout["room_type"] == "normal"
         assert layout["zone_slots"] == zone_slots
         mock_dm._store.async_save.assert_awaited()
-        mock_dm._push_config_to_device.assert_awaited()
+        mock_dm._push_config_to_device.assert_not_awaited()
         mock_dm.async_update_zone_entities.assert_awaited_with("AA:BB:CC:DD:EE:FF", zone_slots)
         connection.send_result.assert_called_once_with(5)
 
@@ -624,6 +625,71 @@ class TestWebSocketSettings:
         device_config = mock_dm._store.devices["AA:BB:CC:DD:EE:FF"]
         # Existing log_levels should remain untouched
         assert device_config["log_levels"] == {"epp": "Debug"}
+
+    async def test_set_settings_with_entities_sets_entity_update_guard(
+        self, hass: HomeAssistant, config_entry: MockConfigEntry
+    ) -> None:
+        """set_settings with entities sets the entity update guard to suppress reconnect push."""
+        mock_dm = await setup_integration(hass, config_entry)
+
+        from custom_components.eppgrid.websocket_api import websocket_set_settings
+
+        connection = MagicMock()
+        msg = {
+            "id": 11,
+            "type": "eppgrid/set_settings",
+            "mac": "AA:BB:CC:DD:EE:FF",
+            "temperature_offset": 0.0,
+            "humidity_offset": 0.0,
+            "illuminance_offset": 0.0,
+            "motion_timeout": 5.0,
+            "target_auto_distance": True,
+            "target_max_distance": 6.0,
+            "static_auto_distance": True,
+            "static_min_distance": 0.3,
+            "static_max_distance": 16.0,
+            "static_trigger_threshold": 3,
+            "static_renew_threshold": 3,
+            "static_timeout": 30.0,
+            "static_on_delay": 0.0,
+            "entities": {"room_occupancy": True},
+        }
+
+        await call_async_handler(hass, websocket_set_settings, connection, msg)
+
+        assert "AA:BB:CC:DD:EE:FF" in mock_dm._entity_update_macs
+
+    async def test_set_settings_without_entities_no_guard(
+        self, hass: HomeAssistant, config_entry: MockConfigEntry
+    ) -> None:
+        """set_settings without entities does not set the entity update guard."""
+        mock_dm = await setup_integration(hass, config_entry)
+
+        from custom_components.eppgrid.websocket_api import websocket_set_settings
+
+        connection = MagicMock()
+        msg = {
+            "id": 11,
+            "type": "eppgrid/set_settings",
+            "mac": "AA:BB:CC:DD:EE:FF",
+            "temperature_offset": 0.0,
+            "humidity_offset": 0.0,
+            "illuminance_offset": 0.0,
+            "motion_timeout": 5.0,
+            "target_auto_distance": True,
+            "target_max_distance": 6.0,
+            "static_auto_distance": True,
+            "static_min_distance": 0.3,
+            "static_max_distance": 16.0,
+            "static_trigger_threshold": 3,
+            "static_renew_threshold": 3,
+            "static_timeout": 30.0,
+            "static_on_delay": 0.0,
+        }
+
+        await call_async_handler(hass, websocket_set_settings, connection, msg)
+
+        assert "AA:BB:CC:DD:EE:FF" not in mock_dm._entity_update_macs
 
     async def test_set_pipeline(self, hass: HomeAssistant, config_entry: MockConfigEntry) -> None:
         """set_pipeline saves pipeline settings and pushes."""
@@ -1037,12 +1103,12 @@ class TestNotReadyGuards:
                 True,
             ),
             (
-                "websocket_set_detection_preview",
+                "websocket_set_distance_override",
                 {
                     "mac": "AA:BB",
-                    "target_max_distance": 3.0,
-                    "static_min_distance": 0.5,
-                    "static_max_distance": 6.0,
+                    "target_max_distance": 6.0,
+                    "static_min_distance": 0.3,
+                    "static_max_distance": 16.0,
                 },
                 True,
             ),
@@ -1480,77 +1546,85 @@ class TestUpdateFirmwareError:
         assert "OTA failed" in args[2]
 
 
-class TestWebSocketDetectionPreview:
-    """Tests for eppgrid/set_detection_preview."""
+class TestWebSocketDistanceOverride:
+    """Tests for eppgrid/set_distance_override."""
 
-    async def test_set_detection_preview_pushes_without_saving(
+    async def test_set_distance_override_pushes_without_saving(
         self, hass: HomeAssistant, config_entry: MockConfigEntry
     ) -> None:
-        """set_detection_preview pushes merged preview to device without persisting."""
+        """set_distance_override pushes merged override to device without persisting."""
         mock_dm = await setup_integration(hass, config_entry)
-        mock_dm._store.devices["AA:BB:CC:DD:EE:FF"] = {
-            "settings": {
-                "static_trigger_threshold": 5,
-                "static_renew_threshold": 4,
-                "static_timeout": 20.0,
-                "static_on_delay": 1.0,
+
+        # Set up stored settings with threshold/timeout values
+        mock_dm._store.devices = {
+            "AA:BB:CC:DD:EE:FF": {
+                "settings": {
+                    "static_trigger_threshold": 5,
+                    "static_renew_threshold": 4,
+                    "static_timeout": 60.0,
+                    "static_on_delay": 1.0,
+                }
             }
         }
 
+        # Set up mock session with async_push_distance_override
         mock_session = MagicMock()
-        mock_session.async_push_detection_preview = AsyncMock()
+        mock_session.async_push_distance_override = AsyncMock()
         mock_dm.get_session.return_value = mock_session
 
-        from custom_components.eppgrid.websocket_api import websocket_set_detection_preview
+        from custom_components.eppgrid.websocket_api import websocket_set_distance_override
 
         connection = MagicMock()
         msg = {
-            "id": 20,
-            "type": "eppgrid/set_detection_preview",
+            "id": 99,
+            "type": "eppgrid/set_distance_override",
             "mac": "AA:BB:CC:DD:EE:FF",
-            "target_max_distance": 3.0,
+            "target_max_distance": 5.0,
             "static_min_distance": 0.5,
-            "static_max_distance": 6.0,
+            "static_max_distance": 10.0,
         }
 
-        await call_async_handler(hass, websocket_set_detection_preview, connection, msg)
+        await call_async_handler(hass, websocket_set_distance_override, connection, msg)
 
-        # Verify merged preview was pushed (preview distances + stored non-distance settings)
-        mock_session.async_push_detection_preview.assert_awaited_once()
-        preview = mock_session.async_push_detection_preview.call_args[0][0]
-        assert preview["target_max_distance"] == 3.0
-        assert preview["static_min_distance"] == 0.5
-        assert preview["static_max_distance"] == 6.0
-        assert preview["static_trigger_threshold"] == 5
-        assert preview["static_renew_threshold"] == 4
-        assert preview["static_timeout"] == 20.0
-        assert preview["static_on_delay"] == 1.0
+        # Assert override pushed with merged values
+        mock_session.async_push_distance_override.assert_awaited_once_with(
+            {
+                "target_max_distance": 5.0,
+                "static_min_distance": 0.5,
+                "static_max_distance": 10.0,
+                "static_trigger_threshold": 5,
+                "static_renew_threshold": 4,
+                "static_timeout": 60.0,
+                "static_on_delay": 1.0,
+            }
+        )
 
-        # Must NOT persist
+        # Assert NOT persisted
         mock_dm._store.async_save.assert_not_awaited()
 
-        connection.send_result.assert_called_once_with(20)
+        connection.send_result.assert_called_once_with(99)
 
-    async def test_set_detection_preview_no_session(self, hass: HomeAssistant, config_entry: MockConfigEntry) -> None:
-        """set_detection_preview is a no-op when no session exists."""
+    async def test_set_distance_override_no_session(self, hass: HomeAssistant, config_entry: MockConfigEntry) -> None:
+        """set_distance_override is a no-op when no session exists."""
         mock_dm = await setup_integration(hass, config_entry)
         mock_dm.get_session.return_value = None
 
-        from custom_components.eppgrid.websocket_api import websocket_set_detection_preview
+        from custom_components.eppgrid.websocket_api import websocket_set_distance_override
 
         connection = MagicMock()
         msg = {
-            "id": 20,
-            "type": "eppgrid/set_detection_preview",
+            "id": 100,
+            "type": "eppgrid/set_distance_override",
             "mac": "AA:BB:CC:DD:EE:FF",
-            "target_max_distance": 3.0,
+            "target_max_distance": 5.0,
             "static_min_distance": 0.5,
-            "static_max_distance": 6.0,
+            "static_max_distance": 10.0,
         }
 
-        await call_async_handler(hass, websocket_set_detection_preview, connection, msg)
+        await call_async_handler(hass, websocket_set_distance_override, connection, msg)
 
-        connection.send_result.assert_called_once_with(20)
+        connection.send_result.assert_called_once_with(100)
+        mock_dm._store.async_save.assert_not_awaited()
 
 
 class TestProtocolVersionGuard:

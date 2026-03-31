@@ -838,6 +838,57 @@ describe("save event payload", () => {
 	});
 });
 
+describe("save event auto distance substitution", () => {
+	it("sends auto-computed target distance when targetAutoDistance is true", () => {
+		const sv = createView({
+			dirty: true,
+			targetAutoDistance: true,
+			targetMaxDistance: 99, // stale stored value — should NOT be sent
+			staticAutoDistance: false,
+			staticMinDistance: 1.0,
+			staticMaxDistance: 8.0,
+		});
+
+		let payload: any = null;
+		sv.addEventListener("save", ((e: CustomEvent) => {
+			payload = e.detail;
+		}) as EventListener);
+
+		(sv as any)._emitSave();
+
+		expect(payload).not.toBeNull();
+		expect(payload.target_auto_distance).toBe(true);
+		// autoDetectionRange for 3000x4000 room with identity perspective
+		// returns 4.0 (rounded up to nearest 0.5m), capped at 6
+		expect(payload.target_max_distance).toBeLessThanOrEqual(6);
+		expect(payload.target_max_distance).not.toBe(99);
+	});
+
+	it("sends auto-computed static distances when staticAutoDistance is true", () => {
+		const sv = createView({
+			dirty: true,
+			targetAutoDistance: false,
+			targetMaxDistance: 4.0,
+			staticAutoDistance: true,
+			staticMinDistance: 5.0, // stale — should be replaced with 0.3
+			staticMaxDistance: 99, // stale — should NOT be sent
+		});
+
+		let payload: any = null;
+		sv.addEventListener("save", ((e: CustomEvent) => {
+			payload = e.detail;
+		}) as EventListener);
+
+		(sv as any)._emitSave();
+
+		expect(payload).not.toBeNull();
+		expect(payload.static_auto_distance).toBe(true);
+		expect(payload.static_min_distance).toBe(0.3);
+		expect(payload.static_max_distance).toBeLessThanOrEqual(16);
+		expect(payload.static_max_distance).not.toBe(99);
+	});
+});
+
 describe("renderEntities entity toggle @change handlers", () => {
 	it("toggling room_occupancy checkbox updates overrides and fires dirty", () => {
 		const sv = createView({ entitiesConfig: {} });

@@ -545,33 +545,55 @@ export class EPPGridPanel extends LitElement {
 		return this._gridCtrl.saveSettings(payload || {});
 	}
 
-	private _onDetectionDistanceChange(): void {
-		this.hass
-			?.callWS({
-				type: "eppgrid/set_detection_preview",
-				mac: this._selectedMac,
-				target_max_distance: this._targetMaxDistance,
-				static_min_distance: this._staticMinDistance,
-				static_max_distance: this._staticMaxDistance,
-			})
-			.catch(() => {});
-	}
-
 	private async _cancelSettings(): Promise<void> {
 		this._dirty = false;
 		this._view = "live";
-		// Reload saved config first — this restores panel state to saved values
+		// Reload saved config to restore panel state to saved values
 		await this._loadDeviceConfig(this._selectedMac);
-		// Now push saved values to device to revert any preview
-		this.hass
-			?.callWS({
-				type: "eppgrid/set_detection_preview",
-				mac: this._selectedMac,
-				target_max_distance: this._targetMaxDistance,
-				static_min_distance: this._staticMinDistance,
-				static_max_distance: this._staticMaxDistance,
-			})
-			.catch(() => {});
+	}
+
+	private async _cancelEditor(): Promise<void> {
+		const needsRevert = this._targetAutoDistance || this._staticAutoDistance;
+		this._dirty = false;
+		// Reload config (reopens session), then revert widened ranges on the
+		// new session. Must reload first because _loadDeviceConfig tears down
+		// the old session.
+		await this._loadDeviceConfig(this._selectedMac);
+		this._view = "live";
+		if (needsRevert) {
+			await this.hass
+				?.callWS({
+					type: "eppgrid/set_distance_override",
+					mac: this._selectedMac,
+					target_max_distance: this._targetMaxDistance,
+					static_min_distance: this._staticMinDistance,
+					static_max_distance: this._staticMaxDistance,
+				})
+				?.catch(() => {});
+		}
+	}
+
+	private _enterEditor(tab: "zones" | "furniture"): void {
+		this._view = "editor";
+		this._sidebarTab = tab;
+
+		if (this._targetAutoDistance || this._staticAutoDistance) {
+			this.hass
+				?.callWS({
+					type: "eppgrid/set_distance_override",
+					mac: this._selectedMac,
+					target_max_distance: this._targetAutoDistance
+						? 6
+						: this._targetMaxDistance,
+					static_min_distance: this._staticAutoDistance
+						? 0.3
+						: this._staticMinDistance,
+					static_max_distance: this._staticAutoDistance
+						? 16
+						: this._staticMaxDistance,
+				})
+				?.catch(() => {});
+		}
 	}
 
 	// -- Template management (localStorage) --
@@ -1119,9 +1141,11 @@ export class EPPGridPanel extends LitElement {
       <div class="save-cancel-bar">
         <button class="wizard-btn wizard-btn-back"
           @click=${() => {
-						this._dirty = false;
-						this._view = "live";
-						this._loadDeviceConfig(this._selectedMac);
+						if (this._view === "editor") {
+							this._cancelEditor();
+						} else {
+							this._cancelSettings();
+						}
 					}}
         >${this._localize("common.cancel")}</button>
         <button class="wizard-btn wizard-btn-primary"
@@ -1177,14 +1201,12 @@ export class EPPGridPanel extends LitElement {
 											this._perspective
 												? html`
                       <button class="sidebar-menu-item" @click=${() => {
-												this._view = "editor";
-												this._sidebarTab = "zones";
+												this._enterEditor("zones");
 											}}>
                         <ha-icon icon="mdi:vector-square" style="--mdc-icon-size: 18px;"></ha-icon> ${this._localize("menu.detection_zones")}
                       </button>
                       <button class="sidebar-menu-item" @click=${() => {
-												this._view = "editor";
-												this._sidebarTab = "furniture";
+												this._enterEditor("furniture");
 											}}>
                         <ha-icon icon="mdi:sofa" style="--mdc-icon-size: 18px;"></ha-icon> ${this._localize("menu.furniture")}
                       </button>
@@ -1305,9 +1327,6 @@ export class EPPGridPanel extends LitElement {
           @setting-change=${(e: CustomEvent) => {
 						const { key, value } = e.detail;
 						(this as any)[`_${key}`] = value;
-						if (key.includes("Distance") || key.includes("Auto")) {
-							this._onDetectionDistanceChange();
-						}
 					}}
           @dirty=${() => {
 						this._dirty = true;

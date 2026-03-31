@@ -160,6 +160,122 @@ class TestDeviceConnection:
         # Should not raise
         await conn.async_push_config({"calibration": {"perspective": [1.0] * 8}})
 
+    async def test_push_config_settings_translation(self) -> None:
+        """Settings values are correctly translated to firmware service calls."""
+        conn = DeviceConnection("192.168.1.100")
+
+        # Create mock services for all settings-related firmware calls
+        svc_env = MagicMock()
+        svc_env.name = "epp_set_env_calibration"
+        svc_motion = MagicMock()
+        svc_motion.name = "epp_set_motion_timeout"
+        svc_tracking = MagicMock()
+        svc_tracking.name = "epp_set_tracking"
+        svc_static = MagicMock()
+        svc_static.name = "epp_set_static_presence"
+
+        services = [svc_env, svc_motion, svc_tracking, svc_static]
+
+        with patch("custom_components.eppgrid.device_manager.APIClient") as mock_cls:
+            mock_client = mock_cls.return_value
+            mock_client.connect = AsyncMock()
+            mock_client.list_entities_services = AsyncMock(return_value=([], services))
+            mock_client.execute_service = AsyncMock()
+
+            await conn.async_connect()
+            await conn.async_push_config(
+                {
+                    "settings": {
+                        "temperature_offset": 1.5,
+                        "humidity_offset": -2.0,
+                        "illuminance_offset": 10.0,
+                        "motion_timeout": 8.0,
+                        "target_max_distance": 4.5,
+                        "static_min_distance": 0.5,
+                        "static_max_distance": 12.0,
+                        "static_trigger_threshold": 4,
+                        "static_renew_threshold": 2,
+                        "static_timeout": 45.0,
+                        "static_on_delay": 1.5,
+                    }
+                }
+            )
+
+            calls = mock_client.execute_service.await_args_list
+            payloads = {c.args[0].name: c.args[1] for c in calls}
+
+            # env_calibration: values passed through unchanged
+            assert payloads["epp_set_env_calibration"] == {
+                "temperature_offset": 1.5,
+                "humidity_offset": -2.0,
+                "illuminance_offset": 10.0,
+            }
+
+            # motion_timeout: value passed through
+            assert payloads["epp_set_motion_timeout"] == {"timeout": 8.0}
+
+            # tracking: meters converted to millimeters
+            assert payloads["epp_set_tracking"] == {"max_range": 4500.0}
+
+            # static_presence: thresholds inverted (10 - value),
+            # trigger_range set to max_distance, led_enabled hardcoded True
+            assert payloads["epp_set_static_presence"] == {
+                "min_range": 0.5,
+                "max_range": 12.0,
+                "trigger_range": 12.0,
+                "trigger_sensitivity": 6,  # 10 - 4
+                "sustain_sensitivity": 8,  # 10 - 2
+                "timeout": 45.0,
+                "on_delay": 1.5,
+                "led_enabled": True,
+            }
+
+    async def test_push_config_settings_defaults(self) -> None:
+        """Missing settings keys fall back to correct defaults."""
+        conn = DeviceConnection("192.168.1.100")
+
+        svc_env = MagicMock()
+        svc_env.name = "epp_set_env_calibration"
+        svc_motion = MagicMock()
+        svc_motion.name = "epp_set_motion_timeout"
+        svc_tracking = MagicMock()
+        svc_tracking.name = "epp_set_tracking"
+        svc_static = MagicMock()
+        svc_static.name = "epp_set_static_presence"
+
+        services = [svc_env, svc_motion, svc_tracking, svc_static]
+
+        with patch("custom_components.eppgrid.device_manager.APIClient") as mock_cls:
+            mock_client = mock_cls.return_value
+            mock_client.connect = AsyncMock()
+            mock_client.list_entities_services = AsyncMock(return_value=([], services))
+            mock_client.execute_service = AsyncMock()
+
+            await conn.async_connect()
+            # Only provide one key — rest should use defaults
+            await conn.async_push_config({"settings": {"temperature_offset": 2.0}})
+
+            calls = mock_client.execute_service.await_args_list
+            payloads = {c.args[0].name: c.args[1] for c in calls}
+
+            assert payloads["epp_set_env_calibration"] == {
+                "temperature_offset": 2.0,
+                "humidity_offset": 0.0,
+                "illuminance_offset": 0.0,
+            }
+            assert payloads["epp_set_motion_timeout"] == {"timeout": 5.0}
+            assert payloads["epp_set_tracking"] == {"max_range": 6000.0}
+            assert payloads["epp_set_static_presence"] == {
+                "min_range": 0.3,
+                "max_range": 16.0,
+                "trigger_range": 16.0,
+                "trigger_sensitivity": 7,  # 10 - 3
+                "sustain_sensitivity": 7,  # 10 - 3
+                "timeout": 30.0,
+                "on_delay": 0.0,
+                "led_enabled": True,
+            }
+
 
 # ---------------------------------------------------------------------------
 # DeviceManager tests
@@ -1354,6 +1470,26 @@ class TestEventCallbacks:
 
         assert mock_push.await_count == 2
         assert mac not in manager._pushing
+
+    async def test_on_device_available_skips_push_when_entity_update_guard_set(
+        self, hass: HomeAssistant, store: EPPGridStore, manager: DeviceManager
+    ) -> None:
+        """_on_device_available skips push when entity update guard is set."""
+        mac = "AA:BB:CC:DD:EE:FF"
+        store.devices[mac] = {"calibration": {"perspective": [1.0] * 8}}
+        manager.devices[mac] = ManagedDevice(mac=mac, name="EPP", host="192.168.1.50")
+
+        # Simulate: entity update guard was set by websocket_set_settings
+        manager._entity_update_macs.add(mac)
+        manager._pushing.add(mac)
+
+        with patch.object(manager, "_push_config_to_device", new_callable=AsyncMock) as mock_push:
+            await manager._on_device_available(mac)
+
+        mock_push.assert_not_awaited()
+        # Guard stays set — cleared by 60-second timer, not by skip path
+        assert mac in manager._entity_update_macs
+        assert mac in manager._pushing
 
 
 # ---------------------------------------------------------------------------

@@ -378,14 +378,17 @@ describe("_renderWizardCorners DOM events (via EppWizard)", () => {
 });
 
 describe("_renderSaveCancelButtons DOM events", () => {
-	it("cancel button resets view", () => {
+	it("cancel button resets view", async () => {
 		const a = createPanel() as any;
 		a._view = "editor";
 		a._dirty = true;
 		a.hass = {
 			callWS: vi.fn().mockResolvedValue({
-				calibration: { perspective: null, room_width: 0, room_depth: 0 },
-				room_layout: {},
+				config: {
+					calibration: { perspective: null, room_width: 0, room_depth: 0 },
+					room_layout: {},
+					settings: {},
+				},
 			}),
 			connection: { subscribeMessage: vi.fn().mockResolvedValue(() => {}) },
 		};
@@ -395,8 +398,10 @@ describe("_renderSaveCancelButtons DOM events", () => {
 		const backBtn = c.querySelector(".wizard-btn-back") as HTMLElement;
 		if (backBtn) {
 			backBtn.click();
+			await vi.waitFor(() => {
+				expect(a._view).toBe("live");
+			});
 			expect(a._dirty).toBe(false);
-			expect(a._view).toBe("live");
 		}
 	});
 });
