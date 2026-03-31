@@ -885,6 +885,7 @@ class TestWebSocketSettings:
         settings = mock_dm._store.devices["AA:BB:CC:DD:EE:FF"]["settings"]
         assert settings["relay_trigger_mode"] == "motion"
         assert settings["relay_contact_mode"] == "nc"
+        connection.send_result.assert_called_once_with(11)
 
     async def test_set_settings_enables_relay_entity_on_trigger_mode(
         self, hass: HomeAssistant, config_entry: MockConfigEntry
@@ -1166,6 +1167,7 @@ class TestEntityMapping:
         from custom_components.eppgrid.websocket_api import _entity_key_for_object_id
 
         assert _entity_key_for_object_id("system_alarm_relay") == "relay_output"
+        assert _entity_key_for_object_id("esphome_aabbccddeeff_system_alarm_relay") == "relay_output"
 
     def test_entity_key_mapping_unknown(self) -> None:
         """Unknown object_ids return None."""
