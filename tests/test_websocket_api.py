@@ -568,7 +568,7 @@ class TestWebSocketSettings:
 
             await call_async_handler(hass, websocket_set_settings, connection, msg)
 
-            mock_apply.assert_called_once_with(
+            mock_apply.assert_any_call(
                 hass, "AA:BB:CC:DD:EE:FF", {"room_occupancy": True, "env_illuminance": False}
             )
 
@@ -885,6 +885,76 @@ class TestWebSocketSettings:
         settings = mock_dm._store.devices["AA:BB:CC:DD:EE:FF"]["settings"]
         assert settings["relay_trigger_mode"] == "motion"
         assert settings["relay_contact_mode"] == "nc"
+
+    async def test_set_settings_enables_relay_entity_on_trigger_mode(
+        self, hass: HomeAssistant, config_entry: MockConfigEntry
+    ) -> None:
+        """set_settings enables relay_output entity when trigger_mode != 'disabled'."""
+        await setup_integration(hass, config_entry)
+
+        from custom_components.eppgrid.websocket_api import websocket_set_settings
+
+        with patch("custom_components.eppgrid.websocket_api._apply_entity_states") as mock_apply:
+            connection = MagicMock()
+            msg = {
+                "id": 11,
+                "type": "eppgrid/set_settings",
+                "mac": "AA:BB:CC:DD:EE:FF",
+                "temperature_offset": 0.0,
+                "humidity_offset": 0.0,
+                "illuminance_offset": 0.0,
+                "motion_timeout": 5.0,
+                "target_auto_distance": True,
+                "target_max_distance": 6.0,
+                "static_auto_distance": True,
+                "static_min_distance": 0.3,
+                "static_max_distance": 16.0,
+                "static_trigger_threshold": 3,
+                "static_renew_threshold": 3,
+                "static_timeout": 30.0,
+                "static_on_delay": 0.0,
+                "relay_trigger_mode": "motion",
+                "relay_contact_mode": "no",
+            }
+
+            await call_async_handler(hass, websocket_set_settings, connection, msg)
+
+            mock_apply.assert_called_once_with(hass, "AA:BB:CC:DD:EE:FF", {"relay_output": True})
+
+    async def test_set_settings_disables_relay_entity_on_disabled(
+        self, hass: HomeAssistant, config_entry: MockConfigEntry
+    ) -> None:
+        """set_settings disables relay_output entity when trigger_mode == 'disabled'."""
+        await setup_integration(hass, config_entry)
+
+        from custom_components.eppgrid.websocket_api import websocket_set_settings
+
+        with patch("custom_components.eppgrid.websocket_api._apply_entity_states") as mock_apply:
+            connection = MagicMock()
+            msg = {
+                "id": 11,
+                "type": "eppgrid/set_settings",
+                "mac": "AA:BB:CC:DD:EE:FF",
+                "temperature_offset": 0.0,
+                "humidity_offset": 0.0,
+                "illuminance_offset": 0.0,
+                "motion_timeout": 5.0,
+                "target_auto_distance": True,
+                "target_max_distance": 6.0,
+                "static_auto_distance": True,
+                "static_min_distance": 0.3,
+                "static_max_distance": 16.0,
+                "static_trigger_threshold": 3,
+                "static_renew_threshold": 3,
+                "static_timeout": 30.0,
+                "static_on_delay": 0.0,
+                "relay_trigger_mode": "disabled",
+                "relay_contact_mode": "no",
+            }
+
+            await call_async_handler(hass, websocket_set_settings, connection, msg)
+
+            mock_apply.assert_called_once_with(hass, "AA:BB:CC:DD:EE:FF", {"relay_output": False})
 
     async def test_set_pipeline(self, hass: HomeAssistant, config_entry: MockConfigEntry) -> None:
         """set_pipeline saves pipeline settings and pushes."""
