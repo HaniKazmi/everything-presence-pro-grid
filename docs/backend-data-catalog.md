@@ -226,6 +226,9 @@ Saves all device settings (offsets, timeouts, distances, thresholds, LED setting
 | `static_led_enabled` | bool | `true` | Enable/disable SEN0609 indicator LED |
 
 **Firmware push:** LED mode/brightness/color pushed via `epp_set_led` action (mode, brightness, presence_red/green/blue as 0.0–1.0 floats). SEN0609 LED toggle passed through existing `epp_set_static_presence` action's `led_enabled` parameter.
+Saves all device settings (offsets, timeouts, distances, thresholds, relay, entities, log levels) in one call. Pushes full config to device. Auto-enables/disables relay switch entity based on `relay_trigger_mode`. When `entities` is provided and modifies `disabled_by`, sets `_entity_update_macs` guard to suppress the redundant reconnect push caused by the ESPHome config entry reload.
+
+**Request:** `{ "type": "eppgrid/set_settings", "mac": str, "temperature_offset": float, ..., "relay_trigger_mode": str, "relay_contact_mode": str, "entities": { ... }, "log_levels": { ... } }`
 
 ### `set_distance_override`
 
@@ -288,6 +291,7 @@ The frontend enricher replaces zone IDs with names for display.
         "motion_timeout": {"timeout": float},
         "tracking": {"max_range": float},
         "static_presence": {"min_range": float, "max_range": float, ...},
+        "relay": {"trigger_mode": str, "contact_mode": str},
         "pipeline": {"display_interval": int, "zone_publish_interval": int, "window_duration": int},
     }
 }
