@@ -426,7 +426,7 @@ class DeviceManager:
 
             if is_new:
                 _LOGGER.info("Discovered zone engine device: %s (%s)", device.name, mac)
-                # Apply zone entity management on first discovery only
+                # Apply zone entity management on first discovery
                 config = self._store.get_device(mac)
                 zone_slots = (
                     config.get("room_layout", {}).get("zone_slots", [None] * MAX_ZONES)
@@ -646,43 +646,37 @@ class DeviceManager:
         return result
 
     async def async_update_zone_entities(self, mac: str, zone_slots: list[dict[str, Any] | None]) -> None:
-        """Enable/disable and rename ESPHome zone occupancy entities for a device."""
+        """Enable/disable and rename ESPHome zone occupancy entities for a device.
+
+        Reads settings.zone_presence to decide whether zone entities should
+        be enabled. When enabled, zone 0 + named zones are enabled; unused
+        slots are disabled.
+        """
         dev = self.devices.get(mac)
         if dev is None or dev.device_id is None:
             return
 
         ent_reg = er.async_get(self._hass)
-        config = self._store.get_device(mac)
-        is_calibrated = config is not None and "calibration" in config
-
-        _LOGGER.debug("Updating zone entities for %s (calibrated=%s)", mac, is_calibrated)
+        config = self._store.get_device(mac) or {}
+        zone_presence = config.get("settings", {}).get("zone_presence", False)
 
         for i in range(MAX_ZONES + 1):  # zones 0-7
             entity_id = self._find_zone_entity(ent_reg, dev.device_id, i)
-            _LOGGER.debug("Zone %d: entity_id=%s", i, entity_id)
             if entity_id is None:
                 continue
 
-            if i == 0:
-                # Zone 0 "rest of room" — enable if calibrated, but don't
-                # re-enable if already disabled by integration or user (settings
-                # may have explicitly disabled zone_presence).  When enabling
-                # from settings, _apply_entity_states clears disabled_by first.
-                entry_obj = ent_reg.async_get(entity_id)
-                already_disabled = entry_obj and entry_obj.disabled_by is not None
-                if is_calibrated and not already_disabled:
-                    ent_reg.async_update_entity(entity_id, disabled_by=None, name="Rest of Room Occupancy")
-                elif not is_calibrated:
-                    ent_reg.async_update_entity(entity_id, disabled_by=er.RegistryEntryDisabler.INTEGRATION)
+            entry_obj = ent_reg.async_get(entity_id)
+            if not zone_presence:
+                ent_reg.async_update_entity(entity_id, disabled_by=er.RegistryEntryDisabler.INTEGRATION)
+            elif i == 0:
+                ent_reg.async_update_entity(entity_id, disabled_by=None, name="Rest of Room Occupancy")
             elif i <= len(zone_slots) and zone_slots[i - 1] is not None:
-                # Named zone — enable and rename (same guard as zone 0)
-                entry_obj = ent_reg.async_get(entity_id)
-                already_disabled = entry_obj and entry_obj.disabled_by is not None
-                if not already_disabled:
-                    zone = zone_slots[i - 1]
-                    ent_reg.async_update_entity(entity_id, disabled_by=None, name=zone["name"])
+                zone = zone_slots[i - 1]
+                # Don't override user-disabled entities
+                if entry_obj and entry_obj.disabled_by == er.RegistryEntryDisabler.USER:
+                    continue
+                ent_reg.async_update_entity(entity_id, disabled_by=None, name=zone["name"])
             else:
-                # Unused zone — disable
                 ent_reg.async_update_entity(entity_id, disabled_by=er.RegistryEntryDisabler.INTEGRATION)
 
     def _find_zone_entity(self, ent_reg: er.EntityRegistry, device_id: str, zone_index: int) -> str | None:

@@ -182,28 +182,6 @@ describe("_onCellMouseUp", () => {
 	});
 });
 
-describe("_updateRoomDimensionsFromGrid", () => {
-	it("updates room dimensions based on grid", () => {
-		const a = createPanel() as any;
-		a._roomWidth = 0;
-		a._roomDepth = 0;
-
-		// Mark some cells as inside room using CELL_ROOM_BIT (0x01)
-		// Import GRID_COLS from the already-imported module
-		const GRID_COLS_LOCAL = 20; // from grid.ts
-		for (let r = 0; r < 3; r++) {
-			for (let c = 10; c < 15; c++) {
-				a._grid[r * GRID_COLS_LOCAL + c] = 0x01; // CELL_ROOM_BIT
-			}
-		}
-
-		a._updateRoomDimensionsFromGrid();
-
-		expect(a._roomWidth).toBeGreaterThan(0);
-		expect(a._roomDepth).toBeGreaterThan(0);
-	});
-});
-
 describe("_computeHeatmapColors", () => {
 	it("returns a Map", () => {
 		const a = createPanel() as any;

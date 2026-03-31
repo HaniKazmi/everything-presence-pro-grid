@@ -286,6 +286,13 @@ export function runLocalZoneEngine(
 		occupancy[zid] = st.occupied;
 	}
 
+	// Clear stale zones no longer in the grid
+	for (const zid of state.localZoneState.keys()) {
+		if (!allZoneIds.has(zid)) {
+			state.localZoneState.delete(zid);
+		}
+	}
+
 	// activeTargets = sensor is tracking (mirrors backend tw.active)
 	const activeTargets = new Set<number>();
 	for (let i = 0; i < MAX_TARGETS && i < params.targets.length; i++) {

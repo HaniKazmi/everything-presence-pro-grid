@@ -633,3 +633,36 @@ describe("runLocalZoneEngine", () => {
 		expect(r4.sensorOccupancy).toBe(false);
 	});
 });
+
+describe("stale zone cleanup", () => {
+	it("clears occupancy for zones no longer in the grid", () => {
+		const state = createZoneEngineState();
+		const grid = new Uint8Array(GRID_CELL_COUNT);
+		// Start with zone 0 and zone 1 in the grid
+		grid[0] = CELL_ROOM_BIT; // zone 0
+		grid[1] = cellSetZone(CELL_ROOM_BIT, 1); // zone 1
+
+		const targets = [
+			{ x: 0, y: 0, speed: 0, status: "active" as const, signal: 9 },
+		];
+		const params = makeDefaultParams({
+			grid,
+			targets,
+			roomWidth: 6000,
+			roomDepth: 6000,
+		});
+
+		// Run twice to pass gating (needs 2 consecutive ticks)
+		runLocalZoneEngine(state, params);
+		runLocalZoneEngine(state, params);
+		expect(state.localZoneState.get(0)?.occupied).toBe(true);
+
+		// Now repaint all cells into zone 1 (zone 0 no longer in grid)
+		grid[0] = cellSetZone(CELL_ROOM_BIT, 1);
+
+		// Next tick: zone 0 should be cleared from state
+		const result = runLocalZoneEngine(state, params);
+		expect(state.localZoneState.get(0)?.occupied).toBeFalsy();
+		expect(result.occupancy[0]).toBeFalsy();
+	});
+});

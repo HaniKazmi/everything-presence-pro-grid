@@ -511,6 +511,79 @@ describe("DeviceController", () => {
 		});
 	});
 
+	describe("subscribeTargets retry", () => {
+		it("retries subscription after failure", async () => {
+			vi.useFakeTimers();
+			const unsub = vi.fn();
+			hass.connection.subscribeMessage = vi
+				.fn()
+				.mockRejectedValueOnce(new Error("unknown command"))
+				.mockResolvedValueOnce(vi.fn()) // display sub
+				.mockResolvedValueOnce(unsub); // grid retry
+
+			ctrl.subscribeTargets("aa");
+
+			// First attempt fails, display succeeds
+			await vi.advanceTimersByTimeAsync(0);
+
+			// Retry fires after 2s
+			await vi.advanceTimersByTimeAsync(2000);
+			await vi.advanceTimersByTimeAsync(0);
+
+			expect(hass.connection.subscribeMessage).toHaveBeenCalledTimes(3);
+			expect((ctrl as any)._unsubTargets).toBe(unsub);
+
+			vi.useRealTimers();
+		});
+
+		it("does not retry after unsubscribeTargets is called", async () => {
+			vi.useFakeTimers();
+			hass.connection.subscribeMessage = vi
+				.fn()
+				.mockRejectedValueOnce(new Error("unknown command"))
+				.mockResolvedValueOnce(vi.fn());
+
+			ctrl.subscribeTargets("aa");
+			await vi.advanceTimersByTimeAsync(0);
+
+			ctrl.unsubscribeTargets();
+
+			await vi.advanceTimersByTimeAsync(2000);
+			await vi.advanceTimersByTimeAsync(0);
+
+			// Only 2 initial calls (grid + display), no retry
+			expect(hass.connection.subscribeMessage).toHaveBeenCalledTimes(2);
+
+			vi.useRealTimers();
+		});
+		it("clears pending retry timer on new subscribeTargets call", async () => {
+			vi.useFakeTimers();
+			hass.connection.subscribeMessage = vi
+				.fn()
+				.mockRejectedValueOnce(new Error("unknown command"))
+				.mockResolvedValueOnce(vi.fn()) // display sub
+				.mockResolvedValueOnce(vi.fn()) // second grid sub
+				.mockResolvedValueOnce(vi.fn()); // second display sub
+
+			ctrl.subscribeTargets("aa");
+			await vi.advanceTimersByTimeAsync(0);
+
+			// Retry is pending — call subscribeTargets again before it fires
+			ctrl.subscribeTargets("bb");
+			await vi.advanceTimersByTimeAsync(0);
+
+			// Advance past where the old retry would have fired
+			await vi.advanceTimersByTimeAsync(2000);
+			await vi.advanceTimersByTimeAsync(0);
+
+			// Should have: grid(aa) + display(aa) + grid(bb) + display(bb) = 4
+			// NOT 5 (no stale retry for "aa")
+			expect(hass.connection.subscribeMessage).toHaveBeenCalledTimes(4);
+
+			vi.useRealTimers();
+		});
+	});
+
 	describe("unsubscribeTargets", () => {
 		it("calls unsub and clears references", () => {
 			const unsub = vi.fn();

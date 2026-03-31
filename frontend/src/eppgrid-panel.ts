@@ -325,6 +325,10 @@ export class EPPGridPanel extends LitElement {
 
 	disconnectedCallback(): void {
 		super.disconnectedCallback();
+		if (this._initRetryTimer) {
+			clearTimeout(this._initRetryTimer);
+			this._initRetryTimer = undefined;
+		}
 		this._closeDeviceSession();
 		window.removeEventListener("beforeunload", this._beforeUnloadHandler);
 		window.removeEventListener("click", this._dismissTooltips);
@@ -362,11 +366,23 @@ export class EPPGridPanel extends LitElement {
 		}
 	}
 
+	private _initRetryTimer?: ReturnType<typeof setTimeout>;
+
 	private async _initialize(): Promise<void> {
 		if (!this.hass) return;
+		if (this._initRetryTimer) {
+			clearTimeout(this._initRetryTimer);
+			this._initRetryTimer = undefined;
+		}
 		this._loading = true;
 		this._deviceCtrl.hass = this.hass;
 		await this._loadDevices();
+		if (!this._selectedMac && this._devices.length === 0) {
+			// Integration may not be loaded yet — retry
+			this._loading = false;
+			this._initRetryTimer = setTimeout(() => this._initialize(), 2000);
+			return;
+		}
 		if (this._selectedMac) {
 			await this._loadDeviceConfig(this._selectedMac);
 		}
@@ -463,10 +479,6 @@ export class EPPGridPanel extends LitElement {
 
 	private _applyPaintToCell(index: number): void {
 		this._gridCtrl.applyPaintToCell(index);
-	}
-
-	private _updateRoomDimensionsFromGrid(): void {
-		this._gridCtrl.updateRoomDimensionsFromGrid();
 	}
 
 	// -- Zone management --
@@ -573,10 +585,7 @@ export class EPPGridPanel extends LitElement {
 		}
 	}
 
-	private _enterEditor(tab: "zones" | "furniture"): void {
-		this._view = "editor";
-		this._sidebarTab = tab;
-
+	private _pushWidenedDistanceOverride(): void {
 		if (this._targetAutoDistance || this._staticAutoDistance) {
 			this.hass
 				?.callWS({
@@ -594,6 +603,12 @@ export class EPPGridPanel extends LitElement {
 				})
 				?.catch(() => {});
 		}
+	}
+
+	private _enterEditor(tab: "zones" | "furniture"): void {
+		this._view = "editor";
+		this._sidebarTab = tab;
+		this._pushWidenedDistanceOverride();
 	}
 
 	// -- Template management (localStorage) --
@@ -905,7 +920,7 @@ export class EPPGridPanel extends LitElement {
           .localize=${this._localize}
           .initialRoomWidth=${this._roomWidth}
           .initialRoomDepth=${this._roomDepth}
-          @calibration-complete=${(e: CustomEvent) => {
+          @calibration-complete=${async (e: CustomEvent) => {
 						const { perspective, roomWidth, roomDepth } = e.detail;
 						this._perspective = perspective;
 						this._roomWidth = roomWidth;
@@ -913,6 +928,14 @@ export class EPPGridPanel extends LitElement {
 						this._initGridFromRoom();
 						this._setupStep = null;
 						this._view = "live";
+						// set_setup enables zone_presence — update local state
+						this._entitiesConfig = {
+							...this._entitiesConfig,
+							zone_presence: true,
+						};
+						await this._gridCtrl.applyLayout().catch((err: unknown) => {
+							console.error("Failed to apply layout after calibration", err);
+						});
 					}}
           @wizard-cancel=${() => {
 						this._setupStep = null;
@@ -968,8 +991,39 @@ export class EPPGridPanel extends LitElement {
 		this._roomHandoffTimeout = ZONE_TYPE_DEFAULTS.normal.handoff_timeout;
 		this._roomEntryPoint = false;
 		this._furniture = [];
+		// set_setup will disable zone_presence — update local state
+		this._entitiesConfig = { ...this._entitiesConfig, zone_presence: false };
+		// Reset auto distances to maximums and persist before clearing
+		// calibration, so _push_config_to_device sends the correct values.
+		if (this._targetAutoDistance) {
+			this._targetMaxDistance = 6;
+		}
+		if (this._staticAutoDistance) {
+			this._staticMinDistance = 0.3;
+			this._staticMaxDistance = 16;
+		}
 		// Clear calibration and layout on the backend
 		try {
+			if (this._targetAutoDistance || this._staticAutoDistance) {
+				await this.hass.callWS({
+					type: "eppgrid/set_settings",
+					mac: this._selectedMac,
+					temperature_offset: this._temperatureOffset,
+					humidity_offset: this._humidityOffset,
+					illuminance_offset: this._illuminanceOffset,
+					motion_timeout: this._motionTimeout,
+					target_auto_distance: this._targetAutoDistance,
+					target_max_distance: this._targetMaxDistance,
+					static_auto_distance: this._staticAutoDistance,
+					static_min_distance: this._staticMinDistance,
+					static_max_distance: this._staticMaxDistance,
+					static_trigger_threshold: this._staticTriggerThreshold,
+					static_renew_threshold: this._staticRenewThreshold,
+					static_timeout: this._staticTimeout,
+					static_on_delay: this._staticOnDelay,
+					entities: this._entitiesConfig || {},
+				});
+			}
 			await this.hass.callWS({
 				type: "eppgrid/set_setup",
 				mac: this._selectedMac,
@@ -995,6 +1049,7 @@ export class EPPGridPanel extends LitElement {
 	private _changePlacement(): void {
 		this._guardNavigation(() => {
 			this._setupStep = "guide";
+			this._pushWidenedDistanceOverride();
 		});
 	}
 

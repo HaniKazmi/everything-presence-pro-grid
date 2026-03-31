@@ -49,6 +49,7 @@ export class DeviceController implements ReactiveController {
 	private _unsubDevice?: () => void;
 	private _unsubTargets?: () => void;
 	private _unsubDisplay?: () => void;
+	private _targetRetryTimer?: ReturnType<typeof setTimeout>;
 	private _reconnecting = false;
 	private _connectionFailed = false;
 
@@ -183,6 +184,10 @@ export class DeviceController implements ReactiveController {
 	// --- Target subscription ---
 	subscribeTargets(mac: string): void {
 		this.unsubscribeDisplay();
+		if (this._targetRetryTimer) {
+			clearTimeout(this._targetRetryTimer);
+			this._targetRetryTimer = undefined;
+		}
 		if (this._unsubTargets) {
 			this._unsubTargets();
 			this._unsubTargets = undefined;
@@ -191,6 +196,27 @@ export class DeviceController implements ReactiveController {
 
 		const conn = this._hass.connection;
 
+		this._subscribeGridTargets(conn, mac);
+		this.subscribeDisplay(mac);
+	}
+
+	unsubscribeTargets(): void {
+		this.unsubscribeDisplay();
+		if (this._targetRetryTimer) {
+			clearTimeout(this._targetRetryTimer);
+			this._targetRetryTimer = undefined;
+		}
+		if (this._unsubTargets) {
+			try {
+				this._unsubTargets();
+			} catch {
+				/* stale subscription */
+			}
+			this._unsubTargets = undefined;
+		}
+	}
+
+	private _subscribeGridTargets(conn: any, mac: string): void {
 		conn
 			.subscribeMessage(
 				(event: any) => {
@@ -245,20 +271,17 @@ export class DeviceController implements ReactiveController {
 			)
 			.then((unsub: () => void) => {
 				this._unsubTargets = unsub;
+			})
+			.catch(() => {
+				if (this._targetRetryTimer) {
+					clearTimeout(this._targetRetryTimer);
+				}
+				this._targetRetryTimer = setTimeout(() => {
+					this._targetRetryTimer = undefined;
+					if (this._hass?.connection !== conn) return;
+					this._subscribeGridTargets(conn, mac);
+				}, 2000);
 			});
-		this.subscribeDisplay(mac);
-	}
-
-	unsubscribeTargets(): void {
-		this.unsubscribeDisplay();
-		if (this._unsubTargets) {
-			try {
-				this._unsubTargets();
-			} catch {
-				/* stale subscription */
-			}
-			this._unsubTargets = undefined;
-		}
 	}
 
 	// --- Raw display subscription ---

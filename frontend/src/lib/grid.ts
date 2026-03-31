@@ -102,18 +102,3 @@ export function initGridFromRoom(
 
 	return grid;
 }
-
-/** Derive room dimensions (mm) from the grid's raw bounds. */
-export function updateRoomDimensionsFromGrid(grid: Uint8Array): {
-	roomWidth: number;
-	roomDepth: number;
-} {
-	const raw = getRawRoomBounds(grid);
-	if (raw.minCol > raw.maxCol) {
-		return { roomWidth: 0, roomDepth: 0 };
-	}
-	return {
-		roomWidth: (raw.maxCol - raw.minCol + 1) * GRID_CELL_MM,
-		roomDepth: (raw.maxRow - raw.minRow + 1) * GRID_CELL_MM,
-	};
-}

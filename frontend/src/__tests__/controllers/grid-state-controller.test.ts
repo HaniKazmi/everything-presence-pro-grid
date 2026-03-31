@@ -571,15 +571,16 @@ describe("GridStateController", () => {
 			expect(host._grid[5]).toBe(0x00);
 		});
 
-		it("updates room dimensions when zone-0 (boundary) changes", () => {
+		it("does not change _roomWidth when painting zone-0 boundary cells", () => {
 			host._activeZone = 0;
 			host._paintAction = "set";
-			// Ensure at least one cell is set so bounds are non-trivial
-			host._grid[0] = CELL_ROOM_BIT;
-			const prevWidth = host._roomWidth;
-			ctrl.applyPaintToCell(5);
-			// updateRoomDimensionsFromGrid should have been called — _roomWidth may change
-			// We just verify it doesn't throw and requestUpdate was called
+			host._roomWidth = 3000;
+			host._roomDepth = 3000;
+			// Paint a cell far from the room center — grid bounds would differ from calibrated dims
+			ctrl.applyPaintToCell(0);
+			// Calibrated room dimensions must be preserved (perspective depends on them)
+			expect(host._roomWidth).toBe(3000);
+			expect(host._roomDepth).toBe(3000);
 			expect(host.requestUpdate).toHaveBeenCalled();
 		});
 	});
