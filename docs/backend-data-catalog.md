@@ -190,7 +190,7 @@ Triggers OTA firmware update on a device via its ESPHome update entity.
 
 ### Protocol Version Guard
 
-All config commands (`set_setup`, `set_room_layout`, `set_entity_enabled`, `set_env_calibration`, `set_motion_timeout`, `set_tracking`, `set_static_presence`, `set_pipeline`) check `config_protocol_status` before executing. On mismatch, they return an error with code `"firmware_behind"` or `"firmware_ahead"`.
+All config commands (`set_setup`, `set_room_layout`, `set_entity_enabled`, `set_settings`, `set_pipeline`) check `config_protocol_status` before executing. On mismatch, they return an error with code `"firmware_behind"` or `"firmware_ahead"`.
 
 ### `set_setup`
 
@@ -200,7 +200,7 @@ Saves perspective calibration. Clears room layout. Pushes to device.
 
 ### `set_room_layout`
 
-Saves grid, zones, room settings, furniture. Pushes to device. Updates zone entity enable/disable/rename.
+Saves grid, zones, room settings, furniture. Updates zone entity enable/disable/rename. Does **not** push config to device — the frontend follows with `set_settings` when auto distance is on.
 
 **Request:** `{ "type": "eppgrid/set_room_layout", "mac": str, "grid_bytes": int[], "zone_slots": list, "room_type": str, ... }`
 
@@ -210,17 +210,23 @@ Enables/disables an ESPHome entity.
 
 **Request:** `{ "type": "eppgrid/set_entity_enabled", "mac": str, "entity_id": str, "enabled": bool }`
 
-### Settings Commands
+### `set_settings`
 
-All follow the same pattern: save to store, push to device via API action.
+Saves all device settings (offsets, timeouts, distances, thresholds, entities, log levels) in one call. Pushes full config to device. When `entities` is provided and modifies `disabled_by`, sets `_entity_update_macs` guard to suppress the redundant reconnect push caused by the ESPHome config entry reload.
 
-| Command | Config Key | API Action |
-|---------|-----------|------------|
-| `set_env_calibration` | `env_calibration` | `epp_set_env_calibration` |
-| `set_motion_timeout` | `motion_timeout` | `epp_set_motion_timeout` |
-| `set_tracking` | `tracking` | `epp_set_tracking` |
-| `set_static_presence` | `static_presence` | `epp_set_static_presence` |
-| `set_pipeline` | `pipeline` | `epp_set_pipeline` |
+**Request:** `{ "type": "eppgrid/set_settings", "mac": str, "temperature_offset": float, ..., "entities": { ... }, "log_levels": { ... } }`
+
+### `set_distance_override`
+
+Pushes tracking + static presence ranges to firmware via session without persisting. Used by the editor to temporarily widen ranges on entry (so the sensor sees the full area) and revert on cancel.
+
+**Request:** `{ "type": "eppgrid/set_distance_override", "mac": str, "target_max_distance": float, "static_min_distance": float, "static_max_distance": float }`
+
+### `set_pipeline`
+
+Saves and pushes display/zone publish intervals and window duration.
+
+**Request:** `{ "type": "eppgrid/set_pipeline", "mac": str, "display_interval_ms": int, "zone_publish_interval_ms": int, "window_duration_ms": int }`
 
 ### Template Commands
 
