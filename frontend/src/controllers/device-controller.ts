@@ -276,10 +276,11 @@ export class DeviceController implements ReactiveController {
 				if (this._targetRetryTimer) {
 					clearTimeout(this._targetRetryTimer);
 				}
-				this._targetRetryTimer = setTimeout(
-					() => this._subscribeGridTargets(conn, mac),
-					2000,
-				);
+				this._targetRetryTimer = setTimeout(() => {
+					this._targetRetryTimer = undefined;
+					if (this._hass?.connection !== conn) return;
+					this._subscribeGridTargets(conn, mac);
+				}, 2000);
 			});
 	}
 
