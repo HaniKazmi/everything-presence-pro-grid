@@ -426,12 +426,14 @@ class DeviceManager:
 
             if is_new:
                 _LOGGER.info("Discovered zone engine device: %s (%s)", device.name, mac)
-                # Apply zone entity management on first discovery —
-                # only if zone_presence is currently enabled (any zone entity enabled)
+                # Apply zone entity management on first discovery
                 config = self._store.get_device(mac)
-                if config:
-                    zone_slots = config.get("room_layout", {}).get("zone_slots", [None] * MAX_ZONES)
-                    await self.async_update_zone_entities(mac, zone_slots)
+                zone_slots = (
+                    config.get("room_layout", {}).get("zone_slots", [None] * MAX_ZONES)
+                    if config
+                    else [None] * MAX_ZONES
+                )
+                await self.async_update_zone_entities(mac, zone_slots)
 
     @callback
     def _on_entity_registry_updated(self, event: Any) -> None:
@@ -663,12 +665,16 @@ class DeviceManager:
             if entity_id is None:
                 continue
 
+            entry_obj = ent_reg.async_get(entity_id)
             if not zone_presence:
                 ent_reg.async_update_entity(entity_id, disabled_by=er.RegistryEntryDisabler.INTEGRATION)
             elif i == 0:
                 ent_reg.async_update_entity(entity_id, disabled_by=None, name="Rest of Room Occupancy")
             elif i <= len(zone_slots) and zone_slots[i - 1] is not None:
                 zone = zone_slots[i - 1]
+                # Don't override user-disabled entities
+                if entry_obj and entry_obj.disabled_by == er.RegistryEntryDisabler.USER:
+                    continue
                 ent_reg.async_update_entity(entity_id, disabled_by=None, name=zone["name"])
             else:
                 ent_reg.async_update_entity(entity_id, disabled_by=er.RegistryEntryDisabler.INTEGRATION)

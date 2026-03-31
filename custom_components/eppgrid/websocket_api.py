@@ -803,7 +803,13 @@ async def websocket_set_settings(
         return
     mac = msg["mac"]
     device_config = manager._store.devices.setdefault(mac, {})
-    device_config["settings"] = {k: msg[k] for k in _SETTINGS_KEYS}
+    new_settings = {k: msg[k] for k in _SETTINGS_KEYS}
+    # Preserve zone_presence flag — it's managed by set_setup and entity toggles,
+    # not by the settings form payload.
+    old_settings = device_config.get("settings", {})
+    if "zone_presence" in old_settings:
+        new_settings["zone_presence"] = old_settings["zone_presence"]
+    device_config["settings"] = new_settings
     log_levels = msg.get("log_levels")
     if log_levels is not None:
         device_config["log_levels"] = log_levels

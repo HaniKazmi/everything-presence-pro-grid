@@ -325,6 +325,10 @@ export class EPPGridPanel extends LitElement {
 
 	disconnectedCallback(): void {
 		super.disconnectedCallback();
+		if (this._initRetryTimer) {
+			clearTimeout(this._initRetryTimer);
+			this._initRetryTimer = undefined;
+		}
 		this._closeDeviceSession();
 		window.removeEventListener("beforeunload", this._beforeUnloadHandler);
 		window.removeEventListener("click", this._dismissTooltips);
@@ -366,6 +370,10 @@ export class EPPGridPanel extends LitElement {
 
 	private async _initialize(): Promise<void> {
 		if (!this.hass) return;
+		if (this._initRetryTimer) {
+			clearTimeout(this._initRetryTimer);
+			this._initRetryTimer = undefined;
+		}
 		this._loading = true;
 		this._deviceCtrl.hass = this.hass;
 		await this._loadDevices();
@@ -925,7 +933,9 @@ export class EPPGridPanel extends LitElement {
 							...this._entitiesConfig,
 							zone_presence: true,
 						};
-						await this._gridCtrl.applyLayout();
+						await this._gridCtrl.applyLayout().catch((err: unknown) => {
+							console.error("Failed to apply layout after calibration", err);
+						});
 					}}
           @wizard-cancel=${() => {
 						this._setupStep = null;

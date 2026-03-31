@@ -184,6 +184,10 @@ export class DeviceController implements ReactiveController {
 	// --- Target subscription ---
 	subscribeTargets(mac: string): void {
 		this.unsubscribeDisplay();
+		if (this._targetRetryTimer) {
+			clearTimeout(this._targetRetryTimer);
+			this._targetRetryTimer = undefined;
+		}
 		if (this._unsubTargets) {
 			this._unsubTargets();
 			this._unsubTargets = undefined;
@@ -269,6 +273,9 @@ export class DeviceController implements ReactiveController {
 				this._unsubTargets = unsub;
 			})
 			.catch(() => {
+				if (this._targetRetryTimer) {
+					clearTimeout(this._targetRetryTimer);
+				}
 				this._targetRetryTimer = setTimeout(
 					() => this._subscribeGridTargets(conn, mac),
 					2000,
