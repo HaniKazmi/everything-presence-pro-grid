@@ -41,6 +41,10 @@ struct ProcessingResult {
     SensorPresenceState static_state = SensorPresenceState::INACTIVE;
     SensorPresenceState motion_state = SensorPresenceState::INACTIVE;
     bool occupancy = false;
+
+    // Diagnostic log entries produced during this tick
+    LogEntry log[MAX_LOG_ENTRIES]{};
+    int log_count = 0;
 };
 
 // ---------------------------------------------------------------------------
@@ -97,11 +101,15 @@ private:
     float static_pending_since_ = -1.0f;
     float motion_pending_since_ = -1.0f;
     bool sensors_ever_active_ = false;  // true once any sensor has been ACTIVE
+    bool prev_occupancy_ = false;       // previous tick's occupancy for transition logging
 
     ProcessingResult result_;
 
     /// Find the ZoneRuntime index for a given zone_id. Returns -1 if not found.
     int find_zone_index(int zone_id) const;
+
+    /// Append a log entry to result_.log[] (silently drops if full)
+    void log_(LogLevel level, const char* fmt, ...);
 };
 
 }  // namespace epp

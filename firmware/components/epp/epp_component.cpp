@@ -236,17 +236,12 @@ void EPPComponent::loop() {
       zone_state_sensor_->publish_state(json);
     }
 
-    // State transition logging
-    if (result.device_tracking_present != prev_tracking_) {
-      ESP_LOGI(TAG, "Tracking: %s",
-               result.device_tracking_present ? "present" : "clear");
-      prev_tracking_ = result.device_tracking_present;
-    }
-    for (int i = 0; i < MAX_ZONE_SLOTS; i++) {
-      if (result.zone_occupancy[i] != prev_zone_occ_[i]) {
-        ESP_LOGI(TAG, "Zone %d: %s", i,
-                 result.zone_occupancy[i] ? "occupied" : "clear");
-        prev_zone_occ_[i] = result.zone_occupancy[i];
+    // Output zone engine log entries
+    for (int i = 0; i < result.log_count; ++i) {
+      if (result.log[i].level == epp::LogLevel::INFO) {
+        ESP_LOGI(TAG, "%s", result.log[i].message);
+      } else {
+        ESP_LOGD(TAG, "%s", result.log[i].message);
       }
     }
   }
