@@ -607,7 +607,7 @@ export class EppSettingsView extends LitElement {
 							if (!this._overrides.entities) this._overrides.entities = {};
 							this._overrides.entities[key] = el.checked;
 							this._fireDirty();
-						}} data-entity-key="target_xy" .checked=${isOn("target_xy", false)} /><span class="toggle-slider"></span></label>
+						}} data-entity-key="target_xy" .checked=${isOn("target_xy", false)} .disabled=${!this.perspective} /><span class="toggle-slider"></span></label>
             ${this.infoTip(this.localize("info.xy"))}
           </div>
           <div class="setting-row">

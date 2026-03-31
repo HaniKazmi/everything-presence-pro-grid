@@ -152,6 +152,10 @@ async def websocket_set_setup(
     # Store zone_presence flag — true on calibration, false on delete
     settings = device_config.get("settings", {})
     settings["zone_presence"] = msg["room_width"] > 0
+    # Disable target entities when calibration is deleted (user must opt-in after re-calibration)
+    if msg["room_width"] <= 0:
+        settings["target_xy"] = False
+        _apply_entity_states(hass, mac, {"target_xy": False})
     device_config["settings"] = settings
     await manager._store.async_save()
 
@@ -809,6 +813,8 @@ async def websocket_set_settings(
     old_settings = device_config.get("settings", {})
     if "zone_presence" in old_settings:
         new_settings["zone_presence"] = old_settings["zone_presence"]
+    if "target_xy" in old_settings:
+        new_settings["target_xy"] = old_settings["target_xy"]
     device_config["settings"] = new_settings
     log_levels = msg.get("log_levels")
     if log_levels is not None:
@@ -828,6 +834,9 @@ async def websocket_set_settings(
         # can read it on discovery/reconnect
         if "zone_presence" in entities:
             device_config.setdefault("settings", {})["zone_presence"] = entities["zone_presence"]
+            await manager._store.async_save()
+        if "target_xy" in entities:
+            device_config.setdefault("settings", {})["target_xy"] = entities["target_xy"]
             await manager._store.async_save()
         _apply_entity_states(hass, mac, entities)
         # Zone presence needs layout-aware handling: enable zone_0 + named zones
