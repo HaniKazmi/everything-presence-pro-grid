@@ -552,6 +552,23 @@ export class EPPGridPanel extends LitElement {
 		await this._loadDeviceConfig(this._selectedMac);
 	}
 
+	private _cancelEditor(): void {
+		if (this._targetAutoDistance || this._staticAutoDistance) {
+			this.hass
+				?.callWS({
+					type: "eppgrid/set_distance_override",
+					mac: this._selectedMac,
+					target_max_distance: this._targetMaxDistance,
+					static_min_distance: this._staticMinDistance,
+					static_max_distance: this._staticMaxDistance,
+				})
+				.catch(() => {});
+		}
+		this._dirty = false;
+		this._view = "live";
+		this._loadDeviceConfig(this._selectedMac);
+	}
+
 	private _enterEditor(tab: "zones" | "furniture"): void {
 		this._view = "editor";
 		this._sidebarTab = tab;
@@ -1120,9 +1137,11 @@ export class EPPGridPanel extends LitElement {
       <div class="save-cancel-bar">
         <button class="wizard-btn wizard-btn-back"
           @click=${() => {
-						this._dirty = false;
-						this._view = "live";
-						this._loadDeviceConfig(this._selectedMac);
+						if (this._view === "editor") {
+							this._cancelEditor();
+						} else {
+							this._cancelSettings();
+						}
 					}}
         >${this._localize("common.cancel")}</button>
         <button class="wizard-btn wizard-btn-primary"
