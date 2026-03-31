@@ -347,6 +347,7 @@ _ENTITY_OBJECT_ID_MAP: dict[str, str] = {
     "humidity": "env_humidity",
     "illuminance": "env_illuminance",
     "co2": "env_co2",
+    "system_alarm_relay": "relay_output",
 }
 
 # Prefix patterns: object_ids starting with these prefixes map to a category key.
@@ -775,6 +776,8 @@ _SETTINGS_KEYS = (
     "led_mode",
     "led_brightness",
     "led_presence_color",
+    "relay_trigger_mode",
+    "relay_contact_mode",
 )
 
 
@@ -798,6 +801,8 @@ _SETTINGS_KEYS = (
         vol.Required("led_mode"): vol.In(["Manual Control", "Presence", "Environmental", "Environmental + Presence"]),
         vol.Required("led_brightness"): vol.All(vol.Coerce(float), vol.Range(min=0.1, max=1.0)),
         vol.Required("led_presence_color"): vol.Match(r"^#[0-9A-Fa-f]{6}$"),
+        vol.Required("relay_trigger_mode"): vol.In(["disabled", "manual", "motion", "presence", "motion_or_presence"]),
+        vol.Required("relay_contact_mode"): vol.In(["no", "nc"]),
         vol.Optional("entities"): {str: bool},
         vol.Optional("log_levels"): {str: vol.In(["None", "Error", "Warning", "Info", "Debug"])},
     }
