@@ -568,9 +568,7 @@ class TestWebSocketSettings:
 
             await call_async_handler(hass, websocket_set_settings, connection, msg)
 
-            mock_apply.assert_any_call(
-                hass, "AA:BB:CC:DD:EE:FF", {"room_occupancy": True, "env_illuminance": False}
-            )
+            mock_apply.assert_any_call(hass, "AA:BB:CC:DD:EE:FF", {"room_occupancy": True, "env_illuminance": False})
 
     async def test_set_settings_zone_presence_false_does_not_reenable_zone0(
         self, hass: HomeAssistant, config_entry: MockConfigEntry
@@ -850,9 +848,7 @@ class TestWebSocketSettings:
 
         assert "AA:BB:CC:DD:EE:FF" not in mock_dm._entity_update_macs
 
-    async def test_set_settings_stores_relay_values(
-        self, hass: HomeAssistant, config_entry: MockConfigEntry
-    ) -> None:
+    async def test_set_settings_stores_relay_values(self, hass: HomeAssistant, config_entry: MockConfigEntry) -> None:
         """set_settings stores relay_trigger_mode and relay_contact_mode under settings."""
         mock_dm = await setup_integration(hass, config_entry)
 

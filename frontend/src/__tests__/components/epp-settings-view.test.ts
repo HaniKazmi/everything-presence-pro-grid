@@ -1714,13 +1714,19 @@ it("renderSettingsSection returns defined result for relay", () => {
 	});
 
 	it("renderRelay returns defined result", () => {
-		const sv = createView({ relayTriggerMode: "disabled", relayContactMode: "no" });
+		const sv = createView({
+			relayTriggerMode: "disabled",
+			relayContactMode: "no",
+		});
 		const result = (sv as any).renderRelay();
 		expect(result).toBeDefined();
 	});
 
 	it("contact mode select is hidden when trigger is disabled", () => {
-		const sv = createView({ relayTriggerMode: "disabled", relayContactMode: "no" });
+		const sv = createView({
+			relayTriggerMode: "disabled",
+			relayContactMode: "no",
+		});
 		const tpl = (sv as any).renderRelay();
 		const c = renderTo(tpl);
 
@@ -1731,7 +1737,10 @@ it("renderSettingsSection returns defined result for relay", () => {
 	});
 
 	it("contact mode select is hidden when trigger is manual", () => {
-		const sv = createView({ relayTriggerMode: "manual", relayContactMode: "no" });
+		const sv = createView({
+			relayTriggerMode: "manual",
+			relayContactMode: "no",
+		});
 		const tpl = (sv as any).renderRelay();
 		const c = renderTo(tpl);
 
@@ -1741,7 +1750,10 @@ it("renderSettingsSection returns defined result for relay", () => {
 	});
 
 	it("contact mode select is visible when trigger is motion", () => {
-		const sv = createView({ relayTriggerMode: "motion", relayContactMode: "no" });
+		const sv = createView({
+			relayTriggerMode: "motion",
+			relayContactMode: "no",
+		});
 		const tpl = (sv as any).renderRelay();
 		const c = renderTo(tpl);
 
@@ -1751,7 +1763,10 @@ it("renderSettingsSection returns defined result for relay", () => {
 	});
 
 	it("contact mode select is visible when trigger is presence", () => {
-		const sv = createView({ relayTriggerMode: "presence", relayContactMode: "nc" });
+		const sv = createView({
+			relayTriggerMode: "presence",
+			relayContactMode: "nc",
+		});
 		const tpl = (sv as any).renderRelay();
 		const c = renderTo(tpl);
 
@@ -1761,7 +1776,10 @@ it("renderSettingsSection returns defined result for relay", () => {
 	});
 
 	it("contact mode select is visible when trigger is motion_or_presence", () => {
-		const sv = createView({ relayTriggerMode: "motion_or_presence", relayContactMode: "no" });
+		const sv = createView({
+			relayTriggerMode: "motion_or_presence",
+			relayContactMode: "no",
+		});
 		const tpl = (sv as any).renderRelay();
 		const c = renderTo(tpl);
 
@@ -1771,10 +1789,15 @@ it("renderSettingsSection returns defined result for relay", () => {
 	});
 
 	it("trigger mode select change updates overrides and fires dirty", () => {
-		const sv = createView({ relayTriggerMode: "disabled", relayContactMode: "no" });
+		const sv = createView({
+			relayTriggerMode: "disabled",
+			relayContactMode: "no",
+		});
 
 		let dirtyFired = false;
-		sv.addEventListener("dirty", () => { dirtyFired = true; });
+		sv.addEventListener("dirty", () => {
+			dirtyFired = true;
+		});
 
 		Object.defineProperty(sv, "shadowRoot", {
 			value: { querySelector: () => null, querySelectorAll: () => [] },
@@ -1787,7 +1810,10 @@ it("renderSettingsSection returns defined result for relay", () => {
 		const selects = c.querySelectorAll("ha-select");
 		expect(selects.length).toBeGreaterThan(0);
 		selects[0].dispatchEvent(
-			new CustomEvent("selected", { bubbles: true, detail: { value: "motion" } })
+			new CustomEvent("selected", {
+				bubbles: true,
+				detail: { value: "motion" },
+			}),
 		);
 
 		expect((sv as any)._overrides.relayTriggerMode).toBe("motion");
@@ -1796,10 +1822,15 @@ it("renderSettingsSection returns defined result for relay", () => {
 	});
 
 	it("contact mode select change updates overrides and fires dirty", () => {
-		const sv = createView({ relayTriggerMode: "motion", relayContactMode: "no" });
+		const sv = createView({
+			relayTriggerMode: "motion",
+			relayContactMode: "no",
+		});
 
 		let dirtyFired = false;
-		sv.addEventListener("dirty", () => { dirtyFired = true; });
+		sv.addEventListener("dirty", () => {
+			dirtyFired = true;
+		});
 
 		Object.defineProperty(sv, "shadowRoot", {
 			value: { querySelector: () => null, querySelectorAll: () => [] },
@@ -1812,7 +1843,7 @@ it("renderSettingsSection returns defined result for relay", () => {
 		const selects = c.querySelectorAll("ha-select");
 		expect(selects.length).toBe(2);
 		selects[1].dispatchEvent(
-			new CustomEvent("selected", { bubbles: true, detail: { value: "nc" } })
+			new CustomEvent("selected", { bubbles: true, detail: { value: "nc" } }),
 		);
 
 		expect((sv as any)._overrides.relayContactMode).toBe("nc");
