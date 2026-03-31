@@ -29,6 +29,11 @@ add_executable(epp_rolling_window_tests
 )
 target_link_libraries(epp_rolling_window_tests PRIVATE epp_zone_engine doctest::doctest)
 
+add_executable(epp_relay_tests
+    test_relay.cpp
+)
+target_link_libraries(epp_relay_tests PRIVATE epp_zone_engine doctest::doctest)
+
 include(${doctest_SOURCE_DIR}/scripts/cmake/doctest.cmake)
 doctest_discover_tests(epp_tests)
 doctest_discover_tests(epp_calibration_tests)
@@ -36,3 +41,4 @@ doctest_discover_tests(epp_tumbling_window_tests)
 doctest_discover_tests(epp_zone_engine_tests)
 doctest_discover_tests(epp_parity_tests)
 doctest_discover_tests(epp_rolling_window_tests)
+doctest_discover_tests(epp_relay_tests)
