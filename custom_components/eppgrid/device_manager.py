@@ -148,6 +148,32 @@ class DeviceConnection:
             _LOGGER.debug("Failed to fetch build flags from %s", self._host)
             return {}
 
+    async def async_push_distance_override(self, override: dict[str, Any]) -> None:
+        """Push distance override to device without persisting."""
+        if self._client is None:
+            return
+        svc = self._services.get("epp_set_tracking")
+        if svc:
+            await self._client.execute_service(
+                svc,
+                {"max_range": override.get("target_max_distance", 6.0) * 1000},
+            )
+        svc = self._services.get("epp_set_static_presence")
+        if svc:
+            await self._client.execute_service(
+                svc,
+                {
+                    "min_range": override.get("static_min_distance", 0.3),
+                    "max_range": override.get("static_max_distance", 16.0),
+                    "trigger_range": override.get("static_max_distance", 16.0),
+                    "trigger_sensitivity": 10 - override.get("static_trigger_threshold", 3),
+                    "sustain_sensitivity": 10 - override.get("static_renew_threshold", 3),
+                    "timeout": override.get("static_timeout", 30.0),
+                    "on_delay": override.get("static_on_delay", 0.0),
+                    "led_enabled": True,
+                },
+            )
+
     async def async_push_config(self, config: dict[str, Any]) -> None:
         """Push perspective, grid, and zones to the device."""
         if self._client is None:
