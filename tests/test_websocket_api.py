@@ -264,7 +264,7 @@ class TestWebSocketSetRoomLayout:
         assert layout["room_type"] == "normal"
         assert layout["zone_slots"] == zone_slots
         mock_dm._store.async_save.assert_awaited()
-        mock_dm._push_config_to_device.assert_awaited()
+        mock_dm._push_config_to_device.assert_not_awaited()
         mock_dm.async_update_zone_entities.assert_awaited_with("AA:BB:CC:DD:EE:FF", zone_slots)
         connection.send_result.assert_called_once_with(5)
 
@@ -1534,6 +1534,89 @@ class TestUpdateFirmwareError:
         args = connection.send_error.call_args[0]
         assert args[1] == "update_failed"
         assert "OTA failed" in args[2]
+
+
+class TestWebSocketDistanceOverride:
+    """Tests for eppgrid/set_distance_override."""
+
+    async def test_set_distance_override_pushes_without_saving(
+        self, hass: HomeAssistant, config_entry: MockConfigEntry
+    ) -> None:
+        """set_distance_override pushes merged override to device without persisting."""
+        mock_dm = await setup_integration(hass, config_entry)
+
+        # Set up stored settings with threshold/timeout values
+        mock_dm._store.devices = {
+            "AA:BB:CC:DD:EE:FF": {
+                "settings": {
+                    "static_trigger_threshold": 5,
+                    "static_renew_threshold": 4,
+                    "static_timeout": 60.0,
+                    "static_on_delay": 1.0,
+                }
+            }
+        }
+
+        # Set up mock session with async_push_distance_override
+        mock_session = MagicMock()
+        mock_session.async_push_distance_override = AsyncMock()
+        mock_dm.get_session.return_value = mock_session
+
+        from custom_components.eppgrid.websocket_api import websocket_set_distance_override
+
+        connection = MagicMock()
+        msg = {
+            "id": 99,
+            "type": "eppgrid/set_distance_override",
+            "mac": "AA:BB:CC:DD:EE:FF",
+            "target_max_distance": 5.0,
+            "static_min_distance": 0.5,
+            "static_max_distance": 10.0,
+        }
+
+        await call_async_handler(hass, websocket_set_distance_override, connection, msg)
+
+        # Assert override pushed with merged values
+        mock_session.async_push_distance_override.assert_awaited_once_with(
+            {
+                "target_max_distance": 5.0,
+                "static_min_distance": 0.5,
+                "static_max_distance": 10.0,
+                "static_trigger_threshold": 5,
+                "static_renew_threshold": 4,
+                "static_timeout": 60.0,
+                "static_on_delay": 1.0,
+            }
+        )
+
+        # Assert NOT persisted
+        mock_dm._store.async_save.assert_not_awaited()
+
+        connection.send_result.assert_called_once_with(99)
+
+    async def test_set_distance_override_no_session(
+        self, hass: HomeAssistant, config_entry: MockConfigEntry
+    ) -> None:
+        """set_distance_override is a no-op when no session exists."""
+        mock_dm = await setup_integration(hass, config_entry)
+        mock_dm.get_session.return_value = None
+
+        from custom_components.eppgrid.websocket_api import websocket_set_distance_override
+
+        connection = MagicMock()
+        msg = {
+            "id": 100,
+            "type": "eppgrid/set_distance_override",
+            "mac": "AA:BB:CC:DD:EE:FF",
+            "target_max_distance": 5.0,
+            "static_min_distance": 0.5,
+            "static_max_distance": 10.0,
+        }
+
+        await call_async_handler(hass, websocket_set_distance_override, connection, msg)
+
+        connection.send_result.assert_called_once_with(100)
+        mock_dm._store.async_save.assert_not_awaited()
 
 
 class TestProtocolVersionGuard:

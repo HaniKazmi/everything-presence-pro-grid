@@ -214,11 +214,6 @@ async def websocket_set_room_layout(
     }
     await manager._store.async_save()
 
-    # Push config to device if connected
-    dev = manager.devices.get(mac)
-    if dev and dev.host:
-        await manager._push_config_to_device(mac)
-
     # Update ESPHome entity enable/disable/rename
     await manager.async_update_zone_entities(mac, msg["zone_slots"])
 
