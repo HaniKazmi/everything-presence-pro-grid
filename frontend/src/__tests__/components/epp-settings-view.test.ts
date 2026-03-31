@@ -29,6 +29,10 @@ function createView(
 	el.staticTriggerThreshold = 3;
 	el.staticRenewThreshold = 3;
 	el.staticOnDelay = 0;
+	el.ledMode = "Manual Control";
+	el.ledBrightness = 1.0;
+	el.ledPresenceColor = "#CC33FF";
+	el.staticLedEnabled = true;
 	if (overrides) {
 		for (const [k, v] of Object.entries(overrides)) {
 			(el as any)[k] = v;
@@ -62,7 +66,7 @@ describe("render()", () => {
 		const c = renderTo(tpl);
 
 		expect(c.querySelector(".settings-container")).not.toBeNull();
-		expect(c.querySelectorAll(".accordion").length).toBe(4);
+		expect(c.querySelectorAll(".accordion").length).toBe(5);
 		document.body.removeChild(c);
 	});
 
@@ -1588,5 +1592,137 @@ describe("logging accordion", () => {
 		expect((sv as any)._overrides.logLevels?.system).toBe("None");
 		expect(requestUpdateSpy).toHaveBeenCalled();
 		document.body.removeChild(c);
+	});
+});
+
+describe("LED settings section", () => {
+	it("renders LED accordion", () => {
+		const sv = createView({ openAccordions: new Set(["led"]) });
+		const tpl = sv.render();
+		const c = renderTo(tpl);
+
+		const body = c.querySelector(".accordion-body");
+		expect(body).not.toBeNull();
+		expect(body!.querySelector(".setting-group")).not.toBeNull();
+		document.body.removeChild(c);
+	});
+
+	it("renders 5 accordions including LED", () => {
+		const sv = createView();
+		const tpl = sv.render();
+		const c = renderTo(tpl);
+
+		expect(c.querySelectorAll(".accordion").length).toBe(5);
+		document.body.removeChild(c);
+	});
+
+	it("renders brightness slider in LED section", () => {
+		const sv = createView({ openAccordions: new Set(["led"]) });
+		const tpl = sv.render();
+		const c = renderTo(tpl);
+
+		const slider = c.querySelector('input[type="range"][data-led-brightness]') as HTMLInputElement;
+		expect(slider).not.toBeNull();
+		expect(slider.min).toBe("0.1");
+		expect(slider.max).toBe("1");
+		expect(slider.step).toBe("0.05");
+		document.body.removeChild(c);
+	});
+
+	it("renders color picker in LED section when mode is Presence", () => {
+		const sv = createView({ openAccordions: new Set(["led"]), ledMode: "Presence" });
+		const tpl = sv.render();
+		const c = renderTo(tpl);
+
+		const picker = c.querySelector('input[type="color"]') as HTMLInputElement;
+		expect(picker).not.toBeNull();
+		expect(picker.value).toBe("#cc33ff");
+		document.body.removeChild(c);
+	});
+
+	it("renders SEN0609 LED toggle", () => {
+		const sv = createView({ openAccordions: new Set(["led"]) });
+		const tpl = sv.render();
+		const c = renderTo(tpl);
+
+		const toggle = c.querySelector('input[data-led-static]') as HTMLInputElement;
+		expect(toggle).not.toBeNull();
+		expect(toggle.type).toBe("checkbox");
+		expect(toggle.checked).toBe(true);
+		document.body.removeChild(c);
+	});
+
+	it("hides environmental modes when co2 disabled", () => {
+		const sv = createView({ openAccordions: new Set(["led"]), co2Enabled: false });
+		const tpl = sv.render();
+		const c = renderTo(tpl);
+
+		const options = c.querySelectorAll(".led-mode-option");
+		const texts = Array.from(options).map((o) => o.textContent?.trim());
+		expect(texts).not.toContain("settings.environmental");
+		expect(texts).not.toContain("settings.environmental_presence");
+		document.body.removeChild(c);
+	});
+
+	it("shows environmental modes when co2 enabled", () => {
+		const sv = createView({ openAccordions: new Set(["led"]), co2Enabled: true });
+		const tpl = sv.render();
+		const c = renderTo(tpl);
+
+		const options = c.querySelectorAll(".led-mode-option");
+		const texts = Array.from(options).map((o) => o.textContent?.trim());
+		expect(texts).toContain("settings.environmental");
+		expect(texts).toContain("settings.environmental_presence");
+		document.body.removeChild(c);
+	});
+
+	it("hides color picker when mode is not Presence-related", () => {
+		const sv = createView({ openAccordions: new Set(["led"]), ledMode: "Manual Control" });
+		const tpl = sv.render();
+		const c = renderTo(tpl);
+
+		const picker = c.querySelector('input[type="color"]');
+		expect(picker).toBeNull();
+		document.body.removeChild(c);
+	});
+});
+
+describe("LED save payload", () => {
+	it("includes LED settings in save event", () => {
+		const sv = createView({
+			dirty: true,
+			ledMode: "Presence",
+			ledBrightness: 0.7,
+			ledPresenceColor: "#00FF00",
+			staticLedEnabled: false,
+		});
+
+		let payload: any = null;
+		sv.addEventListener("save", ((e: CustomEvent) => {
+			payload = e.detail;
+		}) as EventListener);
+
+		(sv as any)._emitSave();
+
+		expect(payload.led_mode).toBe("Presence");
+		expect(payload.led_brightness).toBe(0.7);
+		expect(payload.led_presence_color).toBe("#00FF00");
+		expect(payload.static_led_enabled).toBe(false);
+	});
+
+	it("uses LED defaults when not overridden", () => {
+		const sv = createView({ dirty: true });
+
+		let payload: any = null;
+		sv.addEventListener("save", ((e: CustomEvent) => {
+			payload = e.detail;
+		}) as EventListener);
+
+		(sv as any)._emitSave();
+
+		expect(payload.led_mode).toBe("Manual Control");
+		expect(payload.led_brightness).toBe(1.0);
+		expect(payload.led_presence_color).toBe("#CC33FF");
+		expect(payload.static_led_enabled).toBe(true);
 	});
 });
