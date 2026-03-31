@@ -194,7 +194,7 @@ device selector, global dialogs, navigation guards, controller creation.
 **Composite views:**
 - `<epp-live-view>` — live grid + sidebar + menu dropdown
 - `<epp-editor-view>` — editable grid + zone/furniture sidebars + debug log
-- `<epp-settings-view>` — accordion panels for detection ranges, reporting, env offsets, log levels
+- `<epp-settings-view>` — accordion panels for detection ranges, reporting, env offsets, LED control, log levels
 - `<epp-wizard>` — calibration flow (guide, 4-corner capture, perspective solve)
 
 **Shared components:**
