@@ -194,13 +194,13 @@ All config commands (`set_setup`, `set_room_layout`, `set_entity_enabled`, `set_
 
 ### `set_setup`
 
-Saves perspective calibration. Clears room layout. Pushes to device.
+Saves perspective calibration. Clears room layout. Pushes to device. Sets `settings.zone_presence` to `true` on calibration (`room_width > 0`) or `false` on delete (`room_width = 0`), then calls `async_update_zone_entities` to enable/disable zone entities accordingly.
 
 **Request:** `{ "type": "eppgrid/set_setup", "mac": str, "perspective": float[8], "room_width": float, "room_depth": float }`
 
 ### `set_room_layout`
 
-Saves grid, zones, room settings, furniture. Updates zone entity enable/disable/rename. Does **not** push config to device — the frontend follows with `set_settings` when auto distance is on.
+Saves grid, zones, room settings, furniture. Pushes config to device. Updates zone entity enable/disable/rename via `async_update_zone_entities`.
 
 **Request:** `{ "type": "eppgrid/set_room_layout", "mac": str, "grid_bytes": int[], "zone_slots": list, "room_type": str, ... }`
 
@@ -212,7 +212,7 @@ Enables/disables an ESPHome entity.
 
 ### `set_settings`
 
-Saves all device settings (offsets, timeouts, distances, thresholds, entities, log levels) in one call. Pushes full config to device. When `entities` is provided and modifies `disabled_by`, sets `_entity_update_macs` guard to suppress the redundant reconnect push caused by the ESPHome config entry reload.
+Saves all device settings (offsets, timeouts, distances, thresholds, entities, log levels) in one call. Pushes full config to device. When `entities` is provided and modifies `disabled_by`, sets `_entity_update_macs` guard to suppress the redundant reconnect push caused by the ESPHome config entry reload. When `entities.zone_presence` is provided, persists to `settings.zone_presence` and calls `async_update_zone_entities` (if enabling) for layout-aware zone naming.
 
 **Request:** `{ "type": "eppgrid/set_settings", "mac": str, "temperature_offset": float, ..., "entities": { ... }, "log_levels": { ... } }`
 

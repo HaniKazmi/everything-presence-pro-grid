@@ -921,7 +921,10 @@ export class EPPGridPanel extends LitElement {
 						this._setupStep = null;
 						this._view = "live";
 						// set_setup enables zone_presence — update local state
-						this._entitiesConfig = { ...this._entitiesConfig, zone_presence: true };
+						this._entitiesConfig = {
+							...this._entitiesConfig,
+							zone_presence: true,
+						};
 						await this._gridCtrl.applyLayout();
 					}}
           @wizard-cancel=${() => {

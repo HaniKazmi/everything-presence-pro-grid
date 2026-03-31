@@ -216,31 +216,24 @@ export class DeviceController implements ReactiveController {
 		conn
 			.subscribeMessage(
 				(event: any) => {
-					const targets: Target[] = (event.targets || []).map(
-						(t: any) => ({
-							x: t.x,
-							y: t.y,
-							speed: 0,
-							status: (t.status as TargetStatus) ?? "inactive",
-							signal: t.signal ?? 0,
-						}),
-					);
+					const targets: Target[] = (event.targets || []).map((t: any) => ({
+						x: t.x,
+						y: t.y,
+						speed: 0,
+						status: (t.status as TargetStatus) ?? "inactive",
+						signal: t.signal ?? 0,
+					}));
 					const sensors = event.sensors
 						? {
 								occupancy: event.sensors.occupancy ?? false,
-								static_presence:
-									event.sensors.static_presence ?? false,
-								motion_presence:
-									event.sensors.motion_presence ?? false,
-								target_presence:
-									event.sensors.target_presence ?? false,
+								static_presence: event.sensors.static_presence ?? false,
+								motion_presence: event.sensors.motion_presence ?? false,
+								target_presence: event.sensors.target_presence ?? false,
 								static_state: event.sensors.static_state,
 								motion_state: event.sensors.motion_state,
 								occupancy_state: event.sensors.occupancy_state,
-								illuminance:
-									event.sensors.illuminance ?? null,
-								temperature:
-									event.sensors.temperature ?? null,
+								illuminance: event.sensors.illuminance ?? null,
+								temperature: event.sensors.temperature ?? null,
 								humidity: event.sensors.humidity ?? null,
 								co2: event.sensors.co2 ?? null,
 							}
@@ -260,10 +253,8 @@ export class DeviceController implements ReactiveController {
 					const zones = event.zones
 						? {
 								occupancy: event.zones.occupancy ?? {},
-								target_counts:
-									event.zones.target_counts ?? {},
-								frame_count:
-									event.zones.frame_count ?? 0,
+								target_counts: event.zones.target_counts ?? {},
+								frame_count: event.zones.frame_count ?? 0,
 								debug_log: event.zones.debug_log,
 							}
 						: null;
