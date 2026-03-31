@@ -593,6 +593,29 @@ describe("_applyLayout", () => {
 		expect(settingsCall.static_max_distance).not.toBe(99);
 		expect(settingsCall.static_max_distance).toBeLessThanOrEqual(16);
 	});
+
+	it("does not call set_settings when both auto flags are off", async () => {
+		const a = el as any;
+		a._selectedMac = "AA:BB:CC:DD:EE:01";
+		a._dirty = true;
+		a._grid = initGridFromRoom(3000, 4000);
+		a._targetAutoDistance = false;
+		a._staticAutoDistance = false;
+		a._targetMaxDistance = 4.0;
+		a._staticMinDistance = 1.0;
+		a._staticMaxDistance = 8.0;
+		a._zoneConfigs = new Array(8).fill(null);
+
+		el.hass = {
+			callWS: vi.fn().mockResolvedValue({}),
+		};
+
+		await a._applyLayout();
+
+		const calls = el.hass.callWS.mock.calls.map((c: any) => c[0].type);
+		expect(calls).toContain("eppgrid/set_room_layout");
+		expect(calls).not.toContain("eppgrid/set_settings");
+	});
 });
 
 describe("_saveSettings", () => {
