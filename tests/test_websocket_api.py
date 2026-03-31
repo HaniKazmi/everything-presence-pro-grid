@@ -463,6 +463,10 @@ class TestWebSocketSettings:
             "static_renew_threshold": 3,
             "static_timeout": 30.0,
             "static_on_delay": 0.0,
+            "led_mode": "Manual Control",
+            "led_brightness": 1.0,
+            "led_presence_color": "#CC33FF",
+            "static_led_enabled": True,
             "entities": {"room_occupancy": True, "zone_presence": False},
         }
 
@@ -482,9 +486,52 @@ class TestWebSocketSettings:
         assert settings["static_renew_threshold"] == 3
         assert settings["static_timeout"] == 30.0
         assert settings["static_on_delay"] == 0.0
+        assert settings["led_mode"] == "Manual Control"
+        assert settings["led_brightness"] == 1.0
+        assert settings["led_presence_color"] == "#CC33FF"
+        assert settings["static_led_enabled"] is True
         mock_dm._store.async_save.assert_awaited()
         mock_dm._push_config_to_device.assert_awaited_with("AA:BB:CC:DD:EE:FF")
         connection.send_result.assert_called_once_with(11)
+
+    async def test_set_settings_stores_led_values(self, hass: HomeAssistant, config_entry: MockConfigEntry) -> None:
+        """set_settings stores LED settings under device_config['settings']."""
+        mock_dm = await setup_integration(hass, config_entry)
+
+        from custom_components.eppgrid.websocket_api import websocket_set_settings
+
+        connection = MagicMock()
+        msg = {
+            "id": 12,
+            "type": "eppgrid/set_settings",
+            "mac": "AA:BB:CC:DD:EE:FF",
+            "temperature_offset": 0.0,
+            "humidity_offset": 0.0,
+            "illuminance_offset": 0.0,
+            "motion_timeout": 5.0,
+            "target_auto_distance": True,
+            "target_max_distance": 6.0,
+            "static_auto_distance": True,
+            "static_min_distance": 0.3,
+            "static_max_distance": 16.0,
+            "static_trigger_threshold": 3,
+            "static_renew_threshold": 3,
+            "static_timeout": 30.0,
+            "static_on_delay": 0.0,
+            "led_mode": "Presence",
+            "led_brightness": 0.8,
+            "led_presence_color": "#00FF00",
+            "static_led_enabled": False,
+        }
+
+        await call_async_handler(hass, websocket_set_settings, connection, msg)
+
+        settings = mock_dm._store.devices["AA:BB:CC:DD:EE:FF"]["settings"]
+        assert settings["led_mode"] == "Presence"
+        assert settings["led_brightness"] == 0.8
+        assert settings["led_presence_color"] == "#00FF00"
+        assert settings["static_led_enabled"] is False
+        connection.send_result.assert_called_once_with(12)
 
     async def test_set_settings_applies_entity_changes(
         self, hass: HomeAssistant, config_entry: MockConfigEntry
@@ -513,6 +560,10 @@ class TestWebSocketSettings:
                 "static_renew_threshold": 3,
                 "static_timeout": 30.0,
                 "static_on_delay": 0.0,
+                "led_mode": "Manual Control",
+                "led_brightness": 1.0,
+                "led_presence_color": "#CC33FF",
+                "static_led_enabled": True,
                 "entities": {"room_occupancy": True, "env_illuminance": False},
             }
 
@@ -548,6 +599,10 @@ class TestWebSocketSettings:
             "static_renew_threshold": 3,
             "static_timeout": 30.0,
             "static_on_delay": 0.0,
+            "led_mode": "Manual Control",
+            "led_brightness": 1.0,
+            "led_presence_color": "#CC33FF",
+            "static_led_enabled": True,
             "entities": {"zone_presence": False},
         }
 
@@ -585,6 +640,10 @@ class TestWebSocketSettings:
             "static_renew_threshold": 3,
             "static_timeout": 30.0,
             "static_on_delay": 0.0,
+            "led_mode": "Manual Control",
+            "led_brightness": 1.0,
+            "led_presence_color": "#CC33FF",
+            "static_led_enabled": True,
             "entities": {"zone_presence": True},
         }
 
@@ -618,6 +677,10 @@ class TestWebSocketSettings:
             "static_renew_threshold": 3,
             "static_timeout": 30.0,
             "static_on_delay": 0.0,
+            "led_mode": "Manual Control",
+            "led_brightness": 1.0,
+            "led_presence_color": "#CC33FF",
+            "static_led_enabled": True,
             "entities": {"room_occupancy": True, "zone_presence": False},
         }
 
@@ -650,6 +713,10 @@ class TestWebSocketSettings:
             "static_renew_threshold": 3,
             "static_timeout": 30.0,
             "static_on_delay": 0.0,
+            "led_mode": "Manual Control",
+            "led_brightness": 1.0,
+            "led_presence_color": "#CC33FF",
+            "static_led_enabled": True,
             "log_levels": {"epp": "Debug", "system": "Info"},
         }
 
@@ -692,6 +759,10 @@ class TestWebSocketSettings:
             "static_renew_threshold": 3,
             "static_timeout": 30.0,
             "static_on_delay": 0.0,
+            "led_mode": "Manual Control",
+            "led_brightness": 1.0,
+            "led_presence_color": "#CC33FF",
+            "static_led_enabled": True,
         }
 
         await call_async_handler(hass, websocket_set_settings, connection, msg)
@@ -726,6 +797,10 @@ class TestWebSocketSettings:
             "static_renew_threshold": 3,
             "static_timeout": 30.0,
             "static_on_delay": 0.0,
+            "led_mode": "Manual Control",
+            "led_brightness": 1.0,
+            "led_presence_color": "#CC33FF",
+            "static_led_enabled": True,
             "entities": {"room_occupancy": True},
         }
 
@@ -759,6 +834,10 @@ class TestWebSocketSettings:
             "static_renew_threshold": 3,
             "static_timeout": 30.0,
             "static_on_delay": 0.0,
+            "led_mode": "Manual Control",
+            "led_brightness": 1.0,
+            "led_presence_color": "#CC33FF",
+            "static_led_enabled": True,
         }
 
         await call_async_handler(hass, websocket_set_settings, connection, msg)
