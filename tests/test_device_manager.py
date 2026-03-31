@@ -1067,6 +1067,100 @@ class TestPushConfig:
             # No log levels in config, no calls
             mock_client.execute_service.assert_not_awaited()
 
+    async def test_push_config_led_settings(self) -> None:
+        """push_config sends LED mode, brightness, and presence color via epp_set_led."""
+        conn = DeviceConnection("192.168.1.100")
+
+        mock_env = MagicMock()
+        mock_env.name = "epp_set_env_calibration"
+        mock_motion = MagicMock()
+        mock_motion.name = "epp_set_motion_timeout"
+        mock_tracking = MagicMock()
+        mock_tracking.name = "epp_set_tracking"
+        mock_static = MagicMock()
+        mock_static.name = "epp_set_static_presence"
+        mock_led = MagicMock()
+        mock_led.name = "epp_set_led"
+
+        with patch("custom_components.eppgrid.device_manager.APIClient") as mock_cls:
+            mock_client = mock_cls.return_value
+            mock_client.connect = AsyncMock()
+            mock_client.list_entities_services = AsyncMock(
+                return_value=([], [mock_env, mock_motion, mock_tracking, mock_static, mock_led])
+            )
+            mock_client.execute_service = AsyncMock()
+
+            await conn.async_connect()
+            await conn.async_push_config(
+                {
+                    "settings": {
+                        "temperature_offset": 0.0,
+                        "humidity_offset": 0.0,
+                        "illuminance_offset": 0.0,
+                        "motion_timeout": 5.0,
+                        "target_max_distance": 6.0,
+                        "static_min_distance": 0.3,
+                        "static_max_distance": 16.0,
+                        "static_trigger_threshold": 3,
+                        "static_renew_threshold": 3,
+                        "static_timeout": 30.0,
+                        "static_on_delay": 0.0,
+                        "led_mode": "Presence",
+                        "led_brightness": 0.8,
+                        "led_presence_color": "#66CC00",
+                        "static_led_enabled": False,
+                    },
+                }
+            )
+
+            calls = mock_client.execute_service.call_args_list
+            call_by_service = {call[0][0].name: call[0][1] for call in calls}
+
+            # epp_set_led should be called with parsed color
+            assert "epp_set_led" in call_by_service
+            led_data = call_by_service["epp_set_led"]
+            assert led_data["mode"] == "Presence"
+            assert led_data["brightness"] == 0.8
+            assert abs(led_data["presence_red"] - 0.4) < 0.01  # 0x66/0xFF ≈ 0.4
+            assert abs(led_data["presence_green"] - 0.8) < 0.01  # 0xCC/0xFF ≈ 0.8
+            assert abs(led_data["presence_blue"] - 0.0) < 0.01  # 0x00/0xFF = 0.0
+
+            # static_led_enabled should be False
+            static_data = call_by_service["epp_set_static_presence"]
+            assert static_data["led_enabled"] is False
+
+    async def test_push_config_led_defaults_when_absent(self) -> None:
+        """push_config uses LED defaults when settings lack LED keys."""
+        conn = DeviceConnection("192.168.1.100")
+
+        mock_static = MagicMock()
+        mock_static.name = "epp_set_static_presence"
+        mock_led = MagicMock()
+        mock_led.name = "epp_set_led"
+
+        with patch("custom_components.eppgrid.device_manager.APIClient") as mock_cls:
+            mock_client = mock_cls.return_value
+            mock_client.connect = AsyncMock()
+            mock_client.list_entities_services = AsyncMock(return_value=([], [mock_static, mock_led]))
+            mock_client.execute_service = AsyncMock()
+
+            await conn.async_connect()
+            await conn.async_push_config({"settings": {}})
+
+            calls = mock_client.execute_service.call_args_list
+            call_by_service = {call[0][0].name: call[0][1] for call in calls}
+
+            led_data = call_by_service["epp_set_led"]
+            assert led_data["mode"] == "Manual Control"
+            assert led_data["brightness"] == 1.0
+            # Default color #CC33FF → red≈0.8, green≈0.2, blue=1.0
+            assert abs(led_data["presence_red"] - 0.8) < 0.01
+            assert abs(led_data["presence_green"] - 0.2) < 0.01
+            assert abs(led_data["presence_blue"] - 1.0) < 0.01
+
+            static_data = call_by_service["epp_set_static_presence"]
+            assert static_data["led_enabled"] is True
+
     async def test_push_config_already_connected_noop(self) -> None:
         """async_connect is a no-op when already connected."""
         conn = DeviceConnection("192.168.1.100")
