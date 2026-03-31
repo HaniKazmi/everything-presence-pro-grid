@@ -1488,7 +1488,8 @@ class TestEventCallbacks:
 
         mock_push.assert_not_awaited()
         assert mac not in manager._entity_update_macs
-        assert mac not in manager._pushing
+        # _pushing stays set to block subsequent availability events
+        assert mac in manager._pushing
 
 
 # ---------------------------------------------------------------------------

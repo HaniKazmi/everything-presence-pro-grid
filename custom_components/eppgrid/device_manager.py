@@ -499,10 +499,10 @@ class DeviceManager:
         if dev is not None:
             dev.available = True
 
-        # Skip push if we caused this reconnect via entity registry updates
+        # Skip push if we caused this reconnect via entity registry updates.
+        # Keep _pushing set so subsequent availability events are also blocked.
         if mac in self._entity_update_macs:
             self._entity_update_macs.discard(mac)
-            self._pushing.discard(mac)
             _LOGGER.debug("Skipping redundant push for %s (entity update guard)", mac)
             return
 
