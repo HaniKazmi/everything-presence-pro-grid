@@ -63,6 +63,8 @@ export class EppSettingsView extends LitElement {
 	@property({ attribute: false }) logLevels: Record<string, string> = {};
 	@property({ type: Boolean }) bluetoothEnabled = false;
 	@property({ type: Boolean }) co2Enabled = false;
+	@property({ type: String }) relayTriggerMode = "disabled";
+	@property({ type: String }) relayContactMode = "no";
 
 	@property({ type: String }) ledMode = "Manual Control";
 	@property({ type: Number }) ledBrightness = 1.0;
@@ -139,9 +141,12 @@ export class EppSettingsView extends LitElement {
 				icon: "mdi:math-log",
 			},
 			{
-				id: "led",
+id: "led",
 				label: "settings.led",
 				icon: "mdi:led-variant-on",
+id: "relay",
+				label: "settings.relay",
+				icon: "mdi:electric-switch",
 			},
 		];
 
@@ -198,8 +203,10 @@ export class EppSettingsView extends LitElement {
 				return this.renderEntities();
 			case "logging":
 				return this.renderLogging();
-			case "led":
+case "led":
 				return this.renderLed();
+case "relay":
+				return this.renderRelay();
 			default:
 				return nothing;
 		}
@@ -789,7 +796,7 @@ export class EppSettingsView extends LitElement {
     `;
 	}
 
-	renderLed() {
+renderLed() {
 		const mode = this._overrides.ledMode ?? this.ledMode;
 		const showPresenceColor =
 			mode === "Presence" || mode === "Environmental + Presence";
@@ -814,11 +821,30 @@ export class EppSettingsView extends LitElement {
 		}
 		const brightness = this._overrides.ledBrightness ?? this.ledBrightness;
 		const color = this._overrides.ledPresenceColor ?? this.ledPresenceColor;
+renderRelay() {
+		const TRIGGER_MODES = [
+			{ value: "disabled", label: "disabled" },
+			{ value: "manual", label: "manual" },
+			{ value: "motion", label: "motion" },
+			{ value: "presence", label: "presence" },
+			{ value: "motion_or_presence", label: "motion_or_presence" },
+		];
+		const CONTACT_MODES = [
+			{ value: "no", label: "no" },
+			{ value: "nc", label: "nc" },
+		];
+
+		const currentTrigger =
+			this._overrides.relayTriggerMode ?? this.relayTriggerMode;
+		const currentContact =
+			this._overrides.relayContactMode ?? this.relayContactMode;
+		const isAutomatic =
+			currentTrigger !== "disabled" && currentTrigger !== "manual";
 
 		return html`
       <div class="settings-section">
         <div class="setting-group">
-          <h4>${this.localize("settings.led")}</h4>
+<h4>${this.localize("settings.led")}</h4>
           <div class="setting-row">
             <label>${this.localize("settings.led_mode")}</label>
             <ha-select class="led-mode-select" .value=${mode} .options=${modes} @selected=${(
@@ -862,6 +888,40 @@ export class EppSettingsView extends LitElement {
 						}} />
             ${this.infoTip(this.localize("info.led_presence_color"))}
           </div>`
+<div class="setting-row">
+            <label>${this.localize("settings.relay_trigger_mode")}</label>
+            <ha-select
+              .value=${currentTrigger}
+              .options=${TRIGGER_MODES}
+              @selected=${(e: CustomEvent<{ value: string }>) => {
+								const val = e.detail.value;
+								if (!val || val === currentTrigger) return;
+								this._overrides.relayTriggerMode = val;
+								this._fireChange("relayTriggerMode", val);
+								this.requestUpdate();
+							}}
+              @closed=${(e: Event) => e.stopPropagation()}
+            ></ha-select>
+          </div>
+          ${
+						isAutomatic
+							? html`
+            <div class="setting-row">
+              <label>${this.localize("settings.relay_contact_mode")}</label>
+              <ha-select
+                .value=${currentContact}
+                .options=${CONTACT_MODES}
+                @selected=${(e: CustomEvent<{ value: string }>) => {
+									const val = e.detail.value;
+									if (!val || val === currentContact) return;
+									this._overrides.relayContactMode = val;
+									this._fireChange("relayContactMode", val);
+									this.requestUpdate();
+								}}
+                @closed=${(e: Event) => e.stopPropagation()}
+              ></ha-select>
+            </div>
+          `
 							: nothing
 					}
         </div>
@@ -943,9 +1003,11 @@ export class EppSettingsView extends LitElement {
 						...this.logLevels,
 						...(o.logLevels || {}),
 					},
-					led_mode: o.ledMode ?? this.ledMode,
+led_mode: o.ledMode ?? this.ledMode,
 					led_brightness: o.ledBrightness ?? this.ledBrightness,
 					led_presence_color: o.ledPresenceColor ?? this.ledPresenceColor,
+relay_trigger_mode: o.relayTriggerMode ?? this.relayTriggerMode,
+					relay_contact_mode: o.relayContactMode ?? this.relayContactMode,
 				},
 				bubbles: true,
 				composed: true,

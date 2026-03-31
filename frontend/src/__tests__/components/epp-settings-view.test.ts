@@ -29,9 +29,11 @@ function createView(
 	el.staticTriggerThreshold = 3;
 	el.staticRenewThreshold = 3;
 	el.staticOnDelay = 0;
-	el.ledMode = "Manual Control";
+el.ledMode = "Manual Control";
 	el.ledBrightness = 1.0;
 	el.ledPresenceColor = "#CC33FF";
+(el as any).relayTriggerMode = "disabled";
+	(el as any).relayContactMode = "no";
 	if (overrides) {
 		for (const [k, v] of Object.entries(overrides)) {
 			(el as any)[k] = v;
@@ -1607,15 +1609,19 @@ describe("LED settings section", () => {
 	});
 
 	it("renders 5 accordions including LED", () => {
+describe("relay section", () => {
+	it("renders settings container with 5 accordions when relay added", () => {
 		const sv = createView();
 		const tpl = sv.render();
 		const c = renderTo(tpl);
 
+
+expect(c.querySelector(".settings-container")).not.toBeNull();
 		expect(c.querySelectorAll(".accordion").length).toBe(5);
 		document.body.removeChild(c);
 	});
 
-	it("renders brightness slider in LED section", () => {
+it("renders brightness slider in LED section", () => {
 		const sv = createView({ openAccordions: new Set(["led"]) });
 		const tpl = sv.render();
 		const c = renderTo(tpl);
@@ -1701,6 +1707,124 @@ describe("LED save payload", () => {
 			ledMode: "Presence",
 			ledBrightness: 0.7,
 			ledPresenceColor: "#00FF00",
+it("renderSettingsSection returns defined result for relay", () => {
+		const sv = createView();
+		const result = (sv as any).renderSettingsSection("relay");
+		expect(result).toBeDefined();
+	});
+
+	it("renderRelay returns defined result", () => {
+		const sv = createView({ relayTriggerMode: "disabled", relayContactMode: "no" });
+		const result = (sv as any).renderRelay();
+		expect(result).toBeDefined();
+	});
+
+	it("contact mode select is hidden when trigger is disabled", () => {
+		const sv = createView({ relayTriggerMode: "disabled", relayContactMode: "no" });
+		const tpl = (sv as any).renderRelay();
+		const c = renderTo(tpl);
+
+		const rows = c.querySelectorAll(".setting-row");
+		// Only trigger mode row should be visible, not contact mode
+		expect(rows.length).toBe(1);
+		document.body.removeChild(c);
+	});
+
+	it("contact mode select is hidden when trigger is manual", () => {
+		const sv = createView({ relayTriggerMode: "manual", relayContactMode: "no" });
+		const tpl = (sv as any).renderRelay();
+		const c = renderTo(tpl);
+
+		const rows = c.querySelectorAll(".setting-row");
+		expect(rows.length).toBe(1);
+		document.body.removeChild(c);
+	});
+
+	it("contact mode select is visible when trigger is motion", () => {
+		const sv = createView({ relayTriggerMode: "motion", relayContactMode: "no" });
+		const tpl = (sv as any).renderRelay();
+		const c = renderTo(tpl);
+
+		const rows = c.querySelectorAll(".setting-row");
+		expect(rows.length).toBe(2);
+		document.body.removeChild(c);
+	});
+
+	it("contact mode select is visible when trigger is presence", () => {
+		const sv = createView({ relayTriggerMode: "presence", relayContactMode: "nc" });
+		const tpl = (sv as any).renderRelay();
+		const c = renderTo(tpl);
+
+		const rows = c.querySelectorAll(".setting-row");
+		expect(rows.length).toBe(2);
+		document.body.removeChild(c);
+	});
+
+	it("contact mode select is visible when trigger is motion_or_presence", () => {
+		const sv = createView({ relayTriggerMode: "motion_or_presence", relayContactMode: "no" });
+		const tpl = (sv as any).renderRelay();
+		const c = renderTo(tpl);
+
+		const rows = c.querySelectorAll(".setting-row");
+		expect(rows.length).toBe(2);
+		document.body.removeChild(c);
+	});
+
+	it("trigger mode select change updates overrides and fires dirty", () => {
+		const sv = createView({ relayTriggerMode: "disabled", relayContactMode: "no" });
+
+		let dirtyFired = false;
+		sv.addEventListener("dirty", () => { dirtyFired = true; });
+
+		Object.defineProperty(sv, "shadowRoot", {
+			value: { querySelector: () => null, querySelectorAll: () => [] },
+			configurable: true,
+		});
+
+		const tpl = (sv as any).renderRelay();
+		const c = renderTo(tpl);
+
+		const selects = c.querySelectorAll("ha-select");
+		expect(selects.length).toBeGreaterThan(0);
+		selects[0].dispatchEvent(
+			new CustomEvent("selected", { bubbles: true, detail: { value: "motion" } })
+		);
+
+		expect((sv as any)._overrides.relayTriggerMode).toBe("motion");
+		expect(dirtyFired).toBe(true);
+		document.body.removeChild(c);
+	});
+
+	it("contact mode select change updates overrides and fires dirty", () => {
+		const sv = createView({ relayTriggerMode: "motion", relayContactMode: "no" });
+
+		let dirtyFired = false;
+		sv.addEventListener("dirty", () => { dirtyFired = true; });
+
+		Object.defineProperty(sv, "shadowRoot", {
+			value: { querySelector: () => null, querySelectorAll: () => [] },
+			configurable: true,
+		});
+
+		const tpl = (sv as any).renderRelay();
+		const c = renderTo(tpl);
+
+		const selects = c.querySelectorAll("ha-select");
+		expect(selects.length).toBe(2);
+		selects[1].dispatchEvent(
+			new CustomEvent("selected", { bubbles: true, detail: { value: "nc" } })
+		);
+
+		expect((sv as any)._overrides.relayContactMode).toBe("nc");
+		expect(dirtyFired).toBe(true);
+		document.body.removeChild(c);
+	});
+
+	it("includes relay keys in save event payload", () => {
+		const sv = createView({
+			dirty: true,
+			relayTriggerMode: "motion",
+			relayContactMode: "nc",
 		});
 
 		let payload: any = null;
@@ -1710,13 +1834,26 @@ describe("LED save payload", () => {
 
 		(sv as any)._emitSave();
 
-		expect(payload.led_mode).toBe("Presence");
+expect(payload.led_mode).toBe("Presence");
 		expect(payload.led_brightness).toBe(0.7);
 		expect(payload.led_presence_color).toBe("#00FF00");
 	});
 
 	it("uses LED defaults when not overridden", () => {
 		const sv = createView({ dirty: true });
+expect(payload).not.toBeNull();
+		expect(payload.relay_trigger_mode).toBe("motion");
+		expect(payload.relay_contact_mode).toBe("nc");
+	});
+
+	it("relay save payload uses override values when set", () => {
+		const sv = createView({
+			dirty: true,
+			relayTriggerMode: "disabled",
+			relayContactMode: "no",
+		});
+		(sv as any)._overrides.relayTriggerMode = "presence";
+		(sv as any)._overrides.relayContactMode = "nc";
 
 		let payload: any = null;
 		sv.addEventListener("save", ((e: CustomEvent) => {
@@ -1725,8 +1862,10 @@ describe("LED save payload", () => {
 
 		(sv as any)._emitSave();
 
-		expect(payload.led_mode).toBe("Manual Control");
+expect(payload.led_mode).toBe("Manual Control");
 		expect(payload.led_brightness).toBe(1.0);
 		expect(payload.led_presence_color).toBe("#CC33FF");
+expect(payload.relay_trigger_mode).toBe("presence");
+		expect(payload.relay_contact_mode).toBe("nc");
 	});
 });
