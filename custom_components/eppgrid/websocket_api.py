@@ -826,6 +826,7 @@ async def websocket_set_settings(
 
 # -- set_distance_override (temporary range push, no persist) --
 
+
 @websocket_api.websocket_command(
     {
         vol.Required("type"): "eppgrid/set_distance_override",

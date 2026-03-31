@@ -1594,9 +1594,7 @@ class TestWebSocketDistanceOverride:
 
         connection.send_result.assert_called_once_with(99)
 
-    async def test_set_distance_override_no_session(
-        self, hass: HomeAssistant, config_entry: MockConfigEntry
-    ) -> None:
+    async def test_set_distance_override_no_session(self, hass: HomeAssistant, config_entry: MockConfigEntry) -> None:
         """set_distance_override is a no-op when no session exists."""
         mock_dm = await setup_integration(hass, config_entry)
         mock_dm.get_session.return_value = None
