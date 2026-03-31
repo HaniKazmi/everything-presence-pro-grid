@@ -569,7 +569,7 @@ export class EPPGridPanel extends LitElement {
 					static_min_distance: this._staticMinDistance,
 					static_max_distance: this._staticMaxDistance,
 				})
-				.catch(() => {});
+				?.catch(() => {});
 		}
 	}
 
@@ -592,7 +592,7 @@ export class EPPGridPanel extends LitElement {
 						? 16
 						: this._staticMaxDistance,
 				})
-				.catch(() => {});
+				?.catch(() => {});
 		}
 	}
 

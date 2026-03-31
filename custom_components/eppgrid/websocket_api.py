@@ -800,15 +800,16 @@ async def websocket_set_settings(
     if log_levels is not None:
         device_config["log_levels"] = log_levels
     await manager._store.async_save()
-    await manager._push_config_to_device(mac)
+    push_ok = await manager._push_config_to_device(mac)
     # Manage device log subscription on the active session (if any)
     session_conn = manager.get_session(mac)
     if session_conn is not None:
         manager._manage_log_subscription(session_conn, device_config)
     entities = msg.get("entities")
     if entities:
-        manager._entity_update_macs.add(mac)
-        hass.loop.call_later(60, manager._entity_update_macs.discard, mac)
+        if push_ok:
+            manager._entity_update_macs.add(mac)
+            hass.loop.call_later(60, manager._entity_update_macs.discard, mac)
         _apply_entity_states(hass, mac, entities)
         # Zone presence needs layout-aware handling: enable zone_0 + named zones
         if entities.get("zone_presence"):
@@ -846,6 +847,14 @@ async def websocket_set_distance_override(
     manager = _get_manager(hass)
     if manager is None:
         connection.send_error(msg["id"], "not_ready", "Integration not loaded")
+        return
+    proto_err = _check_protocol(manager, msg["mac"])
+    if proto_err:
+        connection.send_error(
+            msg["id"],
+            proto_err,
+            "Firmware update required" if proto_err == "firmware_behind" else "Integration update required",
+        )
         return
     mac = msg["mac"]
     session = manager.get_session(mac)

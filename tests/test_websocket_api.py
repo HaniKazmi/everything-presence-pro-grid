@@ -1102,6 +1102,16 @@ class TestNotReadyGuards:
                 },
                 True,
             ),
+            (
+                "websocket_set_distance_override",
+                {
+                    "mac": "AA:BB",
+                    "target_max_distance": 6.0,
+                    "static_min_distance": 0.3,
+                    "static_max_distance": 16.0,
+                },
+                True,
+            ),
         ],
     )
     async def test_not_ready(self, hass: HomeAssistant, handler_name: str, extra_fields: dict, is_async: bool) -> None:
