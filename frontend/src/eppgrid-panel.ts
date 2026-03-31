@@ -552,9 +552,9 @@ export class EPPGridPanel extends LitElement {
 		await this._loadDeviceConfig(this._selectedMac);
 	}
 
-	private _cancelEditor(): void {
+	private async _cancelEditor(): Promise<void> {
 		if (this._targetAutoDistance || this._staticAutoDistance) {
-			this.hass
+			await this.hass
 				?.callWS({
 					type: "eppgrid/set_distance_override",
 					mac: this._selectedMac,
@@ -566,7 +566,7 @@ export class EPPGridPanel extends LitElement {
 		}
 		this._dirty = false;
 		this._view = "live";
-		this._loadDeviceConfig(this._selectedMac);
+		await this._loadDeviceConfig(this._selectedMac);
 	}
 
 	private _enterEditor(tab: "zones" | "furniture"): void {
