@@ -320,6 +320,38 @@ class TestDeviceManager:
         assert dev.name == "EPP Living Room"
         assert dev.host == "192.168.1.50"
 
+    async def test_discover_calls_update_zone_entities_without_config(self, hass: HomeAssistant, manager: DeviceManager) -> None:
+        """Discovery calls async_update_zone_entities even without stored config."""
+        dev_reg = dr.async_get(hass)
+        ent_reg = er.async_get(hass)
+
+        esphome_entry = MockConfigEntry(
+            domain="esphome",
+            data={"host": "192.168.1.50"},
+            title="EPP New",
+        )
+        esphome_entry.add_to_hass(hass)
+
+        device = dev_reg.async_get_or_create(
+            config_entry_id=esphome_entry.entry_id,
+            connections={("mac", "aa:bb:cc:dd:ee:ff")},
+            name="EPP New",
+        )
+
+        ent_reg.async_get_or_create(
+            "sensor",
+            "esphome",
+            unique_id="esphome_aabbccddeeff_zone_engine_version",
+            suggested_object_id="epp_zone_engine_version",
+            config_entry=esphome_entry,
+            device_id=device.id,
+        )
+
+        # No stored config for this device
+        with patch.object(manager, "async_update_zone_entities", new_callable=AsyncMock) as mock_update:
+            await manager.async_discover()
+            mock_update.assert_awaited_once()
+
     async def test_discover_ignores_non_zone_engine(self, hass: HomeAssistant, manager: DeviceManager) -> None:
         """Entities without zone_engine_version are ignored."""
         dev_reg = dr.async_get(hass)
@@ -1649,6 +1681,42 @@ class TestZoneEntities:
         # Zone 1 unused — disabled
         zone1 = ent_reg.async_get(zone1_entry.entity_id)
         assert zone1.disabled_by == er.RegistryEntryDisabler.INTEGRATION
+
+    async def test_update_zone_entities_respects_user_disabled(self, hass: HomeAssistant, manager: DeviceManager) -> None:
+        """Named zone with disabled_by=USER is not re-enabled."""
+        dev_reg = dr.async_get(hass)
+        ent_reg = er.async_get(hass)
+
+        esphome_entry = MockConfigEntry(domain="esphome", data={"host": "192.168.1.50"}, title="EPP")
+        esphome_entry.add_to_hass(hass)
+
+        device = dev_reg.async_get_or_create(
+            config_entry_id=esphome_entry.entry_id,
+            connections={("mac", "aa:bb:cc:dd:ee:ff")},
+            name="EPP",
+        )
+
+        zone1_entry = ent_reg.async_get_or_create(
+            "binary_sensor",
+            "esphome",
+            unique_id="esphome_aabbccddeeff_zone_1_occupancy",
+            config_entry=esphome_entry,
+            device_id=device.id,
+        )
+        # User explicitly disabled this entity
+        ent_reg.async_update_entity(zone1_entry.entity_id, disabled_by=er.RegistryEntryDisabler.USER)
+
+        manager.devices["AA:BB:CC:DD:EE:FF"] = ManagedDevice(
+            mac="AA:BB:CC:DD:EE:FF", name="EPP", host="192.168.1.50", device_id=device.id
+        )
+        manager._store.devices["AA:BB:CC:DD:EE:FF"] = {"settings": {"zone_presence": True}}
+
+        zone_slots = [{"name": "Office"}] + [None] * (MAX_ZONES - 1)
+        await manager.async_update_zone_entities("AA:BB:CC:DD:EE:FF", zone_slots)
+
+        # Zone 1 should remain user-disabled
+        zone1 = ent_reg.async_get(zone1_entry.entity_id)
+        assert zone1.disabled_by == er.RegistryEntryDisabler.USER
 
     async def test_update_zone_entities_unknown_device(self, hass: HomeAssistant, manager: DeviceManager) -> None:
         """Unknown device is a no-op."""

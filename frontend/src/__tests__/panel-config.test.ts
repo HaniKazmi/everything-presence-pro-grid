@@ -158,6 +158,30 @@ describe("_initialize", () => {
 
 		vi.useRealTimers();
 	});
+
+	it("clears previous retry timer on re-entry", async () => {
+		vi.useFakeTimers();
+		const a = el as any;
+		el.hass = {
+			callWS: vi.fn().mockRejectedValue(new Error("unknown")),
+			connection: {
+				subscribeMessage: vi.fn().mockResolvedValue(() => {}),
+			},
+		};
+
+		// First call schedules retry
+		a._initialize();
+		await vi.advanceTimersByTimeAsync(0);
+		const firstTimer = a._initRetryTimer;
+		expect(firstTimer).toBeDefined();
+
+		// Second call before retry fires should clear the first timer
+		a._initialize();
+		await vi.advanceTimersByTimeAsync(0);
+		expect(a._initRetryTimer).not.toBe(firstTimer);
+
+		vi.useRealTimers();
+	});
 });
 
 describe("_loadDevices", () => {

@@ -556,6 +556,32 @@ describe("DeviceController", () => {
 
 			vi.useRealTimers();
 		});
+		it("clears pending retry timer on new subscribeTargets call", async () => {
+			vi.useFakeTimers();
+			hass.connection.subscribeMessage = vi
+				.fn()
+				.mockRejectedValueOnce(new Error("unknown command"))
+				.mockResolvedValueOnce(vi.fn()) // display sub
+				.mockResolvedValueOnce(vi.fn()) // second grid sub
+				.mockResolvedValueOnce(vi.fn()); // second display sub
+
+			ctrl.subscribeTargets("aa");
+			await vi.advanceTimersByTimeAsync(0);
+
+			// Retry is pending — call subscribeTargets again before it fires
+			ctrl.subscribeTargets("bb");
+			await vi.advanceTimersByTimeAsync(0);
+
+			// Advance past where the old retry would have fired
+			await vi.advanceTimersByTimeAsync(2000);
+			await vi.advanceTimersByTimeAsync(0);
+
+			// Should have: grid(aa) + display(aa) + grid(bb) + display(bb) = 4
+			// NOT 5 (no stale retry for "aa")
+			expect(hass.connection.subscribeMessage).toHaveBeenCalledTimes(4);
+
+			vi.useRealTimers();
+		});
 	});
 
 	describe("unsubscribeTargets", () => {

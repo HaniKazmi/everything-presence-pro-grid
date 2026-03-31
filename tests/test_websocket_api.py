@@ -715,6 +715,47 @@ class TestWebSocketSettings:
         assert pipeline["window_duration"] == 1000
 
 
+class TestZonePresencePreservation:
+    """Tests for zone_presence preservation across set_settings calls."""
+
+    async def test_set_settings_preserves_zone_presence(
+        self, hass: HomeAssistant, config_entry: MockConfigEntry
+    ) -> None:
+        """set_settings must not overwrite stored settings.zone_presence."""
+        mock_dm = await setup_integration(hass, config_entry)
+        # Simulate calibration having set zone_presence=true
+        mock_dm._store.devices["AA:BB:CC:DD:EE:FF"] = {
+            "settings": {"zone_presence": True}
+        }
+
+        from custom_components.eppgrid.websocket_api import websocket_set_settings
+
+        connection = MagicMock()
+        msg = {
+            "id": 11,
+            "type": "eppgrid/set_settings",
+            "mac": "AA:BB:CC:DD:EE:FF",
+            "temperature_offset": 0,
+            "humidity_offset": 0,
+            "illuminance_offset": 0,
+            "motion_timeout": 5.0,
+            "target_auto_distance": True,
+            "target_max_distance": 6.0,
+            "static_auto_distance": True,
+            "static_min_distance": 0.3,
+            "static_max_distance": 16.0,
+            "static_trigger_threshold": 3,
+            "static_renew_threshold": 3,
+            "static_timeout": 30.0,
+            "static_on_delay": 0.0,
+        }
+
+        await call_async_handler(hass, websocket_set_settings, connection, msg)
+
+        settings = mock_dm._store.devices["AA:BB:CC:DD:EE:FF"]["settings"]
+        assert settings["zone_presence"] is True
+
+
 class TestEntityMapping:
     """Tests for entity object_id mapping with real unique_id patterns."""
 
