@@ -553,8 +553,7 @@ export class EPPGridPanel extends LitElement {
 	}
 
 	private async _cancelEditor(): Promise<void> {
-		const needsRevert =
-			this._targetAutoDistance || this._staticAutoDistance;
+		const needsRevert = this._targetAutoDistance || this._staticAutoDistance;
 		this._dirty = false;
 		// Reload config (reopens session), then revert widened ranges on the
 		// new session. Must reload first because _loadDeviceConfig tears down
