@@ -2,42 +2,64 @@
 
 ## Problem
 
-Two bugs in the settings-to-firmware push flow:
+Three issues in the settings-to-firmware push flow:
 
-1. **Auto distances not applied.** When `target_auto_distance` or `static_auto_distance` is true, the frontend sends the *stored* manual distance values instead of the auto-computed values. The backend stores and pushes whatever it receives, so the firmware gets stale distances.
+1. **Auto distances not applied.** When `target_auto_distance` or `static_auto_distance` is true, the frontend sends the *stored* manual distance values instead of the auto-computed values. The backend stores and pushes whatever it receives, so the firmware gets stale distances. **(Fixed)**
 
-2. **Double push on save.** After saving settings, `_apply_entity_states()` changes `disabled_by` on HA entity registry entries. HA core reloads the ESPHome config entry in response, causing a disconnect/reconnect. `_on_device_available()` then pushes the full config a second time.
+2. **Double push on save.** After saving settings, `_apply_entity_states()` changes `disabled_by` on HA entity registry entries. HA core reloads the ESPHome config entry in response, causing a disconnect/reconnect. `_on_device_available()` then pushes the full config a second time. **(Fixed)**
+
+3. **Editor distance lifecycle.** When editing zones/rooms, the firmware needs widened detection ranges so the sensor can see targets everywhere. On save or cancel, the ranges must be restored to the correct values.
 
 ## Design
 
-### Bug 1: Frontend sends auto-computed distances
+### Already implemented (bugs 1 & 2)
 
-The frontend already computes auto distances via `autoDetectionRange()` in the settings view render. The fix is to use those computed values at save time.
+- `_emitSave()` and `applyLayout()` compute auto distances via `autoDetectionRange()` when auto flags are set.
+- `_entity_update_macs` guard set suppresses redundant reconnect push.
+- Detection preview (live slider push) removed — was unnecessary firmware spam.
 
-**epp-settings-view.ts — cache auto values:**
-- Store `_targetAutoVal` and `_staticMaxAutoVal` as instance properties, updated during `renderDetectionRanges()`.
-- In `_emitSave()`, when `target_auto_distance` is true, send `_targetAutoVal` instead of the stored `targetMaxDistance`. Same for static: send `_staticMaxAutoVal` for max and `0.3` for min.
+### Editor distance lifecycle
 
-**grid-state-controller.ts — saveLayout sends correct distances:**
-- `saveLayout()` calls `set_settings` after saving the layout (because auto distances may change when the grid changes). The panel state properties (`_targetMaxDistance` etc.) need to reflect the auto-computed values.
-- After saving the layout, if auto distance is on, compute `autoDetectionRange()` from the updated room geometry and send those values in the `set_settings` call instead of the stale state properties.
+**Backend — new WS command `eppgrid/set_distance_override`:**
+- Takes `mac`, `target_max_distance`, `static_min_distance`, `static_max_distance`.
+- Merges with stored non-distance settings (thresholds, timeout, on_delay) from storage.
+- Pushes tracking + static presence to device via session — no persist.
+- No-op if no session exists.
 
-**Backend stays unchanged** — it always receives concrete distance values and pushes them to firmware. The `target_auto_distance` / `static_auto_distance` flags are stored for the frontend's use but the backend doesn't act on them.
+**Backend — modify `set_room_layout`:**
+- Remove `_push_config_to_device` call. Layout saves no longer trigger a settings push. The frontend handles settings push separately via `set_settings` when auto is on.
 
-### Bug 2: Suppress redundant reconnect push
+**Frontend — entering editor (`_view` changes to `"editor"`):**
+- Call `set_distance_override` with:
+  - `target_max_distance`: 6 if `_targetAutoDistance`, else `_targetMaxDistance`
+  - `static_min_distance`: 0.3 if `_staticAutoDistance`, else `_staticMinDistance`
+  - `static_max_distance`: 16 if `_staticAutoDistance`, else `_staticMaxDistance`
+- If neither auto flag is on, skip the call entirely (no override needed).
 
-**device_manager.py — `_entity_update_macs` guard set:**
-- Add `_entity_update_macs: set[str]` to `DeviceManager`.
-- In `websocket_set_settings`, before calling `_apply_entity_states()`, add the MAC to this set.
-- In `_on_device_available()`, if the MAC is in the set, remove it and skip the push.
-- Use `hass.loop.call_later(60, ...)` to auto-clear the MAC as a safety net, so the flag doesn't stick forever if the expected reconnect doesn't happen.
+**Frontend — save from editor (`applyLayout`):**
+- Save layout via `set_room_layout` (no config push).
+- If `_targetAutoDistance || _staticAutoDistance`: compute auto distances, call `set_settings` with them.
+- If both auto flags OFF: no `set_settings` call needed (distances unchanged).
+
+**Frontend — cancel from editor:**
+- If `_targetAutoDistance || _staticAutoDistance`: call `set_distance_override` with stored values (`_targetMaxDistance`, `_staticMinDistance`, `_staticMaxDistance`) to revert widened ranges.
+- Then reload config as already done.
 
 ## Testing
 
-### Bug 1
-- Frontend test: `_emitSave()` with `targetAutoDistance=true` sends auto-computed value, not stored value.
-- Frontend test: `saveLayout()` with auto distance on sends recomputed distances.
+### Already implemented
+- Frontend: `_emitSave()` with auto ON sends auto-computed values.
+- Frontend: `applyLayout()` with auto ON sends auto-computed distances.
+- Python: entity update guard suppresses redundant reconnect push.
 
-### Bug 2
-- Python test: after `websocket_set_settings` with entities, `_on_device_available` skips the push.
-- Python test: after 60s timeout, the guard is cleared and a real availability change does push.
+### Editor distance lifecycle
+- Backend: `set_distance_override` pushes to device without persisting.
+- Backend: `set_distance_override` is no-op when no session exists.
+- Backend: `set_room_layout` no longer calls `_push_config_to_device`.
+- Frontend: editor entry with auto ON calls `set_distance_override` with widened values.
+- Frontend: editor entry with both auto OFF does not call `set_distance_override`.
+- Frontend: editor entry with mixed auto (one on, one off) sends widened for auto, stored for manual.
+- Frontend: save from editor with auto ON calls `set_settings`.
+- Frontend: save from editor with auto OFF does not call `set_settings`.
+- Frontend: cancel from editor with auto ON calls `set_distance_override` with stored values.
+- Frontend: cancel from editor with auto OFF does not call `set_distance_override`.
