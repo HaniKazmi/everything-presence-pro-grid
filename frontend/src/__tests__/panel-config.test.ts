@@ -103,6 +103,61 @@ describe("_initialize", () => {
 		expect(a._loading).toBe(false);
 		expect(a._devices).toEqual(devices);
 	});
+
+	it("retries when list_devices fails", async () => {
+		vi.useFakeTimers();
+		const a = el as any;
+		const devices = [
+			{
+				mac: "AA:BB:CC:DD:EE:01",
+				name: "Sensor 1",
+				host: "192.168.1.10",
+				available: true,
+				configured: true,
+			},
+		];
+		let callCount = 0;
+		el.hass = {
+			callWS: vi.fn().mockImplementation((msg: any) => {
+				if (msg.type === "eppgrid/list_devices") {
+					callCount++;
+					if (callCount === 1) return Promise.reject(new Error("unknown"));
+					return Promise.resolve({ devices });
+				}
+				if (msg.type === "eppgrid/get_config") {
+					return Promise.resolve({
+						config: {
+							calibration: {
+								perspective: null,
+								room_width: 0,
+								room_depth: 0,
+							},
+							room_layout: {},
+						},
+					});
+				}
+				return Promise.resolve({});
+			}),
+			connection: {
+				subscribeMessage: vi.fn().mockResolvedValue(() => {}),
+			},
+		};
+
+		a._initialize();
+		await vi.advanceTimersByTimeAsync(0);
+
+		// First attempt failed — no devices
+		expect(a._devices).toEqual([]);
+
+		// Retry fires after 2s
+		await vi.advanceTimersByTimeAsync(2000);
+		await vi.advanceTimersByTimeAsync(0);
+
+		expect(a._devices).toEqual(devices);
+		expect(a._loading).toBe(false);
+
+		vi.useRealTimers();
+	});
 });
 
 describe("_loadDevices", () => {
@@ -760,8 +815,8 @@ describe("_deleteCalibration", () => {
 		expect(a._roomType).toBe("normal");
 		expect(a._roomEntryPoint).toBe(false);
 
-		// Should have called set_setup and set_room_layout
-		expect(el.hass.callWS).toHaveBeenCalledTimes(2);
+		// set_distance_override (widen) + set_setup + set_room_layout
+		expect(el.hass.callWS).toHaveBeenCalledTimes(3);
 	});
 
 	it("handles backend error gracefully", async () => {

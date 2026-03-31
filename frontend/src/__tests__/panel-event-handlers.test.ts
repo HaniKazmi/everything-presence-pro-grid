@@ -374,6 +374,82 @@ describe("_renderLiveOverview inline handlers", () => {
 		});
 	});
 
+	describe("calibration distance override", () => {
+		it("calls set_distance_override with widened ranges when entering calibration", () => {
+			const a = createPanel() as any;
+			a._selectedMac = "AA:BB:CC:DD:EE:01";
+			a._targetAutoDistance = true;
+			a._targetMaxDistance = 3.5;
+			a._staticAutoDistance = true;
+			a._staticMinDistance = 1.0;
+			a._staticMaxDistance = 8.0;
+
+			const callWS = vi.fn().mockResolvedValue({});
+			a.hass = { callWS };
+
+			a._changePlacement();
+
+			expect(callWS).toHaveBeenCalledWith({
+				type: "eppgrid/set_distance_override",
+				mac: "AA:BB:CC:DD:EE:01",
+				target_max_distance: 6,
+				static_min_distance: 0.3,
+				static_max_distance: 16,
+			});
+		});
+
+		it("persists max distances on delete calibration when auto is on", async () => {
+			const a = createPanel() as any;
+			a._selectedMac = "AA:BB:CC:DD:EE:01";
+			a._targetAutoDistance = true;
+			a._targetMaxDistance = 3.5;
+			a._staticAutoDistance = true;
+			a._staticMinDistance = 1.0;
+			a._staticMaxDistance = 6.5;
+			a._showDeleteCalibrationDialog = true;
+
+			const callWS = vi.fn().mockResolvedValue({});
+			a.hass = { callWS };
+
+			await a._deleteCalibration();
+
+			// set_settings is first (persists max values before config push)
+			const callTypes = callWS.mock.calls.map((c: any) => c[0].type);
+			expect(callTypes[0]).toBe("eppgrid/set_settings");
+
+			const settingsCalls = callWS.mock.calls.filter(
+				(c: any) => c[0].type === "eppgrid/set_settings",
+			);
+			expect(settingsCalls).toHaveLength(1);
+			expect(settingsCalls[0][0].target_max_distance).toBe(6);
+			expect(settingsCalls[0][0].static_min_distance).toBe(0.3);
+			expect(settingsCalls[0][0].static_max_distance).toBe(16);
+
+			// Local distances were reset to maximums
+			expect(a._targetMaxDistance).toBe(6);
+			expect(a._staticMinDistance).toBe(0.3);
+			expect(a._staticMaxDistance).toBe(16);
+		});
+
+		it("does not call set_settings on delete calibration when auto is off", async () => {
+			const a = createPanel() as any;
+			a._selectedMac = "AA:BB:CC:DD:EE:01";
+			a._targetAutoDistance = false;
+			a._staticAutoDistance = false;
+			a._showDeleteCalibrationDialog = true;
+
+			const callWS = vi.fn().mockResolvedValue({});
+			a.hass = { callWS };
+
+			await a._deleteCalibration();
+
+			const settingsCalls = callWS.mock.calls.filter(
+				(c: any) => c[0].type === "eppgrid/set_settings",
+			);
+			expect(settingsCalls).toHaveLength(0);
+		});
+	});
+
 	describe("editor cancel distance revert", () => {
 		it("calls set_distance_override with stored values on cancel when auto is on", async () => {
 			const a = createPanel() as any;

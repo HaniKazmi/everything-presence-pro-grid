@@ -1585,7 +1585,7 @@ class TestZoneEntities:
         manager.devices["AA:BB:CC:DD:EE:FF"] = ManagedDevice(
             mac="AA:BB:CC:DD:EE:FF", name="EPP", host="192.168.1.50", device_id=device.id
         )
-        manager._store.devices["AA:BB:CC:DD:EE:FF"] = {"calibration": {"perspective": [1.0] * 8}}
+        manager._store.devices["AA:BB:CC:DD:EE:FF"] = {"settings": {"zone_presence": True}}
 
         zone_slots = [{"name": "Office"}] + [None] * (MAX_ZONES - 1)
         await manager.async_update_zone_entities("AA:BB:CC:DD:EE:FF", zone_slots)
@@ -1604,8 +1604,8 @@ class TestZoneEntities:
         zone2 = ent_reg.async_get(zone2_entry.entity_id)
         assert zone2.disabled_by == er.RegistryEntryDisabler.INTEGRATION
 
-    async def test_update_zone_entities_uncalibrated(self, hass: HomeAssistant, manager: DeviceManager) -> None:
-        """Uncalibrated device disables zone 0."""
+    async def test_update_zone_entities_disables_unused(self, hass: HomeAssistant, manager: DeviceManager) -> None:
+        """Unused zone slots are disabled by integration."""
         dev_reg = dr.async_get(hass)
         ent_reg = er.async_get(hass)
 
@@ -1625,17 +1625,30 @@ class TestZoneEntities:
             config_entry=esphome_entry,
             device_id=device.id,
         )
+        zone1_entry = ent_reg.async_get_or_create(
+            "binary_sensor",
+            "esphome",
+            unique_id="esphome_aabbccddeeff_zone_1_occupancy",
+            config_entry=esphome_entry,
+            device_id=device.id,
+        )
 
         manager.devices["AA:BB:CC:DD:EE:FF"] = ManagedDevice(
             mac="AA:BB:CC:DD:EE:FF", name="EPP", host="192.168.1.50", device_id=device.id
         )
-        # No calibration in store
+        manager._store.devices["AA:BB:CC:DD:EE:FF"] = {"settings": {"zone_presence": True}}
 
+        # No named zones
         zone_slots = [None] * MAX_ZONES
         await manager.async_update_zone_entities("AA:BB:CC:DD:EE:FF", zone_slots)
 
+        # Zone 0 always enabled
         zone0 = ent_reg.async_get(zone0_entry.entity_id)
-        assert zone0.disabled_by == er.RegistryEntryDisabler.INTEGRATION
+        assert zone0.disabled_by is None
+
+        # Zone 1 unused — disabled
+        zone1 = ent_reg.async_get(zone1_entry.entity_id)
+        assert zone1.disabled_by == er.RegistryEntryDisabler.INTEGRATION
 
     async def test_update_zone_entities_unknown_device(self, hass: HomeAssistant, manager: DeviceManager) -> None:
         """Unknown device is a no-op."""

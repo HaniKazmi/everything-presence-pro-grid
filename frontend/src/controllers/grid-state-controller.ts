@@ -23,7 +23,6 @@ import {
 	getRoomBounds,
 	initGridFromRoom,
 	MAX_ZONES,
-	updateRoomDimensionsFromGrid,
 } from "../lib/grid.js";
 import { autoDetectionRange } from "../lib/room-geometry.js";
 import { ZONE_COLORS, type ZoneConfig } from "../lib/zone-defaults.js";
@@ -111,20 +110,7 @@ export class GridStateController implements ReactiveController {
 		this.host._grid[index] = newValue;
 		this.host._dirty = true;
 
-		// Update room dimensions when boundary changes
-		if (this.host._activeZone === 0) {
-			this.updateRoomDimensionsFromGrid();
-		}
-
 		this.host.requestUpdate();
-	}
-
-	updateRoomDimensionsFromGrid(): void {
-		const { roomWidth, roomDepth } = updateRoomDimensionsFromGrid(
-			this.host._grid,
-		);
-		this.host._roomWidth = roomWidth;
-		this.host._roomDepth = roomDepth;
 	}
 
 	initGridFromRoom(): void {

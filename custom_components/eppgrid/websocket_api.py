@@ -149,12 +149,15 @@ async def websocket_set_setup(
     }
     # Clear room layout when calibration changes (grid dimensions may differ)
     device_config.pop("room_layout", None)
+    # Store zone_presence flag — true on calibration, false on delete
+    settings = device_config.get("settings", {})
+    settings["zone_presence"] = msg["room_width"] > 0
+    device_config["settings"] = settings
     await manager._store.async_save()
 
     # Push calibration to device
     await manager._push_config_to_device(mac)
 
-    # Enable zone 0 now that device is calibrated
     from .const import MAX_ZONES
 
     zone_slots = device_config.get("room_layout", {}).get("zone_slots", [None] * MAX_ZONES)
@@ -214,6 +217,11 @@ async def websocket_set_room_layout(
         "furniture": msg.get("furniture", []),
     }
     await manager._store.async_save()
+
+    # Push config to device if connected
+    dev = manager.devices.get(mac)
+    if dev and dev.host:
+        await manager._push_config_to_device(mac)
 
     # Update ESPHome entity enable/disable/rename
     await manager.async_update_zone_entities(mac, msg["zone_slots"])
@@ -810,18 +818,19 @@ async def websocket_set_settings(
         if push_ok:
             manager._entity_update_macs.add(mac)
             hass.loop.call_later(60, manager._entity_update_macs.discard, mac)
+        # Persist zone_presence in stored settings so async_update_zone_entities
+        # can read it on discovery/reconnect
+        if "zone_presence" in entities:
+            device_config.setdefault("settings", {})["zone_presence"] = entities["zone_presence"]
+            await manager._store.async_save()
         _apply_entity_states(hass, mac, entities)
         # Zone presence needs layout-aware handling: enable zone_0 + named zones
         if entities.get("zone_presence"):
-            # Enable zone entities with layout-aware naming
             layout = device_config.get("room_layout", {})
             from .const import MAX_ZONES
 
             zone_slots = layout.get("zone_slots", [None] * MAX_ZONES)
             await manager.async_update_zone_entities(mac, zone_slots)
-            # When zone_presence is false, _apply_entity_states already
-            # disabled all zone entities — don't call async_update_zone_entities
-            # which would re-enable zone_0 for calibrated devices.
     connection.send_result(msg["id"])
 
 

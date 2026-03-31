@@ -511,6 +511,53 @@ describe("DeviceController", () => {
 		});
 	});
 
+	describe("subscribeTargets retry", () => {
+		it("retries subscription after failure", async () => {
+			vi.useFakeTimers();
+			const unsub = vi.fn();
+			hass.connection.subscribeMessage = vi
+				.fn()
+				.mockRejectedValueOnce(new Error("unknown command"))
+				.mockResolvedValueOnce(vi.fn()) // display sub
+				.mockResolvedValueOnce(unsub); // grid retry
+
+			ctrl.subscribeTargets("aa");
+
+			// First attempt fails, display succeeds
+			await vi.advanceTimersByTimeAsync(0);
+
+			// Retry fires after 2s
+			await vi.advanceTimersByTimeAsync(2000);
+			await vi.advanceTimersByTimeAsync(0);
+
+			expect(hass.connection.subscribeMessage).toHaveBeenCalledTimes(3);
+			expect((ctrl as any)._unsubTargets).toBe(unsub);
+
+			vi.useRealTimers();
+		});
+
+		it("does not retry after unsubscribeTargets is called", async () => {
+			vi.useFakeTimers();
+			hass.connection.subscribeMessage = vi
+				.fn()
+				.mockRejectedValueOnce(new Error("unknown command"))
+				.mockResolvedValueOnce(vi.fn());
+
+			ctrl.subscribeTargets("aa");
+			await vi.advanceTimersByTimeAsync(0);
+
+			ctrl.unsubscribeTargets();
+
+			await vi.advanceTimersByTimeAsync(2000);
+			await vi.advanceTimersByTimeAsync(0);
+
+			// Only 2 initial calls (grid + display), no retry
+			expect(hass.connection.subscribeMessage).toHaveBeenCalledTimes(2);
+
+			vi.useRealTimers();
+		});
+	});
+
 	describe("unsubscribeTargets", () => {
 		it("calls unsub and clears references", () => {
 			const unsub = vi.fn();

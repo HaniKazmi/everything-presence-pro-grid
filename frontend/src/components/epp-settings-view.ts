@@ -591,7 +591,7 @@ export class EppSettingsView extends LitElement {
 							if (!this._overrides.entities) this._overrides.entities = {};
 							this._overrides.entities[key] = el.checked;
 							this._fireDirty();
-						}} data-entity-key="zone_presence" .checked=${isOn("zone_presence", true)} /><span class="toggle-slider"></span></label>
+						}} data-entity-key="zone_presence" .checked=${isOn("zone_presence", true)} .disabled=${!this.perspective} /><span class="toggle-slider"></span></label>
             ${this.infoTip(this.localize("info.zone_presence"))}
           </div>
         </div>

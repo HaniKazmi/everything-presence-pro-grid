@@ -264,7 +264,7 @@ class TestWebSocketSetRoomLayout:
         assert layout["room_type"] == "normal"
         assert layout["zone_slots"] == zone_slots
         mock_dm._store.async_save.assert_awaited()
-        mock_dm._push_config_to_device.assert_not_awaited()
+        mock_dm._push_config_to_device.assert_awaited()
         mock_dm.async_update_zone_entities.assert_awaited_with("AA:BB:CC:DD:EE:FF", zone_slots)
         connection.send_result.assert_called_once_with(5)
 

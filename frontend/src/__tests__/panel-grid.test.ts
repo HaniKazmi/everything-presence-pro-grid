@@ -233,11 +233,11 @@ describe("room dimensions update after boundary change", () => {
 		el = createPanel();
 	});
 
-	it("updates _roomWidth and _roomDepth when boundary cell is set", () => {
+	it("preserves calibrated _roomWidth when painting boundary cells", () => {
 		const a = el as any;
 		a._activeZone = 0;
-		a._roomWidth = 0;
-		a._roomDepth = 0;
+		a._roomWidth = 3000;
+		a._roomDepth = 3000;
 
 		// Paint a 3-wide, 2-tall block of cells
 		for (let r = 0; r < 2; r++) {
@@ -247,31 +247,9 @@ describe("room dimensions update after boundary change", () => {
 			}
 		}
 
-		// 3 cols x GRID_CELL_MM = 900, 2 rows x GRID_CELL_MM = 600
-		expect(a._roomWidth).toBe(3 * GRID_CELL_MM);
-		expect(a._roomDepth).toBe(2 * GRID_CELL_MM);
-	});
-
-	it("does not update room dimensions when zone painting (non-boundary)", () => {
-		const a = el as any;
-
-		// First set up some room cells
-		a._activeZone = 0;
-		for (let c = 5; c < 8; c++) {
-			a._paintAction = "set";
-			a._applyPaintToCell(c);
-		}
-		const prevWidth = a._roomWidth;
-		const prevDepth = a._roomDepth;
-
-		// Now paint a zone on existing room cells
-		a._activeZone = 1;
-		a._paintAction = "set";
-		a._applyPaintToCell(5);
-
-		// Room dimensions should not change from zone painting
-		expect(a._roomWidth).toBe(prevWidth);
-		expect(a._roomDepth).toBe(prevDepth);
+		// Calibrated room dimensions must stay consistent with the perspective
+		expect(a._roomWidth).toBe(3000);
+		expect(a._roomDepth).toBe(3000);
 	});
 });
 

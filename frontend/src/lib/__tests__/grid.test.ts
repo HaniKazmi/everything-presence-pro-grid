@@ -13,7 +13,6 @@ import {
 	getRoomBounds,
 	initGridFromRoom,
 	MAX_ZONES,
-	updateRoomDimensionsFromGrid,
 } from "../grid.js";
 
 describe("cellIsInside", () => {
@@ -205,29 +204,3 @@ describe("initGridFromRoom", () => {
 	});
 });
 
-describe("updateRoomDimensionsFromGrid", () => {
-	it("derives room dimensions from grid bounds", () => {
-		const grid = initGridFromRoom(3000, 1500);
-		const { roomWidth, roomDepth } = updateRoomDimensionsFromGrid(grid);
-		expect(roomWidth).toBe(3000);
-		expect(roomDepth).toBe(1500);
-	});
-
-	it("returns zero dimensions for empty grid", () => {
-		const grid = new Uint8Array(GRID_CELL_COUNT);
-		const { roomWidth, roomDepth } = updateRoomDimensionsFromGrid(grid);
-		expect(roomWidth).toBe(0);
-		expect(roomDepth).toBe(0);
-	});
-
-	it("accounts for non-rectangular room shapes", () => {
-		const grid = new Uint8Array(GRID_CELL_COUNT);
-		// L-shaped room: row 2 cols 3-6, row 3 cols 3-4
-		for (let c = 3; c <= 6; c++) grid[2 * GRID_COLS + c] = CELL_ROOM_BIT;
-		for (let c = 3; c <= 4; c++) grid[3 * GRID_COLS + c] = CELL_ROOM_BIT;
-		const { roomWidth, roomDepth } = updateRoomDimensionsFromGrid(grid);
-		// Bounding box: cols 3-6 (4 cells), rows 2-3 (2 cells)
-		expect(roomWidth).toBe(4 * GRID_CELL_MM);
-		expect(roomDepth).toBe(2 * GRID_CELL_MM);
-	});
-});
