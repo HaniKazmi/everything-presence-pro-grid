@@ -565,8 +565,11 @@ export class EPPGridPanel extends LitElement {
 				.catch(() => {});
 		}
 		this._dirty = false;
-		this._view = "live";
+		// Reload config before switching view — switching to "live" triggers
+		// updated() which may race with _loadDeviceConfig and tear down the
+		// session before the override completes.
 		await this._loadDeviceConfig(this._selectedMac);
+		this._view = "live";
 	}
 
 	private _enterEditor(tab: "zones" | "furniture"): void {

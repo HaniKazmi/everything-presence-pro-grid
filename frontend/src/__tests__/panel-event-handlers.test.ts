@@ -245,14 +245,14 @@ describe("_renderWizardCorners inline handlers", () => {
 // _renderSaveCancelButtons inline handlers
 // ========================
 describe("_renderSaveCancelButtons inline handlers", () => {
-	it("cancel button resets dirty and loads config", () => {
+	it("cancel button resets dirty and loads config", async () => {
 		const a = createPanel() as any;
 		a._dirty = true;
 		a._view = "editor";
 		a._targetAutoDistance = false;
 		a._staticAutoDistance = false;
 
-		a._cancelEditor();
+		await a._cancelEditor();
 
 		expect(a._dirty).toBe(false);
 		expect(a._view).toBe("live");
