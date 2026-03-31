@@ -137,6 +137,18 @@ globals:
   - id: current_connection_count
     type: int
     initial_value: '0'
+  - id: presence_color_red
+    type: float
+    restore_value: true
+    initial_value: '0.8'
+  - id: presence_color_green
+    type: float
+    restore_value: true
+    initial_value: '0.2'
+  - id: presence_color_blue
+    type: float
+    restore_value: true
+    initial_value: '1.0'
 
 # Enable Home Assistant API
 api:
@@ -268,6 +280,32 @@ api:
         - delay: 1s
         - lambda: |-
             id(epp_component).set_static_timeout(timeout);
+    - action: epp_set_led
+      variables:
+        mode: string
+        brightness: float
+        presence_red: float
+        presence_green: float
+        presence_blue: float
+      then:
+        - lambda: |-
+            ESP_LOGI("control_leds", "epp_set_led: mode=%s brightness=%.2f color=(%.2f, %.2f, %.2f)",
+                     mode.c_str(), brightness, presence_red, presence_green, presence_blue);
+
+            // Update presence color globals
+            id(presence_color_red) = presence_red;
+            id(presence_color_green) = presence_green;
+            id(presence_color_blue) = presence_blue;
+
+            // Update brightness
+            auto call = id(led_brightness_multiplier).make_call();
+            call.set_value(brightness);
+            call.perform();
+
+            // Update mode (triggers control_leds via on_value)
+            auto mode_call = id(led_mode_select).make_call();
+            mode_call.set_option(mode);
+            mode_call.perform();
     - action: epp_set_pipeline
       variables:
         display_interval: int
@@ -747,9 +785,9 @@ script:
             - light.turn_on:
                 id: led_rgb
                 brightness: !lambda 'return 0.55 * id(led_brightness_multiplier).state;'
-                red: 80%
-                green: 20%
-                blue: 100%
+                red: !lambda 'return id(presence_color_red);'
+                green: !lambda 'return id(presence_color_green);'
+                blue: !lambda 'return id(presence_color_blue);'
                 white: 0%
                 transition_length: 600ms
             - delay: 650ms
@@ -900,9 +938,9 @@ script:
                   - script.execute:
                       id: led_fade_in
                       brightness: 0.55
-                      red: 0.0
-                      green: 1.0
-                      blue: 0.8
+                      red: !lambda 'return id(presence_color_red);'
+                      green: !lambda 'return id(presence_color_green);'
+                      blue: !lambda 'return id(presence_color_blue);'
                       effect: "Presence Glow"
                 else:
                   - script.execute: led_fade_out
@@ -912,6 +950,8 @@ script:
   - id: update_environmental_led
     then:
       # Default: turn off LED (no CO2 sensor available)
+      - lambda: |-
+          ESP_LOGD("control_leds", "update_environmental_led: no CO2 sensor, turning off");
       - light.turn_on:
           id: led_rgb
           effect: none

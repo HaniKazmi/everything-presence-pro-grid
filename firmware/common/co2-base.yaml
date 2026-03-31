@@ -28,3 +28,114 @@ button:
       - scd4x.perform_forced_calibration:
           value: 419
           id: scd40
+
+script:
+  - id: update_environmental_led
+    then:
+      - lambda: |-
+          float co2_val = id(co2).state;
+          ESP_LOGD("control_leds", "update_environmental_led: CO2=%.0f ppm", co2_val);
+          if (co2_val < 800) {
+            ESP_LOGD("control_leds", "CO2 good (<800) — green");
+          } else if (co2_val < 1200) {
+            ESP_LOGD("control_leds", "CO2 warning (800-1200) — amber");
+          } else {
+            ESP_LOGD("control_leds", "CO2 alert (>1200) — red");
+          }
+      - if:
+          condition:
+            lambda: 'return id(co2).state < 800;'
+          then:
+            # Good air quality — steady green
+            - light.turn_on:
+                id: led_rgb
+                effect: none
+            - delay: 50ms
+            - light.turn_on:
+                id: led_rgb
+                brightness: !lambda 'return 0.40 * id(led_brightness_multiplier).state;'
+                red: 0%
+                green: 100%
+                blue: 0%
+                white: 0%
+                transition_length: 600ms
+      - if:
+          condition:
+            lambda: 'return id(co2).state >= 800 && id(co2).state < 1200;'
+          then:
+            # Warning — amber pulse
+            - light.turn_on:
+                id: led_rgb
+                effect: none
+            - delay: 50ms
+            - light.turn_on:
+                id: led_rgb
+                brightness: !lambda 'return 0.50 * id(led_brightness_multiplier).state;'
+                red: 100%
+                green: 60%
+                blue: 0%
+                white: 0%
+                transition_length: 600ms
+            - delay: 650ms
+            - light.turn_on:
+                id: led_rgb
+                effect: "Environmental Warning"
+      - if:
+          condition:
+            lambda: 'return id(co2).state >= 1200;'
+          then:
+            # Alert — red pulse
+            - light.turn_on:
+                id: led_rgb
+                effect: none
+            - delay: 50ms
+            - light.turn_on:
+                id: led_rgb
+                brightness: !lambda 'return 0.55 * id(led_brightness_multiplier).state;'
+                red: 100%
+                green: 0%
+                blue: 0%
+                white: 0%
+                transition_length: 600ms
+            - delay: 650ms
+            - light.turn_on:
+                id: led_rgb
+                effect: "Environmental Alert"
+
+  - id: control_leds_environmental_presence
+    mode: restart
+    then:
+      - script.execute: alternate_presence_environmental
+
+  - id: alternate_presence_environmental
+    mode: restart
+    then:
+      - while:
+          condition:
+            lambda: 'return id(led_mode_select).current_option() == "Environmental + Presence";'
+          then:
+            # Show environmental for 8 seconds
+            - script.execute: update_environmental_led
+            - delay: 8s
+            # Show presence for 4 seconds (if occupied)
+            - if:
+                condition:
+                  lambda: 'return id(occupancy).state;'
+                then:
+                  - light.turn_on:
+                      id: led_rgb
+                      effect: none
+                  - delay: 50ms
+                  - light.turn_on:
+                      id: led_rgb
+                      brightness: !lambda 'return 0.55 * id(led_brightness_multiplier).state;'
+                      red: !lambda 'return id(presence_color_red);'
+                      green: !lambda 'return id(presence_color_green);'
+                      blue: !lambda 'return id(presence_color_blue);'
+                      white: 0%
+                      transition_length: 600ms
+                  - delay: 650ms
+                  - light.turn_on:
+                      id: led_rgb
+                      effect: "Presence Glow"
+                  - delay: 4s
