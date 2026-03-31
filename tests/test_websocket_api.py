@@ -803,9 +803,7 @@ class TestZonePresencePreservation:
         settings = mock_dm._store.devices["AA:BB:CC:DD:EE:FF"]["settings"]
         assert settings["zone_presence"] is True
 
-    async def test_set_settings_preserves_target_xy(
-        self, hass: HomeAssistant, config_entry: MockConfigEntry
-    ) -> None:
+    async def test_set_settings_preserves_target_xy(self, hass: HomeAssistant, config_entry: MockConfigEntry) -> None:
         """set_settings must not overwrite stored settings.target_xy."""
         mock_dm = await setup_integration(hass, config_entry)
         # Simulate target_xy having been enabled by user
