@@ -203,4 +203,3 @@ describe("initGridFromRoom", () => {
 		expect(grid.length).toBe(GRID_CELL_COUNT);
 	});
 });
-

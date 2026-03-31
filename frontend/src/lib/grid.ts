@@ -102,5 +102,3 @@ export function initGridFromRoom(
 
 	return grid;
 }
-
-

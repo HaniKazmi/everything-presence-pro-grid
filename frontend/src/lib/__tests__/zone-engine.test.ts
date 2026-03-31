@@ -642,7 +642,9 @@ describe("stale zone cleanup", () => {
 		grid[0] = CELL_ROOM_BIT; // zone 0
 		grid[1] = cellSetZone(CELL_ROOM_BIT, 1); // zone 1
 
-		const targets = [{ x: 0, y: 0, speed: 0, status: "active" as const, signal: 9 }];
+		const targets = [
+			{ x: 0, y: 0, speed: 0, status: "active" as const, signal: 9 },
+		];
 		const params = makeDefaultParams({
 			grid,
 			targets,
