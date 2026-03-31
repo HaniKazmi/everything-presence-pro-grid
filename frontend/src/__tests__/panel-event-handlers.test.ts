@@ -375,7 +375,7 @@ describe("_renderLiveOverview inline handlers", () => {
 	});
 
 	describe("editor cancel distance revert", () => {
-		it("calls set_distance_override with stored values on cancel when auto is on", () => {
+		it("calls set_distance_override with stored values on cancel when auto is on", async () => {
 			const a = createPanel() as any;
 			a._selectedMac = "AA:BB:CC:DD:EE:01";
 			a._view = "editor";
@@ -390,7 +390,13 @@ describe("_renderLiveOverview inline handlers", () => {
 				config: {
 					calibration: { perspective: null, room_width: 0, room_depth: 0 },
 					room_layout: {},
-					settings: {},
+					settings: {
+						target_auto_distance: true,
+						target_max_distance: 3.5,
+						static_auto_distance: true,
+						static_min_distance: 0.5,
+						static_max_distance: 8.0,
+					},
 				},
 			});
 			a.hass = {
@@ -398,7 +404,7 @@ describe("_renderLiveOverview inline handlers", () => {
 				connection: { subscribeMessage: vi.fn().mockResolvedValue(() => {}) },
 			};
 
-			a._cancelEditor();
+			await a._cancelEditor();
 
 			expect(callWS).toHaveBeenCalledWith({
 				type: "eppgrid/set_distance_override",
@@ -409,7 +415,7 @@ describe("_renderLiveOverview inline handlers", () => {
 			});
 		});
 
-		it("does not call set_distance_override on cancel when auto is off", () => {
+		it("does not call set_distance_override on cancel when auto is off", async () => {
 			const a = createPanel() as any;
 			a._selectedMac = "AA:BB:CC:DD:EE:01";
 			a._view = "editor";
@@ -429,7 +435,7 @@ describe("_renderLiveOverview inline handlers", () => {
 				connection: { subscribeMessage: vi.fn().mockResolvedValue(() => {}) },
 			};
 
-			a._cancelEditor();
+			await a._cancelEditor();
 
 			const overrideCalls = callWS.mock.calls.filter(
 				(c: any) => c[0].type === "eppgrid/set_distance_override",

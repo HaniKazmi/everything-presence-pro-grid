@@ -553,7 +553,15 @@ export class EPPGridPanel extends LitElement {
 	}
 
 	private async _cancelEditor(): Promise<void> {
-		if (this._targetAutoDistance || this._staticAutoDistance) {
+		const needsRevert =
+			this._targetAutoDistance || this._staticAutoDistance;
+		this._dirty = false;
+		// Reload config (reopens session), then revert widened ranges on the
+		// new session. Must reload first because _loadDeviceConfig tears down
+		// the old session.
+		await this._loadDeviceConfig(this._selectedMac);
+		this._view = "live";
+		if (needsRevert) {
 			await this.hass
 				?.callWS({
 					type: "eppgrid/set_distance_override",
@@ -564,12 +572,6 @@ export class EPPGridPanel extends LitElement {
 				})
 				.catch(() => {});
 		}
-		this._dirty = false;
-		// Reload config before switching view — switching to "live" triggers
-		// updated() which may race with _loadDeviceConfig and tear down the
-		// session before the override completes.
-		await this._loadDeviceConfig(this._selectedMac);
-		this._view = "live";
 	}
 
 	private _enterEditor(tab: "zones" | "furniture"): void {
