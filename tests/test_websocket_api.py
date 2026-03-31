@@ -724,9 +724,7 @@ class TestZonePresencePreservation:
         """set_settings must not overwrite stored settings.zone_presence."""
         mock_dm = await setup_integration(hass, config_entry)
         # Simulate calibration having set zone_presence=true
-        mock_dm._store.devices["AA:BB:CC:DD:EE:FF"] = {
-            "settings": {"zone_presence": True}
-        }
+        mock_dm._store.devices["AA:BB:CC:DD:EE:FF"] = {"settings": {"zone_presence": True}}
 
         from custom_components.eppgrid.websocket_api import websocket_set_settings
 

@@ -320,7 +320,9 @@ class TestDeviceManager:
         assert dev.name == "EPP Living Room"
         assert dev.host == "192.168.1.50"
 
-    async def test_discover_calls_update_zone_entities_without_config(self, hass: HomeAssistant, manager: DeviceManager) -> None:
+    async def test_discover_calls_update_zone_entities_without_config(
+        self, hass: HomeAssistant, manager: DeviceManager
+    ) -> None:
         """Discovery calls async_update_zone_entities even without stored config."""
         dev_reg = dr.async_get(hass)
         ent_reg = er.async_get(hass)
@@ -1682,7 +1684,9 @@ class TestZoneEntities:
         zone1 = ent_reg.async_get(zone1_entry.entity_id)
         assert zone1.disabled_by == er.RegistryEntryDisabler.INTEGRATION
 
-    async def test_update_zone_entities_respects_user_disabled(self, hass: HomeAssistant, manager: DeviceManager) -> None:
+    async def test_update_zone_entities_respects_user_disabled(
+        self, hass: HomeAssistant, manager: DeviceManager
+    ) -> None:
         """Named zone with disabled_by=USER is not re-enabled."""
         dev_reg = dr.async_get(hass)
         ent_reg = er.async_get(hass)
