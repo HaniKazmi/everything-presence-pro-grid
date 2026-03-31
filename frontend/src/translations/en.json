@@ -136,7 +136,6 @@
 		"static_led": "Static sensor LED",
 		"manual_control": "Manual Control",
 		"presence": "Presence",
-		"environmental": "Environmental",
 		"environmental_presence": "Environmental + Presence"
 	},
 	"sidebar": {
