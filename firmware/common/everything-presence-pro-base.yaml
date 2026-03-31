@@ -108,6 +108,7 @@ epp:
   occupancy_output:
     name: "Occupancy"
     device_class: occupancy
+  relay_switch: system_alarm_relay
 
 # Enable logging
 logger:

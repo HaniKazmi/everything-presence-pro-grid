@@ -4,12 +4,14 @@
 #include "esphome/components/binary_sensor/binary_sensor.h"
 #include "esphome/components/sensor/sensor.h"
 #include "esphome/components/text_sensor/text_sensor.h"
+#include "esphome/components/switch/switch.h"
 
 #include "epp_calibration.h"
 #include "epp_grid.h"
 #include "epp_rolling_window.h"
 #include "epp_tumbling_window.h"
 #include "epp_zone_engine.h"
+#include "epp_relay.h"
 
 #include <string>
 
@@ -83,6 +85,9 @@ class EPPComponent : public esphome::Component {
   void set_static_timeout(float timeout) { static_timeout_ = timeout; }
   void set_motion_timeout(float timeout) { motion_timeout_ = timeout; }
 
+  void set_relay(const std::string &trigger_mode, const std::string &contact_mode);
+  void set_relay_switch(esphome::switch_::Switch *sw) { relay_switch_ = sw; }
+
  protected:
   static constexpr int NUM_TARGETS = 3;
   static constexpr uint8_t NVS_SCHEMA_VERSION = 1;
@@ -104,6 +109,7 @@ class EPPComponent : public esphome::Component {
   void save_perspective_to_nvs_();
   void save_grid_to_nvs_();
   void save_zones_to_nvs_(const std::string &zones_json);
+  void save_relay_to_nvs_();
 
   // Cached perspective blob for NVS (8 coeffs + room_width + room_depth)
   float persp_cache_[10]{};
@@ -141,6 +147,11 @@ class EPPComponent : public esphome::Component {
   esphome::binary_sensor::BinarySensor *static_presence_output_{nullptr};
   esphome::binary_sensor::BinarySensor *motion_presence_output_{nullptr};
   esphome::binary_sensor::BinarySensor *occupancy_output_{nullptr};
+
+  // Relay
+  esphome::switch_::Switch *relay_switch_{nullptr};
+  RelayTriggerMode relay_trigger_mode_{RelayTriggerMode::DISABLED};
+  RelayContactMode relay_contact_mode_{RelayContactMode::NORMALLY_OPEN};
 
   // Publish throttle intervals (ms)
   uint32_t display_interval_ms_ = 200;
