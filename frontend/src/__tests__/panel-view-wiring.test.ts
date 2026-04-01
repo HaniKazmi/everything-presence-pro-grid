@@ -460,6 +460,20 @@ describe("Settings view event wiring", () => {
 		expect(a._view).toBe("live");
 		expect(loadSpy).toHaveBeenCalledWith("AA:BB:CC:DD:EE:01");
 	});
+
+	it("passes LED properties to epp-settings-view", () => {
+		const el = createPanel();
+		const a = el as any;
+		a._view = "settings";
+		a._ledMode = "Presence";
+		a._ledBrightness = 0.5;
+		a._ledPresenceColor = "#FF0000";
+		const container = renderPanel(el);
+		const settingsView = container.querySelector("epp-settings-view")! as any;
+		expect(settingsView.ledMode).toBe("Presence");
+		expect(settingsView.ledBrightness).toBe(0.5);
+		expect(settingsView.ledPresenceColor).toBe("#FF0000");
+	});
 });
 
 // =========================================================

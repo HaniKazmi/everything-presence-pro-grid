@@ -64,6 +64,10 @@ export class EppSettingsView extends LitElement {
 	@property({ type: Boolean }) bluetoothEnabled = false;
 	@property({ type: Boolean }) co2Enabled = false;
 
+	@property({ type: String }) ledMode = "Manual Control";
+	@property({ type: Number }) ledBrightness = 1.0;
+	@property({ type: String }) ledPresenceColor = "#CC33FF";
+
 	// Non-reactive overrides — stores user edits without triggering Lit re-renders.
 	// The 5Hz target data stream re-renders the panel at high frequency; if slider
 	// handlers update reactive properties, Lit crashes with concurrent re-renders.
@@ -98,6 +102,10 @@ export class EppSettingsView extends LitElement {
         flex-shrink: 0;
       }
 
+      .setting-row ha-select.led-mode-select {
+        width: 220px;
+      }
+
       .save-cancel-bar {
         display: flex;
         justify-content: space-between;
@@ -129,6 +137,11 @@ export class EppSettingsView extends LitElement {
 				id: "logging",
 				label: "settings.logging",
 				icon: "mdi:math-log",
+			},
+			{
+				id: "led",
+				label: "settings.led",
+				icon: "mdi:led-variant-on",
 			},
 		];
 
@@ -185,6 +198,8 @@ export class EppSettingsView extends LitElement {
 				return this.renderEntities();
 			case "logging":
 				return this.renderLogging();
+			case "led":
+				return this.renderLed();
 			default:
 				return nothing;
 		}
@@ -774,6 +789,86 @@ export class EppSettingsView extends LitElement {
     `;
 	}
 
+	renderLed() {
+		const mode = this._overrides.ledMode ?? this.ledMode;
+		const showPresenceColor =
+			mode === "Presence" || mode === "Environmental + Presence";
+		const modes = [
+			{
+				value: "Manual Control",
+				label: this.localize("settings.manual_control"),
+			},
+			{ value: "Presence", label: this.localize("settings.presence") },
+		];
+		if (this.co2Enabled) {
+			modes.push(
+				{
+					value: "Environmental",
+					label: this.localize("settings.environmental"),
+				},
+				{
+					value: "Environmental + Presence",
+					label: this.localize("settings.environmental_presence"),
+				},
+			);
+		}
+		const brightness = this._overrides.ledBrightness ?? this.ledBrightness;
+		const color = this._overrides.ledPresenceColor ?? this.ledPresenceColor;
+
+		return html`
+      <div class="settings-section">
+        <div class="setting-group">
+          <h4>${this.localize("settings.led")}</h4>
+          <div class="setting-row">
+            <label>${this.localize("settings.led_mode")}</label>
+            <ha-select class="led-mode-select" .value=${mode} .options=${modes} @selected=${(
+							e: CustomEvent<{ value: string }>,
+						) => {
+							const val = e.detail.value;
+							if (val) {
+								this._overrides.ledMode = val;
+								this._fireDirty();
+								this.requestUpdate();
+							}
+						}} @closed=${(e: Event) => e.stopPropagation()}>
+            </ha-select>
+            ${this.infoTip(this.localize("info.led_mode"))}
+          </div>
+          <div class="setting-row">
+            <label>${this.localize("settings.led_brightness")}</label>
+            <span class="setting-input-unit"><input type="range" class="setting-range" data-led-brightness min="0.1" max="1" step="0.05" .value=${String(brightness)} @input=${(
+							e: Event,
+						) => {
+							const el = e.target as HTMLInputElement;
+							this._overrides.ledBrightness = parseFloat(el.value);
+							this._setText(
+								el.nextElementSibling!,
+								Math.round(parseFloat(el.value) * 100) + "%",
+							);
+							this._fireDirty();
+						}} /><span class="setting-value">${Math.round(brightness * 100)}%</span></span>
+            ${this.resetBtn(1.0, "ledBrightness")}${this.infoTip(this.localize("info.led_brightness"))}
+          </div>
+          ${
+						showPresenceColor
+							? html`
+          <div class="setting-row">
+            <label>${this.localize("settings.led_presence_color")}</label>
+            <input type="color" .value=${color} @input=${(e: Event) => {
+							this._overrides.ledPresenceColor = (
+								e.target as HTMLInputElement
+							).value;
+							this._fireDirty();
+						}} />
+            ${this.infoTip(this.localize("info.led_presence_color"))}
+          </div>`
+							: nothing
+					}
+        </div>
+      </div>
+    `;
+	}
+
 	renderSaveCancelButtons() {
 		return html`
       <div class="save-cancel-bar">
@@ -848,6 +943,9 @@ export class EppSettingsView extends LitElement {
 						...this.logLevels,
 						...(o.logLevels || {}),
 					},
+					led_mode: o.ledMode ?? this.ledMode,
+					led_brightness: o.ledBrightness ?? this.ledBrightness,
+					led_presence_color: o.ledPresenceColor ?? this.ledPresenceColor,
 				},
 				bubbles: true,
 				composed: true,

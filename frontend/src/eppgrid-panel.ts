@@ -106,6 +106,9 @@ export class EPPGridPanel extends LitElement {
 	@state() private _logLevels: Record<string, string> = {};
 	@state() private _bluetoothEnabled = false;
 	@state() private _co2Enabled = false;
+	@state() private _ledMode = "Manual Control";
+	@state() private _ledBrightness = 1.0;
+	@state() private _ledPresenceColor = "#CC33FF";
 	@state() private _entitiesConfig: Record<string, any> = {};
 	@state() private _sidebarTab: "zones" | "furniture" | "live" = "zones";
 	@state() private _showDeleteCalibrationDialog = false;
@@ -455,6 +458,9 @@ export class EPPGridPanel extends LitElement {
 		this._entitiesConfig = s.entities;
 		// Apply log levels
 		this._logLevels = parsed.settings.logLevels;
+		this._ledMode = parsed.settings.ledMode;
+		this._ledBrightness = parsed.settings.ledBrightness;
+		this._ledPresenceColor = parsed.settings.ledPresenceColor;
 	}
 
 	private _closeDeviceSession(): void {
@@ -1379,6 +1385,9 @@ export class EPPGridPanel extends LitElement {
           .logLevels=${this._logLevels}
           .bluetoothEnabled=${this._bluetoothEnabled}
           .co2Enabled=${this._co2Enabled}
+          .ledMode=${this._ledMode}
+          .ledBrightness=${this._ledBrightness}
+          .ledPresenceColor=${this._ledPresenceColor}
           .localize=${this._localize}
           @accordion-toggle=${(e: CustomEvent) => {
 						this._openAccordions = e.detail;

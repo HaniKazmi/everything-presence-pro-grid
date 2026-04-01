@@ -238,7 +238,7 @@ class DeviceConnection:
 
         # Push device settings from unified settings key
         settings = config.get("settings")
-        if settings:
+        if settings is not None:
             svc = self._services.get("epp_set_env_calibration")
             if svc:
                 await self._client.execute_service(
@@ -283,6 +283,21 @@ class DeviceConnection:
                     },
                 )
                 _LOGGER.info("Pushed static_presence to %s", self._host)
+
+            svc = self._services.get("epp_set_led")
+            if svc:
+                color_hex = settings.get("led_presence_color", "#CC33FF")
+                await self._client.execute_service(
+                    svc,
+                    {
+                        "mode": settings.get("led_mode", "Manual Control"),
+                        "brightness": settings.get("led_brightness", 1.0),
+                        "presence_red": int(color_hex[1:3], 16) / 255.0,
+                        "presence_green": int(color_hex[3:5], 16) / 255.0,
+                        "presence_blue": int(color_hex[5:7], 16) / 255.0,
+                    },
+                )
+                _LOGGER.info("Pushed led to %s", self._host)
 
         # Push pipeline (separate from settings)
         pipeline = config.get("pipeline")

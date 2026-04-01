@@ -128,7 +128,14 @@
 		"log_led": "LED",
 		"log_networking": "Network",
 		"log_ble": "Bluetooth",
-		"log_co2": "CO2"
+		"log_co2": "CO2",
+		"led": "LED",
+		"led_mode": "Mode",
+		"led_brightness": "Brightness",
+		"led_presence_color": "Presence color",
+		"manual_control": "Manual Control",
+		"presence": "Presence",
+		"environmental_presence": "Environmental + Presence"
 	},
 	"sidebar": {
 		"detection_zones": "Detection zones",
@@ -229,7 +236,10 @@
 		"log_led": "LED control script logs — mode transitions and decision tree.",
 		"log_networking": "WiFi or Ethernet connection and DHCP logs.",
 		"log_ble": "Bluetooth Low Energy scanner and proxy logs.",
-		"log_co2": "CO2 sensor (SCD4x) logs."
+		"log_co2": "CO2 sensor (SCD4x) logs.",
+		"led_mode": "Controls the RGB LED behavior. Manual Control disables automatic LED and lets you control it as a standard HA light entity.",
+		"led_brightness": "Brightness multiplier for the RGB LED in automatic modes.",
+		"led_presence_color": "Color used for presence indication when LED is in Presence or Environmental + Presence mode."
 	},
 	"dimensions": {
 		"width_cm": "W (cm)",

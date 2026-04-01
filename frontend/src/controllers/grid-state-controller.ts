@@ -576,6 +576,11 @@ export class GridStateController implements ReactiveController {
 				payload.static_min_distance ?? this.host._staticMinDistance;
 			this.host._staticMaxDistance =
 				payload.static_max_distance ?? this.host._staticMaxDistance;
+			this.host._ledMode = payload.led_mode ?? this.host._ledMode;
+			this.host._ledBrightness =
+				payload.led_brightness ?? this.host._ledBrightness;
+			this.host._ledPresenceColor =
+				payload.led_presence_color ?? this.host._ledPresenceColor;
 			this.host._dirty = false;
 			this.host._view = "live";
 		} catch (e) {

@@ -212,9 +212,20 @@ Enables/disables an ESPHome entity.
 
 ### `set_settings`
 
-Saves all device settings (offsets, timeouts, distances, thresholds, entities, log levels) in one call. Pushes full config to device. When `entities` is provided and modifies `disabled_by`, sets `_entity_update_macs` guard to suppress the redundant reconnect push caused by the ESPHome config entry reload. When `entities.zone_presence` is provided, persists to `settings.zone_presence` and calls `async_update_zone_entities` (if enabling) for layout-aware zone naming.
+Saves all device settings (offsets, timeouts, distances, thresholds, LED settings, entities, log levels) in one call. Pushes full config to device. When `entities` is provided and modifies `disabled_by`, sets `_entity_update_macs` guard to suppress the redundant reconnect push caused by the ESPHome config entry reload. When `entities.zone_presence` is provided, persists to `settings.zone_presence` and calls `async_update_zone_entities` (if enabling) for layout-aware zone naming.
 
-**Request:** `{ "type": "eppgrid/set_settings", "mac": str, "temperature_offset": float, ..., "entities": { ... }, "log_levels": { ... } }`
+**Request:** `{ "type": "eppgrid/set_settings", "mac": str, "temperature_offset": float, ..., "led_mode": str, "led_brightness": float, "led_presence_color": str, "static_led_enabled": bool, "entities": { ... }, "log_levels": { ... } }`
+
+**LED settings:**
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `led_mode` | string | `"Manual Control"` | One of: Manual Control, Presence, Environmental, Environmental + Presence |
+| `led_brightness` | float | `1.0` | RGB LED brightness multiplier (0.1–1.0) |
+| `led_presence_color` | string | `"#CC33FF"` | Hex RGB color for presence indication |
+| `static_led_enabled` | bool | `true` | Enable/disable SEN0609 indicator LED |
+
+**Firmware push:** LED mode/brightness/color pushed via `epp_set_led` action (mode, brightness, presence_red/green/blue as 0.0–1.0 floats). SEN0609 LED toggle passed through existing `epp_set_static_presence` action's `led_enabled` parameter.
 
 ### `set_distance_override`
 

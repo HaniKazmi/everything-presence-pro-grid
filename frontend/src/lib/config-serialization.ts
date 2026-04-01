@@ -46,6 +46,9 @@ export interface ParsedSettings {
 	staticOnDelay: number;
 	entities: Record<string, boolean>;
 	logLevels: Record<string, string>;
+	ledMode: string;
+	ledBrightness: number;
+	ledPresenceColor: string;
 }
 
 /**
@@ -194,6 +197,9 @@ export function parseSettings(
 		staticOnDelay: s.static_on_delay ?? 0,
 		entities: entities || {},
 		logLevels: logLevels ?? {},
+		ledMode: s.led_mode ?? "Manual Control",
+		ledBrightness: s.led_brightness ?? 1.0,
+		ledPresenceColor: s.led_presence_color ?? "#CC33FF",
 	};
 }
 

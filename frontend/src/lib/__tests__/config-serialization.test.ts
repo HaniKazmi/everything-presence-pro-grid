@@ -385,6 +385,24 @@ describe("parseSettings", () => {
 		const result = parseSettings({});
 		expect(result.logLevels).toEqual({});
 	});
+
+	it("returns LED defaults when not present", () => {
+		const result = parseSettings({});
+		expect(result.ledMode).toBe("Manual Control");
+		expect(result.ledBrightness).toBe(1.0);
+		expect(result.ledPresenceColor).toBe("#CC33FF");
+	});
+
+	it("parses LED settings from raw", () => {
+		const result = parseSettings({
+			led_mode: "Presence",
+			led_brightness: 0.8,
+			led_presence_color: "#00FF00",
+		});
+		expect(result.ledMode).toBe("Presence");
+		expect(result.ledBrightness).toBe(0.8);
+		expect(result.ledPresenceColor).toBe("#00FF00");
+	});
 });
 
 describe("parseConfig", () => {
