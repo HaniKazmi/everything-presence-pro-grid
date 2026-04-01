@@ -68,9 +68,9 @@ describe("epp-zone-sidebar element", () => {
 		const tpl = (el as any)._renderZoneSidebar();
 		const c = renderTo(tpl);
 
-		// 1 boundary + 2 named zones
+		// 1 boundary + 2 named zones + 1 overlay entry
 		const zoneItems = c.querySelectorAll(".zone-item");
-		expect(zoneItems.length).toBe(3);
+		expect(zoneItems.length).toBe(4);
 
 		document.body.removeChild(c);
 	});
@@ -171,8 +171,8 @@ describe("epp-zone-sidebar element", () => {
 		expect(colorPicker).toBeNull();
 
 		const colorDots = c.querySelectorAll(".zone-color-dot");
-		// 1 boundary dot + 1 zone dot
-		expect(colorDots.length).toBe(2);
+		// 1 boundary dot + 1 zone dot + 1 overlay dot
+		expect(colorDots.length).toBe(3);
 
 		document.body.removeChild(c);
 	});
