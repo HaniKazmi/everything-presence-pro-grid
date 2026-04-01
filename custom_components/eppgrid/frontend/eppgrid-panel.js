@@ -1351,7 +1351,7 @@ const dt={attribute:!0,type:String,converter:b,reflect:!1,hasChanged:y},ut=(t=dt
           <h4>${this.localize("settings.led")}</h4>
           <div class="setting-row">
             <label>${this.localize("settings.led_mode")}</label>
-            <ha-select class="led-mode-select" .value=${t} .options=${i} @selected=${t=>{const e=t.detail.value;e&&(this._overrides.ledMode=e,this._fireDirty(),this.requestUpdate())}} @closed=${t=>t.stopPropagation()}>
+            <ha-select class="wide-select" .value=${t} .options=${i} @selected=${t=>{const e=t.detail.value;e&&(this._overrides.ledMode=e,this._fireDirty(),this.requestUpdate())}} @closed=${t=>t.stopPropagation()}>
             </ha-select>
             ${this.infoTip(this.localize("info.led_mode"))}
           </div>
@@ -1374,7 +1374,7 @@ const dt={attribute:!0,type:String,converter:b,reflect:!1,hasChanged:y},ut=(t=dt
           <h4>${this.localize("settings.relay")}</h4>
           <div class="setting-row">
             <label>${this.localize("settings.relay_trigger_mode")}</label>
-            <ha-select
+            <ha-select class="wide-select"
               .value=${i}
               .options=${t}
               @selected=${t=>{const e=t.detail.value;e&&e!==i&&(this._overrides.relayTriggerMode=e,this._fireChange("relayTriggerMode",e),this.requestUpdate())}}
@@ -1384,7 +1384,7 @@ const dt={attribute:!0,type:String,converter:b,reflect:!1,hasChanged:y},ut=(t=dt
           ${s?G`
             <div class="setting-row">
               <label>${this.localize("settings.relay_contact_mode")}</label>
-              <ha-select
+              <ha-select class="wide-select"
                 .value=${o}
                 .options=${e}
                 @selected=${t=>{const e=t.detail.value;e&&e!==o&&(this._overrides.relayContactMode=e,this._fireChange("relayContactMode",e),this.requestUpdate())}}
@@ -1422,7 +1422,7 @@ const dt={attribute:!0,type:String,converter:b,reflect:!1,hasChanged:y},ut=(t=dt
         flex-shrink: 0;
       }
 
-      .setting-row ha-select.led-mode-select {
+      .setting-row ha-select.wide-select {
         width: 220px;
       }
 

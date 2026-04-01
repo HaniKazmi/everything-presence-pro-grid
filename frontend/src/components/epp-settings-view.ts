@@ -105,7 +105,7 @@ export class EppSettingsView extends LitElement {
         flex-shrink: 0;
       }
 
-      .setting-row ha-select.led-mode-select {
+      .setting-row ha-select.wide-select {
         width: 220px;
       }
 
@@ -824,7 +824,7 @@ export class EppSettingsView extends LitElement {
           <h4>${this.localize("settings.led")}</h4>
           <div class="setting-row">
             <label>${this.localize("settings.led_mode")}</label>
-            <ha-select class="led-mode-select" .value=${mode} .options=${modes} @selected=${(
+            <ha-select class="wide-select" .value=${mode} .options=${modes} @selected=${(
 							e: CustomEvent<{ value: string }>,
 						) => {
 							const val = e.detail.value;
@@ -896,7 +896,7 @@ export class EppSettingsView extends LitElement {
           <h4>${this.localize("settings.relay")}</h4>
           <div class="setting-row">
             <label>${this.localize("settings.relay_trigger_mode")}</label>
-            <ha-select
+            <ha-select class="wide-select"
               .value=${currentTrigger}
               .options=${TRIGGER_MODES}
               @selected=${(e: CustomEvent<{ value: string }>) => {
@@ -914,7 +914,7 @@ export class EppSettingsView extends LitElement {
 							? html`
             <div class="setting-row">
               <label>${this.localize("settings.relay_contact_mode")}</label>
-              <ha-select
+              <ha-select class="wide-select"
                 .value=${currentContact}
                 .options=${CONTACT_MODES}
                 @selected=${(e: CustomEvent<{ value: string }>) => {
