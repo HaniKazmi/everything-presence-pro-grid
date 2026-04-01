@@ -330,11 +330,11 @@ describe("epp-zone-sidebar events", () => {
 		const c = renderTo(tpl);
 
 		const select = c.querySelector(".sensitivity-select") as HTMLSelectElement;
-		select.value = "entrance";
+		select.value = "thoroughfare";
 		select.dispatchEvent(new Event("change", { bubbles: true }));
 
 		expect(handler).toHaveBeenCalledTimes(1);
-		expect(handler.mock.calls[0][0].detail.updates.roomType).toBe("entrance");
+		expect(handler.mock.calls[0][0].detail.updates.roomType).toBe("thoroughfare");
 
 		document.body.removeChild(c);
 	});

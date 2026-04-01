@@ -500,13 +500,13 @@ describe("_renderBoundaryTypeControls DOM events", () => {
 
 		const select = c.querySelector(".sensitivity-select") as HTMLSelectElement;
 		if (select) {
-			select.value = "entrance";
+			select.value = "thoroughfare";
 			select.dispatchEvent(new Event("change", { bubbles: true }));
 			expect(
 				events.some(
 					(e) =>
 						e.type === "room-config-change" &&
-						e.detail.updates.roomType === "entrance",
+						e.detail.updates.roomType === "thoroughfare",
 				),
 			).toBe(true);
 			expect(events.some((e) => e.type === "dirty")).toBe(true);

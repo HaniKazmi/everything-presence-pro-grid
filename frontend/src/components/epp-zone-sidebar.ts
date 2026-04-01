@@ -370,7 +370,7 @@ export class EppZoneSidebar extends LitElement {
 					<div class="zone-item-row">
 						<div
 							class="zone-color-dot"
-							style="background: repeating-linear-gradient(45deg, transparent, transparent 6px, rgba(220,40,40,1) 6px, rgba(220,40,40,1) 8px); border: 1px solid #ccc;"
+							style="background: repeating-linear-gradient(45deg, transparent, transparent 6px, rgba(60,60,60,0.7) 6px, rgba(60,60,60,0.7) 8px); border: 1px solid #ccc;"
 						></div>
 						<span class="zone-name">${this.localize("zones.overlay_entry")}</span>
 					</div>
