@@ -552,8 +552,13 @@ export class EppSettingsView extends LitElement {
 		};
 
 		const o = this._overrides;
-		const anyZoneOn = isOn("zone_presence", true) || isOn("zone_target_count", false);
-		const anyTargetOn = isOn("target_xy", false) || isOn("target_active", false) || isOn("target_signal", false) || isOn("target_zone", false);
+		const anyZoneOn =
+			isOn("zone_presence", true) || isOn("zone_target_count", false);
+		const anyTargetOn =
+			isOn("target_xy", false) ||
+			isOn("target_active", false) ||
+			isOn("target_signal", false) ||
+			isOn("target_zone", false);
 
 		const RATE_OPTIONS = [
 			{ value: "200", label: "5 Hz" },
@@ -643,13 +648,13 @@ export class EppSettingsView extends LitElement {
               .options=${RATE_OPTIONS}
               .disabled=${!anyZoneOn}
               @selected=${(e: CustomEvent<{ value: string }>) => {
-							const val = e.detail.value;
-							if (val) {
-								this._overrides.zoneUpdateRateMs = Number(val);
-								this._fireDirty();
-								this.requestUpdate();
-							}
-						}}
+								const val = e.detail.value;
+								if (val) {
+									this._overrides.zoneUpdateRateMs = Number(val);
+									this._fireDirty();
+									this.requestUpdate();
+								}
+							}}
               @closed=${(e: Event) => e.stopPropagation()}>
             </ha-select>
           </div>
@@ -683,13 +688,13 @@ export class EppSettingsView extends LitElement {
               .options=${RATE_OPTIONS}
               .disabled=${!anyTargetOn}
               @selected=${(e: CustomEvent<{ value: string }>) => {
-							const val = e.detail.value;
-							if (val) {
-								this._overrides.targetUpdateRateMs = Number(val);
-								this._fireDirty();
-								this.requestUpdate();
-							}
-						}}
+								const val = e.detail.value;
+								if (val) {
+									this._overrides.targetUpdateRateMs = Number(val);
+									this._fireDirty();
+									this.requestUpdate();
+								}
+							}}
               @closed=${(e: Event) => e.stopPropagation()}>
             </ha-select>
           </div>
@@ -1072,7 +1077,8 @@ export class EppSettingsView extends LitElement {
 					led_presence_color: o.ledPresenceColor ?? this.ledPresenceColor,
 					relay_trigger_mode: o.relayTriggerMode ?? this.relayTriggerMode,
 					relay_contact_mode: o.relayContactMode ?? this.relayContactMode,
-					target_update_rate_ms: o.targetUpdateRateMs ?? this.targetUpdateRateMs,
+					target_update_rate_ms:
+						o.targetUpdateRateMs ?? this.targetUpdateRateMs,
 					zone_update_rate_ms: o.zoneUpdateRateMs ?? this.zoneUpdateRateMs,
 				},
 				bubbles: true,
