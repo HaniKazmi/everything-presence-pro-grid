@@ -570,7 +570,15 @@ class TestWebSocketSettings:
 
             await call_async_handler(hass, websocket_set_settings, connection, msg)
 
-            mock_apply.assert_any_call(hass, "AA:BB:CC:DD:EE:FF", {"room_occupancy": True, "env_illuminance": False})
+            from unittest.mock import call
+
+            mock_apply.assert_has_calls(
+                [
+                    call(hass, "AA:BB:CC:DD:EE:FF", {"relay_output": False}),
+                    call(hass, "AA:BB:CC:DD:EE:FF", {"room_occupancy": True, "env_illuminance": False}),
+                ]
+            )
+            assert mock_apply.call_count == 2
 
     async def test_set_settings_zone_presence_false_does_not_reenable_zone0(
         self, hass: HomeAssistant, config_entry: MockConfigEntry
@@ -1104,7 +1112,7 @@ class TestZonePresencePreservation:
             await call_async_handler(hass, websocket_set_settings, connection, msg)
 
         settings = mock_dm._store.devices["AA:BB:CC:DD:EE:FF"]["settings"]
-        assert settings.get("relay_trigger_mode") == "disabled"
+        assert settings.get("target_xy") is True
         mock_dm._store.async_save.assert_awaited()
 
 

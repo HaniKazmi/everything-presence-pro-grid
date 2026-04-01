@@ -1389,10 +1389,10 @@ export class EPPGridPanel extends LitElement {
           .logLevels=${this._logLevels}
           .bluetoothEnabled=${this._bluetoothEnabled}
           .co2Enabled=${this._co2Enabled}
-.ledMode=${this._ledMode}
+          .ledMode=${this._ledMode}
           .ledBrightness=${this._ledBrightness}
           .ledPresenceColor=${this._ledPresenceColor}
-.relayTriggerMode=${this._relayTriggerMode}
+          .relayTriggerMode=${this._relayTriggerMode}
           .relayContactMode=${this._relayContactMode}
           .localize=${this._localize}
           @accordion-toggle=${(e: CustomEvent) => {

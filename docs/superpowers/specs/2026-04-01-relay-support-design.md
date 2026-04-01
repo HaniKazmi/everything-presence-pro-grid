@@ -14,7 +14,7 @@ Two new keys added to the settings system:
 
 | Key | Type | Validation | Default |
 |-----|------|-----------|---------|
-| `relay_trigger_mode` | string | `vol.In(["disabled", "manual", "motion", "presence", "motion_or_presence"])` | `"disabled"` |
+| `relay_trigger_mode` | string | `vol.In(["disabled", "motion", "presence", "occupancy"])` | `"disabled"` |
 | `relay_contact_mode` | string | `vol.In(["no", "nc"])` | `"no"` |
 
 These flow through the full settings pipeline:
@@ -30,7 +30,7 @@ These flow through the full settings pipeline:
 ### Action
 
 New API action `epp_set_relay` with two string parameters:
-- `trigger_mode`: `"disabled"`, `"manual"`, `"motion"`, `"presence"`, `"motion_or_presence"`
+- `trigger_mode`: `"disabled"`, `"motion"`, `"presence"`, `"occupancy"`
 - `contact_mode`: `"no"`, `"nc"`
 
 ### Relay Logic
@@ -42,17 +42,17 @@ New members on `EPPComponent`:
 
 On each zone publish tick (1Hz), after the zone engine produces its `ProcessingResult`:
 
-1. If trigger mode is `manual` or `disabled` -> skip automatic evaluation (relay state is left as-is, controlled by user/HA automations or off respectively)
+1. If trigger mode is `disabled` -> skip automatic evaluation (relay state is left as-is)
 2. Determine activation based on trigger mode:
    - `motion` -> `result.motion_state != INACTIVE`
-   - `presence` -> `result.occupancy`
-   - `motion_or_presence` -> either of the above
+   - `presence` -> `result.static_state != INACTIVE` (mmWave static presence)
+   - `occupancy` -> `result.occupancy` (combined motion + static signal)
 3. Apply contact mode:
    - `no` (Normally Open) -> activation as-is
    - `nc` (Normally Closed) -> invert activation
 4. Call `turn_on()`/`turn_off()` on the `system_alarm_relay` switch entity (not raw GPIO) so the ESPHome switch entity state stays in sync with the actual pin state
 
-**Note on automatic modes**: If a user manually toggles the relay switch in HA while in an automatic mode (motion/presence/motion_or_presence), the automatic logic will override it on the next 1Hz evaluation tick. Users who want manual control should use the `manual` trigger mode.
+**Note on automatic modes**: If a user manually toggles the relay switch in HA while in an automatic mode (motion/presence/occupancy), the automatic logic will override it on the next 1Hz evaluation tick.
 
 ### NVS Persistence
 
@@ -74,7 +74,7 @@ The C++ component controls the switch entity via `turn_on()`/`turn_off()`, which
 
 - Add `relay_trigger_mode` and `relay_contact_mode` to `_SETTINGS_KEYS`
 - Add validation to `set_settings` schema:
-  - `vol.Required("relay_trigger_mode"): vol.In(["disabled", "manual", "motion", "presence", "motion_or_presence"])`
+  - `vol.Required("relay_trigger_mode"): vol.In(["disabled", "motion", "presence", "occupancy"])`
   - `vol.Required("relay_contact_mode"): vol.In(["no", "nc"])`
 
 ### `device_manager.py`
@@ -95,7 +95,7 @@ Add relay settings to `docs/backend-data-catalog.md` settings section.
 
 Add to `ParsedSettings` interface:
 ```typescript
-relayTriggerMode: string;  // "disabled" | "manual" | "motion" | "presence" | "motion_or_presence"
+relayTriggerMode: string;  // "disabled" | "motion" | "presence" | "occupancy"
 relayContactMode: string;  // "no" | "nc"
 ```
 
@@ -108,8 +108,8 @@ relayContactMode: s.relay_contact_mode ?? "no",
 ### `epp-settings-view.ts`
 
 New **"Relay"** accordion section (after existing sections):
-- **Trigger Mode** select: Disabled, Manual, Motion Only, Presence Only, Motion or Presence
-- **Contact Mode** select: Normally Open (NO), Normally Closed (NC) — only visible when trigger mode is an automatic mode (motion/presence/motion_or_presence)
+- **Trigger Mode** select: Disabled, Motion Only, Presence Only, Occupancy
+- **Contact Mode** select: Normally Open (NO), Normally Closed (NC) — only visible when trigger mode is not `"disabled"`
 
 Both controls use the `_overrides` pattern. Values included in `_emitSave()` as `relay_trigger_mode` and `relay_contact_mode`.
 
@@ -131,13 +131,13 @@ This is handled automatically in the `set_settings` handler — no separate `ent
 - Relay entity auto-disabled when trigger mode is `"disabled"`
 
 ### Firmware Tests (`firmware/lib/epp_zone_engine/`)
-- Relay evaluation: each automatic trigger mode maps to correct sensor state
-- Manual and disabled modes skip automatic evaluation
+- Relay evaluation: each trigger mode maps to correct sensor state
+- Disabled mode skips automatic evaluation
 - Contact mode inversion: NO passes through, NC inverts
 - NVS round-trip: save and restore relay settings
 
 ### Frontend Tests (`frontend/src/__tests__/`)
 - Settings view renders relay section with both controls
-- Contact mode hidden when trigger mode is `"disabled"` or `"manual"`
+- Contact mode hidden when trigger mode is `"disabled"`
 - `_emitSave` includes relay keys
 - `parseSettings` returns correct defaults

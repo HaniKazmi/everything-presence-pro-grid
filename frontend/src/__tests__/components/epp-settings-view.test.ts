@@ -1862,7 +1862,7 @@ describe("LED settings section", () => {
 		document.body.removeChild(c);
 	});
 
-	it("renders 6 accordions including LED and relay", () => {
+	it("renders 5 accordions including LED and relay", () => {
 		const sv = createView();
 		const tpl = sv.render();
 		const c = renderTo(tpl);
@@ -2104,7 +2104,7 @@ describe("LED save payload", () => {
 });
 
 describe("relay section", () => {
-	it("renders settings container with 6 accordions when relay added", () => {
+	it("renders settings container with 5 accordions including relay", () => {
 		const sv = createView();
 		const tpl = sv.render();
 		const c = renderTo(tpl);

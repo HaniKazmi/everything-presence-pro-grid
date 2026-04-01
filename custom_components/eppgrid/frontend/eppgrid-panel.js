@@ -2841,10 +2841,10 @@ const dt={attribute:!0,type:String,converter:b,reflect:!1,hasChanged:y},ut=(t=dt
           .logLevels=${this._logLevels}
           .bluetoothEnabled=${this._bluetoothEnabled}
           .co2Enabled=${this._co2Enabled}
-.ledMode=${this._ledMode}
+          .ledMode=${this._ledMode}
           .ledBrightness=${this._ledBrightness}
           .ledPresenceColor=${this._ledPresenceColor}
-.relayTriggerMode=${this._relayTriggerMode}
+          .relayTriggerMode=${this._relayTriggerMode}
           .relayContactMode=${this._relayContactMode}
           .localize=${this._localize}
           @accordion-toggle=${t=>{this._openAccordions=t.detail}}
