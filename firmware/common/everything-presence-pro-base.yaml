@@ -214,12 +214,6 @@ globals:
   - id: motion_timeout
     type: float
     initial_value: '1'
-  - id: display_interval_ms
-    type: uint32_t
-    initial_value: '200'
-  - id: zone_publish_interval_ms
-    type: uint32_t
-    initial_value: '1000'
   - id: current_connection_count
     type: int
     initial_value: '0'
@@ -401,13 +395,17 @@ api:
             id(epp_component).set_relay(trigger_mode, contact_mode);
     - action: epp_set_pipeline
       variables:
+        entity_target_interval: int
+        entity_zone_interval: int
         display_interval: int
-        zone_publish_interval: int
+        zone_state_interval: int
         window_duration: int
       then:
         - lambda: |-
-            id(display_interval_ms) = display_interval;
-            id(zone_publish_interval_ms) = zone_publish_interval;
+            id(epp_component).set_entity_target_interval(entity_target_interval);
+            id(epp_component).set_entity_zone_interval(entity_zone_interval);
+            id(epp_component).set_display_interval(display_interval);
+            id(epp_component).set_zone_state_interval(zone_state_interval);
             id(epp_component).set_window_duration(window_duration);
     - action: epp_set_log_level
       variables:
