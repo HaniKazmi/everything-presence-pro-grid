@@ -49,7 +49,6 @@ export interface ParsedSettings {
 	ledMode: string;
 	ledBrightness: number;
 	ledPresenceColor: string;
-	staticLedEnabled: boolean;
 }
 
 /**
@@ -201,7 +200,6 @@ export function parseSettings(
 		ledMode: s.led_mode ?? "Manual Control",
 		ledBrightness: s.led_brightness ?? 1.0,
 		ledPresenceColor: s.led_presence_color ?? "#CC33FF",
-		staticLedEnabled: s.static_led_enabled ?? true,
 	};
 }
 

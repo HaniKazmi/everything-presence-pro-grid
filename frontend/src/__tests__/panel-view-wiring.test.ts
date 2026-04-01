@@ -468,13 +468,11 @@ describe("Settings view event wiring", () => {
 		a._ledMode = "Presence";
 		a._ledBrightness = 0.5;
 		a._ledPresenceColor = "#FF0000";
-		a._staticLedEnabled = false;
 		const container = renderPanel(el);
 		const settingsView = container.querySelector("epp-settings-view")! as any;
 		expect(settingsView.ledMode).toBe("Presence");
 		expect(settingsView.ledBrightness).toBe(0.5);
 		expect(settingsView.ledPresenceColor).toBe("#FF0000");
-		expect(settingsView.staticLedEnabled).toBe(false);
 	});
 });
 

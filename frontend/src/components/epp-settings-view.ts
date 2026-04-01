@@ -67,7 +67,6 @@ export class EppSettingsView extends LitElement {
 	@property({ type: String }) ledMode = "Manual Control";
 	@property({ type: Number }) ledBrightness = 1.0;
 	@property({ type: String }) ledPresenceColor = "#CC33FF";
-	@property({ type: Boolean }) staticLedEnabled = true;
 
 	// Non-reactive overrides — stores user edits without triggering Lit re-renders.
 	// The 5Hz target data stream re-renders the panel at high frequency; if slider
@@ -101,6 +100,10 @@ export class EppSettingsView extends LitElement {
       .setting-row ha-select {
         width: 140px;
         flex-shrink: 0;
+      }
+
+      .setting-row ha-select.led-mode-select {
+        width: 220px;
       }
 
       .save-cancel-bar {
@@ -811,7 +814,6 @@ export class EppSettingsView extends LitElement {
 		}
 		const brightness = this._overrides.ledBrightness ?? this.ledBrightness;
 		const color = this._overrides.ledPresenceColor ?? this.ledPresenceColor;
-		const staticLed = this._overrides.staticLedEnabled ?? this.staticLedEnabled;
 
 		return html`
       <div class="settings-section">
@@ -819,7 +821,9 @@ export class EppSettingsView extends LitElement {
           <h4>${this.localize("settings.led")}</h4>
           <div class="setting-row">
             <label>${this.localize("settings.led_mode")}</label>
-            <ha-select .value=${mode} @selected=${(e: Event) => {
+            <ha-select class="led-mode-select" .value=${mode} @selected=${(
+							e: Event,
+						) => {
 							const val = (e.target as any).value;
 							if (val) {
 								this._overrides.ledMode = val;
@@ -861,21 +865,6 @@ export class EppSettingsView extends LitElement {
           </div>`
 							: nothing
 					}
-        </div>
-        <div class="setting-group">
-          <h4>${this.localize("settings.static_sensor")}</h4>
-          <div class="setting-row">
-            <label>${this.localize("settings.static_led")}</label>
-            <label class="toggle-switch"><input type="checkbox" data-led-static .checked=${staticLed} @change=${(
-							e: Event,
-						) => {
-							this._overrides.staticLedEnabled = (
-								e.target as HTMLInputElement
-							).checked;
-							this._fireDirty();
-						}} /><span class="toggle-slider"></span></label>
-            ${this.infoTip(this.localize("info.static_led"))}
-          </div>
         </div>
       </div>
     `;
@@ -958,7 +947,6 @@ export class EppSettingsView extends LitElement {
 					led_mode: o.ledMode ?? this.ledMode,
 					led_brightness: o.ledBrightness ?? this.ledBrightness,
 					led_presence_color: o.ledPresenceColor ?? this.ledPresenceColor,
-					static_led_enabled: o.staticLedEnabled ?? this.staticLedEnabled,
 				},
 				bubbles: true,
 				composed: true,

@@ -466,7 +466,6 @@ class TestWebSocketSettings:
             "led_mode": "Manual Control",
             "led_brightness": 1.0,
             "led_presence_color": "#CC33FF",
-            "static_led_enabled": True,
             "entities": {"room_occupancy": True, "zone_presence": False},
         }
 
@@ -489,7 +488,6 @@ class TestWebSocketSettings:
         assert settings["led_mode"] == "Manual Control"
         assert settings["led_brightness"] == 1.0
         assert settings["led_presence_color"] == "#CC33FF"
-        assert settings["static_led_enabled"] is True
         mock_dm._store.async_save.assert_awaited()
         mock_dm._push_config_to_device.assert_awaited_with("AA:BB:CC:DD:EE:FF")
         connection.send_result.assert_called_once_with(11)
@@ -521,7 +519,6 @@ class TestWebSocketSettings:
             "led_mode": "Presence",
             "led_brightness": 0.8,
             "led_presence_color": "#00FF00",
-            "static_led_enabled": False,
         }
 
         await call_async_handler(hass, websocket_set_settings, connection, msg)
@@ -530,7 +527,6 @@ class TestWebSocketSettings:
         assert settings["led_mode"] == "Presence"
         assert settings["led_brightness"] == 0.8
         assert settings["led_presence_color"] == "#00FF00"
-        assert settings["static_led_enabled"] is False
         connection.send_result.assert_called_once_with(12)
 
     async def test_set_settings_applies_entity_changes(
@@ -563,7 +559,6 @@ class TestWebSocketSettings:
                 "led_mode": "Manual Control",
                 "led_brightness": 1.0,
                 "led_presence_color": "#CC33FF",
-                "static_led_enabled": True,
                 "entities": {"room_occupancy": True, "env_illuminance": False},
             }
 
@@ -602,7 +597,6 @@ class TestWebSocketSettings:
             "led_mode": "Manual Control",
             "led_brightness": 1.0,
             "led_presence_color": "#CC33FF",
-            "static_led_enabled": True,
             "entities": {"zone_presence": False},
         }
 
@@ -643,7 +637,6 @@ class TestWebSocketSettings:
             "led_mode": "Manual Control",
             "led_brightness": 1.0,
             "led_presence_color": "#CC33FF",
-            "static_led_enabled": True,
             "entities": {"zone_presence": True},
         }
 
@@ -680,7 +673,6 @@ class TestWebSocketSettings:
             "led_mode": "Manual Control",
             "led_brightness": 1.0,
             "led_presence_color": "#CC33FF",
-            "static_led_enabled": True,
             "entities": {"room_occupancy": True, "zone_presence": False},
         }
 
@@ -716,7 +708,6 @@ class TestWebSocketSettings:
             "led_mode": "Manual Control",
             "led_brightness": 1.0,
             "led_presence_color": "#CC33FF",
-            "static_led_enabled": True,
             "log_levels": {"epp": "Debug", "system": "Info"},
         }
 
@@ -762,7 +753,6 @@ class TestWebSocketSettings:
             "led_mode": "Manual Control",
             "led_brightness": 1.0,
             "led_presence_color": "#CC33FF",
-            "static_led_enabled": True,
         }
 
         await call_async_handler(hass, websocket_set_settings, connection, msg)
@@ -800,7 +790,6 @@ class TestWebSocketSettings:
             "led_mode": "Manual Control",
             "led_brightness": 1.0,
             "led_presence_color": "#CC33FF",
-            "static_led_enabled": True,
             "entities": {"room_occupancy": True},
         }
 
@@ -837,7 +826,6 @@ class TestWebSocketSettings:
             "led_mode": "Manual Control",
             "led_brightness": 1.0,
             "led_presence_color": "#CC33FF",
-            "static_led_enabled": True,
         }
 
         await call_async_handler(hass, websocket_set_settings, connection, msg)
@@ -902,7 +890,6 @@ class TestZonePresencePreservation:
             "led_mode": "Manual Control",
             "led_brightness": 1.0,
             "led_presence_color": "#CC33FF",
-            "static_led_enabled": True,
         }
 
         await call_async_handler(hass, websocket_set_settings, connection, msg)
@@ -939,7 +926,6 @@ class TestZonePresencePreservation:
             "led_mode": "Manual Control",
             "led_brightness": 1.0,
             "led_presence_color": "#CC33FF",
-            "static_led_enabled": True,
         }
 
         await call_async_handler(hass, websocket_set_settings, connection, msg)
@@ -978,7 +964,6 @@ class TestZonePresencePreservation:
                 "led_mode": "Manual Control",
                 "led_brightness": 1.0,
                 "led_presence_color": "#CC33FF",
-                "static_led_enabled": True,
                 "entities": {"target_xy": True},
             }
 

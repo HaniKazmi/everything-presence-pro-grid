@@ -391,7 +391,6 @@ describe("parseSettings", () => {
 		expect(result.ledMode).toBe("Manual Control");
 		expect(result.ledBrightness).toBe(1.0);
 		expect(result.ledPresenceColor).toBe("#CC33FF");
-		expect(result.staticLedEnabled).toBe(true);
 	});
 
 	it("parses LED settings from raw", () => {
@@ -399,12 +398,10 @@ describe("parseSettings", () => {
 			led_mode: "Presence",
 			led_brightness: 0.8,
 			led_presence_color: "#00FF00",
-			static_led_enabled: false,
 		});
 		expect(result.ledMode).toBe("Presence");
 		expect(result.ledBrightness).toBe(0.8);
 		expect(result.ledPresenceColor).toBe("#00FF00");
-		expect(result.staticLedEnabled).toBe(false);
 	});
 });
 

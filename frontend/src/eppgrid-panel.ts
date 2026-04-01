@@ -109,7 +109,6 @@ export class EPPGridPanel extends LitElement {
 	@state() private _ledMode = "Manual Control";
 	@state() private _ledBrightness = 1.0;
 	@state() private _ledPresenceColor = "#CC33FF";
-	@state() private _staticLedEnabled = true;
 	@state() private _entitiesConfig: Record<string, any> = {};
 	@state() private _sidebarTab: "zones" | "furniture" | "live" = "zones";
 	@state() private _showDeleteCalibrationDialog = false;
@@ -462,7 +461,6 @@ export class EPPGridPanel extends LitElement {
 		this._ledMode = parsed.settings.ledMode;
 		this._ledBrightness = parsed.settings.ledBrightness;
 		this._ledPresenceColor = parsed.settings.ledPresenceColor;
-		this._staticLedEnabled = parsed.settings.staticLedEnabled;
 	}
 
 	private _closeDeviceSession(): void {
@@ -1390,7 +1388,6 @@ export class EPPGridPanel extends LitElement {
           .ledMode=${this._ledMode}
           .ledBrightness=${this._ledBrightness}
           .ledPresenceColor=${this._ledPresenceColor}
-          .staticLedEnabled=${this._staticLedEnabled}
           .localize=${this._localize}
           @accordion-toggle=${(e: CustomEvent) => {
 						this._openAccordions = e.detail;

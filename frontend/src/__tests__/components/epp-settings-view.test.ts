@@ -32,7 +32,6 @@ function createView(
 	el.ledMode = "Manual Control";
 	el.ledBrightness = 1.0;
 	el.ledPresenceColor = "#CC33FF";
-	el.staticLedEnabled = true;
 	if (overrides) {
 		for (const [k, v] of Object.entries(overrides)) {
 			(el as any)[k] = v;
@@ -1645,20 +1644,6 @@ describe("LED settings section", () => {
 		document.body.removeChild(c);
 	});
 
-	it("renders SEN0609 LED toggle", () => {
-		const sv = createView({ openAccordions: new Set(["led"]) });
-		const tpl = sv.render();
-		const c = renderTo(tpl);
-
-		const toggle = c.querySelector(
-			"input[data-led-static]",
-		) as HTMLInputElement;
-		expect(toggle).not.toBeNull();
-		expect(toggle.type).toBe("checkbox");
-		expect(toggle.checked).toBe(true);
-		document.body.removeChild(c);
-	});
-
 	it("hides environmental modes when co2 disabled", () => {
 		const sv = createView({
 			openAccordions: new Set(["led"]),
@@ -1710,7 +1695,6 @@ describe("LED save payload", () => {
 			ledMode: "Presence",
 			ledBrightness: 0.7,
 			ledPresenceColor: "#00FF00",
-			staticLedEnabled: false,
 		});
 
 		let payload: any = null;
@@ -1723,7 +1707,6 @@ describe("LED save payload", () => {
 		expect(payload.led_mode).toBe("Presence");
 		expect(payload.led_brightness).toBe(0.7);
 		expect(payload.led_presence_color).toBe("#00FF00");
-		expect(payload.static_led_enabled).toBe(false);
 	});
 
 	it("uses LED defaults when not overridden", () => {
@@ -1739,6 +1722,5 @@ describe("LED save payload", () => {
 		expect(payload.led_mode).toBe("Manual Control");
 		expect(payload.led_brightness).toBe(1.0);
 		expect(payload.led_presence_color).toBe("#CC33FF");
-		expect(payload.static_led_enabled).toBe(true);
 	});
 });

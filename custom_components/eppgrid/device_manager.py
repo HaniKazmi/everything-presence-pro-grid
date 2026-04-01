@@ -170,7 +170,7 @@ class DeviceConnection:
                     "sustain_sensitivity": 10 - override.get("static_renew_threshold", 3),
                     "timeout": override.get("static_timeout", 30.0),
                     "on_delay": override.get("static_on_delay", 0.0),
-                    "led_enabled": override.get("static_led_enabled", True),
+                    "led_enabled": True,
                 },
             )
 
@@ -279,7 +279,7 @@ class DeviceConnection:
                         "sustain_sensitivity": 10 - settings.get("static_renew_threshold", 3),
                         "timeout": settings.get("static_timeout", 30.0),
                         "on_delay": settings.get("static_on_delay", 0.0),
-                        "led_enabled": settings.get("static_led_enabled", True),
+                        "led_enabled": True,
                     },
                 )
                 _LOGGER.info("Pushed static_presence to %s", self._host)

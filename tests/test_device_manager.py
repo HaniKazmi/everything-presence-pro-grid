@@ -1108,7 +1108,6 @@ class TestPushConfig:
                         "led_mode": "Presence",
                         "led_brightness": 0.8,
                         "led_presence_color": "#66CC00",
-                        "static_led_enabled": False,
                     },
                 }
             )
@@ -1125,9 +1124,9 @@ class TestPushConfig:
             assert abs(led_data["presence_green"] - 0.8) < 0.01  # 0xCC/0xFF ≈ 0.8
             assert abs(led_data["presence_blue"] - 0.0) < 0.01  # 0x00/0xFF = 0.0
 
-            # static_led_enabled should be False
+            # led_enabled always hardcoded True
             static_data = call_by_service["epp_set_static_presence"]
-            assert static_data["led_enabled"] is False
+            assert static_data["led_enabled"] is True
 
     async def test_push_config_led_defaults_when_absent(self) -> None:
         """push_config uses LED defaults when settings lack LED keys."""
