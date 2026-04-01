@@ -28,11 +28,6 @@ external_components:
 
 epp:
   id: epp_component
-  device_tracking:
-    id: epp_zone_tracking
-    name: "Zone Tracking"
-    device_class: occupancy
-    disabled_by_default: true
   firmware_version:
     name: "Zone Engine Version"
     entity_category: diagnostic
@@ -235,6 +230,7 @@ epp:
     device_class: motion
     disabled_by_default: true
   occupancy_output:
+    id: epp_occupancy
     name: "Occupancy"
     device_class: occupancy
   relay_switch: system_alarm_relay
@@ -626,14 +622,11 @@ binary_sensor:
     filters:
       - delayed_off: !lambda 'return id(motion_timeout) * 1000.0;'
 
+  # Mirror zone engine occupancy to trigger LED updates on state change
   - platform: template
-    id: occupancy
+    id: occupancy_led_trigger
     internal: true
-    lambda: |-
-      if (id(dfrobot_presence).state || id(pir_motion).state || id(epp_zone_tracking).state) {
-        return true;
-      }
-      return false;
+    lambda: 'return id(epp_occupancy).state;'
     on_state:
       then:
         - if:
@@ -825,7 +818,7 @@ script:
     then:
       - if:
           condition:
-            lambda: 'return id(occupancy).state;'
+            lambda: 'return id(epp_occupancy).state;'
           then:
             # Presence detected - warm purple/magenta glow
             - light.turn_on:
@@ -983,7 +976,7 @@ script:
             # Check current occupancy and set appropriate state
             - if:
                 condition:
-                  lambda: 'return id(occupancy).state;'
+                  lambda: 'return id(epp_occupancy).state;'
                 then:
                   - script.execute:
                       id: led_fade_in
