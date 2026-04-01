@@ -146,6 +146,7 @@ void EPPComponent::loop() {
           relay_trigger_mode_,
           relay_contact_mode_,
           result.motion_state != SensorPresenceState::INACTIVE,
+          result.static_state != SensorPresenceState::INACTIVE,
           result.occupancy,
       };
       auto relay_result = evaluate_relay(relay_input);
@@ -399,10 +400,9 @@ void EPPComponent::set_zones(const std::string &zones_json) {
 // ---------------------------------------------------------------------------
 
 static RelayTriggerMode trigger_mode_from_str(const std::string &s) {
-    if (s == "manual") return RelayTriggerMode::MANUAL;
     if (s == "motion") return RelayTriggerMode::MOTION;
     if (s == "presence") return RelayTriggerMode::PRESENCE;
-    if (s == "motion_or_presence") return RelayTriggerMode::MOTION_OR_PRESENCE;
+    if (s == "occupancy") return RelayTriggerMode::OCCUPANCY;
     return RelayTriggerMode::DISABLED;
 }
 
@@ -461,7 +461,7 @@ void EPPComponent::restore_from_nvs_() {
   // Restore relay settings
   uint8_t relay_trig = 0;
   if (nvs_get_u8(handle, "relay_trig", &relay_trig) == ESP_OK) {
-    if (relay_trig <= static_cast<uint8_t>(RelayTriggerMode::MOTION_OR_PRESENCE)) {
+    if (relay_trig <= static_cast<uint8_t>(RelayTriggerMode::OCCUPANCY)) {
       relay_trigger_mode_ = static_cast<RelayTriggerMode>(relay_trig);
     } else {
       ESP_LOGW(TAG, "Invalid relay trigger mode %d in NVS, defaulting to DISABLED", relay_trig);

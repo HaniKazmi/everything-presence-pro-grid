@@ -801,7 +801,7 @@ _SETTINGS_KEYS = (
         vol.Required("led_mode"): vol.In(["Manual Control", "Presence", "Environmental", "Environmental + Presence"]),
         vol.Required("led_brightness"): vol.All(vol.Coerce(float), vol.Range(min=0.1, max=1.0)),
         vol.Required("led_presence_color"): vol.Match(r"^#[0-9A-Fa-f]{6}$"),
-        vol.Required("relay_trigger_mode"): vol.In(["disabled", "manual", "motion", "presence", "motion_or_presence"]),
+        vol.Required("relay_trigger_mode"): vol.In(["disabled", "motion", "presence", "occupancy"]),
         vol.Required("relay_contact_mode"): vol.In(["no", "nc"]),
         vol.Optional("entities"): {str: bool},
         vol.Optional("log_levels"): {str: vol.In(["None", "Error", "Warning", "Info", "Debug"])},

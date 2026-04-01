@@ -1595,16 +1595,6 @@ describe("renderRelay() @selected handlers", () => {
 		document.body.removeChild(c);
 	});
 
-	it("contact mode select is not rendered when trigger is manual", () => {
-		const sv = createView({ relayTriggerMode: "manual" });
-		const tpl = (sv as any).renderRelay();
-		const c = renderTo(tpl);
-
-		const selects = c.querySelectorAll("ha-select");
-		expect(selects.length).toBe(1);
-		document.body.removeChild(c);
-	});
-
 	it("@closed on trigger select stops propagation", () => {
 		const sv = createView({ relayTriggerMode: "disabled" });
 		const tpl = (sv as any).renderRelay();
@@ -2150,19 +2140,6 @@ describe("relay section", () => {
 		document.body.removeChild(c);
 	});
 
-	it("hides contact mode when trigger is manual", () => {
-		const sv = createView({
-			relayTriggerMode: "manual",
-			relayContactMode: "no",
-		});
-		const tpl = (sv as any).renderRelay();
-		const c = renderTo(tpl);
-
-		const rows = c.querySelectorAll(".setting-row");
-		expect(rows.length).toBe(1);
-		document.body.removeChild(c);
-	});
-
 	it("shows contact mode when trigger is an automatic mode", () => {
 		const sv = createView({
 			relayTriggerMode: "motion",
@@ -2189,9 +2166,9 @@ describe("relay section", () => {
 		document.body.removeChild(c);
 	});
 
-	it("contact mode select is visible when trigger is motion_or_presence", () => {
+	it("contact mode select is visible when trigger is occupancy", () => {
 		const sv = createView({
-			relayTriggerMode: "motion_or_presence",
+			relayTriggerMode: "occupancy",
 			relayContactMode: "no",
 		});
 		const tpl = (sv as any).renderRelay();

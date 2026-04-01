@@ -882,10 +882,9 @@ export class EppSettingsView extends LitElement {
 	renderRelay() {
 		const TRIGGER_MODES = [
 			{ value: "disabled", label: this.localize("settings.relay_disabled") },
-			{ value: "manual", label: this.localize("settings.relay_manual") },
 			{ value: "motion", label: this.localize("settings.relay_motion") },
 			{ value: "presence", label: this.localize("settings.relay_presence") },
-			{ value: "motion_or_presence", label: this.localize("settings.relay_motion_or_presence") },
+			{ value: "occupancy", label: this.localize("settings.relay_occupancy") },
 		];
 		const CONTACT_MODES = [
 			{ value: "no", label: this.localize("settings.relay_normally_open") },
@@ -896,8 +895,7 @@ export class EppSettingsView extends LitElement {
 			this._overrides.relayTriggerMode ?? this.relayTriggerMode;
 		const currentContact =
 			this._overrides.relayContactMode ?? this.relayContactMode;
-		const isAutomatic =
-			currentTrigger !== "disabled" && currentTrigger !== "manual";
+		const isAutomatic = currentTrigger !== "disabled";
 
 		return html`
       <div class="settings-section">

@@ -6,10 +6,9 @@ namespace epp {
 
 enum class RelayTriggerMode : uint8_t {
     DISABLED = 0,
-    MANUAL = 1,
-    MOTION = 2,
-    PRESENCE = 3,
-    MOTION_OR_PRESENCE = 4,
+    MOTION = 1,
+    PRESENCE = 2,
+    OCCUPANCY = 3,
 };
 
 enum class RelayContactMode : uint8_t {
@@ -20,8 +19,9 @@ enum class RelayContactMode : uint8_t {
 struct RelayEvalInput {
     RelayTriggerMode trigger_mode;
     RelayContactMode contact_mode;
-    bool motion_active;
-    bool occupancy;
+    bool motion_active;       // result.motion_state != INACTIVE (PIR)
+    bool static_presence;     // result.static_state != INACTIVE (mmWave)
+    bool occupancy;           // result.occupancy (combined)
 };
 
 struct RelayEvalResult {
@@ -33,9 +33,6 @@ inline RelayEvalResult evaluate_relay(const RelayEvalInput &input) {
     if (input.trigger_mode == RelayTriggerMode::DISABLED) {
         return {true, false};
     }
-    if (input.trigger_mode == RelayTriggerMode::MANUAL) {
-        return {false, false};
-    }
 
     bool activate = false;
     switch (input.trigger_mode) {
@@ -43,10 +40,10 @@ inline RelayEvalResult evaluate_relay(const RelayEvalInput &input) {
             activate = input.motion_active;
             break;
         case RelayTriggerMode::PRESENCE:
-            activate = input.occupancy;
+            activate = input.static_presence;
             break;
-        case RelayTriggerMode::MOTION_OR_PRESENCE:
-            activate = input.motion_active || input.occupancy;
+        case RelayTriggerMode::OCCUPANCY:
+            activate = input.occupancy;
             break;
         default:
             return {true, false};
