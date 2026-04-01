@@ -24,7 +24,8 @@ class TestEndToEndPipelineFlow:
         mac = "AA:BB:CC:DD:EE:FF"
         mock_dm._store.devices[mac] = {
             "settings": {
-                "entities": {"target_xy": True, "zone_presence": True},
+                "target_xy": True,
+                "zone_presence": True,
                 "target_update_rate_ms": 500,
                 "zone_update_rate_ms": 1000,
             },
@@ -121,12 +122,10 @@ class TestEndToEndPipelineFlow:
         mac = "AA:BB:CC:DD:EE:FF"
         mock_dm._store.devices[mac] = {
             "settings": {
-                "entities": {
-                    "target_xy": False,
-                    "target_active": False,
-                    "target_signal": False,
-                    "target_zone": False,
-                },
+                "target_xy": False,
+                "target_active": False,
+                "target_signal": False,
+                "target_zone": False,
                 "target_update_rate_ms": 500,
             },
         }

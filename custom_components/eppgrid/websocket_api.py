@@ -53,14 +53,14 @@ def _compute_pipeline(
 ) -> dict[str, int]:
     """Derive all pipeline intervals from current settings and subscriber counts."""
     settings = config.get("settings", {})
-    entities = settings.get("entities", {})
     pipeline = config.get("pipeline", {})
 
     target_rate = settings.get("target_update_rate_ms", 1000)
     zone_rate = settings.get("zone_update_rate_ms", 1000)
 
-    any_target = any(entities.get(k) for k in _TARGET_ENTITY_KEYS)
-    any_zone = any(entities.get(k) for k in _ZONE_ENTITY_KEYS)
+    # Entity flags are stored flat in settings (e.g., settings["zone_presence"])
+    any_target = any(settings.get(k) for k in _TARGET_ENTITY_KEYS)
+    any_zone = any(settings.get(k) for k in _ZONE_ENTITY_KEYS)
 
     has_display_sub = raw_target_subs > 0 or grid_target_subs > 0
 
@@ -938,8 +938,8 @@ async def websocket_set_settings(
         if settings_changed:
             await manager._store.async_save()
         _apply_entity_states(hass, mac, entities)
-        # Zone presence needs layout-aware handling: enable zone_0 + named zones
-        if entities.get("zone_presence"):
+        # Zone entities need layout-aware handling: enable zone_0 + named zones only
+        if "zone_presence" in entities or "zone_target_count" in entities:
             layout = device_config.get("room_layout", {})
             from .const import MAX_ZONES
 

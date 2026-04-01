@@ -581,10 +581,10 @@ class TestWebSocketSettings:
             )
             assert mock_apply.call_count == 2
 
-    async def test_set_settings_zone_presence_false_does_not_reenable_zone0(
+    async def test_set_settings_zone_presence_false_still_calls_update_zone_entities(
         self, hass: HomeAssistant, config_entry: MockConfigEntry
     ) -> None:
-        """zone_presence=false should NOT call async_update_zone_entities (which re-enables zone 0)."""
+        """zone_presence=false still calls async_update_zone_entities to maintain zone_target_count awareness."""
         mock_dm = await setup_integration(hass, config_entry)
 
         from custom_components.eppgrid.websocket_api import websocket_set_settings
@@ -619,9 +619,10 @@ class TestWebSocketSettings:
             mock_dm.async_update_zone_entities = AsyncMock()
             await call_async_handler(hass, websocket_set_settings, connection, msg)
 
-            # async_update_zone_entities should NOT be called when disabling zones
-            # — _apply_entity_states already disabled all zone entities
-            mock_dm.async_update_zone_entities.assert_not_awaited()
+            # async_update_zone_entities IS called even when disabling — it handles
+            # both zone_presence and zone_target_count, so the other category may
+            # still need zone-aware filtering
+            mock_dm.async_update_zone_entities.assert_awaited_once()
 
     async def test_set_settings_zone_presence_true_calls_update_zone_entities(
         self, hass: HomeAssistant, config_entry: MockConfigEntry

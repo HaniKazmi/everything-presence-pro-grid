@@ -23,7 +23,7 @@ class TestComputePipeline:
         from custom_components.eppgrid.websocket_api import _compute_pipeline
 
         result = _compute_pipeline(
-            config={"settings": {"entities": {"target_xy": True}, "target_update_rate_ms": 500}},
+            config={"settings": {"target_xy": True, "target_update_rate_ms": 500}},
             raw_target_subs=0,
             grid_target_subs=0,
         )
@@ -35,12 +35,10 @@ class TestComputePipeline:
         result = _compute_pipeline(
             config={
                 "settings": {
-                    "entities": {
-                        "target_xy": False,
-                        "target_active": False,
-                        "target_signal": False,
-                        "target_zone": False,
-                    },
+                    "target_xy": False,
+                    "target_active": False,
+                    "target_signal": False,
+                    "target_zone": False,
                     "target_update_rate_ms": 500,
                 }
             },
@@ -53,7 +51,7 @@ class TestComputePipeline:
         from custom_components.eppgrid.websocket_api import _compute_pipeline
 
         result = _compute_pipeline(
-            config={"settings": {"entities": {"zone_presence": True}, "zone_update_rate_ms": 2000}},
+            config={"settings": {"zone_presence": True, "zone_update_rate_ms": 2000}},
             raw_target_subs=0,
             grid_target_subs=0,
         )
@@ -65,7 +63,8 @@ class TestComputePipeline:
         result = _compute_pipeline(
             config={
                 "settings": {
-                    "entities": {"zone_presence": False, "zone_target_count": False},
+                    "zone_presence": False,
+                    "zone_target_count": False,
                     "zone_update_rate_ms": 1000,
                 }
             },
@@ -108,7 +107,7 @@ class TestComputePipeline:
         from custom_components.eppgrid.websocket_api import _compute_pipeline
 
         result = _compute_pipeline(
-            config={"settings": {"entities": {"target_xy": True, "zone_presence": True}}},
+            config={"settings": {"target_xy": True, "zone_presence": True}},
             raw_target_subs=0,
             grid_target_subs=0,
         )
@@ -119,7 +118,7 @@ class TestComputePipeline:
         from custom_components.eppgrid.websocket_api import _compute_pipeline
 
         result = _compute_pipeline(
-            config={"settings": {"entities": {"target_signal": True}}},
+            config={"settings": {"target_signal": True}},
             raw_target_subs=0,
             grid_target_subs=0,
         )

@@ -1898,6 +1898,92 @@ class TestZoneEntities:
         await manager.async_update_zone_entities("00:00:00:00:00:00", [None] * MAX_ZONES)
         # Should not raise
 
+    async def test_update_zone_entities_target_count_only_for_existing_zones(
+        self, hass: HomeAssistant, manager: DeviceManager
+    ) -> None:
+        """zone_target_count entities are only enabled for zones that exist in the grid."""
+        dev_reg = dr.async_get(hass)
+        ent_reg = er.async_get(hass)
+
+        esphome_entry = MockConfigEntry(domain="esphome", data={"host": "192.168.1.50"}, title="EPP")
+        esphome_entry.add_to_hass(hass)
+
+        device = dev_reg.async_get_or_create(
+            config_entry_id=esphome_entry.entry_id,
+            connections={("mac", "aa:bb:cc:dd:ee:ff")},
+            name="EPP",
+        )
+
+        # Create zone_target_count entities
+        ztc0 = ent_reg.async_get_or_create(
+            "sensor", "esphome",
+            unique_id="esphome_aabbccddeeff_zone_0_target_count",
+            config_entry=esphome_entry, device_id=device.id,
+        )
+        ztc1 = ent_reg.async_get_or_create(
+            "sensor", "esphome",
+            unique_id="esphome_aabbccddeeff_zone_1_target_count",
+            config_entry=esphome_entry, device_id=device.id,
+        )
+        ztc2 = ent_reg.async_get_or_create(
+            "sensor", "esphome",
+            unique_id="esphome_aabbccddeeff_zone_2_target_count",
+            config_entry=esphome_entry, device_id=device.id,
+        )
+
+        manager.devices["AA:BB:CC:DD:EE:FF"] = ManagedDevice(
+            mac="AA:BB:CC:DD:EE:FF", name="EPP", host="192.168.1.50", device_id=device.id
+        )
+        manager._store.devices["AA:BB:CC:DD:EE:FF"] = {"settings": {"zone_target_count": True}}
+
+        # Only zone 0 (room) + zone 1 (named "Office") exist
+        zone_slots = [{"name": "Office"}] + [None] * (MAX_ZONES - 1)
+        await manager.async_update_zone_entities("AA:BB:CC:DD:EE:FF", zone_slots)
+
+        # Zone 0 target count should be enabled with room name
+        ztc0_entry = ent_reg.async_get(ztc0.entity_id)
+        assert ztc0_entry.disabled_by is None
+        assert ztc0_entry.name == "Rest of Room Target Count"
+        # Zone 1 target count should be enabled with zone name
+        ztc1_entry = ent_reg.async_get(ztc1.entity_id)
+        assert ztc1_entry.disabled_by is None
+        assert ztc1_entry.name == "Office Target Count"
+        # Zone 2 target count should be disabled (unused slot)
+        assert ent_reg.async_get(ztc2.entity_id).disabled_by == er.RegistryEntryDisabler.INTEGRATION
+
+    async def test_update_zone_entities_target_count_disabled_when_setting_off(
+        self, hass: HomeAssistant, manager: DeviceManager
+    ) -> None:
+        """zone_target_count entities are all disabled when setting is off."""
+        dev_reg = dr.async_get(hass)
+        ent_reg = er.async_get(hass)
+
+        esphome_entry = MockConfigEntry(domain="esphome", data={"host": "192.168.1.50"}, title="EPP")
+        esphome_entry.add_to_hass(hass)
+
+        device = dev_reg.async_get_or_create(
+            config_entry_id=esphome_entry.entry_id,
+            connections={("mac", "aa:bb:cc:dd:ee:ff")},
+            name="EPP",
+        )
+
+        ztc0 = ent_reg.async_get_or_create(
+            "sensor", "esphome",
+            unique_id="esphome_aabbccddeeff_zone_0_target_count",
+            config_entry=esphome_entry, device_id=device.id,
+        )
+
+        manager.devices["AA:BB:CC:DD:EE:FF"] = ManagedDevice(
+            mac="AA:BB:CC:DD:EE:FF", name="EPP", host="192.168.1.50", device_id=device.id
+        )
+        manager._store.devices["AA:BB:CC:DD:EE:FF"] = {"settings": {"zone_target_count": False}}
+
+        zone_slots = [{"name": "Office"}] + [None] * (MAX_ZONES - 1)
+        await manager.async_update_zone_entities("AA:BB:CC:DD:EE:FF", zone_slots)
+
+        # Even zone 0 should be disabled when zone_target_count setting is off
+        assert ent_reg.async_get(ztc0.entity_id).disabled_by == er.RegistryEntryDisabler.INTEGRATION
+
 
 # ---------------------------------------------------------------------------
 # Helper function tests
