@@ -1,12 +1,17 @@
 import { describe, expect, it } from "vitest";
 import {
+	applyOverlayPaintToCell,
 	applyPaintToCell,
 	clearZoneFromGrid,
 	determinePaintAction,
+	determineOverlayPaintAction,
 } from "../cell-painting.js";
 import {
+	CELL_OVERLAY_ENTRY,
 	CELL_ROOM_BIT,
+	cellHasOverlayEntry,
 	cellIsInside,
+	cellSetOverlayEntry,
 	cellSetZone,
 	cellZone,
 	GRID_CELL_COUNT,
@@ -170,5 +175,42 @@ describe("clearZoneFromGrid", () => {
 			expect(result).not.toBeNull();
 			expect(cellZone(result![0])).toBe(0);
 		}
+	});
+});
+
+describe("determineOverlayPaintAction", () => {
+	it("returns 'set' when cell has no overlay", () => {
+		expect(determineOverlayPaintAction(CELL_ROOM_BIT)).toBe("set");
+	});
+
+	it("returns 'clear' when cell already has overlay", () => {
+		expect(determineOverlayPaintAction(CELL_ROOM_BIT | CELL_OVERLAY_ENTRY)).toBe("clear");
+	});
+});
+
+describe("applyOverlayPaintToCell", () => {
+	it("sets overlay on inside-room cell", () => {
+		const result = applyOverlayPaintToCell(CELL_ROOM_BIT, "set");
+		expect(result).not.toBeNull();
+		expect(cellHasOverlayEntry(result!)).toBe(true);
+	});
+
+	it("clears overlay on inside-room cell with overlay", () => {
+		const val = CELL_ROOM_BIT | CELL_OVERLAY_ENTRY;
+		const result = applyOverlayPaintToCell(val, "clear");
+		expect(result).not.toBeNull();
+		expect(cellHasOverlayEntry(result!)).toBe(false);
+	});
+
+	it("returns null for outside-room cell", () => {
+		expect(applyOverlayPaintToCell(0x00, "set")).toBeNull();
+	});
+
+	it("preserves zone bits", () => {
+		const val = cellSetZone(CELL_ROOM_BIT, 3);
+		const result = applyOverlayPaintToCell(val, "set");
+		expect(result).not.toBeNull();
+		expect(cellHasOverlayEntry(result!)).toBe(true);
+		expect((result! >> 1) & 0x07).toBe(3); // zone preserved
 	});
 });
