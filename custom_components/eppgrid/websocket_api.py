@@ -386,7 +386,6 @@ _ENTITY_OBJECT_ID_MAP: dict[str, str] = {
 _ENTITY_PREFIX_MAP: list[tuple[str, str, str]] = [
     ("zone_", "_presence", "zone_presence"),
     ("zone_", "_target_count", "zone_target_count"),
-    ("target_", "_position", "target_xy"),
     ("target_", "_x", "target_xy"),
     ("target_", "_y", "target_xy"),
     ("target_", "_signal", "target_signal"),

@@ -1256,11 +1256,18 @@ class TestEntityMapping:
         assert _entity_key_for_object_id("zone_tracking") is None
 
     def test_entity_key_mapping_target_entities(self) -> None:
-        """Target entities map to target_xy category."""
+        """Structured target entities map correctly; transport sensors are unmanaged."""
         from custom_components.eppgrid.websocket_api import _entity_key_for_object_id
 
-        assert _entity_key_for_object_id("target_0_position") == "target_xy"
-        assert _entity_key_for_object_id("target_2_position") == "target_xy"
+        # Structured entities (user-facing)
+        assert _entity_key_for_object_id("target_1_x") == "target_xy"
+        assert _entity_key_for_object_id("target_1_y") == "target_xy"
+        assert _entity_key_for_object_id("target_1_active") == "target_active"
+        assert _entity_key_for_object_id("target_1_signal") == "target_signal"
+        assert _entity_key_for_object_id("target_1_zone") == "target_zone"
+        # Transport sensors (not managed by entity toggles)
+        assert _entity_key_for_object_id("target_0_position") is None
+        assert _entity_key_for_object_id("target_1_position") is None
 
     def test_entity_key_mapping_underscore_format(self) -> None:
         """Full unique_ids with underscore format (older ESPHome) map correctly."""
@@ -1275,8 +1282,10 @@ class TestEntityMapping:
         # Zone entities
         assert _entity_key_for_object_id("esphome_aabbccddeeff_zone_0_presence") == "zone_presence"
         assert _entity_key_for_object_id("esphome_aabbccddeeff_zone_7_presence") == "zone_presence"
-        # Target entities
-        assert _entity_key_for_object_id("esphome_aabbccddeeff_target_0_position") == "target_xy"
+        # Structured target entities
+        assert _entity_key_for_object_id("esphome_aabbccddeeff_target_1_x") == "target_xy"
+        # Transport sensors are unmanaged
+        assert _entity_key_for_object_id("esphome_aabbccddeeff_target_0_position") is None
 
     def test_entity_key_mapping_relay(self) -> None:
         """system_alarm_relay maps to relay_output."""
@@ -1313,13 +1322,13 @@ class TestApplyEntityStates:
 
         # Create mock entity entries: one USER-disabled, one INTEGRATION-disabled
         user_disabled_entry = MagicMock()
-        user_disabled_entry.unique_id = "AA:BB:CC:DD:EE:FF-sensor-target_0_position"
-        user_disabled_entry.entity_id = "sensor.target_0_position"
+        user_disabled_entry.unique_id = "AA:BB:CC:DD:EE:FF-sensor-target_1_x"
+        user_disabled_entry.entity_id = "sensor.target_1_x"
         user_disabled_entry.disabled_by = RegistryEntryDisabler.USER
 
         integration_disabled_entry = MagicMock()
-        integration_disabled_entry.unique_id = "AA:BB:CC:DD:EE:FF-sensor-target_1_position"
-        integration_disabled_entry.entity_id = "sensor.target_1_position"
+        integration_disabled_entry.unique_id = "AA:BB:CC:DD:EE:FF-sensor-target_2_x"
+        integration_disabled_entry.entity_id = "sensor.target_2_x"
         integration_disabled_entry.disabled_by = RegistryEntryDisabler.INTEGRATION
 
         with (
@@ -1338,9 +1347,9 @@ class TestApplyEntityStates:
             # USER-disabled entry should NOT be touched
             calls = mock_registry.async_update_entity.call_args_list
             entity_ids_updated = [c.args[0] for c in calls]
-            assert "sensor.target_0_position" not in entity_ids_updated
+            assert "sensor.target_1_x" not in entity_ids_updated
             # INTEGRATION-disabled entry should be enabled
-            mock_registry.async_update_entity.assert_any_call("sensor.target_1_position", disabled_by=None)
+            mock_registry.async_update_entity.assert_any_call("sensor.target_2_x", disabled_by=None)
 
 
 class TestWebSocketEntityEnabled:
