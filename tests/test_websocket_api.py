@@ -899,6 +899,10 @@ class TestZonePresencePreservation:
             "static_renew_threshold": 3,
             "static_timeout": 30.0,
             "static_on_delay": 0.0,
+            "led_mode": "Manual Control",
+            "led_brightness": 1.0,
+            "led_presence_color": "#CC33FF",
+            "static_led_enabled": True,
         }
 
         await call_async_handler(hass, websocket_set_settings, connection, msg)
@@ -932,6 +936,10 @@ class TestZonePresencePreservation:
             "static_renew_threshold": 3,
             "static_timeout": 30.0,
             "static_on_delay": 0.0,
+            "led_mode": "Manual Control",
+            "led_brightness": 1.0,
+            "led_presence_color": "#CC33FF",
+            "static_led_enabled": True,
         }
 
         await call_async_handler(hass, websocket_set_settings, connection, msg)
@@ -967,6 +975,10 @@ class TestZonePresencePreservation:
                 "static_renew_threshold": 3,
                 "static_timeout": 30.0,
                 "static_on_delay": 0.0,
+                "led_mode": "Manual Control",
+                "led_brightness": 1.0,
+                "led_presence_color": "#CC33FF",
+                "static_led_enabled": True,
                 "entities": {"target_xy": True},
             }
 
