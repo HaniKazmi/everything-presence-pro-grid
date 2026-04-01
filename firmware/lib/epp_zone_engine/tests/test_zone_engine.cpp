@@ -21,8 +21,8 @@ static Grid make_parity_grid() {
             grid.cell(r * GRID_COLS + c) = CELL_ROOM_BIT;
         }
     }
-    // Zone 1 on cell (col=9, row=1)
-    grid.cell(1 * GRID_COLS + 9) = CELL_ROOM_BIT | (1 << CELL_ZONE_SHIFT);
+    // Zone 1 on cell (col=9, row=1), with overlay entry bit
+    grid.cell(1 * GRID_COLS + 9) = CELL_ROOM_BIT | (1 << CELL_ZONE_SHIFT) | CELL_OVERLAY_ENTRY;
     return grid;
 }
 
@@ -142,9 +142,42 @@ TEST_CASE("zone 0 gating: needs 2 consecutive qualifying ticks") {
 
 TEST_CASE("entry point bypasses gating") {
     ZoneEngine engine = make_parity_engine();
-    // Zone 1 is entrance (entry_point=True), trigger=3
-    const ProcessingResult& r = engine.tick(make_window_1(X_OFF + 450, 450, 3), 100.0f);
+    // Zone 1 cell is at (9,1). Set overlay entry bit.
+    Grid grid = engine.grid();
+    int cell_idx = 1 * GRID_COLS + 9;  // row=1, col=9
+    grid.cell(cell_idx) = grid.cell(cell_idx) | CELL_OVERLAY_ENTRY;
+    engine.set_grid(grid);
+
+    // Zone 1 trigger=3, target at (2850, 450)
+    WindowOutput wo{};
+    wo.total_frames = 10;
+    wo.targets[0].active = true;
+    wo.targets[0].median_x = 2850.0f;
+    wo.targets[0].median_y = 450.0f;
+    wo.targets[0].frame_count = 3;
+    const ProcessingResult& r = engine.tick(wo, 100.0f);
     CHECK(r.zone_occupancy[1]);
+}
+
+TEST_CASE("cell overlay entry bypasses gating") {
+    ZoneEngine engine = make_parity_engine();
+    // Get the grid and set overlay entry bit on cell (8,0) — zone 0
+    Grid grid = engine.grid();
+    int cell_idx = 0 * GRID_COLS + 8;  // row=0, col=8
+    grid.cell(cell_idx) = grid.cell(cell_idx) | CELL_OVERLAY_ENTRY;
+    engine.set_grid(grid);
+
+    // Target at (2550, 150) lands on cell (8,0) in zone 0.
+    // Zone 0: trigger=5, gated=7. Signal 5/10 frames → would fail gating without overlay.
+    // With overlay → bypasses gating → confirmed immediately.
+    WindowOutput wo{};
+    wo.total_frames = 10;
+    wo.targets[0].active = true;
+    wo.targets[0].median_x = 2550.0f;
+    wo.targets[0].median_y = 150.0f;
+    wo.targets[0].frame_count = 5;
+    const ProcessingResult& r = engine.tick(wo, 100.0f);
+    CHECK(r.zone_occupancy[0]);
 }
 
 TEST_CASE("PENDING then CLEAR after timeout") {

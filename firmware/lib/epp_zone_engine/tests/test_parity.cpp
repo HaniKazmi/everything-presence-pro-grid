@@ -52,6 +52,15 @@ static Grid build_grid(const json& grid_config) {
         }
     }
 
+    if (grid_config.contains("overlay_entry_cells")) {
+        for (auto& cell : grid_config["overlay_entry_cells"]) {
+            int col = cell[0].get<int>();
+            int row = cell[1].get<int>();
+            int idx = row * GRID_COLS + col;
+            grid.cell(idx) = grid.cell(idx) | CELL_OVERLAY_ENTRY;
+        }
+    }
+
     return grid;
 }
 

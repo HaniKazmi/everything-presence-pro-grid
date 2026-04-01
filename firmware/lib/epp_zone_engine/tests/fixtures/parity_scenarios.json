@@ -8,7 +8,8 @@
     ],
     "zone_cells": {
       "1": [[9, 1]]
-    }
+    },
+    "overlay_entry_cells": [[9, 1]]
   },
   "zones": {
     "0": {"type": "normal", "trigger": 5, "renew": 3, "timeout": 10.0, "handoff_timeout": 3.0, "entry_point": false},

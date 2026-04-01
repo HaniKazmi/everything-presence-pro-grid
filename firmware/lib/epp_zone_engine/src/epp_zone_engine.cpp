@@ -236,8 +236,8 @@ const ProcessingResult& ZoneEngine::tick(const WindowOutput& window, float times
                 base_thresh = renew_thresh;
             }
 
-            bool entry_point = rt.config.entry_point;
-            bool needs_gating = !entry_point && !continuous;
+            bool cell_overlay_entry = grid_.cell_has_overlay_entry(cell);
+            bool needs_gating = !cell_overlay_entry && !continuous;
 
             if (needs_gating && rt.state == ZoneState::CLEAR) {
                 // Gating: raise threshold, cap at 8

@@ -20,8 +20,8 @@ static Grid make_grid() {
             grid.cell(r * GRID_COLS + c) = CELL_ROOM_BIT;
         }
     }
-    // Zone 1 on cell (col=9, row=1)
-    grid.cell(1 * GRID_COLS + 9) = CELL_ROOM_BIT | (1 << CELL_ZONE_SHIFT);
+    // Zone 1 on cell (col=9, row=1), with overlay entry bit
+    grid.cell(1 * GRID_COLS + 9) = CELL_ROOM_BIT | (1 << CELL_ZONE_SHIFT) | CELL_OVERLAY_ENTRY;
     return grid;
 }
 
