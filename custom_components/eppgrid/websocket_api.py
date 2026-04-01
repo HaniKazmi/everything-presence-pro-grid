@@ -222,7 +222,6 @@ async def websocket_set_setup(
         vol.Optional("room_renew"): vol.Coerce(int),
         vol.Optional("room_timeout"): vol.Coerce(float),
         vol.Optional("room_handoff_timeout"): vol.Coerce(float),
-        vol.Optional("room_entry_point", default=False): bool,
         vol.Optional("furniture", default=[]): list,
     }
 )
@@ -255,7 +254,6 @@ async def websocket_set_room_layout(
         "room_renew": msg.get("room_renew"),
         "room_timeout": msg.get("room_timeout"),
         "room_handoff_timeout": msg.get("room_handoff_timeout"),
-        "room_entry_point": msg.get("room_entry_point", False),
         "furniture": msg.get("furniture", []),
     }
     await manager._store.async_save()

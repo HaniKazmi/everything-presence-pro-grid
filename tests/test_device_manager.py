@@ -920,7 +920,6 @@ class TestPushConfig:
                         "room_renew": 2,
                         "room_timeout": 5.0,
                         "room_handoff_timeout": 2.0,
-                        "room_entry_point": True,
                     },
                 }
             )

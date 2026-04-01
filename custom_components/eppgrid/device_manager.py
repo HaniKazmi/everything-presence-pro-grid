@@ -228,7 +228,6 @@ class DeviceConnection:
                 "room_renew": layout.get("room_renew", 3),
                 "room_timeout": layout.get("room_timeout", 10.0),
                 "room_handoff_timeout": layout.get("room_handoff_timeout", 3.0),
-                "room_entry_point": layout.get("room_entry_point", False),
             }
             await self._client.execute_service(
                 service,
