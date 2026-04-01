@@ -991,8 +991,12 @@ export class EPPGridPanel extends LitElement {
 		this._roomHandoffTimeout = ZONE_TYPE_DEFAULTS.normal.handoff_timeout;
 		this._roomEntryPoint = false;
 		this._furniture = [];
-		// set_setup will disable zone_presence — update local state
-		this._entitiesConfig = { ...this._entitiesConfig, zone_presence: false };
+		// set_setup will disable zone_presence and target_xy — update local state
+		this._entitiesConfig = {
+			...this._entitiesConfig,
+			zone_presence: false,
+			target_xy: false,
+		};
 		// Reset auto distances to maximums and persist before clearing
 		// calibration, so _push_config_to_device sends the correct values.
 		if (this._targetAutoDistance) {

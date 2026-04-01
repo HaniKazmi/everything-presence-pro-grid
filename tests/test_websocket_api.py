@@ -227,6 +227,80 @@ class TestWebSocketSetSetup:
         await call_async_handler(hass, websocket_set_setup, connection, msg)
         connection.send_error.assert_called_once()
 
+    async def test_set_setup_delete_calibration_disables_target_xy(
+        self, hass: HomeAssistant, config_entry: MockConfigEntry
+    ) -> None:
+        """Deleting calibration (room_width=0) disables target_xy and applies entity state."""
+        mock_dm = await setup_integration(hass, config_entry)
+        # Simulate target_xy was previously enabled
+        mock_dm._store.devices["AA:BB:CC:DD:EE:FF"] = {"settings": {"target_xy": True}}
+
+        from custom_components.eppgrid.websocket_api import websocket_set_setup
+
+        with patch("custom_components.eppgrid.websocket_api._apply_entity_states") as mock_apply:
+            connection = MagicMock()
+            msg = {
+                "id": 5,
+                "type": "eppgrid/set_setup",
+                "mac": "AA:BB:CC:DD:EE:FF",
+                "perspective": [0.0] * 8,
+                "room_width": 0.0,
+                "room_depth": 0.0,
+            }
+
+            await call_async_handler(hass, websocket_set_setup, connection, msg)
+
+        settings = mock_dm._store.devices["AA:BB:CC:DD:EE:FF"]["settings"]
+        assert settings["target_xy"] is False
+        mock_apply.assert_called_once_with(hass, "AA:BB:CC:DD:EE:FF", {"target_xy": False})
+
+    async def test_set_setup_delete_calibration_sets_entity_update_guard(
+        self, hass: HomeAssistant, config_entry: MockConfigEntry
+    ) -> None:
+        """Deleting calibration sets entity_update_macs guard to suppress reconnect push."""
+        mock_dm = await setup_integration(hass, config_entry)
+        mock_dm._store.devices["AA:BB:CC:DD:EE:FF"] = {"settings": {"target_xy": True}}
+
+        from custom_components.eppgrid.websocket_api import websocket_set_setup
+
+        with patch("custom_components.eppgrid.websocket_api._apply_entity_states"):
+            connection = MagicMock()
+            msg = {
+                "id": 5,
+                "type": "eppgrid/set_setup",
+                "mac": "AA:BB:CC:DD:EE:FF",
+                "perspective": [0.0] * 8,
+                "room_width": 0.0,
+                "room_depth": 0.0,
+            }
+
+            await call_async_handler(hass, websocket_set_setup, connection, msg)
+
+        assert "AA:BB:CC:DD:EE:FF" in mock_dm._entity_update_macs
+
+    async def test_set_setup_calibration_does_not_enable_target_xy(
+        self, hass: HomeAssistant, config_entry: MockConfigEntry
+    ) -> None:
+        """Adding calibration (room_width>0) must NOT auto-enable target_xy."""
+        mock_dm = await setup_integration(hass, config_entry)
+
+        from custom_components.eppgrid.websocket_api import websocket_set_setup
+
+        connection = MagicMock()
+        msg = {
+            "id": 6,
+            "type": "eppgrid/set_setup",
+            "mac": "AA:BB:CC:DD:EE:FF",
+            "perspective": [1.0] * 8,
+            "room_width": 3000.0,
+            "room_depth": 4000.0,
+        }
+
+        await call_async_handler(hass, websocket_set_setup, connection, msg)
+
+        settings = mock_dm._store.devices["AA:BB:CC:DD:EE:FF"]["settings"]
+        assert "target_xy" not in settings
+
 
 class TestWebSocketSetRoomLayout:
     """Tests for eppgrid/set_room_layout."""
@@ -753,6 +827,76 @@ class TestZonePresencePreservation:
         settings = mock_dm._store.devices["AA:BB:CC:DD:EE:FF"]["settings"]
         assert settings["zone_presence"] is True
 
+    async def test_set_settings_preserves_target_xy(self, hass: HomeAssistant, config_entry: MockConfigEntry) -> None:
+        """set_settings must not overwrite stored settings.target_xy."""
+        mock_dm = await setup_integration(hass, config_entry)
+        # Simulate target_xy having been enabled by user
+        mock_dm._store.devices["AA:BB:CC:DD:EE:FF"] = {"settings": {"target_xy": True}}
+
+        from custom_components.eppgrid.websocket_api import websocket_set_settings
+
+        connection = MagicMock()
+        msg = {
+            "id": 11,
+            "type": "eppgrid/set_settings",
+            "mac": "AA:BB:CC:DD:EE:FF",
+            "temperature_offset": 0,
+            "humidity_offset": 0,
+            "illuminance_offset": 0,
+            "motion_timeout": 5.0,
+            "target_auto_distance": True,
+            "target_max_distance": 6.0,
+            "static_auto_distance": True,
+            "static_min_distance": 0.3,
+            "static_max_distance": 16.0,
+            "static_trigger_threshold": 3,
+            "static_renew_threshold": 3,
+            "static_timeout": 30.0,
+            "static_on_delay": 0.0,
+        }
+
+        await call_async_handler(hass, websocket_set_settings, connection, msg)
+
+        settings = mock_dm._store.devices["AA:BB:CC:DD:EE:FF"]["settings"]
+        assert settings["target_xy"] is True
+
+    async def test_set_settings_persists_target_xy_from_entities(
+        self, hass: HomeAssistant, config_entry: MockConfigEntry
+    ) -> None:
+        """set_settings with entities.target_xy persists the value to stored settings."""
+        mock_dm = await setup_integration(hass, config_entry)
+        mock_dm._store.devices["AA:BB:CC:DD:EE:FF"] = {"settings": {}}
+
+        from custom_components.eppgrid.websocket_api import websocket_set_settings
+
+        with patch("custom_components.eppgrid.websocket_api._apply_entity_states"):
+            connection = MagicMock()
+            msg = {
+                "id": 11,
+                "type": "eppgrid/set_settings",
+                "mac": "AA:BB:CC:DD:EE:FF",
+                "temperature_offset": 0,
+                "humidity_offset": 0,
+                "illuminance_offset": 0,
+                "motion_timeout": 5.0,
+                "target_auto_distance": True,
+                "target_max_distance": 6.0,
+                "static_auto_distance": True,
+                "static_min_distance": 0.3,
+                "static_max_distance": 16.0,
+                "static_trigger_threshold": 3,
+                "static_renew_threshold": 3,
+                "static_timeout": 30.0,
+                "static_on_delay": 0.0,
+                "entities": {"target_xy": True},
+            }
+
+            await call_async_handler(hass, websocket_set_settings, connection, msg)
+
+        settings = mock_dm._store.devices["AA:BB:CC:DD:EE:FF"]["settings"]
+        assert settings["target_xy"] is True
+        mock_dm._store.async_save.assert_awaited()
+
 
 class TestEntityMapping:
     """Tests for entity object_id mapping with real unique_id patterns."""
@@ -826,6 +970,54 @@ class TestEntityMapping:
         assert _entity_key_for_object_id("esphome_aabbccddeeff_zone_engine_version") is None
         assert _entity_key_for_object_id("led") is None
         assert _entity_key_for_object_id("relay_output") is None
+
+
+class TestApplyEntityStates:
+    """Tests for _apply_entity_states."""
+
+    async def test_apply_entity_states_skips_user_disabled(
+        self, hass: HomeAssistant, config_entry: MockConfigEntry
+    ) -> None:
+        """_apply_entity_states must not overwrite USER-disabled entries."""
+        from homeassistant.helpers.entity_registry import RegistryEntryDisabler
+
+        from custom_components.eppgrid.device_manager import ManagedDevice
+        from custom_components.eppgrid.websocket_api import _apply_entity_states
+
+        mock_dm = await setup_integration(hass, config_entry)
+        mock_dm.devices["AA:BB:CC:DD:EE:FF"] = ManagedDevice(mac="AA:BB:CC:DD:EE:FF", name="EPP", host="192.168.1.50")
+        mock_dm.devices["AA:BB:CC:DD:EE:FF"].device_id = "dev123"
+
+        # Create mock entity entries: one USER-disabled, one INTEGRATION-disabled
+        user_disabled_entry = MagicMock()
+        user_disabled_entry.unique_id = "AA:BB:CC:DD:EE:FF-sensor-target_0_position"
+        user_disabled_entry.entity_id = "sensor.target_0_position"
+        user_disabled_entry.disabled_by = RegistryEntryDisabler.USER
+
+        integration_disabled_entry = MagicMock()
+        integration_disabled_entry.unique_id = "AA:BB:CC:DD:EE:FF-sensor-target_1_position"
+        integration_disabled_entry.entity_id = "sensor.target_1_position"
+        integration_disabled_entry.disabled_by = RegistryEntryDisabler.INTEGRATION
+
+        with (
+            patch("custom_components.eppgrid.websocket_api.er.async_get") as mock_er,
+            patch("custom_components.eppgrid.websocket_api.er.async_entries_for_device") as mock_entries,
+        ):
+            mock_registry = mock_er.return_value
+            mock_entries.return_value = [
+                user_disabled_entry,
+                integration_disabled_entry,
+            ]
+
+            # Enable target_xy — should skip USER-disabled but enable INTEGRATION-disabled
+            _apply_entity_states(hass, "AA:BB:CC:DD:EE:FF", {"target_xy": True})
+
+            # USER-disabled entry should NOT be touched
+            calls = mock_registry.async_update_entity.call_args_list
+            entity_ids_updated = [c.args[0] for c in calls]
+            assert "sensor.target_0_position" not in entity_ids_updated
+            # INTEGRATION-disabled entry should be enabled
+            mock_registry.async_update_entity.assert_any_call("sensor.target_1_position", disabled_by=None)
 
 
 class TestWebSocketEntityEnabled:

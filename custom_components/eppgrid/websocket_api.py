@@ -152,11 +152,22 @@ async def websocket_set_setup(
     # Store zone_presence flag — true on calibration, false on delete
     settings = device_config.get("settings", {})
     settings["zone_presence"] = msg["room_width"] > 0
+    # Disable target entities when calibration is deleted (user must opt-in after re-calibration)
+    deleting = msg["room_width"] <= 0
+    if deleting:
+        settings["target_xy"] = False
     device_config["settings"] = settings
     await manager._store.async_save()
 
     # Push calibration to device
-    await manager._push_config_to_device(mac)
+    push_ok = await manager._push_config_to_device(mac)
+
+    # Apply entity registry changes after push, with reconnect guard
+    if deleting:
+        if push_ok:
+            manager._entity_update_macs.add(mac)
+            hass.loop.call_later(60, manager._entity_update_macs.discard, mac)
+        _apply_entity_states(hass, mac, {"target_xy": False})
 
     from .const import MAX_ZONES
 
@@ -416,6 +427,9 @@ def _apply_entity_states(hass: HomeAssistant, mac: str, entities: dict[str, bool
         object_id = _object_id_from_unique_id(entry.unique_id)
         key = _entity_key_for_object_id(object_id)
         if key is None or key not in entities:
+            continue
+        # Never overwrite entities the user has manually disabled
+        if entry.disabled_by == er.RegistryEntryDisabler.USER:
             continue
         desired = entities[key]
         if desired:
@@ -809,6 +823,8 @@ async def websocket_set_settings(
     old_settings = device_config.get("settings", {})
     if "zone_presence" in old_settings:
         new_settings["zone_presence"] = old_settings["zone_presence"]
+    if "target_xy" in old_settings:
+        new_settings["target_xy"] = old_settings["target_xy"]
     device_config["settings"] = new_settings
     log_levels = msg.get("log_levels")
     if log_levels is not None:
@@ -824,10 +840,14 @@ async def websocket_set_settings(
         if push_ok:
             manager._entity_update_macs.add(mac)
             hass.loop.call_later(60, manager._entity_update_macs.discard, mac)
-        # Persist zone_presence in stored settings so async_update_zone_entities
-        # can read it on discovery/reconnect
-        if "zone_presence" in entities:
-            device_config.setdefault("settings", {})["zone_presence"] = entities["zone_presence"]
+        # Persist entity flags in stored settings so they survive reconnect/discovery
+        persisted_entity_keys = ("zone_presence", "target_xy")
+        settings_changed = False
+        for ekey in persisted_entity_keys:
+            if ekey in entities:
+                device_config.setdefault("settings", {})[ekey] = entities[ekey]
+                settings_changed = True
+        if settings_changed:
             await manager._store.async_save()
         _apply_entity_states(hass, mac, entities)
         # Zone presence needs layout-aware handling: enable zone_0 + named zones
