@@ -50,15 +50,7 @@ describe("getZoneThresholds", () => {
 	const emptyConfigs: (ZoneConfig | null)[] = new Array(7).fill(null);
 
 	it("zone 0 normal: returns normal defaults", () => {
-		const result = getZoneThresholds(
-			0,
-			emptyConfigs,
-			"normal",
-			5,
-			3,
-			10,
-			3,
-		);
+		const result = getZoneThresholds(0, emptyConfigs, "normal", 5, 3, 10, 3);
 		expect(result).toEqual({
 			trigger: 5,
 			renew: 3,
@@ -68,15 +60,7 @@ describe("getZoneThresholds", () => {
 	});
 
 	it("zone 0 custom: uses provided custom values", () => {
-		const result = getZoneThresholds(
-			0,
-			emptyConfigs,
-			"custom",
-			8,
-			2,
-			15,
-			5,
-		);
+		const result = getZoneThresholds(0, emptyConfigs, "custom", 8, 2, 15, 5);
 		expect(result).toEqual({
 			trigger: 8,
 			renew: 2,
@@ -86,15 +70,7 @@ describe("getZoneThresholds", () => {
 	});
 
 	it("zone 0 entrance: returns entrance defaults", () => {
-		const result = getZoneThresholds(
-			0,
-			emptyConfigs,
-			"entrance",
-			3,
-			2,
-			5,
-			1,
-		);
+		const result = getZoneThresholds(0, emptyConfigs, "entrance", 3, 2, 5, 1);
 		expect(result).toEqual({
 			trigger: 3,
 			renew: 2,
@@ -175,15 +151,7 @@ describe("getZoneThresholds", () => {
 	});
 
 	it("null config for named zone: returns fallback defaults", () => {
-		const result = getZoneThresholds(
-			3,
-			emptyConfigs,
-			"normal",
-			5,
-			3,
-			10,
-			3,
-		);
+		const result = getZoneThresholds(3, emptyConfigs, "normal", 5, 3, 10, 3);
 		expect(result).toEqual({
 			trigger: 5,
 			renew: 3,
@@ -193,15 +161,7 @@ describe("getZoneThresholds", () => {
 	});
 
 	it("out-of-range zone id: returns fallback defaults", () => {
-		const result = getZoneThresholds(
-			99,
-			emptyConfigs,
-			"normal",
-			5,
-			3,
-			10,
-			3,
-		);
+		const result = getZoneThresholds(99, emptyConfigs, "normal", 5, 3, 10, 3);
 		expect(result).toEqual({
 			trigger: 5,
 			renew: 3,

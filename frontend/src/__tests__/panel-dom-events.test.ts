@@ -592,7 +592,6 @@ describe("_renderBoundaryTypeControls DOM events", () => {
 			).toBe(true);
 		}
 	});
-
 });
 
 describe("_renderZoneTypeControls DOM events", () => {
@@ -747,7 +746,6 @@ describe("_renderZoneTypeControls DOM events", () => {
 			);
 		}
 	});
-
 });
 
 describe("_renderZoneSidebar DOM events", () => {

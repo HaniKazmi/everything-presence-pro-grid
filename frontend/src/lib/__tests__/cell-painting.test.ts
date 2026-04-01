@@ -3,8 +3,8 @@ import {
 	applyOverlayPaintToCell,
 	applyPaintToCell,
 	clearZoneFromGrid,
-	determinePaintAction,
 	determineOverlayPaintAction,
+	determinePaintAction,
 } from "../cell-painting.js";
 import {
 	CELL_OVERLAY_ENTRY,
@@ -184,7 +184,9 @@ describe("determineOverlayPaintAction", () => {
 	});
 
 	it("returns 'clear' when cell already has overlay", () => {
-		expect(determineOverlayPaintAction(CELL_ROOM_BIT | CELL_OVERLAY_ENTRY)).toBe("clear");
+		expect(
+			determineOverlayPaintAction(CELL_ROOM_BIT | CELL_OVERLAY_ENTRY),
+		).toBe("clear");
 	});
 });
 

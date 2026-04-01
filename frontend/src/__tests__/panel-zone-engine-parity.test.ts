@@ -36,7 +36,10 @@ function makeParityGrid(): Uint8Array {
 		}
 	}
 	// Zone 1 on cell (col=9, row=1) with overlay entry bit
-	grid[1 * GRID_COLS + 9] = cellSetOverlayEntry(cellSetZone(CELL_ROOM_BIT, 1), true);
+	grid[1 * GRID_COLS + 9] = cellSetOverlayEntry(
+		cellSetZone(CELL_ROOM_BIT, 1),
+		true,
+	);
 	return grid;
 }
 

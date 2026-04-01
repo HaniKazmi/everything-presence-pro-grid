@@ -334,7 +334,9 @@ describe("epp-zone-sidebar events", () => {
 		select.dispatchEvent(new Event("change", { bubbles: true }));
 
 		expect(handler).toHaveBeenCalledTimes(1);
-		expect(handler.mock.calls[0][0].detail.updates.roomType).toBe("thoroughfare");
+		expect(handler.mock.calls[0][0].detail.updates.roomType).toBe(
+			"thoroughfare",
+		);
 
 		document.body.removeChild(c);
 	});

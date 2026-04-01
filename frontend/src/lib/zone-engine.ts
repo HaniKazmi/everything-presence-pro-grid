@@ -117,7 +117,10 @@ export function runLocalZoneEngine(
 						const nc = prev.col + dc;
 						if (nr >= 0 && nr < GRID_ROWS && nc >= 0 && nc < GRID_COLS) {
 							const ni = nr * GRID_COLS + nc;
-							if (cellHasOverlayEntry(params.grid[ni]) && cellZone(params.grid[ni]) === prevZid) {
+							if (
+								cellHasOverlayEntry(params.grid[ni]) &&
+								cellZone(params.grid[ni]) === prevZid
+							) {
 								targetWasOnOverlay[i] = true;
 							}
 						}
@@ -220,7 +223,10 @@ export function runLocalZoneEngine(
 					const nc = col + dc;
 					if (nr >= 0 && nr < GRID_ROWS && nc >= 0 && nc < GRID_COLS) {
 						const ni = nr * GRID_COLS + nc;
-						if (cellHasOverlayEntry(params.grid[ni]) && cellZone(params.grid[ni]) === zid) {
+						if (
+							cellHasOverlayEntry(params.grid[ni]) &&
+							cellZone(params.grid[ni]) === zid
+						) {
 							cellOverlay = true;
 						}
 					}
@@ -297,7 +303,11 @@ export function runLocalZoneEngine(
 	for (let i = 0; i < MAX_TARGETS && i < params.targets.length; i++) {
 		const t = params.targets[i];
 		const isGone = t.x == null || t.y == null;
-		if ((isGone || targetLeftRoom[i]) && targetWasOnOverlay[i] && targetPrevZone[i] !== null) {
+		if (
+			(isGone || targetLeftRoom[i]) &&
+			targetWasOnOverlay[i] &&
+			targetPrevZone[i] !== null
+		) {
 			const prevZid = targetPrevZone[i] as number;
 			const st = state.localZoneState.get(prevZid);
 			if (st?.occupied) {
