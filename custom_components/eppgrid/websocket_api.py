@@ -42,7 +42,7 @@ def async_register_websocket_commands(hass: HomeAssistant, manager: Any) -> None
     websocket_api.async_register_command(hass, websocket_update_firmware)
 
 
-_TARGET_ENTITY_KEYS = ("target_xy", "target_active", "target_signal", "target_zone")
+_TARGET_ENTITY_KEYS = ("target_xy", "target_active", "target_signal", "target_zone", "target_count")
 _ZONE_ENTITY_KEYS = ("zone_presence", "zone_target_count")
 
 
@@ -894,6 +894,7 @@ async def websocket_set_settings(
         "target_signal",
         "target_zone",
         "zone_target_count",
+        "target_count",
         "target_update_rate_ms",
         "zone_update_rate_ms",
     ):
@@ -928,6 +929,7 @@ async def websocket_set_settings(
             "target_signal",
             "target_zone",
             "zone_target_count",
+            "target_count",
         )
         settings_changed = False
         for ekey in persisted_entity_keys:

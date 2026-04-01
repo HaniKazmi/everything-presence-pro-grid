@@ -1288,6 +1288,11 @@ const dt={attribute:!0,type:String,converter:b,reflect:!1,hasChanged:y},ut=(t=dt
             <label class="toggle-switch"><input type="checkbox" @change=${t=>{const e=t.target,i=e.dataset.entityKey;this._overrides.entities||(this._overrides.entities={}),this._overrides.entities[i]=e.checked,this._fireDirty()}} data-entity-key="room_target_presence" .checked=${i("room_target_presence",!1)} /><span class="toggle-slider"></span></label>
             ${this.infoTip(this.localize("info.room_target_presence"))}
           </div>
+          <div class="setting-row">
+            <label>${this.localize("entities.target_count")}</label>
+            <label class="toggle-switch"><input type="checkbox" @change=${o} data-entity-key="target_count" .checked=${i("target_count",!1)} /><span class="toggle-slider"></span></label>
+            ${this.infoTip(this.localize("info.room_target_count"))}
+          </div>
         </div>
         <div class="setting-group">
           <h4>${this.localize("entities.zone_level")}</h4>

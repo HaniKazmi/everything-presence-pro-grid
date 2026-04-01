@@ -642,13 +642,6 @@ binary_sensor:
             then:
               - script.execute: control_leds
 
-  - platform: template
-    name: mmWave Presence
-    id: mmwave_occupancy
-    device_class: occupancy
-    disabled_by_default: true
-    lambda: |-
-      return id(dfrobot_presence).state || id(epp_zone_tracking).state;
 
 light:
   - platform: esp32_rmt_led_strip

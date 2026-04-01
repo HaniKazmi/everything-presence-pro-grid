@@ -618,6 +618,11 @@ export class EppSettingsView extends LitElement {
 						}} data-entity-key="room_target_presence" .checked=${isOn("room_target_presence", false)} /><span class="toggle-slider"></span></label>
             ${this.infoTip(this.localize("info.room_target_presence"))}
           </div>
+          <div class="setting-row">
+            <label>${this.localize("entities.target_count")}</label>
+            <label class="toggle-switch"><input type="checkbox" @change=${entityToggleHandler} data-entity-key="target_count" .checked=${isOn("target_count", false)} /><span class="toggle-slider"></span></label>
+            ${this.infoTip(this.localize("info.room_target_count"))}
+          </div>
         </div>
         <div class="setting-group">
           <h4>${this.localize("entities.zone_level")}</h4>
