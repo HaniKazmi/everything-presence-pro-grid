@@ -1,7 +1,9 @@
 import type { ReactiveController, ReactiveControllerHost } from "lit";
 import {
+	applyOverlayPaintToCell,
 	applyPaintToCell,
 	clearZoneFromGrid,
+	determineOverlayPaintAction,
 	determinePaintAction,
 	type PaintAction,
 } from "../lib/cell-painting.js";
@@ -61,18 +63,30 @@ export class GridStateController implements ReactiveController {
 			this.host._selectedFurnitureId = null;
 			return;
 		}
+		// Overlay painting mode
+		if (this.host._overlayMode === "entry") {
+			this.host._isPainting = true;
+			this.host._frozenBounds = getRoomBounds(this.host._grid);
+			this.host._paintAction = determineOverlayPaintAction(
+				this.host._grid[index],
+			);
+			this.applyPaintToCell(index);
+			const onUp = () => {
+				this.onCellMouseUp();
+				window.removeEventListener("mouseup", onUp);
+			};
+			window.addEventListener("mouseup", onUp);
+			return;
+		}
+		// Zone painting mode
 		if (this.host._activeZone === null) return;
 		this.host._isPainting = true;
 		this.host._frozenBounds = getRoomBounds(this.host._grid);
-
 		this.host._paintAction = determinePaintAction(
 			this.host._grid[index],
 			this.host._activeZone,
 		);
-
 		this.applyPaintToCell(index);
-
-		// Listen on window so releasing outside the grid ends the paint
 		const onUp = () => {
 			this.onCellMouseUp();
 			window.removeEventListener("mouseup", onUp);
@@ -99,18 +113,25 @@ export class GridStateController implements ReactiveController {
 	}
 
 	applyPaintToCell(index: number): void {
-		if (this.host._activeZone === null) return;
-		const newValue = applyPaintToCell(
-			this.host._grid[index],
-			this.host._activeZone,
-			this.host._paintAction,
-		);
-		if (newValue === null) return; // no change (e.g. zone paint on outside cell)
+		let newValue: number | null;
+		if (this.host._overlayMode === "entry") {
+			newValue = applyOverlayPaintToCell(
+				this.host._grid[index],
+				this.host._paintAction,
+			);
+		} else {
+			if (this.host._activeZone === null) return;
+			newValue = applyPaintToCell(
+				this.host._grid[index],
+				this.host._activeZone,
+				this.host._paintAction,
+			);
+		}
+		if (newValue === null) return;
 
 		this.host._grid = new Uint8Array(this.host._grid);
 		this.host._grid[index] = newValue;
 		this.host._dirty = true;
-
 		this.host.requestUpdate();
 	}
 

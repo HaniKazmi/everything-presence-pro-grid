@@ -176,6 +176,7 @@ export class EPPGridPanel extends LitElement {
 	private set _zoneEngineState(value: ZoneEngineState) {
 		this._targetCtrl.zoneEngineState = value;
 	}
+	@state() private _overlayMode: string | null = null;
 	@state() private _isPainting = false;
 	private _justPainted = false;
 	@state() private _paintAction: PaintAction = "set";
@@ -1518,8 +1519,16 @@ export class EPPGridPanel extends LitElement {
                     .roomHandoffTimeout=${this._roomHandoffTimeout}
                     .localZoneState=${this._zoneEngineState.localZoneState}
                     .localize=${this._localize}
+                    .overlayMode=${this._overlayMode}
+                    @overlay-select=${(e: CustomEvent) => {
+											this._overlayMode = e.detail.mode;
+											if (this._overlayMode) {
+												this._activeZone = null;
+											}
+										}}
                     @zone-select=${(e: CustomEvent) => {
 											this._activeZone = e.detail.zone;
+											this._overlayMode = null;
 										}}
                     @zone-add=${() => {
 											this._addZone();
