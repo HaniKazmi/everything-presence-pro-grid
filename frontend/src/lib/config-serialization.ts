@@ -51,6 +51,8 @@ export interface ParsedSettings {
 	ledPresenceColor: string;
 	relayTriggerMode: string;
 	relayContactMode: string;
+	targetUpdateRateMs: number;
+	zoneUpdateRateMs: number;
 }
 
 /**
@@ -204,6 +206,8 @@ export function parseSettings(
 		ledPresenceColor: s.led_presence_color ?? "#CC33FF",
 		relayTriggerMode: s.relay_trigger_mode ?? "disabled",
 		relayContactMode: s.relay_contact_mode ?? "no",
+		targetUpdateRateMs: s.target_update_rate_ms ?? 1000,
+		zoneUpdateRateMs: s.zone_update_rate_ms ?? 1000,
 	};
 }
 

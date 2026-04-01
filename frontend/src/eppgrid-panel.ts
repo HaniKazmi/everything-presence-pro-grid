@@ -111,6 +111,8 @@ export class EPPGridPanel extends LitElement {
 	@state() private _ledPresenceColor = "#CC33FF";
 	@state() private _relayTriggerMode = "disabled";
 	@state() private _relayContactMode = "no";
+	@state() private _targetUpdateRateMs = 1000;
+	@state() private _zoneUpdateRateMs = 1000;
 	@state() private _entitiesConfig: Record<string, any> = {};
 	@state() private _sidebarTab: "zones" | "furniture" | "live" = "zones";
 	@state() private _showDeleteCalibrationDialog = false;
@@ -459,6 +461,8 @@ export class EPPGridPanel extends LitElement {
 		this._staticOnDelay = s.staticOnDelay;
 		this._relayTriggerMode = s.relayTriggerMode;
 		this._relayContactMode = s.relayContactMode;
+		this._targetUpdateRateMs = s.targetUpdateRateMs;
+		this._zoneUpdateRateMs = s.zoneUpdateRateMs;
 		this._entitiesConfig = s.entities;
 		// Apply log levels
 		this._logLevels = parsed.settings.logLevels;
@@ -1400,6 +1404,8 @@ export class EPPGridPanel extends LitElement {
           .ledPresenceColor=${this._ledPresenceColor}
           .relayTriggerMode=${this._relayTriggerMode}
           .relayContactMode=${this._relayContactMode}
+          .targetUpdateRateMs=${this._targetUpdateRateMs}
+          .zoneUpdateRateMs=${this._zoneUpdateRateMs}
           .localize=${this._localize}
           @accordion-toggle=${(e: CustomEvent) => {
 						this._openAccordions = e.detail;
