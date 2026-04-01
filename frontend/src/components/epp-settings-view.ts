@@ -881,15 +881,15 @@ export class EppSettingsView extends LitElement {
 
 	renderRelay() {
 		const TRIGGER_MODES = [
-			{ value: "disabled", label: "disabled" },
-			{ value: "manual", label: "manual" },
-			{ value: "motion", label: "motion" },
-			{ value: "presence", label: "presence" },
-			{ value: "motion_or_presence", label: "motion_or_presence" },
+			{ value: "disabled", label: this.localize("settings.relay_disabled") },
+			{ value: "manual", label: this.localize("settings.relay_manual") },
+			{ value: "motion", label: this.localize("settings.relay_motion") },
+			{ value: "presence", label: this.localize("settings.relay_presence") },
+			{ value: "motion_or_presence", label: this.localize("settings.relay_motion_or_presence") },
 		];
 		const CONTACT_MODES = [
-			{ value: "no", label: "no" },
-			{ value: "nc", label: "nc" },
+			{ value: "no", label: this.localize("settings.relay_normally_open") },
+			{ value: "nc", label: this.localize("settings.relay_normally_closed") },
 		];
 
 		const currentTrigger =

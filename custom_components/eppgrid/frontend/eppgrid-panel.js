@@ -1368,25 +1368,25 @@ const dt={attribute:!0,type:String,converter:b,reflect:!1,hasChanged:y},ut=(t=dt
           </div>`:V}
         </div>
       </div>
-    `}renderRelay(){const t=this._overrides.relayTriggerMode??this.relayTriggerMode,e=this._overrides.relayContactMode??this.relayContactMode,i="disabled"!==t&&"manual"!==t;return G`
+    `}renderRelay(){const t=[{value:"disabled",label:this.localize("settings.relay_disabled")},{value:"manual",label:this.localize("settings.relay_manual")},{value:"motion",label:this.localize("settings.relay_motion")},{value:"presence",label:this.localize("settings.relay_presence")},{value:"motion_or_presence",label:this.localize("settings.relay_motion_or_presence")}],e=[{value:"no",label:this.localize("settings.relay_normally_open")},{value:"nc",label:this.localize("settings.relay_normally_closed")}],i=this._overrides.relayTriggerMode??this.relayTriggerMode,o=this._overrides.relayContactMode??this.relayContactMode,s="disabled"!==i&&"manual"!==i;return G`
       <div class="settings-section">
         <div class="setting-group">
           <div class="setting-row">
             <label>${this.localize("settings.relay_trigger_mode")}</label>
             <ha-select
-              .value=${t}
-              .options=${[{value:"disabled",label:"disabled"},{value:"manual",label:"manual"},{value:"motion",label:"motion"},{value:"presence",label:"presence"},{value:"motion_or_presence",label:"motion_or_presence"}]}
-              @selected=${e=>{const i=e.detail.value;i&&i!==t&&(this._overrides.relayTriggerMode=i,this._fireChange("relayTriggerMode",i),this.requestUpdate())}}
+              .value=${i}
+              .options=${t}
+              @selected=${t=>{const e=t.detail.value;e&&e!==i&&(this._overrides.relayTriggerMode=e,this._fireChange("relayTriggerMode",e),this.requestUpdate())}}
               @closed=${t=>t.stopPropagation()}
             ></ha-select>
           </div>
-          ${i?G`
+          ${s?G`
             <div class="setting-row">
               <label>${this.localize("settings.relay_contact_mode")}</label>
               <ha-select
-                .value=${e}
-                .options=${[{value:"no",label:"no"},{value:"nc",label:"nc"}]}
-                @selected=${t=>{const i=t.detail.value;i&&i!==e&&(this._overrides.relayContactMode=i,this._fireChange("relayContactMode",i),this.requestUpdate())}}
+                .value=${o}
+                .options=${e}
+                @selected=${t=>{const e=t.detail.value;e&&e!==o&&(this._overrides.relayContactMode=e,this._fireChange("relayContactMode",e),this.requestUpdate())}}
                 @closed=${t=>t.stopPropagation()}
               ></ha-select>
             </div>
