@@ -92,6 +92,7 @@ export function runLocalZoneEngine(
 	const targetSignal: Map<number, number> = new Map();
 	const targetZonePrev: (number | null)[] = [null, null, null];
 	const targetZoneCurr: (number | null)[] = [null, null, null];
+	const targetLeftRoom: boolean[] = [false, false, false];
 
 	// Snapshot prev cell overlay info before per-target loop clears it
 	const targetWasOnOverlay: boolean[] = [false, false, false];
@@ -135,6 +136,7 @@ export function runLocalZoneEngine(
 			params.roomDepth,
 		);
 		if (!pos) {
+			targetLeftRoom[i] = true;
 			state.targetPrev[i] = null;
 			state.targetGateCount[i] = 0;
 			continue;
@@ -142,6 +144,7 @@ export function runLocalZoneEngine(
 		const col = Math.floor(pos.col);
 		const row = Math.floor(pos.row);
 		if (col < 0 || col >= GRID_COLS || row < 0 || row >= GRID_ROWS) {
+			targetLeftRoom[i] = true;
 			state.targetPrev[i] = null;
 			state.targetGateCount[i] = 0;
 			continue;
@@ -149,6 +152,7 @@ export function runLocalZoneEngine(
 		const idx = row * GRID_COLS + col;
 		const cellVal = params.grid[idx];
 		if (!cellIsInside(cellVal)) {
+			targetLeftRoom[i] = true;
 			state.targetPrev[i] = null;
 			state.targetGateCount[i] = 0;
 			continue;
@@ -257,8 +261,7 @@ export function runLocalZoneEngine(
 	for (let i = 0; i < MAX_TARGETS && i < params.targets.length; i++) {
 		const t = params.targets[i];
 		const isGone = t.x == null || t.y == null;
-		const leftRoom = !isGone && targetZoneCurr[i] === null;
-		if ((isGone || leftRoom) && targetWasOnOverlay[i] && targetPrevZone[i] !== null) {
+		if ((isGone || targetLeftRoom[i]) && targetWasOnOverlay[i] && targetPrevZone[i] !== null) {
 			const prevZid = targetPrevZone[i] as number;
 			const st = state.localZoneState.get(prevZid);
 			if (st?.occupied && st.pendingSince === null) {
