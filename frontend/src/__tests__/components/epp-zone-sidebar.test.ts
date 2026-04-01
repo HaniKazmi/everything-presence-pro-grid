@@ -379,6 +379,69 @@ describe("epp-zone-sidebar events", () => {
 	});
 });
 
+describe("epp-zone-sidebar overlay section", () => {
+	it("renders overlay entry item", () => {
+		const el = createSidebar();
+		const tpl = (el as any)._renderZoneSidebar();
+		const c = renderTo(tpl);
+
+		const items = c.querySelectorAll(".zone-item");
+		// Last zone-item should be the overlay entry
+		const overlayItem = items[items.length - 1];
+		expect(overlayItem.textContent).toContain("zones.overlay_entry");
+
+		document.body.removeChild(c);
+	});
+
+	it("overlay item has active class when overlayMode is entry", () => {
+		const el = createSidebar({ overlayMode: "entry" });
+		const tpl = (el as any)._renderZoneSidebar();
+		const c = renderTo(tpl);
+
+		const items = c.querySelectorAll(".zone-item");
+		const overlayItem = items[items.length - 1];
+		expect(overlayItem.classList.contains("active")).toBe(true);
+
+		document.body.removeChild(c);
+	});
+
+	it("fires overlay-select with mode entry on click", () => {
+		const el = createSidebar();
+		const handler = vi.fn();
+		el.addEventListener("overlay-select", handler);
+
+		const tpl = (el as any)._renderZoneSidebar();
+		const c = renderTo(tpl);
+
+		const items = c.querySelectorAll(".zone-item");
+		const overlayItem = items[items.length - 1] as HTMLElement;
+		overlayItem.click();
+
+		expect(handler).toHaveBeenCalledTimes(1);
+		expect(handler.mock.calls[0][0].detail.mode).toBe("entry");
+
+		document.body.removeChild(c);
+	});
+
+	it("fires overlay-select with mode null on click when already active", () => {
+		const el = createSidebar({ overlayMode: "entry" });
+		const handler = vi.fn();
+		el.addEventListener("overlay-select", handler);
+
+		const tpl = (el as any)._renderZoneSidebar();
+		const c = renderTo(tpl);
+
+		const items = c.querySelectorAll(".zone-item");
+		const overlayItem = items[items.length - 1] as HTMLElement;
+		overlayItem.click();
+
+		expect(handler).toHaveBeenCalledTimes(1);
+		expect(handler.mock.calls[0][0].detail.mode).toBeNull();
+
+		document.body.removeChild(c);
+	});
+});
+
 describe("epp-zone-sidebar occupancy glow", () => {
 	it("boundary zone dot shows glow when occupied", () => {
 		const localZoneState = new Map([
