@@ -1035,6 +1035,11 @@ export class EPPGridPanel extends LitElement {
 					static_renew_threshold: this._staticRenewThreshold,
 					static_timeout: this._staticTimeout,
 					static_on_delay: this._staticOnDelay,
+					led_mode: this._ledMode,
+					led_brightness: this._ledBrightness,
+					led_presence_color: this._ledPresenceColor,
+					relay_trigger_mode: this._relayTriggerMode,
+					relay_contact_mode: this._relayContactMode,
 					entities: this._entitiesConfig || {},
 				});
 			}

@@ -673,6 +673,38 @@ describe("_applyLayout", () => {
 		expect(settingsCall.static_max_distance).toBeLessThanOrEqual(16);
 	});
 
+	it("includes LED and relay fields in set_settings from zone save", async () => {
+		const a = el as any;
+		a._selectedMac = "AA:BB:CC:DD:EE:01";
+		a._dirty = true;
+		a._grid = initGridFromRoom(3000, 4000);
+		a._perspective = [1, 0, 0, 0, 1, 0, 0, 0];
+		a._roomWidth = 3000;
+		a._roomDepth = 4000;
+		a._targetAutoDistance = true;
+		a._staticAutoDistance = true;
+		a._zoneConfigs = new Array(8).fill(null);
+		a._ledMode = "Presence";
+		a._ledBrightness = 0.5;
+		a._ledPresenceColor = "#00FF00";
+		a._relayTriggerMode = "motion";
+		a._relayContactMode = "nc";
+
+		el.hass = {
+			callWS: vi.fn().mockResolvedValue({}),
+		};
+
+		await a._applyLayout();
+
+		const settingsCall = el.hass.callWS.mock.calls[1][0];
+		expect(settingsCall.type).toBe("eppgrid/set_settings");
+		expect(settingsCall.led_mode).toBe("Presence");
+		expect(settingsCall.led_brightness).toBe(0.5);
+		expect(settingsCall.led_presence_color).toBe("#00FF00");
+		expect(settingsCall.relay_trigger_mode).toBe("motion");
+		expect(settingsCall.relay_contact_mode).toBe("nc");
+	});
+
 	it("does not call set_settings when both auto flags are off", async () => {
 		const a = el as any;
 		a._selectedMac = "AA:BB:CC:DD:EE:01";
