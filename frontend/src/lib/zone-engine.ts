@@ -1,5 +1,6 @@
 import { mapTargetToGridCell } from "./coordinates.js";
 import {
+	cellHasOverlayEntry,
 	cellIsInside,
 	cellZone,
 	GRID_CELL_COUNT,
@@ -169,13 +170,14 @@ export function runLocalZoneEngine(
 			params.roomHandoffTimeout,
 			params.roomEntryPoint,
 		);
-		const { trigger, renew, entryPoint } = thresholds;
+		const { trigger, renew } = thresholds;
 		const st = state.localZoneState.get(zid);
 		const isOccupied = st?.occupied ?? false;
 		const isClear = !isOccupied;
 
 		const baseTrigger = isClear ? trigger : renew;
-		const needsGating = !entryPoint && !continuous;
+		const cellOverlay = cellHasOverlayEntry(cellVal);
+		const needsGating = !cellOverlay && !continuous;
 
 		if (needsGating && isClear) {
 			const gatedThresh = Math.min(baseTrigger + 2, 8);

@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import {
 	CELL_ROOM_BIT,
+	cellSetOverlayEntry,
 	cellSetZone,
 	GRID_CELL_COUNT,
 	GRID_COLS,
@@ -102,11 +103,13 @@ describe("runLocalZoneEngine", () => {
 		expect(result.targets).toHaveLength(0);
 	});
 
-	it("target with signal >= trigger causes occupancy (entrance zone, no gating)", () => {
-		// Entrance zone 1: trigger=3, entry_point=true (entrance type)
+	it("target with signal >= trigger causes occupancy (overlay entry, no gating)", () => {
+		const grid = makeParityGrid();
+		grid[29] = cellSetOverlayEntry(grid[29], true);
 		const params = makeDefaultParams({
 			targets: [makeTarget(450, 450, 3)],
 		});
+		params.grid = grid;
 		const result = runLocalZoneEngine(state, params);
 		expect(result.occupancy[1]).toBe(true);
 		expect(result.occupancy[0]).toBe(false);
@@ -122,11 +125,14 @@ describe("runLocalZoneEngine", () => {
 
 	it("occupancy persists during pending timeout after target leaves", () => {
 		const now = Date.now() / 1000;
+		const grid = makeParityGrid();
+		grid[29] = cellSetOverlayEntry(grid[29], true);
 		// Occupy zone 1
 		const params1 = makeDefaultParams({
 			targets: [makeTarget(450, 450, 5)],
 			now,
 		});
+		params1.grid = grid;
 		runLocalZoneEngine(state, params1);
 
 		// Target disappears (signal=0)
@@ -134,6 +140,7 @@ describe("runLocalZoneEngine", () => {
 			targets: [makeTarget(450, 450, 0, "inactive")],
 			now: now + 1,
 		});
+		params2.grid = grid;
 		const result2 = runLocalZoneEngine(state, params2);
 		expect(result2.occupancy[1]).toBe(true); // still occupied (pending)
 
@@ -142,6 +149,7 @@ describe("runLocalZoneEngine", () => {
 			targets: [makeTarget(450, 450, 0, "inactive")],
 			now: now + 7,
 		});
+		params3.grid = grid;
 		const result3 = runLocalZoneEngine(state, params3);
 		expect(result3.occupancy[1]).toBe(false); // cleared
 	});
@@ -204,20 +212,46 @@ describe("runLocalZoneEngine", () => {
 	});
 
 	it("entry-point zone bypasses gating", () => {
+		const grid = makeParityGrid();
+		// Cell (9,1) = index 29 is zone 1. Set overlay entry bit.
+		grid[29] = cellSetOverlayEntry(grid[29], true);
 		const params = makeDefaultParams({
 			targets: [makeTarget(450, 450, 3)],
 		});
+		params.grid = grid;
 		const result = runLocalZoneEngine(state, params);
 		expect(result.occupancy[1]).toBe(true); // immediate
 	});
 
+	it("cell overlay entry bypasses gating (not zone entry_point)", () => {
+		// Zone 0 (normal type, no entry_point) but cell has overlay
+		const grid = makeParityGrid();
+		// Cell at (8,0) = index 8 — zone 0, inside room. Set overlay bit.
+		grid[8] = cellSetOverlayEntry(grid[8], true);
+		const params = makeDefaultParams({
+			targets: [makeTarget(150, 150, 5)], // target lands on cell (8,0) = zone 0
+			zoneConfigs: [
+				{ name: "Zone 1", color: "#56B4E9", type: "normal" },
+				...new Array(6).fill(null),
+			],
+		});
+		params.grid = grid;
+		// Zone 0 trigger=5, gated would be 7. Signal=5 would fail gating.
+		// But overlay entry → no gating → signal=5 >= trigger=5 → confirmed immediately.
+		const result = runLocalZoneEngine(state, params);
+		expect(result.occupancy[0]).toBe(true);
+	});
+
 	it("target reappears during pending -> back to occupied", () => {
 		const now = Date.now() / 1000;
+		const grid = makeParityGrid();
+		grid[29] = cellSetOverlayEntry(grid[29], true);
 		// Occupy zone 1
 		const params1 = makeDefaultParams({
 			targets: [makeTarget(450, 450, 5)],
 			now,
 		});
+		params1.grid = grid;
 		runLocalZoneEngine(state, params1);
 
 		// Target gone -> pending
@@ -225,6 +259,7 @@ describe("runLocalZoneEngine", () => {
 			targets: [makeTarget(450, 450, 0, "inactive")],
 			now: now + 1,
 		});
+		params2.grid = grid;
 		const result2 = runLocalZoneEngine(state, params2);
 		expect(result2.occupancy[1]).toBe(true); // pending
 
@@ -233,18 +268,22 @@ describe("runLocalZoneEngine", () => {
 			targets: [makeTarget(450, 450, 2)],
 			now: now + 2,
 		});
+		params3.grid = grid;
 		const result3 = runLocalZoneEngine(state, params3);
 		expect(result3.occupancy[1]).toBe(true); // back to occupied
 	});
 
 	it("two targets in different zones -> both zones occupied", () => {
 		const now = Date.now() / 1000;
+		const grid = makeParityGrid();
+		grid[29] = cellSetOverlayEntry(grid[29], true);
 		const params = makeDefaultParams({
 			targets: [makeTarget(450, 450, 5), makeTarget(150, 150, 7)],
 			now,
 		});
+		params.grid = grid;
 
-		// First tick: zone 1 immediate (entry point), zone 0 gating
+		// First tick: zone 1 immediate (overlay entry), zone 0 gating
 		let result = runLocalZoneEngine(state, params);
 		expect(result.occupancy[1]).toBe(true);
 		expect(result.occupancy[0]).toBe(false);
