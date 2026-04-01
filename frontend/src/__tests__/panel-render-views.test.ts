@@ -82,7 +82,6 @@ function createPanel(): EPPGridPanel {
 	a._roomRenew = ZONE_TYPE_DEFAULTS.normal.renew;
 	a._roomTimeout = ZONE_TYPE_DEFAULTS.normal.timeout;
 	a._roomHandoffTimeout = ZONE_TYPE_DEFAULTS.normal.handoff_timeout;
-	a._roomEntryPoint = false;
 	a._showHitCounts = false;
 	a._zoneEngineState = createZoneEngineState();
 	a._showCustomIconPicker = false;
@@ -941,9 +940,9 @@ describe("epp-zone-sidebar renders boundary type controls", () => {
 		expect(result).toBeDefined();
 	});
 
-	it("renders for entrance type", () => {
+	it("renders for thoroughfare type", () => {
 		const el = document.createElement("epp-zone-sidebar") as any;
-		el.roomType = "entrance";
+		el.roomType = "thoroughfare";
 		el.activeZone = 0;
 		el.zoneConfigs = new Array(7).fill(null);
 		const result = el.render();
@@ -974,7 +973,6 @@ describe("epp-zone-sidebar renders zone type controls", () => {
 				renew: 4,
 				timeout: 15,
 				handoff_timeout: 5,
-				entry_point: true,
 			},
 			...new Array(6).fill(null),
 		];
@@ -1003,7 +1001,7 @@ describe("epp-zone-sidebar renders zone sidebar", () => {
 		el.zoneConfigs[1] = {
 			name: "Living",
 			color: ZONE_COLORS[1],
-			type: "entrance",
+			type: "normal",
 		};
 		el.activeZone = 1;
 		const result = el.render();

@@ -212,6 +212,8 @@ Saves grid, zones, room settings, furniture. Pushes config to device. Updates zo
 
 **Request:** `{ "type": "eppgrid/set_room_layout", "mac": str, "grid_bytes": int[], "zone_slots": list, "room_type": str, ... }`
 
+Each cell in `grid_bytes` is a uint8 with bit layout: bit 0 = room (inside/outside), bits 1-3 = zone (0-7), bit 4 = entry/exit overlay (bypasses gating on entry, uses handoff timeout on exit), bits 5-7 = reserved.
+
 ### `set_entity_enabled`
 
 Enables/disables an ESPHome entity.

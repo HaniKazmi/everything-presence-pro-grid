@@ -4,6 +4,7 @@ import { TARGET_COLORS } from "../constants.js";
 import { mapTargetToGridCell } from "../lib/coordinates.js";
 import type { FurnitureItem } from "../lib/furniture.js";
 import {
+	cellHasOverlayEntry,
 	cellIsInside,
 	cellZone,
 	GRID_COLS,
@@ -181,10 +182,15 @@ export class EppGrid extends LitElement {
 						border = `box-shadow: inset 0 0 0 1px rgba(0,0,0,0.4);`;
 					}
 				}
+				let overlayMarker = "";
+				if (cellIsInside(cellVal) && cellHasOverlayEntry(cellVal)) {
+					overlayMarker =
+						"background-image: repeating-linear-gradient(45deg, transparent, transparent 6px, rgba(60,60,60,0.7) 6px, rgba(60,60,60,0.7) 8px);";
+				}
 				cells.push(html`
 					<div
 						class="cell"
-						style="background: ${bg}; width: ${cellPx}px; height: ${cellPx}px; ${border}"
+						style="background: ${bg}; width: ${cellPx}px; height: ${cellPx}px; ${border} ${overlayMarker}"
 						@mousedown=${() => {
 							if (inRange) this._onCellMouseDown(idx);
 						}}

@@ -20,7 +20,6 @@ struct ZoneConfig {
     int renew = 3;
     float timeout = 10.0f;
     float handoff_timeout = 3.0f;
-    bool entry_point = false;
 };
 
 struct TargetResult {
@@ -94,6 +93,7 @@ private:
     float target_prev_y_[MAX_TARGETS]{};
     bool target_has_prev_xy_[MAX_TARGETS]{};
     int target_gate_count_[MAX_TARGETS]{};
+    int target_last_zone_[MAX_TARGETS]{};   // last zone while in-room (-1 = unknown)
 
     // Per-target log state (for transition-only logging)
     int target_log_zone_[MAX_TARGETS]{};      // zone confirmed in last tick (-1 = none)

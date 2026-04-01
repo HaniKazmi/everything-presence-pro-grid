@@ -1,5 +1,6 @@
 import { mapTargetToGridCell } from "./coordinates.js";
 import {
+	cellHasOverlayEntry,
 	cellIsInside,
 	cellZone,
 	GRID_CELL_COUNT,
@@ -45,7 +46,6 @@ export interface ZoneEngineParams {
 	roomRenew: number;
 	roomTimeout: number;
 	roomHandoffTimeout: number;
-	roomEntryPoint: boolean;
 	staticPresence?: boolean;
 	motionPresence?: boolean;
 	staticTimeout?: number; // seconds
@@ -92,6 +92,43 @@ export function runLocalZoneEngine(
 	const targetSignal: Map<number, number> = new Map();
 	const targetZonePrev: (number | null)[] = [null, null, null];
 	const targetZoneCurr: (number | null)[] = [null, null, null];
+	const targetLeftRoom: boolean[] = [false, false, false];
+
+	// Snapshot prev cell overlay info before per-target loop clears it.
+	// Check the target's cell AND its neighbours — the median position may
+	// land one cell away from the actual overlay cell at the boundary.
+	const targetWasOnOverlay: boolean[] = [false, false, false];
+	const targetPrevZone: (number | null)[] = [null, null, null];
+	for (let i = 0; i < MAX_TARGETS && i < params.targets.length; i++) {
+		const prev = state.targetPrev[i];
+		if (prev !== null) {
+			const prevIdx = prev.row * GRID_COLS + prev.col;
+			if (
+				prevIdx >= 0 &&
+				prevIdx < GRID_CELL_COUNT &&
+				cellIsInside(params.grid[prevIdx])
+			) {
+				const prevZid = cellZone(params.grid[prevIdx]);
+				targetPrevZone[i] = prevZid;
+				// Check cell and same-zone neighbours for overlay
+				for (let dr = -1; dr <= 1 && !targetWasOnOverlay[i]; dr++) {
+					for (let dc = -1; dc <= 1 && !targetWasOnOverlay[i]; dc++) {
+						const nr = prev.row + dr;
+						const nc = prev.col + dc;
+						if (nr >= 0 && nr < GRID_ROWS && nc >= 0 && nc < GRID_COLS) {
+							const ni = nr * GRID_COLS + nc;
+							if (
+								cellHasOverlayEntry(params.grid[ni]) &&
+								cellZone(params.grid[ni]) === prevZid
+							) {
+								targetWasOnOverlay[i] = true;
+							}
+						}
+					}
+				}
+			}
+		}
+	}
 
 	for (let i = 0; i < MAX_TARGETS && i < params.targets.length; i++) {
 		const t = params.targets[i];
@@ -116,6 +153,7 @@ export function runLocalZoneEngine(
 			params.roomDepth,
 		);
 		if (!pos) {
+			targetLeftRoom[i] = true;
 			state.targetPrev[i] = null;
 			state.targetGateCount[i] = 0;
 			continue;
@@ -123,6 +161,7 @@ export function runLocalZoneEngine(
 		const col = Math.floor(pos.col);
 		const row = Math.floor(pos.row);
 		if (col < 0 || col >= GRID_COLS || row < 0 || row >= GRID_ROWS) {
+			targetLeftRoom[i] = true;
 			state.targetPrev[i] = null;
 			state.targetGateCount[i] = 0;
 			continue;
@@ -130,6 +169,7 @@ export function runLocalZoneEngine(
 		const idx = row * GRID_COLS + col;
 		const cellVal = params.grid[idx];
 		if (!cellIsInside(cellVal)) {
+			targetLeftRoom[i] = true;
 			state.targetPrev[i] = null;
 			state.targetGateCount[i] = 0;
 			continue;
@@ -167,17 +207,42 @@ export function runLocalZoneEngine(
 			params.roomRenew,
 			params.roomTimeout,
 			params.roomHandoffTimeout,
-			params.roomEntryPoint,
 		);
-		const { trigger, renew, entryPoint } = thresholds;
+		const { trigger, renew } = thresholds;
 		const st = state.localZoneState.get(zid);
 		const isOccupied = st?.occupied ?? false;
 		const isClear = !isOccupied;
 
-		const baseTrigger = isClear ? trigger : renew;
-		const needsGating = !entryPoint && !continuous;
+		let baseTrigger = isClear ? trigger : renew;
+		// Check cell and same-zone neighbours for overlay (median may lag behind actual position)
+		let cellOverlay = cellHasOverlayEntry(cellVal);
+		if (!cellOverlay) {
+			for (let dr = -1; dr <= 1 && !cellOverlay; dr++) {
+				for (let dc = -1; dc <= 1 && !cellOverlay; dc++) {
+					const nr = row + dr;
+					const nc = col + dc;
+					if (nr >= 0 && nr < GRID_ROWS && nc >= 0 && nc < GRID_COLS) {
+						const ni = nr * GRID_COLS + nc;
+						if (
+							cellHasOverlayEntry(params.grid[ni]) &&
+							cellZone(params.grid[ni]) === zid
+						) {
+							cellOverlay = true;
+						}
+					}
+				}
+			}
+		}
+		const needsGating = !cellOverlay && !continuous;
+		// Instant entry: near overlay cell → threshold=1
+		if (cellOverlay && isClear) {
+			baseTrigger = 1;
+		}
 
 		if (needsGating && isClear) {
+			// Gating: raise threshold and require consecutive qualifying ticks.
+			// At 10Hz tick rate, 2 ticks = ~200ms. If false positives become
+			// a problem: increase gate count, use wall-clock gating, or raise offset.
 			const gatedThresh = Math.min(baseTrigger + 2, 8);
 			if (signal >= gatedThresh) {
 				state.targetGateCount[i]++;
@@ -227,10 +292,48 @@ export function runLocalZoneEngine(
 				params.roomRenew,
 				params.roomTimeout,
 				params.roomHandoffTimeout,
-				params.roomEntryPoint,
 			);
 			const { timeout, handoffTimeout } = handoffThresholds;
 			srcSt.pendingSince = now - (timeout - handoffTimeout);
+		}
+	}
+
+	// Overlay exit handoff: target disappears or leaves room from overlay cell → use handoff timeout.
+	// We keep confirmedTargets intact so the target renders as PENDING.
+	for (let i = 0; i < MAX_TARGETS && i < params.targets.length; i++) {
+		const t = params.targets[i];
+		const isGone = t.x == null || t.y == null;
+		if (
+			(isGone || targetLeftRoom[i]) &&
+			targetWasOnOverlay[i] &&
+			targetPrevZone[i] !== null
+		) {
+			const prevZid = targetPrevZone[i] as number;
+			const st = state.localZoneState.get(prevZid);
+			if (st?.occupied) {
+				// Check if this target is the only confirmed target remaining
+				let remaining = 0;
+				for (const tid of st.confirmedTargets) {
+					if (tid !== i) remaining++;
+				}
+				if (remaining === 0) {
+					const th = getZoneThresholds(
+						prevZid,
+						params.zoneConfigs,
+						params.roomType,
+						params.roomTrigger,
+						params.roomRenew,
+						params.roomTimeout,
+						params.roomHandoffTimeout,
+					);
+					const accel = now - (th.timeout - th.handoffTimeout);
+					if (st.pendingSince === null) {
+						st.pendingSince = accel;
+					} else if (st.pendingSince > accel) {
+						st.pendingSince = accel;
+					}
+				}
+			}
 		}
 	}
 
@@ -258,7 +361,6 @@ export function runLocalZoneEngine(
 			params.roomRenew,
 			params.roomTimeout,
 			params.roomHandoffTimeout,
-			params.roomEntryPoint,
 		);
 		const { timeout } = zoneThresholds;
 		const confirmed = zoneConfirmed.get(zid) ?? false;

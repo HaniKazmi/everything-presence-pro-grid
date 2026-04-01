@@ -1,6 +1,8 @@
 import {
 	CELL_ROOM_BIT,
+	cellHasOverlayEntry,
 	cellIsInside,
+	cellSetOverlayEntry,
 	cellSetZone,
 	cellZone,
 	GRID_CELL_COUNT,
@@ -65,6 +67,29 @@ export function applyPaintToCell(
 		return cellSetZone(cellValue | CELL_ROOM_BIT, activeZone);
 	}
 	return cellSetZone(cellValue, 0);
+}
+
+/**
+ * Determine the paint action for an overlay paint stroke.
+ *
+ * @param cellValue Current cell byte value
+ * @returns "clear" if cell has overlay, "set" otherwise
+ */
+export function determineOverlayPaintAction(cellValue: number): PaintAction {
+	return cellHasOverlayEntry(cellValue) ? "clear" : "set";
+}
+
+/**
+ * Apply an overlay paint action to a single grid cell.
+ *
+ * Returns null if the cell is outside the room.
+ */
+export function applyOverlayPaintToCell(
+	cellValue: number,
+	paintAction: PaintAction,
+): number | null {
+	if (!cellIsInside(cellValue)) return null;
+	return cellSetOverlayEntry(cellValue, paintAction === "set");
 }
 
 /**

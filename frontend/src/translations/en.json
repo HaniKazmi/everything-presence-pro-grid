@@ -160,7 +160,6 @@
 		"zone_name": "Zone name",
 		"type": "Type",
 		"normal": "Normal",
-		"entrance": "Entrance",
 		"thoroughfare": "Thoroughfare",
 		"rest_area": "Rest area",
 		"custom": "Custom",
@@ -168,8 +167,9 @@
 		"renew": "Renew",
 		"presence_timeout": "Presence timeout",
 		"handoff_timeout": "Handoff timeout",
-		"entry_point": "Entry point",
-		"seconds_suffix": "s"
+		"seconds_suffix": "s",
+		"overlays": "Overlays",
+		"overlay_entry": "Entry / Exit"
 	},
 	"live": {
 		"presence": "Presence",

@@ -89,7 +89,6 @@ export class EPPGridPanel extends LitElement {
 	@state() private _roomTimeout: number = ZONE_TYPE_DEFAULTS.normal.timeout;
 	@state() private _roomHandoffTimeout: number =
 		ZONE_TYPE_DEFAULTS.normal.handoff_timeout;
-	@state() private _roomEntryPoint = false;
 	@state() private _targetAutoDistance = true;
 	@state() private _targetMaxDistance = 6.0;
 	@state() private _staticAutoDistance = true;
@@ -177,6 +176,7 @@ export class EPPGridPanel extends LitElement {
 	private set _zoneEngineState(value: ZoneEngineState) {
 		this._targetCtrl.zoneEngineState = value;
 	}
+	@state() private _overlayMode: string | null = null;
 	@state() private _isPainting = false;
 	private _justPainted = false;
 	@state() private _paintAction: PaintAction = "set";
@@ -442,7 +442,6 @@ export class EPPGridPanel extends LitElement {
 		this._roomRenew = parsed.roomThresholds.roomRenew;
 		this._roomTimeout = parsed.roomThresholds.roomTimeout;
 		this._roomHandoffTimeout = parsed.roomThresholds.roomHandoffTimeout;
-		this._roomEntryPoint = parsed.roomThresholds.roomEntryPoint;
 
 		// Apply settings
 		const s = parsed.settings;
@@ -1004,7 +1003,6 @@ export class EPPGridPanel extends LitElement {
 		this._roomRenew = ZONE_TYPE_DEFAULTS.normal.renew;
 		this._roomTimeout = ZONE_TYPE_DEFAULTS.normal.timeout;
 		this._roomHandoffTimeout = ZONE_TYPE_DEFAULTS.normal.handoff_timeout;
-		this._roomEntryPoint = false;
 		this._furniture = [];
 		// set_setup will disable zone_presence and target_xy — update local state
 		this._entitiesConfig = {
@@ -1519,11 +1517,18 @@ export class EPPGridPanel extends LitElement {
                     .roomRenew=${this._roomRenew}
                     .roomTimeout=${this._roomTimeout}
                     .roomHandoffTimeout=${this._roomHandoffTimeout}
-                    .roomEntryPoint=${this._roomEntryPoint}
                     .localZoneState=${this._zoneEngineState.localZoneState}
                     .localize=${this._localize}
+                    .overlayMode=${this._overlayMode}
+                    @overlay-select=${(e: CustomEvent) => {
+											this._overlayMode = e.detail.mode;
+											if (this._overlayMode) {
+												this._activeZone = null;
+											}
+										}}
                     @zone-select=${(e: CustomEvent) => {
 											this._activeZone = e.detail.zone;
+											this._overlayMode = null;
 										}}
                     @zone-add=${() => {
 											this._addZone();
@@ -1549,8 +1554,6 @@ export class EPPGridPanel extends LitElement {
 												this._roomTimeout = updates.roomTimeout;
 											if (updates.roomHandoffTimeout !== undefined)
 												this._roomHandoffTimeout = updates.roomHandoffTimeout;
-											if (updates.roomEntryPoint !== undefined)
-												this._roomEntryPoint = updates.roomEntryPoint;
 										}}
                     @dirty=${() => {
 											this._dirty = true;
@@ -1773,7 +1776,6 @@ export class EPPGridPanel extends LitElement {
 		renew: number;
 		timeout: number;
 		handoffTimeout: number;
-		entryPoint: boolean;
 	} {
 		return getZoneThresholds(
 			zid,
@@ -1783,7 +1785,6 @@ export class EPPGridPanel extends LitElement {
 			this._roomRenew,
 			this._roomTimeout,
 			this._roomHandoffTimeout,
-			this._roomEntryPoint,
 		);
 	}
 

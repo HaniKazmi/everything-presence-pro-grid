@@ -115,7 +115,6 @@ export class TargetController implements ReactiveController {
 			roomRenew: this.host._roomRenew,
 			roomTimeout: this.host._roomTimeout,
 			roomHandoffTimeout: this.host._roomHandoffTimeout,
-			roomEntryPoint: this.host._roomEntryPoint,
 			staticPresence: ss?.static_presence ?? false,
 			motionPresence: ss?.motion_presence ?? false,
 			// Timeouts default to 10s — the real timeout logic runs on the firmware.
@@ -141,7 +140,7 @@ export class TargetController implements ReactiveController {
 	 * by replacing zone IDs with zone names.
 	 * Raw format: "S:A M:P Occ:1|T0:Z1:A:5 T1:Z0:P:3|Z0:O:1 Z1:O:1"
 	 * Legacy:     "T0:Z1:A:5 T1:Z0:P:3|Z0:O:1 Z1:O:1"
-	 * Enriched:   "Static: active, Motion: pending, Occ: on | T0→Entrance(active,5) | Entrance: occupied(1)"
+	 * Enriched:   "Static: active, Motion: pending, Occ: on | T0→Hallway(active,5) | Hallway: occupied(1)"
 	 */
 	enrichDebugLog(raw: string): string {
 		const zoneName = (zid: number): string => {

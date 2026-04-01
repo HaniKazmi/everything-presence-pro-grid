@@ -1,9 +1,11 @@
 // Bit 0: room (0=outside, 1=inside)
 // Bits 1-3: zone (0=room default, 1-7=named zone)
-// Bits 4-7: per-cell training (reserved)
+// Bit 4: overlay — entry/exit
+// Bits 5-7: per-cell training (reserved)
 export const CELL_ROOM_BIT = 0x01;
 export const CELL_ZONE_MASK = 0x0e; // bits 1-3
 export const CELL_ZONE_SHIFT = 1;
+export const CELL_OVERLAY_ENTRY = 0x10; // bit 4
 export const MAX_ZONES = 7;
 
 export const GRID_COLS = 20;
@@ -18,6 +20,10 @@ export const cellSetInside = (v: number, inside: boolean): number =>
 	inside ? v | CELL_ROOM_BIT : v & ~CELL_ROOM_BIT;
 export const cellSetZone = (v: number, zone: number): number =>
 	(v & ~CELL_ZONE_MASK) | ((zone & 0x07) << CELL_ZONE_SHIFT);
+export const cellHasOverlayEntry = (v: number): boolean =>
+	(v & CELL_OVERLAY_ENTRY) !== 0;
+export const cellSetOverlayEntry = (v: number, on: boolean): number =>
+	on ? v | CELL_OVERLAY_ENTRY : v & ~CELL_OVERLAY_ENTRY;
 
 /** Get room bounds with 1-cell padding around inside cells. */
 export function getRoomBounds(grid: Uint8Array): {

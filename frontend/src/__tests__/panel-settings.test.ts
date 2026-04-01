@@ -62,7 +62,6 @@ function createPanel(): EPPGridPanel {
 	a._roomRenew = 3;
 	a._roomTimeout = 10;
 	a._roomHandoffTimeout = 3;
-	a._roomEntryPoint = false;
 	a._showHitCounts = false;
 	a._zoneEngineState = createZoneEngineState();
 	a._showCustomIconPicker = false;
@@ -198,7 +197,7 @@ describe("_getZoneThresholds", () => {
 		expect(result).toHaveProperty("renew");
 		expect(result).toHaveProperty("timeout");
 		expect(result).toHaveProperty("handoffTimeout");
-		expect(result).toHaveProperty("entryPoint");
+		expect(result).toHaveProperty("handoffTimeout");
 	});
 
 	it("uses zone-specific thresholds for named zones", () => {
@@ -211,7 +210,6 @@ describe("_getZoneThresholds", () => {
 			renew: 5,
 			timeout: 15,
 			handoff_timeout: 5,
-			entry_point: true,
 		};
 
 		const result = a._getZoneThresholds(1);
@@ -219,7 +217,6 @@ describe("_getZoneThresholds", () => {
 		expect(result.renew).toBe(5);
 		expect(result.timeout).toBe(15);
 		expect(result.handoffTimeout).toBe(5);
-		expect(result.entryPoint).toBe(true);
 	});
 });
 

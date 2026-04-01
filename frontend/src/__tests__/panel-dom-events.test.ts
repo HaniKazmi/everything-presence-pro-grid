@@ -81,7 +81,6 @@ function createPanel(): EPPGridPanel {
 	a._roomRenew = ZONE_TYPE_DEFAULTS.normal.renew;
 	a._roomTimeout = ZONE_TYPE_DEFAULTS.normal.timeout;
 	a._roomHandoffTimeout = ZONE_TYPE_DEFAULTS.normal.handoff_timeout;
-	a._roomEntryPoint = false;
 	a._showHitCounts = false;
 	a._zoneEngineState = createZoneEngineState();
 	a._showCustomIconPicker = false;
@@ -482,7 +481,6 @@ describe("_renderBoundaryTypeControls DOM events", () => {
 		el.roomRenew = ZONE_TYPE_DEFAULTS.normal.renew;
 		el.roomTimeout = ZONE_TYPE_DEFAULTS.normal.timeout;
 		el.roomHandoffTimeout = ZONE_TYPE_DEFAULTS.normal.handoff_timeout;
-		el.roomEntryPoint = false;
 		el.localZoneState = new Map();
 		el.localize = (k: string) => k;
 		Object.assign(el, overrides);
@@ -502,13 +500,13 @@ describe("_renderBoundaryTypeControls DOM events", () => {
 
 		const select = c.querySelector(".sensitivity-select") as HTMLSelectElement;
 		if (select) {
-			select.value = "entrance";
+			select.value = "thoroughfare";
 			select.dispatchEvent(new Event("change", { bubbles: true }));
 			expect(
 				events.some(
 					(e) =>
 						e.type === "room-config-change" &&
-						e.detail.updates.roomType === "entrance",
+						e.detail.updates.roomType === "thoroughfare",
 				),
 			).toBe(true);
 			expect(events.some((e) => e.type === "dirty")).toBe(true);
@@ -594,27 +592,6 @@ describe("_renderBoundaryTypeControls DOM events", () => {
 			).toBe(true);
 		}
 	});
-
-	it("entry point checkbox toggles", () => {
-		const s = createSidebar({ roomType: "custom" });
-		const tpl = (s as any)._renderBoundaryTypeControls();
-		const c = renderTo(tpl);
-
-		const events: CustomEvent[] = [];
-		s.addEventListener("room-config-change", (e: Event) =>
-			events.push(e as CustomEvent),
-		);
-
-		const toggles = c.querySelectorAll('.toggle-switch input[type="checkbox"]');
-		if (toggles.length > 0) {
-			const last = toggles[toggles.length - 1] as HTMLInputElement;
-			last.checked = true;
-			last.dispatchEvent(new Event("change", { bubbles: true }));
-			expect(events.some((e) => e.detail.updates.roomEntryPoint === true)).toBe(
-				true,
-			);
-		}
-	});
 });
 
 describe("_renderZoneTypeControls DOM events", () => {
@@ -627,7 +604,6 @@ describe("_renderZoneTypeControls DOM events", () => {
 		el.roomRenew = ZONE_TYPE_DEFAULTS.normal.renew;
 		el.roomTimeout = ZONE_TYPE_DEFAULTS.normal.timeout;
 		el.roomHandoffTimeout = ZONE_TYPE_DEFAULTS.normal.handoff_timeout;
-		el.roomEntryPoint = false;
 		el.localZoneState = new Map();
 		el.localize = (k: string) => k;
 		Object.assign(el, overrides);
@@ -770,28 +746,6 @@ describe("_renderZoneTypeControls DOM events", () => {
 			);
 		}
 	});
-
-	it("zone entry point toggle updates", () => {
-		const s = createSidebar();
-		const zone = { name: "Z1", color: "#ff0000", type: "custom" as const };
-		const tpl = (s as any)._renderZoneTypeControls(zone, 0);
-		const c = renderTo(tpl);
-
-		const events: CustomEvent[] = [];
-		s.addEventListener("zone-config-change", (e: Event) =>
-			events.push(e as CustomEvent),
-		);
-
-		const toggles = c.querySelectorAll('.toggle-switch input[type="checkbox"]');
-		if (toggles.length > 0) {
-			const last = toggles[toggles.length - 1] as HTMLInputElement;
-			last.checked = true;
-			last.dispatchEvent(new Event("change", { bubbles: true }));
-			expect(events.some((e) => e.detail.updates.entry_point === true)).toBe(
-				true,
-			);
-		}
-	});
 });
 
 describe("_renderZoneSidebar DOM events", () => {
@@ -804,7 +758,6 @@ describe("_renderZoneSidebar DOM events", () => {
 		el.roomRenew = ZONE_TYPE_DEFAULTS.normal.renew;
 		el.roomTimeout = ZONE_TYPE_DEFAULTS.normal.timeout;
 		el.roomHandoffTimeout = ZONE_TYPE_DEFAULTS.normal.handoff_timeout;
-		el.roomEntryPoint = false;
 		el.localZoneState = new Map();
 		el.localize = (k: string) => k;
 		Object.assign(el, overrides);

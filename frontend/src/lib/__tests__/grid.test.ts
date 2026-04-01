@@ -1,8 +1,11 @@
 import { describe, expect, it } from "vitest";
 import {
+	CELL_OVERLAY_ENTRY,
 	CELL_ROOM_BIT,
+	cellHasOverlayEntry,
 	cellIsInside,
 	cellSetInside,
+	cellSetOverlayEntry,
 	cellSetZone,
 	cellZone,
 	GRID_CELL_COUNT,
@@ -201,5 +204,44 @@ describe("initGridFromRoom", () => {
 	it("has correct grid size", () => {
 		const grid = initGridFromRoom(3000, 3000);
 		expect(grid.length).toBe(GRID_CELL_COUNT);
+	});
+});
+
+describe("cellHasOverlayEntry", () => {
+	it("returns false for plain inside cell", () => {
+		expect(cellHasOverlayEntry(CELL_ROOM_BIT)).toBe(false);
+	});
+
+	it("returns true when overlay bit is set", () => {
+		expect(cellHasOverlayEntry(CELL_ROOM_BIT | CELL_OVERLAY_ENTRY)).toBe(true);
+	});
+
+	it("returns true regardless of zone bits", () => {
+		const val = CELL_ROOM_BIT | CELL_OVERLAY_ENTRY | (3 << 1);
+		expect(cellHasOverlayEntry(val)).toBe(true);
+	});
+});
+
+describe("cellSetOverlayEntry", () => {
+	it("sets overlay bit while preserving room and zone", () => {
+		const val = cellSetZone(CELL_ROOM_BIT, 5);
+		const result = cellSetOverlayEntry(val, true);
+		expect(cellHasOverlayEntry(result)).toBe(true);
+		expect(cellIsInside(result)).toBe(true);
+		expect(cellZone(result)).toBe(5);
+	});
+
+	it("clears overlay bit while preserving room and zone", () => {
+		const val = CELL_ROOM_BIT | CELL_OVERLAY_ENTRY | (2 << 1);
+		const result = cellSetOverlayEntry(val, false);
+		expect(cellHasOverlayEntry(result)).toBe(false);
+		expect(cellIsInside(result)).toBe(true);
+		expect(cellZone(result)).toBe(2);
+	});
+
+	it("round-trips with cellHasOverlayEntry", () => {
+		const val = CELL_ROOM_BIT;
+		expect(cellHasOverlayEntry(cellSetOverlayEntry(val, true))).toBe(true);
+		expect(cellHasOverlayEntry(cellSetOverlayEntry(val, false))).toBe(false);
 	});
 });

@@ -22,6 +22,9 @@ public:
     /// Check if a cell is marked as room (bit 0).
     bool cell_is_room(int cell_index) const;
 
+    /// Check if a cell has the entry/exit overlay (bit 4).
+    bool cell_has_overlay_entry(int cell_index) const;
+
     /// Load cell data from a byte buffer.
     void load_from_bytes(const uint8_t* data, int len);
 

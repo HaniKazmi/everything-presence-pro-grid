@@ -158,10 +158,6 @@ TEST_CASE("ZoneType defaults") {
     CHECK(normal.timeout == 10.0f);
     CHECK(normal.handoff_timeout == 3.0f);
 
-    auto entrance = epp::zone_type_defaults(epp::ZoneType::ENTRANCE);
-    CHECK(entrance.trigger == 3);
-    CHECK(entrance.timeout == 5.0f);
-
     auto thoroughfare = epp::zone_type_defaults(epp::ZoneType::THOROUGHFARE);
     CHECK(thoroughfare.timeout == 3.0f);
 
@@ -174,17 +170,24 @@ TEST_CASE("ZoneType defaults") {
     CHECK(custom.trigger == normal.trigger);
 }
 
-TEST_CASE("is_entry_point_type") {
-    CHECK(epp::is_entry_point_type(epp::ZoneType::ENTRANCE));
-    CHECK_FALSE(epp::is_entry_point_type(epp::ZoneType::NORMAL));
-    CHECK_FALSE(epp::is_entry_point_type(epp::ZoneType::THOROUGHFARE));
-    CHECK_FALSE(epp::is_entry_point_type(epp::ZoneType::REST));
-    CHECK_FALSE(epp::is_entry_point_type(epp::ZoneType::CUSTOM));
-}
-
 TEST_CASE("threshold_to_frame_count") {
     CHECK(epp::threshold_to_frame_count(5) == 5);
     CHECK(epp::threshold_to_frame_count(1) == 1);
     CHECK(epp::threshold_to_frame_count(0) == 1);
     CHECK(epp::threshold_to_frame_count(-3) == 1);
+}
+
+TEST_CASE("cell_has_overlay_entry") {
+    epp::Grid grid;
+    grid.cell(0) = epp::CELL_ROOM_BIT;
+    CHECK_FALSE(grid.cell_has_overlay_entry(0));
+
+    grid.cell(0) = epp::CELL_ROOM_BIT | epp::CELL_OVERLAY_ENTRY;
+    CHECK(grid.cell_has_overlay_entry(0));
+
+    // Preserves zone bits
+    grid.cell(1) = epp::CELL_ROOM_BIT | epp::CELL_OVERLAY_ENTRY | (3 << epp::CELL_ZONE_SHIFT);
+    CHECK(grid.cell_has_overlay_entry(1));
+    CHECK(grid.cell_zone(1) == 3);
+    CHECK(grid.cell_is_room(1));
 }

@@ -84,7 +84,6 @@ function createPanel(): EPPGridPanel {
 	a._roomRenew = ZONE_TYPE_DEFAULTS.normal.renew;
 	a._roomTimeout = ZONE_TYPE_DEFAULTS.normal.timeout;
 	a._roomHandoffTimeout = ZONE_TYPE_DEFAULTS.normal.handoff_timeout;
-	a._roomEntryPoint = false;
 	a._showHitCounts = false;
 	a._zoneEngineState = createZoneEngineState();
 	a._showCustomIconPicker = false;
@@ -1057,7 +1056,6 @@ describe("stopPropagation handlers in zone sidebar", () => {
 		el.roomRenew = ZONE_TYPE_DEFAULTS.normal.renew;
 		el.roomTimeout = ZONE_TYPE_DEFAULTS.normal.timeout;
 		el.roomHandoffTimeout = ZONE_TYPE_DEFAULTS.normal.handoff_timeout;
-		el.roomEntryPoint = false;
 		el.localZoneState = new Map();
 		el.localize = (k: string) => k;
 		const tpl = el._renderZoneSidebar();

@@ -52,12 +52,20 @@ static Grid build_grid(const json& grid_config) {
         }
     }
 
+    if (grid_config.contains("overlay_entry_cells")) {
+        for (auto& cell : grid_config["overlay_entry_cells"]) {
+            int col = cell[0].get<int>();
+            int row = cell[1].get<int>();
+            int idx = row * GRID_COLS + col;
+            grid.cell(idx) = grid.cell(idx) | CELL_OVERLAY_ENTRY;
+        }
+    }
+
     return grid;
 }
 
 static ZoneType parse_zone_type(const std::string& type_str) {
     if (type_str == "normal") return ZoneType::NORMAL;
-    if (type_str == "entrance") return ZoneType::ENTRANCE;
     if (type_str == "thoroughfare") return ZoneType::THOROUGHFARE;
     if (type_str == "rest") return ZoneType::REST;
     return ZoneType::CUSTOM;
@@ -73,7 +81,6 @@ static std::vector<ZoneConfig> build_zones(const json& zone_configs) {
         zc.renew = cfg["renew"].get<int>();
         zc.timeout = cfg["timeout"].get<float>();
         zc.handoff_timeout = cfg["handoff_timeout"].get<float>();
-        zc.entry_point = cfg["entry_point"].get<bool>();
         zones.push_back(zc);
     }
     return zones;
@@ -125,9 +132,23 @@ static void run_scenario(const std::string& name, const json& scenario,
     auto& ticks = scenario["ticks"];
     auto& expected_arr = scenario["expected"];
 
+    // Track per-target overlay flag (sticky), simulating component behaviour
+    bool target_on_overlay[MAX_TARGETS]{};
+
     for (int i = 0; i < static_cast<int>(ticks.size()); ++i) {
         float t = ticks[i]["t"].get<float>();
         WindowOutput wo = build_window(ticks[i]);
+
+        // Simulate component raw-frame overlay tracking
+        for (int ti = 0; ti < MAX_TARGETS; ++ti) {
+            if (wo.targets[ti].active) {
+                int cell = grid.xy_to_cell(wo.targets[ti].median_x, wo.targets[ti].median_y);
+                if (cell != -1 && grid.cell_is_room(cell)) {
+                    target_on_overlay[ti] = grid.cell_has_overlay_entry(cell);
+                }
+            }
+            wo.targets[ti].on_overlay = target_on_overlay[ti];
+        }
         const ProcessingResult& result = engine.tick(wo, t);
 
         auto& expected = expected_arr[i];

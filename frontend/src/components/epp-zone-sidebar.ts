@@ -22,9 +22,9 @@ export class EppZoneSidebar extends LitElement {
 		ZONE_TYPE_DEFAULTS.normal.timeout;
 	@property({ attribute: false }) roomHandoffTimeout: number =
 		ZONE_TYPE_DEFAULTS.normal.handoff_timeout;
-	@property({ attribute: false }) roomEntryPoint = false;
 	@property({ attribute: false }) localZoneState: Map<number, LocalZoneInfo> =
 		new Map();
+	@property({ attribute: false }) overlayMode: string | null = null;
 	@property({ attribute: false }) localize: (
 		key: string,
 		params?: Record<string, string | number>,
@@ -350,6 +350,31 @@ export class EppZoneSidebar extends LitElement {
 						`
 						: nothing
 				}
+
+				<hr class="zone-separator" />
+				<div style="font-size: 12px; font-weight: 500; color: var(--secondary-text-color, #757575); padding: 4px 8px;">
+					${this.localize("zones.overlays")}
+				</div>
+				<div
+					class="zone-item ${this.overlayMode === "entry" ? "active" : ""}"
+					@click=${() => {
+						this.dispatchEvent(
+							new CustomEvent("overlay-select", {
+								detail: { mode: this.overlayMode === "entry" ? null : "entry" },
+								bubbles: true,
+								composed: true,
+							}),
+						);
+					}}
+				>
+					<div class="zone-item-row">
+						<div
+							class="zone-color-dot"
+							style="background: repeating-linear-gradient(45deg, transparent, transparent 6px, rgba(60,60,60,0.7) 6px, rgba(60,60,60,0.7) 8px); border: 1px solid #ccc;"
+						></div>
+						<span class="zone-name">${this.localize("zones.overlay_entry")}</span>
+					</div>
+				</div>
 			</div>
 		`;
 	}
@@ -411,9 +436,6 @@ export class EppZoneSidebar extends LitElement {
 					>
 						<option value="normal">
 							${this.localize("zones.normal")}
-						</option>
-						<option value="entrance">
-							${this.localize("zones.entrance")}
 						</option>
 						<option value="thoroughfare">
 							${this.localize("zones.thoroughfare")}
@@ -580,43 +602,6 @@ export class EppZoneSidebar extends LitElement {
 						>${this.localize("zones.seconds_suffix")}</span
 					>
 				</div>
-				<div
-					style="width: 100%; display: flex; align-items: center; gap: 4px; font-size: 12px; opacity: ${isCustom ? 1 : 0.5};"
-				>
-					<label style="width: 80px; flex-shrink: 0;"
-						>${this.localize("zones.entry_point")}</label
-					>
-					<span style="flex: 1;"></span>
-					<label class="toggle-switch">
-						<input
-							type="checkbox"
-							?checked=${isCustom ? this.roomEntryPoint : false}
-							?disabled=${!isCustom}
-							@change=${(e: Event) => {
-								this.dispatchEvent(
-									new CustomEvent("room-config-change", {
-										detail: {
-											updates: {
-												roomEntryPoint: (e.target as HTMLInputElement).checked,
-											},
-										},
-										bubbles: true,
-										composed: true,
-									}),
-								);
-								this.dispatchEvent(
-									new CustomEvent("dirty", {
-										bubbles: true,
-										composed: true,
-									}),
-								);
-							}}
-							@click=${(e: Event) => e.stopPropagation()}
-						/>
-						<span class="toggle-slider"></span>
-					</label>
-					<span style="width: 10px;"></span>
-				</div>
 			</div>
 		`;
 	}
@@ -676,9 +661,6 @@ export class EppZoneSidebar extends LitElement {
 					>
 						<option value="normal">
 							${this.localize("zones.normal")}
-						</option>
-						<option value="entrance">
-							${this.localize("zones.entrance")}
 						</option>
 						<option value="thoroughfare">
 							${this.localize("zones.thoroughfare")}
@@ -846,44 +828,6 @@ export class EppZoneSidebar extends LitElement {
 						style="width: 10px; text-align: right; flex-shrink: 0; font-size: 12px;"
 						>${this.localize("zones.seconds_suffix")}</span
 					>
-				</div>
-				<div
-					style="width: 100%; display: flex; align-items: center; gap: 4px; font-size: 12px; opacity: ${isCustom ? 1 : 0.5};"
-				>
-					<label style="width: 80px; flex-shrink: 0;"
-						>${this.localize("zones.entry_point")}</label
-					>
-					<span style="flex: 1;"></span>
-					<label class="toggle-switch">
-						<input
-							type="checkbox"
-							?checked=${isCustom ? (zone.entry_point ?? false) : zone.type === "entrance"}
-							?disabled=${!isCustom}
-							@change=${(e: Event) => {
-								this.dispatchEvent(
-									new CustomEvent("zone-config-change", {
-										detail: {
-											index,
-											updates: {
-												entry_point: (e.target as HTMLInputElement).checked,
-											},
-										},
-										bubbles: true,
-										composed: true,
-									}),
-								);
-								this.dispatchEvent(
-									new CustomEvent("dirty", {
-										bubbles: true,
-										composed: true,
-									}),
-								);
-							}}
-							@click=${(e: Event) => e.stopPropagation()}
-						/>
-						<span class="toggle-slider"></span>
-					</label>
-					<span style="width: 10px;"></span>
 				</div>
 			</div>
 		`;

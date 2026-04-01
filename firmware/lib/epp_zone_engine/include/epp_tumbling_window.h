@@ -20,6 +20,7 @@ struct TargetWindow {
     float median_y = 0.0f;
     int frame_count = 0;
     bool active = false;
+    bool on_overlay = false;  // raw frame touched an overlay cell recently
 };
 
 struct WindowOutput {

@@ -19,6 +19,7 @@ import type { EPPGridPanel } from "../eppgrid-panel.js";
 import "../eppgrid-panel.js";
 import {
 	CELL_ROOM_BIT,
+	cellSetOverlayEntry,
 	cellSetZone,
 	GRID_CELL_COUNT,
 	GRID_COLS,
@@ -34,8 +35,11 @@ function makeParityGrid(): Uint8Array {
 			grid[r * GRID_COLS + c] = CELL_ROOM_BIT; // zone 0 (room)
 		}
 	}
-	// Zone 1 on cell (col=9, row=1)
-	grid[1 * GRID_COLS + 9] = cellSetZone(CELL_ROOM_BIT, 1);
+	// Zone 1 on cell (col=9, row=1) with overlay entry bit
+	grid[1 * GRID_COLS + 9] = cellSetOverlayEntry(
+		cellSetZone(CELL_ROOM_BIT, 1),
+		true,
+	);
 	return grid;
 }
 
@@ -69,11 +73,15 @@ function createParityPanel(): EPPGridPanel {
 	const a = el as any;
 	a._grid = makeParityGrid();
 	a._zoneConfigs = new Array(MAX_ZONES).fill(null);
-	// Zone 1: entrance type (trigger=3, renew=2, timeout=5, entry_point=true)
+	// Zone 1: custom type (trigger=3, renew=2, timeout=5, handoff=1)
 	a._zoneConfigs[0] = {
 		name: "Zone 1",
 		color: "#ff0000",
-		type: "entrance",
+		type: "custom",
+		trigger: 3,
+		renew: 2,
+		timeout: 5,
+		handoff_timeout: 1,
 	};
 	a._roomWidth = 1200;
 	a._roomDepth = 1200;
@@ -82,7 +90,6 @@ function createParityPanel(): EPPGridPanel {
 	a._roomRenew = 3;
 	a._roomTimeout = 10;
 	a._roomHandoffTimeout = 3;
-	a._roomEntryPoint = false;
 	a._targets = [];
 	a._loading = false;
 	return el;
@@ -113,18 +120,19 @@ describe("Zone engine parity (mirrors test_zone_engine_parity.py)", () => {
 		expect(occ[1]).toBe(false);
 	});
 
-	it("target in zone 1 (entrance) with signal >= trigger → zone 1 occupied", () => {
-		// Entrance zone: trigger=3, entry_point=true
+	it("target in zone 1 (custom) with signal >= trigger → zone 1 occupied", () => {
+		// Custom zone: trigger=3
 		a._targets = [makeTarget(450, 450, 3)];
 		const occ = a._runLocalZoneEngine().occupancy;
 		expect(occ[1]).toBe(true);
 		expect(occ[0]).toBe(false);
 	});
 
-	it("target in zone 1 with signal < trigger → zone 1 stays clear", () => {
-		a._targets = [makeTarget(450, 450, 2)];
+	it("target in zone 0 with signal < trigger → zone 0 stays clear", () => {
+		// Zone 0 (no overlay): trigger=5, signal=4 → below trigger
+		a._targets = [makeTarget(150, 150, 4)];
 		const occ = a._runLocalZoneEngine().occupancy;
-		expect(occ[1]).toBe(false);
+		expect(occ[0]).toBe(false);
 	});
 
 	it("target in room (zone 0) with signal >= gated threshold → zone 0 occupied after gating", () => {
@@ -139,9 +147,9 @@ describe("Zone engine parity (mirrors test_zone_engine_parity.py)", () => {
 		expect(occ[0]).toBe(true);
 	});
 
-	it("target in entry-point zone bypasses gating", () => {
-		// Entrance zone 1: entry_point=true, trigger=3
-		// No previous position but entry point → no gating required
+	it("target in overlay-entry zone bypasses gating", () => {
+		// Custom zone 1: trigger=3, cell has overlay entry bit
+		// No previous position but overlay entry → no gating required
 		a._targets = [makeTarget(450, 450, 3)];
 		const occ = a._runLocalZoneEngine().occupancy;
 		expect(occ[1]).toBe(true); // immediate — no gating
@@ -158,7 +166,7 @@ describe("Zone engine parity (mirrors test_zone_engine_parity.py)", () => {
 		occ = a._runLocalZoneEngine().occupancy;
 		expect(occ[1]).toBe(true); // still occupied (PENDING)
 
-		// Fast-forward past timeout (entrance timeout=5s)
+		// Fast-forward past timeout (custom zone timeout=5s)
 		const st = a._zoneEngineState.localZoneState.get(1);
 		st.pendingSince = Date.now() / 1000 - 6; // 6 seconds ago
 		occ = a._runLocalZoneEngine().occupancy;
@@ -182,11 +190,11 @@ describe("Zone engine parity (mirrors test_zone_engine_parity.py)", () => {
 	});
 
 	it("two targets in different zones → both zones occupied", () => {
-		// Target 0 in zone 1 (entrance, trigger=3, entry point — no gating)
+		// Target 0 in zone 1 (custom, trigger=3, overlay entry — no gating)
 		// Target 1 in zone 0 (room, trigger=5, gated threshold = min(5+2,8) = 7)
 		a._targets = [makeTarget(450, 450, 5), makeTarget(150, 150, 7)];
 
-		// First tick: zone 1 immediate (entry point), zone 0 gating (count=1)
+		// First tick: zone 1 immediate (overlay entry), zone 0 gating (count=1)
 		let occ = a._runLocalZoneEngine().occupancy;
 		expect(occ[1]).toBe(true);
 		expect(occ[0]).toBe(false);
@@ -333,7 +341,7 @@ describe("Per-target status parity", () => {
 	});
 
 	it("two targets, one leaves → mixed active/pending states", () => {
-		// T0 in zone 1 (entry point, immediate), T1 in zone 0 (needs gating)
+		// T0 in zone 1 (overlay entry, immediate), T1 in zone 0 (needs gating)
 		a._targets = [makeTarget(450, 450, 5), makeTarget(150, 150, 9)];
 
 		// Tick 1: zone 1 confirmed immediately; zone 0 gating (count=1)
@@ -388,7 +396,7 @@ describe("Per-target status parity", () => {
 	});
 
 	it("handoff: target moves from zone 1 to zone 0, zone 1 goes pending", () => {
-		// Establish zone 1 occupied (entry point → immediate, no gating needed).
+		// Establish zone 1 occupied (overlay entry → immediate, no gating needed).
 		a._targets = [makeTarget(450, 450, 5)];
 		a._runLocalZoneEngine(); // tick 1: zone 1 occupied
 		a._runLocalZoneEngine(); // tick 2: target in confirmedTargets for zone 1
@@ -572,7 +580,7 @@ describe("Unsaved grid overrides backend status", () => {
 		// receives the raw sensor signal (non-zero), not the zone
 		// engine's filtered signal.
 		//
-		// Target at (450, 450) → cell (9,1) = zone 1 (entrance) in parity grid.
+		// Target at (450, 450) → cell (9,1) = zone 1 (custom) in parity grid.
 		// Backend would send status="pending" if cell was grey in saved grid.
 		// But unsaved grid has it as room (zone 1).
 		// Raw sensor signal = 5 (not filtered to 0 by backend zone engine).

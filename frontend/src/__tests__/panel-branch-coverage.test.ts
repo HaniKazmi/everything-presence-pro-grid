@@ -82,7 +82,6 @@ function createPanel() {
 	a._roomRenew = ZONE_TYPE_DEFAULTS.normal.renew;
 	a._roomTimeout = ZONE_TYPE_DEFAULTS.normal.timeout;
 	a._roomHandoffTimeout = ZONE_TYPE_DEFAULTS.normal.handoff_timeout;
-	a._roomEntryPoint = false;
 	a._showHitCounts = false;
 	a._zoneEngineState = createZoneEngineState();
 	a._showCustomIconPicker = false;
@@ -342,7 +341,6 @@ describe("zone engine branch coverage", () => {
 			renew: 2,
 			timeout: 0.001,
 			handoff_timeout: 0.001,
-			entry_point: true,
 		};
 
 		// Set zone as occupied with handoff pending that has expired
@@ -375,7 +373,6 @@ describe("zone engine branch coverage", () => {
 			renew: 2,
 			timeout: 100,
 			handoff_timeout: 100,
-			entry_point: true,
 		};
 
 		// Zone is in pending state
@@ -417,7 +414,6 @@ describe("zone engine branch coverage", () => {
 			renew: 2,
 			timeout: 100,
 			handoff_timeout: 100,
-			entry_point: true,
 		};
 
 		// Zone is occupied, no pending
@@ -852,7 +848,6 @@ describe("_renderZoneSidebar boundary occupancy glow", () => {
 		el.roomRenew = ZONE_TYPE_DEFAULTS.normal.renew;
 		el.roomTimeout = ZONE_TYPE_DEFAULTS.normal.timeout;
 		el.roomHandoffTimeout = ZONE_TYPE_DEFAULTS.normal.handoff_timeout;
-		el.roomEntryPoint = false;
 		el.localZoneState = new Map([
 			[
 				0,
@@ -882,7 +877,6 @@ describe("stopPropagation handlers coverage", () => {
 		el.roomRenew = ZONE_TYPE_DEFAULTS.normal.renew;
 		el.roomTimeout = ZONE_TYPE_DEFAULTS.normal.timeout;
 		el.roomHandoffTimeout = ZONE_TYPE_DEFAULTS.normal.handoff_timeout;
-		el.roomEntryPoint = false;
 		el.localZoneState = new Map();
 		el.localize = (k: string) => k;
 		Object.assign(el, overrides);
@@ -1525,7 +1519,6 @@ describe("zone sidebar occupancy glow branch", () => {
 		el.roomRenew = ZONE_TYPE_DEFAULTS.normal.renew;
 		el.roomTimeout = ZONE_TYPE_DEFAULTS.normal.timeout;
 		el.roomHandoffTimeout = ZONE_TYPE_DEFAULTS.normal.handoff_timeout;
-		el.roomEntryPoint = false;
 		el.localZoneState = new Map([
 			[
 				1,
@@ -1551,7 +1544,6 @@ describe("zone sidebar occupancy glow branch", () => {
 		el.roomRenew = ZONE_TYPE_DEFAULTS.normal.renew;
 		el.roomTimeout = ZONE_TYPE_DEFAULTS.normal.timeout;
 		el.roomHandoffTimeout = ZONE_TYPE_DEFAULTS.normal.handoff_timeout;
-		el.roomEntryPoint = false;
 		el.localZoneState = new Map([
 			[
 				0,

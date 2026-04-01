@@ -79,7 +79,6 @@ function createPanel(): EPPGridPanel {
 	a._roomRenew = ZONE_TYPE_DEFAULTS.normal.renew;
 	a._roomTimeout = ZONE_TYPE_DEFAULTS.normal.timeout;
 	a._roomHandoffTimeout = ZONE_TYPE_DEFAULTS.normal.handoff_timeout;
-	a._roomEntryPoint = false;
 	a._showHitCounts = false;
 	a._zoneEngineState = createZoneEngineState();
 	a._showCustomIconPicker = false;
@@ -174,7 +173,6 @@ describe("Editor view event wiring", () => {
 			renew: 2,
 			timeout: 10,
 			handoff_timeout: 2,
-			entry_point: false,
 		};
 		// Re-render with the zone config in place
 		const container2 = renderPanel(el);
@@ -212,7 +210,6 @@ describe("Editor view event wiring", () => {
 						roomRenew: 2,
 						roomTimeout: 5,
 						roomHandoffTimeout: 1,
-						roomEntryPoint: true,
 					},
 				},
 				bubbles: true,
@@ -222,7 +219,6 @@ describe("Editor view event wiring", () => {
 		expect(a._roomRenew).toBe(2);
 		expect(a._roomTimeout).toBe(5);
 		expect(a._roomHandoffTimeout).toBe(1);
-		expect(a._roomEntryPoint).toBe(true);
 	});
 
 	it("dirty sets _dirty to true", () => {

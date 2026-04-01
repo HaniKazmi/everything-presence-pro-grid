@@ -478,23 +478,21 @@ describe("_applyConfig", () => {
 				room_depth: 0,
 			},
 			room_layout: {
-				room_type: "entrance",
+				room_type: "thoroughfare",
 				room_trigger: 3,
 				room_renew: 2,
 				room_timeout: 5,
 				room_handoff_timeout: 2,
-				room_entry_point: true,
 			},
 		};
 
 		a._applyConfig(config);
 
-		expect(a._roomType).toBe("entrance");
+		expect(a._roomType).toBe("thoroughfare");
 		expect(a._roomTrigger).toBe(3);
 		expect(a._roomRenew).toBe(2);
 		expect(a._roomTimeout).toBe(5);
 		expect(a._roomHandoffTimeout).toBe(2);
-		expect(a._roomEntryPoint).toBe(true);
 	});
 
 	it("applies settings from config", () => {
@@ -553,7 +551,6 @@ describe("_applyLayout", () => {
 		a._roomRenew = 3;
 		a._roomTimeout = 10;
 		a._roomHandoffTimeout = 3;
-		a._roomEntryPoint = false;
 
 		el.hass = {
 			callWS: vi.fn().mockResolvedValue({}),
@@ -869,7 +866,6 @@ describe("_deleteCalibration", () => {
 		expect(a._dirty).toBe(false);
 		expect(a._view).toBe("live");
 		expect(a._roomType).toBe("normal");
-		expect(a._roomEntryPoint).toBe(false);
 
 		// set_distance_override (widen) + set_setup + set_room_layout
 		expect(el.hass.callWS).toHaveBeenCalledTimes(3);

@@ -21,25 +21,24 @@ static Grid make_parity_grid() {
             grid.cell(r * GRID_COLS + c) = CELL_ROOM_BIT;
         }
     }
-    // Zone 1 on cell (col=9, row=1)
-    grid.cell(1 * GRID_COLS + 9) = CELL_ROOM_BIT | (1 << CELL_ZONE_SHIFT);
+    // Zone 1 on cell (col=9, row=1), with overlay entry bit
+    grid.cell(1 * GRID_COLS + 9) = CELL_ROOM_BIT | (1 << CELL_ZONE_SHIFT) | CELL_OVERLAY_ENTRY;
     return grid;
 }
 
 static ZoneEngine make_parity_engine() {
     Grid grid = make_parity_grid();
 
-    // Zone 1: entrance, trigger=3, renew=2, timeout=5, handoff_timeout=1, entry_point=true
+    // Zone 1: custom, trigger=3, renew=2, timeout=5, handoff_timeout=1
     ZoneConfig zone1{};
     zone1.id = 1;
-    zone1.type = ZoneType::ENTRANCE;
+    zone1.type = ZoneType::CUSTOM;
     zone1.trigger = 3;
     zone1.renew = 2;
     zone1.timeout = 5.0f;
     zone1.handoff_timeout = 1.0f;
-    zone1.entry_point = true;
 
-    // Zone 0: normal, trigger=5, renew=3, timeout=10, handoff_timeout=3, entry_point=false
+    // Zone 0: normal, trigger=5, renew=3, timeout=10, handoff_timeout=3
     ZoneConfig zone0{};
     zone0.id = 0;
     zone0.type = ZoneType::NORMAL;
@@ -47,7 +46,6 @@ static ZoneEngine make_parity_engine() {
     zone0.renew = 3;
     zone0.timeout = 10.0f;
     zone0.handoff_timeout = 3.0f;
-    zone0.entry_point = false;
 
     ZoneConfig zones[] = {zone1, zone0};
 
@@ -112,7 +110,7 @@ TEST_CASE("inactive target → all zones clear") {
     CHECK_FALSE(r.zone_occupancy[1]);
 }
 
-TEST_CASE("target in entrance zone with signal >= trigger → zone 1 occupied") {
+TEST_CASE("target in custom zone with signal >= trigger → zone 1 occupied") {
     ZoneEngine engine = make_parity_engine();
     // Zone 1 at cell (9,1): x = 9*300 + 150 = 2850, y = 1*300 + 150 = 450
     const ProcessingResult& r = engine.tick(make_window_1(X_OFF + 450, 450, 3), 100.0f);
@@ -122,8 +120,9 @@ TEST_CASE("target in entrance zone with signal >= trigger → zone 1 occupied") 
 
 TEST_CASE("target below trigger → zone stays clear") {
     ZoneEngine engine = make_parity_engine();
-    const ProcessingResult& r = engine.tick(make_window_1(X_OFF + 450, 450, 2), 100.0f);
-    CHECK_FALSE(r.zone_occupancy[1]);
+    // Use zone 0 (no overlay) — zone 0 trigger=5, signal=4 → below trigger
+    const ProcessingResult& r = engine.tick(make_window_1(X_OFF + 150, 150, 4), 100.0f);
+    CHECK_FALSE(r.zone_occupancy[0]);
 }
 
 TEST_CASE("zone 0 gating: needs 2 consecutive qualifying ticks") {
@@ -142,9 +141,42 @@ TEST_CASE("zone 0 gating: needs 2 consecutive qualifying ticks") {
 
 TEST_CASE("entry point bypasses gating") {
     ZoneEngine engine = make_parity_engine();
-    // Zone 1 is entrance (entry_point=True), trigger=3
-    const ProcessingResult& r = engine.tick(make_window_1(X_OFF + 450, 450, 3), 100.0f);
+    // Zone 1 cell is at (9,1). Set overlay entry bit.
+    Grid grid = engine.grid();
+    int cell_idx = 1 * GRID_COLS + 9;  // row=1, col=9
+    grid.cell(cell_idx) = grid.cell(cell_idx) | CELL_OVERLAY_ENTRY;
+    engine.set_grid(grid);
+
+    // Zone 1 trigger=3, target at (2850, 450)
+    WindowOutput wo{};
+    wo.total_frames = 10;
+    wo.targets[0].active = true;
+    wo.targets[0].median_x = 2850.0f;
+    wo.targets[0].median_y = 450.0f;
+    wo.targets[0].frame_count = 3;
+    const ProcessingResult& r = engine.tick(wo, 100.0f);
     CHECK(r.zone_occupancy[1]);
+}
+
+TEST_CASE("cell overlay entry bypasses gating") {
+    ZoneEngine engine = make_parity_engine();
+    // Get the grid and set overlay entry bit on cell (8,0) — zone 0
+    Grid grid = engine.grid();
+    int cell_idx = 0 * GRID_COLS + 8;  // row=0, col=8
+    grid.cell(cell_idx) = grid.cell(cell_idx) | CELL_OVERLAY_ENTRY;
+    engine.set_grid(grid);
+
+    // Target at (2550, 150) lands on cell (8,0) in zone 0.
+    // Zone 0: trigger=5, gated=7. Signal 5/10 frames → would fail gating without overlay.
+    // With overlay → bypasses gating → confirmed immediately.
+    WindowOutput wo{};
+    wo.total_frames = 10;
+    wo.targets[0].active = true;
+    wo.targets[0].median_x = 2550.0f;
+    wo.targets[0].median_y = 150.0f;
+    wo.targets[0].frame_count = 5;
+    const ProcessingResult& r = engine.tick(wo, 100.0f);
+    CHECK(r.zone_occupancy[0]);
 }
 
 TEST_CASE("PENDING then CLEAR after timeout") {
@@ -159,7 +191,7 @@ TEST_CASE("PENDING then CLEAR after timeout") {
     const ProcessingResult& r2 = engine.tick(make_window_1(X_OFF + 450, 450, 0), t + 1.0f);
     CHECK(r2.zone_occupancy[1]);
 
-    // After timeout (entrance timeout=5s) → CLEAR
+    // After timeout (custom zone timeout=5s) → CLEAR
     const ProcessingResult& r3 = engine.tick(make_window_1(X_OFF + 450, 450, 0), t + 7.0f);
     CHECK_FALSE(r3.zone_occupancy[1]);
 }
@@ -184,7 +216,7 @@ TEST_CASE("two targets in different zones") {
     ZoneEngine engine = make_parity_engine();
     float t = 100.0f;
 
-    // Target 0 in zone 1 (entrance, entry point), Target 1 in zone 0 (room, gating)
+    // Target 0 in zone 1 (custom, entry point), Target 1 in zone 0 (room, gating)
     // First tick: zone 1 immediate, zone 0 gating (count=1)
     const ProcessingResult& r1 = engine.tick(
         make_window_2(X_OFF + 450, 450, 5, X_OFF + 150, 150, 7), t);
@@ -387,9 +419,8 @@ TEST_CASE("set_zones skips invalid zone IDs") {
     engine.set_grid(make_parity_grid());
     ZoneConfig bad{};
     bad.id = 99;  // out of range (MAX_ZONE_SLOTS=8)
-    bad.type = ZoneType::ENTRANCE;
+    bad.type = ZoneType::CUSTOM;
     bad.trigger = 1;
-    bad.entry_point = true;
     engine.set_zones(&bad, 1);
     // Only zone 0 should exist; zone 1 cell should not trigger zone 1 occupancy
     const ProcessingResult& r = engine.tick(make_window_1(X_OFF + 450, 450, 9), 100.0f);
@@ -403,9 +434,8 @@ TEST_CASE("set_zones resets per-target gating state") {
     engine.tick(make_window_1(X_OFF + 150, 150, 7), t);
     // Re-configure zones → should reset gate count
     ZoneConfig zone1{};
-    zone1.id = 1; zone1.type = ZoneType::ENTRANCE; zone1.trigger = 3;
+    zone1.id = 1; zone1.type = ZoneType::CUSTOM; zone1.trigger = 3;
     zone1.renew = 2; zone1.timeout = 5.0f; zone1.handoff_timeout = 1.0f;
-    zone1.entry_point = true;
     engine.set_zones(&zone1, 1);
     // Next tick should be treated as first gating tick again (not second)
     const ProcessingResult& r = engine.tick(make_window_1(X_OFF + 150, 150, 7), t + 1.0f);
@@ -485,9 +515,8 @@ TEST_CASE("set_zones resets zone occupancy state") {
     engine.tick(make_window_1(X_OFF + 450, 450, 5), 100.0f);
     // Reconfigure
     ZoneConfig zone1{};
-    zone1.id = 1; zone1.type = ZoneType::ENTRANCE; zone1.trigger = 3;
+    zone1.id = 1; zone1.type = ZoneType::CUSTOM; zone1.trigger = 3;
     zone1.renew = 2; zone1.timeout = 5.0f; zone1.handoff_timeout = 1.0f;
-    zone1.entry_point = true;
     engine.set_zones(&zone1, 1);
     // Zone state should be reset to CLEAR
     const ProcessingResult& r = engine.tick(make_window_0(), 101.0f);
@@ -572,29 +601,32 @@ TEST_CASE("force-clear: pending zones cleared when sensors inactive and no activ
     ZoneEngine engine = make_parity_engine();
     float t = 100.0f;
     SensorInput sensors;
-    // Use short sensor timeouts (1s) so they expire well before zone timeout (5s)
+    // Use short sensor timeouts (1s) so they expire well before zone timeout (10s)
     sensors.static_on = true;
     sensors.static_timeout = 1.0f;
     sensors.motion_on = true;
     sensors.motion_timeout = 1.0f;
 
-    // Occupy zone 1 with target + sensors active
-    engine.tick(make_window_1(X_OFF + 450, 450, 5), t, sensors);
+    // Use zone 0 (normal, no overlay, timeout=10s, handoff=3s) to avoid
+    // overlay exit handoff which would accelerate the pending timeout.
+    // Need 2 gating ticks to confirm zone 0.
+    engine.tick(make_window_1(X_OFF + 150, 150, 7), t, sensors);
+    engine.tick(make_window_1(X_OFF + 150, 150, 7), t + 0.5f, sensors);
 
-    // Target disappears at t+1, zone 1 goes PENDING_CLEAR (timeout=5s, expires at t+6)
+    // Target disappears at t+1, zone 0 goes PENDING_CLEAR (timeout=10s, expires at t+11)
     const ProcessingResult& r1 = engine.tick(make_window_0(), t + 1.0f, sensors);
-    CHECK(r1.zone_occupancy[1]);  // still occupied (pending)
+    CHECK(r1.zone_occupancy[0]);  // still occupied (pending)
 
     // Sensors go off at t+2 -> both pending (1s timeout)
     sensors.static_on = false;
     sensors.motion_on = false;
     const ProcessingResult& r2 = engine.tick(make_window_0(), t + 2.0f, sensors);
-    CHECK(r2.zone_occupancy[1]);  // sensors pending, zone still pending
+    CHECK(r2.zone_occupancy[0]);  // sensors pending, zone still pending
 
-    // At t+3.5: sensors expired (1s from t+2), zone still has 2.5s left on its timeout
+    // At t+3.5: sensors expired (1s from t+2), zone still has 7.5s left on its timeout
     // Force-clear should fire and clear the zone immediately
     const ProcessingResult& r3 = engine.tick(make_window_0(), t + 3.5f, sensors);
-    CHECK_FALSE(r3.zone_occupancy[1]);  // force-cleared before zone timeout!
+    CHECK_FALSE(r3.zone_occupancy[0]);  // force-cleared before zone timeout!
 }
 
 TEST_CASE("force-clear: does NOT clear if a zone has active targets") {
@@ -648,6 +680,55 @@ TEST_CASE("occupancy: true when zone occupied even if sensors inactive") {
     const ProcessingResult& r = engine.tick(make_window_1(X_OFF + 450, 450, 5), 100.0f, sensors);
     CHECK(r.zone_occupancy[1]);
     CHECK(r.occupancy);  // zone occupied -> occupancy true
+}
+
+TEST_CASE("overlay exit accelerates pending clear") {
+    ZoneEngine engine = make_parity_engine();
+    // Zone 1 cell (9,1) already has overlay entry bit in make_parity_grid()
+
+    // Tick 1: target in zone 1, confirmed (trigger=3, overlay bypasses gating)
+    // on_overlay=true: raw frame touched the overlay cell
+    WindowOutput wo1 = make_window_1(X_OFF + 450, 450, 5);
+    wo1.targets[0].on_overlay = true;
+    const ProcessingResult& r1 = engine.tick(wo1, 100.0f);
+    CHECK(r1.zone_occupancy[1]);
+
+    // Tick 2: target disappears — on_overlay still sticky from component
+    WindowOutput wo2 = make_window_0();
+    wo2.targets[0].on_overlay = true;
+    engine.tick(wo2, 101.0f);
+
+    // Tick 3: 1.5s after disappearance — should have cleared (handoff=1s)
+    const ProcessingResult& r3 = engine.tick(make_window_0(), 102.5f);
+    CHECK_FALSE(r3.zone_occupancy[1]);
+}
+
+TEST_CASE("non-overlay exit uses full timeout") {
+    ZoneEngine engine = make_parity_engine();
+    // Remove overlay from zone 1 cell so it behaves normally
+    Grid grid = engine.grid();
+    int cell_idx = 1 * GRID_COLS + 9;
+    grid.cell(cell_idx) = grid.cell(cell_idx) & ~CELL_OVERLAY_ENTRY;
+    engine.set_grid(grid);
+
+    // Zone 0 (normal: timeout=10, handoff=3). No overlay.
+    // Need 2 gating ticks to confirm zone 0.
+    float t = 100.0f;
+    const ProcessingResult& r1 = engine.tick(make_window_1(X_OFF + 150, 150, 7), t);
+    CHECK_FALSE(r1.zone_occupancy[0]);
+    const ProcessingResult& r2 = engine.tick(make_window_1(X_OFF + 150, 150, 7), t + 1.0f);
+    CHECK(r2.zone_occupancy[0]);
+
+    // Target disappears — no overlay → full timeout (10s)
+    engine.tick(make_window_0(), t + 2.0f);
+
+    // 5s later — should still be occupied (timeout=10s)
+    const ProcessingResult& r4 = engine.tick(make_window_0(), t + 7.0f);
+    CHECK(r4.zone_occupancy[0]);  // still pending
+
+    // 12s later — should clear
+    const ProcessingResult& r5 = engine.tick(make_window_0(), t + 14.0f);
+    CHECK_FALSE(r5.zone_occupancy[0]);
 }
 
 TEST_CASE("zone_target_counts reports number of targets, not signal") {

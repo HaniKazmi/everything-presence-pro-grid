@@ -16,8 +16,9 @@ constexpr int GRID_CELL_SIZE_MM = 300;
 constexpr uint8_t CELL_ROOM_BIT = 0x01;
 constexpr int CELL_ZONE_SHIFT = 1;
 constexpr uint8_t CELL_ZONE_MASK = 0x0E;
-constexpr uint8_t CELL_TRAINING_MASK = 0xF0;
-constexpr int CELL_TRAINING_SHIFT = 4;
+constexpr uint8_t CELL_OVERLAY_ENTRY = 0x10;   // bit 4: entry/exit overlay
+constexpr uint8_t CELL_TRAINING_MASK = 0xE0;   // bits 5-7
+constexpr int CELL_TRAINING_SHIFT = 5;
 
 // Limits
 constexpr int MAX_TARGETS = 3;
@@ -63,10 +64,9 @@ constexpr int MAX_LOG_ENTRIES = 16;
 // Zone type — matches Python const.py ZONE_TYPE_* constants
 enum class ZoneType : uint8_t {
     NORMAL = 0,
-    ENTRANCE = 1,
-    THOROUGHFARE = 2,
-    REST = 3,
-    CUSTOM = 4,
+    THOROUGHFARE = 1,
+    REST = 2,
+    CUSTOM = 3,
 };
 
 // Default parameters per zone type — matches Python ZONE_TYPE_DEFAULTS
@@ -77,11 +77,10 @@ struct ZoneTypeDefaults {
     float handoff_timeout;
 };
 
-// Defaults indexed by ZoneType ordinal (NORMAL, ENTRANCE, THOROUGHFARE, REST).
+// Defaults indexed by ZoneType ordinal (NORMAL, THOROUGHFARE, REST).
 // CUSTOM has no built-in defaults.
-constexpr std::array<ZoneTypeDefaults, 4> ZONE_TYPE_DEFAULTS = {{
+constexpr std::array<ZoneTypeDefaults, 3> ZONE_TYPE_DEFAULTS = {{
     {5, 3, 10.0f, 3.0f},   // NORMAL
-    {3, 2, 5.0f, 1.0f},    // ENTRANCE
     {3, 2, 3.0f, 1.0f},    // THOROUGHFARE
     {7, 1, 30.0f, 10.0f},  // REST
 }};
@@ -93,11 +92,6 @@ inline ZoneTypeDefaults zone_type_defaults(ZoneType type) {
         return ZONE_TYPE_DEFAULTS[idx];
     }
     return ZONE_TYPE_DEFAULTS[0];  // NORMAL as fallback
-}
-
-// Returns true if the zone type is an entry point (only ENTRANCE).
-inline bool is_entry_point_type(ZoneType type) {
-    return type == ZoneType::ENTRANCE;
 }
 
 // Convert a threshold value to a frame count (minimum 1).

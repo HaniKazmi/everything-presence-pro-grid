@@ -36,7 +36,7 @@ ZoneEngine::ZoneEngine() {
     std::memset(target_prev_y_, 0, sizeof(target_prev_y_));
     std::memset(target_has_prev_xy_, 0, sizeof(target_has_prev_xy_));
     std::memset(target_gate_count_, 0, sizeof(target_gate_count_));
-    for (int i = 0; i < MAX_TARGETS; ++i) target_log_zone_[i] = -1;
+    for (int i = 0; i < MAX_TARGETS; ++i) { target_log_zone_[i] = -1; target_last_zone_[i] = -1; }
     std::memset(target_log_in_room_, 0, sizeof(target_log_in_room_));
 }
 
@@ -61,7 +61,6 @@ void ZoneEngine::set_zones(const ZoneConfig zones[], int count) {
     zones_[0].config.renew = defaults.renew;
     zones_[0].config.timeout = defaults.timeout;
     zones_[0].config.handoff_timeout = defaults.handoff_timeout;
-    zones_[0].config.entry_point = false;
     zone_enabled_[0] = true;
     zone_count_ = 1;
 
@@ -154,6 +153,9 @@ const ProcessingResult& ZoneEngine::tick(const WindowOutput& window, float times
     bool target_in_room[MAX_TARGETS]{};
     for (int i = 0; i < MAX_TARGETS; ++i) target_confirmed_zone[i] = -1;
 
+    // target_last_zone_[i] persists the last zone a target was in while in-room.
+    // Used by overlay exit handoff (Step 2b) to know which zone to accelerate.
+
     // -----------------------------------------------------------------------
     // Step 1: Per-target evaluation (Python lines 510-604)
     // -----------------------------------------------------------------------
@@ -185,6 +187,7 @@ const ProcessingResult& ZoneEngine::tick(const WindowOutput& window, float times
         target_in_room[i] = true;
         int zone_id = grid_.cell_zone(cell);
         target_zone_curr[i] = zone_id;
+        target_last_zone_[i] = zone_id;
 
         // Store actual x,y for faded-dot rendering
         target_prev_x_[i] = tw.median_x;
@@ -236,11 +239,23 @@ const ProcessingResult& ZoneEngine::tick(const WindowOutput& window, float times
                 base_thresh = renew_thresh;
             }
 
-            bool entry_point = rt.config.entry_point;
-            bool needs_gating = !entry_point && !continuous;
+            // Use raw-frame on_overlay (sticky from component) — catches cases
+            // where the median position hasn't reached the overlay cell yet
+            bool on_overlay = tw.on_overlay || grid_.cell_has_overlay_entry(cell);
+            bool needs_gating = !on_overlay && !continuous;
+            // Instant entry: raw frame touched overlay cell → threshold=1
+            if (on_overlay && rt.state == ZoneState::CLEAR) {
+                base_thresh = 1;
+            }
 
             if (needs_gating && rt.state == ZoneState::CLEAR) {
-                // Gating: raise threshold, cap at 8
+                // Gating: raise threshold and require consecutive qualifying ticks.
+                // At 10Hz tick rate, 2 ticks = ~200ms — enough to filter single-frame
+                // noise but fast enough to feel responsive. If false positives become
+                // a problem, options:
+                //   - Increase gate count (e.g. 10-20 for ~1-2s wall-clock delay)
+                //   - Switch to wall-clock gating (require sustained signal for N seconds)
+                //   - Increase gated_thresh offset (currently +2)
                 int gated_thresh = std::min(base_thresh + 2, 8);
                 if (tw.frame_count >= gated_thresh) {
                     target_gate_count_[i] += 1;
@@ -354,6 +369,39 @@ const ProcessingResult& ZoneEngine::tick(const WindowOutput& window, float times
                 src_rt.state = ZoneState::PENDING_CLEAR;
                 src_rt.pending_since = timestamp - (src_rt.config.timeout - src_rt.config.handoff_timeout);
             }
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // Step 2b: Overlay exit handoff — target disappears from overlay cell
+    // When the last confirmed target goes inactive from an overlay cell,
+    // accelerate the pending clear to use handoff_timeout instead of timeout.
+    // We keep confirmed_targets intact so the target renders as PENDING.
+    // -----------------------------------------------------------------------
+    for (int i = 0; i < MAX_TARGETS; ++i) {
+        bool gone = !target_active[i];
+        bool left_room = target_active[i] && target_zone_curr[i] < 0;
+        bool on_overlay = window.targets[i].on_overlay;
+        if ((gone || left_room) && on_overlay) {
+            int prev_zid = target_last_zone_[i];
+            int zi = find_zone_index(prev_zid);
+            if (zi >= 0) {
+                ZoneRuntime& rt = zones_[zi];
+                int remaining = rt.confirmed_targets & ~(1 << i);
+                if (remaining == 0) {
+                    float accel = timestamp - (rt.config.timeout - rt.config.handoff_timeout);
+                    if (rt.state == ZoneState::OCCUPIED) {
+                        rt.state = ZoneState::PENDING_CLEAR;
+                        rt.pending_since = accel;
+                    } else if (rt.state == ZoneState::PENDING_CLEAR && rt.pending_since > accel) {
+                        rt.pending_since = accel;
+                    }
+                    log_(LogLevel::DEBUG, "T%d overlay exit handoff: zone %d, handoff=%.1fs",
+                         i, prev_zid, rt.config.handoff_timeout);
+                }
+            }
+            // Consume: don't re-fire on subsequent ticks
+            target_last_zone_[i] = -1;
         }
     }
 
