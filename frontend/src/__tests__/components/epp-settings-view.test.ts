@@ -1415,6 +1415,215 @@ describe("target auto range toggle (checked=true branch)", () => {
 	});
 });
 
+describe("renderRelay() @selected handlers", () => {
+	it("changing trigger mode select updates _overrides and fires setting-change + dirty", () => {
+		const sv = createView({ relayTriggerMode: "disabled" });
+		const tpl = (sv as any).renderRelay();
+		const c = renderTo(tpl);
+
+		const events: { key: string; value: unknown }[] = [];
+		sv.addEventListener("setting-change", ((e: CustomEvent) => {
+			events.push(e.detail);
+		}) as EventListener);
+		let dirtyFired = false;
+		sv.addEventListener("dirty", () => {
+			dirtyFired = true;
+		});
+
+		const selects = c.querySelectorAll("ha-select");
+		expect(selects.length).toBeGreaterThan(0);
+		const triggerSelect = selects[0] as HTMLElement;
+		triggerSelect.dispatchEvent(
+			new CustomEvent("selected", {
+				detail: { value: "motion" },
+				bubbles: true,
+			}),
+		);
+
+		expect((sv as any)._overrides.relayTriggerMode).toBe("motion");
+		expect(events.some((e) => e.key === "relayTriggerMode" && e.value === "motion")).toBe(true);
+		expect(dirtyFired).toBe(true);
+		document.body.removeChild(c);
+	});
+
+	it("trigger mode select ignores empty value (early return)", () => {
+		const sv = createView({ relayTriggerMode: "disabled" });
+		const tpl = (sv as any).renderRelay();
+		const c = renderTo(tpl);
+
+		const events: any[] = [];
+		sv.addEventListener("setting-change", ((e: CustomEvent) => {
+			events.push(e.detail);
+		}) as EventListener);
+
+		const triggerSelect = c.querySelectorAll("ha-select")[0] as HTMLElement;
+		triggerSelect.dispatchEvent(
+			new CustomEvent("selected", {
+				detail: { value: "" },
+				bubbles: true,
+			}),
+		);
+
+		expect((sv as any)._overrides.relayTriggerMode).toBeUndefined();
+		expect(events.length).toBe(0);
+		document.body.removeChild(c);
+	});
+
+	it("trigger mode select ignores same value (no-change early return)", () => {
+		const sv = createView({ relayTriggerMode: "motion" });
+		const tpl = (sv as any).renderRelay();
+		const c = renderTo(tpl);
+
+		const events: any[] = [];
+		sv.addEventListener("setting-change", ((e: CustomEvent) => {
+			events.push(e.detail);
+		}) as EventListener);
+
+		const triggerSelect = c.querySelectorAll("ha-select")[0] as HTMLElement;
+		triggerSelect.dispatchEvent(
+			new CustomEvent("selected", {
+				detail: { value: "motion" },
+				bubbles: true,
+			}),
+		);
+
+		expect((sv as any)._overrides.relayTriggerMode).toBeUndefined();
+		expect(events.length).toBe(0);
+		document.body.removeChild(c);
+	});
+
+	it("changing contact mode select updates _overrides and fires setting-change + dirty", () => {
+		// isAutomatic = true requires trigger !== "disabled" && !== "manual"
+		const sv = createView({ relayTriggerMode: "motion", relayContactMode: "no" });
+		const tpl = (sv as any).renderRelay();
+		const c = renderTo(tpl);
+
+		const events: { key: string; value: unknown }[] = [];
+		sv.addEventListener("setting-change", ((e: CustomEvent) => {
+			events.push(e.detail);
+		}) as EventListener);
+		let dirtyFired = false;
+		sv.addEventListener("dirty", () => {
+			dirtyFired = true;
+		});
+
+		const selects = c.querySelectorAll("ha-select");
+		// Two selects: trigger + contact
+		expect(selects.length).toBe(2);
+		const contactSelect = selects[1] as HTMLElement;
+		contactSelect.dispatchEvent(
+			new CustomEvent("selected", {
+				detail: { value: "nc" },
+				bubbles: true,
+			}),
+		);
+
+		expect((sv as any)._overrides.relayContactMode).toBe("nc");
+		expect(events.some((e) => e.key === "relayContactMode" && e.value === "nc")).toBe(true);
+		expect(dirtyFired).toBe(true);
+		document.body.removeChild(c);
+	});
+
+	it("contact mode select ignores empty value (early return)", () => {
+		const sv = createView({ relayTriggerMode: "presence", relayContactMode: "no" });
+		const tpl = (sv as any).renderRelay();
+		const c = renderTo(tpl);
+
+		const events: any[] = [];
+		sv.addEventListener("setting-change", ((e: CustomEvent) => {
+			events.push(e.detail);
+		}) as EventListener);
+
+		const selects = c.querySelectorAll("ha-select");
+		const contactSelect = selects[1] as HTMLElement;
+		contactSelect.dispatchEvent(
+			new CustomEvent("selected", {
+				detail: { value: "" },
+				bubbles: true,
+			}),
+		);
+
+		expect((sv as any)._overrides.relayContactMode).toBeUndefined();
+		expect(events.length).toBe(0);
+		document.body.removeChild(c);
+	});
+
+	it("contact mode select ignores same value (no-change early return)", () => {
+		const sv = createView({ relayTriggerMode: "presence", relayContactMode: "nc" });
+		const tpl = (sv as any).renderRelay();
+		const c = renderTo(tpl);
+
+		const events: any[] = [];
+		sv.addEventListener("setting-change", ((e: CustomEvent) => {
+			events.push(e.detail);
+		}) as EventListener);
+
+		const selects = c.querySelectorAll("ha-select");
+		const contactSelect = selects[1] as HTMLElement;
+		contactSelect.dispatchEvent(
+			new CustomEvent("selected", {
+				detail: { value: "nc" },
+				bubbles: true,
+			}),
+		);
+
+		expect((sv as any)._overrides.relayContactMode).toBeUndefined();
+		expect(events.length).toBe(0);
+		document.body.removeChild(c);
+	});
+
+	it("contact mode select is not rendered when trigger is disabled", () => {
+		const sv = createView({ relayTriggerMode: "disabled" });
+		const tpl = (sv as any).renderRelay();
+		const c = renderTo(tpl);
+
+		const selects = c.querySelectorAll("ha-select");
+		expect(selects.length).toBe(1);
+		document.body.removeChild(c);
+	});
+
+	it("contact mode select is not rendered when trigger is manual", () => {
+		const sv = createView({ relayTriggerMode: "manual" });
+		const tpl = (sv as any).renderRelay();
+		const c = renderTo(tpl);
+
+		const selects = c.querySelectorAll("ha-select");
+		expect(selects.length).toBe(1);
+		document.body.removeChild(c);
+	});
+
+	it("@closed on trigger select stops propagation", () => {
+		const sv = createView({ relayTriggerMode: "disabled" });
+		const tpl = (sv as any).renderRelay();
+		const c = renderTo(tpl);
+
+		const triggerSelect = c.querySelectorAll("ha-select")[0] as HTMLElement;
+		const closedEvent = new Event("closed", { bubbles: true });
+		const stopSpy = vi.spyOn(closedEvent, "stopPropagation");
+		triggerSelect.dispatchEvent(closedEvent);
+
+		expect(stopSpy).toHaveBeenCalled();
+		document.body.removeChild(c);
+	});
+
+	it("@closed on contact mode select stops propagation", () => {
+		// isAutomatic=true so both selects are rendered
+		const sv = createView({ relayTriggerMode: "motion", relayContactMode: "no" });
+		const tpl = (sv as any).renderRelay();
+		const c = renderTo(tpl);
+
+		const selects = c.querySelectorAll("ha-select");
+		expect(selects.length).toBe(2);
+		const contactSelect = selects[1] as HTMLElement;
+		const closedEvent = new Event("closed", { bubbles: true });
+		const stopSpy = vi.spyOn(closedEvent, "stopPropagation");
+		contactSelect.dispatchEvent(closedEvent);
+
+		expect(stopSpy).toHaveBeenCalled();
+		document.body.removeChild(c);
+	});
+});
+
 describe("_fireDirty with save-btn in shadowRoot", () => {
 	it("enables save-btn when btn is found in shadowRoot", () => {
 		const sv = createView();
@@ -1619,6 +1828,20 @@ describe("logging accordion", () => {
 		expect(requestUpdateSpy).toHaveBeenCalled();
 		document.body.removeChild(c);
 	});
+
+	it("log level @closed handler stops propagation", () => {
+		const sv = createView({ logLevels: { system: "Warning" } });
+		const tpl = (sv as any).renderLogging();
+		const c = renderTo(tpl);
+
+		const select = c.querySelectorAll("ha-select")[0] as HTMLElement;
+		const closedEvent = new Event("closed", { bubbles: true });
+		const stopSpy = vi.spyOn(closedEvent, "stopPropagation");
+		select.dispatchEvent(closedEvent);
+
+		expect(stopSpy).toHaveBeenCalled();
+		document.body.removeChild(c);
+	});
 });
 
 describe("LED settings section", () => {
@@ -1717,6 +1940,119 @@ describe("LED settings section", () => {
 
 		const picker = c.querySelector('input[type="color"]');
 		expect(picker).toBeNull();
+		document.body.removeChild(c);
+	});
+});
+
+describe("renderLed() event handlers", () => {
+	it("led mode @selected handler updates _overrides.ledMode and fires dirty", () => {
+		const sv = createView({ ledMode: "Manual Control" });
+		const tpl = (sv as any).renderLed();
+		const c = renderTo(tpl);
+
+		let dirtyFired = false;
+		sv.addEventListener("dirty", () => {
+			dirtyFired = true;
+		});
+
+		const ledSelect = c.querySelector("ha-select.led-mode-select") as HTMLElement;
+		expect(ledSelect).not.toBeNull();
+		ledSelect.dispatchEvent(
+			new CustomEvent("selected", {
+				detail: { value: "Presence" },
+				bubbles: true,
+			}),
+		);
+
+		expect((sv as any)._overrides.ledMode).toBe("Presence");
+		expect(dirtyFired).toBe(true);
+		document.body.removeChild(c);
+	});
+
+	it("led mode @selected handler ignores empty value", () => {
+		const sv = createView({ ledMode: "Manual Control" });
+		const tpl = (sv as any).renderLed();
+		const c = renderTo(tpl);
+
+		let dirtyFired = false;
+		sv.addEventListener("dirty", () => {
+			dirtyFired = true;
+		});
+
+		const ledSelect = c.querySelector("ha-select.led-mode-select") as HTMLElement;
+		ledSelect.dispatchEvent(
+			new CustomEvent("selected", {
+				detail: { value: "" },
+				bubbles: true,
+			}),
+		);
+
+		expect((sv as any)._overrides.ledMode).toBeUndefined();
+		expect(dirtyFired).toBe(false);
+		document.body.removeChild(c);
+	});
+
+	it("brightness slider @input handler updates _overrides.ledBrightness and fires dirty", () => {
+		const sv = createView({ ledBrightness: 1.0 });
+		const tpl = (sv as any).renderLed();
+		const c = renderTo(tpl);
+
+		let dirtyFired = false;
+		sv.addEventListener("dirty", () => {
+			dirtyFired = true;
+		});
+
+		const slider = c.querySelector(
+			'input[type="range"][data-led-brightness]',
+		) as HTMLInputElement;
+		expect(slider).not.toBeNull();
+
+		// Add a sibling span for _setText to update
+		const display = document.createElement("span");
+		display.className = "setting-value";
+		display.textContent = "100%";
+		slider.parentNode?.insertBefore(display, slider.nextSibling);
+
+		slider.value = "0.5";
+		slider.dispatchEvent(new Event("input"));
+
+		expect((sv as any)._overrides.ledBrightness).toBe(0.5);
+		expect(dirtyFired).toBe(true);
+		document.body.removeChild(c);
+	});
+
+	it("color picker @input handler updates _overrides.ledPresenceColor and fires dirty", () => {
+		// Need Presence mode so color picker is rendered
+		const sv = createView({ ledMode: "Presence", ledPresenceColor: "#CC33FF" });
+		const tpl = (sv as any).renderLed();
+		const c = renderTo(tpl);
+
+		let dirtyFired = false;
+		sv.addEventListener("dirty", () => {
+			dirtyFired = true;
+		});
+
+		const picker = c.querySelector('input[type="color"]') as HTMLInputElement;
+		expect(picker).not.toBeNull();
+		picker.value = "#ff0000";
+		picker.dispatchEvent(new Event("input"));
+
+		expect((sv as any)._overrides.ledPresenceColor).toBe("#ff0000");
+		expect(dirtyFired).toBe(true);
+		document.body.removeChild(c);
+	});
+
+	it("led mode @closed handler stops propagation", () => {
+		const sv = createView({ ledMode: "Manual Control" });
+		const tpl = (sv as any).renderLed();
+		const c = renderTo(tpl);
+
+		const ledSelect = c.querySelector("ha-select.led-mode-select") as HTMLElement;
+		const closedEvent = new Event("closed", { bubbles: true });
+		const stopSpy = vi.spyOn(closedEvent, "stopPropagation");
+		ledSelect.dispatchEvent(closedEvent);
+
+		expect(stopSpy).toHaveBeenCalled();
 		document.body.removeChild(c);
 	});
 });
