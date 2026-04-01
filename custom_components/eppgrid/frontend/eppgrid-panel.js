@@ -1371,6 +1371,7 @@ const dt={attribute:!0,type:String,converter:b,reflect:!1,hasChanged:y},ut=(t=dt
     `}renderRelay(){const t=[{value:"disabled",label:this.localize("settings.relay_disabled")},{value:"motion",label:this.localize("settings.relay_motion")},{value:"presence",label:this.localize("settings.relay_presence")},{value:"occupancy",label:this.localize("settings.relay_occupancy")}],e=[{value:"no",label:this.localize("settings.relay_normally_open")},{value:"nc",label:this.localize("settings.relay_normally_closed")}],i=this._overrides.relayTriggerMode??this.relayTriggerMode,o=this._overrides.relayContactMode??this.relayContactMode,s="disabled"!==i;return G`
       <div class="settings-section">
         <div class="setting-group">
+          <h4>${this.localize("settings.relay")}</h4>
           <div class="setting-row">
             <label>${this.localize("settings.relay_trigger_mode")}</label>
             <ha-select

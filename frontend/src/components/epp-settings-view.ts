@@ -893,6 +893,7 @@ export class EppSettingsView extends LitElement {
 		return html`
       <div class="settings-section">
         <div class="setting-group">
+          <h4>${this.localize("settings.relay")}</h4>
           <div class="setting-row">
             <label>${this.localize("settings.relay_trigger_mode")}</label>
             <ha-select
