@@ -121,8 +121,9 @@ const ProcessingResult& ZoneEngine::tick(const WindowOutput& window, float times
     SensorPresenceState prev_static = static_state_;
     SensorPresenceState prev_motion = motion_state_;
 
-    // Clear result
-    result_ = ProcessingResult{};
+    // Clear result (skip zeroing log buffer — log_count gates access)
+    std::memset(&result_, 0, offsetof(ProcessingResult, log));
+    result_.log_count = 0;
     result_.frame_count = frames;
 
     // Per-zone tracking: confirmed flag and best signal
