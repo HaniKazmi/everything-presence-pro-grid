@@ -243,7 +243,13 @@ const ProcessingResult& ZoneEngine::tick(const WindowOutput& window, float times
             bool needs_gating = !cell_overlay_entry && !continuous;
 
             if (needs_gating && rt.state == ZoneState::CLEAR) {
-                // Gating: raise threshold, cap at 8
+                // Gating: raise threshold and require consecutive qualifying ticks.
+                // At 10Hz tick rate, 2 ticks = ~200ms — enough to filter single-frame
+                // noise but fast enough to feel responsive. If false positives become
+                // a problem, options:
+                //   - Increase gate count (e.g. 10-20 for ~1-2s wall-clock delay)
+                //   - Switch to wall-clock gating (require sustained signal for N seconds)
+                //   - Increase gated_thresh offset (currently +2)
                 int gated_thresh = std::min(base_thresh + 2, 8);
                 if (tw.frame_count >= gated_thresh) {
                     target_gate_count_[i] += 1;

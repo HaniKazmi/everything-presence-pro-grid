@@ -214,6 +214,9 @@ export function runLocalZoneEngine(
 		const needsGating = !cellOverlay && !continuous;
 
 		if (needsGating && isClear) {
+			// Gating: raise threshold and require consecutive qualifying ticks.
+			// At 10Hz tick rate, 2 ticks = ~200ms. If false positives become
+			// a problem: increase gate count, use wall-clock gating, or raise offset.
 			const gatedThresh = Math.min(baseTrigger + 2, 8);
 			if (signal >= gatedThresh) {
 				state.targetGateCount[i]++;
