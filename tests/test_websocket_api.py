@@ -985,9 +985,7 @@ class TestApplyEntityStates:
         from custom_components.eppgrid.websocket_api import _apply_entity_states
 
         mock_dm = await setup_integration(hass, config_entry)
-        mock_dm.devices["AA:BB:CC:DD:EE:FF"] = ManagedDevice(
-            mac="AA:BB:CC:DD:EE:FF", name="EPP", host="192.168.1.50"
-        )
+        mock_dm.devices["AA:BB:CC:DD:EE:FF"] = ManagedDevice(mac="AA:BB:CC:DD:EE:FF", name="EPP", host="192.168.1.50")
         mock_dm.devices["AA:BB:CC:DD:EE:FF"].device_id = "dev123"
 
         # Create mock entity entries: one USER-disabled, one INTEGRATION-disabled
@@ -1019,9 +1017,7 @@ class TestApplyEntityStates:
             entity_ids_updated = [c.args[0] for c in calls]
             assert "sensor.target_0_position" not in entity_ids_updated
             # INTEGRATION-disabled entry should be enabled
-            mock_registry.async_update_entity.assert_any_call(
-                "sensor.target_1_position", disabled_by=None
-            )
+            mock_registry.async_update_entity.assert_any_call("sensor.target_1_position", disabled_by=None)
 
 
 class TestWebSocketEntityEnabled:
