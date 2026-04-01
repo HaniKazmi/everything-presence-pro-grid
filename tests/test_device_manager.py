@@ -1916,19 +1916,25 @@ class TestZoneEntities:
 
         # Create zone_target_count entities
         ztc0 = ent_reg.async_get_or_create(
-            "sensor", "esphome",
+            "sensor",
+            "esphome",
             unique_id="esphome_aabbccddeeff_zone_0_target_count",
-            config_entry=esphome_entry, device_id=device.id,
+            config_entry=esphome_entry,
+            device_id=device.id,
         )
         ztc1 = ent_reg.async_get_or_create(
-            "sensor", "esphome",
+            "sensor",
+            "esphome",
             unique_id="esphome_aabbccddeeff_zone_1_target_count",
-            config_entry=esphome_entry, device_id=device.id,
+            config_entry=esphome_entry,
+            device_id=device.id,
         )
         ztc2 = ent_reg.async_get_or_create(
-            "sensor", "esphome",
+            "sensor",
+            "esphome",
             unique_id="esphome_aabbccddeeff_zone_2_target_count",
-            config_entry=esphome_entry, device_id=device.id,
+            config_entry=esphome_entry,
+            device_id=device.id,
         )
 
         manager.devices["AA:BB:CC:DD:EE:FF"] = ManagedDevice(
@@ -1968,9 +1974,11 @@ class TestZoneEntities:
         )
 
         ztc0 = ent_reg.async_get_or_create(
-            "sensor", "esphome",
+            "sensor",
+            "esphome",
             unique_id="esphome_aabbccddeeff_zone_0_target_count",
-            config_entry=esphome_entry, device_id=device.id,
+            config_entry=esphome_entry,
+            device_id=device.id,
         )
 
         manager.devices["AA:BB:CC:DD:EE:FF"] = ManagedDevice(

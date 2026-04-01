@@ -5,7 +5,6 @@ from __future__ import annotations
 from unittest.mock import AsyncMock
 from unittest.mock import MagicMock
 
-import pytest
 from homeassistant.core import HomeAssistant
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
@@ -42,9 +41,7 @@ class TestEndToEndPipelineFlow:
         mock_dm.get_session = MagicMock(return_value=mock_session)
 
         # Use the real _push_pipeline_to_device method
-        mock_dm._push_pipeline_to_device = (
-            lambda m: DeviceManager._push_pipeline_to_device(mock_dm, m)
-        )
+        mock_dm._push_pipeline_to_device = lambda m: DeviceManager._push_pipeline_to_device(mock_dm, m)
 
         await mock_dm._push_pipeline_to_device(mac)
 
@@ -56,9 +53,7 @@ class TestEndToEndPipelineFlow:
         assert pipeline["zone_state_interval"] == 1000
         assert pipeline["window_duration"] == 800
 
-    async def test_full_flow_no_entities_no_frontend(
-        self, hass: HomeAssistant, config_entry: MockConfigEntry
-    ) -> None:
+    async def test_full_flow_no_entities_no_frontend(self, hass: HomeAssistant, config_entry: MockConfigEntry) -> None:
         """With nothing enabled and no frontend, all intervals are 0."""
         mock_dm = await setup_integration(hass, config_entry)
         mac = "AA:BB:CC:DD:EE:FF"
@@ -73,9 +68,7 @@ class TestEndToEndPipelineFlow:
         mock_session.connected = True
         mock_dm.get_session = MagicMock(return_value=mock_session)
 
-        mock_dm._push_pipeline_to_device = (
-            lambda m: DeviceManager._push_pipeline_to_device(mock_dm, m)
-        )
+        mock_dm._push_pipeline_to_device = lambda m: DeviceManager._push_pipeline_to_device(mock_dm, m)
 
         await mock_dm._push_pipeline_to_device(mac)
 
@@ -103,9 +96,7 @@ class TestEndToEndPipelineFlow:
         mock_session.connected = True
         mock_dm.get_session = MagicMock(return_value=mock_session)
 
-        mock_dm._push_pipeline_to_device = (
-            lambda m: DeviceManager._push_pipeline_to_device(mock_dm, m)
-        )
+        mock_dm._push_pipeline_to_device = lambda m: DeviceManager._push_pipeline_to_device(mock_dm, m)
 
         await mock_dm._push_pipeline_to_device(mac)
 
@@ -139,9 +130,7 @@ class TestEndToEndPipelineFlow:
         mock_session.connected = True
         mock_dm.get_session = MagicMock(return_value=mock_session)
 
-        mock_dm._push_pipeline_to_device = (
-            lambda m: DeviceManager._push_pipeline_to_device(mock_dm, m)
-        )
+        mock_dm._push_pipeline_to_device = lambda m: DeviceManager._push_pipeline_to_device(mock_dm, m)
 
         await mock_dm._push_pipeline_to_device(mac)
 

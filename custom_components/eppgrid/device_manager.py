@@ -746,15 +746,13 @@ class DeviceManager:
                 else:
                     ent_reg.async_update_entity(tc_entity_id, disabled_by=er.RegistryEntryDisabler.INTEGRATION)
 
-    def _find_zone_entity(self, ent_reg: er.EntityRegistry, device_id: str, zone_index: int, suffix: str = "presence") -> str | None:
+    def _find_zone_entity(
+        self, ent_reg: er.EntityRegistry, device_id: str, zone_index: int, suffix: str = "presence"
+    ) -> str | None:
         """Find an ESPHome zone entity_id for a device, zone index, and suffix."""
         pattern = f"zone_{zone_index}_{suffix}"
         for entry in ent_reg.entities.values():
-            if (
-                entry.device_id == device_id
-                and entry.platform == "esphome"
-                and pattern in entry.unique_id
-            ):
+            if entry.device_id == device_id and entry.platform == "esphome" and pattern in entry.unique_id:
                 return entry.entity_id
         return None
 

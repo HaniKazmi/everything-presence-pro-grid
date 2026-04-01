@@ -2335,7 +2335,13 @@ class TestProtocolVersionGuard:
             ),
             (
                 "websocket_set_pipeline",
-                {"entity_target_interval": 1000, "entity_zone_interval": 1000, "display_interval": 200, "zone_state_interval": 1000, "window_duration": 1000},
+                {
+                    "entity_target_interval": 1000,
+                    "entity_zone_interval": 1000,
+                    "display_interval": 200,
+                    "zone_state_interval": 1000,
+                    "window_duration": 1000,
+                },
             ),
         ],
     )
