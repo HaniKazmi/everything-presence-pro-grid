@@ -554,10 +554,10 @@ async def websocket_subscribe_raw_targets(
 
     key_map = _build_entity_key_map(device_conn._entities)
 
-    # Map raw target sensor keys to indices
+    # Map raw target sensor keys to indices (entities named 1-3, indices 0-2)
     raw_keys = {}
     for i in range(3):
-        name = f"Raw Target {i}"
+        name = f"Raw Target {i + 1}"
         if name in key_map:
             raw_keys[key_map[name]] = i
 
@@ -627,10 +627,10 @@ async def websocket_subscribe_grid_targets(
 
     key_map = _build_entity_key_map(device_conn._entities)
 
-    # Map target position sensor keys to indices
+    # Map target position sensor keys to indices (entities named 1-3, indices 0-2)
     target_keys = {}
     for i in range(3):
-        name = f"Target {i} Position"
+        name = f"Target {i + 1} Position"
         if name in key_map:
             target_keys[key_map[name]] = i
 

@@ -74,27 +74,34 @@ epp:
       disabled_by_default: true
   target_positions:
     target_0:
-      name: "Target 0 Position"
-      disabled_by_default: true
-    target_1:
       name: "Target 1 Position"
       disabled_by_default: true
-    target_2:
+      entity_category: diagnostic
+    target_1:
       name: "Target 2 Position"
       disabled_by_default: true
+      entity_category: diagnostic
+    target_2:
+      name: "Target 3 Position"
+      disabled_by_default: true
+      entity_category: diagnostic
   raw_target_positions:
     target_0:
-      name: "Raw Target 0"
-      disabled_by_default: true
-    target_1:
       name: "Raw Target 1"
       disabled_by_default: true
-    target_2:
+      entity_category: diagnostic
+    target_1:
       name: "Raw Target 2"
       disabled_by_default: true
+      entity_category: diagnostic
+    target_2:
+      name: "Raw Target 3"
+      disabled_by_default: true
+      entity_category: diagnostic
   zone_state:
     name: "Zone State"
     disabled_by_default: true
+    entity_category: diagnostic
   target_entities:
     target_1:
       x:
