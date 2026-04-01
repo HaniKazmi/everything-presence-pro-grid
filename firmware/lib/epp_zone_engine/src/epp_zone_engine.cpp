@@ -2,9 +2,27 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdarg>
+#include <cstddef>
+#include <cstdio>
 #include <cstring>
 
 namespace epp {
+
+// ---------------------------------------------------------------------------
+// Logging helper
+// ---------------------------------------------------------------------------
+
+void ZoneEngine::log_(LogLevel level, const char* fmt, ...) {
+    if (result_.log_count >= MAX_LOG_ENTRIES) return;
+    LogEntry& entry = result_.log[result_.log_count];
+    entry.level = level;
+    va_list args;
+    va_start(args, fmt);
+    vsnprintf(entry.message, sizeof(entry.message), fmt, args);
+    va_end(args);
+    result_.log_count++;
+}
 
 // ---------------------------------------------------------------------------
 // Construction / configuration
@@ -18,6 +36,8 @@ ZoneEngine::ZoneEngine() {
     std::memset(target_prev_y_, 0, sizeof(target_prev_y_));
     std::memset(target_has_prev_xy_, 0, sizeof(target_has_prev_xy_));
     std::memset(target_gate_count_, 0, sizeof(target_gate_count_));
+    for (int i = 0; i < MAX_TARGETS; ++i) target_log_zone_[i] = -1;
+    std::memset(target_log_in_room_, 0, sizeof(target_log_in_room_));
 }
 
 void ZoneEngine::set_grid(const Grid& grid) {
@@ -69,6 +89,8 @@ void ZoneEngine::set_zones(const ZoneConfig zones[], int count) {
         target_has_prev_[i] = false;
         target_has_prev_xy_[i] = false;
         target_gate_count_[i] = 0;
+        target_log_zone_[i] = -1;
+        target_log_in_room_[i] = false;
     }
 
     // Reset sensor state
@@ -77,6 +99,7 @@ void ZoneEngine::set_zones(const ZoneConfig zones[], int count) {
     static_pending_since_ = -1.0f;
     motion_pending_since_ = -1.0f;
     sensors_ever_active_ = false;
+    prev_occupancy_ = false;
 }
 
 int ZoneEngine::find_zone_index(int zone_id) const {
@@ -93,8 +116,19 @@ const ProcessingResult& ZoneEngine::tick(const WindowOutput& window, float times
                                          const SensorInput& sensors) {
     int frames = std::max(window.total_frames, RAW_FPS);
 
-    // Clear result
-    result_ = ProcessingResult{};
+    // Snapshot previous states for transition logging
+    ZoneState prev_zone_state[MAX_ZONE_SLOTS]{};
+    for (int zi = 0; zi < zone_count_; ++zi) {
+        if (zone_enabled_[zi]) {
+            prev_zone_state[zones_[zi].config.id] = zones_[zi].state;
+        }
+    }
+    SensorPresenceState prev_static = static_state_;
+    SensorPresenceState prev_motion = motion_state_;
+
+    // Clear result (skip zeroing log buffer — log_count gates access)
+    std::memset(&result_, 0, offsetof(ProcessingResult, log));
+    result_.log_count = 0;
     result_.frame_count = frames;
 
     // Per-zone tracking: confirmed flag and best signal
@@ -113,6 +147,11 @@ const ProcessingResult& ZoneEngine::tick(const WindowOutput& window, float times
 
     // Track which targets are active
     bool target_active[MAX_TARGETS]{};
+
+    // Per-target state for transition logging
+    int target_confirmed_zone[MAX_TARGETS];
+    bool target_in_room[MAX_TARGETS]{};
+    for (int i = 0; i < MAX_TARGETS; ++i) target_confirmed_zone[i] = -1;
 
     // -----------------------------------------------------------------------
     // Step 1: Per-target evaluation (Python lines 510-604)
@@ -142,6 +181,7 @@ const ProcessingResult& ZoneEngine::tick(const WindowOutput& window, float times
 
         target_signal[i] = signal;
         target_has_signal[i] = true;
+        target_in_room[i] = true;
         int zone_id = grid_.cell_zone(cell);
         target_zone_curr[i] = zone_id;
 
@@ -204,6 +244,7 @@ const ProcessingResult& ZoneEngine::tick(const WindowOutput& window, float times
                     target_gate_count_[i] += 1;
                     if (target_gate_count_[i] >= 2) {
                         // Confirmed after 2 qualifying ticks
+                        target_confirmed_zone[i] = zone_id;
                         zone_confirmed[zone_id] = true;
                         rt.confirmed_targets |= (1 << i);
                         target_prev_col_[i] = col;
@@ -213,6 +254,8 @@ const ProcessingResult& ZoneEngine::tick(const WindowOutput& window, float times
                     } else {
                         // gate_count == 1: record position for next tick's
                         // distance check but don't confirm
+                        log_(LogLevel::DEBUG, "T%d gating in zone %d (%d/2, signal %d)",
+                             i, zone_id, target_gate_count_[i], signal);
                         target_prev_col_[i] = col;
                         target_prev_row_[i] = row;
                         target_has_prev_[i] = true;
@@ -226,6 +269,7 @@ const ProcessingResult& ZoneEngine::tick(const WindowOutput& window, float times
                 // Not gated: entry point zone, continuous movement,
                 // or already occupied/pending
                 if (tw.frame_count >= base_thresh) {
+                    target_confirmed_zone[i] = zone_id;
                     zone_confirmed[zone_id] = true;
                     rt.confirmed_targets |= (1 << i);
                     target_prev_col_[i] = col;
@@ -247,6 +291,47 @@ const ProcessingResult& ZoneEngine::tick(const WindowOutput& window, float times
     }
 
     // -----------------------------------------------------------------------
+    // Step 1b: Per-target transition logging (event-driven, not per-tick)
+    // -----------------------------------------------------------------------
+    for (int i = 0; i < MAX_TARGETS; ++i) {
+        int prev_zone = target_log_zone_[i];
+        int curr_zone = target_confirmed_zone[i];
+        bool was_in_room = target_log_in_room_[i];
+        bool is_in_room = target_in_room[i];
+
+        // Entered a zone (newly confirmed or changed zone)
+        if (curr_zone >= 0 && curr_zone != prev_zone) {
+            log_(LogLevel::DEBUG, "T%d entered zone %d (signal %d)",
+                 i, curr_zone, target_signal[i]);
+        }
+
+        // Left a zone — use specific reason when available
+        if (prev_zone >= 0 && curr_zone != prev_zone) {
+            if (curr_zone >= 0) {
+                // Moved to another zone (handoff will log separately)
+            } else if (is_in_room) {
+                // Still in room but signal dropped
+                log_(LogLevel::DEBUG, "T%d below threshold in zone %d (signal %d)",
+                     i, prev_zone, target_signal[i]);
+            } else if (target_active[i]) {
+                // Target left the room entirely
+                log_(LogLevel::DEBUG, "T%d left room (was zone %d)", i, prev_zone);
+            } else {
+                log_(LogLevel::DEBUG, "T%d left zone %d", i, prev_zone);
+            }
+        }
+
+        // Left room (was in room, target still tracked but outside)
+        if (was_in_room && !is_in_room && target_active[i] && prev_zone < 0) {
+            log_(LogLevel::DEBUG, "T%d left room", i);
+        }
+
+        // Update log state for next tick
+        target_log_zone_[i] = curr_zone;
+        target_log_in_room_[i] = is_in_room;
+    }
+
+    // -----------------------------------------------------------------------
     // Step 2: Handoff detection (Python lines 606-632)
     // -----------------------------------------------------------------------
     for (int i = 0; i < MAX_TARGETS; ++i) {
@@ -255,6 +340,7 @@ const ProcessingResult& ZoneEngine::tick(const WindowOutput& window, float times
         if (prev_zid < 0 || curr_zid < 0 || prev_zid == curr_zid) continue;
 
         // Target i moved from prev_zid to curr_zid
+        log_(LogLevel::DEBUG, "T%d handoff zone %d -> zone %d", i, prev_zid, curr_zid);
         int src_zi = find_zone_index(prev_zid);
         if (src_zi >= 0) {
             ZoneRuntime& src_rt = zones_[src_zi];
@@ -305,6 +391,14 @@ const ProcessingResult& ZoneEngine::tick(const WindowOutput& window, float times
                     rt.confirmed_targets = 0;
                 }
                 break;
+        }
+
+        // Log zone state transitions
+        if (rt.state != prev_zone_state[zone_id]) {
+            const char* state_name =
+                rt.state == ZoneState::OCCUPIED ? "occupied" :
+                rt.state == ZoneState::PENDING_CLEAR ? "pending" : "clear";
+            log_(LogLevel::INFO, "Zone %d: %s", zone_id, state_name);
         }
 
         result_.zone_occupancy[zone_id] = (rt.state != ZoneState::CLEAR);
@@ -410,6 +504,20 @@ const ProcessingResult& ZoneEngine::tick(const WindowOutput& window, float times
         }
     }
 
+    // Log sensor state transitions
+    if (static_state_ != prev_static) {
+        const char* name =
+            static_state_ == SensorPresenceState::ACTIVE ? "active" :
+            static_state_ == SensorPresenceState::PENDING ? "pending" : "inactive";
+        log_(LogLevel::INFO, "Static: %s", name);
+    }
+    if (motion_state_ != prev_motion) {
+        const char* name =
+            motion_state_ == SensorPresenceState::ACTIVE ? "active" :
+            motion_state_ == SensorPresenceState::PENDING ? "pending" : "inactive";
+        log_(LogLevel::INFO, "Motion: %s", name);
+    }
+
     result_.static_state = static_state_;
     result_.motion_state = motion_state_;
 
@@ -433,10 +541,11 @@ const ProcessingResult& ZoneEngine::tick(const WindowOutput& window, float times
             for (int zi = 0; zi < zone_count_; ++zi) {
                 if (!zone_enabled_[zi]) continue;
                 if (zones_[zi].state == ZoneState::PENDING_CLEAR) {
+                    int zid = zones_[zi].config.id;
+                    log_(LogLevel::INFO, "Zone %d: force-clear", zid);
                     zones_[zi].state = ZoneState::CLEAR;
                     zones_[zi].pending_since = -1.0f;
                     zones_[zi].confirmed_targets = 0;
-                    int zid = zones_[zi].config.id;
                     result_.zone_occupancy[zid] = false;
                     result_.zone_states[zid] = ZoneState::CLEAR;
                 }
@@ -459,6 +568,12 @@ const ProcessingResult& ZoneEngine::tick(const WindowOutput& window, float times
                 break;
             }
         }
+    }
+
+    // Log occupancy transitions
+    if (result_.occupancy != prev_occupancy_) {
+        log_(LogLevel::INFO, "Occupancy: %s", result_.occupancy ? "on" : "off");
+        prev_occupancy_ = result_.occupancy;
     }
 
     // -----------------------------------------------------------------------

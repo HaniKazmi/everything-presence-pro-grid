@@ -118,10 +118,6 @@ class EPPComponent : public esphome::Component {
   // Cached zones JSON for NVS persistence
   std::string last_zones_json_;
 
-  // Previous state for transition logging
-  bool prev_tracking_{false};
-  bool prev_zone_occ_[MAX_ZONE_SLOTS]{};
-
   // Sensor pointers
   esphome::binary_sensor::BinarySensor *device_tracking_sensor_{nullptr};
   esphome::text_sensor::TextSensor *firmware_version_sensor_{nullptr};

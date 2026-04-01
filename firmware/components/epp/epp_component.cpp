@@ -78,6 +78,16 @@ void EPPComponent::loop() {
   sensor_input.motion_timeout = motion_timeout_;
 
   const auto &result = zone_engine_.tick(zone_input, ts, sensor_input);
+
+  // Output zone engine log entries immediately (before throttle may overwrite)
+  for (int i = 0; i < result.log_count; ++i) {
+    if (result.log[i].level == epp::LogLevel::INFO) {
+      ESP_LOGI(TAG, "%s", result.log[i].message);
+    } else {
+      ESP_LOGD(TAG, "%s", result.log[i].message);
+    }
+  }
+
   last_zone_result_ = result;
 
   // === PUBLISH THROTTLES (do not affect processing) ===
@@ -234,20 +244,6 @@ void EPPComponent::loop() {
       }
       pos += snprintf(json + pos, sizeof(json) - pos, "\"}");
       zone_state_sensor_->publish_state(json);
-    }
-
-    // State transition logging
-    if (result.device_tracking_present != prev_tracking_) {
-      ESP_LOGI(TAG, "Tracking: %s",
-               result.device_tracking_present ? "present" : "clear");
-      prev_tracking_ = result.device_tracking_present;
-    }
-    for (int i = 0; i < MAX_ZONE_SLOTS; i++) {
-      if (result.zone_occupancy[i] != prev_zone_occ_[i]) {
-        ESP_LOGI(TAG, "Zone %d: %s", i,
-                 result.zone_occupancy[i] ? "occupied" : "clear");
-        prev_zone_occ_[i] = result.zone_occupancy[i];
-      }
     }
   }
 }

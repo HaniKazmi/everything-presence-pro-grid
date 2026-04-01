@@ -41,6 +41,10 @@ struct ProcessingResult {
     SensorPresenceState static_state = SensorPresenceState::INACTIVE;
     SensorPresenceState motion_state = SensorPresenceState::INACTIVE;
     bool occupancy = false;
+
+    // Diagnostic log entries produced during this tick
+    LogEntry log[MAX_LOG_ENTRIES]{};
+    int log_count = 0;
 };
 
 // ---------------------------------------------------------------------------
@@ -91,17 +95,25 @@ private:
     bool target_has_prev_xy_[MAX_TARGETS]{};
     int target_gate_count_[MAX_TARGETS]{};
 
+    // Per-target log state (for transition-only logging)
+    int target_log_zone_[MAX_TARGETS]{};      // zone confirmed in last tick (-1 = none)
+    bool target_log_in_room_[MAX_TARGETS]{};  // was in room last tick
+
     // Sensor presence state tracking
     SensorPresenceState static_state_ = SensorPresenceState::INACTIVE;
     SensorPresenceState motion_state_ = SensorPresenceState::INACTIVE;
     float static_pending_since_ = -1.0f;
     float motion_pending_since_ = -1.0f;
     bool sensors_ever_active_ = false;  // true once any sensor has been ACTIVE
+    bool prev_occupancy_ = false;       // previous tick's occupancy for transition logging
 
     ProcessingResult result_;
 
     /// Find the ZoneRuntime index for a given zone_id. Returns -1 if not found.
     int find_zone_index(int zone_id) const;
+
+    /// Append a log entry to result_.log[] (silently drops if full)
+    void log_(LogLevel level, const char* fmt, ...);
 };
 
 }  // namespace epp

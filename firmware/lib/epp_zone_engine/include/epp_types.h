@@ -47,6 +47,19 @@ enum class SensorPresenceState : uint8_t {
     PENDING = 2,
 };
 
+// Log levels for zone engine diagnostic output
+enum class LogLevel : uint8_t {
+    INFO = 0,
+    DEBUG = 1,
+};
+
+struct LogEntry {
+    LogLevel level = LogLevel::INFO;
+    char message[96]{};
+};
+
+constexpr int MAX_LOG_ENTRIES = 16;
+
 // Zone type — matches Python const.py ZONE_TYPE_* constants
 enum class ZoneType : uint8_t {
     NORMAL = 0,
