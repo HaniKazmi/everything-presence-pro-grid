@@ -875,7 +875,7 @@ const dt={attribute:!0,type:String,converter:b,reflect:!1,hasChanged:y},ut=(t=dt
 				${this._renderTargetDots(i,s,n,a)}
 			</div>
 			${this._renderGridDimensions()}
-		`}_renderVisibleCells(t,e,i,o,s){const r=this.heatmapColors,n=this.occupancy,a=[];for(let l=i;l<=o;l++)for(let i=t;i<=e;i++){const t=l*xt+i,e=this.grid[t];let o=ae(e,this.zoneConfigs),c="";if(Tt(e)){const t=Et(e);if(r){const e=r.get(t);e&&(o=`linear-gradient(${e}, ${e}), linear-gradient(${o}, ${o})`)}n[t]&&(c="box-shadow: inset 0 0 0 1px rgba(0,0,0,0.4);")}let h="";Tt(e)&&St(e)&&(h="background-image: repeating-linear-gradient(45deg, transparent, transparent 3px, rgba(255,255,255,0.4) 3px, rgba(255,255,255,0.4) 5px);"),a.push(G`
+		`}_renderVisibleCells(t,e,i,o,s){const r=this.heatmapColors,n=this.occupancy,a=[];for(let l=i;l<=o;l++)for(let i=t;i<=e;i++){const t=l*xt+i,e=this.grid[t];let o=ae(e,this.zoneConfigs),c="";if(Tt(e)){const t=Et(e);if(r){const e=r.get(t);e&&(o=`linear-gradient(${e}, ${e}), linear-gradient(${o}, ${o})`)}n[t]&&(c="box-shadow: inset 0 0 0 1px rgba(0,0,0,0.4);")}let h="";Tt(e)&&St(e)&&(h="background-image: repeating-linear-gradient(45deg, transparent, transparent 6px, rgba(220,40,40,1) 6px, rgba(220,40,40,1) 8px);"),a.push(G`
 					<div
 						class="cell"
 						style="background: ${o}; width: ${s}px; height: ${s}px; ${c} ${h}"
@@ -2284,7 +2284,7 @@ const dt={attribute:!0,type:String,converter:b,reflect:!1,hasChanged:y},ut=(t=dt
 					<div class="zone-item-row">
 						<div
 							class="zone-color-dot"
-							style="background: repeating-linear-gradient(45deg, #fff, #fff 2px, #ccc 2px, #ccc 4px); border: 1px solid #ccc;"
+							style="background: repeating-linear-gradient(45deg, transparent, transparent 6px, rgba(220,40,40,1) 6px, rgba(220,40,40,1) 8px); border: 1px solid #ccc;"
 						></div>
 						<span class="zone-name">${this.localize("zones.overlay_entry")}</span>
 					</div>
@@ -2312,10 +2312,7 @@ const dt={attribute:!0,type:String,converter:b,reflect:!1,hasChanged:y},ut=(t=dt
 						<option value="normal">
 							${this.localize("zones.normal")}
 						</option>
-						<option value="entrance">
-							${this.localize("zones.entrance")}
-						</option>
-						<option value="thoroughfare">
+<option value="thoroughfare">
 							${this.localize("zones.thoroughfare")}
 						</option>
 						<option value="rest">
@@ -2427,10 +2424,7 @@ const dt={attribute:!0,type:String,converter:b,reflect:!1,hasChanged:y},ut=(t=dt
 						<option value="normal">
 							${this.localize("zones.normal")}
 						</option>
-						<option value="entrance">
-							${this.localize("zones.entrance")}
-						</option>
-						<option value="thoroughfare">
+<option value="thoroughfare">
 							${this.localize("zones.thoroughfare")}
 						</option>
 						<option value="rest">

@@ -370,7 +370,7 @@ export class EppZoneSidebar extends LitElement {
 					<div class="zone-item-row">
 						<div
 							class="zone-color-dot"
-							style="background: repeating-linear-gradient(45deg, #fff, #fff 2px, #ccc 2px, #ccc 4px); border: 1px solid #ccc;"
+							style="background: repeating-linear-gradient(45deg, transparent, transparent 6px, rgba(220,40,40,1) 6px, rgba(220,40,40,1) 8px); border: 1px solid #ccc;"
 						></div>
 						<span class="zone-name">${this.localize("zones.overlay_entry")}</span>
 					</div>
@@ -437,10 +437,7 @@ export class EppZoneSidebar extends LitElement {
 						<option value="normal">
 							${this.localize("zones.normal")}
 						</option>
-						<option value="entrance">
-							${this.localize("zones.entrance")}
-						</option>
-						<option value="thoroughfare">
+<option value="thoroughfare">
 							${this.localize("zones.thoroughfare")}
 						</option>
 						<option value="rest">
@@ -665,10 +662,7 @@ export class EppZoneSidebar extends LitElement {
 						<option value="normal">
 							${this.localize("zones.normal")}
 						</option>
-						<option value="entrance">
-							${this.localize("zones.entrance")}
-						</option>
-						<option value="thoroughfare">
+<option value="thoroughfare">
 							${this.localize("zones.thoroughfare")}
 						</option>
 						<option value="rest">

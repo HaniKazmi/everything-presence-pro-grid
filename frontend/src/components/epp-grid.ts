@@ -184,7 +184,7 @@ export class EppGrid extends LitElement {
 				}
 				let overlayMarker = "";
 				if (cellIsInside(cellVal) && cellHasOverlayEntry(cellVal)) {
-					overlayMarker = "background-image: repeating-linear-gradient(45deg, transparent, transparent 3px, rgba(255,255,255,0.4) 3px, rgba(255,255,255,0.4) 5px);";
+					overlayMarker = "background-image: repeating-linear-gradient(45deg, transparent, transparent 6px, rgba(220,40,40,1) 6px, rgba(220,40,40,1) 8px);";
 				}
 				cells.push(html`
 					<div
