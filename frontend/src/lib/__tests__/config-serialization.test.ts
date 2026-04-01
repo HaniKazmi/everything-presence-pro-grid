@@ -386,7 +386,7 @@ describe("parseSettings", () => {
 		expect(result.logLevels).toEqual({});
 	});
 
-it("returns LED defaults when not present", () => {
+	it("returns LED defaults when not present", () => {
 		const result = parseSettings({});
 		expect(result.ledMode).toBe("Manual Control");
 		expect(result.ledBrightness).toBe(1.0);

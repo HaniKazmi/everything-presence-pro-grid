@@ -106,10 +106,10 @@ export class EPPGridPanel extends LitElement {
 	@state() private _logLevels: Record<string, string> = {};
 	@state() private _bluetoothEnabled = false;
 	@state() private _co2Enabled = false;
-@state() private _ledMode = "Manual Control";
+	@state() private _ledMode = "Manual Control";
 	@state() private _ledBrightness = 1.0;
 	@state() private _ledPresenceColor = "#CC33FF";
-@state() private _relayTriggerMode = "disabled";
+	@state() private _relayTriggerMode = "disabled";
 	@state() private _relayContactMode = "no";
 	@state() private _entitiesConfig: Record<string, any> = {};
 	@state() private _sidebarTab: "zones" | "furniture" | "live" = "zones";

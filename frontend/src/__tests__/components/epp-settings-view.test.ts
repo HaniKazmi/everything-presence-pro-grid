@@ -1441,7 +1441,9 @@ describe("renderRelay() @selected handlers", () => {
 		);
 
 		expect((sv as any)._overrides.relayTriggerMode).toBe("motion");
-		expect(events.some((e) => e.key === "relayTriggerMode" && e.value === "motion")).toBe(true);
+		expect(
+			events.some((e) => e.key === "relayTriggerMode" && e.value === "motion"),
+		).toBe(true);
 		expect(dirtyFired).toBe(true);
 		document.body.removeChild(c);
 	});
@@ -1494,7 +1496,10 @@ describe("renderRelay() @selected handlers", () => {
 
 	it("changing contact mode select updates _overrides and fires setting-change + dirty", () => {
 		// isAutomatic = true requires trigger !== "disabled" && !== "manual"
-		const sv = createView({ relayTriggerMode: "motion", relayContactMode: "no" });
+		const sv = createView({
+			relayTriggerMode: "motion",
+			relayContactMode: "no",
+		});
 		const tpl = (sv as any).renderRelay();
 		const c = renderTo(tpl);
 
@@ -1519,13 +1524,18 @@ describe("renderRelay() @selected handlers", () => {
 		);
 
 		expect((sv as any)._overrides.relayContactMode).toBe("nc");
-		expect(events.some((e) => e.key === "relayContactMode" && e.value === "nc")).toBe(true);
+		expect(
+			events.some((e) => e.key === "relayContactMode" && e.value === "nc"),
+		).toBe(true);
 		expect(dirtyFired).toBe(true);
 		document.body.removeChild(c);
 	});
 
 	it("contact mode select ignores empty value (early return)", () => {
-		const sv = createView({ relayTriggerMode: "presence", relayContactMode: "no" });
+		const sv = createView({
+			relayTriggerMode: "presence",
+			relayContactMode: "no",
+		});
 		const tpl = (sv as any).renderRelay();
 		const c = renderTo(tpl);
 
@@ -1549,7 +1559,10 @@ describe("renderRelay() @selected handlers", () => {
 	});
 
 	it("contact mode select ignores same value (no-change early return)", () => {
-		const sv = createView({ relayTriggerMode: "presence", relayContactMode: "nc" });
+		const sv = createView({
+			relayTriggerMode: "presence",
+			relayContactMode: "nc",
+		});
 		const tpl = (sv as any).renderRelay();
 		const c = renderTo(tpl);
 
@@ -1608,7 +1621,10 @@ describe("renderRelay() @selected handlers", () => {
 
 	it("@closed on contact mode select stops propagation", () => {
 		// isAutomatic=true so both selects are rendered
-		const sv = createView({ relayTriggerMode: "motion", relayContactMode: "no" });
+		const sv = createView({
+			relayTriggerMode: "motion",
+			relayContactMode: "no",
+		});
 		const tpl = (sv as any).renderRelay();
 		const c = renderTo(tpl);
 
@@ -1955,7 +1971,9 @@ describe("renderLed() event handlers", () => {
 			dirtyFired = true;
 		});
 
-		const ledSelect = c.querySelector("ha-select.led-mode-select") as HTMLElement;
+		const ledSelect = c.querySelector(
+			"ha-select.led-mode-select",
+		) as HTMLElement;
 		expect(ledSelect).not.toBeNull();
 		ledSelect.dispatchEvent(
 			new CustomEvent("selected", {
@@ -1979,7 +1997,9 @@ describe("renderLed() event handlers", () => {
 			dirtyFired = true;
 		});
 
-		const ledSelect = c.querySelector("ha-select.led-mode-select") as HTMLElement;
+		const ledSelect = c.querySelector(
+			"ha-select.led-mode-select",
+		) as HTMLElement;
 		ledSelect.dispatchEvent(
 			new CustomEvent("selected", {
 				detail: { value: "" },
@@ -2047,7 +2067,9 @@ describe("renderLed() event handlers", () => {
 		const tpl = (sv as any).renderLed();
 		const c = renderTo(tpl);
 
-		const ledSelect = c.querySelector("ha-select.led-mode-select") as HTMLElement;
+		const ledSelect = c.querySelector(
+			"ha-select.led-mode-select",
+		) as HTMLElement;
 		const closedEvent = new Event("closed", { bubbles: true });
 		const stopSpy = vi.spyOn(closedEvent, "stopPropagation");
 		ledSelect.dispatchEvent(closedEvent);
