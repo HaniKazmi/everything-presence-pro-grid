@@ -252,12 +252,13 @@ export function runLocalZoneEngine(
 		}
 	}
 
-	// Overlay exit handoff: target disappears from overlay cell → use handoff timeout.
+	// Overlay exit handoff: target disappears or leaves room from overlay cell → use handoff timeout.
 	// We keep confirmedTargets intact so the target renders as PENDING.
 	for (let i = 0; i < MAX_TARGETS && i < params.targets.length; i++) {
 		const t = params.targets[i];
-		const isInactive = t.x == null || t.y == null;
-		if (isInactive && targetWasOnOverlay[i] && targetPrevZone[i] !== null) {
+		const isGone = t.x == null || t.y == null;
+		const leftRoom = !isGone && targetZoneCurr[i] === null;
+		if ((isGone || leftRoom) && targetWasOnOverlay[i] && targetPrevZone[i] !== null) {
 			const prevZid = targetPrevZone[i] as number;
 			const st = state.localZoneState.get(prevZid);
 			if (st?.occupied && st.pendingSince === null) {

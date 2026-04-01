@@ -379,7 +379,9 @@ const ProcessingResult& ZoneEngine::tick(const WindowOutput& window, float times
     // We keep confirmed_targets intact so the target renders as PENDING.
     // -----------------------------------------------------------------------
     for (int i = 0; i < MAX_TARGETS; ++i) {
-        if (!target_active[i] && target_was_on_overlay[i]) {
+        bool gone = !target_active[i];
+        bool left_room = target_active[i] && target_zone_curr[i] < 0;
+        if ((gone || left_room) && target_was_on_overlay[i]) {
             int prev_zid = target_prev_zone[i];
             int zi = find_zone_index(prev_zid);
             if (zi >= 0) {

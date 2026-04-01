@@ -318,8 +318,8 @@
           "targets": [{"status": "pending", "x": 2850, "y": 450}]
         },
         {
-          "zone_occupancy": {},
-          "targets": [{"status": "pending", "x": 2850, "y": 450}]
+          "zone_occupancy": {"1": false},
+          "targets": [{"status": "inactive"}]
         }
       ]
     },
