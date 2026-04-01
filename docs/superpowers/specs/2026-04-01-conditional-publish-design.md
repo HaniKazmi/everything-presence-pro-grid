@@ -16,8 +16,8 @@ When no frontend is open and the user hasn't enabled the relevant HA entities, t
 
 ### Two-tier publishing
 
-**Tier 1 — Internal transport (frontend display):**
-Text sensors marked `internal: true` in ESPHome. High-frequency, only published when the frontend has active WebSocket subscriptions. Not exposed as HA entities.
+**Tier 1 — Transport (frontend display):**
+Text sensors with `disabled_by_default: true`. High-frequency, only published when the frontend has active WebSocket subscriptions. Remain in ESPHome entity list (ESPHome's `internal: true` excludes entities from both `list_entities_services()` and `subscribe_states()`, so it cannot be used for transport). These appear in HA's entity registry but are not useful for automations.
 
 | Entity | Rate when active | Subscriber trigger |
 |--------|-----------------|-------------------|
@@ -141,7 +141,6 @@ Individual toggles control HA entity enable/disable only. The firmware publishes
 - System binary sensors (occupancy, static/motion presence, device tracking) — always publish at 1 Hz
 - Relay evaluation — always runs at 1 Hz
 
-## Risks
+## Verified
 
-- **Internal entity visibility:** The design assumes `internal: true` text sensors still flow through `aioesphomeapi.subscribe_states()`. If ESPHome excludes internal entities from state subscriptions, the Tier 1 transport breaks. This must be verified early in implementation. Fallback: keep them as regular entities with `disabled_by_default: true` and `entity_category: diagnostic` — they'd appear in HA but wouldn't clutter the main entity list.
-- **Key discovery for internal entities:** The integration currently finds entity keys via `list_entities_services()`. Internal entities may be excluded from this list. If so, we need an alternative key discovery mechanism (e.g., hardcoded object_id patterns or a separate entity enumeration).
+- **`internal: true` is not viable:** Tested on hardware — ESPHome's `internal: true` excludes entities from both `list_entities_services()` and `subscribe_states()`. Transport text sensors must remain as regular entities with `disabled_by_default: true`.
