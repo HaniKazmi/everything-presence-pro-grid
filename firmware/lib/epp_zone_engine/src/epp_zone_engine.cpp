@@ -35,6 +35,8 @@ ZoneEngine::ZoneEngine() {
     std::memset(target_prev_y_, 0, sizeof(target_prev_y_));
     std::memset(target_has_prev_xy_, 0, sizeof(target_has_prev_xy_));
     std::memset(target_gate_count_, 0, sizeof(target_gate_count_));
+    for (int i = 0; i < MAX_TARGETS; ++i) target_log_zone_[i] = -1;
+    std::memset(target_log_in_room_, 0, sizeof(target_log_in_room_));
 }
 
 void ZoneEngine::set_grid(const Grid& grid) {
@@ -86,6 +88,8 @@ void ZoneEngine::set_zones(const ZoneConfig zones[], int count) {
         target_has_prev_[i] = false;
         target_has_prev_xy_[i] = false;
         target_gate_count_[i] = 0;
+        target_log_zone_[i] = -1;
+        target_log_in_room_[i] = false;
     }
 
     // Reset sensor state
@@ -143,6 +147,11 @@ const ProcessingResult& ZoneEngine::tick(const WindowOutput& window, float times
     // Track which targets are active
     bool target_active[MAX_TARGETS]{};
 
+    // Per-target state for transition logging
+    int target_confirmed_zone[MAX_TARGETS];
+    bool target_in_room[MAX_TARGETS]{};
+    for (int i = 0; i < MAX_TARGETS; ++i) target_confirmed_zone[i] = -1;
+
     // -----------------------------------------------------------------------
     // Step 1: Per-target evaluation (Python lines 510-604)
     // -----------------------------------------------------------------------
@@ -162,7 +171,6 @@ const ProcessingResult& ZoneEngine::tick(const WindowOutput& window, float times
         int cell = grid_.xy_to_cell(tw.median_x, tw.median_y);
 
         if (cell == -1 || !grid_.cell_is_room(cell)) {
-            log_(LogLevel::DEBUG, "T%d outside room (signal %d)", i, signal);
             target_signal[i] = signal;
             target_has_signal[i] = true;
             target_has_prev_[i] = false;
@@ -172,6 +180,7 @@ const ProcessingResult& ZoneEngine::tick(const WindowOutput& window, float times
 
         target_signal[i] = signal;
         target_has_signal[i] = true;
+        target_in_room[i] = true;
         int zone_id = grid_.cell_zone(cell);
         target_zone_curr[i] = zone_id;
 
@@ -234,8 +243,7 @@ const ProcessingResult& ZoneEngine::tick(const WindowOutput& window, float times
                     target_gate_count_[i] += 1;
                     if (target_gate_count_[i] >= 2) {
                         // Confirmed after 2 qualifying ticks
-                        log_(LogLevel::DEBUG, "T%d confirmed in zone %d (signal %d, gated)",
-                             i, zone_id, signal);
+                        target_confirmed_zone[i] = zone_id;
                         zone_confirmed[zone_id] = true;
                         rt.confirmed_targets |= (1 << i);
                         target_prev_col_[i] = col;
@@ -253,8 +261,6 @@ const ProcessingResult& ZoneEngine::tick(const WindowOutput& window, float times
                     }
                 } else {
                     // Below gated threshold: reset tracking
-                    log_(LogLevel::DEBUG, "T%d below threshold in zone %d (signal %d, need %d)",
-                         i, zone_id, signal, gated_thresh);
                     target_has_prev_[i] = false;
                     target_gate_count_[i] = 0;
                 }
@@ -262,8 +268,7 @@ const ProcessingResult& ZoneEngine::tick(const WindowOutput& window, float times
                 // Not gated: entry point zone, continuous movement,
                 // or already occupied/pending
                 if (tw.frame_count >= base_thresh) {
-                    log_(LogLevel::DEBUG, "T%d confirmed in zone %d (signal %d)",
-                         i, zone_id, signal);
+                    target_confirmed_zone[i] = zone_id;
                     zone_confirmed[zone_id] = true;
                     rt.confirmed_targets |= (1 << i);
                     target_prev_col_[i] = col;
@@ -271,8 +276,6 @@ const ProcessingResult& ZoneEngine::tick(const WindowOutput& window, float times
                     target_has_prev_[i] = true;
                     target_gate_count_[i] = 0;
                 } else {
-                    log_(LogLevel::DEBUG, "T%d below threshold in zone %d (signal %d, need %d)",
-                         i, zone_id, signal, base_thresh);
                     target_prev_col_[i] = col;
                     target_prev_row_[i] = row;
                     target_has_prev_[i] = true;
@@ -284,6 +287,42 @@ const ProcessingResult& ZoneEngine::tick(const WindowOutput& window, float times
             target_prev_row_[i] = row;
             target_has_prev_[i] = true;
         }
+    }
+
+    // -----------------------------------------------------------------------
+    // Step 1b: Per-target transition logging (event-driven, not per-tick)
+    // -----------------------------------------------------------------------
+    for (int i = 0; i < MAX_TARGETS; ++i) {
+        int prev_zone = target_log_zone_[i];
+        int curr_zone = target_confirmed_zone[i];
+        bool was_in_room = target_log_in_room_[i];
+        bool is_in_room = target_in_room[i];
+
+        // Entered a zone (newly confirmed or changed zone)
+        if (curr_zone >= 0 && curr_zone != prev_zone) {
+            log_(LogLevel::DEBUG, "T%d entered zone %d (signal %d)",
+                 i, curr_zone, target_signal[i]);
+        }
+
+        // Left a zone (was confirmed, no longer)
+        if (prev_zone >= 0 && curr_zone != prev_zone) {
+            log_(LogLevel::DEBUG, "T%d left zone %d", i, prev_zone);
+        }
+
+        // Signal dropped below threshold (was confirmed, now not, but still in room)
+        if (prev_zone >= 0 && curr_zone < 0 && is_in_room) {
+            log_(LogLevel::DEBUG, "T%d below threshold in zone %d (signal %d)",
+                 i, prev_zone, target_signal[i]);
+        }
+
+        // Left room (was in room, now outside)
+        if (was_in_room && !is_in_room && target_active[i]) {
+            log_(LogLevel::DEBUG, "T%d left room", i);
+        }
+
+        // Update log state for next tick
+        target_log_zone_[i] = curr_zone;
+        target_log_in_room_[i] = is_in_room;
     }
 
     // -----------------------------------------------------------------------

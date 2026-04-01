@@ -156,16 +156,25 @@ TEST_CASE("log: no zone transition → no zone info log") {
 }
 
 // ---------------------------------------------------------------------------
-// Target tracking debug logs
+// Target tracking debug logs — event-driven (transitions only)
 // ---------------------------------------------------------------------------
 
-TEST_CASE("log: target confirmed in zone produces debug log") {
+TEST_CASE("log: target newly confirmed in zone produces debug log") {
     ZoneEngine engine = make_engine();
-    // Zone 1 entry point, signal=5 → confirmed immediately
+    // Zone 1 entry point, signal=5 → first confirmation
     const ProcessingResult& r = engine.tick(make_window_1(X_OFF + 450, 450, 5), 100.0f);
     CHECK(has_debug(r, "T0"));
-    CHECK(has_debug(r, "confirmed"));
+    CHECK(has_debug(r, "entered"));
     CHECK(has_debug(r, "zone 1"));
+}
+
+TEST_CASE("log: stably confirmed target does NOT re-log every tick") {
+    ZoneEngine engine = make_engine();
+    // First tick: enter zone 1 (logs)
+    engine.tick(make_window_1(X_OFF + 450, 450, 5), 100.0f);
+    // Second tick: still in zone 1 — no debug log
+    const ProcessingResult& r = engine.tick(make_window_1(X_OFF + 450, 450, 5), 101.0f);
+    CHECK_FALSE(has_debug(r, "T0"));
 }
 
 TEST_CASE("log: target gating produces debug log") {
@@ -177,20 +186,51 @@ TEST_CASE("log: target gating produces debug log") {
     CHECK(has_debug(r, "gating"));
 }
 
-TEST_CASE("log: target below threshold produces debug log") {
+TEST_CASE("log: target below threshold only logs on drop from confirmed") {
     ZoneEngine engine = make_engine();
-    // Zone 1 trigger=3, signal=2 → below threshold
-    const ProcessingResult& r = engine.tick(make_window_1(X_OFF + 450, 450, 2), 100.0f);
-    CHECK_FALSE(r.zone_occupancy[1]);
-    CHECK(has_debug(r, "T0"));
-    CHECK(has_debug(r, "below"));
+    float t = 100.0f;
+
+    // First tick: weak signal, never confirmed — no log (noise)
+    const ProcessingResult& r1 = engine.tick(make_window_1(X_OFF + 450, 450, 2), t);
+    CHECK_FALSE(has_debug(r1, "below"));
+
+    // Confirm target in zone 1
+    engine.tick(make_window_1(X_OFF + 450, 450, 5), t + 1.0f);
+
+    // Signal drops below threshold — NOW it should log
+    const ProcessingResult& r3 = engine.tick(make_window_1(X_OFF + 450, 450, 1), t + 2.0f);
+    CHECK(has_debug(r3, "T0"));
+    CHECK(has_debug(r3, "below"));
 }
 
-TEST_CASE("log: target outside room produces debug log") {
+TEST_CASE("log: target outside room only logs on transition from in-room") {
     ZoneEngine engine = make_engine();
-    const ProcessingResult& r = engine.tick(make_window_1(9000, 9000, 9), 100.0f);
-    CHECK(has_debug(r, "T0"));
-    CHECK(has_debug(r, "outside"));
+    float t = 100.0f;
+
+    // Target appears outside room — no log (was never in room)
+    const ProcessingResult& r1 = engine.tick(make_window_1(9000, 9000, 9), t);
+    CHECK_FALSE(has_debug(r1, "outside"));
+
+    // Target enters room
+    engine.tick(make_window_1(X_OFF + 450, 450, 5), t + 1.0f);
+
+    // Target leaves room — NOW it should log
+    const ProcessingResult& r3 = engine.tick(make_window_1(9000, 9000, 9), t + 2.0f);
+    CHECK(has_debug(r3, "T0"));
+    CHECK(has_debug(r3, "left room"));
+}
+
+TEST_CASE("log: stably outside-room target does NOT re-log every tick") {
+    ZoneEngine engine = make_engine();
+    float t = 100.0f;
+
+    // Enter room then leave
+    engine.tick(make_window_1(X_OFF + 450, 450, 5), t);
+    engine.tick(make_window_1(9000, 9000, 9), t + 1.0f);  // logs "left room"
+
+    // Still outside — no log
+    const ProcessingResult& r = engine.tick(make_window_1(9000, 9000, 9), t + 2.0f);
+    CHECK_FALSE(has_debug(r, "left room"));
 }
 
 // ---------------------------------------------------------------------------
