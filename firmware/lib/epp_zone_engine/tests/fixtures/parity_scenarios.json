@@ -12,8 +12,8 @@
     "overlay_entry_cells": [[9, 1]]
   },
   "zones": {
-    "0": {"type": "normal", "trigger": 5, "renew": 3, "timeout": 10.0, "handoff_timeout": 3.0, "entry_point": false},
-    "1": {"type": "entrance", "trigger": 3, "renew": 2, "timeout": 5.0, "handoff_timeout": 1.0, "entry_point": true}
+    "0": {"type": "normal", "trigger": 5, "renew": 3, "timeout": 10.0, "handoff_timeout": 3.0},
+    "1": {"type": "entrance", "trigger": 3, "renew": 2, "timeout": 5.0, "handoff_timeout": 1.0}
   },
   "scenarios": {
     "test_no_targets_all_clear": {

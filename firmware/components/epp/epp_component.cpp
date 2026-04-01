@@ -405,8 +405,7 @@ void EPPComponent::set_zones(const std::string &zones_json) {
     doc["room_trigger"] | 5,
     doc["room_renew"] | 3,
     doc["room_timeout"] | 10.0f,
-    doc["room_handoff_timeout"] | 3.0f,
-    doc["room_entry_point"] | false
+    doc["room_handoff_timeout"] | 3.0f
   };
   count++;
 
@@ -421,8 +420,7 @@ void EPPComponent::set_zones(const std::string &zones_json) {
       z["trigger"] | 5,
       z["renew"] | 3,
       z["timeout"] | 10.0f,
-      z["handoff_timeout"] | 3.0f,
-      z["entry_point"] | false
+      z["handoff_timeout"] | 3.0f
     };
     count++;
   }
@@ -535,8 +533,7 @@ void EPPComponent::restore_from_nvs_() {
         doc["room_trigger"] | 5,
         doc["room_renew"] | 3,
         doc["room_timeout"] | 10.0f,
-        doc["room_handoff_timeout"] | 3.0f,
-        doc["room_entry_point"] | false
+        doc["room_handoff_timeout"] | 3.0f
       };
       count++;
 
@@ -550,8 +547,7 @@ void EPPComponent::restore_from_nvs_() {
           z["trigger"] | 5,
           z["renew"] | 3,
           z["timeout"] | 10.0f,
-          z["handoff_timeout"] | 3.0f,
-          z["entry_point"] | false
+          z["handoff_timeout"] | 3.0f
         };
         count++;
       }

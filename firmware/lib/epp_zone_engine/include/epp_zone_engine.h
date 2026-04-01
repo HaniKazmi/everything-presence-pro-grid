@@ -20,7 +20,6 @@ struct ZoneConfig {
     int renew = 3;
     float timeout = 10.0f;
     float handoff_timeout = 3.0f;
-    bool entry_point = false;
 };
 
 struct TargetResult {

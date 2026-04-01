@@ -29,7 +29,7 @@ static Grid make_parity_grid() {
 static ZoneEngine make_parity_engine() {
     Grid grid = make_parity_grid();
 
-    // Zone 1: entrance, trigger=3, renew=2, timeout=5, handoff_timeout=1, entry_point=true
+    // Zone 1: entrance, trigger=3, renew=2, timeout=5, handoff_timeout=1
     ZoneConfig zone1{};
     zone1.id = 1;
     zone1.type = ZoneType::ENTRANCE;
@@ -37,9 +37,8 @@ static ZoneEngine make_parity_engine() {
     zone1.renew = 2;
     zone1.timeout = 5.0f;
     zone1.handoff_timeout = 1.0f;
-    zone1.entry_point = true;
 
-    // Zone 0: normal, trigger=5, renew=3, timeout=10, handoff_timeout=3, entry_point=false
+    // Zone 0: normal, trigger=5, renew=3, timeout=10, handoff_timeout=3
     ZoneConfig zone0{};
     zone0.id = 0;
     zone0.type = ZoneType::NORMAL;
@@ -47,7 +46,6 @@ static ZoneEngine make_parity_engine() {
     zone0.renew = 3;
     zone0.timeout = 10.0f;
     zone0.handoff_timeout = 3.0f;
-    zone0.entry_point = false;
 
     ZoneConfig zones[] = {zone1, zone0};
 
@@ -422,7 +420,6 @@ TEST_CASE("set_zones skips invalid zone IDs") {
     bad.id = 99;  // out of range (MAX_ZONE_SLOTS=8)
     bad.type = ZoneType::ENTRANCE;
     bad.trigger = 1;
-    bad.entry_point = true;
     engine.set_zones(&bad, 1);
     // Only zone 0 should exist; zone 1 cell should not trigger zone 1 occupancy
     const ProcessingResult& r = engine.tick(make_window_1(X_OFF + 450, 450, 9), 100.0f);
@@ -438,7 +435,6 @@ TEST_CASE("set_zones resets per-target gating state") {
     ZoneConfig zone1{};
     zone1.id = 1; zone1.type = ZoneType::ENTRANCE; zone1.trigger = 3;
     zone1.renew = 2; zone1.timeout = 5.0f; zone1.handoff_timeout = 1.0f;
-    zone1.entry_point = true;
     engine.set_zones(&zone1, 1);
     // Next tick should be treated as first gating tick again (not second)
     const ProcessingResult& r = engine.tick(make_window_1(X_OFF + 150, 150, 7), t + 1.0f);
@@ -520,7 +516,6 @@ TEST_CASE("set_zones resets zone occupancy state") {
     ZoneConfig zone1{};
     zone1.id = 1; zone1.type = ZoneType::ENTRANCE; zone1.trigger = 3;
     zone1.renew = 2; zone1.timeout = 5.0f; zone1.handoff_timeout = 1.0f;
-    zone1.entry_point = true;
     engine.set_zones(&zone1, 1);
     // Zone state should be reset to CLEAR
     const ProcessingResult& r = engine.tick(make_window_0(), 101.0f);

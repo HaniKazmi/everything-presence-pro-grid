@@ -174,14 +174,6 @@ TEST_CASE("ZoneType defaults") {
     CHECK(custom.trigger == normal.trigger);
 }
 
-TEST_CASE("is_entry_point_type") {
-    CHECK(epp::is_entry_point_type(epp::ZoneType::ENTRANCE));
-    CHECK_FALSE(epp::is_entry_point_type(epp::ZoneType::NORMAL));
-    CHECK_FALSE(epp::is_entry_point_type(epp::ZoneType::THOROUGHFARE));
-    CHECK_FALSE(epp::is_entry_point_type(epp::ZoneType::REST));
-    CHECK_FALSE(epp::is_entry_point_type(epp::ZoneType::CUSTOM));
-}
-
 TEST_CASE("threshold_to_frame_count") {
     CHECK(epp::threshold_to_frame_count(5) == 5);
     CHECK(epp::threshold_to_frame_count(1) == 1);

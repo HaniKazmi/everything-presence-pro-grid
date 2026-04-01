@@ -35,7 +35,6 @@ static ZoneEngine make_engine() {
     zone1.renew = 2;
     zone1.timeout = 5.0f;
     zone1.handoff_timeout = 1.0f;
-    zone1.entry_point = true;
 
     ZoneConfig zone0{};
     zone0.id = 0;
@@ -44,7 +43,6 @@ static ZoneEngine make_engine() {
     zone0.renew = 3;
     zone0.timeout = 10.0f;
     zone0.handoff_timeout = 3.0f;
-    zone0.entry_point = false;
 
     ZoneConfig zones[] = {zone1, zone0};
 

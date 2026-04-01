@@ -96,11 +96,6 @@ inline ZoneTypeDefaults zone_type_defaults(ZoneType type) {
     return ZONE_TYPE_DEFAULTS[0];  // NORMAL as fallback
 }
 
-// Returns true if the zone type is an entry point (only ENTRANCE).
-inline bool is_entry_point_type(ZoneType type) {
-    return type == ZoneType::ENTRANCE;
-}
-
 // Convert a threshold value to a frame count (minimum 1).
 inline int threshold_to_frame_count(int threshold) {
     return std::max(1, threshold);

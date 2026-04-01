@@ -82,7 +82,6 @@ static std::vector<ZoneConfig> build_zones(const json& zone_configs) {
         zc.renew = cfg["renew"].get<int>();
         zc.timeout = cfg["timeout"].get<float>();
         zc.handoff_timeout = cfg["handoff_timeout"].get<float>();
-        zc.entry_point = cfg["entry_point"].get<bool>();
         zones.push_back(zc);
     }
     return zones;

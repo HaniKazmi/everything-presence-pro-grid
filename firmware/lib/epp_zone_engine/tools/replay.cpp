@@ -108,7 +108,6 @@ int main(int argc, char* argv[]) {
             zc.renew = z.value("renew", defaults.renew);
             zc.timeout = z.value("timeout", defaults.timeout);
             zc.handoff_timeout = z.value("handoff_timeout", defaults.handoff_timeout);
-            zc.entry_point = z.value("entry_point", is_entry_point_type(zc.type));
             zone_configs.push_back(zc);
         }
     }
@@ -127,7 +126,6 @@ int main(int argc, char* argv[]) {
         room_zc.renew = rl.value("room_renew", room_defaults.renew);
         room_zc.timeout = rl.value("room_timeout", room_defaults.timeout);
         room_zc.handoff_timeout = rl.value("room_handoff_timeout", room_defaults.handoff_timeout);
-        room_zc.entry_point = rl.value("room_entry_point", false);
         zone_configs.push_back(room_zc);
     }
 

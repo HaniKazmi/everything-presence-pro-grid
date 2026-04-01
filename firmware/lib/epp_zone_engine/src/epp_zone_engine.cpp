@@ -61,7 +61,6 @@ void ZoneEngine::set_zones(const ZoneConfig zones[], int count) {
     zones_[0].config.renew = defaults.renew;
     zones_[0].config.timeout = defaults.timeout;
     zones_[0].config.handoff_timeout = defaults.handoff_timeout;
-    zones_[0].config.entry_point = false;
     zone_enabled_[0] = true;
     zone_count_ = 1;
 
