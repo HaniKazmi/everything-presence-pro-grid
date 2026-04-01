@@ -47,6 +47,7 @@ async def setup_integration(hass: HomeAssistant, config_entry: MockConfigEntry) 
         mock_dm.devices = {}
         mock_dm.list_devices.return_value = []
         mock_dm._push_config_to_device = AsyncMock()
+        mock_dm._push_pipeline_to_device = AsyncMock()
         mock_dm._entity_update_macs = set()
         mock_dm.async_update_zone_entities = AsyncMock()
         mock_dm.async_open_session = AsyncMock(return_value=None)
@@ -983,16 +984,20 @@ class TestWebSocketSettings:
             "id": 15,
             "type": "eppgrid/set_pipeline",
             "mac": "AA:BB:CC:DD:EE:FF",
-            "display_interval_ms": 200,
-            "zone_publish_interval_ms": 1000,
-            "window_duration_ms": 1000,
+            "entity_target_interval": 1000,
+            "entity_zone_interval": 1000,
+            "display_interval": 200,
+            "zone_state_interval": 1000,
+            "window_duration": 1000,
         }
 
         await call_async_handler(hass, websocket_set_pipeline, connection, msg)
 
         pipeline = mock_dm._store.devices["AA:BB:CC:DD:EE:FF"]["pipeline"]
+        assert pipeline["entity_target_interval"] == 1000
+        assert pipeline["entity_zone_interval"] == 1000
         assert pipeline["display_interval"] == 200
-        assert pipeline["zone_publish_interval"] == 1000
+        assert pipeline["zone_state_interval"] == 1000
         assert pipeline["window_duration"] == 1000
 
 
@@ -2227,7 +2232,7 @@ class TestProtocolVersionGuard:
             ),
             (
                 "websocket_set_pipeline",
-                {"display_interval_ms": 200, "zone_publish_interval_ms": 1000, "window_duration_ms": 1000},
+                {"entity_target_interval": 1000, "entity_zone_interval": 1000, "display_interval": 200, "zone_state_interval": 1000, "window_duration": 1000},
             ),
         ],
     )

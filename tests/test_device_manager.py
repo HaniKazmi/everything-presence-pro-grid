@@ -1542,8 +1542,11 @@ class TestEventCallbacks:
 
         session_conn = MagicMock()
         session_conn.connected = True
+        session_conn.raw_target_subs = 0
+        session_conn.grid_target_subs = 0
         session_conn.async_push_config = AsyncMock()
         session_conn.async_fetch_build_flags = AsyncMock(return_value={})
+        session_conn._services = {}
         manager._active_connections[mac] = session_conn
 
         result = await manager._push_config_to_device(mac)
@@ -1565,6 +1568,8 @@ class TestEventCallbacks:
         mock_conn.async_push_config = AsyncMock()
         mock_conn.async_fetch_build_flags = AsyncMock(return_value={})
         mock_conn.async_disconnect = AsyncMock()
+        mock_conn._services = {}
+        mock_conn._client = MagicMock()
 
         with patch(
             "custom_components.eppgrid.device_manager.DeviceConnection",
@@ -1594,6 +1599,8 @@ class TestEventCallbacks:
         mock_conn.async_push_config = AsyncMock()
         mock_conn.async_fetch_build_flags = AsyncMock(return_value={})
         mock_conn.async_disconnect = AsyncMock()
+        mock_conn._services = {}
+        mock_conn._client = MagicMock()
 
         with patch(
             "custom_components.eppgrid.device_manager.DeviceConnection",
@@ -2051,6 +2058,8 @@ class TestBuildFlags:
         mock_conn.async_push_config = AsyncMock()
         mock_conn.async_fetch_build_flags = AsyncMock(return_value=expected_flags)
         mock_conn.async_disconnect = AsyncMock()
+        mock_conn._services = {}
+        mock_conn._client = MagicMock()
 
         with patch(
             "custom_components.eppgrid.device_manager.DeviceConnection",
@@ -2074,8 +2083,11 @@ class TestBuildFlags:
 
         session_conn = MagicMock()
         session_conn.connected = True
+        session_conn.raw_target_subs = 0
+        session_conn.grid_target_subs = 0
         session_conn.async_push_config = AsyncMock()
         session_conn.async_fetch_build_flags = AsyncMock(return_value=expected_flags)
+        session_conn._services = {}
         manager._active_connections[mac] = session_conn
 
         result = await manager._push_config_to_device(mac)

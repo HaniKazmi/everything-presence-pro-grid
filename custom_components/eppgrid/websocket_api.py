@@ -379,12 +379,19 @@ _ENTITY_OBJECT_ID_MAP: dict[str, str] = {
     "illuminance": "env_illuminance",
     "co2": "env_co2",
     "system_alarm_relay": "relay_output",
+    "target_count": "target_count",
 }
 
 # Prefix patterns: object_ids starting with these prefixes map to a category key.
 _ENTITY_PREFIX_MAP: list[tuple[str, str, str]] = [
-    ("zone_", "_presence", "zone_presence"),  # zone_0_presence, zone_1_presence, ...
-    ("target_", "_position", "target_xy"),  # target_0_position, target_1_position, ...
+    ("zone_", "_presence", "zone_presence"),
+    ("zone_", "_target_count", "zone_target_count"),
+    ("target_", "_position", "target_xy"),
+    ("target_", "_x", "target_xy"),
+    ("target_", "_y", "target_xy"),
+    ("target_", "_signal", "target_signal"),
+    ("target_", "_active", "target_active"),
+    ("target_", "_zone", "target_zone"),
 ]
 
 
@@ -576,9 +583,17 @@ async def websocket_subscribe_raw_targets(
     device_conn.subscribe_states(_on_state)
     connection.send_result(msg["id"])
 
+    device_conn.raw_target_subs += 1
+    if manager:
+        hass.async_create_task(manager._push_pipeline_to_device(mac))
+
     @callback
     def _unsub() -> None:
         device_conn.unsubscribe_states(_on_state)
+        device_conn.raw_target_subs -= 1
+        mgr = _get_manager(hass)
+        if mgr:
+            hass.async_create_task(mgr._push_pipeline_to_device(mac))
 
     connection.subscriptions[msg["id"]] = _unsub
 
@@ -743,9 +758,17 @@ async def websocket_subscribe_grid_targets(
     device_conn.subscribe_states(_on_state)
     connection.send_result(msg["id"])
 
+    device_conn.grid_target_subs += 1
+    if manager:
+        hass.async_create_task(manager._push_pipeline_to_device(mac))
+
     @callback
     def _unsub() -> None:
         device_conn.unsubscribe_states(_on_state)
+        device_conn.grid_target_subs -= 1
+        mgr = _get_manager(hass)
+        if mgr:
+            hass.async_create_task(mgr._push_pipeline_to_device(mac))
 
     connection.subscriptions[msg["id"]] = _unsub
 
@@ -836,6 +859,8 @@ _SETTINGS_KEYS = (
         vol.Required("relay_contact_mode"): vol.In(["no", "nc"]),
         vol.Optional("entities"): {str: bool},
         vol.Optional("log_levels"): {str: vol.In(["None", "Error", "Warning", "Info", "Debug"])},
+        vol.Optional("target_update_rate_ms"): vol.All(vol.Coerce(int), vol.In([200, 500, 1000, 2000])),
+        vol.Optional("zone_update_rate_ms"): vol.All(vol.Coerce(int), vol.In([200, 500, 1000, 2000])),
     }
 )
 @websocket_api.async_response
@@ -868,6 +893,10 @@ async def websocket_set_settings(
     if "target_xy" in old_settings:
         new_settings["target_xy"] = old_settings["target_xy"]
     device_config["settings"] = new_settings
+    if "target_update_rate_ms" in msg:
+        new_settings["target_update_rate_ms"] = msg["target_update_rate_ms"]
+    if "zone_update_rate_ms" in msg:
+        new_settings["zone_update_rate_ms"] = msg["zone_update_rate_ms"]
     log_levels = msg.get("log_levels")
     if log_levels is not None:
         device_config["log_levels"] = log_levels
@@ -901,6 +930,7 @@ async def websocket_set_settings(
 
             zone_slots = layout.get("zone_slots", [None] * MAX_ZONES)
             await manager.async_update_zone_entities(mac, zone_slots)
+        await manager._push_pipeline_to_device(mac)
     connection.send_result(msg["id"])
 
 
@@ -962,9 +992,11 @@ async def websocket_set_distance_override(
     {
         vol.Required("type"): "eppgrid/set_pipeline",
         vol.Required("mac"): str,
-        vol.Required("display_interval_ms"): vol.All(vol.Coerce(int), vol.Range(min=50, max=1000)),
-        vol.Required("zone_publish_interval_ms"): vol.All(vol.Coerce(int), vol.Range(min=100, max=2000)),
-        vol.Required("window_duration_ms"): vol.All(vol.Coerce(int), vol.Range(min=200, max=2000)),
+        vol.Required("entity_target_interval"): vol.All(vol.Coerce(int), vol.Range(min=0, max=2000)),
+        vol.Required("entity_zone_interval"): vol.All(vol.Coerce(int), vol.Range(min=0, max=2000)),
+        vol.Required("display_interval"): vol.All(vol.Coerce(int), vol.Range(min=0, max=1000)),
+        vol.Required("zone_state_interval"): vol.All(vol.Coerce(int), vol.Range(min=0, max=2000)),
+        vol.Required("window_duration"): vol.All(vol.Coerce(int), vol.Range(min=200, max=2000)),
     }
 )
 @websocket_api.async_response
@@ -989,9 +1021,11 @@ async def websocket_set_pipeline(
     mac = msg["mac"]
     device_config = manager._store.devices.setdefault(mac, {})
     device_config["pipeline"] = {
-        "display_interval": msg["display_interval_ms"],
-        "zone_publish_interval": msg["zone_publish_interval_ms"],
-        "window_duration": msg["window_duration_ms"],
+        "entity_target_interval": msg["entity_target_interval"],
+        "entity_zone_interval": msg["entity_zone_interval"],
+        "display_interval": msg["display_interval"],
+        "zone_state_interval": msg["zone_state_interval"],
+        "window_duration": msg["window_duration"],
     }
     await manager._store.async_save()
     await manager._push_config_to_device(mac)

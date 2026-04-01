@@ -312,14 +312,6 @@ class DeviceConnection:
                 )
                 _LOGGER.info("Pushed relay settings to %s", self._host)
 
-        # Push pipeline (separate from settings)
-        pipeline = config.get("pipeline")
-        if pipeline:
-            svc = self._services.get("epp_set_pipeline")
-            if svc:
-                await self._client.execute_service(svc, pipeline)
-                _LOGGER.info("Pushed pipeline to %s", self._host)
-
         # Push log levels
         log_levels = config.get("log_levels")
         if log_levels:
@@ -566,6 +558,24 @@ class DeviceManager:
         else:
             conn.unsubscribe_logs()
 
+    async def _push_pipeline_to_device(self, mac: str) -> None:
+        """Recompute pipeline intervals and push to device."""
+        from .websocket_api import _compute_pipeline
+
+        config = self._store.devices.get(mac, {})
+        session = self.get_session(mac)
+        raw_subs = session.raw_target_subs if session else 0
+        grid_subs = session.grid_target_subs if session else 0
+
+        pipeline = _compute_pipeline(config, raw_subs, grid_subs)
+
+        # Push via session if available, otherwise skip (device will get it on next full push)
+        if session is not None and session.connected:
+            svc = session._services.get("epp_set_pipeline")
+            if svc:
+                await session._client.execute_service(svc, pipeline)
+                _LOGGER.info("Pushed pipeline to %s", mac)
+
     async def _push_config_to_device(self, mac: str) -> bool:
         """Push config to device, preferring an existing session connection."""
         config = self._store.get_device(mac)
@@ -580,6 +590,7 @@ class DeviceManager:
         if session_conn is not None:
             try:
                 await session_conn.async_push_config(config)
+                await self._push_pipeline_to_device(mac)
                 flags = await session_conn.async_fetch_build_flags()
                 if flags:
                     self._build_flags[mac] = flags
@@ -595,6 +606,13 @@ class DeviceManager:
         try:
             await conn.async_connect()
             await conn.async_push_config(config)
+            # Push pipeline directly (no subscribers on temp connections)
+            from .websocket_api import _compute_pipeline
+
+            pipeline = _compute_pipeline(config, 0, 0)
+            svc = conn._services.get("epp_set_pipeline")
+            if svc:
+                await conn._client.execute_service(svc, pipeline)
             flags = await conn.async_fetch_build_flags()
             if flags:
                 self._build_flags[mac] = flags
