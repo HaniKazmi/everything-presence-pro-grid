@@ -672,7 +672,7 @@ class DeviceManager:
         return result
 
     async def async_update_zone_entities(self, mac: str, zone_slots: list[dict[str, Any] | None]) -> None:
-        """Enable/disable and rename ESPHome zone occupancy entities for a device.
+        """Enable/disable and rename ESPHome zone presence entities for a device.
 
         Reads settings.zone_presence to decide whether zone entities should
         be enabled. When enabled, zone 0 + named zones are enabled; unused
@@ -706,12 +706,12 @@ class DeviceManager:
                 ent_reg.async_update_entity(entity_id, disabled_by=er.RegistryEntryDisabler.INTEGRATION)
 
     def _find_zone_entity(self, ent_reg: er.EntityRegistry, device_id: str, zone_index: int) -> str | None:
-        """Find the ESPHome zone occupancy entity_id for a device and zone index."""
+        """Find the ESPHome zone presence entity_id for a device and zone index."""
         for entry in ent_reg.entities.values():
             if (
                 entry.device_id == device_id
                 and entry.platform == "esphome"
-                and f"zone_{zone_index}_occupancy" in entry.unique_id
+                and f"zone_{zone_index}_presence" in entry.unique_id
             ):
                 return entry.entity_id
         return None

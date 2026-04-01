@@ -337,7 +337,7 @@ async def websocket_apply_template(
 # Map ESPHome entity object_ids to frontend entity keys.
 # unique_id format: {MAC}-{platform}-{object_id}
 # Single object_ids map 1:1; prefix patterns (ending with _) match multiple
-# entities (e.g. zone_0_occupancy, zone_1_occupancy, ...).
+# entities (e.g. zone_0_presence, zone_1_presence, ...).
 _ENTITY_OBJECT_ID_MAP: dict[str, str] = {
     "occupancy": "room_occupancy",
     "static_presence": "room_static_presence",
@@ -352,7 +352,7 @@ _ENTITY_OBJECT_ID_MAP: dict[str, str] = {
 
 # Prefix patterns: object_ids starting with these prefixes map to a category key.
 _ENTITY_PREFIX_MAP: list[tuple[str, str, str]] = [
-    ("zone_", "_occupancy", "zone_presence"),  # zone_0_occupancy, zone_1_occupancy, ...
+    ("zone_", "_presence", "zone_presence"),  # zone_0_presence, zone_1_presence, ...
     ("target_", "_position", "target_xy"),  # target_0_position, target_1_position, ...
 ]
 
@@ -366,8 +366,8 @@ def _entity_key_for_object_id(object_id: str) -> str | None:
     """Map an ESPHome object_id to its frontend entity key, or None.
 
     Handles both formats:
-    - Extracted object_id (hyphen format): "zone_0_occupancy"
-    - Full unique_id (underscore format): "esphome_aabbccddeeff_zone_0_occupancy"
+    - Extracted object_id (hyphen format): "zone_0_presence"
+    - Full unique_id (underscore format): "esphome_aabbccddeeff_zone_0_presence"
     """
     # Exact match — works for extracted object_ids (hyphen format)
     if object_id in _ENTITY_OBJECT_ID_MAP:
@@ -376,7 +376,7 @@ def _entity_key_for_object_id(object_id: str) -> str | None:
         if object_id.startswith(prefix) and object_id.endswith(suffix):
             return key
     # Fallback: substring match for full unique_ids (underscore format).
-    # Check prefix patterns first (more specific) to avoid e.g. zone_0_occupancy
+    # Check prefix patterns first (more specific) to avoid e.g. zone_0_presence
     # matching the "occupancy" → "room_occupancy" suffix rule.
     for prefix, suffix, key in _ENTITY_PREFIX_MAP:
         if f"_{prefix}" in object_id and object_id.endswith(suffix):

@@ -1125,7 +1125,7 @@ class TestEntityMapping:
 
         assert _object_id_from_unique_id("E0:8C:FE:D3:FD:C8-binary_sensor-occupancy") == "occupancy"
         assert _object_id_from_unique_id("E0:8C:FE:D3:FD:C8-binary_sensor-motion_presence") == "motion_presence"
-        assert _object_id_from_unique_id("E0:8C:FE:D3:FD:C8-binary_sensor-zone_0_occupancy") == "zone_0_occupancy"
+        assert _object_id_from_unique_id("E0:8C:FE:D3:FD:C8-binary_sensor-zone_0_presence") == "zone_0_presence"
         assert _object_id_from_unique_id("E0:8C:FE:D3:FD:C8-sensor-temperature") == "temperature"
         assert _object_id_from_unique_id("E0:8C:FE:D3:FD:C8-text_sensor-target_0_position") == "target_0_position"
 
@@ -1148,12 +1148,12 @@ class TestEntityMapping:
         assert _entity_key_for_object_id("co2") == "env_co2"
 
     def test_entity_key_mapping_zone_entities(self) -> None:
-        """Zone occupancy entities map to zone_presence category."""
+        """Zone presence entities map to zone_presence category."""
         from custom_components.eppgrid.websocket_api import _entity_key_for_object_id
 
-        assert _entity_key_for_object_id("zone_0_occupancy") == "zone_presence"
-        assert _entity_key_for_object_id("zone_7_occupancy") == "zone_presence"
-        # zone_tracking is a separate entity, not a zone occupancy
+        assert _entity_key_for_object_id("zone_0_presence") == "zone_presence"
+        assert _entity_key_for_object_id("zone_7_presence") == "zone_presence"
+        # zone_tracking is a separate entity, not a zone presence
         assert _entity_key_for_object_id("zone_tracking") is None
 
     def test_entity_key_mapping_target_entities(self) -> None:
@@ -1174,8 +1174,8 @@ class TestEntityMapping:
         assert _entity_key_for_object_id("esphome_aabbccddeeff_temperature") == "env_temperature"
         assert _entity_key_for_object_id("esphome_aabbccddeeff_co2") == "env_co2"
         # Zone entities
-        assert _entity_key_for_object_id("esphome_aabbccddeeff_zone_0_occupancy") == "zone_presence"
-        assert _entity_key_for_object_id("esphome_aabbccddeeff_zone_7_occupancy") == "zone_presence"
+        assert _entity_key_for_object_id("esphome_aabbccddeeff_zone_0_presence") == "zone_presence"
+        assert _entity_key_for_object_id("esphome_aabbccddeeff_zone_7_presence") == "zone_presence"
         # Target entities
         assert _entity_key_for_object_id("esphome_aabbccddeeff_target_0_position") == "target_xy"
 
@@ -1261,14 +1261,14 @@ class TestWebSocketEntityEnabled:
                 "id": 16,
                 "type": "eppgrid/set_entity_enabled",
                 "mac": "AA:BB:CC:DD:EE:FF",
-                "entity_id": "binary_sensor.epp_zone_1_occupancy",
+                "entity_id": "binary_sensor.epp_zone_1_presence",
                 "enabled": True,
             }
 
             websocket_set_entity_enabled(hass, connection, msg)
 
             mock_registry.async_update_entity.assert_called_once_with(
-                "binary_sensor.epp_zone_1_occupancy", disabled_by=None
+                "binary_sensor.epp_zone_1_presence", disabled_by=None
             )
             connection.send_result.assert_called_once_with(16)
 
@@ -1288,14 +1288,14 @@ class TestWebSocketEntityEnabled:
                 "id": 17,
                 "type": "eppgrid/set_entity_enabled",
                 "mac": "AA:BB:CC:DD:EE:FF",
-                "entity_id": "binary_sensor.epp_zone_1_occupancy",
+                "entity_id": "binary_sensor.epp_zone_1_presence",
                 "enabled": False,
             }
 
             websocket_set_entity_enabled(hass, connection, msg)
 
             mock_registry.async_update_entity.assert_called_once_with(
-                "binary_sensor.epp_zone_1_occupancy",
+                "binary_sensor.epp_zone_1_presence",
                 disabled_by=RegistryEntryDisabler.INTEGRATION,
             )
 

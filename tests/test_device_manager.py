@@ -1761,21 +1761,21 @@ class TestZoneEntities:
         zone0_entry = ent_reg.async_get_or_create(
             "binary_sensor",
             "esphome",
-            unique_id="esphome_aabbccddeeff_zone_0_occupancy",
+            unique_id="esphome_aabbccddeeff_zone_0_presence",
             config_entry=esphome_entry,
             device_id=device.id,
         )
         zone1_entry = ent_reg.async_get_or_create(
             "binary_sensor",
             "esphome",
-            unique_id="esphome_aabbccddeeff_zone_1_occupancy",
+            unique_id="esphome_aabbccddeeff_zone_1_presence",
             config_entry=esphome_entry,
             device_id=device.id,
         )
         zone2_entry = ent_reg.async_get_or_create(
             "binary_sensor",
             "esphome",
-            unique_id="esphome_aabbccddeeff_zone_2_occupancy",
+            unique_id="esphome_aabbccddeeff_zone_2_presence",
             config_entry=esphome_entry,
             device_id=device.id,
         )
@@ -1819,14 +1819,14 @@ class TestZoneEntities:
         zone0_entry = ent_reg.async_get_or_create(
             "binary_sensor",
             "esphome",
-            unique_id="esphome_aabbccddeeff_zone_0_occupancy",
+            unique_id="esphome_aabbccddeeff_zone_0_presence",
             config_entry=esphome_entry,
             device_id=device.id,
         )
         zone1_entry = ent_reg.async_get_or_create(
             "binary_sensor",
             "esphome",
-            unique_id="esphome_aabbccddeeff_zone_1_occupancy",
+            unique_id="esphome_aabbccddeeff_zone_1_presence",
             config_entry=esphome_entry,
             device_id=device.id,
         )
@@ -1867,7 +1867,7 @@ class TestZoneEntities:
         zone1_entry = ent_reg.async_get_or_create(
             "binary_sensor",
             "esphome",
-            unique_id="esphome_aabbccddeeff_zone_1_occupancy",
+            unique_id="esphome_aabbccddeeff_zone_1_presence",
             config_entry=esphome_entry,
             device_id=device.id,
         )
