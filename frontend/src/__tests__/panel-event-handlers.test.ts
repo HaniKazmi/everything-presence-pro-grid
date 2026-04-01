@@ -431,6 +431,33 @@ describe("_renderLiveOverview inline handlers", () => {
 			expect(a._staticMaxDistance).toBe(16);
 		});
 
+		it("includes LED and relay fields in set_settings on delete calibration", async () => {
+			const a = createPanel() as any;
+			a._selectedMac = "AA:BB:CC:DD:EE:01";
+			a._targetAutoDistance = true;
+			a._staticAutoDistance = true;
+			a._showDeleteCalibrationDialog = true;
+			a._ledMode = "Environmental";
+			a._ledBrightness = 0.7;
+			a._ledPresenceColor = "#FF0000";
+			a._relayTriggerMode = "presence";
+			a._relayContactMode = "no";
+
+			const callWS = vi.fn().mockResolvedValue({});
+			a.hass = { callWS };
+
+			await a._deleteCalibration();
+
+			const settingsCall = callWS.mock.calls.find(
+				(c: any) => c[0].type === "eppgrid/set_settings",
+			)[0];
+			expect(settingsCall.led_mode).toBe("Environmental");
+			expect(settingsCall.led_brightness).toBe(0.7);
+			expect(settingsCall.led_presence_color).toBe("#FF0000");
+			expect(settingsCall.relay_trigger_mode).toBe("presence");
+			expect(settingsCall.relay_contact_mode).toBe("no");
+		});
+
 		it("does not call set_settings on delete calibration when auto is off", async () => {
 			const a = createPanel() as any;
 			a._selectedMac = "AA:BB:CC:DD:EE:01";
