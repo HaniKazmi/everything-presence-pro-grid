@@ -88,6 +88,29 @@ class EPPComponent : public esphome::Component {
   void set_relay(const std::string &trigger_mode, const std::string &contact_mode);
   void set_relay_switch(esphome::switch_::Switch *sw) { relay_switch_ = sw; }
 
+  // Structured target entity setters
+  void set_target_x_sensor(int index, esphome::sensor::Sensor *sensor) {
+    if (index >= 0 && index < NUM_TARGETS) target_x_sensors_[index] = sensor;
+  }
+  void set_target_y_sensor(int index, esphome::sensor::Sensor *sensor) {
+    if (index >= 0 && index < NUM_TARGETS) target_y_sensors_[index] = sensor;
+  }
+  void set_target_signal_sensor(int index, esphome::sensor::Sensor *sensor) {
+    if (index >= 0 && index < NUM_TARGETS) target_signal_sensors_[index] = sensor;
+  }
+  void set_target_active_sensor(int index, esphome::binary_sensor::BinarySensor *sensor) {
+    if (index >= 0 && index < NUM_TARGETS) target_active_sensors_[index] = sensor;
+  }
+  void set_target_zone_sensor(int index, esphome::sensor::Sensor *sensor) {
+    if (index >= 0 && index < NUM_TARGETS) target_zone_sensors_[index] = sensor;
+  }
+  void set_zone_target_count_sensor(int index, esphome::sensor::Sensor *sensor) {
+    if (index >= 0 && index < MAX_ZONE_SLOTS) zone_target_count_sensors_[index] = sensor;
+  }
+  void set_target_count_sensor(esphome::sensor::Sensor *sensor) {
+    target_count_sensor_ = sensor;
+  }
+
  protected:
   static constexpr int NUM_TARGETS = 3;
   static constexpr uint8_t NVS_SCHEMA_VERSION = 1;
@@ -143,6 +166,19 @@ class EPPComponent : public esphome::Component {
   esphome::binary_sensor::BinarySensor *static_presence_output_{nullptr};
   esphome::binary_sensor::BinarySensor *motion_presence_output_{nullptr};
   esphome::binary_sensor::BinarySensor *occupancy_output_{nullptr};
+
+  // Structured target entity sensors (per-target x, y, signal, active, zone)
+  esphome::sensor::Sensor *target_x_sensors_[NUM_TARGETS]{};
+  esphome::sensor::Sensor *target_y_sensors_[NUM_TARGETS]{};
+  esphome::sensor::Sensor *target_signal_sensors_[NUM_TARGETS]{};
+  esphome::binary_sensor::BinarySensor *target_active_sensors_[NUM_TARGETS]{};
+  esphome::sensor::Sensor *target_zone_sensors_[NUM_TARGETS]{};
+
+  // Structured zone entity sensors (per-zone target count)
+  esphome::sensor::Sensor *zone_target_count_sensors_[MAX_ZONE_SLOTS]{};
+
+  // Room-level target count
+  esphome::sensor::Sensor *target_count_sensor_{nullptr};
 
   // Relay
   esphome::switch_::Switch *relay_switch_{nullptr};
