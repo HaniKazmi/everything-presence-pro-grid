@@ -30,6 +30,9 @@ CONF_STATIC_PRESENCE_OUTPUT = "static_presence_output"
 CONF_MOTION_PRESENCE_OUTPUT = "motion_presence_output"
 CONF_OCCUPANCY_OUTPUT = "occupancy_output"
 CONF_RELAY_SWITCH = "relay_switch"
+CONF_TARGET_ENTITIES = "target_entities"
+CONF_ZONE_TARGET_COUNTS = "zone_target_counts"
+CONF_TARGET_COUNT = "target_count"
 
 ZONE_OCCUPANCY_SCHEMA = cv.Schema({cv.Optional(f"zone_{i}"): binary_sensor.binary_sensor_schema() for i in range(8)})
 
@@ -38,6 +41,22 @@ TARGET_POSITIONS_SCHEMA = cv.Schema({cv.Optional(f"target_{i}"): text_sensor.tex
 RAW_TARGET_POSITIONS_SCHEMA = cv.Schema(
     {cv.Optional(f"target_{i}"): text_sensor.text_sensor_schema() for i in range(3)}
 )
+
+TARGET_ENTITY_SCHEMA = cv.Schema({
+    cv.Optional("x"): sensor.sensor_schema(),
+    cv.Optional("y"): sensor.sensor_schema(),
+    cv.Optional("signal"): sensor.sensor_schema(),
+    cv.Optional("active"): binary_sensor.binary_sensor_schema(),
+    cv.Optional("zone"): sensor.sensor_schema(),
+})
+
+TARGET_ENTITIES_SCHEMA = cv.Schema({
+    cv.Optional(f"target_{i}"): TARGET_ENTITY_SCHEMA for i in range(1, 4)
+})
+
+ZONE_TARGET_COUNTS_SCHEMA = cv.Schema({
+    cv.Optional(f"zone_{i}"): sensor.sensor_schema() for i in range(8)
+})
 
 CONFIG_SCHEMA = cv.Schema(
     {
@@ -55,6 +74,9 @@ CONFIG_SCHEMA = cv.Schema(
         cv.Optional(CONF_MOTION_PRESENCE_OUTPUT): binary_sensor.binary_sensor_schema(),
         cv.Optional(CONF_OCCUPANCY_OUTPUT): binary_sensor.binary_sensor_schema(),
         cv.Optional(CONF_RELAY_SWITCH): cv.use_id(switch.Switch),
+        cv.Optional(CONF_TARGET_ENTITIES): TARGET_ENTITIES_SCHEMA,
+        cv.Optional(CONF_ZONE_TARGET_COUNTS): ZONE_TARGET_COUNTS_SCHEMA,
+        cv.Optional(CONF_TARGET_COUNT): sensor.sensor_schema(),
     }
 ).extend(cv.COMPONENT_SCHEMA)
 
@@ -79,7 +101,7 @@ async def to_code(config):
         cg.add(var.set_firmware_version_sensor(sens))
 
     # Zone occupancy binary sensors (zones 0-7)
-    # Force stable object_id "zone_N_occupancy" regardless of display name
+    # Force stable object_id "zone_N_presence" regardless of display name
     if CONF_ZONE_OCCUPANCY in config:
         zone_conf = config[CONF_ZONE_OCCUPANCY]
         for i in range(8):
@@ -143,3 +165,41 @@ async def to_code(config):
     if CONF_RELAY_SWITCH in config:
         sw = await cg.get_variable(config[CONF_RELAY_SWITCH])
         cg.add(var.set_relay_switch(sw))
+
+    # Target entities (targets labeled 1-3, mapping to firmware indices 0-2)
+    if CONF_TARGET_ENTITIES in config:
+        te_conf = config[CONF_TARGET_ENTITIES]
+        for i in range(1, 4):
+            key = f"target_{i}"
+            if key in te_conf:
+                t = te_conf[key]
+                idx = i - 1  # firmware uses 0-based
+                if "x" in t:
+                    sens = await sensor.new_sensor(t["x"])
+                    cg.add(var.set_target_x_sensor(idx, sens))
+                if "y" in t:
+                    sens = await sensor.new_sensor(t["y"])
+                    cg.add(var.set_target_y_sensor(idx, sens))
+                if "signal" in t:
+                    sens = await sensor.new_sensor(t["signal"])
+                    cg.add(var.set_target_signal_sensor(idx, sens))
+                if "active" in t:
+                    sens = await binary_sensor.new_binary_sensor(t["active"])
+                    cg.add(var.set_target_active_sensor(idx, sens))
+                if "zone" in t:
+                    sens = await sensor.new_sensor(t["zone"])
+                    cg.add(var.set_target_zone_sensor(idx, sens))
+
+    # Zone target counts
+    if CONF_ZONE_TARGET_COUNTS in config:
+        ztc_conf = config[CONF_ZONE_TARGET_COUNTS]
+        for i in range(8):
+            key = f"zone_{i}"
+            if key in ztc_conf:
+                sens = await sensor.new_sensor(ztc_conf[key])
+                cg.add(var.set_zone_target_count_sensor(i, sens))
+
+    # Room-level target count
+    if CONF_TARGET_COUNT in config:
+        sens = await sensor.new_sensor(config[CONF_TARGET_COUNT])
+        cg.add(var.set_target_count_sensor(sens))

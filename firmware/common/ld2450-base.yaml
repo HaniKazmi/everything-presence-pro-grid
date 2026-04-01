@@ -4,12 +4,6 @@ globals:
     restore_value: False
     initial_value: '6000'
 
-binary_sensor:
-  - platform: template
-    name: "Target Presence"
-    device_class: occupancy
-    id: ld2450_occupancy
-    disabled_by_default: true
 
 button:
   - platform: template
@@ -76,4 +70,3 @@ uart:
           bool p3 = parse_target(20, x3, y3);
 
           id(epp_component).feed_targets(x1,y1,p1, x2,y2,p2, x3,y3,p3);
-          id(ld2450_occupancy).publish_state(p1 || p2 || p3);

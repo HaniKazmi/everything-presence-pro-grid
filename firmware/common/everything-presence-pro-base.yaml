@@ -29,8 +29,7 @@ external_components:
 epp:
   id: epp_component
   device_tracking:
-    id: epp_zone_tracking
-    name: "Zone Tracking"
+    name: "Target Presence"
     device_class: occupancy
     disabled_by_default: true
   firmware_version:
@@ -41,60 +40,189 @@ epp:
     entity_category: diagnostic
   zone_occupancy:
     zone_0:
-      name: "Zone 0 Occupancy"
+      name: "Zone 0 Presence"
       device_class: occupancy
       disabled_by_default: true
     zone_1:
-      name: "Zone 1 Occupancy"
+      name: "Zone 1 Presence"
       device_class: occupancy
       disabled_by_default: true
     zone_2:
-      name: "Zone 2 Occupancy"
+      name: "Zone 2 Presence"
       device_class: occupancy
       disabled_by_default: true
     zone_3:
-      name: "Zone 3 Occupancy"
+      name: "Zone 3 Presence"
       device_class: occupancy
       disabled_by_default: true
     zone_4:
-      name: "Zone 4 Occupancy"
+      name: "Zone 4 Presence"
       device_class: occupancy
       disabled_by_default: true
     zone_5:
-      name: "Zone 5 Occupancy"
+      name: "Zone 5 Presence"
       device_class: occupancy
       disabled_by_default: true
     zone_6:
-      name: "Zone 6 Occupancy"
+      name: "Zone 6 Presence"
       device_class: occupancy
       disabled_by_default: true
     zone_7:
-      name: "Zone 7 Occupancy"
+      name: "Zone 7 Presence"
       device_class: occupancy
       disabled_by_default: true
   target_positions:
     target_0:
-      name: "Target 0 Position"
-      disabled_by_default: true
-    target_1:
       name: "Target 1 Position"
       disabled_by_default: true
-    target_2:
+      entity_category: diagnostic
+    target_1:
       name: "Target 2 Position"
       disabled_by_default: true
+      entity_category: diagnostic
+    target_2:
+      name: "Target 3 Position"
+      disabled_by_default: true
+      entity_category: diagnostic
   raw_target_positions:
     target_0:
-      name: "Raw Target 0"
-      disabled_by_default: true
-    target_1:
       name: "Raw Target 1"
       disabled_by_default: true
-    target_2:
+      entity_category: diagnostic
+    target_1:
       name: "Raw Target 2"
       disabled_by_default: true
+      entity_category: diagnostic
+    target_2:
+      name: "Raw Target 3"
+      disabled_by_default: true
+      entity_category: diagnostic
   zone_state:
     name: "Zone State"
     disabled_by_default: true
+    entity_category: diagnostic
+  target_entities:
+    target_1:
+      x:
+        name: "Target 1 X"
+        disabled_by_default: true
+        unit_of_measurement: "mm"
+        accuracy_decimals: 0
+      y:
+        name: "Target 1 Y"
+        disabled_by_default: true
+        unit_of_measurement: "mm"
+        accuracy_decimals: 0
+      signal:
+        name: "Target 1 Signal"
+        disabled_by_default: true
+        accuracy_decimals: 0
+        state_class: measurement
+      active:
+        name: "Target 1 Active"
+        device_class: occupancy
+        disabled_by_default: true
+      zone:
+        name: "Target 1 Zone"
+        disabled_by_default: true
+        accuracy_decimals: 0
+        state_class: measurement
+    target_2:
+      x:
+        name: "Target 2 X"
+        disabled_by_default: true
+        unit_of_measurement: "mm"
+        accuracy_decimals: 0
+      y:
+        name: "Target 2 Y"
+        disabled_by_default: true
+        unit_of_measurement: "mm"
+        accuracy_decimals: 0
+      signal:
+        name: "Target 2 Signal"
+        disabled_by_default: true
+        accuracy_decimals: 0
+        state_class: measurement
+      active:
+        name: "Target 2 Active"
+        device_class: occupancy
+        disabled_by_default: true
+      zone:
+        name: "Target 2 Zone"
+        disabled_by_default: true
+        accuracy_decimals: 0
+        state_class: measurement
+    target_3:
+      x:
+        name: "Target 3 X"
+        disabled_by_default: true
+        unit_of_measurement: "mm"
+        accuracy_decimals: 0
+      y:
+        name: "Target 3 Y"
+        disabled_by_default: true
+        unit_of_measurement: "mm"
+        accuracy_decimals: 0
+      signal:
+        name: "Target 3 Signal"
+        disabled_by_default: true
+        accuracy_decimals: 0
+        state_class: measurement
+      active:
+        name: "Target 3 Active"
+        device_class: occupancy
+        disabled_by_default: true
+      zone:
+        name: "Target 3 Zone"
+        disabled_by_default: true
+        accuracy_decimals: 0
+        state_class: measurement
+  zone_target_counts:
+    zone_0:
+      name: "Zone 0 Target Count"
+      disabled_by_default: true
+      accuracy_decimals: 0
+      state_class: measurement
+    zone_1:
+      name: "Zone 1 Target Count"
+      disabled_by_default: true
+      accuracy_decimals: 0
+      state_class: measurement
+    zone_2:
+      name: "Zone 2 Target Count"
+      disabled_by_default: true
+      accuracy_decimals: 0
+      state_class: measurement
+    zone_3:
+      name: "Zone 3 Target Count"
+      disabled_by_default: true
+      accuracy_decimals: 0
+      state_class: measurement
+    zone_4:
+      name: "Zone 4 Target Count"
+      disabled_by_default: true
+      accuracy_decimals: 0
+      state_class: measurement
+    zone_5:
+      name: "Zone 5 Target Count"
+      disabled_by_default: true
+      accuracy_decimals: 0
+      state_class: measurement
+    zone_6:
+      name: "Zone 6 Target Count"
+      disabled_by_default: true
+      accuracy_decimals: 0
+      state_class: measurement
+    zone_7:
+      name: "Zone 7 Target Count"
+      disabled_by_default: true
+      accuracy_decimals: 0
+      state_class: measurement
+  target_count:
+    name: "Target Count"
+    disabled_by_default: true
+    accuracy_decimals: 0
+    state_class: measurement
   static_presence: dfrobot_presence
   motion_presence: pir_motion
   static_presence_output:
@@ -106,6 +234,7 @@ epp:
     device_class: motion
     disabled_by_default: true
   occupancy_output:
+    id: epp_occupancy
     name: "Occupancy"
     device_class: occupancy
   relay_switch: system_alarm_relay
@@ -128,12 +257,6 @@ globals:
   - id: motion_timeout
     type: float
     initial_value: '1'
-  - id: display_interval_ms
-    type: uint32_t
-    initial_value: '200'
-  - id: zone_publish_interval_ms
-    type: uint32_t
-    initial_value: '1000'
   - id: current_connection_count
     type: int
     initial_value: '0'
@@ -315,13 +438,17 @@ api:
             id(epp_component).set_relay(trigger_mode, contact_mode);
     - action: epp_set_pipeline
       variables:
+        entity_target_interval: int
+        entity_zone_interval: int
         display_interval: int
-        zone_publish_interval: int
+        zone_state_interval: int
         window_duration: int
       then:
         - lambda: |-
-            id(display_interval_ms) = display_interval;
-            id(zone_publish_interval_ms) = zone_publish_interval;
+            id(epp_component).set_entity_target_interval(entity_target_interval);
+            id(epp_component).set_entity_zone_interval(entity_zone_interval);
+            id(epp_component).set_display_interval(display_interval);
+            id(epp_component).set_zone_state_interval(zone_state_interval);
             id(epp_component).set_window_duration(window_duration);
     - action: epp_set_log_level
       variables:
@@ -499,14 +626,11 @@ binary_sensor:
     filters:
       - delayed_off: !lambda 'return id(motion_timeout) * 1000.0;'
 
+  # Mirror zone engine occupancy to trigger LED updates on state change
   - platform: template
-    id: occupancy
+    id: occupancy_led_trigger
     internal: true
-    lambda: |-
-      if (id(dfrobot_presence).state || id(pir_motion).state || id(epp_zone_tracking).state) {
-        return true;
-      }
-      return false;
+    lambda: 'return id(epp_occupancy).state;'
     on_state:
       then:
         - if:
@@ -515,13 +639,6 @@ binary_sensor:
             then:
               - script.execute: control_leds
 
-  - platform: template
-    name: mmWave Presence
-    id: mmwave_occupancy
-    device_class: occupancy
-    disabled_by_default: true
-    lambda: |-
-      return id(dfrobot_presence).state || id(epp_zone_tracking).state;
 
 light:
   - platform: esp32_rmt_led_strip
@@ -705,7 +822,7 @@ script:
     then:
       - if:
           condition:
-            lambda: 'return id(occupancy).state;'
+            lambda: 'return id(epp_occupancy).state;'
           then:
             # Presence detected - warm purple/magenta glow
             - light.turn_on:
@@ -863,7 +980,7 @@ script:
             # Check current occupancy and set appropriate state
             - if:
                 condition:
-                  lambda: 'return id(occupancy).state;'
+                  lambda: 'return id(epp_occupancy).state;'
                 then:
                   - script.execute:
                       id: led_fade_in

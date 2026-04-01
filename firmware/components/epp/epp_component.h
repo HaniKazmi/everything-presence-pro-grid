@@ -65,8 +65,10 @@ class EPPComponent : public esphome::Component {
     config_protocol_sensor_ = sensor;
   }
   void set_window_duration(uint32_t ms) { window_.set_window_duration(ms); }
+  void set_entity_target_interval(uint32_t ms) { entity_target_interval_ms_ = ms; }
+  void set_entity_zone_interval(uint32_t ms) { entity_zone_interval_ms_ = ms; }
   void set_display_interval(uint32_t ms) { display_interval_ms_ = ms; }
-  void set_zone_publish_interval(uint32_t ms) { zone_publish_interval_ms_ = ms; }
+  void set_zone_state_interval(uint32_t ms) { zone_state_interval_ms_ = ms; }
   void set_static_presence_sensor(esphome::binary_sensor::BinarySensor *sensor) {
     static_presence_sensor_ = sensor;
   }
@@ -87,6 +89,29 @@ class EPPComponent : public esphome::Component {
 
   void set_relay(const std::string &trigger_mode, const std::string &contact_mode);
   void set_relay_switch(esphome::switch_::Switch *sw) { relay_switch_ = sw; }
+
+  // Structured target entity setters
+  void set_target_x_sensor(int index, esphome::sensor::Sensor *sensor) {
+    if (index >= 0 && index < NUM_TARGETS) target_x_sensors_[index] = sensor;
+  }
+  void set_target_y_sensor(int index, esphome::sensor::Sensor *sensor) {
+    if (index >= 0 && index < NUM_TARGETS) target_y_sensors_[index] = sensor;
+  }
+  void set_target_signal_sensor(int index, esphome::sensor::Sensor *sensor) {
+    if (index >= 0 && index < NUM_TARGETS) target_signal_sensors_[index] = sensor;
+  }
+  void set_target_active_sensor(int index, esphome::binary_sensor::BinarySensor *sensor) {
+    if (index >= 0 && index < NUM_TARGETS) target_active_sensors_[index] = sensor;
+  }
+  void set_target_zone_sensor(int index, esphome::sensor::Sensor *sensor) {
+    if (index >= 0 && index < NUM_TARGETS) target_zone_sensors_[index] = sensor;
+  }
+  void set_zone_target_count_sensor(int index, esphome::sensor::Sensor *sensor) {
+    if (index >= 0 && index < MAX_ZONE_SLOTS) zone_target_count_sensors_[index] = sensor;
+  }
+  void set_target_count_sensor(esphome::sensor::Sensor *sensor) {
+    target_count_sensor_ = sensor;
+  }
 
  protected:
   static constexpr int NUM_TARGETS = 3;
@@ -144,18 +169,37 @@ class EPPComponent : public esphome::Component {
   esphome::binary_sensor::BinarySensor *motion_presence_output_{nullptr};
   esphome::binary_sensor::BinarySensor *occupancy_output_{nullptr};
 
+  // Structured target entity sensors (per-target x, y, signal, active, zone)
+  esphome::sensor::Sensor *target_x_sensors_[NUM_TARGETS]{};
+  esphome::sensor::Sensor *target_y_sensors_[NUM_TARGETS]{};
+  esphome::sensor::Sensor *target_signal_sensors_[NUM_TARGETS]{};
+  esphome::binary_sensor::BinarySensor *target_active_sensors_[NUM_TARGETS]{};
+  esphome::sensor::Sensor *target_zone_sensors_[NUM_TARGETS]{};
+
+  // Structured zone entity sensors (per-zone target count)
+  esphome::sensor::Sensor *zone_target_count_sensors_[MAX_ZONE_SLOTS]{};
+
+  // Room-level target count
+  esphome::sensor::Sensor *target_count_sensor_{nullptr};
+
   // Relay
   esphome::switch_::Switch *relay_switch_{nullptr};
   RelayTriggerMode relay_trigger_mode_{RelayTriggerMode::DISABLED};
   RelayContactMode relay_contact_mode_{RelayContactMode::NORMALLY_OPEN};
 
-  // Publish throttle intervals (ms)
-  uint32_t display_interval_ms_ = 200;
-  uint32_t zone_publish_interval_ms_ = 1000;
+  // Publish throttle intervals (ms) — 0 = disabled
+  uint32_t entity_target_interval_ms_ = 0;
+  uint32_t entity_zone_interval_ms_ = 0;
+  uint32_t display_interval_ms_ = 0;
+  uint32_t zone_state_interval_ms_ = 0;
+  static constexpr uint32_t SYSTEM_INTERVAL_MS = 1000;
 
   // Publish throttle timestamps
+  uint32_t last_entity_target_ms_ = 0;
+  uint32_t last_entity_zone_ms_ = 0;
   uint32_t last_display_publish_ms_ = 0;
-  uint32_t last_zone_publish_ms_ = 0;
+  uint32_t last_zone_state_ms_ = 0;
+  uint32_t last_system_ms_ = 0;
 
   // Cached zone result
   ProcessingResult last_zone_result_{};

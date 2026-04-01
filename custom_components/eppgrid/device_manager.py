@@ -56,6 +56,8 @@ class DeviceConnection:
         self._states_subscribed: bool = False
         self._unsub_logs: Any = None
         self.connected: bool = False
+        self.raw_target_subs: int = 0
+        self.grid_target_subs: int = 0
 
     async def async_connect(self) -> None:
         """Connect to the device and cache available services."""
@@ -310,14 +312,6 @@ class DeviceConnection:
                 )
                 _LOGGER.info("Pushed relay settings to %s", self._host)
 
-        # Push pipeline (separate from settings)
-        pipeline = config.get("pipeline")
-        if pipeline:
-            svc = self._services.get("epp_set_pipeline")
-            if svc:
-                await self._client.execute_service(svc, pipeline)
-                _LOGGER.info("Pushed pipeline to %s", self._host)
-
         # Push log levels
         log_levels = config.get("log_levels")
         if log_levels:
@@ -564,6 +558,24 @@ class DeviceManager:
         else:
             conn.unsubscribe_logs()
 
+    async def _push_pipeline_to_device(self, mac: str) -> None:
+        """Recompute pipeline intervals and push to device."""
+        from .websocket_api import _compute_pipeline
+
+        config = self._store.devices.get(mac, {})
+        session = self.get_session(mac)
+        raw_subs = session.raw_target_subs if session else 0
+        grid_subs = session.grid_target_subs if session else 0
+
+        pipeline = _compute_pipeline(config, raw_subs, grid_subs)
+
+        # Push via session if available, otherwise skip (device will get it on next full push)
+        if session is not None and session.connected:
+            svc = session._services.get("epp_set_pipeline")
+            if svc:
+                await session._client.execute_service(svc, pipeline)
+                _LOGGER.info("Pushed pipeline to %s", mac)
+
     async def _push_config_to_device(self, mac: str) -> bool:
         """Push config to device, preferring an existing session connection."""
         config = self._store.get_device(mac)
@@ -578,6 +590,7 @@ class DeviceManager:
         if session_conn is not None:
             try:
                 await session_conn.async_push_config(config)
+                await self._push_pipeline_to_device(mac)
                 flags = await session_conn.async_fetch_build_flags()
                 if flags:
                     self._build_flags[mac] = flags
@@ -593,6 +606,13 @@ class DeviceManager:
         try:
             await conn.async_connect()
             await conn.async_push_config(config)
+            # Push pipeline directly (no subscribers on temp connections)
+            from .websocket_api import _compute_pipeline
+
+            pipeline = _compute_pipeline(config, 0, 0)
+            svc = conn._services.get("epp_set_pipeline")
+            if svc:
+                await conn._client.execute_service(svc, pipeline)
             flags = await conn.async_fetch_build_flags()
             if flags:
                 self._build_flags[mac] = flags
@@ -672,11 +692,10 @@ class DeviceManager:
         return result
 
     async def async_update_zone_entities(self, mac: str, zone_slots: list[dict[str, Any] | None]) -> None:
-        """Enable/disable and rename ESPHome zone occupancy entities for a device.
+        """Enable/disable and rename ESPHome zone entities for a device.
 
-        Reads settings.zone_presence to decide whether zone entities should
-        be enabled. When enabled, zone 0 + named zones are enabled; unused
-        slots are disabled.
+        Handles both zone_presence and zone_target_count entities.
+        When enabled, zone 0 + named zones are enabled; unused slots are disabled.
         """
         dev = self.devices.get(mac)
         if dev is None or dev.device_id is None:
@@ -684,35 +703,56 @@ class DeviceManager:
 
         ent_reg = er.async_get(self._hass)
         config = self._store.get_device(mac) or {}
-        zone_presence = config.get("settings", {}).get("zone_presence", False)
+        settings = config.get("settings", {})
+        zone_presence = settings.get("zone_presence", False)
+        zone_target_count = settings.get("zone_target_count", False)
+
+        def _zone_exists(i: int) -> bool:
+            """Check if zone slot i exists (zone 0 = room, always exists)."""
+            if i == 0:
+                return True
+            return i <= len(zone_slots) and zone_slots[i - 1] is not None
 
         for i in range(MAX_ZONES + 1):  # zones 0-7
-            entity_id = self._find_zone_entity(ent_reg, dev.device_id, i)
-            if entity_id is None:
-                continue
+            exists = _zone_exists(i)
 
-            entry_obj = ent_reg.async_get(entity_id)
-            if not zone_presence:
-                ent_reg.async_update_entity(entity_id, disabled_by=er.RegistryEntryDisabler.INTEGRATION)
-            elif i == 0:
-                ent_reg.async_update_entity(entity_id, disabled_by=None, name="Rest of Room Occupancy")
-            elif i <= len(zone_slots) and zone_slots[i - 1] is not None:
-                zone = zone_slots[i - 1]
-                # Don't override user-disabled entities
-                if entry_obj and entry_obj.disabled_by == er.RegistryEntryDisabler.USER:
-                    continue
-                ent_reg.async_update_entity(entity_id, disabled_by=None, name=zone["name"])
-            else:
-                ent_reg.async_update_entity(entity_id, disabled_by=er.RegistryEntryDisabler.INTEGRATION)
+            # Zone presence entity
+            entity_id = self._find_zone_entity(ent_reg, dev.device_id, i, "presence")
+            if entity_id is not None:
+                entry_obj = ent_reg.async_get(entity_id)
+                if not zone_presence or not exists:
+                    ent_reg.async_update_entity(entity_id, disabled_by=er.RegistryEntryDisabler.INTEGRATION)
+                elif i == 0:
+                    ent_reg.async_update_entity(entity_id, disabled_by=None, name="Rest of Room Presence")
+                else:
+                    zone = zone_slots[i - 1]
+                    if entry_obj and entry_obj.disabled_by == er.RegistryEntryDisabler.USER:
+                        pass  # Don't override user-disabled entities
+                    else:
+                        ent_reg.async_update_entity(entity_id, disabled_by=None, name=zone["name"])
 
-    def _find_zone_entity(self, ent_reg: er.EntityRegistry, device_id: str, zone_index: int) -> str | None:
-        """Find the ESPHome zone occupancy entity_id for a device and zone index."""
+            # Zone target count entity
+            tc_entity_id = self._find_zone_entity(ent_reg, dev.device_id, i, "target_count")
+            if tc_entity_id is not None:
+                tc_entry = ent_reg.async_get(tc_entity_id)
+                if tc_entry and tc_entry.disabled_by == er.RegistryEntryDisabler.USER:
+                    pass  # Don't override user-disabled entities
+                elif zone_target_count and exists:
+                    if i == 0:
+                        ent_reg.async_update_entity(tc_entity_id, disabled_by=None, name="Rest of Room Target Count")
+                    else:
+                        zone = zone_slots[i - 1]
+                        ent_reg.async_update_entity(tc_entity_id, disabled_by=None, name=f"{zone['name']} Target Count")
+                else:
+                    ent_reg.async_update_entity(tc_entity_id, disabled_by=er.RegistryEntryDisabler.INTEGRATION)
+
+    def _find_zone_entity(
+        self, ent_reg: er.EntityRegistry, device_id: str, zone_index: int, suffix: str = "presence"
+    ) -> str | None:
+        """Find an ESPHome zone entity_id for a device, zone index, and suffix."""
+        pattern = f"zone_{zone_index}_{suffix}"
         for entry in ent_reg.entities.values():
-            if (
-                entry.device_id == device_id
-                and entry.platform == "esphome"
-                and f"zone_{zone_index}_occupancy" in entry.unique_id
-            ):
+            if entry.device_id == device_id and entry.platform == "esphome" and pattern in entry.unique_id:
                 return entry.entity_id
         return None
 

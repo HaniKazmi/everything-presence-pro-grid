@@ -1542,8 +1542,11 @@ class TestEventCallbacks:
 
         session_conn = MagicMock()
         session_conn.connected = True
+        session_conn.raw_target_subs = 0
+        session_conn.grid_target_subs = 0
         session_conn.async_push_config = AsyncMock()
         session_conn.async_fetch_build_flags = AsyncMock(return_value={})
+        session_conn._services = {}
         manager._active_connections[mac] = session_conn
 
         result = await manager._push_config_to_device(mac)
@@ -1565,6 +1568,8 @@ class TestEventCallbacks:
         mock_conn.async_push_config = AsyncMock()
         mock_conn.async_fetch_build_flags = AsyncMock(return_value={})
         mock_conn.async_disconnect = AsyncMock()
+        mock_conn._services = {}
+        mock_conn._client = MagicMock()
 
         with patch(
             "custom_components.eppgrid.device_manager.DeviceConnection",
@@ -1594,6 +1599,8 @@ class TestEventCallbacks:
         mock_conn.async_push_config = AsyncMock()
         mock_conn.async_fetch_build_flags = AsyncMock(return_value={})
         mock_conn.async_disconnect = AsyncMock()
+        mock_conn._services = {}
+        mock_conn._client = MagicMock()
 
         with patch(
             "custom_components.eppgrid.device_manager.DeviceConnection",
@@ -1744,7 +1751,7 @@ class TestZoneEntities:
     """Tests for async_update_zone_entities."""
 
     async def test_update_zone_entities_calibrated(self, hass: HomeAssistant, manager: DeviceManager) -> None:
-        """Calibrated device enables zone 0 as 'Rest of Room Occupancy'."""
+        """Calibrated device enables zone 0 as 'Rest of Room Presence'."""
         dev_reg = dr.async_get(hass)
         ent_reg = er.async_get(hass)
 
@@ -1761,21 +1768,21 @@ class TestZoneEntities:
         zone0_entry = ent_reg.async_get_or_create(
             "binary_sensor",
             "esphome",
-            unique_id="esphome_aabbccddeeff_zone_0_occupancy",
+            unique_id="esphome_aabbccddeeff_zone_0_presence",
             config_entry=esphome_entry,
             device_id=device.id,
         )
         zone1_entry = ent_reg.async_get_or_create(
             "binary_sensor",
             "esphome",
-            unique_id="esphome_aabbccddeeff_zone_1_occupancy",
+            unique_id="esphome_aabbccddeeff_zone_1_presence",
             config_entry=esphome_entry,
             device_id=device.id,
         )
         zone2_entry = ent_reg.async_get_or_create(
             "binary_sensor",
             "esphome",
-            unique_id="esphome_aabbccddeeff_zone_2_occupancy",
+            unique_id="esphome_aabbccddeeff_zone_2_presence",
             config_entry=esphome_entry,
             device_id=device.id,
         )
@@ -1788,10 +1795,10 @@ class TestZoneEntities:
         zone_slots = [{"name": "Office"}] + [None] * (MAX_ZONES - 1)
         await manager.async_update_zone_entities("AA:BB:CC:DD:EE:FF", zone_slots)
 
-        # Zone 0 should be enabled with name "Rest of Room Occupancy"
+        # Zone 0 should be enabled with name "Rest of Room Presence"
         zone0 = ent_reg.async_get(zone0_entry.entity_id)
         assert zone0.disabled_by is None
-        assert zone0.name == "Rest of Room Occupancy"
+        assert zone0.name == "Rest of Room Presence"
 
         # Zone 1 should be enabled and renamed "Office"
         zone1 = ent_reg.async_get(zone1_entry.entity_id)
@@ -1819,14 +1826,14 @@ class TestZoneEntities:
         zone0_entry = ent_reg.async_get_or_create(
             "binary_sensor",
             "esphome",
-            unique_id="esphome_aabbccddeeff_zone_0_occupancy",
+            unique_id="esphome_aabbccddeeff_zone_0_presence",
             config_entry=esphome_entry,
             device_id=device.id,
         )
         zone1_entry = ent_reg.async_get_or_create(
             "binary_sensor",
             "esphome",
-            unique_id="esphome_aabbccddeeff_zone_1_occupancy",
+            unique_id="esphome_aabbccddeeff_zone_1_presence",
             config_entry=esphome_entry,
             device_id=device.id,
         )
@@ -1867,7 +1874,7 @@ class TestZoneEntities:
         zone1_entry = ent_reg.async_get_or_create(
             "binary_sensor",
             "esphome",
-            unique_id="esphome_aabbccddeeff_zone_1_occupancy",
+            unique_id="esphome_aabbccddeeff_zone_1_presence",
             config_entry=esphome_entry,
             device_id=device.id,
         )
@@ -1890,6 +1897,100 @@ class TestZoneEntities:
         """Unknown device is a no-op."""
         await manager.async_update_zone_entities("00:00:00:00:00:00", [None] * MAX_ZONES)
         # Should not raise
+
+    async def test_update_zone_entities_target_count_only_for_existing_zones(
+        self, hass: HomeAssistant, manager: DeviceManager
+    ) -> None:
+        """zone_target_count entities are only enabled for zones that exist in the grid."""
+        dev_reg = dr.async_get(hass)
+        ent_reg = er.async_get(hass)
+
+        esphome_entry = MockConfigEntry(domain="esphome", data={"host": "192.168.1.50"}, title="EPP")
+        esphome_entry.add_to_hass(hass)
+
+        device = dev_reg.async_get_or_create(
+            config_entry_id=esphome_entry.entry_id,
+            connections={("mac", "aa:bb:cc:dd:ee:ff")},
+            name="EPP",
+        )
+
+        # Create zone_target_count entities
+        ztc0 = ent_reg.async_get_or_create(
+            "sensor",
+            "esphome",
+            unique_id="esphome_aabbccddeeff_zone_0_target_count",
+            config_entry=esphome_entry,
+            device_id=device.id,
+        )
+        ztc1 = ent_reg.async_get_or_create(
+            "sensor",
+            "esphome",
+            unique_id="esphome_aabbccddeeff_zone_1_target_count",
+            config_entry=esphome_entry,
+            device_id=device.id,
+        )
+        ztc2 = ent_reg.async_get_or_create(
+            "sensor",
+            "esphome",
+            unique_id="esphome_aabbccddeeff_zone_2_target_count",
+            config_entry=esphome_entry,
+            device_id=device.id,
+        )
+
+        manager.devices["AA:BB:CC:DD:EE:FF"] = ManagedDevice(
+            mac="AA:BB:CC:DD:EE:FF", name="EPP", host="192.168.1.50", device_id=device.id
+        )
+        manager._store.devices["AA:BB:CC:DD:EE:FF"] = {"settings": {"zone_target_count": True}}
+
+        # Only zone 0 (room) + zone 1 (named "Office") exist
+        zone_slots = [{"name": "Office"}] + [None] * (MAX_ZONES - 1)
+        await manager.async_update_zone_entities("AA:BB:CC:DD:EE:FF", zone_slots)
+
+        # Zone 0 target count should be enabled with room name
+        ztc0_entry = ent_reg.async_get(ztc0.entity_id)
+        assert ztc0_entry.disabled_by is None
+        assert ztc0_entry.name == "Rest of Room Target Count"
+        # Zone 1 target count should be enabled with zone name
+        ztc1_entry = ent_reg.async_get(ztc1.entity_id)
+        assert ztc1_entry.disabled_by is None
+        assert ztc1_entry.name == "Office Target Count"
+        # Zone 2 target count should be disabled (unused slot)
+        assert ent_reg.async_get(ztc2.entity_id).disabled_by == er.RegistryEntryDisabler.INTEGRATION
+
+    async def test_update_zone_entities_target_count_disabled_when_setting_off(
+        self, hass: HomeAssistant, manager: DeviceManager
+    ) -> None:
+        """zone_target_count entities are all disabled when setting is off."""
+        dev_reg = dr.async_get(hass)
+        ent_reg = er.async_get(hass)
+
+        esphome_entry = MockConfigEntry(domain="esphome", data={"host": "192.168.1.50"}, title="EPP")
+        esphome_entry.add_to_hass(hass)
+
+        device = dev_reg.async_get_or_create(
+            config_entry_id=esphome_entry.entry_id,
+            connections={("mac", "aa:bb:cc:dd:ee:ff")},
+            name="EPP",
+        )
+
+        ztc0 = ent_reg.async_get_or_create(
+            "sensor",
+            "esphome",
+            unique_id="esphome_aabbccddeeff_zone_0_target_count",
+            config_entry=esphome_entry,
+            device_id=device.id,
+        )
+
+        manager.devices["AA:BB:CC:DD:EE:FF"] = ManagedDevice(
+            mac="AA:BB:CC:DD:EE:FF", name="EPP", host="192.168.1.50", device_id=device.id
+        )
+        manager._store.devices["AA:BB:CC:DD:EE:FF"] = {"settings": {"zone_target_count": False}}
+
+        zone_slots = [{"name": "Office"}] + [None] * (MAX_ZONES - 1)
+        await manager.async_update_zone_entities("AA:BB:CC:DD:EE:FF", zone_slots)
+
+        # Even zone 0 should be disabled when zone_target_count setting is off
+        assert ent_reg.async_get(ztc0.entity_id).disabled_by == er.RegistryEntryDisabler.INTEGRATION
 
 
 # ---------------------------------------------------------------------------
@@ -2051,6 +2152,8 @@ class TestBuildFlags:
         mock_conn.async_push_config = AsyncMock()
         mock_conn.async_fetch_build_flags = AsyncMock(return_value=expected_flags)
         mock_conn.async_disconnect = AsyncMock()
+        mock_conn._services = {}
+        mock_conn._client = MagicMock()
 
         with patch(
             "custom_components.eppgrid.device_manager.DeviceConnection",
@@ -2074,8 +2177,11 @@ class TestBuildFlags:
 
         session_conn = MagicMock()
         session_conn.connected = True
+        session_conn.raw_target_subs = 0
+        session_conn.grid_target_subs = 0
         session_conn.async_push_config = AsyncMock()
         session_conn.async_fetch_build_flags = AsyncMock(return_value=expected_flags)
+        session_conn._services = {}
         manager._active_connections[mac] = session_conn
 
         result = await manager._push_config_to_device(mac)

@@ -42,6 +42,37 @@ def async_register_websocket_commands(hass: HomeAssistant, manager: Any) -> None
     websocket_api.async_register_command(hass, websocket_update_firmware)
 
 
+_TARGET_ENTITY_KEYS = ("target_xy", "target_active", "target_signal", "target_zone", "target_count")
+_ZONE_ENTITY_KEYS = ("zone_presence", "zone_target_count")
+
+
+def _compute_pipeline(
+    config: dict[str, Any],
+    raw_target_subs: int,
+    grid_target_subs: int,
+) -> dict[str, int]:
+    """Derive all pipeline intervals from current settings and subscriber counts."""
+    settings = config.get("settings", {})
+    pipeline = config.get("pipeline", {})
+
+    target_rate = settings.get("target_update_rate_ms", 1000)
+    zone_rate = settings.get("zone_update_rate_ms", 1000)
+
+    # Entity flags are stored flat in settings (e.g., settings["zone_presence"])
+    any_target = any(settings.get(k) for k in _TARGET_ENTITY_KEYS)
+    any_zone = any(settings.get(k) for k in _ZONE_ENTITY_KEYS)
+
+    has_display_sub = raw_target_subs > 0 or grid_target_subs > 0
+
+    return {
+        "entity_target_interval": target_rate if any_target else 0,
+        "entity_zone_interval": zone_rate if any_zone else 0,
+        "display_interval": 200 if has_display_sub else 0,
+        "zone_state_interval": 1000 if grid_target_subs > 0 else 0,
+        "window_duration": pipeline.get("window_duration", 1000),
+    }
+
+
 def _get_manager(hass: HomeAssistant) -> Any:
     """Get the device manager."""
     return hass.data.get(DOMAIN)
@@ -337,7 +368,7 @@ async def websocket_apply_template(
 # Map ESPHome entity object_ids to frontend entity keys.
 # unique_id format: {MAC}-{platform}-{object_id}
 # Single object_ids map 1:1; prefix patterns (ending with _) match multiple
-# entities (e.g. zone_0_occupancy, zone_1_occupancy, ...).
+# entities (e.g. zone_0_presence, zone_1_presence, ...).
 _ENTITY_OBJECT_ID_MAP: dict[str, str] = {
     "occupancy": "room_occupancy",
     "static_presence": "room_static_presence",
@@ -348,12 +379,18 @@ _ENTITY_OBJECT_ID_MAP: dict[str, str] = {
     "illuminance": "env_illuminance",
     "co2": "env_co2",
     "system_alarm_relay": "relay_output",
+    "target_count": "target_count",
 }
 
 # Prefix patterns: object_ids starting with these prefixes map to a category key.
 _ENTITY_PREFIX_MAP: list[tuple[str, str, str]] = [
-    ("zone_", "_occupancy", "zone_presence"),  # zone_0_occupancy, zone_1_occupancy, ...
-    ("target_", "_position", "target_xy"),  # target_0_position, target_1_position, ...
+    ("zone_", "_presence", "zone_presence"),
+    ("zone_", "_target_count", "zone_target_count"),
+    ("target_", "_x", "target_xy"),
+    ("target_", "_y", "target_xy"),
+    ("target_", "_signal", "target_signal"),
+    ("target_", "_active", "target_active"),
+    ("target_", "_zone", "target_zone"),
 ]
 
 
@@ -366,8 +403,8 @@ def _entity_key_for_object_id(object_id: str) -> str | None:
     """Map an ESPHome object_id to its frontend entity key, or None.
 
     Handles both formats:
-    - Extracted object_id (hyphen format): "zone_0_occupancy"
-    - Full unique_id (underscore format): "esphome_aabbccddeeff_zone_0_occupancy"
+    - Extracted object_id (hyphen format): "zone_0_presence"
+    - Full unique_id (underscore format): "esphome_aabbccddeeff_zone_0_presence"
     """
     # Exact match — works for extracted object_ids (hyphen format)
     if object_id in _ENTITY_OBJECT_ID_MAP:
@@ -376,7 +413,7 @@ def _entity_key_for_object_id(object_id: str) -> str | None:
         if object_id.startswith(prefix) and object_id.endswith(suffix):
             return key
     # Fallback: substring match for full unique_ids (underscore format).
-    # Check prefix patterns first (more specific) to avoid e.g. zone_0_occupancy
+    # Check prefix patterns first (more specific) to avoid e.g. zone_0_presence
     # matching the "occupancy" → "room_occupancy" suffix rule.
     for prefix, suffix, key in _ENTITY_PREFIX_MAP:
         if f"_{prefix}" in object_id and object_id.endswith(suffix):
@@ -516,10 +553,10 @@ async def websocket_subscribe_raw_targets(
 
     key_map = _build_entity_key_map(device_conn._entities)
 
-    # Map raw target sensor keys to indices
+    # Map raw target sensor keys to indices (display names are 1-based)
     raw_keys = {}
     for i in range(3):
-        name = f"Raw Target {i}"
+        name = f"Raw Target {i + 1}"
         if name in key_map:
             raw_keys[key_map[name]] = i
 
@@ -545,9 +582,17 @@ async def websocket_subscribe_raw_targets(
     device_conn.subscribe_states(_on_state)
     connection.send_result(msg["id"])
 
+    device_conn.raw_target_subs += 1
+    if manager:
+        hass.async_create_task(manager._push_pipeline_to_device(mac))
+
     @callback
     def _unsub() -> None:
         device_conn.unsubscribe_states(_on_state)
+        device_conn.raw_target_subs -= 1
+        mgr = _get_manager(hass)
+        if mgr:
+            hass.async_create_task(mgr._push_pipeline_to_device(mac))
 
     connection.subscriptions[msg["id"]] = _unsub
 
@@ -581,10 +626,10 @@ async def websocket_subscribe_grid_targets(
 
     key_map = _build_entity_key_map(device_conn._entities)
 
-    # Map target position sensor keys to indices
+    # Map target position sensor keys to indices (display names are 1-based)
     target_keys = {}
     for i in range(3):
-        name = f"Target {i} Position"
+        name = f"Target {i + 1} Position"
         if name in key_map:
             target_keys[key_map[name]] = i
 
@@ -712,9 +757,17 @@ async def websocket_subscribe_grid_targets(
     device_conn.subscribe_states(_on_state)
     connection.send_result(msg["id"])
 
+    device_conn.grid_target_subs += 1
+    if manager:
+        hass.async_create_task(manager._push_pipeline_to_device(mac))
+
     @callback
     def _unsub() -> None:
         device_conn.unsubscribe_states(_on_state)
+        device_conn.grid_target_subs -= 1
+        mgr = _get_manager(hass)
+        if mgr:
+            hass.async_create_task(mgr._push_pipeline_to_device(mac))
 
     connection.subscriptions[msg["id"]] = _unsub
 
@@ -805,6 +858,8 @@ _SETTINGS_KEYS = (
         vol.Required("relay_contact_mode"): vol.In(["no", "nc"]),
         vol.Optional("entities"): {str: bool},
         vol.Optional("log_levels"): {str: vol.In(["None", "Error", "Warning", "Info", "Debug"])},
+        vol.Optional("target_update_rate_ms"): vol.All(vol.Coerce(int), vol.In([200, 500, 1000, 2000])),
+        vol.Optional("zone_update_rate_ms"): vol.All(vol.Coerce(int), vol.In([200, 500, 1000, 2000])),
     }
 )
 @websocket_api.async_response
@@ -829,14 +884,42 @@ async def websocket_set_settings(
     mac = msg["mac"]
     device_config = manager._store.devices.setdefault(mac, {})
     new_settings = {k: msg[k] for k in _SETTINGS_KEYS}
-    # Preserve zone_presence flag — it's managed by set_setup and entity toggles,
+    # Preserve entity toggle and rate flags — they're managed by entity toggles,
     # not by the settings form payload.
     old_settings = device_config.get("settings", {})
-    if "zone_presence" in old_settings:
-        new_settings["zone_presence"] = old_settings["zone_presence"]
-    if "target_xy" in old_settings:
-        new_settings["target_xy"] = old_settings["target_xy"]
+    for key in (
+        "zone_presence",
+        "target_xy",
+        "target_active",
+        "target_signal",
+        "target_zone",
+        "zone_target_count",
+        "target_count",
+        "target_update_rate_ms",
+        "zone_update_rate_ms",
+    ):
+        if key in old_settings:
+            new_settings[key] = old_settings[key]
     device_config["settings"] = new_settings
+    if "target_update_rate_ms" in msg:
+        new_settings["target_update_rate_ms"] = msg["target_update_rate_ms"]
+    if "zone_update_rate_ms" in msg:
+        new_settings["zone_update_rate_ms"] = msg["zone_update_rate_ms"]
+    # Persist entity flags before push so _push_config_to_device sees correct flags
+    entities = msg.get("entities")
+    if entities:
+        persisted_entity_keys = (
+            "zone_presence",
+            "target_xy",
+            "target_active",
+            "target_signal",
+            "target_zone",
+            "zone_target_count",
+            "target_count",
+        )
+        for ekey in persisted_entity_keys:
+            if ekey in entities:
+                device_config.setdefault("settings", {})[ekey] = entities[ekey]
     log_levels = msg.get("log_levels")
     if log_levels is not None:
         device_config["log_levels"] = log_levels
@@ -851,25 +934,16 @@ async def websocket_set_settings(
     session_conn = manager.get_session(mac)
     if session_conn is not None:
         manager._manage_log_subscription(session_conn, device_config)
-    entities = msg.get("entities")
     if entities:
-        # Persist entity flags in stored settings so they survive reconnect/discovery
-        persisted_entity_keys = ("zone_presence", "target_xy")
-        settings_changed = False
-        for ekey in persisted_entity_keys:
-            if ekey in entities:
-                device_config.setdefault("settings", {})[ekey] = entities[ekey]
-                settings_changed = True
-        if settings_changed:
-            await manager._store.async_save()
         _apply_entity_states(hass, mac, entities)
-        # Zone presence needs layout-aware handling: enable zone_0 + named zones
-        if entities.get("zone_presence"):
+        # Zone entities need layout-aware handling: enable zone_0 + named zones only
+        if "zone_presence" in entities or "zone_target_count" in entities:
             layout = device_config.get("room_layout", {})
             from .const import MAX_ZONES
 
             zone_slots = layout.get("zone_slots", [None] * MAX_ZONES)
             await manager.async_update_zone_entities(mac, zone_slots)
+        await manager._push_pipeline_to_device(mac)
     connection.send_result(msg["id"])
 
 
@@ -931,9 +1005,11 @@ async def websocket_set_distance_override(
     {
         vol.Required("type"): "eppgrid/set_pipeline",
         vol.Required("mac"): str,
-        vol.Required("display_interval_ms"): vol.All(vol.Coerce(int), vol.Range(min=50, max=1000)),
-        vol.Required("zone_publish_interval_ms"): vol.All(vol.Coerce(int), vol.Range(min=100, max=2000)),
-        vol.Required("window_duration_ms"): vol.All(vol.Coerce(int), vol.Range(min=200, max=2000)),
+        vol.Required("entity_target_interval"): vol.All(vol.Coerce(int), vol.Range(min=0, max=2000)),
+        vol.Required("entity_zone_interval"): vol.All(vol.Coerce(int), vol.Range(min=0, max=2000)),
+        vol.Required("display_interval"): vol.All(vol.Coerce(int), vol.Range(min=0, max=1000)),
+        vol.Required("zone_state_interval"): vol.All(vol.Coerce(int), vol.Range(min=0, max=2000)),
+        vol.Required("window_duration"): vol.All(vol.Coerce(int), vol.Range(min=200, max=2000)),
     }
 )
 @websocket_api.async_response
@@ -958,12 +1034,14 @@ async def websocket_set_pipeline(
     mac = msg["mac"]
     device_config = manager._store.devices.setdefault(mac, {})
     device_config["pipeline"] = {
-        "display_interval": msg["display_interval_ms"],
-        "zone_publish_interval": msg["zone_publish_interval_ms"],
-        "window_duration": msg["window_duration_ms"],
+        "entity_target_interval": msg["entity_target_interval"],
+        "entity_zone_interval": msg["entity_zone_interval"],
+        "display_interval": msg["display_interval"],
+        "zone_state_interval": msg["zone_state_interval"],
+        "window_duration": msg["window_duration"],
     }
     await manager._store.async_save()
-    await manager._push_config_to_device(mac)
+    await manager._push_pipeline_to_device(mac)
     connection.send_result(msg["id"])
 
 

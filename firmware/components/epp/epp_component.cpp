@@ -2,6 +2,7 @@
 #include "esphome/core/log.h"
 
 #include <ArduinoJson.h>
+#include <cmath>
 #include <cstring>
 #include <mbedtls/base64.h>
 #include <nvs_flash.h>
@@ -92,8 +93,8 @@ void EPPComponent::loop() {
 
   // === PUBLISH THROTTLES (do not affect processing) ===
 
-  // Display publish (default 5Hz / 200ms)
-  if (now - last_display_publish_ms_ >= display_interval_ms_) {
+  // Timer 1: Display (internal transport text sensors, frontend only)
+  if (display_interval_ms_ > 0 && now - last_display_publish_ms_ >= display_interval_ms_) {
     last_display_publish_ms_ = now;
 
     // Publish raw target positions (pre-transform, smoothed)
@@ -128,48 +129,9 @@ void EPPComponent::loop() {
     }
   }
 
-  // Zone state publish (default 1Hz / 1000ms)
-  if (now - last_zone_publish_ms_ >= zone_publish_interval_ms_) {
-    last_zone_publish_ms_ = now;
-
-    // Publish zone occupancy binary sensors
-    for (int i = 0; i < MAX_ZONE_SLOTS; i++) {
-      if (zone_occupancy_sensors_[i] != nullptr)
-        zone_occupancy_sensors_[i]->publish_state(result.zone_occupancy[i]);
-    }
-
-    // Publish device tracking
-    if (device_tracking_sensor_ != nullptr)
-      device_tracking_sensor_->publish_state(result.device_tracking_present);
-
-    // Publish zone-engine-processed sensor presence (active/pending = on, inactive = off)
-    if (static_presence_output_ != nullptr)
-      static_presence_output_->publish_state(result.static_state != SensorPresenceState::INACTIVE);
-    if (motion_presence_output_ != nullptr)
-      motion_presence_output_->publish_state(result.motion_state != SensorPresenceState::INACTIVE);
-    if (occupancy_output_ != nullptr)
-      occupancy_output_->publish_state(result.occupancy);
-
-    // Evaluate relay state
-    if (relay_switch_ != nullptr) {
-      RelayEvalInput relay_input{
-          relay_trigger_mode_,
-          relay_contact_mode_,
-          result.motion_state != SensorPresenceState::INACTIVE,
-          result.static_state != SensorPresenceState::INACTIVE,
-          result.occupancy,
-      };
-      auto relay_result = evaluate_relay(relay_input);
-      if (relay_result.should_update) {
-        if (relay_result.desired_state != relay_switch_->state) {
-          if (relay_result.desired_state) {
-            relay_switch_->turn_on();
-          } else {
-            relay_switch_->turn_off();
-          }
-        }
-      }
-    }
+  // Timer 2: Zone state (internal transport JSON, frontend only)
+  if (zone_state_interval_ms_ > 0 && now - last_zone_state_ms_ >= zone_state_interval_ms_) {
+    last_zone_state_ms_ = now;
 
     // Publish zone state as compact JSON
     if (zone_state_sensor_ != nullptr) {
@@ -244,6 +206,86 @@ void EPPComponent::loop() {
       }
       pos += snprintf(json + pos, sizeof(json) - pos, "\"}");
       zone_state_sensor_->publish_state(json);
+    }
+  }
+
+  // Timer 3: Entity target (structured HA entities, user Hz)
+  if (entity_target_interval_ms_ > 0 && now - last_entity_target_ms_ >= entity_target_interval_ms_) {
+    last_entity_target_ms_ = now;
+
+    int active_count = 0;
+    for (int i = 0; i < NUM_TARGETS; i++) {
+      bool active = i < result.target_count && result.targets[i].status != TargetStatus::INACTIVE;
+      if (active) active_count++;
+
+      if (target_x_sensors_[i] != nullptr)
+        target_x_sensors_[i]->publish_state(active ? result.targets[i].x : NAN);
+      if (target_y_sensors_[i] != nullptr)
+        target_y_sensors_[i]->publish_state(active ? result.targets[i].y : NAN);
+      if (target_signal_sensors_[i] != nullptr)
+        target_signal_sensors_[i]->publish_state(active ? static_cast<float>(result.targets[i].signal) : 0.0f);
+      if (target_active_sensors_[i] != nullptr)
+        target_active_sensors_[i]->publish_state(active);
+      if (target_zone_sensors_[i] != nullptr) {
+        if (active && (result.targets[i].x != 0.0f || result.targets[i].y != 0.0f)) {
+          auto cell = grid_.xy_to_cell(result.targets[i].x, result.targets[i].y);
+          if (cell >= 0 && cell < GRID_CELL_COUNT)
+            target_zone_sensors_[i]->publish_state(static_cast<float>(grid_.cell_zone(cell)));
+          else
+            target_zone_sensors_[i]->publish_state(NAN);
+        } else {
+          target_zone_sensors_[i]->publish_state(NAN);
+        }
+      }
+    }
+    if (target_count_sensor_ != nullptr)
+      target_count_sensor_->publish_state(static_cast<float>(active_count));
+  }
+
+  // Timer 4: Entity zone (structured HA entities, user Hz)
+  if (entity_zone_interval_ms_ > 0 && now - last_entity_zone_ms_ >= entity_zone_interval_ms_) {
+    last_entity_zone_ms_ = now;
+
+    for (int i = 0; i < MAX_ZONE_SLOTS; i++) {
+      if (zone_occupancy_sensors_[i] != nullptr)
+        zone_occupancy_sensors_[i]->publish_state(result.zone_occupancy[i]);
+      if (zone_target_count_sensors_[i] != nullptr)
+        zone_target_count_sensors_[i]->publish_state(static_cast<float>(result.zone_target_counts[i]));
+    }
+  }
+
+  // Timer 5: System (fixed 1000ms, always runs)
+  if (now - last_system_ms_ >= SYSTEM_INTERVAL_MS) {
+    last_system_ms_ = now;
+
+    if (device_tracking_sensor_ != nullptr)
+      device_tracking_sensor_->publish_state(result.device_tracking_present);
+    if (static_presence_output_ != nullptr)
+      static_presence_output_->publish_state(result.static_state != SensorPresenceState::INACTIVE);
+    if (motion_presence_output_ != nullptr)
+      motion_presence_output_->publish_state(result.motion_state != SensorPresenceState::INACTIVE);
+    if (occupancy_output_ != nullptr)
+      occupancy_output_->publish_state(result.occupancy);
+
+    // Relay evaluation
+    if (relay_switch_ != nullptr) {
+      RelayEvalInput relay_input{
+          relay_trigger_mode_,
+          relay_contact_mode_,
+          result.motion_state != SensorPresenceState::INACTIVE,
+          result.static_state != SensorPresenceState::INACTIVE,
+          result.occupancy,
+      };
+      auto relay_result = evaluate_relay(relay_input);
+      if (relay_result.should_update) {
+        if (relay_result.desired_state != relay_switch_->state) {
+          if (relay_result.desired_state) {
+            relay_switch_->turn_on();
+          } else {
+            relay_switch_->turn_off();
+          }
+        }
+      }
     }
   }
 }

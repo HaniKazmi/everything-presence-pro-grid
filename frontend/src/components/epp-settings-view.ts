@@ -71,6 +71,9 @@ export class EppSettingsView extends LitElement {
 	@property({ type: String }) relayTriggerMode = "disabled";
 	@property({ type: String }) relayContactMode = "no";
 
+	@property({ type: Number }) targetUpdateRateMs = 1000;
+	@property({ type: Number }) zoneUpdateRateMs = 1000;
+
 	// Non-reactive overrides — stores user edits without triggering Lit re-renders.
 	// The 5Hz target data stream re-renders the panel at high frequency; if slider
 	// handlers update reactive properties, Lit crashes with concurrent re-renders.
@@ -540,6 +543,31 @@ export class EppSettingsView extends LitElement {
 		const isOn = (key: string, fallback: boolean) =>
 			overrides[key] ?? saved[key] ?? fallback;
 
+		const entityToggleHandler = (e: Event) => {
+			const el = e.target as HTMLInputElement;
+			const key = el.dataset.entityKey!;
+			if (!this._overrides.entities) this._overrides.entities = {};
+			this._overrides.entities[key] = el.checked;
+			this._fireDirty();
+		};
+
+		const o = this._overrides;
+		const anyZoneOn =
+			isOn("zone_presence", true) || isOn("zone_target_count", false);
+		const anyTargetOn =
+			isOn("target_xy", false) ||
+			isOn("target_active", false) ||
+			isOn("target_signal", false) ||
+			isOn("target_zone", false) ||
+			isOn("target_count", false);
+
+		const RATE_OPTIONS = [
+			{ value: "200", label: "5 Hz" },
+			{ value: "500", label: "2 Hz" },
+			{ value: "1000", label: "1 Hz" },
+			{ value: "2000", label: "0.5 Hz" },
+		];
+
 		return html`
       <div class="settings-section">
         <div class="setting-group">
@@ -596,50 +624,80 @@ export class EppSettingsView extends LitElement {
 						}} data-entity-key="room_target_presence" .checked=${isOn("room_target_presence", false)} /><span class="toggle-slider"></span></label>
             ${this.infoTip(this.localize("info.room_target_presence"))}
           </div>
+          <div class="setting-row">
+            <label>${this.localize("entities.target_count")}</label>
+            <label class="toggle-switch"><input type="checkbox" @change=${entityToggleHandler} data-entity-key="target_count" .checked=${isOn("target_count", false)} /><span class="toggle-slider"></span></label>
+            ${this.infoTip(this.localize("info.room_target_count"))}
+          </div>
         </div>
         <div class="setting-group">
           <h4>${this.localize("entities.zone_level")}</h4>
           <div class="setting-row">
             <label>${this.localize("entities.zone_presence")}</label>
-            <label class="toggle-switch"><input type="checkbox" @change=${(
-							e: Event,
-						) => {
-							const el = e.target as HTMLInputElement;
-							const key = el.dataset.entityKey!;
-							if (!this._overrides.entities) this._overrides.entities = {};
-							this._overrides.entities[key] = el.checked;
-							this._fireDirty();
-						}} data-entity-key="zone_presence" .checked=${isOn("zone_presence", true)} .disabled=${!this.perspective} /><span class="toggle-slider"></span></label>
+            <label class="toggle-switch"><input type="checkbox" @change=${entityToggleHandler} data-entity-key="zone_presence" .checked=${isOn("zone_presence", true)} .disabled=${!this.perspective} /><span class="toggle-slider"></span></label>
             ${this.infoTip(this.localize("info.zone_presence"))}
+          </div>
+          <div class="setting-row">
+            <label>${this.localize("entities.zone_target_count")}</label>
+            <label class="toggle-switch"><input type="checkbox" @change=${entityToggleHandler} data-entity-key="zone_target_count" .checked=${isOn("zone_target_count", false)} .disabled=${!this.perspective} /><span class="toggle-slider"></span></label>
+            ${this.infoTip(this.localize("info.zone_target_count"))}
+          </div>
+          <div class="setting-row">
+            <label>${this.localize("settings.update_rate")}</label>
+            <ha-select
+              .value=${String(o.zoneUpdateRateMs ?? this.zoneUpdateRateMs)}
+              .options=${RATE_OPTIONS}
+              .disabled=${!anyZoneOn}
+              @selected=${(e: CustomEvent<{ value: string }>) => {
+								const val = e.detail.value;
+								if (val) {
+									this._overrides.zoneUpdateRateMs = Number(val);
+									this._fireDirty();
+									this.requestUpdate();
+								}
+							}}
+              @closed=${(e: Event) => e.stopPropagation()}>
+            </ha-select>
           </div>
         </div>
         <div class="setting-group">
           <h4>${this.localize("entities.target_level")}</h4>
           <div class="setting-row">
             <label>${this.localize("entities.xy")}</label>
-            <label class="toggle-switch"><input type="checkbox" @change=${(
-							e: Event,
-						) => {
-							const el = e.target as HTMLInputElement;
-							const key = el.dataset.entityKey!;
-							if (!this._overrides.entities) this._overrides.entities = {};
-							this._overrides.entities[key] = el.checked;
-							this._fireDirty();
-						}} data-entity-key="target_xy" .checked=${isOn("target_xy", false)} .disabled=${!this.perspective} /><span class="toggle-slider"></span></label>
+            <label class="toggle-switch"><input type="checkbox" @change=${entityToggleHandler} data-entity-key="target_xy" .checked=${isOn("target_xy", false)} .disabled=${!this.perspective} /><span class="toggle-slider"></span></label>
             ${this.infoTip(this.localize("info.xy"))}
           </div>
           <div class="setting-row">
             <label>${this.localize("entities.active")}</label>
-            <label class="toggle-switch"><input type="checkbox" @change=${(
-							e: Event,
-						) => {
-							const el = e.target as HTMLInputElement;
-							const key = el.dataset.entityKey!;
-							if (!this._overrides.entities) this._overrides.entities = {};
-							this._overrides.entities[key] = el.checked;
-							this._fireDirty();
-						}} data-entity-key="target_active" .checked=${isOn("target_active", false)} /><span class="toggle-slider"></span></label>
+            <label class="toggle-switch"><input type="checkbox" @change=${entityToggleHandler} data-entity-key="target_active" .checked=${isOn("target_active", false)} /><span class="toggle-slider"></span></label>
             ${this.infoTip(this.localize("info.active"))}
+          </div>
+          <div class="setting-row">
+            <label>${this.localize("entities.target_signal")}</label>
+            <label class="toggle-switch"><input type="checkbox" @change=${entityToggleHandler} data-entity-key="target_signal" .checked=${isOn("target_signal", false)} /><span class="toggle-slider"></span></label>
+            ${this.infoTip(this.localize("info.target_signal"))}
+          </div>
+          <div class="setting-row">
+            <label>${this.localize("entities.target_zone")}</label>
+            <label class="toggle-switch"><input type="checkbox" @change=${entityToggleHandler} data-entity-key="target_zone" .checked=${isOn("target_zone", false)} /><span class="toggle-slider"></span></label>
+            ${this.infoTip(this.localize("info.target_zone"))}
+          </div>
+          <div class="setting-row">
+            <label>${this.localize("settings.update_rate")}</label>
+            <ha-select
+              .value=${String(o.targetUpdateRateMs ?? this.targetUpdateRateMs)}
+              .options=${RATE_OPTIONS}
+              .disabled=${!anyTargetOn}
+              @selected=${(e: CustomEvent<{ value: string }>) => {
+								const val = e.detail.value;
+								if (val) {
+									this._overrides.targetUpdateRateMs = Number(val);
+									this._fireDirty();
+									this.requestUpdate();
+								}
+							}}
+              @closed=${(e: Event) => e.stopPropagation()}>
+            </ha-select>
           </div>
         </div>
         <div class="setting-group">
@@ -1020,6 +1078,9 @@ export class EppSettingsView extends LitElement {
 					led_presence_color: o.ledPresenceColor ?? this.ledPresenceColor,
 					relay_trigger_mode: o.relayTriggerMode ?? this.relayTriggerMode,
 					relay_contact_mode: o.relayContactMode ?? this.relayContactMode,
+					target_update_rate_ms:
+						o.targetUpdateRateMs ?? this.targetUpdateRateMs,
+					zone_update_rate_ms: o.zoneUpdateRateMs ?? this.zoneUpdateRateMs,
 				},
 				bubbles: true,
 				composed: true,

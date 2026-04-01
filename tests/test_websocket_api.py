@@ -47,6 +47,7 @@ async def setup_integration(hass: HomeAssistant, config_entry: MockConfigEntry) 
         mock_dm.devices = {}
         mock_dm.list_devices.return_value = []
         mock_dm._push_config_to_device = AsyncMock()
+        mock_dm._push_pipeline_to_device = AsyncMock()
         mock_dm._entity_update_macs = set()
         mock_dm.async_update_zone_entities = AsyncMock()
         mock_dm.async_open_session = AsyncMock(return_value=None)
@@ -580,10 +581,10 @@ class TestWebSocketSettings:
             )
             assert mock_apply.call_count == 2
 
-    async def test_set_settings_zone_presence_false_does_not_reenable_zone0(
+    async def test_set_settings_zone_presence_false_still_calls_update_zone_entities(
         self, hass: HomeAssistant, config_entry: MockConfigEntry
     ) -> None:
-        """zone_presence=false should NOT call async_update_zone_entities (which re-enables zone 0)."""
+        """zone_presence=false still calls async_update_zone_entities to maintain zone_target_count awareness."""
         mock_dm = await setup_integration(hass, config_entry)
 
         from custom_components.eppgrid.websocket_api import websocket_set_settings
@@ -618,9 +619,10 @@ class TestWebSocketSettings:
             mock_dm.async_update_zone_entities = AsyncMock()
             await call_async_handler(hass, websocket_set_settings, connection, msg)
 
-            # async_update_zone_entities should NOT be called when disabling zones
-            # — _apply_entity_states already disabled all zone entities
-            mock_dm.async_update_zone_entities.assert_not_awaited()
+            # async_update_zone_entities IS called even when disabling — it handles
+            # both zone_presence and zone_target_count, so the other category may
+            # still need zone-aware filtering
+            mock_dm.async_update_zone_entities.assert_awaited_once()
 
     async def test_set_settings_zone_presence_true_calls_update_zone_entities(
         self, hass: HomeAssistant, config_entry: MockConfigEntry
@@ -983,16 +985,20 @@ class TestWebSocketSettings:
             "id": 15,
             "type": "eppgrid/set_pipeline",
             "mac": "AA:BB:CC:DD:EE:FF",
-            "display_interval_ms": 200,
-            "zone_publish_interval_ms": 1000,
-            "window_duration_ms": 1000,
+            "entity_target_interval": 1000,
+            "entity_zone_interval": 1000,
+            "display_interval": 200,
+            "zone_state_interval": 1000,
+            "window_duration": 1000,
         }
 
         await call_async_handler(hass, websocket_set_pipeline, connection, msg)
 
         pipeline = mock_dm._store.devices["AA:BB:CC:DD:EE:FF"]["pipeline"]
+        assert pipeline["entity_target_interval"] == 1000
+        assert pipeline["entity_zone_interval"] == 1000
         assert pipeline["display_interval"] == 200
-        assert pipeline["zone_publish_interval"] == 1000
+        assert pipeline["zone_state_interval"] == 1000
         assert pipeline["window_duration"] == 1000
 
 
@@ -1115,6 +1121,99 @@ class TestZonePresencePreservation:
         assert settings.get("target_xy") is True
         mock_dm._store.async_save.assert_awaited()
 
+    async def test_set_settings_persists_new_entity_keys(
+        self, hass: HomeAssistant, config_entry: MockConfigEntry
+    ) -> None:
+        """New entity keys (target_active etc.) are persisted in stored settings."""
+        mock_dm = await setup_integration(hass, config_entry)
+        mac = "AA:BB:CC:DD:EE:FF"
+        mock_dm._store.devices[mac] = {"settings": {}}
+
+        from custom_components.eppgrid.websocket_api import websocket_set_settings
+
+        with patch("custom_components.eppgrid.websocket_api._apply_entity_states"):
+            connection = MagicMock()
+            msg = {
+                "id": 11,
+                "type": "eppgrid/set_settings",
+                "mac": mac,
+                "temperature_offset": 0,
+                "humidity_offset": 0,
+                "illuminance_offset": 0,
+                "motion_timeout": 5.0,
+                "target_auto_distance": True,
+                "target_max_distance": 6.0,
+                "static_auto_distance": True,
+                "static_min_distance": 0.3,
+                "static_max_distance": 16.0,
+                "static_trigger_threshold": 3,
+                "static_renew_threshold": 3,
+                "static_timeout": 30.0,
+                "static_on_delay": 0.0,
+                "led_mode": "Manual Control",
+                "led_brightness": 1.0,
+                "led_presence_color": "#CC33FF",
+                "relay_trigger_mode": "disabled",
+                "relay_contact_mode": "no",
+                "entities": {"target_active": True, "zone_target_count": True},
+            }
+
+            await call_async_handler(hass, websocket_set_settings, connection, msg)
+
+        stored = mock_dm._store.devices[mac]["settings"]
+        assert stored["target_active"] is True
+        assert stored["zone_target_count"] is True
+        mock_dm._store.async_save.assert_awaited()
+
+    async def test_set_settings_preserves_new_entity_keys(
+        self, hass: HomeAssistant, config_entry: MockConfigEntry
+    ) -> None:
+        """New entity keys survive a set_settings call that doesn't include entities."""
+        mock_dm = await setup_integration(hass, config_entry)
+        mac = "AA:BB:CC:DD:EE:FF"
+        mock_dm._store.devices[mac] = {
+            "settings": {
+                "target_active": True,
+                "zone_target_count": True,
+                "target_update_rate_ms": 500,
+            }
+        }
+
+        from custom_components.eppgrid.websocket_api import websocket_set_settings
+
+        connection = MagicMock()
+        msg = {
+            "id": 11,
+            "type": "eppgrid/set_settings",
+            "mac": mac,
+            "temperature_offset": 0,
+            "humidity_offset": 0,
+            "illuminance_offset": 0,
+            "motion_timeout": 5.0,
+            "target_auto_distance": True,
+            "target_max_distance": 6.0,
+            "static_auto_distance": True,
+            "static_min_distance": 0.3,
+            "static_max_distance": 16.0,
+            "static_trigger_threshold": 3,
+            "static_renew_threshold": 3,
+            "static_timeout": 30.0,
+            "static_on_delay": 0.0,
+            "led_mode": "Manual Control",
+            "led_brightness": 1.0,
+            "led_presence_color": "#CC33FF",
+            "relay_trigger_mode": "disabled",
+            "relay_contact_mode": "no",
+            # no "entities" key
+        }
+
+        await call_async_handler(hass, websocket_set_settings, connection, msg)
+
+        stored = mock_dm._store.devices[mac]["settings"]
+        assert stored["target_active"] is True
+        assert stored["zone_target_count"] is True
+        assert stored["target_update_rate_ms"] == 500
+
 
 class TestEntityMapping:
     """Tests for entity object_id mapping with real unique_id patterns."""
@@ -1125,7 +1224,7 @@ class TestEntityMapping:
 
         assert _object_id_from_unique_id("E0:8C:FE:D3:FD:C8-binary_sensor-occupancy") == "occupancy"
         assert _object_id_from_unique_id("E0:8C:FE:D3:FD:C8-binary_sensor-motion_presence") == "motion_presence"
-        assert _object_id_from_unique_id("E0:8C:FE:D3:FD:C8-binary_sensor-zone_0_occupancy") == "zone_0_occupancy"
+        assert _object_id_from_unique_id("E0:8C:FE:D3:FD:C8-binary_sensor-zone_0_presence") == "zone_0_presence"
         assert _object_id_from_unique_id("E0:8C:FE:D3:FD:C8-sensor-temperature") == "temperature"
         assert _object_id_from_unique_id("E0:8C:FE:D3:FD:C8-text_sensor-target_0_position") == "target_0_position"
 
@@ -1148,20 +1247,27 @@ class TestEntityMapping:
         assert _entity_key_for_object_id("co2") == "env_co2"
 
     def test_entity_key_mapping_zone_entities(self) -> None:
-        """Zone occupancy entities map to zone_presence category."""
+        """Zone presence entities map to zone_presence category."""
         from custom_components.eppgrid.websocket_api import _entity_key_for_object_id
 
-        assert _entity_key_for_object_id("zone_0_occupancy") == "zone_presence"
-        assert _entity_key_for_object_id("zone_7_occupancy") == "zone_presence"
-        # zone_tracking is a separate entity, not a zone occupancy
+        assert _entity_key_for_object_id("zone_0_presence") == "zone_presence"
+        assert _entity_key_for_object_id("zone_7_presence") == "zone_presence"
+        # zone_tracking is a separate entity, not a zone presence
         assert _entity_key_for_object_id("zone_tracking") is None
 
     def test_entity_key_mapping_target_entities(self) -> None:
-        """Target entities map to target_xy category."""
+        """Structured target entities map correctly; transport sensors are unmanaged."""
         from custom_components.eppgrid.websocket_api import _entity_key_for_object_id
 
-        assert _entity_key_for_object_id("target_0_position") == "target_xy"
-        assert _entity_key_for_object_id("target_2_position") == "target_xy"
+        # Structured entities (user-facing)
+        assert _entity_key_for_object_id("target_1_x") == "target_xy"
+        assert _entity_key_for_object_id("target_1_y") == "target_xy"
+        assert _entity_key_for_object_id("target_1_active") == "target_active"
+        assert _entity_key_for_object_id("target_1_signal") == "target_signal"
+        assert _entity_key_for_object_id("target_1_zone") == "target_zone"
+        # Transport sensors (not managed by entity toggles)
+        assert _entity_key_for_object_id("target_0_position") is None
+        assert _entity_key_for_object_id("target_1_position") is None
 
     def test_entity_key_mapping_underscore_format(self) -> None:
         """Full unique_ids with underscore format (older ESPHome) map correctly."""
@@ -1174,10 +1280,12 @@ class TestEntityMapping:
         assert _entity_key_for_object_id("esphome_aabbccddeeff_temperature") == "env_temperature"
         assert _entity_key_for_object_id("esphome_aabbccddeeff_co2") == "env_co2"
         # Zone entities
-        assert _entity_key_for_object_id("esphome_aabbccddeeff_zone_0_occupancy") == "zone_presence"
-        assert _entity_key_for_object_id("esphome_aabbccddeeff_zone_7_occupancy") == "zone_presence"
-        # Target entities
-        assert _entity_key_for_object_id("esphome_aabbccddeeff_target_0_position") == "target_xy"
+        assert _entity_key_for_object_id("esphome_aabbccddeeff_zone_0_presence") == "zone_presence"
+        assert _entity_key_for_object_id("esphome_aabbccddeeff_zone_7_presence") == "zone_presence"
+        # Structured target entities
+        assert _entity_key_for_object_id("esphome_aabbccddeeff_target_1_x") == "target_xy"
+        # Transport sensors are unmanaged
+        assert _entity_key_for_object_id("esphome_aabbccddeeff_target_0_position") is None
 
     def test_entity_key_mapping_relay(self) -> None:
         """system_alarm_relay maps to relay_output."""
@@ -1214,13 +1322,13 @@ class TestApplyEntityStates:
 
         # Create mock entity entries: one USER-disabled, one INTEGRATION-disabled
         user_disabled_entry = MagicMock()
-        user_disabled_entry.unique_id = "AA:BB:CC:DD:EE:FF-sensor-target_0_position"
-        user_disabled_entry.entity_id = "sensor.target_0_position"
+        user_disabled_entry.unique_id = "AA:BB:CC:DD:EE:FF-sensor-target_1_x"
+        user_disabled_entry.entity_id = "sensor.target_1_x"
         user_disabled_entry.disabled_by = RegistryEntryDisabler.USER
 
         integration_disabled_entry = MagicMock()
-        integration_disabled_entry.unique_id = "AA:BB:CC:DD:EE:FF-sensor-target_1_position"
-        integration_disabled_entry.entity_id = "sensor.target_1_position"
+        integration_disabled_entry.unique_id = "AA:BB:CC:DD:EE:FF-sensor-target_2_x"
+        integration_disabled_entry.entity_id = "sensor.target_2_x"
         integration_disabled_entry.disabled_by = RegistryEntryDisabler.INTEGRATION
 
         with (
@@ -1239,9 +1347,9 @@ class TestApplyEntityStates:
             # USER-disabled entry should NOT be touched
             calls = mock_registry.async_update_entity.call_args_list
             entity_ids_updated = [c.args[0] for c in calls]
-            assert "sensor.target_0_position" not in entity_ids_updated
+            assert "sensor.target_1_x" not in entity_ids_updated
             # INTEGRATION-disabled entry should be enabled
-            mock_registry.async_update_entity.assert_any_call("sensor.target_1_position", disabled_by=None)
+            mock_registry.async_update_entity.assert_any_call("sensor.target_2_x", disabled_by=None)
 
 
 class TestWebSocketEntityEnabled:
@@ -1261,14 +1369,14 @@ class TestWebSocketEntityEnabled:
                 "id": 16,
                 "type": "eppgrid/set_entity_enabled",
                 "mac": "AA:BB:CC:DD:EE:FF",
-                "entity_id": "binary_sensor.epp_zone_1_occupancy",
+                "entity_id": "binary_sensor.epp_zone_1_presence",
                 "enabled": True,
             }
 
             websocket_set_entity_enabled(hass, connection, msg)
 
             mock_registry.async_update_entity.assert_called_once_with(
-                "binary_sensor.epp_zone_1_occupancy", disabled_by=None
+                "binary_sensor.epp_zone_1_presence", disabled_by=None
             )
             connection.send_result.assert_called_once_with(16)
 
@@ -1288,14 +1396,14 @@ class TestWebSocketEntityEnabled:
                 "id": 17,
                 "type": "eppgrid/set_entity_enabled",
                 "mac": "AA:BB:CC:DD:EE:FF",
-                "entity_id": "binary_sensor.epp_zone_1_occupancy",
+                "entity_id": "binary_sensor.epp_zone_1_presence",
                 "enabled": False,
             }
 
             websocket_set_entity_enabled(hass, connection, msg)
 
             mock_registry.async_update_entity.assert_called_once_with(
-                "binary_sensor.epp_zone_1_occupancy",
+                "binary_sensor.epp_zone_1_presence",
                 disabled_by=RegistryEntryDisabler.INTEGRATION,
             )
 
@@ -1603,10 +1711,10 @@ class TestSubscriptionCallbacks:
         # Create mock entities with key and name attributes
         raw0 = MagicMock()
         raw0.key = 100
-        raw0.name = "Raw Target 0"
+        raw0.name = "Raw Target 1"
         raw1 = MagicMock()
         raw1.key = 101
-        raw1.name = "Raw Target 1"
+        raw1.name = "Raw Target 2"
 
         mock_device_conn = MagicMock()
         mock_device_conn._entities = [raw0, raw1]
@@ -1642,7 +1750,7 @@ class TestSubscriptionCallbacks:
 
         raw0 = MagicMock()
         raw0.key = 100
-        raw0.name = "Raw Target 0"
+        raw0.name = "Raw Target 1"
 
         mock_device_conn = MagicMock()
         mock_device_conn._entities = [raw0]
@@ -1675,7 +1783,7 @@ class TestSubscriptionCallbacks:
 
         raw0 = MagicMock()
         raw0.key = 100
-        raw0.name = "Raw Target 0"
+        raw0.name = "Raw Target 1"
 
         mock_device_conn = MagicMock()
         mock_device_conn._entities = [raw0]
@@ -1730,7 +1838,7 @@ class TestSubscriptionCallbacks:
 
         target0 = MagicMock()
         target0.key = 200
-        target0.name = "Target 0 Position"
+        target0.name = "Target 1 Position"
 
         mock_device_conn = MagicMock()
         mock_device_conn._entities = [target0]
@@ -1769,7 +1877,7 @@ class TestSubscriptionCallbacks:
 
         target0 = MagicMock()
         target0.key = 200
-        target0.name = "Target 0 Position"
+        target0.name = "Target 1 Position"
 
         mock_device_conn = MagicMock()
         mock_device_conn._entities = [target0]
@@ -2227,7 +2335,13 @@ class TestProtocolVersionGuard:
             ),
             (
                 "websocket_set_pipeline",
-                {"display_interval_ms": 200, "zone_publish_interval_ms": 1000, "window_duration_ms": 1000},
+                {
+                    "entity_target_interval": 1000,
+                    "entity_zone_interval": 1000,
+                    "display_interval": 200,
+                    "zone_state_interval": 1000,
+                    "window_duration": 1000,
+                },
             ),
         ],
     )

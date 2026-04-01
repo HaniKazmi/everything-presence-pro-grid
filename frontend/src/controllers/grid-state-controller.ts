@@ -609,6 +609,10 @@ export class GridStateController implements ReactiveController {
 				payload.relay_trigger_mode ?? this.host._relayTriggerMode;
 			this.host._relayContactMode =
 				payload.relay_contact_mode ?? this.host._relayContactMode;
+			this.host._targetUpdateRateMs =
+				payload.target_update_rate_ms ?? this.host._targetUpdateRateMs;
+			this.host._zoneUpdateRateMs =
+				payload.zone_update_rate_ms ?? this.host._zoneUpdateRateMs;
 			this.host._dirty = false;
 			this.host._view = "live";
 		} catch (e) {
