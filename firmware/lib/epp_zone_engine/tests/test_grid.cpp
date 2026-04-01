@@ -188,3 +188,18 @@ TEST_CASE("threshold_to_frame_count") {
     CHECK(epp::threshold_to_frame_count(0) == 1);
     CHECK(epp::threshold_to_frame_count(-3) == 1);
 }
+
+TEST_CASE("cell_has_overlay_entry") {
+    epp::Grid grid;
+    grid.cell(0) = epp::CELL_ROOM_BIT;
+    CHECK_FALSE(grid.cell_has_overlay_entry(0));
+
+    grid.cell(0) = epp::CELL_ROOM_BIT | epp::CELL_OVERLAY_ENTRY;
+    CHECK(grid.cell_has_overlay_entry(0));
+
+    // Preserves zone bits
+    grid.cell(1) = epp::CELL_ROOM_BIT | epp::CELL_OVERLAY_ENTRY | (3 << epp::CELL_ZONE_SHIFT);
+    CHECK(grid.cell_has_overlay_entry(1));
+    CHECK(grid.cell_zone(1) == 3);
+    CHECK(grid.cell_is_room(1));
+}
