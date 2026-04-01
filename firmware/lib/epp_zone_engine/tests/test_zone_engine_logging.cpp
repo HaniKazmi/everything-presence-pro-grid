@@ -4,7 +4,6 @@
 #include "epp_zone_engine.h"
 
 #include <cstring>
-#include <string>
 
 using namespace epp;
 
@@ -203,21 +202,22 @@ TEST_CASE("log: target below threshold only logs on drop from confirmed") {
     CHECK(has_debug(r3, "below"));
 }
 
-TEST_CASE("log: target outside room only logs on transition from in-room") {
+TEST_CASE("log: target leaving room from confirmed zone logs with zone info") {
     ZoneEngine engine = make_engine();
     float t = 100.0f;
 
     // Target appears outside room — no log (was never in room)
     const ProcessingResult& r1 = engine.tick(make_window_1(9000, 9000, 9), t);
-    CHECK_FALSE(has_debug(r1, "outside"));
+    CHECK_FALSE(has_debug(r1, "left room"));
 
-    // Target enters room
+    // Target enters room (zone 1, entry point)
     engine.tick(make_window_1(X_OFF + 450, 450, 5), t + 1.0f);
 
-    // Target leaves room — NOW it should log
+    // Target leaves room — logs with zone context
     const ProcessingResult& r3 = engine.tick(make_window_1(9000, 9000, 9), t + 2.0f);
     CHECK(has_debug(r3, "T0"));
     CHECK(has_debug(r3, "left room"));
+    CHECK(has_debug(r3, "was zone 1"));
 }
 
 TEST_CASE("log: stably outside-room target does NOT re-log every tick") {

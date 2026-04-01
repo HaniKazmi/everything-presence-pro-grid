@@ -305,19 +305,24 @@ const ProcessingResult& ZoneEngine::tick(const WindowOutput& window, float times
                  i, curr_zone, target_signal[i]);
         }
 
-        // Left a zone (was confirmed, no longer)
+        // Left a zone — use specific reason when available
         if (prev_zone >= 0 && curr_zone != prev_zone) {
-            log_(LogLevel::DEBUG, "T%d left zone %d", i, prev_zone);
+            if (curr_zone >= 0) {
+                // Moved to another zone (handoff will log separately)
+            } else if (is_in_room) {
+                // Still in room but signal dropped
+                log_(LogLevel::DEBUG, "T%d below threshold in zone %d (signal %d)",
+                     i, prev_zone, target_signal[i]);
+            } else if (target_active[i]) {
+                // Target left the room entirely
+                log_(LogLevel::DEBUG, "T%d left room (was zone %d)", i, prev_zone);
+            } else {
+                log_(LogLevel::DEBUG, "T%d left zone %d", i, prev_zone);
+            }
         }
 
-        // Signal dropped below threshold (was confirmed, now not, but still in room)
-        if (prev_zone >= 0 && curr_zone < 0 && is_in_room) {
-            log_(LogLevel::DEBUG, "T%d below threshold in zone %d (signal %d)",
-                 i, prev_zone, target_signal[i]);
-        }
-
-        // Left room (was in room, now outside)
-        if (was_in_room && !is_in_room && target_active[i]) {
+        // Left room (was in room, target still tracked but outside)
+        if (was_in_room && !is_in_room && target_active[i] && prev_zone < 0) {
             log_(LogLevel::DEBUG, "T%d left room", i);
         }
 
