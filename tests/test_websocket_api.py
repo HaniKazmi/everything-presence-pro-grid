@@ -254,6 +254,30 @@ class TestWebSocketSetSetup:
         assert settings["target_xy"] is False
         mock_apply.assert_called_once_with(hass, "AA:BB:CC:DD:EE:FF", {"target_xy": False})
 
+    async def test_set_setup_delete_calibration_sets_entity_update_guard(
+        self, hass: HomeAssistant, config_entry: MockConfigEntry
+    ) -> None:
+        """Deleting calibration sets entity_update_macs guard to suppress reconnect push."""
+        mock_dm = await setup_integration(hass, config_entry)
+        mock_dm._store.devices["AA:BB:CC:DD:EE:FF"] = {"settings": {"target_xy": True}}
+
+        from custom_components.eppgrid.websocket_api import websocket_set_setup
+
+        with patch("custom_components.eppgrid.websocket_api._apply_entity_states"):
+            connection = MagicMock()
+            msg = {
+                "id": 5,
+                "type": "eppgrid/set_setup",
+                "mac": "AA:BB:CC:DD:EE:FF",
+                "perspective": [0.0] * 8,
+                "room_width": 0.0,
+                "room_depth": 0.0,
+            }
+
+            await call_async_handler(hass, websocket_set_setup, connection, msg)
+
+        assert "AA:BB:CC:DD:EE:FF" in mock_dm._entity_update_macs
+
     async def test_set_setup_calibration_does_not_enable_target_xy(
         self, hass: HomeAssistant, config_entry: MockConfigEntry
     ) -> None:
@@ -946,6 +970,58 @@ class TestEntityMapping:
         assert _entity_key_for_object_id("esphome_aabbccddeeff_zone_engine_version") is None
         assert _entity_key_for_object_id("led") is None
         assert _entity_key_for_object_id("relay_output") is None
+
+
+class TestApplyEntityStates:
+    """Tests for _apply_entity_states."""
+
+    async def test_apply_entity_states_skips_user_disabled(
+        self, hass: HomeAssistant, config_entry: MockConfigEntry
+    ) -> None:
+        """_apply_entity_states must not overwrite USER-disabled entries."""
+        from homeassistant.helpers.entity_registry import RegistryEntryDisabler
+
+        from custom_components.eppgrid.device_manager import ManagedDevice
+        from custom_components.eppgrid.websocket_api import _apply_entity_states
+
+        mock_dm = await setup_integration(hass, config_entry)
+        mock_dm.devices["AA:BB:CC:DD:EE:FF"] = ManagedDevice(
+            mac="AA:BB:CC:DD:EE:FF", name="EPP", host="192.168.1.50"
+        )
+        mock_dm.devices["AA:BB:CC:DD:EE:FF"].device_id = "dev123"
+
+        # Create mock entity entries: one USER-disabled, one INTEGRATION-disabled
+        user_disabled_entry = MagicMock()
+        user_disabled_entry.unique_id = "AA:BB:CC:DD:EE:FF-sensor-target_0_position"
+        user_disabled_entry.entity_id = "sensor.target_0_position"
+        user_disabled_entry.disabled_by = RegistryEntryDisabler.USER
+
+        integration_disabled_entry = MagicMock()
+        integration_disabled_entry.unique_id = "AA:BB:CC:DD:EE:FF-sensor-target_1_position"
+        integration_disabled_entry.entity_id = "sensor.target_1_position"
+        integration_disabled_entry.disabled_by = RegistryEntryDisabler.INTEGRATION
+
+        with (
+            patch("custom_components.eppgrid.websocket_api.er.async_get") as mock_er,
+            patch("custom_components.eppgrid.websocket_api.er.async_entries_for_device") as mock_entries,
+        ):
+            mock_registry = mock_er.return_value
+            mock_entries.return_value = [
+                user_disabled_entry,
+                integration_disabled_entry,
+            ]
+
+            # Enable target_xy — should skip USER-disabled but enable INTEGRATION-disabled
+            _apply_entity_states(hass, "AA:BB:CC:DD:EE:FF", {"target_xy": True})
+
+            # USER-disabled entry should NOT be touched
+            calls = mock_registry.async_update_entity.call_args_list
+            entity_ids_updated = [c.args[0] for c in calls]
+            assert "sensor.target_0_position" not in entity_ids_updated
+            # INTEGRATION-disabled entry should be enabled
+            mock_registry.async_update_entity.assert_any_call(
+                "sensor.target_1_position", disabled_by=None
+            )
 
 
 class TestWebSocketEntityEnabled:
