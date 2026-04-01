@@ -66,11 +66,18 @@ All entities are created by ESPHome firmware with `disabled_by_default` where ap
 | Static Presence | binary_sensor | zone engine processed (active/pending = on, inactive = off) |
 | Tracking Presence | binary_sensor | LD2450 any-target-detected |
 | mmWave Presence | binary_sensor | static OR tracking combined |
-| Zone 0-7 Occupancy | binary_sensor | zone engine per-zone state |
+| Zone 0-7 Presence | binary_sensor | zone engine per-zone state |
 | Zone Tracking | binary_sensor | zone engine device-level tracking |
 | Target 0-2 Position | text_sensor | "x,y,status" post-transform |
 | Raw Target 0-2 | text_sensor | "x,y" pre-transform (sensor-space) |
 | Zone State | text_sensor | JSON with zone engine tick results |
+| Target 1-3 X | sensor (mm) | per-target X position post-transform |
+| Target 1-3 Y | sensor (mm) | per-target Y position post-transform |
+| Target 1-3 Signal | sensor | per-target signal strength |
+| Target 1-3 Active | binary_sensor | per-target active flag |
+| Target 1-3 Zone | sensor | zone index the target currently occupies |
+| Zone 0-7 Target Count | sensor | number of active targets in each zone |
+| Target Count | sensor | total number of active targets |
 
 ## 2. Live Streaming
 
@@ -136,9 +143,11 @@ Parses Target Position, Zone State, and sensor entity updates into structured ev
 ```
 
 **Data rates:**
-- Target positions: 5Hz (from firmware display_interval)
-- Zone state + signal/status + sensor state: 1Hz (from firmware zone_publish_interval)
-- Sensor binary values: on change (accumulated, sent with next target or zone state event)
+- Target entity sensors (X, Y, signal, active, zone) + target_count: at entity_target_interval (user-configured Hz), only published when the corresponding entity toggle is enabled
+- Zone entity sensors (presence, target_count): at entity_zone_interval (user-configured Hz), only published when the corresponding entity toggle is enabled
+- Display stream (raw + grid text sensors): at display_interval (200ms default), only published when at least one frontend session is subscribed
+- Zone state JSON: at zone_state_interval (1000ms default), only published when at least one frontend session is subscribed
+- System outputs (device tracking, presence binary sensors, relay): fixed 1000ms regardless of frontend subscription
 
 ## 3. Commands
 
@@ -232,6 +241,22 @@ Saves all device settings (offsets, timeouts, distances, thresholds, LED, relay,
 | `relay_trigger_mode` | string | `"disabled"` | One of: disabled, motion, presence, occupancy |
 | `relay_contact_mode` | string | `"no"` | One of: no (Normally Open), nc (Normally Closed) |
 
+**Update rate settings (optional):**
+
+| Key | Type | Valid values | Description |
+|-----|------|-------------|-------------|
+| `target_update_rate_ms` | int | 200, 500, 1000, 2000 | Target entity sensor publish rate (stored in pipeline) |
+| `zone_update_rate_ms` | int | 200, 500, 1000, 2000 | Zone entity sensor publish rate (stored in pipeline) |
+
+**Entity toggle keys (within `entities` dict) — additions:**
+
+| Key | Description |
+|-----|-------------|
+| `target_active` | Enable/disable Target 1-3 Active binary sensors |
+| `target_signal` | Enable/disable Target 1-3 Signal sensors |
+| `target_zone` | Enable/disable Target 1-3 Zone sensors |
+| `zone_target_count` | Enable/disable Zone 0-7 Target Count sensors |
+
 **Firmware push:** LED mode/brightness/color pushed via `epp_set_led` action (mode, brightness, presence_red/green/blue as 0.0–1.0 floats). SEN0609 LED toggle passed through existing `epp_set_static_presence` action's `led_enabled` parameter. Relay settings pushed via `epp_set_relay` action (trigger_mode, contact_mode).
 
 ### `set_distance_override`
@@ -242,9 +267,17 @@ Pushes tracking + static presence ranges to firmware via session without persist
 
 ### `set_pipeline`
 
-Saves and pushes display/zone publish intervals and window duration.
+Saves and pushes all publish intervals and window duration.
 
-**Request:** `{ "type": "eppgrid/set_pipeline", "mac": str, "display_interval_ms": int, "zone_publish_interval_ms": int, "window_duration_ms": int }`
+**Request:** `{ "type": "eppgrid/set_pipeline", "mac": str, "entity_target_interval_ms": int, "entity_zone_interval_ms": int, "display_interval_ms": int, "zone_state_interval_ms": int, "window_duration_ms": int }`
+
+| Parameter | Description |
+|-----------|-------------|
+| `entity_target_interval_ms` | Publish interval for target entity sensors (X, Y, signal, active, zone, target_count) |
+| `entity_zone_interval_ms` | Publish interval for zone entity sensors (presence, target_count per zone) |
+| `display_interval_ms` | Publish interval for raw + grid text sensor streams (frontend only) |
+| `zone_state_interval_ms` | Publish interval for zone state JSON text sensor (frontend only) |
+| `window_duration_ms` | Rolling median window duration |
 
 ### Template Commands
 
@@ -259,14 +292,21 @@ Saves and pushes display/zone publish intervals and window duration.
 
 ```
 LD2450 UART (~10Hz)
-  → rolling median (1s window, computed every frame)
+  → rolling median (window_duration, computed every frame)
     → perspective transform (every frame)
       → zone engine (every frame, counts frames per zone)
 
-Publishing (output throttles):
-  → raw median      → 5Hz (Raw Target text sensors)
-  → grid positions  → 5Hz (Target Position text sensors, includes status)
-  → zone state      → 1Hz (Zone State JSON text sensor + binary sensors)
+Publishing (5 independent output timers):
+  → entity_target   → user Hz   target_N_{x,y,signal,active,zone} + target_count
+                                 (only published when entity enable flag is set)
+  → entity_zone     → user Hz   zone_N_{presence,target_count}
+                                 (only published when entity enable flag is set)
+  → display         → 200ms     raw + grid text sensors
+                                 (only published when frontend is subscribed)
+  → zone_state      → 1000ms    zone state JSON text sensor
+                                 (only published when frontend is subscribed)
+  → system          → 1000ms    device tracking + presence outputs + relay
+                                 (always published)
 ```
 
 ### Debug Log Format
@@ -296,7 +336,7 @@ The frontend enricher replaces zone IDs with names for display.
         "tracking": {"max_range": float},
         "static_presence": {"min_range": float, "max_range": float, ...},
         "relay": {"trigger_mode": str, "contact_mode": str},
-        "pipeline": {"display_interval": int, "zone_publish_interval": int, "window_duration": int},
+        "pipeline": {"entity_target_interval": int, "entity_zone_interval": int, "display_interval": int, "zone_state_interval": int, "window_duration": int},
     }
 }
 ```
