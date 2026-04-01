@@ -30,7 +30,7 @@ static ZoneEngine make_engine() {
 
     ZoneConfig zone1{};
     zone1.id = 1;
-    zone1.type = ZoneType::ENTRANCE;
+    zone1.type = ZoneType::CUSTOM;
     zone1.trigger = 3;
     zone1.renew = 2;
     zone1.timeout = 5.0f;
@@ -136,7 +136,7 @@ TEST_CASE("log: zone PENDING -> CLEAR produces info log") {
     ZoneEngine engine = make_engine();
     engine.tick(make_window_1(X_OFF + 450, 450, 5), 100.0f);
     engine.tick(make_window_0(), 101.0f);
-    // Past timeout (entrance timeout=5s)
+    // Past timeout (custom zone timeout=5s)
     const ProcessingResult& r = engine.tick(make_window_0(), 107.0f);
     CHECK_FALSE(r.zone_occupancy[1]);
     CHECK(has_info(r, "Zone 1"));

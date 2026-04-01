@@ -1,7 +1,7 @@
 export interface ZoneConfig {
 	name: string;
 	color: string;
-	type: "normal" | "entrance" | "thoroughfare" | "rest" | "custom";
+	type: "normal" | "thoroughfare" | "rest" | "custom";
 	trigger?: number; // 0-9 threshold, 0=disabled, higher=harder
 	renew?: number; // 0-9 threshold, 0=disabled, higher=harder
 	timeout?: number; // seconds, if undefined use type default
@@ -13,7 +13,6 @@ export const ZONE_TYPE_DEFAULTS: Record<
 	{ trigger: number; renew: number; timeout: number; handoff_timeout: number }
 > = {
 	normal: { trigger: 5, renew: 3, timeout: 10, handoff_timeout: 3 },
-	entrance: { trigger: 3, renew: 2, timeout: 5, handoff_timeout: 1 },
 	thoroughfare: { trigger: 3, renew: 2, timeout: 3, handoff_timeout: 1 },
 	rest: { trigger: 7, renew: 1, timeout: 30, handoff_timeout: 10 },
 };

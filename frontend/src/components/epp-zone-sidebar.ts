@@ -437,7 +437,7 @@ export class EppZoneSidebar extends LitElement {
 						<option value="normal">
 							${this.localize("zones.normal")}
 						</option>
-<option value="thoroughfare">
+						<option value="thoroughfare">
 							${this.localize("zones.thoroughfare")}
 						</option>
 						<option value="rest">
@@ -662,7 +662,7 @@ export class EppZoneSidebar extends LitElement {
 						<option value="normal">
 							${this.localize("zones.normal")}
 						</option>
-<option value="thoroughfare">
+						<option value="thoroughfare">
 							${this.localize("zones.thoroughfare")}
 						</option>
 						<option value="rest">

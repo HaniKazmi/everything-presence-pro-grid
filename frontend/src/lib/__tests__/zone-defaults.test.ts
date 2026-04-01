@@ -7,15 +7,14 @@ import {
 } from "../zone-defaults.js";
 
 describe("ZONE_TYPE_DEFAULTS", () => {
-	it("has all four zone types", () => {
+	it("has all three zone types", () => {
 		expect(ZONE_TYPE_DEFAULTS).toHaveProperty("normal");
-		expect(ZONE_TYPE_DEFAULTS).toHaveProperty("entrance");
 		expect(ZONE_TYPE_DEFAULTS).toHaveProperty("thoroughfare");
 		expect(ZONE_TYPE_DEFAULTS).toHaveProperty("rest");
 	});
 
 	it("each type has trigger, renew, timeout, handoff_timeout", () => {
-		for (const type of ["normal", "entrance", "thoroughfare", "rest"]) {
+		for (const type of ["normal", "thoroughfare", "rest"]) {
 			const d = ZONE_TYPE_DEFAULTS[type];
 			expect(d.trigger).toBeTypeOf("number");
 			expect(d.renew).toBeTypeOf("number");
@@ -69,16 +68,6 @@ describe("getZoneThresholds", () => {
 		});
 	});
 
-	it("zone 0 entrance: returns entrance defaults", () => {
-		const result = getZoneThresholds(0, emptyConfigs, "entrance", 3, 2, 5, 1);
-		expect(result).toEqual({
-			trigger: 3,
-			renew: 2,
-			timeout: 5,
-			handoffTimeout: 1,
-		});
-	});
-
 	it("named zone with normal type: returns normal defaults", () => {
 		const configs: (ZoneConfig | null)[] = [
 			{
@@ -95,18 +84,6 @@ describe("getZoneThresholds", () => {
 			timeout: 10,
 			handoffTimeout: 3,
 		});
-	});
-
-	it("named zone with entrance type: uses entrance timing defaults", () => {
-		const configs: (ZoneConfig | null)[] = [
-			{ name: "Front Door", color: "#56B4E9", type: "entrance" },
-			...new Array(6).fill(null),
-		];
-		const result = getZoneThresholds(1, configs, "normal", 5, 3, 10, 3);
-		expect(result.trigger).toBe(3);
-		expect(result.renew).toBe(2);
-		expect(result.timeout).toBe(5);
-		expect(result.handoffTimeout).toBe(1);
 	});
 
 	it("named zone with custom type: uses custom overrides", () => {

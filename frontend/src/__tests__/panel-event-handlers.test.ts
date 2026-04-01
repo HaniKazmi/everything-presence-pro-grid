@@ -661,10 +661,10 @@ describe("_renderDetectionRanges inline handlers", () => {
 // _renderBoundaryTypeControls inline handlers
 // ========================
 describe("_renderBoundaryTypeControls inline handlers", () => {
-	it("room type change to entrance", () => {
+	it("room type change to thoroughfare", () => {
 		const a = createPanel() as any;
 		// Replicate handler (line 4895-4904)
-		const val = "entrance";
+		const val = "thoroughfare";
 		const d = ZONE_TYPE_DEFAULTS[val] || ZONE_TYPE_DEFAULTS.normal;
 		a._roomType = val;
 		a._roomTrigger = d.trigger;
@@ -673,7 +673,7 @@ describe("_renderBoundaryTypeControls inline handlers", () => {
 		a._roomHandoffTimeout = d.handoff_timeout;
 		a._dirty = true;
 
-		expect(a._roomType).toBe("entrance");
+		expect(a._roomType).toBe("thoroughfare");
 		expect(a._dirty).toBe(true);
 	});
 

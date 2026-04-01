@@ -66,7 +66,6 @@ static Grid build_grid(const json& grid_config) {
 
 static ZoneType parse_zone_type(const std::string& type_str) {
     if (type_str == "normal") return ZoneType::NORMAL;
-    if (type_str == "entrance") return ZoneType::ENTRANCE;
     if (type_str == "thoroughfare") return ZoneType::THOROUGHFARE;
     if (type_str == "rest") return ZoneType::REST;
     return ZoneType::CUSTOM;

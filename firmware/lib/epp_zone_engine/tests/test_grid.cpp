@@ -158,10 +158,6 @@ TEST_CASE("ZoneType defaults") {
     CHECK(normal.timeout == 10.0f);
     CHECK(normal.handoff_timeout == 3.0f);
 
-    auto entrance = epp::zone_type_defaults(epp::ZoneType::ENTRANCE);
-    CHECK(entrance.trigger == 3);
-    CHECK(entrance.timeout == 5.0f);
-
     auto thoroughfare = epp::zone_type_defaults(epp::ZoneType::THOROUGHFARE);
     CHECK(thoroughfare.timeout == 3.0f);
 

@@ -333,13 +333,13 @@ describe("TargetController", () => {
 		beforeEach(() => {
 			// Zone 0 = Room, Zone 1 = first entry in _zoneConfigs
 			host._zoneConfigs = [
-				{ name: "Entrance", color: "#E69F00", type: "entrance" },
+				{ name: "Hallway", color: "#E69F00", type: "normal" },
 			];
 		});
 
 		it("replaces zone IDs with zone names in target part", () => {
 			const result = ctrl.enrichDebugLog("T0:Z1:A:5|");
-			expect(result).toContain("T0→Entrance(active,5)");
+			expect(result).toContain("T0→Hallway(active,5)");
 		});
 
 		it("uses 'Room' for zone 0", () => {
@@ -354,7 +354,7 @@ describe("TargetController", () => {
 
 		it("enriches zone occupancy part", () => {
 			const result = ctrl.enrichDebugLog("|Z1:O:1");
-			expect(result).toContain("Entrance: occupied(1)");
+			expect(result).toContain("Hallway: occupied(1)");
 		});
 
 		it("shows 'no targets' when target part is empty", () => {
@@ -370,14 +370,14 @@ describe("TargetController", () => {
 		it("formats a full log correctly", () => {
 			const result = ctrl.enrichDebugLog("T0:Z1:A:5 T1:Z0:P:3|Z0:O:1 Z1:O:1");
 			expect(result).toBe(
-				"T0→Entrance(active,5) T1→Room(pending,3) | Room: occupied(1), Entrance: occupied(1)",
+				"T0→Hallway(active,5) T1→Room(pending,3) | Room: occupied(1), Hallway: occupied(1)",
 			);
 		});
 
 		it("parses 3-section format (sensors|targets|zones) with S:, M:, Occ: tokens", () => {
 			const result = ctrl.enrichDebugLog("S:A M:I Occ:1|T0:Z1:A:5|Z1:O:1");
 			expect(result).toBe(
-				"Static: active, Motion: inactive, Occ: on | T0→Entrance(active,5) | Entrance: occupied(1)",
+				"Static: active, Motion: inactive, Occ: on | T0→Hallway(active,5) | Hallway: occupied(1)",
 			);
 		});
 

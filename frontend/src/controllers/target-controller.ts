@@ -140,7 +140,7 @@ export class TargetController implements ReactiveController {
 	 * by replacing zone IDs with zone names.
 	 * Raw format: "S:A M:P Occ:1|T0:Z1:A:5 T1:Z0:P:3|Z0:O:1 Z1:O:1"
 	 * Legacy:     "T0:Z1:A:5 T1:Z0:P:3|Z0:O:1 Z1:O:1"
-	 * Enriched:   "Static: active, Motion: pending, Occ: on | T0→Entrance(active,5) | Entrance: occupied(1)"
+	 * Enriched:   "Static: active, Motion: pending, Occ: on | T0→Hallway(active,5) | Hallway: occupied(1)"
 	 */
 	enrichDebugLog(raw: string): string {
 		const zoneName = (zid: number): string => {

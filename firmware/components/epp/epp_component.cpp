@@ -408,7 +408,6 @@ void EPPComponent::set_grid(const std::string &grid_data,
 // ---------------------------------------------------------------------------
 
 static ZoneType type_str_to_enum(const char *s) {
-  if (strcmp(s, "entrance") == 0) return ZoneType::ENTRANCE;
   if (strcmp(s, "thoroughfare") == 0) return ZoneType::THOROUGHFARE;
   if (strcmp(s, "rest") == 0) return ZoneType::REST;
   if (strcmp(s, "custom") == 0) return ZoneType::CUSTOM;

@@ -940,9 +940,9 @@ describe("epp-zone-sidebar renders boundary type controls", () => {
 		expect(result).toBeDefined();
 	});
 
-	it("renders for entrance type", () => {
+	it("renders for thoroughfare type", () => {
 		const el = document.createElement("epp-zone-sidebar") as any;
-		el.roomType = "entrance";
+		el.roomType = "thoroughfare";
 		el.activeZone = 0;
 		el.zoneConfigs = new Array(7).fill(null);
 		const result = el.render();
@@ -1001,7 +1001,7 @@ describe("epp-zone-sidebar renders zone sidebar", () => {
 		el.zoneConfigs[1] = {
 			name: "Living",
 			color: ZONE_COLORS[1],
-			type: "entrance",
+			type: "normal",
 		};
 		el.activeZone = 1;
 		const result = el.render();

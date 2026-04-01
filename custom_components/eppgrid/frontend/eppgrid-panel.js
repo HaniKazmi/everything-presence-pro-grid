@@ -2312,7 +2312,7 @@ const dt={attribute:!0,type:String,converter:b,reflect:!1,hasChanged:y},ut=(t=dt
 						<option value="normal">
 							${this.localize("zones.normal")}
 						</option>
-<option value="thoroughfare">
+						<option value="thoroughfare">
 							${this.localize("zones.thoroughfare")}
 						</option>
 						<option value="rest">
@@ -2424,7 +2424,7 @@ const dt={attribute:!0,type:String,converter:b,reflect:!1,hasChanged:y},ut=(t=dt
 						<option value="normal">
 							${this.localize("zones.normal")}
 						</option>
-<option value="thoroughfare">
+						<option value="thoroughfare">
 							${this.localize("zones.thoroughfare")}
 						</option>
 						<option value="rest">

@@ -160,7 +160,6 @@
 		"zone_name": "Zone name",
 		"type": "Type",
 		"normal": "Normal",
-		"entrance": "Entrance",
 		"thoroughfare": "Thoroughfare",
 		"rest_area": "Rest area",
 		"custom": "Custom",

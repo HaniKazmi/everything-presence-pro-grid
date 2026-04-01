@@ -203,7 +203,7 @@ describe("parseZoneConfigs", () => {
 				{
 					name: "Kitchen",
 					color: "#FF0000",
-					type: "entrance",
+					type: "custom",
 					trigger: 3,
 					renew: 2,
 					timeout: 5,
@@ -215,7 +215,7 @@ describe("parseZoneConfigs", () => {
 		expect(result[0]).toEqual({
 			name: "Kitchen",
 			color: "#FF0000",
-			type: "entrance",
+			type: "custom",
 			trigger: 3,
 			renew: 2,
 			timeout: 5,
@@ -242,7 +242,6 @@ describe("parseZoneConfigs", () => {
 		const result = parseZoneConfigs(layout);
 		expect(result[0]!.name).toBe("Zone 1");
 		expect(result[0]!.color).toBe(ZONE_COLORS[0]);
-		expect(result[0]!.type).toBe("normal");
 		expect(result[0]!.type).toBe("normal");
 	});
 
@@ -277,12 +276,12 @@ describe("parseRoomThresholds", () => {
 	});
 
 	it("uses specified room_type defaults", () => {
-		const layout = { room_type: "entrance" };
+		const layout = { room_type: "thoroughfare" };
 		const result = parseRoomThresholds(layout);
-		expect(result.roomType).toBe("entrance");
-		expect(result.roomTrigger).toBe(ZONE_TYPE_DEFAULTS.entrance.trigger);
-		expect(result.roomRenew).toBe(ZONE_TYPE_DEFAULTS.entrance.renew);
-		expect(result.roomTimeout).toBe(ZONE_TYPE_DEFAULTS.entrance.timeout);
+		expect(result.roomType).toBe("thoroughfare");
+		expect(result.roomTrigger).toBe(ZONE_TYPE_DEFAULTS.thoroughfare.trigger);
+		expect(result.roomRenew).toBe(ZONE_TYPE_DEFAULTS.thoroughfare.renew);
+		expect(result.roomTimeout).toBe(ZONE_TYPE_DEFAULTS.thoroughfare.timeout);
 	});
 
 	it("uses explicit values over defaults", () => {

@@ -478,7 +478,7 @@ describe("_applyConfig", () => {
 				room_depth: 0,
 			},
 			room_layout: {
-				room_type: "entrance",
+				room_type: "thoroughfare",
 				room_trigger: 3,
 				room_renew: 2,
 				room_timeout: 5,
@@ -488,7 +488,7 @@ describe("_applyConfig", () => {
 
 		a._applyConfig(config);
 
-		expect(a._roomType).toBe("entrance");
+		expect(a._roomType).toBe("thoroughfare");
 		expect(a._roomTrigger).toBe(3);
 		expect(a._roomRenew).toBe(2);
 		expect(a._roomTimeout).toBe(5);

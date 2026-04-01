@@ -64,10 +64,9 @@ constexpr int MAX_LOG_ENTRIES = 16;
 // Zone type — matches Python const.py ZONE_TYPE_* constants
 enum class ZoneType : uint8_t {
     NORMAL = 0,
-    ENTRANCE = 1,
-    THOROUGHFARE = 2,
-    REST = 3,
-    CUSTOM = 4,
+    THOROUGHFARE = 1,
+    REST = 2,
+    CUSTOM = 3,
 };
 
 // Default parameters per zone type — matches Python ZONE_TYPE_DEFAULTS
@@ -78,11 +77,10 @@ struct ZoneTypeDefaults {
     float handoff_timeout;
 };
 
-// Defaults indexed by ZoneType ordinal (NORMAL, ENTRANCE, THOROUGHFARE, REST).
+// Defaults indexed by ZoneType ordinal (NORMAL, THOROUGHFARE, REST).
 // CUSTOM has no built-in defaults.
-constexpr std::array<ZoneTypeDefaults, 4> ZONE_TYPE_DEFAULTS = {{
+constexpr std::array<ZoneTypeDefaults, 3> ZONE_TYPE_DEFAULTS = {{
     {5, 3, 10.0f, 3.0f},   // NORMAL
-    {3, 2, 5.0f, 1.0f},    // ENTRANCE
     {3, 2, 3.0f, 1.0f},    // THOROUGHFARE
     {7, 1, 30.0f, 10.0f},  // REST
 }};

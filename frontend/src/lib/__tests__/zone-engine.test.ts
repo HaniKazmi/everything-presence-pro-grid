@@ -52,11 +52,15 @@ function makeDefaultParams(
 ): ZoneEngineParams {
 	const zoneConfigs: (import("../zone-defaults.js").ZoneConfig | null)[] =
 		new Array(MAX_ZONES).fill(null);
-	// Zone 1: entrance type
+	// Zone 1: custom type (trigger=3, renew=2, timeout=5, handoff=1)
 	zoneConfigs[0] = {
 		name: "Zone 1",
 		color: "#ff0000",
-		type: "entrance",
+		type: "custom",
+		trigger: 3,
+		renew: 2,
+		timeout: 5,
+		handoff_timeout: 1,
 	};
 
 	return {
@@ -143,7 +147,7 @@ describe("runLocalZoneEngine", () => {
 		const result2 = runLocalZoneEngine(state, params2);
 		expect(result2.occupancy[1]).toBe(true); // still occupied (pending)
 
-		// Past timeout (entrance timeout=5s)
+		// Past timeout (custom zone timeout=5s)
 		const params3 = makeDefaultParams({
 			targets: [makeTarget(450, 450, 0, "inactive")],
 			now: now + 7,
@@ -635,7 +639,7 @@ describe("runLocalZoneEngine", () => {
 	it("overlay exit accelerates pending clear (handoff timeout)", () => {
 		const now = Date.now() / 1000;
 		const grid = makeParityGrid();
-		// Cell (9,1) = index 29 is zone 1 (entrance type: timeout=5, handoff=1).
+		// Cell (9,1) = index 29 is zone 1 (custom type: timeout=5, handoff=1).
 		// Set overlay entry bit.
 		grid[29] = cellSetOverlayEntry(grid[29], true);
 

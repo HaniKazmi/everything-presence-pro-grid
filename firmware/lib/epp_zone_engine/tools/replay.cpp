@@ -30,7 +30,6 @@ using json = nlohmann::json;
 using namespace epp;
 
 static ZoneType parse_zone_type(const std::string& s) {
-    if (s == "entrance") return ZoneType::ENTRANCE;
     if (s == "thoroughfare") return ZoneType::THOROUGHFARE;
     if (s == "rest") return ZoneType::REST;
     if (s == "custom") return ZoneType::CUSTOM;
