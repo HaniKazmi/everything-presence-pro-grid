@@ -42,7 +42,7 @@ New members on `EPPComponent`:
 
 On each zone publish tick (1Hz), after the zone engine produces its `ProcessingResult`:
 
-1. If trigger mode is `disabled` -> skip automatic evaluation (relay state is left as-is)
+1. If trigger mode is `disabled` -> de-energize the relay (desired state = off)
 2. Determine activation based on trigger mode:
    - `motion` -> `result.motion_state != INACTIVE`
    - `presence` -> `result.static_state != INACTIVE` (mmWave static presence)
