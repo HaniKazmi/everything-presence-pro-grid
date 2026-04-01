@@ -347,6 +347,7 @@ _ENTITY_OBJECT_ID_MAP: dict[str, str] = {
     "humidity": "env_humidity",
     "illuminance": "env_illuminance",
     "co2": "env_co2",
+    "system_alarm_relay": "relay_output",
 }
 
 # Prefix patterns: object_ids starting with these prefixes map to a category key.
@@ -775,6 +776,8 @@ _SETTINGS_KEYS = (
     "led_mode",
     "led_brightness",
     "led_presence_color",
+    "relay_trigger_mode",
+    "relay_contact_mode",
 )
 
 
@@ -798,6 +801,8 @@ _SETTINGS_KEYS = (
         vol.Required("led_mode"): vol.In(["Manual Control", "Presence", "Environmental", "Environmental + Presence"]),
         vol.Required("led_brightness"): vol.All(vol.Coerce(float), vol.Range(min=0.1, max=1.0)),
         vol.Required("led_presence_color"): vol.Match(r"^#[0-9A-Fa-f]{6}$"),
+        vol.Required("relay_trigger_mode"): vol.In(["disabled", "motion", "presence", "occupancy"]),
+        vol.Required("relay_contact_mode"): vol.In(["no", "nc"]),
         vol.Optional("entities"): {str: bool},
         vol.Optional("log_levels"): {str: vol.In(["None", "Error", "Warning", "Info", "Debug"])},
     }
@@ -836,16 +841,18 @@ async def websocket_set_settings(
     if log_levels is not None:
         device_config["log_levels"] = log_levels
     await manager._store.async_save()
-    push_ok = await manager._push_config_to_device(mac)
+    await manager._push_config_to_device(mac)
+    # Auto-enable/disable relay switch entity based on trigger mode
+    relay_enabled = msg["relay_trigger_mode"] != "disabled"
+    manager._entity_update_macs.add(mac)
+    hass.loop.call_later(60, manager._entity_update_macs.discard, mac)
+    _apply_entity_states(hass, mac, {"relay_output": relay_enabled})
     # Manage device log subscription on the active session (if any)
     session_conn = manager.get_session(mac)
     if session_conn is not None:
         manager._manage_log_subscription(session_conn, device_config)
     entities = msg.get("entities")
     if entities:
-        if push_ok:
-            manager._entity_update_macs.add(mac)
-            hass.loop.call_later(60, manager._entity_update_macs.discard, mac)
         # Persist entity flags in stored settings so they survive reconnect/discovery
         persisted_entity_keys = ("zone_presence", "target_xy")
         settings_changed = False

@@ -140,6 +140,27 @@ void EPPComponent::loop() {
     if (occupancy_output_ != nullptr)
       occupancy_output_->publish_state(result.occupancy);
 
+    // Evaluate relay state
+    if (relay_switch_ != nullptr) {
+      RelayEvalInput relay_input{
+          relay_trigger_mode_,
+          relay_contact_mode_,
+          result.motion_state != SensorPresenceState::INACTIVE,
+          result.static_state != SensorPresenceState::INACTIVE,
+          result.occupancy,
+      };
+      auto relay_result = evaluate_relay(relay_input);
+      if (relay_result.should_update) {
+        if (relay_result.desired_state != relay_switch_->state) {
+          if (relay_result.desired_state) {
+            relay_switch_->turn_on();
+          } else {
+            relay_switch_->turn_off();
+          }
+        }
+      }
+    }
+
     // Publish zone state as compact JSON
     if (zone_state_sensor_ != nullptr) {
       // Compute sensor state codes (used in JSON fields and debug log)
@@ -375,6 +396,29 @@ void EPPComponent::set_zones(const std::string &zones_json) {
 }
 
 // ---------------------------------------------------------------------------
+// Service: set_relay
+// ---------------------------------------------------------------------------
+
+static RelayTriggerMode trigger_mode_from_str(const std::string &s) {
+    if (s == "motion") return RelayTriggerMode::MOTION;
+    if (s == "presence") return RelayTriggerMode::PRESENCE;
+    if (s == "occupancy") return RelayTriggerMode::OCCUPANCY;
+    return RelayTriggerMode::DISABLED;
+}
+
+static RelayContactMode contact_mode_from_str(const std::string &s) {
+    if (s == "nc") return RelayContactMode::NORMALLY_CLOSED;
+    return RelayContactMode::NORMALLY_OPEN;
+}
+
+void EPPComponent::set_relay(const std::string &trigger_mode, const std::string &contact_mode) {
+    relay_trigger_mode_ = trigger_mode_from_str(trigger_mode);
+    relay_contact_mode_ = contact_mode_from_str(contact_mode);
+    ESP_LOGI(TAG, "Relay set: trigger=%s contact=%s", trigger_mode.c_str(), contact_mode.c_str());
+    save_relay_to_nvs_();
+}
+
+// ---------------------------------------------------------------------------
 // NVS persistence — restore
 // ---------------------------------------------------------------------------
 
@@ -412,6 +456,27 @@ void EPPComponent::restore_from_nvs_() {
     grid_.load_from_bytes(grid_buf, GRID_CELL_COUNT);
     zone_engine_.set_grid(grid_);
     ESP_LOGI(TAG, "Restored grid from NVS (origin %.0f, %.0f)", origin_x, origin_y);
+  }
+
+  // Restore relay settings
+  uint8_t relay_trig = 0;
+  if (nvs_get_u8(handle, "relay_trig", &relay_trig) == ESP_OK) {
+    if (relay_trig <= static_cast<uint8_t>(RelayTriggerMode::OCCUPANCY)) {
+      relay_trigger_mode_ = static_cast<RelayTriggerMode>(relay_trig);
+    } else {
+      ESP_LOGW(TAG, "Invalid relay trigger mode %d in NVS, defaulting to DISABLED", relay_trig);
+      relay_trigger_mode_ = RelayTriggerMode::DISABLED;
+    }
+    uint8_t relay_cont = 0;
+    nvs_get_u8(handle, "relay_cont", &relay_cont);
+    if (relay_cont <= static_cast<uint8_t>(RelayContactMode::NORMALLY_CLOSED)) {
+      relay_contact_mode_ = static_cast<RelayContactMode>(relay_cont);
+    } else {
+      ESP_LOGW(TAG, "Invalid relay contact mode %d in NVS, defaulting to NO", relay_cont);
+      relay_contact_mode_ = RelayContactMode::NORMALLY_OPEN;
+    }
+    ESP_LOGI(TAG, "Restored relay settings from NVS (trigger=%d, contact=%d)",
+             static_cast<int>(relay_trigger_mode_), static_cast<int>(relay_contact_mode_));
   }
 
   // Restore zones (stored as JSON string)
@@ -520,6 +585,21 @@ void EPPComponent::save_zones_to_nvs_(const std::string &zones_json) {
   nvs_commit(handle);
   nvs_close(handle);
   ESP_LOGD(TAG, "Zones saved to NVS (%d bytes)", (int)zones_json.size());
+}
+
+void EPPComponent::save_relay_to_nvs_() {
+  nvs_handle_t handle;
+  if (nvs_open(NVS_NAMESPACE, NVS_READWRITE, &handle) != ESP_OK) {
+    ESP_LOGE(TAG, "Failed to open NVS for writing");
+    return;
+  }
+
+  nvs_set_u8(handle, "version", NVS_SCHEMA_VERSION);
+  nvs_set_u8(handle, "relay_trig", static_cast<uint8_t>(relay_trigger_mode_));
+  nvs_set_u8(handle, "relay_cont", static_cast<uint8_t>(relay_contact_mode_));
+  nvs_commit(handle);
+  nvs_close(handle);
+  ESP_LOGD(TAG, "Relay settings saved to NVS");
 }
 
 }  // namespace epp

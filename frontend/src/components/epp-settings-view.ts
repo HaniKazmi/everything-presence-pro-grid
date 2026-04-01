@@ -68,6 +68,9 @@ export class EppSettingsView extends LitElement {
 	@property({ type: Number }) ledBrightness = 1.0;
 	@property({ type: String }) ledPresenceColor = "#CC33FF";
 
+	@property({ type: String }) relayTriggerMode = "disabled";
+	@property({ type: String }) relayContactMode = "no";
+
 	// Non-reactive overrides — stores user edits without triggering Lit re-renders.
 	// The 5Hz target data stream re-renders the panel at high frequency; if slider
 	// handlers update reactive properties, Lit crashes with concurrent re-renders.
@@ -102,7 +105,7 @@ export class EppSettingsView extends LitElement {
         flex-shrink: 0;
       }
 
-      .setting-row ha-select.led-mode-select {
+      .setting-row ha-select.wide-select {
         width: 220px;
       }
 
@@ -134,14 +137,14 @@ export class EppSettingsView extends LitElement {
 				icon: "mdi:tune-vertical",
 			},
 			{
+				id: "led_relay",
+				label: "settings.led_and_relay",
+				icon: "mdi:led-variant-on",
+			},
+			{
 				id: "logging",
 				label: "settings.logging",
 				icon: "mdi:math-log",
-			},
-			{
-				id: "led",
-				label: "settings.led",
-				icon: "mdi:led-variant-on",
 			},
 		];
 
@@ -196,10 +199,10 @@ export class EppSettingsView extends LitElement {
 				return this.renderSensitivities();
 			case "reporting":
 				return this.renderEntities();
+			case "led_relay":
+				return html`${this.renderLed()}${this.renderRelay()}`;
 			case "logging":
 				return this.renderLogging();
-			case "led":
-				return this.renderLed();
 			default:
 				return nothing;
 		}
@@ -791,6 +794,7 @@ export class EppSettingsView extends LitElement {
 
 	renderLed() {
 		const mode = this._overrides.ledMode ?? this.ledMode;
+		const showBrightness = mode !== "Manual Control";
 		const showPresenceColor =
 			mode === "Presence" || mode === "Environmental + Presence";
 		const modes = [
@@ -821,7 +825,7 @@ export class EppSettingsView extends LitElement {
           <h4>${this.localize("settings.led")}</h4>
           <div class="setting-row">
             <label>${this.localize("settings.led_mode")}</label>
-            <ha-select class="led-mode-select" .value=${mode} .options=${modes} @selected=${(
+            <ha-select class="wide-select" .value=${mode} .options=${modes} @selected=${(
 							e: CustomEvent<{ value: string }>,
 						) => {
 							const val = e.detail.value;
@@ -834,6 +838,9 @@ export class EppSettingsView extends LitElement {
             </ha-select>
             ${this.infoTip(this.localize("info.led_mode"))}
           </div>
+          ${
+						showBrightness
+							? html`
           <div class="setting-row">
             <label>${this.localize("settings.led_brightness")}</label>
             <span class="setting-input-unit"><input type="range" class="setting-range" data-led-brightness min="0.1" max="1" step="0.05" .value=${String(brightness)} @input=${(
@@ -848,7 +855,9 @@ export class EppSettingsView extends LitElement {
 							this._fireDirty();
 						}} /><span class="setting-value">${Math.round(brightness * 100)}%</span></span>
             ${this.resetBtn(1.0, "ledBrightness")}${this.infoTip(this.localize("info.led_brightness"))}
-          </div>
+          </div>`
+							: nothing
+					}
           ${
 						showPresenceColor
 							? html`
@@ -862,6 +871,69 @@ export class EppSettingsView extends LitElement {
 						}} />
             ${this.infoTip(this.localize("info.led_presence_color"))}
           </div>`
+							: nothing
+					}
+        </div>
+      </div>
+    `;
+	}
+
+	renderRelay() {
+		const TRIGGER_MODES = [
+			{ value: "disabled", label: this.localize("settings.relay_disabled") },
+			{ value: "motion", label: this.localize("settings.relay_motion") },
+			{ value: "presence", label: this.localize("settings.relay_presence") },
+			{ value: "occupancy", label: this.localize("settings.relay_occupancy") },
+		];
+		const CONTACT_MODES = [
+			{ value: "no", label: this.localize("settings.relay_normally_open") },
+			{ value: "nc", label: this.localize("settings.relay_normally_closed") },
+		];
+
+		const currentTrigger =
+			this._overrides.relayTriggerMode ?? this.relayTriggerMode;
+		const currentContact =
+			this._overrides.relayContactMode ?? this.relayContactMode;
+		const isAutomatic = currentTrigger !== "disabled";
+
+		return html`
+      <div class="settings-section">
+        <div class="setting-group">
+          <h4>${this.localize("settings.relay")}</h4>
+          <div class="setting-row">
+            <label>${this.localize("settings.relay_trigger_mode")}</label>
+            <ha-select class="wide-select"
+              .value=${currentTrigger}
+              .options=${TRIGGER_MODES}
+              @selected=${(e: CustomEvent<{ value: string }>) => {
+								const val = e.detail.value;
+								if (!val || val === currentTrigger) return;
+								this._overrides.relayTriggerMode = val;
+								this._fireChange("relayTriggerMode", val);
+								this.requestUpdate();
+							}}
+              @closed=${(e: Event) => e.stopPropagation()}
+            ></ha-select>
+          </div>
+          ${
+						isAutomatic
+							? html`
+            <div class="setting-row">
+              <label>${this.localize("settings.relay_contact_mode")}</label>
+              <ha-select class="wide-select"
+                .value=${currentContact}
+                .options=${CONTACT_MODES}
+                @selected=${(e: CustomEvent<{ value: string }>) => {
+									const val = e.detail.value;
+									if (!val || val === currentContact) return;
+									this._overrides.relayContactMode = val;
+									this._fireChange("relayContactMode", val);
+									this.requestUpdate();
+								}}
+                @closed=${(e: Event) => e.stopPropagation()}
+              ></ha-select>
+            </div>
+          `
 							: nothing
 					}
         </div>
@@ -946,6 +1018,8 @@ export class EppSettingsView extends LitElement {
 					led_mode: o.ledMode ?? this.ledMode,
 					led_brightness: o.ledBrightness ?? this.ledBrightness,
 					led_presence_color: o.ledPresenceColor ?? this.ledPresenceColor,
+					relay_trigger_mode: o.relayTriggerMode ?? this.relayTriggerMode,
+					relay_contact_mode: o.relayContactMode ?? this.relayContactMode,
 				},
 				bubbles: true,
 				composed: true,

@@ -403,6 +403,26 @@ describe("parseSettings", () => {
 		expect(result.ledBrightness).toBe(0.8);
 		expect(result.ledPresenceColor).toBe("#00FF00");
 	});
+
+	it("defaults relayTriggerMode to disabled when not set", () => {
+		const s = parseSettings(undefined);
+		expect(s.relayTriggerMode).toBe("disabled");
+	});
+
+	it("defaults relayContactMode to no when not set", () => {
+		const s = parseSettings(undefined);
+		expect(s.relayContactMode).toBe("no");
+	});
+
+	it("reads relayTriggerMode from settings object", () => {
+		const s = parseSettings({ relay_trigger_mode: "motion" });
+		expect(s.relayTriggerMode).toBe("motion");
+	});
+
+	it("reads relayContactMode from settings object", () => {
+		const s = parseSettings({ relay_contact_mode: "nc" });
+		expect(s.relayContactMode).toBe("nc");
+	});
 });
 
 describe("parseConfig", () => {

@@ -1160,6 +1160,77 @@ class TestPushConfig:
             static_data = call_by_service["epp_set_static_presence"]
             assert static_data["led_enabled"] is True
 
+    async def test_push_config_relay_settings(self) -> None:
+        """push_config sends relay trigger_mode and contact_mode via epp_set_relay."""
+        conn = DeviceConnection("192.168.1.100")
+
+        mock_relay = MagicMock()
+        mock_relay.name = "epp_set_relay"
+
+        with patch("custom_components.eppgrid.device_manager.APIClient") as mock_cls:
+            mock_client = mock_cls.return_value
+            mock_client.connect = AsyncMock()
+            mock_client.list_entities_services = AsyncMock(return_value=([], [mock_relay]))
+            mock_client.execute_service = AsyncMock()
+
+            await conn.async_connect()
+            await conn.async_push_config(
+                {
+                    "settings": {
+                        "relay_trigger_mode": "presence",
+                        "relay_contact_mode": "nc",
+                    }
+                }
+            )
+
+            mock_client.execute_service.assert_any_await(
+                mock_relay,
+                {"trigger_mode": "presence", "contact_mode": "nc"},
+            )
+
+    async def test_push_config_relay_settings_defaults(self) -> None:
+        """push_config uses defaults when relay keys absent."""
+        conn = DeviceConnection("192.168.1.100")
+
+        mock_relay = MagicMock()
+        mock_relay.name = "epp_set_relay"
+
+        with patch("custom_components.eppgrid.device_manager.APIClient") as mock_cls:
+            mock_client = mock_cls.return_value
+            mock_client.connect = AsyncMock()
+            mock_client.list_entities_services = AsyncMock(return_value=([], [mock_relay]))
+            mock_client.execute_service = AsyncMock()
+
+            await conn.async_connect()
+            await conn.async_push_config({"settings": {}})
+
+            mock_client.execute_service.assert_any_await(
+                mock_relay,
+                {"trigger_mode": "disabled", "contact_mode": "no"},
+            )
+
+    async def test_push_config_relay_no_service(self) -> None:
+        """push_config skips relay when service not registered."""
+        conn = DeviceConnection("192.168.1.100")
+
+        with patch("custom_components.eppgrid.device_manager.APIClient") as mock_cls:
+            mock_client = mock_cls.return_value
+            mock_client.connect = AsyncMock()
+            mock_client.list_entities_services = AsyncMock(return_value=([], []))
+            mock_client.execute_service = AsyncMock()
+
+            await conn.async_connect()
+            await conn.async_push_config(
+                {
+                    "settings": {
+                        "relay_trigger_mode": "motion",
+                        "relay_contact_mode": "no",
+                    }
+                }
+            )
+
+            mock_client.execute_service.assert_not_awaited()
+
     async def test_push_config_already_connected_noop(self) -> None:
         """async_connect is a no-op when already connected."""
         conn = DeviceConnection("192.168.1.100")

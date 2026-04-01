@@ -466,6 +466,8 @@ class TestWebSocketSettings:
             "led_mode": "Manual Control",
             "led_brightness": 1.0,
             "led_presence_color": "#CC33FF",
+            "relay_trigger_mode": "disabled",
+            "relay_contact_mode": "no",
             "entities": {"room_occupancy": True, "zone_presence": False},
         }
 
@@ -519,6 +521,8 @@ class TestWebSocketSettings:
             "led_mode": "Presence",
             "led_brightness": 0.8,
             "led_presence_color": "#00FF00",
+            "relay_trigger_mode": "disabled",
+            "relay_contact_mode": "no",
         }
 
         await call_async_handler(hass, websocket_set_settings, connection, msg)
@@ -559,14 +563,22 @@ class TestWebSocketSettings:
                 "led_mode": "Manual Control",
                 "led_brightness": 1.0,
                 "led_presence_color": "#CC33FF",
+                "relay_trigger_mode": "disabled",
+                "relay_contact_mode": "no",
                 "entities": {"room_occupancy": True, "env_illuminance": False},
             }
 
             await call_async_handler(hass, websocket_set_settings, connection, msg)
 
-            mock_apply.assert_called_once_with(
-                hass, "AA:BB:CC:DD:EE:FF", {"room_occupancy": True, "env_illuminance": False}
+            from unittest.mock import call
+
+            mock_apply.assert_has_calls(
+                [
+                    call(hass, "AA:BB:CC:DD:EE:FF", {"relay_output": False}),
+                    call(hass, "AA:BB:CC:DD:EE:FF", {"room_occupancy": True, "env_illuminance": False}),
+                ]
             )
+            assert mock_apply.call_count == 2
 
     async def test_set_settings_zone_presence_false_does_not_reenable_zone0(
         self, hass: HomeAssistant, config_entry: MockConfigEntry
@@ -597,6 +609,8 @@ class TestWebSocketSettings:
             "led_mode": "Manual Control",
             "led_brightness": 1.0,
             "led_presence_color": "#CC33FF",
+            "relay_trigger_mode": "disabled",
+            "relay_contact_mode": "no",
             "entities": {"zone_presence": False},
         }
 
@@ -637,6 +651,8 @@ class TestWebSocketSettings:
             "led_mode": "Manual Control",
             "led_brightness": 1.0,
             "led_presence_color": "#CC33FF",
+            "relay_trigger_mode": "disabled",
+            "relay_contact_mode": "no",
             "entities": {"zone_presence": True},
         }
 
@@ -673,6 +689,8 @@ class TestWebSocketSettings:
             "led_mode": "Manual Control",
             "led_brightness": 1.0,
             "led_presence_color": "#CC33FF",
+            "relay_trigger_mode": "disabled",
+            "relay_contact_mode": "no",
             "entities": {"room_occupancy": True, "zone_presence": False},
         }
 
@@ -708,6 +726,8 @@ class TestWebSocketSettings:
             "led_mode": "Manual Control",
             "led_brightness": 1.0,
             "led_presence_color": "#CC33FF",
+            "relay_trigger_mode": "disabled",
+            "relay_contact_mode": "no",
             "log_levels": {"epp": "Debug", "system": "Info"},
         }
 
@@ -753,6 +773,8 @@ class TestWebSocketSettings:
             "led_mode": "Manual Control",
             "led_brightness": 1.0,
             "led_presence_color": "#CC33FF",
+            "relay_trigger_mode": "disabled",
+            "relay_contact_mode": "no",
         }
 
         await call_async_handler(hass, websocket_set_settings, connection, msg)
@@ -790,6 +812,8 @@ class TestWebSocketSettings:
             "led_mode": "Manual Control",
             "led_brightness": 1.0,
             "led_presence_color": "#CC33FF",
+            "relay_trigger_mode": "disabled",
+            "relay_contact_mode": "no",
             "entities": {"room_occupancy": True},
         }
 
@@ -797,10 +821,10 @@ class TestWebSocketSettings:
 
         assert "AA:BB:CC:DD:EE:FF" in mock_dm._entity_update_macs
 
-    async def test_set_settings_without_entities_no_guard(
+    async def test_set_settings_without_entities_sets_guard_for_relay(
         self, hass: HomeAssistant, config_entry: MockConfigEntry
     ) -> None:
-        """set_settings without entities does not set the entity update guard."""
+        """set_settings without entities still sets the entity update guard for relay state change."""
         mock_dm = await setup_integration(hass, config_entry)
 
         from custom_components.eppgrid.websocket_api import websocket_set_settings
@@ -826,11 +850,127 @@ class TestWebSocketSettings:
             "led_mode": "Manual Control",
             "led_brightness": 1.0,
             "led_presence_color": "#CC33FF",
+            "relay_trigger_mode": "disabled",
+            "relay_contact_mode": "no",
         }
 
         await call_async_handler(hass, websocket_set_settings, connection, msg)
 
-        assert "AA:BB:CC:DD:EE:FF" not in mock_dm._entity_update_macs
+        assert "AA:BB:CC:DD:EE:FF" in mock_dm._entity_update_macs
+
+    async def test_set_settings_stores_relay_values(self, hass: HomeAssistant, config_entry: MockConfigEntry) -> None:
+        """set_settings stores relay_trigger_mode and relay_contact_mode under settings."""
+        mock_dm = await setup_integration(hass, config_entry)
+
+        from custom_components.eppgrid.websocket_api import websocket_set_settings
+
+        connection = MagicMock()
+        msg = {
+            "id": 11,
+            "type": "eppgrid/set_settings",
+            "mac": "AA:BB:CC:DD:EE:FF",
+            "temperature_offset": 0.0,
+            "humidity_offset": 0.0,
+            "illuminance_offset": 0.0,
+            "motion_timeout": 5.0,
+            "target_auto_distance": True,
+            "target_max_distance": 6.0,
+            "static_auto_distance": True,
+            "static_min_distance": 0.3,
+            "static_max_distance": 16.0,
+            "static_trigger_threshold": 3,
+            "static_renew_threshold": 3,
+            "static_timeout": 30.0,
+            "static_on_delay": 0.0,
+            "led_mode": "Manual Control",
+            "led_brightness": 1.0,
+            "led_presence_color": "#CC33FF",
+            "relay_trigger_mode": "motion",
+            "relay_contact_mode": "nc",
+        }
+
+        await call_async_handler(hass, websocket_set_settings, connection, msg)
+
+        settings = mock_dm._store.devices["AA:BB:CC:DD:EE:FF"]["settings"]
+        assert settings["relay_trigger_mode"] == "motion"
+        assert settings["relay_contact_mode"] == "nc"
+        connection.send_result.assert_called_once_with(11)
+
+    async def test_set_settings_enables_relay_entity_on_trigger_mode(
+        self, hass: HomeAssistant, config_entry: MockConfigEntry
+    ) -> None:
+        """set_settings enables relay_output entity when trigger_mode != 'disabled'."""
+        await setup_integration(hass, config_entry)
+
+        from custom_components.eppgrid.websocket_api import websocket_set_settings
+
+        with patch("custom_components.eppgrid.websocket_api._apply_entity_states") as mock_apply:
+            connection = MagicMock()
+            msg = {
+                "id": 11,
+                "type": "eppgrid/set_settings",
+                "mac": "AA:BB:CC:DD:EE:FF",
+                "temperature_offset": 0.0,
+                "humidity_offset": 0.0,
+                "illuminance_offset": 0.0,
+                "motion_timeout": 5.0,
+                "target_auto_distance": True,
+                "target_max_distance": 6.0,
+                "static_auto_distance": True,
+                "static_min_distance": 0.3,
+                "static_max_distance": 16.0,
+                "static_trigger_threshold": 3,
+                "static_renew_threshold": 3,
+                "static_timeout": 30.0,
+                "static_on_delay": 0.0,
+                "led_mode": "Manual Control",
+                "led_brightness": 1.0,
+                "led_presence_color": "#CC33FF",
+                "relay_trigger_mode": "motion",
+                "relay_contact_mode": "no",
+            }
+
+            await call_async_handler(hass, websocket_set_settings, connection, msg)
+
+            mock_apply.assert_called_once_with(hass, "AA:BB:CC:DD:EE:FF", {"relay_output": True})
+
+    async def test_set_settings_disables_relay_entity_on_disabled(
+        self, hass: HomeAssistant, config_entry: MockConfigEntry
+    ) -> None:
+        """set_settings disables relay_output entity when trigger_mode == 'disabled'."""
+        await setup_integration(hass, config_entry)
+
+        from custom_components.eppgrid.websocket_api import websocket_set_settings
+
+        with patch("custom_components.eppgrid.websocket_api._apply_entity_states") as mock_apply:
+            connection = MagicMock()
+            msg = {
+                "id": 11,
+                "type": "eppgrid/set_settings",
+                "mac": "AA:BB:CC:DD:EE:FF",
+                "temperature_offset": 0.0,
+                "humidity_offset": 0.0,
+                "illuminance_offset": 0.0,
+                "motion_timeout": 5.0,
+                "target_auto_distance": True,
+                "target_max_distance": 6.0,
+                "static_auto_distance": True,
+                "static_min_distance": 0.3,
+                "static_max_distance": 16.0,
+                "static_trigger_threshold": 3,
+                "static_renew_threshold": 3,
+                "static_timeout": 30.0,
+                "static_on_delay": 0.0,
+                "led_mode": "Manual Control",
+                "led_brightness": 1.0,
+                "led_presence_color": "#CC33FF",
+                "relay_trigger_mode": "disabled",
+                "relay_contact_mode": "no",
+            }
+
+            await call_async_handler(hass, websocket_set_settings, connection, msg)
+
+            mock_apply.assert_called_once_with(hass, "AA:BB:CC:DD:EE:FF", {"relay_output": False})
 
     async def test_set_pipeline(self, hass: HomeAssistant, config_entry: MockConfigEntry) -> None:
         """set_pipeline saves pipeline settings and pushes."""
@@ -964,13 +1104,15 @@ class TestZonePresencePreservation:
                 "led_mode": "Manual Control",
                 "led_brightness": 1.0,
                 "led_presence_color": "#CC33FF",
+                "relay_trigger_mode": "disabled",
+                "relay_contact_mode": "no",
                 "entities": {"target_xy": True},
             }
 
             await call_async_handler(hass, websocket_set_settings, connection, msg)
 
         settings = mock_dm._store.devices["AA:BB:CC:DD:EE:FF"]["settings"]
-        assert settings["target_xy"] is True
+        assert settings.get("target_xy") is True
         mock_dm._store.async_save.assert_awaited()
 
 
@@ -1037,6 +1179,13 @@ class TestEntityMapping:
         # Target entities
         assert _entity_key_for_object_id("esphome_aabbccddeeff_target_0_position") == "target_xy"
 
+    def test_entity_key_mapping_relay(self) -> None:
+        """system_alarm_relay maps to relay_output."""
+        from custom_components.eppgrid.websocket_api import _entity_key_for_object_id
+
+        assert _entity_key_for_object_id("system_alarm_relay") == "relay_output"
+        assert _entity_key_for_object_id("esphome_aabbccddeeff_system_alarm_relay") == "relay_output"
+
     def test_entity_key_mapping_unknown(self) -> None:
         """Unknown object_ids return None."""
         from custom_components.eppgrid.websocket_api import _entity_key_for_object_id
@@ -1045,7 +1194,6 @@ class TestEntityMapping:
         assert _entity_key_for_object_id("zone_engine_version") is None
         assert _entity_key_for_object_id("esphome_aabbccddeeff_zone_engine_version") is None
         assert _entity_key_for_object_id("led") is None
-        assert _entity_key_for_object_id("relay_output") is None
 
 
 class TestApplyEntityStates:
@@ -1396,6 +1544,11 @@ class TestNotReadyGuards:
                     "static_renew_threshold": 3,
                     "static_timeout": 30.0,
                     "static_on_delay": 0.0,
+                    "led_mode": "Manual Control",
+                    "led_brightness": 1.0,
+                    "led_presence_color": "#CC33FF",
+                    "relay_trigger_mode": "disabled",
+                    "relay_contact_mode": "no",
                 },
                 True,
             ),
@@ -2065,6 +2218,11 @@ class TestProtocolVersionGuard:
                     "static_renew_threshold": 3,
                     "static_timeout": 30.0,
                     "static_on_delay": 0.0,
+                    "led_mode": "Manual Control",
+                    "led_brightness": 1.0,
+                    "led_presence_color": "#CC33FF",
+                    "relay_trigger_mode": "disabled",
+                    "relay_contact_mode": "no",
                 },
             ),
             (

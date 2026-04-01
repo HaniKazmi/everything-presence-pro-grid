@@ -581,6 +581,10 @@ export class GridStateController implements ReactiveController {
 				payload.led_brightness ?? this.host._ledBrightness;
 			this.host._ledPresenceColor =
 				payload.led_presence_color ?? this.host._ledPresenceColor;
+			this.host._relayTriggerMode =
+				payload.relay_trigger_mode ?? this.host._relayTriggerMode;
+			this.host._relayContactMode =
+				payload.relay_contact_mode ?? this.host._relayContactMode;
 			this.host._dirty = false;
 			this.host._view = "live";
 		} catch (e) {

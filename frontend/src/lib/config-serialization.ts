@@ -49,6 +49,8 @@ export interface ParsedSettings {
 	ledMode: string;
 	ledBrightness: number;
 	ledPresenceColor: string;
+	relayTriggerMode: string;
+	relayContactMode: string;
 }
 
 /**
@@ -200,6 +202,8 @@ export function parseSettings(
 		ledMode: s.led_mode ?? "Manual Control",
 		ledBrightness: s.led_brightness ?? 1.0,
 		ledPresenceColor: s.led_presence_color ?? "#CC33FF",
+		relayTriggerMode: s.relay_trigger_mode ?? "disabled",
+		relayContactMode: s.relay_contact_mode ?? "no",
 	};
 }
 

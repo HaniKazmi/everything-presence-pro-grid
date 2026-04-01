@@ -7,11 +7,12 @@ import esphome.config_validation as cv
 from esphome.components import binary_sensor
 from esphome.components import sensor
 from esphome.components import text_sensor
+from esphome.components import switch
 from esphome.const import CONF_ID
 
 CODEOWNERS = ["@clintongormley"]
 DEPENDENCIES = ["json"]
-AUTO_LOAD = ["binary_sensor", "sensor", "text_sensor"]
+AUTO_LOAD = ["binary_sensor", "sensor", "text_sensor", "switch"]
 
 epp_ns = cg.esphome_ns.namespace("epp")
 EPPComponent = epp_ns.class_("EPPComponent", cg.Component)
@@ -28,6 +29,7 @@ CONF_MOTION_PRESENCE = "motion_presence"
 CONF_STATIC_PRESENCE_OUTPUT = "static_presence_output"
 CONF_MOTION_PRESENCE_OUTPUT = "motion_presence_output"
 CONF_OCCUPANCY_OUTPUT = "occupancy_output"
+CONF_RELAY_SWITCH = "relay_switch"
 
 ZONE_OCCUPANCY_SCHEMA = cv.Schema({cv.Optional(f"zone_{i}"): binary_sensor.binary_sensor_schema() for i in range(8)})
 
@@ -52,6 +54,7 @@ CONFIG_SCHEMA = cv.Schema(
         cv.Optional(CONF_STATIC_PRESENCE_OUTPUT): binary_sensor.binary_sensor_schema(),
         cv.Optional(CONF_MOTION_PRESENCE_OUTPUT): binary_sensor.binary_sensor_schema(),
         cv.Optional(CONF_OCCUPANCY_OUTPUT): binary_sensor.binary_sensor_schema(),
+        cv.Optional(CONF_RELAY_SWITCH): cv.use_id(switch.Switch),
     }
 ).extend(cv.COMPONENT_SCHEMA)
 
@@ -135,3 +138,8 @@ async def to_code(config):
     if CONF_OCCUPANCY_OUTPUT in config:
         sens = await binary_sensor.new_binary_sensor(config[CONF_OCCUPANCY_OUTPUT])
         cg.add(var.set_occupancy_output(sens))
+
+    # Relay switch reference
+    if CONF_RELAY_SWITCH in config:
+        sw = await cg.get_variable(config[CONF_RELAY_SWITCH])
+        cg.add(var.set_relay_switch(sw))
