@@ -1621,7 +1621,9 @@ describe("LED settings section", () => {
 		const tpl = sv.render();
 		const c = renderTo(tpl);
 
-		const slider = c.querySelector('input[type="range"][data-led-brightness]') as HTMLInputElement;
+		const slider = c.querySelector(
+			'input[type="range"][data-led-brightness]',
+		) as HTMLInputElement;
 		expect(slider).not.toBeNull();
 		expect(slider.min).toBe("0.1");
 		expect(slider.max).toBe("1");
@@ -1630,7 +1632,10 @@ describe("LED settings section", () => {
 	});
 
 	it("renders color picker in LED section when mode is Presence", () => {
-		const sv = createView({ openAccordions: new Set(["led"]), ledMode: "Presence" });
+		const sv = createView({
+			openAccordions: new Set(["led"]),
+			ledMode: "Presence",
+		});
 		const tpl = sv.render();
 		const c = renderTo(tpl);
 
@@ -1645,7 +1650,9 @@ describe("LED settings section", () => {
 		const tpl = sv.render();
 		const c = renderTo(tpl);
 
-		const toggle = c.querySelector('input[data-led-static]') as HTMLInputElement;
+		const toggle = c.querySelector(
+			"input[data-led-static]",
+		) as HTMLInputElement;
 		expect(toggle).not.toBeNull();
 		expect(toggle.type).toBe("checkbox");
 		expect(toggle.checked).toBe(true);
@@ -1653,7 +1660,10 @@ describe("LED settings section", () => {
 	});
 
 	it("hides environmental modes when co2 disabled", () => {
-		const sv = createView({ openAccordions: new Set(["led"]), co2Enabled: false });
+		const sv = createView({
+			openAccordions: new Set(["led"]),
+			co2Enabled: false,
+		});
 		const tpl = sv.render();
 		const c = renderTo(tpl);
 
@@ -1665,7 +1675,10 @@ describe("LED settings section", () => {
 	});
 
 	it("shows environmental modes when co2 enabled", () => {
-		const sv = createView({ openAccordions: new Set(["led"]), co2Enabled: true });
+		const sv = createView({
+			openAccordions: new Set(["led"]),
+			co2Enabled: true,
+		});
 		const tpl = sv.render();
 		const c = renderTo(tpl);
 
@@ -1677,7 +1690,10 @@ describe("LED settings section", () => {
 	});
 
 	it("hides color picker when mode is not Presence-related", () => {
-		const sv = createView({ openAccordions: new Set(["led"]), ledMode: "Manual Control" });
+		const sv = createView({
+			openAccordions: new Set(["led"]),
+			ledMode: "Manual Control",
+		});
 		const tpl = sv.render();
 		const c = renderTo(tpl);
 
