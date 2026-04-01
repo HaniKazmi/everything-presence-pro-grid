@@ -695,7 +695,7 @@ class DeviceManager:
             if not zone_presence:
                 ent_reg.async_update_entity(entity_id, disabled_by=er.RegistryEntryDisabler.INTEGRATION)
             elif i == 0:
-                ent_reg.async_update_entity(entity_id, disabled_by=None, name="Rest of Room Occupancy")
+                ent_reg.async_update_entity(entity_id, disabled_by=None, name="Rest of Room Presence")
             elif i <= len(zone_slots) and zone_slots[i - 1] is not None:
                 zone = zone_slots[i - 1]
                 # Don't override user-disabled entities

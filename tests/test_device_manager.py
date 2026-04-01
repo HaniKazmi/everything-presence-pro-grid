@@ -1744,7 +1744,7 @@ class TestZoneEntities:
     """Tests for async_update_zone_entities."""
 
     async def test_update_zone_entities_calibrated(self, hass: HomeAssistant, manager: DeviceManager) -> None:
-        """Calibrated device enables zone 0 as 'Rest of Room Occupancy'."""
+        """Calibrated device enables zone 0 as 'Rest of Room Presence'."""
         dev_reg = dr.async_get(hass)
         ent_reg = er.async_get(hass)
 
@@ -1788,10 +1788,10 @@ class TestZoneEntities:
         zone_slots = [{"name": "Office"}] + [None] * (MAX_ZONES - 1)
         await manager.async_update_zone_entities("AA:BB:CC:DD:EE:FF", zone_slots)
 
-        # Zone 0 should be enabled with name "Rest of Room Occupancy"
+        # Zone 0 should be enabled with name "Rest of Room Presence"
         zone0 = ent_reg.async_get(zone0_entry.entity_id)
         assert zone0.disabled_by is None
-        assert zone0.name == "Rest of Room Occupancy"
+        assert zone0.name == "Rest of Room Presence"
 
         # Zone 1 should be enabled and renamed "Office"
         zone1 = ent_reg.async_get(zone1_entry.entity_id)
