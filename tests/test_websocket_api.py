@@ -1702,10 +1702,10 @@ class TestSubscriptionCallbacks:
         # Create mock entities with key and name attributes
         raw0 = MagicMock()
         raw0.key = 100
-        raw0.name = "Raw Target 0"
+        raw0.name = "Raw Target 1"
         raw1 = MagicMock()
         raw1.key = 101
-        raw1.name = "Raw Target 1"
+        raw1.name = "Raw Target 2"
 
         mock_device_conn = MagicMock()
         mock_device_conn._entities = [raw0, raw1]
@@ -1741,7 +1741,7 @@ class TestSubscriptionCallbacks:
 
         raw0 = MagicMock()
         raw0.key = 100
-        raw0.name = "Raw Target 0"
+        raw0.name = "Raw Target 1"
 
         mock_device_conn = MagicMock()
         mock_device_conn._entities = [raw0]
@@ -1774,7 +1774,7 @@ class TestSubscriptionCallbacks:
 
         raw0 = MagicMock()
         raw0.key = 100
-        raw0.name = "Raw Target 0"
+        raw0.name = "Raw Target 1"
 
         mock_device_conn = MagicMock()
         mock_device_conn._entities = [raw0]
@@ -1829,7 +1829,7 @@ class TestSubscriptionCallbacks:
 
         target0 = MagicMock()
         target0.key = 200
-        target0.name = "Target 0 Position"
+        target0.name = "Target 1 Position"
 
         mock_device_conn = MagicMock()
         mock_device_conn._entities = [target0]
@@ -1868,7 +1868,7 @@ class TestSubscriptionCallbacks:
 
         target0 = MagicMock()
         target0.key = 200
-        target0.name = "Target 0 Position"
+        target0.name = "Target 1 Position"
 
         mock_device_conn = MagicMock()
         mock_device_conn._entities = [target0]
