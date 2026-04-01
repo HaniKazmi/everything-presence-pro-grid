@@ -31,9 +31,16 @@ button:
 
 script:
   - id: update_environmental_led
+    mode: restart
     then:
       - lambda: |-
           float co2_val = id(co2).state;
+          if (isnan(co2_val)) {
+            ESP_LOGW("control_leds", "update_environmental_led: CO2 unavailable (NaN), turning LED off");
+            auto call = id(led_rgb).turn_off();
+            call.perform();
+            return;
+          }
           ESP_LOGD("control_leds", "update_environmental_led: CO2=%.0f ppm", co2_val);
           if (co2_val < 800) {
             ESP_LOGD("control_leds", "CO2 good (<800) — green");
