@@ -577,6 +577,7 @@ export class EPPGridPanel extends LitElement {
 	private async _cancelEditor(): Promise<void> {
 		const needsRevert = this._targetAutoDistance || this._staticAutoDistance;
 		this._dirty = false;
+		this._selectedFurnitureId = null;
 		// Reload config (reopens session), then revert widened ranges on the
 		// new session. Must reload first because _loadDeviceConfig tears down
 		// the old session.
@@ -1499,7 +1500,7 @@ export class EPPGridPanel extends LitElement {
             </div>
             ${this._sidebarTab === "zones" ? this._renderDebugLog() : nothing}
           </div>
-          <div class="zone-sidebar">
+          <div class="zone-sidebar scrollable">
             <div class="sidebar-title">${this._sidebarTab === "furniture" ? this._localize("sidebar.furniture") : this._localize("sidebar.detection_zones")}</div>
             <div class="sidebar-scroll">
             ${
