@@ -1872,7 +1872,10 @@ describe("LED settings section", () => {
 	});
 
 	it("renders brightness slider in LED section", () => {
-		const sv = createView({ openAccordions: new Set(["led_relay"]) });
+		const sv = createView({
+			openAccordions: new Set(["led_relay"]),
+			ledMode: "Presence",
+		});
 		const tpl = sv.render();
 		const c = renderTo(tpl);
 
@@ -1908,7 +1911,7 @@ describe("LED settings section", () => {
 		const tpl = sv.render();
 		const c = renderTo(tpl);
 
-		const select = c.querySelector("ha-select.led-mode-select") as any;
+		const select = c.querySelector("ha-select.wide-select") as any;
 		expect(select).not.toBeNull();
 		const values = (select.options as { value: string }[]).map(
 			(o: { value: string }) => o.value,
@@ -1926,7 +1929,7 @@ describe("LED settings section", () => {
 		const tpl = sv.render();
 		const c = renderTo(tpl);
 
-		const select = c.querySelector("ha-select.led-mode-select") as any;
+		const select = c.querySelector("ha-select.wide-select") as any;
 		expect(select).not.toBeNull();
 		const values = (select.options as { value: string }[]).map(
 			(o: { value: string }) => o.value,
@@ -1961,9 +1964,7 @@ describe("renderLed() event handlers", () => {
 			dirtyFired = true;
 		});
 
-		const ledSelect = c.querySelector(
-			"ha-select.led-mode-select",
-		) as HTMLElement;
+		const ledSelect = c.querySelector("ha-select.wide-select") as HTMLElement;
 		expect(ledSelect).not.toBeNull();
 		ledSelect.dispatchEvent(
 			new CustomEvent("selected", {
@@ -1987,9 +1988,7 @@ describe("renderLed() event handlers", () => {
 			dirtyFired = true;
 		});
 
-		const ledSelect = c.querySelector(
-			"ha-select.led-mode-select",
-		) as HTMLElement;
+		const ledSelect = c.querySelector("ha-select.wide-select") as HTMLElement;
 		ledSelect.dispatchEvent(
 			new CustomEvent("selected", {
 				detail: { value: "" },
@@ -2003,7 +2002,7 @@ describe("renderLed() event handlers", () => {
 	});
 
 	it("brightness slider @input handler updates _overrides.ledBrightness and fires dirty", () => {
-		const sv = createView({ ledBrightness: 1.0 });
+		const sv = createView({ ledBrightness: 1.0, ledMode: "Presence" });
 		const tpl = (sv as any).renderLed();
 		const c = renderTo(tpl);
 
@@ -2057,9 +2056,7 @@ describe("renderLed() event handlers", () => {
 		const tpl = (sv as any).renderLed();
 		const c = renderTo(tpl);
 
-		const ledSelect = c.querySelector(
-			"ha-select.led-mode-select",
-		) as HTMLElement;
+		const ledSelect = c.querySelector("ha-select.wide-select") as HTMLElement;
 		const closedEvent = new Event("closed", { bubbles: true });
 		const stopSpy = vi.spyOn(closedEvent, "stopPropagation");
 		ledSelect.dispatchEvent(closedEvent);
