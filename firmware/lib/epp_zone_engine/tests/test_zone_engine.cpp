@@ -649,3 +649,26 @@ TEST_CASE("occupancy: true when zone occupied even if sensors inactive") {
     CHECK(r.zone_occupancy[1]);
     CHECK(r.occupancy);  // zone occupied -> occupancy true
 }
+
+TEST_CASE("zone_target_counts reports number of targets, not signal") {
+    ZoneEngine engine = make_parity_engine();
+    // One target in zone 1 with signal=5
+    // Zone 1 at cell (9,1): x = 9*300 + 150 = 2850, y = 1*300 + 150 = 450
+    const ProcessingResult& r1 = engine.tick(make_window_1(X_OFF + 450, 450, 5), 100.0f);
+    CHECK(r1.zone_target_counts[1] == 1);  // 1 target, not signal 5
+
+    // Two targets in zone 1 — different positions within the same zone cell
+    const ProcessingResult& r2 = engine.tick(
+        make_window_2(X_OFF + 450, 450, 5,   // target 0 in zone 1
+                      X_OFF + 450, 450, 3),   // target 1 in zone 1
+        101.0f);
+    CHECK(r2.zone_target_counts[1] == 2);  // 2 targets, not max signal 5
+
+    // One target in zone 0, one in zone 1
+    const ProcessingResult& r3 = engine.tick(
+        make_window_2(X_OFF + 150, 150, 7,   // target 0 in zone 0
+                      X_OFF + 450, 450, 3),   // target 1 in zone 1
+        102.0f);
+    CHECK(r3.zone_target_counts[0] == 1);
+    CHECK(r3.zone_target_counts[1] == 1);
+}

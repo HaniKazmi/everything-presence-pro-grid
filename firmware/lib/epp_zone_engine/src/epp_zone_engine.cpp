@@ -131,9 +131,10 @@ const ProcessingResult& ZoneEngine::tick(const WindowOutput& window, float times
     result_.log_count = 0;
     result_.frame_count = frames;
 
-    // Per-zone tracking: confirmed flag and best signal
+    // Per-zone tracking: confirmed flag, best signal, and target count
     bool zone_confirmed[MAX_ZONE_SLOTS]{};
     int zone_signal[MAX_ZONE_SLOTS]{};
+    int zone_target_count[MAX_ZONE_SLOTS]{};
 
     // Per-target zone assignments for handoff detection
     int target_zone_prev[MAX_TARGETS];
@@ -215,8 +216,9 @@ const ProcessingResult& ZoneEngine::tick(const WindowOutput& window, float times
             continuous = (dist <= MAX_MOVEMENT_CELLS);
         }
 
-        // Track best signal per zone
+        // Track best signal and target count per zone
         zone_signal[zone_id] = std::max(zone_signal[zone_id], signal);
+        zone_target_count[zone_id]++;
 
         // Determine if this target is confirmed in this zone
         int zi = find_zone_index(zone_id);
@@ -363,7 +365,7 @@ const ProcessingResult& ZoneEngine::tick(const WindowOutput& window, float times
         ZoneRuntime& rt = zones_[zi];
         int zone_id = rt.config.id;
         bool confirmed = zone_confirmed[zone_id];
-        result_.zone_target_counts[zone_id] = zone_signal[zone_id];
+        result_.zone_target_counts[zone_id] = zone_target_count[zone_id];
 
         switch (rt.state) {
             case ZoneState::CLEAR:
