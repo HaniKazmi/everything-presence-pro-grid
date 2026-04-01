@@ -526,6 +526,11 @@ export class GridStateController implements ReactiveController {
 					static_renew_threshold: this.host._staticRenewThreshold,
 					static_timeout: this.host._staticTimeout,
 					static_on_delay: this.host._staticOnDelay,
+					led_mode: this.host._ledMode,
+					led_brightness: this.host._ledBrightness,
+					led_presence_color: this.host._ledPresenceColor,
+					relay_trigger_mode: this.host._relayTriggerMode,
+					relay_contact_mode: this.host._relayContactMode,
 					entities: this.host._entitiesConfig || {},
 				});
 			}
