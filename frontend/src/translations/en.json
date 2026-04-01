@@ -135,7 +135,7 @@
 		"led_presence_color": "Presence color",
 		"manual_control": "Manual Control",
 		"presence": "Presence",
-		"environmental_presence": "Environmental + Presence"
+		"environmental_presence": "Environmental + Presence",
 		"relay": "Relay",
 		"relay_trigger_mode": "Trigger Mode",
 		"relay_contact_mode": "Contact Mode",

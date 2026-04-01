@@ -284,7 +284,7 @@ class DeviceConnection:
                 )
                 _LOGGER.info("Pushed static_presence to %s", self._host)
 
-svc = self._services.get("epp_set_led")
+            svc = self._services.get("epp_set_led")
             if svc:
                 color_hex = settings.get("led_presence_color", "#CC33FF")
                 await self._client.execute_service(
@@ -298,7 +298,8 @@ svc = self._services.get("epp_set_led")
                     },
                 )
                 _LOGGER.info("Pushed led to %s", self._host)
-svc = self._services.get("epp_set_relay")
+
+            svc = self._services.get("epp_set_relay")
             if svc:
                 await self._client.execute_service(
                     svc,

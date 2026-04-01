@@ -402,7 +402,9 @@ it("returns LED defaults when not present", () => {
 		expect(result.ledMode).toBe("Presence");
 		expect(result.ledBrightness).toBe(0.8);
 		expect(result.ledPresenceColor).toBe("#00FF00");
-it("defaults relayTriggerMode to disabled when not set", () => {
+	});
+
+	it("defaults relayTriggerMode to disabled when not set", () => {
 		const s = parseSettings(undefined);
 		expect(s.relayTriggerMode).toBe("disabled");
 	});

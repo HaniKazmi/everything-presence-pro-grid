@@ -463,10 +463,10 @@ class TestWebSocketSettings:
             "static_renew_threshold": 3,
             "static_timeout": 30.0,
             "static_on_delay": 0.0,
-"led_mode": "Manual Control",
+            "led_mode": "Manual Control",
             "led_brightness": 1.0,
             "led_presence_color": "#CC33FF",
-"relay_trigger_mode": "disabled",
+            "relay_trigger_mode": "disabled",
             "relay_contact_mode": "no",
             "entities": {"room_occupancy": True, "zone_presence": False},
         }
@@ -521,6 +521,8 @@ class TestWebSocketSettings:
             "led_mode": "Presence",
             "led_brightness": 0.8,
             "led_presence_color": "#00FF00",
+            "relay_trigger_mode": "disabled",
+            "relay_contact_mode": "no",
         }
 
         await call_async_handler(hass, websocket_set_settings, connection, msg)
@@ -558,10 +560,10 @@ class TestWebSocketSettings:
                 "static_renew_threshold": 3,
                 "static_timeout": 30.0,
                 "static_on_delay": 0.0,
-"led_mode": "Manual Control",
+                "led_mode": "Manual Control",
                 "led_brightness": 1.0,
                 "led_presence_color": "#CC33FF",
-"relay_trigger_mode": "disabled",
+                "relay_trigger_mode": "disabled",
                 "relay_contact_mode": "no",
                 "entities": {"room_occupancy": True, "env_illuminance": False},
             }
@@ -596,10 +598,10 @@ class TestWebSocketSettings:
             "static_renew_threshold": 3,
             "static_timeout": 30.0,
             "static_on_delay": 0.0,
-"led_mode": "Manual Control",
+            "led_mode": "Manual Control",
             "led_brightness": 1.0,
             "led_presence_color": "#CC33FF",
-"relay_trigger_mode": "disabled",
+            "relay_trigger_mode": "disabled",
             "relay_contact_mode": "no",
             "entities": {"zone_presence": False},
         }
@@ -638,10 +640,10 @@ class TestWebSocketSettings:
             "static_renew_threshold": 3,
             "static_timeout": 30.0,
             "static_on_delay": 0.0,
-"led_mode": "Manual Control",
+            "led_mode": "Manual Control",
             "led_brightness": 1.0,
             "led_presence_color": "#CC33FF",
-"relay_trigger_mode": "disabled",
+            "relay_trigger_mode": "disabled",
             "relay_contact_mode": "no",
             "entities": {"zone_presence": True},
         }
@@ -676,10 +678,10 @@ class TestWebSocketSettings:
             "static_renew_threshold": 3,
             "static_timeout": 30.0,
             "static_on_delay": 0.0,
-"led_mode": "Manual Control",
+            "led_mode": "Manual Control",
             "led_brightness": 1.0,
             "led_presence_color": "#CC33FF",
-"relay_trigger_mode": "disabled",
+            "relay_trigger_mode": "disabled",
             "relay_contact_mode": "no",
             "entities": {"room_occupancy": True, "zone_presence": False},
         }
@@ -713,10 +715,10 @@ class TestWebSocketSettings:
             "static_renew_threshold": 3,
             "static_timeout": 30.0,
             "static_on_delay": 0.0,
-"led_mode": "Manual Control",
+            "led_mode": "Manual Control",
             "led_brightness": 1.0,
             "led_presence_color": "#CC33FF",
-"relay_trigger_mode": "disabled",
+            "relay_trigger_mode": "disabled",
             "relay_contact_mode": "no",
             "log_levels": {"epp": "Debug", "system": "Info"},
         }
@@ -760,10 +762,10 @@ class TestWebSocketSettings:
             "static_renew_threshold": 3,
             "static_timeout": 30.0,
             "static_on_delay": 0.0,
-"led_mode": "Manual Control",
+            "led_mode": "Manual Control",
             "led_brightness": 1.0,
             "led_presence_color": "#CC33FF",
-"relay_trigger_mode": "disabled",
+            "relay_trigger_mode": "disabled",
             "relay_contact_mode": "no",
         }
 
@@ -799,10 +801,10 @@ class TestWebSocketSettings:
             "static_renew_threshold": 3,
             "static_timeout": 30.0,
             "static_on_delay": 0.0,
-"led_mode": "Manual Control",
+            "led_mode": "Manual Control",
             "led_brightness": 1.0,
             "led_presence_color": "#CC33FF",
-"relay_trigger_mode": "disabled",
+            "relay_trigger_mode": "disabled",
             "relay_contact_mode": "no",
             "entities": {"room_occupancy": True},
         }
@@ -837,10 +839,10 @@ class TestWebSocketSettings:
             "static_renew_threshold": 3,
             "static_timeout": 30.0,
             "static_on_delay": 0.0,
-"led_mode": "Manual Control",
+            "led_mode": "Manual Control",
             "led_brightness": 1.0,
             "led_presence_color": "#CC33FF",
-"relay_trigger_mode": "disabled",
+            "relay_trigger_mode": "disabled",
             "relay_contact_mode": "no",
         }
 
@@ -872,6 +874,9 @@ class TestWebSocketSettings:
             "static_renew_threshold": 3,
             "static_timeout": 30.0,
             "static_on_delay": 0.0,
+            "led_mode": "Manual Control",
+            "led_brightness": 1.0,
+            "led_presence_color": "#CC33FF",
             "relay_trigger_mode": "motion",
             "relay_contact_mode": "nc",
         }
@@ -910,6 +915,9 @@ class TestWebSocketSettings:
                 "static_renew_threshold": 3,
                 "static_timeout": 30.0,
                 "static_on_delay": 0.0,
+                "led_mode": "Manual Control",
+                "led_brightness": 1.0,
+                "led_presence_color": "#CC33FF",
                 "relay_trigger_mode": "motion",
                 "relay_contact_mode": "no",
             }
@@ -945,6 +953,9 @@ class TestWebSocketSettings:
                 "static_renew_threshold": 3,
                 "static_timeout": 30.0,
                 "static_on_delay": 0.0,
+                "led_mode": "Manual Control",
+                "led_brightness": 1.0,
+                "led_presence_color": "#CC33FF",
                 "relay_trigger_mode": "disabled",
                 "relay_contact_mode": "no",
             }
@@ -1085,13 +1096,15 @@ class TestZonePresencePreservation:
                 "led_mode": "Manual Control",
                 "led_brightness": 1.0,
                 "led_presence_color": "#CC33FF",
+                "relay_trigger_mode": "disabled",
+                "relay_contact_mode": "no",
                 "entities": {"target_xy": True},
             }
 
             await call_async_handler(hass, websocket_set_settings, connection, msg)
 
         settings = mock_dm._store.devices["AA:BB:CC:DD:EE:FF"]["settings"]
-        assert settings["target_xy"] is True
+        assert settings.get("relay_trigger_mode") == "disabled"
         mock_dm._store.async_save.assert_awaited()
 
 
@@ -1523,6 +1536,9 @@ class TestNotReadyGuards:
                     "static_renew_threshold": 3,
                     "static_timeout": 30.0,
                     "static_on_delay": 0.0,
+                    "led_mode": "Manual Control",
+                    "led_brightness": 1.0,
+                    "led_presence_color": "#CC33FF",
                     "relay_trigger_mode": "disabled",
                     "relay_contact_mode": "no",
                 },
@@ -2194,6 +2210,9 @@ class TestProtocolVersionGuard:
                     "static_renew_threshold": 3,
                     "static_timeout": 30.0,
                     "static_on_delay": 0.0,
+                    "led_mode": "Manual Control",
+                    "led_brightness": 1.0,
+                    "led_presence_color": "#CC33FF",
                     "relay_trigger_mode": "disabled",
                     "relay_contact_mode": "no",
                 },

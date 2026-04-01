@@ -63,12 +63,13 @@ export class EppSettingsView extends LitElement {
 	@property({ attribute: false }) logLevels: Record<string, string> = {};
 	@property({ type: Boolean }) bluetoothEnabled = false;
 	@property({ type: Boolean }) co2Enabled = false;
-	@property({ type: String }) relayTriggerMode = "disabled";
-	@property({ type: String }) relayContactMode = "no";
 
 	@property({ type: String }) ledMode = "Manual Control";
 	@property({ type: Number }) ledBrightness = 1.0;
 	@property({ type: String }) ledPresenceColor = "#CC33FF";
+
+	@property({ type: String }) relayTriggerMode = "disabled";
+	@property({ type: String }) relayContactMode = "no";
 
 	// Non-reactive overrides — stores user edits without triggering Lit re-renders.
 	// The 5Hz target data stream re-renders the panel at high frequency; if slider
@@ -141,10 +142,12 @@ export class EppSettingsView extends LitElement {
 				icon: "mdi:math-log",
 			},
 			{
-id: "led",
+				id: "led",
 				label: "settings.led",
 				icon: "mdi:led-variant-on",
-id: "relay",
+			},
+			{
+				id: "relay",
 				label: "settings.relay",
 				icon: "mdi:electric-switch",
 			},
@@ -203,9 +206,9 @@ id: "relay",
 				return this.renderEntities();
 			case "logging":
 				return this.renderLogging();
-case "led":
+			case "led":
 				return this.renderLed();
-case "relay":
+			case "relay":
 				return this.renderRelay();
 			default:
 				return nothing;
@@ -796,7 +799,7 @@ case "relay":
     `;
 	}
 
-renderLed() {
+	renderLed() {
 		const mode = this._overrides.ledMode ?? this.ledMode;
 		const showPresenceColor =
 			mode === "Presence" || mode === "Environmental + Presence";
@@ -821,30 +824,11 @@ renderLed() {
 		}
 		const brightness = this._overrides.ledBrightness ?? this.ledBrightness;
 		const color = this._overrides.ledPresenceColor ?? this.ledPresenceColor;
-renderRelay() {
-		const TRIGGER_MODES = [
-			{ value: "disabled", label: "disabled" },
-			{ value: "manual", label: "manual" },
-			{ value: "motion", label: "motion" },
-			{ value: "presence", label: "presence" },
-			{ value: "motion_or_presence", label: "motion_or_presence" },
-		];
-		const CONTACT_MODES = [
-			{ value: "no", label: "no" },
-			{ value: "nc", label: "nc" },
-		];
-
-		const currentTrigger =
-			this._overrides.relayTriggerMode ?? this.relayTriggerMode;
-		const currentContact =
-			this._overrides.relayContactMode ?? this.relayContactMode;
-		const isAutomatic =
-			currentTrigger !== "disabled" && currentTrigger !== "manual";
 
 		return html`
       <div class="settings-section">
         <div class="setting-group">
-<h4>${this.localize("settings.led")}</h4>
+          <h4>${this.localize("settings.led")}</h4>
           <div class="setting-row">
             <label>${this.localize("settings.led_mode")}</label>
             <ha-select class="led-mode-select" .value=${mode} .options=${modes} @selected=${(
@@ -888,7 +872,37 @@ renderRelay() {
 						}} />
             ${this.infoTip(this.localize("info.led_presence_color"))}
           </div>`
-<div class="setting-row">
+							: nothing
+					}
+        </div>
+      </div>
+    `;
+	}
+
+	renderRelay() {
+		const TRIGGER_MODES = [
+			{ value: "disabled", label: "disabled" },
+			{ value: "manual", label: "manual" },
+			{ value: "motion", label: "motion" },
+			{ value: "presence", label: "presence" },
+			{ value: "motion_or_presence", label: "motion_or_presence" },
+		];
+		const CONTACT_MODES = [
+			{ value: "no", label: "no" },
+			{ value: "nc", label: "nc" },
+		];
+
+		const currentTrigger =
+			this._overrides.relayTriggerMode ?? this.relayTriggerMode;
+		const currentContact =
+			this._overrides.relayContactMode ?? this.relayContactMode;
+		const isAutomatic =
+			currentTrigger !== "disabled" && currentTrigger !== "manual";
+
+		return html`
+      <div class="settings-section">
+        <div class="setting-group">
+          <div class="setting-row">
             <label>${this.localize("settings.relay_trigger_mode")}</label>
             <ha-select
               .value=${currentTrigger}
@@ -1003,10 +1017,10 @@ renderRelay() {
 						...this.logLevels,
 						...(o.logLevels || {}),
 					},
-led_mode: o.ledMode ?? this.ledMode,
+					led_mode: o.ledMode ?? this.ledMode,
 					led_brightness: o.ledBrightness ?? this.ledBrightness,
 					led_presence_color: o.ledPresenceColor ?? this.ledPresenceColor,
-relay_trigger_mode: o.relayTriggerMode ?? this.relayTriggerMode,
+					relay_trigger_mode: o.relayTriggerMode ?? this.relayTriggerMode,
 					relay_contact_mode: o.relayContactMode ?? this.relayContactMode,
 				},
 				bubbles: true,
