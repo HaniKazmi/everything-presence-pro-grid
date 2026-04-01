@@ -118,6 +118,7 @@ epp:
         name: "Target 1 Signal"
         disabled_by_default: true
         accuracy_decimals: 0
+        state_class: measurement
       active:
         name: "Target 1 Active"
         device_class: occupancy
@@ -126,6 +127,7 @@ epp:
         name: "Target 1 Zone"
         disabled_by_default: true
         accuracy_decimals: 0
+        state_class: measurement
     target_2:
       x:
         name: "Target 2 X"
@@ -141,6 +143,7 @@ epp:
         name: "Target 2 Signal"
         disabled_by_default: true
         accuracy_decimals: 0
+        state_class: measurement
       active:
         name: "Target 2 Active"
         device_class: occupancy
@@ -149,6 +152,7 @@ epp:
         name: "Target 2 Zone"
         disabled_by_default: true
         accuracy_decimals: 0
+        state_class: measurement
     target_3:
       x:
         name: "Target 3 X"
@@ -164,6 +168,7 @@ epp:
         name: "Target 3 Signal"
         disabled_by_default: true
         accuracy_decimals: 0
+        state_class: measurement
       active:
         name: "Target 3 Active"
         device_class: occupancy
@@ -172,43 +177,53 @@ epp:
         name: "Target 3 Zone"
         disabled_by_default: true
         accuracy_decimals: 0
+        state_class: measurement
   zone_target_counts:
     zone_0:
       name: "Zone 0 Target Count"
       disabled_by_default: true
       accuracy_decimals: 0
+      state_class: measurement
     zone_1:
       name: "Zone 1 Target Count"
       disabled_by_default: true
       accuracy_decimals: 0
+      state_class: measurement
     zone_2:
       name: "Zone 2 Target Count"
       disabled_by_default: true
       accuracy_decimals: 0
+      state_class: measurement
     zone_3:
       name: "Zone 3 Target Count"
       disabled_by_default: true
       accuracy_decimals: 0
+      state_class: measurement
     zone_4:
       name: "Zone 4 Target Count"
       disabled_by_default: true
       accuracy_decimals: 0
+      state_class: measurement
     zone_5:
       name: "Zone 5 Target Count"
       disabled_by_default: true
       accuracy_decimals: 0
+      state_class: measurement
     zone_6:
       name: "Zone 6 Target Count"
       disabled_by_default: true
       accuracy_decimals: 0
+      state_class: measurement
     zone_7:
       name: "Zone 7 Target Count"
       disabled_by_default: true
       accuracy_decimals: 0
+      state_class: measurement
   target_count:
     name: "Target Count"
     disabled_by_default: true
     accuracy_decimals: 0
+    state_class: measurement
   static_presence: dfrobot_presence
   motion_presence: pir_motion
   static_presence_output:
