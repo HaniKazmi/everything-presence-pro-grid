@@ -145,7 +145,8 @@
 		"relay_presence": "Presence Only",
 		"relay_occupancy": "Occupancy",
 		"relay_normally_open": "Normally Open (NO)",
-		"relay_normally_closed": "Normally Closed (NC)"
+		"relay_normally_closed": "Normally Closed (NC)",
+		"update_rate": "Update rate"
 	},
 	"sidebar": {
 		"detection_zones": "Detection zones",
@@ -195,6 +196,8 @@
 		"xy_sensor": "XY position, relative to sensor",
 		"xy": "XY position",
 		"active": "Active",
+		"target_signal": "Signal",
+		"target_zone": "Zone",
 		"distance": "Distance",
 		"angle": "Angle",
 		"speed": "Speed",
@@ -233,6 +236,8 @@
 		"xy_sensor": "Raw XY coordinates from the sensor.",
 		"xy": "XY coordinates mapped to the room grid.",
 		"active": "Whether each target slot is actively tracking.",
+		"target_signal": "Signal strength for each target (higher = stronger detection).",
+		"target_zone": "Which zone each target is currently in.",
 		"distance": "Distance from sensor to each target.",
 		"angle": "Angle from sensor to each target.",
 		"speed": "Movement speed of each target.",

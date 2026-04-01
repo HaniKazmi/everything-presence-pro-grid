@@ -2277,4 +2277,30 @@ describe("relay section", () => {
 		expect(payload.relay_trigger_mode).toBe("presence");
 		expect(payload.relay_contact_mode).toBe("nc");
 	});
+
+	it("emitSave includes rate settings from overrides", () => {
+		const sv = createView({ dirty: true });
+		(sv as any)._overrides = {
+			targetUpdateRateMs: 500,
+			zoneUpdateRateMs: 2000,
+		};
+		let detail: any;
+		sv.addEventListener("save", ((e: CustomEvent) => {
+			detail = e.detail;
+		}) as EventListener);
+		(sv as any)._emitSave();
+		expect(detail.target_update_rate_ms).toBe(500);
+		expect(detail.zone_update_rate_ms).toBe(2000);
+	});
+
+	it("emitSave includes default rate settings when no overrides", () => {
+		const sv = createView({ dirty: true });
+		let detail: any;
+		sv.addEventListener("save", ((e: CustomEvent) => {
+			detail = e.detail;
+		}) as EventListener);
+		(sv as any)._emitSave();
+		expect(detail.target_update_rate_ms).toBe(1000);
+		expect(detail.zone_update_rate_ms).toBe(1000);
+	});
 });
