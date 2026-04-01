@@ -885,13 +885,21 @@ async def websocket_set_settings(
     mac = msg["mac"]
     device_config = manager._store.devices.setdefault(mac, {})
     new_settings = {k: msg[k] for k in _SETTINGS_KEYS}
-    # Preserve zone_presence flag — it's managed by set_setup and entity toggles,
+    # Preserve entity toggle and rate flags — they're managed by entity toggles,
     # not by the settings form payload.
     old_settings = device_config.get("settings", {})
-    if "zone_presence" in old_settings:
-        new_settings["zone_presence"] = old_settings["zone_presence"]
-    if "target_xy" in old_settings:
-        new_settings["target_xy"] = old_settings["target_xy"]
+    for key in (
+        "zone_presence",
+        "target_xy",
+        "target_active",
+        "target_signal",
+        "target_zone",
+        "zone_target_count",
+        "target_update_rate_ms",
+        "zone_update_rate_ms",
+    ):
+        if key in old_settings:
+            new_settings[key] = old_settings[key]
     device_config["settings"] = new_settings
     if "target_update_rate_ms" in msg:
         new_settings["target_update_rate_ms"] = msg["target_update_rate_ms"]
@@ -914,7 +922,14 @@ async def websocket_set_settings(
     entities = msg.get("entities")
     if entities:
         # Persist entity flags in stored settings so they survive reconnect/discovery
-        persisted_entity_keys = ("zone_presence", "target_xy")
+        persisted_entity_keys = (
+            "zone_presence",
+            "target_xy",
+            "target_active",
+            "target_signal",
+            "target_zone",
+            "zone_target_count",
+        )
         settings_changed = False
         for ekey in persisted_entity_keys:
             if ekey in entities:

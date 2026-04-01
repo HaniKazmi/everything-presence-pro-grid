@@ -1120,6 +1120,99 @@ class TestZonePresencePreservation:
         assert settings.get("target_xy") is True
         mock_dm._store.async_save.assert_awaited()
 
+    async def test_set_settings_persists_new_entity_keys(
+        self, hass: HomeAssistant, config_entry: MockConfigEntry
+    ) -> None:
+        """New entity keys (target_active etc.) are persisted in stored settings."""
+        mock_dm = await setup_integration(hass, config_entry)
+        mac = "AA:BB:CC:DD:EE:FF"
+        mock_dm._store.devices[mac] = {"settings": {}}
+
+        from custom_components.eppgrid.websocket_api import websocket_set_settings
+
+        with patch("custom_components.eppgrid.websocket_api._apply_entity_states"):
+            connection = MagicMock()
+            msg = {
+                "id": 11,
+                "type": "eppgrid/set_settings",
+                "mac": mac,
+                "temperature_offset": 0,
+                "humidity_offset": 0,
+                "illuminance_offset": 0,
+                "motion_timeout": 5.0,
+                "target_auto_distance": True,
+                "target_max_distance": 6.0,
+                "static_auto_distance": True,
+                "static_min_distance": 0.3,
+                "static_max_distance": 16.0,
+                "static_trigger_threshold": 3,
+                "static_renew_threshold": 3,
+                "static_timeout": 30.0,
+                "static_on_delay": 0.0,
+                "led_mode": "Manual Control",
+                "led_brightness": 1.0,
+                "led_presence_color": "#CC33FF",
+                "relay_trigger_mode": "disabled",
+                "relay_contact_mode": "no",
+                "entities": {"target_active": True, "zone_target_count": True},
+            }
+
+            await call_async_handler(hass, websocket_set_settings, connection, msg)
+
+        stored = mock_dm._store.devices[mac]["settings"]
+        assert stored["target_active"] is True
+        assert stored["zone_target_count"] is True
+        mock_dm._store.async_save.assert_awaited()
+
+    async def test_set_settings_preserves_new_entity_keys(
+        self, hass: HomeAssistant, config_entry: MockConfigEntry
+    ) -> None:
+        """New entity keys survive a set_settings call that doesn't include entities."""
+        mock_dm = await setup_integration(hass, config_entry)
+        mac = "AA:BB:CC:DD:EE:FF"
+        mock_dm._store.devices[mac] = {
+            "settings": {
+                "target_active": True,
+                "zone_target_count": True,
+                "target_update_rate_ms": 500,
+            }
+        }
+
+        from custom_components.eppgrid.websocket_api import websocket_set_settings
+
+        connection = MagicMock()
+        msg = {
+            "id": 11,
+            "type": "eppgrid/set_settings",
+            "mac": mac,
+            "temperature_offset": 0,
+            "humidity_offset": 0,
+            "illuminance_offset": 0,
+            "motion_timeout": 5.0,
+            "target_auto_distance": True,
+            "target_max_distance": 6.0,
+            "static_auto_distance": True,
+            "static_min_distance": 0.3,
+            "static_max_distance": 16.0,
+            "static_trigger_threshold": 3,
+            "static_renew_threshold": 3,
+            "static_timeout": 30.0,
+            "static_on_delay": 0.0,
+            "led_mode": "Manual Control",
+            "led_brightness": 1.0,
+            "led_presence_color": "#CC33FF",
+            "relay_trigger_mode": "disabled",
+            "relay_contact_mode": "no",
+            # no "entities" key
+        }
+
+        await call_async_handler(hass, websocket_set_settings, connection, msg)
+
+        stored = mock_dm._store.devices[mac]["settings"]
+        assert stored["target_active"] is True
+        assert stored["zone_target_count"] is True
+        assert stored["target_update_rate_ms"] == 500
+
 
 class TestEntityMapping:
     """Tests for entity object_id mapping with real unique_id patterns."""
