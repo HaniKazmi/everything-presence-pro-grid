@@ -121,10 +121,11 @@ describe("Zone engine parity (mirrors test_zone_engine_parity.py)", () => {
 		expect(occ[0]).toBe(false);
 	});
 
-	it("target in zone 1 with signal < trigger → zone 1 stays clear", () => {
-		a._targets = [makeTarget(450, 450, 2)];
+	it("target in zone 0 with signal < trigger → zone 0 stays clear", () => {
+		// Zone 0 (no overlay): trigger=5, signal=4 → below trigger
+		a._targets = [makeTarget(150, 150, 4)];
 		const occ = a._runLocalZoneEngine().occupancy;
-		expect(occ[1]).toBe(false);
+		expect(occ[0]).toBe(false);
 	});
 
 	it("target in room (zone 0) with signal >= gated threshold → zone 0 occupied after gating", () => {

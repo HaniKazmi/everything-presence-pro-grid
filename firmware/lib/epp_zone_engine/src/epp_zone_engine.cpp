@@ -239,8 +239,14 @@ const ProcessingResult& ZoneEngine::tick(const WindowOutput& window, float times
                 base_thresh = renew_thresh;
             }
 
-            bool cell_overlay_entry = grid_.cell_has_overlay_entry(cell);
-            bool needs_gating = !cell_overlay_entry && !continuous;
+            // Use raw-frame on_overlay (sticky from component) — catches cases
+            // where the median position hasn't reached the overlay cell yet
+            bool on_overlay = tw.on_overlay || grid_.cell_has_overlay_entry(cell);
+            bool needs_gating = !on_overlay && !continuous;
+            // Instant entry: raw frame touched overlay cell → threshold=1
+            if (on_overlay && rt.state == ZoneState::CLEAR) {
+                base_thresh = 1;
+            }
 
             if (needs_gating && rt.state == ZoneState::CLEAR) {
                 // Gating: raise threshold and require consecutive qualifying ticks.

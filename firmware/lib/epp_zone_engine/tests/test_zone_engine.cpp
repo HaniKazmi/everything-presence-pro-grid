@@ -120,8 +120,9 @@ TEST_CASE("target in entrance zone with signal >= trigger → zone 1 occupied") 
 
 TEST_CASE("target below trigger → zone stays clear") {
     ZoneEngine engine = make_parity_engine();
-    const ProcessingResult& r = engine.tick(make_window_1(X_OFF + 450, 450, 2), 100.0f);
-    CHECK_FALSE(r.zone_occupancy[1]);
+    // Use zone 0 (no overlay) — zone 0 trigger=5, signal=4 → below trigger
+    const ProcessingResult& r = engine.tick(make_window_1(X_OFF + 150, 150, 4), 100.0f);
+    CHECK_FALSE(r.zone_occupancy[0]);
 }
 
 TEST_CASE("zone 0 gating: needs 2 consecutive qualifying ticks") {

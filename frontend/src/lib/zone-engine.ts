@@ -108,15 +108,16 @@ export function runLocalZoneEngine(
 				prevIdx < GRID_CELL_COUNT &&
 				cellIsInside(params.grid[prevIdx])
 			) {
-				targetPrevZone[i] = cellZone(params.grid[prevIdx]);
-				// Check cell and its 8 neighbours for overlay
+				const prevZid = cellZone(params.grid[prevIdx]);
+				targetPrevZone[i] = prevZid;
+				// Check cell and same-zone neighbours for overlay
 				for (let dr = -1; dr <= 1 && !targetWasOnOverlay[i]; dr++) {
 					for (let dc = -1; dc <= 1 && !targetWasOnOverlay[i]; dc++) {
 						const nr = prev.row + dr;
 						const nc = prev.col + dc;
 						if (nr >= 0 && nr < GRID_ROWS && nc >= 0 && nc < GRID_COLS) {
 							const ni = nr * GRID_COLS + nc;
-							if (cellHasOverlayEntry(params.grid[ni])) {
+							if (cellHasOverlayEntry(params.grid[ni]) && cellZone(params.grid[ni]) === prevZid) {
 								targetWasOnOverlay[i] = true;
 							}
 						}
@@ -209,9 +210,28 @@ export function runLocalZoneEngine(
 		const isOccupied = st?.occupied ?? false;
 		const isClear = !isOccupied;
 
-		const baseTrigger = isClear ? trigger : renew;
-		const cellOverlay = cellHasOverlayEntry(cellVal);
+		let baseTrigger = isClear ? trigger : renew;
+		// Check cell and same-zone neighbours for overlay (median may lag behind actual position)
+		let cellOverlay = cellHasOverlayEntry(cellVal);
+		if (!cellOverlay) {
+			for (let dr = -1; dr <= 1 && !cellOverlay; dr++) {
+				for (let dc = -1; dc <= 1 && !cellOverlay; dc++) {
+					const nr = row + dr;
+					const nc = col + dc;
+					if (nr >= 0 && nr < GRID_ROWS && nc >= 0 && nc < GRID_COLS) {
+						const ni = nr * GRID_COLS + nc;
+						if (cellHasOverlayEntry(params.grid[ni]) && cellZone(params.grid[ni]) === zid) {
+							cellOverlay = true;
+						}
+					}
+				}
+			}
+		}
 		const needsGating = !cellOverlay && !continuous;
+		// Instant entry: near overlay cell → threshold=1
+		if (cellOverlay && isClear) {
+			baseTrigger = 1;
+		}
 
 		if (needsGating && isClear) {
 			// Gating: raise threshold and require consecutive qualifying ticks.

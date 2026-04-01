@@ -48,11 +48,11 @@
     },
     "test_target_below_trigger_stays_clear": {
       "ticks": [
-        {"t": 100.0, "targets": [{"x": 2850, "y": 450, "frames": 2}]}
+        {"t": 100.0, "targets": [{"x": 2550, "y": 150, "frames": 4}]}
       ],
       "expected": [
         {
-          "zone_occupancy": {"1": false}
+          "zone_occupancy": {"0": false}
         }
       ]
     },
