@@ -137,19 +137,14 @@ export class EppSettingsView extends LitElement {
 				icon: "mdi:tune-vertical",
 			},
 			{
-				id: "logging",
-				label: "settings.logging",
-				icon: "mdi:math-log",
-			},
-			{
-				id: "led",
-				label: "settings.led",
+				id: "led_relay",
+				label: "settings.led_and_relay",
 				icon: "mdi:led-variant-on",
 			},
 			{
-				id: "relay",
-				label: "settings.relay",
-				icon: "mdi:electric-switch",
+				id: "logging",
+				label: "settings.logging",
+				icon: "mdi:math-log",
 			},
 		];
 
@@ -204,12 +199,10 @@ export class EppSettingsView extends LitElement {
 				return this.renderSensitivities();
 			case "reporting":
 				return this.renderEntities();
+			case "led_relay":
+				return html`${this.renderLed()}${this.renderRelay()}`;
 			case "logging":
 				return this.renderLogging();
-			case "led":
-				return this.renderLed();
-			case "relay":
-				return this.renderRelay();
 			default:
 				return nothing;
 		}

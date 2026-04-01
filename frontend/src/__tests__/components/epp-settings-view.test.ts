@@ -67,7 +67,7 @@ describe("render()", () => {
 		const c = renderTo(tpl);
 
 		expect(c.querySelector(".settings-container")).not.toBeNull();
-		expect(c.querySelectorAll(".accordion").length).toBe(6);
+		expect(c.querySelectorAll(".accordion").length).toBe(5);
 		document.body.removeChild(c);
 	});
 
@@ -148,9 +148,9 @@ describe("renderSettingsSection", () => {
 		expect(result).toBeDefined();
 	});
 
-	it("renderSettingsSection returns defined result for relay", () => {
+	it("renderSettingsSection returns defined result for led_relay", () => {
 		const sv = createView();
-		const result = (sv as any).renderSettingsSection("relay");
+		const result = (sv as any).renderSettingsSection("led_relay");
 		expect(result).toBeDefined();
 	});
 });
@@ -1852,7 +1852,7 @@ describe("logging accordion", () => {
 
 describe("LED settings section", () => {
 	it("renders LED accordion", () => {
-		const sv = createView({ openAccordions: new Set(["led"]) });
+		const sv = createView({ openAccordions: new Set(["led_relay"]) });
 		const tpl = sv.render();
 		const c = renderTo(tpl);
 
@@ -1867,12 +1867,12 @@ describe("LED settings section", () => {
 		const tpl = sv.render();
 		const c = renderTo(tpl);
 
-		expect(c.querySelectorAll(".accordion").length).toBe(6);
+		expect(c.querySelectorAll(".accordion").length).toBe(5);
 		document.body.removeChild(c);
 	});
 
 	it("renders brightness slider in LED section", () => {
-		const sv = createView({ openAccordions: new Set(["led"]) });
+		const sv = createView({ openAccordions: new Set(["led_relay"]) });
 		const tpl = sv.render();
 		const c = renderTo(tpl);
 
@@ -1888,7 +1888,7 @@ describe("LED settings section", () => {
 
 	it("renders color picker in LED section when mode is Presence", () => {
 		const sv = createView({
-			openAccordions: new Set(["led"]),
+			openAccordions: new Set(["led_relay"]),
 			ledMode: "Presence",
 		});
 		const tpl = sv.render();
@@ -1902,7 +1902,7 @@ describe("LED settings section", () => {
 
 	it("hides environmental modes when co2 disabled", () => {
 		const sv = createView({
-			openAccordions: new Set(["led"]),
+			openAccordions: new Set(["led_relay"]),
 			co2Enabled: false,
 		});
 		const tpl = sv.render();
@@ -1920,7 +1920,7 @@ describe("LED settings section", () => {
 
 	it("shows environmental modes when co2 enabled", () => {
 		const sv = createView({
-			openAccordions: new Set(["led"]),
+			openAccordions: new Set(["led_relay"]),
 			co2Enabled: true,
 		});
 		const tpl = sv.render();
@@ -1938,7 +1938,7 @@ describe("LED settings section", () => {
 
 	it("hides color picker when mode is not Presence-related", () => {
 		const sv = createView({
-			openAccordions: new Set(["led"]),
+			openAccordions: new Set(["led_relay"]),
 			ledMode: "Manual Control",
 		});
 		const tpl = sv.render();
@@ -2113,12 +2113,12 @@ describe("relay section", () => {
 		const c = renderTo(tpl);
 
 		expect(c.querySelector(".settings-container")).not.toBeNull();
-		expect(c.querySelectorAll(".accordion").length).toBe(6);
+		expect(c.querySelectorAll(".accordion").length).toBe(5);
 		document.body.removeChild(c);
 	});
 
 	it("renders relay section when accordion is open", () => {
-		const sv = createView({ openAccordions: new Set(["relay"]) });
+		const sv = createView({ openAccordions: new Set(["led_relay"]) });
 		const tpl = sv.render();
 		const c = renderTo(tpl);
 

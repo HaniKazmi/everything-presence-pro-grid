@@ -129,6 +129,7 @@
 		"log_networking": "Network",
 		"log_ble": "Bluetooth",
 		"log_co2": "CO2",
+		"led_and_relay": "LED and Relay",
 		"led": "LED",
 		"led_mode": "Mode",
 		"led_brightness": "Brightness",
