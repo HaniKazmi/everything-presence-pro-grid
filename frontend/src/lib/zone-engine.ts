@@ -93,6 +93,25 @@ export function runLocalZoneEngine(
 	const targetZonePrev: (number | null)[] = [null, null, null];
 	const targetZoneCurr: (number | null)[] = [null, null, null];
 
+	// Snapshot prev cell overlay info before per-target loop clears it
+	const targetWasOnOverlay: boolean[] = [false, false, false];
+	const targetPrevZone: (number | null)[] = [null, null, null];
+	for (let i = 0; i < MAX_TARGETS && i < params.targets.length; i++) {
+		const prev = state.targetPrev[i];
+		if (prev !== null) {
+			const prevIdx = prev.row * GRID_COLS + prev.col;
+			if (
+				prevIdx >= 0 &&
+				prevIdx < GRID_CELL_COUNT &&
+				cellIsInside(params.grid[prevIdx]) &&
+				cellHasOverlayEntry(params.grid[prevIdx])
+			) {
+				targetWasOnOverlay[i] = true;
+				targetPrevZone[i] = cellZone(params.grid[prevIdx]);
+			}
+		}
+	}
+
 	for (let i = 0; i < MAX_TARGETS && i < params.targets.length; i++) {
 		const t = params.targets[i];
 
@@ -230,6 +249,36 @@ export function runLocalZoneEngine(
 			);
 			const { timeout, handoffTimeout } = handoffThresholds;
 			srcSt.pendingSince = now - (timeout - handoffTimeout);
+		}
+	}
+
+	// Overlay exit handoff: target disappears from overlay cell → use handoff timeout.
+	// We keep confirmedTargets intact so the target renders as PENDING.
+	for (let i = 0; i < MAX_TARGETS && i < params.targets.length; i++) {
+		const t = params.targets[i];
+		const isInactive = t.x == null || t.y == null;
+		if (isInactive && targetWasOnOverlay[i] && targetPrevZone[i] !== null) {
+			const prevZid = targetPrevZone[i] as number;
+			const st = state.localZoneState.get(prevZid);
+			if (st?.occupied && st.pendingSince === null) {
+				// Check if this target is the only confirmed target remaining
+				let remaining = 0;
+				for (const tid of st.confirmedTargets) {
+					if (tid !== i) remaining++;
+				}
+				if (remaining === 0) {
+					const th = getZoneThresholds(
+						prevZid,
+						params.zoneConfigs,
+						params.roomType,
+						params.roomTrigger,
+						params.roomRenew,
+						params.roomTimeout,
+						params.roomHandoffTimeout,
+					);
+					st.pendingSince = now - (th.timeout - th.handoffTimeout);
+				}
+			}
 		}
 	}
 

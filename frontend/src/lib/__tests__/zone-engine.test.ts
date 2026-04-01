@@ -632,6 +632,90 @@ describe("runLocalZoneEngine", () => {
 		expect(result.occupancy[1]).toBe(true);
 	});
 
+	it("overlay exit accelerates pending clear (handoff timeout)", () => {
+		const now = Date.now() / 1000;
+		const grid = makeParityGrid();
+		// Cell (9,1) = index 29 is zone 1 (entrance type: timeout=5, handoff=1).
+		// Set overlay entry bit.
+		grid[29] = cellSetOverlayEntry(grid[29], true);
+
+		// Tick 1: target in zone 1, confirmed
+		const params1 = makeDefaultParams({
+			targets: [makeTarget(450, 450, 5)],
+			now,
+		});
+		params1.grid = grid;
+		runLocalZoneEngine(state, params1);
+		expect(state.localZoneState.get(1)?.occupied).toBe(true);
+
+		// Tick 2: target disappears — should use handoff_timeout (1s) not timeout (5s)
+		const params2 = makeDefaultParams({
+			targets: [makeNullTarget()],
+			now: now + 1,
+		});
+		params2.grid = grid;
+		runLocalZoneEngine(state, params2);
+		// Zone should be pending (occupied=true, pendingSince set)
+		expect(state.localZoneState.get(1)?.occupied).toBe(true);
+		expect(state.localZoneState.get(1)?.pendingSince).not.toBeNull();
+
+		// Tick 3: 1.5s later (past handoff_timeout=1s, but before full timeout=5s)
+		const params3 = makeDefaultParams({
+			targets: [makeNullTarget()],
+			now: now + 2.5,
+		});
+		params3.grid = grid;
+		const result3 = runLocalZoneEngine(state, params3);
+		// Should have cleared — handoff timeout is 1s
+		expect(result3.occupancy[1]).toBe(false);
+	});
+
+	it("non-overlay exit uses full timeout (no acceleration)", () => {
+		const now = Date.now() / 1000;
+		const grid = makeParityGrid();
+		// Zone 0 (normal: timeout=10, handoff=3). No overlay.
+		// Cell (8,0) = index 8. Need 2 gating ticks to confirm zone 0.
+		const params1a = makeDefaultParams({
+			targets: [makeTarget(150, 150, 7)],
+			now,
+		});
+		params1a.grid = grid;
+		runLocalZoneEngine(state, params1a); // gating tick 1
+		const params1b = makeDefaultParams({
+			targets: [makeTarget(150, 150, 7)],
+			now: now + 1,
+		});
+		params1b.grid = grid;
+		runLocalZoneEngine(state, params1b); // gating tick 2 → confirmed
+		expect(state.localZoneState.get(0)?.occupied).toBe(true);
+
+		// Target disappears — no overlay → full timeout (10s)
+		const params2 = makeDefaultParams({
+			targets: [makeNullTarget()],
+			now: now + 2,
+		});
+		params2.grid = grid;
+		runLocalZoneEngine(state, params2);
+
+		// 5s later — should still be occupied (timeout=10s)
+		const params3 = makeDefaultParams({
+			targets: [makeNullTarget()],
+			now: now + 7,
+		});
+		params3.grid = grid;
+		const result3 = runLocalZoneEngine(state, params3);
+		expect(result3.occupancy[0]).toBe(true); // still pending
+
+		// 12s later — should clear
+		const params4 = makeDefaultParams({
+			targets: [makeNullTarget()],
+			now: now + 14,
+		});
+		params4.grid = grid;
+		const result4 = runLocalZoneEngine(state, params4);
+		expect(result4.occupancy[0]).toBe(false);
+	});
+
 	it("occupancy result: true when sensor active/pending, false when all inactive", () => {
 		const now = Date.now() / 1000;
 		const r1 = runLocalZoneEngine(
