@@ -42,6 +42,37 @@ def async_register_websocket_commands(hass: HomeAssistant, manager: Any) -> None
     websocket_api.async_register_command(hass, websocket_update_firmware)
 
 
+_TARGET_ENTITY_KEYS = ("target_xy", "target_active", "target_signal", "target_zone")
+_ZONE_ENTITY_KEYS = ("zone_presence", "zone_target_count")
+
+
+def _compute_pipeline(
+    config: dict[str, Any],
+    raw_target_subs: int,
+    grid_target_subs: int,
+) -> dict[str, int]:
+    """Derive all pipeline intervals from current settings and subscriber counts."""
+    settings = config.get("settings", {})
+    entities = settings.get("entities", {})
+    pipeline = config.get("pipeline", {})
+
+    target_rate = settings.get("target_update_rate_ms", 1000)
+    zone_rate = settings.get("zone_update_rate_ms", 1000)
+
+    any_target = any(entities.get(k) for k in _TARGET_ENTITY_KEYS)
+    any_zone = any(entities.get(k) for k in _ZONE_ENTITY_KEYS)
+
+    has_display_sub = raw_target_subs > 0 or grid_target_subs > 0
+
+    return {
+        "entity_target_interval": target_rate if any_target else 0,
+        "entity_zone_interval": zone_rate if any_zone else 0,
+        "display_interval": 200 if has_display_sub else 0,
+        "zone_state_interval": 1000 if grid_target_subs > 0 else 0,
+        "window_duration": pipeline.get("window_duration", 1000),
+    }
+
+
 def _get_manager(hass: HomeAssistant) -> Any:
     """Get the device manager."""
     return hass.data.get(DOMAIN)

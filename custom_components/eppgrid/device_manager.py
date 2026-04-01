@@ -56,6 +56,8 @@ class DeviceConnection:
         self._states_subscribed: bool = False
         self._unsub_logs: Any = None
         self.connected: bool = False
+        self.raw_target_subs: int = 0
+        self.grid_target_subs: int = 0
 
     async def async_connect(self) -> None:
         """Connect to the device and cache available services."""
