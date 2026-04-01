@@ -1345,25 +1345,26 @@ const dt={attribute:!0,type:String,converter:b,reflect:!1,hasChanged:y},ut=(t=dt
             `})}
         </div>
       </div>
-    `}renderLed(){const t=this._overrides.ledMode??this.ledMode,e="Presence"===t||"Environmental + Presence"===t,i=[{value:"Manual Control",label:this.localize("settings.manual_control")},{value:"Presence",label:this.localize("settings.presence")}];this.co2Enabled&&i.push({value:"Environmental",label:this.localize("settings.environmental")},{value:"Environmental + Presence",label:this.localize("settings.environmental_presence")});const o=this._overrides.ledBrightness??this.ledBrightness,s=this._overrides.ledPresenceColor??this.ledPresenceColor;return G`
+    `}renderLed(){const t=this._overrides.ledMode??this.ledMode,e="Manual Control"!==t,i="Presence"===t||"Environmental + Presence"===t,o=[{value:"Manual Control",label:this.localize("settings.manual_control")},{value:"Presence",label:this.localize("settings.presence")}];this.co2Enabled&&o.push({value:"Environmental",label:this.localize("settings.environmental")},{value:"Environmental + Presence",label:this.localize("settings.environmental_presence")});const s=this._overrides.ledBrightness??this.ledBrightness,r=this._overrides.ledPresenceColor??this.ledPresenceColor;return G`
       <div class="settings-section">
         <div class="setting-group">
           <h4>${this.localize("settings.led")}</h4>
           <div class="setting-row">
             <label>${this.localize("settings.led_mode")}</label>
-            <ha-select class="wide-select" .value=${t} .options=${i} @selected=${t=>{const e=t.detail.value;e&&(this._overrides.ledMode=e,this._fireDirty(),this.requestUpdate())}} @closed=${t=>t.stopPropagation()}>
+            <ha-select class="wide-select" .value=${t} .options=${o} @selected=${t=>{const e=t.detail.value;e&&(this._overrides.ledMode=e,this._fireDirty(),this.requestUpdate())}} @closed=${t=>t.stopPropagation()}>
             </ha-select>
             ${this.infoTip(this.localize("info.led_mode"))}
           </div>
-          <div class="setting-row">
-            <label>${this.localize("settings.led_brightness")}</label>
-            <span class="setting-input-unit"><input type="range" class="setting-range" data-led-brightness min="0.1" max="1" step="0.05" .value=${String(o)} @input=${t=>{const e=t.target;this._overrides.ledBrightness=parseFloat(e.value),this._setText(e.nextElementSibling,Math.round(100*parseFloat(e.value))+"%"),this._fireDirty()}} /><span class="setting-value">${Math.round(100*o)}%</span></span>
-            ${this.resetBtn(1,"ledBrightness")}${this.infoTip(this.localize("info.led_brightness"))}
-          </div>
           ${e?G`
           <div class="setting-row">
+            <label>${this.localize("settings.led_brightness")}</label>
+            <span class="setting-input-unit"><input type="range" class="setting-range" data-led-brightness min="0.1" max="1" step="0.05" .value=${String(s)} @input=${t=>{const e=t.target;this._overrides.ledBrightness=parseFloat(e.value),this._setText(e.nextElementSibling,Math.round(100*parseFloat(e.value))+"%"),this._fireDirty()}} /><span class="setting-value">${Math.round(100*s)}%</span></span>
+            ${this.resetBtn(1,"ledBrightness")}${this.infoTip(this.localize("info.led_brightness"))}
+          </div>`:V}
+          ${i?G`
+          <div class="setting-row">
             <label>${this.localize("settings.led_presence_color")}</label>
-            <input type="color" .value=${s} @input=${t=>{this._overrides.ledPresenceColor=t.target.value,this._fireDirty()}} />
+            <input type="color" .value=${r} @input=${t=>{this._overrides.ledPresenceColor=t.target.value,this._fireDirty()}} />
             ${this.infoTip(this.localize("info.led_presence_color"))}
           </div>`:V}
         </div>

@@ -794,6 +794,7 @@ export class EppSettingsView extends LitElement {
 
 	renderLed() {
 		const mode = this._overrides.ledMode ?? this.ledMode;
+		const showBrightness = mode !== "Manual Control";
 		const showPresenceColor =
 			mode === "Presence" || mode === "Environmental + Presence";
 		const modes = [
@@ -837,6 +838,7 @@ export class EppSettingsView extends LitElement {
             </ha-select>
             ${this.infoTip(this.localize("info.led_mode"))}
           </div>
+          ${showBrightness ? html`
           <div class="setting-row">
             <label>${this.localize("settings.led_brightness")}</label>
             <span class="setting-input-unit"><input type="range" class="setting-range" data-led-brightness min="0.1" max="1" step="0.05" .value=${String(brightness)} @input=${(
@@ -851,7 +853,7 @@ export class EppSettingsView extends LitElement {
 							this._fireDirty();
 						}} /><span class="setting-value">${Math.round(brightness * 100)}%</span></span>
             ${this.resetBtn(1.0, "ledBrightness")}${this.infoTip(this.localize("info.led_brightness"))}
-          </div>
+          </div>` : nothing}
           ${
 						showPresenceColor
 							? html`
