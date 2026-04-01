@@ -28,6 +28,10 @@ external_components:
 
 epp:
   id: epp_component
+  device_tracking:
+    name: "Target Presence"
+    device_class: occupancy
+    disabled_by_default: true
   firmware_version:
     name: "Zone Engine Version"
     entity_category: diagnostic
