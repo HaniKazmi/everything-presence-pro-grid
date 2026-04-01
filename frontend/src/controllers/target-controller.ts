@@ -115,7 +115,6 @@ export class TargetController implements ReactiveController {
 			roomRenew: this.host._roomRenew,
 			roomTimeout: this.host._roomTimeout,
 			roomHandoffTimeout: this.host._roomHandoffTimeout,
-			roomEntryPoint: this.host._roomEntryPoint,
 			staticPresence: ss?.static_presence ?? false,
 			motionPresence: ss?.motion_presence ?? false,
 			// Timeouts default to 10s — the real timeout logic runs on the firmware.

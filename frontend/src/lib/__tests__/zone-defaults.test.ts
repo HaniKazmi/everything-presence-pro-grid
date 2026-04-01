@@ -58,14 +58,12 @@ describe("getZoneThresholds", () => {
 			3,
 			10,
 			3,
-			false,
 		);
 		expect(result).toEqual({
 			trigger: 5,
 			renew: 3,
 			timeout: 10,
 			handoffTimeout: 3,
-			entryPoint: false,
 		});
 	});
 
@@ -78,18 +76,16 @@ describe("getZoneThresholds", () => {
 			2,
 			15,
 			5,
-			true,
 		);
 		expect(result).toEqual({
 			trigger: 8,
 			renew: 2,
 			timeout: 15,
 			handoffTimeout: 5,
-			entryPoint: true,
 		});
 	});
 
-	it("zone 0 entrance: returns entrance defaults, entryPoint false", () => {
+	it("zone 0 entrance: returns entrance defaults", () => {
 		const result = getZoneThresholds(
 			0,
 			emptyConfigs,
@@ -98,14 +94,12 @@ describe("getZoneThresholds", () => {
 			2,
 			5,
 			1,
-			false,
 		);
 		expect(result).toEqual({
 			trigger: 3,
 			renew: 2,
 			timeout: 5,
 			handoffTimeout: 1,
-			entryPoint: false,
 		});
 	});
 
@@ -118,27 +112,21 @@ describe("getZoneThresholds", () => {
 			},
 			...new Array(6).fill(null),
 		];
-		const result = getZoneThresholds(1, configs, "normal", 5, 3, 10, 3, false);
+		const result = getZoneThresholds(1, configs, "normal", 5, 3, 10, 3);
 		expect(result).toEqual({
 			trigger: 5,
 			renew: 3,
 			timeout: 10,
 			handoffTimeout: 3,
-			entryPoint: false,
 		});
 	});
 
-	it("named zone with entrance type: entryPoint is true", () => {
+	it("named zone with entrance type: uses entrance timing defaults", () => {
 		const configs: (ZoneConfig | null)[] = [
-			{
-				name: "Front Door",
-				color: "#56B4E9",
-				type: "entrance",
-			},
+			{ name: "Front Door", color: "#56B4E9", type: "entrance" },
 			...new Array(6).fill(null),
 		];
-		const result = getZoneThresholds(1, configs, "normal", 5, 3, 10, 3, false);
-		expect(result.entryPoint).toBe(true);
+		const result = getZoneThresholds(1, configs, "normal", 5, 3, 10, 3);
 		expect(result.trigger).toBe(3);
 		expect(result.renew).toBe(2);
 		expect(result.timeout).toBe(5);
@@ -156,17 +144,15 @@ describe("getZoneThresholds", () => {
 				renew: 1,
 				timeout: 60,
 				handoff_timeout: 20,
-				entry_point: true,
 			},
 			...new Array(5).fill(null),
 		];
-		const result = getZoneThresholds(2, configs, "normal", 5, 3, 10, 3, false);
+		const result = getZoneThresholds(2, configs, "normal", 5, 3, 10, 3);
 		expect(result).toEqual({
 			trigger: 9,
 			renew: 1,
 			timeout: 60,
 			handoffTimeout: 20,
-			entryPoint: true,
 		});
 	});
 
@@ -180,7 +166,7 @@ describe("getZoneThresholds", () => {
 			},
 			...new Array(6).fill(null),
 		];
-		const result = getZoneThresholds(1, configs, "normal", 5, 3, 10, 3, false);
+		const result = getZoneThresholds(1, configs, "normal", 5, 3, 10, 3);
 		// Falls back to ZONE_TYPE_DEFAULTS.normal values
 		expect(result.trigger).toBe(5);
 		expect(result.renew).toBe(3);
@@ -197,14 +183,12 @@ describe("getZoneThresholds", () => {
 			3,
 			10,
 			3,
-			false,
 		);
 		expect(result).toEqual({
 			trigger: 5,
 			renew: 3,
 			timeout: 10,
 			handoffTimeout: 3,
-			entryPoint: false,
 		});
 	});
 
@@ -217,14 +201,12 @@ describe("getZoneThresholds", () => {
 			3,
 			10,
 			3,
-			false,
 		);
 		expect(result).toEqual({
 			trigger: 5,
 			renew: 3,
 			timeout: 10,
 			handoffTimeout: 3,
-			entryPoint: false,
 		});
 	});
 
@@ -237,13 +219,12 @@ describe("getZoneThresholds", () => {
 			},
 			...new Array(6).fill(null),
 		];
-		const result = getZoneThresholds(1, configs, "normal", 5, 3, 10, 3, false);
+		const result = getZoneThresholds(1, configs, "normal", 5, 3, 10, 3);
 		expect(result).toEqual({
 			trigger: 7,
 			renew: 1,
 			timeout: 30,
 			handoffTimeout: 10,
-			entryPoint: false,
 		});
 	});
 });

@@ -77,7 +77,6 @@ function createPanel(): EPPGridPanel {
 	a._roomRenew = ZONE_TYPE_DEFAULTS.normal.renew;
 	a._roomTimeout = ZONE_TYPE_DEFAULTS.normal.timeout;
 	a._roomHandoffTimeout = ZONE_TYPE_DEFAULTS.normal.handoff_timeout;
-	a._roomEntryPoint = false;
 	a._showHitCounts = false;
 	a._zoneEngineState = createZoneEngineState();
 	a._showCustomIconPicker = false;
@@ -729,12 +728,11 @@ describe("_renderBoundaryTypeControls inline handlers", () => {
 		expect(a._roomHandoffTimeout).toBe(5);
 	});
 
-	it("room entry point toggle", () => {
+	it("room handoff timeout change", () => {
 		const a = createPanel() as any;
-		// Replicate handler (line 4968-4970)
-		a._roomEntryPoint = true;
+		a._roomHandoffTimeout = 5;
 		a._dirty = true;
-		expect(a._roomEntryPoint).toBe(true);
+		expect(a._roomHandoffTimeout).toBe(5);
 	});
 });
 
@@ -860,7 +858,7 @@ describe("_renderZoneTypeControls inline handlers", () => {
 		expect(a._zoneConfigs[0].handoff_timeout).toBe(7);
 	});
 
-	it("zone entry point toggle", () => {
+	it("zone timeout change", () => {
 		const a = createPanel() as any;
 		a._zoneConfigs[0] = {
 			name: "Z1",
@@ -868,14 +866,13 @@ describe("_renderZoneTypeControls inline handlers", () => {
 			type: "custom",
 		};
 
-		// Replicate handler (line 5089-5096)
 		const zone = a._zoneConfigs[0]!;
 		const configs = [...a._zoneConfigs];
-		configs[0] = { ...zone, entry_point: true };
+		configs[0] = { ...zone, timeout: 30 };
 		a._zoneConfigs = configs;
 		a._dirty = true;
 
-		expect(a._zoneConfigs[0].entry_point).toBe(true);
+		expect(a._zoneConfigs[0].timeout).toBe(30);
 	});
 });
 

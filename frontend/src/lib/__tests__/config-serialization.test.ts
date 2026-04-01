@@ -208,7 +208,6 @@ describe("parseZoneConfigs", () => {
 					renew: 2,
 					timeout: 5,
 					handoff_timeout: 1,
-					entry_point: true,
 				},
 			],
 		};
@@ -221,7 +220,6 @@ describe("parseZoneConfigs", () => {
 			renew: 2,
 			timeout: 5,
 			handoff_timeout: 1,
-			entry_point: true,
 		});
 		// Rest should be null
 		for (let i = 1; i < MAX_ZONES; i++) {
@@ -245,7 +243,7 @@ describe("parseZoneConfigs", () => {
 		expect(result[0]!.name).toBe("Zone 1");
 		expect(result[0]!.color).toBe(ZONE_COLORS[0]);
 		expect(result[0]!.type).toBe("normal");
-		expect(result[0]!.entry_point).toBe(false);
+		expect(result[0]!.type).toBe("normal");
 	});
 
 	it("cycles zone colors for slots without color", () => {
@@ -276,7 +274,6 @@ describe("parseRoomThresholds", () => {
 		expect(result.roomHandoffTimeout).toBe(
 			ZONE_TYPE_DEFAULTS.normal.handoff_timeout,
 		);
-		expect(result.roomEntryPoint).toBe(false);
 	});
 
 	it("uses specified room_type defaults", () => {
@@ -295,14 +292,12 @@ describe("parseRoomThresholds", () => {
 			room_renew: 1,
 			room_timeout: 60,
 			room_handoff_timeout: 15,
-			room_entry_point: true,
 		};
 		const result = parseRoomThresholds(layout);
 		expect(result.roomTrigger).toBe(9);
 		expect(result.roomRenew).toBe(1);
 		expect(result.roomTimeout).toBe(60);
 		expect(result.roomHandoffTimeout).toBe(15);
-		expect(result.roomEntryPoint).toBe(true);
 	});
 
 	it("handles null layout", () => {
@@ -438,7 +433,6 @@ describe("parseConfig", () => {
 				grid_bytes: new Array(GRID_CELL_COUNT).fill(0),
 				zone_slots: [{ name: "Zone A" }],
 				room_type: "rest",
-				room_entry_point: false,
 			},
 			settings: {
 				temperature_offset: 5,

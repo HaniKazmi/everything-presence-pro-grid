@@ -83,7 +83,6 @@ function createPanel(): EPPGridPanel {
 	a._roomRenew = ZONE_TYPE_DEFAULTS.normal.renew;
 	a._roomTimeout = ZONE_TYPE_DEFAULTS.normal.timeout;
 	a._roomHandoffTimeout = ZONE_TYPE_DEFAULTS.normal.handoff_timeout;
-	a._roomEntryPoint = false;
 	a._showHitCounts = false;
 	a._zoneEngineState = createZoneEngineState();
 	a._showCustomIconPicker = false;
@@ -293,7 +292,6 @@ describe("zone engine in _renderVisibleCells", () => {
 			renew: 2,
 			timeout: 0.001, // very short
 			handoff_timeout: 0.001,
-			entry_point: true,
 		};
 		for (let i = 0; i < a._grid.length; i++) {
 			if (a._grid[i] & CELL_ROOM_BIT) {
@@ -430,7 +428,6 @@ describe("zone engine in _renderVisibleCells", () => {
 			renew: 9,
 			timeout: 10,
 			handoff_timeout: 3,
-			entry_point: true, // entry point -> no gating
 		};
 		for (let i = 0; i < a._grid.length; i++) {
 			if (a._grid[i] & CELL_ROOM_BIT) {
@@ -463,7 +460,6 @@ describe("zone engine in _renderVisibleCells", () => {
 			renew: 2,
 			timeout: 100,
 			handoff_timeout: 100,
-			entry_point: true,
 		};
 		for (let i = 0; i < a._grid.length; i++) {
 			if (a._grid[i] & CELL_ROOM_BIT) {
@@ -553,7 +549,6 @@ describe("zone engine in _renderVisibleCells", () => {
 			renew: 2,
 			timeout: 100,
 			handoff_timeout: 1,
-			entry_point: true,
 		};
 		a._zoneConfigs[1] = {
 			name: "Zone 2",
@@ -831,7 +826,6 @@ describe("_applyLayout zone/furniture serialization", () => {
 			renew: 4,
 			timeout: 15,
 			handoff_timeout: 5,
-			entry_point: true,
 		};
 		// Set up a proper room grid and paint a cell with zone 1 so it doesn't get pruned
 		a._grid = initGridFromRoom(3000, 4000);

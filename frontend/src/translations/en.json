@@ -168,7 +168,6 @@
 		"renew": "Renew",
 		"presence_timeout": "Presence timeout",
 		"handoff_timeout": "Handoff timeout",
-		"entry_point": "Entry point",
 		"seconds_suffix": "s"
 	},
 	"live": {

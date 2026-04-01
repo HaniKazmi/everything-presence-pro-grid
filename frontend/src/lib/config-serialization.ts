@@ -24,7 +24,6 @@ export interface ParsedRoomThresholds {
 	roomRenew: number;
 	roomTimeout: number;
 	roomHandoffTimeout: number;
-	roomEntryPoint: boolean;
 }
 
 /**
@@ -147,7 +146,6 @@ export function parseZoneConfigs(layout: any): (ZoneConfig | null)[] {
 			renew: z.renew,
 			timeout: z.timeout,
 			handoff_timeout: z.handoff_timeout,
-			entry_point: z.entry_point ?? false,
 		};
 	});
 }
@@ -168,7 +166,6 @@ export function parseRoomThresholds(layout: any): ParsedRoomThresholds {
 		roomTimeout: layout?.room_timeout ?? defaults?.timeout ?? 10,
 		roomHandoffTimeout:
 			layout?.room_handoff_timeout ?? defaults?.handoff_timeout ?? 3,
-		roomEntryPoint: layout?.room_entry_point ?? false,
 	};
 }
 

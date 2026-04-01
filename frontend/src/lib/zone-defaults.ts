@@ -6,7 +6,6 @@ export interface ZoneConfig {
 	renew?: number; // 0-9 threshold, 0=disabled, higher=harder
 	timeout?: number; // seconds, if undefined use type default
 	handoff_timeout?: number; // seconds, time for zone to clear after target leaves
-	entry_point?: boolean;
 }
 
 export const ZONE_TYPE_DEFAULTS: Record<
@@ -35,7 +34,6 @@ export interface ZoneThresholds {
 	renew: number;
 	timeout: number;
 	handoffTimeout: number;
-	entryPoint: boolean;
 }
 
 /**
@@ -52,7 +50,6 @@ export function getZoneThresholds(
 	roomRenew: number,
 	roomTimeout: number,
 	roomHandoffTimeout: number,
-	roomEntryPoint: boolean,
 ): ZoneThresholds {
 	if (zid === 0) {
 		const d = ZONE_TYPE_DEFAULTS[roomType] || ZONE_TYPE_DEFAULTS.normal;
@@ -63,14 +60,12 @@ export function getZoneThresholds(
 					renew: roomRenew,
 					timeout: roomTimeout,
 					handoffTimeout: roomHandoffTimeout,
-					entryPoint: roomEntryPoint,
 				}
 			: {
 					trigger: d.trigger,
 					renew: d.renew,
 					timeout: d.timeout,
 					handoffTimeout: d.handoff_timeout,
-					entryPoint: false,
 				};
 	}
 	if (zid > 0 && zid <= zoneConfigs.length) {
@@ -84,14 +79,12 @@ export function getZoneThresholds(
 						renew: cfg.renew ?? d.renew,
 						timeout: cfg.timeout ?? d.timeout,
 						handoffTimeout: cfg.handoff_timeout ?? d.handoff_timeout,
-						entryPoint: cfg.entry_point ?? false,
 					}
 				: {
 						trigger: d.trigger,
 						renew: d.renew,
 						timeout: d.timeout,
 						handoffTimeout: d.handoff_timeout,
-						entryPoint: cfg.type === "entrance",
 					};
 		}
 	}
@@ -100,6 +93,5 @@ export function getZoneThresholds(
 		renew: 3,
 		timeout: 10,
 		handoffTimeout: 3,
-		entryPoint: false,
 	};
 }

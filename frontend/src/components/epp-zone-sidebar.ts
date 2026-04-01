@@ -22,7 +22,6 @@ export class EppZoneSidebar extends LitElement {
 		ZONE_TYPE_DEFAULTS.normal.timeout;
 	@property({ attribute: false }) roomHandoffTimeout: number =
 		ZONE_TYPE_DEFAULTS.normal.handoff_timeout;
-	@property({ attribute: false }) roomEntryPoint = false;
 	@property({ attribute: false }) localZoneState: Map<number, LocalZoneInfo> =
 		new Map();
 	@property({ attribute: false }) localize: (
@@ -580,43 +579,6 @@ export class EppZoneSidebar extends LitElement {
 						>${this.localize("zones.seconds_suffix")}</span
 					>
 				</div>
-				<div
-					style="width: 100%; display: flex; align-items: center; gap: 4px; font-size: 12px; opacity: ${isCustom ? 1 : 0.5};"
-				>
-					<label style="width: 80px; flex-shrink: 0;"
-						>${this.localize("zones.entry_point")}</label
-					>
-					<span style="flex: 1;"></span>
-					<label class="toggle-switch">
-						<input
-							type="checkbox"
-							?checked=${isCustom ? this.roomEntryPoint : false}
-							?disabled=${!isCustom}
-							@change=${(e: Event) => {
-								this.dispatchEvent(
-									new CustomEvent("room-config-change", {
-										detail: {
-											updates: {
-												roomEntryPoint: (e.target as HTMLInputElement).checked,
-											},
-										},
-										bubbles: true,
-										composed: true,
-									}),
-								);
-								this.dispatchEvent(
-									new CustomEvent("dirty", {
-										bubbles: true,
-										composed: true,
-									}),
-								);
-							}}
-							@click=${(e: Event) => e.stopPropagation()}
-						/>
-						<span class="toggle-slider"></span>
-					</label>
-					<span style="width: 10px;"></span>
-				</div>
 			</div>
 		`;
 	}
@@ -846,44 +808,6 @@ export class EppZoneSidebar extends LitElement {
 						style="width: 10px; text-align: right; flex-shrink: 0; font-size: 12px;"
 						>${this.localize("zones.seconds_suffix")}</span
 					>
-				</div>
-				<div
-					style="width: 100%; display: flex; align-items: center; gap: 4px; font-size: 12px; opacity: ${isCustom ? 1 : 0.5};"
-				>
-					<label style="width: 80px; flex-shrink: 0;"
-						>${this.localize("zones.entry_point")}</label
-					>
-					<span style="flex: 1;"></span>
-					<label class="toggle-switch">
-						<input
-							type="checkbox"
-							?checked=${isCustom ? (zone.entry_point ?? false) : zone.type === "entrance"}
-							?disabled=${!isCustom}
-							@change=${(e: Event) => {
-								this.dispatchEvent(
-									new CustomEvent("zone-config-change", {
-										detail: {
-											index,
-											updates: {
-												entry_point: (e.target as HTMLInputElement).checked,
-											},
-										},
-										bubbles: true,
-										composed: true,
-									}),
-								);
-								this.dispatchEvent(
-									new CustomEvent("dirty", {
-										bubbles: true,
-										composed: true,
-									}),
-								);
-							}}
-							@click=${(e: Event) => e.stopPropagation()}
-						/>
-						<span class="toggle-slider"></span>
-					</label>
-					<span style="width: 10px;"></span>
 				</div>
 			</div>
 		`;

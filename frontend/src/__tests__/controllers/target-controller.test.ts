@@ -42,7 +42,6 @@ function mockHost() {
 		_roomRenew: 3,
 		_roomTimeout: 10,
 		_roomHandoffTimeout: 3,
-		_roomEntryPoint: false,
 
 		// Debug log (frontend)
 		_showDebugLog: false,

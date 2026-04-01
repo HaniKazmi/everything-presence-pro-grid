@@ -70,7 +70,6 @@ function makeDefaultParams(
 		roomRenew: 3,
 		roomTimeout: 10,
 		roomHandoffTimeout: 3,
-		roomEntryPoint: false,
 		now: Date.now() / 1000,
 		...overrides,
 	};

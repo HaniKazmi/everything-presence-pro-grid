@@ -475,7 +475,6 @@ export class GridStateController implements ReactiveController {
 				room_renew: this.host._roomRenew,
 				room_timeout: this.host._roomTimeout,
 				room_handoff_timeout: this.host._roomHandoffTimeout,
-				room_entry_point: this.host._roomEntryPoint,
 				zone_slots: (this.host._zoneConfigs as (ZoneConfig | null)[]).map(
 					(z) =>
 						z !== null
@@ -487,7 +486,6 @@ export class GridStateController implements ReactiveController {
 									renew: z.renew,
 									timeout: z.timeout,
 									handoff_timeout: z.handoff_timeout,
-									entry_point: z.entry_point,
 								}
 							: null,
 				),

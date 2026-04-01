@@ -20,7 +20,6 @@ function createSidebar(overrides: Record<string, any> = {}): EppZoneSidebar {
 	el.roomRenew = ZONE_TYPE_DEFAULTS.normal.renew;
 	el.roomTimeout = ZONE_TYPE_DEFAULTS.normal.timeout;
 	el.roomHandoffTimeout = ZONE_TYPE_DEFAULTS.normal.handoff_timeout;
-	el.roomEntryPoint = false;
 	el.localZoneState = new Map();
 	el.localize = (k: string) => k;
 	Object.assign(el, overrides);

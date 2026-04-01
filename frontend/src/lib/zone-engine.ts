@@ -46,7 +46,6 @@ export interface ZoneEngineParams {
 	roomRenew: number;
 	roomTimeout: number;
 	roomHandoffTimeout: number;
-	roomEntryPoint: boolean;
 	staticPresence?: boolean;
 	motionPresence?: boolean;
 	staticTimeout?: number; // seconds
@@ -168,7 +167,6 @@ export function runLocalZoneEngine(
 			params.roomRenew,
 			params.roomTimeout,
 			params.roomHandoffTimeout,
-			params.roomEntryPoint,
 		);
 		const { trigger, renew } = thresholds;
 		const st = state.localZoneState.get(zid);
@@ -229,7 +227,6 @@ export function runLocalZoneEngine(
 				params.roomRenew,
 				params.roomTimeout,
 				params.roomHandoffTimeout,
-				params.roomEntryPoint,
 			);
 			const { timeout, handoffTimeout } = handoffThresholds;
 			srcSt.pendingSince = now - (timeout - handoffTimeout);
@@ -260,7 +257,6 @@ export function runLocalZoneEngine(
 			params.roomRenew,
 			params.roomTimeout,
 			params.roomHandoffTimeout,
-			params.roomEntryPoint,
 		);
 		const { timeout } = zoneThresholds;
 		const confirmed = zoneConfirmed.get(zid) ?? false;
