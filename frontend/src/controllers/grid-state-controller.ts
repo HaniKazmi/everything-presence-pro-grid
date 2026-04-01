@@ -12,6 +12,7 @@ import {
 	createFurnitureItem,
 	type FurnitureItem,
 	type FurnitureSticker,
+	isFurnitureOutsideGrid,
 	removeFurnitureItem,
 	updateFurnitureItem,
 } from "../lib/furniture.js";
@@ -447,6 +448,18 @@ export class GridStateController implements ReactiveController {
 				this.host._zoneConfigs[i] = null;
 			}
 		}
+
+		// Remove furniture completely outside the visible grid
+		const bounds = getRoomBounds(this.host._grid);
+		const roomCols = Math.ceil(this.host._roomWidth / GRID_CELL_MM);
+		const startCol = Math.floor((GRID_COLS - roomCols) / 2);
+		const visMinX = (bounds.minCol - startCol) * GRID_CELL_MM;
+		const visMaxX = (bounds.maxCol + 1 - startCol) * GRID_CELL_MM;
+		const visMinY = bounds.minRow * GRID_CELL_MM;
+		const visMaxY = (bounds.maxRow + 1) * GRID_CELL_MM;
+		this.host._furniture = (this.host._furniture as FurnitureItem[]).filter(
+			(f) => !isFurnitureOutsideGrid(f, visMinX, visMaxX, visMinY, visMaxY),
+		);
 
 		this.host._saving = true;
 		try {

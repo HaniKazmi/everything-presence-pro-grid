@@ -57,6 +57,7 @@ export class EppGrid extends LitElement {
 		.grid-targets-wrapper {
 			position: relative;
 			display: inline-block;
+			overflow: hidden;
 		}
 
 		.grid {
