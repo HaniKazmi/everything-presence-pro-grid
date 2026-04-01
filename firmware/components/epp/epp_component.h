@@ -128,6 +128,7 @@ class EPPComponent : public esphome::Component {
   Grid grid_;
   RollingWindow window_{1000};
   ZoneEngine zone_engine_;
+  bool target_touched_overlay_[MAX_TARGETS]{};
 
   // NVS persistence
   void restore_from_nvs_();

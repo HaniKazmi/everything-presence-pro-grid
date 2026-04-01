@@ -94,7 +94,9 @@ export function runLocalZoneEngine(
 	const targetZoneCurr: (number | null)[] = [null, null, null];
 	const targetLeftRoom: boolean[] = [false, false, false];
 
-	// Snapshot prev cell overlay info before per-target loop clears it
+	// Snapshot prev cell overlay info before per-target loop clears it.
+	// Check the target's cell AND its neighbours — the median position may
+	// land one cell away from the actual overlay cell at the boundary.
 	const targetWasOnOverlay: boolean[] = [false, false, false];
 	const targetPrevZone: (number | null)[] = [null, null, null];
 	for (let i = 0; i < MAX_TARGETS && i < params.targets.length; i++) {
@@ -104,11 +106,22 @@ export function runLocalZoneEngine(
 			if (
 				prevIdx >= 0 &&
 				prevIdx < GRID_CELL_COUNT &&
-				cellIsInside(params.grid[prevIdx]) &&
-				cellHasOverlayEntry(params.grid[prevIdx])
+				cellIsInside(params.grid[prevIdx])
 			) {
-				targetWasOnOverlay[i] = true;
 				targetPrevZone[i] = cellZone(params.grid[prevIdx]);
+				// Check cell and its 8 neighbours for overlay
+				for (let dr = -1; dr <= 1 && !targetWasOnOverlay[i]; dr++) {
+					for (let dc = -1; dc <= 1 && !targetWasOnOverlay[i]; dc++) {
+						const nr = prev.row + dr;
+						const nc = prev.col + dc;
+						if (nr >= 0 && nr < GRID_ROWS && nc >= 0 && nc < GRID_COLS) {
+							const ni = nr * GRID_COLS + nc;
+							if (cellHasOverlayEntry(params.grid[ni])) {
+								targetWasOnOverlay[i] = true;
+							}
+						}
+					}
+				}
 			}
 		}
 	}
@@ -264,7 +277,7 @@ export function runLocalZoneEngine(
 		if ((isGone || targetLeftRoom[i]) && targetWasOnOverlay[i] && targetPrevZone[i] !== null) {
 			const prevZid = targetPrevZone[i] as number;
 			const st = state.localZoneState.get(prevZid);
-			if (st?.occupied && st.pendingSince === null) {
+			if (st?.occupied) {
 				// Check if this target is the only confirmed target remaining
 				let remaining = 0;
 				for (const tid of st.confirmedTargets) {
@@ -280,7 +293,12 @@ export function runLocalZoneEngine(
 						params.roomTimeout,
 						params.roomHandoffTimeout,
 					);
-					st.pendingSince = now - (th.timeout - th.handoffTimeout);
+					const accel = now - (th.timeout - th.handoffTimeout);
+					if (st.pendingSince === null) {
+						st.pendingSince = accel;
+					} else if (st.pendingSince > accel) {
+						st.pendingSince = accel;
+					}
 				}
 			}
 		}

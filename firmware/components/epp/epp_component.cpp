@@ -60,6 +60,28 @@ void EPPComponent::loop() {
     }
   }
 
+  // Stage 2b: Track per-frame overlay cell crossings
+  // The median position may skip over boundary overlay cells, so we check
+  // each raw frame's transformed position directly. The flag is sticky:
+  // set when any frame lands on an overlay cell, cleared when a frame
+  // lands on a non-overlay room cell.
+  for (int i = 0; i < NUM_TARGETS; i++) {
+    if (raw_inputs[i].active) {
+      auto [fx, fy] = transform_.apply(raw_inputs[i].x, raw_inputs[i].y);
+      int cell = grid_.xy_to_cell(fx, fy);
+      if (cell != -1 && grid_.cell_is_room(cell)) {
+        if (grid_.cell_has_overlay_entry(cell)) {
+          target_touched_overlay_[i] = true;
+        } else {
+          target_touched_overlay_[i] = false;
+        }
+      }
+      // If outside room, keep current flag value (sticky until next room cell)
+    } else {
+      // Target inactive — don't clear, let zone engine use the flag
+    }
+  }
+
   // Stage 3: Zone engine tick — uses transformed positions + frame counts
   WindowOutput zone_input;
   zone_input.total_frames = win.total_frames;
@@ -68,6 +90,7 @@ void EPPComponent::loop() {
     zone_input.targets[i].frame_count = win.targets[i].frame_count;
     zone_input.targets[i].median_x = grid_inputs[i].x;
     zone_input.targets[i].median_y = grid_inputs[i].y;
+    zone_input.targets[i].on_overlay = target_touched_overlay_[i];
   }
   // Build sensor input for zone engine
   SensorInput sensor_input;
@@ -370,8 +393,12 @@ void EPPComponent::set_grid(const std::string &grid_data,
   grid_.load_from_bytes(decoded, GRID_CELL_COUNT);
   zone_engine_.set_grid(grid_);
 
-  ESP_LOGI(TAG, "Grid set: origin (%.0f, %.0f), %d cells",
-           origin_x, origin_y, GRID_CELL_COUNT);
+  int overlay_count = 0;
+  for (int i = 0; i < GRID_CELL_COUNT; i++) {
+    if (grid_.cell_has_overlay_entry(i)) overlay_count++;
+  }
+  ESP_LOGI(TAG, "Grid set: origin (%.0f, %.0f), %d cells, %d overlay",
+           origin_x, origin_y, GRID_CELL_COUNT, overlay_count);
 
   save_grid_to_nvs_();
 }

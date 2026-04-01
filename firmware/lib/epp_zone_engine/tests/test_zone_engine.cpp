@@ -686,11 +686,16 @@ TEST_CASE("overlay exit accelerates pending clear") {
     // Zone 1 cell (9,1) already has overlay entry bit in make_parity_grid()
 
     // Tick 1: target in zone 1, confirmed (trigger=3, overlay bypasses gating)
-    const ProcessingResult& r1 = engine.tick(make_window_1(X_OFF + 450, 450, 5), 100.0f);
+    // on_overlay=true: raw frame touched the overlay cell
+    WindowOutput wo1 = make_window_1(X_OFF + 450, 450, 5);
+    wo1.targets[0].on_overlay = true;
+    const ProcessingResult& r1 = engine.tick(wo1, 100.0f);
     CHECK(r1.zone_occupancy[1]);
 
-    // Tick 2: target disappears — overlay exit → handoff_timeout=1s
-    engine.tick(make_window_0(), 101.0f);
+    // Tick 2: target disappears — on_overlay still sticky from component
+    WindowOutput wo2 = make_window_0();
+    wo2.targets[0].on_overlay = true;
+    engine.tick(wo2, 101.0f);
 
     // Tick 3: 1.5s after disappearance — should have cleared (handoff=1s)
     const ProcessingResult& r3 = engine.tick(make_window_0(), 102.5f);
