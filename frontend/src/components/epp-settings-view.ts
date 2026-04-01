@@ -558,7 +558,8 @@ export class EppSettingsView extends LitElement {
 			isOn("target_xy", false) ||
 			isOn("target_active", false) ||
 			isOn("target_signal", false) ||
-			isOn("target_zone", false);
+			isOn("target_zone", false) ||
+			isOn("target_count", false);
 
 		const RATE_OPTIONS = [
 			{ value: "200", label: "5 Hz" },

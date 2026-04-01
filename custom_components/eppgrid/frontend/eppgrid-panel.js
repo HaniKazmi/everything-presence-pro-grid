@@ -1264,7 +1264,7 @@ const dt={attribute:!0,type:String,converter:b,reflect:!1,hasChanged:y},ut=(t=dt
           ${this.renderEnvOffset(this.localize("settings.temperature_offset"),this.sensorState.temperature,"temperature",-20,20,.1,"°C",1,this.localize("info.temperature_offset"))}
         </div>
       </div>
-    `}renderEntities(){const t=this.entitiesConfig||{},e=this._overrides.entities||{},i=(i,o)=>e[i]??t[i]??o,o=t=>{const e=t.target,i=e.dataset.entityKey;this._overrides.entities||(this._overrides.entities={}),this._overrides.entities[i]=e.checked,this._fireDirty()},s=this._overrides,r=i("zone_presence",!0)||i("zone_target_count",!1),n=i("target_xy",!1)||i("target_active",!1)||i("target_signal",!1)||i("target_zone",!1),a=[{value:"200",label:"5 Hz"},{value:"500",label:"2 Hz"},{value:"1000",label:"1 Hz"},{value:"2000",label:"0.5 Hz"}];return G`
+    `}renderEntities(){const t=this.entitiesConfig||{},e=this._overrides.entities||{},i=(i,o)=>e[i]??t[i]??o,o=t=>{const e=t.target,i=e.dataset.entityKey;this._overrides.entities||(this._overrides.entities={}),this._overrides.entities[i]=e.checked,this._fireDirty()},s=this._overrides,r=i("zone_presence",!0)||i("zone_target_count",!1),n=i("target_xy",!1)||i("target_active",!1)||i("target_signal",!1)||i("target_zone",!1)||i("target_count",!1),a=[{value:"200",label:"5 Hz"},{value:"500",label:"2 Hz"},{value:"1000",label:"1 Hz"},{value:"2000",label:"0.5 Hz"}];return G`
       <div class="settings-section">
         <div class="setting-group">
           <h4>${this.localize("entities.room_level")}</h4>

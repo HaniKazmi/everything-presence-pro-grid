@@ -64,12 +64,11 @@ All entities are created by ESPHome firmware with `disabled_by_default` where ap
 | Illuminance | sensor | BH1750 + calibration offset |
 | Motion Presence | binary_sensor | zone engine processed (active/pending = on, inactive = off) |
 | Static Presence | binary_sensor | zone engine processed (active/pending = on, inactive = off) |
+| Target Presence | binary_sensor | zone engine device-level tracking |
 | Tracking Presence | binary_sensor | LD2450 any-target-detected |
-| mmWave Presence | binary_sensor | static OR tracking combined |
 | Zone 0-7 Presence | binary_sensor | zone engine per-zone state |
-| Zone Tracking | binary_sensor | zone engine device-level tracking |
-| Target 0-2 Position | text_sensor | "x,y,status" post-transform |
-| Raw Target 0-2 | text_sensor | "x,y" pre-transform (sensor-space) |
+| Target 1-3 Position | text_sensor | "x,y,status" post-transform |
+| Raw Target 1-3 | text_sensor | "x,y" pre-transform (sensor-space) |
 | Zone State | text_sensor | JSON with zone engine tick results |
 | Target 1-3 X | sensor (mm) | per-target X position post-transform |
 | Target 1-3 Y | sensor (mm) | per-target Y position post-transform |
@@ -245,8 +244,8 @@ Saves all device settings (offsets, timeouts, distances, thresholds, LED, relay,
 
 | Key | Type | Valid values | Description |
 |-----|------|-------------|-------------|
-| `target_update_rate_ms` | int | 200, 500, 1000, 2000 | Target entity sensor publish rate (stored in pipeline) |
-| `zone_update_rate_ms` | int | 200, 500, 1000, 2000 | Zone entity sensor publish rate (stored in pipeline) |
+| `target_update_rate_ms` | int | 200, 500, 1000, 2000 | Target entity sensor publish rate (stored in `settings.target_update_rate_ms`) |
+| `zone_update_rate_ms` | int | 200, 500, 1000, 2000 | Zone entity sensor publish rate (stored in `settings.zone_update_rate_ms`) |
 
 **Entity toggle keys (within `entities` dict) — additions:**
 
@@ -269,15 +268,15 @@ Pushes tracking + static presence ranges to firmware via session without persist
 
 Saves and pushes all publish intervals and window duration.
 
-**Request:** `{ "type": "eppgrid/set_pipeline", "mac": str, "entity_target_interval_ms": int, "entity_zone_interval_ms": int, "display_interval_ms": int, "zone_state_interval_ms": int, "window_duration_ms": int }`
+**Request:** `{ "type": "eppgrid/set_pipeline", "mac": str, "entity_target_interval": int, "entity_zone_interval": int, "display_interval": int, "zone_state_interval": int, "window_duration": int }`
 
 | Parameter | Description |
 |-----------|-------------|
-| `entity_target_interval_ms` | Publish interval for target entity sensors (X, Y, signal, active, zone, target_count) |
-| `entity_zone_interval_ms` | Publish interval for zone entity sensors (presence, target_count per zone) |
-| `display_interval_ms` | Publish interval for raw + grid text sensor streams (frontend only) |
-| `zone_state_interval_ms` | Publish interval for zone state JSON text sensor (frontend only) |
-| `window_duration_ms` | Rolling median window duration |
+| `entity_target_interval` | Publish interval for target entity sensors (X, Y, signal, active, zone, target_count) |
+| `entity_zone_interval` | Publish interval for zone entity sensors (presence, target_count per zone) |
+| `display_interval` | Publish interval for raw + grid text sensor streams (frontend only) |
+| `zone_state_interval` | Publish interval for zone state JSON text sensor (frontend only) |
+| `window_duration` | Rolling median window duration |
 
 ### Template Commands
 

@@ -905,6 +905,21 @@ async def websocket_set_settings(
         new_settings["target_update_rate_ms"] = msg["target_update_rate_ms"]
     if "zone_update_rate_ms" in msg:
         new_settings["zone_update_rate_ms"] = msg["zone_update_rate_ms"]
+    # Persist entity flags before push so _push_config_to_device sees correct flags
+    entities = msg.get("entities")
+    if entities:
+        persisted_entity_keys = (
+            "zone_presence",
+            "target_xy",
+            "target_active",
+            "target_signal",
+            "target_zone",
+            "zone_target_count",
+            "target_count",
+        )
+        for ekey in persisted_entity_keys:
+            if ekey in entities:
+                device_config.setdefault("settings", {})[ekey] = entities[ekey]
     log_levels = msg.get("log_levels")
     if log_levels is not None:
         device_config["log_levels"] = log_levels
@@ -919,25 +934,7 @@ async def websocket_set_settings(
     session_conn = manager.get_session(mac)
     if session_conn is not None:
         manager._manage_log_subscription(session_conn, device_config)
-    entities = msg.get("entities")
     if entities:
-        # Persist entity flags in stored settings so they survive reconnect/discovery
-        persisted_entity_keys = (
-            "zone_presence",
-            "target_xy",
-            "target_active",
-            "target_signal",
-            "target_zone",
-            "zone_target_count",
-            "target_count",
-        )
-        settings_changed = False
-        for ekey in persisted_entity_keys:
-            if ekey in entities:
-                device_config.setdefault("settings", {})[ekey] = entities[ekey]
-                settings_changed = True
-        if settings_changed:
-            await manager._store.async_save()
         _apply_entity_states(hass, mac, entities)
         # Zone entities need layout-aware handling: enable zone_0 + named zones only
         if "zone_presence" in entities or "zone_target_count" in entities:
@@ -1044,7 +1041,7 @@ async def websocket_set_pipeline(
         "window_duration": msg["window_duration"],
     }
     await manager._store.async_save()
-    await manager._push_config_to_device(mac)
+    await manager._push_pipeline_to_device(mac)
     connection.send_result(msg["id"])
 
 
