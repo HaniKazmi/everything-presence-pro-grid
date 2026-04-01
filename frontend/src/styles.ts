@@ -424,7 +424,6 @@ export const layoutStyles = css`
   .zone-sidebar {
     width: 240px;
     flex-shrink: 0;
-    max-height: 70vh;
     background: var(--card-background-color, #fff);
     border-left: 1px solid var(--divider-color, #e0e0e0);
     padding: 12px;
@@ -432,6 +431,10 @@ export const layoutStyles = css`
     flex-direction: column;
     gap: 6px;
     overflow: visible;
+  }
+
+  .zone-sidebar.scrollable {
+    max-height: 70vh;
   }
 
   .sidebar-title {

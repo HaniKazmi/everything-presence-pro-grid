@@ -12,6 +12,7 @@ import {
 	createFurnitureItem,
 	type FurnitureItem,
 	type FurnitureSticker,
+	isFurnitureOutsideGrid,
 	removeFurnitureItem,
 	updateFurnitureItem,
 } from "../lib/furniture.js";
@@ -448,6 +449,21 @@ export class GridStateController implements ReactiveController {
 			}
 		}
 
+		// Filter furniture completely outside the visible grid
+		const bounds = getRoomBounds(this.host._grid);
+		let filteredFurniture = this.host._furniture as FurnitureItem[];
+		if (bounds.minCol <= bounds.maxCol && bounds.minRow <= bounds.maxRow) {
+			const roomCols = Math.ceil(this.host._roomWidth / GRID_CELL_MM);
+			const startCol = Math.floor((GRID_COLS - roomCols) / 2);
+			const visMinX = (bounds.minCol - startCol) * GRID_CELL_MM;
+			const visMaxX = (bounds.maxCol + 1 - startCol) * GRID_CELL_MM;
+			const visMinY = bounds.minRow * GRID_CELL_MM;
+			const visMaxY = (bounds.maxRow + 1) * GRID_CELL_MM;
+			filteredFurniture = filteredFurniture.filter(
+				(f) => !isFurnitureOutsideGrid(f, visMinX, visMaxX, visMinY, visMaxY),
+			);
+		}
+
 		this.host._saving = true;
 		try {
 			await this.host.hass.callWS({
@@ -475,7 +491,7 @@ export class GridStateController implements ReactiveController {
 								}
 							: null,
 				),
-				furniture: (this.host._furniture as FurnitureItem[]).map((f) => ({
+				furniture: filteredFurniture.map((f) => ({
 					type: f.type,
 					icon: f.icon,
 					label: f.label,
@@ -487,6 +503,8 @@ export class GridStateController implements ReactiveController {
 					lockAspect: f.lockAspect,
 				})),
 			});
+			// Commit filtered furniture to panel state after successful save
+			this.host._furniture = filteredFurniture;
 			// Save settings after layout — only needed when auto distances
 			// may have changed; manual distances don't change with layout.
 			if (this.host._targetAutoDistance || this.host._staticAutoDistance) {
@@ -535,6 +553,7 @@ export class GridStateController implements ReactiveController {
 				});
 			}
 			this.host._dirty = false;
+			this.host._selectedFurnitureId = null;
 			this.host._view = "live";
 		} finally {
 			this.host._saving = false;

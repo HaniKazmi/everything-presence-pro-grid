@@ -833,8 +833,9 @@ describe("_applyLayout zone/furniture serialization", () => {
 			handoff_timeout: 5,
 			entry_point: true,
 		};
-		// Paint a cell with zone 1 so it doesn't get pruned
-		a._grid[0] = 0x03; // CELL_ROOM_BIT | (1 << CELL_ZONE_SHIFT)
+		// Set up a proper room grid and paint a cell with zone 1 so it doesn't get pruned
+		a._grid = initGridFromRoom(3000, 4000);
+		a._grid[5 * GRID_COLS + 5] = 0x03; // CELL_ROOM_BIT | (1 << CELL_ZONE_SHIFT)
 		a._furniture = [
 			{
 				id: "f1",
@@ -866,6 +867,61 @@ describe("_applyLayout zone/furniture serialization", () => {
 		);
 		expect(call.furniture).toHaveLength(1);
 		expect(call.furniture[0].rotation).toBe(45);
+	});
+});
+
+describe("_applyLayout removes furniture outside grid", () => {
+	it("excludes furniture completely outside the visible grid bounds", async () => {
+		const a = createPanel() as any;
+		a._selectedMac = "AA:BB:CC:DD:EE:01";
+		a._dirty = true;
+		// Set up a small 2x2 room in the grid (cols 9-10, rows 0-1)
+		a._grid = new Uint8Array(GRID_CELL_COUNT);
+		a._grid[9] = CELL_ROOM_BIT;
+		a._grid[10] = CELL_ROOM_BIT;
+		a._grid[9 + GRID_COLS] = CELL_ROOM_BIT;
+		a._grid[10 + GRID_COLS] = CELL_ROOM_BIT;
+		a._roomWidth = 600; // 2 cells
+		a._roomDepth = 600;
+		a._furniture = [
+			{
+				id: "inside",
+				type: "svg",
+				icon: "armchair",
+				label: "Inside",
+				x: 0,
+				y: 0,
+				width: 300,
+				height: 300,
+				rotation: 0,
+				lockAspect: false,
+			},
+			{
+				id: "outside",
+				type: "svg",
+				icon: "bed-double",
+				label: "Outside",
+				x: 5000,
+				y: 5000,
+				width: 600,
+				height: 600,
+				rotation: 0,
+				lockAspect: false,
+			},
+		];
+
+		a.hass = {
+			callWS: vi.fn().mockResolvedValue({}),
+		};
+
+		await a._applyLayout();
+
+		const call = a.hass.callWS.mock.calls[0][0];
+		expect(call.furniture).toHaveLength(1);
+		expect(call.furniture[0].icon).toBe("armchair");
+		// Also verify panel state was updated
+		expect(a._furniture).toHaveLength(1);
+		expect(a._furniture[0].id).toBe("inside");
 	});
 });
 

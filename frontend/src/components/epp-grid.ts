@@ -59,6 +59,10 @@ export class EppGrid extends LitElement {
 			display: inline-block;
 		}
 
+		:host(:not([editable])) .grid-targets-wrapper {
+			overflow: hidden;
+		}
+
 		.grid {
 			display: grid;
 			gap: 1px;

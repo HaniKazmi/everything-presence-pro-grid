@@ -475,6 +475,18 @@ export class EppSettingsView extends LitElement {
         <div class="setting-group">
           <h4>${this.localize("settings.static_sensor")}</h4>
           <div class="setting-row">
+            <label>${this.localize("settings.presence_delay")}</label>
+            <span class="setting-input-unit"><input type="range" class="setting-range" .value=${String(this.staticOnDelay)} min="0" max="30" step="0.5" @input=${(
+							e: Event,
+						) => {
+							const el = e.target as HTMLInputElement;
+							this._overrides.staticOnDelay = Number(el.value);
+							this._setText(el.nextElementSibling!, el.value);
+							this._fireDirty();
+						}} /><span class="setting-value">${this.staticOnDelay}</span><span class="setting-unit">s</span></span>
+            ${this.resetBtn(0, "staticOnDelay")}${this.infoTip(this.localize("info.presence_delay"))}
+          </div>
+          <div class="setting-row">
             <label>${this.localize("settings.presence_timeout")}</label>
             <span class="setting-input-unit"><input type="range" class="setting-range" .value=${String(this.staticTimeout)} min="0" max="120" step="1" @input=${(
 							e: Event,
@@ -509,18 +521,6 @@ export class EppSettingsView extends LitElement {
 							this._fireDirty();
 						}} /><span class="setting-value">${this.staticRenewThreshold}</span><span class="setting-unit"></span></span>
             ${this.resetBtn(3, "staticRenewThreshold")}${this.infoTip(this.localize("info.renew_threshold"))}
-          </div>
-          <div class="setting-row">
-            <label>${this.localize("settings.presence_delay")}</label>
-            <span class="setting-input-unit"><input type="range" class="setting-range" .value=${String(this.staticOnDelay)} min="0" max="30" step="0.5" @input=${(
-							e: Event,
-						) => {
-							const el = e.target as HTMLInputElement;
-							this._overrides.staticOnDelay = Number(el.value);
-							this._setText(el.nextElementSibling!, el.value);
-							this._fireDirty();
-						}} /><span class="setting-value">${this.staticOnDelay}</span><span class="setting-unit">s</span></span>
-            ${this.resetBtn(0, "staticOnDelay")}${this.infoTip(this.localize("info.presence_delay"))}
           </div>
         </div>
         <div class="setting-group">

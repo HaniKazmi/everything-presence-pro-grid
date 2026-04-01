@@ -205,6 +205,27 @@ export function computeFurnitureResize(
 }
 
 /**
+ * Check whether a furniture item is completely outside the visible grid bounds.
+ *
+ * Returns true when the item's bounding box has zero overlap with the
+ * grid area defined by [minX, maxX) x [minY, maxY).
+ */
+export function isFurnitureOutsideGrid(
+	item: Pick<FurnitureItem, "x" | "y" | "width" | "height">,
+	minX: number,
+	maxX: number,
+	minY: number,
+	maxY: number,
+): boolean {
+	return (
+		item.x + item.width <= minX ||
+		item.x >= maxX ||
+		item.y + item.height <= minY ||
+		item.y >= maxY
+	);
+}
+
+/**
  * Compute the new rotation angle for a furniture item being rotated.
  *
  * @param origRotation Original rotation in degrees
