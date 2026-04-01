@@ -1652,10 +1652,13 @@ describe("LED settings section", () => {
 		const tpl = sv.render();
 		const c = renderTo(tpl);
 
-		const options = c.querySelectorAll(".led-mode-option");
-		const texts = Array.from(options).map((o) => o.textContent?.trim());
-		expect(texts).not.toContain("settings.environmental");
-		expect(texts).not.toContain("settings.environmental_presence");
+		const select = c.querySelector("ha-select.led-mode-select") as any;
+		expect(select).not.toBeNull();
+		const values = (select.options as { value: string }[]).map(
+			(o: { value: string }) => o.value,
+		);
+		expect(values).not.toContain("Environmental");
+		expect(values).not.toContain("Environmental + Presence");
 		document.body.removeChild(c);
 	});
 
@@ -1667,10 +1670,13 @@ describe("LED settings section", () => {
 		const tpl = sv.render();
 		const c = renderTo(tpl);
 
-		const options = c.querySelectorAll(".led-mode-option");
-		const texts = Array.from(options).map((o) => o.textContent?.trim());
-		expect(texts).toContain("settings.environmental");
-		expect(texts).toContain("settings.environmental_presence");
+		const select = c.querySelector("ha-select.led-mode-select") as any;
+		expect(select).not.toBeNull();
+		const values = (select.options as { value: string }[]).map(
+			(o: { value: string }) => o.value,
+		);
+		expect(values).toContain("Environmental");
+		expect(values).toContain("Environmental + Presence");
 		document.body.removeChild(c);
 	});
 

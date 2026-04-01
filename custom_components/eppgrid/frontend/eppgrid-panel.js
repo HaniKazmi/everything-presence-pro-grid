@@ -1351,8 +1351,7 @@ const dt={attribute:!0,type:String,converter:b,reflect:!1,hasChanged:y},ut=(t=dt
           <h4>${this.localize("settings.led")}</h4>
           <div class="setting-row">
             <label>${this.localize("settings.led_mode")}</label>
-            <ha-select class="led-mode-select" .value=${t} @selected=${t=>{const e=t.target.value;e&&(this._overrides.ledMode=e,this._fireDirty(),this.requestUpdate())}} @closed=${t=>t.stopPropagation()}>
-              ${i.map(t=>G`<mwc-list-item class="led-mode-option" .value=${t.value}>${t.label}</mwc-list-item>`)}
+            <ha-select class="led-mode-select" .value=${t} .options=${i} @selected=${t=>{const e=t.detail.value;e&&(this._overrides.ledMode=e,this._fireDirty(),this.requestUpdate())}} @closed=${t=>t.stopPropagation()}>
             </ha-select>
             ${this.infoTip(this.localize("info.led_mode"))}
           </div>

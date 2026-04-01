@@ -821,17 +821,16 @@ export class EppSettingsView extends LitElement {
           <h4>${this.localize("settings.led")}</h4>
           <div class="setting-row">
             <label>${this.localize("settings.led_mode")}</label>
-            <ha-select class="led-mode-select" .value=${mode} @selected=${(
-							e: Event,
+            <ha-select class="led-mode-select" .value=${mode} .options=${modes} @selected=${(
+							e: CustomEvent<{ value: string }>,
 						) => {
-							const val = (e.target as any).value;
+							const val = e.detail.value;
 							if (val) {
 								this._overrides.ledMode = val;
 								this._fireDirty();
 								this.requestUpdate();
 							}
 						}} @closed=${(e: Event) => e.stopPropagation()}>
-              ${modes.map((m) => html`<mwc-list-item class="led-mode-option" .value=${m.value}>${m.label}</mwc-list-item>`)}
             </ha-select>
             ${this.infoTip(this.localize("info.led_mode"))}
           </div>
