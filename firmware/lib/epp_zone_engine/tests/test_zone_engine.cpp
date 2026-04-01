@@ -600,29 +600,32 @@ TEST_CASE("force-clear: pending zones cleared when sensors inactive and no activ
     ZoneEngine engine = make_parity_engine();
     float t = 100.0f;
     SensorInput sensors;
-    // Use short sensor timeouts (1s) so they expire well before zone timeout (5s)
+    // Use short sensor timeouts (1s) so they expire well before zone timeout (10s)
     sensors.static_on = true;
     sensors.static_timeout = 1.0f;
     sensors.motion_on = true;
     sensors.motion_timeout = 1.0f;
 
-    // Occupy zone 1 with target + sensors active
-    engine.tick(make_window_1(X_OFF + 450, 450, 5), t, sensors);
+    // Use zone 0 (normal, no overlay, timeout=10s, handoff=3s) to avoid
+    // overlay exit handoff which would accelerate the pending timeout.
+    // Need 2 gating ticks to confirm zone 0.
+    engine.tick(make_window_1(X_OFF + 150, 150, 7), t, sensors);
+    engine.tick(make_window_1(X_OFF + 150, 150, 7), t + 0.5f, sensors);
 
-    // Target disappears at t+1, zone 1 goes PENDING_CLEAR (timeout=5s, expires at t+6)
+    // Target disappears at t+1, zone 0 goes PENDING_CLEAR (timeout=10s, expires at t+11)
     const ProcessingResult& r1 = engine.tick(make_window_0(), t + 1.0f, sensors);
-    CHECK(r1.zone_occupancy[1]);  // still occupied (pending)
+    CHECK(r1.zone_occupancy[0]);  // still occupied (pending)
 
     // Sensors go off at t+2 -> both pending (1s timeout)
     sensors.static_on = false;
     sensors.motion_on = false;
     const ProcessingResult& r2 = engine.tick(make_window_0(), t + 2.0f, sensors);
-    CHECK(r2.zone_occupancy[1]);  // sensors pending, zone still pending
+    CHECK(r2.zone_occupancy[0]);  // sensors pending, zone still pending
 
-    // At t+3.5: sensors expired (1s from t+2), zone still has 2.5s left on its timeout
+    // At t+3.5: sensors expired (1s from t+2), zone still has 7.5s left on its timeout
     // Force-clear should fire and clear the zone immediately
     const ProcessingResult& r3 = engine.tick(make_window_0(), t + 3.5f, sensors);
-    CHECK_FALSE(r3.zone_occupancy[1]);  // force-cleared before zone timeout!
+    CHECK_FALSE(r3.zone_occupancy[0]);  // force-cleared before zone timeout!
 }
 
 TEST_CASE("force-clear: does NOT clear if a zone has active targets") {
@@ -676,6 +679,50 @@ TEST_CASE("occupancy: true when zone occupied even if sensors inactive") {
     const ProcessingResult& r = engine.tick(make_window_1(X_OFF + 450, 450, 5), 100.0f, sensors);
     CHECK(r.zone_occupancy[1]);
     CHECK(r.occupancy);  // zone occupied -> occupancy true
+}
+
+TEST_CASE("overlay exit accelerates pending clear") {
+    ZoneEngine engine = make_parity_engine();
+    // Zone 1 cell (9,1) already has overlay entry bit in make_parity_grid()
+
+    // Tick 1: target in zone 1, confirmed (trigger=3, overlay bypasses gating)
+    const ProcessingResult& r1 = engine.tick(make_window_1(X_OFF + 450, 450, 5), 100.0f);
+    CHECK(r1.zone_occupancy[1]);
+
+    // Tick 2: target disappears — overlay exit → handoff_timeout=1s
+    engine.tick(make_window_0(), 101.0f);
+
+    // Tick 3: 1.5s after disappearance — should have cleared (handoff=1s)
+    const ProcessingResult& r3 = engine.tick(make_window_0(), 102.5f);
+    CHECK_FALSE(r3.zone_occupancy[1]);
+}
+
+TEST_CASE("non-overlay exit uses full timeout") {
+    ZoneEngine engine = make_parity_engine();
+    // Remove overlay from zone 1 cell so it behaves normally
+    Grid grid = engine.grid();
+    int cell_idx = 1 * GRID_COLS + 9;
+    grid.cell(cell_idx) = grid.cell(cell_idx) & ~CELL_OVERLAY_ENTRY;
+    engine.set_grid(grid);
+
+    // Zone 0 (normal: timeout=10, handoff=3). No overlay.
+    // Need 2 gating ticks to confirm zone 0.
+    float t = 100.0f;
+    const ProcessingResult& r1 = engine.tick(make_window_1(X_OFF + 150, 150, 7), t);
+    CHECK_FALSE(r1.zone_occupancy[0]);
+    const ProcessingResult& r2 = engine.tick(make_window_1(X_OFF + 150, 150, 7), t + 1.0f);
+    CHECK(r2.zone_occupancy[0]);
+
+    // Target disappears — no overlay → full timeout (10s)
+    engine.tick(make_window_0(), t + 2.0f);
+
+    // 5s later — should still be occupied (timeout=10s)
+    const ProcessingResult& r4 = engine.tick(make_window_0(), t + 7.0f);
+    CHECK(r4.zone_occupancy[0]);  // still pending
+
+    // 12s later — should clear
+    const ProcessingResult& r5 = engine.tick(make_window_0(), t + 14.0f);
+    CHECK_FALSE(r5.zone_occupancy[0]);
 }
 
 TEST_CASE("zone_target_counts reports number of targets, not signal") {

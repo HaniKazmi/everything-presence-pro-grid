@@ -329,9 +329,11 @@ TEST_CASE("log: force-clear produces info log") {
     sensors.motion_on = true;
     sensors.motion_timeout = 1.0f;
 
-    // Occupy zone 1, sensors active
-    engine.tick(make_window_1(X_OFF + 450, 450, 5), t, sensors);
-    // Target disappears → zone pending
+    // Use zone 0 (no overlay, timeout=10s) to avoid overlay exit handoff
+    // accelerating the pending timeout. Need 2 gating ticks to confirm.
+    engine.tick(make_window_1(X_OFF + 150, 150, 7), t, sensors);
+    engine.tick(make_window_1(X_OFF + 150, 150, 7), t + 0.5f, sensors);
+    // Target disappears → zone 0 pending
     engine.tick(make_window_0(), t + 1.0f, sensors);
     // Sensors off
     sensors.static_on = false;
@@ -339,7 +341,7 @@ TEST_CASE("log: force-clear produces info log") {
     engine.tick(make_window_0(), t + 2.0f, sensors);
     // Sensors expired → force-clear fires
     const ProcessingResult& r = engine.tick(make_window_0(), t + 3.5f, sensors);
-    CHECK_FALSE(r.zone_occupancy[1]);
+    CHECK_FALSE(r.zone_occupancy[0]);
     CHECK(has_info(r, "force-clear"));
 }
 

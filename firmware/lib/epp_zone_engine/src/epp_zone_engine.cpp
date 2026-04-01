@@ -153,6 +153,22 @@ const ProcessingResult& ZoneEngine::tick(const WindowOutput& window, float times
     bool target_in_room[MAX_TARGETS]{};
     for (int i = 0; i < MAX_TARGETS; ++i) target_confirmed_zone[i] = -1;
 
+    // Snapshot prev cell overlay info before per-target loop clears it
+    bool target_was_on_overlay[MAX_TARGETS]{};
+    int target_prev_zone[MAX_TARGETS];
+    for (int i = 0; i < MAX_TARGETS; ++i) {
+        target_prev_zone[i] = -1;
+        if (target_has_prev_[i]) {
+            float prev_cx = grid_.origin_x() + target_prev_col_[i] * grid_.cell_size() + grid_.cell_size() / 2.0f;
+            float prev_cy = grid_.origin_y() + target_prev_row_[i] * grid_.cell_size() + grid_.cell_size() / 2.0f;
+            int prev_cell = grid_.xy_to_cell(prev_cx, prev_cy);
+            if (prev_cell != -1 && grid_.cell_has_overlay_entry(prev_cell)) {
+                target_was_on_overlay[i] = true;
+                target_prev_zone[i] = grid_.cell_zone(prev_cell);
+            }
+        }
+    }
+
     // -----------------------------------------------------------------------
     // Step 1: Per-target evaluation (Python lines 510-604)
     // -----------------------------------------------------------------------
@@ -352,6 +368,28 @@ const ProcessingResult& ZoneEngine::tick(const WindowOutput& window, float times
             if (src_rt.confirmed_targets == 0 && src_rt.state == ZoneState::OCCUPIED) {
                 src_rt.state = ZoneState::PENDING_CLEAR;
                 src_rt.pending_since = timestamp - (src_rt.config.timeout - src_rt.config.handoff_timeout);
+            }
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // Step 2b: Overlay exit handoff — target disappears from overlay cell
+    // When the last confirmed target goes inactive from an overlay cell,
+    // accelerate the pending clear to use handoff_timeout instead of timeout.
+    // We keep confirmed_targets intact so the target renders as PENDING.
+    // -----------------------------------------------------------------------
+    for (int i = 0; i < MAX_TARGETS; ++i) {
+        if (!target_active[i] && target_was_on_overlay[i]) {
+            int prev_zid = target_prev_zone[i];
+            int zi = find_zone_index(prev_zid);
+            if (zi >= 0) {
+                ZoneRuntime& rt = zones_[zi];
+                // Check if this target is the only confirmed target remaining
+                int remaining = rt.confirmed_targets & ~(1 << i);
+                if (remaining == 0 && rt.state == ZoneState::OCCUPIED) {
+                    rt.state = ZoneState::PENDING_CLEAR;
+                    rt.pending_since = timestamp - (rt.config.timeout - rt.config.handoff_timeout);
+                }
             }
         }
     }

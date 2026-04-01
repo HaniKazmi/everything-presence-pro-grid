@@ -361,6 +361,24 @@
           "targets": [{"status": "active"}]
         }
       ]
+    },
+    "test_overlay_exit_handoff": {
+      "ticks": [
+        {"t": 100.0, "targets": [{"x": 2850, "y": 450, "frames": 5}]},
+        {"t": 101.0, "targets": []},
+        {"t": 102.5, "targets": []}
+      ],
+      "expected": [
+        {
+          "zone_occupancy": {"1": true}
+        },
+        {
+          "zone_occupancy": {"1": true}
+        },
+        {
+          "zone_occupancy": {"1": false}
+        }
+      ]
     }
   }
 }
