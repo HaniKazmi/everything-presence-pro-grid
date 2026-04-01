@@ -136,6 +136,16 @@
 		"manual_control": "Manual Control",
 		"presence": "Presence",
 		"environmental_presence": "Environmental + Presence"
+		"relay": "Relay",
+		"relay_trigger_mode": "Trigger Mode",
+		"relay_contact_mode": "Contact Mode",
+		"relay_disabled": "Disabled",
+		"relay_manual": "Manual",
+		"relay_motion": "Motion Only",
+		"relay_presence": "Presence Only",
+		"relay_motion_or_presence": "Motion or Presence",
+		"relay_normally_open": "Normally Open (NO)",
+		"relay_normally_closed": "Normally Closed (NC)"
 	},
 	"sidebar": {
 		"detection_zones": "Detection zones",

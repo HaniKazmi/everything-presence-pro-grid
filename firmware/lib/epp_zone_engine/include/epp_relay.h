@@ -49,7 +49,7 @@ inline RelayEvalResult evaluate_relay(const RelayEvalInput &input) {
             activate = input.motion_active || input.occupancy;
             break;
         default:
-            break;
+            return {true, false};
     }
 
     bool desired = (input.contact_mode == RelayContactMode::NORMALLY_OPEN)

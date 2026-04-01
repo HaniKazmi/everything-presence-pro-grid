@@ -841,9 +841,13 @@ async def websocket_set_settings(
     if log_levels is not None:
         device_config["log_levels"] = log_levels
     await manager._store.async_save()
-    relay_enabled = msg["relay_trigger_mode"] != "disabled"
-    _apply_entity_states(hass, mac, {"relay_output": relay_enabled})
     push_ok = await manager._push_config_to_device(mac)
+    # Auto-enable/disable relay switch entity based on trigger mode
+    relay_enabled = msg["relay_trigger_mode"] != "disabled"
+    if push_ok:
+        manager._entity_update_macs.add(mac)
+        hass.loop.call_later(60, manager._entity_update_macs.discard, mac)
+    _apply_entity_states(hass, mac, {"relay_output": relay_enabled})
     # Manage device log subscription on the active session (if any)
     session_conn = manager.get_session(mac)
     if session_conn is not None:

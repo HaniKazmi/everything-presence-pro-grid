@@ -65,3 +65,9 @@ TEST_CASE("motion_or_presence NC: inverted") {
     CHECK(r.should_update == true);
     CHECK(r.desired_state == true);
 }
+
+TEST_CASE("unknown trigger mode: fail safe to off") {
+    auto r = evaluate_relay({static_cast<RelayTriggerMode>(99), RelayContactMode::NORMALLY_CLOSED, true, true});
+    CHECK(r.should_update == true);
+    CHECK(r.desired_state == false);
+}

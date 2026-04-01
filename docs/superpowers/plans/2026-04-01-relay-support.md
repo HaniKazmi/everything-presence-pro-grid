@@ -772,7 +772,7 @@ struct RelayEvalInput {
 };
 
 struct RelayEvalResult {
-    bool should_update;    // false for manual/disabled — caller should not touch relay
+    bool should_update;    // false for manual mode — caller should not touch relay; true for disabled/auto modes
     bool desired_state;    // only meaningful when should_update is true
 };
 

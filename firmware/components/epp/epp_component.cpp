@@ -461,12 +461,22 @@ void EPPComponent::restore_from_nvs_() {
   // Restore relay settings
   uint8_t relay_trig = 0;
   if (nvs_get_u8(handle, "relay_trig", &relay_trig) == ESP_OK) {
-    relay_trigger_mode_ = static_cast<RelayTriggerMode>(relay_trig);
+    if (relay_trig <= static_cast<uint8_t>(RelayTriggerMode::MOTION_OR_PRESENCE)) {
+      relay_trigger_mode_ = static_cast<RelayTriggerMode>(relay_trig);
+    } else {
+      ESP_LOGW(TAG, "Invalid relay trigger mode %d in NVS, defaulting to DISABLED", relay_trig);
+      relay_trigger_mode_ = RelayTriggerMode::DISABLED;
+    }
     uint8_t relay_cont = 0;
     nvs_get_u8(handle, "relay_cont", &relay_cont);
-    relay_contact_mode_ = static_cast<RelayContactMode>(relay_cont);
+    if (relay_cont <= static_cast<uint8_t>(RelayContactMode::NORMALLY_CLOSED)) {
+      relay_contact_mode_ = static_cast<RelayContactMode>(relay_cont);
+    } else {
+      ESP_LOGW(TAG, "Invalid relay contact mode %d in NVS, defaulting to NO", relay_cont);
+      relay_contact_mode_ = RelayContactMode::NORMALLY_OPEN;
+    }
     ESP_LOGI(TAG, "Restored relay settings from NVS (trigger=%d, contact=%d)",
-             relay_trig, relay_cont);
+             static_cast<int>(relay_trigger_mode_), static_cast<int>(relay_contact_mode_));
   }
 
   // Restore zones (stored as JSON string)

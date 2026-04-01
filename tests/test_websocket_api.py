@@ -811,10 +811,10 @@ class TestWebSocketSettings:
 
         assert "AA:BB:CC:DD:EE:FF" in mock_dm._entity_update_macs
 
-    async def test_set_settings_without_entities_no_guard(
+    async def test_set_settings_without_entities_sets_guard_for_relay(
         self, hass: HomeAssistant, config_entry: MockConfigEntry
     ) -> None:
-        """set_settings without entities does not set the entity update guard."""
+        """set_settings without entities still sets the entity update guard for relay state change."""
         mock_dm = await setup_integration(hass, config_entry)
 
         from custom_components.eppgrid.websocket_api import websocket_set_settings
@@ -846,7 +846,7 @@ class TestWebSocketSettings:
 
         await call_async_handler(hass, websocket_set_settings, connection, msg)
 
-        assert "AA:BB:CC:DD:EE:FF" not in mock_dm._entity_update_macs
+        assert "AA:BB:CC:DD:EE:FF" in mock_dm._entity_update_macs
 
     async def test_set_settings_stores_relay_values(self, hass: HomeAssistant, config_entry: MockConfigEntry) -> None:
         """set_settings stores relay_trigger_mode and relay_contact_mode under settings."""
