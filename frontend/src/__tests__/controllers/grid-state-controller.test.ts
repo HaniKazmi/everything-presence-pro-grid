@@ -4,9 +4,9 @@ import type { FurnitureItem, FurnitureSticker } from "../../lib/furniture.js";
 import {
 	CELL_INTERFERENCE_SHIFT,
 	CELL_ROOM_BIT,
+	cellInterference,
 	GRID_CELL_COUNT,
 	MAX_ZONES,
-	cellInterference,
 } from "../../lib/grid.js";
 import { ZONE_COLORS, type ZoneConfig } from "../../lib/zone-defaults.js";
 

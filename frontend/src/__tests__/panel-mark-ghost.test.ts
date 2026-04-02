@@ -5,6 +5,7 @@
 import { describe, expect, it, vi } from "vitest";
 import type { EPPGridPanel } from "../eppgrid-panel.js";
 import "../eppgrid-panel.js";
+import { mapTargetToGridCell } from "../lib/coordinates.js";
 import {
 	CELL_INTERFERENCE_SUPPRESS,
 	cellInterference,
@@ -12,7 +13,6 @@ import {
 	GRID_COLS,
 	initGridFromRoom,
 } from "../lib/grid.js";
-import { mapTargetToGridCell } from "../lib/coordinates.js";
 import { ZONE_TYPE_DEFAULTS } from "../lib/zone-defaults.js";
 import { createZoneEngineState } from "../lib/zone-engine.js";
 
@@ -109,11 +109,25 @@ function createPanel(): EPPGridPanel {
 }
 
 /** Find a cell position (x, y in mm) that maps to a known inside cell. */
-function insideCellCoords(roomWidth: number, roomDepth: number): { x: number; y: number; col: number; row: number; idx: number } {
-	const pos = mapTargetToGridCell(roomWidth / 2, roomDepth / 2, roomWidth, roomDepth)!;
+function insideCellCoords(
+	roomWidth: number,
+	roomDepth: number,
+): { x: number; y: number; col: number; row: number; idx: number } {
+	const pos = mapTargetToGridCell(
+		roomWidth / 2,
+		roomDepth / 2,
+		roomWidth,
+		roomDepth,
+	)!;
 	const col = Math.floor(pos.col);
 	const row = Math.floor(pos.row);
-	return { x: roomWidth / 2, y: roomDepth / 2, col, row, idx: row * GRID_COLS + col };
+	return {
+		x: roomWidth / 2,
+		y: roomDepth / 2,
+		col,
+		row,
+		idx: row * GRID_COLS + col,
+	};
 }
 
 describe("_markGhost", () => {
@@ -156,7 +170,10 @@ describe("_markGhost", () => {
 		a._gridCtrl = { applyLayout: vi.fn().mockResolvedValue(undefined) };
 		const { x, y, idx } = insideCellCoords(3000, 4000);
 
-		a._grid[idx] = cellSetInterference(a._grid[idx], CELL_INTERFERENCE_SUPPRESS);
+		a._grid[idx] = cellSetInterference(
+			a._grid[idx],
+			CELL_INTERFERENCE_SUPPRESS,
+		);
 		const before = a._grid[idx];
 
 		await a._markGhost(x, y);
