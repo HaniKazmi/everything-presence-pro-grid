@@ -17,8 +17,9 @@ constexpr uint8_t CELL_ROOM_BIT = 0x01;
 constexpr int CELL_ZONE_SHIFT = 1;
 constexpr uint8_t CELL_ZONE_MASK = 0x0E;
 constexpr uint8_t CELL_OVERLAY_ENTRY = 0x10;   // bit 4: entry/exit overlay
-constexpr uint8_t CELL_TRAINING_MASK = 0xE0;   // bits 5-7
-constexpr int CELL_TRAINING_SHIFT = 5;
+constexpr uint8_t CELL_INTERFERENCE_MASK = 0xE0;  // bits 5-7: interference level
+constexpr int CELL_INTERFERENCE_SHIFT = 5;
+constexpr int CELL_INTERFERENCE_SUPPRESS = 7;
 
 // Limits
 constexpr int MAX_TARGETS = 3;

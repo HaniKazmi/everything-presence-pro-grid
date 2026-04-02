@@ -36,6 +36,10 @@ bool Grid::cell_has_overlay_entry(int cell_index) const {
     return (cells_[cell_index] & CELL_OVERLAY_ENTRY) != 0;
 }
 
+int Grid::cell_interference(int cell_index) const {
+    return (cells_[cell_index] & CELL_INTERFERENCE_MASK) >> CELL_INTERFERENCE_SHIFT;
+}
+
 void Grid::load_from_bytes(const uint8_t* data, int len) {
     int count = std::min(len, cell_count());
     for (int i = 0; i < count; ++i) {

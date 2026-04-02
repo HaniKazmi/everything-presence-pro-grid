@@ -25,6 +25,9 @@ public:
     /// Check if a cell has the entry/exit overlay (bit 4).
     bool cell_has_overlay_entry(int cell_index) const;
 
+    /// Extract the interference level (0-7) from a cell byte.
+    int cell_interference(int cell_index) const;
+
     /// Load cell data from a byte buffer.
     void load_from_bytes(const uint8_t* data, int len);
 
