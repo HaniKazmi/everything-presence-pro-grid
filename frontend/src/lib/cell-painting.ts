@@ -1,7 +1,9 @@
 import {
 	CELL_ROOM_BIT,
 	cellHasOverlayEntry,
+	cellInterference,
 	cellIsInside,
+	cellSetInterference,
 	cellSetOverlayEntry,
 	cellSetZone,
 	cellZone,
@@ -90,6 +92,22 @@ export function applyOverlayPaintToCell(
 ): number | null {
 	if (!cellIsInside(cellValue)) return null;
 	return cellSetOverlayEntry(cellValue, paintAction === "set");
+}
+
+export function determineInterferencePaintAction(
+	cellValue: number,
+	level: number,
+): PaintAction {
+	return cellInterference(cellValue) === level ? "clear" : "set";
+}
+
+export function applyInterferencePaintToCell(
+	cellValue: number,
+	level: number,
+	paintAction: PaintAction,
+): number | null {
+	if (!cellIsInside(cellValue)) return null;
+	return cellSetInterference(cellValue, paintAction === "set" ? level : 0);
 }
 
 /**

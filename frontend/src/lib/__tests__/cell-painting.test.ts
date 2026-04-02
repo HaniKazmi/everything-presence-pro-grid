@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
+	applyInterferencePaintToCell,
 	applyOverlayPaintToCell,
 	applyPaintToCell,
 	clearZoneFromGrid,
+	determineInterferencePaintAction,
 	determineOverlayPaintAction,
 	determinePaintAction,
 } from "../cell-painting.js";
@@ -10,7 +12,9 @@ import {
 	CELL_OVERLAY_ENTRY,
 	CELL_ROOM_BIT,
 	cellHasOverlayEntry,
+	cellInterference,
 	cellIsInside,
+	cellSetInterference,
 	cellSetOverlayEntry,
 	cellSetZone,
 	cellZone,
@@ -214,5 +218,62 @@ describe("applyOverlayPaintToCell", () => {
 		expect(result).not.toBeNull();
 		expect(cellHasOverlayEntry(result!)).toBe(true);
 		expect((result! >> 1) & 0x07).toBe(3); // zone preserved
+	});
+});
+
+describe("determineInterferencePaintAction", () => {
+	it("returns 'set' when cell has no interference at this level", () => {
+		expect(determineInterferencePaintAction(CELL_ROOM_BIT, 2)).toBe("set");
+	});
+
+	it("returns 'clear' when cell already has this interference level", () => {
+		const cell = cellSetInterference(CELL_ROOM_BIT, 2);
+		expect(determineInterferencePaintAction(cell, 2)).toBe("clear");
+	});
+
+	it("returns 'set' when cell has a different interference level", () => {
+		const cell = cellSetInterference(CELL_ROOM_BIT, 1);
+		expect(determineInterferencePaintAction(cell, 3)).toBe("set");
+	});
+});
+
+describe("applyInterferencePaintToCell", () => {
+	it("sets interference level on inside cell", () => {
+		const result = applyInterferencePaintToCell(CELL_ROOM_BIT, 2, "set");
+		expect(result).not.toBeNull();
+		expect(cellInterference(result!)).toBe(2);
+	});
+
+	it("clears interference on inside cell", () => {
+		const cell = cellSetInterference(CELL_ROOM_BIT, 3);
+		const result = applyInterferencePaintToCell(cell, 3, "clear");
+		expect(result).not.toBeNull();
+		expect(cellInterference(result!)).toBe(0);
+	});
+
+	it("returns null for outside cell", () => {
+		expect(applyInterferencePaintToCell(0, 2, "set")).toBeNull();
+	});
+
+	it("clears entry overlay when setting interference (mutual exclusivity)", () => {
+		const cell = CELL_ROOM_BIT | CELL_OVERLAY_ENTRY;
+		const result = applyInterferencePaintToCell(cell, 1, "set");
+		expect(result).not.toBeNull();
+		expect(cellHasOverlayEntry(result!)).toBe(false);
+		expect(cellInterference(result!)).toBe(1);
+	});
+
+	it("preserves zone bits when setting interference", () => {
+		const cell = cellSetZone(CELL_ROOM_BIT, 3);
+		const result = applyInterferencePaintToCell(cell, 2, "set");
+		expect(result).not.toBeNull();
+		expect(cellZone(result!)).toBe(3);
+		expect(cellInterference(result!)).toBe(2);
+	});
+
+	it("sets suppress level (7)", () => {
+		const result = applyInterferencePaintToCell(CELL_ROOM_BIT, 7, "set");
+		expect(result).not.toBeNull();
+		expect(cellInterference(result!)).toBe(7);
 	});
 });
