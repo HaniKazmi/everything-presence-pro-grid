@@ -1750,7 +1750,7 @@ class TestZoneEntities:
     """Tests for async_update_zone_entities."""
 
     async def test_update_zone_entities_calibrated(self, hass: HomeAssistant, manager: DeviceManager) -> None:
-        """Calibrated device enables zone 0 as 'Rest of Room Presence'."""
+        """Calibrated device enables zone 0 as 'Zone Rest of Room'."""
         dev_reg = dr.async_get(hass)
         ent_reg = er.async_get(hass)
 
@@ -1794,15 +1794,15 @@ class TestZoneEntities:
         zone_slots = [{"name": "Office"}] + [None] * (MAX_ZONES - 1)
         await manager.async_update_zone_entities("AA:BB:CC:DD:EE:FF", zone_slots)
 
-        # Zone 0 should be enabled with name "Rest of Room Presence"
+        # Zone 0 should be enabled with name "Zone Rest of Room"
         zone0 = ent_reg.async_get(zone0_entry.entity_id)
         assert zone0.disabled_by is None
-        assert zone0.name == "Rest of Room Presence"
+        assert zone0.name == "Zone Rest of Room"
 
-        # Zone 1 should be enabled and renamed "Office"
+        # Zone 1 should be enabled and renamed "Zone Office"
         zone1 = ent_reg.async_get(zone1_entry.entity_id)
         assert zone1.disabled_by is None
-        assert zone1.name == "Office"
+        assert zone1.name == "Zone Office"
 
         # Zone 2 should be disabled (unused)
         zone2 = ent_reg.async_get(zone2_entry.entity_id)
@@ -1948,11 +1948,11 @@ class TestZoneEntities:
         # Zone 0 target count should be enabled with room name
         ztc0_entry = ent_reg.async_get(ztc0.entity_id)
         assert ztc0_entry.disabled_by is None
-        assert ztc0_entry.name == "Rest of Room Target Count"
+        assert ztc0_entry.name == "Zone Rest of Room Target Count"
         # Zone 1 target count should be enabled with zone name
         ztc1_entry = ent_reg.async_get(ztc1.entity_id)
         assert ztc1_entry.disabled_by is None
-        assert ztc1_entry.name == "Office Target Count"
+        assert ztc1_entry.name == "Zone Office Target Count"
         # Zone 2 target count should be disabled (unused slot)
         assert ent_reg.async_get(ztc2.entity_id).disabled_by == er.RegistryEntryDisabler.INTEGRATION
 

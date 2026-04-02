@@ -722,13 +722,13 @@ class DeviceManager:
                 if not zone_presence or not exists:
                     ent_reg.async_update_entity(entity_id, disabled_by=er.RegistryEntryDisabler.INTEGRATION)
                 elif i == 0:
-                    ent_reg.async_update_entity(entity_id, disabled_by=None, name="Rest of Room Presence")
+                    ent_reg.async_update_entity(entity_id, disabled_by=None, name="Zone Rest of Room")
                 else:
                     zone = zone_slots[i - 1]
                     if entry_obj and entry_obj.disabled_by == er.RegistryEntryDisabler.USER:
                         pass  # Don't override user-disabled entities
                     else:
-                        ent_reg.async_update_entity(entity_id, disabled_by=None, name=zone["name"])
+                        ent_reg.async_update_entity(entity_id, disabled_by=None, name=f"Zone {zone['name']}")
 
             # Zone target count entity
             tc_entity_id = self._find_zone_entity(ent_reg, dev.device_id, i, "target_count")
@@ -738,10 +738,14 @@ class DeviceManager:
                     pass  # Don't override user-disabled entities
                 elif zone_target_count and exists:
                     if i == 0:
-                        ent_reg.async_update_entity(tc_entity_id, disabled_by=None, name="Rest of Room Target Count")
+                        ent_reg.async_update_entity(
+                            tc_entity_id, disabled_by=None, name="Zone Rest of Room Target Count"
+                        )
                     else:
                         zone = zone_slots[i - 1]
-                        ent_reg.async_update_entity(tc_entity_id, disabled_by=None, name=f"{zone['name']} Target Count")
+                        ent_reg.async_update_entity(
+                            tc_entity_id, disabled_by=None, name=f"Zone {zone['name']} Target Count"
+                        )
                 else:
                     ent_reg.async_update_entity(tc_entity_id, disabled_by=er.RegistryEntryDisabler.INTEGRATION)
 
