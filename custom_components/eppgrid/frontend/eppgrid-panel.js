@@ -977,6 +977,10 @@ const dt={attribute:!0,type:String,converter:b,reflect:!1,hasChanged:y},ut=(t=dt
 			cursor: pointer;
 		}
 
+		:host([editable]) .target-dot {
+			pointer-events: none;
+		}
+
 		.target-dot.moving {
 			background: #4caf50;
 		}
