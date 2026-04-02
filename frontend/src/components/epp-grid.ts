@@ -105,6 +105,8 @@ export class EppGrid extends LitElement {
 			box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
 			transform: translate(-50%, -50%);
 			z-index: 10;
+			cursor: pointer;
+			pointer-events: auto;
 		}
 
 		.target-dot.moving {
@@ -294,6 +296,16 @@ export class EppGrid extends LitElement {
 						<div
 							class="target-dot"
 							style="left: ${xPct}%; top: ${yPct}%; background: ${TARGET_COLORS[i] || TARGET_COLORS[0]}; opacity: ${t.status === "pending" ? 0.3 : 1}; transition: opacity 0.5s ease;"
+							@click=${(e: Event) => {
+								e.stopPropagation();
+								this.dispatchEvent(
+									new CustomEvent("mark-ghost", {
+										detail: { targetIndex: i, x: t.x, y: t.y },
+										bubbles: true,
+										composed: true,
+									}),
+								);
+							}}
 						></div>
 						${
 							t.status === "active" && t.signal > 0

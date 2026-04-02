@@ -22,7 +22,10 @@ import {
 	pxToMm,
 } from "./lib/furniture.js";
 import {
+	CELL_INTERFERENCE_SUPPRESS,
+	cellInterference,
 	cellIsInside,
+	cellSetInterference,
 	cellZone,
 	GRID_CELL_COUNT,
 	GRID_CELL_MM,
@@ -1211,8 +1214,34 @@ export class EPPGridPanel extends LitElement {
 				@furniture-delete=${(e: CustomEvent) => {
 					this._removeFurniture(e.detail);
 				}}
+				@mark-ghost=${(e: CustomEvent) => {
+					this._markGhost(e.detail.x, e.detail.y);
+				}}
 			></epp-grid>
 		`;
+	}
+
+	private async _markGhost(x: number, y: number): Promise<void> {
+		const pos = mapTargetToGridCell(x, y, this._roomWidth, this._roomDepth);
+		if (!pos) return;
+		const col = Math.floor(pos.col);
+		const row = Math.floor(pos.row);
+		if (col < 0 || col >= GRID_COLS || row < 0 || row >= GRID_ROWS) return;
+		const idx = row * GRID_COLS + col;
+		const cellVal = this._grid[idx];
+		if (!cellIsInside(cellVal)) return;
+
+		const current = cellInterference(cellVal);
+		let next: number;
+		if (current === 0) next = 1;
+		else if (current < 3) next = current + 1;
+		else if (current === 3) next = CELL_INTERFERENCE_SUPPRESS;
+		else return; // already suppressed
+
+		this._grid = new Uint8Array(this._grid);
+		this._grid[idx] = cellSetInterference(this._grid[idx], next);
+		this._dirty = true;
+		await this._gridCtrl.applyLayout();
 	}
 
 	private _renderSaveCancelButtons() {

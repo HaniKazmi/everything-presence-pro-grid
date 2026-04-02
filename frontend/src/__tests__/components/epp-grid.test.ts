@@ -441,6 +441,31 @@ describe("epp-grid furniture overlay", () => {
 	});
 });
 
+describe("epp-grid mark-ghost event", () => {
+	it("dispatches mark-ghost event when target dot is clicked", async () => {
+		const targets: Target[] = [
+			{ x: 1500, y: 2000, speed: 0, status: "active", signal: 7 },
+		];
+		const el = createGrid({ targets });
+		document.body.appendChild(el);
+		await el.updateComplete;
+
+		const events: CustomEvent[] = [];
+		el.addEventListener("mark-ghost", (e) => events.push(e as CustomEvent));
+
+		const dot = el.shadowRoot!.querySelector(".target-dot") as HTMLElement;
+		expect(dot).not.toBeNull();
+		dot.click();
+
+		expect(events.length).toBe(1);
+		expect(events[0].detail.targetIndex).toBe(0);
+		expect(events[0].detail.x).toBe(1500);
+		expect(events[0].detail.y).toBe(2000);
+
+		document.body.removeChild(el);
+	});
+});
+
 describe("epp-grid frozenBounds", () => {
 	it("uses frozenBounds when set", async () => {
 		const el = createGrid({
