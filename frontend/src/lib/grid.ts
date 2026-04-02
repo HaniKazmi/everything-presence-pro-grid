@@ -1,11 +1,14 @@
 // Bit 0: room (0=outside, 1=inside)
 // Bits 1-3: zone (0=room default, 1-7=named zone)
 // Bit 4: overlay — entry/exit
-// Bits 5-7: per-cell training (reserved)
+// Bits 5-7: interference level (0=none, 1-3=+2/4/6 thresh, 7=suppress)
 export const CELL_ROOM_BIT = 0x01;
 export const CELL_ZONE_MASK = 0x0e; // bits 1-3
 export const CELL_ZONE_SHIFT = 1;
 export const CELL_OVERLAY_ENTRY = 0x10; // bit 4
+export const CELL_INTERFERENCE_MASK = 0xe0; // bits 5-7
+export const CELL_INTERFERENCE_SHIFT = 5;
+export const CELL_INTERFERENCE_SUPPRESS = 7;
 export const MAX_ZONES = 7;
 
 export const GRID_COLS = 20;
@@ -23,7 +26,17 @@ export const cellSetZone = (v: number, zone: number): number =>
 export const cellHasOverlayEntry = (v: number): boolean =>
 	(v & CELL_OVERLAY_ENTRY) !== 0;
 export const cellSetOverlayEntry = (v: number, on: boolean): number =>
-	on ? v | CELL_OVERLAY_ENTRY : v & ~CELL_OVERLAY_ENTRY;
+	on
+		? (v | CELL_OVERLAY_ENTRY) & ~CELL_INTERFERENCE_MASK
+		: v & ~CELL_OVERLAY_ENTRY;
+export const cellInterference = (v: number): number =>
+	(v >> CELL_INTERFERENCE_SHIFT) & 0x07;
+export const cellSetInterference = (v: number, level: number): number =>
+	level > 0
+		? ((v & ~CELL_INTERFERENCE_MASK) |
+				((level & 0x07) << CELL_INTERFERENCE_SHIFT)) &
+			~CELL_OVERLAY_ENTRY
+		: v & ~CELL_INTERFERENCE_MASK;
 
 /** Get room bounds with 1-cell padding around inside cells. */
 export function getRoomBounds(grid: Uint8Array): {
