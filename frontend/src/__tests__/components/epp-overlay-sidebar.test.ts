@@ -149,7 +149,10 @@ describe("epp-overlay-sidebar element", () => {
 	});
 
 	it("active level button has active class", () => {
-		const el = createSidebar({ overlayMode: "interference", interferenceLevel: 2 });
+		const el = createSidebar({
+			overlayMode: "interference",
+			interferenceLevel: 2,
+		});
 		const tpl = (el as any).render();
 		const c = renderTo(tpl);
 
@@ -163,7 +166,10 @@ describe("epp-overlay-sidebar element", () => {
 	});
 
 	it("suppress button (level 7) has active class when interferenceLevel is CELL_INTERFERENCE_SUPPRESS", () => {
-		const el = createSidebar({ overlayMode: "interference", interferenceLevel: CELL_INTERFERENCE_SUPPRESS });
+		const el = createSidebar({
+			overlayMode: "interference",
+			interferenceLevel: CELL_INTERFERENCE_SUPPRESS,
+		});
 		const tpl = (el as any).render();
 		const c = renderTo(tpl);
 
@@ -272,7 +278,9 @@ describe("epp-overlay-sidebar events", () => {
 		(btns[3] as HTMLElement).click(); // suppress = 7
 
 		expect(handler).toHaveBeenCalledTimes(1);
-		expect(handler.mock.calls[0][0].detail.level).toBe(CELL_INTERFERENCE_SUPPRESS);
+		expect(handler.mock.calls[0][0].detail.level).toBe(
+			CELL_INTERFERENCE_SUPPRESS,
+		);
 
 		document.body.removeChild(c);
 	});

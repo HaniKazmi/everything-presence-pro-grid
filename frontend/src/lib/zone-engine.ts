@@ -1,10 +1,10 @@
 import { mapTargetToGridCell } from "./coordinates.js";
 import {
+	CELL_INTERFERENCE_SUPPRESS,
 	cellHasOverlayEntry,
 	cellInterference,
 	cellIsInside,
 	cellZone,
-	CELL_INTERFERENCE_SUPPRESS,
 	GRID_CELL_COUNT,
 	GRID_COLS,
 	GRID_ROWS,
@@ -221,12 +221,10 @@ export function runLocalZoneEngine(
 		const { trigger, renew } = thresholds;
 
 		// Apply interference: increase thresholds
-		const effectiveTrigger = interference > 0
-			? Math.min(trigger + interference * 2, 9)
-			: trigger;
-		const effectiveRenew = interference > 0
-			? Math.min(renew + interference * 2, 9)
-			: renew;
+		const effectiveTrigger =
+			interference > 0 ? Math.min(trigger + interference * 2, 9) : trigger;
+		const effectiveRenew =
+			interference > 0 ? Math.min(renew + interference * 2, 9) : renew;
 
 		const st = state.localZoneState.get(zid);
 		const isOccupied = st?.occupied ?? false;

@@ -7,6 +7,7 @@ import "./components/epp-grid.js";
 import "./components/epp-live-sidebar.js";
 import "./components/epp-settings-view.js";
 import "./components/epp-wizard.js";
+import "./components/epp-overlay-sidebar.js";
 import "./components/epp-zone-sidebar.js";
 import { DeviceController } from "./controllers/device-controller.js";
 import { GridStateController } from "./controllers/grid-state-controller.js";
@@ -113,7 +114,8 @@ export class EPPGridPanel extends LitElement {
 	@state() private _targetUpdateRateMs = 1000;
 	@state() private _zoneUpdateRateMs = 1000;
 	@state() private _entitiesConfig: Record<string, any> = {};
-	@state() private _sidebarTab: "zones" | "furniture" | "live" = "zones";
+	@state() private _sidebarTab: "zones" | "overlays" | "furniture" | "live" =
+		"zones";
 	@state() private _showDeleteCalibrationDialog = false;
 	@state() private _showLiveMenu = false;
 	@state() private _showCustomIconPicker = false;
@@ -177,6 +179,7 @@ export class EPPGridPanel extends LitElement {
 		this._targetCtrl.zoneEngineState = value;
 	}
 	@state() private _overlayMode: string | null = null;
+	@state() private _interferenceLevel: number = 1;
 	@state() private _isPainting = false;
 	private _justPainted = false;
 	@state() private _paintAction: PaintAction = "set";
@@ -619,7 +622,7 @@ export class EPPGridPanel extends LitElement {
 		}
 	}
 
-	private _enterEditor(tab: "zones" | "furniture"): void {
+	private _enterEditor(tab: "zones" | "overlays" | "furniture"): void {
 		this._view = "editor";
 		this._sidebarTab = tab;
 		this._pushWidenedDistanceOverride();
@@ -1283,6 +1286,11 @@ export class EPPGridPanel extends LitElement {
                         <ha-icon icon="mdi:vector-square" style="--mdc-icon-size: 18px;"></ha-icon> ${this._localize("menu.detection_zones")}
                       </button>
                       <button class="sidebar-menu-item" @click=${() => {
+												this._enterEditor("overlays");
+											}}>
+                        <ha-icon icon="mdi:blur" style="--mdc-icon-size: 18px;"></ha-icon> ${this._localize("menu.overlays")}
+                      </button>
+                      <button class="sidebar-menu-item" @click=${() => {
 												this._enterEditor("furniture");
 											}}>
                         <ha-icon icon="mdi:sofa" style="--mdc-icon-size: 18px;"></ha-icon> ${this._localize("menu.furniture")}
@@ -1505,7 +1513,13 @@ export class EPPGridPanel extends LitElement {
             ${this._sidebarTab === "zones" ? this._renderDebugLog() : nothing}
           </div>
           <div class="zone-sidebar scrollable">
-            <div class="sidebar-title">${this._sidebarTab === "furniture" ? this._localize("sidebar.furniture") : this._localize("sidebar.detection_zones")}</div>
+            <div class="sidebar-title">${
+							this._sidebarTab === "furniture"
+								? this._localize("sidebar.furniture")
+								: this._sidebarTab === "overlays"
+									? this._localize("sidebar.overlays")
+									: this._localize("sidebar.detection_zones")
+						}</div>
             <div class="sidebar-scroll">
             ${
 							this._sidebarTab === "zones"
@@ -1519,13 +1533,6 @@ export class EPPGridPanel extends LitElement {
                     .roomHandoffTimeout=${this._roomHandoffTimeout}
                     .localZoneState=${this._zoneEngineState.localZoneState}
                     .localize=${this._localize}
-                    .overlayMode=${this._overlayMode}
-                    @overlay-select=${(e: CustomEvent) => {
-											this._overlayMode = e.detail.mode;
-											if (this._overlayMode) {
-												this._activeZone = null;
-											}
-										}}
                     @zone-select=${(e: CustomEvent) => {
 											this._activeZone = e.detail.zone;
 											this._overlayMode = null;
@@ -1559,7 +1566,19 @@ export class EPPGridPanel extends LitElement {
 											this._dirty = true;
 										}}
                   ></epp-zone-sidebar>`
-								: html`<epp-furniture-sidebar
+								: this._sidebarTab === "overlays"
+									? html`<epp-overlay-sidebar
+                    .overlayMode=${this._overlayMode}
+                    .interferenceLevel=${this._interferenceLevel}
+                    .localize=${this._localize}
+                    @overlay-select=${(e: CustomEvent) => {
+											this._overlayMode = e.detail.mode;
+										}}
+                    @interference-level-change=${(e: CustomEvent) => {
+											this._interferenceLevel = e.detail.level;
+										}}
+                  ></epp-overlay-sidebar>`
+									: html`<epp-furniture-sidebar
                     .furniture=${this._furniture}
                     .selectedFurnitureId=${this._selectedFurnitureId}
                     .hass=${this.hass}

@@ -100,7 +100,8 @@
 		"room_calibration": "Room size calibration",
 		"delete_calibration": "Delete room calibration",
 		"detection_zones": "Detection zones",
-		"furniture": "Furniture"
+		"furniture": "Furniture",
+		"overlays": "Overlays"
 	},
 	"settings": {
 		"title": "Settings",
@@ -151,6 +152,7 @@
 	"sidebar": {
 		"detection_zones": "Detection zones",
 		"furniture": "Furniture",
+		"overlays": "Overlays",
 		"live_overview": "Live overview",
 		"add_zone": "Add zone",
 		"rest_of_room": "Rest of room",
@@ -170,6 +172,13 @@
 		"seconds_suffix": "s",
 		"overlays": "Overlays",
 		"overlay_entry": "Entry / Exit"
+	},
+	"overlays": {
+		"entry_exit": "Entry / Exit",
+		"interference": "Interference",
+		"click_to_paint": "Click to paint",
+		"level": "Level",
+		"level_info": "Higher levels reduce sensitivity more. ✕ suppresses detection entirely."
 	},
 	"live": {
 		"presence": "Presence",

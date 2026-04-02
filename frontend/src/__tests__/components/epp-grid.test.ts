@@ -3,8 +3,8 @@ import "../../components/epp-grid.js";
 import type { EppGrid } from "../../components/epp-grid.js";
 import type { FurnitureItem } from "../../lib/furniture.js";
 import {
-	CELL_ROOM_BIT,
 	CELL_INTERFERENCE_SUPPRESS,
+	CELL_ROOM_BIT,
 	cellSetInterference,
 	cellSetZone,
 	GRID_CELL_COUNT,

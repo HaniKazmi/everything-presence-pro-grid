@@ -4,11 +4,11 @@ import { TARGET_COLORS } from "../constants.js";
 import { mapTargetToGridCell } from "../lib/coordinates.js";
 import type { FurnitureItem } from "../lib/furniture.js";
 import {
+	CELL_INTERFERENCE_SUPPRESS,
 	cellHasOverlayEntry,
 	cellInterference,
 	cellIsInside,
 	cellZone,
-	CELL_INTERFERENCE_SUPPRESS,
 	GRID_COLS,
 	getRoomBounds,
 } from "../lib/grid.js";

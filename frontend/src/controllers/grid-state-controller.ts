@@ -1,8 +1,10 @@
 import type { ReactiveController, ReactiveControllerHost } from "lit";
 import {
+	applyInterferencePaintToCell,
 	applyOverlayPaintToCell,
 	applyPaintToCell,
 	clearZoneFromGrid,
+	determineInterferencePaintAction,
 	determineOverlayPaintAction,
 	determinePaintAction,
 	type PaintAction,
@@ -63,6 +65,22 @@ export class GridStateController implements ReactiveController {
 			this.host._selectedFurnitureId = null;
 			return;
 		}
+		// Interference painting mode
+		if (this.host._overlayMode === "interference") {
+			this.host._isPainting = true;
+			this.host._frozenBounds = getRoomBounds(this.host._grid);
+			this.host._paintAction = determineInterferencePaintAction(
+				this.host._grid[index],
+				this.host._interferenceLevel,
+			);
+			this.applyPaintToCell(index);
+			const onUp = () => {
+				this.onCellMouseUp();
+				window.removeEventListener("mouseup", onUp);
+			};
+			window.addEventListener("mouseup", onUp);
+			return;
+		}
 		// Overlay painting mode
 		if (this.host._overlayMode === "entry") {
 			this.host._isPainting = true;
@@ -114,7 +132,13 @@ export class GridStateController implements ReactiveController {
 
 	applyPaintToCell(index: number): void {
 		let newValue: number | null;
-		if (this.host._overlayMode === "entry") {
+		if (this.host._overlayMode === "interference") {
+			newValue = applyInterferencePaintToCell(
+				this.host._grid[index],
+				this.host._interferenceLevel,
+				this.host._paintAction,
+			);
+		} else if (this.host._overlayMode === "entry") {
 			newValue = applyOverlayPaintToCell(
 				this.host._grid[index],
 				this.host._paintAction,

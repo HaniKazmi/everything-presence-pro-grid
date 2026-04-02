@@ -68,9 +68,9 @@ describe("epp-zone-sidebar element", () => {
 		const tpl = (el as any)._renderZoneSidebar();
 		const c = renderTo(tpl);
 
-		// 1 boundary + 2 named zones + 1 overlay entry
+		// 1 boundary + 2 named zones
 		const zoneItems = c.querySelectorAll(".zone-item");
-		expect(zoneItems.length).toBe(4);
+		expect(zoneItems.length).toBe(3);
 
 		document.body.removeChild(c);
 	});
@@ -171,8 +171,8 @@ describe("epp-zone-sidebar element", () => {
 		expect(colorPicker).toBeNull();
 
 		const colorDots = c.querySelectorAll(".zone-color-dot");
-		// 1 boundary dot + 1 zone dot + 1 overlay dot
-		expect(colorDots.length).toBe(3);
+		// 1 boundary dot + 1 zone dot
+		expect(colorDots.length).toBe(2);
 
 		document.body.removeChild(c);
 	});
@@ -374,69 +374,6 @@ describe("epp-zone-sidebar events", () => {
 		expect(handler).toHaveBeenCalledTimes(1);
 		expect(handler.mock.calls[0][0].detail.index).toBe(0);
 		expect(handler.mock.calls[0][0].detail.updates.type).toBe("rest");
-
-		document.body.removeChild(c);
-	});
-});
-
-describe("epp-zone-sidebar overlay section", () => {
-	it("renders overlay entry item", () => {
-		const el = createSidebar();
-		const tpl = (el as any)._renderZoneSidebar();
-		const c = renderTo(tpl);
-
-		const items = c.querySelectorAll(".zone-item");
-		// Last zone-item should be the overlay entry
-		const overlayItem = items[items.length - 1];
-		expect(overlayItem.textContent).toContain("zones.overlay_entry");
-
-		document.body.removeChild(c);
-	});
-
-	it("overlay item has active class when overlayMode is entry", () => {
-		const el = createSidebar({ overlayMode: "entry" });
-		const tpl = (el as any)._renderZoneSidebar();
-		const c = renderTo(tpl);
-
-		const items = c.querySelectorAll(".zone-item");
-		const overlayItem = items[items.length - 1];
-		expect(overlayItem.classList.contains("active")).toBe(true);
-
-		document.body.removeChild(c);
-	});
-
-	it("fires overlay-select with mode entry on click", () => {
-		const el = createSidebar();
-		const handler = vi.fn();
-		el.addEventListener("overlay-select", handler);
-
-		const tpl = (el as any)._renderZoneSidebar();
-		const c = renderTo(tpl);
-
-		const items = c.querySelectorAll(".zone-item");
-		const overlayItem = items[items.length - 1] as HTMLElement;
-		overlayItem.click();
-
-		expect(handler).toHaveBeenCalledTimes(1);
-		expect(handler.mock.calls[0][0].detail.mode).toBe("entry");
-
-		document.body.removeChild(c);
-	});
-
-	it("fires overlay-select with mode null on click when already active", () => {
-		const el = createSidebar({ overlayMode: "entry" });
-		const handler = vi.fn();
-		el.addEventListener("overlay-select", handler);
-
-		const tpl = (el as any)._renderZoneSidebar();
-		const c = renderTo(tpl);
-
-		const items = c.querySelectorAll(".zone-item");
-		const overlayItem = items[items.length - 1] as HTMLElement;
-		overlayItem.click();
-
-		expect(handler).toHaveBeenCalledTimes(1);
-		expect(handler.mock.calls[0][0].detail.mode).toBeNull();
 
 		document.body.removeChild(c);
 	});
