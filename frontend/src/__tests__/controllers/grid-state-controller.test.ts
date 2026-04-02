@@ -660,6 +660,129 @@ describe("GridStateController", () => {
 		});
 	});
 
+	// =========================================================================
+	// initGridFromRoom()
+	// =========================================================================
+	describe("initGridFromRoom()", () => {
+		it("initializes _grid from the host room dimensions", () => {
+			host._roomWidth = 3000;
+			host._roomDepth = 4000;
+			ctrl.initGridFromRoom();
+			expect(host._grid.length).toBe(GRID_CELL_COUNT);
+			// At least some cells should be marked inside
+			const insideCount = Array.from(host._grid).filter(
+				(v) => v & CELL_ROOM_BIT,
+			).length;
+			expect(insideCount).toBeGreaterThan(0);
+		});
+	});
+
+	// =========================================================================
+	// onCellMouseDown / onUp lambda coverage
+	// =========================================================================
+	describe("onCellMouseDown mouseup cleanup", () => {
+		it("zone painting: mouseup clears isPainting via onUp lambda", () => {
+			host._sidebarTab = "zones";
+			host._activeZone = 1;
+			host._grid[5] = CELL_ROOM_BIT;
+
+			// Capture the onUp handler registered via addEventListener
+			let capturedHandler: (() => void) | null = null;
+			const addSpy = vi
+				.spyOn(window, "addEventListener")
+				.mockImplementation((_evt: string, handler: any) => {
+					capturedHandler = handler;
+				});
+
+			ctrl.onCellMouseDown(5);
+			expect(host._isPainting).toBe(true);
+			expect(capturedHandler).not.toBeNull();
+
+			// Invoke the captured onUp handler
+			capturedHandler!();
+			expect(host._isPainting).toBe(false);
+
+			addSpy.mockRestore();
+		});
+
+		it("interference painting: mouseup clears isPainting via onUp lambda", () => {
+			host._overlayMode = "interference";
+			host._interferenceLevel = 1;
+			host._grid[5] = CELL_ROOM_BIT;
+
+			let capturedHandler: (() => void) | null = null;
+			const addSpy = vi
+				.spyOn(window, "addEventListener")
+				.mockImplementation((_evt: string, handler: any) => {
+					capturedHandler = handler;
+				});
+
+			ctrl.onCellMouseDown(5);
+			expect(host._isPainting).toBe(true);
+			expect(capturedHandler).not.toBeNull();
+
+			capturedHandler!();
+			expect(host._isPainting).toBe(false);
+
+			addSpy.mockRestore();
+		});
+
+		it("entry painting: mouseup clears isPainting via onUp lambda", () => {
+			host._overlayMode = "entry";
+			host._grid[5] = CELL_ROOM_BIT;
+
+			let capturedHandler: (() => void) | null = null;
+			const addSpy = vi
+				.spyOn(window, "addEventListener")
+				.mockImplementation((_evt: string, handler: any) => {
+					capturedHandler = handler;
+				});
+
+			ctrl.onCellMouseDown(5);
+			expect(host._isPainting).toBe(true);
+			expect(capturedHandler).not.toBeNull();
+
+			capturedHandler!();
+			expect(host._isPainting).toBe(false);
+
+			addSpy.mockRestore();
+		});
+	});
+
+	// =========================================================================
+	// Zone painting tab guard
+	// =========================================================================
+	describe("zone painting tab guard", () => {
+		it("does not start zone painting on overlays tab", () => {
+			host._sidebarTab = "overlays";
+			host._activeZone = 1;
+			host._grid[5] = CELL_ROOM_BIT;
+
+			ctrl.onCellMouseDown(5);
+			expect(host._isPainting).toBe(false);
+		});
+
+		it("does not start zone painting on furniture tab when activeZone is set", () => {
+			host._sidebarTab = "furniture";
+			host._activeZone = 1;
+
+			ctrl.onCellMouseDown(5);
+			expect(host._isPainting).toBe(false);
+			expect(host._selectedFurnitureId).toBeNull();
+		});
+
+		it("starts zone painting on zones tab", () => {
+			host._sidebarTab = "zones";
+			host._activeZone = 1;
+			host._grid[5] = CELL_ROOM_BIT;
+
+			ctrl.onCellMouseDown(5);
+			expect(host._isPainting).toBe(true);
+			// Clean up the mouseup listener
+			window.dispatchEvent(new Event("mouseup"));
+		});
+	});
+
 	describe("onFurniturePointerDown rotation", () => {
 		it("finds furniture item through nested shadow DOMs for rotation center", () => {
 			const item: FurnitureItem = {

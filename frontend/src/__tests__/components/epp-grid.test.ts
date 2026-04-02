@@ -466,6 +466,57 @@ describe("epp-grid mark-ghost event", () => {
 	});
 });
 
+describe("epp-grid target dot cursor guard", () => {
+	it("target dot has clickable class when not editable", async () => {
+		const targets: Target[] = [
+			{ x: 1500, y: 2000, speed: 0, status: "active", signal: 7 },
+		];
+		const el = createGrid({ targets, editable: false });
+		document.body.appendChild(el);
+		await el.updateComplete;
+
+		const dot = el.shadowRoot!.querySelector(".target-dot") as HTMLElement;
+		expect(dot).not.toBeNull();
+		expect(dot.classList.contains("clickable")).toBe(true);
+
+		document.body.removeChild(el);
+	});
+
+	it("target dot does not have clickable class when editable", async () => {
+		const targets: Target[] = [
+			{ x: 1500, y: 2000, speed: 0, status: "active", signal: 7 },
+		];
+		const el = createGrid({ targets, editable: true });
+		document.body.appendChild(el);
+		await el.updateComplete;
+
+		const dot = el.shadowRoot!.querySelector(".target-dot") as HTMLElement;
+		expect(dot).not.toBeNull();
+		expect(dot.classList.contains("clickable")).toBe(false);
+
+		document.body.removeChild(el);
+	});
+
+	it("click on target dot in edit mode does not dispatch mark-ghost", async () => {
+		const targets: Target[] = [
+			{ x: 1500, y: 2000, speed: 0, status: "active", signal: 7 },
+		];
+		const el = createGrid({ targets, editable: true });
+		document.body.appendChild(el);
+		await el.updateComplete;
+
+		const events: CustomEvent[] = [];
+		el.addEventListener("mark-ghost", (e) => events.push(e as CustomEvent));
+
+		const dot = el.shadowRoot!.querySelector(".target-dot") as HTMLElement;
+		dot.click();
+
+		expect(events.length).toBe(0);
+
+		document.body.removeChild(el);
+	});
+});
+
 describe("epp-grid frozenBounds", () => {
 	it("uses frozenBounds when set", async () => {
 		const el = createGrid({

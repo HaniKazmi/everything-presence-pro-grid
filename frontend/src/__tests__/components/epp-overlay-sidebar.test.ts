@@ -180,6 +180,13 @@ describe("epp-overlay-sidebar element", () => {
 	});
 });
 
+describe("epp-overlay-sidebar default localize", () => {
+	it("default localize returns the key unchanged", () => {
+		const el = document.createElement("epp-overlay-sidebar") as any;
+		expect(el.localize("some.key")).toBe("some.key");
+	});
+});
+
 describe("epp-overlay-sidebar events", () => {
 	it("clicking entry/exit dispatches overlay-select with mode entry", () => {
 		const el = createSidebar();

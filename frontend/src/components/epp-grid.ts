@@ -105,8 +105,11 @@ export class EppGrid extends LitElement {
 			box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
 			transform: translate(-50%, -50%);
 			z-index: 10;
-			cursor: pointer;
 			pointer-events: auto;
+		}
+
+		.target-dot.clickable {
+			cursor: pointer;
 		}
 
 		.target-dot.moving {
@@ -294,9 +297,10 @@ export class EppGrid extends LitElement {
 					);
 					return html`
 						<div
-							class="target-dot"
+							class="target-dot ${this.editable ? "" : "clickable"}"
 							style="left: ${xPct}%; top: ${yPct}%; background: ${TARGET_COLORS[i] || TARGET_COLORS[0]}; opacity: ${t.status === "pending" ? 0.3 : 1}; transition: opacity 0.5s ease;"
 							@click=${(e: Event) => {
+								if (this.editable) return;
 								e.stopPropagation();
 								this.dispatchEvent(
 									new CustomEvent("mark-ghost", {

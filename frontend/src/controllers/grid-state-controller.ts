@@ -96,8 +96,9 @@ export class GridStateController implements ReactiveController {
 			window.addEventListener("mouseup", onUp);
 			return;
 		}
-		// Zone painting mode
-		if (this.host._activeZone === null) return;
+		// Zone painting mode — only on zones tab
+		if (this.host._sidebarTab !== "zones" || this.host._activeZone === null)
+			return;
 		this.host._isPainting = true;
 		this.host._frozenBounds = getRoomBounds(this.host._grid);
 		this.host._paintAction = determinePaintAction(
