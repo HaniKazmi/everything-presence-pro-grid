@@ -625,6 +625,7 @@ export class EPPGridPanel extends LitElement {
 	private _enterEditor(tab: "zones" | "overlays" | "furniture"): void {
 		this._view = "editor";
 		this._sidebarTab = tab;
+		if (tab !== "overlays") this._overlayMode = null;
 		this._pushWidenedDistanceOverride();
 	}
 

@@ -169,9 +169,7 @@
 		"renew": "Renew",
 		"presence_timeout": "Presence timeout",
 		"handoff_timeout": "Handoff timeout",
-		"seconds_suffix": "s",
-		"overlays": "Overlays",
-		"overlay_entry": "Entry / Exit"
+		"seconds_suffix": "s"
 	},
 	"overlays": {
 		"entry_exit": "Entry / Exit",

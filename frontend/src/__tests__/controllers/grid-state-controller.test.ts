@@ -1,7 +1,13 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { GridStateController } from "../../controllers/grid-state-controller.js";
 import type { FurnitureItem, FurnitureSticker } from "../../lib/furniture.js";
-import { CELL_ROOM_BIT, GRID_CELL_COUNT, MAX_ZONES } from "../../lib/grid.js";
+import {
+	CELL_INTERFERENCE_SHIFT,
+	CELL_ROOM_BIT,
+	GRID_CELL_COUNT,
+	MAX_ZONES,
+	cellInterference,
+} from "../../lib/grid.js";
 import { ZONE_COLORS, type ZoneConfig } from "../../lib/zone-defaults.js";
 
 // Build a minimal host with all properties the controller reads/writes
@@ -25,6 +31,9 @@ function mockHost(overrides: Record<string, any> = {}) {
 		_sidebarTab: "zones",
 		_selectedFurnitureId: null as string | null,
 		_dragState: null as any,
+		// Overlays
+		_overlayMode: null as string | null,
+		_interferenceLevel: 1,
 		// Zones
 		_zoneConfigs: Array.from(
 			{ length: MAX_ZONES },
@@ -582,6 +591,59 @@ describe("GridStateController", () => {
 			expect(host._roomWidth).toBe(3000);
 			expect(host._roomDepth).toBe(3000);
 			expect(host.requestUpdate).toHaveBeenCalled();
+		});
+	});
+
+	// =========================================================================
+	// Interference painting via onCellMouseDown / applyPaintToCell
+	// =========================================================================
+	describe("interference painting", () => {
+		beforeEach(() => {
+			// Mark cell 5 as inside the room so paint functions accept it
+			host._grid[5] = CELL_ROOM_BIT;
+			host._overlayMode = "interference";
+			host._interferenceLevel = 2;
+			vi.spyOn(window, "addEventListener").mockImplementation(() => {});
+		});
+
+		it("onCellMouseDown sets isPainting and applies interference paint", () => {
+			ctrl.onCellMouseDown(5);
+			expect(host._isPainting).toBe(true);
+			// Interference level 2 should be encoded in bits 5-7
+			expect(cellInterference(host._grid[5])).toBe(2);
+			expect(host._dirty).toBe(true);
+		});
+
+		it("onCellMouseDown uses determineInterferencePaintAction (toggles off when already set)", () => {
+			// Pre-paint cell 5 with interference level 2
+			host._grid[5] = CELL_ROOM_BIT | (2 << CELL_INTERFERENCE_SHIFT);
+			ctrl.onCellMouseDown(5);
+			// Same level → should toggle to clear
+			expect(host._paintAction).toBe("clear");
+			expect(cellInterference(host._grid[5])).toBe(0);
+		});
+
+		it("applyPaintToCell with interference mode calls applyInterferencePaintToCell", () => {
+			host._paintAction = "set";
+			ctrl.applyPaintToCell(5);
+			expect(cellInterference(host._grid[5])).toBe(2);
+			expect(host._dirty).toBe(true);
+		});
+
+		it("applyPaintToCell with interference mode clears when paintAction is clear", () => {
+			// Pre-paint cell 5 with interference level 2
+			host._grid[5] = CELL_ROOM_BIT | (2 << CELL_INTERFERENCE_SHIFT);
+			host._paintAction = "clear";
+			ctrl.applyPaintToCell(5);
+			expect(cellInterference(host._grid[5])).toBe(0);
+		});
+
+		it("onCellMouseDown with entry overlay mode still works", () => {
+			host._overlayMode = "entry";
+			ctrl.onCellMouseDown(5);
+			expect(host._isPainting).toBe(true);
+			// Entry overlay sets bit 4
+			expect(host._grid[5] & 0x10).toBe(0x10);
 		});
 	});
 

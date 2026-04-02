@@ -301,6 +301,27 @@ describe("_renderLiveOverview inline handlers", () => {
 		expect(a._sidebarTab).toBe("furniture");
 	});
 
+	it("_enterEditor resets _overlayMode when switching away from overlays", () => {
+		const a = createPanel() as any;
+		a._overlayMode = "interference";
+		a._enterEditor("zones");
+		expect(a._overlayMode).toBeNull();
+	});
+
+	it("_enterEditor resets _overlayMode when entering furniture tab", () => {
+		const a = createPanel() as any;
+		a._overlayMode = "entry";
+		a._enterEditor("furniture");
+		expect(a._overlayMode).toBeNull();
+	});
+
+	it("_enterEditor preserves _overlayMode when entering overlays tab", () => {
+		const a = createPanel() as any;
+		a._overlayMode = "interference";
+		a._enterEditor("overlays");
+		expect(a._overlayMode).toBe("interference");
+	});
+
 	it("settings button", () => {
 		const a = createPanel() as any;
 		// Replicate handler (line 3607-3608)
