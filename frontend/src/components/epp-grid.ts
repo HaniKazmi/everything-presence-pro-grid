@@ -112,6 +112,10 @@ export class EppGrid extends LitElement {
 			cursor: pointer;
 		}
 
+		:host([editable]) .target-dot {
+			pointer-events: none;
+		}
+
 		.target-dot.moving {
 			background: #4caf50;
 		}
