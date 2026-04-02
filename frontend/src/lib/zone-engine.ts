@@ -1,8 +1,10 @@
 import { mapTargetToGridCell } from "./coordinates.js";
 import {
 	cellHasOverlayEntry,
+	cellInterference,
 	cellIsInside,
 	cellZone,
+	CELL_INTERFERENCE_SUPPRESS,
 	GRID_CELL_COUNT,
 	GRID_COLS,
 	GRID_ROWS,
@@ -175,6 +177,14 @@ export function runLocalZoneEngine(
 			continue;
 		}
 
+		// Interference suppress: skip this cell entirely
+		const interference = cellInterference(cellVal);
+		if (interference === CELL_INTERFERENCE_SUPPRESS) {
+			state.targetPrev[i] = null;
+			state.targetGateCount[i] = 0;
+			continue;
+		}
+
 		const zid = cellZone(cellVal);
 		targetZoneCurr[i] = zid;
 
@@ -209,11 +219,20 @@ export function runLocalZoneEngine(
 			params.roomHandoffTimeout,
 		);
 		const { trigger, renew } = thresholds;
+
+		// Apply interference: increase thresholds
+		const effectiveTrigger = interference > 0
+			? Math.min(trigger + interference * 2, 9)
+			: trigger;
+		const effectiveRenew = interference > 0
+			? Math.min(renew + interference * 2, 9)
+			: renew;
+
 		const st = state.localZoneState.get(zid);
 		const isOccupied = st?.occupied ?? false;
 		const isClear = !isOccupied;
 
-		let baseTrigger = isClear ? trigger : renew;
+		let baseTrigger = isClear ? effectiveTrigger : effectiveRenew;
 		// Check cell and same-zone neighbours for overlay (median may lag behind actual position)
 		let cellOverlay = cellHasOverlayEntry(cellVal);
 		if (!cellOverlay) {
@@ -234,8 +253,9 @@ export function runLocalZoneEngine(
 			}
 		}
 		const needsGating = !cellOverlay && !continuous;
-		// Instant entry: near overlay cell → threshold=1
-		if (cellOverlay && isClear) {
+		// Instant entry suppressed when target cell carries interference —
+		// overlay on a neighbour must not negate the raised threshold.
+		if (cellOverlay && isClear && interference === 0) {
 			baseTrigger = 1;
 		}
 
