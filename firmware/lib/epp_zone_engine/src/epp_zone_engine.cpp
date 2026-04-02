@@ -185,6 +185,15 @@ const ProcessingResult& ZoneEngine::tick(const WindowOutput& window, float times
         target_signal[i] = signal;
         target_has_signal[i] = true;
         target_in_room[i] = true;
+
+        // Interference suppress: skip this cell entirely
+        int interference = grid_.cell_interference(cell);
+        if (interference == CELL_INTERFERENCE_SUPPRESS) {
+            target_has_prev_[i] = false;
+            target_gate_count_[i] = 0;
+            continue;
+        }
+
         int zone_id = grid_.cell_zone(cell);
         target_zone_curr[i] = zone_id;
         target_last_zone_[i] = zone_id;
@@ -230,6 +239,12 @@ const ProcessingResult& ZoneEngine::tick(const WindowOutput& window, float times
             int trigger_thresh = threshold_to_frame_count(rt.config.trigger);
             int renew_thresh = threshold_to_frame_count(rt.config.renew);
 
+            // Apply interference: increase thresholds
+            if (interference > 0) {
+                trigger_thresh = std::min(trigger_thresh + interference * 2, 9);
+                renew_thresh = std::min(renew_thresh + interference * 2, 9);
+            }
+
             // Determine effective threshold based on zone state
             int base_thresh;
             if (rt.state == ZoneState::CLEAR) {
@@ -243,8 +258,9 @@ const ProcessingResult& ZoneEngine::tick(const WindowOutput& window, float times
             // where the median position hasn't reached the overlay cell yet
             bool on_overlay = tw.on_overlay || grid_.cell_has_overlay_entry(cell);
             bool needs_gating = !on_overlay && !continuous;
-            // Instant entry: raw frame touched overlay cell → threshold=1
-            if (on_overlay && rt.state == ZoneState::CLEAR) {
+            // Instant entry suppressed when target cell carries interference —
+            // overlay on a neighbour must not negate the raised threshold.
+            if (on_overlay && rt.state == ZoneState::CLEAR && interference == 0) {
                 base_thresh = 1;
             }
 
