@@ -4,6 +4,8 @@ import type { EppGrid } from "../../components/epp-grid.js";
 import type { FurnitureItem } from "../../lib/furniture.js";
 import {
 	CELL_ROOM_BIT,
+	CELL_INTERFERENCE_SUPPRESS,
+	cellSetInterference,
 	cellSetZone,
 	GRID_CELL_COUNT,
 	GRID_COLS,
@@ -450,6 +452,113 @@ describe("epp-grid frozenBounds", () => {
 		const cells = el.shadowRoot!.querySelectorAll(".cell");
 		// 11 cols * 11 rows = 121 cells
 		expect(cells.length).toBe(121);
+
+		document.body.removeChild(el);
+	});
+});
+
+describe("epp-grid interference stripes", () => {
+	/** Return the first cell that has an interference stripe style. */
+	function findInterferenceCell(el: EppGrid): HTMLElement | null {
+		const cells = el.shadowRoot!.querySelectorAll(
+			".cell",
+		) as NodeListOf<HTMLElement>;
+		for (const c of cells) {
+			if (c.style.cssText.includes("cc3333")) return c;
+		}
+		return null;
+	}
+
+	function buildGridWithInterference(level: number): Uint8Array {
+		const grid = initGridFromRoom(3000, 4000);
+		for (let i = 0; i < grid.length; i++) {
+			if (grid[i] & CELL_ROOM_BIT) {
+				grid[i] = cellSetInterference(grid[i], level);
+			}
+		}
+		return grid;
+	}
+
+	it("renders -45deg cc3333 stripe for interference level 1", async () => {
+		const grid = buildGridWithInterference(1);
+		const el = createGrid({ grid });
+		document.body.appendChild(el);
+		await el.updateComplete;
+
+		const cell = findInterferenceCell(el);
+		expect(cell).not.toBeNull();
+		const style = cell!.style.cssText;
+		expect(style).toContain("-45deg");
+		expect(style).toContain("#cc3333");
+		expect(style).toContain("8px");
+
+		document.body.removeChild(el);
+	});
+
+	it("renders -45deg cc3333 stripe for interference level 2", async () => {
+		const grid = buildGridWithInterference(2);
+		const el = createGrid({ grid });
+		document.body.appendChild(el);
+		await el.updateComplete;
+
+		const cell = findInterferenceCell(el);
+		expect(cell).not.toBeNull();
+		const style = cell!.style.cssText;
+		expect(style).toContain("-45deg");
+		expect(style).toContain("#cc3333");
+		expect(style).toContain("5px");
+		// Level 2 has only one gradient direction (not a cross-hatch)
+		expect(style.match(/-45deg/g)?.length).toBe(1);
+
+		document.body.removeChild(el);
+	});
+
+	it("renders -45deg cc3333 stripe for interference level 3", async () => {
+		const grid = buildGridWithInterference(3);
+		const el = createGrid({ grid });
+		document.body.appendChild(el);
+		await el.updateComplete;
+
+		const cell = findInterferenceCell(el);
+		expect(cell).not.toBeNull();
+		const style = cell!.style.cssText;
+		expect(style).toContain("-45deg");
+		expect(style).toContain("#cc3333");
+		expect(style).toContain("3px");
+
+		document.body.removeChild(el);
+	});
+
+	it("renders cross-hatch (both -45deg and 45deg) for suppress interference", async () => {
+		const grid = buildGridWithInterference(CELL_INTERFERENCE_SUPPRESS);
+		const el = createGrid({ grid });
+		document.body.appendChild(el);
+		await el.updateComplete;
+
+		const cell = findInterferenceCell(el);
+		expect(cell).not.toBeNull();
+		const style = cell!.style.cssText;
+		expect(style).toContain("-45deg");
+		expect(style).toContain("45deg");
+		expect(style).toContain("#cc3333");
+
+		document.body.removeChild(el);
+	});
+
+	it("does not render interference stripes on outside cells", async () => {
+		// Build a grid where all cells are outside (no CELL_ROOM_BIT) but have
+		// interference bits set manually — outside cells must not show stripes.
+		const grid = new Uint8Array(GRID_CELL_COUNT);
+		for (let i = 0; i < grid.length; i++) {
+			// Set interference level 1 without room bit
+			grid[i] = cellSetInterference(grid[i], 1);
+		}
+		const el = createGrid({ grid });
+		document.body.appendChild(el);
+		await el.updateComplete;
+
+		const cell = findInterferenceCell(el);
+		expect(cell).toBeNull();
 
 		document.body.removeChild(el);
 	});

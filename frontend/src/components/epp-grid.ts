@@ -5,8 +5,10 @@ import { mapTargetToGridCell } from "../lib/coordinates.js";
 import type { FurnitureItem } from "../lib/furniture.js";
 import {
 	cellHasOverlayEntry,
+	cellInterference,
 	cellIsInside,
 	cellZone,
+	CELL_INTERFERENCE_SUPPRESS,
 	GRID_COLS,
 	getRoomBounds,
 } from "../lib/grid.js";
@@ -183,9 +185,26 @@ export class EppGrid extends LitElement {
 					}
 				}
 				let overlayMarker = "";
-				if (cellIsInside(cellVal) && cellHasOverlayEntry(cellVal)) {
-					overlayMarker =
-						"background-image: repeating-linear-gradient(45deg, transparent, transparent 6px, rgba(60,60,60,0.7) 6px, rgba(60,60,60,0.7) 8px);";
+				if (cellIsInside(cellVal)) {
+					if (cellHasOverlayEntry(cellVal)) {
+						overlayMarker =
+							"background-image: repeating-linear-gradient(45deg, transparent, transparent 6px, rgba(60,60,60,0.7) 6px, rgba(60,60,60,0.7) 8px);";
+					} else {
+						const interf = cellInterference(cellVal);
+						if (interf === CELL_INTERFERENCE_SUPPRESS) {
+							overlayMarker =
+								"background-image: repeating-linear-gradient(-45deg, transparent, transparent 5px, #cc3333 5px, #cc3333 7px), repeating-linear-gradient(45deg, transparent, transparent 5px, #cc3333 5px, #cc3333 7px);";
+						} else if (interf === 3) {
+							overlayMarker =
+								"background-image: repeating-linear-gradient(-45deg, transparent, transparent 3px, #cc3333 3px, #cc3333 5px);";
+						} else if (interf === 2) {
+							overlayMarker =
+								"background-image: repeating-linear-gradient(-45deg, transparent, transparent 5px, #cc3333 5px, #cc3333 7px);";
+						} else if (interf === 1) {
+							overlayMarker =
+								"background-image: repeating-linear-gradient(-45deg, transparent, transparent 8px, #cc3333 8px, #cc3333 10px);";
+						}
+					}
 				}
 				cells.push(html`
 					<div
