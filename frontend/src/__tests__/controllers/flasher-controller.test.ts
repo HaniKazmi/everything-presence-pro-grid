@@ -279,6 +279,22 @@ describe("FlasherController", () => {
 			).resolves.toBeUndefined();
 			expect(hass.connection.subscribeMessage).not.toHaveBeenCalled();
 		});
+
+		it("sets error otaProgress and clears flashingMac when subscribeMessage rejects", async () => {
+			hass.connection.subscribeMessage = vi
+				.fn()
+				.mockRejectedValue(new Error("connection refused"));
+
+			await ctrl.startOtaFlash("aa:bb", "eppgrid-wifi");
+
+			expect(ctrl.otaProgress).toEqual({
+				step: "error",
+				status: "failed",
+				error: "Failed to start OTA flash",
+			});
+			expect(ctrl.flashingMac).toBeNull();
+			expect(host.requestUpdate).toHaveBeenCalled();
+		});
 	});
 
 	// --- deleteEsphomeDevice ---
@@ -346,6 +362,36 @@ describe("FlasherController", () => {
 			const freshHost = mockHost();
 			const freshCtrl = new FlasherController(freshHost);
 			expect((freshCtrl as any)._serialPort).toBeNull();
+		});
+	});
+
+	// --- serialPort getter/setter ---
+	describe("serialPort", () => {
+		it("stores a port via setter and retrieves it via getter", () => {
+			const mockPort = {
+				open: vi.fn(),
+				close: vi.fn().mockResolvedValue(undefined),
+			} as unknown as SerialPort;
+
+			ctrl.serialPort = mockPort;
+			expect(ctrl.serialPort).toBe(mockPort);
+		});
+
+		it("returns null when no port has been set", () => {
+			const freshHost = mockHost();
+			const freshCtrl = new FlasherController(freshHost);
+			expect(freshCtrl.serialPort).toBeNull();
+		});
+
+		it("can be reset to null after being set", () => {
+			const mockPort = {
+				open: vi.fn(),
+				close: vi.fn().mockResolvedValue(undefined),
+			} as unknown as SerialPort;
+
+			ctrl.serialPort = mockPort;
+			ctrl.serialPort = null;
+			expect(ctrl.serialPort).toBeNull();
 		});
 	});
 

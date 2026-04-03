@@ -1015,4 +1015,73 @@ describe("USB flash view — state-driven", () => {
 		expect((el as any)._showUsbFlash).toBe(false);
 		expect((el as any)._usbFlashState).toBeNull();
 	});
+
+	it("clicking ethernet variant button in USB flash idle updates _selectedVariant", async () => {
+		const el = createView();
+		(el as any)._showUsbFlash = true;
+		(el as any)._usbFlashState = null;
+		(el as any)._selectedVariant = "wifi";
+		document.body.appendChild(el);
+		await el.updateComplete;
+
+		const root = el.shadowRoot!;
+		// Variant buttons in the USB flash idle state (not radio inputs — these are <button> elements)
+		const variantBtns = root.querySelectorAll(".variant-option");
+		// Second button is ethernet
+		(variantBtns[1] as HTMLButtonElement).click();
+
+		expect((el as any)._selectedVariant).toBe("ethernet");
+	});
+
+	it("clicking wifi variant button in USB flash idle updates _selectedVariant", async () => {
+		const el = createView();
+		(el as any)._showUsbFlash = true;
+		(el as any)._usbFlashState = null;
+		(el as any)._selectedVariant = "ethernet";
+		document.body.appendChild(el);
+		await el.updateComplete;
+
+		const root = el.shadowRoot!;
+		const variantBtns = root.querySelectorAll(".variant-option");
+		// First button is wifi
+		(variantBtns[0] as HTMLButtonElement).click();
+
+		expect((el as any)._selectedVariant).toBe("wifi");
+	});
+
+	it("dispatches usb-flash with ethernet variant when ethernet is selected", async () => {
+		const el = createView();
+		(el as any)._showUsbFlash = true;
+		(el as any)._usbFlashState = null;
+		(el as any)._selectedVariant = "ethernet";
+		document.body.appendChild(el);
+		await el.updateComplete;
+
+		const events: Event[] = [];
+		el.addEventListener("usb-flash", (e) => events.push(e));
+
+		(el as any)._dispatchUsbFlash();
+
+		expect(events.length).toBe(1);
+		expect((events[0] as CustomEvent).detail).toEqual({
+			variant: "ethernet-ble-co2",
+		});
+	});
+});
+
+describe("_getManifestUrl", () => {
+	it("returns correct URL for wifi variant", () => {
+		const el = createView();
+		(el as any)._selectedVariant = "wifi";
+		const url = (el as any)._getManifestUrl();
+		expect(url).toContain("wifi-ble-co2-manifest.json");
+		expect(url).toContain("clintongormley.github.io");
+	});
+
+	it("returns correct URL for ethernet variant", () => {
+		const el = createView();
+		(el as any)._selectedVariant = "ethernet";
+		const url = (el as any)._getManifestUrl();
+		expect(url).toContain("ethernet-ble-co2-manifest.json");
+	});
 });
