@@ -315,6 +315,34 @@ Returns all ESPHome devices matching EPP manufacturer/model, regardless of wheth
 
 `firmware_type` is `"original"` (no `zone_engine_version` entity) or `"eppgrid"` (has `zone_engine_version` entity).
 
+#### `flash_ota`
+
+Flashes EPP Grid firmware to a device via the ESPHome OTA TCP protocol. Streams progress events back to the caller until the flash completes (success/failed/timeout). Removes the old ESPHome config entry before flashing and adds the device back afterwards.
+
+**Request:** `{ "type": "eppgrid/flash_ota", "mac": str, "variant": str }`
+
+`variant` is `"wifi"` or `"ethernet"`.
+
+**Streamed event payload:**
+```json
+{
+    "step": "downloading_firmware",
+    "status": "in_progress",
+    "progress": null
+}
+```
+
+| `step` | Description |
+|--------|-------------|
+| `removing_old_device` | Removing old ESPHome config entry |
+| `downloading_firmware` | Fetching firmware binary from manifest |
+| `flashing` | Streaming OTA binary to device |
+| `waiting_for_reboot` | Polling for device to come back online |
+| `adding_to_esphome` | Triggering ESPHome config flow for new device |
+| `complete` | Flash finished successfully |
+
+`status` is `"in_progress"`, `"success"`, `"failed"`, or `"timeout"`. `progress` (0–100) is set during the `flashing` step.
+
 #### `delete_esphome_device`
 
 Removes an ESPHome config entry (used to clean up after flashing).

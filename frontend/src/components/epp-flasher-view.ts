@@ -1,8 +1,8 @@
 import { html, LitElement, nothing } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
+import type { WifiNetwork } from "../lib/improv-serial.js";
 import { flasherStyles } from "../styles.js";
 import type { FlashableDevice, OtaProgress, OtaStep } from "../types.js";
-import type { WifiNetwork } from "../lib/improv-serial.js";
 
 const OTA_STEPS: { step: OtaStep; label: string }[] = [
 	{ step: "removing_old_device", label: "Removing old device" },
@@ -63,7 +63,10 @@ export class EppFlasherView extends LitElement {
 		if (!this._confirmDevice) return;
 		this.dispatchEvent(
 			new CustomEvent("flash-ota", {
-				detail: { mac: this._confirmDevice.mac, variant: this._selectedVariant },
+				detail: {
+					mac: this._confirmDevice.mac,
+					variant: this._selectedVariant,
+				},
 				bubbles: true,
 				composed: true,
 			}),
@@ -139,25 +142,31 @@ export class EppFlasherView extends LitElement {
             <div class="${stepClass}">
               <span class="step-icon">${icon}</span>
               <span>${s.label}</span>
-              ${isActive && progress.progress != null
-								? html`<span>(${progress.progress}%)</span>`
-								: nothing}
-              ${hasError && progress.error
-								? html`<span class="step-error"> — ${progress.error}</span>`
-								: nothing}
+              ${
+								isActive && progress.progress != null
+									? html`<span>(${progress.progress}%)</span>`
+									: nothing
+							}
+              ${
+								hasError && progress.error
+									? html`<span class="step-error"> — ${progress.error}</span>`
+									: nothing
+							}
             </div>
           `;
 				})}
       </div>
-      ${isSuccess
-				? html`
+      ${
+				isSuccess
+					? html`
           <div class="confirm-actions" style="margin-top:16px">
             <button class="go-device-btn" @click=${this._dispatchFlashComplete}>
               Go to Device Configuration
             </button>
           </div>
         `
-				: nothing}
+					: nothing
+			}
     `;
 	}
 
@@ -247,13 +256,16 @@ export class EppFlasherView extends LitElement {
           <button class="wifi-scan-btn" @click=${this._dispatchWifiScan}>
             Scan
           </button>
-          ${this._wifiScanning
-						? html`<span class="wifi-scanning">Scanning...</span>`
-						: nothing}
+          ${
+						this._wifiScanning
+							? html`<span class="wifi-scanning">Scanning...</span>`
+							: nothing
+					}
         </div>
 
-        ${sortedNetworks.length > 0
-					? html`
+        ${
+					sortedNetworks.length > 0
+						? html`
               <select
                 class="wifi-network-select"
                 .value=${this._selectedSsid}
@@ -271,7 +283,8 @@ export class EppFlasherView extends LitElement {
 								)}
               </select>
             `
-					: nothing}
+						: nothing
+				}
 
         <label class="wifi-manual-toggle">
           <input
@@ -285,8 +298,9 @@ export class EppFlasherView extends LitElement {
           Enter network name manually (hidden network)
         </label>
 
-        ${this._manualSsid
-					? html`
+        ${
+					this._manualSsid
+						? html`
               <input
                 class="wifi-ssid-input"
                 type="text"
@@ -297,7 +311,8 @@ export class EppFlasherView extends LitElement {
 								}}
               />
             `
-					: nothing}
+						: nothing
+				}
 
         <input
           class="wifi-password-input"
@@ -328,11 +343,12 @@ export class EppFlasherView extends LitElement {
 		return html`
       <div class="flasher-section">
         <h3>Devices</h3>
-        ${flashableDevices.length === 0
-					? html`<div class="flasher-empty">
+        ${
+					flashableDevices.length === 0
+						? html`<div class="flasher-empty">
               No flashable devices found.
             </div>`
-					: html`
+						: html`
               <div class="device-list">
                 ${flashableDevices.map(
 									(device) => html`
@@ -346,16 +362,18 @@ export class EppFlasherView extends LitElement {
                       <span
                         class="firmware-badge firmware-badge-${device.firmware_type}"
                       >
-                        ${device.firmware_type === "original"
-									? "Original"
-									: "EPP Grid"}
+                        ${
+													device.firmware_type === "original"
+														? "Original"
+														: "EPP Grid"
+												}
                       </span>
                       <button
                         class="flash-btn"
                         .disabled=${!device.available}
                         @click=${() => {
-									this._confirmDevice = device;
-								}}
+													this._confirmDevice = device;
+												}}
                       >
                         Flash
                       </button>
@@ -363,7 +381,8 @@ export class EppFlasherView extends LitElement {
                   `,
 								)}
               </div>
-            `}
+            `
+				}
       </div>
       ${this._renderUsbSection()}
     `;
@@ -374,11 +393,13 @@ export class EppFlasherView extends LitElement {
       <div class="usb-section">
         <div class="usb-section-text">
           Connect a device via USB to flash firmware directly.
-          ${!this._hasWebSerial
-					? html`<div class="browser-warning">
+          ${
+						!this._hasWebSerial
+							? html`<div class="browser-warning">
                 Web Serial is not supported in this browser. Use Chrome or Edge.
               </div>`
-					: nothing}
+							: nothing
+					}
         </div>
         <button class="usb-connect-btn" @click=${this._dispatchUsbConnect}>
           Connect
@@ -401,9 +422,11 @@ export class EppFlasherView extends LitElement {
 		}
 
 		return html`
-      ${this._confirmDevice
-				? this._renderConfirmDialog(this._confirmDevice)
-				: nothing}
+      ${
+				this._confirmDevice
+					? this._renderConfirmDialog(this._confirmDevice)
+					: nothing
+			}
       ${this._renderDeviceList()}
     `;
 	}

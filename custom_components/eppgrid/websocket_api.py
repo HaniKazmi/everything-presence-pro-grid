@@ -13,7 +13,9 @@ from homeassistant.core import callback
 from homeassistant.helpers import entity_registry as er
 
 from .const import DOMAIN
-from .ota import OTAError, fetch_firmware_binary, push_ota
+from .ota import OTAError
+from .ota import fetch_firmware_binary
+from .ota import push_ota
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -1223,13 +1225,11 @@ async def _wait_for_device_online(hass: HomeAssistant, host: str, timeout: float
     start = time.monotonic()
     while time.monotonic() - start < timeout:
         try:
-            _, writer = await asyncio.wait_for(
-                asyncio.open_connection(host, 6053), timeout=5.0
-            )
+            _, writer = await asyncio.wait_for(asyncio.open_connection(host, 6053), timeout=5.0)
             writer.close()
             await writer.wait_closed()
             return True
-        except (ConnectionRefusedError, OSError, asyncio.TimeoutError):
+        except (TimeoutError, ConnectionRefusedError, OSError):
             await asyncio.sleep(2.0)
     return False
 
@@ -1271,9 +1271,7 @@ async def websocket_flash_ota(
         return
 
     def send_progress(step: str, status: str = "in_progress", **kwargs: Any) -> None:
-        connection.send_message(
-            websocket_api.event_message(msg_id, {"step": step, "status": status, **kwargs})
-        )
+        connection.send_message(websocket_api.event_message(msg_id, {"step": step, "status": status, **kwargs}))
 
     try:
         # Step 1: Remove old ESPHome config entry
@@ -1307,7 +1305,9 @@ async def websocket_flash_ota(
         # Step 5: Auto-add to ESPHome
         send_progress("adding_to_esphome")
         await hass.config_entries.flow.async_init(
-            "esphome", context={"source": "user"}, data={"host": host},
+            "esphome",
+            context={"source": "user"},
+            data={"host": host},
         )
 
         send_progress("complete", status="success")

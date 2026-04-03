@@ -6,10 +6,10 @@ from unittest.mock import MagicMock
 
 import pytest
 from homeassistant.core import HomeAssistant
-from homeassistant.helpers import device_registry as dr, entity_registry as er
+from homeassistant.helpers import device_registry as dr
+from homeassistant.helpers import entity_registry as er
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
-from custom_components.eppgrid.const import DOMAIN
 from custom_components.eppgrid.device_manager import DeviceManager
 from custom_components.eppgrid.storage import EPPGridStore
 
@@ -73,15 +73,15 @@ def _create_esphome_device(
 class TestListFlashableDevices:
     """Tests for DeviceManager.list_flashable_devices."""
 
-    async def test_discovers_original_firmware_device(
-        self, hass: HomeAssistant, mock_store
-    ) -> None:
+    async def test_discovers_original_firmware_device(self, hass: HomeAssistant, mock_store) -> None:
         """Original-firmware EPP devices are returned with firmware_type=original."""
         dev_reg = dr.async_get(hass)
         ent_reg = er.async_get(hass)
 
-        device, esphome_entry = _create_esphome_device(
-            hass, dev_reg, ent_reg,
+        _device, esphome_entry = _create_esphome_device(
+            hass,
+            dev_reg,
+            ent_reg,
             mac="AA:BB:CC:DD:EE:FF",
             name="Presence Pro Kitchen",
             host="192.168.1.42",
@@ -102,15 +102,15 @@ class TestListFlashableDevices:
         assert dev["firmware_version"] == "1.8.0"
         assert dev["esphome_config_entry_id"] == esphome_entry.entry_id
 
-    async def test_discovers_eppgrid_firmware_device(
-        self, hass: HomeAssistant, mock_store
-    ) -> None:
+    async def test_discovers_eppgrid_firmware_device(self, hass: HomeAssistant, mock_store) -> None:
         """EPP Grid firmware devices are returned with firmware_type=eppgrid."""
         dev_reg = dr.async_get(hass)
         ent_reg = er.async_get(hass)
 
         _create_esphome_device(
-            hass, dev_reg, ent_reg,
+            hass,
+            dev_reg,
+            ent_reg,
             mac="11:22:33:44:55:66",
             name="Presence Pro Office",
             host="192.168.1.43",
@@ -124,9 +124,7 @@ class TestListFlashableDevices:
         assert len(result) == 1
         assert result[0]["firmware_type"] == "eppgrid"
 
-    async def test_ignores_non_epp_esphome_devices(
-        self, hass: HomeAssistant, mock_store
-    ) -> None:
+    async def test_ignores_non_epp_esphome_devices(self, hass: HomeAssistant, mock_store) -> None:
         """Non-EPP ESPHome devices are not returned."""
         dev_reg = dr.async_get(hass)
         ent_reg = er.async_get(hass)
@@ -159,22 +157,24 @@ class TestListFlashableDevices:
 
         assert len(result) == 0
 
-    async def test_returns_both_firmware_types(
-        self, hass: HomeAssistant, mock_store
-    ) -> None:
+    async def test_returns_both_firmware_types(self, hass: HomeAssistant, mock_store) -> None:
         """Both original and eppgrid devices appear together."""
         dev_reg = dr.async_get(hass)
         ent_reg = er.async_get(hass)
 
         _create_esphome_device(
-            hass, dev_reg, ent_reg,
+            hass,
+            dev_reg,
+            ent_reg,
             mac="AA:BB:CC:DD:EE:FF",
             name="Original",
             host="192.168.1.42",
             has_zone_engine=False,
         )
         _create_esphome_device(
-            hass, dev_reg, ent_reg,
+            hass,
+            dev_reg,
+            ent_reg,
             mac="11:22:33:44:55:66",
             name="EPP Grid",
             host="192.168.1.43",

@@ -993,7 +993,9 @@ export class EPPGridPanel extends LitElement {
 		return html`
 			<div class="tab-bar">
 				<button class="tab ${this._panelTab === "config" ? "active" : ""}"
-					@click=${() => { this._panelTab = "config"; }}>Device Configuration</button>
+					@click=${() => {
+						this._panelTab = "config";
+					}}>Device Configuration</button>
 				<button class="tab ${this._panelTab === "flasher" ? "active" : ""}"
 					@click=${() => {
 						this._panelTab = "flasher";
@@ -1023,7 +1025,9 @@ export class EPPGridPanel extends LitElement {
 					@flash-ota=${(e: CustomEvent) => {
 						this._flasherCtrl.startOtaFlash(e.detail.mac, e.detail.variant);
 					}}
-					@flash-complete=${() => { this._panelTab = "config"; }}
+					@flash-complete=${() => {
+						this._panelTab = "config";
+					}}
 				></epp-flasher-view>
 			`;
 		}
@@ -1040,7 +1044,9 @@ export class EPPGridPanel extends LitElement {
 				${this._renderTabBar()}
 				<div class="loading-container">
 					<p>No devices with EPP Grid firmware found.</p>
-					<button @click=${() => { this._panelTab = "flasher"; }}>
+					<button @click=${() => {
+						this._panelTab = "flasher";
+					}}>
 						Flash your devices from the Flash Firmware tab
 					</button>
 				</div>

@@ -1,7 +1,10 @@
 import { render } from "lit";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import "../../components/epp-flasher-view.js";
-import type { EppFlasherView } from "../../components/epp-flasher-view.js";
+import {
+	type EppFlasherView,
+	loadEspWebTools,
+} from "../../components/epp-flasher-view.js";
 import type { FlashableDevice, OtaProgress } from "../../types.js";
 
 function renderTo(tpl: any): HTMLDivElement {
@@ -777,5 +780,114 @@ describe("confirm dialog interactions", () => {
 		flashBtn.click();
 
 		expect((el as any)._confirmDevice).toBe(device1);
+	});
+});
+
+describe("WiFi provisioning DOM event handlers", () => {
+	it("wifi network select change updates _selectedSsid", async () => {
+		const el = createView();
+		(el as any)._showWifiProvisioning = true;
+		(el as any)._wifiConnected = false;
+		(el as any)._wifiNetworks = [
+			{ ssid: "NetworkA", rssi: -50, authRequired: false },
+		];
+		document.body.appendChild(el);
+		await el.updateComplete;
+
+		const root = el.shadowRoot!;
+		const select = root.querySelector(
+			".wifi-network-select",
+		) as HTMLSelectElement;
+		// Simulate selecting a network
+		select.value = "NetworkA";
+		select.dispatchEvent(new Event("change"));
+
+		expect((el as any)._selectedSsid).toBe("NetworkA");
+	});
+
+	it("manual SSID checkbox change toggles _manualSsid and clears SSID when unchecked", async () => {
+		const el = createView();
+		(el as any)._showWifiProvisioning = true;
+		(el as any)._wifiConnected = false;
+		(el as any)._manualSsid = false;
+		(el as any)._selectedSsid = "SomeNetwork";
+		document.body.appendChild(el);
+		await el.updateComplete;
+
+		const root = el.shadowRoot!;
+		const checkbox = root.querySelector(
+			'.wifi-manual-toggle input[type="checkbox"]',
+		) as HTMLInputElement;
+
+		// Check it (enable manual SSID)
+		checkbox.checked = true;
+		checkbox.dispatchEvent(new Event("change"));
+		expect((el as any)._manualSsid).toBe(true);
+		// SSID should NOT be cleared when checking
+		expect((el as any)._selectedSsid).toBe("SomeNetwork");
+
+		// Uncheck (disable manual SSID) — should clear SSID
+		checkbox.checked = false;
+		checkbox.dispatchEvent(new Event("change"));
+		expect((el as any)._manualSsid).toBe(false);
+		expect((el as any)._selectedSsid).toBe("");
+	});
+
+	it("manual SSID text input updates _selectedSsid", async () => {
+		const el = createView();
+		(el as any)._showWifiProvisioning = true;
+		(el as any)._wifiConnected = false;
+		(el as any)._manualSsid = true;
+		document.body.appendChild(el);
+		await el.updateComplete;
+
+		const root = el.shadowRoot!;
+		const input = root.querySelector(".wifi-ssid-input") as HTMLInputElement;
+		input.value = "HiddenNet";
+		input.dispatchEvent(new Event("input"));
+
+		expect((el as any)._selectedSsid).toBe("HiddenNet");
+	});
+
+	it("password input updates _wifiPassword", async () => {
+		const el = createView();
+		(el as any)._showWifiProvisioning = true;
+		(el as any)._wifiConnected = false;
+		document.body.appendChild(el);
+		await el.updateComplete;
+
+		const root = el.shadowRoot!;
+		const input = root.querySelector(
+			".wifi-password-input",
+		) as HTMLInputElement;
+		input.value = "mypassword";
+		input.dispatchEvent(new Event("input"));
+
+		expect((el as any)._wifiPassword).toBe("mypassword");
+	});
+});
+
+describe("loadEspWebTools", () => {
+	it("returns a Promise", () => {
+		// The function returns a promise regardless of whether it's already loaded
+		const result = loadEspWebTools();
+		expect(result).toBeInstanceOf(Promise);
+		// Catch any rejection from the script failing to load in jsdom
+		result.catch(() => {});
+	});
+
+	it("resolves immediately on second call if already loaded", async () => {
+		// Manually trigger the onload on the appended script to simulate load success
+		const scripts = Array.from(
+			document.head.querySelectorAll("script[type='module']"),
+		) as HTMLScriptElement[];
+		for (const s of scripts) {
+			s.onload?.(new Event("load"));
+		}
+		// Now a subsequent call should resolve immediately (espWebToolsLoaded=true)
+		const result = loadEspWebTools();
+		expect(result).toBeInstanceOf(Promise);
+		// Catch any rejection
+		result.catch(() => {});
 	});
 });

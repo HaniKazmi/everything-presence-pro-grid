@@ -1,15 +1,15 @@
 import { describe, expect, it } from "vitest";
 import {
-	CMD_WIFI_SCAN,
-	CMD_WIFI_SETTINGS,
-	IMPROV_HEADER,
-	TYPE_RPC_COMMAND,
-	TYPE_RPC_RESULT,
 	buildImprovPacket,
 	buildScanCommand,
 	buildWifiCommand,
+	CMD_WIFI_SCAN,
+	CMD_WIFI_SETTINGS,
+	IMPROV_HEADER,
 	parseImprovPackets,
 	parseScanResults,
+	TYPE_RPC_COMMAND,
+	TYPE_RPC_RESULT,
 } from "../../lib/improv-serial.js";
 
 describe("IMPROV_HEADER", () => {
@@ -36,7 +36,8 @@ describe("buildImprovPacket", () => {
 		expect(packet[9]).toBe(CMD_WIFI_SCAN);
 		expect(packet[10]).toBe(0x00);
 		// Checksum = sum of all preceding bytes mod 256
-		const sum = Array.from(packet.slice(0, 11)).reduce((a, b) => a + b, 0) % 256;
+		const sum =
+			Array.from(packet.slice(0, 11)).reduce((a, b) => a + b, 0) % 256;
 		expect(packet[11]).toBe(sum);
 	});
 
@@ -127,7 +128,9 @@ describe("parseImprovPackets", () => {
 		const prefix = new TextEncoder().encode("LOG: some debug text\r\n");
 		const suffix = new TextEncoder().encode("another log line\r\n");
 
-		const mixed = new Uint8Array(prefix.length + realPacket.length + suffix.length);
+		const mixed = new Uint8Array(
+			prefix.length + realPacket.length + suffix.length,
+		);
 		mixed.set(prefix, 0);
 		mixed.set(realPacket, prefix.length);
 		mixed.set(suffix, prefix.length + realPacket.length);
@@ -139,7 +142,9 @@ describe("parseImprovPackets", () => {
 	});
 
 	it("returns empty array when no packets present", () => {
-		const data = new TextEncoder().encode("just some log text with no improv packets");
+		const data = new TextEncoder().encode(
+			"just some log text with no improv packets",
+		);
 		const packets = parseImprovPackets(data);
 		expect(packets.length).toBe(0);
 	});
@@ -162,7 +167,8 @@ describe("parseImprovPackets", () => {
 		const packet = buildScanCommand();
 		// Corrupt the checksum (last byte)
 		const corrupted = new Uint8Array(packet);
-		corrupted[corrupted.length - 1] = (corrupted[corrupted.length - 1] + 1) % 256;
+		corrupted[corrupted.length - 1] =
+			(corrupted[corrupted.length - 1] + 1) % 256;
 
 		const packets = parseImprovPackets(corrupted);
 		expect(packets.length).toBe(0);

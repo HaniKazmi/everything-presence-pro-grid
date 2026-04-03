@@ -99,10 +99,8 @@ async def push_ota(
 
     """
     try:
-        reader, writer = await asyncio.wait_for(
-            asyncio.open_connection(host, port), timeout=timeout
-        )
-    except asyncio.TimeoutError as exc:
+        reader, writer = await asyncio.wait_for(asyncio.open_connection(host, port), timeout=timeout)
+    except TimeoutError as exc:
         raise OTAError(f"Connection to {host}:{port} timed out") from exc
     except ConnectionRefusedError as exc:
         raise OTAError(f"Connection refused to {host}:{port}") from exc
@@ -177,7 +175,7 @@ async def _read_ok(reader: asyncio.StreamReader, context: str, timeout: float = 
     """Read a single status byte and raise OTAError if it is not 0x00."""
     try:
         data = await asyncio.wait_for(reader.read(1), timeout=timeout)
-    except asyncio.TimeoutError as exc:
+    except TimeoutError as exc:
         raise OTAError(f"Timed out waiting for status {context}") from exc
     if not data:
         raise OTAError(f"Connection closed unexpectedly {context}")

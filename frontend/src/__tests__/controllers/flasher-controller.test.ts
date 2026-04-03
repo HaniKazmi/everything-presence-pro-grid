@@ -273,7 +273,9 @@ describe("FlasherController", () => {
 
 		it("does nothing when hass is null", async () => {
 			ctrl.hass = null;
-			await expect(ctrl.startOtaFlash("aa:bb", "eppgrid-wifi")).resolves.toBeUndefined();
+			await expect(
+				ctrl.startOtaFlash("aa:bb", "eppgrid-wifi"),
+			).resolves.toBeUndefined();
 			expect(hass.connection.subscribeMessage).not.toHaveBeenCalled();
 		});
 	});
@@ -290,7 +292,9 @@ describe("FlasherController", () => {
 
 		it("does nothing when hass is null", async () => {
 			ctrl.hass = null;
-			await expect(ctrl.deleteEsphomeDevice("entry-abc")).resolves.toBeUndefined();
+			await expect(
+				ctrl.deleteEsphomeDevice("entry-abc"),
+			).resolves.toBeUndefined();
 			expect(hass.callWS).not.toHaveBeenCalled();
 		});
 	});
@@ -307,7 +311,9 @@ describe("FlasherController", () => {
 
 		it("does nothing when hass is null", async () => {
 			ctrl.hass = null;
-			await expect(ctrl.addEsphomeDevice("192.168.1.10")).resolves.toBeUndefined();
+			await expect(
+				ctrl.addEsphomeDevice("192.168.1.10"),
+			).resolves.toBeUndefined();
 			expect(hass.callWS).not.toHaveBeenCalled();
 		});
 	});

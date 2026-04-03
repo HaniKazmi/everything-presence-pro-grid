@@ -159,11 +159,14 @@ class TestPushOta:
         """Raises OTAError when connection is refused."""
         firmware = b"\xab\xcd" * 100
 
-        with patch(
-            "asyncio.open_connection",
-            new_callable=AsyncMock,
-            side_effect=ConnectionRefusedError("refused"),
-        ), pytest.raises(OTAError, match=r"[Cc]onnect"):
+        with (
+            patch(
+                "asyncio.open_connection",
+                new_callable=AsyncMock,
+                side_effect=ConnectionRefusedError("refused"),
+            ),
+            pytest.raises(OTAError, match=r"[Cc]onnect"),
+        ):
             await push_ota("192.168.1.50", firmware)
 
     async def test_push_bad_status(self) -> None:
@@ -180,11 +183,14 @@ class TestPushOta:
         mock_writer.close = MagicMock()
         mock_writer.wait_closed = AsyncMock()
 
-        with patch(
-            "asyncio.open_connection",
-            new_callable=AsyncMock,
-            return_value=(mock_reader, mock_writer),
-        ), pytest.raises(OTAError):
+        with (
+            patch(
+                "asyncio.open_connection",
+                new_callable=AsyncMock,
+                return_value=(mock_reader, mock_writer),
+            ),
+            pytest.raises(OTAError),
+        ):
             await push_ota("192.168.1.50", firmware)
 
     async def test_progress_callback_called(self) -> None:
@@ -260,11 +266,14 @@ class TestPushOta:
         mock_writer.close = MagicMock()
         mock_writer.wait_closed = AsyncMock()
 
-        with patch(
-            "asyncio.open_connection",
-            new_callable=AsyncMock,
-            return_value=(mock_reader, mock_writer),
-        ), pytest.raises(OTAError):
+        with (
+            patch(
+                "asyncio.open_connection",
+                new_callable=AsyncMock,
+                return_value=(mock_reader, mock_writer),
+            ),
+            pytest.raises(OTAError),
+        ):
             await push_ota("192.168.1.50", firmware)
 
         mock_writer.close.assert_called_once()
@@ -273,11 +282,14 @@ class TestPushOta:
         """Raises OTAError when connection raises a generic OSError."""
         firmware = b"\xab\xcd" * 100
 
-        with patch(
-            "asyncio.open_connection",
-            new_callable=AsyncMock,
-            side_effect=OSError("Network unreachable"),
-        ), pytest.raises(OTAError, match="Cannot connect"):
+        with (
+            patch(
+                "asyncio.open_connection",
+                new_callable=AsyncMock,
+                side_effect=OSError("Network unreachable"),
+            ),
+            pytest.raises(OTAError, match="Cannot connect"),
+        ):
             await push_ota("192.168.1.50", firmware)
 
     async def test_wait_closed_exception_suppressed(self) -> None:
@@ -293,11 +305,14 @@ class TestPushOta:
         mock_writer.close = MagicMock()
         mock_writer.wait_closed = AsyncMock(side_effect=OSError("pipe broken"))
 
-        with patch(
-            "asyncio.open_connection",
-            new_callable=AsyncMock,
-            return_value=(mock_reader, mock_writer),
-        ), pytest.raises(OTAError):
+        with (
+            patch(
+                "asyncio.open_connection",
+                new_callable=AsyncMock,
+                return_value=(mock_reader, mock_writer),
+            ),
+            pytest.raises(OTAError),
+        ):
             await push_ota("192.168.1.50", firmware)
 
         mock_writer.close.assert_called_once()
@@ -316,11 +331,14 @@ class TestPushOta:
         mock_writer.close = MagicMock()
         mock_writer.wait_closed = AsyncMock()
 
-        with patch(
-            "asyncio.open_connection",
-            new_callable=AsyncMock,
-            return_value=(mock_reader, mock_writer),
-        ), pytest.raises(OTAError, match="closed unexpectedly"):
+        with (
+            patch(
+                "asyncio.open_connection",
+                new_callable=AsyncMock,
+                return_value=(mock_reader, mock_writer),
+            ),
+            pytest.raises(OTAError, match="closed unexpectedly"),
+        ):
             await push_ota("192.168.1.50", firmware)
 
     async def test_read_timeout_raises_ota_error(self) -> None:
@@ -337,12 +355,14 @@ class TestPushOta:
         mock_writer.close = MagicMock()
         mock_writer.wait_closed = AsyncMock()
 
-        with patch(
-            "asyncio.open_connection",
-            new_callable=AsyncMock,
-            return_value=(mock_reader, mock_writer),
-        ), patch("asyncio.wait_for", side_effect=asyncio.TimeoutError), pytest.raises(
-            OTAError, match="[Tt]imed out"
+        with (
+            patch(
+                "asyncio.open_connection",
+                new_callable=AsyncMock,
+                return_value=(mock_reader, mock_writer),
+            ),
+            patch("asyncio.wait_for", side_effect=asyncio.TimeoutError),
+            pytest.raises(OTAError, match=r"[Tt]imed out"),
         ):
             await push_ota("192.168.1.50", firmware, timeout=5.0)
 
@@ -350,11 +370,13 @@ class TestPushOta:
         """Raises OTAError when the TCP connection itself times out."""
         firmware = b"\xab\xcd" * 100
 
-        with patch(
-            "asyncio.open_connection",
-            new_callable=AsyncMock,
-            side_effect=asyncio.TimeoutError,
-        ), patch(
-            "asyncio.wait_for", side_effect=asyncio.TimeoutError
-        ), pytest.raises(OTAError, match="[Tt]imed out"):
+        with (
+            patch(
+                "asyncio.open_connection",
+                new_callable=AsyncMock,
+                side_effect=asyncio.TimeoutError,
+            ),
+            patch("asyncio.wait_for", side_effect=asyncio.TimeoutError),
+            pytest.raises(OTAError, match=r"[Tt]imed out"),
+        ):
             await push_ota("192.168.1.50", firmware, timeout=1.0)

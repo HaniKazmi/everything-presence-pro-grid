@@ -75,9 +75,7 @@ async def call_async_handler(hass, handler, connection, msg):
 class TestListFlashableDevices:
     """Tests for eppgrid/list_flashable_devices."""
 
-    async def test_returns_flashable_devices(
-        self, hass: HomeAssistant, config_entry: MockConfigEntry
-    ) -> None:
+    async def test_returns_flashable_devices(self, hass: HomeAssistant, config_entry: MockConfigEntry) -> None:
         """list_flashable_devices returns devices from manager."""
         mock_dm = await setup_integration(hass, config_entry)
         device = {
@@ -118,9 +116,7 @@ class TestListFlashableDevices:
 class TestDeleteEsphomeDevice:
     """Tests for eppgrid/delete_esphome_device."""
 
-    async def test_deletes_config_entry(
-        self, hass: HomeAssistant, config_entry: MockConfigEntry
-    ) -> None:
+    async def test_deletes_config_entry(self, hass: HomeAssistant, config_entry: MockConfigEntry) -> None:
         """delete_esphome_device calls hass.config_entries.async_remove."""
         await setup_integration(hass, config_entry)
 
@@ -140,9 +136,7 @@ class TestDeleteEsphomeDevice:
         connection.send_result.assert_called_once_with(2)
         connection.send_error.assert_not_called()
 
-    async def test_delete_fails(
-        self, hass: HomeAssistant, config_entry: MockConfigEntry
-    ) -> None:
+    async def test_delete_fails(self, hass: HomeAssistant, config_entry: MockConfigEntry) -> None:
         """delete_esphome_device sends error when async_remove raises."""
         await setup_integration(hass, config_entry)
 
@@ -170,9 +164,7 @@ class TestDeleteEsphomeDevice:
 class TestAddEsphomeDevice:
     """Tests for eppgrid/add_esphome_device."""
 
-    async def test_triggers_config_flow(
-        self, hass: HomeAssistant, config_entry: MockConfigEntry
-    ) -> None:
+    async def test_triggers_config_flow(self, hass: HomeAssistant, config_entry: MockConfigEntry) -> None:
         """add_esphome_device triggers esphome config flow with host."""
         await setup_integration(hass, config_entry)
 
@@ -208,9 +200,7 @@ class TestAddEsphomeDevice:
 class TestFlashOta:
     """Tests for eppgrid/flash_ota."""
 
-    async def test_flash_ota_streams_progress(
-        self, hass: HomeAssistant, config_entry: MockConfigEntry
-    ) -> None:
+    async def test_flash_ota_streams_progress(self, hass: HomeAssistant, config_entry: MockConfigEntry) -> None:
         """flash_ota streams progress events and sends final success result."""
         mock_dm = await setup_integration(hass, config_entry)
 
@@ -264,9 +254,7 @@ class TestFlashOta:
         mock_fetch.assert_awaited_once()
         mock_push.assert_awaited_once()
         mock_wait.assert_awaited_once_with(hass, "192.168.1.50")
-        mock_flow.assert_awaited_once_with(
-            "esphome", context={"source": "user"}, data={"host": "192.168.1.50"}
-        )
+        mock_flow.assert_awaited_once_with("esphome", context={"source": "user"}, data={"host": "192.168.1.50"})
 
         # Verify progress events were sent via send_message
         assert connection.send_message.call_count >= 4
@@ -284,9 +272,7 @@ class TestFlashOta:
         connection.send_result.assert_called_once_with(5, {"status": "success"})
         connection.send_error.assert_not_called()
 
-    async def test_flash_ota_device_not_found(
-        self, hass: HomeAssistant, config_entry: MockConfigEntry
-    ) -> None:
+    async def test_flash_ota_device_not_found(self, hass: HomeAssistant, config_entry: MockConfigEntry) -> None:
         """flash_ota sends error when device MAC is not in list_flashable_devices."""
         mock_dm = await setup_integration(hass, config_entry)
         mock_dm.list_flashable_devices = AsyncMock(return_value=[])
@@ -303,14 +289,10 @@ class TestFlashOta:
 
         await call_async_handler(hass, websocket_flash_ota, connection, msg)
 
-        connection.send_error.assert_called_once_with(
-            6, "not_found", "Device 00:11:22:33:44:55 not found"
-        )
+        connection.send_error.assert_called_once_with(6, "not_found", "Device 00:11:22:33:44:55 not found")
         connection.send_result.assert_not_called()
 
-    async def test_flash_ota_no_host(
-        self, hass: HomeAssistant, config_entry: MockConfigEntry
-    ) -> None:
+    async def test_flash_ota_no_host(self, hass: HomeAssistant, config_entry: MockConfigEntry) -> None:
         """flash_ota sends error when device has no host IP."""
         mock_dm = await setup_integration(hass, config_entry)
         device = {
@@ -337,9 +319,7 @@ class TestFlashOta:
         connection.send_error.assert_called_once_with(7, "no_host", "Device has no known IP address")
         connection.send_result.assert_not_called()
 
-    async def test_flash_ota_ota_error(
-        self, hass: HomeAssistant, config_entry: MockConfigEntry
-    ) -> None:
+    async def test_flash_ota_ota_error(self, hass: HomeAssistant, config_entry: MockConfigEntry) -> None:
         """flash_ota sends ota_failed error when OTAError is raised."""
         mock_dm = await setup_integration(hass, config_entry)
         device = {
@@ -351,8 +331,8 @@ class TestFlashOta:
         }
         mock_dm.list_flashable_devices = AsyncMock(return_value=[device])
 
-        from custom_components.eppgrid.websocket_api import websocket_flash_ota
         from custom_components.eppgrid.ota import OTAError
+        from custom_components.eppgrid.websocket_api import websocket_flash_ota
 
         connection = MagicMock()
         msg = {
@@ -379,9 +359,7 @@ class TestFlashOta:
         connection.send_error.assert_called_once_with(8, "ota_failed", "Connection refused")
         connection.send_result.assert_not_called()
 
-    async def test_flash_ota_reboot_timeout(
-        self, hass: HomeAssistant, config_entry: MockConfigEntry
-    ) -> None:
+    async def test_flash_ota_reboot_timeout(self, hass: HomeAssistant, config_entry: MockConfigEntry) -> None:
         """flash_ota reports timeout when device doesn't come back online."""
         mock_dm = await setup_integration(hass, config_entry)
         device = {

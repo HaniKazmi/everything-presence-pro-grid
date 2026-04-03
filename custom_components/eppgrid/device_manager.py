@@ -730,9 +730,7 @@ class DeviceManager:
 
             # Check if device has zone_engine_version entity (= our firmware)
             has_zone_engine = False
-            for ent_entry in er.async_entries_for_device(
-                ent_reg, device.id, include_disabled_entities=True
-            ):
+            for ent_entry in er.async_entries_for_device(ent_reg, device.id, include_disabled_entities=True):
                 if ent_entry.platform == "esphome" and "zone_engine_version" in ent_entry.unique_id:
                     has_zone_engine = True
                     break
@@ -745,15 +743,17 @@ class DeviceManager:
                     available = True
                     break
 
-            result.append({
-                "mac": mac,
-                "name": device.name_by_user or device.name or "EPP Device",
-                "host": host,
-                "available": available,
-                "firmware_type": "eppgrid" if has_zone_engine else "original",
-                "firmware_version": device.sw_version or "unknown",
-                "esphome_config_entry_id": esphome_config_entry_id,
-            })
+            result.append(
+                {
+                    "mac": mac,
+                    "name": device.name_by_user or device.name or "EPP Device",
+                    "host": host,
+                    "available": available,
+                    "firmware_type": "eppgrid" if has_zone_engine else "original",
+                    "firmware_version": device.sw_version or "unknown",
+                    "esphome_config_entry_id": esphome_config_entry_id,
+                }
+            )
 
         return result
 
