@@ -333,7 +333,21 @@
 		"wifi_password": "WiFi password",
 		"connected_to": "Connected to {ssid}",
 		"ip_address": "IP Address: {ip}",
-		"continue": "Continue"
+		"continue": "Continue",
+		"usb_flash": "Flash via USB",
+		"usb_step_connecting": "Connecting to device...",
+		"usb_step_flashing": "Flashing firmware...",
+		"usb_step_scanning": "Scanning for WiFi networks...",
+		"usb_step_provisioning": "Configuring WiFi...",
+		"usb_step_reading_ip": "Detecting device IP address...",
+		"usb_step_adding": "Adding device to Home Assistant...",
+		"usb_step_complete": "Device configured successfully!",
+		"usb_error_connect": "Could not connect to device. Hold the BOOT button and try again.",
+		"usb_error_flash": "Firmware flash failed.",
+		"usb_error_wifi": "WiFi provisioning failed.",
+		"usb_error_ip": "Connected to WiFi but could not detect IP address.",
+		"usb_retry": "Retry",
+		"usb_back": "Back"
 	},
 	"connection": {
 		"failed": "Cannot connect to device. The sensor supports a maximum of 3 simultaneous connections.",
