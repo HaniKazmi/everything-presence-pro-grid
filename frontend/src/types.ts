@@ -38,3 +38,29 @@ export interface WizardCorner {
 }
 
 export type SetupStep = "guide" | "corners" | "preview";
+
+export interface FlashableDevice {
+	mac: string;
+	name: string;
+	host: string | null;
+	available: boolean;
+	firmware_type: "original" | "eppgrid";
+	firmware_version: string;
+	esphome_config_entry_id: string | null;
+}
+
+export type OtaStep =
+	| "removing_old_device"
+	| "downloading_firmware"
+	| "flashing"
+	| "waiting_for_reboot"
+	| "adding_to_esphome"
+	| "complete"
+	| "error";
+
+export interface OtaProgress {
+	step: OtaStep;
+	status: "in_progress" | "success" | "failed" | "timeout";
+	progress?: number;
+	error?: string;
+}
