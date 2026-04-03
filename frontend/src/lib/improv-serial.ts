@@ -155,6 +155,74 @@ export function parseImprovPackets(data: Uint8Array): ImprovPacket[] {
 }
 
 /**
+ * Writes an Improv packet to a serial writer.
+ */
+export async function sendImprovPacket(
+	writer: WritableStreamDefaultWriter<Uint8Array>,
+	packet: Uint8Array,
+): Promise<void> {
+	await writer.write(packet);
+}
+
+/**
+ * Reads from a serial reader until valid Improv packets are found or timeout.
+ * Accumulates data across chunks, skips non-Improv bytes (log text).
+ * Throws on timeout.
+ */
+export async function readImprovResponse(
+	reader: ReadableStreamDefaultReader<Uint8Array>,
+	timeoutMs: number,
+): Promise<ImprovPacket[]> {
+	const buffer: number[] = [];
+	const deadline = Date.now() + timeoutMs;
+
+	while (Date.now() < deadline) {
+		const remaining = deadline - Date.now();
+		if (remaining <= 0) break;
+
+		const result = await Promise.race([
+			reader.read(),
+			new Promise<{ value: undefined; done: true }>((resolve) =>
+				setTimeout(() => resolve({ value: undefined, done: true }), remaining),
+			),
+		]);
+
+		if (result.value) {
+			buffer.push(...result.value);
+			const packets = parseImprovPackets(new Uint8Array(buffer));
+			if (packets.length > 0) {
+				return packets;
+			}
+		}
+
+		if (result.done) break;
+	}
+
+	throw new Error("timeout");
+}
+
+/**
+ * Reads and discards buffered serial data for the given duration.
+ * Used to clear stale data before starting Improv communication.
+ */
+export async function drainSerial(
+	reader: ReadableStreamDefaultReader<Uint8Array>,
+	timeoutMs: number,
+): Promise<void> {
+	const deadline = Date.now() + timeoutMs;
+
+	while (Date.now() < deadline) {
+		const remaining = deadline - Date.now();
+		if (remaining <= 0) break;
+
+		await Promise.race([
+			reader.read(),
+			new Promise<void>((resolve) => setTimeout(resolve, remaining)),
+		]);
+	}
+}
+
+/**
  * Parses a scan result from an RPC result data payload.
  * Format: 3 length-prefixed strings: SSID, RSSI string, auth ("YES"/"NO")
  * Returns null for empty data (termination packet).
