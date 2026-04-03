@@ -52,6 +52,8 @@ wifi:
     then:
       - script.execute: control_leds
 
+improv_serial:
+
 esp32_improv:
   authorizer: none
 
