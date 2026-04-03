@@ -424,7 +424,7 @@ export class EppFlasherView extends LitElement {
 
 	private _getManifestUrl(): string {
 		const variant = this._getFirmwareVariant();
-		return `/eppgrid_static/firmware/everything-presence-pro-${variant}-manifest.json`;
+		return `https://clintongormley.github.io/everything-presence-pro-grid/firmware/everything-presence-pro-${variant}-manifest.json`;
 	}
 
 	private _renderUsbFlash() {
