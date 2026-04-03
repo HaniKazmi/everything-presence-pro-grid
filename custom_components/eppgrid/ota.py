@@ -26,8 +26,8 @@ class OTAError(Exception):
 async def fetch_firmware_binary(session: Any, variant: str) -> bytes:
     """Fetch the OTA firmware binary for a given variant.
 
-    Fetches the manifest JSON, extracts the OTA binary URL, and downloads
-    the binary.
+    Downloads the manifest from MANIFEST_BASE_URL, extracts the OTA binary
+    path, and downloads the binary.
 
     Args:
         session: aiohttp ClientSession to use for HTTP requests.
@@ -43,6 +43,8 @@ async def fetch_firmware_binary(session: Any, variant: str) -> bytes:
     manifest_url = f"{MANIFEST_BASE_URL}/everything-presence-pro-{variant}-manifest.json"
 
     async with session.get(manifest_url) as resp:
+        if resp.status == 404:
+            raise OTAError(f"Firmware not found for variant '{variant}'. Check that a release exists.")
         resp.raise_for_status()
         manifest = await resp.json()
 
@@ -56,7 +58,9 @@ async def fetch_firmware_binary(session: Any, variant: str) -> bytes:
     if ota_path is None:
         raise OTAError("No OTA build found in manifest")
 
-    async with session.get(ota_path) as resp:
+    # OTA path is relative to the manifest URL
+    binary_url = f"{MANIFEST_BASE_URL}/{ota_path}"
+    async with session.get(binary_url) as resp:
         resp.raise_for_status()
         binary = await resp.read()
 

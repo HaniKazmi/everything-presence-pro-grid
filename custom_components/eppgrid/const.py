@@ -21,4 +21,7 @@ EPP_MODEL = "Everything Presence Pro"
 
 # ESPHome OTA
 OTA_PORT = 3232
-MANIFEST_BASE_URL = "https://github.com/clintongormley/everything-presence-pro-grid/releases/latest/download"
+FIRMWARE_VERSION = "v0.1.0-alpha.1"
+MANIFEST_BASE_URL = (
+    f"https://github.com/clintongormley/everything-presence-pro-grid/releases/download/{FIRMWARE_VERSION}"
+)
