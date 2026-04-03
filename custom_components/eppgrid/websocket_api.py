@@ -1173,6 +1173,7 @@ async def websocket_list_flashable_devices(
         vol.Required("config_entry_id"): str,
     }
 )
+@websocket_api.require_admin
 @websocket_api.async_response
 async def websocket_delete_esphome_device(
     hass: HomeAssistant,
@@ -1197,6 +1198,7 @@ async def websocket_delete_esphome_device(
         vol.Required("host"): str,
     }
 )
+@websocket_api.require_admin
 @websocket_api.async_response
 async def websocket_add_esphome_device(
     hass: HomeAssistant,
@@ -1205,9 +1207,12 @@ async def websocket_add_esphome_device(
 ) -> None:
     """Add an ESPHome device by triggering its config flow."""
     try:
+        flow_context: dict[str, Any] = {"source": "user"}
+        if hasattr(connection, "context") and hasattr(connection.context, "user_id"):
+            flow_context["user_id"] = connection.context.user_id
         result = await hass.config_entries.flow.async_init(
             "esphome",
-            context={"source": "user"},
+            context=flow_context,
             data={"host": msg["host"]},
         )
         connection.send_result(msg["id"], {"result": result.get("type", "unknown")})
@@ -1241,6 +1246,7 @@ async def _wait_for_device_online(hass: HomeAssistant, host: str, timeout: float
         vol.Required("variant"): vol.In(["wifi", "ethernet"]),
     }
 )
+@websocket_api.require_admin
 @websocket_api.async_response
 async def websocket_flash_ota(
     hass: HomeAssistant,
@@ -1248,7 +1254,7 @@ async def websocket_flash_ota(
     msg: dict[str, Any],
 ) -> None:
     """Flash firmware OTA to a device. Streams progress events."""
-    import aiohttp
+    from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
     manager = _get_manager(hass)
     if manager is None:
@@ -1270,6 +1276,9 @@ async def websocket_flash_ota(
         connection.send_error(msg_id, "no_host", "Device has no known IP address")
         return
 
+    # Acknowledge subscription immediately so the client can unsubscribe mid-flash
+    connection.send_result(msg_id)
+
     def send_progress(step: str, status: str = "in_progress", **kwargs: Any) -> None:
         connection.send_message(websocket_api.event_message(msg_id, {"step": step, "status": status, **kwargs}))
 
@@ -1282,8 +1291,8 @@ async def websocket_flash_ota(
 
         # Step 2: Fetch firmware
         send_progress("downloading_firmware")
-        async with aiohttp.ClientSession() as session:
-            firmware = await fetch_firmware_binary(session, variant)
+        session = async_get_clientsession(hass)
+        firmware = await fetch_firmware_binary(session, variant)
 
         # Step 3: Push OTA
         send_progress("flashing")
@@ -1299,7 +1308,6 @@ async def websocket_flash_ota(
         online = await _wait_for_device_online(hass, host)
         if not online:
             send_progress("waiting_for_reboot", status="timeout")
-            connection.send_result(msg_id, {"status": "timeout"})
             return
 
         # Step 5: Auto-add to ESPHome
@@ -1311,12 +1319,9 @@ async def websocket_flash_ota(
         )
 
         send_progress("complete", status="success")
-        connection.send_result(msg_id, {"status": "success"})
 
     except OTAError as err:
         send_progress("error", status="failed", error=str(err))
-        connection.send_error(msg_id, "ota_failed", str(err))
     except Exception as err:
         _LOGGER.exception("Unexpected error during OTA flash")
-        connection.send_error(msg_id, "flash_failed", str(err))
->>>>>>> 0995d5a (feat: flash_ota WS command with progress streaming)
+        send_progress("error", status="failed", error=str(err))

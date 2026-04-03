@@ -186,11 +186,11 @@ class TestAddEsphomeDevice:
         ) as mock_init:
             await call_async_handler(hass, websocket_add_esphome_device, connection, msg)
 
-        mock_init.assert_awaited_once_with(
-            "esphome",
-            context={"source": "user"},
-            data={"host": "192.168.1.99"},
-        )
+        mock_init.assert_awaited_once()
+        call_kwargs = mock_init.call_args
+        assert call_kwargs[0][0] == "esphome"
+        assert call_kwargs[1]["context"]["source"] == "user"
+        assert call_kwargs[1]["data"] == {"host": "192.168.1.99"}
         connection.send_result.assert_called_once()
         result = connection.send_result.call_args[0]
         assert result[0] == 4
@@ -268,8 +268,8 @@ class TestFlashOta:
         assert "adding_to_esphome" in steps
         assert "complete" in steps
 
-        # Final result should be success
-        connection.send_result.assert_called_once_with(5, {"status": "success"})
+        # send_result called immediately to acknowledge subscription
+        connection.send_result.assert_called_once_with(5)
         connection.send_error.assert_not_called()
 
     async def test_flash_ota_device_not_found(self, hass: HomeAssistant, config_entry: MockConfigEntry) -> None:
@@ -356,8 +356,16 @@ class TestFlashOta:
         ):
             await call_async_handler(hass, websocket_flash_ota, connection, msg)
 
-        connection.send_error.assert_called_once_with(8, "ota_failed", "Connection refused")
-        connection.send_result.assert_not_called()
+        # send_result called immediately; error reported via event message
+        connection.send_result.assert_called_once_with(8)
+        # Error event sent via send_message
+        error_events = [
+            c.args[0]
+            for c in connection.send_message.call_args_list
+            if c.args[0].get("event", {}).get("status") == "failed"
+        ]
+        assert len(error_events) >= 1
+        assert "Connection refused" in error_events[-1]["event"]["error"]
 
     async def test_flash_ota_reboot_timeout(self, hass: HomeAssistant, config_entry: MockConfigEntry) -> None:
         """flash_ota reports timeout when device doesn't come back online."""
@@ -399,8 +407,14 @@ class TestFlashOta:
         ):
             await call_async_handler(hass, websocket_flash_ota, connection, msg)
 
-        connection.send_result.assert_called_once_with(9, {"status": "timeout"})
-        connection.send_error.assert_not_called()
+        # send_result called immediately; timeout reported via event message
+        connection.send_result.assert_called_once_with(9)
+        timeout_events = [
+            c.args[0]
+            for c in connection.send_message.call_args_list
+            if c.args[0].get("event", {}).get("status") == "timeout"
+        ]
+        assert len(timeout_events) >= 1
 
     async def test_flash_ota_skips_remove_when_no_config_entry(
         self, hass: HomeAssistant, config_entry: MockConfigEntry
@@ -453,4 +467,4 @@ class TestFlashOta:
             await call_async_handler(hass, websocket_flash_ota, connection, msg)
 
         mock_remove.assert_not_called()
-        connection.send_result.assert_called_once_with(10, {"status": "success"})
+        connection.send_result.assert_called_once_with(10)

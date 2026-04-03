@@ -35,6 +35,7 @@ export class FlasherController implements ReactiveController {
 	async loadDevices(): Promise<void> {
 		if (!this._hass) {
 			this.loading = false;
+			this._host.requestUpdate();
 			return;
 		}
 		try {
@@ -66,6 +67,8 @@ export class FlasherController implements ReactiveController {
 							msg.status === "failed" ||
 							msg.status === "timeout"
 						) {
+							this._unsubOta?.();
+							this._unsubOta = undefined;
 							resolve();
 						}
 					},
@@ -73,6 +76,16 @@ export class FlasherController implements ReactiveController {
 				)
 				.then((unsub: () => void) => {
 					this._unsubOta = unsub;
+				})
+				.catch(() => {
+					this.otaProgress = {
+						step: "error",
+						status: "failed",
+						error: "Failed to start OTA flash",
+					};
+					this.flashingMac = null;
+					this._host.requestUpdate();
+					resolve();
 				});
 		});
 	}

@@ -167,23 +167,30 @@ export function parseScanResults(data: Uint8Array): WifiNetwork | null {
 	const decoder = new TextDecoder();
 	let offset = 0;
 
-	// Read SSID
-	const ssidLen = data[offset++];
-	const ssid = decoder.decode(data.slice(offset, offset + ssidLen));
-	offset += ssidLen;
+	const readString = (): string | null => {
+		if (offset >= data.length) return null;
+		const len = data[offset++];
+		if (offset + len > data.length) return null;
+		const value = decoder.decode(data.slice(offset, offset + len));
+		offset += len;
+		return value;
+	};
 
-	// Read RSSI string
-	const rssiLen = data[offset++];
-	const rssiStr = decoder.decode(data.slice(offset, offset + rssiLen));
-	offset += rssiLen;
+	const ssid = readString();
+	if (ssid === null) return null;
 
-	// Read auth string
-	const authLen = data[offset++];
-	const auth = decoder.decode(data.slice(offset, offset + authLen));
+	const rssiStr = readString();
+	if (rssiStr === null) return null;
+
+	const auth = readString();
+	if (auth === null) return null;
+
+	const rssi = Number.parseInt(rssiStr, 10);
+	if (Number.isNaN(rssi)) return null;
 
 	return {
 		ssid,
-		rssi: parseInt(rssiStr, 10),
+		rssi,
 		authRequired: auth === "YES",
 	};
 }

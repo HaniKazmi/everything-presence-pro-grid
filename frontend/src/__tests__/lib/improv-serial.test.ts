@@ -229,6 +229,56 @@ describe("parseScanResults", () => {
 		expect(result).toBeNull();
 	});
 
+	it("returns null when SSID is truncated", () => {
+		// Length byte says 10 but only 3 bytes follow
+		const data = new Uint8Array([10, 0x41, 0x42, 0x43]);
+		expect(parseScanResults(data)).toBeNull();
+	});
+
+	it("returns null when RSSI field is missing", () => {
+		// Valid SSID but nothing after
+		const encoder = new TextEncoder();
+		const ssid = encoder.encode("Net");
+		const data = new Uint8Array(1 + ssid.length);
+		data[0] = ssid.length;
+		data.set(ssid, 1);
+		expect(parseScanResults(data)).toBeNull();
+	});
+
+	it("returns null when auth field is missing", () => {
+		const encoder = new TextEncoder();
+		const ssid = encoder.encode("Net");
+		const rssi = encoder.encode("-50");
+		const data = new Uint8Array(1 + ssid.length + 1 + rssi.length);
+		let offset = 0;
+		data[offset++] = ssid.length;
+		data.set(ssid, offset);
+		offset += ssid.length;
+		data[offset++] = rssi.length;
+		data.set(rssi, offset);
+		expect(parseScanResults(data)).toBeNull();
+	});
+
+	it("returns null when RSSI is not a number", () => {
+		const encoder = new TextEncoder();
+		const ssid = encoder.encode("Net");
+		const rssi = encoder.encode("abc");
+		const auth = encoder.encode("YES");
+		const data = new Uint8Array(
+			1 + ssid.length + 1 + rssi.length + 1 + auth.length,
+		);
+		let offset = 0;
+		data[offset++] = ssid.length;
+		data.set(ssid, offset);
+		offset += ssid.length;
+		data[offset++] = rssi.length;
+		data.set(rssi, offset);
+		offset += rssi.length;
+		data[offset++] = auth.length;
+		data.set(auth, offset);
+		expect(parseScanResults(data)).toBeNull();
+	});
+
 	it("parses open network with auth=NO", () => {
 		const encoder = new TextEncoder();
 		const ssid = "OpenNetwork";

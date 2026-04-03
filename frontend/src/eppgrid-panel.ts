@@ -1010,10 +1010,6 @@ export class EPPGridPanel extends LitElement {
 
 	render() {
 		if (this._panelTab === "flasher") {
-			if (this._flasherCtrl.loading) {
-				this._flasherCtrl.hass = this.hass;
-				this._flasherCtrl.loadDevices();
-			}
 			return html`
 				${this._renderTabBar()}
 				<epp-flasher-view

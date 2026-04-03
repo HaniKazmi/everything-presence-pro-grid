@@ -253,7 +253,7 @@ describe("FlasherController", () => {
 			await expect(flashPromise).resolves.toBeUndefined();
 		});
 
-		it("stores the unsub function for cleanup", async () => {
+		it("calls unsub on terminal status and clears it", async () => {
 			const unsub = vi.fn();
 			let capturedCallback: ((msg: OtaProgress) => void) | undefined;
 			hass.connection.subscribeMessage = vi
@@ -268,7 +268,8 @@ describe("FlasherController", () => {
 			capturedCallback!({ step: "complete", status: "success" });
 			await flashPromise;
 
-			expect((ctrl as any)._unsubOta).toBe(unsub);
+			expect(unsub).toHaveBeenCalled();
+			expect((ctrl as any)._unsubOta).toBeUndefined();
 		});
 
 		it("does nothing when hass is null", async () => {
