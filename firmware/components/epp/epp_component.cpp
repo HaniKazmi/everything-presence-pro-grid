@@ -135,15 +135,18 @@ void EPPComponent::loop() {
       }
     }
 
-    // Publish grid target positions from zone engine result
-    // (includes last-known position for pending targets)
+    // Publish grid target positions from zone engine result.
+    // Always send position when sensor sees a target (even if zone engine
+    // didn't confirm it) so the frontend can process with its own grid.
     for (int i = 0; i < NUM_TARGETS; i++) {
       if (target_position_sensors_[i] != nullptr) {
-        if (i < result.target_count && result.targets[i].status != TargetStatus::INACTIVE) {
+        if (i < result.target_count && !std::isnan(result.targets[i].x)) {
+          const char* status_str = result.targets[i].status == TargetStatus::ACTIVE ? "active"
+                                 : result.targets[i].status == TargetStatus::PENDING ? "pending"
+                                 : "inactive";
           char buf[64];
           snprintf(buf, sizeof(buf), "%.0f,%.0f,%s",
-                   result.targets[i].x, result.targets[i].y,
-                   result.targets[i].status == TargetStatus::ACTIVE ? "active" : "pending");
+                   result.targets[i].x, result.targets[i].y, status_str);
           target_position_sensors_[i]->publish_state(buf);
         } else {
           target_position_sensors_[i]->publish_state("");
