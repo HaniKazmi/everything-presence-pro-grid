@@ -38,6 +38,7 @@ jobs:
       - name: Generate ESP Web Tools manifest
         run: |
           TAG="${GITHUB_REF#refs/tags/}"
+          OTA_MD5=$(md5sum "dist/everything-presence-pro-${{ matrix.variant }}.ota.bin" | cut -d' ' -f1)
           cat > "dist/everything-presence-pro-${{ matrix.variant }}-manifest.json" << EOF
           {
             "name": "Everything Presence Pro (${{ matrix.variant }})",
@@ -47,7 +48,11 @@ jobs:
                 "chipFamily": "ESP32",
                 "parts": [
                   {"path": "everything-presence-pro-${{ matrix.variant }}.bin", "offset": 0}
-                ]
+                ],
+                "ota": {
+                  "path": "everything-presence-pro-${{ matrix.variant }}.ota.bin",
+                  "md5": "$OTA_MD5"
+                }
               }
             ]
           }
@@ -74,3 +79,4 @@ jobs:
         with:
           files: dist/*
           generate_release_notes: true
+          prerelease: ${{ contains(github.ref, '-alpha') || contains(github.ref, '-beta') || contains(github.ref, '-rc') }}
