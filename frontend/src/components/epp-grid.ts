@@ -203,15 +203,9 @@ export class EppGrid extends LitElement {
 						if (interf === CELL_INTERFERENCE_SUPPRESS) {
 							overlayMarker =
 								"background-image: repeating-linear-gradient(-45deg, transparent, transparent 5px, #cc3333 5px, #cc3333 7px), repeating-linear-gradient(45deg, transparent, transparent 5px, #cc3333 5px, #cc3333 7px);";
-						} else if (interf === 3) {
-							overlayMarker =
-								"background-image: repeating-linear-gradient(-45deg, transparent, transparent 3px, #cc3333 3px, #cc3333 5px);";
-						} else if (interf === 2) {
+						} else if (interf > 0) {
 							overlayMarker =
 								"background-image: repeating-linear-gradient(-45deg, transparent, transparent 5px, #cc3333 5px, #cc3333 7px);";
-						} else if (interf === 1) {
-							overlayMarker =
-								"background-image: repeating-linear-gradient(-45deg, transparent, transparent 8px, #cc3333 8px, #cc3333 10px);";
 						}
 					}
 				}

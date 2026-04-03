@@ -146,23 +146,20 @@ describe("_markGhost", () => {
 		expect(a._dirty).toBe(true);
 	});
 
-	it("increments from 1 to 2 to 3 to suppress", async () => {
+	it("does nothing when interference is already set (any non-zero level)", async () => {
 		const a = createPanel() as any;
 		a._gridCtrl = { applyLayout: vi.fn().mockResolvedValue(undefined) };
 		const { x, y, idx } = insideCellCoords(3000, 4000);
 
 		// Set interference to 1
 		a._grid[idx] = cellSetInterference(a._grid[idx], 1);
-		await a._markGhost(x, y);
-		expect(cellInterference(a._grid[idx])).toBe(2);
+		const before = a._grid[idx];
 
-		// Now at 2 -> 3
 		await a._markGhost(x, y);
-		expect(cellInterference(a._grid[idx])).toBe(3);
 
-		// Now at 3 -> suppress (7)
-		await a._markGhost(x, y);
-		expect(cellInterference(a._grid[idx])).toBe(CELL_INTERFERENCE_SUPPRESS);
+		// Already has interference set — should not change
+		expect(a._grid[idx]).toBe(before);
+		expect(a._gridCtrl.applyLayout).not.toHaveBeenCalled();
 	});
 
 	it("does nothing when already suppressed", async () => {

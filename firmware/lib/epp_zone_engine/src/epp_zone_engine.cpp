@@ -239,27 +239,20 @@ const ProcessingResult& ZoneEngine::tick(const WindowOutput& window, float times
             int trigger_thresh = threshold_to_frame_count(rt.config.trigger);
             int renew_thresh = threshold_to_frame_count(rt.config.renew);
 
-            // Apply interference: increase thresholds
-            if (interference > 0) {
-                trigger_thresh = std::min(trigger_thresh + interference * 2, 9);
-                renew_thresh = std::min(renew_thresh + interference * 2, 9);
-            }
-
             // No first appearance: targets cannot originate in interference zones.
             // They must be handed off from a clean zone (continuity required).
             // Only applies when zone is CLEAR — once occupied, targets can be re-confirmed.
             if (interference > 0 && !continuous && rt.state == ZoneState::CLEAR) {
-                log_(LogLevel::DEBUG, "T%d blocked: interference=%d cell=(%d,%d) no continuity, zone %d clear",
-                     i, interference, col, row, zone_id);
+                log_(LogLevel::DEBUG, "T%d blocked: interference cell=(%d,%d) no continuity, zone %d clear",
+                     i, col, row, zone_id);
                 target_has_prev_[i] = false;
                 target_gate_count_[i] = 0;
                 continue;
             }
 
+            // Interference: renew requires signal 9 to prevent fans sustaining occupancy
             if (interference > 0) {
-                log_(LogLevel::DEBUG, "T%d in interference=%d cell=(%d,%d) zone=%d continuous=%d clear=%d signal=%d",
-                     i, interference, col, row, zone_id, continuous ? 1 : 0,
-                     rt.state == ZoneState::CLEAR ? 1 : 0, signal);
+                renew_thresh = 9;
             }
 
             // Determine effective threshold based on zone state

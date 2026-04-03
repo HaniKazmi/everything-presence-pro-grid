@@ -22,7 +22,7 @@ import {
 	pxToMm,
 } from "./lib/furniture.js";
 import {
-	CELL_INTERFERENCE_SUPPRESS,
+
 	cellInterference,
 	cellIsInside,
 	cellSetInterference,
@@ -182,7 +182,6 @@ export class EPPGridPanel extends LitElement {
 		this._targetCtrl.zoneEngineState = value;
 	}
 	@state() private _overlayMode: string | null = null;
-	@state() private _interferenceLevel: number = 1;
 	@state() private _isPainting = false;
 	private _justPainted = false;
 	@state() private _paintAction: PaintAction = "set";
@@ -1232,11 +1231,8 @@ export class EPPGridPanel extends LitElement {
 		if (!cellIsInside(cellVal)) return;
 
 		const current = cellInterference(cellVal);
-		let next: number;
-		if (current === 0) next = 1;
-		else if (current < 3) next = current + 1;
-		else if (current === 3) next = CELL_INTERFERENCE_SUPPRESS;
-		else return; // already suppressed
+		if (current > 0) return; // already marked as interference or suppressed
+		const next = 1;
 
 		this._grid = new Uint8Array(this._grid);
 		this._grid[idx] = cellSetInterference(this._grid[idx], next);
@@ -1599,13 +1595,9 @@ export class EPPGridPanel extends LitElement {
 								: this._sidebarTab === "overlays"
 									? html`<epp-overlay-sidebar
                     .overlayMode=${this._overlayMode}
-                    .interferenceLevel=${this._interferenceLevel}
                     .localize=${this._localize}
                     @overlay-select=${(e: CustomEvent) => {
 											this._overlayMode = e.detail.mode;
-										}}
-                    @interference-level-change=${(e: CustomEvent) => {
-											this._interferenceLevel = e.detail.level;
 										}}
                   ></epp-overlay-sidebar>`
 									: html`<epp-furniture-sidebar

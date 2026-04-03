@@ -26,3 +26,5 @@ firmware/lib/epp_zone_engine/build-coverage/
 docs/EppGrid TODO.txt
 docs/superpowers/
 docs/handoffs/
+.playwright-mcp/
+epp-live-view.png

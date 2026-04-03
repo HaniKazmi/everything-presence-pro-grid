@@ -33,7 +33,6 @@ function mockHost(overrides: Record<string, any> = {}) {
 		_dragState: null as any,
 		// Overlays
 		_overlayMode: null as string | null,
-		_interferenceLevel: 1,
 		// Zones
 		_zoneConfigs: Array.from(
 			{ length: MAX_ZONES },
@@ -602,21 +601,20 @@ describe("GridStateController", () => {
 			// Mark cell 5 as inside the room so paint functions accept it
 			host._grid[5] = CELL_ROOM_BIT;
 			host._overlayMode = "interference";
-			host._interferenceLevel = 2;
 			vi.spyOn(window, "addEventListener").mockImplementation(() => {});
 		});
 
 		it("onCellMouseDown sets isPainting and applies interference paint", () => {
 			ctrl.onCellMouseDown(5);
 			expect(host._isPainting).toBe(true);
-			// Interference level 2 should be encoded in bits 5-7
-			expect(cellInterference(host._grid[5])).toBe(2);
+			// Interference mode always paints level 1
+			expect(cellInterference(host._grid[5])).toBe(1);
 			expect(host._dirty).toBe(true);
 		});
 
 		it("onCellMouseDown uses determineInterferencePaintAction (toggles off when already set)", () => {
-			// Pre-paint cell 5 with interference level 2
-			host._grid[5] = CELL_ROOM_BIT | (2 << CELL_INTERFERENCE_SHIFT);
+			// Pre-paint cell 5 with interference level 1 (what mode "interference" paints)
+			host._grid[5] = CELL_ROOM_BIT | (1 << CELL_INTERFERENCE_SHIFT);
 			ctrl.onCellMouseDown(5);
 			// Same level → should toggle to clear
 			expect(host._paintAction).toBe("clear");
@@ -626,7 +624,8 @@ describe("GridStateController", () => {
 		it("applyPaintToCell with interference mode calls applyInterferencePaintToCell", () => {
 			host._paintAction = "set";
 			ctrl.applyPaintToCell(5);
-			expect(cellInterference(host._grid[5])).toBe(2);
+			// Interference mode paints level 1
+			expect(cellInterference(host._grid[5])).toBe(1);
 			expect(host._dirty).toBe(true);
 		});
 
@@ -707,7 +706,6 @@ describe("GridStateController", () => {
 
 		it("interference painting: mouseup clears isPainting via onUp lambda", () => {
 			host._overlayMode = "interference";
-			host._interferenceLevel = 1;
 			host._grid[5] = CELL_ROOM_BIT;
 
 			let capturedHandler: (() => void) | null = null;

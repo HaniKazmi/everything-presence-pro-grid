@@ -555,7 +555,7 @@ describe("epp-grid interference stripes", () => {
 		return grid;
 	}
 
-	it("renders -45deg cc3333 stripe for interference level 1", async () => {
+	it("renders -45deg cc3333 stripe for interference (level 1)", async () => {
 		const grid = buildGridWithInterference(1);
 		const el = createGrid({ grid });
 		document.body.appendChild(el);
@@ -566,41 +566,8 @@ describe("epp-grid interference stripes", () => {
 		const style = cell!.style.cssText;
 		expect(style).toContain("-45deg");
 		expect(style).toContain("#cc3333");
-		expect(style).toContain("8px");
-
-		document.body.removeChild(el);
-	});
-
-	it("renders -45deg cc3333 stripe for interference level 2", async () => {
-		const grid = buildGridWithInterference(2);
-		const el = createGrid({ grid });
-		document.body.appendChild(el);
-		await el.updateComplete;
-
-		const cell = findInterferenceCell(el);
-		expect(cell).not.toBeNull();
-		const style = cell!.style.cssText;
-		expect(style).toContain("-45deg");
-		expect(style).toContain("#cc3333");
-		expect(style).toContain("5px");
-		// Level 2 has only one gradient direction (not a cross-hatch)
+		// Single stripe pattern — not a cross-hatch
 		expect(style.match(/-45deg/g)?.length).toBe(1);
-
-		document.body.removeChild(el);
-	});
-
-	it("renders -45deg cc3333 stripe for interference level 3", async () => {
-		const grid = buildGridWithInterference(3);
-		const el = createGrid({ grid });
-		document.body.appendChild(el);
-		await el.updateComplete;
-
-		const cell = findInterferenceCell(el);
-		expect(cell).not.toBeNull();
-		const style = cell!.style.cssText;
-		expect(style).toContain("-45deg");
-		expect(style).toContain("#cc3333");
-		expect(style).toContain("3px");
 
 		document.body.removeChild(el);
 	});

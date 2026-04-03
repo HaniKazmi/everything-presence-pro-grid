@@ -769,30 +769,9 @@ describe("interference zones", () => {
 		state = createZoneEngineState();
 	});
 
-	it("interference level 1 raises effective trigger, signal below threshold does not occupy", () => {
-		// Zone 1 trigger=3. Level 1 → effective trigger = 3+2 = 5.
-		// Signal 4 < 5 → should NOT occupy.
-		const grid = makeParityGrid();
-		// Set interference on target cell (col=9, row=1)
-		grid[1 * GRID_COLS + 9] = cellSetInterference(
-			cellSetZone(CELL_ROOM_BIT, 1),
-			1,
-		);
-		// Set overlay on adjacent zone-1 cell to bypass gating (NOT on same cell — mutual exclusivity)
-		grid[1 * GRID_COLS + 8] = cellSetOverlayEntry(
-			cellSetZone(CELL_ROOM_BIT, 1),
-			true,
-		);
-
-		const params = makeDefaultParams({
-			targets: [makeTarget(450, 450, 4)],
-			grid,
-		});
-		const result = runLocalZoneEngine(state, params);
-		expect(result.occupancy[1]).toBe(false);
-	});
-
-	it("interference level 1 allows detection when signal meets adjusted threshold (with continuity)", () => {
+	it("interference does not change trigger threshold (trigger uses normal zone value)", () => {
+		// Zone 1 trigger=3. With interference, trigger stays 3.
+		// Target enters via continuity, signal 3 >= trigger 3 → should occupy.
 		const grid = makeParityGrid();
 		grid[1 * GRID_COLS + 9] = cellSetInterference(
 			cellSetZone(CELL_ROOM_BIT, 1),
@@ -803,7 +782,7 @@ describe("interference zones", () => {
 			true,
 		);
 
-		// First tick: establish position in clean cell (col=8, row=1)
+		// First tick: establish position in clean cell
 		const now = Date.now() / 1000;
 		runLocalZoneEngine(
 			state,
@@ -818,7 +797,7 @@ describe("interference zones", () => {
 		const result = runLocalZoneEngine(
 			state,
 			makeDefaultParams({
-				targets: [makeTarget(450, 450, 5)], // signal 5 >= effective trigger 5
+				targets: [makeTarget(450, 450, 3)], // signal 3 >= trigger 3
 				grid,
 				now: now + 0.1,
 			}),
@@ -826,24 +805,51 @@ describe("interference zones", () => {
 		expect(result.occupancy[1]).toBe(true);
 	});
 
-	it("interference level 3 adds +6, capped at 9", () => {
-		// Zone 1 trigger=3 + 6 = 9. Signal 8 < 9 → should NOT occupy.
+	it("interference sets renew threshold to 9", () => {
+		// Occupy zone 1 via continuity, then check renew.
+		// Zone 1 renew=2, but with interference renew=9.
+		// Signal 8 < 9 → should start pending-clear.
 		const grid = makeParityGrid();
 		grid[1 * GRID_COLS + 9] = cellSetInterference(
 			cellSetZone(CELL_ROOM_BIT, 1),
-			3,
+			1,
 		);
 		grid[1 * GRID_COLS + 8] = cellSetOverlayEntry(
 			cellSetZone(CELL_ROOM_BIT, 1),
 			true,
 		);
 
-		const params = makeDefaultParams({
-			targets: [makeTarget(450, 450, 8)],
-			grid,
-		});
-		const result = runLocalZoneEngine(state, params);
-		expect(result.occupancy[1]).toBe(false);
+		const now = Date.now() / 1000;
+		// Tick 1: clean cell
+		runLocalZoneEngine(
+			state,
+			makeDefaultParams({
+				targets: [makeTarget(150, 450, 9)],
+				grid,
+				now,
+			}),
+		);
+		// Tick 2: enter interference cell → occupies (trigger=3, signal=9)
+		runLocalZoneEngine(
+			state,
+			makeDefaultParams({
+				targets: [makeTarget(450, 450, 9)],
+				grid,
+				now: now + 0.1,
+			}),
+		);
+		expect(state.localZoneState.get(1)?.occupied).toBe(true);
+
+		// Tick 3: signal drops to 8 < renew(9) → pending-clear
+		runLocalZoneEngine(
+			state,
+			makeDefaultParams({
+				targets: [makeTarget(450, 450, 8)],
+				grid,
+				now: now + 0.2,
+			}),
+		);
+		expect(state.localZoneState.get(1)?.pendingSince).not.toBeNull();
 	});
 
 	it("interference suppress (7) prevents detection entirely", () => {
@@ -862,30 +868,6 @@ describe("interference zones", () => {
 			grid,
 		});
 		const result = runLocalZoneEngine(state, params);
-		expect(result.occupancy[1]).toBe(false);
-	});
-
-	it("interference threshold is not bypassed by neighbouring overlay entry cell", () => {
-		// Zone 1 trigger=3, interference level 1 → effectiveTrigger = 5.
-		// Adjacent cell has overlay entry. Signal 1 should NOT trigger instant entry
-		// because the target cell carries interference.
-		const grid = makeParityGrid();
-		grid[1 * GRID_COLS + 9] = cellSetInterference(
-			cellSetZone(CELL_ROOM_BIT, 1),
-			1,
-		);
-		// Adjacent cell (col=8) in zone 1 has overlay entry (same zone matters for neighbour scan)
-		grid[1 * GRID_COLS + 8] = cellSetOverlayEntry(
-			cellSetZone(CELL_ROOM_BIT, 1),
-			true,
-		);
-
-		const params = makeDefaultParams({
-			targets: [makeTarget(450, 450, 1)],
-			grid,
-		});
-		const result = runLocalZoneEngine(state, params);
-		// Signal 1 < effectiveTrigger 5 — must NOT occupy despite neighbouring overlay
 		expect(result.occupancy[1]).toBe(false);
 	});
 
@@ -1018,35 +1000,6 @@ describe("interference zones", () => {
 		expect(zs?.occupied).toBe(true);
 	});
 
-	it("interference affects renew threshold too", () => {
-		// First occupy zone 1 normally (no interference)
-		const grid = makeParityGrid();
-		// Adjacent zone-1 overlay cell to bypass gating
-		grid[1 * GRID_COLS + 8] = cellSetOverlayEntry(
-			cellSetZone(CELL_ROOM_BIT, 1),
-			true,
-		);
-		const params = makeDefaultParams({
-			targets: [makeTarget(450, 450, 5)],
-			grid,
-		});
-		runLocalZoneEngine(state, params);
-		expect(state.localZoneState.get(1)?.occupied).toBe(true);
-
-		// Now add interference level 2 (+4 to renew). Zone 1 renew=2, effective=6.
-		// Signal 5 < 6 → should start pending-clear.
-		grid[1 * GRID_COLS + 9] = cellSetInterference(
-			cellSetZone(CELL_ROOM_BIT, 1),
-			2,
-		);
-		const params2 = makeDefaultParams({
-			targets: [makeTarget(450, 450, 5)],
-			grid,
-			now: (params.now ?? Date.now() / 1000) + 0.1,
-		});
-		runLocalZoneEngine(state, params2);
-		expect(state.localZoneState.get(1)?.pendingSince).not.toBeNull();
-	});
 });
 
 describe("stale zone cleanup", () => {

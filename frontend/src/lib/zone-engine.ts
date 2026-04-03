@@ -220,12 +220,6 @@ export function runLocalZoneEngine(
 		);
 		const { trigger, renew } = thresholds;
 
-		// Apply interference: increase thresholds
-		const effectiveTrigger =
-			interference > 0 ? Math.min(trigger + interference * 2, 9) : trigger;
-		const effectiveRenew =
-			interference > 0 ? Math.min(renew + interference * 2, 9) : renew;
-
 		const st = state.localZoneState.get(zid);
 		const isOccupied = st?.occupied ?? false;
 		const isClear = !isOccupied;
@@ -234,17 +228,16 @@ export function runLocalZoneEngine(
 		// They must be handed off from a clean zone (continuity required).
 		// Only applies when zone is CLEAR — once occupied, targets can be re-confirmed.
 		if (interference > 0 && !continuous && isClear) {
-			console.debug(`[zone-engine] T${i} blocked: interference=${interference} cell=(${col},${row}) no continuity, zone ${zid} clear`);
 			state.targetPrev[i] = null;
 			state.targetGateCount[i] = 0;
 			continue;
 		}
 
-		if (interference > 0) {
-			console.debug(`[zone-engine] T${i} in interference=${interference} cell=(${col},${row}) zone=${zid} continuous=${continuous} clear=${isClear} signal=${signal}`);
-		}
+		// Interference: renew requires signal 9 to prevent fans sustaining occupancy
+		const effectiveRenew =
+			interference > 0 ? 9 : renew;
 
-		let baseTrigger = isClear ? effectiveTrigger : effectiveRenew;
+		let baseTrigger = isClear ? trigger : effectiveRenew;
 		// Check cell and same-zone neighbours for overlay (median may lag behind actual position)
 		let cellOverlay = cellHasOverlayEntry(cellVal);
 		if (!cellOverlay) {
