@@ -3064,7 +3064,7 @@ const dt={attribute:!0,type:String,converter:b,reflect:!1,hasChanged:y},ut=(t=dt
                 @furniture-delete=${t=>{this._removeFurniture(t.detail)}}
               ></epp-grid>
             </div>
-            ${"zones"===this._sidebarTab?this._renderDebugLog():V}
+            ${"zones"===this._sidebarTab||"overlays"===this._sidebarTab?this._renderDebugLog():V}
           </div>
           <div class="zone-sidebar scrollable">
             <div class="sidebar-title">${"furniture"===this._sidebarTab?this._localize("sidebar.furniture"):"overlays"===this._sidebarTab?this._localize("sidebar.overlays"):this._localize("sidebar.detection_zones")}</div>

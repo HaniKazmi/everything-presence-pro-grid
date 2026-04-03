@@ -1540,7 +1540,7 @@ export class EPPGridPanel extends LitElement {
 								}}
               ></epp-grid>
             </div>
-            ${this._sidebarTab === "zones" ? this._renderDebugLog() : nothing}
+            ${this._sidebarTab === "zones" || this._sidebarTab === "overlays" ? this._renderDebugLog() : nothing}
           </div>
           <div class="zone-sidebar scrollable">
             <div class="sidebar-title">${
