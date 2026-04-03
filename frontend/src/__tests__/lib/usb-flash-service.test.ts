@@ -251,8 +251,12 @@ describe("runWifiScan", () => {
 		vi.mocked(sendImprovPacket).mockReset().mockResolvedValue(undefined);
 		vi.mocked(readImprovResponse).mockReset().mockResolvedValue([]);
 		vi.mocked(parseScanResults).mockReset().mockReturnValue(null);
-		vi.mocked(buildScanCommand).mockReset().mockReturnValue(new Uint8Array([1, 2, 3]));
-		vi.mocked(buildWifiCommand).mockReset().mockReturnValue(new Uint8Array([4, 5, 6]));
+		vi.mocked(buildScanCommand)
+			.mockReset()
+			.mockReturnValue(new Uint8Array([1, 2, 3]));
+		vi.mocked(buildWifiCommand)
+			.mockReset()
+			.mockReturnValue(new Uint8Array([4, 5, 6]));
 	});
 
 	function mockPort() {
