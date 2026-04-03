@@ -6,6 +6,8 @@ import type { ZoneConfig } from "./zone-defaults.js";
  */
 export const CELL_COLOR_OUTSIDE = "var(--secondary-background-color, #e0e0e0)";
 export const CELL_COLOR_ROOM = "var(--card-background-color, #fff)";
+export const CELL_BG_OUT_OF_RANGE =
+	"repeating-linear-gradient(45deg, transparent, transparent 3px, rgba(0,0,0,0.13) 3px, rgba(0,0,0,0.13) 4px), repeating-linear-gradient(-45deg, transparent, transparent 3px, rgba(0,0,0,0.13) 3px, rgba(0,0,0,0.13) 4px), #c8c8c8";
 
 /**
  * Get the CSS color for a grid cell.

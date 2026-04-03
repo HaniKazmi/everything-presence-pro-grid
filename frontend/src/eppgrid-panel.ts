@@ -35,7 +35,7 @@ import {
 	initGridFromRoom,
 	MAX_ZONES,
 } from "./lib/grid.js";
-import { getCellColor } from "./lib/heatmap.js";
+import { CELL_BG_OUT_OF_RANGE, getCellColor } from "./lib/heatmap.js";
 import { applyPerspective, getInversePerspective } from "./lib/perspective.js";
 import {
 	autoDetectionRange,
@@ -1245,6 +1245,7 @@ export class EPPGridPanel extends LitElement {
 				.heatmapColors=${this._showHitCounts ? this._computeHeatmapColors() : null}
 				.localize=${this._localize}
 				.maxGridPx=${480}
+				.maxRangeMm=${computeMaxRangeMm(this._targetAutoDistance, this._autoDetectionRange(), this._targetMaxDistance)}
 				@furniture-select=${(e: CustomEvent) => {
 					this._selectedFurnitureId = e.detail;
 				}}
@@ -1623,6 +1624,7 @@ export class EPPGridPanel extends LitElement {
                 .heatmapColors=${this._showHitCounts ? this._computeHeatmapColors() : null}
                 .localize=${this._localize}
                 .maxGridPx=${480}
+                .maxRangeMm=${computeMaxRangeMm(this._targetAutoDistance, this._autoDetectionRange(), this._targetMaxDistance)}
                 .frozenBounds=${this._frozenBounds}
                 @cell-paint=${(e: CustomEvent) => {
 									const { index, action } = e.detail;
@@ -1868,10 +1870,8 @@ export class EPPGridPanel extends LitElement {
 			for (let c = minCol; c <= maxCol; c++) {
 				const idx = r * GRID_COLS + c;
 				const cellVal = this._grid[idx];
-				// FOV blackout disabled — needs calibration refinement
-				// const inRange = this._isCellInSensorRange(c, r);
-				const inRange = true;
-				let bg = inRange ? this._getCellColor(idx) : "#1a1a1a";
+				const inRange = this._isCellInSensorRange(c, r);
+				let bg = inRange ? this._getCellColor(idx) : CELL_BG_OUT_OF_RANGE;
 				let border = "";
 				if (inRange && cellIsInside(cellVal)) {
 					const zoneId = cellZone(cellVal);
