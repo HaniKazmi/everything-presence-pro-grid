@@ -43,6 +43,8 @@ export class EppGrid extends LitElement {
 		params?: Record<string, string | number>,
 	) => string = (k) => k;
 	/** Maximum pixel size for the grid (live=480, editor=520) */
+	/** Map of target index → dismissed cell index (ephemeral, not persisted) */
+	@property({ attribute: false }) dismissedTargets: Map<number, number> = new Map();
 	@property({ type: Number }) maxGridPx = 480;
 	/** Frozen bounds during painting (editor only) */
 	@property({ attribute: false }) frozenBounds: {
@@ -293,6 +295,15 @@ export class EppGrid extends LitElement {
 						0,
 						Math.min(100, ((pos.row - minRow) / visRows) * 100),
 					);
+					// Hide dismissed targets (until they move to a different cell)
+					if (this.dismissedTargets.has(i)) {
+						const col = Math.floor(pos.col);
+						const row = Math.floor(pos.row);
+						const idx = row * GRID_COLS + col;
+						if (this.dismissedTargets.get(i) === idx) {
+							return nothing;
+						}
+					}
 					// Hide target if on an interference cell and zone is not occupied
 					// (blocked by no-first-appearance rule — not a confirmed presence)
 					if (this.grid.length > 0) {
@@ -318,8 +329,8 @@ export class EppGrid extends LitElement {
 								if (this.editable) return;
 								e.stopPropagation();
 								this.dispatchEvent(
-									new CustomEvent("mark-ghost", {
-										detail: { targetIndex: i, x: t.x, y: t.y },
+									new CustomEvent("target-click", {
+										detail: { targetIndex: i, x: t.x, y: t.y, pctX: xPct, pctY: yPct },
 										bubbles: true,
 										composed: true,
 									}),

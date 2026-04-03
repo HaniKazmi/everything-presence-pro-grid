@@ -23,6 +23,7 @@ import {
 } from "./lib/furniture.js";
 import {
 
+	CELL_INTERFERENCE_SUPPRESS,
 	cellInterference,
 	cellIsInside,
 	cellSetInterference,
@@ -182,6 +183,8 @@ export class EPPGridPanel extends LitElement {
 		this._targetCtrl.zoneEngineState = value;
 	}
 	@state() private _overlayMode: string | null = null;
+	@state() private _targetMenu: { x: number; y: number; targetIndex: number; pctX: number; pctY: number } | null = null;
+	private _dismissedTargets: Map<number, number> = new Map();
 	@state() private _isPainting = false;
 	private _justPainted = false;
 	@state() private _paintAction: PaintAction = "set";
@@ -863,6 +866,40 @@ export class EPPGridPanel extends LitElement {
       border-color: var(--primary-text-color, #ccc);
     }
 
+    .target-menu-backdrop {
+      position: absolute;
+      inset: 0;
+      z-index: 30;
+    }
+
+    .target-menu {
+      position: absolute;
+      transform: translate(-50%, 8px);
+      z-index: 31;
+      background: var(--card-background-color, #1e1e1e);
+      border: 1px solid var(--divider-color, #444);
+      border-radius: 8px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+      padding: 4px 0;
+      min-width: 180px;
+    }
+
+    .target-menu-item {
+      display: block;
+      width: 100%;
+      padding: 8px 16px;
+      background: none;
+      border: none;
+      color: var(--primary-text-color, #e0e0e0);
+      font-size: 13px;
+      text-align: left;
+      cursor: pointer;
+    }
+
+    .target-menu-item:hover {
+      background: var(--secondary-background-color, #333);
+    }
+
   `,
 	];
 
@@ -1213,31 +1250,73 @@ export class EPPGridPanel extends LitElement {
 				@furniture-delete=${(e: CustomEvent) => {
 					this._removeFurniture(e.detail);
 				}}
-				@mark-ghost=${(e: CustomEvent) => {
-					this._markGhost(e.detail.x, e.detail.y);
+				.dismissedTargets=${this._dismissedTargets}
+				@target-click=${(e: CustomEvent) => {
+					this._showTargetMenu(e.detail);
 				}}
 			></epp-grid>
 		`;
 	}
 
-	private async _markGhost(x: number, y: number): Promise<void> {
+	private _showTargetMenu(detail: { targetIndex: number; x: number; y: number; pctX: number; pctY: number }): void {
+		this._targetMenu = detail;
+	}
+
+	private _closeTargetMenu(): void {
+		this._targetMenu = null;
+	}
+
+	private _targetCellIndex(x: number, y: number): number {
 		const pos = mapTargetToGridCell(x, y, this._roomWidth, this._roomDepth);
-		if (!pos) return;
+		if (!pos) return -1;
 		const col = Math.floor(pos.col);
 		const row = Math.floor(pos.row);
-		if (col < 0 || col >= GRID_COLS || row < 0 || row >= GRID_ROWS) return;
-		const idx = row * GRID_COLS + col;
-		const cellVal = this._grid[idx];
-		if (!cellIsInside(cellVal)) return;
+		if (col < 0 || col >= GRID_COLS || row < 0 || row >= GRID_ROWS) return -1;
+		return row * GRID_COLS + col;
+	}
 
-		const current = cellInterference(cellVal);
-		if (current > 0) return; // already marked as interference or suppressed
-		const next = 1;
+	private _dismissTarget(): void {
+		if (!this._targetMenu) return;
+		const idx = this._targetCellIndex(this._targetMenu.x, this._targetMenu.y);
+		if (idx >= 0) {
+			this._dismissedTargets = new Map(this._dismissedTargets);
+			this._dismissedTargets.set(this._targetMenu.targetIndex, idx);
+			this.requestUpdate();
+		}
+		this._closeTargetMenu();
+	}
 
+	private async _setInterference(level: number): Promise<void> {
+		if (!this._targetMenu) return;
+		const idx = this._targetCellIndex(this._targetMenu.x, this._targetMenu.y);
+		if (idx < 0 || !cellIsInside(this._grid[idx])) {
+			this._closeTargetMenu();
+			return;
+		}
 		this._grid = new Uint8Array(this._grid);
-		this._grid[idx] = cellSetInterference(this._grid[idx], next);
+		this._grid[idx] = cellSetInterference(this._grid[idx], level);
 		this._dirty = true;
+		this._closeTargetMenu();
 		await this._gridCtrl.applyLayout();
+	}
+
+	private _renderTargetMenu() {
+		if (!this._targetMenu) return nothing;
+		const { pctX, pctY } = this._targetMenu;
+		return html`
+			<div class="target-menu-backdrop" @click=${() => this._closeTargetMenu()}></div>
+			<div class="target-menu" style="left: ${pctX}%; top: ${pctY}%;">
+				<button class="target-menu-item" @click=${() => this._dismissTarget()}>
+					${this._localize("live.delete_target")}
+				</button>
+				<button class="target-menu-item" @click=${() => this._setInterference(1)}>
+					${this._localize("live.mark_interference")}
+				</button>
+				<button class="target-menu-item" @click=${() => this._setInterference(CELL_INTERFERENCE_SUPPRESS)}>
+					${this._localize("live.suppress_detection")}
+				</button>
+			</div>
+		`;
 	}
 
 	private _renderSaveCancelButtons() {
@@ -1279,12 +1358,16 @@ export class EPPGridPanel extends LitElement {
 				if (this._showLiveMenu && !e.target.closest(".sidebar-menu-wrapper")) {
 					this._showLiveMenu = false;
 				}
+				if (this._targetMenu && !e.target.closest(".target-menu")) {
+					this._closeTargetMenu();
+				}
 			}}>
         ${this._renderHeader()}
         <div class="editor-layout">
           <div class="grid-column">
-            <div class="grid-container">
+            <div class="grid-container" style="position: relative;">
               ${gridContent}
+              ${this._targetMenu ? this._renderTargetMenu() : nothing}
             </div>
             ${this._perspective ? this._renderBackendDebugLog() : nothing}
           </div>

@@ -186,7 +186,10 @@
 		"static_presence": "Static presence",
 		"motion_presence": "Motion presence",
 		"target_presence": "Target presence",
-		"target_count": "Target count"
+		"target_count": "Target count",
+		"delete_target": "Delete only",
+		"mark_interference": "Mark as interference source",
+		"suppress_detection": "Suppress detection"
 	},
 	"entities": {
 		"room_level": "Room level",

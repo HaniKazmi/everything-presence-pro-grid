@@ -441,8 +441,8 @@ describe("epp-grid furniture overlay", () => {
 	});
 });
 
-describe("epp-grid mark-ghost event", () => {
-	it("dispatches mark-ghost event when target dot is clicked", async () => {
+describe("epp-grid target-click event", () => {
+	it("dispatches target-click event when target dot is clicked", async () => {
 		const targets: Target[] = [
 			{ x: 1500, y: 2000, speed: 0, status: "active", signal: 7 },
 		];
@@ -451,7 +451,7 @@ describe("epp-grid mark-ghost event", () => {
 		await el.updateComplete;
 
 		const events: CustomEvent[] = [];
-		el.addEventListener("mark-ghost", (e) => events.push(e as CustomEvent));
+		el.addEventListener("target-click", (e) => events.push(e as CustomEvent));
 
 		const dot = el.shadowRoot!.querySelector(".target-dot") as HTMLElement;
 		expect(dot).not.toBeNull();
@@ -497,7 +497,7 @@ describe("epp-grid target dot cursor guard", () => {
 		document.body.removeChild(el);
 	});
 
-	it("click on target dot in edit mode does not dispatch mark-ghost", async () => {
+	it("click on target dot in edit mode does not dispatch target-click", async () => {
 		const targets: Target[] = [
 			{ x: 1500, y: 2000, speed: 0, status: "active", signal: 7 },
 		];
@@ -506,7 +506,7 @@ describe("epp-grid target dot cursor guard", () => {
 		await el.updateComplete;
 
 		const events: CustomEvent[] = [];
-		el.addEventListener("mark-ghost", (e) => events.push(e as CustomEvent));
+		el.addEventListener("target-click", (e) => events.push(e as CustomEvent));
 
 		const dot = el.shadowRoot!.querySelector(".target-dot") as HTMLElement;
 		dot.click();

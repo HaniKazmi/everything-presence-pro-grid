@@ -1,6 +1,7 @@
 /**
- * Tests for _markGhost — clicking a target dot on the live grid view
- * increments the interference level on that target's cell.
+ * Tests for the target context menu methods on EPPGridPanel:
+ *   _targetCellIndex, _setInterference, _dismissTarget,
+ *   _showTargetMenu, _closeTargetMenu
  */
 import { describe, expect, it, vi } from "vitest";
 import type { EPPGridPanel } from "../eppgrid-panel.js";
@@ -9,6 +10,7 @@ import { mapTargetToGridCell } from "../lib/coordinates.js";
 import {
 	CELL_INTERFERENCE_SUPPRESS,
 	cellInterference,
+	cellIsInside,
 	cellSetInterference,
 	GRID_COLS,
 	initGridFromRoom,
@@ -105,6 +107,8 @@ function createPanel(): EPPGridPanel {
 	a._templateName = "";
 	a._fovCache = null;
 	a._fovPerspective = null;
+	a._targetMenu = null;
+	a._dismissedTargets = new Map();
 	return el;
 }
 
@@ -130,98 +134,146 @@ function insideCellCoords(
 	};
 }
 
-describe("_markGhost", () => {
-	it("increments interference from 0 to 1", async () => {
+/** Build a valid targetMenu detail for a given position. */
+function makeMenuDetail(
+	x: number,
+	y: number,
+	targetIndex = 0,
+): { targetIndex: number; x: number; y: number; pctX: number; pctY: number } {
+	return { targetIndex, x, y, pctX: 50, pctY: 50 };
+}
+
+describe("_targetCellIndex", () => {
+	it("returns correct cell index for inside-room coordinates", () => {
 		const a = createPanel() as any;
-		// Stub applyLayout to avoid real WS calls
+		const { x, y, idx } = insideCellCoords(3000, 4000);
+		expect(a._targetCellIndex(x, y)).toBe(idx);
+	});
+
+	it("returns -1 for coordinates outside the room bounds", () => {
+		const a = createPanel() as any;
+		expect(a._targetCellIndex(-9999, -9999)).toBe(-1);
+	});
+
+	it("returns -1 when roomWidth/roomDepth are zero", () => {
+		const a = createPanel() as any;
+		a._roomWidth = 0;
+		a._roomDepth = 0;
+		expect(a._targetCellIndex(1500, 2000)).toBe(-1);
+	});
+});
+
+describe("_showTargetMenu", () => {
+	it("sets _targetMenu to the provided detail", () => {
+		const a = createPanel() as any;
+		const detail = makeMenuDetail(1500, 2000, 0);
+		a._showTargetMenu(detail);
+		expect(a._targetMenu).toEqual(detail);
+	});
+});
+
+describe("_closeTargetMenu", () => {
+	it("clears _targetMenu to null", () => {
+		const a = createPanel() as any;
+		a._targetMenu = makeMenuDetail(1500, 2000, 0);
+		a._closeTargetMenu();
+		expect(a._targetMenu).toBeNull();
+	});
+});
+
+describe("_dismissTarget", () => {
+	it("adds target to _dismissedTargets and closes menu", () => {
+		const a = createPanel() as any;
+		const { x, y, idx } = insideCellCoords(3000, 4000);
+		a._targetMenu = makeMenuDetail(x, y, 2);
+
+		a._dismissTarget();
+
+		expect(a._dismissedTargets.get(2)).toBe(idx);
+		expect(a._targetMenu).toBeNull();
+	});
+
+	it("does nothing when _targetMenu is null", () => {
+		const a = createPanel() as any;
+		a._targetMenu = null;
+		a._dismissTarget();
+		expect(a._dismissedTargets.size).toBe(0);
+	});
+
+	it("still closes menu even if cell index is invalid", () => {
+		const a = createPanel() as any;
+		// Use out-of-bounds coords so _targetCellIndex returns -1
+		a._targetMenu = makeMenuDetail(-9999, -9999, 0);
+		a._dismissTarget();
+		// idx < 0, so target is not added to the map
+		expect(a._dismissedTargets.size).toBe(0);
+		// menu is closed
+		expect(a._targetMenu).toBeNull();
+	});
+});
+
+describe("_setInterference", () => {
+	it("sets interference level 1 on the target's cell and calls applyLayout", async () => {
+		const a = createPanel() as any;
 		a._gridCtrl = { applyLayout: vi.fn().mockResolvedValue(undefined) };
 		const { x, y, idx } = insideCellCoords(3000, 4000);
+		a._targetMenu = makeMenuDetail(x, y, 0);
 
-		// Verify cell starts at interference 0
 		expect(cellInterference(a._grid[idx])).toBe(0);
 
-		await a._markGhost(x, y);
+		await a._setInterference(1);
 
 		expect(cellInterference(a._grid[idx])).toBe(1);
 		expect(a._dirty).toBe(true);
+		expect(a._gridCtrl.applyLayout).toHaveBeenCalledOnce();
+		expect(a._targetMenu).toBeNull();
 	});
 
-	it("does nothing when interference is already set (any non-zero level)", async () => {
+	it("sets suppress level on the target's cell", async () => {
 		const a = createPanel() as any;
 		a._gridCtrl = { applyLayout: vi.fn().mockResolvedValue(undefined) };
 		const { x, y, idx } = insideCellCoords(3000, 4000);
+		a._targetMenu = makeMenuDetail(x, y, 0);
 
-		// Set interference to 1
-		a._grid[idx] = cellSetInterference(a._grid[idx], 1);
-		const before = a._grid[idx];
+		await a._setInterference(CELL_INTERFERENCE_SUPPRESS);
 
-		await a._markGhost(x, y);
-
-		// Already has interference set — should not change
-		expect(a._grid[idx]).toBe(before);
-		expect(a._gridCtrl.applyLayout).not.toHaveBeenCalled();
+		expect(cellInterference(a._grid[idx])).toBe(CELL_INTERFERENCE_SUPPRESS);
+		expect(a._gridCtrl.applyLayout).toHaveBeenCalledOnce();
 	});
 
-	it("does nothing when already suppressed", async () => {
+	it("does nothing when _targetMenu is null", async () => {
 		const a = createPanel() as any;
 		a._gridCtrl = { applyLayout: vi.fn().mockResolvedValue(undefined) };
-		const { x, y, idx } = insideCellCoords(3000, 4000);
+		a._targetMenu = null;
 
-		a._grid[idx] = cellSetInterference(
-			a._grid[idx],
-			CELL_INTERFERENCE_SUPPRESS,
-		);
-		const before = a._grid[idx];
-
-		await a._markGhost(x, y);
-
-		expect(a._grid[idx]).toBe(before);
-		expect(a._gridCtrl.applyLayout).not.toHaveBeenCalled();
-	});
-
-	it("does nothing for outside-room cells", async () => {
-		const a = createPanel() as any;
-		a._gridCtrl = { applyLayout: vi.fn().mockResolvedValue(undefined) };
-
-		// Use coordinates that map to an outside cell (0,0 is typically outside)
-		// With roomWidth=3000 roomDepth=4000, x=0 y=0 maps to the start col
-		// which may or may not be inside. Use a completely outside coordinate.
-		// Target coords that map far outside the room:
-		await a._markGhost(-1000, -1000);
+		await a._setInterference(1);
 
 		expect(a._gridCtrl.applyLayout).not.toHaveBeenCalled();
 		expect(a._dirty).toBe(false);
 	});
 
-	it("calls applyLayout to persist", async () => {
-		const a = createPanel() as any;
-		const applyLayout = vi.fn().mockResolvedValue(undefined);
-		a._gridCtrl = { applyLayout };
-		const { x, y } = insideCellCoords(3000, 4000);
-
-		await a._markGhost(x, y);
-
-		expect(applyLayout).toHaveBeenCalledOnce();
-	});
-
-	it("does nothing for invalid room dimensions", async () => {
+	it("does nothing for outside-room cells and closes menu", async () => {
 		const a = createPanel() as any;
 		a._gridCtrl = { applyLayout: vi.fn().mockResolvedValue(undefined) };
-		a._roomWidth = 0;
-		a._roomDepth = 0;
+		// Use a target position that is outside the room
+		a._targetMenu = makeMenuDetail(-1000, -1000, 0);
 
-		await a._markGhost(1500, 2000);
+		await a._setInterference(1);
 
 		expect(a._gridCtrl.applyLayout).not.toHaveBeenCalled();
+		expect(a._dirty).toBe(false);
+		expect(a._targetMenu).toBeNull();
 	});
 
-	it("does nothing for out-of-bounds grid coordinates", async () => {
+	it("does nothing for out-of-bounds grid coordinates and closes menu", async () => {
 		const a = createPanel() as any;
 		a._gridCtrl = { applyLayout: vi.fn().mockResolvedValue(undefined) };
+		a._targetMenu = makeMenuDetail(99999, 99999, 0);
 
-		// Very large coordinates that would map beyond the grid
-		await a._markGhost(99999, 99999);
+		await a._setInterference(1);
 
 		expect(a._gridCtrl.applyLayout).not.toHaveBeenCalled();
+		expect(a._dirty).toBe(false);
+		expect(a._targetMenu).toBeNull();
 	});
 });
