@@ -1181,6 +1181,13 @@ async def websocket_delete_esphome_device(
     msg: dict[str, Any],
 ) -> None:
     """Delete an ESPHome config entry (and its device/entities)."""
+    entry = hass.config_entries.async_get_entry(msg["config_entry_id"])
+    if entry is None:
+        connection.send_error(msg["id"], "not_found", "Config entry not found")
+        return
+    if entry.domain != "esphome":
+        connection.send_error(msg["id"], "invalid_entry", "Only ESPHome config entries can be deleted by this command")
+        return
     try:
         await hass.config_entries.async_remove(msg["config_entry_id"])
     except Exception as err:
@@ -1312,9 +1319,12 @@ async def websocket_flash_ota(
 
         # Step 5: Auto-add to ESPHome
         send_progress("adding_to_esphome")
+        flow_context: dict[str, Any] = {"source": "user"}
+        if hasattr(connection, "context") and hasattr(connection.context, "user_id"):
+            flow_context["user_id"] = connection.context.user_id
         await hass.config_entries.flow.async_init(
             "esphome",
-            context={"source": "user"},
+            context=flow_context,
             data={"host": host},
         )
 

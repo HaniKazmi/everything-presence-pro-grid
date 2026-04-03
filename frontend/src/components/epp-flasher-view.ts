@@ -4,16 +4,16 @@ import type { WifiNetwork } from "../lib/improv-serial.js";
 import { flasherStyles } from "../styles.js";
 import type { FlashableDevice, OtaProgress, OtaStep } from "../types.js";
 
-const OTA_STEPS: { step: OtaStep; label: string }[] = [
-	{ step: "removing_old_device", label: "Removing old device" },
-	{ step: "downloading_firmware", label: "Downloading firmware" },
-	{ step: "flashing", label: "Flashing firmware" },
-	{ step: "waiting_for_reboot", label: "Waiting for reboot" },
-	{ step: "adding_to_esphome", label: "Adding to ESPHome" },
-	{ step: "complete", label: "Complete" },
+const OTA_STEP_KEYS: { step: OtaStep; key: string }[] = [
+	{ step: "removing_old_device", key: "flasher.step_removing" },
+	{ step: "downloading_firmware", key: "flasher.step_downloading" },
+	{ step: "flashing", key: "flasher.step_flashing" },
+	{ step: "waiting_for_reboot", key: "flasher.step_rebooting" },
+	{ step: "adding_to_esphome", key: "flasher.step_adding" },
+	{ step: "complete", key: "flasher.step_complete" },
 ];
 
-const STEP_ORDER = OTA_STEPS.map((s) => s.step);
+const STEP_ORDER = OTA_STEP_KEYS.map((s) => s.step);
 
 const ESP_WEB_TOOLS_URL =
 	"https://unpkg.com/esp-web-tools@10/dist/web/install-button.js";
@@ -43,6 +43,10 @@ export class EppFlasherView extends LitElement {
 	@property({ type: Boolean }) loading = false;
 	@property({ attribute: false }) otaProgress: OtaProgress | null = null;
 	@property({ type: String }) flashingMac: string | null = null;
+	@property({ attribute: false }) localize: (
+		key: string,
+		params?: Record<string, string | number>,
+	) => string = (k) => k;
 
 	@state() private _selectedVariant: "wifi" | "ethernet" = "wifi";
 	@state() private _confirmDevice: FlashableDevice | null = null;
@@ -109,7 +113,7 @@ export class EppFlasherView extends LitElement {
 	}
 
 	private _renderLoading() {
-		return html`<div class="flasher-loading">Loading devices...</div>`;
+		return html`<div class="flasher-loading">${this.localize("flasher.loading")}</div>`;
 	}
 
 	private _renderOtaProgress(progress: OtaProgress) {
@@ -120,7 +124,7 @@ export class EppFlasherView extends LitElement {
 
 		return html`
       <div class="progress-steps">
-        ${OTA_STEPS.map((s, idx) => {
+        ${OTA_STEP_KEYS.map((s, idx) => {
 					const isActive = s.step === progress.step;
 					const isDone = idx < currentIdx;
 					const hasError = isActive && isError;
@@ -141,7 +145,7 @@ export class EppFlasherView extends LitElement {
 					return html`
             <div class="${stepClass}">
               <span class="step-icon">${icon}</span>
-              <span>${s.label}</span>
+              <span>${this.localize(s.key)}</span>
               ${
 								isActive && progress.progress != null
 									? html`<span>(${progress.progress}%)</span>`
@@ -161,7 +165,7 @@ export class EppFlasherView extends LitElement {
 					? html`
           <div class="confirm-actions" style="margin-top:16px">
             <button class="go-device-btn" @click=${this._dispatchFlashComplete}>
-              Go to Device Configuration
+              ${this.localize("flasher.go_to_config")}
             </button>
           </div>
         `
@@ -174,11 +178,8 @@ export class EppFlasherView extends LitElement {
 		return html`
       <div class="confirm-dialog">
         <div class="confirm-card">
-          <h3>Flash Firmware</h3>
-          <p>
-            Flash EPP Grid firmware to <strong>${device.name}</strong>?
-            This will replace the existing firmware.
-          </p>
+          <h3>${this.localize("flasher.flash_device", { name: device.name })}</h3>
+          <p>${this.localize("flasher.confirm_flash", { name: device.name, host: device.host ?? "" })}</p>
           <div class="variant-selector">
             <label class="variant-option">
               <input
@@ -190,7 +191,7 @@ export class EppFlasherView extends LitElement {
 									this._selectedVariant = "wifi";
 								}}
               />
-              WiFi
+              ${this.localize("flasher.wifi")}
             </label>
             <label class="variant-option">
               <input
@@ -202,7 +203,7 @@ export class EppFlasherView extends LitElement {
 									this._selectedVariant = "ethernet";
 								}}
               />
-              Ethernet
+              ${this.localize("flasher.ethernet")}
             </label>
           </div>
           <div class="confirm-actions">
@@ -212,10 +213,10 @@ export class EppFlasherView extends LitElement {
 								this._confirmDevice = null;
 							}}
             >
-              Cancel
+              ${this.localize("common.cancel")}
             </button>
             <button class="flash-btn" @click=${this._dispatchFlashOta}>
-              Flash
+              ${this.localize("flasher.flash")}
             </button>
           </div>
         </div>
@@ -227,17 +228,17 @@ export class EppFlasherView extends LitElement {
 		if (this._wifiConnected) {
 			return html`
         <div class="wifi-provisioning">
-          <h3>WiFi Connected</h3>
+          <h3>${this.localize("flasher.configure_wifi")}</h3>
           <p>
-            Connected to <strong>${this._selectedSsid}</strong>
-            ${this._deviceIp ? html` — IP: <strong>${this._deviceIp}</strong>` : nothing}
+            ${this.localize("flasher.connected_to", { ssid: this._selectedSsid })}
+            ${this._deviceIp ? html` — ${this.localize("flasher.ip_address", { ip: this._deviceIp })}` : nothing}
           </p>
           <div class="confirm-actions">
             <button
               class="wifi-continue-btn"
               @click=${this._dispatchWifiComplete}
             >
-              Continue
+              ${this.localize("flasher.continue")}
             </button>
           </div>
         </div>
@@ -250,15 +251,15 @@ export class EppFlasherView extends LitElement {
 
 		return html`
       <div class="wifi-provisioning">
-        <h3>WiFi Setup</h3>
+        <h3>${this.localize("flasher.configure_wifi")}</h3>
 
         <div class="wifi-scan-row">
           <button class="wifi-scan-btn" @click=${this._dispatchWifiScan}>
-            Scan
+            ${this.localize("flasher.scan")}
           </button>
           ${
 						this._wifiScanning
-							? html`<span class="wifi-scanning">Scanning...</span>`
+							? html`<span class="wifi-scanning">${this.localize("flasher.scanning")}</span>`
 							: nothing
 					}
         </div>
@@ -273,7 +274,7 @@ export class EppFlasherView extends LitElement {
 									this._selectedSsid = (e.target as HTMLSelectElement).value;
 								}}
               >
-                <option value="">Select a network...</option>
+                <option value="">${this.localize("flasher.select_a_network")}</option>
                 ${sortedNetworks.map(
 									(n) => html`
                     <option value="${n.ssid}">
@@ -295,7 +296,7 @@ export class EppFlasherView extends LitElement {
 							if (!this._manualSsid) this._selectedSsid = "";
 						}}
           />
-          Enter network name manually (hidden network)
+          ${this.localize("flasher.manual_ssid")}
         </label>
 
         ${
@@ -304,7 +305,7 @@ export class EppFlasherView extends LitElement {
               <input
                 class="wifi-ssid-input"
                 type="text"
-                placeholder="Network name (SSID)"
+                placeholder="${this.localize("flasher.enter_ssid")}"
                 .value=${this._selectedSsid}
                 @input=${(e: Event) => {
 									this._selectedSsid = (e.target as HTMLInputElement).value;
@@ -317,7 +318,7 @@ export class EppFlasherView extends LitElement {
         <input
           class="wifi-password-input"
           type="password"
-          placeholder="Password"
+          placeholder="${this.localize("flasher.wifi_password")}"
           .value=${this._wifiPassword}
           @input=${(e: Event) => {
 						this._wifiPassword = (e.target as HTMLInputElement).value;
@@ -330,7 +331,7 @@ export class EppFlasherView extends LitElement {
             .disabled=${!this._selectedSsid}
             @click=${this._dispatchWifiProvision}
           >
-            Configure WiFi
+            ${this.localize("flasher.configure_wifi")}
           </button>
         </div>
       </div>
@@ -342,11 +343,11 @@ export class EppFlasherView extends LitElement {
 
 		return html`
       <div class="flasher-section">
-        <h3>Devices</h3>
+        <h3>${this.localize("flasher.devices_on_network")}</h3>
         ${
 					flashableDevices.length === 0
 						? html`<div class="flasher-empty">
-              No flashable devices found.
+              ${this.localize("flasher.no_devices")}
             </div>`
 						: html`
               <div class="device-list">
@@ -356,7 +357,7 @@ export class EppFlasherView extends LitElement {
                       <div class="device-info">
                         <div class="device-name">${device.name}</div>
                         <div class="device-host">
-                          ${device.host ?? "Offline"}
+                          ${device.host ?? this.localize("flasher.offline")}
                         </div>
                       </div>
                       <span
@@ -364,8 +365,8 @@ export class EppFlasherView extends LitElement {
                       >
                         ${
 													device.firmware_type === "original"
-														? "Original"
-														: "EPP Grid"
+														? this.localize("flasher.original")
+														: this.localize("flasher.eppgrid")
 												}
                       </span>
                       <button
@@ -375,7 +376,7 @@ export class EppFlasherView extends LitElement {
 													this._confirmDevice = device;
 												}}
                       >
-                        Flash
+                        ${this.localize("flasher.flash")}
                       </button>
                     </div>
                   `,
@@ -392,17 +393,17 @@ export class EppFlasherView extends LitElement {
 		return html`
       <div class="usb-section">
         <div class="usb-section-text">
-          Connect a device via USB to flash firmware directly.
+          ${this.localize("flasher.usb_description")}
           ${
 						!this._hasWebSerial
 							? html`<div class="browser-warning">
-                Web Serial is not supported in this browser. Use Chrome or Edge.
+                ${this.localize("flasher.usb_browser_warning")}
               </div>`
 							: nothing
 					}
         </div>
         <button class="usb-connect-btn" @click=${this._dispatchUsbConnect}>
-          Connect
+          ${this.localize("flasher.usb_connect")}
         </button>
       </div>
     `;

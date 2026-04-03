@@ -120,19 +120,23 @@ class TestDeleteEsphomeDevice:
         """delete_esphome_device calls hass.config_entries.async_remove."""
         await setup_integration(hass, config_entry)
 
+        # Create a real ESPHome config entry so async_get_entry finds it
+        esphome_entry = MockConfigEntry(domain="esphome", data={"host": "192.168.1.42"})
+        esphome_entry.add_to_hass(hass)
+
         from custom_components.eppgrid.websocket_api import websocket_delete_esphome_device
 
         connection = MagicMock()
         msg = {
             "id": 2,
             "type": "eppgrid/delete_esphome_device",
-            "config_entry_id": "entry-xyz",
+            "config_entry_id": esphome_entry.entry_id,
         }
 
         with patch.object(hass.config_entries, "async_remove", new_callable=AsyncMock) as mock_remove:
             await call_async_handler(hass, websocket_delete_esphome_device, connection, msg)
 
-        mock_remove.assert_awaited_once_with("entry-xyz")
+        mock_remove.assert_awaited_once_with(esphome_entry.entry_id)
         connection.send_result.assert_called_once_with(2)
         connection.send_error.assert_not_called()
 
@@ -140,13 +144,16 @@ class TestDeleteEsphomeDevice:
         """delete_esphome_device sends error when async_remove raises."""
         await setup_integration(hass, config_entry)
 
+        esphome_entry = MockConfigEntry(domain="esphome", data={"host": "192.168.1.42"})
+        esphome_entry.add_to_hass(hass)
+
         from custom_components.eppgrid.websocket_api import websocket_delete_esphome_device
 
         connection = MagicMock()
         msg = {
             "id": 3,
             "type": "eppgrid/delete_esphome_device",
-            "config_entry_id": "bad-entry",
+            "config_entry_id": esphome_entry.entry_id,
         }
 
         with patch.object(
@@ -159,6 +166,25 @@ class TestDeleteEsphomeDevice:
 
         connection.send_error.assert_called_once_with(3, "delete_failed", "not found")
         connection.send_result.assert_not_called()
+
+    async def test_delete_rejects_non_esphome_entry(self, hass: HomeAssistant, config_entry: MockConfigEntry) -> None:
+        """delete_esphome_device rejects entries that aren't ESPHome."""
+        await setup_integration(hass, config_entry)
+
+        from custom_components.eppgrid.websocket_api import websocket_delete_esphome_device
+
+        connection = MagicMock()
+        msg = {
+            "id": 4,
+            "type": "eppgrid/delete_esphome_device",
+            "config_entry_id": config_entry.entry_id,  # eppgrid entry, not esphome
+        }
+
+        await call_async_handler(hass, websocket_delete_esphome_device, connection, msg)
+
+        connection.send_error.assert_called_once_with(
+            4, "invalid_entry", "Only ESPHome config entries can be deleted by this command"
+        )
 
 
 class TestAddEsphomeDevice:
@@ -254,7 +280,11 @@ class TestFlashOta:
         mock_fetch.assert_awaited_once()
         mock_push.assert_awaited_once()
         mock_wait.assert_awaited_once_with(hass, "192.168.1.50")
-        mock_flow.assert_awaited_once_with("esphome", context={"source": "user"}, data={"host": "192.168.1.50"})
+        mock_flow.assert_awaited_once()
+        flow_kwargs = mock_flow.call_args
+        assert flow_kwargs[0][0] == "esphome"
+        assert flow_kwargs[1]["context"]["source"] == "user"
+        assert flow_kwargs[1]["data"] == {"host": "192.168.1.50"}
 
         # Verify progress events were sent via send_message
         assert connection.send_message.call_count >= 4

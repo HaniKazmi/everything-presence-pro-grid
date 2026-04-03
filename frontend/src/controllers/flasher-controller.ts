@@ -69,6 +69,7 @@ export class FlasherController implements ReactiveController {
 						) {
 							this._unsubOta?.();
 							this._unsubOta = undefined;
+							this.flashingMac = null;
 							resolve();
 						}
 					},

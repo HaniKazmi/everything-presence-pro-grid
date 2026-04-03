@@ -23,6 +23,7 @@ function createView(
 	el.loading = false;
 	el.otaProgress = null;
 	el.flashingMac = null;
+	el.localize = (k: string) => k;
 	for (const [k, v] of Object.entries(overrides)) {
 		(el as any)[k] = v;
 	}
@@ -91,7 +92,7 @@ describe("render() loading state", () => {
 
 		expect(c.querySelector(".flasher-loading")).not.toBeNull();
 		expect(c.querySelector(".flasher-loading")!.textContent).toContain(
-			"Loading devices",
+			"flasher.loading",
 		);
 	});
 
@@ -467,6 +468,12 @@ describe("render() WiFi provisioning — connected state", () => {
 
 	it("shows connected network and IP when _wifiConnected=true", () => {
 		const el = createView();
+		el.localize = (k: string, params?: Record<string, string | number>) => {
+			if (k === "flasher.connected_to" && params)
+				return `Connected to ${params.ssid}`;
+			if (k === "flasher.ip_address" && params) return `IP: ${params.ip}`;
+			return k;
+		};
 		(el as any)._showWifiProvisioning = true;
 		(el as any)._wifiConnected = true;
 		(el as any)._selectedSsid = "MyNetwork";
