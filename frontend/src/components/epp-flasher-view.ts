@@ -416,8 +416,14 @@ export class EppFlasherView extends LitElement {
     `;
 	}
 
+	private _getFirmwareVariant(): string {
+		return this._selectedVariant === "wifi"
+			? "wifi-ble-co2"
+			: "ethernet-ble-co2";
+	}
+
 	private _getManifestUrl(): string {
-		const variant = this._selectedVariant;
+		const variant = this._getFirmwareVariant();
 		return `https://clintongormley.github.io/everything-presence-pro-grid/firmware/everything-presence-pro-${variant}-manifest.json`;
 	}
 

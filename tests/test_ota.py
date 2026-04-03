@@ -120,7 +120,7 @@ class TestFetchFirmwareBinary:
 
         await fetch_firmware_binary(mock_session, "wifi")
 
-        assert captured_urls[0] == f"{MANIFEST_BASE_URL}/everything-presence-pro-wifi-manifest.json"
+        assert captured_urls[0] == f"{MANIFEST_BASE_URL}/everything-presence-pro-wifi-ble-co2-manifest.json"
 
 
 # ---------------------------------------------------------------------------

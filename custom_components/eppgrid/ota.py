@@ -9,6 +9,7 @@ import struct
 from collections.abc import Callable
 from typing import Any
 
+from .const import FIRMWARE_VARIANTS
 from .const import MANIFEST_BASE_URL
 from .const import OTA_PORT
 
@@ -40,7 +41,8 @@ async def fetch_firmware_binary(session: Any, variant: str) -> bytes:
         OTAError: If no OTA build is found in the manifest.
 
     """
-    manifest_url = f"{MANIFEST_BASE_URL}/everything-presence-pro-{variant}-manifest.json"
+    firmware_variant = FIRMWARE_VARIANTS.get(variant, variant)
+    manifest_url = f"{MANIFEST_BASE_URL}/everything-presence-pro-{firmware_variant}-manifest.json"
 
     async with session.get(manifest_url) as resp:
         if resp.status == 404:

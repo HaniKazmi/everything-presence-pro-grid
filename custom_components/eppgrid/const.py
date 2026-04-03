@@ -21,7 +21,13 @@ EPP_MODEL = "Everything Presence Pro"
 
 # ESPHome OTA
 OTA_PORT = 3232
-FIRMWARE_VERSION = "v0.1.0-alpha.1"
+FIRMWARE_VERSION = "v0.1.0-alpha.2"
 MANIFEST_BASE_URL = (
     f"https://github.com/clintongormley/everything-presence-pro-grid/releases/download/{FIRMWARE_VERSION}"
 )
+
+# Map UI network choice to full firmware variant name
+FIRMWARE_VARIANTS = {
+    "wifi": "wifi-ble-co2",
+    "ethernet": "ethernet-ble-co2",
+}
