@@ -1,4 +1,5 @@
 import resolve from "@rollup/plugin-node-resolve";
+import commonjs from "@rollup/plugin-commonjs";
 import typescript from "@rollup/plugin-typescript";
 import terser from "@rollup/plugin-terser";
 import json from "@rollup/plugin-json";
@@ -9,9 +10,11 @@ export default {
     file: "../custom_components/eppgrid/frontend/eppgrid-panel.js",
     format: "es",
     sourcemap: false,
+    inlineDynamicImports: true,
   },
   plugins: [
-    resolve(),
+    resolve({ browser: true }),
+    commonjs(),
     json(),
     typescript(),
     terser(),

@@ -54,6 +54,12 @@ import {
 	type ZoneConfig,
 } from "./lib/zone-defaults.js";
 import type { ZoneEngineResult, ZoneEngineState } from "./lib/zone-engine.js";
+import {
+	flashFirmware,
+	runWifiScan,
+	runWifiProvision,
+	detectIpAddress,
+} from "./lib/usb-flash-service.js";
 import { setupLocalize } from "./localize.js";
 import {
 	buttonStyles,
@@ -1045,10 +1051,29 @@ export class EPPGridPanel extends LitElement {
 					.otaProgress=${this._flasherCtrl.otaProgress}
 					.flashingMac=${this._flasherCtrl.flashingMac}
 					.localize=${this._localize}
+					.usbFlashState=${this._flasherCtrl.usbFlashState}
+					.wifiNetworks=${this._flasherCtrl.wifiNetworks}
 					@flash-ota=${(e: CustomEvent) => {
 						this._flasherCtrl.startOtaFlash(e.detail.mac, e.detail.variant);
 					}}
 					@flash-complete=${() => {
+						this._loadDevices();
+						this._panelTab = "config";
+					}}
+					@usb-flash=${(e: CustomEvent) => {
+						this._handleUsbFlash(e.detail.variant);
+					}}
+					@usb-retry=${() => {
+						this._flasherCtrl.resetUsbState();
+					}}
+					@wifi-scan=${() => {
+						this._handleWifiScan();
+					}}
+					@wifi-provision=${(e: CustomEvent) => {
+						this._handleWifiProvision(e.detail.ssid, e.detail.password);
+					}}
+					@wifi-complete=${() => {
+						this._flasherCtrl.resetUsbState();
 						this._loadDevices();
 						this._panelTab = "config";
 					}}
@@ -2199,6 +2224,91 @@ export class EPPGridPanel extends LitElement {
 				}}
 			></epp-furniture-overlay>
 		`;
+	}
+
+	private async _handleUsbFlash(variant: string): Promise<void> {
+		const ctrl = this._flasherCtrl;
+		try {
+			// Step 1: Request serial port
+			ctrl.updateUsbState({ step: "connecting" });
+			const port = await navigator.serial.requestPort();
+			ctrl.serialPort = port;
+
+			// Step 2: Flash firmware
+			ctrl.updateUsbState({ step: "flashing", progress: 0 });
+			await flashFirmware(port, variant, (pct) => {
+				ctrl.updateUsbState({ step: "flashing", progress: pct });
+			});
+
+			// Step 3: WiFi scan
+			ctrl.updateUsbState({ step: "wifi_scan" });
+			const { writer, reader, networks } = await runWifiScan(port);
+			ctrl.wifiNetworks = networks;
+			ctrl.updateUsbState({ step: "wifi_provision" });
+
+			// Store writer/reader for provisioning step
+			(ctrl as any)._serialWriter = writer;
+			(ctrl as any)._serialReader = reader;
+		} catch (err: any) {
+			if (err?.name === "NotFoundError") {
+				// User cancelled port picker
+				ctrl.resetUsbState();
+				return;
+			}
+			ctrl.updateUsbState({
+				step: "error",
+				error: err?.message ?? "Unknown error",
+			});
+		}
+	}
+
+	private async _handleWifiProvision(ssid: string, password: string): Promise<void> {
+		const ctrl = this._flasherCtrl;
+		const writer = (ctrl as any)._serialWriter;
+		const reader = (ctrl as any)._serialReader;
+		try {
+			await runWifiProvision(writer, ssid, password);
+			ctrl.updateUsbState({ step: "reading_ip" });
+
+			const ip = await detectIpAddress(reader, 30000);
+
+			// Close serial port
+			reader.releaseLock();
+			writer.releaseLock();
+			await ctrl.serialPort?.close().catch(() => {});
+			ctrl.serialPort = null;
+
+			// Add device to ESPHome
+			ctrl.updateUsbState({ step: "adding_device" });
+			await ctrl.addEsphomeDevice(ip);
+
+			ctrl.updateUsbState({ step: "complete", ip });
+		} catch (err: any) {
+			ctrl.updateUsbState({
+				step: "error",
+				error: err?.message ?? "WiFi provisioning failed",
+			});
+		}
+	}
+
+	private async _handleWifiScan(): Promise<void> {
+		const ctrl = this._flasherCtrl;
+		if (!ctrl.serialPort) return;
+		try {
+			const writer = (ctrl as any)._serialWriter;
+			const reader = (ctrl as any)._serialReader;
+			// Release old locks before re-scanning
+			try { reader?.releaseLock(); } catch {}
+			try { writer?.releaseLock(); } catch {}
+
+			const result = await runWifiScan(ctrl.serialPort);
+			(ctrl as any)._serialWriter = result.writer;
+			(ctrl as any)._serialReader = result.reader;
+			ctrl.wifiNetworks = result.networks;
+			ctrl.updateUsbState({ step: "wifi_provision" });
+		} catch {
+			// Ignore scan errors — keep current state
+		}
 	}
 }
 
