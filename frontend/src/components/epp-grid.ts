@@ -44,7 +44,8 @@ export class EppGrid extends LitElement {
 	) => string = (k) => k;
 	/** Maximum pixel size for the grid (live=480, editor=520) */
 	/** Map of target index → dismissed cell index (ephemeral, not persisted) */
-	@property({ attribute: false }) dismissedTargets: Map<number, number> = new Map();
+	@property({ attribute: false }) dismissedTargets: Map<number, number> =
+		new Map();
 	@property({ type: Number }) maxGridPx = 480;
 	/** Frozen bounds during painting (editor only) */
 	@property({ attribute: false }) frozenBounds: {
@@ -339,7 +340,13 @@ export class EppGrid extends LitElement {
 								e.stopPropagation();
 								this.dispatchEvent(
 									new CustomEvent("target-click", {
-										detail: { targetIndex: i, x: t.x, y: t.y, pctX: xPct, pctY: yPct },
+										detail: {
+											targetIndex: i,
+											x: t.x,
+											y: t.y,
+											pctX: xPct,
+											pctY: yPct,
+										},
 										bubbles: true,
 										composed: true,
 									}),

@@ -2387,9 +2387,7 @@ class TestProtocolVersionGuard:
 class TestWebSocketDismissTarget:
     """Tests for eppgrid/dismiss_target."""
 
-    async def test_dismiss_target_sends_to_session(
-        self, hass: HomeAssistant, config_entry: MockConfigEntry
-    ) -> None:
+    async def test_dismiss_target_sends_to_session(self, hass: HomeAssistant, config_entry: MockConfigEntry) -> None:
         """dismiss_target sends command via active session."""
         from custom_components.eppgrid.device_manager import ManagedDevice
 
@@ -2422,9 +2420,7 @@ class TestWebSocketDismissTarget:
         mock_session.async_dismiss_target.assert_awaited_once_with(1, 42)
         connection.send_result.assert_called_once_with(200)
 
-    async def test_dismiss_target_no_device(
-        self, hass: HomeAssistant, config_entry: MockConfigEntry
-    ) -> None:
+    async def test_dismiss_target_no_device(self, hass: HomeAssistant, config_entry: MockConfigEntry) -> None:
         """dismiss_target returns error when device not found."""
         mock_dm = await setup_integration(hass, config_entry)
         mock_dm.devices = {}
@@ -2446,9 +2442,7 @@ class TestWebSocketDismissTarget:
         args = connection.send_error.call_args[0]
         assert args[1] == "device_unavailable"
 
-    async def test_dismiss_target_no_session(
-        self, hass: HomeAssistant, config_entry: MockConfigEntry
-    ) -> None:
+    async def test_dismiss_target_no_session(self, hass: HomeAssistant, config_entry: MockConfigEntry) -> None:
         """dismiss_target returns error when no active session."""
         from custom_components.eppgrid.device_manager import ManagedDevice
 
@@ -2479,9 +2473,7 @@ class TestWebSocketDismissTarget:
         args = connection.send_error.call_args[0]
         assert args[1] == "no_session"
 
-    async def test_dismiss_target_service_error(
-        self, hass: HomeAssistant, config_entry: MockConfigEntry
-    ) -> None:
+    async def test_dismiss_target_service_error(self, hass: HomeAssistant, config_entry: MockConfigEntry) -> None:
         """dismiss_target returns error when firmware service call fails."""
         from custom_components.eppgrid.device_manager import ManagedDevice
 

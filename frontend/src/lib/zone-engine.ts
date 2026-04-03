@@ -234,8 +234,7 @@ export function runLocalZoneEngine(
 		}
 
 		// Interference: renew requires signal 9 to prevent fans sustaining occupancy
-		const effectiveRenew =
-			interference > 0 ? 9 : renew;
+		const effectiveRenew = interference > 0 ? 9 : renew;
 
 		let baseTrigger = isClear ? trigger : effectiveRenew;
 		// Check cell and same-zone neighbours for overlay (median may lag behind actual position)

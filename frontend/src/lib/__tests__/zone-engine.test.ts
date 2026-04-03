@@ -999,7 +999,6 @@ describe("interference zones", () => {
 		const zs = state.localZoneState.get(1);
 		expect(zs?.occupied).toBe(true);
 	});
-
 });
 
 describe("stale zone cleanup", () => {

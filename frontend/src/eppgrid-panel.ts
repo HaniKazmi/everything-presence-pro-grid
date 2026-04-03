@@ -22,7 +22,6 @@ import {
 	pxToMm,
 } from "./lib/furniture.js";
 import {
-
 	CELL_INTERFERENCE_SUPPRESS,
 	cellInterference,
 	cellIsInside,
@@ -183,7 +182,13 @@ export class EPPGridPanel extends LitElement {
 		this._targetCtrl.zoneEngineState = value;
 	}
 	@state() private _overlayMode: string | null = null;
-	@state() private _targetMenu: { x: number; y: number; targetIndex: number; pctX: number; pctY: number } | null = null;
+	@state() private _targetMenu: {
+		x: number;
+		y: number;
+		targetIndex: number;
+		pctX: number;
+		pctY: number;
+	} | null = null;
 	private _dismissedTargets: Map<number, number> = new Map();
 	@state() private _isPainting = false;
 	private _justPainted = false;
@@ -1258,7 +1263,13 @@ export class EPPGridPanel extends LitElement {
 		`;
 	}
 
-	private _showTargetMenu(detail: { targetIndex: number; x: number; y: number; pctX: number; pctY: number }): void {
+	private _showTargetMenu(detail: {
+		targetIndex: number;
+		x: number;
+		y: number;
+		pctX: number;
+		pctY: number;
+	}): void {
 		this._targetMenu = detail;
 	}
 

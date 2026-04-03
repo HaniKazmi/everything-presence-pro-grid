@@ -103,7 +103,6 @@ void ZoneEngine::set_zones(const ZoneConfig zones[], int count) {
 
 void ZoneEngine::dismiss_target(int target_index, int cell_index) {
     if (target_index < 0 || target_index >= MAX_TARGETS) return;
-    log_(LogLevel::INFO, "T%d dismissed at cell %d", target_index, cell_index);
     dismissed_cell_[target_index] = cell_index;
 
     // Reset zone state: find which zone this cell belongs to and clear it
@@ -215,8 +214,6 @@ const ProcessingResult& ZoneEngine::tick(const WindowOutput& window, float times
             continue;
         } else if (dismissed_cell_[i] >= 0) {
             // Target moved to a different cell — clear dismiss
-            log_(LogLevel::INFO, "T%d dismiss cleared: moved from cell %d to %d",
-                 i, dismissed_cell_[i], cell);
             dismissed_cell_[i] = -1;
         }
 

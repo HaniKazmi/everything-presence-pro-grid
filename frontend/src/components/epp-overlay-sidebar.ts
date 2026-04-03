@@ -146,8 +146,7 @@ export class EppOverlaySidebar extends LitElement {
 						this.dispatchEvent(
 							new CustomEvent("overlay-select", {
 								detail: {
-									mode:
-										this.overlayMode === "suppress" ? null : "suppress",
+									mode: this.overlayMode === "suppress" ? null : "suppress",
 								},
 								bubbles: true,
 								composed: true,
