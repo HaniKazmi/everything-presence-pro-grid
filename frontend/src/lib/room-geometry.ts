@@ -81,8 +81,8 @@ export function isCellInSensorRange(
 	// Distance check first (cheaper than angle)
 	if (distSq > maxRangeMm * maxRangeMm) return false;
 
-	// Angle check via dot-product: cos(60°) = 0.5, so dot/dist > 0.5
-	// Equivalent to: dot > 0.5 * dist, square both sides (both positive):
+	// Angle check via dot-product: cos(60°) = 0.5, so dot/dist >= 0.5
+	// Equivalent to: dot >= 0.5 * dist, square both sides (dot is positive here):
 	const dot = dx * fov.dirX + dy * fov.dirY;
 	if (dot <= 0) return false; // behind sensor
 	if (dot * dot < 0.25 * distSq) return false; // angle > 60°

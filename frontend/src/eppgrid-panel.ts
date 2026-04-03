@@ -712,7 +712,7 @@ export class EPPGridPanel extends LitElement {
 	private _computeMaxRangeMm(): number {
 		return computeMaxRangeMm(
 			this._targetAutoDistance,
-			this._autoDetectionRange(),
+			this._targetAutoDistance ? this._autoDetectionRange() : 0,
 			this._targetMaxDistance,
 		);
 	}
