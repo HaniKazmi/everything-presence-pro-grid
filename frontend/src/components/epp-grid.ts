@@ -11,9 +11,15 @@ import {
 	cellZone,
 	GRID_COLS,
 	getRoomBounds,
+	MAX_RANGE,
 } from "../lib/grid.js";
-import { getCellColor } from "../lib/heatmap.js";
-import { getGridRoomMetrics } from "../lib/room-geometry.js";
+import { CELL_BG_OUT_OF_RANGE, getCellColor } from "../lib/heatmap.js";
+import {
+	computeSensorFov,
+	getGridRoomMetrics,
+	isCellInSensorRange,
+	type SensorFov,
+} from "../lib/room-geometry.js";
 import type { ZoneConfig } from "../lib/zone-defaults.js";
 import type { Target } from "../types.js";
 import "./epp-furniture-overlay.js";
@@ -42,6 +48,8 @@ export class EppGrid extends LitElement {
 		key: string,
 		params?: Record<string, string | number>,
 	) => string = (k) => k;
+	/** Maximum detection range in mm */
+	@property({ type: Number }) maxRangeMm = MAX_RANGE;
 	/** Maximum pixel size for the grid (live=480, editor=520) */
 	/** Map of target index → dismissed cell index (ephemeral, not persisted) */
 	@property({ attribute: false }) dismissedTargets: Map<number, number> =
@@ -166,6 +174,18 @@ export class EppGrid extends LitElement {
 		`;
 	}
 
+	private _fovCache: SensorFov | null = null;
+	private _fovPerspective: number[] | null = null;
+
+	private _getSensorFov(): SensorFov | null {
+		if (!this.perspective) return null;
+		if (this._fovCache && this._fovPerspective === this.perspective)
+			return this._fovCache;
+		this._fovCache = computeSensorFov(this.perspective);
+		this._fovPerspective = this.perspective;
+		return this._fovCache;
+	}
+
 	private _renderVisibleCells(
 		minCol: number,
 		maxCol: number,
@@ -175,14 +195,24 @@ export class EppGrid extends LitElement {
 	) {
 		const heatmap = this.heatmapColors;
 		const occupancy = this.occupancy;
+		const fov = this._getSensorFov();
+		const maxRange = this.maxRangeMm;
 
 		const cells = [];
 		for (let r = minRow; r <= maxRow; r++) {
 			for (let c = minCol; c <= maxCol; c++) {
 				const idx = r * GRID_COLS + c;
 				const cellVal = this.grid[idx];
-				const inRange = true;
-				let bg = inRange ? getCellColor(cellVal, this.zoneConfigs) : "#1a1a1a";
+				const inRange = isCellInSensorRange(
+					c,
+					r,
+					fov,
+					this.roomWidth,
+					maxRange,
+				);
+				let bg = inRange
+					? getCellColor(cellVal, this.zoneConfigs)
+					: CELL_BG_OUT_OF_RANGE;
 				let border = "";
 				if (inRange && cellIsInside(cellVal)) {
 					const zoneId = cellZone(cellVal);
@@ -197,7 +227,7 @@ export class EppGrid extends LitElement {
 					}
 				}
 				let overlayMarker = "";
-				if (cellIsInside(cellVal)) {
+				if (inRange && cellIsInside(cellVal)) {
 					if (cellHasOverlayEntry(cellVal)) {
 						overlayMarker =
 							"background-image: repeating-linear-gradient(45deg, transparent, transparent 6px, rgba(60,60,60,0.7) 6px, rgba(60,60,60,0.7) 8px);";

@@ -198,7 +198,7 @@ device selector, global dialogs, navigation guards, controller creation.
 - `<epp-wizard>` — calibration flow (guide, 4-corner capture, perspective solve)
 
 **Shared components:**
-- `<epp-grid>` — grid cell rendering, target dots, furniture overlay (live + editor)
+- `<epp-grid>` — grid cell rendering, target dots, furniture overlay, FOV darkness (live + editor)
 - `<epp-live-sidebar>` — presence/zone/environment sensor display
 - `<epp-zone-sidebar>` — zone list, type controls, add/remove
 - `<epp-furniture-sidebar>` — sticker catalog, custom icons
@@ -230,6 +230,13 @@ maps room-space coordinates to fractional grid cell position (room
 centered horizontally). `rawToFovPct()` maps raw sensor coords to FOV
 percentages for the wizard. `getSmoothedValue()` provides 1-second rolling
 median for capture smoothing.
+
+**room-geometry.ts** — `computeSensorFov(perspective)` derives sensor
+position and look-direction in room-space from the perspective transform.
+`isCellInSensorRange(col, row, fov, roomWidth, maxRangeMm)` checks whether
+a cell falls within the 120° FOV cone and max range — used by `<epp-grid>`
+to render out-of-range cells with a cross-hatched pattern and block painting.
+`autoDetectionRange()` computes range from the furthest room cell.
 
 **zone-defaults.ts** — `ZoneConfig` interface, `ZONE_TYPE_DEFAULTS` with
 thresholds per zone type, color palette (7 colorblind-friendly colors),

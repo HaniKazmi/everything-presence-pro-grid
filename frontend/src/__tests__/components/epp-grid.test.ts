@@ -12,6 +12,7 @@ import {
 	GRID_ROWS,
 	initGridFromRoom,
 } from "../../lib/grid.js";
+import { CELL_BG_OUT_OF_RANGE } from "../../lib/heatmap.js";
 import { ZONE_COLORS } from "../../lib/zone-defaults.js";
 import type { Target } from "../../types.js";
 
@@ -436,6 +437,137 @@ describe("epp-grid furniture overlay", () => {
 
 		expect(events.length).toBe(1);
 		expect(events[0].detail.id).toBe("f1");
+
+		document.body.removeChild(el);
+	});
+});
+
+describe("epp-grid darkness (sensor FOV)", () => {
+	it("renders dark background for cells outside sensor FOV", async () => {
+		// Perspective: sensor at centre-top (1500,0), looking down (+Y)
+		// h = [1,0,1500, 0,1,0, 0,0] → identity with x-offset 1500
+		const perspective = [1, 0, 1500, 0, 1, 0, 0, 0];
+		const el = createGrid({
+			perspective,
+			maxRangeMm: 6000,
+			roomWidth: 3000,
+			roomDepth: 4000,
+		});
+		document.body.appendChild(el);
+		await el.updateComplete;
+
+		const cells = el.shadowRoot!.querySelectorAll(
+			".cell",
+		) as NodeListOf<HTMLElement>;
+		const hasDarkCell = Array.from(cells).some((c) =>
+			c.style.cssText.includes("c8c8c8"),
+		);
+		expect(hasDarkCell).toBe(true);
+
+		document.body.removeChild(el);
+	});
+
+	it("no dark cells when perspective is null", async () => {
+		const el = createGrid({
+			perspective: null,
+			maxRangeMm: 6000,
+		});
+		document.body.appendChild(el);
+		await el.updateComplete;
+
+		const cells = el.shadowRoot!.querySelectorAll(
+			".cell",
+		) as NodeListOf<HTMLElement>;
+		const hasDarkCell = Array.from(cells).some((c) =>
+			c.style.cssText.includes("c8c8c8"),
+		);
+		expect(hasDarkCell).toBe(false);
+
+		document.body.removeChild(el);
+	});
+
+	it("cells beyond maxRangeMm get dark background", async () => {
+		// Sensor at centre-top looking down, tiny range = 500mm
+		const perspective = [1, 0, 1500, 0, 1, 0, 0, 0];
+		const el = createGrid({
+			perspective,
+			maxRangeMm: 500,
+			roomWidth: 3000,
+			roomDepth: 4000,
+		});
+		document.body.appendChild(el);
+		await el.updateComplete;
+
+		const cells = el.shadowRoot!.querySelectorAll(
+			".cell",
+		) as NodeListOf<HTMLElement>;
+		const darkCount = Array.from(cells).filter((c) =>
+			c.style.cssText.includes("c8c8c8"),
+		).length;
+		// With 500mm range, most cells should be dark
+		expect(darkCount).toBeGreaterThan(cells.length / 2);
+
+		document.body.removeChild(el);
+	});
+
+	it("does not emit cell-paint for dark cells on mousedown", async () => {
+		const perspective = [1, 0, 1500, 0, 1, 0, 0, 0];
+		const el = createGrid({
+			perspective,
+			maxRangeMm: 6000,
+			roomWidth: 3000,
+			roomDepth: 4000,
+			editable: true,
+		});
+		document.body.appendChild(el);
+		await el.updateComplete;
+
+		const events: CustomEvent[] = [];
+		el.addEventListener("cell-paint", (e) => events.push(e as CustomEvent));
+
+		const cells = el.shadowRoot!.querySelectorAll(
+			".cell",
+		) as NodeListOf<HTMLElement>;
+		const darkCell = Array.from(cells).find((c) =>
+			c.style.cssText.includes("c8c8c8"),
+		);
+		expect(darkCell).toBeDefined();
+		darkCell!.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
+
+		expect(events.length).toBe(0);
+
+		document.body.removeChild(el);
+	});
+
+	it("does not render interference stripes on dark cells", async () => {
+		const perspective = [1, 0, 1500, 0, 1, 0, 0, 0];
+		const grid = initGridFromRoom(3000, 4000);
+		// Set interference on ALL inside cells so any dark inside cell would show stripes
+		for (let i = 0; i < grid.length; i++) {
+			if (grid[i] & CELL_ROOM_BIT) {
+				grid[i] = cellSetInterference(grid[i], 1);
+			}
+		}
+		const el = createGrid({
+			perspective,
+			maxRangeMm: 6000,
+			roomWidth: 3000,
+			roomDepth: 4000,
+			grid,
+		});
+		document.body.appendChild(el);
+		await el.updateComplete;
+
+		const cells = el.shadowRoot!.querySelectorAll(
+			".cell",
+		) as NodeListOf<HTMLElement>;
+		// Dark cells should NOT have interference stripes (#cc3333)
+		const darkWithStripes = Array.from(cells).filter(
+			(c) =>
+				c.style.cssText.includes("c8c8c8") &&
+				c.style.cssText.includes("cc3333"),
+		);
+		expect(darkWithStripes.length).toBe(0);
 
 		document.body.removeChild(el);
 	});
