@@ -975,32 +975,44 @@ describe("interference zones", () => {
 
 		// Tick 1: target in clean cell
 		const now = Date.now() / 1000;
-		runLocalZoneEngine(state, makeDefaultParams({
-			targets: [makeTarget(150, 450, 9)],
-			grid,
-			now,
-		}));
+		runLocalZoneEngine(
+			state,
+			makeDefaultParams({
+				targets: [makeTarget(150, 450, 9)],
+				grid,
+				now,
+			}),
+		);
 
 		// Tick 2: target moves to interference cell — continuity → occupies
-		runLocalZoneEngine(state, makeDefaultParams({
-			targets: [makeTarget(450, 450, 9)],
-			grid,
-			now: now + 0.1,
-		}));
+		runLocalZoneEngine(
+			state,
+			makeDefaultParams({
+				targets: [makeTarget(450, 450, 9)],
+				grid,
+				now: now + 0.1,
+			}),
+		);
 		expect(state.localZoneState.get(1)?.occupied).toBe(true);
 
 		// Tick 3: target disappears then reappears at same cell — no continuity
 		// but zone is OCCUPIED, so target should still be counted (renew path)
-		runLocalZoneEngine(state, makeDefaultParams({
-			targets: [makeNullTarget()],
-			grid,
-			now: now + 0.2,
-		}));
-		runLocalZoneEngine(state, makeDefaultParams({
-			targets: [makeTarget(450, 450, 9)],
-			grid,
-			now: now + 0.3,
-		}));
+		runLocalZoneEngine(
+			state,
+			makeDefaultParams({
+				targets: [makeNullTarget()],
+				grid,
+				now: now + 0.2,
+			}),
+		);
+		runLocalZoneEngine(
+			state,
+			makeDefaultParams({
+				targets: [makeTarget(450, 450, 9)],
+				grid,
+				now: now + 0.3,
+			}),
+		);
 		// Zone should still be occupied (or at least pending), not cleared
 		const zs = state.localZoneState.get(1);
 		expect(zs?.occupied).toBe(true);
