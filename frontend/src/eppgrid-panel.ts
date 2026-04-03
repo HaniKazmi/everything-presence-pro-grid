@@ -1084,6 +1084,7 @@ export class EPPGridPanel extends LitElement {
 
 		if (this._deviceCtrl.connectionFailed) {
 			return html`
+				${this._renderTabBar()}
 				<div class="panel">
 					${this._renderHeader()}
 					${this._renderConnectionBanner()}
@@ -1097,6 +1098,7 @@ export class EPPGridPanel extends LitElement {
 
 		if (!protocolOk) {
 			return html`
+				${this._renderTabBar()}
 				<div class="panel">
 					${this._renderHeader()}
 					${this._renderProtocolBanner()}

@@ -3088,12 +3088,14 @@ const Dt=2,At=t=>(...e)=>({_$litDirective$:t,values:e});class Pt{constructor(t){
           @wizard-cancel=${()=>{this._setupStep=null}}
         ></epp-wizard>
       `;if(this._deviceCtrl.connectionFailed)return G`
+				${this._renderTabBar()}
 				<div class="panel">
 					${this._renderHeader()}
 					${this._renderConnectionBanner()}
 				</div>
 				${this._renderGlobalDialogs()}
 			`;const t=this._devices.find(t=>t.mac===this._selectedMac);if(!(!t||"compatible"===t.config_protocol_status))return G`
+				${this._renderTabBar()}
 				<div class="panel">
 					${this._renderHeader()}
 					${this._renderProtocolBanner()}
