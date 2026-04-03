@@ -164,6 +164,9 @@ subscriptions parse ESPHome text sensor updates into structured events:
 Config commands (`set_setup`, `set_room_layout`, etc.) check config protocol
 compatibility before executing, then save to storage and push to the device.
 An `update_firmware` command triggers OTA for firmware-behind devices.
+A flasher subsystem (`ota.py`) implements the ESPHome OTA TCP protocol
+(port 3232) for pushing firmware binaries directly to devices without
+requiring ESPHome Dashboard.
 
 See [backend-data-catalog.md](backend-data-catalog.md) for the complete
 data field inventory.

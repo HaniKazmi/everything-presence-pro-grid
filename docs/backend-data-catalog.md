@@ -289,6 +289,51 @@ Saves and pushes all publish intervals and window duration.
 | `delete_template` | Delete a room template |
 | `apply_template` | Apply a template to a device |
 
+### Flasher Commands
+
+#### `list_flashable_devices`
+
+Returns all ESPHome devices matching EPP manufacturer/model, regardless of whether they run original or EPP Grid firmware.
+
+**Request:** `{ "type": "eppgrid/list_flashable_devices" }`
+**Response:**
+```json
+{
+    "devices": [
+        {
+            "mac": "AA:BB:CC:DD:EE:FF",
+            "name": "Presence Pro Kitchen",
+            "host": "192.168.1.42",
+            "available": false,
+            "firmware_type": "original",
+            "firmware_version": "1.8.0",
+            "esphome_config_entry_id": "abc123"
+        }
+    ]
+}
+```
+
+`firmware_type` is `"original"` (no `zone_engine_version` entity) or `"eppgrid"` (has `zone_engine_version` entity).
+
+#### `delete_esphome_device`
+
+Removes an ESPHome config entry (used to clean up after flashing).
+
+**Request:** `{ "type": "eppgrid/delete_esphome_device", "config_entry_id": str }`
+
+#### `add_esphome_device`
+
+Triggers the ESPHome config flow for a given host (used to add a freshly-flashed device).
+
+**Request:** `{ "type": "eppgrid/add_esphome_device", "host": str }`
+
+### OTA Module (`ota.py`)
+
+Two public functions for pushing firmware binaries directly via the ESPHome OTA TCP protocol (port 3232):
+
+- **`fetch_firmware_binary(session, variant)`** — downloads the manifest from `MANIFEST_BASE_URL/everything-presence-pro-{variant}-manifest.json`, extracts `builds[].ota.path`, and returns the binary bytes. Raises `OTAError` if no OTA build is found.
+- **`push_ota(host, firmware, port, password, timeout, on_progress)`** — connects to the device on OTA port and streams the binary using the ESPHome OTA handshake (magic, version, auth, size, MD5, data chunks). Calls `on_progress(sent, total)` during streaming. Raises `OTAError` on connection failure or non-OK status from device.
+
 ## 4. Firmware Data Pipeline
 
 ```
