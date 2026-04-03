@@ -101,6 +101,26 @@ void ZoneEngine::set_zones(const ZoneConfig zones[], int count) {
     prev_occupancy_ = false;
 }
 
+void ZoneEngine::dismiss_target(int target_index, int cell_index) {
+    if (target_index < 0 || target_index >= MAX_TARGETS) return;
+    dismissed_cell_[target_index] = cell_index;
+
+    // Reset zone state: find which zone this cell belongs to and clear it
+    if (cell_index >= 0 && cell_index < grid_.cell_count() && grid_.cell_is_room(cell_index)) {
+        int zone_id = grid_.cell_zone(cell_index);
+        int zi = find_zone_index(zone_id);
+        if (zi >= 0) {
+            zones_[zi].state = ZoneState::CLEAR;
+            zones_[zi].pending_since = -1.0f;
+            zones_[zi].confirmed_targets = 0;
+        }
+    }
+
+    // Reset target tracking
+    target_has_prev_[target_index] = false;
+    target_gate_count_[target_index] = 0;
+}
+
 int ZoneEngine::find_zone_index(int zone_id) const {
     if (zone_id < 0 || zone_id >= zone_count_) return -1;
     if (!zone_enabled_[zone_id]) return -1;
@@ -185,6 +205,26 @@ const ProcessingResult& ZoneEngine::tick(const WindowOutput& window, float times
         target_signal[i] = signal;
         target_has_signal[i] = true;
         target_in_room[i] = true;
+
+        // Check if this target is dismissed at this cell
+        if (dismissed_cell_[i] == cell) {
+            // Target still at dismissed location — skip
+            target_has_prev_[i] = false;
+            target_gate_count_[i] = 0;
+            continue;
+        } else if (dismissed_cell_[i] >= 0) {
+            // Target moved to a different cell — clear dismiss
+            dismissed_cell_[i] = -1;
+        }
+
+        // Interference suppress: skip this cell entirely
+        int interference = grid_.cell_interference(cell);
+        if (interference == CELL_INTERFERENCE_SUPPRESS) {
+            target_has_prev_[i] = false;
+            target_gate_count_[i] = 0;
+            continue;
+        }
+
         int zone_id = grid_.cell_zone(cell);
         target_zone_curr[i] = zone_id;
         target_last_zone_[i] = zone_id;
@@ -230,6 +270,20 @@ const ProcessingResult& ZoneEngine::tick(const WindowOutput& window, float times
             int trigger_thresh = threshold_to_frame_count(rt.config.trigger);
             int renew_thresh = threshold_to_frame_count(rt.config.renew);
 
+            // No first appearance: targets cannot originate in interference zones.
+            // They must be handed off from a clean zone (continuity required).
+            // Only applies when zone is CLEAR — once occupied, targets can be re-confirmed.
+            if (interference > 0 && !continuous && rt.state == ZoneState::CLEAR) {
+                target_has_prev_[i] = false;
+                target_gate_count_[i] = 0;
+                continue;
+            }
+
+            // Interference: renew requires signal 9 to prevent fans sustaining occupancy
+            if (interference > 0) {
+                renew_thresh = 9;
+            }
+
             // Determine effective threshold based on zone state
             int base_thresh;
             if (rt.state == ZoneState::CLEAR) {
@@ -243,8 +297,9 @@ const ProcessingResult& ZoneEngine::tick(const WindowOutput& window, float times
             // where the median position hasn't reached the overlay cell yet
             bool on_overlay = tw.on_overlay || grid_.cell_has_overlay_entry(cell);
             bool needs_gating = !on_overlay && !continuous;
-            // Instant entry: raw frame touched overlay cell → threshold=1
-            if (on_overlay && rt.state == ZoneState::CLEAR) {
+            // Instant entry suppressed when target cell carries interference —
+            // overlay on a neighbour must not negate the raised threshold.
+            if (on_overlay && rt.state == ZoneState::CLEAR && interference == 0) {
                 base_thresh = 1;
             }
 
@@ -457,19 +512,20 @@ const ProcessingResult& ZoneEngine::tick(const WindowOutput& window, float times
 
     // -----------------------------------------------------------------------
     // Step 4: Per-target results (Python lines 661-701)
+    // Always populate x/y/signal from raw sensor data so the frontend can
+    // make its own zone engine decisions with unsaved grid edits.
     // -----------------------------------------------------------------------
     result_.target_count = 0;
     for (int i = 0; i < MAX_TARGETS; ++i) {
+        const TargetWindow& tw = window.targets[i];
+        TargetResult& tr = result_.targets[result_.target_count];
         bool in_room = (target_zone_curr[i] >= 0);
 
         if (target_active[i] && target_has_signal[i] && target_signal[i] > 0 && in_room) {
-            const TargetWindow& tw = window.targets[i];
-            TargetResult& tr = result_.targets[result_.target_count];
             tr.x = tw.median_x;
             tr.y = tw.median_y;
             tr.status = TargetStatus::ACTIVE;
             tr.signal = target_signal[i];
-            result_.target_count++;
         } else {
             // Check if this target is pending in any zone
             bool is_pending = false;
@@ -485,7 +541,7 @@ const ProcessingResult& ZoneEngine::tick(const WindowOutput& window, float times
             }
 
             if (is_pending) {
-                TargetResult& tr = result_.targets[result_.target_count];
+                // Pending: use last-known in-room position for faded dot
                 if (target_has_prev_xy_[i]) {
                     tr.x = target_prev_x_[i];
                     tr.y = target_prev_y_[i];
@@ -495,16 +551,21 @@ const ProcessingResult& ZoneEngine::tick(const WindowOutput& window, float times
                 }
                 tr.status = TargetStatus::PENDING;
                 tr.signal = 0;
-                result_.target_count++;
+            } else if (tw.active && target_has_signal[i]) {
+                // Not confirmed but sensor sees target — send raw position
+                // so frontend can process with its own (possibly edited) grid
+                tr.x = tw.median_x;
+                tr.y = tw.median_y;
+                tr.status = TargetStatus::INACTIVE;
+                tr.signal = target_signal[i];
             } else {
-                TargetResult& tr = result_.targets[result_.target_count];
                 tr.x = NAN;
                 tr.y = NAN;
                 tr.status = TargetStatus::INACTIVE;
                 tr.signal = 0;
-                result_.target_count++;
             }
         }
+        result_.target_count++;
     }
 
     // -----------------------------------------------------------------------

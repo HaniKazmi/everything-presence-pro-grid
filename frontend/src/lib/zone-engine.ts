@@ -1,6 +1,8 @@
 import { mapTargetToGridCell } from "./coordinates.js";
 import {
+	CELL_INTERFERENCE_SUPPRESS,
 	cellHasOverlayEntry,
+	cellInterference,
 	cellIsInside,
 	cellZone,
 	GRID_CELL_COUNT,
@@ -175,6 +177,14 @@ export function runLocalZoneEngine(
 			continue;
 		}
 
+		// Interference suppress: skip this cell entirely
+		const interference = cellInterference(cellVal);
+		if (interference === CELL_INTERFERENCE_SUPPRESS) {
+			state.targetPrev[i] = null;
+			state.targetGateCount[i] = 0;
+			continue;
+		}
+
 		const zid = cellZone(cellVal);
 		targetZoneCurr[i] = zid;
 
@@ -209,11 +219,24 @@ export function runLocalZoneEngine(
 			params.roomHandoffTimeout,
 		);
 		const { trigger, renew } = thresholds;
+
 		const st = state.localZoneState.get(zid);
 		const isOccupied = st?.occupied ?? false;
 		const isClear = !isOccupied;
 
-		let baseTrigger = isClear ? trigger : renew;
+		// No first appearance: targets cannot originate in interference zones.
+		// They must be handed off from a clean zone (continuity required).
+		// Only applies when zone is CLEAR — once occupied, targets can be re-confirmed.
+		if (interference > 0 && !continuous && isClear) {
+			state.targetPrev[i] = null;
+			state.targetGateCount[i] = 0;
+			continue;
+		}
+
+		// Interference: renew requires signal 9 to prevent fans sustaining occupancy
+		const effectiveRenew = interference > 0 ? 9 : renew;
+
+		let baseTrigger = isClear ? trigger : effectiveRenew;
 		// Check cell and same-zone neighbours for overlay (median may lag behind actual position)
 		let cellOverlay = cellHasOverlayEntry(cellVal);
 		if (!cellOverlay) {
@@ -234,8 +257,9 @@ export function runLocalZoneEngine(
 			}
 		}
 		const needsGating = !cellOverlay && !continuous;
-		// Instant entry: near overlay cell → threshold=1
-		if (cellOverlay && isClear) {
+		// Instant entry suppressed when target cell carries interference —
+		// overlay on a neighbour must not negate the raised threshold.
+		if (cellOverlay && isClear && interference === 0) {
 			baseTrigger = 1;
 		}
 

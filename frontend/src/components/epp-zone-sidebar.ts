@@ -24,7 +24,6 @@ export class EppZoneSidebar extends LitElement {
 		ZONE_TYPE_DEFAULTS.normal.handoff_timeout;
 	@property({ attribute: false }) localZoneState: Map<number, LocalZoneInfo> =
 		new Map();
-	@property({ attribute: false }) overlayMode: string | null = null;
 	@property({ attribute: false }) localize: (
 		key: string,
 		params?: Record<string, string | number>,
@@ -351,30 +350,6 @@ export class EppZoneSidebar extends LitElement {
 						: nothing
 				}
 
-				<hr class="zone-separator" />
-				<div style="font-size: 12px; font-weight: 500; color: var(--secondary-text-color, #757575); padding: 4px 8px;">
-					${this.localize("zones.overlays")}
-				</div>
-				<div
-					class="zone-item ${this.overlayMode === "entry" ? "active" : ""}"
-					@click=${() => {
-						this.dispatchEvent(
-							new CustomEvent("overlay-select", {
-								detail: { mode: this.overlayMode === "entry" ? null : "entry" },
-								bubbles: true,
-								composed: true,
-							}),
-						);
-					}}
-				>
-					<div class="zone-item-row">
-						<div
-							class="zone-color-dot"
-							style="background: repeating-linear-gradient(45deg, transparent, transparent 6px, rgba(60,60,60,0.7) 6px, rgba(60,60,60,0.7) 8px); border: 1px solid #ccc;"
-						></div>
-						<span class="zone-name">${this.localize("zones.overlay_entry")}</span>
-					</div>
-				</div>
 			</div>
 		`;
 	}

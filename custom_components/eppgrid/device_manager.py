@@ -176,6 +176,13 @@ class DeviceConnection:
                 },
             )
 
+    async def async_dismiss_target(self, target_index: int, cell_index: int) -> None:
+        """Send dismiss target command to firmware."""
+        service = self._services.get("epp_dismiss_target")
+        if not service or not self._client:
+            raise RuntimeError("Service epp_dismiss_target not available")
+        await self._client.execute_service(service, {"target_index": target_index, "cell_index": cell_index})
+
     async def async_push_config(self, config: dict[str, Any]) -> None:
         """Push perspective, grid, and zones to the device."""
         if self._client is None:

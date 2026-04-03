@@ -1,7 +1,13 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { GridStateController } from "../../controllers/grid-state-controller.js";
 import type { FurnitureItem, FurnitureSticker } from "../../lib/furniture.js";
-import { CELL_ROOM_BIT, GRID_CELL_COUNT, MAX_ZONES } from "../../lib/grid.js";
+import {
+	CELL_INTERFERENCE_SHIFT,
+	CELL_ROOM_BIT,
+	cellInterference,
+	GRID_CELL_COUNT,
+	MAX_ZONES,
+} from "../../lib/grid.js";
 import { ZONE_COLORS, type ZoneConfig } from "../../lib/zone-defaults.js";
 
 // Build a minimal host with all properties the controller reads/writes
@@ -25,6 +31,8 @@ function mockHost(overrides: Record<string, any> = {}) {
 		_sidebarTab: "zones",
 		_selectedFurnitureId: null as string | null,
 		_dragState: null as any,
+		// Overlays
+		_overlayMode: null as string | null,
 		// Zones
 		_zoneConfigs: Array.from(
 			{ length: MAX_ZONES },
@@ -586,6 +594,59 @@ describe("GridStateController", () => {
 	});
 
 	// =========================================================================
+	// Interference painting via onCellMouseDown / applyPaintToCell
+	// =========================================================================
+	describe("interference painting", () => {
+		beforeEach(() => {
+			// Mark cell 5 as inside the room so paint functions accept it
+			host._grid[5] = CELL_ROOM_BIT;
+			host._overlayMode = "interference";
+			vi.spyOn(window, "addEventListener").mockImplementation(() => {});
+		});
+
+		it("onCellMouseDown sets isPainting and applies interference paint", () => {
+			ctrl.onCellMouseDown(5);
+			expect(host._isPainting).toBe(true);
+			// Interference mode always paints level 1
+			expect(cellInterference(host._grid[5])).toBe(1);
+			expect(host._dirty).toBe(true);
+		});
+
+		it("onCellMouseDown uses determineInterferencePaintAction (toggles off when already set)", () => {
+			// Pre-paint cell 5 with interference level 1 (what mode "interference" paints)
+			host._grid[5] = CELL_ROOM_BIT | (1 << CELL_INTERFERENCE_SHIFT);
+			ctrl.onCellMouseDown(5);
+			// Same level → should toggle to clear
+			expect(host._paintAction).toBe("clear");
+			expect(cellInterference(host._grid[5])).toBe(0);
+		});
+
+		it("applyPaintToCell with interference mode calls applyInterferencePaintToCell", () => {
+			host._paintAction = "set";
+			ctrl.applyPaintToCell(5);
+			// Interference mode paints level 1
+			expect(cellInterference(host._grid[5])).toBe(1);
+			expect(host._dirty).toBe(true);
+		});
+
+		it("applyPaintToCell with interference mode clears when paintAction is clear", () => {
+			// Pre-paint cell 5 with interference level 2
+			host._grid[5] = CELL_ROOM_BIT | (2 << CELL_INTERFERENCE_SHIFT);
+			host._paintAction = "clear";
+			ctrl.applyPaintToCell(5);
+			expect(cellInterference(host._grid[5])).toBe(0);
+		});
+
+		it("onCellMouseDown with entry overlay mode still works", () => {
+			host._overlayMode = "entry";
+			ctrl.onCellMouseDown(5);
+			expect(host._isPainting).toBe(true);
+			// Entry overlay sets bit 4
+			expect(host._grid[5] & 0x10).toBe(0x10);
+		});
+	});
+
+	// =========================================================================
 	// Lifecycle stubs
 	// =========================================================================
 	describe("lifecycle", () => {
@@ -595,6 +656,128 @@ describe("GridStateController", () => {
 
 		it("hostDisconnected does not throw", () => {
 			expect(() => ctrl.hostDisconnected()).not.toThrow();
+		});
+	});
+
+	// =========================================================================
+	// initGridFromRoom()
+	// =========================================================================
+	describe("initGridFromRoom()", () => {
+		it("initializes _grid from the host room dimensions", () => {
+			host._roomWidth = 3000;
+			host._roomDepth = 4000;
+			ctrl.initGridFromRoom();
+			expect(host._grid.length).toBe(GRID_CELL_COUNT);
+			// At least some cells should be marked inside
+			const insideCount = Array.from(host._grid).filter(
+				(v) => v & CELL_ROOM_BIT,
+			).length;
+			expect(insideCount).toBeGreaterThan(0);
+		});
+	});
+
+	// =========================================================================
+	// onCellMouseDown / onUp lambda coverage
+	// =========================================================================
+	describe("onCellMouseDown mouseup cleanup", () => {
+		it("zone painting: mouseup clears isPainting via onUp lambda", () => {
+			host._sidebarTab = "zones";
+			host._activeZone = 1;
+			host._grid[5] = CELL_ROOM_BIT;
+
+			// Capture the onUp handler registered via addEventListener
+			let capturedHandler: (() => void) | null = null;
+			const addSpy = vi
+				.spyOn(window, "addEventListener")
+				.mockImplementation((_evt: string, handler: any) => {
+					capturedHandler = handler;
+				});
+
+			ctrl.onCellMouseDown(5);
+			expect(host._isPainting).toBe(true);
+			expect(capturedHandler).not.toBeNull();
+
+			// Invoke the captured onUp handler
+			capturedHandler!();
+			expect(host._isPainting).toBe(false);
+
+			addSpy.mockRestore();
+		});
+
+		it("interference painting: mouseup clears isPainting via onUp lambda", () => {
+			host._overlayMode = "interference";
+			host._grid[5] = CELL_ROOM_BIT;
+
+			let capturedHandler: (() => void) | null = null;
+			const addSpy = vi
+				.spyOn(window, "addEventListener")
+				.mockImplementation((_evt: string, handler: any) => {
+					capturedHandler = handler;
+				});
+
+			ctrl.onCellMouseDown(5);
+			expect(host._isPainting).toBe(true);
+			expect(capturedHandler).not.toBeNull();
+
+			capturedHandler!();
+			expect(host._isPainting).toBe(false);
+
+			addSpy.mockRestore();
+		});
+
+		it("entry painting: mouseup clears isPainting via onUp lambda", () => {
+			host._overlayMode = "entry";
+			host._grid[5] = CELL_ROOM_BIT;
+
+			let capturedHandler: (() => void) | null = null;
+			const addSpy = vi
+				.spyOn(window, "addEventListener")
+				.mockImplementation((_evt: string, handler: any) => {
+					capturedHandler = handler;
+				});
+
+			ctrl.onCellMouseDown(5);
+			expect(host._isPainting).toBe(true);
+			expect(capturedHandler).not.toBeNull();
+
+			capturedHandler!();
+			expect(host._isPainting).toBe(false);
+
+			addSpy.mockRestore();
+		});
+	});
+
+	// =========================================================================
+	// Zone painting tab guard
+	// =========================================================================
+	describe("zone painting tab guard", () => {
+		it("does not start zone painting on overlays tab", () => {
+			host._sidebarTab = "overlays";
+			host._activeZone = 1;
+			host._grid[5] = CELL_ROOM_BIT;
+
+			ctrl.onCellMouseDown(5);
+			expect(host._isPainting).toBe(false);
+		});
+
+		it("does not start zone painting on furniture tab when activeZone is set", () => {
+			host._sidebarTab = "furniture";
+			host._activeZone = 1;
+
+			ctrl.onCellMouseDown(5);
+			expect(host._isPainting).toBe(false);
+			expect(host._selectedFurnitureId).toBeNull();
+		});
+
+		it("starts zone painting on zones tab", () => {
+			host._sidebarTab = "zones";
+			host._activeZone = 1;
+			host._grid[5] = CELL_ROOM_BIT;
+
+			ctrl.onCellMouseDown(5);
+			expect(host._isPainting).toBe(true);
+			// Clean up the mouseup listener
+			window.dispatchEvent(new Event("mouseup"));
 		});
 	});
 

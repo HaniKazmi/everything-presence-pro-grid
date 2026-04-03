@@ -7,6 +7,7 @@ import "./components/epp-grid.js";
 import "./components/epp-live-sidebar.js";
 import "./components/epp-settings-view.js";
 import "./components/epp-wizard.js";
+import "./components/epp-overlay-sidebar.js";
 import "./components/epp-zone-sidebar.js";
 import { DeviceController } from "./controllers/device-controller.js";
 import { GridStateController } from "./controllers/grid-state-controller.js";
@@ -21,7 +22,9 @@ import {
 	pxToMm,
 } from "./lib/furniture.js";
 import {
+	CELL_INTERFERENCE_SUPPRESS,
 	cellIsInside,
+	cellSetInterference,
 	cellZone,
 	GRID_CELL_COUNT,
 	GRID_CELL_MM,
@@ -113,7 +116,8 @@ export class EPPGridPanel extends LitElement {
 	@state() private _targetUpdateRateMs = 1000;
 	@state() private _zoneUpdateRateMs = 1000;
 	@state() private _entitiesConfig: Record<string, any> = {};
-	@state() private _sidebarTab: "zones" | "furniture" | "live" = "zones";
+	@state() private _sidebarTab: "zones" | "overlays" | "furniture" | "live" =
+		"zones";
 	@state() private _showDeleteCalibrationDialog = false;
 	@state() private _showLiveMenu = false;
 	@state() private _showCustomIconPicker = false;
@@ -177,6 +181,14 @@ export class EPPGridPanel extends LitElement {
 		this._targetCtrl.zoneEngineState = value;
 	}
 	@state() private _overlayMode: string | null = null;
+	@state() private _targetMenu: {
+		x: number;
+		y: number;
+		targetIndex: number;
+		pctX: number;
+		pctY: number;
+	} | null = null;
+	private _dismissedTargets: Map<number, number> = new Map();
 	@state() private _isPainting = false;
 	private _justPainted = false;
 	@state() private _paintAction: PaintAction = "set";
@@ -581,6 +593,7 @@ export class EPPGridPanel extends LitElement {
 		const needsRevert = this._targetAutoDistance || this._staticAutoDistance;
 		this._dirty = false;
 		this._selectedFurnitureId = null;
+		this._overlayMode = null;
 		// Reload config (reopens session), then revert widened ranges on the
 		// new session. Must reload first because _loadDeviceConfig tears down
 		// the old session.
@@ -619,9 +632,10 @@ export class EPPGridPanel extends LitElement {
 		}
 	}
 
-	private _enterEditor(tab: "zones" | "furniture"): void {
+	private _enterEditor(tab: "zones" | "overlays" | "furniture"): void {
 		this._view = "editor";
 		this._sidebarTab = tab;
+		if (tab !== "overlays") this._overlayMode = null;
 		this._pushWidenedDistanceOverride();
 	}
 
@@ -855,6 +869,40 @@ export class EPPGridPanel extends LitElement {
     .debug-log-btn:hover {
       color: var(--primary-text-color);
       border-color: var(--primary-text-color, #ccc);
+    }
+
+    .target-menu-backdrop {
+      position: absolute;
+      inset: 0;
+      z-index: 30;
+    }
+
+    .target-menu {
+      position: absolute;
+      transform: translate(-50%, 8px);
+      z-index: 31;
+      background: var(--card-background-color, #1e1e1e);
+      border: 1px solid var(--divider-color, #444);
+      border-radius: 8px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+      padding: 4px 0;
+      min-width: 180px;
+    }
+
+    .target-menu-item {
+      display: block;
+      width: 100%;
+      padding: 8px 16px;
+      background: none;
+      border: none;
+      color: var(--primary-text-color, #e0e0e0);
+      font-size: 13px;
+      text-align: left;
+      cursor: pointer;
+    }
+
+    .target-menu-item:hover {
+      background: var(--secondary-background-color, #333);
     }
 
   `,
@@ -1207,7 +1255,90 @@ export class EPPGridPanel extends LitElement {
 				@furniture-delete=${(e: CustomEvent) => {
 					this._removeFurniture(e.detail);
 				}}
+				.dismissedTargets=${this._dismissedTargets}
+				@target-click=${(e: CustomEvent) => {
+					this._showTargetMenu(e.detail);
+				}}
 			></epp-grid>
+		`;
+	}
+
+	private _showTargetMenu(detail: {
+		targetIndex: number;
+		x: number;
+		y: number;
+		pctX: number;
+		pctY: number;
+	}): void {
+		this._targetMenu = detail;
+	}
+
+	private _closeTargetMenu(): void {
+		this._targetMenu = null;
+	}
+
+	private _targetCellIndex(x: number, y: number): number {
+		const pos = mapTargetToGridCell(x, y, this._roomWidth, this._roomDepth);
+		if (!pos) return -1;
+		const col = Math.floor(pos.col);
+		const row = Math.floor(pos.row);
+		if (col < 0 || col >= GRID_COLS || row < 0 || row >= GRID_ROWS) return -1;
+		return row * GRID_COLS + col;
+	}
+
+	private async _dismissTarget(): Promise<void> {
+		if (!this._targetMenu) return;
+		const { targetIndex, x, y } = this._targetMenu;
+		const idx = this._targetCellIndex(x, y);
+		if (idx >= 0) {
+			this._dismissedTargets = new Map(this._dismissedTargets);
+			this._dismissedTargets.set(targetIndex, idx);
+
+			try {
+				await this.hass.callWS({
+					type: "eppgrid/dismiss_target",
+					mac: this._selectedMac,
+					target_index: targetIndex,
+					cell_index: idx,
+				});
+			} catch (err) {
+				console.error("Failed to dismiss target:", err);
+			}
+		}
+		this._closeTargetMenu();
+		this.requestUpdate();
+	}
+
+	private async _setInterference(level: number): Promise<void> {
+		if (!this._targetMenu) return;
+		const idx = this._targetCellIndex(this._targetMenu.x, this._targetMenu.y);
+		if (idx < 0 || !cellIsInside(this._grid[idx])) {
+			this._closeTargetMenu();
+			return;
+		}
+		this._grid = new Uint8Array(this._grid);
+		this._grid[idx] = cellSetInterference(this._grid[idx], level);
+		this._dirty = true;
+		this._closeTargetMenu();
+		await this._gridCtrl.applyLayout();
+	}
+
+	private _renderTargetMenu() {
+		if (!this._targetMenu) return nothing;
+		const { pctX, pctY } = this._targetMenu;
+		return html`
+			<div class="target-menu-backdrop" @click=${() => this._closeTargetMenu()}></div>
+			<div class="target-menu" style="left: ${pctX}%; top: ${pctY}%;">
+				<button class="target-menu-item" @click=${() => this._dismissTarget()}>
+					${this._localize("live.delete_target")}
+				</button>
+				<button class="target-menu-item" @click=${() => this._setInterference(1)}>
+					${this._localize("live.mark_interference")}
+				</button>
+				<button class="target-menu-item" @click=${() => this._setInterference(CELL_INTERFERENCE_SUPPRESS)}>
+					${this._localize("live.suppress_detection")}
+				</button>
+			</div>
 		`;
 	}
 
@@ -1250,12 +1381,16 @@ export class EPPGridPanel extends LitElement {
 				if (this._showLiveMenu && !e.target.closest(".sidebar-menu-wrapper")) {
 					this._showLiveMenu = false;
 				}
+				if (this._targetMenu && !e.target.closest(".target-menu")) {
+					this._closeTargetMenu();
+				}
 			}}>
         ${this._renderHeader()}
         <div class="editor-layout">
           <div class="grid-column">
-            <div class="grid-container">
+            <div class="grid-container" style="position: relative;">
               ${gridContent}
+              ${this._targetMenu ? this._renderTargetMenu() : nothing}
             </div>
             ${this._perspective ? this._renderBackendDebugLog() : nothing}
           </div>
@@ -1281,6 +1416,11 @@ export class EPPGridPanel extends LitElement {
 												this._enterEditor("zones");
 											}}>
                         <ha-icon icon="mdi:vector-square" style="--mdc-icon-size: 18px;"></ha-icon> ${this._localize("menu.detection_zones")}
+                      </button>
+                      <button class="sidebar-menu-item" @click=${() => {
+												this._enterEditor("overlays");
+											}}>
+                        <ha-icon icon="mdi:blur" style="--mdc-icon-size: 18px;"></ha-icon> ${this._localize("menu.overlays")}
                       </button>
                       <button class="sidebar-menu-item" @click=${() => {
 												this._enterEditor("furniture");
@@ -1502,10 +1642,16 @@ export class EPPGridPanel extends LitElement {
 								}}
               ></epp-grid>
             </div>
-            ${this._sidebarTab === "zones" ? this._renderDebugLog() : nothing}
+            ${this._sidebarTab === "zones" || this._sidebarTab === "overlays" ? this._renderDebugLog() : nothing}
           </div>
           <div class="zone-sidebar scrollable">
-            <div class="sidebar-title">${this._sidebarTab === "furniture" ? this._localize("sidebar.furniture") : this._localize("sidebar.detection_zones")}</div>
+            <div class="sidebar-title">${
+							this._sidebarTab === "furniture"
+								? this._localize("sidebar.furniture")
+								: this._sidebarTab === "overlays"
+									? this._localize("sidebar.overlays")
+									: this._localize("sidebar.detection_zones")
+						}</div>
             <div class="sidebar-scroll">
             ${
 							this._sidebarTab === "zones"
@@ -1519,13 +1665,6 @@ export class EPPGridPanel extends LitElement {
                     .roomHandoffTimeout=${this._roomHandoffTimeout}
                     .localZoneState=${this._zoneEngineState.localZoneState}
                     .localize=${this._localize}
-                    .overlayMode=${this._overlayMode}
-                    @overlay-select=${(e: CustomEvent) => {
-											this._overlayMode = e.detail.mode;
-											if (this._overlayMode) {
-												this._activeZone = null;
-											}
-										}}
                     @zone-select=${(e: CustomEvent) => {
 											this._activeZone = e.detail.zone;
 											this._overlayMode = null;
@@ -1559,7 +1698,15 @@ export class EPPGridPanel extends LitElement {
 											this._dirty = true;
 										}}
                   ></epp-zone-sidebar>`
-								: html`<epp-furniture-sidebar
+								: this._sidebarTab === "overlays"
+									? html`<epp-overlay-sidebar
+                    .overlayMode=${this._overlayMode}
+                    .localize=${this._localize}
+                    @overlay-select=${(e: CustomEvent) => {
+											this._overlayMode = e.detail.mode;
+										}}
+                  ></epp-overlay-sidebar>`
+									: html`<epp-furniture-sidebar
                     .furniture=${this._furniture}
                     .selectedFurnitureId=${this._selectedFurnitureId}
                     .hass=${this.hass}

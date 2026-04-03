@@ -78,6 +78,7 @@ public:
     void set_zones(const ZoneConfig zones[], int count);
     const ProcessingResult& tick(const WindowOutput& window, float timestamp,
                                  const SensorInput& sensors = SensorInput{});
+    void dismiss_target(int target_index, int cell_index);
 
 private:
     Grid grid_;
@@ -94,6 +95,7 @@ private:
     bool target_has_prev_xy_[MAX_TARGETS]{};
     int target_gate_count_[MAX_TARGETS]{};
     int target_last_zone_[MAX_TARGETS]{};   // last zone while in-room (-1 = unknown)
+    int dismissed_cell_[MAX_TARGETS] = {-1, -1, -1};
 
     // Per-target log state (for transition-only logging)
     int target_log_zone_[MAX_TARGETS]{};      // zone confirmed in last tick (-1 = none)

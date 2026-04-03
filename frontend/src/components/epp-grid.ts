@@ -4,7 +4,9 @@ import { TARGET_COLORS } from "../constants.js";
 import { mapTargetToGridCell } from "../lib/coordinates.js";
 import type { FurnitureItem } from "../lib/furniture.js";
 import {
+	CELL_INTERFERENCE_SUPPRESS,
 	cellHasOverlayEntry,
+	cellInterference,
 	cellIsInside,
 	cellZone,
 	GRID_COLS,
@@ -41,6 +43,9 @@ export class EppGrid extends LitElement {
 		params?: Record<string, string | number>,
 	) => string = (k) => k;
 	/** Maximum pixel size for the grid (live=480, editor=520) */
+	/** Map of target index → dismissed cell index (ephemeral, not persisted) */
+	@property({ attribute: false }) dismissedTargets: Map<number, number> =
+		new Map();
 	@property({ type: Number }) maxGridPx = 480;
 	/** Frozen bounds during painting (editor only) */
 	@property({ attribute: false }) frozenBounds: {
@@ -103,6 +108,15 @@ export class EppGrid extends LitElement {
 			box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
 			transform: translate(-50%, -50%);
 			z-index: 10;
+			pointer-events: auto;
+		}
+
+		.target-dot.clickable {
+			cursor: pointer;
+		}
+
+		:host([editable]) .target-dot {
+			pointer-events: none;
 		}
 
 		.target-dot.moving {
@@ -183,9 +197,20 @@ export class EppGrid extends LitElement {
 					}
 				}
 				let overlayMarker = "";
-				if (cellIsInside(cellVal) && cellHasOverlayEntry(cellVal)) {
-					overlayMarker =
-						"background-image: repeating-linear-gradient(45deg, transparent, transparent 6px, rgba(60,60,60,0.7) 6px, rgba(60,60,60,0.7) 8px);";
+				if (cellIsInside(cellVal)) {
+					if (cellHasOverlayEntry(cellVal)) {
+						overlayMarker =
+							"background-image: repeating-linear-gradient(45deg, transparent, transparent 6px, rgba(60,60,60,0.7) 6px, rgba(60,60,60,0.7) 8px);";
+					} else {
+						const interf = cellInterference(cellVal);
+						if (interf === CELL_INTERFERENCE_SUPPRESS) {
+							overlayMarker =
+								"background-image: repeating-linear-gradient(-45deg, transparent, transparent 5px, #cc3333 5px, #cc3333 7px), repeating-linear-gradient(45deg, transparent, transparent 5px, #cc3333 5px, #cc3333 7px);";
+						} else if (interf > 0) {
+							overlayMarker =
+								"background-image: repeating-linear-gradient(-45deg, transparent, transparent 5px, #cc3333 5px, #cc3333 7px);";
+						}
+					}
 				}
 				cells.push(html`
 					<div
@@ -271,10 +296,62 @@ export class EppGrid extends LitElement {
 						0,
 						Math.min(100, ((pos.row - minRow) / visRows) * 100),
 					);
+					// Hide dismissed targets (until they move to a different cell)
+					if (this.dismissedTargets.has(i)) {
+						const col = Math.floor(pos.col);
+						const row = Math.floor(pos.row);
+						const idx = row * GRID_COLS + col;
+						if (this.dismissedTargets.get(i) === idx) {
+							return nothing;
+						}
+						// Target moved to a different cell — clear dismiss
+						this.dismissedTargets.delete(i);
+						this.dispatchEvent(
+							new CustomEvent("target-undismissed", {
+								detail: { targetIndex: i },
+								bubbles: true,
+								composed: true,
+							}),
+						);
+					}
+					// Hide target if on an interference cell and zone is not occupied
+					// (blocked by no-first-appearance rule — not a confirmed presence)
+					if (this.grid.length > 0) {
+						const col = Math.floor(pos.col);
+						const row = Math.floor(pos.row);
+						const idx = row * GRID_COLS + col;
+						if (idx >= 0 && idx < this.grid.length) {
+							const interf = cellInterference(this.grid[idx]);
+							if (interf > 0) {
+								const zid = cellZone(this.grid[idx]);
+								if (!this.occupancy[zid]) {
+									return nothing;
+								}
+							}
+						}
+					}
+					const opacity = t.status === "pending" ? 0.3 : 1;
 					return html`
 						<div
-							class="target-dot"
-							style="left: ${xPct}%; top: ${yPct}%; background: ${TARGET_COLORS[i] || TARGET_COLORS[0]}; opacity: ${t.status === "pending" ? 0.3 : 1}; transition: opacity 0.5s ease;"
+							class="target-dot ${this.editable ? "" : "clickable"}"
+							style="left: ${xPct}%; top: ${yPct}%; background: ${TARGET_COLORS[i] || TARGET_COLORS[0]}; opacity: ${opacity}; transition: opacity 0.5s ease;"
+							@click=${(e: Event) => {
+								if (this.editable) return;
+								e.stopPropagation();
+								this.dispatchEvent(
+									new CustomEvent("target-click", {
+										detail: {
+											targetIndex: i,
+											x: t.x,
+											y: t.y,
+											pctX: xPct,
+											pctY: yPct,
+										},
+										bubbles: true,
+										composed: true,
+									}),
+								);
+							}}
 						></div>
 						${
 							t.status === "active" && t.signal > 0

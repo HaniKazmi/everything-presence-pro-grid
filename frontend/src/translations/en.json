@@ -100,7 +100,8 @@
 		"room_calibration": "Room size calibration",
 		"delete_calibration": "Delete room calibration",
 		"detection_zones": "Detection zones",
-		"furniture": "Furniture"
+		"furniture": "Furniture",
+		"overlays": "Overlays"
 	},
 	"settings": {
 		"title": "Settings",
@@ -151,6 +152,7 @@
 	"sidebar": {
 		"detection_zones": "Detection zones",
 		"furniture": "Furniture",
+		"overlays": "Overlays",
 		"live_overview": "Live overview",
 		"add_zone": "Add zone",
 		"rest_of_room": "Rest of room",
@@ -167,9 +169,13 @@
 		"renew": "Renew",
 		"presence_timeout": "Presence timeout",
 		"handoff_timeout": "Handoff timeout",
-		"seconds_suffix": "s",
-		"overlays": "Overlays",
-		"overlay_entry": "Entry / Exit"
+		"seconds_suffix": "s"
+	},
+	"overlays": {
+		"entry_exit": "Entry / Exit",
+		"interference": "Interference",
+		"suppress": "Suppress",
+		"click_to_paint": "Click to paint"
 	},
 	"live": {
 		"presence": "Presence",
@@ -180,7 +186,10 @@
 		"static_presence": "Static presence",
 		"motion_presence": "Motion presence",
 		"target_presence": "Target presence",
-		"target_count": "Target count"
+		"target_count": "Target count",
+		"delete_target": "Delete target",
+		"mark_interference": "Mark as interference source",
+		"suppress_detection": "Suppress detection"
 	},
 	"entities": {
 		"room_level": "Room level",

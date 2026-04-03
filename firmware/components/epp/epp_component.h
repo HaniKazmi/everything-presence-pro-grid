@@ -38,6 +38,7 @@ class EPPComponent : public esphome::Component {
   void set_perspective(const std::string &perspective, float room_width, float room_depth);
   void set_grid(const std::string &grid_data, float origin_x, float origin_y);
   void set_zones(const std::string &zones_json);
+  void dismiss_target(int target_index, int cell_index);
 
   // Sensor setters (called from generated code)
   void set_device_tracking_sensor(esphome::binary_sensor::BinarySensor *sensor) {

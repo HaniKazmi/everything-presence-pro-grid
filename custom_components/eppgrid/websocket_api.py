@@ -40,6 +40,7 @@ def async_register_websocket_commands(hass: HomeAssistant, manager: Any) -> None
     websocket_api.async_register_command(hass, websocket_set_distance_override)
     websocket_api.async_register_command(hass, websocket_set_pipeline)
     websocket_api.async_register_command(hass, websocket_update_firmware)
+    websocket_api.async_register_command(hass, websocket_dismiss_target)
 
 
 _TARGET_ENTITY_KEYS = ("target_xy", "target_active", "target_signal", "target_zone", "target_count")
@@ -1093,3 +1094,44 @@ async def websocket_update_firmware(
         connection.send_result(msg["id"])
     except Exception as err:
         connection.send_error(msg["id"], "update_failed", str(err))
+
+
+# -- dismiss_target (ephemeral, firmware-only) --
+
+
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): "eppgrid/dismiss_target",
+        vol.Required("mac"): str,
+        vol.Required("target_index"): vol.Coerce(int),
+        vol.Required("cell_index"): vol.Coerce(int),
+    }
+)
+@websocket_api.async_response
+async def websocket_dismiss_target(
+    hass: HomeAssistant,
+    connection: websocket_api.ActiveConnection,
+    msg: dict[str, Any],
+) -> None:
+    """Dismiss a target at a specific cell (ephemeral, firmware-only)."""
+    manager = _get_manager(hass)
+    if manager is None:
+        connection.send_error(msg["id"], "not_ready", "Integration not loaded")
+        return
+    mac = msg["mac"]
+    dev = manager.devices.get(mac)
+    if not dev or not dev.host:
+        connection.send_error(msg["id"], "device_unavailable", "Device not connected")
+        return
+
+    try:
+        session = manager.get_session(mac)
+        if session is None:
+            connection.send_error(msg["id"], "no_session", "No active session")
+            return
+        await session.async_dismiss_target(msg["target_index"], msg["cell_index"])
+    except Exception as err:
+        connection.send_error(msg["id"], "dismiss_failed", str(err))
+        return
+
+    connection.send_result(msg["id"])

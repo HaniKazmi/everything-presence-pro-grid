@@ -3,7 +3,9 @@ import "../../components/epp-grid.js";
 import type { EppGrid } from "../../components/epp-grid.js";
 import type { FurnitureItem } from "../../lib/furniture.js";
 import {
+	CELL_INTERFERENCE_SUPPRESS,
 	CELL_ROOM_BIT,
+	cellSetInterference,
 	cellSetZone,
 	GRID_CELL_COUNT,
 	GRID_COLS,
@@ -439,6 +441,82 @@ describe("epp-grid furniture overlay", () => {
 	});
 });
 
+describe("epp-grid target-click event", () => {
+	it("dispatches target-click event when target dot is clicked", async () => {
+		const targets: Target[] = [
+			{ x: 1500, y: 2000, speed: 0, status: "active", signal: 7 },
+		];
+		const el = createGrid({ targets });
+		document.body.appendChild(el);
+		await el.updateComplete;
+
+		const events: CustomEvent[] = [];
+		el.addEventListener("target-click", (e) => events.push(e as CustomEvent));
+
+		const dot = el.shadowRoot!.querySelector(".target-dot") as HTMLElement;
+		expect(dot).not.toBeNull();
+		dot.click();
+
+		expect(events.length).toBe(1);
+		expect(events[0].detail.targetIndex).toBe(0);
+		expect(events[0].detail.x).toBe(1500);
+		expect(events[0].detail.y).toBe(2000);
+
+		document.body.removeChild(el);
+	});
+});
+
+describe("epp-grid target dot cursor guard", () => {
+	it("target dot has clickable class when not editable", async () => {
+		const targets: Target[] = [
+			{ x: 1500, y: 2000, speed: 0, status: "active", signal: 7 },
+		];
+		const el = createGrid({ targets, editable: false });
+		document.body.appendChild(el);
+		await el.updateComplete;
+
+		const dot = el.shadowRoot!.querySelector(".target-dot") as HTMLElement;
+		expect(dot).not.toBeNull();
+		expect(dot.classList.contains("clickable")).toBe(true);
+
+		document.body.removeChild(el);
+	});
+
+	it("target dot does not have clickable class when editable", async () => {
+		const targets: Target[] = [
+			{ x: 1500, y: 2000, speed: 0, status: "active", signal: 7 },
+		];
+		const el = createGrid({ targets, editable: true });
+		document.body.appendChild(el);
+		await el.updateComplete;
+
+		const dot = el.shadowRoot!.querySelector(".target-dot") as HTMLElement;
+		expect(dot).not.toBeNull();
+		expect(dot.classList.contains("clickable")).toBe(false);
+
+		document.body.removeChild(el);
+	});
+
+	it("click on target dot in edit mode does not dispatch target-click", async () => {
+		const targets: Target[] = [
+			{ x: 1500, y: 2000, speed: 0, status: "active", signal: 7 },
+		];
+		const el = createGrid({ targets, editable: true });
+		document.body.appendChild(el);
+		await el.updateComplete;
+
+		const events: CustomEvent[] = [];
+		el.addEventListener("target-click", (e) => events.push(e as CustomEvent));
+
+		const dot = el.shadowRoot!.querySelector(".target-dot") as HTMLElement;
+		dot.click();
+
+		expect(events.length).toBe(0);
+
+		document.body.removeChild(el);
+	});
+});
+
 describe("epp-grid frozenBounds", () => {
 	it("uses frozenBounds when set", async () => {
 		const el = createGrid({
@@ -450,6 +528,188 @@ describe("epp-grid frozenBounds", () => {
 		const cells = el.shadowRoot!.querySelectorAll(".cell");
 		// 11 cols * 11 rows = 121 cells
 		expect(cells.length).toBe(121);
+
+		document.body.removeChild(el);
+	});
+});
+
+describe("epp-grid dismissedTargets", () => {
+	// For roomWidth=3000, roomDepth=4000, GRID_CELL_MM=300:
+	//   startCol = floor((20-10)/2) = 5
+	//   target x=1500, y=2000 → col=10, row=6.67 → idx = 6*20+10 = 130
+	//   target x=1800, y=2000 → col=11, row=6.67 → idx = 6*20+11 = 131
+
+	it("hides a target whose dismissed cell matches its current cell", async () => {
+		const targets: Target[] = [
+			{ x: 1500, y: 2000, speed: 0, status: "active", signal: 7 },
+		];
+		// Target is at cell 130 — dismissed at cell 130 → should be hidden
+		const dismissedTargets = new Map([[0, 130]]);
+		const el = createGrid({ targets, dismissedTargets });
+		document.body.appendChild(el);
+		await el.updateComplete;
+
+		const dots = el.shadowRoot!.querySelectorAll(".target-dot");
+		expect(dots.length).toBe(0);
+
+		document.body.removeChild(el);
+	});
+
+	it("shows a target that has moved away from its dismissed cell and dispatches target-undismissed", async () => {
+		const targets: Target[] = [
+			{ x: 1800, y: 2000, speed: 0, status: "active", signal: 7 },
+		];
+		// Target is now at cell 131, but was dismissed at cell 130 → should render and clear
+		const dismissedTargets = new Map([[0, 130]]);
+		const el = createGrid({ targets, dismissedTargets });
+		document.body.appendChild(el);
+		await el.updateComplete;
+
+		// Dot should be visible
+		const dots = el.shadowRoot!.querySelectorAll(".target-dot");
+		expect(dots.length).toBe(1);
+
+		// Dismiss entry should be cleared
+		expect(el.dismissedTargets.has(0)).toBe(false);
+
+		document.body.removeChild(el);
+	});
+
+	it("dispatches target-undismissed event when target moves away from dismissed cell", async () => {
+		const targets: Target[] = [
+			{ x: 1800, y: 2000, speed: 0, status: "active", signal: 7 },
+		];
+		// Target is now at cell 131, but was dismissed at cell 130
+		const dismissedTargets = new Map([[0, 130]]);
+		const el = createGrid({ targets, dismissedTargets });
+		document.body.appendChild(el);
+
+		const events: CustomEvent[] = [];
+		el.addEventListener("target-undismissed", (e) =>
+			events.push(e as CustomEvent),
+		);
+
+		await el.updateComplete;
+
+		expect(events.length).toBe(1);
+		expect(events[0].detail.targetIndex).toBe(0);
+
+		document.body.removeChild(el);
+	});
+});
+
+describe("epp-grid interference target suppression", () => {
+	// For roomWidth=3000, roomDepth=4000: target at x=1500,y=2000 → cell 130
+	// cell 130 is inside the room (CELL_ROOM_BIT set by initGridFromRoom)
+
+	it("hides a target on an interference cell when zone is not occupied", async () => {
+		const grid = initGridFromRoom(3000, 4000);
+		// Cell 130: set interference level 1 (zone stays 0 = unoccupied)
+		grid[130] = cellSetInterference(grid[130], 1);
+
+		const targets: Target[] = [
+			{ x: 1500, y: 2000, speed: 0, status: "active", signal: 7 },
+		];
+		const el = createGrid({ targets, grid, occupancy: {} });
+		document.body.appendChild(el);
+		await el.updateComplete;
+
+		const dots = el.shadowRoot!.querySelectorAll(".target-dot");
+		expect(dots.length).toBe(0);
+
+		document.body.removeChild(el);
+	});
+
+	it("shows a target on an interference cell when the zone IS occupied", async () => {
+		const grid = initGridFromRoom(3000, 4000);
+		// Cell 130: set interference level 1 AND zone 1
+		grid[130] = cellSetInterference(grid[130], 1);
+		grid[130] = cellSetZone(grid[130], 1);
+
+		const targets: Target[] = [
+			{ x: 1500, y: 2000, speed: 0, status: "active", signal: 7 },
+		];
+		// Zone 1 is occupied
+		const el = createGrid({ targets, grid, occupancy: { 1: true } });
+		document.body.appendChild(el);
+		await el.updateComplete;
+
+		const dots = el.shadowRoot!.querySelectorAll(".target-dot");
+		expect(dots.length).toBe(1);
+
+		document.body.removeChild(el);
+	});
+});
+
+describe("epp-grid interference stripes", () => {
+	/** Return the first cell that has an interference stripe style. */
+	function findInterferenceCell(el: EppGrid): HTMLElement | null {
+		const cells = el.shadowRoot!.querySelectorAll(
+			".cell",
+		) as NodeListOf<HTMLElement>;
+		for (const c of cells) {
+			if (c.style.cssText.includes("cc3333")) return c;
+		}
+		return null;
+	}
+
+	function buildGridWithInterference(level: number): Uint8Array {
+		const grid = initGridFromRoom(3000, 4000);
+		for (let i = 0; i < grid.length; i++) {
+			if (grid[i] & CELL_ROOM_BIT) {
+				grid[i] = cellSetInterference(grid[i], level);
+			}
+		}
+		return grid;
+	}
+
+	it("renders -45deg cc3333 stripe for interference (level 1)", async () => {
+		const grid = buildGridWithInterference(1);
+		const el = createGrid({ grid });
+		document.body.appendChild(el);
+		await el.updateComplete;
+
+		const cell = findInterferenceCell(el);
+		expect(cell).not.toBeNull();
+		const style = cell!.style.cssText;
+		expect(style).toContain("-45deg");
+		expect(style).toContain("#cc3333");
+		// Single stripe pattern — not a cross-hatch
+		expect(style.match(/-45deg/g)?.length).toBe(1);
+
+		document.body.removeChild(el);
+	});
+
+	it("renders cross-hatch (both -45deg and 45deg) for suppress interference", async () => {
+		const grid = buildGridWithInterference(CELL_INTERFERENCE_SUPPRESS);
+		const el = createGrid({ grid });
+		document.body.appendChild(el);
+		await el.updateComplete;
+
+		const cell = findInterferenceCell(el);
+		expect(cell).not.toBeNull();
+		const style = cell!.style.cssText;
+		expect(style).toContain("-45deg");
+		expect(style).toContain("45deg");
+		expect(style).toContain("#cc3333");
+
+		document.body.removeChild(el);
+	});
+
+	it("does not render interference stripes on outside cells", async () => {
+		// Build a grid where all cells are outside (no CELL_ROOM_BIT) but have
+		// interference bits set manually — outside cells must not show stripes.
+		const grid = new Uint8Array(GRID_CELL_COUNT);
+		for (let i = 0; i < grid.length; i++) {
+			// Set interference level 1 without room bit
+			grid[i] = cellSetInterference(grid[i], 1);
+		}
+		const el = createGrid({ grid });
+		document.body.appendChild(el);
+		await el.updateComplete;
+
+		const cell = findInterferenceCell(el);
+		expect(cell).toBeNull();
 
 		document.body.removeChild(el);
 	});
