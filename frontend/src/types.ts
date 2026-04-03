@@ -64,3 +64,21 @@ export interface OtaProgress {
 	progress?: number;
 	error?: string;
 }
+
+export type UsbFlashStep =
+	| "idle"
+	| "connecting"
+	| "flashing"
+	| "wifi_scan"
+	| "wifi_provision"
+	| "reading_ip"
+	| "adding_device"
+	| "complete"
+	| "error";
+
+export interface UsbFlashState {
+	step: UsbFlashStep;
+	progress?: number;
+	error?: string;
+	ip?: string;
+}
