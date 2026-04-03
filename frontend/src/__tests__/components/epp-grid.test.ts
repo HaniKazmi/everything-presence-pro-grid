@@ -12,7 +12,6 @@ import {
 	GRID_ROWS,
 	initGridFromRoom,
 } from "../../lib/grid.js";
-import { CELL_BG_OUT_OF_RANGE } from "../../lib/heatmap.js";
 import { ZONE_COLORS } from "../../lib/zone-defaults.js";
 import type { Target } from "../../types.js";
 

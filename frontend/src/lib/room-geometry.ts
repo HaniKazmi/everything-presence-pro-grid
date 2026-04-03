@@ -75,16 +75,17 @@ export function isCellInSensorRange(
 	// Vector from sensor to cell in room-space
 	const dx = rx - fov.sensorPos.x;
 	const dy = ry - fov.sensorPos.y;
-	const dist = Math.sqrt(dx * dx + dy * dy);
-	if (dist < 1) return true; // at sensor position
+	const distSq = dx * dx + dy * dy;
+	if (distSq < 1) return true; // at sensor position
 
-	// Angle between sensor direction and cell direction (both in room-space)
-	const dot = (dx / dist) * fov.dirX + (dy / dist) * fov.dirY;
-	const angle = Math.acos(Math.max(-1, Math.min(1, dot)));
-	if (angle > Math.PI / 3) return false; // 120° FOV = 60° half-angle
+	// Distance check first (cheaper than angle)
+	if (distSq > maxRangeMm * maxRangeMm) return false;
 
-	// Distance check
-	if (dist > maxRangeMm) return false;
+	// Angle check via dot-product: cos(60°) = 0.5, so dot/dist > 0.5
+	// Equivalent to: dot > 0.5 * dist, square both sides (both positive):
+	const dot = dx * fov.dirX + dy * fov.dirY;
+	if (dot <= 0) return false; // behind sensor
+	if (dot * dot < 0.25 * distSq) return false; // angle > 60°
 
 	return true;
 }
