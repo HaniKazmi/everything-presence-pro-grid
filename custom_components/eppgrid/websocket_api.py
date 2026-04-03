@@ -41,6 +41,9 @@ def async_register_websocket_commands(hass: HomeAssistant, manager: Any) -> None
     websocket_api.async_register_command(hass, websocket_set_pipeline)
     websocket_api.async_register_command(hass, websocket_update_firmware)
     websocket_api.async_register_command(hass, websocket_dismiss_target)
+    websocket_api.async_register_command(hass, websocket_list_flashable_devices)
+    websocket_api.async_register_command(hass, websocket_delete_esphome_device)
+    websocket_api.async_register_command(hass, websocket_add_esphome_device)
 
 
 _TARGET_ENTITY_KEYS = ("target_xy", "target_active", "target_signal", "target_zone", "target_count")
@@ -1135,3 +1138,74 @@ async def websocket_dismiss_target(
         return
 
     connection.send_result(msg["id"])
+
+
+# -- list_flashable_devices --
+
+
+@websocket_api.websocket_command({vol.Required("type"): "eppgrid/list_flashable_devices"})
+@websocket_api.async_response
+async def websocket_list_flashable_devices(
+    hass: HomeAssistant,
+    connection: websocket_api.ActiveConnection,
+    msg: dict[str, Any],
+) -> None:
+    """List all EPP devices available for flashing."""
+    manager = _get_manager(hass)
+    if manager is None:
+        connection.send_error(msg["id"], "not_ready", "Integration not loaded")
+        return
+    devices = await manager.list_flashable_devices()
+    connection.send_result(msg["id"], {"devices": devices})
+
+
+# -- delete_esphome_device --
+
+
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): "eppgrid/delete_esphome_device",
+        vol.Required("config_entry_id"): str,
+    }
+)
+@websocket_api.async_response
+async def websocket_delete_esphome_device(
+    hass: HomeAssistant,
+    connection: websocket_api.ActiveConnection,
+    msg: dict[str, Any],
+) -> None:
+    """Delete an ESPHome config entry (and its device/entities)."""
+    try:
+        await hass.config_entries.async_remove(msg["config_entry_id"])
+    except Exception as err:
+        connection.send_error(msg["id"], "delete_failed", str(err))
+        return
+    connection.send_result(msg["id"])
+
+
+# -- add_esphome_device --
+
+
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): "eppgrid/add_esphome_device",
+        vol.Required("host"): str,
+    }
+)
+@websocket_api.async_response
+async def websocket_add_esphome_device(
+    hass: HomeAssistant,
+    connection: websocket_api.ActiveConnection,
+    msg: dict[str, Any],
+) -> None:
+    """Add an ESPHome device by triggering its config flow."""
+    try:
+        result = await hass.config_entries.flow.async_init(
+            "esphome",
+            context={"source": "user"},
+            data={"host": msg["host"]},
+        )
+        connection.send_result(msg["id"], {"result": result.get("type", "unknown")})
+    except Exception as err:
+        connection.send_error(msg["id"], "add_failed", str(err))
+>>>>>>> d9727aa (feat: add list_flashable_devices, delete and add ESPHome device WS commands)
