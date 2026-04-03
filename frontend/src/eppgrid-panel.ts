@@ -1,6 +1,7 @@
 import { css, html, LitElement, nothing, type PropertyValues } from "lit";
 import { property, state } from "lit/decorators.js";
 
+import "./components/epp-flasher-view.js";
 import "./components/epp-furniture-overlay.js";
 import "./components/epp-furniture-sidebar.js";
 import "./components/epp-grid.js";
@@ -10,6 +11,7 @@ import "./components/epp-wizard.js";
 import "./components/epp-overlay-sidebar.js";
 import "./components/epp-zone-sidebar.js";
 import { DeviceController } from "./controllers/device-controller.js";
+import { FlasherController } from "./controllers/flasher-controller.js";
 import { GridStateController } from "./controllers/grid-state-controller.js";
 import { TargetController } from "./controllers/target-controller.js";
 import type { PaintAction } from "./lib/cell-painting.js";
@@ -74,6 +76,8 @@ export class EPPGridPanel extends LitElement {
 	private _gridCtrl = new GridStateController(this);
 	// Target controller — owns target/sensor/zone state processing, zone engine, debug logging
 	private _targetCtrl = new TargetController(this);
+	// Flasher controller — owns OTA flash state and flashable device list
+	private _flasherCtrl = new FlasherController(this);
 	private _localize: (
 		key: string,
 		params?: Record<string, string | number>,
@@ -118,6 +122,7 @@ export class EPPGridPanel extends LitElement {
 	@state() private _entitiesConfig: Record<string, any> = {};
 	@state() private _sidebarTab: "zones" | "overlays" | "furniture" | "live" =
 		"zones";
+	@state() private _panelTab: "config" | "flasher" = "config";
 	@state() private _showDeleteCalibrationDialog = false;
 	@state() private _showLiveMenu = false;
 	@state() private _showCustomIconPicker = false;
@@ -372,6 +377,7 @@ export class EPPGridPanel extends LitElement {
 	updated(changedProps: PropertyValues): void {
 		if (changedProps.has("hass") && this.hass) {
 			this._deviceCtrl.hass = this.hass;
+			this._flasherCtrl.hass = this.hass;
 			if (this._loading && !this._devices.length) {
 				this._initialize();
 			} else if (
@@ -902,6 +908,30 @@ export class EPPGridPanel extends LitElement {
       background: var(--secondary-background-color, #333);
     }
 
+    .tab-bar {
+      display: flex;
+      border-bottom: 1px solid var(--divider-color, #e0e0e0);
+      background: var(--app-header-background-color, var(--primary-color));
+      padding: 0 16px;
+    }
+
+    .tab {
+      padding: 12px 20px;
+      border: none;
+      background: none;
+      color: var(--app-header-text-color, white);
+      cursor: pointer;
+      font-size: 14px;
+      font-weight: 500;
+      opacity: 0.7;
+      border-bottom: 3px solid transparent;
+    }
+
+    .tab.active {
+      opacity: 1;
+      border-bottom-color: var(--app-header-text-color, white);
+    }
+
   `,
 	];
 
@@ -959,13 +989,62 @@ export class EPPGridPanel extends LitElement {
     `;
 	}
 
+	private _renderTabBar() {
+		return html`
+			<div class="tab-bar">
+				<button class="tab ${this._panelTab === "config" ? "active" : ""}"
+					@click=${() => { this._panelTab = "config"; }}>Device Configuration</button>
+				<button class="tab ${this._panelTab === "flasher" ? "active" : ""}"
+					@click=${() => {
+						this._panelTab = "flasher";
+						if (this._flasherCtrl.loading) {
+							this._flasherCtrl.hass = this.hass;
+							this._flasherCtrl.loadDevices();
+						}
+					}}>Flash Firmware</button>
+			</div>
+		`;
+	}
+
 	render() {
+		if (this._panelTab === "flasher") {
+			if (this._flasherCtrl.loading) {
+				this._flasherCtrl.hass = this.hass;
+				this._flasherCtrl.loadDevices();
+			}
+			return html`
+				${this._renderTabBar()}
+				<epp-flasher-view
+					.hass=${this.hass}
+					.flashableDevices=${this._flasherCtrl.flashableDevices}
+					.loading=${this._flasherCtrl.loading}
+					.otaProgress=${this._flasherCtrl.otaProgress}
+					.flashingMac=${this._flasherCtrl.flashingMac}
+					@flash-ota=${(e: CustomEvent) => {
+						this._flasherCtrl.startOtaFlash(e.detail.mac, e.detail.variant);
+					}}
+					@flash-complete=${() => { this._panelTab = "config"; }}
+				></epp-flasher-view>
+			`;
+		}
+
 		if (this._loading) {
-			return html`<div class="loading-container">${this._localize("common.loading")}</div>`;
+			return html`
+				${this._renderTabBar()}
+				<div class="loading-container">${this._localize("common.loading")}</div>
+			`;
 		}
 
 		if (!this._devices.length) {
-			return html`<div class="loading-container">${this._localize("common.loading")}</div>`;
+			return html`
+				${this._renderTabBar()}
+				<div class="loading-container">
+					<p>No devices with EPP Grid firmware found.</p>
+					<button @click=${() => { this._panelTab = "flasher"; }}>
+						Flash your devices from the Flash Firmware tab
+					</button>
+				</div>
+			`;
 		}
 
 		if (this._setupStep !== null) {
@@ -1033,7 +1112,7 @@ export class EPPGridPanel extends LitElement {
 					? this._renderEditor()
 					: this._renderLiveOverview();
 
-		return html`${content}${this._renderGlobalDialogs()}`;
+		return html`${this._renderTabBar()}${content}${this._renderGlobalDialogs()}`;
 	}
 
 	private async _deleteCalibration(): Promise<void> {
