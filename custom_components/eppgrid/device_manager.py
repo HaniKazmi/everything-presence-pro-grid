@@ -22,6 +22,8 @@ from homeassistant.helpers import entity_registry as er
 
 from .const import CONFIG_PROTOCOL_VERSION
 from .const import DEFAULT_PORT
+from .const import EPP_MANUFACTURER
+from .const import EPP_MODEL
 from .const import GRID_CELL_SIZE_MM
 from .const import GRID_COLS
 from .const import MAX_ZONES
@@ -695,6 +697,64 @@ class DeviceManager:
                     **self._build_flags.get(mac, {}),
                 }
             )
+        return result
+
+    async def list_flashable_devices(self) -> list[dict[str, Any]]:
+        """Return all ESPHome EPP devices — both original and EPP Grid firmware."""
+        dev_reg = dr.async_get(self._hass)
+        ent_reg = er.async_get(self._hass)
+        result: list[dict[str, Any]] = []
+        seen_macs: set[str] = set()
+
+        for device in dev_reg.devices.values():
+            # Must be an EPP device (check manufacturer + model)
+            if device.manufacturer != EPP_MANUFACTURER:
+                continue
+            if device.model != EPP_MODEL:
+                continue
+
+            mac = _extract_mac(device)
+            if mac is None or mac in seen_macs:
+                continue
+            seen_macs.add(mac)
+
+            # Find the ESPHome config entry for this device
+            esphome_config_entry_id = None
+            for entry_id in device.config_entries:
+                entry = self._hass.config_entries.async_get_entry(entry_id)
+                if entry is not None and entry.domain == "esphome":
+                    esphome_config_entry_id = entry_id
+                    break
+
+            host = _extract_host(device, esphome_config_entry_id, self._hass)
+
+            # Check if device has zone_engine_version entity (= our firmware)
+            has_zone_engine = False
+            for ent_entry in er.async_entries_for_device(
+                ent_reg, device.id, include_disabled_entities=True
+            ):
+                if ent_entry.platform == "esphome" and "zone_engine_version" in ent_entry.unique_id:
+                    has_zone_engine = True
+                    break
+
+            # Check availability: any non-unavailable entity means device is online
+            available = False
+            for ent_entry in er.async_entries_for_device(ent_reg, device.id):
+                state = self._hass.states.get(ent_entry.entity_id)
+                if state is not None and state.state not in ("unavailable", "unknown"):
+                    available = True
+                    break
+
+            result.append({
+                "mac": mac,
+                "name": device.name_by_user or device.name or "EPP Device",
+                "host": host,
+                "available": available,
+                "firmware_type": "eppgrid" if has_zone_engine else "original",
+                "firmware_version": device.sw_version or "unknown",
+                "esphome_config_entry_id": esphome_config_entry_id,
+            })
+
         return result
 
     async def async_update_zone_entities(self, mac: str, zone_slots: list[dict[str, Any] | None]) -> None:

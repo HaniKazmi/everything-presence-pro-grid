@@ -14,3 +14,11 @@ MAX_ZONES = 7
 # Config protocol version — must match firmware's Config Protocol sensor value.
 # Bump in lockstep with firmware when the config push interface changes.
 CONFIG_PROTOCOL_VERSION = 1
+
+# Original EPP firmware identifiers (for device discovery)
+EPP_MANUFACTURER = "EverythingSmartTechnology"
+EPP_MODEL = "Everything Presence Pro"
+
+# ESPHome OTA
+OTA_PORT = 3232
+MANIFEST_BASE_URL = "https://github.com/clintongormley/everything-presence-pro-grid/releases/latest/download"
