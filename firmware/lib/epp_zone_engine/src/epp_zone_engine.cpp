@@ -512,19 +512,20 @@ const ProcessingResult& ZoneEngine::tick(const WindowOutput& window, float times
 
     // -----------------------------------------------------------------------
     // Step 4: Per-target results (Python lines 661-701)
+    // Always populate x/y/signal from raw sensor data so the frontend can
+    // make its own zone engine decisions with unsaved grid edits.
     // -----------------------------------------------------------------------
     result_.target_count = 0;
     for (int i = 0; i < MAX_TARGETS; ++i) {
+        const TargetWindow& tw = window.targets[i];
+        TargetResult& tr = result_.targets[result_.target_count];
         bool in_room = (target_zone_curr[i] >= 0);
 
         if (target_active[i] && target_has_signal[i] && target_signal[i] > 0 && in_room) {
-            const TargetWindow& tw = window.targets[i];
-            TargetResult& tr = result_.targets[result_.target_count];
             tr.x = tw.median_x;
             tr.y = tw.median_y;
             tr.status = TargetStatus::ACTIVE;
             tr.signal = target_signal[i];
-            result_.target_count++;
         } else {
             // Check if this target is pending in any zone
             bool is_pending = false;
@@ -540,7 +541,7 @@ const ProcessingResult& ZoneEngine::tick(const WindowOutput& window, float times
             }
 
             if (is_pending) {
-                TargetResult& tr = result_.targets[result_.target_count];
+                // Pending: use last-known in-room position for faded dot
                 if (target_has_prev_xy_[i]) {
                     tr.x = target_prev_x_[i];
                     tr.y = target_prev_y_[i];
@@ -550,16 +551,21 @@ const ProcessingResult& ZoneEngine::tick(const WindowOutput& window, float times
                 }
                 tr.status = TargetStatus::PENDING;
                 tr.signal = 0;
-                result_.target_count++;
+            } else if (tw.active && target_has_signal[i]) {
+                // Not confirmed but sensor sees target — send raw position
+                // so frontend can process with its own (possibly edited) grid
+                tr.x = tw.median_x;
+                tr.y = tw.median_y;
+                tr.status = TargetStatus::INACTIVE;
+                tr.signal = target_signal[i];
             } else {
-                TargetResult& tr = result_.targets[result_.target_count];
                 tr.x = NAN;
                 tr.y = NAN;
                 tr.status = TargetStatus::INACTIVE;
                 tr.signal = 0;
-                result_.target_count++;
             }
         }
+        result_.target_count++;
     }
 
     // -----------------------------------------------------------------------
