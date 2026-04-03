@@ -753,3 +753,73 @@ TEST_CASE("zone_target_counts reports number of targets, not signal") {
     CHECK(r3.zone_target_counts[0] == 1);
     CHECK(r3.zone_target_counts[1] == 1);
 }
+
+// ---------------------------------------------------------------------------
+// Dismiss target tests
+// ---------------------------------------------------------------------------
+
+TEST_CASE("dismiss_target skips target at dismissed cell") {
+    ZoneEngine engine = make_parity_engine();
+    float t = 100.0f;
+
+    // Zone 1 at cell (9,1): x = 9*300 + 150 = 2850, y = 1*300 + 150 = 450
+    int dismissed_cell = 1 * GRID_COLS + 9;
+
+    // Confirm target 0 in zone 1 first
+    const ProcessingResult& r1 = engine.tick(make_window_1(X_OFF + 450, 450, 5), t);
+    CHECK(r1.zone_occupancy[1]);
+
+    // Dismiss target 0 at this cell
+    engine.dismiss_target(0, dismissed_cell);
+
+    // Tick again with target at same position — should be skipped
+    const ProcessingResult& r2 = engine.tick(make_window_1(X_OFF + 450, 450, 5), t + 1.0f);
+    CHECK_FALSE(r2.zone_occupancy[1]);
+}
+
+TEST_CASE("dismiss_target clears when target moves to different cell") {
+    ZoneEngine engine = make_parity_engine();
+    float t = 100.0f;
+
+    // Zone 1 at cell (9,1)
+    int dismissed_cell = 1 * GRID_COLS + 9;
+
+    // Confirm target 0 in zone 1
+    engine.tick(make_window_1(X_OFF + 450, 450, 5), t);
+
+    // Dismiss target 0 at zone 1 cell
+    engine.dismiss_target(0, dismissed_cell);
+
+    // Tick with target at same position — dismissed
+    const ProcessingResult& r1 = engine.tick(make_window_1(X_OFF + 450, 450, 5), t + 1.0f);
+    CHECK_FALSE(r1.zone_occupancy[1]);
+
+    // Move target to a different cell (zone 0, cell (8,0))
+    // This needs gating (2 ticks), but dismiss should clear on the first tick
+    engine.tick(make_window_1(X_OFF + 150, 150, 7), t + 2.0f);
+
+    // Second tick at new position — should confirm (dismiss cleared, gating passes)
+    const ProcessingResult& r2 = engine.tick(make_window_1(X_OFF + 150, 150, 7), t + 3.0f);
+    CHECK(r2.zone_occupancy[0]);
+}
+
+TEST_CASE("dismiss_target resets zone state to CLEAR") {
+    ZoneEngine engine = make_parity_engine();
+    float t = 100.0f;
+
+    // Zone 1 at cell (9,1)
+    int dismissed_cell = 1 * GRID_COLS + 9;
+
+    // Confirm target 0 in zone 1
+    const ProcessingResult& r1 = engine.tick(make_window_1(X_OFF + 450, 450, 5), t);
+    CHECK(r1.zone_occupancy[1]);
+    CHECK(r1.zone_states[1] == ZoneState::OCCUPIED);
+
+    // Dismiss — zone should become CLEAR immediately
+    engine.dismiss_target(0, dismissed_cell);
+
+    // Tick with no targets — zone should be clear (not PENDING_CLEAR)
+    const ProcessingResult& r2 = engine.tick(make_window_0(), t + 1.0f);
+    CHECK_FALSE(r2.zone_occupancy[1]);
+    CHECK(r2.zone_states[1] == ZoneState::CLEAR);
+}

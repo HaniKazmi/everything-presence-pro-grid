@@ -2382,3 +2382,135 @@ class TestProtocolVersionGuard:
         connection.send_error.assert_called_once()
         args = connection.send_error.call_args[0]
         assert args[1] == "firmware_behind"
+
+
+class TestWebSocketDismissTarget:
+    """Tests for eppgrid/dismiss_target."""
+
+    async def test_dismiss_target_sends_to_session(
+        self, hass: HomeAssistant, config_entry: MockConfigEntry
+    ) -> None:
+        """dismiss_target sends command via active session."""
+        from custom_components.eppgrid.device_manager import ManagedDevice
+
+        mock_dm = await setup_integration(hass, config_entry)
+        mock_dm.devices = {
+            "AA:BB:CC:DD:EE:FF": ManagedDevice(
+                mac="AA:BB:CC:DD:EE:FF",
+                name="EPP",
+                host="192.168.1.50",
+            )
+        }
+
+        mock_session = MagicMock()
+        mock_session.async_dismiss_target = AsyncMock()
+        mock_dm.get_session.return_value = mock_session
+
+        from custom_components.eppgrid.websocket_api import websocket_dismiss_target
+
+        connection = MagicMock()
+        msg = {
+            "id": 200,
+            "type": "eppgrid/dismiss_target",
+            "mac": "AA:BB:CC:DD:EE:FF",
+            "target_index": 1,
+            "cell_index": 42,
+        }
+
+        await call_async_handler(hass, websocket_dismiss_target, connection, msg)
+
+        mock_session.async_dismiss_target.assert_awaited_once_with(1, 42)
+        connection.send_result.assert_called_once_with(200)
+
+    async def test_dismiss_target_no_device(
+        self, hass: HomeAssistant, config_entry: MockConfigEntry
+    ) -> None:
+        """dismiss_target returns error when device not found."""
+        mock_dm = await setup_integration(hass, config_entry)
+        mock_dm.devices = {}
+
+        from custom_components.eppgrid.websocket_api import websocket_dismiss_target
+
+        connection = MagicMock()
+        msg = {
+            "id": 201,
+            "type": "eppgrid/dismiss_target",
+            "mac": "AA:BB:CC:DD:EE:FF",
+            "target_index": 0,
+            "cell_index": 10,
+        }
+
+        await call_async_handler(hass, websocket_dismiss_target, connection, msg)
+
+        connection.send_error.assert_called_once()
+        args = connection.send_error.call_args[0]
+        assert args[1] == "device_unavailable"
+
+    async def test_dismiss_target_no_session(
+        self, hass: HomeAssistant, config_entry: MockConfigEntry
+    ) -> None:
+        """dismiss_target returns error when no active session."""
+        from custom_components.eppgrid.device_manager import ManagedDevice
+
+        mock_dm = await setup_integration(hass, config_entry)
+        mock_dm.devices = {
+            "AA:BB:CC:DD:EE:FF": ManagedDevice(
+                mac="AA:BB:CC:DD:EE:FF",
+                name="EPP",
+                host="192.168.1.50",
+            )
+        }
+        mock_dm.get_session.return_value = None
+
+        from custom_components.eppgrid.websocket_api import websocket_dismiss_target
+
+        connection = MagicMock()
+        msg = {
+            "id": 202,
+            "type": "eppgrid/dismiss_target",
+            "mac": "AA:BB:CC:DD:EE:FF",
+            "target_index": 0,
+            "cell_index": 10,
+        }
+
+        await call_async_handler(hass, websocket_dismiss_target, connection, msg)
+
+        connection.send_error.assert_called_once()
+        args = connection.send_error.call_args[0]
+        assert args[1] == "no_session"
+
+    async def test_dismiss_target_service_error(
+        self, hass: HomeAssistant, config_entry: MockConfigEntry
+    ) -> None:
+        """dismiss_target returns error when firmware service call fails."""
+        from custom_components.eppgrid.device_manager import ManagedDevice
+
+        mock_dm = await setup_integration(hass, config_entry)
+        mock_dm.devices = {
+            "AA:BB:CC:DD:EE:FF": ManagedDevice(
+                mac="AA:BB:CC:DD:EE:FF",
+                name="EPP",
+                host="192.168.1.50",
+            )
+        }
+
+        mock_session = MagicMock()
+        mock_session.async_dismiss_target = AsyncMock(side_effect=RuntimeError("Service not available"))
+        mock_dm.get_session.return_value = mock_session
+
+        from custom_components.eppgrid.websocket_api import websocket_dismiss_target
+
+        connection = MagicMock()
+        msg = {
+            "id": 203,
+            "type": "eppgrid/dismiss_target",
+            "mac": "AA:BB:CC:DD:EE:FF",
+            "target_index": 2,
+            "cell_index": 99,
+        }
+
+        await call_async_handler(hass, websocket_dismiss_target, connection, msg)
+
+        connection.send_error.assert_called_once()
+        args = connection.send_error.call_args[0]
+        assert args[1] == "dismiss_failed"

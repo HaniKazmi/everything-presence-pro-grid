@@ -101,6 +101,26 @@ void ZoneEngine::set_zones(const ZoneConfig zones[], int count) {
     prev_occupancy_ = false;
 }
 
+void ZoneEngine::dismiss_target(int target_index, int cell_index) {
+    if (target_index < 0 || target_index >= MAX_TARGETS) return;
+    dismissed_cell_[target_index] = cell_index;
+
+    // Reset zone state: find which zone this cell belongs to and clear it
+    if (cell_index >= 0 && cell_index < grid_.cell_count() && grid_.cell_is_room(cell_index)) {
+        int zone_id = grid_.cell_zone(cell_index);
+        int zi = find_zone_index(zone_id);
+        if (zi >= 0) {
+            zones_[zi].state = ZoneState::CLEAR;
+            zones_[zi].pending_since = 0.0f;
+            zones_[zi].confirmed_targets = 0;
+        }
+    }
+
+    // Reset target tracking
+    target_has_prev_[target_index] = false;
+    target_gate_count_[target_index] = 0;
+}
+
 int ZoneEngine::find_zone_index(int zone_id) const {
     if (zone_id < 0 || zone_id >= zone_count_) return -1;
     if (!zone_enabled_[zone_id]) return -1;
@@ -185,6 +205,17 @@ const ProcessingResult& ZoneEngine::tick(const WindowOutput& window, float times
         target_signal[i] = signal;
         target_has_signal[i] = true;
         target_in_room[i] = true;
+
+        // Check if this target is dismissed at this cell
+        if (dismissed_cell_[i] == cell) {
+            // Target still at dismissed location — skip
+            target_has_prev_[i] = false;
+            target_gate_count_[i] = 0;
+            continue;
+        } else if (dismissed_cell_[i] >= 0) {
+            // Target moved to a different cell — clear dismiss
+            dismissed_cell_[i] = -1;
+        }
 
         // Interference suppress: skip this cell entirely
         int interference = grid_.cell_interference(cell);

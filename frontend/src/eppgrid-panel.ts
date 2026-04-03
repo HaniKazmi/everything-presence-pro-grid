@@ -1275,15 +1275,27 @@ export class EPPGridPanel extends LitElement {
 		return row * GRID_COLS + col;
 	}
 
-	private _dismissTarget(): void {
+	private async _dismissTarget(): Promise<void> {
 		if (!this._targetMenu) return;
-		const idx = this._targetCellIndex(this._targetMenu.x, this._targetMenu.y);
+		const { targetIndex, x, y } = this._targetMenu;
+		const idx = this._targetCellIndex(x, y);
 		if (idx >= 0) {
 			this._dismissedTargets = new Map(this._dismissedTargets);
-			this._dismissedTargets.set(this._targetMenu.targetIndex, idx);
-			this.requestUpdate();
+			this._dismissedTargets.set(targetIndex, idx);
+
+			try {
+				await this.hass.callWS({
+					type: "eppgrid/dismiss_target",
+					mac: this._selectedMac,
+					target_index: targetIndex,
+					cell_index: idx,
+				});
+			} catch (err) {
+				console.error("Failed to dismiss target:", err);
+			}
 		}
 		this._closeTargetMenu();
+		this.requestUpdate();
 	}
 
 	private async _setInterference(level: number): Promise<void> {

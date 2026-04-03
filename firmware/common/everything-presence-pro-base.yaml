@@ -311,6 +311,13 @@ api:
       then:
         - lambda: |-
             id(epp_component).set_zones(zones_json);
+    - action: epp_dismiss_target
+      variables:
+        target_index: int
+        cell_index: int
+      then:
+        - lambda: |-
+            id(epp_component).dismiss_target(target_index, cell_index);
     - action: epp_set_env_calibration
       variables:
         temperature_offset: float

@@ -182,32 +182,53 @@ describe("_closeTargetMenu", () => {
 });
 
 describe("_dismissTarget", () => {
-	it("adds target to _dismissedTargets and closes menu", () => {
+	it("adds target to _dismissedTargets, sends WS command, and closes menu", async () => {
 		const a = createPanel() as any;
 		const { x, y, idx } = insideCellCoords(3000, 4000);
 		a._targetMenu = makeMenuDetail(x, y, 2);
 
-		a._dismissTarget();
+		await a._dismissTarget();
 
 		expect(a._dismissedTargets.get(2)).toBe(idx);
 		expect(a._targetMenu).toBeNull();
+		expect(a.hass.callWS).toHaveBeenCalledWith({
+			type: "eppgrid/dismiss_target",
+			mac: "AA:BB:CC:DD:EE:01",
+			target_index: 2,
+			cell_index: idx,
+		});
 	});
 
-	it("does nothing when _targetMenu is null", () => {
+	it("does nothing when _targetMenu is null", async () => {
 		const a = createPanel() as any;
 		a._targetMenu = null;
-		a._dismissTarget();
+		await a._dismissTarget();
 		expect(a._dismissedTargets.size).toBe(0);
+		expect(a.hass.callWS).not.toHaveBeenCalled();
 	});
 
-	it("still closes menu even if cell index is invalid", () => {
+	it("still closes menu even if cell index is invalid", async () => {
 		const a = createPanel() as any;
 		// Use out-of-bounds coords so _targetCellIndex returns -1
 		a._targetMenu = makeMenuDetail(-9999, -9999, 0);
-		a._dismissTarget();
+		await a._dismissTarget();
 		// idx < 0, so target is not added to the map
 		expect(a._dismissedTargets.size).toBe(0);
 		// menu is closed
+		expect(a._targetMenu).toBeNull();
+		// No WS call for invalid cell
+		expect(a.hass.callWS).not.toHaveBeenCalled();
+	});
+
+	it("still dismisses locally if WS call fails", async () => {
+		const a = createPanel() as any;
+		a.hass.callWS = vi.fn().mockRejectedValue(new Error("network error"));
+		const { x, y, idx } = insideCellCoords(3000, 4000);
+		a._targetMenu = makeMenuDetail(x, y, 1);
+
+		await a._dismissTarget();
+
+		expect(a._dismissedTargets.get(1)).toBe(idx);
 		expect(a._targetMenu).toBeNull();
 	});
 });

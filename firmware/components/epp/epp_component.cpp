@@ -327,6 +327,15 @@ void EPPComponent::feed_targets(float x1, float y1, bool d1,
 }
 
 // ---------------------------------------------------------------------------
+// Service: dismiss_target
+// ---------------------------------------------------------------------------
+
+void EPPComponent::dismiss_target(int target_index, int cell_index) {
+    zone_engine_.dismiss_target(target_index, cell_index);
+    ESP_LOGI(TAG, "Dismissed target %d at cell %d", target_index, cell_index);
+}
+
+// ---------------------------------------------------------------------------
 // Service: set_perspective
 // ---------------------------------------------------------------------------
 
