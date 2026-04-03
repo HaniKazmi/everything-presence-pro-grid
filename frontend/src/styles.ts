@@ -445,6 +445,258 @@ export const layoutStyles = css`
   }
 `;
 
+export const flasherStyles = css`
+  .flasher-section {
+    margin-bottom: 24px;
+  }
+
+  .flasher-section h3 {
+    margin: 0 0 12px;
+    font-size: 16px;
+    font-weight: 500;
+    color: var(--primary-text-color, #212121);
+  }
+
+  .device-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .device-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 16px;
+    background: var(--card-background-color, #fff);
+    border: 1px solid var(--divider-color, #e0e0e0);
+    border-radius: 10px;
+  }
+
+  .device-info {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .device-name {
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--primary-text-color, #212121);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .device-host {
+    font-size: 12px;
+    color: var(--secondary-text-color, #757575);
+    margin-top: 2px;
+  }
+
+  .firmware-badge {
+    font-size: 11px;
+    font-weight: 600;
+    padding: 2px 8px;
+    border-radius: 10px;
+    flex-shrink: 0;
+  }
+
+  .firmware-badge-original {
+    background: #ff980020;
+    color: #e65100;
+  }
+
+  .firmware-badge-eppgrid {
+    background: #4caf5020;
+    color: #2e7d32;
+  }
+
+  .flash-btn {
+    padding: 6px 16px;
+    border-radius: 8px;
+    border: none;
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 500;
+    background: var(--primary-color, #03a9f4);
+    color: #fff;
+    flex-shrink: 0;
+  }
+
+  .flash-btn:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+  }
+
+  .usb-section {
+    margin-top: 24px;
+    padding: 16px;
+    background: var(--card-background-color, #fff);
+    border: 1px solid var(--divider-color, #e0e0e0);
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+  }
+
+  .usb-section-text {
+    flex: 1;
+    font-size: 14px;
+    color: var(--primary-text-color, #212121);
+  }
+
+  .usb-connect-btn {
+    padding: 8px 20px;
+    border-radius: 8px;
+    border: none;
+    cursor: pointer;
+    font-size: 14px;
+    font-weight: 500;
+    background: var(--primary-color, #03a9f4);
+    color: #fff;
+    flex-shrink: 0;
+  }
+
+  .browser-warning {
+    margin-top: 8px;
+    font-size: 12px;
+    color: var(--warning-color, #ff9800);
+  }
+
+  .progress-steps {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding: 16px;
+    background: var(--card-background-color, #fff);
+    border: 1px solid var(--divider-color, #e0e0e0);
+    border-radius: 10px;
+  }
+
+  .progress-step {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 14px;
+    color: var(--secondary-text-color, #757575);
+  }
+
+  .progress-step.step-done {
+    color: var(--success-color, #4caf50);
+  }
+
+  .progress-step.step-active {
+    color: var(--primary-text-color, #212121);
+    font-weight: 500;
+  }
+
+  .progress-step.step-error {
+    color: var(--error-color, #f44336);
+  }
+
+  .step-icon {
+    font-size: 16px;
+    width: 20px;
+    text-align: center;
+    flex-shrink: 0;
+  }
+
+  .flasher-loading {
+    padding: 24px;
+    text-align: center;
+    color: var(--secondary-text-color, #757575);
+    font-size: 14px;
+  }
+
+  .flasher-empty {
+    padding: 24px;
+    text-align: center;
+    color: var(--secondary-text-color, #757575);
+    font-size: 14px;
+  }
+
+  .variant-selector {
+    display: flex;
+    gap: 12px;
+    margin-bottom: 16px;
+  }
+
+  .variant-option {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 14px;
+    cursor: pointer;
+    color: var(--primary-text-color, #212121);
+  }
+
+  .confirm-dialog {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.4);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 100;
+  }
+
+  .confirm-card {
+    background: var(--card-background-color, #fff);
+    border-radius: 16px;
+    padding: 24px;
+    min-width: 320px;
+    max-width: 440px;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    box-shadow: 0 4px 24px rgba(0, 0, 0, 0.15);
+  }
+
+  .confirm-card h3 {
+    margin: 0;
+    font-size: 18px;
+    font-weight: 500;
+  }
+
+  .confirm-card p {
+    margin: 0;
+    font-size: 14px;
+    color: var(--secondary-text-color, #757575);
+    line-height: 1.5;
+  }
+
+  .confirm-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 12px;
+  }
+
+  .cancel-btn {
+    padding: 8px 20px;
+    border-radius: 8px;
+    border: 1px solid var(--divider-color, #e0e0e0);
+    cursor: pointer;
+    font-size: 14px;
+    font-weight: 500;
+    background: transparent;
+    color: var(--secondary-text-color, #757575);
+  }
+
+  .go-device-btn {
+    padding: 8px 20px;
+    border-radius: 8px;
+    border: none;
+    cursor: pointer;
+    font-size: 14px;
+    font-weight: 500;
+    background: var(--primary-color, #03a9f4);
+    color: #fff;
+  }
+`;
+
 export const liveMenuStyles = css`
   .sidebar-header {
     display: flex;
