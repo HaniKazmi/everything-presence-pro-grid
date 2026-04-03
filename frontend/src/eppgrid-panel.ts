@@ -1870,7 +1870,13 @@ export class EPPGridPanel extends LitElement {
 			for (let c = minCol; c <= maxCol; c++) {
 				const idx = r * GRID_COLS + c;
 				const cellVal = this._grid[idx];
-				const inRange = isCellInSensorRange(c, r, fov, this._roomWidth, maxRangeMm);
+				const inRange = isCellInSensorRange(
+					c,
+					r,
+					fov,
+					this._roomWidth,
+					maxRangeMm,
+				);
 				let bg = inRange ? this._getCellColor(idx) : CELL_BG_OUT_OF_RANGE;
 				let border = "";
 				if (inRange && cellIsInside(cellVal)) {
