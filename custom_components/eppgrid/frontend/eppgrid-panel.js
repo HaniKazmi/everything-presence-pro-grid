@@ -3312,13 +3312,11 @@ const At=2,Pt=t=>(...e)=>({_$litDirective$:t,values:e});class Ht{constructor(t){
 				<div class="loading-container">${this._localize("common.loading")}</div>
 			</div>`;if(!this._devices.length)return G`<div class="tab-layout">
 				${this._renderTabBar()}
-				<div class="loading-container">
+				<div class="loading-container" style="flex-direction: column; gap: 16px;">
 					<p>${this._localize("flasher.no_eppgrid_devices")}</p>
-					<p style="margin-top: 16px;">
-						<button class="primary-btn" @click=${()=>{this._panelTab="flasher",this._flasherCtrl.hass=this.hass,this._flasherCtrl.loadDevices()}}>
+					<button class="primary-btn" @click=${()=>{this._panelTab="flasher",this._flasherCtrl.hass=this.hass,this._flasherCtrl.loadDevices()}}>
 							${this._localize("flasher.flash_from_tab")}
-						</button>
-					</p>
+					</button>
 				</div>
 			</div>`;if(null!==this._setupStep)return G`
         <epp-wizard

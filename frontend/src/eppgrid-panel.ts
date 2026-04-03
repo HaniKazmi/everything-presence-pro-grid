@@ -1066,17 +1066,15 @@ export class EPPGridPanel extends LitElement {
 		if (!this._devices.length) {
 			return html`<div class="tab-layout">
 				${this._renderTabBar()}
-				<div class="loading-container">
+				<div class="loading-container" style="flex-direction: column; gap: 16px;">
 					<p>${this._localize("flasher.no_eppgrid_devices")}</p>
-					<p style="margin-top: 16px;">
-						<button class="primary-btn" @click=${() => {
-							this._panelTab = "flasher";
-							this._flasherCtrl.hass = this.hass;
-							this._flasherCtrl.loadDevices();
-						}}>
+					<button class="primary-btn" @click=${() => {
+						this._panelTab = "flasher";
+						this._flasherCtrl.hass = this.hass;
+						this._flasherCtrl.loadDevices();
+					}}>
 							${this._localize("flasher.flash_from_tab")}
-						</button>
-					</p>
+					</button>
 				</div>
 			</div>`;
 		}
