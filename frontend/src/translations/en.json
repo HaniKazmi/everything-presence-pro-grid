@@ -187,7 +187,7 @@
 		"motion_presence": "Motion presence",
 		"target_presence": "Target presence",
 		"target_count": "Target count",
-		"delete_target": "Delete only",
+		"delete_target": "Delete target",
 		"mark_interference": "Mark as interference source",
 		"suppress_detection": "Suppress detection"
 	},
