@@ -2,7 +2,12 @@ import { html, LitElement, nothing } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
 import type { WifiNetwork } from "../lib/improv-serial.js";
 import { flasherStyles } from "../styles.js";
-import type { FlashableDevice, OtaProgress, OtaStep, UsbFlashState } from "../types.js";
+import type {
+	FlashableDevice,
+	OtaProgress,
+	OtaStep,
+	UsbFlashState,
+} from "../types.js";
 
 const OTA_STEP_KEYS: { step: OtaStep; key: string }[] = [
 	{ step: "removing_old_device", key: "flasher.step_removing" },
@@ -508,12 +513,14 @@ export class EppFlasherView extends LitElement {
 				<div class="flasher-container">
 					<div class="usb-status">
 						<p>${this.localize(stepKey)}</p>
-						${state.step === "flashing" && state.progress != null
-							? html`<div class="usb-progress">
+						${
+							state.step === "flashing" && state.progress != null
+								? html`<div class="usb-progress">
 									<div class="usb-progress-bar" style="width: ${state.progress}%"></div>
 									<span>${state.progress}%</span>
 								</div>`
-							: nothing}
+								: nothing
+						}
 					</div>
 					<button class="usb-back-btn" @click=${this._onUsbBack}>
 						${this.localize("flasher.usb_back")}
@@ -530,11 +537,15 @@ export class EppFlasherView extends LitElement {
 				<div class="variant-selector">
 					<button
 						class="variant-option ${this._selectedVariant === "wifi" ? "selected" : ""}"
-						@click=${() => { this._selectedVariant = "wifi"; }}
+						@click=${() => {
+							this._selectedVariant = "wifi";
+						}}
 					>${this.localize("flasher.wifi")}</button>
 					<button
 						class="variant-option ${this._selectedVariant === "ethernet" ? "selected" : ""}"
-						@click=${() => { this._selectedVariant = "ethernet"; }}
+						@click=${() => {
+							this._selectedVariant = "ethernet";
+						}}
 					>${this.localize("flasher.ethernet")}</button>
 				</div>
 				<button class="usb-flash-btn" @click=${this._dispatchUsbFlash}>

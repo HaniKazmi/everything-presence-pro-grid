@@ -49,17 +49,17 @@ import {
 	type SensorFov,
 } from "./lib/room-geometry.js";
 import {
+	detectIpAddress,
+	flashFirmware,
+	runWifiProvision,
+	runWifiScan,
+} from "./lib/usb-flash-service.js";
+import {
 	getZoneThresholds,
 	ZONE_TYPE_DEFAULTS,
 	type ZoneConfig,
 } from "./lib/zone-defaults.js";
 import type { ZoneEngineResult, ZoneEngineState } from "./lib/zone-engine.js";
-import {
-	flashFirmware,
-	runWifiScan,
-	runWifiProvision,
-	detectIpAddress,
-} from "./lib/usb-flash-service.js";
 import { setupLocalize } from "./localize.js";
 import {
 	buttonStyles,
@@ -2262,7 +2262,10 @@ export class EPPGridPanel extends LitElement {
 		}
 	}
 
-	private async _handleWifiProvision(ssid: string, password: string): Promise<void> {
+	private async _handleWifiProvision(
+		ssid: string,
+		password: string,
+	): Promise<void> {
 		const ctrl = this._flasherCtrl;
 		const writer = (ctrl as any)._serialWriter;
 		const reader = (ctrl as any)._serialReader;
@@ -2298,8 +2301,12 @@ export class EPPGridPanel extends LitElement {
 			const writer = (ctrl as any)._serialWriter;
 			const reader = (ctrl as any)._serialReader;
 			// Release old locks before re-scanning
-			try { reader?.releaseLock(); } catch {}
-			try { writer?.releaseLock(); } catch {}
+			try {
+				reader?.releaseLock();
+			} catch {}
+			try {
+				writer?.releaseLock();
+			} catch {}
 
 			const result = await runWifiScan(ctrl.serialPort);
 			(ctrl as any)._serialWriter = result.writer;
