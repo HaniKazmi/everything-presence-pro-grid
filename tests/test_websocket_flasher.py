@@ -203,3 +203,276 @@ class TestAddEsphomeDevice:
         result = connection.send_result.call_args[0]
         assert result[0] == 4
         assert result[1]["result"] == "form"
+
+
+class TestFlashOta:
+    """Tests for eppgrid/flash_ota."""
+
+    async def test_flash_ota_streams_progress(
+        self, hass: HomeAssistant, config_entry: MockConfigEntry
+    ) -> None:
+        """flash_ota streams progress events and sends final success result."""
+        mock_dm = await setup_integration(hass, config_entry)
+
+        device = {
+            "mac": "AA:BB:CC:DD:EE:FF",
+            "name": "EPP Device",
+            "host": "192.168.1.50",
+            "firmware_type": "original",
+            "firmware_version": "1.8.0",
+            "esphome_config_entry_id": "old-entry-123",
+        }
+        mock_dm.list_flashable_devices = AsyncMock(return_value=[device])
+
+        from custom_components.eppgrid.websocket_api import websocket_flash_ota
+
+        connection = MagicMock()
+        msg = {
+            "id": 5,
+            "type": "eppgrid/flash_ota",
+            "mac": "AA:BB:CC:DD:EE:FF",
+            "variant": "wifi",
+        }
+
+        with (
+            patch.object(hass.config_entries, "async_remove", new_callable=AsyncMock) as mock_remove,
+            patch(
+                "custom_components.eppgrid.websocket_api.fetch_firmware_binary",
+                new_callable=AsyncMock,
+                return_value=b"firmware-bytes",
+            ) as mock_fetch,
+            patch(
+                "custom_components.eppgrid.websocket_api.push_ota",
+                new_callable=AsyncMock,
+            ) as mock_push,
+            patch(
+                "custom_components.eppgrid.websocket_api._wait_for_device_online",
+                new_callable=AsyncMock,
+                return_value=True,
+            ) as mock_wait,
+            patch.object(
+                hass.config_entries.flow,
+                "async_init",
+                new_callable=AsyncMock,
+                return_value={"type": "form", "flow_id": "flow-abc"},
+            ) as mock_flow,
+        ):
+            await call_async_handler(hass, websocket_flash_ota, connection, msg)
+
+        # Verify orchestration calls
+        mock_remove.assert_awaited_once_with("old-entry-123")
+        mock_fetch.assert_awaited_once()
+        mock_push.assert_awaited_once()
+        mock_wait.assert_awaited_once_with(hass, "192.168.1.50")
+        mock_flow.assert_awaited_once_with(
+            "esphome", context={"source": "user"}, data={"host": "192.168.1.50"}
+        )
+
+        # Verify progress events were sent via send_message
+        assert connection.send_message.call_count >= 4
+        # Extract all event payloads
+        events = [call.args[0] for call in connection.send_message.call_args_list]
+        steps = [e["event"]["step"] for e in events]
+        assert "removing_old_device" in steps
+        assert "downloading_firmware" in steps
+        assert "flashing" in steps
+        assert "waiting_for_reboot" in steps
+        assert "adding_to_esphome" in steps
+        assert "complete" in steps
+
+        # Final result should be success
+        connection.send_result.assert_called_once_with(5, {"status": "success"})
+        connection.send_error.assert_not_called()
+
+    async def test_flash_ota_device_not_found(
+        self, hass: HomeAssistant, config_entry: MockConfigEntry
+    ) -> None:
+        """flash_ota sends error when device MAC is not in list_flashable_devices."""
+        mock_dm = await setup_integration(hass, config_entry)
+        mock_dm.list_flashable_devices = AsyncMock(return_value=[])
+
+        from custom_components.eppgrid.websocket_api import websocket_flash_ota
+
+        connection = MagicMock()
+        msg = {
+            "id": 6,
+            "type": "eppgrid/flash_ota",
+            "mac": "00:11:22:33:44:55",
+            "variant": "wifi",
+        }
+
+        await call_async_handler(hass, websocket_flash_ota, connection, msg)
+
+        connection.send_error.assert_called_once_with(
+            6, "not_found", "Device 00:11:22:33:44:55 not found"
+        )
+        connection.send_result.assert_not_called()
+
+    async def test_flash_ota_no_host(
+        self, hass: HomeAssistant, config_entry: MockConfigEntry
+    ) -> None:
+        """flash_ota sends error when device has no host IP."""
+        mock_dm = await setup_integration(hass, config_entry)
+        device = {
+            "mac": "AA:BB:CC:DD:EE:FF",
+            "name": "EPP Device",
+            "host": None,
+            "firmware_type": "original",
+            "firmware_version": "1.8.0",
+        }
+        mock_dm.list_flashable_devices = AsyncMock(return_value=[device])
+
+        from custom_components.eppgrid.websocket_api import websocket_flash_ota
+
+        connection = MagicMock()
+        msg = {
+            "id": 7,
+            "type": "eppgrid/flash_ota",
+            "mac": "AA:BB:CC:DD:EE:FF",
+            "variant": "wifi",
+        }
+
+        await call_async_handler(hass, websocket_flash_ota, connection, msg)
+
+        connection.send_error.assert_called_once_with(7, "no_host", "Device has no known IP address")
+        connection.send_result.assert_not_called()
+
+    async def test_flash_ota_ota_error(
+        self, hass: HomeAssistant, config_entry: MockConfigEntry
+    ) -> None:
+        """flash_ota sends ota_failed error when OTAError is raised."""
+        mock_dm = await setup_integration(hass, config_entry)
+        device = {
+            "mac": "AA:BB:CC:DD:EE:FF",
+            "name": "EPP Device",
+            "host": "192.168.1.50",
+            "firmware_type": "original",
+            "firmware_version": "1.8.0",
+        }
+        mock_dm.list_flashable_devices = AsyncMock(return_value=[device])
+
+        from custom_components.eppgrid.websocket_api import websocket_flash_ota
+        from custom_components.eppgrid.ota import OTAError
+
+        connection = MagicMock()
+        msg = {
+            "id": 8,
+            "type": "eppgrid/flash_ota",
+            "mac": "AA:BB:CC:DD:EE:FF",
+            "variant": "wifi",
+        }
+
+        with (
+            patch(
+                "custom_components.eppgrid.websocket_api.fetch_firmware_binary",
+                new_callable=AsyncMock,
+                return_value=b"firmware-bytes",
+            ),
+            patch(
+                "custom_components.eppgrid.websocket_api.push_ota",
+                new_callable=AsyncMock,
+                side_effect=OTAError("Connection refused"),
+            ),
+        ):
+            await call_async_handler(hass, websocket_flash_ota, connection, msg)
+
+        connection.send_error.assert_called_once_with(8, "ota_failed", "Connection refused")
+        connection.send_result.assert_not_called()
+
+    async def test_flash_ota_reboot_timeout(
+        self, hass: HomeAssistant, config_entry: MockConfigEntry
+    ) -> None:
+        """flash_ota reports timeout when device doesn't come back online."""
+        mock_dm = await setup_integration(hass, config_entry)
+        device = {
+            "mac": "AA:BB:CC:DD:EE:FF",
+            "name": "EPP Device",
+            "host": "192.168.1.50",
+            "firmware_type": "original",
+            "firmware_version": "1.8.0",
+        }
+        mock_dm.list_flashable_devices = AsyncMock(return_value=[device])
+
+        from custom_components.eppgrid.websocket_api import websocket_flash_ota
+
+        connection = MagicMock()
+        msg = {
+            "id": 9,
+            "type": "eppgrid/flash_ota",
+            "mac": "AA:BB:CC:DD:EE:FF",
+            "variant": "wifi",
+        }
+
+        with (
+            patch(
+                "custom_components.eppgrid.websocket_api.fetch_firmware_binary",
+                new_callable=AsyncMock,
+                return_value=b"firmware-bytes",
+            ),
+            patch(
+                "custom_components.eppgrid.websocket_api.push_ota",
+                new_callable=AsyncMock,
+            ),
+            patch(
+                "custom_components.eppgrid.websocket_api._wait_for_device_online",
+                new_callable=AsyncMock,
+                return_value=False,
+            ),
+        ):
+            await call_async_handler(hass, websocket_flash_ota, connection, msg)
+
+        connection.send_result.assert_called_once_with(9, {"status": "timeout"})
+        connection.send_error.assert_not_called()
+
+    async def test_flash_ota_skips_remove_when_no_config_entry(
+        self, hass: HomeAssistant, config_entry: MockConfigEntry
+    ) -> None:
+        """flash_ota skips ESPHome entry removal when device has no config_entry_id."""
+        mock_dm = await setup_integration(hass, config_entry)
+        device = {
+            "mac": "AA:BB:CC:DD:EE:FF",
+            "name": "EPP Device",
+            "host": "192.168.1.50",
+            "firmware_type": "original",
+            "firmware_version": "1.8.0",
+            # No esphome_config_entry_id key
+        }
+        mock_dm.list_flashable_devices = AsyncMock(return_value=[device])
+
+        from custom_components.eppgrid.websocket_api import websocket_flash_ota
+
+        connection = MagicMock()
+        msg = {
+            "id": 10,
+            "type": "eppgrid/flash_ota",
+            "mac": "AA:BB:CC:DD:EE:FF",
+            "variant": "wifi",
+        }
+
+        with (
+            patch.object(hass.config_entries, "async_remove", new_callable=AsyncMock) as mock_remove,
+            patch(
+                "custom_components.eppgrid.websocket_api.fetch_firmware_binary",
+                new_callable=AsyncMock,
+                return_value=b"firmware-bytes",
+            ),
+            patch(
+                "custom_components.eppgrid.websocket_api.push_ota",
+                new_callable=AsyncMock,
+            ),
+            patch(
+                "custom_components.eppgrid.websocket_api._wait_for_device_online",
+                new_callable=AsyncMock,
+                return_value=True,
+            ),
+            patch.object(
+                hass.config_entries.flow,
+                "async_init",
+                new_callable=AsyncMock,
+                return_value={"type": "form"},
+            ),
+        ):
+            await call_async_handler(hass, websocket_flash_ota, connection, msg)
+
+        mock_remove.assert_not_called()
+        connection.send_result.assert_called_once_with(10, {"status": "success"})

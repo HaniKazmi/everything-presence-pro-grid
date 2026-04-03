@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from typing import Any
 
@@ -12,6 +13,7 @@ from homeassistant.core import callback
 from homeassistant.helpers import entity_registry as er
 
 from .const import DOMAIN
+from .ota import OTAError, fetch_firmware_binary, push_ota
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -44,6 +46,7 @@ def async_register_websocket_commands(hass: HomeAssistant, manager: Any) -> None
     websocket_api.async_register_command(hass, websocket_list_flashable_devices)
     websocket_api.async_register_command(hass, websocket_delete_esphome_device)
     websocket_api.async_register_command(hass, websocket_add_esphome_device)
+    websocket_api.async_register_command(hass, websocket_flash_ota)
 
 
 _TARGET_ENTITY_KEYS = ("target_xy", "target_active", "target_signal", "target_zone", "target_count")
@@ -1208,4 +1211,112 @@ async def websocket_add_esphome_device(
         connection.send_result(msg["id"], {"result": result.get("type", "unknown")})
     except Exception as err:
         connection.send_error(msg["id"], "add_failed", str(err))
->>>>>>> d9727aa (feat: add list_flashable_devices, delete and add ESPHome device WS commands)
+
+
+# -- flash_ota --
+
+
+async def _wait_for_device_online(hass: HomeAssistant, host: str, timeout: float = 120.0) -> bool:
+    """Wait for device to come online on ESPHome API port."""
+    import time
+
+    start = time.monotonic()
+    while time.monotonic() - start < timeout:
+        try:
+            _, writer = await asyncio.wait_for(
+                asyncio.open_connection(host, 6053), timeout=5.0
+            )
+            writer.close()
+            await writer.wait_closed()
+            return True
+        except (ConnectionRefusedError, OSError, asyncio.TimeoutError):
+            await asyncio.sleep(2.0)
+    return False
+
+
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): "eppgrid/flash_ota",
+        vol.Required("mac"): str,
+        vol.Required("variant"): vol.In(["wifi", "ethernet"]),
+    }
+)
+@websocket_api.async_response
+async def websocket_flash_ota(
+    hass: HomeAssistant,
+    connection: websocket_api.ActiveConnection,
+    msg: dict[str, Any],
+) -> None:
+    """Flash firmware OTA to a device. Streams progress events."""
+    import aiohttp
+
+    manager = _get_manager(hass)
+    if manager is None:
+        connection.send_error(msg["id"], "not_ready", "Integration not loaded")
+        return
+
+    mac = msg["mac"]
+    variant = msg["variant"]
+    msg_id = msg["id"]
+
+    devices = await manager.list_flashable_devices()
+    device = next((d for d in devices if d["mac"] == mac), None)
+    if device is None:
+        connection.send_error(msg_id, "not_found", f"Device {mac} not found")
+        return
+
+    host = device["host"]
+    if not host:
+        connection.send_error(msg_id, "no_host", "Device has no known IP address")
+        return
+
+    def send_progress(step: str, status: str = "in_progress", **kwargs: Any) -> None:
+        connection.send_message(
+            websocket_api.event_message(msg_id, {"step": step, "status": status, **kwargs})
+        )
+
+    try:
+        # Step 1: Remove old ESPHome config entry
+        config_entry_id = device.get("esphome_config_entry_id")
+        if config_entry_id:
+            send_progress("removing_old_device")
+            await hass.config_entries.async_remove(config_entry_id)
+
+        # Step 2: Fetch firmware
+        send_progress("downloading_firmware")
+        async with aiohttp.ClientSession() as session:
+            firmware = await fetch_firmware_binary(session, variant)
+
+        # Step 3: Push OTA
+        send_progress("flashing")
+
+        def on_progress(sent: int, total: int) -> None:
+            pct = int(sent * 100 / total) if total else 0
+            send_progress("flashing", progress=pct)
+
+        await push_ota(host, firmware, on_progress=on_progress)
+
+        # Step 4: Wait for reboot
+        send_progress("waiting_for_reboot")
+        online = await _wait_for_device_online(hass, host)
+        if not online:
+            send_progress("waiting_for_reboot", status="timeout")
+            connection.send_result(msg_id, {"status": "timeout"})
+            return
+
+        # Step 5: Auto-add to ESPHome
+        send_progress("adding_to_esphome")
+        await hass.config_entries.flow.async_init(
+            "esphome", context={"source": "user"}, data={"host": host},
+        )
+
+        send_progress("complete", status="success")
+        connection.send_result(msg_id, {"status": "success"})
+
+    except OTAError as err:
+        send_progress("error", status="failed", error=str(err))
+        connection.send_error(msg_id, "ota_failed", str(err))
+    except Exception as err:
+        _LOGGER.exception("Unexpected error during OTA flash")
+        connection.send_error(msg_id, "flash_failed", str(err))
+>>>>>>> 0995d5a (feat: flash_ota WS command with progress streaming)
