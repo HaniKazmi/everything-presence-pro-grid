@@ -29,13 +29,19 @@ jobs:
         run: |
           mkdir -p dist
           BUILD_DIR="firmware/variants/.esphome/build/everything-presence-pro/.pioenvs/everything-presence-pro"
-          cp "$BUILD_DIR/firmware.bin" "dist/everything-presence-pro-${{ matrix.variant }}.bin"
-          cp "$BUILD_DIR/firmware.ota.bin" "dist/everything-presence-pro-${{ matrix.variant }}.ota.bin"
+          VARIANT="everything-presence-pro-${{ matrix.variant }}"
+          # App binary (for OTA updates via ESPHome protocol)
+          cp "$BUILD_DIR/firmware.ota.bin" "dist/${VARIANT}.ota.bin"
+          # Individual parts for ESP Web Tools USB flashing (ESP-IDF offsets)
+          cp "$BUILD_DIR/bootloader.bin" "dist/${VARIANT}-bootloader.bin"
+          cp "$BUILD_DIR/partitions.bin" "dist/${VARIANT}-partitions.bin"
+          cp "$BUILD_DIR/firmware.bin" "dist/${VARIANT}.bin"
       - name: Generate ESP Web Tools manifest
         run: |
           TAG="${GITHUB_REF#refs/tags/}"
-          OTA_MD5=$(md5sum "dist/everything-presence-pro-${{ matrix.variant }}.ota.bin" | cut -d' ' -f1)
-          cat > "dist/everything-presence-pro-${{ matrix.variant }}-manifest.json" << EOF
+          VARIANT="everything-presence-pro-${{ matrix.variant }}"
+          OTA_MD5=$(md5sum "dist/${VARIANT}.ota.bin" | cut -d' ' -f1)
+          cat > "dist/${VARIANT}-manifest.json" << EOF
           {
             "name": "Everything Presence Pro (${{ matrix.variant }})",
             "version": "$TAG",
@@ -43,10 +49,12 @@ jobs:
               {
                 "chipFamily": "ESP32",
                 "parts": [
-                  {"path": "everything-presence-pro-${{ matrix.variant }}.bin", "offset": 0}
+                  {"path": "${VARIANT}-bootloader.bin", "offset": 4096},
+                  {"path": "${VARIANT}-partitions.bin", "offset": 32768},
+                  {"path": "${VARIANT}.bin", "offset": 65536}
                 ],
                 "ota": {
-                  "path": "everything-presence-pro-${{ matrix.variant }}.ota.bin",
+                  "path": "${VARIANT}.ota.bin",
                   "md5": "$OTA_MD5"
                 }
               }
