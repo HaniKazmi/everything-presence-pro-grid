@@ -303,6 +303,15 @@ export class EppGrid extends LitElement {
 						if (this.dismissedTargets.get(i) === idx) {
 							return nothing;
 						}
+						// Target moved to a different cell — clear dismiss
+						this.dismissedTargets.delete(i);
+						this.dispatchEvent(
+							new CustomEvent("target-undismissed", {
+								detail: { targetIndex: i },
+								bubbles: true,
+								composed: true,
+							}),
+						);
 					}
 					// Hide target if on an interference cell and zone is not occupied
 					// (blocked by no-first-appearance rule — not a confirmed presence)
