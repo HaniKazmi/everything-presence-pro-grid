@@ -560,7 +560,7 @@ export const flasherStyles = css`
   .usb-flash-iframe {
     display: block;
     width: 100%;
-    height: 300px;
+    height: 500px;
     border: 1px solid var(--divider-color, #e0e0e0);
     border-radius: 12px;
     margin: 16px 0;
