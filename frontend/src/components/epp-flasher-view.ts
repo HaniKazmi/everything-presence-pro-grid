@@ -15,25 +15,6 @@ const OTA_STEP_KEYS: { step: OtaStep; key: string }[] = [
 
 const STEP_ORDER = OTA_STEP_KEYS.map((s) => s.step);
 
-const ESP_WEB_TOOLS_URL =
-	"https://unpkg.com/esp-web-tools@10/dist/web/install-button.js";
-let espWebToolsLoaded = false;
-
-function loadEspWebTools(): Promise<void> {
-	if (espWebToolsLoaded) return Promise.resolve();
-	return new Promise((resolve, reject) => {
-		const script = document.createElement("script");
-		script.type = "module";
-		script.src = ESP_WEB_TOOLS_URL;
-		script.onload = () => {
-			espWebToolsLoaded = true;
-			resolve();
-		};
-		script.onerror = reject;
-		document.head.appendChild(script);
-	});
-}
-
 @customElement("epp-flasher-view")
 export class EppFlasherView extends LitElement {
 	static styles = [flasherStyles];
@@ -79,8 +60,7 @@ export class EppFlasherView extends LitElement {
 		this._confirmDevice = null;
 	}
 
-	private async _onUsbConnect(): Promise<void> {
-		await loadEspWebTools();
+	private _onUsbConnect(): void {
 		this._showUsbFlash = true;
 	}
 
@@ -436,11 +416,14 @@ export class EppFlasherView extends LitElement {
     `;
 	}
 
+	private _getManifestUrl(): string {
+		const variant = this._selectedVariant;
+		return `https://github.com/clintongormley/everything-presence-pro-grid/releases/latest/download/everything-presence-pro-${variant}-manifest.json`;
+	}
+
 	private _renderUsbFlash() {
-		const manifestUrl =
-			this._selectedVariant === "wifi"
-				? "https://github.com/clintongormley/everything-presence-pro-grid/releases/latest/download/everything-presence-pro-wifi-manifest.json"
-				: "https://github.com/clintongormley/everything-presence-pro-grid/releases/latest/download/everything-presence-pro-ethernet-manifest.json";
+		const manifestUrl = encodeURIComponent(this._getManifestUrl());
+		const iframeSrc = `/eppgrid_static/usb-flasher.html?manifest=${manifestUrl}`;
 
 		return html`
 			<div class="flasher-container">
@@ -460,9 +443,11 @@ export class EppFlasherView extends LitElement {
 						}}
 					>${this.localize("flasher.ethernet")}</button>
 				</div>
-				<esp-web-install-button .manifest=${manifestUrl}>
-					<button class="flash-btn" slot="activate">${this.localize("flasher.flash")}</button>
-				</esp-web-install-button>
+				<iframe
+					src=${iframeSrc}
+					class="usb-flash-iframe"
+					allow="serial"
+				></iframe>
 				<div style="margin-top: 16px;">
 					<button class="cancel-btn" @click=${() => {
 						this._showUsbFlash = false;
@@ -474,6 +459,3 @@ export class EppFlasherView extends LitElement {
 		`;
 	}
 }
-
-// Exported for external use if needed
-export { loadEspWebTools };

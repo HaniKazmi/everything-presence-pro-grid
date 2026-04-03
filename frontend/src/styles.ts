@@ -557,6 +557,16 @@ export const flasherStyles = css`
     flex-shrink: 0;
   }
 
+  .usb-flash-iframe {
+    display: block;
+    width: 100%;
+    height: 300px;
+    border: 1px solid var(--divider-color, #e0e0e0);
+    border-radius: 12px;
+    margin: 16px 0;
+    background: var(--card-background-color, #fff);
+  }
+
   .browser-warning {
     margin-top: 8px;
     font-size: 12px;

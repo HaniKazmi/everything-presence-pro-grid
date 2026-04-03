@@ -1,10 +1,7 @@
 import { render } from "lit";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import "../../components/epp-flasher-view.js";
-import {
-	type EppFlasherView,
-	loadEspWebTools,
-} from "../../components/epp-flasher-view.js";
+import type { EppFlasherView } from "../../components/epp-flasher-view.js";
 import type { FlashableDevice, OtaProgress } from "../../types.js";
 
 function renderTo(tpl: any): HTMLDivElement {
@@ -880,7 +877,7 @@ describe("USB flash view", () => {
 
 		const root = el.shadowRoot!;
 		expect(root.querySelector(".variant-selector")).not.toBeNull();
-		expect(root.querySelector("esp-web-install-button")).not.toBeNull();
+		expect(root.querySelector("iframe.usb-flash-iframe")).not.toBeNull();
 		expect(root.querySelector(".cancel-btn")).not.toBeNull();
 	});
 
@@ -908,30 +905,5 @@ describe("USB flash view", () => {
 		// Click ethernet
 		(buttons[1] as HTMLButtonElement).click();
 		expect((el as any)._selectedVariant).toBe("ethernet");
-	});
-});
-
-describe("loadEspWebTools", () => {
-	it("returns a Promise", () => {
-		// The function returns a promise regardless of whether it's already loaded
-		const result = loadEspWebTools();
-		expect(result).toBeInstanceOf(Promise);
-		// Catch any rejection from the script failing to load in jsdom
-		result.catch(() => {});
-	});
-
-	it("resolves immediately on second call if already loaded", async () => {
-		// Manually trigger the onload on the appended script to simulate load success
-		const scripts = Array.from(
-			document.head.querySelectorAll("script[type='module']"),
-		) as HTMLScriptElement[];
-		for (const s of scripts) {
-			s.onload?.(new Event("load"));
-		}
-		// Now a subsequent call should resolve immediately (espWebToolsLoaded=true)
-		const result = loadEspWebTools();
-		expect(result).toBeInstanceOf(Promise);
-		// Catch any rejection
-		result.catch(() => {});
 	});
 });
