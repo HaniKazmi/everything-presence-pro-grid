@@ -3250,7 +3250,7 @@ const At=2,Pt=t=>(...e)=>({_$litDirective$:t,values:e});class Ht{constructor(t){
 				<button class="tab ${"flasher"===this._panelTab?"active":""}"
 					@click=${()=>{this._panelTab="flasher",this._flasherCtrl.loading&&(this._flasherCtrl.hass=this.hass,this._flasherCtrl.loadDevices())}}>${this._localize("tabs.flash_firmware")}</button>
 			</div>
-		`}render(){if("flasher"===this._panelTab)return G`
+		`}render(){if("flasher"===this._panelTab)return G`<div class="tab-layout">
 				${this._renderTabBar()}
 				<epp-flasher-view
 					.hass=${this.hass}
@@ -3262,10 +3262,10 @@ const At=2,Pt=t=>(...e)=>({_$litDirective$:t,values:e});class Ht{constructor(t){
 					@flash-ota=${t=>{this._flasherCtrl.startOtaFlash(t.detail.mac,t.detail.variant)}}
 					@flash-complete=${()=>{this._panelTab="config"}}
 				></epp-flasher-view>
-			`;if(this._loading)return G`
+			</div>`;if(this._loading)return G`<div class="tab-layout">
 				${this._renderTabBar()}
 				<div class="loading-container">${this._localize("common.loading")}</div>
-			`;if(!this._devices.length)return G`
+			</div>`;if(!this._devices.length)return G`<div class="tab-layout">
 				${this._renderTabBar()}
 				<div class="loading-container">
 					<p>${this._localize("flasher.no_eppgrid_devices")}</p>
@@ -3273,7 +3273,7 @@ const At=2,Pt=t=>(...e)=>({_$litDirective$:t,values:e});class Ht{constructor(t){
 						${this._localize("flasher.flash_from_tab")}
 					</button>
 				</div>
-			`;if(null!==this._setupStep)return G`
+			</div>`;if(null!==this._setupStep)return G`
         <epp-wizard
           .hass=${this.hass}
           .selectedMac=${this._selectedMac}
@@ -3286,21 +3286,21 @@ const At=2,Pt=t=>(...e)=>({_$litDirective$:t,values:e});class Ht{constructor(t){
           @calibration-complete=${async t=>{const{perspective:e,roomWidth:i,roomDepth:s}=t.detail;this._perspective=e,this._roomWidth=i,this._roomDepth=s,this._initGridFromRoom(),this._setupStep=null,this._view="live",this._entitiesConfig={...this._entitiesConfig,zone_presence:!0},await this._gridCtrl.applyLayout().catch(t=>{console.error("Failed to apply layout after calibration",t)})}}
           @wizard-cancel=${()=>{this._setupStep=null}}
         ></epp-wizard>
-      `;if(this._deviceCtrl.connectionFailed)return G`
+      `;if(this._deviceCtrl.connectionFailed)return G`<div class="tab-layout">
 				${this._renderTabBar()}
 				<div class="panel">
 					${this._renderHeader()}
 					${this._renderConnectionBanner()}
 				</div>
 				${this._renderGlobalDialogs()}
-			`;const t=this._devices.find(t=>t.mac===this._selectedMac);if(!(!t||"compatible"===t.config_protocol_status))return G`
+			</div>`;const t=this._devices.find(t=>t.mac===this._selectedMac);if(!(!t||"compatible"===t.config_protocol_status))return G`<div class="tab-layout">
 				${this._renderTabBar()}
 				<div class="panel">
 					${this._renderHeader()}
 					${this._renderProtocolBanner()}
 				</div>
 				${this._renderGlobalDialogs()}
-			`;const e="settings"===this._view?this._renderSettings():"editor"===this._view&&this._perspective?this._renderEditor():this._renderLiveOverview();return G`${this._renderTabBar()}${e}${this._renderGlobalDialogs()}`}async _deleteCalibration(){this._showDeleteCalibrationDialog=!1,this._perspective=null,this._roomWidth=0,this._roomDepth=0,this._grid=new Uint8Array(400),this._zoneConfigs=new Array(7).fill(null),this._roomType="normal",this._roomTrigger=Se.normal.trigger,this._roomRenew=Se.normal.renew,this._roomTimeout=Se.normal.timeout,this._roomHandoffTimeout=Se.normal.handoff_timeout,this._furniture=[],this._entitiesConfig={...this._entitiesConfig,zone_presence:!1,target_xy:!1},this._targetAutoDistance&&(this._targetMaxDistance=6),this._staticAutoDistance&&(this._staticMinDistance=.3,this._staticMaxDistance=16);try{(this._targetAutoDistance||this._staticAutoDistance)&&await this.hass.callWS({type:"eppgrid/set_settings",mac:this._selectedMac,temperature_offset:this._temperatureOffset,humidity_offset:this._humidityOffset,illuminance_offset:this._illuminanceOffset,motion_timeout:this._motionTimeout,target_auto_distance:this._targetAutoDistance,target_max_distance:this._targetMaxDistance,static_auto_distance:this._staticAutoDistance,static_min_distance:this._staticMinDistance,static_max_distance:this._staticMaxDistance,static_trigger_threshold:this._staticTriggerThreshold,static_renew_threshold:this._staticRenewThreshold,static_timeout:this._staticTimeout,static_on_delay:this._staticOnDelay,led_mode:this._ledMode,led_brightness:this._ledBrightness,led_presence_color:this._ledPresenceColor,relay_trigger_mode:this._relayTriggerMode,relay_contact_mode:this._relayContactMode,entities:this._entitiesConfig||{}}),await this.hass.callWS({type:"eppgrid/set_setup",mac:this._selectedMac,perspective:[0,0,0,0,0,0,0,0],room_width:0,room_depth:0}),await this.hass.callWS({type:"eppgrid/set_room_layout",mac:this._selectedMac,grid_bytes:Array.from(this._grid),zone_slots:this._zoneConfigs.map(()=>null),room_type:"normal",furniture:[]})}catch(t){console.error("Failed to delete calibration",t)}this._dirty=!1,this._view="live"}_changePlacement(){this._guardNavigation(()=>{this._setupStep="guide",this._pushWidenedDistanceOverride()})}_renderHeader(){return G`
+			</div>`;const e="settings"===this._view?this._renderSettings():"editor"===this._view&&this._perspective?this._renderEditor():this._renderLiveOverview();return G`<div class="tab-layout">${this._renderTabBar()}${e}${this._renderGlobalDialogs()}</div>`}async _deleteCalibration(){this._showDeleteCalibrationDialog=!1,this._perspective=null,this._roomWidth=0,this._roomDepth=0,this._grid=new Uint8Array(400),this._zoneConfigs=new Array(7).fill(null),this._roomType="normal",this._roomTrigger=Se.normal.trigger,this._roomRenew=Se.normal.renew,this._roomTimeout=Se.normal.timeout,this._roomHandoffTimeout=Se.normal.handoff_timeout,this._furniture=[],this._entitiesConfig={...this._entitiesConfig,zone_presence:!1,target_xy:!1},this._targetAutoDistance&&(this._targetMaxDistance=6),this._staticAutoDistance&&(this._staticMinDistance=.3,this._staticMaxDistance=16);try{(this._targetAutoDistance||this._staticAutoDistance)&&await this.hass.callWS({type:"eppgrid/set_settings",mac:this._selectedMac,temperature_offset:this._temperatureOffset,humidity_offset:this._humidityOffset,illuminance_offset:this._illuminanceOffset,motion_timeout:this._motionTimeout,target_auto_distance:this._targetAutoDistance,target_max_distance:this._targetMaxDistance,static_auto_distance:this._staticAutoDistance,static_min_distance:this._staticMinDistance,static_max_distance:this._staticMaxDistance,static_trigger_threshold:this._staticTriggerThreshold,static_renew_threshold:this._staticRenewThreshold,static_timeout:this._staticTimeout,static_on_delay:this._staticOnDelay,led_mode:this._ledMode,led_brightness:this._ledBrightness,led_presence_color:this._ledPresenceColor,relay_trigger_mode:this._relayTriggerMode,relay_contact_mode:this._relayContactMode,entities:this._entitiesConfig||{}}),await this.hass.callWS({type:"eppgrid/set_setup",mac:this._selectedMac,perspective:[0,0,0,0,0,0,0,0],room_width:0,room_depth:0}),await this.hass.callWS({type:"eppgrid/set_room_layout",mac:this._selectedMac,grid_bytes:Array.from(this._grid),zone_slots:this._zoneConfigs.map(()=>null),room_type:"normal",furniture:[]})}catch(t){console.error("Failed to delete calibration",t)}this._dirty=!1,this._view="live"}_changePlacement(){this._guardNavigation(()=>{this._setupStep="guide",this._pushWidenedDistanceOverride()})}_renderHeader(){return G`
       <div class="panel-header">
         <ha-select
           .value=${this._selectedMac}
@@ -3818,11 +3818,24 @@ const At=2,Pt=t=>(...e)=>({_$litDirective$:t,values:e});class Ht{constructor(t){
       background: var(--secondary-background-color, #333);
     }
 
+    .tab-layout {
+      display: flex;
+      flex-direction: column;
+      width: 100%;
+      height: 100%;
+    }
+
+    .tab-layout > :not(.tab-bar) {
+      flex: 1;
+      overflow: auto;
+    }
+
     .tab-bar {
       display: flex;
       border-bottom: 1px solid var(--divider-color, #e0e0e0);
       background: var(--app-header-background-color, var(--primary-color));
       padding: 0 16px;
+      flex-shrink: 0;
     }
 
     .tab {

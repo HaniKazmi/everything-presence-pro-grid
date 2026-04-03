@@ -908,11 +908,24 @@ export class EPPGridPanel extends LitElement {
       background: var(--secondary-background-color, #333);
     }
 
+    .tab-layout {
+      display: flex;
+      flex-direction: column;
+      width: 100%;
+      height: 100%;
+    }
+
+    .tab-layout > :not(.tab-bar) {
+      flex: 1;
+      overflow: auto;
+    }
+
     .tab-bar {
       display: flex;
       border-bottom: 1px solid var(--divider-color, #e0e0e0);
       background: var(--app-header-background-color, var(--primary-color));
       padding: 0 16px;
+      flex-shrink: 0;
     }
 
     .tab {
@@ -1010,7 +1023,7 @@ export class EPPGridPanel extends LitElement {
 
 	render() {
 		if (this._panelTab === "flasher") {
-			return html`
+			return html`<div class="tab-layout">
 				${this._renderTabBar()}
 				<epp-flasher-view
 					.hass=${this.hass}
@@ -1026,18 +1039,18 @@ export class EPPGridPanel extends LitElement {
 						this._panelTab = "config";
 					}}
 				></epp-flasher-view>
-			`;
+			</div>`;
 		}
 
 		if (this._loading) {
-			return html`
+			return html`<div class="tab-layout">
 				${this._renderTabBar()}
 				<div class="loading-container">${this._localize("common.loading")}</div>
-			`;
+			</div>`;
 		}
 
 		if (!this._devices.length) {
-			return html`
+			return html`<div class="tab-layout">
 				${this._renderTabBar()}
 				<div class="loading-container">
 					<p>${this._localize("flasher.no_eppgrid_devices")}</p>
@@ -1047,7 +1060,7 @@ export class EPPGridPanel extends LitElement {
 						${this._localize("flasher.flash_from_tab")}
 					</button>
 				</div>
-			`;
+			</div>`;
 		}
 
 		if (this._setupStep !== null) {
@@ -1086,28 +1099,28 @@ export class EPPGridPanel extends LitElement {
 		}
 
 		if (this._deviceCtrl.connectionFailed) {
-			return html`
+			return html`<div class="tab-layout">
 				${this._renderTabBar()}
 				<div class="panel">
 					${this._renderHeader()}
 					${this._renderConnectionBanner()}
 				</div>
 				${this._renderGlobalDialogs()}
-			`;
+			</div>`;
 		}
 
 		const dev = this._devices.find((d) => d.mac === this._selectedMac);
 		const protocolOk = !dev || dev.config_protocol_status === "compatible";
 
 		if (!protocolOk) {
-			return html`
+			return html`<div class="tab-layout">
 				${this._renderTabBar()}
 				<div class="panel">
 					${this._renderHeader()}
 					${this._renderProtocolBanner()}
 				</div>
 				${this._renderGlobalDialogs()}
-			`;
+			</div>`;
 		}
 
 		const content =
@@ -1117,7 +1130,7 @@ export class EPPGridPanel extends LitElement {
 					? this._renderEditor()
 					: this._renderLiveOverview();
 
-		return html`${this._renderTabBar()}${content}${this._renderGlobalDialogs()}`;
+		return html`<div class="tab-layout">${this._renderTabBar()}${content}${this._renderGlobalDialogs()}</div>`;
 	}
 
 	private async _deleteCalibration(): Promise<void> {
