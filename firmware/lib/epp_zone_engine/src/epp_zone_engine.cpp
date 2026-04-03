@@ -111,7 +111,7 @@ void ZoneEngine::dismiss_target(int target_index, int cell_index) {
         int zi = find_zone_index(zone_id);
         if (zi >= 0) {
             zones_[zi].state = ZoneState::CLEAR;
-            zones_[zi].pending_since = 0.0f;
+            zones_[zi].pending_since = -1.0f;
             zones_[zi].confirmed_targets = 0;
         }
     }

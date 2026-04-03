@@ -1,7 +1,7 @@
 // Bit 0: room (0=outside, 1=inside)
 // Bits 1-3: zone (0=room default, 1-7=named zone)
 // Bit 4: overlay — entry/exit
-// Bits 5-7: interference level (0=none, 1-3=+2/4/6 thresh, 7=suppress)
+// Bits 5-7: interference (0=none, 1=interference source, 7=suppress)
 export const CELL_ROOM_BIT = 0x01;
 export const CELL_ZONE_MASK = 0x0e; // bits 1-3
 export const CELL_ZONE_SHIFT = 1;

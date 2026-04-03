@@ -23,7 +23,6 @@ import {
 } from "./lib/furniture.js";
 import {
 	CELL_INTERFERENCE_SUPPRESS,
-	cellInterference,
 	cellIsInside,
 	cellSetInterference,
 	cellZone,
