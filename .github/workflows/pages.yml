@@ -8,6 +8,7 @@ on:
       - '.github/workflows/pages.yml'
 
 permissions:
+  contents: read
   pages: write
   id-token: write
 
@@ -23,12 +24,21 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
+      - name: Download latest firmware release assets
+        run: |
+          mkdir -p _site/firmware
+          gh release download --pattern '*.json' --pattern '*.bin' --dir _site/firmware || echo "No release assets found, skipping"
+        env:
+          GH_TOKEN: ${{ github.token }}
+      - name: Build pages site
+        run: |
+          cp -r tools/firmware-builder/* _site/
       - name: Setup Pages
         uses: actions/configure-pages@v4
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          path: tools/firmware-builder
+          path: _site
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v4

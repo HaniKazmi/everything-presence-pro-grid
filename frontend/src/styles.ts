@@ -638,6 +638,16 @@ export const flasherStyles = css`
     font-size: 14px;
     cursor: pointer;
     color: var(--primary-text-color, #212121);
+    padding: 8px 16px;
+    border-radius: 8px;
+    border: 1px solid var(--divider-color, #e0e0e0);
+    background: transparent;
+  }
+
+  .variant-option.selected {
+    border-color: var(--primary-color, #03a9f4);
+    background: var(--primary-color, #03a9f4);
+    color: #fff;
   }
 
   .confirm-dialog {

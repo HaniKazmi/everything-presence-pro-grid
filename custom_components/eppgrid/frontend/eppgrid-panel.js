@@ -652,6 +652,16 @@ const dt=t=>(e,i)=>{void 0!==i?i.addInitializer(()=>{customElements.define(t,e)}
     font-size: 14px;
     cursor: pointer;
     color: var(--primary-text-color, #212121);
+    padding: 8px 16px;
+    border-radius: 8px;
+    border: 1px solid var(--divider-color, #e0e0e0);
+    background: transparent;
+  }
+
+  .variant-option.selected {
+    border-color: var(--primary-color, #03a9f4);
+    background: var(--primary-color, #03a9f4);
+    color: #fff;
   }
 
   .confirm-dialog {
@@ -964,7 +974,7 @@ const dt=t=>(e,i)=>{void 0!==i?i.addInitializer(()=>{customElements.define(t,e)}
     `}render(){return this.loading?this._renderLoading():this._showWifiProvisioning?this._renderWifiProvisioning():this.otaProgress?this._renderOtaProgress(this.otaProgress):this._showUsbFlash?this._renderUsbFlash():G`
       ${this._confirmDevice?this._renderConfirmDialog(this._confirmDevice):j}
       ${this._renderDeviceList()}
-    `}_getManifestUrl(){return`https://github.com/clintongormley/everything-presence-pro-grid/releases/latest/download/everything-presence-pro-${this._selectedVariant}-manifest.json`}_renderUsbFlash(){const t=`/eppgrid_static/usb-flasher.html?manifest=${encodeURIComponent(this._getManifestUrl())}`;return G`
+    `}_getManifestUrl(){return`https://clintongormley.github.io/everything-presence-pro-grid/firmware/everything-presence-pro-${this._selectedVariant}-manifest.json`}_renderUsbFlash(){const t=`/eppgrid_static/usb-flasher.html?manifest=${encodeURIComponent(this._getManifestUrl())}`;return G`
 			<div class="flasher-container">
 				<h2>${this.localize("flasher.title")}</h2>
 				<p>${this.localize("flasher.select_variant")}</p>
