@@ -1290,16 +1290,16 @@ async def websocket_flash_ota(
         connection.send_message(websocket_api.event_message(msg_id, {"step": step, "status": status, **kwargs}))
 
     try:
-        # Step 1: Remove old ESPHome config entry
+        # Step 1: Download firmware FIRST (before deleting anything)
+        send_progress("downloading_firmware")
+        session = async_get_clientsession(hass)
+        firmware = await fetch_firmware_binary(session, variant)
+
+        # Step 2: Remove old ESPHome config entry (safe now — we have the binary)
         config_entry_id = device.get("esphome_config_entry_id")
         if config_entry_id:
             send_progress("removing_old_device")
             await hass.config_entries.async_remove(config_entry_id)
-
-        # Step 2: Fetch firmware
-        send_progress("downloading_firmware")
-        session = async_get_clientsession(hass)
-        firmware = await fetch_firmware_binary(session, variant)
 
         # Step 3: Push OTA
         send_progress("flashing")

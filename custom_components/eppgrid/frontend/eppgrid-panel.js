@@ -3246,7 +3246,7 @@ const At=2,Pt=t=>(...e)=>({_$litDirective$:t,values:e});class Ht{constructor(t){
     `}_renderTabBar(){return G`
 			<div class="tab-bar">
 				<button class="tab ${"config"===this._panelTab?"active":""}"
-					@click=${()=>{this._panelTab="config"}}>${this._localize("tabs.device_configuration")}</button>
+					@click=${()=>{this._panelTab="config",this._loadDevices()}}>${this._localize("tabs.device_configuration")}</button>
 				<button class="tab ${"flasher"===this._panelTab?"active":""}"
 					@click=${()=>{this._panelTab="flasher",this._flasherCtrl.loading&&(this._flasherCtrl.hass=this.hass,this._flasherCtrl.loadDevices())}}>${this._localize("tabs.flash_firmware")}</button>
 			</div>

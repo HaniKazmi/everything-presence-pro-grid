@@ -291,12 +291,14 @@ class TestFlashOta:
         # Extract all event payloads
         events = [call.args[0] for call in connection.send_message.call_args_list]
         steps = [e["event"]["step"] for e in events]
-        assert "removing_old_device" in steps
         assert "downloading_firmware" in steps
+        assert "removing_old_device" in steps
         assert "flashing" in steps
         assert "waiting_for_reboot" in steps
         assert "adding_to_esphome" in steps
         assert "complete" in steps
+        # Download happens BEFORE device removal (safe ordering)
+        assert steps.index("downloading_firmware") < steps.index("removing_old_device")
 
         # send_result called immediately to acknowledge subscription
         connection.send_result.assert_called_once_with(5)

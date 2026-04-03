@@ -1008,6 +1008,8 @@ export class EPPGridPanel extends LitElement {
 				<button class="tab ${this._panelTab === "config" ? "active" : ""}"
 					@click=${() => {
 						this._panelTab = "config";
+						// Refresh device list in case devices were added/removed during flashing
+						this._loadDevices();
 					}}>${this._localize("tabs.device_configuration")}</button>
 				<button class="tab ${this._panelTab === "flasher" ? "active" : ""}"
 					@click=${() => {
