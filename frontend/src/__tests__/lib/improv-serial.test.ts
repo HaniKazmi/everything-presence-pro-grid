@@ -1,0 +1,238 @@
+import { describe, expect, it } from "vitest";
+import {
+	CMD_WIFI_SCAN,
+	CMD_WIFI_SETTINGS,
+	IMPROV_HEADER,
+	TYPE_RPC_COMMAND,
+	TYPE_RPC_RESULT,
+	buildImprovPacket,
+	buildScanCommand,
+	buildWifiCommand,
+	parseImprovPackets,
+	parseScanResults,
+} from "../../lib/improv-serial.js";
+
+describe("IMPROV_HEADER", () => {
+	it("equals the ASCII bytes for IMPROV", () => {
+		expect(IMPROV_HEADER).toEqual([0x49, 0x4d, 0x50, 0x52, 0x4f, 0x56]);
+	});
+});
+
+describe("buildImprovPacket", () => {
+	it("creates a valid packet with correct structure and checksum", () => {
+		// Simple test: type=0x03, data=[0x04, 0x00]
+		const packet = buildImprovPacket(TYPE_RPC_COMMAND, [CMD_WIFI_SCAN, 0x00]);
+		// Header (6) + version (1) + type (1) + length (1) + data (2) + checksum (1) = 12
+		expect(packet.length).toBe(12);
+		// Header
+		expect(Array.from(packet.slice(0, 6))).toEqual(IMPROV_HEADER);
+		// Version
+		expect(packet[6]).toBe(0x01);
+		// Type
+		expect(packet[7]).toBe(TYPE_RPC_COMMAND);
+		// Length
+		expect(packet[8]).toBe(2);
+		// Data
+		expect(packet[9]).toBe(CMD_WIFI_SCAN);
+		expect(packet[10]).toBe(0x00);
+		// Checksum = sum of all preceding bytes mod 256
+		const sum = Array.from(packet.slice(0, 11)).reduce((a, b) => a + b, 0) % 256;
+		expect(packet[11]).toBe(sum);
+	});
+
+	it("computes checksum as sum of all preceding bytes mod 256", () => {
+		const data = [0x01, 0x02, 0x03];
+		const packet = buildImprovPacket(0x05, data);
+		const allBytes = Array.from(packet.slice(0, packet.length - 1));
+		const expectedChecksum = allBytes.reduce((a, b) => a + b, 0) % 256;
+		expect(packet[packet.length - 1]).toBe(expectedChecksum);
+	});
+});
+
+describe("buildScanCommand", () => {
+	it("creates a scan RPC command packet", () => {
+		const packet = buildScanCommand();
+		// Should be buildImprovPacket(TYPE_RPC_COMMAND, [CMD_WIFI_SCAN, 0x00])
+		const expected = buildImprovPacket(TYPE_RPC_COMMAND, [CMD_WIFI_SCAN, 0x00]);
+		expect(packet).toEqual(expected);
+	});
+
+	it("has type TYPE_RPC_COMMAND and first data byte CMD_WIFI_SCAN", () => {
+		const packet = buildScanCommand();
+		expect(packet[7]).toBe(TYPE_RPC_COMMAND);
+		expect(packet[9]).toBe(CMD_WIFI_SCAN);
+	});
+});
+
+describe("buildWifiCommand", () => {
+	it("encodes SSID and password in the correct format", () => {
+		const ssid = "MyWifi";
+		const password = "secret";
+		const packet = buildWifiCommand(ssid, password);
+
+		// Data layout: [CMD_WIFI_SETTINGS, total_len, ssid_len, ...ssid_bytes, pass_len, ...pass_bytes]
+		const ssidBytes = new TextEncoder().encode(ssid);
+		const passBytes = new TextEncoder().encode(password);
+		const totalLen = 1 + ssidBytes.length + 1 + passBytes.length; // ssid_len + ssid + pass_len + pass
+
+		// Packet structure: header(6) + version(1) + type(1) + length(1) + data(N) + checksum(1)
+		// data = [CMD_WIFI_SETTINGS, total_len, ssid_len, ...ssid, pass_len, ...pass]
+		const dataLength = 2 + 1 + ssidBytes.length + 1 + passBytes.length;
+		expect(packet.length).toBe(6 + 1 + 1 + 1 + dataLength + 1);
+
+		// Type should be TYPE_RPC_COMMAND
+		expect(packet[7]).toBe(TYPE_RPC_COMMAND);
+
+		// First data byte is CMD_WIFI_SETTINGS
+		expect(packet[9]).toBe(CMD_WIFI_SETTINGS);
+
+		// Second data byte is total_len
+		expect(packet[10]).toBe(totalLen);
+
+		// Third data byte is ssid_len
+		expect(packet[11]).toBe(ssidBytes.length);
+
+		// SSID bytes
+		for (let i = 0; i < ssidBytes.length; i++) {
+			expect(packet[12 + i]).toBe(ssidBytes[i]);
+		}
+
+		// pass_len
+		expect(packet[12 + ssidBytes.length]).toBe(passBytes.length);
+
+		// password bytes
+		for (let i = 0; i < passBytes.length; i++) {
+			expect(packet[13 + ssidBytes.length + i]).toBe(passBytes[i]);
+		}
+	});
+
+	it("handles empty password", () => {
+		const packet = buildWifiCommand("OpenNet", "");
+		const ssidBytes = new TextEncoder().encode("OpenNet");
+		// data = [CMD_WIFI_SETTINGS, total_len, ssid_len, ...ssid, pass_len(0)]
+		const totalLen = 1 + ssidBytes.length + 1 + 0;
+		expect(packet[10]).toBe(totalLen);
+		expect(packet[11]).toBe(ssidBytes.length);
+		// pass_len = 0
+		expect(packet[12 + ssidBytes.length]).toBe(0);
+	});
+});
+
+describe("parseImprovPackets", () => {
+	it("extracts valid packets from mixed data (log text + Improv packets)", () => {
+		// Build a real scan command packet
+		const realPacket = buildScanCommand();
+
+		// Mix it with some log text bytes before and after
+		const prefix = new TextEncoder().encode("LOG: some debug text\r\n");
+		const suffix = new TextEncoder().encode("another log line\r\n");
+
+		const mixed = new Uint8Array(prefix.length + realPacket.length + suffix.length);
+		mixed.set(prefix, 0);
+		mixed.set(realPacket, prefix.length);
+		mixed.set(suffix, prefix.length + realPacket.length);
+
+		const packets = parseImprovPackets(mixed);
+		expect(packets.length).toBe(1);
+		expect(packets[0].type).toBe(TYPE_RPC_COMMAND);
+		expect(Array.from(packets[0].data)).toEqual([CMD_WIFI_SCAN, 0x00]);
+	});
+
+	it("returns empty array when no packets present", () => {
+		const data = new TextEncoder().encode("just some log text with no improv packets");
+		const packets = parseImprovPackets(data);
+		expect(packets.length).toBe(0);
+	});
+
+	it("extracts multiple packets from a stream", () => {
+		const packet1 = buildScanCommand();
+		const packet2 = buildImprovPacket(TYPE_RPC_RESULT, [0x01, 0x02]);
+
+		const combined = new Uint8Array(packet1.length + packet2.length);
+		combined.set(packet1, 0);
+		combined.set(packet2, packet1.length);
+
+		const packets = parseImprovPackets(combined);
+		expect(packets.length).toBe(2);
+		expect(packets[0].type).toBe(TYPE_RPC_COMMAND);
+		expect(packets[1].type).toBe(TYPE_RPC_RESULT);
+	});
+
+	it("rejects packets with invalid checksum", () => {
+		const packet = buildScanCommand();
+		// Corrupt the checksum (last byte)
+		const corrupted = new Uint8Array(packet);
+		corrupted[corrupted.length - 1] = (corrupted[corrupted.length - 1] + 1) % 256;
+
+		const packets = parseImprovPackets(corrupted);
+		expect(packets.length).toBe(0);
+	});
+});
+
+describe("parseScanResults", () => {
+	it("parses network info with auth=YES", () => {
+		// Format: [ssid_len, ...ssid, rssi_len, ...rssi_str, auth_len, ...auth_str]
+		const encoder = new TextEncoder();
+		const ssid = "MyNetwork";
+		const rssi = "-65";
+		const auth = "YES";
+
+		const ssidBytes = encoder.encode(ssid);
+		const rssiBytes = encoder.encode(rssi);
+		const authBytes = encoder.encode(auth);
+
+		const data = new Uint8Array(
+			1 + ssidBytes.length + 1 + rssiBytes.length + 1 + authBytes.length,
+		);
+		let offset = 0;
+		data[offset++] = ssidBytes.length;
+		data.set(ssidBytes, offset);
+		offset += ssidBytes.length;
+		data[offset++] = rssiBytes.length;
+		data.set(rssiBytes, offset);
+		offset += rssiBytes.length;
+		data[offset++] = authBytes.length;
+		data.set(authBytes, offset);
+
+		const result = parseScanResults(data);
+		expect(result).not.toBeNull();
+		expect(result?.ssid).toBe("MyNetwork");
+		expect(result?.rssi).toBe(-65);
+		expect(result?.authRequired).toBe(true);
+	});
+
+	it("returns null for empty data (termination packet)", () => {
+		const result = parseScanResults(new Uint8Array(0));
+		expect(result).toBeNull();
+	});
+
+	it("parses open network with auth=NO", () => {
+		const encoder = new TextEncoder();
+		const ssid = "OpenNetwork";
+		const rssi = "-80";
+		const auth = "NO";
+
+		const ssidBytes = encoder.encode(ssid);
+		const rssiBytes = encoder.encode(rssi);
+		const authBytes = encoder.encode(auth);
+
+		const data = new Uint8Array(
+			1 + ssidBytes.length + 1 + rssiBytes.length + 1 + authBytes.length,
+		);
+		let offset = 0;
+		data[offset++] = ssidBytes.length;
+		data.set(ssidBytes, offset);
+		offset += ssidBytes.length;
+		data[offset++] = rssiBytes.length;
+		data.set(rssiBytes, offset);
+		offset += rssiBytes.length;
+		data[offset++] = authBytes.length;
+		data.set(authBytes, offset);
+
+		const result = parseScanResults(data);
+		expect(result).not.toBeNull();
+		expect(result?.ssid).toBe("OpenNetwork");
+		expect(result?.rssi).toBe(-80);
+		expect(result?.authRequired).toBe(false);
+	});
+});
