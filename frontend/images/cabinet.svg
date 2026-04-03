@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 80 40" width="80" height="40" fill="none" stroke="black" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+  <!-- Body -->
+  <rect x="5" y="5" width="70" height="30" rx="2" ry="2"/>
+
+  <!-- Shelves (visible through glass top) -->
+  <line x1="8" y1="15" x2="72" y2="15" stroke-width="1" stroke-dasharray="3 2"/>
+  <line x1="8" y1="25" x2="72" y2="25" stroke-width="1" stroke-dasharray="3 2"/>
+</svg>

@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 80 80" width="80" height="80" fill="none" stroke="black" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+  <!-- Body -->
+  <rect x="5" y="5" width="70" height="70" rx="5" ry="5"/>
+
+  <!-- Control panel strip -->
+  <line x1="5" y1="20" x2="75" y2="20"/>
+
+  <!-- Dial -->
+  <circle cx="22" cy="13" r="5"/>
+  <line x1="22" y1="13" x2="22" y2="9" stroke-width="1.5"/>
+
+  <!-- Buttons -->
+  <circle cx="55" cy="13" r="2.5" fill="black" stroke="none"/>
+  <circle cx="65" cy="13" r="2.5" fill="black" stroke="none"/>
+
+  <!-- Door (porthole) -->
+  <circle cx="40" cy="48" r="20"/>
+  <circle cx="40" cy="48" r="14"/>
+</svg>

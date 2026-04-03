@@ -222,6 +222,32 @@ describe("epp-furniture-sidebar DOM events", () => {
 		document.body.removeChild(c);
 	});
 
+	it("renders icon-type catalog items with ha-icon fallback", async () => {
+		// Temporarily add an icon-type entry to exercise the non-SVG branch
+		const { FURNITURE_CATALOG } = await import("../../constants.js");
+		const orig = [...FURNITURE_CATALOG];
+		FURNITURE_CATALOG.push({
+			type: "icon",
+			icon: "mdi:test-icon",
+			label: "furniture.custom",
+			defaultWidth: 400,
+			defaultHeight: 400,
+			lockAspect: true,
+		});
+		try {
+			const el = createSidebar();
+			const tpl = (el as any)._renderFurnitureSidebar();
+			const c = renderTo(tpl);
+			const icons = c.querySelectorAll("ha-icon");
+			// Should have at least the mdi:plus for custom + our test icon
+			expect(icons.length).toBeGreaterThanOrEqual(2);
+			document.body.removeChild(c);
+		} finally {
+			FURNITURE_CATALOG.length = 0;
+			FURNITURE_CATALOG.push(...orig);
+		}
+	});
+
 	it("icon picker value-changed fires custom-icon-change", () => {
 		const el = createSidebar({
 			showCustomIconPicker: true,

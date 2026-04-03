@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 50" width="100" height="50" fill="none" stroke="black" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+  <!-- Body -->
+  <rect x="5" y="5" width="90" height="40" rx="2" ry="2"/>
+
+  <!-- Double door divider -->
+  <line x1="50" y1="5" x2="50" y2="45"/>
+
+  <!-- Door handles -->
+  <circle cx="43" cy="25" r="2" fill="black" stroke="none"/>
+  <circle cx="57" cy="25" r="2" fill="black" stroke="none"/>
+</svg>

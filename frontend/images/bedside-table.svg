@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 50 50" width="50" height="50" fill="none" stroke="black" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+  <!-- Table top -->
+  <rect x="5" y="5" width="40" height="40" rx="2" ry="2"/>
+
+  <!-- Drawer divider -->
+  <line x1="5" y1="25" x2="45" y2="25"/>
+</svg>

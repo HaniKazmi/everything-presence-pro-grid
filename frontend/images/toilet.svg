@@ -1,9 +1,45 @@
-<svg width="300" height="400" viewBox="0 0 300 400" xmlns="http://www.w3.org/2000/svg">
-  <rect x="75" y="30" width="150" height="80" rx="10" stroke="black" stroke-width="8" fill="white"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 130" width="100" height="130" fill="none" stroke="black" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+  <!-- Cistern/tank outer -->
+  <rect x="18" y="4" width="64" height="24" rx="4" ry="4"/>
+  <!-- Tank lid edge -->
+  <rect x="22" y="7" width="56" height="18" rx="2" ry="2"/>
+  <!-- Flush button -->
+  <ellipse cx="50" cy="16" rx="6" ry="4"/>
 
-  <path d="M 75 110 C 75 110, 50 160, 50 210 C 50 310, 125 360, 150 360 C 175 360, 250 310, 250 210 C 250 160, 225 110, 225 110 Z" stroke="black" stroke-width="8" fill="white"/>
+  <!-- Hinge bolts -->
+  <circle cx="30" cy="30" r="2.5" fill="black"/>
+  <circle cx="70" cy="30" r="2.5" fill="black"/>
 
-  <path d="M 100 150 C 100 150, 75 190, 75 220 C 75 300, 125 340, 150 340 C 175 340, 225 300, 225 220 C 225 190, 200 150, 200 150 Z" stroke="black" stroke-width="8" fill="none"/>
+  <!-- Bowl outer - elongated U shape -->
+  <path d="
+    M 20,32
+    L 20,60
+    Q 20,100 50,105
+    Q 80,100 80,60
+    L 80,32
+  "/>
 
-  <circle cx="150" cy="70" r="15" stroke="black" stroke-width="8" fill="none"/>
+  <!-- Seat - follows bowl shape with inset -->
+  <path d="
+    M 24,34
+    L 24,58
+    Q 24,94 50,99
+    Q 76,94 76,58
+    L 76,34
+  "/>
+
+  <!-- Seat opening / inner hole - elongated oval -->
+  <path d="
+    M 32,40
+    L 32,58
+    Q 32,86 50,90
+    Q 68,86 68,58
+    L 68,40
+    Q 68,36 50,36
+    Q 32,36 32,40
+    Z
+  "/>
+
+  <!-- Seat top edge / rim line -->
+  <line x1="24" y1="34" x2="76" y2="34"/>
 </svg>
