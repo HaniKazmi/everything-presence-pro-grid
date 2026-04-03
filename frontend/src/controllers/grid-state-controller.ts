@@ -21,6 +21,7 @@ import {
 	updateFurnitureItem,
 } from "../lib/furniture.js";
 import {
+	CELL_INTERFERENCE_SUPPRESS,
 	cellIsInside,
 	cellZone,
 	GRID_CELL_MM,
@@ -70,7 +71,8 @@ export class GridStateController implements ReactiveController {
 			this.host._overlayMode === "interference" ||
 			this.host._overlayMode === "suppress"
 		) {
-			const level = this.host._overlayMode === "suppress" ? 7 : 1;
+			const level =
+				this.host._overlayMode === "suppress" ? CELL_INTERFERENCE_SUPPRESS : 1;
 			this.host._isPainting = true;
 			this.host._frozenBounds = getRoomBounds(this.host._grid);
 			this.host._paintAction = determineInterferencePaintAction(
@@ -141,7 +143,8 @@ export class GridStateController implements ReactiveController {
 			this.host._overlayMode === "interference" ||
 			this.host._overlayMode === "suppress"
 		) {
-			const level = this.host._overlayMode === "suppress" ? 7 : 1;
+			const level =
+				this.host._overlayMode === "suppress" ? CELL_INTERFERENCE_SUPPRESS : 1;
 			newValue = applyInterferencePaintToCell(
 				this.host._grid[index],
 				level,

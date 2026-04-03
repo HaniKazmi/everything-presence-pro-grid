@@ -25,14 +25,14 @@ Bits 5-7:  CELL_INTERFERENCE_MASK   (interference level)
 |---|---|
 | 0 | No interference |
 | 1 | Interference source |
-| 7 | Suppress detection |
-| 2-6 | Reserved (unused) |
+| 2 | Suppress detection |
+| 3-7 | Reserved (unused) |
 
 ### New constants (synced across all three codebases)
 
 - `CELL_INTERFERENCE_MASK = 0xE0` (bits 5-7)
 - `CELL_INTERFERENCE_SHIFT = 5`
-- `CELL_INTERFERENCE_SUPPRESS = 7`
+- `CELL_INTERFERENCE_SUPPRESS = 2`
 
 ### Mutual exclusivity
 
@@ -42,7 +42,7 @@ Setting interference on a cell clears entry/exit (bit 4). Setting entry/exit cle
 
 Both the TypeScript frontend engine (`zone-engine.ts`) and C++ firmware engine (`epp_zone_engine.cpp`) receive the same logic.
 
-### Suppress (value 7)
+### Suppress (value 2)
 
 The cell is treated as if no target is present:
 
@@ -83,7 +83,7 @@ Three overlay items:
 
 2. **Interference** — click to activate painting mode. Paints cells with interference value 1.
 
-3. **Suppress** — click to activate painting mode. Paints cells with interference value 7 (suppress).
+3. **Suppress** — click to activate painting mode. Paints cells with interference value 2 (suppress).
 
 No level selector — interference is a simple on/off toggle, and suppress is a separate item.
 
@@ -128,7 +128,7 @@ Sets interference level 1 on the target's current cell. The change is persisted 
 
 ### 3. Suppress detection
 
-Sets interference level 7 (suppress) on the target's current cell. The change is persisted immediately: grid bytes are updated and pushed to firmware via `set_room_layout`.
+Sets interference level 2 (suppress) on the target's current cell. The change is persisted immediately: grid bytes are updated and pushed to firmware via `set_room_layout`.
 
 ### Target dots hidden on interference cells
 

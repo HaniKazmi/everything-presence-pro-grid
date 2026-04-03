@@ -308,7 +308,7 @@ describe("interference helpers", () => {
 		expect(CELL_INTERFERENCE_SHIFT).toBe(5);
 	});
 
-	it("CELL_INTERFERENCE_SUPPRESS is 7", () => {
-		expect(CELL_INTERFERENCE_SUPPRESS).toBe(7);
+	it("CELL_INTERFERENCE_SUPPRESS is 2", () => {
+		expect(CELL_INTERFERENCE_SUPPRESS).toBe(2);
 	});
 });

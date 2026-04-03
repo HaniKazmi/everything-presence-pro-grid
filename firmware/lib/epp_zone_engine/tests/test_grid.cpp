@@ -222,5 +222,5 @@ TEST_CASE("cell_interference extracts bits 5-7") {
 TEST_CASE("interference constants") {
     CHECK(epp::CELL_INTERFERENCE_MASK == 0xE0);
     CHECK(epp::CELL_INTERFERENCE_SHIFT == 5);
-    CHECK(epp::CELL_INTERFERENCE_SUPPRESS == 7);
+    CHECK(epp::CELL_INTERFERENCE_SUPPRESS == 2);
 }
