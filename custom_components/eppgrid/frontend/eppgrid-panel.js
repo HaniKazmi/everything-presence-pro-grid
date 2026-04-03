@@ -974,7 +974,7 @@ const dt=t=>(e,i)=>{void 0!==i?i.addInitializer(()=>{customElements.define(t,e)}
     `}render(){return this.loading?this._renderLoading():this._showWifiProvisioning?this._renderWifiProvisioning():this.otaProgress?this._renderOtaProgress(this.otaProgress):this._showUsbFlash?this._renderUsbFlash():G`
       ${this._confirmDevice?this._renderConfirmDialog(this._confirmDevice):j}
       ${this._renderDeviceList()}
-    `}_getFirmwareVariant(){return"wifi"===this._selectedVariant?"wifi-ble-co2":"ethernet-ble-co2"}_getManifestUrl(){return`https://clintongormley.github.io/everything-presence-pro-grid/firmware/everything-presence-pro-${this._getFirmwareVariant()}-manifest.json`}_renderUsbFlash(){const t=`/eppgrid_static/usb-flasher.html?manifest=${encodeURIComponent(this._getManifestUrl())}`;return G`
+    `}_getFirmwareVariant(){return"wifi"===this._selectedVariant?"wifi-ble-co2":"ethernet-ble-co2"}_getManifestUrl(){return`/eppgrid_static/firmware/everything-presence-pro-${this._getFirmwareVariant()}-manifest.json`}_renderUsbFlash(){const t=`/eppgrid_static/usb-flasher.html?manifest=${encodeURIComponent(this._getManifestUrl())}`;return G`
 			<div class="flasher-container">
 				<h2>${this.localize("flasher.title")}</h2>
 				<p>${this.localize("flasher.select_variant")}</p>
@@ -3305,7 +3305,7 @@ const At=2,Pt=t=>(...e)=>({_$litDirective$:t,values:e});class Ht{constructor(t){
 					.flashingMac=${this._flasherCtrl.flashingMac}
 					.localize=${this._localize}
 					@flash-ota=${t=>{this._flasherCtrl.startOtaFlash(t.detail.mac,t.detail.variant)}}
-					@flash-complete=${()=>{this._panelTab="config"}}
+					@flash-complete=${()=>{this._loadDevices(),this._panelTab="config"}}
 				></epp-flasher-view>
 			</div>`;if(this._loading)return G`<div class="tab-layout">
 				${this._renderTabBar()}

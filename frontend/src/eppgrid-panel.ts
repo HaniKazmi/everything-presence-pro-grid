@@ -1038,6 +1038,7 @@ export class EPPGridPanel extends LitElement {
 						this._flasherCtrl.startOtaFlash(e.detail.mac, e.detail.variant);
 					}}
 					@flash-complete=${() => {
+						this._loadDevices();
 						this._panelTab = "config";
 					}}
 				></epp-flasher-view>
