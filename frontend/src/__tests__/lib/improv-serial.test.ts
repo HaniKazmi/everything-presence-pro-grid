@@ -167,6 +167,23 @@ describe("parseImprovPackets", () => {
 		const packets = parseImprovPackets(corrupted);
 		expect(packets.length).toBe(0);
 	});
+
+	it("returns empty array when header is found but not enough bytes for packet header", () => {
+		// Construct a truncated Improv stream: header(6) only, no version/type/length
+		const header = new Uint8Array(IMPROV_HEADER);
+		// Only provide the 6 header bytes — not enough to form a complete packet (needs 3 more)
+		const packets = parseImprovPackets(header);
+		expect(packets.length).toBe(0);
+	});
+
+	it("returns empty array when packet data is incomplete (length > available bytes)", () => {
+		// Build a real packet then truncate the data section
+		const real = buildScanCommand();
+		// Drop the last 2 bytes so the data + checksum bytes are missing
+		const truncated = real.slice(0, real.length - 2);
+		const packets = parseImprovPackets(truncated);
+		expect(packets.length).toBe(0);
+	});
 });
 
 describe("parseScanResults", () => {

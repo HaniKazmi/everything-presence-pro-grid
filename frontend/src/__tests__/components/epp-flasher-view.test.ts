@@ -315,6 +315,82 @@ describe("render() confirm dialog", () => {
 	});
 });
 
+describe("render() OTA error state", () => {
+	it("shows error state when OTA fails", () => {
+		const progress: OtaProgress = {
+			step: "flashing",
+			status: "failed",
+			error: "Connection refused",
+		};
+		const el = createView({ otaProgress: progress });
+		const tpl = (el as any).render();
+		const c = renderTo(tpl);
+
+		expect(c.querySelector(".progress-steps")).not.toBeNull();
+		const errorStep = c.querySelector(".step-error");
+		expect(errorStep).not.toBeNull();
+	});
+
+	it("shows error state when OTA times out", () => {
+		const progress: OtaProgress = {
+			step: "waiting_for_reboot",
+			status: "timeout",
+		};
+		const el = createView({ otaProgress: progress });
+		const tpl = (el as any).render();
+		const c = renderTo(tpl);
+
+		expect(c.querySelector(".step-error")).not.toBeNull();
+	});
+
+	it("does not show 'Go to Device Configuration' button on error", () => {
+		const progress: OtaProgress = {
+			step: "flashing",
+			status: "failed",
+		};
+		const el = createView({ otaProgress: progress });
+		const tpl = (el as any).render();
+		const c = renderTo(tpl);
+
+		expect(c.querySelector(".go-device-btn")).toBeNull();
+	});
+});
+
+describe("render() browser warning", () => {
+	it("shows browser warning when no Web Serial support", () => {
+		const el = createView();
+		(el as any)._hasWebSerial = false;
+		const tpl = (el as any).render();
+		const c = renderTo(tpl);
+
+		expect(c.querySelector(".browser-warning")).not.toBeNull();
+	});
+
+	it("does not show browser warning when Web Serial is supported", () => {
+		const el = createView();
+		(el as any)._hasWebSerial = true;
+		const tpl = (el as any).render();
+		const c = renderTo(tpl);
+
+		expect(c.querySelector(".browser-warning")).toBeNull();
+	});
+});
+
+describe("render() OTA progress with progress percentage", () => {
+	it("shows progress percentage when progress is set", () => {
+		const progress: OtaProgress = {
+			step: "flashing",
+			status: "in_progress",
+			progress: 75,
+		};
+		const el = createView({ otaProgress: progress });
+		const tpl = (el as any).render();
+		const c = renderTo(tpl);
+
+		expect(c.textContent).toContain("75%");
+	});
+});
+
 describe("event dispatching", () => {
 	it("dispatches flash-ota event on confirm", async () => {
 		const el = createView({ flashableDevices: [device1] });
@@ -333,6 +409,19 @@ describe("event dispatching", () => {
 			mac: device1.mac,
 			variant: "wifi",
 		});
+	});
+
+	it("does not dispatch flash-ota when _confirmDevice is null", () => {
+		const el = createView();
+		document.body.appendChild(el);
+
+		const events: Event[] = [];
+		el.addEventListener("flash-ota", (e) => events.push(e));
+
+		(el as any)._confirmDevice = null;
+		(el as any)._dispatchFlashOta();
+
+		expect(events.length).toBe(0);
 	});
 
 	it("dispatches usb-connect event on USB connect click", async () => {
@@ -359,5 +448,63 @@ describe("event dispatching", () => {
 		(el as any)._dispatchFlashComplete();
 
 		expect(events.length).toBe(1);
+	});
+});
+
+describe("confirm dialog interactions", () => {
+	it("selecting ethernet variant updates _selectedVariant", async () => {
+		const el = createView({ flashableDevices: [device1] });
+		(el as any)._confirmDevice = device1;
+		document.body.appendChild(el);
+		await el.updateComplete;
+
+		const root = el.shadowRoot!;
+		const ethernetRadio = root.querySelector(
+			'input[value="ethernet"]',
+		) as HTMLInputElement;
+		ethernetRadio.dispatchEvent(new Event("change"));
+
+		expect((el as any)._selectedVariant).toBe("ethernet");
+	});
+
+	it("selecting wifi variant updates _selectedVariant", async () => {
+		const el = createView({ flashableDevices: [device1] });
+		(el as any)._confirmDevice = device1;
+		(el as any)._selectedVariant = "ethernet";
+		document.body.appendChild(el);
+		await el.updateComplete;
+
+		const root = el.shadowRoot!;
+		const wifiRadio = root.querySelector(
+			'input[value="wifi"]',
+		) as HTMLInputElement;
+		wifiRadio.dispatchEvent(new Event("change"));
+
+		expect((el as any)._selectedVariant).toBe("wifi");
+	});
+
+	it("cancel button clears _confirmDevice", async () => {
+		const el = createView({ flashableDevices: [device1] });
+		(el as any)._confirmDevice = device1;
+		document.body.appendChild(el);
+		await el.updateComplete;
+
+		const root = el.shadowRoot!;
+		const cancelBtn = root.querySelector(".cancel-btn") as HTMLButtonElement;
+		cancelBtn.click();
+
+		expect((el as any)._confirmDevice).toBeNull();
+	});
+
+	it("Flash button in device row sets _confirmDevice", async () => {
+		const el = createView({ flashableDevices: [device1] });
+		document.body.appendChild(el);
+		await el.updateComplete;
+
+		const root = el.shadowRoot!;
+		const flashBtn = root.querySelector(".flash-btn") as HTMLButtonElement;
+		flashBtn.click();
+
+		expect((el as any)._confirmDevice).toBe(device1);
 	});
 });
