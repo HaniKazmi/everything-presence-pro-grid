@@ -234,9 +234,14 @@ export function runLocalZoneEngine(
 		// They must be handed off from a clean zone (continuity required).
 		// Only applies when zone is CLEAR — once occupied, targets can be re-confirmed.
 		if (interference > 0 && !continuous && isClear) {
+			console.debug(`[zone-engine] T${i} blocked: interference=${interference} cell=(${col},${row}) no continuity, zone ${zid} clear`);
 			state.targetPrev[i] = null;
 			state.targetGateCount[i] = 0;
 			continue;
+		}
+
+		if (interference > 0) {
+			console.debug(`[zone-engine] T${i} in interference=${interference} cell=(${col},${row}) zone=${zid} continuous=${continuous} clear=${isClear} signal=${signal}`);
 		}
 
 		let baseTrigger = isClear ? effectiveTrigger : effectiveRenew;

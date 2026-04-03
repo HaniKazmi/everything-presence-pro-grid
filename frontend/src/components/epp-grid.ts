@@ -299,10 +299,27 @@ export class EppGrid extends LitElement {
 						0,
 						Math.min(100, ((pos.row - minRow) / visRows) * 100),
 					);
+					// Hide target if on an interference cell and zone is not occupied
+					// (blocked by no-first-appearance rule — not a confirmed presence)
+					if (this.grid.length > 0) {
+						const col = Math.floor(pos.col);
+						const row = Math.floor(pos.row);
+						const idx = row * GRID_COLS + col;
+						if (idx >= 0 && idx < this.grid.length) {
+							const interf = cellInterference(this.grid[idx]);
+							if (interf > 0) {
+								const zid = cellZone(this.grid[idx]);
+								if (!this.occupancy[zid]) {
+									return nothing;
+								}
+							}
+						}
+					}
+					const opacity = t.status === "pending" ? 0.3 : 1;
 					return html`
 						<div
 							class="target-dot ${this.editable ? "" : "clickable"}"
-							style="left: ${xPct}%; top: ${yPct}%; background: ${TARGET_COLORS[i] || TARGET_COLORS[0]}; opacity: ${t.status === "pending" ? 0.3 : 1}; transition: opacity 0.5s ease;"
+							style="left: ${xPct}%; top: ${yPct}%; background: ${TARGET_COLORS[i] || TARGET_COLORS[0]}; opacity: ${opacity}; transition: opacity 0.5s ease;"
 							@click=${(e: Event) => {
 								if (this.editable) return;
 								e.stopPropagation();

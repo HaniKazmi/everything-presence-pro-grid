@@ -249,9 +249,17 @@ const ProcessingResult& ZoneEngine::tick(const WindowOutput& window, float times
             // They must be handed off from a clean zone (continuity required).
             // Only applies when zone is CLEAR — once occupied, targets can be re-confirmed.
             if (interference > 0 && !continuous && rt.state == ZoneState::CLEAR) {
+                log_(LogLevel::DEBUG, "T%d blocked: interference=%d cell=(%d,%d) no continuity, zone %d clear",
+                     i, interference, col, row, zone_id);
                 target_has_prev_[i] = false;
                 target_gate_count_[i] = 0;
                 continue;
+            }
+
+            if (interference > 0) {
+                log_(LogLevel::DEBUG, "T%d in interference=%d cell=(%d,%d) zone=%d continuous=%d clear=%d signal=%d",
+                     i, interference, col, row, zone_id, continuous ? 1 : 0,
+                     rt.state == ZoneState::CLEAR ? 1 : 0, signal);
             }
 
             // Determine effective threshold based on zone state
