@@ -245,6 +245,15 @@ const ProcessingResult& ZoneEngine::tick(const WindowOutput& window, float times
                 renew_thresh = std::min(renew_thresh + interference * 2, 9);
             }
 
+            // No first appearance: targets cannot originate in interference zones.
+            // They must be handed off from a clean zone (continuity required).
+            // Only applies when zone is CLEAR — once occupied, targets can be re-confirmed.
+            if (interference > 0 && !continuous && rt.state == ZoneState::CLEAR) {
+                target_has_prev_[i] = false;
+                target_gate_count_[i] = 0;
+                continue;
+            }
+
             // Determine effective threshold based on zone state
             int base_thresh;
             if (rt.state == ZoneState::CLEAR) {

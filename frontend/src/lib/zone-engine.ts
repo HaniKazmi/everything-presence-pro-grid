@@ -230,6 +230,15 @@ export function runLocalZoneEngine(
 		const isOccupied = st?.occupied ?? false;
 		const isClear = !isOccupied;
 
+		// No first appearance: targets cannot originate in interference zones.
+		// They must be handed off from a clean zone (continuity required).
+		// Only applies when zone is CLEAR — once occupied, targets can be re-confirmed.
+		if (interference > 0 && !continuous && isClear) {
+			state.targetPrev[i] = null;
+			state.targetGateCount[i] = 0;
+			continue;
+		}
+
 		let baseTrigger = isClear ? effectiveTrigger : effectiveRenew;
 		// Check cell and same-zone neighbours for overlay (median may lag behind actual position)
 		let cellOverlay = cellHasOverlayEntry(cellVal);

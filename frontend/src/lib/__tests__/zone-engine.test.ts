@@ -792,7 +792,7 @@ describe("interference zones", () => {
 		expect(result.occupancy[1]).toBe(false);
 	});
 
-	it("interference level 1 allows detection when signal meets adjusted threshold", () => {
+	it("interference level 1 allows detection when signal meets adjusted threshold (with continuity)", () => {
 		const grid = makeParityGrid();
 		grid[1 * GRID_COLS + 9] = cellSetInterference(
 			cellSetZone(CELL_ROOM_BIT, 1),
@@ -803,11 +803,26 @@ describe("interference zones", () => {
 			true,
 		);
 
-		const params = makeDefaultParams({
-			targets: [makeTarget(450, 450, 5)],
-			grid,
-		});
-		const result = runLocalZoneEngine(state, params);
+		// First tick: establish position in clean cell (col=8, row=1)
+		const now = Date.now() / 1000;
+		runLocalZoneEngine(
+			state,
+			makeDefaultParams({
+				targets: [makeTarget(150, 450, 9)],
+				grid,
+				now,
+			}),
+		);
+
+		// Second tick: move to interference cell with continuity
+		const result = runLocalZoneEngine(
+			state,
+			makeDefaultParams({
+				targets: [makeTarget(450, 450, 5)], // signal 5 >= effective trigger 5
+				grid,
+				now: now + 0.1,
+			}),
+		);
 		expect(result.occupancy[1]).toBe(true);
 	});
 
@@ -872,6 +887,123 @@ describe("interference zones", () => {
 		const result = runLocalZoneEngine(state, params);
 		// Signal 1 < effectiveTrigger 5 — must NOT occupy despite neighbouring overlay
 		expect(result.occupancy[1]).toBe(false);
+	});
+
+	it("no first appearance: target without continuity is skipped in interference zone", () => {
+		// A target appearing directly in an interference cell with no prior position
+		// should be skipped — it must be handed off from a clean zone.
+		const grid = makeParityGrid();
+		grid[1 * GRID_COLS + 9] = cellSetInterference(
+			cellSetZone(CELL_ROOM_BIT, 1),
+			1,
+		);
+		// Adjacent overlay to bypass gating — but "no first appearance" should still block
+		grid[1 * GRID_COLS + 8] = cellSetOverlayEntry(
+			cellSetZone(CELL_ROOM_BIT, 1),
+			true,
+		);
+
+		const params = makeDefaultParams({
+			targets: [makeTarget(450, 450, 9)], // max signal
+			grid,
+		});
+		const result = runLocalZoneEngine(state, params);
+		// Even with max signal, target has no continuity → skipped
+		expect(result.occupancy[1]).toBe(false);
+	});
+
+	it("no first appearance: target with continuity from clean zone is allowed", () => {
+		// First tick: target in clean zone 0 cell (col=8, row=1) → establishes position
+		const grid = makeParityGrid();
+		grid[1 * GRID_COLS + 9] = cellSetInterference(
+			cellSetZone(CELL_ROOM_BIT, 1),
+			1,
+		);
+		grid[1 * GRID_COLS + 8] = cellSetOverlayEntry(
+			cellSetZone(CELL_ROOM_BIT, 1),
+			true,
+		);
+
+		const params1 = makeDefaultParams({
+			targets: [makeTarget(150, 450, 9)], // cell (8,1) — clean zone 0
+			grid,
+		});
+		runLocalZoneEngine(state, params1);
+
+		// Second tick: target moves to interference cell (col=9, row=1) — has continuity
+		const params2 = makeDefaultParams({
+			targets: [makeTarget(450, 450, 5)], // signal 5 >= effectiveTrigger 5
+			grid,
+			now: (params1.now ?? Date.now() / 1000) + 0.1,
+		});
+		const result = runLocalZoneEngine(state, params2);
+		expect(result.occupancy[1]).toBe(true);
+	});
+
+	it("no first appearance: persistent ghost never gains continuity", () => {
+		// Simulates a fan: same target appears at same interference cell every tick,
+		// but never has continuity because targetPrev is cleared each time.
+		const grid = makeParityGrid();
+		grid[1 * GRID_COLS + 9] = cellSetInterference(
+			cellSetZone(CELL_ROOM_BIT, 1),
+			1,
+		);
+
+		const now = Date.now() / 1000;
+		for (let tick = 0; tick < 10; tick++) {
+			const params = makeDefaultParams({
+				targets: [makeTarget(450, 450, 9)],
+				grid,
+				now: now + tick * 0.1,
+			});
+			const result = runLocalZoneEngine(state, params);
+			expect(result.occupancy[1]).toBe(false);
+		}
+	});
+
+	it("no first appearance: does not apply when zone is already occupied", () => {
+		// First: occupy zone via continuity from clean zone
+		const grid = makeParityGrid();
+		grid[1 * GRID_COLS + 9] = cellSetInterference(
+			cellSetZone(CELL_ROOM_BIT, 1),
+			1,
+		);
+		grid[1 * GRID_COLS + 8] = cellSetOverlayEntry(
+			cellSetZone(CELL_ROOM_BIT, 1),
+			true,
+		);
+
+		// Tick 1: target in clean cell
+		const now = Date.now() / 1000;
+		runLocalZoneEngine(state, makeDefaultParams({
+			targets: [makeTarget(150, 450, 9)],
+			grid,
+			now,
+		}));
+
+		// Tick 2: target moves to interference cell — continuity → occupies
+		runLocalZoneEngine(state, makeDefaultParams({
+			targets: [makeTarget(450, 450, 9)],
+			grid,
+			now: now + 0.1,
+		}));
+		expect(state.localZoneState.get(1)?.occupied).toBe(true);
+
+		// Tick 3: target disappears then reappears at same cell — no continuity
+		// but zone is OCCUPIED, so target should still be counted (renew path)
+		runLocalZoneEngine(state, makeDefaultParams({
+			targets: [makeNullTarget()],
+			grid,
+			now: now + 0.2,
+		}));
+		runLocalZoneEngine(state, makeDefaultParams({
+			targets: [makeTarget(450, 450, 9)],
+			grid,
+			now: now + 0.3,
+		}));
+		// Zone should still be occupied (or at least pending), not cleared
+		const zs = state.localZoneState.get(1);
+		expect(zs?.occupied).toBe(true);
 	});
 
 	it("interference affects renew threshold too", () => {
