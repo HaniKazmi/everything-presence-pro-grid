@@ -594,6 +594,7 @@ export class EPPGridPanel extends LitElement {
 		const needsRevert = this._targetAutoDistance || this._staticAutoDistance;
 		this._dirty = false;
 		this._selectedFurnitureId = null;
+		this._overlayMode = null;
 		// Reload config (reopens session), then revert widened ranges on the
 		// new session. Must reload first because _loadDeviceConfig tears down
 		// the old session.

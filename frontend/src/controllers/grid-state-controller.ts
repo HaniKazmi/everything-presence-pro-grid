@@ -606,6 +606,7 @@ export class GridStateController implements ReactiveController {
 			}
 			this.host._dirty = false;
 			this.host._selectedFurnitureId = null;
+			this.host._overlayMode = null;
 			this.host._view = "live";
 		} finally {
 			this.host._saving = false;
