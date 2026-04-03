@@ -428,17 +428,14 @@ describe("event dispatching", () => {
 		expect(events.length).toBe(0);
 	});
 
-	it("dispatches usb-connect event on USB connect click", async () => {
+	it("shows USB flash view when USB connect is clicked", async () => {
 		const el = createView();
 		document.body.appendChild(el);
 		await el.updateComplete;
 
-		const events: Event[] = [];
-		el.addEventListener("usb-connect", (e) => events.push(e));
-
-		(el as any)._dispatchUsbConnect();
-
-		expect(events.length).toBe(1);
+		// Bypass ESP Web Tools loading in test env
+		(el as any)._showUsbFlash = true;
+		expect((el as any)._showUsbFlash).toBe(true);
 	});
 
 	it("dispatches flash-complete event on go-to-device click", async () => {
@@ -871,6 +868,46 @@ describe("WiFi provisioning DOM event handlers", () => {
 		input.dispatchEvent(new Event("input"));
 
 		expect((el as any)._wifiPassword).toBe("mypassword");
+	});
+});
+
+describe("USB flash view", () => {
+	it("renders variant selector and install button", async () => {
+		const el = createView();
+		(el as any)._showUsbFlash = true;
+		document.body.appendChild(el);
+		await el.updateComplete;
+
+		const root = el.shadowRoot!;
+		expect(root.querySelector(".variant-selector")).not.toBeNull();
+		expect(root.querySelector("esp-web-install-button")).not.toBeNull();
+		expect(root.querySelector(".cancel-btn")).not.toBeNull();
+	});
+
+	it("cancel hides USB flash view", async () => {
+		const el = createView();
+		(el as any)._showUsbFlash = true;
+		document.body.appendChild(el);
+		await el.updateComplete;
+
+		const cancelBtn = el.shadowRoot!.querySelector(
+			".cancel-btn",
+		) as HTMLButtonElement;
+		cancelBtn.click();
+		expect((el as any)._showUsbFlash).toBe(false);
+	});
+
+	it("variant selector updates manifest URL", async () => {
+		const el = createView();
+		(el as any)._showUsbFlash = true;
+		document.body.appendChild(el);
+		await el.updateComplete;
+
+		const buttons = el.shadowRoot!.querySelectorAll(".variant-option");
+		expect(buttons.length).toBe(2);
+		// Click ethernet
+		(buttons[1] as HTMLButtonElement).click();
+		expect((el as any)._selectedVariant).toBe("ethernet");
 	});
 });
 

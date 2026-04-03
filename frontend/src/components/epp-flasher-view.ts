@@ -52,6 +52,7 @@ export class EppFlasherView extends LitElement {
 	@state() private _confirmDevice: FlashableDevice | null = null;
 	@state() private _hasWebSerial: boolean =
 		typeof navigator !== "undefined" && "serial" in navigator;
+	@state() private _showUsbFlash = false;
 
 	// WiFi provisioning state
 	@state() private _wifiNetworks: WifiNetwork[] = [];
@@ -78,10 +79,9 @@ export class EppFlasherView extends LitElement {
 		this._confirmDevice = null;
 	}
 
-	private _dispatchUsbConnect(): void {
-		this.dispatchEvent(
-			new CustomEvent("usb-connect", { bubbles: true, composed: true }),
-		);
+	private async _onUsbConnect(): Promise<void> {
+		await loadEspWebTools();
+		this._showUsbFlash = true;
 	}
 
 	private _dispatchFlashComplete(): void {
@@ -402,7 +402,7 @@ export class EppFlasherView extends LitElement {
 							: nothing
 					}
         </div>
-        <button class="usb-connect-btn" @click=${this._dispatchUsbConnect}>
+        <button class="usb-connect-btn" @click=${this._onUsbConnect}>
           ${this.localize("flasher.usb_connect")}
         </button>
       </div>
@@ -422,6 +422,10 @@ export class EppFlasherView extends LitElement {
 			return this._renderOtaProgress(this.otaProgress);
 		}
 
+		if (this._showUsbFlash) {
+			return this._renderUsbFlash();
+		}
+
 		return html`
       ${
 				this._confirmDevice
@@ -430,6 +434,44 @@ export class EppFlasherView extends LitElement {
 			}
       ${this._renderDeviceList()}
     `;
+	}
+
+	private _renderUsbFlash() {
+		const manifestUrl =
+			this._selectedVariant === "wifi"
+				? "https://github.com/clintongormley/everything-presence-pro-grid/releases/latest/download/everything-presence-pro-wifi-manifest.json"
+				: "https://github.com/clintongormley/everything-presence-pro-grid/releases/latest/download/everything-presence-pro-ethernet-manifest.json";
+
+		return html`
+			<div class="flasher-container">
+				<h2>${this.localize("flasher.title")}</h2>
+				<p>${this.localize("flasher.select_variant")}</p>
+				<div class="variant-selector">
+					<button
+						class="variant-option ${this._selectedVariant === "wifi" ? "selected" : ""}"
+						@click=${() => {
+							this._selectedVariant = "wifi";
+						}}
+					>${this.localize("flasher.wifi")}</button>
+					<button
+						class="variant-option ${this._selectedVariant === "ethernet" ? "selected" : ""}"
+						@click=${() => {
+							this._selectedVariant = "ethernet";
+						}}
+					>${this.localize("flasher.ethernet")}</button>
+				</div>
+				<esp-web-install-button .manifest=${manifestUrl}>
+					<button class="flash-btn" slot="activate">${this.localize("flasher.flash")}</button>
+				</esp-web-install-button>
+				<div style="margin-top: 16px;">
+					<button class="cancel-btn" @click=${() => {
+						this._showUsbFlash = false;
+					}}>
+						${this.localize("common.cancel")}
+					</button>
+				</div>
+			</div>
+		`;
 	}
 }
 
