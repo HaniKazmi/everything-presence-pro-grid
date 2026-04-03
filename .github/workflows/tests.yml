@@ -20,7 +20,7 @@ jobs:
             python-version: "3.14"
     name: "Python (HA ${{ matrix.ha-version }})"
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
@@ -51,7 +51,7 @@ jobs:
       run:
         working-directory: frontend
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: actions/setup-node@v4
         with:
           node-version: 20
@@ -67,7 +67,7 @@ jobs:
     runs-on: ubuntu-latest
     name: C++ Tests
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Install CMake, lcov, and bc
         run: sudo apt-get update && sudo apt-get install -y cmake lcov bc
       - name: Build with coverage
@@ -106,7 +106,7 @@ jobs:
               --ignore-errors inconsistent
       - name: Upload coverage report
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: cpp-coverage-report
           path: firmware/lib/epp_zone_engine/build/coverage-html/

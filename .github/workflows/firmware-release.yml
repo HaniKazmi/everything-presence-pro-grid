@@ -18,7 +18,7 @@ jobs:
           - ethernet
     name: "Build ${{ matrix.variant }}"
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Install ESPHome
         run: pip install esphome
       - name: Compile firmware
@@ -52,7 +52,7 @@ jobs:
           }
           EOF
       - name: Upload build artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: firmware-${{ matrix.variant }}
           path: dist/
@@ -63,7 +63,7 @@ jobs:
     name: Create Release
     steps:
       - name: Download all artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v5
         with:
           path: dist
           pattern: firmware-*
