@@ -6,6 +6,9 @@ export class FlasherController implements ReactiveController {
 	loading = true;
 	otaProgress: OtaProgress | null = null;
 	flashingMac: string | null = null;
+	usbConnected = false;
+	usbDeviceMac: string | null = null;
+	usbExistingDevice: FlashableDevice | null = null;
 
 	private _host: ReactiveControllerHost;
 	private _hass: any = null;

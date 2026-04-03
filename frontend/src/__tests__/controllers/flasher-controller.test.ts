@@ -44,6 +44,14 @@ describe("FlasherController", () => {
 			expect(freshCtrl.otaProgress).toBeNull();
 			expect(freshCtrl.flashingMac).toBeNull();
 		});
+
+		it("initializes USB state fields to defaults", () => {
+			const freshHost = mockHost();
+			const freshCtrl = new FlasherController(freshHost);
+			expect(freshCtrl.usbConnected).toBe(false);
+			expect(freshCtrl.usbDeviceMac).toBeNull();
+			expect(freshCtrl.usbExistingDevice).toBeNull();
+		});
 	});
 
 	// --- Lifecycle ---

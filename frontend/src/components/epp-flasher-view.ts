@@ -2,6 +2,7 @@ import { html, LitElement, nothing } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
 import { flasherStyles } from "../styles.js";
 import type { FlashableDevice, OtaProgress, OtaStep } from "../types.js";
+import type { WifiNetwork } from "../lib/improv-serial.js";
 
 const OTA_STEPS: { step: OtaStep; label: string }[] = [
 	{ step: "removing_old_device", label: "Removing old device" },
@@ -13,6 +14,25 @@ const OTA_STEPS: { step: OtaStep; label: string }[] = [
 ];
 
 const STEP_ORDER = OTA_STEPS.map((s) => s.step);
+
+const ESP_WEB_TOOLS_URL =
+	"https://unpkg.com/esp-web-tools@10/dist/web/install-button.js";
+let espWebToolsLoaded = false;
+
+function loadEspWebTools(): Promise<void> {
+	if (espWebToolsLoaded) return Promise.resolve();
+	return new Promise((resolve, reject) => {
+		const script = document.createElement("script");
+		script.type = "module";
+		script.src = ESP_WEB_TOOLS_URL;
+		script.onload = () => {
+			espWebToolsLoaded = true;
+			resolve();
+		};
+		script.onerror = reject;
+		document.head.appendChild(script);
+	});
+}
 
 @customElement("epp-flasher-view")
 export class EppFlasherView extends LitElement {
@@ -28,6 +48,16 @@ export class EppFlasherView extends LitElement {
 	@state() private _confirmDevice: FlashableDevice | null = null;
 	@state() private _hasWebSerial: boolean =
 		typeof navigator !== "undefined" && "serial" in navigator;
+
+	// WiFi provisioning state
+	@state() private _wifiNetworks: WifiNetwork[] = [];
+	@state() private _wifiScanning = false;
+	@state() private _selectedSsid = "";
+	@state() private _manualSsid = false;
+	@state() private _wifiPassword = "";
+	@state() private _wifiConnected = false;
+	@state() private _deviceIp: string | null = null;
+	@state() private _showWifiProvisioning = false;
 
 	private _dispatchFlashOta(): void {
 		if (!this._confirmDevice) return;
@@ -50,6 +80,28 @@ export class EppFlasherView extends LitElement {
 	private _dispatchFlashComplete(): void {
 		this.dispatchEvent(
 			new CustomEvent("flash-complete", { bubbles: true, composed: true }),
+		);
+	}
+
+	private _dispatchWifiScan(): void {
+		this.dispatchEvent(
+			new CustomEvent("wifi-scan", { bubbles: true, composed: true }),
+		);
+	}
+
+	private _dispatchWifiProvision(): void {
+		this.dispatchEvent(
+			new CustomEvent("wifi-provision", {
+				detail: { ssid: this._selectedSsid, password: this._wifiPassword },
+				bubbles: true,
+				composed: true,
+			}),
+		);
+	}
+
+	private _dispatchWifiComplete(): void {
+		this.dispatchEvent(
+			new CustomEvent("wifi-complete", { bubbles: true, composed: true }),
 		);
 	}
 
@@ -162,6 +214,114 @@ export class EppFlasherView extends LitElement {
     `;
 	}
 
+	private _renderWifiProvisioning() {
+		if (this._wifiConnected) {
+			return html`
+        <div class="wifi-provisioning">
+          <h3>WiFi Connected</h3>
+          <p>
+            Connected to <strong>${this._selectedSsid}</strong>
+            ${this._deviceIp ? html` — IP: <strong>${this._deviceIp}</strong>` : nothing}
+          </p>
+          <div class="confirm-actions">
+            <button
+              class="wifi-continue-btn"
+              @click=${this._dispatchWifiComplete}
+            >
+              Continue
+            </button>
+          </div>
+        </div>
+      `;
+		}
+
+		const sortedNetworks = [...this._wifiNetworks].sort(
+			(a, b) => b.rssi - a.rssi,
+		);
+
+		return html`
+      <div class="wifi-provisioning">
+        <h3>WiFi Setup</h3>
+
+        <div class="wifi-scan-row">
+          <button class="wifi-scan-btn" @click=${this._dispatchWifiScan}>
+            Scan
+          </button>
+          ${this._wifiScanning
+						? html`<span class="wifi-scanning">Scanning...</span>`
+						: nothing}
+        </div>
+
+        ${sortedNetworks.length > 0
+					? html`
+              <select
+                class="wifi-network-select"
+                .value=${this._selectedSsid}
+                @change=${(e: Event) => {
+									this._selectedSsid = (e.target as HTMLSelectElement).value;
+								}}
+              >
+                <option value="">Select a network...</option>
+                ${sortedNetworks.map(
+									(n) => html`
+                    <option value="${n.ssid}">
+                      ${n.authRequired ? "🔒 " : ""}${n.ssid} (${n.rssi} dBm)
+                    </option>
+                  `,
+								)}
+              </select>
+            `
+					: nothing}
+
+        <label class="wifi-manual-toggle">
+          <input
+            type="checkbox"
+            .checked=${this._manualSsid}
+            @change=${(e: Event) => {
+							this._manualSsid = (e.target as HTMLInputElement).checked;
+							if (!this._manualSsid) this._selectedSsid = "";
+						}}
+          />
+          Enter network name manually (hidden network)
+        </label>
+
+        ${this._manualSsid
+					? html`
+              <input
+                class="wifi-ssid-input"
+                type="text"
+                placeholder="Network name (SSID)"
+                .value=${this._selectedSsid}
+                @input=${(e: Event) => {
+									this._selectedSsid = (e.target as HTMLInputElement).value;
+								}}
+              />
+            `
+					: nothing}
+
+        <input
+          class="wifi-password-input"
+          type="password"
+          placeholder="Password"
+          .value=${this._wifiPassword}
+          @input=${(e: Event) => {
+						this._wifiPassword = (e.target as HTMLInputElement).value;
+					}}
+        />
+
+        <div class="confirm-actions">
+          <button
+            class="wifi-configure-btn"
+            .disabled=${!this._selectedSsid}
+            @click=${this._dispatchWifiProvision}
+          >
+            Configure WiFi
+          </button>
+        </div>
+      </div>
+    `;
+	}
+
 	private _renderDeviceList() {
 		const { flashableDevices } = this;
 
@@ -232,6 +392,10 @@ export class EppFlasherView extends LitElement {
 			return this._renderLoading();
 		}
 
+		if (this._showWifiProvisioning) {
+			return this._renderWifiProvisioning();
+		}
+
 		if (this.otaProgress) {
 			return this._renderOtaProgress(this.otaProgress);
 		}
@@ -244,3 +408,6 @@ export class EppFlasherView extends LitElement {
     `;
 	}
 }
+
+// Exported for external use if needed
+export { loadEspWebTools };

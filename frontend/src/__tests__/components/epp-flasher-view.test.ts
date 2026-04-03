@@ -451,6 +451,277 @@ describe("event dispatching", () => {
 	});
 });
 
+describe("render() WiFi provisioning — connected state", () => {
+	it("renders wifi provisioning view when _showWifiProvisioning is true", () => {
+		const el = createView();
+		(el as any)._showWifiProvisioning = true;
+		(el as any)._wifiConnected = false;
+		const tpl = (el as any).render();
+		const c = renderTo(tpl);
+
+		expect(c.querySelector(".wifi-provisioning")).not.toBeNull();
+	});
+
+	it("shows connected network and IP when _wifiConnected=true", () => {
+		const el = createView();
+		(el as any)._showWifiProvisioning = true;
+		(el as any)._wifiConnected = true;
+		(el as any)._selectedSsid = "MyNetwork";
+		(el as any)._deviceIp = "192.168.1.50";
+		const tpl = (el as any).render();
+		const c = renderTo(tpl);
+
+		expect(c.textContent).toContain("MyNetwork");
+		expect(c.textContent).toContain("192.168.1.50");
+	});
+
+	it("shows Continue button when connected", () => {
+		const el = createView();
+		(el as any)._showWifiProvisioning = true;
+		(el as any)._wifiConnected = true;
+		(el as any)._selectedSsid = "MyNetwork";
+		(el as any)._deviceIp = "192.168.1.50";
+		const tpl = (el as any).render();
+		const c = renderTo(tpl);
+
+		expect(c.querySelector(".wifi-continue-btn")).not.toBeNull();
+	});
+
+	it("dispatches wifi-complete when Continue clicked", async () => {
+		const el = createView();
+		(el as any)._showWifiProvisioning = true;
+		(el as any)._wifiConnected = true;
+		(el as any)._selectedSsid = "MyNetwork";
+		(el as any)._deviceIp = "192.168.1.50";
+		document.body.appendChild(el);
+		await el.updateComplete;
+
+		const events: Event[] = [];
+		el.addEventListener("wifi-complete", (e) => events.push(e));
+
+		(el as any)._dispatchWifiComplete();
+		expect(events.length).toBe(1);
+	});
+});
+
+describe("render() WiFi provisioning — not connected state", () => {
+	it("shows scan button when not connected", () => {
+		const el = createView();
+		(el as any)._showWifiProvisioning = true;
+		(el as any)._wifiConnected = false;
+		const tpl = (el as any).render();
+		const c = renderTo(tpl);
+
+		expect(c.querySelector(".wifi-scan-btn")).not.toBeNull();
+	});
+
+	it("shows network dropdown when networks available", () => {
+		const el = createView();
+		(el as any)._showWifiProvisioning = true;
+		(el as any)._wifiConnected = false;
+		(el as any)._wifiNetworks = [
+			{ ssid: "NetworkA", rssi: -50, authRequired: true },
+			{ ssid: "NetworkB", rssi: -70, authRequired: false },
+		];
+		const tpl = (el as any).render();
+		const c = renderTo(tpl);
+
+		const select = c.querySelector(".wifi-network-select");
+		expect(select).not.toBeNull();
+		const options = select!.querySelectorAll("option[value]:not([value=''])");
+		expect(options.length).toBe(2);
+	});
+
+	it("sorts networks by signal strength (strongest first)", () => {
+		const el = createView();
+		(el as any)._showWifiProvisioning = true;
+		(el as any)._wifiConnected = false;
+		(el as any)._wifiNetworks = [
+			{ ssid: "Weak", rssi: -90, authRequired: false },
+			{ ssid: "Strong", rssi: -40, authRequired: false },
+			{ ssid: "Medium", rssi: -65, authRequired: false },
+		];
+		const tpl = (el as any).render();
+		const c = renderTo(tpl);
+
+		const options = Array.from(
+			c.querySelectorAll(".wifi-network-select option[value]:not([value=''])"),
+		).map((o) => (o as HTMLOptionElement).value);
+		expect(options[0]).toBe("Strong");
+		expect(options[1]).toBe("Medium");
+		expect(options[2]).toBe("Weak");
+	});
+
+	it("shows lock icon for auth-required networks", () => {
+		const el = createView();
+		(el as any)._showWifiProvisioning = true;
+		(el as any)._wifiConnected = false;
+		(el as any)._wifiNetworks = [
+			{ ssid: "Locked", rssi: -50, authRequired: true },
+		];
+		const tpl = (el as any).render();
+		const c = renderTo(tpl);
+
+		const option = c.querySelector(
+			'.wifi-network-select option[value="Locked"]',
+		) as HTMLOptionElement;
+		expect(option).not.toBeNull();
+		expect(option.textContent).toContain("🔒");
+	});
+
+	it("shows RSSI value in network option", () => {
+		const el = createView();
+		(el as any)._showWifiProvisioning = true;
+		(el as any)._wifiConnected = false;
+		(el as any)._wifiNetworks = [
+			{ ssid: "MyNet", rssi: -55, authRequired: false },
+		];
+		const tpl = (el as any).render();
+		const c = renderTo(tpl);
+
+		const option = c.querySelector(
+			'.wifi-network-select option[value="MyNet"]',
+		) as HTMLOptionElement;
+		expect(option.textContent).toContain("-55");
+	});
+
+	it("shows manual SSID toggle", () => {
+		const el = createView();
+		(el as any)._showWifiProvisioning = true;
+		(el as any)._wifiConnected = false;
+		const tpl = (el as any).render();
+		const c = renderTo(tpl);
+
+		expect(c.querySelector(".wifi-manual-toggle")).not.toBeNull();
+	});
+
+	it("shows manual SSID text input when _manualSsid=true", () => {
+		const el = createView();
+		(el as any)._showWifiProvisioning = true;
+		(el as any)._wifiConnected = false;
+		(el as any)._manualSsid = true;
+		const tpl = (el as any).render();
+		const c = renderTo(tpl);
+
+		expect(c.querySelector(".wifi-ssid-input")).not.toBeNull();
+	});
+
+	it("does not show manual SSID text input when _manualSsid=false", () => {
+		const el = createView();
+		(el as any)._showWifiProvisioning = true;
+		(el as any)._wifiConnected = false;
+		(el as any)._manualSsid = false;
+		const tpl = (el as any).render();
+		const c = renderTo(tpl);
+
+		expect(c.querySelector(".wifi-ssid-input")).toBeNull();
+	});
+
+	it("shows password field", () => {
+		const el = createView();
+		(el as any)._showWifiProvisioning = true;
+		(el as any)._wifiConnected = false;
+		const tpl = (el as any).render();
+		const c = renderTo(tpl);
+
+		expect(c.querySelector(".wifi-password-input")).not.toBeNull();
+	});
+
+	it("shows Configure WiFi button", () => {
+		const el = createView();
+		(el as any)._showWifiProvisioning = true;
+		(el as any)._wifiConnected = false;
+		const tpl = (el as any).render();
+		const c = renderTo(tpl);
+
+		expect(c.querySelector(".wifi-configure-btn")).not.toBeNull();
+	});
+
+	it("Configure WiFi button is disabled when no SSID selected", () => {
+		const el = createView();
+		(el as any)._showWifiProvisioning = true;
+		(el as any)._wifiConnected = false;
+		(el as any)._selectedSsid = "";
+		const tpl = (el as any).render();
+		const c = renderTo(tpl);
+
+		const btn = c.querySelector(".wifi-configure-btn") as HTMLButtonElement;
+		expect(btn.disabled).toBe(true);
+	});
+
+	it("Configure WiFi button is enabled when SSID is selected", () => {
+		const el = createView();
+		(el as any)._showWifiProvisioning = true;
+		(el as any)._wifiConnected = false;
+		(el as any)._selectedSsid = "MyNetwork";
+		const tpl = (el as any).render();
+		const c = renderTo(tpl);
+
+		const btn = c.querySelector(".wifi-configure-btn") as HTMLButtonElement;
+		expect(btn.disabled).toBe(false);
+	});
+
+	it("dispatches wifi-scan event when Scan clicked", async () => {
+		const el = createView();
+		(el as any)._showWifiProvisioning = true;
+		(el as any)._wifiConnected = false;
+		document.body.appendChild(el);
+		await el.updateComplete;
+
+		const events: Event[] = [];
+		el.addEventListener("wifi-scan", (e) => events.push(e));
+
+		(el as any)._dispatchWifiScan();
+		expect(events.length).toBe(1);
+	});
+
+	it("dispatches wifi-provision event with ssid and password", async () => {
+		const el = createView();
+		(el as any)._showWifiProvisioning = true;
+		(el as any)._wifiConnected = false;
+		(el as any)._selectedSsid = "HomeNet";
+		(el as any)._wifiPassword = "secret123";
+		document.body.appendChild(el);
+		await el.updateComplete;
+
+		const events: Event[] = [];
+		el.addEventListener("wifi-provision", (e) => events.push(e));
+
+		(el as any)._dispatchWifiProvision();
+		expect(events.length).toBe(1);
+		expect((events[0] as CustomEvent).detail).toEqual({
+			ssid: "HomeNet",
+			password: "secret123",
+		});
+	});
+
+	it("WiFi provisioning view hides OTA progress and device list", () => {
+		const progress: OtaProgress = {
+			step: "flashing",
+			status: "in_progress",
+		};
+		const el = createView({ otaProgress: progress });
+		(el as any)._showWifiProvisioning = true;
+		const tpl = (el as any).render();
+		const c = renderTo(tpl);
+
+		// WiFi provisioning takes priority
+		expect(c.querySelector(".wifi-provisioning")).not.toBeNull();
+		expect(c.querySelector(".progress-steps")).toBeNull();
+	});
+
+	it("shows scanning indicator when _wifiScanning=true", () => {
+		const el = createView();
+		(el as any)._showWifiProvisioning = true;
+		(el as any)._wifiConnected = false;
+		(el as any)._wifiScanning = true;
+		const tpl = (el as any).render();
+		const c = renderTo(tpl);
+
+		expect(c.querySelector(".wifi-scanning")).not.toBeNull();
+	});
+});
+
 describe("confirm dialog interactions", () => {
 	it("selecting ethernet variant updates _selectedVariant", async () => {
 		const el = createView({ flashableDevices: [device1] });
