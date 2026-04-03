@@ -868,42 +868,151 @@ describe("WiFi provisioning DOM event handlers", () => {
 	});
 });
 
-describe("USB flash view", () => {
-	it("renders variant selector and install button", async () => {
-		const el = createView();
-		(el as any)._showUsbFlash = true;
-		document.body.appendChild(el);
-		await el.updateComplete;
+describe("USB flash view — state-driven", () => {
+  it("renders flashing progress bar when usbFlashState is flashing", () => {
+    const el = createView();
+    (el as any)._showUsbFlash = true;
+    (el as any)._usbFlashState = { step: "flashing", progress: 42 };
+    const tpl = (el as any).render();
+    const c = renderTo(tpl);
 
-		const root = el.shadowRoot!;
-		expect(root.querySelector(".variant-selector")).not.toBeNull();
-		expect(root.querySelector("iframe.usb-flash-iframe")).not.toBeNull();
-		expect(root.querySelector(".cancel-btn")).not.toBeNull();
-	});
+    expect(c.querySelector(".usb-progress")).not.toBeNull();
+    expect(c.textContent).toContain("42%");
+  });
 
-	it("cancel hides USB flash view", async () => {
-		const el = createView();
-		(el as any)._showUsbFlash = true;
-		document.body.appendChild(el);
-		await el.updateComplete;
+  it("renders variant selector in idle state", () => {
+    const el = createView();
+    (el as any)._showUsbFlash = true;
+    (el as any)._usbFlashState = null;
+    const tpl = (el as any).render();
+    const c = renderTo(tpl);
 
-		const cancelBtn = el.shadowRoot!.querySelector(
-			".cancel-btn",
-		) as HTMLButtonElement;
-		cancelBtn.click();
-		expect((el as any)._showUsbFlash).toBe(false);
-	});
+    expect(c.querySelector(".variant-selector")).not.toBeNull();
+  });
 
-	it("variant selector updates manifest URL", async () => {
-		const el = createView();
-		(el as any)._showUsbFlash = true;
-		document.body.appendChild(el);
-		await el.updateComplete;
+  it("does not render iframe", () => {
+    const el = createView();
+    (el as any)._showUsbFlash = true;
+    const tpl = (el as any).render();
+    const c = renderTo(tpl);
 
-		const buttons = el.shadowRoot!.querySelectorAll(".variant-option");
-		expect(buttons.length).toBe(2);
-		// Click ethernet
-		(buttons[1] as HTMLButtonElement).click();
-		expect((el as any)._selectedVariant).toBe("ethernet");
-	});
+    expect(c.querySelector("iframe")).toBeNull();
+  });
+
+  it("renders connecting state", () => {
+    const el = createView();
+    (el as any)._showUsbFlash = true;
+    (el as any)._usbFlashState = { step: "connecting" };
+    const tpl = (el as any).render();
+    const c = renderTo(tpl);
+
+    expect(c.querySelector(".usb-status")).not.toBeNull();
+    expect(c.textContent).toContain("flasher.usb_step_connecting");
+  });
+
+  it("renders wifi scan state", () => {
+    const el = createView();
+    (el as any)._showUsbFlash = true;
+    (el as any)._usbFlashState = { step: "wifi_scan" };
+    const tpl = (el as any).render();
+    const c = renderTo(tpl);
+
+    expect(c.textContent).toContain("flasher.usb_step_scanning");
+  });
+
+  it("renders complete state with IP and go-to-config button", () => {
+    const el = createView();
+    (el as any)._showUsbFlash = true;
+    (el as any)._usbFlashState = { step: "complete", ip: "192.168.1.42" };
+    const tpl = (el as any).render();
+    const c = renderTo(tpl);
+
+    expect(c.textContent).toContain("192.168.1.42");
+    expect(c.querySelector(".go-device-btn")).not.toBeNull();
+  });
+
+  it("renders error state with retry button", () => {
+    const el = createView();
+    (el as any)._showUsbFlash = true;
+    (el as any)._usbFlashState = { step: "error", error: "flash failed" };
+    const tpl = (el as any).render();
+    const c = renderTo(tpl);
+
+    expect(c.querySelector(".usb-error")).not.toBeNull();
+    expect(c.textContent).toContain("flash failed");
+    expect(c.querySelector(".usb-retry-btn")).not.toBeNull();
+  });
+
+  it("renders wifi_provision state with existing WiFi provisioning UI", () => {
+    const el = createView();
+    (el as any)._showUsbFlash = true;
+    (el as any)._usbFlashState = { step: "wifi_provision" };
+    (el as any)._showWifiProvisioning = true;
+    const tpl = (el as any).render();
+    const c = renderTo(tpl);
+
+    expect(c.querySelector(".wifi-provisioning")).not.toBeNull();
+  });
+
+  it("renders adding_device state", () => {
+    const el = createView();
+    (el as any)._showUsbFlash = true;
+    (el as any)._usbFlashState = { step: "adding_device" };
+    const tpl = (el as any).render();
+    const c = renderTo(tpl);
+
+    expect(c.textContent).toContain("flasher.usb_step_adding");
+  });
+
+  it("dispatches usb-flash event with variant when Flash via USB clicked", async () => {
+    const el = createView();
+    (el as any)._showUsbFlash = true;
+    (el as any)._usbFlashState = null;
+    document.body.appendChild(el);
+    await el.updateComplete;
+
+    const events: Event[] = [];
+    el.addEventListener("usb-flash", (e) => events.push(e));
+
+    const root = el.shadowRoot!;
+    const flashBtn = root.querySelector(".usb-flash-btn") as HTMLButtonElement;
+    flashBtn.click();
+
+    expect(events.length).toBe(1);
+    expect((events[0] as CustomEvent).detail).toEqual({
+      variant: "wifi-ble-co2",
+    });
+  });
+
+  it("dispatches usb-retry event when Retry clicked", async () => {
+    const el = createView();
+    (el as any)._showUsbFlash = true;
+    (el as any)._usbFlashState = { step: "error", error: "oops" };
+    document.body.appendChild(el);
+    await el.updateComplete;
+
+    const events: Event[] = [];
+    el.addEventListener("usb-retry", (e) => events.push(e));
+
+    const root = el.shadowRoot!;
+    const retryBtn = root.querySelector(".usb-retry-btn") as HTMLButtonElement;
+    retryBtn.click();
+
+    expect(events.length).toBe(1);
+  });
+
+  it("cancel hides USB flash view and resets state", async () => {
+    const el = createView();
+    (el as any)._showUsbFlash = true;
+    (el as any)._usbFlashState = { step: "flashing", progress: 50 };
+    document.body.appendChild(el);
+    await el.updateComplete;
+
+    const root = el.shadowRoot!;
+    const cancelBtn = root.querySelector(".usb-back-btn") as HTMLButtonElement;
+    cancelBtn.click();
+
+    expect((el as any)._showUsbFlash).toBe(false);
+    expect((el as any)._usbFlashState).toBeNull();
+  });
 });

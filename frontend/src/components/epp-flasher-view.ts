@@ -2,7 +2,7 @@ import { html, LitElement, nothing } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
 import type { WifiNetwork } from "../lib/improv-serial.js";
 import { flasherStyles } from "../styles.js";
-import type { FlashableDevice, OtaProgress, OtaStep } from "../types.js";
+import type { FlashableDevice, OtaProgress, OtaStep, UsbFlashState } from "../types.js";
 
 const OTA_STEP_KEYS: { step: OtaStep; key: string }[] = [
 	{ step: "removing_old_device", key: "flasher.step_removing" },
@@ -44,6 +44,7 @@ export class EppFlasherView extends LitElement {
 	@state() private _wifiConnected = false;
 	@state() private _deviceIp: string | null = null;
 	@state() private _showWifiProvisioning = false;
+	@state() private _usbFlashState: UsbFlashState | null = null;
 
 	private _dispatchFlashOta(): void {
 		if (!this._confirmDevice) return;
@@ -68,6 +69,27 @@ export class EppFlasherView extends LitElement {
 		this.dispatchEvent(
 			new CustomEvent("flash-complete", { bubbles: true, composed: true }),
 		);
+	}
+
+	private _dispatchUsbFlash(): void {
+		this.dispatchEvent(
+			new CustomEvent("usb-flash", {
+				detail: { variant: this._getFirmwareVariant() },
+				bubbles: true,
+				composed: true,
+			}),
+		);
+	}
+
+	private _dispatchUsbRetry(): void {
+		this.dispatchEvent(
+			new CustomEvent("usb-retry", { bubbles: true, composed: true }),
+		);
+	}
+
+	private _onUsbBack(): void {
+		this._showUsbFlash = false;
+		this._usbFlashState = null;
 	}
 
 	private _dispatchWifiScan(): void {
@@ -428,9 +450,79 @@ export class EppFlasherView extends LitElement {
 	}
 
 	private _renderUsbFlash() {
-		const manifestUrl = encodeURIComponent(this._getManifestUrl());
-		const iframeSrc = `/eppgrid_static/usb-flasher.html?manifest=${manifestUrl}`;
+		const state = this._usbFlashState;
 
+		// WiFi provisioning (full-screen takeover)
+		if (state?.step === "wifi_provision" && this._showWifiProvisioning) {
+			return this._renderWifiProvisioning();
+		}
+
+		// Error state
+		if (state?.step === "error") {
+			return html`
+				<div class="flasher-container">
+					<div class="usb-error">
+						<p>${state.error}</p>
+						<div class="confirm-actions">
+							<button class="usb-back-btn" @click=${this._onUsbBack}>
+								${this.localize("flasher.usb_back")}
+							</button>
+							<button class="usb-retry-btn" @click=${this._dispatchUsbRetry}>
+								${this.localize("flasher.usb_retry")}
+							</button>
+						</div>
+					</div>
+				</div>
+			`;
+		}
+
+		// Complete state
+		if (state?.step === "complete") {
+			return html`
+				<div class="flasher-container">
+					<div class="usb-status">
+						<p>${this.localize("flasher.usb_step_complete")}</p>
+						${state.ip ? html`<p>${this.localize("flasher.ip_address")}: ${state.ip}</p>` : nothing}
+						<div class="confirm-actions">
+							<button class="go-device-btn" @click=${this._dispatchFlashComplete}>
+								${this.localize("flasher.go_to_config")}
+							</button>
+						</div>
+					</div>
+				</div>
+			`;
+		}
+
+		// In-progress states (connecting, flashing, wifi_scan, reading_ip, adding_device)
+		if (state && state.step !== "idle") {
+			const stepKeyMap: Record<string, string> = {
+				connecting: "flasher.usb_step_connecting",
+				flashing: "flasher.usb_step_flashing",
+				wifi_scan: "flasher.usb_step_scanning",
+				wifi_provision: "flasher.usb_step_provisioning",
+				reading_ip: "flasher.usb_step_reading_ip",
+				adding_device: "flasher.usb_step_adding",
+			};
+			const stepKey = stepKeyMap[state.step] ?? state.step;
+			return html`
+				<div class="flasher-container">
+					<div class="usb-status">
+						<p>${this.localize(stepKey)}</p>
+						${state.step === "flashing" && state.progress != null
+							? html`<div class="usb-progress">
+									<div class="usb-progress-bar" style="width: ${state.progress}%"></div>
+									<span>${state.progress}%</span>
+								</div>`
+							: nothing}
+					</div>
+					<button class="usb-back-btn" @click=${this._onUsbBack}>
+						${this.localize("flasher.usb_back")}
+					</button>
+				</div>
+			`;
+		}
+
+		// Idle state — variant selector + flash button
 		return html`
 			<div class="flasher-container">
 				<h2>${this.localize("flasher.title")}</h2>
@@ -438,27 +530,19 @@ export class EppFlasherView extends LitElement {
 				<div class="variant-selector">
 					<button
 						class="variant-option ${this._selectedVariant === "wifi" ? "selected" : ""}"
-						@click=${() => {
-							this._selectedVariant = "wifi";
-						}}
+						@click=${() => { this._selectedVariant = "wifi"; }}
 					>${this.localize("flasher.wifi")}</button>
 					<button
 						class="variant-option ${this._selectedVariant === "ethernet" ? "selected" : ""}"
-						@click=${() => {
-							this._selectedVariant = "ethernet";
-						}}
+						@click=${() => { this._selectedVariant = "ethernet"; }}
 					>${this.localize("flasher.ethernet")}</button>
 				</div>
-				<iframe
-					src=${iframeSrc}
-					class="usb-flash-iframe"
-					allow="serial"
-				></iframe>
+				<button class="usb-flash-btn" @click=${this._dispatchUsbFlash}>
+					${this.localize("flasher.usb_flash")}
+				</button>
 				<div style="margin-top: 16px;">
-					<button class="cancel-btn" @click=${() => {
-						this._showUsbFlash = false;
-					}}>
-						${this.localize("common.cancel")}
+					<button class="usb-back-btn" @click=${this._onUsbBack}>
+						${this.localize("flasher.usb_back")}
 					</button>
 				</div>
 			</div>
