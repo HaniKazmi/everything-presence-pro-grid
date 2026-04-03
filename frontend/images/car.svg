@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 80 160" width="80" height="160" fill="none" stroke="black" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+  <!-- Car body -->
+  <rect x="8" y="5" width="64" height="150" rx="20" ry="20"/>
+
+  <!-- Windscreen -->
+  <path d="M 14,35 L 14,50 Q 14,55 20,55 L 60,55 Q 66,55 66,50 L 66,35" stroke-width="1.5"/>
+
+  <!-- Rear window -->
+  <path d="M 14,125 L 14,115 Q 14,110 20,110 L 60,110 Q 66,110 66,115 L 66,125" stroke-width="1.5"/>
+
+  <!-- Roof / cabin -->
+  <rect x="14" y="55" width="52" height="55" rx="3" ry="3" stroke-width="1.5"/>
+
+  <!-- Wing mirrors -->
+  <ellipse cx="4" cy="48" rx="4" ry="3"/>
+  <ellipse cx="76" cy="48" rx="4" ry="3"/>
+
+  <!-- Front wheels -->
+  <rect x="2" y="25" width="6" height="16" rx="2" ry="2" fill="black"/>
+  <rect x="72" y="25" width="6" height="16" rx="2" ry="2" fill="black"/>
+
+  <!-- Rear wheels -->
+  <rect x="2" y="118" width="6" height="16" rx="2" ry="2" fill="black"/>
+  <rect x="72" y="118" width="6" height="16" rx="2" ry="2" fill="black"/>
+
+  <!-- Headlights -->
+  <circle cx="22" cy="12" r="4"/>
+  <circle cx="58" cy="12" r="4"/>
+</svg>

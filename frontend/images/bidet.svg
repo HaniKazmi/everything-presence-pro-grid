@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 80 100" width="80" height="100" fill="none" stroke="black" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+  <!-- Outer bowl -->
+  <ellipse cx="40" cy="50" rx="30" ry="40"/>
+
+  <!-- Inner basin -->
+  <ellipse cx="40" cy="53" rx="20" ry="28"/>
+
+  <!-- Tap -->
+  <circle cx="40" cy="18" r="4"/>
+  <circle cx="40" cy="18" r="1.5" fill="black" stroke="none"/>
+</svg>
