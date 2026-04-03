@@ -382,17 +382,15 @@ describe("_getSensorFov", () => {
 	});
 });
 
-describe("_isCellInSensorRange", () => {
-	it("returns a boolean", () => {
+describe("_computeMaxRangeMm", () => {
+	it("returns manual distance in mm when auto-range is off", () => {
 		const el = createPanel();
 		const a = el as any;
-		a._perspective = [1, 0, 0, 0, 1, 0, 0, 0];
-		a._roomWidth = 3000;
 		a._targetAutoDistance = false;
 		a._targetMaxDistance = 6;
 
-		const result = a._isCellInSensorRange(10, 10);
-		expect(typeof result).toBe("boolean");
+		const result = a._computeMaxRangeMm();
+		expect(result).toBe(6000);
 	});
 });
 

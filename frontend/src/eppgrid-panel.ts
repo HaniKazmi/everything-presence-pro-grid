@@ -709,15 +709,12 @@ export class EPPGridPanel extends LitElement {
 		return this._fovCache;
 	}
 
-	private _isCellInSensorRange(col: number, row: number): boolean {
-		const fov = this._getSensorFov();
-		const autoRange = this._autoDetectionRange();
-		const maxRangeMm = computeMaxRangeMm(
+	private _computeMaxRangeMm(): number {
+		return computeMaxRangeMm(
 			this._targetAutoDistance,
-			autoRange,
+			this._targetAutoDistance ? this._autoDetectionRange() : 0,
 			this._targetMaxDistance,
 		);
-		return isCellInSensorRange(col, row, fov, this._roomWidth, maxRangeMm);
 	}
 
 	/** Compute room dimensions and furthest point from sensor based on grid */
@@ -1865,12 +1862,21 @@ export class EPPGridPanel extends LitElement {
 				roomOccupied;
 		}
 
+		const fov = this._getSensorFov();
+		const maxRangeMm = this._computeMaxRangeMm();
+
 		const cells = [];
 		for (let r = minRow; r <= maxRow; r++) {
 			for (let c = minCol; c <= maxCol; c++) {
 				const idx = r * GRID_COLS + c;
 				const cellVal = this._grid[idx];
-				const inRange = this._isCellInSensorRange(c, r);
+				const inRange = isCellInSensorRange(
+					c,
+					r,
+					fov,
+					this._roomWidth,
+					maxRangeMm,
+				);
 				let bg = inRange ? this._getCellColor(idx) : CELL_BG_OUT_OF_RANGE;
 				let border = "";
 				if (inRange && cellIsInside(cellVal)) {
