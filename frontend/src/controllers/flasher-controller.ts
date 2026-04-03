@@ -1,5 +1,6 @@
 import type { ReactiveController, ReactiveControllerHost } from "lit";
-import type { FlashableDevice, OtaProgress } from "../types.js";
+import type { WifiNetwork } from "../lib/improv-serial.js";
+import type { FlashableDevice, OtaProgress, UsbFlashState } from "../types.js";
 
 export class FlasherController implements ReactiveController {
 	flashableDevices: FlashableDevice[] = [];
@@ -9,10 +10,13 @@ export class FlasherController implements ReactiveController {
 	usbConnected = false;
 	usbDeviceMac: string | null = null;
 	usbExistingDevice: FlashableDevice | null = null;
+	usbFlashState: UsbFlashState | null = null;
+	wifiNetworks: WifiNetwork[] = [];
 
 	private _host: ReactiveControllerHost;
 	private _hass: any = null;
 	private _unsubOta?: () => void;
+	private _serialPort: SerialPort | null = null;
 
 	constructor(host: ReactiveControllerHost) {
 		this._host = host;
@@ -23,6 +27,8 @@ export class FlasherController implements ReactiveController {
 	hostDisconnected(): void {
 		this._unsubOta?.();
 		this._unsubOta = undefined;
+		this._serialPort?.close().catch(() => {});
+		this._serialPort = null;
 	}
 
 	get hass(): any {
@@ -102,5 +108,24 @@ export class FlasherController implements ReactiveController {
 	async addEsphomeDevice(host: string): Promise<void> {
 		if (!this._hass) return;
 		await this._hass.callWS({ type: "eppgrid/add_esphome_device", host });
+	}
+
+	updateUsbState(state: UsbFlashState): void {
+		this.usbFlashState = state;
+		this._host.requestUpdate();
+	}
+
+	resetUsbState(): void {
+		this.usbFlashState = null;
+		this.wifiNetworks = [];
+		this._host.requestUpdate();
+	}
+
+	set serialPort(port: SerialPort | null) {
+		this._serialPort = port;
+	}
+
+	get serialPort(): SerialPort | null {
+		return this._serialPort;
 	}
 }

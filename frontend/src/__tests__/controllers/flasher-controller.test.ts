@@ -327,4 +327,57 @@ describe("FlasherController", () => {
 			expect(ctrl.hass).toBe(h);
 		});
 	});
+
+	// --- USB Flash State ---
+	describe("USB flash state", () => {
+		it("initializes usbFlashState to null", () => {
+			const freshHost = mockHost();
+			const freshCtrl = new FlasherController(freshHost);
+			expect(freshCtrl.usbFlashState).toBeNull();
+		});
+
+		it("initializes wifiNetworks to empty array", () => {
+			const freshHost = mockHost();
+			const freshCtrl = new FlasherController(freshHost);
+			expect(freshCtrl.wifiNetworks).toEqual([]);
+		});
+
+		it("initializes serialPort to null", () => {
+			const freshHost = mockHost();
+			const freshCtrl = new FlasherController(freshHost);
+			expect((freshCtrl as any)._serialPort).toBeNull();
+		});
+	});
+
+	describe("updateUsbState", () => {
+		it("sets usbFlashState and requests update", () => {
+			ctrl.updateUsbState({ step: "flashing", progress: 42 });
+			expect(ctrl.usbFlashState).toEqual({ step: "flashing", progress: 42 });
+			expect(host.requestUpdate).toHaveBeenCalled();
+		});
+
+		it("merges partial state updates", () => {
+			ctrl.updateUsbState({ step: "flashing", progress: 0 });
+			ctrl.updateUsbState({ step: "flashing", progress: 75 });
+			expect(ctrl.usbFlashState).toEqual({ step: "flashing", progress: 75 });
+		});
+	});
+
+	describe("resetUsbState", () => {
+		it("clears USB flash state", () => {
+			ctrl.updateUsbState({ step: "flashing" });
+			ctrl.resetUsbState();
+			expect(ctrl.usbFlashState).toBeNull();
+			expect(ctrl.wifiNetworks).toEqual([]);
+		});
+	});
+
+	describe("hostDisconnected with USB", () => {
+		it("closes serial port if open", () => {
+			const mockPort = { close: vi.fn().mockResolvedValue(undefined) };
+			(ctrl as any)._serialPort = mockPort;
+			ctrl.hostDisconnected();
+			expect(mockPort.close).toHaveBeenCalled();
+		});
+	});
 });
