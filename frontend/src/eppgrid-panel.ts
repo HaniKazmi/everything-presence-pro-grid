@@ -945,6 +945,17 @@ export class EPPGridPanel extends LitElement {
       border-bottom-color: var(--app-header-text-color, white);
     }
 
+    .primary-btn {
+      padding: 10px 24px;
+      border-radius: 10px;
+      border: none;
+      cursor: pointer;
+      font-size: 15px;
+      font-weight: 500;
+      background: var(--primary-color, #03a9f4);
+      color: #fff;
+    }
+
   `,
 	];
 
@@ -1057,11 +1068,15 @@ export class EPPGridPanel extends LitElement {
 				${this._renderTabBar()}
 				<div class="loading-container">
 					<p>${this._localize("flasher.no_eppgrid_devices")}</p>
-					<button @click=${() => {
-						this._panelTab = "flasher";
-					}}>
-						${this._localize("flasher.flash_from_tab")}
-					</button>
+					<p style="margin-top: 16px;">
+						<button class="primary-btn" @click=${() => {
+							this._panelTab = "flasher";
+							this._flasherCtrl.hass = this.hass;
+							this._flasherCtrl.loadDevices();
+						}}>
+							${this._localize("flasher.flash_from_tab")}
+						</button>
+					</p>
 				</div>
 			</div>`;
 		}

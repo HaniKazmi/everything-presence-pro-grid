@@ -3314,9 +3314,11 @@ const At=2,Pt=t=>(...e)=>({_$litDirective$:t,values:e});class Ht{constructor(t){
 				${this._renderTabBar()}
 				<div class="loading-container">
 					<p>${this._localize("flasher.no_eppgrid_devices")}</p>
-					<button @click=${()=>{this._panelTab="flasher"}}>
-						${this._localize("flasher.flash_from_tab")}
-					</button>
+					<p style="margin-top: 16px;">
+						<button class="primary-btn" @click=${()=>{this._panelTab="flasher",this._flasherCtrl.hass=this.hass,this._flasherCtrl.loadDevices()}}>
+							${this._localize("flasher.flash_from_tab")}
+						</button>
+					</p>
 				</div>
 			</div>`;if(null!==this._setupStep)return G`
         <epp-wizard
@@ -3898,6 +3900,17 @@ const At=2,Pt=t=>(...e)=>({_$litDirective$:t,values:e});class Ht{constructor(t){
     .tab.active {
       opacity: 1;
       border-bottom-color: var(--app-header-text-color, white);
+    }
+
+    .primary-btn {
+      padding: 10px 24px;
+      border-radius: 10px;
+      border: none;
+      cursor: pointer;
+      font-size: 15px;
+      font-weight: 500;
+      background: var(--primary-color, #03a9f4);
+      color: #fff;
     }
 
   `],t([gt({attribute:!1})],es.prototype,"hass",void 0),t([ft()],es.prototype,"_grid",void 0),t([ft()],es.prototype,"_zoneConfigs",void 0),t([ft()],es.prototype,"_activeZone",void 0),t([ft()],es.prototype,"_roomType",void 0),t([ft()],es.prototype,"_roomTrigger",void 0),t([ft()],es.prototype,"_roomRenew",void 0),t([ft()],es.prototype,"_roomTimeout",void 0),t([ft()],es.prototype,"_roomHandoffTimeout",void 0),t([ft()],es.prototype,"_targetAutoDistance",void 0),t([ft()],es.prototype,"_targetMaxDistance",void 0),t([ft()],es.prototype,"_staticAutoDistance",void 0),t([ft()],es.prototype,"_staticMinDistance",void 0),t([ft()],es.prototype,"_staticMaxDistance",void 0),t([ft()],es.prototype,"_temperatureOffset",void 0),t([ft()],es.prototype,"_humidityOffset",void 0),t([ft()],es.prototype,"_illuminanceOffset",void 0),t([ft()],es.prototype,"_motionTimeout",void 0),t([ft()],es.prototype,"_staticTimeout",void 0),t([ft()],es.prototype,"_staticTriggerThreshold",void 0),t([ft()],es.prototype,"_staticRenewThreshold",void 0),t([ft()],es.prototype,"_staticOnDelay",void 0),t([ft()],es.prototype,"_logLevels",void 0),t([ft()],es.prototype,"_bluetoothEnabled",void 0),t([ft()],es.prototype,"_co2Enabled",void 0),t([ft()],es.prototype,"_ledMode",void 0),t([ft()],es.prototype,"_ledBrightness",void 0),t([ft()],es.prototype,"_ledPresenceColor",void 0),t([ft()],es.prototype,"_relayTriggerMode",void 0),t([ft()],es.prototype,"_relayContactMode",void 0),t([ft()],es.prototype,"_targetUpdateRateMs",void 0),t([ft()],es.prototype,"_zoneUpdateRateMs",void 0),t([ft()],es.prototype,"_entitiesConfig",void 0),t([ft()],es.prototype,"_sidebarTab",void 0),t([ft()],es.prototype,"_panelTab",void 0),t([ft()],es.prototype,"_showDeleteCalibrationDialog",void 0),t([ft()],es.prototype,"_showLiveMenu",void 0),t([ft()],es.prototype,"_showCustomIconPicker",void 0),t([ft()],es.prototype,"_customIconValue",void 0),t([ft()],es.prototype,"_furniture",void 0),t([ft()],es.prototype,"_selectedFurnitureId",void 0),t([ft()],es.prototype,"_targets",void 0),t([ft()],es.prototype,"_rawTargets",void 0),t([ft()],es.prototype,"_sensorState",void 0),t([ft()],es.prototype,"_zoneState",void 0),t([ft()],es.prototype,"_showHitCounts",void 0),t([ft()],es.prototype,"_showDebugLog",void 0),t([ft()],es.prototype,"_showBackendDebugLog",void 0),t([ft()],es.prototype,"_overlayMode",void 0),t([ft()],es.prototype,"_targetMenu",void 0),t([ft()],es.prototype,"_isPainting",void 0),t([ft()],es.prototype,"_paintAction",void 0),t([ft()],es.prototype,"_saving",void 0),t([ft()],es.prototype,"_dirty",void 0),t([ft()],es.prototype,"_showUnsavedDialog",void 0),t([ft()],es.prototype,"_showTemplateSave",void 0),t([ft()],es.prototype,"_showTemplateLoad",void 0),t([ft()],es.prototype,"_templateName",void 0),t([ft()],es.prototype,"_devices",void 0),t([ft()],es.prototype,"_selectedMac",void 0),t([ft()],es.prototype,"_loading",void 0),t([ft()],es.prototype,"_setupStep",void 0),t([ft()],es.prototype,"_view",void 0),t([ft()],es.prototype,"_openAccordions",void 0),t([ft()],es.prototype,"_perspective",void 0),t([ft()],es.prototype,"_roomWidth",void 0),t([ft()],es.prototype,"_roomDepth",void 0),customElements.get("eppgrid-panel")||customElements.define("eppgrid-panel",es);let is=class extends ct{setConfig(t){}render(){return G`<eppgrid-panel .hass=${this.hass}></eppgrid-panel>`}};is.styles=n`:host { display: block; height: 100%; }`,t([gt({attribute:!1})],is.prototype,"hass",void 0),is=t([dt("epp-device-card")],is);let ss=class extends ct{constructor(){super(...arguments),this._flasherCtrl=new Re(this)}setConfig(t){}updated(t){t.has("hass")&&this.hass&&(this._flasherCtrl.hass=this.hass,this._flasherCtrl.loading&&this._flasherCtrl.loadDevices())}render(){return G`
