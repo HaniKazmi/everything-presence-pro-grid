@@ -237,20 +237,22 @@ export class EppFlasherView extends LitElement {
 	private _renderWifiProvisioning() {
 		if (this._wifiConnected) {
 			return html`
-        <div class="wifi-provisioning">
-          <h3>${this.localize("flasher.configure_wifi")}</h3>
-          <p>
-            ${this.localize("flasher.connected_to", { ssid: this._selectedSsid })}
-            ${this._deviceIp ? html` — ${this.localize("flasher.ip_address", { ip: this._deviceIp })}` : nothing}
-          </p>
-          <div class="confirm-actions">
-            <button
-              class="wifi-continue-btn"
-              @click=${this._dispatchWifiComplete}
-            >
-              ${this.localize("flasher.continue")}
-            </button>
-          </div>
+        <div class="flasher-content">
+          <ha-card>
+            <div class="card-header">${this.localize("flasher.configure_wifi")}</div>
+            <div class="card-content">
+              <div class="usb-complete">
+                <ha-icon icon="mdi:wifi-check"></ha-icon>
+                <p>${this.localize("flasher.connected_to", { ssid: this._selectedSsid })}</p>
+                ${this._deviceIp ? html`<p class="usb-ip">${this.localize("flasher.ip_address", { ip: this._deviceIp })}</p>` : nothing}
+              </div>
+              <div class="confirm-actions">
+                <button class="go-device-btn wifi-continue-btn" @click=${this._dispatchWifiComplete}>
+                  ${this.localize("flasher.continue")}
+                </button>
+              </div>
+            </div>
+          </ha-card>
         </div>
       `;
 		}
@@ -258,92 +260,91 @@ export class EppFlasherView extends LitElement {
 		const sortedNetworks = [...this.wifiNetworks].sort(
 			(a, b) => b.rssi - a.rssi,
 		);
+		const showManual = this._manualSsid || sortedNetworks.length === 0;
 
 		return html`
-      <div class="wifi-provisioning">
-        <h3>${this.localize("flasher.configure_wifi")}</h3>
+      <div class="flasher-content">
+        <ha-card>
+          <div class="card-header">${this.localize("flasher.configure_wifi")}</div>
+          <div class="card-content wifi-form">
 
-        <div class="wifi-scan-row">
-          <button class="wifi-scan-btn" @click=${this._dispatchWifiScan}>
-            ${this.localize("flasher.scan")}
-          </button>
-          ${
-						this._wifiScanning
-							? html`<span class="wifi-scanning">${this.localize("flasher.scanning")}</span>`
-							: nothing
-					}
-        </div>
+            ${sortedNetworks.length > 0
+              ? html`
+                <select
+                  class="wifi-network-select"
+                  .value=${this._selectedSsid}
+                  @change=${(e: Event) => {
+                    this._selectedSsid = (e.target as HTMLSelectElement).value;
+                    this._manualSsid = false;
+                  }}
+                >
+                  <option value="">${this.localize("flasher.select_a_network")}</option>
+                  ${sortedNetworks.map(
+                    (n) => html`
+                      <option value="${n.ssid}">
+                        ${n.authRequired ? "🔒 " : ""}${n.ssid} (${n.rssi} dBm)
+                      </option>
+                    `,
+                  )}
+                </select>
+              `
+              : nothing
+            }
 
-        ${
-					sortedNetworks.length > 0
-						? html`
-              <select
-                class="wifi-network-select"
-                .value=${this._selectedSsid}
-                @change=${(e: Event) => {
-									this._selectedSsid = (e.target as HTMLSelectElement).value;
-								}}
-              >
-                <option value="">${this.localize("flasher.select_a_network")}</option>
-                ${sortedNetworks.map(
-									(n) => html`
-                    <option value="${n.ssid}">
-                      ${n.authRequired ? "🔒 " : ""}${n.ssid} (${n.rssi} dBm)
-                    </option>
-                  `,
-								)}
-              </select>
-            `
-						: nothing
-				}
-
-        <label class="wifi-manual-toggle">
-          <input
-            type="checkbox"
-            .checked=${this._manualSsid}
-            @change=${(e: Event) => {
-							this._manualSsid = (e.target as HTMLInputElement).checked;
-							if (!this._manualSsid) this._selectedSsid = "";
-						}}
-          />
-          ${this.localize("flasher.manual_ssid")}
-        </label>
-
-        ${
-					this._manualSsid
-						? html`
+            <label class="wifi-manual-toggle">
               <input
-                class="wifi-ssid-input"
-                type="text"
-                placeholder="${this.localize("flasher.enter_ssid")}"
-                .value=${this._selectedSsid}
-                @input=${(e: Event) => {
-									this._selectedSsid = (e.target as HTMLInputElement).value;
-								}}
+                type="checkbox"
+                .checked=${showManual}
+                @change=${(e: Event) => {
+                  this._manualSsid = (e.target as HTMLInputElement).checked;
+                  if (!this._manualSsid) this._selectedSsid = "";
+                }}
               />
-            `
-						: nothing
-				}
+              ${this.localize("flasher.manual_ssid")}
+            </label>
 
-        <input
-          class="wifi-password-input"
-          type="password"
-          placeholder="${this.localize("flasher.wifi_password")}"
-          .value=${this._wifiPassword}
-          @input=${(e: Event) => {
-						this._wifiPassword = (e.target as HTMLInputElement).value;
-					}}
-        />
+            ${showManual
+              ? html`
+                <input
+                  class="wifi-ssid-input"
+                  type="text"
+                  placeholder="${this.localize("flasher.enter_ssid")}"
+                  .value=${this._selectedSsid}
+                  @input=${(e: Event) => {
+                    this._selectedSsid = (e.target as HTMLInputElement).value;
+                  }}
+                />
+              `
+              : nothing
+            }
 
-        <div class="confirm-actions">
-          <button
-            class="wifi-configure-btn"
-            .disabled=${!this._selectedSsid}
-            @click=${this._dispatchWifiProvision}
-          >
-            ${this.localize("flasher.configure_wifi")}
-          </button>
-        </div>
+            <input
+              class="wifi-password-input"
+              type="password"
+              placeholder="${this.localize("flasher.wifi_password")}"
+              .value=${this._wifiPassword}
+              @input=${(e: Event) => {
+                this._wifiPassword = (e.target as HTMLInputElement).value;
+              }}
+            />
+
+            <div class="confirm-actions">
+              <button class="cancel-btn" @click=${this._onUsbBack}>
+                ${this.localize("flasher.usb_back")}
+              </button>
+              <button class="wifi-scan-btn flash-btn" @click=${this._dispatchWifiScan}>
+                ${this._wifiScanning ? this.localize("flasher.scanning") : this.localize("flasher.scan")}
+              </button>
+              <button
+                class="flash-btn wifi-configure-btn"
+                .disabled=${!this._selectedSsid}
+                @click=${this._dispatchWifiProvision}
+              >
+                ${this.localize("flasher.configure_wifi")}
+              </button>
+            </div>
+          </div>
+        </ha-card>
       </div>
     `;
 	}

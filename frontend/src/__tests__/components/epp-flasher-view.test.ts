@@ -445,12 +445,12 @@ describe("event dispatching", () => {
 describe("render() WiFi provisioning — connected state", () => {
 	it("renders wifi provisioning view when _showWifiProvisioning is true", () => {
 		const el = createView();
-		(el as any)._showWifiProvisioning = true;
+		(el as any).usbFlashState = { step: "wifi_provision" };
 		(el as any)._wifiConnected = false;
 		const tpl = (el as any).render();
 		const c = renderTo(tpl);
 
-		expect(c.querySelector(".wifi-provisioning")).not.toBeNull();
+		expect(c.querySelector(".wifi-form")).not.toBeNull();
 	});
 
 	it("shows connected network and IP when _wifiConnected=true", () => {
@@ -608,6 +608,7 @@ describe("render() WiFi provisioning — not connected state", () => {
 		(el as any)._showWifiProvisioning = true;
 		(el as any)._wifiConnected = false;
 		(el as any)._manualSsid = false;
+		(el as any).wifiNetworks = [{ ssid: "TestNet", rssi: -50, authRequired: false }];
 		const tpl = (el as any).render();
 		const c = renderTo(tpl);
 
@@ -703,7 +704,7 @@ describe("render() WiFi provisioning — not connected state", () => {
 		const c = renderTo(tpl);
 
 		// WiFi provisioning takes priority
-		expect(c.querySelector(".wifi-provisioning")).not.toBeNull();
+		expect(c.querySelector(".wifi-form")).not.toBeNull();
 		expect(c.querySelector(".progress-steps")).toBeNull();
 	});
 
@@ -715,7 +716,9 @@ describe("render() WiFi provisioning — not connected state", () => {
 		const tpl = (el as any).render();
 		const c = renderTo(tpl);
 
-		expect(c.querySelector(".wifi-scanning")).not.toBeNull();
+		const scanBtn = c.querySelector(".wifi-scan-btn") as HTMLButtonElement;
+		expect(scanBtn).not.toBeNull();
+		expect(scanBtn.textContent?.trim()).toContain("flasher.scanning");
 	});
 });
 
@@ -940,11 +943,10 @@ describe("USB flash view — state-driven", () => {
 		const el = createView();
 		(el as any)._showUsbFlash = true;
 		(el as any).usbFlashState = { step: "wifi_provision" };
-		(el as any)._showWifiProvisioning = true;
 		const tpl = (el as any).render();
 		const c = renderTo(tpl);
 
-		expect(c.querySelector(".wifi-provisioning")).not.toBeNull();
+		expect(c.querySelector(".wifi-form")).not.toBeNull();
 	});
 
 	it("renders adding_device state", () => {

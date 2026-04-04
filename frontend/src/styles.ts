@@ -699,6 +699,48 @@ export const flasherStyles = css`
     color: var(--primary-text-color, #212121);
   }
 
+  .wifi-form {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .wifi-network-select {
+    width: 100%;
+    padding: 10px 12px;
+    border: 1px solid var(--divider-color, #e0e0e0);
+    border-radius: 8px;
+    font-size: 14px;
+    background: var(--card-background-color, #fff);
+    color: var(--primary-text-color, #212121);
+  }
+
+  .wifi-manual-toggle {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 13px;
+    color: var(--secondary-text-color, #757575);
+    cursor: pointer;
+  }
+
+  .wifi-ssid-input,
+  .wifi-password-input {
+    width: 100%;
+    padding: 10px 12px;
+    border: 1px solid var(--divider-color, #e0e0e0);
+    border-radius: 8px;
+    font-size: 14px;
+    background: var(--card-background-color, #fff);
+    color: var(--primary-text-color, #212121);
+    box-sizing: border-box;
+  }
+
+  .wifi-ssid-input::placeholder,
+  .wifi-password-input::placeholder {
+    color: var(--secondary-text-color, #757575);
+  }
+
   .usb-progress {
     margin-top: 16px;
     background: var(--divider-color, #e0e0e0);
