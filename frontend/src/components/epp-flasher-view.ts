@@ -36,12 +36,14 @@ export class EppFlasherView extends LitElement {
 
 	@state() private _selectedVariant: "wifi" | "ethernet" = "wifi";
 	@state() private _confirmDevice: FlashableDevice | null = null;
+	@property({ attribute: false }) usbFlashState: UsbFlashState | null = null;
+	@property({ attribute: false }) wifiNetworks: WifiNetwork[] = [];
+
 	@state() private _hasWebSerial: boolean =
 		typeof navigator !== "undefined" && "serial" in navigator;
 	@state() private _showUsbFlash = false;
 
 	// WiFi provisioning state
-	@state() private _wifiNetworks: WifiNetwork[] = [];
 	@state() private _wifiScanning = false;
 	@state() private _selectedSsid = "";
 	@state() private _manualSsid = false;
@@ -49,7 +51,6 @@ export class EppFlasherView extends LitElement {
 	@state() private _wifiConnected = false;
 	@state() private _deviceIp: string | null = null;
 	@state() private _showWifiProvisioning = false;
-	@state() private _usbFlashState: UsbFlashState | null = null;
 
 	private _dispatchFlashOta(): void {
 		if (!this._confirmDevice) return;
@@ -94,7 +95,9 @@ export class EppFlasherView extends LitElement {
 
 	private _onUsbBack(): void {
 		this._showUsbFlash = false;
-		this._usbFlashState = null;
+		this.dispatchEvent(
+			new CustomEvent("usb-retry", { bubbles: true, composed: true }),
+		);
 	}
 
 	private _dispatchWifiScan(): void {
@@ -252,7 +255,7 @@ export class EppFlasherView extends LitElement {
       `;
 		}
 
-		const sortedNetworks = [...this._wifiNetworks].sort(
+		const sortedNetworks = [...this.wifiNetworks].sort(
 			(a, b) => b.rssi - a.rssi,
 		);
 
@@ -453,7 +456,7 @@ export class EppFlasherView extends LitElement {
 			return this._renderOtaProgress(this.otaProgress);
 		}
 
-		if (this._showUsbFlash) {
+		if (this._showUsbFlash || this.usbFlashState) {
 			return this._renderUsbFlash();
 		}
 
@@ -479,7 +482,7 @@ export class EppFlasherView extends LitElement {
 	}
 
 	private _renderUsbFlash() {
-		const state = this._usbFlashState;
+		const state = this.usbFlashState;
 
 		// WiFi provisioning (full-screen takeover)
 		if (state?.step === "wifi_provision" && this._showWifiProvisioning) {

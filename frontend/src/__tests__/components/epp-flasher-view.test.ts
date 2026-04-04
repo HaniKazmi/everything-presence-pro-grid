@@ -516,7 +516,7 @@ describe("render() WiFi provisioning — not connected state", () => {
 		const el = createView();
 		(el as any)._showWifiProvisioning = true;
 		(el as any)._wifiConnected = false;
-		(el as any)._wifiNetworks = [
+		(el as any).wifiNetworks = [
 			{ ssid: "NetworkA", rssi: -50, authRequired: true },
 			{ ssid: "NetworkB", rssi: -70, authRequired: false },
 		];
@@ -533,7 +533,7 @@ describe("render() WiFi provisioning — not connected state", () => {
 		const el = createView();
 		(el as any)._showWifiProvisioning = true;
 		(el as any)._wifiConnected = false;
-		(el as any)._wifiNetworks = [
+		(el as any).wifiNetworks = [
 			{ ssid: "Weak", rssi: -90, authRequired: false },
 			{ ssid: "Strong", rssi: -40, authRequired: false },
 			{ ssid: "Medium", rssi: -65, authRequired: false },
@@ -553,7 +553,7 @@ describe("render() WiFi provisioning — not connected state", () => {
 		const el = createView();
 		(el as any)._showWifiProvisioning = true;
 		(el as any)._wifiConnected = false;
-		(el as any)._wifiNetworks = [
+		(el as any).wifiNetworks = [
 			{ ssid: "Locked", rssi: -50, authRequired: true },
 		];
 		const tpl = (el as any).render();
@@ -570,7 +570,7 @@ describe("render() WiFi provisioning — not connected state", () => {
 		const el = createView();
 		(el as any)._showWifiProvisioning = true;
 		(el as any)._wifiConnected = false;
-		(el as any)._wifiNetworks = [
+		(el as any).wifiNetworks = [
 			{ ssid: "MyNet", rssi: -55, authRequired: false },
 		];
 		const tpl = (el as any).render();
@@ -782,7 +782,7 @@ describe("WiFi provisioning DOM event handlers", () => {
 		const el = createView();
 		(el as any)._showWifiProvisioning = true;
 		(el as any)._wifiConnected = false;
-		(el as any)._wifiNetworks = [
+		(el as any).wifiNetworks = [
 			{ ssid: "NetworkA", rssi: -50, authRequired: false },
 		];
 		document.body.appendChild(el);
@@ -865,7 +865,7 @@ describe("USB flash view — state-driven", () => {
 	it("renders flashing progress bar when usbFlashState is flashing", () => {
 		const el = createView();
 		(el as any)._showUsbFlash = true;
-		(el as any)._usbFlashState = { step: "flashing", progress: 42 };
+		(el as any).usbFlashState = { step: "flashing", progress: 42 };
 		const tpl = (el as any).render();
 		const c = renderTo(tpl);
 
@@ -876,7 +876,7 @@ describe("USB flash view — state-driven", () => {
 	it("renders variant selector in idle state", () => {
 		const el = createView();
 		(el as any)._showUsbFlash = true;
-		(el as any)._usbFlashState = null;
+		(el as any).usbFlashState = null;
 		const tpl = (el as any).render();
 		const c = renderTo(tpl);
 
@@ -895,7 +895,7 @@ describe("USB flash view — state-driven", () => {
 	it("renders connecting state", () => {
 		const el = createView();
 		(el as any)._showUsbFlash = true;
-		(el as any)._usbFlashState = { step: "connecting" };
+		(el as any).usbFlashState = { step: "connecting" };
 		const tpl = (el as any).render();
 		const c = renderTo(tpl);
 
@@ -906,7 +906,7 @@ describe("USB flash view — state-driven", () => {
 	it("renders wifi scan state", () => {
 		const el = createView();
 		(el as any)._showUsbFlash = true;
-		(el as any)._usbFlashState = { step: "wifi_scan" };
+		(el as any).usbFlashState = { step: "wifi_scan" };
 		const tpl = (el as any).render();
 		const c = renderTo(tpl);
 
@@ -916,7 +916,7 @@ describe("USB flash view — state-driven", () => {
 	it("renders complete state with IP and go-to-config button", () => {
 		const el = createView();
 		(el as any)._showUsbFlash = true;
-		(el as any)._usbFlashState = { step: "complete", ip: "192.168.1.42" };
+		(el as any).usbFlashState = { step: "complete", ip: "192.168.1.42" };
 		const tpl = (el as any).render();
 		const c = renderTo(tpl);
 
@@ -927,7 +927,7 @@ describe("USB flash view — state-driven", () => {
 	it("renders error state with retry button", () => {
 		const el = createView();
 		(el as any)._showUsbFlash = true;
-		(el as any)._usbFlashState = { step: "error", error: "flash failed" };
+		(el as any).usbFlashState = { step: "error", error: "flash failed" };
 		const tpl = (el as any).render();
 		const c = renderTo(tpl);
 
@@ -939,7 +939,7 @@ describe("USB flash view — state-driven", () => {
 	it("renders wifi_provision state with existing WiFi provisioning UI", () => {
 		const el = createView();
 		(el as any)._showUsbFlash = true;
-		(el as any)._usbFlashState = { step: "wifi_provision" };
+		(el as any).usbFlashState = { step: "wifi_provision" };
 		(el as any)._showWifiProvisioning = true;
 		const tpl = (el as any).render();
 		const c = renderTo(tpl);
@@ -950,7 +950,7 @@ describe("USB flash view — state-driven", () => {
 	it("renders adding_device state", () => {
 		const el = createView();
 		(el as any)._showUsbFlash = true;
-		(el as any)._usbFlashState = { step: "adding_device" };
+		(el as any).usbFlashState = { step: "adding_device" };
 		const tpl = (el as any).render();
 		const c = renderTo(tpl);
 
@@ -960,7 +960,7 @@ describe("USB flash view — state-driven", () => {
 	it("dispatches usb-flash event with variant when Flash via USB clicked", async () => {
 		const el = createView();
 		(el as any)._showUsbFlash = true;
-		(el as any)._usbFlashState = null;
+		(el as any).usbFlashState = null;
 		document.body.appendChild(el);
 		await el.updateComplete;
 
@@ -980,7 +980,7 @@ describe("USB flash view — state-driven", () => {
 	it("dispatches usb-retry event when Retry clicked", async () => {
 		const el = createView();
 		(el as any)._showUsbFlash = true;
-		(el as any)._usbFlashState = { step: "error", error: "oops" };
+		(el as any).usbFlashState = { step: "error", error: "oops" };
 		document.body.appendChild(el);
 		await el.updateComplete;
 
@@ -997,7 +997,7 @@ describe("USB flash view — state-driven", () => {
 	it("cancel hides USB flash view and resets state", async () => {
 		const el = createView();
 		(el as any)._showUsbFlash = true;
-		(el as any)._usbFlashState = null;
+		(el as any).usbFlashState = null;
 		document.body.appendChild(el);
 		await el.updateComplete;
 
@@ -1006,13 +1006,12 @@ describe("USB flash view — state-driven", () => {
 		cancelBtn.click();
 
 		expect((el as any)._showUsbFlash).toBe(false);
-		expect((el as any)._usbFlashState).toBeNull();
 	});
 
 	it("clicking ethernet variant button in USB flash idle updates _selectedVariant", async () => {
 		const el = createView();
 		(el as any)._showUsbFlash = true;
-		(el as any)._usbFlashState = null;
+		(el as any).usbFlashState = null;
 		(el as any)._selectedVariant = "wifi";
 		document.body.appendChild(el);
 		await el.updateComplete;
@@ -1029,7 +1028,7 @@ describe("USB flash view — state-driven", () => {
 	it("clicking wifi variant button in USB flash idle updates _selectedVariant", async () => {
 		const el = createView();
 		(el as any)._showUsbFlash = true;
-		(el as any)._usbFlashState = null;
+		(el as any).usbFlashState = null;
 		(el as any)._selectedVariant = "ethernet";
 		document.body.appendChild(el);
 		await el.updateComplete;
@@ -1045,7 +1044,7 @@ describe("USB flash view — state-driven", () => {
 	it("dispatches usb-flash with ethernet variant when ethernet is selected", async () => {
 		const el = createView();
 		(el as any)._showUsbFlash = true;
-		(el as any)._usbFlashState = null;
+		(el as any).usbFlashState = null;
 		(el as any)._selectedVariant = "ethernet";
 		document.body.appendChild(el);
 		await el.updateComplete;
