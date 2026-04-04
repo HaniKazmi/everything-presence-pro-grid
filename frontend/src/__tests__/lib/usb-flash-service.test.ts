@@ -341,8 +341,8 @@ describe("runWifiScan", () => {
 
 		const setSignals = port.setSignals as ReturnType<typeof vi.fn>;
 		expect(setSignals).toHaveBeenCalledTimes(2);
-		expect(setSignals).toHaveBeenNthCalledWith(1, { dtr: false, rts: true });
-		expect(setSignals).toHaveBeenNthCalledWith(2, { dtr: false, rts: false });
+		expect(setSignals).toHaveBeenNthCalledWith(1, { dataTerminalReady: false, requestToSend: true });
+		expect(setSignals).toHaveBeenNthCalledWith(2, { dataTerminalReady: false, requestToSend: false });
 	});
 
 	it("resets device before drainSerial", async () => {

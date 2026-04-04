@@ -91,9 +91,9 @@ export async function runWifiScan(port: SerialPort): Promise<{
 
 	// Hardware-reset the device via DTR/RTS toggle to ensure clean boot state.
 	// This prevents BLE/WiFi radio contention during Improv Serial provisioning.
-	await port.setSignals({ dtr: false, rts: true });
+	await port.setSignals({ dataTerminalReady: false, requestToSend: true });
 	await new Promise((r) => setTimeout(r, 100));
-	await port.setSignals({ dtr: false, rts: false });
+	await port.setSignals({ dataTerminalReady: false, requestToSend: false });
 
 	const writer = port.writable!.getWriter();
 	const reader = port.readable!.getReader();
