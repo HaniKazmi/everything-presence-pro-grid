@@ -85,6 +85,8 @@ import {
 	parseScanResults,
 	readImprovResponse,
 	sendImprovPacket,
+	TYPE_CURRENT_STATE,
+	TYPE_ERROR_STATE,
 	TYPE_RPC_RESULT,
 } from "../../lib/improv-serial.js";
 import {
@@ -459,6 +461,57 @@ describe("runWifiScan", () => {
 		expect(result.networks).toEqual([]);
 	});
 
+	it("throws when handshake gets no response (ethernet firmware)", async () => {
+		const { port } = mockPort();
+
+		// Handshake fails (no response from device)
+		vi.mocked(readImprovResponse).mockRejectedValueOnce(new Error("timeout"));
+
+		await expect(
+			runWifiScan(port, { retryDelay: 0, drainDelay: 0, handshakeDelay: 0 }),
+		).rejects.toThrow("No response from device");
+	});
+
+	it("retries scan when first attempt returns no networks", async () => {
+		const { port } = mockPort();
+
+		// Handshake succeeds
+		vi.mocked(readImprovResponse).mockResolvedValueOnce({
+			packets: [{ type: 0x01, data: new Uint8Array([0x02]) }],
+			buffer: [],
+		});
+
+		// First scan attempt: scan-complete with no networks
+		vi.mocked(readImprovResponse).mockResolvedValueOnce({
+			packets: [
+				{ type: TYPE_RPC_RESULT, data: new Uint8Array([0x04, 0x00]) },
+			],
+			buffer: [],
+		});
+		vi.mocked(parseScanResults).mockReturnValueOnce(null);
+
+		// Second scan attempt: returns a network then scan-complete
+		const network = { ssid: "DelayedNet", rssi: -55, authRequired: false };
+		vi.mocked(readImprovResponse).mockResolvedValueOnce({
+			packets: [
+				{ type: TYPE_RPC_RESULT, data: new Uint8Array([0x04, 0x01, 0x01]) },
+			],
+			buffer: [],
+		});
+		vi.mocked(parseScanResults).mockReturnValueOnce(network);
+
+		vi.mocked(readImprovResponse).mockResolvedValueOnce({
+			packets: [
+				{ type: TYPE_RPC_RESULT, data: new Uint8Array([0x04, 0x00]) },
+			],
+			buffer: [],
+		});
+		vi.mocked(parseScanResults).mockReturnValueOnce(null);
+
+		const result = await runWifiScan(port, { retryDelay: 0, drainDelay: 0, handshakeDelay: 0 });
+		expect(result.networks).toEqual([network]);
+	});
+
 	it("returns accumulated networks on timeout", async () => {
 		const { port } = mockPort();
 
@@ -567,5 +620,96 @@ describe("detectIpAddress", () => {
 
 		const ip = await detectIpAddress(mockReader, 1000);
 		expect(ip).toBeNull();
+	});
+
+	it("throws error state message after seeing PROVISIONING", async () => {
+		// Send PROVISIONING first so sawProvisioning=true, then ERROR_STATE
+		vi.mocked(readImprovResponse).mockResolvedValueOnce({
+			packets: [
+				{ type: TYPE_CURRENT_STATE, data: new Uint8Array([0x03]) }, // PROVISIONING
+				{ type: TYPE_ERROR_STATE, data: new Uint8Array([0x03]) },  // Unable to connect
+			],
+			buffer: [],
+		});
+
+		await expect(detectIpAddress(mockReader, 1000)).rejects.toThrow(
+			"WiFi connection failed",
+		);
+	});
+
+	it("throws with fallback message for unknown error codes", async () => {
+		vi.mocked(readImprovResponse).mockResolvedValueOnce({
+			packets: [
+				{ type: TYPE_CURRENT_STATE, data: new Uint8Array([0x03]) },
+				{ type: TYPE_ERROR_STATE, data: new Uint8Array([0xff]) }, // Unknown code
+			],
+			buffer: [],
+		});
+
+		await expect(detectIpAddress(mockReader, 1000)).rejects.toThrow(
+			"WiFi error (code 255)",
+		);
+	});
+
+	it("throws when IP is 0.0.0.0", async () => {
+		const encoder = new TextEncoder();
+		const url = "http://0.0.0.0";
+		const urlBytes = encoder.encode(url);
+		const data = new Uint8Array(2 + 1 + urlBytes.length);
+		data[0] = 0x01;
+		data[1] = 1 + urlBytes.length;
+		data[2] = urlBytes.length;
+		data.set(urlBytes, 3);
+
+		vi.mocked(readImprovResponse).mockResolvedValueOnce({
+			packets: [
+				{ type: TYPE_CURRENT_STATE, data: new Uint8Array([0x03]) },
+				{ type: TYPE_CURRENT_STATE, data: new Uint8Array([0x04]) },
+				{ type: TYPE_RPC_RESULT, data },
+			],
+			buffer: [],
+		});
+
+		await expect(detectIpAddress(mockReader, 1000)).rejects.toThrow(
+			"WiFi connection failed",
+		);
+	});
+
+	it("re-throws non-timeout errors from readImprovResponse", async () => {
+		vi.mocked(readImprovResponse).mockRejectedValueOnce(
+			new Error("serial port disconnected"),
+		);
+
+		await expect(detectIpAddress(mockReader, 1000)).rejects.toThrow(
+			"serial port disconnected",
+		);
+	});
+
+	it("ignores packets before PROVISIONING state is seen", async () => {
+		// RPC result before PROVISIONING should be ignored
+		const encoder = new TextEncoder();
+		const url = "http://192.168.1.99";
+		const urlBytes = encoder.encode(url);
+		const staleData = new Uint8Array(2 + 1 + urlBytes.length);
+		staleData[0] = 0x01;
+		staleData[1] = 1 + urlBytes.length;
+		staleData[2] = urlBytes.length;
+		staleData.set(urlBytes, 3);
+
+		// First response: stale RPC result (no PROVISIONING yet)
+		// Second response: timeout
+		vi.mocked(readImprovResponse)
+			.mockResolvedValueOnce({
+				packets: [
+					{ type: TYPE_CURRENT_STATE, data: new Uint8Array([0x04]) }, // PROVISIONED but no prior PROVISIONING
+					{ type: TYPE_RPC_RESULT, data: staleData },
+				],
+				buffer: [],
+			})
+			.mockRejectedValueOnce(new Error("timeout"));
+
+		await expect(detectIpAddress(mockReader, 1000)).rejects.toThrow(
+			"WiFi connection failed",
+		);
 	});
 });

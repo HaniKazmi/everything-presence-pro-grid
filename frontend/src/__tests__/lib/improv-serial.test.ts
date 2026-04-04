@@ -1,8 +1,12 @@
 import { describe, expect, it } from "vitest";
 import {
+	buildGetInfoCommand,
+	buildGetStateCommand,
 	buildImprovPacket,
 	buildScanCommand,
 	buildWifiCommand,
+	CMD_GET_CURRENT_STATE,
+	CMD_GET_DEVICE_INFO,
 	CMD_WIFI_SCAN,
 	CMD_WIFI_SETTINGS,
 	IMPROV_HEADER,
@@ -67,6 +71,34 @@ describe("buildScanCommand", () => {
 		const packet = buildScanCommand();
 		expect(packet[7]).toBe(TYPE_RPC_COMMAND);
 		expect(packet[9]).toBe(CMD_WIFI_SCAN);
+	});
+});
+
+describe("buildGetStateCommand", () => {
+	it("creates a GET_CURRENT_STATE RPC command packet", () => {
+		const packet = buildGetStateCommand();
+		const expected = buildImprovPacket(TYPE_RPC_COMMAND, [CMD_GET_CURRENT_STATE, 0x00]);
+		expect(packet).toEqual(expected);
+	});
+
+	it("has type TYPE_RPC_COMMAND and first data byte CMD_GET_CURRENT_STATE", () => {
+		const packet = buildGetStateCommand();
+		expect(packet[7]).toBe(TYPE_RPC_COMMAND);
+		expect(packet[9]).toBe(CMD_GET_CURRENT_STATE);
+	});
+});
+
+describe("buildGetInfoCommand", () => {
+	it("creates a GET_DEVICE_INFO RPC command packet", () => {
+		const packet = buildGetInfoCommand();
+		const expected = buildImprovPacket(TYPE_RPC_COMMAND, [CMD_GET_DEVICE_INFO, 0x00]);
+		expect(packet).toEqual(expected);
+	});
+
+	it("has type TYPE_RPC_COMMAND and first data byte CMD_GET_DEVICE_INFO", () => {
+		const packet = buildGetInfoCommand();
+		expect(packet[7]).toBe(TYPE_RPC_COMMAND);
+		expect(packet[9]).toBe(CMD_GET_DEVICE_INFO);
 	});
 });
 

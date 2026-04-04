@@ -220,6 +220,35 @@ describe("_handleUsbFlash", () => {
 		}
 	});
 
+	it("skips WiFi provisioning for ethernet variants and sets complete", async () => {
+		const ctrl = (panel as any)._flasherCtrl;
+		const updateSpy = vi.spyOn(ctrl, "updateUsbState");
+
+		await (panel as any)._handleUsbFlash("ethernet");
+
+		const steps = updateSpy.mock.calls.map((c: any[]) => c[0].step);
+		expect(steps).toContain("connecting");
+		expect(steps).toContain("flashing");
+		expect(steps).toContain("complete");
+		expect(steps).not.toContain("wifi_scan");
+		expect(steps).not.toContain("wifi_provision");
+		// Port should be closed and nulled
+		expect(mockPort.close).toHaveBeenCalled();
+		expect(ctrl.serialPort).toBeNull();
+	});
+
+	it("swallows port.close() error for ethernet variants", async () => {
+		mockPort.close.mockRejectedValue(new Error("close failed"));
+		const ctrl = (panel as any)._flasherCtrl;
+		const updateSpy = vi.spyOn(ctrl, "updateUsbState");
+
+		await (panel as any)._handleUsbFlash("ethernet-poe");
+
+		const steps = updateSpy.mock.calls.map((c: any[]) => c[0].step);
+		expect(steps).toContain("complete");
+		expect(ctrl.serialPort).toBeNull();
+	});
+
 	it("sets error with 'Unknown error' message when err has no message", async () => {
 		(
 			navigator.serial.requestPort as ReturnType<typeof vi.fn>
@@ -287,6 +316,31 @@ describe("_handleWifiProvision", () => {
 		await vi.advanceTimersByTimeAsync(6000);
 		return promise;
 	}
+
+	it("sets error when serial port is not available (no writable)", async () => {
+		const ctrl = (panel as any)._flasherCtrl;
+		// Port without writable
+		ctrl.serialPort = { readable: {}, writable: null };
+
+		await flushProvision("MySSID", "s3cr3t");
+
+		expect(ctrl.usbFlashState).toEqual({
+			step: "error",
+			error: "Serial port not available",
+		});
+	});
+
+	it("sets error when serial port is null", async () => {
+		const ctrl = (panel as any)._flasherCtrl;
+		ctrl.serialPort = null;
+
+		await flushProvision("MySSID", "s3cr3t");
+
+		expect(ctrl.usbFlashState).toEqual({
+			step: "error",
+			error: "Serial port not available",
+		});
+	});
 
 	it("releases old reader/writer locks before getting fresh ones", async () => {
 		await flushProvision("MySSID", "s3cr3t");
@@ -555,6 +609,81 @@ describe("_handleWifiScan", () => {
 		await expect((panel as any)._handleWifiScan()).resolves.toBeUndefined();
 
 		expect(runWifiScan).toHaveBeenCalled();
+	});
+});
+
+describe("_handleUsbWifiConfig", () => {
+	let panel: EPPGridPanel;
+	let mockPort: ReturnType<typeof makeMockPort>;
+
+	beforeEach(() => {
+		vi.clearAllMocks();
+		resetServiceMocks();
+		panel = createPanel();
+		mockPort = makeMockPort();
+
+		vi.stubGlobal("navigator", {
+			...navigator,
+			serial: {
+				requestPort: vi.fn().mockResolvedValue(mockPort),
+			},
+		});
+	});
+
+	it("requests port, runs wifi scan, and sets wifi_provision state on success", async () => {
+		const ctrl = (panel as any)._flasherCtrl;
+		const updateSpy = vi.spyOn(ctrl, "updateUsbState");
+
+		await (panel as any)._handleUsbWifiConfig();
+
+		const steps = updateSpy.mock.calls.map((c: any[]) => c[0].step);
+		expect(steps).toContain("connecting");
+		expect(steps).toContain("wifi_scan");
+		expect(steps).toContain("wifi_provision");
+	});
+
+	it("resets state on NotFoundError (user cancelled port picker)", async () => {
+		const notFound = new DOMException("No port selected", "NotFoundError");
+		(navigator.serial.requestPort as ReturnType<typeof vi.fn>).mockRejectedValue(notFound);
+
+		const ctrl = (panel as any)._flasherCtrl;
+		const resetSpy = vi.spyOn(ctrl, "resetUsbState");
+
+		await (panel as any)._handleUsbWifiConfig();
+
+		expect(resetSpy).toHaveBeenCalled();
+	});
+
+	it("sets error state when runWifiScan throws", async () => {
+		(runWifiScan as ReturnType<typeof vi.fn>).mockRejectedValue(
+			new Error("scan failed"),
+		);
+
+		const ctrl = (panel as any)._flasherCtrl;
+
+		await (panel as any)._handleUsbWifiConfig();
+
+		expect(ctrl.usbFlashState).toEqual({
+			step: "error",
+			error: "scan failed",
+		});
+	});
+
+	it("throws error when no networks found", async () => {
+		(runWifiScan as ReturnType<typeof vi.fn>).mockResolvedValue({
+			writer: { releaseLock: vi.fn() },
+			reader: { releaseLock: vi.fn() },
+			networks: [],
+		});
+
+		const ctrl = (panel as any)._flasherCtrl;
+
+		await (panel as any)._handleUsbWifiConfig();
+
+		expect(ctrl.usbFlashState).toEqual({
+			step: "error",
+			error: "No WiFi networks found. If this device is flashed with ethernet firmware, WiFi configuration is not available.",
+		});
 	});
 });
 
