@@ -30,8 +30,18 @@ const OTA_STEP_KEYS: { step: OtaStep; key: string }[] = [
 
 const STEP_ORDER = OTA_STEP_KEYS.map((s) => s.step);
 
-const WIFI_ICONS_LOCK = [mdiWifiStrength1Lock, mdiWifiStrength2Lock, mdiWifiStrength3Lock, mdiWifiStrength4Lock];
-const WIFI_ICONS_OPEN = [mdiWifiStrength1LockOpen, mdiWifiStrength2LockOpen, mdiWifiStrength3LockOpen, mdiWifiStrength4LockOpen];
+const WIFI_ICONS_LOCK = [
+	mdiWifiStrength1Lock,
+	mdiWifiStrength2Lock,
+	mdiWifiStrength3Lock,
+	mdiWifiStrength4Lock,
+];
+const WIFI_ICONS_OPEN = [
+	mdiWifiStrength1LockOpen,
+	mdiWifiStrength2LockOpen,
+	mdiWifiStrength3LockOpen,
+	mdiWifiStrength4LockOpen,
+];
 
 function wifiIconPath(rssi: number, authRequired: boolean): string {
 	const level = rssi >= -50 ? 3 : rssi >= -65 ? 2 : rssi >= -75 ? 1 : 0;
@@ -274,49 +284,51 @@ export class EppFlasherView extends LitElement {
           <div class="card-header">${this.localize("flasher.configure_wifi")}</div>
           <div class="card-content wifi-form">
 
-            ${sortedNetworks.length > 0
-              ? html`
+            ${
+							sortedNetworks.length > 0
+								? html`
                 <ha-select
                   .label=${this.localize("flasher.select_a_network")}
                   .value=${this._selectedSsid}
                   .options=${sortedNetworks.map((n) => ({
-                    value: n.ssid,
-                    label: n.ssid,
-                    iconPath: wifiIconPath(n.rssi, n.authRequired),
-                  }))}
+										value: n.ssid,
+										label: n.ssid,
+										iconPath: wifiIconPath(n.rssi, n.authRequired),
+									}))}
                   @selected=${(e: CustomEvent<{ value: string }>) => {
-                    this._selectedSsid = e.detail.value;
-                    this._manualSsid = false;
-                  }}
+										this._selectedSsid = e.detail.value;
+										this._manualSsid = false;
+									}}
                   @closed=${(e: Event) => e.stopPropagation()}
                 ></ha-select>
               `
-              : nothing
-            }
+								: nothing
+						}
 
             <ha-formfield .label=${this.localize("flasher.manual_ssid")}>
               <ha-checkbox
                 .checked=${showManual}
                 @change=${(e: Event) => {
-                  this._manualSsid = (e.target as any).checked;
-                  if (!this._manualSsid) this._selectedSsid = "";
-                }}
+									this._manualSsid = (e.target as any).checked;
+									if (!this._manualSsid) this._selectedSsid = "";
+								}}
               ></ha-checkbox>
             </ha-formfield>
 
-            ${showManual
-              ? html`
+            ${
+							showManual
+								? html`
                 <ha-textfield
                   .label=${this.localize("flasher.enter_ssid")}
                   autocomplete="off"
                   .value=${this._selectedSsid}
                   @input=${(e: Event) => {
-                    this._selectedSsid = (e.target as any).value;
-                  }}
+										this._selectedSsid = (e.target as any).value;
+									}}
                 ></ha-textfield>
               `
-              : nothing
-            }
+								: nothing
+						}
 
             <ha-textfield
               .label=${this.localize("flasher.wifi_password")}
@@ -324,8 +336,8 @@ export class EppFlasherView extends LitElement {
               autocomplete="new-password"
               .value=${this._wifiPassword}
               @input=${(e: Event) => {
-                this._wifiPassword = (e.target as any).value;
-              }}
+								this._wifiPassword = (e.target as any).value;
+							}}
             ></ha-textfield>
 
             <div class="confirm-actions">
@@ -358,12 +370,12 @@ export class EppFlasherView extends LitElement {
           <div class="card-header">${this.localize("flasher.devices_on_network")}</div>
           <div class="card-content">
             ${
-						flashableDevices.length === 0
-							? html`<div class="flasher-empty">
+							flashableDevices.length === 0
+								? html`<div class="flasher-empty">
                   <ha-icon icon="mdi:access-point-off"></ha-icon>
                   <p>${this.localize("flasher.no_devices")}</p>
                 </div>`
-							: html`
+								: html`
                 <div class="device-list">
                   ${flashableDevices.map(
 										(device) => html`
@@ -397,7 +409,7 @@ export class EppFlasherView extends LitElement {
 									)}
                 </div>
               `
-					}
+						}
           </div>
         </ha-card>
         ${this._renderUsbSection()}
@@ -417,12 +429,12 @@ export class EppFlasherView extends LitElement {
         <div class="card-header">${this.localize("flasher.usb_title")}</div>
         <div class="card-content">
           ${
-					!this._hasWebSerial
-						? html`<div class="browser-warning">
+						!this._hasWebSerial
+							? html`<div class="browser-warning">
                 ${this.localize("flasher.usb_browser_warning")}
               </div>`
-						: nothing
-				}
+							: nothing
+					}
           <div class="usb-actions">
             <div class="usb-action" @click=${this._onUsbConnect}>
               <ha-icon icon="mdi:chip"></ha-icon>
@@ -522,23 +534,25 @@ export class EppFlasherView extends LitElement {
 						<div class="card-content">
 							<div class="usb-complete">
 								<ha-icon icon="mdi:check-circle-outline"></ha-icon>
-								${state.ip
-									? html`
+								${
+									state.ip
+										? html`
 										<p>${this.localize("flasher.usb_step_complete")}</p>
 										<p class="usb-ip">${this.localize("flasher.ip_address")}: ${state.ip}</p>
 									`
-									: html`
+										: html`
 										<p>${this.localize("flasher.wifi_connected")}</p>
 										<p class="usb-hint">${this.localize("flasher.wifi_connected_hint")}</p>
 									`
 								}
 							</div>
 							<div class="confirm-actions">
-								${state.ip
-									? html`<ha-button raised @click=${this._dispatchFlashComplete}>
+								${
+									state.ip
+										? html`<ha-button raised @click=${this._dispatchFlashComplete}>
 										${this.localize("flasher.go_to_config")}
 									</ha-button>`
-									: html`<ha-button raised @click=${this._onUsbBack}>
+										: html`<ha-button raised @click=${this._onUsbBack}>
 										${this.localize("flasher.done")}
 									</ha-button>`
 								}

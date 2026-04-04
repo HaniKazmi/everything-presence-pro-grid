@@ -275,7 +275,9 @@ describe("render() OTA progress state", () => {
 		const tpl = (el as any).render();
 		const c = renderTo(tpl);
 
-		expect(c.querySelector(".confirm-actions ha-button[raised]")).not.toBeNull();
+		expect(
+			c.querySelector(".confirm-actions ha-button[raised]"),
+		).not.toBeNull();
 	});
 });
 
@@ -295,8 +297,12 @@ describe("render() confirm dialog", () => {
 		const tpl = (el as any).render();
 		const c = renderTo(tpl);
 
-		expect(c.querySelector(".confirm-actions ha-button[raised]")).not.toBeNull();
-		expect(c.querySelector(".confirm-actions ha-button:not([raised])")).not.toBeNull();
+		expect(
+			c.querySelector(".confirm-actions ha-button[raised]"),
+		).not.toBeNull();
+		expect(
+			c.querySelector(".confirm-actions ha-button:not([raised])"),
+		).not.toBeNull();
 	});
 
 	it("confirm dialog shows variant selector", () => {
@@ -481,7 +487,9 @@ describe("render() WiFi provisioning — connected state", () => {
 		const tpl = (el as any).render();
 		const c = renderTo(tpl);
 
-		expect(c.querySelector(".confirm-actions ha-button[raised]")).not.toBeNull();
+		expect(
+			c.querySelector(".confirm-actions ha-button[raised]"),
+		).not.toBeNull();
 	});
 
 	it("dispatches wifi-complete when Continue clicked", async () => {
@@ -585,7 +593,7 @@ describe("render() WiFi provisioning — not connected state", () => {
 
 		const select = c.querySelector("ha-select") as any;
 		const paths = ["Excellent", "Good", "Fair", "Poor"].map(
-			(s) => select.options.find((o: any) => o.value === s).iconPath
+			(s) => select.options.find((o: any) => o.value === s).iconPath,
 		);
 		// All four should have different icon paths (different strength levels)
 		expect(new Set(paths).size).toBe(4);
@@ -614,7 +622,9 @@ describe("render() WiFi provisioning — not connected state", () => {
 		const tpl = (el as any).render();
 		const c = renderTo(tpl);
 
-		expect(c.querySelector("ha-textfield:not([type='password'])")).not.toBeNull();
+		expect(
+			c.querySelector("ha-textfield:not([type='password'])"),
+		).not.toBeNull();
 	});
 
 	it("does not show manual SSID text input when _manualSsid=false", () => {
@@ -622,7 +632,9 @@ describe("render() WiFi provisioning — not connected state", () => {
 		(el as any)._showWifiProvisioning = true;
 		(el as any)._wifiConnected = false;
 		(el as any)._manualSsid = false;
-		(el as any).wifiNetworks = [{ ssid: "TestNet", rssi: -50, authRequired: false }];
+		(el as any).wifiNetworks = [
+			{ ssid: "TestNet", rssi: -50, authRequired: false },
+		];
 		const tpl = (el as any).render();
 		const c = renderTo(tpl);
 
@@ -646,7 +658,9 @@ describe("render() WiFi provisioning — not connected state", () => {
 		const tpl = (el as any).render();
 		const c = renderTo(tpl);
 
-		expect(c.querySelector(".confirm-actions ha-button[raised]")).not.toBeNull();
+		expect(
+			c.querySelector(".confirm-actions ha-button[raised]"),
+		).not.toBeNull();
 	});
 
 	it("Configure WiFi button is disabled when no SSID selected", () => {
@@ -731,7 +745,9 @@ describe("render() WiFi provisioning — not connected state", () => {
 		const c = renderTo(tpl);
 
 		// Scan button is the second non-raised ha-button in .confirm-actions
-		const nonRaisedBtns = c.querySelectorAll(".confirm-actions ha-button:not([raised])");
+		const nonRaisedBtns = c.querySelectorAll(
+			".confirm-actions ha-button:not([raised])",
+		);
 		const scanBtn = nonRaisedBtns[1] as HTMLElement;
 		expect(scanBtn).not.toBeNull();
 		expect(scanBtn.textContent?.trim()).toContain("flasher.scanning");
@@ -775,7 +791,9 @@ describe("confirm dialog interactions", () => {
 		await el.updateComplete;
 
 		const root = el.shadowRoot!;
-		const cancelBtn = root.querySelector(".confirm-actions ha-button:not([raised])") as HTMLElement;
+		const cancelBtn = root.querySelector(
+			".confirm-actions ha-button:not([raised])",
+		) as HTMLElement;
 		cancelBtn.click();
 
 		expect((el as any)._confirmDevice).toBeNull();
@@ -787,7 +805,9 @@ describe("confirm dialog interactions", () => {
 		await el.updateComplete;
 
 		const root = el.shadowRoot!;
-		const flashBtn = root.querySelector(".device-row ha-button[raised]") as HTMLElement;
+		const flashBtn = root.querySelector(
+			".device-row ha-button[raised]",
+		) as HTMLElement;
 		flashBtn.click();
 
 		expect((el as any)._confirmDevice).toBe(device1);
@@ -808,7 +828,9 @@ describe("WiFi provisioning DOM event handlers", () => {
 		const root = el.shadowRoot!;
 		const select = root.querySelector("ha-select") as any;
 		// Simulate selecting a network via ha-select's @selected event
-		select.dispatchEvent(new CustomEvent("selected", { detail: { value: "NetworkA" } }));
+		select.dispatchEvent(
+			new CustomEvent("selected", { detail: { value: "NetworkA" } }),
+		);
 
 		expect((el as any)._selectedSsid).toBe("NetworkA");
 	});
@@ -848,7 +870,9 @@ describe("WiFi provisioning DOM event handlers", () => {
 		await el.updateComplete;
 
 		const root = el.shadowRoot!;
-		const input = root.querySelector("ha-textfield:not([type='password'])") as any;
+		const input = root.querySelector(
+			"ha-textfield:not([type='password'])",
+		) as any;
 		input.value = "HiddenNet";
 		input.dispatchEvent(new Event("input"));
 
@@ -931,7 +955,9 @@ describe("USB flash view — state-driven", () => {
 		const c = renderTo(tpl);
 
 		expect(c.textContent).toContain("192.168.1.42");
-		expect(c.querySelector(".confirm-actions ha-button[raised]")).not.toBeNull();
+		expect(
+			c.querySelector(".confirm-actions ha-button[raised]"),
+		).not.toBeNull();
 	});
 
 	it("renders error state with retry button", () => {
@@ -943,7 +969,9 @@ describe("USB flash view — state-driven", () => {
 
 		expect(c.querySelector(".usb-error")).not.toBeNull();
 		expect(c.textContent).toContain("flash failed");
-		expect(c.querySelector(".confirm-actions ha-button[raised]")).not.toBeNull();
+		expect(
+			c.querySelector(".confirm-actions ha-button[raised]"),
+		).not.toBeNull();
 	});
 
 	it("renders wifi_provision state with existing WiFi provisioning UI", () => {
@@ -977,7 +1005,9 @@ describe("USB flash view — state-driven", () => {
 		el.addEventListener("usb-flash", (e) => events.push(e));
 
 		const root = el.shadowRoot!;
-		const flashBtn = root.querySelector(".confirm-actions ha-button[raised]") as HTMLElement;
+		const flashBtn = root.querySelector(
+			".confirm-actions ha-button[raised]",
+		) as HTMLElement;
 		flashBtn.click();
 
 		expect(events.length).toBe(1);
@@ -997,7 +1027,9 @@ describe("USB flash view — state-driven", () => {
 		el.addEventListener("usb-retry", (e) => events.push(e));
 
 		const root = el.shadowRoot!;
-		const retryBtn = root.querySelector(".confirm-actions ha-button[raised]") as HTMLElement;
+		const retryBtn = root.querySelector(
+			".confirm-actions ha-button[raised]",
+		) as HTMLElement;
 		retryBtn.click();
 
 		expect(events.length).toBe(1);
@@ -1011,7 +1043,9 @@ describe("USB flash view — state-driven", () => {
 		await el.updateComplete;
 
 		const root = el.shadowRoot!;
-		const cancelBtn = root.querySelector(".confirm-actions ha-button:not([raised])") as HTMLElement;
+		const cancelBtn = root.querySelector(
+			".confirm-actions ha-button:not([raised])",
+		) as HTMLElement;
 		cancelBtn.click();
 
 		expect((el as any)._showUsbFlash).toBe(false);

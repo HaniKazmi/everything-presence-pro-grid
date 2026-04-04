@@ -644,7 +644,9 @@ describe("_handleUsbWifiConfig", () => {
 
 	it("resets state on NotFoundError (user cancelled port picker)", async () => {
 		const notFound = new DOMException("No port selected", "NotFoundError");
-		(navigator.serial.requestPort as ReturnType<typeof vi.fn>).mockRejectedValue(notFound);
+		(
+			navigator.serial.requestPort as ReturnType<typeof vi.fn>
+		).mockRejectedValue(notFound);
 
 		const ctrl = (panel as any)._flasherCtrl;
 		const resetSpy = vi.spyOn(ctrl, "resetUsbState");
@@ -682,7 +684,8 @@ describe("_handleUsbWifiConfig", () => {
 
 		expect(ctrl.usbFlashState).toEqual({
 			step: "error",
-			error: "No WiFi networks found. If this device is flashed with ethernet firmware, WiFi configuration is not available.",
+			error:
+				"No WiFi networks found. If this device is flashed with ethernet firmware, WiFi configuration is not available.",
 		});
 	});
 });

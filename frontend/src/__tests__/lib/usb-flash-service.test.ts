@@ -4,7 +4,10 @@ import type { UsbFlashState } from "../../types.js";
 // Mock improv-serial before importing the service
 vi.mock("../../lib/improv-serial.js", () => ({
 	sendImprovPacket: vi.fn().mockResolvedValue(undefined),
-	readImprovResponse: vi.fn().mockResolvedValue({ packets: [{ type: 0x04, data: new Uint8Array([0x04]) }], buffer: [] }),
+	readImprovResponse: vi.fn().mockResolvedValue({
+		packets: [{ type: 0x04, data: new Uint8Array([0x04]) }],
+		buffer: [],
+	}),
 	parseScanResults: vi.fn().mockReturnValue(null),
 	buildScanCommand: vi.fn().mockReturnValue(new Uint8Array([1, 2, 3])),
 	buildGetStateCommand: vi.fn().mockReturnValue(new Uint8Array([2, 2, 0])),
@@ -253,7 +256,12 @@ describe("runWifiScan", () => {
 	beforeEach(() => {
 		// Reset improv-serial mocks between each test to avoid call count bleed
 		vi.mocked(sendImprovPacket).mockReset().mockResolvedValue(undefined);
-		vi.mocked(readImprovResponse).mockReset().mockResolvedValue({ packets: [{ type: TYPE_RPC_RESULT, data: new Uint8Array([0x04]) }], buffer: [] });
+		vi.mocked(readImprovResponse)
+			.mockReset()
+			.mockResolvedValue({
+				packets: [{ type: TYPE_RPC_RESULT, data: new Uint8Array([0x04]) }],
+				buffer: [],
+			});
 		vi.mocked(parseScanResults).mockReset().mockReturnValue(null);
 		vi.mocked(buildScanCommand)
 			.mockReset()
@@ -308,17 +316,41 @@ describe("runWifiScan", () => {
 
 		// Handshake succeeds, then scan times out
 		vi.mocked(readImprovResponse)
-			.mockResolvedValueOnce({ packets: [{ type: 0x01, data: new Uint8Array([0x02]) }], buffer: [] })
+			.mockResolvedValueOnce({
+				packets: [{ type: 0x01, data: new Uint8Array([0x02]) }],
+				buffer: [],
+			})
 			.mockRejectedValueOnce(new Error("timeout"));
 
 		// open() should set readable so getWriter/getReader work after
 		(port.open as any).mockImplementation(() => {
-			(port as any).readable = { getReader: vi.fn().mockReturnValue({ read: vi.fn().mockImplementation(() => new Promise(() => {})), cancel: vi.fn(), releaseLock: vi.fn(), closed: Promise.resolve(undefined) }) };
-			(port as any).writable = { getWriter: vi.fn().mockReturnValue({ write: vi.fn().mockResolvedValue(undefined), close: vi.fn(), abort: vi.fn(), closed: Promise.resolve(undefined), desiredSize: 1, ready: Promise.resolve(undefined), releaseLock: vi.fn() }) };
+			(port as any).readable = {
+				getReader: vi.fn().mockReturnValue({
+					read: vi.fn().mockImplementation(() => new Promise(() => {})),
+					cancel: vi.fn(),
+					releaseLock: vi.fn(),
+					closed: Promise.resolve(undefined),
+				}),
+			};
+			(port as any).writable = {
+				getWriter: vi.fn().mockReturnValue({
+					write: vi.fn().mockResolvedValue(undefined),
+					close: vi.fn(),
+					abort: vi.fn(),
+					closed: Promise.resolve(undefined),
+					desiredSize: 1,
+					ready: Promise.resolve(undefined),
+					releaseLock: vi.fn(),
+				}),
+			};
 			return Promise.resolve();
 		});
 
-		await runWifiScan(port, { retryDelay: 0, drainDelay: 0, handshakeDelay: 0 });
+		await runWifiScan(port, {
+			retryDelay: 0,
+			drainDelay: 0,
+			handshakeDelay: 0,
+		});
 		expect(port.open).toHaveBeenCalledWith({ baudRate: 115200 });
 	});
 
@@ -327,10 +359,17 @@ describe("runWifiScan", () => {
 
 		// Handshake succeeds, then scan times out
 		vi.mocked(readImprovResponse)
-			.mockResolvedValueOnce({ packets: [{ type: 0x01, data: new Uint8Array([0x02]) }], buffer: [] })
+			.mockResolvedValueOnce({
+				packets: [{ type: 0x01, data: new Uint8Array([0x02]) }],
+				buffer: [],
+			})
 			.mockRejectedValueOnce(new Error("timeout"));
 
-		await runWifiScan(port, { retryDelay: 0, drainDelay: 0, handshakeDelay: 0 });
+		await runWifiScan(port, {
+			retryDelay: 0,
+			drainDelay: 0,
+			handshakeDelay: 0,
+		});
 		expect(port.open).not.toHaveBeenCalled();
 	});
 
@@ -338,10 +377,17 @@ describe("runWifiScan", () => {
 		const { port } = mockPort();
 		// Handshake succeeds, then scan times out
 		vi.mocked(readImprovResponse)
-			.mockResolvedValueOnce({ packets: [{ type: 0x01, data: new Uint8Array([0x02]) }], buffer: [] })
+			.mockResolvedValueOnce({
+				packets: [{ type: 0x01, data: new Uint8Array([0x02]) }],
+				buffer: [],
+			})
 			.mockRejectedValueOnce(new Error("timeout"));
 
-		await runWifiScan(port, { retryDelay: 0, drainDelay: 0, handshakeDelay: 0 });
+		await runWifiScan(port, {
+			retryDelay: 0,
+			drainDelay: 0,
+			handshakeDelay: 0,
+		});
 		expect(port.writable!.getWriter).toHaveBeenCalled();
 		expect(port.readable!.getReader).toHaveBeenCalled();
 	});
@@ -350,10 +396,17 @@ describe("runWifiScan", () => {
 		const { port } = mockPort();
 		// Handshake succeeds, then scan times out
 		vi.mocked(readImprovResponse)
-			.mockResolvedValueOnce({ packets: [{ type: 0x01, data: new Uint8Array([0x02]) }], buffer: [] })
+			.mockResolvedValueOnce({
+				packets: [{ type: 0x01, data: new Uint8Array([0x02]) }],
+				buffer: [],
+			})
 			.mockRejectedValueOnce(new Error("timeout"));
 
-		await runWifiScan(port, { retryDelay: 0, drainDelay: 0, handshakeDelay: 0 });
+		await runWifiScan(port, {
+			retryDelay: 0,
+			drainDelay: 0,
+			handshakeDelay: 0,
+		});
 
 		const setSignals = port.setSignals as ReturnType<typeof vi.fn>;
 		expect(setSignals).toHaveBeenCalledTimes(2);
@@ -368,10 +421,17 @@ describe("runWifiScan", () => {
 		);
 		// Handshake succeeds, then scan times out
 		vi.mocked(readImprovResponse)
-			.mockResolvedValueOnce({ packets: [{ type: 0x01, data: new Uint8Array([0x02]) }], buffer: [] })
+			.mockResolvedValueOnce({
+				packets: [{ type: 0x01, data: new Uint8Array([0x02]) }],
+				buffer: [],
+			})
 			.mockRejectedValueOnce(new Error("timeout"));
 
-		await runWifiScan(port, { retryDelay: 0, drainDelay: 0, handshakeDelay: 0 });
+		await runWifiScan(port, {
+			retryDelay: 0,
+			drainDelay: 0,
+			handshakeDelay: 0,
+		});
 
 		expect(sendImprovPacket).toHaveBeenCalled();
 	});
@@ -380,10 +440,17 @@ describe("runWifiScan", () => {
 		const { port } = mockPort();
 		// Handshake succeeds, then scan times out
 		vi.mocked(readImprovResponse)
-			.mockResolvedValueOnce({ packets: [{ type: 0x01, data: new Uint8Array([0x02]) }], buffer: [] })
+			.mockResolvedValueOnce({
+				packets: [{ type: 0x01, data: new Uint8Array([0x02]) }],
+				buffer: [],
+			})
 			.mockRejectedValueOnce(new Error("timeout"));
 
-		await runWifiScan(port, { retryDelay: 0, drainDelay: 0, handshakeDelay: 0 });
+		await runWifiScan(port, {
+			retryDelay: 0,
+			drainDelay: 0,
+			handshakeDelay: 0,
+		});
 		expect(buildScanCommand).toHaveBeenCalled();
 		expect(sendImprovPacket).toHaveBeenCalled();
 	});
@@ -392,10 +459,17 @@ describe("runWifiScan", () => {
 		const { port } = mockPort();
 		// Handshake succeeds, then scan times out
 		vi.mocked(readImprovResponse)
-			.mockResolvedValueOnce({ packets: [{ type: 0x01, data: new Uint8Array([0x02]) }], buffer: [] })
+			.mockResolvedValueOnce({
+				packets: [{ type: 0x01, data: new Uint8Array([0x02]) }],
+				buffer: [],
+			})
 			.mockRejectedValueOnce(new Error("timeout"));
 
-		const result = await runWifiScan(port, { retryDelay: 0, drainDelay: 0, handshakeDelay: 0 });
+		const result = await runWifiScan(port, {
+			retryDelay: 0,
+			drainDelay: 0,
+			handshakeDelay: 0,
+		});
 		expect(result.networks).toEqual([]);
 	});
 
@@ -403,10 +477,17 @@ describe("runWifiScan", () => {
 		const { port } = mockPort();
 		// Handshake succeeds, then scan times out
 		vi.mocked(readImprovResponse)
-			.mockResolvedValueOnce({ packets: [{ type: 0x01, data: new Uint8Array([0x02]) }], buffer: [] })
+			.mockResolvedValueOnce({
+				packets: [{ type: 0x01, data: new Uint8Array([0x02]) }],
+				buffer: [],
+			})
 			.mockRejectedValueOnce(new Error("timeout"));
 
-		const result = await runWifiScan(port, { retryDelay: 0, drainDelay: 0, handshakeDelay: 0 });
+		const result = await runWifiScan(port, {
+			retryDelay: 0,
+			drainDelay: 0,
+			handshakeDelay: 0,
+		});
 		expect(result.writer).toBeDefined();
 		expect(result.reader).toBeDefined();
 	});
@@ -418,27 +499,41 @@ describe("runWifiScan", () => {
 		const network2 = { ssid: "NetworkB", rssi: -70, authRequired: true };
 
 		// Handshake succeeds
-		vi.mocked(readImprovResponse).mockResolvedValueOnce({ packets: [{ type: 0x01, data: new Uint8Array([0x02]) }], buffer: [] });
+		vi.mocked(readImprovResponse).mockResolvedValueOnce({
+			packets: [{ type: 0x01, data: new Uint8Array([0x02]) }],
+			buffer: [],
+		});
 
 		// First call: returns a packet with network1
-		vi.mocked(readImprovResponse).mockResolvedValueOnce({ packets: [
-			{ type: TYPE_RPC_RESULT, data: new Uint8Array([0x04, 0x01, 0x01]) },
-		], buffer: [] });
+		vi.mocked(readImprovResponse).mockResolvedValueOnce({
+			packets: [
+				{ type: TYPE_RPC_RESULT, data: new Uint8Array([0x04, 0x01, 0x01]) },
+			],
+			buffer: [],
+		});
 		vi.mocked(parseScanResults).mockReturnValueOnce(network1);
 
 		// Second call: returns a packet with network2
-		vi.mocked(readImprovResponse).mockResolvedValueOnce({ packets: [
-			{ type: TYPE_RPC_RESULT, data: new Uint8Array([0x04, 0x01, 0x02]) },
-		], buffer: [] });
+		vi.mocked(readImprovResponse).mockResolvedValueOnce({
+			packets: [
+				{ type: TYPE_RPC_RESULT, data: new Uint8Array([0x04, 0x01, 0x02]) },
+			],
+			buffer: [],
+		});
 		vi.mocked(parseScanResults).mockReturnValueOnce(network2);
 
 		// Third call: returns empty data (scan complete signal)
-		vi.mocked(readImprovResponse).mockResolvedValueOnce({ packets: [
-			{ type: TYPE_RPC_RESULT, data: new Uint8Array([0x04, 0x00]) },
-		], buffer: [] });
+		vi.mocked(readImprovResponse).mockResolvedValueOnce({
+			packets: [{ type: TYPE_RPC_RESULT, data: new Uint8Array([0x04, 0x00]) }],
+			buffer: [],
+		});
 		vi.mocked(parseScanResults).mockReturnValueOnce(null);
 
-		const result = await runWifiScan(port, { retryDelay: 0, drainDelay: 0, handshakeDelay: 0 });
+		const result = await runWifiScan(port, {
+			retryDelay: 0,
+			drainDelay: 0,
+			handshakeDelay: 0,
+		});
 		expect(result.networks).toEqual([network1, network2]);
 	});
 
@@ -446,16 +541,31 @@ describe("runWifiScan", () => {
 		const { port } = mockPort();
 
 		// Handshake succeeds
-		vi.mocked(readImprovResponse).mockResolvedValueOnce({ packets: [{ type: 0x01, data: new Uint8Array([0x02]) }], buffer: [] });
+		vi.mocked(readImprovResponse).mockResolvedValueOnce({
+			packets: [{ type: 0x01, data: new Uint8Array([0x02]) }],
+			buffer: [],
+		});
 
 		// Return a non-RPC_RESULT packet followed by a scan-complete on all attempts
 		vi.mocked(readImprovResponse)
-			.mockResolvedValueOnce({ packets: [
-				{ type: 0x01, data: new Uint8Array([99]) }, // some other type
-			], buffer: [] })
-			.mockResolvedValue({ packets: [{ type: TYPE_RPC_RESULT, data: new Uint8Array([0x04, 0x00]) }], buffer: [] });
+			.mockResolvedValueOnce({
+				packets: [
+					{ type: 0x01, data: new Uint8Array([99]) }, // some other type
+				],
+				buffer: [],
+			})
+			.mockResolvedValue({
+				packets: [
+					{ type: TYPE_RPC_RESULT, data: new Uint8Array([0x04, 0x00]) },
+				],
+				buffer: [],
+			});
 
-		const result = await runWifiScan(port, { retryDelay: 0, drainDelay: 0, handshakeDelay: 0 });
+		const result = await runWifiScan(port, {
+			retryDelay: 0,
+			drainDelay: 0,
+			handshakeDelay: 0,
+		});
 		// The non-RPC_RESULT packet should not trigger parseScanResults
 		// but the scan-complete packet (0x04 with empty slice) does
 		expect(result.networks).toEqual([]);
@@ -483,9 +593,7 @@ describe("runWifiScan", () => {
 
 		// First scan attempt: scan-complete with no networks
 		vi.mocked(readImprovResponse).mockResolvedValueOnce({
-			packets: [
-				{ type: TYPE_RPC_RESULT, data: new Uint8Array([0x04, 0x00]) },
-			],
+			packets: [{ type: TYPE_RPC_RESULT, data: new Uint8Array([0x04, 0x00]) }],
 			buffer: [],
 		});
 		vi.mocked(parseScanResults).mockReturnValueOnce(null);
@@ -501,14 +609,16 @@ describe("runWifiScan", () => {
 		vi.mocked(parseScanResults).mockReturnValueOnce(network);
 
 		vi.mocked(readImprovResponse).mockResolvedValueOnce({
-			packets: [
-				{ type: TYPE_RPC_RESULT, data: new Uint8Array([0x04, 0x00]) },
-			],
+			packets: [{ type: TYPE_RPC_RESULT, data: new Uint8Array([0x04, 0x00]) }],
 			buffer: [],
 		});
 		vi.mocked(parseScanResults).mockReturnValueOnce(null);
 
-		const result = await runWifiScan(port, { retryDelay: 0, drainDelay: 0, handshakeDelay: 0 });
+		const result = await runWifiScan(port, {
+			retryDelay: 0,
+			drainDelay: 0,
+			handshakeDelay: 0,
+		});
 		expect(result.networks).toEqual([network]);
 	});
 
@@ -518,17 +628,27 @@ describe("runWifiScan", () => {
 		const network1 = { ssid: "MyNet", rssi: -60, authRequired: false };
 
 		// Handshake succeeds
-		vi.mocked(readImprovResponse).mockResolvedValueOnce({ packets: [{ type: 0x01, data: new Uint8Array([0x02]) }], buffer: [] });
+		vi.mocked(readImprovResponse).mockResolvedValueOnce({
+			packets: [{ type: 0x01, data: new Uint8Array([0x02]) }],
+			buffer: [],
+		});
 
-		vi.mocked(readImprovResponse).mockResolvedValueOnce({ packets: [
-			{ type: TYPE_RPC_RESULT, data: new Uint8Array([0x04, 0x01, 0x01]) },
-		], buffer: [] });
+		vi.mocked(readImprovResponse).mockResolvedValueOnce({
+			packets: [
+				{ type: TYPE_RPC_RESULT, data: new Uint8Array([0x04, 0x01, 0x01]) },
+			],
+			buffer: [],
+		});
 		vi.mocked(parseScanResults).mockReturnValueOnce(network1);
 
 		// Next call times out
 		vi.mocked(readImprovResponse).mockRejectedValueOnce(new Error("timeout"));
 
-		const result = await runWifiScan(port, { retryDelay: 0, drainDelay: 0, handshakeDelay: 0 });
+		const result = await runWifiScan(port, {
+			retryDelay: 0,
+			drainDelay: 0,
+			handshakeDelay: 0,
+		});
 		expect(result.networks).toEqual([network1]);
 	});
 });
@@ -596,7 +716,9 @@ describe("detectIpAddress", () => {
 	it("throws on timeout when no RPC result arrives", async () => {
 		vi.mocked(readImprovResponse).mockRejectedValueOnce(new Error("timeout"));
 
-		await expect(detectIpAddress(mockReader, 50)).rejects.toThrow("WiFi connection failed");
+		await expect(detectIpAddress(mockReader, 50)).rejects.toThrow(
+			"WiFi connection failed",
+		);
 	});
 
 	it("throws on error state (wrong password)", async () => {
@@ -605,7 +727,9 @@ describe("detectIpAddress", () => {
 			buffer: [],
 		});
 
-		await expect(detectIpAddress(mockReader, 1000)).rejects.toThrow("WiFi connection failed");
+		await expect(detectIpAddress(mockReader, 1000)).rejects.toThrow(
+			"WiFi connection failed",
+		);
 	});
 
 	it("returns null when provisioned but no URL (no next_url configured)", async () => {
@@ -627,7 +751,7 @@ describe("detectIpAddress", () => {
 		vi.mocked(readImprovResponse).mockResolvedValueOnce({
 			packets: [
 				{ type: TYPE_CURRENT_STATE, data: new Uint8Array([0x03]) }, // PROVISIONING
-				{ type: TYPE_ERROR_STATE, data: new Uint8Array([0x03]) },  // Unable to connect
+				{ type: TYPE_ERROR_STATE, data: new Uint8Array([0x03]) }, // Unable to connect
 			],
 			buffer: [],
 		});

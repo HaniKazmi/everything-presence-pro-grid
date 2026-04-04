@@ -221,9 +221,7 @@ export async function readImprovResponse(
 
 		if (result.value) {
 			buffer.push(...result.value);
-			const { packets, consumed } = parseImprovPackets(
-				new Uint8Array(buffer),
-			);
+			const { packets, consumed } = parseImprovPackets(new Uint8Array(buffer));
 			if (packets.length > 0) {
 				buffer.splice(0, consumed);
 				return { packets, buffer };

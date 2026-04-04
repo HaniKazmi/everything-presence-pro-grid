@@ -86,7 +86,11 @@ export async function flashFirmware(
  */
 export async function runWifiScan(
 	port: SerialPort,
-	timings?: { retryDelay?: number; drainDelay?: number; handshakeDelay?: number },
+	timings?: {
+		retryDelay?: number;
+		drainDelay?: number;
+		handshakeDelay?: number;
+	},
 ): Promise<{
 	writer: WritableStreamDefaultWriter<Uint8Array>;
 	reader: ReadableStreamDefaultReader<Uint8Array>;
@@ -114,10 +118,7 @@ export async function runWifiScan(
 		const r = await Promise.race([
 			drainReader.read(),
 			new Promise<{ value: undefined; done: true }>((resolve) =>
-				setTimeout(
-					() => resolve({ value: undefined, done: true }),
-					drainMs,
-				),
+				setTimeout(() => resolve({ value: undefined, done: true }), drainMs),
 			),
 		]);
 		if (r.done || !r.value) break;
@@ -153,9 +154,7 @@ export async function runWifiScan(
 	// Retry up to 3 times with a delay to allow the scan to complete.
 	for (let attempt = 0; attempt < 3; attempt++) {
 		if (attempt > 0) {
-			await new Promise((r) =>
-				setTimeout(r, timings?.retryDelay ?? 3000),
-			);
+			await new Promise((r) => setTimeout(r, timings?.retryDelay ?? 3000));
 		}
 
 		// Send scan command
@@ -267,14 +266,12 @@ export async function detectIpAddress(
 				if (pkt.type === TYPE_ERROR_STATE) {
 					const code = pkt.data[0];
 					const messages: Record<number, string> = {
-						0x01: "Invalid command — device may need to be power-cycled",
-						0x02: "Unknown command",
-						0x03: "WiFi connection failed — check SSID/password and try again",
-						0x04: "Not authorized",
+						1: "Invalid command — device may need to be power-cycled",
+						2: "Unknown command",
+						3: "WiFi connection failed — check SSID/password and try again",
+						4: "Not authorized",
 					};
-					throw new Error(
-						messages[code] ?? `WiFi error (code ${code})`,
-					);
+					throw new Error(messages[code] ?? `WiFi error (code ${code})`);
 				}
 
 				// STATE_PROVISIONED — device connected to WiFi
@@ -287,9 +284,7 @@ export async function detectIpAddress(
 					if (pkt.data.length >= 3 && pkt.data[1] > 0) {
 						const resultData = pkt.data.slice(2, 2 + pkt.data[1]);
 						const urlLen = resultData[0];
-						const url = decoder.decode(
-							resultData.slice(1, 1 + urlLen),
-						);
+						const url = decoder.decode(resultData.slice(1, 1 + urlLen));
 						const match = ipPattern.exec(url);
 						if (match && match[1] !== "0.0.0.0") return match[1];
 						// 0.0.0.0 after reboot = device failed to connect
@@ -302,17 +297,12 @@ export async function detectIpAddress(
 				}
 			}
 		} catch (err) {
-			if (
-				err instanceof Error &&
-				!err.message.includes("timeout")
-			) {
+			if (err instanceof Error && !err.message.includes("timeout")) {
 				throw err;
 			}
 			break;
 		}
 	}
 
-	throw new Error(
-		"WiFi connection failed — check SSID/password and try again",
-	);
+	throw new Error("WiFi connection failed — check SSID/password and try again");
 }

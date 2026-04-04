@@ -1079,8 +1079,12 @@ export class EPPGridPanel extends LitElement {
 					}}
 					@usb-retry=${() => {
 						const ctrl = this._flasherCtrl;
-						try { (ctrl as any)._serialReader?.releaseLock(); } catch {}
-						try { (ctrl as any)._serialWriter?.releaseLock(); } catch {}
+						try {
+							(ctrl as any)._serialReader?.releaseLock();
+						} catch {}
+						try {
+							(ctrl as any)._serialWriter?.releaseLock();
+						} catch {}
 						(ctrl as any)._serialReader = null;
 						(ctrl as any)._serialWriter = null;
 						ctrl.serialPort?.close().catch(() => {});
@@ -2256,9 +2260,7 @@ export class EPPGridPanel extends LitElement {
 			}
 
 			ctrl.updateUsbState({ step: "wifi_scan" });
-			const { writer, reader, networks } = await runWifiScan(
-				ctrl.serialPort,
-			);
+			const { writer, reader, networks } = await runWifiScan(ctrl.serialPort);
 
 			if (networks.length === 0) {
 				reader.releaseLock();
@@ -2336,13 +2338,20 @@ export class EPPGridPanel extends LitElement {
 		const ctrl = this._flasherCtrl;
 		const port = ctrl.serialPort;
 		if (!port?.writable || !port?.readable) {
-			ctrl.updateUsbState({ step: "error", error: "Serial port not available" });
+			ctrl.updateUsbState({
+				step: "error",
+				error: "Serial port not available",
+			});
 			return;
 		}
 
 		// Release any old reader/writer locks before getting fresh ones
-		try { (ctrl as any)._serialReader?.releaseLock(); } catch {}
-		try { (ctrl as any)._serialWriter?.releaseLock(); } catch {}
+		try {
+			(ctrl as any)._serialReader?.releaseLock();
+		} catch {}
+		try {
+			(ctrl as any)._serialWriter?.releaseLock();
+		} catch {}
 
 		const writer = port.writable.getWriter();
 		const reader = port.readable.getReader();
@@ -2390,8 +2399,12 @@ export class EPPGridPanel extends LitElement {
 
 			ctrl.updateUsbState({ step: "complete", ip: ip ?? undefined });
 		} catch (err: any) {
-			try { (ctrl as any)._serialReader?.releaseLock(); } catch {}
-			try { (ctrl as any)._serialWriter?.releaseLock(); } catch {}
+			try {
+				(ctrl as any)._serialReader?.releaseLock();
+			} catch {}
+			try {
+				(ctrl as any)._serialWriter?.releaseLock();
+			} catch {}
 			(ctrl as any)._serialReader = null;
 			(ctrl as any)._serialWriter = null;
 			ctrl.updateUsbState({

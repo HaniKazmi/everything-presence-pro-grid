@@ -77,7 +77,10 @@ describe("buildScanCommand", () => {
 describe("buildGetStateCommand", () => {
 	it("creates a GET_CURRENT_STATE RPC command packet", () => {
 		const packet = buildGetStateCommand();
-		const expected = buildImprovPacket(TYPE_RPC_COMMAND, [CMD_GET_CURRENT_STATE, 0x00]);
+		const expected = buildImprovPacket(TYPE_RPC_COMMAND, [
+			CMD_GET_CURRENT_STATE,
+			0x00,
+		]);
 		expect(packet).toEqual(expected);
 	});
 
@@ -91,7 +94,10 @@ describe("buildGetStateCommand", () => {
 describe("buildGetInfoCommand", () => {
 	it("creates a GET_DEVICE_INFO RPC command packet", () => {
 		const packet = buildGetInfoCommand();
-		const expected = buildImprovPacket(TYPE_RPC_COMMAND, [CMD_GET_DEVICE_INFO, 0x00]);
+		const expected = buildImprovPacket(TYPE_RPC_COMMAND, [
+			CMD_GET_DEVICE_INFO,
+			0x00,
+		]);
 		expect(packet).toEqual(expected);
 	});
 
