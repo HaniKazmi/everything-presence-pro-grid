@@ -91,16 +91,15 @@ export async function runWifiScan(port: SerialPort): Promise<{
 	const writer = port.writable!.getWriter();
 	const reader = port.readable!.getReader();
 
-	// Drain any buffered boot log data
-	console.log("[usb-flash] draining serial buffer...");
-	await drainSerial(reader, 2000);
+	// Wait for the device to boot and start Improv Serial
+	// ESP32 needs ~5-8 seconds after reset to initialize ESPHome + Improv
+	await drainSerial(reader, 8000);
 	reader.releaseLock();
 
 	// Get a fresh reader after drain
 	const freshReader = (port.readable as ReadableStream<Uint8Array>).getReader();
 
 	// Send scan command
-	console.log("[usb-flash] sending WiFi scan command...");
 	await sendImprovPacket(writer, buildScanCommand());
 
 	// Collect scan results (multiple RPC_RESULT packets, terminated by empty data)
@@ -113,23 +112,20 @@ export async function runWifiScan(port: SerialPort): Promise<{
 				freshReader,
 				deadline - Date.now(),
 			);
-			console.log("[usb-flash] received", packets.length, "Improv packets");
 			for (const pkt of packets) {
-				console.log("[usb-flash] packet type:", pkt.type, "data bytes:", Array.from(pkt.data));
 				if (pkt.type === TYPE_RPC_RESULT) {
 					// RPC result data starts with command byte — skip it
 					const resultData = pkt.data.slice(1);
 					const network = parseScanResults(resultData);
 					if (network === null) {
-						console.log("[usb-flash] scan complete, found", networks.length, "networks");
+						// Empty data = scan complete
 						return { writer, reader: freshReader, networks };
 					}
-					console.log("[usb-flash] found network:", network.ssid, network.rssi, "dBm");
 					networks.push(network);
 				}
 			}
-		} catch (err) {
-			console.log("[usb-flash] scan timeout, found", networks.length, "networks so far. Error:", err);
+		} catch {
+			// Timeout — return whatever we have
 			break;
 		}
 	}
