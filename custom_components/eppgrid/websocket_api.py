@@ -1220,7 +1220,7 @@ async def websocket_add_esphome_device(
         result = await hass.config_entries.flow.async_init(
             "esphome",
             context=flow_context,
-            data={"host": msg["host"]},
+            data={"host": msg["host"], "port": 6053},
         )
         connection.send_result(msg["id"], {"result": result.get("type", "unknown")})
     except Exception as err:

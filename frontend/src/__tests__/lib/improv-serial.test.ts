@@ -140,7 +140,7 @@ describe("parseImprovPackets", () => {
 		mixed.set(realPacket, prefix.length);
 		mixed.set(suffix, prefix.length + realPacket.length);
 
-		const packets = parseImprovPackets(mixed);
+		const { packets } = parseImprovPackets(mixed);
 		expect(packets.length).toBe(1);
 		expect(packets[0].type).toBe(TYPE_RPC_COMMAND);
 		expect(Array.from(packets[0].data)).toEqual([CMD_WIFI_SCAN, 0x00]);
@@ -150,7 +150,7 @@ describe("parseImprovPackets", () => {
 		const data = new TextEncoder().encode(
 			"just some log text with no improv packets",
 		);
-		const packets = parseImprovPackets(data);
+		const { packets } = parseImprovPackets(data);
 		expect(packets.length).toBe(0);
 	});
 
@@ -162,7 +162,7 @@ describe("parseImprovPackets", () => {
 		combined.set(packet1, 0);
 		combined.set(packet2, packet1.length);
 
-		const packets = parseImprovPackets(combined);
+		const { packets } = parseImprovPackets(combined);
 		expect(packets.length).toBe(2);
 		expect(packets[0].type).toBe(TYPE_RPC_COMMAND);
 		expect(packets[1].type).toBe(TYPE_RPC_RESULT);
@@ -175,7 +175,7 @@ describe("parseImprovPackets", () => {
 		const checksumIdx = corrupted.length - 2;
 		corrupted[checksumIdx] = (corrupted[checksumIdx] + 1) % 256;
 
-		const packets = parseImprovPackets(corrupted);
+		const { packets } = parseImprovPackets(corrupted);
 		expect(packets.length).toBe(0);
 	});
 
@@ -183,7 +183,7 @@ describe("parseImprovPackets", () => {
 		// Construct a truncated Improv stream: header(6) only, no version/type/length
 		const header = new Uint8Array(IMPROV_HEADER);
 		// Only provide the 6 header bytes — not enough to form a complete packet (needs 3 more)
-		const packets = parseImprovPackets(header);
+		const { packets } = parseImprovPackets(header);
 		expect(packets.length).toBe(0);
 	});
 
@@ -192,8 +192,33 @@ describe("parseImprovPackets", () => {
 		const real = buildScanCommand();
 		// Drop the last 2 bytes so the data + checksum bytes are missing
 		const truncated = real.slice(0, real.length - 2);
-		const packets = parseImprovPackets(truncated);
+		const { packets } = parseImprovPackets(truncated);
 		expect(packets.length).toBe(0);
+	});
+
+	it("reports consumed bytes so callers can preserve leftover data", () => {
+		const pkt = buildImprovPacket(TYPE_RPC_RESULT, [0x01]);
+		// Add a partial second packet header at the end
+		const partial = new Uint8Array([0x49, 0x4d]); // "IM" — start of IMPROV
+		const combined = new Uint8Array(pkt.length + partial.length);
+		combined.set(pkt, 0);
+		combined.set(partial, pkt.length);
+
+		const result = parseImprovPackets(combined);
+		expect(result.packets.length).toBe(1);
+		expect(result.consumed).toBe(pkt.length);
+	});
+
+	it("consumed covers all parsed packets plus any trailing non-header bytes", () => {
+		const pkt1 = buildImprovPacket(TYPE_RPC_RESULT, [0x01]);
+		const pkt2 = buildImprovPacket(TYPE_RPC_RESULT, [0x02]);
+		const combined = new Uint8Array(pkt1.length + pkt2.length);
+		combined.set(pkt1, 0);
+		combined.set(pkt2, pkt1.length);
+
+		const result = parseImprovPackets(combined);
+		expect(result.packets.length).toBe(2);
+		expect(result.consumed).toBe(pkt1.length + pkt2.length);
 	});
 });
 

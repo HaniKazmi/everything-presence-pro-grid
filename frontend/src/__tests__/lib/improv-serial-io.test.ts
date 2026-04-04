@@ -64,11 +64,11 @@ describe("readImprovResponse", () => {
 		const responsePacket = buildPacket(TYPE_RPC_RESULT, [0x01, 0x02, 0x03]);
 		const reader = mockReader([responsePacket]);
 
-		const packets = await readImprovResponse(reader, 1000);
+		const result = await readImprovResponse(reader, 1000);
 
-		expect(packets.length).toBe(1);
-		expect(packets[0].type).toBe(TYPE_RPC_RESULT);
-		expect(Array.from(packets[0].data)).toEqual([0x01, 0x02, 0x03]);
+		expect(result.packets.length).toBe(1);
+		expect(result.packets[0].type).toBe(TYPE_RPC_RESULT);
+		expect(Array.from(result.packets[0].data)).toEqual([0x01, 0x02, 0x03]);
 	});
 
 	it("accumulates data across multiple chunks", async () => {
@@ -79,10 +79,10 @@ describe("readImprovResponse", () => {
 		const chunk2 = responsePacket.slice(mid);
 		const reader = mockReader([chunk1, chunk2]);
 
-		const packets = await readImprovResponse(reader, 1000);
+		const result = await readImprovResponse(reader, 1000);
 
-		expect(packets.length).toBe(1);
-		expect(packets[0].type).toBe(TYPE_RPC_RESULT);
+		expect(result.packets.length).toBe(1);
+		expect(result.packets[0].type).toBe(TYPE_RPC_RESULT);
 	});
 
 	it("rejects on timeout when no valid packets arrive", async () => {
@@ -101,10 +101,33 @@ describe("readImprovResponse", () => {
 		combined.set(responsePacket, logBytes.length);
 		const reader = mockReader([combined]);
 
-		const packets = await readImprovResponse(reader, 1000);
+		const result = await readImprovResponse(reader, 1000);
 
-		expect(packets.length).toBe(1);
-		expect(packets[0].type).toBe(TYPE_RPC_RESULT);
+		expect(result.packets.length).toBe(1);
+		expect(result.packets[0].type).toBe(TYPE_RPC_RESULT);
+	});
+
+	it("preserves leftover buffer data for split packets", async () => {
+		const pkt1 = buildPacket(TYPE_RPC_RESULT, [0x01]);
+		const pkt2 = buildPacket(TYPE_RPC_RESULT, [0x02]);
+		// Split: pkt1 complete + first byte of pkt2 in chunk1, rest of pkt2 in chunk2
+		const chunk1 = new Uint8Array(pkt1.length + 1);
+		chunk1.set(pkt1, 0);
+		chunk1[pkt1.length] = pkt2[0]; // "I" of second IMPROV header
+		const chunk2 = pkt2.slice(1);
+
+		const reader = mockReader([chunk1, chunk2]);
+
+		// First call gets pkt1, leftover buffer has the "I"
+		const result1 = await readImprovResponse(reader, 1000);
+		expect(result1.packets.length).toBe(1);
+		expect(result1.packets[0].data).toEqual(new Uint8Array([0x01]));
+		expect(result1.buffer.length).toBe(1); // leftover "I" byte
+
+		// Second call with leftover buffer finds pkt2
+		const result2 = await readImprovResponse(reader, 1000, result1.buffer);
+		expect(result2.packets.length).toBe(1);
+		expect(result2.packets[0].data).toEqual(new Uint8Array([0x02]));
 	});
 });
 

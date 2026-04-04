@@ -148,7 +148,7 @@ describe("render() device list", () => {
 		const tpl = (el as any).render();
 		const c = renderTo(tpl);
 
-		expect(c.querySelectorAll(".flash-btn").length).toBe(2);
+		expect(c.querySelectorAll(".device-row ha-button[raised]").length).toBe(2);
 	});
 
 	it("Flash button disabled for offline device", () => {
@@ -156,7 +156,7 @@ describe("render() device list", () => {
 		const tpl = (el as any).render();
 		const c = renderTo(tpl);
 
-		const btn = c.querySelector(".flash-btn") as HTMLButtonElement;
+		const btn = c.querySelector(".device-row ha-button[raised]") as any;
 		expect(btn.disabled).toBe(true);
 	});
 
@@ -165,7 +165,7 @@ describe("render() device list", () => {
 		const tpl = (el as any).render();
 		const c = renderTo(tpl);
 
-		const btn = c.querySelector(".flash-btn") as HTMLButtonElement;
+		const btn = c.querySelector(".device-row ha-button[raised]") as any;
 		expect(btn.disabled).toBe(false);
 	});
 });
@@ -275,7 +275,7 @@ describe("render() OTA progress state", () => {
 		const tpl = (el as any).render();
 		const c = renderTo(tpl);
 
-		expect(c.querySelector(".go-device-btn")).not.toBeNull();
+		expect(c.querySelector(".confirm-actions ha-button[raised]")).not.toBeNull();
 	});
 });
 
@@ -295,8 +295,8 @@ describe("render() confirm dialog", () => {
 		const tpl = (el as any).render();
 		const c = renderTo(tpl);
 
-		expect(c.querySelector(".flash-btn")).not.toBeNull();
-		expect(c.querySelector(".cancel-btn")).not.toBeNull();
+		expect(c.querySelector(".confirm-actions ha-button[raised]")).not.toBeNull();
+		expect(c.querySelector(".confirm-actions ha-button:not([raised])")).not.toBeNull();
 	});
 
 	it("confirm dialog shows variant selector", () => {
@@ -346,7 +346,7 @@ describe("render() OTA error state", () => {
 		const tpl = (el as any).render();
 		const c = renderTo(tpl);
 
-		expect(c.querySelector(".go-device-btn")).toBeNull();
+		expect(c.querySelector(".confirm-actions ha-button[raised]")).toBeNull();
 	});
 });
 
@@ -481,7 +481,7 @@ describe("render() WiFi provisioning — connected state", () => {
 		const tpl = (el as any).render();
 		const c = renderTo(tpl);
 
-		expect(c.querySelector(".wifi-continue-btn")).not.toBeNull();
+		expect(c.querySelector(".confirm-actions ha-button[raised]")).not.toBeNull();
 	});
 
 	it("dispatches wifi-complete when Continue clicked", async () => {
@@ -509,7 +509,9 @@ describe("render() WiFi provisioning — not connected state", () => {
 		const tpl = (el as any).render();
 		const c = renderTo(tpl);
 
-		expect(c.querySelector(".wifi-scan-btn")).not.toBeNull();
+		// Scan button is the second ha-button in .confirm-actions (not raised)
+		const btns = c.querySelectorAll(".confirm-actions ha-button:not([raised])");
+		expect(btns.length).toBeGreaterThanOrEqual(2);
 	});
 
 	it("shows network dropdown when networks available", () => {
@@ -523,9 +525,9 @@ describe("render() WiFi provisioning — not connected state", () => {
 		const tpl = (el as any).render();
 		const c = renderTo(tpl);
 
-		const select = c.querySelector(".wifi-network-select");
+		const select = c.querySelector("ha-select");
 		expect(select).not.toBeNull();
-		const options = select!.querySelectorAll("option[value]:not([value=''])");
+		const options = (select as any).options;
 		expect(options.length).toBe(2);
 	});
 
@@ -541,45 +543,57 @@ describe("render() WiFi provisioning — not connected state", () => {
 		const tpl = (el as any).render();
 		const c = renderTo(tpl);
 
-		const options = Array.from(
-			c.querySelectorAll(".wifi-network-select option[value]:not([value=''])"),
-		).map((o) => (o as HTMLOptionElement).value);
+		const select = c.querySelector("ha-select") as any;
+		const options = select.options.map((o: any) => o.value);
 		expect(options[0]).toBe("Strong");
 		expect(options[1]).toBe("Medium");
 		expect(options[2]).toBe("Weak");
 	});
 
-	it("shows lock icon for auth-required networks", () => {
+	it("shows wifi strength + lock iconPath for networks", () => {
 		const el = createView();
 		(el as any)._showWifiProvisioning = true;
 		(el as any)._wifiConnected = false;
 		(el as any).wifiNetworks = [
-			{ ssid: "Locked", rssi: -50, authRequired: true },
+			{ ssid: "Strong", rssi: -45, authRequired: true },
+			{ ssid: "Weak", rssi: -80, authRequired: false },
 		];
 		const tpl = (el as any).render();
 		const c = renderTo(tpl);
 
-		const option = c.querySelector(
-			'.wifi-network-select option[value="Locked"]',
-		) as HTMLOptionElement;
-		expect(option).not.toBeNull();
-		expect(option.textContent).toContain("🔒");
+		const select = c.querySelector("ha-select") as any;
+		const strong = select.options.find((o: any) => o.value === "Strong");
+		expect(strong.iconPath).toBeDefined();
+		expect(strong.iconPath.length).toBeGreaterThan(10); // SVG path data
+		const weak = select.options.find((o: any) => o.value === "Weak");
+		expect(weak.iconPath).toBeDefined();
+		expect(weak.iconPath).not.toBe(strong.iconPath); // different strength
 	});
 
-	it("shows RSSI value in network option", () => {
+	it("maps RSSI to different wifi strength icon paths", () => {
 		const el = createView();
 		(el as any)._showWifiProvisioning = true;
 		(el as any)._wifiConnected = false;
 		(el as any).wifiNetworks = [
-			{ ssid: "MyNet", rssi: -55, authRequired: false },
+			{ ssid: "Excellent", rssi: -40, authRequired: false },
+			{ ssid: "Good", rssi: -60, authRequired: false },
+			{ ssid: "Fair", rssi: -70, authRequired: false },
+			{ ssid: "Poor", rssi: -85, authRequired: false },
 		];
 		const tpl = (el as any).render();
 		const c = renderTo(tpl);
 
-		const option = c.querySelector(
-			'.wifi-network-select option[value="MyNet"]',
-		) as HTMLOptionElement;
-		expect(option.textContent).toContain("-55");
+		const select = c.querySelector("ha-select") as any;
+		const paths = ["Excellent", "Good", "Fair", "Poor"].map(
+			(s) => select.options.find((o: any) => o.value === s).iconPath
+		);
+		// All four should have different icon paths (different strength levels)
+		expect(new Set(paths).size).toBe(4);
+		// All should be valid SVG path data
+		for (const p of paths) {
+			expect(p).toBeDefined();
+			expect(typeof p).toBe("string");
+		}
 	});
 
 	it("shows manual SSID toggle", () => {
@@ -589,7 +603,7 @@ describe("render() WiFi provisioning — not connected state", () => {
 		const tpl = (el as any).render();
 		const c = renderTo(tpl);
 
-		expect(c.querySelector(".wifi-manual-toggle")).not.toBeNull();
+		expect(c.querySelector("ha-formfield")).not.toBeNull();
 	});
 
 	it("shows manual SSID text input when _manualSsid=true", () => {
@@ -600,7 +614,7 @@ describe("render() WiFi provisioning — not connected state", () => {
 		const tpl = (el as any).render();
 		const c = renderTo(tpl);
 
-		expect(c.querySelector(".wifi-ssid-input")).not.toBeNull();
+		expect(c.querySelector("ha-textfield:not([type='password'])")).not.toBeNull();
 	});
 
 	it("does not show manual SSID text input when _manualSsid=false", () => {
@@ -612,7 +626,7 @@ describe("render() WiFi provisioning — not connected state", () => {
 		const tpl = (el as any).render();
 		const c = renderTo(tpl);
 
-		expect(c.querySelector(".wifi-ssid-input")).toBeNull();
+		expect(c.querySelector("ha-textfield:not([type='password'])")).toBeNull();
 	});
 
 	it("shows password field", () => {
@@ -622,7 +636,7 @@ describe("render() WiFi provisioning — not connected state", () => {
 		const tpl = (el as any).render();
 		const c = renderTo(tpl);
 
-		expect(c.querySelector(".wifi-password-input")).not.toBeNull();
+		expect(c.querySelector("ha-textfield[type='password']")).not.toBeNull();
 	});
 
 	it("shows Configure WiFi button", () => {
@@ -632,7 +646,7 @@ describe("render() WiFi provisioning — not connected state", () => {
 		const tpl = (el as any).render();
 		const c = renderTo(tpl);
 
-		expect(c.querySelector(".wifi-configure-btn")).not.toBeNull();
+		expect(c.querySelector(".confirm-actions ha-button[raised]")).not.toBeNull();
 	});
 
 	it("Configure WiFi button is disabled when no SSID selected", () => {
@@ -643,7 +657,7 @@ describe("render() WiFi provisioning — not connected state", () => {
 		const tpl = (el as any).render();
 		const c = renderTo(tpl);
 
-		const btn = c.querySelector(".wifi-configure-btn") as HTMLButtonElement;
+		const btn = c.querySelector(".confirm-actions ha-button[raised]") as any;
 		expect(btn.disabled).toBe(true);
 	});
 
@@ -655,7 +669,7 @@ describe("render() WiFi provisioning — not connected state", () => {
 		const tpl = (el as any).render();
 		const c = renderTo(tpl);
 
-		const btn = c.querySelector(".wifi-configure-btn") as HTMLButtonElement;
+		const btn = c.querySelector(".confirm-actions ha-button[raised]") as any;
 		expect(btn.disabled).toBe(false);
 	});
 
@@ -716,7 +730,9 @@ describe("render() WiFi provisioning — not connected state", () => {
 		const tpl = (el as any).render();
 		const c = renderTo(tpl);
 
-		const scanBtn = c.querySelector(".wifi-scan-btn") as HTMLButtonElement;
+		// Scan button is the second non-raised ha-button in .confirm-actions
+		const nonRaisedBtns = c.querySelectorAll(".confirm-actions ha-button:not([raised])");
+		const scanBtn = nonRaisedBtns[1] as HTMLElement;
 		expect(scanBtn).not.toBeNull();
 		expect(scanBtn.textContent?.trim()).toContain("flasher.scanning");
 	});
@@ -730,10 +746,9 @@ describe("confirm dialog interactions", () => {
 		await el.updateComplete;
 
 		const root = el.shadowRoot!;
-		const ethernetRadio = root.querySelector(
-			'input[value="ethernet"]',
-		) as HTMLInputElement;
-		ethernetRadio.dispatchEvent(new Event("change"));
+		const variantBtns = root.querySelectorAll(".variant-selector ha-button");
+		// Second button is ethernet
+		(variantBtns[1] as HTMLElement).click();
 
 		expect((el as any)._selectedVariant).toBe("ethernet");
 	});
@@ -746,10 +761,9 @@ describe("confirm dialog interactions", () => {
 		await el.updateComplete;
 
 		const root = el.shadowRoot!;
-		const wifiRadio = root.querySelector(
-			'input[value="wifi"]',
-		) as HTMLInputElement;
-		wifiRadio.dispatchEvent(new Event("change"));
+		const variantBtns = root.querySelectorAll(".variant-selector ha-button");
+		// First button is wifi
+		(variantBtns[0] as HTMLElement).click();
 
 		expect((el as any)._selectedVariant).toBe("wifi");
 	});
@@ -761,7 +775,7 @@ describe("confirm dialog interactions", () => {
 		await el.updateComplete;
 
 		const root = el.shadowRoot!;
-		const cancelBtn = root.querySelector(".cancel-btn") as HTMLButtonElement;
+		const cancelBtn = root.querySelector(".confirm-actions ha-button:not([raised])") as HTMLElement;
 		cancelBtn.click();
 
 		expect((el as any)._confirmDevice).toBeNull();
@@ -773,7 +787,7 @@ describe("confirm dialog interactions", () => {
 		await el.updateComplete;
 
 		const root = el.shadowRoot!;
-		const flashBtn = root.querySelector(".flash-btn") as HTMLButtonElement;
+		const flashBtn = root.querySelector(".device-row ha-button[raised]") as HTMLElement;
 		flashBtn.click();
 
 		expect((el as any)._confirmDevice).toBe(device1);
@@ -792,12 +806,9 @@ describe("WiFi provisioning DOM event handlers", () => {
 		await el.updateComplete;
 
 		const root = el.shadowRoot!;
-		const select = root.querySelector(
-			".wifi-network-select",
-		) as HTMLSelectElement;
-		// Simulate selecting a network
-		select.value = "NetworkA";
-		select.dispatchEvent(new Event("change"));
+		const select = root.querySelector("ha-select") as any;
+		// Simulate selecting a network via ha-select's @selected event
+		select.dispatchEvent(new CustomEvent("selected", { detail: { value: "NetworkA" } }));
 
 		expect((el as any)._selectedSsid).toBe("NetworkA");
 	});
@@ -812,9 +823,7 @@ describe("WiFi provisioning DOM event handlers", () => {
 		await el.updateComplete;
 
 		const root = el.shadowRoot!;
-		const checkbox = root.querySelector(
-			'.wifi-manual-toggle input[type="checkbox"]',
-		) as HTMLInputElement;
+		const checkbox = root.querySelector("ha-checkbox") as any;
 
 		// Check it (enable manual SSID)
 		checkbox.checked = true;
@@ -839,7 +848,7 @@ describe("WiFi provisioning DOM event handlers", () => {
 		await el.updateComplete;
 
 		const root = el.shadowRoot!;
-		const input = root.querySelector(".wifi-ssid-input") as HTMLInputElement;
+		const input = root.querySelector("ha-textfield:not([type='password'])") as any;
 		input.value = "HiddenNet";
 		input.dispatchEvent(new Event("input"));
 
@@ -854,9 +863,7 @@ describe("WiFi provisioning DOM event handlers", () => {
 		await el.updateComplete;
 
 		const root = el.shadowRoot!;
-		const input = root.querySelector(
-			".wifi-password-input",
-		) as HTMLInputElement;
+		const input = root.querySelector("ha-textfield[type='password']") as any;
 		input.value = "mypassword";
 		input.dispatchEvent(new Event("input"));
 
@@ -924,7 +931,7 @@ describe("USB flash view — state-driven", () => {
 		const c = renderTo(tpl);
 
 		expect(c.textContent).toContain("192.168.1.42");
-		expect(c.querySelector(".go-device-btn")).not.toBeNull();
+		expect(c.querySelector(".confirm-actions ha-button[raised]")).not.toBeNull();
 	});
 
 	it("renders error state with retry button", () => {
@@ -936,7 +943,7 @@ describe("USB flash view — state-driven", () => {
 
 		expect(c.querySelector(".usb-error")).not.toBeNull();
 		expect(c.textContent).toContain("flash failed");
-		expect(c.querySelector(".usb-retry-btn")).not.toBeNull();
+		expect(c.querySelector(".confirm-actions ha-button[raised]")).not.toBeNull();
 	});
 
 	it("renders wifi_provision state with existing WiFi provisioning UI", () => {
@@ -970,7 +977,7 @@ describe("USB flash view — state-driven", () => {
 		el.addEventListener("usb-flash", (e) => events.push(e));
 
 		const root = el.shadowRoot!;
-		const flashBtn = root.querySelector(".flash-btn") as HTMLButtonElement;
+		const flashBtn = root.querySelector(".confirm-actions ha-button[raised]") as HTMLElement;
 		flashBtn.click();
 
 		expect(events.length).toBe(1);
@@ -990,7 +997,7 @@ describe("USB flash view — state-driven", () => {
 		el.addEventListener("usb-retry", (e) => events.push(e));
 
 		const root = el.shadowRoot!;
-		const retryBtn = root.querySelector(".usb-retry-btn") as HTMLButtonElement;
+		const retryBtn = root.querySelector(".confirm-actions ha-button[raised]") as HTMLElement;
 		retryBtn.click();
 
 		expect(events.length).toBe(1);
@@ -1004,7 +1011,7 @@ describe("USB flash view — state-driven", () => {
 		await el.updateComplete;
 
 		const root = el.shadowRoot!;
-		const cancelBtn = root.querySelector(".cancel-btn") as HTMLButtonElement;
+		const cancelBtn = root.querySelector(".confirm-actions ha-button:not([raised])") as HTMLElement;
 		cancelBtn.click();
 
 		expect((el as any)._showUsbFlash).toBe(false);
@@ -1019,10 +1026,9 @@ describe("USB flash view — state-driven", () => {
 		await el.updateComplete;
 
 		const root = el.shadowRoot!;
-		// Variant buttons in the USB flash idle state (not radio inputs — these are <button> elements)
-		const variantBtns = root.querySelectorAll(".variant-option");
+		const variantBtns = root.querySelectorAll(".variant-selector ha-button");
 		// Second button is ethernet
-		(variantBtns[1] as HTMLButtonElement).click();
+		(variantBtns[1] as HTMLElement).click();
 
 		expect((el as any)._selectedVariant).toBe("ethernet");
 	});
@@ -1036,9 +1042,9 @@ describe("USB flash view — state-driven", () => {
 		await el.updateComplete;
 
 		const root = el.shadowRoot!;
-		const variantBtns = root.querySelectorAll(".variant-option");
+		const variantBtns = root.querySelectorAll(".variant-selector ha-button");
 		// First button is wifi
-		(variantBtns[0] as HTMLButtonElement).click();
+		(variantBtns[0] as HTMLElement).click();
 
 		expect((el as any)._selectedVariant).toBe("wifi");
 	});

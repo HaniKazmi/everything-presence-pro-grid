@@ -525,21 +525,8 @@ export const flasherStyles = css`
     color: #2e7d32;
   }
 
-  .flash-btn {
-    padding: 6px 16px;
-    border-radius: 8px;
-    border: none;
-    cursor: pointer;
-    font-size: 13px;
-    font-weight: 500;
-    background: var(--primary-color, #03a9f4);
-    color: #fff;
-    flex-shrink: 0;
-  }
-
-  .flash-btn:disabled {
-    opacity: 0.4;
-    cursor: not-allowed;
+  ha-button[raised] {
+    --mdc-theme-primary: var(--primary-color, #03a9f4);
   }
 
   .usb-section {
@@ -699,46 +686,21 @@ export const flasherStyles = css`
     color: var(--primary-text-color, #212121);
   }
 
+  .usb-hint {
+    margin-top: 12px !important;
+    font-size: 12px !important;
+    color: var(--secondary-text-color, #757575) !important;
+  }
+
   .wifi-form {
     display: flex;
     flex-direction: column;
     gap: 12px;
   }
 
-  .wifi-network-select {
+  ha-select,
+  ha-textfield {
     width: 100%;
-    padding: 10px 12px;
-    border: 1px solid var(--divider-color, #e0e0e0);
-    border-radius: 8px;
-    font-size: 14px;
-    background: var(--card-background-color, #fff);
-    color: var(--primary-text-color, #212121);
-  }
-
-  .wifi-manual-toggle {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    font-size: 13px;
-    color: var(--secondary-text-color, #757575);
-    cursor: pointer;
-  }
-
-  .wifi-ssid-input,
-  .wifi-password-input {
-    width: 100%;
-    padding: 10px 12px;
-    border: 1px solid var(--divider-color, #e0e0e0);
-    border-radius: 8px;
-    font-size: 14px;
-    background: var(--card-background-color, #fff);
-    color: var(--primary-text-color, #212121);
-    box-sizing: border-box;
-  }
-
-  .wifi-ssid-input::placeholder,
-  .wifi-password-input::placeholder {
-    color: var(--secondary-text-color, #757575);
   }
 
   .usb-progress {
@@ -833,23 +795,8 @@ export const flasherStyles = css`
     margin-bottom: 16px;
   }
 
-  .variant-option {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    font-size: 14px;
-    cursor: pointer;
-    color: var(--primary-text-color, #212121);
-    padding: 8px 16px;
-    border-radius: 8px;
-    border: 1px solid var(--divider-color, #e0e0e0);
-    background: transparent;
-  }
-
-  .variant-option.selected {
-    border-color: var(--primary-color, #03a9f4);
-    background: var(--primary-color, #03a9f4);
-    color: #fff;
+  .variant-selector ha-button.selected {
+    --mdc-theme-primary: var(--primary-color, #03a9f4);
   }
 
   .confirm-dialog {
@@ -896,27 +843,6 @@ export const flasherStyles = css`
     gap: 12px;
   }
 
-  .cancel-btn {
-    padding: 8px 20px;
-    border-radius: 8px;
-    border: 1px solid var(--divider-color, #e0e0e0);
-    cursor: pointer;
-    font-size: 14px;
-    font-weight: 500;
-    background: transparent;
-    color: var(--secondary-text-color, #757575);
-  }
-
-  .go-device-btn {
-    padding: 8px 20px;
-    border-radius: 8px;
-    border: none;
-    cursor: pointer;
-    font-size: 14px;
-    font-weight: 500;
-    background: var(--primary-color, #03a9f4);
-    color: #fff;
-  }
 `;
 
 export const liveMenuStyles = css`

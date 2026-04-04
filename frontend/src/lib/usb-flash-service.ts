@@ -1,11 +1,15 @@
 import { ESPLoader, Transport } from "esptool-js";
 import {
+	buildGetInfoCommand,
+	buildGetStateCommand,
 	buildScanCommand,
 	buildWifiCommand,
-	drainSerial,
+	ERROR_UNABLE_TO_CONNECT,
 	parseScanResults,
 	readImprovResponse,
 	sendImprovPacket,
+	TYPE_CURRENT_STATE,
+	TYPE_ERROR_STATE,
 	TYPE_RPC_RESULT,
 	type WifiNetwork,
 } from "./improv-serial.js";
@@ -80,7 +84,10 @@ export async function flashFirmware(
  * Opens the serial port for Improv communication and runs a WiFi scan.
  * Returns the list of discovered networks.
  */
-export async function runWifiScan(port: SerialPort): Promise<{
+export async function runWifiScan(
+	port: SerialPort,
+	timings?: { retryDelay?: number; drainDelay?: number; handshakeDelay?: number },
+): Promise<{
 	writer: WritableStreamDefaultWriter<Uint8Array>;
 	reader: ReadableStreamDefaultReader<Uint8Array>;
 	networks: WifiNetwork[];
@@ -89,55 +96,125 @@ export async function runWifiScan(port: SerialPort): Promise<{
 		await port.open({ baudRate: 115200 });
 	}
 
-	// Hardware-reset the device via DTR/RTS toggle to ensure clean boot state.
-	// This prevents BLE/WiFi radio contention during Improv Serial provisioning.
-	await port.setSignals({ dataTerminalReady: false, requestToSend: true });
-	await new Promise((r) => setTimeout(r, 100));
-	await port.setSignals({ dataTerminalReady: false, requestToSend: false });
-
-	const writer = port.writable!.getWriter();
-	const reader = port.readable!.getReader();
-
-	// Wait for the device to boot and start Improv Serial
-	// ESP32 needs ~5-8 seconds after reset to initialize ESPHome + Improv
-	await drainSerial(reader, 8000);
-	reader.releaseLock();
-
-	// Get a fresh reader after drain
-	const freshReader = (port.readable as ReadableStream<Uint8Array>).getReader();
-
-	// Send scan command
-	await sendImprovPacket(writer, buildScanCommand());
-
-	// Collect scan results (multiple RPC_RESULT packets, terminated by empty data)
-	const networks: WifiNetwork[] = [];
-	const deadline = Date.now() + 10000;
-
-	while (Date.now() < deadline) {
-		try {
-			const packets = await readImprovResponse(
-				freshReader,
-				deadline - Date.now(),
-			);
-			for (const pkt of packets) {
-				if (pkt.type === TYPE_RPC_RESULT) {
-					// RPC result data starts with command byte — skip it
-					const resultData = pkt.data.slice(1);
-					const network = parseScanResults(resultData);
-					if (network === null) {
-						// Empty data = scan complete
-						return { writer, reader: freshReader, networks };
-					}
-					networks.push(network);
-				}
-			}
-		} catch {
-			// Timeout — return whatever we have
-			break;
-		}
+	// Hard-reset the device via RTS toggle (matches esptool.js hardReset).
+	// RTS asserted → EN pin pulled LOW → chip resets.
+	// RTS deasserted → EN pin goes HIGH → chip boots normally.
+	try {
+		await port.setSignals({ requestToSend: true });
+		await new Promise((r) => setTimeout(r, 200));
+		await port.setSignals({ requestToSend: false });
+	} catch {
+		// Some boards don't support serial signal control — continue without reset
 	}
 
-	return { writer, reader: freshReader, networks };
+	// Brief drain to clear any stale serial data
+	const drainMs = timings?.drainDelay ?? 200;
+	const drainReader = port.readable!.getReader();
+	while (true) {
+		const r = await Promise.race([
+			drainReader.read(),
+			new Promise<{ value: undefined; done: true }>((resolve) =>
+				setTimeout(
+					() => resolve({ value: undefined, done: true }),
+					drainMs,
+				),
+			),
+		]);
+		if (r.done || !r.value) break;
+	}
+	drainReader.releaseLock();
+
+	const writer = port.writable!.getWriter();
+
+	// Initialize the Improv session — send GET_CURRENT_STATE and verify
+	// the device responds. No response means no improv_serial (ethernet firmware).
+	const stateCmd = buildGetStateCommand();
+	const handshakeMs = timings?.handshakeDelay ?? 500;
+	await sendImprovPacket(writer, stateCmd);
+
+	const handshakeReader = port.readable!.getReader();
+	try {
+		await readImprovResponse(handshakeReader, timings?.handshakeDelay ?? 3000);
+	} catch {
+		handshakeReader.releaseLock();
+		throw new Error(
+			"No response from device — it may be flashed with ethernet firmware which does not support WiFi configuration.",
+		);
+	}
+	handshakeReader.releaseLock();
+
+	const infoCmd = buildGetInfoCommand();
+	await sendImprovPacket(writer, infoCmd);
+	await new Promise((r) => setTimeout(r, handshakeMs));
+
+	// ESPHome's improv_serial returns CACHED WiFi scan results — it doesn't
+	// trigger a new scan. If the WiFi component hasn't completed a background
+	// scan yet (common right after boot), the first attempt returns empty.
+	// Retry up to 3 times with a delay to allow the scan to complete.
+	for (let attempt = 0; attempt < 3; attempt++) {
+		if (attempt > 0) {
+			await new Promise((r) =>
+				setTimeout(r, timings?.retryDelay ?? 3000),
+			);
+		}
+
+		// Send scan command
+		const scanCmd = buildScanCommand();
+		await sendImprovPacket(writer, scanCmd);
+
+		// Get reader for scan results
+		const reader = port.readable!.getReader();
+
+		// Collect scan results (multiple RPC_RESULT packets, terminated by empty data)
+		// Pass a persistent buffer through readImprovResponse calls so packets
+		// split across serial reads are not lost.
+		const networks: WifiNetwork[] = [];
+		const deadline = Date.now() + 5000;
+		let buffer: number[] = [];
+		let scanComplete = false;
+
+		while (Date.now() < deadline && !scanComplete) {
+			try {
+				const result = await readImprovResponse(
+					reader,
+					deadline - Date.now(),
+					buffer,
+				);
+				buffer = result.buffer;
+				for (const pkt of result.packets) {
+					if (pkt.type === TYPE_RPC_RESULT && pkt.data[0] === 0x04) {
+						// RPC result format: [command(1), data_length(1), ...strings, checksum(1)]
+						// Skip command + data_length to get the string data
+						const resultData = pkt.data.slice(2, 2 + pkt.data[1]);
+						const network = parseScanResults(resultData);
+						if (network === null) {
+							// Empty data = scan complete
+							scanComplete = true;
+							if (networks.length > 0) {
+								return { writer, reader, networks };
+							}
+							break;
+						}
+						networks.push(network);
+					}
+				}
+			} catch {
+				// Timeout — break inner loop
+				break;
+			}
+		}
+
+		if (networks.length > 0) {
+			return { writer, reader, networks };
+		}
+
+		// No results — release reader and retry
+		reader.releaseLock();
+	}
+
+	// All attempts exhausted — return empty with a fresh reader
+	const reader = port.readable!.getReader();
+	return { writer, reader, networks: [] };
 }
 
 /**
@@ -152,39 +229,90 @@ export async function runWifiProvision(
 }
 
 /**
- * Reads serial output looking for an IP address pattern.
+ * Reads Improv RPC result after WiFi provisioning to extract the IP address.
+ * ESPHome sends an RPC result containing a URL like "http://192.168.1.42".
  * Returns the IP address string or throws on timeout.
  */
 export async function detectIpAddress(
 	reader: ReadableStreamDefaultReader<Uint8Array>,
 	timeoutMs: number,
-): Promise<string> {
+): Promise<string | null> {
 	const decoder = new TextDecoder();
-	let buffer = "";
+	const ipPattern = /(\d+\.\d+\.\d+\.\d+)/;
+	let buffer: number[] = [];
+	// Track state machine: our command must trigger PROVISIONING first.
+	// Anything before that is stale from a previous attempt.
+	let sawProvisioning = false;
+	let provisioned = false;
 	const deadline = Date.now() + timeoutMs;
-	const ipPattern = /IP Address:\s*(\d+\.\d+\.\d+\.\d+)/;
 
 	while (Date.now() < deadline) {
-		const remaining = deadline - Date.now();
-		if (remaining <= 0) break;
+		try {
+			const result = await readImprovResponse(
+				reader,
+				deadline - Date.now(),
+				buffer,
+			);
+			buffer = result.buffer;
+			for (const pkt of result.packets) {
+				// STATE_PROVISIONING — our command was accepted
+				if (pkt.type === TYPE_CURRENT_STATE && pkt.data[0] === 0x03) {
+					sawProvisioning = true;
+				}
 
-		const result = await Promise.race([
-			reader.read(),
-			new Promise<{ value: undefined; done: true }>((resolve) =>
-				setTimeout(() => resolve({ value: undefined, done: true }), remaining),
-			),
-		]);
+				// Ignore everything before we see our PROVISIONING
+				if (!sawProvisioning) continue;
 
-		if (result.value) {
-			buffer += decoder.decode(result.value, { stream: true });
-			const match = ipPattern.exec(buffer);
-			if (match) {
-				return match[1];
+				// Error state — WiFi connection failed
+				if (pkt.type === TYPE_ERROR_STATE) {
+					const code = pkt.data[0];
+					const messages: Record<number, string> = {
+						0x01: "Invalid command — device may need to be power-cycled",
+						0x02: "Unknown command",
+						0x03: "WiFi connection failed — check SSID/password and try again",
+						0x04: "Not authorized",
+					};
+					throw new Error(
+						messages[code] ?? `WiFi error (code ${code})`,
+					);
+				}
+
+				// STATE_PROVISIONED — device connected to WiFi
+				if (pkt.type === TYPE_CURRENT_STATE && pkt.data[0] === 0x04) {
+					provisioned = true;
+				}
+
+				// RPC result — only trust after PROVISIONING → PROVISIONED
+				if (pkt.type === TYPE_RPC_RESULT && provisioned) {
+					if (pkt.data.length >= 3 && pkt.data[1] > 0) {
+						const resultData = pkt.data.slice(2, 2 + pkt.data[1]);
+						const urlLen = resultData[0];
+						const url = decoder.decode(
+							resultData.slice(1, 1 + urlLen),
+						);
+						const match = ipPattern.exec(url);
+						if (match && match[1] !== "0.0.0.0") return match[1];
+						// 0.0.0.0 after reboot = device failed to connect
+						throw new Error(
+							"WiFi connection failed — check SSID/password and try again",
+						);
+					}
+					// Provisioned but no URL (no next_url in firmware)
+					return null;
+				}
 			}
+		} catch (err) {
+			if (
+				err instanceof Error &&
+				!err.message.includes("timeout")
+			) {
+				throw err;
+			}
+			break;
 		}
-
-		if (result.done) break;
 	}
 
-	throw new Error("timeout");
+	throw new Error(
+		"WiFi connection failed — check SSID/password and try again",
+	);
 }

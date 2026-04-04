@@ -6,10 +6,17 @@
 // Header bytes: ASCII "IMPROV"
 export const IMPROV_HEADER = [0x49, 0x4d, 0x50, 0x52, 0x4f, 0x56];
 
+export const TYPE_CURRENT_STATE = 0x01;
+export const TYPE_ERROR_STATE = 0x02;
 export const TYPE_RPC_COMMAND = 0x03;
 export const TYPE_RPC_RESULT = 0x04;
 
+export const STATE_PROVISIONED = 0x04;
+export const ERROR_UNABLE_TO_CONNECT = 0x03;
+
 export const CMD_WIFI_SETTINGS = 0x01;
+export const CMD_GET_CURRENT_STATE = 0x02;
+export const CMD_GET_DEVICE_INFO = 0x03;
 export const CMD_WIFI_SCAN = 0x04;
 
 export interface WifiNetwork {
@@ -68,6 +75,20 @@ export function buildScanCommand(): Uint8Array {
 }
 
 /**
+ * Builds a GET_CURRENT_STATE RPC command packet.
+ */
+export function buildGetStateCommand(): Uint8Array {
+	return buildImprovPacket(TYPE_RPC_COMMAND, [CMD_GET_CURRENT_STATE, 0x00]);
+}
+
+/**
+ * Builds a GET_DEVICE_INFO RPC command packet.
+ */
+export function buildGetInfoCommand(): Uint8Array {
+	return buildImprovPacket(TYPE_RPC_COMMAND, [CMD_GET_DEVICE_INFO, 0x00]);
+}
+
+/**
  * Builds a WiFi provisioning command packet.
  * Data: [CMD_WIFI_SETTINGS, total_len, ssid_len, ...ssid_bytes, pass_len, ...pass_bytes]
  */
@@ -94,11 +115,15 @@ export function buildWifiCommand(ssid: string, password: string): Uint8Array {
  * Scans for the IMPROV header, extracts complete packets, and verifies checksums.
  * Returns all valid packets found.
  */
-export function parseImprovPackets(data: Uint8Array): ImprovPacket[] {
+export function parseImprovPackets(data: Uint8Array): {
+	packets: ImprovPacket[];
+	consumed: number;
+} {
 	const packets: ImprovPacket[] = [];
 	const headerLen = IMPROV_HEADER.length;
 
 	let i = 0;
+	let consumed = 0;
 	while (i <= data.length - headerLen) {
 		// Look for the IMPROV header
 		let headerFound = true;
@@ -119,9 +144,8 @@ export function parseImprovPackets(data: Uint8Array): ImprovPacket[] {
 		const baseOffset = i + headerLen;
 		// Need at least version(1) + type(1) + length(1) + checksum(1) more bytes
 		if (baseOffset + 3 >= data.length) {
-			// Not enough bytes for a complete packet header
-			i++;
-			continue;
+			// Not enough bytes for a complete packet header — stop here
+			break;
 		}
 
 		// version = data[baseOffset]
@@ -130,9 +154,8 @@ export function parseImprovPackets(data: Uint8Array): ImprovPacket[] {
 		const packetEnd = baseOffset + 3 + length + 1; // +1 for checksum
 
 		if (packetEnd > data.length) {
-			// Incomplete packet
-			i++;
-			continue;
+			// Incomplete packet — stop here, don't skip past the header
+			break;
 		}
 
 		// Verify checksum
@@ -152,9 +175,14 @@ export function parseImprovPackets(data: Uint8Array): ImprovPacket[] {
 		packets.push({ type, data: packetData });
 
 		i = packetEnd;
+		// Skip optional trailing newline
+		if (i < data.length && data[i] === 0x0a) {
+			i++;
+		}
+		consumed = i;
 	}
 
-	return packets;
+	return { packets, consumed };
 }
 
 /**
@@ -175,8 +203,9 @@ export async function sendImprovPacket(
 export async function readImprovResponse(
 	reader: ReadableStreamDefaultReader<Uint8Array>,
 	timeoutMs: number,
-): Promise<ImprovPacket[]> {
-	const buffer: number[] = [];
+	initialBuffer?: number[],
+): Promise<{ packets: ImprovPacket[]; buffer: number[] }> {
+	const buffer: number[] = initialBuffer ? [...initialBuffer] : [];
 	const deadline = Date.now() + timeoutMs;
 
 	while (Date.now() < deadline) {
@@ -192,9 +221,12 @@ export async function readImprovResponse(
 
 		if (result.value) {
 			buffer.push(...result.value);
-			const packets = parseImprovPackets(new Uint8Array(buffer));
+			const { packets, consumed } = parseImprovPackets(
+				new Uint8Array(buffer),
+			);
 			if (packets.length > 0) {
-				return packets;
+				buffer.splice(0, consumed);
+				return { packets, buffer };
 			}
 		}
 

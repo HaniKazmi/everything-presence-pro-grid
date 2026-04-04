@@ -1067,6 +1067,7 @@ export class EPPGridPanel extends LitElement {
 						this._flasherCtrl.startOtaFlash(e.detail.mac, e.detail.variant);
 					}}
 					@flash-complete=${() => {
+						this._flasherCtrl.resetUsbState();
 						this._loadDevices();
 						this._panelTab = "config";
 					}}
@@ -1077,7 +1078,14 @@ export class EPPGridPanel extends LitElement {
 						this._handleUsbWifiConfig();
 					}}
 					@usb-retry=${() => {
-						this._flasherCtrl.resetUsbState();
+						const ctrl = this._flasherCtrl;
+						try { (ctrl as any)._serialReader?.releaseLock(); } catch {}
+						try { (ctrl as any)._serialWriter?.releaseLock(); } catch {}
+						(ctrl as any)._serialReader = null;
+						(ctrl as any)._serialWriter = null;
+						ctrl.serialPort?.close().catch(() => {});
+						ctrl.serialPort = null;
+						ctrl.resetUsbState();
 					}}
 					@wifi-scan=${() => {
 						this._handleWifiScan();
@@ -2242,12 +2250,24 @@ export class EPPGridPanel extends LitElement {
 	private async _handleUsbWifiConfig(): Promise<void> {
 		const ctrl = this._flasherCtrl;
 		try {
-			ctrl.updateUsbState({ step: "connecting" });
-			const port = await navigator.serial.requestPort();
-			ctrl.serialPort = port;
+			if (!ctrl.serialPort) {
+				ctrl.updateUsbState({ step: "connecting" });
+				ctrl.serialPort = await navigator.serial.requestPort();
+			}
 
 			ctrl.updateUsbState({ step: "wifi_scan" });
-			const { writer, reader, networks } = await runWifiScan(port);
+			const { writer, reader, networks } = await runWifiScan(
+				ctrl.serialPort,
+			);
+
+			if (networks.length === 0) {
+				reader.releaseLock();
+				writer.releaseLock();
+				throw new Error(
+					"No WiFi networks found. If this device is flashed with ethernet firmware, WiFi configuration is not available.",
+				);
+			}
+
 			ctrl.wifiNetworks = networks;
 			ctrl.updateUsbState({ step: "wifi_provision" });
 
@@ -2279,6 +2299,14 @@ export class EPPGridPanel extends LitElement {
 				ctrl.updateUsbState({ step: "flashing", progress: pct });
 			});
 
+			if (variant.startsWith("ethernet")) {
+				// Ethernet variants have no WiFi — skip provisioning
+				await port.close().catch(() => {});
+				ctrl.serialPort = null;
+				ctrl.updateUsbState({ step: "complete" });
+				return;
+			}
+
 			// Step 3: WiFi scan
 			ctrl.updateUsbState({ step: "wifi_scan" });
 			const { writer, reader, networks } = await runWifiScan(port);
@@ -2306,26 +2334,66 @@ export class EPPGridPanel extends LitElement {
 		password: string,
 	): Promise<void> {
 		const ctrl = this._flasherCtrl;
-		const writer = (ctrl as any)._serialWriter;
-		const reader = (ctrl as any)._serialReader;
+		const port = ctrl.serialPort;
+		if (!port?.writable || !port?.readable) {
+			ctrl.updateUsbState({ step: "error", error: "Serial port not available" });
+			return;
+		}
+
+		// Release any old reader/writer locks before getting fresh ones
+		try { (ctrl as any)._serialReader?.releaseLock(); } catch {}
+		try { (ctrl as any)._serialWriter?.releaseLock(); } catch {}
+
+		const writer = port.writable.getWriter();
+		const reader = port.readable.getReader();
+		(ctrl as any)._serialWriter = writer;
+		(ctrl as any)._serialReader = reader;
+
 		try {
 			await runWifiProvision(writer, ssid, password);
-			ctrl.updateUsbState({ step: "reading_ip" });
 
-			const ip = await detectIpAddress(reader, 30000);
-
-			// Close serial port
+			// Release locks before toggling signals
 			reader.releaseLock();
 			writer.releaseLock();
-			await ctrl.serialPort?.close().catch(() => {});
+
+			// Hard-reset device (same sequence as esp-web-tools ewt-console reset)
+			// RTS=true asserts EN low (reset), then HardReset releases it
+			try {
+				await port.setSignals({ requestToSend: true });
+				await new Promise((r) => setTimeout(r, 100));
+				await port.setSignals({ requestToSend: false });
+			} catch {
+				// RTS not supported on this board
+			}
+
+			// Wait for device to boot and connect to WiFi
+			await new Promise((r) => setTimeout(r, 5000));
+
+			// Get fresh reader for IP detection
+			const freshReader = port.readable!.getReader();
+			(ctrl as any)._serialReader = freshReader;
+
+			ctrl.updateUsbState({ step: "reading_ip" });
+			const ip = await detectIpAddress(freshReader, 35000);
+
+			// Close serial port
+			freshReader.releaseLock();
+			await port.close().catch(() => {});
 			ctrl.serialPort = null;
+			(ctrl as any)._serialReader = null;
+			(ctrl as any)._serialWriter = null;
 
-			// Add device to ESPHome
-			ctrl.updateUsbState({ step: "adding_device" });
-			await ctrl.addEsphomeDevice(ip);
+			if (ip) {
+				ctrl.updateUsbState({ step: "adding_device" });
+				await ctrl.addEsphomeDevice(ip);
+			}
 
-			ctrl.updateUsbState({ step: "complete", ip });
+			ctrl.updateUsbState({ step: "complete", ip: ip ?? undefined });
 		} catch (err: any) {
+			try { (ctrl as any)._serialReader?.releaseLock(); } catch {}
+			try { (ctrl as any)._serialWriter?.releaseLock(); } catch {}
+			(ctrl as any)._serialReader = null;
+			(ctrl as any)._serialWriter = null;
 			ctrl.updateUsbState({
 				step: "error",
 				error: err?.message ?? "WiFi provisioning failed",
