@@ -52,4 +52,5 @@ wifi:
       - script.execute: control_leds
 
 improv_serial:
+  next_url: http://{{ip_address}}
 

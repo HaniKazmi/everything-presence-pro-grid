@@ -445,6 +445,406 @@ export const layoutStyles = css`
   }
 `;
 
+export const flasherStyles = css`
+  :host {
+    display: block;
+    padding: 16px;
+  }
+
+  .flasher-content {
+    max-width: 600px;
+    margin: 0 auto;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+  }
+
+  .card-header {
+    font-size: 18px;
+    font-weight: 400;
+    line-height: 48px;
+    padding: 8px 16px 0;
+    color: var(--ha-card-header-color, var(--primary-text-color, #212121));
+  }
+
+  .card-content {
+    padding: 16px;
+  }
+
+  .device-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .device-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 16px;
+    background: var(--card-background-color, #fff);
+    border: 1px solid var(--divider-color, #e0e0e0);
+    border-radius: 10px;
+  }
+
+  .device-info {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .device-name {
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--primary-text-color, #212121);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .device-host {
+    font-size: 12px;
+    color: var(--secondary-text-color, #757575);
+    margin-top: 2px;
+  }
+
+  .firmware-badge {
+    font-size: 11px;
+    font-weight: 600;
+    padding: 2px 8px;
+    border-radius: 10px;
+    flex-shrink: 0;
+  }
+
+  .firmware-badge-original {
+    background: #ff980020;
+    color: #e65100;
+  }
+
+  .firmware-badge-eppgrid {
+    background: #4caf5020;
+    color: #2e7d32;
+  }
+
+  ha-button[raised] {
+    --mdc-theme-primary: var(--primary-color, #03a9f4);
+  }
+
+  .usb-section {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    padding: 12px 8px;
+  }
+
+  .usb-icon {
+    --mdc-icon-size: 32px;
+    color: var(--secondary-text-color, #757575);
+    flex-shrink: 0;
+  }
+
+  .usb-section-text {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .usb-title {
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--primary-text-color, #212121);
+  }
+
+  .usb-description {
+    font-size: 13px;
+    color: var(--secondary-text-color, #757575);
+    margin-top: 2px;
+  }
+
+  .usb-actions {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .usb-action {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    padding: 16px;
+    border: 1px solid var(--divider-color, #e0e0e0);
+    border-radius: 12px;
+    cursor: pointer;
+    transition: background 0.15s;
+  }
+
+  .usb-action:hover {
+    background: var(--secondary-background-color, #f5f5f5);
+  }
+
+  .usb-action ha-icon {
+    --mdc-icon-size: 28px;
+    color: var(--primary-color, #03a9f4);
+    flex-shrink: 0;
+  }
+
+  .usb-action-text {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .usb-action-title {
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--primary-text-color, #212121);
+  }
+
+  .usb-action-desc {
+    font-size: 13px;
+    color: var(--secondary-text-color, #757575);
+    margin-top: 2px;
+  }
+
+  .usb-connect-btn {
+    padding: 8px 20px;
+    border-radius: 8px;
+    border: none;
+    cursor: pointer;
+    font-size: 14px;
+    font-weight: 500;
+    background: var(--primary-color, #03a9f4);
+    color: var(--text-primary-color, #fff);
+    flex-shrink: 0;
+  }
+
+  .usb-flash-iframe {
+    display: block;
+    width: 100%;
+    height: 500px;
+    border: 1px solid var(--divider-color, #e0e0e0);
+    border-radius: 12px;
+    margin: 16px 0;
+    background: var(--card-background-color, #fff);
+  }
+
+  .browser-warning {
+    margin-top: 8px;
+    font-size: 12px;
+    color: var(--warning-color, #ff9800);
+  }
+
+  .usb-select-label {
+    margin: 0 0 12px;
+    font-size: 14px;
+    color: var(--secondary-text-color, #757575);
+  }
+
+  .usb-error {
+    text-align: center;
+    padding: 24px 0;
+    color: var(--error-color, #f44336);
+  }
+
+  .usb-error ha-icon {
+    --mdc-icon-size: 48px;
+    margin-bottom: 8px;
+  }
+
+  .usb-error p {
+    margin: 0;
+    font-size: 14px;
+  }
+
+  .usb-complete {
+    text-align: center;
+    padding: 24px 0;
+    color: var(--success-color, #4caf50);
+  }
+
+  .usb-complete ha-icon {
+    --mdc-icon-size: 48px;
+    margin-bottom: 8px;
+  }
+
+  .usb-complete p {
+    margin: 0;
+    font-size: 14px;
+  }
+
+  .usb-ip {
+    color: var(--primary-text-color, #212121);
+    font-weight: 500;
+    margin-top: 4px;
+  }
+
+  .usb-status {
+    text-align: center;
+    padding: 24px 0;
+  }
+
+  .usb-status p {
+    margin: 0;
+    font-size: 14px;
+    color: var(--primary-text-color, #212121);
+  }
+
+  .usb-hint {
+    margin-top: 12px !important;
+    font-size: 12px !important;
+    color: var(--secondary-text-color, #757575) !important;
+  }
+
+  .wifi-form {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  ha-select,
+  ha-textfield {
+    width: 100%;
+  }
+
+  .usb-progress {
+    margin-top: 16px;
+    background: var(--divider-color, #e0e0e0);
+    border-radius: 4px;
+    height: 8px;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .usb-progress-bar {
+    height: 100%;
+    background: var(--primary-color, #03a9f4);
+    border-radius: 4px;
+    transition: width 0.3s ease;
+  }
+
+  .usb-progress span {
+    display: block;
+    text-align: center;
+    margin-top: 8px;
+    font-size: 13px;
+    color: var(--secondary-text-color, #757575);
+  }
+
+  .progress-steps {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding: 16px;
+    background: var(--card-background-color, #fff);
+    border: 1px solid var(--divider-color, #e0e0e0);
+    border-radius: var(--ha-card-border-radius, 12px);
+  }
+
+  .progress-step {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 14px;
+    color: var(--secondary-text-color, #757575);
+  }
+
+  .progress-step.step-done {
+    color: var(--success-color, #4caf50);
+  }
+
+  .progress-step.step-active {
+    color: var(--primary-text-color, #212121);
+    font-weight: 500;
+  }
+
+  .progress-step.step-error {
+    color: var(--error-color, #f44336);
+  }
+
+  .step-icon {
+    font-size: 16px;
+    width: 20px;
+    text-align: center;
+    flex-shrink: 0;
+  }
+
+  .flasher-loading {
+    padding: 32px 24px;
+    text-align: center;
+    color: var(--secondary-text-color, #757575);
+    font-size: 14px;
+  }
+
+  .flasher-empty {
+    padding: 24px 16px 32px;
+    text-align: center;
+    color: var(--secondary-text-color, #757575);
+  }
+
+  .flasher-empty ha-icon {
+    --mdc-icon-size: 48px;
+    margin-bottom: 8px;
+    opacity: 0.5;
+  }
+
+  .flasher-empty p {
+    margin: 0;
+    font-size: 14px;
+  }
+
+  .variant-selector {
+    display: flex;
+    gap: 12px;
+    margin-bottom: 16px;
+  }
+
+  .variant-selector ha-button.selected {
+    --mdc-theme-primary: var(--primary-color, #03a9f4);
+  }
+
+  .confirm-dialog {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.4);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 100;
+  }
+
+  .confirm-card {
+    background: var(--card-background-color, #fff);
+    border-radius: var(--ha-card-border-radius, 12px);
+    padding: 24px;
+    min-width: 320px;
+    max-width: 440px;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    box-shadow: var(--ha-card-box-shadow, 0 4px 24px rgba(0, 0, 0, 0.15));
+  }
+
+  .confirm-card h3 {
+    margin: 0;
+    font-size: 18px;
+    font-weight: 500;
+  }
+
+  .confirm-card p {
+    margin: 0;
+    font-size: 14px;
+    color: var(--secondary-text-color, #757575);
+    line-height: 1.5;
+  }
+
+  .confirm-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 12px;
+  }
+
+`;
+
 export const liveMenuStyles = css`
   .sidebar-header {
     display: flex;

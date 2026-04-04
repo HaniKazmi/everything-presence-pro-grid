@@ -9,6 +9,9 @@ dist/
 coverage.json
 frontend/coverage/
 
+# Firmware binaries (downloaded at runtime, not tracked)
+custom_components/eppgrid/frontend/firmware/
+
 # ESPHome build artifacts
 firmware/.esphome/
 firmware/build/

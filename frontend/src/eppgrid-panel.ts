@@ -1,6 +1,7 @@
 import { css, html, LitElement, nothing, type PropertyValues } from "lit";
 import { property, state } from "lit/decorators.js";
 
+import "./components/epp-flasher-view.js";
 import "./components/epp-furniture-overlay.js";
 import "./components/epp-furniture-sidebar.js";
 import "./components/epp-grid.js";
@@ -10,6 +11,7 @@ import "./components/epp-wizard.js";
 import "./components/epp-overlay-sidebar.js";
 import "./components/epp-zone-sidebar.js";
 import { DeviceController } from "./controllers/device-controller.js";
+import { FlasherController } from "./controllers/flasher-controller.js";
 import { GridStateController } from "./controllers/grid-state-controller.js";
 import { TargetController } from "./controllers/target-controller.js";
 import type { PaintAction } from "./lib/cell-painting.js";
@@ -47,6 +49,12 @@ import {
 	type SensorFov,
 } from "./lib/room-geometry.js";
 import {
+	detectIpAddress,
+	flashFirmware,
+	runWifiProvision,
+	runWifiScan,
+} from "./lib/usb-flash-service.js";
+import {
 	getZoneThresholds,
 	ZONE_TYPE_DEFAULTS,
 	type ZoneConfig,
@@ -74,6 +82,8 @@ export class EPPGridPanel extends LitElement {
 	private _gridCtrl = new GridStateController(this);
 	// Target controller — owns target/sensor/zone state processing, zone engine, debug logging
 	private _targetCtrl = new TargetController(this);
+	// Flasher controller — owns OTA flash state and flashable device list
+	private _flasherCtrl = new FlasherController(this);
 	private _localize: (
 		key: string,
 		params?: Record<string, string | number>,
@@ -118,6 +128,7 @@ export class EPPGridPanel extends LitElement {
 	@state() private _entitiesConfig: Record<string, any> = {};
 	@state() private _sidebarTab: "zones" | "overlays" | "furniture" | "live" =
 		"zones";
+	@state() private _panelTab: "config" | "flasher" = "config";
 	@state() private _showDeleteCalibrationDialog = false;
 	@state() private _showLiveMenu = false;
 	@state() private _showCustomIconPicker = false;
@@ -372,6 +383,7 @@ export class EPPGridPanel extends LitElement {
 	updated(changedProps: PropertyValues): void {
 		if (changedProps.has("hass") && this.hass) {
 			this._deviceCtrl.hass = this.hass;
+			this._flasherCtrl.hass = this.hass;
 			if (this._loading && !this._devices.length) {
 				this._initialize();
 			} else if (
@@ -806,6 +818,16 @@ export class EPPGridPanel extends LitElement {
       color: var(--secondary-text-color, #757575);
     }
 
+    .empty-state {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 16px;
+      padding: 48px 16px;
+      font-size: 16px;
+      color: var(--secondary-text-color, #757575);
+    }
+
     .save-cancel-bar {
       display: flex;
       justify-content: space-between;
@@ -902,6 +924,54 @@ export class EPPGridPanel extends LitElement {
       background: var(--secondary-background-color, #333);
     }
 
+    .tab-layout {
+      display: flex;
+      flex-direction: column;
+      width: 100%;
+      height: 100%;
+    }
+
+    .tab-layout > :not(.tab-bar) {
+      flex: 1;
+      overflow: auto;
+    }
+
+    .tab-bar {
+      display: flex;
+      border-bottom: 1px solid var(--divider-color, #e0e0e0);
+      background: var(--app-header-background-color, var(--primary-color));
+      padding: 0 16px;
+      flex-shrink: 0;
+    }
+
+    .tab {
+      padding: 12px 20px;
+      border: none;
+      background: none;
+      color: var(--app-header-text-color, white);
+      cursor: pointer;
+      font-size: 14px;
+      font-weight: 500;
+      opacity: 0.7;
+      border-bottom: 3px solid transparent;
+    }
+
+    .tab.active {
+      opacity: 1;
+      border-bottom-color: var(--app-header-text-color, white);
+    }
+
+    .primary-btn {
+      padding: 10px 24px;
+      border-radius: 10px;
+      border: none;
+      cursor: pointer;
+      font-size: 15px;
+      font-weight: 500;
+      background: var(--primary-color, #03a9f4);
+      color: #fff;
+    }
+
   `,
 	];
 
@@ -959,13 +1029,104 @@ export class EPPGridPanel extends LitElement {
     `;
 	}
 
+	private _renderTabBar() {
+		return html`
+			<div class="tab-bar">
+				<button class="tab ${this._panelTab === "config" ? "active" : ""}"
+					@click=${() => {
+						this._panelTab = "config";
+						// Refresh device list in case devices were added/removed during flashing
+						this._loadDevices();
+					}}>${this._localize("tabs.device_configuration")}</button>
+				<button class="tab ${this._panelTab === "flasher" ? "active" : ""}"
+					@click=${() => {
+						this._panelTab = "flasher";
+						if (this._flasherCtrl.loading) {
+							this._flasherCtrl.hass = this.hass;
+							this._flasherCtrl.loadDevices();
+						}
+					}}>${this._localize("tabs.flash_firmware")}</button>
+			</div>
+		`;
+	}
+
 	render() {
+		if (this._panelTab === "flasher") {
+			return html`<div class="tab-layout">
+				${this._renderTabBar()}
+				<epp-flasher-view
+					.hass=${this.hass}
+					.flashableDevices=${this._flasherCtrl.flashableDevices}
+					.loading=${this._flasherCtrl.loading}
+					.otaProgress=${this._flasherCtrl.otaProgress}
+					.flashingMac=${this._flasherCtrl.flashingMac}
+					.localize=${this._localize}
+					.usbFlashState=${this._flasherCtrl.usbFlashState}
+					.wifiNetworks=${this._flasherCtrl.wifiNetworks}
+					@flash-ota=${(e: CustomEvent) => {
+						this._flasherCtrl.startOtaFlash(e.detail.mac, e.detail.variant);
+					}}
+					@flash-complete=${() => {
+						this._flasherCtrl.resetUsbState();
+						this._loadDevices();
+						this._panelTab = "config";
+					}}
+					@usb-flash=${(e: CustomEvent) => {
+						this._handleUsbFlash(e.detail.variant);
+					}}
+					@usb-wifi-config=${() => {
+						this._handleUsbWifiConfig();
+					}}
+					@usb-retry=${() => {
+						const ctrl = this._flasherCtrl;
+						try {
+							(ctrl as any)._serialReader?.releaseLock();
+						} catch {}
+						try {
+							(ctrl as any)._serialWriter?.releaseLock();
+						} catch {}
+						(ctrl as any)._serialReader = null;
+						(ctrl as any)._serialWriter = null;
+						ctrl.serialPort?.close().catch(() => {});
+						ctrl.serialPort = null;
+						ctrl.resetUsbState();
+					}}
+					@wifi-scan=${() => {
+						this._handleWifiScan();
+					}}
+					@wifi-provision=${(e: CustomEvent) => {
+						this._handleWifiProvision(e.detail.ssid, e.detail.password);
+					}}
+					@wifi-complete=${() => {
+						this._flasherCtrl.resetUsbState();
+						this._loadDevices();
+						this._panelTab = "config";
+					}}
+				></epp-flasher-view>
+			</div>`;
+		}
+
 		if (this._loading) {
-			return html`<div class="loading-container">${this._localize("common.loading")}</div>`;
+			return html`<div class="tab-layout">
+				${this._renderTabBar()}
+				<div class="loading-container">${this._localize("common.loading")}</div>
+			</div>`;
 		}
 
 		if (!this._devices.length) {
-			return html`<div class="loading-container">${this._localize("common.loading")}</div>`;
+			return html`<div class="tab-layout">
+				${this._renderTabBar()}
+				<div class="empty-state">
+					<p>${this._localize("flasher.no_eppgrid_devices")}</p>
+					<button class="primary-btn" @click=${() => {
+						this._panelTab = "flasher";
+						this._flasherCtrl.hass = this.hass;
+						this._flasherCtrl.loadDevices();
+					}}>
+							${this._localize("flasher.flash_from_tab")}
+					</button>
+				</div>
+			</div>`;
 		}
 
 		if (this._setupStep !== null) {
@@ -1004,26 +1165,28 @@ export class EPPGridPanel extends LitElement {
 		}
 
 		if (this._deviceCtrl.connectionFailed) {
-			return html`
+			return html`<div class="tab-layout">
+				${this._renderTabBar()}
 				<div class="panel">
 					${this._renderHeader()}
 					${this._renderConnectionBanner()}
 				</div>
 				${this._renderGlobalDialogs()}
-			`;
+			</div>`;
 		}
 
 		const dev = this._devices.find((d) => d.mac === this._selectedMac);
 		const protocolOk = !dev || dev.config_protocol_status === "compatible";
 
 		if (!protocolOk) {
-			return html`
+			return html`<div class="tab-layout">
+				${this._renderTabBar()}
 				<div class="panel">
 					${this._renderHeader()}
 					${this._renderProtocolBanner()}
 				</div>
 				${this._renderGlobalDialogs()}
-			`;
+			</div>`;
 		}
 
 		const content =
@@ -1033,7 +1196,7 @@ export class EPPGridPanel extends LitElement {
 					? this._renderEditor()
 					: this._renderLiveOverview();
 
-		return html`${content}${this._renderGlobalDialogs()}`;
+		return html`<div class="tab-layout">${this._renderTabBar()}${content}${this._renderGlobalDialogs()}</div>`;
 	}
 
 	private async _deleteCalibration(): Promise<void> {
@@ -2086,6 +2249,198 @@ export class EPPGridPanel extends LitElement {
 				}}
 			></epp-furniture-overlay>
 		`;
+	}
+
+	private async _handleUsbWifiConfig(): Promise<void> {
+		const ctrl = this._flasherCtrl;
+		try {
+			if (!ctrl.serialPort) {
+				ctrl.updateUsbState({ step: "connecting" });
+				ctrl.serialPort = await navigator.serial.requestPort();
+			}
+
+			ctrl.updateUsbState({ step: "wifi_scan" });
+			const { writer, reader, networks } = await runWifiScan(ctrl.serialPort);
+
+			if (networks.length === 0) {
+				reader.releaseLock();
+				writer.releaseLock();
+				throw new Error(
+					"No WiFi networks found. If this device is flashed with ethernet firmware, WiFi configuration is not available.",
+				);
+			}
+
+			ctrl.wifiNetworks = networks;
+			ctrl.updateUsbState({ step: "wifi_provision" });
+
+			(ctrl as any)._serialWriter = writer;
+			(ctrl as any)._serialReader = reader;
+		} catch (err: any) {
+			if (err?.name === "NotFoundError") {
+				ctrl.resetUsbState();
+				return;
+			}
+			ctrl.updateUsbState({
+				step: "error",
+				error: err?.message ?? "Unknown error",
+			});
+		}
+	}
+
+	private async _handleUsbFlash(variant: string): Promise<void> {
+		const ctrl = this._flasherCtrl;
+		try {
+			// Step 1: Request serial port
+			ctrl.updateUsbState({ step: "connecting" });
+			const port = await navigator.serial.requestPort();
+			ctrl.serialPort = port;
+
+			// Step 2: Flash firmware
+			ctrl.updateUsbState({ step: "flashing", progress: 0 });
+			await flashFirmware(port, variant, (pct) => {
+				ctrl.updateUsbState({ step: "flashing", progress: pct });
+			});
+
+			if (variant.startsWith("ethernet")) {
+				// Ethernet variants have no WiFi — skip provisioning
+				await port.close().catch(() => {});
+				ctrl.serialPort = null;
+				ctrl.updateUsbState({ step: "complete" });
+				return;
+			}
+
+			// Step 3: WiFi scan
+			ctrl.updateUsbState({ step: "wifi_scan" });
+			const { writer, reader, networks } = await runWifiScan(port);
+			ctrl.wifiNetworks = networks;
+			ctrl.updateUsbState({ step: "wifi_provision" });
+
+			// Store writer/reader for provisioning step
+			(ctrl as any)._serialWriter = writer;
+			(ctrl as any)._serialReader = reader;
+		} catch (err: any) {
+			if (err?.name === "NotFoundError") {
+				// User cancelled port picker
+				ctrl.resetUsbState();
+				return;
+			}
+			ctrl.updateUsbState({
+				step: "error",
+				error: err?.message ?? "Unknown error",
+			});
+		}
+	}
+
+	private async _handleWifiProvision(
+		ssid: string,
+		password: string,
+	): Promise<void> {
+		const ctrl = this._flasherCtrl;
+		const port = ctrl.serialPort;
+		if (!port?.writable || !port?.readable) {
+			ctrl.updateUsbState({
+				step: "error",
+				error: "Serial port not available",
+			});
+			return;
+		}
+
+		// Release any old reader/writer locks before getting fresh ones
+		try {
+			(ctrl as any)._serialReader?.releaseLock();
+		} catch {}
+		try {
+			(ctrl as any)._serialWriter?.releaseLock();
+		} catch {}
+
+		const writer = port.writable.getWriter();
+		const reader = port.readable.getReader();
+		(ctrl as any)._serialWriter = writer;
+		(ctrl as any)._serialReader = reader;
+
+		try {
+			await runWifiProvision(writer, ssid, password);
+
+			// Release locks before toggling signals
+			reader.releaseLock();
+			writer.releaseLock();
+
+			// Hard-reset device (same sequence as esp-web-tools ewt-console reset)
+			// RTS=true asserts EN low (reset), then HardReset releases it
+			try {
+				await port.setSignals({ requestToSend: true });
+				await new Promise((r) => setTimeout(r, 100));
+				await port.setSignals({ requestToSend: false });
+			} catch {
+				// RTS not supported on this board
+			}
+
+			// Wait for device to boot and connect to WiFi
+			await new Promise((r) => setTimeout(r, 5000));
+
+			// Get fresh reader for IP detection
+			const freshReader = port.readable!.getReader();
+			(ctrl as any)._serialReader = freshReader;
+
+			ctrl.updateUsbState({ step: "reading_ip" });
+			const ip = await detectIpAddress(freshReader, 35000);
+
+			// Close serial port
+			freshReader.releaseLock();
+			await port.close().catch(() => {});
+			ctrl.serialPort = null;
+			(ctrl as any)._serialReader = null;
+			(ctrl as any)._serialWriter = null;
+
+			if (ip) {
+				ctrl.updateUsbState({ step: "adding_device" });
+				await ctrl.addEsphomeDevice(ip);
+			}
+
+			ctrl.updateUsbState({ step: "complete", ip: ip ?? undefined });
+		} catch (err: any) {
+			try {
+				(ctrl as any)._serialReader?.releaseLock();
+			} catch {}
+			try {
+				(ctrl as any)._serialWriter?.releaseLock();
+			} catch {}
+			(ctrl as any)._serialReader = null;
+			(ctrl as any)._serialWriter = null;
+			ctrl.updateUsbState({
+				step: "error",
+				error: err?.message ?? "WiFi provisioning failed",
+			});
+		}
+	}
+
+	private async _handleWifiScan(): Promise<void> {
+		const ctrl = this._flasherCtrl;
+		if (!ctrl.serialPort) return;
+		try {
+			ctrl.updateUsbState({ step: "wifi_scan" });
+			const writer = (ctrl as any)._serialWriter;
+			const reader = (ctrl as any)._serialReader;
+			// Release old locks before re-scanning
+			try {
+				reader?.releaseLock();
+			} catch {}
+			try {
+				writer?.releaseLock();
+			} catch {}
+
+			const result = await runWifiScan(ctrl.serialPort);
+			(ctrl as any)._serialWriter = result.writer;
+			(ctrl as any)._serialReader = result.reader;
+			ctrl.wifiNetworks = result.networks;
+			ctrl.updateUsbState({ step: "wifi_provision" });
+		} catch (err: any) {
+			console.error("WiFi scan failed:", err);
+			ctrl.updateUsbState({
+				step: "error",
+				error: err?.message ?? "WiFi scan failed",
+			});
+		}
 	}
 }
 

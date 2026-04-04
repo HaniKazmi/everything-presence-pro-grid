@@ -6,6 +6,8 @@ on:
 
 permissions:
   contents: write
+  pages: write
+  id-token: write
 
 jobs:
   build:
@@ -14,17 +16,11 @@ jobs:
       fail-fast: false
       matrix:
         variant:
-          - wifi
-          - wifi-ble
-          - wifi-co2
           - wifi-ble-co2
-          - ethernet
-          - ethernet-ble
-          - ethernet-co2
           - ethernet-ble-co2
     name: "Build ${{ matrix.variant }}"
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Install ESPHome
         run: pip install esphome
       - name: Compile firmware
@@ -33,12 +29,19 @@ jobs:
         run: |
           mkdir -p dist
           BUILD_DIR="firmware/variants/.esphome/build/everything-presence-pro/.pioenvs/everything-presence-pro"
-          cp "$BUILD_DIR/firmware.bin" "dist/everything-presence-pro-${{ matrix.variant }}.bin"
-          cp "$BUILD_DIR/firmware.ota.bin" "dist/everything-presence-pro-${{ matrix.variant }}.ota.bin"
+          VARIANT="everything-presence-pro-${{ matrix.variant }}"
+          # App binary (for OTA updates via ESPHome protocol)
+          cp "$BUILD_DIR/firmware.ota.bin" "dist/${VARIANT}.ota.bin"
+          # Individual parts for ESP Web Tools USB flashing (ESP-IDF offsets)
+          cp "$BUILD_DIR/bootloader.bin" "dist/${VARIANT}-bootloader.bin"
+          cp "$BUILD_DIR/partitions.bin" "dist/${VARIANT}-partitions.bin"
+          cp "$BUILD_DIR/firmware.bin" "dist/${VARIANT}.bin"
       - name: Generate ESP Web Tools manifest
         run: |
           TAG="${GITHUB_REF#refs/tags/}"
-          cat > "dist/everything-presence-pro-${{ matrix.variant }}-manifest.json" << EOF
+          VARIANT="everything-presence-pro-${{ matrix.variant }}"
+          OTA_MD5=$(md5sum "dist/${VARIANT}.ota.bin" | cut -d' ' -f1)
+          cat > "dist/${VARIANT}-manifest.json" << EOF
           {
             "name": "Everything Presence Pro (${{ matrix.variant }})",
             "version": "$TAG",
@@ -46,14 +49,20 @@ jobs:
               {
                 "chipFamily": "ESP32",
                 "parts": [
-                  {"path": "everything-presence-pro-${{ matrix.variant }}.bin", "offset": 0}
-                ]
+                  {"path": "${VARIANT}-bootloader.bin", "offset": 4096},
+                  {"path": "${VARIANT}-partitions.bin", "offset": 32768},
+                  {"path": "${VARIANT}.bin", "offset": 65536}
+                ],
+                "ota": {
+                  "path": "${VARIANT}.ota.bin",
+                  "md5": "$OTA_MD5"
+                }
               }
             ]
           }
           EOF
       - name: Upload build artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: firmware-${{ matrix.variant }}
           path: dist/
@@ -64,7 +73,7 @@ jobs:
     name: Create Release
     steps:
       - name: Download all artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v5
         with:
           path: dist
           pattern: firmware-*
@@ -74,3 +83,38 @@ jobs:
         with:
           files: dist/*
           generate_release_notes: true
+          prerelease: ${{ contains(github.ref, '-alpha') || contains(github.ref, '-beta') || contains(github.ref, '-rc') }}
+
+  deploy-pages:
+    needs: [build, release]
+    runs-on: ubuntu-latest
+    name: Deploy to GitHub Pages
+    concurrency:
+      group: pages
+      cancel-in-progress: true
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v5
+      - name: Download firmware artifacts
+        uses: actions/download-artifact@v5
+        with:
+          path: firmware
+          pattern: firmware-*
+          merge-multiple: true
+      - name: Build pages site
+        run: |
+          mkdir -p _site
+          cp -r tools/firmware-builder/* _site/
+          mkdir -p _site/firmware
+          cp firmware/*.json firmware/*.bin _site/firmware/
+      - name: Setup Pages
+        uses: actions/configure-pages@v5
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v4
+        with:
+          path: _site
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v5

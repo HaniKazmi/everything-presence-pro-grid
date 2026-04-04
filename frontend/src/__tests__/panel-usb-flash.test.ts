@@ -1,0 +1,836 @@
+/**
+ * Tests for the USB flash handler private methods in EPPGridPanel:
+ *   _handleUsbFlash(variant)
+ *   _handleWifiProvision(ssid, password)
+ *   _handleWifiScan()
+ *
+ * These are tested by calling private methods directly via `(panel as any)`.
+ */
+
+import { render } from "lit";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { EPPGridPanel } from "../eppgrid-panel.js";
+
+// Mock the USB flash service module before any imports that use it
+vi.mock("../lib/usb-flash-service.js", () => ({
+	flashFirmware: vi.fn(),
+	runWifiScan: vi.fn(),
+	runWifiProvision: vi.fn(),
+	detectIpAddress: vi.fn(),
+}));
+
+import {
+	detectIpAddress,
+	flashFirmware,
+	runWifiProvision,
+	runWifiScan,
+} from "../lib/usb-flash-service.js";
+
+/** Reset all mocks to their default happy-path implementations. */
+function resetServiceMocks() {
+	(flashFirmware as ReturnType<typeof vi.fn>).mockResolvedValue(undefined);
+	(runWifiScan as ReturnType<typeof vi.fn>).mockResolvedValue({
+		writer: { releaseLock: vi.fn() },
+		reader: { releaseLock: vi.fn() },
+		networks: [{ ssid: "TestNet", rssi: -50, authRequired: true }],
+	});
+	(runWifiProvision as ReturnType<typeof vi.fn>).mockResolvedValue(undefined);
+	(detectIpAddress as ReturnType<typeof vi.fn>).mockResolvedValue(
+		"192.168.1.42",
+	);
+}
+
+function makeMockPort() {
+	return {
+		open: vi.fn().mockResolvedValue(undefined),
+		close: vi.fn().mockResolvedValue(undefined),
+		readable: { getReader: vi.fn() },
+		writable: { getWriter: vi.fn() },
+	};
+}
+
+function createPanel(): EPPGridPanel {
+	const el = new EPPGridPanel();
+	(el as any).hass = {
+		callWS: vi.fn().mockResolvedValue({ devices: [] }),
+		connection: { subscribeMessage: vi.fn().mockResolvedValue(vi.fn()) },
+	};
+	return el;
+}
+
+describe("_handleUsbFlash", () => {
+	let panel: EPPGridPanel;
+	let mockPort: ReturnType<typeof makeMockPort>;
+
+	beforeEach(() => {
+		vi.clearAllMocks();
+		resetServiceMocks();
+		panel = createPanel();
+		mockPort = makeMockPort();
+
+		vi.stubGlobal("navigator", {
+			...navigator,
+			serial: {
+				requestPort: vi.fn().mockResolvedValue(mockPort),
+			},
+		});
+	});
+
+	it("sets state to connecting, then flashing, then wifi_scan, then wifi_provision on success", async () => {
+		const ctrl = (panel as any)._flasherCtrl;
+		const updateSpy = vi.spyOn(ctrl, "updateUsbState");
+
+		await (panel as any)._handleUsbFlash("eppgrid-wifi");
+
+		const steps = updateSpy.mock.calls.map((c: any[]) => c[0].step);
+		expect(steps).toContain("connecting");
+		expect(steps).toContain("flashing");
+		expect(steps).toContain("wifi_scan");
+		expect(steps).toContain("wifi_provision");
+	});
+
+	it("stores the serial port on the controller after requestPort", async () => {
+		const ctrl = (panel as any)._flasherCtrl;
+
+		await (panel as any)._handleUsbFlash("eppgrid-wifi");
+
+		expect(ctrl.serialPort).toBe(mockPort);
+	});
+
+	it("calls flashFirmware with the port and variant", async () => {
+		await (panel as any)._handleUsbFlash("eppgrid-wifi");
+
+		expect(flashFirmware).toHaveBeenCalledWith(
+			mockPort,
+			"eppgrid-wifi",
+			expect.any(Function),
+		);
+	});
+
+	it("calls runWifiScan after flashing", async () => {
+		await (panel as any)._handleUsbFlash("eppgrid-wifi");
+
+		expect(runWifiScan).toHaveBeenCalledWith(mockPort);
+	});
+
+	it("stores wifi networks on the controller after scanning", async () => {
+		const ctrl = (panel as any)._flasherCtrl;
+
+		await (panel as any)._handleUsbFlash("eppgrid-wifi");
+
+		expect(ctrl.wifiNetworks).toEqual([
+			{ ssid: "TestNet", rssi: -50, authRequired: true },
+		]);
+	});
+
+	it("stores _serialWriter and _serialReader from scan result", async () => {
+		const ctrl = (panel as any)._flasherCtrl;
+
+		await (panel as any)._handleUsbFlash("eppgrid-wifi");
+
+		expect((ctrl as any)._serialWriter).toBeDefined();
+		expect((ctrl as any)._serialReader).toBeDefined();
+	});
+
+	it("resets state (not error) when requestPort throws NotFoundError", async () => {
+		const notFound = new DOMException("No port selected", "NotFoundError");
+		(
+			navigator.serial.requestPort as ReturnType<typeof vi.fn>
+		).mockRejectedValue(notFound);
+
+		const ctrl = (panel as any)._flasherCtrl;
+		const resetSpy = vi.spyOn(ctrl, "resetUsbState");
+
+		await (panel as any)._handleUsbFlash("eppgrid-wifi");
+
+		expect(resetSpy).toHaveBeenCalled();
+		expect(ctrl.usbFlashState).toBeNull();
+	});
+
+	it("sets error state when requestPort throws a non-NotFoundError", async () => {
+		const boom = new Error("USB exploded");
+		(
+			navigator.serial.requestPort as ReturnType<typeof vi.fn>
+		).mockRejectedValue(boom);
+
+		const ctrl = (panel as any)._flasherCtrl;
+
+		await (panel as any)._handleUsbFlash("eppgrid-wifi");
+
+		expect(ctrl.usbFlashState).toEqual({
+			step: "error",
+			error: "USB exploded",
+		});
+	});
+
+	it("sets error state when flashFirmware throws", async () => {
+		(flashFirmware as ReturnType<typeof vi.fn>).mockRejectedValue(
+			new Error("Flash failed"),
+		);
+
+		const ctrl = (panel as any)._flasherCtrl;
+
+		await (panel as any)._handleUsbFlash("eppgrid-wifi");
+
+		expect(ctrl.usbFlashState).toEqual({
+			step: "error",
+			error: "Flash failed",
+		});
+	});
+
+	it("sets error state when runWifiScan throws", async () => {
+		(runWifiScan as ReturnType<typeof vi.fn>).mockRejectedValue(
+			new Error("Scan failed"),
+		);
+
+		const ctrl = (panel as any)._flasherCtrl;
+
+		await (panel as any)._handleUsbFlash("eppgrid-wifi");
+
+		expect(ctrl.usbFlashState).toEqual({
+			step: "error",
+			error: "Scan failed",
+		});
+	});
+
+	it("reports flashing progress via updateUsbState callback", async () => {
+		let capturedProgressCallback: ((pct: number) => void) | undefined;
+		(flashFirmware as ReturnType<typeof vi.fn>).mockImplementation(
+			(_port: any, _variant: any, onProgress: (pct: number) => void) => {
+				capturedProgressCallback = onProgress;
+				return Promise.resolve();
+			},
+		);
+
+		const ctrl = (panel as any)._flasherCtrl;
+		const updateSpy = vi.spyOn(ctrl, "updateUsbState");
+
+		await (panel as any)._handleUsbFlash("eppgrid-wifi");
+
+		// The callback was captured during flashFirmware; call it retroactively
+		// to verify its shape (it's already been stored in the closure)
+		// Alternatively, we can observe that if we call it after the fact it
+		// would call updateUsbState — verify by calling the stored cb directly
+		if (capturedProgressCallback) {
+			capturedProgressCallback(55);
+			const flashingCalls = updateSpy.mock.calls.filter(
+				(c: any[]) => c[0].step === "flashing" && c[0].progress === 55,
+			);
+			expect(flashingCalls.length).toBeGreaterThan(0);
+		}
+	});
+
+	it("skips WiFi provisioning for ethernet variants and sets complete", async () => {
+		const ctrl = (panel as any)._flasherCtrl;
+		const updateSpy = vi.spyOn(ctrl, "updateUsbState");
+
+		await (panel as any)._handleUsbFlash("ethernet");
+
+		const steps = updateSpy.mock.calls.map((c: any[]) => c[0].step);
+		expect(steps).toContain("connecting");
+		expect(steps).toContain("flashing");
+		expect(steps).toContain("complete");
+		expect(steps).not.toContain("wifi_scan");
+		expect(steps).not.toContain("wifi_provision");
+		// Port should be closed and nulled
+		expect(mockPort.close).toHaveBeenCalled();
+		expect(ctrl.serialPort).toBeNull();
+	});
+
+	it("swallows port.close() error for ethernet variants", async () => {
+		mockPort.close.mockRejectedValue(new Error("close failed"));
+		const ctrl = (panel as any)._flasherCtrl;
+		const updateSpy = vi.spyOn(ctrl, "updateUsbState");
+
+		await (panel as any)._handleUsbFlash("ethernet-poe");
+
+		const steps = updateSpy.mock.calls.map((c: any[]) => c[0].step);
+		expect(steps).toContain("complete");
+		expect(ctrl.serialPort).toBeNull();
+	});
+
+	it("sets error with 'Unknown error' message when err has no message", async () => {
+		(
+			navigator.serial.requestPort as ReturnType<typeof vi.fn>
+		).mockRejectedValue(
+			{ name: "SomeError" }, // no .message
+		);
+
+		const ctrl = (panel as any)._flasherCtrl;
+
+		await (panel as any)._handleUsbFlash("eppgrid-wifi");
+
+		expect(ctrl.usbFlashState).toEqual({
+			step: "error",
+			error: "Unknown error",
+		});
+	});
+});
+
+describe("_handleWifiProvision", () => {
+	let panel: EPPGridPanel;
+	let oldWriter: { releaseLock: ReturnType<typeof vi.fn> };
+	let oldReader: { releaseLock: ReturnType<typeof vi.fn> };
+	let freshWriter: { releaseLock: ReturnType<typeof vi.fn> };
+	let freshReader: { releaseLock: ReturnType<typeof vi.fn> };
+	let ipReader: { releaseLock: ReturnType<typeof vi.fn> };
+	let mockPort: ReturnType<typeof makeMockPort>;
+
+	beforeEach(() => {
+		vi.clearAllMocks();
+		vi.useFakeTimers();
+		resetServiceMocks();
+		panel = createPanel();
+
+		oldWriter = { releaseLock: vi.fn() };
+		oldReader = { releaseLock: vi.fn() };
+		freshWriter = { releaseLock: vi.fn() };
+		freshReader = { releaseLock: vi.fn() };
+		ipReader = { releaseLock: vi.fn() };
+		mockPort = makeMockPort();
+		mockPort.setSignals = vi.fn().mockResolvedValue(undefined);
+
+		// getWriter returns fresh writer; getReader returns fresh reader first, then ipReader
+		mockPort.writable.getWriter.mockReturnValue(freshWriter);
+		let readerCallCount = 0;
+		mockPort.readable.getReader.mockImplementation(() => {
+			readerCallCount++;
+			return readerCallCount === 1 ? freshReader : ipReader;
+		});
+
+		// Pre-wire ctrl with a serial port and old writer/reader (as _handleUsbFlash would)
+		const ctrl = (panel as any)._flasherCtrl;
+		ctrl.serialPort = mockPort;
+		(ctrl as any)._serialWriter = oldWriter;
+		(ctrl as any)._serialReader = oldReader;
+	});
+
+	afterEach(() => {
+		vi.useRealTimers();
+	});
+
+	/** Flush all pending timers so _handleWifiProvision can complete. */
+	async function flushProvision(ssid: string, password: string) {
+		const promise = (panel as any)._handleWifiProvision(ssid, password);
+		// Advance past all setTimeout calls (100ms RTS + 5000ms boot)
+		await vi.advanceTimersByTimeAsync(6000);
+		return promise;
+	}
+
+	it("sets error when serial port is not available (no writable)", async () => {
+		const ctrl = (panel as any)._flasherCtrl;
+		// Port without writable
+		ctrl.serialPort = { readable: {}, writable: null };
+
+		await flushProvision("MySSID", "s3cr3t");
+
+		expect(ctrl.usbFlashState).toEqual({
+			step: "error",
+			error: "Serial port not available",
+		});
+	});
+
+	it("sets error when serial port is null", async () => {
+		const ctrl = (panel as any)._flasherCtrl;
+		ctrl.serialPort = null;
+
+		await flushProvision("MySSID", "s3cr3t");
+
+		expect(ctrl.usbFlashState).toEqual({
+			step: "error",
+			error: "Serial port not available",
+		});
+	});
+
+	it("releases old reader/writer locks before getting fresh ones", async () => {
+		await flushProvision("MySSID", "s3cr3t");
+
+		expect(oldReader.releaseLock).toHaveBeenCalled();
+		expect(oldWriter.releaseLock).toHaveBeenCalled();
+	});
+
+	it("calls runWifiProvision with fresh writer, ssid, password", async () => {
+		await flushProvision("MySSID", "s3cr3t");
+
+		expect(runWifiProvision).toHaveBeenCalledWith(
+			freshWriter,
+			"MySSID",
+			"s3cr3t",
+		);
+	});
+
+	it("performs RTS reset after sending credentials", async () => {
+		await flushProvision("MySSID", "s3cr3t");
+
+		expect(mockPort.setSignals).toHaveBeenCalledWith({ requestToSend: true });
+		expect(mockPort.setSignals).toHaveBeenCalledWith({ requestToSend: false });
+	});
+
+	it("sets state to reading_ip after runWifiProvision", async () => {
+		const ctrl = (panel as any)._flasherCtrl;
+		const updateSpy = vi.spyOn(ctrl, "updateUsbState");
+
+		await flushProvision("MySSID", "s3cr3t");
+
+		const steps = updateSpy.mock.calls.map((c: any[]) => c[0].step);
+		expect(steps).toContain("reading_ip");
+	});
+
+	it("calls detectIpAddress with fresh reader and 35000ms timeout", async () => {
+		await flushProvision("MySSID", "s3cr3t");
+
+		expect(detectIpAddress).toHaveBeenCalledWith(ipReader, 35000);
+	});
+
+	it("releases fresh reader and writer locks after sending credentials", async () => {
+		await flushProvision("MySSID", "s3cr3t");
+
+		expect(freshReader.releaseLock).toHaveBeenCalled();
+		expect(freshWriter.releaseLock).toHaveBeenCalled();
+	});
+
+	it("closes the serial port after provisioning", async () => {
+		await flushProvision("MySSID", "s3cr3t");
+
+		expect(mockPort.close).toHaveBeenCalled();
+	});
+
+	it("sets ctrl.serialPort to null after closing", async () => {
+		const ctrl = (panel as any)._flasherCtrl;
+
+		await flushProvision("MySSID", "s3cr3t");
+
+		expect(ctrl.serialPort).toBeNull();
+	});
+
+	it("calls addEsphomeDevice with the detected IP", async () => {
+		const ctrl = (panel as any)._flasherCtrl;
+		const addSpy = vi
+			.spyOn(ctrl, "addEsphomeDevice")
+			.mockResolvedValue(undefined);
+
+		await flushProvision("MySSID", "s3cr3t");
+
+		expect(addSpy).toHaveBeenCalledWith("192.168.1.42");
+	});
+
+	it("sets state to adding_device then complete with the IP", async () => {
+		const ctrl = (panel as any)._flasherCtrl;
+		vi.spyOn(ctrl, "addEsphomeDevice").mockResolvedValue(undefined);
+		const updateSpy = vi.spyOn(ctrl, "updateUsbState");
+
+		await flushProvision("MySSID", "s3cr3t");
+
+		const steps = updateSpy.mock.calls.map((c: any[]) => c[0].step);
+		expect(steps).toContain("adding_device");
+		expect(steps).toContain("complete");
+
+		const completeCall = updateSpy.mock.calls.find(
+			(c: any[]) => c[0].step === "complete",
+		);
+		expect(completeCall?.[0].ip).toBe("192.168.1.42");
+	});
+
+	it("sets error state when runWifiProvision throws", async () => {
+		(runWifiProvision as ReturnType<typeof vi.fn>).mockRejectedValue(
+			new Error("provision failed"),
+		);
+
+		const ctrl = (panel as any)._flasherCtrl;
+
+		await flushProvision("MySSID", "s3cr3t");
+
+		expect(ctrl.usbFlashState).toEqual({
+			step: "error",
+			error: "provision failed",
+		});
+	});
+
+	it("sets error state when detectIpAddress throws", async () => {
+		(detectIpAddress as ReturnType<typeof vi.fn>).mockRejectedValue(
+			new Error("timeout"),
+		);
+
+		const ctrl = (panel as any)._flasherCtrl;
+
+		await flushProvision("MySSID", "s3cr3t");
+
+		expect(ctrl.usbFlashState).toEqual({
+			step: "error",
+			error: "timeout",
+		});
+	});
+
+	it("releases reader/writer and sets them to null on error", async () => {
+		(detectIpAddress as ReturnType<typeof vi.fn>).mockRejectedValue(
+			new Error("timeout"),
+		);
+
+		const ctrl = (panel as any)._flasherCtrl;
+
+		await flushProvision("MySSID", "s3cr3t");
+
+		expect((ctrl as any)._serialReader).toBeNull();
+		expect((ctrl as any)._serialWriter).toBeNull();
+	});
+
+	it("uses fallback error message 'WiFi provisioning failed' when err has no message", async () => {
+		(runWifiProvision as ReturnType<typeof vi.fn>).mockRejectedValue({});
+
+		const ctrl = (panel as any)._flasherCtrl;
+
+		await flushProvision("MySSID", "s3cr3t");
+
+		expect(ctrl.usbFlashState).toEqual({
+			step: "error",
+			error: "WiFi provisioning failed",
+		});
+	});
+});
+
+describe("_handleWifiScan", () => {
+	let panel: EPPGridPanel;
+
+	beforeEach(() => {
+		vi.clearAllMocks();
+		resetServiceMocks();
+		panel = createPanel();
+	});
+
+	it("returns early without calling runWifiScan when serialPort is null", async () => {
+		const ctrl = (panel as any)._flasherCtrl;
+		ctrl.serialPort = null;
+
+		await (panel as any)._handleWifiScan();
+
+		expect(runWifiScan).not.toHaveBeenCalled();
+	});
+
+	it("calls runWifiScan with the serial port when port is set", async () => {
+		const mockPort = makeMockPort();
+		const ctrl = (panel as any)._flasherCtrl;
+		ctrl.serialPort = mockPort;
+
+		await (panel as any)._handleWifiScan();
+
+		expect(runWifiScan).toHaveBeenCalledWith(mockPort);
+	});
+
+	it("updates wifiNetworks on the controller after a scan", async () => {
+		const mockPort = makeMockPort();
+		const ctrl = (panel as any)._flasherCtrl;
+		ctrl.serialPort = mockPort;
+
+		await (panel as any)._handleWifiScan();
+
+		expect(ctrl.wifiNetworks).toEqual([
+			{ ssid: "TestNet", rssi: -50, authRequired: true },
+		]);
+	});
+
+	it("stores new _serialWriter and _serialReader from scan result", async () => {
+		const mockPort = makeMockPort();
+		const ctrl = (panel as any)._flasherCtrl;
+		ctrl.serialPort = mockPort;
+
+		await (panel as any)._handleWifiScan();
+
+		expect((ctrl as any)._serialWriter).toBeDefined();
+		expect((ctrl as any)._serialReader).toBeDefined();
+	});
+
+	it("sets state to wifi_provision after successful scan", async () => {
+		const mockPort = makeMockPort();
+		const ctrl = (panel as any)._flasherCtrl;
+		ctrl.serialPort = mockPort;
+		const updateSpy = vi.spyOn(ctrl, "updateUsbState");
+
+		await (panel as any)._handleWifiScan();
+
+		const lastCall = updateSpy.mock.calls[updateSpy.mock.calls.length - 1];
+		expect(lastCall[0].step).toBe("wifi_provision");
+	});
+
+	it("releases old reader lock before re-scanning when locks exist", async () => {
+		const mockPort = makeMockPort();
+		const ctrl = (panel as any)._flasherCtrl;
+		ctrl.serialPort = mockPort;
+
+		const oldReader = { releaseLock: vi.fn() };
+		const oldWriter = { releaseLock: vi.fn() };
+		(ctrl as any)._serialReader = oldReader;
+		(ctrl as any)._serialWriter = oldWriter;
+
+		await (panel as any)._handleWifiScan();
+
+		expect(oldReader.releaseLock).toHaveBeenCalled();
+		expect(oldWriter.releaseLock).toHaveBeenCalled();
+	});
+
+	it("shows error state when runWifiScan fails", async () => {
+		(runWifiScan as ReturnType<typeof vi.fn>).mockRejectedValue(
+			new Error("scan error"),
+		);
+
+		const mockPort = makeMockPort();
+		const ctrl = (panel as any)._flasherCtrl;
+		ctrl.serialPort = mockPort;
+		ctrl.usbFlashState = { step: "wifi_provision" };
+
+		// Should not throw
+		await expect((panel as any)._handleWifiScan()).resolves.toBeUndefined();
+
+		// State should show error
+		expect(ctrl.usbFlashState).toEqual({
+			step: "error",
+			error: "scan error",
+		});
+	});
+
+	it("silently ignores releaseLock errors before re-scanning", async () => {
+		const mockPort = makeMockPort();
+		const ctrl = (panel as any)._flasherCtrl;
+		ctrl.serialPort = mockPort;
+
+		const throwingReader = {
+			releaseLock: vi.fn().mockImplementation(() => {
+				throw new Error("already released");
+			}),
+		};
+		const throwingWriter = {
+			releaseLock: vi.fn().mockImplementation(() => {
+				throw new Error("already released");
+			}),
+		};
+		(ctrl as any)._serialReader = throwingReader;
+		(ctrl as any)._serialWriter = throwingWriter;
+
+		// Should not throw despite releaseLock errors
+		await expect((panel as any)._handleWifiScan()).resolves.toBeUndefined();
+
+		expect(runWifiScan).toHaveBeenCalled();
+	});
+});
+
+describe("_handleUsbWifiConfig", () => {
+	let panel: EPPGridPanel;
+	let mockPort: ReturnType<typeof makeMockPort>;
+
+	beforeEach(() => {
+		vi.clearAllMocks();
+		resetServiceMocks();
+		panel = createPanel();
+		mockPort = makeMockPort();
+
+		vi.stubGlobal("navigator", {
+			...navigator,
+			serial: {
+				requestPort: vi.fn().mockResolvedValue(mockPort),
+			},
+		});
+	});
+
+	it("requests port, runs wifi scan, and sets wifi_provision state on success", async () => {
+		const ctrl = (panel as any)._flasherCtrl;
+		const updateSpy = vi.spyOn(ctrl, "updateUsbState");
+
+		await (panel as any)._handleUsbWifiConfig();
+
+		const steps = updateSpy.mock.calls.map((c: any[]) => c[0].step);
+		expect(steps).toContain("connecting");
+		expect(steps).toContain("wifi_scan");
+		expect(steps).toContain("wifi_provision");
+	});
+
+	it("resets state on NotFoundError (user cancelled port picker)", async () => {
+		const notFound = new DOMException("No port selected", "NotFoundError");
+		(
+			navigator.serial.requestPort as ReturnType<typeof vi.fn>
+		).mockRejectedValue(notFound);
+
+		const ctrl = (panel as any)._flasherCtrl;
+		const resetSpy = vi.spyOn(ctrl, "resetUsbState");
+
+		await (panel as any)._handleUsbWifiConfig();
+
+		expect(resetSpy).toHaveBeenCalled();
+	});
+
+	it("sets error state when runWifiScan throws", async () => {
+		(runWifiScan as ReturnType<typeof vi.fn>).mockRejectedValue(
+			new Error("scan failed"),
+		);
+
+		const ctrl = (panel as any)._flasherCtrl;
+
+		await (panel as any)._handleUsbWifiConfig();
+
+		expect(ctrl.usbFlashState).toEqual({
+			step: "error",
+			error: "scan failed",
+		});
+	});
+
+	it("throws error when no networks found", async () => {
+		(runWifiScan as ReturnType<typeof vi.fn>).mockResolvedValue({
+			writer: { releaseLock: vi.fn() },
+			reader: { releaseLock: vi.fn() },
+			networks: [],
+		});
+
+		const ctrl = (panel as any)._flasherCtrl;
+
+		await (panel as any)._handleUsbWifiConfig();
+
+		expect(ctrl.usbFlashState).toEqual({
+			step: "error",
+			error:
+				"No WiFi networks found. If this device is flashed with ethernet firmware, WiFi configuration is not available.",
+		});
+	});
+});
+
+// =========================================================
+// Inline event handlers on epp-flasher-view in render()
+// =========================================================
+describe("epp-flasher-view inline event handlers", () => {
+	let panel: EPPGridPanel;
+	let container: HTMLDivElement;
+
+	beforeEach(() => {
+		vi.clearAllMocks();
+		resetServiceMocks();
+		panel = createPanel();
+		// Put panel in flasher tab so epp-flasher-view is rendered
+		(panel as any)._panelTab = "flasher";
+		// Ensure flasher ctrl has hass so loadDevices doesn't choke
+		(panel as any)._flasherCtrl.hass = (panel as any).hass;
+		container = document.createElement("div");
+		document.body.appendChild(container);
+		render((panel as any).render(), container);
+	});
+
+	afterEach(() => {
+		container.remove();
+	});
+
+	function getFlasherView(): Element {
+		const el = container.querySelector("epp-flasher-view");
+		if (!el) throw new Error("epp-flasher-view not found");
+		return el;
+	}
+
+	it("@flash-ota calls flasherCtrl.startOtaFlash", () => {
+		const ctrl = (panel as any)._flasherCtrl;
+		const spy = vi.spyOn(ctrl, "startOtaFlash").mockResolvedValue(undefined);
+
+		getFlasherView().dispatchEvent(
+			new CustomEvent("flash-ota", {
+				detail: { mac: "aa:bb:cc", variant: "eppgrid-wifi" },
+				bubbles: true,
+			}),
+		);
+
+		expect(spy).toHaveBeenCalledWith("aa:bb:cc", "eppgrid-wifi");
+	});
+
+	it("@flash-complete calls resetUsbState, _loadDevices, and switches to config tab", () => {
+		const ctrl = (panel as any)._flasherCtrl;
+		const resetSpy = vi.spyOn(ctrl, "resetUsbState");
+		const loadSpy = vi
+			.spyOn(panel as any, "_loadDevices")
+			.mockResolvedValue(undefined);
+
+		getFlasherView().dispatchEvent(
+			new CustomEvent("flash-complete", { bubbles: true }),
+		);
+
+		expect(resetSpy).toHaveBeenCalled();
+		expect(loadSpy).toHaveBeenCalled();
+		expect((panel as any)._panelTab).toBe("config");
+	});
+
+	it("@usb-flash calls _handleUsbFlash with variant", () => {
+		const spy = vi
+			.spyOn(panel as any, "_handleUsbFlash")
+			.mockResolvedValue(undefined);
+
+		getFlasherView().dispatchEvent(
+			new CustomEvent("usb-flash", {
+				detail: { variant: "eppgrid-ble" },
+				bubbles: true,
+			}),
+		);
+
+		expect(spy).toHaveBeenCalledWith("eppgrid-ble");
+	});
+
+	it("@usb-retry releases reader/writer, closes port, sets serialPort to null, then calls resetUsbState", () => {
+		const ctrl = (panel as any)._flasherCtrl;
+		const mockReader = { releaseLock: vi.fn() };
+		const mockWriter = { releaseLock: vi.fn() };
+		const mockPort = {
+			close: vi.fn().mockResolvedValue(undefined),
+		};
+		(ctrl as any)._serialReader = mockReader;
+		(ctrl as any)._serialWriter = mockWriter;
+		ctrl.serialPort = mockPort;
+
+		const resetSpy = vi.spyOn(ctrl, "resetUsbState");
+
+		getFlasherView().dispatchEvent(
+			new CustomEvent("usb-retry", { bubbles: true }),
+		);
+
+		expect(mockReader.releaseLock).toHaveBeenCalled();
+		expect(mockWriter.releaseLock).toHaveBeenCalled();
+		expect((ctrl as any)._serialReader).toBeNull();
+		expect((ctrl as any)._serialWriter).toBeNull();
+		expect(mockPort.close).toHaveBeenCalled();
+		expect(ctrl.serialPort).toBeNull();
+		expect(resetSpy).toHaveBeenCalled();
+	});
+
+	it("@wifi-scan calls _handleWifiScan", () => {
+		const spy = vi
+			.spyOn(panel as any, "_handleWifiScan")
+			.mockResolvedValue(undefined);
+
+		getFlasherView().dispatchEvent(
+			new CustomEvent("wifi-scan", { bubbles: true }),
+		);
+
+		expect(spy).toHaveBeenCalled();
+	});
+
+	it("@wifi-provision calls _handleWifiProvision with ssid and password", () => {
+		const spy = vi
+			.spyOn(panel as any, "_handleWifiProvision")
+			.mockResolvedValue(undefined);
+
+		getFlasherView().dispatchEvent(
+			new CustomEvent("wifi-provision", {
+				detail: { ssid: "HomeNet", password: "pass123" },
+				bubbles: true,
+			}),
+		);
+
+		expect(spy).toHaveBeenCalledWith("HomeNet", "pass123");
+	});
+
+	it("@wifi-complete calls resetUsbState, _loadDevices, switches to config tab", () => {
+		const ctrl = (panel as any)._flasherCtrl;
+		const resetSpy = vi.spyOn(ctrl, "resetUsbState");
+		const loadSpy = vi
+			.spyOn(panel as any, "_loadDevices")
+			.mockResolvedValue(undefined);
+
+		getFlasherView().dispatchEvent(
+			new CustomEvent("wifi-complete", { bubbles: true }),
+		);
+
+		expect(resetSpy).toHaveBeenCalled();
+		expect(loadSpy).toHaveBeenCalled();
+		expect((panel as any)._panelTab).toBe("config");
+	});
+});
