@@ -85,7 +85,9 @@ export async function runWifiScan(port: SerialPort): Promise<{
 	reader: ReadableStreamDefaultReader<Uint8Array>;
 	networks: WifiNetwork[];
 }> {
-	await port.open({ baudRate: 115200 });
+	if (!port.readable) {
+		await port.open({ baudRate: 115200 });
+	}
 	const writer = port.writable!.getWriter();
 	const reader = port.readable!.getReader();
 

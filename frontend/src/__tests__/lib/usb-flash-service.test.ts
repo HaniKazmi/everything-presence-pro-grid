@@ -296,14 +296,31 @@ describe("runWifiScan", () => {
 		return { port, mockWriter, mockReader };
 	}
 
-	it("opens the port at 115200 baud", async () => {
+	it("opens the port at 115200 baud when not already open", async () => {
 		const { port } = mockPort();
+		// Simulate port not yet open (readable is null)
+		(port as any).readable = null;
 
-		// readImprovResponse throws to break out of the while loop
 		vi.mocked(readImprovResponse).mockRejectedValueOnce(new Error("timeout"));
+
+		// open() should set readable so getWriter/getReader work after
+		(port.open as any).mockImplementation(() => {
+			(port as any).readable = { getReader: vi.fn().mockReturnValue({ read: vi.fn().mockImplementation(() => new Promise(() => {})), cancel: vi.fn(), releaseLock: vi.fn(), closed: Promise.resolve(undefined) }) };
+			(port as any).writable = { getWriter: vi.fn().mockReturnValue({ write: vi.fn().mockResolvedValue(undefined), close: vi.fn(), abort: vi.fn(), closed: Promise.resolve(undefined), desiredSize: 1, ready: Promise.resolve(undefined), releaseLock: vi.fn() }) };
+			return Promise.resolve();
+		});
 
 		await runWifiScan(port);
 		expect(port.open).toHaveBeenCalledWith({ baudRate: 115200 });
+	});
+
+	it("skips open when port is already open", async () => {
+		const { port } = mockPort();
+
+		vi.mocked(readImprovResponse).mockRejectedValueOnce(new Error("timeout"));
+
+		await runWifiScan(port);
+		expect(port.open).not.toHaveBeenCalled();
 	});
 
 	it("gets writer and reader from port streams", async () => {
