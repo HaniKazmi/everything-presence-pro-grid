@@ -458,7 +458,7 @@ describe("_handleWifiScan", () => {
 		expect(oldWriter.releaseLock).toHaveBeenCalled();
 	});
 
-	it("ignores errors from runWifiScan and keeps current state", async () => {
+	it("shows error state when runWifiScan fails", async () => {
 		(runWifiScan as ReturnType<typeof vi.fn>).mockRejectedValue(
 			new Error("scan error"),
 		);
@@ -471,8 +471,11 @@ describe("_handleWifiScan", () => {
 		// Should not throw
 		await expect((panel as any)._handleWifiScan()).resolves.toBeUndefined();
 
-		// State should be unchanged
-		expect(ctrl.usbFlashState).toEqual({ step: "wifi_provision" });
+		// State should show error
+		expect(ctrl.usbFlashState).toEqual({
+			step: "error",
+			error: "scan error",
+		});
 	});
 
 	it("silently ignores releaseLock errors before re-scanning", async () => {

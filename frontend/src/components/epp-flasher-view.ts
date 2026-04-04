@@ -309,6 +309,7 @@ export class EppFlasherView extends LitElement {
                   class="wifi-ssid-input"
                   type="text"
                   placeholder="${this.localize("flasher.enter_ssid")}"
+                  autocomplete="off"
                   .value=${this._selectedSsid}
                   @input=${(e: Event) => {
                     this._selectedSsid = (e.target as HTMLInputElement).value;
@@ -322,6 +323,7 @@ export class EppFlasherView extends LitElement {
               class="wifi-password-input"
               type="password"
               placeholder="${this.localize("flasher.wifi_password")}"
+              autocomplete="new-password"
               .value=${this._wifiPassword}
               @input=${(e: Event) => {
                 this._wifiPassword = (e.target as HTMLInputElement).value;
@@ -340,7 +342,7 @@ export class EppFlasherView extends LitElement {
                 .disabled=${!this._selectedSsid}
                 @click=${this._dispatchWifiProvision}
               >
-                ${this.localize("flasher.configure_wifi")}
+                ${this.localize("flasher.connect")}
               </button>
             </div>
           </div>

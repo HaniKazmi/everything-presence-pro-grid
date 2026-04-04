@@ -2337,6 +2337,7 @@ export class EPPGridPanel extends LitElement {
 		const ctrl = this._flasherCtrl;
 		if (!ctrl.serialPort) return;
 		try {
+			ctrl.updateUsbState({ step: "wifi_scan" });
 			const writer = (ctrl as any)._serialWriter;
 			const reader = (ctrl as any)._serialReader;
 			// Release old locks before re-scanning
@@ -2352,8 +2353,12 @@ export class EPPGridPanel extends LitElement {
 			(ctrl as any)._serialReader = result.reader;
 			ctrl.wifiNetworks = result.networks;
 			ctrl.updateUsbState({ step: "wifi_provision" });
-		} catch {
-			// Ignore scan errors — keep current state
+		} catch (err: any) {
+			console.error("WiFi scan failed:", err);
+			ctrl.updateUsbState({
+				step: "error",
+				error: err?.message ?? "WiFi scan failed",
+			});
 		}
 	}
 }
