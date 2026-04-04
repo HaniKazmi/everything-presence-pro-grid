@@ -572,6 +572,50 @@ export const flasherStyles = css`
     margin-top: 2px;
   }
 
+  .usb-actions {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .usb-action {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    padding: 16px;
+    border: 1px solid var(--divider-color, #e0e0e0);
+    border-radius: 12px;
+    cursor: pointer;
+    transition: background 0.15s;
+  }
+
+  .usb-action:hover {
+    background: var(--secondary-background-color, #f5f5f5);
+  }
+
+  .usb-action ha-icon {
+    --mdc-icon-size: 28px;
+    color: var(--primary-color, #03a9f4);
+    flex-shrink: 0;
+  }
+
+  .usb-action-text {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .usb-action-title {
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--primary-text-color, #212121);
+  }
+
+  .usb-action-desc {
+    font-size: 13px;
+    color: var(--secondary-text-color, #757575);
+    margin-top: 2px;
+  }
+
   .usb-connect-btn {
     padding: 8px 20px;
     border-radius: 8px;

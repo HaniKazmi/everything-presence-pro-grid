@@ -401,25 +401,40 @@ export class EppFlasherView extends LitElement {
     `;
 	}
 
+	private _dispatchUsbWifiConfig(): void {
+		this.dispatchEvent(
+			new CustomEvent("usb-wifi-config", { bubbles: true, composed: true }),
+		);
+	}
+
 	private _renderUsbSection() {
 		return html`
       <ha-card>
-        <div class="card-content usb-section">
-          <ha-icon icon="mdi:usb" class="usb-icon"></ha-icon>
-          <div class="usb-section-text">
-            <div class="usb-title">${this.localize("flasher.usb_title")}</div>
-            <div class="usb-description">${this.localize("flasher.usb_description")}</div>
-            ${
-						!this._hasWebSerial
-							? html`<div class="browser-warning">
-                  ${this.localize("flasher.usb_browser_warning")}
-                </div>`
-							: nothing
-					}
+        <div class="card-header">${this.localize("flasher.usb_title")}</div>
+        <div class="card-content">
+          ${
+					!this._hasWebSerial
+						? html`<div class="browser-warning">
+                ${this.localize("flasher.usb_browser_warning")}
+              </div>`
+						: nothing
+				}
+          <div class="usb-actions">
+            <div class="usb-action" @click=${this._onUsbConnect}>
+              <ha-icon icon="mdi:chip"></ha-icon>
+              <div class="usb-action-text">
+                <div class="usb-action-title">${this.localize("flasher.usb_flash_title")}</div>
+                <div class="usb-action-desc">${this.localize("flasher.usb_flash_desc")}</div>
+              </div>
+            </div>
+            <div class="usb-action" @click=${this._dispatchUsbWifiConfig}>
+              <ha-icon icon="mdi:wifi-cog"></ha-icon>
+              <div class="usb-action-text">
+                <div class="usb-action-title">${this.localize("flasher.usb_wifi_title")}</div>
+                <div class="usb-action-desc">${this.localize("flasher.usb_wifi_desc")}</div>
+              </div>
+            </div>
           </div>
-          <button class="usb-connect-btn" @click=${this._onUsbConnect}>
-            ${this.localize("flasher.usb_connect")}
-          </button>
         </div>
       </ha-card>
     `;

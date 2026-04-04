@@ -1073,6 +1073,9 @@ export class EPPGridPanel extends LitElement {
 					@usb-flash=${(e: CustomEvent) => {
 						this._handleUsbFlash(e.detail.variant);
 					}}
+					@usb-wifi-config=${() => {
+						this._handleUsbWifiConfig();
+					}}
 					@usb-retry=${() => {
 						this._flasherCtrl.resetUsbState();
 					}}
@@ -2234,6 +2237,32 @@ export class EPPGridPanel extends LitElement {
 				}}
 			></epp-furniture-overlay>
 		`;
+	}
+
+	private async _handleUsbWifiConfig(): Promise<void> {
+		const ctrl = this._flasherCtrl;
+		try {
+			ctrl.updateUsbState({ step: "connecting" });
+			const port = await navigator.serial.requestPort();
+			ctrl.serialPort = port;
+
+			ctrl.updateUsbState({ step: "wifi_scan" });
+			const { writer, reader, networks } = await runWifiScan(port);
+			ctrl.wifiNetworks = networks;
+			ctrl.updateUsbState({ step: "wifi_provision" });
+
+			(ctrl as any)._serialWriter = writer;
+			(ctrl as any)._serialReader = reader;
+		} catch (err: any) {
+			if (err?.name === "NotFoundError") {
+				ctrl.resetUsbState();
+				return;
+			}
+			ctrl.updateUsbState({
+				step: "error",
+				error: err?.message ?? "Unknown error",
+			});
+		}
 	}
 
 	private async _handleUsbFlash(variant: string): Promise<void> {

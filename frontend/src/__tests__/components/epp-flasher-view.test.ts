@@ -189,20 +189,13 @@ describe("render() empty state", () => {
 });
 
 describe("render() USB section", () => {
-	it("shows USB section", () => {
+	it("shows USB section with action buttons", () => {
 		const el = createView();
 		const tpl = (el as any).render();
 		const c = renderTo(tpl);
 
-		expect(c.querySelector(".usb-section")).not.toBeNull();
-	});
-
-	it("shows connect button in USB section", () => {
-		const el = createView();
-		const tpl = (el as any).render();
-		const c = renderTo(tpl);
-
-		expect(c.querySelector(".usb-connect-btn")).not.toBeNull();
+		expect(c.querySelector(".usb-actions")).not.toBeNull();
+		expect(c.querySelectorAll(".usb-action").length).toBe(2);
 	});
 
 	it("USB section not shown during OTA progress", () => {
