@@ -11,7 +11,7 @@ import {
 } from "./improv-serial.js";
 
 const MANIFEST_BASE_URL =
-	"https://github.com/clintongormley/everything-presence-pro-grid/releases/download/v0.1.0-alpha.2";
+	"https://clintongormley.github.io/everything-presence-pro-grid/firmware";
 
 /**
  * Flashes firmware to a device via USB serial using esptool.js.
