@@ -1152,7 +1152,7 @@ const At=t=>(e,i)=>{void 0!==i?i.addInitializer(()=>{customElements.define(t,e)}
     `}render(){return this.loading?this._renderLoading():this._showWifiProvisioning?this._renderWifiProvisioning():this.otaProgress?this._renderOtaProgress(this.otaProgress):this._showUsbFlash||this.usbFlashState?this._renderUsbFlash():N`
       ${this._confirmDevice?this._renderConfirmDialog(this._confirmDevice):J}
       ${this._renderDeviceList()}
-    `}_getFirmwareVariant(){return"wifi"===this._selectedVariant?"wifi-ble-co2":"ethernet-ble-co2"}_getManifestUrl(){return`https://clintongormley.github.io/everything-presence-pro-grid/firmware/everything-presence-pro-${this._getFirmwareVariant()}-manifest.json`}_renderUsbFlash(){const t=this.usbFlashState;if("wifi_provision"===t?.step&&this._showWifiProvisioning)return this._renderWifiProvisioning();if("error"===t?.step)return N`
+    `}_getFirmwareVariant(){return"wifi"===this._selectedVariant?"wifi-ble-co2":"ethernet-ble-co2"}_getManifestUrl(){return`https://clintongormley.github.io/everything-presence-pro-grid/firmware/everything-presence-pro-${this._getFirmwareVariant()}-manifest.json`}_renderUsbFlash(){const t=this.usbFlashState;if("wifi_provision"===t?.step)return this._renderWifiProvisioning();if("error"===t?.step)return N`
 				<div class="flasher-content">
 					<ha-card>
 						<div class="card-content">

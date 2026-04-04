@@ -484,8 +484,8 @@ export class EppFlasherView extends LitElement {
 	private _renderUsbFlash() {
 		const state = this.usbFlashState;
 
-		// WiFi provisioning (full-screen takeover)
-		if (state?.step === "wifi_provision" && this._showWifiProvisioning) {
+		// WiFi provisioning
+		if (state?.step === "wifi_provision") {
 			return this._renderWifiProvisioning();
 		}
 
