@@ -349,70 +349,79 @@ export class EppFlasherView extends LitElement {
 		const { flashableDevices } = this;
 
 		return html`
-      <div class="flasher-section">
-        <h3>${this.localize("flasher.devices_on_network")}</h3>
-        ${
-					flashableDevices.length === 0
-						? html`<div class="flasher-empty">
-              ${this.localize("flasher.no_devices")}
-            </div>`
-						: html`
-              <div class="device-list">
-                ${flashableDevices.map(
-									(device) => html`
-                    <div class="device-row">
-                      <div class="device-info">
-                        <div class="device-name">${device.name}</div>
-                        <div class="device-host">
-                          ${device.host ?? this.localize("flasher.offline")}
+      <div class="flasher-content">
+        <ha-card>
+          <div class="card-header">${this.localize("flasher.devices_on_network")}</div>
+          <div class="card-content">
+            ${
+						flashableDevices.length === 0
+							? html`<div class="flasher-empty">
+                  <ha-icon icon="mdi:access-point-off"></ha-icon>
+                  <p>${this.localize("flasher.no_devices")}</p>
+                </div>`
+							: html`
+                <div class="device-list">
+                  ${flashableDevices.map(
+										(device) => html`
+                      <div class="device-row">
+                        <div class="device-info">
+                          <div class="device-name">${device.name}</div>
+                          <div class="device-host">
+                            ${device.host ?? this.localize("flasher.offline")}
+                          </div>
                         </div>
+                        <span
+                          class="firmware-badge firmware-badge-${device.firmware_type}"
+                        >
+                          ${
+														device.firmware_type === "original"
+															? this.localize("flasher.original")
+															: this.localize("flasher.eppgrid")
+													}
+                        </span>
+                        <button
+                          class="flash-btn"
+                          .disabled=${!device.available}
+                          @click=${() => {
+														this._confirmDevice = device;
+													}}
+                        >
+                          ${this.localize("flasher.flash")}
+                        </button>
                       </div>
-                      <span
-                        class="firmware-badge firmware-badge-${device.firmware_type}"
-                      >
-                        ${
-													device.firmware_type === "original"
-														? this.localize("flasher.original")
-														: this.localize("flasher.eppgrid")
-												}
-                      </span>
-                      <button
-                        class="flash-btn"
-                        .disabled=${!device.available}
-                        @click=${() => {
-													this._confirmDevice = device;
-												}}
-                      >
-                        ${this.localize("flasher.flash")}
-                      </button>
-                    </div>
-                  `,
-								)}
-              </div>
-            `
-				}
+                    `,
+									)}
+                </div>
+              `
+					}
+          </div>
+        </ha-card>
+        ${this._renderUsbSection()}
       </div>
-      ${this._renderUsbSection()}
     `;
 	}
 
 	private _renderUsbSection() {
 		return html`
-      <div class="usb-section">
-        <div class="usb-section-text">
-          ${this.localize("flasher.usb_description")}
-          ${
+      <ha-card>
+        <div class="card-content usb-section">
+          <ha-icon icon="mdi:usb" class="usb-icon"></ha-icon>
+          <div class="usb-section-text">
+            <div class="usb-title">${this.localize("flasher.usb_title")}</div>
+            <div class="usb-description">${this.localize("flasher.usb_description")}</div>
+            ${
 						!this._hasWebSerial
 							? html`<div class="browser-warning">
-                ${this.localize("flasher.usb_browser_warning")}
-              </div>`
+                  ${this.localize("flasher.usb_browser_warning")}
+                </div>`
 							: nothing
 					}
+          </div>
+          <button class="usb-connect-btn" @click=${this._onUsbConnect}>
+            ${this.localize("flasher.usb_connect")}
+          </button>
         </div>
-        <button class="usb-connect-btn" @click=${this._onUsbConnect}>
-          ${this.localize("flasher.usb_connect")}
-        </button>
-      </div>
+      </ha-card>
     `;
 	}
 

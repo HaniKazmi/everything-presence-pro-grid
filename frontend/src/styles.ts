@@ -446,15 +446,28 @@ export const layoutStyles = css`
 `;
 
 export const flasherStyles = css`
-  .flasher-section {
-    margin-bottom: 24px;
+  :host {
+    display: block;
   }
 
-  .flasher-section h3 {
-    margin: 0 0 12px;
-    font-size: 16px;
-    font-weight: 500;
-    color: var(--primary-text-color, #212121);
+  .flasher-content {
+    max-width: 600px;
+    margin: 0 auto;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+  }
+
+  .card-header {
+    font-size: 18px;
+    font-weight: 400;
+    line-height: 48px;
+    padding: 8px 16px 0;
+    color: var(--ha-card-header-color, var(--primary-text-color, #212121));
+  }
+
+  .card-content {
+    padding: 0 16px 16px;
   }
 
   .device-list {
@@ -529,20 +542,32 @@ export const flasherStyles = css`
   }
 
   .usb-section {
-    margin-top: 24px;
-    padding: 16px;
-    background: var(--card-background-color, #fff);
-    border: 1px solid var(--divider-color, #e0e0e0);
-    border-radius: 10px;
     display: flex;
     align-items: center;
     gap: 16px;
   }
 
+  .usb-icon {
+    --mdc-icon-size: 32px;
+    color: var(--secondary-text-color, #757575);
+    flex-shrink: 0;
+  }
+
   .usb-section-text {
     flex: 1;
+    min-width: 0;
+  }
+
+  .usb-title {
     font-size: 14px;
+    font-weight: 500;
     color: var(--primary-text-color, #212121);
+  }
+
+  .usb-description {
+    font-size: 13px;
+    color: var(--secondary-text-color, #757575);
+    margin-top: 2px;
   }
 
   .usb-connect-btn {
@@ -553,7 +578,7 @@ export const flasherStyles = css`
     font-size: 14px;
     font-weight: 500;
     background: var(--primary-color, #03a9f4);
-    color: #fff;
+    color: var(--text-primary-color, #fff);
     flex-shrink: 0;
   }
 
@@ -573,6 +598,11 @@ export const flasherStyles = css`
     color: var(--warning-color, #ff9800);
   }
 
+  .flasher-container {
+    max-width: 600px;
+    margin: 0 auto;
+  }
+
   .progress-steps {
     display: flex;
     flex-direction: column;
@@ -580,7 +610,7 @@ export const flasherStyles = css`
     padding: 16px;
     background: var(--card-background-color, #fff);
     border: 1px solid var(--divider-color, #e0e0e0);
-    border-radius: 10px;
+    border-radius: var(--ha-card-border-radius, 12px);
   }
 
   .progress-step {
@@ -612,16 +642,26 @@ export const flasherStyles = css`
   }
 
   .flasher-loading {
-    padding: 24px;
+    padding: 32px 24px;
     text-align: center;
     color: var(--secondary-text-color, #757575);
     font-size: 14px;
   }
 
   .flasher-empty {
-    padding: 24px;
+    padding: 32px 16px;
     text-align: center;
     color: var(--secondary-text-color, #757575);
+  }
+
+  .flasher-empty ha-icon {
+    --mdc-icon-size: 48px;
+    margin-bottom: 8px;
+    opacity: 0.5;
+  }
+
+  .flasher-empty p {
+    margin: 0;
     font-size: 14px;
   }
 
@@ -665,14 +705,14 @@ export const flasherStyles = css`
 
   .confirm-card {
     background: var(--card-background-color, #fff);
-    border-radius: 16px;
+    border-radius: var(--ha-card-border-radius, 12px);
     padding: 24px;
     min-width: 320px;
     max-width: 440px;
     display: flex;
     flex-direction: column;
     gap: 16px;
-    box-shadow: 0 4px 24px rgba(0, 0, 0, 0.15);
+    box-shadow: var(--ha-card-box-shadow, 0 4px 24px rgba(0, 0, 0, 0.15));
   }
 
   .confirm-card h3 {
