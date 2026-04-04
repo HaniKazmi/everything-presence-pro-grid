@@ -337,7 +337,7 @@ describe("runWifiScan", () => {
 		vi.mocked(readImprovResponse).mockRejectedValueOnce(new Error("timeout"));
 
 		await runWifiScan(port);
-		expect(drainSerial).toHaveBeenCalledWith(expect.any(Object), 2000);
+		expect(drainSerial).toHaveBeenCalledWith(expect.any(Object), 8000);
 	});
 
 	it("sends scan command via sendImprovPacket", async () => {
