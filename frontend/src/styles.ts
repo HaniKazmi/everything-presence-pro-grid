@@ -448,6 +448,7 @@ export const layoutStyles = css`
 export const flasherStyles = css`
   :host {
     display: block;
+    padding: 16px;
   }
 
   .flasher-content {
@@ -467,7 +468,7 @@ export const flasherStyles = css`
   }
 
   .card-content {
-    padding: 0 16px 16px;
+    padding: 16px;
   }
 
   .device-list {
@@ -545,6 +546,7 @@ export const flasherStyles = css`
     display: flex;
     align-items: center;
     gap: 16px;
+    padding: 12px 8px;
   }
 
   .usb-icon {
@@ -598,9 +600,83 @@ export const flasherStyles = css`
     color: var(--warning-color, #ff9800);
   }
 
-  .flasher-container {
-    max-width: 600px;
-    margin: 0 auto;
+  .usb-select-label {
+    margin: 0 0 12px;
+    font-size: 14px;
+    color: var(--secondary-text-color, #757575);
+  }
+
+  .usb-error {
+    text-align: center;
+    padding: 24px 0;
+    color: var(--error-color, #f44336);
+  }
+
+  .usb-error ha-icon {
+    --mdc-icon-size: 48px;
+    margin-bottom: 8px;
+  }
+
+  .usb-error p {
+    margin: 0;
+    font-size: 14px;
+  }
+
+  .usb-complete {
+    text-align: center;
+    padding: 24px 0;
+    color: var(--success-color, #4caf50);
+  }
+
+  .usb-complete ha-icon {
+    --mdc-icon-size: 48px;
+    margin-bottom: 8px;
+  }
+
+  .usb-complete p {
+    margin: 0;
+    font-size: 14px;
+  }
+
+  .usb-ip {
+    color: var(--primary-text-color, #212121);
+    font-weight: 500;
+    margin-top: 4px;
+  }
+
+  .usb-status {
+    text-align: center;
+    padding: 24px 0;
+  }
+
+  .usb-status p {
+    margin: 0;
+    font-size: 14px;
+    color: var(--primary-text-color, #212121);
+  }
+
+  .usb-progress {
+    margin-top: 16px;
+    background: var(--divider-color, #e0e0e0);
+    border-radius: 4px;
+    height: 8px;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .usb-progress-bar {
+    height: 100%;
+    background: var(--primary-color, #03a9f4);
+    border-radius: 4px;
+    transition: width 0.3s ease;
+  }
+
+  .usb-progress span {
+    display: block;
+    text-align: center;
+    margin-top: 8px;
+    font-size: 13px;
+    color: var(--secondary-text-color, #757575);
   }
 
   .progress-steps {
@@ -649,7 +725,7 @@ export const flasherStyles = css`
   }
 
   .flasher-empty {
-    padding: 32px 16px;
+    padding: 24px 16px 32px;
     text-align: center;
     color: var(--secondary-text-color, #757575);
   }

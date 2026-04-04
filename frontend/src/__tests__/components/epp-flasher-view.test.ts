@@ -975,7 +975,7 @@ describe("USB flash view — state-driven", () => {
 		el.addEventListener("usb-flash", (e) => events.push(e));
 
 		const root = el.shadowRoot!;
-		const flashBtn = root.querySelector(".usb-flash-btn") as HTMLButtonElement;
+		const flashBtn = root.querySelector(".flash-btn") as HTMLButtonElement;
 		flashBtn.click();
 
 		expect(events.length).toBe(1);
@@ -1004,12 +1004,12 @@ describe("USB flash view — state-driven", () => {
 	it("cancel hides USB flash view and resets state", async () => {
 		const el = createView();
 		(el as any)._showUsbFlash = true;
-		(el as any)._usbFlashState = { step: "flashing", progress: 50 };
+		(el as any)._usbFlashState = null;
 		document.body.appendChild(el);
 		await el.updateComplete;
 
 		const root = el.shadowRoot!;
-		const cancelBtn = root.querySelector(".usb-back-btn") as HTMLButtonElement;
+		const cancelBtn = root.querySelector(".cancel-btn") as HTMLButtonElement;
 		cancelBtn.click();
 
 		expect((el as any)._showUsbFlash).toBe(false);

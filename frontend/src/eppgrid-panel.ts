@@ -818,6 +818,16 @@ export class EPPGridPanel extends LitElement {
       color: var(--secondary-text-color, #757575);
     }
 
+    .empty-state {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 16px;
+      padding: 48px 16px;
+      font-size: 16px;
+      color: var(--secondary-text-color, #757575);
+    }
+
     .save-cancel-bar {
       display: flex;
       justify-content: space-between;
@@ -1091,7 +1101,7 @@ export class EPPGridPanel extends LitElement {
 		if (!this._devices.length) {
 			return html`<div class="tab-layout">
 				${this._renderTabBar()}
-				<div class="loading-container" style="flex-direction: column; gap: 16px;">
+				<div class="empty-state">
 					<p>${this._localize("flasher.no_eppgrid_devices")}</p>
 					<button class="primary-btn" @click=${() => {
 						this._panelTab = "flasher";

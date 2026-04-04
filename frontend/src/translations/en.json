@@ -296,8 +296,8 @@
 	"flasher": {
 		"title": "Flash Firmware",
 		"devices_on_network": "Devices on Network",
-		"no_devices": "No EPP devices found on the network.",
-		"no_eppgrid_devices": "No devices with EPP Grid firmware found.",
+		"no_devices": "No Everything Presence Pro devices found on the network.",
+		"no_eppgrid_devices": "No devices with Everything Presence Pro Grid firmware found.",
 		"flash_from_tab": "Flash your devices from the Flash Firmware tab",
 		"flash": "Flash",
 		"offline": "Offline",
