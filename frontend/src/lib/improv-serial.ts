@@ -29,7 +29,8 @@ export interface ImprovPacket {
  * Checksum = sum of all preceding bytes mod 256.
  */
 export function buildImprovPacket(type: number, data: number[]): Uint8Array {
-	const totalLength = IMPROV_HEADER.length + 1 + 1 + 1 + data.length + 1;
+	// +1 for trailing newline required by Improv Serial spec
+	const totalLength = IMPROV_HEADER.length + 1 + 1 + 1 + data.length + 1 + 1;
 	const packet = new Uint8Array(totalLength);
 
 	let offset = 0;
@@ -52,7 +53,9 @@ export function buildImprovPacket(type: number, data: number[]): Uint8Array {
 	for (let i = 0; i < offset; i++) {
 		checksum = (checksum + packet[i]) & 0xff;
 	}
-	packet[offset] = checksum;
+	packet[offset++] = checksum;
+	// Trailing newline
+	packet[offset] = 0x0a;
 
 	return packet;
 }

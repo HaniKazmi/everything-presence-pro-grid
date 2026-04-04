@@ -92,13 +92,15 @@ export async function runWifiScan(port: SerialPort): Promise<{
 	const reader = port.readable!.getReader();
 
 	// Drain any buffered boot log data
+	console.log("[usb-flash] draining serial buffer...");
 	await drainSerial(reader, 2000);
 	reader.releaseLock();
 
 	// Get a fresh reader after drain
-	const freshReader = port.readable!.getReader();
+	const freshReader = (port.readable as ReadableStream<Uint8Array>).getReader();
 
 	// Send scan command
+	console.log("[usb-flash] sending WiFi scan command...");
 	await sendImprovPacket(writer, buildScanCommand());
 
 	// Collect scan results (multiple RPC_RESULT packets, terminated by empty data)
@@ -111,18 +113,23 @@ export async function runWifiScan(port: SerialPort): Promise<{
 				freshReader,
 				deadline - Date.now(),
 			);
+			console.log("[usb-flash] received", packets.length, "Improv packets");
 			for (const pkt of packets) {
+				console.log("[usb-flash] packet type:", pkt.type, "data bytes:", Array.from(pkt.data));
 				if (pkt.type === TYPE_RPC_RESULT) {
-					const network = parseScanResults(pkt.data);
+					// RPC result data starts with command byte — skip it
+					const resultData = pkt.data.slice(1);
+					const network = parseScanResults(resultData);
 					if (network === null) {
-						// Empty data = scan complete
+						console.log("[usb-flash] scan complete, found", networks.length, "networks");
 						return { writer, reader: freshReader, networks };
 					}
+					console.log("[usb-flash] found network:", network.ssid, network.rssi, "dBm");
 					networks.push(network);
 				}
 			}
-		} catch {
-			// Timeout — return whatever we have
+		} catch (err) {
+			console.log("[usb-flash] scan timeout, found", networks.length, "networks so far. Error:", err);
 			break;
 		}
 	}

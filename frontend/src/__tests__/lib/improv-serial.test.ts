@@ -22,8 +22,8 @@ describe("buildImprovPacket", () => {
 	it("creates a valid packet with correct structure and checksum", () => {
 		// Simple test: type=0x03, data=[0x04, 0x00]
 		const packet = buildImprovPacket(TYPE_RPC_COMMAND, [CMD_WIFI_SCAN, 0x00]);
-		// Header (6) + version (1) + type (1) + length (1) + data (2) + checksum (1) = 12
-		expect(packet.length).toBe(12);
+		// Header (6) + version (1) + type (1) + length (1) + data (2) + checksum (1) + newline (1) = 13
+		expect(packet.length).toBe(13);
 		// Header
 		expect(Array.from(packet.slice(0, 6))).toEqual(IMPROV_HEADER);
 		// Version
@@ -39,14 +39,19 @@ describe("buildImprovPacket", () => {
 		const sum =
 			Array.from(packet.slice(0, 11)).reduce((a, b) => a + b, 0) % 256;
 		expect(packet[11]).toBe(sum);
+		// Trailing newline
+		expect(packet[12]).toBe(0x0a);
 	});
 
 	it("computes checksum as sum of all preceding bytes mod 256", () => {
 		const data = [0x01, 0x02, 0x03];
 		const packet = buildImprovPacket(0x05, data);
-		const allBytes = Array.from(packet.slice(0, packet.length - 1));
+		// Checksum is second-to-last byte (last byte is newline)
+		const checksumIdx = packet.length - 2;
+		const allBytes = Array.from(packet.slice(0, checksumIdx));
 		const expectedChecksum = allBytes.reduce((a, b) => a + b, 0) % 256;
-		expect(packet[packet.length - 1]).toBe(expectedChecksum);
+		expect(packet[checksumIdx]).toBe(expectedChecksum);
+		expect(packet[packet.length - 1]).toBe(0x0a);
 	});
 });
 
@@ -76,10 +81,10 @@ describe("buildWifiCommand", () => {
 		const passBytes = new TextEncoder().encode(password);
 		const totalLen = 1 + ssidBytes.length + 1 + passBytes.length; // ssid_len + ssid + pass_len + pass
 
-		// Packet structure: header(6) + version(1) + type(1) + length(1) + data(N) + checksum(1)
+		// Packet structure: header(6) + version(1) + type(1) + length(1) + data(N) + checksum(1) + newline(1)
 		// data = [CMD_WIFI_SETTINGS, total_len, ssid_len, ...ssid, pass_len, ...pass]
 		const dataLength = 2 + 1 + ssidBytes.length + 1 + passBytes.length;
-		expect(packet.length).toBe(6 + 1 + 1 + 1 + dataLength + 1);
+		expect(packet.length).toBe(6 + 1 + 1 + 1 + dataLength + 1 + 1);
 
 		// Type should be TYPE_RPC_COMMAND
 		expect(packet[7]).toBe(TYPE_RPC_COMMAND);
@@ -165,10 +170,10 @@ describe("parseImprovPackets", () => {
 
 	it("rejects packets with invalid checksum", () => {
 		const packet = buildScanCommand();
-		// Corrupt the checksum (last byte)
+		// Corrupt the checksum (second-to-last byte, before newline)
 		const corrupted = new Uint8Array(packet);
-		corrupted[corrupted.length - 1] =
-			(corrupted[corrupted.length - 1] + 1) % 256;
+		const checksumIdx = corrupted.length - 2;
+		corrupted[checksumIdx] = (corrupted[checksumIdx] + 1) % 256;
 
 		const packets = parseImprovPackets(corrupted);
 		expect(packets.length).toBe(0);
