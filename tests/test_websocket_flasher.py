@@ -216,7 +216,7 @@ class TestAddEsphomeDevice:
         call_kwargs = mock_init.call_args
         assert call_kwargs[0][0] == "esphome"
         assert call_kwargs[1]["context"]["source"] == "user"
-        assert call_kwargs[1]["data"] == {"host": "192.168.1.99"}
+        assert call_kwargs[1]["data"] == {"host": "192.168.1.99", "port": 6053}
         connection.send_result.assert_called_once()
         result = connection.send_result.call_args[0]
         assert result[0] == 4
