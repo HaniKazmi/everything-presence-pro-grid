@@ -282,6 +282,7 @@ describe("runWifiScan", () => {
 		const port = {
 			open: vi.fn().mockResolvedValue(undefined),
 			close: vi.fn().mockResolvedValue(undefined),
+			setSignals: vi.fn().mockResolvedValue(undefined),
 			writable: {
 				getWriter: vi.fn().mockReturnValue(mockWriter),
 			},
@@ -330,6 +331,39 @@ describe("runWifiScan", () => {
 		await runWifiScan(port);
 		expect(port.writable!.getWriter).toHaveBeenCalled();
 		expect(port.readable!.getReader).toHaveBeenCalled();
+	});
+
+	it("resets device via DTR/RTS toggle before scanning", async () => {
+		const { port } = mockPort();
+		vi.mocked(readImprovResponse).mockRejectedValueOnce(new Error("timeout"));
+
+		await runWifiScan(port);
+
+		const setSignals = port.setSignals as ReturnType<typeof vi.fn>;
+		expect(setSignals).toHaveBeenCalledTimes(2);
+		expect(setSignals).toHaveBeenNthCalledWith(1, { dtr: false, rts: true });
+		expect(setSignals).toHaveBeenNthCalledWith(2, { dtr: false, rts: false });
+	});
+
+	it("resets device before drainSerial", async () => {
+		const { port } = mockPort();
+		vi.mocked(readImprovResponse).mockRejectedValueOnce(new Error("timeout"));
+
+		const callOrder: string[] = [];
+		(port.setSignals as ReturnType<typeof vi.fn>).mockImplementation(() => {
+			callOrder.push("setSignals");
+			return Promise.resolve();
+		});
+		vi.mocked(drainSerial).mockImplementation(() => {
+			callOrder.push("drainSerial");
+			return Promise.resolve();
+		});
+
+		await runWifiScan(port);
+
+		expect(callOrder.indexOf("setSignals")).toBeLessThan(
+			callOrder.indexOf("drainSerial"),
+		);
 	});
 
 	it("calls drainSerial to flush boot log data", async () => {

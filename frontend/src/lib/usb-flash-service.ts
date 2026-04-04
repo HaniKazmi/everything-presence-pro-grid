@@ -88,6 +88,13 @@ export async function runWifiScan(port: SerialPort): Promise<{
 	if (!port.readable) {
 		await port.open({ baudRate: 115200 });
 	}
+
+	// Hardware-reset the device via DTR/RTS toggle to ensure clean boot state.
+	// This prevents BLE/WiFi radio contention during Improv Serial provisioning.
+	await port.setSignals({ dtr: false, rts: true });
+	await new Promise((r) => setTimeout(r, 100));
+	await port.setSignals({ dtr: false, rts: false });
+
 	const writer = port.writable!.getWriter();
 	const reader = port.readable!.getReader();
 

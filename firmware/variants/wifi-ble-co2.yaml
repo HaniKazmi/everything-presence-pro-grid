@@ -37,6 +37,12 @@ esphome:
   name: ${name}
   friendly_name: ${friendly_name}
   name_add_mac_suffix: True
+  on_boot:
+    - priority: -100
+      then:
+        - lambda: |-
+            id(ble_tracker).stop_scan();
+            ESP_LOGI("ble", "Boot: BLE deferred until WiFi connects");
 
 update:
   - platform: http_request
@@ -47,10 +53,16 @@ update:
 wifi:
   on_connect:
     then:
+      - lambda: |-
+          id(ble_tracker).start_scan();
+          ESP_LOGI("ble", "WiFi connected — starting BLE scan");
       - script.execute: control_leds
 
   on_disconnect:
     then:
+      - lambda: |-
+          id(ble_tracker).stop_scan();
+          ESP_LOGI("ble", "WiFi disconnected — stopping BLE scan");
       - script.execute: control_leds
 
 improv_serial:
