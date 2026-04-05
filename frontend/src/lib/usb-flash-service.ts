@@ -115,6 +115,7 @@ export async function runWifiScan(
 		retryDelay?: number;
 		drainDelay?: number;
 		handshakeDelay?: number;
+		handshakeRetryDelay?: number;
 	},
 ): Promise<{
 	writer: WritableStreamDefaultWriter<Uint8Array>;
@@ -152,26 +153,40 @@ export async function runWifiScan(
 
 	const writer = port.writable!.getWriter();
 
-	// Initialize the Improv session — send GET_CURRENT_STATE and verify
-	// the device responds. No response means no improv_serial (ethernet firmware).
-	const stateCmd = buildGetStateCommand();
-	const handshakeMs = timings?.handshakeDelay ?? 500;
-	await sendImprovPacket(writer, stateCmd);
+	// Handshake with retry — device may still be booting after flash
+	const MAX_HANDSHAKE_ATTEMPTS = 5;
+	const handshakeRetryDelay = timings?.handshakeRetryDelay ?? 2000;
+	const handshakeTimeout = timings?.handshakeDelay ?? 3000;
+	let handshakeOk = false;
 
-	const handshakeReader = port.readable!.getReader();
-	try {
-		await readImprovResponse(handshakeReader, timings?.handshakeDelay ?? 3000);
-	} catch {
-		handshakeReader.releaseLock();
+	for (let attempt = 0; attempt < MAX_HANDSHAKE_ATTEMPTS; attempt++) {
+		if (attempt > 0) {
+			await new Promise((r) => setTimeout(r, handshakeRetryDelay));
+		}
+		try {
+			await sendImprovPacket(writer, buildGetStateCommand());
+			const handshakeReader = port.readable!.getReader();
+			try {
+				await readImprovResponse(handshakeReader, handshakeTimeout);
+				handshakeOk = true;
+			} finally {
+				handshakeReader.releaseLock();
+			}
+		} catch {
+			// Not ready yet — retry
+		}
+		if (handshakeOk) break;
+	}
+
+	if (!handshakeOk) {
 		throw new Error(
 			"No response from device — it may be flashed with ethernet firmware which does not support WiFi configuration.",
 		);
 	}
-	handshakeReader.releaseLock();
 
 	const infoCmd = buildGetInfoCommand();
 	await sendImprovPacket(writer, infoCmd);
-	await new Promise((r) => setTimeout(r, handshakeMs));
+	await new Promise((r) => setTimeout(r, handshakeTimeout));
 
 	// ESPHome's improv_serial returns CACHED WiFi scan results — it doesn't
 	// trigger a new scan. If the WiFi component hasn't completed a background

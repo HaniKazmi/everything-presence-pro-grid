@@ -531,6 +531,7 @@ describe("runWifiScan", () => {
 			retryDelay: 0,
 			drainDelay: 0,
 			handshakeDelay: 0,
+			handshakeRetryDelay: 0,
 		});
 		expect(port.open).toHaveBeenCalledWith({ baudRate: 115200 });
 	});
@@ -550,6 +551,7 @@ describe("runWifiScan", () => {
 			retryDelay: 0,
 			drainDelay: 0,
 			handshakeDelay: 0,
+			handshakeRetryDelay: 0,
 		});
 		expect(port.open).not.toHaveBeenCalled();
 	});
@@ -568,6 +570,7 @@ describe("runWifiScan", () => {
 			retryDelay: 0,
 			drainDelay: 0,
 			handshakeDelay: 0,
+			handshakeRetryDelay: 0,
 		});
 		expect(port.writable!.getWriter).toHaveBeenCalled();
 		expect(port.readable!.getReader).toHaveBeenCalled();
@@ -587,6 +590,7 @@ describe("runWifiScan", () => {
 			retryDelay: 0,
 			drainDelay: 0,
 			handshakeDelay: 0,
+			handshakeRetryDelay: 0,
 		});
 
 		const setSignals = port.setSignals as ReturnType<typeof vi.fn>;
@@ -612,6 +616,7 @@ describe("runWifiScan", () => {
 			retryDelay: 0,
 			drainDelay: 0,
 			handshakeDelay: 0,
+			handshakeRetryDelay: 0,
 		});
 
 		expect(sendImprovPacket).toHaveBeenCalled();
@@ -631,6 +636,7 @@ describe("runWifiScan", () => {
 			retryDelay: 0,
 			drainDelay: 0,
 			handshakeDelay: 0,
+			handshakeRetryDelay: 0,
 		});
 		expect(buildScanCommand).toHaveBeenCalled();
 		expect(sendImprovPacket).toHaveBeenCalled();
@@ -650,6 +656,7 @@ describe("runWifiScan", () => {
 			retryDelay: 0,
 			drainDelay: 0,
 			handshakeDelay: 0,
+			handshakeRetryDelay: 0,
 		});
 		expect(result.networks).toEqual([]);
 	});
@@ -668,6 +675,7 @@ describe("runWifiScan", () => {
 			retryDelay: 0,
 			drainDelay: 0,
 			handshakeDelay: 0,
+			handshakeRetryDelay: 0,
 		});
 		expect(result.writer).toBeDefined();
 		expect(result.reader).toBeDefined();
@@ -714,6 +722,7 @@ describe("runWifiScan", () => {
 			retryDelay: 0,
 			drainDelay: 0,
 			handshakeDelay: 0,
+			handshakeRetryDelay: 0,
 		});
 		expect(result.networks).toEqual([network1, network2]);
 	});
@@ -746,6 +755,7 @@ describe("runWifiScan", () => {
 			retryDelay: 0,
 			drainDelay: 0,
 			handshakeDelay: 0,
+			handshakeRetryDelay: 0,
 		});
 		// The non-RPC_RESULT packet should not trigger parseScanResults
 		// but the scan-complete packet (0x04 with empty slice) does
@@ -755,12 +765,42 @@ describe("runWifiScan", () => {
 	it("throws when handshake gets no response (ethernet firmware)", async () => {
 		const { port } = mockPort();
 
-		// Handshake fails (no response from device)
-		vi.mocked(readImprovResponse).mockRejectedValueOnce(new Error("timeout"));
+		// Handshake fails on all attempts (no response from device)
+		vi.mocked(readImprovResponse).mockRejectedValue(new Error("timeout"));
 
 		await expect(
-			runWifiScan(port, { retryDelay: 0, drainDelay: 0, handshakeDelay: 0 }),
+			runWifiScan(port, {
+				retryDelay: 0,
+				drainDelay: 0,
+				handshakeDelay: 0,
+				handshakeRetryDelay: 0,
+			}),
 		).rejects.toThrow("No response from device");
+	});
+
+	it("retries handshake when first attempt fails and succeeds on later attempt", async () => {
+		const { port } = mockPort();
+
+		// First handshake attempt fails, second succeeds, then scan times out
+		vi.mocked(readImprovResponse)
+			.mockRejectedValueOnce(new Error("timeout")) // handshake attempt 1
+			.mockRejectedValueOnce(new Error("timeout")) // handshake attempt 2
+			.mockResolvedValueOnce({
+				// handshake attempt 3 succeeds
+				packets: [{ type: 0x01, data: new Uint8Array([0x02]) }],
+				buffer: [],
+			})
+			.mockRejectedValue(new Error("timeout")); // scan times out
+
+		const result = await runWifiScan(port, {
+			retryDelay: 0,
+			drainDelay: 0,
+			handshakeDelay: 0,
+			handshakeRetryDelay: 0,
+		});
+		expect(result.networks).toEqual([]);
+		// sendImprovPacket should have been called at least 3 times for handshake attempts
+		expect(vi.mocked(sendImprovPacket).mock.calls.length).toBeGreaterThanOrEqual(3);
 	});
 
 	it("retries scan when first attempt returns no networks", async () => {
@@ -799,6 +839,7 @@ describe("runWifiScan", () => {
 			retryDelay: 0,
 			drainDelay: 0,
 			handshakeDelay: 0,
+			handshakeRetryDelay: 0,
 		});
 		expect(result.networks).toEqual([network]);
 	});
@@ -829,6 +870,7 @@ describe("runWifiScan", () => {
 			retryDelay: 0,
 			drainDelay: 0,
 			handshakeDelay: 0,
+			handshakeRetryDelay: 0,
 		});
 		expect(result.networks).toEqual([network1]);
 	});
