@@ -800,7 +800,9 @@ describe("runWifiScan", () => {
 		});
 		expect(result.networks).toEqual([]);
 		// sendImprovPacket should have been called at least 3 times for handshake attempts
-		expect(vi.mocked(sendImprovPacket).mock.calls.length).toBeGreaterThanOrEqual(3);
+		expect(
+			vi.mocked(sendImprovPacket).mock.calls.length,
+		).toBeGreaterThanOrEqual(3);
 	});
 
 	it("retries scan when first attempt returns no networks", async () => {
