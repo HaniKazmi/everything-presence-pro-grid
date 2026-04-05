@@ -2321,14 +2321,6 @@ export class EPPGridPanel extends LitElement {
 			ctrl.updateUsbState({ step: "wifi_scan" });
 			const { writer, reader, networks } = await runWifiScan(ctrl.serialPort);
 
-			if (networks.length === 0) {
-				reader.releaseLock();
-				writer.releaseLock();
-				throw new Error(
-					"No WiFi networks found. If this device is flashed with ethernet firmware, WiFi configuration is not available.",
-				);
-			}
-
 			ctrl.wifiNetworks = networks;
 			ctrl.updateUsbState({ step: "wifi_provision" });
 
@@ -2447,12 +2439,17 @@ export class EPPGridPanel extends LitElement {
 			reader.releaseLock();
 			writer.releaseLock();
 
-			// Hard-reset device (same sequence as esp-web-tools ewt-console reset)
-			// RTS=true asserts EN low (reset), then HardReset releases it
+			// Hard-reset device — explicitly set DTR=false (CH340 compatibility)
 			try {
-				await port.setSignals({ requestToSend: true });
+				await port.setSignals({
+					dataTerminalReady: false,
+					requestToSend: true,
+				});
 				await new Promise((r) => setTimeout(r, 100));
-				await port.setSignals({ requestToSend: false });
+				await port.setSignals({
+					dataTerminalReady: false,
+					requestToSend: false,
+				});
 			} catch {
 				// RTS not supported on this board
 			}

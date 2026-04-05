@@ -501,8 +501,14 @@ describe("_handleWifiProvision", () => {
 	it("performs RTS reset after sending credentials", async () => {
 		await flushProvision("MySSID", "s3cr3t");
 
-		expect(mockPort.setSignals).toHaveBeenCalledWith({ requestToSend: true });
-		expect(mockPort.setSignals).toHaveBeenCalledWith({ requestToSend: false });
+		expect(mockPort.setSignals).toHaveBeenCalledWith({
+			dataTerminalReady: false,
+			requestToSend: true,
+		});
+		expect(mockPort.setSignals).toHaveBeenCalledWith({
+			dataTerminalReady: false,
+			requestToSend: false,
+		});
 	});
 
 	it("sets state to reading_ip after runWifiProvision", async () => {
@@ -810,7 +816,7 @@ describe("_handleUsbWifiConfig", () => {
 		});
 	});
 
-	it("throws error when no networks found", async () => {
+	it("proceeds to wifi_provision when no networks found (allows manual SSID)", async () => {
 		(runWifiScan as ReturnType<typeof vi.fn>).mockResolvedValue({
 			writer: { releaseLock: vi.fn() },
 			reader: { releaseLock: vi.fn() },
@@ -818,14 +824,13 @@ describe("_handleUsbWifiConfig", () => {
 		});
 
 		const ctrl = (panel as any)._flasherCtrl;
+		const updateSpy = vi.spyOn(ctrl, "updateUsbState");
 
 		await (panel as any)._handleUsbWifiConfig();
 
-		expect(ctrl.usbFlashState).toEqual({
-			step: "error",
-			error:
-				"No WiFi networks found. If this device is flashed with ethernet firmware, WiFi configuration is not available.",
-		});
+		const steps = updateSpy.mock.calls.map((c: any[]) => c[0].step);
+		expect(steps).toContain("wifi_provision");
+		expect(ctrl.wifiNetworks).toEqual([]);
 	});
 });
 
