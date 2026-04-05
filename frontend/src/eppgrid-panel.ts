@@ -1083,7 +1083,11 @@ export class EPPGridPanel extends LitElement {
 							}
 						}
 						await ctrl.startOtaFlash(mac, variant);
-						if (ctrl.otaProgress?.status === "success" && device?.host && !device?.esphome_config_entry_id) {
+						if (
+							ctrl.otaProgress?.status === "success" &&
+							device?.host &&
+							!device?.esphome_config_entry_id
+						) {
 							try {
 								await ctrl.addEsphomeDevice(device.host);
 							} catch (err) {

@@ -295,7 +295,9 @@ describe("flashFirmware", () => {
 
 	it("works without options parameter (backwards compatible)", async () => {
 		const port = mockPort();
-		await expect(flashFirmware(port, "wifi-ble-co2", vi.fn())).resolves.toBeUndefined();
+		await expect(
+			flashFirmware(port, "wifi-ble-co2", vi.fn()),
+		).resolves.toBeUndefined();
 	});
 
 	it("calls beforeFlash after loader.main() and before writeFlash()", async () => {
