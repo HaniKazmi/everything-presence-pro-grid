@@ -12,7 +12,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.core import callback
 from homeassistant.helpers import entity_registry as er
 
-from .const import DOMAIN, MANIFEST_BASE_URL
+from .const import DOMAIN
 from .ota import OTAError
 from .ota import fetch_firmware_binary
 from .ota import push_ota
@@ -1161,7 +1161,7 @@ async def websocket_list_flashable_devices(
         connection.send_error(msg["id"], "not_ready", "Integration not loaded")
         return
     devices = await manager.list_flashable_devices()
-    connection.send_result(msg["id"], {"devices": devices, "firmware_base_url": MANIFEST_BASE_URL})
+    connection.send_result(msg["id"], {"devices": devices, "firmware_base_url": "/api/eppgrid/firmware"})
 
 
 # -- delete_esphome_device --

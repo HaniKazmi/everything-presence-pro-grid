@@ -33,6 +33,9 @@ async def setup_integration(hass: HomeAssistant, config_entry: MockConfigEntry) 
     """Set up the integration with a mocked DeviceManager and return the mock."""
     from custom_components.eppgrid.const import CONFIG_PROTOCOL_VERSION
 
+    if hass.http is None:
+        hass.http = MagicMock()
+
     with (
         patch("custom_components.eppgrid.DeviceManager") as mock_dm_cls,
         patch("custom_components.eppgrid._register_panel", new_callable=AsyncMock),
@@ -100,8 +103,7 @@ class TestListFlashableDevices:
         assert result[0] == 1
         assert len(result[1]["devices"]) == 1
         assert result[1]["devices"][0]["mac"] == "AA:BB:CC:DD:EE:FF"
-        assert "firmware_base_url" in result[1]
-        assert "releases/download/" in result[1]["firmware_base_url"]
+        assert result[1]["firmware_base_url"] == "/api/eppgrid/firmware"
 
     async def test_not_ready(self, hass: HomeAssistant) -> None:
         """list_flashable_devices returns error when integration not loaded."""

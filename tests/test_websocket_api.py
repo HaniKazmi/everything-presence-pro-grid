@@ -33,6 +33,9 @@ async def setup_integration(hass: HomeAssistant, config_entry: MockConfigEntry) 
     """Set up the integration with a mocked DeviceManager and return the mock."""
     from custom_components.eppgrid.const import CONFIG_PROTOCOL_VERSION
 
+    if hass.http is None:
+        hass.http = MagicMock()
+
     with (
         patch("custom_components.eppgrid.DeviceManager") as mock_dm_cls,
         patch("custom_components.eppgrid._register_panel", new_callable=AsyncMock),
