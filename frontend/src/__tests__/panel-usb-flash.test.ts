@@ -28,7 +28,13 @@ import {
 
 /** Reset all mocks to their default happy-path implementations. */
 function resetServiceMocks() {
-	(flashFirmware as ReturnType<typeof vi.fn>).mockResolvedValue(undefined);
+	(flashFirmware as ReturnType<typeof vi.fn>).mockImplementation(
+		async (_port: any, _variant: any, _onProgress: any, options: any) => {
+			if (options?.beforeFlash) {
+				await options.beforeFlash(undefined);
+			}
+		},
+	);
 	(runWifiScan as ReturnType<typeof vi.fn>).mockResolvedValue({
 		writer: { releaseLock: vi.fn() },
 		reader: { releaseLock: vi.fn() },
@@ -104,6 +110,7 @@ describe("_handleUsbFlash", () => {
 			mockPort,
 			"eppgrid-wifi",
 			expect.any(Function),
+			expect.objectContaining({ beforeFlash: expect.any(Function) }),
 		);
 	});
 
@@ -264,6 +271,135 @@ describe("_handleUsbFlash", () => {
 			step: "error",
 			error: "Unknown error",
 		});
+	});
+
+	it("calls window.confirm and deleteEsphomeDevice when device matches original firmware", async () => {
+		const ctrl = (panel as any)._flasherCtrl;
+		ctrl.flashableDevices = [
+			{
+				mac: "AA:BB:CC:DD:EE:FF",
+				name: "Test",
+				host: "192.168.1.10",
+				available: true,
+				firmware_type: "original",
+				firmware_version: "1.0.0",
+				esphome_config_entry_id: "entry-123",
+			},
+		];
+
+		vi.stubGlobal("confirm", vi.fn().mockReturnValue(true));
+		const deleteSpy = vi
+			.spyOn(ctrl, "deleteEsphomeDevice")
+			.mockResolvedValue(undefined);
+
+		(flashFirmware as ReturnType<typeof vi.fn>).mockImplementation(
+			async (_port: any, _variant: any, _onProgress: any, options: any) => {
+				if (options?.beforeFlash) {
+					await options.beforeFlash("AA:BB:CC:DD:EE:FF");
+				}
+			},
+		);
+
+		await (panel as any)._handleUsbFlash("ethernet-ble-co2");
+
+		expect(window.confirm).toHaveBeenCalled();
+		expect(deleteSpy).toHaveBeenCalledWith("entry-123");
+	});
+
+	it("cancels flash when user declines confirm for original firmware device", async () => {
+		const ctrl = (panel as any)._flasherCtrl;
+		ctrl.flashableDevices = [
+			{
+				mac: "AA:BB:CC:DD:EE:FF",
+				name: "Test",
+				host: "192.168.1.10",
+				available: true,
+				firmware_type: "original",
+				firmware_version: "1.0.0",
+				esphome_config_entry_id: "entry-123",
+			},
+		];
+
+		vi.stubGlobal("confirm", vi.fn().mockReturnValue(false));
+
+		(flashFirmware as ReturnType<typeof vi.fn>).mockImplementation(
+			async (_port: any, _variant: any, _onProgress: any, options: any) => {
+				if (options?.beforeFlash) {
+					await options.beforeFlash("AA:BB:CC:DD:EE:FF");
+				}
+			},
+		);
+
+		await (panel as any)._handleUsbFlash("ethernet-ble-co2");
+
+		expect(window.confirm).toHaveBeenCalled();
+		expect(ctrl.usbFlashState?.step).toBe("error");
+	});
+
+	it("skips confirm when device has eppgrid firmware", async () => {
+		const ctrl = (panel as any)._flasherCtrl;
+		ctrl.flashableDevices = [
+			{
+				mac: "AA:BB:CC:DD:EE:FF",
+				name: "Test",
+				host: "192.168.1.10",
+				available: true,
+				firmware_type: "eppgrid",
+				firmware_version: "2.0.0",
+				esphome_config_entry_id: "entry-123",
+			},
+		];
+
+		vi.stubGlobal("confirm", vi.fn().mockReturnValue(true));
+
+		(flashFirmware as ReturnType<typeof vi.fn>).mockImplementation(
+			async (_port: any, _variant: any, _onProgress: any, options: any) => {
+				if (options?.beforeFlash) {
+					await options.beforeFlash("AA:BB:CC:DD:EE:FF");
+				}
+			},
+		);
+
+		const updateSpy = vi.spyOn(ctrl, "updateUsbState");
+		await (panel as any)._handleUsbFlash("ethernet-ble-co2");
+
+		expect(window.confirm).not.toHaveBeenCalled();
+		const steps = updateSpy.mock.calls.map((c: any[]) => c[0].step);
+		expect(steps).toContain("complete");
+	});
+
+	it("skips confirm when MAC does not match any device", async () => {
+		const ctrl = (panel as any)._flasherCtrl;
+		ctrl.flashableDevices = [];
+
+		vi.stubGlobal("confirm", vi.fn().mockReturnValue(true));
+
+		(flashFirmware as ReturnType<typeof vi.fn>).mockImplementation(
+			async (_port: any, _variant: any, _onProgress: any, options: any) => {
+				if (options?.beforeFlash) {
+					await options.beforeFlash("AA:BB:CC:DD:EE:FF");
+				}
+			},
+		);
+
+		const updateSpy = vi.spyOn(ctrl, "updateUsbState");
+		await (panel as any)._handleUsbFlash("ethernet-ble-co2");
+
+		expect(window.confirm).not.toHaveBeenCalled();
+		const steps = updateSpy.mock.calls.map((c: any[]) => c[0].step);
+		expect(steps).toContain("complete");
+	});
+
+	it("sets complete with variant for ethernet", async () => {
+		const ctrl = (panel as any)._flasherCtrl;
+		const updateSpy = vi.spyOn(ctrl, "updateUsbState");
+
+		await (panel as any)._handleUsbFlash("ethernet-ble-co2");
+
+		const completeCall = updateSpy.mock.calls.find(
+			(c: any[]) => c[0].step === "complete",
+		);
+		expect(completeCall?.[0].variant).toBe("ethernet-ble-co2");
 	});
 });
 

@@ -2326,15 +2326,37 @@ export class EPPGridPanel extends LitElement {
 
 			// Step 2: Flash firmware
 			ctrl.updateUsbState({ step: "flashing", progress: 0 });
-			await flashFirmware(port, variant, (pct) => {
-				ctrl.updateUsbState({ step: "flashing", progress: pct });
-			});
+			await flashFirmware(
+				port,
+				variant,
+				(pct) => {
+					ctrl.updateUsbState({ step: "flashing", progress: pct });
+				},
+				{
+					beforeFlash: async (mac: string | undefined) => {
+						if (!mac) return;
+						const matched = ctrl.flashableDevices.find(
+							(d) => d.mac.toUpperCase() === mac,
+						);
+						if (
+							matched?.firmware_type === "original" &&
+							matched?.esphome_config_entry_id
+						) {
+							const ok = window.confirm(
+								this._localize("flasher.confirm_delete_message"),
+							);
+							if (!ok) throw new Error("Flash cancelled");
+							await ctrl.deleteEsphomeDevice(matched.esphome_config_entry_id);
+						}
+					},
+				},
+			);
 
 			if (variant.startsWith("ethernet")) {
 				// Ethernet variants have no WiFi — skip provisioning
 				await port.close().catch(() => {});
 				ctrl.serialPort = null;
-				ctrl.updateUsbState({ step: "complete" });
+				ctrl.updateUsbState({ step: "complete", variant });
 				return;
 			}
 
