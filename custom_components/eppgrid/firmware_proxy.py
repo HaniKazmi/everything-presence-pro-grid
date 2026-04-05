@@ -29,12 +29,12 @@ class FirmwareProxyView(HomeAssistantView):
         url = f"{MANIFEST_BASE_URL}/{filename}"
 
         try:
-            resp = await session.get(url)
-            if resp.status != 200:
-                return web.Response(status=404, text="Firmware file not found")
+            async with session.get(url) as resp:
+                if resp.status != 200:
+                    return web.Response(status=resp.status, text=f"Upstream returned {resp.status}")
 
-            data = await resp.read()
-            content_type = "application/json" if filename.endswith(".json") else "application/octet-stream"
-            return web.Response(body=data, content_type=content_type)
+                data = await resp.read()
+                content_type = "application/json" if filename.endswith(".json") else "application/octet-stream"
+                return web.Response(body=data, content_type=content_type)
         except Exception:
             return web.Response(status=502, text="Failed to fetch firmware")

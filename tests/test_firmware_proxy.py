@@ -25,6 +25,20 @@ def make_request(hass, filename="everything-presence-pro-wifi-ble-co2-manifest.j
     return request
 
 
+def _mock_session(mock_resp=None, side_effect=None):
+    """Create a mock session whose .get() returns an async context manager."""
+    cm = MagicMock()
+    cm.__aenter__ = AsyncMock(return_value=mock_resp)
+    cm.__aexit__ = AsyncMock(return_value=False)
+
+    mock_session = MagicMock()
+    if side_effect:
+        mock_session.get = MagicMock(side_effect=side_effect)
+    else:
+        mock_session.get = MagicMock(return_value=cm)
+    return mock_session
+
+
 class TestFirmwareProxyView:
     def test_url_pattern(self, view):
         assert view.url == "/api/eppgrid/firmware/{filename}"
@@ -50,12 +64,9 @@ class TestFirmwareProxyView:
         mock_resp.status = 200
         mock_resp.read = AsyncMock(return_value=manifest_data)
 
-        mock_session = AsyncMock()
-        mock_session.get = AsyncMock(return_value=mock_resp)
-
         with patch(
             "custom_components.eppgrid.firmware_proxy.async_get_clientsession",
-            return_value=mock_session,
+            return_value=_mock_session(mock_resp),
         ):
             resp = await view.get(request, "everything-presence-pro-wifi-ble-co2-manifest.json")
 
@@ -71,12 +82,9 @@ class TestFirmwareProxyView:
         mock_resp.status = 200
         mock_resp.read = AsyncMock(return_value=binary_data)
 
-        mock_session = AsyncMock()
-        mock_session.get = AsyncMock(return_value=mock_resp)
-
         with patch(
             "custom_components.eppgrid.firmware_proxy.async_get_clientsession",
-            return_value=mock_session,
+            return_value=_mock_session(mock_resp),
         ):
             resp = await view.get(request, "everything-presence-pro-wifi-ble-co2-bootloader.bin")
 
@@ -90,26 +98,35 @@ class TestFirmwareProxyView:
         mock_resp = AsyncMock()
         mock_resp.status = 404
 
-        mock_session = AsyncMock()
-        mock_session.get = AsyncMock(return_value=mock_resp)
-
         with patch(
             "custom_components.eppgrid.firmware_proxy.async_get_clientsession",
-            return_value=mock_session,
+            return_value=_mock_session(mock_resp),
         ):
             resp = await view.get(request, "everything-presence-pro-wifi-ble-co2-manifest.json")
 
         assert resp.status == 404
 
-    async def test_returns_502_on_network_error(self, hass: HomeAssistant, view):
+    async def test_propagates_upstream_5xx(self, hass: HomeAssistant, view):
         request = make_request(hass)
 
-        mock_session = AsyncMock()
-        mock_session.get = AsyncMock(side_effect=Exception("network error"))
+        mock_resp = AsyncMock()
+        mock_resp.status = 500
 
         with patch(
             "custom_components.eppgrid.firmware_proxy.async_get_clientsession",
-            return_value=mock_session,
+            return_value=_mock_session(mock_resp),
+        ):
+            resp = await view.get(request, "everything-presence-pro-wifi-ble-co2-manifest.json")
+
+        assert resp.status == 500
+        assert "500" in resp.text
+
+    async def test_returns_502_on_network_error(self, hass: HomeAssistant, view):
+        request = make_request(hass)
+
+        with patch(
+            "custom_components.eppgrid.firmware_proxy.async_get_clientsession",
+            return_value=_mock_session(side_effect=Exception("network error")),
         ):
             resp = await view.get(request, "everything-presence-pro-wifi-ble-co2-manifest.json")
 
@@ -122,15 +139,13 @@ class TestFirmwareProxyView:
         mock_resp.status = 200
         mock_resp.read = AsyncMock(return_value=b"{}")
 
-        mock_session = AsyncMock()
-        mock_session.get = AsyncMock(return_value=mock_resp)
-
+        session = _mock_session(mock_resp)
         with patch(
             "custom_components.eppgrid.firmware_proxy.async_get_clientsession",
-            return_value=mock_session,
+            return_value=session,
         ):
             await view.get(request, "everything-presence-pro-wifi-ble-co2-manifest.json")
 
-        call_url = mock_session.get.call_args[0][0]
+        call_url = session.get.call_args[0][0]
         assert "releases/download/v0.1.0-alpha.2" in call_url
         assert call_url.endswith("everything-presence-pro-wifi-ble-co2-manifest.json")
