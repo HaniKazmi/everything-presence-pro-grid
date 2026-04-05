@@ -50,6 +50,12 @@ describe("FlasherController", () => {
 			expect(freshCtrl.usbDeviceMac).toBeNull();
 			expect(freshCtrl.usbExistingDevice).toBeNull();
 		});
+
+		it("opRunning defaults to false", () => {
+			const freshHost = mockHost();
+			const freshCtrl = new FlasherController(freshHost);
+			expect(freshCtrl.opRunning).toBe(false);
+		});
 	});
 
 	// --- Lifecycle ---
@@ -261,6 +267,18 @@ describe("FlasherController", () => {
 			ctrl.resetUsbState();
 			expect(ctrl.usbFlashState).toBeNull();
 			expect(ctrl.wifiNetworks).toEqual([]);
+		});
+
+		it("increments opId", () => {
+			const before = ctrl.opId;
+			ctrl.resetUsbState();
+			expect(ctrl.opId).toBe(before + 1);
+		});
+
+		it("clears serialPort", () => {
+			ctrl.serialPort = { close: vi.fn().mockResolvedValue(undefined) } as any;
+			ctrl.resetUsbState();
+			expect(ctrl.serialPort).toBeNull();
 		});
 	});
 

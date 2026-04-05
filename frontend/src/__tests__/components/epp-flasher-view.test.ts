@@ -733,6 +733,27 @@ describe("USB flash view — state-driven", () => {
 		).not.toBeNull();
 	});
 
+	it("hides Retry button when error is fatal", () => {
+		const el = createView();
+		(el as any)._showUsbFlash = true;
+		(el as any).usbFlashState = { step: "error", error: "Port busy", fatal: true };
+		const tpl = (el as any).render();
+		const c = renderTo(tpl);
+		// Should have Back button but no Retry
+		const btns = c.querySelectorAll(".confirm-actions ha-button");
+		expect(btns.length).toBe(1); // only Back
+	});
+
+	it("shows Retry button when error is not fatal", () => {
+		const el = createView();
+		(el as any)._showUsbFlash = true;
+		(el as any).usbFlashState = { step: "error", error: "oops" };
+		const tpl = (el as any).render();
+		const c = renderTo(tpl);
+		const btns = c.querySelectorAll(".confirm-actions ha-button");
+		expect(btns.length).toBe(2); // Back + Retry
+	});
+
 	it("renders wifi_provision state with existing WiFi provisioning UI", () => {
 		const el = createView();
 		(el as any)._showUsbFlash = true;

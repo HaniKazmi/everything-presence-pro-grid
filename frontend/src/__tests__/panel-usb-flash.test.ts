@@ -82,6 +82,19 @@ describe("_handleUsbFlash", () => {
 		});
 	});
 
+	it("shows fatal error immediately when opRunning is true", async () => {
+		const ctrl = (panel as any)._flasherCtrl;
+		ctrl.opRunning = true;
+
+		await (panel as any)._handleUsbFlash("eppgrid-wifi");
+
+		expect(ctrl.usbFlashState).toMatchObject({
+			step: "error",
+			fatal: true,
+		});
+		expect(ctrl.usbFlashState.error).toContain("busy");
+	});
+
 	it("sets state to connecting, then flashing, then wifi_scan, then wifi_provision on success", async () => {
 		const ctrl = (panel as any)._flasherCtrl;
 		const updateSpy = vi.spyOn(ctrl, "updateUsbState");
