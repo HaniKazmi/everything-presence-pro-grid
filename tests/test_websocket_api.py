@@ -1582,6 +1582,9 @@ class TestUpdateFirmware:
         assert call_args[0][0] == "update"
         assert call_args[0][1] == "install"
         assert "entity_id" in call_args[0][2]
+        # context must be connection.context(msg), not connection.context
+        assert call_args[1]["context"] == connection.context(msg)
+        connection.context.assert_called_with(msg)
 
     async def test_update_firmware_device_not_found(self, hass: HomeAssistant, config_entry: MockConfigEntry) -> None:
         """update_firmware returns error when device not found."""

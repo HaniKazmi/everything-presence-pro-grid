@@ -1006,7 +1006,7 @@ describe("detectIpAddress", () => {
 		);
 	});
 
-	it("throws when IP is 0.0.0.0", async () => {
+	it("returns null when IP is 0.0.0.0 (DHCP not ready)", async () => {
 		const encoder = new TextEncoder();
 		const url = "http://0.0.0.0";
 		const urlBytes = encoder.encode(url);
@@ -1025,9 +1025,8 @@ describe("detectIpAddress", () => {
 			buffer: [],
 		});
 
-		await expect(detectIpAddress(mockReader, 1000)).rejects.toThrow(
-			"WiFi connection failed",
-		);
+		const result = await detectIpAddress(mockReader, 1000);
+		expect(result).toBeNull();
 	});
 
 	it("re-throws non-timeout errors from readImprovResponse", async () => {

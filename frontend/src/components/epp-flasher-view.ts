@@ -49,6 +49,7 @@ export class EppFlasherView extends LitElement {
 
 	@state() private _selectedVariant: "wifi" | "ethernet" = "wifi";
 	@property() firmwareBaseUrl = "";
+	@property() firmwareVersion = "";
 	@property({ attribute: false }) usbFlashState: UsbFlashState | null = null;
 	@property({ attribute: false }) wifiNetworks: WifiNetwork[] = [];
 
@@ -460,12 +461,13 @@ export class EppFlasherView extends LitElement {
 				adding_device: "flasher.usb_step_adding",
 			};
 			const stepKey = stepKeyMap[state.step] ?? state.step;
+			const stepParams = state.step === "flashing" ? { version: this.firmwareVersion } : undefined;
 			return html`
 				<div class="flasher-content">
 					<ha-card>
 						<div class="card-content">
 							<div class="usb-status">
-								<p>${this.localize(stepKey)}</p>
+								<p>${this.localize(stepKey, stepParams)}</p>
 								${
 									state.step === "flashing" && state.progress != null
 										? html`<div class="usb-progress">

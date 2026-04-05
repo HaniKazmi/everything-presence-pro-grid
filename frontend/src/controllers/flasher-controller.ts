@@ -5,6 +5,7 @@ import type { FlashableDevice, UsbFlashState } from "../types.js";
 export class FlasherController implements ReactiveController {
 	flashableDevices: FlashableDevice[] = [];
 	firmwareBaseUrl = "";
+	firmwareVersion = "";
 	loading = true;
 	usbConnected = false;
 	usbDeviceMac: string | null = null;
@@ -46,6 +47,7 @@ export class FlasherController implements ReactiveController {
 			});
 			this.flashableDevices = resp.devices;
 			this.firmwareBaseUrl = resp.firmware_base_url ?? "";
+			this.firmwareVersion = resp.firmware_version ?? "";
 		} catch {
 			this.flashableDevices = [];
 		}

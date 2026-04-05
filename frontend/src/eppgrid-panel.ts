@@ -49,6 +49,11 @@ import {
 	type SensorFov,
 } from "./lib/room-geometry.js";
 import {
+	buildGetStateCommand,
+	readImprovResponse,
+	sendImprovPacket,
+} from "./lib/improv-serial.js";
+import {
 	detectIpAddress,
 	flashFirmware,
 	runWifiProvision,
@@ -1063,6 +1068,7 @@ export class EPPGridPanel extends LitElement {
 					.usbFlashState=${this._flasherCtrl.usbFlashState}
 					.wifiNetworks=${this._flasherCtrl.wifiNetworks}
 					.firmwareBaseUrl=${this._flasherCtrl.firmwareBaseUrl}
+					.firmwareVersion=${this._flasherCtrl.firmwareVersion}
 					@flash-complete=${() => {
 						this._flasherCtrl.resetUsbState();
 						this._loadDevices();
@@ -2408,25 +2414,75 @@ export class EPPGridPanel extends LitElement {
 
 		try {
 			ctrl.updateUsbState({ step: "wifi_connecting" });
-			console.log("[wifiProvision] Sending credentials...");
 			await runWifiProvision(writer, ssid, password);
-			console.log(
-				"[wifiProvision] Credentials sent, detecting IP via Improv...",
-			);
 
-			// No RTS reset — Improv handles WiFi connection in-session:
-			// PROVISIONING (0x03) → PROVISIONED (0x04) → RPC_RESULT with IP
+			// Wait for PROVISIONED state (creds saved to NVS)
 			ctrl.updateUsbState({ step: "reading_ip" });
-			const ip = await detectIpAddress(reader, 35000);
-			console.log("[wifiProvision] IP detected:", ip);
+			let ip = await detectIpAddress(reader, 35000);
 
-			// Release locks and close port
-			reader.releaseLock();
-			writer.releaseLock();
-			await port.close().catch(() => {});
-			ctrl.serialPort = null;
+			// If IP is null, device reported 0.0.0.0 (DHCP not ready yet).
+			// Reboot via RTS reset — device reconnects with saved creds and
+			// reports the real IP.
+			if (!ip) {
+				reader.releaseLock();
+				writer.releaseLock();
+				(ctrl as any)._serialReader = null;
+				(ctrl as any)._serialWriter = null;
+
+				try {
+					await port.setSignals({ dataTerminalReady: false, requestToSend: true });
+					await new Promise((r) => setTimeout(r, 200));
+					await port.setSignals({ dataTerminalReady: false, requestToSend: false });
+				} catch {}
+
+				// Drain stale boot output
+				const drainReader = port.readable!.getReader();
+				while (true) {
+					const r = await Promise.race([
+						drainReader.read(),
+						new Promise<{ value: undefined; done: true }>((resolve) =>
+							setTimeout(() => resolve({ value: undefined, done: true }), 200),
+						),
+					]);
+					if (r.done || !r.value) break;
+				}
+				drainReader.releaseLock();
+
+				// Handshake with retry — device needs time to boot
+				const freshWriter = port.writable!.getWriter();
+				let handshakeOk = false;
+				for (let attempt = 0; attempt < 5; attempt++) {
+					if (attempt > 0) await new Promise((r) => setTimeout(r, 2000));
+					try {
+						await sendImprovPacket(freshWriter, buildGetStateCommand());
+						const hReader = port.readable!.getReader();
+						try {
+							await readImprovResponse(hReader, 3000);
+							handshakeOk = true;
+						} finally {
+							hReader.releaseLock();
+						}
+					} catch {}
+					if (handshakeOk) break;
+				}
+
+				if (handshakeOk) {
+					const freshReader = port.readable!.getReader();
+					(ctrl as any)._serialWriter = freshWriter;
+					(ctrl as any)._serialReader = freshReader;
+					ip = await detectIpAddress(freshReader, 15000);
+					freshReader.releaseLock();
+				}
+				freshWriter.releaseLock();
+			} else {
+				reader.releaseLock();
+				writer.releaseLock();
+			}
+
 			(ctrl as any)._serialReader = null;
 			(ctrl as any)._serialWriter = null;
+			await port.close().catch(() => {});
+			ctrl.serialPort = null;
 
 			if (ip) {
 				ctrl.updateUsbState({ step: "adding_device" });

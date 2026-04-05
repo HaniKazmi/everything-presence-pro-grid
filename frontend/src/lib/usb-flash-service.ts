@@ -339,12 +339,9 @@ export async function detectIpAddress(
 						const url = decoder.decode(resultData.slice(1, 1 + urlLen));
 						const match = ipPattern.exec(url);
 						if (match && match[1] !== "0.0.0.0") return match[1];
-						// 0.0.0.0 after reboot = device failed to connect
-						throw new Error(
-							"WiFi connection failed — check SSID/password and try again",
-						);
 					}
-					// Provisioned but no URL (no next_url in firmware)
+					// Provisioned but IP not yet assigned (0.0.0.0) or no URL —
+					// creds are saved to NVS; caller should reboot and re-read
 					return null;
 				}
 			}
