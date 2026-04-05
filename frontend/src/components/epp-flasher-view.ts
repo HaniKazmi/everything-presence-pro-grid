@@ -161,7 +161,7 @@ export class EppFlasherView extends LitElement {
 			progress.status === "failed" || progress.status === "timeout";
 		const isSuccess = progress.status === "success";
 
-		return html`
+		const progressSteps = html`
       <div class="progress-steps">
         ${OTA_STEP_KEYS.map((s, idx) => {
 					const isActive = s.step === progress.step;
@@ -199,18 +199,20 @@ export class EppFlasherView extends LitElement {
           `;
 				})}
       </div>
-      ${
-				isSuccess
-					? html`
-          <div class="confirm-actions" style="margin-top:16px">
-            <ha-button raised @click=${this._dispatchFlashComplete}>
-              ${this.localize("flasher.go_to_config")}
-            </ha-button>
-          </div>
-        `
-					: nothing
-			}
     `;
+
+		if (isSuccess) {
+			return html`
+        ${progressSteps}
+        <div class="confirm-actions" style="margin-top:16px">
+          <ha-button raised @click=${this._dispatchFlashComplete}>
+            ${this.localize("flasher.go_to_config")}
+          </ha-button>
+        </div>
+      `;
+		}
+
+		return progressSteps;
 	}
 
 	private _renderConfirmDialog(device: FlashableDevice) {
@@ -221,13 +223,15 @@ export class EppFlasherView extends LitElement {
           <p>${this.localize("flasher.confirm_flash", { name: device.name, host: device.host ?? "" })}</p>
           <div class="variant-selector">
             <ha-button
-              class="${this._selectedVariant === "wifi" ? "selected" : ""}"
+              class="${this._selectedVariant === "wifi" ? "selected" : "unselected"}"
+              appearance="${this._selectedVariant === "wifi" ? "accent" : "outlined"}"
               @click=${() => {
 								this._selectedVariant = "wifi";
 							}}
             >${this.localize("flasher.wifi")}</ha-button>
             <ha-button
-              class="${this._selectedVariant === "ethernet" ? "selected" : ""}"
+              class="${this._selectedVariant === "ethernet" ? "selected" : "unselected"}"
+              appearance="${this._selectedVariant === "ethernet" ? "accent" : "outlined"}"
               @click=${() => {
 								this._selectedVariant = "ethernet";
 							}}
@@ -395,6 +399,11 @@ export class EppFlasherView extends LitElement {
 															: this.localize("flasher.eppgrid")
 													}
                         </span>
+                        ${
+													!device.available
+														? html`<span class="firmware-badge firmware-badge-offline">${this.localize("flasher.offline")}</span>`
+														: nothing
+												}
                         <ha-button
                           raised
                           .disabled=${!device.available}
@@ -528,6 +537,7 @@ export class EppFlasherView extends LitElement {
 
 		// Complete state
 		if (state?.step === "complete") {
+			const isEthernet = state.variant?.startsWith("ethernet");
 			return html`
 				<div class="flasher-content">
 					<ha-card>
@@ -535,26 +545,32 @@ export class EppFlasherView extends LitElement {
 							<div class="usb-complete">
 								<ha-icon icon="mdi:check-circle-outline"></ha-icon>
 								${
-									state.ip
-										? html`
-										<p>${this.localize("flasher.usb_step_complete")}</p>
-										<p class="usb-ip">${this.localize("flasher.ip_address")}: ${state.ip}</p>
-									`
-										: html`
-										<p>${this.localize("flasher.wifi_connected")}</p>
-										<p class="usb-hint">${this.localize("flasher.wifi_connected_hint")}</p>
-									`
+									isEthernet
+										? html`<p>${this.localize("flasher.usb_ethernet_complete")}</p>
+											<p>${this.localize("flasher.usb_ethernet_hint")}</p>`
+										: state.ip
+											? html`
+											<p>${this.localize("flasher.usb_step_complete")}</p>
+											<p class="usb-ip">${this.localize("flasher.ip_address")}: ${state.ip}</p>
+										`
+											: html`
+											<p>${this.localize("flasher.wifi_connected")}</p>
+										`
 								}
 							</div>
 							<div class="confirm-actions">
 								${
-									state.ip
-										? html`<ha-button raised @click=${this._dispatchFlashComplete}>
-										${this.localize("flasher.go_to_config")}
-									</ha-button>`
-										: html`<ha-button raised @click=${this._onUsbBack}>
-										${this.localize("flasher.done")}
-									</ha-button>`
+									isEthernet
+										? html`<a href="/config/devices/dashboard">
+										<ha-button raised>${this.localize("flasher.go_to_devices")}</ha-button>
+									</a>`
+										: state.ip
+											? html`<ha-button raised @click=${this._dispatchFlashComplete}>
+											${this.localize("flasher.go_to_config")}
+										</ha-button>`
+											: html`<ha-button raised @click=${this._dispatchFlashComplete}>
+											${this.localize("flasher.done")}
+										</ha-button>`
 								}
 							</div>
 						</div>
@@ -609,13 +625,15 @@ export class EppFlasherView extends LitElement {
 						<p class="usb-select-label">${this.localize("flasher.select_variant")}</p>
 						<div class="variant-selector">
 							<ha-button
-								class="${this._selectedVariant === "wifi" ? "selected" : ""}"
+								class="${this._selectedVariant === "wifi" ? "selected" : "unselected"}"
+								appearance="${this._selectedVariant === "wifi" ? "accent" : "outlined"}"
 								@click=${() => {
 									this._selectedVariant = "wifi";
 								}}
 							>${this.localize("flasher.wifi")}</ha-button>
 							<ha-button
-								class="${this._selectedVariant === "ethernet" ? "selected" : ""}"
+								class="${this._selectedVariant === "ethernet" ? "selected" : "unselected"}"
+								appearance="${this._selectedVariant === "ethernet" ? "accent" : "outlined"}"
 								@click=${() => {
 									this._selectedVariant = "ethernet";
 								}}

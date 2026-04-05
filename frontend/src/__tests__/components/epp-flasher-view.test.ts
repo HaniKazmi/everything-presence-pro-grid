@@ -1119,3 +1119,147 @@ describe("_getManifestUrl", () => {
 		expect(url).toContain("ethernet-ble-co2-manifest.json");
 	});
 });
+
+describe("variant selector styling", () => {
+	it("selected wifi variant has appearance=accent", async () => {
+		const el = createView();
+		(el as any)._confirmDevice = device1;
+		(el as any)._selectedVariant = "wifi";
+		document.body.appendChild(el);
+		await el.updateComplete;
+
+		const root = el.shadowRoot!;
+		const btns = root.querySelectorAll(".variant-selector ha-button");
+		expect((btns[0] as any).getAttribute("appearance")).toBe("accent");
+		expect(btns[0].classList.contains("selected")).toBe(true);
+	});
+
+	it("unselected ethernet variant has appearance=outlined", async () => {
+		const el = createView();
+		(el as any)._confirmDevice = device1;
+		(el as any)._selectedVariant = "wifi";
+		document.body.appendChild(el);
+		await el.updateComplete;
+
+		const root = el.shadowRoot!;
+		const btns = root.querySelectorAll(".variant-selector ha-button");
+		expect((btns[1] as any).getAttribute("appearance")).toBe("outlined");
+		expect(btns[1].classList.contains("unselected")).toBe(true);
+	});
+
+	it("USB flash variant selector also uses appearance attribute", async () => {
+		const el = createView();
+		(el as any)._showUsbFlash = true;
+		(el as any).usbFlashState = null;
+		(el as any)._selectedVariant = "ethernet";
+		document.body.appendChild(el);
+		await el.updateComplete;
+
+		const root = el.shadowRoot!;
+		const btns = root.querySelectorAll(".variant-selector ha-button");
+		expect((btns[0] as any).getAttribute("appearance")).toBe("outlined");
+		expect((btns[1] as any).getAttribute("appearance")).toBe("accent");
+	});
+});
+
+describe("offline badge on device list", () => {
+	it("shows offline badge for unavailable device", () => {
+		const el = createView({ flashableDevices: [offlineDevice] });
+		const tpl = (el as any).render();
+		const c = renderTo(tpl);
+
+		const badge = c.querySelector(".firmware-badge-offline");
+		expect(badge).not.toBeNull();
+		expect(badge!.textContent).toContain("flasher.offline");
+	});
+
+	it("does not show offline badge for available device", () => {
+		const el = createView({ flashableDevices: [device1] });
+		const tpl = (el as any).render();
+		const c = renderTo(tpl);
+
+		expect(c.querySelector(".firmware-badge-offline")).toBeNull();
+	});
+});
+
+describe("ethernet complete message", () => {
+	it("shows ethernet-specific message when variant starts with ethernet", () => {
+		const el = createView();
+		(el as any)._showUsbFlash = true;
+		(el as any).usbFlashState = { step: "complete", variant: "ethernet-ble-co2" };
+		const tpl = (el as any).render();
+		const c = renderTo(tpl);
+
+		expect(c.textContent).toContain("flasher.usb_ethernet_complete");
+		expect(c.textContent).toContain("flasher.usb_ethernet_hint");
+	});
+
+	it("shows link to devices dashboard for ethernet complete", () => {
+		const el = createView();
+		(el as any)._showUsbFlash = true;
+		(el as any).usbFlashState = { step: "complete", variant: "ethernet-ble-co2" };
+		const tpl = (el as any).render();
+		const c = renderTo(tpl);
+
+		const link = c.querySelector("a[href='/config/devices/dashboard']");
+		expect(link).not.toBeNull();
+	});
+
+	it("shows go-to-config button for wifi complete with IP", () => {
+		const el = createView();
+		(el as any)._showUsbFlash = true;
+		(el as any).usbFlashState = { step: "complete", ip: "192.168.1.42" };
+		const tpl = (el as any).render();
+		const c = renderTo(tpl);
+
+		expect(c.textContent).toContain("flasher.usb_step_complete");
+		expect(c.textContent).toContain("192.168.1.42");
+	});
+});
+
+describe("wifi complete cleanup", () => {
+	it("shows wifi_connected without hint when complete with no IP and no variant", () => {
+		const el = createView();
+		(el as any)._showUsbFlash = true;
+		(el as any).usbFlashState = { step: "complete" };
+		const tpl = (el as any).render();
+		const c = renderTo(tpl);
+
+		expect(c.textContent).toContain("flasher.wifi_connected");
+		expect(c.textContent).not.toContain("flasher.wifi_connected_hint");
+	});
+
+	it("wifi complete shows Done button that dispatches flash-complete", async () => {
+		const el = createView();
+		(el as any)._showUsbFlash = true;
+		(el as any).usbFlashState = { step: "complete" };
+		document.body.appendChild(el);
+		await el.updateComplete;
+
+		const events: Event[] = [];
+		el.addEventListener("flash-complete", (e) => events.push(e));
+
+		const root = el.shadowRoot!;
+		const btn = root.querySelector(
+			".confirm-actions ha-button[raised]",
+		) as HTMLElement;
+		btn.click();
+
+		expect(events.length).toBe(1);
+	});
+});
+
+describe("OTA progress success button", () => {
+	it("does not show go-to-config button when OTA is in progress", () => {
+		const progress: OtaProgress = {
+			step: "flashing",
+			status: "in_progress",
+			progress: 50,
+		};
+		const el = createView({ otaProgress: progress });
+		const tpl = (el as any).render();
+		const c = renderTo(tpl);
+
+		expect(c.querySelector(".confirm-actions")).toBeNull();
+	});
+});
