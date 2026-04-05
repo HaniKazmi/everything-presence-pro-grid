@@ -16,6 +16,7 @@ export class FlasherController implements ReactiveController {
 	private _host: ReactiveControllerHost;
 	private _hass: any = null;
 	private _serialPort: SerialPort | null = null;
+	private _opId = 0;
 
 	constructor(host: ReactiveControllerHost) {
 		this._host = host;
@@ -73,24 +74,24 @@ export class FlasherController implements ReactiveController {
 		this._host.requestUpdate();
 	}
 
+	/** Increment to signal in-flight operations to bail out. */
+	get opId(): number {
+		return this._opId;
+	}
+
 	resetUsbState(): void {
 		this.usbFlashState = null;
 		this.wifiNetworks = [];
+		this._opId++;
 		// Release any known reader/writer locks
 		try { (this as any)._serialReader?.releaseLock(); } catch {}
 		try { (this as any)._serialWriter?.releaseLock(); } catch {}
 		(this as any)._serialReader = null;
 		(this as any)._serialWriter = null;
-		// Cancel streams to force-release any locks held by in-flight operations,
-		// then close the port
 		if (this._serialPort) {
 			const port = this._serialPort;
 			this._serialPort = null;
-			(async () => {
-				try { await port.readable?.cancel(); } catch {}
-				try { await port.writable?.abort(); } catch {}
-				try { await port.close(); } catch {}
-			})();
+			port.close().catch(() => {});
 		}
 		this._host.requestUpdate();
 	}

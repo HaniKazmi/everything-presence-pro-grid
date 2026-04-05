@@ -2296,14 +2296,17 @@ export class EPPGridPanel extends LitElement {
 
 	private async _handleUsbWifiConfig(): Promise<void> {
 		const ctrl = this._flasherCtrl;
+		const myOp = ctrl.opId;
 		try {
 			if (!ctrl.serialPort) {
 				ctrl.updateUsbState({ step: "connecting" });
 				ctrl.serialPort = await navigator.serial.requestPort();
 			}
+			if (ctrl.opId !== myOp) return;
 
 			ctrl.updateUsbState({ step: "wifi_scan" });
 			const { writer, reader, networks } = await runWifiScan(ctrl.serialPort);
+			if (ctrl.opId !== myOp) return;
 
 			ctrl.wifiNetworks = networks;
 			ctrl.updateUsbState({ step: "wifi_provision" });
@@ -2311,6 +2314,7 @@ export class EPPGridPanel extends LitElement {
 			(ctrl as any)._serialWriter = writer;
 			(ctrl as any)._serialReader = reader;
 		} catch (err: any) {
+			if (ctrl.opId !== myOp) return;
 			if (err?.name === "NotFoundError") {
 				ctrl.resetUsbState();
 				return;
@@ -2324,10 +2328,15 @@ export class EPPGridPanel extends LitElement {
 
 	private async _handleUsbFlash(variant: string): Promise<void> {
 		const ctrl = this._flasherCtrl;
+		const myOp = ctrl.opId;
 		try {
 			// Step 1: Request serial port
 			ctrl.updateUsbState({ step: "connecting" });
 			const port = await navigator.serial.requestPort();
+			// Ensure port is closed before esptool opens it (may be left open
+			// from a previous interrupted operation)
+			try { await port.close(); } catch {}
+			if (ctrl.opId !== myOp) return;
 			ctrl.serialPort = port;
 
 			// Step 2: Flash firmware
@@ -2358,6 +2367,7 @@ export class EPPGridPanel extends LitElement {
 					},
 				},
 			);
+			if (ctrl.opId !== myOp) return;
 
 			if (variant.startsWith("ethernet")) {
 				// Ethernet variants have no WiFi — skip provisioning
@@ -2370,6 +2380,8 @@ export class EPPGridPanel extends LitElement {
 			// Step 3: WiFi scan
 			ctrl.updateUsbState({ step: "wifi_scan" });
 			const { writer, reader, networks } = await runWifiScan(port);
+			if (ctrl.opId !== myOp) return;
+
 			ctrl.wifiNetworks = networks;
 			ctrl.updateUsbState({ step: "wifi_provision" });
 
@@ -2377,6 +2389,7 @@ export class EPPGridPanel extends LitElement {
 			(ctrl as any)._serialWriter = writer;
 			(ctrl as any)._serialReader = reader;
 		} catch (err: any) {
+			if (ctrl.opId !== myOp) return;
 			if (err?.name === "NotFoundError") {
 				// User cancelled port picker
 				ctrl.resetUsbState();
@@ -2403,6 +2416,7 @@ export class EPPGridPanel extends LitElement {
 		password: string,
 	): Promise<void> {
 		const ctrl = this._flasherCtrl;
+		const myOp = ctrl.opId;
 		const port = ctrl.serialPort;
 		if (!port?.writable || !port?.readable) {
 			ctrl.updateUsbState({
@@ -2428,10 +2442,12 @@ export class EPPGridPanel extends LitElement {
 		try {
 			ctrl.updateUsbState({ step: "wifi_connecting" });
 			await runWifiProvision(writer, ssid, password);
+			if (ctrl.opId !== myOp) return;
 
 			// Wait for PROVISIONED state (creds saved to NVS)
 			ctrl.updateUsbState({ step: "reading_ip" });
 			let ip = await detectIpAddress(reader, 35000);
+			if (ctrl.opId !== myOp) return;
 
 			// If IP is null, device reported 0.0.0.0 (DHCP not ready yet).
 			// Reboot via RTS reset — device reconnects with saved creds and
@@ -2512,6 +2528,7 @@ export class EPPGridPanel extends LitElement {
 			} catch {}
 			(ctrl as any)._serialReader = null;
 			(ctrl as any)._serialWriter = null;
+			if (ctrl.opId !== myOp) return;
 			ctrl.updateUsbState({
 				step: "error",
 				error: err?.message ?? "WiFi provisioning failed",
