@@ -17,6 +17,8 @@ import {
 const MANIFEST_BASE_URL =
 	"https://clintongormley.github.io/everything-presence-pro-grid/firmware";
 
+const MAC_PATTERN = /MAC:\s*([0-9A-Fa-f:]{17})/;
+
 /**
  * Flashes firmware to a device via USB serial using esptool.js.
  * After completion, the transport is disconnected and the port can be re-opened for Improv.
@@ -25,12 +27,26 @@ export async function flashFirmware(
 	port: SerialPort,
 	variant: string,
 	onProgress: (percent: number) => void,
+	options?: {
+		onMac?: (mac: string) => void;
+	},
 ): Promise<void> {
 	const transport = new Transport(port);
 	try {
+		const terminal = {
+			clean: () => {},
+			writeLine: (data: string) => {
+				const match = MAC_PATTERN.exec(data);
+				if (match) {
+					options?.onMac?.(match[1].toUpperCase());
+				}
+			},
+			write: (_data: string) => {},
+		};
 		const loader = new ESPLoader({
 			transport,
 			baudrate: 115200,
+			terminal,
 		});
 
 		await loader.main("default_reset");

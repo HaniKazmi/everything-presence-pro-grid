@@ -250,6 +250,52 @@ describe("flashFirmware", () => {
 		const transportInstance = vi.mocked(Transport).mock.results[0].value;
 		expect(transportInstance.disconnect).toHaveBeenCalled();
 	});
+
+	it("calls onMac callback with uppercased MAC from terminal output", async () => {
+		const port = mockPort();
+		const onMac = vi.fn();
+
+		vi.mocked(ESPLoader).mockImplementationOnce(function (opts: any) {
+			return {
+				main: vi.fn().mockImplementation(async () => {
+					opts.terminal?.writeLine("Chip is ESP32-D0WD-V3 (revision v3.1)");
+					opts.terminal?.writeLine("MAC: e0:8c:fe:d3:fd:c8");
+					opts.terminal?.writeLine("Uploading stub...");
+				}),
+				writeFlash: vi.fn().mockResolvedValue(undefined),
+				after: vi.fn().mockResolvedValue(undefined),
+			} as any;
+		});
+
+		await flashFirmware(port, "wifi-ble-co2", vi.fn(), { onMac });
+
+		expect(onMac).toHaveBeenCalledWith("E0:8C:FE:D3:FD:C8");
+	});
+
+	it("does not call onMac when no MAC line appears in terminal output", async () => {
+		const port = mockPort();
+		const onMac = vi.fn();
+
+		vi.mocked(ESPLoader).mockImplementationOnce(function (opts: any) {
+			return {
+				main: vi.fn().mockImplementation(async () => {
+					opts.terminal?.writeLine("Chip is ESP32-D0WD-V3");
+					opts.terminal?.writeLine("Uploading stub...");
+				}),
+				writeFlash: vi.fn().mockResolvedValue(undefined),
+				after: vi.fn().mockResolvedValue(undefined),
+			} as any;
+		});
+
+		await flashFirmware(port, "wifi-ble-co2", vi.fn(), { onMac });
+
+		expect(onMac).not.toHaveBeenCalled();
+	});
+
+	it("works without options parameter (backwards compatible)", async () => {
+		const port = mockPort();
+		await expect(flashFirmware(port, "wifi-ble-co2", vi.fn())).resolves.toBeUndefined();
+	});
 });
 
 describe("runWifiScan", () => {
