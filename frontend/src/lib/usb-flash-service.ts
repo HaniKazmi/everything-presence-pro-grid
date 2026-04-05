@@ -30,6 +30,13 @@ export async function flashFirmware(
 		baseUrl?: string;
 	},
 ): Promise<void> {
+	// Prevent Transport.disconnect() from closing the port — reopening a
+	// CH340 serial port after Transport closes it leaves the port in a
+	// zombie state (opens but no data flows). Instead, we let Transport
+	// release its reader lock via disconnect(), but block the port.close()
+	// call. We close the port ourselves later when we're done with it.
+	const originalClose = port.close.bind(port);
+	port.close = async () => {};
 	const transport = new Transport(port);
 	try {
 		let detectedMac: string | undefined;
@@ -105,6 +112,8 @@ export async function flashFirmware(
 		await loader.after("hard_reset");
 	} finally {
 		await transport.disconnect();
+		// Restore the real close method
+		port.close = originalClose;
 	}
 }
 
@@ -129,18 +138,18 @@ export async function runWifiScan(
 		await port.open({ baudRate: 115200 });
 	}
 
-	// Hard-reset the device via RTS toggle (matches esptool.js hardReset).
-	// RTS asserted → EN pin pulled LOW → chip resets.
-	// RTS deasserted → EN pin goes HIGH → chip boots normally.
+	// Hard-reset the device via RTS toggle. Explicitly set DTR=false —
+	// esptool's Transport leaves DTR in an undefined state which can
+	// prevent CH340 USB-serial chips from forwarding received data.
 	try {
-		await port.setSignals({ requestToSend: true });
+		await port.setSignals({ dataTerminalReady: false, requestToSend: true });
 		await new Promise((r) => setTimeout(r, 200));
-		await port.setSignals({ requestToSend: false });
+		await port.setSignals({ dataTerminalReady: false, requestToSend: false });
 	} catch {
 		// Some boards don't support serial signal control — continue without reset
 	}
 
-	// Brief drain to clear any stale serial data
+	// Brief drain to clear stale serial data (boot output etc.)
 	const drainMs = timings?.drainDelay ?? 200;
 	const drainReader = port.readable!.getReader();
 	while (true) {
