@@ -34,8 +34,14 @@ def _create_esphome_device(
     host: str,
     has_zone_engine: bool = False,
     firmware_version: str = "1.8.0",
+    update_available: bool | None = None,
 ) -> tuple[dr.DeviceEntry, MockConfigEntry]:
-    """Create a mock ESPHome device with appropriate entities."""
+    """Create a mock ESPHome device with appropriate entities.
+
+    Args:
+        update_available: If True/False, creates an ESPHome update entity with
+            state "on"/"off". If None, no update entity is created.
+    """
     esphome_entry = MockConfigEntry(
         domain="esphome",
         data={"host": host},
@@ -66,6 +72,18 @@ def _create_esphome_device(
             f"{mac}-zone_engine_version",
             device_id=device.id,
             config_entry=esphome_entry,
+        )
+    if update_available is not None:
+        update_entity = ent_reg.async_get_or_create(
+            "update",
+            "esphome",
+            f"{mac}-update",
+            device_id=device.id,
+            config_entry=esphome_entry,
+        )
+        hass.states.async_set(
+            update_entity.entity_id,
+            "on" if update_available else "off",
         )
     return device, esphome_entry
 
@@ -187,3 +205,73 @@ class TestListFlashableDevices:
         assert len(result) == 2
         types = {d["firmware_type"] for d in result}
         assert types == {"original", "eppgrid"}
+
+    async def test_update_available_true_when_update_entity_on(self, hass: HomeAssistant, mock_store) -> None:
+        """Device with ESPHome update entity in state 'on' returns update_available=True."""
+        dev_reg = dr.async_get(hass)
+        ent_reg = er.async_get(hass)
+
+        _create_esphome_device(
+            hass,
+            dev_reg,
+            ent_reg,
+            mac="AA:BB:CC:DD:EE:FF",
+            name="Presence Pro Kitchen",
+            host="192.168.1.42",
+            update_available=True,
+        )
+
+        manager = DeviceManager(hass, mock_store)
+        result = await manager.list_flashable_devices()
+
+        assert len(result) == 1
+        dev = result[0]
+        assert "update_available" in dev
+        assert dev["update_available"] is True
+
+    async def test_update_available_false_when_update_entity_off(self, hass: HomeAssistant, mock_store) -> None:
+        """Device with ESPHome update entity in state 'off' returns update_available=False."""
+        dev_reg = dr.async_get(hass)
+        ent_reg = er.async_get(hass)
+
+        _create_esphome_device(
+            hass,
+            dev_reg,
+            ent_reg,
+            mac="AA:BB:CC:DD:EE:FF",
+            name="Presence Pro Kitchen",
+            host="192.168.1.42",
+            update_available=False,
+        )
+
+        manager = DeviceManager(hass, mock_store)
+        result = await manager.list_flashable_devices()
+
+        assert len(result) == 1
+        dev = result[0]
+        assert "update_available" in dev
+        assert dev["update_available"] is False
+
+    async def test_update_available_false_when_no_update_entity(self, hass: HomeAssistant, mock_store) -> None:
+        """Device without an update entity returns update_available=False."""
+        dev_reg = dr.async_get(hass)
+        ent_reg = er.async_get(hass)
+
+        _create_esphome_device(
+            hass,
+            dev_reg,
+            ent_reg,
+            mac="AA:BB:CC:DD:EE:FF",
+            name="Presence Pro Kitchen",
+            host="192.168.1.42",
+            # No update_available parameter → no update entity created
+        )
+
+        manager = DeviceManager(hass, mock_store)
+        result = await manager.list_flashable_devices()
+
+        assert len(result) == 1
+        dev = result[0]
+        assert "update_available" in dev
+        assert isinstance(dev["update_available"], bool)
+        assert dev["update_available"] is False
