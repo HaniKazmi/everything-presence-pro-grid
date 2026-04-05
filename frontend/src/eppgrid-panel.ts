@@ -2441,9 +2441,12 @@ export class EPPGridPanel extends LitElement {
 			await runWifiProvision(writer, ssid, password);
 			console.log("[wifiProvision] Credentials sent");
 
-			// Release locks before toggling signals
+			// Release old locks, get fresh reader BEFORE reset so we capture
+			// the entire Improv state sequence (PROVISIONING → PROVISIONED → IP)
 			reader.releaseLock();
 			writer.releaseLock();
+			const ipReader = port.readable!.getReader();
+			(ctrl as any)._serialReader = ipReader;
 
 			// Hard-reset device — it applies WiFi creds on boot
 			console.log("[wifiProvision] RTS reset...");
@@ -2460,14 +2463,6 @@ export class EPPGridPanel extends LitElement {
 			} catch {
 				// RTS not supported on this board
 			}
-
-			// Wait for device to boot and connect to WiFi
-			console.log("[wifiProvision] Waiting 5s for boot...");
-			await new Promise((r) => setTimeout(r, 5000));
-
-			// Get fresh reader for IP detection
-			const ipReader = port.readable!.getReader();
-			(ctrl as any)._serialReader = ipReader;
 
 			ctrl.updateUsbState({ step: "reading_ip" });
 			console.log("[wifiProvision] Detecting IP address...");

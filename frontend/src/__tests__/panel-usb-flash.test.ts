@@ -450,8 +450,8 @@ describe("_handleWifiProvision", () => {
 
 	async function flushProvision(ssid: string, password: string) {
 		const promise = (panel as any)._handleWifiProvision(ssid, password);
-		// Advance past all setTimeout calls (100ms RTS + 5000ms boot)
-		await vi.advanceTimersByTimeAsync(6000);
+		// Advance past RTS reset setTimeout (100ms)
+		await vi.advanceTimersByTimeAsync(200);
 		return promise;
 	}
 
