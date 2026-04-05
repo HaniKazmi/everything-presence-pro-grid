@@ -226,5 +226,3 @@ class TestAddEsphomeDevice:
         result = connection.send_result.call_args[0]
         assert result[0] == 4
         assert result[1]["result"] == "form"
-
-

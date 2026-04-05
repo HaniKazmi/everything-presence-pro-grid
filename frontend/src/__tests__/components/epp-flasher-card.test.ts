@@ -107,5 +107,4 @@ describe("epp-flasher-card element", () => {
 
 		expect(loadSpy).not.toHaveBeenCalled();
 	});
-
 });

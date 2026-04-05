@@ -12,10 +12,7 @@ import { html, LitElement, nothing } from "lit";
 import { customElement, property, state } from "lit/decorators.js";
 import type { WifiNetwork } from "../lib/improv-serial.js";
 import { flasherStyles } from "../styles.js";
-import type {
-	FlashableDevice,
-	UsbFlashState,
-} from "../types.js";
+import type { FlashableDevice, UsbFlashState } from "../types.js";
 
 const WIFI_ICONS_LOCK = [
 	mdiWifiStrength1Lock,
@@ -287,7 +284,8 @@ export class EppFlasherView extends LitElement {
 														: nothing
 												}
                         ${
-													device.firmware_type === "eppgrid" && device.update_available
+													device.firmware_type === "eppgrid" &&
+													device.update_available
 														? html`<ha-button
 																raised
 																@click=${() => this._dispatchUpdateFirmware(device)}
@@ -395,9 +393,13 @@ export class EppFlasherView extends LitElement {
 								<ha-button @click=${this._onUsbBack}>
 									${this.localize("flasher.usb_back")}
 								</ha-button>
-								${state.fatal ? nothing : html`<ha-button raised @click=${this._dispatchUsbRetry}>
+								${
+									state.fatal
+										? nothing
+										: html`<ha-button raised @click=${this._dispatchUsbRetry}>
 									${this.localize("flasher.usb_retry")}
-								</ha-button>`}
+								</ha-button>`
+								}
 							</div>
 						</div>
 					</ha-card>
@@ -461,7 +463,10 @@ export class EppFlasherView extends LitElement {
 				adding_device: "flasher.usb_step_adding",
 			};
 			const stepKey = stepKeyMap[state.step] ?? state.step;
-			const stepParams = state.step === "flashing" ? { version: this.firmwareVersion } : undefined;
+			const stepParams =
+				state.step === "flashing"
+					? { version: this.firmwareVersion }
+					: undefined;
 			return html`
 				<div class="flasher-content">
 					<ha-card>

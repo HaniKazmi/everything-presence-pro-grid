@@ -143,15 +143,19 @@ describe("render() device list", () => {
 		const badge = c.querySelector(".firmware-badge-eppgrid");
 		expect(badge).not.toBeNull();
 	});
-
 });
 
 describe("device list buttons", () => {
 	it("does not show button for original firmware devices", () => {
 		const device: FlashableDevice = {
-			mac: "AA:BB:CC:DD:EE:01", name: "Test", host: "192.168.1.10",
-			available: true, firmware_type: "original", firmware_version: "1.0.0",
-			esphome_config_entry_id: null, update_available: false,
+			mac: "AA:BB:CC:DD:EE:01",
+			name: "Test",
+			host: "192.168.1.10",
+			available: true,
+			firmware_type: "original",
+			firmware_version: "1.0.0",
+			esphome_config_entry_id: null,
+			update_available: false,
 		};
 		const el = createView({ flashableDevices: [device] });
 		const tpl = (el as any).render();
@@ -162,9 +166,14 @@ describe("device list buttons", () => {
 
 	it("shows Update button for eppgrid device with update available", () => {
 		const device: FlashableDevice = {
-			mac: "AA:BB:CC:DD:EE:01", name: "Test", host: "192.168.1.10",
-			available: true, firmware_type: "eppgrid", firmware_version: "0.1.0",
-			esphome_config_entry_id: "entry-1", update_available: true,
+			mac: "AA:BB:CC:DD:EE:01",
+			name: "Test",
+			host: "192.168.1.10",
+			available: true,
+			firmware_type: "eppgrid",
+			firmware_version: "0.1.0",
+			esphome_config_entry_id: "entry-1",
+			update_available: true,
 		};
 		const el = createView({ flashableDevices: [device] });
 		const tpl = (el as any).render();
@@ -176,9 +185,14 @@ describe("device list buttons", () => {
 
 	it("does not show button for eppgrid device without update", () => {
 		const device: FlashableDevice = {
-			mac: "AA:BB:CC:DD:EE:01", name: "Test", host: "192.168.1.10",
-			available: true, firmware_type: "eppgrid", firmware_version: "0.2.0",
-			esphome_config_entry_id: "entry-1", update_available: false,
+			mac: "AA:BB:CC:DD:EE:01",
+			name: "Test",
+			host: "192.168.1.10",
+			available: true,
+			firmware_type: "eppgrid",
+			firmware_version: "0.2.0",
+			esphome_config_entry_id: "entry-1",
+			update_available: false,
 		};
 		const el = createView({ flashableDevices: [device] });
 		const tpl = (el as any).render();
@@ -189,13 +203,20 @@ describe("device list buttons", () => {
 
 	it("dispatches update-firmware event when Update clicked", () => {
 		const device: FlashableDevice = {
-			mac: "AA:BB:CC:DD:EE:01", name: "Test", host: "192.168.1.10",
-			available: true, firmware_type: "eppgrid", firmware_version: "0.1.0",
-			esphome_config_entry_id: "entry-1", update_available: true,
+			mac: "AA:BB:CC:DD:EE:01",
+			name: "Test",
+			host: "192.168.1.10",
+			available: true,
+			firmware_type: "eppgrid",
+			firmware_version: "0.1.0",
+			esphome_config_entry_id: "entry-1",
+			update_available: true,
 		};
 		const el = createView({ flashableDevices: [device] });
 		const events: CustomEvent[] = [];
-		el.addEventListener("update-firmware", (e) => events.push(e as CustomEvent));
+		el.addEventListener("update-firmware", (e) =>
+			events.push(e as CustomEvent),
+		);
 		(el as any)._dispatchUpdateFirmware(device);
 		expect(events.length).toBe(1);
 		expect(events[0].detail.mac).toBe("AA:BB:CC:DD:EE:01");
@@ -229,11 +250,7 @@ describe("render() USB section", () => {
 		expect(c.querySelector(".usb-actions")).not.toBeNull();
 		expect(c.querySelectorAll(".usb-action").length).toBe(2);
 	});
-
 });
-
-
-
 
 describe("render() browser warning", () => {
 	it("shows browser warning when no Web Serial support", () => {
@@ -254,7 +271,6 @@ describe("render() browser warning", () => {
 		expect(c.querySelector(".browser-warning")).toBeNull();
 	});
 });
-
 
 describe("event dispatching", () => {
 	it("shows USB flash view when USB connect is clicked", async () => {
@@ -572,7 +588,6 @@ describe("render() WiFi provisioning — not connected state", () => {
 	});
 });
 
-
 describe("WiFi provisioning DOM event handlers", () => {
 	it("wifi network select change updates _selectedSsid", async () => {
 		const el = createView();
@@ -736,7 +751,11 @@ describe("USB flash view — state-driven", () => {
 	it("hides Retry button when error is fatal", () => {
 		const el = createView();
 		(el as any)._showUsbFlash = true;
-		(el as any).usbFlashState = { step: "error", error: "Port busy", fatal: true };
+		(el as any).usbFlashState = {
+			step: "error",
+			error: "Port busy",
+			fatal: true,
+		};
 		const tpl = (el as any).render();
 		const c = renderTo(tpl);
 		// Should have Back button but no Retry
@@ -1013,4 +1032,3 @@ describe("wifi complete cleanup", () => {
 		expect(events.length).toBe(1);
 	});
 });
-

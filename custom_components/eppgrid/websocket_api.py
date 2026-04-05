@@ -1158,7 +1158,10 @@ async def websocket_list_flashable_devices(
     from .const import FIRMWARE_VERSION
 
     devices = await manager.list_flashable_devices()
-    connection.send_result(msg["id"], {"devices": devices, "firmware_base_url": "/api/eppgrid/firmware", "firmware_version": FIRMWARE_VERSION})
+    connection.send_result(
+        msg["id"],
+        {"devices": devices, "firmware_base_url": "/api/eppgrid/firmware", "firmware_version": FIRMWARE_VERSION},
+    )
 
 
 # -- delete_esphome_device --

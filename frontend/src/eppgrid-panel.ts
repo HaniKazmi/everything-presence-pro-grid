@@ -38,6 +38,11 @@ import {
 	MAX_ZONES,
 } from "./lib/grid.js";
 import { CELL_BG_OUT_OF_RANGE, getCellColor } from "./lib/heatmap.js";
+import {
+	buildGetStateCommand,
+	readImprovResponse,
+	sendImprovPacket,
+} from "./lib/improv-serial.js";
 import { applyPerspective, getInversePerspective } from "./lib/perspective.js";
 import {
 	autoDetectionRange,
@@ -48,11 +53,6 @@ import {
 	isCellInSensorRange,
 	type SensorFov,
 } from "./lib/room-geometry.js";
-import {
-	buildGetStateCommand,
-	readImprovResponse,
-	sendImprovPacket,
-} from "./lib/improv-serial.js";
 import {
 	detectIpAddress,
 	flashFirmware,
@@ -2291,7 +2291,8 @@ export class EPPGridPanel extends LitElement {
 		if (ctrl.opRunning) {
 			ctrl.updateUsbState({
 				step: "error",
-				error: "Serial port is busy from a previous operation. Refresh the page and try again.",
+				error:
+					"Serial port is busy from a previous operation. Refresh the page and try again.",
 				fatal: true,
 			});
 			return;
@@ -2334,7 +2335,8 @@ export class EPPGridPanel extends LitElement {
 		if (ctrl.opRunning) {
 			ctrl.updateUsbState({
 				step: "error",
-				error: "Serial port is busy from a previous operation. Refresh the page and try again.",
+				error:
+					"Serial port is busy from a previous operation. Refresh the page and try again.",
 				fatal: true,
 			});
 			return;
@@ -2400,7 +2402,10 @@ export class EPPGridPanel extends LitElement {
 			(ctrl as any)._serialReader = reader;
 			ctrl.opRunning = false;
 		} catch (err: any) {
-			if (ctrl.opId !== myOp) { ctrl.opRunning = false; return; }
+			if (ctrl.opId !== myOp) {
+				ctrl.opRunning = false;
+				return;
+			}
 			if (err?.name === "NotFoundError") {
 				// User cancelled port picker
 				ctrl.resetUsbState();
@@ -2408,11 +2413,16 @@ export class EPPGridPanel extends LitElement {
 			}
 			// Clean up port on error — don't leave it dangling
 			if (ctrl.serialPort) {
-				try { ctrl.serialPort.close().catch(() => {}); } catch {}
+				try {
+					ctrl.serialPort.close().catch(() => {});
+				} catch {}
 				ctrl.serialPort = null;
 			}
 			const msg = err?.message ?? "Unknown error";
-			const isDisconnect = /stream stopped|NetworkError|disconnected|break|lost|No response from device/i.test(msg);
+			const isDisconnect =
+				/stream stopped|NetworkError|disconnected|break|lost|No response from device/i.test(
+					msg,
+				);
 			const isPortBusy = /already open|already closed/i.test(msg);
 			ctrl.opRunning = false;
 			ctrl.updateUsbState({
@@ -2475,9 +2485,15 @@ export class EPPGridPanel extends LitElement {
 				(ctrl as any)._serialWriter = null;
 
 				try {
-					await port.setSignals({ dataTerminalReady: false, requestToSend: true });
+					await port.setSignals({
+						dataTerminalReady: false,
+						requestToSend: true,
+					});
 					await new Promise((r) => setTimeout(r, 200));
-					await port.setSignals({ dataTerminalReady: false, requestToSend: false });
+					await port.setSignals({
+						dataTerminalReady: false,
+						requestToSend: false,
+					});
 				} catch {}
 
 				// Drain stale boot output
