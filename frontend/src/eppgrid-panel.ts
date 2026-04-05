@@ -1090,14 +1090,6 @@ export class EPPGridPanel extends LitElement {
 						} catch {}
 						(ctrl as any)._serialReader = null;
 						(ctrl as any)._serialWriter = null;
-						if (ctrl.serialPort) {
-							const port = ctrl.serialPort;
-							if (!port.readable || !port.writable) {
-								// Port is stale (device unplugged) — clean up
-								port.close().catch(() => {});
-								ctrl.serialPort = null;
-							}
-						}
 						// Retry WiFi config — prompts for new port if needed
 						this._handleUsbWifiConfig();
 					}}
@@ -2300,14 +2292,7 @@ export class EPPGridPanel extends LitElement {
 		try {
 			if (!ctrl.serialPort) {
 				ctrl.updateUsbState({ step: "connecting" });
-				const port = await navigator.serial.requestPort();
-				for (let i = 0; i < 5; i++) {
-					try { await port.close(); break; } catch {
-						if (i < 4) await new Promise((r) => setTimeout(r, 1000));
-					}
-				}
-				if (ctrl.opId !== myOp) return;
-				ctrl.serialPort = port;
+				ctrl.serialPort = await navigator.serial.requestPort();
 			}
 			if (ctrl.opId !== myOp) return;
 
@@ -2340,17 +2325,6 @@ export class EPPGridPanel extends LitElement {
 			// Step 1: Request serial port
 			ctrl.updateUsbState({ step: "connecting" });
 			const port = await navigator.serial.requestPort();
-			// Ensure port is closed before esptool opens it (may be left open
-			// from a previous interrupted operation). Retry with delay since
-			// port.close() may need to wait for locked readers to timeout.
-			for (let i = 0; i < 5; i++) {
-				try {
-					await port.close();
-					break;
-				} catch {
-					if (i < 4) await new Promise((r) => setTimeout(r, 1000));
-				}
-			}
 			if (ctrl.opId !== myOp) return;
 			ctrl.serialPort = port;
 
@@ -2417,11 +2391,15 @@ export class EPPGridPanel extends LitElement {
 			}
 			const msg = err?.message ?? "Unknown error";
 			const isDisconnect = /stream stopped|NetworkError|disconnected|break|lost|No response from device/i.test(msg);
+			const isPortBusy = /already open|already closed/i.test(msg);
 			ctrl.updateUsbState({
 				step: "error",
 				error: isDisconnect
 					? "Device disconnected. Unplug, plug it back in, and try again."
-					: msg,
+					: isPortBusy
+						? "Serial port is busy from a previous operation. Refresh the page and try again."
+						: msg,
+				fatal: isPortBusy,
 			});
 		}
 	}

@@ -167,7 +167,7 @@ describe("_handleUsbFlash", () => {
 
 		await (panel as any)._handleUsbFlash("eppgrid-wifi");
 
-		expect(ctrl.usbFlashState).toEqual({
+		expect(ctrl.usbFlashState).toMatchObject({
 			step: "error",
 			error: "USB exploded",
 		});
@@ -182,7 +182,7 @@ describe("_handleUsbFlash", () => {
 
 		await (panel as any)._handleUsbFlash("eppgrid-wifi");
 
-		expect(ctrl.usbFlashState).toEqual({
+		expect(ctrl.usbFlashState).toMatchObject({
 			step: "error",
 			error: "Flash failed",
 		});
@@ -197,7 +197,7 @@ describe("_handleUsbFlash", () => {
 
 		await (panel as any)._handleUsbFlash("eppgrid-wifi");
 
-		expect(ctrl.usbFlashState).toEqual({
+		expect(ctrl.usbFlashState).toMatchObject({
 			step: "error",
 			error: "Scan failed",
 		});
@@ -270,7 +270,7 @@ describe("_handleUsbFlash", () => {
 
 		await (panel as any)._handleUsbFlash("eppgrid-wifi");
 
-		expect(ctrl.usbFlashState).toEqual({
+		expect(ctrl.usbFlashState).toMatchObject({
 			step: "error",
 			error: "Unknown error",
 		});

@@ -68,4 +68,5 @@ export interface UsbFlashState {
 	error?: string;
 	ip?: string;
 	variant?: string;
+	fatal?: boolean;
 }

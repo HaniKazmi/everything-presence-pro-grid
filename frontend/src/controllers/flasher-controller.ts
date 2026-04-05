@@ -88,11 +88,8 @@ export class FlasherController implements ReactiveController {
 		try { (this as any)._serialWriter?.releaseLock(); } catch {}
 		(this as any)._serialReader = null;
 		(this as any)._serialWriter = null;
-		if (this._serialPort) {
-			const port = this._serialPort;
-			this._serialPort = null;
-			port.close().catch(() => {});
-		}
+		// Clear port reference — don't force-close (crashes Chrome if streams locked)
+		this._serialPort = null;
 		this._host.requestUpdate();
 	}
 

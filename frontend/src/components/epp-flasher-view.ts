@@ -395,9 +395,9 @@ export class EppFlasherView extends LitElement {
 								<ha-button @click=${this._onUsbBack}>
 									${this.localize("flasher.usb_back")}
 								</ha-button>
-								<ha-button raised @click=${this._dispatchUsbRetry}>
+								${state.fatal ? nothing : html`<ha-button raised @click=${this._dispatchUsbRetry}>
 									${this.localize("flasher.usb_retry")}
-								</ha-button>
+								</ha-button>`}
 							</div>
 						</div>
 					</ha-card>
