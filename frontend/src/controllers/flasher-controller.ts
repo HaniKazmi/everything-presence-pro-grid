@@ -76,6 +76,11 @@ export class FlasherController implements ReactiveController {
 	resetUsbState(): void {
 		this.usbFlashState = null;
 		this.wifiNetworks = [];
+		// Close serial port to cancel any in-flight operation
+		if (this._serialPort) {
+			this._serialPort.close().catch(() => {});
+			this._serialPort = null;
+		}
 		this._host.requestUpdate();
 	}
 
