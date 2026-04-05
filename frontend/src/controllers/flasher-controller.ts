@@ -76,14 +76,21 @@ export class FlasherController implements ReactiveController {
 	resetUsbState(): void {
 		this.usbFlashState = null;
 		this.wifiNetworks = [];
-		// Release reader/writer locks before closing port
+		// Release any known reader/writer locks
 		try { (this as any)._serialReader?.releaseLock(); } catch {}
 		try { (this as any)._serialWriter?.releaseLock(); } catch {}
 		(this as any)._serialReader = null;
 		(this as any)._serialWriter = null;
+		// Cancel streams to force-release any locks held by in-flight operations,
+		// then close the port
 		if (this._serialPort) {
-			this._serialPort.close().catch(() => {});
+			const port = this._serialPort;
 			this._serialPort = null;
+			(async () => {
+				try { await port.readable?.cancel(); } catch {}
+				try { await port.writable?.abort(); } catch {}
+				try { await port.close(); } catch {}
+			})();
 		}
 		this._host.requestUpdate();
 	}
