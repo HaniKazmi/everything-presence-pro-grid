@@ -870,6 +870,205 @@ describe("epp-flasher-view inline event handlers", () => {
 		expect(spy).toHaveBeenCalledWith("aa:bb:cc", "eppgrid-wifi");
 	});
 
+	it("@flash-ota confirms and deletes ESPHome entry for original firmware device", async () => {
+		const ctrl = (panel as any)._flasherCtrl;
+		ctrl.flashableDevices = [
+			{
+				mac: "aa:bb:cc",
+				name: "Test",
+				host: "192.168.1.10",
+				available: true,
+				firmware_type: "original",
+				firmware_version: "1.0.0",
+				esphome_config_entry_id: "entry-456",
+			},
+		];
+
+		vi.stubGlobal("confirm", vi.fn().mockReturnValue(true));
+		const deleteSpy = vi
+			.spyOn(ctrl, "deleteEsphomeDevice")
+			.mockResolvedValue(undefined);
+		const otaSpy = vi.spyOn(ctrl, "startOtaFlash").mockResolvedValue(undefined);
+
+		getFlasherView().dispatchEvent(
+			new CustomEvent("flash-ota", {
+				detail: { mac: "aa:bb:cc", variant: "eppgrid-wifi" },
+				bubbles: true,
+			}),
+		);
+
+		await vi.waitFor(() => {
+			expect(deleteSpy).toHaveBeenCalledWith("entry-456");
+		});
+		expect(otaSpy).toHaveBeenCalledWith("aa:bb:cc", "eppgrid-wifi");
+	});
+
+	it("@flash-ota does not flash when user declines confirm for original firmware", async () => {
+		const ctrl = (panel as any)._flasherCtrl;
+		ctrl.flashableDevices = [
+			{
+				mac: "aa:bb:cc",
+				name: "Test",
+				host: "192.168.1.10",
+				available: true,
+				firmware_type: "original",
+				firmware_version: "1.0.0",
+				esphome_config_entry_id: "entry-456",
+			},
+		];
+
+		vi.stubGlobal("confirm", vi.fn().mockReturnValue(false));
+		const otaSpy = vi.spyOn(ctrl, "startOtaFlash").mockResolvedValue(undefined);
+
+		getFlasherView().dispatchEvent(
+			new CustomEvent("flash-ota", {
+				detail: { mac: "aa:bb:cc", variant: "eppgrid-wifi" },
+				bubbles: true,
+			}),
+		);
+
+		await new Promise((r) => setTimeout(r, 0));
+
+		expect(window.confirm).toHaveBeenCalled();
+		expect(otaSpy).not.toHaveBeenCalled();
+	});
+
+	it("@flash-ota adds device to ESPHome after successful OTA when entry was deleted", async () => {
+		const ctrl = (panel as any)._flasherCtrl;
+		ctrl.flashableDevices = [
+			{
+				mac: "aa:bb:cc",
+				name: "Test",
+				host: "192.168.1.10",
+				available: true,
+				firmware_type: "original",
+				firmware_version: "1.0.0",
+				esphome_config_entry_id: "entry-456",
+			},
+		];
+
+		vi.stubGlobal("confirm", vi.fn().mockReturnValue(true));
+		vi.spyOn(ctrl, "deleteEsphomeDevice").mockResolvedValue(undefined);
+		vi.spyOn(ctrl, "startOtaFlash").mockImplementation(async () => {
+			ctrl.otaProgress = { step: "complete", status: "success" };
+		});
+		const addSpy = vi
+			.spyOn(ctrl, "addEsphomeDevice")
+			.mockResolvedValue(undefined);
+
+		getFlasherView().dispatchEvent(
+			new CustomEvent("flash-ota", {
+				detail: { mac: "aa:bb:cc", variant: "eppgrid-wifi" },
+				bubbles: true,
+			}),
+		);
+
+		await vi.waitFor(() => {
+			expect(addSpy).toHaveBeenCalledWith("192.168.1.10");
+		});
+	});
+
+	it("@flash-ota adds device to ESPHome after successful OTA when device had no entry", async () => {
+		const ctrl = (panel as any)._flasherCtrl;
+		ctrl.flashableDevices = [
+			{
+				mac: "aa:bb:cc",
+				name: "Test",
+				host: "192.168.1.10",
+				available: true,
+				firmware_type: "eppgrid",
+				firmware_version: "2.0.0",
+				esphome_config_entry_id: null,
+			},
+		];
+
+		vi.spyOn(ctrl, "startOtaFlash").mockImplementation(async () => {
+			ctrl.otaProgress = { step: "complete", status: "success" };
+		});
+		const addSpy = vi
+			.spyOn(ctrl, "addEsphomeDevice")
+			.mockResolvedValue(undefined);
+
+		getFlasherView().dispatchEvent(
+			new CustomEvent("flash-ota", {
+				detail: { mac: "aa:bb:cc", variant: "eppgrid-wifi" },
+				bubbles: true,
+			}),
+		);
+
+		await vi.waitFor(() => {
+			expect(addSpy).toHaveBeenCalledWith("192.168.1.10");
+		});
+	});
+
+	it("@flash-ota does not add device when OTA fails", async () => {
+		const ctrl = (panel as any)._flasherCtrl;
+		ctrl.flashableDevices = [
+			{
+				mac: "aa:bb:cc",
+				name: "Test",
+				host: "192.168.1.10",
+				available: true,
+				firmware_type: "original",
+				firmware_version: "1.0.0",
+				esphome_config_entry_id: "entry-456",
+			},
+		];
+
+		vi.stubGlobal("confirm", vi.fn().mockReturnValue(true));
+		vi.spyOn(ctrl, "deleteEsphomeDevice").mockResolvedValue(undefined);
+		vi.spyOn(ctrl, "startOtaFlash").mockImplementation(async () => {
+			ctrl.otaProgress = { step: "flashing", status: "failed" };
+		});
+		const addSpy = vi
+			.spyOn(ctrl, "addEsphomeDevice")
+			.mockResolvedValue(undefined);
+
+		getFlasherView().dispatchEvent(
+			new CustomEvent("flash-ota", {
+				detail: { mac: "aa:bb:cc", variant: "eppgrid-wifi" },
+				bubbles: true,
+			}),
+		);
+
+		await new Promise((r) => setTimeout(r, 50));
+
+		expect(addSpy).not.toHaveBeenCalled();
+	});
+
+	it("@flash-ota skips add when device already has esphome entry (eppgrid reflash)", async () => {
+		const ctrl = (panel as any)._flasherCtrl;
+		ctrl.flashableDevices = [
+			{
+				mac: "aa:bb:cc",
+				name: "Test",
+				host: "192.168.1.10",
+				available: true,
+				firmware_type: "eppgrid",
+				firmware_version: "2.0.0",
+				esphome_config_entry_id: "existing-entry",
+			},
+		];
+
+		vi.spyOn(ctrl, "startOtaFlash").mockImplementation(async () => {
+			ctrl.otaProgress = { step: "complete", status: "success" };
+		});
+		const addSpy = vi
+			.spyOn(ctrl, "addEsphomeDevice")
+			.mockResolvedValue(undefined);
+
+		getFlasherView().dispatchEvent(
+			new CustomEvent("flash-ota", {
+				detail: { mac: "aa:bb:cc", variant: "eppgrid-wifi" },
+				bubbles: true,
+			}),
+		);
+
+		await new Promise((r) => setTimeout(r, 50));
+
+		expect(addSpy).not.toHaveBeenCalled();
+	});
+
 	it("@flash-complete calls resetUsbState, _loadDevices, and switches to config tab", () => {
 		const ctrl = (panel as any)._flasherCtrl;
 		const resetSpy = vi.spyOn(ctrl, "resetUsbState");
