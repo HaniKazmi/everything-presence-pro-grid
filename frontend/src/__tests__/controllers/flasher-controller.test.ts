@@ -132,12 +132,10 @@ describe("FlasherController", () => {
 
 		it("stores firmwareBaseUrl from response", async () => {
 			ctrl.hass = {
-				callWS: vi
-					.fn()
-					.mockResolvedValue({
-						devices: [],
-						firmware_base_url: "https://example.com/fw",
-					}),
+				callWS: vi.fn().mockResolvedValue({
+					devices: [],
+					firmware_base_url: "https://example.com/fw",
+				}),
 				connection: { subscribeMessage: vi.fn() },
 			};
 			await ctrl.loadDevices();
