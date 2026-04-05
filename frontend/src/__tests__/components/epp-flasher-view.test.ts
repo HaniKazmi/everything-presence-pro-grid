@@ -2,7 +2,7 @@ import { render } from "lit";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import "../../components/epp-flasher-view.js";
 import type { EppFlasherView } from "../../components/epp-flasher-view.js";
-import type { FlashableDevice, OtaProgress } from "../../types.js";
+import type { FlashableDevice } from "../../types.js";
 
 function renderTo(tpl: any): HTMLDivElement {
 	const container = document.createElement("div");
@@ -18,8 +18,6 @@ function createView(
 	el.hass = { callWS: () => Promise.resolve({}) };
 	el.flashableDevices = [];
 	el.loading = false;
-	el.otaProgress = null;
-	el.flashingMac = null;
 	el.localize = (k: string) => k;
 	for (const [k, v] of Object.entries(overrides)) {
 		(el as any)[k] = v;
@@ -35,6 +33,7 @@ const device1: FlashableDevice = {
 	firmware_type: "original",
 	firmware_version: "1.0.0",
 	esphome_config_entry_id: null,
+	update_available: false,
 };
 
 const device2: FlashableDevice = {
@@ -45,6 +44,7 @@ const device2: FlashableDevice = {
 	firmware_type: "eppgrid",
 	firmware_version: "2.0.0",
 	esphome_config_entry_id: "config-entry-123",
+	update_available: false,
 };
 
 const offlineDevice: FlashableDevice = {
@@ -55,6 +55,7 @@ const offlineDevice: FlashableDevice = {
 	firmware_type: "original",
 	firmware_version: "1.0.0",
 	esphome_config_entry_id: null,
+	update_available: false,
 };
 
 afterEach(() => {
@@ -143,30 +144,61 @@ describe("render() device list", () => {
 		expect(badge).not.toBeNull();
 	});
 
-	it("renders Flash button for each device", () => {
-		const el = createView({ flashableDevices: [device1, device2] });
+});
+
+describe("device list buttons", () => {
+	it("does not show button for original firmware devices", () => {
+		const device: FlashableDevice = {
+			mac: "AA:BB:CC:DD:EE:01", name: "Test", host: "192.168.1.10",
+			available: true, firmware_type: "original", firmware_version: "1.0.0",
+			esphome_config_entry_id: null, update_available: false,
+		};
+		const el = createView({ flashableDevices: [device] });
 		const tpl = (el as any).render();
 		const c = renderTo(tpl);
-
-		expect(c.querySelectorAll(".device-row ha-button[raised]").length).toBe(2);
+		const btns = c.querySelectorAll(".device-row ha-button");
+		expect(btns.length).toBe(0);
 	});
 
-	it("Flash button disabled for offline device", () => {
-		const el = createView({ flashableDevices: [offlineDevice] });
+	it("shows Update button for eppgrid device with update available", () => {
+		const device: FlashableDevice = {
+			mac: "AA:BB:CC:DD:EE:01", name: "Test", host: "192.168.1.10",
+			available: true, firmware_type: "eppgrid", firmware_version: "0.1.0",
+			esphome_config_entry_id: "entry-1", update_available: true,
+		};
+		const el = createView({ flashableDevices: [device] });
 		const tpl = (el as any).render();
 		const c = renderTo(tpl);
-
-		const btn = c.querySelector(".device-row ha-button[raised]") as any;
-		expect(btn.disabled).toBe(true);
+		const btn = c.querySelector(".device-row ha-button");
+		expect(btn).not.toBeNull();
+		expect(btn!.textContent).toContain("flasher.update");
 	});
 
-	it("Flash button enabled for online device", () => {
-		const el = createView({ flashableDevices: [device1] });
+	it("does not show button for eppgrid device without update", () => {
+		const device: FlashableDevice = {
+			mac: "AA:BB:CC:DD:EE:01", name: "Test", host: "192.168.1.10",
+			available: true, firmware_type: "eppgrid", firmware_version: "0.2.0",
+			esphome_config_entry_id: "entry-1", update_available: false,
+		};
+		const el = createView({ flashableDevices: [device] });
 		const tpl = (el as any).render();
 		const c = renderTo(tpl);
+		const btns = c.querySelectorAll(".device-row ha-button");
+		expect(btns.length).toBe(0);
+	});
 
-		const btn = c.querySelector(".device-row ha-button[raised]") as any;
-		expect(btn.disabled).toBe(false);
+	it("dispatches update-firmware event when Update clicked", () => {
+		const device: FlashableDevice = {
+			mac: "AA:BB:CC:DD:EE:01", name: "Test", host: "192.168.1.10",
+			available: true, firmware_type: "eppgrid", firmware_version: "0.1.0",
+			esphome_config_entry_id: "entry-1", update_available: true,
+		};
+		const el = createView({ flashableDevices: [device] });
+		const events: CustomEvent[] = [];
+		el.addEventListener("update-firmware", (e) => events.push(e as CustomEvent));
+		(el as any)._dispatchUpdateFirmware(device);
+		expect(events.length).toBe(1);
+		expect(events[0].detail.mac).toBe("AA:BB:CC:DD:EE:01");
 	});
 });
 
@@ -198,163 +230,10 @@ describe("render() USB section", () => {
 		expect(c.querySelectorAll(".usb-action").length).toBe(2);
 	});
 
-	it("USB section not shown during OTA progress", () => {
-		const progress: OtaProgress = {
-			step: "flashing",
-			status: "in_progress",
-			progress: 50,
-		};
-		const el = createView({ otaProgress: progress });
-		const tpl = (el as any).render();
-		const c = renderTo(tpl);
-
-		expect(c.querySelector(".usb-section")).toBeNull();
-	});
 });
 
-describe("render() OTA progress state", () => {
-	it("shows progress steps when otaProgress is set", () => {
-		const progress: OtaProgress = {
-			step: "flashing",
-			status: "in_progress",
-			progress: 50,
-		};
-		const el = createView({ otaProgress: progress });
-		const tpl = (el as any).render();
-		const c = renderTo(tpl);
 
-		expect(c.querySelector(".progress-steps")).not.toBeNull();
-	});
 
-	it("does not show device list during OTA progress", () => {
-		const progress: OtaProgress = {
-			step: "flashing",
-			status: "in_progress",
-		};
-		const el = createView({
-			otaProgress: progress,
-			flashableDevices: [device1],
-		});
-		const tpl = (el as any).render();
-		const c = renderTo(tpl);
-
-		expect(c.querySelector(".device-list")).toBeNull();
-	});
-
-	it("renders progress steps for each OTA step", () => {
-		const progress: OtaProgress = {
-			step: "flashing",
-			status: "in_progress",
-		};
-		const el = createView({ otaProgress: progress });
-		const tpl = (el as any).render();
-		const c = renderTo(tpl);
-
-		const steps = c.querySelectorAll(".progress-step");
-		expect(steps.length).toBeGreaterThan(0);
-	});
-
-	it("shows success state when OTA completes successfully", () => {
-		const progress: OtaProgress = {
-			step: "complete",
-			status: "success",
-		};
-		const el = createView({ otaProgress: progress });
-		const tpl = (el as any).render();
-		const c = renderTo(tpl);
-
-		expect(c.querySelector(".progress-steps")).not.toBeNull();
-	});
-
-	it("shows 'Go to Device Configuration' button when complete", () => {
-		const progress: OtaProgress = {
-			step: "complete",
-			status: "success",
-		};
-		const el = createView({ otaProgress: progress });
-		const tpl = (el as any).render();
-		const c = renderTo(tpl);
-
-		expect(
-			c.querySelector(".confirm-actions ha-button[raised]"),
-		).not.toBeNull();
-	});
-});
-
-describe("render() confirm dialog", () => {
-	it("shows confirm dialog when _confirmDevice is set", () => {
-		const el = createView();
-		(el as any)._confirmDevice = device1;
-		const tpl = (el as any).render();
-		const c = renderTo(tpl);
-
-		expect(c.querySelector(".confirm-dialog")).not.toBeNull();
-	});
-
-	it("confirm dialog has Flash and Cancel buttons", () => {
-		const el = createView();
-		(el as any)._confirmDevice = device1;
-		const tpl = (el as any).render();
-		const c = renderTo(tpl);
-
-		expect(
-			c.querySelector(".confirm-actions ha-button[raised]"),
-		).not.toBeNull();
-		expect(
-			c.querySelector(".confirm-actions ha-button:not([raised])"),
-		).not.toBeNull();
-	});
-
-	it("confirm dialog shows variant selector", () => {
-		const el = createView();
-		(el as any)._confirmDevice = device1;
-		const tpl = (el as any).render();
-		const c = renderTo(tpl);
-
-		expect(c.querySelector(".variant-selector")).not.toBeNull();
-	});
-});
-
-describe("render() OTA error state", () => {
-	it("shows error state when OTA fails", () => {
-		const progress: OtaProgress = {
-			step: "flashing",
-			status: "failed",
-			error: "Connection refused",
-		};
-		const el = createView({ otaProgress: progress });
-		const tpl = (el as any).render();
-		const c = renderTo(tpl);
-
-		expect(c.querySelector(".progress-steps")).not.toBeNull();
-		const errorStep = c.querySelector(".step-error");
-		expect(errorStep).not.toBeNull();
-	});
-
-	it("shows error state when OTA times out", () => {
-		const progress: OtaProgress = {
-			step: "waiting_for_reboot",
-			status: "timeout",
-		};
-		const el = createView({ otaProgress: progress });
-		const tpl = (el as any).render();
-		const c = renderTo(tpl);
-
-		expect(c.querySelector(".step-error")).not.toBeNull();
-	});
-
-	it("does not show 'Go to Device Configuration' button on error", () => {
-		const progress: OtaProgress = {
-			step: "flashing",
-			status: "failed",
-		};
-		const el = createView({ otaProgress: progress });
-		const tpl = (el as any).render();
-		const c = renderTo(tpl);
-
-		expect(c.querySelector(".confirm-actions ha-button[raised]")).toBeNull();
-	});
-});
 
 describe("render() browser warning", () => {
 	it("shows browser warning when no Web Serial support", () => {
@@ -376,54 +255,8 @@ describe("render() browser warning", () => {
 	});
 });
 
-describe("render() OTA progress with progress percentage", () => {
-	it("shows progress percentage when progress is set", () => {
-		const progress: OtaProgress = {
-			step: "flashing",
-			status: "in_progress",
-			progress: 75,
-		};
-		const el = createView({ otaProgress: progress });
-		const tpl = (el as any).render();
-		const c = renderTo(tpl);
-
-		expect(c.textContent).toContain("75%");
-	});
-});
 
 describe("event dispatching", () => {
-	it("dispatches flash-ota event on confirm", async () => {
-		const el = createView({ flashableDevices: [device1] });
-		document.body.appendChild(el);
-		await el.updateComplete;
-
-		const events: Event[] = [];
-		el.addEventListener("flash-ota", (e) => events.push(e));
-
-		(el as any)._confirmDevice = device1;
-		(el as any)._selectedVariant = "wifi";
-		(el as any)._dispatchFlashOta();
-
-		expect(events.length).toBe(1);
-		expect((events[0] as CustomEvent).detail).toEqual({
-			mac: device1.mac,
-			variant: "wifi",
-		});
-	});
-
-	it("does not dispatch flash-ota when _confirmDevice is null", () => {
-		const el = createView();
-		document.body.appendChild(el);
-
-		const events: Event[] = [];
-		el.addEventListener("flash-ota", (e) => events.push(e));
-
-		(el as any)._confirmDevice = null;
-		(el as any)._dispatchFlashOta();
-
-		expect(events.length).toBe(0);
-	});
-
 	it("shows USB flash view when USB connect is clicked", async () => {
 		const el = createView();
 		document.body.appendChild(el);
@@ -721,21 +554,6 @@ describe("render() WiFi provisioning — not connected state", () => {
 		});
 	});
 
-	it("WiFi provisioning view hides OTA progress and device list", () => {
-		const progress: OtaProgress = {
-			step: "flashing",
-			status: "in_progress",
-		};
-		const el = createView({ otaProgress: progress });
-		(el as any)._showWifiProvisioning = true;
-		const tpl = (el as any).render();
-		const c = renderTo(tpl);
-
-		// WiFi provisioning takes priority
-		expect(c.querySelector(".wifi-form")).not.toBeNull();
-		expect(c.querySelector(".progress-steps")).toBeNull();
-	});
-
 	it("shows scanning indicator when _wifiScanning=true", () => {
 		const el = createView();
 		(el as any)._showWifiProvisioning = true;
@@ -754,65 +572,6 @@ describe("render() WiFi provisioning — not connected state", () => {
 	});
 });
 
-describe("confirm dialog interactions", () => {
-	it("selecting ethernet variant updates _selectedVariant", async () => {
-		const el = createView({ flashableDevices: [device1] });
-		(el as any)._confirmDevice = device1;
-		document.body.appendChild(el);
-		await el.updateComplete;
-
-		const root = el.shadowRoot!;
-		const variantBtns = root.querySelectorAll(".variant-selector ha-button");
-		// Second button is ethernet
-		(variantBtns[1] as HTMLElement).click();
-
-		expect((el as any)._selectedVariant).toBe("ethernet");
-	});
-
-	it("selecting wifi variant updates _selectedVariant", async () => {
-		const el = createView({ flashableDevices: [device1] });
-		(el as any)._confirmDevice = device1;
-		(el as any)._selectedVariant = "ethernet";
-		document.body.appendChild(el);
-		await el.updateComplete;
-
-		const root = el.shadowRoot!;
-		const variantBtns = root.querySelectorAll(".variant-selector ha-button");
-		// First button is wifi
-		(variantBtns[0] as HTMLElement).click();
-
-		expect((el as any)._selectedVariant).toBe("wifi");
-	});
-
-	it("cancel button clears _confirmDevice", async () => {
-		const el = createView({ flashableDevices: [device1] });
-		(el as any)._confirmDevice = device1;
-		document.body.appendChild(el);
-		await el.updateComplete;
-
-		const root = el.shadowRoot!;
-		const cancelBtn = root.querySelector(
-			".confirm-actions ha-button:not([raised])",
-		) as HTMLElement;
-		cancelBtn.click();
-
-		expect((el as any)._confirmDevice).toBeNull();
-	});
-
-	it("Flash button in device row sets _confirmDevice", async () => {
-		const el = createView({ flashableDevices: [device1] });
-		document.body.appendChild(el);
-		await el.updateComplete;
-
-		const root = el.shadowRoot!;
-		const flashBtn = root.querySelector(
-			".device-row ha-button[raised]",
-		) as HTMLElement;
-		flashBtn.click();
-
-		expect((el as any)._confirmDevice).toBe(device1);
-	});
-});
 
 describe("WiFi provisioning DOM event handlers", () => {
 	it("wifi network select change updates _selectedSsid", async () => {
@@ -1126,32 +885,6 @@ describe("_getManifestUrl", () => {
 });
 
 describe("variant selector styling", () => {
-	it("selected wifi variant has appearance=accent", async () => {
-		const el = createView();
-		(el as any)._confirmDevice = device1;
-		(el as any)._selectedVariant = "wifi";
-		document.body.appendChild(el);
-		await el.updateComplete;
-
-		const root = el.shadowRoot!;
-		const btns = root.querySelectorAll(".variant-selector ha-button");
-		expect((btns[0] as any).getAttribute("appearance")).toBe("accent");
-		expect(btns[0].classList.contains("selected")).toBe(true);
-	});
-
-	it("unselected ethernet variant has appearance=outlined", async () => {
-		const el = createView();
-		(el as any)._confirmDevice = device1;
-		(el as any)._selectedVariant = "wifi";
-		document.body.appendChild(el);
-		await el.updateComplete;
-
-		const root = el.shadowRoot!;
-		const btns = root.querySelectorAll(".variant-selector ha-button");
-		expect((btns[1] as any).getAttribute("appearance")).toBe("outlined");
-		expect(btns[1].classList.contains("unselected")).toBe(true);
-	});
-
 	it("USB flash variant selector also uses appearance attribute", async () => {
 		const el = createView();
 		(el as any)._showUsbFlash = true;
@@ -1260,17 +993,3 @@ describe("wifi complete cleanup", () => {
 	});
 });
 
-describe("OTA progress success button", () => {
-	it("does not show go-to-config button when OTA is in progress", () => {
-		const progress: OtaProgress = {
-			step: "flashing",
-			status: "in_progress",
-			progress: 50,
-		};
-		const el = createView({ otaProgress: progress });
-		const tpl = (el as any).render();
-		const c = renderTo(tpl);
-
-		expect(c.querySelector(".confirm-actions")).toBeNull();
-	});
-});

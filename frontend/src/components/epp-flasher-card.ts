@@ -23,14 +23,6 @@ export class EppFlasherCard extends LitElement {
                 .hass=${this.hass}
                 .flashableDevices=${this._flasherCtrl.flashableDevices}
                 .loading=${this._flasherCtrl.loading}
-                .otaProgress=${this._flasherCtrl.otaProgress}
-                .flashingMac=${this._flasherCtrl.flashingMac}
-                @flash-ota=${(e: CustomEvent) => {
-									this._flasherCtrl.startOtaFlash(
-										e.detail.mac,
-										e.detail.variant,
-									);
-								}}
             ></epp-flasher-view>
         `;
 	}

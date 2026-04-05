@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { FlasherController } from "../../controllers/flasher-controller.js";
-import type { FlashableDevice, OtaProgress } from "../../types.js";
+import type { FlashableDevice } from "../../types.js";
 
 function mockHost() {
 	return {
@@ -41,8 +41,6 @@ describe("FlasherController", () => {
 			const freshCtrl = new FlasherController(freshHost);
 			expect(freshCtrl.flashableDevices).toEqual([]);
 			expect(freshCtrl.loading).toBe(true);
-			expect(freshCtrl.otaProgress).toBeNull();
-			expect(freshCtrl.flashingMac).toBeNull();
 		});
 
 		it("initializes USB state fields to defaults", () => {
@@ -56,15 +54,7 @@ describe("FlasherController", () => {
 
 	// --- Lifecycle ---
 	describe("hostDisconnected", () => {
-		it("calls unsubOta if set", async () => {
-			const unsub = vi.fn();
-			(ctrl as any)._unsubOta = unsub;
-			ctrl.hostDisconnected();
-			expect(unsub).toHaveBeenCalled();
-			expect((ctrl as any)._unsubOta).toBeUndefined();
-		});
-
-		it("does not throw when no unsubOta is set", () => {
+		it("does not throw when called", () => {
 			expect(() => ctrl.hostDisconnected()).not.toThrow();
 		});
 	});
@@ -88,6 +78,7 @@ describe("FlasherController", () => {
 					firmware_type: "eppgrid",
 					firmware_version: "1.0.0",
 					esphome_config_entry_id: "entry-123",
+					update_available: false,
 				},
 			];
 			ctrl.hass = mockHass(devices);
@@ -149,172 +140,6 @@ describe("FlasherController", () => {
 			};
 			await ctrl.loadDevices();
 			expect(ctrl.firmwareBaseUrl).toBe("");
-		});
-	});
-
-	// --- startOtaFlash ---
-	describe("startOtaFlash", () => {
-		it("subscribes via hass.connection.subscribeMessage with correct params", async () => {
-			// Resolve immediately so startOtaFlash can complete
-			let capturedCallback: ((msg: OtaProgress) => void) | undefined;
-			hass.connection.subscribeMessage = vi
-				.fn()
-				.mockImplementation((cb: (msg: OtaProgress) => void) => {
-					capturedCallback = cb;
-					// Return a promise that resolves to an unsub fn
-					return Promise.resolve(vi.fn());
-				});
-
-			const flashPromise = ctrl.startOtaFlash("aa:bb", "eppgrid-wifi");
-
-			// Trigger completion by calling the callback with a terminal status
-			await new Promise((r) => setTimeout(r, 0));
-			capturedCallback!({
-				step: "complete",
-				status: "success",
-			});
-
-			await flashPromise;
-
-			expect(hass.connection.subscribeMessage).toHaveBeenCalledWith(
-				expect.any(Function),
-				{ type: "eppgrid/flash_ota", mac: "aa:bb", variant: "eppgrid-wifi" },
-			);
-		});
-
-		it("sets flashingMac when starting", async () => {
-			let capturedCallback: ((msg: OtaProgress) => void) | undefined;
-			hass.connection.subscribeMessage = vi
-				.fn()
-				.mockImplementation((cb: (msg: OtaProgress) => void) => {
-					capturedCallback = cb;
-					return Promise.resolve(vi.fn());
-				});
-
-			const flashPromise = ctrl.startOtaFlash("aa:bb", "eppgrid-wifi");
-			expect(ctrl.flashingMac).toBe("aa:bb");
-
-			await new Promise((r) => setTimeout(r, 0));
-			capturedCallback!({ step: "complete", status: "success" });
-			await flashPromise;
-		});
-
-		it("tracks OTA progress via callback messages", async () => {
-			let capturedCallback: ((msg: OtaProgress) => void) | undefined;
-			hass.connection.subscribeMessage = vi
-				.fn()
-				.mockImplementation((cb: (msg: OtaProgress) => void) => {
-					capturedCallback = cb;
-					return Promise.resolve(vi.fn());
-				});
-
-			const flashPromise = ctrl.startOtaFlash("aa:bb", "eppgrid-wifi");
-			await new Promise((r) => setTimeout(r, 0));
-
-			// Send in-progress update
-			capturedCallback!({
-				step: "downloading_firmware",
-				status: "in_progress",
-				progress: 42,
-			});
-			expect(ctrl.otaProgress).toEqual({
-				step: "downloading_firmware",
-				status: "in_progress",
-				progress: 42,
-			});
-			expect(host.requestUpdate).toHaveBeenCalled();
-
-			// Resolve
-			capturedCallback!({ step: "complete", status: "success" });
-			await flashPromise;
-		});
-
-		it("resolves when status is success", async () => {
-			let capturedCallback: ((msg: OtaProgress) => void) | undefined;
-			hass.connection.subscribeMessage = vi
-				.fn()
-				.mockImplementation((cb: (msg: OtaProgress) => void) => {
-					capturedCallback = cb;
-					return Promise.resolve(vi.fn());
-				});
-
-			const flashPromise = ctrl.startOtaFlash("aa:bb", "eppgrid-wifi");
-			await new Promise((r) => setTimeout(r, 0));
-			capturedCallback!({ step: "complete", status: "success" });
-			await expect(flashPromise).resolves.toBeUndefined();
-		});
-
-		it("resolves when status is failed", async () => {
-			let capturedCallback: ((msg: OtaProgress) => void) | undefined;
-			hass.connection.subscribeMessage = vi
-				.fn()
-				.mockImplementation((cb: (msg: OtaProgress) => void) => {
-					capturedCallback = cb;
-					return Promise.resolve(vi.fn());
-				});
-
-			const flashPromise = ctrl.startOtaFlash("aa:bb", "eppgrid-wifi");
-			await new Promise((r) => setTimeout(r, 0));
-			capturedCallback!({ step: "error", status: "failed", error: "oops" });
-			await expect(flashPromise).resolves.toBeUndefined();
-		});
-
-		it("resolves when status is timeout", async () => {
-			let capturedCallback: ((msg: OtaProgress) => void) | undefined;
-			hass.connection.subscribeMessage = vi
-				.fn()
-				.mockImplementation((cb: (msg: OtaProgress) => void) => {
-					capturedCallback = cb;
-					return Promise.resolve(vi.fn());
-				});
-
-			const flashPromise = ctrl.startOtaFlash("aa:bb", "eppgrid-wifi");
-			await new Promise((r) => setTimeout(r, 0));
-			capturedCallback!({ step: "waiting_for_reboot", status: "timeout" });
-			await expect(flashPromise).resolves.toBeUndefined();
-		});
-
-		it("calls unsub on terminal status and clears it", async () => {
-			const unsub = vi.fn();
-			let capturedCallback: ((msg: OtaProgress) => void) | undefined;
-			hass.connection.subscribeMessage = vi
-				.fn()
-				.mockImplementation((cb: (msg: OtaProgress) => void) => {
-					capturedCallback = cb;
-					return Promise.resolve(unsub);
-				});
-
-			const flashPromise = ctrl.startOtaFlash("aa:bb", "eppgrid-wifi");
-			await new Promise((r) => setTimeout(r, 0));
-			capturedCallback!({ step: "complete", status: "success" });
-			await flashPromise;
-
-			expect(unsub).toHaveBeenCalled();
-			expect((ctrl as any)._unsubOta).toBeUndefined();
-		});
-
-		it("does nothing when hass is null", async () => {
-			ctrl.hass = null;
-			await expect(
-				ctrl.startOtaFlash("aa:bb", "eppgrid-wifi"),
-			).resolves.toBeUndefined();
-			expect(hass.connection.subscribeMessage).not.toHaveBeenCalled();
-		});
-
-		it("sets error otaProgress and clears flashingMac when subscribeMessage rejects", async () => {
-			hass.connection.subscribeMessage = vi
-				.fn()
-				.mockRejectedValue(new Error("connection refused"));
-
-			await ctrl.startOtaFlash("aa:bb", "eppgrid-wifi");
-
-			expect(ctrl.otaProgress).toEqual({
-				step: "error",
-				status: "failed",
-				error: "Failed to start OTA flash",
-			});
-			expect(ctrl.flashingMac).toBeNull();
-			expect(host.requestUpdate).toHaveBeenCalled();
 		});
 	});
 

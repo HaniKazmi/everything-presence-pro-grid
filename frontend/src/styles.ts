@@ -734,44 +734,6 @@ export const flasherStyles = css`
     color: var(--secondary-text-color, #757575);
   }
 
-  .progress-steps {
-    display: flex;
-    flex-direction: column;
-    gap: 10px;
-    padding: 16px;
-    background: var(--card-background-color, #fff);
-    border: 1px solid var(--divider-color, #e0e0e0);
-    border-radius: var(--ha-card-border-radius, 12px);
-  }
-
-  .progress-step {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    font-size: 14px;
-    color: var(--secondary-text-color, #757575);
-  }
-
-  .progress-step.step-done {
-    color: var(--success-color, #4caf50);
-  }
-
-  .progress-step.step-active {
-    color: var(--primary-text-color, #212121);
-    font-weight: 500;
-  }
-
-  .progress-step.step-error {
-    color: var(--error-color, #f44336);
-  }
-
-  .step-icon {
-    font-size: 16px;
-    width: 20px;
-    text-align: center;
-    flex-shrink: 0;
-  }
-
   .flasher-loading {
     padding: 32px 24px;
     text-align: center;

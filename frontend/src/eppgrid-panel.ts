@@ -1040,6 +1040,7 @@ export class EPPGridPanel extends LitElement {
 					}}>${this._localize("tabs.device_configuration")}</button>
 				<button class="tab ${this._panelTab === "flasher" ? "active" : ""}"
 					@click=${() => {
+						this._flasherCtrl.resetUsbState();
 						this._panelTab = "flasher";
 						if (this._flasherCtrl.loading) {
 							this._flasherCtrl.hass = this.hass;
@@ -1058,44 +1059,10 @@ export class EPPGridPanel extends LitElement {
 					.hass=${this.hass}
 					.flashableDevices=${this._flasherCtrl.flashableDevices}
 					.loading=${this._flasherCtrl.loading}
-					.otaProgress=${this._flasherCtrl.otaProgress}
-					.flashingMac=${this._flasherCtrl.flashingMac}
 					.localize=${this._localize}
 					.usbFlashState=${this._flasherCtrl.usbFlashState}
 					.wifiNetworks=${this._flasherCtrl.wifiNetworks}
 					.firmwareBaseUrl=${this._flasherCtrl.firmwareBaseUrl}
-					@flash-ota=${async (e: CustomEvent) => {
-						const { mac, variant } = e.detail;
-						const ctrl = this._flasherCtrl;
-						const device = ctrl.flashableDevices.find((d) => d.mac === mac);
-						if (
-							device?.firmware_type === "original" &&
-							device?.esphome_config_entry_id
-						) {
-							const confirmed = window.confirm(
-								this._localize("flasher.confirm_delete_message"),
-							);
-							if (!confirmed) return;
-							try {
-								await ctrl.deleteEsphomeDevice(device.esphome_config_entry_id);
-								device.esphome_config_entry_id = null;
-							} catch (err) {
-								console.error("Failed to delete old ESPHome entry:", err);
-							}
-						}
-						await ctrl.startOtaFlash(mac, variant);
-						if (
-							ctrl.otaProgress?.status === "success" &&
-							device?.host &&
-							!device?.esphome_config_entry_id
-						) {
-							try {
-								await ctrl.addEsphomeDevice(device.host);
-							} catch (err) {
-								console.error("Failed to add device to ESPHome:", err);
-							}
-						}
-					}}
 					@flash-complete=${() => {
 						this._flasherCtrl.resetUsbState();
 						this._loadDevices();

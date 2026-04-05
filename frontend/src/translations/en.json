@@ -360,7 +360,8 @@
 		"usb_error_ip": "Connected to WiFi but could not detect IP address.",
 		"usb_retry": "Retry",
 		"usb_back": "Back",
-		"confirm_delete_message": "This device was previously configured with the original firmware. The old configuration will be removed from Home Assistant."
+		"confirm_delete_message": "This device was previously configured with the original firmware. The old configuration will be removed from Home Assistant.",
+		"update": "Update"
 	},
 	"connection": {
 		"connecting": "Connecting to device...",
