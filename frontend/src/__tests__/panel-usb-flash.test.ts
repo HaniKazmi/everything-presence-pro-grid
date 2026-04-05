@@ -964,6 +964,22 @@ describe("epp-flasher-view inline event handlers", () => {
 		expect((panel as any)._panelTab).toBe("config");
 	});
 
+	it("@update-firmware sets _selectedMac and calls _updateFirmware", () => {
+		const spy = vi
+			.spyOn(panel as any, "_updateFirmware")
+			.mockResolvedValue(undefined);
+
+		getFlasherView().dispatchEvent(
+			new CustomEvent("update-firmware", {
+				detail: { mac: "aa:bb:cc" },
+				bubbles: true,
+			}),
+		);
+
+		expect((panel as any)._selectedMac).toBe("aa:bb:cc");
+		expect(spy).toHaveBeenCalled();
+	});
+
 	it("switching to flasher tab resets stale usbFlashState", () => {
 		const ctrl = (panel as any)._flasherCtrl;
 		ctrl.usbFlashState = { step: "complete", variant: "ethernet-ble-co2" };

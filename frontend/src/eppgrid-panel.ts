@@ -1097,6 +1097,10 @@ export class EPPGridPanel extends LitElement {
 					@wifi-provision=${(e: CustomEvent) => {
 						this._handleWifiProvision(e.detail.ssid, e.detail.password);
 					}}
+					@update-firmware=${(e: CustomEvent) => {
+						this._selectedMac = e.detail.mac;
+						this._updateFirmware();
+					}}
 					@wifi-complete=${() => {
 						this._flasherCtrl.resetUsbState();
 						this._loadDevices();
