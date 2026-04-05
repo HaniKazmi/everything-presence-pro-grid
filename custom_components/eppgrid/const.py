@@ -19,8 +19,7 @@ CONFIG_PROTOCOL_VERSION = 1
 EPP_MANUFACTURER = "EverythingSmartTechnology"
 EPP_MODEL = "Everything Presence Pro"
 
-# ESPHome OTA
-OTA_PORT = 3232
+# Firmware
 FIRMWARE_VERSION = "v0.1.0-alpha.2"
 MANIFEST_BASE_URL = (
     f"https://github.com/clintongormley/everything-presence-pro-grid/releases/download/{FIRMWARE_VERSION}"
