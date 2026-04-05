@@ -30,6 +30,7 @@ export async function flashFirmware(
 	options?: {
 		onMac?: (mac: string) => void;
 		beforeFlash?: (mac: string | undefined) => Promise<void>;
+		baseUrl?: string;
 	},
 ): Promise<void> {
 	const transport = new Transport(port);
@@ -59,7 +60,8 @@ export async function flashFirmware(
 		}
 
 		// Fetch manifest
-		const manifestUrl = `${MANIFEST_BASE_URL}/everything-presence-pro-${variant}-manifest.json`;
+		const base = options?.baseUrl || MANIFEST_BASE_URL;
+		const manifestUrl = `${base}/everything-presence-pro-${variant}-manifest.json`;
 		const manifestResp = await fetch(manifestUrl);
 		if (!manifestResp.ok) {
 			throw new Error("Failed to download firmware manifest");

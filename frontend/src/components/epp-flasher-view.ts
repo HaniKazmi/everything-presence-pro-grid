@@ -64,6 +64,7 @@ export class EppFlasherView extends LitElement {
 
 	@state() private _selectedVariant: "wifi" | "ethernet" = "wifi";
 	@state() private _confirmDevice: FlashableDevice | null = null;
+	@property() firmwareBaseUrl = "";
 	@property({ attribute: false }) usbFlashState: UsbFlashState | null = null;
 	@property({ attribute: false }) wifiNetworks: WifiNetwork[] = [];
 
@@ -500,7 +501,7 @@ export class EppFlasherView extends LitElement {
 
 	private _getManifestUrl(): string {
 		const variant = this._getFirmwareVariant();
-		return `https://clintongormley.github.io/everything-presence-pro-grid/firmware/everything-presence-pro-${variant}-manifest.json`;
+		return `${this.firmwareBaseUrl}/everything-presence-pro-${variant}-manifest.json`;
 	}
 
 	private _renderUsbFlash() {

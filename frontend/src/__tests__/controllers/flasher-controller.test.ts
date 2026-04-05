@@ -129,6 +129,29 @@ describe("FlasherController", () => {
 			await ctrl.loadDevices();
 			expect(ctrl.loading).toBe(false);
 		});
+
+		it("stores firmwareBaseUrl from response", async () => {
+			ctrl.hass = {
+				callWS: vi
+					.fn()
+					.mockResolvedValue({
+						devices: [],
+						firmware_base_url: "https://example.com/fw",
+					}),
+				connection: { subscribeMessage: vi.fn() },
+			};
+			await ctrl.loadDevices();
+			expect(ctrl.firmwareBaseUrl).toBe("https://example.com/fw");
+		});
+
+		it("defaults firmwareBaseUrl to empty string when not in response", async () => {
+			ctrl.hass = {
+				callWS: vi.fn().mockResolvedValue({ devices: [] }),
+				connection: { subscribeMessage: vi.fn() },
+			};
+			await ctrl.loadDevices();
+			expect(ctrl.firmwareBaseUrl).toBe("");
+		});
 	});
 
 	// --- startOtaFlash ---

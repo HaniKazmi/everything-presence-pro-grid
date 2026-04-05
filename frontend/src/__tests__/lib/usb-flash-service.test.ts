@@ -378,6 +378,26 @@ describe("flashFirmware", () => {
 
 		expect(beforeFlash).toHaveBeenCalledWith(undefined);
 	});
+
+	it("uses baseUrl from options for manifest fetch", async () => {
+		const port = mockPort();
+		await flashFirmware(port, "wifi-ble-co2", vi.fn(), {
+			baseUrl: "https://example.com/fw",
+		});
+
+		const fetchMock = vi.mocked(fetch);
+		expect(fetchMock.mock.calls[0][0]).toBe(
+			"https://example.com/fw/everything-presence-pro-wifi-ble-co2-manifest.json",
+		);
+	});
+
+	it("falls back to default URL when baseUrl not provided", async () => {
+		const port = mockPort();
+		await flashFirmware(port, "wifi-ble-co2", vi.fn());
+
+		const fetchMock = vi.mocked(fetch);
+		expect(fetchMock.mock.calls[0][0]).toContain("clintongormley.github.io");
+	});
 });
 
 describe("runWifiScan", () => {

@@ -1107,16 +1107,21 @@ describe("_getManifestUrl", () => {
 	it("returns correct URL for wifi variant", () => {
 		const el = createView();
 		(el as any)._selectedVariant = "wifi";
+		(el as any).firmwareBaseUrl = "https://example.com/fw";
 		const url = (el as any)._getManifestUrl();
-		expect(url).toContain("wifi-ble-co2-manifest.json");
-		expect(url).toContain("clintongormley.github.io");
+		expect(url).toBe(
+			"https://example.com/fw/everything-presence-pro-wifi-ble-co2-manifest.json",
+		);
 	});
 
 	it("returns correct URL for ethernet variant", () => {
 		const el = createView();
 		(el as any)._selectedVariant = "ethernet";
+		(el as any).firmwareBaseUrl = "https://example.com/fw";
 		const url = (el as any)._getManifestUrl();
-		expect(url).toContain("ethernet-ble-co2-manifest.json");
+		expect(url).toBe(
+			"https://example.com/fw/everything-presence-pro-ethernet-ble-co2-manifest.json",
+		);
 	});
 });
 

@@ -4,6 +4,7 @@ import type { FlashableDevice, OtaProgress, UsbFlashState } from "../types.js";
 
 export class FlasherController implements ReactiveController {
 	flashableDevices: FlashableDevice[] = [];
+	firmwareBaseUrl = "";
 	loading = true;
 	otaProgress: OtaProgress | null = null;
 	flashingMac: string | null = null;
@@ -49,6 +50,7 @@ export class FlasherController implements ReactiveController {
 				type: "eppgrid/list_flashable_devices",
 			});
 			this.flashableDevices = resp.devices;
+			this.firmwareBaseUrl = resp.firmware_base_url ?? "";
 		} catch {
 			this.flashableDevices = [];
 		}

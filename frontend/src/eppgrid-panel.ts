@@ -1063,6 +1063,7 @@ export class EPPGridPanel extends LitElement {
 					.localize=${this._localize}
 					.usbFlashState=${this._flasherCtrl.usbFlashState}
 					.wifiNetworks=${this._flasherCtrl.wifiNetworks}
+					.firmwareBaseUrl=${this._flasherCtrl.firmwareBaseUrl}
 					@flash-ota=${async (e: CustomEvent) => {
 						const { mac, variant } = e.detail;
 						const ctrl = this._flasherCtrl;
@@ -2362,6 +2363,7 @@ export class EPPGridPanel extends LitElement {
 					ctrl.updateUsbState({ step: "flashing", progress: pct });
 				},
 				{
+					baseUrl: ctrl.firmwareBaseUrl,
 					beforeFlash: async (mac: string | undefined) => {
 						if (!mac) return;
 						const matched = ctrl.flashableDevices.find(

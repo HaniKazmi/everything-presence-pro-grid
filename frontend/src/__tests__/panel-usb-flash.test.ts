@@ -110,7 +110,10 @@ describe("_handleUsbFlash", () => {
 			mockPort,
 			"eppgrid-wifi",
 			expect.any(Function),
-			expect.objectContaining({ beforeFlash: expect.any(Function) }),
+			expect.objectContaining({
+				beforeFlash: expect.any(Function),
+				baseUrl: expect.any(String),
+			}),
 		);
 	});
 
