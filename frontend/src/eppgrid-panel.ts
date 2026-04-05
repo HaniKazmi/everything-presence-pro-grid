@@ -2391,9 +2391,13 @@ export class EPPGridPanel extends LitElement {
 				try { ctrl.serialPort.close().catch(() => {}); } catch {}
 				ctrl.serialPort = null;
 			}
+			const msg = err?.message ?? "Unknown error";
+			const isDisconnect = /stream stopped|NetworkError|disconnected|break|lost|No response from device/i.test(msg);
 			ctrl.updateUsbState({
 				step: "error",
-				error: err?.message ?? "Unknown error",
+				error: isDisconnect
+					? "Device disconnected. Unplug, plug it back in, and try again."
+					: msg,
 			});
 		}
 	}
