@@ -765,44 +765,6 @@ export const flasherStyles = css`
   }
 
 
-  .confirm-dialog {
-    position: fixed;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    background: rgba(0, 0, 0, 0.4);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    z-index: 100;
-  }
-
-  .confirm-card {
-    background: var(--card-background-color, #fff);
-    border-radius: var(--ha-card-border-radius, 12px);
-    padding: 24px;
-    min-width: 320px;
-    max-width: 440px;
-    display: flex;
-    flex-direction: column;
-    gap: 16px;
-    box-shadow: var(--ha-card-box-shadow, 0 4px 24px rgba(0, 0, 0, 0.15));
-  }
-
-  .confirm-card h3 {
-    margin: 0;
-    font-size: 18px;
-    font-weight: 500;
-  }
-
-  .confirm-card p {
-    margin: 0;
-    font-size: 14px;
-    color: var(--secondary-text-color, #757575);
-    line-height: 1.5;
-  }
-
   .confirm-actions {
     display: flex;
     justify-content: flex-end;

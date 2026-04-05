@@ -354,46 +354,13 @@ Tests in `tests/`: init lifecycle, storage, device manager, websocket API.
 - **hacs.yml** — HACS repository structure validation
 - **hassfest.yml** — manifest.json schema validation
 
-### Firmware Release & GitHub Pages Deployment
+### Firmware Release Deployment
 
-Firmware binaries and ESP Web Tools manifests are hosted on **GitHub Pages**
-at `https://clintongormley.github.io/everything-presence-pro-grid/firmware/`.
-The frontend fetches manifests and bins from this URL during USB flashing.
-CORS is required because the fetch runs in the browser — GitHub Pages
-provides `Access-Control-Allow-Origin: *`, GitHub Releases does not.
+Firmware binaries and manifests are hosted on **GitHub Releases** and proxied
+through the HA backend at `/api/eppgrid/firmware/` to avoid CORS issues
+(GitHub Releases serves with `application/octet-stream` and no CORS headers).
+The firmware version is pinned by `FIRMWARE_VERSION` in `const.py`.
 
-Two workflows deploy to the same GitHub Pages environment:
-
-1. **firmware-release.yml** — Triggered by tag push (`v*`). Compiles
-   `wifi-ble-co2` and `ethernet-ble-co2` variants, generates ESP Web Tools
-   manifest JSON for each, creates a GitHub Release with all artifacts, then
-   deploys everything to Pages via `upload-pages-artifact` + `deploy-pages`.
-   This is the **primary** deployment path — it uses build artifacts directly.
-
-2. **pages.yml** ("Deploy Firmware Builder") — Triggered by push to main
-   touching `tools/firmware-builder/**`. Deploys the firmware builder web UI
-   to Pages. Also attempts to include firmware files by running
-   `gh release download` to fetch the latest release assets. **Caveat:**
-   `gh release download` without `--prerelease` skips pre-releases, so if
-   the latest release is an alpha/beta/rc, the download silently fails and
-   Pages is deployed **without firmware files**, breaking USB flashing.
-
-```
-Tag push (v*)
-  └─ firmware-release.yml
-       ├─ compile wifi-ble-co2, ethernet-ble-co2
-       ├─ generate manifests
-       ├─ create GitHub Release (with all bins + manifests)
-       └─ deploy-pages (bins + manifests + firmware-builder → Pages) ✓
-
-Push to main (tools/firmware-builder/**)
-  └─ pages.yml
-       ├─ gh release download (⚠ fails silently for pre-releases)
-       ├─ copy firmware-builder UI
-       └─ deploy-pages (firmware-builder only → Pages, overwrites firmware!) ⚠
-```
-
-**Important:** If `pages.yml` runs after a pre-release, it will wipe the
-firmware files from Pages. Fix: either add `--prerelease` to the
-`gh release download` command, or re-run `firmware-release.yml` for the
-current tag to restore them.
+**firmware-release.yml** — Triggered by tag push (`v*`). Compiles
+`wifi-ble-co2` and `ethernet-ble-co2` variants, generates ESP Web Tools
+manifest JSON for each, and creates a GitHub Release with all artifacts.
