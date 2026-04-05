@@ -79,6 +79,7 @@ beforeEach(() => {
 
 afterEach(() => {
 	vi.restoreAllMocks();
+	vi.clearAllMocks();
 });
 
 import { ESPLoader, Transport } from "esptool-js";
@@ -295,6 +296,85 @@ describe("flashFirmware", () => {
 	it("works without options parameter (backwards compatible)", async () => {
 		const port = mockPort();
 		await expect(flashFirmware(port, "wifi-ble-co2", vi.fn())).resolves.toBeUndefined();
+	});
+
+	it("calls beforeFlash after loader.main() and before writeFlash()", async () => {
+		const port = mockPort();
+		const callOrder: string[] = [];
+
+		vi.mocked(ESPLoader).mockImplementationOnce(function (opts: any) {
+			return {
+				main: vi.fn().mockImplementation(async () => {
+					callOrder.push("main");
+					opts.terminal?.writeLine("MAC: aa:bb:cc:dd:ee:ff");
+				}),
+				writeFlash: vi.fn().mockImplementation(async () => {
+					callOrder.push("writeFlash");
+				}),
+				after: vi.fn().mockResolvedValue(undefined),
+			} as any;
+		});
+
+		const beforeFlash = vi.fn().mockImplementation(async () => {
+			callOrder.push("beforeFlash");
+		});
+
+		await flashFirmware(port, "wifi-ble-co2", vi.fn(), { beforeFlash });
+
+		expect(callOrder).toEqual(["main", "beforeFlash", "writeFlash"]);
+	});
+
+	it("aborts flash when beforeFlash throws, but still disconnects transport", async () => {
+		const port = mockPort();
+
+		vi.mocked(ESPLoader).mockImplementationOnce(function (opts: any) {
+			return {
+				main: vi.fn().mockResolvedValue("ESP32"),
+				writeFlash: vi.fn().mockResolvedValue(undefined),
+				after: vi.fn().mockResolvedValue(undefined),
+			} as any;
+		});
+
+		const beforeFlash = vi.fn().mockRejectedValue(new Error("User cancelled"));
+
+		await expect(
+			flashFirmware(port, "wifi-ble-co2", vi.fn(), { beforeFlash }),
+		).rejects.toThrow("User cancelled");
+
+		const transportInstance = vi.mocked(Transport).mock.results[0].value;
+		expect(transportInstance.disconnect).toHaveBeenCalled();
+
+		const loaderInstance = vi.mocked(ESPLoader).mock.results[0].value;
+		expect(loaderInstance.writeFlash).not.toHaveBeenCalled();
+	});
+
+	it("passes detected MAC to beforeFlash callback", async () => {
+		const port = mockPort();
+
+		vi.mocked(ESPLoader).mockImplementationOnce(function (opts: any) {
+			return {
+				main: vi.fn().mockImplementation(async () => {
+					opts.terminal?.writeLine("MAC: aa:bb:cc:dd:ee:ff");
+				}),
+				writeFlash: vi.fn().mockResolvedValue(undefined),
+				after: vi.fn().mockResolvedValue(undefined),
+			} as any;
+		});
+
+		const beforeFlash = vi.fn().mockResolvedValue(undefined);
+
+		await flashFirmware(port, "wifi-ble-co2", vi.fn(), { beforeFlash });
+
+		expect(beforeFlash).toHaveBeenCalledWith("AA:BB:CC:DD:EE:FF");
+	});
+
+	it("passes undefined to beforeFlash when no MAC detected", async () => {
+		const port = mockPort();
+		const beforeFlash = vi.fn().mockResolvedValue(undefined);
+
+		await flashFirmware(port, "wifi-ble-co2", vi.fn(), { beforeFlash });
+
+		expect(beforeFlash).toHaveBeenCalledWith(undefined);
 	});
 });
 

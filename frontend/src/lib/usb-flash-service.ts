@@ -29,16 +29,19 @@ export async function flashFirmware(
 	onProgress: (percent: number) => void,
 	options?: {
 		onMac?: (mac: string) => void;
+		beforeFlash?: (mac: string | undefined) => Promise<void>;
 	},
 ): Promise<void> {
 	const transport = new Transport(port);
 	try {
+		let detectedMac: string | undefined;
 		const terminal = {
 			clean: () => {},
 			writeLine: (data: string) => {
 				const match = MAC_PATTERN.exec(data);
 				if (match) {
-					options?.onMac?.(match[1].toUpperCase());
+					detectedMac = match[1].toUpperCase();
+					options?.onMac?.(detectedMac);
 				}
 			},
 			write: (_data: string) => {},
@@ -50,6 +53,10 @@ export async function flashFirmware(
 		});
 
 		await loader.main("default_reset");
+
+		if (options?.beforeFlash) {
+			await options.beforeFlash(detectedMac);
+		}
 
 		// Fetch manifest
 		const manifestUrl = `${MANIFEST_BASE_URL}/everything-presence-pro-${variant}-manifest.json`;
