@@ -14,9 +14,6 @@ import {
 	type WifiNetwork,
 } from "./improv-serial.js";
 
-const MANIFEST_BASE_URL =
-	"https://clintongormley.github.io/everything-presence-pro-grid/firmware";
-
 const MAC_PATTERN = /MAC:\s*([0-9A-Fa-f:]{17})/;
 
 /**
@@ -60,7 +57,10 @@ export async function flashFirmware(
 		}
 
 		// Fetch manifest
-		const base = options?.baseUrl || MANIFEST_BASE_URL;
+		if (!options?.baseUrl) {
+			throw new Error("baseUrl is required for firmware download");
+		}
+		const base = options.baseUrl;
 		const manifestUrl = `${base}/everything-presence-pro-${variant}-manifest.json`;
 		const manifestResp = await fetch(manifestUrl);
 		if (!manifestResp.ok) {
