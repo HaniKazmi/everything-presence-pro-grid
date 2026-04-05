@@ -1091,8 +1091,16 @@ export class EPPGridPanel extends LitElement {
 						(ctrl as any)._serialReader = null;
 						(ctrl as any)._serialWriter = null;
 						if (ctrl.serialPort) {
-							// Port is still open — retry WiFi config without reflashing
-							this._handleUsbWifiConfig();
+							// Try to verify port is still usable
+							const port = ctrl.serialPort;
+							if (port.readable && port.writable) {
+								this._handleUsbWifiConfig();
+							} else {
+								// Port is stale (device unplugged) — close and reset
+								port.close().catch(() => {});
+								ctrl.serialPort = null;
+								ctrl.resetUsbState();
+							}
 						} else {
 							ctrl.resetUsbState();
 						}
@@ -2377,6 +2385,11 @@ export class EPPGridPanel extends LitElement {
 				// User cancelled port picker
 				ctrl.resetUsbState();
 				return;
+			}
+			// Clean up port on error — don't leave it dangling
+			if (ctrl.serialPort) {
+				try { ctrl.serialPort.close().catch(() => {}); } catch {}
+				ctrl.serialPort = null;
 			}
 			ctrl.updateUsbState({
 				step: "error",

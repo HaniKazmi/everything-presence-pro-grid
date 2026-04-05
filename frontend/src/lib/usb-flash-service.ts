@@ -135,7 +135,13 @@ export async function runWifiScan(
 	networks: WifiNetwork[];
 }> {
 	if (!port.readable) {
-		await port.open({ baudRate: 115200 });
+		try {
+			await port.open({ baudRate: 115200 });
+		} catch {
+			throw new Error(
+				"Could not open serial port. Unplug the device, plug it back in, and try again.",
+			);
+		}
 	}
 
 	// Hard-reset the device via RTS toggle. Explicitly set DTR=false —
