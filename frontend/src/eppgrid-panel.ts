@@ -2300,7 +2300,14 @@ export class EPPGridPanel extends LitElement {
 		try {
 			if (!ctrl.serialPort) {
 				ctrl.updateUsbState({ step: "connecting" });
-				ctrl.serialPort = await navigator.serial.requestPort();
+				const port = await navigator.serial.requestPort();
+				for (let i = 0; i < 5; i++) {
+					try { await port.close(); break; } catch {
+						if (i < 4) await new Promise((r) => setTimeout(r, 1000));
+					}
+				}
+				if (ctrl.opId !== myOp) return;
+				ctrl.serialPort = port;
 			}
 			if (ctrl.opId !== myOp) return;
 
@@ -2334,8 +2341,16 @@ export class EPPGridPanel extends LitElement {
 			ctrl.updateUsbState({ step: "connecting" });
 			const port = await navigator.serial.requestPort();
 			// Ensure port is closed before esptool opens it (may be left open
-			// from a previous interrupted operation)
-			try { await port.close(); } catch {}
+			// from a previous interrupted operation). Retry with delay since
+			// port.close() may need to wait for locked readers to timeout.
+			for (let i = 0; i < 5; i++) {
+				try {
+					await port.close();
+					break;
+				} catch {
+					if (i < 4) await new Promise((r) => setTimeout(r, 1000));
+				}
+			}
 			if (ctrl.opId !== myOp) return;
 			ctrl.serialPort = port;
 
