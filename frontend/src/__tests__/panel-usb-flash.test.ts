@@ -448,7 +448,6 @@ describe("_handleWifiProvision", () => {
 		vi.useRealTimers();
 	});
 
-	/** Flush all pending timers so _handleWifiProvision can complete. */
 	async function flushProvision(ssid: string, password: string) {
 		const promise = (panel as any)._handleWifiProvision(ssid, password);
 		// Advance past all setTimeout calls (100ms RTS + 5000ms boot)
@@ -498,7 +497,7 @@ describe("_handleWifiProvision", () => {
 		);
 	});
 
-	it("performs RTS reset after sending credentials", async () => {
+	it("performs RTS reset with DTR=false after sending credentials", async () => {
 		await flushProvision("MySSID", "s3cr3t");
 
 		expect(mockPort.setSignals).toHaveBeenCalledWith({
@@ -511,7 +510,7 @@ describe("_handleWifiProvision", () => {
 		});
 	});
 
-	it("sets state to reading_ip after runWifiProvision", async () => {
+	it("sets state to wifi_connecting then reading_ip", async () => {
 		const ctrl = (panel as any)._flasherCtrl;
 		const updateSpy = vi.spyOn(ctrl, "updateUsbState");
 
@@ -1108,18 +1107,18 @@ describe("epp-flasher-view inline event handlers", () => {
 		expect(spy).toHaveBeenCalledWith("eppgrid-ble");
 	});
 
-	it("@usb-retry releases reader/writer, closes port, sets serialPort to null, then calls resetUsbState", () => {
+	it("@usb-retry with open port retries WiFi config instead of resetting", () => {
 		const ctrl = (panel as any)._flasherCtrl;
 		const mockReader = { releaseLock: vi.fn() };
 		const mockWriter = { releaseLock: vi.fn() };
-		const mockPort = {
-			close: vi.fn().mockResolvedValue(undefined),
-		};
+		const mockPort = makeMockPort();
 		(ctrl as any)._serialReader = mockReader;
 		(ctrl as any)._serialWriter = mockWriter;
 		ctrl.serialPort = mockPort;
 
-		const resetSpy = vi.spyOn(ctrl, "resetUsbState");
+		const wifiSpy = vi
+			.spyOn(panel as any, "_handleUsbWifiConfig")
+			.mockResolvedValue(undefined);
 
 		getFlasherView().dispatchEvent(
 			new CustomEvent("usb-retry", { bubbles: true }),
@@ -1127,10 +1126,18 @@ describe("epp-flasher-view inline event handlers", () => {
 
 		expect(mockReader.releaseLock).toHaveBeenCalled();
 		expect(mockWriter.releaseLock).toHaveBeenCalled();
-		expect((ctrl as any)._serialReader).toBeNull();
-		expect((ctrl as any)._serialWriter).toBeNull();
-		expect(mockPort.close).toHaveBeenCalled();
-		expect(ctrl.serialPort).toBeNull();
+		expect(wifiSpy).toHaveBeenCalled();
+	});
+
+	it("@usb-retry without port resets state", () => {
+		const ctrl = (panel as any)._flasherCtrl;
+		ctrl.serialPort = null;
+		const resetSpy = vi.spyOn(ctrl, "resetUsbState");
+
+		getFlasherView().dispatchEvent(
+			new CustomEvent("usb-retry", { bubbles: true }),
+		);
+
 		expect(resetSpy).toHaveBeenCalled();
 	});
 

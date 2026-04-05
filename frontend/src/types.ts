@@ -71,6 +71,7 @@ export type UsbFlashStep =
 	| "flashing"
 	| "wifi_scan"
 	| "wifi_provision"
+	| "wifi_connecting"
 	| "reading_ip"
 	| "adding_device"
 	| "complete"

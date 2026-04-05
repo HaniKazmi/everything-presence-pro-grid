@@ -1117,9 +1117,12 @@ export class EPPGridPanel extends LitElement {
 						} catch {}
 						(ctrl as any)._serialReader = null;
 						(ctrl as any)._serialWriter = null;
-						ctrl.serialPort?.close().catch(() => {});
-						ctrl.serialPort = null;
-						ctrl.resetUsbState();
+						if (ctrl.serialPort) {
+							// Port is still open — retry WiFi config without reflashing
+							this._handleUsbWifiConfig();
+						} else {
+							ctrl.resetUsbState();
+						}
 					}}
 					@wifi-scan=${() => {
 						this._handleWifiScan();
@@ -2433,13 +2436,17 @@ export class EPPGridPanel extends LitElement {
 		(ctrl as any)._serialReader = reader;
 
 		try {
+			ctrl.updateUsbState({ step: "wifi_connecting" });
+			console.log("[wifiProvision] Sending credentials...");
 			await runWifiProvision(writer, ssid, password);
+			console.log("[wifiProvision] Credentials sent");
 
 			// Release locks before toggling signals
 			reader.releaseLock();
 			writer.releaseLock();
 
-			// Hard-reset device — explicitly set DTR=false (CH340 compatibility)
+			// Hard-reset device — it applies WiFi creds on boot
+			console.log("[wifiProvision] RTS reset...");
 			try {
 				await port.setSignals({
 					dataTerminalReady: false,
@@ -2455,17 +2462,20 @@ export class EPPGridPanel extends LitElement {
 			}
 
 			// Wait for device to boot and connect to WiFi
+			console.log("[wifiProvision] Waiting 5s for boot...");
 			await new Promise((r) => setTimeout(r, 5000));
 
 			// Get fresh reader for IP detection
-			const freshReader = port.readable!.getReader();
-			(ctrl as any)._serialReader = freshReader;
+			const ipReader = port.readable!.getReader();
+			(ctrl as any)._serialReader = ipReader;
 
 			ctrl.updateUsbState({ step: "reading_ip" });
-			const ip = await detectIpAddress(freshReader, 35000);
+			console.log("[wifiProvision] Detecting IP address...");
+			const ip = await detectIpAddress(ipReader, 35000);
+			console.log("[wifiProvision] IP detected:", ip);
 
 			// Close serial port
-			freshReader.releaseLock();
+			ipReader.releaseLock();
 			await port.close().catch(() => {});
 			ctrl.serialPort = null;
 			(ctrl as any)._serialReader = null;

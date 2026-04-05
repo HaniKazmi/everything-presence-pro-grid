@@ -345,6 +345,7 @@
 		"usb_step_scanning": "Scanning for WiFi networks...",
 		"wifi_scan_hint": "If the device is already connected to WiFi, scanning is disabled. Use manual SSID entry instead.",
 		"usb_step_provisioning": "Configuring WiFi...",
+		"usb_step_wifi_connecting": "Connecting to WiFi...",
 		"usb_step_reading_ip": "Detecting device IP address...",
 		"usb_step_adding": "Adding device to Home Assistant...",
 		"usb_step_complete": "Device configured successfully!",

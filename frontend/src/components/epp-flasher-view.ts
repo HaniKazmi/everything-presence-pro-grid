@@ -587,6 +587,7 @@ export class EppFlasherView extends LitElement {
 				flashing: "flasher.usb_step_flashing",
 				wifi_scan: "flasher.usb_step_scanning",
 				wifi_provision: "flasher.usb_step_provisioning",
+				wifi_connecting: "flasher.usb_step_wifi_connecting",
 				reading_ip: "flasher.usb_step_reading_ip",
 				adding_device: "flasher.usb_step_adding",
 			};
