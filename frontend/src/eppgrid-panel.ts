@@ -2304,11 +2304,17 @@ export class EPPGridPanel extends LitElement {
 				ctrl.updateUsbState({ step: "connecting" });
 				ctrl.serialPort = await navigator.serial.requestPort();
 			}
-			if (ctrl.opId !== myOp) return;
+			if (ctrl.opId !== myOp) {
+				ctrl.opRunning = false;
+				return;
+			}
 
 			ctrl.updateUsbState({ step: "wifi_scan" });
 			const { writer, reader, networks } = await runWifiScan(ctrl.serialPort);
-			if (ctrl.opId !== myOp) return;
+			if (ctrl.opId !== myOp) {
+				ctrl.opRunning = false;
+				return;
+			}
 
 			ctrl.wifiNetworks = networks;
 			ctrl.updateUsbState({ step: "wifi_provision" });
@@ -2347,7 +2353,10 @@ export class EPPGridPanel extends LitElement {
 			// Step 1: Request serial port
 			ctrl.updateUsbState({ step: "connecting" });
 			const port = await navigator.serial.requestPort();
-			if (ctrl.opId !== myOp) return;
+			if (ctrl.opId !== myOp) {
+				ctrl.opRunning = false;
+				return;
+			}
 			ctrl.serialPort = port;
 
 			// Step 2: Flash firmware
@@ -2378,7 +2387,10 @@ export class EPPGridPanel extends LitElement {
 					},
 				},
 			);
-			if (ctrl.opId !== myOp) return;
+			if (ctrl.opId !== myOp) {
+				ctrl.opRunning = false;
+				return;
+			}
 
 			if (variant.startsWith("ethernet")) {
 				// Ethernet variants have no WiFi — skip provisioning
@@ -2392,7 +2404,10 @@ export class EPPGridPanel extends LitElement {
 			// Step 3: WiFi scan
 			ctrl.updateUsbState({ step: "wifi_scan" });
 			const { writer, reader, networks } = await runWifiScan(port);
-			if (ctrl.opId !== myOp) return;
+			if (ctrl.opId !== myOp) {
+				ctrl.opRunning = false;
+				return;
+			}
 
 			ctrl.wifiNetworks = networks;
 			ctrl.updateUsbState({ step: "wifi_provision" });

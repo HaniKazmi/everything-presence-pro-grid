@@ -192,12 +192,7 @@ export async function sendImprovPacket(
 	writer: WritableStreamDefaultWriter<Uint8Array>,
 	packet: Uint8Array,
 ): Promise<void> {
-	const hex = Array.from(packet)
-		.map((b) => b.toString(16).padStart(2, "0"))
-		.join(" ");
-	console.log(`[improv] TX ${packet.length}B: ${hex}`);
 	await writer.write(packet);
-	console.log("[improv] TX complete");
 }
 
 /**
@@ -228,20 +223,6 @@ export async function readImprovResponse(
 			buffer.push(...result.value);
 			const { packets, consumed } = parseImprovPackets(new Uint8Array(buffer));
 			if (packets.length > 0) {
-				for (const pkt of packets) {
-					const typeNames: Record<number, string> = {
-						1: "CURRENT_STATE",
-						2: "ERROR_STATE",
-						3: "RPC_COMMAND",
-						4: "RPC_RESULT",
-					};
-					const hex = Array.from(pkt.data)
-						.map((b) => b.toString(16).padStart(2, "0"))
-						.join(" ");
-					console.log(
-						`[improv] RX packet: type=${typeNames[pkt.type] ?? pkt.type} data=[${hex}]`,
-					);
-				}
 				buffer.splice(0, consumed);
 				return { packets, buffer };
 			}

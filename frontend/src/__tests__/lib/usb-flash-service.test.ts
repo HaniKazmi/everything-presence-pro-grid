@@ -432,7 +432,7 @@ describe("flashFirmware", () => {
 		).rejects.toThrow("baseUrl is required");
 	});
 
-	it("terminal.write logs data without crashing", async () => {
+	it("terminal.write runs without crashing", async () => {
 		const port = mockPort();
 		const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
 
@@ -450,7 +450,7 @@ describe("flashFirmware", () => {
 			baseUrl: TEST_BASE_URL,
 		});
 
-		expect(logSpy).toHaveBeenCalledWith("partial output");
+		expect(logSpy).not.toHaveBeenCalled();
 		logSpy.mockRestore();
 	});
 

@@ -43,16 +43,13 @@ export async function flashFirmware(
 		const terminal = {
 			clean: () => {},
 			writeLine: (data: string) => {
-				console.log(data);
 				const match = MAC_PATTERN.exec(data);
 				if (match) {
 					detectedMac = match[1].toUpperCase();
 					options?.onMac?.(detectedMac);
 				}
 			},
-			write: (data: string) => {
-				console.log(data);
-			},
+			write: (_data: string) => {},
 		};
 		const loader = new ESPLoader({
 			transport,

@@ -104,7 +104,7 @@ class TestListFlashableDevices:
         assert len(result[1]["devices"]) == 1
         assert result[1]["devices"][0]["mac"] == "AA:BB:CC:DD:EE:FF"
         assert result[1]["firmware_base_url"] == "/api/eppgrid/firmware"
-        assert "firmware_version" in result[1]
+        assert "latest_firmware_version" in result[1]
 
     async def test_not_ready(self, hass: HomeAssistant) -> None:
         """list_flashable_devices returns error when integration not loaded."""

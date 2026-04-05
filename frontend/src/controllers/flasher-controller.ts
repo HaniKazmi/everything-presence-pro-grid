@@ -49,7 +49,7 @@ export class FlasherController implements ReactiveController {
 			});
 			this.flashableDevices = resp.devices;
 			this.firmwareBaseUrl = resp.firmware_base_url ?? "";
-			this.firmwareVersion = resp.firmware_version ?? "";
+			this.firmwareVersion = resp.latest_firmware_version ?? "";
 		} catch {
 			this.flashableDevices = [];
 		}
