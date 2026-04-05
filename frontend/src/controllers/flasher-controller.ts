@@ -17,6 +17,7 @@ export class FlasherController implements ReactiveController {
 	private _hass: any = null;
 	private _serialPort: SerialPort | null = null;
 	private _opId = 0;
+	private _opRunning = false;
 
 	constructor(host: ReactiveControllerHost) {
 		this._host = host;
@@ -77,6 +78,13 @@ export class FlasherController implements ReactiveController {
 	/** Increment to signal in-flight operations to bail out. */
 	get opId(): number {
 		return this._opId;
+	}
+
+	get opRunning(): boolean {
+		return this._opRunning;
+	}
+	set opRunning(v: boolean) {
+		this._opRunning = v;
 	}
 
 	resetUsbState(): void {

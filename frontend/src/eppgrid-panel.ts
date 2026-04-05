@@ -2288,7 +2288,16 @@ export class EPPGridPanel extends LitElement {
 
 	private async _handleUsbWifiConfig(): Promise<void> {
 		const ctrl = this._flasherCtrl;
+		if (ctrl.opRunning) {
+			ctrl.updateUsbState({
+				step: "error",
+				error: "Serial port is busy from a previous operation. Refresh the page and try again.",
+				fatal: true,
+			});
+			return;
+		}
 		const myOp = ctrl.opId;
+		ctrl.opRunning = true;
 		try {
 			if (!ctrl.serialPort) {
 				ctrl.updateUsbState({ step: "connecting" });
@@ -2305,7 +2314,9 @@ export class EPPGridPanel extends LitElement {
 
 			(ctrl as any)._serialWriter = writer;
 			(ctrl as any)._serialReader = reader;
+			ctrl.opRunning = false;
 		} catch (err: any) {
+			ctrl.opRunning = false;
 			if (ctrl.opId !== myOp) return;
 			if (err?.name === "NotFoundError") {
 				ctrl.resetUsbState();
@@ -2320,7 +2331,16 @@ export class EPPGridPanel extends LitElement {
 
 	private async _handleUsbFlash(variant: string): Promise<void> {
 		const ctrl = this._flasherCtrl;
+		if (ctrl.opRunning) {
+			ctrl.updateUsbState({
+				step: "error",
+				error: "Serial port is busy from a previous operation. Refresh the page and try again.",
+				fatal: true,
+			});
+			return;
+		}
 		const myOp = ctrl.opId;
+		ctrl.opRunning = true;
 		try {
 			// Step 1: Request serial port
 			ctrl.updateUsbState({ step: "connecting" });
@@ -2362,6 +2382,7 @@ export class EPPGridPanel extends LitElement {
 				// Ethernet variants have no WiFi — skip provisioning
 				await port.close().catch(() => {});
 				ctrl.serialPort = null;
+				ctrl.opRunning = false;
 				ctrl.updateUsbState({ step: "complete", variant });
 				return;
 			}
@@ -2377,8 +2398,9 @@ export class EPPGridPanel extends LitElement {
 			// Store writer/reader for provisioning step
 			(ctrl as any)._serialWriter = writer;
 			(ctrl as any)._serialReader = reader;
+			ctrl.opRunning = false;
 		} catch (err: any) {
-			if (ctrl.opId !== myOp) return;
+			if (ctrl.opId !== myOp) { ctrl.opRunning = false; return; }
 			if (err?.name === "NotFoundError") {
 				// User cancelled port picker
 				ctrl.resetUsbState();
@@ -2392,6 +2414,7 @@ export class EPPGridPanel extends LitElement {
 			const msg = err?.message ?? "Unknown error";
 			const isDisconnect = /stream stopped|NetworkError|disconnected|break|lost|No response from device/i.test(msg);
 			const isPortBusy = /already open|already closed/i.test(msg);
+			ctrl.opRunning = false;
 			ctrl.updateUsbState({
 				step: "error",
 				error: isDisconnect
