@@ -497,17 +497,10 @@ describe("_handleWifiProvision", () => {
 		);
 	});
 
-	it("performs RTS reset with DTR=false after sending credentials", async () => {
+	it("does not RTS reset — Improv handles WiFi in-session", async () => {
 		await flushProvision("MySSID", "s3cr3t");
 
-		expect(mockPort.setSignals).toHaveBeenCalledWith({
-			dataTerminalReady: false,
-			requestToSend: true,
-		});
-		expect(mockPort.setSignals).toHaveBeenCalledWith({
-			dataTerminalReady: false,
-			requestToSend: false,
-		});
+		expect(mockPort.setSignals).not.toHaveBeenCalled();
 	});
 
 	it("sets state to wifi_connecting then reading_ip", async () => {
@@ -520,10 +513,10 @@ describe("_handleWifiProvision", () => {
 		expect(steps).toContain("reading_ip");
 	});
 
-	it("calls detectIpAddress with fresh reader and 35000ms timeout", async () => {
+	it("calls detectIpAddress with same reader and 35000ms timeout", async () => {
 		await flushProvision("MySSID", "s3cr3t");
 
-		expect(detectIpAddress).toHaveBeenCalledWith(ipReader, 35000);
+		expect(detectIpAddress).toHaveBeenCalledWith(freshReader, 35000);
 	});
 
 	it("releases fresh reader and writer locks after sending credentials", async () => {

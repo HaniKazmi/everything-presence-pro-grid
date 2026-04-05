@@ -2439,38 +2439,19 @@ export class EPPGridPanel extends LitElement {
 			ctrl.updateUsbState({ step: "wifi_connecting" });
 			console.log("[wifiProvision] Sending credentials...");
 			await runWifiProvision(writer, ssid, password);
-			console.log("[wifiProvision] Credentials sent");
+			console.log(
+				"[wifiProvision] Credentials sent, detecting IP via Improv...",
+			);
 
-			// Release old locks, get fresh reader BEFORE reset so we capture
-			// the entire Improv state sequence (PROVISIONING → PROVISIONED → IP)
-			reader.releaseLock();
-			writer.releaseLock();
-			const ipReader = port.readable!.getReader();
-			(ctrl as any)._serialReader = ipReader;
-
-			// Hard-reset device — it applies WiFi creds on boot
-			console.log("[wifiProvision] RTS reset...");
-			try {
-				await port.setSignals({
-					dataTerminalReady: false,
-					requestToSend: true,
-				});
-				await new Promise((r) => setTimeout(r, 100));
-				await port.setSignals({
-					dataTerminalReady: false,
-					requestToSend: false,
-				});
-			} catch {
-				// RTS not supported on this board
-			}
-
+			// No RTS reset — Improv handles WiFi connection in-session:
+			// PROVISIONING (0x03) → PROVISIONED (0x04) → RPC_RESULT with IP
 			ctrl.updateUsbState({ step: "reading_ip" });
-			console.log("[wifiProvision] Detecting IP address...");
-			const ip = await detectIpAddress(ipReader, 35000);
+			const ip = await detectIpAddress(reader, 35000);
 			console.log("[wifiProvision] IP detected:", ip);
 
-			// Close serial port
-			ipReader.releaseLock();
+			// Release locks and close port
+			reader.releaseLock();
+			writer.releaseLock();
 			await port.close().catch(() => {});
 			ctrl.serialPort = null;
 			(ctrl as any)._serialReader = null;
