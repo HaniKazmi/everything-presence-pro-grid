@@ -909,16 +909,18 @@ describe("epp-flasher-view inline event handlers", () => {
 		expect(wifiSpy).toHaveBeenCalled();
 	});
 
-	it("@usb-retry without port resets state", () => {
+	it("@usb-retry without port retries WiFi config (prompts for new port)", () => {
 		const ctrl = (panel as any)._flasherCtrl;
 		ctrl.serialPort = null;
-		const resetSpy = vi.spyOn(ctrl, "resetUsbState");
+		const wifiSpy = vi
+			.spyOn(panel as any, "_handleUsbWifiConfig")
+			.mockResolvedValue(undefined);
 
 		getFlasherView().dispatchEvent(
 			new CustomEvent("usb-retry", { bubbles: true }),
 		);
 
-		expect(resetSpy).toHaveBeenCalled();
+		expect(wifiSpy).toHaveBeenCalled();
 	});
 
 	it("@wifi-scan calls _handleWifiScan", () => {

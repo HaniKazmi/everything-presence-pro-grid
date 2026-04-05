@@ -1091,19 +1091,15 @@ export class EPPGridPanel extends LitElement {
 						(ctrl as any)._serialReader = null;
 						(ctrl as any)._serialWriter = null;
 						if (ctrl.serialPort) {
-							// Try to verify port is still usable
 							const port = ctrl.serialPort;
-							if (port.readable && port.writable) {
-								this._handleUsbWifiConfig();
-							} else {
-								// Port is stale (device unplugged) — close and reset
+							if (!port.readable || !port.writable) {
+								// Port is stale (device unplugged) — clean up
 								port.close().catch(() => {});
 								ctrl.serialPort = null;
-								ctrl.resetUsbState();
 							}
-						} else {
-							ctrl.resetUsbState();
 						}
+						// Retry WiFi config — prompts for new port if needed
+						this._handleUsbWifiConfig();
 					}}
 					@wifi-scan=${() => {
 						this._handleWifiScan();

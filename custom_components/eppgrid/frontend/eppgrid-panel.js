@@ -3420,7 +3420,7 @@ const Tt=2,Ft=t=>(...e)=>({_$litDirective$:t,values:e});class Pt{constructor(t){
 					@flash-complete=${()=>{this._flasherCtrl.resetUsbState(),this._loadDevices(),this._panelTab="config"}}
 					@usb-flash=${t=>{this._handleUsbFlash(t.detail.variant)}}
 					@usb-wifi-config=${()=>{this._handleUsbWifiConfig()}}
-					@usb-retry=${()=>{const t=this._flasherCtrl;try{t._serialReader?.releaseLock()}catch{}try{t._serialWriter?.releaseLock()}catch{}if(t._serialReader=null,t._serialWriter=null,t.serialPort){const e=t.serialPort;e.readable&&e.writable?this._handleUsbWifiConfig():(e.close().catch(()=>{}),t.serialPort=null,t.resetUsbState())}else t.resetUsbState()}}
+					@usb-retry=${()=>{const t=this._flasherCtrl;try{t._serialReader?.releaseLock()}catch{}try{t._serialWriter?.releaseLock()}catch{}if(t._serialReader=null,t._serialWriter=null,t.serialPort){const e=t.serialPort;e.readable&&e.writable||(e.close().catch(()=>{}),t.serialPort=null)}this._handleUsbWifiConfig()}}
 					@wifi-scan=${()=>{this._handleWifiScan()}}
 					@wifi-provision=${t=>{this._handleWifiProvision(t.detail.ssid,t.detail.password)}}
 					@update-firmware=${t=>{this._selectedMac=t.detail.mac,this._updateFirmware()}}
