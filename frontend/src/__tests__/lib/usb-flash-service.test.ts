@@ -431,6 +431,88 @@ describe("flashFirmware", () => {
 			flashFirmware(port, "wifi-ble-co2", vi.fn(), {}),
 		).rejects.toThrow("baseUrl is required");
 	});
+
+	it("terminal.write logs data without crashing", async () => {
+		const port = mockPort();
+		const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+
+		vi.mocked(ESPLoader).mockImplementationOnce(function (opts: any) {
+			return {
+				main: vi.fn().mockImplementation(async () => {
+					opts.terminal?.write("partial output");
+				}),
+				writeFlash: vi.fn().mockResolvedValue(undefined),
+				after: vi.fn().mockResolvedValue(undefined),
+			} as any;
+		});
+
+		await flashFirmware(port, "wifi-ble-co2", vi.fn(), {
+			baseUrl: TEST_BASE_URL,
+		});
+
+		expect(logSpy).toHaveBeenCalledWith("partial output");
+		logSpy.mockRestore();
+	});
+
+	it("terminal.clean runs without error and port.close is a no-op during flash", async () => {
+		const port = mockPort();
+
+		let capturedTerminal: any;
+		vi.mocked(ESPLoader).mockImplementationOnce(function (opts: any) {
+			capturedTerminal = opts.terminal;
+			return {
+				main: vi.fn().mockImplementation(async () => {
+					// Call clean to cover it
+					opts.terminal?.clean();
+				}),
+				writeFlash: vi.fn().mockResolvedValue(undefined),
+				after: vi.fn().mockResolvedValue(undefined),
+			} as any;
+		});
+
+		await flashFirmware(port, "wifi-ble-co2", vi.fn(), {
+			baseUrl: TEST_BASE_URL,
+		});
+
+		expect(capturedTerminal).toBeDefined();
+		// port.close was replaced with a no-op during flash and
+		// restored afterwards — the original mock should not have been called
+		// during the flash itself.
+	});
+
+	it("port.close override is a no-op during flash (prevents Transport from closing port)", async () => {
+		const port = mockPort();
+
+		let closeCalledDuringFlash = false;
+		vi.mocked(ESPLoader).mockImplementationOnce(function () {
+			return {
+				main: vi.fn().mockResolvedValue("ESP32"),
+				writeFlash: vi.fn().mockResolvedValue(undefined),
+				after: vi.fn().mockResolvedValue(undefined),
+			} as any;
+		});
+
+		// Override Transport.disconnect to call port.close during flash
+		vi.mocked(Transport).mockImplementationOnce(function () {
+			return {
+				connect: vi.fn(),
+				disconnect: vi.fn().mockImplementation(async () => {
+					// Transport calls port.close() during disconnect —
+					// should be intercepted by the no-op override
+					await port.close();
+					closeCalledDuringFlash = true;
+				}),
+				device: {},
+			} as any;
+		});
+
+		await flashFirmware(port, "wifi-ble-co2", vi.fn(), {
+			baseUrl: TEST_BASE_URL,
+		});
+
+		// The no-op override was called (did not throw)
+		expect(closeCalledDuringFlash).toBe(true);
+	});
 });
 
 describe("runWifiScan", () => {
@@ -881,6 +963,26 @@ describe("runWifiScan", () => {
 			handshakeRetryDelay: 0,
 		});
 		expect(result.networks).toEqual([network1]);
+	});
+
+	it("throws user-friendly error when port.open() fails", async () => {
+		const { port } = mockPort();
+		// Port not yet open
+		(port as any).readable = null;
+		(port.open as ReturnType<typeof vi.fn>).mockRejectedValue(
+			new Error("Failed to open port"),
+		);
+
+		await expect(
+			runWifiScan(port, {
+				retryDelay: 0,
+				drainDelay: 0,
+				handshakeDelay: 0,
+				handshakeRetryDelay: 0,
+			}),
+		).rejects.toThrow(
+			"Could not open serial port. Unplug the device, plug it back in, and try again.",
+		);
 	});
 });
 

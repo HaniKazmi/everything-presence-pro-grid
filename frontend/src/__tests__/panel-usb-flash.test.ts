@@ -19,6 +19,25 @@ vi.mock("../lib/usb-flash-service.js", () => ({
 	detectIpAddress: vi.fn(),
 }));
 
+// Mock improv-serial for RTS reset path in _handleWifiProvision
+vi.mock("../lib/improv-serial.js", () => ({
+	sendImprovPacket: vi.fn().mockResolvedValue(undefined),
+	readImprovResponse: vi.fn().mockResolvedValue({
+		packets: [{ type: 0x01, data: new Uint8Array([0x04]) }],
+		buffer: [],
+	}),
+	buildGetStateCommand: vi.fn().mockReturnValue(new Uint8Array([2, 2, 0])),
+	buildScanCommand: vi.fn().mockReturnValue(new Uint8Array([1, 2, 3])),
+	buildWifiCommand: vi.fn().mockReturnValue(new Uint8Array([4, 5, 6])),
+	buildGetInfoCommand: vi.fn().mockReturnValue(new Uint8Array([3, 3, 0])),
+	parseScanResults: vi.fn().mockReturnValue(null),
+	TYPE_CURRENT_STATE: 0x01,
+	TYPE_ERROR_STATE: 0x02,
+	TYPE_RPC_RESULT: 0x04,
+	ERROR_UNABLE_TO_CONNECT: 0x03,
+}));
+
+import { readImprovResponse, sendImprovPacket } from "../lib/improv-serial.js";
 import {
 	detectIpAddress,
 	flashFirmware,
@@ -417,6 +436,22 @@ describe("_handleUsbFlash", () => {
 		);
 		expect(completeCall?.[0].variant).toBe("ethernet-ble-co2");
 	});
+
+	it("silently returns when error thrown and opId is stale (cancelled)", async () => {
+		const ctrl = (panel as any)._flasherCtrl;
+
+		// Make flashFirmware reject, but increment _opId to simulate cancel
+		(flashFirmware as ReturnType<typeof vi.fn>).mockImplementation(async () => {
+			(ctrl as any)._opId++; // simulate cancel via private field
+			throw new Error("Flash failed after cancel");
+		});
+
+		await (panel as any)._handleUsbFlash("eppgrid-wifi");
+
+		// Should not show error — just set opRunning false
+		expect(ctrl.usbFlashState?.step).not.toBe("error");
+		expect(ctrl.opRunning).toBe(false);
+	});
 });
 
 describe("_handleWifiProvision", () => {
@@ -635,6 +670,96 @@ describe("_handleWifiProvision", () => {
 			step: "error",
 			error: "WiFi provisioning failed",
 		});
+	});
+
+	it("performs RTS reset and re-reads IP when detectIpAddress returns null (0.0.0.0)", async () => {
+		const ctrl = (panel as any)._flasherCtrl;
+
+		// First detectIpAddress returns null (0.0.0.0)
+		// Second detectIpAddress (after RTS reset) returns real IP
+		(detectIpAddress as ReturnType<typeof vi.fn>)
+			.mockResolvedValueOnce(null)
+			.mockResolvedValueOnce("192.168.1.99");
+
+		// Mock improv-serial handshake response for the retry path
+		vi.mocked(readImprovResponse).mockResolvedValue({
+			packets: [{ type: 0x01, data: new Uint8Array([0x04]) }],
+			buffer: [],
+		});
+
+		// Mock drain reader — returns done immediately
+		let readerCallCount = 0;
+		mockPort.readable.getReader.mockImplementation(() => {
+			readerCallCount++;
+			if (readerCallCount === 1) {
+				// freshReader for initial provision
+				return freshReader;
+			}
+			// drain reader, handshake reader, fresh reader for re-read
+			return {
+				read: vi.fn().mockResolvedValue({ done: true, value: undefined }),
+				releaseLock: vi.fn(),
+				cancel: vi.fn(),
+				closed: Promise.resolve(undefined),
+			};
+		});
+
+		const addSpy = vi
+			.spyOn(ctrl, "addEsphomeDevice")
+			.mockResolvedValue(undefined);
+		const updateSpy = vi.spyOn(ctrl, "updateUsbState");
+
+		// Start the provision and advance timers enough for RTS reset path
+		const promise = (panel as any)._handleWifiProvision("MySSID", "s3cr3t");
+		await vi.advanceTimersByTimeAsync(15000);
+		await promise;
+
+		// Should have called setSignals for RTS reset
+		expect(mockPort.setSignals).toHaveBeenCalled();
+
+		// Should have completed with the final IP
+		const completeCall = updateSpy.mock.calls.find(
+			(c: any[]) => c[0].step === "complete",
+		);
+		expect(completeCall?.[0].ip).toBe("192.168.1.99");
+		expect(addSpy).toHaveBeenCalledWith("192.168.1.99");
+	});
+
+	it("completes without IP when RTS reset handshake fails after null IP", async () => {
+		const ctrl = (panel as any)._flasherCtrl;
+
+		// detectIpAddress returns null (0.0.0.0)
+		(detectIpAddress as ReturnType<typeof vi.fn>).mockResolvedValue(null);
+
+		// Handshake always fails
+		vi.mocked(sendImprovPacket).mockRejectedValue(new Error("no response"));
+
+		// Mock drain reader — returns done immediately
+		let readerCallCount = 0;
+		mockPort.readable.getReader.mockImplementation(() => {
+			readerCallCount++;
+			if (readerCallCount === 1) return freshReader;
+			return {
+				read: vi.fn().mockResolvedValue({ done: true, value: undefined }),
+				releaseLock: vi.fn(),
+				cancel: vi.fn(),
+				closed: Promise.resolve(undefined),
+			};
+		});
+
+		const updateSpy = vi.spyOn(ctrl, "updateUsbState");
+
+		// Start the provision but don't await yet — need to advance timers
+		const promise = (panel as any)._handleWifiProvision("MySSID", "s3cr3t");
+		// Advance past RTS reset (200ms) + 5 handshake retries (2000ms each) + margin
+		await vi.advanceTimersByTimeAsync(15000);
+		await promise;
+
+		// Should set complete with no IP (handshake failed, so no re-read)
+		const completeCall = updateSpy.mock.calls.find(
+			(c: any[]) => c[0].step === "complete",
+		);
+		expect(completeCall?.[0].ip).toBeUndefined();
 	});
 });
 

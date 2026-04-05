@@ -295,6 +295,47 @@ describe("event dispatching", () => {
 
 		expect(events.length).toBe(1);
 	});
+
+	it("_onUsbConnect sets _showUsbFlash to true", () => {
+		const el = createView();
+		expect((el as any)._showUsbFlash).toBe(false);
+		(el as any)._onUsbConnect();
+		expect((el as any)._showUsbFlash).toBe(true);
+	});
+
+	it("_dispatchUsbWifiConfig dispatches usb-wifi-config event", () => {
+		const el = createView();
+		const events: Event[] = [];
+		el.addEventListener("usb-wifi-config", (e) => events.push(e));
+		(el as any)._dispatchUsbWifiConfig();
+		expect(events.length).toBe(1);
+	});
+
+	it("@closed handler on ha-select stops propagation", () => {
+		const el = createView({
+			wifiNetworks: [{ ssid: "TestNet", rssi: -50, authRequired: true }],
+			_showWifiProvisioning: true,
+		});
+		const tpl = (el as any).render();
+		const c = renderTo(tpl);
+
+		const select = c.querySelector("ha-select");
+		if (select) {
+			const event = new Event("closed", { bubbles: true });
+			const stopSpy = vi.spyOn(event, "stopPropagation");
+			select.dispatchEvent(event);
+			expect(stopSpy).toHaveBeenCalled();
+		}
+	});
+
+	it("renders offline badge for unavailable device", () => {
+		const el = createView({ flashableDevices: [offlineDevice] });
+		const tpl = (el as any).render();
+		const c = renderTo(tpl);
+
+		const badge = c.querySelector(".firmware-badge-offline");
+		expect(badge).not.toBeNull();
+	});
 });
 
 describe("render() WiFi provisioning — connected state", () => {

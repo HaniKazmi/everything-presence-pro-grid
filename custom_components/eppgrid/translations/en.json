@@ -14,7 +14,7 @@
     "step": {
       "init": {
         "data": {
-          "sidebar_panel": "Show sidebar panel"
+          "sidebar_panel": "Show in sidebar"
         }
       }
     }
