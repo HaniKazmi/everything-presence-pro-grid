@@ -1,12 +1,12 @@
 import type { ReactiveController, ReactiveControllerHost } from "lit";
 import type { WifiNetwork } from "../lib/improv-serial.js";
-import type { FlashableDevice, OtaProgress, UsbFlashState } from "../types.js";
+import type { FlashableDevice, UsbFlashState } from "../types.js";
 
 export class FlasherController implements ReactiveController {
 	flashableDevices: FlashableDevice[] = [];
+	firmwareBaseUrl = "";
+	firmwareVersion = "";
 	loading = true;
-	otaProgress: OtaProgress | null = null;
-	flashingMac: string | null = null;
 	usbConnected = false;
 	usbDeviceMac: string | null = null;
 	usbExistingDevice: FlashableDevice | null = null;
@@ -15,8 +15,9 @@ export class FlasherController implements ReactiveController {
 
 	private _host: ReactiveControllerHost;
 	private _hass: any = null;
-	private _unsubOta?: () => void;
 	private _serialPort: SerialPort | null = null;
+	private _opId = 0;
+	private _opRunning = false;
 
 	constructor(host: ReactiveControllerHost) {
 		this._host = host;
@@ -25,8 +26,6 @@ export class FlasherController implements ReactiveController {
 
 	hostConnected(): void {}
 	hostDisconnected(): void {
-		this._unsubOta?.();
-		this._unsubOta = undefined;
 		this._serialPort?.close().catch(() => {});
 		this._serialPort = null;
 	}
@@ -49,52 +48,13 @@ export class FlasherController implements ReactiveController {
 				type: "eppgrid/list_flashable_devices",
 			});
 			this.flashableDevices = resp.devices;
+			this.firmwareBaseUrl = resp.firmware_base_url ?? "";
+			this.firmwareVersion = resp.latest_firmware_version ?? "";
 		} catch {
 			this.flashableDevices = [];
 		}
 		this.loading = false;
 		this._host.requestUpdate();
-	}
-
-	async startOtaFlash(mac: string, variant: string): Promise<void> {
-		if (!this._hass) return;
-		this.flashingMac = mac;
-		this.otaProgress = null;
-		this._host.requestUpdate();
-
-		return new Promise<void>((resolve) => {
-			this._hass.connection
-				.subscribeMessage(
-					(msg: OtaProgress) => {
-						this.otaProgress = msg;
-						this._host.requestUpdate();
-						if (
-							msg.status === "success" ||
-							msg.status === "failed" ||
-							msg.status === "timeout"
-						) {
-							this._unsubOta?.();
-							this._unsubOta = undefined;
-							this.flashingMac = null;
-							resolve();
-						}
-					},
-					{ type: "eppgrid/flash_ota", mac, variant },
-				)
-				.then((unsub: () => void) => {
-					this._unsubOta = unsub;
-				})
-				.catch(() => {
-					this.otaProgress = {
-						step: "error",
-						status: "failed",
-						error: "Failed to start OTA flash",
-					};
-					this.flashingMac = null;
-					this._host.requestUpdate();
-					resolve();
-				});
-		});
 	}
 
 	async deleteEsphomeDevice(configEntryId: string): Promise<void> {
@@ -115,9 +75,33 @@ export class FlasherController implements ReactiveController {
 		this._host.requestUpdate();
 	}
 
+	/** Increment to signal in-flight operations to bail out. */
+	get opId(): number {
+		return this._opId;
+	}
+
+	get opRunning(): boolean {
+		return this._opRunning;
+	}
+	set opRunning(v: boolean) {
+		this._opRunning = v;
+	}
+
 	resetUsbState(): void {
 		this.usbFlashState = null;
 		this.wifiNetworks = [];
+		this._opId++;
+		// Release any known reader/writer locks
+		try {
+			(this as any)._serialReader?.releaseLock();
+		} catch {}
+		try {
+			(this as any)._serialWriter?.releaseLock();
+		} catch {}
+		(this as any)._serialReader = null;
+		(this as any)._serialWriter = null;
+		// Clear port reference — don't force-close (crashes Chrome if streams locked)
+		this._serialPort = null;
 		this._host.requestUpdate();
 	}
 

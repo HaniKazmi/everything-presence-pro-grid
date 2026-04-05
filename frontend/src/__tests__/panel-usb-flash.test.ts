@@ -19,6 +19,25 @@ vi.mock("../lib/usb-flash-service.js", () => ({
 	detectIpAddress: vi.fn(),
 }));
 
+// Mock improv-serial for RTS reset path in _handleWifiProvision
+vi.mock("../lib/improv-serial.js", () => ({
+	sendImprovPacket: vi.fn().mockResolvedValue(undefined),
+	readImprovResponse: vi.fn().mockResolvedValue({
+		packets: [{ type: 0x01, data: new Uint8Array([0x04]) }],
+		buffer: [],
+	}),
+	buildGetStateCommand: vi.fn().mockReturnValue(new Uint8Array([2, 2, 0])),
+	buildScanCommand: vi.fn().mockReturnValue(new Uint8Array([1, 2, 3])),
+	buildWifiCommand: vi.fn().mockReturnValue(new Uint8Array([4, 5, 6])),
+	buildGetInfoCommand: vi.fn().mockReturnValue(new Uint8Array([3, 3, 0])),
+	parseScanResults: vi.fn().mockReturnValue(null),
+	TYPE_CURRENT_STATE: 0x01,
+	TYPE_ERROR_STATE: 0x02,
+	TYPE_RPC_RESULT: 0x04,
+	ERROR_UNABLE_TO_CONNECT: 0x03,
+}));
+
+import { readImprovResponse, sendImprovPacket } from "../lib/improv-serial.js";
 import {
 	detectIpAddress,
 	flashFirmware,
@@ -28,7 +47,13 @@ import {
 
 /** Reset all mocks to their default happy-path implementations. */
 function resetServiceMocks() {
-	(flashFirmware as ReturnType<typeof vi.fn>).mockResolvedValue(undefined);
+	(flashFirmware as ReturnType<typeof vi.fn>).mockImplementation(
+		async (_port: any, _variant: any, _onProgress: any, options: any) => {
+			if (options?.beforeFlash) {
+				await options.beforeFlash(undefined);
+			}
+		},
+	);
 	(runWifiScan as ReturnType<typeof vi.fn>).mockResolvedValue({
 		writer: { releaseLock: vi.fn() },
 		reader: { releaseLock: vi.fn() },
@@ -76,6 +101,19 @@ describe("_handleUsbFlash", () => {
 		});
 	});
 
+	it("shows fatal error immediately when opRunning is true", async () => {
+		const ctrl = (panel as any)._flasherCtrl;
+		ctrl.opRunning = true;
+
+		await (panel as any)._handleUsbFlash("eppgrid-wifi");
+
+		expect(ctrl.usbFlashState).toMatchObject({
+			step: "error",
+			fatal: true,
+		});
+		expect(ctrl.usbFlashState.error).toContain("busy");
+	});
+
 	it("sets state to connecting, then flashing, then wifi_scan, then wifi_provision on success", async () => {
 		const ctrl = (panel as any)._flasherCtrl;
 		const updateSpy = vi.spyOn(ctrl, "updateUsbState");
@@ -104,6 +142,10 @@ describe("_handleUsbFlash", () => {
 			mockPort,
 			"eppgrid-wifi",
 			expect.any(Function),
+			expect.objectContaining({
+				beforeFlash: expect.any(Function),
+				baseUrl: expect.any(String),
+			}),
 		);
 	});
 
@@ -157,7 +199,7 @@ describe("_handleUsbFlash", () => {
 
 		await (panel as any)._handleUsbFlash("eppgrid-wifi");
 
-		expect(ctrl.usbFlashState).toEqual({
+		expect(ctrl.usbFlashState).toMatchObject({
 			step: "error",
 			error: "USB exploded",
 		});
@@ -172,7 +214,7 @@ describe("_handleUsbFlash", () => {
 
 		await (panel as any)._handleUsbFlash("eppgrid-wifi");
 
-		expect(ctrl.usbFlashState).toEqual({
+		expect(ctrl.usbFlashState).toMatchObject({
 			step: "error",
 			error: "Flash failed",
 		});
@@ -187,7 +229,7 @@ describe("_handleUsbFlash", () => {
 
 		await (panel as any)._handleUsbFlash("eppgrid-wifi");
 
-		expect(ctrl.usbFlashState).toEqual({
+		expect(ctrl.usbFlashState).toMatchObject({
 			step: "error",
 			error: "Scan failed",
 		});
@@ -260,10 +302,155 @@ describe("_handleUsbFlash", () => {
 
 		await (panel as any)._handleUsbFlash("eppgrid-wifi");
 
-		expect(ctrl.usbFlashState).toEqual({
+		expect(ctrl.usbFlashState).toMatchObject({
 			step: "error",
 			error: "Unknown error",
 		});
+	});
+
+	it("calls window.confirm and deleteEsphomeDevice when device matches original firmware", async () => {
+		const ctrl = (panel as any)._flasherCtrl;
+		ctrl.flashableDevices = [
+			{
+				mac: "AA:BB:CC:DD:EE:FF",
+				name: "Test",
+				host: "192.168.1.10",
+				available: true,
+				firmware_type: "original",
+				firmware_version: "1.0.0",
+				esphome_config_entry_id: "entry-123",
+			},
+		];
+
+		vi.stubGlobal("confirm", vi.fn().mockReturnValue(true));
+		const deleteSpy = vi
+			.spyOn(ctrl, "deleteEsphomeDevice")
+			.mockResolvedValue(undefined);
+
+		(flashFirmware as ReturnType<typeof vi.fn>).mockImplementation(
+			async (_port: any, _variant: any, _onProgress: any, options: any) => {
+				if (options?.beforeFlash) {
+					await options.beforeFlash("AA:BB:CC:DD:EE:FF");
+				}
+			},
+		);
+
+		await (panel as any)._handleUsbFlash("ethernet-ble-co2");
+
+		expect(window.confirm).toHaveBeenCalled();
+		expect(deleteSpy).toHaveBeenCalledWith("entry-123");
+	});
+
+	it("cancels flash when user declines confirm for original firmware device", async () => {
+		const ctrl = (panel as any)._flasherCtrl;
+		ctrl.flashableDevices = [
+			{
+				mac: "AA:BB:CC:DD:EE:FF",
+				name: "Test",
+				host: "192.168.1.10",
+				available: true,
+				firmware_type: "original",
+				firmware_version: "1.0.0",
+				esphome_config_entry_id: "entry-123",
+			},
+		];
+
+		vi.stubGlobal("confirm", vi.fn().mockReturnValue(false));
+
+		(flashFirmware as ReturnType<typeof vi.fn>).mockImplementation(
+			async (_port: any, _variant: any, _onProgress: any, options: any) => {
+				if (options?.beforeFlash) {
+					await options.beforeFlash("AA:BB:CC:DD:EE:FF");
+				}
+			},
+		);
+
+		await (panel as any)._handleUsbFlash("ethernet-ble-co2");
+
+		expect(window.confirm).toHaveBeenCalled();
+		expect(ctrl.usbFlashState?.step).toBe("error");
+	});
+
+	it("skips confirm when device has eppgrid firmware", async () => {
+		const ctrl = (panel as any)._flasherCtrl;
+		ctrl.flashableDevices = [
+			{
+				mac: "AA:BB:CC:DD:EE:FF",
+				name: "Test",
+				host: "192.168.1.10",
+				available: true,
+				firmware_type: "eppgrid",
+				firmware_version: "2.0.0",
+				esphome_config_entry_id: "entry-123",
+			},
+		];
+
+		vi.stubGlobal("confirm", vi.fn().mockReturnValue(true));
+
+		(flashFirmware as ReturnType<typeof vi.fn>).mockImplementation(
+			async (_port: any, _variant: any, _onProgress: any, options: any) => {
+				if (options?.beforeFlash) {
+					await options.beforeFlash("AA:BB:CC:DD:EE:FF");
+				}
+			},
+		);
+
+		const updateSpy = vi.spyOn(ctrl, "updateUsbState");
+		await (panel as any)._handleUsbFlash("ethernet-ble-co2");
+
+		expect(window.confirm).not.toHaveBeenCalled();
+		const steps = updateSpy.mock.calls.map((c: any[]) => c[0].step);
+		expect(steps).toContain("complete");
+	});
+
+	it("skips confirm when MAC does not match any device", async () => {
+		const ctrl = (panel as any)._flasherCtrl;
+		ctrl.flashableDevices = [];
+
+		vi.stubGlobal("confirm", vi.fn().mockReturnValue(true));
+
+		(flashFirmware as ReturnType<typeof vi.fn>).mockImplementation(
+			async (_port: any, _variant: any, _onProgress: any, options: any) => {
+				if (options?.beforeFlash) {
+					await options.beforeFlash("AA:BB:CC:DD:EE:FF");
+				}
+			},
+		);
+
+		const updateSpy = vi.spyOn(ctrl, "updateUsbState");
+		await (panel as any)._handleUsbFlash("ethernet-ble-co2");
+
+		expect(window.confirm).not.toHaveBeenCalled();
+		const steps = updateSpy.mock.calls.map((c: any[]) => c[0].step);
+		expect(steps).toContain("complete");
+	});
+
+	it("sets complete with variant for ethernet", async () => {
+		const ctrl = (panel as any)._flasherCtrl;
+		const updateSpy = vi.spyOn(ctrl, "updateUsbState");
+
+		await (panel as any)._handleUsbFlash("ethernet-ble-co2");
+
+		const completeCall = updateSpy.mock.calls.find(
+			(c: any[]) => c[0].step === "complete",
+		);
+		expect(completeCall?.[0].variant).toBe("ethernet-ble-co2");
+	});
+
+	it("silently returns when error thrown and opId is stale (cancelled)", async () => {
+		const ctrl = (panel as any)._flasherCtrl;
+
+		// Make flashFirmware reject, but increment _opId to simulate cancel
+		(flashFirmware as ReturnType<typeof vi.fn>).mockImplementation(async () => {
+			(ctrl as any)._opId++; // simulate cancel via private field
+			throw new Error("Flash failed after cancel");
+		});
+
+		await (panel as any)._handleUsbFlash("eppgrid-wifi");
+
+		// Should not show error — just set opRunning false
+		expect(ctrl.usbFlashState?.step).not.toBe("error");
+		expect(ctrl.opRunning).toBe(false);
 	});
 });
 
@@ -309,11 +496,10 @@ describe("_handleWifiProvision", () => {
 		vi.useRealTimers();
 	});
 
-	/** Flush all pending timers so _handleWifiProvision can complete. */
 	async function flushProvision(ssid: string, password: string) {
 		const promise = (panel as any)._handleWifiProvision(ssid, password);
-		// Advance past all setTimeout calls (100ms RTS + 5000ms boot)
-		await vi.advanceTimersByTimeAsync(6000);
+		// Advance past RTS reset setTimeout (100ms)
+		await vi.advanceTimersByTimeAsync(200);
 		return promise;
 	}
 
@@ -359,14 +545,13 @@ describe("_handleWifiProvision", () => {
 		);
 	});
 
-	it("performs RTS reset after sending credentials", async () => {
+	it("does not RTS reset — Improv handles WiFi in-session", async () => {
 		await flushProvision("MySSID", "s3cr3t");
 
-		expect(mockPort.setSignals).toHaveBeenCalledWith({ requestToSend: true });
-		expect(mockPort.setSignals).toHaveBeenCalledWith({ requestToSend: false });
+		expect(mockPort.setSignals).not.toHaveBeenCalled();
 	});
 
-	it("sets state to reading_ip after runWifiProvision", async () => {
+	it("sets state to wifi_connecting then reading_ip", async () => {
 		const ctrl = (panel as any)._flasherCtrl;
 		const updateSpy = vi.spyOn(ctrl, "updateUsbState");
 
@@ -376,10 +561,10 @@ describe("_handleWifiProvision", () => {
 		expect(steps).toContain("reading_ip");
 	});
 
-	it("calls detectIpAddress with fresh reader and 35000ms timeout", async () => {
+	it("calls detectIpAddress with same reader and 35000ms timeout", async () => {
 		await flushProvision("MySSID", "s3cr3t");
 
-		expect(detectIpAddress).toHaveBeenCalledWith(ipReader, 35000);
+		expect(detectIpAddress).toHaveBeenCalledWith(freshReader, 35000);
 	});
 
 	it("releases fresh reader and writer locks after sending credentials", async () => {
@@ -485,6 +670,96 @@ describe("_handleWifiProvision", () => {
 			step: "error",
 			error: "WiFi provisioning failed",
 		});
+	});
+
+	it("performs RTS reset and re-reads IP when detectIpAddress returns null (0.0.0.0)", async () => {
+		const ctrl = (panel as any)._flasherCtrl;
+
+		// First detectIpAddress returns null (0.0.0.0)
+		// Second detectIpAddress (after RTS reset) returns real IP
+		(detectIpAddress as ReturnType<typeof vi.fn>)
+			.mockResolvedValueOnce(null)
+			.mockResolvedValueOnce("192.168.1.99");
+
+		// Mock improv-serial handshake response for the retry path
+		vi.mocked(readImprovResponse).mockResolvedValue({
+			packets: [{ type: 0x01, data: new Uint8Array([0x04]) }],
+			buffer: [],
+		});
+
+		// Mock drain reader — returns done immediately
+		let readerCallCount = 0;
+		mockPort.readable.getReader.mockImplementation(() => {
+			readerCallCount++;
+			if (readerCallCount === 1) {
+				// freshReader for initial provision
+				return freshReader;
+			}
+			// drain reader, handshake reader, fresh reader for re-read
+			return {
+				read: vi.fn().mockResolvedValue({ done: true, value: undefined }),
+				releaseLock: vi.fn(),
+				cancel: vi.fn(),
+				closed: Promise.resolve(undefined),
+			};
+		});
+
+		const addSpy = vi
+			.spyOn(ctrl, "addEsphomeDevice")
+			.mockResolvedValue(undefined);
+		const updateSpy = vi.spyOn(ctrl, "updateUsbState");
+
+		// Start the provision and advance timers enough for RTS reset path
+		const promise = (panel as any)._handleWifiProvision("MySSID", "s3cr3t");
+		await vi.advanceTimersByTimeAsync(15000);
+		await promise;
+
+		// Should have called setSignals for RTS reset
+		expect(mockPort.setSignals).toHaveBeenCalled();
+
+		// Should have completed with the final IP
+		const completeCall = updateSpy.mock.calls.find(
+			(c: any[]) => c[0].step === "complete",
+		);
+		expect(completeCall?.[0].ip).toBe("192.168.1.99");
+		expect(addSpy).toHaveBeenCalledWith("192.168.1.99");
+	});
+
+	it("completes without IP when RTS reset handshake fails after null IP", async () => {
+		const ctrl = (panel as any)._flasherCtrl;
+
+		// detectIpAddress returns null (0.0.0.0)
+		(detectIpAddress as ReturnType<typeof vi.fn>).mockResolvedValue(null);
+
+		// Handshake always fails
+		vi.mocked(sendImprovPacket).mockRejectedValue(new Error("no response"));
+
+		// Mock drain reader — returns done immediately
+		let readerCallCount = 0;
+		mockPort.readable.getReader.mockImplementation(() => {
+			readerCallCount++;
+			if (readerCallCount === 1) return freshReader;
+			return {
+				read: vi.fn().mockResolvedValue({ done: true, value: undefined }),
+				releaseLock: vi.fn(),
+				cancel: vi.fn(),
+				closed: Promise.resolve(undefined),
+			};
+		});
+
+		const updateSpy = vi.spyOn(ctrl, "updateUsbState");
+
+		// Start the provision but don't await yet — need to advance timers
+		const promise = (panel as any)._handleWifiProvision("MySSID", "s3cr3t");
+		// Advance past RTS reset (200ms) + 5 handshake retries (2000ms each) + margin
+		await vi.advanceTimersByTimeAsync(15000);
+		await promise;
+
+		// Should set complete with no IP (handshake failed, so no re-read)
+		const completeCall = updateSpy.mock.calls.find(
+			(c: any[]) => c[0].step === "complete",
+		);
+		expect(completeCall?.[0].ip).toBeUndefined();
 	});
 });
 
@@ -671,7 +946,7 @@ describe("_handleUsbWifiConfig", () => {
 		});
 	});
 
-	it("throws error when no networks found", async () => {
+	it("proceeds to wifi_provision when no networks found (allows manual SSID)", async () => {
 		(runWifiScan as ReturnType<typeof vi.fn>).mockResolvedValue({
 			writer: { releaseLock: vi.fn() },
 			reader: { releaseLock: vi.fn() },
@@ -679,14 +954,13 @@ describe("_handleUsbWifiConfig", () => {
 		});
 
 		const ctrl = (panel as any)._flasherCtrl;
+		const updateSpy = vi.spyOn(ctrl, "updateUsbState");
 
 		await (panel as any)._handleUsbWifiConfig();
 
-		expect(ctrl.usbFlashState).toEqual({
-			step: "error",
-			error:
-				"No WiFi networks found. If this device is flashed with ethernet firmware, WiFi configuration is not available.",
-		});
+		const steps = updateSpy.mock.calls.map((c: any[]) => c[0].step);
+		expect(steps).toContain("wifi_provision");
+		expect(ctrl.wifiNetworks).toEqual([]);
 	});
 });
 
@@ -720,20 +994,6 @@ describe("epp-flasher-view inline event handlers", () => {
 		return el;
 	}
 
-	it("@flash-ota calls flasherCtrl.startOtaFlash", () => {
-		const ctrl = (panel as any)._flasherCtrl;
-		const spy = vi.spyOn(ctrl, "startOtaFlash").mockResolvedValue(undefined);
-
-		getFlasherView().dispatchEvent(
-			new CustomEvent("flash-ota", {
-				detail: { mac: "aa:bb:cc", variant: "eppgrid-wifi" },
-				bubbles: true,
-			}),
-		);
-
-		expect(spy).toHaveBeenCalledWith("aa:bb:cc", "eppgrid-wifi");
-	});
-
 	it("@flash-complete calls resetUsbState, _loadDevices, and switches to config tab", () => {
 		const ctrl = (panel as any)._flasherCtrl;
 		const resetSpy = vi.spyOn(ctrl, "resetUsbState");
@@ -765,18 +1025,18 @@ describe("epp-flasher-view inline event handlers", () => {
 		expect(spy).toHaveBeenCalledWith("eppgrid-ble");
 	});
 
-	it("@usb-retry releases reader/writer, closes port, sets serialPort to null, then calls resetUsbState", () => {
+	it("@usb-retry with open port retries WiFi config instead of resetting", () => {
 		const ctrl = (panel as any)._flasherCtrl;
 		const mockReader = { releaseLock: vi.fn() };
 		const mockWriter = { releaseLock: vi.fn() };
-		const mockPort = {
-			close: vi.fn().mockResolvedValue(undefined),
-		};
+		const mockPort = makeMockPort();
 		(ctrl as any)._serialReader = mockReader;
 		(ctrl as any)._serialWriter = mockWriter;
 		ctrl.serialPort = mockPort;
 
-		const resetSpy = vi.spyOn(ctrl, "resetUsbState");
+		const wifiSpy = vi
+			.spyOn(panel as any, "_handleUsbWifiConfig")
+			.mockResolvedValue(undefined);
 
 		getFlasherView().dispatchEvent(
 			new CustomEvent("usb-retry", { bubbles: true }),
@@ -784,11 +1044,21 @@ describe("epp-flasher-view inline event handlers", () => {
 
 		expect(mockReader.releaseLock).toHaveBeenCalled();
 		expect(mockWriter.releaseLock).toHaveBeenCalled();
-		expect((ctrl as any)._serialReader).toBeNull();
-		expect((ctrl as any)._serialWriter).toBeNull();
-		expect(mockPort.close).toHaveBeenCalled();
-		expect(ctrl.serialPort).toBeNull();
-		expect(resetSpy).toHaveBeenCalled();
+		expect(wifiSpy).toHaveBeenCalled();
+	});
+
+	it("@usb-retry without port retries WiFi config (prompts for new port)", () => {
+		const ctrl = (panel as any)._flasherCtrl;
+		ctrl.serialPort = null;
+		const wifiSpy = vi
+			.spyOn(panel as any, "_handleUsbWifiConfig")
+			.mockResolvedValue(undefined);
+
+		getFlasherView().dispatchEvent(
+			new CustomEvent("usb-retry", { bubbles: true }),
+		);
+
+		expect(wifiSpy).toHaveBeenCalled();
 	});
 
 	it("@wifi-scan calls _handleWifiScan", () => {
@@ -832,5 +1102,38 @@ describe("epp-flasher-view inline event handlers", () => {
 		expect(resetSpy).toHaveBeenCalled();
 		expect(loadSpy).toHaveBeenCalled();
 		expect((panel as any)._panelTab).toBe("config");
+	});
+
+	it("@update-firmware sets _selectedMac and calls _updateFirmware", () => {
+		const spy = vi
+			.spyOn(panel as any, "_updateFirmware")
+			.mockResolvedValue(undefined);
+
+		getFlasherView().dispatchEvent(
+			new CustomEvent("update-firmware", {
+				detail: { mac: "aa:bb:cc" },
+				bubbles: true,
+			}),
+		);
+
+		expect((panel as any)._selectedMac).toBe("aa:bb:cc");
+		expect(spy).toHaveBeenCalled();
+	});
+
+	it("switching to flasher tab resets stale usbFlashState", () => {
+		const ctrl = (panel as any)._flasherCtrl;
+		ctrl.usbFlashState = { step: "complete", variant: "ethernet-ble-co2" };
+		const resetSpy = vi.spyOn(ctrl, "resetUsbState");
+
+		// Simulate clicking the "Flash Firmware" tab
+		const tabButtons = container.querySelectorAll(".tab");
+		const flasherTab = Array.from(tabButtons).find(
+			(btn) => btn.textContent?.trim() === "tabs.flash_firmware",
+		) as HTMLElement;
+		expect(flasherTab).toBeTruthy();
+		flasherTab.click();
+
+		expect(resetSpy).toHaveBeenCalled();
+		expect(ctrl.usbFlashState).toBeNull();
 	});
 });

@@ -107,30 +107,4 @@ describe("epp-flasher-card element", () => {
 
 		expect(loadSpy).not.toHaveBeenCalled();
 	});
-
-	it("handles flash-ota event from view by calling startOtaFlash", async () => {
-		const el = createCard();
-		el.hass = {
-			callWS: vi.fn().mockResolvedValue({ devices: [] }),
-			connection: { subscribeMessage: vi.fn().mockResolvedValue(vi.fn()) },
-		};
-		document.body.appendChild(el);
-		await el.updateComplete;
-
-		const startOtaSpy = vi
-			.spyOn((el as any)._flasherCtrl, "startOtaFlash")
-			.mockResolvedValue(undefined);
-
-		const shadow = el.shadowRoot!;
-		const view = shadow.querySelector("epp-flasher-view")!;
-		view.dispatchEvent(
-			new CustomEvent("flash-ota", {
-				detail: { mac: "AA:BB:CC:DD:EE:01", variant: "wifi" },
-				bubbles: true,
-				composed: true,
-			}),
-		);
-
-		expect(startOtaSpy).toHaveBeenCalledWith("AA:BB:CC:DD:EE:01", "wifi");
-	});
 });

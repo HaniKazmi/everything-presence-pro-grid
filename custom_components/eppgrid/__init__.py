@@ -13,6 +13,7 @@ from homeassistant.core import HomeAssistant
 
 from .const import DOMAIN
 from .device_manager import DeviceManager
+from .firmware_proxy import FirmwareProxyView
 from .storage import EPPGridStore
 from .websocket_api import async_register_websocket_commands
 
@@ -40,6 +41,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     hass.data[DOMAIN] = manager
     async_register_websocket_commands(hass, manager)
+    hass.http.register_view(FirmwareProxyView())
     await manager.async_start()
 
     return True

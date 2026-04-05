@@ -16,6 +16,9 @@ from custom_components.eppgrid.const import DOMAIN
 
 async def test_setup_entry_registers_manager(hass: HomeAssistant, config_entry: MockConfigEntry) -> None:
     """Setup creates a DeviceManager and stores it in hass.data."""
+    if hass.http is None:
+        hass.http = MagicMock()
+
     with (
         patch("custom_components.eppgrid.DeviceManager") as mock_dm_cls,
         patch("custom_components.eppgrid._register_panel", new_callable=AsyncMock),
@@ -31,6 +34,9 @@ async def test_setup_entry_registers_manager(hass: HomeAssistant, config_entry: 
 
 async def test_setup_entry_registers_panel_when_enabled(hass: HomeAssistant, config_entry: MockConfigEntry) -> None:
     """Panel is registered when sidebar_panel is True (default)."""
+    if hass.http is None:
+        hass.http = MagicMock()
+
     with (
         patch("custom_components.eppgrid.DeviceManager") as mock_dm_cls,
         patch("custom_components.eppgrid._register_panel", new_callable=AsyncMock) as mock_panel,
@@ -44,6 +50,9 @@ async def test_setup_entry_registers_panel_when_enabled(hass: HomeAssistant, con
 
 async def test_setup_entry_skips_panel_when_disabled(hass: HomeAssistant, config_entry: MockConfigEntry) -> None:
     """Panel is not registered when sidebar_panel is False."""
+    if hass.http is None:
+        hass.http = MagicMock()
+
     with (
         patch("custom_components.eppgrid.DeviceManager") as mock_dm_cls,
         patch("custom_components.eppgrid.EPPGridStore") as mock_store_cls,
@@ -61,6 +70,9 @@ async def test_setup_entry_skips_panel_when_disabled(hass: HomeAssistant, config
 
 async def test_unload_entry_stops_manager(hass: HomeAssistant, config_entry: MockConfigEntry) -> None:
     """Unload stops the DeviceManager and removes from hass.data."""
+    if hass.http is None:
+        hass.http = MagicMock()
+
     with (
         patch("custom_components.eppgrid.DeviceManager") as mock_dm_cls,
         patch("custom_components.eppgrid._register_panel", new_callable=AsyncMock),

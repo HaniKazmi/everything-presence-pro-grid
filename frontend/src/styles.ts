@@ -525,6 +525,11 @@ export const flasherStyles = css`
     color: #2e7d32;
   }
 
+  .firmware-badge-offline {
+    background: #9e9e9e20;
+    color: #616161;
+  }
+
   ha-button[raised] {
     --mdc-theme-primary: var(--primary-color, #03a9f4);
   }
@@ -657,15 +662,17 @@ export const flasherStyles = css`
     text-align: center;
     padding: 24px 0;
     color: var(--success-color, #4caf50);
+    max-width: 400px;
+    margin: 0 auto;
   }
 
   .usb-complete ha-icon {
     --mdc-icon-size: 48px;
-    margin-bottom: 8px;
+    margin-bottom: 16px;
   }
 
   .usb-complete p {
-    margin: 0;
+    margin: 4px 0;
     font-size: 14px;
   }
 
@@ -727,44 +734,6 @@ export const flasherStyles = css`
     color: var(--secondary-text-color, #757575);
   }
 
-  .progress-steps {
-    display: flex;
-    flex-direction: column;
-    gap: 10px;
-    padding: 16px;
-    background: var(--card-background-color, #fff);
-    border: 1px solid var(--divider-color, #e0e0e0);
-    border-radius: var(--ha-card-border-radius, 12px);
-  }
-
-  .progress-step {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    font-size: 14px;
-    color: var(--secondary-text-color, #757575);
-  }
-
-  .progress-step.step-done {
-    color: var(--success-color, #4caf50);
-  }
-
-  .progress-step.step-active {
-    color: var(--primary-text-color, #212121);
-    font-weight: 500;
-  }
-
-  .progress-step.step-error {
-    color: var(--error-color, #f44336);
-  }
-
-  .step-icon {
-    font-size: 16px;
-    width: 20px;
-    text-align: center;
-    flex-shrink: 0;
-  }
-
   .flasher-loading {
     padding: 32px 24px;
     text-align: center;
@@ -795,9 +764,6 @@ export const flasherStyles = css`
     margin-bottom: 16px;
   }
 
-  .variant-selector ha-button.selected {
-    --mdc-theme-primary: var(--primary-color, #03a9f4);
-  }
 
   .confirm-dialog {
     position: fixed;

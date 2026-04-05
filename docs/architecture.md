@@ -217,6 +217,58 @@ panel's reactive state — these must be set before subscriptions start.
 **Navigation protection:** Intercepts `beforeunload` and
 `history.pushState/replaceState` when unsaved changes exist.
 
+### USB Flashing & WiFi Provisioning
+
+The Flash Firmware tab provides USB-based firmware flashing and WiFi
+provisioning via the Web Serial API and esptool.js, all running in the
+browser.
+
+**Key files:**
+- `lib/usb-flash-service.ts` — esptool.js flash orchestration, manifest fetch
+- `lib/improv-serial.ts` — Improv Serial protocol (packet building, parsing, buffer management)
+- `components/epp-flasher-view.ts` — Flash UI (device list, variant selector, WiFi provisioning)
+- `controllers/flasher-controller.ts` — Serial port lifecycle, USB state machine
+
+**Firmware manifests** are proxied through the HA backend at
+`/api/eppgrid/firmware/` to avoid CORS issues with GitHub Releases.
+The firmware version is pinned by `FIRMWARE_VERSION` in `const.py`.
+
+**USB flash flow:**
+1. User selects serial port via Web Serial API
+2. esptool.js detects chip, uploads stub, flashes firmware
+3. MAC detected from esptool terminal output during `loader.main()`
+4. `beforeFlash` callback checks MAC against installed devices — if original
+   firmware with ESPHome entry, confirms and deletes the old entry
+5. After flash, `transport.disconnect()` releases reader (port stays open
+   via CH340 monkey-patch — see Serial Port Lifecycle below)
+
+**WiFi provisioning flow** (wifi variants only, after USB flash):
+1. RTS reset → Improv handshake with retry (5 attempts, 2s delay)
+2. WiFi scan via Improv SCAN command
+3. User selects network, enters password
+4. Send credentials via Improv WIFI_SETTINGS command
+5. Wait for PROVISIONING (0x03) → PROVISIONED (0x04) state transition
+   (confirms creds saved to NVS)
+6. Read RPC_RESULT for IP. If IP is `0.0.0.0` (DHCP not ready yet):
+   - RTS reset to reboot device
+   - Re-handshake with retry
+   - Read definitive IP from fresh Improv session after reboot
+7. Auto-add device to HA via `eppgrid/add_esphome_device` WebSocket API
+
+**Serial port lifecycle (CH340 workaround):**
+`transport.disconnect()` calls `port.close()` internally. On CH340 USB-serial
+chips (VendorID 0x1a86, ProductID 0x55d3), closing and reopening leaves the
+port in a zombie state. Fixed by monkey-patching `port.close` to a no-op
+before creating Transport, restoring after disconnect. Port stays open for
+WiFi provisioning after flash.
+
+**Firmware updates** for EPP Grid devices use ESPHome's built-in
+`update.install` service (triggered via `eppgrid/update_firmware` WS command).
+The device's `http_request` update component checks the GitHub releases
+manifest for new versions. Raw OTA push is not used — newer ESPHome uses
+NOISE encryption which is incompatible with direct protocol implementation.
+Original firmware devices can only be converted via USB flash.
+
 ### Library Modules
 
 **perspective.ts** — `solvePerspective(src, dst)` solves the 8-coefficient
@@ -298,6 +350,50 @@ Tests in `tests/`: init lifecycle, storage, device manager, websocket API.
 ### CI (.github/workflows/)
 
 - **tests.yml** — Python tests (3 HA versions), frontend lint + vitest + coverage, C++ ctest
-- **firmware.yml** — C++ tests + ESPHome compilation for all 8 variants
+- **firmware.yml** — C++ tests + ESPHome compilation for all 8 variants (on push to main touching `firmware/`)
 - **hacs.yml** — HACS repository structure validation
 - **hassfest.yml** — manifest.json schema validation
+
+### Firmware Release & GitHub Pages Deployment
+
+Firmware binaries and ESP Web Tools manifests are hosted on **GitHub Pages**
+at `https://clintongormley.github.io/everything-presence-pro-grid/firmware/`.
+The frontend fetches manifests and bins from this URL during USB flashing.
+CORS is required because the fetch runs in the browser — GitHub Pages
+provides `Access-Control-Allow-Origin: *`, GitHub Releases does not.
+
+Two workflows deploy to the same GitHub Pages environment:
+
+1. **firmware-release.yml** — Triggered by tag push (`v*`). Compiles
+   `wifi-ble-co2` and `ethernet-ble-co2` variants, generates ESP Web Tools
+   manifest JSON for each, creates a GitHub Release with all artifacts, then
+   deploys everything to Pages via `upload-pages-artifact` + `deploy-pages`.
+   This is the **primary** deployment path — it uses build artifacts directly.
+
+2. **pages.yml** ("Deploy Firmware Builder") — Triggered by push to main
+   touching `tools/firmware-builder/**`. Deploys the firmware builder web UI
+   to Pages. Also attempts to include firmware files by running
+   `gh release download` to fetch the latest release assets. **Caveat:**
+   `gh release download` without `--prerelease` skips pre-releases, so if
+   the latest release is an alpha/beta/rc, the download silently fails and
+   Pages is deployed **without firmware files**, breaking USB flashing.
+
+```
+Tag push (v*)
+  └─ firmware-release.yml
+       ├─ compile wifi-ble-co2, ethernet-ble-co2
+       ├─ generate manifests
+       ├─ create GitHub Release (with all bins + manifests)
+       └─ deploy-pages (bins + manifests + firmware-builder → Pages) ✓
+
+Push to main (tools/firmware-builder/**)
+  └─ pages.yml
+       ├─ gh release download (⚠ fails silently for pre-releases)
+       ├─ copy firmware-builder UI
+       └─ deploy-pages (firmware-builder only → Pages, overwrites firmware!) ⚠
+```
+
+**Important:** If `pages.yml` runs after a pre-release, it will wipe the
+firmware files from Pages. Fix: either add `--prerelease` to the
+`gh release download` command, or re-run `firmware-release.yml` for the
+current tag to restore them.

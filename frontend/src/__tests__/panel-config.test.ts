@@ -950,4 +950,30 @@ describe("_renderConnectionBanner", () => {
 		const result = a._renderConnectionBanner();
 		expect(result).toBe(nothing);
 	});
+
+	it("renders offline banner when device config_protocol_status is unavailable", () => {
+		const el = createPanel();
+		const a = el as any;
+		a._deviceCtrl._connectionFailed = true;
+		a._devices = [
+			{
+				mac: "AA:BB:CC:DD:EE:01",
+				name: "T",
+				host: null,
+				available: false,
+				configured: true,
+				config_protocol_status: "unavailable",
+			},
+		];
+		a._selectedMac = "AA:BB:CC:DD:EE:01";
+
+		const result = a._renderConnectionBanner();
+		const str = (result as any).strings.join("");
+		// Should use info style, not warning
+		expect(str).toContain("protocol-fullpage-info");
+		expect(str).not.toContain("protocol-fullpage-warning");
+		// Values should contain the offline localization key
+		const vals = JSON.stringify((result as any).values);
+		expect(vals).toContain("connection.offline");
+	});
 });

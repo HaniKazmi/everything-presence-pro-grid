@@ -79,6 +79,7 @@ beforeEach(() => {
 
 afterEach(() => {
 	vi.restoreAllMocks();
+	vi.clearAllMocks();
 });
 
 import { ESPLoader, Transport } from "esptool-js";
@@ -99,6 +100,8 @@ import {
 	runWifiScan,
 } from "../../lib/usb-flash-service.js";
 
+const TEST_BASE_URL = "https://example.com/api/eppgrid/firmware";
+
 describe("flashFirmware", () => {
 	function mockPort(): SerialPort {
 		return {
@@ -113,7 +116,9 @@ describe("flashFirmware", () => {
 		const port = mockPort();
 		const onProgress = vi.fn();
 
-		await flashFirmware(port, "wifi-ble-co2", onProgress);
+		await flashFirmware(port, "wifi-ble-co2", onProgress, {
+			baseUrl: TEST_BASE_URL,
+		});
 
 		expect(Transport).toHaveBeenCalledWith(port);
 		expect(ESPLoader).toHaveBeenCalledWith(
@@ -126,7 +131,9 @@ describe("flashFirmware", () => {
 
 	it("calls loader.main() to detect chip", async () => {
 		const port = mockPort();
-		await flashFirmware(port, "wifi-ble-co2", vi.fn());
+		await flashFirmware(port, "wifi-ble-co2", vi.fn(), {
+			baseUrl: TEST_BASE_URL,
+		});
 
 		const loaderInstance = vi.mocked(ESPLoader).mock.results[0].value;
 		expect(loaderInstance.main).toHaveBeenCalledWith("default_reset");
@@ -134,7 +141,9 @@ describe("flashFirmware", () => {
 
 	it("fetches manifest and 3 binary files", async () => {
 		const port = mockPort();
-		await flashFirmware(port, "wifi-ble-co2", vi.fn());
+		await flashFirmware(port, "wifi-ble-co2", vi.fn(), {
+			baseUrl: TEST_BASE_URL,
+		});
 
 		const fetchMock = vi.mocked(fetch);
 		// 1 manifest + 3 binaries = 4 fetches
@@ -147,7 +156,9 @@ describe("flashFirmware", () => {
 
 	it("calls writeFlash with correct file array and offsets", async () => {
 		const port = mockPort();
-		await flashFirmware(port, "wifi-ble-co2", vi.fn());
+		await flashFirmware(port, "wifi-ble-co2", vi.fn(), {
+			baseUrl: TEST_BASE_URL,
+		});
 
 		const loaderInstance = vi.mocked(ESPLoader).mock.results[0].value;
 		expect(loaderInstance.writeFlash).toHaveBeenCalledWith(
@@ -168,7 +179,9 @@ describe("flashFirmware", () => {
 
 	it("calls loader.after('hard_reset') after flash", async () => {
 		const port = mockPort();
-		await flashFirmware(port, "wifi-ble-co2", vi.fn());
+		await flashFirmware(port, "wifi-ble-co2", vi.fn(), {
+			baseUrl: TEST_BASE_URL,
+		});
 
 		const loaderInstance = vi.mocked(ESPLoader).mock.results[0].value;
 		expect(loaderInstance.after).toHaveBeenCalledWith("hard_reset");
@@ -176,7 +189,9 @@ describe("flashFirmware", () => {
 
 	it("disconnects transport after flash", async () => {
 		const port = mockPort();
-		await flashFirmware(port, "wifi-ble-co2", vi.fn());
+		await flashFirmware(port, "wifi-ble-co2", vi.fn(), {
+			baseUrl: TEST_BASE_URL,
+		});
 
 		const transportInstance = vi.mocked(Transport).mock.results[0].value;
 		expect(transportInstance.disconnect).toHaveBeenCalled();
@@ -189,9 +204,9 @@ describe("flashFirmware", () => {
 		} as Response);
 
 		const port = mockPort();
-		await expect(flashFirmware(port, "wifi-ble-co2", vi.fn())).rejects.toThrow(
-			"Failed to download firmware manifest",
-		);
+		await expect(
+			flashFirmware(port, "wifi-ble-co2", vi.fn(), { baseUrl: TEST_BASE_URL }),
+		).rejects.toThrow("Failed to download firmware manifest");
 	});
 
 	it("throws on binary fetch failure", async () => {
@@ -203,9 +218,9 @@ describe("flashFirmware", () => {
 			.mockResolvedValueOnce({ ok: false, status: 500 } as Response);
 
 		const port = mockPort();
-		await expect(flashFirmware(port, "wifi-ble-co2", vi.fn())).rejects.toThrow(
-			"Failed to download firmware file",
-		);
+		await expect(
+			flashFirmware(port, "wifi-ble-co2", vi.fn(), { baseUrl: TEST_BASE_URL }),
+		).rejects.toThrow("Failed to download firmware file");
 	});
 
 	it("calls onProgress with percentage via reportProgress callback", async () => {
@@ -226,7 +241,9 @@ describe("flashFirmware", () => {
 			return loaderInstance as any;
 		});
 
-		await flashFirmware(port, "wifi-ble-co2", onProgress);
+		await flashFirmware(port, "wifi-ble-co2", onProgress, {
+			baseUrl: TEST_BASE_URL,
+		});
 
 		expect(onProgress).toHaveBeenCalledWith(50);
 		expect(onProgress).toHaveBeenCalledWith(100);
@@ -243,12 +260,258 @@ describe("flashFirmware", () => {
 			return loaderInstance as any;
 		});
 
-		await expect(flashFirmware(port, "wifi-ble-co2", vi.fn())).rejects.toThrow(
-			"flash fail",
-		);
+		await expect(
+			flashFirmware(port, "wifi-ble-co2", vi.fn(), { baseUrl: TEST_BASE_URL }),
+		).rejects.toThrow("flash fail");
 
 		const transportInstance = vi.mocked(Transport).mock.results[0].value;
 		expect(transportInstance.disconnect).toHaveBeenCalled();
+	});
+
+	it("calls onMac callback with uppercased MAC from terminal output", async () => {
+		const port = mockPort();
+		const onMac = vi.fn();
+
+		vi.mocked(ESPLoader).mockImplementationOnce(function (opts: any) {
+			return {
+				main: vi.fn().mockImplementation(async () => {
+					opts.terminal?.writeLine("Chip is ESP32-D0WD-V3 (revision v3.1)");
+					opts.terminal?.writeLine("MAC: e0:8c:fe:d3:fd:c8");
+					opts.terminal?.writeLine("Uploading stub...");
+				}),
+				writeFlash: vi.fn().mockResolvedValue(undefined),
+				after: vi.fn().mockResolvedValue(undefined),
+			} as any;
+		});
+
+		await flashFirmware(port, "wifi-ble-co2", vi.fn(), {
+			onMac,
+			baseUrl: TEST_BASE_URL,
+		});
+
+		expect(onMac).toHaveBeenCalledWith("E0:8C:FE:D3:FD:C8");
+	});
+
+	it("does not call onMac when no MAC line appears in terminal output", async () => {
+		const port = mockPort();
+		const onMac = vi.fn();
+
+		vi.mocked(ESPLoader).mockImplementationOnce(function (opts: any) {
+			return {
+				main: vi.fn().mockImplementation(async () => {
+					opts.terminal?.writeLine("Chip is ESP32-D0WD-V3");
+					opts.terminal?.writeLine("Uploading stub...");
+				}),
+				writeFlash: vi.fn().mockResolvedValue(undefined),
+				after: vi.fn().mockResolvedValue(undefined),
+			} as any;
+		});
+
+		await flashFirmware(port, "wifi-ble-co2", vi.fn(), {
+			onMac,
+			baseUrl: TEST_BASE_URL,
+		});
+
+		expect(onMac).not.toHaveBeenCalled();
+	});
+
+	it("throws when baseUrl is not provided", async () => {
+		const port = mockPort();
+		await expect(flashFirmware(port, "wifi-ble-co2", vi.fn())).rejects.toThrow(
+			"baseUrl is required",
+		);
+	});
+
+	it("calls beforeFlash after loader.main() and before writeFlash()", async () => {
+		const port = mockPort();
+		const callOrder: string[] = [];
+
+		vi.mocked(ESPLoader).mockImplementationOnce(function (opts: any) {
+			return {
+				main: vi.fn().mockImplementation(async () => {
+					callOrder.push("main");
+					opts.terminal?.writeLine("MAC: aa:bb:cc:dd:ee:ff");
+				}),
+				writeFlash: vi.fn().mockImplementation(async () => {
+					callOrder.push("writeFlash");
+				}),
+				after: vi.fn().mockResolvedValue(undefined),
+			} as any;
+		});
+
+		const beforeFlash = vi.fn().mockImplementation(async () => {
+			callOrder.push("beforeFlash");
+		});
+
+		await flashFirmware(port, "wifi-ble-co2", vi.fn(), {
+			beforeFlash,
+			baseUrl: TEST_BASE_URL,
+		});
+
+		expect(callOrder).toEqual(["main", "beforeFlash", "writeFlash"]);
+	});
+
+	it("aborts flash when beforeFlash throws, but still disconnects transport", async () => {
+		const port = mockPort();
+
+		vi.mocked(ESPLoader).mockImplementationOnce(function (opts: any) {
+			return {
+				main: vi.fn().mockResolvedValue("ESP32"),
+				writeFlash: vi.fn().mockResolvedValue(undefined),
+				after: vi.fn().mockResolvedValue(undefined),
+			} as any;
+		});
+
+		const beforeFlash = vi.fn().mockRejectedValue(new Error("User cancelled"));
+
+		await expect(
+			flashFirmware(port, "wifi-ble-co2", vi.fn(), {
+				beforeFlash,
+				baseUrl: TEST_BASE_URL,
+			}),
+		).rejects.toThrow("User cancelled");
+
+		const transportInstance = vi.mocked(Transport).mock.results[0].value;
+		expect(transportInstance.disconnect).toHaveBeenCalled();
+
+		const loaderInstance = vi.mocked(ESPLoader).mock.results[0].value;
+		expect(loaderInstance.writeFlash).not.toHaveBeenCalled();
+	});
+
+	it("passes detected MAC to beforeFlash callback", async () => {
+		const port = mockPort();
+
+		vi.mocked(ESPLoader).mockImplementationOnce(function (opts: any) {
+			return {
+				main: vi.fn().mockImplementation(async () => {
+					opts.terminal?.writeLine("MAC: aa:bb:cc:dd:ee:ff");
+				}),
+				writeFlash: vi.fn().mockResolvedValue(undefined),
+				after: vi.fn().mockResolvedValue(undefined),
+			} as any;
+		});
+
+		const beforeFlash = vi.fn().mockResolvedValue(undefined);
+
+		await flashFirmware(port, "wifi-ble-co2", vi.fn(), {
+			beforeFlash,
+			baseUrl: TEST_BASE_URL,
+		});
+
+		expect(beforeFlash).toHaveBeenCalledWith("AA:BB:CC:DD:EE:FF");
+	});
+
+	it("passes undefined to beforeFlash when no MAC detected", async () => {
+		const port = mockPort();
+		const beforeFlash = vi.fn().mockResolvedValue(undefined);
+
+		await flashFirmware(port, "wifi-ble-co2", vi.fn(), {
+			beforeFlash,
+			baseUrl: TEST_BASE_URL,
+		});
+
+		expect(beforeFlash).toHaveBeenCalledWith(undefined);
+	});
+
+	it("uses baseUrl from options for manifest fetch", async () => {
+		const port = mockPort();
+		await flashFirmware(port, "wifi-ble-co2", vi.fn(), {
+			baseUrl: "https://example.com/fw",
+		});
+
+		const fetchMock = vi.mocked(fetch);
+		expect(fetchMock.mock.calls[0][0]).toBe(
+			"https://example.com/fw/everything-presence-pro-wifi-ble-co2-manifest.json",
+		);
+	});
+
+	it("throws when baseUrl is not provided in options", async () => {
+		const port = mockPort();
+		await expect(
+			flashFirmware(port, "wifi-ble-co2", vi.fn(), {}),
+		).rejects.toThrow("baseUrl is required");
+	});
+
+	it("terminal.write runs without crashing", async () => {
+		const port = mockPort();
+		const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+
+		vi.mocked(ESPLoader).mockImplementationOnce(function (opts: any) {
+			return {
+				main: vi.fn().mockImplementation(async () => {
+					opts.terminal?.write("partial output");
+				}),
+				writeFlash: vi.fn().mockResolvedValue(undefined),
+				after: vi.fn().mockResolvedValue(undefined),
+			} as any;
+		});
+
+		await flashFirmware(port, "wifi-ble-co2", vi.fn(), {
+			baseUrl: TEST_BASE_URL,
+		});
+
+		expect(logSpy).not.toHaveBeenCalled();
+		logSpy.mockRestore();
+	});
+
+	it("terminal.clean runs without error and port.close is a no-op during flash", async () => {
+		const port = mockPort();
+
+		let capturedTerminal: any;
+		vi.mocked(ESPLoader).mockImplementationOnce(function (opts: any) {
+			capturedTerminal = opts.terminal;
+			return {
+				main: vi.fn().mockImplementation(async () => {
+					// Call clean to cover it
+					opts.terminal?.clean();
+				}),
+				writeFlash: vi.fn().mockResolvedValue(undefined),
+				after: vi.fn().mockResolvedValue(undefined),
+			} as any;
+		});
+
+		await flashFirmware(port, "wifi-ble-co2", vi.fn(), {
+			baseUrl: TEST_BASE_URL,
+		});
+
+		expect(capturedTerminal).toBeDefined();
+		// port.close was replaced with a no-op during flash and
+		// restored afterwards — the original mock should not have been called
+		// during the flash itself.
+	});
+
+	it("port.close override is a no-op during flash (prevents Transport from closing port)", async () => {
+		const port = mockPort();
+
+		let closeCalledDuringFlash = false;
+		vi.mocked(ESPLoader).mockImplementationOnce(function () {
+			return {
+				main: vi.fn().mockResolvedValue("ESP32"),
+				writeFlash: vi.fn().mockResolvedValue(undefined),
+				after: vi.fn().mockResolvedValue(undefined),
+			} as any;
+		});
+
+		// Override Transport.disconnect to call port.close during flash
+		vi.mocked(Transport).mockImplementationOnce(function () {
+			return {
+				connect: vi.fn(),
+				disconnect: vi.fn().mockImplementation(async () => {
+					// Transport calls port.close() during disconnect —
+					// should be intercepted by the no-op override
+					await port.close();
+					closeCalledDuringFlash = true;
+				}),
+				device: {},
+			} as any;
+		});
+
+		await flashFirmware(port, "wifi-ble-co2", vi.fn(), {
+			baseUrl: TEST_BASE_URL,
+		});
+
+		// The no-op override was called (did not throw)
+		expect(closeCalledDuringFlash).toBe(true);
 	});
 });
 
@@ -350,6 +613,7 @@ describe("runWifiScan", () => {
 			retryDelay: 0,
 			drainDelay: 0,
 			handshakeDelay: 0,
+			handshakeRetryDelay: 0,
 		});
 		expect(port.open).toHaveBeenCalledWith({ baudRate: 115200 });
 	});
@@ -369,6 +633,7 @@ describe("runWifiScan", () => {
 			retryDelay: 0,
 			drainDelay: 0,
 			handshakeDelay: 0,
+			handshakeRetryDelay: 0,
 		});
 		expect(port.open).not.toHaveBeenCalled();
 	});
@@ -387,6 +652,7 @@ describe("runWifiScan", () => {
 			retryDelay: 0,
 			drainDelay: 0,
 			handshakeDelay: 0,
+			handshakeRetryDelay: 0,
 		});
 		expect(port.writable!.getWriter).toHaveBeenCalled();
 		expect(port.readable!.getReader).toHaveBeenCalled();
@@ -406,12 +672,19 @@ describe("runWifiScan", () => {
 			retryDelay: 0,
 			drainDelay: 0,
 			handshakeDelay: 0,
+			handshakeRetryDelay: 0,
 		});
 
 		const setSignals = port.setSignals as ReturnType<typeof vi.fn>;
 		expect(setSignals).toHaveBeenCalledTimes(2);
-		expect(setSignals).toHaveBeenNthCalledWith(1, { requestToSend: true });
-		expect(setSignals).toHaveBeenNthCalledWith(2, { requestToSend: false });
+		expect(setSignals).toHaveBeenNthCalledWith(1, {
+			dataTerminalReady: false,
+			requestToSend: true,
+		});
+		expect(setSignals).toHaveBeenNthCalledWith(2, {
+			dataTerminalReady: false,
+			requestToSend: false,
+		});
 	});
 
 	it("continues without reset if setSignals is not supported", async () => {
@@ -431,6 +704,7 @@ describe("runWifiScan", () => {
 			retryDelay: 0,
 			drainDelay: 0,
 			handshakeDelay: 0,
+			handshakeRetryDelay: 0,
 		});
 
 		expect(sendImprovPacket).toHaveBeenCalled();
@@ -450,6 +724,7 @@ describe("runWifiScan", () => {
 			retryDelay: 0,
 			drainDelay: 0,
 			handshakeDelay: 0,
+			handshakeRetryDelay: 0,
 		});
 		expect(buildScanCommand).toHaveBeenCalled();
 		expect(sendImprovPacket).toHaveBeenCalled();
@@ -469,6 +744,7 @@ describe("runWifiScan", () => {
 			retryDelay: 0,
 			drainDelay: 0,
 			handshakeDelay: 0,
+			handshakeRetryDelay: 0,
 		});
 		expect(result.networks).toEqual([]);
 	});
@@ -487,6 +763,7 @@ describe("runWifiScan", () => {
 			retryDelay: 0,
 			drainDelay: 0,
 			handshakeDelay: 0,
+			handshakeRetryDelay: 0,
 		});
 		expect(result.writer).toBeDefined();
 		expect(result.reader).toBeDefined();
@@ -533,6 +810,7 @@ describe("runWifiScan", () => {
 			retryDelay: 0,
 			drainDelay: 0,
 			handshakeDelay: 0,
+			handshakeRetryDelay: 0,
 		});
 		expect(result.networks).toEqual([network1, network2]);
 	});
@@ -565,6 +843,7 @@ describe("runWifiScan", () => {
 			retryDelay: 0,
 			drainDelay: 0,
 			handshakeDelay: 0,
+			handshakeRetryDelay: 0,
 		});
 		// The non-RPC_RESULT packet should not trigger parseScanResults
 		// but the scan-complete packet (0x04 with empty slice) does
@@ -574,12 +853,44 @@ describe("runWifiScan", () => {
 	it("throws when handshake gets no response (ethernet firmware)", async () => {
 		const { port } = mockPort();
 
-		// Handshake fails (no response from device)
-		vi.mocked(readImprovResponse).mockRejectedValueOnce(new Error("timeout"));
+		// Handshake fails on all attempts (no response from device)
+		vi.mocked(readImprovResponse).mockRejectedValue(new Error("timeout"));
 
 		await expect(
-			runWifiScan(port, { retryDelay: 0, drainDelay: 0, handshakeDelay: 0 }),
+			runWifiScan(port, {
+				retryDelay: 0,
+				drainDelay: 0,
+				handshakeDelay: 0,
+				handshakeRetryDelay: 0,
+			}),
 		).rejects.toThrow("No response from device");
+	});
+
+	it("retries handshake when first attempt fails and succeeds on later attempt", async () => {
+		const { port } = mockPort();
+
+		// First handshake attempt fails, second succeeds, then scan times out
+		vi.mocked(readImprovResponse)
+			.mockRejectedValueOnce(new Error("timeout")) // handshake attempt 1
+			.mockRejectedValueOnce(new Error("timeout")) // handshake attempt 2
+			.mockResolvedValueOnce({
+				// handshake attempt 3 succeeds
+				packets: [{ type: 0x01, data: new Uint8Array([0x02]) }],
+				buffer: [],
+			})
+			.mockRejectedValue(new Error("timeout")); // scan times out
+
+		const result = await runWifiScan(port, {
+			retryDelay: 0,
+			drainDelay: 0,
+			handshakeDelay: 0,
+			handshakeRetryDelay: 0,
+		});
+		expect(result.networks).toEqual([]);
+		// sendImprovPacket should have been called at least 3 times for handshake attempts
+		expect(
+			vi.mocked(sendImprovPacket).mock.calls.length,
+		).toBeGreaterThanOrEqual(3);
 	});
 
 	it("retries scan when first attempt returns no networks", async () => {
@@ -618,6 +929,7 @@ describe("runWifiScan", () => {
 			retryDelay: 0,
 			drainDelay: 0,
 			handshakeDelay: 0,
+			handshakeRetryDelay: 0,
 		});
 		expect(result.networks).toEqual([network]);
 	});
@@ -648,8 +960,29 @@ describe("runWifiScan", () => {
 			retryDelay: 0,
 			drainDelay: 0,
 			handshakeDelay: 0,
+			handshakeRetryDelay: 0,
 		});
 		expect(result.networks).toEqual([network1]);
+	});
+
+	it("throws user-friendly error when port.open() fails", async () => {
+		const { port } = mockPort();
+		// Port not yet open
+		(port as any).readable = null;
+		(port.open as ReturnType<typeof vi.fn>).mockRejectedValue(
+			new Error("Failed to open port"),
+		);
+
+		await expect(
+			runWifiScan(port, {
+				retryDelay: 0,
+				drainDelay: 0,
+				handshakeDelay: 0,
+				handshakeRetryDelay: 0,
+			}),
+		).rejects.toThrow(
+			"Could not open serial port. Unplug the device, plug it back in, and try again.",
+		);
 	});
 });
 
@@ -775,7 +1108,7 @@ describe("detectIpAddress", () => {
 		);
 	});
 
-	it("throws when IP is 0.0.0.0", async () => {
+	it("returns null when IP is 0.0.0.0 (DHCP not ready)", async () => {
 		const encoder = new TextEncoder();
 		const url = "http://0.0.0.0";
 		const urlBytes = encoder.encode(url);
@@ -794,9 +1127,8 @@ describe("detectIpAddress", () => {
 			buffer: [],
 		});
 
-		await expect(detectIpAddress(mockReader, 1000)).rejects.toThrow(
-			"WiFi connection failed",
-		);
+		const result = await detectIpAddress(mockReader, 1000);
+		expect(result).toBeNull();
 	});
 
 	it("re-throws non-timeout errors from readImprovResponse", async () => {

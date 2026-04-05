@@ -14,8 +14,7 @@ import {
 	type WifiNetwork,
 } from "./improv-serial.js";
 
-const MANIFEST_BASE_URL =
-	"https://clintongormley.github.io/everything-presence-pro-grid/firmware";
+const MAC_PATTERN = /MAC:\s*([0-9A-Fa-f:]{17})/;
 
 /**
  * Flashes firmware to a device via USB serial using esptool.js.
@@ -25,18 +24,51 @@ export async function flashFirmware(
 	port: SerialPort,
 	variant: string,
 	onProgress: (percent: number) => void,
+	options?: {
+		onMac?: (mac: string) => void;
+		beforeFlash?: (mac: string | undefined) => Promise<void>;
+		baseUrl?: string;
+	},
 ): Promise<void> {
+	// Prevent Transport.disconnect() from closing the port — reopening a
+	// CH340 serial port after Transport closes it leaves the port in a
+	// zombie state (opens but no data flows). Instead, we let Transport
+	// release its reader lock via disconnect(), but block the port.close()
+	// call. We close the port ourselves later when we're done with it.
+	const originalClose = port.close.bind(port);
+	port.close = async () => {};
 	const transport = new Transport(port);
 	try {
+		let detectedMac: string | undefined;
+		const terminal = {
+			clean: () => {},
+			writeLine: (data: string) => {
+				const match = MAC_PATTERN.exec(data);
+				if (match) {
+					detectedMac = match[1].toUpperCase();
+					options?.onMac?.(detectedMac);
+				}
+			},
+			write: (_data: string) => {},
+		};
 		const loader = new ESPLoader({
 			transport,
 			baudrate: 115200,
+			terminal,
 		});
 
 		await loader.main("default_reset");
 
+		if (options?.beforeFlash) {
+			await options.beforeFlash(detectedMac);
+		}
+
 		// Fetch manifest
-		const manifestUrl = `${MANIFEST_BASE_URL}/everything-presence-pro-${variant}-manifest.json`;
+		if (!options?.baseUrl) {
+			throw new Error("baseUrl is required for firmware download");
+		}
+		const base = options.baseUrl;
+		const manifestUrl = `${base}/everything-presence-pro-${variant}-manifest.json`;
 		const manifestResp = await fetch(manifestUrl);
 		if (!manifestResp.ok) {
 			throw new Error("Failed to download firmware manifest");
@@ -77,6 +109,8 @@ export async function flashFirmware(
 		await loader.after("hard_reset");
 	} finally {
 		await transport.disconnect();
+		// Restore the real close method
+		port.close = originalClose;
 	}
 }
 
@@ -90,6 +124,7 @@ export async function runWifiScan(
 		retryDelay?: number;
 		drainDelay?: number;
 		handshakeDelay?: number;
+		handshakeRetryDelay?: number;
 	},
 ): Promise<{
 	writer: WritableStreamDefaultWriter<Uint8Array>;
@@ -97,21 +132,27 @@ export async function runWifiScan(
 	networks: WifiNetwork[];
 }> {
 	if (!port.readable) {
-		await port.open({ baudRate: 115200 });
+		try {
+			await port.open({ baudRate: 115200 });
+		} catch {
+			throw new Error(
+				"Could not open serial port. Unplug the device, plug it back in, and try again.",
+			);
+		}
 	}
 
-	// Hard-reset the device via RTS toggle (matches esptool.js hardReset).
-	// RTS asserted → EN pin pulled LOW → chip resets.
-	// RTS deasserted → EN pin goes HIGH → chip boots normally.
+	// Hard-reset the device via RTS toggle. Explicitly set DTR=false —
+	// esptool's Transport leaves DTR in an undefined state which can
+	// prevent CH340 USB-serial chips from forwarding received data.
 	try {
-		await port.setSignals({ requestToSend: true });
+		await port.setSignals({ dataTerminalReady: false, requestToSend: true });
 		await new Promise((r) => setTimeout(r, 200));
-		await port.setSignals({ requestToSend: false });
+		await port.setSignals({ dataTerminalReady: false, requestToSend: false });
 	} catch {
 		// Some boards don't support serial signal control — continue without reset
 	}
 
-	// Brief drain to clear any stale serial data
+	// Brief drain to clear stale serial data (boot output etc.)
 	const drainMs = timings?.drainDelay ?? 200;
 	const drainReader = port.readable!.getReader();
 	while (true) {
@@ -127,26 +168,41 @@ export async function runWifiScan(
 
 	const writer = port.writable!.getWriter();
 
-	// Initialize the Improv session — send GET_CURRENT_STATE and verify
-	// the device responds. No response means no improv_serial (ethernet firmware).
-	const stateCmd = buildGetStateCommand();
-	const handshakeMs = timings?.handshakeDelay ?? 500;
-	await sendImprovPacket(writer, stateCmd);
+	// Handshake with retry — device may still be booting after flash
+	const MAX_HANDSHAKE_ATTEMPTS = 5;
+	const handshakeRetryDelay = timings?.handshakeRetryDelay ?? 2000;
+	const handshakeTimeout = timings?.handshakeDelay ?? 3000;
+	let handshakeOk = false;
 
-	const handshakeReader = port.readable!.getReader();
-	try {
-		await readImprovResponse(handshakeReader, timings?.handshakeDelay ?? 3000);
-	} catch {
-		handshakeReader.releaseLock();
+	for (let attempt = 0; attempt < MAX_HANDSHAKE_ATTEMPTS; attempt++) {
+		if (attempt > 0) {
+			await new Promise((r) => setTimeout(r, handshakeRetryDelay));
+		}
+		try {
+			await sendImprovPacket(writer, buildGetStateCommand());
+			const handshakeReader = port.readable!.getReader();
+			try {
+				await readImprovResponse(handshakeReader, handshakeTimeout);
+				handshakeOk = true;
+			} finally {
+				handshakeReader.releaseLock();
+			}
+		} catch {
+			// Not ready yet — retry
+		}
+		if (handshakeOk) break;
+	}
+
+	if (!handshakeOk) {
+		writer.releaseLock();
 		throw new Error(
 			"No response from device — it may be flashed with ethernet firmware which does not support WiFi configuration.",
 		);
 	}
-	handshakeReader.releaseLock();
 
 	const infoCmd = buildGetInfoCommand();
 	await sendImprovPacket(writer, infoCmd);
-	await new Promise((r) => setTimeout(r, handshakeMs));
+	await new Promise((r) => setTimeout(r, 500));
 
 	// ESPHome's improv_serial returns CACHED WiFi scan results — it doesn't
 	// trigger a new scan. If the WiFi component hasn't completed a background
@@ -287,12 +343,9 @@ export async function detectIpAddress(
 						const url = decoder.decode(resultData.slice(1, 1 + urlLen));
 						const match = ipPattern.exec(url);
 						if (match && match[1] !== "0.0.0.0") return match[1];
-						// 0.0.0.0 after reboot = device failed to connect
-						throw new Error(
-							"WiFi connection failed — check SSID/password and try again",
-						);
 					}
-					// Provisioned but no URL (no next_url in firmware)
+					// Provisioned but IP not yet assigned (0.0.0.0) or no URL —
+					// creds are saved to NVS; caller should reboot and re-read
 					return null;
 				}
 			}

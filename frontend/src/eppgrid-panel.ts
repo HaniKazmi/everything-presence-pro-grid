@@ -38,6 +38,11 @@ import {
 	MAX_ZONES,
 } from "./lib/grid.js";
 import { CELL_BG_OUT_OF_RANGE, getCellColor } from "./lib/heatmap.js";
+import {
+	buildGetStateCommand,
+	readImprovResponse,
+	sendImprovPacket,
+} from "./lib/improv-serial.js";
 import { applyPerspective, getInversePerspective } from "./lib/perspective.js";
 import {
 	autoDetectionRange,
@@ -1034,12 +1039,13 @@ export class EPPGridPanel extends LitElement {
 			<div class="tab-bar">
 				<button class="tab ${this._panelTab === "config" ? "active" : ""}"
 					@click=${() => {
+						this._flasherCtrl.resetUsbState();
 						this._panelTab = "config";
-						// Refresh device list in case devices were added/removed during flashing
 						this._loadDevices();
 					}}>${this._localize("tabs.device_configuration")}</button>
 				<button class="tab ${this._panelTab === "flasher" ? "active" : ""}"
 					@click=${() => {
+						this._flasherCtrl.resetUsbState();
 						this._panelTab = "flasher";
 						if (this._flasherCtrl.loading) {
 							this._flasherCtrl.hass = this.hass;
@@ -1058,14 +1064,11 @@ export class EPPGridPanel extends LitElement {
 					.hass=${this.hass}
 					.flashableDevices=${this._flasherCtrl.flashableDevices}
 					.loading=${this._flasherCtrl.loading}
-					.otaProgress=${this._flasherCtrl.otaProgress}
-					.flashingMac=${this._flasherCtrl.flashingMac}
 					.localize=${this._localize}
 					.usbFlashState=${this._flasherCtrl.usbFlashState}
 					.wifiNetworks=${this._flasherCtrl.wifiNetworks}
-					@flash-ota=${(e: CustomEvent) => {
-						this._flasherCtrl.startOtaFlash(e.detail.mac, e.detail.variant);
-					}}
+					.firmwareBaseUrl=${this._flasherCtrl.firmwareBaseUrl}
+					.firmwareVersion=${this._flasherCtrl.firmwareVersion}
 					@flash-complete=${() => {
 						this._flasherCtrl.resetUsbState();
 						this._loadDevices();
@@ -1087,15 +1090,18 @@ export class EPPGridPanel extends LitElement {
 						} catch {}
 						(ctrl as any)._serialReader = null;
 						(ctrl as any)._serialWriter = null;
-						ctrl.serialPort?.close().catch(() => {});
-						ctrl.serialPort = null;
-						ctrl.resetUsbState();
+						// Retry WiFi config — prompts for new port if needed
+						this._handleUsbWifiConfig();
 					}}
 					@wifi-scan=${() => {
 						this._handleWifiScan();
 					}}
 					@wifi-provision=${(e: CustomEvent) => {
 						this._handleWifiProvision(e.detail.ssid, e.detail.password);
+					}}
+					@update-firmware=${(e: CustomEvent) => {
+						this._selectedMac = e.detail.mac;
+						this._updateFirmware();
 					}}
 					@wifi-complete=${() => {
 						this._flasherCtrl.resetUsbState();
@@ -1164,6 +1170,20 @@ export class EPPGridPanel extends LitElement {
       `;
 		}
 
+		if (this._deviceCtrl.reconnecting) {
+			return html`<div class="tab-layout">
+				${this._renderTabBar()}
+				<div class="panel">
+					${this._renderHeader()}
+					<div class="protocol-fullpage protocol-fullpage-info">
+						<ha-icon icon="mdi:connection"></ha-icon>
+						<p>${this._localize("connection.connecting")}</p>
+					</div>
+				</div>
+				${this._renderGlobalDialogs()}
+			</div>`;
+		}
+
 		if (this._deviceCtrl.connectionFailed) {
 			return html`<div class="tab-layout">
 				${this._renderTabBar()}
@@ -1176,7 +1196,10 @@ export class EPPGridPanel extends LitElement {
 		}
 
 		const dev = this._devices.find((d) => d.mac === this._selectedMac);
-		const protocolOk = !dev || dev.config_protocol_status === "compatible";
+		const protocolOk =
+			!dev ||
+			dev.config_protocol_status === "compatible" ||
+			dev.config_protocol_status === "unavailable";
 
 		if (!protocolOk) {
 			return html`<div class="tab-layout">
@@ -1349,15 +1372,27 @@ export class EPPGridPanel extends LitElement {
 		if (!this._deviceCtrl.connectionFailed) return nothing;
 
 		const dev = this._devices.find((d) => d.mac === this._selectedMac);
+		const isOffline = dev?.config_protocol_status === "unavailable";
+
+		if (isOffline) {
+			return html`
+				<div class="protocol-fullpage protocol-fullpage-info">
+					<ha-icon icon="mdi:access-point-off"></ha-icon>
+					<p>${this._localize("connection.offline")}</p>
+					<button class="wizard-btn wizard-btn-primary"
+						@click=${() => this._retryConnection()}
+					>${this._localize("connection.retry")}</button>
+				</div>
+			`;
+		}
+
 		const count = dev?.current_connection_count;
-		const countMsg =
-			count != null ? this._localize("connection.client_count", { count }) : "";
 
 		return html`
 			<div class="protocol-fullpage protocol-fullpage-warning">
 				<ha-icon icon="mdi:connection"></ha-icon>
 				<p>${this._localize("connection.failed")}</p>
-				${countMsg ? html`<p>${countMsg}</p>` : nothing}
+				${count != null ? html`<p>${this._localize("connection.client_count", { count })}</p>` : nothing}
 				<p style="opacity: 0.7; font-size: 0.9em">${this._localize("connection.check_connections")}</p>
 				<button class="wizard-btn wizard-btn-primary"
 					@click=${() => this._retryConnection()}
@@ -2253,21 +2288,32 @@ export class EPPGridPanel extends LitElement {
 
 	private async _handleUsbWifiConfig(): Promise<void> {
 		const ctrl = this._flasherCtrl;
+		if (ctrl.opRunning) {
+			ctrl.updateUsbState({
+				step: "error",
+				error:
+					"Serial port is busy from a previous operation. Refresh the page and try again.",
+				fatal: true,
+			});
+			return;
+		}
+		const myOp = ctrl.opId;
+		ctrl.opRunning = true;
 		try {
 			if (!ctrl.serialPort) {
 				ctrl.updateUsbState({ step: "connecting" });
 				ctrl.serialPort = await navigator.serial.requestPort();
 			}
+			if (ctrl.opId !== myOp) {
+				ctrl.opRunning = false;
+				return;
+			}
 
 			ctrl.updateUsbState({ step: "wifi_scan" });
 			const { writer, reader, networks } = await runWifiScan(ctrl.serialPort);
-
-			if (networks.length === 0) {
-				reader.releaseLock();
-				writer.releaseLock();
-				throw new Error(
-					"No WiFi networks found. If this device is flashed with ethernet firmware, WiFi configuration is not available.",
-				);
+			if (ctrl.opId !== myOp) {
+				ctrl.opRunning = false;
+				return;
 			}
 
 			ctrl.wifiNetworks = networks;
@@ -2275,7 +2321,10 @@ export class EPPGridPanel extends LitElement {
 
 			(ctrl as any)._serialWriter = writer;
 			(ctrl as any)._serialReader = reader;
+			ctrl.opRunning = false;
 		} catch (err: any) {
+			ctrl.opRunning = false;
+			if (ctrl.opId !== myOp) return;
 			if (err?.name === "NotFoundError") {
 				ctrl.resetUsbState();
 				return;
@@ -2289,44 +2338,116 @@ export class EPPGridPanel extends LitElement {
 
 	private async _handleUsbFlash(variant: string): Promise<void> {
 		const ctrl = this._flasherCtrl;
+		if (ctrl.opRunning) {
+			ctrl.updateUsbState({
+				step: "error",
+				error:
+					"Serial port is busy from a previous operation. Refresh the page and try again.",
+				fatal: true,
+			});
+			return;
+		}
+		const myOp = ctrl.opId;
+		ctrl.opRunning = true;
 		try {
 			// Step 1: Request serial port
 			ctrl.updateUsbState({ step: "connecting" });
 			const port = await navigator.serial.requestPort();
+			if (ctrl.opId !== myOp) {
+				ctrl.opRunning = false;
+				return;
+			}
 			ctrl.serialPort = port;
 
 			// Step 2: Flash firmware
 			ctrl.updateUsbState({ step: "flashing", progress: 0 });
-			await flashFirmware(port, variant, (pct) => {
-				ctrl.updateUsbState({ step: "flashing", progress: pct });
-			});
+			await flashFirmware(
+				port,
+				variant,
+				(pct) => {
+					ctrl.updateUsbState({ step: "flashing", progress: pct });
+				},
+				{
+					baseUrl: ctrl.firmwareBaseUrl,
+					beforeFlash: async (mac: string | undefined) => {
+						if (!mac) return;
+						const matched = ctrl.flashableDevices.find(
+							(d) => d.mac.toUpperCase() === mac,
+						);
+						if (
+							matched?.firmware_type === "original" &&
+							matched?.esphome_config_entry_id
+						) {
+							const ok = window.confirm(
+								this._localize("flasher.confirm_delete_message"),
+							);
+							if (!ok) throw new Error("Flash cancelled");
+							await ctrl.deleteEsphomeDevice(matched.esphome_config_entry_id);
+						}
+					},
+				},
+			);
+			if (ctrl.opId !== myOp) {
+				ctrl.opRunning = false;
+				return;
+			}
 
 			if (variant.startsWith("ethernet")) {
 				// Ethernet variants have no WiFi — skip provisioning
 				await port.close().catch(() => {});
 				ctrl.serialPort = null;
-				ctrl.updateUsbState({ step: "complete" });
+				ctrl.opRunning = false;
+				ctrl.updateUsbState({ step: "complete", variant });
 				return;
 			}
 
 			// Step 3: WiFi scan
 			ctrl.updateUsbState({ step: "wifi_scan" });
 			const { writer, reader, networks } = await runWifiScan(port);
+			if (ctrl.opId !== myOp) {
+				ctrl.opRunning = false;
+				return;
+			}
+
 			ctrl.wifiNetworks = networks;
 			ctrl.updateUsbState({ step: "wifi_provision" });
 
 			// Store writer/reader for provisioning step
 			(ctrl as any)._serialWriter = writer;
 			(ctrl as any)._serialReader = reader;
+			ctrl.opRunning = false;
 		} catch (err: any) {
+			if (ctrl.opId !== myOp) {
+				ctrl.opRunning = false;
+				return;
+			}
 			if (err?.name === "NotFoundError") {
 				// User cancelled port picker
 				ctrl.resetUsbState();
 				return;
 			}
+			// Clean up port on error — don't leave it dangling
+			if (ctrl.serialPort) {
+				try {
+					ctrl.serialPort.close().catch(() => {});
+				} catch {}
+				ctrl.serialPort = null;
+			}
+			const msg = err?.message ?? "Unknown error";
+			const isDisconnect =
+				/stream stopped|NetworkError|disconnected|break|lost|No response from device/i.test(
+					msg,
+				);
+			const isPortBusy = /already open|already closed/i.test(msg);
+			ctrl.opRunning = false;
 			ctrl.updateUsbState({
 				step: "error",
-				error: err?.message ?? "Unknown error",
+				error: isDisconnect
+					? "Device disconnected. Unplug, plug it back in, and try again."
+					: isPortBusy
+						? "Serial port is busy from a previous operation. Refresh the page and try again."
+						: msg,
+				fatal: isPortBusy,
 			});
 		}
 	}
@@ -2336,6 +2457,7 @@ export class EPPGridPanel extends LitElement {
 		password: string,
 	): Promise<void> {
 		const ctrl = this._flasherCtrl;
+		const myOp = ctrl.opId;
 		const port = ctrl.serialPort;
 		if (!port?.writable || !port?.readable) {
 			ctrl.updateUsbState({
@@ -2359,38 +2481,84 @@ export class EPPGridPanel extends LitElement {
 		(ctrl as any)._serialReader = reader;
 
 		try {
+			ctrl.updateUsbState({ step: "wifi_connecting" });
 			await runWifiProvision(writer, ssid, password);
+			if (ctrl.opId !== myOp) return;
 
-			// Release locks before toggling signals
-			reader.releaseLock();
-			writer.releaseLock();
+			// Wait for PROVISIONED state (creds saved to NVS)
+			ctrl.updateUsbState({ step: "reading_ip" });
+			let ip = await detectIpAddress(reader, 35000);
+			if (ctrl.opId !== myOp) return;
 
-			// Hard-reset device (same sequence as esp-web-tools ewt-console reset)
-			// RTS=true asserts EN low (reset), then HardReset releases it
-			try {
-				await port.setSignals({ requestToSend: true });
-				await new Promise((r) => setTimeout(r, 100));
-				await port.setSignals({ requestToSend: false });
-			} catch {
-				// RTS not supported on this board
+			// If IP is null, device reported 0.0.0.0 (DHCP not ready yet).
+			// Reboot via RTS reset — device reconnects with saved creds and
+			// reports the real IP.
+			if (!ip) {
+				reader.releaseLock();
+				writer.releaseLock();
+				(ctrl as any)._serialReader = null;
+				(ctrl as any)._serialWriter = null;
+
+				try {
+					await port.setSignals({
+						dataTerminalReady: false,
+						requestToSend: true,
+					});
+					await new Promise((r) => setTimeout(r, 200));
+					await port.setSignals({
+						dataTerminalReady: false,
+						requestToSend: false,
+					});
+				} catch {}
+
+				// Drain stale boot output
+				const drainReader = port.readable!.getReader();
+				while (true) {
+					const r = await Promise.race([
+						drainReader.read(),
+						new Promise<{ value: undefined; done: true }>((resolve) =>
+							setTimeout(() => resolve({ value: undefined, done: true }), 200),
+						),
+					]);
+					if (r.done || !r.value) break;
+				}
+				drainReader.releaseLock();
+
+				// Handshake with retry — device needs time to boot
+				const freshWriter = port.writable!.getWriter();
+				let handshakeOk = false;
+				for (let attempt = 0; attempt < 5; attempt++) {
+					if (attempt > 0) await new Promise((r) => setTimeout(r, 2000));
+					try {
+						await sendImprovPacket(freshWriter, buildGetStateCommand());
+						const hReader = port.readable!.getReader();
+						try {
+							await readImprovResponse(hReader, 3000);
+							handshakeOk = true;
+						} finally {
+							hReader.releaseLock();
+						}
+					} catch {}
+					if (handshakeOk) break;
+				}
+
+				if (handshakeOk) {
+					const freshReader = port.readable!.getReader();
+					(ctrl as any)._serialWriter = freshWriter;
+					(ctrl as any)._serialReader = freshReader;
+					ip = await detectIpAddress(freshReader, 15000);
+					freshReader.releaseLock();
+				}
+				freshWriter.releaseLock();
+			} else {
+				reader.releaseLock();
+				writer.releaseLock();
 			}
 
-			// Wait for device to boot and connect to WiFi
-			await new Promise((r) => setTimeout(r, 5000));
-
-			// Get fresh reader for IP detection
-			const freshReader = port.readable!.getReader();
-			(ctrl as any)._serialReader = freshReader;
-
-			ctrl.updateUsbState({ step: "reading_ip" });
-			const ip = await detectIpAddress(freshReader, 35000);
-
-			// Close serial port
-			freshReader.releaseLock();
-			await port.close().catch(() => {});
-			ctrl.serialPort = null;
 			(ctrl as any)._serialReader = null;
 			(ctrl as any)._serialWriter = null;
+			await port.close().catch(() => {});
+			ctrl.serialPort = null;
 
 			if (ip) {
 				ctrl.updateUsbState({ step: "adding_device" });
@@ -2407,6 +2575,7 @@ export class EPPGridPanel extends LitElement {
 			} catch {}
 			(ctrl as any)._serialReader = null;
 			(ctrl as any)._serialWriter = null;
+			if (ctrl.opId !== myOp) return;
 			ctrl.updateUsbState({
 				step: "error",
 				error: err?.message ?? "WiFi provisioning failed",

@@ -152,3 +152,34 @@ describe("_updateFirmware", () => {
 		});
 	});
 });
+
+describe("reconnecting state renders connecting screen", () => {
+	it("renders connecting screen with connection icon when reconnecting", () => {
+		const el = createPanel("compatible");
+		const a = el as any;
+		a._panelTab = "config";
+		a._deviceCtrl._reconnecting = true;
+
+		const result = a.render();
+		const str = JSON.stringify(result);
+
+		expect(str).toContain("connection.connecting");
+		expect(str).toContain("mdi:connection");
+	});
+});
+
+describe("protocolOk treats unavailable as compatible", () => {
+	it("does not show protocol blocking page when status is unavailable", () => {
+		const el = createPanel("unavailable");
+		const a = el as any;
+		a._panelTab = "config";
+		a._view = "live";
+
+		const result = a.render();
+		const str = JSON.stringify(result);
+
+		// Should NOT contain protocol mismatch blocking content
+		expect(str).not.toContain("protocol.firmware_behind");
+		expect(str).not.toContain("protocol.firmware_ahead");
+	});
+});
