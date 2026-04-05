@@ -229,18 +229,45 @@ browser.
 - `components/epp-flasher-view.ts` — Flash UI (device list, variant selector, WiFi provisioning)
 - `controllers/flasher-controller.ts` — Serial port lifecycle, USB state machine
 
-**Firmware manifests** are fetched from GitHub Pages (see
-[Firmware Release & GitHub Pages Deployment](#firmware-release--github-pages-deployment)).
-The manifest URL pattern is:
-`https://clintongormley.github.io/everything-presence-pro-grid/firmware/everything-presence-pro-{variant}-manifest.json`
+**Firmware manifests** are proxied through the HA backend at
+`/api/eppgrid/firmware/` to avoid CORS issues with GitHub Releases.
+The firmware version is pinned by `FIRMWARE_VERSION` in `const.py`.
 
-**WiFi provisioning flow** (wifi variants only):
-1. Flash firmware via esptool.js
-2. Scan WiFi networks via Improv Serial
-3. Send credentials via Improv WIFI_SETTINGS command
-4. Hard-reset device via RTS toggle
-5. Detect IP from Improv RPC result after fresh boot
-6. Auto-add device to HA via `eppgrid/add_esphome_device` WebSocket API
+**USB flash flow:**
+1. User selects serial port via Web Serial API
+2. esptool.js detects chip, uploads stub, flashes firmware
+3. MAC detected from esptool terminal output during `loader.main()`
+4. `beforeFlash` callback checks MAC against installed devices — if original
+   firmware with ESPHome entry, confirms and deletes the old entry
+5. After flash, `transport.disconnect()` releases reader (port stays open
+   via CH340 monkey-patch — see Serial Port Lifecycle below)
+
+**WiFi provisioning flow** (wifi variants only, after USB flash):
+1. RTS reset → Improv handshake with retry (5 attempts, 2s delay)
+2. WiFi scan via Improv SCAN command
+3. User selects network, enters password
+4. Send credentials via Improv WIFI_SETTINGS command
+5. Wait for PROVISIONING (0x03) → PROVISIONED (0x04) state transition
+   (confirms creds saved to NVS)
+6. Read RPC_RESULT for IP. If IP is `0.0.0.0` (DHCP not ready yet):
+   - RTS reset to reboot device
+   - Re-handshake with retry
+   - Read definitive IP from fresh Improv session after reboot
+7. Auto-add device to HA via `eppgrid/add_esphome_device` WebSocket API
+
+**Serial port lifecycle (CH340 workaround):**
+`transport.disconnect()` calls `port.close()` internally. On CH340 USB-serial
+chips (VendorID 0x1a86, ProductID 0x55d3), closing and reopening leaves the
+port in a zombie state. Fixed by monkey-patching `port.close` to a no-op
+before creating Transport, restoring after disconnect. Port stays open for
+WiFi provisioning after flash.
+
+**Firmware updates** for EPP Grid devices use ESPHome's built-in
+`update.install` service (triggered via `eppgrid/update_firmware` WS command).
+The device's `http_request` update component checks the GitHub releases
+manifest for new versions. Raw OTA push is not used — newer ESPHome uses
+NOISE encryption which is incompatible with direct protocol implementation.
+Original firmware devices can only be converted via USB flash.
 
 ### Library Modules
 
