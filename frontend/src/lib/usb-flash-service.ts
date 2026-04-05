@@ -36,13 +36,16 @@ export async function flashFirmware(
 		const terminal = {
 			clean: () => {},
 			writeLine: (data: string) => {
+				console.log(data);
 				const match = MAC_PATTERN.exec(data);
 				if (match) {
 					detectedMac = match[1].toUpperCase();
 					options?.onMac?.(detectedMac);
 				}
 			},
-			write: (_data: string) => {},
+			write: (data: string) => {
+				console.log(data);
+			},
 		};
 		const loader = new ESPLoader({
 			transport,
@@ -186,7 +189,7 @@ export async function runWifiScan(
 
 	const infoCmd = buildGetInfoCommand();
 	await sendImprovPacket(writer, infoCmd);
-	await new Promise((r) => setTimeout(r, handshakeTimeout));
+	await new Promise((r) => setTimeout(r, 500));
 
 	// ESPHome's improv_serial returns CACHED WiFi scan results — it doesn't
 	// trigger a new scan. If the WiFi component hasn't completed a background
