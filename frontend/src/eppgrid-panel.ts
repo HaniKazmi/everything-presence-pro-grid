@@ -1164,6 +1164,20 @@ export class EPPGridPanel extends LitElement {
       `;
 		}
 
+		if (this._deviceCtrl.reconnecting) {
+			return html`<div class="tab-layout">
+				${this._renderTabBar()}
+				<div class="panel">
+					${this._renderHeader()}
+					<div class="protocol-fullpage protocol-fullpage-info">
+						<ha-icon icon="mdi:connection"></ha-icon>
+						<p>${this._localize("connection.connecting")}</p>
+					</div>
+				</div>
+				${this._renderGlobalDialogs()}
+			</div>`;
+		}
+
 		if (this._deviceCtrl.connectionFailed) {
 			return html`<div class="tab-layout">
 				${this._renderTabBar()}
@@ -1176,7 +1190,10 @@ export class EPPGridPanel extends LitElement {
 		}
 
 		const dev = this._devices.find((d) => d.mac === this._selectedMac);
-		const protocolOk = !dev || dev.config_protocol_status === "compatible";
+		const protocolOk =
+			!dev ||
+			dev.config_protocol_status === "compatible" ||
+			dev.config_protocol_status === "unavailable";
 
 		if (!protocolOk) {
 			return html`<div class="tab-layout">
@@ -1349,15 +1366,27 @@ export class EPPGridPanel extends LitElement {
 		if (!this._deviceCtrl.connectionFailed) return nothing;
 
 		const dev = this._devices.find((d) => d.mac === this._selectedMac);
+		const isOffline = dev?.config_protocol_status === "unavailable";
+
+		if (isOffline) {
+			return html`
+				<div class="protocol-fullpage protocol-fullpage-info">
+					<ha-icon icon="mdi:access-point-off"></ha-icon>
+					<p>${this._localize("connection.offline")}</p>
+					<button class="wizard-btn wizard-btn-primary"
+						@click=${() => this._retryConnection()}
+					>${this._localize("connection.retry")}</button>
+				</div>
+			`;
+		}
+
 		const count = dev?.current_connection_count;
-		const countMsg =
-			count != null ? this._localize("connection.client_count", { count }) : "";
 
 		return html`
 			<div class="protocol-fullpage protocol-fullpage-warning">
 				<ha-icon icon="mdi:connection"></ha-icon>
 				<p>${this._localize("connection.failed")}</p>
-				${countMsg ? html`<p>${countMsg}</p>` : nothing}
+				${count != null ? html`<p>${this._localize("connection.client_count", { count })}</p>` : nothing}
 				<p style="opacity: 0.7; font-size: 0.9em">${this._localize("connection.check_connections")}</p>
 				<button class="wizard-btn wizard-btn-primary"
 					@click=${() => this._retryConnection()}
