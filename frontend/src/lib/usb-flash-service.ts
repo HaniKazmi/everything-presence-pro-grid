@@ -197,6 +197,7 @@ export async function runWifiScan(
 	}
 
 	if (!handshakeOk) {
+		writer.releaseLock();
 		throw new Error(
 			"No response from device — it may be flashed with ethernet firmware which does not support WiFi configuration.",
 		);
