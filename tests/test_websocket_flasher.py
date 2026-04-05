@@ -100,6 +100,8 @@ class TestListFlashableDevices:
         assert result[0] == 1
         assert len(result[1]["devices"]) == 1
         assert result[1]["devices"][0]["mac"] == "AA:BB:CC:DD:EE:FF"
+        assert "firmware_base_url" in result[1]
+        assert "releases/download/" in result[1]["firmware_base_url"]
 
     async def test_not_ready(self, hass: HomeAssistant) -> None:
         """list_flashable_devices returns error when integration not loaded."""
