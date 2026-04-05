@@ -1186,7 +1186,10 @@ describe("ethernet complete message", () => {
 	it("shows ethernet-specific message when variant starts with ethernet", () => {
 		const el = createView();
 		(el as any)._showUsbFlash = true;
-		(el as any).usbFlashState = { step: "complete", variant: "ethernet-ble-co2" };
+		(el as any).usbFlashState = {
+			step: "complete",
+			variant: "ethernet-ble-co2",
+		};
 		const tpl = (el as any).render();
 		const c = renderTo(tpl);
 
@@ -1197,7 +1200,10 @@ describe("ethernet complete message", () => {
 	it("shows link to devices dashboard for ethernet complete", () => {
 		const el = createView();
 		(el as any)._showUsbFlash = true;
-		(el as any).usbFlashState = { step: "complete", variant: "ethernet-ble-co2" };
+		(el as any).usbFlashState = {
+			step: "complete",
+			variant: "ethernet-ble-co2",
+		};
 		const tpl = (el as any).render();
 		const c = renderTo(tpl);
 
