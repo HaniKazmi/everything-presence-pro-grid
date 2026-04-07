@@ -1,9 +1,8 @@
 import { css, html, LitElement } from "lit";
-import { customElement, property } from "lit/decorators.js";
+import { property } from "lit/decorators.js";
 import "./epp-flasher-view.js";
 import { FlasherController } from "../controllers/flasher-controller.js";
 
-@customElement("epp-flasher-card")
 export class EppFlasherCard extends LitElement {
 	@property({ attribute: false }) hass: any;
 	private _flasherCtrl = new FlasherController(this);
@@ -26,4 +25,8 @@ export class EppFlasherCard extends LitElement {
             ></epp-flasher-view>
         `;
 	}
+}
+
+if (!customElements.get("epp-flasher-card")) {
+	customElements.define("epp-flasher-card", EppFlasherCard);
 }
