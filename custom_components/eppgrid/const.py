@@ -12,7 +12,8 @@ DEFAULT_PORT = 6053
 MAX_ZONES = 7
 
 # Config protocol version — must match firmware's Config Protocol sensor value.
-# Bump when releasing new firmware. The GitHub release tag is v{CONFIG_PROTOCOL_VERSION}.
+# Bump when releasing new firmware. Mismatched devices must update firmware.
+# Also used as the GitHub release tag: v{CONFIG_PROTOCOL_VERSION}.
 CONFIG_PROTOCOL_VERSION = 1
 
 # Original EPP firmware identifiers (for device discovery)
