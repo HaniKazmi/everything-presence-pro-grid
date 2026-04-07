@@ -853,7 +853,11 @@ class DeviceManager:
             # Check if device has firmware_version entity (= our firmware)
             has_firmware_version = False
             for ent_entry in er.async_entries_for_device(ent_reg, device.id, include_disabled_entities=True):
-                if ent_entry.platform == "esphome" and ent_entry.domain == "sensor" and "firmware_version" in ent_entry.unique_id:
+                if (
+                    ent_entry.platform == "esphome"
+                    and ent_entry.domain == "sensor"
+                    and "firmware_version" in ent_entry.unique_id
+                ):
                     has_firmware_version = True
                     break
 
