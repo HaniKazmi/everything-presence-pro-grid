@@ -11,19 +11,18 @@ DEFAULT_PORT = 6053
 
 MAX_ZONES = 7
 
-# Config protocol version — must match firmware's Config Protocol sensor value.
-# Bump when releasing new firmware. Mismatched devices must update firmware.
-# Also used as the GitHub release tag: v{CONFIG_PROTOCOL_VERSION}.
-CONFIG_PROTOCOL_VERSION = 1
+# Firmware version this integration requires.
+# Must match the firmware's Firmware Version text sensor value.
+# Bump when releasing new firmware. GitHub release tag is v{FIRMWARE_VERSION}.
+FIRMWARE_VERSION = "0.90.0-alpha"
 
 # Original EPP firmware identifiers (for device discovery)
 EPP_MANUFACTURER = "EverythingSmartTechnology"
 EPP_MODEL = "Everything Presence Pro"
 
-# Firmware — release tag and download URL derived from CONFIG_PROTOCOL_VERSION
-FIRMWARE_RELEASE_TAG = f"v{CONFIG_PROTOCOL_VERSION}"
+# Firmware download URL
 MANIFEST_BASE_URL = (
-    f"https://github.com/clintongormley/everything-presence-pro-grid/releases/download/{FIRMWARE_RELEASE_TAG}"
+    f"https://github.com/clintongormley/everything-presence-pro-grid/releases/download/v{FIRMWARE_VERSION}"
 )
 
 # Map UI network choice to full firmware variant name

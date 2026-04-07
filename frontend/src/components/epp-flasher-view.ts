@@ -46,6 +46,7 @@ export class EppFlasherView extends LitElement {
 	@state() private _selectedVariant: "wifi" | "ethernet" = "wifi";
 	@property() firmwareBaseUrl = "";
 	@property() firmwareVersion = "";
+	@property() integrationVersion = "";
 	@property({ attribute: false }) usbFlashState: UsbFlashState | null = null;
 	@property({ attribute: false }) wifiNetworks: WifiNetwork[] = [];
 
@@ -245,11 +246,32 @@ export class EppFlasherView extends LitElement {
 
 	private _renderDeviceList() {
 		const { flashableDevices } = this;
+		const hasAheadDevices = flashableDevices.some(
+			(d) =>
+				d.firmware_type === "eppgrid" && d.firmware_status === "firmware_ahead",
+		);
 
 		return html`
       <div class="flasher-content">
+        ${
+					hasAheadDevices
+						? html`
+          <div class="update-banner">
+            <ha-icon icon="mdi:information"></ha-icon>
+            <div>
+              <strong>${this.localize("flasher.integration_outdated_title")}</strong>
+              <p>${this.localize("flasher.integration_outdated_body")}</p>
+              <a href="/hacs/repository/1172848595" class="update-link">${this.localize("flasher.open_hacs")}</a>
+            </div>
+          </div>
+        `
+						: nothing
+				}
         <ha-card>
-          <div class="card-header">${this.localize("flasher.devices_on_network")}</div>
+          <div class="card-header">
+            ${this.localize("flasher.devices_on_network")}
+            ${this.integrationVersion ? html`<span class="integration-version">v${this.integrationVersion}</span>` : nothing}
+          </div>
           <div class="card-content">
             ${
 							flashableDevices.length === 0
@@ -284,7 +306,22 @@ export class EppFlasherView extends LitElement {
 												}
                         ${
 													device.firmware_type === "eppgrid" &&
-													device.update_available
+													device.firmware_status === "firmware_behind"
+														? html`<span class="firmware-badge firmware-badge-behind">${this.localize("flasher.needs_update")}</span>`
+														: nothing
+												}
+                        ${
+													device.firmware_type === "eppgrid" &&
+													device.firmware_status === "firmware_ahead"
+														? html`<span class="firmware-badge firmware-badge-ahead">${this.localize("flasher.integration_update")}</span>`
+														: nothing
+												}
+                        ${
+													device.firmware_type === "eppgrid" &&
+													(
+														device.update_available ||
+															device.firmware_status === "firmware_behind"
+													)
 														? html`<ha-button
 																raised
 																@click=${() => this._dispatchUpdateFirmware(device)}

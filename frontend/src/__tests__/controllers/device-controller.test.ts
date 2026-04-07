@@ -68,7 +68,7 @@ describe("DeviceController", () => {
 					host: null,
 					available: true,
 					configured: true,
-					config_protocol_status: "compatible",
+					firmware_status: "compatible",
 					current_connection_count: null,
 				},
 				{
@@ -77,7 +77,7 @@ describe("DeviceController", () => {
 					host: null,
 					available: true,
 					configured: true,
-					config_protocol_status: "compatible",
+					firmware_status: "compatible",
 					current_connection_count: null,
 				},
 			];
@@ -97,7 +97,7 @@ describe("DeviceController", () => {
 					host: null,
 					available: true,
 					configured: true,
-					config_protocol_status: "compatible",
+					firmware_status: "compatible",
 					current_connection_count: null,
 				},
 				{
@@ -106,7 +106,7 @@ describe("DeviceController", () => {
 					host: null,
 					available: true,
 					configured: true,
-					config_protocol_status: "compatible",
+					firmware_status: "compatible",
 					current_connection_count: null,
 				},
 			];
@@ -126,7 +126,7 @@ describe("DeviceController", () => {
 					host: null,
 					available: true,
 					configured: true,
-					config_protocol_status: "compatible",
+					firmware_status: "compatible",
 					current_connection_count: null,
 				},
 				{
@@ -135,7 +135,7 @@ describe("DeviceController", () => {
 					host: null,
 					available: true,
 					configured: true,
-					config_protocol_status: "compatible",
+					firmware_status: "compatible",
 					current_connection_count: null,
 				},
 			];
@@ -154,7 +154,7 @@ describe("DeviceController", () => {
 					host: null,
 					available: true,
 					configured: true,
-					config_protocol_status: "compatible",
+					firmware_status: "compatible",
 					current_connection_count: null,
 				},
 			];
@@ -187,7 +187,7 @@ describe("DeviceController", () => {
 					host: null,
 					available: true,
 					configured: true,
-					config_protocol_status: "compatible",
+					firmware_status: "compatible",
 					current_connection_count: null,
 				},
 			];

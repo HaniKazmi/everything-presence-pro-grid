@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import json
 import logging
+from pathlib import Path
 from typing import Any
 
 import voluptuous as vol
@@ -14,6 +16,11 @@ from homeassistant.helpers import entity_registry as er
 from .const import DOMAIN
 
 _LOGGER = logging.getLogger(__name__)
+
+try:
+    _INTEGRATION_VERSION: str = json.loads(Path(__file__).with_name("manifest.json").read_text())["version"]
+except Exception:
+    _INTEGRATION_VERSION: str = "unknown"
 
 _REGISTERED: set[str] = set()
 
@@ -84,21 +91,20 @@ def _get_manager(hass: HomeAssistant) -> Any:
     return hass.data.get(DOMAIN)
 
 
-def _check_protocol(manager: Any, mac: str) -> str | None:
-    """Check config protocol compatibility. Returns error code or None if OK."""
-    from .const import CONFIG_PROTOCOL_VERSION
+def _check_firmware_version(manager: Any, mac: str) -> str | None:
+    """Check firmware version compatibility. Returns error code or None if OK."""
+    from .device_manager import _compare_firmware_version
 
     dev = manager.devices.get(mac)
     if dev is None:
         return None  # Unknown device — let the command handle it
-    proto = manager.read_config_protocol(dev.device_id)
-    if proto is None:
+    fw_ver = manager.read_firmware_version(dev.device_id)
+    if fw_ver is None:
         return "unavailable"
-    if proto < CONFIG_PROTOCOL_VERSION:
-        return "firmware_behind"
-    if proto > CONFIG_PROTOCOL_VERSION:
-        return "firmware_ahead"
-    return None
+    status = _compare_firmware_version(fw_ver)
+    if status == "compatible":
+        return None
+    return status
 
 
 # -- subscribe_device_list --
@@ -201,7 +207,7 @@ async def websocket_set_setup(
     if manager is None:
         connection.send_error(msg["id"], "not_ready", "Integration not loaded")
         return
-    proto_err = _check_protocol(manager, msg["mac"])
+    proto_err = _check_firmware_version(manager, msg["mac"])
     if proto_err:
         connection.send_error(
             msg["id"],
@@ -274,7 +280,7 @@ async def websocket_set_room_layout(
     if manager is None:
         connection.send_error(msg["id"], "not_ready", "Integration not loaded")
         return
-    proto_err = _check_protocol(manager, msg["mac"])
+    proto_err = _check_firmware_version(manager, msg["mac"])
     if proto_err:
         connection.send_error(
             msg["id"],
@@ -830,7 +836,7 @@ def websocket_set_entity_enabled(
     if manager is None:
         connection.send_error(msg["id"], "not_ready", "Integration not loaded")
         return
-    proto_err = _check_protocol(manager, msg["mac"])
+    proto_err = _check_firmware_version(manager, msg["mac"])
     if proto_err:
         connection.send_error(
             msg["id"],
@@ -909,7 +915,7 @@ async def websocket_set_settings(
     if manager is None:
         connection.send_error(msg["id"], "not_ready", "Integration not loaded")
         return
-    proto_err = _check_protocol(manager, msg["mac"])
+    proto_err = _check_firmware_version(manager, msg["mac"])
     if proto_err:
         connection.send_error(
             msg["id"],
@@ -1006,7 +1012,7 @@ async def websocket_set_distance_override(
     if manager is None:
         connection.send_error(msg["id"], "not_ready", "Integration not loaded")
         return
-    proto_err = _check_protocol(manager, msg["mac"])
+    proto_err = _check_firmware_version(manager, msg["mac"])
     if proto_err:
         connection.send_error(
             msg["id"],
@@ -1059,7 +1065,7 @@ async def websocket_set_pipeline(
     if manager is None:
         connection.send_error(msg["id"], "not_ready", "Integration not loaded")
         return
-    proto_err = _check_protocol(manager, msg["mac"])
+    proto_err = _check_firmware_version(manager, msg["mac"])
     if proto_err:
         connection.send_error(
             msg["id"],
@@ -1096,7 +1102,9 @@ async def websocket_update_firmware(
     connection: websocket_api.ActiveConnection,
     msg: dict[str, Any],
 ) -> None:
-    """Trigger firmware OTA update for a device."""
+    """Trigger firmware OTA update via set_update_manifest action."""
+    from .const import MANIFEST_BASE_URL
+
     manager = _get_manager(hass)
     if manager is None:
         connection.send_error(msg["id"], "not_ready", "Integration not loaded")
@@ -1104,33 +1112,43 @@ async def websocket_update_firmware(
 
     mac = msg["mac"]
     dev = manager.devices.get(mac)
-    if dev is None or dev.device_id is None:
+    if dev is None:
         connection.send_error(msg["id"], "not_found", "Device not found")
         return
 
-    # Find the update entity for this device
-    ent_reg = er.async_get(hass)
-    update_entity_id = None
-    for entry in ent_reg.entities.values():
-        if entry.device_id == dev.device_id and entry.platform == "esphome" and entry.domain == "update":
-            update_entity_id = entry.entity_id
-            break
+    # Derive firmware variant from build flags
+    from .const import FIRMWARE_VARIANTS
 
-    if update_entity_id is None:
-        connection.send_error(msg["id"], "no_update_entity", "No update entity found for device")
+    flags = manager._build_flags.get(mac, {})
+    if not flags:
+        connection.send_error(msg["id"], "build_flags_unknown", "Device build flags not yet available")
+        return
+    network = "ethernet" if flags.get("ethernet_enabled") else "wifi"
+    variant = FIRMWARE_VARIANTS.get(network)
+    if variant is None:
+        connection.send_error(msg["id"], "unknown_variant", f"No firmware variant for network type: {network}")
+        return
+    manifest_url = f"{MANIFEST_BASE_URL}/everything-presence-pro-{variant}-manifest.json"
+
+    if dev.host is None:
+        connection.send_error(msg["id"], "not_available", "Device host unknown")
         return
 
+    from .device_manager import DeviceConnection
+
+    conn = DeviceConnection(dev.host)
     try:
-        await hass.services.async_call(
-            "update",
-            "install",
-            {"entity_id": update_entity_id},
-            blocking=True,
-            context=connection.context(msg),
-        )
+        await conn.async_connect()
+        svc = conn._services.get("set_update_manifest")
+        if svc is None:
+            connection.send_error(msg["id"], "not_supported", "Device does not support OTA update")
+            return
+        await conn._client.execute_service(svc, {"url": manifest_url})
         connection.send_result(msg["id"])
     except Exception as err:
         connection.send_error(msg["id"], "update_failed", str(err))
+    finally:
+        await conn.async_disconnect()
 
 
 # -- dismiss_target (ephemeral, firmware-only) --
@@ -1189,7 +1207,8 @@ async def websocket_subscribe_flashable_devices(
     if manager is None:
         connection.send_error(msg["id"], "not_ready", "Integration not loaded")
         return
-    from .const import FIRMWARE_RELEASE_TAG
+
+    from .const import FIRMWARE_VERSION
 
     async def _send_update() -> None:
         devices = await manager.list_flashable_devices()
@@ -1199,7 +1218,8 @@ async def websocket_subscribe_flashable_devices(
                 {
                     "devices": devices,
                     "firmware_base_url": "/api/eppgrid/firmware",
-                    "latest_firmware_version": FIRMWARE_RELEASE_TAG,
+                    "latest_firmware_version": f"v{FIRMWARE_VERSION}",
+                    "integration_version": _INTEGRATION_VERSION,
                 },
             )
         )
@@ -1235,7 +1255,8 @@ async def websocket_list_flashable_devices(
     if manager is None:
         connection.send_error(msg["id"], "not_ready", "Integration not loaded")
         return
-    from .const import FIRMWARE_RELEASE_TAG
+
+    from .const import FIRMWARE_VERSION
 
     devices = await manager.list_flashable_devices()
     connection.send_result(
@@ -1243,7 +1264,8 @@ async def websocket_list_flashable_devices(
         {
             "devices": devices,
             "firmware_base_url": "/api/eppgrid/firmware",
-            "latest_firmware_version": FIRMWARE_RELEASE_TAG,
+            "latest_firmware_version": f"v{FIRMWARE_VERSION}",
+            "integration_version": _INTEGRATION_VERSION,
         },
     )
 

@@ -146,6 +146,8 @@ class TestFirmwareProxyView:
         ):
             await view.get(request, "everything-presence-pro-wifi-ble-co2-manifest.json")
 
+        from custom_components.eppgrid.const import FIRMWARE_VERSION
+
         call_url = session.get.call_args[0][0]
-        assert "releases/download/v1/" in call_url
+        assert f"releases/download/v{FIRMWARE_VERSION}/" in call_url
         assert call_url.endswith("everything-presence-pro-wifi-ble-co2-manifest.json")

@@ -285,7 +285,8 @@
 	},
 	"protocol": {
 		"firmware_behind": "This sensor's firmware needs to be updated to work with this version of the integration.",
-		"firmware_ahead": "This sensor's firmware is newer than the integration. Update the EPP Grid integration to the latest version.",
+		"firmware_ahead": "This sensor's firmware is newer than the integration. Update the Everything Presence Pro Grid integration via HACS.",
+		"open_hacs": "Open in HACS",
 		"unavailable": "Device is offline — firmware version cannot be determined.",
 		"update_firmware": "Update Firmware"
 	},
@@ -325,7 +326,7 @@
 		"step_adding": "Adding to Home Assistant...",
 		"step_complete": "Complete!",
 		"original": "Original",
-		"eppgrid": "EPP Grid",
+		"eppgrid": "Everything Presence Pro Grid",
 		"loading": "Loading devices...",
 		"configure_wifi": "Configure WiFi",
 		"scan": "Scan Again",
@@ -361,7 +362,12 @@
 		"usb_retry": "Retry",
 		"usb_back": "Back",
 		"confirm_delete_message": "This device was previously configured with the original firmware. The old configuration will be removed from Home Assistant.",
-		"update": "Update"
+		"update": "Update",
+		"needs_update": "Update needed",
+		"integration_update": "Integration update needed",
+		"integration_outdated_title": "Integration update required",
+		"integration_outdated_body": "One or more devices have firmware that is newer than this version of the integration. Update the Everything Presence Pro Grid integration to restore full functionality.",
+		"open_hacs": "Open in HACS"
 	},
 	"connection": {
 		"connecting": "Connecting to device...",

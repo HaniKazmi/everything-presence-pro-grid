@@ -39,7 +39,7 @@ function createPanel(
 			host: null,
 			available: true,
 			configured: true,
-			config_protocol_status: protocolStatus,
+			firmware_status: protocolStatus,
 		},
 	];
 	a._selectedMac = "AA:BB:CC:DD:EE:01";

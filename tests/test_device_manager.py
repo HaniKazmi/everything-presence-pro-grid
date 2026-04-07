@@ -19,6 +19,7 @@ from custom_components.eppgrid.const import MAX_ZONES
 from custom_components.eppgrid.device_manager import DeviceConnection
 from custom_components.eppgrid.device_manager import DeviceManager
 from custom_components.eppgrid.device_manager import ManagedDevice
+from custom_components.eppgrid.device_manager import _compare_firmware_version
 from custom_components.eppgrid.device_manager import _extract_host
 from custom_components.eppgrid.device_manager import _extract_mac
 from custom_components.eppgrid.storage import EPPGridStore
@@ -286,8 +287,8 @@ class TestDeviceConnection:
 class TestDeviceManager:
     """Tests for DeviceManager discovery and session management."""
 
-    async def test_discover_finds_zone_engine_device(self, hass: HomeAssistant, manager: DeviceManager) -> None:
-        """Discover finds ESPHome devices with zone_engine_version entity."""
+    async def test_discover_finds_firmware_version_device(self, hass: HomeAssistant, manager: DeviceManager) -> None:
+        """Discover finds ESPHome devices with firmware_version entity."""
         dev_reg = dr.async_get(hass)
         ent_reg = er.async_get(hass)
 
@@ -303,13 +304,15 @@ class TestDeviceManager:
             config_entry_id=esphome_entry.entry_id,
             connections={("mac", "aa:bb:cc:dd:ee:ff")},
             name="EPP Living Room",
+            manufacturer="EverythingSmartTechnology",
+            model="Everything Presence Pro",
         )
 
         ent_reg.async_get_or_create(
             "sensor",
             "esphome",
-            unique_id="esphome_aabbccddeeff_zone_engine_version",
-            suggested_object_id="epp_zone_engine_version",
+            unique_id="esphome_aabbccddeeff_firmware_version",
+            suggested_object_id="epp_firmware_version",
             config_entry=esphome_entry,
             device_id=device.id,
         )
@@ -339,13 +342,15 @@ class TestDeviceManager:
             config_entry_id=esphome_entry.entry_id,
             connections={("mac", "aa:bb:cc:dd:ee:ff")},
             name="EPP New",
+            manufacturer="EverythingSmartTechnology",
+            model="Everything Presence Pro",
         )
 
         ent_reg.async_get_or_create(
             "sensor",
             "esphome",
-            unique_id="esphome_aabbccddeeff_zone_engine_version",
-            suggested_object_id="epp_zone_engine_version",
+            unique_id="esphome_aabbccddeeff_firmware_version",
+            suggested_object_id="epp_firmware_version",
             config_entry=esphome_entry,
             device_id=device.id,
         )
@@ -355,8 +360,8 @@ class TestDeviceManager:
             await manager.async_discover()
             mock_update.assert_awaited_once()
 
-    async def test_discover_ignores_non_zone_engine(self, hass: HomeAssistant, manager: DeviceManager) -> None:
-        """Entities without zone_engine_version are ignored."""
+    async def test_discover_ignores_non_firmware_version(self, hass: HomeAssistant, manager: DeviceManager) -> None:
+        """Entities without firmware_version are ignored."""
         dev_reg = dr.async_get(hass)
         ent_reg = er.async_get(hass)
 
@@ -613,18 +618,142 @@ class TestDeviceManager:
 
 
 # ---------------------------------------------------------------------------
-# TestProtocolVersion tests
+# TestFirmwareVersion tests
 # ---------------------------------------------------------------------------
 
 
-class TestProtocolVersion:
-    """Tests for config protocol version detection."""
+class TestFirmwareVersion:
+    """Tests for firmware version detection and comparison."""
 
-    async def test_list_devices_includes_protocol_status_compatible(
+    # --- _compare_firmware_version helper ---
+
+    def test_compare_firmware_version_compatible(self) -> None:
+        """Returns 'compatible' when device version matches required version."""
+        from custom_components.eppgrid.const import FIRMWARE_VERSION
+
+        assert _compare_firmware_version(FIRMWARE_VERSION) == "compatible"
+
+    def test_compare_firmware_version_behind(self) -> None:
+        """Returns 'firmware_behind' when device version is older."""
+        assert _compare_firmware_version("0.1.0") == "firmware_behind"
+
+    def test_compare_firmware_version_ahead(self) -> None:
+        """Returns 'firmware_ahead' when device version is newer."""
+        assert _compare_firmware_version("99.0.0") == "firmware_ahead"
+
+    def test_compare_firmware_version_invalid(self) -> None:
+        """Returns 'firmware_behind' for unparseable version strings."""
+        assert _compare_firmware_version("not-a-version") == "firmware_behind"
+
+    def test_compare_firmware_version_zero(self) -> None:
+        """Returns 'firmware_behind' for '0.0.0' (missing entity sentinel)."""
+        assert _compare_firmware_version("0.0.0") == "firmware_behind"
+
+    # --- read_firmware_version ---
+
+    async def test_read_firmware_version_returns_version_string(
         self, hass: HomeAssistant, manager: DeviceManager
     ) -> None:
-        """list_devices reads live state and reports compatible when versions match."""
-        from custom_components.eppgrid.const import CONFIG_PROTOCOL_VERSION
+        """read_firmware_version returns version string from text sensor state."""
+        dev_reg = dr.async_get(hass)
+        ent_reg = er.async_get(hass)
+
+        esphome_entry = MockConfigEntry(
+            domain="esphome",
+            data={"host": "192.168.1.50"},
+            title="EPP Device",
+        )
+        esphome_entry.add_to_hass(hass)
+
+        device = dev_reg.async_get_or_create(
+            config_entry_id=esphome_entry.entry_id,
+            connections={("mac", "aa:bb:cc:dd:ee:ff")},
+            name="EPP Device",
+        )
+
+        fw_entry = ent_reg.async_get_or_create(
+            "sensor",
+            "esphome",
+            unique_id="esphome_aabbccddeeff_firmware_version",
+            suggested_object_id="epp_firmware_version",
+            config_entry=esphome_entry,
+            device_id=device.id,
+        )
+        hass.states.async_set(fw_entry.entity_id, "0.90.0-alpha")
+
+        result = manager.read_firmware_version(device.id)
+        assert result == "0.90.0-alpha"
+
+    async def test_read_firmware_version_returns_none_when_unavailable(
+        self, hass: HomeAssistant, manager: DeviceManager
+    ) -> None:
+        """read_firmware_version returns None when state is unavailable."""
+        dev_reg = dr.async_get(hass)
+        ent_reg = er.async_get(hass)
+
+        esphome_entry = MockConfigEntry(
+            domain="esphome",
+            data={"host": "192.168.1.50"},
+            title="EPP Device",
+        )
+        esphome_entry.add_to_hass(hass)
+
+        device = dev_reg.async_get_or_create(
+            config_entry_id=esphome_entry.entry_id,
+            connections={("mac", "aa:bb:cc:dd:ee:ff")},
+            name="EPP Device",
+        )
+
+        fw_entry = ent_reg.async_get_or_create(
+            "sensor",
+            "esphome",
+            unique_id="esphome_aabbccddeeff_firmware_version",
+            suggested_object_id="epp_firmware_version",
+            config_entry=esphome_entry,
+            device_id=device.id,
+        )
+        hass.states.async_set(fw_entry.entity_id, "unavailable")
+
+        result = manager.read_firmware_version(device.id)
+        assert result is None
+
+    async def test_read_firmware_version_returns_zero_when_device_id_none(
+        self, hass: HomeAssistant, manager: DeviceManager
+    ) -> None:
+        """read_firmware_version returns '0.0.0' when device_id is None."""
+        result = manager.read_firmware_version(None)
+        assert result == "0.0.0"
+
+    async def test_read_firmware_version_returns_zero_when_no_entity(
+        self, hass: HomeAssistant, manager: DeviceManager
+    ) -> None:
+        """read_firmware_version returns '0.0.0' when no firmware_version entity exists."""
+        dev_reg = dr.async_get(hass)
+
+        esphome_entry = MockConfigEntry(
+            domain="esphome",
+            data={"host": "192.168.1.50"},
+            title="EPP Device",
+        )
+        esphome_entry.add_to_hass(hass)
+
+        device = dev_reg.async_get_or_create(
+            config_entry_id=esphome_entry.entry_id,
+            connections={("mac", "aa:bb:cc:dd:ee:ff")},
+            name="EPP Device",
+        )
+        # No firmware_version entity created
+
+        result = manager.read_firmware_version(device.id)
+        assert result == "0.0.0"
+
+    # --- list_devices firmware_status ---
+
+    async def test_list_devices_includes_firmware_status_compatible(
+        self, hass: HomeAssistant, manager: DeviceManager
+    ) -> None:
+        """list_devices reads live firmware version and reports compatible when versions match."""
+        from custom_components.eppgrid.const import FIRMWARE_VERSION
 
         dev_reg = dr.async_get(hass)
         ent_reg = er.async_get(hass)
@@ -642,15 +771,15 @@ class TestProtocolVersion:
             name="EPP Device",
         )
 
-        proto_entry = ent_reg.async_get_or_create(
+        fw_entry = ent_reg.async_get_or_create(
             "sensor",
             "esphome",
-            unique_id="esphome_aabbccddeeff_config_protocol",
-            suggested_object_id="epp_config_protocol",
+            unique_id="esphome_aabbccddeeff_firmware_version",
+            suggested_object_id="epp_firmware_version",
             config_entry=esphome_entry,
             device_id=device.id,
         )
-        hass.states.async_set(proto_entry.entity_id, str(CONFIG_PROTOCOL_VERSION))
+        hass.states.async_set(fw_entry.entity_id, FIRMWARE_VERSION)
 
         manager.devices["AA:BB:CC:DD:EE:FF"] = ManagedDevice(
             mac="AA:BB:CC:DD:EE:FF",
@@ -661,12 +790,12 @@ class TestProtocolVersion:
         )
         result = manager.list_devices()
         assert len(result) == 1
-        assert result[0]["config_protocol_status"] == "compatible"
+        assert result[0]["firmware_status"] == "compatible"
 
-    async def test_list_devices_protocol_status_firmware_behind(
+    async def test_list_devices_firmware_status_firmware_behind(
         self, hass: HomeAssistant, manager: DeviceManager
     ) -> None:
-        """list_devices reports firmware_behind when no protocol entity exists."""
+        """list_devices reports firmware_behind when no firmware_version entity exists."""
         manager.devices["AA:BB:CC:DD:EE:FF"] = ManagedDevice(
             mac="AA:BB:CC:DD:EE:FF",
             name="EPP Device",
@@ -675,13 +804,51 @@ class TestProtocolVersion:
             device_id="fake_device_id",
         )
         result = manager.list_devices()
-        assert result[0]["config_protocol_status"] == "firmware_behind"
+        assert result[0]["firmware_status"] == "firmware_behind"
 
-    async def test_list_devices_protocol_status_firmware_ahead(
+    async def test_list_devices_firmware_status_firmware_ahead(
         self, hass: HomeAssistant, manager: DeviceManager
     ) -> None:
-        """list_devices reports firmware_ahead when device protocol is higher."""
-        from custom_components.eppgrid.const import CONFIG_PROTOCOL_VERSION
+        """list_devices reports firmware_ahead when device firmware is newer."""
+        dev_reg = dr.async_get(hass)
+        ent_reg = er.async_get(hass)
+
+        esphome_entry = MockConfigEntry(
+            domain="esphome",
+            data={"host": "192.168.1.50"},
+            title="EPP Device",
+        )
+        esphome_entry.add_to_hass(hass)
+
+        device = dev_reg.async_get_or_create(
+            config_entry_id=esphome_entry.entry_id,
+            connections={("mac", "aa:bb:cc:dd:ee:ff")},
+            name="EPP Device",
+        )
+
+        fw_entry = ent_reg.async_get_or_create(
+            "sensor",
+            "esphome",
+            unique_id="esphome_aabbccddeeff_firmware_version",
+            suggested_object_id="epp_firmware_version",
+            config_entry=esphome_entry,
+            device_id=device.id,
+        )
+        hass.states.async_set(fw_entry.entity_id, "99.0.0")
+
+        manager.devices["AA:BB:CC:DD:EE:FF"] = ManagedDevice(
+            mac="AA:BB:CC:DD:EE:FF",
+            name="EPP Device",
+            host="192.168.1.50",
+            available=True,
+            device_id=device.id,
+        )
+        result = manager.list_devices()
+        assert result[0]["firmware_status"] == "firmware_ahead"
+
+    async def test_list_devices_reads_firmware_version_live(self, hass: HomeAssistant, manager: DeviceManager) -> None:
+        """list_devices picks up firmware version changes without re-discovery."""
+        from custom_components.eppgrid.const import FIRMWARE_VERSION
 
         dev_reg = dr.async_get(hass)
         ent_reg = er.async_get(hass)
@@ -699,51 +866,11 @@ class TestProtocolVersion:
             name="EPP Device",
         )
 
-        proto_entry = ent_reg.async_get_or_create(
+        fw_entry = ent_reg.async_get_or_create(
             "sensor",
             "esphome",
-            unique_id="esphome_aabbccddeeff_config_protocol",
-            suggested_object_id="epp_config_protocol",
-            config_entry=esphome_entry,
-            device_id=device.id,
-        )
-        hass.states.async_set(proto_entry.entity_id, str(CONFIG_PROTOCOL_VERSION + 1))
-
-        manager.devices["AA:BB:CC:DD:EE:FF"] = ManagedDevice(
-            mac="AA:BB:CC:DD:EE:FF",
-            name="EPP Device",
-            host="192.168.1.50",
-            available=True,
-            device_id=device.id,
-        )
-        result = manager.list_devices()
-        assert result[0]["config_protocol_status"] == "firmware_ahead"
-
-    async def test_list_devices_reads_protocol_live(self, hass: HomeAssistant, manager: DeviceManager) -> None:
-        """list_devices picks up protocol changes without re-discovery."""
-        from custom_components.eppgrid.const import CONFIG_PROTOCOL_VERSION
-
-        dev_reg = dr.async_get(hass)
-        ent_reg = er.async_get(hass)
-
-        esphome_entry = MockConfigEntry(
-            domain="esphome",
-            data={"host": "192.168.1.50"},
-            title="EPP Device",
-        )
-        esphome_entry.add_to_hass(hass)
-
-        device = dev_reg.async_get_or_create(
-            config_entry_id=esphome_entry.entry_id,
-            connections={("mac", "aa:bb:cc:dd:ee:ff")},
-            name="EPP Device",
-        )
-
-        proto_entry = ent_reg.async_get_or_create(
-            "sensor",
-            "esphome",
-            unique_id="esphome_aabbccddeeff_config_protocol",
-            suggested_object_id="epp_config_protocol",
+            unique_id="esphome_aabbccddeeff_firmware_version",
+            suggested_object_id="epp_firmware_version",
             config_entry=esphome_entry,
             device_id=device.id,
         )
@@ -756,19 +883,19 @@ class TestProtocolVersion:
             device_id=device.id,
         )
 
-        # State starts unavailable → unavailable (not firmware_behind)
-        hass.states.async_set(proto_entry.entity_id, "unavailable")
+        # State starts unavailable → None → unavailable
+        hass.states.async_set(fw_entry.entity_id, "unavailable")
         result = manager.list_devices()
-        assert result[0]["config_protocol_status"] == "unavailable"
+        assert result[0]["firmware_status"] == "unavailable"
 
-        # State updates to compatible version → compatible (no re-discovery needed)
-        hass.states.async_set(proto_entry.entity_id, str(CONFIG_PROTOCOL_VERSION))
+        # State updates to compatible version → compatible
+        hass.states.async_set(fw_entry.entity_id, FIRMWARE_VERSION)
         result = manager.list_devices()
-        assert result[0]["config_protocol_status"] == "compatible"
+        assert result[0]["firmware_status"] == "compatible"
 
-    async def test_discover_does_not_cache_config_protocol(self, hass: HomeAssistant, manager: DeviceManager) -> None:
-        """async_discover no longer caches config_protocol on the device."""
-        from custom_components.eppgrid.const import CONFIG_PROTOCOL_VERSION
+    async def test_discover_does_not_cache_firmware_version(self, hass: HomeAssistant, manager: DeviceManager) -> None:
+        """async_discover detects firmware_version entities and list_devices reports compatible."""
+        from custom_components.eppgrid.const import FIRMWARE_VERSION
 
         dev_reg = dr.async_get(hass)
         ent_reg = er.async_get(hass)
@@ -784,38 +911,31 @@ class TestProtocolVersion:
             config_entry_id=esphome_entry.entry_id,
             connections={("mac", "aa:bb:cc:dd:ee:ff")},
             name="EPP Living Room",
+            manufacturer="EverythingSmartTechnology",
+            model="Everything Presence Pro",
         )
 
-        ent_reg.async_get_or_create(
+        fw_entry = ent_reg.async_get_or_create(
             "sensor",
             "esphome",
-            unique_id="esphome_aabbccddeeff_zone_engine_version",
-            suggested_object_id="epp_zone_engine_version",
+            unique_id="esphome_aabbccddeeff_firmware_version",
+            suggested_object_id="epp_firmware_version",
             config_entry=esphome_entry,
             device_id=device.id,
         )
-
-        proto_entry = ent_reg.async_get_or_create(
-            "sensor",
-            "esphome",
-            unique_id="esphome_aabbccddeeff_config_protocol",
-            suggested_object_id="epp_config_protocol",
-            config_entry=esphome_entry,
-            device_id=device.id,
-        )
-        hass.states.async_set(proto_entry.entity_id, str(CONFIG_PROTOCOL_VERSION))
+        hass.states.async_set(fw_entry.entity_id, FIRMWARE_VERSION)
 
         await manager.async_discover()
 
         assert "AA:BB:CC:DD:EE:FF" in manager.devices
-        # Protocol is read live, so list_devices should report compatible
+        # Firmware version is read live, so list_devices should report compatible
         result = manager.list_devices()
-        assert result[0]["config_protocol_status"] == "compatible"
+        assert result[0]["firmware_status"] == "compatible"
 
-    async def test_discover_no_protocol_entity_reports_firmware_behind(
+    async def test_discover_no_firmware_version_entity_reports_unavailable(
         self, hass: HomeAssistant, manager: DeviceManager
     ) -> None:
-        """list_devices reports firmware_behind when no config_protocol entity exists."""
+        """list_devices reports unavailable when firmware_version entity has no state."""
         dev_reg = dr.async_get(hass)
         ent_reg = er.async_get(hass)
 
@@ -830,23 +950,25 @@ class TestProtocolVersion:
             config_entry_id=esphome_entry.entry_id,
             connections={("mac", "aa:bb:cc:dd:ee:ff")},
             name="EPP Living Room",
+            manufacturer="EverythingSmartTechnology",
+            model="Everything Presence Pro",
         )
 
         ent_reg.async_get_or_create(
             "sensor",
             "esphome",
-            unique_id="esphome_aabbccddeeff_zone_engine_version",
-            suggested_object_id="epp_zone_engine_version",
+            unique_id="esphome_aabbccddeeff_firmware_version",
+            suggested_object_id="epp_firmware_version",
             config_entry=esphome_entry,
             device_id=device.id,
         )
-        # No config_protocol entity created
+        # No firmware state entity with a version value
 
         await manager.async_discover()
 
         assert "AA:BB:CC:DD:EE:FF" in manager.devices
         result = manager.list_devices()
-        assert result[0]["config_protocol_status"] == "firmware_behind"
+        assert result[0]["firmware_status"] == "unavailable"
 
 
 # ---------------------------------------------------------------------------
@@ -1279,7 +1401,7 @@ class TestEventCallbacks:
         entity = ent_reg.async_get_or_create(
             "sensor",
             "esphome",
-            unique_id="esphome_new_zone_engine_version",
+            unique_id="esphome_new_firmware_version",
             config_entry=esphome_entry,
             device_id=device.id,
         )
@@ -1748,11 +1870,13 @@ class TestEventCallbacks:
             config_entry_id=esphome_entry.entry_id,
             connections={("mac", "aa:bb:cc:dd:ee:ff")},
             name="EPP",
+            manufacturer="EverythingSmartTechnology",
+            model="Everything Presence Pro",
         )
         ent_reg.async_get_or_create(
             "sensor",
             "esphome",
-            unique_id="aabbccddeeff-zone_engine_version",
+            unique_id="aabbccddeeff-firmware_version",
             config_entry=esphome_entry,
             device_id=device.id,
         )

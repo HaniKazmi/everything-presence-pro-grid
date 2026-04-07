@@ -12,7 +12,7 @@ ESPHome firmware (ESP32)
   └── publishes ESPHome entities + text sensor streams
 
 HA Integration (eppgrid)
-  ├── discovers ESPHome devices with zone_engine_version
+  ├── discovers ESPHome devices with firmware_version
   ├── opens aioesphomeapi connection for frontend sessions
   ├── subscribe_states → fans out to subscription handlers
   ├── stores config in EPPGridStore → pushes to device via API actions
@@ -165,7 +165,7 @@ Returns discovered EPP devices.
             "host": "192.168.1.50",
             "available": true,
             "configured": true,
-            "config_protocol_status": "compatible",
+            "firmware_status": "compatible",
             "current_connection_count": 1,
             "bluetooth_enabled": false,
             "co2_enabled": true,
@@ -179,7 +179,7 @@ Returns discovered EPP devices.
 }
 ```
 
-`config_protocol_status` is `"compatible"`, `"firmware_behind"`, or `"firmware_ahead"` — comparing the device's `Config Protocol` sensor value to the integration's `CONFIG_PROTOCOL_VERSION`.
+`firmware_status` is `"compatible"`, `"firmware_behind"`, or `"firmware_ahead"` — comparing the device's `Firmware Version` text sensor to the integration's `FIRMWARE_VERSION` using semver.
 
 The build flag fields (`bluetooth_enabled`, `co2_enabled`, `ethernet_enabled`, `board_revision`, `sensor_variant`, `firmware_channel`, `model`) are optional — they are only present after the device has connected and build flags have been fetched via the `get_build_flags` API action.
 
@@ -192,13 +192,13 @@ Returns stored config for a device.
 
 ### `update_firmware`
 
-Triggers OTA firmware update on a device via its ESPHome update entity.
+Triggers OTA firmware update on a device via the `set_update_manifest` API action. Derives the firmware variant from build flags and constructs the manifest URL from `FIRMWARE_VERSION`. Uses a temporary connection (not the persistent session).
 
 **Request:** `{ "type": "eppgrid/update_firmware", "mac": str }`
 
-### Protocol Version Guard
+### Firmware Version Guard
 
-All config commands (`set_setup`, `set_room_layout`, `set_entity_enabled`, `set_settings`, `set_pipeline`) check `config_protocol_status` before executing. On mismatch, they return an error with code `"firmware_behind"` or `"firmware_ahead"`.
+All config commands (`set_setup`, `set_room_layout`, `set_entity_enabled`, `set_settings`, `set_pipeline`) check `firmware_status` before executing. On mismatch, they return an error with code `"firmware_behind"`, `"firmware_ahead"`, or `"unavailable"`.
 
 ### `set_setup`
 
@@ -314,7 +314,7 @@ Returns all ESPHome devices matching EPP manufacturer/model, regardless of wheth
 }
 ```
 
-`firmware_type` is `"original"` (no `zone_engine_version` entity) or `"eppgrid"` (has `zone_engine_version` entity). `update_available` is `true` when the device runs EPP Grid firmware and a newer version is available. `firmware_version` is the current firmware version string.
+`firmware_type` is `"original"` (no `firmware_version` entity) or `"eppgrid"` (has `firmware_version` entity). `update_available` is `true` when the device runs EPP Grid firmware and a newer version is available. `firmware_version` is the current firmware version string. `firmware_status` is `"compatible"`, `"firmware_behind"`, `"firmware_ahead"`, `"unknown"`, or `"unavailable"`.
 
 #### `delete_esphome_device`
 

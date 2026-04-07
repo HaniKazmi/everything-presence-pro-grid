@@ -19,7 +19,7 @@ export interface DeviceInfo {
 	host: string | null;
 	available: boolean;
 	configured: boolean;
-	config_protocol_status:
+	firmware_status:
 		| "compatible"
 		| "firmware_behind"
 		| "firmware_ahead"
@@ -48,6 +48,12 @@ export interface FlashableDevice {
 	firmware_version: string;
 	esphome_config_entry_id: string | null;
 	update_available: boolean;
+	firmware_status:
+		| "compatible"
+		| "firmware_behind"
+		| "firmware_ahead"
+		| "unknown"
+		| "unavailable";
 }
 
 export type UsbFlashStep =
