@@ -45,7 +45,7 @@ function createPanel(): EPPGridPanel {
 			host: null,
 			available: true,
 			configured: true,
-			config_protocol_status: "compatible",
+			firmware_status: "compatible",
 		},
 	];
 	a._selectedMac = "AA:BB:CC:DD:EE:01";

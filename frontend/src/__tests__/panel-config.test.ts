@@ -942,7 +942,7 @@ describe("_renderConnectionBanner", () => {
 				host: null,
 				available: true,
 				configured: true,
-				config_protocol_status: "compatible",
+				firmware_status: "compatible",
 				current_connection_count: 3,
 			},
 		];
@@ -963,7 +963,7 @@ describe("_renderConnectionBanner", () => {
 		expect(result).toBe(nothing);
 	});
 
-	it("renders offline banner when device config_protocol_status is unavailable", () => {
+	it("renders offline banner when device firmware_status is unavailable", () => {
 		const el = createPanel();
 		const a = el as any;
 		a._deviceCtrl._connectionFailed = true;
@@ -974,7 +974,7 @@ describe("_renderConnectionBanner", () => {
 				host: null,
 				available: false,
 				configured: true,
-				config_protocol_status: "unavailable",
+				firmware_status: "unavailable",
 			},
 		];
 		a._selectedMac = "AA:BB:CC:DD:EE:01";

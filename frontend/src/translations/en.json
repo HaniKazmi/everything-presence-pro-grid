@@ -285,7 +285,7 @@
 	},
 	"protocol": {
 		"firmware_behind": "This sensor's firmware needs to be updated to work with this version of the integration.",
-		"firmware_ahead": "This sensor's firmware is newer than the integration. Update the EPP Grid integration to the latest version.",
+		"firmware_ahead": "This sensor's firmware is newer than the integration. Update the EPP Grid integration via HACS.",
 		"unavailable": "Device is offline — firmware version cannot be determined.",
 		"update_firmware": "Update Firmware"
 	},
@@ -361,7 +361,9 @@
 		"usb_retry": "Retry",
 		"usb_back": "Back",
 		"confirm_delete_message": "This device was previously configured with the original firmware. The old configuration will be removed from Home Assistant.",
-		"update": "Update"
+		"update": "Update",
+		"needs_update": "Update needed",
+		"integration_update": "Integration update needed"
 	},
 	"connection": {
 		"connecting": "Connecting to device...",

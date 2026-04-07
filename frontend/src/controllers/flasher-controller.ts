@@ -6,6 +6,7 @@ export class FlasherController implements ReactiveController {
 	flashableDevices: FlashableDevice[] = [];
 	firmwareBaseUrl = "";
 	firmwareVersion = "";
+	integrationVersion = "";
 	loading = true;
 	usbConnected = false;
 	usbDeviceMac: string | null = null;
@@ -91,6 +92,7 @@ export class FlasherController implements ReactiveController {
 		this.flashableDevices = resp.devices ?? [];
 		this.firmwareBaseUrl = resp.firmware_base_url ?? "";
 		this.firmwareVersion = resp.latest_firmware_version ?? "";
+		this.integrationVersion = resp.integration_version ?? "";
 		this.loading = false;
 		this.onDeviceListChanged?.();
 		this._host.requestUpdate();

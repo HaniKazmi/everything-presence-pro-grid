@@ -46,7 +46,7 @@ function createPanel(): EPPGridPanel {
 			host: null,
 			available: true,
 			configured: true,
-			config_protocol_status: "compatible",
+			firmware_status: "compatible",
 		},
 	];
 	a._selectedMac = "AA:BB:CC:DD:EE:01";
@@ -391,7 +391,7 @@ describe("_renderProtocolBanner update firmware button", () => {
 				host: null,
 				available: true,
 				configured: true,
-				config_protocol_status: "firmware_behind",
+				firmware_status: "firmware_behind",
 			},
 		];
 		const spy = vi.spyOn(a, "_updateFirmware").mockResolvedValue(undefined);

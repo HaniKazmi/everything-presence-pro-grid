@@ -46,6 +46,7 @@ export class EppFlasherView extends LitElement {
 	@state() private _selectedVariant: "wifi" | "ethernet" = "wifi";
 	@property() firmwareBaseUrl = "";
 	@property() firmwareVersion = "";
+	@property() integrationVersion = "";
 	@property({ attribute: false }) usbFlashState: UsbFlashState | null = null;
 	@property({ attribute: false }) wifiNetworks: WifiNetwork[] = [];
 
@@ -249,7 +250,10 @@ export class EppFlasherView extends LitElement {
 		return html`
       <div class="flasher-content">
         <ha-card>
-          <div class="card-header">${this.localize("flasher.devices_on_network")}</div>
+          <div class="card-header">
+            ${this.localize("flasher.devices_on_network")}
+            ${this.integrationVersion ? html`<span class="integration-version">v${this.integrationVersion}</span>` : nothing}
+          </div>
           <div class="card-content">
             ${
 							flashableDevices.length === 0
@@ -280,6 +284,16 @@ export class EppFlasherView extends LitElement {
                         ${
 													!device.available
 														? html`<span class="firmware-badge firmware-badge-offline">${this.localize("flasher.offline")}</span>`
+														: nothing
+												}
+                        ${
+													device.firmware_type === "eppgrid" && device.firmware_status === "firmware_behind"
+														? html`<span class="firmware-badge firmware-badge-behind">${this.localize("flasher.needs_update")}</span>`
+														: nothing
+												}
+                        ${
+													device.firmware_type === "eppgrid" && device.firmware_status === "firmware_ahead"
+														? html`<span class="firmware-badge firmware-badge-ahead">${this.localize("flasher.integration_update")}</span>`
 														: nothing
 												}
                         ${

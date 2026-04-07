@@ -1080,6 +1080,7 @@ export class EPPGridPanel extends LitElement {
 					.wifiNetworks=${this._flasherCtrl.wifiNetworks}
 					.firmwareBaseUrl=${this._flasherCtrl.firmwareBaseUrl}
 					.firmwareVersion=${this._flasherCtrl.firmwareVersion}
+					.integrationVersion=${this._flasherCtrl.integrationVersion}
 					@flash-complete=${() => {
 						this._flasherCtrl.resetUsbState();
 						this._loadDevices();
@@ -1209,8 +1210,8 @@ export class EPPGridPanel extends LitElement {
 		const dev = this._devices.find((d) => d.mac === this._selectedMac);
 		const protocolOk =
 			!dev ||
-			dev.config_protocol_status === "compatible" ||
-			dev.config_protocol_status === "unavailable";
+			dev.firmware_status === "compatible" ||
+			dev.firmware_status === "unavailable";
 
 		if (!protocolOk) {
 			return html`<div class="tab-layout">
@@ -1341,9 +1342,9 @@ export class EPPGridPanel extends LitElement {
 
 	private _renderProtocolBanner() {
 		const dev = this._devices.find((d) => d.mac === this._selectedMac);
-		if (!dev || dev.config_protocol_status === "compatible") return nothing;
+		if (!dev || dev.firmware_status === "compatible") return nothing;
 
-		const status = dev.config_protocol_status;
+		const status = dev.firmware_status;
 		const isBehind = status === "firmware_behind";
 		const isUnavailable = status === "unavailable";
 		const message = isUnavailable
@@ -1383,7 +1384,7 @@ export class EPPGridPanel extends LitElement {
 		if (!this._deviceCtrl.connectionFailed) return nothing;
 
 		const dev = this._devices.find((d) => d.mac === this._selectedMac);
-		const isOffline = dev?.config_protocol_status === "unavailable";
+		const isOffline = dev?.firmware_status === "unavailable";
 
 		if (isOffline) {
 			return html`

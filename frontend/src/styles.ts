@@ -530,6 +530,23 @@ export const flasherStyles = css`
     color: #616161;
   }
 
+  .firmware-badge-behind {
+    background: var(--warning-color, #ff9800);
+    color: white;
+  }
+
+  .firmware-badge-ahead {
+    background: var(--info-color, #2196f3);
+    color: white;
+  }
+
+  .integration-version {
+    font-size: 0.8em;
+    font-weight: normal;
+    opacity: 0.7;
+    margin-left: 8px;
+  }
+
   ha-button[raised] {
     --mdc-theme-primary: var(--primary-color, #03a9f4);
   }
