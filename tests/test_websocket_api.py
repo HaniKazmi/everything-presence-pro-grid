@@ -1645,9 +1645,7 @@ class TestUpdateFirmware:
         assert call_args[0] is mock_svc
         assert "wifi-ble-co2-manifest.json" in call_args[1]["url"]
 
-    async def test_update_firmware_ethernet_variant(
-        self, hass: HomeAssistant, config_entry: MockConfigEntry
-    ) -> None:
+    async def test_update_firmware_ethernet_variant(self, hass: HomeAssistant, config_entry: MockConfigEntry) -> None:
         """update_firmware derives ethernet variant from build flags."""
         mock_dm = await setup_integration(hass, config_entry)
         mock_dm.devices = {"AA:BB:CC:DD:EE:FF": MagicMock()}

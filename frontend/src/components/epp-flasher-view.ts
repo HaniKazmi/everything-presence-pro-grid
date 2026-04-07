@@ -247,12 +247,15 @@ export class EppFlasherView extends LitElement {
 	private _renderDeviceList() {
 		const { flashableDevices } = this;
 		const hasAheadDevices = flashableDevices.some(
-			(d) => d.firmware_type === "eppgrid" && d.firmware_status === "firmware_ahead",
+			(d) =>
+				d.firmware_type === "eppgrid" && d.firmware_status === "firmware_ahead",
 		);
 
 		return html`
       <div class="flasher-content">
-        ${hasAheadDevices ? html`
+        ${
+					hasAheadDevices
+						? html`
           <div class="update-banner">
             <ha-icon icon="mdi:information"></ha-icon>
             <div>
@@ -261,7 +264,9 @@ export class EppFlasherView extends LitElement {
               <a href="/hacs/repository/1172848595" class="update-link">${this.localize("flasher.open_hacs")}</a>
             </div>
           </div>
-        ` : nothing}
+        `
+						: nothing
+				}
         <ha-card>
           <div class="card-header">
             ${this.localize("flasher.devices_on_network")}
@@ -313,7 +318,10 @@ export class EppFlasherView extends LitElement {
 												}
                         ${
 													device.firmware_type === "eppgrid" &&
-													(device.update_available || device.firmware_status === "firmware_behind")
+													(
+														device.update_available ||
+															device.firmware_status === "firmware_behind"
+													)
 														? html`<ha-button
 																raised
 																@click=${() => this._dispatchUpdateFirmware(device)}
