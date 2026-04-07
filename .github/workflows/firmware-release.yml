@@ -21,6 +21,33 @@ jobs:
     name: "Build ${{ matrix.variant }}"
     steps:
       - uses: actions/checkout@v5
+      - name: Extract and validate version
+        id: version
+        run: |
+          TAG="${GITHUB_REF#refs/tags/v}"
+          echo "version=$TAG" >> "$GITHUB_OUTPUT"
+
+          # Validate tag matches manifest.json version
+          MANIFEST_VER=$(python3 -c "import json; print(json.load(open('custom_components/eppgrid/manifest.json'))['version'])")
+          if [ "$TAG" != "$MANIFEST_VER" ]; then
+            echo "::error::Tag v$TAG does not match manifest.json version $MANIFEST_VER"
+            exit 1
+          fi
+
+      - name: Auto-patch firmware version
+        run: |
+          VER="${{ steps.version.outputs.version }}"
+
+          # Patch project.version in firmware base YAML
+          sed -i "s/^    version: \".*\"/    version: \"$VER\"/" firmware/common/everything-presence-pro-base.yaml
+
+          # Patch FIRMWARE_VERSION_STR in C++ header
+          sed -i "s/FIRMWARE_VERSION_STR = \".*\"/FIRMWARE_VERSION_STR = \"$VER\"/" firmware/components/epp/epp_component.h
+
+          # Verify patches applied
+          grep "version: \"$VER\"" firmware/common/everything-presence-pro-base.yaml
+          grep "FIRMWARE_VERSION_STR = \"$VER\"" firmware/components/epp/epp_component.h
+
       - name: Install ESPHome
         run: pip install esphome
       - name: Compile firmware
@@ -30,21 +57,19 @@ jobs:
           mkdir -p dist
           BUILD_DIR="firmware/variants/.esphome/build/everything-presence-pro/.pioenvs/everything-presence-pro"
           VARIANT="everything-presence-pro-${{ matrix.variant }}"
-          # App binary (for OTA updates via ESPHome protocol)
           cp "$BUILD_DIR/firmware.ota.bin" "dist/${VARIANT}.ota.bin"
-          # Individual parts for ESP Web Tools USB flashing (ESP-IDF offsets)
           cp "$BUILD_DIR/bootloader.bin" "dist/${VARIANT}-bootloader.bin"
           cp "$BUILD_DIR/partitions.bin" "dist/${VARIANT}-partitions.bin"
           cp "$BUILD_DIR/firmware.bin" "dist/${VARIANT}.bin"
       - name: Generate ESP Web Tools manifest
         run: |
-          TAG="${GITHUB_REF#refs/tags/}"
+          VER="${{ steps.version.outputs.version }}"
           VARIANT="everything-presence-pro-${{ matrix.variant }}"
           OTA_MD5=$(md5sum "dist/${VARIANT}.ota.bin" | cut -d' ' -f1)
           cat > "dist/${VARIANT}-manifest.json" << EOF
           {
             "name": "Everything Presence Pro (${{ matrix.variant }})",
-            "version": "$TAG",
+            "version": "$VER",
             "builds": [
               {
                 "chipFamily": "ESP32",
