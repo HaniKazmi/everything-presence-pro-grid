@@ -408,4 +408,64 @@ describe("_renderTemplateLoadDialog", () => {
 
 		document.body.removeChild(c);
 	});
+
+	it("Enter key on card triggers load", () => {
+		const grid = new Array(GRID_CELL_COUNT).fill(0);
+		grid[0] = CELL_ROOM_BIT;
+		const templates = [
+			{
+				name: "Keyboard",
+				grid,
+				zones: [],
+				roomWidth: 4000,
+				roomDepth: 5000,
+			},
+		];
+		localStorage.setItem("epp_layout_templates", JSON.stringify(templates));
+
+		const a = createPanel() as any;
+		const tpl = a._renderTemplateLoadDialog();
+		const c = document.createElement("div");
+		document.body.appendChild(c);
+		render(tpl, c);
+
+		const card = c.querySelector(".template-card") as HTMLElement;
+		expect(card).not.toBeNull();
+		card.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter" }));
+
+		expect(a._showTemplateLoad).toBe(false);
+		expect(a._roomWidth).toBe(4000);
+
+		document.body.removeChild(c);
+	});
+
+	it("Space key on delete button stops propagation", () => {
+		const grid = new Array(GRID_CELL_COUNT).fill(0);
+		grid[0] = CELL_ROOM_BIT;
+		const templates = [
+			{ name: "T1", grid, zones: [], roomWidth: 3000, roomDepth: 4000 },
+		];
+		localStorage.setItem("epp_layout_templates", JSON.stringify(templates));
+
+		const a = createPanel() as any;
+		const tpl = a._renderTemplateLoadDialog();
+		const c = document.createElement("div");
+		document.body.appendChild(c);
+		render(tpl, c);
+
+		const deleteBtn = c.querySelector(
+			".template-card-delete",
+		) as HTMLElement;
+		expect(deleteBtn).not.toBeNull();
+		// keydown on delete should not bubble to card (stopPropagation)
+		const cardKeydownSpy = vi.fn();
+		const card = c.querySelector(".template-card") as HTMLElement;
+		card.addEventListener("keydown", cardKeydownSpy);
+		deleteBtn.dispatchEvent(
+			new KeyboardEvent("keydown", { key: " ", bubbles: true }),
+		);
+		expect(cardKeydownSpy).not.toHaveBeenCalled();
+
+		document.body.removeChild(c);
+	});
 });
