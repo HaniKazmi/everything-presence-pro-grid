@@ -32,14 +32,14 @@ def _create_esphome_device(
     mac: str,
     name: str,
     host: str,
-    has_zone_engine: bool = False,
+    has_firmware_version: bool = False,
     firmware_version: str = "1.8.0",
     update_available: bool | None = None,
 ) -> tuple[dr.DeviceEntry, MockConfigEntry]:
     """Create a mock ESPHome device with appropriate entities.
 
     Args:
-        has_zone_engine: If True, creates our custom firmware_version text sensor
+        has_firmware_version: If True, creates our custom firmware_version text sensor
             (the EPP Grid firmware marker). Original firmware devices do not have this.
         update_available: If True/False, creates an ESPHome update entity with
             state "on"/"off". If None, no update entity is created.
@@ -59,7 +59,7 @@ def _create_esphome_device(
         model="Everything Presence Pro",
         sw_version=firmware_version,
     )
-    if has_zone_engine:
+    if has_firmware_version:
         # EPP Grid firmware devices expose our custom Firmware Version text sensor
         ent_reg.async_get_or_create(
             "sensor",
@@ -98,7 +98,7 @@ class TestListFlashableDevices:
             mac="AA:BB:CC:DD:EE:FF",
             name="Presence Pro Kitchen",
             host="192.168.1.42",
-            has_zone_engine=False,
+            has_firmware_version=False,
             firmware_version="1.8.0",
         )
 
@@ -127,7 +127,7 @@ class TestListFlashableDevices:
             mac="11:22:33:44:55:66",
             name="Presence Pro Office",
             host="192.168.1.43",
-            has_zone_engine=True,
+            has_firmware_version=True,
             firmware_version="1.0.0",
         )
 
@@ -182,7 +182,7 @@ class TestListFlashableDevices:
             mac="AA:BB:CC:DD:EE:FF",
             name="Original",
             host="192.168.1.42",
-            has_zone_engine=False,
+            has_firmware_version=False,
         )
         _create_esphome_device(
             hass,
@@ -191,7 +191,7 @@ class TestListFlashableDevices:
             mac="11:22:33:44:55:66",
             name="EPP Grid",
             host="192.168.1.43",
-            has_zone_engine=True,
+            has_firmware_version=True,
         )
 
         manager = DeviceManager(hass, mock_store)

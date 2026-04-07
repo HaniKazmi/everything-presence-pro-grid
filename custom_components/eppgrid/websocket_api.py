@@ -2,8 +2,14 @@
 
 from __future__ import annotations
 
+import json as _json
 import logging
+import os as _os
 from typing import Any
+
+_INTEGRATION_VERSION: str = _json.load(
+    open(_os.path.join(_os.path.dirname(__file__), "manifest.json"))
+)["version"]
 
 import voluptuous as vol
 from homeassistant.components import websocket_api
@@ -1110,14 +1116,14 @@ async def websocket_update_firmware(
         return
 
     # Derive firmware variant from build flags
+    from .const import FIRMWARE_VARIANTS
+
     flags = manager._build_flags.get(mac, {})
     network = "ethernet" if flags.get("ethernet_enabled") else "wifi"
-    parts = [network]
-    if flags.get("bluetooth_enabled"):
-        parts.append("ble")
-    if flags.get("co2_enabled"):
-        parts.append("co2")
-    variant = "-".join(parts)
+    variant = FIRMWARE_VARIANTS.get(network)
+    if variant is None:
+        connection.send_error(msg["id"], "unknown_variant", f"No firmware variant for network type: {network}")
+        return
     manifest_url = f"{MANIFEST_BASE_URL}/everything-presence-pro-{variant}-manifest.json"
 
     try:
@@ -1191,14 +1197,8 @@ async def websocket_subscribe_flashable_devices(
     if manager is None:
         connection.send_error(msg["id"], "not_ready", "Integration not loaded")
         return
-    import json
-    import os
 
     from .const import FIRMWARE_VERSION
-
-    manifest_path = os.path.join(os.path.dirname(__file__), "manifest.json")
-    with open(manifest_path) as f:
-        integration_version = json.load(f)["version"]
 
     async def _send_update() -> None:
         devices = await manager.list_flashable_devices()
@@ -1209,7 +1209,7 @@ async def websocket_subscribe_flashable_devices(
                     "devices": devices,
                     "firmware_base_url": "/api/eppgrid/firmware",
                     "latest_firmware_version": f"v{FIRMWARE_VERSION}",
-                    "integration_version": integration_version,
+                    "integration_version": _INTEGRATION_VERSION,
                 },
             )
         )
@@ -1245,14 +1245,8 @@ async def websocket_list_flashable_devices(
     if manager is None:
         connection.send_error(msg["id"], "not_ready", "Integration not loaded")
         return
-    import json
-    import os
 
     from .const import FIRMWARE_VERSION
-
-    manifest_path = os.path.join(os.path.dirname(__file__), "manifest.json")
-    with open(manifest_path) as f:
-        integration_version = json.load(f)["version"]
 
     devices = await manager.list_flashable_devices()
     connection.send_result(
@@ -1261,7 +1255,7 @@ async def websocket_list_flashable_devices(
             "devices": devices,
             "firmware_base_url": "/api/eppgrid/firmware",
             "latest_firmware_version": f"v{FIRMWARE_VERSION}",
-            "integration_version": integration_version,
+            "integration_version": _INTEGRATION_VERSION,
         },
     )
 

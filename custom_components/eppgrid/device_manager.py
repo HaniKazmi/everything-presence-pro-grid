@@ -499,6 +499,9 @@ class DeviceManager:
             if device is None:
                 continue
 
+            if device.manufacturer != EPP_MANUFACTURER or device.model != EPP_MODEL:
+                continue
+
             mac = _extract_mac(device)
             if mac is None:
                 continue
@@ -809,7 +812,7 @@ class DeviceManager:
                     "host": dev.host,
                     "available": dev.available,
                     "configured": config is not None,
-                    "firmware_status": ("firmware_behind" if fw_ver is None else _compare_firmware_version(fw_ver)),
+                    "firmware_status": ("unavailable" if fw_ver is None else _compare_firmware_version(fw_ver)),
                     "current_connection_count": self.read_current_connection_count(dev.device_id),
                     **self._build_flags.get(mac, {}),
                 }
@@ -881,7 +884,7 @@ class DeviceManager:
                     "firmware_status": (
                         _compare_firmware_version(self.read_firmware_version(managed_dev.device_id) or "0.0.0")
                         if has_firmware_version and managed_dev is not None
-                        else None
+                        else "unknown"
                     ),
                     "esphome_config_entry_id": esphome_config_entry_id,
                     "update_available": update_available,

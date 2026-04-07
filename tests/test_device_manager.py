@@ -304,6 +304,8 @@ class TestDeviceManager:
             config_entry_id=esphome_entry.entry_id,
             connections={("mac", "aa:bb:cc:dd:ee:ff")},
             name="EPP Living Room",
+            manufacturer="EverythingSmartTechnology",
+            model="Everything Presence Pro",
         )
 
         ent_reg.async_get_or_create(
@@ -340,6 +342,8 @@ class TestDeviceManager:
             config_entry_id=esphome_entry.entry_id,
             connections={("mac", "aa:bb:cc:dd:ee:ff")},
             name="EPP New",
+            manufacturer="EverythingSmartTechnology",
+            model="Everything Presence Pro",
         )
 
         ent_reg.async_get_or_create(
@@ -879,10 +883,10 @@ class TestFirmwareVersion:
             device_id=device.id,
         )
 
-        # State starts unavailable → None → firmware_behind
+        # State starts unavailable → None → unavailable
         hass.states.async_set(fw_entry.entity_id, "unavailable")
         result = manager.list_devices()
-        assert result[0]["firmware_status"] == "firmware_behind"
+        assert result[0]["firmware_status"] == "unavailable"
 
         # State updates to compatible version → compatible
         hass.states.async_set(fw_entry.entity_id, FIRMWARE_VERSION)
@@ -907,6 +911,8 @@ class TestFirmwareVersion:
             config_entry_id=esphome_entry.entry_id,
             connections={("mac", "aa:bb:cc:dd:ee:ff")},
             name="EPP Living Room",
+            manufacturer="EverythingSmartTechnology",
+            model="Everything Presence Pro",
         )
 
         fw_entry = ent_reg.async_get_or_create(
@@ -926,10 +932,10 @@ class TestFirmwareVersion:
         result = manager.list_devices()
         assert result[0]["firmware_status"] == "compatible"
 
-    async def test_discover_no_firmware_version_entity_reports_firmware_behind(
+    async def test_discover_no_firmware_version_entity_reports_unavailable(
         self, hass: HomeAssistant, manager: DeviceManager
     ) -> None:
-        """list_devices reports firmware_behind when no firmware_version entity exists."""
+        """list_devices reports unavailable when firmware_version entity has no state."""
         dev_reg = dr.async_get(hass)
         ent_reg = er.async_get(hass)
 
@@ -944,6 +950,8 @@ class TestFirmwareVersion:
             config_entry_id=esphome_entry.entry_id,
             connections={("mac", "aa:bb:cc:dd:ee:ff")},
             name="EPP Living Room",
+            manufacturer="EverythingSmartTechnology",
+            model="Everything Presence Pro",
         )
 
         ent_reg.async_get_or_create(
@@ -960,7 +968,7 @@ class TestFirmwareVersion:
 
         assert "AA:BB:CC:DD:EE:FF" in manager.devices
         result = manager.list_devices()
-        assert result[0]["firmware_status"] == "firmware_behind"
+        assert result[0]["firmware_status"] == "unavailable"
 
 
 # ---------------------------------------------------------------------------
@@ -1862,6 +1870,8 @@ class TestEventCallbacks:
             config_entry_id=esphome_entry.entry_id,
             connections={("mac", "aa:bb:cc:dd:ee:ff")},
             name="EPP",
+            manufacturer="EverythingSmartTechnology",
+            model="Everything Presence Pro",
         )
         ent_reg.async_get_or_create(
             "sensor",
