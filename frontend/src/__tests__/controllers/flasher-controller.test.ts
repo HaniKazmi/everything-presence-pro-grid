@@ -173,10 +173,16 @@ describe("FlasherController", () => {
 					update_available: false,
 				},
 			];
-			hass.connection.subscribeMessage = vi.fn().mockImplementation((cb: any) => {
-				cb({ devices, firmware_base_url: "/api/fw", latest_firmware_version: "2.0" });
-				return Promise.resolve(vi.fn());
-			});
+			hass.connection.subscribeMessage = vi
+				.fn()
+				.mockImplementation((cb: any) => {
+					cb({
+						devices,
+						firmware_base_url: "/api/fw",
+						latest_firmware_version: "2.0",
+					});
+					return Promise.resolve(vi.fn());
+				});
 			await ctrl.subscribeDeviceList();
 			expect(ctrl.flashableDevices).toEqual(devices);
 			expect(ctrl.firmwareBaseUrl).toBe("/api/fw");
@@ -187,16 +193,20 @@ describe("FlasherController", () => {
 		it("fires onDeviceListChanged callback", async () => {
 			const cb = vi.fn();
 			ctrl.onDeviceListChanged = cb;
-			hass.connection.subscribeMessage = vi.fn().mockImplementation((msgCb: any) => {
-				msgCb({ devices: [] });
-				return Promise.resolve(vi.fn());
-			});
+			hass.connection.subscribeMessage = vi
+				.fn()
+				.mockImplementation((msgCb: any) => {
+					msgCb({ devices: [] });
+					return Promise.resolve(vi.fn());
+				});
 			await ctrl.subscribeDeviceList();
 			expect(cb).toHaveBeenCalled();
 		});
 
 		it("falls back to loadDevices on subscription error", async () => {
-			hass.connection.subscribeMessage = vi.fn().mockRejectedValue(new Error("fail"));
+			hass.connection.subscribeMessage = vi
+				.fn()
+				.mockRejectedValue(new Error("fail"));
 			const loadSpy = vi.spyOn(ctrl, "loadDevices");
 			await ctrl.subscribeDeviceList();
 			expect(loadSpy).toHaveBeenCalled();
