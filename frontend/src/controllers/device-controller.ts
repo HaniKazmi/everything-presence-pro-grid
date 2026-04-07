@@ -128,13 +128,12 @@ export class DeviceController implements ReactiveController {
 		this.unsubscribeDeviceList();
 		if (!this._hass) return;
 		try {
-			this._unsubDeviceList =
-				await this._hass.connection.subscribeMessage(
-					(msg: any) => {
-						this._applyDeviceList(msg.devices as DeviceInfo[]);
-					},
-					{ type: "eppgrid/subscribe_device_list" },
-				);
+			this._unsubDeviceList = await this._hass.connection.subscribeMessage(
+				(msg: any) => {
+					this._applyDeviceList(msg.devices as DeviceInfo[]);
+				},
+				{ type: "eppgrid/subscribe_device_list" },
+			);
 		} catch {
 			// Fallback to one-shot load if subscription not supported
 			await this.loadDevices();

@@ -119,9 +119,7 @@ def websocket_subscribe_device_list(
 
     @callback
     def _send_update() -> None:
-        connection.send_message(
-            websocket_api.event_message(msg["id"], {"devices": manager.list_devices()})
-        )
+        connection.send_message(websocket_api.event_message(msg["id"], {"devices": manager.list_devices()}))
 
     unsub = manager.on_device_list_changed(_send_update)
 
@@ -1198,7 +1196,11 @@ async def websocket_subscribe_flashable_devices(
         connection.send_message(
             websocket_api.event_message(
                 msg["id"],
-                {"devices": devices, "firmware_base_url": "/api/eppgrid/firmware", "latest_firmware_version": FIRMWARE_VERSION},
+                {
+                    "devices": devices,
+                    "firmware_base_url": "/api/eppgrid/firmware",
+                    "latest_firmware_version": FIRMWARE_VERSION,
+                },
             )
         )
 

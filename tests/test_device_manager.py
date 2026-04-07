@@ -1695,9 +1695,7 @@ class TestEventCallbacks:
         assert mac in manager._entity_update_macs
         assert mac in manager._pushing
 
-    async def test_on_device_removed_cleans_up(
-        self, hass: HomeAssistant, manager: DeviceManager
-    ) -> None:
+    async def test_on_device_removed_cleans_up(self, hass: HomeAssistant, manager: DeviceManager) -> None:
         """Device registry removal cleans up stored settings and runtime state."""
         mac = "AA:BB:CC:DD:EE:FF"
         manager.devices[mac] = ManagedDevice(mac=mac, name="EPP", host="192.168.1.50", device_id="dev123")
@@ -1721,9 +1719,7 @@ class TestEventCallbacks:
         assert mac not in manager._entity_update_macs
         assert "Living Room" in manager._store.templates
 
-    async def test_on_device_removed_notifies_subscribers(
-        self, hass: HomeAssistant, manager: DeviceManager
-    ) -> None:
+    async def test_on_device_removed_notifies_subscribers(self, hass: HomeAssistant, manager: DeviceManager) -> None:
         """Device removal fires device list callbacks."""
         mac = "AA:BB:CC:DD:EE:FF"
         manager.devices[mac] = ManagedDevice(mac=mac, name="EPP", host="192.168.1.50", device_id="dev123")
@@ -1740,9 +1736,7 @@ class TestEventCallbacks:
         cb.assert_called_once()
         unsub()
 
-    async def test_discovery_notifies_subscribers(
-        self, hass: HomeAssistant, manager: DeviceManager
-    ) -> None:
+    async def test_discovery_notifies_subscribers(self, hass: HomeAssistant, manager: DeviceManager) -> None:
         """Discovering a new device fires device list callbacks."""
         dev_reg = dr.async_get(hass)
         ent_reg = er.async_get(hass)
@@ -1754,7 +1748,8 @@ class TestEventCallbacks:
             name="EPP",
         )
         ent_reg.async_get_or_create(
-            "sensor", "esphome",
+            "sensor",
+            "esphome",
             unique_id="aabbccddeeff-zone_engine_version",
             config_entry=esphome_entry,
             device_id=device.id,
@@ -1767,9 +1762,7 @@ class TestEventCallbacks:
 
         cb.assert_called_once()
 
-    async def test_on_device_removed_ignores_unknown_device(
-        self, hass: HomeAssistant, manager: DeviceManager
-    ) -> None:
+    async def test_on_device_removed_ignores_unknown_device(self, hass: HomeAssistant, manager: DeviceManager) -> None:
         """Device removal for unknown device_id is a no-op."""
         with patch.object(manager, "async_close_session", new_callable=AsyncMock) as mock_close:
             event = MagicMock()
@@ -1779,9 +1772,7 @@ class TestEventCallbacks:
 
         mock_close.assert_not_awaited()
 
-    async def test_on_device_updated_ignored(
-        self, hass: HomeAssistant, manager: DeviceManager
-    ) -> None:
+    async def test_on_device_updated_ignored(self, hass: HomeAssistant, manager: DeviceManager) -> None:
         """Non-remove device registry events are ignored."""
         mac = "AA:BB:CC:DD:EE:FF"
         manager.devices[mac] = ManagedDevice(mac=mac, name="EPP", host="192.168.1.50", device_id="dev123")

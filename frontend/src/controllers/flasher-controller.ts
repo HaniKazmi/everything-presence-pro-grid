@@ -65,13 +65,12 @@ export class FlasherController implements ReactiveController {
 		this.unsubscribeDeviceList();
 		if (!this._hass) return;
 		try {
-			this._unsubDeviceList =
-				await this._hass.connection.subscribeMessage(
-					(msg: any) => {
-						this._applyDeviceList(msg);
-					},
-					{ type: "eppgrid/subscribe_flashable_devices" },
-				);
+			this._unsubDeviceList = await this._hass.connection.subscribeMessage(
+				(msg: any) => {
+					this._applyDeviceList(msg);
+				},
+				{ type: "eppgrid/subscribe_flashable_devices" },
+			);
 		} catch {
 			await this.loadDevices();
 		}
