@@ -52,7 +52,8 @@ export interface FlashableDevice {
 		| "compatible"
 		| "firmware_behind"
 		| "firmware_ahead"
-		| "unknown";
+		| "unknown"
+		| "unavailable";
 }
 
 export type UsbFlashStep =

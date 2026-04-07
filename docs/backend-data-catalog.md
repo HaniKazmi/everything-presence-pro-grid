@@ -314,7 +314,7 @@ Returns all ESPHome devices matching EPP manufacturer/model, regardless of wheth
 }
 ```
 
-`firmware_type` is `"original"` (no `firmware_version` entity) or `"eppgrid"` (has `firmware_version` entity). `update_available` is `true` when the device runs EPP Grid firmware and a newer version is available. `firmware_version` is the current firmware version string. `firmware_status` is `"compatible"`, `"firmware_behind"`, `"firmware_ahead"`, or `"unknown"`.
+`firmware_type` is `"original"` (no `firmware_version` entity) or `"eppgrid"` (has `firmware_version` entity). `update_available` is `true` when the device runs EPP Grid firmware and a newer version is available. `firmware_version` is the current firmware version string. `firmware_status` is `"compatible"`, `"firmware_behind"`, `"firmware_ahead"`, `"unknown"`, or `"unavailable"`.
 
 #### `delete_esphome_device`
 

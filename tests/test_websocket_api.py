@@ -1688,12 +1688,12 @@ class TestUpdateFirmware:
 
         connection.send_error.assert_called_once_with(21, "not_found", "Device not found")
 
-    async def test_update_firmware_device_host_unknown(
+    async def test_update_firmware_build_flags_unknown(
         self, hass: HomeAssistant, config_entry: MockConfigEntry
     ) -> None:
-        """update_firmware returns error when device host is unknown."""
+        """update_firmware returns error when build flags not yet available."""
         mock_dm = await setup_integration(hass, config_entry)
-        mock_dm.devices = {"AA:BB:CC:DD:EE:FF": MagicMock(host=None)}
+        mock_dm.devices = {"AA:BB:CC:DD:EE:FF": MagicMock(host="192.168.1.50")}
         mock_dm._build_flags = {"AA:BB:CC:DD:EE:FF": {}}
 
         from custom_components.eppgrid.websocket_api import websocket_update_firmware
@@ -1703,7 +1703,24 @@ class TestUpdateFirmware:
 
         await call_async_handler(hass, websocket_update_firmware, connection, msg)
 
-        connection.send_error.assert_called_once_with(22, "not_available", "Device host unknown")
+        connection.send_error.assert_called_once_with(22, "build_flags_unknown", "Device build flags not yet available")
+
+    async def test_update_firmware_device_host_unknown(
+        self, hass: HomeAssistant, config_entry: MockConfigEntry
+    ) -> None:
+        """update_firmware returns error when device host is unknown."""
+        mock_dm = await setup_integration(hass, config_entry)
+        mock_dm.devices = {"AA:BB:CC:DD:EE:FF": MagicMock(host=None)}
+        mock_dm._build_flags = {"AA:BB:CC:DD:EE:FF": {"ethernet_enabled": False}}
+
+        from custom_components.eppgrid.websocket_api import websocket_update_firmware
+
+        connection = MagicMock()
+        msg = {"id": 23, "type": "eppgrid/update_firmware", "mac": "AA:BB:CC:DD:EE:FF"}
+
+        await call_async_handler(hass, websocket_update_firmware, connection, msg)
+
+        connection.send_error.assert_called_once_with(23, "not_available", "Device host unknown")
 
     async def test_update_firmware_not_ready(self, hass: HomeAssistant) -> None:
         """update_firmware returns error when integration not loaded."""
@@ -2171,7 +2188,7 @@ class TestUpdateFirmwareError:
         """update_firmware returns error when execute_service raises."""
         mock_dm = await setup_integration(hass, config_entry)
         mock_dm.devices = {"AA:BB:CC:DD:EE:FF": MagicMock(host="192.168.1.50")}
-        mock_dm._build_flags = {"AA:BB:CC:DD:EE:FF": {}}
+        mock_dm._build_flags = {"AA:BB:CC:DD:EE:FF": {"ethernet_enabled": False}}
 
         mock_conn = MagicMock()
         mock_conn.async_connect = AsyncMock()

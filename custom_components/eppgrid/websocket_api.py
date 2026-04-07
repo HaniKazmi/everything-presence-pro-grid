@@ -17,7 +17,10 @@ from .const import DOMAIN
 
 _LOGGER = logging.getLogger(__name__)
 
-_INTEGRATION_VERSION: str = json.loads(Path(__file__).with_name("manifest.json").read_text())["version"]
+try:
+    _INTEGRATION_VERSION: str = json.loads(Path(__file__).with_name("manifest.json").read_text())["version"]
+except Exception:
+    _INTEGRATION_VERSION: str = "unknown"
 
 _REGISTERED: set[str] = set()
 
@@ -1117,6 +1120,9 @@ async def websocket_update_firmware(
     from .const import FIRMWARE_VARIANTS
 
     flags = manager._build_flags.get(mac, {})
+    if not flags:
+        connection.send_error(msg["id"], "build_flags_unknown", "Device build flags not yet available")
+        return
     network = "ethernet" if flags.get("ethernet_enabled") else "wifi"
     variant = FIRMWARE_VARIANTS.get(network)
     if variant is None:

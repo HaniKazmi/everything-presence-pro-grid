@@ -455,7 +455,7 @@ class DeviceManager:
             return "0.0.0"
         ent_reg = er.async_get(self._hass)
         for entry in er.async_entries_for_device(ent_reg, device_id, include_disabled_entities=True):
-            if entry.platform == "esphome" and "firmware_version" in entry.unique_id:
+            if entry.platform == "esphome" and entry.domain == "sensor" and "firmware_version" in entry.unique_id:
                 state = self._hass.states.get(entry.entity_id)
                 if state is not None and state.state not in (None, "unknown", "unavailable", ""):
                     return state.state
@@ -489,6 +489,8 @@ class DeviceManager:
         found_new = False
         for entry in ent_reg.entities.values():
             if entry.platform != "esphome":
+                continue
+            if entry.domain != "sensor":
                 continue
             if "firmware_version" not in entry.unique_id:
                 continue
@@ -851,7 +853,7 @@ class DeviceManager:
             # Check if device has firmware_version entity (= our firmware)
             has_firmware_version = False
             for ent_entry in er.async_entries_for_device(ent_reg, device.id, include_disabled_entities=True):
-                if ent_entry.platform == "esphome" and "firmware_version" in ent_entry.unique_id:
+                if ent_entry.platform == "esphome" and ent_entry.domain == "sensor" and "firmware_version" in ent_entry.unique_id:
                     has_firmware_version = True
                     break
 
