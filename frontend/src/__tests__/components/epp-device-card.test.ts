@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import "../../components/epp-device-card.js";
 import type { EppDeviceCard } from "../../components/epp-device-card.js";
 
@@ -6,6 +6,13 @@ describe("epp-device-card element", () => {
 	it("is registered as a custom element", () => {
 		const Ctor = customElements.get("epp-device-card");
 		expect(Ctor).toBeDefined();
+	});
+
+	it("does not throw when module is re-imported (panel reload guard)", async () => {
+		vi.resetModules();
+		await expect(
+			import("../../components/epp-device-card.js"),
+		).resolves.toBeDefined();
 	});
 
 	it("can be created via document.createElement", () => {

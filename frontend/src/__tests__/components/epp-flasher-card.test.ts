@@ -19,6 +19,13 @@ describe("epp-flasher-card element", () => {
 		expect(Ctor).toBeDefined();
 	});
 
+	it("does not throw when module is re-imported (panel reload guard)", async () => {
+		vi.resetModules();
+		await expect(
+			import("../../components/epp-flasher-card.js"),
+		).resolves.toBeDefined();
+	});
+
 	it("can be created via document.createElement", () => {
 		const el = createCard();
 		expect(el).toBeInstanceOf(HTMLElement);

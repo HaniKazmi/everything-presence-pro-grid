@@ -70,6 +70,16 @@ describe("epp-flasher-view element", () => {
 		expect(Ctor).toBeDefined();
 	});
 
+	it("does not throw when module is re-imported (panel reload guard)", async () => {
+		// Element is already registered from the top-level import.
+		// Resetting modules and re-importing simulates a panel JS reload
+		// (the scenario that triggers "already defined" in production).
+		vi.resetModules();
+		await expect(
+			import("../../components/epp-flasher-view.js"),
+		).resolves.toBeDefined();
+	});
+
 	it("can be created via document.createElement", () => {
 		const el = document.createElement("epp-flasher-view");
 		expect(el).toBeInstanceOf(HTMLElement);

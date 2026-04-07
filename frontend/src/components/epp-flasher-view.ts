@@ -9,7 +9,7 @@ import {
 	mdiWifiStrength4LockOpen,
 } from "@mdi/js";
 import { html, LitElement, nothing } from "lit";
-import { customElement, property, state } from "lit/decorators.js";
+import { property, state } from "lit/decorators.js";
 import type { WifiNetwork } from "../lib/improv-serial.js";
 import { flasherStyles } from "../styles.js";
 import type { FlashableDevice, UsbFlashState } from "../types.js";
@@ -32,7 +32,6 @@ function wifiIconPath(rssi: number, authRequired: boolean): string {
 	return authRequired ? WIFI_ICONS_LOCK[level] : WIFI_ICONS_OPEN[level];
 }
 
-@customElement("epp-flasher-view")
 export class EppFlasherView extends LitElement {
 	static styles = [flasherStyles];
 
@@ -529,4 +528,8 @@ export class EppFlasherView extends LitElement {
 			</div>
 		`;
 	}
+}
+
+if (!customElements.get("epp-flasher-view")) {
+	customElements.define("epp-flasher-view", EppFlasherView);
 }
