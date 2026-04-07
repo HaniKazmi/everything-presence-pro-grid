@@ -2009,12 +2009,25 @@ export class EPPGridPanel extends LitElement {
                   ${templates.map(
 										(t) => html`
                     <div class="template-card"
+                      role="button"
+                      tabindex="0"
                       @click=${() => this._loadTemplate(t.name)}
+                      @keydown=${(e: KeyboardEvent) => {
+												if (e.key === "Enter" || e.key === " ") {
+													e.preventDefault();
+													this._loadTemplate(t.name);
+												}
+											}}
                     >
                       <button class="template-card-delete"
+                        type="button"
+                        aria-label="${this._localize("common.delete")}"
                         @click=${(e: Event) => {
 													e.stopPropagation();
 													this._deleteTemplate(t.name);
+												}}
+                        @keydown=${(e: KeyboardEvent) => {
+													e.stopPropagation();
 												}}
                       >
                         <ha-icon icon="mdi:close"></ha-icon>

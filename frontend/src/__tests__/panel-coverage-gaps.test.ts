@@ -802,12 +802,10 @@ describe("_renderTemplateLoadDialog DOM events", () => {
 		const tpl = a._renderTemplateLoadDialog();
 		const c = renderTo(tpl);
 
-		const btns = c.querySelectorAll(".template-item-btn");
-		// First should be "Load"
-		if (btns.length > 0) {
-			(btns[0] as HTMLElement).click();
-			expect(a._roomWidth).toBe(5000);
-		}
+		const card = c.querySelector(".template-card") as HTMLElement;
+		expect(card).not.toBeNull();
+		card.click();
+		expect(a._roomWidth).toBe(5000);
 		localStorage.removeItem("epp_layout_templates");
 		document.body.removeChild(c);
 	});
@@ -823,12 +821,10 @@ describe("_renderTemplateLoadDialog DOM events", () => {
 		const tpl = a._renderTemplateLoadDialog();
 		const c = renderTo(tpl);
 
-		const btns = c.querySelectorAll(".template-item-btn");
-		// Second btn in the template item should be "Delete"
-		if (btns.length > 1) {
-			(btns[1] as HTMLElement).click();
-			expect(a._getTemplates().length).toBe(0);
-		}
+		const deleteBtn = c.querySelector(".template-card-delete") as HTMLElement;
+		expect(deleteBtn).not.toBeNull();
+		deleteBtn.click();
+		expect(a._getTemplates().length).toBe(0);
 		localStorage.removeItem("epp_layout_templates");
 		document.body.removeChild(c);
 	});

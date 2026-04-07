@@ -112,6 +112,12 @@ export const dialogStyles = css`
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
   }
 
+  .template-card:focus-visible,
+  .template-card-delete:focus-visible {
+    outline: 2px solid var(--primary-color, #03a9f4);
+    outline-offset: 2px;
+  }
+
   .template-card-thumbnail {
     background: var(--secondary-background-color, #f5f5f5);
     padding: 8px;

@@ -14,14 +14,15 @@ import type { ZoneConfig } from "./zone-defaults.js";
  * Render an SVG thumbnail of a room template.
  *
  * Shows zone-colored grid cells and furniture outlines.
- * The SVG viewBox is cropped to the room bounds so it fills any container size.
+ * The SVG viewBox is cropped to the padded room bounds (including the 1-cell
+ * margin added by `getRoomBounds()`) so it fills any container size.
  */
 export function renderTemplateThumbnail(
 	grid: number[],
 	zoneConfigs: (ZoneConfig | null)[],
-	_roomWidth: number,
+	roomWidth: number,
 	_roomDepth: number,
-	_furniture: FurnitureItem[],
+	furniture: FurnitureItem[],
 ): SVGTemplateResult {
 	const u8 = grid instanceof Uint8Array ? grid : new Uint8Array(grid);
 	const bounds = getRoomBounds(u8);
@@ -49,11 +50,11 @@ export function renderTemplateThumbnail(
 	}
 
 	// Furniture: convert mm positions to grid-cell units relative to room bounds
-	const roomCols = Math.ceil(_roomWidth / GRID_CELL_MM);
+	const roomCols = Math.ceil(roomWidth / GRID_CELL_MM);
 	const startCol = Math.floor((GRID_COLS - roomCols) / 2);
 
 	const furnitureRects: SVGTemplateResult[] = [];
-	for (const item of _furniture) {
+	for (const item of furniture) {
 		const fx = item.x / GRID_CELL_MM + startCol - minCol;
 		const fy = item.y / GRID_CELL_MM - minRow;
 		const fw = item.width / GRID_CELL_MM;

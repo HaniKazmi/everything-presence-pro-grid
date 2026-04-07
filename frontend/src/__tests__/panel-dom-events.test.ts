@@ -1213,10 +1213,9 @@ describe("_renderTemplateLoadDialog DOM events", () => {
 		const tpl = a._renderTemplateLoadDialog();
 		const c = renderTo(tpl);
 
-		const loadBtn = c.querySelector(".template-item-btn") as HTMLElement;
-		if (loadBtn) {
-			loadBtn.click();
-		}
+		const card = c.querySelector(".template-card") as HTMLElement;
+		expect(card).not.toBeNull();
+		card.click();
 
 		localStorage.removeItem("epp_layout_templates");
 	});
