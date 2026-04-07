@@ -1347,19 +1347,19 @@ const Tt=2,Ft=t=>(...e)=>({_$litDirective$:t,values:e});class Pt{constructor(t){
 								<label>
 									${this.localize("dimensions.width_cm")}
 									<input type="number" min="10" step="5" .value=${String(Math.round(t.width/10))}
-										@change=${e=>this._fireUpdate(t.id,{width:10*parseInt(e.target.value)})}
+										@change=${e=>this._fireUpdate(t.id,{width:10*parseInt(e.target.value,10)})}
 									/>
 								</label>
 								<label>
 									${this.localize("dimensions.height_cm")}
 									<input type="number" min="10" step="5" .value=${String(Math.round(t.height/10))}
-										@change=${e=>this._fireUpdate(t.id,{height:10*parseInt(e.target.value)})}
+										@change=${e=>this._fireUpdate(t.id,{height:10*parseInt(e.target.value,10)})}
 									/>
 								</label>
 								<label>
 									${this.localize("dimensions.rotation")}
 									<input type="number" step="5" .value=${String(Math.round(t.rotation))}
-										@change=${e=>this._fireUpdate(t.id,{rotation:parseInt(e.target.value)%360})}
+										@change=${e=>this._fireUpdate(t.id,{rotation:parseInt(e.target.value,10)%360})}
 									/>
 								</label>
 							</div>
@@ -2055,7 +2055,7 @@ const Tt=2,Ft=t=>(...e)=>({_$litDirective$:t,values:e});class Pt{constructor(t){
           ${e?N`
           <div class="setting-row">
             <label>${this.localize("settings.led_brightness")}</label>
-            <span class="setting-input-unit"><input type="range" class="setting-range" data-led-brightness min="0.1" max="1" step="0.05" .value=${String(o)} @input=${t=>{const e=t.target;this._overrides.ledBrightness=parseFloat(e.value),this._setText(e.nextElementSibling,Math.round(100*parseFloat(e.value))+"%"),this._fireDirty()}} /><span class="setting-value">${Math.round(100*o)}%</span></span>
+            <span class="setting-input-unit"><input type="range" class="setting-range" data-led-brightness min="0.1" max="1" step="0.05" .value=${String(o)} @input=${t=>{const e=t.target;this._overrides.ledBrightness=parseFloat(e.value),this._setText(e.nextElementSibling,`${Math.round(100*parseFloat(e.value))}%`),this._fireDirty()}} /><span class="setting-value">${Math.round(100*o)}%</span></span>
             ${this.resetBtn(1,"ledBrightness")}${this.infoTip(this.localize("info.led_brightness"))}
           </div>`:J}
           ${i?N`
