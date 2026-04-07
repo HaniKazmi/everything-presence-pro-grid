@@ -360,6 +360,28 @@ class DeviceManager:
         # One connection per device, kept alive for the frontend session
         self._active_connections: dict[str, DeviceConnection] = {}
         self._session_locks: dict[str, asyncio.Lock] = {}
+        self._device_list_callbacks: list[Any] = []
+
+    @callback
+    def on_device_list_changed(self, cb: Any) -> Any:
+        """Register a callback for device list changes. Returns an unsub callable."""
+        self._device_list_callbacks.append(cb)
+
+        @callback
+        def unsub() -> None:
+            if cb in self._device_list_callbacks:
+                self._device_list_callbacks.remove(cb)
+
+        return unsub
+
+    @callback
+    def _fire_device_list_changed(self) -> None:
+        """Notify all subscribers that the device list has changed."""
+        for cb in list(self._device_list_callbacks):
+            try:
+                cb()
+            except Exception:
+                _LOGGER.exception("Device list change callback failed")
 
     async def async_start(self) -> None:
         """Start discovery and event listeners."""
@@ -369,6 +391,10 @@ class DeviceManager:
         )
         # Listen for state changes to detect device availability
         self._unsub_listeners.append(self._hass.bus.async_listen("state_changed", self._on_state_changed))
+        # Listen for device removal to clean up stored settings
+        self._unsub_listeners.append(
+            self._hass.bus.async_listen(dr.EVENT_DEVICE_REGISTRY_UPDATED, self._on_device_registry_updated)
+        )
 
     async def async_stop(self) -> None:
         """Stop listeners and close all connections."""
@@ -425,6 +451,7 @@ class DeviceManager:
         ent_reg = er.async_get(self._hass)
         dev_reg = dr.async_get(self._hass)
 
+        found_new = False
         for entry in ent_reg.entities.values():
             if entry.platform != "esphome":
                 continue
@@ -453,6 +480,7 @@ class DeviceManager:
             )
 
             if is_new:
+                found_new = True
                 _LOGGER.info("Discovered zone engine device: %s (%s)", device.name, mac)
                 # Apply zone entity management on first discovery
                 config = self._store.get_device(mac)
@@ -462,6 +490,9 @@ class DeviceManager:
                     else [None] * MAX_ZONES
                 )
                 await self.async_update_zone_entities(mac, zone_slots)
+
+        if found_new:
+            self._fire_device_list_changed()
 
     @callback
     def _on_entity_registry_updated(self, event: Any) -> None:
@@ -518,6 +549,37 @@ class DeviceManager:
         if mac not in self._pushing:
             self._pushing.add(mac)
             self._hass.async_create_task(self._on_device_available(mac))
+
+    @callback
+    def _on_device_registry_updated(self, event: Any) -> None:
+        """Handle device registry changes — clean up on device removal."""
+        if event.data.get("action") != "remove":
+            return
+
+        device_id = event.data.get("device_id")
+        mac = None
+        for m, dev in self.devices.items():
+            if dev.device_id == device_id:
+                mac = m
+                break
+
+        if mac is None:
+            return
+
+        self._hass.async_create_task(self._on_device_removed(mac))
+
+    async def _on_device_removed(self, mac: str) -> None:
+        """Clean up stored settings and runtime state for a removed device."""
+        await self.async_close_session(mac)
+        self._store.devices.pop(mac, None)
+        self.devices.pop(mac, None)
+        self._build_flags.pop(mac, None)
+        self._session_locks.pop(mac, None)
+        self._entity_update_macs.discard(mac)
+        self._pushing.discard(mac)
+        await self._store.async_save()
+        self._fire_device_list_changed()
+        _LOGGER.info("Cleaned up settings for removed device %s", mac)
 
     async def _on_device_available(self, mac: str) -> None:
         """Push stored config when a managed device comes online."""

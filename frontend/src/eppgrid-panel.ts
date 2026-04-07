@@ -412,7 +412,7 @@ export class EPPGridPanel extends LitElement {
 		}
 		this._loading = true;
 		this._deviceCtrl.hass = this.hass;
-		await this._loadDevices();
+		await this._subscribeDevices();
 		if (!this._selectedMac && this._devices.length === 0) {
 			// Integration may not be loaded yet — retry
 			this._loading = false;
@@ -423,6 +423,17 @@ export class EPPGridPanel extends LitElement {
 			await this._loadDeviceConfig(this._selectedMac);
 		}
 		this._loading = false;
+	}
+
+	private async _subscribeDevices(): Promise<void> {
+		this._deviceCtrl.hass = this.hass;
+		this._deviceCtrl.onDeviceListChanged = () => {
+			this._devices = this._deviceCtrl.devices;
+			this._selectedMac = this._deviceCtrl.selectedMac;
+		};
+		await this._deviceCtrl.subscribeDeviceList();
+		this._devices = this._deviceCtrl.devices;
+		this._selectedMac = this._deviceCtrl.selectedMac;
 	}
 
 	private async _loadDevices(): Promise<void> {
@@ -1049,7 +1060,7 @@ export class EPPGridPanel extends LitElement {
 						this._panelTab = "flasher";
 						if (this._flasherCtrl.loading) {
 							this._flasherCtrl.hass = this.hass;
-							this._flasherCtrl.loadDevices();
+							this._flasherCtrl.subscribeDeviceList();
 						}
 					}}>${this._localize("tabs.flash_firmware")}</button>
 			</div>
@@ -1127,7 +1138,7 @@ export class EPPGridPanel extends LitElement {
 					<button class="primary-btn" @click=${() => {
 						this._panelTab = "flasher";
 						this._flasherCtrl.hass = this.hass;
-						this._flasherCtrl.loadDevices();
+						this._flasherCtrl.subscribeDeviceList();
 					}}>
 							${this._localize("flasher.flash_from_tab")}
 					</button>

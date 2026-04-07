@@ -76,9 +76,6 @@ describe("_initialize", () => {
 		];
 		el.hass = {
 			callWS: vi.fn().mockImplementation((msg: any) => {
-				if (msg.type === "eppgrid/list_devices") {
-					return Promise.resolve({ devices });
-				}
 				if (msg.type === "eppgrid/get_config") {
 					return Promise.resolve({
 						config: {
@@ -94,7 +91,13 @@ describe("_initialize", () => {
 				return Promise.resolve({});
 			}),
 			connection: {
-				subscribeMessage: vi.fn().mockResolvedValue(() => {}),
+				subscribeMessage: vi.fn().mockImplementation((cb: any, msg: any) => {
+					if (msg.type === "eppgrid/subscribe_device_list") {
+						cb({ devices });
+						return Promise.resolve(() => {});
+					}
+					return Promise.resolve(() => {});
+				}),
 			},
 		};
 
@@ -104,7 +107,7 @@ describe("_initialize", () => {
 		expect(a._devices).toEqual(devices);
 	});
 
-	it("retries when list_devices fails", async () => {
+	it("retries when subscribe_device_list fails", async () => {
 		vi.useFakeTimers();
 		const a = el as any;
 		const devices = [
@@ -116,12 +119,13 @@ describe("_initialize", () => {
 				configured: true,
 			},
 		];
-		let callCount = 0;
+		let subCount = 0;
+		let listCount = 0;
 		el.hass = {
 			callWS: vi.fn().mockImplementation((msg: any) => {
 				if (msg.type === "eppgrid/list_devices") {
-					callCount++;
-					if (callCount === 1) return Promise.reject(new Error("unknown"));
+					listCount++;
+					if (listCount === 1) return Promise.reject(new Error("unknown"));
 					return Promise.resolve({ devices });
 				}
 				if (msg.type === "eppgrid/get_config") {
@@ -139,17 +143,25 @@ describe("_initialize", () => {
 				return Promise.resolve({});
 			}),
 			connection: {
-				subscribeMessage: vi.fn().mockResolvedValue(() => {}),
+				subscribeMessage: vi.fn().mockImplementation((cb: any, msg: any) => {
+					if (msg.type === "eppgrid/subscribe_device_list") {
+						subCount++;
+						if (subCount <= 2) return Promise.reject(new Error("unknown"));
+						cb({ devices });
+						return Promise.resolve(() => {});
+					}
+					return Promise.resolve(() => {});
+				}),
 			},
 		};
 
 		a._initialize();
 		await vi.advanceTimersByTimeAsync(0);
 
-		// First attempt failed — no devices
+		// First attempt: subscription fails, fallback loadDevices also fails — no devices
 		expect(a._devices).toEqual([]);
 
-		// Retry fires after 2s
+		// Retry fires after 2s — subscription fails again, fallback loadDevices succeeds
 		await vi.advanceTimersByTimeAsync(2000);
 		await vi.advanceTimersByTimeAsync(0);
 

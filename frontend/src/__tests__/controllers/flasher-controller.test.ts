@@ -149,6 +149,122 @@ describe("FlasherController", () => {
 		});
 	});
 
+	// --- subscribeDeviceList ---
+	describe("subscribeDeviceList", () => {
+		it("subscribes to eppgrid/subscribe_flashable_devices", async () => {
+			hass.connection.subscribeMessage = vi.fn().mockResolvedValue(vi.fn());
+			await ctrl.subscribeDeviceList();
+			expect(hass.connection.subscribeMessage).toHaveBeenCalledWith(
+				expect.any(Function),
+				{ type: "eppgrid/subscribe_flashable_devices" },
+			);
+		});
+
+		it("applies device list from subscription callback", async () => {
+			const devices: FlashableDevice[] = [
+				{
+					mac: "aa:bb:cc:dd:ee:ff",
+					name: "Sensor A",
+					host: "192.168.1.10",
+					available: true,
+					firmware_type: "eppgrid",
+					firmware_version: "1.0.0",
+					esphome_config_entry_id: "entry-123",
+					update_available: false,
+				},
+			];
+			hass.connection.subscribeMessage = vi
+				.fn()
+				.mockImplementation((cb: any) => {
+					cb({
+						devices,
+						firmware_base_url: "/api/fw",
+						latest_firmware_version: "2.0",
+					});
+					return Promise.resolve(vi.fn());
+				});
+			await ctrl.subscribeDeviceList();
+			expect(ctrl.flashableDevices).toEqual(devices);
+			expect(ctrl.firmwareBaseUrl).toBe("/api/fw");
+			expect(ctrl.firmwareVersion).toBe("2.0");
+			expect(ctrl.loading).toBe(false);
+		});
+
+		it("fires onDeviceListChanged callback", async () => {
+			const cb = vi.fn();
+			ctrl.onDeviceListChanged = cb;
+			hass.connection.subscribeMessage = vi
+				.fn()
+				.mockImplementation((msgCb: any) => {
+					msgCb({ devices: [] });
+					return Promise.resolve(vi.fn());
+				});
+			await ctrl.subscribeDeviceList();
+			expect(cb).toHaveBeenCalled();
+		});
+
+		it("falls back to loadDevices on subscription error", async () => {
+			hass.connection.subscribeMessage = vi
+				.fn()
+				.mockRejectedValue(new Error("fail"));
+			const loadSpy = vi.spyOn(ctrl, "loadDevices");
+			await ctrl.subscribeDeviceList();
+			expect(loadSpy).toHaveBeenCalled();
+		});
+
+		it("does nothing when hass is null", async () => {
+			ctrl.hass = null;
+			await ctrl.subscribeDeviceList();
+			// No error thrown, no subscription
+		});
+
+		it("unsubscribes previous subscription before resubscribing", async () => {
+			const unsub1 = vi.fn();
+			hass.connection.subscribeMessage = vi.fn().mockResolvedValue(unsub1);
+			await ctrl.subscribeDeviceList();
+
+			const unsub2 = vi.fn();
+			hass.connection.subscribeMessage = vi.fn().mockResolvedValue(unsub2);
+			await ctrl.subscribeDeviceList();
+
+			expect(unsub1).toHaveBeenCalled();
+		});
+	});
+
+	// --- unsubscribeDeviceList ---
+	describe("unsubscribeDeviceList", () => {
+		it("calls unsub function from subscription", async () => {
+			const unsub = vi.fn();
+			hass.connection.subscribeMessage = vi.fn().mockResolvedValue(unsub);
+			await ctrl.subscribeDeviceList();
+			ctrl.unsubscribeDeviceList();
+			expect(unsub).toHaveBeenCalled();
+		});
+
+		it("does not throw when no subscription exists", () => {
+			expect(() => ctrl.unsubscribeDeviceList()).not.toThrow();
+		});
+
+		it("handles stale subscription gracefully", async () => {
+			hass.connection.subscribeMessage = vi.fn().mockResolvedValue(() => {
+				throw new Error("stale");
+			});
+			await ctrl.subscribeDeviceList();
+			expect(() => ctrl.unsubscribeDeviceList()).not.toThrow();
+		});
+	});
+
+	// --- hostDisconnected cleans up subscription ---
+	describe("hostDisconnected with subscription", () => {
+		it("unsubscribes device list on disconnect", async () => {
+			const unsub = vi.fn();
+			hass.connection.subscribeMessage = vi.fn().mockResolvedValue(unsub);
+			await ctrl.subscribeDeviceList();
+			ctrl.hostDisconnected();
+			expect(unsub).toHaveBeenCalled();
+		});
+	});
+
 	// --- deleteEsphomeDevice ---
 	describe("deleteEsphomeDevice", () => {
 		it("calls eppgrid/delete_esphome_device with config_entry_id", async () => {

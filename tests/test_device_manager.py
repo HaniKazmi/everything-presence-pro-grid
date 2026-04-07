@@ -1695,6 +1695,97 @@ class TestEventCallbacks:
         assert mac in manager._entity_update_macs
         assert mac in manager._pushing
 
+    async def test_on_device_removed_cleans_up(self, hass: HomeAssistant, manager: DeviceManager) -> None:
+        """Device registry removal cleans up stored settings and runtime state."""
+        mac = "AA:BB:CC:DD:EE:FF"
+        manager.devices[mac] = ManagedDevice(mac=mac, name="EPP", host="192.168.1.50", device_id="dev123")
+        manager._store.devices[mac] = {"settings": {"led_mode": "Manual"}}
+        manager._build_flags[mac] = {"has_co2": True}
+        manager._entity_update_macs.add(mac)
+
+        # Pre-populate templates that should survive
+        manager._store.templates["Living Room"] = {"grid_bytes": [1, 2, 3]}
+
+        with patch.object(manager, "async_close_session", new_callable=AsyncMock) as mock_close:
+            event = MagicMock()
+            event.data = {"action": "remove", "device_id": "dev123"}
+            manager._on_device_registry_updated(event)
+            await hass.async_block_till_done()
+
+        mock_close.assert_awaited_once_with(mac)
+        assert mac not in manager._store.devices
+        assert mac not in manager.devices
+        assert mac not in manager._build_flags
+        assert mac not in manager._entity_update_macs
+        assert "Living Room" in manager._store.templates
+
+    async def test_on_device_removed_notifies_subscribers(self, hass: HomeAssistant, manager: DeviceManager) -> None:
+        """Device removal fires device list callbacks."""
+        mac = "AA:BB:CC:DD:EE:FF"
+        manager.devices[mac] = ManagedDevice(mac=mac, name="EPP", host="192.168.1.50", device_id="dev123")
+
+        cb = MagicMock()
+        unsub = manager.on_device_list_changed(cb)
+
+        with patch.object(manager, "async_close_session", new_callable=AsyncMock):
+            event = MagicMock()
+            event.data = {"action": "remove", "device_id": "dev123"}
+            manager._on_device_registry_updated(event)
+            await hass.async_block_till_done()
+
+        cb.assert_called_once()
+        unsub()
+
+    async def test_discovery_notifies_subscribers(self, hass: HomeAssistant, manager: DeviceManager) -> None:
+        """Discovering a new device fires device list callbacks."""
+        dev_reg = dr.async_get(hass)
+        ent_reg = er.async_get(hass)
+        esphome_entry = MockConfigEntry(domain="esphome", data={"host": "192.168.1.50"}, title="EPP")
+        esphome_entry.add_to_hass(hass)
+        device = dev_reg.async_get_or_create(
+            config_entry_id=esphome_entry.entry_id,
+            connections={("mac", "aa:bb:cc:dd:ee:ff")},
+            name="EPP",
+        )
+        ent_reg.async_get_or_create(
+            "sensor",
+            "esphome",
+            unique_id="aabbccddeeff-zone_engine_version",
+            config_entry=esphome_entry,
+            device_id=device.id,
+        )
+
+        cb = MagicMock()
+        manager.on_device_list_changed(cb)
+
+        await manager.async_discover()
+
+        cb.assert_called_once()
+
+    async def test_on_device_removed_ignores_unknown_device(self, hass: HomeAssistant, manager: DeviceManager) -> None:
+        """Device removal for unknown device_id is a no-op."""
+        with patch.object(manager, "async_close_session", new_callable=AsyncMock) as mock_close:
+            event = MagicMock()
+            event.data = {"action": "remove", "device_id": "unknown"}
+            manager._on_device_registry_updated(event)
+            await hass.async_block_till_done()
+
+        mock_close.assert_not_awaited()
+
+    async def test_on_device_updated_ignored(self, hass: HomeAssistant, manager: DeviceManager) -> None:
+        """Non-remove device registry events are ignored."""
+        mac = "AA:BB:CC:DD:EE:FF"
+        manager.devices[mac] = ManagedDevice(mac=mac, name="EPP", host="192.168.1.50", device_id="dev123")
+        manager._store.devices[mac] = {"settings": {}}
+
+        event = MagicMock()
+        event.data = {"action": "update", "device_id": "dev123"}
+        manager._on_device_registry_updated(event)
+        await hass.async_block_till_done()
+
+        assert mac in manager.devices
+        assert mac in manager._store.devices
+
 
 # ---------------------------------------------------------------------------
 # Stale connection and start/stop tests
@@ -1734,7 +1825,7 @@ class TestSessionLifecycle:
         with patch.object(manager, "async_discover", new_callable=AsyncMock):
             await manager.async_start()
 
-        assert len(manager._unsub_listeners) == 2
+        assert len(manager._unsub_listeners) == 3
 
         # Cleanup
         await manager.async_stop()

@@ -24,6 +24,7 @@ def async_register_websocket_commands(hass: HomeAssistant, manager: Any) -> None
         return
     _REGISTERED.add(DOMAIN)
 
+    websocket_api.async_register_command(hass, websocket_subscribe_device_list)
     websocket_api.async_register_command(hass, websocket_list_devices)
     websocket_api.async_register_command(hass, websocket_get_config)
     websocket_api.async_register_command(hass, websocket_set_setup)
@@ -41,6 +42,7 @@ def async_register_websocket_commands(hass: HomeAssistant, manager: Any) -> None
     websocket_api.async_register_command(hass, websocket_set_pipeline)
     websocket_api.async_register_command(hass, websocket_update_firmware)
     websocket_api.async_register_command(hass, websocket_dismiss_target)
+    websocket_api.async_register_command(hass, websocket_subscribe_flashable_devices)
     websocket_api.async_register_command(hass, websocket_list_flashable_devices)
     websocket_api.async_register_command(hass, websocket_delete_esphome_device)
     websocket_api.async_register_command(hass, websocket_add_esphome_device)
@@ -97,6 +99,38 @@ def _check_protocol(manager: Any, mac: str) -> str | None:
     if proto > CONFIG_PROTOCOL_VERSION:
         return "firmware_ahead"
     return None
+
+
+# -- subscribe_device_list --
+
+
+@websocket_api.websocket_command({vol.Required("type"): "eppgrid/subscribe_device_list"})
+@callback
+def websocket_subscribe_device_list(
+    hass: HomeAssistant,
+    connection: websocket_api.ActiveConnection,
+    msg: dict[str, Any],
+) -> None:
+    """Subscribe to device list changes. Sends initial list immediately."""
+    manager = _get_manager(hass)
+    if manager is None:
+        connection.send_error(msg["id"], "not_ready", "Integration not loaded")
+        return
+
+    @callback
+    def _send_update() -> None:
+        connection.send_message(websocket_api.event_message(msg["id"], {"devices": manager.list_devices()}))
+
+    unsub = manager.on_device_list_changed(_send_update)
+
+    connection.send_result(msg["id"])
+    _send_update()
+
+    @callback
+    def _unsub() -> None:
+        unsub()
+
+    connection.subscriptions[msg["id"]] = _unsub
 
 
 # -- list_devices --
@@ -1138,6 +1172,52 @@ async def websocket_dismiss_target(
         return
 
     connection.send_result(msg["id"])
+
+
+# -- subscribe_flashable_devices --
+
+
+@websocket_api.websocket_command({vol.Required("type"): "eppgrid/subscribe_flashable_devices"})
+@websocket_api.async_response
+async def websocket_subscribe_flashable_devices(
+    hass: HomeAssistant,
+    connection: websocket_api.ActiveConnection,
+    msg: dict[str, Any],
+) -> None:
+    """Subscribe to flashable device list changes."""
+    manager = _get_manager(hass)
+    if manager is None:
+        connection.send_error(msg["id"], "not_ready", "Integration not loaded")
+        return
+    from .const import FIRMWARE_VERSION
+
+    async def _send_update() -> None:
+        devices = await manager.list_flashable_devices()
+        connection.send_message(
+            websocket_api.event_message(
+                msg["id"],
+                {
+                    "devices": devices,
+                    "firmware_base_url": "/api/eppgrid/firmware",
+                    "latest_firmware_version": FIRMWARE_VERSION,
+                },
+            )
+        )
+
+    @callback
+    def _on_changed() -> None:
+        hass.async_create_task(_send_update())
+
+    unsub = manager.on_device_list_changed(_on_changed)
+
+    connection.send_result(msg["id"])
+    await _send_update()
+
+    @callback
+    def _unsub() -> None:
+        unsub()
+
+    connection.subscriptions[msg["id"]] = _unsub
 
 
 # -- list_flashable_devices --

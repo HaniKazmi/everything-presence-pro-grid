@@ -13,8 +13,11 @@ export class FlasherController implements ReactiveController {
 	usbFlashState: UsbFlashState | null = null;
 	wifiNetworks: WifiNetwork[] = [];
 
+	onDeviceListChanged?: () => void;
+
 	private _host: ReactiveControllerHost;
 	private _hass: any = null;
+	private _unsubDeviceList?: () => void;
 	private _serialPort: SerialPort | null = null;
 	private _opId = 0;
 	private _opRunning = false;
@@ -26,6 +29,7 @@ export class FlasherController implements ReactiveController {
 
 	hostConnected(): void {}
 	hostDisconnected(): void {
+		this.unsubscribeDeviceList();
 		this._serialPort?.close().catch(() => {});
 		this._serialPort = null;
 	}
@@ -54,6 +58,41 @@ export class FlasherController implements ReactiveController {
 			this.flashableDevices = [];
 		}
 		this.loading = false;
+		this._host.requestUpdate();
+	}
+
+	async subscribeDeviceList(): Promise<void> {
+		this.unsubscribeDeviceList();
+		if (!this._hass) return;
+		try {
+			this._unsubDeviceList = await this._hass.connection.subscribeMessage(
+				(msg: any) => {
+					this._applyDeviceList(msg);
+				},
+				{ type: "eppgrid/subscribe_flashable_devices" },
+			);
+		} catch {
+			await this.loadDevices();
+		}
+	}
+
+	unsubscribeDeviceList(): void {
+		if (this._unsubDeviceList) {
+			try {
+				this._unsubDeviceList();
+			} catch {
+				/* stale subscription */
+			}
+			this._unsubDeviceList = undefined;
+		}
+	}
+
+	private _applyDeviceList(resp: any): void {
+		this.flashableDevices = resp.devices ?? [];
+		this.firmwareBaseUrl = resp.firmware_base_url ?? "";
+		this.firmwareVersion = resp.latest_firmware_version ?? "";
+		this.loading = false;
+		this.onDeviceListChanged?.();
 		this._host.requestUpdate();
 	}
 

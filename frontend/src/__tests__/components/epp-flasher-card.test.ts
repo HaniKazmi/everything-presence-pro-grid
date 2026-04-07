@@ -73,9 +73,9 @@ describe("epp-flasher-card element", () => {
 		expect(typeof view.loading).toBe("boolean");
 	});
 
-	it("updated() sets hass on controller and calls loadDevices when loading=true", async () => {
+	it("updated() sets hass on controller and calls subscribeDeviceList when loading=true", async () => {
 		const el = createCard();
-		const loadSpy = vi.spyOn((el as any)._flasherCtrl, "loadDevices");
+		const loadSpy = vi.spyOn((el as any)._flasherCtrl, "subscribeDeviceList");
 
 		const hass = {
 			callWS: vi.fn().mockResolvedValue({ devices: [] }),
@@ -89,7 +89,7 @@ describe("epp-flasher-card element", () => {
 		expect(loadSpy).toHaveBeenCalled();
 	});
 
-	it("updated() does not call loadDevices again when loading=false", async () => {
+	it("updated() does not call subscribeDeviceList again when loading=false", async () => {
 		const el = createCard();
 		const hass = {
 			callWS: vi.fn().mockResolvedValue({ devices: [] }),
@@ -100,7 +100,7 @@ describe("epp-flasher-card element", () => {
 		await el.updateComplete;
 
 		// Now loading is false (after first load), change hass again
-		const loadSpy = vi.spyOn((el as any)._flasherCtrl, "loadDevices");
+		const loadSpy = vi.spyOn((el as any)._flasherCtrl, "subscribeDeviceList");
 		(el as any)._flasherCtrl.loading = false;
 		el.hass = { ...hass };
 		await el.updateComplete;
