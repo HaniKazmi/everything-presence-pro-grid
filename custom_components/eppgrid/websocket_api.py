@@ -84,7 +84,7 @@ def _get_manager(hass: HomeAssistant) -> Any:
     return hass.data.get(DOMAIN)
 
 
-def _check_protocol(manager: Any, mac: str) -> str | None:
+def _check_firmware_version(manager: Any, mac: str) -> str | None:
     """Check firmware version compatibility. Returns error code or None if OK."""
     from .device_manager import _compare_firmware_version
 
@@ -200,7 +200,7 @@ async def websocket_set_setup(
     if manager is None:
         connection.send_error(msg["id"], "not_ready", "Integration not loaded")
         return
-    proto_err = _check_protocol(manager, msg["mac"])
+    proto_err = _check_firmware_version(manager, msg["mac"])
     if proto_err:
         connection.send_error(
             msg["id"],
@@ -273,7 +273,7 @@ async def websocket_set_room_layout(
     if manager is None:
         connection.send_error(msg["id"], "not_ready", "Integration not loaded")
         return
-    proto_err = _check_protocol(manager, msg["mac"])
+    proto_err = _check_firmware_version(manager, msg["mac"])
     if proto_err:
         connection.send_error(
             msg["id"],
@@ -829,7 +829,7 @@ def websocket_set_entity_enabled(
     if manager is None:
         connection.send_error(msg["id"], "not_ready", "Integration not loaded")
         return
-    proto_err = _check_protocol(manager, msg["mac"])
+    proto_err = _check_firmware_version(manager, msg["mac"])
     if proto_err:
         connection.send_error(
             msg["id"],
@@ -908,7 +908,7 @@ async def websocket_set_settings(
     if manager is None:
         connection.send_error(msg["id"], "not_ready", "Integration not loaded")
         return
-    proto_err = _check_protocol(manager, msg["mac"])
+    proto_err = _check_firmware_version(manager, msg["mac"])
     if proto_err:
         connection.send_error(
             msg["id"],
@@ -1005,7 +1005,7 @@ async def websocket_set_distance_override(
     if manager is None:
         connection.send_error(msg["id"], "not_ready", "Integration not loaded")
         return
-    proto_err = _check_protocol(manager, msg["mac"])
+    proto_err = _check_firmware_version(manager, msg["mac"])
     if proto_err:
         connection.send_error(
             msg["id"],
@@ -1058,7 +1058,7 @@ async def websocket_set_pipeline(
     if manager is None:
         connection.send_error(msg["id"], "not_ready", "Integration not loaded")
         return
-    proto_err = _check_protocol(manager, msg["mac"])
+    proto_err = _check_firmware_version(manager, msg["mac"])
     if proto_err:
         connection.send_error(
             msg["id"],
@@ -1188,7 +1188,14 @@ async def websocket_subscribe_flashable_devices(
     if manager is None:
         connection.send_error(msg["id"], "not_ready", "Integration not loaded")
         return
+    import json
+    import os
+
     from .const import FIRMWARE_VERSION
+
+    manifest_path = os.path.join(os.path.dirname(__file__), "manifest.json")
+    with open(manifest_path) as f:
+        integration_version = json.load(f)["version"]
 
     async def _send_update() -> None:
         devices = await manager.list_flashable_devices()
@@ -1199,6 +1206,7 @@ async def websocket_subscribe_flashable_devices(
                     "devices": devices,
                     "firmware_base_url": "/api/eppgrid/firmware",
                     "latest_firmware_version": f"v{FIRMWARE_VERSION}",
+                    "integration_version": integration_version,
                 },
             )
         )
@@ -1234,7 +1242,14 @@ async def websocket_list_flashable_devices(
     if manager is None:
         connection.send_error(msg["id"], "not_ready", "Integration not loaded")
         return
+    import json
+    import os
+
     from .const import FIRMWARE_VERSION
+
+    manifest_path = os.path.join(os.path.dirname(__file__), "manifest.json")
+    with open(manifest_path) as f:
+        integration_version = json.load(f)["version"]
 
     devices = await manager.list_flashable_devices()
     connection.send_result(
@@ -1243,6 +1258,7 @@ async def websocket_list_flashable_devices(
             "devices": devices,
             "firmware_base_url": "/api/eppgrid/firmware",
             "latest_firmware_version": f"v{FIRMWARE_VERSION}",
+            "integration_version": integration_version,
         },
     )
 

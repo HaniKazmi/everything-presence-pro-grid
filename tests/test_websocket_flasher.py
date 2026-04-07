@@ -105,6 +105,7 @@ class TestListFlashableDevices:
         assert result[1]["devices"][0]["mac"] == "AA:BB:CC:DD:EE:FF"
         assert result[1]["firmware_base_url"] == "/api/eppgrid/firmware"
         assert "latest_firmware_version" in result[1]
+        assert "integration_version" in result[1]
 
     async def test_not_ready(self, hass: HomeAssistant) -> None:
         """list_flashable_devices returns error when integration not loaded."""
@@ -142,6 +143,7 @@ class TestSubscribeFlashableDevices:
         assert event_msg["id"] == 30
         assert event_msg["event"]["devices"][0]["mac"] == "AA:BB:CC:DD:EE:FF"
         assert "firmware_base_url" in event_msg["event"]
+        assert "integration_version" in event_msg["event"]
         assert 30 in connection.subscriptions
 
     async def test_subscribe_pushes_updates(self, hass: HomeAssistant, config_entry: MockConfigEntry) -> None:
