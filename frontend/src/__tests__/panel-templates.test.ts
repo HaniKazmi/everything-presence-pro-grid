@@ -1,5 +1,5 @@
 import { render } from "lit";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { EPPGridPanel } from "../eppgrid-panel.js";
 import "../eppgrid-panel.js";
 import { CELL_ROOM_BIT, GRID_CELL_COUNT, GRID_COLS } from "../lib/grid.js";
@@ -397,9 +397,7 @@ describe("_renderTemplateLoadDialog", () => {
 		document.body.appendChild(c);
 		render(tpl, c);
 
-		const deleteBtn = c.querySelector(
-			".template-card-delete",
-		) as HTMLElement;
+		const deleteBtn = c.querySelector(".template-card-delete") as HTMLElement;
 		expect(deleteBtn).not.toBeNull();
 		deleteBtn.click();
 
