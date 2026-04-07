@@ -97,7 +97,7 @@ def _check_firmware_version(manager: Any, mac: str) -> str | None:
         return None  # Unknown device — let the command handle it
     fw_ver = manager.read_firmware_version(dev.device_id)
     if fw_ver is None:
-        return "firmware_behind"
+        return "unavailable"
     status = _compare_firmware_version(fw_ver)
     if status == "compatible":
         return None
@@ -1124,11 +1124,15 @@ async def websocket_update_firmware(
         return
     manifest_url = f"{MANIFEST_BASE_URL}/everything-presence-pro-{variant}-manifest.json"
 
+    if dev.host is None:
+        connection.send_error(msg["id"], "not_available", "Device host unknown")
+        return
+
+    from .device_manager import DeviceConnection
+
+    conn = DeviceConnection(dev.host)
     try:
-        conn = await manager.async_open_session(mac)
-        if conn is None:
-            connection.send_error(msg["id"], "not_available", "Device not available")
-            return
+        await conn.async_connect()
         svc = conn._services.get("set_update_manifest")
         if svc is None:
             connection.send_error(msg["id"], "not_supported", "Device does not support OTA update")
@@ -1137,6 +1141,8 @@ async def websocket_update_firmware(
         connection.send_result(msg["id"])
     except Exception as err:
         connection.send_error(msg["id"], "update_failed", str(err))
+    finally:
+        await conn.async_disconnect()
 
 
 # -- dismiss_target (ephemeral, firmware-only) --

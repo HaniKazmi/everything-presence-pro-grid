@@ -882,7 +882,11 @@ class DeviceManager:
                     "firmware_type": "eppgrid" if has_firmware_version else "original",
                     "firmware_version": device.sw_version or "unknown",
                     "firmware_status": (
-                        _compare_firmware_version(self.read_firmware_version(managed_dev.device_id) or "0.0.0")
+                        (
+                            "unavailable"
+                            if (fw := self.read_firmware_version(managed_dev.device_id)) is None
+                            else _compare_firmware_version(fw)
+                        )
                         if has_firmware_version and managed_dev is not None
                         else "unknown"
                     ),

@@ -1620,52 +1620,56 @@ class TestUpdateFirmware:
     async def test_update_firmware_calls_set_update_manifest(
         self, hass: HomeAssistant, config_entry: MockConfigEntry
     ) -> None:
-        """update_firmware calls set_update_manifest on device connection."""
+        """update_firmware calls set_update_manifest via temp connection."""
         mock_dm = await setup_integration(hass, config_entry)
-        mock_dm.devices = {"AA:BB:CC:DD:EE:FF": MagicMock()}
+        mock_dm.devices = {"AA:BB:CC:DD:EE:FF": MagicMock(host="192.168.1.50")}
         mock_dm._build_flags = {"AA:BB:CC:DD:EE:FF": {"bluetooth_enabled": True, "co2_enabled": True}}
 
         mock_svc = MagicMock()
         mock_conn = MagicMock()
+        mock_conn.async_connect = AsyncMock()
+        mock_conn.async_disconnect = AsyncMock()
         mock_conn._services = {"set_update_manifest": mock_svc}
         mock_conn._client = MagicMock()
         mock_conn._client.execute_service = AsyncMock()
-        mock_dm.async_open_session = AsyncMock(return_value=mock_conn)
 
         from custom_components.eppgrid.websocket_api import websocket_update_firmware
 
         connection = MagicMock()
         msg = {"id": 20, "type": "eppgrid/update_firmware", "mac": "AA:BB:CC:DD:EE:FF"}
 
-        await call_async_handler(hass, websocket_update_firmware, connection, msg)
+        with patch("custom_components.eppgrid.device_manager.DeviceConnection", return_value=mock_conn):
+            await call_async_handler(hass, websocket_update_firmware, connection, msg)
 
         connection.send_result.assert_called_once()
         mock_conn._client.execute_service.assert_awaited_once()
         call_args = mock_conn._client.execute_service.call_args[0]
         assert call_args[0] is mock_svc
         assert "wifi-ble-co2-manifest.json" in call_args[1]["url"]
+        mock_conn.async_disconnect.assert_awaited_once()
 
     async def test_update_firmware_ethernet_variant(self, hass: HomeAssistant, config_entry: MockConfigEntry) -> None:
         """update_firmware derives ethernet variant from build flags."""
         mock_dm = await setup_integration(hass, config_entry)
-        mock_dm.devices = {"AA:BB:CC:DD:EE:FF": MagicMock()}
+        mock_dm.devices = {"AA:BB:CC:DD:EE:FF": MagicMock(host="192.168.1.50")}
         mock_dm._build_flags = {
             "AA:BB:CC:DD:EE:FF": {"ethernet_enabled": True, "bluetooth_enabled": True, "co2_enabled": True}
         }
 
-        mock_svc = MagicMock()
         mock_conn = MagicMock()
-        mock_conn._services = {"set_update_manifest": mock_svc}
+        mock_conn.async_connect = AsyncMock()
+        mock_conn.async_disconnect = AsyncMock()
+        mock_conn._services = {"set_update_manifest": MagicMock()}
         mock_conn._client = MagicMock()
         mock_conn._client.execute_service = AsyncMock()
-        mock_dm.async_open_session = AsyncMock(return_value=mock_conn)
 
         from custom_components.eppgrid.websocket_api import websocket_update_firmware
 
         connection = MagicMock()
         msg = {"id": 20, "type": "eppgrid/update_firmware", "mac": "AA:BB:CC:DD:EE:FF"}
 
-        await call_async_handler(hass, websocket_update_firmware, connection, msg)
+        with patch("custom_components.eppgrid.device_manager.DeviceConnection", return_value=mock_conn):
+            await call_async_handler(hass, websocket_update_firmware, connection, msg)
 
         call_args = mock_conn._client.execute_service.call_args[0]
         assert "ethernet-ble-co2-manifest.json" in call_args[1]["url"]
@@ -1684,14 +1688,13 @@ class TestUpdateFirmware:
 
         connection.send_error.assert_called_once_with(21, "not_found", "Device not found")
 
-    async def test_update_firmware_device_not_available(
+    async def test_update_firmware_device_host_unknown(
         self, hass: HomeAssistant, config_entry: MockConfigEntry
     ) -> None:
-        """update_firmware returns error when device not available."""
+        """update_firmware returns error when device host is unknown."""
         mock_dm = await setup_integration(hass, config_entry)
-        mock_dm.devices = {"AA:BB:CC:DD:EE:FF": MagicMock()}
+        mock_dm.devices = {"AA:BB:CC:DD:EE:FF": MagicMock(host=None)}
         mock_dm._build_flags = {"AA:BB:CC:DD:EE:FF": {}}
-        mock_dm.async_open_session = AsyncMock(return_value=None)
 
         from custom_components.eppgrid.websocket_api import websocket_update_firmware
 
@@ -1700,7 +1703,7 @@ class TestUpdateFirmware:
 
         await call_async_handler(hass, websocket_update_firmware, connection, msg)
 
-        connection.send_error.assert_called_once_with(22, "not_available", "Device not available")
+        connection.send_error.assert_called_once_with(22, "not_available", "Device host unknown")
 
     async def test_update_firmware_not_ready(self, hass: HomeAssistant) -> None:
         """update_firmware returns error when integration not loaded."""
@@ -2167,26 +2170,29 @@ class TestUpdateFirmwareError:
     async def test_update_firmware_service_error(self, hass: HomeAssistant, config_entry: MockConfigEntry) -> None:
         """update_firmware returns error when execute_service raises."""
         mock_dm = await setup_integration(hass, config_entry)
-        mock_dm.devices = {"AA:BB:CC:DD:EE:FF": MagicMock()}
+        mock_dm.devices = {"AA:BB:CC:DD:EE:FF": MagicMock(host="192.168.1.50")}
         mock_dm._build_flags = {"AA:BB:CC:DD:EE:FF": {}}
 
         mock_conn = MagicMock()
+        mock_conn.async_connect = AsyncMock()
+        mock_conn.async_disconnect = AsyncMock()
         mock_conn._services = {"set_update_manifest": MagicMock()}
         mock_conn._client = MagicMock()
         mock_conn._client.execute_service = AsyncMock(side_effect=Exception("OTA failed"))
-        mock_dm.async_open_session = AsyncMock(return_value=mock_conn)
 
         from custom_components.eppgrid.websocket_api import websocket_update_firmware
 
         connection = MagicMock()
         msg = {"id": 50, "type": "eppgrid/update_firmware", "mac": "AA:BB:CC:DD:EE:FF"}
 
-        await call_async_handler(hass, websocket_update_firmware, connection, msg)
+        with patch("custom_components.eppgrid.device_manager.DeviceConnection", return_value=mock_conn):
+            await call_async_handler(hass, websocket_update_firmware, connection, msg)
 
         connection.send_error.assert_called_once()
         args = connection.send_error.call_args[0]
         assert args[1] == "update_failed"
         assert "OTA failed" in args[2]
+        mock_conn.async_disconnect.assert_awaited_once()
 
 
 class TestWebSocketDistanceOverride:

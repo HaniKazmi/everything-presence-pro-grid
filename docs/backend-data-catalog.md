@@ -192,13 +192,13 @@ Returns stored config for a device.
 
 ### `update_firmware`
 
-Triggers OTA firmware update on a device via its ESPHome update entity.
+Triggers OTA firmware update on a device via the `set_update_manifest` API action. Derives the firmware variant from build flags and constructs the manifest URL from `FIRMWARE_VERSION`. Uses a temporary connection (not the persistent session).
 
 **Request:** `{ "type": "eppgrid/update_firmware", "mac": str }`
 
-### Protocol Version Guard
+### Firmware Version Guard
 
-All config commands (`set_setup`, `set_room_layout`, `set_entity_enabled`, `set_settings`, `set_pipeline`) check `firmware_status` before executing. On mismatch, they return an error with code `"firmware_behind"` or `"firmware_ahead"`.
+All config commands (`set_setup`, `set_room_layout`, `set_entity_enabled`, `set_settings`, `set_pipeline`) check `firmware_status` before executing. On mismatch, they return an error with code `"firmware_behind"`, `"firmware_ahead"`, or `"unavailable"`.
 
 ### `set_setup`
 
