@@ -30,7 +30,6 @@ def manager(hass: HomeAssistant, store: EPPGridStore) -> DeviceManager:
     return mgr
 
 
-
 class TestDiagnosticDump:
     """Tests for async_get_config_entry_diagnostics."""
 

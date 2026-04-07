@@ -385,3 +385,18 @@ All config is pushed to the device on save and on reconnect. The push
 prefers the existing frontend session connection when one is active
 (avoids the ESP32 concurrent connection limit); otherwise it creates a
 temporary connection (e.g., on-boot push when no frontend is open).
+
+## 6. Diagnostics
+
+The integration implements the HA diagnostics platform (`diagnostics.py`). Users can download a JSON dump from Settings > Devices & Services > EPP Grid.
+
+**Contents:**
+
+| Key | Description |
+|-----|-------------|
+| `integration_version` | Version from `manifest.json` |
+| `config_protocol_version` | `CONFIG_PROTOCOL_VERSION` constant |
+| `devices` | Output of `manager.list_devices()` — all managed devices with build flags |
+| `stored_configs` | Raw `EPPGridStore.devices` — per-device calibration, room layout, settings |
+| `templates` | Raw `EPPGridStore.templates` — saved room templates |
+| `entity_states` | Per-device dict of `{entity_id: state_value}` for all HA entities (including disabled) |
