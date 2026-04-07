@@ -147,5 +147,5 @@ class TestFirmwareProxyView:
             await view.get(request, "everything-presence-pro-wifi-ble-co2-manifest.json")
 
         call_url = session.get.call_args[0][0]
-        assert "releases/download/v0.1.0-alpha.3" in call_url
+        assert "releases/download/v1" in call_url
         assert call_url.endswith("everything-presence-pro-wifi-ble-co2-manifest.json")

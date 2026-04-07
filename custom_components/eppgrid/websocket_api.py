@@ -1189,7 +1189,7 @@ async def websocket_subscribe_flashable_devices(
     if manager is None:
         connection.send_error(msg["id"], "not_ready", "Integration not loaded")
         return
-    from .const import FIRMWARE_VERSION
+    from .const import FIRMWARE_RELEASE_TAG
 
     async def _send_update() -> None:
         devices = await manager.list_flashable_devices()
@@ -1199,7 +1199,7 @@ async def websocket_subscribe_flashable_devices(
                 {
                     "devices": devices,
                     "firmware_base_url": "/api/eppgrid/firmware",
-                    "latest_firmware_version": FIRMWARE_VERSION,
+                    "latest_firmware_version": FIRMWARE_RELEASE_TAG,
                 },
             )
         )
@@ -1235,12 +1235,12 @@ async def websocket_list_flashable_devices(
     if manager is None:
         connection.send_error(msg["id"], "not_ready", "Integration not loaded")
         return
-    from .const import FIRMWARE_VERSION
+    from .const import FIRMWARE_RELEASE_TAG
 
     devices = await manager.list_flashable_devices()
     connection.send_result(
         msg["id"],
-        {"devices": devices, "firmware_base_url": "/api/eppgrid/firmware", "latest_firmware_version": FIRMWARE_VERSION},
+        {"devices": devices, "firmware_base_url": "/api/eppgrid/firmware", "latest_firmware_version": FIRMWARE_RELEASE_TAG},
     )
 
 
