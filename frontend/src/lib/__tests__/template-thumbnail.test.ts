@@ -59,6 +59,93 @@ describe("renderTemplateThumbnail", () => {
     expect(rects.length).toBe(0);
   });
 
+  it("renders furniture items as outlined rects", async () => {
+    // Room: 3000mm wide, centered at cols 5-14 (10 cols), rows 0-9 (10 rows)
+    const grid = makeGrid(
+      Array.from({ length: 100 }, (_, i) => ({
+        col: 5 + (i % 10),
+        row: Math.floor(i / 10),
+      })),
+    );
+    const furniture = [
+      {
+        id: "f1",
+        type: "icon" as const,
+        icon: "mdi:bed",
+        label: "Bed",
+        x: 300,   // 300mm from left edge of room
+        y: 600,   // 600mm from top edge of room
+        width: 1200,
+        height: 900,
+        rotation: 0,
+        lockAspect: false,
+      },
+    ];
+    const result = renderTemplateThumbnail(
+      grid,
+      new Array(7).fill(null),
+      3000,
+      3000,
+      furniture,
+    );
+
+    const container = document.createElement("div");
+    const { render } = await import("lit");
+    render(result, container);
+
+    // Should have a furniture rect with stroke and no fill
+    const svgEl = container.querySelector("svg");
+    const allRects = svgEl!.querySelectorAll("rect");
+    const furnitureRects = Array.from(allRects).filter(
+      (r) => r.getAttribute("fill") === "none",
+    );
+    expect(furnitureRects.length).toBe(1);
+    expect(furnitureRects[0].getAttribute("stroke")).toBeTruthy();
+  });
+
+  it("renders furniture with rotation as transform", async () => {
+    const grid = makeGrid(
+      Array.from({ length: 100 }, (_, i) => ({
+        col: 5 + (i % 10),
+        row: Math.floor(i / 10),
+      })),
+    );
+    const furniture = [
+      {
+        id: "f1",
+        type: "icon" as const,
+        icon: "mdi:bed",
+        label: "Bed",
+        x: 300,
+        y: 600,
+        width: 1200,
+        height: 900,
+        rotation: 45,
+        lockAspect: false,
+      },
+    ];
+    const result = renderTemplateThumbnail(
+      grid,
+      new Array(7).fill(null),
+      3000,
+      3000,
+      furniture,
+    );
+
+    const container = document.createElement("div");
+    const { render } = await import("lit");
+    render(result, container);
+
+    const svgEl = container.querySelector("svg");
+    const allRects = svgEl!.querySelectorAll("rect");
+    const furnitureRects = Array.from(allRects).filter(
+      (r) => r.getAttribute("fill") === "none",
+    );
+    expect(furnitureRects.length).toBe(1);
+    // Should have transform with rotation
+    expect(furnitureRects[0].getAttribute("transform")).toContain("rotate");
+  });
+
   it("applies zone colors to cells", async () => {
     const grid = makeGrid([
       { col: 10, row: 0, zone: 0 },

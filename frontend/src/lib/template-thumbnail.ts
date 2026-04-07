@@ -2,6 +2,7 @@ import { svg } from "lit";
 import type { SVGTemplateResult } from "lit";
 import {
   GRID_COLS,
+  GRID_CELL_MM,
   getRoomBounds,
   cellIsInside,
 } from "./grid.js";
@@ -47,7 +48,30 @@ export function renderTemplateThumbnail(
     }
   }
 
+  // Furniture: convert mm positions to grid-cell units relative to room bounds
+  const roomCols = Math.ceil(_roomWidth / GRID_CELL_MM);
+  const startCol = Math.floor((GRID_COLS - roomCols) / 2);
+
+  const furnitureRects: SVGTemplateResult[] = [];
+  for (const item of _furniture) {
+    const fx = (item.x / GRID_CELL_MM) + startCol - minCol;
+    const fy = (item.y / GRID_CELL_MM) - minRow;
+    const fw = item.width / GRID_CELL_MM;
+    const fh = item.height / GRID_CELL_MM;
+    const cx = fx + fw / 2;
+    const cy = fy + fh / 2;
+    const transform = item.rotation
+      ? `rotate(${item.rotation}, ${cx}, ${cy})`
+      : undefined;
+    furnitureRects.push(
+      svg`<rect x="${fx}" y="${fy}" width="${fw}" height="${fh}"
+        fill="none" stroke="rgba(0,0,0,0.4)" stroke-width="0.15"
+        rx="0.1" transform="${transform ?? ""}" />`
+    );
+  }
+
   return svg`<svg viewBox="0 0 ${cols} ${rows}" preserveAspectRatio="xMidYMid meet">
     ${cellRects}
+    ${furnitureRects}
   </svg>`;
 }
