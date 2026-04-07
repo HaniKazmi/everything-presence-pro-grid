@@ -30,13 +30,6 @@ def manager(hass: HomeAssistant, store: EPPGridStore) -> DeviceManager:
     return mgr
 
 
-@pytest.fixture
-def config_entry(hass: HomeAssistant) -> MockConfigEntry:
-    """Create a mock config entry."""
-    entry = MockConfigEntry(domain=DOMAIN, data={}, title="EPP Grid")
-    entry.add_to_hass(hass)
-    return entry
-
 
 class TestDiagnosticDump:
     """Tests for async_get_config_entry_diagnostics."""
