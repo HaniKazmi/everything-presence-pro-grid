@@ -3,6 +3,7 @@ __pycache__/
 *.pyc
 dist/
 .DS_Store
+.vscode/
 .superpowers/
 *.code-workspace
 .coverage
