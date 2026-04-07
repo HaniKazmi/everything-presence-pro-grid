@@ -395,7 +395,7 @@ The integration implements the HA diagnostics platform (`diagnostics.py`). Users
 | Key | Description |
 |-----|-------------|
 | `integration_version` | Version from `manifest.json` |
-| `config_protocol_version` | `CONFIG_PROTOCOL_VERSION` constant |
+| `firmware_version` | `FIRMWARE_VERSION` constant |
 | `devices` | Output of `manager.list_devices()` — all managed devices with build flags |
 | `stored_configs` | Raw `EPPGridStore.devices` — per-device calibration, room layout, settings |
 | `templates` | Raw `EPPGridStore.templates` — saved room templates |

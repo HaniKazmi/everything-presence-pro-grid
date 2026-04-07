@@ -8,8 +8,8 @@ from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers import entity_registry as er
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
-from custom_components.eppgrid.const import CONFIG_PROTOCOL_VERSION
 from custom_components.eppgrid.const import DOMAIN
+from custom_components.eppgrid.const import FIRMWARE_VERSION
 from custom_components.eppgrid.device_manager import DeviceManager
 from custom_components.eppgrid.device_manager import ManagedDevice
 from custom_components.eppgrid.diagnostics import async_get_config_entry_diagnostics
@@ -39,7 +39,7 @@ class TestDiagnosticDump:
         """Dump with no devices returns empty collections."""
         result = await async_get_config_entry_diagnostics(hass, config_entry)
 
-        assert result["config_protocol_version"] == CONFIG_PROTOCOL_VERSION
+        assert result["firmware_version"] == FIRMWARE_VERSION
         assert "integration_version" in result
         assert result["devices"] == []
         assert result["stored_configs"] == {}
