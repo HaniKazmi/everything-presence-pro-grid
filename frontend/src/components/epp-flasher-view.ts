@@ -246,9 +246,22 @@ export class EppFlasherView extends LitElement {
 
 	private _renderDeviceList() {
 		const { flashableDevices } = this;
+		const hasAheadDevices = flashableDevices.some(
+			(d) => d.firmware_type === "eppgrid" && d.firmware_status === "firmware_ahead",
+		);
 
 		return html`
       <div class="flasher-content">
+        ${hasAheadDevices ? html`
+          <div class="update-banner">
+            <ha-icon icon="mdi:information"></ha-icon>
+            <div>
+              <strong>${this.localize("flasher.integration_outdated_title")}</strong>
+              <p>${this.localize("flasher.integration_outdated_body")}</p>
+              <a href="/hacs/repository/1172848595" class="update-link">${this.localize("flasher.open_hacs")}</a>
+            </div>
+          </div>
+        ` : nothing}
         <ha-card>
           <div class="card-header">
             ${this.localize("flasher.devices_on_network")}

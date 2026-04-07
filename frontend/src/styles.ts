@@ -334,6 +334,12 @@ export const protocolFullpageStyles = css`
     max-width: 480px;
     line-height: 1.5;
   }
+  .protocol-link {
+    color: white;
+    font-weight: 500;
+    text-decoration: underline;
+    font-size: 16px;
+  }
 `;
 
 export const headerStyles = css`
@@ -545,6 +551,30 @@ export const flasherStyles = css`
     font-weight: normal;
     opacity: 0.7;
     margin-left: 8px;
+  }
+
+  .update-banner {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    padding: 16px;
+    margin-bottom: 16px;
+    background: var(--info-color, #2196f3);
+    color: white;
+    border-radius: 8px;
+  }
+  .update-banner ha-icon {
+    --mdc-icon-size: 24px;
+    flex-shrink: 0;
+    margin-top: 2px;
+  }
+  .update-banner p {
+    margin: 4px 0 8px;
+  }
+  .update-banner .update-link {
+    color: white;
+    font-weight: 500;
+    text-decoration: underline;
   }
 
   ha-button[raised] {

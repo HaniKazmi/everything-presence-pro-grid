@@ -1353,6 +1353,7 @@ export class EPPGridPanel extends LitElement {
 				? this._localize("protocol.firmware_behind")
 				: this._localize("protocol.firmware_ahead");
 
+		const isAhead = status === "firmware_ahead";
 		return html`
 			<div class="protocol-fullpage protocol-fullpage-${isBehind ? "warning" : "info"}">
 				<ha-icon icon=${isBehind ? "mdi:alert-circle-outline" : "mdi:information-outline"}></ha-icon>
@@ -1362,6 +1363,12 @@ export class EPPGridPanel extends LitElement {
 						? html`<button class="wizard-btn wizard-btn-primary"
 						@click=${() => this._updateFirmware()}
 					>${this._localize("protocol.update_firmware")}</button>`
+						: nothing
+				}
+				${
+					isAhead
+						? html`<a href="/hacs/repository/1172848595" class="protocol-link"
+					>${this._localize("protocol.open_hacs")}</a>`
 						: nothing
 				}
 			</div>
