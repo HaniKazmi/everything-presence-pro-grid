@@ -2,14 +2,10 @@
 
 from __future__ import annotations
 
-import json as _json
+import json
 import logging
-import os as _os
+from pathlib import Path
 from typing import Any
-
-_INTEGRATION_VERSION: str = _json.load(
-    open(_os.path.join(_os.path.dirname(__file__), "manifest.json"))
-)["version"]
 
 import voluptuous as vol
 from homeassistant.components import websocket_api
@@ -20,6 +16,8 @@ from homeassistant.helpers import entity_registry as er
 from .const import DOMAIN
 
 _LOGGER = logging.getLogger(__name__)
+
+_INTEGRATION_VERSION: str = json.loads(Path(__file__).with_name("manifest.json").read_text())["version"]
 
 _REGISTERED: set[str] = set()
 
