@@ -725,7 +725,6 @@ class TestFirmwareVersion:
     ) -> None:
         """read_firmware_version returns '0.0.0' when no firmware_version entity exists."""
         dev_reg = dr.async_get(hass)
-        ent_reg = er.async_get(hass)
 
         esphome_entry = MockConfigEntry(
             domain="esphome",
@@ -843,9 +842,7 @@ class TestFirmwareVersion:
         result = manager.list_devices()
         assert result[0]["firmware_status"] == "firmware_ahead"
 
-    async def test_list_devices_reads_firmware_version_live(
-        self, hass: HomeAssistant, manager: DeviceManager
-    ) -> None:
+    async def test_list_devices_reads_firmware_version_live(self, hass: HomeAssistant, manager: DeviceManager) -> None:
         """list_devices picks up firmware version changes without re-discovery."""
         from custom_components.eppgrid.const import FIRMWARE_VERSION
 
@@ -892,9 +889,7 @@ class TestFirmwareVersion:
         result = manager.list_devices()
         assert result[0]["firmware_status"] == "compatible"
 
-    async def test_discover_does_not_cache_firmware_version(
-        self, hass: HomeAssistant, manager: DeviceManager
-    ) -> None:
+    async def test_discover_does_not_cache_firmware_version(self, hass: HomeAssistant, manager: DeviceManager) -> None:
         """async_discover detects firmware_version entities and list_devices reports compatible."""
         from custom_components.eppgrid.const import FIRMWARE_VERSION
 

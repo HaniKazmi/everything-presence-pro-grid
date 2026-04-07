@@ -287,12 +287,14 @@ export class EppFlasherView extends LitElement {
 														: nothing
 												}
                         ${
-													device.firmware_type === "eppgrid" && device.firmware_status === "firmware_behind"
+													device.firmware_type === "eppgrid" &&
+													device.firmware_status === "firmware_behind"
 														? html`<span class="firmware-badge firmware-badge-behind">${this.localize("flasher.needs_update")}</span>`
 														: nothing
 												}
                         ${
-													device.firmware_type === "eppgrid" && device.firmware_status === "firmware_ahead"
+													device.firmware_type === "eppgrid" &&
+													device.firmware_status === "firmware_ahead"
 														? html`<span class="firmware-badge firmware-badge-ahead">${this.localize("flasher.integration_update")}</span>`
 														: nothing
 												}
