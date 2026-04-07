@@ -369,7 +369,8 @@ class DeviceManager:
 
         @callback
         def unsub() -> None:
-            self._device_list_callbacks.remove(cb)
+            if cb in self._device_list_callbacks:
+                self._device_list_callbacks.remove(cb)
 
         return unsub
 
@@ -377,7 +378,10 @@ class DeviceManager:
     def _fire_device_list_changed(self) -> None:
         """Notify all subscribers that the device list has changed."""
         for cb in list(self._device_list_callbacks):
-            cb()
+            try:
+                cb()
+            except Exception:
+                _LOGGER.exception("Device list change callback failed")
 
     async def async_start(self) -> None:
         """Start discovery and event listeners."""
@@ -570,6 +574,7 @@ class DeviceManager:
         self._store.devices.pop(mac, None)
         self.devices.pop(mac, None)
         self._build_flags.pop(mac, None)
+        self._session_locks.pop(mac, None)
         self._entity_update_macs.discard(mac)
         self._pushing.discard(mac)
         await self._store.async_save()
