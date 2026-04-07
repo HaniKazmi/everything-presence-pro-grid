@@ -1087,15 +1087,15 @@ describe("_renderTemplateLoadDialog item events", () => {
 		document.body.appendChild(c);
 		render(tpl, c);
 
-		// Should have load and delete buttons for each template
-		const btns = c.querySelectorAll(".template-item-btn");
-		// Click load for first template
-		if (btns.length >= 1) {
-			(btns[0] as HTMLElement).click();
-		}
-		// Click delete for second template (if it exists)
-		if (btns.length >= 4) {
-			(btns[3] as HTMLElement).click();
+		// Should have template cards for each template
+		const cards = c.querySelectorAll(".template-card");
+		expect(cards.length).toBe(2);
+		// Click load for first template card
+		(cards[0] as HTMLElement).click();
+		// Click delete button for second template card
+		const deleteBtns = c.querySelectorAll(".template-card-delete");
+		if (deleteBtns.length >= 2) {
+			(deleteBtns[1] as HTMLElement).click();
 		}
 
 		localStorage.removeItem("epp_layout_templates");

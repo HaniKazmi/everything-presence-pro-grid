@@ -1,7 +1,8 @@
+import { render } from "lit";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { EPPGridPanel } from "../eppgrid-panel.js";
 import "../eppgrid-panel.js";
-import { CELL_ROOM_BIT, GRID_CELL_COUNT } from "../lib/grid.js";
+import { CELL_ROOM_BIT, GRID_CELL_COUNT, GRID_COLS } from "../lib/grid.js";
 import { ZONE_COLORS } from "../lib/zone-defaults.js";
 
 function createPanel(): EPPGridPanel {
@@ -300,5 +301,113 @@ describe("_deleteTemplate", () => {
 		a._deleteTemplate("Nonexistent");
 
 		expect(a._getTemplates()).toHaveLength(1);
+	});
+});
+
+describe("_renderTemplateLoadDialog", () => {
+	afterEach(() => {
+		localStorage.removeItem("epp_layout_templates");
+	});
+
+	it("renders template cards with SVG thumbnails", () => {
+		const grid = new Array(GRID_CELL_COUNT).fill(0);
+		// Set a 2x2 room
+		grid[0] = CELL_ROOM_BIT;
+		grid[1] = CELL_ROOM_BIT;
+		grid[GRID_COLS] = CELL_ROOM_BIT;
+		grid[GRID_COLS + 1] = CELL_ROOM_BIT;
+
+		const templates = [
+			{
+				name: "Test Room",
+				grid,
+				zones: [{ name: "Z1", color: "#E69F00", type: "normal" }],
+				roomWidth: 600,
+				roomDepth: 600,
+				furniture: [],
+			},
+		];
+		localStorage.setItem("epp_layout_templates", JSON.stringify(templates));
+
+		const a = createPanel() as any;
+		const tpl = a._renderTemplateLoadDialog();
+		const c = document.createElement("div");
+		document.body.appendChild(c);
+		render(tpl, c);
+
+		const card = c.querySelector(".template-card");
+		expect(card).not.toBeNull();
+
+		const svgEl = c.querySelector(".template-card-thumbnail svg");
+		expect(svgEl).not.toBeNull();
+
+		const name = c.querySelector(".template-card-name");
+		expect(name?.textContent).toBe("Test Room");
+
+		const size = c.querySelector(".template-card-size");
+		expect(size?.textContent).toContain("0.6m");
+
+		document.body.removeChild(c);
+	});
+
+	it("clicking card triggers load", () => {
+		const grid = new Array(GRID_CELL_COUNT).fill(0);
+		grid[0] = CELL_ROOM_BIT;
+		const templates = [
+			{
+				name: "Clickable",
+				grid,
+				zones: [],
+				roomWidth: 3000,
+				roomDepth: 4000,
+			},
+		];
+		localStorage.setItem("epp_layout_templates", JSON.stringify(templates));
+
+		const a = createPanel() as any;
+		const tpl = a._renderTemplateLoadDialog();
+		const c = document.createElement("div");
+		document.body.appendChild(c);
+		render(tpl, c);
+
+		const card = c.querySelector(".template-card") as HTMLElement;
+		expect(card).not.toBeNull();
+		card.click();
+
+		// After clicking, load dialog should close
+		expect(a._showTemplateLoad).toBe(false);
+		expect(a._roomWidth).toBe(3000);
+
+		document.body.removeChild(c);
+	});
+
+	it("clicking delete button removes template without loading", () => {
+		const grid = new Array(GRID_CELL_COUNT).fill(0);
+		grid[0] = CELL_ROOM_BIT;
+		const templates = [
+			{ name: "Keep", grid, zones: [], roomWidth: 3000, roomDepth: 4000 },
+			{ name: "Delete", grid, zones: [], roomWidth: 3000, roomDepth: 4000 },
+		];
+		localStorage.setItem("epp_layout_templates", JSON.stringify(templates));
+
+		const a = createPanel() as any;
+		const origWidth = a._roomWidth;
+		const tpl = a._renderTemplateLoadDialog();
+		const c = document.createElement("div");
+		document.body.appendChild(c);
+		render(tpl, c);
+
+		const deleteBtn = c.querySelector(
+			".template-card-delete",
+		) as HTMLElement;
+		expect(deleteBtn).not.toBeNull();
+		deleteBtn.click();
+
+		// Template deleted, but load dialog still open and room not changed
+		const remaining = a._getTemplates();
+		expect(remaining).toHaveLength(1);
+		expect(a._roomWidth).toBe(origWidth);
+
+		document.body.removeChild(c);
 	});
 });

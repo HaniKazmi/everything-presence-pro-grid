@@ -426,7 +426,7 @@ describe("_renderTemplateLoadDialog delete template button", () => {
 
 		const tpl = a._renderTemplateLoadDialog();
 		const c = renderTo(tpl);
-		const deleteBtn = c.querySelector(".zone-remove-btn") as HTMLElement;
+		const deleteBtn = c.querySelector(".template-card-delete") as HTMLElement;
 		expect(deleteBtn).not.toBeNull();
 		deleteBtn.click();
 		expect(spy).toHaveBeenCalledWith("MyTemplate");
