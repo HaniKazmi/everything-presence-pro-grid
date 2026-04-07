@@ -146,9 +146,14 @@ class DeviceConnection:
         if svc is None:
             return {}
         try:
-            resp = await self._client.execute_service(svc, {})
-            return resp if isinstance(resp, dict) else {}
-        except Exception:
+            resp = await self._client.execute_service(svc, {}, return_response=True)
+            if resp is None or not resp.response_data:
+                return {}
+            decoded = json.loads(resp.response_data)
+            if not isinstance(decoded, dict):
+                return {}
+            return decoded
+        except (json.JSONDecodeError, Exception):
             _LOGGER.debug("Failed to fetch build flags from %s", self._host)
             return {}
 
@@ -395,6 +400,24 @@ class DeviceManager:
         self._unsub_listeners.append(
             self._hass.bus.async_listen(dr.EVENT_DEVICE_REGISTRY_UPDATED, self._on_device_registry_updated)
         )
+        # Push config to devices that are already available — the
+        # state_changed listener only catches future transitions, so devices
+        # that connected before the integration loaded would be missed.
+        ent_reg = er.async_get(self._hass)
+        for mac in list(self.devices):
+            if mac not in self._pushing:
+                dev = self.devices[mac]
+                # Only push to devices that are actually online — check if at
+                # least one entity has a non-unavailable state.
+                if dev.device_id:
+                    entries = er.async_entries_for_device(ent_reg, dev.device_id, include_disabled_entities=True)
+                    if entries and all(
+                        (s := self._hass.states.get(e.entity_id)) is None or s.state == STATE_UNAVAILABLE
+                        for e in entries
+                    ):
+                        continue
+                self._pushing.add(mac)
+                self._hass.async_create_task(self._on_device_available(mac))
 
     async def async_stop(self) -> None:
         """Stop listeners and close all connections."""
@@ -646,10 +669,38 @@ class DeviceManager:
                 await session._client.execute_service(svc, pipeline)
                 _LOGGER.info("Pushed pipeline to %s", mac)
 
+    async def _fetch_build_flags(self, mac: str) -> None:
+        """Fetch and cache build flags from a device."""
+        dev = self.devices.get(mac)
+        if dev is None or dev.host is None:
+            return
+
+        # Prefer existing session to avoid hitting ESP32 concurrent connection limit
+        session = self.get_session(mac)
+        if session is not None:
+            flags = await session.async_fetch_build_flags()
+            if flags:
+                self._build_flags[mac] = flags
+                self._fire_device_list_changed()
+            return
+
+        conn = DeviceConnection(dev.host)
+        try:
+            await conn.async_connect()
+            flags = await conn.async_fetch_build_flags()
+            if flags:
+                self._build_flags[mac] = flags
+                self._fire_device_list_changed()
+        except Exception:
+            _LOGGER.debug("Failed to fetch build flags from %s", mac)
+        finally:
+            await conn.async_disconnect()
+
     async def _push_config_to_device(self, mac: str) -> bool:
         """Push config to device, preferring an existing session connection."""
         config = self._store.get_device(mac)
         if config is None:
+            await self._fetch_build_flags(mac)
             return True
         dev = self.devices.get(mac)
         if dev is None or dev.host is None:

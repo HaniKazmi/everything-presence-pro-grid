@@ -20,7 +20,7 @@ EPP_MANUFACTURER = "EverythingSmartTechnology"
 EPP_MODEL = "Everything Presence Pro"
 
 # Firmware
-FIRMWARE_VERSION = "v0.1.0-alpha.2"
+FIRMWARE_VERSION = "v0.1.0-alpha.3"
 MANIFEST_BASE_URL = (
     f"https://github.com/clintongormley/everything-presence-pro-grid/releases/download/{FIRMWARE_VERSION}"
 )
