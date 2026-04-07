@@ -118,6 +118,83 @@ class TestListFlashableDevices:
         connection.send_error.assert_called_once_with(1, "not_ready", "Integration not loaded")
 
 
+class TestSubscribeFlashableDevices:
+    """Tests for eppgrid/subscribe_flashable_devices."""
+
+    async def test_subscribe_sends_initial_list(self, hass: HomeAssistant, config_entry: MockConfigEntry) -> None:
+        """subscribe_flashable_devices sends the current list immediately."""
+        mock_dm = await setup_integration(hass, config_entry)
+        device = {"mac": "AA:BB:CC:DD:EE:FF", "name": "EPP", "firmware_type": "original"}
+        mock_dm.list_flashable_devices = AsyncMock(return_value=[device])
+        mock_dm.on_device_list_changed = MagicMock(return_value=lambda: None)
+
+        from custom_components.eppgrid.websocket_api import websocket_subscribe_flashable_devices
+
+        connection = MagicMock()
+        connection.subscriptions = {}
+        msg = {"id": 30, "type": "eppgrid/subscribe_flashable_devices"}
+
+        await call_async_handler(hass, websocket_subscribe_flashable_devices, connection, msg)
+
+        connection.send_result.assert_called_once_with(30)
+        connection.send_message.assert_called_once()
+        event_msg = connection.send_message.call_args[0][0]
+        assert event_msg["id"] == 30
+        assert event_msg["event"]["devices"][0]["mac"] == "AA:BB:CC:DD:EE:FF"
+        assert "firmware_base_url" in event_msg["event"]
+        assert 30 in connection.subscriptions
+
+    async def test_subscribe_pushes_updates(self, hass: HomeAssistant, config_entry: MockConfigEntry) -> None:
+        """Device list change callback pushes updated flashable list."""
+        mock_dm = await setup_integration(hass, config_entry)
+        mock_dm.list_flashable_devices = AsyncMock(return_value=[])
+
+        captured_cb = None
+
+        def capture_on_changed(cb):
+            nonlocal captured_cb
+            captured_cb = cb
+            return lambda: None
+
+        mock_dm.on_device_list_changed = MagicMock(side_effect=capture_on_changed)
+
+        from custom_components.eppgrid.websocket_api import websocket_subscribe_flashable_devices
+
+        connection = MagicMock()
+        connection.subscriptions = {}
+        msg = {"id": 31, "type": "eppgrid/subscribe_flashable_devices"}
+
+        await call_async_handler(hass, websocket_subscribe_flashable_devices, connection, msg)
+
+        # Simulate device list change
+        device = {"mac": "AA:BB:CC:DD:EE:FF", "name": "EPP"}
+        mock_dm.list_flashable_devices = AsyncMock(return_value=[device])
+        assert captured_cb is not None
+        captured_cb()
+        await hass.async_block_till_done()
+
+        assert connection.send_message.call_count == 2
+
+    async def test_unsubscribe_removes_callback(self, hass: HomeAssistant, config_entry: MockConfigEntry) -> None:
+        """Unsubscribing cleans up the callback."""
+        mock_dm = await setup_integration(hass, config_entry)
+        mock_dm.list_flashable_devices = AsyncMock(return_value=[])
+
+        unsub_inner = MagicMock()
+        mock_dm.on_device_list_changed = MagicMock(return_value=unsub_inner)
+
+        from custom_components.eppgrid.websocket_api import websocket_subscribe_flashable_devices
+
+        connection = MagicMock()
+        connection.subscriptions = {}
+        msg = {"id": 32, "type": "eppgrid/subscribe_flashable_devices"}
+
+        await call_async_handler(hass, websocket_subscribe_flashable_devices, connection, msg)
+
+        connection.subscriptions[32]()
+        unsub_inner.assert_called_once()
+
+
 class TestDeleteEsphomeDevice:
     """Tests for eppgrid/delete_esphome_device."""
 

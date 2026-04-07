@@ -43,10 +43,12 @@ export class DeviceController implements ReactiveController {
 	// --- Callbacks set by the host ---
 	onTargetData?: (data: TargetData) => void;
 	onRawTargetData?: (targets: RawTarget[]) => void;
+	onDeviceListChanged?: () => void;
 
 	private _host: ReactiveControllerHost;
 	private _hass: any = null;
 	private _unsubDevice?: () => void;
+	private _unsubDeviceList?: () => void;
 	private _unsubTargets?: () => void;
 	private _unsubDisplay?: () => void;
 	private _targetRetryTimer?: ReturnType<typeof setTimeout>;
@@ -61,6 +63,7 @@ export class DeviceController implements ReactiveController {
 	// --- ReactiveController lifecycle ---
 	hostConnected(): void {}
 	hostDisconnected(): void {
+		this.unsubscribeDeviceList();
 		this.closeDeviceSession();
 	}
 
@@ -114,6 +117,50 @@ export class DeviceController implements ReactiveController {
 		const match =
 			stored && this.devices.find((d: DeviceInfo) => d.mac === stored);
 		this.selectedMac = match ? stored! : (this.devices[0]?.mac ?? "");
+		this._host.requestUpdate();
+	}
+
+	/**
+	 * Subscribe to real-time device list updates from the backend.
+	 * Receives the initial list immediately, then pushes updates on add/remove.
+	 */
+	async subscribeDeviceList(): Promise<void> {
+		this.unsubscribeDeviceList();
+		if (!this._hass) return;
+		try {
+			this._unsubDeviceList =
+				await this._hass.connection.subscribeMessage(
+					(msg: any) => {
+						this._applyDeviceList(msg.devices as DeviceInfo[]);
+					},
+					{ type: "eppgrid/subscribe_device_list" },
+				);
+		} catch {
+			// Fallback to one-shot load if subscription not supported
+			await this.loadDevices();
+		}
+	}
+
+	unsubscribeDeviceList(): void {
+		if (this._unsubDeviceList) {
+			try {
+				this._unsubDeviceList();
+			} catch {
+				/* stale subscription */
+			}
+			this._unsubDeviceList = undefined;
+		}
+	}
+
+	private _applyDeviceList(devices: DeviceInfo[]): void {
+		this.devices = devices.sort((a, b) =>
+			(a.name || "").localeCompare(b.name || ""),
+		);
+		const stored = localStorage.getItem("epp_selected_mac");
+		const match =
+			stored && this.devices.find((d: DeviceInfo) => d.mac === stored);
+		this.selectedMac = match ? stored! : (this.devices[0]?.mac ?? "");
+		this.onDeviceListChanged?.();
 		this._host.requestUpdate();
 	}
 

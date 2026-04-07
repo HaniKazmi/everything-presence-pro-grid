@@ -1537,6 +1537,83 @@ class TestWebSocketSubscriptions:
         assert 25 in connection.subscriptions
 
 
+class TestSubscribeDeviceList:
+    """Tests for eppgrid/subscribe_device_list."""
+
+    async def test_subscribe_sends_initial_list(self, hass: HomeAssistant, config_entry: MockConfigEntry) -> None:
+        """subscribe_device_list sends the current device list immediately."""
+        mock_dm = await setup_integration(hass, config_entry)
+        mock_dm.list_devices.return_value = [{"mac": "AA:BB:CC:DD:EE:FF", "name": "EPP"}]
+        mock_dm.on_device_list_changed = MagicMock(return_value=lambda: None)
+
+        from custom_components.eppgrid.websocket_api import websocket_subscribe_device_list
+
+        connection = MagicMock()
+        connection.subscriptions = {}
+        msg = {"id": 30, "type": "eppgrid/subscribe_device_list"}
+
+        websocket_subscribe_device_list(hass, connection, msg)
+
+        connection.send_result.assert_called_once_with(30)
+        connection.send_message.assert_called_once()
+        event_msg = connection.send_message.call_args[0][0]
+        assert event_msg["id"] == 30
+        assert event_msg["event"]["devices"][0]["mac"] == "AA:BB:CC:DD:EE:FF"
+        assert 30 in connection.subscriptions
+
+    async def test_subscribe_pushes_updates(self, hass: HomeAssistant, config_entry: MockConfigEntry) -> None:
+        """Device list change callback pushes updated list to subscriber."""
+        mock_dm = await setup_integration(hass, config_entry)
+        mock_dm.list_devices.return_value = []
+
+        captured_cb = None
+
+        def capture_on_changed(cb):
+            nonlocal captured_cb
+            captured_cb = cb
+            return lambda: None
+
+        mock_dm.on_device_list_changed = MagicMock(side_effect=capture_on_changed)
+
+        from custom_components.eppgrid.websocket_api import websocket_subscribe_device_list
+
+        connection = MagicMock()
+        connection.subscriptions = {}
+        msg = {"id": 31, "type": "eppgrid/subscribe_device_list"}
+
+        websocket_subscribe_device_list(hass, connection, msg)
+
+        # Simulate device list change
+        mock_dm.list_devices.return_value = [{"mac": "AA:BB:CC:DD:EE:FF", "name": "EPP"}]
+        assert captured_cb is not None
+        captured_cb()
+
+        assert connection.send_message.call_count == 2
+        last_msg = connection.send_message.call_args[0][0]
+        assert last_msg["event"]["devices"][0]["mac"] == "AA:BB:CC:DD:EE:FF"
+
+    async def test_unsubscribe_removes_callback(self, hass: HomeAssistant, config_entry: MockConfigEntry) -> None:
+        """Unsubscribing cleans up the device list callback."""
+        mock_dm = await setup_integration(hass, config_entry)
+        mock_dm.list_devices.return_value = []
+
+        unsub_inner = MagicMock()
+        mock_dm.on_device_list_changed = MagicMock(return_value=unsub_inner)
+
+        from custom_components.eppgrid.websocket_api import websocket_subscribe_device_list
+
+        connection = MagicMock()
+        connection.subscriptions = {}
+        msg = {"id": 32, "type": "eppgrid/subscribe_device_list"}
+
+        websocket_subscribe_device_list(hass, connection, msg)
+
+        # Call the unsubscribe handler
+        connection.subscriptions[32]()
+
+        unsub_inner.assert_called_once()
+
+
 class TestUpdateFirmware:
     """Tests for eppgrid/update_firmware."""
 

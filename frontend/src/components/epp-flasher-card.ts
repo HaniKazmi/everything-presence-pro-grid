@@ -13,7 +13,7 @@ export class EppFlasherCard extends LitElement {
 		if (changed.has("hass") && this.hass) {
 			this._flasherCtrl.hass = this.hass;
 			if (this._flasherCtrl.loading) {
-				this._flasherCtrl.loadDevices();
+				this._flasherCtrl.subscribeDeviceList();
 			}
 		}
 	}
