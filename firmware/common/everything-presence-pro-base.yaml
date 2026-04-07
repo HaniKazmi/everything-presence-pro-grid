@@ -739,6 +739,7 @@ select:
   - platform: template
     name: "LED Mode"
     id: led_mode_select
+    internal: true
     entity_category: config
     optimistic: true
     options:
@@ -1030,6 +1031,7 @@ number:
   - platform: template
     name: "LED Brightness"
     id: led_brightness_multiplier
+    internal: true
     icon: mdi:brightness-6
     entity_category: config
     min_value: 0.1

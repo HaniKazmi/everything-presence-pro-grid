@@ -5,6 +5,7 @@ sensor:
     co2:
       name: "CO2"
       id: "co2"
+      disabled_by_default: true
       on_value:
         then:
           - if:
