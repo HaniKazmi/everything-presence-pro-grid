@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { EPPGridPanel } from "../eppgrid-panel.js";
 import "../eppgrid-panel.js";
 import { GRID_CELL_COUNT } from "../lib/grid.js";
@@ -223,7 +223,7 @@ describe("_getZoneThresholds", () => {
 describe("connectedCallback and disconnectedCallback", () => {
 	it("connectedCallback sets up event listeners", () => {
 		const el = createPanel();
-		const a = el as any;
+		const _a = el as any;
 		// Prevent actual initialization
 		el.hass = null;
 
@@ -240,7 +240,7 @@ describe("connectedCallback and disconnectedCallback", () => {
 
 	it("disconnectedCallback removes event listeners", () => {
 		const el = createPanel();
-		const a = el as any;
+		const _a = el as any;
 		el.hass = null;
 
 		el.connectedCallback();
@@ -459,7 +459,7 @@ describe("history navigation interception", () => {
 		el.hass = null; // Prevent initialization
 
 		// Save original
-		const origPush = history.pushState.bind(history);
+		const _origPush = history.pushState.bind(history);
 
 		el.connectedCallback();
 

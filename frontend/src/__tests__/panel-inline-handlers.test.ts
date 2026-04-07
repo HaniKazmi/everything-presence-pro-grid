@@ -2,7 +2,7 @@
  * Tests for inline event handler logic, zone engine in _renderVisibleCells,
  * and other uncovered code paths in the panel component.
  */
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { EPPGridPanel } from "../eppgrid-panel.js";
 import "../eppgrid-panel.js";
 import {
@@ -592,7 +592,7 @@ describe("zone engine in _renderVisibleCells", () => {
 
 		const st = a._zoneEngineState.localZoneState.get(1);
 		// Zone 1 should be in pending state since target moved away
-		if (st && st.occupied && st.pendingSince !== null) {
+		if (st?.occupied && st.pendingSince !== null) {
 			expect(st.pendingSince).not.toBeNull();
 		}
 	});

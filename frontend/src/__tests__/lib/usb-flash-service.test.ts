@@ -1,5 +1,4 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { UsbFlashState } from "../../types.js";
 
 // Mock improv-serial before importing the service
 vi.mock("../../lib/improv-serial.js", () => ({
@@ -354,7 +353,7 @@ describe("flashFirmware", () => {
 	it("aborts flash when beforeFlash throws, but still disconnects transport", async () => {
 		const port = mockPort();
 
-		vi.mocked(ESPLoader).mockImplementationOnce(function (opts: any) {
+		vi.mocked(ESPLoader).mockImplementationOnce(function (_opts: any) {
 			return {
 				main: vi.fn().mockResolvedValue("ESP32"),
 				writeFlash: vi.fn().mockResolvedValue(undefined),
@@ -553,7 +552,7 @@ describe("runWifiScan", () => {
 		} as unknown as ReadableStreamDefaultReader<Uint8Array>;
 
 		// Track how many readers have been created so we can return different ones
-		let readerCount = 0;
+		let _readerCount = 0;
 		const port = {
 			open: vi.fn().mockResolvedValue(undefined),
 			close: vi.fn().mockResolvedValue(undefined),
@@ -563,7 +562,7 @@ describe("runWifiScan", () => {
 			},
 			readable: {
 				getReader: vi.fn().mockImplementation(() => {
-					readerCount++;
+					_readerCount++;
 					return mockReader;
 				}),
 			},

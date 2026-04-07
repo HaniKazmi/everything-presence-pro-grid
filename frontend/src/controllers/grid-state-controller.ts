@@ -7,7 +7,6 @@ import {
 	determineInterferencePaintAction,
 	determineOverlayPaintAction,
 	determinePaintAction,
-	type PaintAction,
 } from "../lib/cell-painting.js";
 import {
 	clampFurnitureMove,

@@ -11,7 +11,7 @@ import {
 } from "../constants.js";
 import type { SmoothBufferEntry } from "../lib/coordinates.js";
 import { getSmoothedValue, rawToFovPct } from "../lib/coordinates.js";
-import { initGridFromRoom, MAX_RANGE } from "../lib/grid.js";
+import { MAX_RANGE } from "../lib/grid.js";
 import { solvePerspective } from "../lib/perspective.js";
 import {
 	autoComputeRoomDimensions,

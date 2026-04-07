@@ -1,7 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { TargetData } from "../../controllers/device-controller.js";
 import { DeviceController } from "../../controllers/device-controller.js";
-import type { DeviceInfo, RawTarget } from "../../types.js";
+import type { DeviceInfo } from "../../types.js";
 
 function mockHost() {
 	return {

@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { EPPGridPanel } from "../eppgrid-panel.js";
 import "../eppgrid-panel.js";
 import "../components/epp-live-sidebar.js";
@@ -11,13 +11,10 @@ import type { EppFurnitureSidebar } from "../components/epp-furniture-sidebar.js
 import type { EppGrid } from "../components/epp-grid.js";
 import type { EppSettingsView } from "../components/epp-settings-view.js";
 import type { EppWizard } from "../components/epp-wizard.js";
-import type { EppZoneSidebar } from "../components/epp-zone-sidebar.js";
 import {
 	CELL_ROOM_BIT,
 	cellSetZone,
 	GRID_CELL_COUNT,
-	GRID_COLS,
-	GRID_ROWS,
 	initGridFromRoom,
 } from "../lib/grid.js";
 import { ZONE_COLORS, ZONE_TYPE_DEFAULTS } from "../lib/zone-defaults.js";

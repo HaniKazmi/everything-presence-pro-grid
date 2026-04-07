@@ -908,7 +908,7 @@ export class EppSettingsView extends LitElement {
 							this._overrides.ledBrightness = parseFloat(el.value);
 							this._setText(
 								el.nextElementSibling!,
-								Math.round(parseFloat(el.value) * 100) + "%",
+								`${Math.round(parseFloat(el.value) * 100)}%`,
 							);
 							this._fireDirty();
 						}} /><span class="setting-value">${Math.round(brightness * 100)}%</span></span>

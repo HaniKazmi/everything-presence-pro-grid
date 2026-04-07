@@ -406,7 +406,7 @@ describe("renderEnvOffset", () => {
 		);
 		const c = renderTo(tpl);
 		const range = c.querySelector(".setting-range") as HTMLInputElement;
-		if (range && range.nextElementSibling) {
+		if (range?.nextElementSibling) {
 			range.value = "5";
 			range.dispatchEvent(new Event("input"));
 			expect(range.nextElementSibling.textContent).toBe("\u2014");
@@ -429,7 +429,7 @@ describe("renderEnvOffset", () => {
 		);
 		const c = renderTo(tpl);
 		const range = c.querySelector(".setting-range") as HTMLInputElement;
-		if (range && range.nextElementSibling) {
+		if (range?.nextElementSibling) {
 			range.value = "10";
 			range.dispatchEvent(new Event("input"));
 			expect(range.nextElementSibling.textContent).toBeDefined();
@@ -524,7 +524,7 @@ describe("renderEnvOffset", () => {
 		);
 		const c = renderTo(tpl);
 		const range = c.querySelector(".setting-range") as HTMLInputElement;
-		if (range && range.nextElementSibling) {
+		if (range?.nextElementSibling) {
 			range.value = "-10";
 			range.dispatchEvent(new Event("input"));
 			expect(range.nextElementSibling.textContent).toBe("0.0");

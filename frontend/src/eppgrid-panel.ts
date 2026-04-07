@@ -53,6 +53,7 @@ import {
 	isCellInSensorRange,
 	type SensorFov,
 } from "./lib/room-geometry.js";
+import { renderTemplateThumbnail } from "./lib/template-thumbnail.js";
 import {
 	detectIpAddress,
 	flashFirmware,
@@ -2004,24 +2005,51 @@ export class EPPGridPanel extends LitElement {
           ${
 						templates.length === 0
 							? html`<p class="overlay-help">${this._localize("dialogs.no_templates")}</p>`
-							: templates.map(
-									(t) => html`
-              <div class="template-item">
-                <span class="template-item-name">${t.name}</span>
-                <span class="template-item-size">${(t.roomWidth / 1000).toFixed(1)}m x ${(t.roomDepth / 1000).toFixed(1)}m</span>
-                <button
-                  class="wizard-btn wizard-btn-primary template-item-btn"
-                  @click=${() => this._loadTemplate(t.name)}
-                >${this._localize("common.load")}</button>
-                <button
-                  class="zone-remove-btn"
-                  @click=${() => this._deleteTemplate(t.name)}
-                >
-                  <ha-icon icon="mdi:close"></ha-icon>
-                </button>
-              </div>
-            `,
-								)
+							: html`<div class="template-card-grid">
+                  ${templates.map(
+										(t) => html`
+                    <div class="template-card"
+                      role="button"
+                      tabindex="0"
+                      @click=${() => this._loadTemplate(t.name)}
+                      @keydown=${(e: KeyboardEvent) => {
+												if (e.key === "Enter" || e.key === " ") {
+													e.preventDefault();
+													this._loadTemplate(t.name);
+												}
+											}}
+                    >
+                      <button class="template-card-delete"
+                        type="button"
+                        aria-label="${this._localize("common.delete")}"
+                        @click=${(e: Event) => {
+													e.stopPropagation();
+													this._deleteTemplate(t.name);
+												}}
+                        @keydown=${(e: KeyboardEvent) => {
+													e.stopPropagation();
+												}}
+                      >
+                        <ha-icon icon="mdi:close"></ha-icon>
+                      </button>
+                      <div class="template-card-thumbnail">
+                        ${renderTemplateThumbnail(
+													t.grid,
+													t.zones?.map((z: any) => z ?? null) ??
+														new Array(7).fill(null),
+													t.roomWidth,
+													t.roomDepth,
+													t.furniture ?? [],
+												)}
+                      </div>
+                      <div class="template-card-info">
+                        <div class="template-card-name">${t.name}</div>
+                        <div class="template-card-size">${(t.roomWidth / 1000).toFixed(1)}m × ${(t.roomDepth / 1000).toFixed(1)}m</div>
+                      </div>
+                    </div>
+                  `,
+									)}
+                </div>`
 					}
           <div class="template-dialog-actions">
             <button

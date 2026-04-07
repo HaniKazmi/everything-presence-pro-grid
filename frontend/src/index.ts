@@ -23,6 +23,6 @@ export { EPPGridStrategy };
 
 // Register strategy
 (window as any).customStrategies = (window as any).customStrategies || {};
-(window as any).customStrategies["eppgrid"] = {
+(window as any).customStrategies.eppgrid = {
 	generateDashboard: () => EPPGridStrategy.generate(),
 };

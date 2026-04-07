@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 import "../../components/epp-grid.js";
 import type { EppGrid } from "../../components/epp-grid.js";
 import type { FurnitureItem } from "../../lib/furniture.js";
@@ -8,8 +8,6 @@ import {
 	cellSetInterference,
 	cellSetZone,
 	GRID_CELL_COUNT,
-	GRID_COLS,
-	GRID_ROWS,
 	initGridFromRoom,
 } from "../../lib/grid.js";
 import { ZONE_COLORS } from "../../lib/zone-defaults.js";

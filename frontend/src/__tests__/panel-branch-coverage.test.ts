@@ -11,7 +11,6 @@ import "../components/epp-zone-sidebar.js";
 import "../components/epp-settings-view.js";
 import "../components/epp-wizard.js";
 import type { EppSettingsView } from "../components/epp-settings-view.js";
-import type { EppWizard } from "../components/epp-wizard.js";
 import {
 	CELL_ROOM_BIT,
 	cellSetZone,
@@ -127,7 +126,7 @@ function createSettingsView(
 	return el;
 }
 
-function renderTo(tpl: any) {
+function _renderTo(tpl: any) {
 	const c = document.createElement("div");
 	document.body.appendChild(c);
 	render(tpl, c);
@@ -214,14 +213,14 @@ describe("target subscription null coalescing branches", () => {
 
 	it("handles raw subscription with missing target fields", async () => {
 		const a = createPanel() as any;
-		let gridHandler: (event: any) => void;
+		let _gridHandler: (event: any) => void;
 		let rawHandler: (event: any) => void;
 		let callCount = 0;
 		a.hass = {
 			callWS: vi.fn(),
 			connection: {
 				subscribeMessage: vi.fn().mockImplementation((cb: any) => {
-					if (callCount++ === 0) gridHandler = cb;
+					if (callCount++ === 0) _gridHandler = cb;
 					else rawHandler = cb;
 					return Promise.resolve(() => {});
 				}),
@@ -1087,15 +1086,15 @@ describe("_renderTemplateLoadDialog item events", () => {
 		document.body.appendChild(c);
 		render(tpl, c);
 
-		// Should have load and delete buttons for each template
-		const btns = c.querySelectorAll(".template-item-btn");
-		// Click load for first template
-		if (btns.length >= 1) {
-			(btns[0] as HTMLElement).click();
-		}
-		// Click delete for second template (if it exists)
-		if (btns.length >= 4) {
-			(btns[3] as HTMLElement).click();
+		// Should have template cards for each template
+		const cards = c.querySelectorAll(".template-card");
+		expect(cards.length).toBe(2);
+		// Click load for first template card
+		(cards[0] as HTMLElement).click();
+		// Click delete button for second template card
+		const deleteBtns = c.querySelectorAll(".template-card-delete");
+		if (deleteBtns.length >= 2) {
+			(deleteBtns[1] as HTMLElement).click();
 		}
 
 		localStorage.removeItem("epp_layout_templates");
@@ -1591,12 +1590,12 @@ describe("_onFurniturePointerDown onUp callback", () => {
 			},
 		];
 
-		let onMove: Function | null = null;
+		let _onMove: Function | null = null;
 		let onUp: Function | null = null;
 		const addSpy = vi
 			.spyOn(window, "addEventListener")
 			.mockImplementation((type: string, fn: any) => {
-				if (type === "pointermove") onMove = fn;
+				if (type === "pointermove") _onMove = fn;
 				if (type === "pointerup") onUp = fn;
 			});
 		const removeSpy = vi

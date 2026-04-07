@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import type { EPPGridPanel } from "../eppgrid-panel.js";
 import "../eppgrid-panel.js";
-import { GRID_CELL_COUNT, initGridFromRoom } from "../lib/grid.js";
+import { initGridFromRoom } from "../lib/grid.js";
 
 function createPanel(): EPPGridPanel {
 	const el = document.createElement("eppgrid-panel") as EPPGridPanel;

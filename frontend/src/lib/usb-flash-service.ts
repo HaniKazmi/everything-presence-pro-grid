@@ -4,7 +4,6 @@ import {
 	buildGetStateCommand,
 	buildScanCommand,
 	buildWifiCommand,
-	ERROR_UNABLE_TO_CONNECT,
 	parseScanResults,
 	readImprovResponse,
 	sendImprovPacket,
