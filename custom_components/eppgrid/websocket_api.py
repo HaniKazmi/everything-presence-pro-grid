@@ -1095,7 +1095,9 @@ async def websocket_update_firmware(
     connection: websocket_api.ActiveConnection,
     msg: dict[str, Any],
 ) -> None:
-    """Trigger firmware OTA update for a device."""
+    """Trigger firmware OTA update via set_update_manifest action."""
+    from .const import MANIFEST_BASE_URL
+
     manager = _get_manager(hass)
     if manager is None:
         connection.send_error(msg["id"], "not_ready", "Integration not loaded")
@@ -1103,30 +1105,31 @@ async def websocket_update_firmware(
 
     mac = msg["mac"]
     dev = manager.devices.get(mac)
-    if dev is None or dev.device_id is None:
+    if dev is None:
         connection.send_error(msg["id"], "not_found", "Device not found")
         return
 
-    # Find the update entity for this device
-    ent_reg = er.async_get(hass)
-    update_entity_id = None
-    for entry in ent_reg.entities.values():
-        if entry.device_id == dev.device_id and entry.platform == "esphome" and entry.domain == "update":
-            update_entity_id = entry.entity_id
-            break
-
-    if update_entity_id is None:
-        connection.send_error(msg["id"], "no_update_entity", "No update entity found for device")
-        return
+    # Derive firmware variant from build flags
+    flags = manager._build_flags.get(mac, {})
+    network = "ethernet" if flags.get("ethernet_enabled") else "wifi"
+    parts = [network]
+    if flags.get("bluetooth_enabled"):
+        parts.append("ble")
+    if flags.get("co2_enabled"):
+        parts.append("co2")
+    variant = "-".join(parts)
+    manifest_url = f"{MANIFEST_BASE_URL}/everything-presence-pro-{variant}-manifest.json"
 
     try:
-        await hass.services.async_call(
-            "update",
-            "install",
-            {"entity_id": update_entity_id},
-            blocking=True,
-            context=connection.context(msg),
-        )
+        conn = await manager.async_open_session(mac)
+        if conn is None:
+            connection.send_error(msg["id"], "not_available", "Device not available")
+            return
+        svc = conn._services.get("set_update_manifest")
+        if svc is None:
+            connection.send_error(msg["id"], "not_supported", "Device does not support OTA update")
+            return
+        await conn._client.execute_service(svc, {"url": manifest_url})
         connection.send_result(msg["id"])
     except Exception as err:
         connection.send_error(msg["id"], "update_failed", str(err))

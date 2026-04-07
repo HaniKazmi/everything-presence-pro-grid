@@ -300,7 +300,7 @@ export class EppFlasherView extends LitElement {
 												}
                         ${
 													device.firmware_type === "eppgrid" &&
-													device.update_available
+													(device.update_available || device.firmware_status === "firmware_behind")
 														? html`<ha-button
 																raised
 																@click=${() => this._dispatchUpdateFirmware(device)}

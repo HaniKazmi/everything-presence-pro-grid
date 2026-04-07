@@ -967,10 +967,10 @@ const At=t=>(e,i)=>{void 0!==i?i.addInitializer(()=>{customElements.define(t,e)}
                         ${t.available?J:N`<span class="firmware-badge firmware-badge-offline">${this.localize("flasher.offline")}</span>`}
                         ${"eppgrid"===t.firmware_type&&"firmware_behind"===t.firmware_status?N`<span class="firmware-badge firmware-badge-behind">${this.localize("flasher.needs_update")}</span>`:J}
                         ${"eppgrid"===t.firmware_type&&"firmware_ahead"===t.firmware_status?N`<span class="firmware-badge firmware-badge-ahead">${this.localize("flasher.integration_update")}</span>`:J}
-                        ${"eppgrid"===t.firmware_type&&t.update_available?N`<ha-button
+                        ${"eppgrid"!==t.firmware_type||!t.update_available&&"firmware_behind"!==t.firmware_status?J:N`<ha-button
 																raised
 																@click=${()=>this._dispatchUpdateFirmware(t)}
-															>${this.localize("flasher.update")}</ha-button>`:J}
+															>${this.localize("flasher.update")}</ha-button>`}
                       </div>
                     `)}
                 </div>
