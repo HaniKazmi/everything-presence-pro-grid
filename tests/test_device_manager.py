@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 from unittest.mock import AsyncMock
 from unittest.mock import MagicMock
 from unittest.mock import patch
@@ -1471,11 +1472,12 @@ class TestEventCallbacks:
     async def test_push_config_to_device_no_config(
         self, hass: HomeAssistant, store: EPPGridStore, manager: DeviceManager
     ) -> None:
-        """_push_config_to_device is a no-op when no stored config."""
+        """_push_config_to_device fetches build flags when no stored config."""
         manager.devices["AA:BB:CC:DD:EE:FF"] = ManagedDevice(mac="AA:BB:CC:DD:EE:FF", name="EPP", host="192.168.1.50")
         # store has no config for this MAC
-        await manager._push_config_to_device("AA:BB:CC:DD:EE:FF")
-        # Should not raise
+        with patch.object(manager, "_fetch_build_flags", new_callable=AsyncMock) as mock_fetch:
+            await manager._push_config_to_device("AA:BB:CC:DD:EE:FF")
+            mock_fetch.assert_awaited_once_with("AA:BB:CC:DD:EE:FF")
 
     async def test_push_config_to_device_opens_session(
         self, hass: HomeAssistant, store: EPPGridStore, manager: DeviceManager
@@ -2166,7 +2168,9 @@ class TestBuildFlags:
             mock_client = mock_cls.return_value
             mock_client.connect = AsyncMock()
             mock_client.list_entities_services = AsyncMock(return_value=([], [mock_svc]))
-            mock_client.execute_service = AsyncMock(return_value=expected_flags)
+            mock_resp = MagicMock()
+            mock_resp.response_data = json.dumps(expected_flags).encode()
+            mock_client.execute_service = AsyncMock(return_value=mock_resp)
             mock_client.disconnect = AsyncMock()
 
             await conn.async_connect()
