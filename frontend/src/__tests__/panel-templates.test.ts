@@ -453,9 +453,7 @@ describe("_renderTemplateLoadDialog", () => {
 		document.body.appendChild(c);
 		render(tpl, c);
 
-		const deleteBtn = c.querySelector(
-			".template-card-delete",
-		) as HTMLElement;
+		const deleteBtn = c.querySelector(".template-card-delete") as HTMLElement;
 		expect(deleteBtn).not.toBeNull();
 		// keydown on delete should not bubble to card (stopPropagation)
 		const cardKeydownSpy = vi.fn();

@@ -17,7 +17,7 @@ import "../components/epp-zone-sidebar.js";
 import "../components/epp-live-sidebar.js";
 import "../components/epp-settings-view.js";
 import "../components/epp-wizard.js";
-import { GRID_CELL_COUNT, initGridFromRoom } from "../lib/grid.js";
+import { initGridFromRoom } from "../lib/grid.js";
 import { ZONE_TYPE_DEFAULTS } from "../lib/zone-defaults.js";
 import { createZoneEngineState } from "../lib/zone-engine.js";
 

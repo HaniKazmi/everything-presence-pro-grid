@@ -3,7 +3,6 @@ import {
 	GRID_CELL_COUNT,
 	GRID_CELL_MM,
 	GRID_COLS,
-	GRID_ROWS,
 	getRawRoomBounds,
 } from "./grid.js";
 import { applyPerspective } from "./perspective.js";

@@ -4,7 +4,6 @@ import type { TargetData } from "../../controllers/device-controller.js";
 import { TargetController } from "../../controllers/target-controller.js";
 import {
 	CELL_ROOM_BIT,
-	cellSetZone,
 	GRID_CELL_COUNT,
 	GRID_COLS,
 	GRID_ROWS,

@@ -143,19 +143,19 @@ export class EppFurnitureSidebar extends LitElement {
 								<label>
 									${this.localize("dimensions.width_cm")}
 									<input type="number" min="10" step="5" .value=${String(Math.round(selected.width / 10))}
-										@change=${(e: Event) => this._fireUpdate(selected.id, { width: parseInt((e.target as HTMLInputElement).value) * 10 })}
+										@change=${(e: Event) => this._fireUpdate(selected.id, { width: parseInt((e.target as HTMLInputElement).value, 10) * 10 })}
 									/>
 								</label>
 								<label>
 									${this.localize("dimensions.height_cm")}
 									<input type="number" min="10" step="5" .value=${String(Math.round(selected.height / 10))}
-										@change=${(e: Event) => this._fireUpdate(selected.id, { height: parseInt((e.target as HTMLInputElement).value) * 10 })}
+										@change=${(e: Event) => this._fireUpdate(selected.id, { height: parseInt((e.target as HTMLInputElement).value, 10) * 10 })}
 									/>
 								</label>
 								<label>
 									${this.localize("dimensions.rotation")}
 									<input type="number" step="5" .value=${String(Math.round(selected.rotation))}
-										@change=${(e: Event) => this._fireUpdate(selected.id, { rotation: parseInt((e.target as HTMLInputElement).value) % 360 })}
+										@change=${(e: Event) => this._fireUpdate(selected.id, { rotation: parseInt((e.target as HTMLInputElement).value, 10) % 360 })}
 									/>
 								</label>
 							</div>

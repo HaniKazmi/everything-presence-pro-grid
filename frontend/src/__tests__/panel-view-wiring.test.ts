@@ -5,7 +5,7 @@
  * CustomEvent, then asserts the panel state changed accordingly.
  */
 
-import { type LitElement, render } from "lit";
+import { render } from "lit";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { EPPGridPanel } from "../eppgrid-panel.js";
 import "../eppgrid-panel.js";
@@ -16,7 +16,7 @@ import "../components/epp-live-sidebar.js";
 import "../components/epp-settings-view.js";
 import "../components/epp-wizard.js";
 import "../components/epp-zone-sidebar.js";
-import { GRID_CELL_COUNT, GRID_COLS, initGridFromRoom } from "../lib/grid.js";
+import { GRID_CELL_COUNT, initGridFromRoom } from "../lib/grid.js";
 import { ZONE_TYPE_DEFAULTS } from "../lib/zone-defaults.js";
 import { createZoneEngineState } from "../lib/zone-engine.js";
 
@@ -162,7 +162,7 @@ describe("Editor view event wiring", () => {
 	});
 
 	it("zone-config-change updates _zoneConfigs[0].trigger", () => {
-		const [el, container] = editorPanel();
+		const [el, _container] = editorPanel();
 		const a = el as any;
 		// Set a non-null zone config at index 0
 		a._zoneConfigs[0] = {

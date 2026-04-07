@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 import {
-	CELL_ROOM_BIT,
 	GRID_CELL_COUNT,
 	GRID_CELL_MM,
 	GRID_COLS,

@@ -10,8 +10,6 @@ import { mapTargetToGridCell } from "../lib/coordinates.js";
 import {
 	CELL_INTERFERENCE_SUPPRESS,
 	cellInterference,
-	cellIsInside,
-	cellSetInterference,
 	GRID_COLS,
 	initGridFromRoom,
 } from "../lib/grid.js";

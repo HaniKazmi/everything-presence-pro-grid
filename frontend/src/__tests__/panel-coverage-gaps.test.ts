@@ -13,16 +13,8 @@ import "../components/epp-furniture-sidebar.js";
 import "../components/epp-settings-view.js";
 import "../components/epp-wizard.js";
 import "../components/epp-grid.js";
-import type { EppFurnitureSidebar } from "../components/epp-furniture-sidebar.js";
 import type { EppSettingsView } from "../components/epp-settings-view.js";
-import {
-	CELL_ROOM_BIT,
-	cellSetZone,
-	GRID_CELL_COUNT,
-	GRID_COLS,
-	GRID_ROWS,
-	initGridFromRoom,
-} from "../lib/grid.js";
+import { GRID_CELL_COUNT, initGridFromRoom } from "../lib/grid.js";
 import { ZONE_COLORS, ZONE_TYPE_DEFAULTS } from "../lib/zone-defaults.js";
 import { createZoneEngineState } from "../lib/zone-engine.js";
 
@@ -226,7 +218,7 @@ describe("_removeZone grid clearing branch", () => {
 		const a = createPanel() as any;
 		a._zoneConfigs[0] = { name: "Z1", color: "#ff0000", type: "normal" };
 		// Grid has no cells with zone 1
-		const gridRef = a._grid;
+		const _gridRef = a._grid;
 
 		a._removeZone(1);
 
@@ -506,7 +498,7 @@ describe("_renderSensitivities DOM events", () => {
 		ranges.forEach((r: any) => {
 			const range = r as HTMLInputElement;
 			if (range.nextElementSibling) {
-				const origText = range.nextElementSibling.textContent;
+				const _origText = range.nextElementSibling.textContent;
 				const currentVal = range.value;
 				range.value = currentVal; // trigger input event with same value
 				range.dispatchEvent(new Event("input"));
@@ -561,7 +553,7 @@ describe("_renderEnvOffset null reading branch", () => {
 		const c = renderTo(tpl);
 
 		const range = c.querySelector(".setting-range") as HTMLInputElement;
-		if (range && range.nextElementSibling) {
+		if (range?.nextElementSibling) {
 			range.value = "5";
 			range.dispatchEvent(new Event("input"));
 			// With null reading, adjusted should show em-dash

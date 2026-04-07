@@ -11,7 +11,6 @@ import "../components/epp-zone-sidebar.js";
 import "../components/epp-settings-view.js";
 import "../components/epp-wizard.js";
 import type { EppSettingsView } from "../components/epp-settings-view.js";
-import type { EppWizard } from "../components/epp-wizard.js";
 import {
 	CELL_ROOM_BIT,
 	cellSetZone,
@@ -127,7 +126,7 @@ function createSettingsView(
 	return el;
 }
 
-function renderTo(tpl: any) {
+function _renderTo(tpl: any) {
 	const c = document.createElement("div");
 	document.body.appendChild(c);
 	render(tpl, c);
@@ -214,14 +213,14 @@ describe("target subscription null coalescing branches", () => {
 
 	it("handles raw subscription with missing target fields", async () => {
 		const a = createPanel() as any;
-		let gridHandler: (event: any) => void;
+		let _gridHandler: (event: any) => void;
 		let rawHandler: (event: any) => void;
 		let callCount = 0;
 		a.hass = {
 			callWS: vi.fn(),
 			connection: {
 				subscribeMessage: vi.fn().mockImplementation((cb: any) => {
-					if (callCount++ === 0) gridHandler = cb;
+					if (callCount++ === 0) _gridHandler = cb;
 					else rawHandler = cb;
 					return Promise.resolve(() => {});
 				}),
@@ -1591,12 +1590,12 @@ describe("_onFurniturePointerDown onUp callback", () => {
 			},
 		];
 
-		let onMove: Function | null = null;
+		let _onMove: Function | null = null;
 		let onUp: Function | null = null;
 		const addSpy = vi
 			.spyOn(window, "addEventListener")
 			.mockImplementation((type: string, fn: any) => {
-				if (type === "pointermove") onMove = fn;
+				if (type === "pointermove") _onMove = fn;
 				if (type === "pointerup") onUp = fn;
 			});
 		const removeSpy = vi

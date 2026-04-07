@@ -15,7 +15,6 @@ import {
 	cellInterference,
 	cellIsInside,
 	cellSetInterference,
-	cellSetOverlayEntry,
 	cellSetZone,
 	cellZone,
 	GRID_CELL_COUNT,

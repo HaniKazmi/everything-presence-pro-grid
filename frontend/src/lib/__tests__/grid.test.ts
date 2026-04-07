@@ -14,7 +14,6 @@ import {
 	cellSetZone,
 	cellZone,
 	GRID_CELL_COUNT,
-	GRID_CELL_MM,
 	GRID_COLS,
 	GRID_ROWS,
 	getRawRoomBounds,

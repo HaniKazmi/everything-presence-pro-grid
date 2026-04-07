@@ -8,7 +8,6 @@ import {
 	GRID_CELL_COUNT,
 	initGridFromRoom,
 } from "../lib/grid.js";
-import { ZONE_TYPE_DEFAULTS } from "../lib/zone-defaults.js";
 
 function createPanel(): EPPGridPanel {
 	const el = document.createElement("eppgrid-panel") as EPPGridPanel;

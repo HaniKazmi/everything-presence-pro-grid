@@ -15,12 +15,8 @@ import "../components/epp-wizard.js";
 import type { EppFurnitureSidebar } from "../components/epp-furniture-sidebar.js";
 import type { EppSettingsView } from "../components/epp-settings-view.js";
 import type { EppWizard } from "../components/epp-wizard.js";
-import {
-	CELL_ROOM_BIT,
-	GRID_CELL_COUNT,
-	initGridFromRoom,
-} from "../lib/grid.js";
-import { ZONE_COLORS, ZONE_TYPE_DEFAULTS } from "../lib/zone-defaults.js";
+import { GRID_CELL_COUNT, initGridFromRoom } from "../lib/grid.js";
+import { ZONE_TYPE_DEFAULTS } from "../lib/zone-defaults.js";
 import { createZoneEngineState } from "../lib/zone-engine.js";
 
 function createPanel(): EPPGridPanel {
@@ -1363,7 +1359,7 @@ describe("_renderEnvOffset DOM events", () => {
 		const c = renderTo(tpl);
 
 		const range = c.querySelector(".setting-range") as HTMLInputElement;
-		if (range && range.nextElementSibling) {
+		if (range?.nextElementSibling) {
 			range.value = "10";
 			range.dispatchEvent(new Event("input"));
 			// Should update the span text
