@@ -85,20 +85,19 @@ def _get_manager(hass: HomeAssistant) -> Any:
 
 
 def _check_protocol(manager: Any, mac: str) -> str | None:
-    """Check config protocol compatibility. Returns error code or None if OK."""
-    from .const import CONFIG_PROTOCOL_VERSION
+    """Check firmware version compatibility. Returns error code or None if OK."""
+    from .device_manager import _compare_firmware_version
 
     dev = manager.devices.get(mac)
     if dev is None:
         return None  # Unknown device — let the command handle it
-    proto = manager.read_config_protocol(dev.device_id)
-    if proto is None:
-        return "unavailable"
-    if proto < CONFIG_PROTOCOL_VERSION:
+    fw_ver = manager.read_firmware_version(dev.device_id)
+    if fw_ver is None:
         return "firmware_behind"
-    if proto > CONFIG_PROTOCOL_VERSION:
-        return "firmware_ahead"
-    return None
+    status = _compare_firmware_version(fw_ver)
+    if status == "compatible":
+        return None
+    return status
 
 
 # -- subscribe_device_list --
@@ -1189,7 +1188,7 @@ async def websocket_subscribe_flashable_devices(
     if manager is None:
         connection.send_error(msg["id"], "not_ready", "Integration not loaded")
         return
-    from .const import FIRMWARE_RELEASE_TAG
+    from .const import FIRMWARE_VERSION
 
     async def _send_update() -> None:
         devices = await manager.list_flashable_devices()
@@ -1199,7 +1198,7 @@ async def websocket_subscribe_flashable_devices(
                 {
                     "devices": devices,
                     "firmware_base_url": "/api/eppgrid/firmware",
-                    "latest_firmware_version": FIRMWARE_RELEASE_TAG,
+                    "latest_firmware_version": f"v{FIRMWARE_VERSION}",
                 },
             )
         )
@@ -1235,7 +1234,7 @@ async def websocket_list_flashable_devices(
     if manager is None:
         connection.send_error(msg["id"], "not_ready", "Integration not loaded")
         return
-    from .const import FIRMWARE_RELEASE_TAG
+    from .const import FIRMWARE_VERSION
 
     devices = await manager.list_flashable_devices()
     connection.send_result(
@@ -1243,7 +1242,7 @@ async def websocket_list_flashable_devices(
         {
             "devices": devices,
             "firmware_base_url": "/api/eppgrid/firmware",
-            "latest_firmware_version": FIRMWARE_RELEASE_TAG,
+            "latest_firmware_version": f"v{FIRMWARE_VERSION}",
         },
     )
 

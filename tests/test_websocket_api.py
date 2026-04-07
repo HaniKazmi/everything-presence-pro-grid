@@ -31,7 +31,7 @@ def _clear_registered():
 
 async def setup_integration(hass: HomeAssistant, config_entry: MockConfigEntry) -> MagicMock:
     """Set up the integration with a mocked DeviceManager and return the mock."""
-    from custom_components.eppgrid.const import CONFIG_PROTOCOL_VERSION
+    from custom_components.eppgrid.const import FIRMWARE_VERSION
 
     if hass.http is None:
         hass.http = MagicMock()
@@ -56,7 +56,7 @@ async def setup_integration(hass: HomeAssistant, config_entry: MockConfigEntry) 
         mock_dm.async_open_session = AsyncMock(return_value=None)
         mock_dm.async_close_session = AsyncMock()
         mock_dm.get_session = MagicMock(return_value=None)
-        mock_dm.read_config_protocol.return_value = CONFIG_PROTOCOL_VERSION
+        mock_dm.read_firmware_version.return_value = FIRMWARE_VERSION
 
         await async_setup_entry(hass, config_entry)
 
@@ -311,7 +311,7 @@ class TestWebSocketSetRoomLayout:
 
     async def test_set_room_layout(self, hass: HomeAssistant, config_entry: MockConfigEntry) -> None:
         """set_room_layout saves layout and pushes to device."""
-        from custom_components.eppgrid.const import CONFIG_PROTOCOL_VERSION
+        from custom_components.eppgrid.const import FIRMWARE_VERSION
         from custom_components.eppgrid.device_manager import ManagedDevice
 
         mock_dm = await setup_integration(hass, config_entry)
@@ -320,7 +320,7 @@ class TestWebSocketSetRoomLayout:
             name="EPP",
             host="192.168.1.50",
         )
-        mock_dm.read_config_protocol.return_value = CONFIG_PROTOCOL_VERSION
+        mock_dm.read_firmware_version.return_value = FIRMWARE_VERSION
 
         from custom_components.eppgrid.websocket_api import websocket_set_room_layout
 
@@ -2295,7 +2295,7 @@ class TestProtocolVersionGuard:
                 host="192.168.1.50",
             )
         }
-        mock_dm.read_config_protocol.return_value = 0  # behind
+        mock_dm.read_firmware_version.return_value = "0.1.0"  # behind
 
         from custom_components.eppgrid.websocket_api import websocket_set_setup
 
@@ -2329,7 +2329,7 @@ class TestProtocolVersionGuard:
                 host="192.168.1.50",
             )
         }
-        mock_dm.read_config_protocol.return_value = 99  # ahead
+        mock_dm.read_firmware_version.return_value = "99.0.0"  # ahead
 
         from custom_components.eppgrid.websocket_api import websocket_set_setup
 
@@ -2350,8 +2350,8 @@ class TestProtocolVersionGuard:
         assert args[1] == "firmware_ahead"
 
     async def test_set_setup_allowed_when_compatible(self, hass: HomeAssistant, config_entry: MockConfigEntry) -> None:
-        """set_setup proceeds normally when protocol versions match."""
-        from custom_components.eppgrid.const import CONFIG_PROTOCOL_VERSION
+        """set_setup proceeds normally when firmware versions match."""
+        from custom_components.eppgrid.const import FIRMWARE_VERSION
         from custom_components.eppgrid.device_manager import ManagedDevice
 
         mock_dm = await setup_integration(hass, config_entry)
@@ -2362,7 +2362,7 @@ class TestProtocolVersionGuard:
                 host="192.168.1.50",
             )
         }
-        mock_dm.read_config_protocol.return_value = CONFIG_PROTOCOL_VERSION
+        mock_dm.read_firmware_version.return_value = FIRMWARE_VERSION
 
         from custom_components.eppgrid.websocket_api import websocket_set_setup
 
@@ -2446,7 +2446,7 @@ class TestProtocolVersionGuard:
                 host="192.168.1.50",
             )
         }
-        mock_dm.read_config_protocol.return_value = 0
+        mock_dm.read_firmware_version.return_value = "0.1.0"  # behind
 
         import custom_components.eppgrid.websocket_api as ws
 

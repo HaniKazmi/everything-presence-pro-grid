@@ -39,6 +39,8 @@ def _create_esphome_device(
     """Create a mock ESPHome device with appropriate entities.
 
     Args:
+        has_zone_engine: If True, creates our custom firmware_version text sensor
+            (the EPP Grid firmware marker). Original firmware devices do not have this.
         update_available: If True/False, creates an ESPHome update entity with
             state "on"/"off". If None, no update entity is created.
     """
@@ -57,19 +59,12 @@ def _create_esphome_device(
         model="Everything Presence Pro",
         sw_version=firmware_version,
     )
-    # Every ESPHome device has a firmware_version entity
-    ent_reg.async_get_or_create(
-        "sensor",
-        "esphome",
-        f"{mac}-firmware_version",
-        device_id=device.id,
-        config_entry=esphome_entry,
-    )
     if has_zone_engine:
+        # EPP Grid firmware devices expose our custom Firmware Version text sensor
         ent_reg.async_get_or_create(
             "sensor",
             "esphome",
-            f"{mac}-zone_engine_version",
+            f"{mac}-firmware_version",
             device_id=device.id,
             config_entry=esphome_entry,
         )

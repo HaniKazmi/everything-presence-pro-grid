@@ -20,7 +20,6 @@ from homeassistant.core import callback
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers import entity_registry as er
 
-from .const import CONFIG_PROTOCOL_VERSION
 from .const import DEFAULT_PORT
 from .const import EPP_MANUFACTURER
 from .const import EPP_MODEL
@@ -42,6 +41,24 @@ _ESPHOME_TO_PYTHON_LOG = {
     LogLevel.LOG_LEVEL_VERBOSE: logging.DEBUG,
     LogLevel.LOG_LEVEL_VERY_VERBOSE: logging.DEBUG,
 }
+
+
+def _compare_firmware_version(device_version: str) -> str:
+    """Compare device firmware version against required version."""
+    from packaging.version import Version
+
+    from .const import FIRMWARE_VERSION
+
+    try:
+        dev_ver = Version(device_version)
+        req_ver = Version(FIRMWARE_VERSION)
+    except Exception:
+        return "firmware_behind"
+    if dev_ver == req_ver:
+        return "compatible"
+    if dev_ver < req_ver:
+        return "firmware_behind"
+    return "firmware_ahead"
 
 
 class DeviceConnection:
@@ -348,7 +365,6 @@ class ManagedDevice:
     esphome_config_entry_id: str | None = None
     device_id: str | None = None
     available: bool = False
-    config_protocol: int = 0  # deprecated; use DeviceManager.read_config_protocol()
 
 
 class DeviceManager:
@@ -428,27 +444,23 @@ class DeviceManager:
             await conn.async_disconnect()
         self._active_connections.clear()
 
-    def read_config_protocol(self, device_id: str | None) -> int | None:
-        """Read the Config Protocol sensor value for a device.
+    def read_firmware_version(self, device_id: str | None) -> str | None:
+        """Read the Firmware Version text sensor value for a device.
 
-        Returns the protocol version (int), or None if the entity exists
-        but the state is unavailable/unknown (device offline).
-        Returns 0 if no config_protocol entity exists (old firmware).
+        Returns the version string, or None if the entity exists but the
+        state is unavailable/unknown (device offline).
+        Returns "0.0.0" if no firmware_version entity exists (old firmware).
         """
         if device_id is None:
-            return 0
+            return "0.0.0"
         ent_reg = er.async_get(self._hass)
         for entry in er.async_entries_for_device(ent_reg, device_id, include_disabled_entities=True):
-            if entry.platform == "esphome" and entry.unique_id.endswith("config_protocol"):
+            if entry.platform == "esphome" and "firmware_version" in entry.unique_id:
                 state = self._hass.states.get(entry.entity_id)
                 if state is not None and state.state not in (None, "unknown", "unavailable", ""):
-                    try:
-                        return int(float(state.state))
-                    except (ValueError, TypeError):
-                        pass
-                    return 0
+                    return state.state
                 return None
-        return 0
+        return "0.0.0"
 
     def read_current_connection_count(self, device_id: str | None) -> int | None:
         """Read the Current Connections sensor value for a device.
@@ -470,7 +482,7 @@ class DeviceManager:
         return None
 
     async def async_discover(self) -> None:
-        """Scan entity registry for ESPHome devices with zone_engine_version."""
+        """Scan entity registry for ESPHome devices with firmware_version."""
         ent_reg = er.async_get(self._hass)
         dev_reg = dr.async_get(self._hass)
 
@@ -478,7 +490,7 @@ class DeviceManager:
         for entry in ent_reg.entities.values():
             if entry.platform != "esphome":
                 continue
-            if "zone_engine_version" not in entry.unique_id:
+            if "firmware_version" not in entry.unique_id:
                 continue
             if entry.device_id is None:
                 continue
@@ -789,7 +801,7 @@ class DeviceManager:
         result = []
         for mac, dev in self.devices.items():
             config = self._store.get_device(mac)
-            proto = self.read_config_protocol(dev.device_id)
+            fw_ver = self.read_firmware_version(dev.device_id)
             result.append(
                 {
                     "mac": mac,
@@ -797,14 +809,10 @@ class DeviceManager:
                     "host": dev.host,
                     "available": dev.available,
                     "configured": config is not None,
-                    "config_protocol_status": (
-                        "unavailable"
-                        if proto is None
-                        else "compatible"
-                        if proto == CONFIG_PROTOCOL_VERSION
-                        else "firmware_behind"
-                        if proto < CONFIG_PROTOCOL_VERSION
-                        else "firmware_ahead"
+                    "firmware_status": (
+                        "firmware_behind"
+                        if fw_ver is None
+                        else _compare_firmware_version(fw_ver)
                     ),
                     "current_connection_count": self.read_current_connection_count(dev.device_id),
                     **self._build_flags.get(mac, {}),
@@ -841,11 +849,11 @@ class DeviceManager:
 
             host = _extract_host(device, esphome_config_entry_id, self._hass)
 
-            # Check if device has zone_engine_version entity (= our firmware)
-            has_zone_engine = False
+            # Check if device has firmware_version entity (= our firmware)
+            has_firmware_version = False
             for ent_entry in er.async_entries_for_device(ent_reg, device.id, include_disabled_entities=True):
-                if ent_entry.platform == "esphome" and "zone_engine_version" in ent_entry.unique_id:
-                    has_zone_engine = True
+                if ent_entry.platform == "esphome" and "firmware_version" in ent_entry.unique_id:
+                    has_firmware_version = True
                     break
 
             # Check availability: any non-unavailable entity means device is online
@@ -865,14 +873,22 @@ class DeviceManager:
                         update_available = True
                     break
 
+            managed_dev = self.devices.get(mac)
             result.append(
                 {
                     "mac": mac,
                     "name": device.name_by_user or device.name or "EPP Device",
                     "host": host,
                     "available": available,
-                    "firmware_type": "eppgrid" if has_zone_engine else "original",
+                    "firmware_type": "eppgrid" if has_firmware_version else "original",
                     "firmware_version": device.sw_version or "unknown",
+                    "firmware_status": (
+                        _compare_firmware_version(
+                            self.read_firmware_version(managed_dev.device_id) or "0.0.0"
+                        )
+                        if has_firmware_version and managed_dev is not None
+                        else None
+                    ),
                     "esphome_config_entry_id": esphome_config_entry_id,
                     "update_available": update_available,
                 }
