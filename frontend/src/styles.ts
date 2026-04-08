@@ -416,6 +416,9 @@ export const protocolFullpageStyles = css`
     max-width: 480px;
     line-height: 1.5;
   }
+  .protocol-fullpage .wizard-btn {
+    border: 2px solid white;
+  }
   .protocol-link {
     color: white;
     font-weight: 500;
