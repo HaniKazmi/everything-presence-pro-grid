@@ -434,7 +434,7 @@ const At={attribute:!0,type:String,converter:E,reflect:!1,hasChanged:m},dt=(t=At
     line-height: 1.5;
   }
   .protocol-fullpage .wizard-btn {
-    border: 2px solid white;
+    box-shadow: inset 0 0 0 2px white;
   }
   .protocol-link {
     color: white;
