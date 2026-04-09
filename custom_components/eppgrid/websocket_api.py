@@ -48,6 +48,7 @@ def async_register_websocket_commands(hass: HomeAssistant, manager: Any) -> None
     websocket_api.async_register_command(hass, websocket_set_distance_override)
     websocket_api.async_register_command(hass, websocket_set_pipeline)
     websocket_api.async_register_command(hass, websocket_update_firmware)
+    websocket_api.async_register_command(hass, websocket_subscribe_ota_progress)
     websocket_api.async_register_command(hass, websocket_dismiss_target)
     websocket_api.async_register_command(hass, websocket_subscribe_flashable_devices)
     websocket_api.async_register_command(hass, websocket_list_flashable_devices)
@@ -1149,6 +1150,79 @@ async def websocket_update_firmware(
         connection.send_error(msg["id"], "update_failed", str(err))
     finally:
         await conn.async_disconnect()
+
+
+# -- subscribe_ota_progress --
+
+
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): "eppgrid/subscribe_ota_progress",
+        vol.Required("mac"): str,
+    }
+)
+@websocket_api.async_response
+async def websocket_subscribe_ota_progress(
+    hass: HomeAssistant,
+    connection: websocket_api.ActiveConnection,
+    msg: dict[str, Any],
+) -> None:
+    """Subscribe to OTA firmware update progress for a device."""
+    manager = _get_manager(hass)
+    if manager is None:
+        connection.send_error(msg["id"], "not_ready", "Integration not loaded")
+        return
+
+    mac = msg["mac"]
+    device_conn = manager.get_session(mac)
+    if device_conn is None:
+        connection.send_error(msg["id"], "no_session", "No active session for device")
+        return
+
+    was_in_progress = False
+
+    @callback
+    def _on_state(state: Any) -> None:
+        nonlocal was_in_progress
+        from aioesphomeapi import UpdateState
+
+        if not isinstance(state, UpdateState):
+            return
+
+        if state.in_progress:
+            was_in_progress = True
+            progress = state.progress if state.has_progress else None
+            connection.send_message(
+                websocket_api.event_message(msg["id"], {
+                    "state": "updating",
+                    "progress": progress,
+                })
+            )
+        elif was_in_progress:
+            was_in_progress = False
+            if state.current_version and state.current_version == state.latest_version:
+                connection.send_message(
+                    websocket_api.event_message(msg["id"], {
+                        "state": "success",
+                        "version": state.current_version,
+                    })
+                )
+            else:
+                connection.send_message(
+                    websocket_api.event_message(msg["id"], {
+                        "state": "error",
+                        "message": "Update failed \u2014 firmware version unchanged",
+                    })
+                )
+
+    device_conn.subscribe_states(_on_state)
+    connection.send_result(msg["id"])
+
+    @callback
+    def _unsub() -> None:
+        device_conn.unsubscribe_states(_on_state)
+
+    connection.subscriptions[msg["id"]] = _unsub
 
 
 # -- dismiss_target (ephemeral, firmware-only) --
