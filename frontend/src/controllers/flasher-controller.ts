@@ -1,6 +1,6 @@
 import type { ReactiveController, ReactiveControllerHost } from "lit";
 import type { WifiNetwork } from "../lib/improv-serial.js";
-import type { FlashableDevice, UsbFlashState } from "../types.js";
+import type { FlashableDevice, OtaDeviceState, UsbFlashState } from "../types.js";
 
 export class FlasherController implements ReactiveController {
 	flashableDevices: FlashableDevice[] = [];
@@ -13,6 +13,7 @@ export class FlasherController implements ReactiveController {
 	usbExistingDevice: FlashableDevice | null = null;
 	usbFlashState: UsbFlashState | null = null;
 	wifiNetworks: WifiNetwork[] = [];
+	otaStates: Record<string, OtaDeviceState> = {};
 
 	onDeviceListChanged?: () => void;
 
@@ -22,6 +23,8 @@ export class FlasherController implements ReactiveController {
 	private _serialPort: SerialPort | null = null;
 	private _opId = 0;
 	private _opRunning = false;
+	private _otaUnsubs: Record<string, (() => void)> = {};
+	private _otaTimeouts: Record<string, ReturnType<typeof setTimeout>> = {};
 
 	constructor(host: ReactiveControllerHost) {
 		this._host = host;
@@ -33,6 +36,153 @@ export class FlasherController implements ReactiveController {
 		this.unsubscribeDeviceList();
 		this._serialPort?.close().catch(() => {});
 		this._serialPort = null;
+		for (const mac of Object.keys(this._otaUnsubs)) {
+			this._unsubOta(mac);
+		}
+		for (const mac of Object.keys(this._otaTimeouts)) {
+			this._resetOtaTimeout(mac);
+		}
+		this.otaStates = {};
+	}
+
+	async startOta(mac: string): Promise<void> {
+		this.otaStates[mac] = { state: "updating", progress: 0, error: null };
+		this._host.requestUpdate();
+
+		try {
+			await this._hass!.callWS({
+				type: "eppgrid/update_firmware",
+				mac,
+			});
+		} catch (err: any) {
+			this.otaStates[mac] = {
+				state: "error",
+				progress: null,
+				error: err.message || String(err),
+			};
+			this._host.requestUpdate();
+			return;
+		}
+
+		try {
+			const unsub = await this._hass!.connection.subscribeMessage(
+				(event: any) => {
+					this._handleOtaEvent(mac, event);
+				},
+				{ type: "eppgrid/subscribe_ota_progress", mac },
+			);
+			this._otaUnsubs[mac] = unsub;
+		} catch (err: any) {
+			this.otaStates[mac] = {
+				state: "error",
+				progress: null,
+				error: err.message || String(err),
+			};
+			this._host.requestUpdate();
+		}
+	}
+
+	private _handleOtaEvent(mac: string, event: any): void {
+		this._resetOtaTimeout(mac);
+
+		switch (event.state) {
+			case "updating":
+				this.otaStates[mac] = {
+					state: "updating",
+					progress: event.progress ?? null,
+					error: null,
+				};
+				this._startOtaTimeout(mac, 15000);
+				break;
+			case "rebooting":
+				this.otaStates[mac] = {
+					state: "rebooting",
+					progress: null,
+					error: null,
+				};
+				break;
+			case "success":
+				this.otaStates[mac] = {
+					state: "success",
+					progress: null,
+					error: null,
+				};
+				this._unsubOta(mac);
+				setTimeout(() => {
+					if (this.otaStates[mac]?.state === "success") {
+						delete this.otaStates[mac];
+						this._host.requestUpdate();
+					}
+				}, 5000);
+				break;
+			case "error":
+				this.otaStates[mac] = {
+					state: "error",
+					progress: null,
+					error: event.message || "Update failed",
+				};
+				this._unsubOta(mac);
+				break;
+		}
+		this._host.requestUpdate();
+	}
+
+	private _startOtaTimeout(mac: string, ms: number): void {
+		this._resetOtaTimeout(mac);
+		this._otaTimeouts[mac] = setTimeout(() => {
+			if (this.otaStates[mac]?.state === "updating") {
+				this.otaStates[mac] = { state: "rebooting", progress: null, error: null };
+				this._host.requestUpdate();
+			}
+		}, ms);
+	}
+
+	private _resetOtaTimeout(mac: string): void {
+		const t = this._otaTimeouts[mac];
+		if (t) {
+			clearTimeout(t);
+			delete this._otaTimeouts[mac];
+		}
+	}
+
+	checkOtaReconnect(): void {
+		for (const [mac, ota] of Object.entries(this.otaStates)) {
+			if (ota.state !== "rebooting") continue;
+			const device = this.flashableDevices.find((d) => d.mac === mac);
+			if (device?.available && device.firmware_status !== "firmware_behind") {
+				this.otaStates[mac] = { state: "success", progress: null, error: null };
+				this._unsubOta(mac);
+				this._host.requestUpdate();
+				setTimeout(() => {
+					if (this.otaStates[mac]?.state === "success") {
+						delete this.otaStates[mac];
+						this._host.requestUpdate();
+					}
+				}, 5000);
+			}
+		}
+	}
+
+	retryOta(mac: string): void {
+		this._unsubOta(mac);
+		this._resetOtaTimeout(mac);
+		delete this.otaStates[mac];
+		this._host.requestUpdate();
+	}
+
+	clearOta(mac: string): void {
+		this._unsubOta(mac);
+		this._resetOtaTimeout(mac);
+		delete this.otaStates[mac];
+		this._host.requestUpdate();
+	}
+
+	private _unsubOta(mac: string): void {
+		const unsub = this._otaUnsubs[mac];
+		if (unsub) {
+			unsub();
+			delete this._otaUnsubs[mac];
+		}
 	}
 
 	get hass(): any {

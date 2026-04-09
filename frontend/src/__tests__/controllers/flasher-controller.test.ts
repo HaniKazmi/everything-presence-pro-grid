@@ -406,4 +406,149 @@ describe("FlasherController", () => {
 			expect(mockPort.close).toHaveBeenCalled();
 		});
 	});
+
+	// --- OTA state management ---
+	describe("OTA state management", () => {
+		let host: ReturnType<typeof mockHost>;
+		let hass: ReturnType<typeof mockHass>;
+		let ctrl: FlasherController;
+
+		beforeEach(() => {
+			host = mockHost();
+			hass = mockHass();
+			ctrl = new FlasherController(host);
+			ctrl.hass = hass;
+		});
+
+		it("initializes with empty otaStates", () => {
+			expect(ctrl.otaStates).toEqual({});
+		});
+
+		it("startOta sets updating state and calls update_firmware", async () => {
+			await ctrl.startOta("AA:BB:CC:DD:EE:01");
+
+			expect(ctrl.otaStates["AA:BB:CC:DD:EE:01"]).toEqual({
+				state: "updating",
+				progress: 0,
+				error: null,
+			});
+			expect(hass.callWS).toHaveBeenCalledWith({
+				type: "eppgrid/update_firmware",
+				mac: "AA:BB:CC:DD:EE:01",
+			});
+		});
+
+		it("startOta subscribes to ota progress", async () => {
+			await ctrl.startOta("AA:BB:CC:DD:EE:01");
+
+			expect(hass.connection.subscribeMessage).toHaveBeenCalledWith(
+				expect.any(Function),
+				{ type: "eppgrid/subscribe_ota_progress", mac: "AA:BB:CC:DD:EE:01" },
+			);
+		});
+
+		it("updates progress on subscription events", async () => {
+			await ctrl.startOta("AA:BB:CC:DD:EE:01");
+
+			const callback = hass.connection.subscribeMessage.mock.calls[0][0];
+			callback({ state: "updating", progress: 65 });
+
+			expect(ctrl.otaStates["AA:BB:CC:DD:EE:01"]).toEqual({
+				state: "updating",
+				progress: 65,
+				error: null,
+			});
+			expect(host.requestUpdate).toHaveBeenCalled();
+		});
+
+		it("transitions to rebooting on inactivity timeout", async () => {
+			vi.useFakeTimers();
+			await ctrl.startOta("AA:BB:CC:DD:EE:01");
+
+			const callback = hass.connection.subscribeMessage.mock.calls[0][0];
+			callback({ state: "updating", progress: 50 });
+
+			vi.advanceTimersByTime(15000);
+
+			expect(ctrl.otaStates["AA:BB:CC:DD:EE:01"].state).toBe("rebooting");
+			vi.useRealTimers();
+		});
+
+		it("checkOtaReconnect transitions rebooting to success when device comes back", async () => {
+			await ctrl.startOta("AA:BB:CC:DD:EE:01");
+			ctrl.otaStates["AA:BB:CC:DD:EE:01"] = { state: "rebooting", progress: null, error: null };
+			ctrl.flashableDevices = [{
+				mac: "AA:BB:CC:DD:EE:01",
+				name: "EPP Lounge",
+				host: "192.168.20.214",
+				available: true,
+				firmware_type: "eppgrid",
+				firmware_version: "0.90.0-alpha",
+				esphome_config_entry_id: null,
+				update_available: false,
+				firmware_status: "compatible",
+			}];
+
+			ctrl.checkOtaReconnect();
+
+			expect(ctrl.otaStates["AA:BB:CC:DD:EE:01"].state).toBe("success");
+		});
+
+		it("transitions to success state", async () => {
+			await ctrl.startOta("AA:BB:CC:DD:EE:01");
+
+			const callback = hass.connection.subscribeMessage.mock.calls[0][0];
+			callback({ state: "success", version: "0.90.0-alpha" });
+
+			expect(ctrl.otaStates["AA:BB:CC:DD:EE:01"].state).toBe("success");
+		});
+
+		it("transitions to error state with message", async () => {
+			await ctrl.startOta("AA:BB:CC:DD:EE:01");
+
+			const callback = hass.connection.subscribeMessage.mock.calls[0][0];
+			callback({ state: "error", message: "Connection lost" });
+
+			expect(ctrl.otaStates["AA:BB:CC:DD:EE:01"]).toEqual({
+				state: "error",
+				progress: null,
+				error: "Connection lost",
+			});
+		});
+
+		it("retryOta clears state for a device", () => {
+			ctrl.otaStates["AA:BB:CC:DD:EE:01"] = {
+				state: "error",
+				progress: null,
+				error: "Connection lost",
+			};
+			ctrl.retryOta("AA:BB:CC:DD:EE:01");
+
+			expect(ctrl.otaStates["AA:BB:CC:DD:EE:01"]).toBeUndefined();
+			expect(host.requestUpdate).toHaveBeenCalled();
+		});
+
+		it("clearOta removes state after success", () => {
+			ctrl.otaStates["AA:BB:CC:DD:EE:01"] = {
+				state: "success",
+				progress: null,
+				error: null,
+			};
+			ctrl.clearOta("AA:BB:CC:DD:EE:01");
+
+			expect(ctrl.otaStates["AA:BB:CC:DD:EE:01"]).toBeUndefined();
+		});
+
+		it("sets error when update_firmware call fails", async () => {
+			hass.callWS = vi.fn().mockRejectedValue(new Error("Device offline"));
+
+			await ctrl.startOta("AA:BB:CC:DD:EE:01");
+
+			expect(ctrl.otaStates["AA:BB:CC:DD:EE:01"]).toEqual({
+				state: "error",
+				progress: null,
+				error: "Device offline",
+			});
+		});
+	});
 });
