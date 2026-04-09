@@ -34,6 +34,7 @@ const device1: FlashableDevice = {
 	firmware_version: "1.0.0",
 	esphome_config_entry_id: null,
 	update_available: false,
+	firmware_status: "unknown",
 };
 
 const device2: FlashableDevice = {
@@ -45,6 +46,7 @@ const device2: FlashableDevice = {
 	firmware_version: "2.0.0",
 	esphome_config_entry_id: "config-entry-123",
 	update_available: false,
+	firmware_status: "compatible",
 };
 
 const offlineDevice: FlashableDevice = {
@@ -56,6 +58,7 @@ const offlineDevice: FlashableDevice = {
 	firmware_version: "1.0.0",
 	esphome_config_entry_id: null,
 	update_available: false,
+	firmware_status: "unknown",
 };
 
 afterEach(() => {
@@ -166,6 +169,7 @@ describe("device list buttons", () => {
 			firmware_version: "1.0.0",
 			esphome_config_entry_id: null,
 			update_available: false,
+			firmware_status: "unknown",
 		};
 		const el = createView({ flashableDevices: [device] });
 		const tpl = (el as any).render();
@@ -184,6 +188,7 @@ describe("device list buttons", () => {
 			firmware_version: "0.1.0",
 			esphome_config_entry_id: "entry-1",
 			update_available: true,
+			firmware_status: "compatible",
 		};
 		const el = createView({ flashableDevices: [device] });
 		const tpl = (el as any).render();
@@ -203,6 +208,7 @@ describe("device list buttons", () => {
 			firmware_version: "0.2.0",
 			esphome_config_entry_id: "entry-1",
 			update_available: false,
+			firmware_status: "compatible",
 		};
 		const el = createView({ flashableDevices: [device] });
 		const tpl = (el as any).render();
@@ -221,6 +227,7 @@ describe("device list buttons", () => {
 			firmware_version: "0.1.0",
 			esphome_config_entry_id: "entry-1",
 			update_available: true,
+			firmware_status: "compatible",
 		};
 		const el = createView({ flashableDevices: [device] });
 		const events: CustomEvent[] = [];
