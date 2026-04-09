@@ -1082,6 +1082,7 @@ export class EPPGridPanel extends LitElement {
 					.firmwareBaseUrl=${this._flasherCtrl.firmwareBaseUrl}
 					.firmwareVersion=${this._flasherCtrl.firmwareVersion}
 					.integrationVersion=${this._flasherCtrl.integrationVersion}
+					.otaStates=${this._flasherCtrl.otaStates}
 					@flash-complete=${() => {
 						this._flasherCtrl.resetUsbState();
 						this._loadDevices();
@@ -1113,8 +1114,10 @@ export class EPPGridPanel extends LitElement {
 						this._handleWifiProvision(e.detail.ssid, e.detail.password);
 					}}
 					@update-firmware=${(e: CustomEvent) => {
-						this._selectedMac = e.detail.mac;
-						this._updateFirmware();
+						this._flasherCtrl.startOta(e.detail.mac);
+					}}
+					@retry-ota=${(e: CustomEvent) => {
+						this._flasherCtrl.retryOta(e.detail.mac);
 					}}
 					@wifi-complete=${() => {
 						this._flasherCtrl.resetUsbState();

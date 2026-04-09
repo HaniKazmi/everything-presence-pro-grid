@@ -246,6 +246,7 @@ export class FlasherController implements ReactiveController {
 		this.loading = false;
 		this.onDeviceListChanged?.();
 		this._host.requestUpdate();
+		this.checkOtaReconnect();
 	}
 
 	async deleteEsphomeDevice(configEntryId: string): Promise<void> {

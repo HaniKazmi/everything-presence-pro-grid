@@ -1104,10 +1104,9 @@ describe("epp-flasher-view inline event handlers", () => {
 		expect((panel as any)._panelTab).toBe("config");
 	});
 
-	it("@update-firmware sets _selectedMac and calls _updateFirmware", () => {
-		const spy = vi
-			.spyOn(panel as any, "_updateFirmware")
-			.mockResolvedValue(undefined);
+	it("@update-firmware calls flasherCtrl.startOta", () => {
+		const ctrl = (panel as any)._flasherCtrl;
+		const spy = vi.spyOn(ctrl, "startOta").mockResolvedValue(undefined);
 
 		getFlasherView().dispatchEvent(
 			new CustomEvent("update-firmware", {
@@ -1116,8 +1115,21 @@ describe("epp-flasher-view inline event handlers", () => {
 			}),
 		);
 
-		expect((panel as any)._selectedMac).toBe("aa:bb:cc");
-		expect(spy).toHaveBeenCalled();
+		expect(spy).toHaveBeenCalledWith("aa:bb:cc");
+	});
+
+	it("@retry-ota calls flasherCtrl.retryOta", () => {
+		const ctrl = (panel as any)._flasherCtrl;
+		const spy = vi.spyOn(ctrl, "retryOta").mockResolvedValue(undefined);
+
+		getFlasherView().dispatchEvent(
+			new CustomEvent("retry-ota", {
+				detail: { mac: "aa:bb:cc" },
+				bubbles: true,
+			}),
+		);
+
+		expect(spy).toHaveBeenCalledWith("aa:bb:cc");
 	});
 
 	it("switching to flasher tab resets stale usbFlashState", () => {
