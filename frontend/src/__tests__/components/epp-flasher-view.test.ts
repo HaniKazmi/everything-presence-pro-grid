@@ -2,7 +2,7 @@ import { render } from "lit";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import "../../components/epp-flasher-view.js";
 import type { EppFlasherView } from "../../components/epp-flasher-view.js";
-import type { FlashableDevice } from "../../types.js";
+import type { FlashableDevice, OtaDeviceState } from "../../types.js";
 
 function renderTo(tpl: any): HTMLDivElement {
 	const container = document.createElement("div");
@@ -59,6 +59,18 @@ const offlineDevice: FlashableDevice = {
 	esphome_config_entry_id: null,
 	update_available: false,
 	firmware_status: "unknown",
+};
+
+const updatableDevice: FlashableDevice = {
+	mac: "AA:BB:CC:DD:EE:04",
+	name: "EPP Lounge",
+	host: "192.168.20.214",
+	available: true,
+	firmware_type: "eppgrid",
+	firmware_version: "0.89.0",
+	esphome_config_entry_id: "config-entry-456",
+	update_available: true,
+	firmware_status: "firmware_behind",
 };
 
 afterEach(() => {
@@ -1088,5 +1100,94 @@ describe("wifi complete cleanup", () => {
 		btn.click();
 
 		expect(events.length).toBe(1);
+	});
+});
+
+describe("OTA inline rendering", () => {
+	it("renders update button when no OTA state", () => {
+		const el = createView({
+			flashableDevices: [updatableDevice],
+			otaStates: {},
+		});
+		const tpl = (el as any).render();
+		const c = renderTo(tpl);
+
+		const btn = c.querySelector(".device-row ha-button");
+		expect(btn).not.toBeNull();
+		expect(btn!.textContent).toContain("flasher.update");
+	});
+
+	it("renders ota-progress when updating with numeric progress", () => {
+		const otaStates: Record<string, OtaDeviceState> = {
+			[updatableDevice.mac]: { state: "updating", progress: 45, error: null },
+		};
+		const el = createView({
+			flashableDevices: [updatableDevice],
+			otaStates,
+		});
+		const tpl = (el as any).render();
+		const c = renderTo(tpl);
+
+		expect(c.querySelector(".ota-progress")).not.toBeNull();
+		expect(c.querySelector(".device-row ha-button")).toBeNull();
+	});
+
+	it("renders ota-spinner when rebooting", () => {
+		const otaStates: Record<string, OtaDeviceState> = {
+			[updatableDevice.mac]: { state: "rebooting", progress: null, error: null },
+		};
+		const el = createView({
+			flashableDevices: [updatableDevice],
+			otaStates,
+		});
+		const tpl = (el as any).render();
+		const c = renderTo(tpl);
+
+		expect(c.querySelector(".ota-spinner")).not.toBeNull();
+	});
+
+	it("renders ota-success when success", () => {
+		const otaStates: Record<string, OtaDeviceState> = {
+			[updatableDevice.mac]: { state: "success", progress: null, error: null },
+		};
+		const el = createView({
+			flashableDevices: [updatableDevice],
+			otaStates,
+		});
+		const tpl = (el as any).render();
+		const c = renderTo(tpl);
+
+		expect(c.querySelector(".ota-success")).not.toBeNull();
+	});
+
+	it("renders ota-error and retry button when error", () => {
+		const otaStates: Record<string, OtaDeviceState> = {
+			[updatableDevice.mac]: { state: "error", progress: null, error: "Update failed" },
+		};
+		const el = createView({
+			flashableDevices: [updatableDevice],
+			otaStates,
+		});
+		const tpl = (el as any).render();
+		const c = renderTo(tpl);
+
+		expect(c.querySelector(".ota-error")).not.toBeNull();
+		const retryBtn = c.querySelector(".ota-error ha-button");
+		expect(retryBtn).not.toBeNull();
+		expect(retryBtn!.textContent).toContain("flasher.ota_retry");
+	});
+
+	it("renders ota-spinner when updating with null progress (indeterminate)", () => {
+		const otaStates: Record<string, OtaDeviceState> = {
+			[updatableDevice.mac]: { state: "updating", progress: null, error: null },
+		};
+		const el = createView({
+			flashableDevices: [updatableDevice],
+			otaStates,
+		});
+		const tpl = (el as any).render();
+		const c = renderTo(tpl);
+
+		expect(c.querySelector(".ota-spinner")).not.toBeNull();
 	});
 });

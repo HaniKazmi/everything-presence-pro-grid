@@ -631,6 +631,81 @@ export const flasherStyles = css`
     color: white;
   }
 
+  /* OTA progress indicators */
+  .ota-progress {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    flex-shrink: 0;
+  }
+  .ota-progress svg {
+    transform: rotate(-90deg);
+  }
+  .ota-track {
+    fill: none;
+    stroke: var(--divider-color, #e0e0e0);
+    stroke-width: 3;
+  }
+  .ota-fill {
+    fill: none;
+    stroke: var(--primary-color, #03a9f4);
+    stroke-width: 3;
+    stroke-linecap: round;
+    transition: stroke-dashoffset 0.3s ease;
+  }
+  .ota-pct {
+    position: absolute;
+    font-size: 9px;
+    font-weight: 600;
+    color: var(--primary-text-color, #212121);
+  }
+  .ota-spinner {
+    width: 32px;
+    height: 32px;
+    border: 3px solid var(--divider-color, #e0e0e0);
+    border-top-color: var(--primary-color, #03a9f4);
+    border-radius: 50%;
+    animation: ota-spin 0.8s linear infinite;
+    flex-shrink: 0;
+  }
+  @keyframes ota-spin {
+    to { transform: rotate(360deg); }
+  }
+  .ota-success {
+    --mdc-icon-size: 24px;
+    color: var(--success-color, #4caf50);
+    flex-shrink: 0;
+  }
+  .ota-error {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    position: relative;
+    flex-shrink: 0;
+  }
+  .ota-error-icon {
+    --mdc-icon-size: 20px;
+    color: var(--error-color, #f44336);
+    cursor: pointer;
+  }
+  .ota-error-popover {
+    position: absolute;
+    bottom: 100%;
+    right: 0;
+    background: var(--error-color, #f44336);
+    color: white;
+    padding: 8px 12px;
+    border-radius: 8px;
+    font-size: 12px;
+    white-space: nowrap;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+    z-index: 10;
+    margin-bottom: 4px;
+  }
+
   .integration-version {
     font-size: 0.8em;
     font-weight: normal;
