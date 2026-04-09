@@ -367,7 +367,11 @@
 		"integration_update": "Integration update needed",
 		"integration_outdated_title": "Integration update required",
 		"integration_outdated_body": "One or more devices have firmware that is newer than this version of the integration. Update the Everything Presence Pro Grid integration to restore full functionality.",
-		"open_hacs": "Open in HACS"
+		"open_hacs": "Open in HACS",
+		"ota_retry": "Retry",
+		"ota_error_timeout": "Update timed out",
+		"ota_error_connection_lost": "Connection lost during update",
+		"ota_error_failed": "Update failed"
 	},
 	"connection": {
 		"connecting": "Connecting to device...",
