@@ -344,14 +344,14 @@ export class EppFlasherView extends LitElement {
                 <div class="device-list">
                   ${flashableDevices.map(
 									(device) => {
-										const isActive = device.firmware_type === "eppgrid"
-											&& device.firmware_status === "compatible"
-											&& device.available;
+										const isFaded = !device.available || device.firmware_type === "original";
 										return html`
-                      <div class="device-row${isActive ? "" : " device-row-inactive"}">
-                        <div class="device-info">
+                      <div class="device-row">
+                        <div class="device-info${isFaded ? " device-info-faded" : ""}">
                           <div class="device-name">${device.name} <span class="device-mac">(${device.mac.replace(/:/g, "").slice(-6).toLowerCase()})</span></div>
-                          <div class="device-host">${device.host ?? this.localize("flasher.offline")}${device.firmware_version && device.firmware_version !== "unknown" ? ` - v${device.firmware_version}` : ""}</div>
+                          <div class="device-host">${device.host ?? this.localize("flasher.offline")}${
+														device.firmware_type === "eppgrid" && device.firmware_version && device.firmware_version !== "unknown"
+															? ` - v${device.firmware_version}` : ""}</div>
                         </div>
                         ${
 														!device.available

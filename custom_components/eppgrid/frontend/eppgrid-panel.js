@@ -586,7 +586,7 @@ const At={attribute:!0,type:String,converter:E,reflect:!1,hasChanged:m},dt=(t=At
     border: 1px solid var(--divider-color, #e0e0e0);
     border-radius: 10px;
   }
-  .device-row-inactive {
+  .device-info-faded {
     opacity: 0.5;
   }
 
@@ -1172,11 +1172,11 @@ const At={attribute:!0,type:String,converter:E,reflect:!1,hasChanged:m},dt=(t=At
                   <p>${this.localize("flasher.no_devices")}</p>
                 </div>`:N`
                 <div class="device-list">
-                  ${t.map(t=>{const e="eppgrid"===t.firmware_type&&"compatible"===t.firmware_status&&t.available;return N`
-                      <div class="device-row${e?"":" device-row-inactive"}">
-                        <div class="device-info">
+                  ${t.map(t=>{const e=!t.available||"original"===t.firmware_type;return N`
+                      <div class="device-row">
+                        <div class="device-info${e?" device-info-faded":""}">
                           <div class="device-name">${t.name} <span class="device-mac">(${t.mac.replace(/:/g,"").slice(-6).toLowerCase()})</span></div>
-                          <div class="device-host">${t.host??this.localize("flasher.offline")}${t.firmware_version&&"unknown"!==t.firmware_version?` - v${t.firmware_version}`:""}</div>
+                          <div class="device-host">${t.host??this.localize("flasher.offline")}${"eppgrid"===t.firmware_type&&t.firmware_version&&"unknown"!==t.firmware_version?` - v${t.firmware_version}`:""}</div>
                         </div>
                         ${t.available?J:N`<span class="firmware-badge firmware-badge-offline">${this.localize("flasher.offline")}</span>`}
                         ${"original"===t.firmware_type?N`<span class="firmware-badge firmware-badge-original">${this.localize("flasher.flash_usb")}</span>`:J}
