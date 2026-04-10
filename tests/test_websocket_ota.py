@@ -366,8 +366,9 @@ class TestSubscribeOtaProgress:
         mock_dm = await setup_integration(hass, config_entry)
         device_conn = make_mock_device_conn()
         mock_dm.get_session.return_value = device_conn
-        from custom_components.eppgrid.websocket_api import websocket_subscribe_ota_progress
         from aioesphomeapi import LogLevel as ESPLogLevel
+
+        from custom_components.eppgrid.websocket_api import websocket_subscribe_ota_progress
 
         connection = MagicMock()
         connection.subscriptions = {}
@@ -398,8 +399,9 @@ class TestSubscribeOtaProgress:
         mock_dm = await setup_integration(hass, config_entry)
         device_conn = make_mock_device_conn()
         mock_dm.get_session.return_value = device_conn
-        from custom_components.eppgrid.websocket_api import websocket_subscribe_ota_progress
         from aioesphomeapi import LogLevel as ESPLogLevel
+
+        from custom_components.eppgrid.websocket_api import websocket_subscribe_ota_progress
 
         connection = MagicMock()
         connection.subscriptions = {}
@@ -423,8 +425,9 @@ class TestSubscribeOtaProgress:
         mock_dm = await setup_integration(hass, config_entry)
         device_conn = make_mock_device_conn()
         mock_dm.get_session.return_value = device_conn
-        from custom_components.eppgrid.websocket_api import websocket_subscribe_ota_progress
         from aioesphomeapi import LogLevel as ESPLogLevel
+
+        from custom_components.eppgrid.websocket_api import websocket_subscribe_ota_progress
 
         connection = MagicMock()
         connection.subscriptions = {}
@@ -453,8 +456,9 @@ class TestSubscribeOtaProgress:
         mock_dm = await setup_integration(hass, config_entry)
         device_conn = make_mock_device_conn()
         mock_dm.get_session.return_value = device_conn
-        from custom_components.eppgrid.websocket_api import websocket_subscribe_ota_progress
         from aioesphomeapi import LogLevel as ESPLogLevel
+
+        from custom_components.eppgrid.websocket_api import websocket_subscribe_ota_progress
 
         connection = MagicMock()
         connection.subscriptions = {}

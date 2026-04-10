@@ -1591,9 +1591,7 @@ class TestEventCallbacks:
 
         mock_avail.assert_not_awaited()
 
-    async def test_on_state_changed_device_goes_unavailable(
-        self, hass: HomeAssistant, manager: DeviceManager
-    ) -> None:
+    async def test_on_state_changed_device_goes_unavailable(self, hass: HomeAssistant, manager: DeviceManager) -> None:
         """Device going unavailable clears pushing set and fires device list changed."""
         dev_reg = dr.async_get(hass)
         ent_reg = er.async_get(hass)
@@ -1642,9 +1640,7 @@ class TestEventCallbacks:
         assert "AA:BB:CC:DD:EE:FF" not in manager._pushing
         mock_fire.assert_called_once()
 
-    async def test_is_device_available_all_unavailable(
-        self, hass: HomeAssistant, manager: DeviceManager
-    ) -> None:
+    async def test_is_device_available_all_unavailable(self, hass: HomeAssistant, manager: DeviceManager) -> None:
         """_is_device_available returns False when all ESPHome entities are unavailable."""
         dev_reg = dr.async_get(hass)
         ent_reg = er.async_get(hass)
@@ -1679,9 +1675,7 @@ class TestEventCallbacks:
 
         assert manager._is_device_available("AA:BB:CC:DD:EE:FF") is False
 
-    async def test_is_device_available_some_available(
-        self, hass: HomeAssistant, manager: DeviceManager
-    ) -> None:
+    async def test_is_device_available_some_available(self, hass: HomeAssistant, manager: DeviceManager) -> None:
         """_is_device_available returns True when at least one ESPHome entity is available."""
         dev_reg = dr.async_get(hass)
         ent_reg = er.async_get(hass)

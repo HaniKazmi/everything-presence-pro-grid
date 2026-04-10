@@ -538,5 +538,292 @@ describe("FlasherController", () => {
 				error: "Failed to start update. Is the device online?",
 			});
 		});
+
+		it("sets error when subscription fails after update_firmware succeeds", async () => {
+			hass.connection.subscribeMessage = vi
+				.fn()
+				.mockRejectedValue(new Error("sub failed"));
+
+			await ctrl.startOta("AA:BB:CC:DD:EE:01");
+
+			expect(ctrl.otaStates["AA:BB:CC:DD:EE:01"]).toEqual({
+				state: "error",
+				progress: null,
+				error: "Failed to connect to device",
+			});
+		});
+
+		it("error event with no message defaults to 'Update failed'", async () => {
+			await ctrl.startOta("AA:BB:CC:DD:EE:01");
+
+			const callback = hass.connection.subscribeMessage.mock.calls[0][0];
+			callback({ state: "error" });
+
+			expect(ctrl.otaStates["AA:BB:CC:DD:EE:01"]).toEqual({
+				state: "error",
+				progress: null,
+				error: "Update failed",
+			});
+		});
+
+		it("_otaSuccess auto-dismisses after 5 seconds", async () => {
+			vi.useFakeTimers();
+			await ctrl.startOta("AA:BB:CC:DD:EE:01");
+
+			const callback = hass.connection.subscribeMessage.mock.calls[0][0];
+			callback({ state: "success" });
+
+			expect(ctrl.otaStates["AA:BB:CC:DD:EE:01"].state).toBe("success");
+
+			vi.advanceTimersByTime(5000);
+
+			expect(ctrl.otaStates["AA:BB:CC:DD:EE:01"]).toBeUndefined();
+			expect(host.requestUpdate).toHaveBeenCalled();
+			vi.useRealTimers();
+		});
+
+		it("_otaSuccess auto-dismiss does not delete if state changed", async () => {
+			vi.useFakeTimers();
+			await ctrl.startOta("AA:BB:CC:DD:EE:01");
+
+			const callback = hass.connection.subscribeMessage.mock.calls[0][0];
+			callback({ state: "success" });
+
+			// Manually change state before timeout fires
+			ctrl.otaStates["AA:BB:CC:DD:EE:01"] = {
+				state: "updating",
+				progress: 0,
+				error: null,
+			};
+
+			vi.advanceTimersByTime(5000);
+
+			// Should NOT have been deleted because state is no longer "success"
+			expect(ctrl.otaStates["AA:BB:CC:DD:EE:01"]).toBeDefined();
+			expect(ctrl.otaStates["AA:BB:CC:DD:EE:01"].state).toBe("updating");
+			vi.useRealTimers();
+		});
+
+		it("progress >= 100 triggers _otaSuccess", async () => {
+			await ctrl.startOta("AA:BB:CC:DD:EE:01");
+
+			const callback = hass.connection.subscribeMessage.mock.calls[0][0];
+			callback({ state: "updating", progress: 100 });
+
+			expect(ctrl.otaStates["AA:BB:CC:DD:EE:01"].state).toBe("success");
+		});
+
+		it("updating event with progress=0 uses 15s timeout", async () => {
+			vi.useFakeTimers();
+			await ctrl.startOta("AA:BB:CC:DD:EE:01");
+
+			const callback = hass.connection.subscribeMessage.mock.calls[0][0];
+			callback({ state: "updating", progress: 0 });
+
+			// After 10s, should still be updating (15s timeout)
+			vi.advanceTimersByTime(10000);
+			expect(ctrl.otaStates["AA:BB:CC:DD:EE:01"].state).toBe("updating");
+
+			// After 15s total, should have timed out
+			vi.advanceTimersByTime(5000);
+			expect(ctrl.otaStates["AA:BB:CC:DD:EE:01"].state).toBe("error");
+			expect(ctrl.otaStates["AA:BB:CC:DD:EE:01"].error).toBe(
+				"Update timed out",
+			);
+			vi.useRealTimers();
+		});
+
+		it("updating event with progress > 0 uses 10s timeout", async () => {
+			vi.useFakeTimers();
+			await ctrl.startOta("AA:BB:CC:DD:EE:01");
+
+			const callback = hass.connection.subscribeMessage.mock.calls[0][0];
+			callback({ state: "updating", progress: 25 });
+
+			vi.advanceTimersByTime(10000);
+			expect(ctrl.otaStates["AA:BB:CC:DD:EE:01"].state).toBe("error");
+			expect(ctrl.otaStates["AA:BB:CC:DD:EE:01"].error).toBe(
+				"Connection lost during update",
+			);
+			vi.useRealTimers();
+		});
+
+		it("timeout does not fire if state is no longer updating", async () => {
+			vi.useFakeTimers();
+			await ctrl.startOta("AA:BB:CC:DD:EE:01");
+
+			const callback = hass.connection.subscribeMessage.mock.calls[0][0];
+			callback({ state: "updating", progress: 50 });
+
+			// Manually change state before timeout
+			ctrl.otaStates["AA:BB:CC:DD:EE:01"] = {
+				state: "success",
+				progress: null,
+				error: null,
+			};
+
+			vi.advanceTimersByTime(10000);
+
+			// Should still be success, not error
+			expect(ctrl.otaStates["AA:BB:CC:DD:EE:01"].state).toBe("success");
+			vi.useRealTimers();
+		});
+
+		it("_checkOtaDevicesOffline sets error when device goes offline during OTA", async () => {
+			// Start OTA
+			await ctrl.startOta("AA:BB:CC:DD:EE:01");
+
+			// Set up subscription callback to capture the device list handler
+			const deviceListCallback =
+				hass.connection.subscribeMessage.mock.calls[0]?.[0];
+
+			// Directly set updating state
+			ctrl.otaStates["AA:BB:CC:DD:EE:01"] = {
+				state: "updating",
+				progress: 50,
+				error: null,
+			};
+
+			// Simulate device going offline via _applyDeviceList
+			ctrl.flashableDevices = [
+				{
+					mac: "AA:BB:CC:DD:EE:01",
+					name: "Test",
+					host: "192.168.1.10",
+					available: false,
+					firmware_type: "eppgrid",
+					firmware_version: "1.0.0",
+					esphome_config_entry_id: "entry-1",
+					update_available: true,
+					firmware_status: "firmware_behind",
+				},
+			];
+
+			// Call _checkOtaDevicesOffline directly
+			(ctrl as any)._checkOtaDevicesOffline();
+
+			expect(ctrl.otaStates["AA:BB:CC:DD:EE:01"]).toEqual({
+				state: "error",
+				progress: null,
+				error: "Device went offline during update",
+			});
+		});
+
+		it("_checkOtaDevicesOffline skips devices not in updating state", () => {
+			ctrl.otaStates["AA:BB:CC:DD:EE:01"] = {
+				state: "error",
+				progress: null,
+				error: "already failed",
+			};
+			ctrl.flashableDevices = [
+				{
+					mac: "AA:BB:CC:DD:EE:01",
+					name: "Test",
+					host: "192.168.1.10",
+					available: false,
+					firmware_type: "eppgrid",
+					firmware_version: "1.0.0",
+					esphome_config_entry_id: "entry-1",
+					update_available: false,
+					firmware_status: "compatible",
+				},
+			];
+
+			(ctrl as any)._checkOtaDevicesOffline();
+
+			// Should NOT have changed
+			expect(ctrl.otaStates["AA:BB:CC:DD:EE:01"].error).toBe("already failed");
+		});
+
+		it("_checkOtaDevicesOffline skips available devices", () => {
+			ctrl.otaStates["AA:BB:CC:DD:EE:01"] = {
+				state: "updating",
+				progress: 50,
+				error: null,
+			};
+			ctrl.flashableDevices = [
+				{
+					mac: "AA:BB:CC:DD:EE:01",
+					name: "Test",
+					host: "192.168.1.10",
+					available: true,
+					firmware_type: "eppgrid",
+					firmware_version: "1.0.0",
+					esphome_config_entry_id: "entry-1",
+					update_available: true,
+					firmware_status: "firmware_behind",
+				},
+			];
+
+			(ctrl as any)._checkOtaDevicesOffline();
+
+			// Should still be updating
+			expect(ctrl.otaStates["AA:BB:CC:DD:EE:01"].state).toBe("updating");
+		});
+
+		it("hostDisconnected cleans up OTA subscriptions and timeouts", async () => {
+			vi.useFakeTimers();
+			await ctrl.startOta("AA:BB:CC:DD:EE:01");
+
+			const unsub = hass.connection.subscribeMessage.mock.results[0].value;
+
+			ctrl.hostDisconnected();
+
+			expect(ctrl.otaStates).toEqual({});
+			vi.useRealTimers();
+		});
+
+		it("_applyDeviceList triggers _checkOtaDevicesOffline", async () => {
+			ctrl.otaStates["AA:BB:CC:DD:EE:01"] = {
+				state: "updating",
+				progress: 50,
+				error: null,
+			};
+
+			// Subscribe to device list so _applyDeviceList works
+			hass.connection.subscribeMessage = vi
+				.fn()
+				.mockImplementation((cb: any) => {
+					cb({
+						devices: [
+							{
+								mac: "AA:BB:CC:DD:EE:01",
+								name: "Test",
+								host: "192.168.1.10",
+								available: false,
+								firmware_type: "eppgrid",
+								firmware_version: "1.0.0",
+								esphome_config_entry_id: "entry-1",
+								update_available: true,
+								firmware_status: "firmware_behind",
+							},
+						],
+					});
+					return Promise.resolve(vi.fn());
+				});
+
+			await ctrl.subscribeDeviceList();
+
+			expect(ctrl.otaStates["AA:BB:CC:DD:EE:01"]).toEqual({
+				state: "error",
+				progress: null,
+				error: "Device went offline during update",
+			});
+		});
+
+		it("updating event with null progress uses 15s timeout", async () => {
+			vi.useFakeTimers();
+			await ctrl.startOta("AA:BB:CC:DD:EE:01");
+
+			const callback = hass.connection.subscribeMessage.mock.calls[0][0];
+			callback({ state: "updating", progress: null });
+
+			vi.advanceTimersByTime(15000);
+			expect(ctrl.otaStates["AA:BB:CC:DD:EE:01"].state).toBe("error");
+			expect(ctrl.otaStates["AA:BB:CC:DD:EE:01"].error).toBe(
+				"Update timed out",
+			);
+			vi.useRealTimers();
+		});
 	});
 });
