@@ -551,8 +551,9 @@ async def websocket_subscribe_device(
     mac = msg["mac"]
     try:
         device_conn = await manager.async_open_session(mac)
-    except Exception:
-        _LOGGER.warning("Failed to open session for %s", mac, exc_info=True)
+    except Exception as err:
+        _LOGGER.warning("Failed to open session for %s: %s", mac, err)
+        manager._fire_device_list_changed()
         connection.send_error(msg["id"], "connection_failed", "Failed to connect to device")
         return
     if device_conn is None:

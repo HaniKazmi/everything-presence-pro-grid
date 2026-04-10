@@ -593,6 +593,7 @@ class DeviceManager:
         if new_state.state == STATE_UNAVAILABLE:
             # Device went offline — allow a fresh push when it comes back
             self._pushing.discard(mac)
+            self._fire_device_list_changed()
             return
 
         if old_state.state != STATE_UNAVAILABLE:
@@ -655,6 +656,8 @@ class DeviceManager:
             await asyncio.sleep(5)
             if not await self._push_config_to_device(mac):
                 self._pushing.discard(mac)
+
+        self._fire_device_list_changed()
 
     @staticmethod
     def _manage_log_subscription(conn: DeviceConnection, config: dict[str, Any]) -> None:
@@ -900,9 +903,11 @@ class DeviceManager:
                     "available": available,
                     "firmware_type": "eppgrid" if has_firmware_version else "original",
                     "firmware_version": (
-                        self.read_firmware_version(managed_dev.device_id) or device.sw_version or "unknown"
+                        self.read_firmware_version(managed_dev.device_id)
+                        or (device.sw_version or "").split(" (")[0]
+                        or "unknown"
                         if has_firmware_version and managed_dev is not None
-                        else device.sw_version or "unknown"
+                        else (device.sw_version or "").split(" (")[0] or "unknown"
                     ),
                     "firmware_status": (
                         (
