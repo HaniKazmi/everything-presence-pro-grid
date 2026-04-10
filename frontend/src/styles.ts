@@ -592,14 +592,14 @@ export const flasherStyles = css`
     text-overflow: ellipsis;
   }
 
+  .device-mac {
+    font-weight: 400;
+    color: var(--secondary-text-color, #757575);
+  }
   .device-host {
     font-size: 12px;
     color: var(--secondary-text-color, #757575);
     margin-top: 2px;
-  }
-  .device-version {
-    font-size: 11px;
-    color: var(--secondary-text-color, #757575);
   }
 
   .firmware-badge {

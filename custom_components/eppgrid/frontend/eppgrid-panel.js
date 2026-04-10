@@ -601,14 +601,14 @@ const At={attribute:!0,type:String,converter:E,reflect:!1,hasChanged:m},dt=(t=At
     text-overflow: ellipsis;
   }
 
+  .device-mac {
+    font-weight: 400;
+    color: var(--secondary-text-color, #757575);
+  }
   .device-host {
     font-size: 12px;
     color: var(--secondary-text-color, #757575);
     margin-top: 2px;
-  }
-  .device-version {
-    font-size: 11px;
-    color: var(--secondary-text-color, #757575);
   }
 
   .firmware-badge {
@@ -1172,9 +1172,8 @@ const At={attribute:!0,type:String,converter:E,reflect:!1,hasChanged:m},dt=(t=At
                   ${t.map(t=>N`
                       <div class="device-row">
                         <div class="device-info">
-                          <div class="device-name">${t.name}</div>
-                          <div class="device-host">${t.host??this.localize("flasher.offline")}</div>
-                          ${t.firmware_version&&"unknown"!==t.firmware_version?N`<div class="device-version">v${t.firmware_version}</div>`:J}
+                          <div class="device-name">${t.name} <span class="device-mac">(${t.mac.replace(/:/g,"").slice(-6).toLowerCase()})</span></div>
+                          <div class="device-host">${t.host??this.localize("flasher.offline")}${t.firmware_version&&"unknown"!==t.firmware_version?` - v${t.firmware_version}`:""}</div>
                         </div>
                         <span
                           class="firmware-badge firmware-badge-${t.firmware_type}"

@@ -346,11 +346,8 @@ export class EppFlasherView extends LitElement {
 										(device) => html`
                       <div class="device-row">
                         <div class="device-info">
-                          <div class="device-name">${device.name}</div>
-                          <div class="device-host">${device.host ?? this.localize("flasher.offline")}</div>
-                          ${device.firmware_version && device.firmware_version !== "unknown"
-                            ? html`<div class="device-version">v${device.firmware_version}</div>`
-                            : nothing}
+                          <div class="device-name">${device.name} <span class="device-mac">(${device.mac.replace(/:/g, "").slice(-6).toLowerCase()})</span></div>
+                          <div class="device-host">${device.host ?? this.localize("flasher.offline")}${device.firmware_version && device.firmware_version !== "unknown" ? ` - v${device.firmware_version}` : ""}</div>
                         </div>
                         <span
                           class="firmware-badge firmware-badge-${device.firmware_type}"
