@@ -515,27 +515,16 @@ describe("FlasherController", () => {
 			});
 		});
 
-		it("retryOta clears state for a device", () => {
+		it("dismissOtaError clears state for a device", () => {
 			ctrl.otaStates["AA:BB:CC:DD:EE:01"] = {
 				state: "error",
 				progress: null,
 				error: "Connection lost",
 			};
-			ctrl.retryOta("AA:BB:CC:DD:EE:01");
+			ctrl.dismissOtaError("AA:BB:CC:DD:EE:01");
 
 			expect(ctrl.otaStates["AA:BB:CC:DD:EE:01"]).toBeUndefined();
 			expect(host.requestUpdate).toHaveBeenCalled();
-		});
-
-		it("clearOta removes state after success", () => {
-			ctrl.otaStates["AA:BB:CC:DD:EE:01"] = {
-				state: "success",
-				progress: null,
-				error: null,
-			};
-			ctrl.clearOta("AA:BB:CC:DD:EE:01");
-
-			expect(ctrl.otaStates["AA:BB:CC:DD:EE:01"]).toBeUndefined();
 		});
 
 		it("sets error when update_firmware call fails", async () => {

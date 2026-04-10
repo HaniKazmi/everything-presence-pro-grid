@@ -1186,14 +1186,21 @@ async def websocket_subscribe_ota_progress(
         return
 
     was_in_progress = False
-    error_sent = False
+    done = False  # shared guard: once a terminal event is sent, stop
+    opened_session = device_conn is not manager.get_session(mac)
+
+    # Ensure device logs are subscribed so _on_log callbacks fire
+    from aioesphomeapi import LogLevel as ESPLogLevel
+
+    if device_conn._unsub_logs is None:
+        device_conn.subscribe_logs(ESPLogLevel.LOG_LEVEL_ERROR)
 
     @callback
     def _on_state(state: Any) -> None:
-        nonlocal was_in_progress
+        nonlocal was_in_progress, done
         from aioesphomeapi import UpdateState
 
-        if not isinstance(state, UpdateState):
+        if done or not isinstance(state, UpdateState):
             return
 
         if state.in_progress:
@@ -1207,6 +1214,7 @@ async def websocket_subscribe_ota_progress(
             )
         elif was_in_progress:
             was_in_progress = False
+            done = True
             if state.current_version and state.current_version == state.latest_version:
                 connection.send_message(
                     websocket_api.event_message(msg["id"], {
@@ -1222,11 +1230,11 @@ async def websocket_subscribe_ota_progress(
                     })
                 )
 
+    @callback
     def _on_log(log_msg: Any) -> None:
-        nonlocal error_sent
-        if error_sent:
+        nonlocal done
+        if done:
             return
-        from aioesphomeapi import LogLevel as ESPLogLevel
 
         if log_msg.level != ESPLogLevel.LOG_LEVEL_ERROR:
             return
@@ -1241,7 +1249,7 @@ async def websocket_subscribe_ota_progress(
             return
         if "http_request.ota" not in text and "http_request.update" not in text:
             return
-        error_sent = True
+        done = True
         # Extract message after the ESPHome component tag
         # Format: [E][http_request.ota:294]: Actual message here
         parts = text.split("]: ", 1)
@@ -1261,6 +1269,8 @@ async def websocket_subscribe_ota_progress(
     def _unsub() -> None:
         device_conn.unsubscribe_states(_on_state)
         device_conn.remove_log_callback(_on_log)
+        if opened_session:
+            hass.async_create_task(manager.async_close_session(mac))
 
     connection.subscriptions[msg["id"]] = _unsub
 

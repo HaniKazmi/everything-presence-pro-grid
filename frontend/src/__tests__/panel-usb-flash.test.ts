@@ -1118,9 +1118,9 @@ describe("epp-flasher-view inline event handlers", () => {
 		expect(spy).toHaveBeenCalledWith("aa:bb:cc");
 	});
 
-	it("@retry-ota calls flasherCtrl.retryOta", () => {
+	it("@retry-ota calls flasherCtrl.dismissOtaError", () => {
 		const ctrl = (panel as any)._flasherCtrl;
-		const spy = vi.spyOn(ctrl, "retryOta").mockResolvedValue(undefined);
+		const spy = vi.spyOn(ctrl, "dismissOtaError").mockResolvedValue(undefined);
 
 		getFlasherView().dispatchEvent(
 			new CustomEvent("retry-ota", {

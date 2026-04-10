@@ -151,14 +151,7 @@ export class FlasherController implements ReactiveController {
 		}
 	}
 
-	retryOta(mac: string): void {
-		this._unsubOta(mac);
-		this._resetOtaTimeout(mac);
-		delete this.otaStates[mac];
-		this._host.requestUpdate();
-	}
-
-	clearOta(mac: string): void {
+	dismissOtaError(mac: string): void {
 		this._unsubOta(mac);
 		this._resetOtaTimeout(mac);
 		delete this.otaStates[mac];

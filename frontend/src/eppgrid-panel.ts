@@ -1117,7 +1117,7 @@ export class EPPGridPanel extends LitElement {
 						this._flasherCtrl.startOta(e.detail.mac);
 					}}
 					@retry-ota=${(e: CustomEvent) => {
-						this._flasherCtrl.retryOta(e.detail.mac);
+						this._flasherCtrl.dismissOtaError(e.detail.mac);
 					}}
 					@wifi-complete=${() => {
 						this._flasherCtrl.resetUsbState();

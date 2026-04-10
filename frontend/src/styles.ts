@@ -619,11 +619,6 @@ export const flasherStyles = css`
     color: #e65100;
   }
 
-  .firmware-badge-eppgrid {
-    background: #4caf5020;
-    color: #2e7d32;
-  }
-
   .firmware-badge-offline {
     background: #9e9e9e20;
     color: #616161;

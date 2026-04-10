@@ -77,7 +77,7 @@ export interface UsbFlashState {
 	fatal?: boolean;
 }
 
-export type OtaState = "updating" | "rebooting" | "success" | "error";
+export type OtaState = "updating" | "success" | "error";
 
 export interface OtaDeviceState {
 	state: OtaState;
