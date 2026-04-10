@@ -124,9 +124,11 @@ export class EppFlasherView extends LitElement {
 							icon="mdi:alert-circle"
 							@click=${(e: Event) => this._toggleErrorPopover(e, device.mac)}
 						></ha-icon>
-						<ha-button @click=${() => this._dispatchRetryOta(device)}>
-							${this.localize("flasher.ota_retry")}
-						</ha-button>
+						${device.available
+							? html`<ha-button @click=${() => this._dispatchRetryOta(device)}>
+								${this.localize("flasher.ota_retry")}
+							</ha-button>`
+							: nothing}
 						${this._errorPopoverMac === device.mac
 							? html`<div class="ota-error-popover">${ota.error}</div>`
 							: nothing}

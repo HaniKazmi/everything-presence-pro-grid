@@ -1071,9 +1071,9 @@ const At={attribute:!0,type:String,converter:E,reflect:!1,hasChanged:m},dt=(t=At
 							icon="mdi:alert-circle"
 							@click=${e=>this._toggleErrorPopover(e,t.mac)}
 						></ha-icon>
-						<ha-button @click=${()=>this._dispatchRetryOta(t)}>
-							${this.localize("flasher.ota_retry")}
-						</ha-button>
+						${t.available?N`<ha-button @click=${()=>this._dispatchRetryOta(t)}>
+								${this.localize("flasher.ota_retry")}
+							</ha-button>`:J}
 						${this._errorPopoverMac===t.mac?N`<div class="ota-error-popover">${e.error}</div>`:J}
 					</div>`}}_onUsbConnect(){this._showUsbFlash=!0}_dispatchFlashComplete(){this.dispatchEvent(new CustomEvent("flash-complete",{bubbles:!0,composed:!0}))}_dispatchUsbFlash(){this.dispatchEvent(new CustomEvent("usb-flash",{detail:{variant:this._getFirmwareVariant()},bubbles:!0,composed:!0}))}_dispatchUsbRetry(){this.dispatchEvent(new CustomEvent("usb-retry",{bubbles:!0,composed:!0}))}_onUsbBack(){this._showUsbFlash=!1,this._showWifiProvisioning=!1,this.dispatchEvent(new CustomEvent("usb-retry",{bubbles:!0,composed:!0}))}_dispatchWifiScan(){this.dispatchEvent(new CustomEvent("wifi-scan",{bubbles:!0,composed:!0}))}_dispatchWifiProvision(){this.dispatchEvent(new CustomEvent("wifi-provision",{detail:{ssid:this._selectedSsid,password:this._wifiPassword},bubbles:!0,composed:!0}))}_dispatchWifiComplete(){this.dispatchEvent(new CustomEvent("wifi-complete",{bubbles:!0,composed:!0}))}_renderLoading(){return N`<div class="flasher-loading">${this.localize("flasher.loading")}</div>`}_renderWifiProvisioning(){if(this._wifiConnected)return N`
         <div class="flasher-content">
