@@ -3690,12 +3690,12 @@ const At={attribute:!0,type:String,converter:E,reflect:!1,hasChanged:m},dt=(t=At
 				<ha-icon icon=${i?"mdi:alert-circle-outline":"mdi:information-outline"}></ha-icon>
 				<p>${s}</p>
 				${i?N`<button class="wizard-btn wizard-btn-primary"
-						@click=${()=>this._updateFirmware()}
+						@click=${()=>{this._panelTab="flasher"}}
 					>${this._localize("protocol.update_firmware")}</button>`:J}
 				${r?N`<a href="/hacs/repository/1172848595" class="protocol-link"
 					>${this._localize("protocol.open_hacs")}</a>`:J}
 			</div>
-		`}async _updateFirmware(){if(this._selectedMac&&this.hass)try{await this.hass.callWS({type:"eppgrid/update_firmware",mac:this._selectedMac})}catch(t){console.error("Firmware update failed:",t)}}_renderConnectionBanner(){if(!this._deviceCtrl.connectionFailed)return J;const t=this._devices.find(t=>t.mac===this._selectedMac);if("unavailable"===t?.firmware_status)return N`
+		`}_renderConnectionBanner(){if(!this._deviceCtrl.connectionFailed)return J;const t=this._devices.find(t=>t.mac===this._selectedMac);if("unavailable"===t?.firmware_status)return N`
 				<div class="protocol-fullpage protocol-fullpage-info">
 					<ha-icon icon="mdi:access-point-off"></ha-icon>
 					<p>${this._localize("connection.offline")}</p>

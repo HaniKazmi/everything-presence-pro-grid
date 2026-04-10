@@ -1365,7 +1365,7 @@ export class EPPGridPanel extends LitElement {
 				${
 					isBehind
 						? html`<button class="wizard-btn wizard-btn-primary"
-						@click=${() => this._updateFirmware()}
+						@click=${() => { this._panelTab = "flasher"; }}
 					>${this._localize("protocol.update_firmware")}</button>`
 						: nothing
 				}
@@ -1377,18 +1377,6 @@ export class EPPGridPanel extends LitElement {
 				}
 			</div>
 		`;
-	}
-
-	private async _updateFirmware(): Promise<void> {
-		if (!this._selectedMac || !this.hass) return;
-		try {
-			await this.hass.callWS({
-				type: "eppgrid/update_firmware",
-				mac: this._selectedMac,
-			});
-		} catch (err) {
-			console.error("Firmware update failed:", err);
-		}
 	}
 
 	private _renderConnectionBanner() {
