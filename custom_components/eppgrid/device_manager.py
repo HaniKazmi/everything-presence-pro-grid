@@ -719,7 +719,7 @@ class DeviceManager:
 
         conn = DeviceConnection(dev.host)
         try:
-            await conn.async_connect()
+            await asyncio.wait_for(conn.async_connect(), timeout=30)
             flags = await conn.async_fetch_build_flags()
             if flags:
                 self._build_flags[mac] = flags
@@ -751,14 +751,14 @@ class DeviceManager:
                 self._manage_log_subscription(session_conn, config)
                 return True
             except Exception:
-                _LOGGER.warning("Failed to push config to %s (%s) via session", dev.name, mac, exc_info=True)
+                _LOGGER.warning("Failed to push config to %s (%s) via session", dev.name, mac)
                 await self.async_close_session(mac)
                 return False
 
         # No active session — use temporary connection (e.g., on-boot push)
         conn = DeviceConnection(dev.host)
         try:
-            await conn.async_connect()
+            await asyncio.wait_for(conn.async_connect(), timeout=30)
             await conn.async_push_config(config)
             # Push pipeline directly (no subscribers on temp connections)
             from .websocket_api import _compute_pipeline
@@ -772,7 +772,7 @@ class DeviceManager:
                 self._build_flags[mac] = flags
             return True
         except Exception:
-            _LOGGER.warning("Failed to push config to %s (%s)", dev.name, mac, exc_info=True)
+            _LOGGER.warning("Failed to push config to %s (%s)", dev.name, mac)
             return False
         finally:
             await conn.async_disconnect()
