@@ -577,6 +577,9 @@ export const flasherStyles = css`
     border: 1px solid var(--divider-color, #e0e0e0);
     border-radius: 10px;
   }
+  .device-row-inactive {
+    opacity: 0.5;
+  }
 
   .device-info {
     flex: 1;

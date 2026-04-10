@@ -343,53 +343,48 @@ export class EppFlasherView extends LitElement {
 								: html`
                 <div class="device-list">
                   ${flashableDevices.map(
-										(device) => html`
-                      <div class="device-row">
+									(device) => {
+										const isActive = device.firmware_type === "eppgrid"
+											&& device.firmware_status === "compatible"
+											&& device.available;
+										return html`
+                      <div class="device-row${isActive ? "" : " device-row-inactive"}">
                         <div class="device-info">
                           <div class="device-name">${device.name} <span class="device-mac">(${device.mac.replace(/:/g, "").slice(-6).toLowerCase()})</span></div>
                           <div class="device-host">${device.host ?? this.localize("flasher.offline")}${device.firmware_version && device.firmware_version !== "unknown" ? ` - v${device.firmware_version}` : ""}</div>
                         </div>
-                        <span
-                          class="firmware-badge firmware-badge-${device.firmware_type}"
-                        >
-                          ${
-														device.firmware_type === "original"
-															? this.localize("flasher.original")
-															: this.localize("flasher.eppgrid")
-													}
-                        </span>
                         ${
-													!device.available
-														? html`<span class="firmware-badge firmware-badge-offline">${this.localize("flasher.offline")}</span>`
-														: nothing
-												}
-                        ${
-													device.firmware_type === "eppgrid" &&
-													device.firmware_status === "firmware_behind"
-														? html`<span class="firmware-badge firmware-badge-behind">${this.localize("flasher.needs_update")}</span>`
-														: nothing
-												}
-                        ${
-													device.firmware_type === "eppgrid" &&
-													device.firmware_status === "firmware_ahead"
-														? html`<span class="firmware-badge firmware-badge-ahead">${this.localize("flasher.integration_update")}</span>`
-														: nothing
-												}
-                        ${
-													this.otaStates[device.mac]
-														? this._renderOtaIndicator(device)
-														: device.firmware_type === "eppgrid" &&
-																(device.update_available ||
-																	device.firmware_status === "firmware_behind")
-															? html`<ha-button
-																	raised
-																	@click=${() => this._dispatchUpdateFirmware(device)}
-																>${this.localize("flasher.update")}</ha-button>`
+														!device.available
+															? html`<span class="firmware-badge firmware-badge-offline">${this.localize("flasher.offline")}</span>`
 															: nothing
-												}
+													}
+                        ${
+														device.firmware_type === "original"
+															? html`<span class="firmware-badge firmware-badge-original">${this.localize("flasher.flash_usb")}</span>`
+															: nothing
+													}
+                        ${
+														device.firmware_type === "eppgrid" &&
+														device.firmware_status === "firmware_ahead"
+															? html`<span class="firmware-badge firmware-badge-ahead">${this.localize("flasher.integration_update")}</span>`
+															: nothing
+													}
+                        ${
+														this.otaStates[device.mac]
+															? this._renderOtaIndicator(device)
+															: device.firmware_type === "eppgrid" &&
+																	(device.update_available ||
+																		device.firmware_status === "firmware_behind")
+																? html`<ha-button
+																		raised
+																		@click=${() => this._dispatchUpdateFirmware(device)}
+																	>${this.localize("flasher.update")}</ha-button>`
+																: nothing
+													}
                       </div>
-                    `,
-									)}
+                    `;
+									},
+								)}
                 </div>
               `
 						}

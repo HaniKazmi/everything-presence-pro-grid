@@ -160,13 +160,13 @@ describe("render() device list", () => {
 		expect(badge).not.toBeNull();
 	});
 
-	it("shows green badge for eppgrid firmware", () => {
+	it("does not show firmware type badge for eppgrid devices", () => {
 		const el = createView({ flashableDevices: [device2] });
 		const tpl = (el as any).render();
 		const c = renderTo(tpl);
 
 		const badge = c.querySelector(".firmware-badge-eppgrid");
-		expect(badge).not.toBeNull();
+		expect(badge).toBeNull();
 	});
 });
 

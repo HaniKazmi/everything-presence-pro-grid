@@ -327,6 +327,7 @@
 		"step_complete": "Complete!",
 		"original": "Original",
 		"eppgrid": "Everything Presence Pro Grid",
+		"flash_usb": "Flash firmware over USB",
 		"loading": "Loading devices...",
 		"configure_wifi": "Configure WiFi",
 		"scan": "Scan Again",
