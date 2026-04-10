@@ -1591,6 +1591,169 @@ class TestEventCallbacks:
 
         mock_avail.assert_not_awaited()
 
+    async def test_on_state_changed_device_goes_unavailable(
+        self, hass: HomeAssistant, manager: DeviceManager
+    ) -> None:
+        """Device going unavailable clears pushing set and fires device list changed."""
+        dev_reg = dr.async_get(hass)
+        ent_reg = er.async_get(hass)
+
+        esphome_entry = MockConfigEntry(
+            domain="esphome",
+            data={"host": "192.168.1.50"},
+            title="EPP Device",
+        )
+        esphome_entry.add_to_hass(hass)
+
+        device = dev_reg.async_get_or_create(
+            config_entry_id=esphome_entry.entry_id,
+            connections={("mac", "aa:bb:cc:dd:ee:ff")},
+            name="EPP Device",
+        )
+
+        entity = ent_reg.async_get_or_create(
+            "sensor",
+            "esphome",
+            unique_id="esphome_aabbccddeeff_unavail",
+            config_entry=esphome_entry,
+            device_id=device.id,
+        )
+
+        manager.devices["AA:BB:CC:DD:EE:FF"] = ManagedDevice(
+            mac="AA:BB:CC:DD:EE:FF", name="EPP", host="192.168.1.50", device_id=device.id
+        )
+        manager._pushing.add("AA:BB:CC:DD:EE:FF")
+
+        with patch.object(manager, "_fire_device_list_changed") as mock_fire:
+            old_state = MagicMock()
+            old_state.state = "25.5"
+            new_state = MagicMock()
+            new_state.state = STATE_UNAVAILABLE
+
+            event = MagicMock()
+            event.data = {
+                "entity_id": entity.entity_id,
+                "old_state": old_state,
+                "new_state": new_state,
+            }
+            manager._on_state_changed(event)
+            await hass.async_block_till_done()
+
+        assert "AA:BB:CC:DD:EE:FF" not in manager._pushing
+        mock_fire.assert_called_once()
+
+    async def test_is_device_available_all_unavailable(
+        self, hass: HomeAssistant, manager: DeviceManager
+    ) -> None:
+        """_is_device_available returns False when all ESPHome entities are unavailable."""
+        dev_reg = dr.async_get(hass)
+        ent_reg = er.async_get(hass)
+
+        esphome_entry = MockConfigEntry(
+            domain="esphome",
+            data={"host": "192.168.1.50"},
+            title="EPP Device",
+        )
+        esphome_entry.add_to_hass(hass)
+
+        device = dev_reg.async_get_or_create(
+            config_entry_id=esphome_entry.entry_id,
+            connections={("mac", "aa:bb:cc:dd:ee:ff")},
+            name="EPP Device",
+        )
+
+        ent_reg.async_get_or_create(
+            "sensor",
+            "esphome",
+            unique_id="esphome_aabbccddeeff_avail_check",
+            config_entry=esphome_entry,
+            device_id=device.id,
+        )
+
+        manager.devices["AA:BB:CC:DD:EE:FF"] = ManagedDevice(
+            mac="AA:BB:CC:DD:EE:FF", name="EPP", host="192.168.1.50", device_id=device.id
+        )
+
+        # Set entity state to unavailable
+        hass.states.async_set("sensor.esphome_aabbccddeeff_avail_check", STATE_UNAVAILABLE)
+
+        assert manager._is_device_available("AA:BB:CC:DD:EE:FF") is False
+
+    async def test_is_device_available_some_available(
+        self, hass: HomeAssistant, manager: DeviceManager
+    ) -> None:
+        """_is_device_available returns True when at least one ESPHome entity is available."""
+        dev_reg = dr.async_get(hass)
+        ent_reg = er.async_get(hass)
+
+        esphome_entry = MockConfigEntry(
+            domain="esphome",
+            data={"host": "192.168.1.50"},
+            title="EPP Device",
+        )
+        esphome_entry.add_to_hass(hass)
+
+        device = dev_reg.async_get_or_create(
+            config_entry_id=esphome_entry.entry_id,
+            connections={("mac", "aa:bb:cc:dd:ee:ff")},
+            name="EPP Device",
+        )
+
+        entity = ent_reg.async_get_or_create(
+            "sensor",
+            "esphome",
+            unique_id="esphome_aabbccddeeff_avail_ok",
+            config_entry=esphome_entry,
+            device_id=device.id,
+        )
+
+        manager.devices["AA:BB:CC:DD:EE:FF"] = ManagedDevice(
+            mac="AA:BB:CC:DD:EE:FF", name="EPP", host="192.168.1.50", device_id=device.id
+        )
+
+        # Set entity state to a normal value using the actual registered entity_id
+        hass.states.async_set(entity.entity_id, "25.5")
+
+        assert manager._is_device_available("AA:BB:CC:DD:EE:FF") is True
+
+    async def test_open_session_returns_none_when_unavailable(
+        self, hass: HomeAssistant, manager: DeviceManager
+    ) -> None:
+        """async_open_session returns None when _is_device_available is False."""
+        dev_reg = dr.async_get(hass)
+        ent_reg = er.async_get(hass)
+
+        esphome_entry = MockConfigEntry(
+            domain="esphome",
+            data={"host": "192.168.1.50"},
+            title="EPP Device",
+        )
+        esphome_entry.add_to_hass(hass)
+
+        device = dev_reg.async_get_or_create(
+            config_entry_id=esphome_entry.entry_id,
+            connections={("mac", "aa:bb:cc:dd:ee:ff")},
+            name="EPP Device",
+        )
+
+        ent_reg.async_get_or_create(
+            "sensor",
+            "esphome",
+            unique_id="esphome_aabbccddeeff_session_check",
+            config_entry=esphome_entry,
+            device_id=device.id,
+        )
+
+        manager.devices["AA:BB:CC:DD:EE:FF"] = ManagedDevice(
+            mac="AA:BB:CC:DD:EE:FF", name="EPP", host="192.168.1.50", device_id=device.id
+        )
+
+        # All entities unavailable
+        hass.states.async_set("sensor.esphome_aabbccddeeff_session_check", STATE_UNAVAILABLE)
+
+        result = await manager.async_open_session("AA:BB:CC:DD:EE:FF")
+        assert result is None
+
     async def test_push_config_to_device_no_config(
         self, hass: HomeAssistant, store: EPPGridStore, manager: DeviceManager
     ) -> None:
