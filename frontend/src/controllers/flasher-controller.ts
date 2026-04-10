@@ -95,7 +95,7 @@ export class FlasherController implements ReactiveController {
 					this._otaSuccess(mac);
 				} else {
 					this.otaStates[mac] = { state: "updating", progress, error: null };
-					this._startOtaTimeout(mac, progress != null && progress > 0 ? 3000 : 15000);
+					this._startOtaTimeout(mac, progress != null && progress > 0 ? 10000 : 15000);
 				}
 				break;
 			}
@@ -132,13 +132,13 @@ export class FlasherController implements ReactiveController {
 			const ota = this.otaStates[mac];
 			if (!ota || ota.state !== "updating") return;
 			if (ota.progress != null && ota.progress > 0) {
-				// Had progress then stopped — treat as success (device rebooting)
-				this._otaSuccess(mac);
+				// Had progress then stopped — connection lost
+				this.otaStates[mac] = { state: "error", progress: null, error: "Connection lost during update" };
 			} else {
 				// No progress ever received — update failed to start
 				this.otaStates[mac] = { state: "error", progress: null, error: "Update timed out" };
-				this._unsubOta(mac);
 			}
+			this._unsubOta(mac);
 			this._host.requestUpdate();
 		}, ms);
 	}

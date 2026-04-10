@@ -461,16 +461,20 @@ describe("FlasherController", () => {
 			expect(host.requestUpdate).toHaveBeenCalled();
 		});
 
-		it("transitions to success on inactivity timeout when progress was received", async () => {
+		it("transitions to error on timeout when progress stopped mid-update", async () => {
 			vi.useFakeTimers();
 			await ctrl.startOta("AA:BB:CC:DD:EE:01");
 
 			const callback = hass.connection.subscribeMessage.mock.calls[0][0];
 			callback({ state: "updating", progress: 50 });
 
-			vi.advanceTimersByTime(3000);
+			vi.advanceTimersByTime(10000);
 
-			expect(ctrl.otaStates["AA:BB:CC:DD:EE:01"].state).toBe("success");
+			expect(ctrl.otaStates["AA:BB:CC:DD:EE:01"]).toEqual({
+				state: "error",
+				progress: null,
+				error: "Connection lost during update",
+			});
 			vi.useRealTimers();
 		});
 
