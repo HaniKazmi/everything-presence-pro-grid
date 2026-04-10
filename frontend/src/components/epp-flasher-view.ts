@@ -12,7 +12,11 @@ import { html, LitElement, nothing } from "lit";
 import { property, state } from "lit/decorators.js";
 import type { WifiNetwork } from "../lib/improv-serial.js";
 import { flasherStyles } from "../styles.js";
-import type { FlashableDevice, OtaDeviceState, UsbFlashState } from "../types.js";
+import type {
+	FlashableDevice,
+	OtaDeviceState,
+	UsbFlashState,
+} from "../types.js";
 
 const WIFI_ICONS_LOCK = [
 	mdiWifiStrength1Lock,
@@ -49,7 +53,8 @@ export class EppFlasherView extends LitElement {
 	@property() integrationVersion = "";
 	@property({ attribute: false }) usbFlashState: UsbFlashState | null = null;
 	@property({ attribute: false }) wifiNetworks: WifiNetwork[] = [];
-	@property({ attribute: false }) otaStates: Record<string, OtaDeviceState> = {};
+	@property({ attribute: false }) otaStates: Record<string, OtaDeviceState> =
+		{};
 
 	@state() private _hasWebSerial: boolean =
 		typeof navigator !== "undefined" && "serial" in navigator;
@@ -92,7 +97,9 @@ export class EppFlasherView extends LitElement {
 		);
 	}
 
-	private _renderOtaIndicator(device: FlashableDevice): typeof nothing | ReturnType<typeof html> {
+	private _renderOtaIndicator(
+		device: FlashableDevice,
+	): typeof nothing | ReturnType<typeof html> {
 		const ota = this.otaStates[device.mac];
 		if (!ota) return nothing;
 
@@ -124,14 +131,18 @@ export class EppFlasherView extends LitElement {
 							icon="mdi:alert-circle"
 							@click=${(e: Event) => this._toggleErrorPopover(e, device.mac)}
 						></ha-icon>
-						${device.available
-							? html`<ha-button @click=${() => this._dispatchRetryOta(device)}>
+						${
+							device.available
+								? html`<ha-button @click=${() => this._dispatchRetryOta(device)}>
 								${this.localize("flasher.ota_retry")}
 							</ha-button>`
-							: nothing}
-						${this._errorPopoverMac === device.mac
-							? html`<div class="ota-error-popover">${ota.error}</div>`
-							: nothing}
+								: nothing
+						}
+						${
+							this._errorPopoverMac === device.mac
+								? html`<div class="ota-error-popover">${ota.error}</div>`
+								: nothing
+						}
 					</div>`;
 		}
 	}
@@ -344,49 +355,52 @@ export class EppFlasherView extends LitElement {
                 </div>`
 								: html`
                 <div class="device-list">
-                  ${flashableDevices.map(
-									(device) => {
-										const isFaded = !device.available || device.firmware_type === "original";
+                  ${flashableDevices.map((device) => {
+										const isFaded =
+											!device.available || device.firmware_type === "original";
 										return html`
                       <div class="device-row">
                         <div class="device-info${isFaded ? " device-info-faded" : ""}">
                           <div class="device-name">${device.name} <span class="device-mac">(${device.mac.replace(/:/g, "").slice(-6).toLowerCase()})</span></div>
                           <div class="device-host">${device.host ?? this.localize("flasher.offline")}${
-														device.firmware_type === "eppgrid" && device.firmware_version && device.firmware_version !== "unknown"
-															? ` - v${device.firmware_version}` : ""}</div>
+														device.firmware_type === "eppgrid" &&
+														device.firmware_version &&
+														device.firmware_version !== "unknown"
+															? ` - v${device.firmware_version}`
+															: ""
+													}</div>
                         </div>
                         ${
-														!device.available
-															? html`<span class="firmware-badge firmware-badge-offline">${this.localize("flasher.offline")}</span>`
-															: nothing
-													}
+													!device.available
+														? html`<span class="firmware-badge firmware-badge-offline">${this.localize("flasher.offline")}</span>`
+														: nothing
+												}
                         ${
-														device.firmware_type === "original"
-															? html`<span class="firmware-badge firmware-badge-original">${this.localize("flasher.flash_usb")}</span>`
-															: nothing
-													}
+													device.firmware_type === "original"
+														? html`<span class="firmware-badge firmware-badge-original">${this.localize("flasher.flash_usb")}</span>`
+														: nothing
+												}
                         ${
-														device.firmware_type === "eppgrid" &&
-														device.firmware_status === "firmware_ahead"
-															? html`<span class="firmware-badge firmware-badge-ahead">${this.localize("flasher.integration_update")}</span>`
-															: nothing
-													}
+													device.firmware_type === "eppgrid" &&
+													device.firmware_status === "firmware_ahead"
+														? html`<span class="firmware-badge firmware-badge-ahead">${this.localize("flasher.integration_update")}</span>`
+														: nothing
+												}
                         ${
-														this.otaStates[device.mac]
-															? this._renderOtaIndicator(device)
-															: device.firmware_type === "eppgrid" &&
-																	(device.update_available ||
-																		device.firmware_status === "firmware_behind")
-																? html`<ha-button
+													this.otaStates[device.mac]
+														? this._renderOtaIndicator(device)
+														: device.firmware_type === "eppgrid" &&
+																(device.update_available ||
+																	device.firmware_status === "firmware_behind")
+															? html`<ha-button
 																		raised
 																		@click=${() => this._dispatchUpdateFirmware(device)}
 																	>${this.localize("flasher.update")}</ha-button>`
-																: nothing
-													}
+															: nothing
+												}
                       </div>
                     `;
-									},
-								)}
+									})}
                 </div>
               `
 						}

@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock
+from unittest.mock import MagicMock
+from unittest.mock import patch
 
 import pytest
 from homeassistant.core import HomeAssistant
@@ -67,9 +69,16 @@ def make_mock_device_conn(entities=None):
     return conn
 
 
-def make_update_state(*, in_progress=False, has_progress=False, progress=0.0,
-                      current_version="0.89.0", latest_version="0.90.0-alpha",
-                      key=1, missing_state=False):
+def make_update_state(
+    *,
+    in_progress=False,
+    has_progress=False,
+    progress=0.0,
+    current_version="0.89.0",
+    latest_version="0.90.0-alpha",
+    key=1,
+    missing_state=False,
+):
     from aioesphomeapi import UpdateState
 
     return UpdateState(
@@ -84,12 +93,14 @@ def make_update_state(*, in_progress=False, has_progress=False, progress=0.0,
 
 
 class TestSubscribeOtaProgress:
-
     async def test_sends_error_when_integration_not_loaded(
-        self, hass: HomeAssistant, config_entry: MockConfigEntry,
+        self,
+        hass: HomeAssistant,
+        config_entry: MockConfigEntry,
     ) -> None:
-        mock_dm = await setup_integration(hass, config_entry)
+        await setup_integration(hass, config_entry)
         from custom_components.eppgrid.websocket_api import websocket_subscribe_ota_progress
+
         hass.data.pop("eppgrid", None)
         connection = MagicMock()
         msg = {"id": 1, "type": "eppgrid/subscribe_ota_progress", "mac": "AA:BB:CC:DD:EE:FF"}
@@ -97,23 +108,29 @@ class TestSubscribeOtaProgress:
         connection.send_error.assert_called_once_with(1, "not_ready", "Integration not loaded")
 
     async def test_sends_error_when_no_session(
-        self, hass: HomeAssistant, config_entry: MockConfigEntry,
+        self,
+        hass: HomeAssistant,
+        config_entry: MockConfigEntry,
     ) -> None:
         mock_dm = await setup_integration(hass, config_entry)
         mock_dm.get_session.return_value = None
         from custom_components.eppgrid.websocket_api import websocket_subscribe_ota_progress
+
         connection = MagicMock()
         msg = {"id": 1, "type": "eppgrid/subscribe_ota_progress", "mac": "AA:BB:CC:DD:EE:FF"}
         await call_async_handler(hass, websocket_subscribe_ota_progress, connection, msg)
         connection.send_error.assert_called_once_with(1, "no_session", "Device not available")
 
     async def test_subscribes_and_sends_result(
-        self, hass: HomeAssistant, config_entry: MockConfigEntry,
+        self,
+        hass: HomeAssistant,
+        config_entry: MockConfigEntry,
     ) -> None:
         mock_dm = await setup_integration(hass, config_entry)
         device_conn = make_mock_device_conn()
         mock_dm.get_session.return_value = device_conn
         from custom_components.eppgrid.websocket_api import websocket_subscribe_ota_progress
+
         connection = MagicMock()
         connection.subscriptions = {}
         msg = {"id": 1, "type": "eppgrid/subscribe_ota_progress", "mac": "AA:BB:CC:DD:EE:FF"}
@@ -123,12 +140,15 @@ class TestSubscribeOtaProgress:
         assert 1 in connection.subscriptions
 
     async def test_forwards_progress_events(
-        self, hass: HomeAssistant, config_entry: MockConfigEntry,
+        self,
+        hass: HomeAssistant,
+        config_entry: MockConfigEntry,
     ) -> None:
         mock_dm = await setup_integration(hass, config_entry)
         device_conn = make_mock_device_conn()
         mock_dm.get_session.return_value = device_conn
         from custom_components.eppgrid.websocket_api import websocket_subscribe_ota_progress
+
         connection = MagicMock()
         connection.subscriptions = {}
         msg = {"id": 1, "type": "eppgrid/subscribe_ota_progress", "mac": "AA:BB:CC:DD:EE:FF"}
@@ -137,17 +157,21 @@ class TestSubscribeOtaProgress:
         state = make_update_state(in_progress=True, has_progress=True, progress=65.0)
         on_state(state)
         from homeassistant.components.websocket_api import event_message
+
         connection.send_message.assert_called_once()
         sent = connection.send_message.call_args[0][0]
         assert sent == event_message(1, {"state": "updating", "progress": 65.0})
 
     async def test_forwards_indeterminate_progress(
-        self, hass: HomeAssistant, config_entry: MockConfigEntry,
+        self,
+        hass: HomeAssistant,
+        config_entry: MockConfigEntry,
     ) -> None:
         mock_dm = await setup_integration(hass, config_entry)
         device_conn = make_mock_device_conn()
         mock_dm.get_session.return_value = device_conn
         from custom_components.eppgrid.websocket_api import websocket_subscribe_ota_progress
+
         connection = MagicMock()
         connection.subscriptions = {}
         msg = {"id": 1, "type": "eppgrid/subscribe_ota_progress", "mac": "AA:BB:CC:DD:EE:FF"}
@@ -156,34 +180,42 @@ class TestSubscribeOtaProgress:
         state = make_update_state(in_progress=True, has_progress=False)
         on_state(state)
         from homeassistant.components.websocket_api import event_message
+
         connection.send_message.assert_called_once()
         sent = connection.send_message.call_args[0][0]
         assert sent == event_message(1, {"state": "updating", "progress": None})
 
     async def test_ignores_non_update_states(
-        self, hass: HomeAssistant, config_entry: MockConfigEntry,
+        self,
+        hass: HomeAssistant,
+        config_entry: MockConfigEntry,
     ) -> None:
         mock_dm = await setup_integration(hass, config_entry)
         device_conn = make_mock_device_conn()
         mock_dm.get_session.return_value = device_conn
         from custom_components.eppgrid.websocket_api import websocket_subscribe_ota_progress
+
         connection = MagicMock()
         connection.subscriptions = {}
         msg = {"id": 1, "type": "eppgrid/subscribe_ota_progress", "mac": "AA:BB:CC:DD:EE:FF"}
         await call_async_handler(hass, websocket_subscribe_ota_progress, connection, msg)
         on_state = device_conn.subscribe_states.call_args[0][0]
         from aioesphomeapi import SensorState
+
         sensor_state = SensorState(key=1, state=42.0, missing_state=False)
         on_state(sensor_state)
         connection.send_message.assert_not_called()
 
     async def test_sends_success_on_version_match(
-        self, hass: HomeAssistant, config_entry: MockConfigEntry,
+        self,
+        hass: HomeAssistant,
+        config_entry: MockConfigEntry,
     ) -> None:
         mock_dm = await setup_integration(hass, config_entry)
         device_conn = make_mock_device_conn()
         mock_dm.get_session.return_value = device_conn
         from custom_components.eppgrid.websocket_api import websocket_subscribe_ota_progress
+
         connection = MagicMock()
         connection.subscriptions = {}
         msg = {"id": 1, "type": "eppgrid/subscribe_ota_progress", "mac": "AA:BB:CC:DD:EE:FF"}
@@ -192,16 +224,20 @@ class TestSubscribeOtaProgress:
         on_state(make_update_state(in_progress=True, has_progress=True, progress=100.0))
         on_state(make_update_state(in_progress=False, current_version="0.90.0-alpha", latest_version="0.90.0-alpha"))
         from homeassistant.components.websocket_api import event_message
+
         calls = [c[0][0] for c in connection.send_message.call_args_list]
         assert event_message(1, {"state": "success", "version": "0.90.0-alpha"}) in calls
 
     async def test_sends_error_on_version_mismatch(
-        self, hass: HomeAssistant, config_entry: MockConfigEntry,
+        self,
+        hass: HomeAssistant,
+        config_entry: MockConfigEntry,
     ) -> None:
         mock_dm = await setup_integration(hass, config_entry)
         device_conn = make_mock_device_conn()
         mock_dm.get_session.return_value = device_conn
         from custom_components.eppgrid.websocket_api import websocket_subscribe_ota_progress
+
         connection = MagicMock()
         connection.subscriptions = {}
         msg = {"id": 1, "type": "eppgrid/subscribe_ota_progress", "mac": "AA:BB:CC:DD:EE:FF"}
@@ -210,16 +246,22 @@ class TestSubscribeOtaProgress:
         on_state(make_update_state(in_progress=True, has_progress=True, progress=30.0))
         on_state(make_update_state(in_progress=False, current_version="0.89.0", latest_version="0.90.0-alpha"))
         from homeassistant.components.websocket_api import event_message
+
         calls = [c[0][0] for c in connection.send_message.call_args_list]
-        assert event_message(1, {"state": "error", "message": "Update failed \u2014 firmware version unchanged"}) in calls
+        assert (
+            event_message(1, {"state": "error", "message": "Update failed \u2014 firmware version unchanged"}) in calls
+        )
 
     async def test_unsubscribe_cleans_up(
-        self, hass: HomeAssistant, config_entry: MockConfigEntry,
+        self,
+        hass: HomeAssistant,
+        config_entry: MockConfigEntry,
     ) -> None:
         mock_dm = await setup_integration(hass, config_entry)
         device_conn = make_mock_device_conn()
         mock_dm.get_session.return_value = device_conn
         from custom_components.eppgrid.websocket_api import websocket_subscribe_ota_progress
+
         connection = MagicMock()
         connection.subscriptions = {}
         msg = {"id": 1, "type": "eppgrid/subscribe_ota_progress", "mac": "AA:BB:CC:DD:EE:FF"}
@@ -231,13 +273,16 @@ class TestSubscribeOtaProgress:
         device_conn.remove_log_callback.assert_called_once_with(on_log)
 
     async def test_forwards_device_log_errors(
-        self, hass: HomeAssistant, config_entry: MockConfigEntry,
+        self,
+        hass: HomeAssistant,
+        config_entry: MockConfigEntry,
     ) -> None:
         """When device logs an http_request error, emit error event immediately."""
         mock_dm = await setup_integration(hass, config_entry)
         device_conn = make_mock_device_conn()
         mock_dm.get_session.return_value = device_conn
         from custom_components.eppgrid.websocket_api import websocket_subscribe_ota_progress
+
         connection = MagicMock()
         connection.subscriptions = {}
         msg = {"id": 1, "type": "eppgrid/subscribe_ota_progress", "mac": "AA:BB:CC:DD:EE:FF"}
@@ -247,26 +292,36 @@ class TestSubscribeOtaProgress:
 
         # Simulate an ESPHome error log message
         from aioesphomeapi import LogLevel as ESPLogLevel
+
         log_msg = MagicMock()
         log_msg.level = ESPLogLevel.LOG_LEVEL_ERROR
-        log_msg.message = "[E][http_request.update:098][update_task]: Failed to fetch manifest from https://example.com/manifest.json"
+        log_msg.message = (
+            "[E][http_request.update:098][update_task]: Failed to fetch manifest from https://example.com/manifest.json"
+        )
         on_log(log_msg)
 
         from homeassistant.components.websocket_api import event_message
+
         connection.send_message.assert_called_once()
         sent = connection.send_message.call_args[0][0]
-        assert sent == event_message(1, {
-            "state": "error",
-            "message": "Failed to fetch manifest from https://example.com/manifest.json",
-        })
+        assert sent == event_message(
+            1,
+            {
+                "state": "error",
+                "message": "Failed to fetch manifest from https://example.com/manifest.json",
+            },
+        )
 
     async def test_ignores_non_http_request_log_errors(
-        self, hass: HomeAssistant, config_entry: MockConfigEntry,
+        self,
+        hass: HomeAssistant,
+        config_entry: MockConfigEntry,
     ) -> None:
         mock_dm = await setup_integration(hass, config_entry)
         device_conn = make_mock_device_conn()
         mock_dm.get_session.return_value = device_conn
         from custom_components.eppgrid.websocket_api import websocket_subscribe_ota_progress
+
         connection = MagicMock()
         connection.subscriptions = {}
         msg = {"id": 1, "type": "eppgrid/subscribe_ota_progress", "mac": "AA:BB:CC:DD:EE:FF"}
@@ -275,6 +330,7 @@ class TestSubscribeOtaProgress:
         on_log = device_conn.add_log_callback.call_args[0][0]
 
         from aioesphomeapi import LogLevel as ESPLogLevel
+
         log_msg = MagicMock()
         log_msg.level = ESPLogLevel.LOG_LEVEL_ERROR
         log_msg.message = "[E][wifi:123]: Connection lost"
@@ -283,13 +339,16 @@ class TestSubscribeOtaProgress:
         connection.send_message.assert_not_called()
 
     async def test_ignores_cleared_error_flag_log(
-        self, hass: HomeAssistant, config_entry: MockConfigEntry,
+        self,
+        hass: HomeAssistant,
+        config_entry: MockConfigEntry,
     ) -> None:
         """The 'cleared Error flag' log from http_request is not an actual error."""
         mock_dm = await setup_integration(hass, config_entry)
         device_conn = make_mock_device_conn()
         mock_dm.get_session.return_value = device_conn
         from custom_components.eppgrid.websocket_api import websocket_subscribe_ota_progress
+
         connection = MagicMock()
         connection.subscriptions = {}
         msg = {"id": 1, "type": "eppgrid/subscribe_ota_progress", "mac": "AA:BB:CC:DD:EE:FF"}
@@ -298,6 +357,7 @@ class TestSubscribeOtaProgress:
         on_log = device_conn.add_log_callback.call_args[0][0]
 
         from aioesphomeapi import LogLevel as ESPLogLevel
+
         log_msg = MagicMock()
         log_msg.level = ESPLogLevel.LOG_LEVEL_ERROR
         log_msg.message = "[E][component:433]: http_request.update cleared Error flag"

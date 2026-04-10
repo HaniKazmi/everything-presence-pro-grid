@@ -1,6 +1,10 @@
 import type { ReactiveController, ReactiveControllerHost } from "lit";
 import type { WifiNetwork } from "../lib/improv-serial.js";
-import type { FlashableDevice, OtaDeviceState, UsbFlashState } from "../types.js";
+import type {
+	FlashableDevice,
+	OtaDeviceState,
+	UsbFlashState,
+} from "../types.js";
 
 export class FlasherController implements ReactiveController {
 	flashableDevices: FlashableDevice[] = [];
@@ -23,7 +27,7 @@ export class FlasherController implements ReactiveController {
 	private _serialPort: SerialPort | null = null;
 	private _opId = 0;
 	private _opRunning = false;
-	private _otaUnsubs: Record<string, (() => void)> = {};
+	private _otaUnsubs: Record<string, () => void> = {};
 	private _otaTimeouts: Record<string, ReturnType<typeof setTimeout>> = {};
 
 	constructor(host: ReactiveControllerHost) {
@@ -95,7 +99,10 @@ export class FlasherController implements ReactiveController {
 					this._otaSuccess(mac);
 				} else {
 					this.otaStates[mac] = { state: "updating", progress, error: null };
-					this._startOtaTimeout(mac, progress != null && progress > 0 ? 10000 : 15000);
+					this._startOtaTimeout(
+						mac,
+						progress != null && progress > 0 ? 10000 : 15000,
+					);
 				}
 				break;
 			}
@@ -133,10 +140,18 @@ export class FlasherController implements ReactiveController {
 			if (!ota || ota.state !== "updating") return;
 			if (ota.progress != null && ota.progress > 0) {
 				// Had progress then stopped — connection lost
-				this.otaStates[mac] = { state: "error", progress: null, error: "Connection lost during update" };
+				this.otaStates[mac] = {
+					state: "error",
+					progress: null,
+					error: "Connection lost during update",
+				};
 			} else {
 				// No progress ever received — update failed to start
-				this.otaStates[mac] = { state: "error", progress: null, error: "Update timed out" };
+				this.otaStates[mac] = {
+					state: "error",
+					progress: null,
+					error: "Update timed out",
+				};
 			}
 			this._unsubOta(mac);
 			this._host.requestUpdate();
@@ -235,7 +250,11 @@ export class FlasherController implements ReactiveController {
 			if (ota.state !== "updating") continue;
 			const device = this.flashableDevices.find((d) => d.mac === mac);
 			if (device && !device.available) {
-				this.otaStates[mac] = { state: "error", progress: null, error: "Device went offline during update" };
+				this.otaStates[mac] = {
+					state: "error",
+					progress: null,
+					error: "Device went offline during update",
+				};
 				this._unsubOta(mac);
 				this._resetOtaTimeout(mac);
 				this._host.requestUpdate();

@@ -1159,7 +1159,11 @@ describe("OTA inline rendering", () => {
 
 	it("renders ota-error and retry button when error", () => {
 		const otaStates: Record<string, OtaDeviceState> = {
-			[updatableDevice.mac]: { state: "error", progress: null, error: "Update failed" },
+			[updatableDevice.mac]: {
+				state: "error",
+				progress: null,
+				error: "Update failed",
+			},
 		};
 		const el = createView({
 			flashableDevices: [updatableDevice],

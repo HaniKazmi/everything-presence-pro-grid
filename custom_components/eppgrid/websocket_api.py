@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import json
 import logging
 from pathlib import Path
@@ -1177,10 +1178,8 @@ async def websocket_subscribe_ota_progress(
     mac = msg["mac"]
     device_conn = manager.get_session(mac)
     if device_conn is None:
-        try:
+        with contextlib.suppress(Exception):
             device_conn = await manager.async_open_session(mac)
-        except Exception:
-            pass
     if device_conn is None:
         connection.send_error(msg["id"], "no_session", "Device not available")
         return
@@ -1207,27 +1206,36 @@ async def websocket_subscribe_ota_progress(
             was_in_progress = True
             progress = state.progress if state.has_progress else None
             connection.send_message(
-                websocket_api.event_message(msg["id"], {
-                    "state": "updating",
-                    "progress": progress,
-                })
+                websocket_api.event_message(
+                    msg["id"],
+                    {
+                        "state": "updating",
+                        "progress": progress,
+                    },
+                )
             )
         elif was_in_progress:
             was_in_progress = False
             done = True
             if state.current_version and state.current_version == state.latest_version:
                 connection.send_message(
-                    websocket_api.event_message(msg["id"], {
-                        "state": "success",
-                        "version": state.current_version,
-                    })
+                    websocket_api.event_message(
+                        msg["id"],
+                        {
+                            "state": "success",
+                            "version": state.current_version,
+                        },
+                    )
                 )
             else:
                 connection.send_message(
-                    websocket_api.event_message(msg["id"], {
-                        "state": "error",
-                        "message": "Update failed \u2014 firmware version unchanged",
-                    })
+                    websocket_api.event_message(
+                        msg["id"],
+                        {
+                            "state": "error",
+                            "message": "Update failed \u2014 firmware version unchanged",
+                        },
+                    )
                 )
 
     @callback
@@ -1255,10 +1263,13 @@ async def websocket_subscribe_ota_progress(
         parts = text.split("]: ", 1)
         clean_msg = parts[1] if len(parts) > 1 else text
         connection.send_message(
-            websocket_api.event_message(msg["id"], {
-                "state": "error",
-                "message": clean_msg,
-            })
+            websocket_api.event_message(
+                msg["id"],
+                {
+                    "state": "error",
+                    "message": clean_msg,
+                },
+            )
         )
 
     device_conn.subscribe_states(_on_state)

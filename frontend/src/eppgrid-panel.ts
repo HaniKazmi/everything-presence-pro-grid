@@ -1366,12 +1366,12 @@ export class EPPGridPanel extends LitElement {
 					isBehind
 						? html`<button class="wizard-btn wizard-btn-primary"
 						@click=${() => {
-						this._panelTab = "flasher";
-						if (this._flasherCtrl.loading) {
-							this._flasherCtrl.hass = this.hass;
-							this._flasherCtrl.subscribeDeviceList();
-						}
-					}}
+							this._panelTab = "flasher";
+							if (this._flasherCtrl.loading) {
+								this._flasherCtrl.hass = this.hass;
+								this._flasherCtrl.subscribeDeviceList();
+							}
+						}}
 					>${this._localize("protocol.update_firmware")}</button>`
 						: nothing
 				}
