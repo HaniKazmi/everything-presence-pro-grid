@@ -679,7 +679,7 @@ export const flasherStyles = css`
     to { transform: rotate(360deg); }
   }
   .ota-success {
-    --mdc-icon-size: 24px;
+    --mdc-icon-size: 36px;
     color: var(--success-color, #4caf50);
     flex-shrink: 0;
   }

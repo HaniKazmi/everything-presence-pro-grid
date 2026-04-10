@@ -688,7 +688,7 @@ const At={attribute:!0,type:String,converter:E,reflect:!1,hasChanged:m},dt=(t=At
     to { transform: rotate(360deg); }
   }
   .ota-success {
-    --mdc-icon-size: 24px;
+    --mdc-icon-size: 36px;
     color: var(--success-color, #4caf50);
     flex-shrink: 0;
   }
