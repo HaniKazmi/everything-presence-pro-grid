@@ -1177,7 +1177,12 @@ async def websocket_subscribe_ota_progress(
     mac = msg["mac"]
     device_conn = manager.get_session(mac)
     if device_conn is None:
-        connection.send_error(msg["id"], "no_session", "No active session for device")
+        try:
+            device_conn = await manager.async_open_session(mac)
+        except Exception:
+            pass
+    if device_conn is None:
+        connection.send_error(msg["id"], "no_session", "Device not available")
         return
 
     was_in_progress = False

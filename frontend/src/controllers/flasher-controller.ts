@@ -58,7 +58,7 @@ export class FlasherController implements ReactiveController {
 			this.otaStates[mac] = {
 				state: "error",
 				progress: null,
-				error: err.message || String(err),
+				error: "Failed to start update. Is the device online?",
 			};
 			this._host.requestUpdate();
 			return;
@@ -79,7 +79,7 @@ export class FlasherController implements ReactiveController {
 			this.otaStates[mac] = {
 				state: "error",
 				progress: null,
-				error: err.message || String(err),
+				error: "Failed to connect to device",
 			};
 			this._host.requestUpdate();
 		}

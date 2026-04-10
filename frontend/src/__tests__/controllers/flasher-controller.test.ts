@@ -542,7 +542,7 @@ describe("FlasherController", () => {
 			expect(ctrl.otaStates["AA:BB:CC:DD:EE:01"]).toEqual({
 				state: "error",
 				progress: null,
-				error: "Device offline",
+				error: "Failed to start update. Is the device online?",
 			});
 		});
 	});

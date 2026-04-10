@@ -777,11 +777,28 @@ class DeviceManager:
         finally:
             await conn.async_disconnect()
 
+    def _is_device_available(self, mac: str) -> bool:
+        """Check HA entity states to determine if a device is reachable."""
+        dev = self.devices.get(mac)
+        if dev is None or dev.device_id is None:
+            return False
+        ent_reg = er.async_get(self._hass)
+        for entry in er.async_entries_for_device(ent_reg, dev.device_id):
+            if entry.platform != "esphome":
+                continue
+            state = self._hass.states.get(entry.entity_id)
+            if state is not None and state.state not in ("unavailable", "unknown"):
+                return True
+        return False
+
     async def async_open_session(self, mac: str) -> DeviceConnection | None:
         """Open a persistent connection for a frontend session.
         Returns the connection, or None if the device is not available."""
         dev = self.devices.get(mac)
         if dev is None or dev.host is None:
+            return None
+        # Fast-fail if HA already knows the device is unavailable
+        if not self._is_device_available(mac):
             return None
         lock = self._session_locks.setdefault(mac, asyncio.Lock())
         async with lock:
@@ -792,7 +809,7 @@ class DeviceManager:
                 # Stale connection — clean up
                 await conn.async_disconnect()
             conn = DeviceConnection(dev.host)
-            await conn.async_connect()
+            await asyncio.wait_for(conn.async_connect(), timeout=30)
             self._active_connections[mac] = conn
             _LOGGER.info("Opened session for %s (%s)", dev.name, mac)
             # Subscribe to device logs if log levels are configured

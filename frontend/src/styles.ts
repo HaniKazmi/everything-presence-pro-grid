@@ -573,6 +573,7 @@ export const flasherStyles = css`
     align-items: center;
     gap: 12px;
     padding: 12px 16px;
+    min-height: 60px;
     background: var(--card-background-color, #fff);
     border: 1px solid var(--divider-color, #e0e0e0);
     border-radius: 10px;
@@ -670,11 +671,12 @@ export const flasherStyles = css`
     color: var(--primary-text-color, #212121);
   }
   .ota-spinner {
-    width: 36px;
-    height: 36px;
+    width: 31px;
+    height: 31px;
     border: 3px solid var(--divider-color, #e0e0e0);
     border-top-color: var(--primary-color, #03a9f4);
     border-radius: 50%;
+    box-sizing: border-box;
     animation: ota-spin 0.8s linear infinite;
     flex-shrink: 0;
   }
