@@ -72,6 +72,9 @@ export class FlasherController implements ReactiveController {
 				{ type: "eppgrid/subscribe_ota_progress", mac },
 			);
 			this._otaUnsubs[mac] = unsub;
+			// Start initial timeout — if no progress events arrive at all,
+			// the device rejected the update or something went wrong
+			this._startOtaTimeout(mac, 15000);
 		} catch (err: any) {
 			this.otaStates[mac] = {
 				state: "error",
@@ -130,10 +133,17 @@ export class FlasherController implements ReactiveController {
 	private _startOtaTimeout(mac: string, ms: number): void {
 		this._resetOtaTimeout(mac);
 		this._otaTimeouts[mac] = setTimeout(() => {
-			if (this.otaStates[mac]?.state === "updating") {
+			const ota = this.otaStates[mac];
+			if (!ota || ota.state !== "updating") return;
+			if (ota.progress != null && ota.progress > 0) {
+				// Had progress — device likely rebooted
 				this.otaStates[mac] = { state: "rebooting", progress: null, error: null };
-				this._host.requestUpdate();
+			} else {
+				// No progress ever received — update failed to start
+				this.otaStates[mac] = { state: "error", progress: null, error: "Update timed out" };
+				this._unsubOta(mac);
 			}
+			this._host.requestUpdate();
 		}, ms);
 	}
 

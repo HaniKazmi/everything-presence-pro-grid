@@ -461,7 +461,7 @@ describe("FlasherController", () => {
 			expect(host.requestUpdate).toHaveBeenCalled();
 		});
 
-		it("transitions to rebooting on inactivity timeout", async () => {
+		it("transitions to rebooting on inactivity timeout when progress was received", async () => {
 			vi.useFakeTimers();
 			await ctrl.startOta("AA:BB:CC:DD:EE:01");
 
@@ -471,6 +471,21 @@ describe("FlasherController", () => {
 			vi.advanceTimersByTime(15000);
 
 			expect(ctrl.otaStates["AA:BB:CC:DD:EE:01"].state).toBe("rebooting");
+			vi.useRealTimers();
+		});
+
+		it("transitions to error on timeout when no progress was received", async () => {
+			vi.useFakeTimers();
+			await ctrl.startOta("AA:BB:CC:DD:EE:01");
+
+			// No events arrive — initial timeout fires after 15s
+			vi.advanceTimersByTime(15000);
+
+			expect(ctrl.otaStates["AA:BB:CC:DD:EE:01"]).toEqual({
+				state: "error",
+				progress: null,
+				error: "Update timed out",
+			});
 			vi.useRealTimers();
 		});
 

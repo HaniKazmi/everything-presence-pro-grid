@@ -62,6 +62,8 @@ def make_mock_device_conn(entities=None):
     conn._entities = entities or []
     conn.subscribe_states = MagicMock()
     conn.unsubscribe_states = MagicMock()
+    conn.add_log_callback = MagicMock()
+    conn.remove_log_callback = MagicMock()
     return conn
 
 
@@ -223,5 +225,59 @@ class TestSubscribeOtaProgress:
         msg = {"id": 1, "type": "eppgrid/subscribe_ota_progress", "mac": "AA:BB:CC:DD:EE:FF"}
         await call_async_handler(hass, websocket_subscribe_ota_progress, connection, msg)
         on_state = device_conn.subscribe_states.call_args[0][0]
+        on_log = device_conn.add_log_callback.call_args[0][0]
         connection.subscriptions[1]()
         device_conn.unsubscribe_states.assert_called_once_with(on_state)
+        device_conn.remove_log_callback.assert_called_once_with(on_log)
+
+    async def test_forwards_device_log_errors(
+        self, hass: HomeAssistant, config_entry: MockConfigEntry,
+    ) -> None:
+        """When device logs an http_request error, emit error event immediately."""
+        mock_dm = await setup_integration(hass, config_entry)
+        device_conn = make_mock_device_conn()
+        mock_dm.get_session.return_value = device_conn
+        from custom_components.eppgrid.websocket_api import websocket_subscribe_ota_progress
+        connection = MagicMock()
+        connection.subscriptions = {}
+        msg = {"id": 1, "type": "eppgrid/subscribe_ota_progress", "mac": "AA:BB:CC:DD:EE:FF"}
+        await call_async_handler(hass, websocket_subscribe_ota_progress, connection, msg)
+
+        on_log = device_conn.add_log_callback.call_args[0][0]
+
+        # Simulate an ESPHome error log message
+        from aioesphomeapi import LogLevel as ESPLogLevel
+        log_msg = MagicMock()
+        log_msg.level = ESPLogLevel.LOG_LEVEL_ERROR
+        log_msg.message = "[E][http_request.update:098][update_task]: Failed to fetch manifest from https://example.com/manifest.json"
+        on_log(log_msg)
+
+        from homeassistant.components.websocket_api import event_message
+        connection.send_message.assert_called_once()
+        sent = connection.send_message.call_args[0][0]
+        assert sent == event_message(1, {
+            "state": "error",
+            "message": "Failed to fetch manifest from https://example.com/manifest.json",
+        })
+
+    async def test_ignores_non_http_request_log_errors(
+        self, hass: HomeAssistant, config_entry: MockConfigEntry,
+    ) -> None:
+        mock_dm = await setup_integration(hass, config_entry)
+        device_conn = make_mock_device_conn()
+        mock_dm.get_session.return_value = device_conn
+        from custom_components.eppgrid.websocket_api import websocket_subscribe_ota_progress
+        connection = MagicMock()
+        connection.subscriptions = {}
+        msg = {"id": 1, "type": "eppgrid/subscribe_ota_progress", "mac": "AA:BB:CC:DD:EE:FF"}
+        await call_async_handler(hass, websocket_subscribe_ota_progress, connection, msg)
+
+        on_log = device_conn.add_log_callback.call_args[0][0]
+
+        from aioesphomeapi import LogLevel as ESPLogLevel
+        log_msg = MagicMock()
+        log_msg.level = ESPLogLevel.LOG_LEVEL_ERROR
+        log_msg.message = "[E][wifi:123]: Connection lost"
+        on_log(log_msg)
+
+        connection.send_message.assert_not_called()

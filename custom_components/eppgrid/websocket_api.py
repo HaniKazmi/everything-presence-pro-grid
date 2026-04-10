@@ -1180,6 +1180,7 @@ async def websocket_subscribe_ota_progress(
         return
 
     was_in_progress = False
+    error_sent = False
 
     @callback
     def _on_state(state: Any) -> None:
@@ -1215,12 +1216,40 @@ async def websocket_subscribe_ota_progress(
                     })
                 )
 
+    def _on_log(log_msg: Any) -> None:
+        nonlocal error_sent
+        if error_sent:
+            return
+        from aioesphomeapi import LogLevel as ESPLogLevel
+
+        if log_msg.level != ESPLogLevel.LOG_LEVEL_ERROR:
+            return
+        text = log_msg.message
+        if isinstance(text, bytes):
+            text = text.decode("utf-8", errors="replace")
+        text = text.rstrip()
+        if not text or "http_request" not in text:
+            return
+        error_sent = True
+        # Extract message after the ESPHome component tag
+        # Format: [E][http_request.ota:294]: Actual message here
+        parts = text.split("]: ", 1)
+        clean_msg = parts[1] if len(parts) > 1 else text
+        connection.send_message(
+            websocket_api.event_message(msg["id"], {
+                "state": "error",
+                "message": clean_msg,
+            })
+        )
+
     device_conn.subscribe_states(_on_state)
+    device_conn.add_log_callback(_on_log)
     connection.send_result(msg["id"])
 
     @callback
     def _unsub() -> None:
         device_conn.unsubscribe_states(_on_state)
+        device_conn.remove_log_callback(_on_log)
 
     connection.subscriptions[msg["id"]] = _unsub
 

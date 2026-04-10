@@ -73,6 +73,7 @@ class DeviceConnection:
         self._entities: list = []
         self._state_subscribers: list[Any] = []
         self._states_subscribed: bool = False
+        self._log_callbacks: list[Any] = []
         self._unsub_logs: Any = None
         self.connected: bool = False
         self.raw_target_subs: int = 0
@@ -104,6 +105,7 @@ class DeviceConnection:
         self._services.clear()
         self._entities = []
         self._state_subscribers.clear()
+        self._log_callbacks.clear()
         self._states_subscribed = False
         self.connected = False
 
@@ -123,6 +125,15 @@ class DeviceConnection:
         """Fan out state updates to all subscribers."""
         for cb in self._state_subscribers:
             cb(state)
+
+    def add_log_callback(self, cb: Any) -> None:
+        """Add a log callback. Receives raw log messages from the device."""
+        self._log_callbacks.append(cb)
+
+    def remove_log_callback(self, cb: Any) -> None:
+        """Remove a log callback."""
+        with contextlib.suppress(ValueError):
+            self._log_callbacks.remove(cb)
 
     def subscribe_logs(self, log_level: LogLevel = LogLevel.LOG_LEVEL_DEBUG) -> None:
         """Subscribe to device log messages and re-emit via Python logger."""
@@ -144,6 +155,8 @@ class DeviceConnection:
             text = text.rstrip()
             if text:
                 _DEVICE_LOGGER.log(py_level, "[%s] %s", self._host, text)
+            for cb in self._log_callbacks:
+                cb(msg)
 
         self._unsub_logs = self._client.subscribe_logs(_on_log, log_level=log_level)
         _LOGGER.debug("Subscribed to device logs from %s (level=%s)", self._host, log_level)
