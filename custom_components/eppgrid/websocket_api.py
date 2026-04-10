@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import asyncio
 import json
 import logging
 from pathlib import Path
@@ -1258,34 +1257,10 @@ async def websocket_subscribe_ota_progress(
     device_conn.add_log_callback(_on_log)
     connection.send_result(msg["id"])
 
-    # Periodically check if the device connection is still alive
-    heartbeat_handle: asyncio.TimerHandle | None = None
-
-    @callback
-    def _check_connection() -> None:
-        nonlocal error_sent, heartbeat_handle
-        if error_sent:
-            return
-        if not device_conn.connected:
-            error_sent = True
-            connection.send_message(
-                websocket_api.event_message(msg["id"], {
-                    "state": "error",
-                    "message": "Connection to device lost",
-                })
-            )
-            return
-        # Schedule next check
-        heartbeat_handle = hass.loop.call_later(5, _check_connection)
-
-    heartbeat_handle = hass.loop.call_later(5, _check_connection)
-
     @callback
     def _unsub() -> None:
         device_conn.unsubscribe_states(_on_state)
         device_conn.remove_log_callback(_on_log)
-        if heartbeat_handle is not None:
-            heartbeat_handle.cancel()
 
     connection.subscriptions[msg["id"]] = _unsub
 
