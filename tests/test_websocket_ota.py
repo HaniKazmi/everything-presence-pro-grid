@@ -105,7 +105,7 @@ class TestSubscribeOtaProgress:
         connection = MagicMock()
         msg = {"id": 1, "type": "eppgrid/subscribe_ota_progress", "mac": "AA:BB:CC:DD:EE:FF"}
         await call_async_handler(hass, websocket_subscribe_ota_progress, connection, msg)
-        connection.send_error.assert_called_once_with(1, "no_session", "No active session for device")
+        connection.send_error.assert_called_once_with(1, "no_session", "Device not available")
 
     async def test_subscribes_and_sends_result(
         self, hass: HomeAssistant, config_entry: MockConfigEntry,
