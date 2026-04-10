@@ -3690,7 +3690,7 @@ const At={attribute:!0,type:String,converter:E,reflect:!1,hasChanged:m},dt=(t=At
 				<ha-icon icon=${i?"mdi:alert-circle-outline":"mdi:information-outline"}></ha-icon>
 				<p>${s}</p>
 				${i?N`<button class="wizard-btn wizard-btn-primary"
-						@click=${()=>{this._panelTab="flasher"}}
+						@click=${()=>{this._panelTab="flasher",this._flasherCtrl.loading&&(this._flasherCtrl.hass=this.hass,this._flasherCtrl.subscribeDeviceList())}}
 					>${this._localize("protocol.update_firmware")}</button>`:J}
 				${r?N`<a href="/hacs/repository/1172848595" class="protocol-link"
 					>${this._localize("protocol.open_hacs")}</a>`:J}
