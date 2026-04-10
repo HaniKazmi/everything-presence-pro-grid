@@ -1,6 +1,6 @@
 {
   "name": "Everything Presence Pro Grid (WiFi)",
-  "version": "v0.1.0-alpha.3",
+  "version": "0.90.0-alpha",
   "home_assistant_domain": "esphome",
   "builds": [
     {
@@ -12,7 +12,7 @@
       ],
       "ota": {
         "path": "wifi.ota.bin",
-        "md5": "5233dc59c9649e0c1e40efcba009d3eb"
+        "md5": "75ce2ac84dc679f5a3dfbf4985cec273"
       }
     }
   ]
