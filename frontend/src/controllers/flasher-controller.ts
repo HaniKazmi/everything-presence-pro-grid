@@ -234,6 +234,20 @@ export class FlasherController implements ReactiveController {
 		this.loading = false;
 		this.onDeviceListChanged?.();
 		this._host.requestUpdate();
+		this._checkOtaDevicesOffline();
+	}
+
+	private _checkOtaDevicesOffline(): void {
+		for (const [mac, ota] of Object.entries(this.otaStates)) {
+			if (ota.state !== "updating") continue;
+			const device = this.flashableDevices.find((d) => d.mac === mac);
+			if (device && !device.available) {
+				this.otaStates[mac] = { state: "error", progress: null, error: "Device went offline during update" };
+				this._unsubOta(mac);
+				this._resetOtaTimeout(mac);
+				this._host.requestUpdate();
+			}
+		}
 	}
 
 	async deleteEsphomeDevice(configEntryId: string): Promise<void> {
