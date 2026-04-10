@@ -606,6 +606,10 @@ const At={attribute:!0,type:String,converter:E,reflect:!1,hasChanged:m},dt=(t=At
     color: var(--secondary-text-color, #757575);
     margin-top: 2px;
   }
+  .device-version {
+    font-size: 11px;
+    color: var(--secondary-text-color, #757575);
+  }
 
   .firmware-badge {
     font-size: 11px;
@@ -1169,9 +1173,8 @@ const At={attribute:!0,type:String,converter:E,reflect:!1,hasChanged:m},dt=(t=At
                       <div class="device-row">
                         <div class="device-info">
                           <div class="device-name">${t.name}</div>
-                          <div class="device-host">
-                            ${t.host??this.localize("flasher.offline")}${t.firmware_version?N` · v${t.firmware_version}`:J}
-                          </div>
+                          <div class="device-host">${t.host??this.localize("flasher.offline")}</div>
+                          ${t.firmware_version&&"unknown"!==t.firmware_version?N`<div class="device-version">v${t.firmware_version}</div>`:J}
                         </div>
                         <span
                           class="firmware-badge firmware-badge-${t.firmware_type}"

@@ -597,6 +597,10 @@ export const flasherStyles = css`
     color: var(--secondary-text-color, #757575);
     margin-top: 2px;
   }
+  .device-version {
+    font-size: 11px;
+    color: var(--secondary-text-color, #757575);
+  }
 
   .firmware-badge {
     font-size: 11px;

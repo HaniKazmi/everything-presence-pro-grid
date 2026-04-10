@@ -899,7 +899,11 @@ class DeviceManager:
                     "host": host,
                     "available": available,
                     "firmware_type": "eppgrid" if has_firmware_version else "original",
-                    "firmware_version": device.sw_version or "unknown",
+                    "firmware_version": (
+                        self.read_firmware_version(managed_dev.device_id) or device.sw_version or "unknown"
+                        if has_firmware_version and managed_dev is not None
+                        else device.sw_version or "unknown"
+                    ),
                     "firmware_status": (
                         (
                             "unavailable"

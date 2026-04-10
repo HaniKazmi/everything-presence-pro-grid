@@ -1140,7 +1140,7 @@ describe("OTA inline rendering", () => {
 		const tpl = (el as any).render();
 		const c = renderTo(tpl);
 
-		expect(c.querySelector(".device-host")?.textContent).toContain("v0.89.0");
+		expect(c.querySelector(".device-version")?.textContent).toContain("v0.89.0");
 	});
 
 	it("renders ota-success when success", () => {
