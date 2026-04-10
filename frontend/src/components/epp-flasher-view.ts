@@ -101,22 +101,20 @@ export class EppFlasherView extends LitElement {
 				if (ota.progress == null) {
 					return html`<div class="ota-spinner"></div>`;
 				}
-				const radius = 13;
+				const radius = 14;
 				const circumference = 2 * Math.PI * radius;
 				const offset = circumference - (ota.progress / 100) * circumference;
 				return html`
 					<div class="ota-progress">
-						<svg width="32" height="32" viewBox="0 0 32 32">
-							<circle class="ota-track" cx="16" cy="16" r="${radius}" />
-							<circle class="ota-fill" cx="16" cy="16" r="${radius}"
+						<svg width="36" height="36" viewBox="0 0 36 36">
+							<circle class="ota-track" cx="18" cy="18" r="${radius}" />
+							<circle class="ota-fill" cx="18" cy="18" r="${radius}"
 								stroke-dasharray="${circumference}"
 								stroke-dashoffset="${offset}" />
 						</svg>
 						<span class="ota-pct">${Math.round(ota.progress)}</span>
 					</div>`;
 			}
-			case "rebooting":
-				return html`<div class="ota-spinner"></div>`;
 			case "success":
 				return html`<ha-icon class="ota-success" icon="mdi:check-circle"></ha-icon>`;
 			case "error":
@@ -350,7 +348,7 @@ export class EppFlasherView extends LitElement {
                         <div class="device-info">
                           <div class="device-name">${device.name}</div>
                           <div class="device-host">
-                            ${device.host ?? this.localize("flasher.offline")}
+                            ${device.host ?? this.localize("flasher.offline")}${device.firmware_version ? html` · v${device.firmware_version}` : nothing}
                           </div>
                         </div>
                         <span

@@ -89,34 +89,18 @@ export class FlasherController implements ReactiveController {
 		this._resetOtaTimeout(mac);
 
 		switch (event.state) {
-			case "updating":
-				this.otaStates[mac] = {
-					state: "updating",
-					progress: event.progress ?? null,
-					error: null,
-				};
-				this._startOtaTimeout(mac, 15000);
+			case "updating": {
+				const progress = event.progress ?? null;
+				if (progress != null && progress >= 100) {
+					this._otaSuccess(mac);
+				} else {
+					this.otaStates[mac] = { state: "updating", progress, error: null };
+					this._startOtaTimeout(mac, progress != null && progress > 0 ? 3000 : 15000);
+				}
 				break;
-			case "rebooting":
-				this.otaStates[mac] = {
-					state: "rebooting",
-					progress: null,
-					error: null,
-				};
-				break;
+			}
 			case "success":
-				this.otaStates[mac] = {
-					state: "success",
-					progress: null,
-					error: null,
-				};
-				this._unsubOta(mac);
-				setTimeout(() => {
-					if (this.otaStates[mac]?.state === "success") {
-						delete this.otaStates[mac];
-						this._host.requestUpdate();
-					}
-				}, 5000);
+				this._otaSuccess(mac);
 				break;
 			case "error":
 				this.otaStates[mac] = {
@@ -130,14 +114,26 @@ export class FlasherController implements ReactiveController {
 		this._host.requestUpdate();
 	}
 
+	private _otaSuccess(mac: string): void {
+		this.otaStates[mac] = { state: "success", progress: null, error: null };
+		this._unsubOta(mac);
+		this._resetOtaTimeout(mac);
+		setTimeout(() => {
+			if (this.otaStates[mac]?.state === "success") {
+				delete this.otaStates[mac];
+				this._host.requestUpdate();
+			}
+		}, 5000);
+	}
+
 	private _startOtaTimeout(mac: string, ms: number): void {
 		this._resetOtaTimeout(mac);
 		this._otaTimeouts[mac] = setTimeout(() => {
 			const ota = this.otaStates[mac];
 			if (!ota || ota.state !== "updating") return;
 			if (ota.progress != null && ota.progress > 0) {
-				// Had progress — device likely rebooted
-				this.otaStates[mac] = { state: "rebooting", progress: null, error: null };
+				// Had progress then stopped — treat as success (device rebooting)
+				this._otaSuccess(mac);
 			} else {
 				// No progress ever received — update failed to start
 				this.otaStates[mac] = { state: "error", progress: null, error: "Update timed out" };
@@ -152,24 +148,6 @@ export class FlasherController implements ReactiveController {
 		if (t) {
 			clearTimeout(t);
 			delete this._otaTimeouts[mac];
-		}
-	}
-
-	checkOtaReconnect(): void {
-		for (const [mac, ota] of Object.entries(this.otaStates)) {
-			if (ota.state !== "rebooting") continue;
-			const device = this.flashableDevices.find((d) => d.mac === mac);
-			if (device?.available && device.firmware_status !== "firmware_behind") {
-				this.otaStates[mac] = { state: "success", progress: null, error: null };
-				this._unsubOta(mac);
-				this._host.requestUpdate();
-				setTimeout(() => {
-					if (this.otaStates[mac]?.state === "success") {
-						delete this.otaStates[mac];
-						this._host.requestUpdate();
-					}
-				}, 5000);
-			}
 		}
 	}
 
@@ -256,7 +234,6 @@ export class FlasherController implements ReactiveController {
 		this.loading = false;
 		this.onDeviceListChanged?.();
 		this._host.requestUpdate();
-		this.checkOtaReconnect();
 	}
 
 	async deleteEsphomeDevice(configEntryId: string): Promise<void> {

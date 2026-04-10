@@ -637,8 +637,8 @@ export const flasherStyles = css`
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    width: 32px;
-    height: 32px;
+    width: 36px;
+    height: 36px;
     flex-shrink: 0;
   }
   .ota-progress svg {
@@ -658,13 +658,13 @@ export const flasherStyles = css`
   }
   .ota-pct {
     position: absolute;
-    font-size: 9px;
+    font-size: 10px;
     font-weight: 600;
     color: var(--primary-text-color, #212121);
   }
   .ota-spinner {
-    width: 32px;
-    height: 32px;
+    width: 36px;
+    height: 36px;
     border: 3px solid var(--divider-color, #e0e0e0);
     border-top-color: var(--primary-color, #03a9f4);
     border-radius: 50%;

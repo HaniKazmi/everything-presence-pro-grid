@@ -51,10 +51,19 @@ class TestFirmwareProxyView:
         resp = await view.get(request, "malicious-file.exe")
         assert resp.status == 400
 
-    async def test_rejects_filename_without_prefix(self, hass: HomeAssistant, view):
+    async def test_accepts_short_firmware_filenames(self, hass: HomeAssistant, view):
         request = make_request(hass)
-        resp = await view.get(request, "bootloader.bin")
-        assert resp.status == 400
+        mock_resp = AsyncMock()
+        mock_resp.status = 200
+        mock_resp.read = AsyncMock(return_value=b"\x00")
+
+        with patch(
+            "custom_components.eppgrid.firmware_proxy.async_get_clientsession",
+            return_value=_mock_session(mock_resp),
+        ):
+            resp = await view.get(request, "wifi.ota.bin")
+
+        assert resp.status == 200
 
     async def test_proxies_manifest_json(self, hass: HomeAssistant, view):
         request = make_request(hass)
@@ -149,5 +158,5 @@ class TestFirmwareProxyView:
         from custom_components.eppgrid.const import FIRMWARE_VERSION
 
         call_url = session.get.call_args[0][0]
-        assert f"releases/download/v{FIRMWARE_VERSION}/" in call_url
+        assert f"github.io/everything-presence-pro-grid/fw/v{FIRMWARE_VERSION}/" in call_url
         assert call_url.endswith("everything-presence-pro-wifi-ble-co2-manifest.json")

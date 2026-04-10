@@ -1129,7 +1129,7 @@ async def websocket_update_firmware(
     if variant is None:
         connection.send_error(msg["id"], "unknown_variant", f"No firmware variant for network type: {network}")
         return
-    manifest_url = f"{MANIFEST_BASE_URL}/everything-presence-pro-{variant}-manifest.json"
+    manifest_url = f"{MANIFEST_BASE_URL}/{variant}.json"
 
     if dev.host is None:
         connection.send_error(msg["id"], "not_available", "Device host unknown")
@@ -1228,7 +1228,12 @@ async def websocket_subscribe_ota_progress(
         if isinstance(text, bytes):
             text = text.decode("utf-8", errors="replace")
         text = text.rstrip()
-        if not text or "http_request" not in text:
+        if not text:
+            return
+        # Only match actual OTA/update errors, not status clears
+        if "cleared Error flag" in text or "set Error flag" in text:
+            return
+        if "http_request.ota" not in text and "http_request.update" not in text:
             return
         error_sent = True
         # Extract message after the ESPHome component tag

@@ -461,16 +461,16 @@ describe("FlasherController", () => {
 			expect(host.requestUpdate).toHaveBeenCalled();
 		});
 
-		it("transitions to rebooting on inactivity timeout when progress was received", async () => {
+		it("transitions to success on inactivity timeout when progress was received", async () => {
 			vi.useFakeTimers();
 			await ctrl.startOta("AA:BB:CC:DD:EE:01");
 
 			const callback = hass.connection.subscribeMessage.mock.calls[0][0];
 			callback({ state: "updating", progress: 50 });
 
-			vi.advanceTimersByTime(15000);
+			vi.advanceTimersByTime(3000);
 
-			expect(ctrl.otaStates["AA:BB:CC:DD:EE:01"].state).toBe("rebooting");
+			expect(ctrl.otaStates["AA:BB:CC:DD:EE:01"].state).toBe("success");
 			vi.useRealTimers();
 		});
 
@@ -487,26 +487,6 @@ describe("FlasherController", () => {
 				error: "Update timed out",
 			});
 			vi.useRealTimers();
-		});
-
-		it("checkOtaReconnect transitions rebooting to success when device comes back", async () => {
-			await ctrl.startOta("AA:BB:CC:DD:EE:01");
-			ctrl.otaStates["AA:BB:CC:DD:EE:01"] = { state: "rebooting", progress: null, error: null };
-			ctrl.flashableDevices = [{
-				mac: "AA:BB:CC:DD:EE:01",
-				name: "EPP Lounge",
-				host: "192.168.20.214",
-				available: true,
-				firmware_type: "eppgrid",
-				firmware_version: "0.90.0-alpha",
-				esphome_config_entry_id: null,
-				update_available: false,
-				firmware_status: "compatible",
-			}];
-
-			ctrl.checkOtaReconnect();
-
-			expect(ctrl.otaStates["AA:BB:CC:DD:EE:01"].state).toBe("success");
 		});
 
 		it("transitions to success state", async () => {

@@ -281,3 +281,26 @@ class TestSubscribeOtaProgress:
         on_log(log_msg)
 
         connection.send_message.assert_not_called()
+
+    async def test_ignores_cleared_error_flag_log(
+        self, hass: HomeAssistant, config_entry: MockConfigEntry,
+    ) -> None:
+        """The 'cleared Error flag' log from http_request is not an actual error."""
+        mock_dm = await setup_integration(hass, config_entry)
+        device_conn = make_mock_device_conn()
+        mock_dm.get_session.return_value = device_conn
+        from custom_components.eppgrid.websocket_api import websocket_subscribe_ota_progress
+        connection = MagicMock()
+        connection.subscriptions = {}
+        msg = {"id": 1, "type": "eppgrid/subscribe_ota_progress", "mac": "AA:BB:CC:DD:EE:FF"}
+        await call_async_handler(hass, websocket_subscribe_ota_progress, connection, msg)
+
+        on_log = device_conn.add_log_callback.call_args[0][0]
+
+        from aioesphomeapi import LogLevel as ESPLogLevel
+        log_msg = MagicMock()
+        log_msg.level = ESPLogLevel.LOG_LEVEL_ERROR
+        log_msg.message = "[E][component:433]: http_request.update cleared Error flag"
+        on_log(log_msg)
+
+        connection.send_message.assert_not_called()

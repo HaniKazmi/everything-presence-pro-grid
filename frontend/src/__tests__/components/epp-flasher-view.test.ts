@@ -1132,18 +1132,15 @@ describe("OTA inline rendering", () => {
 		expect(c.querySelector(".device-row ha-button")).toBeNull();
 	});
 
-	it("renders ota-spinner when rebooting", () => {
-		const otaStates: Record<string, OtaDeviceState> = {
-			[updatableDevice.mac]: { state: "rebooting", progress: null, error: null },
-		};
+	it("renders firmware version in device row", () => {
 		const el = createView({
 			flashableDevices: [updatableDevice],
-			otaStates,
+			otaStates: {},
 		});
 		const tpl = (el as any).render();
 		const c = renderTo(tpl);
 
-		expect(c.querySelector(".ota-spinner")).not.toBeNull();
+		expect(c.querySelector(".device-host")?.textContent).toContain("v0.89.0");
 	});
 
 	it("renders ota-success when success", () => {

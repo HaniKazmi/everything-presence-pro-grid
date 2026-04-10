@@ -19,9 +19,7 @@ class FirmwareProxyView(HomeAssistantView):
 
     async def get(self, request: web.Request, filename: str) -> web.Response:
         """Fetch a firmware file from GitHub Releases and return it."""
-        if not filename.startswith("everything-presence-pro-") or not (
-            filename.endswith(".json") or filename.endswith(".bin")
-        ):
+        if not (filename.endswith(".json") or filename.endswith(".bin")):
             return web.Response(status=400, text="Invalid filename")
 
         hass: HomeAssistant = request.app["hass"]
