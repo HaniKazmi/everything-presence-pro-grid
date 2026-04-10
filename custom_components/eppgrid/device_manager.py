@@ -778,18 +778,25 @@ class DeviceManager:
             await conn.async_disconnect()
 
     def _is_device_available(self, mac: str) -> bool:
-        """Check HA entity states to determine if a device is reachable."""
+        """Check HA entity states to determine if a device is reachable.
+
+        Returns True if any ESPHome entity is available, or if there are
+        no ESPHome entities to check (unknown = try to connect).
+        Returns False only if entities exist and ALL are unavailable.
+        """
         dev = self.devices.get(mac)
         if dev is None or dev.device_id is None:
-            return False
+            return True  # No device tracking — try to connect
         ent_reg = er.async_get(self._hass)
+        has_esphome_entity = False
         for entry in er.async_entries_for_device(ent_reg, dev.device_id):
             if entry.platform != "esphome":
                 continue
+            has_esphome_entity = True
             state = self._hass.states.get(entry.entity_id)
             if state is not None and state.state not in ("unavailable", "unknown"):
                 return True
-        return False
+        return not has_esphome_entity  # No entities = unknown = try
 
     async def async_open_session(self, mac: str) -> DeviceConnection | None:
         """Open a persistent connection for a frontend session.
