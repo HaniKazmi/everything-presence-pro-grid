@@ -1176,6 +1176,7 @@ async def websocket_subscribe_ota_progress(
         return
 
     mac = msg["mac"]
+    had_session = manager.get_session(mac) is not None
     device_conn = manager.get_session(mac)
     if device_conn is None:
         with contextlib.suppress(Exception):
@@ -1186,7 +1187,6 @@ async def websocket_subscribe_ota_progress(
 
     was_in_progress = False
     done = False  # shared guard: once a terminal event is sent, stop
-    opened_session = device_conn is not manager.get_session(mac)
 
     # Ensure device logs are subscribed so _on_log callbacks fire
     from aioesphomeapi import LogLevel as ESPLogLevel
@@ -1280,7 +1280,7 @@ async def websocket_subscribe_ota_progress(
     def _unsub() -> None:
         device_conn.unsubscribe_states(_on_state)
         device_conn.remove_log_callback(_on_log)
-        if opened_session:
+        if not had_session:
             hass.async_create_task(manager.async_close_session(mac))
 
     connection.subscriptions[msg["id"]] = _unsub

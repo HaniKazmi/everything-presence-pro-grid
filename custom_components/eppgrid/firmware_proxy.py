@@ -1,6 +1,8 @@
-"""HTTP proxy for firmware manifests and binaries (avoids CORS with GitHub Releases)."""
+"""HTTP proxy for firmware manifests and binaries (GitHub Pages)."""
 
 from __future__ import annotations
+
+import re
 
 from aiohttp import web
 from homeassistant.components.http import HomeAssistantView
@@ -9,17 +11,20 @@ from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
 from .const import MANIFEST_BASE_URL
 
+# Only allow expected firmware filenames (no path traversal)
+_VALID_FILENAME = re.compile(r"^[a-z0-9][a-z0-9._-]*\.(json|bin|ota\.bin)$")
+
 
 class FirmwareProxyView(HomeAssistantView):
-    """Proxy GET requests for firmware assets from GitHub Releases."""
+    """Proxy GET requests for firmware assets from GitHub Pages."""
 
     url = "/api/eppgrid/firmware/{filename}"
     name = "api:eppgrid:firmware"
     requires_auth = False  # The panel already handles auth
 
     async def get(self, request: web.Request, filename: str) -> web.Response:
-        """Fetch a firmware file from GitHub Releases and return it."""
-        if not (filename.endswith(".json") or filename.endswith(".bin")):
+        """Fetch a firmware file from GitHub Pages and return it."""
+        if not _VALID_FILENAME.match(filename):
             return web.Response(status=400, text="Invalid filename")
 
         hass: HomeAssistant = request.app["hass"]
