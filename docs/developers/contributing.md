@@ -81,7 +81,7 @@ npx vitest run --coverage
 ```
 
 - Covers components, controllers, and `lib/` modules.
-- Coverage is reported but doesn't have a hard floor in the hook; CI tracks the trend.
+- **Per-file coverage thresholds** (from `frontend/vitest.config.ts`): lines 90%, branches 85%, functions 90%, statements 90%. Vitest fails the run if any file falls below these, which fails the push and CI.
 
 ### C++ zone engine
 
