@@ -4,9 +4,10 @@ on:
   push:
     branches: [main]
     paths:
+      - 'docs/**'
+      - 'mkdocs.yml'
+      - 'requirements-docs.txt'
       - 'fw/**'
-      - 'index.html'
-      - 'icon.png'
       - '.github/workflows/pages.yml'
       - '.github/scripts/stage-firmware.sh'
   workflow_dispatch:
@@ -33,6 +34,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Install docs dependencies
+        run: pip install -r requirements-docs.txt
       - name: Download latest release firmware (if any)
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -55,18 +63,16 @@ jobs:
             exit 1
           fi
           VERSION="${LATEST#v}" ARTIFACTS=artifacts ./.github/scripts/stage-firmware.sh
-      - name: Build pages site
-        run: |
-          mkdir -p _site fw
-          cp index.html _site/index.html
-          cp icon.png _site/icon.png
-          cp -r fw _site/fw
+      - name: Build mkdocs site
+        run: mkdocs build --strict
+      - name: Copy firmware manifests into site
+        run: cp -r fw site/fw
       - name: Setup Pages
         uses: actions/configure-pages@v5
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v4
         with:
-          path: _site
+          path: site
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v5
