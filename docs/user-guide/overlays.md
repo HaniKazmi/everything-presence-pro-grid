@@ -67,6 +67,17 @@ Common combinations:
 - A cell under a ceiling fan might be part of a "Living Room" zone **and** carry Interference.
 - A cell behind a plant might be part of a "Kitchen" zone **and** carry Suppress.
 
+## Troubleshooting
+
+| Symptom | Likely cause | Fix |
+| --- | --- | --- |
+| Clicking a cell doesn't paint an overlay | No overlay-type paint mode is active | Click **Entry/Exit**, **Interference**, or **Suppress** in the sidebar first; that button stays depressed while paint mode is active. |
+| Cell outside the room won't accept overlay paint | Overlays can't paint outside the room boundary | Extend the Room zone (zone 0) in the [Zones](zones.md) editor to include the cell, then paint the overlay. |
+| Interference overlay painted but ghosts still appear | Interference threshold isn't strong enough for that source | Escalate those cells to **Suppress**. Suppress blocks the cells entirely rather than just raising detection thresholds. |
+| Entry/Exit overlay painted at the doorway but zones still flap on entry | Overlay doesn't cover the full walkable area of the doorway | Paint overlay cells covering the entire door opening, not just one cell to the side of it. |
+
+See also: the [central Troubleshooting](troubleshooting.md) page for conceptual FAQ and how to open a GitHub issue.
+
 ## Where to next
 
 - **[Furniture →](furniture.md)** — place furniture on the grid so you can read the live view at a glance.
