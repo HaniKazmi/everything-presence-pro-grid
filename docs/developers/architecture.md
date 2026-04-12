@@ -262,7 +262,7 @@ port in a zombie state. Fixed by monkey-patching `port.close` to a no-op
 before creating Transport, restoring after disconnect. Port stays open for
 WiFi provisioning after flash.
 
-**Firmware updates** for EPP Grid devices use ESPHome's built-in
+**Firmware updates** for Everything Presence Pro Grid devices use ESPHome's built-in
 `update.install` service (triggered via `eppgrid/update_firmware` WS command).
 The device's `http_request` update component checks the GitHub releases
 manifest for new versions. Raw OTA push is not used — newer ESPHome uses

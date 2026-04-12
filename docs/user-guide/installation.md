@@ -6,7 +6,7 @@ This page walks through installing the Everything Presence Pro Grid integration 
 
 - **Home Assistant 2025.2.0 or newer.**
 - **An Everything Presence Pro device** with the LD2450 radar, the SEN0609 static-presence sensor, and the standard environmental sensors (illuminance, temperature, humidity, CO2). Either hardware variant — Wi-Fi or Ethernet — works.
-- **EPP Grid firmware running on the device.** If your device shipped with the original firmware, flash EPP Grid first — see [Firmware](firmware.md) for the walkthrough. If you just pulled the device out of the box and have never flashed it, do that before anything else.
+- **Everything Presence Pro Grid firmware running on the device.** If your device shipped with the original firmware, flash Everything Presence Pro Grid first — see [Firmware](firmware.md) for the walkthrough. If you just pulled the device out of the box and have never flashed it, do that before anything else.
 
 ## Install via HACS (recommended)
 
@@ -22,7 +22,7 @@ HACS is the recommended route. It installs the integration from source, tracks u
     The integration isn't in HACS's default catalogue, which is why the custom-repository step is needed. Once added, future updates show up in HACS like any other integration.
 
 !!! example "Screenshot placeholder"
-    **HACS Custom repositories dialog with the EPP Grid repo URL filled in.** `installation/hacs-custom-repo.png`
+    **HACS Custom repositories dialog with the Everything Presence Pro Grid repo URL filled in.** `installation/hacs-custom-repo.png`
 
 ## Install manually (last resort)
 
@@ -38,13 +38,13 @@ Only use this route if HACS isn't an option — a container without HACS, a poli
 
 ## After installing
 
-- The **EPP Grid panel** appears in the HA sidebar. You may need a hard refresh of the HA web UI (Ctrl-F5 / Cmd-Shift-R) before it shows up.
+- The **Everything Presence Pro Grid panel** appears in the HA sidebar. You may need a hard refresh of the HA web UI (Ctrl-F5 / Cmd-Shift-R) before it shows up.
 - No devices are configured yet — the panel will be empty on first open.
-- If you already have an Everything Presence Pro device connected to HA via the [ESPHome integration](https://www.home-assistant.io/integrations/esphome/), EPP Grid will discover it automatically and list it in the panel. See [Pairing](getting-started/pairing.md) for how that works and how to add a device if it isn't there yet.
+- If you already have an Everything Presence Pro device connected to HA via the [ESPHome integration](https://www.home-assistant.io/integrations/esphome/), Everything Presence Pro Grid will discover it automatically and list it in the panel. See [Pairing](getting-started/pairing.md) for how that works and how to add a device if it isn't there yet.
 
 !!! example "Screenshot placeholder"
-    **EPP Grid panel in the HA sidebar, empty state — no devices yet.** `installation/empty-panel.png`
+    **Everything Presence Pro Grid panel in the HA sidebar, empty state — no devices yet.** `installation/empty-panel.png`
 
 ## Where to next
 
-- **[Pairing →](getting-started/pairing.md)** — add your device to Home Assistant so EPP Grid can pick it up.
+- **[Pairing →](getting-started/pairing.md)** — add your device to Home Assistant so Everything Presence Pro Grid can pick it up.

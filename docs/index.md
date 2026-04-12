@@ -18,7 +18,7 @@ Everything Presence Pro Grid is a Home Assistant custom integration for the Ever
 
 ---
 
-## Why EPP Grid?
+## Why Everything Presence Pro Grid?
 
 - **Perspective-corrected grid.** A four-corner calibration wizard maps the distorted radar view onto a rectilinear room grid. Walls are straight, targets sit where they actually are.
 - **Seven named zones** with per-zone occupancy, motion, and target-count entities — plus entrance/exit overlays and interference-source overlays.

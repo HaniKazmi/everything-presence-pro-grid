@@ -21,7 +21,7 @@ If you have used an Everything Presence Pro device with the default firmware, or
 !!! example "Screenshot placeholder"
     **Before/after comparison — a distorted rectangular zone in raw sensor space next to the same room mapped onto a perspective-corrected grid.** `introduction/before-after.png`
 
-## What EPP Grid does differently
+## What Everything Presence Pro Grid does differently
 
 ### Perspective-corrected grid
 
