@@ -74,6 +74,18 @@ Both toggles are device-wide, not per-zone. Turning **Zone Presence** on gives y
 !!! note
     The device-level toggles live in the settings area of the panel rather than on individual zones. If you've just created a new zone and its entities aren't appearing in Home Assistant, double-check that Zone Presence (and/or Zone Target Count) is turned on at the device level.
 
+## Troubleshooting
+
+| Symptom | Likely cause | Fix |
+| --- | --- | --- |
+| New zone created in the panel but no `zone_<N>_presence` entity in Home Assistant | The device-level **Zone Presence** toggle is off | Enable **Zone Presence** on the device page. Entities don't exist in HA until the toggle is on. |
+| Renamed a zone but the HA entity display name still says "Zone N Presence" | Integration hasn't refreshed the entity registry entry yet | Reload the **Everything Presence Pro Grid** integration from Settings → Devices & Services, or reboot the device. |
+| Zone never fires even with obvious presence | Zone has no cells painted, or cells are outside the room boundary | Reopen the zone in the editor and verify cells are painted inside the room. Cells outside the room boundary don't get tracked. |
+| `Zone Rest of Room` is always `on`, even when nobody's in the room | An interference source is inside the room but outside any named zone | Paint an Interference overlay on the problem cells. See [Overlays](overlays.md). |
+| Zone flaps on and off on someone who isn't moving much | Zone type is "Normal" — presence timeout is short | Change the zone's type to **Rest** (sofa, bed) or **Custom** with a longer Presence timeout. |
+
+See also: the [central Troubleshooting](troubleshooting.md) page for conceptual FAQ and how to open a GitHub issue.
+
 ## Where to next
 
 - **[Overlays →](overlays.md)** — mark doorways and interference sources on the grid to refine how the zone engine interprets events.
