@@ -78,7 +78,7 @@ Both toggles are device-wide, not per-zone. Turning **Zone Presence** on gives y
 
 | Symptom | Likely cause | Fix |
 | --- | --- | --- |
-| New zone created in the panel but no `zone_<N>_presence` entity in Home Assistant | The device-level **Zone Presence** toggle is off | Enable **Zone Presence** on the device page. Entities don't exist in HA until the toggle is on. |
+| New zone created in the panel but no `zone_<N>_presence` entity visible in Home Assistant | The device-level **Zone Presence** toggle is off — the entity is disabled in the HA entity registry | Enable **Zone Presence** on the device page. If you want to see the entity in "disabled" state meanwhile, set Home Assistant's entity-registry filter to "Include disabled entities". |
 | Renamed a zone but the HA entity display name still says "Zone N Presence" | Integration hasn't refreshed the entity registry entry yet | Reload the **Everything Presence Pro Grid** integration from Settings → Devices & Services, or reboot the device. |
 | Zone never fires even with obvious presence | Zone has no cells painted, or cells are outside the room boundary | Reopen the zone in the editor and verify cells are painted inside the room. Cells outside the room boundary don't get tracked. |
 | `Zone Rest of Room` is always `on`, even when nobody's in the room | An interference source is inside the room but outside any named zone | Paint an Interference overlay on the problem cells. See [Overlays](overlays.md). |

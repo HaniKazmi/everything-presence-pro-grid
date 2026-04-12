@@ -187,7 +187,7 @@ Common traps to avoid when wiring up automations:
 
 | Symptom | Likely cause | Fix |
 | --- | --- | --- |
-| Automation referencing `zone_<N>_presence` never fires | Device-level **Zone Presence** toggle is off — the entity doesn't exist | Enable **Zone Presence** on the device page. See [Zones](zones.md#troubleshooting). |
+| Automation referencing `zone_<N>_presence` never fires | Device-level **Zone Presence** toggle is off — the entity is disabled in Home Assistant's entity registry | Enable **Zone Presence** on the device page. See [Zones](zones.md#troubleshooting). |
 | Automation referencing **Static Presence** always reports off | Static Presence entity is disabled on the device page (default) | Enable the Static Presence entity in Home Assistant. Usually you don't need it — **Occupancy** already folds it in. |
 | Lights turn off on someone who's clearly still present | Empty-gate timeout too short, or you're gating on `Motion Presence` instead of `Occupancy` | Gate on `binary_sensor.<device>_occupancy` with `for: "00:02:00"` or longer. Occupancy already includes static presence on the device. |
 | Bed / sofa / reading-chair zone flaps on and off | Zone type is "Normal" — fall-off too fast | Change the zone's type to **Rest** in the [Zones](zones.md) editor. |
