@@ -20,7 +20,10 @@ from homeassistant.core import callback
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers import entity_registry as er
 
+from homeassistant.exceptions import HomeAssistantError
+
 from .const import DEFAULT_PORT
+from .const import DOMAIN
 from .const import EPP_MANUFACTURER
 from .const import EPP_MODEL
 from .const import GRID_CELL_SIZE_MM
@@ -41,6 +44,16 @@ _ESPHOME_TO_PYTHON_LOG = {
     LogLevel.LOG_LEVEL_VERBOSE: logging.DEBUG,
     LogLevel.LOG_LEVEL_VERY_VERBOSE: logging.DEBUG,
 }
+
+
+def _raise_service_unavailable(service: str) -> None:
+    """Raise translation-keyed HomeAssistantError for a missing service."""
+    raise HomeAssistantError(
+        f"Service {service} not available",
+        translation_domain=DOMAIN,
+        translation_key="service_not_available",
+        translation_placeholders={"service": service},
+    )
 
 
 def _compare_firmware_version(device_version: str) -> str:
@@ -220,7 +233,7 @@ class DeviceConnection:
         """Send dismiss target command to firmware."""
         service = self._services.get("epp_dismiss_target")
         if not service or not self._client:
-            raise RuntimeError("Service epp_dismiss_target not available")
+            _raise_service_unavailable("epp_dismiss_target")
         await self._client.execute_service(service, {"target_index": target_index, "cell_index": cell_index})
 
     async def async_push_config(self, config: dict[str, Any]) -> None:

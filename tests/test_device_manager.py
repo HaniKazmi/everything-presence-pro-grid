@@ -2767,3 +2767,17 @@ class TestBuildFlags:
         assert len(result) == 1
         assert "bluetooth_enabled" not in result[0]
         assert "model" not in result[0]
+
+
+def test_dismiss_target_service_missing_raises_translation_keyed_error():
+    """When epp_dismiss_target service is missing, raise HomeAssistantError with translation metadata."""
+    from custom_components.eppgrid.const import DOMAIN
+    from custom_components.eppgrid.device_manager import _raise_service_unavailable
+    from homeassistant.exceptions import HomeAssistantError
+
+    with pytest.raises(HomeAssistantError) as exc:
+        _raise_service_unavailable("epp_dismiss_target")
+
+    assert exc.value.translation_domain == DOMAIN
+    assert exc.value.translation_key == "service_not_available"
+    assert exc.value.translation_placeholders == {"service": "epp_dismiss_target"}
