@@ -40,6 +40,17 @@ That means the work you actually need to do is to get the device added to HA via
 !!! note
     Everything Presence Pro Grid identifies each device by its MAC address. If you re-flash a device's firmware, or swap its role while keeping the hardware, any saved zones and calibration stay with the device — they're keyed to MAC, not to anything else.
 
+## Troubleshooting
+
+| Symptom | Likely cause | Fix |
+| --- | --- | --- |
+| Device not auto-discovered by Home Assistant | Device not powered, not on the network, or on a different VLAN | Verify the device is powered and reachable by IP; add ESPHome manually with the device's hostname if auto-discovery fails. |
+| Device shows up in ESPHome but not in the Everything Presence Pro Grid panel | Device is running the original firmware, not Everything Presence Pro Grid firmware | The integration only recognises devices running its own firmware (check for a **Firmware Version** sensor on the ESPHome device page). See [Firmware](../firmware.md) to flash. |
+| Device vanishes from the panel intermittently | Device falling off the network | Check Wi-Fi signal at the mount location; if the device has the Ethernet board, consider switching to the Ethernet variant. |
+| Panel shows "Integration update required" for the device | Device firmware newer than the integration | Update the integration in HACS, or roll the firmware back to match. |
+
+See also: the [central Troubleshooting](../troubleshooting.md) page for conceptual FAQ and how to open a GitHub issue.
+
 ## Where to next
 
 - **[First boot →](first-boot.md)** — what you'll see in the panel and which entities HA creates for you.
