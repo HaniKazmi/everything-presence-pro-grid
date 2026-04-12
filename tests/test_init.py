@@ -21,6 +21,11 @@ async def test_setup_entry_registers_manager(hass: HomeAssistant, config_entry: 
 
     with (
         patch("custom_components.eppgrid.DeviceManager") as mock_dm_cls,
+        patch(
+            "custom_components.eppgrid._register_frontend_resources",
+            new_callable=AsyncMock,
+            return_value="/eppgrid_static/eppgrid-panel.js?v=deadbeef",
+        ),
         patch("custom_components.eppgrid._register_panel", new_callable=AsyncMock),
     ):
         mock_dm = mock_dm_cls.return_value
@@ -32,20 +37,52 @@ async def test_setup_entry_registers_manager(hass: HomeAssistant, config_entry: 
     mock_dm.async_start.assert_awaited_once()
 
 
-async def test_setup_entry_registers_panel_when_enabled(hass: HomeAssistant, config_entry: MockConfigEntry) -> None:
-    """Panel is registered when sidebar_panel is True (default)."""
+async def test_setup_entry_registers_frontend_resources_always(
+    hass: HomeAssistant, config_entry: MockConfigEntry
+) -> None:
+    """Frontend resources are registered even when sidebar_panel is disabled so Lovelace cards work on dashboards."""
     if hass.http is None:
         hass.http = MagicMock()
 
     with (
         patch("custom_components.eppgrid.DeviceManager") as mock_dm_cls,
+        patch("custom_components.eppgrid.EPPGridStore") as mock_store_cls,
+        patch(
+            "custom_components.eppgrid._register_frontend_resources",
+            new_callable=AsyncMock,
+            return_value="/eppgrid_static/eppgrid-panel.js?v=deadbeef",
+        ) as mock_resources,
+        patch("custom_components.eppgrid._register_panel", new_callable=AsyncMock) as mock_panel,
+    ):
+        mock_store = mock_store_cls.return_value
+        mock_store.async_load = AsyncMock()
+        mock_store.sidebar_panel = False
+        mock_dm = mock_dm_cls.return_value
+        mock_dm.async_start = AsyncMock()
+        await async_setup_entry(hass, config_entry)
+
+    mock_resources.assert_awaited_once_with(hass)
+    mock_panel.assert_not_awaited()
+
+
+async def test_setup_entry_registers_panel_when_enabled(hass: HomeAssistant, config_entry: MockConfigEntry) -> None:
+    """Panel is registered with the versioned module URL when sidebar_panel is True."""
+    if hass.http is None:
+        hass.http = MagicMock()
+
+    module_url = "/eppgrid_static/eppgrid-panel.js?v=deadbeef"
+    with (
+        patch("custom_components.eppgrid.DeviceManager") as mock_dm_cls,
+        patch(
+            "custom_components.eppgrid._register_frontend_resources", new_callable=AsyncMock, return_value=module_url
+        ),
         patch("custom_components.eppgrid._register_panel", new_callable=AsyncMock) as mock_panel,
     ):
         mock_dm = mock_dm_cls.return_value
         mock_dm.async_start = AsyncMock()
         await async_setup_entry(hass, config_entry)
 
-    mock_panel.assert_awaited_once_with(hass)
+    mock_panel.assert_awaited_once_with(hass, module_url)
 
 
 async def test_setup_entry_skips_panel_when_disabled(hass: HomeAssistant, config_entry: MockConfigEntry) -> None:
@@ -56,6 +93,11 @@ async def test_setup_entry_skips_panel_when_disabled(hass: HomeAssistant, config
     with (
         patch("custom_components.eppgrid.DeviceManager") as mock_dm_cls,
         patch("custom_components.eppgrid.EPPGridStore") as mock_store_cls,
+        patch(
+            "custom_components.eppgrid._register_frontend_resources",
+            new_callable=AsyncMock,
+            return_value="/eppgrid_static/eppgrid-panel.js?v=deadbeef",
+        ),
         patch("custom_components.eppgrid._register_panel", new_callable=AsyncMock) as mock_panel,
     ):
         mock_store = mock_store_cls.return_value
@@ -75,6 +117,11 @@ async def test_unload_entry_stops_manager(hass: HomeAssistant, config_entry: Moc
 
     with (
         patch("custom_components.eppgrid.DeviceManager") as mock_dm_cls,
+        patch(
+            "custom_components.eppgrid._register_frontend_resources",
+            new_callable=AsyncMock,
+            return_value="/eppgrid_static/eppgrid-panel.js?v=deadbeef",
+        ),
         patch("custom_components.eppgrid._register_panel", new_callable=AsyncMock),
     ):
         mock_dm = mock_dm_cls.return_value
@@ -95,27 +142,39 @@ async def test_unload_entry_no_manager(hass: HomeAssistant, config_entry: MockCo
 
 
 async def test_register_panel(hass: HomeAssistant) -> None:
-    """_register_panel registers static paths and panel."""
+    """_register_panel registers the panel with the given module URL."""
     from custom_components.eppgrid import _register_panel
+
+    module_url = "/eppgrid_static/eppgrid-panel.js?v=abcd1234"
+    with patch("custom_components.eppgrid.panel_custom.async_register_panel", new_callable=AsyncMock) as mock_panel:
+        await _register_panel(hass, module_url)
+
+    mock_panel.assert_awaited_once()
+    call_kwargs = mock_panel.call_args[1]
+    assert call_kwargs["module_url"] == module_url
+
+
+async def test_register_frontend_resources_registers_static_path_and_js(hass: HomeAssistant) -> None:
+    """_register_frontend_resources registers the static path and adds the JS bundle as a global module URL."""
+    from custom_components.eppgrid import _register_frontend_resources
 
     hass.http = MagicMock()
     hass.http.async_register_static_paths = AsyncMock()
 
     with (
-        patch("custom_components.eppgrid.panel_custom.async_register_panel", new_callable=AsyncMock) as mock_panel,
         patch("custom_components.eppgrid._hash_file", return_value="abcd1234"),
+        patch("custom_components.eppgrid.add_extra_js_url") as mock_add_js,
     ):
-        await _register_panel(hass)
+        module_url = await _register_frontend_resources(hass)
 
     hass.http.async_register_static_paths.assert_awaited_once()
-    mock_panel.assert_awaited_once()
-    call_kwargs = mock_panel.call_args[1]
-    assert "abcd1234" in call_kwargs["module_url"]
+    mock_add_js.assert_called_once_with(hass, module_url)
+    assert module_url == "/eppgrid_static/eppgrid-panel.js?v=abcd1234"
 
 
-async def test_register_panel_hash_oserror(hass: HomeAssistant) -> None:
-    """_register_panel falls back to '0' hash on OSError."""
-    from custom_components.eppgrid import _register_panel
+async def test_register_frontend_resources_hash_oserror(hass: HomeAssistant) -> None:
+    """_register_frontend_resources falls back to '0' hash on OSError."""
+    from custom_components.eppgrid import _register_frontend_resources
 
     hass.http = MagicMock()
     hass.http.async_register_static_paths = AsyncMock()
@@ -124,13 +183,31 @@ async def test_register_panel_hash_oserror(hass: HomeAssistant) -> None:
         raise OSError("not found")
 
     with (
-        patch("custom_components.eppgrid.panel_custom.async_register_panel", new_callable=AsyncMock) as mock_panel,
         patch.object(hass, "async_add_executor_job", side_effect=executor_raises),
+        patch("custom_components.eppgrid.add_extra_js_url"),
     ):
-        await _register_panel(hass)
+        module_url = await _register_frontend_resources(hass)
 
-    call_kwargs = mock_panel.call_args[1]
-    assert "v=0" in call_kwargs["module_url"]
+    assert module_url.endswith("?v=0")
+
+
+async def test_register_frontend_resources_is_idempotent(hass: HomeAssistant) -> None:
+    """_register_frontend_resources does not re-register the static path on subsequent calls."""
+    from custom_components.eppgrid import _register_frontend_resources
+
+    hass.http = MagicMock()
+    hass.http.async_register_static_paths = AsyncMock()
+
+    with (
+        patch("custom_components.eppgrid._hash_file", return_value="abcd1234"),
+        patch("custom_components.eppgrid.add_extra_js_url") as mock_add_js,
+    ):
+        first = await _register_frontend_resources(hass)
+        second = await _register_frontend_resources(hass)
+
+    assert first == second
+    hass.http.async_register_static_paths.assert_awaited_once()
+    assert mock_add_js.call_count == 1
 
 
 async def test_hash_file(tmp_path) -> None:
