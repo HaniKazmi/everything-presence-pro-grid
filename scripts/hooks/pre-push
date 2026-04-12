@@ -36,12 +36,12 @@ if echo "$changed_files" | grep -qE "$model_files"; then
     step "Docs check"
     docs_updated=true
 
-    if ! echo "$changed_files" | grep -q "docs/backend-data-catalog.md"; then
-        printf '  ⚠  Model files changed but docs/backend-data-catalog.md not updated\n'
+    if ! echo "$changed_files" | grep -q "docs/developers/data-catalog.md"; then
+        printf '  ⚠  Model files changed but docs/developers/data-catalog.md not updated\n'
         docs_updated=false
     fi
-    if ! echo "$changed_files" | grep -q "docs/architecture.md"; then
-        printf '  ⚠  Model files changed but docs/architecture.md not updated\n'
+    if ! echo "$changed_files" | grep -q "docs/developers/architecture.md"; then
+        printf '  ⚠  Model files changed but docs/developers/architecture.md not updated\n'
         docs_updated=false
     fi
 
