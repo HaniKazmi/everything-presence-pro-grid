@@ -6,7 +6,7 @@ on:
     paths:
       - 'fw/**'
       - 'index.html'
-      - 'custom_components/eppgrid/brand/**'
+      - 'icon.png'
       - '.github/workflows/pages.yml'
 
 permissions:
@@ -30,7 +30,7 @@ jobs:
         run: |
           mkdir -p _site
           cp index.html _site/index.html
-          cp custom_components/eppgrid/brand/icon.png _site/icon.png
+          cp icon.png _site/icon.png
           cp -r fw _site/fw
       - name: Setup Pages
         uses: actions/configure-pages@v5
