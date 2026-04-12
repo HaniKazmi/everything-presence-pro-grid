@@ -45,6 +45,17 @@ Only use this route if HACS isn't an option — a container without HACS, a poli
 !!! example "Screenshot placeholder"
     **Everything Presence Pro Grid panel in the HA sidebar, empty state — no devices yet.** `installation/empty-panel.png`
 
+## Troubleshooting
+
+| Symptom | Likely cause | Fix |
+| --- | --- | --- |
+| HACS doesn't list the integration after adding the custom repo | HACS hasn't rescanned its catalogue yet | Restart Home Assistant, then open HACS again. The integration shows up under **Integrations**. |
+| Integration installed but the panel doesn't appear in the HA sidebar | Browser has a cached version of the HA UI | Hard refresh the HA web UI (**Ctrl-F5** / **Cmd-Shift-R**). If still missing, restart Home Assistant. |
+| "Integration update required" banner appears immediately after install | Your device firmware is newer than the integration release you've just installed | Either update the integration to a newer release in HACS, or downgrade the firmware to match. |
+| Manual install done but panel still not appearing | `custom_components/eppgrid/` is in the wrong place, or nested one level too deep | Verify the `eppgrid/` directory sits directly under your HA config's `custom_components/` folder (not inside a subdir), and check HA logs for import errors. |
+
+See also: the [central Troubleshooting](troubleshooting.md) page for conceptual FAQ and how to open a GitHub issue.
+
 ## Where to next
 
 - **[Pairing →](getting-started/pairing.md)** — add your device to Home Assistant so Everything Presence Pro Grid can pick it up.
