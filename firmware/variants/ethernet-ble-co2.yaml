@@ -43,4 +43,4 @@ update:
   - platform: http_request
     id: update_http_request
     name: Firmware Update
-    source: https://clintongormley.github.io/everything-presence-pro-grid/fw/latest/ethernet.json
+    source: https://clintongormley.github.io/everything-presence-pro-grid/fw/latest/ethernet-ble-co2.json
