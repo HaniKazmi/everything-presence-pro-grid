@@ -47,9 +47,12 @@ jobs:
           fi
           echo "Latest release: $LATEST"
           gh release download "$LATEST" -D artifacts --pattern 'everything-presence-pro-*'
+          # A release exists; expect firmware binaries. If they're missing
+          # something went wrong — fail rather than deploy an empty fw/ that
+          # would wipe previously-published firmware URLs on Pages.
           if ! ls artifacts/*.bin >/dev/null 2>&1; then
-            echo "::warning::Release $LATEST has no firmware binaries — fw/ will be empty"
-            exit 0
+            echo "::error::Release $LATEST has no firmware binaries; refusing to publish an empty fw/"
+            exit 1
           fi
           VERSION="${LATEST#v}" ARTIFACTS=artifacts ./.github/scripts/stage-firmware.sh
       - name: Build pages site
