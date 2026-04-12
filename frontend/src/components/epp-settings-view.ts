@@ -300,25 +300,33 @@ export class EppSettingsView extends LitElement {
 	}
 
 	resetBtn(defaultValue: number, key?: string) {
-		return html`<button type="button" class="setting-info" aria-label="Reset to default" title="Reset to default" @click=${(
-			e: Event,
-		) => {
-			e.stopPropagation();
-			const row = (e.currentTarget as HTMLElement).closest(
-				".setting-row",
-			) as HTMLElement;
-			if (row) this._resetSlider(row, defaultValue, key);
-			if (key) {
-				this._fireChange(key, defaultValue);
-			} else {
-				this._fireDirty();
-			}
-		}}><ha-icon icon="mdi:restart"></ha-icon></button>`;
+		return html`<button
+			type="button"
+			class="setting-info"
+			aria-label=${this.localize("settings.reset_to_default")}
+			title=${this.localize("settings.reset_to_default")}
+			@click=${(e: Event) => {
+				e.stopPropagation();
+				const row = (e.currentTarget as HTMLElement).closest(
+					".setting-row",
+				) as HTMLElement;
+				if (row) this._resetSlider(row, defaultValue, key);
+				if (key) {
+					this._fireChange(key, defaultValue);
+				} else {
+					this._fireDirty();
+				}
+			}}
+		><ha-icon icon="mdi:restart"></ha-icon></button>`;
 	}
 
 	infoTip(text: string) {
-		return html`<button type="button" class="setting-info" aria-label="Show info" title="Show info"
-      @click=${(e: Event) => {
+		return html`<button
+			type="button"
+			class="setting-info"
+			aria-label=${this.localize("settings.show_info")}
+			title=${this.localize("settings.show_info")}
+			@click=${(e: Event) => {
 				e.stopPropagation();
 				const icon = e.currentTarget as HTMLElement;
 				const tip = icon.querySelector(".setting-info-tooltip") as HTMLElement;
@@ -336,7 +344,7 @@ export class EppSettingsView extends LitElement {
 				tip.style.left = `${Math.max(8, Math.min(rect.right - 240, window.innerWidth - 256))}px`;
 				tip.style.top = `${rect.bottom + 6}px`;
 			}}
-    ><ha-icon icon="mdi:help-circle-outline"></ha-icon><span class="setting-info-tooltip">${text}</span></button>`;
+		><ha-icon icon="mdi:help-circle-outline"></ha-icon><span class="setting-info-tooltip">${text}</span></button>`;
 	}
 
 	renderDetectionRanges() {
@@ -562,10 +570,10 @@ export class EppSettingsView extends LitElement {
 			isOn("target_count", false);
 
 		const RATE_OPTIONS = [
-			{ value: "200", label: "5 Hz" },
-			{ value: "500", label: "2 Hz" },
-			{ value: "1000", label: "1 Hz" },
-			{ value: "2000", label: "0.5 Hz" },
+			{ value: "200", label: this.localize("settings.frequency.5hz") },
+			{ value: "500", label: this.localize("settings.frequency.2hz") },
+			{ value: "1000", label: this.localize("settings.frequency.1hz") },
+			{ value: "2000", label: this.localize("settings.frequency.0_5hz") },
 		];
 
 		return html`
@@ -819,7 +827,10 @@ export class EppSettingsView extends LitElement {
                 <label>${this.localize(c.label)}</label>
                 <ha-select
                   .value=${current}
-                  .options=${LOG_LEVELS.map((l) => ({ value: l, label: l }))}
+                  .options=${LOG_LEVELS.map((l) => ({
+									value: l,
+									label: this.localize(`settings.log_level.${l.toLowerCase()}`),
+								}))}
                   @selected=${(e: CustomEvent<{ value: string }>) => {
 										const val = e.detail.value;
 										if (!val || val === current) return;
@@ -831,16 +842,20 @@ export class EppSettingsView extends LitElement {
 									}}
                   @closed=${(e: Event) => e.stopPropagation()}
                 ></ha-select>
-                <button type="button" class="setting-info" aria-label="Reset to default" title="Reset to default" @click=${(
-									e: Event,
-								) => {
+                <button
+								type="button"
+								class="setting-info"
+								aria-label=${this.localize("settings.reset_to_default")}
+								title=${this.localize("settings.reset_to_default")}
+								@click=${(e: Event) => {
 									e.stopPropagation();
 									if (!this._overrides.logLevels)
 										this._overrides.logLevels = {};
 									this._overrides.logLevels[c.key] = "None";
 									this._fireDirty();
 									this.requestUpdate();
-								}}><ha-icon icon="mdi:restart"></ha-icon></button>
+								}}
+							><ha-icon icon="mdi:restart"></ha-icon></button>
                 ${this.infoTip(this.localize(c.tip))}
               </div>
             `;

@@ -161,7 +161,22 @@
 		"relay_occupancy": "Occupancy",
 		"relay_normally_open": "Normally Open (NO)",
 		"relay_normally_closed": "Normally Closed (NC)",
-		"update_rate": "Update rate"
+		"update_rate": "Update rate",
+		"reset_to_default": "Reset to default",
+		"show_info": "Show info",
+		"frequency": {
+			"5hz": "5 Hz",
+			"2hz": "2 Hz",
+			"1hz": "1 Hz",
+			"0_5hz": "0.5 Hz"
+		},
+		"log_level": {
+			"none": "None",
+			"error": "Error",
+			"warning": "Warning",
+			"info": "Info",
+			"debug": "Debug"
+		}
 	},
 	"sidebar": {
 		"detection_zones": "Detection zones",
