@@ -214,7 +214,7 @@ describe("_renderWizardCorners inline handlers", () => {
 	});
 
 	it("save button calls computeWizardPerspective and wizardFinish (via EppWizard)", async () => {
-		const { EppWizard } = await import("../components/epp-wizard.js");
+		await import("../components/epp-wizard.js");
 		const el = document.createElement("epp-wizard") as any;
 		el.hass = { callWS: vi.fn().mockResolvedValue({}) };
 		el.selectedMac = "AA:BB:CC:DD:EE:01";
@@ -467,7 +467,7 @@ describe("_renderLiveOverview inline handlers", () => {
 
 			const settingsCall = callWS.mock.calls.find(
 				(c: any) => c[0].type === "eppgrid/set_settings",
-			)[0];
+			)?.[0];
 			expect(settingsCall.led_mode).toBe("Environmental");
 			expect(settingsCall.led_brightness).toBe(0.7);
 			expect(settingsCall.led_presence_color).toBe("#FF0000");

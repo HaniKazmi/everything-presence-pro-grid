@@ -58,7 +58,7 @@ export class FlasherController implements ReactiveController {
 				type: "eppgrid/update_firmware",
 				mac,
 			});
-		} catch (err: any) {
+		} catch {
 			this.otaStates[mac] = {
 				state: "error",
 				progress: null,
@@ -79,7 +79,7 @@ export class FlasherController implements ReactiveController {
 			// Start initial timeout — if no progress events arrive at all,
 			// the device rejected the update or something went wrong
 			this._startOtaTimeout(mac, 15000);
-		} catch (err: any) {
+		} catch {
 			this.otaStates[mac] = {
 				state: "error",
 				progress: null,

@@ -359,7 +359,8 @@ describe("_renderHeader device selector", () => {
 
 		const guardSpy = vi
 			.spyOn(a, "_guardNavigation")
-			.mockImplementation(async (cb: () => Promise<void>) => {
+			.mockImplementation(async (...args: unknown[]) => {
+				const cb = args[0] as () => Promise<void>;
 				await cb();
 			});
 

@@ -786,11 +786,14 @@ describe("GridStateController", () => {
 			const item: FurnitureItem = {
 				id: "f1",
 				type: "sofa-2" as any,
+				icon: "",
+				label: "",
 				x: 500,
 				y: 500,
 				width: 600,
 				height: 300,
 				rotation: 45,
+				lockAspect: false,
 			};
 			host._furniture = [item];
 
@@ -868,11 +871,14 @@ describe("GridStateController", () => {
 			const item: FurnitureItem = {
 				id: "f1",
 				type: "sofa-2" as any,
+				icon: "",
+				label: "",
 				x: 500,
 				y: 500,
 				width: 600,
 				height: 300,
 				rotation: 0,
+				lockAspect: false,
 			};
 			host._furniture = [item];
 			host._dragState = {
