@@ -81,7 +81,8 @@ nav:
       - First boot: user-guide/getting-started/first-boot.md
       - Calibration: user-guide/getting-started/calibration.md
     - Zones: user-guide/zones.md
-    - Floor plan: user-guide/floor-plan.md
+    - Overlays: user-guide/overlays.md
+    - Furniture: user-guide/furniture.md
     - Live view: user-guide/live-view.md
     - Firmware: user-guide/firmware.md
     - Troubleshooting: user-guide/troubleshooting.md
