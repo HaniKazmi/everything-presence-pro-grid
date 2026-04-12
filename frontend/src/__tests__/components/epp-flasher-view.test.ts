@@ -105,6 +105,21 @@ describe("epp-flasher-view element", () => {
 		const result = (el as any).render();
 		expect(result).toBeDefined();
 	});
+
+	it("falls back to an identity localize function when none is provided", () => {
+		// Callers are expected to inject a localize, but the view renders
+		// raw keys as a safe fallback when they don't.
+		const el = document.createElement("epp-flasher-view") as EppFlasherView;
+		el.hass = { callWS: () => Promise.resolve({}) };
+		el.flashableDevices = [];
+		el.loading = true;
+		const tpl = (el as any).render();
+		const c = renderTo(tpl);
+
+		expect(c.querySelector(".flasher-loading")!.textContent).toContain(
+			"flasher.loading",
+		);
+	});
 });
 
 describe("render() loading state", () => {
