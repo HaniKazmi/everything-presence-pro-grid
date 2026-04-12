@@ -6,13 +6,13 @@ Once Everything Presence Pro Grid has paired with your device, you're ready to o
 
 Open **Everything Presence Pro Grid** from the Home Assistant sidebar. The panel has two top-level tabs:
 
-- **Device Configuration** — the default view. This is where you'll spend most of your time. It shows the live grid, your zones and overlays, and editors for each. On first open, the grid is visible but empty because no zones have been configured yet.
+- **Device Configuration** — the default view and where you'll spend most of your time. Once the device is calibrated, this view shows the live grid, your zones and overlays, and editors for each. On first boot, before calibration has been run, the Device Configuration tab opens into the calibration wizard with the uncalibrated field-of-view shown — the calibrated grid appears only after you complete calibration.
 - **Flash Firmware** — the firmware flasher. You don't need this for day-to-day use; it's for flashing new devices or updating firmware on existing ones. See [Firmware](../firmware.md) for more.
 
-Inside the Device Configuration tab, a sidebar lets you switch between three editing modes: **Zones**, **Overlays** (entrance/exit and interference), and **Furniture**. All three are empty until you use them.
+Once calibrated, the Device Configuration tab has a sidebar that switches between three editing modes: **Zones**, **Overlays** (entrance/exit and interference), and **Furniture**. All three are empty until you use them.
 
 !!! example "Screenshot placeholder"
-    **The Device Configuration tab on first open — calibrated grid visible, no zones, no overlays, no furniture.** `first-boot/panel-first-open.png`
+    **The Device Configuration tab on first boot — uncalibrated field-of-view with the calibration wizard, before any zones, overlays, or furniture exist.** `first-boot/panel-first-open.png`
 
 ## Default entities
 
@@ -22,30 +22,33 @@ What you get on first boot, from the firmware:
 
 **Diagnostic**
 
-- **Firmware version** — the firmware build currently running on the device.
-- **Zone engine version** — the compatibility version of the on-chip zone engine. The integration uses this to decide whether it can talk to the device.
+- **Firmware Version** — the firmware build currently running on the device. The integration compares this against its own expected `FIRMWARE_VERSION` to decide whether it can talk to the device safely.
+- **Firmware Update** — an ESPHome update entity that reports whether a newer firmware is available and performs the OTA when triggered. Visible on HA's Updates dashboard as well as inside the panel.
 
 **Environmental**
 
-- **Illuminance** (from the BH1750 sensor, in lux).
-- **Temperature** (from the SHTC3 sensor, in °C).
-- **Humidity** (from the SHTC3 sensor, as a percentage).
-- **CO2** (from the MH-Z19 sensor, in ppm). Both current firmware variants include the CO2 sensor.
+- **Illuminance** (from the BH1750 sensor, in lux). Enabled by default.
+- **Temperature** (from the SHTC3 sensor, in °C). Enabled by default.
+- **Humidity** (from the SHTC3 sensor, as a percentage). Enabled by default.
+- **CO2** (from the SCD4x/SCD40 sensor, in ppm) — present on both current firmware variants, but **disabled by default**. Enable it from the device page in Home Assistant if you want CO2 readings.
 
 **Presence**
 
-- **PIR motion** — a binary sensor that goes on when the PIR detects motion.
-- **Static presence** — a binary sensor backed by the SEN0609 module, which detects still-but-breathing occupants that the radar and PIR may miss.
+- **Occupancy** — the main presence binary sensor. Enabled by default. This is the one you'll typically automate against for "is someone in the room".
+- **Motion Presence** — a motion-oriented presence binary sensor (LD2450 motion stream). Disabled by default.
+- **Static Presence** — a static-presence binary sensor backed by the SEN0609 module, for still-but-breathing occupants. Disabled by default.
 
-**Zone entities (disabled by default)**
+The internal PIR is used by the firmware as input to the on-chip presence logic but is not exposed to Home Assistant as its own entity.
 
-- `zone_0_presence` through `zone_7_presence` (binary sensors).
-- `zone_0_target_count` through `zone_7_target_count` (sensors).
+**Zone entities**
 
-Each pair is disabled until you create the corresponding zone in the panel's zone editor and enable the relevant toggles in settings. `zone_0` is reserved as the fallback zone ("rest of room") — it catches any target that isn't inside one of your named zones.
+- **Zone 0 Presence** through **Zone 7 Presence** (binary sensors; entity IDs like `binary_sensor.<device>_zone_0_presence`).
+- **Zone 0 Target Count** through **Zone 7 Target Count** (sensors; entity IDs like `sensor.<device>_zone_0_target_count`).
+
+In Home Assistant, these appear with the usual domain and device-name prefixes; the display names above are what you'll see in the UI. Most zone pairs are disabled on first boot and only become enabled once you configure the corresponding zone in the zone editor and turn on the relevant toggles in settings. **Zone 0** is reserved as the fallback zone ("rest of room") and catches any target that isn't inside a named zone; the calibration wizard may enable it automatically when zone presence is turned on.
 
 !!! note
-    Everything Presence Pro Grid's design is opt-in. You get the environmental and presence sensors straight away, but zone-specific entities only appear once you configure zones. This keeps your Home Assistant entity registry uncluttered when you have several devices and only use a few zones on each.
+    Everything Presence Pro Grid's design is opt-in. You get the environmental and default-presence sensors straight away, while the motion/static-presence and zone entities are only enabled once you actively configure them. This keeps your Home Assistant entity registry uncluttered when you have several devices and use a subset of features on each.
 
 ## What's not exposed by default
 

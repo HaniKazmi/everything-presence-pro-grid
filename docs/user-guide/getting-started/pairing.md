@@ -10,7 +10,7 @@ Everything Presence Pro Grid is a discovery-layer integration — it doesn't add
 
 ## How pairing works
 
-Everything Presence Pro Grid doesn't prompt you to add a device or walk you through a setup flow. Instead, once the integration is loaded, it scans HA's entity registry for ESPHome devices whose manufacturer is **EverythingSmartechnology**, model is **Everything Presence Pro**, and which publish a `firmware_version` entity. Any device that matches gets wrapped by Everything Presence Pro Grid and shows up in the panel.
+Everything Presence Pro Grid doesn't prompt you to add a device or walk you through a setup flow. Instead, once the integration is loaded, it scans HA's entity registry for ESPHome devices whose manufacturer is **EverythingSmartTechnology**, model is **Everything Presence Pro**, and which publish a `firmware_version` entity. Any device that matches gets wrapped by Everything Presence Pro Grid and shows up in the panel.
 
 That means the work you actually need to do is to get the device added to HA via the standard ESPHome integration. Everything Presence Pro Grid takes it from there.
 
@@ -19,11 +19,11 @@ That means the work you actually need to do is to get the device added to HA via
 1. **Power the device on.** Give it 10–20 seconds to join the network and announce itself.
 2. In Home Assistant, go to **Settings → Devices & Services**.
 3. Look for a **Discovered** card for your device (ESPHome integration). If HA found it automatically, click **Configure** and follow the prompts.
-4. If the device isn't discovered, click **Add Integration**, search for **ESPHome**, and enter the device's hostname (e.g. `everything-presence-pro.local`) or IP address.
+4. If the device isn't discovered, click **Add Integration**, search for **ESPHome**, and enter the device's hostname (typically `everything-presence-pro-<suffix>.local` — see tip below) or IP address.
 5. (Optional) Assign the device to an Area. This is a standard HA concept and makes the device easier to find later.
 
 !!! tip
-    The device's name comes from the firmware's configured hostname. You can rename the device from its HA device page after pairing — Everything Presence Pro Grid follows the new name automatically.
+    The firmware appends a MAC-based suffix to the hostname (e.g. `everything-presence-pro-a1b2c3.local`), unless you've customised it. You can rename the device from its HA device page after pairing — Everything Presence Pro Grid follows the new name automatically.
 
 !!! example "Screenshot placeholder"
     **HA Settings → Devices & Services showing a discovered Everything Presence Pro card.** `pairing/discovered-card.png`

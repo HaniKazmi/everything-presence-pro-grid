@@ -65,7 +65,7 @@ Once a device has Everything Presence Pro Grid firmware and is on your network, 
     **Installed Devices list with an Update button and "Update needed" badge on one device.** `firmware/ota-available.png`
 
 !!! note
-    OTA updates don't show up as a standard Home Assistant **update** entity. You'll only see them inside the Everything Presence Pro Grid panel. If you want a dashboard card for pending firmware updates, it has to live in the Everything Presence Pro Grid panel rather than on the main HA Updates dashboard.
+    The firmware publishes an ESPHome `update` entity (display name **Firmware Update**), so pending updates also appear on HA's standard Updates dashboard and you can install them from there. The Everything Presence Pro Grid panel gives you richer progress information and error reporting during the OTA, but either place works to trigger the update.
 
 ### When OTA fails
 
