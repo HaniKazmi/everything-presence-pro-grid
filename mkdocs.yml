@@ -86,6 +86,7 @@ nav:
     - Overlays: user-guide/overlays.md
     - Furniture: user-guide/furniture.md
     - Live view: user-guide/live-view.md
+    - Automations: user-guide/automations.md
     - Firmware: user-guide/firmware.md
     - Troubleshooting: user-guide/troubleshooting.md
   - Developers:

@@ -67,4 +67,5 @@ If something in the live view looks wrong, the most common causes:
 
 ## Where to next
 
+- **[Automations →](automations.md)** — put it all to use: worked examples for bathroom and bedroom automations in Home Assistant.
 - **[Firmware →](firmware.md)** — keep firmware up to date over the air, or flash a fresh device.
