@@ -168,7 +168,7 @@ class DeviceConnection:
             self._unsub_logs = None
             _LOGGER.debug("Unsubscribed from device logs from %s", self._host)
 
-    async def async_fetch_build_flags(self) -> dict[str, Any]:
+    async def async_fetch_build_flags(self, timeout: float = 2.0) -> dict[str, Any]:
         """Fetch build flags from device via get_build_flags action."""
         if self._client is None:
             return {}
@@ -176,7 +176,10 @@ class DeviceConnection:
         if svc is None:
             return {}
         try:
-            resp = await self._client.execute_service(svc, {}, return_response=True)
+            resp = await asyncio.wait_for(
+                self._client.execute_service(svc, {}, return_response=True),
+                timeout=timeout,
+            )
             if resp is None or not resp.response_data:
                 return {}
             decoded = json.loads(resp.response_data)
@@ -704,6 +707,8 @@ class DeviceManager:
 
     async def _fetch_build_flags(self, mac: str) -> None:
         """Fetch and cache build flags from a device."""
+        if mac in self._build_flags:
+            return
         dev = self.devices.get(mac)
         if dev is None or dev.host is None:
             return
@@ -745,9 +750,10 @@ class DeviceManager:
             try:
                 await session_conn.async_push_config(config)
                 await self._push_pipeline_to_device(mac)
-                flags = await session_conn.async_fetch_build_flags()
-                if flags:
-                    self._build_flags[mac] = flags
+                if mac not in self._build_flags:
+                    flags = await session_conn.async_fetch_build_flags()
+                    if flags:
+                        self._build_flags[mac] = flags
                 self._manage_log_subscription(session_conn, config)
                 return True
             except Exception:
@@ -767,9 +773,10 @@ class DeviceManager:
             svc = conn._services.get("epp_set_pipeline")
             if svc:
                 await conn._client.execute_service(svc, pipeline)
-            flags = await conn.async_fetch_build_flags()
-            if flags:
-                self._build_flags[mac] = flags
+            if mac not in self._build_flags:
+                flags = await conn.async_fetch_build_flags()
+                if flags:
+                    self._build_flags[mac] = flags
             return True
         except Exception:
             _LOGGER.warning("Failed to push config to %s (%s)", dev.name, mac)

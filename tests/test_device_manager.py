@@ -2611,6 +2611,125 @@ class TestBuildFlags:
         assert result[0]["firmware_channel"] == "stable"
         assert result[0]["model"] == "pro"
 
+    async def test_push_config_skips_fetch_when_cached_session(
+        self, hass: HomeAssistant, store: EPPGridStore, manager: DeviceManager
+    ) -> None:
+        """_push_config_to_device skips build-flags fetch when cached (session path)."""
+        mac = "AA:BB:CC:DD:EE:FF"
+        store.devices[mac] = {"calibration": {"perspective": [1.0] * 8}}
+        manager.devices[mac] = ManagedDevice(mac=mac, name="EPP", host="192.168.1.50")
+        manager._build_flags[mac] = {"model": "pro"}
+
+        session_conn = MagicMock()
+        session_conn.connected = True
+        session_conn.raw_target_subs = 0
+        session_conn.grid_target_subs = 0
+        session_conn.async_push_config = AsyncMock()
+        session_conn.async_fetch_build_flags = AsyncMock(return_value={})
+        session_conn._services = {}
+        manager._active_connections[mac] = session_conn
+
+        result = await manager._push_config_to_device(mac)
+
+        assert result is True
+        session_conn.async_fetch_build_flags.assert_not_awaited()
+        assert manager._build_flags[mac] == {"model": "pro"}
+
+    async def test_push_config_skips_fetch_when_cached_temporary(
+        self, hass: HomeAssistant, store: EPPGridStore, manager: DeviceManager
+    ) -> None:
+        """_push_config_to_device skips build-flags fetch when cached (temp-connection path)."""
+        mac = "AA:BB:CC:DD:EE:FF"
+        store.devices[mac] = {"calibration": {"perspective": [1.0] * 8}}
+        manager.devices[mac] = ManagedDevice(mac=mac, name="EPP", host="192.168.1.50")
+        manager._build_flags[mac] = {"model": "pro"}
+
+        mock_conn = MagicMock()
+        mock_conn.async_connect = AsyncMock()
+        mock_conn.async_push_config = AsyncMock()
+        mock_conn.async_fetch_build_flags = AsyncMock(return_value={})
+        mock_conn.async_disconnect = AsyncMock()
+        mock_conn._services = {}
+        mock_conn._client = MagicMock()
+
+        with patch(
+            "custom_components.eppgrid.device_manager.DeviceConnection",
+            return_value=mock_conn,
+        ):
+            result = await manager._push_config_to_device(mac)
+
+        assert result is True
+        mock_conn.async_fetch_build_flags.assert_not_awaited()
+        assert manager._build_flags[mac] == {"model": "pro"}
+
+    async def test_fetch_build_flags_skips_when_cached_session(
+        self, hass: HomeAssistant, store: EPPGridStore, manager: DeviceManager
+    ) -> None:
+        """_fetch_build_flags skips when already cached (session path)."""
+        mac = "AA:BB:CC:DD:EE:FF"
+        manager.devices[mac] = ManagedDevice(mac=mac, name="EPP", host="192.168.1.50")
+        manager._build_flags[mac] = {"model": "pro"}
+
+        session_conn = MagicMock()
+        session_conn.connected = True
+        session_conn.raw_target_subs = 0
+        session_conn.grid_target_subs = 0
+        session_conn.async_fetch_build_flags = AsyncMock(return_value={})
+        manager._active_connections[mac] = session_conn
+
+        await manager._fetch_build_flags(mac)
+
+        session_conn.async_fetch_build_flags.assert_not_awaited()
+
+    async def test_fetch_build_flags_skips_when_cached_temporary(
+        self, hass: HomeAssistant, store: EPPGridStore, manager: DeviceManager
+    ) -> None:
+        """_fetch_build_flags skips when already cached (temp-connection path)."""
+        mac = "AA:BB:CC:DD:EE:FF"
+        manager.devices[mac] = ManagedDevice(mac=mac, name="EPP", host="192.168.1.50")
+        manager._build_flags[mac] = {"model": "pro"}
+
+        mock_conn = MagicMock()
+        mock_conn.async_connect = AsyncMock()
+        mock_conn.async_fetch_build_flags = AsyncMock(return_value={})
+        mock_conn.async_disconnect = AsyncMock()
+
+        with patch(
+            "custom_components.eppgrid.device_manager.DeviceConnection",
+            return_value=mock_conn,
+        ):
+            await manager._fetch_build_flags(mac)
+
+        mock_conn.async_fetch_build_flags.assert_not_awaited()
+        mock_conn.async_connect.assert_not_awaited()
+
+    async def test_fetch_build_flags_times_out_fast(self) -> None:
+        """async_fetch_build_flags returns {} within timeout when execute_service hangs."""
+        conn = DeviceConnection("192.168.1.100")
+
+        mock_svc = MagicMock()
+        mock_svc.name = "get_build_flags"
+
+        async def hang(*_args: object, **_kwargs: object) -> None:
+            await asyncio.sleep(60)
+            return None
+
+        with patch("custom_components.eppgrid.device_manager.APIClient") as mock_cls:
+            mock_client = mock_cls.return_value
+            mock_client.connect = AsyncMock()
+            mock_client.list_entities_services = AsyncMock(return_value=([], [mock_svc]))
+            mock_client.execute_service = AsyncMock(side_effect=hang)
+            mock_client.disconnect = AsyncMock()
+
+            await conn.async_connect()
+            loop = asyncio.get_event_loop()
+            start = loop.time()
+            result = await conn.async_fetch_build_flags(timeout=0.05)
+            elapsed = loop.time() - start
+
+        assert result == {}
+        assert elapsed < 2.0, f"expected quick timeout, took {elapsed:.2f}s"
+
     async def test_list_devices_no_build_flags(self, hass: HomeAssistant, manager: DeviceManager) -> None:
         """list_devices works without cached build flags (no extra keys)."""
         mac = "AA:BB:CC:DD:EE:FF"
