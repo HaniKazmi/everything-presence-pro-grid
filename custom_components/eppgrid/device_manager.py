@@ -168,7 +168,7 @@ class DeviceConnection:
             self._unsub_logs = None
             _LOGGER.debug("Unsubscribed from device logs from %s", self._host)
 
-    async def async_fetch_build_flags(self) -> dict[str, Any]:
+    async def async_fetch_build_flags(self, timeout: float = 2.0) -> dict[str, Any]:
         """Fetch build flags from device via get_build_flags action."""
         if self._client is None:
             return {}
@@ -176,7 +176,10 @@ class DeviceConnection:
         if svc is None:
             return {}
         try:
-            resp = await self._client.execute_service(svc, {}, return_response=True)
+            resp = await asyncio.wait_for(
+                self._client.execute_service(svc, {}, return_response=True),
+                timeout=timeout,
+            )
             if resp is None or not resp.response_data:
                 return {}
             decoded = json.loads(resp.response_data)
@@ -704,6 +707,8 @@ class DeviceManager:
 
     async def _fetch_build_flags(self, mac: str) -> None:
         """Fetch and cache build flags from a device."""
+        if mac in self._build_flags:
+            return
         dev = self.devices.get(mac)
         if dev is None or dev.host is None:
             return
@@ -712,8 +717,10 @@ class DeviceManager:
         session = self.get_session(mac)
         if session is not None:
             flags = await session.async_fetch_build_flags()
+            # Cache the result (even {}) so we don't retry every save on
+            # firmware that never responds to get_build_flags.
+            self._build_flags[mac] = flags
             if flags:
-                self._build_flags[mac] = flags
                 self._fire_device_list_changed()
             return
 
@@ -721,8 +728,8 @@ class DeviceManager:
         try:
             await asyncio.wait_for(conn.async_connect(), timeout=30)
             flags = await conn.async_fetch_build_flags()
+            self._build_flags[mac] = flags
             if flags:
-                self._build_flags[mac] = flags
                 self._fire_device_list_changed()
         except Exception:
             _LOGGER.debug("Failed to fetch build flags from %s", mac)
@@ -745,9 +752,8 @@ class DeviceManager:
             try:
                 await session_conn.async_push_config(config)
                 await self._push_pipeline_to_device(mac)
-                flags = await session_conn.async_fetch_build_flags()
-                if flags:
-                    self._build_flags[mac] = flags
+                if mac not in self._build_flags:
+                    self._build_flags[mac] = await session_conn.async_fetch_build_flags()
                 self._manage_log_subscription(session_conn, config)
                 return True
             except Exception:
@@ -767,9 +773,8 @@ class DeviceManager:
             svc = conn._services.get("epp_set_pipeline")
             if svc:
                 await conn._client.execute_service(svc, pipeline)
-            flags = await conn.async_fetch_build_flags()
-            if flags:
-                self._build_flags[mac] = flags
+            if mac not in self._build_flags:
+                self._build_flags[mac] = await conn.async_fetch_build_flags()
             return True
         except Exception:
             _LOGGER.warning("Failed to push config to %s (%s)", dev.name, mac)
