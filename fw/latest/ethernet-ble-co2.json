@@ -1,0 +1,19 @@
+{
+  "name": "Everything Presence Pro Grid (Ethernet + BLE + CO2)",
+  "version": "0.90.0-alpha",
+  "home_assistant_domain": "esphome",
+  "builds": [
+    {
+      "chipFamily": "ESP32",
+      "parts": [
+        {"path": "ethernet-ble-co2-bootloader.bin", "offset": 4096},
+        {"path": "ethernet-ble-co2-partitions.bin", "offset": 32768},
+        {"path": "ethernet-ble-co2.bin", "offset": 65536}
+      ],
+      "ota": {
+        "path": "ethernet-ble-co2.ota.bin",
+        "md5": "df9a82a308fdc41c549b5eea701e4322"
+      }
+    }
+  ]
+}

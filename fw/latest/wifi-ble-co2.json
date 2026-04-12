@@ -1,0 +1,19 @@
+{
+  "name": "Everything Presence Pro Grid (WiFi + BLE + CO2)",
+  "version": "0.90.0-alpha",
+  "home_assistant_domain": "esphome",
+  "builds": [
+    {
+      "chipFamily": "ESP32",
+      "parts": [
+        {"path": "wifi-ble-co2-bootloader.bin", "offset": 4096},
+        {"path": "wifi-ble-co2-partitions.bin", "offset": 32768},
+        {"path": "wifi-ble-co2.bin", "offset": 65536}
+      ],
+      "ota": {
+        "path": "wifi-ble-co2.ota.bin",
+        "md5": "75ce2ac84dc679f5a3dfbf4985cec273"
+      }
+    }
+  ]
+}
