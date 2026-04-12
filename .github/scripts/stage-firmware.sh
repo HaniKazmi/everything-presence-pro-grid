@@ -19,10 +19,21 @@ set -euo pipefail
 
 VARIANTS=(wifi-ble-co2 ethernet-ble-co2)
 
+variant_label() {
+  # Human-readable label for the manifest `name` field — shown in the
+  # ESPHome / HA firmware-update UI.
+  case "$1" in
+    wifi-ble-co2)     echo "WiFi + BLE + CO2" ;;
+    ethernet-ble-co2) echo "Ethernet + BLE + CO2" ;;
+    *)                echo "$1" ;;
+  esac
+}
+
 mkdir -p fw/latest "fw/v${VERSION}"
 
 for VARIANT in "${VARIANTS[@]}"; do
   ART="everything-presence-pro-${VARIANT}"
+  LABEL=$(variant_label "$VARIANT")
 
   for SUFFIX in .bin .ota.bin -bootloader.bin -partitions.bin; do
     [ -f "${ARTIFACTS}/${ART}${SUFFIX}" ] \
@@ -38,7 +49,7 @@ for VARIANT in "${VARIANTS[@]}"; do
 
   cat > "fw/latest/${VARIANT}.json" <<EOF
 {
-  "name": "Everything Presence Pro Grid (${VARIANT})",
+  "name": "Everything Presence Pro Grid (${LABEL})",
   "version": "${VERSION}",
   "home_assistant_domain": "esphome",
   "builds": [

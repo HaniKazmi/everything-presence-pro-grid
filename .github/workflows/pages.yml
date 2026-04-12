@@ -38,18 +38,17 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           mkdir -p artifacts fw
-          LATEST=$(gh release list --limit 1 --json tagName --jq '.[0].tagName' 2>/dev/null || echo "")
+          # Let gh failures (auth, network, API outage) fail the job — we do not
+          # want to silently publish an empty fw/ if the release lookup broke.
+          LATEST=$(gh release list --exclude-drafts --limit 1 --json tagName --jq '.[0].tagName // ""')
           if [ -z "$LATEST" ]; then
-            echo "No releases yet — Pages will have no fw/ content"
+            echo "No published releases — Pages will have no fw/ content"
             exit 0
           fi
           echo "Latest release: $LATEST"
-          gh release download "$LATEST" -D artifacts --pattern 'everything-presence-pro-*' || {
-            echo "Release has no firmware assets matching everything-presence-pro-*"
-            exit 0
-          }
+          gh release download "$LATEST" -D artifacts --pattern 'everything-presence-pro-*'
           if ! ls artifacts/*.bin >/dev/null 2>&1; then
-            echo "No .bin artifacts in release — skipping stage"
+            echo "::warning::Release $LATEST has no firmware binaries — fw/ will be empty"
             exit 0
           fi
           VERSION="${LATEST#v}" ARTIFACTS=artifacts ./.github/scripts/stage-firmware.sh
