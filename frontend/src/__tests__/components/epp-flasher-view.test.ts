@@ -822,7 +822,10 @@ describe("USB flash view — state-driven", () => {
 	it("renders error state with retry button", () => {
 		const el = createView();
 		(el as any)._showUsbFlash = true;
-		(el as any).usbFlashState = { step: "error", errorKey: "flasher.usb_error_flash" };
+		(el as any).usbFlashState = {
+			step: "error",
+			errorKey: "flasher.usb_error_flash",
+		};
 		const tpl = (el as any).render();
 		const c = renderTo(tpl);
 
@@ -851,7 +854,10 @@ describe("USB flash view — state-driven", () => {
 	it("shows Retry button when error is not fatal", () => {
 		const el = createView();
 		(el as any)._showUsbFlash = true;
-		(el as any).usbFlashState = { step: "error", errorKey: "flasher.usb_error_flash" };
+		(el as any).usbFlashState = {
+			step: "error",
+			errorKey: "flasher.usb_error_flash",
+		};
 		const tpl = (el as any).render();
 		const c = renderTo(tpl);
 		const btns = c.querySelectorAll(".confirm-actions ha-button");
@@ -903,7 +909,10 @@ describe("USB flash view — state-driven", () => {
 	it("dispatches usb-retry event when Retry clicked", async () => {
 		const el = createView();
 		(el as any)._showUsbFlash = true;
-		(el as any).usbFlashState = { step: "error", errorKey: "flasher.usb_error_flash" };
+		(el as any).usbFlashState = {
+			step: "error",
+			errorKey: "flasher.usb_error_flash",
+		};
 		document.body.appendChild(el);
 		await el.updateComplete;
 
@@ -1134,7 +1143,11 @@ describe("OTA inline rendering", () => {
 
 	it("renders ota-progress when updating with numeric progress", () => {
 		const otaStates: Record<string, OtaDeviceState> = {
-			[updatableDevice.mac]: { state: "updating", progress: 45, errorKey: null },
+			[updatableDevice.mac]: {
+				state: "updating",
+				progress: 45,
+				errorKey: null,
+			},
 		};
 		const el = createView({
 			flashableDevices: [updatableDevice],
@@ -1160,7 +1173,11 @@ describe("OTA inline rendering", () => {
 
 	it("renders ota-success when success", () => {
 		const otaStates: Record<string, OtaDeviceState> = {
-			[updatableDevice.mac]: { state: "success", progress: null, errorKey: null },
+			[updatableDevice.mac]: {
+				state: "success",
+				progress: null,
+				errorKey: null,
+			},
 		};
 		const el = createView({
 			flashableDevices: [updatableDevice],
@@ -1195,7 +1212,11 @@ describe("OTA inline rendering", () => {
 
 	it("renders ota-spinner when updating with null progress (indeterminate)", () => {
 		const otaStates: Record<string, OtaDeviceState> = {
-			[updatableDevice.mac]: { state: "updating", progress: null, errorKey: null },
+			[updatableDevice.mac]: {
+				state: "updating",
+				progress: null,
+				errorKey: null,
+			},
 		};
 		const el = createView({
 			flashableDevices: [updatableDevice],

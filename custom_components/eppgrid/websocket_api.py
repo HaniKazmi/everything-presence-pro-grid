@@ -37,9 +37,7 @@ def _send_not_loaded(connection: websocket_api.ActiveConnection, msg_id: int) ->
     )
 
 
-def _send_no_firmware_variant(
-    connection: websocket_api.ActiveConnection, msg_id: int, network: str
-) -> None:
+def _send_no_firmware_variant(connection: websocket_api.ActiveConnection, msg_id: int, network: str) -> None:
     """Send 'no firmware variant' error with network type as translation placeholder."""
     connection.send_error(
         msg_id,

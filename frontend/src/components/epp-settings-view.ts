@@ -828,9 +828,11 @@ export class EppSettingsView extends LitElement {
                 <ha-select
                   .value=${current}
                   .options=${LOG_LEVELS.map((l) => ({
-									value: l,
-									label: this.localize(`settings.log_level.${l.toLowerCase()}`),
-								}))}
+										value: l,
+										label: this.localize(
+											`settings.log_level.${l.toLowerCase()}`,
+										),
+									}))}
                   @selected=${(e: CustomEvent<{ value: string }>) => {
 										const val = e.detail.value;
 										if (!val || val === current) return;

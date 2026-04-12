@@ -2342,6 +2342,8 @@ describe("epp-settings-view localization (tasks 13-15)", () => {
 		);
 		expect(src).toMatch(/settings\.log_level\.\$\{.*toLowerCase\(\)\}/);
 		// Wire values preserved
-		expect(src).toMatch(/\["None",\s*"Error",\s*"Warning",\s*"Info",\s*"Debug"\]/);
+		expect(src).toMatch(
+			/\["None",\s*"Error",\s*"Warning",\s*"Info",\s*"Debug"\]/,
+		);
 	});
 });

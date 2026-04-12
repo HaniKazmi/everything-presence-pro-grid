@@ -450,8 +450,11 @@ class TestWebSocketTemplates:
         await call_async_handler(hass, websocket_apply_template, connection, msg)
 
         connection.send_error.assert_called_once_with(
-            10, "not_found", "Template not found",
-            translation_domain=DOMAIN, translation_key="template_not_found",
+            10,
+            "not_found",
+            "Template not found",
+            translation_domain=DOMAIN,
+            translation_key="template_not_found",
         )
 
 
@@ -1462,8 +1465,11 @@ class TestWebSocketSubscriptions:
         await call_async_handler(hass, websocket_subscribe_device, connection, msg)
 
         connection.send_error.assert_called_once_with(
-            25, "connection_failed", "Failed to connect to device",
-            translation_domain=DOMAIN, translation_key="connection_failed",
+            25,
+            "connection_failed",
+            "Failed to connect to device",
+            translation_domain=DOMAIN,
+            translation_key="connection_failed",
         )
 
     async def test_subscribe_device_not_found(self, hass: HomeAssistant, config_entry: MockConfigEntry) -> None:
@@ -1479,8 +1485,11 @@ class TestWebSocketSubscriptions:
         await call_async_handler(hass, websocket_subscribe_device, connection, msg)
 
         connection.send_error.assert_called_once_with(
-            21, "not_found", "Device not available",
-            translation_domain=DOMAIN, translation_key="device_not_available",
+            21,
+            "not_found",
+            "Device not available",
+            translation_domain=DOMAIN,
+            translation_key="device_not_available",
         )
 
     async def test_subscribe_raw_targets_no_session(self, hass: HomeAssistant, config_entry: MockConfigEntry) -> None:
@@ -1495,8 +1504,11 @@ class TestWebSocketSubscriptions:
         await call_async_handler(hass, websocket_subscribe_raw_targets, connection, msg)
 
         connection.send_error.assert_called_once_with(
-            22, "no_session", "No active session — call subscribe_device first",
-            translation_domain=DOMAIN, translation_key="no_active_session",
+            22,
+            "no_session",
+            "No active session — call subscribe_device first",
+            translation_domain=DOMAIN,
+            translation_key="no_active_session",
         )
 
     async def test_subscribe_raw_targets_with_session(self, hass: HomeAssistant, config_entry: MockConfigEntry) -> None:
@@ -1709,8 +1721,11 @@ class TestUpdateFirmware:
         await call_async_handler(hass, websocket_update_firmware, connection, msg)
 
         connection.send_error.assert_called_once_with(
-            21, "not_found", "Device not found",
-            translation_domain=DOMAIN, translation_key="device_not_found",
+            21,
+            "not_found",
+            "Device not found",
+            translation_domain=DOMAIN,
+            translation_key="device_not_found",
         )
 
     async def test_update_firmware_build_flags_unknown(
@@ -1729,8 +1744,11 @@ class TestUpdateFirmware:
         await call_async_handler(hass, websocket_update_firmware, connection, msg)
 
         connection.send_error.assert_called_once_with(
-            22, "build_flags_unknown", "Device build flags not yet available",
-            translation_domain=DOMAIN, translation_key="build_flags_unavailable",
+            22,
+            "build_flags_unknown",
+            "Device build flags not yet available",
+            translation_domain=DOMAIN,
+            translation_key="build_flags_unavailable",
         )
 
     async def test_update_firmware_device_host_unknown(
@@ -1749,8 +1767,11 @@ class TestUpdateFirmware:
         await call_async_handler(hass, websocket_update_firmware, connection, msg)
 
         connection.send_error.assert_called_once_with(
-            23, "not_available", "Device host unknown",
-            translation_domain=DOMAIN, translation_key="device_host_unknown",
+            23,
+            "not_available",
+            "Device host unknown",
+            translation_domain=DOMAIN,
+            translation_key="device_host_unknown",
         )
 
     async def test_update_firmware_not_ready(self, hass: HomeAssistant) -> None:
@@ -2651,8 +2672,8 @@ class TestWebSocketDismissTarget:
 
 def test_send_not_loaded_uses_translation_key():
     """Helper must set translation_domain + translation_key for frontend i18n."""
-    from custom_components.eppgrid.const import DOMAIN
     from custom_components.eppgrid import websocket_api as ws_module
+    from custom_components.eppgrid.const import DOMAIN
 
     connection = MagicMock()
     ws_module._send_not_loaded(connection, 42)

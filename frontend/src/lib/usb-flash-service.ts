@@ -64,9 +64,12 @@ export async function flashFirmware(
 
 		// Fetch manifest
 		if (!options?.baseUrl) {
-			throw Object.assign(new Error("baseUrl is required for firmware download"), {
-				errorKey: "usb.errors.base_url_required",
-			});
+			throw Object.assign(
+				new Error("baseUrl is required for firmware download"),
+				{
+					errorKey: "usb.errors.base_url_required",
+				},
+			);
 		}
 		const base = options.baseUrl;
 		const manifestUrl = `${base}/everything-presence-pro-${variant}-manifest.json`;
@@ -89,10 +92,13 @@ export async function flashFirmware(
 		for (const part of parts) {
 			const resp = await fetch(`${baseUrl}${part.path}`);
 			if (!resp.ok) {
-				throw Object.assign(new Error(`Failed to download firmware file: ${part.path}`), {
-					errorKey: "usb.errors.file_download_failed",
-					errorParams: { file: part.path },
-				});
+				throw Object.assign(
+					new Error(`Failed to download firmware file: ${part.path}`),
+					{
+						errorKey: "usb.errors.file_download_failed",
+						errorParams: { file: part.path },
+					},
+				);
 			}
 			const data = new Uint8Array(await resp.arrayBuffer());
 			fileArray.push({ data, address: part.offset });
@@ -346,10 +352,14 @@ export async function detectIpAddress(
 						4: "wifi.errors.not_authorized",
 					};
 					const key = errorKeyByCode[code] ?? "wifi.errors.error_code";
-					throw Object.assign(new Error(messages[code] ?? `WiFi error (code ${code})`), {
-						errorKey: key,
-						errorParams: key === "wifi.errors.error_code" ? { code } : undefined,
-					});
+					throw Object.assign(
+						new Error(messages[code] ?? `WiFi error (code ${code})`),
+						{
+							errorKey: key,
+							errorParams:
+								key === "wifi.errors.error_code" ? { code } : undefined,
+						},
+					);
 				}
 
 				// STATE_PROVISIONED — device connected to WiFi
@@ -379,7 +389,10 @@ export async function detectIpAddress(
 		}
 	}
 
-	throw Object.assign(new Error("WiFi connection failed — check SSID/password and try again"), {
-		errorKey: "wifi.errors.connection_failed",
-	});
+	throw Object.assign(
+		new Error("WiFi connection failed — check SSID/password and try again"),
+		{
+			errorKey: "wifi.errors.connection_failed",
+		},
+	);
 }

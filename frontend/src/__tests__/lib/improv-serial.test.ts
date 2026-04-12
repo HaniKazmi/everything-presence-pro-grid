@@ -265,13 +265,18 @@ import { join } from "path";
 
 describe("improv-serial timeout error", () => {
 	it("thrown timeout error has errorKey flasher.errors.timeout", () => {
-		const err: any = Object.assign(new Error("timeout"), { errorKey: "flasher.errors.timeout" });
+		const err: any = Object.assign(new Error("timeout"), {
+			errorKey: "flasher.errors.timeout",
+		});
 		expect(err.errorKey).toBe("flasher.errors.timeout");
 		expect(err.message).toBe("timeout");
 	});
 
 	it("improv-serial.ts line ~234 uses Object.assign with errorKey", () => {
-		const src = readFileSync(join(__dirname, "..", "..", "lib", "improv-serial.ts"), "utf8");
+		const src = readFileSync(
+			join(__dirname, "..", "..", "lib", "improv-serial.ts"),
+			"utf8",
+		);
 		// Negative check: no bare 'throw new Error("timeout")'
 		expect(src).not.toMatch(/throw new Error\("timeout"\)/);
 		// Positive check: Object.assign pattern with the errorKey is present

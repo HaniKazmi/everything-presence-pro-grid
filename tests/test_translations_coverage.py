@@ -6,7 +6,6 @@ import json
 import re
 from pathlib import Path
 
-
 COMPONENT_DIR = Path(__file__).parent.parent / "custom_components" / "eppgrid"
 
 

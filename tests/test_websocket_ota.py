@@ -112,8 +112,11 @@ class TestSubscribeOtaProgress:
         msg = {"id": 1, "type": "eppgrid/subscribe_ota_progress", "mac": "AA:BB:CC:DD:EE:FF"}
         await call_async_handler(hass, websocket_subscribe_ota_progress, connection, msg)
         connection.send_error.assert_called_once_with(
-            1, "not_ready", "Integration not loaded",
-            translation_domain=DOMAIN, translation_key="integration_not_loaded",
+            1,
+            "not_ready",
+            "Integration not loaded",
+            translation_domain=DOMAIN,
+            translation_key="integration_not_loaded",
         )
 
     async def test_sends_error_when_no_session(
@@ -129,8 +132,11 @@ class TestSubscribeOtaProgress:
         msg = {"id": 1, "type": "eppgrid/subscribe_ota_progress", "mac": "AA:BB:CC:DD:EE:FF"}
         await call_async_handler(hass, websocket_subscribe_ota_progress, connection, msg)
         connection.send_error.assert_called_once_with(
-            1, "no_session", "Device not available",
-            translation_domain=DOMAIN, translation_key="device_not_available",
+            1,
+            "no_session",
+            "Device not available",
+            translation_domain=DOMAIN,
+            translation_key="device_not_available",
         )
 
     async def test_subscribes_and_sends_result(

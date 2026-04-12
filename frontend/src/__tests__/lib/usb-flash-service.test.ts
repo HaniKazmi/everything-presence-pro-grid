@@ -332,10 +332,15 @@ describe("flashFirmware", () => {
 	});
 
 	it("manifest download failure carries errorKey usb.errors.manifest_download_failed", async () => {
-		vi.mocked(fetch).mockResolvedValueOnce({ ok: false, status: 404 } as Response);
+		vi.mocked(fetch).mockResolvedValueOnce({
+			ok: false,
+			status: 404,
+		} as Response);
 		const port = mockPort();
 		try {
-			await flashFirmware(port, "wifi-ble-co2", vi.fn(), { baseUrl: TEST_BASE_URL });
+			await flashFirmware(port, "wifi-ble-co2", vi.fn(), {
+				baseUrl: TEST_BASE_URL,
+			});
 			throw new Error("expected error not thrown");
 		} catch (err: any) {
 			expect(err.errorKey).toBe("usb.errors.manifest_download_failed");
@@ -351,7 +356,9 @@ describe("flashFirmware", () => {
 			.mockResolvedValueOnce({ ok: false, status: 500 } as Response);
 		const port = mockPort();
 		try {
-			await flashFirmware(port, "wifi-ble-co2", vi.fn(), { baseUrl: TEST_BASE_URL });
+			await flashFirmware(port, "wifi-ble-co2", vi.fn(), {
+				baseUrl: TEST_BASE_URL,
+			});
 			throw new Error("expected error not thrown");
 		} catch (err: any) {
 			expect(err.errorKey).toBe("usb.errors.file_download_failed");

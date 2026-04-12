@@ -2788,9 +2788,10 @@ class TestBuildFlags:
 
 def test_dismiss_target_service_missing_raises_translation_keyed_error():
     """When epp_dismiss_target service is missing, raise HomeAssistantError with translation metadata."""
+    from homeassistant.exceptions import HomeAssistantError
+
     from custom_components.eppgrid.const import DOMAIN
     from custom_components.eppgrid.device_manager import _raise_service_unavailable
-    from homeassistant.exceptions import HomeAssistantError
 
     with pytest.raises(HomeAssistantError) as exc:
         _raise_service_unavailable("epp_dismiss_target")
@@ -2814,5 +2815,11 @@ def test_zone_entity_names_use_translations():
 
     assert _resolve_zone_name(fake_translations, index=0, zone_name=None, target_count=False) == "Zone Rest of Room"
     assert _resolve_zone_name(fake_translations, index=1, zone_name="Kitchen", target_count=False) == "Zone Kitchen"
-    assert _resolve_zone_name(fake_translations, index=0, zone_name=None, target_count=True) == "Zone Rest of Room Target Count"
-    assert _resolve_zone_name(fake_translations, index=1, zone_name="Kitchen", target_count=True) == "Zone Kitchen Target Count"
+    assert (
+        _resolve_zone_name(fake_translations, index=0, zone_name=None, target_count=True)
+        == "Zone Rest of Room Target Count"
+    )
+    assert (
+        _resolve_zone_name(fake_translations, index=1, zone_name="Kitchen", target_count=True)
+        == "Zone Kitchen Target Count"
+    )

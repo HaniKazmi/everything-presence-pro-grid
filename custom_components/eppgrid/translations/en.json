@@ -18,5 +18,28 @@
         }
       }
     }
+  },
+  "entity_names": {
+    "zone_rest_of_room": "Zone Rest of Room",
+    "zone_with_name": "Zone {name}",
+    "zone_rest_of_room_target_count": "Zone Rest of Room Target Count",
+    "zone_with_name_target_count": "Zone {name} Target Count"
+  },
+  "exceptions": {
+    "integration_not_loaded": { "message": "Integration not loaded" },
+    "device_not_available": { "message": "Device not available" },
+    "device_not_connected": { "message": "Device not connected" },
+    "device_not_found": { "message": "Device not found" },
+    "device_host_unknown": { "message": "Device host unknown" },
+    "connection_failed": { "message": "Failed to connect to device" },
+    "no_active_session": { "message": "No active session — call subscribe_device first" },
+    "template_not_found": { "message": "Template not found" },
+    "no_firmware_variant": { "message": "No firmware variant for network type: {network}" },
+    "ota_unsupported": { "message": "Device does not support OTA update" },
+    "ota_failed_version_unchanged": { "message": "Update failed — firmware version unchanged" },
+    "build_flags_unavailable": { "message": "Device build flags not yet available" },
+    "config_entry_not_found": { "message": "Config entry not found" },
+    "only_esphome_can_be_deleted": { "message": "Only ESPHome config entries can be deleted by this command" },
+    "service_not_available": { "message": "Service {service} not available" }
   }
 }
