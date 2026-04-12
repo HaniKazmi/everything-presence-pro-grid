@@ -133,7 +133,7 @@ def websocket_subscribe_device_list(
     """Subscribe to device list changes. Sends initial list immediately."""
     manager = _get_manager(hass)
     if manager is None:
-        connection.send_error(msg["id"], "not_ready", "Integration not loaded")
+        _send_not_loaded(connection, msg["id"])
         return
 
     @callback
@@ -165,7 +165,7 @@ def websocket_list_devices(
     """List discovered EPP devices."""
     manager = _get_manager(hass)
     if manager is None:
-        connection.send_error(msg["id"], "not_ready", "Integration not loaded")
+        _send_not_loaded(connection, msg["id"])
         return
     connection.send_result(msg["id"], {"devices": manager.list_devices()})
 
@@ -188,7 +188,7 @@ def websocket_get_config(
     """Get stored config for a device."""
     manager = _get_manager(hass)
     if manager is None:
-        connection.send_error(msg["id"], "not_ready", "Integration not loaded")
+        _send_not_loaded(connection, msg["id"])
         return
     config = manager._store.get_device(msg["mac"])
     # Return a shallow copy to avoid mutating the stored config
@@ -218,7 +218,7 @@ async def websocket_set_setup(
     """Save perspective calibration for a device."""
     manager = _get_manager(hass)
     if manager is None:
-        connection.send_error(msg["id"], "not_ready", "Integration not loaded")
+        _send_not_loaded(connection, msg["id"])
         return
     proto_err = _check_firmware_version(manager, msg["mac"])
     if proto_err:
@@ -291,7 +291,7 @@ async def websocket_set_room_layout(
     """Save room layout, zones, and furniture for a device."""
     manager = _get_manager(hass)
     if manager is None:
-        connection.send_error(msg["id"], "not_ready", "Integration not loaded")
+        _send_not_loaded(connection, msg["id"])
         return
     proto_err = _check_firmware_version(manager, msg["mac"])
     if proto_err:
@@ -339,7 +339,7 @@ def websocket_list_templates(
     """List saved room templates."""
     manager = _get_manager(hass)
     if manager is None:
-        connection.send_error(msg["id"], "not_ready", "Integration not loaded")
+        _send_not_loaded(connection, msg["id"])
         return
     connection.send_result(msg["id"], {"templates": manager._store.templates})
 
@@ -360,7 +360,7 @@ async def websocket_save_template(
     """Save a room template."""
     manager = _get_manager(hass)
     if manager is None:
-        connection.send_error(msg["id"], "not_ready", "Integration not loaded")
+        _send_not_loaded(connection, msg["id"])
         return
     manager._store.templates[msg["name"]] = msg["template"]
     await manager._store.async_save()
@@ -382,7 +382,7 @@ async def websocket_delete_template(
     """Delete a room template."""
     manager = _get_manager(hass)
     if manager is None:
-        connection.send_error(msg["id"], "not_ready", "Integration not loaded")
+        _send_not_loaded(connection, msg["id"])
         return
     manager._store.templates.pop(msg["name"], None)
     await manager._store.async_save()
@@ -405,7 +405,7 @@ async def websocket_apply_template(
     """Apply a template to a device."""
     manager = _get_manager(hass)
     if manager is None:
-        connection.send_error(msg["id"], "not_ready", "Integration not loaded")
+        _send_not_loaded(connection, msg["id"])
         return
     template = manager._store.templates.get(msg["template_name"])
     if template is None:
@@ -558,7 +558,7 @@ async def websocket_subscribe_device(
     """Open a session connection for a device. Closes on unsubscribe."""
     manager = _get_manager(hass)
     if manager is None:
-        connection.send_error(msg["id"], "not_ready", "Integration not loaded")
+        _send_not_loaded(connection, msg["id"])
         return
     mac = msg["mac"]
     try:
@@ -598,7 +598,7 @@ async def websocket_subscribe_raw_targets(
     """Stream raw target positions from the device session."""
     manager = _get_manager(hass)
     if manager is None:
-        connection.send_error(msg["id"], "not_ready", "Integration not loaded")
+        _send_not_loaded(connection, msg["id"])
         return
 
     mac = msg["mac"]
@@ -671,7 +671,7 @@ async def websocket_subscribe_grid_targets(
     """Stream target positions, zone state, and sensor data from the device session."""
     manager = _get_manager(hass)
     if manager is None:
-        connection.send_error(msg["id"], "not_ready", "Integration not loaded")
+        _send_not_loaded(connection, msg["id"])
         return
 
     mac = msg["mac"]
@@ -848,7 +848,7 @@ def websocket_set_entity_enabled(
     """Enable or disable an ESPHome entity on a managed device."""
     manager = _get_manager(hass)
     if manager is None:
-        connection.send_error(msg["id"], "not_ready", "Integration not loaded")
+        _send_not_loaded(connection, msg["id"])
         return
     proto_err = _check_firmware_version(manager, msg["mac"])
     if proto_err:
@@ -927,7 +927,7 @@ async def websocket_set_settings(
     """Save all device settings in one call."""
     manager = _get_manager(hass)
     if manager is None:
-        connection.send_error(msg["id"], "not_ready", "Integration not loaded")
+        _send_not_loaded(connection, msg["id"])
         return
     proto_err = _check_firmware_version(manager, msg["mac"])
     if proto_err:
@@ -1024,7 +1024,7 @@ async def websocket_set_distance_override(
     """Push distance override to device without persisting."""
     manager = _get_manager(hass)
     if manager is None:
-        connection.send_error(msg["id"], "not_ready", "Integration not loaded")
+        _send_not_loaded(connection, msg["id"])
         return
     proto_err = _check_firmware_version(manager, msg["mac"])
     if proto_err:
@@ -1077,7 +1077,7 @@ async def websocket_set_pipeline(
     """Save pipeline settings."""
     manager = _get_manager(hass)
     if manager is None:
-        connection.send_error(msg["id"], "not_ready", "Integration not loaded")
+        _send_not_loaded(connection, msg["id"])
         return
     proto_err = _check_firmware_version(manager, msg["mac"])
     if proto_err:
@@ -1121,7 +1121,7 @@ async def websocket_update_firmware(
 
     manager = _get_manager(hass)
     if manager is None:
-        connection.send_error(msg["id"], "not_ready", "Integration not loaded")
+        _send_not_loaded(connection, msg["id"])
         return
 
     mac = msg["mac"]
@@ -1183,7 +1183,7 @@ async def websocket_subscribe_ota_progress(
     """Subscribe to OTA firmware update progress for a device."""
     manager = _get_manager(hass)
     if manager is None:
-        connection.send_error(msg["id"], "not_ready", "Integration not loaded")
+        _send_not_loaded(connection, msg["id"])
         return
 
     mac = msg["mac"]
@@ -1317,7 +1317,7 @@ async def websocket_dismiss_target(
     """Dismiss a target at a specific cell (ephemeral, firmware-only)."""
     manager = _get_manager(hass)
     if manager is None:
-        connection.send_error(msg["id"], "not_ready", "Integration not loaded")
+        _send_not_loaded(connection, msg["id"])
         return
     mac = msg["mac"]
     dev = manager.devices.get(mac)
@@ -1351,7 +1351,7 @@ async def websocket_subscribe_flashable_devices(
     """Subscribe to flashable device list changes."""
     manager = _get_manager(hass)
     if manager is None:
-        connection.send_error(msg["id"], "not_ready", "Integration not loaded")
+        _send_not_loaded(connection, msg["id"])
         return
 
     from .const import FIRMWARE_VERSION
@@ -1399,7 +1399,7 @@ async def websocket_list_flashable_devices(
     """List all EPP devices available for flashing."""
     manager = _get_manager(hass)
     if manager is None:
-        connection.send_error(msg["id"], "not_ready", "Integration not loaded")
+        _send_not_loaded(connection, msg["id"])
         return
 
     from .const import FIRMWARE_VERSION

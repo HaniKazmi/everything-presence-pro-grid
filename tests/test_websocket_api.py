@@ -12,6 +12,7 @@ from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.eppgrid import async_setup_entry
 from custom_components.eppgrid import websocket_api as ws_module
+from custom_components.eppgrid.const import DOMAIN
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -110,7 +111,13 @@ class TestWebSocketListDevices:
         msg = {"id": 1, "type": "eppgrid/list_devices"}
 
         websocket_list_devices(hass, connection, msg)
-        connection.send_error.assert_called_once_with(1, "not_ready", "Integration not loaded")
+        connection.send_error.assert_called_once_with(
+            1,
+            "not_ready",
+            "Integration not loaded",
+            translation_domain=DOMAIN,
+            translation_key="integration_not_loaded",
+        )
 
 
 class TestWebSocketGetConfig:
@@ -1736,7 +1743,13 @@ class TestUpdateFirmware:
 
         await call_async_handler(hass, websocket_update_firmware, connection, msg)
 
-        connection.send_error.assert_called_once_with(23, "not_ready", "Integration not loaded")
+        connection.send_error.assert_called_once_with(
+            23,
+            "not_ready",
+            "Integration not loaded",
+            translation_domain=DOMAIN,
+            translation_key="integration_not_loaded",
+        )
 
 
 class TestNotReadyGuards:
@@ -1815,7 +1828,13 @@ class TestNotReadyGuards:
         else:
             handler(hass, connection, msg)
 
-        connection.send_error.assert_called_once_with(1, "not_ready", "Integration not loaded")
+        connection.send_error.assert_called_once_with(
+            1,
+            "not_ready",
+            "Integration not loaded",
+            translation_domain=DOMAIN,
+            translation_key="integration_not_loaded",
+        )
 
 
 class TestSubscriptionCallbacks:
