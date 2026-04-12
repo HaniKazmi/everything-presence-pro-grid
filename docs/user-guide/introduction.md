@@ -101,5 +101,6 @@ Eight principles guided the design. They are held to across changes.
 
 ## Where to next
 
+- **[Hardware →](hardware.md)** — what's inside the device, and why.
 - **[Installation →](installation.md)** — install the integration and set up your hardware.
 - **[Getting started →](getting-started/pairing.md)** — pair your device, first boot, walk through calibration.
