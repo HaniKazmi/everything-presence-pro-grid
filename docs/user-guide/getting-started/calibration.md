@@ -74,6 +74,18 @@ Re-run the wizard if:
 - You rearranged the room significantly, particularly if furniture or walls near a corner moved.
 - You replaced the device with a different unit, even the same model — every sensor has slightly different manufacturing tolerances.
 
+## Troubleshooting
+
+| Symptom | Likely cause | Fix |
+| --- | --- | --- |
+| Wizard shows "No target detected" during a capture | You're not in the sensor's field of view, or you're too still | Step into the middle of the room and wait a few seconds for the LD2450 to lock on before clicking Mark. |
+| "Multiple targets detected" during a capture | Another person or pet is moving in the room | Be the only moving target in the room during calibration. Pets that won't move off the bed are also targets. |
+| Corner position drifted during the 5-second capture | You moved mid-capture | Re-mark the affected corner. Stand still for the full 5 seconds; small sways are fine, walking is not. |
+| Grid looks skewed or stretched after saving | One corner's captured position is off | Re-open the wizard and click the offending corner on the preview to re-capture it. You don't have to redo the whole calibration. |
+| Targets drift across walls after calibration | Sensor is unexpectedly low, tilted, or moved since calibration | Verify the mount is still at 1.5–2 m height, pointing into the room; re-run the wizard if the mount has shifted. See [Placement](../placement.md). |
+
+See also: the [central Troubleshooting](../troubleshooting.md) page for conceptual FAQ and how to open a GitHub issue.
+
 ## Where to next
 
-With calibration done, you're ready to define zones — named regions of the grid that trigger their own entities. See **Zones** in the user guide — the full page comes in a later phase of the docs, but the zone editor is already available in the Device Configuration tab.
+With calibration done, you're ready to define zones — named regions of the grid that trigger their own entities. See **[Zones](../zones.md)** for how to create and configure them.
