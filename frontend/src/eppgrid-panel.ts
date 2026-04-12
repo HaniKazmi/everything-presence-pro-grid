@@ -228,6 +228,27 @@ export class EPPGridPanel extends LitElement {
 	@state() private _selectedMac = "";
 	@state() private _loading = true;
 
+	// HA WebSocket connection state. Tracks the live state of
+	// `hass.connection.connected` so we can render a "reconnecting" UI
+	// while the backend is unreachable and re-initialise once it returns.
+	@state() private _haConnected = true;
+	private _listeningConnection: any = null;
+	private _onHaReady = (): void => {
+		const wasDisconnected = !this._haConnected;
+		this._haConnected = true;
+		if (wasDisconnected) {
+			// Device list / session subscriptions may have been torn down during
+			// the outage — re-bootstrap so the UI recovers without a manual reload.
+			this._initialize().catch(() => {
+				// _initialize already traps its own failures; guard here too so
+				// a late rejection can't surface as uncaught.
+			});
+		}
+	};
+	private _onHaDisconnected = (): void => {
+		this._haConnected = false;
+	};
+
 	// Setup wizard — perspective corner marking
 	@state() private _setupStep: SetupStep | null = null;
 
@@ -328,7 +349,10 @@ export class EPPGridPanel extends LitElement {
 
 	connectedCallback(): void {
 		super.connectedCallback();
-		this._initialize();
+		this._initialize().catch(() => {
+			// _initialize traps its own failures; guard here so that any
+			// late rejection can't surface as "Uncaught (in promise)".
+		});
 		window.addEventListener("beforeunload", this._beforeUnloadHandler);
 		window.addEventListener("click", this._dismissTooltips);
 		window.addEventListener("keydown", this._onKeyDown);
@@ -366,6 +390,7 @@ export class EPPGridPanel extends LitElement {
 			this._initRetryTimer = undefined;
 		}
 		this._closeDeviceSession();
+		this._detachConnectionListeners();
 		window.removeEventListener("beforeunload", this._beforeUnloadHandler);
 		window.removeEventListener("click", this._dismissTooltips);
 		window.removeEventListener("keydown", this._onKeyDown);
@@ -374,6 +399,24 @@ export class EPPGridPanel extends LitElement {
 		if (this._originalPushState) history.pushState = this._originalPushState;
 		if (this._originalReplaceState)
 			history.replaceState = this._originalReplaceState;
+	}
+
+	private _attachConnectionListeners(conn: any): void {
+		if (!conn || this._listeningConnection === conn) return;
+		this._detachConnectionListeners();
+		if (typeof conn.addEventListener !== "function") return;
+		conn.addEventListener("ready", this._onHaReady);
+		conn.addEventListener("disconnected", this._onHaDisconnected);
+		this._listeningConnection = conn;
+	}
+
+	private _detachConnectionListeners(): void {
+		const conn = this._listeningConnection;
+		if (conn && typeof conn.removeEventListener === "function") {
+			conn.removeEventListener("ready", this._onHaReady);
+			conn.removeEventListener("disconnected", this._onHaDisconnected);
+		}
+		this._listeningConnection = null;
 	}
 
 	willUpdate(changed: PropertyValues) {
@@ -390,6 +433,14 @@ export class EPPGridPanel extends LitElement {
 		if (changedProps.has("hass") && this.hass) {
 			this._deviceCtrl.hass = this.hass;
 			this._flasherCtrl.hass = this.hass;
+			const conn = this.hass.connection;
+			if (conn) {
+				this._attachConnectionListeners(conn);
+				if (typeof conn.connected === "boolean") {
+					this._haConnected = conn.connected;
+				}
+			}
+			if (!this._haConnected) return;
 			if (this._loading && !this._devices.length) {
 				this._initialize();
 			} else if (
@@ -1125,6 +1176,18 @@ export class EPPGridPanel extends LitElement {
 						this._panelTab = "config";
 					}}
 				></epp-flasher-view>
+			</div>`;
+		}
+
+		if (this.hass?.connection?.connected === false || !this._haConnected) {
+			return html`<div class="tab-layout">
+				${this._renderTabBar()}
+				<div class="panel">
+					<div class="protocol-fullpage protocol-fullpage-info">
+						<ha-icon icon="mdi:connection"></ha-icon>
+						<p>${this._localize("connection.ha_reconnecting")}</p>
+					</div>
+				</div>
 			</div>`;
 		}
 

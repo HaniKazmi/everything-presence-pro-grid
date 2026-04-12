@@ -380,6 +380,7 @@
 		"failed": "Cannot connect to device",
 		"client_count": "{count} client(s) are currently connected.",
 		"check_connections": "Check for other browser tabs with this panel open, ESPHome log sessions, or additional Home Assistant instances.",
-		"retry": "Retry"
+		"retry": "Retry",
+		"ha_reconnecting": "Reconnecting to Home Assistant..."
 	}
 }

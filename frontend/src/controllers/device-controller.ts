@@ -353,6 +353,11 @@ export class DeviceController implements ReactiveController {
 			)
 			.then((unsub: () => void) => {
 				this._unsubDisplay = unsub;
+			})
+			.catch(() => {
+				// Swallow — the WS lib auto-resubscribes on reconnect, so a
+				// transient failure here shouldn't bubble up as an unhandled
+				// rejection.
 			});
 	}
 
