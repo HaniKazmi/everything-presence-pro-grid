@@ -28,7 +28,7 @@ else
     fi
 fi
 
-changed_files=$(git diff --name-only $DIFF_RANGE 2>/dev/null || echo "")
+changed_files=$(git diff --name-only "$DIFF_RANGE" 2>/dev/null || echo "")
 
 model_files="custom_components/.*\.(py|ts)$|frontend/src/(lib/|controllers/|components/|eppgrid-panel\.ts|types\.ts|constants\.ts)"
 
@@ -63,7 +63,7 @@ if [ -n "$changed_entity_files" ]; then
     strings_patterns='translation_key|step_id=|reason=|vol\.(Required|Optional)\(|async_abort\(|async_show_form\('
     touches_strings=false
     for f in $changed_entity_files; do
-        if git diff $DIFF_RANGE -- "$f" | grep -E '^[+-][^+-]' | grep -qE "$strings_patterns"; then
+        if git diff "$DIFF_RANGE" -- "$f" | grep -E '^[+-][^+-]' | grep -qE "$strings_patterns"; then
             touches_strings=true
             break
         fi

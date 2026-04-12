@@ -22,9 +22,10 @@ _LOGGER = logging.getLogger(__name__)
 
 FRONTEND_DIR = os.path.join(os.path.dirname(__file__), "frontend")
 
-# Key in hass.data marking that the frontend bundle has been registered.
-# Used to make _register_frontend_resources idempotent across reloads.
-_FRONTEND_REGISTERED_KEY = f"{DOMAIN}_frontend_module_url"
+# Key in hass.data marking that the static path has been registered with the
+# HTTP component. Static path registration can only happen once per HA process
+# and will error on duplicate registration, so we guard it with a flag.
+_STATIC_PATH_REGISTERED_KEY = f"{DOMAIN}_static_path_registered"
 
 
 def _hash_file(path: str) -> str:
@@ -70,22 +71,23 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 async def _register_frontend_resources(hass: HomeAssistant) -> str:
     """Register the static path and add the JS bundle as a global frontend module.
 
-    Returns the versioned module URL. Idempotent across reloads — subsequent
-    calls return the cached URL without re-registering the static path.
+    Returns the versioned module URL. The static path is registered only once
+    per HA process, but the bundle hash is recomputed on every call so a
+    config entry reload picks up a new bundle without needing an HA restart.
+    add_extra_js_url is backed by a set, so adding the same URL repeatedly is
+    a no-op.
     """
-    cached = hass.data.get(_FRONTEND_REGISTERED_KEY)
-    if cached:
-        return cached
-
-    await hass.http.async_register_static_paths(
-        [
-            StaticPathConfig(
-                url_path=f"/{DOMAIN}_static",
-                path=FRONTEND_DIR,
-                cache_headers=False,
-            )
-        ]
-    )
+    if not hass.data.get(_STATIC_PATH_REGISTERED_KEY):
+        await hass.http.async_register_static_paths(
+            [
+                StaticPathConfig(
+                    url_path=f"/{DOMAIN}_static",
+                    path=FRONTEND_DIR,
+                    cache_headers=False,
+                )
+            ]
+        )
+        hass.data[_STATIC_PATH_REGISTERED_KEY] = True
 
     js_path = os.path.join(FRONTEND_DIR, "eppgrid-panel.js")
     try:
@@ -95,7 +97,6 @@ async def _register_frontend_resources(hass: HomeAssistant) -> str:
 
     module_url = f"/{DOMAIN}_static/eppgrid-panel.js?v={js_hash}"
     add_extra_js_url(hass, module_url)
-    hass.data[_FRONTEND_REGISTERED_KEY] = module_url
     return module_url
 
 

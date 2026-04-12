@@ -191,8 +191,8 @@ async def test_register_frontend_resources_hash_oserror(hass: HomeAssistant) -> 
     assert module_url.endswith("?v=0")
 
 
-async def test_register_frontend_resources_is_idempotent(hass: HomeAssistant) -> None:
-    """_register_frontend_resources does not re-register the static path on subsequent calls."""
+async def test_register_frontend_resources_registers_static_path_once(hass: HomeAssistant) -> None:
+    """Static path registers once; add_extra_js_url is called every call so new hashes are picked up."""
     from custom_components.eppgrid import _register_frontend_resources
 
     hass.http = MagicMock()
@@ -207,7 +207,27 @@ async def test_register_frontend_resources_is_idempotent(hass: HomeAssistant) ->
 
     assert first == second
     hass.http.async_register_static_paths.assert_awaited_once()
-    assert mock_add_js.call_count == 1
+    assert mock_add_js.call_count == 2
+
+
+async def test_register_frontend_resources_recomputes_hash_on_reload(hass: HomeAssistant) -> None:
+    """If the bundle changes between calls, the new hash is reflected in the returned URL."""
+    from custom_components.eppgrid import _register_frontend_resources
+
+    hass.http = MagicMock()
+    hass.http.async_register_static_paths = AsyncMock()
+
+    hashes = iter(["abcd1234", "ef567890"])
+    with (
+        patch("custom_components.eppgrid._hash_file", side_effect=lambda _p: next(hashes)),
+        patch("custom_components.eppgrid.add_extra_js_url"),
+    ):
+        first = await _register_frontend_resources(hass)
+        second = await _register_frontend_resources(hass)
+
+    assert first.endswith("v=abcd1234")
+    assert second.endswith("v=ef567890")
+    hass.http.async_register_static_paths.assert_awaited_once()
 
 
 async def test_hash_file(tmp_path) -> None:
