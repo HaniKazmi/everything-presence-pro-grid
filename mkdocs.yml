@@ -75,6 +75,8 @@ nav:
   - Home: index.md
   - User Guide:
     - Introduction: user-guide/introduction.md
+    - Hardware: user-guide/hardware.md
+    - Placement: user-guide/placement.md
     - Installation: user-guide/installation.md
     - Getting Started:
       - Pairing: user-guide/getting-started/pairing.md
