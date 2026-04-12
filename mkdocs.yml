@@ -73,7 +73,21 @@ markdown_extensions:
 
 nav:
   - Home: index.md
+  - User Guide:
+    - Introduction: user-guide/introduction.md
+    - Installation: user-guide/installation.md
+    - Getting Started:
+      - Pairing: user-guide/getting-started/pairing.md
+      - First boot: user-guide/getting-started/first-boot.md
+      - Calibration: user-guide/getting-started/calibration.md
+    - Zones: user-guide/zones.md
+    - Floor plan: user-guide/floor-plan.md
+    - Live view: user-guide/live-view.md
+    - Firmware: user-guide/firmware.md
+    - Troubleshooting: user-guide/troubleshooting.md
   - Developers:
     - Overview: developers/index.md
     - Architecture: developers/architecture.md
     - Data catalog: developers/data-catalog.md
+    - Code layout: developers/code-layout.md
+    - Contributing: developers/contributing.md
