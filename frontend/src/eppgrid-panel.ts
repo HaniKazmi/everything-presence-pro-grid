@@ -2398,7 +2398,7 @@ export class EPPGridPanel extends LitElement {
 		if (ctrl.opRunning) {
 			ctrl.updateUsbState({
 				step: "error",
-				errorKey: "flasher.usb_error_connect",
+				errorKey: "usb.errors.serial_port_busy",
 				fatal: true,
 			});
 			return;
@@ -2437,7 +2437,7 @@ export class EPPGridPanel extends LitElement {
 			}
 			ctrl.updateUsbState({
 				step: "error",
-				errorKey: "flasher.usb_error_connect",
+				errorKey: "wifi.errors.scan_failed",
 			});
 		}
 	}
@@ -2447,7 +2447,7 @@ export class EPPGridPanel extends LitElement {
 		if (ctrl.opRunning) {
 			ctrl.updateUsbState({
 				step: "error",
-				errorKey: "flasher.usb_error_connect",
+				errorKey: "usb.errors.serial_port_busy",
 				fatal: true,
 			});
 			return;
@@ -2547,9 +2547,11 @@ export class EPPGridPanel extends LitElement {
 			ctrl.opRunning = false;
 			ctrl.updateUsbState({
 				step: "error",
-				errorKey: isDisconnect || isPortBusy
-					? "flasher.usb_error_connect"
-					: "flasher.usb_error_flash",
+				errorKey: isPortBusy
+					? "usb.errors.serial_port_busy"
+					: isDisconnect
+						? "usb.errors.device_disconnected"
+						: "flasher.usb_error_flash",
 				fatal: isPortBusy,
 			});
 		}
@@ -2565,7 +2567,7 @@ export class EPPGridPanel extends LitElement {
 		if (!port?.writable || !port?.readable) {
 			ctrl.updateUsbState({
 				step: "error",
-				errorKey: "flasher.usb_error_connect",
+				errorKey: "usb.errors.serial_port_unavailable",
 			});
 			return;
 		}
@@ -2681,7 +2683,7 @@ export class EPPGridPanel extends LitElement {
 			if (ctrl.opId !== myOp) return;
 			ctrl.updateUsbState({
 				step: "error",
-				errorKey: "flasher.usb_error_wifi",
+				errorKey: "wifi.errors.provisioning_failed",
 			});
 		}
 	}
@@ -2710,7 +2712,7 @@ export class EPPGridPanel extends LitElement {
 			console.error("WiFi scan failed:", err);
 			ctrl.updateUsbState({
 				step: "error",
-				errorKey: "flasher.usb_error_wifi",
+				errorKey: "wifi.errors.scan_failed",
 			});
 		}
 	}

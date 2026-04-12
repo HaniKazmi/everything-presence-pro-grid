@@ -111,7 +111,7 @@ describe("_handleUsbFlash", () => {
 		expect(ctrl.usbFlashState).toMatchObject({
 			step: "error",
 			fatal: true,
-			errorKey: "flasher.usb_error_connect",
+			errorKey: "usb.errors.serial_port_busy",
 		});
 	});
 
@@ -512,7 +512,7 @@ describe("_handleWifiProvision", () => {
 
 		expect(ctrl.usbFlashState).toEqual({
 			step: "error",
-			errorKey: "flasher.usb_error_connect",
+			errorKey: "usb.errors.serial_port_unavailable",
 		});
 	});
 
@@ -524,7 +524,7 @@ describe("_handleWifiProvision", () => {
 
 		expect(ctrl.usbFlashState).toEqual({
 			step: "error",
-			errorKey: "flasher.usb_error_connect",
+			errorKey: "usb.errors.serial_port_unavailable",
 		});
 	});
 
@@ -627,7 +627,7 @@ describe("_handleWifiProvision", () => {
 
 		expect(ctrl.usbFlashState).toEqual({
 			step: "error",
-			errorKey: "flasher.usb_error_wifi",
+			errorKey: "wifi.errors.provisioning_failed",
 		});
 	});
 
@@ -642,7 +642,7 @@ describe("_handleWifiProvision", () => {
 
 		expect(ctrl.usbFlashState).toEqual({
 			step: "error",
-			errorKey: "flasher.usb_error_wifi",
+			errorKey: "wifi.errors.provisioning_failed",
 		});
 	});
 
@@ -668,7 +668,7 @@ describe("_handleWifiProvision", () => {
 
 		expect(ctrl.usbFlashState).toEqual({
 			step: "error",
-			errorKey: "flasher.usb_error_wifi",
+			errorKey: "wifi.errors.provisioning_failed",
 		});
 	});
 
@@ -859,7 +859,7 @@ describe("_handleWifiScan", () => {
 		// State should show error
 		expect(ctrl.usbFlashState).toEqual({
 			step: "error",
-			errorKey: "flasher.usb_error_wifi",
+			errorKey: "wifi.errors.scan_failed",
 		});
 	});
 
@@ -943,7 +943,7 @@ describe("_handleUsbWifiConfig", () => {
 
 		expect(ctrl.usbFlashState).toEqual({
 			step: "error",
-			errorKey: "flasher.usb_error_connect",
+			errorKey: "wifi.errors.scan_failed",
 		});
 	});
 

@@ -838,7 +838,7 @@ describe("USB flash view — state-driven", () => {
 		(el as any)._showUsbFlash = true;
 		(el as any).usbFlashState = {
 			step: "error",
-			errorKey: "flasher.usb_error_connect",
+			errorKey: "usb.errors.serial_port_busy",
 			fatal: true,
 		};
 		const tpl = (el as any).render();
