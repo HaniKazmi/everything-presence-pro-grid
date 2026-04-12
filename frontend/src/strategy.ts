@@ -5,12 +5,8 @@ export class EPPGridStrategy {
 		return {
 			views: [
 				{
-					title: "Device Configuration",
+					title: "Everything Presence Pro Grid",
 					cards: [{ type: "custom:epp-device-card" }],
-				},
-				{
-					title: "Flash Firmware",
-					cards: [{ type: "custom:epp-flasher-card" }],
 				},
 			],
 		};
