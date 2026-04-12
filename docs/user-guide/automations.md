@@ -1,27 +1,36 @@
 # Automations
 
-Motion sensors in Home Assistant are typically a single boolean — "somebody's there / nobody's there" — and that's what causes rooms to go dark while someone's reading, or lights to flap on and off when someone walks past the door. Everything Presence Pro Grid gives you several signals because a good presence automation needs different signals at different moments in the sequence.
+Motion sensors in Home Assistant are typically a single boolean — "somebody's there / nobody's there" — and that's what causes rooms to go dark while someone's reading, or lights to flap on and off when someone walks past the door. Everything Presence Pro Grid solves that on the device side: the **Occupancy** binary sensor is the firmware's combined output from the PIR, LD2450 moving-target detection, and SEN0609 static-presence detection. When someone's in the room — whether they're moving, still, or somewhere in between — Occupancy stays on. When they're really gone, it goes off.
 
-## The four phases of presence
+This page walks through how to use Occupancy and the per-zone entities to build reliable automations.
 
-Think of a typical "someone walks in, uses the room, leaves" sequence as four phases. Each phase wants a different signal.
+## The three phases of presence
 
-- **Fast trigger** — low-latency "somebody just walked in" signal. Use the **Occupancy** binary sensor (which folds the PIR, LD2450, and Static Presence into a single sub-second trigger), or a zone-entry event. Turn on general room lighting. Tolerate false positives — a light briefly on by mistake is forgivable.
+Think of a typical "someone walks in, uses the room, leaves" sequence as three phases. Each phase wants a different signal.
+
+- **Fast trigger** — low-latency "somebody just walked in" signal. Use the **Occupancy** binary sensor: `binary_sensor.<device>_occupancy`. Turn on general room lighting. Tolerate false positives — a light briefly on by mistake is forgivable.
 - **Zone-specific** — someone is in a named region. Use `binary_sensor.<device>_zone_<N>_presence`. Fire targeted actions: mirror light, shower light, extractor fan, radiator, desk lamp.
-- **Sustained** — someone's in the room but not moving. Use `binary_sensor.<device>_static_presence` (enable on the device page first — it's disabled by default). This keeps the room occupied when they're reading, showering, or sleeping; without it, the fast-movement signals drop out and automations "time out" on someone who's right there.
-- **Empty** — all presence signals agree no one's there. Turn things off. The conservative gate — wait for Occupancy **and** Static Presence to both be off for a real timeout window (2–5 minutes, not seconds).
+- **Empty gate** — Occupancy has been off for a real timeout window. Turn things off. Because the firmware folds still-but-breathing detection into Occupancy on the device, you don't need to combine multiple entities — a simple `Occupancy → off` trigger with a `for:` duration is enough.
 
 !!! example "Screenshot placeholder"
-    **Phase timeline — a horizontal time axis showing the four phases firing in sequence as someone enters, uses a zone, settles still, and eventually leaves.** `automations/phase-timeline.png`
+    **Phase timeline — a horizontal time axis showing the three phases firing in sequence as someone enters, uses a zone, settles still, and eventually leaves.** `automations/phase-timeline.png`
+
+## What about `Motion Presence` and `Static Presence`?
+
+The firmware publishes these as separate entities (both disabled by default) so you can see which specific presence component is contributing. They're useful for debugging a zone that's misbehaving or an automation that's firing at the wrong moment, but you don't normally automate against them directly:
+
+- **`binary_sensor.<device>_motion_presence`** — the LD2450 moving-target stream on its own. Narrower than Occupancy; drops within seconds if the person stops moving.
+- **`binary_sensor.<device>_static_presence`** — the SEN0609 still-presence stream on its own.
+
+Occupancy is what the firmware has *already* combined, and is the right automation trigger in almost every case. Enable the individual entities if you want to peek under the hood; leave them disabled otherwise.
 
 ## Sensor-to-phase mapping
 
-Quick reference — which entity to use for each phase.
+Quick reference:
 
 - **Fast trigger:** `binary_sensor.<device>_occupancy`, or an entry-specific zone: `binary_sensor.<device>_zone_<N>_presence`.
 - **Zone-specific:** `binary_sensor.<device>_zone_<N>_presence`. Cross-reference with `sensor.<device>_zone_<N>_target_count` when the number of people matters.
-- **Sustained:** `binary_sensor.<device>_static_presence` (enable first — disabled by default).
-- **Empty gate:** both `binary_sensor.<device>_occupancy` **and** `binary_sensor.<device>_static_presence` OFF, for a duration (`for:` in the automation trigger).
+- **Empty gate:** `binary_sensor.<device>_occupancy` off for a duration, using `for:` in the automation trigger. Use 2 minutes for a bathroom, 5 minutes for a bedroom, depending on how patient the room should be.
 
 !!! note
     The integration renames zone entities by friendly name (`Zone <name>` in the HA UI) — but **entity IDs stay as `zone_<N>_presence`** where `<N>` is 0–7. Use entity IDs (not display names) in automations so they keep working if you rename a zone.
@@ -33,14 +42,13 @@ A bathroom with a **Shower** zone (slot 1) and a **Toilet** zone (slot 2) define
 - Main light on the moment anyone enters.
 - Mirror light when someone's in front of the mirror.
 - Extractor fan on after someone's been in the shower for two minutes (turning on instantly is noisy and looks odd).
-- Everything off only when Occupancy **and** Static Presence have both been off for two minutes.
+- Everything off two minutes after Occupancy drops.
 
-Mapping to the four phases:
+Mapping to the three phases:
 
 - **Fast trigger** → main light on.
 - **Zone-specific** → mirror light and extractor fan.
-- **Sustained** (zone presence with a `for:` duration) → extractor fan arms after two minutes of shower-zone occupancy, and disarms after one minute of it being empty.
-- **Empty gate** → all off when nobody's there.
+- **Empty gate** → all off two minutes after Occupancy drops. Because Occupancy already includes static presence, a simple `off` trigger with a `for:` duration works — no need to combine multiple entities.
 
 The extractor fan is the most interesting automation because it combines zone presence with a duration and a paired off-action:
 
@@ -84,10 +92,7 @@ The rest of the bathroom in sketch form (automations similar in shape to the abo
 
 - **Main light:** trigger on `binary_sensor.bathroom_epp_occupancy` going `on`, action `light.turn_on`.
 - **Mirror light:** trigger on the mirror zone's `zone_<N>_presence` state.
-- **Everything off:** use a **template trigger** that becomes `true` only when both Occupancy and Static Presence are `off`, with `for: "00:02:00"`. For example: `value_template: "{{ is_state('binary_sensor.bathroom_epp_occupancy', 'off') and is_state('binary_sensor.bathroom_epp_static_presence', 'off') }}"`. Action turns off all the lights and the fan.
-
-!!! warning
-    Don't just use "Occupancy → off" as the trigger with Static Presence as a condition. If Occupancy drops while Static Presence is still on, the trigger fires and the condition fails — then when Static Presence later drops there's no new trigger, so the automation never runs. The template-trigger pattern above evaluates whenever *either* sensor changes, so it catches whichever one drops last.
+- **Everything off:** trigger on `binary_sensor.bathroom_epp_occupancy` going `off` with `for: "00:02:00"`, action turns off the lights and fan.
 
 !!! example "Screenshot placeholder"
     **Top-down sketch of the bathroom with Shower and Toilet zones marked and the sensor in a corner.** `automations/bathroom-layout.png`
@@ -98,15 +103,14 @@ A bedroom with a **Bed** zone (slot 1) painted on the grid. The aim:
 
 - Main lights on the moment anyone enters.
 - Dim the main lights and turn on bedside reading lights when someone climbs into the Bed zone.
-- Stay "occupied" (so nothing times out) while the person is in bed still-but-breathing — rely on the Static Presence sensor.
-- Everything off only when Static Presence has been off long enough to be confident the bed is actually empty.
+- Lights stay on while someone's in bed reading or asleep — because Occupancy keeps them marked as present, not just the LD2450's moving-target signal.
+- Everything off five minutes after Occupancy drops (longer than the bathroom — real beds produce real stillness, and someone re-entering the room after a quick break shouldn't cause the lights to flash off and back on).
 
-Mapping to the four phases:
+Mapping to the three phases:
 
 - **Fast trigger** → main lights on.
 - **Zone-specific** → Bed zone dims the main light and turns on the reading lights.
-- **Sustained** → Static Presence keeps the room marked occupied while they're still.
-- **Empty gate** → lights off when Static Presence has been off for five minutes (longer than the bathroom — real beds produce real stillness).
+- **Empty gate** → lights off five minutes after Occupancy drops.
 
 The Bed-zone automation is the one worth seeing as YAML — it demonstrates a single trigger driving several parallel light actions:
 
@@ -159,11 +163,11 @@ action:
 
 The rest of the bedroom in sketch form:
 
-- **Main lights:** trigger on `binary_sensor.bedroom_epp_occupancy` going `on` with a **condition** that the room was previously empty — i.e. both `binary_sensor.bedroom_epp_occupancy` and `binary_sensor.bedroom_epp_static_presence` were `off`. Action `light.turn_on`.
-- **Everything off:** use a **template trigger** that becomes `true` only when both Occupancy and Static Presence are `off`, with `for: "00:05:00"`. For example: `value_template: "{{ is_state('binary_sensor.bedroom_epp_occupancy', 'off') and is_state('binary_sensor.bedroom_epp_static_presence', 'off') }}"`. Action turns everything off. The template trigger evaluates whenever either sensor changes, so it fires whichever one drops last — a simple "Occupancy off" trigger with a Static Presence condition would miss the case where Occupancy drops first.
+- **Main lights:** trigger on `binary_sensor.bedroom_epp_occupancy` going `on` with a **condition** that the room was previously empty (Occupancy was `off` right before the trigger). Action `light.turn_on`.
+- **Everything off:** trigger on `binary_sensor.bedroom_epp_occupancy` going `off` with `for: "00:05:00"`, action turns everything off.
 
-!!! warning
-    Don't leave Static Presence out of the bedroom's empty gate. Someone reading in bed is a non-moving target; the LD2450 will drop them within seconds. Without Static Presence in the off-gate, the bedroom will go dark on them within a minute, regardless of how long the `for:` timer is set to.
+!!! tip
+    Use Occupancy in the bedroom's empty gate, not `Motion Presence`. The LD2450's moving-target signal drops within seconds when someone stops moving, so a bedroom gated on `Motion Presence` goes dark the moment the reader settles down. Occupancy folds in the SEN0609 static sensor on the device, so it stays `on` while the person is still but breathing.
 
 !!! example "Screenshot placeholder"
     **Top-down sketch of the bedroom with the Bed zone marked and the sensor in a corner.** `automations/bedroom-layout.png`
@@ -173,10 +177,10 @@ The rest of the bedroom in sketch form:
 Common traps to avoid when wiring up automations:
 
 !!! warning
-    - **Don't automate against `Motion Presence` alone.** It's the narrower LD2450-only movement signal. Use `Occupancy` as the combined "someone's in this room" trigger.
+    - **Don't automate against `Motion Presence` alone.** It's only the LD2450's moving-target stream; it drops within seconds when the person stops moving. Use `Occupancy` as the combined "someone's in this room" trigger — the firmware already folds the static and moving signals into it on the device.
     - **Don't forget to enable `Zone Presence` at the device level.** The per-zone binary sensors only exist in HA when the device-level toggle is on. If your zone automations aren't firing, check this first.
     - **Don't use a short timeout on the empty gate.** Anything under two minutes will drop out on someone who's only been still for a moment.
-    - **Don't forget to enable the Static Presence entity.** It's disabled by default on the device page — automations that reference it will never fire (value stays `unavailable` / stuck off) until you enable it.
+    - **Don't automate directly on `Static Presence` for general room presence.** It's published as a debug/visibility signal, disabled by default. Occupancy is the combined output that includes static presence — automate against that.
     - **Don't confuse `Zone Rest of Room` with `Occupancy`.** Rest of Room (zone 0) means a target is in the room but outside any named zone; Occupancy means any presence anywhere. They overlap, but use Occupancy for the fast trigger, not zone 0.
 
 ## Where to next
