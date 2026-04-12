@@ -19,6 +19,12 @@
       }
     }
   },
+  "entity_names": {
+    "zone_rest_of_room": "Zone Rest of Room",
+    "zone_with_name": "Zone {name}",
+    "zone_rest_of_room_target_count": "Zone Rest of Room Target Count",
+    "zone_with_name_target_count": "Zone {name} Target Count"
+  },
   "exceptions": {
     "integration_not_loaded": { "message": "Integration not loaded" },
     "device_not_available": { "message": "Device not available" },

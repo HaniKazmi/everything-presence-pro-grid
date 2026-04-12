@@ -21,6 +21,7 @@ from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers import entity_registry as er
 
 from homeassistant.exceptions import HomeAssistantError
+from homeassistant.helpers.translation import async_get_translations
 
 from .const import DEFAULT_PORT
 from .const import DOMAIN
@@ -44,6 +45,27 @@ _ESPHOME_TO_PYTHON_LOG = {
     LogLevel.LOG_LEVEL_VERBOSE: logging.DEBUG,
     LogLevel.LOG_LEVEL_VERY_VERBOSE: logging.DEBUG,
 }
+
+
+def _resolve_zone_name(
+    translations: dict[str, str],
+    *,
+    index: int,
+    zone_name: str | None,
+    target_count: bool,
+) -> str:
+    """Build a translated zone entity name.
+
+    Zone 0 = Rest of Room; zone >0 uses the user-provided name as a placeholder.
+    `target_count=True` selects the '... Target Count' variant.
+    """
+    base = f"component.{DOMAIN}.entity_names."
+    if index == 0:
+        key = "zone_rest_of_room_target_count" if target_count else "zone_rest_of_room"
+        return translations[base + key]
+    key = "zone_with_name_target_count" if target_count else "zone_with_name"
+    template = translations[base + key]
+    return template.format(name=zone_name or "")
 
 
 def _raise_service_unavailable(service: str) -> None:
@@ -977,6 +999,9 @@ class DeviceManager:
         if dev is None or dev.device_id is None:
             return
 
+        translations = await async_get_translations(
+            self._hass, self._hass.config.language, "entity_names", {DOMAIN}
+        )
         ent_reg = er.async_get(self._hass)
         config = self._store.get_device(mac) or {}
         settings = config.get("settings", {})
@@ -999,13 +1024,19 @@ class DeviceManager:
                 if not zone_presence or not exists:
                     ent_reg.async_update_entity(entity_id, disabled_by=er.RegistryEntryDisabler.INTEGRATION)
                 elif i == 0:
-                    ent_reg.async_update_entity(entity_id, disabled_by=None, name="Zone Rest of Room")
+                    ent_reg.async_update_entity(
+                        entity_id, disabled_by=None,
+                        name=_resolve_zone_name(translations, index=0, zone_name=None, target_count=False),
+                    )
                 else:
                     zone = zone_slots[i - 1]
                     if entry_obj and entry_obj.disabled_by == er.RegistryEntryDisabler.USER:
                         pass  # Don't override user-disabled entities
                     else:
-                        ent_reg.async_update_entity(entity_id, disabled_by=None, name=f"Zone {zone['name']}")
+                        ent_reg.async_update_entity(
+                            entity_id, disabled_by=None,
+                            name=_resolve_zone_name(translations, index=i, zone_name=zone["name"], target_count=False),
+                        )
 
             # Zone target count entity
             tc_entity_id = self._find_zone_entity(ent_reg, dev.device_id, i, "target_count")
@@ -1016,12 +1047,14 @@ class DeviceManager:
                 elif zone_target_count and exists:
                     if i == 0:
                         ent_reg.async_update_entity(
-                            tc_entity_id, disabled_by=None, name="Zone Rest of Room Target Count"
+                            tc_entity_id, disabled_by=None,
+                            name=_resolve_zone_name(translations, index=0, zone_name=None, target_count=True),
                         )
                     else:
                         zone = zone_slots[i - 1]
                         ent_reg.async_update_entity(
-                            tc_entity_id, disabled_by=None, name=f"Zone {zone['name']} Target Count"
+                            tc_entity_id, disabled_by=None,
+                            name=_resolve_zone_name(translations, index=i, zone_name=zone["name"], target_count=True),
                         )
                 else:
                     ent_reg.async_update_entity(tc_entity_id, disabled_by=er.RegistryEntryDisabler.INTEGRATION)
