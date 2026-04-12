@@ -49,7 +49,7 @@ The extractor fan is the most interesting automation because it combines zone pr
 # off when the shower zone has been empty for 1 minute.
 alias: Bathroom extractor fan (shower-zone-driven)
 mode: restart
-triggers:
+trigger:
   - platform: state
     entity_id: binary_sensor.bathroom_epp_zone_1_presence  # Shower zone
     to: "on"
@@ -60,7 +60,7 @@ triggers:
     to: "off"
     for: "00:01:00"
     id: shower_off
-actions:
+action:
   - choose:
       - conditions:
           - condition: trigger
@@ -84,7 +84,10 @@ The rest of the bathroom in sketch form (automations similar in shape to the abo
 
 - **Main light:** trigger on `binary_sensor.bathroom_epp_occupancy` going `on`, action `light.turn_on`.
 - **Mirror light:** trigger on the mirror zone's `zone_<N>_presence` state.
-- **Everything off:** trigger on `binary_sensor.bathroom_epp_occupancy` going `off` with `for: 00:02:00`, **condition** that `binary_sensor.bathroom_epp_static_presence` is also `off`, action turns off all the lights and the fan.
+- **Everything off:** use a **template trigger** that becomes `true` only when both Occupancy and Static Presence are `off`, with `for: "00:02:00"`. For example: `value_template: "{{ is_state('binary_sensor.bathroom_epp_occupancy', 'off') and is_state('binary_sensor.bathroom_epp_static_presence', 'off') }}"`. Action turns off all the lights and the fan.
+
+!!! warning
+    Don't just use "Occupancy → off" as the trigger with Static Presence as a condition. If Occupancy drops while Static Presence is still on, the trigger fires and the condition fails — then when Static Presence later drops there's no new trigger, so the automation never runs. The template-trigger pattern above evaluates whenever *either* sensor changes, so it catches whichever one drops last.
 
 !!! example "Screenshot placeholder"
     **Top-down sketch of the bathroom with Shower and Toilet zones marked and the sensor in a corner.** `automations/bathroom-layout.png`
@@ -112,7 +115,7 @@ The Bed-zone automation is the one worth seeing as YAML — it demonstrates a si
 # restore when they leave.
 alias: Bedroom bed mode
 mode: restart
-triggers:
+trigger:
   - platform: state
     entity_id: binary_sensor.bedroom_epp_zone_1_presence  # Bed zone
     to: "on"
@@ -122,7 +125,7 @@ triggers:
     to: "off"
     for: "00:00:30"   # small debounce so turning over doesn't flap
     id: bed_off
-actions:
+action:
   - choose:
       - conditions:
           - condition: trigger
@@ -156,8 +159,8 @@ actions:
 
 The rest of the bedroom in sketch form:
 
-- **Main lights:** trigger on `binary_sensor.bedroom_epp_occupancy` going `on` with a `condition` that the room was previously empty, action `light.turn_on`.
-- **Everything off:** trigger on `binary_sensor.bedroom_epp_occupancy` going `off` with `for: 00:05:00`, **condition** that `binary_sensor.bedroom_epp_static_presence` is also `off`.
+- **Main lights:** trigger on `binary_sensor.bedroom_epp_occupancy` going `on` with a **condition** that the room was previously empty — i.e. both `binary_sensor.bedroom_epp_occupancy` and `binary_sensor.bedroom_epp_static_presence` were `off`. Action `light.turn_on`.
+- **Everything off:** use a **template trigger** that becomes `true` only when both Occupancy and Static Presence are `off`, with `for: "00:05:00"`. For example: `value_template: "{{ is_state('binary_sensor.bedroom_epp_occupancy', 'off') and is_state('binary_sensor.bedroom_epp_static_presence', 'off') }}"`. Action turns everything off. The template trigger evaluates whenever either sensor changes, so it fires whichever one drops last — a simple "Occupancy off" trigger with a Static Presence condition would miss the case where Occupancy drops first.
 
 !!! warning
     Don't leave Static Presence out of the bedroom's empty gate. Someone reading in bed is a non-moving target; the LD2450 will drop them within seconds. Without Static Presence in the off-gate, the bedroom will go dark on them within a minute, regardless of how long the `for:` timer is set to.
