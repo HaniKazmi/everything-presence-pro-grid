@@ -54,6 +54,17 @@ Useful for:
 - Items specific to your layout that don't have a preset (e.g. wardrobes, bookshelves, specific appliances).
 - Non-furniture annotations — a coloured marker to remind yourself something specific about that cell.
 
+## Troubleshooting
+
+| Symptom | Likely cause | Fix |
+| --- | --- | --- |
+| Clicking a sticker doesn't add a furniture item to the grid | Furniture editor mode isn't active | Select **Furniture** in the sidebar first. Zone / Overlays editors don't react to furniture stickers. |
+| Furniture disappears from a different panel session or a different browser | Furniture layout is stored per-browser (localStorage), not pushed to the device | Redraw on the new browser, or use the same browser session. Zones and overlays are the ones synced to the device. |
+| Rotation handle isn't visible on a selected item | Another item is rendered on top of it | Move the overlapping item, or deselect and re-select the item underneath. |
+| Furniture placed but the item's default size doesn't match real-world dimensions | Presets ship with typical dimensions in millimetres, which vary by make | Resize using the eight handles around the item to match your actual furniture. |
+
+See also: the [central Troubleshooting](troubleshooting.md) page for conceptual FAQ and how to open a GitHub issue.
+
 ## Where to next
 
 - **[Live view →](live-view.md)** — read the default view and the live data it shows.
