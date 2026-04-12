@@ -373,7 +373,17 @@
 		"ota_retry": "Retry",
 		"ota_error_timeout": "Update timed out",
 		"ota_error_connection_lost": "Connection lost during update",
-		"ota_error_failed": "Update failed"
+		"ota_error_failed": "Update failed",
+		"errors": {
+			"start_failed": "Failed to start update. Is the device online?",
+			"connect_failed": "Failed to connect to device",
+			"connection_lost": "Connection lost during update",
+			"update_timeout": "Update timed out",
+			"device_offline": "Device went offline during update",
+			"update_failed_generic": "Update failed",
+			"flash_cancelled": "Flash cancelled",
+			"timeout": "Timeout"
+		}
 	},
 	"connection": {
 		"connecting": "Connecting to device...",
@@ -383,5 +393,25 @@
 		"check_connections": "Check for other browser tabs with this panel open, ESPHome log sessions, or additional Home Assistant instances.",
 		"retry": "Retry",
 		"ha_reconnecting": "Reconnecting to Home Assistant..."
+	},
+	"usb": {
+		"errors": {
+			"serial_port_busy": "Serial port is busy from a previous operation. Refresh the page and try again.",
+			"serial_port_unavailable": "Serial port not available",
+			"device_disconnected": "Device disconnected. Unplug, plug it back in, and try again.",
+			"manifest_download_failed": "Failed to download firmware manifest",
+			"file_download_failed": "Failed to download firmware file: {file}",
+			"port_open_failed": "Could not open serial port. Unplug the device, plug it back in, and try again.",
+			"no_device_response": "No response from device — it may be flashed with ethernet firmware which does not support WiFi configuration.",
+			"base_url_required": "baseUrl is required for firmware download"
+		}
+	},
+	"wifi": {
+		"errors": {
+			"provisioning_failed": "WiFi provisioning failed",
+			"scan_failed": "WiFi scan failed",
+			"connection_failed": "WiFi connection failed — check SSID/password and try again",
+			"error_code": "WiFi error (code {code})"
+		}
 	}
 }
