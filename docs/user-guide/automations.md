@@ -183,6 +183,18 @@ Common traps to avoid when wiring up automations:
     - **Don't automate directly on `Static Presence` for general room presence.** It's published as a debug/visibility signal, disabled by default. Occupancy is the combined output that includes static presence — automate against that.
     - **Don't confuse `Zone Rest of Room` with `Occupancy`.** Rest of Room (zone 0) means a target is in the room but outside any named zone; Occupancy means any presence anywhere. They overlap, but use Occupancy for the fast trigger, not zone 0.
 
+## Troubleshooting
+
+| Symptom | Likely cause | Fix |
+| --- | --- | --- |
+| Automation referencing `zone_<N>_presence` never fires | Device-level **Zone Presence** toggle is off — the entity doesn't exist | Enable **Zone Presence** on the device page. See [Zones](zones.md#troubleshooting). |
+| Automation referencing **Static Presence** always reports off | Static Presence entity is disabled on the device page (default) | Enable the Static Presence entity in Home Assistant. Usually you don't need it — **Occupancy** already folds it in. |
+| Lights turn off on someone who's clearly still present | Empty-gate timeout too short, or you're gating on `Motion Presence` instead of `Occupancy` | Gate on `binary_sensor.<device>_occupancy` with `for: "00:02:00"` or longer. Occupancy already includes static presence on the device. |
+| Bed / sofa / reading-chair zone flaps on and off | Zone type is "Normal" — fall-off too fast | Change the zone's type to **Rest** in the [Zones](zones.md) editor. |
+| Automation fires on a quick pass-through a hallway | Zone type is "Normal" — entry threshold too quick | Change the zone's type to **Thoroughfare** in the [Zones](zones.md) editor. |
+
+See also: the [central Troubleshooting](troubleshooting.md) page for conceptual FAQ and how to open a GitHub issue.
+
 ## Where to next
 
 - **[Firmware →](firmware.md)** — keep firmware up to date over the air, or flash a fresh device.
