@@ -192,9 +192,22 @@ Returns stored config for a device.
 
 ### `update_firmware`
 
-Triggers OTA firmware update on a device via the `set_update_manifest` API action. Derives the firmware variant from build flags and constructs the manifest URL from `FIRMWARE_VERSION`. Uses a temporary connection (not the persistent session).
+Triggers OTA firmware update on a device via the `set_update_manifest` API action. Derives the firmware variant (`wifi` or `ethernet`) from build flags and constructs the manifest URL from `FIRMWARE_VERSION` using GitHub Pages (`https://clintongormley.github.io/everything-presence-pro-grid/fw/v{VERSION}/{variant}.json`). Uses a temporary connection (not the persistent session).
 
 **Request:** `{ "type": "eppgrid/update_firmware", "mac": str }`
+
+### `subscribe_ota_progress`
+
+Subscribes to OTA firmware update progress for a device. Opens a session if needed. Subscribes to ESPHome `UpdateState` entity changes and device log messages to forward progress, success, and error events to the frontend. Uses a shared `done` flag so only one terminal event (success or error) is sent.
+
+**Request:** `{ "type": "eppgrid/subscribe_ota_progress", "mac": str }`
+
+**Events:**
+- `{ "state": "updating", "progress": float|null }` — download progress (0-100 or null for indeterminate)
+- `{ "state": "success", "version": str }` — update complete, versions match
+- `{ "state": "error", "message": str }` — update failed (log error, version mismatch, or connection lost)
+
+The handler also monitors device log messages for `http_request.ota` and `http_request.update` errors, forwarding the actual error message immediately. Closes the session on unsubscribe if it was opened by this handler.
 
 ### Firmware Version Guard
 

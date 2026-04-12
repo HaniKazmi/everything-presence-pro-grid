@@ -20,13 +20,11 @@ FIRMWARE_VERSION = "0.90.0-alpha"
 EPP_MANUFACTURER = "EverythingSmartTechnology"
 EPP_MODEL = "Everything Presence Pro"
 
-# Firmware download URL
-MANIFEST_BASE_URL = (
-    f"https://github.com/clintongormley/everything-presence-pro-grid/releases/download/v{FIRMWARE_VERSION}"
-)
+# Firmware download URL (GitHub Pages — no redirects, short URLs)
+MANIFEST_BASE_URL = f"https://clintongormley.github.io/everything-presence-pro-grid/fw/v{FIRMWARE_VERSION}"
 
-# Map UI network choice to full firmware variant name
+# Map UI network choice to firmware variant name (matches fw/ filenames)
 FIRMWARE_VARIANTS = {
-    "wifi": "wifi-ble-co2",
-    "ethernet": "ethernet-ble-co2",
+    "wifi": "wifi",
+    "ethernet": "ethernet",
 }

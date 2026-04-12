@@ -1082,6 +1082,7 @@ export class EPPGridPanel extends LitElement {
 					.firmwareBaseUrl=${this._flasherCtrl.firmwareBaseUrl}
 					.firmwareVersion=${this._flasherCtrl.firmwareVersion}
 					.integrationVersion=${this._flasherCtrl.integrationVersion}
+					.otaStates=${this._flasherCtrl.otaStates}
 					@flash-complete=${() => {
 						this._flasherCtrl.resetUsbState();
 						this._loadDevices();
@@ -1113,8 +1114,10 @@ export class EPPGridPanel extends LitElement {
 						this._handleWifiProvision(e.detail.ssid, e.detail.password);
 					}}
 					@update-firmware=${(e: CustomEvent) => {
-						this._selectedMac = e.detail.mac;
-						this._updateFirmware();
+						this._flasherCtrl.startOta(e.detail.mac);
+					}}
+					@retry-ota=${(e: CustomEvent) => {
+						this._flasherCtrl.dismissOtaError(e.detail.mac);
 					}}
 					@wifi-complete=${() => {
 						this._flasherCtrl.resetUsbState();
@@ -1362,7 +1365,13 @@ export class EPPGridPanel extends LitElement {
 				${
 					isBehind
 						? html`<button class="wizard-btn wizard-btn-primary"
-						@click=${() => this._updateFirmware()}
+						@click=${() => {
+							this._panelTab = "flasher";
+							if (this._flasherCtrl.loading) {
+								this._flasherCtrl.hass = this.hass;
+								this._flasherCtrl.subscribeDeviceList();
+							}
+						}}
 					>${this._localize("protocol.update_firmware")}</button>`
 						: nothing
 				}
@@ -1374,18 +1383,6 @@ export class EPPGridPanel extends LitElement {
 				}
 			</div>
 		`;
-	}
-
-	private async _updateFirmware(): Promise<void> {
-		if (!this._selectedMac || !this.hass) return;
-		try {
-			await this.hass.callWS({
-				type: "eppgrid/update_firmware",
-				mac: this._selectedMac,
-			});
-		} catch (err) {
-			console.error("Firmware update failed:", err);
-		}
 	}
 
 	private _renderConnectionBanner() {

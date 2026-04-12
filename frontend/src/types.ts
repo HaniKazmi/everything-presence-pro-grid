@@ -76,3 +76,11 @@ export interface UsbFlashState {
 	variant?: string;
 	fatal?: boolean;
 }
+
+export type OtaState = "updating" | "success" | "error";
+
+export interface OtaDeviceState {
+	state: OtaState;
+	progress: number | null; // 0-100 or null for indeterminate
+	error: string | null;
+}

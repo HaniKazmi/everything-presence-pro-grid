@@ -73,6 +73,7 @@ class DeviceConnection:
         self._entities: list = []
         self._state_subscribers: list[Any] = []
         self._states_subscribed: bool = False
+        self._log_callbacks: list[Any] = []
         self._unsub_logs: Any = None
         self.connected: bool = False
         self.raw_target_subs: int = 0
@@ -104,6 +105,7 @@ class DeviceConnection:
         self._services.clear()
         self._entities = []
         self._state_subscribers.clear()
+        self._log_callbacks.clear()
         self._states_subscribed = False
         self.connected = False
 
@@ -123,6 +125,15 @@ class DeviceConnection:
         """Fan out state updates to all subscribers."""
         for cb in self._state_subscribers:
             cb(state)
+
+    def add_log_callback(self, cb: Any) -> None:
+        """Add a log callback. Receives raw log messages from the device."""
+        self._log_callbacks.append(cb)
+
+    def remove_log_callback(self, cb: Any) -> None:
+        """Remove a log callback."""
+        with contextlib.suppress(ValueError):
+            self._log_callbacks.remove(cb)
 
     def subscribe_logs(self, log_level: LogLevel = LogLevel.LOG_LEVEL_DEBUG) -> None:
         """Subscribe to device log messages and re-emit via Python logger."""
@@ -144,6 +155,8 @@ class DeviceConnection:
             text = text.rstrip()
             if text:
                 _DEVICE_LOGGER.log(py_level, "[%s] %s", self._host, text)
+            for cb in self._log_callbacks:
+                cb(msg)
 
         self._unsub_logs = self._client.subscribe_logs(_on_log, log_level=log_level)
         _LOGGER.debug("Subscribed to device logs from %s (level=%s)", self._host, log_level)
@@ -580,6 +593,7 @@ class DeviceManager:
         if new_state.state == STATE_UNAVAILABLE:
             # Device went offline — allow a fresh push when it comes back
             self._pushing.discard(mac)
+            self._fire_device_list_changed()
             return
 
         if old_state.state != STATE_UNAVAILABLE:
@@ -643,6 +657,8 @@ class DeviceManager:
             if not await self._push_config_to_device(mac):
                 self._pushing.discard(mac)
 
+        self._fire_device_list_changed()
+
     @staticmethod
     def _manage_log_subscription(conn: DeviceConnection, config: dict[str, Any]) -> None:
         """Subscribe/unsubscribe device logs based on stored log levels."""
@@ -703,7 +719,7 @@ class DeviceManager:
 
         conn = DeviceConnection(dev.host)
         try:
-            await conn.async_connect()
+            await asyncio.wait_for(conn.async_connect(), timeout=30)
             flags = await conn.async_fetch_build_flags()
             if flags:
                 self._build_flags[mac] = flags
@@ -735,14 +751,14 @@ class DeviceManager:
                 self._manage_log_subscription(session_conn, config)
                 return True
             except Exception:
-                _LOGGER.warning("Failed to push config to %s (%s) via session", dev.name, mac, exc_info=True)
+                _LOGGER.warning("Failed to push config to %s (%s) via session", dev.name, mac)
                 await self.async_close_session(mac)
                 return False
 
         # No active session — use temporary connection (e.g., on-boot push)
         conn = DeviceConnection(dev.host)
         try:
-            await conn.async_connect()
+            await asyncio.wait_for(conn.async_connect(), timeout=30)
             await conn.async_push_config(config)
             # Push pipeline directly (no subscribers on temp connections)
             from .websocket_api import _compute_pipeline
@@ -756,16 +772,40 @@ class DeviceManager:
                 self._build_flags[mac] = flags
             return True
         except Exception:
-            _LOGGER.warning("Failed to push config to %s (%s)", dev.name, mac, exc_info=True)
+            _LOGGER.warning("Failed to push config to %s (%s)", dev.name, mac)
             return False
         finally:
             await conn.async_disconnect()
+
+    def _is_device_available(self, mac: str) -> bool:
+        """Check HA entity states to determine if a device is reachable.
+
+        Returns True if any ESPHome entity is available, or if there are
+        no ESPHome entities to check (unknown = try to connect).
+        Returns False only if entities exist and ALL are unavailable.
+        """
+        dev = self.devices.get(mac)
+        if dev is None or dev.device_id is None:
+            return True  # No device tracking — try to connect
+        ent_reg = er.async_get(self._hass)
+        has_esphome_entity = False
+        for entry in er.async_entries_for_device(ent_reg, dev.device_id):
+            if entry.platform != "esphome":
+                continue
+            has_esphome_entity = True
+            state = self._hass.states.get(entry.entity_id)
+            if state is not None and state.state not in ("unavailable", "unknown"):
+                return True
+        return not has_esphome_entity  # No entities = unknown = try
 
     async def async_open_session(self, mac: str) -> DeviceConnection | None:
         """Open a persistent connection for a frontend session.
         Returns the connection, or None if the device is not available."""
         dev = self.devices.get(mac)
         if dev is None or dev.host is None:
+            return None
+        # Fast-fail if HA already knows the device is unavailable
+        if not self._is_device_available(mac):
             return None
         lock = self._session_locks.setdefault(mac, asyncio.Lock())
         async with lock:
@@ -776,7 +816,7 @@ class DeviceManager:
                 # Stale connection — clean up
                 await conn.async_disconnect()
             conn = DeviceConnection(dev.host)
-            await conn.async_connect()
+            await asyncio.wait_for(conn.async_connect(), timeout=30)
             self._active_connections[mac] = conn
             _LOGGER.info("Opened session for %s (%s)", dev.name, mac)
             # Subscribe to device logs if log levels are configured
@@ -886,7 +926,13 @@ class DeviceManager:
                     "host": host,
                     "available": available,
                     "firmware_type": "eppgrid" if has_firmware_version else "original",
-                    "firmware_version": device.sw_version or "unknown",
+                    "firmware_version": (
+                        self.read_firmware_version(managed_dev.device_id)
+                        or (device.sw_version or "").split(" (")[0]
+                        or "unknown"
+                        if has_firmware_version and managed_dev is not None
+                        else (device.sw_version or "").split(" (")[0] or "unknown"
+                    ),
                     "firmware_status": (
                         (
                             "unavailable"

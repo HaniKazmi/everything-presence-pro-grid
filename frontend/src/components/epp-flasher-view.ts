@@ -12,7 +12,11 @@ import { html, LitElement, nothing } from "lit";
 import { property, state } from "lit/decorators.js";
 import type { WifiNetwork } from "../lib/improv-serial.js";
 import { flasherStyles } from "../styles.js";
-import type { FlashableDevice, UsbFlashState } from "../types.js";
+import type {
+	FlashableDevice,
+	OtaDeviceState,
+	UsbFlashState,
+} from "../types.js";
 
 const WIFI_ICONS_LOCK = [
 	mdiWifiStrength1Lock,
@@ -49,6 +53,8 @@ export class EppFlasherView extends LitElement {
 	@property() integrationVersion = "";
 	@property({ attribute: false }) usbFlashState: UsbFlashState | null = null;
 	@property({ attribute: false }) wifiNetworks: WifiNetwork[] = [];
+	@property({ attribute: false }) otaStates: Record<string, OtaDeviceState> =
+		{};
 
 	@state() private _hasWebSerial: boolean =
 		typeof navigator !== "undefined" && "serial" in navigator;
@@ -63,6 +69,8 @@ export class EppFlasherView extends LitElement {
 	@state() private _deviceIp: string | null = null;
 	@state() private _showWifiProvisioning = false;
 
+	@state() private _errorPopoverMac: string | null = null;
+
 	private _dispatchUpdateFirmware(device: FlashableDevice): void {
 		this.dispatchEvent(
 			new CustomEvent("update-firmware", {
@@ -71,6 +79,72 @@ export class EppFlasherView extends LitElement {
 				composed: true,
 			}),
 		);
+	}
+
+	private _toggleErrorPopover(e: Event, mac: string): void {
+		e.stopPropagation();
+		this._errorPopoverMac = this._errorPopoverMac === mac ? null : mac;
+	}
+
+	private _dispatchRetryOta(device: FlashableDevice): void {
+		this._errorPopoverMac = null;
+		this.dispatchEvent(
+			new CustomEvent("retry-ota", {
+				detail: { mac: device.mac },
+				bubbles: true,
+				composed: true,
+			}),
+		);
+	}
+
+	private _renderOtaIndicator(
+		device: FlashableDevice,
+	): typeof nothing | ReturnType<typeof html> {
+		const ota = this.otaStates[device.mac];
+		if (!ota) return nothing;
+
+		switch (ota.state) {
+			case "updating": {
+				if (ota.progress == null) {
+					return html`<div class="ota-spinner"></div>`;
+				}
+				const radius = 14;
+				const circumference = 2 * Math.PI * radius;
+				const offset = circumference - (ota.progress / 100) * circumference;
+				return html`
+					<div class="ota-progress">
+						<svg width="36" height="36" viewBox="0 0 36 36">
+							<circle class="ota-track" cx="18" cy="18" r="${radius}" />
+							<circle class="ota-fill" cx="18" cy="18" r="${radius}"
+								stroke-dasharray="${circumference}"
+								stroke-dashoffset="${offset}" />
+						</svg>
+						<span class="ota-pct">${Math.round(ota.progress)}</span>
+					</div>`;
+			}
+			case "success":
+				return html`<ha-icon class="ota-success" icon="mdi:check-circle"></ha-icon>`;
+			case "error":
+				return html`
+					<div class="ota-error">
+						<ha-icon class="ota-error-icon"
+							icon="mdi:alert-circle"
+							@click=${(e: Event) => this._toggleErrorPopover(e, device.mac)}
+						></ha-icon>
+						${
+							device.available
+								? html`<ha-button @click=${() => this._dispatchRetryOta(device)}>
+								${this.localize("flasher.ota_retry")}
+							</ha-button>`
+								: nothing
+						}
+						${
+							this._errorPopoverMac === device.mac
+								? html`<div class="ota-error-popover">${ota.error}</div>`
+								: nothing
+						}
+					</div>`;
+		}
 	}
 
 	private _onUsbConnect(): void {
@@ -281,33 +355,29 @@ export class EppFlasherView extends LitElement {
                 </div>`
 								: html`
                 <div class="device-list">
-                  ${flashableDevices.map(
-										(device) => html`
+                  ${flashableDevices.map((device) => {
+										const isFaded =
+											!device.available || device.firmware_type === "original";
+										return html`
                       <div class="device-row">
-                        <div class="device-info">
-                          <div class="device-name">${device.name}</div>
-                          <div class="device-host">
-                            ${device.host ?? this.localize("flasher.offline")}
-                          </div>
+                        <div class="device-info${isFaded ? " device-info-faded" : ""}">
+                          <div class="device-name">${device.name} <span class="device-mac">(${device.mac.replace(/:/g, "").slice(-6).toLowerCase()})</span></div>
+                          <div class="device-host">${device.host ?? this.localize("flasher.offline")}${
+														device.firmware_type === "eppgrid" &&
+														device.firmware_version &&
+														device.firmware_version !== "unknown"
+															? ` - v${device.firmware_version}`
+															: ""
+													}</div>
                         </div>
-                        <span
-                          class="firmware-badge firmware-badge-${device.firmware_type}"
-                        >
-                          ${
-														device.firmware_type === "original"
-															? this.localize("flasher.original")
-															: this.localize("flasher.eppgrid")
-													}
-                        </span>
                         ${
 													!device.available
 														? html`<span class="firmware-badge firmware-badge-offline">${this.localize("flasher.offline")}</span>`
 														: nothing
 												}
                         ${
-													device.firmware_type === "eppgrid" &&
-													device.firmware_status === "firmware_behind"
-														? html`<span class="firmware-badge firmware-badge-behind">${this.localize("flasher.needs_update")}</span>`
+													device.firmware_type === "original"
+														? html`<span class="firmware-badge firmware-badge-original">${this.localize("flasher.flash_usb")}</span>`
 														: nothing
 												}
                         ${
@@ -317,20 +387,20 @@ export class EppFlasherView extends LitElement {
 														: nothing
 												}
                         ${
-													device.firmware_type === "eppgrid" &&
-													(
-														device.update_available ||
-															device.firmware_status === "firmware_behind"
-													)
-														? html`<ha-button
-																raised
-																@click=${() => this._dispatchUpdateFirmware(device)}
-															>${this.localize("flasher.update")}</ha-button>`
-														: nothing
+													this.otaStates[device.mac]
+														? this._renderOtaIndicator(device)
+														: device.firmware_type === "eppgrid" &&
+																(device.update_available ||
+																	device.firmware_status === "firmware_behind")
+															? html`<ha-button
+																		raised
+																		@click=${() => this._dispatchUpdateFirmware(device)}
+																	>${this.localize("flasher.update")}</ha-button>`
+															: nothing
 												}
                       </div>
-                    `,
-									)}
+                    `;
+									})}
                 </div>
               `
 						}

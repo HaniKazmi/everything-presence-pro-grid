@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import json
 import logging
 from pathlib import Path
@@ -48,6 +49,7 @@ def async_register_websocket_commands(hass: HomeAssistant, manager: Any) -> None
     websocket_api.async_register_command(hass, websocket_set_distance_override)
     websocket_api.async_register_command(hass, websocket_set_pipeline)
     websocket_api.async_register_command(hass, websocket_update_firmware)
+    websocket_api.async_register_command(hass, websocket_subscribe_ota_progress)
     websocket_api.async_register_command(hass, websocket_dismiss_target)
     websocket_api.async_register_command(hass, websocket_subscribe_flashable_devices)
     websocket_api.async_register_command(hass, websocket_list_flashable_devices)
@@ -550,8 +552,9 @@ async def websocket_subscribe_device(
     mac = msg["mac"]
     try:
         device_conn = await manager.async_open_session(mac)
-    except Exception:
-        _LOGGER.warning("Failed to open session for %s", mac, exc_info=True)
+    except Exception as err:
+        _LOGGER.warning("Failed to open session for %s: %s", mac, err)
+        manager._fire_device_list_changed()
         connection.send_error(msg["id"], "connection_failed", "Failed to connect to device")
         return
     if device_conn is None:
@@ -1128,7 +1131,7 @@ async def websocket_update_firmware(
     if variant is None:
         connection.send_error(msg["id"], "unknown_variant", f"No firmware variant for network type: {network}")
         return
-    manifest_url = f"{MANIFEST_BASE_URL}/everything-presence-pro-{variant}-manifest.json"
+    manifest_url = f"{MANIFEST_BASE_URL}/{variant}.json"
 
     if dev.host is None:
         connection.send_error(msg["id"], "not_available", "Device host unknown")
@@ -1149,6 +1152,138 @@ async def websocket_update_firmware(
         connection.send_error(msg["id"], "update_failed", str(err))
     finally:
         await conn.async_disconnect()
+
+
+# -- subscribe_ota_progress --
+
+
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): "eppgrid/subscribe_ota_progress",
+        vol.Required("mac"): str,
+    }
+)
+@websocket_api.async_response
+async def websocket_subscribe_ota_progress(
+    hass: HomeAssistant,
+    connection: websocket_api.ActiveConnection,
+    msg: dict[str, Any],
+) -> None:
+    """Subscribe to OTA firmware update progress for a device."""
+    manager = _get_manager(hass)
+    if manager is None:
+        connection.send_error(msg["id"], "not_ready", "Integration not loaded")
+        return
+
+    mac = msg["mac"]
+    had_session = manager.get_session(mac) is not None
+    device_conn = manager.get_session(mac)
+    if device_conn is None:
+        with contextlib.suppress(Exception):
+            device_conn = await manager.async_open_session(mac)
+    if device_conn is None:
+        connection.send_error(msg["id"], "no_session", "Device not available")
+        return
+
+    was_in_progress = False
+    done = False  # shared guard: once a terminal event is sent, stop
+
+    # Ensure device logs are subscribed so _on_log callbacks fire
+    from aioesphomeapi import LogLevel as ESPLogLevel
+
+    if device_conn._unsub_logs is None:
+        device_conn.subscribe_logs(ESPLogLevel.LOG_LEVEL_ERROR)
+
+    @callback
+    def _on_state(state: Any) -> None:
+        nonlocal was_in_progress, done
+        from aioesphomeapi import UpdateState
+
+        if done or not isinstance(state, UpdateState):
+            return
+
+        if state.in_progress:
+            was_in_progress = True
+            progress = state.progress if state.has_progress else None
+            connection.send_message(
+                websocket_api.event_message(
+                    msg["id"],
+                    {
+                        "state": "updating",
+                        "progress": progress,
+                    },
+                )
+            )
+        elif was_in_progress:
+            was_in_progress = False
+            done = True
+            if state.current_version and state.current_version == state.latest_version:
+                connection.send_message(
+                    websocket_api.event_message(
+                        msg["id"],
+                        {
+                            "state": "success",
+                            "version": state.current_version,
+                        },
+                    )
+                )
+            else:
+                connection.send_message(
+                    websocket_api.event_message(
+                        msg["id"],
+                        {
+                            "state": "error",
+                            "message": "Update failed \u2014 firmware version unchanged",
+                        },
+                    )
+                )
+
+    @callback
+    def _on_log(log_msg: Any) -> None:
+        nonlocal done
+        if done:
+            return
+
+        if log_msg.level != ESPLogLevel.LOG_LEVEL_ERROR:
+            return
+        text = log_msg.message
+        if isinstance(text, bytes):
+            text = text.decode("utf-8", errors="replace")
+        text = text.rstrip()
+        if not text:
+            return
+        # Only match actual OTA/update errors, not status clears
+        if "cleared Error flag" in text or "set Error flag" in text:
+            return
+        if "http_request.ota" not in text and "http_request.update" not in text:
+            return
+        done = True
+        # Extract message after the ESPHome component tag
+        # Format: [E][http_request.ota:294]: Actual message here
+        parts = text.split("]: ", 1)
+        clean_msg = parts[1] if len(parts) > 1 else text
+        connection.send_message(
+            websocket_api.event_message(
+                msg["id"],
+                {
+                    "state": "error",
+                    "message": clean_msg,
+                },
+            )
+        )
+
+    device_conn.subscribe_states(_on_state)
+    device_conn.add_log_callback(_on_log)
+    connection.send_result(msg["id"])
+
+    @callback
+    def _unsub() -> None:
+        device_conn.unsubscribe_states(_on_state)
+        device_conn.remove_log_callback(_on_log)
+        if not had_session:
+            hass.async_create_task(manager.async_close_session(mac))
+
+    connection.subscriptions[msg["id"]] = _unsub
 
 
 # -- dismiss_target (ephemeral, firmware-only) --

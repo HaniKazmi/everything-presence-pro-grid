@@ -382,7 +382,7 @@ describe("_renderHeader device selector", () => {
 // _renderProtocolBanner: update firmware button (line 951)
 // ---------------------------------------------------------
 describe("_renderProtocolBanner update firmware button", () => {
-	it("@click calls _updateFirmware when firmware_behind", () => {
+	it("@click navigates to flasher tab when firmware_behind", () => {
 		const a = createPanel() as any;
 		a._devices = [
 			{
@@ -394,13 +394,13 @@ describe("_renderProtocolBanner update firmware button", () => {
 				firmware_status: "firmware_behind",
 			},
 		];
-		const spy = vi.spyOn(a, "_updateFirmware").mockResolvedValue(undefined);
+		a._panelTab = "config";
 		const tpl = a._renderProtocolBanner();
 		const c = renderTo(tpl);
 		const btn = c.querySelector(".wizard-btn-primary") as HTMLElement;
 		expect(btn).not.toBeNull();
 		btn.click();
-		expect(spy).toHaveBeenCalled();
+		expect(a._panelTab).toBe("flasher");
 	});
 });
 

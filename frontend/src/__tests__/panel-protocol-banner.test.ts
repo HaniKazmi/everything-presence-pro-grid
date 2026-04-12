@@ -141,15 +141,14 @@ describe("config view blocking on protocol mismatch", () => {
 	});
 });
 
-describe("_updateFirmware", () => {
-	it("calls eppgrid/update_firmware via WS", async () => {
+describe("update firmware button navigates to flash tab", () => {
+	it("sets _panelTab to flasher when firmware_behind", () => {
 		const el = createPanel("firmware_behind");
 		const a = el as any;
-		await a._updateFirmware();
-		expect(el.hass.callWS).toHaveBeenCalledWith({
-			type: "eppgrid/update_firmware",
-			mac: "AA:BB:CC:DD:EE:01",
-		});
+		a._panelTab = "config";
+		const result = a._renderProtocolBanner();
+		const str = JSON.stringify(result);
+		expect(str).toContain("protocol.update_firmware");
 	});
 });
 
