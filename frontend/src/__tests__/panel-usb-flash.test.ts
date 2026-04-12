@@ -71,6 +71,7 @@ function makeMockPort() {
 		close: vi.fn().mockResolvedValue(undefined),
 		readable: { getReader: vi.fn() },
 		writable: { getWriter: vi.fn() },
+		setSignals: vi.fn().mockResolvedValue(undefined),
 	};
 }
 
@@ -431,8 +432,8 @@ describe("_handleUsbFlash", () => {
 
 		await (panel as any)._handleUsbFlash("ethernet-ble-co2");
 
-		const completeCall = updateSpy.mock.calls.find(
-			(c: any[]) => c[0].step === "complete",
+		const completeCall = (updateSpy.mock.calls as any[][]).find(
+			(c) => c[0].step === "complete",
 		);
 		expect(completeCall?.[0].variant).toBe("ethernet-ble-co2");
 	});
@@ -475,7 +476,6 @@ describe("_handleWifiProvision", () => {
 		freshReader = { releaseLock: vi.fn() };
 		ipReader = { releaseLock: vi.fn() };
 		mockPort = makeMockPort();
-		mockPort.setSignals = vi.fn().mockResolvedValue(undefined);
 
 		// getWriter returns fresh writer; getReader returns fresh reader first, then ipReader
 		mockPort.writable.getWriter.mockReturnValue(freshWriter);
@@ -610,8 +610,8 @@ describe("_handleWifiProvision", () => {
 		expect(steps).toContain("adding_device");
 		expect(steps).toContain("complete");
 
-		const completeCall = updateSpy.mock.calls.find(
-			(c: any[]) => c[0].step === "complete",
+		const completeCall = (updateSpy.mock.calls as any[][]).find(
+			(c) => c[0].step === "complete",
 		);
 		expect(completeCall?.[0].ip).toBe("192.168.1.42");
 	});
@@ -718,8 +718,8 @@ describe("_handleWifiProvision", () => {
 		expect(mockPort.setSignals).toHaveBeenCalled();
 
 		// Should have completed with the final IP
-		const completeCall = updateSpy.mock.calls.find(
-			(c: any[]) => c[0].step === "complete",
+		const completeCall = (updateSpy.mock.calls as any[][]).find(
+			(c) => c[0].step === "complete",
 		);
 		expect(completeCall?.[0].ip).toBe("192.168.1.99");
 		expect(addSpy).toHaveBeenCalledWith("192.168.1.99");
@@ -756,8 +756,8 @@ describe("_handleWifiProvision", () => {
 		await promise;
 
 		// Should set complete with no IP (handshake failed, so no re-read)
-		const completeCall = updateSpy.mock.calls.find(
-			(c: any[]) => c[0].step === "complete",
+		const completeCall = (updateSpy.mock.calls as any[][]).find(
+			(c) => c[0].step === "complete",
 		);
 		expect(completeCall?.[0].ip).toBeUndefined();
 	});
@@ -822,7 +822,8 @@ describe("_handleWifiScan", () => {
 
 		await (panel as any)._handleWifiScan();
 
-		const lastCall = updateSpy.mock.calls[updateSpy.mock.calls.length - 1];
+		const calls = updateSpy.mock.calls as any[][];
+		const lastCall = calls[calls.length - 1];
 		expect(lastCall[0].step).toBe("wifi_provision");
 	});
 

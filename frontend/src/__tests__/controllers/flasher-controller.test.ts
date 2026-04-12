@@ -85,6 +85,7 @@ describe("FlasherController", () => {
 					firmware_version: "1.0.0",
 					esphome_config_entry_id: "entry-123",
 					update_available: false,
+					firmware_status: "compatible",
 				},
 			];
 			ctrl.hass = mockHass(devices);
@@ -171,6 +172,7 @@ describe("FlasherController", () => {
 					firmware_version: "1.0.0",
 					esphome_config_entry_id: "entry-123",
 					update_available: false,
+					firmware_status: "compatible",
 				},
 			];
 			hass.connection.subscribeMessage = vi
@@ -673,10 +675,6 @@ describe("FlasherController", () => {
 			// Start OTA
 			await ctrl.startOta("AA:BB:CC:DD:EE:01");
 
-			// Set up subscription callback to capture the device list handler
-			const deviceListCallback =
-				hass.connection.subscribeMessage.mock.calls[0]?.[0];
-
 			// Directly set updating state
 			ctrl.otaStates["AA:BB:CC:DD:EE:01"] = {
 				state: "updating",
@@ -764,8 +762,6 @@ describe("FlasherController", () => {
 		it("hostDisconnected cleans up OTA subscriptions and timeouts", async () => {
 			vi.useFakeTimers();
 			await ctrl.startOta("AA:BB:CC:DD:EE:01");
-
-			const unsub = hass.connection.subscribeMessage.mock.results[0].value;
 
 			ctrl.hostDisconnected();
 
