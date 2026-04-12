@@ -47,7 +47,7 @@ Up to seven zones — versus four in the default firmware — each with its own 
 
 ### Entrance/exit overlay
 
-Mark doorways directly on the grid. Transitions become first-class events instead of being inferred from sequences of zone changes — which unlocks entry and exit counting when paired with intelligent tracking.
+Mark doorways on the grid. Targets that appear or disappear near entry or exit cells are classified as expected events — someone walking in or out — rather than as ghosts or sudden occupancy changes. Zones near doors stop flapping every time someone crosses a threshold.
 
 ### Interference source overlay
 
@@ -55,7 +55,7 @@ Some ghost detections have obvious causes: a ceiling fan, a curtain, a reflectiv
 
 ### Intelligent target tracking with zone handoff
 
-Targets are tracked across zone boundaries. A person walking from kitchen to hallway produces a clean handoff — no gap where the person appears to vanish and reappear — not two independent zone events. Paired with entrance overlays, this is what makes reliable entry and exit counting possible.
+Radar doesn't track targets perfectly frame to frame — targets briefly vanish and reappear, sometimes in an adjacent cell. Naive zone logic would treat every blip as an occupancy change. The zone engine tracks target identity across the grid: when a target disappears from one zone and reappears in an adjacent zone shortly after, it's treated as a single zone-to-zone handoff rather than one zone emptying and another filling independently. Combined with the entrance/exit overlay, this keeps zone occupancy stable under noisy tracking.
 
 ### Zone engine on the chip
 
@@ -95,7 +95,7 @@ Eight principles guided the design. They are held to across changes.
 
 6. **Observable.** The frontend shows what the firmware is actually doing, live. Nothing is hidden behind a black box.
 
-7. **Frontend/firmware parity.** The frontend's zone engine is an exact replica of the firmware's, so previews in the editor match reality. This is an engineering invariant held to across every change.
+7. **Frontend/firmware parity.** The frontend's zone engine is kept in sync with the firmware's, so previews in the editor match real-world behaviour.
 
 8. **Calibration over hardware.** Accuracy comes from math — the perspective transform and the rolling median — not from a more expensive sensor.
 
