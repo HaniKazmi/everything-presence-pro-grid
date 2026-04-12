@@ -38,6 +38,11 @@ async def setup_integration(hass: HomeAssistant, config_entry: MockConfigEntry) 
 
     with (
         patch("custom_components.eppgrid.DeviceManager") as mock_dm_cls,
+        patch(
+            "custom_components.eppgrid._register_frontend_resources",
+            new_callable=AsyncMock,
+            return_value="/eppgrid_static/eppgrid-panel.js?v=test",
+        ),
         patch("custom_components.eppgrid._register_panel", new_callable=AsyncMock),
     ):
         mock_dm = mock_dm_cls.return_value

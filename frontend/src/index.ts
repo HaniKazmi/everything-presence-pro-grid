@@ -1,5 +1,4 @@
 export { EppDeviceCard } from "./components/epp-device-card";
-export { EppFlasherCard } from "./components/epp-flasher-card";
 export { EPPGridPanel } from "./eppgrid-panel";
 
 import { EPPGridStrategy } from "./strategy";
@@ -8,18 +7,12 @@ export { EPPGridStrategy };
 
 // Register custom cards
 (window as any).customCards = (window as any).customCards || [];
-(window as any).customCards.push(
-	{
-		type: "epp-device-card",
-		name: "EPP Grid Device Configuration",
-		description: "EPP Grid device calibration and zone editor",
-	},
-	{
-		type: "epp-flasher-card",
-		name: "EPP Grid Firmware Flasher",
-		description: "Flash EPP Grid firmware to devices",
-	},
-);
+(window as any).customCards.push({
+	type: "epp-device-card",
+	name: "Everything Presence Pro Grid",
+	description:
+		"Device configuration, calibration, zone editor, and firmware flasher",
+});
 
 // Register strategy
 (window as any).customStrategies = (window as any).customStrategies || {};
