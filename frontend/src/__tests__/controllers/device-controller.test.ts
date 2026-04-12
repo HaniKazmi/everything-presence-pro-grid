@@ -642,6 +642,31 @@ describe("DeviceController", () => {
 			capturedCallback!({ targets: [{ raw_x: 10, raw_y: 20 }] });
 			expect(onRawTargetData).toHaveBeenCalledWith([{ raw_x: 10, raw_y: 20 }]);
 		});
+
+		it("swallows subscription rejection without surfacing an uncaught promise", async () => {
+			const unhandled: unknown[] = [];
+			const handler = (reason: unknown) => {
+				unhandled.push(reason);
+			};
+			process.on("unhandledRejection", handler);
+			try {
+				ctrl.hass = {
+					callWS: vi.fn(),
+					connection: {
+						subscribeMessage: vi
+							.fn()
+							.mockRejectedValue(new Error("socket closed")),
+					},
+				};
+				ctrl.subscribeDisplay("aa");
+				// Let the microtask queue flush so the rejection fires if uncaught.
+				await new Promise((r) => setTimeout(r, 0));
+				await new Promise((r) => setTimeout(r, 0));
+				expect(unhandled).toEqual([]);
+			} finally {
+				process.off("unhandledRejection", handler);
+			}
+		});
 	});
 
 	describe("unsubscribeDisplay", () => {
