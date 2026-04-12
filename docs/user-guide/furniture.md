@@ -16,14 +16,14 @@ Without furniture, the live view is a coloured grid with dots moving on it. You 
 ## Adding furniture
 
 1. Switch to the **Furniture** editor mode in the sidebar.
-2. The sidebar shows a 2-column grid of furniture "stickers" covering 32 presets across the common categories:
-    - **Seating** — armchair, sofa-2-seat, sofa-3-seat.
-    - **Beds** — bed-single, bed-double.
-    - **Tables** — desk, dining_table, round-table, side-table, counter, kitchen-island.
-    - **Bathroom** — bath, shower, toilet, bidet, hot-tub.
-    - **Kitchen** — fridge, oven-stove, washing-machine, cabinet, cupboard.
-    - **Doors and windows** — door-left-swing, door-right-swing, sliding-door, window.
-    - **Other** — tv, speaker, lamp, plant, carpet, cat-bed, dog-bed, car, pool.
+2. The sidebar shows a 2-column grid of furniture "stickers" covering 35 presets, grouped by category:
+    - **Seating** — armchair, two-seater sofa, three-seater sofa.
+    - **Beds** — single bed, double bed, bedside table.
+    - **Tables and work surfaces** — desk, dining table, round dining table, side table, counter, kitchen island.
+    - **Bathroom** — bath, shower, toilet, bidet, hot tub.
+    - **Kitchen and appliances** — fridge, oven, washing machine, cabinet, cupboard.
+    - **Doors and windows** — door (left-swing), door (right-swing), sliding door, window.
+    - **Other** — television, speaker, floor lamp, plant, carpet, cat bed, dog bed, car, pool.
 3. Click a sticker. The item lands centred in the room at its default size (in millimetres, so real-world-accurate).
 4. Drag the item to position it on the grid.
 

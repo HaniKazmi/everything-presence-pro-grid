@@ -40,7 +40,7 @@ Grid cells on the corrected view are finer than any rectangular zone in raw sens
 
 ### Seven named zones
 
-Up to seven zones — versus four in the default firmware — each with its own occupancy, motion, and target-count entities. Each zone has a name, sensitivity settings, and an optional association with the floor plan.
+Up to seven zones — versus four in the default firmware — each with its own occupancy, motion, and target-count entities. Each zone has a name, a colour, a behaviour type (Normal, Thoroughfare, Rest, or Custom), and optional furniture on the grid for visual context.
 
 !!! example "Screenshot placeholder"
     **Zone editor with seven zones painted on the grid, each a different colour.** `introduction/zone-editor.png`
@@ -61,12 +61,12 @@ Radar doesn't track targets perfectly frame to frame — targets briefly vanish 
 
 The zone engine runs in firmware on the ESP32. Home Assistant receives state changes — "kitchen zone became occupied" — not raw target streams. Network noise drops, log churn drops, and HA only sees the events you care about.
 
-### Floor plan editor
+### Furniture editor
 
-Drop furniture and walls onto the grid so you (and future you) understand what the grid means at a glance. The floor plan is overlay only — it doesn't change detection — but it makes the live view interpretable.
+Drop furniture onto the grid so you (and future you) understand what the grid means at a glance. Furniture is overlay-only — it doesn't change detection — but it makes the live view interpretable as an actual room rather than coloured cells.
 
 !!! example "Screenshot placeholder"
-    **Floor plan editor with furniture placed against the zone layout.** `introduction/floor-plan.png`
+    **Furniture editor with furniture placed against the zone layout.** `introduction/floor-plan.png`
 
 ### Integrated firmware flasher and OTA
 

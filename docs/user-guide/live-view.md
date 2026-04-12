@@ -7,7 +7,7 @@ The live view is the default content of the Device Configuration tab when you're
 The grid is a top-down view of your room after calibration. Each cell is the unit of detection; the zone engine decides presence and target counts in terms of cells.
 
 - Zones are drawn as coloured regions using the colour you picked in the zones editor.
-- Overlays show as hatched patterns: diagonal hatching for Entry/Exit cells, cross-hatching (red) for Interference and Suppress cells.
+- Overlays show as hatched patterns: Entry/Exit cells use a grey 45° diagonal stripe; Interference cells use a single red -45° diagonal stripe; Suppress cells use red cross-hatching (both diagonals).
 - Furniture sits on top of zones and overlays as a visual layer.
 - Below the grid, the panel shows the room's width × depth plus the distance to the furthest point the sensor can still track (useful for sanity-checking that important corners are inside the LD2450's 6-metre tracking range).
 
@@ -18,9 +18,8 @@ The grid is a top-down view of your room after calibration. Each cell is the uni
 
 The LD2450 tracks up to 3 targets at a time. Each is drawn as a dot on the grid:
 
-- **Blue dots** — moving targets. The radar is seeing frame-to-frame movement.
-- **Orange dots** — stationary targets. The radar still sees them, but they're essentially still (sitting, lying down).
-- **Signal-strength halo** — a circle around each target whose size hints at how confident the sensor is. Bigger halo = stronger signal. No halo = the sensor's signal reading for that target is 0 (still tracked, just weakly).
+- **Per-target colours** — each tracked target slot has its own colour from a fixed palette, so you can tell separate targets apart at a glance. The colour identifies the slot, not the movement state; it stays the same as the target moves around.
+- **Optional signal label** — a target may show its signal-strength value as a small label next to the dot.
 
 Targets move smoothly because the firmware applies a rolling-median filter before the perspective transform. Jitter you occasionally see is real radar noise, not a bug.
 

@@ -66,8 +66,8 @@ The four thresholds (editable in Custom mode):
 
 Zones don't create entities on their own — the firmware publishes every possible zone entity up front, and the integration enables or hides them based on your settings. Two **device-level** toggles control what's exposed:
 
-- **Zone Presence** — if enabled, Home Assistant sees a `binary_sensor.<device>_zone_N_presence` entity for every active zone slot. Display names follow the pattern "Zone N Presence" (or your zone name, depending on firmware version). Zone 0's presence sensor is your "any target in the room at all" signal.
-- **Zone Target Count** — if enabled, Home Assistant sees a `sensor.<device>_zone_N_target_count` entity per active zone slot, reporting the number of tracked targets currently inside that zone.
+- **Zone Presence** — if enabled, Home Assistant sees a `binary_sensor.<device>_zone_N_presence` entity for every active zone slot. The integration renames these to follow the zone: a named zone becomes `Zone <name>` (e.g. `Zone Sofa`), and Zone 0 becomes `Zone Rest of Room`. Zone 0's presence sensor is `on` whenever the sensor sees a target anywhere in the room that isn't inside one of your named zones.
+- **Zone Target Count** — if enabled, Home Assistant sees a `sensor.<device>_zone_N_target_count` entity per active zone slot, with the same `Zone <name>` / `Zone Rest of Room` display-name treatment. Reports the number of tracked targets currently inside that zone.
 
 Both toggles are device-wide, not per-zone. Turning **Zone Presence** on gives you presence sensors for every zone on the device at once; turning it off hides all of them. If you only care about three of your seven zones, you still get all seven presence sensors — just leave them disabled in Home Assistant's entity registry for the ones you don't need.
 
