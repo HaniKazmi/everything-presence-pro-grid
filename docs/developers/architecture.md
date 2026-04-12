@@ -98,7 +98,9 @@ everything-presence-pro-grid/
 │   ├── common/                # Shared ESPHome YAML configs
 │   └── variants/              # 8 firmware build variants
 ├── docs/
-│   └── backend-data-catalog.md  # Data field inventory
+│   └── developers/
+│       ├── architecture.md      # This file
+│       └── data-catalog.md      # Data field inventory
 ├── pyproject.toml             # Python config (ruff)
 └── .github/workflows/         # CI: frontend + C++ tests, firmware builds
 ```
@@ -137,7 +139,7 @@ via MD5 hash of the JS bundle).
 
 Discovers ESPHome devices with `zone_engine_version` entities. Reads the
 `Config Protocol` sensor to determine firmware-integration compatibility
-(see [config protocol versioning spec](superpowers/specs/2026-03-27-config-protocol-versioning-design.md)).
+(see the config protocol versioning spec in `docs/superpowers/specs/`).
 Manages on-demand aioesphomeapi connections for frontend sessions. Pushes
 stored config to devices on save and on reconnect via temporary connections
 (separate from the frontend session to avoid consuming API slots or racing
@@ -166,7 +168,7 @@ A flasher subsystem (`ota.py`) implements the ESPHome OTA TCP protocol
 (port 3232) for pushing firmware binaries directly to devices without
 requiring ESPHome Dashboard.
 
-See [backend-data-catalog.md](backend-data-catalog.md) for the complete
+See [data-catalog.md](data-catalog.md) for the complete
 data field inventory.
 
 ## TypeScript Frontend

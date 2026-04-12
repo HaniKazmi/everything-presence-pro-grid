@@ -11,8 +11,6 @@ site_dir: site
 exclude_docs: |
   superpowers/
   EppGrid TODO.txt
-  architecture.md
-  backend-data-catalog.md
 
 theme:
   name: material
@@ -75,3 +73,7 @@ markdown_extensions:
 
 nav:
   - Home: index.md
+  - Developers:
+    - Overview: developers/index.md
+    - Architecture: developers/architecture.md
+    - Data catalog: developers/data-catalog.md
