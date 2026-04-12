@@ -1,0 +1,93 @@
+site_name: Everything Presence Pro Grid
+site_description: User and developer documentation for the Everything Presence Pro Grid Home Assistant integration.
+site_url: https://clintongormley.github.io/everything-presence-pro-grid/
+repo_url: https://github.com/clintongormley/everything-presence-pro-grid
+repo_name: clintongormley/everything-presence-pro-grid
+edit_uri: edit/main/docs/
+
+docs_dir: docs
+site_dir: site
+
+exclude_docs: |
+  superpowers/
+  EppGrid TODO.txt
+
+theme:
+  name: material
+  logo: images/logo.png
+  favicon: images/logo.png
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: light blue
+      accent: cyan
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: black
+      accent: cyan
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+  features:
+    - navigation.tabs
+    - navigation.sections
+    - navigation.indexes
+    - navigation.top
+    - navigation.instant
+    - search.highlight
+    - search.suggest
+    - search.share
+    - content.code.copy
+    - content.tabs.link
+    - content.action.edit
+    - toc.follow
+
+plugins:
+  - search
+  - git-revision-date-localized:
+      enable_creation_date: true
+      type: date
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - md_in_html
+  - footnotes
+  - pymdownx.details
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+  - pymdownx.tabbed:
+      alternate_style: true
+  - toc:
+      permalink: true
+
+nav:
+  - Home: index.md
+  - User Guide:
+    - Introduction: user-guide/introduction.md
+    - Installation: user-guide/installation.md
+    - Getting Started:
+      - Pairing: user-guide/getting-started/pairing.md
+      - First boot: user-guide/getting-started/first-boot.md
+      - Calibration: user-guide/getting-started/calibration.md
+    - Zones: user-guide/zones.md
+    - Floor plan: user-guide/floor-plan.md
+    - Live view: user-guide/live-view.md
+    - Firmware: user-guide/firmware.md
+    - Troubleshooting: user-guide/troubleshooting.md
+  - Developers:
+    - Overview: developers/index.md
+    - Architecture: developers/architecture.md
+    - Data catalog: developers/data-catalog.md
+    - Code layout: developers/code-layout.md
+    - Contributing: developers/contributing.md
