@@ -717,8 +717,10 @@ class DeviceManager:
         session = self.get_session(mac)
         if session is not None:
             flags = await session.async_fetch_build_flags()
+            # Cache the result (even {}) so we don't retry every save on
+            # firmware that never responds to get_build_flags.
+            self._build_flags[mac] = flags
             if flags:
-                self._build_flags[mac] = flags
                 self._fire_device_list_changed()
             return
 
@@ -726,8 +728,8 @@ class DeviceManager:
         try:
             await asyncio.wait_for(conn.async_connect(), timeout=30)
             flags = await conn.async_fetch_build_flags()
+            self._build_flags[mac] = flags
             if flags:
-                self._build_flags[mac] = flags
                 self._fire_device_list_changed()
         except Exception:
             _LOGGER.debug("Failed to fetch build flags from %s", mac)
@@ -751,9 +753,7 @@ class DeviceManager:
                 await session_conn.async_push_config(config)
                 await self._push_pipeline_to_device(mac)
                 if mac not in self._build_flags:
-                    flags = await session_conn.async_fetch_build_flags()
-                    if flags:
-                        self._build_flags[mac] = flags
+                    self._build_flags[mac] = await session_conn.async_fetch_build_flags()
                 self._manage_log_subscription(session_conn, config)
                 return True
             except Exception:
@@ -774,9 +774,7 @@ class DeviceManager:
             if svc:
                 await conn._client.execute_service(svc, pipeline)
             if mac not in self._build_flags:
-                flags = await conn.async_fetch_build_flags()
-                if flags:
-                    self._build_flags[mac] = flags
+                self._build_flags[mac] = await conn.async_fetch_build_flags()
             return True
         except Exception:
             _LOGGER.warning("Failed to push config to %s (%s)", dev.name, mac)

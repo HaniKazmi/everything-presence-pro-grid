@@ -2565,10 +2565,10 @@ class TestBuildFlags:
         session_conn.async_fetch_build_flags.assert_awaited_once()
         assert manager._build_flags[mac] == expected_flags
 
-    async def test_push_config_empty_flags_not_cached(
+    async def test_push_config_negative_caches_empty_flags(
         self, hass: HomeAssistant, store: EPPGridStore, manager: DeviceManager
     ) -> None:
-        """_push_config_to_device does not cache empty build flags."""
+        """_push_config_to_device caches empty build flags so a second save doesn't re-fetch."""
         mac = "AA:BB:CC:DD:EE:FF"
         store.devices[mac] = {"calibration": {"perspective": [1.0] * 8}}
         manager.devices[mac] = ManagedDevice(mac=mac, name="EPP", host="192.168.1.50")
@@ -2578,14 +2578,40 @@ class TestBuildFlags:
         mock_conn.async_push_config = AsyncMock()
         mock_conn.async_fetch_build_flags = AsyncMock(return_value={})
         mock_conn.async_disconnect = AsyncMock()
+        mock_conn._services = {}
+        mock_conn._client = MagicMock()
 
         with patch(
             "custom_components.eppgrid.device_manager.DeviceConnection",
             return_value=mock_conn,
         ):
             await manager._push_config_to_device(mac)
+            # second save — must not re-fetch
+            await manager._push_config_to_device(mac)
 
-        assert mac not in manager._build_flags
+        assert mac in manager._build_flags
+        assert manager._build_flags[mac] == {}
+        mock_conn.async_fetch_build_flags.assert_awaited_once()
+
+    async def test_fetch_build_flags_negative_caches_empty(
+        self, hass: HomeAssistant, store: EPPGridStore, manager: DeviceManager
+    ) -> None:
+        """_fetch_build_flags caches empty result so a second call doesn't re-fetch."""
+        mac = "AA:BB:CC:DD:EE:FF"
+        manager.devices[mac] = ManagedDevice(mac=mac, name="EPP", host="192.168.1.50")
+
+        session_conn = MagicMock()
+        session_conn.connected = True
+        session_conn.raw_target_subs = 0
+        session_conn.grid_target_subs = 0
+        session_conn.async_fetch_build_flags = AsyncMock(return_value={})
+        manager._active_connections[mac] = session_conn
+
+        await manager._fetch_build_flags(mac)
+        await manager._fetch_build_flags(mac)
+
+        assert manager._build_flags[mac] == {}
+        session_conn.async_fetch_build_flags.assert_awaited_once()
 
     async def test_list_devices_includes_build_flags(self, hass: HomeAssistant, manager: DeviceManager) -> None:
         """list_devices spreads cached build flags into device info."""
@@ -2722,13 +2748,14 @@ class TestBuildFlags:
             mock_client.disconnect = AsyncMock()
 
             await conn.async_connect()
-            loop = asyncio.get_event_loop()
+            loop = asyncio.get_running_loop()
             start = loop.time()
             result = await conn.async_fetch_build_flags(timeout=0.05)
             elapsed = loop.time() - start
 
         assert result == {}
-        assert elapsed < 2.0, f"expected quick timeout, took {elapsed:.2f}s"
+        # Tight bound proves the override was honored (not the 2.0s default).
+        assert elapsed < 0.5, f"expected timeout~=0.05s, took {elapsed:.3f}s"
 
     async def test_list_devices_no_build_flags(self, hass: HomeAssistant, manager: DeviceManager) -> None:
         """list_devices works without cached build flags (no extra keys)."""
