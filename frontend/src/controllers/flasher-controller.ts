@@ -50,7 +50,7 @@ export class FlasherController implements ReactiveController {
 	}
 
 	async startOta(mac: string): Promise<void> {
-		this.otaStates[mac] = { state: "updating", progress: 0, error: null };
+		this.otaStates[mac] = { state: "updating", progress: 0, errorKey: null };
 		this._host.requestUpdate();
 
 		try {
@@ -62,7 +62,7 @@ export class FlasherController implements ReactiveController {
 			this.otaStates[mac] = {
 				state: "error",
 				progress: null,
-				error: "Failed to start update. Is the device online?",
+				errorKey: "flasher.errors.start_failed",
 			};
 			this._host.requestUpdate();
 			return;
@@ -83,7 +83,7 @@ export class FlasherController implements ReactiveController {
 			this.otaStates[mac] = {
 				state: "error",
 				progress: null,
-				error: "Failed to connect to device",
+				errorKey: "flasher.errors.connect_failed",
 			};
 			this._host.requestUpdate();
 		}
@@ -98,7 +98,7 @@ export class FlasherController implements ReactiveController {
 				if (progress != null && progress >= 100) {
 					this._otaSuccess(mac);
 				} else {
-					this.otaStates[mac] = { state: "updating", progress, error: null };
+					this.otaStates[mac] = { state: "updating", progress, errorKey: null };
 					this._startOtaTimeout(
 						mac,
 						progress != null && progress > 0 ? 10000 : 15000,
@@ -113,7 +113,7 @@ export class FlasherController implements ReactiveController {
 				this.otaStates[mac] = {
 					state: "error",
 					progress: null,
-					error: event.message || "Update failed",
+					errorKey: "flasher.errors.update_failed_generic",
 				};
 				this._unsubOta(mac);
 				break;
@@ -122,7 +122,7 @@ export class FlasherController implements ReactiveController {
 	}
 
 	private _otaSuccess(mac: string): void {
-		this.otaStates[mac] = { state: "success", progress: null, error: null };
+		this.otaStates[mac] = { state: "success", progress: null, errorKey: null };
 		this._unsubOta(mac);
 		this._resetOtaTimeout(mac);
 		setTimeout(() => {
@@ -143,14 +143,14 @@ export class FlasherController implements ReactiveController {
 				this.otaStates[mac] = {
 					state: "error",
 					progress: null,
-					error: "Connection lost during update",
+					errorKey: "flasher.errors.connection_lost",
 				};
 			} else {
 				// No progress ever received — update failed to start
 				this.otaStates[mac] = {
 					state: "error",
 					progress: null,
-					error: "Update timed out",
+					errorKey: "flasher.errors.update_timeout",
 				};
 			}
 			this._unsubOta(mac);
@@ -253,7 +253,7 @@ export class FlasherController implements ReactiveController {
 				this.otaStates[mac] = {
 					state: "error",
 					progress: null,
-					error: "Device went offline during update",
+					errorKey: "flasher.errors.device_offline",
 				};
 				this._unsubOta(mac);
 				this._resetOtaTimeout(mac);

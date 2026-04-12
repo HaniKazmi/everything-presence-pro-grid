@@ -71,7 +71,8 @@ export type UsbFlashStep =
 export interface UsbFlashState {
 	step: UsbFlashStep;
 	progress?: number;
-	error?: string;
+	errorKey?: string;
+	errorParams?: Record<string, string | number>;
 	ip?: string;
 	variant?: string;
 	fatal?: boolean;
@@ -81,6 +82,7 @@ export type OtaState = "updating" | "success" | "error";
 
 export interface OtaDeviceState {
 	state: OtaState;
-	progress: number | null; // 0-100 or null for indeterminate
-	error: string | null;
+	progress: number | null;
+	errorKey: string | null;
+	errorParams?: Record<string, string | number>;
 }

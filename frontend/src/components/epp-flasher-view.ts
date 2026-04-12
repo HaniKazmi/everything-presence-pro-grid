@@ -140,7 +140,7 @@ export class EppFlasherView extends LitElement {
 						}
 						${
 							this._errorPopoverMac === device.mac
-								? html`<div class="ota-error-popover">${ota.error}</div>`
+								? html`<div class="ota-error-popover">${ota.errorKey ? this.localize(ota.errorKey, ota.errorParams) : ""}</div>`
 								: nothing
 						}
 					</div>`;
@@ -493,7 +493,7 @@ export class EppFlasherView extends LitElement {
 						<div class="card-content">
 							<div class="usb-error">
 								<ha-icon icon="mdi:alert-circle-outline"></ha-icon>
-								<p>${state.error}</p>
+								<p>${state.errorKey ? this.localize(state.errorKey, state.errorParams) : ""}</p>
 							</div>
 							<div class="confirm-actions">
 								<ha-button @click=${this._onUsbBack}>

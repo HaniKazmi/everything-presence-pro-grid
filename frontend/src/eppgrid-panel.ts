@@ -2398,8 +2398,7 @@ export class EPPGridPanel extends LitElement {
 		if (ctrl.opRunning) {
 			ctrl.updateUsbState({
 				step: "error",
-				error:
-					"Serial port is busy from a previous operation. Refresh the page and try again.",
+				errorKey: "flasher.usb_error_connect",
 				fatal: true,
 			});
 			return;
@@ -2438,7 +2437,7 @@ export class EPPGridPanel extends LitElement {
 			}
 			ctrl.updateUsbState({
 				step: "error",
-				error: err?.message ?? "Unknown error",
+				errorKey: "flasher.usb_error_connect",
 			});
 		}
 	}
@@ -2448,8 +2447,7 @@ export class EPPGridPanel extends LitElement {
 		if (ctrl.opRunning) {
 			ctrl.updateUsbState({
 				step: "error",
-				error:
-					"Serial port is busy from a previous operation. Refresh the page and try again.",
+				errorKey: "flasher.usb_error_connect",
 				fatal: true,
 			});
 			return;
@@ -2549,11 +2547,9 @@ export class EPPGridPanel extends LitElement {
 			ctrl.opRunning = false;
 			ctrl.updateUsbState({
 				step: "error",
-				error: isDisconnect
-					? "Device disconnected. Unplug, plug it back in, and try again."
-					: isPortBusy
-						? "Serial port is busy from a previous operation. Refresh the page and try again."
-						: msg,
+				errorKey: isDisconnect || isPortBusy
+					? "flasher.usb_error_connect"
+					: "flasher.usb_error_flash",
 				fatal: isPortBusy,
 			});
 		}
@@ -2569,7 +2565,7 @@ export class EPPGridPanel extends LitElement {
 		if (!port?.writable || !port?.readable) {
 			ctrl.updateUsbState({
 				step: "error",
-				error: "Serial port not available",
+				errorKey: "flasher.usb_error_connect",
 			});
 			return;
 		}
@@ -2685,7 +2681,7 @@ export class EPPGridPanel extends LitElement {
 			if (ctrl.opId !== myOp) return;
 			ctrl.updateUsbState({
 				step: "error",
-				error: err?.message ?? "WiFi provisioning failed",
+				errorKey: "flasher.usb_error_wifi",
 			});
 		}
 	}
@@ -2714,7 +2710,7 @@ export class EPPGridPanel extends LitElement {
 			console.error("WiFi scan failed:", err);
 			ctrl.updateUsbState({
 				step: "error",
-				error: err?.message ?? "WiFi scan failed",
+				errorKey: "flasher.usb_error_wifi",
 			});
 		}
 	}

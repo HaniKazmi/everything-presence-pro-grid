@@ -432,7 +432,7 @@ describe("FlasherController", () => {
 			expect(ctrl.otaStates["AA:BB:CC:DD:EE:01"]).toEqual({
 				state: "updating",
 				progress: 0,
-				error: null,
+				errorKey: null,
 			});
 			expect(hass.callWS).toHaveBeenCalledWith({
 				type: "eppgrid/update_firmware",
@@ -458,7 +458,7 @@ describe("FlasherController", () => {
 			expect(ctrl.otaStates["AA:BB:CC:DD:EE:01"]).toEqual({
 				state: "updating",
 				progress: 65,
-				error: null,
+				errorKey: null,
 			});
 			expect(host.requestUpdate).toHaveBeenCalled();
 		});
@@ -475,7 +475,7 @@ describe("FlasherController", () => {
 			expect(ctrl.otaStates["AA:BB:CC:DD:EE:01"]).toEqual({
 				state: "error",
 				progress: null,
-				error: "Connection lost during update",
+				errorKey: "flasher.errors.connection_lost",
 			});
 			vi.useRealTimers();
 		});
@@ -490,7 +490,7 @@ describe("FlasherController", () => {
 			expect(ctrl.otaStates["AA:BB:CC:DD:EE:01"]).toEqual({
 				state: "error",
 				progress: null,
-				error: "Update timed out",
+				errorKey: "flasher.errors.update_timeout",
 			});
 			vi.useRealTimers();
 		});
@@ -513,7 +513,7 @@ describe("FlasherController", () => {
 			expect(ctrl.otaStates["AA:BB:CC:DD:EE:01"]).toEqual({
 				state: "error",
 				progress: null,
-				error: "Connection lost",
+				errorKey: "flasher.errors.update_failed_generic",
 			});
 		});
 
@@ -521,7 +521,7 @@ describe("FlasherController", () => {
 			ctrl.otaStates["AA:BB:CC:DD:EE:01"] = {
 				state: "error",
 				progress: null,
-				error: "Connection lost",
+				errorKey: "flasher.errors.connection_lost",
 			};
 			ctrl.dismissOtaError("AA:BB:CC:DD:EE:01");
 
@@ -537,7 +537,7 @@ describe("FlasherController", () => {
 			expect(ctrl.otaStates["AA:BB:CC:DD:EE:01"]).toEqual({
 				state: "error",
 				progress: null,
-				error: "Failed to start update. Is the device online?",
+				errorKey: "flasher.errors.start_failed",
 			});
 		});
 
@@ -551,11 +551,11 @@ describe("FlasherController", () => {
 			expect(ctrl.otaStates["AA:BB:CC:DD:EE:01"]).toEqual({
 				state: "error",
 				progress: null,
-				error: "Failed to connect to device",
+				errorKey: "flasher.errors.connect_failed",
 			});
 		});
 
-		it("error event with no message defaults to 'Update failed'", async () => {
+		it("error event with no message uses update_failed_generic key", async () => {
 			await ctrl.startOta("AA:BB:CC:DD:EE:01");
 
 			const callback = hass.connection.subscribeMessage.mock.calls[0][0];
@@ -564,7 +564,7 @@ describe("FlasherController", () => {
 			expect(ctrl.otaStates["AA:BB:CC:DD:EE:01"]).toEqual({
 				state: "error",
 				progress: null,
-				error: "Update failed",
+				errorKey: "flasher.errors.update_failed_generic",
 			});
 		});
 
@@ -595,7 +595,7 @@ describe("FlasherController", () => {
 			ctrl.otaStates["AA:BB:CC:DD:EE:01"] = {
 				state: "updating",
 				progress: 0,
-				error: null,
+				errorKey: null,
 			};
 
 			vi.advanceTimersByTime(5000);
@@ -629,8 +629,8 @@ describe("FlasherController", () => {
 			// After 15s total, should have timed out
 			vi.advanceTimersByTime(5000);
 			expect(ctrl.otaStates["AA:BB:CC:DD:EE:01"].state).toBe("error");
-			expect(ctrl.otaStates["AA:BB:CC:DD:EE:01"].error).toBe(
-				"Update timed out",
+			expect(ctrl.otaStates["AA:BB:CC:DD:EE:01"].errorKey).toBe(
+				"flasher.errors.update_timeout",
 			);
 			vi.useRealTimers();
 		});
@@ -644,8 +644,8 @@ describe("FlasherController", () => {
 
 			vi.advanceTimersByTime(10000);
 			expect(ctrl.otaStates["AA:BB:CC:DD:EE:01"].state).toBe("error");
-			expect(ctrl.otaStates["AA:BB:CC:DD:EE:01"].error).toBe(
-				"Connection lost during update",
+			expect(ctrl.otaStates["AA:BB:CC:DD:EE:01"].errorKey).toBe(
+				"flasher.errors.connection_lost",
 			);
 			vi.useRealTimers();
 		});
@@ -661,7 +661,7 @@ describe("FlasherController", () => {
 			ctrl.otaStates["AA:BB:CC:DD:EE:01"] = {
 				state: "success",
 				progress: null,
-				error: null,
+				errorKey: null,
 			};
 
 			vi.advanceTimersByTime(10000);
@@ -679,7 +679,7 @@ describe("FlasherController", () => {
 			ctrl.otaStates["AA:BB:CC:DD:EE:01"] = {
 				state: "updating",
 				progress: 50,
-				error: null,
+				errorKey: null,
 			};
 
 			// Simulate device going offline via _applyDeviceList
@@ -703,7 +703,7 @@ describe("FlasherController", () => {
 			expect(ctrl.otaStates["AA:BB:CC:DD:EE:01"]).toEqual({
 				state: "error",
 				progress: null,
-				error: "Device went offline during update",
+				errorKey: "flasher.errors.device_offline",
 			});
 		});
 
@@ -711,7 +711,7 @@ describe("FlasherController", () => {
 			ctrl.otaStates["AA:BB:CC:DD:EE:01"] = {
 				state: "error",
 				progress: null,
-				error: "already failed",
+				errorKey: "flasher.errors.connection_lost",
 			};
 			ctrl.flashableDevices = [
 				{
@@ -730,14 +730,16 @@ describe("FlasherController", () => {
 			(ctrl as any)._checkOtaDevicesOffline();
 
 			// Should NOT have changed
-			expect(ctrl.otaStates["AA:BB:CC:DD:EE:01"].error).toBe("already failed");
+			expect(ctrl.otaStates["AA:BB:CC:DD:EE:01"].errorKey).toBe(
+				"flasher.errors.connection_lost",
+			);
 		});
 
 		it("_checkOtaDevicesOffline skips available devices", () => {
 			ctrl.otaStates["AA:BB:CC:DD:EE:01"] = {
 				state: "updating",
 				progress: 50,
-				error: null,
+				errorKey: null,
 			};
 			ctrl.flashableDevices = [
 				{
@@ -773,7 +775,7 @@ describe("FlasherController", () => {
 			ctrl.otaStates["AA:BB:CC:DD:EE:01"] = {
 				state: "updating",
 				progress: 50,
-				error: null,
+				errorKey: null,
 			};
 
 			// Subscribe to device list so _applyDeviceList works
@@ -803,7 +805,7 @@ describe("FlasherController", () => {
 			expect(ctrl.otaStates["AA:BB:CC:DD:EE:01"]).toEqual({
 				state: "error",
 				progress: null,
-				error: "Device went offline during update",
+				errorKey: "flasher.errors.device_offline",
 			});
 		});
 
@@ -816,10 +818,33 @@ describe("FlasherController", () => {
 
 			vi.advanceTimersByTime(15000);
 			expect(ctrl.otaStates["AA:BB:CC:DD:EE:01"].state).toBe("error");
-			expect(ctrl.otaStates["AA:BB:CC:DD:EE:01"].error).toBe(
-				"Update timed out",
+			expect(ctrl.otaStates["AA:BB:CC:DD:EE:01"].errorKey).toBe(
+				"flasher.errors.update_timeout",
 			);
 			vi.useRealTimers();
+		});
+	});
+});
+
+describe("FlasherController error translation keys", () => {
+	let host: any;
+	let controller: FlasherController;
+
+	beforeEach(() => {
+		host = { addController: vi.fn(), requestUpdate: vi.fn() };
+		controller = new FlasherController(host);
+		(controller as any)._hass = {
+			callWS: vi.fn().mockRejectedValue(new Error("nope")),
+			connection: { subscribeMessage: vi.fn() },
+		};
+	});
+
+	it("sets errorKey when callWS rejects in startOta", async () => {
+		await controller.startOta("aa:bb:cc:dd:ee:ff");
+		expect(controller.otaStates["aa:bb:cc:dd:ee:ff"]).toEqual({
+			state: "error",
+			progress: null,
+			errorKey: "flasher.errors.start_failed",
 		});
 	});
 });
