@@ -26,6 +26,17 @@ except Exception:
 _REGISTERED: set[str] = set()
 
 
+def _send_not_loaded(connection: websocket_api.ActiveConnection, msg_id: int) -> None:
+    """Send the standard 'Integration not loaded' error via translation key."""
+    connection.send_error(
+        msg_id,
+        "not_ready",
+        "Integration not loaded",
+        translation_domain=DOMAIN,
+        translation_key="integration_not_loaded",
+    )
+
+
 def async_register_websocket_commands(hass: HomeAssistant, manager: Any) -> None:
     """Register WebSocket commands."""
     if DOMAIN in _REGISTERED:

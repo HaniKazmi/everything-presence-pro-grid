@@ -2609,3 +2609,20 @@ class TestWebSocketDismissTarget:
         connection.send_error.assert_called_once()
         args = connection.send_error.call_args[0]
         assert args[1] == "dismiss_failed"
+
+
+def test_send_not_loaded_uses_translation_key():
+    """Helper must set translation_domain + translation_key for frontend i18n."""
+    from custom_components.eppgrid.const import DOMAIN
+    from custom_components.eppgrid import websocket_api as ws_module
+
+    connection = MagicMock()
+    ws_module._send_not_loaded(connection, 42)
+
+    connection.send_error.assert_called_once_with(
+        42,
+        "not_ready",
+        "Integration not loaded",
+        translation_domain=DOMAIN,
+        translation_key="integration_not_loaded",
+    )
