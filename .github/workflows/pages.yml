@@ -8,6 +8,11 @@ on:
       - 'index.html'
       - 'icon.png'
       - '.github/workflows/pages.yml'
+      - '.github/scripts/stage-firmware.sh'
+  workflow_dispatch:
+  workflow_run:
+    workflows: ["Firmware Release"]
+    types: [completed]
 
 permissions:
   contents: read
@@ -20,12 +25,34 @@ concurrency:
 
 jobs:
   deploy:
+    # Skip if triggered by a failed firmware-release run
+    if: ${{ github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success' }}
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
+      - name: Download latest release firmware (if any)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          mkdir -p artifacts
+          LATEST=$(gh release list --limit 1 --json tagName --jq '.[0].tagName' 2>/dev/null || echo "")
+          if [ -z "$LATEST" ]; then
+            echo "No releases yet — using committed fw/ only"
+            exit 0
+          fi
+          echo "Latest release: $LATEST"
+          gh release download "$LATEST" -D artifacts --pattern 'everything-presence-pro-*' || {
+            echo "Release has no firmware assets matching everything-presence-pro-*"
+            exit 0
+          }
+          if ! ls artifacts/*.bin >/dev/null 2>&1; then
+            echo "No .bin artifacts in release — skipping stage"
+            exit 0
+          fi
+          VERSION="${LATEST#v}" ARTIFACTS=artifacts ./.github/scripts/stage-firmware.sh
       - name: Build pages site
         run: |
           mkdir -p _site
