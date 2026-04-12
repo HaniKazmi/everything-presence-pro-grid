@@ -2488,7 +2488,7 @@ export class EPPGridPanel extends LitElement {
 							const ok = window.confirm(
 								this._localize("flasher.confirm_delete_message"),
 							);
-							if (!ok) throw new Error("Flash cancelled");
+							if (!ok) throw Object.assign(new Error("Flash cancelled"), { errorKey: "flasher.errors.flash_cancelled" });
 							await ctrl.deleteEsphomeDevice(matched.esphome_config_entry_id);
 						}
 					},

@@ -231,7 +231,7 @@ export async function readImprovResponse(
 		if (result.done) break;
 	}
 
-	throw new Error("timeout");
+	throw Object.assign(new Error("timeout"), { errorKey: "flasher.errors.timeout" });
 }
 
 /**
