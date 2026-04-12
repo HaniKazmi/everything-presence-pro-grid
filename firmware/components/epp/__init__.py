@@ -41,21 +41,19 @@ RAW_TARGET_POSITIONS_SCHEMA = cv.Schema(
     {cv.Optional(f"target_{i}"): text_sensor.text_sensor_schema() for i in range(3)}
 )
 
-TARGET_ENTITY_SCHEMA = cv.Schema({
-    cv.Optional("x"): sensor.sensor_schema(),
-    cv.Optional("y"): sensor.sensor_schema(),
-    cv.Optional("signal"): sensor.sensor_schema(),
-    cv.Optional("active"): binary_sensor.binary_sensor_schema(),
-    cv.Optional("zone"): sensor.sensor_schema(),
-})
+TARGET_ENTITY_SCHEMA = cv.Schema(
+    {
+        cv.Optional("x"): sensor.sensor_schema(),
+        cv.Optional("y"): sensor.sensor_schema(),
+        cv.Optional("signal"): sensor.sensor_schema(),
+        cv.Optional("active"): binary_sensor.binary_sensor_schema(),
+        cv.Optional("zone"): sensor.sensor_schema(),
+    }
+)
 
-TARGET_ENTITIES_SCHEMA = cv.Schema({
-    cv.Optional(f"target_{i}"): TARGET_ENTITY_SCHEMA for i in range(1, 4)
-})
+TARGET_ENTITIES_SCHEMA = cv.Schema({cv.Optional(f"target_{i}"): TARGET_ENTITY_SCHEMA for i in range(1, 4)})
 
-ZONE_TARGET_COUNTS_SCHEMA = cv.Schema({
-    cv.Optional(f"zone_{i}"): sensor.sensor_schema() for i in range(8)
-})
+ZONE_TARGET_COUNTS_SCHEMA = cv.Schema({cv.Optional(f"zone_{i}"): sensor.sensor_schema() for i in range(8)})
 
 CONFIG_SCHEMA = cv.Schema(
     {

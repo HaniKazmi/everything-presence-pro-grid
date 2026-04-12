@@ -38,9 +38,9 @@ jobs:
       - name: Install test dependencies
         run: pip install -r requirements_test.txt
       - name: Ruff lint
-        run: ruff check custom_components/ tests/
+        run: ruff check custom_components/ tests/ firmware/
       - name: Ruff format
-        run: ruff format --check custom_components/ tests/
+        run: ruff format --check custom_components/ tests/ firmware/
       - name: Pytest
         run: pytest tests/ -v --cov=custom_components/eppgrid --cov-report=term-missing
 
@@ -59,7 +59,9 @@ jobs:
           cache-dependency-path: frontend/package-lock.json
       - run: npm ci
       - name: Biome lint
-        run: npx biome check src/ --diagnostic-level=error
+        run: npx biome check src/
+      - name: Rollup build (fails on warnings)
+        run: npm run build
       - name: Vitest with coverage
         run: npx vitest run --coverage
 
