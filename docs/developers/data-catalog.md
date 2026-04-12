@@ -306,7 +306,7 @@ Saves and pushes all publish intervals and window duration.
 
 #### `list_flashable_devices`
 
-Returns all ESPHome devices matching EPP manufacturer/model, regardless of whether they run original or EPP Grid firmware.
+Returns all ESPHome devices matching EPP manufacturer/model, regardless of whether they run original or Everything Presence Pro Grid firmware.
 
 **Request:** `{ "type": "eppgrid/list_flashable_devices" }`
 **Response:**
@@ -327,7 +327,7 @@ Returns all ESPHome devices matching EPP manufacturer/model, regardless of wheth
 }
 ```
 
-`firmware_type` is `"original"` (no `firmware_version` entity) or `"eppgrid"` (has `firmware_version` entity). `update_available` is `true` when the device runs EPP Grid firmware and a newer version is available. `firmware_version` is the current firmware version string. `firmware_status` is `"compatible"`, `"firmware_behind"`, `"firmware_ahead"`, `"unknown"`, or `"unavailable"`.
+`firmware_type` is `"original"` (no `firmware_version` entity) or `"eppgrid"` (has `firmware_version` entity). `update_available` is `true` when the device runs Everything Presence Pro Grid firmware and a newer version is available. `firmware_version` is the current firmware version string. `firmware_status` is `"compatible"`, `"firmware_behind"`, `"firmware_ahead"`, `"unknown"`, or `"unavailable"`.
 
 #### `delete_esphome_device`
 
@@ -401,7 +401,7 @@ temporary connection (e.g., on-boot push when no frontend is open).
 
 ## 6. Diagnostics
 
-The integration implements the HA diagnostics platform (`diagnostics.py`). Users can download a JSON dump from Settings > Devices & Services > EPP Grid.
+The integration implements the HA diagnostics platform (`diagnostics.py`). Users can download a JSON dump from Settings > Devices & Services > Everything Presence Pro Grid.
 
 **Contents:**
 
