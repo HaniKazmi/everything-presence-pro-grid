@@ -12,6 +12,7 @@ from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.eppgrid import async_setup_entry
 from custom_components.eppgrid import websocket_api as ws_module
+from custom_components.eppgrid.const import DOMAIN
 
 
 @pytest.fixture(autouse=True)
@@ -110,7 +111,10 @@ class TestSubscribeOtaProgress:
         connection = MagicMock()
         msg = {"id": 1, "type": "eppgrid/subscribe_ota_progress", "mac": "AA:BB:CC:DD:EE:FF"}
         await call_async_handler(hass, websocket_subscribe_ota_progress, connection, msg)
-        connection.send_error.assert_called_once_with(1, "not_ready", "Integration not loaded")
+        connection.send_error.assert_called_once_with(
+            1, "not_ready", "Integration not loaded",
+            translation_domain=DOMAIN, translation_key="integration_not_loaded",
+        )
 
     async def test_sends_error_when_no_session(
         self,
@@ -124,7 +128,10 @@ class TestSubscribeOtaProgress:
         connection = MagicMock()
         msg = {"id": 1, "type": "eppgrid/subscribe_ota_progress", "mac": "AA:BB:CC:DD:EE:FF"}
         await call_async_handler(hass, websocket_subscribe_ota_progress, connection, msg)
-        connection.send_error.assert_called_once_with(1, "no_session", "Device not available")
+        connection.send_error.assert_called_once_with(
+            1, "no_session", "Device not available",
+            translation_domain=DOMAIN, translation_key="device_not_available",
+        )
 
     async def test_subscribes_and_sends_result(
         self,
