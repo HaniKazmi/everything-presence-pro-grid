@@ -27,3 +27,11 @@ Copy the `custom_components/eppgrid` directory to your Home Assistant `custom_co
 - Floor plan editor with furniture placement
 - Per-zone occupancy, motion, and target tracking sensors
 - Environmental sensors (illuminance, temperature, humidity, CO2)
+
+## Development
+
+Enable the repo's pre-push hook (runs format/lint/tests/coverage for Python, C++, and TypeScript):
+
+```sh
+git config core.hooksPath scripts/hooks
+```
