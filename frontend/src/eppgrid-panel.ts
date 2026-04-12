@@ -2435,9 +2435,11 @@ export class EPPGridPanel extends LitElement {
 				ctrl.resetUsbState();
 				return;
 			}
+			const e = err as { errorKey?: string; errorParams?: Record<string, unknown>; message?: string };
 			ctrl.updateUsbState({
 				step: "error",
-				errorKey: "wifi.errors.scan_failed",
+				errorKey: e.errorKey ?? "wifi.errors.scan_failed",
+				errorParams: e.errorParams as Record<string, string | number> | undefined,
 			});
 		}
 	}
@@ -2538,21 +2540,24 @@ export class EPPGridPanel extends LitElement {
 				} catch {}
 				ctrl.serialPort = null;
 			}
-			const msg = err?.message ?? "Unknown error";
+			const e = err as { errorKey?: string; errorParams?: Record<string, unknown>; message?: string; name?: string };
+			const msg = e.message ?? "Unknown error";
+			const isPortBusy = /already open|already closed/i.test(msg);
 			const isDisconnect =
 				/stream stopped|NetworkError|disconnected|break|lost|No response from device/i.test(
 					msg,
 				);
-			const isPortBusy = /already open|already closed/i.test(msg);
+			const fallbackKey = isPortBusy
+				? "usb.errors.serial_port_busy"
+				: isDisconnect
+					? "usb.errors.device_disconnected"
+					: "flasher.usb_error_flash";
 			ctrl.opRunning = false;
 			ctrl.updateUsbState({
 				step: "error",
-				errorKey: isPortBusy
-					? "usb.errors.serial_port_busy"
-					: isDisconnect
-						? "usb.errors.device_disconnected"
-						: "flasher.usb_error_flash",
-				fatal: isPortBusy,
+				errorKey: e.errorKey ?? fallbackKey,
+				errorParams: e.errorParams as Record<string, string | number> | undefined,
+				fatal: isPortBusy || e.errorKey === "usb.errors.serial_port_busy",
 			});
 		}
 	}
@@ -2681,9 +2686,11 @@ export class EPPGridPanel extends LitElement {
 			(ctrl as any)._serialReader = null;
 			(ctrl as any)._serialWriter = null;
 			if (ctrl.opId !== myOp) return;
+			const e = err as { errorKey?: string; errorParams?: Record<string, unknown>; message?: string };
 			ctrl.updateUsbState({
 				step: "error",
-				errorKey: "wifi.errors.provisioning_failed",
+				errorKey: e.errorKey ?? "wifi.errors.provisioning_failed",
+				errorParams: e.errorParams as Record<string, string | number> | undefined,
 			});
 		}
 	}
@@ -2710,9 +2717,11 @@ export class EPPGridPanel extends LitElement {
 			ctrl.updateUsbState({ step: "wifi_provision" });
 		} catch (err: any) {
 			console.error("WiFi scan failed:", err);
+			const e = err as { errorKey?: string; errorParams?: Record<string, unknown>; message?: string };
 			ctrl.updateUsbState({
 				step: "error",
-				errorKey: "wifi.errors.scan_failed",
+				errorKey: e.errorKey ?? "wifi.errors.scan_failed",
+				errorParams: e.errorParams as Record<string, string | number> | undefined,
 			});
 		}
 	}

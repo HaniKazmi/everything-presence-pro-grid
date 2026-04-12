@@ -411,7 +411,10 @@
 			"provisioning_failed": "WiFi provisioning failed",
 			"scan_failed": "WiFi scan failed",
 			"connection_failed": "WiFi connection failed — check SSID/password and try again",
-			"error_code": "WiFi error (code {code})"
+			"error_code": "WiFi error (code {code})",
+			"invalid_command": "Invalid command — device may need to be power-cycled",
+			"unknown_command": "Unknown command",
+			"not_authorized": "Not authorized"
 		}
 	}
 }

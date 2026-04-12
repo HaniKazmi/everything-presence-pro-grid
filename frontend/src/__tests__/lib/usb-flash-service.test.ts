@@ -321,6 +321,44 @@ describe("flashFirmware", () => {
 		);
 	});
 
+	it("baseUrl missing error carries errorKey usb.errors.base_url_required", async () => {
+		const port = mockPort();
+		try {
+			await flashFirmware(port, "wifi-ble-co2", vi.fn());
+			throw new Error("expected error not thrown");
+		} catch (err: any) {
+			expect(err.errorKey).toBe("usb.errors.base_url_required");
+		}
+	});
+
+	it("manifest download failure carries errorKey usb.errors.manifest_download_failed", async () => {
+		vi.mocked(fetch).mockResolvedValueOnce({ ok: false, status: 404 } as Response);
+		const port = mockPort();
+		try {
+			await flashFirmware(port, "wifi-ble-co2", vi.fn(), { baseUrl: TEST_BASE_URL });
+			throw new Error("expected error not thrown");
+		} catch (err: any) {
+			expect(err.errorKey).toBe("usb.errors.manifest_download_failed");
+		}
+	});
+
+	it("firmware file download failure carries errorKey usb.errors.file_download_failed with file param", async () => {
+		vi.mocked(fetch)
+			.mockResolvedValueOnce({
+				ok: true,
+				json: () => Promise.resolve(mockManifest),
+			} as Response)
+			.mockResolvedValueOnce({ ok: false, status: 500 } as Response);
+		const port = mockPort();
+		try {
+			await flashFirmware(port, "wifi-ble-co2", vi.fn(), { baseUrl: TEST_BASE_URL });
+			throw new Error("expected error not thrown");
+		} catch (err: any) {
+			expect(err.errorKey).toBe("usb.errors.file_download_failed");
+			expect(err.errorParams).toEqual({ file: "bootloader.bin" });
+		}
+	});
+
 	it("calls beforeFlash after loader.main() and before writeFlash()", async () => {
 		const port = mockPort();
 		const callOrder: string[] = [];
@@ -983,6 +1021,43 @@ describe("runWifiScan", () => {
 			"Could not open serial port. Unplug the device, plug it back in, and try again.",
 		);
 	});
+
+	it("port open failure carries errorKey usb.errors.port_open_failed", async () => {
+		const { port } = mockPort();
+		(port as any).readable = null;
+		(port.open as ReturnType<typeof vi.fn>).mockRejectedValue(
+			new Error("Failed to open port"),
+		);
+
+		try {
+			await runWifiScan(port, {
+				retryDelay: 0,
+				drainDelay: 0,
+				handshakeDelay: 0,
+				handshakeRetryDelay: 0,
+			});
+			throw new Error("expected error not thrown");
+		} catch (err: any) {
+			expect(err.errorKey).toBe("usb.errors.port_open_failed");
+		}
+	});
+
+	it("no device response carries errorKey usb.errors.no_device_response", async () => {
+		const { port } = mockPort();
+		vi.mocked(readImprovResponse).mockRejectedValue(new Error("timeout"));
+
+		try {
+			await runWifiScan(port, {
+				retryDelay: 0,
+				drainDelay: 0,
+				handshakeDelay: 0,
+				handshakeRetryDelay: 0,
+			});
+			throw new Error("expected error not thrown");
+		} catch (err: any) {
+			expect(err.errorKey).toBe("usb.errors.no_device_response");
+		}
+	});
 });
 
 describe("runWifiProvision", () => {
@@ -1138,6 +1213,69 @@ describe("detectIpAddress", () => {
 		await expect(detectIpAddress(mockReader, 1000)).rejects.toThrow(
 			"serial port disconnected",
 		);
+	});
+
+	it("timeout throw carries errorKey wifi.errors.connection_failed", async () => {
+		vi.mocked(readImprovResponse).mockRejectedValueOnce(new Error("timeout"));
+
+		try {
+			await detectIpAddress(mockReader, 50);
+			throw new Error("expected error not thrown");
+		} catch (err: any) {
+			expect(err.errorKey).toBe("wifi.errors.connection_failed");
+		}
+	});
+
+	it("error state code 3 carries errorKey wifi.errors.connection_failed", async () => {
+		vi.mocked(readImprovResponse).mockResolvedValueOnce({
+			packets: [
+				{ type: TYPE_CURRENT_STATE, data: new Uint8Array([0x03]) },
+				{ type: TYPE_ERROR_STATE, data: new Uint8Array([0x03]) },
+			],
+			buffer: [],
+		});
+
+		try {
+			await detectIpAddress(mockReader, 1000);
+			throw new Error("expected error not thrown");
+		} catch (err: any) {
+			expect(err.errorKey).toBe("wifi.errors.connection_failed");
+		}
+	});
+
+	it("error state code 1 carries errorKey wifi.errors.invalid_command", async () => {
+		vi.mocked(readImprovResponse).mockResolvedValueOnce({
+			packets: [
+				{ type: TYPE_CURRENT_STATE, data: new Uint8Array([0x03]) },
+				{ type: TYPE_ERROR_STATE, data: new Uint8Array([0x01]) },
+			],
+			buffer: [],
+		});
+
+		try {
+			await detectIpAddress(mockReader, 1000);
+			throw new Error("expected error not thrown");
+		} catch (err: any) {
+			expect(err.errorKey).toBe("wifi.errors.invalid_command");
+		}
+	});
+
+	it("unknown error code carries errorKey wifi.errors.error_code with code param", async () => {
+		vi.mocked(readImprovResponse).mockResolvedValueOnce({
+			packets: [
+				{ type: TYPE_CURRENT_STATE, data: new Uint8Array([0x03]) },
+				{ type: TYPE_ERROR_STATE, data: new Uint8Array([0xff]) },
+			],
+			buffer: [],
+		});
+
+		try {
+			await detectIpAddress(mockReader, 1000);
+			throw new Error("expected error not thrown");
+		} catch (err: any) {
+			expect(err.errorKey).toBe("wifi.errors.error_code");
+			expect(err.errorParams).toEqual({ code: 255 });
+		}
 	});
 
 	it("ignores packets before PROVISIONING state is seen", async () => {
