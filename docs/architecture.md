@@ -99,8 +99,6 @@ everything-presence-pro-grid/
 │   └── variants/              # 8 firmware build variants
 ├── docs/
 │   └── backend-data-catalog.md  # Data field inventory
-├── tools/
-│   └── firmware-builder/      # Web UI for firmware variant selection
 ├── pyproject.toml             # Python config (ruff)
 └── .github/workflows/         # CI: frontend + C++ tests, firmware builds
 ```
