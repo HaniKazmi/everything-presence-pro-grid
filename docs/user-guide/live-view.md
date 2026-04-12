@@ -56,14 +56,17 @@ When something's wrong, the live grid is replaced by a banner rather than being 
 - **Offline device** — a connection banner tells you the device has dropped off the network. The grid is hidden until the device reconnects. If this sticks, check that the device is still powered and on the network.
 - **Firmware / integration version mismatch** — a protocol banner appears when the integration is older than the device firmware, or vice versa. The banner explains which side to update. Usually: open HACS to update the integration, or the Flash Firmware tab to OTA-update the device.
 
-## Troubleshooting quick checks
+## Troubleshooting
 
-If something in the live view looks wrong, the most common causes:
+| Symptom | Likely cause | Fix |
+| --- | --- | --- |
+| Grid is blank or shows no sensor data | Device is offline | Check **Settings → Devices & Services → ESPHome** — the device should be listed and marked online. |
+| Targets jump around or drift outside walls | Calibration is off | Re-run the calibration wizard. See [Calibration](getting-started/calibration.md). |
+| Zone colour never highlights, even when someone's in the zone | Zone Presence toggle is off at the device level, or the zone has zero cells painted | Enable **Zone Presence** on the device page; check the zone has cells in the [Zones](zones.md) editor. |
+| Target stuck on a fixed cell with nobody there | Interference source at that cell (fan, curtain, reflective surface) | Add an Interference overlay at that cell. If it's still problematic, escalate to Suppress. See [Overlays](overlays.md). |
+| Environmental sensor values missing from the sidebar | Corresponding entity is disabled on the device page | Enable the entity in Home Assistant: go to the device page → entities → enable the missing one. CO2 in particular is disabled by default. |
 
-- **Grid is skewed, or targets drift outside walls.** → the calibration needs redoing. See [Calibration](getting-started/calibration.md).
-- **No target markers at all, but someone's moving.** → check the device is online (no connection banner); check Home Assistant's binary sensors (Occupancy, Motion Presence, Static Presence) are firing; try power-cycling the device.
-- **Ghost detections near a fixed fixture.** → add an Interference overlay at that cell. If Interference isn't strong enough, escalate to Suppress. See [Overlays](overlays.md).
-- **Real targets show up fine but zones don't glow.** → Zone Presence is turned off at the device level. See [Zones](zones.md#entities-exposed-in-home-assistant).
+See also: the [central Troubleshooting](troubleshooting.md) page for conceptual FAQ and how to open a GitHub issue.
 
 ## Where to next
 
