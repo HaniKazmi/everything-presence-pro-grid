@@ -10,7 +10,7 @@ COMPONENT_DIR = Path(__file__).parent.parent / "custom_components" / "eppgrid"
 
 
 def _load_strings() -> dict:
-    with (COMPONENT_DIR / "strings.json").open() as f:
+    with (COMPONENT_DIR / "strings.json").open(encoding="utf-8") as f:
         return json.load(f)
 
 
@@ -19,7 +19,7 @@ def _find_used_translation_keys() -> set[str]:
     keys: set[str] = set()
     pattern = re.compile(r'translation_key\s*=\s*["\']([^"\']+)["\']')
     for py in COMPONENT_DIR.glob("*.py"):
-        for match in pattern.finditer(py.read_text()):
+        for match in pattern.finditer(py.read_text(encoding="utf-8")):
             keys.add(match.group(1))
     return keys
 
@@ -39,8 +39,8 @@ def test_all_exception_keys_resolve():
 def test_spanish_translation_keys_match_english():
     """custom_components/eppgrid/translations/es.json must have the same keys as strings.json."""
     base = COMPONENT_DIR / "translations"
-    en = json.loads((base / "en.json").read_text())
-    es = json.loads((base / "es.json").read_text())
+    en = json.loads((base / "en.json").read_text(encoding="utf-8"))
+    es = json.loads((base / "es.json").read_text(encoding="utf-8"))
 
     def flatten(obj, prefix=""):
         keys = set()
