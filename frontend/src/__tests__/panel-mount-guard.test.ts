@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { findEppPanelHost } from "../panel-mount-guard.js";
+import { findEppPanelHost, isEppPanelMissing } from "../panel-mount-guard.js";
 
 function buildHaShadowTree(withPanelCustom = true): HTMLElement {
 	const haRoot = document.createElement("home-assistant");
@@ -34,5 +34,42 @@ describe("findEppPanelHost", () => {
 	it("returns null when ha-panel-custom is absent", () => {
 		document.body.appendChild(buildHaShadowTree(false));
 		expect(findEppPanelHost()).toBeNull();
+	});
+});
+
+function makeHost(
+	panelName: string | undefined,
+	childCount: number,
+): HTMLElement {
+	const host = document.createElement("ha-panel-custom");
+	(host as any).panel = {
+		config: panelName ? { _panel_custom: { name: panelName } } : {},
+	};
+	for (let i = 0; i < childCount; i++) {
+		host.appendChild(document.createElement("span"));
+	}
+	return host;
+}
+
+describe("isEppPanelMissing", () => {
+	it("returns true for our panel with no children", () => {
+		expect(isEppPanelMissing(makeHost("eppgrid-panel", 0))).toBe(true);
+	});
+
+	it("returns false when panel has a child", () => {
+		expect(isEppPanelMissing(makeHost("eppgrid-panel", 1))).toBe(false);
+	});
+
+	it("returns false for a different panel type", () => {
+		expect(isEppPanelMissing(makeHost("other-panel", 0))).toBe(false);
+	});
+
+	it("returns false when panel config is missing", () => {
+		expect(isEppPanelMissing(makeHost(undefined, 0))).toBe(false);
+	});
+
+	it("returns false when panel prop is absent", () => {
+		const host = document.createElement("ha-panel-custom");
+		expect(isEppPanelMissing(host)).toBe(false);
 	});
 });

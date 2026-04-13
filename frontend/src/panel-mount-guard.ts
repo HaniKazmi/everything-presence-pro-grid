@@ -7,3 +7,9 @@ export function findEppPanelHost(): HTMLElement | null {
 	if (!resolver) return null;
 	return resolver.querySelector("ha-panel-custom") as HTMLElement | null;
 }
+
+export function isEppPanelMissing(host: HTMLElement): boolean {
+	const name = (host as any).panel?.config?._panel_custom?.name;
+	if (name !== "eppgrid-panel") return false;
+	return host.children.length === 0;
+}
