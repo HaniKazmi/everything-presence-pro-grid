@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import { findEppPanelHost } from "../panel-mount-guard.js";
 
 function buildHaShadowTree(withPanelCustom = true): HTMLElement {
