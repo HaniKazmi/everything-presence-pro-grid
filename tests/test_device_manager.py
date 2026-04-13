@@ -2767,3 +2767,48 @@ class TestBuildFlags:
         assert len(result) == 1
         assert "bluetooth_enabled" not in result[0]
         assert "model" not in result[0]
+
+
+def test_dismiss_target_service_missing_raises_translation_keyed_error():
+    """When epp_dismiss_target service is missing, raise HomeAssistantError with translation metadata."""
+    from homeassistant.exceptions import HomeAssistantError
+
+    from custom_components.eppgrid.const import DOMAIN
+    from custom_components.eppgrid.device_manager import _raise_service_unavailable
+
+    with pytest.raises(HomeAssistantError) as exc:
+        _raise_service_unavailable("epp_dismiss_target")
+
+    assert exc.value.translation_domain == DOMAIN
+    assert exc.value.translation_key == "service_not_available"
+    assert exc.value.translation_placeholders == {"service": "epp_dismiss_target"}
+
+
+def test_zone_entity_names_resolve_english():
+    """Zone name resolver must look up the requested language and interpolate user name."""
+    from custom_components.eppgrid.device_manager import _resolve_zone_name
+
+    assert _resolve_zone_name("en", index=0, zone_name=None, target_count=False) == "Zone Rest of Room"
+    assert _resolve_zone_name("en", index=1, zone_name="Kitchen", target_count=False) == "Zone Kitchen"
+    assert _resolve_zone_name("en", index=0, zone_name=None, target_count=True) == "Zone Rest of Room Target Count"
+    assert _resolve_zone_name("en", index=1, zone_name="Kitchen", target_count=True) == "Zone Kitchen Target Count"
+
+
+def test_zone_entity_names_resolve_spanish():
+    """Spanish locale returns Castilian zone names with prefix translated, user name verbatim."""
+    from custom_components.eppgrid.device_manager import _resolve_zone_name
+
+    assert _resolve_zone_name("es", index=1, zone_name="Cocina", target_count=False) == "Zona Cocina"
+    assert _resolve_zone_name("es-ES", index=1, zone_name="Cocina", target_count=False) == "Zona Cocina"
+    assert (
+        _resolve_zone_name("es", index=0, zone_name=None, target_count=True)
+        == "Número de objetivos en zona Resto de la habitación"
+    )
+
+
+def test_resolve_zone_name_falls_back_to_english_for_unknown_language():
+    """Unknown languages fall back to English."""
+    from custom_components.eppgrid.device_manager import _resolve_zone_name
+
+    assert _resolve_zone_name("xx", index=0, zone_name=None, target_count=False) == "Zone Rest of Room"
+    assert _resolve_zone_name("zz-ZZ", index=1, zone_name="Kitchen", target_count=False) == "Zone Kitchen"

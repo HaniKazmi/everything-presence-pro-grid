@@ -26,6 +26,52 @@ except Exception:
 _REGISTERED: set[str] = set()
 
 
+def _send_not_loaded(connection: websocket_api.ActiveConnection, msg_id: int) -> None:
+    """Send the standard 'Integration not loaded' error via translation key."""
+    connection.send_error(
+        msg_id,
+        "not_ready",
+        "Integration not loaded",
+        translation_domain=DOMAIN,
+        translation_key="integration_not_loaded",
+    )
+
+
+def _send_no_firmware_variant(connection: websocket_api.ActiveConnection, msg_id: int, network: str) -> None:
+    """Send 'no firmware variant' error with network type as translation placeholder."""
+    connection.send_error(
+        msg_id,
+        "unknown_variant",
+        f"No firmware variant for network type: {network}",
+        translation_domain=DOMAIN,
+        translation_key="no_firmware_variant",
+        translation_placeholders={"network": network},
+    )
+
+
+def _send_exception(connection: websocket_api.ActiveConnection, msg_id: int, code: str, err: BaseException) -> None:
+    """Send an error from a caught exception, preserving translation metadata if present.
+
+    HomeAssistantError instances raised by our own helpers carry
+    translation_domain / translation_key / translation_placeholders; pass these
+    through so the frontend can localize. Other exceptions fall back to str(err).
+    """
+    domain = getattr(err, "translation_domain", None)
+    key = getattr(err, "translation_key", None)
+    placeholders = getattr(err, "translation_placeholders", None)
+    if domain and key:
+        connection.send_error(
+            msg_id,
+            code,
+            str(err),
+            translation_domain=domain,
+            translation_key=key,
+            translation_placeholders=placeholders,
+        )
+    else:
+        connection.send_error(msg_id, code, str(err))
+
+
 def async_register_websocket_commands(hass: HomeAssistant, manager: Any) -> None:
     """Register WebSocket commands."""
     if DOMAIN in _REGISTERED:
@@ -122,7 +168,7 @@ def websocket_subscribe_device_list(
     """Subscribe to device list changes. Sends initial list immediately."""
     manager = _get_manager(hass)
     if manager is None:
-        connection.send_error(msg["id"], "not_ready", "Integration not loaded")
+        _send_not_loaded(connection, msg["id"])
         return
 
     @callback
@@ -154,7 +200,7 @@ def websocket_list_devices(
     """List discovered EPP devices."""
     manager = _get_manager(hass)
     if manager is None:
-        connection.send_error(msg["id"], "not_ready", "Integration not loaded")
+        _send_not_loaded(connection, msg["id"])
         return
     connection.send_result(msg["id"], {"devices": manager.list_devices()})
 
@@ -177,7 +223,7 @@ def websocket_get_config(
     """Get stored config for a device."""
     manager = _get_manager(hass)
     if manager is None:
-        connection.send_error(msg["id"], "not_ready", "Integration not loaded")
+        _send_not_loaded(connection, msg["id"])
         return
     config = manager._store.get_device(msg["mac"])
     # Return a shallow copy to avoid mutating the stored config
@@ -207,7 +253,7 @@ async def websocket_set_setup(
     """Save perspective calibration for a device."""
     manager = _get_manager(hass)
     if manager is None:
-        connection.send_error(msg["id"], "not_ready", "Integration not loaded")
+        _send_not_loaded(connection, msg["id"])
         return
     proto_err = _check_firmware_version(manager, msg["mac"])
     if proto_err:
@@ -280,7 +326,7 @@ async def websocket_set_room_layout(
     """Save room layout, zones, and furniture for a device."""
     manager = _get_manager(hass)
     if manager is None:
-        connection.send_error(msg["id"], "not_ready", "Integration not loaded")
+        _send_not_loaded(connection, msg["id"])
         return
     proto_err = _check_firmware_version(manager, msg["mac"])
     if proto_err:
@@ -328,7 +374,7 @@ def websocket_list_templates(
     """List saved room templates."""
     manager = _get_manager(hass)
     if manager is None:
-        connection.send_error(msg["id"], "not_ready", "Integration not loaded")
+        _send_not_loaded(connection, msg["id"])
         return
     connection.send_result(msg["id"], {"templates": manager._store.templates})
 
@@ -349,7 +395,7 @@ async def websocket_save_template(
     """Save a room template."""
     manager = _get_manager(hass)
     if manager is None:
-        connection.send_error(msg["id"], "not_ready", "Integration not loaded")
+        _send_not_loaded(connection, msg["id"])
         return
     manager._store.templates[msg["name"]] = msg["template"]
     await manager._store.async_save()
@@ -371,7 +417,7 @@ async def websocket_delete_template(
     """Delete a room template."""
     manager = _get_manager(hass)
     if manager is None:
-        connection.send_error(msg["id"], "not_ready", "Integration not loaded")
+        _send_not_loaded(connection, msg["id"])
         return
     manager._store.templates.pop(msg["name"], None)
     await manager._store.async_save()
@@ -394,11 +440,17 @@ async def websocket_apply_template(
     """Apply a template to a device."""
     manager = _get_manager(hass)
     if manager is None:
-        connection.send_error(msg["id"], "not_ready", "Integration not loaded")
+        _send_not_loaded(connection, msg["id"])
         return
     template = manager._store.templates.get(msg["template_name"])
     if template is None:
-        connection.send_error(msg["id"], "not_found", "Template not found")
+        connection.send_error(
+            msg["id"],
+            "not_found",
+            "Template not found",
+            translation_domain=DOMAIN,
+            translation_key="template_not_found",
+        )
         return
     device_config = manager._store.devices.setdefault(msg["mac"], {})
     device_config["room_layout"] = dict(template)
@@ -547,7 +599,7 @@ async def websocket_subscribe_device(
     """Open a session connection for a device. Closes on unsubscribe."""
     manager = _get_manager(hass)
     if manager is None:
-        connection.send_error(msg["id"], "not_ready", "Integration not loaded")
+        _send_not_loaded(connection, msg["id"])
         return
     mac = msg["mac"]
     try:
@@ -555,10 +607,22 @@ async def websocket_subscribe_device(
     except Exception as err:
         _LOGGER.warning("Failed to open session for %s: %s", mac, err)
         manager._fire_device_list_changed()
-        connection.send_error(msg["id"], "connection_failed", "Failed to connect to device")
+        connection.send_error(
+            msg["id"],
+            "connection_failed",
+            "Failed to connect to device",
+            translation_domain=DOMAIN,
+            translation_key="connection_failed",
+        )
         return
     if device_conn is None:
-        connection.send_error(msg["id"], "not_found", "Device not available")
+        connection.send_error(
+            msg["id"],
+            "not_found",
+            "Device not available",
+            translation_domain=DOMAIN,
+            translation_key="device_not_available",
+        )
         return
     connection.send_result(msg["id"])
 
@@ -587,13 +651,19 @@ async def websocket_subscribe_raw_targets(
     """Stream raw target positions from the device session."""
     manager = _get_manager(hass)
     if manager is None:
-        connection.send_error(msg["id"], "not_ready", "Integration not loaded")
+        _send_not_loaded(connection, msg["id"])
         return
 
     mac = msg["mac"]
     device_conn = manager.get_session(mac)
     if device_conn is None:
-        connection.send_error(msg["id"], "no_session", "No active session — call subscribe_device first")
+        connection.send_error(
+            msg["id"],
+            "no_session",
+            "No active session — call subscribe_device first",
+            translation_domain=DOMAIN,
+            translation_key="no_active_session",
+        )
         return
 
     key_map = _build_entity_key_map(device_conn._entities)
@@ -660,13 +730,19 @@ async def websocket_subscribe_grid_targets(
     """Stream target positions, zone state, and sensor data from the device session."""
     manager = _get_manager(hass)
     if manager is None:
-        connection.send_error(msg["id"], "not_ready", "Integration not loaded")
+        _send_not_loaded(connection, msg["id"])
         return
 
     mac = msg["mac"]
     device_conn = manager.get_session(mac)
     if device_conn is None:
-        connection.send_error(msg["id"], "no_session", "No active session — call subscribe_device first")
+        connection.send_error(
+            msg["id"],
+            "no_session",
+            "No active session — call subscribe_device first",
+            translation_domain=DOMAIN,
+            translation_key="no_active_session",
+        )
         return
 
     key_map = _build_entity_key_map(device_conn._entities)
@@ -837,7 +913,7 @@ def websocket_set_entity_enabled(
     """Enable or disable an ESPHome entity on a managed device."""
     manager = _get_manager(hass)
     if manager is None:
-        connection.send_error(msg["id"], "not_ready", "Integration not loaded")
+        _send_not_loaded(connection, msg["id"])
         return
     proto_err = _check_firmware_version(manager, msg["mac"])
     if proto_err:
@@ -916,7 +992,7 @@ async def websocket_set_settings(
     """Save all device settings in one call."""
     manager = _get_manager(hass)
     if manager is None:
-        connection.send_error(msg["id"], "not_ready", "Integration not loaded")
+        _send_not_loaded(connection, msg["id"])
         return
     proto_err = _check_firmware_version(manager, msg["mac"])
     if proto_err:
@@ -1013,7 +1089,7 @@ async def websocket_set_distance_override(
     """Push distance override to device without persisting."""
     manager = _get_manager(hass)
     if manager is None:
-        connection.send_error(msg["id"], "not_ready", "Integration not loaded")
+        _send_not_loaded(connection, msg["id"])
         return
     proto_err = _check_firmware_version(manager, msg["mac"])
     if proto_err:
@@ -1066,7 +1142,7 @@ async def websocket_set_pipeline(
     """Save pipeline settings."""
     manager = _get_manager(hass)
     if manager is None:
-        connection.send_error(msg["id"], "not_ready", "Integration not loaded")
+        _send_not_loaded(connection, msg["id"])
         return
     proto_err = _check_firmware_version(manager, msg["mac"])
     if proto_err:
@@ -1110,13 +1186,19 @@ async def websocket_update_firmware(
 
     manager = _get_manager(hass)
     if manager is None:
-        connection.send_error(msg["id"], "not_ready", "Integration not loaded")
+        _send_not_loaded(connection, msg["id"])
         return
 
     mac = msg["mac"]
     dev = manager.devices.get(mac)
     if dev is None:
-        connection.send_error(msg["id"], "not_found", "Device not found")
+        connection.send_error(
+            msg["id"],
+            "not_found",
+            "Device not found",
+            translation_domain=DOMAIN,
+            translation_key="device_not_found",
+        )
         return
 
     # Derive firmware variant from build flags
@@ -1124,17 +1206,29 @@ async def websocket_update_firmware(
 
     flags = manager._build_flags.get(mac, {})
     if not flags:
-        connection.send_error(msg["id"], "build_flags_unknown", "Device build flags not yet available")
+        connection.send_error(
+            msg["id"],
+            "build_flags_unknown",
+            "Device build flags not yet available",
+            translation_domain=DOMAIN,
+            translation_key="build_flags_unavailable",
+        )
         return
     network = "ethernet" if flags.get("ethernet_enabled") else "wifi"
     variant = FIRMWARE_VARIANTS.get(network)
     if variant is None:
-        connection.send_error(msg["id"], "unknown_variant", f"No firmware variant for network type: {network}")
+        _send_no_firmware_variant(connection, msg["id"], network)
         return
     manifest_url = f"{MANIFEST_BASE_URL}/{variant}.json"
 
     if dev.host is None:
-        connection.send_error(msg["id"], "not_available", "Device host unknown")
+        connection.send_error(
+            msg["id"],
+            "not_available",
+            "Device host unknown",
+            translation_domain=DOMAIN,
+            translation_key="device_host_unknown",
+        )
         return
 
     from .device_manager import DeviceConnection
@@ -1144,12 +1238,18 @@ async def websocket_update_firmware(
         await conn.async_connect()
         svc = conn._services.get("set_update_manifest")
         if svc is None:
-            connection.send_error(msg["id"], "not_supported", "Device does not support OTA update")
+            connection.send_error(
+                msg["id"],
+                "not_supported",
+                "Device does not support OTA update",
+                translation_domain=DOMAIN,
+                translation_key="ota_unsupported",
+            )
             return
         await conn._client.execute_service(svc, {"url": manifest_url})
         connection.send_result(msg["id"])
     except Exception as err:
-        connection.send_error(msg["id"], "update_failed", str(err))
+        _send_exception(connection, msg["id"], "update_failed", err)
     finally:
         await conn.async_disconnect()
 
@@ -1172,7 +1272,7 @@ async def websocket_subscribe_ota_progress(
     """Subscribe to OTA firmware update progress for a device."""
     manager = _get_manager(hass)
     if manager is None:
-        connection.send_error(msg["id"], "not_ready", "Integration not loaded")
+        _send_not_loaded(connection, msg["id"])
         return
 
     mac = msg["mac"]
@@ -1182,7 +1282,13 @@ async def websocket_subscribe_ota_progress(
         with contextlib.suppress(Exception):
             device_conn = await manager.async_open_session(mac)
     if device_conn is None:
-        connection.send_error(msg["id"], "no_session", "Device not available")
+        connection.send_error(
+            msg["id"],
+            "no_session",
+            "Device not available",
+            translation_domain=DOMAIN,
+            translation_key="device_not_available",
+        )
         return
 
     was_in_progress = False
@@ -1234,6 +1340,7 @@ async def websocket_subscribe_ota_progress(
                         {
                             "state": "error",
                             "message": "Update failed \u2014 firmware version unchanged",
+                            "error_key": "flasher.errors.ota_failed_version_unchanged",
                         },
                     )
                 )
@@ -1306,22 +1413,34 @@ async def websocket_dismiss_target(
     """Dismiss a target at a specific cell (ephemeral, firmware-only)."""
     manager = _get_manager(hass)
     if manager is None:
-        connection.send_error(msg["id"], "not_ready", "Integration not loaded")
+        _send_not_loaded(connection, msg["id"])
         return
     mac = msg["mac"]
     dev = manager.devices.get(mac)
     if not dev or not dev.host:
-        connection.send_error(msg["id"], "device_unavailable", "Device not connected")
+        connection.send_error(
+            msg["id"],
+            "device_unavailable",
+            "Device not connected",
+            translation_domain=DOMAIN,
+            translation_key="device_not_connected",
+        )
         return
 
     try:
         session = manager.get_session(mac)
         if session is None:
-            connection.send_error(msg["id"], "no_session", "No active session")
+            connection.send_error(
+                msg["id"],
+                "no_session",
+                "No active session",
+                translation_domain=DOMAIN,
+                translation_key="no_active_session",
+            )
             return
         await session.async_dismiss_target(msg["target_index"], msg["cell_index"])
     except Exception as err:
-        connection.send_error(msg["id"], "dismiss_failed", str(err))
+        _send_exception(connection, msg["id"], "dismiss_failed", err)
         return
 
     connection.send_result(msg["id"])
@@ -1340,7 +1459,7 @@ async def websocket_subscribe_flashable_devices(
     """Subscribe to flashable device list changes."""
     manager = _get_manager(hass)
     if manager is None:
-        connection.send_error(msg["id"], "not_ready", "Integration not loaded")
+        _send_not_loaded(connection, msg["id"])
         return
 
     from .const import FIRMWARE_VERSION
@@ -1388,7 +1507,7 @@ async def websocket_list_flashable_devices(
     """List all EPP devices available for flashing."""
     manager = _get_manager(hass)
     if manager is None:
-        connection.send_error(msg["id"], "not_ready", "Integration not loaded")
+        _send_not_loaded(connection, msg["id"])
         return
 
     from .const import FIRMWARE_VERSION
@@ -1424,15 +1543,27 @@ async def websocket_delete_esphome_device(
     """Delete an ESPHome config entry (and its device/entities)."""
     entry = hass.config_entries.async_get_entry(msg["config_entry_id"])
     if entry is None:
-        connection.send_error(msg["id"], "not_found", "Config entry not found")
+        connection.send_error(
+            msg["id"],
+            "not_found",
+            "Config entry not found",
+            translation_domain=DOMAIN,
+            translation_key="config_entry_not_found",
+        )
         return
     if entry.domain != "esphome":
-        connection.send_error(msg["id"], "invalid_entry", "Only ESPHome config entries can be deleted by this command")
+        connection.send_error(
+            msg["id"],
+            "invalid_entry",
+            "Only ESPHome config entries can be deleted by this command",
+            translation_domain=DOMAIN,
+            translation_key="only_esphome_can_be_deleted",
+        )
         return
     try:
         await hass.config_entries.async_remove(msg["config_entry_id"])
     except Exception as err:
-        connection.send_error(msg["id"], "delete_failed", str(err))
+        _send_exception(connection, msg["id"], "delete_failed", err)
         return
     connection.send_result(msg["id"])
 
@@ -1465,4 +1596,4 @@ async def websocket_add_esphome_device(
         )
         connection.send_result(msg["id"], {"result": result.get("type", "unknown")})
     except Exception as err:
-        connection.send_error(msg["id"], "add_failed", str(err))
+        _send_exception(connection, msg["id"], "add_failed", err)

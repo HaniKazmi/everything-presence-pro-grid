@@ -90,10 +90,10 @@ export class EPPGridPanel extends LitElement {
 	private _targetCtrl = new TargetController(this);
 	// Flasher controller — owns OTA flash state and flashable device list
 	private _flasherCtrl = new FlasherController(this);
-	private _localize: (
-		key: string,
-		params?: Record<string, string | number>,
-	) => string = (k) => k;
+	private _localize: import("./localize.js").LocalizeFn = Object.assign(
+		((k: string) => k) as import("./localize.js").LocalizeFn,
+		{ formatNumber: (v: number, d = 1) => v.toFixed(d), lang: "en" },
+	);
 	private _currentLang = "";
 
 	// Grid data: byte per cell using the encoding above
@@ -799,9 +799,9 @@ export class EPPGridPanel extends LitElement {
 
 	/** Compute room dimensions and furthest point from sensor based on grid */
 	private _getGridRoomMetrics(): {
-		widthM: string;
-		depthM: string;
-		furthestM: string;
+		widthM: number;
+		depthM: number;
+		furthestM: number;
 	} | null {
 		return getGridRoomMetrics(this._grid, this._roomWidth, this._perspective);
 	}
@@ -2104,7 +2104,7 @@ export class EPPGridPanel extends LitElement {
                       </div>
                       <div class="template-card-info">
                         <div class="template-card-name">${t.name}</div>
-                        <div class="template-card-size">${(t.roomWidth / 1000).toFixed(1)}m × ${(t.roomDepth / 1000).toFixed(1)}m</div>
+                        <div class="template-card-size">${this._localize.formatNumber(t.roomWidth / 1000, 1)}m × ${this._localize.formatNumber(t.roomDepth / 1000, 1)}m</div>
                       </div>
                     </div>
                   `,
@@ -2261,7 +2261,7 @@ export class EPPGridPanel extends LitElement {
 					}}
         >
           <ha-icon icon=${this._showBackendDebugLog ? "mdi:chevron-down" : "mdi:chevron-right"} style="--mdc-icon-size: 14px;"></ha-icon>
-          Detection events
+          ${this._localize("live.debug.detection_events")}
         </button>
         ${
 					this._showBackendDebugLog
@@ -2274,7 +2274,7 @@ export class EPPGridPanel extends LitElement {
 									this._backendDebugLogLines.join("\n"),
 								);
 							}}
-            >Copy all</button>
+            >${this._localize("live.debug.copy_all")}</button>
             <button
               class="debug-log-btn"
               @click=${() => {
@@ -2288,14 +2288,16 @@ export class EPPGridPanel extends LitElement {
 									const placeholder = document.createElement("div");
 									placeholder.style.cssText =
 										"color: var(--secondary-text-color, #999); font-style: italic;";
-									placeholder.textContent = "Waiting for events...";
+									placeholder.textContent = this._localize(
+										"live.debug.waiting_for_events",
+									);
 									el.appendChild(placeholder);
 								}
 							}}
-            >Clear</button>
+            >${this._localize("live.debug.clear")}</button>
           </div>
           <div class="debug-log-container" id="backend-debug-log-scroll">
-            <div style="color: var(--secondary-text-color, #999); font-style: italic;">Waiting for events...</div>
+            <div style="color: var(--secondary-text-color, #999); font-style: italic;">${this._localize("live.debug.waiting_for_events")}</div>
           </div>
         `
 						: nothing
@@ -2319,7 +2321,7 @@ export class EPPGridPanel extends LitElement {
 					}}
         >
           <ha-icon icon=${this._showDebugLog ? "mdi:chevron-down" : "mdi:chevron-right"} style="--mdc-icon-size: 14px;"></ha-icon>
-          Detection events
+          ${this._localize("live.debug.detection_events")}
         </button>
         ${
 					this._showDebugLog
@@ -2330,7 +2332,7 @@ export class EPPGridPanel extends LitElement {
               @click=${() => {
 								navigator.clipboard.writeText(this._debugLogLines.join("\n"));
 							}}
-            >Copy all</button>
+            >${this._localize("live.debug.copy_all")}</button>
             <button
               class="debug-log-btn"
               @click=${() => {
@@ -2342,14 +2344,16 @@ export class EPPGridPanel extends LitElement {
 									const placeholder = document.createElement("div");
 									placeholder.style.cssText =
 										"color: var(--secondary-text-color, #999); font-style: italic;";
-									placeholder.textContent = "Waiting for events...";
+									placeholder.textContent = this._localize(
+										"live.debug.waiting_for_events",
+									);
 									el.appendChild(placeholder);
 								}
 							}}
-            >Clear</button>
+            >${this._localize("live.debug.clear")}</button>
           </div>
           <div class="debug-log-container" id="debug-log-scroll">
-            <div style="color: var(--secondary-text-color, #999); font-style: italic;">Waiting for events...</div>
+            <div style="color: var(--secondary-text-color, #999); font-style: italic;">${this._localize("live.debug.waiting_for_events")}</div>
           </div>
         `
 						: nothing
@@ -2398,8 +2402,7 @@ export class EPPGridPanel extends LitElement {
 		if (ctrl.opRunning) {
 			ctrl.updateUsbState({
 				step: "error",
-				error:
-					"Serial port is busy from a previous operation. Refresh the page and try again.",
+				errorKey: "usb.errors.serial_port_busy",
 				fatal: true,
 			});
 			return;
@@ -2436,9 +2439,17 @@ export class EPPGridPanel extends LitElement {
 				ctrl.resetUsbState();
 				return;
 			}
+			const e = err as {
+				errorKey?: string;
+				errorParams?: Record<string, unknown>;
+				message?: string;
+			};
 			ctrl.updateUsbState({
 				step: "error",
-				error: err?.message ?? "Unknown error",
+				errorKey: e.errorKey ?? "wifi.errors.scan_failed",
+				errorParams: e.errorParams as
+					| Record<string, string | number>
+					| undefined,
 			});
 		}
 	}
@@ -2448,8 +2459,7 @@ export class EPPGridPanel extends LitElement {
 		if (ctrl.opRunning) {
 			ctrl.updateUsbState({
 				step: "error",
-				error:
-					"Serial port is busy from a previous operation. Refresh the page and try again.",
+				errorKey: "usb.errors.serial_port_busy",
 				fatal: true,
 			});
 			return;
@@ -2488,7 +2498,10 @@ export class EPPGridPanel extends LitElement {
 							const ok = window.confirm(
 								this._localize("flasher.confirm_delete_message"),
 							);
-							if (!ok) throw new Error("Flash cancelled");
+							if (!ok)
+								throw Object.assign(new Error("Flash cancelled"), {
+									errorKey: "flasher.errors.flash_cancelled",
+								});
 							await ctrl.deleteEsphomeDevice(matched.esphome_config_entry_id);
 						}
 					},
@@ -2540,21 +2553,31 @@ export class EPPGridPanel extends LitElement {
 				} catch {}
 				ctrl.serialPort = null;
 			}
-			const msg = err?.message ?? "Unknown error";
+			const e = err as {
+				errorKey?: string;
+				errorParams?: Record<string, unknown>;
+				message?: string;
+				name?: string;
+			};
+			const msg = e.message ?? "Unknown error";
+			const isPortBusy = /already open|already closed/i.test(msg);
 			const isDisconnect =
 				/stream stopped|NetworkError|disconnected|break|lost|No response from device/i.test(
 					msg,
 				);
-			const isPortBusy = /already open|already closed/i.test(msg);
+			const fallbackKey = isPortBusy
+				? "usb.errors.serial_port_busy"
+				: isDisconnect
+					? "usb.errors.device_disconnected"
+					: "usb.errors.flash_failed";
 			ctrl.opRunning = false;
 			ctrl.updateUsbState({
 				step: "error",
-				error: isDisconnect
-					? "Device disconnected. Unplug, plug it back in, and try again."
-					: isPortBusy
-						? "Serial port is busy from a previous operation. Refresh the page and try again."
-						: msg,
-				fatal: isPortBusy,
+				errorKey: e.errorKey ?? fallbackKey,
+				errorParams: e.errorParams as
+					| Record<string, string | number>
+					| undefined,
+				fatal: isPortBusy || e.errorKey === "usb.errors.serial_port_busy",
 			});
 		}
 	}
@@ -2569,7 +2592,7 @@ export class EPPGridPanel extends LitElement {
 		if (!port?.writable || !port?.readable) {
 			ctrl.updateUsbState({
 				step: "error",
-				error: "Serial port not available",
+				errorKey: "usb.errors.serial_port_unavailable",
 			});
 			return;
 		}
@@ -2683,9 +2706,17 @@ export class EPPGridPanel extends LitElement {
 			(ctrl as any)._serialReader = null;
 			(ctrl as any)._serialWriter = null;
 			if (ctrl.opId !== myOp) return;
+			const e = err as {
+				errorKey?: string;
+				errorParams?: Record<string, unknown>;
+				message?: string;
+			};
 			ctrl.updateUsbState({
 				step: "error",
-				error: err?.message ?? "WiFi provisioning failed",
+				errorKey: e.errorKey ?? "wifi.errors.provisioning_failed",
+				errorParams: e.errorParams as
+					| Record<string, string | number>
+					| undefined,
 			});
 		}
 	}
@@ -2712,9 +2743,17 @@ export class EPPGridPanel extends LitElement {
 			ctrl.updateUsbState({ step: "wifi_provision" });
 		} catch (err: any) {
 			console.error("WiFi scan failed:", err);
+			const e = err as {
+				errorKey?: string;
+				errorParams?: Record<string, unknown>;
+				message?: string;
+			};
 			ctrl.updateUsbState({
 				step: "error",
-				error: err?.message ?? "WiFi scan failed",
+				errorKey: e.errorKey ?? "wifi.errors.scan_failed",
+				errorParams: e.errorParams as
+					| Record<string, string | number>
+					| undefined,
 			});
 		}
 	}

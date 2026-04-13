@@ -11,6 +11,7 @@ import {
 import { html, LitElement, nothing } from "lit";
 import { property, state } from "lit/decorators.js";
 import type { WifiNetwork } from "../lib/improv-serial.js";
+import { defaultLocalize, type LocalizeFn } from "../localize.js";
 import { flasherStyles } from "../styles.js";
 import type {
 	FlashableDevice,
@@ -42,10 +43,7 @@ export class EppFlasherView extends LitElement {
 	@property({ attribute: false }) hass: any;
 	@property({ attribute: false }) flashableDevices: FlashableDevice[] = [];
 	@property({ type: Boolean }) loading = false;
-	@property({ attribute: false }) localize: (
-		key: string,
-		params?: Record<string, string | number>,
-	) => string = (k) => k;
+	@property({ attribute: false }) localize: LocalizeFn = defaultLocalize;
 
 	@state() private _selectedVariant: "wifi" | "ethernet" = "wifi";
 	@property() firmwareBaseUrl = "";
@@ -140,7 +138,7 @@ export class EppFlasherView extends LitElement {
 						}
 						${
 							this._errorPopoverMac === device.mac
-								? html`<div class="ota-error-popover">${ota.error}</div>`
+								? html`<div class="ota-error-popover">${ota.errorKey ? this.localize(ota.errorKey, ota.errorParams) : ""}</div>`
 								: nothing
 						}
 					</div>`;
@@ -493,7 +491,7 @@ export class EppFlasherView extends LitElement {
 						<div class="card-content">
 							<div class="usb-error">
 								<ha-icon icon="mdi:alert-circle-outline"></ha-icon>
-								<p>${state.error}</p>
+								<p>${state.errorKey ? this.localize(state.errorKey, state.errorParams) : ""}</p>
 							</div>
 							<div class="confirm-actions">
 								<ha-button @click=${this._onUsbBack}>

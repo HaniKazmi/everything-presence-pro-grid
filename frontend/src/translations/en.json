@@ -161,7 +161,22 @@
 		"relay_occupancy": "Occupancy",
 		"relay_normally_open": "Normally Open (NO)",
 		"relay_normally_closed": "Normally Closed (NC)",
-		"update_rate": "Update rate"
+		"update_rate": "Update rate",
+		"reset_to_default": "Reset to default",
+		"show_info": "Show info",
+		"frequency": {
+			"5hz": "5 Hz",
+			"2hz": "2 Hz",
+			"1hz": "1 Hz",
+			"0_5hz": "0.5 Hz"
+		},
+		"log_level": {
+			"none": "None",
+			"error": "Error",
+			"warning": "Warning",
+			"info": "Info",
+			"debug": "Debug"
+		}
 	},
 	"sidebar": {
 		"detection_zones": "Detection zones",
@@ -203,7 +218,31 @@
 		"target_count": "Target count",
 		"delete_target": "Delete target",
 		"mark_interference": "Mark as interference source",
-		"suppress_detection": "Suppress detection"
+		"suppress_detection": "Suppress detection",
+		"grid_dimensions": "{width, number, ::.1}m × {depth, number, ::.1}m · Furthest point: {furthest, number, ::.1}m",
+		"illuminance_value": "{value, number, ::.1} lux",
+		"temperature_value": "{value, number, ::.1} °C",
+		"humidity_value": "{value, number, ::.1} %",
+		"co2_value": "{value, number} ppm",
+		"debug": {
+			"detection_events": "Detection events",
+			"copy_all": "Copy all",
+			"clear": "Clear",
+			"waiting_for_events": "Waiting for events...",
+			"static": "Static",
+			"motion": "Motion",
+			"occ": "Occ",
+			"on": "on",
+			"off": "off",
+			"active": "active",
+			"pending": "pending",
+			"inactive": "inactive",
+			"occupied": "occupied",
+			"room": "Room",
+			"no_targets": "no targets",
+			"all_clear": "all clear",
+			"zone_n": "Zone {n}"
+		}
 	},
 	"entities": {
 		"room_level": "Room level",
@@ -358,7 +397,6 @@
 		"wifi_connected": "WiFi connected",
 		"done": "Done",
 		"usb_error_connect": "Could not connect to device. Hold the BOOT button and try again.",
-		"usb_error_flash": "Firmware flash failed.",
 		"usb_error_wifi": "WiFi provisioning failed.",
 		"usb_error_ip": "Connected to WiFi but could not detect IP address.",
 		"usb_retry": "Retry",
@@ -373,7 +411,18 @@
 		"ota_retry": "Retry",
 		"ota_error_timeout": "Update timed out",
 		"ota_error_connection_lost": "Connection lost during update",
-		"ota_error_failed": "Update failed"
+		"ota_error_failed": "Update failed",
+		"errors": {
+			"start_failed": "Failed to start update. Is the device online?",
+			"connect_failed": "Failed to connect to device",
+			"connection_lost": "Connection lost during update",
+			"update_timeout": "Update timed out",
+			"device_offline": "Device went offline during update",
+			"update_failed_generic": "Update failed",
+			"ota_failed_version_unchanged": "Update failed \u2014 firmware version unchanged",
+			"flash_cancelled": "Flash cancelled",
+			"timeout": "Timeout"
+		}
 	},
 	"connection": {
 		"connecting": "Connecting to device...",
@@ -383,5 +432,29 @@
 		"check_connections": "Check for other browser tabs with this panel open, ESPHome log sessions, or additional Home Assistant instances.",
 		"retry": "Retry",
 		"ha_reconnecting": "Reconnecting to Home Assistant..."
+	},
+	"usb": {
+		"errors": {
+			"serial_port_busy": "Serial port is busy from a previous operation. Refresh the page and try again.",
+			"serial_port_unavailable": "Serial port not available",
+			"device_disconnected": "Device disconnected. Unplug, plug it back in, and try again.",
+			"manifest_download_failed": "Failed to download firmware manifest",
+			"file_download_failed": "Failed to download firmware file: {file}",
+			"port_open_failed": "Could not open serial port. Unplug the device, plug it back in, and try again.",
+			"no_device_response": "No response from device — it may be flashed with ethernet firmware which does not support WiFi configuration.",
+			"base_url_required": "baseUrl is required for firmware download",
+			"flash_failed": "Firmware flash failed."
+		}
+	},
+	"wifi": {
+		"errors": {
+			"provisioning_failed": "WiFi provisioning failed",
+			"scan_failed": "WiFi scan failed",
+			"connection_failed": "WiFi connection failed — check SSID/password and try again",
+			"error_code": "WiFi error (code {code})",
+			"invalid_command": "Invalid command — device may need to be power-cycled",
+			"unknown_command": "Unknown command",
+			"not_authorized": "Not authorized"
+		}
 	}
 }

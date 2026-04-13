@@ -12,6 +12,7 @@ from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.eppgrid import async_setup_entry
 from custom_components.eppgrid import websocket_api as ws_module
+from custom_components.eppgrid.const import DOMAIN
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -110,7 +111,13 @@ class TestWebSocketListDevices:
         msg = {"id": 1, "type": "eppgrid/list_devices"}
 
         websocket_list_devices(hass, connection, msg)
-        connection.send_error.assert_called_once_with(1, "not_ready", "Integration not loaded")
+        connection.send_error.assert_called_once_with(
+            1,
+            "not_ready",
+            "Integration not loaded",
+            translation_domain=DOMAIN,
+            translation_key="integration_not_loaded",
+        )
 
 
 class TestWebSocketGetConfig:
@@ -442,7 +449,13 @@ class TestWebSocketTemplates:
 
         await call_async_handler(hass, websocket_apply_template, connection, msg)
 
-        connection.send_error.assert_called_once_with(10, "not_found", "Template not found")
+        connection.send_error.assert_called_once_with(
+            10,
+            "not_found",
+            "Template not found",
+            translation_domain=DOMAIN,
+            translation_key="template_not_found",
+        )
 
 
 class TestWebSocketSettings:
@@ -1451,7 +1464,13 @@ class TestWebSocketSubscriptions:
 
         await call_async_handler(hass, websocket_subscribe_device, connection, msg)
 
-        connection.send_error.assert_called_once_with(25, "connection_failed", "Failed to connect to device")
+        connection.send_error.assert_called_once_with(
+            25,
+            "connection_failed",
+            "Failed to connect to device",
+            translation_domain=DOMAIN,
+            translation_key="connection_failed",
+        )
 
     async def test_subscribe_device_not_found(self, hass: HomeAssistant, config_entry: MockConfigEntry) -> None:
         """subscribe_device returns error when device not available."""
@@ -1465,7 +1484,13 @@ class TestWebSocketSubscriptions:
 
         await call_async_handler(hass, websocket_subscribe_device, connection, msg)
 
-        connection.send_error.assert_called_once_with(21, "not_found", "Device not available")
+        connection.send_error.assert_called_once_with(
+            21,
+            "not_found",
+            "Device not available",
+            translation_domain=DOMAIN,
+            translation_key="device_not_available",
+        )
 
     async def test_subscribe_raw_targets_no_session(self, hass: HomeAssistant, config_entry: MockConfigEntry) -> None:
         """subscribe_raw_targets returns error without active session."""
@@ -1479,7 +1504,11 @@ class TestWebSocketSubscriptions:
         await call_async_handler(hass, websocket_subscribe_raw_targets, connection, msg)
 
         connection.send_error.assert_called_once_with(
-            22, "no_session", "No active session — call subscribe_device first"
+            22,
+            "no_session",
+            "No active session — call subscribe_device first",
+            translation_domain=DOMAIN,
+            translation_key="no_active_session",
         )
 
     async def test_subscribe_raw_targets_with_session(self, hass: HomeAssistant, config_entry: MockConfigEntry) -> None:
@@ -1691,7 +1720,13 @@ class TestUpdateFirmware:
 
         await call_async_handler(hass, websocket_update_firmware, connection, msg)
 
-        connection.send_error.assert_called_once_with(21, "not_found", "Device not found")
+        connection.send_error.assert_called_once_with(
+            21,
+            "not_found",
+            "Device not found",
+            translation_domain=DOMAIN,
+            translation_key="device_not_found",
+        )
 
     async def test_update_firmware_build_flags_unknown(
         self, hass: HomeAssistant, config_entry: MockConfigEntry
@@ -1708,7 +1743,13 @@ class TestUpdateFirmware:
 
         await call_async_handler(hass, websocket_update_firmware, connection, msg)
 
-        connection.send_error.assert_called_once_with(22, "build_flags_unknown", "Device build flags not yet available")
+        connection.send_error.assert_called_once_with(
+            22,
+            "build_flags_unknown",
+            "Device build flags not yet available",
+            translation_domain=DOMAIN,
+            translation_key="build_flags_unavailable",
+        )
 
     async def test_update_firmware_device_host_unknown(
         self, hass: HomeAssistant, config_entry: MockConfigEntry
@@ -1725,7 +1766,13 @@ class TestUpdateFirmware:
 
         await call_async_handler(hass, websocket_update_firmware, connection, msg)
 
-        connection.send_error.assert_called_once_with(23, "not_available", "Device host unknown")
+        connection.send_error.assert_called_once_with(
+            23,
+            "not_available",
+            "Device host unknown",
+            translation_domain=DOMAIN,
+            translation_key="device_host_unknown",
+        )
 
     async def test_update_firmware_not_ready(self, hass: HomeAssistant) -> None:
         """update_firmware returns error when integration not loaded."""
@@ -1736,7 +1783,13 @@ class TestUpdateFirmware:
 
         await call_async_handler(hass, websocket_update_firmware, connection, msg)
 
-        connection.send_error.assert_called_once_with(23, "not_ready", "Integration not loaded")
+        connection.send_error.assert_called_once_with(
+            23,
+            "not_ready",
+            "Integration not loaded",
+            translation_domain=DOMAIN,
+            translation_key="integration_not_loaded",
+        )
 
 
 class TestNotReadyGuards:
@@ -1815,7 +1868,13 @@ class TestNotReadyGuards:
         else:
             handler(hass, connection, msg)
 
-        connection.send_error.assert_called_once_with(1, "not_ready", "Integration not loaded")
+        connection.send_error.assert_called_once_with(
+            1,
+            "not_ready",
+            "Integration not loaded",
+            translation_domain=DOMAIN,
+            translation_key="integration_not_loaded",
+        )
 
 
 class TestSubscriptionCallbacks:
@@ -2609,3 +2668,72 @@ class TestWebSocketDismissTarget:
         connection.send_error.assert_called_once()
         args = connection.send_error.call_args[0]
         assert args[1] == "dismiss_failed"
+
+
+def test_send_not_loaded_uses_translation_key():
+    """Helper must set translation_domain + translation_key for frontend i18n."""
+    from custom_components.eppgrid import websocket_api as ws_module
+    from custom_components.eppgrid.const import DOMAIN
+
+    connection = MagicMock()
+    ws_module._send_not_loaded(connection, 42)
+
+    connection.send_error.assert_called_once_with(
+        42,
+        "not_ready",
+        "Integration not loaded",
+        translation_domain=DOMAIN,
+        translation_key="integration_not_loaded",
+    )
+
+
+def test_no_firmware_variant_uses_translation_placeholders():
+    """Dynamic network-type error must pass network as a translation placeholder."""
+    from custom_components.eppgrid import websocket_api as ws_module
+
+    connection = MagicMock()
+    ws_module._send_no_firmware_variant(connection, 7, "wifi-ble-co2")
+
+    connection.send_error.assert_called_once_with(
+        7,
+        "unknown_variant",
+        "No firmware variant for network type: wifi-ble-co2",
+        translation_domain=DOMAIN,
+        translation_key="no_firmware_variant",
+        translation_placeholders={"network": "wifi-ble-co2"},
+    )
+
+
+def test_send_exception_preserves_translation_metadata():
+    """If the exception carries HA translation metadata, it must reach send_error."""
+    from homeassistant.exceptions import HomeAssistantError
+
+    from custom_components.eppgrid import websocket_api as ws_module
+    from custom_components.eppgrid.const import DOMAIN
+
+    err = HomeAssistantError(
+        "Service x not available",
+        translation_domain=DOMAIN,
+        translation_key="service_not_available",
+        translation_placeholders={"service": "x"},
+    )
+    connection = MagicMock()
+    ws_module._send_exception(connection, 5, "dismiss_failed", err)
+    connection.send_error.assert_called_once_with(
+        5,
+        "dismiss_failed",
+        "Service x not available",
+        translation_domain=DOMAIN,
+        translation_key="service_not_available",
+        translation_placeholders={"service": "x"},
+    )
+
+
+def test_send_exception_falls_back_to_str_for_plain_exception():
+    """Plain exceptions without translation metadata fall back to the raw message."""
+    from custom_components.eppgrid import websocket_api as ws_module
+
+    err = RuntimeError("boom")
+    connection = MagicMock()
+    ws_module._send_exception(connection, 7, "delete_failed", err)
+    connection.send_error.assert_called_once_with(7, "delete_failed", "boom")

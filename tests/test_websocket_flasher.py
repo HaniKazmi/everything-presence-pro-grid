@@ -12,6 +12,7 @@ from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.eppgrid import async_setup_entry
 from custom_components.eppgrid import websocket_api as ws_module
+from custom_components.eppgrid.const import DOMAIN
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -121,7 +122,13 @@ class TestListFlashableDevices:
 
         await call_async_handler(hass, websocket_list_flashable_devices, connection, msg)
 
-        connection.send_error.assert_called_once_with(1, "not_ready", "Integration not loaded")
+        connection.send_error.assert_called_once_with(
+            1,
+            "not_ready",
+            "Integration not loaded",
+            translation_domain=DOMAIN,
+            translation_key="integration_not_loaded",
+        )
 
 
 class TestSubscribeFlashableDevices:
@@ -272,7 +279,11 @@ class TestDeleteEsphomeDevice:
         await call_async_handler(hass, websocket_delete_esphome_device, connection, msg)
 
         connection.send_error.assert_called_once_with(
-            4, "invalid_entry", "Only ESPHome config entries can be deleted by this command"
+            4,
+            "invalid_entry",
+            "Only ESPHome config entries can be deleted by this command",
+            translation_domain=DOMAIN,
+            translation_key="only_esphome_can_be_deleted",
         )
 
 

@@ -1,9 +1,29 @@
 import { IntlMessageFormat } from "intl-messageformat";
 import en from "./translations/en.json";
+import es from "./translations/es.json";
 
-const LANGUAGES: Record<string, Record<string, unknown>> = { en };
+const LANGUAGES: Record<string, Record<string, unknown>> = { en, es };
 
 type Params = Record<string, string | number>;
+
+export interface LocalizeFn {
+	(key: string, params?: Params): string;
+	formatNumber: (value: number, decimals?: number) => string;
+	lang: string;
+}
+
+/**
+ * Default LocalizeFn used as the property initializer in components — returns
+ * the key itself and uses `toFixed` for formatting. Replaced by
+ * `setupLocalize(hass)` once the panel has a real hass object.
+ */
+export const defaultLocalize: LocalizeFn = Object.assign(
+	((k: string) => k) as LocalizeFn,
+	{
+		formatNumber: (v: number, d = 1) => v.toFixed(d),
+		lang: "en",
+	},
+);
 
 function resolve(
 	obj: Record<string, unknown>,
@@ -21,14 +41,17 @@ function resolve(
 export function setupLocalize(hass?: {
 	locale?: { language?: string };
 	language?: string;
-}): (key: string, params?: Params) => string {
-	const lang = hass?.locale?.language ?? hass?.language ?? "en";
-	const strings = LANGUAGES[lang] ?? LANGUAGES.en;
+}): LocalizeFn {
+	const requested = hass?.locale?.language ?? hass?.language ?? "en";
+	const base = requested.split("-")[0];
+	const lang = LANGUAGES[requested] ? requested : LANGUAGES[base] ? base : "en";
+	const strings = LANGUAGES[lang];
 	const fallback = LANGUAGES.en;
 
 	const formatCache = new Map<string, IntlMessageFormat>();
+	const numberCache = new Map<number, Intl.NumberFormat>();
 
-	return (key: string, params?: Params): string => {
+	const localize = ((key: string, params?: Params): string => {
 		const raw =
 			resolve(strings as Record<string, unknown>, key) ??
 			resolve(fallback as Record<string, unknown>, key) ??
@@ -42,5 +65,21 @@ export function setupLocalize(hass?: {
 			formatCache.set(raw, fmt);
 		}
 		return fmt.format(params) as string;
+	}) as LocalizeFn;
+
+	localize.formatNumber = (value: number, decimals = 1): string => {
+		let fmt = numberCache.get(decimals);
+		if (!fmt) {
+			fmt = new Intl.NumberFormat(lang, {
+				minimumFractionDigits: decimals,
+				maximumFractionDigits: decimals,
+			});
+			numberCache.set(decimals, fmt);
+		}
+		return fmt.format(value);
 	};
+
+	localize.lang = lang;
+
+	return localize;
 }

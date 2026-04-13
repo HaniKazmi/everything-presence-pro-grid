@@ -4,6 +4,7 @@ import {
 	autoDetectionRange,
 	getGridRoomMetrics,
 } from "../lib/room-geometry.js";
+import { defaultLocalize, type LocalizeFn } from "../localize.js";
 import {
 	accordionStyles,
 	buttonStyles,
@@ -79,10 +80,7 @@ export class EppSettingsView extends LitElement {
 	// handlers update reactive properties, Lit crashes with concurrent re-renders.
 	private _overrides: Record<string, any> = {};
 
-	@property({ attribute: false }) localize: (
-		key: string,
-		params?: Record<string, string | number>,
-	) => string = (k) => k;
+	@property({ attribute: false }) localize: LocalizeFn = defaultLocalize;
 
 	static styles = [
 		accordionStyles,
@@ -231,7 +229,9 @@ export class EppSettingsView extends LitElement {
 		const raw = reading != null ? reading - offset : null;
 		const clamp = (v: number) => Math.max(displayMin, Math.min(displayMax, v));
 		const adjusted =
-			raw != null ? clamp(raw + offset).toFixed(precision) : "\u2014";
+			raw != null
+				? this.localize.formatNumber(clamp(raw + offset), precision)
+				: "\u2014";
 		return html`
       <div class="setting-row">
         <label>${label}</label>
@@ -241,7 +241,9 @@ export class EppSettingsView extends LitElement {
 					const el = e.target as HTMLInputElement;
 					const off = parseFloat(el.value);
 					const val =
-						raw != null ? clamp(raw + off).toFixed(precision) : "\u2014";
+						raw != null
+							? this.localize.formatNumber(clamp(raw + off), precision)
+							: "\u2014";
 					this._setText(el.nextElementSibling!, val);
 					this._overrides[`${offsetKey}Offset`] = off;
 					this._fireDirty();
@@ -283,7 +285,7 @@ export class EppSettingsView extends LitElement {
 					dMin,
 					Math.min(dMax, oldDisplay - oldSliderVal + value),
 				);
-				this._setText(display, adjusted.toFixed(precision));
+				this._setText(display, this.localize.formatNumber(adjusted, precision));
 				this._overrides[`${slider.dataset.offsetKey}Offset`] = value;
 			} else {
 				this._setText(display, String(value));
@@ -300,25 +302,33 @@ export class EppSettingsView extends LitElement {
 	}
 
 	resetBtn(defaultValue: number, key?: string) {
-		return html`<button type="button" class="setting-info" aria-label="Reset to default" title="Reset to default" @click=${(
-			e: Event,
-		) => {
-			e.stopPropagation();
-			const row = (e.currentTarget as HTMLElement).closest(
-				".setting-row",
-			) as HTMLElement;
-			if (row) this._resetSlider(row, defaultValue, key);
-			if (key) {
-				this._fireChange(key, defaultValue);
-			} else {
-				this._fireDirty();
-			}
-		}}><ha-icon icon="mdi:restart"></ha-icon></button>`;
+		return html`<button
+			type="button"
+			class="setting-info"
+			aria-label=${this.localize("settings.reset_to_default")}
+			title=${this.localize("settings.reset_to_default")}
+			@click=${(e: Event) => {
+				e.stopPropagation();
+				const row = (e.currentTarget as HTMLElement).closest(
+					".setting-row",
+				) as HTMLElement;
+				if (row) this._resetSlider(row, defaultValue, key);
+				if (key) {
+					this._fireChange(key, defaultValue);
+				} else {
+					this._fireDirty();
+				}
+			}}
+		><ha-icon icon="mdi:restart"></ha-icon></button>`;
 	}
 
 	infoTip(text: string) {
-		return html`<button type="button" class="setting-info" aria-label="Show info" title="Show info"
-      @click=${(e: Event) => {
+		return html`<button
+			type="button"
+			class="setting-info"
+			aria-label=${this.localize("settings.show_info")}
+			title=${this.localize("settings.show_info")}
+			@click=${(e: Event) => {
 				e.stopPropagation();
 				const icon = e.currentTarget as HTMLElement;
 				const tip = icon.querySelector(".setting-info-tooltip") as HTMLElement;
@@ -336,7 +346,7 @@ export class EppSettingsView extends LitElement {
 				tip.style.left = `${Math.max(8, Math.min(rect.right - 240, window.innerWidth - 256))}px`;
 				tip.style.top = `${rect.bottom + 6}px`;
 			}}
-    ><ha-icon icon="mdi:help-circle-outline"></ha-icon><span class="setting-info-tooltip">${text}</span></button>`;
+		><ha-icon icon="mdi:help-circle-outline"></ha-icon><span class="setting-info-tooltip">${text}</span></button>`;
 	}
 
 	renderDetectionRanges() {
@@ -362,7 +372,7 @@ export class EppSettingsView extends LitElement {
 		const autoStyle = "opacity: 0.5; pointer-events: none;";
 		return html`
       <div class="settings-section">
-        ${metrics ? html`<p style="font-size: 13px; color: var(--secondary-text-color, #757575); margin: 0 0 12px;">${this.localize("settings.furthest_point")} <span style="font-weight: 700; color: var(--error-color, #db4437);">${metrics.furthestM}m</span></p>` : nothing}
+        ${metrics ? html`<p style="font-size: 13px; color: var(--secondary-text-color, #757575); margin: 0 0 12px;">${this.localize("settings.furthest_point")} <span style="font-weight: 700; color: var(--error-color, #db4437);">${this.localize.formatNumber(metrics.furthestM, 1)}m</span></p>` : nothing}
         <div class="setting-group">
           <h4>${this.localize("settings.target_sensor")}</h4>
           <div class="setting-row">
@@ -390,8 +400,11 @@ export class EppSettingsView extends LitElement {
 								const v = Number(el.value);
 								this._overrides.targetMaxDistance = v;
 								this._fireChange("targetMaxDistance", v);
-								this._setText(el.nextElementSibling!, v.toFixed(1));
-							}} /><span class="setting-value">${targetVal}</span><span class="setting-unit">m</span></span>
+								this._setText(
+									el.nextElementSibling!,
+									this.localize.formatNumber(v, 1),
+								);
+							}} /><span class="setting-value">${this.localize.formatNumber(targetVal, 1)}</span><span class="setting-unit">m</span></span>
             ${this.resetBtn(targetAutoVal, "targetMaxDistance")}${this.infoTip(this.localize("info.target_max_distance"))}
           </div>
         </div>
@@ -430,8 +443,11 @@ export class EppSettingsView extends LitElement {
 								}
 								this._overrides.staticMinDistance = v;
 								this._fireChange("staticMinDistance", v);
-								this._setText(el.nextElementSibling!, v.toFixed(1));
-							}} /><span class="setting-value">${this.staticAutoDistance ? 0.3 : this.staticMinDistance}</span><span class="setting-unit">m</span></span>
+								this._setText(
+									el.nextElementSibling!,
+									this.localize.formatNumber(v, 1),
+								);
+							}} /><span class="setting-value">${this.localize.formatNumber(this.staticAutoDistance ? 0.3 : this.staticMinDistance, 1)}</span><span class="setting-unit">m</span></span>
             ${this.resetBtn(0.3, "staticMinDistance")}${this.infoTip(this.localize("info.static_min_distance"))}
           </div>
           <div class="setting-row" style="${this.staticAutoDistance ? autoStyle : ""}">
@@ -448,8 +464,11 @@ export class EppSettingsView extends LitElement {
 								}
 								this._overrides.staticMaxDistance = v;
 								this._fireChange("staticMaxDistance", v);
-								this._setText(el.nextElementSibling!, v.toFixed(1));
-							}} /><span class="setting-value">${staticMaxVal}</span><span class="setting-unit">m</span></span>
+								this._setText(
+									el.nextElementSibling!,
+									this.localize.formatNumber(v, 1),
+								);
+							}} /><span class="setting-value">${this.localize.formatNumber(staticMaxVal, 1)}</span><span class="setting-unit">m</span></span>
             ${this.resetBtn(staticMaxAutoVal, "staticMaxDistance")}${this.infoTip(this.localize("info.static_max_distance"))}
           </div>
         </div>
@@ -562,10 +581,10 @@ export class EppSettingsView extends LitElement {
 			isOn("target_count", false);
 
 		const RATE_OPTIONS = [
-			{ value: "200", label: "5 Hz" },
-			{ value: "500", label: "2 Hz" },
-			{ value: "1000", label: "1 Hz" },
-			{ value: "2000", label: "0.5 Hz" },
+			{ value: "200", label: this.localize("settings.frequency.5hz") },
+			{ value: "500", label: this.localize("settings.frequency.2hz") },
+			{ value: "1000", label: this.localize("settings.frequency.1hz") },
+			{ value: "2000", label: this.localize("settings.frequency.0_5hz") },
 		];
 
 		return html`
@@ -819,7 +838,12 @@ export class EppSettingsView extends LitElement {
                 <label>${this.localize(c.label)}</label>
                 <ha-select
                   .value=${current}
-                  .options=${LOG_LEVELS.map((l) => ({ value: l, label: l }))}
+                  .options=${LOG_LEVELS.map((l) => ({
+										value: l,
+										label: this.localize(
+											`settings.log_level.${l.toLowerCase()}`,
+										),
+									}))}
                   @selected=${(e: CustomEvent<{ value: string }>) => {
 										const val = e.detail.value;
 										if (!val || val === current) return;
@@ -831,16 +855,20 @@ export class EppSettingsView extends LitElement {
 									}}
                   @closed=${(e: Event) => e.stopPropagation()}
                 ></ha-select>
-                <button type="button" class="setting-info" aria-label="Reset to default" title="Reset to default" @click=${(
-									e: Event,
-								) => {
+                <button
+								type="button"
+								class="setting-info"
+								aria-label=${this.localize("settings.reset_to_default")}
+								title=${this.localize("settings.reset_to_default")}
+								@click=${(e: Event) => {
 									e.stopPropagation();
 									if (!this._overrides.logLevels)
 										this._overrides.logLevels = {};
 									this._overrides.logLevels[c.key] = "None";
 									this._fireDirty();
 									this.requestUpdate();
-								}}><ha-icon icon="mdi:restart"></ha-icon></button>
+								}}
+							><ha-icon icon="mdi:restart"></ha-icon></button>
                 ${this.infoTip(this.localize(c.tip))}
               </div>
             `;

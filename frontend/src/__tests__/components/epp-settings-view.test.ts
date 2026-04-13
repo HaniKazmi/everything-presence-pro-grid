@@ -2304,3 +2304,46 @@ describe("relay section", () => {
 		expect(detail.zone_update_rate_ms).toBe(1000);
 	});
 });
+
+describe("epp-settings-view localization (tasks 13-15)", () => {
+	it("does not contain hardcoded 'Reset to default' strings outside translation keys", () => {
+		const { readFileSync } = require("fs");
+		const { join } = require("path");
+		const src = readFileSync(
+			join(__dirname, "..", "..", "components", "epp-settings-view.ts"),
+			"utf8",
+		);
+		expect(src).not.toMatch(/aria-label="Reset to default"/);
+		expect(src).not.toMatch(/title="Reset to default"/);
+		expect(src).not.toMatch(/aria-label="Show info"/);
+		expect(src).not.toMatch(/title="Show info"/);
+	});
+
+	it("uses localize() for frequency labels", () => {
+		const { readFileSync } = require("fs");
+		const { join } = require("path");
+		const src = readFileSync(
+			join(__dirname, "..", "..", "components", "epp-settings-view.ts"),
+			"utf8",
+		);
+		expect(src).toMatch(/settings\.frequency\.5hz/);
+		expect(src).toMatch(/settings\.frequency\.2hz/);
+		expect(src).toMatch(/settings\.frequency\.1hz/);
+		expect(src).toMatch(/settings\.frequency\.0_5hz/);
+		expect(src).not.toMatch(/label:\s*"5 Hz"/);
+	});
+
+	it("uses localize() for log level labels but keeps English wire values", () => {
+		const { readFileSync } = require("fs");
+		const { join } = require("path");
+		const src = readFileSync(
+			join(__dirname, "..", "..", "components", "epp-settings-view.ts"),
+			"utf8",
+		);
+		expect(src).toMatch(/settings\.log_level\.\$\{.*toLowerCase\(\)\}/);
+		// Wire values preserved
+		expect(src).toMatch(
+			/\["None",\s*"Error",\s*"Warning",\s*"Info",\s*"Debug"\]/,
+		);
+	});
+});

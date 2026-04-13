@@ -1,0 +1,38 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Everything Presence Pro Grid",
+        "description": "Configura la interfaz de calibración y la gestión de dispositivos del EPP Grid."
+      }
+    },
+    "abort": {
+      "single_instance_allowed": "Ya está configurado. Solo es posible una única configuración."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "data": {
+          "sidebar_panel": "Mostrar en la barra lateral"
+        }
+      }
+    }
+  },
+  "exceptions": {
+    "integration_not_loaded": { "message": "La integración no está cargada" },
+    "device_not_available": { "message": "Dispositivo no disponible" },
+    "device_not_connected": { "message": "Dispositivo no conectado" },
+    "device_not_found": { "message": "Dispositivo no encontrado" },
+    "device_host_unknown": { "message": "Host del dispositivo desconocido" },
+    "connection_failed": { "message": "No se ha podido conectar al dispositivo" },
+    "no_active_session": { "message": "No hay sesión activa — llama primero a subscribe_device" },
+    "template_not_found": { "message": "Plantilla no encontrada" },
+    "no_firmware_variant": { "message": "No hay variante de firmware para el tipo de red: {network}" },
+    "ota_unsupported": { "message": "El dispositivo no admite actualización OTA" },
+    "build_flags_unavailable": { "message": "Los indicadores de compilación del dispositivo aún no están disponibles" },
+    "config_entry_not_found": { "message": "Entrada de configuración no encontrada" },
+    "only_esphome_can_be_deleted": { "message": "Solo las entradas de configuración de ESPHome pueden eliminarse con este comando" },
+    "service_not_available": { "message": "El servicio {service} no está disponible" }
+  }
+}

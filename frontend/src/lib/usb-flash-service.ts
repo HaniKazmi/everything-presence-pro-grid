@@ -64,13 +64,20 @@ export async function flashFirmware(
 
 		// Fetch manifest
 		if (!options?.baseUrl) {
-			throw new Error("baseUrl is required for firmware download");
+			throw Object.assign(
+				new Error("baseUrl is required for firmware download"),
+				{
+					errorKey: "usb.errors.base_url_required",
+				},
+			);
 		}
 		const base = options.baseUrl;
 		const manifestUrl = `${base}/everything-presence-pro-${variant}-manifest.json`;
 		const manifestResp = await fetch(manifestUrl);
 		if (!manifestResp.ok) {
-			throw new Error("Failed to download firmware manifest");
+			throw Object.assign(new Error("Failed to download firmware manifest"), {
+				errorKey: "usb.errors.manifest_download_failed",
+			});
 		}
 		const manifest = await manifestResp.json();
 
@@ -85,7 +92,13 @@ export async function flashFirmware(
 		for (const part of parts) {
 			const resp = await fetch(`${baseUrl}${part.path}`);
 			if (!resp.ok) {
-				throw new Error(`Failed to download firmware file: ${part.path}`);
+				throw Object.assign(
+					new Error(`Failed to download firmware file: ${part.path}`),
+					{
+						errorKey: "usb.errors.file_download_failed",
+						errorParams: { file: part.path },
+					},
+				);
 			}
 			const data = new Uint8Array(await resp.arrayBuffer());
 			fileArray.push({ data, address: part.offset });
@@ -134,8 +147,11 @@ export async function runWifiScan(
 		try {
 			await port.open({ baudRate: 115200 });
 		} catch {
-			throw new Error(
-				"Could not open serial port. Unplug the device, plug it back in, and try again.",
+			throw Object.assign(
+				new Error(
+					"Could not open serial port. Unplug the device, plug it back in, and try again.",
+				),
+				{ errorKey: "usb.errors.port_open_failed" },
 			);
 		}
 	}
@@ -194,8 +210,11 @@ export async function runWifiScan(
 
 	if (!handshakeOk) {
 		writer.releaseLock();
-		throw new Error(
-			"No response from device — it may be flashed with ethernet firmware which does not support WiFi configuration.",
+		throw Object.assign(
+			new Error(
+				"No response from device — it may be flashed with ethernet firmware which does not support WiFi configuration.",
+			),
+			{ errorKey: "usb.errors.no_device_response" },
 		);
 	}
 
@@ -326,7 +345,21 @@ export async function detectIpAddress(
 						3: "WiFi connection failed — check SSID/password and try again",
 						4: "Not authorized",
 					};
-					throw new Error(messages[code] ?? `WiFi error (code ${code})`);
+					const errorKeyByCode: Record<number, string> = {
+						1: "wifi.errors.invalid_command",
+						2: "wifi.errors.unknown_command",
+						3: "wifi.errors.connection_failed",
+						4: "wifi.errors.not_authorized",
+					};
+					const key = errorKeyByCode[code] ?? "wifi.errors.error_code";
+					throw Object.assign(
+						new Error(messages[code] ?? `WiFi error (code ${code})`),
+						{
+							errorKey: key,
+							errorParams:
+								key === "wifi.errors.error_code" ? { code } : undefined,
+						},
+					);
 				}
 
 				// STATE_PROVISIONED — device connected to WiFi
@@ -356,5 +389,10 @@ export async function detectIpAddress(
 		}
 	}
 
-	throw new Error("WiFi connection failed — check SSID/password and try again");
+	throw Object.assign(
+		new Error("WiFi connection failed — check SSID/password and try again"),
+		{
+			errorKey: "wifi.errors.connection_failed",
+		},
+	);
 }

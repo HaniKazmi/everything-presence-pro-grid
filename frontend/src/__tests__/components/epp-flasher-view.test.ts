@@ -18,7 +18,10 @@ function createView(
 	el.hass = { callWS: () => Promise.resolve({}) };
 	el.flashableDevices = [];
 	el.loading = false;
-	el.localize = (k: string) => k;
+	el.localize = Object.assign(((k: string) => k) as typeof el.localize, {
+		formatNumber: (v: number, d = 1) => v.toFixed(d),
+		lang: "en",
+	});
 	for (const [k, v] of Object.entries(overrides)) {
 		(el as any)[k] = v;
 	}
@@ -395,12 +398,15 @@ describe("render() WiFi provisioning — connected state", () => {
 
 	it("shows connected network and IP when _wifiConnected=true", () => {
 		const el = createView();
-		el.localize = (k: string, params?: Record<string, string | number>) => {
-			if (k === "flasher.connected_to" && params)
-				return `Connected to ${params.ssid}`;
-			if (k === "flasher.ip_address" && params) return `IP: ${params.ip}`;
-			return k;
-		};
+		el.localize = Object.assign(
+			((k: string, params?: Record<string, string | number>) => {
+				if (k === "flasher.connected_to" && params)
+					return `Connected to ${params.ssid}`;
+				if (k === "flasher.ip_address" && params) return `IP: ${params.ip}`;
+				return k;
+			}) as typeof el.localize,
+			{ formatNumber: (v: number, d = 1) => v.toFixed(d), lang: "en" },
+		);
 		(el as any)._showWifiProvisioning = true;
 		(el as any)._wifiConnected = true;
 		(el as any)._selectedSsid = "MyNetwork";
@@ -822,12 +828,15 @@ describe("USB flash view — state-driven", () => {
 	it("renders error state with retry button", () => {
 		const el = createView();
 		(el as any)._showUsbFlash = true;
-		(el as any).usbFlashState = { step: "error", error: "flash failed" };
+		(el as any).usbFlashState = {
+			step: "error",
+			errorKey: "usb.errors.flash_failed",
+		};
 		const tpl = (el as any).render();
 		const c = renderTo(tpl);
 
 		expect(c.querySelector(".usb-error")).not.toBeNull();
-		expect(c.textContent).toContain("flash failed");
+		expect(c.textContent).toContain("usb.errors.flash_failed");
 		expect(
 			c.querySelector(".confirm-actions ha-button[raised]"),
 		).not.toBeNull();
@@ -838,7 +847,7 @@ describe("USB flash view — state-driven", () => {
 		(el as any)._showUsbFlash = true;
 		(el as any).usbFlashState = {
 			step: "error",
-			error: "Port busy",
+			errorKey: "usb.errors.serial_port_busy",
 			fatal: true,
 		};
 		const tpl = (el as any).render();
@@ -851,7 +860,10 @@ describe("USB flash view — state-driven", () => {
 	it("shows Retry button when error is not fatal", () => {
 		const el = createView();
 		(el as any)._showUsbFlash = true;
-		(el as any).usbFlashState = { step: "error", error: "oops" };
+		(el as any).usbFlashState = {
+			step: "error",
+			errorKey: "usb.errors.flash_failed",
+		};
 		const tpl = (el as any).render();
 		const c = renderTo(tpl);
 		const btns = c.querySelectorAll(".confirm-actions ha-button");
@@ -903,7 +915,10 @@ describe("USB flash view — state-driven", () => {
 	it("dispatches usb-retry event when Retry clicked", async () => {
 		const el = createView();
 		(el as any)._showUsbFlash = true;
-		(el as any).usbFlashState = { step: "error", error: "oops" };
+		(el as any).usbFlashState = {
+			step: "error",
+			errorKey: "usb.errors.flash_failed",
+		};
 		document.body.appendChild(el);
 		await el.updateComplete;
 
@@ -1134,7 +1149,11 @@ describe("OTA inline rendering", () => {
 
 	it("renders ota-progress when updating with numeric progress", () => {
 		const otaStates: Record<string, OtaDeviceState> = {
-			[updatableDevice.mac]: { state: "updating", progress: 45, error: null },
+			[updatableDevice.mac]: {
+				state: "updating",
+				progress: 45,
+				errorKey: null,
+			},
 		};
 		const el = createView({
 			flashableDevices: [updatableDevice],
@@ -1160,7 +1179,11 @@ describe("OTA inline rendering", () => {
 
 	it("renders ota-success when success", () => {
 		const otaStates: Record<string, OtaDeviceState> = {
-			[updatableDevice.mac]: { state: "success", progress: null, error: null },
+			[updatableDevice.mac]: {
+				state: "success",
+				progress: null,
+				errorKey: null,
+			},
 		};
 		const el = createView({
 			flashableDevices: [updatableDevice],
@@ -1177,7 +1200,7 @@ describe("OTA inline rendering", () => {
 			[updatableDevice.mac]: {
 				state: "error",
 				progress: null,
-				error: "Update failed",
+				errorKey: "flasher.errors.update_failed_generic",
 			},
 		};
 		const el = createView({
@@ -1195,7 +1218,11 @@ describe("OTA inline rendering", () => {
 
 	it("renders ota-spinner when updating with null progress (indeterminate)", () => {
 		const otaStates: Record<string, OtaDeviceState> = {
-			[updatableDevice.mac]: { state: "updating", progress: null, error: null },
+			[updatableDevice.mac]: {
+				state: "updating",
+				progress: null,
+				errorKey: null,
+			},
 		};
 		const el = createView({
 			flashableDevices: [updatableDevice],
@@ -1214,7 +1241,7 @@ describe("OTA inline rendering", () => {
 				[updatableDevice.mac]: {
 					state: "error",
 					progress: null,
-					error: "Update failed",
+					errorKey: "flasher.errors.update_failed_generic",
 				},
 			},
 		});
@@ -1234,7 +1261,7 @@ describe("OTA inline rendering", () => {
 				[updatableDevice.mac]: {
 					state: "error",
 					progress: null,
-					error: "Update failed",
+					errorKey: "flasher.errors.update_failed_generic",
 				},
 			},
 		});
@@ -1255,7 +1282,7 @@ describe("OTA inline rendering", () => {
 				[updatableDevice.mac]: {
 					state: "error",
 					progress: null,
-					error: "Connection lost",
+					errorKey: "flasher.errors.connection_lost",
 				},
 			},
 		});
@@ -1265,7 +1292,7 @@ describe("OTA inline rendering", () => {
 
 		const popover = c.querySelector(".ota-error-popover");
 		expect(popover).not.toBeNull();
-		expect(popover!.textContent).toContain("Connection lost");
+		expect(popover!.textContent).toContain("flasher.errors.connection_lost");
 	});
 
 	it("does not render error popover when _errorPopoverMac does not match", () => {
@@ -1275,7 +1302,7 @@ describe("OTA inline rendering", () => {
 				[updatableDevice.mac]: {
 					state: "error",
 					progress: null,
-					error: "Connection lost",
+					errorKey: "flasher.errors.connection_lost",
 				},
 			},
 		});
@@ -1293,7 +1320,7 @@ describe("OTA inline rendering", () => {
 				[updatableDevice.mac]: {
 					state: "error",
 					progress: null,
-					error: "Update failed",
+					errorKey: "flasher.errors.update_failed_generic",
 				},
 			},
 		});
@@ -1324,7 +1351,7 @@ describe("OTA inline rendering", () => {
 			[offlineEppDevice.mac]: {
 				state: "error",
 				progress: null,
-				error: "Device went offline",
+				errorKey: "flasher.errors.device_offline",
 			},
 		};
 		const el = createView({

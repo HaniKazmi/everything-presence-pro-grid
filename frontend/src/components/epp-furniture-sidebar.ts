@@ -7,16 +7,14 @@ import {
 	type FurnitureSticker,
 	filterAndSortStickers,
 } from "../lib/furniture.js";
+import { defaultLocalize, type LocalizeFn } from "../localize.js";
 import { buttonStyles, dialogStyles } from "../styles.js";
 
 export class EppFurnitureSidebar extends LitElement {
 	@property({ attribute: false }) furniture: FurnitureItem[] = [];
 	@property({ attribute: false }) selectedFurnitureId: string | null = null;
 	@property({ attribute: false }) hass: any = undefined;
-	@property({ attribute: false }) localize: (
-		key: string,
-		params?: Record<string, string | number>,
-	) => string = (k) => k;
+	@property({ attribute: false }) localize: LocalizeFn = defaultLocalize;
 	@property({ attribute: false }) showCustomIconPicker = false;
 	@property({ attribute: false }) customIconValue = "";
 	@state() private _searchQuery = "";
