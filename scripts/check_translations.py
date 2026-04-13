@@ -23,7 +23,10 @@ import re
 import sys
 from pathlib import Path
 
-LOCALIZE_CALL = re.compile(r'localize\(\s*["\']([^"\']+)["\']')
+LOCALIZE_CALL = re.compile(r'localize\(\s*["\'`]([^"\'`]+)["\'`]')
+# `errorKey: "x.y"` (TS) and `"error_key": "x.y"` / `error_key="x.y"` (Python)
+# both reference frontend translation keys that must exist in en.json.
+ERROR_KEY_REFERENCE = re.compile(r'(?:errorKey\s*:|["\']?error_key["\']?\s*[:=])\s*["\']([^"\']+)["\']')
 # Match template-literal prefixes like `settings.log_level.${level}` or
 # `flasher.errors.${code}`. Captures the constant prefix before "${".
 TEMPLATE_LITERAL_PREFIX = re.compile(r"`([a-z][a-zA-Z0-9_.]*)\.\$\{")
@@ -122,10 +125,11 @@ def extract_referenced_keys(
     template_prefixes = set(TEMPLATE_LITERAL_PREFIX.findall(blob))
 
     referenced = set(direct)
+    referenced |= set(ERROR_KEY_REFERENCE.findall(blob))
     for k in candidate_keys:
         if k in referenced:
             continue
-        if f'"{k}"' in blob or f"'{k}'" in blob:
+        if f'"{k}"' in blob or f"'{k}'" in blob or f"`{k}`" in blob:
             referenced.add(k)
             continue
         if any(k == prefix or k.startswith(f"{prefix}.") for prefix in template_prefixes):
@@ -133,9 +137,15 @@ def extract_referenced_keys(
     return referenced
 
 
-def _extract_localize_calls(src_dir: Path) -> set[str]:
-    blob = "\n".join(p.read_text() for p in _iter_source_files(src_dir))
-    return set(LOCALIZE_CALL.findall(blob))
+def _extract_direct_key_references(src_dirs: list[Path]) -> set[str]:
+    """Extract static keys referenced via known patterns.
+
+    Filters out dynamic template-literal captures (containing ${...}); those
+    are handled by TEMPLATE_LITERAL_PREFIX in the orphan-side check instead.
+    """
+    blob = _read_source_blob(src_dirs)
+    refs = set(LOCALIZE_CALL.findall(blob)) | set(ERROR_KEY_REFERENCE.findall(blob))
+    return {k for k in refs if "${" not in k}
 
 
 def check_typescript_translations(
@@ -152,8 +162,8 @@ def check_typescript_translations(
     en = _load_json(en_path)
     en_keys = flatten_keys(en)
 
-    direct_calls = _extract_localize_calls(src_dir)
-    for k in sorted(k for k in direct_calls if k not in en_keys):
+    direct_refs = _extract_direct_key_references([src_dir, *(extra_source_dirs or [])])
+    for k in sorted(k for k in direct_refs if k not in en_keys):
         errors.append(f"missing key in translations/en.json: {k}")
 
     referenced = extract_referenced_keys(src_dir, en_keys, extra_source_dirs)

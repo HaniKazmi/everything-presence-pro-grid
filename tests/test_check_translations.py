@@ -152,6 +152,59 @@ def test_check_typescript_fails_on_missing_localize_key(tmp_path: Path) -> None:
     assert any("does.not.exist" in e and "missing" in e.lower() for e in errors)
 
 
+def test_check_typescript_ignores_dynamic_template_literals(tmp_path: Path) -> None:
+    """`localize(`prefix.${var}`)` is dynamic — only the prefix matters (handled
+    elsewhere). The captured raw string must NOT show up as a missing key."""
+    src = tmp_path / "src"
+    write_json(src / "translations" / "en.json", {"settings": {"log_level": {"debug": "D"}}})
+    (src / "settings.ts").write_text("localize(`settings.log_level.${level}`);\n")
+
+    errors, _ = ct.check_typescript_translations(src)
+
+    assert not any("${" in e for e in errors)
+
+
+def test_check_typescript_fails_on_missing_backtick_localize_key(tmp_path: Path) -> None:
+    """`localize(`x.y`)` (backtick literal) should be checked just like quoted forms."""
+    src = tmp_path / "src"
+    write_json(src / "translations" / "en.json", {"common": {"save": "Save"}})
+    (src / "app.ts").write_text("localize(`does.not.exist`);\n")
+
+    errors, _ = ct.check_typescript_translations(src)
+
+    assert any("does.not.exist" in e and "missing" in e.lower() for e in errors)
+
+
+def test_check_typescript_fails_on_missing_errorkey_reference(tmp_path: Path) -> None:
+    """`errorKey: "x"` references must resolve to a key in en.json."""
+    src = tmp_path / "src"
+    write_json(src / "translations" / "en.json", {"flasher": {"errors": {"known": "X"}}})
+    (src / "thing.ts").write_text(
+        '({ errorKey: "flasher.errors.unknown" });\n({ errorKey: "flasher.errors.known" });\n'
+    )
+
+    errors, _ = ct.check_typescript_translations(src)
+
+    assert any("flasher.errors.unknown" in e and "missing" in e.lower() for e in errors)
+    assert not any("flasher.errors.known" in e and "missing" in e.lower() for e in errors)
+
+
+def test_check_typescript_fails_on_missing_python_error_key_reference(tmp_path: Path) -> None:
+    """`"error_key": "x"` (or error_key="x") in Python must resolve to a frontend en.json key."""
+    src = tmp_path / "src"
+    write_json(src / "translations" / "en.json", {"flasher": {"errors": {"known": "X"}}})
+    py = tmp_path / "custom_components" / "eppgrid"
+    py.mkdir(parents=True)
+    (py / "websocket_api.py").write_text(
+        '_send({"error_key": "flasher.errors.unknown"})\n_send({"error_key": "flasher.errors.known"})\n'
+    )
+
+    errors, _ = ct.check_typescript_translations(src, extra_source_dirs=[py])
+
+    assert any("flasher.errors.unknown" in e and "missing" in e.lower() for e in errors)
+    assert not any("flasher.errors.known" in e and "missing" in e.lower() for e in errors)
+
+
 def test_check_typescript_fails_on_orphan_en_key(tmp_path: Path) -> None:
     """Orphan keys are hard errors that block the push."""
     src = tmp_path / "src"

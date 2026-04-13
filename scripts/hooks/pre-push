@@ -83,7 +83,7 @@ fi
 
 step "Translations check"
 if python3 "$ROOT/scripts/check_translations.py" 2>&1; then
-    pass "Translations in sync"
+    pass "Translations validated"
 else
     fail "Translations — see errors above"
 fi
