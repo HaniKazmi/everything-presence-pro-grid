@@ -147,17 +147,22 @@ export function clampFurnitureMove(
  * Compute resized dimensions for a furniture item.
  *
  * Supports locked-aspect (uniform) and free-form resize, with per-handle
- * direction control.
+ * direction control. The pointer delta is in screen-space pixels; this
+ * function inverse-rotates it into the item's local frame so that handles
+ * remain intuitive after rotation, and computes (x, y) so the visual
+ * opposite edge/corner stays anchored on screen (since CSS rotation pivots
+ * about the item's center).
  *
  * @param handle Resize handle id (e.g. "ne", "sw", "e", "n")
- * @param dxPx Drag delta X in pixels
- * @param dyPx Drag delta Y in pixels
+ * @param dxPx Drag delta X in screen pixels
+ * @param dyPx Drag delta Y in screen pixels
  * @param cellPx Current cell pixel size
- * @param origX Original X position (mm)
- * @param origY Original Y position (mm)
+ * @param origX Original X position (mm, top-left of unrotated bounding box)
+ * @param origY Original Y position (mm, top-left of unrotated bounding box)
  * @param origW Original width (mm)
  * @param origH Original height (mm)
  * @param lockAspect Whether to lock the aspect ratio
+ * @param rotationDeg Item rotation in degrees (CW, matches CSS transform)
  * @returns Updated { x, y, width, height }
  */
 export function computeFurnitureResize(
@@ -170,36 +175,55 @@ export function computeFurnitureResize(
 	origW: number,
 	origH: number,
 	lockAspect: boolean,
+	rotationDeg: number,
 ): { x: number; y: number; width: number; height: number } {
-	const dxMm = pxToMm(dxPx, cellPx);
-	const dyMm = pxToMm(dyPx, cellPx);
-	let x = origX;
-	let y = origY;
+	// Inverse-rotate the screen-space pointer delta into the item's local
+	// (unrotated) frame, so handle directions stay intuitive after rotation.
+	const rad = (rotationDeg * Math.PI) / 180;
+	const cos = Math.cos(rad);
+	const sin = Math.sin(rad);
+	const localDxPx = dxPx * cos + dyPx * sin;
+	const localDyPx = -dxPx * sin + dyPx * cos;
+
+	const dxMm = pxToMm(localDxPx, cellPx);
+	const dyMm = pxToMm(localDyPx, cellPx);
+
+	// Edge sign: +1 = east/south, -1 = west/north, 0 = centered (no axis).
+	const sx = handle.includes("e") ? 1 : handle.includes("w") ? -1 : 0;
+	const sy = handle.includes("s") ? 1 : handle.includes("n") ? -1 : 0;
+
 	let w = origW;
 	let h = origH;
 
 	if (lockAspect) {
-		// Uniform scale from the dominant axis
+		// Uniform scale from the dominant axis (in local frame).
 		const delta = Math.abs(dxMm) > Math.abs(dyMm) ? dxMm : dyMm;
 		const aspect = origW / origH;
-		const sign = handle.includes("w") || handle.includes("n") ? -1 : 1;
+		const sign = sx < 0 || sy < 0 ? -1 : 1;
 		w = Math.max(100, origW + sign * delta);
 		h = Math.max(100, w / aspect);
 		w = h * aspect;
-		if (handle.includes("w")) x = origX + (origW - w);
-		if (handle.includes("n")) y = origY + (origH - h);
 	} else {
-		if (handle.includes("e")) w = Math.max(100, w + dxMm);
-		if (handle.includes("w")) {
-			w = Math.max(100, w - dxMm);
-			x = x + dxMm;
-		}
-		if (handle.includes("s")) h = Math.max(100, h + dyMm);
-		if (handle.includes("n")) {
-			h = Math.max(100, h - dyMm);
-			y = y + dyMm;
-		}
+		if (sx !== 0) w = Math.max(100, origW + sx * dxMm);
+		if (sy !== 0) h = Math.max(100, origH + sy * dyMm);
 	}
+
+	const dw = w - origW;
+	const dh = h - origH;
+
+	// Compute (x, y) so the visual opposite edge/corner stays anchored on
+	// screen. The opposite edge offset from the center in the local frame is
+	// (-sx·w/2, -sy·h/2); requiring that point's screen position to be
+	// invariant under the resize gives:
+	//   x' = origX - dw/2 + R(θ)·(sx·dw/2, sy·dh/2).x
+	//   y' = origY - dh/2 + R(θ)·(sx·dw/2, sy·dh/2).y
+	const rdx = (sx * dw) / 2;
+	const rdy = (sy * dh) / 2;
+	const rotatedDx = rdx * cos - rdy * sin;
+	const rotatedDy = rdx * sin + rdy * cos;
+
+	const x = origX - dw / 2 + rotatedDx;
+	const y = origY - dh / 2 + rotatedDy;
 
 	return { x, y, width: w, height: h };
 }
@@ -223,6 +247,74 @@ export function isFurnitureOutsideGrid(
 		item.y + item.height <= minY ||
 		item.y >= maxY
 	);
+}
+
+/**
+ * Filter a furniture sticker catalog by a free-text query and return it
+ * sorted alphabetically by translated label.
+ *
+ * Both the filter and the sort operate on the *translated* label so the
+ * user sees results in their own language order.
+ *
+ * @param stickers Source catalog (not mutated)
+ * @param query User search input (case-insensitive substring match; trimmed)
+ * @param localize Function that translates a label key to a display string
+ */
+export function filterAndSortStickers(
+	stickers: FurnitureSticker[],
+	query: string,
+	localize: (key: string) => string,
+): FurnitureSticker[] {
+	const trimmed = query.trim().toLowerCase();
+	// Translate once per sticker — `localize` may do expensive i18n lookups
+	// and the sort comparator would otherwise call it O(n log n) times.
+	const localized = stickers.map((sticker) => {
+		const localizedLabel = localize(sticker.label);
+		return {
+			sticker,
+			localizedLabel,
+			normalizedLabel: localizedLabel.toLowerCase(),
+		};
+	});
+	const filtered = trimmed
+		? localized.filter((s) => s.normalizedLabel.includes(trimmed))
+		: localized;
+	return filtered
+		.slice()
+		.sort((a, b) => a.localizedLabel.localeCompare(b.localizedLabel))
+		.map((s) => s.sticker);
+}
+
+/**
+ * Pick the appropriate CSS resize cursor for a handle on a rotated item.
+ *
+ * Browser resize cursors are bidirectional (n-resize and s-resize render
+ * identically), so we only need 4 buckets and snap the visual handle angle
+ * to the nearest 45° within [0°, 180°).
+ *
+ * @param handle Resize handle id (e.g. "n", "ne", "se")
+ * @param rotationDeg Item rotation in degrees (CW, matches CSS transform)
+ * @returns CSS cursor name: "ns-resize" | "ew-resize" | "nesw-resize" | "nwse-resize"
+ */
+export function getResizeCursor(handle: string, rotationDeg: number): string {
+	const sx = handle.includes("e") ? 1 : handle.includes("w") ? -1 : 0;
+	const sy = handle.includes("s") ? 1 : handle.includes("n") ? -1 : 0;
+	// Base angle CW from north for each handle (n=0°, ne=45°, e=90°, ...)
+	const baseAngle = (Math.atan2(sx, -sy) * 180) / Math.PI;
+	const wrapped = (((baseAngle + rotationDeg) % 180) + 180) % 180;
+	const snapped = (Math.round(wrapped / 45) * 45) % 180;
+	switch (snapped) {
+		case 0:
+			return "ns-resize";
+		case 45:
+			return "nesw-resize";
+		case 90:
+			return "ew-resize";
+		case 135:
+			return "nwse-resize";
+		default:
+			return "default";
+	}
 }
 
 /**

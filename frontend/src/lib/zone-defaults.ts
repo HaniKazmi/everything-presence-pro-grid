@@ -17,15 +17,18 @@ export const ZONE_TYPE_DEFAULTS: Record<
 	rest: { trigger: 7, renew: 1, timeout: 30, handoff_timeout: 10 },
 };
 
-// Color-blind-friendly palette (distinguishable across protanopia, deuteranopia, tritanopia)
+// Color-blind-friendly pale palette (Paul Tol's "light qualitative scheme",
+// further softened ~30% toward white for a uniformly pale look while
+// preserving distinguishability across protanopia, deuteranopia, and
+// tritanopia).
 export const ZONE_COLORS = [
-	"#E69F00", // orange
-	"#56B4E9", // sky blue
-	"#009E73", // bluish green
-	"#F0E442", // yellow
-	"#0072B2", // blue
-	"#D55E00", // vermillion
-	"#CC79A7", // reddish purple
+	"#B8E7FF", // pale cyan
+	"#CFDB70", // pale pear
+	"#FFC4CF", // pale pink
+	"#F3E7AC", // pale yellow
+	"#7CCFB8", // pale mint
+	"#A0C4E7", // pale blue
+	"#F3AC94", // pale orange
 ];
 
 export interface ZoneThresholds {

@@ -34,7 +34,7 @@ export class EppGrid extends LitElement {
 	@property({ attribute: false }) furniture: FurnitureItem[] = [];
 	@property({ attribute: false }) selectedFurnitureId: string | null = null;
 	@property({ attribute: false }) sidebarTab: string = "zones";
-	@property({ type: Boolean }) editable = false;
+	@property({ type: Boolean, reflect: true }) editable = false;
 	@property({ attribute: false }) activeZone: number | null = null;
 	@property({ type: Boolean }) showHitCounts = false;
 	@property({ attribute: false }) occupancy: Record<number, boolean> = {};

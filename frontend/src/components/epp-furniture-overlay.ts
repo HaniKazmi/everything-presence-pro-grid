@@ -3,7 +3,7 @@ import { property } from "lit/decorators.js";
 import { unsafeSVG } from "lit/directives/unsafe-svg.js";
 import { FLOOR_PLAN_SVGS } from "../constants.js";
 import type { FurnitureItem } from "../lib/furniture.js";
-import { mmToPx } from "../lib/furniture.js";
+import { getResizeCursor, mmToPx } from "../lib/furniture.js";
 import { GRID_CELL_MM, GRID_COLS } from "../lib/grid.js";
 
 export class EppFurnitureOverlay extends LitElement {
@@ -92,14 +92,14 @@ export class EppFurnitureOverlay extends LitElement {
 			z-index: 2;
 		}
 
-		.furn-handle-n { top: -4px; left: 50%; transform: translateX(-50%); cursor: n-resize; }
-		.furn-handle-s { bottom: -4px; left: 50%; transform: translateX(-50%); cursor: s-resize; }
-		.furn-handle-e { right: -4px; top: 50%; transform: translateY(-50%); cursor: e-resize; }
-		.furn-handle-w { left: -4px; top: 50%; transform: translateY(-50%); cursor: w-resize; }
-		.furn-handle-ne { top: -4px; right: -4px; cursor: ne-resize; }
-		.furn-handle-nw { top: -4px; left: -4px; cursor: nw-resize; }
-		.furn-handle-se { bottom: -4px; right: -4px; cursor: se-resize; }
-		.furn-handle-sw { bottom: -4px; left: -4px; cursor: sw-resize; }
+		.furn-handle-n { top: -4px; left: 50%; transform: translateX(-50%); }
+		.furn-handle-s { bottom: -4px; left: 50%; transform: translateX(-50%); }
+		.furn-handle-e { right: -4px; top: 50%; transform: translateY(-50%); }
+		.furn-handle-w { left: -4px; top: 50%; transform: translateY(-50%); }
+		.furn-handle-ne { top: -4px; right: -4px; }
+		.furn-handle-nw { top: -4px; left: -4px; }
+		.furn-handle-se { bottom: -4px; right: -4px; }
+		.furn-handle-sw { bottom: -4px; left: -4px; }
 
 		.furn-rotate-stem {
 			position: absolute;
@@ -223,15 +223,18 @@ export class EppFurnitureOverlay extends LitElement {
 							${
 								selected
 									? html`
-										<!-- Resize handles -->
-										<div class="furn-handle furn-handle-n" @pointerdown=${(e: PointerEvent) => this._onResizePointerDown(e, item.id, "n")}></div>
-										<div class="furn-handle furn-handle-s" @pointerdown=${(e: PointerEvent) => this._onResizePointerDown(e, item.id, "s")}></div>
-										<div class="furn-handle furn-handle-e" @pointerdown=${(e: PointerEvent) => this._onResizePointerDown(e, item.id, "e")}></div>
-										<div class="furn-handle furn-handle-w" @pointerdown=${(e: PointerEvent) => this._onResizePointerDown(e, item.id, "w")}></div>
-										<div class="furn-handle furn-handle-ne" @pointerdown=${(e: PointerEvent) => this._onResizePointerDown(e, item.id, "ne")}></div>
-										<div class="furn-handle furn-handle-nw" @pointerdown=${(e: PointerEvent) => this._onResizePointerDown(e, item.id, "nw")}></div>
-										<div class="furn-handle furn-handle-se" @pointerdown=${(e: PointerEvent) => this._onResizePointerDown(e, item.id, "se")}></div>
-										<div class="furn-handle furn-handle-sw" @pointerdown=${(e: PointerEvent) => this._onResizePointerDown(e, item.id, "sw")}></div>
+										<!-- Resize handles (cursor follows visual rotation) -->
+										${(
+											["n", "s", "e", "w", "ne", "nw", "se", "sw"] as const
+										).map(
+											(h) => html`
+												<div
+													class="furn-handle furn-handle-${h}"
+													style="cursor: ${getResizeCursor(h, item.rotation)};"
+													@pointerdown=${(e: PointerEvent) => this._onResizePointerDown(e, item.id, h)}
+												></div>
+											`,
+										)}
 										<!-- Rotate handle with stem -->
 										<div class="furn-rotate-stem"></div>
 										<div class="furn-rotate-handle" @pointerdown=${(e: PointerEvent) => this._onRotatePointerDown(e, item.id)}>
