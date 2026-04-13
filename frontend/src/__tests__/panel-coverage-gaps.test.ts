@@ -1229,4 +1229,35 @@ describe("_renderHeader ha-select handlers", () => {
 		// No device change should have occurred
 		expect(a._selectedMac).toBe("AA:BB:CC:DD:EE:01");
 	});
+
+	it("renders option labels with area suffix when area is set", () => {
+		const a = createPanel() as any;
+		a._devices = [
+			{
+				mac: "AA:BB:CC:DD:EE:01",
+				name: "Sensor",
+				host: null,
+				available: true,
+				configured: true,
+				area: "Living Room",
+			},
+			{
+				mac: "AA:BB:CC:DD:EE:02",
+				name: "Other",
+				host: null,
+				available: true,
+				configured: true,
+				area: null,
+			},
+		];
+		const tpl = a._renderHeader();
+		const c = document.createElement("div");
+		render(tpl, c);
+
+		const select = c.querySelector("ha-select") as any;
+		expect(select.options).toEqual([
+			{ value: "AA:BB:CC:DD:EE:01", label: "Sensor (Living Room)" },
+			{ value: "AA:BB:CC:DD:EE:02", label: "Other" },
+		]);
+	});
 });

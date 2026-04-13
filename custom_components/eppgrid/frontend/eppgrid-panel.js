@@ -3719,7 +3719,7 @@ const dt={attribute:!0,type:String,converter:E,reflect:!1,hasChanged:m},At=(t=dt
       <div class="panel-header">
         <ha-select
           .value=${this._selectedMac}
-          .options=${this._devices.map(t=>({value:t.mac,label:t.name}))}
+          .options=${this._devices.map(t=>({value:t.mac,label:t.area?`${t.name} (${t.area})`:t.name}))}
           @selected=${t=>{const e=t.detail.value;e&&e!==this._selectedMac&&this._guardNavigation(async()=>{this._closeDeviceSession(),this._selectedMac=e,localStorage.setItem("epp_selected_mac",e),await this._loadDeviceConfig(e)})}}
           @closed=${t=>t.stopPropagation()}
         ></ha-select>

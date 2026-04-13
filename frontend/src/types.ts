@@ -19,6 +19,7 @@ export interface DeviceInfo {
 	host: string | null;
 	available: boolean;
 	configured: boolean;
+	area: string | null;
 	firmware_status:
 		| "compatible"
 		| "firmware_behind"

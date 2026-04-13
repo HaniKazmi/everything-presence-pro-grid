@@ -69,6 +69,7 @@ describe("DeviceController", () => {
 					configured: true,
 					firmware_status: "compatible",
 					current_connection_count: null,
+					area: null,
 				},
 				{
 					mac: "aa",
@@ -78,6 +79,7 @@ describe("DeviceController", () => {
 					configured: true,
 					firmware_status: "compatible",
 					current_connection_count: null,
+					area: null,
 				},
 			];
 			ctrl.hass = mockHass(devices);
@@ -98,6 +100,7 @@ describe("DeviceController", () => {
 					configured: true,
 					firmware_status: "compatible",
 					current_connection_count: null,
+					area: null,
 				},
 				{
 					mac: "aa",
@@ -107,6 +110,7 @@ describe("DeviceController", () => {
 					configured: true,
 					firmware_status: "compatible",
 					current_connection_count: null,
+					area: null,
 				},
 			];
 			ctrl.hass = mockHass(devices);
@@ -127,6 +131,7 @@ describe("DeviceController", () => {
 					configured: true,
 					firmware_status: "compatible",
 					current_connection_count: null,
+					area: null,
 				},
 				{
 					mac: "aa",
@@ -136,6 +141,7 @@ describe("DeviceController", () => {
 					configured: true,
 					firmware_status: "compatible",
 					current_connection_count: null,
+					area: null,
 				},
 			];
 			ctrl.hass = mockHass(devices);
@@ -155,6 +161,7 @@ describe("DeviceController", () => {
 					configured: true,
 					firmware_status: "compatible",
 					current_connection_count: null,
+					area: null,
 				},
 			];
 			ctrl.hass = mockHass(devices);
@@ -188,6 +195,7 @@ describe("DeviceController", () => {
 					configured: true,
 					firmware_status: "compatible",
 					current_connection_count: null,
+					area: null,
 				},
 			];
 			ctrl.hass = mockHass(devices);

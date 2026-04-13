@@ -165,6 +165,7 @@ Returns discovered EPP devices.
             "host": "192.168.1.50",
             "available": true,
             "configured": true,
+            "area": "Living Room",
             "firmware_status": "compatible",
             "current_connection_count": 1,
             "bluetooth_enabled": false,
@@ -178,6 +179,10 @@ Returns discovered EPP devices.
     ]
 }
 ```
+
+`name` is the live device-registry name (`name_by_user` if set, otherwise the ESPHome name) so renames in HA or ESPHome are reflected on the next call.
+
+`area` is the assigned HA area name, or `null` if the device is not in an area.
 
 `firmware_status` is `"compatible"`, `"firmware_behind"`, or `"firmware_ahead"` — comparing the device's `Firmware Version` text sensor to the integration's `FIRMWARE_VERSION` using semver.
 
