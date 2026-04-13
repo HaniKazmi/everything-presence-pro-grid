@@ -67,6 +67,7 @@ import {
 } from "./lib/zone-defaults.js";
 import type { ZoneEngineResult, ZoneEngineState } from "./lib/zone-engine.js";
 import { setupLocalize } from "./localize.js";
+import { installPanelMountGuard } from "./panel-mount-guard.js";
 import {
 	buttonStyles,
 	dialogStyles,
@@ -2768,6 +2769,8 @@ export class EPPGridPanel extends LitElement {
 if (!customElements.get("eppgrid-panel")) {
 	customElements.define("eppgrid-panel", EPPGridPanel);
 }
+
+installPanelMountGuard();
 
 declare global {
 	interface HTMLElementTagNameMap {
