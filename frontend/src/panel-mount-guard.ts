@@ -13,3 +13,13 @@ export function isEppPanelMissing(host: HTMLElement): boolean {
 	if (name !== "eppgrid-panel") return false;
 	return host.children.length === 0;
 }
+
+export function remountEppPanel(host: HTMLElement): void {
+	const haRoot = document.querySelector("home-assistant");
+	const hass = (haRoot as any)?.hass;
+	if (!hass) return;
+	const el = document.createElement("eppgrid-panel");
+	(el as any).hass = hass;
+	(el as any).panel = (host as any).panel;
+	host.appendChild(el);
+}
