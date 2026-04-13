@@ -390,6 +390,7 @@ export class GridStateController implements ReactiveController {
 				ds.origW,
 				ds.origH,
 				item?.lockAspect ?? false,
+				ds.origRot,
 			);
 			this.updateFurniture(ds.id, resized);
 		} else if (ds.type === "rotate") {

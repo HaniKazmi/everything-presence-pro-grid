@@ -6,6 +6,7 @@ import {
 	createFurnitureItem,
 	type FurnitureItem,
 	type FurnitureSticker,
+	getResizeCursor,
 	mmToPx,
 	pxToMm,
 	removeFurnitureItem,
@@ -281,6 +282,7 @@ describe("computeFurnitureResize", () => {
 				600,
 				400,
 				false,
+				0,
 			);
 			expect(result.width).toBeCloseTo(900); // 600 + 300
 			expect(result.height).toBe(400); // unchanged
@@ -298,6 +300,7 @@ describe("computeFurnitureResize", () => {
 				600,
 				400,
 				false,
+				0,
 			);
 			// w handle: width = max(100, 600 - 300) = 300, x = 500 + 300 = 800
 			expect(result.width).toBeCloseTo(300);
@@ -315,6 +318,7 @@ describe("computeFurnitureResize", () => {
 				600,
 				400,
 				false,
+				0,
 			);
 			expect(result.height).toBeCloseTo(700); // 400 + 300
 			expect(result.width).toBe(600); // unchanged
@@ -331,6 +335,7 @@ describe("computeFurnitureResize", () => {
 				600,
 				400,
 				false,
+				0,
 			);
 			// n handle: height = max(100, 400 - 300) = 100, y = 500 + 300 = 800
 			expect(result.height).toBeCloseTo(100);
@@ -348,6 +353,7 @@ describe("computeFurnitureResize", () => {
 				600,
 				400,
 				false,
+				0,
 			);
 			expect(result.width).toBeCloseTo(900); // 600 + 300
 			expect(result.height).toBeCloseTo(700); // 400 + 300
@@ -364,6 +370,7 @@ describe("computeFurnitureResize", () => {
 				600,
 				400,
 				false,
+				0,
 			);
 			expect(result.width).toBe(100);
 		});
@@ -381,6 +388,7 @@ describe("computeFurnitureResize", () => {
 				600,
 				400,
 				true,
+				0,
 			);
 			const aspect = result.width / result.height;
 			expect(aspect).toBeCloseTo(600 / 400, 4);
@@ -397,12 +405,14 @@ describe("computeFurnitureResize", () => {
 				600,
 				400,
 				true,
+				0,
 			);
 			// sign=-1, delta=~300mm, w = max(100, 600 + (-1)*300) = 300
 			// aspect = 600/400 = 1.5, h = max(100, 300/1.5) = 200, w = 200*1.5 = 300
 			expect(result.width).toBeCloseTo(300, 0);
 			expect(result.height).toBeCloseTo(200, 0);
-			// x moves: origX + (origW - w) = 500 + (600 - 300) = 800
+			// East edge midpoint stays fixed in screen space (anchor for w handle):
+			// new x = 500 + (600 - 300)/2 + (-1)·(-300)/2 = 500 + 150 + 150 = 800
 			expect(result.x).toBeCloseTo(800, 0);
 		});
 
@@ -417,6 +427,7 @@ describe("computeFurnitureResize", () => {
 				600,
 				400,
 				true,
+				0,
 			);
 			// y moves when n handle
 			expect(result.y).not.toBe(500);
@@ -433,9 +444,252 @@ describe("computeFurnitureResize", () => {
 				600,
 				400,
 				true,
+				0,
 			);
 			expect(result.width).toBeGreaterThanOrEqual(100);
 			expect(result.height).toBeGreaterThanOrEqual(100);
+		});
+	});
+
+	describe("rotation-aware drag", () => {
+		// After CSS `transform: rotate(θ)`, the resize handles are visually
+		// rotated. The user expects dragging a handle to grow the item in the
+		// direction the pointer moves on screen, regardless of rotation. The
+		// math must inverse-rotate the screen-space pointer delta into the
+		// item's local frame, and compute (x, y) such that the opposite
+		// edge/corner stays anchored in screen space (since CSS rotation
+		// pivots about the item's center).
+
+		it("at rotation=90°, dragging east handle southward grows width", () => {
+			// 90° CW rotation puts the local east edge at screen south.
+			// User drags screen-south (dy = +29px ≈ +300mm) — width should grow.
+			const result = computeFurnitureResize(
+				"e",
+				0,
+				29,
+				28,
+				0,
+				0,
+				600,
+				400,
+				false,
+				90,
+			);
+			expect(result.width).toBeCloseTo(900);
+			expect(result.height).toBeCloseTo(400);
+		});
+
+		it("at rotation=90°, dragging east handle eastward (perpendicular) leaves width unchanged", () => {
+			// Screen-east is perpendicular to the east-handle's visual outward
+			// direction (which is south after 90° CW rotation). Width should
+			// not grow from a perpendicular drag.
+			const result = computeFurnitureResize(
+				"e",
+				29,
+				0,
+				28,
+				0,
+				0,
+				600,
+				400,
+				false,
+				90,
+			);
+			expect(result.width).toBeCloseTo(600);
+		});
+
+		it("at rotation=180°, dragging east handle westward grows width", () => {
+			// 180° rotation puts the local east edge at screen west.
+			// User drags screen-west (dx = -29) — width should grow.
+			const result = computeFurnitureResize(
+				"e",
+				-29,
+				0,
+				28,
+				0,
+				0,
+				600,
+				400,
+				false,
+				180,
+			);
+			expect(result.width).toBeCloseTo(900);
+		});
+
+		it("at rotation=90°, dragging north handle eastward grows height", () => {
+			// 90° CW rotation puts the local north edge at screen east.
+			// User drags screen-east (dx = +29) — height should grow.
+			const result = computeFurnitureResize(
+				"n",
+				29,
+				0,
+				28,
+				0,
+				500,
+				600,
+				400,
+				false,
+				90,
+			);
+			expect(result.height).toBeCloseTo(700);
+		});
+
+		it("preserves screen position of the opposite-edge anchor for w-handle drag at 45°", () => {
+			// CSS rotation pivots about the item's center, so we must compute
+			// (x, y) such that the visual opposite edge stays put on screen.
+			// For a w-handle drag, the east edge midpoint is the anchor.
+			const origX = 500;
+			const origY = 500;
+			const origW = 600;
+			const origH = 400;
+			const rot = 45;
+			const result = computeFurnitureResize(
+				"w",
+				20,
+				10,
+				28,
+				origX,
+				origY,
+				origW,
+				origH,
+				false,
+				rot,
+			);
+
+			const rad = (rot * Math.PI) / 180;
+			const cos = Math.cos(rad);
+			const sin = Math.sin(rad);
+			// East-edge midpoint screen position: center + R(θ)·(w/2, 0)
+			const oldCx = origX + origW / 2;
+			const oldCy = origY + origH / 2;
+			const oldAnchorX = oldCx + (origW / 2) * cos;
+			const oldAnchorY = oldCy + (origW / 2) * sin;
+
+			const newCx = result.x + result.width / 2;
+			const newCy = result.y + result.height / 2;
+			const newAnchorX = newCx + (result.width / 2) * cos;
+			const newAnchorY = newCy + (result.width / 2) * sin;
+
+			expect(newAnchorX).toBeCloseTo(oldAnchorX, 4);
+			expect(newAnchorY).toBeCloseTo(oldAnchorY, 4);
+		});
+
+		it("preserves screen position of opposite corner for nw-handle drag at 30°", () => {
+			// For a nw-handle drag, the SE corner is the anchor.
+			const origX = 800;
+			const origY = 600;
+			const origW = 500;
+			const origH = 300;
+			const rot = 30;
+			const result = computeFurnitureResize(
+				"nw",
+				15,
+				-10,
+				28,
+				origX,
+				origY,
+				origW,
+				origH,
+				false,
+				rot,
+			);
+
+			const rad = (rot * Math.PI) / 180;
+			const cos = Math.cos(rad);
+			const sin = Math.sin(rad);
+			// SE corner offset from center in local frame: (+w/2, +h/2)
+			const seScreen = (cx: number, cy: number, w: number, h: number) => ({
+				x: cx + (w / 2) * cos - (h / 2) * sin,
+				y: cy + (w / 2) * sin + (h / 2) * cos,
+			});
+			const oldSe = seScreen(
+				origX + origW / 2,
+				origY + origH / 2,
+				origW,
+				origH,
+			);
+			const newSe = seScreen(
+				result.x + result.width / 2,
+				result.y + result.height / 2,
+				result.width,
+				result.height,
+			);
+
+			expect(newSe.x).toBeCloseTo(oldSe.x, 4);
+			expect(newSe.y).toBeCloseTo(oldSe.y, 4);
+		});
+	});
+});
+
+describe("getResizeCursor", () => {
+	// Cursors are bidirectional (n-resize and s-resize render identically).
+	// We use the bidirectional names so the visual orientation is the only
+	// thing that matters: ns-resize, ew-resize, nesw-resize, nwse-resize.
+
+	describe("rotation=0 (axis-aligned)", () => {
+		it("n and s handles use ns-resize", () => {
+			expect(getResizeCursor("n", 0)).toBe("ns-resize");
+			expect(getResizeCursor("s", 0)).toBe("ns-resize");
+		});
+
+		it("e and w handles use ew-resize", () => {
+			expect(getResizeCursor("e", 0)).toBe("ew-resize");
+			expect(getResizeCursor("w", 0)).toBe("ew-resize");
+		});
+
+		it("ne and sw handles use nesw-resize", () => {
+			expect(getResizeCursor("ne", 0)).toBe("nesw-resize");
+			expect(getResizeCursor("sw", 0)).toBe("nesw-resize");
+		});
+
+		it("nw and se handles use nwse-resize", () => {
+			expect(getResizeCursor("nw", 0)).toBe("nwse-resize");
+			expect(getResizeCursor("se", 0)).toBe("nwse-resize");
+		});
+	});
+
+	describe("with rotation", () => {
+		it("at 90°, the n handle is visually horizontal", () => {
+			expect(getResizeCursor("n", 90)).toBe("ew-resize");
+		});
+
+		it("at 90°, the e handle is visually vertical", () => {
+			expect(getResizeCursor("e", 90)).toBe("ns-resize");
+		});
+
+		it("at 90°, the ne handle swaps diagonals", () => {
+			expect(getResizeCursor("ne", 90)).toBe("nwse-resize");
+		});
+
+		it("at 45°, axis handles become diagonals", () => {
+			expect(getResizeCursor("n", 45)).toBe("nesw-resize");
+			expect(getResizeCursor("e", 45)).toBe("nwse-resize");
+		});
+
+		it("at 45°, diagonal handles become axes", () => {
+			expect(getResizeCursor("ne", 45)).toBe("ew-resize");
+			expect(getResizeCursor("nw", 45)).toBe("ns-resize");
+		});
+
+		it("at 180°, cursors are unchanged from 0° (bidirectional)", () => {
+			expect(getResizeCursor("n", 180)).toBe("ns-resize");
+			expect(getResizeCursor("e", 180)).toBe("ew-resize");
+			expect(getResizeCursor("ne", 180)).toBe("nesw-resize");
+			expect(getResizeCursor("nw", 180)).toBe("nwse-resize");
+		});
+
+		it("snaps to nearest 45° bucket", () => {
+			// 22° from 0° is closer to 0° than 45° → vertical
+			expect(getResizeCursor("n", 22)).toBe("ns-resize");
+			// 23° is closer to 45° → diagonal
+			expect(getResizeCursor("n", 23)).toBe("nesw-resize");
+		});
+
+		it("handles negative and >360° rotations", () => {
+			// -90° same as 270°; n handle visual angle = -90° → ew-resize
+			expect(getResizeCursor("n", -90)).toBe("ew-resize");
+			// 450° same as 90°
+			expect(getResizeCursor("n", 450)).toBe("ew-resize");
 		});
 	});
 });

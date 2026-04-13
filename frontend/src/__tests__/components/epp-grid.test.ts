@@ -61,6 +61,25 @@ describe("epp-grid element", () => {
 		expect(el.editable).toBe(false);
 		expect(el.occupancy).toEqual({});
 	});
+
+	it("reflects editable property to the editable attribute", async () => {
+		// The CSS rules `:host(:not([editable]))` and `:host([editable])` rely
+		// on the attribute being present, so the property must reflect.
+		// Without reflection, the wrapper's overflow:hidden stays applied in
+		// editor mode and clips overflowing children (e.g. the furniture
+		// rotation handle that sits above its item).
+		const el = createGrid({ editable: true });
+		document.body.appendChild(el);
+		await el.updateComplete;
+
+		expect(el.hasAttribute("editable")).toBe(true);
+
+		el.editable = false;
+		await el.updateComplete;
+		expect(el.hasAttribute("editable")).toBe(false);
+
+		document.body.removeChild(el);
+	});
 });
 
 describe("epp-grid render", () => {
