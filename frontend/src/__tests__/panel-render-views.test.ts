@@ -166,7 +166,7 @@ function createGrid(overrides?: Partial<Record<string, unknown>>): EppGrid {
 	el.roomDepth = 4000;
 	el.perspective = [1, 0, 0, 0, 1, 0, 0, 0];
 	el.furniture = [];
-	el.localize = (k: string) => k;
+	el.localize = Object.assign(((k: string) => k) as typeof el.localize, { formatNumber: (v: number, d = 1) => v.toFixed(d), lang: "en" });
 	if (overrides) {
 		for (const [k, v] of Object.entries(overrides)) {
 			(el as any)[k] = v;

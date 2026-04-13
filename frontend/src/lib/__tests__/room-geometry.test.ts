@@ -359,8 +359,8 @@ describe("getGridRoomMetrics", () => {
 		const grid = initGridFromRoom(3000, 1500);
 		const result = getGridRoomMetrics(grid, 3000, null);
 		expect(result).not.toBeNull();
-		expect(result!.widthM).toBe("3.0");
-		expect(result!.depthM).toBe("1.5");
+		expect(result!.widthM).toBe(3);
+		expect(result!.depthM).toBe(1.5);
 	});
 
 	it("computes furthest distance without perspective", () => {
@@ -369,7 +369,7 @@ describe("getGridRoomMetrics", () => {
 		expect(result).not.toBeNull();
 		// Without perspective, sensor defaults to top-centre
 		// Furthest cell should be in a far corner
-		expect(parseFloat(result!.furthestM)).toBeGreaterThan(0);
+		expect(result!.furthestM).toBeGreaterThan(0);
 	});
 
 	it("computes furthest distance with perspective", () => {
@@ -377,16 +377,16 @@ describe("getGridRoomMetrics", () => {
 		const p = makeSimplePerspective();
 		const result = getGridRoomMetrics(grid, 3000, p);
 		expect(result).not.toBeNull();
-		expect(parseFloat(result!.furthestM)).toBeGreaterThan(0);
+		expect(result!.furthestM).toBeGreaterThan(0);
 	});
 
-	it("formats values with one decimal place", () => {
+	it("returns numeric metres values", () => {
 		const grid = initGridFromRoom(1800, 900);
 		const result = getGridRoomMetrics(grid, 1800, null);
 		expect(result).not.toBeNull();
 		// 1800mm = 6 cols = 1800mm, 900mm = 3 rows = 900mm
-		expect(result!.widthM).toBe("1.8");
-		expect(result!.depthM).toBe("0.9");
-		expect(result!.furthestM).toMatch(/^\d+\.\d$/);
+		expect(result!.widthM).toBe(1.8);
+		expect(result!.depthM).toBe(0.9);
+		expect(typeof result!.furthestM).toBe("number");
 	});
 });

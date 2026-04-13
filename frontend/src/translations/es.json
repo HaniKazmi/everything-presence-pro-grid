@@ -218,7 +218,11 @@
 		"delete_target": "Eliminar objetivo",
 		"mark_interference": "Marcar como fuente de interferencia",
 		"suppress_detection": "Suprimir detección",
-		"grid_dimensions": "{width}m × {depth}m · Punto más lejano: {furthest}m",
+		"grid_dimensions": "{width, number, ::.1}m × {depth, number, ::.1}m · Punto más lejano: {furthest, number, ::.1}m",
+		"illuminance_value": "{value, number, ::.1} lux",
+		"temperature_value": "{value, number, ::.1} °C",
+		"humidity_value": "{value, number, ::.1} %",
+		"co2_value": "{value, number} ppm",
 		"debug": {
 			"detection_events": "Eventos de detección",
 			"copy_all": "Copiar todo",

@@ -45,10 +45,10 @@ export class EppLiveSidebar extends LitElement {
 
 	@property({ attribute: false }) perspective: number[] | null = null;
 
-	@property({ attribute: false }) localize: (
-		key: string,
-		params?: Record<string, string | number>,
-	) => string = (k) => k;
+	@property({ attribute: false }) localize: import("../localize.js").LocalizeFn = Object.assign(
+		((k: string) => k) as import("../localize.js").LocalizeFn,
+		{ formatNumber: (v: number, d = 1) => v.toFixed(d), lang: "en" },
+	);
 
 	@state() private _expandedSensorInfo: string | null = null;
 
@@ -236,25 +236,25 @@ export class EppLiveSidebar extends LitElement {
 			envSensors.push({
 				id: "illuminance",
 				label: this.localize("entities.illuminance"),
-				value: `${ss.illuminance.toFixed(1)} lux`,
+				value: this.localize("live.illuminance_value", { value: ss.illuminance }),
 			});
 		if (ss.temperature !== null)
 			envSensors.push({
 				id: "temperature",
 				label: this.localize("entities.temperature"),
-				value: `${ss.temperature.toFixed(1)} °C`,
+				value: this.localize("live.temperature_value", { value: ss.temperature }),
 			});
 		if (ss.humidity !== null)
 			envSensors.push({
 				id: "humidity",
 				label: this.localize("entities.humidity"),
-				value: `${ss.humidity.toFixed(1)} %`,
+				value: this.localize("live.humidity_value", { value: ss.humidity }),
 			});
 		if (ss.co2 !== null)
 			envSensors.push({
 				id: "co2",
 				label: this.localize("entities.co2"),
-				value: `${Math.round(ss.co2)} ppm`,
+				value: this.localize("live.co2_value", { value: ss.co2 }),
 			});
 
 		return html`

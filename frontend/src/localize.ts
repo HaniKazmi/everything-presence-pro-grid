@@ -6,6 +6,12 @@ const LANGUAGES: Record<string, Record<string, unknown>> = { en, es };
 
 type Params = Record<string, string | number>;
 
+export interface LocalizeFn {
+	(key: string, params?: Params): string;
+	formatNumber: (value: number, decimals?: number) => string;
+	lang: string;
+}
+
 function resolve(
 	obj: Record<string, unknown>,
 	path: string,
@@ -22,7 +28,7 @@ function resolve(
 export function setupLocalize(hass?: {
 	locale?: { language?: string };
 	language?: string;
-}): (key: string, params?: Params) => string {
+}): LocalizeFn {
 	const requested = hass?.locale?.language ?? hass?.language ?? "en";
 	const base = requested.split("-")[0];
 	const lang = LANGUAGES[requested] ? requested : LANGUAGES[base] ? base : "en";
@@ -30,8 +36,9 @@ export function setupLocalize(hass?: {
 	const fallback = LANGUAGES.en;
 
 	const formatCache = new Map<string, IntlMessageFormat>();
+	const numberCache = new Map<number, Intl.NumberFormat>();
 
-	return (key: string, params?: Params): string => {
+	const localize = ((key: string, params?: Params): string => {
 		const raw =
 			resolve(strings as Record<string, unknown>, key) ??
 			resolve(fallback as Record<string, unknown>, key) ??
@@ -45,5 +52,21 @@ export function setupLocalize(hass?: {
 			formatCache.set(raw, fmt);
 		}
 		return fmt.format(params) as string;
+	}) as LocalizeFn;
+
+	localize.formatNumber = (value: number, decimals = 1): string => {
+		let fmt = numberCache.get(decimals);
+		if (!fmt) {
+			fmt = new Intl.NumberFormat(lang, {
+				minimumFractionDigits: decimals,
+				maximumFractionDigits: decimals,
+			});
+			numberCache.set(decimals, fmt);
+		}
+		return fmt.format(value);
 	};
+
+	localize.lang = lang;
+
+	return localize;
 }

@@ -32,10 +32,10 @@ export class EppWizard extends LitElement {
 		mac: string;
 		name: string;
 	}[] = [];
-	@property({ attribute: false }) localize: (
-		key: string,
-		params?: Record<string, string | number>,
-	) => string = (k) => k;
+	@property({ attribute: false }) localize: import("../localize.js").LocalizeFn = Object.assign(
+		((k: string) => k) as import("../localize.js").LocalizeFn,
+		{ formatNumber: (v: number, d = 1) => v.toFixed(d), lang: "en" },
+	);
 
 	// Initial room dimensions (for re-calibration)
 	@property({ type: Number }) initialRoomWidth = 0;

@@ -90,10 +90,10 @@ export class EPPGridPanel extends LitElement {
 	private _targetCtrl = new TargetController(this);
 	// Flasher controller — owns OTA flash state and flashable device list
 	private _flasherCtrl = new FlasherController(this);
-	private _localize: (
-		key: string,
-		params?: Record<string, string | number>,
-	) => string = (k) => k;
+	private _localize: import("./localize.js").LocalizeFn = Object.assign(
+		((k: string) => k) as import("./localize.js").LocalizeFn,
+		{ formatNumber: (v: number, d = 1) => v.toFixed(d), lang: "en" },
+	);
 	private _currentLang = "";
 
 	// Grid data: byte per cell using the encoding above
@@ -799,9 +799,9 @@ export class EPPGridPanel extends LitElement {
 
 	/** Compute room dimensions and furthest point from sensor based on grid */
 	private _getGridRoomMetrics(): {
-		widthM: string;
-		depthM: string;
-		furthestM: string;
+		widthM: number;
+		depthM: number;
+		furthestM: number;
 	} | null {
 		return getGridRoomMetrics(this._grid, this._roomWidth, this._perspective);
 	}
@@ -2104,7 +2104,7 @@ export class EPPGridPanel extends LitElement {
                       </div>
                       <div class="template-card-info">
                         <div class="template-card-name">${t.name}</div>
-                        <div class="template-card-size">${(t.roomWidth / 1000).toFixed(1)}m × ${(t.roomDepth / 1000).toFixed(1)}m</div>
+                        <div class="template-card-size">${this._localize.formatNumber(t.roomWidth / 1000, 1)}m × ${this._localize.formatNumber(t.roomDepth / 1000, 1)}m</div>
                       </div>
                     </div>
                   `,

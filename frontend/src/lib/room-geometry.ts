@@ -225,14 +225,14 @@ export function medianPoint(
  * @param grid The grid array
  * @param roomWidth Room width in mm
  * @param perspective Perspective coefficients (null = no calibration)
- * @returns { widthM, depthM, furthestM } as formatted strings with 1 decimal place,
+ * @returns { widthM, depthM, furthestM } as numbers in metres,
  *          or null if grid has no inside cells
  */
 export function getGridRoomMetrics(
 	grid: Uint8Array,
 	roomWidth: number,
 	perspective: number[] | null,
-): { widthM: string; depthM: string; furthestM: string } | null {
+): { widthM: number; depthM: number; furthestM: number } | null {
 	const raw = getRawRoomBounds(grid);
 	if (raw.minCol > raw.maxCol) return null;
 
@@ -263,8 +263,8 @@ export function getGridRoomMetrics(
 	}
 
 	return {
-		widthM: (widthMm / 1000).toFixed(1),
-		depthM: (depthMm / 1000).toFixed(1),
-		furthestM: (Math.sqrt(maxDistSq) / 1000).toFixed(1),
+		widthM: widthMm / 1000,
+		depthM: depthMm / 1000,
+		furthestM: Math.sqrt(maxDistSq) / 1000,
 	};
 }

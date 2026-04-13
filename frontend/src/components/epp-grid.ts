@@ -44,10 +44,10 @@ export class EppGrid extends LitElement {
 	} | null)[] = [];
 	@property({ attribute: false }) heatmapColors: Map<number, string> | null =
 		null;
-	@property({ attribute: false }) localize: (
-		key: string,
-		params?: Record<string, string | number>,
-	) => string = (k) => k;
+	@property({ attribute: false }) localize: import("../localize.js").LocalizeFn = Object.assign(
+		((k: string) => k) as import("../localize.js").LocalizeFn,
+		{ formatNumber: (v: number, d = 1) => v.toFixed(d), lang: "en" },
+	);
 	/** Maximum detection range in mm */
 	@property({ type: Number }) maxRangeMm = MAX_RANGE;
 	/** Maximum pixel size for the grid (live=480, editor=520) */

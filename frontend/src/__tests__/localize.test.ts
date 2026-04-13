@@ -103,4 +103,44 @@ describe("setupLocalize", () => {
 		const localize = setupLocalize({ locale: { language: "xx-YY" } });
 		expect(localize("common.save")).toBe("Save");
 	});
+
+	it("exposes lang property", () => {
+		const localize = setupLocalize({ locale: { language: "es" } });
+		expect(localize.lang).toBe("es");
+	});
+
+	it("lang defaults to 'en' when no hass", () => {
+		const localize = setupLocalize();
+		expect(localize.lang).toBe("en");
+	});
+
+	describe("formatNumber", () => {
+		it("formats with English locale (period separator)", () => {
+			const localize = setupLocalize();
+			expect(localize.formatNumber(3.5, 1)).toBe("3.5");
+		});
+
+		it("formats with Spanish locale (comma separator)", () => {
+			const localize = setupLocalize({ locale: { language: "es" } });
+			expect(localize.formatNumber(3.5, 1)).toBe("3,5");
+		});
+
+		it("defaults to 1 decimal place", () => {
+			const localize = setupLocalize();
+			expect(localize.formatNumber(3.0)).toBe("3.0");
+		});
+
+		it("respects explicit decimal count", () => {
+			const localize = setupLocalize();
+			expect(localize.formatNumber(3.141, 2)).toBe("3.14");
+		});
+
+		it("caches Intl.NumberFormat instances for repeated calls", () => {
+			const localize = setupLocalize();
+			const r1 = localize.formatNumber(1.5, 1);
+			const r2 = localize.formatNumber(2.5, 1);
+			expect(r1).toBe("1.5");
+			expect(r2).toBe("2.5");
+		});
+	});
 });

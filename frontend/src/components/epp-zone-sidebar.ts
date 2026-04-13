@@ -24,10 +24,10 @@ export class EppZoneSidebar extends LitElement {
 		ZONE_TYPE_DEFAULTS.normal.handoff_timeout;
 	@property({ attribute: false }) localZoneState: Map<number, LocalZoneInfo> =
 		new Map();
-	@property({ attribute: false }) localize: (
-		key: string,
-		params?: Record<string, string | number>,
-	) => string = (k) => k;
+	@property({ attribute: false }) localize: import("../localize.js").LocalizeFn = Object.assign(
+		((k: string) => k) as import("../localize.js").LocalizeFn,
+		{ formatNumber: (v: number, d = 1) => v.toFixed(d), lang: "en" },
+	);
 
 	static styles = [
 		toggleStyles,

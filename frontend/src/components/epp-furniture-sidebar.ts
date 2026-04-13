@@ -13,10 +13,10 @@ export class EppFurnitureSidebar extends LitElement {
 	@property({ attribute: false }) furniture: FurnitureItem[] = [];
 	@property({ attribute: false }) selectedFurnitureId: string | null = null;
 	@property({ attribute: false }) hass: any = undefined;
-	@property({ attribute: false }) localize: (
-		key: string,
-		params?: Record<string, string | number>,
-	) => string = (k) => k;
+	@property({ attribute: false }) localize: import("../localize.js").LocalizeFn = Object.assign(
+		((k: string) => k) as import("../localize.js").LocalizeFn,
+		{ formatNumber: (v: number, d = 1) => v.toFixed(d), lang: "en" },
+	);
 	@property({ attribute: false }) showCustomIconPicker = false;
 	@property({ attribute: false }) customIconValue = "";
 	@state() private _searchQuery = "";

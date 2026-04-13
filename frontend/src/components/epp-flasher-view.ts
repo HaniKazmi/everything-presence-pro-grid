@@ -42,10 +42,10 @@ export class EppFlasherView extends LitElement {
 	@property({ attribute: false }) hass: any;
 	@property({ attribute: false }) flashableDevices: FlashableDevice[] = [];
 	@property({ type: Boolean }) loading = false;
-	@property({ attribute: false }) localize: (
-		key: string,
-		params?: Record<string, string | number>,
-	) => string = (k) => k;
+	@property({ attribute: false }) localize: import("../localize.js").LocalizeFn = Object.assign(
+		((k: string) => k) as import("../localize.js").LocalizeFn,
+		{ formatNumber: (v: number, d = 1) => v.toFixed(d), lang: "en" },
+	);
 
 	@state() private _selectedVariant: "wifi" | "ethernet" = "wifi";
 	@property() firmwareBaseUrl = "";
