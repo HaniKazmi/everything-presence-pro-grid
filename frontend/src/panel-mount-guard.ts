@@ -31,3 +31,13 @@ export function checkAndRemount(): void {
 		remountEppPanel(host);
 	}
 }
+
+export function installPanelMountGuard(): void {
+	if ((window as any).__eppGridMountGuardInstalled) return;
+	(window as any).__eppGridMountGuardInstalled = true;
+	document.addEventListener("visibilitychange", () => {
+		if (document.visibilityState === "visible") {
+			checkAndRemount();
+		}
+	});
+}

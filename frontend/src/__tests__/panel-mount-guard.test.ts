@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import {
 	checkAndRemount,
 	findEppPanelHost,
+	installPanelMountGuard,
 	isEppPanelMissing,
 	remountEppPanel,
 } from "../panel-mount-guard.js";
@@ -197,5 +198,78 @@ describe("checkAndRemount", () => {
 		checkAndRemount();
 
 		expect(host.children.length).toBe(0);
+	});
+});
+
+describe("installPanelMountGuard", () => {
+	afterEach(() => {
+		document.body.innerHTML = "";
+		delete (window as any).__eppGridMountGuardInstalled;
+	});
+
+	function fireVisibilityChange(state: "visible" | "hidden"): void {
+		Object.defineProperty(document, "visibilityState", {
+			value: state,
+			configurable: true,
+		});
+		document.dispatchEvent(new Event("visibilitychange"));
+	}
+
+	it("remounts on visibilitychange when tab becomes visible", () => {
+		installPanelMountGuard();
+
+		const haRoot = buildHaShadowTree(true);
+		(haRoot as any).hass = { any: "value" };
+		document.body.appendChild(haRoot);
+		const host = haRoot.shadowRoot!
+			.querySelector("home-assistant-main")!
+			.shadowRoot!.querySelector("partial-panel-resolver")!
+			.querySelector("ha-panel-custom") as HTMLElement;
+		(host as any).panel = {
+			config: { _panel_custom: { name: "eppgrid-panel" } },
+		};
+
+		fireVisibilityChange("visible");
+
+		expect(host.children.length).toBe(1);
+	});
+
+	it("does nothing on visibilitychange when tab becomes hidden", () => {
+		installPanelMountGuard();
+
+		const haRoot = buildHaShadowTree(true);
+		(haRoot as any).hass = { any: "value" };
+		document.body.appendChild(haRoot);
+		const host = haRoot.shadowRoot!
+			.querySelector("home-assistant-main")!
+			.shadowRoot!.querySelector("partial-panel-resolver")!
+			.querySelector("ha-panel-custom") as HTMLElement;
+		(host as any).panel = {
+			config: { _panel_custom: { name: "eppgrid-panel" } },
+		};
+
+		fireVisibilityChange("hidden");
+
+		expect(host.children.length).toBe(0);
+	});
+
+	it("does not install listener twice", () => {
+		installPanelMountGuard();
+		installPanelMountGuard();
+
+		const haRoot = buildHaShadowTree(true);
+		(haRoot as any).hass = { any: "value" };
+		document.body.appendChild(haRoot);
+		const host = haRoot.shadowRoot!
+			.querySelector("home-assistant-main")!
+			.shadowRoot!.querySelector("partial-panel-resolver")!
+			.querySelector("ha-panel-custom") as HTMLElement;
+		(host as any).panel = {
+			config: { _panel_custom: { name: "eppgrid-panel" } },
+		};
+
+		fireVisibilityChange("visible");
+
+		expect(host.children.length).toBe(1);
 	});
 });
