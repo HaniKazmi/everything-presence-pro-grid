@@ -13,7 +13,7 @@ from typing import Any
 from aioesphomeapi import APIClient
 from aioesphomeapi import LogLevel
 from aioesphomeapi import UserService
-from homeassistant.const import STATE_UNAVAILABLE
+from homeassistant.const import STATE_UNAVAILABLE, STATE_UNKNOWN
 from homeassistant.core import HomeAssistant
 from homeassistant.core import State
 from homeassistant.core import callback
@@ -632,13 +632,18 @@ class DeviceManager:
         if not mac or mac not in self.devices:
             return
 
-        if new_state.state == STATE_UNAVAILABLE:
+        # Treat 'unknown' like 'unavailable' — newly-added ESPHome entities
+        # can go unknown → value without passing through unavailable, and
+        # that transition still means the device just came online.
+        offline_states = (STATE_UNAVAILABLE, STATE_UNKNOWN)
+
+        if new_state.state in offline_states:
             # Device went offline — allow a fresh push when it comes back
             self._pushing.discard(mac)
             self._fire_device_list_changed()
             return
 
-        if old_state.state != STATE_UNAVAILABLE:
+        if old_state.state not in offline_states:
             return
 
         # Device came online — push config once

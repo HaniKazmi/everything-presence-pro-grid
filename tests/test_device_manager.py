@@ -1681,6 +1681,60 @@ class TestEventCallbacks:
 
         mock_push.assert_awaited_once_with("AA:BB:CC:DD:EE:FF")
 
+    async def test_on_state_changed_treats_unknown_like_unavailable(
+        self, hass: HomeAssistant, manager: DeviceManager
+    ) -> None:
+        """Unknown → value transition should fire availability, matching unavailable → value.
+
+        Newly-added ESPHome entities can start in 'unknown' state and move directly
+        to a value without passing through 'unavailable'. The availability transition
+        must still be detected so the frontend sees the device come online.
+        """
+        dev_reg = dr.async_get(hass)
+        ent_reg = er.async_get(hass)
+
+        esphome_entry = MockConfigEntry(
+            domain="esphome",
+            data={"host": "192.168.1.51"},
+            title="EPP Device",
+        )
+        esphome_entry.add_to_hass(hass)
+
+        device = dev_reg.async_get_or_create(
+            config_entry_id=esphome_entry.entry_id,
+            connections={("mac", "aa:bb:cc:dd:ee:02")},
+            name="EPP Device 2",
+        )
+
+        entity = ent_reg.async_get_or_create(
+            "sensor",
+            "esphome",
+            unique_id="esphome_aabbccddee02_temperature",
+            config_entry=esphome_entry,
+            device_id=device.id,
+        )
+
+        manager.devices["AA:BB:CC:DD:EE:02"] = ManagedDevice(
+            mac="AA:BB:CC:DD:EE:02", name="EPP", host="192.168.1.51", device_id=device.id
+        )
+
+        with patch.object(manager, "_push_config_to_device", new_callable=AsyncMock) as mock_push:
+            old_state = MagicMock()
+            old_state.state = "unknown"
+            new_state = MagicMock()
+            new_state.state = "25.5"
+
+            event = MagicMock()
+            event.data = {
+                "entity_id": entity.entity_id,
+                "old_state": old_state,
+                "new_state": new_state,
+            }
+            manager._on_state_changed(event)
+            await hass.async_block_till_done()
+
+        mock_push.assert_awaited_once_with("AA:BB:CC:DD:EE:02")
+
     async def test_on_state_changed_ignores_still_unavailable(
         self, hass: HomeAssistant, manager: DeviceManager
     ) -> None:
