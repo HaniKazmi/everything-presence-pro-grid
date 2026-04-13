@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
 	checkAndRemount,
 	findEppPanelHost,
@@ -253,24 +253,15 @@ describe("installPanelMountGuard", () => {
 		expect(host.children.length).toBe(0);
 	});
 
-	it("does not install listener twice", () => {
+	it("registers the visibilitychange listener only once", () => {
+		const spy = vi.spyOn(document, "addEventListener");
 		installPanelMountGuard();
 		installPanelMountGuard();
-
-		const haRoot = buildHaShadowTree(true);
-		(haRoot as any).hass = { any: "value" };
-		document.body.appendChild(haRoot);
-		const host = haRoot
-			.shadowRoot!.querySelector("home-assistant-main")!
-			.shadowRoot!.querySelector("partial-panel-resolver")!
-			.querySelector("ha-panel-custom") as HTMLElement;
-		(host as any).panel = {
-			config: { _panel_custom: { name: "eppgrid-panel" } },
-		};
-
-		fireVisibilityChange("visible");
-
-		expect(host.children.length).toBe(1);
+		const visibilityListeners = spy.mock.calls.filter(
+			([event]) => event === "visibilitychange",
+		);
+		expect(visibilityListeners).toHaveLength(1);
+		spy.mockRestore();
 	});
 });
 
