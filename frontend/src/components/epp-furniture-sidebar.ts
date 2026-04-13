@@ -1,8 +1,12 @@
 import { css, html, LitElement, nothing, svg } from "lit";
-import { property } from "lit/decorators.js";
+import { property, state } from "lit/decorators.js";
 import { unsafeSVG } from "lit/directives/unsafe-svg.js";
 import { FLOOR_PLAN_SVGS, FURNITURE_CATALOG } from "../constants.js";
-import type { FurnitureItem, FurnitureSticker } from "../lib/furniture.js";
+import {
+	type FurnitureItem,
+	type FurnitureSticker,
+	filterAndSortStickers,
+} from "../lib/furniture.js";
 import { buttonStyles, dialogStyles } from "../styles.js";
 
 export class EppFurnitureSidebar extends LitElement {
@@ -15,6 +19,7 @@ export class EppFurnitureSidebar extends LitElement {
 	) => string = (k) => k;
 	@property({ attribute: false }) showCustomIconPicker = false;
 	@property({ attribute: false }) customIconValue = "";
+	@state() private _searchQuery = "";
 
 	static styles = [
 		dialogStyles,
@@ -70,6 +75,18 @@ export class EppFurnitureSidebar extends LitElement {
 			.furn-dims input {
 				width: 100%;
 				padding: 4px;
+				border: 1px solid var(--divider-color, #e0e0e0);
+				border-radius: 4px;
+				font-size: 12px;
+				box-sizing: border-box;
+				background: var(--card-background-color, #fff);
+				color: var(--primary-text-color, #212121);
+			}
+
+			.furn-search {
+				width: 100%;
+				padding: 6px 8px;
+				margin-bottom: 6px;
 				border: 1px solid var(--divider-color, #e0e0e0);
 				border-radius: 4px;
 				font-size: 12px;
@@ -164,8 +181,22 @@ export class EppFurnitureSidebar extends LitElement {
 					: nothing
 			}
 
+			<input
+				type="search"
+				class="furn-search"
+				.value=${this._searchQuery}
+				placeholder=${this.localize("furniture.search_placeholder")}
+				@input=${(e: Event) => {
+					this._searchQuery = (e.target as HTMLInputElement).value;
+				}}
+			/>
+
 			<div class="furn-catalog">
-				${FURNITURE_CATALOG.map(
+				${filterAndSortStickers(
+					FURNITURE_CATALOG,
+					this._searchQuery,
+					this.localize,
+				).map(
 					(s) => html`
 						<button class="furn-sticker" @click=${() => this._fireAdd(s)}>
 							${

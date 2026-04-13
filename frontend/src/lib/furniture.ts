@@ -250,6 +250,31 @@ export function isFurnitureOutsideGrid(
 }
 
 /**
+ * Filter a furniture sticker catalog by a free-text query and return it
+ * sorted alphabetically by translated label.
+ *
+ * Both the filter and the sort operate on the *translated* label so the
+ * user sees results in their own language order.
+ *
+ * @param stickers Source catalog (not mutated)
+ * @param query User search input (case-insensitive substring match; trimmed)
+ * @param localize Function that translates a label key to a display string
+ */
+export function filterAndSortStickers(
+	stickers: FurnitureSticker[],
+	query: string,
+	localize: (key: string) => string,
+): FurnitureSticker[] {
+	const trimmed = query.trim().toLowerCase();
+	const filtered = trimmed
+		? stickers.filter((s) => localize(s.label).toLowerCase().includes(trimmed))
+		: stickers.slice();
+	return filtered.sort((a, b) =>
+		localize(a.label).localeCompare(localize(b.label)),
+	);
+}
+
+/**
  * Pick the appropriate CSS resize cursor for a handle on a rotated item.
  *
  * Browser resize cursors are bidirectional (n-resize and s-resize render

@@ -6,6 +6,7 @@ import {
 	createFurnitureItem,
 	type FurnitureItem,
 	type FurnitureSticker,
+	filterAndSortStickers,
 	getResizeCursor,
 	mmToPx,
 	pxToMm,
@@ -691,6 +692,145 @@ describe("getResizeCursor", () => {
 			// 450° same as 90°
 			expect(getResizeCursor("n", 450)).toBe("ew-resize");
 		});
+	});
+});
+
+describe("filterAndSortStickers", () => {
+	const stickers: FurnitureSticker[] = [
+		{
+			type: "svg",
+			icon: "sofa",
+			label: "furniture.sofa",
+			defaultWidth: 200,
+			defaultHeight: 100,
+		},
+		{
+			type: "svg",
+			icon: "armchair",
+			label: "furniture.armchair",
+			defaultWidth: 100,
+			defaultHeight: 100,
+		},
+		{
+			type: "svg",
+			icon: "bed",
+			label: "furniture.bed",
+			defaultWidth: 200,
+			defaultHeight: 200,
+		},
+		{
+			type: "svg",
+			icon: "lamp",
+			label: "furniture.lamp",
+			defaultWidth: 50,
+			defaultHeight: 50,
+		},
+	];
+	const labels: Record<string, string> = {
+		"furniture.sofa": "Sofa",
+		"furniture.armchair": "Armchair",
+		"furniture.bed": "Bed",
+		"furniture.lamp": "Lamp",
+	};
+	const localize = (k: string) => labels[k] ?? k;
+
+	it("sorts alphabetically by translated label when query is empty", () => {
+		const result = filterAndSortStickers(stickers, "", localize);
+		expect(result.map((s) => s.icon)).toEqual([
+			"armchair",
+			"bed",
+			"lamp",
+			"sofa",
+		]);
+	});
+
+	it("sorts using translated labels, not raw label keys", () => {
+		// Raw keys would sort: armchair < bed < lamp < sofa (same as translated here).
+		// Use a localize that reorders to prove sort uses translations.
+		const reorder = (k: string) =>
+			({
+				"furniture.sofa": "AAA",
+				"furniture.armchair": "ZZZ",
+				"furniture.bed": "MMM",
+				"furniture.lamp": "BBB",
+			})[k] ?? k;
+		const result = filterAndSortStickers(stickers, "", reorder);
+		expect(result.map((s) => s.icon)).toEqual([
+			"sofa", // AAA
+			"lamp", // BBB
+			"bed", // MMM
+			"armchair", // ZZZ
+		]);
+	});
+
+	it("filters by case-insensitive substring on the translated label", () => {
+		const result = filterAndSortStickers(stickers, "ed", localize);
+		// "Bed" contains "ed"; nothing else does.
+		expect(result.map((s) => s.icon)).toEqual(["bed"]);
+	});
+
+	it("filter is case-insensitive", () => {
+		const result = filterAndSortStickers(stickers, "SOFA", localize);
+		expect(result.map((s) => s.icon)).toEqual(["sofa"]);
+	});
+
+	it("trims whitespace from the query", () => {
+		const result = filterAndSortStickers(stickers, "  lamp  ", localize);
+		expect(result.map((s) => s.icon)).toEqual(["lamp"]);
+	});
+
+	it("returns empty list when nothing matches", () => {
+		const result = filterAndSortStickers(stickers, "zzz", localize);
+		expect(result).toEqual([]);
+	});
+
+	it("filtered results are still sorted", () => {
+		const result = filterAndSortStickers(stickers, "a", localize);
+		// Matches: Armchair, Lamp, Sofa → sort → Armchair, Lamp, Sofa
+		expect(result.map((s) => s.icon)).toEqual(["armchair", "lamp", "sofa"]);
+	});
+
+	it("does not mutate the input array", () => {
+		const original = [...stickers];
+		filterAndSortStickers(stickers, "", localize);
+		expect(stickers).toEqual(original);
+	});
+
+	it("handles empty input array", () => {
+		expect(filterAndSortStickers([], "", localize)).toEqual([]);
+		expect(filterAndSortStickers([], "anything", localize)).toEqual([]);
+	});
+
+	it("uses locale-aware comparison for sort", () => {
+		// Locale-aware sort treats accented characters as their base letter.
+		// "Étagère" should sort between "Eames" and "Fan" (not after "Z").
+		const accented: FurnitureSticker[] = [
+			{
+				type: "svg",
+				icon: "fan",
+				label: "fan",
+				defaultWidth: 100,
+				defaultHeight: 100,
+			},
+			{
+				type: "svg",
+				icon: "etagere",
+				label: "etagere",
+				defaultWidth: 100,
+				defaultHeight: 100,
+			},
+			{
+				type: "svg",
+				icon: "eames",
+				label: "eames",
+				defaultWidth: 100,
+				defaultHeight: 100,
+			},
+		];
+		const accLocalize = (k: string) =>
+			({ fan: "Fan", etagere: "Étagère", eames: "Eames" })[k] ?? k;
+		const result = filterAndSortStickers(accented, "", accLocalize);
+		expect(result.map((s) => s.icon)).toEqual(["eames", "etagere", "fan"]);
 	});
 });
 

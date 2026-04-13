@@ -51,7 +51,8 @@
 		"toilet": "Toilet",
 		"window": "Window",
 		"custom_icon": "Custom icon",
-		"custom": "Custom"
+		"custom": "Custom",
+		"search_placeholder": "Search furniture..."
 	},
 	"corners": {
 		"front_left": "Front-left",
