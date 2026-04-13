@@ -57,14 +57,21 @@ def _resolve_zone_name(
 
     Zone 0 = Rest of Room; zone >0 uses the user-provided name as a placeholder.
     `target_count=True` selects the '... Target Count' variant.
+    Falls back to English strings when translation keys are absent.
     """
     base = f"component.{DOMAIN}.entity_names."
+    fallbacks = {
+        "zone_rest_of_room": "Zone Rest of Room",
+        "zone_with_name": "Zone {name}",
+        "zone_rest_of_room_target_count": "Zone Rest of Room Target Count",
+        "zone_with_name_target_count": "Zone {name} Target Count",
+    }
     if index == 0:
         key = "zone_rest_of_room_target_count" if target_count else "zone_rest_of_room"
-        return translations[base + key]
+        return translations.get(base + key, fallbacks[key])
     key = "zone_with_name_target_count" if target_count else "zone_with_name"
-    template = translations[base + key]
-    return template.format(name=zone_name or "")
+    template = translations.get(base + key, fallbacks[key])
+    return template.replace("{name}", zone_name or "")
 
 
 def _raise_service_unavailable(service: str) -> None:

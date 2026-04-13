@@ -2823,3 +2823,14 @@ def test_zone_entity_names_use_translations():
         _resolve_zone_name(fake_translations, index=1, zone_name="Kitchen", target_count=True)
         == "Zone Kitchen Target Count"
     )
+
+
+def test_resolve_zone_name_falls_back_when_translation_missing():
+    """If translations dict is missing keys, fall back to English defaults."""
+    from custom_components.eppgrid.device_manager import _resolve_zone_name
+
+    empty: dict[str, str] = {}
+    assert _resolve_zone_name(empty, index=0, zone_name=None, target_count=False) == "Zone Rest of Room"
+    assert _resolve_zone_name(empty, index=1, zone_name="Kitchen", target_count=False) == "Zone Kitchen"
+    assert _resolve_zone_name(empty, index=0, zone_name=None, target_count=True) == "Zone Rest of Room Target Count"
+    assert _resolve_zone_name(empty, index=1, zone_name="Kitchen", target_count=True) == "Zone Kitchen Target Count"

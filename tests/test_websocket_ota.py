@@ -267,7 +267,15 @@ class TestSubscribeOtaProgress:
 
         calls = [c[0][0] for c in connection.send_message.call_args_list]
         assert (
-            event_message(1, {"state": "error", "message": "Update failed \u2014 firmware version unchanged"}) in calls
+            event_message(
+                1,
+                {
+                    "state": "error",
+                    "message": "Update failed \u2014 firmware version unchanged",
+                    "error_key": "flasher.errors.ota_failed_version_unchanged",
+                },
+            )
+            in calls
         )
 
     async def test_unsubscribe_cleans_up(

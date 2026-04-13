@@ -824,13 +824,13 @@ describe("USB flash view — state-driven", () => {
 		(el as any)._showUsbFlash = true;
 		(el as any).usbFlashState = {
 			step: "error",
-			errorKey: "flasher.usb_error_flash",
+			errorKey: "usb.errors.flash_failed",
 		};
 		const tpl = (el as any).render();
 		const c = renderTo(tpl);
 
 		expect(c.querySelector(".usb-error")).not.toBeNull();
-		expect(c.textContent).toContain("flasher.usb_error_flash");
+		expect(c.textContent).toContain("usb.errors.flash_failed");
 		expect(
 			c.querySelector(".confirm-actions ha-button[raised]"),
 		).not.toBeNull();
@@ -856,7 +856,7 @@ describe("USB flash view — state-driven", () => {
 		(el as any)._showUsbFlash = true;
 		(el as any).usbFlashState = {
 			step: "error",
-			errorKey: "flasher.usb_error_flash",
+			errorKey: "usb.errors.flash_failed",
 		};
 		const tpl = (el as any).render();
 		const c = renderTo(tpl);
@@ -911,7 +911,7 @@ describe("USB flash view — state-driven", () => {
 		(el as any)._showUsbFlash = true;
 		(el as any).usbFlashState = {
 			step: "error",
-			errorKey: "flasher.usb_error_flash",
+			errorKey: "usb.errors.flash_failed",
 		};
 		document.body.appendChild(el);
 		await el.updateComplete;

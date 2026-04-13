@@ -2565,7 +2565,7 @@ export class EPPGridPanel extends LitElement {
 				? "usb.errors.serial_port_busy"
 				: isDisconnect
 					? "usb.errors.device_disconnected"
-					: "flasher.usb_error_flash";
+					: "usb.errors.flash_failed";
 			ctrl.opRunning = false;
 			ctrl.updateUsbState({
 				step: "error",

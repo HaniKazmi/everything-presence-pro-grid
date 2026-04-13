@@ -504,11 +504,27 @@ describe("FlasherController", () => {
 			expect(ctrl.otaStates["AA:BB:CC:DD:EE:01"].state).toBe("success");
 		});
 
-		it("transitions to error state with message", async () => {
+		it("uses event.error_key from backend if present", async () => {
 			await ctrl.startOta("AA:BB:CC:DD:EE:01");
 
 			const callback = hass.connection.subscribeMessage.mock.calls[0][0];
-			callback({ state: "error", message: "Connection lost" });
+			callback({
+				state: "error",
+				error_key: "flasher.errors.ota_failed_version_unchanged",
+			});
+
+			expect(ctrl.otaStates["AA:BB:CC:DD:EE:01"]).toEqual({
+				state: "error",
+				progress: null,
+				errorKey: "flasher.errors.ota_failed_version_unchanged",
+			});
+		});
+
+		it("falls back to update_failed_generic when no error_key", async () => {
+			await ctrl.startOta("AA:BB:CC:DD:EE:01");
+
+			const callback = hass.connection.subscribeMessage.mock.calls[0][0];
+			callback({ state: "error" });
 
 			expect(ctrl.otaStates["AA:BB:CC:DD:EE:01"]).toEqual({
 				state: "error",

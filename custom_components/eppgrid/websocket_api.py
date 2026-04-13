@@ -1317,6 +1317,7 @@ async def websocket_subscribe_ota_progress(
                         {
                             "state": "error",
                             "message": "Update failed \u2014 firmware version unchanged",
+                            "error_key": "flasher.errors.ota_failed_version_unchanged",
                         },
                     )
                 )

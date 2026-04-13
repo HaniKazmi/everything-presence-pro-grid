@@ -373,7 +373,6 @@
 		"wifi_connected": "WiFi connected",
 		"done": "Done",
 		"usb_error_connect": "Could not connect to device. Hold the BOOT button and try again.",
-		"usb_error_flash": "Firmware flash failed.",
 		"usb_error_wifi": "WiFi provisioning failed.",
 		"usb_error_ip": "Connected to WiFi but could not detect IP address.",
 		"usb_retry": "Retry",
@@ -396,6 +395,7 @@
 			"update_timeout": "Update timed out",
 			"device_offline": "Device went offline during update",
 			"update_failed_generic": "Update failed",
+			"ota_failed_version_unchanged": "Update failed \u2014 firmware version unchanged",
 			"flash_cancelled": "Flash cancelled",
 			"timeout": "Timeout"
 		}
@@ -418,7 +418,8 @@
 			"file_download_failed": "Failed to download firmware file: {file}",
 			"port_open_failed": "Could not open serial port. Unplug the device, plug it back in, and try again.",
 			"no_device_response": "No response from device — it may be flashed with ethernet firmware which does not support WiFi configuration.",
-			"base_url_required": "baseUrl is required for firmware download"
+			"base_url_required": "baseUrl is required for firmware download",
+			"flash_failed": "Firmware flash failed."
 		}
 	},
 	"wifi": {

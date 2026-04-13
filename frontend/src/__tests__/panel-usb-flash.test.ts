@@ -202,7 +202,7 @@ describe("_handleUsbFlash", () => {
 
 		expect(ctrl.usbFlashState).toMatchObject({
 			step: "error",
-			errorKey: "flasher.usb_error_flash",
+			errorKey: "usb.errors.flash_failed",
 		});
 	});
 
@@ -217,7 +217,7 @@ describe("_handleUsbFlash", () => {
 
 		expect(ctrl.usbFlashState).toMatchObject({
 			step: "error",
-			errorKey: "flasher.usb_error_flash",
+			errorKey: "usb.errors.flash_failed",
 		});
 	});
 
@@ -232,7 +232,7 @@ describe("_handleUsbFlash", () => {
 
 		expect(ctrl.usbFlashState).toMatchObject({
 			step: "error",
-			errorKey: "flasher.usb_error_flash",
+			errorKey: "usb.errors.flash_failed",
 		});
 	});
 
@@ -305,7 +305,7 @@ describe("_handleUsbFlash", () => {
 
 		expect(ctrl.usbFlashState).toMatchObject({
 			step: "error",
-			errorKey: "flasher.usb_error_flash",
+			errorKey: "usb.errors.flash_failed",
 		});
 	});
 

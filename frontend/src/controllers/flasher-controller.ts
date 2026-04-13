@@ -109,14 +109,17 @@ export class FlasherController implements ReactiveController {
 			case "success":
 				this._otaSuccess(mac);
 				break;
-			case "error":
+			case "error": {
+				const errorKey: string =
+					event.error_key ?? "flasher.errors.update_failed_generic";
 				this.otaStates[mac] = {
 					state: "error",
 					progress: null,
-					errorKey: "flasher.errors.update_failed_generic",
+					errorKey,
 				};
 				this._unsubOta(mac);
 				break;
+			}
 		}
 		this._host.requestUpdate();
 	}
