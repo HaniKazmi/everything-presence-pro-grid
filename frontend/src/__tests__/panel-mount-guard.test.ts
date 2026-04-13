@@ -145,8 +145,8 @@ describe("checkAndRemount", () => {
 		(haRoot as any).hass = { any: "value" };
 		document.body.appendChild(haRoot);
 
-		const resolver = haRoot.shadowRoot!
-			.querySelector("home-assistant-main")!
+		const resolver = haRoot
+			.shadowRoot!.querySelector("home-assistant-main")!
 			.shadowRoot!.querySelector("partial-panel-resolver")!;
 		const host = resolver.querySelector("ha-panel-custom") as HTMLElement;
 		(host as any).panel = {
@@ -168,8 +168,8 @@ describe("checkAndRemount", () => {
 		(haRoot as any).hass = { any: "value" };
 		document.body.appendChild(haRoot);
 
-		const host = haRoot.shadowRoot!
-			.querySelector("home-assistant-main")!
+		const host = haRoot
+			.shadowRoot!.querySelector("home-assistant-main")!
 			.shadowRoot!.querySelector("partial-panel-resolver")!
 			.querySelector("ha-panel-custom") as HTMLElement;
 		(host as any).panel = {
@@ -187,8 +187,8 @@ describe("checkAndRemount", () => {
 		(haRoot as any).hass = { any: "value" };
 		document.body.appendChild(haRoot);
 
-		const host = haRoot.shadowRoot!
-			.querySelector("home-assistant-main")!
+		const host = haRoot
+			.shadowRoot!.querySelector("home-assistant-main")!
 			.shadowRoot!.querySelector("partial-panel-resolver")!
 			.querySelector("ha-panel-custom") as HTMLElement;
 		(host as any).panel = {
@@ -221,8 +221,8 @@ describe("installPanelMountGuard", () => {
 		const haRoot = buildHaShadowTree(true);
 		(haRoot as any).hass = { any: "value" };
 		document.body.appendChild(haRoot);
-		const host = haRoot.shadowRoot!
-			.querySelector("home-assistant-main")!
+		const host = haRoot
+			.shadowRoot!.querySelector("home-assistant-main")!
 			.shadowRoot!.querySelector("partial-panel-resolver")!
 			.querySelector("ha-panel-custom") as HTMLElement;
 		(host as any).panel = {
@@ -240,8 +240,8 @@ describe("installPanelMountGuard", () => {
 		const haRoot = buildHaShadowTree(true);
 		(haRoot as any).hass = { any: "value" };
 		document.body.appendChild(haRoot);
-		const host = haRoot.shadowRoot!
-			.querySelector("home-assistant-main")!
+		const host = haRoot
+			.shadowRoot!.querySelector("home-assistant-main")!
 			.shadowRoot!.querySelector("partial-panel-resolver")!
 			.querySelector("ha-panel-custom") as HTMLElement;
 		(host as any).panel = {
@@ -260,8 +260,8 @@ describe("installPanelMountGuard", () => {
 		const haRoot = buildHaShadowTree(true);
 		(haRoot as any).hass = { any: "value" };
 		document.body.appendChild(haRoot);
-		const host = haRoot.shadowRoot!
-			.querySelector("home-assistant-main")!
+		const host = haRoot
+			.shadowRoot!.querySelector("home-assistant-main")!
 			.shadowRoot!.querySelector("partial-panel-resolver")!
 			.querySelector("ha-panel-custom") as HTMLElement;
 		(host as any).panel = {
