@@ -23,8 +23,10 @@ export function setupLocalize(hass?: {
 	locale?: { language?: string };
 	language?: string;
 }): (key: string, params?: Params) => string {
-	const lang = hass?.locale?.language ?? hass?.language ?? "en";
-	const strings = LANGUAGES[lang] ?? LANGUAGES.en;
+	const requested = hass?.locale?.language ?? hass?.language ?? "en";
+	const base = requested.split("-")[0];
+	const lang = LANGUAGES[requested] ? requested : LANGUAGES[base] ? base : "en";
+	const strings = LANGUAGES[lang];
 	const fallback = LANGUAGES.en;
 
 	const formatCache = new Map<string, IntlMessageFormat>();

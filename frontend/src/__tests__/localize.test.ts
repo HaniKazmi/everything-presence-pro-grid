@@ -88,4 +88,19 @@ describe("setupLocalize", () => {
 		expect(r1).toBe("Recording... 1s / 5s");
 		expect(r2).toBe("Recording... 2s / 5s");
 	});
+
+	it("loads Spanish when hass.locale.language is 'es'", () => {
+		const localize = setupLocalize({ locale: { language: "es" } });
+		expect(localize("common.save")).toBe("Guardar");
+	});
+
+	it("falls back to base language when given a region-tagged code (es-ES → es)", () => {
+		const localize = setupLocalize({ locale: { language: "es-ES" } });
+		expect(localize("common.save")).toBe("Guardar");
+	});
+
+	it("falls back to English when language is unknown", () => {
+		const localize = setupLocalize({ locale: { language: "xx-YY" } });
+		expect(localize("common.save")).toBe("Save");
+	});
 });
