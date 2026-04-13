@@ -59,6 +59,31 @@ def test_all_exception_keys_resolve():
     )
 
 
+def test_spanish_translation_keys_match_english():
+    """custom_components/eppgrid/translations/es.json must have the same keys as strings.json."""
+    base = COMPONENT_DIR / "translations"
+    en = json.loads((base / "en.json").read_text())
+    es = json.loads((base / "es.json").read_text())
+
+    def flatten(obj, prefix=""):
+        keys = set()
+        if isinstance(obj, dict):
+            for k, v in obj.items():
+                path = f"{prefix}.{k}" if prefix else k
+                if isinstance(v, dict):
+                    keys.update(flatten(v, path))
+                else:
+                    keys.add(path)
+        return keys
+
+    en_keys = flatten(en)
+    es_keys = flatten(es)
+    missing = en_keys - es_keys
+    extra = es_keys - en_keys
+    assert not missing, f"Spanish translation missing keys: {sorted(missing)}"
+    assert not extra, f"Spanish translation has extra keys: {sorted(extra)}"
+
+
 def test_all_entity_name_keys_resolve():
     """Every entity_names key referenced in the resolver must exist in strings.json."""
     strings = _load_strings()

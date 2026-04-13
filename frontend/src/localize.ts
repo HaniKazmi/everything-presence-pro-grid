@@ -1,7 +1,8 @@
 import { IntlMessageFormat } from "intl-messageformat";
 import en from "./translations/en.json";
+import es from "./translations/es.json";
 
-const LANGUAGES: Record<string, Record<string, unknown>> = { en };
+const LANGUAGES: Record<string, Record<string, unknown>> = { en, es };
 
 type Params = Record<string, string | number>;
 
