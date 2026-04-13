@@ -511,6 +511,54 @@ class TestDeviceManager:
         assert result[0]["area"] is None
         assert result[0]["name"] == "EPP Device"
 
+    async def test_list_devices_reports_live_availability_not_stale_flag(
+        self, hass: HomeAssistant, manager: DeviceManager
+    ) -> None:
+        """Even if ManagedDevice.available hasn't been flipped yet, list_devices
+        should return True when the underlying ESPHome entities are online."""
+        dev_reg = dr.async_get(hass)
+        ent_reg = er.async_get(hass)
+
+        esphome_entry = MockConfigEntry(
+            domain="esphome",
+            data={"host": "192.168.1.50"},
+            title="EPP Device",
+        )
+        esphome_entry.add_to_hass(hass)
+
+        device = dev_reg.async_get_or_create(
+            config_entry_id=esphome_entry.entry_id,
+            connections={("mac", "aa:bb:cc:dd:ee:01")},
+            name="New Device",
+        )
+
+        entity = ent_reg.async_get_or_create(
+            "sensor",
+            "esphome",
+            unique_id="esphome_aabbccddeeff01_online_entity",
+            config_entry=esphome_entry,
+            device_id=device.id,
+        )
+
+        # Register the device in manager
+        manager.devices["AA:BB:CC:DD:EE:01"] = ManagedDevice(
+            mac="AA:BB:CC:DD:EE:01",
+            name="New Device",
+            host="192.168.1.50",
+            device_id=device.id,
+        )
+
+        # Set entity to an online state (not unavailable, not unknown)
+        hass.states.async_set(entity.entity_id, "25.5")
+
+        # Force the cached flag to False to simulate stale state
+        manager.devices["AA:BB:CC:DD:EE:01"].available = False
+
+        # list_devices should return live availability via _is_device_available
+        result = manager.list_devices()
+        device_entry = next(d for d in result if d["mac"] == "AA:BB:CC:DD:EE:01")
+        assert device_entry["available"] is True
+
     async def test_open_and_close_session(self, hass: HomeAssistant, manager: DeviceManager) -> None:
         """Open session creates a connection, close session cleans it up."""
         manager.devices["AA:BB:CC:DD:EE:FF"] = ManagedDevice(mac="AA:BB:CC:DD:EE:FF", name="EPP", host="192.168.1.50")

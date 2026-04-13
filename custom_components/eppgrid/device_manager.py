@@ -912,7 +912,7 @@ class DeviceManager:
                     "mac": mac,
                     "name": config.get("name", fresh_name) if config else fresh_name,
                     "host": dev.host,
-                    "available": dev.available,
+                    "available": self._is_device_available(mac),
                     "configured": config is not None,
                     "area": area_name,
                     "firmware_status": ("unavailable" if fw_ver is None else _compare_firmware_version(fw_ver)),
