@@ -471,6 +471,81 @@ describe("updated() reconnecting guard", () => {
 		expect(loadSpy).toHaveBeenCalledWith("AA:BB:CC:DD:EE:01");
 		loadSpy.mockRestore();
 	});
+
+	it("does not auto-load config for a device reporting available=false", () => {
+		const el = createPanel();
+		const a = el as any;
+		a._loading = false;
+		a._devices = [
+			{
+				mac: "AA:BB:CC:DD:EE:02",
+				name: "NewDevice",
+				host: null,
+				available: false,
+				configured: true,
+			},
+		];
+		a._selectedMac = "AA:BB:CC:DD:EE:02";
+		a._haConnected = true;
+
+		// Simulate: no active session and not reconnecting
+		a._deviceCtrl.closeDeviceSession();
+
+		const loadSpy = vi
+			.spyOn(a, "_loadDeviceConfig")
+			.mockResolvedValue(undefined);
+
+		const changed = new Map<string, any>([["hass", undefined]]);
+		a.updated(changed);
+
+		expect(loadSpy).not.toHaveBeenCalled();
+		loadSpy.mockRestore();
+	});
+
+	it("auto-loads config once the selected device flips to available=true", () => {
+		const el = createPanel();
+		const a = el as any;
+		a._loading = false;
+		a._devices = [
+			{
+				mac: "AA:BB:CC:DD:EE:02",
+				name: "NewDevice",
+				host: null,
+				available: false,
+				configured: true,
+			},
+		];
+		a._selectedMac = "AA:BB:CC:DD:EE:02";
+		a._haConnected = true;
+
+		// Simulate: no active session and not reconnecting
+		a._deviceCtrl.closeDeviceSession();
+
+		const loadSpy = vi
+			.spyOn(a, "_loadDeviceConfig")
+			.mockResolvedValue(undefined);
+
+		const changed = new Map<string, any>([["hass", undefined]]);
+
+		// First update: device is still unavailable, guard must block
+		a.updated(changed);
+		expect(loadSpy).not.toHaveBeenCalled();
+
+		// Device list push flips availability — next update must trigger load
+		a._devices = [
+			{
+				mac: "AA:BB:CC:DD:EE:02",
+				name: "NewDevice",
+				host: null,
+				available: true,
+				configured: true,
+			},
+		];
+		a.updated(changed);
+
+		expect(loadSpy).toHaveBeenCalledWith("AA:BB:CC:DD:EE:02");
+		loadSpy.mockRestore();
+	});
 });
 
 describe("_applyConfig", () => {

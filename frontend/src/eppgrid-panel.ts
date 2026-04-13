@@ -446,6 +446,7 @@ export class EPPGridPanel extends LitElement {
 				this._initialize();
 			} else if (
 				this._selectedMac &&
+				this._isSelectedDeviceAvailable() &&
 				!this._deviceCtrl.hasDeviceSession &&
 				!this._deviceCtrl.reconnecting
 			) {
@@ -477,7 +478,7 @@ export class EPPGridPanel extends LitElement {
 			this._initRetryTimer = setTimeout(() => this._initialize(), 2000);
 			return;
 		}
-		if (this._selectedMac) {
+		if (this._selectedMac && this._isSelectedDeviceAvailable()) {
 			await this._loadDeviceConfig(this._selectedMac);
 		}
 		this._loading = false;
@@ -492,6 +493,11 @@ export class EPPGridPanel extends LitElement {
 		await this._deviceCtrl.subscribeDeviceList();
 		this._devices = this._deviceCtrl.devices;
 		this._selectedMac = this._deviceCtrl.selectedMac;
+	}
+
+	private _isSelectedDeviceAvailable(): boolean {
+		const dev = this._devices.find((d) => d.mac === this._selectedMac);
+		return !!dev?.available;
 	}
 
 	private async _loadDevices(): Promise<void> {

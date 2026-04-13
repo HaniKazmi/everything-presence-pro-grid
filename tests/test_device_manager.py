@@ -511,6 +511,54 @@ class TestDeviceManager:
         assert result[0]["area"] is None
         assert result[0]["name"] == "EPP Device"
 
+    async def test_list_devices_reports_live_availability_not_stale_flag(
+        self, hass: HomeAssistant, manager: DeviceManager
+    ) -> None:
+        """Even if ManagedDevice.available hasn't been flipped yet, list_devices
+        should return True when the underlying ESPHome entities are online."""
+        dev_reg = dr.async_get(hass)
+        ent_reg = er.async_get(hass)
+
+        esphome_entry = MockConfigEntry(
+            domain="esphome",
+            data={"host": "192.168.1.50"},
+            title="EPP Device",
+        )
+        esphome_entry.add_to_hass(hass)
+
+        device = dev_reg.async_get_or_create(
+            config_entry_id=esphome_entry.entry_id,
+            connections={("mac", "aa:bb:cc:dd:ee:01")},
+            name="New Device",
+        )
+
+        entity = ent_reg.async_get_or_create(
+            "sensor",
+            "esphome",
+            unique_id="esphome_aabbccddeeff01_online_entity",
+            config_entry=esphome_entry,
+            device_id=device.id,
+        )
+
+        # Register the device in manager
+        manager.devices["AA:BB:CC:DD:EE:01"] = ManagedDevice(
+            mac="AA:BB:CC:DD:EE:01",
+            name="New Device",
+            host="192.168.1.50",
+            device_id=device.id,
+        )
+
+        # Set entity to an online state (not unavailable, not unknown)
+        hass.states.async_set(entity.entity_id, "25.5")
+
+        # Force the cached flag to False to simulate stale state
+        manager.devices["AA:BB:CC:DD:EE:01"].available = False
+
+        # list_devices should return live availability via _is_device_available
+        result = manager.list_devices()
+        device_entry = next(d for d in result if d["mac"] == "AA:BB:CC:DD:EE:01")
+        assert device_entry["available"] is True
+
     async def test_open_and_close_session(self, hass: HomeAssistant, manager: DeviceManager) -> None:
         """Open session creates a connection, close session cleans it up."""
         manager.devices["AA:BB:CC:DD:EE:FF"] = ManagedDevice(mac="AA:BB:CC:DD:EE:FF", name="EPP", host="192.168.1.50")
@@ -1633,6 +1681,60 @@ class TestEventCallbacks:
 
         mock_push.assert_awaited_once_with("AA:BB:CC:DD:EE:FF")
 
+    async def test_on_state_changed_treats_unknown_like_unavailable(
+        self, hass: HomeAssistant, manager: DeviceManager
+    ) -> None:
+        """Unknown → value transition should fire availability, matching unavailable → value.
+
+        Newly-added ESPHome entities can start in 'unknown' state and move directly
+        to a value without passing through 'unavailable'. The availability transition
+        must still be detected so the frontend sees the device come online.
+        """
+        dev_reg = dr.async_get(hass)
+        ent_reg = er.async_get(hass)
+
+        esphome_entry = MockConfigEntry(
+            domain="esphome",
+            data={"host": "192.168.1.51"},
+            title="EPP Device",
+        )
+        esphome_entry.add_to_hass(hass)
+
+        device = dev_reg.async_get_or_create(
+            config_entry_id=esphome_entry.entry_id,
+            connections={("mac", "aa:bb:cc:dd:ee:02")},
+            name="EPP Device 2",
+        )
+
+        entity = ent_reg.async_get_or_create(
+            "sensor",
+            "esphome",
+            unique_id="esphome_aabbccddee02_temperature",
+            config_entry=esphome_entry,
+            device_id=device.id,
+        )
+
+        manager.devices["AA:BB:CC:DD:EE:02"] = ManagedDevice(
+            mac="AA:BB:CC:DD:EE:02", name="EPP", host="192.168.1.51", device_id=device.id
+        )
+
+        with patch.object(manager, "_push_config_to_device", new_callable=AsyncMock) as mock_push:
+            old_state = MagicMock()
+            old_state.state = "unknown"
+            new_state = MagicMock()
+            new_state.state = "25.5"
+
+            event = MagicMock()
+            event.data = {
+                "entity_id": entity.entity_id,
+                "old_state": old_state,
+                "new_state": new_state,
+            }
+            manager._on_state_changed(event)
+            await hass.async_block_till_done()
+
+        mock_push.assert_awaited_once_with("AA:BB:CC:DD:EE:02")
+
     async def test_on_state_changed_ignores_still_unavailable(
         self, hass: HomeAssistant, manager: DeviceManager
     ) -> None:
@@ -1653,6 +1755,64 @@ class TestEventCallbacks:
             await hass.async_block_till_done()
 
         mock_avail.assert_not_awaited()
+
+    async def test_on_state_changed_value_to_unknown_marks_offline(
+        self, hass: HomeAssistant, manager: DeviceManager
+    ) -> None:
+        """value → unknown is treated as going offline.
+
+        ESPHome sensors transitioning to 'unknown' means the device has
+        stopped publishing readings. Subscribers should see the availability
+        flip so the UI reflects the true state.
+        """
+        dev_reg = dr.async_get(hass)
+        ent_reg = er.async_get(hass)
+
+        esphome_entry = MockConfigEntry(
+            domain="esphome",
+            data={"host": "192.168.1.52"},
+            title="EPP Device",
+        )
+        esphome_entry.add_to_hass(hass)
+
+        device = dev_reg.async_get_or_create(
+            config_entry_id=esphome_entry.entry_id,
+            connections={("mac", "aa:bb:cc:dd:ee:03")},
+            name="EPP Device 3",
+        )
+
+        entity = ent_reg.async_get_or_create(
+            "sensor",
+            "esphome",
+            unique_id="esphome_aabbccddee03_temperature",
+            config_entry=esphome_entry,
+            device_id=device.id,
+        )
+
+        manager.devices["AA:BB:CC:DD:EE:03"] = ManagedDevice(
+            mac="AA:BB:CC:DD:EE:03", name="EPP", host="192.168.1.52", device_id=device.id
+        )
+        manager._pushing.add("AA:BB:CC:DD:EE:03")
+
+        fire_calls: list[None] = []
+        manager.on_device_list_changed(lambda: fire_calls.append(None))
+
+        old_state = MagicMock()
+        old_state.state = "25.5"
+        new_state = MagicMock()
+        new_state.state = "unknown"
+
+        event = MagicMock()
+        event.data = {
+            "entity_id": entity.entity_id,
+            "old_state": old_state,
+            "new_state": new_state,
+        }
+        manager._on_state_changed(event)
+        await hass.async_block_till_done()
+
+        assert "AA:BB:CC:DD:EE:03" not in manager._pushing
+        assert len(fire_calls) == 1
 
     async def test_on_state_changed_ignores_none_states(self, hass: HomeAssistant, manager: DeviceManager) -> None:
         """Missing old/new state is ignored."""
