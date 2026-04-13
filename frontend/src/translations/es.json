@@ -51,7 +51,8 @@
 		"toilet": "Inodoro",
 		"window": "Ventana",
 		"custom_icon": "Icono personalizado",
-		"custom": "Personalizado"
+		"custom": "Personalizado",
+		"search_placeholder": "Buscar mobiliario..."
 	},
 	"corners": {
 		"front_left": "Frente-izquierda",
