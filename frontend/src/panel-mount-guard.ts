@@ -32,12 +32,20 @@ export function checkAndRemount(): void {
 	}
 }
 
+const handleVisibilityChange = (): void => {
+	if (document.visibilityState === "visible") {
+		checkAndRemount();
+	}
+};
+
 export function installPanelMountGuard(): void {
 	if ((window as any).__eppGridMountGuardInstalled) return;
 	(window as any).__eppGridMountGuardInstalled = true;
-	document.addEventListener("visibilitychange", () => {
-		if (document.visibilityState === "visible") {
-			checkAndRemount();
-		}
-	});
+	document.addEventListener("visibilitychange", handleVisibilityChange);
+}
+
+export function uninstallPanelMountGuard(): void {
+	if (!(window as any).__eppGridMountGuardInstalled) return;
+	document.removeEventListener("visibilitychange", handleVisibilityChange);
+	delete (window as any).__eppGridMountGuardInstalled;
 }

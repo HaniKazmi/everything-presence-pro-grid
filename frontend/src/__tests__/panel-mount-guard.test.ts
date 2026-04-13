@@ -5,6 +5,7 @@ import {
 	installPanelMountGuard,
 	isEppPanelMissing,
 	remountEppPanel,
+	uninstallPanelMountGuard,
 } from "../panel-mount-guard.js";
 
 function buildHaShadowTree(withPanelCustom = true): HTMLElement {
@@ -204,7 +205,7 @@ describe("checkAndRemount", () => {
 describe("installPanelMountGuard", () => {
 	afterEach(() => {
 		document.body.innerHTML = "";
-		delete (window as any).__eppGridMountGuardInstalled;
+		uninstallPanelMountGuard();
 	});
 
 	function fireVisibilityChange(state: "visible" | "hidden"): void {
@@ -263,16 +264,49 @@ describe("installPanelMountGuard", () => {
 		expect(visibilityListeners).toHaveLength(1);
 		spy.mockRestore();
 	});
+
+	it("uninstallPanelMountGuard removes the listener and clears the flag", () => {
+		installPanelMountGuard();
+		expect((window as any).__eppGridMountGuardInstalled).toBe(true);
+
+		uninstallPanelMountGuard();
+		expect((window as any).__eppGridMountGuardInstalled).toBeUndefined();
+
+		const haRoot = buildHaShadowTree(true);
+		(haRoot as any).hass = { any: "value" };
+		document.body.appendChild(haRoot);
+		const host = haRoot
+			.shadowRoot!.querySelector("home-assistant-main")!
+			.shadowRoot!.querySelector("partial-panel-resolver")!
+			.querySelector("ha-panel-custom") as HTMLElement;
+		(host as any).panel = {
+			config: { _panel_custom: { name: "eppgrid-panel" } },
+		};
+
+		fireVisibilityChange("visible");
+
+		expect(host.children.length).toBe(0);
+	});
+
+	it("uninstallPanelMountGuard is a no-op when not installed", () => {
+		const spy = vi.spyOn(document, "removeEventListener");
+		uninstallPanelMountGuard();
+		const visibilityRemovals = spy.mock.calls.filter(
+			([event]) => event === "visibilitychange",
+		);
+		expect(visibilityRemovals).toHaveLength(0);
+		spy.mockRestore();
+	});
 });
 
 describe("module-level install", () => {
 	afterEach(() => {
 		document.body.innerHTML = "";
-		delete (window as any).__eppGridMountGuardInstalled;
+		uninstallPanelMountGuard();
 	});
 
 	it("is installed when eppgrid-panel module is imported", async () => {
-		delete (window as any).__eppGridMountGuardInstalled;
+		uninstallPanelMountGuard();
 		await import("../eppgrid-panel.js");
 		expect((window as any).__eppGridMountGuardInstalled).toBe(true);
 	});
