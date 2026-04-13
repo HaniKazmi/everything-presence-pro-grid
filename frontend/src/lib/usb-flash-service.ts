@@ -302,6 +302,42 @@ export async function runWifiProvision(
 }
 
 /**
+ * Sends a deliberately-invalid WIFI_SETTINGS to force ESPHome's improv_serial
+ * out of its already-PROVISIONED state. Without this, re-provisioning a device
+ * that is already connected to the target SSID is a no-op on the firmware side
+ * and never emits the WIFI_SETTINGS RPC response containing the URL.
+ *
+ * The probe uses a 1-char password which fails WPA2 validation in ESP-IDF
+ * before any radio attempt, so the ERROR_STATE comes back in well under a
+ * second. Best-effort: timing out is not an error — proceed to real provision.
+ */
+export async function runWifiProbe(
+	writer: WritableStreamDefaultWriter<Uint8Array>,
+	reader: ReadableStreamDefaultReader<Uint8Array>,
+	timeoutMs = 5000,
+): Promise<void> {
+	await sendImprovPacket(writer, buildWifiCommand("__epp_probe__", "0"));
+
+	let buffer: number[] = [];
+	const deadline = Date.now() + timeoutMs;
+	while (Date.now() < deadline) {
+		try {
+			const result = await readImprovResponse(
+				reader,
+				deadline - Date.now(),
+				buffer,
+			);
+			buffer = result.buffer;
+			for (const pkt of result.packets) {
+				if (pkt.type === TYPE_ERROR_STATE) return;
+			}
+		} catch {
+			return;
+		}
+	}
+}
+
+/**
  * Reads Improv RPC result after WiFi provisioning to extract the IP address.
  * ESPHome sends an RPC result containing a URL like "http://192.168.1.42".
  * Returns the IP address string or throws on timeout.
