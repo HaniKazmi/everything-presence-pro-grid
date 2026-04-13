@@ -193,6 +193,55 @@ describe("_initialize", () => {
 
 		vi.useRealTimers();
 	});
+
+	it("does not flip _loading back to true during retry when no devices found", async () => {
+		vi.useFakeTimers();
+		const a = el as any;
+
+		let subCount = 0;
+		const secondSubscribe: { release: () => void } = {
+			release: () => {
+				/* set below */
+			},
+		};
+		el.hass = {
+			callWS: vi.fn().mockResolvedValue({ devices: [] }),
+			connection: {
+				subscribeMessage: vi.fn().mockImplementation((cb: any, msg: any) => {
+					if (msg.type === "eppgrid/subscribe_device_list") {
+						subCount++;
+						cb({ devices: [] });
+						if (subCount === 1) {
+							return Promise.resolve(() => {});
+						}
+						return new Promise<() => void>((resolve) => {
+							secondSubscribe.release = () => resolve(() => {});
+						});
+					}
+					return Promise.resolve(() => {});
+				}),
+			},
+		};
+
+		await a._initialize();
+		expect(a._loading).toBe(false);
+		expect(a._devices).toEqual([]);
+
+		// Fire the retry timer and let _initialize start running.
+		vi.advanceTimersByTime(2000);
+		await Promise.resolve();
+		await Promise.resolve();
+
+		// During the retry, _loading MUST NOT flip back to true, or the UI
+		// flickers between "no devices" and "loading" every 2 seconds.
+		expect(a._loading).toBe(false);
+
+		secondSubscribe.release();
+		await vi.advanceTimersByTimeAsync(0);
+		expect(a._loading).toBe(false);
+
+		vi.useRealTimers();
+	});
 });
 
 describe("_loadDevices", () => {

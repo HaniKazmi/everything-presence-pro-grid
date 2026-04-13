@@ -459,15 +459,20 @@ export class EPPGridPanel extends LitElement {
 
 	private async _initialize(): Promise<void> {
 		if (!this.hass) return;
+		const isRetry = this._initRetryTimer !== undefined;
 		if (this._initRetryTimer) {
 			clearTimeout(this._initRetryTimer);
 			this._initRetryTimer = undefined;
 		}
-		this._loading = true;
+		if (!isRetry) {
+			this._loading = true;
+		}
 		this._deviceCtrl.hass = this.hass;
 		await this._subscribeDevices();
 		if (!this._selectedMac && this._devices.length === 0) {
-			// Integration may not be loaded yet — retry
+			// Integration may not be loaded yet — retry silently in the
+			// background so the UI does not flicker between "no devices"
+			// and "loading" every 2 seconds.
 			this._loading = false;
 			this._initRetryTimer = setTimeout(() => this._initialize(), 2000);
 			return;
