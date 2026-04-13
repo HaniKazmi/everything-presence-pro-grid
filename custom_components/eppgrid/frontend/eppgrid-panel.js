@@ -1520,11 +1520,12 @@ const At={attribute:!0,type:String,converter:E,reflect:!1,hasChanged:m},dt=(t=At
 				class="furn-search"
 				.value=${this._searchQuery}
 				placeholder=${this.localize("furniture.search_placeholder")}
+				aria-label=${this.localize("furniture.search_placeholder")}
 				@input=${t=>{this._searchQuery=t.target.value}}
 			/>
 
 			<div class="furn-catalog">
-				${function(t,e,i){const s=e.trim().toLowerCase(),o=s?t.filter(t=>i(t.label).toLowerCase().includes(s)):t.slice();return o.sort((t,e)=>i(t.label).localeCompare(i(e.label)))}(te,this._searchQuery,this.localize).map(t=>N`
+				${function(t,e,i){const s=e.trim().toLowerCase(),o=t.map(t=>{const e=i(t.label);return{sticker:t,localizedLabel:e,normalizedLabel:e.toLowerCase()}}),r=s?o.filter(t=>t.normalizedLabel.includes(s)):o;return r.slice().sort((t,e)=>t.localizedLabel.localeCompare(e.localizedLabel)).map(t=>t.sticker)}(te,this._searchQuery,this.localize).map(t=>N`
 						<button class="furn-sticker" @click=${()=>this._fireAdd(t)}>
 							${"svg"===t.type&&qt[t.icon]?$`<svg viewBox="${qt[t.icon].viewBox}" class="furn-sticker-svg">
 										${Ot(qt[t.icon].content)}

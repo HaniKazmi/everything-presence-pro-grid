@@ -186,6 +186,7 @@ export class EppFurnitureSidebar extends LitElement {
 				class="furn-search"
 				.value=${this._searchQuery}
 				placeholder=${this.localize("furniture.search_placeholder")}
+				aria-label=${this.localize("furniture.search_placeholder")}
 				@input=${(e: Event) => {
 					this._searchQuery = (e.target as HTMLInputElement).value;
 				}}

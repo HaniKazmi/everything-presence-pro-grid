@@ -266,12 +266,23 @@ export function filterAndSortStickers(
 	localize: (key: string) => string,
 ): FurnitureSticker[] {
 	const trimmed = query.trim().toLowerCase();
+	// Translate once per sticker — `localize` may do expensive i18n lookups
+	// and the sort comparator would otherwise call it O(n log n) times.
+	const localized = stickers.map((sticker) => {
+		const localizedLabel = localize(sticker.label);
+		return {
+			sticker,
+			localizedLabel,
+			normalizedLabel: localizedLabel.toLowerCase(),
+		};
+	});
 	const filtered = trimmed
-		? stickers.filter((s) => localize(s.label).toLowerCase().includes(trimmed))
-		: stickers.slice();
-	return filtered.sort((a, b) =>
-		localize(a.label).localeCompare(localize(b.label)),
-	);
+		? localized.filter((s) => s.normalizedLabel.includes(trimmed))
+		: localized;
+	return filtered
+		.slice()
+		.sort((a, b) => a.localizedLabel.localeCompare(b.localizedLabel))
+		.map((s) => s.sticker);
 }
 
 /**
