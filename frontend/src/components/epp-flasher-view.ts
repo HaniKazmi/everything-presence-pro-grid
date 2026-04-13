@@ -374,6 +374,15 @@ export class EppFlasherView extends LitElement {
 														: nothing
 												}
                         ${
+													device.firmware_type === "eppgrid" &&
+													device.available &&
+													!this.otaStates[device.mac] &&
+													!device.update_available &&
+													device.firmware_status !== "firmware_behind"
+														? html`<span class="firmware-badge firmware-badge-online">${this.localize("flasher.online")}</span>`
+														: nothing
+												}
+                        ${
 													device.firmware_type === "original"
 														? html`<span class="firmware-badge firmware-badge-original">${this.localize("flasher.flash_usb")}</span>`
 														: nothing

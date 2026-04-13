@@ -383,6 +383,89 @@ describe("event dispatching", () => {
 		const badge = c.querySelector(".firmware-badge-offline");
 		expect(badge).not.toBeNull();
 	});
+
+	it("renders online badge for eppgrid device that is available and up-to-date", () => {
+		const el = createView({ flashableDevices: [device2] });
+		const tpl = (el as any).render();
+		const c = renderTo(tpl);
+
+		const badge = c.querySelector(".firmware-badge-online");
+		expect(badge).not.toBeNull();
+	});
+
+	it("does not render online badge for offline device", () => {
+		const eppgridOffline: FlashableDevice = {
+			...device2,
+			mac: "AA:BB:CC:DD:EE:05",
+			available: false,
+		};
+		const el = createView({ flashableDevices: [eppgridOffline] });
+		const tpl = (el as any).render();
+		const c = renderTo(tpl);
+
+		expect(c.querySelector(".firmware-badge-online")).toBeNull();
+		expect(c.querySelector(".firmware-badge-offline")).not.toBeNull();
+	});
+
+	it("does not render online badge for device with update_available", () => {
+		const el = createView({ flashableDevices: [updatableDevice] });
+		const tpl = (el as any).render();
+		const c = renderTo(tpl);
+
+		expect(c.querySelector(".firmware-badge-online")).toBeNull();
+	});
+
+	it("does not render online badge for device with firmware_status=firmware_behind", () => {
+		const behindDevice: FlashableDevice = {
+			...device2,
+			mac: "AA:BB:CC:DD:EE:06",
+			firmware_status: "firmware_behind",
+			update_available: false,
+		};
+		const el = createView({ flashableDevices: [behindDevice] });
+		const tpl = (el as any).render();
+		const c = renderTo(tpl);
+
+		expect(c.querySelector(".firmware-badge-online")).toBeNull();
+	});
+
+	it("does not render online badge while OTA is in flight for the device", () => {
+		const otaState: OtaDeviceState = {
+			state: "updating",
+			progress: 42,
+			errorKey: null,
+		};
+		const el = createView({
+			flashableDevices: [device2],
+			otaStates: { [device2.mac]: otaState },
+		});
+		const tpl = (el as any).render();
+		const c = renderTo(tpl);
+
+		expect(c.querySelector(".firmware-badge-online")).toBeNull();
+	});
+
+	it("does not render online badge for original-firmware device even when available", () => {
+		const el = createView({ flashableDevices: [device1] });
+		const tpl = (el as any).render();
+		const c = renderTo(tpl);
+
+		expect(c.querySelector(".firmware-badge-online")).toBeNull();
+	});
+
+	it("renders online badge alongside integration-update (ahead) badge", () => {
+		const aheadDevice: FlashableDevice = {
+			...device2,
+			mac: "AA:BB:CC:DD:EE:07",
+			firmware_status: "firmware_ahead",
+		};
+		const el = createView({ flashableDevices: [aheadDevice] });
+		const tpl = (el as any).render();
+		const c = renderTo(tpl);
+
+		expect(c.querySelector(".firmware-badge-online")).not.toBeNull();
+		expect(c.querySelector(".firmware-badge-ahead")).not.toBeNull();
+	});
 });
 
 describe("render() WiFi provisioning — connected state", () => {
