@@ -14,7 +14,6 @@ import { DeviceController } from "./controllers/device-controller.js";
 import { FlasherController } from "./controllers/flasher-controller.js";
 import { GridStateController } from "./controllers/grid-state-controller.js";
 import { TargetController } from "./controllers/target-controller.js";
-import { installPanelMountGuard } from "./panel-mount-guard.js";
 import type { PaintAction } from "./lib/cell-painting.js";
 import { parseConfig } from "./lib/config-serialization.js";
 import { mapTargetToGridCell, mapTargetToPercent } from "./lib/coordinates.js";
@@ -68,6 +67,7 @@ import {
 } from "./lib/zone-defaults.js";
 import type { ZoneEngineResult, ZoneEngineState } from "./lib/zone-engine.js";
 import { setupLocalize } from "./localize.js";
+import { installPanelMountGuard } from "./panel-mount-guard.js";
 import {
 	buttonStyles,
 	dialogStyles,
