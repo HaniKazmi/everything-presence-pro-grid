@@ -1756,6 +1756,64 @@ class TestEventCallbacks:
 
         mock_avail.assert_not_awaited()
 
+    async def test_on_state_changed_value_to_unknown_marks_offline(
+        self, hass: HomeAssistant, manager: DeviceManager
+    ) -> None:
+        """value → unknown is treated as going offline.
+
+        ESPHome sensors transitioning to 'unknown' means the device has
+        stopped publishing readings. Subscribers should see the availability
+        flip so the UI reflects the true state.
+        """
+        dev_reg = dr.async_get(hass)
+        ent_reg = er.async_get(hass)
+
+        esphome_entry = MockConfigEntry(
+            domain="esphome",
+            data={"host": "192.168.1.52"},
+            title="EPP Device",
+        )
+        esphome_entry.add_to_hass(hass)
+
+        device = dev_reg.async_get_or_create(
+            config_entry_id=esphome_entry.entry_id,
+            connections={("mac", "aa:bb:cc:dd:ee:03")},
+            name="EPP Device 3",
+        )
+
+        entity = ent_reg.async_get_or_create(
+            "sensor",
+            "esphome",
+            unique_id="esphome_aabbccddee03_temperature",
+            config_entry=esphome_entry,
+            device_id=device.id,
+        )
+
+        manager.devices["AA:BB:CC:DD:EE:03"] = ManagedDevice(
+            mac="AA:BB:CC:DD:EE:03", name="EPP", host="192.168.1.52", device_id=device.id
+        )
+        manager._pushing.add("AA:BB:CC:DD:EE:03")
+
+        fire_calls: list[None] = []
+        manager.on_device_list_changed(lambda: fire_calls.append(None))
+
+        old_state = MagicMock()
+        old_state.state = "25.5"
+        new_state = MagicMock()
+        new_state.state = "unknown"
+
+        event = MagicMock()
+        event.data = {
+            "entity_id": entity.entity_id,
+            "old_state": old_state,
+            "new_state": new_state,
+        }
+        manager._on_state_changed(event)
+        await hass.async_block_till_done()
+
+        assert "AA:BB:CC:DD:EE:03" not in manager._pushing
+        assert len(fire_calls) == 1
+
     async def test_on_state_changed_ignores_none_states(self, hass: HomeAssistant, manager: DeviceManager) -> None:
         """Missing old/new state is ignored."""
         event = MagicMock()

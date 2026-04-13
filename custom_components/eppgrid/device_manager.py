@@ -13,7 +13,8 @@ from typing import Any
 from aioesphomeapi import APIClient
 from aioesphomeapi import LogLevel
 from aioesphomeapi import UserService
-from homeassistant.const import STATE_UNAVAILABLE, STATE_UNKNOWN
+from homeassistant.const import STATE_UNAVAILABLE
+from homeassistant.const import STATE_UNKNOWN
 from homeassistant.core import HomeAssistant
 from homeassistant.core import State
 from homeassistant.core import callback
@@ -836,16 +837,17 @@ class DeviceManager:
     def _is_device_available(self, mac: str) -> bool:
         """Check HA entity states to determine if a device is reachable.
 
-        Returns True if any ESPHome entity is available, or if there are
-        no ESPHome entities to check (unknown = try to connect).
-        Returns False only if entities exist and ALL are unavailable.
+        Returns True if any ESPHome entity is in a live state (not
+        unavailable or unknown), or if there are no ESPHome entities to
+        check (unknown = try to connect).
+        Returns False only if entities exist and ALL are unavailable/unknown.
         """
         dev = self.devices.get(mac)
         if dev is None or dev.device_id is None:
             return True  # No device tracking — try to connect
         ent_reg = er.async_get(self._hass)
         has_esphome_entity = False
-        for entry in er.async_entries_for_device(ent_reg, dev.device_id):
+        for entry in er.async_entries_for_device(ent_reg, dev.device_id, include_disabled_entities=True):
             if entry.platform != "esphome":
                 continue
             has_esphome_entity = True
