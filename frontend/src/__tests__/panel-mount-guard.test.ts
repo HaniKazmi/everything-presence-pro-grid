@@ -39,6 +39,23 @@ describe("findEppPanelHost", () => {
 		document.body.appendChild(buildHaShadowTree(false));
 		expect(findEppPanelHost()).toBeNull();
 	});
+
+	it("returns null when home-assistant-main is absent", () => {
+		const haRoot = document.createElement("home-assistant");
+		haRoot.attachShadow({ mode: "open" });
+		document.body.appendChild(haRoot);
+		expect(findEppPanelHost()).toBeNull();
+	});
+
+	it("returns null when partial-panel-resolver is absent", () => {
+		const haRoot = document.createElement("home-assistant");
+		const haShadow = haRoot.attachShadow({ mode: "open" });
+		const main = document.createElement("home-assistant-main");
+		haShadow.appendChild(main);
+		main.attachShadow({ mode: "open" });
+		document.body.appendChild(haRoot);
+		expect(findEppPanelHost()).toBeNull();
+	});
 });
 
 function makeHost(
