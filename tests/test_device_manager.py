@@ -417,6 +417,100 @@ class TestDeviceManager:
         assert result[0]["name"] == "Custom Name"
         assert result[0]["configured"] is True
 
+    async def test_list_devices_uses_fresh_name_from_registry(
+        self, hass: HomeAssistant, manager: DeviceManager
+    ) -> None:
+        """list_devices reads the live device-registry name, not the cached one."""
+        dev_reg = dr.async_get(hass)
+        esphome_entry = MockConfigEntry(domain="esphome", data={"host": "192.168.1.50"}, title="EPP")
+        esphome_entry.add_to_hass(hass)
+        device = dev_reg.async_get_or_create(
+            config_entry_id=esphome_entry.entry_id,
+            connections={("mac", "aa:bb:cc:dd:ee:ff")},
+            name="Old Name",
+            manufacturer="EverythingSmartTechnology",
+            model="Everything Presence Pro",
+        )
+        # ManagedDevice was discovered with the old name
+        manager.devices["AA:BB:CC:DD:EE:FF"] = ManagedDevice(
+            mac="AA:BB:CC:DD:EE:FF",
+            name="Old Name",
+            host="192.168.1.50",
+            device_id=device.id,
+        )
+
+        # Simulate a rename via ESPHome / HA UI
+        dev_reg.async_update_device(device.id, name_by_user="Renamed Device")
+
+        result = manager.list_devices()
+        assert result[0]["name"] == "Renamed Device"
+
+    async def test_list_devices_includes_area_name(self, hass: HomeAssistant, manager: DeviceManager) -> None:
+        """list_devices includes the device's area name when assigned."""
+        from homeassistant.helpers import area_registry as ar
+
+        area_reg = ar.async_get(hass)
+        area = area_reg.async_create("Living Room")
+
+        dev_reg = dr.async_get(hass)
+        esphome_entry = MockConfigEntry(domain="esphome", data={"host": "192.168.1.50"}, title="EPP")
+        esphome_entry.add_to_hass(hass)
+        device = dev_reg.async_get_or_create(
+            config_entry_id=esphome_entry.entry_id,
+            connections={("mac", "aa:bb:cc:dd:ee:ff")},
+            name="EPP Device",
+            manufacturer="EverythingSmartTechnology",
+            model="Everything Presence Pro",
+        )
+        dev_reg.async_update_device(device.id, area_id=area.id)
+
+        manager.devices["AA:BB:CC:DD:EE:FF"] = ManagedDevice(
+            mac="AA:BB:CC:DD:EE:FF",
+            name="EPP Device",
+            host="192.168.1.50",
+            device_id=device.id,
+        )
+
+        result = manager.list_devices()
+        assert result[0]["area"] == "Living Room"
+
+    async def test_list_devices_area_is_none_when_unassigned(self, hass: HomeAssistant, manager: DeviceManager) -> None:
+        """list_devices returns area=None when the device has no area assigned."""
+        dev_reg = dr.async_get(hass)
+        esphome_entry = MockConfigEntry(domain="esphome", data={"host": "192.168.1.50"}, title="EPP")
+        esphome_entry.add_to_hass(hass)
+        device = dev_reg.async_get_or_create(
+            config_entry_id=esphome_entry.entry_id,
+            connections={("mac", "aa:bb:cc:dd:ee:ff")},
+            name="EPP Device",
+            manufacturer="EverythingSmartTechnology",
+            model="Everything Presence Pro",
+        )
+
+        manager.devices["AA:BB:CC:DD:EE:FF"] = ManagedDevice(
+            mac="AA:BB:CC:DD:EE:FF",
+            name="EPP Device",
+            host="192.168.1.50",
+            device_id=device.id,
+        )
+
+        result = manager.list_devices()
+        assert result[0]["area"] is None
+
+    async def test_list_devices_area_is_none_when_no_device_in_registry(
+        self, hass: HomeAssistant, manager: DeviceManager
+    ) -> None:
+        """list_devices returns area=None when no device registry entry exists."""
+        manager.devices["AA:BB:CC:DD:EE:FF"] = ManagedDevice(
+            mac="AA:BB:CC:DD:EE:FF",
+            name="EPP Device",
+            host="192.168.1.50",
+            device_id=None,
+        )
+        result = manager.list_devices()
+        assert result[0]["area"] is None
+        assert result[0]["name"] == "EPP Device"
+
     async def test_open_and_close_session(self, hass: HomeAssistant, manager: DeviceManager) -> None:
         """Open session creates a connection, close session cleans it up."""
         manager.devices["AA:BB:CC:DD:EE:FF"] = ManagedDevice(mac="AA:BB:CC:DD:EE:FF", name="EPP", host="192.168.1.50")
@@ -2055,19 +2149,41 @@ class TestEventCallbacks:
 
         mock_close.assert_not_awaited()
 
-    async def test_on_device_updated_ignored(self, hass: HomeAssistant, manager: DeviceManager) -> None:
-        """Non-remove device registry events are ignored."""
+    async def test_on_managed_device_updated_fires_callback(self, hass: HomeAssistant, manager: DeviceManager) -> None:
+        """Update events for managed devices fire device list callbacks (e.g. rename)."""
         mac = "AA:BB:CC:DD:EE:FF"
         manager.devices[mac] = ManagedDevice(mac=mac, name="EPP", host="192.168.1.50", device_id="dev123")
         manager._store.devices[mac] = {"settings": {}}
+
+        cb = MagicMock()
+        manager.on_device_list_changed(cb)
 
         event = MagicMock()
         event.data = {"action": "update", "device_id": "dev123"}
         manager._on_device_registry_updated(event)
         await hass.async_block_till_done()
 
+        # Device is still present (update is not remove)
         assert mac in manager.devices
         assert mac in manager._store.devices
+        # Callback fired so subscribers re-fetch the list
+        cb.assert_called_once()
+
+    async def test_on_unmanaged_device_updated_does_not_fire(self, hass: HomeAssistant, manager: DeviceManager) -> None:
+        """Update events for devices we don't manage don't fire the callback."""
+        manager.devices["AA:BB:CC:DD:EE:FF"] = ManagedDevice(
+            mac="AA:BB:CC:DD:EE:FF", name="EPP", host="192.168.1.50", device_id="dev123"
+        )
+
+        cb = MagicMock()
+        manager.on_device_list_changed(cb)
+
+        event = MagicMock()
+        event.data = {"action": "update", "device_id": "some_other_device"}
+        manager._on_device_registry_updated(event)
+        await hass.async_block_till_done()
+
+        cb.assert_not_called()
 
 
 # ---------------------------------------------------------------------------

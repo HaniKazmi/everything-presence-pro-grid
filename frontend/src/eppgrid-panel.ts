@@ -1390,7 +1390,10 @@ export class EPPGridPanel extends LitElement {
       <div class="panel-header">
         <ha-select
           .value=${this._selectedMac}
-          .options=${this._devices.map((d) => ({ value: d.mac, label: d.name }))}
+          .options=${this._devices.map((d) => ({
+						value: d.mac,
+						label: d.area ? `${d.name} (${d.area})` : d.name,
+					}))}
           @selected=${(e: CustomEvent<{ value: string }>) => {
 						const val = e.detail.value;
 						if (!val || val === this._selectedMac) return;

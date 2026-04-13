@@ -18,6 +18,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.core import State
 from homeassistant.core import callback
 from homeassistant.exceptions import HomeAssistantError
+from homeassistant.helpers import area_registry as ar
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers import entity_registry as er
 
@@ -647,8 +648,9 @@ class DeviceManager:
 
     @callback
     def _on_device_registry_updated(self, event: Any) -> None:
-        """Handle device registry changes — clean up on device removal."""
-        if event.data.get("action") != "remove":
+        """Handle device registry changes — clean up on remove, push refresh on update."""
+        action = event.data.get("action")
+        if action not in ("remove", "update"):
             return
 
         device_id = event.data.get("device_id")
@@ -661,7 +663,13 @@ class DeviceManager:
         if mac is None:
             return
 
-        self._hass.async_create_task(self._on_device_removed(mac))
+        if action == "remove":
+            self._hass.async_create_task(self._on_device_removed(mac))
+            return
+
+        # Update (rename, area change, etc.) — notify subscribers so the
+        # frontend re-fetches list_devices and picks up the fresh data.
+        self._fire_device_list_changed()
 
     async def _on_device_removed(self, mac: str) -> None:
         """Clean up stored settings and runtime state for a removed device."""
@@ -886,17 +894,27 @@ class DeviceManager:
 
     def list_devices(self) -> list[dict[str, Any]]:
         """Return serializable list of managed devices for the frontend."""
+        dev_reg = dr.async_get(self._hass)
+        area_reg = ar.async_get(self._hass)
         result = []
         for mac, dev in self.devices.items():
             config = self._store.get_device(mac)
             fw_ver = self.read_firmware_version(dev.device_id)
+            registry_entry = dev_reg.async_get(dev.device_id) if dev.device_id else None
+            fresh_name = ((registry_entry.name_by_user or registry_entry.name) if registry_entry else None) or dev.name
+            area_name: str | None = None
+            if registry_entry and registry_entry.area_id:
+                area = area_reg.async_get_area(registry_entry.area_id)
+                if area is not None:
+                    area_name = area.name
             result.append(
                 {
                     "mac": mac,
-                    "name": config.get("name", dev.name) if config else dev.name,
+                    "name": config.get("name", fresh_name) if config else fresh_name,
                     "host": dev.host,
                     "available": dev.available,
                     "configured": config is not None,
+                    "area": area_name,
                     "firmware_status": ("unavailable" if fw_ver is None else _compare_firmware_version(fw_ver)),
                     "current_connection_count": self.read_current_connection_count(dev.device_id),
                     **self._build_flags.get(mac, {}),
