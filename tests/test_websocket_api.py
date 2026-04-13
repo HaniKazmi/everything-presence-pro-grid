@@ -2702,3 +2702,38 @@ def test_no_firmware_variant_uses_translation_placeholders():
         translation_key="no_firmware_variant",
         translation_placeholders={"network": "wifi-ble-co2"},
     )
+
+
+def test_send_exception_preserves_translation_metadata():
+    """If the exception carries HA translation metadata, it must reach send_error."""
+    from homeassistant.exceptions import HomeAssistantError
+
+    from custom_components.eppgrid import websocket_api as ws_module
+    from custom_components.eppgrid.const import DOMAIN
+
+    err = HomeAssistantError(
+        "Service x not available",
+        translation_domain=DOMAIN,
+        translation_key="service_not_available",
+        translation_placeholders={"service": "x"},
+    )
+    connection = MagicMock()
+    ws_module._send_exception(connection, 5, "dismiss_failed", err)
+    connection.send_error.assert_called_once_with(
+        5,
+        "dismiss_failed",
+        "Service x not available",
+        translation_domain=DOMAIN,
+        translation_key="service_not_available",
+        translation_placeholders={"service": "x"},
+    )
+
+
+def test_send_exception_falls_back_to_str_for_plain_exception():
+    """Plain exceptions without translation metadata fall back to the raw message."""
+    from custom_components.eppgrid import websocket_api as ws_module
+
+    err = RuntimeError("boom")
+    connection = MagicMock()
+    ws_module._send_exception(connection, 7, "delete_failed", err)
+    connection.send_error.assert_called_once_with(7, "delete_failed", "boom")

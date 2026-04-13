@@ -49,6 +49,29 @@ def _send_no_firmware_variant(connection: websocket_api.ActiveConnection, msg_id
     )
 
 
+def _send_exception(connection: websocket_api.ActiveConnection, msg_id: int, code: str, err: BaseException) -> None:
+    """Send an error from a caught exception, preserving translation metadata if present.
+
+    HomeAssistantError instances raised by our own helpers carry
+    translation_domain / translation_key / translation_placeholders; pass these
+    through so the frontend can localize. Other exceptions fall back to str(err).
+    """
+    domain = getattr(err, "translation_domain", None)
+    key = getattr(err, "translation_key", None)
+    placeholders = getattr(err, "translation_placeholders", None)
+    if domain and key:
+        connection.send_error(
+            msg_id,
+            code,
+            str(err),
+            translation_domain=domain,
+            translation_key=key,
+            translation_placeholders=placeholders,
+        )
+    else:
+        connection.send_error(msg_id, code, str(err))
+
+
 def async_register_websocket_commands(hass: HomeAssistant, manager: Any) -> None:
     """Register WebSocket commands."""
     if DOMAIN in _REGISTERED:
@@ -1226,7 +1249,7 @@ async def websocket_update_firmware(
         await conn._client.execute_service(svc, {"url": manifest_url})
         connection.send_result(msg["id"])
     except Exception as err:
-        connection.send_error(msg["id"], "update_failed", str(err))
+        _send_exception(connection, msg["id"], "update_failed", err)
     finally:
         await conn.async_disconnect()
 
@@ -1417,7 +1440,7 @@ async def websocket_dismiss_target(
             return
         await session.async_dismiss_target(msg["target_index"], msg["cell_index"])
     except Exception as err:
-        connection.send_error(msg["id"], "dismiss_failed", str(err))
+        _send_exception(connection, msg["id"], "dismiss_failed", err)
         return
 
     connection.send_result(msg["id"])
@@ -1540,7 +1563,7 @@ async def websocket_delete_esphome_device(
     try:
         await hass.config_entries.async_remove(msg["config_entry_id"])
     except Exception as err:
-        connection.send_error(msg["id"], "delete_failed", str(err))
+        _send_exception(connection, msg["id"], "delete_failed", err)
         return
     connection.send_result(msg["id"])
 
@@ -1573,4 +1596,4 @@ async def websocket_add_esphome_device(
         )
         connection.send_result(msg["id"], {"result": result.get("type", "unknown")})
     except Exception as err:
-        connection.send_error(msg["id"], "add_failed", str(err))
+        _send_exception(connection, msg["id"], "add_failed", err)
