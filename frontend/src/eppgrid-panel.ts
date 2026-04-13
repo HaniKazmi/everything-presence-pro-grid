@@ -2288,7 +2288,9 @@ export class EPPGridPanel extends LitElement {
 									const placeholder = document.createElement("div");
 									placeholder.style.cssText =
 										"color: var(--secondary-text-color, #999); font-style: italic;";
-									placeholder.textContent = this._localize("live.debug.waiting_for_events");
+									placeholder.textContent = this._localize(
+										"live.debug.waiting_for_events",
+									);
 									el.appendChild(placeholder);
 								}
 							}}
@@ -2342,7 +2344,9 @@ export class EPPGridPanel extends LitElement {
 									const placeholder = document.createElement("div");
 									placeholder.style.cssText =
 										"color: var(--secondary-text-color, #999); font-style: italic;";
-									placeholder.textContent = this._localize("live.debug.waiting_for_events");
+									placeholder.textContent = this._localize(
+										"live.debug.waiting_for_events",
+									);
 									el.appendChild(placeholder);
 								}
 							}}

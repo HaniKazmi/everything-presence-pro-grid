@@ -1,12 +1,10 @@
 import { css, html, LitElement } from "lit";
 import { property } from "lit/decorators.js";
+import { defaultLocalize, type LocalizeFn } from "../localize.js";
 
 export class EppOverlaySidebar extends LitElement {
 	@property({ attribute: false }) overlayMode: string | null = null;
-	@property({ attribute: false }) localize: import("../localize.js").LocalizeFn = Object.assign(
-		((k: string) => k) as import("../localize.js").LocalizeFn,
-		{ formatNumber: (v: number, d = 1) => v.toFixed(d), lang: "en" },
-	);
+	@property({ attribute: false }) localize: LocalizeFn = defaultLocalize;
 
 	static styles = css`
 		:host {

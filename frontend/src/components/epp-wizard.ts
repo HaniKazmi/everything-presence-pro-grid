@@ -17,6 +17,7 @@ import {
 	autoComputeRoomDimensions,
 	medianPoint,
 } from "../lib/room-geometry.js";
+import { defaultLocalize, type LocalizeFn } from "../localize.js";
 import { buttonStyles, headerStyles, settingStyles } from "../styles.js";
 import type { RawTarget, SetupStep, WizardCorner } from "../types.js";
 
@@ -32,10 +33,7 @@ export class EppWizard extends LitElement {
 		mac: string;
 		name: string;
 	}[] = [];
-	@property({ attribute: false }) localize: import("../localize.js").LocalizeFn = Object.assign(
-		((k: string) => k) as import("../localize.js").LocalizeFn,
-		{ formatNumber: (v: number, d = 1) => v.toFixed(d), lang: "en" },
-	);
+	@property({ attribute: false }) localize: LocalizeFn = defaultLocalize;
 
 	// Initial room dimensions (for re-calibration)
 	@property({ type: Number }) initialRoomWidth = 0;

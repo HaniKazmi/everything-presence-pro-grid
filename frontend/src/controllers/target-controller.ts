@@ -221,7 +221,9 @@ export class TargetController implements ReactiveController {
 				return `${zoneName(zid)}: ${statusName[st] ?? st}(${cnt})`;
 			});
 
-		const tStr = targets.length ? targets.join(" ") : t("live.debug.no_targets");
+		const tStr = targets.length
+			? targets.join(" ")
+			: t("live.debug.no_targets");
 		const zStr = zones.length ? zones.join(", ") : t("live.debug.all_clear");
 
 		if (sStr) {
@@ -269,13 +271,16 @@ export class TargetController implements ReactiveController {
 		if (body === this.host._backendDebugLogPrev) return;
 
 		this.host._backendDebugLogPrev = body;
-		const ts = new Date().toLocaleTimeString(this.host._localize?.lang ?? "en-GB", {
-			hour12: false,
-			hour: "2-digit",
-			minute: "2-digit",
-			second: "2-digit",
-			fractionalSecondDigits: 1,
-		});
+		const ts = new Date().toLocaleTimeString(
+			this.host._localize?.lang ?? "en-GB",
+			{
+				hour12: false,
+				hour: "2-digit",
+				minute: "2-digit",
+				second: "2-digit",
+				fractionalSecondDigits: 1,
+			},
+		);
 		const line = `${ts} ${body}`;
 		this.host._backendDebugLogLines.push(line);
 		if (this.host._backendDebugLogLines.length > DEBUG_LOG_MAX) {
@@ -296,13 +301,16 @@ export class TargetController implements ReactiveController {
 		if (body === this.host._debugLogPrev) return;
 
 		this.host._debugLogPrev = body;
-		const ts = new Date().toLocaleTimeString(this.host._localize?.lang ?? "en-GB", {
-			hour12: false,
-			hour: "2-digit",
-			minute: "2-digit",
-			second: "2-digit",
-			fractionalSecondDigits: 1,
-		});
+		const ts = new Date().toLocaleTimeString(
+			this.host._localize?.lang ?? "en-GB",
+			{
+				hour12: false,
+				hour: "2-digit",
+				minute: "2-digit",
+				second: "2-digit",
+				fractionalSecondDigits: 1,
+			},
+		);
 		const line = `${ts} ${body}`;
 		this.host._debugLogLines.push(line);
 		if (this.host._debugLogLines.length > DEBUG_LOG_MAX) {

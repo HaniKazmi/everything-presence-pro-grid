@@ -12,6 +12,19 @@ export interface LocalizeFn {
 	lang: string;
 }
 
+/**
+ * Default LocalizeFn used as the property initializer in components — returns
+ * the key itself and uses `toFixed` for formatting. Replaced by
+ * `setupLocalize(hass)` once the panel has a real hass object.
+ */
+export const defaultLocalize: LocalizeFn = Object.assign(
+	((k: string) => k) as LocalizeFn,
+	{
+		formatNumber: (v: number, d = 1) => v.toFixed(d),
+		lang: "en",
+	},
+);
+
 function resolve(
 	obj: Record<string, unknown>,
 	path: string,

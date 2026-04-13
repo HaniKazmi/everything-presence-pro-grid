@@ -2,6 +2,7 @@ import { css, html, LitElement, nothing } from "lit";
 import { property, state } from "lit/decorators.js";
 import { MAX_ZONES } from "../lib/grid.js";
 import type { ZoneConfig } from "../lib/zone-defaults.js";
+import { defaultLocalize, type LocalizeFn } from "../localize.js";
 
 export interface SensorState {
 	occupancy: boolean;
@@ -45,10 +46,7 @@ export class EppLiveSidebar extends LitElement {
 
 	@property({ attribute: false }) perspective: number[] | null = null;
 
-	@property({ attribute: false }) localize: import("../localize.js").LocalizeFn = Object.assign(
-		((k: string) => k) as import("../localize.js").LocalizeFn,
-		{ formatNumber: (v: number, d = 1) => v.toFixed(d), lang: "en" },
-	);
+	@property({ attribute: false }) localize: LocalizeFn = defaultLocalize;
 
 	@state() private _expandedSensorInfo: string | null = null;
 
@@ -236,13 +234,17 @@ export class EppLiveSidebar extends LitElement {
 			envSensors.push({
 				id: "illuminance",
 				label: this.localize("entities.illuminance"),
-				value: this.localize("live.illuminance_value", { value: ss.illuminance }),
+				value: this.localize("live.illuminance_value", {
+					value: ss.illuminance,
+				}),
 			});
 		if (ss.temperature !== null)
 			envSensors.push({
 				id: "temperature",
 				label: this.localize("entities.temperature"),
-				value: this.localize("live.temperature_value", { value: ss.temperature }),
+				value: this.localize("live.temperature_value", {
+					value: ss.temperature,
+				}),
 			});
 		if (ss.humidity !== null)
 			envSensors.push({

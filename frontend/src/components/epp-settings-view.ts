@@ -4,6 +4,7 @@ import {
 	autoDetectionRange,
 	getGridRoomMetrics,
 } from "../lib/room-geometry.js";
+import { defaultLocalize, type LocalizeFn } from "../localize.js";
 import {
 	accordionStyles,
 	buttonStyles,
@@ -79,10 +80,7 @@ export class EppSettingsView extends LitElement {
 	// handlers update reactive properties, Lit crashes with concurrent re-renders.
 	private _overrides: Record<string, any> = {};
 
-	@property({ attribute: false }) localize: import("../localize.js").LocalizeFn = Object.assign(
-		((k: string) => k) as import("../localize.js").LocalizeFn,
-		{ formatNumber: (v: number, d = 1) => v.toFixed(d), lang: "en" },
-	);
+	@property({ attribute: false }) localize: LocalizeFn = defaultLocalize;
 
 	static styles = [
 		accordionStyles,
@@ -231,7 +229,9 @@ export class EppSettingsView extends LitElement {
 		const raw = reading != null ? reading - offset : null;
 		const clamp = (v: number) => Math.max(displayMin, Math.min(displayMax, v));
 		const adjusted =
-			raw != null ? this.localize.formatNumber(clamp(raw + offset), precision) : "\u2014";
+			raw != null
+				? this.localize.formatNumber(clamp(raw + offset), precision)
+				: "\u2014";
 		return html`
       <div class="setting-row">
         <label>${label}</label>
@@ -241,7 +241,9 @@ export class EppSettingsView extends LitElement {
 					const el = e.target as HTMLInputElement;
 					const off = parseFloat(el.value);
 					const val =
-						raw != null ? this.localize.formatNumber(clamp(raw + off), precision) : "\u2014";
+						raw != null
+							? this.localize.formatNumber(clamp(raw + off), precision)
+							: "\u2014";
 					this._setText(el.nextElementSibling!, val);
 					this._overrides[`${offsetKey}Offset`] = off;
 					this._fireDirty();
@@ -398,7 +400,10 @@ export class EppSettingsView extends LitElement {
 								const v = Number(el.value);
 								this._overrides.targetMaxDistance = v;
 								this._fireChange("targetMaxDistance", v);
-								this._setText(el.nextElementSibling!, this.localize.formatNumber(v, 1));
+								this._setText(
+									el.nextElementSibling!,
+									this.localize.formatNumber(v, 1),
+								);
 							}} /><span class="setting-value">${this.localize.formatNumber(targetVal, 1)}</span><span class="setting-unit">m</span></span>
             ${this.resetBtn(targetAutoVal, "targetMaxDistance")}${this.infoTip(this.localize("info.target_max_distance"))}
           </div>
@@ -438,7 +443,10 @@ export class EppSettingsView extends LitElement {
 								}
 								this._overrides.staticMinDistance = v;
 								this._fireChange("staticMinDistance", v);
-								this._setText(el.nextElementSibling!, this.localize.formatNumber(v, 1));
+								this._setText(
+									el.nextElementSibling!,
+									this.localize.formatNumber(v, 1),
+								);
 							}} /><span class="setting-value">${this.localize.formatNumber(this.staticAutoDistance ? 0.3 : this.staticMinDistance, 1)}</span><span class="setting-unit">m</span></span>
             ${this.resetBtn(0.3, "staticMinDistance")}${this.infoTip(this.localize("info.static_min_distance"))}
           </div>
@@ -456,7 +464,10 @@ export class EppSettingsView extends LitElement {
 								}
 								this._overrides.staticMaxDistance = v;
 								this._fireChange("staticMaxDistance", v);
-								this._setText(el.nextElementSibling!, this.localize.formatNumber(v, 1));
+								this._setText(
+									el.nextElementSibling!,
+									this.localize.formatNumber(v, 1),
+								);
 							}} /><span class="setting-value">${this.localize.formatNumber(staticMaxVal, 1)}</span><span class="setting-unit">m</span></span>
             ${this.resetBtn(staticMaxAutoVal, "staticMaxDistance")}${this.infoTip(this.localize("info.static_max_distance"))}
           </div>

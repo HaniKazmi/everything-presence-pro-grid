@@ -5,6 +5,7 @@ import { FLOOR_PLAN_SVGS } from "../constants.js";
 import type { FurnitureItem } from "../lib/furniture.js";
 import { getResizeCursor, mmToPx } from "../lib/furniture.js";
 import { GRID_CELL_MM, GRID_COLS } from "../lib/grid.js";
+import { defaultLocalize, type LocalizeFn } from "../localize.js";
 
 export class EppFurnitureOverlay extends LitElement {
 	@property({ attribute: false }) furniture: FurnitureItem[] = [];
@@ -16,10 +17,7 @@ export class EppFurnitureOverlay extends LitElement {
 	@property({ type: Number }) visCols = 20;
 	@property({ type: Number }) visRows = 20;
 	@property({ attribute: false }) sidebarTab = "zones";
-	@property({ attribute: false }) localize: import("../localize.js").LocalizeFn = Object.assign(
-		((k: string) => k) as import("../localize.js").LocalizeFn,
-		{ formatNumber: (v: number, d = 1) => v.toFixed(d), lang: "en" },
-	);
+	@property({ attribute: false }) localize: LocalizeFn = defaultLocalize;
 
 	static styles = css`
 		:host {

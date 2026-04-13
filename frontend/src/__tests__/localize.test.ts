@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { setupLocalize } from "../localize.js";
+import { defaultLocalize, setupLocalize } from "../localize.js";
 
 describe("setupLocalize", () => {
 	it("returns a function", () => {
@@ -142,5 +142,20 @@ describe("setupLocalize", () => {
 			expect(r1).toBe("1.5");
 			expect(r2).toBe("2.5");
 		});
+	});
+});
+
+describe("defaultLocalize", () => {
+	it("returns the key as-is", () => {
+		expect(defaultLocalize("any.key")).toBe("any.key");
+	});
+
+	it("formatNumber falls back to toFixed", () => {
+		expect(defaultLocalize.formatNumber(3.5, 1)).toBe("3.5");
+		expect(defaultLocalize.formatNumber(3.14159, 2)).toBe("3.14");
+	});
+
+	it("lang is 'en'", () => {
+		expect(defaultLocalize.lang).toBe("en");
 	});
 });

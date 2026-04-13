@@ -18,7 +18,10 @@ function createView(
 	el.hass = { callWS: () => Promise.resolve({}) };
 	el.flashableDevices = [];
 	el.loading = false;
-	el.localize = Object.assign(((k: string) => k) as typeof el.localize, { formatNumber: (v: number, d = 1) => v.toFixed(d), lang: "en" });
+	el.localize = Object.assign(((k: string) => k) as typeof el.localize, {
+		formatNumber: (v: number, d = 1) => v.toFixed(d),
+		lang: "en",
+	});
 	for (const [k, v] of Object.entries(overrides)) {
 		(el as any)[k] = v;
 	}
@@ -396,14 +399,14 @@ describe("render() WiFi provisioning — connected state", () => {
 	it("shows connected network and IP when _wifiConnected=true", () => {
 		const el = createView();
 		el.localize = Object.assign(
-		((k: string, params?: Record<string, string | number>) => {
-			if (k === "flasher.connected_to" && params)
-				return `Connected to ${params.ssid}`;
-			if (k === "flasher.ip_address" && params) return `IP: ${params.ip}`;
-			return k;
-		}) as typeof el.localize,
-		{ formatNumber: (v: number, d = 1) => v.toFixed(d), lang: "en" },
-	);
+			((k: string, params?: Record<string, string | number>) => {
+				if (k === "flasher.connected_to" && params)
+					return `Connected to ${params.ssid}`;
+				if (k === "flasher.ip_address" && params) return `IP: ${params.ip}`;
+				return k;
+			}) as typeof el.localize,
+			{ formatNumber: (v: number, d = 1) => v.toFixed(d), lang: "en" },
+		);
 		(el as any)._showWifiProvisioning = true;
 		(el as any)._wifiConnected = true;
 		(el as any)._selectedSsid = "MyNetwork";

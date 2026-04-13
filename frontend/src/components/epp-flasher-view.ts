@@ -11,6 +11,7 @@ import {
 import { html, LitElement, nothing } from "lit";
 import { property, state } from "lit/decorators.js";
 import type { WifiNetwork } from "../lib/improv-serial.js";
+import { defaultLocalize, type LocalizeFn } from "../localize.js";
 import { flasherStyles } from "../styles.js";
 import type {
 	FlashableDevice,
@@ -42,10 +43,7 @@ export class EppFlasherView extends LitElement {
 	@property({ attribute: false }) hass: any;
 	@property({ attribute: false }) flashableDevices: FlashableDevice[] = [];
 	@property({ type: Boolean }) loading = false;
-	@property({ attribute: false }) localize: import("../localize.js").LocalizeFn = Object.assign(
-		((k: string) => k) as import("../localize.js").LocalizeFn,
-		{ formatNumber: (v: number, d = 1) => v.toFixed(d), lang: "en" },
-	);
+	@property({ attribute: false }) localize: LocalizeFn = defaultLocalize;
 
 	@state() private _selectedVariant: "wifi" | "ethernet" = "wifi";
 	@property() firmwareBaseUrl = "";

@@ -23,6 +23,7 @@ import {
 import type { ZoneConfig } from "../lib/zone-defaults.js";
 import type { Target } from "../types.js";
 import "./epp-furniture-overlay.js";
+import { defaultLocalize, type LocalizeFn } from "../localize.js";
 
 export class EppGrid extends LitElement {
 	@property({ attribute: false }) grid: Uint8Array = new Uint8Array(0);
@@ -44,10 +45,7 @@ export class EppGrid extends LitElement {
 	} | null)[] = [];
 	@property({ attribute: false }) heatmapColors: Map<number, string> | null =
 		null;
-	@property({ attribute: false }) localize: import("../localize.js").LocalizeFn = Object.assign(
-		((k: string) => k) as import("../localize.js").LocalizeFn,
-		{ formatNumber: (v: number, d = 1) => v.toFixed(d), lang: "en" },
-	);
+	@property({ attribute: false }) localize: LocalizeFn = defaultLocalize;
 	/** Maximum detection range in mm */
 	@property({ type: Number }) maxRangeMm = MAX_RANGE;
 	/** Maximum pixel size for the grid (live=480, editor=520) */

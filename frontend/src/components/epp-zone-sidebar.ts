@@ -1,6 +1,7 @@
 import { css, html, LitElement, nothing } from "lit";
 import { property } from "lit/decorators.js";
 import { ZONE_TYPE_DEFAULTS, type ZoneConfig } from "../lib/zone-defaults.js";
+import { defaultLocalize, type LocalizeFn } from "../localize.js";
 import { toggleStyles } from "../styles.js";
 
 export interface LocalZoneInfo {
@@ -24,10 +25,7 @@ export class EppZoneSidebar extends LitElement {
 		ZONE_TYPE_DEFAULTS.normal.handoff_timeout;
 	@property({ attribute: false }) localZoneState: Map<number, LocalZoneInfo> =
 		new Map();
-	@property({ attribute: false }) localize: import("../localize.js").LocalizeFn = Object.assign(
-		((k: string) => k) as import("../localize.js").LocalizeFn,
-		{ formatNumber: (v: number, d = 1) => v.toFixed(d), lang: "en" },
-	);
+	@property({ attribute: false }) localize: LocalizeFn = defaultLocalize;
 
 	static styles = [
 		toggleStyles,
