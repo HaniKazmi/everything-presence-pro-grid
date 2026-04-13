@@ -23,3 +23,11 @@ export function remountEppPanel(host: HTMLElement): void {
 	(el as any).panel = (host as any).panel;
 	host.appendChild(el);
 }
+
+export function checkAndRemount(): void {
+	const host = findEppPanelHost();
+	if (!host) return;
+	if (isEppPanelMissing(host)) {
+		remountEppPanel(host);
+	}
+}

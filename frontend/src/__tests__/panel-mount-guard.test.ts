@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it } from "vitest";
 import {
+	checkAndRemount,
 	findEppPanelHost,
 	isEppPanelMissing,
 	remountEppPanel,
@@ -128,6 +129,72 @@ describe("remountEppPanel", () => {
 		document.body.appendChild(host);
 
 		remountEppPanel(host);
+
+		expect(host.children.length).toBe(0);
+	});
+});
+
+describe("checkAndRemount", () => {
+	afterEach(() => {
+		document.body.innerHTML = "";
+	});
+
+	it("remounts when host is our panel with no children", () => {
+		const haRoot = buildHaShadowTree(true);
+		(haRoot as any).hass = { any: "value" };
+		document.body.appendChild(haRoot);
+
+		const resolver = haRoot.shadowRoot!
+			.querySelector("home-assistant-main")!
+			.shadowRoot!.querySelector("partial-panel-resolver")!;
+		const host = resolver.querySelector("ha-panel-custom") as HTMLElement;
+		(host as any).panel = {
+			config: { _panel_custom: { name: "eppgrid-panel" } },
+		};
+
+		checkAndRemount();
+
+		expect(host.children.length).toBe(1);
+		expect(host.firstElementChild?.tagName.toLowerCase()).toBe("eppgrid-panel");
+	});
+
+	it("is a no-op when no ha-panel-custom found", () => {
+		expect(() => checkAndRemount()).not.toThrow();
+	});
+
+	it("is a no-op when panel already has a child", () => {
+		const haRoot = buildHaShadowTree(true);
+		(haRoot as any).hass = { any: "value" };
+		document.body.appendChild(haRoot);
+
+		const host = haRoot.shadowRoot!
+			.querySelector("home-assistant-main")!
+			.shadowRoot!.querySelector("partial-panel-resolver")!
+			.querySelector("ha-panel-custom") as HTMLElement;
+		(host as any).panel = {
+			config: { _panel_custom: { name: "eppgrid-panel" } },
+		};
+		host.appendChild(document.createElement("eppgrid-panel"));
+
+		checkAndRemount();
+
+		expect(host.children.length).toBe(1);
+	});
+
+	it("is a no-op for a different panel type", () => {
+		const haRoot = buildHaShadowTree(true);
+		(haRoot as any).hass = { any: "value" };
+		document.body.appendChild(haRoot);
+
+		const host = haRoot.shadowRoot!
+			.querySelector("home-assistant-main")!
+			.shadowRoot!.querySelector("partial-panel-resolver")!
+			.querySelector("ha-panel-custom") as HTMLElement;
+		(host as any).panel = {
+			config: { _panel_custom: { name: "other-panel" } },
+		};
+
+		checkAndRemount();
 
 		expect(host.children.length).toBe(0);
 	});
