@@ -273,3 +273,16 @@ describe("installPanelMountGuard", () => {
 		expect(host.children.length).toBe(1);
 	});
 });
+
+describe("module-level install", () => {
+	afterEach(() => {
+		document.body.innerHTML = "";
+		delete (window as any).__eppGridMountGuardInstalled;
+	});
+
+	it("is installed when eppgrid-panel module is imported", async () => {
+		delete (window as any).__eppGridMountGuardInstalled;
+		await import("../eppgrid-panel.js");
+		expect((window as any).__eppGridMountGuardInstalled).toBe(true);
+	});
+});
