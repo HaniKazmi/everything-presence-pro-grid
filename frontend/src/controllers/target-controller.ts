@@ -142,16 +142,24 @@ export class TargetController implements ReactiveController {
 	 * Enriched:   "Static: active, Motion: pending, Occ: on | T0→Hallway(active,5) | Hallway: occupied(1)"
 	 */
 	enrichDebugLog(raw: string): string {
+		const t = this.host._localize;
 		const zoneName = (zid: number): string => {
-			if (zid === 0) return "Room";
+			if (zid === 0) return t("live.debug.room");
 			const cfg = this.host._zoneConfigs[zid - 1];
-			return cfg ? cfg.name : `Zone ${zid}`;
+			return cfg ? cfg.name : t("live.debug.zone_n", { n: zid });
 		};
 		const statusName: Record<string, string> = {
-			A: "active",
-			P: "pending",
-			I: "inactive",
-			O: "occupied",
+			A: t("live.debug.active"),
+			P: t("live.debug.pending"),
+			I: t("live.debug.inactive"),
+			O: t("live.debug.occupied"),
+		};
+		const labels = {
+			static: t("live.debug.static"),
+			motion: t("live.debug.motion"),
+			occ: t("live.debug.occ"),
+			on: t("live.debug.on"),
+			off: t("live.debug.off"),
 		};
 
 		const parts = raw.split("|");
@@ -179,11 +187,14 @@ export class TargetController implements ReactiveController {
 			const sensorLabels: string[] = [];
 			for (const tok of sensorTokens) {
 				const [key, val] = tok.split(":");
-				if (key === "S") sensorLabels.push(`Static: ${statusName[val] ?? val}`);
+				if (key === "S")
+					sensorLabels.push(`${labels.static}: ${statusName[val] ?? val}`);
 				else if (key === "M")
-					sensorLabels.push(`Motion: ${statusName[val] ?? val}`);
+					sensorLabels.push(`${labels.motion}: ${statusName[val] ?? val}`);
 				else if (key === "Occ")
-					sensorLabels.push(`Occ: ${val === "1" ? "on" : "off"}`);
+					sensorLabels.push(
+						`${labels.occ}: ${val === "1" ? labels.on : labels.off}`,
+					);
 			}
 			sStr = sensorLabels.join(", ");
 		}
@@ -194,9 +205,9 @@ export class TargetController implements ReactiveController {
 			.split(/\s+/)
 			.filter(Boolean)
 			.map((s) => {
-				const [t, z, st, sig] = s.split(":");
+				const [tn, z, st, sig] = s.split(":");
 				const zid = parseInt(z?.replace("Z", "") ?? "0", 10);
-				return `${t}→${zoneName(zid)}(${statusName[st] ?? st},${sig})`;
+				return `${tn}→${zoneName(zid)}(${statusName[st] ?? st},${sig})`;
 			});
 
 		// Zones section
@@ -210,8 +221,8 @@ export class TargetController implements ReactiveController {
 				return `${zoneName(zid)}: ${statusName[st] ?? st}(${cnt})`;
 			});
 
-		const tStr = targets.length ? targets.join(" ") : "no targets";
-		const zStr = zones.length ? zones.join(", ") : "all clear";
+		const tStr = targets.length ? targets.join(" ") : t("live.debug.no_targets");
+		const zStr = zones.length ? zones.join(", ") : t("live.debug.all_clear");
 
 		if (sStr) {
 			return `${sStr} | ${tStr} | ${zStr}`;
@@ -258,7 +269,7 @@ export class TargetController implements ReactiveController {
 		if (body === this.host._backendDebugLogPrev) return;
 
 		this.host._backendDebugLogPrev = body;
-		const ts = new Date().toLocaleTimeString("en-GB", {
+		const ts = new Date().toLocaleTimeString(this.host._localize?.lang ?? "en-GB", {
 			hour12: false,
 			hour: "2-digit",
 			minute: "2-digit",
@@ -285,7 +296,7 @@ export class TargetController implements ReactiveController {
 		if (body === this.host._debugLogPrev) return;
 
 		this.host._debugLogPrev = body;
-		const ts = new Date().toLocaleTimeString("en-GB", {
+		const ts = new Date().toLocaleTimeString(this.host._localize?.lang ?? "en-GB", {
 			hour12: false,
 			hour: "2-digit",
 			minute: "2-digit",

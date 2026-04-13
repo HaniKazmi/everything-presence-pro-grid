@@ -227,7 +227,20 @@
 			"detection_events": "Eventos de detección",
 			"copy_all": "Copiar todo",
 			"clear": "Borrar",
-			"waiting_for_events": "Esperando eventos..."
+			"waiting_for_events": "Esperando eventos...",
+			"static": "Estático",
+			"motion": "Movimiento",
+			"occ": "Ocup",
+			"on": "sí",
+			"off": "no",
+			"active": "activo",
+			"pending": "pendiente",
+			"inactive": "inactivo",
+			"occupied": "ocupada",
+			"room": "Habitación",
+			"no_targets": "sin objetivos",
+			"all_clear": "todo despejado",
+			"zone_n": "Zona {n}"
 		}
 	},
 	"entities": {

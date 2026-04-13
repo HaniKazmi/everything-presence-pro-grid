@@ -228,7 +228,20 @@
 			"detection_events": "Detection events",
 			"copy_all": "Copy all",
 			"clear": "Clear",
-			"waiting_for_events": "Waiting for events..."
+			"waiting_for_events": "Waiting for events...",
+			"static": "Static",
+			"motion": "Motion",
+			"occ": "Occ",
+			"on": "on",
+			"off": "off",
+			"active": "active",
+			"pending": "pending",
+			"inactive": "inactive",
+			"occupied": "occupied",
+			"room": "Room",
+			"no_targets": "no targets",
+			"all_clear": "all clear",
+			"zone_n": "Zone {n}"
 		}
 	},
 	"entities": {

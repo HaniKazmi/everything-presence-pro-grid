@@ -55,6 +55,29 @@ function mockHost() {
 		// View mode
 		_view: "live" as "live" | "editor" | "settings",
 
+		// Localize stub — translates known live.debug.* keys back to their English values
+		_localize: Object.assign(
+			(key: string, params?: Record<string, string | number>) => {
+				const map: Record<string, string> = {
+					"live.debug.static": "Static",
+					"live.debug.motion": "Motion",
+					"live.debug.occ": "Occ",
+					"live.debug.on": "on",
+					"live.debug.off": "off",
+					"live.debug.active": "active",
+					"live.debug.pending": "pending",
+					"live.debug.inactive": "inactive",
+					"live.debug.occupied": "occupied",
+					"live.debug.room": "Room",
+					"live.debug.no_targets": "no targets",
+					"live.debug.all_clear": "all clear",
+					"live.debug.zone_n": `Zone ${params?.n ?? ""}`,
+				};
+				return map[key] ?? key;
+			},
+			{ formatNumber: (v: number, d = 1) => v.toFixed(d), lang: "en" },
+		),
+
 		// Shadow root mock for DOM-based debug log
 		_mockBackendContainer: null as HTMLDivElement | null,
 		_mockFrontendContainer: null as HTMLDivElement | null,
