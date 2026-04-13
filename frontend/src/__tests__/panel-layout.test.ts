@@ -273,3 +273,49 @@ describe("editor layout structure", () => {
 		expect(a._selectedFurnitureId).toBeNull();
 	});
 });
+
+describe("setup wizard layout structure", () => {
+	it("wraps wizard in .panel so content is centered like other views", () => {
+		const el = createPanel();
+		const a = el as any;
+		a._setupStep = "guide";
+
+		const result = a.render();
+		const container = document.createElement("div");
+		render(result, container);
+
+		const panel = container.querySelector(".panel");
+		expect(panel).not.toBeNull();
+		const wizard = panel!.querySelector("epp-wizard");
+		expect(wizard).not.toBeNull();
+	});
+
+	it("wizard header uses the panel device dropdown that shows area", () => {
+		const el = createPanel();
+		const a = el as any;
+		a._setupStep = "guide";
+		a._devices = [
+			{
+				mac: "AA:BB:CC:DD:EE:01",
+				name: "Grid",
+				area: "Living Room",
+				host: null,
+				available: true,
+				configured: true,
+			},
+		];
+		a._selectedMac = "AA:BB:CC:DD:EE:01";
+
+		const result = a.render();
+		const container = document.createElement("div");
+		render(result, container);
+
+		const headers = container.querySelectorAll(".panel-header");
+		expect(headers.length).toBe(1);
+		const haSelect = headers[0].querySelector("ha-select") as any;
+		expect(haSelect).not.toBeNull();
+		expect(haSelect.options).toEqual([
+			{ value: "AA:BB:CC:DD:EE:01", label: "Grid (Living Room)" },
+		]);
+	});
+});

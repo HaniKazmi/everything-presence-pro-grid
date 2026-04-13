@@ -29,10 +29,6 @@ export class EppWizard extends LitElement {
 	@property({ attribute: false }) sensorState: {
 		occupancy: boolean;
 	} = { occupancy: false };
-	@property({ attribute: false }) devices: {
-		mac: string;
-		name: string;
-	}[] = [];
 	@property({ attribute: false }) localize: LocalizeFn = defaultLocalize;
 
 	// Initial room dimensions (for re-calibration)
@@ -270,17 +266,6 @@ export class EppWizard extends LitElement {
 		css`
       :host {
         display: block;
-      }
-
-      .wizard-container {
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        justify-content: center;
-        height: 100%;
-        width: 100%;
-        padding: 32px;
-        box-sizing: border-box;
       }
 
       .wizard-card {
@@ -561,18 +546,6 @@ export class EppWizard extends LitElement {
 		}
 	}
 
-	private _renderHeader() {
-		return html`
-      <div class="panel-header">
-        <ha-select
-          .value=${this.selectedMac}
-          .disabled=${true}
-          .options=${this.devices.map((d) => ({ value: d.mac, label: d.name }))}
-        ></ha-select>
-      </div>
-    `;
-	}
-
 	_renderWizard() {
 		let stepContent: unknown;
 		switch (this._setupStep) {
@@ -584,33 +557,31 @@ export class EppWizard extends LitElement {
 				break;
 		}
 		return html`
-      <div class="wizard-container">
-        ${this._renderHeader()} ${stepContent}
-        ${
-					this._wizardCapturing
-						? html`
-          <div class="capture-overlay">
-            <div class="capture-overlay-content">
-              <div class="capture-progress" style="width: 200px;">
-                <div class="capture-bar">
-                  <div class="capture-fill" style="width: ${this._wizardCaptureProgress * 100}%"></div>
-                </div>
-                <span>${this.localize("wizard.recording", { current: Math.round(this._wizardCaptureProgress * CAPTURE_DURATION_S), total: CAPTURE_DURATION_S })}</span>
+      ${stepContent}
+      ${
+				this._wizardCapturing
+					? html`
+        <div class="capture-overlay">
+          <div class="capture-overlay-content">
+            <div class="capture-progress" style="width: 200px;">
+              <div class="capture-bar">
+                <div class="capture-fill" style="width: ${this._wizardCaptureProgress * 100}%"></div>
               </div>
-              <p style="margin: 8px 0 0; font-size: 13px; color: ${this._wizardCapturePaused ? "var(--error-color, #e53935)" : "var(--secondary-text-color)"};">
-                ${this._wizardCapturePaused ? this.localize("wizard.paused") : this.localize("wizard.stand_still")}
-              </p>
-              <button
-                class="wizard-btn wizard-btn-back"
-                style="margin-top: 12px;"
-                @click=${() => this._wizardCancelCapture()}
-              >${this.localize("common.cancel")}</button>
+              <span>${this.localize("wizard.recording", { current: Math.round(this._wizardCaptureProgress * CAPTURE_DURATION_S), total: CAPTURE_DURATION_S })}</span>
             </div>
+            <p style="margin: 8px 0 0; font-size: 13px; color: ${this._wizardCapturePaused ? "var(--error-color, #e53935)" : "var(--secondary-text-color)"};">
+              ${this._wizardCapturePaused ? this.localize("wizard.paused") : this.localize("wizard.stand_still")}
+            </p>
+            <button
+              class="wizard-btn wizard-btn-back"
+              style="margin-top: 12px;"
+              @click=${() => this._wizardCancelCapture()}
+            >${this.localize("common.cancel")}</button>
           </div>
-        `
-						: nothing
-				}
-      </div>
+        </div>
+      `
+					: nothing
+			}
     `;
 	}
 

@@ -80,6 +80,31 @@ describe("connectedCallback", () => {
 	});
 });
 
+describe("setup wizard delegates header to parent panel", () => {
+	it("does not render its own .panel-header in shadow DOM", async () => {
+		const el = createWizard({ mode: "wizard" });
+		(el as any)._setupStep = "guide";
+		document.body.appendChild(el);
+		await el.updateComplete;
+
+		const root = el.shadowRoot!;
+		expect(root.querySelector(".panel-header")).toBeNull();
+	});
+
+	it("does not wrap step content in a padded fullscreen container", async () => {
+		const el = createWizard({ mode: "wizard" });
+		(el as any)._setupStep = "guide";
+		document.body.appendChild(el);
+		await el.updateComplete;
+
+		const root = el.shadowRoot!;
+		// .wizard-container added 32px padding + flex centering for the old
+		// fullscreen layout — inside .panel it just inflates the gap below
+		// the header. It should be gone so spacing matches other views.
+		expect(root.querySelector(".wizard-container")).toBeNull();
+	});
+});
+
 describe("capture cancel click", () => {
 	it("resets capturing state when cancel button is clicked", async () => {
 		const el = createWizard({ mode: "wizard" });
