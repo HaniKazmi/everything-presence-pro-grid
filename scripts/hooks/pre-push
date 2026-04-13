@@ -81,19 +81,11 @@ fi
 
 # -- Translations --
 
-COMP="$ROOT/custom_components/eppgrid"
 step "Translations check"
-if python3 -c "
-import json, sys
-s = json.load(open('$COMP/strings.json'))
-t = json.load(open('$COMP/translations/en.json'))
-if s != t:
-    print('  strings.json and translations/en.json are out of sync')
-    sys.exit(1)
-" 2>&1; then
+if python3 "$ROOT/scripts/check_translations.py" 2>&1; then
     pass "Translations in sync"
 else
-    fail "Translations — copy strings.json to translations/en.json"
+    fail "Translations — see errors above"
 fi
 
 # -- Python --
