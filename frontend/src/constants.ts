@@ -150,6 +150,10 @@ export const FLOOR_PLAN_SVGS: Record<
 		viewBox: "0 0 100 130",
 		content: `<rect x="18" y="4" width="64" height="24" rx="4" ry="4" stroke="black" stroke-width="2" fill="none"/><rect x="22" y="7" width="56" height="18" rx="2" ry="2" stroke="black" stroke-width="2" fill="none"/><ellipse cx="50" cy="16" rx="6" ry="4" stroke="black" stroke-width="2" fill="none"/><circle cx="30" cy="30" r="2.5" fill="black" stroke="none"/><circle cx="70" cy="30" r="2.5" fill="black" stroke="none"/><path d="M 20,32 L 20,60 Q 20,100 50,105 Q 80,100 80,60 L 80,32" stroke="black" stroke-width="2" fill="none"/><path d="M 24,34 L 24,58 Q 24,94 50,99 Q 76,94 76,58 L 76,34" stroke="black" stroke-width="2" fill="none"/><path d="M 32,40 L 32,58 Q 32,86 50,90 Q 68,86 68,58 L 68,40 Q 68,36 50,36 Q 32,36 32,40 Z" stroke="black" stroke-width="2" fill="none"/><line x1="24" y1="34" x2="76" y2="34" stroke="black" stroke-width="2"/>`,
 	},
+	washbasin: {
+		viewBox: "0 0 100 70",
+		content: `<rect x="5" y="5" width="90" height="60" rx="8" ry="8" stroke="black" stroke-width="2" fill="none"/><ellipse cx="50" cy="40" rx="35" ry="20" stroke="black" stroke-width="2" fill="none"/><circle cx="50" cy="12" r="3.5" stroke="black" stroke-width="2" fill="none"/><rect x="48.5" y="13" width="3" height="6" rx="1" ry="1" stroke="black" stroke-width="2" fill="none"/><circle cx="50" cy="40" r="3" stroke="black" stroke-width="2" fill="none"/><circle cx="50" cy="40" r="1" fill="black" stroke="none"/>`,
+	},
 };
 
 export const FURNITURE_CATALOG: FurnitureSticker[] = [
@@ -314,6 +318,13 @@ export const FURNITURE_CATALOG: FurnitureSticker[] = [
 		label: "furniture.bidet",
 		defaultWidth: 400,
 		defaultHeight: 500,
+	},
+	{
+		type: "svg",
+		icon: "washbasin",
+		label: "furniture.washbasin",
+		defaultWidth: 600,
+		defaultHeight: 420,
 	},
 	{
 		type: "svg",
