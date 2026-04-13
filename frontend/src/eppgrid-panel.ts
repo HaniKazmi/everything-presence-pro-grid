@@ -2261,7 +2261,7 @@ export class EPPGridPanel extends LitElement {
 					}}
         >
           <ha-icon icon=${this._showBackendDebugLog ? "mdi:chevron-down" : "mdi:chevron-right"} style="--mdc-icon-size: 14px;"></ha-icon>
-          Detection events
+          ${this._localize("live.debug.detection_events")}
         </button>
         ${
 					this._showBackendDebugLog
@@ -2274,7 +2274,7 @@ export class EPPGridPanel extends LitElement {
 									this._backendDebugLogLines.join("\n"),
 								);
 							}}
-            >Copy all</button>
+            >${this._localize("live.debug.copy_all")}</button>
             <button
               class="debug-log-btn"
               @click=${() => {
@@ -2288,14 +2288,14 @@ export class EPPGridPanel extends LitElement {
 									const placeholder = document.createElement("div");
 									placeholder.style.cssText =
 										"color: var(--secondary-text-color, #999); font-style: italic;";
-									placeholder.textContent = "Waiting for events...";
+									placeholder.textContent = this._localize("live.debug.waiting_for_events");
 									el.appendChild(placeholder);
 								}
 							}}
-            >Clear</button>
+            >${this._localize("live.debug.clear")}</button>
           </div>
           <div class="debug-log-container" id="backend-debug-log-scroll">
-            <div style="color: var(--secondary-text-color, #999); font-style: italic;">Waiting for events...</div>
+            <div style="color: var(--secondary-text-color, #999); font-style: italic;">${this._localize("live.debug.waiting_for_events")}</div>
           </div>
         `
 						: nothing
@@ -2319,7 +2319,7 @@ export class EPPGridPanel extends LitElement {
 					}}
         >
           <ha-icon icon=${this._showDebugLog ? "mdi:chevron-down" : "mdi:chevron-right"} style="--mdc-icon-size: 14px;"></ha-icon>
-          Detection events
+          ${this._localize("live.debug.detection_events")}
         </button>
         ${
 					this._showDebugLog
@@ -2330,7 +2330,7 @@ export class EPPGridPanel extends LitElement {
               @click=${() => {
 								navigator.clipboard.writeText(this._debugLogLines.join("\n"));
 							}}
-            >Copy all</button>
+            >${this._localize("live.debug.copy_all")}</button>
             <button
               class="debug-log-btn"
               @click=${() => {
@@ -2342,14 +2342,14 @@ export class EPPGridPanel extends LitElement {
 									const placeholder = document.createElement("div");
 									placeholder.style.cssText =
 										"color: var(--secondary-text-color, #999); font-style: italic;";
-									placeholder.textContent = "Waiting for events...";
+									placeholder.textContent = this._localize("live.debug.waiting_for_events");
 									el.appendChild(placeholder);
 								}
 							}}
-            >Clear</button>
+            >${this._localize("live.debug.clear")}</button>
           </div>
           <div class="debug-log-container" id="debug-log-scroll">
-            <div style="color: var(--secondary-text-color, #999); font-style: italic;">Waiting for events...</div>
+            <div style="color: var(--secondary-text-color, #999); font-style: italic;">${this._localize("live.debug.waiting_for_events")}</div>
           </div>
         `
 						: nothing

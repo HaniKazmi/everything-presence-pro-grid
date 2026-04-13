@@ -407,7 +407,11 @@ export class EppGrid extends LitElement {
 		if (!metrics) return nothing;
 		return html`
 			<div class="grid-dimensions">
-				${metrics.widthM}m × ${metrics.depthM}m · Furthest point: ${metrics.furthestM}m
+				${this.localize("live.grid_dimensions", {
+					width: metrics.widthM,
+					depth: metrics.depthM,
+					furthest: metrics.furthestM,
+				})}
 			</div>
 		`;
 	}

@@ -218,7 +218,14 @@
 		"target_count": "Target count",
 		"delete_target": "Delete target",
 		"mark_interference": "Mark as interference source",
-		"suppress_detection": "Suppress detection"
+		"suppress_detection": "Suppress detection",
+		"grid_dimensions": "{width}m × {depth}m · Furthest point: {furthest}m",
+		"debug": {
+			"detection_events": "Detection events",
+			"copy_all": "Copy all",
+			"clear": "Clear",
+			"waiting_for_events": "Waiting for events..."
+		}
 	},
 	"entities": {
 		"room_level": "Room level",

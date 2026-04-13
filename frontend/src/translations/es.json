@@ -217,7 +217,14 @@
 		"target_count": "Número de objetivos",
 		"delete_target": "Eliminar objetivo",
 		"mark_interference": "Marcar como fuente de interferencia",
-		"suppress_detection": "Suprimir detección"
+		"suppress_detection": "Suprimir detección",
+		"grid_dimensions": "{width}m × {depth}m · Punto más lejano: {furthest}m",
+		"debug": {
+			"detection_events": "Eventos de detección",
+			"copy_all": "Copiar todo",
+			"clear": "Borrar",
+			"waiting_for_events": "Esperando eventos..."
+		}
 	},
 	"entities": {
 		"room_level": "Nivel de habitación",
