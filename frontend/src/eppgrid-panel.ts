@@ -1215,38 +1215,41 @@ export class EPPGridPanel extends LitElement {
 		}
 
 		if (this._setupStep !== null) {
-			return html`
-        <epp-wizard
-          .hass=${this.hass}
-          .selectedMac=${this._selectedMac}
-          .rawTargets=${this._rawTargets}
-          .sensorState=${{ occupancy: this._sensorState.occupancy }}
-          .devices=${this._devices}
-          .localize=${this._localize}
-          .initialRoomWidth=${this._roomWidth}
-          .initialRoomDepth=${this._roomDepth}
-          @calibration-complete=${async (e: CustomEvent) => {
-						const { perspective, roomWidth, roomDepth } = e.detail;
-						this._perspective = perspective;
-						this._roomWidth = roomWidth;
-						this._roomDepth = roomDepth;
-						this._initGridFromRoom();
-						this._setupStep = null;
-						this._view = "live";
-						// set_setup enables zone_presence — update local state
-						this._entitiesConfig = {
-							...this._entitiesConfig,
-							zone_presence: true,
-						};
-						await this._gridCtrl.applyLayout().catch((err: unknown) => {
-							console.error("Failed to apply layout after calibration", err);
-						});
-					}}
+			return html`<div class="tab-layout">
+        ${this._renderTabBar()}
+        <div class="panel">
+          ${this._renderHeader()}
+          <epp-wizard
+            .hass=${this.hass}
+            .selectedMac=${this._selectedMac}
+            .rawTargets=${this._rawTargets}
+            .sensorState=${{ occupancy: this._sensorState.occupancy }}
+            .localize=${this._localize}
+            .initialRoomWidth=${this._roomWidth}
+            .initialRoomDepth=${this._roomDepth}
+            @calibration-complete=${async (e: CustomEvent) => {
+							const { perspective, roomWidth, roomDepth } = e.detail;
+							this._perspective = perspective;
+							this._roomWidth = roomWidth;
+							this._roomDepth = roomDepth;
+							this._initGridFromRoom();
+							this._setupStep = null;
+							this._view = "live";
+							// set_setup enables zone_presence — update local state
+							this._entitiesConfig = {
+								...this._entitiesConfig,
+								zone_presence: true,
+							};
+							await this._gridCtrl.applyLayout().catch((err: unknown) => {
+								console.error("Failed to apply layout after calibration", err);
+							});
+						}}
           @wizard-cancel=${() => {
 						this._setupStep = null;
 					}}
-        ></epp-wizard>
-      `;
+          ></epp-wizard>
+        </div>
+      </div>`;
 		}
 
 		if (this._deviceCtrl.reconnecting) {

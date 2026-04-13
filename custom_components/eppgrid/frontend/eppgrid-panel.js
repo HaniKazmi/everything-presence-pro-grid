@@ -2317,38 +2317,28 @@ const dt={attribute:!0,type:String,converter:E,reflect:!1,hasChanged:m},At=(t=dt
         border-top: 1px solid var(--divider-color, #eee);
         margin-top: auto;
       }
-    `],t([gt({attribute:!1})],Li.prototype,"sensorState",void 0),t([gt({type:Boolean})],Li.prototype,"targetAutoDistance",void 0),t([gt({type:Number})],Li.prototype,"targetMaxDistance",void 0),t([gt({type:Boolean})],Li.prototype,"staticAutoDistance",void 0),t([gt({type:Number})],Li.prototype,"staticMinDistance",void 0),t([gt({type:Number})],Li.prototype,"staticMaxDistance",void 0),t([gt({attribute:!1})],Li.prototype,"openAccordions",void 0),t([gt({attribute:!1})],Li.prototype,"perspective",void 0),t([gt({type:Number})],Li.prototype,"roomWidth",void 0),t([gt({type:Number})],Li.prototype,"roomDepth",void 0),t([gt({attribute:!1})],Li.prototype,"grid",void 0),t([gt({type:Boolean})],Li.prototype,"saving",void 0),t([gt({type:Boolean})],Li.prototype,"dirty",void 0),t([gt({type:Number})],Li.prototype,"temperatureOffset",void 0),t([gt({type:Number})],Li.prototype,"humidityOffset",void 0),t([gt({type:Number})],Li.prototype,"illuminanceOffset",void 0),t([gt({type:Number})],Li.prototype,"motionTimeout",void 0),t([gt({type:Number})],Li.prototype,"staticTimeout",void 0),t([gt({type:Number})],Li.prototype,"staticTriggerThreshold",void 0),t([gt({type:Number})],Li.prototype,"staticRenewThreshold",void 0),t([gt({type:Number})],Li.prototype,"staticOnDelay",void 0),t([gt({attribute:!1})],Li.prototype,"entitiesConfig",void 0),t([gt({attribute:!1})],Li.prototype,"logLevels",void 0),t([gt({type:Boolean})],Li.prototype,"bluetoothEnabled",void 0),t([gt({type:Boolean})],Li.prototype,"co2Enabled",void 0),t([gt({type:String})],Li.prototype,"ledMode",void 0),t([gt({type:Number})],Li.prototype,"ledBrightness",void 0),t([gt({type:String})],Li.prototype,"ledPresenceColor",void 0),t([gt({type:String})],Li.prototype,"relayTriggerMode",void 0),t([gt({type:String})],Li.prototype,"relayContactMode",void 0),t([gt({type:Number})],Li.prototype,"targetUpdateRateMs",void 0),t([gt({type:Number})],Li.prototype,"zoneUpdateRateMs",void 0),t([gt({attribute:!1})],Li.prototype,"localize",void 0),customElements.get("epp-settings-view")||customElements.define("epp-settings-view",Li);class Ni extends ct{constructor(){super(...arguments),this.selectedMac="",this.rawTargets=[],this.sensorState={occupancy:!1},this.devices=[],this.localize=Ie,this.initialRoomWidth=0,this.initialRoomDepth=0,this.mode="wizard",this._setupStep="guide",this._wizardSaving=!1,this._wizardCornerIndex=0,this._wizardCorners=[null,null,null,null],this._wizardRoomWidth=0,this._wizardRoomDepth=0,this._wizardCapturing=!1,this._wizardCaptureProgress=0,this._wizardCapturePaused=!1,this._wizardOffsetSide="",this._wizardOffsetFb="",this._wizardCaptureCancelled=!1,this._smoothBuffer=[],this._perspective=null}connectedCallback(){super.connectedCallback(),this._wizardRoomWidth=this.initialRoomWidth,this._wizardRoomDepth=this.initialRoomDepth}_syncCornerOffsets(){const t=this._wizardCorners[this._wizardCornerIndex];this._wizardOffsetSide=t?.offset_side?String(t.offset_side/10):"",this._wizardOffsetFb=t?.offset_fb?String(t.offset_fb/10):""}_getSmoothedRaw(){const t=this.rawTargets.find(t=>null!=t.raw_x&&null!=t.raw_y);if(!t)return null;const e=function(t,e,i,s){const o=[...t,{x:e,y:i,t:s}];let r=0;for(;r<o.length&&s-o[r].t>1e3;)r++;const a=o.slice(r);if(0===a.length)return{x:e,y:i,buffer:a};const n=t=>{const e=t.slice().sort((t,e)=>t-e),i=Math.floor(e.length/2);return e.length%2?e[i]:(e[i-1]+e[i])/2};return{x:n(a.map(t=>t.x)),y:n(a.map(t=>t.y)),buffer:a}}(this._smoothBuffer,t.raw_x,t.raw_y,Date.now());return this._smoothBuffer=e.buffer,{x:e.x,y:e.y}}_wizardCancelCapture(){this._wizardCaptureCancelled=!0,this._wizardCapturing=!1,this._wizardCapturePaused=!1}_wizardStartCapture(){const t=this.rawTargets.find(t=>null!=t.raw_x&&null!=t.raw_y);if(!t)return;this._wizardCapturing=!0,this._wizardCaptureProgress=0,this._wizardCapturePaused=!1,this._wizardCaptureCancelled=!1;const e=[];let i=0,s=Date.now();const o=()=>{if(this._wizardCaptureCancelled)return;const t=Date.now(),r=t-s;s=t;const a=this.rawTargets.filter(t=>null!=t.raw_x&&null!=t.raw_y),n=1===a.length;if(this._wizardCapturePaused=!n,n&&(i+=r,e.push({x:a[0].raw_x,y:a[0].raw_y})),this._wizardCaptureProgress=Math.min(i/5e3,1),i<5e3)return void requestAnimationFrame(o);if(this._wizardCapturing=!1,this._wizardCapturePaused=!1,0===e.length)return;const l=function(t){return 0===t.length?null:{x:Oi(t.map(t=>t.x)),y:Oi(t.map(t=>t.y))}}(e);if(!l)return;const c=this._wizardCornerIndex;this._wizardCorners=[...this._wizardCorners],this._wizardCorners[c]={raw_x:l.x,raw_y:l.y,offset_side:10*(parseFloat(this._wizardOffsetSide)||0),offset_fb:10*(parseFloat(this._wizardOffsetFb)||0)},c<3&&(this._wizardCornerIndex=c+1),this._syncCornerOffsets(),this._wizardCorners.every(t=>null!==t)&&this._autoComputeRoomDimensions()};requestAnimationFrame(o)}_autoComputeRoomDimensions(){const t=function(t){const e=(t,e)=>Math.sqrt((t.raw_x-e.raw_x)**2+(t.raw_y-e.raw_y)**2),i=Math.round(e(t[0],t[1])),s=e(t[0],t[3]),o=e(t[1],t[2]);return{width:i,depth:Math.round((s+o)/2)}}(this._wizardCorners);this._wizardRoomWidth=t.width,this._wizardRoomDepth=t.depth}_solvePerspective(t,e){return function(t,e){const i=[],s=[];for(let o=0;o<4;o++){const r=t[o].x,a=t[o].y,n=e[o].x,l=e[o].y;i.push([r,a,1,0,0,0,-r*n,-a*n]),s.push(n),i.push([0,0,0,r,a,1,-r*l,-a*l]),s.push(l)}const o=i.map((t,e)=>[...t,s[e]]);for(let t=0;t<8;t++){let e=Math.abs(o[t][t]),i=t;for(let s=t+1;s<8;s++)Math.abs(o[s][t])>e&&(e=Math.abs(o[s][t]),i=s);if(e<1e-12)return null;[o[t],o[i]]=[o[i],o[t]];for(let e=t+1;e<8;e++){const i=o[e][t]/o[t][t];for(let s=t;s<=8;s++)o[e][s]-=i*o[t][s]}}const r=new Array(8);for(let t=7;t>=0;t--){r[t]=o[t][8];for(let e=t+1;e<8;e++)r[t]-=o[t][e]*r[e];r[t]/=o[t][t]}return r}(t,e)}_computeWizardPerspective(){const t=this._wizardCorners;if(!t.every(t=>null!==t))return;const e=this._wizardRoomWidth,i=this._wizardRoomDepth,s=t.map(t=>({x:t.raw_x,y:t.raw_y})),o=[{x:t[0].offset_side,y:t[0].offset_fb},{x:e-t[1].offset_side,y:t[1].offset_fb},{x:e-t[2].offset_side,y:i-t[2].offset_fb},{x:t[3].offset_side,y:i-t[3].offset_fb}];this._perspective=this._solvePerspective(s,o)}async _wizardFinish(){if(this._perspective){this._wizardSaving=!0;try{await this.hass.callWS({type:"eppgrid/set_setup",mac:this.selectedMac,perspective:this._perspective,room_width:this._wizardRoomWidth,room_depth:this._wizardRoomDepth}),this.dispatchEvent(new CustomEvent("calibration-complete",{detail:{perspective:this._perspective,roomWidth:this._wizardRoomWidth,roomDepth:this._wizardRoomDepth},bubbles:!0,composed:!0}))}finally{this._wizardSaving=!1}}}_rawToFovPct(t,e){return function(t,e){return{xPct:(t+Ii)/(2*Ii)*100,yPct:e/oi*100}}(t,e)}_getWizardTargetStyle(t){const{xPct:e,yPct:i}=this._rawToFovPct(t.raw_x??0,t.raw_y??0);return`left: ${e}%; top: ${i}%;`}render(){switch(this.mode){case"uncalibrated-fov":return this._renderUncalibratedFov();case"needs-calibration":return this._renderNeedsCalibration();default:return null===this._setupStep?J:this._renderWizard()}}_renderHeader(){return Y`
-      <div class="panel-header">
-        <ha-select
-          .value=${this.selectedMac}
-          .disabled=${!0}
-          .options=${this.devices.map(t=>({value:t.mac,label:t.name}))}
-        ></ha-select>
-      </div>
-    `}_renderWizard(){let t;switch(this._setupStep){case"guide":t=this._renderWizardGuide();break;case"corners":t=this._renderWizardCorners()}return Y`
-      <div class="wizard-container">
-        ${this._renderHeader()} ${t}
-        ${this._wizardCapturing?Y`
-          <div class="capture-overlay">
-            <div class="capture-overlay-content">
-              <div class="capture-progress" style="width: 200px;">
-                <div class="capture-bar">
-                  <div class="capture-fill" style="width: ${100*this._wizardCaptureProgress}%"></div>
-                </div>
-                <span>${this.localize("wizard.recording",{current:Math.round(5*this._wizardCaptureProgress),total:5})}</span>
+    `],t([gt({attribute:!1})],Li.prototype,"sensorState",void 0),t([gt({type:Boolean})],Li.prototype,"targetAutoDistance",void 0),t([gt({type:Number})],Li.prototype,"targetMaxDistance",void 0),t([gt({type:Boolean})],Li.prototype,"staticAutoDistance",void 0),t([gt({type:Number})],Li.prototype,"staticMinDistance",void 0),t([gt({type:Number})],Li.prototype,"staticMaxDistance",void 0),t([gt({attribute:!1})],Li.prototype,"openAccordions",void 0),t([gt({attribute:!1})],Li.prototype,"perspective",void 0),t([gt({type:Number})],Li.prototype,"roomWidth",void 0),t([gt({type:Number})],Li.prototype,"roomDepth",void 0),t([gt({attribute:!1})],Li.prototype,"grid",void 0),t([gt({type:Boolean})],Li.prototype,"saving",void 0),t([gt({type:Boolean})],Li.prototype,"dirty",void 0),t([gt({type:Number})],Li.prototype,"temperatureOffset",void 0),t([gt({type:Number})],Li.prototype,"humidityOffset",void 0),t([gt({type:Number})],Li.prototype,"illuminanceOffset",void 0),t([gt({type:Number})],Li.prototype,"motionTimeout",void 0),t([gt({type:Number})],Li.prototype,"staticTimeout",void 0),t([gt({type:Number})],Li.prototype,"staticTriggerThreshold",void 0),t([gt({type:Number})],Li.prototype,"staticRenewThreshold",void 0),t([gt({type:Number})],Li.prototype,"staticOnDelay",void 0),t([gt({attribute:!1})],Li.prototype,"entitiesConfig",void 0),t([gt({attribute:!1})],Li.prototype,"logLevels",void 0),t([gt({type:Boolean})],Li.prototype,"bluetoothEnabled",void 0),t([gt({type:Boolean})],Li.prototype,"co2Enabled",void 0),t([gt({type:String})],Li.prototype,"ledMode",void 0),t([gt({type:Number})],Li.prototype,"ledBrightness",void 0),t([gt({type:String})],Li.prototype,"ledPresenceColor",void 0),t([gt({type:String})],Li.prototype,"relayTriggerMode",void 0),t([gt({type:String})],Li.prototype,"relayContactMode",void 0),t([gt({type:Number})],Li.prototype,"targetUpdateRateMs",void 0),t([gt({type:Number})],Li.prototype,"zoneUpdateRateMs",void 0),t([gt({attribute:!1})],Li.prototype,"localize",void 0),customElements.get("epp-settings-view")||customElements.define("epp-settings-view",Li);class Ni extends ct{constructor(){super(...arguments),this.selectedMac="",this.rawTargets=[],this.sensorState={occupancy:!1},this.localize=Ie,this.initialRoomWidth=0,this.initialRoomDepth=0,this.mode="wizard",this._setupStep="guide",this._wizardSaving=!1,this._wizardCornerIndex=0,this._wizardCorners=[null,null,null,null],this._wizardRoomWidth=0,this._wizardRoomDepth=0,this._wizardCapturing=!1,this._wizardCaptureProgress=0,this._wizardCapturePaused=!1,this._wizardOffsetSide="",this._wizardOffsetFb="",this._wizardCaptureCancelled=!1,this._smoothBuffer=[],this._perspective=null}connectedCallback(){super.connectedCallback(),this._wizardRoomWidth=this.initialRoomWidth,this._wizardRoomDepth=this.initialRoomDepth}_syncCornerOffsets(){const t=this._wizardCorners[this._wizardCornerIndex];this._wizardOffsetSide=t?.offset_side?String(t.offset_side/10):"",this._wizardOffsetFb=t?.offset_fb?String(t.offset_fb/10):""}_getSmoothedRaw(){const t=this.rawTargets.find(t=>null!=t.raw_x&&null!=t.raw_y);if(!t)return null;const e=function(t,e,i,s){const o=[...t,{x:e,y:i,t:s}];let r=0;for(;r<o.length&&s-o[r].t>1e3;)r++;const a=o.slice(r);if(0===a.length)return{x:e,y:i,buffer:a};const n=t=>{const e=t.slice().sort((t,e)=>t-e),i=Math.floor(e.length/2);return e.length%2?e[i]:(e[i-1]+e[i])/2};return{x:n(a.map(t=>t.x)),y:n(a.map(t=>t.y)),buffer:a}}(this._smoothBuffer,t.raw_x,t.raw_y,Date.now());return this._smoothBuffer=e.buffer,{x:e.x,y:e.y}}_wizardCancelCapture(){this._wizardCaptureCancelled=!0,this._wizardCapturing=!1,this._wizardCapturePaused=!1}_wizardStartCapture(){const t=this.rawTargets.find(t=>null!=t.raw_x&&null!=t.raw_y);if(!t)return;this._wizardCapturing=!0,this._wizardCaptureProgress=0,this._wizardCapturePaused=!1,this._wizardCaptureCancelled=!1;const e=[];let i=0,s=Date.now();const o=()=>{if(this._wizardCaptureCancelled)return;const t=Date.now(),r=t-s;s=t;const a=this.rawTargets.filter(t=>null!=t.raw_x&&null!=t.raw_y),n=1===a.length;if(this._wizardCapturePaused=!n,n&&(i+=r,e.push({x:a[0].raw_x,y:a[0].raw_y})),this._wizardCaptureProgress=Math.min(i/5e3,1),i<5e3)return void requestAnimationFrame(o);if(this._wizardCapturing=!1,this._wizardCapturePaused=!1,0===e.length)return;const l=function(t){return 0===t.length?null:{x:Oi(t.map(t=>t.x)),y:Oi(t.map(t=>t.y))}}(e);if(!l)return;const c=this._wizardCornerIndex;this._wizardCorners=[...this._wizardCorners],this._wizardCorners[c]={raw_x:l.x,raw_y:l.y,offset_side:10*(parseFloat(this._wizardOffsetSide)||0),offset_fb:10*(parseFloat(this._wizardOffsetFb)||0)},c<3&&(this._wizardCornerIndex=c+1),this._syncCornerOffsets(),this._wizardCorners.every(t=>null!==t)&&this._autoComputeRoomDimensions()};requestAnimationFrame(o)}_autoComputeRoomDimensions(){const t=function(t){const e=(t,e)=>Math.sqrt((t.raw_x-e.raw_x)**2+(t.raw_y-e.raw_y)**2),i=Math.round(e(t[0],t[1])),s=e(t[0],t[3]),o=e(t[1],t[2]);return{width:i,depth:Math.round((s+o)/2)}}(this._wizardCorners);this._wizardRoomWidth=t.width,this._wizardRoomDepth=t.depth}_solvePerspective(t,e){return function(t,e){const i=[],s=[];for(let o=0;o<4;o++){const r=t[o].x,a=t[o].y,n=e[o].x,l=e[o].y;i.push([r,a,1,0,0,0,-r*n,-a*n]),s.push(n),i.push([0,0,0,r,a,1,-r*l,-a*l]),s.push(l)}const o=i.map((t,e)=>[...t,s[e]]);for(let t=0;t<8;t++){let e=Math.abs(o[t][t]),i=t;for(let s=t+1;s<8;s++)Math.abs(o[s][t])>e&&(e=Math.abs(o[s][t]),i=s);if(e<1e-12)return null;[o[t],o[i]]=[o[i],o[t]];for(let e=t+1;e<8;e++){const i=o[e][t]/o[t][t];for(let s=t;s<=8;s++)o[e][s]-=i*o[t][s]}}const r=new Array(8);for(let t=7;t>=0;t--){r[t]=o[t][8];for(let e=t+1;e<8;e++)r[t]-=o[t][e]*r[e];r[t]/=o[t][t]}return r}(t,e)}_computeWizardPerspective(){const t=this._wizardCorners;if(!t.every(t=>null!==t))return;const e=this._wizardRoomWidth,i=this._wizardRoomDepth,s=t.map(t=>({x:t.raw_x,y:t.raw_y})),o=[{x:t[0].offset_side,y:t[0].offset_fb},{x:e-t[1].offset_side,y:t[1].offset_fb},{x:e-t[2].offset_side,y:i-t[2].offset_fb},{x:t[3].offset_side,y:i-t[3].offset_fb}];this._perspective=this._solvePerspective(s,o)}async _wizardFinish(){if(this._perspective){this._wizardSaving=!0;try{await this.hass.callWS({type:"eppgrid/set_setup",mac:this.selectedMac,perspective:this._perspective,room_width:this._wizardRoomWidth,room_depth:this._wizardRoomDepth}),this.dispatchEvent(new CustomEvent("calibration-complete",{detail:{perspective:this._perspective,roomWidth:this._wizardRoomWidth,roomDepth:this._wizardRoomDepth},bubbles:!0,composed:!0}))}finally{this._wizardSaving=!1}}}_rawToFovPct(t,e){return function(t,e){return{xPct:(t+Ii)/(2*Ii)*100,yPct:e/oi*100}}(t,e)}_getWizardTargetStyle(t){const{xPct:e,yPct:i}=this._rawToFovPct(t.raw_x??0,t.raw_y??0);return`left: ${e}%; top: ${i}%;`}render(){switch(this.mode){case"uncalibrated-fov":return this._renderUncalibratedFov();case"needs-calibration":return this._renderNeedsCalibration();default:return null===this._setupStep?J:this._renderWizard()}}_renderWizard(){let t;switch(this._setupStep){case"guide":t=this._renderWizardGuide();break;case"corners":t=this._renderWizardCorners()}return Y`
+      ${t}
+      ${this._wizardCapturing?Y`
+        <div class="capture-overlay">
+          <div class="capture-overlay-content">
+            <div class="capture-progress" style="width: 200px;">
+              <div class="capture-bar">
+                <div class="capture-fill" style="width: ${100*this._wizardCaptureProgress}%"></div>
               </div>
-              <p style="margin: 8px 0 0; font-size: 13px; color: ${this._wizardCapturePaused?"var(--error-color, #e53935)":"var(--secondary-text-color)"};">
-                ${this._wizardCapturePaused?this.localize("wizard.paused"):this.localize("wizard.stand_still")}
-              </p>
-              <button
-                class="wizard-btn wizard-btn-back"
-                style="margin-top: 12px;"
-                @click=${()=>this._wizardCancelCapture()}
-              >${this.localize("common.cancel")}</button>
+              <span>${this.localize("wizard.recording",{current:Math.round(5*this._wizardCaptureProgress),total:5})}</span>
             </div>
+            <p style="margin: 8px 0 0; font-size: 13px; color: ${this._wizardCapturePaused?"var(--error-color, #e53935)":"var(--secondary-text-color)"};">
+              ${this._wizardCapturePaused?this.localize("wizard.paused"):this.localize("wizard.stand_still")}
+            </p>
+            <button
+              class="wizard-btn wizard-btn-back"
+              style="margin-top: 12px;"
+              @click=${()=>this._wizardCancelCapture()}
+            >${this.localize("common.cancel")}</button>
           </div>
-        `:J}
-      </div>
+        </div>
+      `:J}
     `}_renderWizardGuide(){const t=(t,e,i=!1,s=0)=>$`
       <g transform="translate(${t}, ${e}) rotate(${s}) scale(${i?-.7:.7}, 0.7)">
         <circle cx="0" cy="-12" r="4" fill="var(--primary-color, #03a9f4)"/>
@@ -2763,17 +2753,6 @@ const dt={attribute:!0,type:String,converter:E,reflect:!1,hasChanged:m},At=(t=dt
         display: block;
       }
 
-      .wizard-container {
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        justify-content: center;
-        height: 100%;
-        width: 100%;
-        padding: 32px;
-        box-sizing: border-box;
-      }
-
       .wizard-card {
         max-width: 560px;
         width: 100%;
@@ -3036,7 +3015,7 @@ const dt={attribute:!0,type:String,converter:E,reflect:!1,hasChanged:m},At=(t=dt
       .live-nav-link:hover {
         background: var(--secondary-background-color, #f5f5f5);
       }
-    `],t([gt({attribute:!1})],Ni.prototype,"hass",void 0),t([gt({type:String})],Ni.prototype,"selectedMac",void 0),t([gt({attribute:!1})],Ni.prototype,"rawTargets",void 0),t([gt({attribute:!1})],Ni.prototype,"sensorState",void 0),t([gt({attribute:!1})],Ni.prototype,"devices",void 0),t([gt({attribute:!1})],Ni.prototype,"localize",void 0),t([gt({type:Number})],Ni.prototype,"initialRoomWidth",void 0),t([gt({type:Number})],Ni.prototype,"initialRoomDepth",void 0),t([gt({type:String})],Ni.prototype,"mode",void 0),t([ut()],Ni.prototype,"_setupStep",void 0),t([ut()],Ni.prototype,"_wizardSaving",void 0),t([ut()],Ni.prototype,"_wizardCornerIndex",void 0),t([ut()],Ni.prototype,"_wizardCorners",void 0),t([ut()],Ni.prototype,"_wizardRoomWidth",void 0),t([ut()],Ni.prototype,"_wizardRoomDepth",void 0),t([ut()],Ni.prototype,"_wizardCapturing",void 0),t([ut()],Ni.prototype,"_wizardCaptureProgress",void 0),t([ut()],Ni.prototype,"_wizardCapturePaused",void 0),t([ut()],Ni.prototype,"_wizardOffsetSide",void 0),t([ut()],Ni.prototype,"_wizardOffsetFb",void 0),customElements.get("epp-wizard")||customElements.define("epp-wizard",Ni);class Yi extends ct{constructor(){super(...arguments),this.overlayMode=null,this.localize=Ie}render(){return Y`
+    `],t([gt({attribute:!1})],Ni.prototype,"hass",void 0),t([gt({type:String})],Ni.prototype,"selectedMac",void 0),t([gt({attribute:!1})],Ni.prototype,"rawTargets",void 0),t([gt({attribute:!1})],Ni.prototype,"sensorState",void 0),t([gt({attribute:!1})],Ni.prototype,"localize",void 0),t([gt({type:Number})],Ni.prototype,"initialRoomWidth",void 0),t([gt({type:Number})],Ni.prototype,"initialRoomDepth",void 0),t([gt({type:String})],Ni.prototype,"mode",void 0),t([ut()],Ni.prototype,"_setupStep",void 0),t([ut()],Ni.prototype,"_wizardSaving",void 0),t([ut()],Ni.prototype,"_wizardCornerIndex",void 0),t([ut()],Ni.prototype,"_wizardCorners",void 0),t([ut()],Ni.prototype,"_wizardRoomWidth",void 0),t([ut()],Ni.prototype,"_wizardRoomDepth",void 0),t([ut()],Ni.prototype,"_wizardCapturing",void 0),t([ut()],Ni.prototype,"_wizardCaptureProgress",void 0),t([ut()],Ni.prototype,"_wizardCapturePaused",void 0),t([ut()],Ni.prototype,"_wizardOffsetSide",void 0),t([ut()],Ni.prototype,"_wizardOffsetFb",void 0),customElements.get("epp-wizard")||customElements.define("epp-wizard",Ni);class Yi extends ct{constructor(){super(...arguments),this.overlayMode=null,this.localize=Ie}render(){return Y`
 			<div class="overlay-scroll-area">
 				<!-- Entry / Exit -->
 				<div
@@ -3678,20 +3657,23 @@ const dt={attribute:!0,type:String,converter:E,reflect:!1,hasChanged:m},At=(t=dt
 							${this._localize("flasher.flash_from_tab")}
 					</button>
 				</div>
-			</div>`;if(null!==this._setupStep)return Y`
-        <epp-wizard
-          .hass=${this.hass}
-          .selectedMac=${this._selectedMac}
-          .rawTargets=${this._rawTargets}
-          .sensorState=${{occupancy:this._sensorState.occupancy}}
-          .devices=${this._devices}
-          .localize=${this._localize}
-          .initialRoomWidth=${this._roomWidth}
-          .initialRoomDepth=${this._roomDepth}
-          @calibration-complete=${async t=>{const{perspective:e,roomWidth:i,roomDepth:s}=t.detail;this._perspective=e,this._roomWidth=i,this._roomDepth=s,this._initGridFromRoom(),this._setupStep=null,this._view="live",this._entitiesConfig={...this._entitiesConfig,zone_presence:!0},await this._gridCtrl.applyLayout().catch(t=>{console.error("Failed to apply layout after calibration",t)})}}
+			</div>`;if(null!==this._setupStep)return Y`<div class="tab-layout">
+        ${this._renderTabBar()}
+        <div class="panel">
+          ${this._renderHeader()}
+          <epp-wizard
+            .hass=${this.hass}
+            .selectedMac=${this._selectedMac}
+            .rawTargets=${this._rawTargets}
+            .sensorState=${{occupancy:this._sensorState.occupancy}}
+            .localize=${this._localize}
+            .initialRoomWidth=${this._roomWidth}
+            .initialRoomDepth=${this._roomDepth}
+            @calibration-complete=${async t=>{const{perspective:e,roomWidth:i,roomDepth:s}=t.detail;this._perspective=e,this._roomWidth=i,this._roomDepth=s,this._initGridFromRoom(),this._setupStep=null,this._view="live",this._entitiesConfig={...this._entitiesConfig,zone_presence:!0},await this._gridCtrl.applyLayout().catch(t=>{console.error("Failed to apply layout after calibration",t)})}}
           @wizard-cancel=${()=>{this._setupStep=null}}
-        ></epp-wizard>
-      `;if(this._deviceCtrl.reconnecting)return Y`<div class="tab-layout">
+          ></epp-wizard>
+        </div>
+      </div>`;if(this._deviceCtrl.reconnecting)return Y`<div class="tab-layout">
 				${this._renderTabBar()}
 				<div class="panel">
 					${this._renderHeader()}
