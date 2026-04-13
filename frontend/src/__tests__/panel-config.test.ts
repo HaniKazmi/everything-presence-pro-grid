@@ -511,7 +511,7 @@ describe("updated() reconnecting guard", () => {
 				mac: "AA:BB:CC:DD:EE:02",
 				name: "NewDevice",
 				host: null,
-				available: true,
+				available: false,
 				configured: true,
 			},
 		];
@@ -526,6 +526,21 @@ describe("updated() reconnecting guard", () => {
 			.mockResolvedValue(undefined);
 
 		const changed = new Map<string, any>([["hass", undefined]]);
+
+		// First update: device is still unavailable, guard must block
+		a.updated(changed);
+		expect(loadSpy).not.toHaveBeenCalled();
+
+		// Device list push flips availability — next update must trigger load
+		a._devices = [
+			{
+				mac: "AA:BB:CC:DD:EE:02",
+				name: "NewDevice",
+				host: null,
+				available: true,
+				configured: true,
+			},
+		];
 		a.updated(changed);
 
 		expect(loadSpy).toHaveBeenCalledWith("AA:BB:CC:DD:EE:02");
