@@ -109,6 +109,35 @@ describe("epp-furniture-sidebar DOM events", () => {
 		document.body.removeChild(c);
 	});
 
+	it("typing in the search input filters the catalog", () => {
+		const el = createSidebar({
+			localize: (k: string) =>
+				({
+					"furniture.sofa_2_seat": "Sofa (2 seat)",
+					"furniture.sofa_3_seat": "Sofa (3 seat)",
+					"furniture.lamp": "Lamp",
+				})[k] ?? k,
+		});
+
+		const tpl1 = (el as any)._renderFurnitureSidebar();
+		const c = renderTo(tpl1);
+		const before = c.querySelectorAll(".furn-sticker:not(.furn-custom)").length;
+
+		const input = c.querySelector(".furn-search") as HTMLInputElement;
+		expect(input).toBeTruthy();
+		input.value = "sofa";
+		input.dispatchEvent(new Event("input"));
+
+		// Re-render with the now-updated _searchQuery state
+		const tpl2 = (el as any)._renderFurnitureSidebar();
+		render(tpl2, c);
+		const after = c.querySelectorAll(".furn-sticker:not(.furn-custom)").length;
+
+		expect(after).toBeLessThan(before);
+		expect(after).toBeGreaterThan(0);
+		document.body.removeChild(c);
+	});
+
 	it("custom icon button fires custom-icon-toggle", () => {
 		const el = createSidebar();
 		const handler = vi.fn();
