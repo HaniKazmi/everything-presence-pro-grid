@@ -180,7 +180,7 @@ Returns discovered EPP devices.
 }
 ```
 
-`name` is the live device-registry name (`name_by_user` if set, otherwise the ESPHome name) so renames in HA or ESPHome are reflected on the next call.
+`name` is the stored config name when present; otherwise it comes from the HA device-registry entry (`name_by_user` if set, otherwise `name`), and if there is no registry entry it falls back to the discovered/cached device name. Renames in HA or ESPHome are reflected on the next call.
 
 `area` is the assigned HA area name, or `null` if the device is not in an area.
 
