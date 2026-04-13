@@ -24,29 +24,6 @@ def _find_used_translation_keys() -> set[str]:
     return keys
 
 
-def _find_used_entity_name_keys() -> set[str]:
-    """Extract entity_names keys referenced via _resolve_zone_name()'s string construction.
-
-    The resolver builds keys like f"component.{DOMAIN}.entity_names.<key>".
-    We look for the suffix literals inside _resolve_zone_name().
-    """
-    keys: set[str] = set()
-    # Match string literals inside device_manager.py that end with one of the
-    # known entity_names key shapes. Conservative — just look for the hardcoded
-    # key names used in the resolver.
-    resolver_keys = {
-        "zone_rest_of_room",
-        "zone_with_name",
-        "zone_rest_of_room_target_count",
-        "zone_with_name_target_count",
-    }
-    dm = (COMPONENT_DIR / "device_manager.py").read_text()
-    for k in resolver_keys:
-        if f'"{k}"' in dm:
-            keys.add(k)
-    return keys
-
-
 def test_all_exception_keys_resolve():
     """Every translation_key referenced in code must exist under `exceptions` in strings.json."""
     strings = _load_strings()
@@ -84,12 +61,17 @@ def test_spanish_translation_keys_match_english():
     assert not extra, f"Spanish translation has extra keys: {sorted(extra)}"
 
 
-def test_all_entity_name_keys_resolve():
-    """Every entity_names key referenced in the resolver must exist in strings.json."""
-    strings = _load_strings()
-    available = set(strings.get("entity_names", {}).keys())
-    used = _find_used_entity_name_keys()
-    missing = used - available
-    assert not missing, (
-        f"Entity-name keys referenced in device_manager._resolve_zone_name but missing from strings.json: {missing}"
-    )
+def test_zone_name_translations_have_required_keys():
+    """zone_name_translations.ZONE_NAMES must define all 4 required keys per language."""
+    from custom_components.eppgrid.zone_name_translations import ZONE_NAMES
+
+    required = {
+        "zone_rest_of_room",
+        "zone_with_name",
+        "zone_rest_of_room_target_count",
+        "zone_with_name_target_count",
+    }
+    assert "en" in ZONE_NAMES, "English zone names must be defined as the fallback"
+    for lang, table in ZONE_NAMES.items():
+        missing = required - set(table.keys())
+        assert not missing, f"Language '{lang}' missing zone name keys: {missing}"

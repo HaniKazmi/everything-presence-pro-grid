@@ -2120,25 +2120,8 @@ class TestSessionLifecycle:
 # ---------------------------------------------------------------------------
 
 
-FAKE_ZONE_TRANSLATIONS = {
-    "component.eppgrid.entity_names.zone_rest_of_room": "Zone Rest of Room",
-    "component.eppgrid.entity_names.zone_with_name": "Zone {name}",
-    "component.eppgrid.entity_names.zone_rest_of_room_target_count": "Zone Rest of Room Target Count",
-    "component.eppgrid.entity_names.zone_with_name_target_count": "Zone {name} Target Count",
-}
-
-
 class TestZoneEntities:
     """Tests for async_update_zone_entities."""
-
-    @pytest.fixture(autouse=True)
-    def mock_translations(self):
-        """Patch async_get_translations so zone entity tests don't hit the HA translation loader."""
-        with patch(
-            "custom_components.eppgrid.device_manager.async_get_translations",
-            new=AsyncMock(return_value=FAKE_ZONE_TRANSLATIONS),
-        ):
-            yield
 
     async def test_update_zone_entities_calibrated(self, hass: HomeAssistant, manager: DeviceManager) -> None:
         """Calibrated device enables zone 0 as 'Zone Rest of Room'."""
@@ -2801,36 +2784,31 @@ def test_dismiss_target_service_missing_raises_translation_keyed_error():
     assert exc.value.translation_placeholders == {"service": "epp_dismiss_target"}
 
 
-def test_zone_entity_names_use_translations():
-    """Zone name resolver must fetch from translations dict and interpolate user name."""
-    from custom_components.eppgrid.const import DOMAIN
+def test_zone_entity_names_resolve_english():
+    """Zone name resolver must look up the requested language and interpolate user name."""
     from custom_components.eppgrid.device_manager import _resolve_zone_name
 
-    fake_translations = {
-        f"component.{DOMAIN}.entity_names.zone_rest_of_room": "Zone Rest of Room",
-        f"component.{DOMAIN}.entity_names.zone_with_name": "Zone {name}",
-        f"component.{DOMAIN}.entity_names.zone_rest_of_room_target_count": "Zone Rest of Room Target Count",
-        f"component.{DOMAIN}.entity_names.zone_with_name_target_count": "Zone {name} Target Count",
-    }
+    assert _resolve_zone_name("en", index=0, zone_name=None, target_count=False) == "Zone Rest of Room"
+    assert _resolve_zone_name("en", index=1, zone_name="Kitchen", target_count=False) == "Zone Kitchen"
+    assert _resolve_zone_name("en", index=0, zone_name=None, target_count=True) == "Zone Rest of Room Target Count"
+    assert _resolve_zone_name("en", index=1, zone_name="Kitchen", target_count=True) == "Zone Kitchen Target Count"
 
-    assert _resolve_zone_name(fake_translations, index=0, zone_name=None, target_count=False) == "Zone Rest of Room"
-    assert _resolve_zone_name(fake_translations, index=1, zone_name="Kitchen", target_count=False) == "Zone Kitchen"
+
+def test_zone_entity_names_resolve_spanish():
+    """Spanish locale returns Castilian zone names with prefix translated, user name verbatim."""
+    from custom_components.eppgrid.device_manager import _resolve_zone_name
+
+    assert _resolve_zone_name("es", index=1, zone_name="Cocina", target_count=False) == "Zona Cocina"
+    assert _resolve_zone_name("es-ES", index=1, zone_name="Cocina", target_count=False) == "Zona Cocina"
     assert (
-        _resolve_zone_name(fake_translations, index=0, zone_name=None, target_count=True)
-        == "Zone Rest of Room Target Count"
-    )
-    assert (
-        _resolve_zone_name(fake_translations, index=1, zone_name="Kitchen", target_count=True)
-        == "Zone Kitchen Target Count"
+        _resolve_zone_name("es", index=0, zone_name=None, target_count=True)
+        == "Número de objetivos en zona Resto de la habitación"
     )
 
 
-def test_resolve_zone_name_falls_back_when_translation_missing():
-    """If translations dict is missing keys, fall back to English defaults."""
+def test_resolve_zone_name_falls_back_to_english_for_unknown_language():
+    """Unknown languages fall back to English."""
     from custom_components.eppgrid.device_manager import _resolve_zone_name
 
-    empty: dict[str, str] = {}
-    assert _resolve_zone_name(empty, index=0, zone_name=None, target_count=False) == "Zone Rest of Room"
-    assert _resolve_zone_name(empty, index=1, zone_name="Kitchen", target_count=False) == "Zone Kitchen"
-    assert _resolve_zone_name(empty, index=0, zone_name=None, target_count=True) == "Zone Rest of Room Target Count"
-    assert _resolve_zone_name(empty, index=1, zone_name="Kitchen", target_count=True) == "Zone Kitchen Target Count"
+    assert _resolve_zone_name("xx", index=0, zone_name=None, target_count=False) == "Zone Rest of Room"
+    assert _resolve_zone_name("zz-ZZ", index=1, zone_name="Kitchen", target_count=False) == "Zone Kitchen"

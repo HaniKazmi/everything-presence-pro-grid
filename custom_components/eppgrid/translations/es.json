@@ -19,12 +19,6 @@
       }
     }
   },
-  "entity_names": {
-    "zone_rest_of_room": "Zona Resto de la habitación",
-    "zone_with_name": "Zona {name}",
-    "zone_rest_of_room_target_count": "Número de objetivos en zona Resto de la habitación",
-    "zone_with_name_target_count": "Número de objetivos en zona {name}"
-  },
   "exceptions": {
     "integration_not_loaded": { "message": "La integración no está cargada" },
     "device_not_available": { "message": "Dispositivo no disponible" },
