@@ -2,6 +2,7 @@ import type { ReactiveController, ReactiveControllerHost } from "lit";
 import type { WifiNetwork } from "../lib/improv-serial.js";
 import type {
 	FlashableDevice,
+	HaAddResult,
 	OtaDeviceState,
 	UsbFlashState,
 } from "../types.js";
@@ -273,9 +274,12 @@ export class FlasherController implements ReactiveController {
 		});
 	}
 
-	async addEsphomeDevice(host: string): Promise<void> {
-		if (!this._hass) return;
-		await this._hass.callWS({ type: "eppgrid/add_esphome_device", host });
+	async addEsphomeDevice(host: string): Promise<HaAddResult> {
+		if (!this._hass) return { type: "failed", reason: "no_hass" };
+		return (await this._hass.callWS({
+			type: "eppgrid/add_esphome_device",
+			host,
+		})) as HaAddResult;
 	}
 
 	updateUsbState(state: UsbFlashState): void {

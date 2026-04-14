@@ -921,10 +921,14 @@ describe("USB flash view — state-driven", () => {
 		expect(c.textContent).toContain("flasher.usb_step_scanning");
 	});
 
-	it("renders complete state with IP and go-to-config button", () => {
+	it("renders complete state with IP and ha-add result", () => {
 		const el = createView();
 		(el as any)._showUsbFlash = true;
-		(el as any).usbFlashState = { step: "complete", ip: "192.168.1.42" };
+		(el as any).usbFlashState = {
+			step: "complete",
+			ip: "192.168.1.42",
+			haAdd: { type: "added" },
+		};
 		const tpl = (el as any).render();
 		const c = renderTo(tpl);
 
@@ -961,9 +965,9 @@ describe("USB flash view — state-driven", () => {
 		};
 		const tpl = (el as any).render();
 		const c = renderTo(tpl);
-		// Should have Back button but no Retry
+		// Should have Back button + Flash another, but no Retry
 		const btns = c.querySelectorAll(".confirm-actions ha-button");
-		expect(btns.length).toBe(1); // only Back
+		expect(btns.length).toBe(2); // Back + Flash another
 	});
 
 	it("shows Retry button when error is not fatal", () => {
@@ -976,7 +980,7 @@ describe("USB flash view — state-driven", () => {
 		const tpl = (el as any).render();
 		const c = renderTo(tpl);
 		const btns = c.querySelectorAll(".confirm-actions ha-button");
-		expect(btns.length).toBe(2); // Back + Retry
+		expect(btns.length).toBe(3); // Back + Flash another + Retry
 	});
 
 	it("renders wifi_provision state with existing WiFi provisioning UI", () => {
@@ -989,14 +993,15 @@ describe("USB flash view — state-driven", () => {
 		expect(c.querySelector(".wifi-form")).not.toBeNull();
 	});
 
-	it("renders adding_device state", () => {
+	it("renders adding_device state via generic fallback", () => {
 		const el = createView();
 		(el as any)._showUsbFlash = true;
 		(el as any).usbFlashState = { step: "adding_device" };
 		const tpl = (el as any).render();
 		const c = renderTo(tpl);
 
-		expect(c.textContent).toContain("flasher.usb_step_adding");
+		// adding_device is not in stepKeyMap, so the step name itself is shown
+		expect(c.textContent).toContain("adding_device");
 	});
 
 	it("dispatches usb-flash event with variant when Flash via USB clicked", async () => {
@@ -1111,6 +1116,24 @@ describe("USB flash view — state-driven", () => {
 	});
 });
 
+describe("wifi_configured state", () => {
+	it("renders the IP address and an indeterminate progress indicator with adding-to-HA label", () => {
+		const el = createView();
+		(el as any)._showUsbFlash = true;
+		(el as any).usbFlashState = {
+			step: "wifi_configured",
+			ip: "192.168.1.42",
+		};
+		const tpl = (el as any).render();
+		const c = renderTo(tpl);
+
+		expect(c.textContent).toContain("192.168.1.42");
+		expect(c.querySelector("ha-circular-progress")).toBeTruthy();
+		// Should not show any buttons in this transient state
+		expect(c.querySelectorAll("ha-button").length).toBe(0);
+	});
+});
+
 describe("_getManifestUrl", () => {
 	it("returns correct URL for wifi variant", () => {
 		const el = createView();
@@ -1198,34 +1221,45 @@ describe("ethernet complete message", () => {
 		expect(link).not.toBeNull();
 	});
 
-	it("shows go-to-config button for wifi complete with IP", () => {
+	it("shows wifi_configured message and IP for wifi complete with haAdd=added", () => {
 		const el = createView();
 		(el as any)._showUsbFlash = true;
-		(el as any).usbFlashState = { step: "complete", ip: "192.168.1.42" };
+		(el as any).usbFlashState = {
+			step: "complete",
+			ip: "192.168.1.42",
+			haAdd: { type: "added" },
+		};
 		const tpl = (el as any).render();
 		const c = renderTo(tpl);
 
-		expect(c.textContent).toContain("flasher.usb_step_complete");
+		expect(c.textContent).toContain("flasher.wifi_configured");
 		expect(c.textContent).toContain("192.168.1.42");
 	});
 });
 
 describe("wifi complete cleanup", () => {
-	it("shows wifi_connected without hint when complete with no IP and no variant", () => {
+	it("shows wifi_configured message when complete with haAdd=added", () => {
 		const el = createView();
 		(el as any)._showUsbFlash = true;
-		(el as any).usbFlashState = { step: "complete" };
+		(el as any).usbFlashState = {
+			step: "complete",
+			ip: "192.168.1.1",
+			haAdd: { type: "added" },
+		};
 		const tpl = (el as any).render();
 		const c = renderTo(tpl);
 
-		expect(c.textContent).toContain("flasher.wifi_connected");
-		expect(c.textContent).not.toContain("flasher.wifi_connected_hint");
+		expect(c.textContent).toContain("flasher.wifi_configured");
 	});
 
-	it("wifi complete shows Done button that dispatches flash-complete", async () => {
+	it("wifi complete with haAdd=added shows go-to-config button that dispatches flash-complete", async () => {
 		const el = createView();
 		(el as any)._showUsbFlash = true;
-		(el as any).usbFlashState = { step: "complete" };
+		(el as any).usbFlashState = {
+			step: "complete",
+			ip: "192.168.1.1",
+			haAdd: { type: "added" },
+		};
 		document.body.appendChild(el);
 		await el.updateComplete;
 
@@ -1473,5 +1507,185 @@ describe("OTA inline rendering", () => {
 		expect(c.querySelector(".ota-error")).not.toBeNull();
 		// Retry button should NOT be present since device is unavailable
 		expect(c.querySelector(".ota-error ha-button")).toBeNull();
+	});
+});
+
+describe("complete state haAdd branches", () => {
+	const renderWithHaAdd = async (haAdd: any) => {
+		const view = createView();
+		(view as any)._showUsbFlash = true;
+		(view as any).usbFlashState = {
+			step: "complete",
+			ip: "192.168.1.42",
+			haAdd,
+		};
+		document.body.appendChild(view);
+		await view.updateComplete;
+		return view;
+	};
+
+	it("added: shows success icon, success message, Go to config + Flash another", async () => {
+		const view = await renderWithHaAdd({ type: "added" });
+		const root = view.shadowRoot!;
+		expect(
+			root.querySelector('ha-icon[icon="mdi:check-circle-outline"]'),
+		).toBeTruthy();
+		expect(root.textContent).toContain("192.168.1.42");
+		const buttons = Array.from(root.querySelectorAll("ha-button")).map(
+			(b) => b.textContent?.trim() ?? "",
+		);
+		expect(buttons).toEqual(
+			expect.arrayContaining([
+				expect.stringMatching(/go_to_config|Go to config/i),
+				expect.stringMatching(/flash_another|Flash another/i),
+			]),
+		);
+	});
+
+	it("already_added: shows success icon and same actions as added", async () => {
+		const view = await renderWithHaAdd({ type: "already_added" });
+		const root = view.shadowRoot!;
+		expect(
+			root.querySelector('ha-icon[icon="mdi:check-circle-outline"]'),
+		).toBeTruthy();
+		const buttons = Array.from(root.querySelectorAll("ha-button")).map(
+			(b) => b.textContent?.trim() ?? "",
+		);
+		expect(buttons).toEqual(
+			expect.arrayContaining([
+				expect.stringMatching(/go_to_config|Go to config/i),
+				expect.stringMatching(/flash_another|Flash another/i),
+			]),
+		);
+	});
+
+	it("needs_auth: shows warning icon and Go to Integrations link", async () => {
+		const view = await renderWithHaAdd({ type: "needs_auth" });
+		const root = view.shadowRoot!;
+		expect(
+			root.querySelector('ha-icon[icon="mdi:alert-outline"]'),
+		).toBeTruthy();
+		const link = root.querySelector('a[href="/config/integrations/dashboard"]');
+		expect(link).toBeTruthy();
+		expect(link?.textContent).toMatch(/go_to_integrations|Integrations/i);
+	});
+
+	it("cannot_connect: shows warning icon + Copy IP + Retry + Flash another", async () => {
+		const view = await renderWithHaAdd({ type: "cannot_connect" });
+		const root = view.shadowRoot!;
+		expect(
+			root.querySelector('ha-icon[icon="mdi:alert-outline"]'),
+		).toBeTruthy();
+		const buttons = Array.from(root.querySelectorAll("ha-button")).map(
+			(b) => b.textContent?.trim() ?? "",
+		);
+		expect(buttons).toEqual(
+			expect.arrayContaining([
+				expect.stringMatching(/copy_ip|Copy IP/i),
+				expect.stringMatching(/retry_ha_add|Retry/i),
+				expect.stringMatching(/flash_another|Flash another/i),
+			]),
+		);
+	});
+
+	it("failed: shows warning icon + reason interpolated + Retry + Flash another", async () => {
+		// Build a spy that still returns the key so other text checks keep working
+		const localizeSpy = vi.fn((k: string) => k);
+		Object.assign(localizeSpy, {
+			formatNumber: (v: number, d = 1) => v.toFixed(d),
+			lang: "en",
+		});
+
+		const view = createView();
+		view.localize = localizeSpy as unknown as typeof view.localize;
+		(view as any)._showUsbFlash = true;
+		(view as any).usbFlashState = {
+			step: "complete",
+			ip: "192.168.1.42",
+			haAdd: { type: "failed", reason: "invalid_auth" },
+		};
+		document.body.appendChild(view);
+		await view.updateComplete;
+
+		const root = view.shadowRoot!;
+		expect(
+			root.querySelector('ha-icon[icon="mdi:alert-outline"]'),
+		).toBeTruthy();
+		// Verify the correct translation key AND the reason param are forwarded
+		expect(localizeSpy).toHaveBeenCalledWith("flasher.ha_add.failed", {
+			reason: "invalid_auth",
+		});
+		const buttons = Array.from(root.querySelectorAll("ha-button")).map(
+			(b) => b.textContent?.trim() ?? "",
+		);
+		expect(buttons).toEqual(
+			expect.arrayContaining([
+				expect.stringMatching(/retry_ha_add|Retry/i),
+				expect.stringMatching(/flash_another|Flash another/i),
+			]),
+		);
+	});
+
+	it("retry button dispatches retry-ha-add event", async () => {
+		const view = await renderWithHaAdd({ type: "cannot_connect" });
+		const root = view.shadowRoot!;
+		const retryBtn = Array.from(root.querySelectorAll("ha-button")).find((b) =>
+			/retry/i.test(b.textContent ?? ""),
+		);
+		expect(retryBtn).toBeTruthy();
+		const listener = vi.fn();
+		view.addEventListener("retry-ha-add", listener);
+		(retryBtn as HTMLElement).click();
+		expect(listener).toHaveBeenCalled();
+	});
+
+	it("flash another button dispatches flash-another event", async () => {
+		const view = await renderWithHaAdd({ type: "added" });
+		const root = view.shadowRoot!;
+		const btn = Array.from(root.querySelectorAll("ha-button")).find((b) =>
+			/flash.another|flash_another/i.test(b.textContent ?? ""),
+		);
+		expect(btn).toBeTruthy();
+		const listener = vi.fn();
+		view.addEventListener("flash-another", listener);
+		(btn as HTMLElement).click();
+		expect(listener).toHaveBeenCalled();
+	});
+
+	it("copy IP button writes to navigator.clipboard", async () => {
+		const writeText = vi.fn().mockResolvedValue(undefined);
+		Object.defineProperty(navigator, "clipboard", {
+			value: { writeText },
+			configurable: true,
+		});
+		const view = await renderWithHaAdd({ type: "cannot_connect" });
+		const root = view.shadowRoot!;
+		const btn = Array.from(root.querySelectorAll("ha-button")).find((b) =>
+			/copy/i.test(b.textContent ?? ""),
+		);
+		(btn as HTMLElement).click();
+		expect(writeText).toHaveBeenCalledWith("192.168.1.42");
+	});
+});
+
+describe("error state — Flash another button", () => {
+	it("renders a flash-another button alongside back/retry", async () => {
+		const view = createView();
+		(view as any)._showUsbFlash = true;
+		(view as any).usbFlashState = {
+			step: "error",
+			errorKey: "wifi.errors.connection_failed",
+		};
+		document.body.appendChild(view);
+		await view.updateComplete;
+		const root = view.shadowRoot!;
+		const buttons = Array.from(root.querySelectorAll("ha-button")).map(
+			(b) => b.textContent?.trim() ?? "",
+		);
+		expect(buttons).toEqual(
+			expect.arrayContaining([
+				expect.stringMatching(/flash_another|Flash another/i),
+			]),
+		);
 	});
 });

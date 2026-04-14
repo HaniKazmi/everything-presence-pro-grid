@@ -290,8 +290,90 @@ class TestDeleteEsphomeDevice:
 class TestAddEsphomeDevice:
     """Tests for eppgrid/add_esphome_device."""
 
+    @pytest.mark.parametrize(
+        ("flow_result", "expected"),
+        [
+            ({"type": "create_entry"}, {"type": "added"}),
+            ({"type": "form"}, {"type": "needs_auth"}),
+            ({"type": "form", "flow_id": "x"}, {"type": "needs_auth"}),
+            (
+                {"type": "form", "errors": {}},
+                {"type": "needs_auth"},
+            ),
+            (
+                {
+                    "type": "form",
+                    "step_id": "user",
+                    "errors": {"base": "connection_error"},
+                },
+                {"type": "cannot_connect"},
+            ),
+            (
+                {
+                    "type": "form",
+                    "step_id": "user",
+                    "errors": {"base": "resolve_error"},
+                },
+                {"type": "cannot_connect"},
+            ),
+            (
+                {
+                    "type": "form",
+                    "step_id": "user",
+                    "errors": {"base": "cannot_connect"},
+                },
+                {"type": "cannot_connect"},
+            ),
+            (
+                {
+                    "type": "form",
+                    "step_id": "encryption_key",
+                    "errors": {"base": "invalid_psk"},
+                },
+                {"type": "needs_auth"},
+            ),
+            (
+                {"type": "abort", "reason": "already_configured"},
+                {"type": "already_added"},
+            ),
+            (
+                {"type": "abort", "reason": "cannot_connect"},
+                {"type": "cannot_connect"},
+            ),
+            (
+                {"type": "abort", "reason": "connection_error"},
+                {"type": "cannot_connect"},
+            ),
+            (
+                {"type": "abort", "reason": "invalid_auth"},
+                {"type": "failed", "reason": "invalid_auth"},
+            ),
+            (
+                {"type": "abort", "reason": ""},
+                {"type": "failed", "reason": "unknown"},
+            ),
+            (
+                {"type": "abort"},
+                {"type": "failed", "reason": "unknown"},
+            ),
+            (
+                {"type": "progress"},
+                {"type": "failed", "reason": "progress"},
+            ),
+            (
+                {"type": "menu"},
+                {"type": "failed", "reason": "menu"},
+            ),
+        ],
+    )
+    def test_map_esphome_flow_result(self, flow_result: dict, expected: dict) -> None:
+        """_map_esphome_flow_result translates config-flow results to HaAddResult."""
+        from custom_components.eppgrid.websocket_api import _map_esphome_flow_result
+
+        assert _map_esphome_flow_result(flow_result) == expected
+
     async def test_triggers_config_flow(self, hass: HomeAssistant, config_entry: MockConfigEntry) -> None:
-        """add_esphome_device triggers esphome config flow with host."""
+        """add_esphome_device triggers esphome config flow and sends mapped result."""
         await setup_integration(hass, config_entry)
 
         from custom_components.eppgrid.websocket_api import websocket_add_esphome_device
@@ -303,7 +385,7 @@ class TestAddEsphomeDevice:
             "host": "192.168.1.99",
         }
 
-        flow_result = {"type": "form", "flow_id": "flow-abc"}
+        flow_result = {"type": "create_entry", "title": "esphome-device"}
         with patch.object(
             hass.config_entries.flow,
             "async_init",
@@ -318,6 +400,80 @@ class TestAddEsphomeDevice:
         assert call_kwargs[1]["context"]["source"] == "user"
         assert call_kwargs[1]["data"] == {"host": "192.168.1.99", "port": 6053}
         connection.send_result.assert_called_once()
-        result = connection.send_result.call_args[0]
-        assert result[0] == 4
-        assert result[1]["result"] == "form"
+        msg_id, payload = connection.send_result.call_args[0]
+        assert msg_id == 4
+        assert payload["type"] == "added"
+
+    async def test_skips_flow_when_host_already_configured(
+        self, hass: HomeAssistant, config_entry: MockConfigEntry
+    ) -> None:
+        """If an ESPHome entry already points at the host, skip the flow."""
+        await setup_integration(hass, config_entry)
+
+        from custom_components.eppgrid.websocket_api import websocket_add_esphome_device
+
+        # Add a pre-existing ESPHome config entry pointing at our target host.
+        existing = MockConfigEntry(
+            domain="esphome",
+            data={"host": "192.168.1.50", "port": 6053},
+            title="existing-device",
+        )
+        existing.add_to_hass(hass)
+
+        connection = MagicMock()
+        msg = {
+            "id": 7,
+            "type": "eppgrid/add_esphome_device",
+            "host": "192.168.1.50",
+        }
+
+        with patch.object(
+            hass.config_entries.flow,
+            "async_init",
+            new_callable=AsyncMock,
+        ) as mock_init:
+            await call_async_handler(hass, websocket_add_esphome_device, connection, msg)
+
+        mock_init.assert_not_awaited()
+        connection.send_result.assert_called_once()
+        msg_id, payload = connection.send_result.call_args[0]
+        assert msg_id == 7
+        assert payload == {"type": "already_added"}
+
+    async def test_starts_flow_when_host_not_in_entries(
+        self, hass: HomeAssistant, config_entry: MockConfigEntry
+    ) -> None:
+        """If no ESPHome entry matches the host, start the config flow."""
+        await setup_integration(hass, config_entry)
+
+        from custom_components.eppgrid.websocket_api import websocket_add_esphome_device
+
+        # Different host in an existing entry — should not short-circuit.
+        existing = MockConfigEntry(
+            domain="esphome",
+            data={"host": "192.168.1.50", "port": 6053},
+            title="other-device",
+        )
+        existing.add_to_hass(hass)
+
+        connection = MagicMock()
+        msg = {
+            "id": 8,
+            "type": "eppgrid/add_esphome_device",
+            "host": "192.168.1.99",
+        }
+
+        flow_result = {"type": "create_entry", "title": "new-device"}
+        with patch.object(
+            hass.config_entries.flow,
+            "async_init",
+            new_callable=AsyncMock,
+            return_value=flow_result,
+        ) as mock_init:
+            await call_async_handler(hass, websocket_add_esphome_device, connection, msg)
+
+        mock_init.assert_awaited_once()
+        connection.send_result.assert_called_once()
+        msg_id, payload = connection.send_result.call_args[0]
+        assert msg_id == 8
+        assert payload == {"type": "added"}

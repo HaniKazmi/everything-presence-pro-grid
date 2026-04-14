@@ -4,10 +4,11 @@ import {
 	buildGetStateCommand,
 	buildScanCommand,
 	buildWifiCommand,
+	CMD_GET_CURRENT_STATE,
+	CMD_WIFI_SETTINGS,
 	parseScanResults,
 	readImprovResponse,
 	sendImprovPacket,
-	TYPE_CURRENT_STATE,
 	TYPE_ERROR_STATE,
 	TYPE_RPC_RESULT,
 	type WifiNetwork,
@@ -301,42 +302,51 @@ export async function runWifiProvision(
 	await sendImprovPacket(writer, buildWifiCommand(ssid, password));
 }
 
+const POLL_INTERVAL_MS = 1000;
+
 /**
- * Reads Improv RPC result after WiFi provisioning to extract the IP address.
- * ESPHome sends an RPC result containing a URL like "http://192.168.1.42".
- * Returns the IP address string or throws on timeout.
+ * After `WIFI_SETTINGS` has been sent on `writer`, reads Improv Serial packets
+ * from `reader` to determine the IP the device received.
+ *
+ * ESPHome's improv_serial reports `http://0.0.0.0` while DHCP is still in
+ * progress and does not push an update once DHCP completes — so if we see
+ * `0.0.0.0` in the `WIFI_SETTINGS` response, we poll `GET_CURRENT_STATE`
+ * every {@link POLL_INTERVAL_MS} ms until either a real IP appears or the
+ * total `timeoutMs` budget is exhausted.
+ *
+ * - Returns the IPv4 address string (e.g. `"192.168.1.42"`) on success.
+ * - Throws an `Error` with `errorKey` on failure: `wifi.errors.connection_failed`
+ *   (budget exhausted with persistent `0.0.0.0`, or `ERROR_STATE` with
+ *   `UNABLE_TO_CONNECT` code), `wifi.errors.invalid_command`,
+ *   `wifi.errors.unknown_command`, `wifi.errors.not_authorized`, or
+ *   `wifi.errors.error_code` (with `errorParams.code`) for other ERROR_STATE
+ *   codes.
  */
 export async function detectIpAddress(
 	reader: ReadableStreamDefaultReader<Uint8Array>,
+	writer: WritableStreamDefaultWriter<Uint8Array>,
 	timeoutMs: number,
-): Promise<string | null> {
+): Promise<string> {
 	const decoder = new TextDecoder();
 	const ipPattern = /(\d+\.\d+\.\d+\.\d+)/;
-	let buffer: number[] = [];
-	// Track state machine: our command must trigger PROVISIONING first.
-	// Anything before that is stale from a previous attempt.
-	let sawProvisioning = false;
-	let provisioned = false;
 	const deadline = Date.now() + timeoutMs;
+	let buffer: number[] = [];
+	let lastPollAt = 0; // 0 ensures the first poll fires immediately after seeing 0.0.0.0
+	let sawZeroUrl = false;
 
 	while (Date.now() < deadline) {
+		if (sawZeroUrl && Date.now() - lastPollAt >= POLL_INTERVAL_MS) {
+			await sendImprovPacket(writer, buildGetStateCommand());
+			lastPollAt = Date.now();
+		}
+
 		try {
-			const result = await readImprovResponse(
-				reader,
-				deadline - Date.now(),
-				buffer,
-			);
+			const readBudget = sawZeroUrl
+				? Math.min(POLL_INTERVAL_MS, deadline - Date.now())
+				: deadline - Date.now();
+			const result = await readImprovResponse(reader, readBudget, buffer);
 			buffer = result.buffer;
 			for (const pkt of result.packets) {
-				// STATE_PROVISIONING — our command was accepted
-				if (pkt.type === TYPE_CURRENT_STATE && pkt.data[0] === 0x03) {
-					sawProvisioning = true;
-				}
-
-				// Ignore everything before we see our PROVISIONING
-				if (!sawProvisioning) continue;
-
-				// Error state — WiFi connection failed
 				if (pkt.type === TYPE_ERROR_STATE) {
 					const code = pkt.data[0];
 					const messages: Record<number, string> = {
@@ -361,38 +371,42 @@ export async function detectIpAddress(
 						},
 					);
 				}
-
-				// STATE_PROVISIONED — device connected to WiFi
-				if (pkt.type === TYPE_CURRENT_STATE && pkt.data[0] === 0x04) {
-					provisioned = true;
-				}
-
-				// RPC result — only trust after PROVISIONING → PROVISIONED
-				if (pkt.type === TYPE_RPC_RESULT && provisioned) {
-					if (pkt.data.length >= 3 && pkt.data[1] > 0) {
-						const resultData = pkt.data.slice(2, 2 + pkt.data[1]);
-						const urlLen = resultData[0];
-						const url = decoder.decode(resultData.slice(1, 1 + urlLen));
-						const match = ipPattern.exec(url);
-						if (match && match[1] !== "0.0.0.0") return match[1];
+				if (
+					pkt.type === TYPE_RPC_RESULT &&
+					pkt.data.length >= 3 &&
+					(pkt.data[0] === CMD_WIFI_SETTINGS ||
+						pkt.data[0] === CMD_GET_CURRENT_STATE)
+				) {
+					const urlLen = pkt.data[2];
+					if (pkt.data.length < 3 + urlLen) {
+						// Malformed or truncated packet — skip to avoid decoding
+						// garbage that happens to match the IP regex.
+						continue;
 					}
-					// Provisioned but IP not yet assigned (0.0.0.0) or no URL —
-					// creds are saved to NVS; caller should reboot and re-read
-					return null;
+					const url = decoder.decode(pkt.data.slice(3, 3 + urlLen));
+					const match = ipPattern.exec(url);
+					if (match && match[1] !== "0.0.0.0") {
+						return match[1];
+					}
+					if (match && match[1] === "0.0.0.0") {
+						sawZeroUrl = true;
+					}
 				}
 			}
 		} catch (err) {
-			if (err instanceof Error && !err.message.includes("timeout")) {
+			if (
+				err instanceof Error &&
+				(err as Error & { errorKey?: string }).errorKey !==
+					"flasher.errors.timeout"
+			) {
 				throw err;
 			}
-			break;
+			// timeout from readImprovResponse — loop will check deadline and maybe poll again
 		}
 	}
 
 	throw Object.assign(
 		new Error("WiFi connection failed — check SSID/password and try again"),
-		{
-			errorKey: "wifi.errors.connection_failed",
-		},
+		{ errorKey: "wifi.errors.connection_failed" },
 	);
 }

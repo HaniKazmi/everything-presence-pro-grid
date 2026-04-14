@@ -898,6 +898,12 @@ export const flasherStyles = css`
     margin-top: 4px;
   }
 
+  .ha-add-result {
+    color: var(--secondary-text-color);
+    font-size: 14px;
+    margin-top: 8px;
+  }
+
   .usb-status {
     text-align: center;
     padding: 24px 0;
@@ -985,6 +991,15 @@ export const flasherStyles = css`
     display: flex;
     justify-content: flex-end;
     gap: 12px;
+  }
+
+  .ha-add-progress {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-top: 16px;
+    color: var(--secondary-text-color);
+    font-size: 14px;
   }
 
 `;

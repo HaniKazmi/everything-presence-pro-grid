@@ -19,14 +19,8 @@ vi.mock("../lib/usb-flash-service.js", () => ({
 	detectIpAddress: vi.fn(),
 }));
 
-// Mock improv-serial for RTS reset path in _handleWifiProvision
+// Mock improv-serial (used transitively by usb-flash-service)
 vi.mock("../lib/improv-serial.js", () => ({
-	sendImprovPacket: vi.fn().mockResolvedValue(undefined),
-	readImprovResponse: vi.fn().mockResolvedValue({
-		packets: [{ type: 0x01, data: new Uint8Array([0x04]) }],
-		buffer: [],
-	}),
-	buildGetStateCommand: vi.fn().mockReturnValue(new Uint8Array([2, 2, 0])),
 	buildScanCommand: vi.fn().mockReturnValue(new Uint8Array([1, 2, 3])),
 	buildWifiCommand: vi.fn().mockReturnValue(new Uint8Array([4, 5, 6])),
 	buildGetInfoCommand: vi.fn().mockReturnValue(new Uint8Array([3, 3, 0])),
@@ -37,7 +31,6 @@ vi.mock("../lib/improv-serial.js", () => ({
 	ERROR_UNABLE_TO_CONNECT: 0x03,
 }));
 
-import { readImprovResponse, sendImprovPacket } from "../lib/improv-serial.js";
 import {
 	detectIpAddress,
 	flashFirmware,
@@ -461,7 +454,6 @@ describe("_handleWifiProvision", () => {
 	let oldReader: { releaseLock: ReturnType<typeof vi.fn> };
 	let freshWriter: { releaseLock: ReturnType<typeof vi.fn> };
 	let freshReader: { releaseLock: ReturnType<typeof vi.fn> };
-	let ipReader: { releaseLock: ReturnType<typeof vi.fn> };
 	let mockPort: ReturnType<typeof makeMockPort>;
 
 	beforeEach(() => {
@@ -474,16 +466,11 @@ describe("_handleWifiProvision", () => {
 		oldReader = { releaseLock: vi.fn() };
 		freshWriter = { releaseLock: vi.fn() };
 		freshReader = { releaseLock: vi.fn() };
-		ipReader = { releaseLock: vi.fn() };
 		mockPort = makeMockPort();
 
-		// getWriter returns fresh writer; getReader returns fresh reader first, then ipReader
+		// getWriter returns fresh writer; getReader returns fresh reader
 		mockPort.writable.getWriter.mockReturnValue(freshWriter);
-		let readerCallCount = 0;
-		mockPort.readable.getReader.mockImplementation(() => {
-			readerCallCount++;
-			return readerCallCount === 1 ? freshReader : ipReader;
-		});
+		mockPort.readable.getReader.mockReturnValue(freshReader);
 
 		// Pre-wire ctrl with a serial port and old writer/reader (as _handleUsbFlash would)
 		const ctrl = (panel as any)._flasherCtrl;
@@ -498,7 +485,6 @@ describe("_handleWifiProvision", () => {
 
 	async function flushProvision(ssid: string, password: string) {
 		const promise = (panel as any)._handleWifiProvision(ssid, password);
-		// Advance past RTS reset setTimeout (100ms)
 		await vi.advanceTimersByTimeAsync(200);
 		return promise;
 	}
@@ -561,10 +547,14 @@ describe("_handleWifiProvision", () => {
 		expect(steps).toContain("reading_ip");
 	});
 
-	it("calls detectIpAddress with same reader and 35000ms timeout", async () => {
+	it("calls detectIpAddress with reader, writer, and 60000ms timeout", async () => {
 		await flushProvision("MySSID", "s3cr3t");
 
-		expect(detectIpAddress).toHaveBeenCalledWith(freshReader, 35000);
+		expect(detectIpAddress).toHaveBeenCalledWith(
+			freshReader,
+			freshWriter,
+			60000,
+		);
 	});
 
 	it("releases fresh reader and writer locks after sending credentials", async () => {
@@ -599,21 +589,184 @@ describe("_handleWifiProvision", () => {
 		expect(addSpy).toHaveBeenCalledWith("192.168.1.42");
 	});
 
-	it("sets state to adding_device then complete with the IP", async () => {
+	it("sets state to wifi_configured with IP after detectIpAddress returns", async () => {
+		(detectIpAddress as ReturnType<typeof vi.fn>).mockResolvedValue(
+			"192.168.1.42",
+		);
 		const ctrl = (panel as any)._flasherCtrl;
-		vi.spyOn(ctrl, "addEsphomeDevice").mockResolvedValue(undefined);
 		const updateSpy = vi.spyOn(ctrl, "updateUsbState");
 
 		await flushProvision("MySSID", "s3cr3t");
 
 		const steps = updateSpy.mock.calls.map((c: any[]) => c[0].step);
-		expect(steps).toContain("adding_device");
-		expect(steps).toContain("complete");
+		expect(steps).toContain("wifi_configured");
+		// wifi_configured must appear before complete
+		const wifiConfiguredIdx = steps.indexOf("wifi_configured");
+		const completeIdx = steps.indexOf("complete");
+		expect(wifiConfiguredIdx).toBeLessThan(completeIdx);
+		// wifi_configured carried the IP
+		const wifiConfiguredCall = (updateSpy.mock.calls as any[][]).find(
+			(c) => c[0].step === "wifi_configured",
+		);
+		expect(wifiConfiguredCall?.[0].ip).toBe("192.168.1.42");
+	});
+
+	it("transitions to complete with haAdd=added when addEsphomeDevice resolves with added", async () => {
+		(detectIpAddress as ReturnType<typeof vi.fn>).mockResolvedValue(
+			"192.168.1.42",
+		);
+		const ctrl = (panel as any)._flasherCtrl;
+		vi.spyOn(ctrl, "addEsphomeDevice").mockResolvedValue({ type: "added" });
+		const updateSpy = vi.spyOn(ctrl, "updateUsbState");
+
+		await flushProvision("MySSID", "s3cr3t");
 
 		const completeCall = (updateSpy.mock.calls as any[][]).find(
 			(c) => c[0].step === "complete",
 		);
-		expect(completeCall?.[0].ip).toBe("192.168.1.42");
+		expect(completeCall?.[0]).toMatchObject({
+			step: "complete",
+			ip: "192.168.1.42",
+			haAdd: { type: "added" },
+		});
+	});
+
+	it.each([
+		["already_added", { type: "already_added" }],
+		["needs_auth", { type: "needs_auth" }],
+		["failed with reason", { type: "failed", reason: "invalid_auth" }],
+	])("transitions to complete with haAdd=%s from addEsphomeDevice", async (_label: string, outcome: any) => {
+		(detectIpAddress as ReturnType<typeof vi.fn>).mockResolvedValue(
+			"192.168.1.42",
+		);
+		const ctrl = (panel as any)._flasherCtrl;
+		vi.spyOn(ctrl, "addEsphomeDevice").mockResolvedValue(outcome);
+		const updateSpy = vi.spyOn(ctrl, "updateUsbState");
+
+		await flushProvision("MySSID", "s3cr3t");
+
+		const completeCall = (updateSpy.mock.calls as any[][]).find(
+			(c) => c[0].step === "complete",
+		);
+		expect(completeCall?.[0]).toMatchObject({
+			step: "complete",
+			ip: "192.168.1.42",
+			haAdd: outcome,
+		});
+	});
+
+	it("transitions to complete with haAdd=failed when addEsphomeDevice throws", async () => {
+		(detectIpAddress as ReturnType<typeof vi.fn>).mockResolvedValue(
+			"192.168.1.42",
+		);
+		const ctrl = (panel as any)._flasherCtrl;
+		vi.spyOn(ctrl, "addEsphomeDevice").mockRejectedValue(
+			new Error("connection timeout"),
+		);
+		const updateSpy = vi.spyOn(ctrl, "updateUsbState");
+
+		await flushProvision("MySSID", "s3cr3t");
+
+		const completeCall = (updateSpy.mock.calls as any[][]).find(
+			(c) => c[0].step === "complete",
+		);
+		expect(completeCall?.[0]).toMatchObject({
+			step: "complete",
+			ip: "192.168.1.42",
+			haAdd: { type: "failed", reason: "connection timeout" },
+		});
+		// Must NOT transition to the error step on HA-add failure
+		expect(
+			(updateSpy.mock.calls as any[][]).some((c) => c[0].step === "error"),
+		).toBe(false);
+	});
+
+	it("auto-retries once after cannot_connect on initial add", async () => {
+		(detectIpAddress as ReturnType<typeof vi.fn>).mockResolvedValue(
+			"192.168.1.42",
+		);
+		const ctrl = (panel as any)._flasherCtrl;
+		const addSpy = vi
+			.spyOn(ctrl, "addEsphomeDevice")
+			.mockResolvedValueOnce({ type: "cannot_connect" })
+			.mockResolvedValueOnce({ type: "added" });
+		const updateSpy = vi.spyOn(ctrl, "updateUsbState");
+
+		const promise = (panel as any)._handleWifiProvision("MySSID", "s3cr3t");
+		await vi.advanceTimersByTimeAsync(3500); // 200ms initial + 3s retry delay
+		await promise;
+
+		expect(addSpy).toHaveBeenCalledTimes(2);
+		const completeCall = (updateSpy.mock.calls as any[][]).find(
+			(c) => c[0].step === "complete",
+		);
+		expect(completeCall?.[0]).toMatchObject({
+			step: "complete",
+			ip: "192.168.1.42",
+			haAdd: { type: "added" },
+		});
+	});
+
+	it("keeps cannot_connect when both initial and retry fail", async () => {
+		(detectIpAddress as ReturnType<typeof vi.fn>).mockResolvedValue(
+			"192.168.1.42",
+		);
+		const ctrl = (panel as any)._flasherCtrl;
+		vi.spyOn(ctrl, "addEsphomeDevice").mockResolvedValue({
+			type: "cannot_connect",
+		});
+		const updateSpy = vi.spyOn(ctrl, "updateUsbState");
+
+		const promise = (panel as any)._handleWifiProvision("MySSID", "s3cr3t");
+		await vi.advanceTimersByTimeAsync(3500);
+		await promise;
+
+		const completeCall = (updateSpy.mock.calls as any[][]).find(
+			(c) => c[0].step === "complete",
+		);
+		expect(completeCall?.[0]).toMatchObject({
+			step: "complete",
+			ip: "192.168.1.42",
+			haAdd: { type: "cannot_connect" },
+		});
+	});
+
+	it("does not retry when initial add returns non-cannot_connect failure", async () => {
+		(detectIpAddress as ReturnType<typeof vi.fn>).mockResolvedValue(
+			"192.168.1.42",
+		);
+		const ctrl = (panel as any)._flasherCtrl;
+		const addSpy = vi
+			.spyOn(ctrl, "addEsphomeDevice")
+			.mockResolvedValue({ type: "needs_auth" });
+
+		await flushProvision("MySSID", "s3cr3t");
+
+		expect(addSpy).toHaveBeenCalledTimes(1);
+	});
+
+	it("records haAdd=failed when auto-retry throws", async () => {
+		(detectIpAddress as ReturnType<typeof vi.fn>).mockResolvedValue(
+			"192.168.1.42",
+		);
+		const ctrl = (panel as any)._flasherCtrl;
+		vi.spyOn(ctrl, "addEsphomeDevice")
+			.mockResolvedValueOnce({ type: "cannot_connect" })
+			.mockRejectedValueOnce(new Error("network dropped"));
+		const updateSpy = vi.spyOn(ctrl, "updateUsbState");
+
+		const promise = (panel as any)._handleWifiProvision("MySSID", "s3cr3t");
+		await vi.advanceTimersByTimeAsync(3500);
+		await promise;
+
+		const completeCall = (updateSpy.mock.calls as any[][]).find(
+			(c) => c[0].step === "complete",
+		);
+		expect(completeCall?.[0]).toMatchObject({
+			step: "complete",
+			ip: "192.168.1.42",
+			haAdd: { type: "failed", reason: "network dropped" },
+		});
 	});
 
 	it("sets error state when runWifiProvision throws", async () => {
@@ -670,96 +823,6 @@ describe("_handleWifiProvision", () => {
 			step: "error",
 			errorKey: "wifi.errors.provisioning_failed",
 		});
-	});
-
-	it("performs RTS reset and re-reads IP when detectIpAddress returns null (0.0.0.0)", async () => {
-		const ctrl = (panel as any)._flasherCtrl;
-
-		// First detectIpAddress returns null (0.0.0.0)
-		// Second detectIpAddress (after RTS reset) returns real IP
-		(detectIpAddress as ReturnType<typeof vi.fn>)
-			.mockResolvedValueOnce(null)
-			.mockResolvedValueOnce("192.168.1.99");
-
-		// Mock improv-serial handshake response for the retry path
-		vi.mocked(readImprovResponse).mockResolvedValue({
-			packets: [{ type: 0x01, data: new Uint8Array([0x04]) }],
-			buffer: [],
-		});
-
-		// Mock drain reader — returns done immediately
-		let readerCallCount = 0;
-		mockPort.readable.getReader.mockImplementation(() => {
-			readerCallCount++;
-			if (readerCallCount === 1) {
-				// freshReader for initial provision
-				return freshReader;
-			}
-			// drain reader, handshake reader, fresh reader for re-read
-			return {
-				read: vi.fn().mockResolvedValue({ done: true, value: undefined }),
-				releaseLock: vi.fn(),
-				cancel: vi.fn(),
-				closed: Promise.resolve(undefined),
-			};
-		});
-
-		const addSpy = vi
-			.spyOn(ctrl, "addEsphomeDevice")
-			.mockResolvedValue(undefined);
-		const updateSpy = vi.spyOn(ctrl, "updateUsbState");
-
-		// Start the provision and advance timers enough for RTS reset path
-		const promise = (panel as any)._handleWifiProvision("MySSID", "s3cr3t");
-		await vi.advanceTimersByTimeAsync(15000);
-		await promise;
-
-		// Should have called setSignals for RTS reset
-		expect(mockPort.setSignals).toHaveBeenCalled();
-
-		// Should have completed with the final IP
-		const completeCall = (updateSpy.mock.calls as any[][]).find(
-			(c) => c[0].step === "complete",
-		);
-		expect(completeCall?.[0].ip).toBe("192.168.1.99");
-		expect(addSpy).toHaveBeenCalledWith("192.168.1.99");
-	});
-
-	it("completes without IP when RTS reset handshake fails after null IP", async () => {
-		const ctrl = (panel as any)._flasherCtrl;
-
-		// detectIpAddress returns null (0.0.0.0)
-		(detectIpAddress as ReturnType<typeof vi.fn>).mockResolvedValue(null);
-
-		// Handshake always fails
-		vi.mocked(sendImprovPacket).mockRejectedValue(new Error("no response"));
-
-		// Mock drain reader — returns done immediately
-		let readerCallCount = 0;
-		mockPort.readable.getReader.mockImplementation(() => {
-			readerCallCount++;
-			if (readerCallCount === 1) return freshReader;
-			return {
-				read: vi.fn().mockResolvedValue({ done: true, value: undefined }),
-				releaseLock: vi.fn(),
-				cancel: vi.fn(),
-				closed: Promise.resolve(undefined),
-			};
-		});
-
-		const updateSpy = vi.spyOn(ctrl, "updateUsbState");
-
-		// Start the provision but don't await yet — need to advance timers
-		const promise = (panel as any)._handleWifiProvision("MySSID", "s3cr3t");
-		// Advance past RTS reset (200ms) + 5 handshake retries (2000ms each) + margin
-		await vi.advanceTimersByTimeAsync(15000);
-		await promise;
-
-		// Should set complete with no IP (handshake failed, so no re-read)
-		const completeCall = (updateSpy.mock.calls as any[][]).find(
-			(c) => c[0].step === "complete",
-		);
-		expect(completeCall?.[0].ip).toBeUndefined();
 	});
 });
 
@@ -962,6 +1025,102 @@ describe("_handleUsbWifiConfig", () => {
 		const steps = updateSpy.mock.calls.map((c: any[]) => c[0].step);
 		expect(steps).toContain("wifi_provision");
 		expect(ctrl.wifiNetworks).toEqual([]);
+	});
+});
+
+describe("_handleRetryHaAdd", () => {
+	let panel: EPPGridPanel;
+
+	beforeEach(() => {
+		vi.clearAllMocks();
+		resetServiceMocks();
+		panel = createPanel();
+	});
+
+	it("re-enters wifi_configured and emits complete with new haAdd on retry", async () => {
+		const ctrl = (panel as any)._flasherCtrl;
+		ctrl.usbFlashState = {
+			step: "complete",
+			ip: "192.168.1.42",
+			haAdd: { type: "cannot_connect" },
+		};
+		vi.spyOn(ctrl, "addEsphomeDevice").mockResolvedValue({ type: "added" });
+		const updateSpy = vi.spyOn(ctrl, "updateUsbState");
+
+		await (panel as any)._handleRetryHaAdd();
+
+		const steps = updateSpy.mock.calls.map((c: any[]) => c[0].step);
+		expect(steps).toEqual(["wifi_configured", "complete"]);
+		expect(updateSpy.mock.calls[1][0]).toMatchObject({
+			step: "complete",
+			ip: "192.168.1.42",
+			haAdd: { type: "added" },
+		});
+	});
+
+	it("is a no-op when step is not complete", async () => {
+		const ctrl = (panel as any)._flasherCtrl;
+		ctrl.usbFlashState = { step: "error" };
+		const addSpy = vi.spyOn(ctrl, "addEsphomeDevice");
+		const updateSpy = vi.spyOn(ctrl, "updateUsbState");
+
+		await (panel as any)._handleRetryHaAdd();
+
+		expect(addSpy).not.toHaveBeenCalled();
+		expect(updateSpy).not.toHaveBeenCalled();
+	});
+
+	it("is a no-op when ip is missing", async () => {
+		const ctrl = (panel as any)._flasherCtrl;
+		ctrl.usbFlashState = { step: "complete", haAdd: { type: "failed" } };
+		const addSpy = vi.spyOn(ctrl, "addEsphomeDevice");
+
+		await (panel as any)._handleRetryHaAdd();
+
+		expect(addSpy).not.toHaveBeenCalled();
+	});
+
+	it("records haAdd=failed when retry throws", async () => {
+		const ctrl = (panel as any)._flasherCtrl;
+		ctrl.usbFlashState = {
+			step: "complete",
+			ip: "192.168.1.42",
+			haAdd: { type: "cannot_connect" },
+		};
+		vi.spyOn(ctrl, "addEsphomeDevice").mockRejectedValue(
+			new Error("network unreachable"),
+		);
+		const updateSpy = vi.spyOn(ctrl, "updateUsbState");
+
+		await (panel as any)._handleRetryHaAdd();
+
+		const completeCall = updateSpy.mock.calls[1][0];
+		expect(completeCall).toMatchObject({
+			step: "complete",
+			ip: "192.168.1.42",
+			haAdd: { type: "failed", reason: "network unreachable" },
+		});
+	});
+});
+
+describe("_handleFlashAnother", () => {
+	let panel: EPPGridPanel;
+
+	beforeEach(() => {
+		vi.clearAllMocks();
+		resetServiceMocks();
+		panel = createPanel();
+	});
+
+	it("calls resetUsbState on the controller", () => {
+		const ctrl = (panel as any)._flasherCtrl;
+		const resetSpy = vi
+			.spyOn(ctrl, "resetUsbState")
+			.mockImplementation(() => {});
+
+		(panel as any)._handleFlashAnother();
+
+		expect(resetSpy).toHaveBeenCalled();
 	});
 });
 

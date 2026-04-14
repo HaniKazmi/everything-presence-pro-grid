@@ -179,6 +179,27 @@ export class EppFlasherView extends LitElement {
 		);
 	}
 
+	private _dispatchRetryHaAdd(): void {
+		this.dispatchEvent(
+			new CustomEvent("retry-ha-add", { bubbles: true, composed: true }),
+		);
+	}
+
+	private _dispatchFlashAnother(): void {
+		this.dispatchEvent(
+			new CustomEvent("flash-another", { bubbles: true, composed: true }),
+		);
+	}
+
+	private async _copyIp(ip: string): Promise<void> {
+		if (!ip || !navigator.clipboard) return;
+		try {
+			await navigator.clipboard.writeText(ip);
+		} catch (err) {
+			console.error("failed to copy IP", err);
+		}
+	}
+
 	private _dispatchWifiScan(): void {
 		this.dispatchEvent(
 			new CustomEvent("wifi-scan", { bubbles: true, composed: true }),
@@ -509,6 +530,9 @@ export class EppFlasherView extends LitElement {
 								<ha-button @click=${this._onUsbBack}>
 									${this.localize("flasher.usb_back")}
 								</ha-button>
+								<ha-button @click=${this._dispatchFlashAnother}>
+									${this.localize("flasher.flash_another")}
+								</ha-button>
 								${
 									state.fatal
 										? nothing
@@ -523,43 +547,20 @@ export class EppFlasherView extends LitElement {
 			`;
 		}
 
-		// Complete state
-		if (state?.step === "complete") {
-			const isEthernet = state.variant?.startsWith("ethernet");
+		// WiFi configured — HA-add in progress
+		if (state?.step === "wifi_configured") {
 			return html`
 				<div class="flasher-content">
 					<ha-card>
 						<div class="card-content">
 							<div class="usb-complete">
 								<ha-icon icon="mdi:check-circle-outline"></ha-icon>
-								${
-									isEthernet
-										? html`<p>${this.localize("flasher.usb_ethernet_complete")}</p>
-											<p>${this.localize("flasher.usb_ethernet_hint")}</p>`
-										: state.ip
-											? html`
-											<p>${this.localize("flasher.usb_step_complete")}</p>
-											<p class="usb-ip">${this.localize("flasher.ip_address")}: ${state.ip}</p>
-										`
-											: html`
-											<p>${this.localize("flasher.wifi_connected")}</p>
-										`
-								}
+								<p>${this.localize("flasher.wifi_configured")}</p>
+								<p class="usb-ip">${this.localize("flasher.ip_address")}: ${state.ip}</p>
 							</div>
-							<div class="confirm-actions">
-								${
-									isEthernet
-										? html`<a href="/config/devices/dashboard">
-										<ha-button raised>${this.localize("flasher.go_to_devices")}</ha-button>
-									</a>`
-										: state.ip
-											? html`<ha-button raised @click=${this._dispatchFlashComplete}>
-											${this.localize("flasher.go_to_config")}
-										</ha-button>`
-											: html`<ha-button raised @click=${this._dispatchFlashComplete}>
-											${this.localize("flasher.done")}
-										</ha-button>`
-								}
+							<div class="ha-add-progress">
+								<ha-circular-progress indeterminate size="small"></ha-circular-progress>
+								<span>${this.localize("flasher.ha_add.adding")}</span>
 							</div>
 						</div>
 					</ha-card>
@@ -567,7 +568,85 @@ export class EppFlasherView extends LitElement {
 			`;
 		}
 
-		// In-progress states (connecting, flashing, wifi_scan, reading_ip, adding_device)
+		// Complete state
+		if (state?.step === "complete") {
+			const isEthernet = state.variant?.startsWith("ethernet");
+			if (isEthernet) {
+				return html`
+					<div class="flasher-content">
+						<ha-card>
+							<div class="card-content">
+								<div class="usb-complete">
+									<ha-icon icon="mdi:check-circle-outline"></ha-icon>
+									<p>${this.localize("flasher.usb_ethernet_complete")}</p>
+									<p>${this.localize("flasher.usb_ethernet_hint")}</p>
+								</div>
+								<div class="confirm-actions">
+									<a href="/config/devices/dashboard">
+										<ha-button raised>${this.localize("flasher.go_to_devices")}</ha-button>
+									</a>
+								</div>
+							</div>
+						</ha-card>
+					</div>
+				`;
+			}
+
+			const ip = state.ip;
+			const haAdd = state.haAdd;
+			const success =
+				haAdd?.type === "added" || haAdd?.type === "already_added";
+			const icon = success ? "mdi:check-circle-outline" : "mdi:alert-outline";
+			const haAddKey = haAdd?.type ?? "failed";
+			const reason =
+				haAdd?.type === "failed" ? (haAdd.reason ?? "unknown") : "";
+
+			return html`
+				<div class="flasher-content">
+					<ha-card>
+						<div class="card-content">
+							<div class="usb-complete">
+								<ha-icon icon=${icon}></ha-icon>
+								<p>${this.localize("flasher.wifi_configured")}</p>
+								${
+									ip
+										? html`<p class="usb-ip">${this.localize("flasher.ip_address")}: ${ip}</p>`
+										: nothing
+								}
+								<p class="ha-add-result">
+									${this.localize(`flasher.ha_add.${haAddKey}`, { reason })}
+								</p>
+							</div>
+							<div class="confirm-actions">
+								${
+									success
+										? html`<ha-button raised @click=${this._dispatchFlashComplete}>
+										${this.localize("flasher.go_to_config")}
+									</ha-button>`
+										: haAdd?.type === "needs_auth"
+											? html`<a href="/config/integrations/dashboard">
+											<ha-button raised>${this.localize("flasher.go_to_integrations")}</ha-button>
+										</a>`
+											: html`
+											<ha-button @click=${() => this._copyIp(ip ?? "")}>
+												${this.localize("flasher.copy_ip")}
+											</ha-button>
+											<ha-button raised @click=${this._dispatchRetryHaAdd}>
+												${this.localize("flasher.retry_ha_add")}
+											</ha-button>
+										`
+								}
+								<ha-button @click=${this._dispatchFlashAnother}>
+									${this.localize("flasher.flash_another")}
+								</ha-button>
+							</div>
+						</div>
+					</ha-card>
+				</div>
+			`;
+		}
+
+		// In-progress states (connecting, flashing, wifi_scan, reading_ip)
 		if (state && state.step !== "idle") {
 			const stepKeyMap: Record<string, string> = {
 				connecting: "flasher.usb_step_connecting",
@@ -576,7 +655,6 @@ export class EppFlasherView extends LitElement {
 				wifi_provision: "flasher.usb_step_provisioning",
 				wifi_connecting: "flasher.usb_step_wifi_connecting",
 				reading_ip: "flasher.usb_step_reading_ip",
-				adding_device: "flasher.usb_step_adding",
 			};
 			const stepKey = stepKeyMap[state.step] ?? state.step;
 			const stepParams =

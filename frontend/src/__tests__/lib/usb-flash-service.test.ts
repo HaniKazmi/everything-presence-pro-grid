@@ -12,6 +12,8 @@ vi.mock("../../lib/improv-serial.js", () => ({
 	buildGetStateCommand: vi.fn().mockReturnValue(new Uint8Array([2, 2, 0])),
 	buildGetInfoCommand: vi.fn().mockReturnValue(new Uint8Array([3, 3, 0])),
 	buildWifiCommand: vi.fn().mockReturnValue(new Uint8Array([4, 5, 6])),
+	CMD_WIFI_SETTINGS: 0x01,
+	CMD_GET_CURRENT_STATE: 0x02,
 	TYPE_CURRENT_STATE: 0x01,
 	TYPE_ERROR_STATE: 0x02,
 	TYPE_RPC_RESULT: 0x04,
@@ -1103,34 +1105,66 @@ describe("detectIpAddress", () => {
 		releaseLock: vi.fn(),
 	} as unknown as ReadableStreamDefaultReader<Uint8Array>;
 
-	it("extracts IP from Improv RPC result containing URL", async () => {
-		const encoder = new TextEncoder();
-		const url = "http://192.168.1.42";
+	const mockWriter = {
+		write: vi.fn().mockResolvedValue(undefined),
+		close: vi.fn().mockResolvedValue(undefined),
+		releaseLock: vi.fn(),
+		abort: vi.fn().mockResolvedValue(undefined),
+		closed: Promise.resolve(undefined),
+		desiredSize: 1,
+		ready: Promise.resolve(undefined),
+	} as unknown as WritableStreamDefaultWriter<Uint8Array>;
+
+	const encoder = new TextEncoder();
+	const makeRpcResult = (cmd: number, url: string): Uint8Array => {
 		const urlBytes = encoder.encode(url);
 		const data = new Uint8Array(2 + 1 + urlBytes.length);
-		data[0] = 0x01;
+		data[0] = cmd;
 		data[1] = 1 + urlBytes.length;
 		data[2] = urlBytes.length;
 		data.set(urlBytes, 3);
+		return data;
+	};
 
-		// PROVISIONING → PROVISIONED → RPC result with URL
+	// Reset readImprovResponse base implementation before each test — runWifiScan
+	// tests use mockRejectedValue (persistent default) which bleeds across tests
+	// because vi.clearAllMocks() does not clear implementations.
+	beforeEach(() => {
+		vi.mocked(readImprovResponse).mockReset();
+		// Set a safe default: returns no interesting packets, so the loop in
+		// detectIpAddress keeps spinning until deadline when needed.
+		vi.mocked(readImprovResponse).mockResolvedValue({
+			packets: [],
+			buffer: [],
+		});
+	});
+
+	it("extracts IP from Improv RPC result containing URL", async () => {
+		// STATE packets are ignored; only the RPC_RESULT matters
 		vi.mocked(readImprovResponse).mockResolvedValueOnce({
 			packets: [
 				{ type: 0x01, data: new Uint8Array([0x03]) },
 				{ type: 0x01, data: new Uint8Array([0x04]) },
-				{ type: TYPE_RPC_RESULT, data },
+				{
+					type: TYPE_RPC_RESULT,
+					data: makeRpcResult(0x01, "http://192.168.1.42"),
+				},
 			],
 			buffer: [],
 		});
 
-		const ip = await detectIpAddress(mockReader, 1000);
+		const ip = await detectIpAddress(mockReader, mockWriter, 1000);
 		expect(ip).toBe("192.168.1.42");
 	});
 
 	it("throws on timeout when no RPC result arrives", async () => {
-		vi.mocked(readImprovResponse).mockRejectedValueOnce(new Error("timeout"));
+		vi.mocked(readImprovResponse).mockRejectedValueOnce(
+			Object.assign(new Error("timeout"), {
+				errorKey: "flasher.errors.timeout",
+			}),
+		);
 
-		await expect(detectIpAddress(mockReader, 50)).rejects.toThrow(
+		await expect(detectIpAddress(mockReader, mockWriter, 50)).rejects.toThrow(
 			"WiFi connection failed",
 		);
 	});
@@ -1141,23 +1175,9 @@ describe("detectIpAddress", () => {
 			buffer: [],
 		});
 
-		await expect(detectIpAddress(mockReader, 1000)).rejects.toThrow(
+		await expect(detectIpAddress(mockReader, mockWriter, 1000)).rejects.toThrow(
 			"WiFi connection failed",
 		);
-	});
-
-	it("returns null when provisioned but no URL (no next_url configured)", async () => {
-		vi.mocked(readImprovResponse).mockResolvedValueOnce({
-			packets: [
-				{ type: 0x01, data: new Uint8Array([0x03]) },
-				{ type: 0x01, data: new Uint8Array([0x04]) },
-				{ type: TYPE_RPC_RESULT, data: new Uint8Array([0x01, 0x00, 0x00]) },
-			],
-			buffer: [],
-		});
-
-		const ip = await detectIpAddress(mockReader, 1000);
-		expect(ip).toBeNull();
 	});
 
 	it("throws error state message after seeing PROVISIONING", async () => {
@@ -1170,7 +1190,7 @@ describe("detectIpAddress", () => {
 			buffer: [],
 		});
 
-		await expect(detectIpAddress(mockReader, 1000)).rejects.toThrow(
+		await expect(detectIpAddress(mockReader, mockWriter, 1000)).rejects.toThrow(
 			"WiFi connection failed",
 		);
 	});
@@ -1184,32 +1204,9 @@ describe("detectIpAddress", () => {
 			buffer: [],
 		});
 
-		await expect(detectIpAddress(mockReader, 1000)).rejects.toThrow(
+		await expect(detectIpAddress(mockReader, mockWriter, 1000)).rejects.toThrow(
 			"WiFi error (code 255)",
 		);
-	});
-
-	it("returns null when IP is 0.0.0.0 (DHCP not ready)", async () => {
-		const encoder = new TextEncoder();
-		const url = "http://0.0.0.0";
-		const urlBytes = encoder.encode(url);
-		const data = new Uint8Array(2 + 1 + urlBytes.length);
-		data[0] = 0x01;
-		data[1] = 1 + urlBytes.length;
-		data[2] = urlBytes.length;
-		data.set(urlBytes, 3);
-
-		vi.mocked(readImprovResponse).mockResolvedValueOnce({
-			packets: [
-				{ type: TYPE_CURRENT_STATE, data: new Uint8Array([0x03]) },
-				{ type: TYPE_CURRENT_STATE, data: new Uint8Array([0x04]) },
-				{ type: TYPE_RPC_RESULT, data },
-			],
-			buffer: [],
-		});
-
-		const result = await detectIpAddress(mockReader, 1000);
-		expect(result).toBeNull();
 	});
 
 	it("re-throws non-timeout errors from readImprovResponse", async () => {
@@ -1217,16 +1214,20 @@ describe("detectIpAddress", () => {
 			new Error("serial port disconnected"),
 		);
 
-		await expect(detectIpAddress(mockReader, 1000)).rejects.toThrow(
+		await expect(detectIpAddress(mockReader, mockWriter, 1000)).rejects.toThrow(
 			"serial port disconnected",
 		);
 	});
 
 	it("timeout throw carries errorKey wifi.errors.connection_failed", async () => {
-		vi.mocked(readImprovResponse).mockRejectedValueOnce(new Error("timeout"));
+		vi.mocked(readImprovResponse).mockRejectedValueOnce(
+			Object.assign(new Error("timeout"), {
+				errorKey: "flasher.errors.timeout",
+			}),
+		);
 
 		try {
-			await detectIpAddress(mockReader, 50);
+			await detectIpAddress(mockReader, mockWriter, 50);
 			throw new Error("expected error not thrown");
 		} catch (err: any) {
 			expect(err.errorKey).toBe("wifi.errors.connection_failed");
@@ -1243,7 +1244,7 @@ describe("detectIpAddress", () => {
 		});
 
 		try {
-			await detectIpAddress(mockReader, 1000);
+			await detectIpAddress(mockReader, mockWriter, 1000);
 			throw new Error("expected error not thrown");
 		} catch (err: any) {
 			expect(err.errorKey).toBe("wifi.errors.connection_failed");
@@ -1260,11 +1261,37 @@ describe("detectIpAddress", () => {
 		});
 
 		try {
-			await detectIpAddress(mockReader, 1000);
+			await detectIpAddress(mockReader, mockWriter, 1000);
 			throw new Error("expected error not thrown");
 		} catch (err: any) {
 			expect(err.errorKey).toBe("wifi.errors.invalid_command");
 		}
+	});
+
+	it("polls GET_CURRENT_STATE when initial URL is 0.0.0.0 and returns IP when available", async () => {
+		vi.mocked(readImprovResponse).mockResolvedValueOnce({
+			packets: [
+				{ type: TYPE_RPC_RESULT, data: makeRpcResult(0x01, "http://0.0.0.0") },
+			],
+			buffer: [],
+		});
+		vi.mocked(readImprovResponse).mockResolvedValueOnce({
+			packets: [
+				{
+					type: TYPE_RPC_RESULT,
+					data: makeRpcResult(0x02, "http://192.168.1.42"),
+				},
+			],
+			buffer: [],
+		});
+
+		const ip = await detectIpAddress(mockReader, mockWriter, 5000);
+
+		expect(ip).toBe("192.168.1.42");
+		expect(sendImprovPacket).toHaveBeenCalledWith(
+			mockWriter,
+			expect.any(Uint8Array),
+		);
 	});
 
 	it("unknown error code carries errorKey wifi.errors.error_code with code param", async () => {
@@ -1277,7 +1304,7 @@ describe("detectIpAddress", () => {
 		});
 
 		try {
-			await detectIpAddress(mockReader, 1000);
+			await detectIpAddress(mockReader, mockWriter, 1000);
 			throw new Error("expected error not thrown");
 		} catch (err: any) {
 			expect(err.errorKey).toBe("wifi.errors.error_code");
@@ -1285,31 +1312,96 @@ describe("detectIpAddress", () => {
 		}
 	});
 
-	it("ignores packets before PROVISIONING state is seen", async () => {
-		// RPC result before PROVISIONING should be ignored
-		const encoder = new TextEncoder();
-		const url = "http://192.168.1.99";
-		const urlBytes = encoder.encode(url);
-		const staleData = new Uint8Array(2 + 1 + urlBytes.length);
-		staleData[0] = 0x01;
-		staleData[1] = 1 + urlBytes.length;
-		staleData[2] = urlBytes.length;
-		staleData.set(urlBytes, 3);
+	it("throws connection_failed when URL is persistently 0.0.0.0", async () => {
+		vi.mocked(readImprovResponse).mockResolvedValue({
+			packets: [
+				{ type: TYPE_RPC_RESULT, data: makeRpcResult(0x01, "http://0.0.0.0") },
+			],
+			buffer: [],
+		});
 
-		// First response: stale RPC result (no PROVISIONING yet)
-		// Second response: timeout
+		await expect(
+			detectIpAddress(mockReader, mockWriter, 50),
+		).rejects.toMatchObject({
+			errorKey: "wifi.errors.connection_failed",
+		});
+	});
+
+	it("ignores RPC_RESULT with unrelated cmd byte", async () => {
+		vi.mocked(readImprovResponse).mockResolvedValueOnce({
+			packets: [
+				{ type: TYPE_RPC_RESULT, data: makeRpcResult(0x04, "http://10.0.0.5") },
+				{ type: TYPE_RPC_RESULT, data: makeRpcResult(0x01, "http://0.0.0.0") },
+			],
+			buffer: [],
+		});
+		vi.mocked(readImprovResponse).mockResolvedValueOnce({
+			packets: [
+				{
+					type: TYPE_RPC_RESULT,
+					data: makeRpcResult(0x02, "http://192.168.1.42"),
+				},
+			],
+			buffer: [],
+		});
+
+		const ip = await detectIpAddress(mockReader, mockWriter, 5000);
+		expect(ip).toBe("192.168.1.42");
+	});
+
+	it("ignores RPC_RESULT with fewer than 3 data bytes", async () => {
 		vi.mocked(readImprovResponse)
 			.mockResolvedValueOnce({
 				packets: [
-					{ type: TYPE_CURRENT_STATE, data: new Uint8Array([0x04]) }, // PROVISIONED but no prior PROVISIONING
-					{ type: TYPE_RPC_RESULT, data: staleData },
+					{ type: TYPE_RPC_RESULT, data: new Uint8Array([0x01, 0x00]) }, // too short
 				],
 				buffer: [],
 			})
-			.mockRejectedValueOnce(new Error("timeout"));
+			.mockResolvedValueOnce({
+				packets: [
+					{
+						type: TYPE_RPC_RESULT,
+						data: makeRpcResult(0x01, "http://192.168.1.42"),
+					},
+				],
+				buffer: [],
+			});
 
-		await expect(detectIpAddress(mockReader, 1000)).rejects.toThrow(
-			"WiFi connection failed",
-		);
+		const ip = await detectIpAddress(mockReader, mockWriter, 5000);
+		expect(ip).toBe("192.168.1.42");
+	});
+
+	it("ignores RPC_RESULT when urlLen exceeds packet length", async () => {
+		// Truncated packet: claims urlLen=100 but only has 5 bytes after header.
+		// Without the bounds check, slice(3, 3+100) would decode only 5 bytes of
+		// garbage — if those happen to contain an IPv4 pattern, we'd match a
+		// corrupt IP. With the guard we skip the packet entirely.
+		const truncated = new Uint8Array([
+			0x01, // cmd = WIFI_SETTINGS
+			0x06, // data_length (lies — actual payload is 5 bytes)
+			0x64, // urlLen = 100 (exceeds available bytes)
+			0x31, // '1'
+			0x2e, // '.'
+			0x32, // '2'
+			0x2e, // '.'
+			0x33, // '3'
+		]);
+		vi.mocked(readImprovResponse)
+			.mockResolvedValueOnce({
+				packets: [{ type: TYPE_RPC_RESULT, data: truncated }],
+				buffer: [],
+			})
+			.mockResolvedValueOnce({
+				packets: [
+					{
+						type: TYPE_RPC_RESULT,
+						data: makeRpcResult(0x01, "http://192.168.1.42"),
+					},
+				],
+				buffer: [],
+			});
+
+		const ip = await detectIpAddress(mockReader, mockWriter, 5000);
+		expect(ip).toBe("192.168.1.42");
 	});
 });

@@ -35,3 +35,6 @@ docs/handoffs/
 .playwright-mcp/
 epp-live-view.png
 frontend/node_modules
+
+# Throwaway diagnostic tooling (not shipped)
+tools/

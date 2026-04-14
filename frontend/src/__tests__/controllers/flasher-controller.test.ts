@@ -288,19 +288,35 @@ describe("FlasherController", () => {
 
 	// --- addEsphomeDevice ---
 	describe("addEsphomeDevice", () => {
-		it("calls eppgrid/add_esphome_device with host", async () => {
-			await ctrl.addEsphomeDevice("192.168.1.10");
+		it("calls eppgrid/add_esphome_device with host and returns the WS response", async () => {
+			(hass.callWS as ReturnType<typeof vi.fn>).mockResolvedValue({
+				type: "added",
+			});
+			const result = await ctrl.addEsphomeDevice("192.168.1.10");
 			expect(hass.callWS).toHaveBeenCalledWith({
 				type: "eppgrid/add_esphome_device",
 				host: "192.168.1.10",
 			});
+			expect(result).toEqual({ type: "added" });
 		});
 
-		it("does nothing when hass is null", async () => {
+		it("passes through already_added, needs_auth, cannot_connect, failed results", async () => {
+			for (const outcome of [
+				{ type: "already_added" },
+				{ type: "needs_auth" },
+				{ type: "cannot_connect" },
+				{ type: "failed", reason: "invalid_auth" },
+			]) {
+				(hass.callWS as ReturnType<typeof vi.fn>).mockResolvedValue(outcome);
+				const result = await ctrl.addEsphomeDevice("192.168.1.10");
+				expect(result).toEqual(outcome);
+			}
+		});
+
+		it("returns failed/no_hass when hass is null", async () => {
 			ctrl.hass = null;
-			await expect(
-				ctrl.addEsphomeDevice("192.168.1.10"),
-			).resolves.toBeUndefined();
+			const result = await ctrl.addEsphomeDevice("192.168.1.10");
+			expect(result).toEqual({ type: "failed", reason: "no_hass" });
 			expect(hass.callWS).not.toHaveBeenCalled();
 		});
 	});

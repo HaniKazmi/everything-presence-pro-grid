@@ -38,11 +38,6 @@ import {
 	MAX_ZONES,
 } from "./lib/grid.js";
 import { CELL_BG_OUT_OF_RANGE, getCellColor } from "./lib/heatmap.js";
-import {
-	buildGetStateCommand,
-	readImprovResponse,
-	sendImprovPacket,
-} from "./lib/improv-serial.js";
 import { applyPerspective, getInversePerspective } from "./lib/perspective.js";
 import {
 	autoDetectionRange,
@@ -78,7 +73,13 @@ import {
 	panelStyles,
 	protocolFullpageStyles,
 } from "./styles.js";
-import type { DeviceInfo, RawTarget, SetupStep, Target } from "./types.js";
+import type {
+	DeviceInfo,
+	HaAddResult,
+	RawTarget,
+	SetupStep,
+	Target,
+} from "./types.js";
 
 export class EPPGridPanel extends LitElement {
 	@property({ attribute: false }) hass: any;
@@ -1170,6 +1171,8 @@ export class EPPGridPanel extends LitElement {
 						// Retry WiFi config — prompts for new port if needed
 						this._handleUsbWifiConfig();
 					}}
+					@retry-ha-add=${this._handleRetryHaAdd}
+					@flash-another=${this._handleFlashAnother}
 					@wifi-scan=${() => {
 						this._handleWifiScan();
 					}}
@@ -2635,85 +2638,44 @@ export class EPPGridPanel extends LitElement {
 
 			// Wait for PROVISIONED state (creds saved to NVS)
 			ctrl.updateUsbState({ step: "reading_ip" });
-			let ip = await detectIpAddress(reader, 35000);
+			const ip = await detectIpAddress(reader, writer, 60000);
 			if (ctrl.opId !== myOp) return;
 
-			// If IP is null, device reported 0.0.0.0 (DHCP not ready yet).
-			// Reboot via RTS reset — device reconnects with saved creds and
-			// reports the real IP.
-			if (!ip) {
-				reader.releaseLock();
-				writer.releaseLock();
-				(ctrl as any)._serialReader = null;
-				(ctrl as any)._serialWriter = null;
-
-				try {
-					await port.setSignals({
-						dataTerminalReady: false,
-						requestToSend: true,
-					});
-					await new Promise((r) => setTimeout(r, 200));
-					await port.setSignals({
-						dataTerminalReady: false,
-						requestToSend: false,
-					});
-				} catch {}
-
-				// Drain stale boot output
-				const drainReader = port.readable!.getReader();
-				while (true) {
-					const r = await Promise.race([
-						drainReader.read(),
-						new Promise<{ value: undefined; done: true }>((resolve) =>
-							setTimeout(() => resolve({ value: undefined, done: true }), 200),
-						),
-					]);
-					if (r.done || !r.value) break;
-				}
-				drainReader.releaseLock();
-
-				// Handshake with retry — device needs time to boot
-				const freshWriter = port.writable!.getWriter();
-				let handshakeOk = false;
-				for (let attempt = 0; attempt < 5; attempt++) {
-					if (attempt > 0) await new Promise((r) => setTimeout(r, 2000));
-					try {
-						await sendImprovPacket(freshWriter, buildGetStateCommand());
-						const hReader = port.readable!.getReader();
-						try {
-							await readImprovResponse(hReader, 3000);
-							handshakeOk = true;
-						} finally {
-							hReader.releaseLock();
-						}
-					} catch {}
-					if (handshakeOk) break;
-				}
-
-				if (handshakeOk) {
-					const freshReader = port.readable!.getReader();
-					(ctrl as any)._serialWriter = freshWriter;
-					(ctrl as any)._serialReader = freshReader;
-					ip = await detectIpAddress(freshReader, 15000);
-					freshReader.releaseLock();
-				}
-				freshWriter.releaseLock();
-			} else {
-				reader.releaseLock();
-				writer.releaseLock();
-			}
+			reader.releaseLock();
+			writer.releaseLock();
 
 			(ctrl as any)._serialReader = null;
 			(ctrl as any)._serialWriter = null;
 			await port.close().catch(() => {});
 			ctrl.serialPort = null;
 
-			if (ip) {
-				ctrl.updateUsbState({ step: "adding_device" });
-				await ctrl.addEsphomeDevice(ip);
+			// WiFi side succeeded. Intermediate state while HA-add runs.
+			ctrl.updateUsbState({ step: "wifi_configured", ip });
+
+			let haAdd: HaAddResult;
+			try {
+				haAdd = await ctrl.addEsphomeDevice(ip);
+			} catch (err) {
+				const msg = (err as { message?: string })?.message;
+				haAdd = { type: "failed", reason: msg ?? "unknown" };
+			}
+			if (ctrl.opId !== myOp) return;
+
+			// The device's ESPHome API may not have finished booting on the
+			// first attempt right after WiFi associates. Retry once silently.
+			if (haAdd.type === "cannot_connect") {
+				await new Promise((r) => setTimeout(r, 3000));
+				if (ctrl.opId !== myOp) return;
+				try {
+					haAdd = await ctrl.addEsphomeDevice(ip);
+				} catch (err) {
+					const msg = (err as { message?: string })?.message;
+					haAdd = { type: "failed", reason: msg ?? "unknown" };
+				}
+				if (ctrl.opId !== myOp) return;
 			}
 
-			ctrl.updateUsbState({ step: "complete", ip: ip ?? undefined });
+			ctrl.updateUsbState({ step: "complete", ip, haAdd });
 		} catch (err: any) {
 			try {
 				(ctrl as any)._serialReader?.releaseLock();
@@ -2737,6 +2699,27 @@ export class EPPGridPanel extends LitElement {
 					| undefined,
 			});
 		}
+	}
+
+	private async _handleRetryHaAdd(): Promise<void> {
+		const ctrl = this._flasherCtrl;
+		const state = ctrl.usbFlashState;
+		if (state?.step !== "complete" || !state.ip) return;
+
+		ctrl.updateUsbState({ step: "wifi_configured", ip: state.ip });
+
+		let haAdd: HaAddResult;
+		try {
+			haAdd = await ctrl.addEsphomeDevice(state.ip);
+		} catch (err) {
+			const msg = (err as { message?: string })?.message;
+			haAdd = { type: "failed", reason: msg ?? "unknown" };
+		}
+		ctrl.updateUsbState({ step: "complete", ip: state.ip, haAdd });
+	}
+
+	private _handleFlashAnother(): void {
+		this._flasherCtrl.resetUsbState();
 	}
 
 	private async _handleWifiScan(): Promise<void> {
