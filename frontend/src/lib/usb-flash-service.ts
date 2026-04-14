@@ -156,6 +156,9 @@ async function _connectImprov(
 		}
 	}
 
+	// Hard-reset the device via RTS toggle. Explicitly set DTR=false —
+	// esptool's Transport leaves DTR in an undefined state which can
+	// prevent CH340 USB-serial chips from forwarding received data.
 	try {
 		await port.setSignals({ dataTerminalReady: false, requestToSend: true });
 		await new Promise((r) => setTimeout(r, 200));
