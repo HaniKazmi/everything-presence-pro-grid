@@ -362,9 +362,7 @@ class TestAddEsphomeDevice:
             ),
         ],
     )
-    def test_map_esphome_flow_result(
-        self, flow_result: dict, expected: dict
-    ) -> None:
+    def test_map_esphome_flow_result(self, flow_result: dict, expected: dict) -> None:
         """_map_esphome_flow_result translates config-flow results to HaAddResult."""
         from custom_components.eppgrid.websocket_api import _map_esphome_flow_result
 

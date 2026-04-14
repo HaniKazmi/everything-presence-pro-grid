@@ -1171,12 +1171,8 @@ export class EPPGridPanel extends LitElement {
 						// Retry WiFi config — prompts for new port if needed
 						this._handleUsbWifiConfig();
 					}}
-					@retry-ha-add=${() => {
-						this._handleRetryHaAdd();
-					}}
-					@flash-another=${() => {
-						this._handleFlashAnother();
-					}}
+					@retry-ha-add=${this._handleRetryHaAdd}
+					@flash-another=${this._handleFlashAnother}
 					@wifi-scan=${() => {
 						this._handleWifiScan();
 					}}
