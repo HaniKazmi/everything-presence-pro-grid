@@ -100,6 +100,7 @@ import {
 	runWifiProvision,
 	runWifiScan,
 } from "../../lib/usb-flash-service.js";
+import type { UsbFlashState } from "../../types.js";
 
 const TEST_BASE_URL = "https://example.com/api/eppgrid/firmware";
 
@@ -1403,5 +1404,21 @@ describe("detectIpAddress", () => {
 
 		const ip = await detectIpAddress(mockReader, mockWriter, 5000);
 		expect(ip).toBe("192.168.1.42");
+	});
+});
+
+describe("UsbFlashState types", () => {
+	it("accepts wifi_check step", () => {
+		const s: UsbFlashState = { step: "wifi_check" };
+		expect(s.step).toBe("wifi_check");
+	});
+
+	it("accepts autoSkipped field on wifi_configured", () => {
+		const s: UsbFlashState = {
+			step: "wifi_configured",
+			ip: "192.168.1.1",
+			autoSkipped: true,
+		};
+		expect(s.autoSkipped).toBe(true);
 	});
 });
