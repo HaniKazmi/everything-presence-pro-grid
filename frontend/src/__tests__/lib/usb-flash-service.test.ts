@@ -1242,6 +1242,37 @@ describe("detectIpAddress", () => {
 		}
 	});
 
+	it("polls GET_CURRENT_STATE when initial URL is 0.0.0.0 and returns IP when available", async () => {
+		const encoder = new TextEncoder();
+		const makeRpcResult = (cmd: number, url: string) => {
+			const urlBytes = encoder.encode(url);
+			const data = new Uint8Array(2 + 1 + urlBytes.length);
+			data[0] = cmd;
+			data[1] = 1 + urlBytes.length;
+			data[2] = urlBytes.length;
+			data.set(urlBytes, 3);
+			return data;
+		};
+
+		vi.mocked(readImprovResponse).mockResolvedValueOnce({
+			packets: [
+				{ type: TYPE_RPC_RESULT, data: makeRpcResult(0x01, "http://0.0.0.0") },
+			],
+			buffer: [],
+		});
+		vi.mocked(readImprovResponse).mockResolvedValueOnce({
+			packets: [
+				{ type: TYPE_RPC_RESULT, data: makeRpcResult(0x02, "http://192.168.1.42") },
+			],
+			buffer: [],
+		});
+
+		const ip = await detectIpAddress(mockReader, mockWriter, 5000);
+
+		expect(ip).toBe("192.168.1.42");
+		expect(sendImprovPacket).toHaveBeenCalled();
+	});
+
 	it("unknown error code carries errorKey wifi.errors.error_code with code param", async () => {
 		vi.mocked(readImprovResponse).mockResolvedValueOnce({
 			packets: [

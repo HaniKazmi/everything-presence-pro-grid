@@ -303,23 +303,31 @@ export async function runWifiProvision(
 	await sendImprovPacket(writer, buildWifiCommand(ssid, password));
 }
 
+const POLL_INTERVAL_MS = 1000;
+
 export async function detectIpAddress(
 	reader: ReadableStreamDefaultReader<Uint8Array>,
-	_writer: WritableStreamDefaultWriter<Uint8Array>,
+	writer: WritableStreamDefaultWriter<Uint8Array>,
 	timeoutMs: number,
 ): Promise<string> {
 	const decoder = new TextDecoder();
 	const ipPattern = /(\d+\.\d+\.\d+\.\d+)/;
 	const deadline = Date.now() + timeoutMs;
 	let buffer: number[] = [];
+	let lastPollAt = 0;
+	let sawZeroUrl = false;
 
 	while (Date.now() < deadline) {
+		if (sawZeroUrl && Date.now() - lastPollAt >= POLL_INTERVAL_MS) {
+			await sendImprovPacket(writer, buildGetStateCommand());
+			lastPollAt = Date.now();
+		}
+
 		try {
-			const result = await readImprovResponse(
-				reader,
-				deadline - Date.now(),
-				buffer,
-			);
+			const readBudget = sawZeroUrl
+				? Math.min(POLL_INTERVAL_MS, deadline - Date.now())
+				: deadline - Date.now();
+			const result = await readImprovResponse(reader, readBudget, buffer);
 			buffer = result.buffer;
 			for (const pkt of result.packets) {
 				if (pkt.type === TYPE_ERROR_STATE) {
@@ -348,7 +356,8 @@ export async function detectIpAddress(
 				if (
 					pkt.type === TYPE_RPC_RESULT &&
 					pkt.data.length >= 3 &&
-					pkt.data[0] === CMD_WIFI_SETTINGS
+					(pkt.data[0] === CMD_WIFI_SETTINGS ||
+						pkt.data[0] === CMD_GET_CURRENT_STATE)
 				) {
 					const urlLen = pkt.data[2];
 					const url = decoder.decode(pkt.data.slice(3, 3 + urlLen));
@@ -356,13 +365,16 @@ export async function detectIpAddress(
 					if (match && match[1] !== "0.0.0.0") {
 						return match[1];
 					}
+					if (match && match[1] === "0.0.0.0") {
+						sawZeroUrl = true;
+					}
 				}
 			}
 		} catch (err) {
 			if (err instanceof Error && !err.message.includes("timeout")) {
 				throw err;
 			}
-			break;
+			// timeout from readImprovResponse — loop will check deadline and maybe poll again
 		}
 	}
 
