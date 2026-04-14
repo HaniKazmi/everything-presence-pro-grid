@@ -340,63 +340,71 @@ export async function queryImprovState(
 	const writer = await _connectImprov(port, timings);
 	const reader = port.readable!.getReader();
 
-	// Handshake already sent a GET_CURRENT_STATE; the device should respond with
-	// a TYPE_CURRENT_STATE packet and (if provisioned) a TYPE_RPC_RESULT with
-	// the URL. Send a fresh GET_CURRENT_STATE here to guarantee an up-to-date
-	// response on this reader (the handshake read its response on a scratch
-	// reader that was released).
-	await sendImprovPacket(writer, buildGetStateCommand());
+	try {
+		// Handshake already sent a GET_CURRENT_STATE; the device should respond with
+		// a TYPE_CURRENT_STATE packet and (if provisioned) a TYPE_RPC_RESULT with
+		// the URL. Send a fresh GET_CURRENT_STATE here to guarantee an up-to-date
+		// response on this reader (the handshake read its response on a scratch
+		// reader that was released).
+		await sendImprovPacket(writer, buildGetStateCommand());
 
-	const readBudget = timings?.readDelay ?? 3000;
-	const deadline = Date.now() + readBudget;
-	let buffer: number[] = [];
-	let stateByte: number | undefined;
-	let url: string | undefined;
+		const readBudget = timings?.readDelay ?? 3000;
+		const deadline = Date.now() + readBudget;
+		let buffer: number[] = [];
+		let stateByte: number | undefined;
+		let url: string | undefined;
 
-	while (
-		Date.now() < deadline &&
-		(stateByte === undefined ||
-			(stateByte === STATE_PROVISIONED && url === undefined))
-	) {
-		const remaining = deadline - Date.now();
-		if (remaining <= 0) break;
-		const result = await readImprovResponse(reader, remaining, buffer);
-		buffer = result.buffer;
-		for (const pkt of result.packets) {
-			if (pkt.type === TYPE_CURRENT_STATE && pkt.data.length >= 1) {
-				stateByte = pkt.data[0];
-			}
-			if (
-				pkt.type === TYPE_RPC_RESULT &&
-				pkt.data.length >= 3 &&
-				pkt.data[0] === CMD_GET_CURRENT_STATE
-			) {
-				const urlLen = pkt.data[2];
-				if (pkt.data.length >= 3 + urlLen) {
-					url = new TextDecoder().decode(pkt.data.slice(3, 3 + urlLen));
+		while (
+			Date.now() < deadline &&
+			(stateByte === undefined ||
+				(stateByte === STATE_PROVISIONED && url === undefined))
+		) {
+			const remaining = deadline - Date.now();
+			if (remaining <= 0) break;
+			const result = await readImprovResponse(reader, remaining, buffer);
+			buffer = result.buffer;
+			for (const pkt of result.packets) {
+				if (pkt.type === TYPE_CURRENT_STATE && pkt.data.length >= 1) {
+					stateByte = pkt.data[0];
+				}
+				if (
+					pkt.type === TYPE_RPC_RESULT &&
+					pkt.data.length >= 3 &&
+					pkt.data[0] === CMD_GET_CURRENT_STATE
+				) {
+					const urlLen = pkt.data[2];
+					if (pkt.data.length >= 3 + urlLen) {
+						url = new TextDecoder().decode(pkt.data.slice(3, 3 + urlLen));
+					}
 				}
 			}
 		}
+
+		if (stateByte === undefined) {
+			throw Object.assign(new Error("No Improv state received"), {
+				errorKey: "usb.errors.no_device_response",
+			});
+		}
+
+		let ip: string | undefined;
+		if (url) {
+			const match = /(\d+\.\d+\.\d+\.\d+)/.exec(url);
+			if (match) ip = match[1];
+		}
+
+		const state: "AUTHORIZED" | "PROVISIONED" =
+			stateByte === STATE_PROVISIONED ? "PROVISIONED" : "AUTHORIZED";
+
+		return { state, ip, writer, reader };
+	} catch (err) {
+		try {
+			writer.releaseLock();
+		} catch {}
+		try {
+			reader.releaseLock();
+		} catch {}
+		throw err;
 	}
-
-	if (stateByte === undefined) {
-		writer.releaseLock();
-		reader.releaseLock();
-		throw Object.assign(new Error("No Improv state received"), {
-			errorKey: "usb.errors.no_device_response",
-		});
-	}
-
-	let ip: string | undefined;
-	if (url) {
-		const match = /(\d+\.\d+\.\d+\.\d+)/.exec(url);
-		if (match) ip = match[1];
-	}
-
-	const state: "AUTHORIZED" | "PROVISIONED" =
-		stateByte === STATE_PROVISIONED ? "PROVISIONED" : "AUTHORIZED";
-
-	return { state, ip, writer, reader };
 }
 
 /**

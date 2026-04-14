@@ -1507,13 +1507,37 @@ describe("queryImprovState", () => {
 		expect(result.ip).toBeUndefined();
 	});
 
-	it("throws when no state packet received within timeout", async () => {
-		(readImprovResponse as any).mockRejectedValue(
-			Object.assign(new Error("timeout"), {
+	it("throws and releases locks when no state packet received within timeout", async () => {
+		// Handshake succeeds on first call; subsequent call (inside queryImprovState's
+		// read loop) rejects with a timeout error.
+		let readCall = 0;
+		(readImprovResponse as any).mockImplementation(async () => {
+			readCall++;
+			if (readCall === 1) {
+				return {
+					packets: [{ type: 0x01, data: new Uint8Array([0x02]) }],
+					buffer: [],
+				};
+			}
+			throw Object.assign(new Error("timeout"), {
 				errorKey: "flasher.errors.timeout",
-			}),
-		);
-		const port = mockPortReady();
+			});
+		});
+		const reader = {
+			read: vi.fn().mockImplementation(() => new Promise(() => {})),
+			releaseLock: vi.fn(),
+		};
+		const writer = {
+			write: vi.fn().mockResolvedValue(undefined),
+			releaseLock: vi.fn(),
+		};
+		const port = {
+			open: vi.fn().mockResolvedValue(undefined),
+			close: vi.fn().mockResolvedValue(undefined),
+			readable: { getReader: () => reader },
+			writable: { getWriter: () => writer },
+			setSignals: vi.fn().mockResolvedValue(undefined),
+		} as unknown as SerialPort;
 		await expect(
 			queryImprovState(port, {
 				readDelay: 100,
@@ -1522,16 +1546,35 @@ describe("queryImprovState", () => {
 				handshakeRetryDelay: 0,
 			}),
 		).rejects.toThrow();
+		expect(writer.releaseLock).toHaveBeenCalled();
+		expect(reader.releaseLock).toHaveBeenCalled();
 	});
 
-	it("throws when response is malformed (short packet)", async () => {
+	it("throws and releases locks when response is malformed (short packet)", async () => {
+		// All readImprovResponse calls return a packet with no data bytes — handshake
+		// resolves (doesn't throw) but no valid state byte is ever parsed. After
+		// readDelay ms the loop exits with stateByte === undefined and throws.
 		(readImprovResponse as any).mockImplementation(async () => {
 			return {
 				packets: [{ type: 0x01, data: new Uint8Array([]) }], // too short, no state byte
 				buffer: [],
 			};
 		});
-		const port = mockPortReady();
+		const reader = {
+			read: vi.fn().mockImplementation(() => new Promise(() => {})),
+			releaseLock: vi.fn(),
+		};
+		const writer = {
+			write: vi.fn().mockResolvedValue(undefined),
+			releaseLock: vi.fn(),
+		};
+		const port = {
+			open: vi.fn().mockResolvedValue(undefined),
+			close: vi.fn().mockResolvedValue(undefined),
+			readable: { getReader: () => reader },
+			writable: { getWriter: () => writer },
+			setSignals: vi.fn().mockResolvedValue(undefined),
+		} as unknown as SerialPort;
 		await expect(
 			queryImprovState(port, {
 				readDelay: 100,
@@ -1540,6 +1583,8 @@ describe("queryImprovState", () => {
 				handshakeRetryDelay: 0,
 			}),
 		).rejects.toThrow();
+		expect(writer.releaseLock).toHaveBeenCalled();
+		expect(reader.releaseLock).toHaveBeenCalled();
 	});
 });
 
