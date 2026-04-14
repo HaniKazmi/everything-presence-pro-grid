@@ -9,7 +9,6 @@ import {
 	parseScanResults,
 	readImprovResponse,
 	sendImprovPacket,
-	TYPE_CURRENT_STATE,
 	TYPE_ERROR_STATE,
 	TYPE_RPC_RESULT,
 	type WifiNetwork,
@@ -305,6 +304,24 @@ export async function runWifiProvision(
 
 const POLL_INTERVAL_MS = 1000;
 
+/**
+ * After `WIFI_SETTINGS` has been sent on `writer`, reads Improv Serial packets
+ * from `reader` to determine the IP the device received.
+ *
+ * ESPHome's improv_serial reports `http://0.0.0.0` while DHCP is still in
+ * progress and does not push an update once DHCP completes — so if we see
+ * `0.0.0.0` in the `WIFI_SETTINGS` response, we poll `GET_CURRENT_STATE`
+ * every {@link POLL_INTERVAL_MS} ms until either a real IP appears or the
+ * total `timeoutMs` budget is exhausted.
+ *
+ * - Returns the IPv4 address string (e.g. `"192.168.1.42"`) on success.
+ * - Throws an `Error` with `errorKey` on failure: `wifi.errors.connection_failed`
+ *   (budget exhausted with persistent `0.0.0.0`, or `ERROR_STATE` with
+ *   `UNABLE_TO_CONNECT` code), `wifi.errors.invalid_command`,
+ *   `wifi.errors.unknown_command`, `wifi.errors.not_authorized`, or
+ *   `wifi.errors.error_code` (with `errorParams.code`) for other ERROR_STATE
+ *   codes.
+ */
 export async function detectIpAddress(
 	reader: ReadableStreamDefaultReader<Uint8Array>,
 	writer: WritableStreamDefaultWriter<Uint8Array>,
@@ -314,7 +331,7 @@ export async function detectIpAddress(
 	const ipPattern = /(\d+\.\d+\.\d+\.\d+)/;
 	const deadline = Date.now() + timeoutMs;
 	let buffer: number[] = [];
-	let lastPollAt = 0;
+	let lastPollAt = 0; // 0 ensures the first poll fires immediately after seeing 0.0.0.0
 	let sawZeroUrl = false;
 
 	while (Date.now() < deadline) {
@@ -349,7 +366,8 @@ export async function detectIpAddress(
 						new Error(messages[code] ?? `WiFi error (code ${code})`),
 						{
 							errorKey: key,
-							errorParams: key === "wifi.errors.error_code" ? { code } : undefined,
+							errorParams:
+								key === "wifi.errors.error_code" ? { code } : undefined,
 						},
 					);
 				}
@@ -371,7 +389,11 @@ export async function detectIpAddress(
 				}
 			}
 		} catch (err) {
-			if (err instanceof Error && !err.message.includes("timeout")) {
+			if (
+				err instanceof Error &&
+				(err as Error & { errorKey?: string }).errorKey !==
+					"flasher.errors.timeout"
+			) {
 				throw err;
 			}
 			// timeout from readImprovResponse — loop will check deadline and maybe poll again
