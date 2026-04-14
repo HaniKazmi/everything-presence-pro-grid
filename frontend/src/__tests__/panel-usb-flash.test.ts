@@ -745,6 +745,30 @@ describe("_handleWifiProvision", () => {
 		expect(addSpy).toHaveBeenCalledTimes(1);
 	});
 
+	it("records haAdd=failed when auto-retry throws", async () => {
+		(detectIpAddress as ReturnType<typeof vi.fn>).mockResolvedValue(
+			"192.168.1.42",
+		);
+		const ctrl = (panel as any)._flasherCtrl;
+		vi.spyOn(ctrl, "addEsphomeDevice")
+			.mockResolvedValueOnce({ type: "cannot_connect" })
+			.mockRejectedValueOnce(new Error("network dropped"));
+		const updateSpy = vi.spyOn(ctrl, "updateUsbState");
+
+		const promise = (panel as any)._handleWifiProvision("MySSID", "s3cr3t");
+		await vi.advanceTimersByTimeAsync(3500);
+		await promise;
+
+		const completeCall = (updateSpy.mock.calls as any[][]).find(
+			(c) => c[0].step === "complete",
+		);
+		expect(completeCall?.[0]).toMatchObject({
+			step: "complete",
+			ip: "192.168.1.42",
+			haAdd: { type: "failed", reason: "network dropped" },
+		});
+	});
+
 	it("sets error state when runWifiProvision throws", async () => {
 		(runWifiProvision as ReturnType<typeof vi.fn>).mockRejectedValue(
 			new Error("provision failed"),
