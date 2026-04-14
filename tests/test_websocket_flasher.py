@@ -401,3 +401,77 @@ class TestAddEsphomeDevice:
         msg_id, payload = connection.send_result.call_args[0]
         assert msg_id == 4
         assert payload["type"] == "added"
+
+    async def test_skips_flow_when_host_already_configured(
+        self, hass: HomeAssistant, config_entry: MockConfigEntry
+    ) -> None:
+        """If an ESPHome entry already points at the host, skip the flow."""
+        await setup_integration(hass, config_entry)
+
+        from custom_components.eppgrid.websocket_api import websocket_add_esphome_device
+
+        # Add a pre-existing ESPHome config entry pointing at our target host.
+        existing = MockConfigEntry(
+            domain="esphome",
+            data={"host": "192.168.1.50", "port": 6053},
+            title="existing-device",
+        )
+        existing.add_to_hass(hass)
+
+        connection = MagicMock()
+        msg = {
+            "id": 7,
+            "type": "eppgrid/add_esphome_device",
+            "host": "192.168.1.50",
+        }
+
+        with patch.object(
+            hass.config_entries.flow,
+            "async_init",
+            new_callable=AsyncMock,
+        ) as mock_init:
+            await call_async_handler(hass, websocket_add_esphome_device, connection, msg)
+
+        mock_init.assert_not_awaited()
+        connection.send_result.assert_called_once()
+        msg_id, payload = connection.send_result.call_args[0]
+        assert msg_id == 7
+        assert payload == {"type": "already_added"}
+
+    async def test_starts_flow_when_host_not_in_entries(
+        self, hass: HomeAssistant, config_entry: MockConfigEntry
+    ) -> None:
+        """If no ESPHome entry matches the host, start the config flow."""
+        await setup_integration(hass, config_entry)
+
+        from custom_components.eppgrid.websocket_api import websocket_add_esphome_device
+
+        # Different host in an existing entry — should not short-circuit.
+        existing = MockConfigEntry(
+            domain="esphome",
+            data={"host": "192.168.1.50", "port": 6053},
+            title="other-device",
+        )
+        existing.add_to_hass(hass)
+
+        connection = MagicMock()
+        msg = {
+            "id": 8,
+            "type": "eppgrid/add_esphome_device",
+            "host": "192.168.1.99",
+        }
+
+        flow_result = {"type": "create_entry", "title": "new-device"}
+        with patch.object(
+            hass.config_entries.flow,
+            "async_init",
+            new_callable=AsyncMock,
+            return_value=flow_result,
+        ) as mock_init:
+            await call_async_handler(hass, websocket_add_esphome_device, connection, msg)
+
+        mock_init.assert_awaited_once()
+        connection.send_result.assert_called_once()
+        msg_id, payload = connection.send_result.call_args[0]
+        assert msg_id == 8
+        assert payload == {"type": "added"}

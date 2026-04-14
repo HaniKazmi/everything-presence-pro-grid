@@ -2665,6 +2665,20 @@ export class EPPGridPanel extends LitElement {
 			}
 			if (ctrl.opId !== myOp) return;
 
+			// The device's ESPHome API may not have finished booting on the
+			// first attempt right after WiFi associates. Retry once silently.
+			if (haAdd.type === "cannot_connect") {
+				await new Promise((r) => setTimeout(r, 3000));
+				if (ctrl.opId !== myOp) return;
+				try {
+					haAdd = await ctrl.addEsphomeDevice(ip);
+				} catch (err) {
+					const msg = (err as { message?: string })?.message;
+					haAdd = { type: "failed", reason: msg ?? "unknown" };
+				}
+				if (ctrl.opId !== myOp) return;
+			}
+
 			ctrl.updateUsbState({ step: "complete", ip, haAdd });
 		} catch (err: any) {
 			try {

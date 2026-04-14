@@ -1610,13 +1610,23 @@ async def websocket_add_esphome_device(
 ) -> None:
     """Add an ESPHome device by triggering its config flow."""
     try:
+        # If an ESPHome config entry already points at this host, short-circuit.
+        # This avoids starting a flow that would need to reach the device before
+        # it can return already_configured — which fails if the device API
+        # hasn't come up yet.
+        host = msg["host"]
+        for entry in hass.config_entries.async_entries("esphome"):
+            if entry.data.get("host") == host:
+                connection.send_result(msg["id"], {"type": "already_added"})
+                return
+
         flow_context: dict[str, Any] = {"source": "user"}
         if hasattr(connection, "context") and hasattr(connection.context, "user_id"):
             flow_context["user_id"] = connection.context.user_id
         result = await hass.config_entries.flow.async_init(
             "esphome",
             context=flow_context,
-            data={"host": msg["host"], "port": 6053},
+            data={"host": host, "port": 6053},
         )
         connection.send_result(msg["id"], _map_esphome_flow_result(result))
     except Exception as err:

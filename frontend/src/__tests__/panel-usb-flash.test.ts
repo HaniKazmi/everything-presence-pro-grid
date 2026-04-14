@@ -634,7 +634,6 @@ describe("_handleWifiProvision", () => {
 	it.each([
 		["already_added", { type: "already_added" }],
 		["needs_auth", { type: "needs_auth" }],
-		["cannot_connect", { type: "cannot_connect" }],
 		["failed with reason", { type: "failed", reason: "invalid_auth" }],
 	])("transitions to complete with haAdd=%s from addEsphomeDevice", async (_label: string, outcome: any) => {
 		(detectIpAddress as ReturnType<typeof vi.fn>).mockResolvedValue(
@@ -680,6 +679,70 @@ describe("_handleWifiProvision", () => {
 		expect(
 			(updateSpy.mock.calls as any[][]).some((c) => c[0].step === "error"),
 		).toBe(false);
+	});
+
+	it("auto-retries once after cannot_connect on initial add", async () => {
+		(detectIpAddress as ReturnType<typeof vi.fn>).mockResolvedValue(
+			"192.168.1.42",
+		);
+		const ctrl = (panel as any)._flasherCtrl;
+		const addSpy = vi
+			.spyOn(ctrl, "addEsphomeDevice")
+			.mockResolvedValueOnce({ type: "cannot_connect" })
+			.mockResolvedValueOnce({ type: "added" });
+		const updateSpy = vi.spyOn(ctrl, "updateUsbState");
+
+		const promise = (panel as any)._handleWifiProvision("MySSID", "s3cr3t");
+		await vi.advanceTimersByTimeAsync(3500); // 200ms initial + 3s retry delay
+		await promise;
+
+		expect(addSpy).toHaveBeenCalledTimes(2);
+		const completeCall = (updateSpy.mock.calls as any[][]).find(
+			(c) => c[0].step === "complete",
+		);
+		expect(completeCall?.[0]).toMatchObject({
+			step: "complete",
+			ip: "192.168.1.42",
+			haAdd: { type: "added" },
+		});
+	});
+
+	it("keeps cannot_connect when both initial and retry fail", async () => {
+		(detectIpAddress as ReturnType<typeof vi.fn>).mockResolvedValue(
+			"192.168.1.42",
+		);
+		const ctrl = (panel as any)._flasherCtrl;
+		vi.spyOn(ctrl, "addEsphomeDevice").mockResolvedValue({
+			type: "cannot_connect",
+		});
+		const updateSpy = vi.spyOn(ctrl, "updateUsbState");
+
+		const promise = (panel as any)._handleWifiProvision("MySSID", "s3cr3t");
+		await vi.advanceTimersByTimeAsync(3500);
+		await promise;
+
+		const completeCall = (updateSpy.mock.calls as any[][]).find(
+			(c) => c[0].step === "complete",
+		);
+		expect(completeCall?.[0]).toMatchObject({
+			step: "complete",
+			ip: "192.168.1.42",
+			haAdd: { type: "cannot_connect" },
+		});
+	});
+
+	it("does not retry when initial add returns non-cannot_connect failure", async () => {
+		(detectIpAddress as ReturnType<typeof vi.fn>).mockResolvedValue(
+			"192.168.1.42",
+		);
+		const ctrl = (panel as any)._flasherCtrl;
+		const addSpy = vi
+			.spyOn(ctrl, "addEsphomeDevice")
+			.mockResolvedValue({ type: "needs_auth" });
+
+		await flushProvision("MySSID", "s3cr3t");
+
+		expect(addSpy).toHaveBeenCalledTimes(1);
 	});
 
 	it("sets error state when runWifiProvision throws", async () => {
