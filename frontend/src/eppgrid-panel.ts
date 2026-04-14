@@ -2641,12 +2641,9 @@ export class EPPGridPanel extends LitElement {
 			await port.close().catch(() => {});
 			ctrl.serialPort = null;
 
-			if (ip) {
-				ctrl.updateUsbState({ step: "adding_device" });
-				await ctrl.addEsphomeDevice(ip);
-			}
-
-			ctrl.updateUsbState({ step: "complete", ip: ip ?? undefined });
+			ctrl.updateUsbState({ step: "adding_device" });
+			await ctrl.addEsphomeDevice(ip);
+			ctrl.updateUsbState({ step: "complete", ip });
 		} catch (err: any) {
 			try {
 				(ctrl as any)._serialReader?.releaseLock();

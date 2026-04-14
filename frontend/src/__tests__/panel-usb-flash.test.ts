@@ -24,7 +24,6 @@ vi.mock("../lib/improv-serial.js", () => ({
 	buildScanCommand: vi.fn().mockReturnValue(new Uint8Array([1, 2, 3])),
 	buildWifiCommand: vi.fn().mockReturnValue(new Uint8Array([4, 5, 6])),
 	buildGetInfoCommand: vi.fn().mockReturnValue(new Uint8Array([3, 3, 0])),
-	buildGetStateCommand: vi.fn().mockReturnValue(new Uint8Array([2, 2, 0])),
 	parseScanResults: vi.fn().mockReturnValue(null),
 	TYPE_CURRENT_STATE: 0x01,
 	TYPE_ERROR_STATE: 0x02,
@@ -455,7 +454,6 @@ describe("_handleWifiProvision", () => {
 	let oldReader: { releaseLock: ReturnType<typeof vi.fn> };
 	let freshWriter: { releaseLock: ReturnType<typeof vi.fn> };
 	let freshReader: { releaseLock: ReturnType<typeof vi.fn> };
-	let ipReader: { releaseLock: ReturnType<typeof vi.fn> };
 	let mockPort: ReturnType<typeof makeMockPort>;
 
 	beforeEach(() => {
@@ -468,16 +466,11 @@ describe("_handleWifiProvision", () => {
 		oldReader = { releaseLock: vi.fn() };
 		freshWriter = { releaseLock: vi.fn() };
 		freshReader = { releaseLock: vi.fn() };
-		ipReader = { releaseLock: vi.fn() };
 		mockPort = makeMockPort();
 
-		// getWriter returns fresh writer; getReader returns fresh reader first, then ipReader
+		// getWriter returns fresh writer; getReader returns fresh reader
 		mockPort.writable.getWriter.mockReturnValue(freshWriter);
-		let readerCallCount = 0;
-		mockPort.readable.getReader.mockImplementation(() => {
-			readerCallCount++;
-			return readerCallCount === 1 ? freshReader : ipReader;
-		});
+		mockPort.readable.getReader.mockReturnValue(freshReader);
 
 		// Pre-wire ctrl with a serial port and old writer/reader (as _handleUsbFlash would)
 		const ctrl = (panel as any)._flasherCtrl;
