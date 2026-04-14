@@ -36,13 +36,13 @@ Close to the sensor the cone is narrow in height — within a metre or so of the
 
 ## Ceiling mount (not supported)
 
-Althought the Everything Presence Pro ships with a ceiling mount, mounting the device on the ceiling is not recommended and is not supported by this integration. From directly overhead, the 35° pitch cone only reaches the floor in a small circle immediately beneath — for a 2.5 m ceiling, the usable coverage circle is roughly 1.6 m across. Everything outside that small circle falls below the cone's edge and out of detection.
+Although the Everything Presence Pro ships with a ceiling mount, mounting the device on the ceiling is not recommended and is not supported by this integration. From directly overhead, the 35° pitch cone only reaches the floor in a small circle immediately beneath — for a 2.5 m ceiling, the usable coverage circle is roughly 1.6 m across. Everything outside that small circle falls below the cone's edge and out of detection.
 
 This is structural to the hardware and can't be corrected with calibration or config. The LD2450's pitch FOV is designed for wall mounting; from the ceiling, most of the room ends up in the cone's blind spot regardless of how you orient the device.
 
 !!! warning
-    In the spirit of YAGNI, ceiling mounting is not currently supported. If you've mounted a device on the ceiling in a previous installation, move it to a wall corner before running calibration. 
-    
+    In the spirit of YAGNI, ceiling mounting is not currently supported. If you've mounted a device on the ceiling in a previous installation, move it to a wall corner before running calibration.
+
     That said, if you have a good use case for ceiling mounting, open an issue with your rationale and we can discuss it.
 
 ![Top-down view: ceiling-mounted sensor. The LD2450's 120° × 35° FOV projects to a thin strip on the floor, missing most of the room.](../images/placement/ceiling-mount-fov.svg){ width="80%" }

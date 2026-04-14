@@ -5,7 +5,7 @@ This page walks through installing the Everything Presence Pro Grid integration 
 ## Prerequisites
 
 - Home Assistant 2025.2.0 or newer.
-- [HACS](https://hacs.xyz/) installed.
+- [HACS](https://hacs.xyz/) installed (recommended).
 
 ## Install via HACS (recommended)
 

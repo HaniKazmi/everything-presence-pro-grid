@@ -18,7 +18,7 @@ The device carries two mmWave radars, each for a different job.
 
 ### LD2450 — movement tracker
 
-The [LD2450](https://www.tinytronics.nl/product_files/006000_HLK-LD2450-Instruction-Manual.pdf) is the workhorse. It's a phase-coded mmWave radar that reports 2D coordinates for each of three moving target it sees. Everything Presence Pro Grid uses those coordinates to drive zone detection and target-count entities.
+The [LD2450](https://www.tinytronics.nl/product_files/006000_HLK-LD2450-Instruction-Manual.pdf) is the workhorse. It's a phase-coded mmWave radar that reports 2D coordinates for each of three moving targets it sees. Everything Presence Pro Grid uses those coordinates to drive zone detection and target-count entities.
 
 - **Field of view:** 120° azimuth × 35° pitch.
 - **Tracking depth:** up to 6 m.

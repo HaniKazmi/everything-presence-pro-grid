@@ -82,7 +82,7 @@ Re-run the wizard if:
 | "Multiple targets detected" during a capture | Another person or pet is moving in the room | Be the only moving target in the room during calibration. Pets that won't move off the bed are also targets. |
 | Corner position drifted during the 5-second capture | You moved mid-capture | Re-mark the affected corner. Stand still for the full 5 seconds; small sways are fine, walking is not. |
 | Grid looks skewed or stretched after saving | One corner's captured position is off | Re-open the wizard and click the offending corner on the preview to re-capture it. You don't have to redo the whole calibration. |
-| Targets drift across walls after calibration | Sensor is unexpectedly low, tilted, or moved since calibration | Verify the mount is still at 1.5–2 m height, pointing into the room; re-run the wizard if the mount has shifted. See [Placement](placement.md). |
+| Targets drift across walls after calibration | Sensor is unexpectedly low, tilted, or moved since calibration | Verify the mount is still at 1.5–1.8 m height, tilted slightly down, and pointing into the room; re-run the wizard if the mount has shifted. See [Placement](placement.md). |
 
 See also: the [central Troubleshooting](troubleshooting.md) page for conceptual FAQ and how to open a GitHub issue.
 
