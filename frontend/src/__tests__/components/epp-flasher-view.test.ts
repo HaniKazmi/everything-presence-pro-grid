@@ -466,6 +466,32 @@ describe("event dispatching", () => {
 		expect(c.querySelector(".firmware-badge-online")).not.toBeNull();
 		expect(c.querySelector(".firmware-badge-ahead")).not.toBeNull();
 	});
+
+	it("does not render online badge when firmware_status is unavailable", () => {
+		const unreadableFirmware: FlashableDevice = {
+			...device2,
+			mac: "AA:BB:CC:DD:EE:08",
+			firmware_status: "unavailable",
+		};
+		const el = createView({ flashableDevices: [unreadableFirmware] });
+		const tpl = (el as any).render();
+		const c = renderTo(tpl);
+
+		expect(c.querySelector(".firmware-badge-online")).toBeNull();
+	});
+
+	it("does not render online badge when firmware_status is unknown", () => {
+		const unknownFirmware: FlashableDevice = {
+			...device2,
+			mac: "AA:BB:CC:DD:EE:09",
+			firmware_status: "unknown",
+		};
+		const el = createView({ flashableDevices: [unknownFirmware] });
+		const tpl = (el as any).render();
+		const c = renderTo(tpl);
+
+		expect(c.querySelector(".firmware-badge-online")).toBeNull();
+	});
 });
 
 describe("render() WiFi provisioning — connected state", () => {

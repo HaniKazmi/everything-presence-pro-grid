@@ -378,7 +378,10 @@ export class EppFlasherView extends LitElement {
 													device.available &&
 													!this.otaStates[device.mac] &&
 													!device.update_available &&
-													device.firmware_status !== "firmware_behind"
+													(
+														device.firmware_status === "compatible" ||
+															device.firmware_status === "firmware_ahead"
+													)
 														? html`<span class="firmware-badge firmware-badge-online">${this.localize("flasher.online")}</span>`
 														: nothing
 												}

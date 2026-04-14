@@ -1181,7 +1181,7 @@ const dt={attribute:!0,type:String,converter:E,reflect:!1,hasChanged:m},At=(t=dt
                           <div class="device-host">${t.host??this.localize("flasher.offline")}${"eppgrid"===t.firmware_type&&t.firmware_version&&"unknown"!==t.firmware_version?` - v${t.firmware_version}`:""}</div>
                         </div>
                         ${t.available?J:Y`<span class="firmware-badge firmware-badge-offline">${this.localize("flasher.offline")}</span>`}
-                        ${"eppgrid"!==t.firmware_type||!t.available||this.otaStates[t.mac]||t.update_available||"firmware_behind"===t.firmware_status?J:Y`<span class="firmware-badge firmware-badge-online">${this.localize("flasher.online")}</span>`}
+                        ${"eppgrid"!==t.firmware_type||!t.available||this.otaStates[t.mac]||t.update_available||"compatible"!==t.firmware_status&&"firmware_ahead"!==t.firmware_status?J:Y`<span class="firmware-badge firmware-badge-online">${this.localize("flasher.online")}</span>`}
                         ${"original"===t.firmware_type?Y`<span class="firmware-badge firmware-badge-original">${this.localize("flasher.flash_usb")}</span>`:J}
                         ${"eppgrid"===t.firmware_type&&"firmware_ahead"===t.firmware_status?Y`<span class="firmware-badge firmware-badge-ahead">${this.localize("flasher.integration_update")}</span>`:J}
                         ${this.otaStates[t.mac]?this._renderOtaIndicator(t):"eppgrid"!==t.firmware_type||!t.update_available&&"firmware_behind"!==t.firmware_status?J:Y`<ha-button
