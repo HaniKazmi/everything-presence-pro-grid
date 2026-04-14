@@ -668,7 +668,6 @@ describe("_handleWifiProvision", () => {
 			errorKey: "wifi.errors.provisioning_failed",
 		});
 	});
-
 });
 
 describe("_handleWifiScan", () => {
