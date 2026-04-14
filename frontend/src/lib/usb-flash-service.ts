@@ -128,22 +128,21 @@ export async function flashFirmware(
 }
 
 /**
- * Opens the serial port for Improv communication and runs a WiFi scan.
- * Returns the list of discovered networks.
+ * Opens the port, hard-resets the device, drains stale output, and completes
+ * an Improv GET_CURRENT_STATE handshake with retry. Returns a live writer
+ * suitable for subsequent Improv commands. Caller is responsible for reading
+ * the handshake response on its own reader.
+ *
+ * Throws `no_device_response` if the handshake fails after MAX_HANDSHAKE_ATTEMPTS.
  */
-export async function runWifiScan(
+async function _connectImprov(
 	port: SerialPort,
 	timings?: {
-		retryDelay?: number;
 		drainDelay?: number;
 		handshakeDelay?: number;
 		handshakeRetryDelay?: number;
 	},
-): Promise<{
-	writer: WritableStreamDefaultWriter<Uint8Array>;
-	reader: ReadableStreamDefaultReader<Uint8Array>;
-	networks: WifiNetwork[];
-}> {
+): Promise<WritableStreamDefaultWriter<Uint8Array>> {
 	if (!port.readable) {
 		try {
 			await port.open({ baudRate: 115200 });
@@ -157,9 +156,6 @@ export async function runWifiScan(
 		}
 	}
 
-	// Hard-reset the device via RTS toggle. Explicitly set DTR=false —
-	// esptool's Transport leaves DTR in an undefined state which can
-	// prevent CH340 USB-serial chips from forwarding received data.
 	try {
 		await port.setSignals({ dataTerminalReady: false, requestToSend: true });
 		await new Promise((r) => setTimeout(r, 200));
@@ -168,7 +164,6 @@ export async function runWifiScan(
 		// Some boards don't support serial signal control — continue without reset
 	}
 
-	// Brief drain to clear stale serial data (boot output etc.)
 	const drainMs = timings?.drainDelay ?? 200;
 	const drainReader = port.readable!.getReader();
 	while (true) {
@@ -184,7 +179,6 @@ export async function runWifiScan(
 
 	const writer = port.writable!.getWriter();
 
-	// Handshake with retry — device may still be booting after flash
 	const MAX_HANDSHAKE_ATTEMPTS = 5;
 	const handshakeRetryDelay = timings?.handshakeRetryDelay ?? 2000;
 	const handshakeTimeout = timings?.handshakeDelay ?? 3000;
@@ -218,6 +212,28 @@ export async function runWifiScan(
 			{ errorKey: "usb.errors.no_device_response" },
 		);
 	}
+
+	return writer;
+}
+
+/**
+ * Opens the serial port for Improv communication and runs a WiFi scan.
+ * Returns the list of discovered networks.
+ */
+export async function runWifiScan(
+	port: SerialPort,
+	timings?: {
+		retryDelay?: number;
+		drainDelay?: number;
+		handshakeDelay?: number;
+		handshakeRetryDelay?: number;
+	},
+): Promise<{
+	writer: WritableStreamDefaultWriter<Uint8Array>;
+	reader: ReadableStreamDefaultReader<Uint8Array>;
+	networks: WifiNetwork[];
+}> {
+	const writer = await _connectImprov(port, timings);
 
 	const infoCmd = buildGetInfoCommand();
 	await sendImprovPacket(writer, infoCmd);
