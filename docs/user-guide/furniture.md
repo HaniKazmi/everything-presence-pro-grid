@@ -67,4 +67,5 @@ See also: the [central Troubleshooting](troubleshooting.md) page for conceptual 
 
 ## Where to next
 
-- **[Live view →](live-view.md)** — read the default view and the live data it shows.
+- **[Settings →](settings/index.md)** — tune detection, reporting, environmental offsets, LED and relay behaviour.
+- **[Automations →](automations.md)** — put it all to use with worked examples.

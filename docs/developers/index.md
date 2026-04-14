@@ -1,6 +1,6 @@
 # Developers
 
-This section is for contributors to the Everything Presence Pro Grid codebase — the Python Home Assistant integration, the TypeScript/Lit panel that ships inside it, the ESPHome-based firmware, and this docs site. For end-user documentation (installation, pairing, zone configuration, automations), see the [User Guide](../user-guide/introduction.md).
+This section is for contributors to the Everything Presence Pro Grid codebase — the Python Home Assistant integration, the TypeScript/Lit panel that ships inside it, the ESPHome-based firmware, and this docs site. For end-user documentation (installation, flashing, zone configuration, automations), see the [User Guide](../user-guide/introduction.md).
 
 ## How the project is organised
 

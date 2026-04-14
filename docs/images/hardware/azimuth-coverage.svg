@@ -1,0 +1,54 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 280" preserveAspectRatio="xMidYMid meet">
+  <style>
+    .label { fill: #444; font-family: -apple-system, system-ui, sans-serif; }
+    .title { font-size: 13px; font-weight: 600; }
+    .body { font-size: 11px; }
+    .caption { font-size: 10px; opacity: 0.75; }
+    .axis { stroke: #888; stroke-width: 1; stroke-dasharray: 3 3; opacity: 0.5; }
+    .sensor { fill: #E53935; }
+    .wedge { stroke-width: 1.5; }
+    .ld2450-fill { fill: #F57C00; fill-opacity: 0.18; }
+    .ld2450-stroke { stroke: #F57C00; }
+    .ld2450-swatch { fill: #F57C00; }
+    .sen0609-fill { fill: #1976D2; fill-opacity: 0.18; }
+    .sen0609-stroke { stroke: #1976D2; }
+    .sen0609-swatch { fill: #1976D2; }
+    .pir-fill { fill: #388E3C; fill-opacity: 0.18; }
+    .pir-stroke { stroke: #388E3C; }
+    .pir-swatch { fill: #388E3C; }
+    @media (prefers-color-scheme: dark) {
+      .label { fill: #ddd; }
+      .axis { stroke: #bbb; }
+    }
+  </style>
+
+  <!-- Title -->
+  <text x="300" y="22" text-anchor="middle" class="label title">Azimuth coverage (top view)</text>
+
+  <!-- Wedges (back to front: SEN0609, PIR, LD2450) -->
+  <path d="M 300,50 L 177.44,152.85 A 160,160 0 0,0 422.56,152.85 Z" class="wedge sen0609-fill sen0609-stroke"/>
+  <path d="M 300,50 L 206.74,125.51 A 120,120 0 0,0 393.26,125.51 Z" class="wedge pir-fill pir-stroke"/>
+  <path d="M 300,50 L 248.04,80 A 60,60 0 0,0 351.96,80 Z" class="wedge ld2450-fill ld2450-stroke"/>
+
+  <!-- Centerline -->
+  <line x1="300" y1="50" x2="300" y2="210" class="axis"/>
+
+  <!-- Range labels -->
+  <text x="305" y="108" class="label body">6 m</text>
+  <text x="305" y="168" class="label body">12 m</text>
+  <text x="305" y="208" class="label body">16 m</text>
+
+  <!-- Sensor -->
+  <circle cx="300" cy="50" r="4" class="sensor"/>
+  <text x="292" y="53" text-anchor="end" class="label caption">device</text>
+
+  <!-- Legend -->
+  <circle cx="100" cy="260" r="5" class="ld2450-swatch"/>
+  <text x="112" y="264" class="label body">Tracking · 120°</text>
+
+  <circle cx="260" cy="260" r="5" class="sen0609-swatch"/>
+  <text x="272" y="264" class="label body">Static · 100°</text>
+
+  <circle cx="420" cy="260" r="5" class="pir-swatch"/>
+  <text x="432" y="264" class="label body">Motion · 102°</text>
+</svg>

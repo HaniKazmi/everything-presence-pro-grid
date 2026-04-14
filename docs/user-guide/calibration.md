@@ -6,7 +6,7 @@ This page walks through running the calibration wizard.
 
 ## Before you start
 
-- **Device paired** and visible in the panel. See [Pairing](pairing.md) if not.
+- **Device running Grid firmware and visible in the panel.** See [Flashing firmware](flashing-firmware.md) if not.
 - **A clear view of each of the four corners of the room.** You need to be able to stand at each one (or at least close to each one — the wizard has an option for corners you can't reach).
 - **One person in the room.** The wizard picks up a single target and records its position; extras confuse it.
 
@@ -82,10 +82,10 @@ Re-run the wizard if:
 | "Multiple targets detected" during a capture | Another person or pet is moving in the room | Be the only moving target in the room during calibration. Pets that won't move off the bed are also targets. |
 | Corner position drifted during the 5-second capture | You moved mid-capture | Re-mark the affected corner. Stand still for the full 5 seconds; small sways are fine, walking is not. |
 | Grid looks skewed or stretched after saving | One corner's captured position is off | Re-open the wizard and click the offending corner on the preview to re-capture it. You don't have to redo the whole calibration. |
-| Targets drift across walls after calibration | Sensor is unexpectedly low, tilted, or moved since calibration | Verify the mount is still at 1.5–2 m height, pointing into the room; re-run the wizard if the mount has shifted. See [Placement](../placement.md). |
+| Targets drift across walls after calibration | Sensor is unexpectedly low, tilted, or moved since calibration | Verify the mount is still at 1.5–2 m height, pointing into the room; re-run the wizard if the mount has shifted. See [Placement](placement.md). |
 
-See also: the [central Troubleshooting](../troubleshooting.md) page for conceptual FAQ and how to open a GitHub issue.
+See also: the [central Troubleshooting](troubleshooting.md) page for conceptual FAQ and how to open a GitHub issue.
 
 ## Where to next
 
-With calibration done, you're ready to define zones — named regions of the grid that trigger their own entities. See **[Zones](../zones.md)** for how to create and configure them.
+With calibration done, you're ready to explore the live view. See **[Live view](live-view.md)**.

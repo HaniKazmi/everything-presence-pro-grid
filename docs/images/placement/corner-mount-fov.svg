@@ -1,0 +1,39 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 220" preserveAspectRatio="xMidYMid meet">
+  <style>
+    .label { fill: #444; font-family: -apple-system, system-ui, sans-serif; }
+    .body { font-size: 11px; }
+    .caption { font-size: 10px; opacity: 0.75; }
+    .sensor { fill: #E53935; }
+    .wedge { fill: #2196F3; fill-opacity: 0.18; stroke: #1976D2; stroke-width: 1.5; }
+    .wall { fill: none; stroke: #444; stroke-width: 2; }
+    .axis { stroke: #888; stroke-width: 1; stroke-dasharray: 3 3; opacity: 0.5; }
+    .anglearc { fill: none; stroke: #444; stroke-width: 1; opacity: 0.7; }
+    @media (prefers-color-scheme: dark) {
+      .label { fill: #ddd; }
+      .wall { stroke: #ddd; }
+      .axis, .anglearc { stroke: #bbb; }
+    }
+  </style>
+
+  <!-- FOV cone: 120° wedge centred on room diagonal, 6 m radius (LD2450 range). -->
+  <!-- Diagonal angle = atan2(4,5) ≈ 38.66°; cone edges at 38.66° ± 60°. -->
+  <!-- Room diagonal is 6.40 m, so the arc stops short of the far corner. -->
+  <path d="M 80,40 L 57.41,188.29 A 150,150 0 0,0 219.71,-14.62 Z" class="wedge"/>
+
+  <!-- Diagonal centre-line (to 6 m reach along diagonal) -->
+  <line x1="80" y1="40" x2="197.13" y2="133.70" class="axis"/>
+
+  <!-- Room outline -->
+  <rect x="80" y="40" width="125" height="100" class="wall"/>
+
+  <!-- Angle indicator -->
+  <path d="M 77.29,57.79 A 18,18 0 0,0 96.77,33.45" class="anglearc"/>
+  <text x="105" y="56" class="label body">120°</text>
+
+  <!-- Dimensions -->
+  <text x="142" y="34" text-anchor="middle" class="label body">5 m</text>
+  <text x="74" y="94" text-anchor="end" class="label body">4 m</text>
+
+  <!-- Sensor -->
+  <circle cx="80" cy="40" r="4" class="sensor"/>
+</svg>

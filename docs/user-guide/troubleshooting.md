@@ -18,7 +18,7 @@ No. Calibration is per-device and independent of zone names. Only re-calibrate i
 
 **What's the difference between `Zone Rest of Room` and `Occupancy`?**
 
-`Zone Rest of Room` (zone 0) fires when a target is in the room but outside any named zone. `Occupancy` is the combined "any presence signal, anywhere in the room" output from the firmware — it fires whenever the PIR, LD2450, or SEN0609 reports presence. They overlap but aren't the same: use Occupancy as the fast trigger for general automations, not zone 0.
+`Zone Rest of Room` (zone 0) fires when a target is in the room but outside any named zone. `Occupancy` is the combined "any presence signal, anywhere in the room" output from the firmware — it fires whenever the PIR (passive infrared) motion sensor, LD2450, or SEN0609 reports presence. They overlap but aren't the same: use Occupancy as the fast trigger for general automations, not zone 0.
 
 **Why do my zone entities disappear from HA when I delete a zone?**
 
@@ -71,13 +71,13 @@ Open the issue at [github.com/clintongormley/everything-presence-pro-grid/issues
 Pick the feature that most closely matches where things are going wrong:
 
 - **[Installation](installation.md#troubleshooting)** — HACS install, panel not appearing in the sidebar.
-- **[Pairing](getting-started/pairing.md#troubleshooting)** — device discovery, integration version mismatches.
-- **[Calibration](getting-started/calibration.md#troubleshooting)** — wizard capture issues, skewed grids after save.
+- **[Flashing firmware](flashing-firmware.md#troubleshooting)** — USB flash failures, browser picker empty, device not showing in HA after flash.
+- **[Firmware upgrades](firmware-upgrades.md#troubleshooting)** — OTA errors, integration/firmware version mismatches.
+- **[Calibration](calibration.md#troubleshooting)** — wizard capture issues, skewed grids after save.
 - **[Zones](zones.md#troubleshooting)** — missing zone entities, zones never firing, zone flapping.
 - **[Overlays](overlays.md#troubleshooting)** — paint refused, ghosts persisting despite overlays.
 - **[Furniture](furniture.md#troubleshooting)** — items not appearing, rotation handle missing.
 - **[Live view](live-view.md#troubleshooting)** — blank grid, drifting targets, sensors missing from sidebar.
-- **[Firmware](firmware.md#troubleshooting)** — USB flash failures, OTA errors, browser picker empty.
 - **[Automations](automations.md#troubleshooting)** — entities not firing, wrong triggers, timing surprises.
 
 Looking for contributor documentation? See [Developers](../developers/index.md) for the codebase walkthrough and contribution guide.
