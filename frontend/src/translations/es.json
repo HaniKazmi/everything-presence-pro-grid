@@ -322,6 +322,7 @@
 		"no_eppgrid_devices": "No se han encontrado dispositivos con firmware Everything Presence Pro Grid.",
 		"flash_from_tab": "Instala el firmware de tus dispositivos desde la pestaña Instalar firmware",
 		"offline": "Sin conexión",
+		"online": "Conectado",
 		"usb_title": "Conexión USB",
 		"usb_flash_title": "Instalar firmware",
 		"usb_flash_desc": "Instala o actualiza el firmware y configura el WiFi.",

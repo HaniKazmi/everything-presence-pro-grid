@@ -629,6 +629,11 @@ export const flasherStyles = css`
     color: white;
   }
 
+  .firmware-badge-online {
+    background: #4caf5020;
+    color: #2e7d32;
+  }
+
   .firmware-badge-ahead {
     background: var(--info-color, #2196f3);
     color: white;
