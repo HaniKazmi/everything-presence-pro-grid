@@ -82,6 +82,9 @@ export class EppFurnitureSidebar extends LitElement {
 			}
 
 			.furn-search {
+				position: sticky;
+				top: 0;
+				z-index: 2;
 				width: 100%;
 				padding: 6px 8px;
 				margin-bottom: 6px;
@@ -143,6 +146,17 @@ export class EppFurnitureSidebar extends LitElement {
 		);
 
 		return html`
+			<input
+				type="search"
+				class="furn-search"
+				.value=${this._searchQuery}
+				placeholder=${this.localize("furniture.search_placeholder")}
+				aria-label=${this.localize("furniture.search_placeholder")}
+				@input=${(e: Event) => {
+					this._searchQuery = (e.target as HTMLInputElement).value;
+				}}
+			/>
+
 			${
 				selected
 					? html`
@@ -178,17 +192,6 @@ export class EppFurnitureSidebar extends LitElement {
 					`
 					: nothing
 			}
-
-			<input
-				type="search"
-				class="furn-search"
-				.value=${this._searchQuery}
-				placeholder=${this.localize("furniture.search_placeholder")}
-				aria-label=${this.localize("furniture.search_placeholder")}
-				@input=${(e: Event) => {
-					this._searchQuery = (e.target as HTMLInputElement).value;
-				}}
-			/>
 
 			<div class="furn-catalog">
 				${filterAndSortStickers(

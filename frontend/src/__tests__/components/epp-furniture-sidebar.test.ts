@@ -197,6 +197,45 @@ describe("epp-furniture-sidebar DOM events", () => {
 		document.body.removeChild(c);
 	});
 
+	it("search input precedes the selected-info box in DOM order", () => {
+		// Search must be pinned at the top of the sidebar; the selected-info
+		// panel belongs just below it, not above. This protects against
+		// regressions where the selected box gets reinserted above the search.
+		const el = createSidebar({
+			furniture: [SAMPLE_FURNITURE],
+			selectedFurnitureId: "f1",
+		});
+		const tpl = (el as any)._renderFurnitureSidebar();
+		const c = renderTo(tpl);
+
+		const search = c.querySelector(".furn-search") as HTMLElement;
+		const info = c.querySelector(".furn-selected-info") as HTMLElement;
+		expect(search).toBeTruthy();
+		expect(info).toBeTruthy();
+		expect(
+			search.compareDocumentPosition(info) &
+				Node.DOCUMENT_POSITION_FOLLOWING,
+		).toBeTruthy();
+		document.body.removeChild(c);
+	});
+
+	it("search input stays pinned (position: sticky) when catalog scrolls", () => {
+		const el = createSidebar();
+		document.body.appendChild(el as unknown as HTMLElement);
+		// Flush Lit's initial render so the shadow root is populated.
+		(el as any).requestUpdate?.();
+		return (el as any).updateComplete.then(() => {
+			const search = (el as any).shadowRoot.querySelector(
+				".furn-search",
+			) as HTMLElement;
+			expect(search).toBeTruthy();
+			const cs = getComputedStyle(search);
+			expect(cs.position).toBe("sticky");
+			expect(cs.top).toBe("0px");
+			document.body.removeChild(el as unknown as HTMLElement);
+		});
+	});
+
 	it("furniture remove button fires furniture-remove", () => {
 		const el = createSidebar({
 			furniture: [SAMPLE_FURNITURE],
