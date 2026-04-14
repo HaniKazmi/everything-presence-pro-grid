@@ -1290,4 +1290,30 @@ describe("detectIpAddress", () => {
 			expect(err.errorParams).toEqual({ code: 255 });
 		}
 	});
+
+	it("throws connection_failed when URL is persistently 0.0.0.0", async () => {
+		const encoder = new TextEncoder();
+		const makeRpcResult = (cmd: number, url: string) => {
+			const urlBytes = encoder.encode(url);
+			const data = new Uint8Array(2 + 1 + urlBytes.length);
+			data[0] = cmd;
+			data[1] = 1 + urlBytes.length;
+			data[2] = urlBytes.length;
+			data.set(urlBytes, 3);
+			return data;
+		};
+
+		vi.mocked(readImprovResponse).mockResolvedValue({
+			packets: [
+				{ type: TYPE_RPC_RESULT, data: makeRpcResult(0x01, "http://0.0.0.0") },
+			],
+			buffer: [],
+		});
+
+		await expect(
+			detectIpAddress(mockReader, mockWriter, 50),
+		).rejects.toMatchObject({
+			errorKey: "wifi.errors.connection_failed",
+		});
+	});
 });
