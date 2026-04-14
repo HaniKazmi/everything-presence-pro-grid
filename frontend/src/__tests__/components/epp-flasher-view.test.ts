@@ -1552,12 +1552,26 @@ describe("complete state haAdd branches", () => {
 		]));
 	});
 
-	it("failed: shows warning icon + ha_add.failed key + Retry + Flash another", async () => {
-		const view = await renderWithHaAdd({ type: "failed", reason: "invalid_auth" });
+	it("failed: shows warning icon + reason interpolated + Retry + Flash another", async () => {
+		// Build a spy that still returns the key so other text checks keep working
+		const localizeSpy = vi.fn((k: string) => k);
+		Object.assign(localizeSpy, { formatNumber: (v: number, d = 1) => v.toFixed(d), lang: "en" });
+
+		const view = createView();
+		view.localize = localizeSpy as typeof view.localize;
+		(view as any)._showUsbFlash = true;
+		(view as any).usbFlashState = {
+			step: "complete",
+			ip: "192.168.1.42",
+			haAdd: { type: "failed", reason: "invalid_auth" },
+		};
+		document.body.appendChild(view);
+		await view.updateComplete;
+
 		const root = view.shadowRoot!;
 		expect(root.querySelector('ha-icon[icon="mdi:alert-outline"]')).toBeTruthy();
-		// Identity localize returns the key; verify the failed translation key is used
-		expect(root.textContent).toContain("flasher.ha_add.failed");
+		// Verify the correct translation key AND the reason param are forwarded
+		expect(localizeSpy).toHaveBeenCalledWith("flasher.ha_add.failed", { reason: "invalid_auth" });
 		const buttons = Array.from(root.querySelectorAll("ha-button")).map((b) => b.textContent?.trim() ?? "");
 		expect(buttons).toEqual(expect.arrayContaining([
 			expect.stringMatching(/retry_ha_add|Retry/i),
