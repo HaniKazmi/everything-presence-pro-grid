@@ -594,10 +594,11 @@ export class EppFlasherView extends LitElement {
 
 			const ip = state.ip;
 			const haAdd = state.haAdd;
-			const success = haAdd?.type === "added" || haAdd?.type === "already_added";
+			const success =
+				haAdd?.type === "added" || haAdd?.type === "already_added";
 			const icon = success ? "mdi:check-circle-outline" : "mdi:alert-outline";
 			const haAddKey = haAdd?.type ?? "failed";
-			const reason = haAdd?.type === "failed" ? haAdd.reason ?? "" : "";
+			const reason = haAdd?.type === "failed" ? (haAdd.reason ?? "") : "";
 
 			return html`
 				<div class="flasher-content">
@@ -606,23 +607,26 @@ export class EppFlasherView extends LitElement {
 							<div class="usb-complete">
 								<ha-icon icon=${icon}></ha-icon>
 								<p>${this.localize("flasher.wifi_configured")}</p>
-								${ip
-									? html`<p class="usb-ip">${this.localize("flasher.ip_address")}: ${ip}</p>`
-									: nothing}
+								${
+									ip
+										? html`<p class="usb-ip">${this.localize("flasher.ip_address")}: ${ip}</p>`
+										: nothing
+								}
 								<p class="ha-add-result">
 									${this.localize(`flasher.ha_add.${haAddKey}`, { reason })}
 								</p>
 							</div>
 							<div class="confirm-actions">
-								${success
-									? html`<ha-button raised @click=${this._dispatchFlashComplete}>
+								${
+									success
+										? html`<ha-button raised @click=${this._dispatchFlashComplete}>
 										${this.localize("flasher.go_to_config")}
 									</ha-button>`
-									: haAdd?.type === "needs_auth"
-										? html`<a href="/config/integrations/dashboard">
+										: haAdd?.type === "needs_auth"
+											? html`<a href="/config/integrations/dashboard">
 											<ha-button raised>${this.localize("flasher.go_to_integrations")}</ha-button>
 										</a>`
-										: html`
+											: html`
 											<ha-button @click=${() => this._copyIp(ip ?? "")}>
 												${this.localize("flasher.copy_ip")}
 											</ha-button>

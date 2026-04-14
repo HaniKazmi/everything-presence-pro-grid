@@ -276,10 +276,10 @@ export class FlasherController implements ReactiveController {
 
 	async addEsphomeDevice(host: string): Promise<HaAddResult> {
 		if (!this._hass) return { type: "failed", reason: "no_hass" };
-		return await this._hass.callWS<HaAddResult>({
+		return (await this._hass.callWS({
 			type: "eppgrid/add_esphome_device",
 			host,
-		});
+		})) as HaAddResult;
 	}
 
 	updateUsbState(state: UsbFlashState): void {

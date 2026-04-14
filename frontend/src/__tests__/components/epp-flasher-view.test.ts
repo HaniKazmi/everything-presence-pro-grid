@@ -924,7 +924,11 @@ describe("USB flash view — state-driven", () => {
 	it("renders complete state with IP and ha-add result", () => {
 		const el = createView();
 		(el as any)._showUsbFlash = true;
-		(el as any).usbFlashState = { step: "complete", ip: "192.168.1.42", haAdd: { type: "added" } };
+		(el as any).usbFlashState = {
+			step: "complete",
+			ip: "192.168.1.42",
+			haAdd: { type: "added" },
+		};
 		const tpl = (el as any).render();
 		const c = renderTo(tpl);
 
@@ -1220,7 +1224,11 @@ describe("ethernet complete message", () => {
 	it("shows wifi_configured message and IP for wifi complete with haAdd=added", () => {
 		const el = createView();
 		(el as any)._showUsbFlash = true;
-		(el as any).usbFlashState = { step: "complete", ip: "192.168.1.42", haAdd: { type: "added" } };
+		(el as any).usbFlashState = {
+			step: "complete",
+			ip: "192.168.1.42",
+			haAdd: { type: "added" },
+		};
 		const tpl = (el as any).render();
 		const c = renderTo(tpl);
 
@@ -1233,7 +1241,11 @@ describe("wifi complete cleanup", () => {
 	it("shows wifi_configured message when complete with haAdd=added", () => {
 		const el = createView();
 		(el as any)._showUsbFlash = true;
-		(el as any).usbFlashState = { step: "complete", ip: "192.168.1.1", haAdd: { type: "added" } };
+		(el as any).usbFlashState = {
+			step: "complete",
+			ip: "192.168.1.1",
+			haAdd: { type: "added" },
+		};
 		const tpl = (el as any).render();
 		const c = renderTo(tpl);
 
@@ -1243,7 +1255,11 @@ describe("wifi complete cleanup", () => {
 	it("wifi complete with haAdd=added shows go-to-config button that dispatches flash-complete", async () => {
 		const el = createView();
 		(el as any)._showUsbFlash = true;
-		(el as any).usbFlashState = { step: "complete", ip: "192.168.1.1", haAdd: { type: "added" } };
+		(el as any).usbFlashState = {
+			step: "complete",
+			ip: "192.168.1.1",
+			haAdd: { type: "added" },
+		};
 		document.body.appendChild(el);
 		await el.updateComplete;
 
@@ -1511,30 +1527,44 @@ describe("complete state haAdd branches", () => {
 	it("added: shows success icon, success message, Go to config + Flash another", async () => {
 		const view = await renderWithHaAdd({ type: "added" });
 		const root = view.shadowRoot!;
-		expect(root.querySelector('ha-icon[icon="mdi:check-circle-outline"]')).toBeTruthy();
+		expect(
+			root.querySelector('ha-icon[icon="mdi:check-circle-outline"]'),
+		).toBeTruthy();
 		expect(root.textContent).toContain("192.168.1.42");
-		const buttons = Array.from(root.querySelectorAll("ha-button")).map((b) => b.textContent?.trim() ?? "");
-		expect(buttons).toEqual(expect.arrayContaining([
-			expect.stringMatching(/go_to_config|Go to config/i),
-			expect.stringMatching(/flash_another|Flash another/i),
-		]));
+		const buttons = Array.from(root.querySelectorAll("ha-button")).map(
+			(b) => b.textContent?.trim() ?? "",
+		);
+		expect(buttons).toEqual(
+			expect.arrayContaining([
+				expect.stringMatching(/go_to_config|Go to config/i),
+				expect.stringMatching(/flash_another|Flash another/i),
+			]),
+		);
 	});
 
 	it("already_added: shows success icon and same actions as added", async () => {
 		const view = await renderWithHaAdd({ type: "already_added" });
 		const root = view.shadowRoot!;
-		expect(root.querySelector('ha-icon[icon="mdi:check-circle-outline"]')).toBeTruthy();
-		const buttons = Array.from(root.querySelectorAll("ha-button")).map((b) => b.textContent?.trim() ?? "");
-		expect(buttons).toEqual(expect.arrayContaining([
-			expect.stringMatching(/go_to_config|Go to config/i),
-			expect.stringMatching(/flash_another|Flash another/i),
-		]));
+		expect(
+			root.querySelector('ha-icon[icon="mdi:check-circle-outline"]'),
+		).toBeTruthy();
+		const buttons = Array.from(root.querySelectorAll("ha-button")).map(
+			(b) => b.textContent?.trim() ?? "",
+		);
+		expect(buttons).toEqual(
+			expect.arrayContaining([
+				expect.stringMatching(/go_to_config|Go to config/i),
+				expect.stringMatching(/flash_another|Flash another/i),
+			]),
+		);
 	});
 
 	it("needs_auth: shows warning icon and Go to Integrations link", async () => {
 		const view = await renderWithHaAdd({ type: "needs_auth" });
 		const root = view.shadowRoot!;
-		expect(root.querySelector('ha-icon[icon="mdi:alert-outline"]')).toBeTruthy();
+		expect(
+			root.querySelector('ha-icon[icon="mdi:alert-outline"]'),
+		).toBeTruthy();
 		const link = root.querySelector('a[href="/config/integrations/dashboard"]');
 		expect(link).toBeTruthy();
 		expect(link?.textContent).toMatch(/go_to_integrations|Integrations/i);
@@ -1543,22 +1573,31 @@ describe("complete state haAdd branches", () => {
 	it("cannot_connect: shows warning icon + Copy IP + Retry + Flash another", async () => {
 		const view = await renderWithHaAdd({ type: "cannot_connect" });
 		const root = view.shadowRoot!;
-		expect(root.querySelector('ha-icon[icon="mdi:alert-outline"]')).toBeTruthy();
-		const buttons = Array.from(root.querySelectorAll("ha-button")).map((b) => b.textContent?.trim() ?? "");
-		expect(buttons).toEqual(expect.arrayContaining([
-			expect.stringMatching(/copy_ip|Copy IP/i),
-			expect.stringMatching(/retry_ha_add|Retry/i),
-			expect.stringMatching(/flash_another|Flash another/i),
-		]));
+		expect(
+			root.querySelector('ha-icon[icon="mdi:alert-outline"]'),
+		).toBeTruthy();
+		const buttons = Array.from(root.querySelectorAll("ha-button")).map(
+			(b) => b.textContent?.trim() ?? "",
+		);
+		expect(buttons).toEqual(
+			expect.arrayContaining([
+				expect.stringMatching(/copy_ip|Copy IP/i),
+				expect.stringMatching(/retry_ha_add|Retry/i),
+				expect.stringMatching(/flash_another|Flash another/i),
+			]),
+		);
 	});
 
 	it("failed: shows warning icon + reason interpolated + Retry + Flash another", async () => {
 		// Build a spy that still returns the key so other text checks keep working
 		const localizeSpy = vi.fn((k: string) => k);
-		Object.assign(localizeSpy, { formatNumber: (v: number, d = 1) => v.toFixed(d), lang: "en" });
+		Object.assign(localizeSpy, {
+			formatNumber: (v: number, d = 1) => v.toFixed(d),
+			lang: "en",
+		});
 
 		const view = createView();
-		view.localize = localizeSpy as typeof view.localize;
+		view.localize = localizeSpy as unknown as typeof view.localize;
 		(view as any)._showUsbFlash = true;
 		(view as any).usbFlashState = {
 			step: "complete",
@@ -1569,14 +1608,22 @@ describe("complete state haAdd branches", () => {
 		await view.updateComplete;
 
 		const root = view.shadowRoot!;
-		expect(root.querySelector('ha-icon[icon="mdi:alert-outline"]')).toBeTruthy();
+		expect(
+			root.querySelector('ha-icon[icon="mdi:alert-outline"]'),
+		).toBeTruthy();
 		// Verify the correct translation key AND the reason param are forwarded
-		expect(localizeSpy).toHaveBeenCalledWith("flasher.ha_add.failed", { reason: "invalid_auth" });
-		const buttons = Array.from(root.querySelectorAll("ha-button")).map((b) => b.textContent?.trim() ?? "");
-		expect(buttons).toEqual(expect.arrayContaining([
-			expect.stringMatching(/retry_ha_add|Retry/i),
-			expect.stringMatching(/flash_another|Flash another/i),
-		]));
+		expect(localizeSpy).toHaveBeenCalledWith("flasher.ha_add.failed", {
+			reason: "invalid_auth",
+		});
+		const buttons = Array.from(root.querySelectorAll("ha-button")).map(
+			(b) => b.textContent?.trim() ?? "",
+		);
+		expect(buttons).toEqual(
+			expect.arrayContaining([
+				expect.stringMatching(/retry_ha_add|Retry/i),
+				expect.stringMatching(/flash_another|Flash another/i),
+			]),
+		);
 	});
 
 	it("retry button dispatches retry-ha-add event", async () => {
@@ -1632,9 +1679,13 @@ describe("error state — Flash another button", () => {
 		document.body.appendChild(view);
 		await view.updateComplete;
 		const root = view.shadowRoot!;
-		const buttons = Array.from(root.querySelectorAll("ha-button")).map((b) => b.textContent?.trim() ?? "");
-		expect(buttons).toEqual(expect.arrayContaining([
-			expect.stringMatching(/flash_another|Flash another/i),
-		]));
+		const buttons = Array.from(root.querySelectorAll("ha-button")).map(
+			(b) => b.textContent?.trim() ?? "",
+		);
+		expect(buttons).toEqual(
+			expect.arrayContaining([
+				expect.stringMatching(/flash_another|Flash another/i),
+			]),
+		);
 	});
 });
