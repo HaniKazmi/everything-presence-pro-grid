@@ -16,7 +16,6 @@ vi.mock("../lib/usb-flash-service.js", () => ({
 	flashFirmware: vi.fn(),
 	runWifiScan: vi.fn(),
 	runWifiProvision: vi.fn(),
-	runWifiProbe: vi.fn(),
 	detectIpAddress: vi.fn(),
 }));
 
@@ -42,7 +41,6 @@ import { readImprovResponse, sendImprovPacket } from "../lib/improv-serial.js";
 import {
 	detectIpAddress,
 	flashFirmware,
-	runWifiProbe,
 	runWifiProvision,
 	runWifiScan,
 } from "../lib/usb-flash-service.js";
@@ -62,7 +60,6 @@ function resetServiceMocks() {
 		networks: [{ ssid: "TestNet", rssi: -50, authRequired: true }],
 	});
 	(runWifiProvision as ReturnType<typeof vi.fn>).mockResolvedValue(undefined);
-	(runWifiProbe as ReturnType<typeof vi.fn>).mockResolvedValue(undefined);
 	(detectIpAddress as ReturnType<typeof vi.fn>).mockResolvedValue(
 		"192.168.1.42",
 	);
@@ -546,22 +543,6 @@ describe("_handleWifiProvision", () => {
 			"MySSID",
 			"s3cr3t",
 		);
-	});
-
-	it("calls runWifiProbe before runWifiProvision", async () => {
-		const callOrder: string[] = [];
-		(runWifiProbe as ReturnType<typeof vi.fn>).mockImplementation(async () => {
-			callOrder.push("probe");
-		});
-		(runWifiProvision as ReturnType<typeof vi.fn>).mockImplementation(
-			async () => {
-				callOrder.push("provision");
-			},
-		);
-
-		await flushProvision("MyNet", "correct-horse");
-
-		expect(callOrder).toEqual(["probe", "provision"]);
 	});
 
 	it("does not RTS reset — Improv handles WiFi in-session", async () => {

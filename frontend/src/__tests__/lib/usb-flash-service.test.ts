@@ -95,7 +95,6 @@ import {
 import {
 	detectIpAddress,
 	flashFirmware,
-	runWifiProbe,
 	runWifiProvision,
 	runWifiScan,
 } from "../../lib/usb-flash-service.js";
@@ -1093,58 +1092,6 @@ describe("runWifiProvision", () => {
 		await expect(
 			runWifiProvision(mockWriter, "SSID", "pass"),
 		).resolves.toBeUndefined();
-	});
-});
-
-describe("runWifiProbe", () => {
-	it("sends WIFI_SETTINGS with short password to trigger validation error", async () => {
-		const writer = { write: vi.fn().mockResolvedValue(undefined) };
-		const reader = {
-			read: vi.fn().mockResolvedValue({ value: undefined, done: true }),
-		};
-		(readImprovResponse as ReturnType<typeof vi.fn>).mockResolvedValue({
-			packets: [{ type: TYPE_ERROR_STATE, data: new Uint8Array([0x03]) }],
-			buffer: [],
-		});
-
-		await runWifiProbe(writer as any, reader as any);
-
-		expect(buildWifiCommand).toHaveBeenCalledWith("__epp_probe__", "0");
-		expect(sendImprovPacket).toHaveBeenCalledTimes(1);
-	});
-
-	it("returns silently when no ERROR_STATE arrives within timeout", async () => {
-		const writer = { write: vi.fn().mockResolvedValue(undefined) };
-		const reader = {
-			read: vi.fn().mockResolvedValue({ value: undefined, done: true }),
-		};
-		(readImprovResponse as ReturnType<typeof vi.fn>).mockRejectedValue(
-			Object.assign(new Error("timeout"), {
-				errorKey: "flasher.errors.timeout",
-			}),
-		);
-
-		await expect(
-			runWifiProbe(writer as any, reader as any, 100),
-		).resolves.toBeUndefined();
-	});
-
-	it("returns after seeing ERROR_STATE even if PROVISIONING precedes it", async () => {
-		const writer = { write: vi.fn().mockResolvedValue(undefined) };
-		const reader = {
-			read: vi.fn().mockResolvedValue({ value: undefined, done: true }),
-		};
-		(readImprovResponse as ReturnType<typeof vi.fn>).mockResolvedValue({
-			packets: [
-				{ type: TYPE_CURRENT_STATE, data: new Uint8Array([0x03]) }, // PROVISIONING
-				{ type: TYPE_ERROR_STATE, data: new Uint8Array([0x03]) }, // UNABLE_TO_CONNECT
-			],
-			buffer: [],
-		});
-
-		await runWifiProbe(writer as any, reader as any);
-
-		expect(sendImprovPacket).toHaveBeenCalledTimes(1);
 	});
 });
 

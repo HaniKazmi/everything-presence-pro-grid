@@ -57,7 +57,6 @@ import { renderTemplateThumbnail } from "./lib/template-thumbnail.js";
 import {
 	detectIpAddress,
 	flashFirmware,
-	runWifiProbe,
 	runWifiProvision,
 	runWifiScan,
 } from "./lib/usb-flash-service.js";
@@ -2631,11 +2630,6 @@ export class EPPGridPanel extends LitElement {
 
 		try {
 			ctrl.updateUsbState({ step: "wifi_connecting" });
-			// Probe with bad creds first to force improv_serial out of any cached
-			// PROVISIONED state — otherwise re-provisioning the same SSID is a no-op
-			// on the firmware side and never emits the URL response.
-			await runWifiProbe(writer, reader);
-			if (ctrl.opId !== myOp) return;
 			await runWifiProvision(writer, ssid, password);
 			if (ctrl.opId !== myOp) return;
 
