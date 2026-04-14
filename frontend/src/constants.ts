@@ -22,6 +22,10 @@ export const FLOOR_PLAN_SVGS: Record<
 		viewBox: "0 0 70 70",
 		content: `<circle cx="35" cy="35" r="30" stroke="black" stroke-width="2" fill="none"/><circle cx="35" cy="35" r="20" stroke="black" stroke-width="2" fill="none"/><path d="M 38,30 Q 45,28 44,35 Q 43,42 35,41 Q 28,40 30,34" stroke="black" stroke-width="1.5" fill="none"/><path d="M 36,28 L 38,23 L 41,27" stroke="black" stroke-width="1.5" fill="none"/>`,
 	},
+	"ceiling-fan": {
+		viewBox: "0 0 100 100",
+		content: `<g transform="translate(50,50)"><path d="M -4,-10 L 4,-10 L 7,-42 Q 0,-45 -7,-42 Z" stroke="black" stroke-width="2" fill="none"/><path d="M -4,-10 L 4,-10 L 7,-42 Q 0,-45 -7,-42 Z" transform="rotate(72)" stroke="black" stroke-width="2" fill="none"/><path d="M -4,-10 L 4,-10 L 7,-42 Q 0,-45 -7,-42 Z" transform="rotate(144)" stroke="black" stroke-width="2" fill="none"/><path d="M -4,-10 L 4,-10 L 7,-42 Q 0,-45 -7,-42 Z" transform="rotate(216)" stroke="black" stroke-width="2" fill="none"/><path d="M -4,-10 L 4,-10 L 7,-42 Q 0,-45 -7,-42 Z" transform="rotate(288)" stroke="black" stroke-width="2" fill="none"/></g><circle cx="50" cy="50" r="10" stroke="black" stroke-width="2" fill="none"/><circle cx="50" cy="50" r="4" stroke="black" stroke-width="2" fill="none"/><circle cx="50" cy="50" r="1.5" fill="black" stroke="none"/>`,
+	},
 	"dog-bed": {
 		viewBox: "0 0 100 80",
 		content: `<ellipse cx="50" cy="40" rx="45" ry="35" stroke="black" stroke-width="2" fill="none"/><ellipse cx="50" cy="40" rx="32" ry="22" stroke="black" stroke-width="2" fill="none"/><circle cx="46" cy="36" r="4" stroke="black" stroke-width="1.5" fill="none"/><circle cx="40" cy="29" r="2" stroke="black" stroke-width="1" fill="none"/><circle cx="47" cy="27" r="2" stroke="black" stroke-width="1" fill="none"/><circle cx="53" cy="29" r="2" stroke="black" stroke-width="1" fill="none"/>`,
@@ -324,6 +328,13 @@ export const FURNITURE_CATALOG: FurnitureSticker[] = [
 		label: "furniture.cabinet",
 		defaultWidth: 800,
 		defaultHeight: 400,
+	},
+	{
+		type: "svg",
+		icon: "ceiling-fan",
+		label: "furniture.ceiling_fan",
+		defaultWidth: 1200,
+		defaultHeight: 1200,
 	},
 	{
 		type: "svg",
