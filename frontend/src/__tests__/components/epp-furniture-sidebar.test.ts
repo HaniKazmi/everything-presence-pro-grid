@@ -213,8 +213,7 @@ describe("epp-furniture-sidebar DOM events", () => {
 		expect(search).toBeTruthy();
 		expect(info).toBeTruthy();
 		expect(
-			search.compareDocumentPosition(info) &
-				Node.DOCUMENT_POSITION_FOLLOWING,
+			search.compareDocumentPosition(info) & Node.DOCUMENT_POSITION_FOLLOWING,
 		).toBeTruthy();
 		document.body.removeChild(c);
 	});

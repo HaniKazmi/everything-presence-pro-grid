@@ -152,10 +152,7 @@ export function clampFurnitureMove(
 	const dxBox = (visualWidth - itemWidth) / 2;
 	const dyBox = (visualHeight - itemHeight) / 2;
 	return {
-		x: Math.max(
-			minX + dxBox,
-			Math.min(maxX - itemWidth - dxBox, origX + dxMm),
-		),
+		x: Math.max(minX + dxBox, Math.min(maxX - itemWidth - dxBox, origX + dxMm)),
 		y: Math.max(
 			minY + dyBox,
 			Math.min(maxY - itemHeight - dyBox, origY + dyMm),
