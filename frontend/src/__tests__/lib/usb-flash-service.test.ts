@@ -1316,4 +1316,34 @@ describe("detectIpAddress", () => {
 			errorKey: "wifi.errors.connection_failed",
 		});
 	});
+
+	it("ignores RPC_RESULT with unrelated cmd byte", async () => {
+		const encoder = new TextEncoder();
+		const makeRpcResult = (cmd: number, url: string) => {
+			const urlBytes = encoder.encode(url);
+			const data = new Uint8Array(2 + 1 + urlBytes.length);
+			data[0] = cmd;
+			data[1] = 1 + urlBytes.length;
+			data[2] = urlBytes.length;
+			data.set(urlBytes, 3);
+			return data;
+		};
+
+		vi.mocked(readImprovResponse).mockResolvedValueOnce({
+			packets: [
+				{ type: TYPE_RPC_RESULT, data: makeRpcResult(0x04, "http://10.0.0.5") },
+				{ type: TYPE_RPC_RESULT, data: makeRpcResult(0x01, "http://0.0.0.0") },
+			],
+			buffer: [],
+		});
+		vi.mocked(readImprovResponse).mockResolvedValueOnce({
+			packets: [
+				{ type: TYPE_RPC_RESULT, data: makeRpcResult(0x02, "http://192.168.1.42") },
+			],
+			buffer: [],
+		});
+
+		const ip = await detectIpAddress(mockReader, mockWriter, 5000);
+		expect(ip).toBe("192.168.1.42");
+	});
 });
