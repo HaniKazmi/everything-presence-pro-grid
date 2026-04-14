@@ -8,7 +8,9 @@ import {
 	CMD_WIFI_SETTINGS,
 	parseScanResults,
 	readImprovResponse,
+	STATE_PROVISIONED,
 	sendImprovPacket,
+	TYPE_CURRENT_STATE,
 	TYPE_ERROR_STATE,
 	TYPE_RPC_RESULT,
 	type WifiNetwork,
@@ -308,6 +310,93 @@ export async function runWifiScan(
 	// All attempts exhausted — return empty with a fresh reader
 	const reader = port.readable!.getReader();
 	return { writer, reader, networks: [] };
+}
+
+/**
+ * After flashing, queries the device's Improv state to detect whether it is
+ * already provisioned with a working WiFi connection. If yes, the caller can
+ * skip the WiFi scan + provision flow entirely.
+ *
+ * Returns the parsed state + IP (when PROVISIONED and a URL was reported) plus
+ * a live writer/reader the caller can use for subsequent operations (e.g.
+ * `detectIpAddress` for the skip path). On any failure — handshake timeout,
+ * malformed packet, port error — throws so the caller can fall through to the
+ * existing WiFi scan flow.
+ */
+export async function queryImprovState(
+	port: SerialPort,
+	timings?: {
+		drainDelay?: number;
+		handshakeDelay?: number;
+		handshakeRetryDelay?: number;
+		readDelay?: number;
+	},
+): Promise<{
+	state: "AUTHORIZED" | "PROVISIONED";
+	ip?: string;
+	writer: WritableStreamDefaultWriter<Uint8Array>;
+	reader: ReadableStreamDefaultReader<Uint8Array>;
+}> {
+	const writer = await _connectImprov(port, timings);
+	const reader = port.readable!.getReader();
+
+	// Handshake already sent a GET_CURRENT_STATE; the device should respond with
+	// a TYPE_CURRENT_STATE packet and (if provisioned) a TYPE_RPC_RESULT with
+	// the URL. Send a fresh GET_CURRENT_STATE here to guarantee an up-to-date
+	// response on this reader (the handshake read its response on a scratch
+	// reader that was released).
+	await sendImprovPacket(writer, buildGetStateCommand());
+
+	const readBudget = timings?.readDelay ?? 3000;
+	const deadline = Date.now() + readBudget;
+	let buffer: number[] = [];
+	let stateByte: number | undefined;
+	let url: string | undefined;
+
+	while (
+		Date.now() < deadline &&
+		(stateByte === undefined ||
+			(stateByte === STATE_PROVISIONED && url === undefined))
+	) {
+		const remaining = deadline - Date.now();
+		if (remaining <= 0) break;
+		const result = await readImprovResponse(reader, remaining, buffer);
+		buffer = result.buffer;
+		for (const pkt of result.packets) {
+			if (pkt.type === TYPE_CURRENT_STATE && pkt.data.length >= 1) {
+				stateByte = pkt.data[0];
+			}
+			if (
+				pkt.type === TYPE_RPC_RESULT &&
+				pkt.data.length >= 3 &&
+				pkt.data[0] === CMD_GET_CURRENT_STATE
+			) {
+				const urlLen = pkt.data[2];
+				if (pkt.data.length >= 3 + urlLen) {
+					url = new TextDecoder().decode(pkt.data.slice(3, 3 + urlLen));
+				}
+			}
+		}
+	}
+
+	if (stateByte === undefined) {
+		writer.releaseLock();
+		reader.releaseLock();
+		throw Object.assign(new Error("No Improv state received"), {
+			errorKey: "usb.errors.no_device_response",
+		});
+	}
+
+	let ip: string | undefined;
+	if (url) {
+		const match = /(\d+\.\d+\.\d+\.\d+)/.exec(url);
+		if (match) ip = match[1];
+	}
+
+	const state: "AUTHORIZED" | "PROVISIONED" =
+		stateByte === STATE_PROVISIONED ? "PROVISIONED" : "AUTHORIZED";
+
+	return { state, ip, writer, reader };
 }
 
 /**

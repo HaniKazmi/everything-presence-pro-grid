@@ -11,6 +11,7 @@ export const TYPE_ERROR_STATE = 0x02;
 export const TYPE_RPC_COMMAND = 0x03;
 export const TYPE_RPC_RESULT = 0x04;
 
+export const STATE_AUTHORIZED = 0x02;
 export const STATE_PROVISIONED = 0x04;
 export const ERROR_UNABLE_TO_CONNECT = 0x03;
 

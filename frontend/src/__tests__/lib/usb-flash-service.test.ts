@@ -18,6 +18,8 @@ vi.mock("../../lib/improv-serial.js", () => ({
 	TYPE_ERROR_STATE: 0x02,
 	TYPE_RPC_RESULT: 0x04,
 	ERROR_UNABLE_TO_CONNECT: 0x03,
+	STATE_AUTHORIZED: 0x02,
+	STATE_PROVISIONED: 0x04,
 }));
 
 // Mock esptool-js before importing the service
@@ -97,6 +99,7 @@ import {
 import {
 	detectIpAddress,
 	flashFirmware,
+	queryImprovState,
 	runWifiProvision,
 	runWifiScan,
 } from "../../lib/usb-flash-service.js";
@@ -1404,6 +1407,139 @@ describe("detectIpAddress", () => {
 
 		const ip = await detectIpAddress(mockReader, mockWriter, 5000);
 		expect(ip).toBe("192.168.1.42");
+	});
+});
+
+describe("queryImprovState", () => {
+	function mockPortReady(): SerialPort {
+		const reader = {
+			read: vi.fn().mockImplementation(() => new Promise(() => {})),
+			releaseLock: vi.fn(),
+		};
+		const writer = {
+			write: vi.fn().mockResolvedValue(undefined),
+			releaseLock: vi.fn(),
+		};
+		return {
+			open: vi.fn().mockResolvedValue(undefined),
+			close: vi.fn().mockResolvedValue(undefined),
+			readable: { getReader: () => reader },
+			writable: { getWriter: () => writer },
+			setSignals: vi.fn().mockResolvedValue(undefined),
+		} as unknown as SerialPort;
+	}
+
+	beforeEach(() => {
+		// Default readImprovResponse: return CURRENT_STATE=PROVISIONED then RPC_RESULT with real IP
+		let call = 0;
+		(readImprovResponse as any).mockImplementation(async () => {
+			call++;
+			if (call === 1) {
+				// Initial handshake packet (any valid packet is fine)
+				return {
+					packets: [{ type: 0x01, data: new Uint8Array([0x04]) }],
+					buffer: [],
+				};
+			}
+			if (call === 2) {
+				// State packet (TYPE_CURRENT_STATE, STATE_PROVISIONED)
+				return {
+					packets: [{ type: 0x01, data: new Uint8Array([0x04]) }],
+					buffer: [],
+				};
+			}
+			// RPC result echoing GET_CURRENT_STATE with URL
+			const url = "http://192.168.1.42";
+			const urlBytes = new TextEncoder().encode(url);
+			const data = new Uint8Array(3 + urlBytes.length);
+			data[0] = 0x02; // CMD_GET_CURRENT_STATE
+			data[1] = 1 + urlBytes.length;
+			data[2] = urlBytes.length;
+			data.set(urlBytes, 3);
+			return { packets: [{ type: 0x04, data }], buffer: [] };
+		});
+	});
+
+	it("returns PROVISIONED state + real IP when device has working credentials", async () => {
+		const port = mockPortReady();
+		const result = await queryImprovState(port);
+		expect(result.state).toBe("PROVISIONED");
+		expect(result.ip).toBe("192.168.1.42");
+		expect(result.writer).toBeDefined();
+		expect(result.reader).toBeDefined();
+	});
+
+	it("returns PROVISIONED + ip=0.0.0.0 when credentials saved but DHCP failing", async () => {
+		(readImprovResponse as any).mockImplementation(async () => {
+			return {
+				packets: [
+					{ type: 0x01, data: new Uint8Array([0x04]) }, // PROVISIONED
+					(() => {
+						const url = "http://0.0.0.0";
+						const urlBytes = new TextEncoder().encode(url);
+						const data = new Uint8Array(3 + urlBytes.length);
+						data[0] = 0x02;
+						data[1] = 1 + urlBytes.length;
+						data[2] = urlBytes.length;
+						data.set(urlBytes, 3);
+						return { type: 0x04, data };
+					})(),
+				],
+				buffer: [],
+			};
+		});
+		const port = mockPortReady();
+		const result = await queryImprovState(port);
+		expect(result.state).toBe("PROVISIONED");
+		expect(result.ip).toBe("0.0.0.0");
+	});
+
+	it("returns AUTHORIZED (no IP) when device has no credentials", async () => {
+		(readImprovResponse as any).mockImplementation(async () => {
+			return {
+				packets: [{ type: 0x01, data: new Uint8Array([0x02]) }], // STATE_AUTHORIZED
+				buffer: [],
+			};
+		});
+		const port = mockPortReady();
+		const result = await queryImprovState(port);
+		expect(result.state).toBe("AUTHORIZED");
+		expect(result.ip).toBeUndefined();
+	});
+
+	it("throws when no state packet received within timeout", async () => {
+		(readImprovResponse as any).mockRejectedValue(
+			Object.assign(new Error("timeout"), {
+				errorKey: "flasher.errors.timeout",
+			}),
+		);
+		const port = mockPortReady();
+		await expect(
+			queryImprovState(port, {
+				readDelay: 100,
+				drainDelay: 0,
+				handshakeDelay: 100,
+				handshakeRetryDelay: 0,
+			}),
+		).rejects.toThrow();
+	});
+
+	it("throws when response is malformed (short packet)", async () => {
+		(readImprovResponse as any).mockImplementation(async () => {
+			return {
+				packets: [{ type: 0x01, data: new Uint8Array([]) }], // too short, no state byte
+				buffer: [],
+			};
+		});
+		const port = mockPortReady();
+		await expect(
+			queryImprovState(port, {
+				readDelay: 100,
+				drainDelay: 0,
+				handshakeDelay: 100,
+				handshakeRetryDelay: 0,
+			}),
+		).rejects.toThrow();
 	});
 });
 
