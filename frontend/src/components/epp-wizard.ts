@@ -1075,7 +1075,7 @@ export class EppWizard extends LitElement {
         <line x1="40" y1="56" x2="40" y2="150" stroke="var(--primary-color, #03a9f4)" stroke-width="1" stroke-dasharray="4 2"/>
         <line x1="36" y1="56" x2="44" y2="56" stroke="var(--primary-color, #03a9f4)" stroke-width="1.5"/>
         <line x1="36" y1="150" x2="44" y2="150" stroke="var(--primary-color, #03a9f4)" stroke-width="1.5"/>
-        <text x="48" y="108" font-size="11" fill="var(--primary-color, #03a9f4)">1.5–2m</text>
+        <text x="48" y="108" font-size="11" fill="var(--primary-color, #03a9f4)">1.5–1.8m</text>
         <!-- Detection cone -->
         <path d="M 26 56 L 100 30 L 100 82 Z" fill="var(--primary-color, #03a9f4)" opacity="0.1" stroke="var(--primary-color, #03a9f4)" stroke-width="0.5"/>
       </svg>
@@ -1147,16 +1147,16 @@ export class EppWizard extends LitElement {
         <line x1="20" y1="150" x2="180" y2="150" stroke="var(--divider-color, #ccc)" stroke-width="2"/>
         <!-- Sensor -->
         <rect x="14" y="56" width="12" height="8" rx="2" fill="var(--primary-color, #03a9f4)"/>
-        <!-- Correct: horizontal beam -->
-        <line x1="26" y1="60" x2="170" y2="60" stroke="var(--primary-color, #03a9f4)" stroke-width="1.5"/>
-        <polygon points="170,60 162,56 162,64" fill="var(--primary-color, #03a9f4)"/>
-        <text x="70" y="52" font-size="10" fill="var(--primary-color, #03a9f4)">${this.localize("wizard.horizontal_correct")}</text>
-        <!-- Wrong: angled down -->
+        <!-- Correct: slight downward tilt -->
+        <line x1="26" y1="60" x2="170" y2="82" stroke="var(--primary-color, #03a9f4)" stroke-width="1.5"/>
+        <polygon points="170,82 162,77 161,85" fill="var(--primary-color, #03a9f4)"/>
+        <text x="70" y="95" font-size="10" fill="var(--primary-color, #03a9f4)">${this.localize("wizard.horizontal_correct")}</text>
+        <!-- Wrong: horizontal (wastes the upper half of the cone) -->
+        <line x1="26" y1="60" x2="170" y2="60" stroke="var(--error-color, #f44336)" stroke-width="1" stroke-dasharray="4 2" opacity="0.6"/>
+        <text x="90" y="54" font-size="10" fill="var(--error-color, #f44336)" opacity="0.7">${this.localize("wizard.angled_wrong")}</text>
+        <!-- Wrong: steeply angled down -->
         <line x1="26" y1="60" x2="140" y2="140" stroke="var(--error-color, #f44336)" stroke-width="1" stroke-dasharray="4 2" opacity="0.6"/>
-        <text x="90" y="118" font-size="10" fill="var(--error-color, #f44336)" opacity="0.7">${this.localize("wizard.angled_wrong")}</text>
-        <!-- Wrong: angled up -->
-        <line x1="26" y1="60" x2="120" y2="22" stroke="var(--error-color, #f44336)" stroke-width="1" stroke-dasharray="4 2" opacity="0.6"/>
-        <text x="75" y="18" font-size="10" fill="var(--error-color, #f44336)" opacity="0.7">${this.localize("wizard.angled_wrong")}</text>
+        <text x="90" y="134" font-size="10" fill="var(--error-color, #f44336)" opacity="0.7">${this.localize("wizard.angled_wrong")}</text>
       </svg>
     `;
 

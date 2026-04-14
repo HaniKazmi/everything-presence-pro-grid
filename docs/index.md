@@ -6,24 +6,29 @@ hide:
 
 # Everything Presence Pro Grid
 
-**Room-level presence detection that actually knows where your walls are.**
+An alternate firmware and Home Assistant integration for the Everything Presence Pro presence sensor.
 
-Everything Presence Pro Grid is a Home Assistant custom integration for the Everything Presence Pro mmWave radar sensor. It replaces the default firmware with a perspective-calibrated grid, up to seven named zones, on-chip zone processing, and a live visual panel — so you know what the sensor sees, why it decided what it did, and your automations fire on events rather than raw radar noise.
+It provides:
 
-!!! example "Screenshot placeholder"
-    **Hero shot — the live view panel showing a calibrated grid with active zones and target markers.** `index/hero.png`
+- a **perspective-corrected** grid that maps the sensor view onto your room
+- easy **zone painting** for 8 polygonal, discontinuous zones
+- **noise reduction** and improved detection algorithms
+- **reduced load** on the network and Home Assistant
 
 [Install](user-guide/installation.md){ .md-button .md-button--primary }
-[Getting started](user-guide/getting-started/pairing.md){ .md-button }
+[Learn more](user-guide/introduction.md){ .md-button }
+
+![Live overview showing a calibrated room grid with active zones and target markers.](images/introduction/overview.png){ width="60%" }
+
+## Quick start
+
+1. [Install](user-guide/installation.md) the integration via HACS.
+2. [Flash](user-guide/flashing-firmware.md) the Grid firmware onto your device via USB.
+3. [Mount](user-guide/placement.md) the device and [calibrate](user-guide/calibration.md) the grid.
+4. Paint [zones](user-guide/zones.md) on the grid.
+5. Build [automations](user-guide/automations.md).
 
 ---
-
-## Why Everything Presence Pro Grid?
-
-- **Perspective-corrected grid.** A four-corner calibration wizard maps the distorted radar view onto a rectilinear room grid. Walls are straight, targets sit where they actually are.
-- **Seven named zones** with per-zone occupancy, motion, and target-count entities — plus entrance/exit overlays and interference-source overlays.
-- **Processing on the chip.** The zone engine runs on the ESP32. Home Assistant receives state changes, not raw streams.
-- **Observable.** The frontend shows exactly what the firmware is deciding, live.
 
 [Read the full introduction →](user-guide/introduction.md)
 

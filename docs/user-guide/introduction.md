@@ -1,106 +1,60 @@
 # Introduction
 
-Everything Presence Pro Grid is a Home Assistant custom integration for the Everything Presence Pro mmWave radar sensor. It replaces the default firmware with a perspective-calibrated grid, on-chip zone processing, and a live visual panel that tells you what the sensor is actually seeing.
+Everything Presence Pro Grid is a custom Home Assistant integration for the Everything Presence Pro mmWave radar sensor. It runs smoothed target tracking and zone detection processing on the device, and provides a panel for configuration, calibration, live view, and firmware flashing.
 
-This page covers why it exists, what it does differently from the default firmware, and the design principles that guided its development.
+For setup, see [Hardware](hardware.md), [Placement](placement.md), and [Installation](installation.md).
 
-!!! example "Screenshot placeholder"
-    **Hero shot — the live view panel showing a calibrated room grid with active zones, target markers, and furniture overlay.** `introduction/hero.png`
+![Live overview showing a calibrated room grid with zones, target markers, and furniture overlay.](../images/introduction/overview.png "Live overview showing a calibrated room grid with zones, target markers, and furniture overlay.")
 
-## The problem
+## What is the Everything Presence Pro?
 
-If you have used an Everything Presence Pro device with the default firmware, or any raw LD2450-based setup, you have probably run into some combination of the following:
+The [Everything Presence Pro](https://shop.everythingsmart.io/products/everything-presence-pro) (EPP) is a presence sensor produced by [Everything Smart Technology](https://shop.everythingsmart.io/). Where a motion sensor only detects movement, a presence sensor uses low-powered mmWave radar to detect human presence even when the person is still.
 
-- **Zones are defined in sensor-space rectangles, but sensor space is distorted.** The LD2450 reports target positions in its own polar-derived coordinate system. Straight physical lines — walls, the edge of a bed, the run of a sofa — are **not straight** in sensor space. A rectangular zone in that space does not map to a rectangular region of your room. You end up eyeballing zone boundaries and accepting that they will cover more (or less) than you intended.
-- **Angle accuracy is poor.** Without calibration, target positions drift, especially near the edges of the field of view.
-- **Native resolution is coarse** — roughly 30 cm — which makes small zones unreliable.
-- **Default firmware caps you at four zones plus two exclusion zones.** Fine for a small room, cramped anywhere else.
-- **High-frequency target streams flood Home Assistant.** The default firmware publishes raw target positions continuously, producing log churn, network traffic, and a long list of entities you didn't ask for.
-- **You cannot see what the sensor is actually deciding.** You get the output — occupied or not — without any visibility into why.
+The EPP combines three sensors for the best of all worlds:
 
-!!! example "Screenshot placeholder"
-    **Before/after comparison — a distorted rectangular zone in raw sensor space next to the same room mapped onto a perspective-corrected grid.** `introduction/before-after.png`
+- **PIR (passive infrared) motion sensor.** Low latency — useful for triggering main lights the moment someone enters.
+- **Target tracking radar (LD2450).** Tracks up to three targets in the room. Lets automations react to targets entering or leaving specific zones (turning on the extractor fan when someone uses the toilet, towel rail when someone showers).
+- **Static presence radar (DFRobot).** Detects ongoing presence through subtle movement like breathing, even when targets aren't moving. Lets automations safely turn lights off when the room is actually empty.
 
-## What Everything Presence Pro Grid does differently
+## Problems with the original firmware
 
-### Perspective-corrected grid
+The original firmware sends raw sensor data to Home Assistant. That leaves a few gaps:
 
-A four-corner calibration wizard maps the distorted radar view onto a rectilinear room grid. You point the wizard at the four corners of your room; it computes a perspective transform that unwarps the sensor's view into something that matches the physical floor plan. Walls are straight again, and targets sit where they actually are.
+- **Noise.** Target (X,Y) coordinates are passed through unsmoothed. The radar is jittery and that noise produces unreliable zone transitions.
+- **Distortion.** The default radar view is a polar projection — straight walls don't appear straight, which makes mapping a room difficult.
+- **Limited zones.** Four detection zones plus two exclusion zones, all rectangular and aligned with the sensor — but real-world rectangles aren't rectangles in the radar view.
+- **Coarse settings.** A target is either inside a zone or not. There's no notion of where it came from (entered through the doorway vs appeared mid-room), how long it's been there, or how long since last movement — a problem when people sleep still.
+- **Resolution mismatch.** The configurator draws at 5 cm precision but the LD2450 resolves at ~36 cm. The detail in the UI overstates what the sensor actually sees.
+- **Chattiness.** Each device streams a high volume of coordinate updates that Home Assistant mostly discards. With 10–15 sensors, that adds up.
 
-!!! example "Screenshot placeholder"
-    **Calibration wizard capturing the four corners of a room, showing the resulting grid overlay.** `introduction/calibration-wizard.png`
+## What this integration does differently
 
-### Rolling-median smoothing
+- **Perspective-corrected grid.** A four-corner calibration wizard maps the sensor view onto your room. Walls are straight; zones line up with real-world geometry. Cells are 30 cm × 30 cm (1 ft × 1 ft).
+- **Seven painted zones**, plus an eighth "Rest of room" fallback. Polygonal, can be discontinuous, drawn by clicking grid cells.
+- **Zone types** — `Thoroughfare`, `Bed`, and others — preset sensitivity and hysteresis for the zone's purpose. `Custom` exposes the underlying parameters.
+- **Cross-zone target tracking.** Targets are followed as they move between zones, allowing quick transitions from one zone to another.
+- **Overlays** for refining detection — mark doorways (Entry/Exit) and noise sources (Interference/Suppress).
+- **Furniture layout.** Drop furniture stickers on the grid so the live view is readable. Visual only; doesn't affect detection.
+- **On-chip processing.** Home Assistant gets a single `Occupancy` binary sensor plus per-zone presence sensors, instead of a stream of target coordinates.
+- **Rolling-median smoothing** of target positions, so brief radar jitter doesn't trigger ghost detections.
+- **Quiet updates.** Only the necessary information goes across the network.
+- **Built-in flasher** for installing and updating firmware from the panel.
 
-Raw target positions are noisy frame to frame. A rolling median filter on each target stream removes outliers before the perspective transform, so movement is smooth and spurious positions do not create ghost activity.
+![Calibration wizard capturing the four corners of a room.](../images/introduction/calibration-wizard.png "Calibration wizard capturing the four corners of a room.")
 
-### Finer effective resolution
+## What you'll typically use in automations
 
-Grid cells on the corrected view are finer than any rectangular zone in raw sensor space — and they describe regions of the physical room, not regions of the sensor's coordinate system.
+Most rooms only need:
 
-### Seven named zones
+- `binary_sensor.<device>_occupancy` — anyone in the room. Combines the motion sensor, the static presence sensor, and the target tracking sensor into a single presence signal.
+- `binary_sensor.<device>_zone_<N>_presence` — one per named zone.
+- The environmental sensors (illuminance, temperature, humidity, CO2 if enabled).
 
-Up to seven zones — versus four in the default firmware — each with its own occupancy, motion, and target-count entities. Each zone has a name, a colour, a behaviour type (Normal, Thoroughfare, Rest, or Custom), and optional furniture on the grid for visual context.
+![Sensors enabled by default.](../images/introduction/default-entities.png "Sensors enabled by default.")
 
-!!! example "Screenshot placeholder"
-    **Zone editor with seven zones painted on the grid, each a different colour.** `introduction/zone-editor.png`
-
-### Entrance/exit overlay
-
-Mark doorways on the grid. Targets that appear or disappear near entry or exit cells are classified as expected events — someone walking in or out — rather than as ghosts or sudden occupancy changes. Zones near doors stop flapping every time someone crosses a threshold.
-
-### Interference source overlay
-
-Some ghost detections have obvious causes: a ceiling fan, a curtain, a reflective surface. Mark them as interference sources on the grid so detections near them are explainable and suppressible.
-
-### Intelligent target tracking with zone handoff
-
-Radar doesn't track targets perfectly frame to frame — targets briefly vanish and reappear, sometimes in an adjacent cell. Naive zone logic would treat every blip as an occupancy change. The zone engine tracks target identity across the grid: when a target disappears from one zone and reappears in an adjacent zone shortly after, it's treated as a single zone-to-zone handoff rather than one zone emptying and another filling independently. Combined with the entrance/exit overlay, this keeps zone occupancy stable under noisy tracking.
-
-### Zone engine on the chip
-
-The zone engine runs in firmware on the ESP32. Home Assistant receives state changes — "kitchen zone became occupied" — not raw target streams. Network noise drops, log churn drops, and HA only sees the events you care about.
-
-### Furniture editor
-
-Drop furniture onto the grid so you (and future you) understand what the grid means at a glance. Furniture is overlay-only — it doesn't change detection — but it makes the live view interpretable as an actual room rather than coloured cells.
-
-!!! example "Screenshot placeholder"
-    **Furniture editor with furniture placed against the zone layout.** `introduction/floor-plan.png`
-
-### Integrated firmware flasher and OTA
-
-Flash the initial firmware and push over-the-air updates from the HA panel. No ESPHome Builder dance, no YAML editing.
-
-### Live view
-
-A live panel in Home Assistant shows the grid, the active zones, the tracked targets, and the overlays — in real time. Ghost detections become explainable: you can see the noise source, see the target position, and decide whether to add an interference overlay or tune sensitivity.
-
-!!! example "Screenshot placeholder"
-    **Live view — targets moving across zones, with overlays visible.** `introduction/live-view.png`
-
-## Design principles
-
-Eight principles guided the design. They are held to across changes.
-
-1. **It just works, yet is fully configurable.** Sensible defaults mean a new user gets a working setup without reading docs. Everything is exposed to advanced users who want to tune it.
-
-2. **Low network noise.** Publish events and state changes, not continuous target streams. Your HA database and event bus stay quiet.
-
-3. **Low impact on Home Assistant.** You opt in to the entities you want. Unused features do not clutter the entity registry.
-
-4. **Processing on the chip.** Compute where it is cheap — the ESP32 — not where it is expensive (Home Assistant). The zone engine runs in firmware.
-
-5. **Local-first.** No cloud, no external services, no telemetry. Everything runs on your network.
-
-6. **Observable.** The frontend shows what the firmware is actually doing, live. Nothing is hidden behind a black box.
-
-7. **Frontend/firmware parity.** The frontend's zone engine is kept in sync with the firmware's, so previews in the editor match real-world behaviour.
-
-8. **Calibration over hardware.** Accuracy comes from math — the perspective transform and the rolling median — not from a more expensive sensor.
+These sensors are all you need to write sophisticated presence-tracking automations. See [Automations](automations.md) for worked examples.
 
 ## Where to next
 
-- **[Hardware →](hardware.md)** — what's inside the device, and why.
-- **[Installation →](installation.md)** — install the integration and set up your hardware.
-- **[Getting started →](getting-started/pairing.md)** — pair your device, first boot, walk through calibration.
+- **[Hardware →](hardware.md)** — what's inside the device.
+- **[Installation →](installation.md)** — install the integration and get going.

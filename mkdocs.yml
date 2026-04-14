@@ -76,18 +76,24 @@ nav:
   - User Guide:
     - Introduction: user-guide/introduction.md
     - Hardware: user-guide/hardware.md
-    - Placement: user-guide/placement.md
     - Installation: user-guide/installation.md
-    - Getting Started:
-      - Pairing: user-guide/getting-started/pairing.md
-      - First boot: user-guide/getting-started/first-boot.md
-      - Calibration: user-guide/getting-started/calibration.md
+    - Flashing firmware: user-guide/flashing-firmware.md
+    - Placement: user-guide/placement.md
+    - Calibration: user-guide/calibration.md
+    - Live view: user-guide/live-view.md
     - Zones: user-guide/zones.md
     - Overlays: user-guide/overlays.md
     - Furniture: user-guide/furniture.md
-    - Live view: user-guide/live-view.md
+    - Settings:
+      - user-guide/settings/index.md
+      - Entities: user-guide/settings/entities.md
+      - Detection: user-guide/settings/detection.md
+      - Reporting: user-guide/settings/reporting.md
+      - Environmental: user-guide/settings/environmental.md
+      - LED and relay: user-guide/settings/led-relay.md
+      - Logging: user-guide/settings/logging.md
     - Automations: user-guide/automations.md
-    - Firmware: user-guide/firmware.md
+    - Firmware upgrades: user-guide/firmware-upgrades.md
     - Troubleshooting: user-guide/troubleshooting.md
   - Developers:
     - Overview: developers/index.md

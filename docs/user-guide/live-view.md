@@ -44,10 +44,39 @@ The live sidebar next to the grid has an **Environment** section. It's not overl
 - **Humidity** (%)
 - **CO2** (ppm) — only shown if the CO2 entity has been enabled on the device in Home Assistant
 
-These read directly from the firmware entities described in [First boot](getting-started/first-boot.md); the live view just displays them in one place for convenience. If a value is missing from the sidebar, check that the corresponding entity is enabled on the device page in Home Assistant.
+These come from the firmware's environmental entities; the live view just shows them in one place. If a value is missing, the corresponding entity is disabled on the device page.
 
 !!! example "Screenshot placeholder"
     **Close-up of the Environment section in the live sidebar.** `live-view/environment-sidebar.png`
+
+## What you get by default
+
+Once the device is connected and calibrated, Home Assistant has these entities ready. Some are enabled out of the box; others light up as you configure zones or flip the relevant device toggle.
+
+**Diagnostic**
+
+- **Firmware Version** — the firmware build currently running on the device.
+- **Firmware Update** — the ESPHome update entity that handles OTA upgrades.
+
+**Environmental**
+
+- **Illuminance** (lux), **Temperature** (°C), **Humidity** (%) — enabled by default.
+- **CO2** (ppm) — only if the CO2 module is fitted. Disabled by default.
+
+**Presence**
+
+- **Occupancy** — combined presence signal. Enabled by default. This is the one you'll usually automate against.
+- **Motion Presence** — the PIR (passive infrared) sensor as a binary sensor. Disabled by default.
+- **Static Presence** — the SEN0609 static-presence sensor. Disabled by default.
+
+**Zones**
+
+- **Zone 0 Presence** through **Zone 7 Presence** — one per zone.
+- **Zone 0 Target Count** through **Zone 7 Target Count** — one per zone.
+
+Zone pairs stay disabled until you paint the zone and enable its toggles in settings. **Zone 0** is the "rest of room" fallback — any target outside a named zone.
+
+See [Settings → Entities](settings/entities.md) for the full list and how to enable or rename individual entities.
 
 ## Connection and firmware-status banners
 
@@ -61,7 +90,7 @@ When something's wrong, the live grid is replaced by a banner rather than being 
 | Symptom | Likely cause | Fix |
 | --- | --- | --- |
 | Grid is blank or shows no sensor data | Device is offline | Check **Settings → Devices & Services → ESPHome** — the device should be listed and marked online. |
-| Targets jump around or drift outside walls | Calibration is off | Re-run the calibration wizard. See [Calibration](getting-started/calibration.md). |
+| Targets jump around or drift outside walls | Calibration is off | Re-run the calibration wizard. See [Calibration](calibration.md). |
 | Zone colour never highlights, even when someone's in the zone | Zone Presence toggle is off at the device level, or the zone has zero cells painted | Enable **Zone Presence** on the device page; check the zone has cells in the [Zones](zones.md) editor. |
 | Target stuck on a fixed cell with nobody there | Interference source at that cell (fan, curtain, reflective surface) | Add an Interference overlay at that cell. If it's still problematic, escalate to Suppress. See [Overlays](overlays.md). |
 | Environmental sensor values missing from the sidebar | Corresponding entity is disabled on the device page | Enable the entity in Home Assistant: go to the device page → entities → enable the missing one. CO2 in particular is disabled by default. |
@@ -70,5 +99,4 @@ See also: the [central Troubleshooting](troubleshooting.md) page for conceptual 
 
 ## Where to next
 
-- **[Automations →](automations.md)** — put it all to use: worked examples for bathroom and bedroom automations in Home Assistant.
-- **[Firmware →](firmware.md)** — keep firmware up to date over the air, or flash a fresh device.
+- **[Zones →](zones.md)** — paint named regions on the grid so each one fires its own presence entity.

@@ -1,0 +1,43 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 220" preserveAspectRatio="xMidYMid meet">
+  <style>
+    .label { fill: #444; font-family: -apple-system, system-ui, sans-serif; }
+    .body { font-size: 11px; }
+    .caption { font-size: 10px; opacity: 0.75; }
+    .sensor { fill: #E53935; }
+    .wedge { fill: #2196F3; fill-opacity: 0.18; stroke: #1976D2; stroke-width: 1.5; }
+    .wall { fill: none; stroke: #444; stroke-width: 2; }
+    .axis { stroke: #888; stroke-width: 1; stroke-dasharray: 3 3; opacity: 0.5; }
+    .anglearc { fill: none; stroke: #444; stroke-width: 1; opacity: 0.7; }
+    .bracket { stroke: #444; stroke-width: 1; fill: none; opacity: 0.7; }
+    @media (prefers-color-scheme: dark) {
+      .label { fill: #ddd; }
+      .wall, .bracket { stroke: #ddd; }
+      .axis, .anglearc { stroke: #bbb; }
+    }
+  </style>
+
+  <!-- FOV cone (sensor at top-wall midpoint, opening south) -->
+  <path d="M 142.5,40 L 12.6,115 A 150,150 0 0,0 272.4,115 Z" class="wedge"/>
+
+  <!-- Centre-line straight down -->
+  <line x1="142.5" y1="40" x2="142.5" y2="190" class="axis"/>
+
+  <!-- Room outline (drawn on top of cone so walls show through) -->
+  <rect x="80" y="40" width="125" height="100" class="wall"/>
+
+  <!-- Angle indicator -->
+  <path d="M 126.91,49 A 18,18 0 0,0 158.09,49" class="anglearc"/>
+  <text x="142.5" y="65" text-anchor="middle" class="label body">120°</text>
+
+  <!-- Room dimensions -->
+  <text x="142.5" y="34" text-anchor="middle" class="label body">5 m</text>
+  <text x="74" y="94" text-anchor="end" class="label body">4 m</text>
+
+  <!-- Blind-strip depth: cone edges exit side walls 62.5/tan(60°) = 1.44 m below top wall -->
+  <path d="M 75,40 L 70,40 L 70,76.08 L 75,76.08" class="bracket"/>
+  <text x="67" y="61" text-anchor="end" class="label body">~1.4 m</text>
+  <text x="67" y="73" text-anchor="end" class="label caption">blind</text>
+
+  <!-- Sensor -->
+  <circle cx="142.5" cy="40" r="4" class="sensor"/>
+</svg>

@@ -197,4 +197,5 @@ See also: the [central Troubleshooting](troubleshooting.md) page for conceptual 
 
 ## Where to next
 
-- **[Firmware →](firmware.md)** — keep firmware up to date over the air, or flash a fresh device.
+- **[Settings →](settings/index.md)** — tune detection ranges, reporting intervals, LED/relay behaviour, and more.
+- **[Firmware upgrades →](firmware-upgrades.md)** — keep firmware up to date over the air.
