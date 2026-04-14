@@ -598,7 +598,8 @@ export class EppFlasherView extends LitElement {
 				haAdd?.type === "added" || haAdd?.type === "already_added";
 			const icon = success ? "mdi:check-circle-outline" : "mdi:alert-outline";
 			const haAddKey = haAdd?.type ?? "failed";
-			const reason = haAdd?.type === "failed" ? (haAdd.reason ?? "") : "";
+			const reason =
+				haAdd?.type === "failed" ? (haAdd.reason ?? "unknown") : "";
 
 			return html`
 				<div class="flasher-content">

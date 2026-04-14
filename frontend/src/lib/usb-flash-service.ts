@@ -378,6 +378,11 @@ export async function detectIpAddress(
 						pkt.data[0] === CMD_GET_CURRENT_STATE)
 				) {
 					const urlLen = pkt.data[2];
+					if (pkt.data.length < 3 + urlLen) {
+						// Malformed or truncated packet — skip to avoid decoding
+						// garbage that happens to match the IP regex.
+						continue;
+					}
 					const url = decoder.decode(pkt.data.slice(3, 3 + urlLen));
 					const match = ipPattern.exec(url);
 					if (match && match[1] !== "0.0.0.0") {

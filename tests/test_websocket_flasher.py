@@ -350,7 +350,11 @@ class TestAddEsphomeDevice:
             ),
             (
                 {"type": "abort", "reason": ""},
-                {"type": "failed", "reason": ""},
+                {"type": "failed", "reason": "unknown"},
+            ),
+            (
+                {"type": "abort"},
+                {"type": "failed", "reason": "unknown"},
             ),
             (
                 {"type": "progress"},

@@ -1370,4 +1370,38 @@ describe("detectIpAddress", () => {
 		const ip = await detectIpAddress(mockReader, mockWriter, 5000);
 		expect(ip).toBe("192.168.1.42");
 	});
+
+	it("ignores RPC_RESULT when urlLen exceeds packet length", async () => {
+		// Truncated packet: claims urlLen=100 but only has 5 bytes after header.
+		// Without the bounds check, slice(3, 3+100) would decode only 5 bytes of
+		// garbage — if those happen to contain an IPv4 pattern, we'd match a
+		// corrupt IP. With the guard we skip the packet entirely.
+		const truncated = new Uint8Array([
+			0x01, // cmd = WIFI_SETTINGS
+			0x06, // data_length (lies — actual payload is 5 bytes)
+			0x64, // urlLen = 100 (exceeds available bytes)
+			0x31, // '1'
+			0x2e, // '.'
+			0x32, // '2'
+			0x2e, // '.'
+			0x33, // '3'
+		]);
+		vi.mocked(readImprovResponse)
+			.mockResolvedValueOnce({
+				packets: [{ type: TYPE_RPC_RESULT, data: truncated }],
+				buffer: [],
+			})
+			.mockResolvedValueOnce({
+				packets: [
+					{
+						type: TYPE_RPC_RESULT,
+						data: makeRpcResult(0x01, "http://192.168.1.42"),
+					},
+				],
+				buffer: [],
+			});
+
+		const ip = await detectIpAddress(mockReader, mockWriter, 5000);
+		expect(ip).toBe("192.168.1.42");
+	});
 });

@@ -1586,13 +1586,13 @@ def _map_esphome_flow_result(result: dict[str, Any]) -> dict[str, str]:
             return {"type": "cannot_connect"}
         return {"type": "needs_auth"}
     if flow_type == "abort":
-        reason = result.get("reason", "")
+        reason = result.get("reason") or "unknown"
         if reason == "already_configured":
             return {"type": "already_added"}
         if reason in ("cannot_connect", "connection_error"):
             return {"type": "cannot_connect"}
         return {"type": "failed", "reason": reason}
-    return {"type": "failed", "reason": str(flow_type) if flow_type else ""}
+    return {"type": "failed", "reason": str(flow_type) if flow_type else "unknown"}
 
 
 @websocket_api.websocket_command(
