@@ -1761,11 +1761,14 @@ const dt={attribute:!0,type:String,converter:E,reflect:!1,hasChanged:m},At=(t=dt
 		}
 
 		.cell {
-			cursor: pointer;
 			transition: opacity 0.1s;
 		}
 
-		.cell:hover {
+		:host([editable]) .cell {
+			cursor: pointer;
+		}
+
+		:host([editable]) .cell:hover {
 			opacity: 0.75;
 		}
 

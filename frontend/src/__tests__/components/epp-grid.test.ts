@@ -645,6 +645,27 @@ describe("epp-grid target dot cursor guard", () => {
 		document.body.removeChild(el);
 	});
 
+	it("cells use pointer cursor only when editable", async () => {
+		// Live overview (editable=false) should render the grid as a passive
+		// display — only target dots are clickable. Painting-mode cells
+		// (editable=true) keep the pointer cursor to signal they accept clicks.
+		const editEl = createGrid({ editable: true });
+		document.body.appendChild(editEl);
+		await editEl.updateComplete;
+		const editCell = editEl.shadowRoot!.querySelector(".cell") as HTMLElement;
+		expect(editCell).not.toBeNull();
+		expect(getComputedStyle(editCell).cursor).toBe("pointer");
+		document.body.removeChild(editEl);
+
+		const liveEl = createGrid({ editable: false });
+		document.body.appendChild(liveEl);
+		await liveEl.updateComplete;
+		const liveCell = liveEl.shadowRoot!.querySelector(".cell") as HTMLElement;
+		expect(liveCell).not.toBeNull();
+		expect(getComputedStyle(liveCell).cursor).not.toBe("pointer");
+		document.body.removeChild(liveEl);
+	});
+
 	it("click on target dot in edit mode does not dispatch target-click", async () => {
 		const targets: Target[] = [
 			{ x: 1500, y: 2000, speed: 0, status: "active", signal: 7 },

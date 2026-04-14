@@ -86,11 +86,14 @@ export class EppGrid extends LitElement {
 		}
 
 		.cell {
-			cursor: pointer;
 			transition: opacity 0.1s;
 		}
 
-		.cell:hover {
+		:host([editable]) .cell {
+			cursor: pointer;
+		}
+
+		:host([editable]) .cell:hover {
 			opacity: 0.75;
 		}
 
