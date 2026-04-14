@@ -1571,7 +1571,7 @@ async def websocket_delete_esphome_device(
 # -- add_esphome_device --
 
 
-def _map_esphome_flow_result(result: dict[str, Any]) -> dict[str, Any]:
+def _map_esphome_flow_result(result: dict[str, Any]) -> dict[str, str]:
     """Map an ESPHome config-flow result dict to a HaAddResult dict."""
     flow_type = result.get("type")
     if flow_type == "create_entry":
@@ -1585,7 +1585,7 @@ def _map_esphome_flow_result(result: dict[str, Any]) -> dict[str, Any]:
         if reason in ("cannot_connect", "connection_error"):
             return {"type": "cannot_connect"}
         return {"type": "failed", "reason": reason}
-    return {"type": "failed", "reason": f"unknown_result_type:{flow_type}"}
+    return {"type": "failed", "reason": str(flow_type) if flow_type else ""}
 
 
 @websocket_api.websocket_command(

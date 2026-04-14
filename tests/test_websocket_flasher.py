@@ -317,8 +317,12 @@ class TestAddEsphomeDevice:
                 {"type": "failed", "reason": ""},
             ),
             (
-                {"type": "show_progress"},
-                {"type": "failed", "reason": "unknown_result_type:show_progress"},
+                {"type": "progress"},
+                {"type": "failed", "reason": "progress"},
+            ),
+            (
+                {"type": "menu"},
+                {"type": "failed", "reason": "menu"},
             ),
         ],
     )
