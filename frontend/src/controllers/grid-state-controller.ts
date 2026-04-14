@@ -374,7 +374,7 @@ export class GridStateController implements ReactiveController {
 				visMaxX,
 				visMinY,
 				visMaxY,
-				item?.rotation ?? 0,
+				ds.origRot,
 			);
 			this.updateFurniture(ds.id, pos);
 		} else if (ds.type === "resize" && ds.handle) {

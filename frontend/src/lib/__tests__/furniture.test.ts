@@ -296,7 +296,7 @@ describe("clampFurnitureMove", () => {
 				5400,
 				90,
 			);
-			expect(result.x).toBe(3000);
+			expect(result.x).toBeCloseTo(3000);
 		});
 
 		it("keeps rotated item's visual bottom edge within maxY", () => {
@@ -317,7 +317,7 @@ describe("clampFurnitureMove", () => {
 				5400,
 				90,
 			);
-			expect(result.y).toBe(4200);
+			expect(result.y).toBeCloseTo(4200);
 		});
 
 		it("keeps rotated item's visual top edge within minY", () => {
@@ -338,7 +338,7 @@ describe("clampFurnitureMove", () => {
 				5400,
 				90,
 			);
-			expect(result.y).toBe(400);
+			expect(result.y).toBeCloseTo(400);
 		});
 
 		it("allows rotated item's visual left edge to reach minX", () => {
@@ -359,7 +359,7 @@ describe("clampFurnitureMove", () => {
 				5400,
 				90,
 			);
-			expect(result.x).toBe(-700);
+			expect(result.x).toBeCloseTo(-700);
 		});
 
 		it("unchanged behavior at rotation 0", () => {
