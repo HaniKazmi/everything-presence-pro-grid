@@ -898,6 +898,12 @@ export const flasherStyles = css`
     margin-top: 4px;
   }
 
+  .ha-add-result {
+    color: var(--secondary-text-color);
+    font-size: 14px;
+    margin-top: 8px;
+  }
+
   .usb-status {
     text-align: center;
     padding: 24px 0;
