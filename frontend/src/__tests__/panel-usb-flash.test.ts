@@ -589,21 +589,92 @@ describe("_handleWifiProvision", () => {
 		expect(addSpy).toHaveBeenCalledWith("192.168.1.42");
 	});
 
-	it("sets state to adding_device then complete with the IP", async () => {
+	it("sets state to wifi_configured with IP after detectIpAddress returns", async () => {
+		(detectIpAddress as ReturnType<typeof vi.fn>).mockResolvedValue("192.168.1.42");
 		const ctrl = (panel as any)._flasherCtrl;
-		vi.spyOn(ctrl, "addEsphomeDevice").mockResolvedValue(undefined);
 		const updateSpy = vi.spyOn(ctrl, "updateUsbState");
 
 		await flushProvision("MySSID", "s3cr3t");
 
 		const steps = updateSpy.mock.calls.map((c: any[]) => c[0].step);
-		expect(steps).toContain("adding_device");
-		expect(steps).toContain("complete");
+		expect(steps).toContain("wifi_configured");
+		// wifi_configured must appear before complete
+		const wifiConfiguredIdx = steps.indexOf("wifi_configured");
+		const completeIdx = steps.indexOf("complete");
+		expect(wifiConfiguredIdx).toBeLessThan(completeIdx);
+		// wifi_configured carried the IP
+		const wifiConfiguredCall = (updateSpy.mock.calls as any[][]).find(
+			(c) => c[0].step === "wifi_configured",
+		);
+		expect(wifiConfiguredCall?.[0].ip).toBe("192.168.1.42");
+	});
+
+	it("transitions to complete with haAdd=added when addEsphomeDevice resolves with added", async () => {
+		(detectIpAddress as ReturnType<typeof vi.fn>).mockResolvedValue("192.168.1.42");
+		const ctrl = (panel as any)._flasherCtrl;
+		vi.spyOn(ctrl, "addEsphomeDevice").mockResolvedValue({ type: "added" });
+		const updateSpy = vi.spyOn(ctrl, "updateUsbState");
+
+		await flushProvision("MySSID", "s3cr3t");
 
 		const completeCall = (updateSpy.mock.calls as any[][]).find(
 			(c) => c[0].step === "complete",
 		);
-		expect(completeCall?.[0].ip).toBe("192.168.1.42");
+		expect(completeCall?.[0]).toMatchObject({
+			step: "complete",
+			ip: "192.168.1.42",
+			haAdd: { type: "added" },
+		});
+	});
+
+	it.each([
+		["already_added", { type: "already_added" }],
+		["needs_auth", { type: "needs_auth" }],
+		["cannot_connect", { type: "cannot_connect" }],
+		["failed with reason", { type: "failed", reason: "invalid_auth" }],
+	])(
+		"transitions to complete with haAdd=%s from addEsphomeDevice",
+		async (_label: string, outcome: any) => {
+			(detectIpAddress as ReturnType<typeof vi.fn>).mockResolvedValue("192.168.1.42");
+			const ctrl = (panel as any)._flasherCtrl;
+			vi.spyOn(ctrl, "addEsphomeDevice").mockResolvedValue(outcome);
+			const updateSpy = vi.spyOn(ctrl, "updateUsbState");
+
+			await flushProvision("MySSID", "s3cr3t");
+
+			const completeCall = (updateSpy.mock.calls as any[][]).find(
+				(c) => c[0].step === "complete",
+			);
+			expect(completeCall?.[0]).toMatchObject({
+				step: "complete",
+				ip: "192.168.1.42",
+				haAdd: outcome,
+			});
+		},
+	);
+
+	it("transitions to complete with haAdd=failed when addEsphomeDevice throws", async () => {
+		(detectIpAddress as ReturnType<typeof vi.fn>).mockResolvedValue("192.168.1.42");
+		const ctrl = (panel as any)._flasherCtrl;
+		vi.spyOn(ctrl, "addEsphomeDevice").mockRejectedValue(
+			new Error("connection timeout"),
+		);
+		const updateSpy = vi.spyOn(ctrl, "updateUsbState");
+
+		await flushProvision("MySSID", "s3cr3t");
+
+		const completeCall = (updateSpy.mock.calls as any[][]).find(
+			(c) => c[0].step === "complete",
+		);
+		expect(completeCall?.[0]).toMatchObject({
+			step: "complete",
+			ip: "192.168.1.42",
+			haAdd: { type: "failed", reason: "connection timeout" },
+		});
+		// Must NOT transition to the error step on HA-add failure
+		expect(
+			(updateSpy.mock.calls as any[][]).some((c) => c[0].step === "error"),
+		).toBe(false);
 	});
 
 	it("sets error state when runWifiProvision throws", async () => {

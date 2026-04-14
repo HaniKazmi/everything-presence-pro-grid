@@ -73,7 +73,13 @@ import {
 	panelStyles,
 	protocolFullpageStyles,
 } from "./styles.js";
-import type { DeviceInfo, RawTarget, SetupStep, Target } from "./types.js";
+import type {
+	DeviceInfo,
+	HaAddResult,
+	RawTarget,
+	SetupStep,
+	Target,
+} from "./types.js";
 
 export class EPPGridPanel extends LitElement {
 	@property({ attribute: false }) hass: any;
@@ -2641,9 +2647,19 @@ export class EPPGridPanel extends LitElement {
 			await port.close().catch(() => {});
 			ctrl.serialPort = null;
 
-			ctrl.updateUsbState({ step: "adding_device" });
-			await ctrl.addEsphomeDevice(ip);
-			ctrl.updateUsbState({ step: "complete", ip });
+			// WiFi side succeeded. Intermediate state while HA-add runs.
+			ctrl.updateUsbState({ step: "wifi_configured", ip });
+
+			let haAdd: HaAddResult;
+			try {
+				haAdd = await ctrl.addEsphomeDevice(ip);
+			} catch (err) {
+				const msg = (err as { message?: string })?.message;
+				haAdd = { type: "failed", reason: msg ?? "unknown" };
+			}
+			if (ctrl.opId !== myOp) return;
+
+			ctrl.updateUsbState({ step: "complete", ip, haAdd });
 		} catch (err: any) {
 			try {
 				(ctrl as any)._serialReader?.releaseLock();
