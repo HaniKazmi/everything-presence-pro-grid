@@ -1571,6 +1571,23 @@ async def websocket_delete_esphome_device(
 # -- add_esphome_device --
 
 
+def _map_esphome_flow_result(result: dict[str, Any]) -> dict[str, Any]:
+    """Map an ESPHome config-flow result dict to a HaAddResult dict."""
+    flow_type = result.get("type")
+    if flow_type == "create_entry":
+        return {"type": "added"}
+    if flow_type == "form":
+        return {"type": "needs_auth"}
+    if flow_type == "abort":
+        reason = result.get("reason", "")
+        if reason == "already_configured":
+            return {"type": "already_added"}
+        if reason in ("cannot_connect", "connection_error"):
+            return {"type": "cannot_connect"}
+        return {"type": "failed", "reason": reason}
+    return {"type": "failed", "reason": f"unknown_result_type:{flow_type}"}
+
+
 @websocket_api.websocket_command(
     {
         vol.Required("type"): "eppgrid/add_esphome_device",
@@ -1594,6 +1611,6 @@ async def websocket_add_esphome_device(
             context=flow_context,
             data={"host": msg["host"], "port": 6053},
         )
-        connection.send_result(msg["id"], {"result": result.get("type", "unknown")})
+        connection.send_result(msg["id"], _map_esphome_flow_result(result))
     except Exception as err:
         _send_exception(connection, msg["id"], "add_failed", err)
