@@ -936,6 +936,100 @@ describe("_handleUsbWifiConfig", () => {
 	});
 });
 
+describe("_handleRetryHaAdd", () => {
+	let panel: EPPGridPanel;
+
+	beforeEach(() => {
+		vi.clearAllMocks();
+		resetServiceMocks();
+		panel = createPanel();
+	});
+
+	it("re-enters wifi_configured and emits complete with new haAdd on retry", async () => {
+		const ctrl = (panel as any)._flasherCtrl;
+		ctrl.usbFlashState = {
+			step: "complete",
+			ip: "192.168.1.42",
+			haAdd: { type: "cannot_connect" },
+		};
+		vi.spyOn(ctrl, "addEsphomeDevice").mockResolvedValue({ type: "added" });
+		const updateSpy = vi.spyOn(ctrl, "updateUsbState");
+
+		await (panel as any)._handleRetryHaAdd();
+
+		const steps = updateSpy.mock.calls.map((c: any[]) => c[0].step);
+		expect(steps).toEqual(["wifi_configured", "complete"]);
+		expect(updateSpy.mock.calls[1][0]).toMatchObject({
+			step: "complete",
+			ip: "192.168.1.42",
+			haAdd: { type: "added" },
+		});
+	});
+
+	it("is a no-op when step is not complete", async () => {
+		const ctrl = (panel as any)._flasherCtrl;
+		ctrl.usbFlashState = { step: "error" };
+		const addSpy = vi.spyOn(ctrl, "addEsphomeDevice");
+		const updateSpy = vi.spyOn(ctrl, "updateUsbState");
+
+		await (panel as any)._handleRetryHaAdd();
+
+		expect(addSpy).not.toHaveBeenCalled();
+		expect(updateSpy).not.toHaveBeenCalled();
+	});
+
+	it("is a no-op when ip is missing", async () => {
+		const ctrl = (panel as any)._flasherCtrl;
+		ctrl.usbFlashState = { step: "complete", haAdd: { type: "failed" } };
+		const addSpy = vi.spyOn(ctrl, "addEsphomeDevice");
+
+		await (panel as any)._handleRetryHaAdd();
+
+		expect(addSpy).not.toHaveBeenCalled();
+	});
+
+	it("records haAdd=failed when retry throws", async () => {
+		const ctrl = (panel as any)._flasherCtrl;
+		ctrl.usbFlashState = {
+			step: "complete",
+			ip: "192.168.1.42",
+			haAdd: { type: "cannot_connect" },
+		};
+		vi.spyOn(ctrl, "addEsphomeDevice").mockRejectedValue(
+			new Error("network unreachable"),
+		);
+		const updateSpy = vi.spyOn(ctrl, "updateUsbState");
+
+		await (panel as any)._handleRetryHaAdd();
+
+		const completeCall = updateSpy.mock.calls[1][0];
+		expect(completeCall).toMatchObject({
+			step: "complete",
+			ip: "192.168.1.42",
+			haAdd: { type: "failed", reason: "network unreachable" },
+		});
+	});
+});
+
+describe("_handleFlashAnother", () => {
+	let panel: EPPGridPanel;
+
+	beforeEach(() => {
+		vi.clearAllMocks();
+		resetServiceMocks();
+		panel = createPanel();
+	});
+
+	it("calls resetUsbState on the controller", () => {
+		const ctrl = (panel as any)._flasherCtrl;
+		const resetSpy = vi.spyOn(ctrl, "resetUsbState").mockImplementation(() => {});
+
+		(panel as any)._handleFlashAnother();
+
+		expect(resetSpy).toHaveBeenCalled();
+	});
+});
+
 // =========================================================
 // Inline event handlers on epp-flasher-view in render()
 // =========================================================

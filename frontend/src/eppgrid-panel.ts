@@ -1171,6 +1171,12 @@ export class EPPGridPanel extends LitElement {
 						// Retry WiFi config — prompts for new port if needed
 						this._handleUsbWifiConfig();
 					}}
+					@retry-ha-add=${() => {
+						this._handleRetryHaAdd();
+					}}
+					@flash-another=${() => {
+						this._handleFlashAnother();
+					}}
 					@wifi-scan=${() => {
 						this._handleWifiScan();
 					}}
@@ -2683,6 +2689,27 @@ export class EPPGridPanel extends LitElement {
 					| undefined,
 			});
 		}
+	}
+
+	private async _handleRetryHaAdd(): Promise<void> {
+		const ctrl = this._flasherCtrl;
+		const state = ctrl.usbFlashState;
+		if (state?.step !== "complete" || !state.ip) return;
+
+		ctrl.updateUsbState({ step: "wifi_configured", ip: state.ip });
+
+		let haAdd: HaAddResult;
+		try {
+			haAdd = await ctrl.addEsphomeDevice(state.ip);
+		} catch (err) {
+			const msg = (err as { message?: string })?.message;
+			haAdd = { type: "failed", reason: msg ?? "unknown" };
+		}
+		ctrl.updateUsbState({ step: "complete", ip: state.ip, haAdd });
+	}
+
+	private _handleFlashAnother(): void {
+		this._flasherCtrl.resetUsbState();
 	}
 
 	private async _handleWifiScan(): Promise<void> {
