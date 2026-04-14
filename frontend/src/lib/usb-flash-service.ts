@@ -304,9 +304,40 @@ export async function runWifiProvision(
 }
 
 export async function detectIpAddress(
-	_reader: ReadableStreamDefaultReader<Uint8Array>,
+	reader: ReadableStreamDefaultReader<Uint8Array>,
 	_writer: WritableStreamDefaultWriter<Uint8Array>,
-	_timeoutMs: number,
+	timeoutMs: number,
 ): Promise<string> {
-	throw new Error("detectIpAddress not yet implemented");
+	const decoder = new TextDecoder();
+	const ipPattern = /(\d+\.\d+\.\d+\.\d+)/;
+	const deadline = Date.now() + timeoutMs;
+	let buffer: number[] = [];
+
+	while (Date.now() < deadline) {
+		const result = await readImprovResponse(
+			reader,
+			deadline - Date.now(),
+			buffer,
+		);
+		buffer = result.buffer;
+		for (const pkt of result.packets) {
+			if (
+				pkt.type === TYPE_RPC_RESULT &&
+				pkt.data.length >= 3 &&
+				pkt.data[0] === CMD_WIFI_SETTINGS
+			) {
+				const urlLen = pkt.data[2];
+				const url = decoder.decode(pkt.data.slice(3, 3 + urlLen));
+				const match = ipPattern.exec(url);
+				if (match && match[1] !== "0.0.0.0") {
+					return match[1];
+				}
+			}
+		}
+	}
+
+	throw Object.assign(
+		new Error("WiFi connection failed — check SSID/password and try again"),
+		{ errorKey: "wifi.errors.connection_failed" },
+	);
 }
