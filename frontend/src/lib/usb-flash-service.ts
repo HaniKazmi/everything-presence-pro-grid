@@ -314,48 +314,55 @@ export async function detectIpAddress(
 	let buffer: number[] = [];
 
 	while (Date.now() < deadline) {
-		const result = await readImprovResponse(
-			reader,
-			deadline - Date.now(),
-			buffer,
-		);
-		buffer = result.buffer;
-		for (const pkt of result.packets) {
-			if (pkt.type === TYPE_ERROR_STATE) {
-				const code = pkt.data[0];
-				const messages: Record<number, string> = {
-					1: "Invalid command — device may need to be power-cycled",
-					2: "Unknown command",
-					3: "WiFi connection failed — check SSID/password and try again",
-					4: "Not authorized",
-				};
-				const errorKeyByCode: Record<number, string> = {
-					1: "wifi.errors.invalid_command",
-					2: "wifi.errors.unknown_command",
-					3: "wifi.errors.connection_failed",
-					4: "wifi.errors.not_authorized",
-				};
-				const key = errorKeyByCode[code] ?? "wifi.errors.error_code";
-				throw Object.assign(
-					new Error(messages[code] ?? `WiFi error (code ${code})`),
-					{
-						errorKey: key,
-						errorParams: key === "wifi.errors.error_code" ? { code } : undefined,
-					},
-				);
-			}
-			if (
-				pkt.type === TYPE_RPC_RESULT &&
-				pkt.data.length >= 3 &&
-				pkt.data[0] === CMD_WIFI_SETTINGS
-			) {
-				const urlLen = pkt.data[2];
-				const url = decoder.decode(pkt.data.slice(3, 3 + urlLen));
-				const match = ipPattern.exec(url);
-				if (match && match[1] !== "0.0.0.0") {
-					return match[1];
+		try {
+			const result = await readImprovResponse(
+				reader,
+				deadline - Date.now(),
+				buffer,
+			);
+			buffer = result.buffer;
+			for (const pkt of result.packets) {
+				if (pkt.type === TYPE_ERROR_STATE) {
+					const code = pkt.data[0];
+					const messages: Record<number, string> = {
+						1: "Invalid command — device may need to be power-cycled",
+						2: "Unknown command",
+						3: "WiFi connection failed — check SSID/password and try again",
+						4: "Not authorized",
+					};
+					const errorKeyByCode: Record<number, string> = {
+						1: "wifi.errors.invalid_command",
+						2: "wifi.errors.unknown_command",
+						3: "wifi.errors.connection_failed",
+						4: "wifi.errors.not_authorized",
+					};
+					const key = errorKeyByCode[code] ?? "wifi.errors.error_code";
+					throw Object.assign(
+						new Error(messages[code] ?? `WiFi error (code ${code})`),
+						{
+							errorKey: key,
+							errorParams: key === "wifi.errors.error_code" ? { code } : undefined,
+						},
+					);
+				}
+				if (
+					pkt.type === TYPE_RPC_RESULT &&
+					pkt.data.length >= 3 &&
+					pkt.data[0] === CMD_WIFI_SETTINGS
+				) {
+					const urlLen = pkt.data[2];
+					const url = decoder.decode(pkt.data.slice(3, 3 + urlLen));
+					const match = ipPattern.exec(url);
+					if (match && match[1] !== "0.0.0.0") {
+						return match[1];
+					}
 				}
 			}
+		} catch (err) {
+			if (err instanceof Error && !err.message.includes("timeout")) {
+				throw err;
+			}
+			break;
 		}
 	}
 
