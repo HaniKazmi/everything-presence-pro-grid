@@ -106,20 +106,24 @@ export function pxToMm(px: number, cellPx: number): number {
 /**
  * Compute clamped move position for a furniture item being dragged.
  *
- * Clamps the position so the item stays within the given bounds.
- * The bounds represent the visible grid area in room-relative mm.
+ * Clamps the position so the item's visual (rotation-aware) bounding box
+ * stays within the given bounds. CSS rotation pivots about the item's
+ * center, so a rotated item's rendered extent differs from its unrotated
+ * width/height — without accounting for that, a 90°-rotated sofa would
+ * be stopped too early on one axis and leak off-grid on the other.
  *
- * @param origX Original X position (mm)
- * @param origY Original Y position (mm)
+ * @param origX Original X position (mm, top-left of unrotated bounding box)
+ * @param origY Original Y position (mm, top-left of unrotated bounding box)
  * @param dxPx Drag delta X in pixels
  * @param dyPx Drag delta Y in pixels
  * @param cellPx Current cell pixel size
- * @param itemWidth Item width in mm
- * @param itemHeight Item height in mm
+ * @param itemWidth Item width in mm (unrotated)
+ * @param itemHeight Item height in mm (unrotated)
  * @param minX Minimum X bound (mm, room-relative)
  * @param maxX Maximum X bound (mm, room-relative)
  * @param minY Minimum Y bound (mm, room-relative)
  * @param maxY Maximum Y bound (mm, room-relative)
+ * @param rotationDeg Item rotation in degrees (CW, matches CSS transform)
  * @returns Clamped { x, y } position in mm
  */
 export function clampFurnitureMove(
@@ -134,12 +138,25 @@ export function clampFurnitureMove(
 	maxX: number,
 	minY: number,
 	maxY: number,
+	rotationDeg: number,
 ): { x: number; y: number } {
 	const dxMm = pxToMm(dxPx, cellPx);
 	const dyMm = pxToMm(dyPx, cellPx);
+	const rad = (rotationDeg * Math.PI) / 180;
+	const absCos = Math.abs(Math.cos(rad));
+	const absSin = Math.abs(Math.sin(rad));
+	const visualWidth = itemWidth * absCos + itemHeight * absSin;
+	const visualHeight = itemWidth * absSin + itemHeight * absCos;
+	// Rotation pivots about center, so (x, y) (unrotated top-left) is offset
+	// from the visual top-left by half the difference of the two bboxes.
+	const dxBox = (visualWidth - itemWidth) / 2;
+	const dyBox = (visualHeight - itemHeight) / 2;
 	return {
-		x: Math.max(minX, Math.min(maxX - itemWidth, origX + dxMm)),
-		y: Math.max(minY, Math.min(maxY - itemHeight, origY + dyMm)),
+		x: Math.max(minX + dxBox, Math.min(maxX - itemWidth - dxBox, origX + dxMm)),
+		y: Math.max(
+			minY + dyBox,
+			Math.min(maxY - itemHeight - dyBox, origY + dyMm),
+		),
 	};
 }
 

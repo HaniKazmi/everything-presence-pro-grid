@@ -207,6 +207,7 @@ describe("clampFurnitureMove", () => {
 			3000,
 			0,
 			4000,
+			0,
 		);
 		expect(result.x).toBe(500);
 		expect(result.y).toBe(500);
@@ -226,6 +227,7 @@ describe("clampFurnitureMove", () => {
 			3300,
 			-300,
 			4300,
+			0,
 		);
 		expect(result.x).toBe(-300);
 		expect(result.y).toBe(-300);
@@ -245,6 +247,7 @@ describe("clampFurnitureMove", () => {
 			3300,
 			-300,
 			4300,
+			0,
 		);
 		expect(result.x).toBe(2700); // 3300 - 600
 		expect(result.y).toBe(3900); // 4300 - 400
@@ -264,9 +267,121 @@ describe("clampFurnitureMove", () => {
 			6000,
 			0,
 			6000,
+			0,
 		);
 		expect(result.x).toBeCloseTo(300);
 		expect(result.y).toBeCloseTo(300);
+	});
+
+	describe("rotation-aware clamping", () => {
+		// A 1600×800 item rotated 90° has a visual bounding box of 800×1600
+		// centered at (item.x + 800, item.y + 400). The clamp must use the
+		// visual bbox so the rendered item stays inside [minX..maxX, minY..maxY].
+
+		it("allows rotated item's visual right edge to reach maxX", () => {
+			// Drag far right: item.x can go high enough that the visual right
+			// edge (= item.x + (width + visualWidth) / 2) touches maxX = 4200.
+			// For 1600x800 @ 90°: visualWidth=800 → item.x ≤ 4200 - 1200 = 3000.
+			const result = clampFurnitureMove(
+				0,
+				500,
+				100000,
+				0,
+				28,
+				1600,
+				800,
+				-300,
+				4200,
+				0,
+				5400,
+				90,
+			);
+			expect(result.x).toBeCloseTo(3000);
+		});
+
+		it("keeps rotated item's visual bottom edge within maxY", () => {
+			// For 1600×800 @ 90°: visualHeight=1600, visual bottom =
+			// item.y + (height + visualHeight) / 2 = item.y + 1200.
+			// Drag far down: item.y ≤ 5400 - 1200 = 4200.
+			const result = clampFurnitureMove(
+				500,
+				0,
+				0,
+				100000,
+				28,
+				1600,
+				800,
+				-300,
+				4200,
+				0,
+				5400,
+				90,
+			);
+			expect(result.y).toBeCloseTo(4200);
+		});
+
+		it("keeps rotated item's visual top edge within minY", () => {
+			// Visual top = item.y - (visualHeight - height) / 2.
+			// For 1600×800 @ 90°: visualHeight=1600 → visual top = item.y - 400.
+			// Drag far up: item.y ≥ minY + 400 = 400.
+			const result = clampFurnitureMove(
+				500,
+				1000,
+				0,
+				-100000,
+				28,
+				1600,
+				800,
+				-300,
+				4200,
+				0,
+				5400,
+				90,
+			);
+			expect(result.y).toBeCloseTo(400);
+		});
+
+		it("allows rotated item's visual left edge to reach minX", () => {
+			// Visual left = item.x - (visualWidth - width) / 2.
+			// For 1600×800 @ 90°: visual left = item.x + 400.
+			// Drag far left: item.x ≥ minX - 400 = -700.
+			const result = clampFurnitureMove(
+				2000,
+				500,
+				-100000,
+				0,
+				28,
+				1600,
+				800,
+				-300,
+				4200,
+				0,
+				5400,
+				90,
+			);
+			expect(result.x).toBeCloseTo(-700);
+		});
+
+		it("unchanged behavior at rotation 0", () => {
+			// Same as existing "clamps to maximum bounds - itemSize" test but
+			// explicitly passing rotation = 0.
+			const result = clampFurnitureMove(
+				2000,
+				3000,
+				10000,
+				10000,
+				28,
+				600,
+				400,
+				-300,
+				3300,
+				-300,
+				4300,
+				0,
+			);
+			expect(result.x).toBe(2700);
+			expect(result.y).toBe(3900);
+		});
 	});
 });
 
