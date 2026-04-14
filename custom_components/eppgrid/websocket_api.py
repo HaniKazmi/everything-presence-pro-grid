@@ -1577,6 +1577,13 @@ def _map_esphome_flow_result(result: dict[str, Any]) -> dict[str, str]:
     if flow_type == "create_entry":
         return {"type": "added"}
     if flow_type == "form":
+        # HA paused the flow at a form step. Inspect errors to distinguish
+        # connection failures (device not yet reachable on port 6053, often
+        # because the API server hasn't finished starting) from auth prompts.
+        errors = result.get("errors") or {}
+        base_error = errors.get("base", "")
+        if base_error in ("connection_error", "resolve_error", "cannot_connect"):
+            return {"type": "cannot_connect"}
         return {"type": "needs_auth"}
     if flow_type == "abort":
         reason = result.get("reason", "")

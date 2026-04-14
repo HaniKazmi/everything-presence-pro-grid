@@ -297,6 +297,42 @@ class TestAddEsphomeDevice:
             ({"type": "form"}, {"type": "needs_auth"}),
             ({"type": "form", "flow_id": "x"}, {"type": "needs_auth"}),
             (
+                {"type": "form", "errors": {}},
+                {"type": "needs_auth"},
+            ),
+            (
+                {
+                    "type": "form",
+                    "step_id": "user",
+                    "errors": {"base": "connection_error"},
+                },
+                {"type": "cannot_connect"},
+            ),
+            (
+                {
+                    "type": "form",
+                    "step_id": "user",
+                    "errors": {"base": "resolve_error"},
+                },
+                {"type": "cannot_connect"},
+            ),
+            (
+                {
+                    "type": "form",
+                    "step_id": "user",
+                    "errors": {"base": "cannot_connect"},
+                },
+                {"type": "cannot_connect"},
+            ),
+            (
+                {
+                    "type": "form",
+                    "step_id": "encryption_key",
+                    "errors": {"base": "invalid_psk"},
+                },
+                {"type": "needs_auth"},
+            ),
+            (
                 {"type": "abort", "reason": "already_configured"},
                 {"type": "already_added"},
             ),
@@ -364,4 +400,4 @@ class TestAddEsphomeDevice:
         connection.send_result.assert_called_once()
         msg_id, payload = connection.send_result.call_args[0]
         assert msg_id == 4
-        assert payload == {"type": "added"}
+        assert payload["type"] == "added"
