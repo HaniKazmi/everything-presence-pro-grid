@@ -38,11 +38,6 @@ import {
 	MAX_ZONES,
 } from "./lib/grid.js";
 import { CELL_BG_OUT_OF_RANGE, getCellColor } from "./lib/heatmap.js";
-import {
-	buildGetStateCommand,
-	readImprovResponse,
-	sendImprovPacket,
-} from "./lib/improv-serial.js";
 import { applyPerspective, getInversePerspective } from "./lib/perspective.js";
 import {
 	autoDetectionRange,
@@ -2635,73 +2630,11 @@ export class EPPGridPanel extends LitElement {
 
 			// Wait for PROVISIONED state (creds saved to NVS)
 			ctrl.updateUsbState({ step: "reading_ip" });
-			let ip = await detectIpAddress(reader, 35000);
+			const ip = await detectIpAddress(reader, writer, 60000);
 			if (ctrl.opId !== myOp) return;
 
-			// If IP is null, device reported 0.0.0.0 (DHCP not ready yet).
-			// Reboot via RTS reset — device reconnects with saved creds and
-			// reports the real IP.
-			if (!ip) {
-				reader.releaseLock();
-				writer.releaseLock();
-				(ctrl as any)._serialReader = null;
-				(ctrl as any)._serialWriter = null;
-
-				try {
-					await port.setSignals({
-						dataTerminalReady: false,
-						requestToSend: true,
-					});
-					await new Promise((r) => setTimeout(r, 200));
-					await port.setSignals({
-						dataTerminalReady: false,
-						requestToSend: false,
-					});
-				} catch {}
-
-				// Drain stale boot output
-				const drainReader = port.readable!.getReader();
-				while (true) {
-					const r = await Promise.race([
-						drainReader.read(),
-						new Promise<{ value: undefined; done: true }>((resolve) =>
-							setTimeout(() => resolve({ value: undefined, done: true }), 200),
-						),
-					]);
-					if (r.done || !r.value) break;
-				}
-				drainReader.releaseLock();
-
-				// Handshake with retry — device needs time to boot
-				const freshWriter = port.writable!.getWriter();
-				let handshakeOk = false;
-				for (let attempt = 0; attempt < 5; attempt++) {
-					if (attempt > 0) await new Promise((r) => setTimeout(r, 2000));
-					try {
-						await sendImprovPacket(freshWriter, buildGetStateCommand());
-						const hReader = port.readable!.getReader();
-						try {
-							await readImprovResponse(hReader, 3000);
-							handshakeOk = true;
-						} finally {
-							hReader.releaseLock();
-						}
-					} catch {}
-					if (handshakeOk) break;
-				}
-
-				if (handshakeOk) {
-					const freshReader = port.readable!.getReader();
-					(ctrl as any)._serialWriter = freshWriter;
-					(ctrl as any)._serialReader = freshReader;
-					ip = await detectIpAddress(freshReader, 15000);
-					freshReader.releaseLock();
-				}
-				freshWriter.releaseLock();
-			} else {
-				reader.releaseLock();
-				writer.releaseLock();
-			}
+			reader.releaseLock();
+			writer.releaseLock();
 
 			(ctrl as any)._serialReader = null;
 			(ctrl as any)._serialWriter = null;
