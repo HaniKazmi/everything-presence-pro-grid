@@ -4,6 +4,8 @@ import {
 	buildGetStateCommand,
 	buildScanCommand,
 	buildWifiCommand,
+	CMD_GET_CURRENT_STATE,
+	CMD_WIFI_SETTINGS,
 	parseScanResults,
 	readImprovResponse,
 	sendImprovPacket,
@@ -301,102 +303,10 @@ export async function runWifiProvision(
 	await sendImprovPacket(writer, buildWifiCommand(ssid, password));
 }
 
-/**
- * Reads Improv RPC result after WiFi provisioning to extract the IP address.
- * ESPHome sends an RPC result containing a URL like "http://192.168.1.42".
- * Returns the IP address string or throws on timeout.
- */
 export async function detectIpAddress(
-	reader: ReadableStreamDefaultReader<Uint8Array>,
-	timeoutMs: number,
-): Promise<string | null> {
-	const decoder = new TextDecoder();
-	const ipPattern = /(\d+\.\d+\.\d+\.\d+)/;
-	let buffer: number[] = [];
-	// Track state machine: our command must trigger PROVISIONING first.
-	// Anything before that is stale from a previous attempt.
-	let sawProvisioning = false;
-	let provisioned = false;
-	const deadline = Date.now() + timeoutMs;
-
-	while (Date.now() < deadline) {
-		try {
-			const result = await readImprovResponse(
-				reader,
-				deadline - Date.now(),
-				buffer,
-			);
-			buffer = result.buffer;
-			for (const pkt of result.packets) {
-				// STATE_PROVISIONING — our command was accepted
-				if (pkt.type === TYPE_CURRENT_STATE && pkt.data[0] === 0x03) {
-					sawProvisioning = true;
-				}
-
-				// Ignore everything before we see our PROVISIONING
-				if (!sawProvisioning) {
-					continue;
-				}
-
-				// Error state — WiFi connection failed
-				if (pkt.type === TYPE_ERROR_STATE) {
-					const code = pkt.data[0];
-					const messages: Record<number, string> = {
-						1: "Invalid command — device may need to be power-cycled",
-						2: "Unknown command",
-						3: "WiFi connection failed — check SSID/password and try again",
-						4: "Not authorized",
-					};
-					const errorKeyByCode: Record<number, string> = {
-						1: "wifi.errors.invalid_command",
-						2: "wifi.errors.unknown_command",
-						3: "wifi.errors.connection_failed",
-						4: "wifi.errors.not_authorized",
-					};
-					const key = errorKeyByCode[code] ?? "wifi.errors.error_code";
-					throw Object.assign(
-						new Error(messages[code] ?? `WiFi error (code ${code})`),
-						{
-							errorKey: key,
-							errorParams:
-								key === "wifi.errors.error_code" ? { code } : undefined,
-						},
-					);
-				}
-
-				// STATE_PROVISIONED — device connected to WiFi
-				if (pkt.type === TYPE_CURRENT_STATE && pkt.data[0] === 0x04) {
-					provisioned = true;
-				}
-
-				// RPC result — only trust after PROVISIONING → PROVISIONED
-				if (pkt.type === TYPE_RPC_RESULT && provisioned) {
-					if (pkt.data.length >= 3 && pkt.data[1] > 0) {
-						const resultData = pkt.data.slice(2, 2 + pkt.data[1]);
-						const urlLen = resultData[0];
-						const url = decoder.decode(resultData.slice(1, 1 + urlLen));
-						const match = ipPattern.exec(url);
-						if (match && match[1] !== "0.0.0.0") {
-							return match[1];
-						}
-					}
-					// Provisioned but IP not yet assigned (0.0.0.0) or no URL —
-					// creds are saved to NVS; caller should reboot and re-read
-					return null;
-				}
-			}
-		} catch (err) {
-			if (err instanceof Error && !err.message.includes("timeout")) {
-				throw err;
-			}
-			break;
-		}
-	}
-
-	throw Object.assign(
-		new Error("WiFi connection failed — check SSID/password and try again"),
-		{
-			errorKey: "wifi.errors.connection_failed",
-		},
-	);
+	_reader: ReadableStreamDefaultReader<Uint8Array>,
+	_writer: WritableStreamDefaultWriter<Uint8Array>,
+	_timeoutMs: number,
+): Promise<string> {
+	throw new Error("detectIpAddress not yet implemented");
 }

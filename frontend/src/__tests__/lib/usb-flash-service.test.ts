@@ -1103,6 +1103,16 @@ describe("detectIpAddress", () => {
 		releaseLock: vi.fn(),
 	} as unknown as ReadableStreamDefaultReader<Uint8Array>;
 
+	const mockWriter = {
+		write: vi.fn().mockResolvedValue(undefined),
+		close: vi.fn().mockResolvedValue(undefined),
+		releaseLock: vi.fn(),
+		abort: vi.fn().mockResolvedValue(undefined),
+		closed: Promise.resolve(undefined),
+		desiredSize: 1,
+		ready: Promise.resolve(undefined),
+	} as unknown as WritableStreamDefaultWriter<Uint8Array>;
+
 	it("extracts IP from Improv RPC result containing URL", async () => {
 		const encoder = new TextEncoder();
 		const url = "http://192.168.1.42";
@@ -1123,14 +1133,14 @@ describe("detectIpAddress", () => {
 			buffer: [],
 		});
 
-		const ip = await detectIpAddress(mockReader, 1000);
+		const ip = await detectIpAddress(mockReader, mockWriter, 1000);
 		expect(ip).toBe("192.168.1.42");
 	});
 
 	it("throws on timeout when no RPC result arrives", async () => {
 		vi.mocked(readImprovResponse).mockRejectedValueOnce(new Error("timeout"));
 
-		await expect(detectIpAddress(mockReader, 50)).rejects.toThrow(
+		await expect(detectIpAddress(mockReader, mockWriter, 50)).rejects.toThrow(
 			"WiFi connection failed",
 		);
 	});
@@ -1141,23 +1151,9 @@ describe("detectIpAddress", () => {
 			buffer: [],
 		});
 
-		await expect(detectIpAddress(mockReader, 1000)).rejects.toThrow(
-			"WiFi connection failed",
-		);
-	});
-
-	it("returns null when provisioned but no URL (no next_url configured)", async () => {
-		vi.mocked(readImprovResponse).mockResolvedValueOnce({
-			packets: [
-				{ type: 0x01, data: new Uint8Array([0x03]) },
-				{ type: 0x01, data: new Uint8Array([0x04]) },
-				{ type: TYPE_RPC_RESULT, data: new Uint8Array([0x01, 0x00, 0x00]) },
-			],
-			buffer: [],
-		});
-
-		const ip = await detectIpAddress(mockReader, 1000);
-		expect(ip).toBeNull();
+		await expect(
+			detectIpAddress(mockReader, mockWriter, 1000),
+		).rejects.toThrow("WiFi connection failed");
 	});
 
 	it("throws error state message after seeing PROVISIONING", async () => {
@@ -1170,9 +1166,9 @@ describe("detectIpAddress", () => {
 			buffer: [],
 		});
 
-		await expect(detectIpAddress(mockReader, 1000)).rejects.toThrow(
-			"WiFi connection failed",
-		);
+		await expect(
+			detectIpAddress(mockReader, mockWriter, 1000),
+		).rejects.toThrow("WiFi connection failed");
 	});
 
 	it("throws with fallback message for unknown error codes", async () => {
@@ -1184,32 +1180,9 @@ describe("detectIpAddress", () => {
 			buffer: [],
 		});
 
-		await expect(detectIpAddress(mockReader, 1000)).rejects.toThrow(
-			"WiFi error (code 255)",
-		);
-	});
-
-	it("returns null when IP is 0.0.0.0 (DHCP not ready)", async () => {
-		const encoder = new TextEncoder();
-		const url = "http://0.0.0.0";
-		const urlBytes = encoder.encode(url);
-		const data = new Uint8Array(2 + 1 + urlBytes.length);
-		data[0] = 0x01;
-		data[1] = 1 + urlBytes.length;
-		data[2] = urlBytes.length;
-		data.set(urlBytes, 3);
-
-		vi.mocked(readImprovResponse).mockResolvedValueOnce({
-			packets: [
-				{ type: TYPE_CURRENT_STATE, data: new Uint8Array([0x03]) },
-				{ type: TYPE_CURRENT_STATE, data: new Uint8Array([0x04]) },
-				{ type: TYPE_RPC_RESULT, data },
-			],
-			buffer: [],
-		});
-
-		const result = await detectIpAddress(mockReader, 1000);
-		expect(result).toBeNull();
+		await expect(
+			detectIpAddress(mockReader, mockWriter, 1000),
+		).rejects.toThrow("WiFi error (code 255)");
 	});
 
 	it("re-throws non-timeout errors from readImprovResponse", async () => {
@@ -1217,16 +1190,16 @@ describe("detectIpAddress", () => {
 			new Error("serial port disconnected"),
 		);
 
-		await expect(detectIpAddress(mockReader, 1000)).rejects.toThrow(
-			"serial port disconnected",
-		);
+		await expect(
+			detectIpAddress(mockReader, mockWriter, 1000),
+		).rejects.toThrow("serial port disconnected");
 	});
 
 	it("timeout throw carries errorKey wifi.errors.connection_failed", async () => {
 		vi.mocked(readImprovResponse).mockRejectedValueOnce(new Error("timeout"));
 
 		try {
-			await detectIpAddress(mockReader, 50);
+			await detectIpAddress(mockReader, mockWriter, 50);
 			throw new Error("expected error not thrown");
 		} catch (err: any) {
 			expect(err.errorKey).toBe("wifi.errors.connection_failed");
@@ -1243,7 +1216,7 @@ describe("detectIpAddress", () => {
 		});
 
 		try {
-			await detectIpAddress(mockReader, 1000);
+			await detectIpAddress(mockReader, mockWriter, 1000);
 			throw new Error("expected error not thrown");
 		} catch (err: any) {
 			expect(err.errorKey).toBe("wifi.errors.connection_failed");
@@ -1260,7 +1233,7 @@ describe("detectIpAddress", () => {
 		});
 
 		try {
-			await detectIpAddress(mockReader, 1000);
+			await detectIpAddress(mockReader, mockWriter, 1000);
 			throw new Error("expected error not thrown");
 		} catch (err: any) {
 			expect(err.errorKey).toBe("wifi.errors.invalid_command");
@@ -1277,39 +1250,11 @@ describe("detectIpAddress", () => {
 		});
 
 		try {
-			await detectIpAddress(mockReader, 1000);
+			await detectIpAddress(mockReader, mockWriter, 1000);
 			throw new Error("expected error not thrown");
 		} catch (err: any) {
 			expect(err.errorKey).toBe("wifi.errors.error_code");
 			expect(err.errorParams).toEqual({ code: 255 });
 		}
-	});
-
-	it("ignores packets before PROVISIONING state is seen", async () => {
-		// RPC result before PROVISIONING should be ignored
-		const encoder = new TextEncoder();
-		const url = "http://192.168.1.99";
-		const urlBytes = encoder.encode(url);
-		const staleData = new Uint8Array(2 + 1 + urlBytes.length);
-		staleData[0] = 0x01;
-		staleData[1] = 1 + urlBytes.length;
-		staleData[2] = urlBytes.length;
-		staleData.set(urlBytes, 3);
-
-		// First response: stale RPC result (no PROVISIONING yet)
-		// Second response: timeout
-		vi.mocked(readImprovResponse)
-			.mockResolvedValueOnce({
-				packets: [
-					{ type: TYPE_CURRENT_STATE, data: new Uint8Array([0x04]) }, // PROVISIONED but no prior PROVISIONING
-					{ type: TYPE_RPC_RESULT, data: staleData },
-				],
-				buffer: [],
-			})
-			.mockRejectedValueOnce(new Error("timeout"));
-
-		await expect(detectIpAddress(mockReader, 1000)).rejects.toThrow(
-			"WiFi connection failed",
-		);
 	});
 });
