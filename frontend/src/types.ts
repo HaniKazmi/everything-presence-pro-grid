@@ -57,6 +57,13 @@ export interface FlashableDevice {
 		| "unavailable";
 }
 
+export type HaAddResult =
+	| { type: "added" }
+	| { type: "already_added" }
+	| { type: "needs_auth" }
+	| { type: "cannot_connect" }
+	| { type: "failed"; reason?: string };
+
 export type UsbFlashStep =
 	| "idle"
 	| "connecting"
@@ -65,7 +72,7 @@ export type UsbFlashStep =
 	| "wifi_provision"
 	| "wifi_connecting"
 	| "reading_ip"
-	| "adding_device"
+	| "wifi_configured"
 	| "complete"
 	| "error";
 
@@ -77,6 +84,7 @@ export interface UsbFlashState {
 	ip?: string;
 	variant?: string;
 	fatal?: boolean;
+	haAdd?: HaAddResult;
 }
 
 export type OtaState = "updating" | "success" | "error";
