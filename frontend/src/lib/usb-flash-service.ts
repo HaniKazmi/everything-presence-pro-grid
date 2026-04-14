@@ -321,6 +321,29 @@ export async function detectIpAddress(
 		);
 		buffer = result.buffer;
 		for (const pkt of result.packets) {
+			if (pkt.type === TYPE_ERROR_STATE) {
+				const code = pkt.data[0];
+				const messages: Record<number, string> = {
+					1: "Invalid command — device may need to be power-cycled",
+					2: "Unknown command",
+					3: "WiFi connection failed — check SSID/password and try again",
+					4: "Not authorized",
+				};
+				const errorKeyByCode: Record<number, string> = {
+					1: "wifi.errors.invalid_command",
+					2: "wifi.errors.unknown_command",
+					3: "wifi.errors.connection_failed",
+					4: "wifi.errors.not_authorized",
+				};
+				const key = errorKeyByCode[code] ?? "wifi.errors.error_code";
+				throw Object.assign(
+					new Error(messages[code] ?? `WiFi error (code ${code})`),
+					{
+						errorKey: key,
+						errorParams: key === "wifi.errors.error_code" ? { code } : undefined,
+					},
+				);
+			}
 			if (
 				pkt.type === TYPE_RPC_RESULT &&
 				pkt.data.length >= 3 &&
