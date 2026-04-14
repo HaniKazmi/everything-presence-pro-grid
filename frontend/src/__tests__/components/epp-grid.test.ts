@@ -652,9 +652,7 @@ describe("epp-grid target dot cursor guard", () => {
 		const editEl = createGrid({ editable: true });
 		document.body.appendChild(editEl);
 		await editEl.updateComplete;
-		const editCell = editEl.shadowRoot!.querySelector(
-			".cell",
-		) as HTMLElement;
+		const editCell = editEl.shadowRoot!.querySelector(".cell") as HTMLElement;
 		expect(editCell).not.toBeNull();
 		expect(getComputedStyle(editCell).cursor).toBe("pointer");
 		document.body.removeChild(editEl);
@@ -662,9 +660,7 @@ describe("epp-grid target dot cursor guard", () => {
 		const liveEl = createGrid({ editable: false });
 		document.body.appendChild(liveEl);
 		await liveEl.updateComplete;
-		const liveCell = liveEl.shadowRoot!.querySelector(
-			".cell",
-		) as HTMLElement;
+		const liveCell = liveEl.shadowRoot!.querySelector(".cell") as HTMLElement;
 		expect(liveCell).not.toBeNull();
 		expect(getComputedStyle(liveCell).cursor).not.toBe("pointer");
 		document.body.removeChild(liveEl);
