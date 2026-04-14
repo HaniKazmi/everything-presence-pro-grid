@@ -987,6 +987,15 @@ export const flasherStyles = css`
     gap: 12px;
   }
 
+  .ha-add-progress {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-top: 16px;
+    color: var(--secondary-text-color);
+    font-size: 14px;
+  }
+
 `;
 
 export const liveMenuStyles = css`

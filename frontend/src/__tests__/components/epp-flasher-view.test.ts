@@ -989,14 +989,15 @@ describe("USB flash view — state-driven", () => {
 		expect(c.querySelector(".wifi-form")).not.toBeNull();
 	});
 
-	it("renders adding_device state", () => {
+	it("renders adding_device state via generic fallback", () => {
 		const el = createView();
 		(el as any)._showUsbFlash = true;
 		(el as any).usbFlashState = { step: "adding_device" };
 		const tpl = (el as any).render();
 		const c = renderTo(tpl);
 
-		expect(c.textContent).toContain("flasher.usb_step_adding");
+		// adding_device is not in stepKeyMap, so the step name itself is shown
+		expect(c.textContent).toContain("adding_device");
 	});
 
 	it("dispatches usb-flash event with variant when Flash via USB clicked", async () => {
@@ -1108,6 +1109,24 @@ describe("USB flash view — state-driven", () => {
 		expect((events[0] as CustomEvent).detail).toEqual({
 			variant: "ethernet-ble-co2",
 		});
+	});
+});
+
+describe("wifi_configured state", () => {
+	it("renders the IP address and an indeterminate progress indicator with adding-to-HA label", () => {
+		const el = createView();
+		(el as any)._showUsbFlash = true;
+		(el as any).usbFlashState = {
+			step: "wifi_configured",
+			ip: "192.168.1.42",
+		};
+		const tpl = (el as any).render();
+		const c = renderTo(tpl);
+
+		expect(c.textContent).toContain("192.168.1.42");
+		expect(c.querySelector("ha-circular-progress")).toBeTruthy();
+		// Should not show any buttons in this transient state
+		expect(c.querySelectorAll("ha-button").length).toBe(0);
 	});
 });
 

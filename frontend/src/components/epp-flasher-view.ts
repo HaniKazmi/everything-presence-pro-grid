@@ -523,6 +523,27 @@ export class EppFlasherView extends LitElement {
 			`;
 		}
 
+		// WiFi configured — HA-add in progress
+		if (state?.step === "wifi_configured") {
+			return html`
+				<div class="flasher-content">
+					<ha-card>
+						<div class="card-content">
+							<div class="usb-complete">
+								<ha-icon icon="mdi:check-circle-outline"></ha-icon>
+								<p>${this.localize("flasher.wifi_configured")}</p>
+								<p class="usb-ip">${this.localize("flasher.ip_address")}: ${state.ip}</p>
+							</div>
+							<div class="ha-add-progress">
+								<ha-circular-progress indeterminate size="small"></ha-circular-progress>
+								<span>${this.localize("flasher.ha_add.adding")}</span>
+							</div>
+						</div>
+					</ha-card>
+				</div>
+			`;
+		}
+
 		// Complete state
 		if (state?.step === "complete") {
 			const isEthernet = state.variant?.startsWith("ethernet");
@@ -567,7 +588,7 @@ export class EppFlasherView extends LitElement {
 			`;
 		}
 
-		// In-progress states (connecting, flashing, wifi_scan, reading_ip, adding_device)
+		// In-progress states (connecting, flashing, wifi_scan, reading_ip)
 		if (state && state.step !== "idle") {
 			const stepKeyMap: Record<string, string> = {
 				connecting: "flasher.usb_step_connecting",
@@ -576,7 +597,6 @@ export class EppFlasherView extends LitElement {
 				wifi_provision: "flasher.usb_step_provisioning",
 				wifi_connecting: "flasher.usb_step_wifi_connecting",
 				reading_ip: "flasher.usb_step_reading_ip",
-				adding_device: "flasher.usb_step_adding",
 			};
 			const stepKey = stepKeyMap[state.step] ?? state.step;
 			const stepParams =
