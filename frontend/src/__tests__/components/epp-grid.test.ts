@@ -700,6 +700,20 @@ describe("epp-grid frozenBounds", () => {
 
 		document.body.removeChild(el);
 	});
+
+	it("falls back to full grid (20x20) when no inside cells", async () => {
+		const el = createGrid({
+			grid: new Uint8Array(GRID_CELL_COUNT), // empty — no inside cells
+		});
+		document.body.appendChild(el);
+		await el.updateComplete;
+
+		const cells = el.shadowRoot!.querySelectorAll(".cell");
+		// Full grid fallback: 20 cols * 20 rows = 400
+		expect(cells.length).toBe(400);
+
+		document.body.removeChild(el);
+	});
 });
 
 describe("epp-grid dismissedTargets", () => {
