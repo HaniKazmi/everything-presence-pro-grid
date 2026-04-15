@@ -2778,15 +2778,16 @@ export class EPPGridPanel extends LitElement {
 	private _handleFlasherCancel(): void {
 		const ctrl = this._flasherCtrl;
 		const state = ctrl.usbFlashState;
-		const port = ctrl.serialPort;
 		if (state?.step === "wifi_configured" && state.ip) {
 			ctrl.setCancelledDeviceIpHint(state.ip);
 		}
+		// resetUsbState releases controller-tracked locks, bumps opId, and
+		// nulls the port reference without force-closing it — closing a port
+		// whose stream locks are held by an in-flight read (e.g. a running
+		// queryImprovState or runWifiScan) can crash Chrome. Any in-flight op
+		// will observe the opId bump and release its own locks.
 		ctrl.resetUsbState();
 		ctrl.opRunning = false;
-		if (port) {
-			port.close().catch(() => {});
-		}
 	}
 
 	private async _handleWifiScan(): Promise<void> {

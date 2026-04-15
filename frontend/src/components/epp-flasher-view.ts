@@ -179,6 +179,10 @@ export class EppFlasherView extends LitElement {
 	}
 
 	private _dispatchCancel(): void {
+		// Exit the USB-flash view. The panel's `flasher-cancel` handler resets
+		// controller state; this flag is view-local, so clearing it here is the
+		// only path back to the device-list view.
+		this._showUsbFlash = false;
 		this.dispatchEvent(
 			new CustomEvent("flasher-cancel", { bubbles: true, composed: true }),
 		);
@@ -555,9 +559,13 @@ export class EppFlasherView extends LitElement {
 							${
 								state.autoSkipped
 									? html`<div class="wifi-override-row">
-										<a class="wifi-override-link" @click=${this._dispatchWifiScan}>
+										<ha-button
+											class="wifi-override-link"
+											appearance="plain"
+											@click=${this._dispatchWifiScan}
+										>
 											${this.localize("flasher.configure_wifi_override")}
-										</a>
+										</ha-button>
 									</div>`
 									: nothing
 							}
