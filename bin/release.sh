@@ -93,8 +93,20 @@ PY
 grep -q "\"version\": \"$VERSION\"" custom_components/eppgrid/manifest.json
 
 if [ "$FIRMWARE_CHANGED" = "true" ]; then
-  # Bump firmware source + const.py — implemented in Task 19.
-  :
+  # Bump FIRMWARE_VERSION in const.py.
+  sed -i.bak "s/^FIRMWARE_VERSION = \".*\"/FIRMWARE_VERSION = \"$VERSION\"/" custom_components/eppgrid/const.py
+  rm -f custom_components/eppgrid/const.py.bak
+  grep -q "^FIRMWARE_VERSION = \"$VERSION\"" custom_components/eppgrid/const.py
+
+  # Bump version in firmware base YAML.
+  sed -i.bak "s/^    version: \".*\"/    version: \"$VERSION\"/" firmware/common/everything-presence-pro-base.yaml
+  rm -f firmware/common/everything-presence-pro-base.yaml.bak
+  grep -q "^    version: \"$VERSION\"" firmware/common/everything-presence-pro-base.yaml
+
+  # Bump FIRMWARE_VERSION_STR in C++ header.
+  sed -i.bak "s/FIRMWARE_VERSION_STR = \".*\"/FIRMWARE_VERSION_STR = \"$VERSION\"/" firmware/components/epp/epp_component.h
+  rm -f firmware/components/epp/epp_component.h.bak
+  grep -q "FIRMWARE_VERSION_STR = \"$VERSION\"" firmware/components/epp/epp_component.h
 fi
 
 git add -A
