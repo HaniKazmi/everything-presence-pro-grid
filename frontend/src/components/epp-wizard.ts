@@ -518,24 +518,6 @@ export class EppWizard extends LitElement {
         white-space: nowrap;
       }
 
-      .live-nav-link {
-        display: flex;
-        align-items: center;
-        gap: 8px;
-        background: none;
-        border: none;
-        color: var(--primary-color, #03a9f4);
-        cursor: pointer;
-        padding: 6px 4px;
-        font-size: 13px;
-        border-radius: 6px;
-        text-align: left;
-      }
-
-      .live-nav-link:hover {
-        background: var(--secondary-background-color, #f5f5f5);
-      }
-
       .dont-show-again {
         margin-top: 16px;
       }
@@ -1059,7 +1041,8 @@ export class EppWizard extends LitElement {
         </svg>
 
         <button
-          class="live-nav-link" style="margin-top: 16px;"
+          class="wizard-btn wizard-btn-primary"
+          style="margin-top: 16px; display: inline-flex; align-items: center; gap: 8px;"
           @click=${() => {
 						this._fireStartCalibration();
 					}}

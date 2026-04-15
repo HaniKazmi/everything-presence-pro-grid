@@ -107,7 +107,7 @@
 	},
 	"menu": {
 		"settings": "Settings",
-		"room_calibration": "Room size calibration",
+		"room_calibration": "Calibrate room size",
 		"delete_calibration": "Delete room calibration",
 		"detection_zones": "Detection zones",
 		"furniture": "Furniture",

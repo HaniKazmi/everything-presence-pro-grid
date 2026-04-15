@@ -149,23 +149,6 @@ export class EppLiveSidebar extends LitElement {
       line-height: 1.4;
     }
 
-    .live-nav-link {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      background: none;
-      border: none;
-      color: var(--primary-color, #03a9f4);
-      cursor: pointer;
-      padding: 6px 4px;
-      font-size: 13px;
-      border-radius: 6px;
-      text-align: left;
-    }
-
-    .live-nav-link:hover {
-      background: var(--secondary-background-color, #f5f5f5);
-    }
   `;
 
 	render() {
