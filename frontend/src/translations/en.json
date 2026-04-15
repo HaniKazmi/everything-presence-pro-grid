@@ -384,6 +384,7 @@
 		"open_hacs": "Open in HACS",
 		"ota_retry": "Retry",
 		"cancel": "Cancel",
+		"start_over": "Start over",
 		"errors": {
 			"start_failed": "Failed to start update. Is the device online?",
 			"connect_failed": "Failed to connect to device",

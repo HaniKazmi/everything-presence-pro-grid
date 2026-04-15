@@ -171,14 +171,6 @@ export class EppFlasherView extends LitElement {
 		);
 	}
 
-	private _onUsbBack(): void {
-		this._showUsbFlash = false;
-		this._showWifiProvisioning = false;
-		this.dispatchEvent(
-			new CustomEvent("usb-retry", { bubbles: true, composed: true }),
-		);
-	}
-
 	private _dispatchRetryHaAdd(): void {
 		this.dispatchEvent(
 			new CustomEvent("retry-ha-add", { bubbles: true, composed: true }),
@@ -323,8 +315,8 @@ export class EppFlasherView extends LitElement {
             ></ha-textfield>
 
             <div class="confirm-actions">
-              <ha-button @click=${this._onUsbBack}>
-                ${this.localize("flasher.usb_back")}
+              <ha-button @click=${this._dispatchCancel}>
+                ${this.localize("flasher.cancel")}
               </ha-button>
               <ha-button @click=${this._dispatchWifiScan}>
                 ${this._wifiScanning ? this.localize("flasher.scanning") : this.localize("flasher.scan")}
@@ -533,11 +525,8 @@ export class EppFlasherView extends LitElement {
 								<p>${state.errorKey ? this.localize(state.errorKey, state.errorParams) : ""}</p>
 							</div>
 							<div class="confirm-actions">
-								<ha-button @click=${this._onUsbBack}>
-									${this.localize("flasher.usb_back")}
-								</ha-button>
-								<ha-button @click=${this._dispatchFlashAnother}>
-									${this.localize("flasher.flash_another")}
+								<ha-button @click=${this._dispatchCancel}>
+									${this.localize("flasher.start_over")}
 								</ha-button>
 								${
 									state.fatal
@@ -577,6 +566,11 @@ export class EppFlasherView extends LitElement {
 									</div>`
 									: nothing
 							}
+							<div class="confirm-actions">
+								<ha-button @click=${this._dispatchCancel}>
+									${this.localize("flasher.cancel")}
+								</ha-button>
+							</div>
 						</div>
 					</ha-card>
 				</div>
@@ -740,8 +734,8 @@ export class EppFlasherView extends LitElement {
 							>${this.localize("flasher.ethernet")}</ha-button>
 						</div>
 						<div class="confirm-actions">
-							<ha-button @click=${this._onUsbBack}>
-								${this.localize("flasher.usb_back")}
+							<ha-button @click=${this._dispatchCancel}>
+								${this.localize("flasher.cancel")}
 							</ha-button>
 							<ha-button raised @click=${this._dispatchUsbFlash}>
 								${this.localize("flasher.usb_flash")}
