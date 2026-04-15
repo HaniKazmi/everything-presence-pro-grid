@@ -150,3 +150,31 @@ def test_integration_only_release_bumps_manifest_only(tmp_path: Path):
 
     header = (tmp_path / "firmware" / "components" / "epp" / "epp_component.h").read_text()
     assert 'FIRMWARE_VERSION_STR = "0.92.0"' in header
+
+
+def test_firmware_release_bumps_all_four_versions(tmp_path: Path):
+    _init_repo(tmp_path)
+
+    # Simulate firmware code change since last tag by editing a firmware file
+    # (not a version field — we're simulating real firmware code churn).
+    hw_pins = tmp_path / "firmware" / "common" / "hardware.yaml"
+    hw_pins.write_text("# fake firmware code change\n")
+    subprocess.run(["git", "add", "."], cwd=tmp_path, check=True)
+    subprocess.run(["git", "commit", "-qm", "firmware: add hardware.yaml"], cwd=tmp_path, check=True)
+
+    result = _run(tmp_path, "0.93.0", "--no-push")
+    assert result.returncode == 0, result.stdout + result.stderr
+
+    subprocess.run(["git", "checkout", "-q", "release-v0.93.0"], cwd=tmp_path, check=True)
+
+    manifest = (tmp_path / "custom_components" / "eppgrid" / "manifest.json").read_text()
+    assert '"version": "0.93.0"' in manifest
+
+    const_py = (tmp_path / "custom_components" / "eppgrid" / "const.py").read_text()
+    assert 'FIRMWARE_VERSION = "0.93.0"' in const_py
+
+    base_yaml = (tmp_path / "firmware" / "common" / "everything-presence-pro-base.yaml").read_text()
+    assert 'version: "0.93.0"' in base_yaml
+
+    header = (tmp_path / "firmware" / "components" / "epp" / "epp_component.h").read_text()
+    assert 'FIRMWARE_VERSION_STR = "0.93.0"' in header
