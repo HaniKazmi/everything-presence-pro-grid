@@ -11,7 +11,7 @@
 
 set -euo pipefail
 
-if [ $# -ne 1 ]; then
+if [ $# -lt 1 ]; then
   echo "usage: $0 <version>" >&2
   exit 2
 fi
@@ -61,3 +61,52 @@ if git remote get-url origin >/dev/null 2>&1; then
     exit 1
   fi
 fi
+
+# Optional --no-push flag for tests.
+NO_PUSH=false
+if [ "${2:-}" = "--no-push" ]; then
+  NO_PUSH=true
+fi
+
+# Detect firmware changes since last tag.
+PREV_TAG=$(git describe --tags --abbrev=0)
+FIRMWARE_DIFF=$(git diff "$PREV_TAG..HEAD" -- firmware/ || true)
+if [ -n "$FIRMWARE_DIFF" ]; then
+  FIRMWARE_CHANGED=true
+else
+  FIRMWARE_CHANGED=false
+fi
+
+BRANCH="release-$TAG"
+git checkout -q -b "$BRANCH"
+
+# Always bump manifest.json.
+python3 - <<PY
+import json, pathlib
+p = pathlib.Path("custom_components/eppgrid/manifest.json")
+data = json.loads(p.read_text())
+data["version"] = "$VERSION"
+p.write_text(json.dumps(data, indent=2) + "\n")
+PY
+
+# Verify edit landed.
+grep -q "\"version\": \"$VERSION\"" custom_components/eppgrid/manifest.json
+
+if [ "$FIRMWARE_CHANGED" = "true" ]; then
+  # Bump firmware source + const.py — implemented in Task 19.
+  :
+fi
+
+git add -A
+git commit -qm "chore: release $TAG
+
+$(if [ "$FIRMWARE_CHANGED" = "true" ]; then echo "Firmware-changing release: bumped firmware versions to $VERSION."; else echo "Integration-only release: firmware version unchanged."; fi)"
+
+if [ "$NO_PUSH" = "true" ]; then
+  echo "Branch $BRANCH prepared. --no-push given; skipping push and PR creation."
+  exit 0
+fi
+
+# Push + open PR — implemented in Task 21.
+echo "error: push/PR creation not yet implemented" >&2
+exit 1
