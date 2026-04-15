@@ -29,7 +29,11 @@ import {
 	initGridFromRoom,
 	MAX_ZONES,
 } from "../lib/grid.js";
-import { autoDetectionRange } from "../lib/room-geometry.js";
+import {
+	autoDetectionRange,
+	computeMaxRangeMm,
+	makeSensorRangeFilter,
+} from "../lib/room-geometry.js";
 import { ZONE_COLORS, type ZoneConfig } from "../lib/zone-defaults.js";
 
 /**
@@ -55,6 +59,31 @@ export class GridStateController implements ReactiveController {
 	hostConnected(): void {}
 	hostDisconnected(): void {}
 
+	/**
+	 * Build a sensor-range filter matching the current host state, so room
+	 * bounds collapse over inside-but-out-of-range cells (the same way the
+	 * component renders them).
+	 */
+	private rangeFilter(): (col: number, row: number) => boolean {
+		const maxRangeMm = computeMaxRangeMm(
+			!!this.host._targetAutoDistance,
+			this.host._targetAutoDistance
+				? autoDetectionRange(
+						this.host._roomWidth,
+						this.host._roomDepth,
+						this.host._perspective ?? null,
+						this.host._grid,
+					)
+				: 0,
+			this.host._targetMaxDistance ?? 0,
+		);
+		return makeSensorRangeFilter(
+			this.host._perspective ?? null,
+			this.host._roomWidth,
+			maxRangeMm,
+		);
+	}
+
 	// =====================================================================
 	// Grid / Zone mutation
 	// =====================================================================
@@ -73,7 +102,10 @@ export class GridStateController implements ReactiveController {
 			const level =
 				this.host._overlayMode === "suppress" ? CELL_INTERFERENCE_SUPPRESS : 1;
 			this.host._isPainting = true;
-			this.host._frozenBounds = getRoomBounds(this.host._grid);
+			this.host._frozenBounds = getRoomBounds(
+				this.host._grid,
+				this.rangeFilter(),
+			);
 			this.host._paintAction = determineInterferencePaintAction(
 				this.host._grid[index],
 				level,
@@ -89,7 +121,10 @@ export class GridStateController implements ReactiveController {
 		// Overlay painting mode
 		if (this.host._overlayMode === "entry") {
 			this.host._isPainting = true;
-			this.host._frozenBounds = getRoomBounds(this.host._grid);
+			this.host._frozenBounds = getRoomBounds(
+				this.host._grid,
+				this.rangeFilter(),
+			);
 			this.host._paintAction = determineOverlayPaintAction(
 				this.host._grid[index],
 			);
@@ -105,7 +140,10 @@ export class GridStateController implements ReactiveController {
 		if (this.host._sidebarTab !== "zones" || this.host._activeZone === null)
 			return;
 		this.host._isPainting = true;
-		this.host._frozenBounds = getRoomBounds(this.host._grid);
+		this.host._frozenBounds = getRoomBounds(
+			this.host._grid,
+			this.rangeFilter(),
+		);
 		this.host._paintAction = determinePaintAction(
 			this.host._grid[index],
 			this.host._activeZone,
@@ -355,7 +393,7 @@ export class GridStateController implements ReactiveController {
 				(f) => f.id === ds.id,
 			);
 			// Compute visible grid bounds in room-relative mm
-			const bounds = getRoomBounds(this.host._grid);
+			const bounds = getRoomBounds(this.host._grid, this.rangeFilter());
 			const roomCols = Math.ceil(this.host._roomWidth / GRID_CELL_MM);
 			const startCol = Math.floor((GRID_COLS - roomCols) / 2);
 			const visMinX = (bounds.minCol - startCol) * GRID_CELL_MM;
@@ -508,7 +546,7 @@ export class GridStateController implements ReactiveController {
 		}
 
 		// Filter furniture completely outside the visible grid
-		const bounds = getRoomBounds(this.host._grid);
+		const bounds = getRoomBounds(this.host._grid, this.rangeFilter());
 		let filteredFurniture = this.host._furniture as FurnitureItem[];
 		if (bounds.minCol <= bounds.maxCol && bounds.minRow <= bounds.maxRow) {
 			const roomCols = Math.ceil(this.host._roomWidth / GRID_CELL_MM);
