@@ -19,7 +19,6 @@ import {
 	computeSensorFov,
 	getGridRoomMetrics,
 	isCellInSensorRange,
-	makeSensorRangeFilter,
 	type SensorFov,
 } from "../lib/room-geometry.js";
 import type { ZoneConfig } from "../lib/zone-defaults.js";
@@ -147,12 +146,7 @@ export class EppGrid extends LitElement {
 	`;
 
 	render() {
-		const rangeFilter = makeSensorRangeFilter(
-			this.perspective,
-			this.roomWidth,
-			this.maxRangeMm,
-		);
-		const bounds = this.frozenBounds ?? getRoomBounds(this.grid, rangeFilter);
+		const bounds = this.frozenBounds ?? getRoomBounds(this.grid);
 		const noRoom = bounds.minCol > bounds.maxCol;
 		const minCol = noRoom ? 0 : bounds.minCol;
 		const maxCol = noRoom ? GRID_COLS - 1 : bounds.maxCol;

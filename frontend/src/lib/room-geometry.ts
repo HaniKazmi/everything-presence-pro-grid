@@ -47,21 +47,6 @@ export function getSensorRoomPosition(
 }
 
 /**
- * Build a cell-range filter for `getRoomBounds`. Returns a no-op (always true)
- * when `perspective` is null, so bounds behave as before when uncalibrated.
- */
-export function makeSensorRangeFilter(
-	perspective: number[] | null | undefined,
-	roomWidth: number,
-	maxRangeMm: number,
-): (col: number, row: number) => boolean {
-	if (!perspective) return () => true;
-	const fov = computeSensorFov(perspective);
-	return (col, row) =>
-		isCellInSensorRange(col, row, fov, roomWidth, maxRangeMm);
-}
-
-/**
  * Check if a grid cell (col, row) is within the sensor's FOV and range.
  *
  * @param col Grid column index

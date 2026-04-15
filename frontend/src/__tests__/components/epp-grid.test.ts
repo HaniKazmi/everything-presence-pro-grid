@@ -704,7 +704,6 @@ describe("epp-grid frozenBounds", () => {
 	it("falls back to full grid (20x20) when no inside cells", async () => {
 		const el = createGrid({
 			grid: new Uint8Array(GRID_CELL_COUNT), // empty — no inside cells
-			perspective: null, // no range filter
 		});
 		document.body.appendChild(el);
 		await el.updateComplete;
