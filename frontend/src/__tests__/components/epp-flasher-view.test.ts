@@ -899,7 +899,11 @@ describe("USB flash view — state-driven", () => {
 		const tpl = (el as any).render();
 		const c = renderTo(tpl);
 
-		expect(c.textContent).toContain("0.91.0");
+		const hint = c.querySelector(".firmware-version-hint");
+		expect(hint).not.toBeNull();
+		expect(hint?.textContent).toMatch(
+			/flasher\.firmware_version_hint\s+0\.91\.0/,
+		);
 	});
 
 	it("does not render iframe", () => {
