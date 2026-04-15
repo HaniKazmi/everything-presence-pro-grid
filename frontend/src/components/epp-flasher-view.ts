@@ -646,11 +646,12 @@ export class EppFlasherView extends LitElement {
 			`;
 		}
 
-		// In-progress states (connecting, flashing, wifi_scan, reading_ip)
+		// In-progress states (connecting, flashing, wifi_check, wifi_scan, reading_ip)
 		if (state && state.step !== "idle") {
 			const stepKeyMap: Record<string, string> = {
 				connecting: "flasher.usb_step_connecting",
 				flashing: "flasher.usb_step_flashing",
+				wifi_check: "flasher.usb_step_wifi_check",
 				wifi_scan: "flasher.usb_step_scanning",
 				wifi_provision: "flasher.usb_step_provisioning",
 				wifi_connecting: "flasher.usb_step_wifi_connecting",

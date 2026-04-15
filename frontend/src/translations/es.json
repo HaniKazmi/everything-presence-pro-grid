@@ -350,6 +350,7 @@
 		"connect": "Conectar",
 		"usb_flash": "Instalar por USB",
 		"usb_step_connecting": "Conectando al dispositivo...",
+		"usb_step_wifi_check": "Comprobando conexión WiFi existente...",
 		"usb_step_flashing": "Instalando firmware {version}...",
 		"usb_step_scanning": "Buscando redes WiFi...",
 		"wifi_scan_hint": "Si el dispositivo ya está conectado al WiFi, es posible que la búsqueda no funcione. Usa la entrada manual de SSID en su lugar.",

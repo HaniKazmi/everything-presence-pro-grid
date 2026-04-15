@@ -911,6 +911,17 @@ describe("USB flash view — state-driven", () => {
 		expect(c.textContent).toContain("flasher.usb_step_connecting");
 	});
 
+	it("renders wifi_check state", () => {
+		const el = createView();
+		(el as any)._showUsbFlash = true;
+		(el as any).usbFlashState = { step: "wifi_check" };
+		const tpl = (el as any).render();
+		const c = renderTo(tpl);
+
+		expect(c.querySelector(".usb-status")).not.toBeNull();
+		expect(c.textContent).toContain("flasher.usb_step_wifi_check");
+	});
+
 	it("renders wifi scan state", () => {
 		const el = createView();
 		(el as any)._showUsbFlash = true;
