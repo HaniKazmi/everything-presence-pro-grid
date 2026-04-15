@@ -48,3 +48,16 @@ if git ls-remote --tags origin 2>/dev/null | grep -q "refs/tags/$TAG$"; then
   echo "error: tag $TAG already exists on origin" >&2
   exit 1
 fi
+
+# Local main must be up to date with origin/main.
+if git remote get-url origin >/dev/null 2>&1; then
+  git fetch -q origin main
+  LOCAL=$(git rev-parse main)
+  REMOTE=$(git rev-parse origin/main)
+  if [ "$LOCAL" != "$REMOTE" ]; then
+    echo "error: local main is not up to date with origin/main" >&2
+    echo "  local:  $LOCAL" >&2
+    echo "  origin: $REMOTE" >&2
+    exit 1
+  fi
+fi
