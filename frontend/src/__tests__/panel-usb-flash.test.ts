@@ -476,6 +476,9 @@ describe("_handleUsbFlash", () => {
 			autoSkipped: true,
 		});
 		expect(runWifiScan).not.toHaveBeenCalled();
+		// Port stays open so the Configure WiFi override can reuse it
+		expect(mockPort.close).not.toHaveBeenCalled();
+		expect(ctrl.serialPort).toBe(mockPort);
 	});
 
 	it("falls through to wifi_scan when device reports PROVISIONED + 0.0.0.0", async () => {

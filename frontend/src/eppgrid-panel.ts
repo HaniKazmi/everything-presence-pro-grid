@@ -2572,18 +2572,16 @@ export class EPPGridPanel extends LitElement {
 			}
 
 			if (skipIp && skipWriter && skipReader) {
-				// The device is already on the network — we don't need the serial port
-				// anymore. Release locks and close the port before the HA-add call so
-				// the Configure WiFi override (which re-opens the port via runWifiScan)
-				// starts from a clean state.
+				// Device is already on the network — release the query's serial locks
+				// so `runWifiScan` can re-acquire them if the user clicks the
+				// "Configure WiFi" override. Keep the port itself open and attached
+				// to ctrl.serialPort for that override path.
 				try {
 					skipReader.releaseLock();
 				} catch {}
 				try {
 					skipWriter.releaseLock();
 				} catch {}
-				await port.close().catch(() => {});
-				ctrl.serialPort = null;
 				ctrl.updateUsbState({
 					step: "wifi_configured",
 					ip: skipIp,
