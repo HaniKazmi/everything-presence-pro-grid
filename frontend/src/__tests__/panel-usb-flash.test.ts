@@ -481,6 +481,25 @@ describe("_handleUsbFlash", () => {
 		expect(ctrl.serialPort).toBe(mockPort);
 	});
 
+	it("waits at least 20s for the Improv URL on a fresh boot", async () => {
+		// After a full flash the device cold-boots, loads creds from NVS, and
+		// only reports its IP via Improv after WiFi + DHCP complete — which
+		// can take 7-10s or longer. The default 3s readDelay is too short.
+		(queryImprovState as ReturnType<typeof vi.fn>).mockResolvedValue({
+			state: "PROVISIONED",
+			ip: "192.168.1.42",
+			writer: { releaseLock: vi.fn() },
+			reader: { releaseLock: vi.fn() },
+		});
+
+		await (panel as any)._handleUsbFlash("eppgrid-wifi");
+
+		const opts = (queryImprovState as ReturnType<typeof vi.fn>).mock
+			.calls[0][1];
+		expect(opts).toBeDefined();
+		expect(opts.readDelay).toBeGreaterThanOrEqual(20000);
+	});
+
 	it("falls through to wifi_scan when device reports PROVISIONED + 0.0.0.0", async () => {
 		(queryImprovState as ReturnType<typeof vi.fn>).mockResolvedValue({
 			state: "PROVISIONED",
@@ -863,7 +882,7 @@ describe("_handleWifiProvision", () => {
 
 		await flushProvision("MySSID", "s3cr3t");
 
-		expect(ctrl.usbFlashState).toEqual({
+		expect(ctrl.usbFlashState).toMatchObject({
 			step: "error",
 			errorKey: "wifi.errors.provisioning_failed",
 		});
@@ -878,7 +897,7 @@ describe("_handleWifiProvision", () => {
 
 		await flushProvision("MySSID", "s3cr3t");
 
-		expect(ctrl.usbFlashState).toEqual({
+		expect(ctrl.usbFlashState).toMatchObject({
 			step: "error",
 			errorKey: "wifi.errors.provisioning_failed",
 		});
@@ -904,7 +923,7 @@ describe("_handleWifiProvision", () => {
 
 		await flushProvision("MySSID", "s3cr3t");
 
-		expect(ctrl.usbFlashState).toEqual({
+		expect(ctrl.usbFlashState).toMatchObject({
 			step: "error",
 			errorKey: "wifi.errors.provisioning_failed",
 		});
@@ -1005,7 +1024,7 @@ describe("_handleWifiScan", () => {
 		await expect((panel as any)._handleWifiScan()).resolves.toBeUndefined();
 
 		// State should show error
-		expect(ctrl.usbFlashState).toEqual({
+		expect(ctrl.usbFlashState).toMatchObject({
 			step: "error",
 			errorKey: "wifi.errors.scan_failed",
 		});
@@ -1147,7 +1166,7 @@ describe("_handleUsbWifiConfig", () => {
 
 		await (panel as any)._handleUsbWifiConfig();
 
-		expect(ctrl.usbFlashState).toEqual({
+		expect(ctrl.usbFlashState).toMatchObject({
 			step: "error",
 			errorKey: "wifi.errors.scan_failed",
 		});
@@ -1257,12 +1276,12 @@ describe("flasher-cancel handler", () => {
 		mockPort = makeMockPort();
 	});
 
-	it("resets usbFlashState and closes port", () => {
+	it("resets usbFlashState and closes port", async () => {
 		const ctrl = (panel as any)._flasherCtrl;
 		ctrl.serialPort = mockPort;
 		ctrl.updateUsbState({ step: "wifi_scan" });
 
-		(panel as any)._handleFlasherCancel();
+		await (panel as any)._handleFlasherCancel();
 
 		expect(ctrl.usbFlashState).toBeNull();
 		expect(ctrl.serialPort).toBeNull();
@@ -1288,14 +1307,18 @@ describe("flasher-cancel handler", () => {
 		expect(ctrl.cancelledDeviceIpHint).toBeNull();
 	});
 
-	it("does NOT force-close the serial port (avoids Chrome crash on locked streams)", () => {
+	it("closes the port after the in-flight op settles, so the next flash can re-open it", async () => {
 		const ctrl = (panel as any)._flasherCtrl;
 		ctrl.serialPort = mockPort;
-		ctrl.updateUsbState({ step: "wifi_scan" });
+		ctrl.updateUsbState({ step: "wifi_check" });
 
-		(panel as any)._handleFlasherCancel();
+		await (panel as any)._handleFlasherCancel();
 
-		expect(mockPort.close).not.toHaveBeenCalled();
+		// Earlier we left the port open to avoid a Chrome crash on locked
+		// streams, but that meant subsequent flash attempts hit "Serial
+		// port busy". Now we abort + await the in-flight op first so locks
+		// release before close().
+		expect(mockPort.close).toHaveBeenCalledTimes(1);
 	});
 });
 
@@ -1394,6 +1417,77 @@ describe("epp-flasher-view inline event handlers", () => {
 		);
 
 		expect(wifiSpy).toHaveBeenCalled();
+	});
+
+	it("@usb-retry re-runs flash when the error happened during flashing", () => {
+		const ctrl = (panel as any)._flasherCtrl;
+		ctrl.updateUsbState({
+			step: "error",
+			lastStep: "flashing",
+			variant: "eppgrid-wifi",
+			errorKey: "usb.errors.flash_failed",
+		});
+
+		const flashSpy = vi
+			.spyOn(panel as any, "_handleUsbFlash")
+			.mockResolvedValue(undefined);
+		const wifiSpy = vi
+			.spyOn(panel as any, "_handleUsbWifiConfig")
+			.mockResolvedValue(undefined);
+
+		getFlasherView().dispatchEvent(
+			new CustomEvent("usb-retry", { bubbles: true }),
+		);
+
+		expect(flashSpy).toHaveBeenCalledWith("eppgrid-wifi");
+		expect(wifiSpy).not.toHaveBeenCalled();
+	});
+
+	it("@usb-retry re-runs flash when the error happened while connecting", () => {
+		const ctrl = (panel as any)._flasherCtrl;
+		ctrl.updateUsbState({
+			step: "error",
+			lastStep: "connecting",
+			variant: "eppgrid-ble",
+			errorKey: "usb.errors.flash_failed",
+		});
+
+		const flashSpy = vi
+			.spyOn(panel as any, "_handleUsbFlash")
+			.mockResolvedValue(undefined);
+		const wifiSpy = vi
+			.spyOn(panel as any, "_handleUsbWifiConfig")
+			.mockResolvedValue(undefined);
+
+		getFlasherView().dispatchEvent(
+			new CustomEvent("usb-retry", { bubbles: true }),
+		);
+
+		expect(flashSpy).toHaveBeenCalledWith("eppgrid-ble");
+		expect(wifiSpy).not.toHaveBeenCalled();
+	});
+
+	it("@usb-retry retries WiFi config when the error happened during wifi steps", () => {
+		const ctrl = (panel as any)._flasherCtrl;
+		ctrl.updateUsbState({
+			step: "error",
+			lastStep: "wifi_scan",
+			errorKey: "wifi.errors.scan_failed",
+		});
+
+		const flashSpy = vi
+			.spyOn(panel as any, "_handleUsbFlash")
+			.mockResolvedValue(undefined);
+		const wifiSpy = vi
+			.spyOn(panel as any, "_handleUsbWifiConfig")
+			.mockResolvedValue(undefined);
+
+		getFlasherView().dispatchEvent(
+			new CustomEvent("usb-retry", { bubbles: true }),
+		);
+
+		expect(wifiSpy).toHaveBeenCalled();
+		expect(flashSpy).not.toHaveBeenCalled();
 	});
 
 	it("@wifi-scan calls _handleWifiScan", () => {

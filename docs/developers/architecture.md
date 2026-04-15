@@ -229,31 +229,53 @@ browser.
 - `components/epp-flasher-view.ts` — Flash UI (device list, variant selector, WiFi provisioning)
 - `controllers/flasher-controller.ts` — Serial port lifecycle, USB state machine
 
-**Firmware manifests** are proxied through the HA backend at
-`/api/eppgrid/firmware/` to avoid CORS issues with GitHub Releases.
-The firmware version is pinned by `FIRMWARE_VERSION` in `const.py`.
+**Firmware manifests + binaries** are proxied through the HA backend at
+`/api/eppgrid/firmware/` (see `firmware_proxy.py`) to avoid CORS issues
+with GitHub Releases. The proxy fetches from the per-version release at
+`github.com/.../releases/download/v{FIRMWARE_VERSION}/`, so the integration
+always installs the firmware version it was tested against — independent
+of the "latest" pointer used by the standalone ESP Web Tools page.
+`FIRMWARE_VERSION` is pinned in `const.py`.
 
 **USB flash flow:**
 1. User selects serial port via Web Serial API
-2. esptool.js detects chip, uploads stub, flashes firmware
+2. esptool.js detects chip, uploads stub, flashes firmware + appends a
+   2 KB `0xFF` write at `0x9000` to erase the otadata partition. Without
+   this the bootloader keeps booting whichever ota_X partition the previous
+   OTA wrote to — even though we just wrote firmware.bin to ota_0.
 3. MAC detected from esptool terminal output during `loader.main()`
 4. `beforeFlash` callback checks MAC against installed devices — if original
    firmware with ESPHome entry, confirms and deletes the old entry
 5. After flash, `transport.disconnect()` releases reader (port stays open
    via CH340 monkey-patch — see Serial Port Lifecycle below)
 
-**WiFi provisioning flow** (wifi variants only, after USB flash):
-1. RTS reset → Improv handshake with retry (5 attempts, 2s delay)
-2. WiFi scan via Improv SCAN command
-3. User selects network, enters password
-4. Send credentials via Improv WIFI_SETTINGS command
-5. Wait for PROVISIONING (0x03) → PROVISIONED (0x04) state transition
+**WiFi check / auto-skip** (wifi variants only, runs immediately after flash):
+1. `queryImprovState` does an Improv handshake and reads `CURRENT_STATE`.
+   If the device boots into `PROVISIONED` (already had creds in NVS), it
+   delegates to `detectIpAddress` which polls `GET_CURRENT_STATE` every
+   2 s for up to 30 s waiting for a non-`0.0.0.0` IP (cold-boot DHCP can
+   take 7–20 s).
+2. If a real IP arrives → skip WiFi setup, go straight to HA-add.
+3. Otherwise (unprovisioned, or no IP within budget) → fall through to the
+   WiFi provisioning flow below.
+4. Cancel during this phase aborts the polling loop via `AbortSignal` and
+   awaits the in-flight promise before closing the port — closing while a
+   reader lock is still held leaves the port unusable for retries.
+
+**WiFi provisioning flow** (used when auto-skip falls through):
+1. WiFi scan via Improv SCAN command
+2. User selects network, enters password
+3. Send credentials via Improv WIFI_SETTINGS command
+4. Wait for PROVISIONING (0x03) → PROVISIONED (0x04) state transition
    (confirms creds saved to NVS)
-6. Read RPC_RESULT for IP. If IP is `0.0.0.0` (DHCP not ready yet):
-   - RTS reset to reboot device
-   - Re-handshake with retry
-   - Read definitive IP from fresh Improv session after reboot
-7. Auto-add device to HA via `eppgrid/add_esphome_device` WebSocket API
+5. `detectIpAddress` polls until a non-`0.0.0.0` IP is returned
+6. Auto-add device to HA via `eppgrid/add_esphome_device` WebSocket API
+
+**Error / retry routing:** The error state carries the `lastStep` it
+transitioned from plus the `variant` for flash-phase errors. The Retry
+button re-runs the flash for `connecting`/`flashing`/`wifi_check` failures
+and the WiFi-config flow for everything else. Start Over always resets
+to the variant picker.
 
 **Serial port lifecycle (CH340 workaround):**
 `transport.disconnect()` calls `port.close()` internally. On CH340 USB-serial
@@ -360,8 +382,28 @@ Tests in `tests/`: init lifecycle, storage, device manager, websocket API.
 Firmware binaries and manifests are hosted on **GitHub Releases** and proxied
 through the HA backend at `/api/eppgrid/firmware/` to avoid CORS issues
 (GitHub Releases serves with `application/octet-stream` and no CORS headers).
-The firmware version is pinned by `FIRMWARE_VERSION` in `const.py`.
+The firmware version is pinned by `FIRMWARE_VERSION` in `const.py`. The
+proxy fetches from the version-pinned release URL, so installs from the
+panel are always reproducible — independent of which release the GitHub
+"latest" pointer happens to refer to.
 
-**firmware-release.yml** — Triggered by tag push (`v*`). Compiles
-`wifi-ble-co2` and `ethernet-ble-co2` variants, generates ESP Web Tools
-manifest JSON for each, and creates a GitHub Release with all artifacts.
+**Release script (`bin/release.sh`)** — opens a release PR. Pre-flights
+semver, on-main, clean-tree, tag-not-exists, and origin-up-to-date. Bumps
+`manifest.json` (always) and `FIRMWARE_VERSION` (only when `firmware/`
+changed since the previous tag) so the integration version and firmware
+version remain independent — they only re-align when the firmware actually
+changes.
+
+**firmware-release.yml** — Triggered by tag push (`v*`). First runs
+`.github/scripts/validate-release.sh`, which fails the workflow if
+`manifest.json` ≠ tag, or if the three firmware-version files (manifest
+template, `FIRMWARE_VERSION`, etc.) disagree. If the tag bumps the firmware
+version it compiles the variants, generates ESP Web Tools manifests, and
+publishes them as release assets. Tags `make_latest=true` only for
+firmware-changing non-pre-release tags; pre-releases (`-alpha`, `-beta`,
+`-rc`) are never auto-promoted.
+
+**pages.yml** — Triggers on push to main *and* on `release: released`.
+Stages `fw/` from the GitHub `latest` release via `gh api /releases/latest`
+(simpler than scanning + filtering). Promoting a pre-release to latest in
+the GitHub UI re-fires this workflow without needing a fresh tag.

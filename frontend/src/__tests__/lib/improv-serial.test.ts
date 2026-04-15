@@ -9,9 +9,14 @@ import {
 	CMD_GET_DEVICE_INFO,
 	CMD_WIFI_SCAN,
 	CMD_WIFI_SETTINGS,
+	describeImprovPacket,
 	IMPROV_HEADER,
 	parseImprovPackets,
 	parseScanResults,
+	STATE_AUTHORIZED,
+	STATE_PROVISIONED,
+	TYPE_CURRENT_STATE,
+	TYPE_ERROR_STATE,
 	TYPE_RPC_COMMAND,
 	TYPE_RPC_RESULT,
 } from "../../lib/improv-serial.js";
@@ -399,5 +404,116 @@ describe("parseScanResults", () => {
 		expect(result?.ssid).toBe("OpenNetwork");
 		expect(result?.rssi).toBe(-80);
 		expect(result?.authRequired).toBe(false);
+	});
+});
+
+describe("describeImprovPacket", () => {
+	it("names AUTHORIZED and PROVISIONED CURRENT_STATE packets", () => {
+		expect(
+			describeImprovPacket({
+				type: TYPE_CURRENT_STATE,
+				data: new Uint8Array([STATE_AUTHORIZED]),
+			}),
+		).toBe("CURRENT_STATE AUTHORIZED");
+		expect(
+			describeImprovPacket({
+				type: TYPE_CURRENT_STATE,
+				data: new Uint8Array([STATE_PROVISIONED]),
+			}),
+		).toBe("CURRENT_STATE PROVISIONED");
+	});
+
+	it("renders unknown CURRENT_STATE bytes in hex", () => {
+		expect(
+			describeImprovPacket({
+				type: TYPE_CURRENT_STATE,
+				data: new Uint8Array([0x07]),
+			}),
+		).toBe("CURRENT_STATE state=0x07");
+	});
+
+	it("renders ERROR_STATE in hex", () => {
+		expect(
+			describeImprovPacket({
+				type: TYPE_ERROR_STATE,
+				data: new Uint8Array([0x03]),
+			}),
+		).toBe("ERROR_STATE 0x03");
+	});
+
+	it("renders RPC_COMMAND in hex", () => {
+		expect(
+			describeImprovPacket({
+				type: TYPE_RPC_COMMAND,
+				data: new Uint8Array([CMD_WIFI_SETTINGS]),
+			}),
+		).toBe("RPC_COMMAND 0x01");
+	});
+
+	it("names known RPC_RESULT commands", () => {
+		// GET_DEVICE_INFO with no embedded url
+		expect(
+			describeImprovPacket({
+				type: TYPE_RPC_RESULT,
+				data: new Uint8Array([CMD_GET_DEVICE_INFO, 0x00]),
+			}),
+		).toBe("RPC_RESULT GET_DEVICE_INFO (2 bytes)");
+		expect(
+			describeImprovPacket({
+				type: TYPE_RPC_RESULT,
+				data: new Uint8Array([CMD_WIFI_SCAN, 0x00]),
+			}),
+		).toBe("RPC_RESULT WIFI_SCAN (2 bytes)");
+		expect(
+			describeImprovPacket({
+				type: TYPE_RPC_RESULT,
+				data: new Uint8Array([CMD_WIFI_SETTINGS, 0x00]),
+			}),
+		).toBe("RPC_RESULT WIFI_SETTINGS (2 bytes)");
+	});
+
+	it("renders unknown RPC_RESULT command in hex", () => {
+		expect(
+			describeImprovPacket({
+				type: TYPE_RPC_RESULT,
+				data: new Uint8Array([0x99, 0x00]),
+			}),
+		).toBe("RPC_RESULT cmd=0x99 (2 bytes)");
+	});
+
+	it("extracts the URL from a GET_CURRENT_STATE RPC_RESULT", () => {
+		const url = "http://192.168.1.42";
+		const urlBytes = new TextEncoder().encode(url);
+		const data = new Uint8Array(3 + urlBytes.length);
+		data[0] = CMD_GET_CURRENT_STATE;
+		data[1] = urlBytes.length + 1;
+		data[2] = urlBytes.length;
+		data.set(urlBytes, 3);
+		expect(describeImprovPacket({ type: TYPE_RPC_RESULT, data })).toBe(
+			`RPC_RESULT GET_CURRENT_STATE url="${url}"`,
+		);
+	});
+
+	it("falls back to byte-count when the GET_CURRENT_STATE URL is truncated", () => {
+		// strLen says 10 but only 2 url bytes follow
+		const data = new Uint8Array([
+			CMD_GET_CURRENT_STATE,
+			0x0b,
+			0x0a,
+			0x68,
+			0x69,
+		]);
+		expect(describeImprovPacket({ type: TYPE_RPC_RESULT, data })).toBe(
+			"RPC_RESULT GET_CURRENT_STATE (5 bytes)",
+		);
+	});
+
+	it("renders unknown packet types in hex", () => {
+		expect(
+			describeImprovPacket({
+				type: 0xab,
+				data: new Uint8Array([0x01, 0x02, 0x03]),
+			}),
+		).toBe("type=0xab (3 bytes)");
 	});
 });

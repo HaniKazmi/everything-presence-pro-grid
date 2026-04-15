@@ -87,6 +87,7 @@ export interface UsbFlashState {
 	fatal?: boolean;
 	haAdd?: HaAddResult;
 	autoSkipped?: boolean;
+	lastStep?: UsbFlashStep;
 }
 
 export type OtaState = "updating" | "success" | "error";

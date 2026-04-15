@@ -109,3 +109,9 @@ jobs:
           fail_on_unmatched_files: false
           generate_release_notes: true
           prerelease: ${{ contains(github.ref, '-alpha') || contains(github.ref, '-beta') || contains(github.ref, '-rc') }}
+          # A release becomes "latest" only when it ships firmware binaries
+          # AND is not a pre-release. Integration-only releases keep the
+          # previous firmware tag as latest. Pre-releases stay off latest
+          # until promoted manually via:
+          #   gh release edit v{VERSION} --prerelease=false --latest=true
+          make_latest: ${{ needs.build.outputs.is_firmware_release == 'true' && !contains(github.ref, '-alpha') && !contains(github.ref, '-beta') && !contains(github.ref, '-rc') && 'true' || 'false' }}

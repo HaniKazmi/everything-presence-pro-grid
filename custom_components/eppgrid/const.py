@@ -20,8 +20,14 @@ FIRMWARE_VERSION = "0.93.0"
 EPP_MANUFACTURER = "EverythingSmartTechnology"
 EPP_MODEL = "Everything Presence Pro"
 
-# Firmware download URL (GitHub Pages — no redirects, short URLs)
-MANIFEST_BASE_URL = f"https://clintongormley.github.io/everything-presence-pro-grid/fw/v{FIRMWARE_VERSION}"
+# Firmware download URL — GitHub release assets for v{FIRMWARE_VERSION}.
+# Anchored to the integration's required FIRMWARE_VERSION so the flasher and
+# OTA both install firmware that matches the integration. (ESPHome's built-in
+# update mechanism uses fw/latest/ on GH Pages — that is the "always-newest"
+# channel and is unrelated to this URL.)
+MANIFEST_BASE_URL = (
+    f"https://github.com/clintongormley/everything-presence-pro-grid/releases/download/v{FIRMWARE_VERSION}"
+)
 
 # Map UI network choice to firmware variant filename (matches fw/ filenames)
 FIRMWARE_VARIANTS = {

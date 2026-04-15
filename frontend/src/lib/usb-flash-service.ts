@@ -107,6 +107,15 @@ export async function flashFirmware(
 			fileArray.push({ data, address: part.offset });
 		}
 
+		// Clear the otadata partition (0x9000, size 0x2000) by writing 0xFF.
+		// Without this the bootloader keeps booting whichever ota_X partition
+		// the previous OTA wrote to — even after we just wrote firmware.bin
+		// to ota_0. Erasing otadata lets the bootloader fall back to ota_0,
+		// which has the firmware we just installed.
+		const otaErase = new Uint8Array(0x2000);
+		otaErase.fill(0xff);
+		fileArray.push({ data: otaErase, address: 0x9000 });
+
 		// Flash
 		await loader.writeFlash({
 			fileArray,
@@ -331,6 +340,13 @@ export async function queryImprovState(
 		handshakeRetryDelay?: number;
 		readDelay?: number;
 	},
+	options?: {
+		/** Aborting this signal makes the polling loop exit on its next
+		 *  iteration (within a few hundred ms) and release the serial
+		 *  locks, so a new flash attempt isn't blocked waiting for the
+		 *  read budget to elapse naturally. */
+		signal?: AbortSignal;
+	},
 ): Promise<{
 	state: "AUTHORIZED" | "PROVISIONED";
 	ip?: string;
@@ -339,6 +355,7 @@ export async function queryImprovState(
 }> {
 	const writer = await _connectImprov(port, timings);
 	const reader = port.readable!.getReader();
+	const signal = options?.signal;
 
 	try {
 		// Handshake already sent a GET_CURRENT_STATE; the device should respond with
@@ -346,38 +363,47 @@ export async function queryImprovState(
 		// the URL. Send a fresh GET_CURRENT_STATE here to guarantee an up-to-date
 		// response on this reader (the handshake read its response on a scratch
 		// reader that was released).
+		console.debug(`[queryImprovState] sending GET_CURRENT_STATE`);
 		await sendImprovPacket(writer, buildGetStateCommand());
 
 		const readBudget = timings?.readDelay ?? 3000;
-		const deadline = Date.now() + readBudget;
+		const start = Date.now();
 		let buffer: number[] = [];
 		let stateByte: number | undefined;
-		let url: string | undefined;
 
+		// Read just enough to know the state byte. The state arrives quickly
+		// (Improv responds as soon as ESPHome's setup() runs). URL discovery
+		// is deferred to detectIpAddress below.
+		const stateDeadline = start + Math.min(readBudget, 3000);
 		while (
-			Date.now() < deadline &&
-			(stateByte === undefined ||
-				(stateByte === STATE_PROVISIONED && url === undefined))
+			Date.now() < stateDeadline &&
+			stateByte === undefined &&
+			!signal?.aborted
 		) {
-			const remaining = deadline - Date.now();
+			const remaining = stateDeadline - Date.now();
 			if (remaining <= 0) break;
-			const result = await readImprovResponse(reader, remaining, buffer);
-			buffer = result.buffer;
-			for (const pkt of result.packets) {
-				if (pkt.type === TYPE_CURRENT_STATE && pkt.data.length >= 1) {
-					stateByte = pkt.data[0];
-				}
-				if (
-					pkt.type === TYPE_RPC_RESULT &&
-					pkt.data.length >= 3 &&
-					pkt.data[0] === CMD_GET_CURRENT_STATE
-				) {
-					const urlLen = pkt.data[2];
-					if (pkt.data.length >= 3 + urlLen) {
-						url = new TextDecoder().decode(pkt.data.slice(3, 3 + urlLen));
+			try {
+				// Cap each read at 500ms so we check `signal.aborted` frequently.
+				const result = await readImprovResponse(
+					reader,
+					Math.min(remaining, 500),
+					buffer,
+				);
+				buffer = result.buffer;
+				for (const pkt of result.packets) {
+					if (pkt.type === TYPE_CURRENT_STATE && pkt.data.length >= 1) {
+						stateByte = pkt.data[0];
 					}
 				}
+			} catch {
+				// Timeout or read error — loop and recheck deadline/signal.
 			}
+		}
+
+		if (signal?.aborted) {
+			throw Object.assign(new Error("aborted"), {
+				errorKey: "flasher.errors.aborted",
+			});
 		}
 
 		if (stateByte === undefined) {
@@ -386,11 +412,35 @@ export async function queryImprovState(
 			});
 		}
 
+		// For PROVISIONED devices, delegate IP-polling to detectIpAddress —
+		// the same code used post-provisioning. Handles 0.0.0.0 transient
+		// responses by polling GET_CURRENT_STATE every POLL_INTERVAL_MS
+		// until a real IP arrives or the budget is exhausted.
 		let ip: string | undefined;
-		if (url) {
-			const match = /(\d+\.\d+\.\d+\.\d+)/.exec(url);
-			if (match) ip = match[1];
+		if (stateByte === STATE_PROVISIONED) {
+			const remainingBudget = Math.max(0, start + readBudget - Date.now());
+			if (remainingBudget > 0) {
+				console.debug(
+					`[queryImprovState] PROVISIONED — delegating to detectIpAddress (budget=${remainingBudget}ms)`,
+				);
+				try {
+					ip = await detectIpAddress(reader, writer, remainingBudget, {
+						initialBuffer: buffer,
+						startPolling: true,
+						signal,
+					});
+				} catch (err) {
+					console.debug(
+						`[queryImprovState] detectIpAddress gave up: ${(err as Error).message}`,
+					);
+					ip = "0.0.0.0";
+				}
+			}
 		}
+
+		console.debug(
+			`[queryImprovState] exit: elapsed=${Date.now() - start}ms, stateByte=${stateByte}, ip=${ip}`,
+		);
 
 		const state: "AUTHORIZED" | "PROVISIONED" =
 			stateByte === STATE_PROVISIONED ? "PROVISIONED" : "AUTHORIZED";
@@ -442,24 +492,41 @@ export async function detectIpAddress(
 	reader: ReadableStreamDefaultReader<Uint8Array>,
 	writer: WritableStreamDefaultWriter<Uint8Array>,
 	timeoutMs: number,
+	options?: {
+		initialBuffer?: number[];
+		startPolling?: boolean;
+		/** Aborting this signal exits the polling loop on its next iteration. */
+		signal?: AbortSignal;
+	},
 ): Promise<string> {
 	const decoder = new TextDecoder();
 	const ipPattern = /(\d+\.\d+\.\d+\.\d+)/;
 	const deadline = Date.now() + timeoutMs;
-	let buffer: number[] = [];
+	let buffer: number[] = options?.initialBuffer
+		? [...options.initialBuffer]
+		: [];
 	let lastPollAt = 0; // 0 ensures the first poll fires immediately after seeing 0.0.0.0
-	let sawZeroUrl = false;
+	// If the caller has already seen a 0.0.0.0 URL (e.g. queryImprovState
+	// during the wifi-check phase), start polling straight away rather than
+	// blocking on a read that may never come.
+	let sawZeroUrl = options?.startPolling ?? false;
+	const signal = options?.signal;
 
 	while (Date.now() < deadline) {
+		if (signal?.aborted) {
+			throw Object.assign(new Error("aborted"), {
+				errorKey: "flasher.errors.aborted",
+			});
+		}
 		if (sawZeroUrl && Date.now() - lastPollAt >= POLL_INTERVAL_MS) {
 			await sendImprovPacket(writer, buildGetStateCommand());
 			lastPollAt = Date.now();
 		}
 
 		try {
-			const readBudget = sawZeroUrl
-				? Math.min(POLL_INTERVAL_MS, deadline - Date.now())
-				: deadline - Date.now();
+			// Cap each read at POLL_INTERVAL_MS so we check signal.aborted
+			// at least that often, even on the "not yet polling" path.
+			const readBudget = Math.min(POLL_INTERVAL_MS, deadline - Date.now());
 			const result = await readImprovResponse(reader, readBudget, buffer);
 			buffer = result.buffer;
 			for (const pkt of result.packets) {

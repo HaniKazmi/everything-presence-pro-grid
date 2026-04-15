@@ -1679,7 +1679,8 @@ class TestUpdateFirmware:
         mock_conn._client.execute_service.assert_awaited_once()
         call_args = mock_conn._client.execute_service.call_args[0]
         assert call_args[0] is mock_svc
-        assert "/wifi-ble-co2.json" in call_args[1]["url"]
+        assert "everything-presence-pro-wifi-ble-co2-manifest.json" in call_args[1]["url"]
+        assert "/releases/download/v" in call_args[1]["url"]
         mock_conn.async_disconnect.assert_awaited_once()
 
     async def test_update_firmware_ethernet_variant(self, hass: HomeAssistant, config_entry: MockConfigEntry) -> None:
@@ -1706,7 +1707,8 @@ class TestUpdateFirmware:
             await call_async_handler(hass, websocket_update_firmware, connection, msg)
 
         call_args = mock_conn._client.execute_service.call_args[0]
-        assert "/ethernet-ble-co2.json" in call_args[1]["url"]
+        assert "everything-presence-pro-ethernet-ble-co2-manifest.json" in call_args[1]["url"]
+        assert "/releases/download/v" in call_args[1]["url"]
 
     async def test_update_firmware_device_not_found(self, hass: HomeAssistant, config_entry: MockConfigEntry) -> None:
         """update_firmware returns error when device not found."""

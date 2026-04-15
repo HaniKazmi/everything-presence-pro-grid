@@ -1160,19 +1160,7 @@ export class EPPGridPanel extends LitElement {
 					@usb-wifi-config=${() => {
 						this._handleUsbWifiConfig();
 					}}
-					@usb-retry=${() => {
-						const ctrl = this._flasherCtrl;
-						try {
-							(ctrl as any)._serialReader?.releaseLock();
-						} catch {}
-						try {
-							(ctrl as any)._serialWriter?.releaseLock();
-						} catch {}
-						(ctrl as any)._serialReader = null;
-						(ctrl as any)._serialWriter = null;
-						// Retry WiFi config — prompts for new port if needed
-						this._handleUsbWifiConfig();
-					}}
+					@usb-retry=${this._handleUsbRetry}
 					@retry-ha-add=${this._handleRetryHaAdd}
 					@flasher-cancel=${this._handleFlasherCancel}
 					@wifi-scan=${() => {
@@ -2462,6 +2450,7 @@ export class EPPGridPanel extends LitElement {
 				ctrl.resetUsbState();
 				return;
 			}
+			const lastStep = ctrl.usbFlashState?.step;
 			const e = err as {
 				errorKey?: string;
 				errorParams?: Record<string, unknown>;
@@ -2469,6 +2458,7 @@ export class EPPGridPanel extends LitElement {
 			};
 			ctrl.updateUsbState({
 				step: "error",
+				lastStep,
 				errorKey: e.errorKey ?? "wifi.errors.scan_failed",
 				errorParams: e.errorParams as
 					| Record<string, string | number>
@@ -2550,7 +2540,27 @@ export class EPPGridPanel extends LitElement {
 			let skipWriter: WritableStreamDefaultWriter<Uint8Array> | null = null;
 			let skipReader: ReadableStreamDefaultReader<Uint8Array> | null = null;
 			try {
-				const info = await queryImprovState(port);
+				// After a fresh flash the device cold-boots, loads creds from NVS, then
+				// re-associates with WiFi + gets DHCP. The Improv URL (which carries the
+				// IP we need) only shows up after that full sequence — often 7-10s, up
+				// to 20s on a slow AP. Use a generous readDelay so we don't fall through
+				// to wifi_scan on a device that actually has valid creds.
+				// AbortController + in-flight promise tracking so
+				// _handleFlasherCancel can both signal abort AND await the
+				// op's settlement before closing the port (otherwise the
+				// reader lock is still held when close() runs and close
+				// rejects, leaving the port open and unusable for retries).
+				const abortCtrl = new AbortController();
+				(ctrl as any)._wifiCheckAbort = abortCtrl;
+				const queryPromise = queryImprovState(
+					port,
+					{ readDelay: 30000 },
+					{ signal: abortCtrl.signal },
+				);
+				(ctrl as any)._wifiCheckPromise = queryPromise;
+				const info = await queryPromise;
+				(ctrl as any)._wifiCheckAbort = null;
+				(ctrl as any)._wifiCheckPromise = null;
 				if (info.state === "PROVISIONED" && info.ip && info.ip !== "0.0.0.0") {
 					skipIp = info.ip;
 					skipWriter = info.writer;
@@ -2617,6 +2627,7 @@ export class EPPGridPanel extends LitElement {
 				ctrl.resetUsbState();
 				return;
 			}
+			const lastStep = ctrl.usbFlashState?.step;
 			// Clean up port on error — don't leave it dangling
 			if (ctrl.serialPort) {
 				try {
@@ -2644,6 +2655,8 @@ export class EPPGridPanel extends LitElement {
 			ctrl.opRunning = false;
 			ctrl.updateUsbState({
 				step: "error",
+				lastStep,
+				variant,
 				errorKey: e.errorKey ?? fallbackKey,
 				errorParams: e.errorParams as
 					| Record<string, string | number>
@@ -2713,6 +2726,7 @@ export class EPPGridPanel extends LitElement {
 			(ctrl as any)._serialReader = null;
 			(ctrl as any)._serialWriter = null;
 			if (ctrl.opId !== myOp) return;
+			const lastStep = ctrl.usbFlashState?.step;
 			const e = err as {
 				errorKey?: string;
 				errorParams?: Record<string, unknown>;
@@ -2720,6 +2734,7 @@ export class EPPGridPanel extends LitElement {
 			};
 			ctrl.updateUsbState({
 				step: "error",
+				lastStep,
 				errorKey: e.errorKey ?? "wifi.errors.provisioning_failed",
 				errorParams: e.errorParams as
 					| Record<string, string | number>
@@ -2775,19 +2790,67 @@ export class EPPGridPanel extends LitElement {
 		ctrl.updateUsbState({ step: "complete", ip: state.ip, haAdd });
 	}
 
-	private _handleFlasherCancel(): void {
+	private _handleUsbRetry = (): void => {
+		const ctrl = this._flasherCtrl;
+		const state = ctrl.usbFlashState;
+		const lastStep = state?.lastStep;
+		const variant = state?.variant;
+		try {
+			(ctrl as any)._serialReader?.releaseLock();
+		} catch {}
+		try {
+			(ctrl as any)._serialWriter?.releaseLock();
+		} catch {}
+		(ctrl as any)._serialReader = null;
+		(ctrl as any)._serialWriter = null;
+		// Route retry to the step that actually failed. Flash-phase failures
+		// (connecting, flashing, wifi_check) re-run the full flash; WiFi-phase
+		// failures retry the WiFi config flow (which prompts for a new port).
+		const isFlashPhase =
+			lastStep === "connecting" ||
+			lastStep === "flashing" ||
+			lastStep === "wifi_check";
+		if (isFlashPhase && variant) {
+			this._handleUsbFlash(variant);
+		} else {
+			this._handleUsbWifiConfig();
+		}
+	};
+
+	private async _handleFlasherCancel(): Promise<void> {
 		const ctrl = this._flasherCtrl;
 		const state = ctrl.usbFlashState;
 		if (state?.step === "wifi_configured" && state.ip) {
 			ctrl.setCancelledDeviceIpHint(state.ip);
 		}
-		// resetUsbState releases controller-tracked locks, bumps opId, and
-		// nulls the port reference without force-closing it — closing a port
-		// whose stream locks are held by an in-flight read (e.g. a running
-		// queryImprovState or runWifiScan) can crash Chrome. Any in-flight op
-		// will observe the opId bump and release its own locks.
-		ctrl.resetUsbState();
+		// Abort any in-flight polling (queryImprovState during wifi_check).
+		const abortCtrl = (ctrl as any)._wifiCheckAbort;
+		const inFlight = (ctrl as any)._wifiCheckPromise as
+			| Promise<unknown>
+			| undefined;
+		if (abortCtrl?.abort) {
+			abortCtrl.abort();
+			(ctrl as any)._wifiCheckAbort = null;
+		}
+		const port = ctrl.serialPort;
+		ctrl.bumpOpId();
 		ctrl.opRunning = false;
+		// Wait for the aborted op to actually settle before closing the
+		// port — otherwise close() runs while the reader lock is still
+		// held, rejects with "the port has a readable or writable stream",
+		// and the port stays open + unusable for the next flash attempt.
+		if (inFlight) {
+			try {
+				await inFlight;
+			} catch {}
+			(ctrl as any)._wifiCheckPromise = null;
+		}
+		if (port) {
+			try {
+				await port.close();
+			} catch {}
+		}
+		ctrl.resetUsbState();
 	}
 
 	private async _handleWifiScan(): Promise<void> {
@@ -2826,6 +2889,7 @@ export class EPPGridPanel extends LitElement {
 		} catch (err: any) {
 			if (ctrl.opId !== myOp) return;
 			console.error("WiFi scan failed:", err);
+			const lastStep = ctrl.usbFlashState?.step;
 			const e = err as {
 				errorKey?: string;
 				errorParams?: Record<string, unknown>;
@@ -2833,6 +2897,7 @@ export class EPPGridPanel extends LitElement {
 			};
 			ctrl.updateUsbState({
 				step: "error",
+				lastStep,
 				errorKey: e.errorKey ?? "wifi.errors.scan_failed",
 				errorParams: e.errorParams as
 					| Record<string, string | number>

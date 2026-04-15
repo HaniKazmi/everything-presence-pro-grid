@@ -172,6 +172,10 @@ describe("flashFirmware", () => {
 					{ data: expect.any(Uint8Array), address: 4096 },
 					{ data: expect.any(Uint8Array), address: 32768 },
 					{ data: expect.any(Uint8Array), address: 65536 },
+					// otadata partition cleared so the bootloader picks ota_0
+					// (where firmware.bin was just written) instead of the
+					// previous OTA partition.
+					{ data: expect.any(Uint8Array), address: 0x9000 },
 				],
 				flashSize: "keep",
 				flashMode: "keep",
@@ -180,6 +184,24 @@ describe("flashFirmware", () => {
 				compress: true,
 			}),
 		);
+	});
+
+	it("clears otadata with 0x2000 bytes of 0xFF", async () => {
+		const port = mockPort();
+		await flashFirmware(port, "wifi-ble-co2", vi.fn(), {
+			baseUrl: TEST_BASE_URL,
+		});
+
+		const loaderInstance = vi.mocked(ESPLoader).mock.results[0].value;
+		const fileArray = vi.mocked(loaderInstance.writeFlash).mock.calls[0][0]
+			.fileArray as {
+			data: Uint8Array;
+			address: number;
+		}[];
+		const otaErase = fileArray.find((f) => f.address === 0x9000);
+		expect(otaErase).toBeDefined();
+		expect(otaErase!.data.length).toBe(0x2000);
+		expect(otaErase!.data.every((b) => b === 0xff)).toBe(true);
 	});
 
 	it("calls loader.after('hard_reset') after flash", async () => {
@@ -1492,6 +1514,43 @@ describe("queryImprovState", () => {
 		const result = await queryImprovState(port);
 		expect(result.state).toBe("PROVISIONED");
 		expect(result.ip).toBe("0.0.0.0");
+	});
+
+	it("keeps polling when url shows 0.0.0.0 until a real IP arrives", async () => {
+		// Real device behaviour: immediately after boot, improv returns
+		// "http://0.0.0.0" (state=PROVISIONED but WiFi still associating).
+		// A few seconds later it reports the real IP. Our code should keep
+		// polling, not fall through on the 0.0.0.0 response.
+		let call = 0;
+		(readImprovResponse as any).mockImplementation(async () => {
+			call++;
+			if (call === 1) {
+				// Initial handshake
+				return {
+					packets: [{ type: 0x01, data: new Uint8Array([0x04]) }],
+					buffer: [],
+				};
+			}
+			// First few polls: 0.0.0.0. Then: real IP.
+			const url = call < 4 ? "http://0.0.0.0" : "http://192.168.1.42";
+			const urlBytes = new TextEncoder().encode(url);
+			const rpcData = new Uint8Array(3 + urlBytes.length);
+			rpcData[0] = 0x02;
+			rpcData[1] = 1 + urlBytes.length;
+			rpcData[2] = urlBytes.length;
+			rpcData.set(urlBytes, 3);
+			return {
+				packets: [
+					{ type: 0x01, data: new Uint8Array([0x04]) },
+					{ type: 0x04, data: rpcData },
+				],
+				buffer: [],
+			};
+		});
+		const port = mockPortReady();
+		const result = await queryImprovState(port, { readDelay: 30000 });
+		expect(result.state).toBe("PROVISIONED");
+		expect(result.ip).toBe("192.168.1.42");
 	});
 
 	it("returns AUTHORIZED (no IP) when device has no credentials", async () => {

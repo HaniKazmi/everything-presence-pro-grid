@@ -14,6 +14,12 @@ on:
   workflow_run:
     workflows: ["Firmware Release"]
     types: [completed]
+  # Re-deploy when a pre-release is promoted to a regular release
+  # (`gh release edit v{X} --prerelease=false --latest=true`). Without this,
+  # fw/latest/ would keep pointing at the previously-latest firmware until
+  # the next push to main.
+  release:
+    types: [released]
 
 permissions:
   contents: read
@@ -41,24 +47,26 @@ jobs:
           python-version: '3.13'
       - name: Install docs dependencies
         run: pip install -r requirements-docs.txt
-      - name: Download latest release firmware (if any)
+      - name: Download latest release firmware
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           mkdir -p artifacts fw
-          # Find the most recent release that actually published firmware binaries.
-          # Integration-only releases ship no binaries, so we walk backwards until
-          # we find one that does.
-          LATEST=$(gh release list --exclude-drafts --limit 20 --json tagName,assets \
-            --jq '[.[] | select(.assets | map(.name) | any(test("everything-presence-pro-.*\\.bin$")))][0].tagName // ""')
+          # GitHub's "latest" pointer is set deliberately by the Firmware
+          # Release workflow: only firmware-changing releases use make_latest=true,
+          # so /releases/latest always points at a release that has firmware
+          # binaries. No scanning needed.
+          # Tolerate the 404 case (no releases yet, or API hiccup) so docs
+          # can still deploy without a release present.
+          LATEST=$(gh api '/repos/${{ github.repository }}/releases/latest' --jq '.tag_name // ""' 2>/dev/null || true)
           if [ -z "$LATEST" ]; then
-            echo "No published release has firmware binaries — Pages will have no fw/ content"
+            echo "No latest release found — Pages will have no fw/ content"
             exit 0
           fi
-          echo "Latest release with firmware: $LATEST"
+          echo "Latest release: $LATEST"
           gh release download "$LATEST" -D artifacts --pattern 'everything-presence-pro-*'
           if ! ls artifacts/*.bin >/dev/null 2>&1; then
-            echo "::error::Release $LATEST matched on assets.name but no .bin files downloaded; refusing to publish an empty fw/"
+            echo "::error::Latest release $LATEST has no firmware binaries — release was misconfigured (should not have been marked as latest)"
             exit 1
           fi
           VERSION="${LATEST#v}" ARTIFACTS=artifacts ./.github/scripts/stage-firmware.sh
