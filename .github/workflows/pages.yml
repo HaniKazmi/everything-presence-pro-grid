@@ -48,9 +48,10 @@ jobs:
           mkdir -p artifacts fw
           # Find the most recent release that actually published firmware binaries.
           # Integration-only releases ship no binaries, so we walk backwards until
-          # we find one that does.
-          LATEST=$(gh release list --exclude-drafts --limit 20 --json tagName,assets \
-            --jq '[.[] | select(.assets | map(.name) | any(test("everything-presence-pro-.*\\.bin$")))][0].tagName // ""')
+          # we find one that does. Use `gh api` rather than `gh release list`
+          # because the latter does not expose the assets field.
+          LATEST=$(gh api '/repos/${{ github.repository }}/releases?per_page=20' \
+            --jq '[.[] | select(.draft | not) | select(.assets | map(.name) | any(test("everything-presence-pro-.*\\.bin$")))][0].tag_name // ""')
           if [ -z "$LATEST" ]; then
             echo "No published release has firmware binaries — Pages will have no fw/ content"
             exit 0

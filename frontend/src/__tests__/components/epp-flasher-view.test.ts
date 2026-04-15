@@ -891,19 +891,19 @@ describe("USB flash view — state-driven", () => {
 		expect(c.querySelector(".variant-selector")).not.toBeNull();
 	});
 
-	it("shows firmware version to be installed in idle state", () => {
+	it("shows firmware version in card title in idle state", () => {
 		const el = createView();
 		(el as any)._showUsbFlash = true;
 		(el as any).usbFlashState = null;
-		(el as any).firmwareVersion = "0.91.0";
+		(el as any).firmwareVersion = "v0.91.0";
 		const tpl = (el as any).render();
 		const c = renderTo(tpl);
 
-		const hint = c.querySelector(".firmware-version-hint");
-		expect(hint).not.toBeNull();
-		expect(hint?.textContent).toMatch(
-			/flasher\.firmware_version_hint\s+0\.91\.0/,
-		);
+		const header = c.querySelector(".card-header");
+		expect(header).not.toBeNull();
+		expect(header?.textContent).toMatch(/flasher\.title\s+v0\.91\.0/);
+		// Standalone hint paragraph is gone — version lives in the title now.
+		expect(c.querySelector(".firmware-version-hint")).toBeNull();
 	});
 
 	it("does not render iframe", () => {
