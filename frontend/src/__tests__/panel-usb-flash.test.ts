@@ -1061,6 +1061,36 @@ describe("_handleWifiScan", () => {
 			expect(ctrl.opId).not.toBe(beforeOp);
 			expect(ctrl.usbFlashState?.step).toBe("wifi_provision");
 		});
+
+		it("bails out without touching state if opId is bumped while runWifiScan is in flight", async () => {
+			const ctrl = (panel as any)._flasherCtrl;
+			ctrl.serialPort = mockPort;
+			ctrl.updateUsbState({ step: "wifi_scan" });
+
+			const freshReader = { releaseLock: vi.fn() };
+			const freshWriter = { releaseLock: vi.fn() };
+			// Simulate runWifiScan completing AFTER the user has cancelled (opId bumped).
+			(runWifiScan as ReturnType<typeof vi.fn>).mockImplementation(async () => {
+				ctrl.bumpOpId();
+				return {
+					writer: freshWriter,
+					reader: freshReader,
+					networks: [{ ssid: "Late", rssi: -50, authRequired: true }],
+				};
+			});
+			const updateSpy = vi.spyOn(ctrl, "updateUsbState");
+
+			await (panel as any)._handleWifiScan();
+
+			// Should not have transitioned to wifi_provision after the stale scan result.
+			const provisionCall = updateSpy.mock.calls.find(
+				(c: any[]) => c[0]?.step === "wifi_provision",
+			);
+			expect(provisionCall).toBeUndefined();
+			// And the fresh locks should have been released, not stored on the controller.
+			expect(freshReader.releaseLock).toHaveBeenCalled();
+			expect(freshWriter.releaseLock).toHaveBeenCalled();
+		});
 	});
 });
 
