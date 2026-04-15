@@ -40,10 +40,13 @@ jobs:
           echo "is_firmware_release=$([ \"$FW\" = \"${{ steps.version.outputs.version }}\" ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
 
       - name: Install ESPHome
+        if: steps.firmware.outputs.is_firmware_release == 'true'
         run: pip install esphome
       - name: Compile firmware
+        if: steps.firmware.outputs.is_firmware_release == 'true'
         run: esphome compile firmware/variants/${{ matrix.variant }}.yaml
       - name: Collect artifacts
+        if: steps.firmware.outputs.is_firmware_release == 'true'
         run: |
           mkdir -p dist
           BUILD_DIR="firmware/variants/.esphome/build/everything-presence-pro/.pioenvs/everything-presence-pro"
@@ -53,6 +56,7 @@ jobs:
           cp "$BUILD_DIR/partitions.bin" "dist/${VARIANT}-partitions.bin"
           cp "$BUILD_DIR/firmware.bin" "dist/${VARIANT}.bin"
       - name: Generate ESP Web Tools manifest
+        if: steps.firmware.outputs.is_firmware_release == 'true'
         run: |
           VER="${{ steps.version.outputs.version }}"
           VARIANT="everything-presence-pro-${{ matrix.variant }}"
@@ -78,6 +82,7 @@ jobs:
           }
           EOF
       - name: Upload build artifacts
+        if: steps.firmware.outputs.is_firmware_release == 'true'
         uses: actions/upload-artifact@v5
         with:
           name: firmware-${{ matrix.variant }}
@@ -94,9 +99,11 @@ jobs:
           path: dist
           pattern: firmware-*
           merge-multiple: true
+        continue-on-error: true
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           files: dist/*
+          fail_on_unmatched_files: false
           generate_release_notes: true
           prerelease: ${{ contains(github.ref, '-alpha') || contains(github.ref, '-beta') || contains(github.ref, '-rc') }}
