@@ -1,6 +1,6 @@
-# Live view
+# Live overview
 
-The live view is the default content of the Device Configuration tab when you're not in an editor mode. It shows the calibrated grid with your zones, overlays, and furniture in place, and updates live as the sensor tracks targets. This page covers how to read it.
+The live overview is the default content of the Device Configuration tab when you're not in an editor mode. It shows the calibrated grid with your zones, overlays, and furniture in place, and updates live as the sensor tracks targets. This page covers how to read it.
 
 ## The grid
 
@@ -12,7 +12,7 @@ The grid is a top-down view of your room after calibration. Each cell is the uni
 - Below the grid, the panel shows the room's width × depth plus the distance to the furthest point the sensor can still track (useful for sanity-checking that important corners are inside the LD2450's 6-metre tracking range).
 
 !!! example "Screenshot placeholder"
-    **Live view showing a dressed room with multiple zones, a couple of overlays, and two live target markers.** `live-view/populated.png`
+    **Live overview showing a dressed room with multiple zones, a couple of overlays, and two live target markers.** `live-overview/populated.png`
 
 ## Target markers
 
@@ -30,10 +30,10 @@ When a zone is occupied, its colour brightens and gets a subtle glow. This is th
 A good sanity-check workflow when setting up automations:
 
 1. Walk into the zone.
-2. Look at the live view — does the zone glow?
+2. Look at the live overview — does the zone glow?
 3. Check Home Assistant — is the entity on?
 
-If step 2 happens but step 3 doesn't, it's usually the Zone Presence device toggle that's off. See [Zones](zones.md#entities-exposed-in-home-assistant).
+If step 2 happens but step 3 doesn't, it's usually the Zone Presence device toggle that's off. See [Detection zones](detection-zones.md#entities-exposed-in-home-assistant).
 
 ## Environmental sensors
 
@@ -44,10 +44,10 @@ The live sidebar next to the grid has an **Environment** section. It's not overl
 - **Humidity** (%)
 - **CO2** (ppm) — only shown if the CO2 entity has been enabled on the device in Home Assistant
 
-These come from the firmware's environmental entities; the live view just shows them in one place. If a value is missing, the corresponding entity is disabled on the device page.
+These come from the firmware's environmental entities; the live overview just shows them in one place. If a value is missing, the corresponding entity is disabled on the device page.
 
 !!! example "Screenshot placeholder"
-    **Close-up of the Environment section in the live sidebar.** `live-view/environment-sidebar.png`
+    **Close-up of the Environment section in the live sidebar.** `live-overview/environment-sidebar.png`
 
 ## What you get by default
 
@@ -91,7 +91,7 @@ When something's wrong, the live grid is replaced by a banner rather than being 
 | --- | --- | --- |
 | Grid is blank or shows no sensor data | Device is offline | Check **Settings → Devices & Services → ESPHome** — the device should be listed and marked online. |
 | Targets jump around or drift outside walls | Calibration is off | Re-run the calibration wizard. See [Calibration](calibration.md). |
-| Zone colour never highlights, even when someone's in the zone | Zone Presence toggle is off at the device level, or the zone has zero cells painted | Enable **Zone Presence** on the device page; check the zone has cells in the [Zones](zones.md) editor. |
+| Zone colour never highlights, even when someone's in the zone | Zone Presence toggle is off at the device level, or the zone has zero cells painted | Enable **Zone Presence** on the device page; check the zone has cells in the [Detection zones](detection-zones.md) editor. |
 | Target stuck on a fixed cell with nobody there | Interference source at that cell (fan, curtain, reflective surface) | Add an Interference overlay at that cell. If it's still problematic, escalate to Suppress. See [Overlays](overlays.md). |
 | Environmental sensor values missing from the sidebar | Corresponding entity is disabled on the device page | Enable the entity in Home Assistant: go to the device page → entities → enable the missing one. CO2 in particular is disabled by default. |
 
@@ -99,4 +99,4 @@ See also: the [central Troubleshooting](troubleshooting.md) page for conceptual 
 
 ## Where to next
 
-- **[Zones →](zones.md)** — paint named regions on the grid so each one fires its own presence entity.
+- **[Detection zones →](detection-zones.md)** — paint named regions on the grid so each one fires its own presence entity.

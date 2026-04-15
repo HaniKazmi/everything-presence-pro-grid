@@ -187,12 +187,12 @@ Common traps to avoid when wiring up automations:
 
 | Symptom | Likely cause | Fix |
 | --- | --- | --- |
-| Automation referencing `zone_<N>_presence` never fires | Device-level **Zone Presence** toggle is off — the entity is disabled in Home Assistant's entity registry | Enable **Zone Presence** on the device page. See [Zones](zones.md#troubleshooting). |
+| Automation referencing `zone_<N>_presence` never fires | Device-level **Zone Presence** toggle is off — the entity is disabled in Home Assistant's entity registry | Enable **Zone Presence** on the device page. See [Detection zones](detection-zones.md#troubleshooting). |
 | Automation referencing **Static Presence** always reports off | Static Presence entity is disabled on the device page (default) | Enable the Static Presence entity in Home Assistant. Usually you don't need it — **Occupancy** already folds it in. |
 | Lights turn off on someone who's clearly still present | Empty-gate timeout too short, or you're gating on `Motion Presence` instead of `Occupancy` | Gate on `binary_sensor.<device>_occupancy` with `for: "00:02:00"` or longer. Occupancy already includes static presence on the device. |
-| Sofa / reading-chair zone flaps on and off | Zone type is "Default" — fall-off too fast | Change the zone's type to **Seating** in the [Zones](zones.md) editor. |
-| Bedroom zone flaps on and off when sleeping | Zone type is "Default" — presence timeout too short | Change the zone's type to **Bed** in the [Zones](zones.md) editor. |
-| Automation fires on a quick pass-through a hallway | Zone type is "Default" — entry threshold too quick | Change the zone's type to **Transit** in the [Zones](zones.md) editor. |
+| Sofa / reading-chair zone flaps on and off | Zone type is "Default" — fall-off too fast | Change the zone's type to **Seating** in the [Detection zones](detection-zones.md) editor. |
+| Bedroom zone flaps on and off when sleeping | Zone type is "Default" — presence timeout too short | Change the zone's type to **Bed** in the [Detection zones](detection-zones.md) editor. |
+| Automation fires on a quick pass-through a hallway | Zone type is "Default" — entry threshold too quick | Change the zone's type to **Transit** in the [Detection zones](detection-zones.md) editor. |
 
 See also: the [central Troubleshooting](troubleshooting.md) page for conceptual FAQ and how to open a GitHub issue.
 

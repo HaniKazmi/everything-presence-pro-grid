@@ -62,7 +62,7 @@ TypeScript/Lit panel. Runs inside the Home Assistant iframe.
     - `coordinates.ts` — target → grid cell mapping via the perspective transform.
     - `furniture.ts` — furniture presets and item creation.
     - `improv-serial.ts`, `usb-flash-service.ts` — USB flashing primitives.
-    - `heatmap.ts` — live-view target rendering.
+    - `heatmap.ts` — live-overview target rendering.
     - `zone-defaults.ts` — default thresholds per zone type.
     - `room-geometry.ts`, `canvas-serialization.ts`, `sticker-thumbnail.ts` — supporting utilities.
 - **`types.ts`, `localize.ts`, `strategy.ts`, `constants.ts`, `styles.ts`** — cross-cutting utilities.

@@ -1,17 +1,17 @@
 # Furniture
 
-Furniture is a purely visual layer. You place icons for sofas, beds, tables, and appliances on the grid so the live view is immediately interpretable — the dot moving near the bottom-left is someone sitting on the sofa, not a ghost. Unlike zones and overlays, furniture **does not affect detection** at all; it's decoration that helps you and future you reason about what the sensor is seeing.
+Furniture is a purely visual layer. You place icons for sofas, beds, tables, and appliances on the grid so the live overview is immediately interpretable — the dot moving near the bottom-left is someone sitting on the sofa, not a ghost. Unlike zones and overlays, furniture **does not affect detection** at all; it's decoration that helps you and future you reason about what the sensor is seeing.
 
 ## Why place furniture
 
-Without furniture, the live view is a coloured grid with dots moving on it. You can read it, but it takes effort. Adding furniture turns the grid into something that looks like your actual room:
+Without furniture, the live overview is a coloured grid with dots moving on it. You can read it, but it takes effort. Adding furniture turns the grid into something that looks like your actual room:
 
 - Real-time targets make intuitive sense ("that's someone walking past the dining table").
 - Ghost detections become explainable ("that's always the ceiling fan over the reading chair").
 - When you come back to tune zones six months from now, you still know what each cell represents.
 
 !!! note
-    Furniture has no effect on detection. Only the **Zones** editor (room boundary + named zones) and the **Overlays** editor (Entry/Exit, Interference, Suppress) change how the zone engine behaves. Anything you do in the Furniture editor is cosmetic.
+    Furniture has no effect on detection. Only the **Detection zones** editor (room boundary + named zones) and the **Overlays** editor (Entry/Exit, Interference, Suppress) change how the zone engine behaves. Anything you do in the Furniture editor is cosmetic.
 
 ## Adding furniture
 

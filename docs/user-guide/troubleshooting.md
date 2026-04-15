@@ -74,10 +74,10 @@ Pick the feature that most closely matches where things are going wrong:
 - **[Flashing firmware](flashing-firmware.md#troubleshooting)** — USB flash failures, browser picker empty, device not showing in HA after flash.
 - **[Firmware upgrades](firmware-upgrades.md#troubleshooting)** — OTA errors, integration/firmware version mismatches.
 - **[Calibration](calibration.md#troubleshooting)** — wizard capture issues, skewed grids after save.
-- **[Zones](zones.md#troubleshooting)** — missing zone entities, zones never firing, zone flapping.
+- **[Detection zones](detection-zones.md#troubleshooting)** — missing zone entities, zones never firing, zone flapping.
 - **[Overlays](overlays.md#troubleshooting)** — paint refused, ghosts persisting despite overlays.
 - **[Furniture](furniture.md#troubleshooting)** — items not appearing, rotation handle missing.
-- **[Live view](live-view.md#troubleshooting)** — blank grid, drifting targets, sensors missing from sidebar.
+- **[Live overview](live-overview.md#troubleshooting)** — blank grid, drifting targets, sensors missing from sidebar.
 - **[Automations](automations.md#troubleshooting)** — entities not firing, wrong triggers, timing surprises.
 
 Looking for contributor documentation? See [Developers](../developers/index.md) for the codebase walkthrough and contribution guide.

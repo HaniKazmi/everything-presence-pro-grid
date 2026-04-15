@@ -1,10 +1,10 @@
-# Detection Zones
+# Detection zones
 
 A zone is a named set of grid cells — typically a region of your room you care about, like "Desk", "Sofa", or "Doorway". Each zone gets its own occupancy and target-count entities in Home Assistant, which you can wire up in automations. This page covers creating zones, painting cells into them, tuning their behaviour, and what entities end up in HA.
 
 ## The zone list
 
-Open the Device Configuration tab and switch the sidebar to the **Zones** editor mode. The sidebar shows two things:
+Open the Device Configuration tab and switch the sidebar to the **Detection zones** editor mode. The sidebar shows two things:
 
 - A permanent **Room** entry at the top — this is the zone 0 fallback (see below).
 - A list of your named zones. You can have up to 7. The **Add zone** button is disabled once all seven slots are used.
@@ -40,7 +40,7 @@ Once calibration is done and the room boundary looks right, add your first named
 ## Renaming, recolouring, deleting
 
 - **Rename** — click the zone name field in the sidebar; edit inline; the new name takes effect immediately.
-- **Recolour** — click the colour swatch next to the zone name; a colour picker appears. Pick a colour that stands out against your other zones; the live view uses it to shade the zone.
+- **Recolour** — click the colour swatch next to the zone name; a colour picker appears. Pick a colour that stands out against your other zones; the live overview uses it to shade the zone.
 - **Delete** — click the **×** button on the zone's sidebar row. The zone and its cells disappear; any cells that were in the zone fall back into the Room zone.
 
 ## Per-zone settings

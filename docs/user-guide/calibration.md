@@ -63,7 +63,7 @@ After saving, it takes you back to the **Live overview** screen where you can ch
 
 ![Live overview showing a real target tracking along a well-calibrated grid.](../images/calibration/calibrated.png "Live overview showing a real target tracking along a well-calibrated grid.")
 
-You can use the [**Detection Zones**](zones.md) editor to increase or decrease the size of the grid, or you can re-calibrate the room size if things look wrong.
+You can use the [**Detection zones**](detection-zones.md) editor to increase or decrease the size of the grid, or you can re-calibrate the room size if things look wrong.
 
 ## When to re-calibrate
 
@@ -89,4 +89,4 @@ See also: the [central Troubleshooting](troubleshooting.md) page for conceptual 
 
 ## Where to next
 
-With calibration done, you're ready to explore the live view. See **[Live view](live-view.md)**.
+With calibration done, you're ready to explore the live overview. See **[Live overview](live-overview.md)**.

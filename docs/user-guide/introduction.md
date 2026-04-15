@@ -1,6 +1,6 @@
 # Introduction
 
-Everything Presence Pro Grid is a custom Home Assistant integration for the Everything Presence Pro mmWave radar sensor. It runs smoothed target tracking and zone detection processing on the device, and provides a panel for configuration, calibration, live view, and firmware flashing.
+Everything Presence Pro Grid is a custom Home Assistant integration for the Everything Presence Pro mmWave radar sensor. It runs smoothed target tracking and zone detection processing on the device, and provides a panel for configuration, calibration, live overview, and firmware flashing.
 
 For setup, see [Hardware](hardware.md), [Placement](placement.md), and [Installation](installation.md).
 
@@ -34,7 +34,7 @@ The original firmware sends raw sensor data to Home Assistant. That leaves a few
 - **Zone types** — `Default`, `Bed`, `Seating`, `Transit` — preset sensitivity and hysteresis (stickiness) for the zone's purpose. `Custom` exposes the underlying parameters.
 - **Cross-zone target tracking.** Targets are followed as they move between zones, allowing quick transitions from one zone to another.
 - **Overlays** for refining detection — mark doorways (Entry/Exit) and noise sources (Interference/Suppress).
-- **Furniture layout.** Drop furniture stickers on the grid so the live view is readable. Visual only; doesn't affect detection.
+- **Furniture layout.** Drop furniture stickers on the grid so the live overview is readable. Visual only; doesn't affect detection.
 - **On-chip processing.** Home Assistant gets a single `Occupancy` binary sensor plus per-zone presence sensors, instead of a stream of target coordinates.
 - **Rolling-median smoothing** of target positions, so brief radar jitter doesn't trigger ghost detections.
 - **Quiet updates.** Only the necessary information goes across the network.

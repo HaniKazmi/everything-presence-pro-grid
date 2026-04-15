@@ -80,8 +80,8 @@ nav:
     - Flashing firmware: user-guide/flashing-firmware.md
     - Placement: user-guide/placement.md
     - Calibration: user-guide/calibration.md
-    - Live view: user-guide/live-view.md
-    - Zones: user-guide/zones.md
+    - Live overview: user-guide/live-overview.md
+    - Detection zones: user-guide/detection-zones.md
     - Overlays: user-guide/overlays.md
     - Furniture: user-guide/furniture.md
     - Settings:

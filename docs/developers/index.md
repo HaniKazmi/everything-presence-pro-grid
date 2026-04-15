@@ -7,7 +7,7 @@ This section is for contributors to the Everything Presence Pro Grid codebase �
 Four subsystems live together in one repository:
 
 - **Integration** (`custom_components/eppgrid/`) — the Python HA custom component. A thin layer that discovers Everything Presence Pro devices via the ESPHome entity registry, connects to them, and relays state to the panel.
-- **Frontend** (`frontend/`) — the TypeScript/Lit panel that lives in the Home Assistant sidebar. Handles zone editing, calibration, the live view, and firmware flashing.
+- **Frontend** (`frontend/`) — the TypeScript/Lit panel that lives in the Home Assistant sidebar. Handles zone editing, calibration, the live overview, and firmware flashing.
 - **Firmware** (`firmware/`) — ESPHome-based firmware with a custom C++ component and a standalone zone engine library. The zone engine runs entirely on-device.
 - **Docs** (`docs/`) — this site, built with MkDocs Material and published to GitHub Pages.
 

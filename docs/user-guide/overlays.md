@@ -22,7 +22,7 @@ Think of it as a gradient: zones are "pay attention here", Interference is "be s
 Only one overlay-type paint mode is active at a time — clicking another overlay type switches to it.
 
 !!! note
-    Overlays only paint on cells that are **inside the room**. Painting a cell outside the room is a no-op — the engine doesn't track anything there anyway. If a cell near a wall refuses to paint, extend the room boundary first via the Room zone in the [Zones](zones.md) editor.
+    Overlays only paint on cells that are **inside the room**. Painting a cell outside the room is a no-op — the engine doesn't track anything there anyway. If a cell near a wall refuses to paint, extend the room boundary first via the Room zone in the [Detection zones](detection-zones.md) editor.
 
 !!! example "Screenshot placeholder"
     **Overlays sidebar with the three type buttons (Entry/Exit, Interference, Suppress), with Interference active.** `overlays/sidebar-buttons.png`
@@ -72,7 +72,7 @@ Common combinations:
 | Symptom | Likely cause | Fix |
 | --- | --- | --- |
 | Clicking a cell doesn't paint an overlay | No overlay-type paint mode is active | Click **Entry/Exit**, **Interference**, or **Suppress** in the sidebar first; that button stays depressed while paint mode is active. |
-| Cell outside the room won't accept overlay paint | Overlays can't paint outside the room boundary | Extend the Room zone (zone 0) in the [Zones](zones.md) editor to include the cell, then paint the overlay. |
+| Cell outside the room won't accept overlay paint | Overlays can't paint outside the room boundary | Extend the Room zone (zone 0) in the [Detection zones](detection-zones.md) editor to include the cell, then paint the overlay. |
 | Interference overlay painted but ghosts still appear | Interference threshold isn't strong enough for that source | Escalate those cells to **Suppress**. Suppress blocks the cells entirely rather than just raising detection thresholds. |
 | Entry/Exit overlay painted at the doorway but zones still flap on entry | Overlay doesn't cover the full walkable area of the doorway | Paint overlay cells covering the entire door opening, not just one cell to the side of it. |
 
@@ -80,4 +80,4 @@ See also: the [central Troubleshooting](troubleshooting.md) page for conceptual 
 
 ## Where to next
 
-- **[Furniture →](furniture.md)** — place furniture on the grid so you can read the live view at a glance.
+- **[Furniture →](furniture.md)** — place furniture on the grid so you can read the live overview at a glance.
