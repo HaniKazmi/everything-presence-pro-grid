@@ -383,6 +383,7 @@
 		"integration_outdated_body": "One or more devices have firmware that is newer than this version of the integration. Update the Everything Presence Pro Grid integration to restore full functionality.",
 		"open_hacs": "Open in HACS",
 		"ota_retry": "Retry",
+		"cancel": "Cancel",
 		"errors": {
 			"start_failed": "Failed to start update. Is the device online?",
 			"connect_failed": "Failed to connect to device",

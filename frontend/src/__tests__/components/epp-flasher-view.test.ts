@@ -1741,3 +1741,47 @@ describe("render() wifi_configured with autoSkipped", () => {
 		expect(fired).toEqual(["wifi-scan"]);
 	});
 });
+
+describe("cancel button on in-flight states", () => {
+	it("renders Cancel on wifi_scan and fires flasher-cancel", () => {
+		const el = createView({
+			usbFlashState: { step: "wifi_scan" },
+		});
+		const fired: string[] = [];
+		el.addEventListener("flasher-cancel", () => fired.push("flasher-cancel"));
+		const tpl = (el as any).render();
+		const c = renderTo(tpl);
+		const btn = c.querySelector(".cancel-btn") as HTMLElement | null;
+		expect(btn).not.toBeNull();
+		// Direct-dispatch pattern: call the method since click() doesn't route through Lit's bound handlers in detached render.
+		(el as any)._dispatchCancel();
+		expect(fired).toEqual(["flasher-cancel"]);
+	});
+
+	it("renders Cancel on wifi_check and fires flasher-cancel", () => {
+		const el = createView({
+			usbFlashState: { step: "wifi_check" },
+		});
+		const tpl = (el as any).render();
+		const c = renderTo(tpl);
+		expect(c.querySelector(".cancel-btn")).not.toBeNull();
+	});
+
+	it("does NOT render cancel during flashing (mid-flash abort risks bricking)", () => {
+		const el = createView({
+			usbFlashState: { step: "flashing", progress: 42 },
+		});
+		const tpl = (el as any).render();
+		const c = renderTo(tpl);
+		expect(c.querySelector(".cancel-btn")).toBeNull();
+	});
+
+	it("does NOT render cancel during connecting (native port picker is modal)", () => {
+		const el = createView({
+			usbFlashState: { step: "connecting" },
+		});
+		const tpl = (el as any).render();
+		const c = renderTo(tpl);
+		expect(c.querySelector(".cancel-btn")).toBeNull();
+	});
+});

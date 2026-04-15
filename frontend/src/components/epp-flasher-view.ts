@@ -191,6 +191,12 @@ export class EppFlasherView extends LitElement {
 		);
 	}
 
+	private _dispatchCancel(): void {
+		this.dispatchEvent(
+			new CustomEvent("flasher-cancel", { bubbles: true, composed: true }),
+		);
+	}
+
 	private async _copyIp(ip: string): Promise<void> {
 		if (!ip || !navigator.clipboard) return;
 		try {
@@ -655,7 +661,7 @@ export class EppFlasherView extends LitElement {
 			`;
 		}
 
-		// In-progress states (connecting, flashing, wifi_check, wifi_scan, reading_ip)
+		// In-progress states (connecting, flashing, wifi_check, wifi_scan, reading_ip, wifi_connecting)
 		if (state && state.step !== "idle") {
 			const stepKeyMap: Record<string, string> = {
 				connecting: "flasher.usb_step_connecting",
@@ -671,6 +677,10 @@ export class EppFlasherView extends LitElement {
 				state.step === "flashing"
 					? { version: this.firmwareVersion }
 					: undefined;
+			// Cancel is not offered during `flashing` (risk of bricking) or
+			// during `connecting` (native picker is modal).
+			const canCancel =
+				state.step !== "flashing" && state.step !== "connecting";
 			return html`
 				<div class="flasher-content">
 					<ha-card>
@@ -688,6 +698,15 @@ export class EppFlasherView extends LitElement {
 								${
 									state.step === "wifi_scan"
 										? html`<p class="usb-hint">${this.localize("flasher.wifi_scan_hint")}</p>`
+										: nothing
+								}
+								${
+									canCancel
+										? html`<div class="confirm-actions">
+											<ha-button class="cancel-btn" @click=${this._dispatchCancel}>
+												${this.localize("flasher.cancel")}
+											</ha-button>
+										</div>`
 										: nothing
 								}
 							</div>
