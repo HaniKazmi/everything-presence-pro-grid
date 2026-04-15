@@ -17,40 +17,38 @@ jobs:
           - wifi-ble-co2
           - ethernet-ble-co2
     name: "Build ${{ matrix.variant }}"
+    outputs:
+      is_firmware_release: ${{ steps.firmware.outputs.is_firmware_release }}
     steps:
       - uses: actions/checkout@v5
-      - name: Extract and validate version
+      - name: Extract version
         id: version
         run: |
           TAG="${GITHUB_REF#refs/tags/v}"
           echo "version=$TAG" >> "$GITHUB_OUTPUT"
 
-          # Validate tag matches manifest.json version
-          MANIFEST_VER=$(python3 -c "import json; print(json.load(open('custom_components/eppgrid/manifest.json'))['version'])")
-          if [ "$TAG" != "$MANIFEST_VER" ]; then
-            echo "::error::Tag v$TAG does not match manifest.json version $MANIFEST_VER"
-            exit 1
-          fi
+      - name: Validate source versions match tag
+        run: .github/scripts/validate-release.sh "${{ steps.version.outputs.version }}"
 
-      - name: Auto-patch firmware version
+      - name: Read firmware version
+        id: firmware
         run: |
-          VER="${{ steps.version.outputs.version }}"
-
-          # Patch project.version in firmware base YAML
-          sed -i "s/^    version: \".*\"/    version: \"$VER\"/" firmware/common/everything-presence-pro-base.yaml
-
-          # Patch FIRMWARE_VERSION_STR in C++ header
-          sed -i "s/FIRMWARE_VERSION_STR = \".*\"/FIRMWARE_VERSION_STR = \"$VER\"/" firmware/components/epp/epp_component.h
-
-          # Verify patches applied
-          grep "version: \"$VER\"" firmware/common/everything-presence-pro-base.yaml
-          grep "FIRMWARE_VERSION_STR = \"$VER\"" firmware/components/epp/epp_component.h
+          FW=$(python3 -c "
+          import re
+          m = re.search(r'^FIRMWARE_VERSION\s*=\s*\"([^\"]+)\"', open('custom_components/eppgrid/const.py').read(), re.M)
+          print(m.group(1) if m else '')
+          ")
+          echo "version=$FW" >> "$GITHUB_OUTPUT"
+          echo "is_firmware_release=$([ \"$FW\" = \"${{ steps.version.outputs.version }}\" ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
 
       - name: Install ESPHome
+        if: steps.firmware.outputs.is_firmware_release == 'true'
         run: pip install esphome
       - name: Compile firmware
+        if: steps.firmware.outputs.is_firmware_release == 'true'
         run: esphome compile firmware/variants/${{ matrix.variant }}.yaml
       - name: Collect artifacts
+        if: steps.firmware.outputs.is_firmware_release == 'true'
         run: |
           mkdir -p dist
           BUILD_DIR="firmware/variants/.esphome/build/everything-presence-pro/.pioenvs/everything-presence-pro"
@@ -60,6 +58,7 @@ jobs:
           cp "$BUILD_DIR/partitions.bin" "dist/${VARIANT}-partitions.bin"
           cp "$BUILD_DIR/firmware.bin" "dist/${VARIANT}.bin"
       - name: Generate ESP Web Tools manifest
+        if: steps.firmware.outputs.is_firmware_release == 'true'
         run: |
           VER="${{ steps.version.outputs.version }}"
           VARIANT="everything-presence-pro-${{ matrix.variant }}"
@@ -85,6 +84,7 @@ jobs:
           }
           EOF
       - name: Upload build artifacts
+        if: steps.firmware.outputs.is_firmware_release == 'true'
         uses: actions/upload-artifact@v5
         with:
           name: firmware-${{ matrix.variant }}
@@ -96,6 +96,7 @@ jobs:
     name: Create Release
     steps:
       - name: Download all artifacts
+        if: needs.build.outputs.is_firmware_release == 'true'
         uses: actions/download-artifact@v5
         with:
           path: dist
@@ -105,5 +106,6 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: dist/*
+          fail_on_unmatched_files: false
           generate_release_notes: true
           prerelease: ${{ contains(github.ref, '-alpha') || contains(github.ref, '-beta') || contains(github.ref, '-rc') }}
