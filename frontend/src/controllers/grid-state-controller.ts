@@ -360,6 +360,9 @@ export class GridStateController implements ReactiveController {
 			centerX,
 			centerY,
 			startAngle,
+			// Cache visible-grid bounds for the duration of the drag — avoids
+			// recomputing autoDetectionRange()+getRoomBounds() on every pointermove.
+			bounds: getRoomBounds(this.host._grid, this.rangeFilter()),
 		};
 
 		const onMove = (ev: PointerEvent) => this.onFurnitureDrag(ev);
@@ -392,8 +395,11 @@ export class GridStateController implements ReactiveController {
 			const item = (this.host._furniture as FurnitureItem[]).find(
 				(f) => f.id === ds.id,
 			);
-			// Compute visible grid bounds in room-relative mm
-			const bounds = getRoomBounds(this.host._grid, this.rangeFilter());
+			// Visible-grid bounds cached at drag start — grid/perspective are
+			// stable for the duration of a drag, so recomputing per pointermove
+			// would re-scan the grid for autoDetectionRange() unnecessarily.
+			const bounds =
+				ds.bounds ?? getRoomBounds(this.host._grid, this.rangeFilter());
 			const roomCols = Math.ceil(this.host._roomWidth / GRID_CELL_MM);
 			const startCol = Math.floor((GRID_COLS - roomCols) / 2);
 			const visMinX = (bounds.minCol - startCol) * GRID_CELL_MM;
