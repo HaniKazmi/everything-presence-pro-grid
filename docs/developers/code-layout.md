@@ -30,9 +30,9 @@ Key files:
 - **`device_manager.py`** — the workhorse. Scans the entity registry for Everything Presence Pro devices running the right firmware, opens `aioesphomeapi` connections on demand, pushes saved config, manages entity enable/disable based on settings, subscribes to device logs.
 - **`websocket_api.py`** — relay layer between the panel and the device. Handles WebSocket commands like `eppgrid/set_setup`, `eppgrid/set_room_layout`, `eppgrid/update_firmware`, and subscription streams (`subscribe_raw_targets`, `subscribe_grid_targets`, `subscribe_ota_progress`).
 - **`storage.py`** — per-device config persistence via HA's `Store` API. Calibration, room layout, zone slots, furniture, sensor settings.
-- **`firmware_proxy.py`** — constructs the firmware-manifest URL from the configured base URL and device variant.
+- **`firmware_proxy.py`** — proxies firmware manifests + binaries from `github.com/.../releases/download/v{FIRMWARE_VERSION}/` to avoid CORS in the browser.
 - **`diagnostics.py`** — HA diagnostics platform. Lets users download a JSON dump of integration state for issue reports.
-- **`const.py`** — constants. Notably `MANIFEST_BASE_URL` (the Pages site URL) and `FIRMWARE_VERSION` (the integration's expected firmware version).
+- **`const.py`** — constants. Notably `MANIFEST_BASE_URL` (the per-version GitHub Releases URL the proxy fetches from) and `FIRMWARE_VERSION` (the firmware version the integration installs — independent of the "latest" tag served by the standalone Pages flasher).
 - **`sensor.py`** / **`binary_sensor.py`** — placeholder platforms. The integration doesn't create its own entities; these modules exist because HA expects them for the platforms to register.
 - **`strings.json`** and **`translations/en.json`** — user-facing strings. The pre-push hook checks these stay in sync.
 - **`frontend/eppgrid-panel.js`** — the built frontend bundle (tracked in git — see [Contributing](contributing.md)).
@@ -106,8 +106,8 @@ This site. MkDocs Material source.
 - **`hacs.yml`** — HACS integration validation.
 - **`hassfest.yml`** — HA integration metadata validation.
 - **`codeql.yml`** — CodeQL analysis (Python, JS/TS, C/C++).
-- **`pages.yml`** — builds and deploys this docs site to GitHub Pages, and stages `fw/` from the latest release so firmware manifests stay reachable.
-- **`firmware-release.yml`** — publishes firmware artefacts on release.
+- **`pages.yml`** — builds and deploys this docs site to GitHub Pages, and stages `fw/` from the GitHub `latest` release. Triggers on push to main *and* on `release: released`, so promoting a pre-release to latest republishes Pages without needing a fresh tag.
+- **`firmware-release.yml`** — on tag push, validates that the manifest, `manifest.json`, and `FIRMWARE_VERSION` all agree (via `.github/scripts/validate-release.sh`), then compiles the firmware variants and uploads ESP Web Tools manifests + binaries as release assets. Marks the release as `latest` only when the tag bumps the firmware version and isn't a pre-release.
 
 ---
 
