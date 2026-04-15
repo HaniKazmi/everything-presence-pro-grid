@@ -1216,24 +1216,46 @@ describe("_handleRetryHaAdd", () => {
 	});
 });
 
-describe("_handleFlashAnother", () => {
+describe("flasher-cancel handler", () => {
 	let panel: EPPGridPanel;
+	let mockPort: ReturnType<typeof makeMockPort>;
 
 	beforeEach(() => {
 		vi.clearAllMocks();
 		resetServiceMocks();
 		panel = createPanel();
+		mockPort = makeMockPort();
 	});
 
-	it("calls resetUsbState on the controller", () => {
+	it("resets usbFlashState and closes port", () => {
 		const ctrl = (panel as any)._flasherCtrl;
-		const resetSpy = vi
-			.spyOn(ctrl, "resetUsbState")
-			.mockImplementation(() => {});
+		ctrl.serialPort = mockPort;
+		ctrl.updateUsbState({ step: "wifi_scan" });
 
-		(panel as any)._handleFlashAnother();
+		(panel as any)._handleFlasherCancel();
 
-		expect(resetSpy).toHaveBeenCalled();
+		expect(ctrl.usbFlashState).toBeNull();
+		expect(ctrl.serialPort).toBeNull();
+	});
+
+	it("captures IP hint when cancelling from wifi_configured state", () => {
+		const ctrl = (panel as any)._flasherCtrl;
+		ctrl.serialPort = mockPort;
+		ctrl.updateUsbState({ step: "wifi_configured", ip: "192.168.1.42" });
+
+		(panel as any)._handleFlasherCancel();
+
+		expect(ctrl.cancelledDeviceIpHint).toBe("192.168.1.42");
+	});
+
+	it("does NOT capture IP hint when cancelling from other states", () => {
+		const ctrl = (panel as any)._flasherCtrl;
+		ctrl.serialPort = mockPort;
+		ctrl.updateUsbState({ step: "wifi_scan" });
+
+		(panel as any)._handleFlasherCancel();
+
+		expect(ctrl.cancelledDeviceIpHint).toBeNull();
 	});
 });
 

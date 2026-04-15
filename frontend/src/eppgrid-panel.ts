@@ -1148,6 +1148,7 @@ export class EPPGridPanel extends LitElement {
 					.firmwareVersion=${this._flasherCtrl.firmwareVersion}
 					.integrationVersion=${this._flasherCtrl.integrationVersion}
 					.otaStates=${this._flasherCtrl.otaStates}
+					.cancelledDeviceIpHint=${this._flasherCtrl.cancelledDeviceIpHint}
 					@flash-complete=${() => {
 						this._flasherCtrl.resetUsbState();
 						this._loadDevices();
@@ -1173,7 +1174,7 @@ export class EPPGridPanel extends LitElement {
 						this._handleUsbWifiConfig();
 					}}
 					@retry-ha-add=${this._handleRetryHaAdd}
-					@flash-another=${this._handleFlashAnother}
+					@flasher-cancel=${this._handleFlasherCancel}
 					@wifi-scan=${() => {
 						this._handleWifiScan();
 					}}
@@ -2774,8 +2775,17 @@ export class EPPGridPanel extends LitElement {
 		ctrl.updateUsbState({ step: "complete", ip: state.ip, haAdd });
 	}
 
-	private _handleFlashAnother(): void {
-		this._flasherCtrl.resetUsbState();
+	private _handleFlasherCancel(): void {
+		const ctrl = this._flasherCtrl;
+		const state = ctrl.usbFlashState;
+		const port = ctrl.serialPort;
+		if (state?.step === "wifi_configured" && state.ip) {
+			ctrl.setCancelledDeviceIpHint(state.ip);
+		}
+		ctrl.resetUsbState();
+		if (port) {
+			port.close().catch(() => {});
+		}
 	}
 
 	private async _handleWifiScan(): Promise<void> {
