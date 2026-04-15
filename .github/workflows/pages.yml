@@ -14,6 +14,12 @@ on:
   workflow_run:
     workflows: ["Firmware Release"]
     types: [completed]
+  # Re-deploy when a pre-release is promoted to a regular release
+  # (`gh release edit v{X} --prerelease=false --latest=true`). Without this,
+  # fw/latest/ would keep pointing at the previously-latest firmware until
+  # the next push to main.
+  release:
+    types: [released]
 
 permissions:
   contents: read
