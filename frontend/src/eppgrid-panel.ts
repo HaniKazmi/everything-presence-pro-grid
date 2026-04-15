@@ -2781,6 +2781,7 @@ export class EPPGridPanel extends LitElement {
 	private async _handleWifiScan(): Promise<void> {
 		const ctrl = this._flasherCtrl;
 		if (!ctrl.serialPort) return;
+		ctrl.bumpOpId();
 		try {
 			ctrl.updateUsbState({ step: "wifi_scan" });
 			const writer = (ctrl as any)._serialWriter;

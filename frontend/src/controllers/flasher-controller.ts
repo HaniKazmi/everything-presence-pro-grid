@@ -317,6 +317,11 @@ export class FlasherController implements ReactiveController {
 		this._host.requestUpdate();
 	}
 
+	/** Invalidate any in-flight operation keyed off the current opId. */
+	bumpOpId(): void {
+		this._opId++;
+	}
+
 	set serialPort(port: SerialPort | null) {
 		this._serialPort = port;
 	}

@@ -1034,6 +1034,34 @@ describe("_handleWifiScan", () => {
 
 		expect(runWifiScan).toHaveBeenCalled();
 	});
+
+	describe("_handleWifiScan from autoSkipped", () => {
+		let panel: EPPGridPanel;
+		let mockPort: ReturnType<typeof makeMockPort>;
+
+		beforeEach(() => {
+			vi.clearAllMocks();
+			resetServiceMocks();
+			panel = createPanel();
+			mockPort = makeMockPort();
+		});
+
+		it("invalidates opId when triggered during wifi_configured autoSkipped state", async () => {
+			const ctrl = (panel as any)._flasherCtrl;
+			ctrl.serialPort = mockPort;
+			ctrl.updateUsbState({
+				step: "wifi_configured",
+				ip: "192.168.1.42",
+				autoSkipped: true,
+			});
+			const beforeOp = ctrl.opId;
+
+			await (panel as any)._handleWifiScan();
+
+			expect(ctrl.opId).not.toBe(beforeOp);
+			expect(ctrl.usbFlashState?.step).toBe("wifi_provision");
+		});
+	});
 });
 
 describe("_handleUsbWifiConfig", () => {
