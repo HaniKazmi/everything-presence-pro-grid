@@ -52,7 +52,7 @@ def _init_repo(tmp_path: Path, *, branch: str = "main", dirty: bool = False) -> 
 
     (tmp_path / "custom_components" / "eppgrid").mkdir(parents=True)
     (tmp_path / "custom_components" / "eppgrid" / "manifest.json").write_text(
-        '{"domain":"eppgrid","version":"0.92.0"}\n'
+        '{\n  "domain": "eppgrid",\n  "version": "0.92.0"\n}\n'
     )
     (tmp_path / "custom_components" / "eppgrid" / "const.py").write_text(
         'FIRMWARE_VERSION = "0.92.0"\n'

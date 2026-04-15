@@ -69,7 +69,10 @@ if [ "${2:-}" = "--no-push" ]; then
 fi
 
 # Detect firmware changes since last tag.
-PREV_TAG=$(git describe --tags --abbrev=0)
+PREV_TAG=$(git describe --tags --abbrev=0 2>/dev/null) || {
+  echo "error: no tags found; cannot determine previous release for firmware-change detection" >&2
+  exit 1
+}
 FIRMWARE_DIFF=$(git diff "$PREV_TAG..HEAD" -- firmware/ || true)
 if [ -n "$FIRMWARE_DIFF" ]; then
   FIRMWARE_CHANGED=true
@@ -80,16 +83,9 @@ fi
 BRANCH="release-$TAG"
 git checkout -q -b "$BRANCH"
 
-# Always bump manifest.json.
-python3 - <<PY
-import json, pathlib
-p = pathlib.Path("custom_components/eppgrid/manifest.json")
-data = json.loads(p.read_text())
-data["version"] = "$VERSION"
-p.write_text(json.dumps(data, indent=2) + "\n")
-PY
-
-# Verify edit landed.
+# Always bump manifest.json version.
+sed -i.bak "s/\"version\": \".*\"/\"version\": \"$VERSION\"/" custom_components/eppgrid/manifest.json
+rm -f custom_components/eppgrid/manifest.json.bak
 grep -q "\"version\": \"$VERSION\"" custom_components/eppgrid/manifest.json
 
 if [ "$FIRMWARE_CHANGED" = "true" ]; then
