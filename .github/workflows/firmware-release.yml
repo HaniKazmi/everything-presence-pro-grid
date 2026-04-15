@@ -109,3 +109,8 @@ jobs:
           fail_on_unmatched_files: false
           generate_release_notes: true
           prerelease: ${{ contains(github.ref, '-alpha') || contains(github.ref, '-beta') || contains(github.ref, '-rc') }}
+          # Only firmware-changing releases become the "latest" release on
+          # GitHub. Integration-only releases keep the previous firmware tag
+          # as latest so fw/latest/ on GH Pages (used by ESPHome's built-in
+          # updater) keeps pointing at a release that has firmware binaries.
+          make_latest: ${{ needs.build.outputs.is_firmware_release == 'true' && 'true' || 'false' }}

@@ -41,25 +41,24 @@ jobs:
           python-version: '3.13'
       - name: Install docs dependencies
         run: pip install -r requirements-docs.txt
-      - name: Download latest release firmware (if any)
+      - name: Download latest release firmware
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           mkdir -p artifacts fw
-          # Find the most recent release that actually published firmware binaries.
-          # Integration-only releases ship no binaries, so we walk backwards until
-          # we find one that does. Use `gh api` rather than `gh release list`
-          # because the latter does not expose the assets field.
-          LATEST=$(gh api '/repos/${{ github.repository }}/releases?per_page=20' \
-            --jq '[.[] | select(.draft | not) | select(.assets | map(.name) | any(test("everything-presence-pro-.*\\.bin$")))][0].tag_name // ""')
+          # GitHub's "latest" pointer is set deliberately by the Firmware
+          # Release workflow: only firmware-changing releases use make_latest=true,
+          # so /releases/latest always points at a release that has firmware
+          # binaries. No scanning needed.
+          LATEST=$(gh api '/repos/${{ github.repository }}/releases/latest' --jq '.tag_name // ""')
           if [ -z "$LATEST" ]; then
-            echo "No published release has firmware binaries — Pages will have no fw/ content"
+            echo "No latest release found — Pages will have no fw/ content"
             exit 0
           fi
-          echo "Latest release with firmware: $LATEST"
+          echo "Latest release: $LATEST"
           gh release download "$LATEST" -D artifacts --pattern 'everything-presence-pro-*'
           if ! ls artifacts/*.bin >/dev/null 2>&1; then
-            echo "::error::Release $LATEST matched on assets.name but no .bin files downloaded; refusing to publish an empty fw/"
+            echo "::error::Latest release $LATEST has no firmware binaries — release was misconfigured (should not have been marked as latest)"
             exit 1
           fi
           VERSION="${LATEST#v}" ARTIFACTS=artifacts ./.github/scripts/stage-firmware.sh
