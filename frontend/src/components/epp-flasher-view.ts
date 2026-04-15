@@ -177,12 +177,6 @@ export class EppFlasherView extends LitElement {
 		);
 	}
 
-	private _dispatchFlashAnother(): void {
-		this.dispatchEvent(
-			new CustomEvent("flash-another", { bubbles: true, composed: true }),
-		);
-	}
-
 	private _dispatchCancel(): void {
 		this.dispatchEvent(
 			new CustomEvent("flasher-cancel", { bubbles: true, composed: true }),
@@ -645,7 +639,7 @@ export class EppFlasherView extends LitElement {
 											</ha-button>
 										`
 								}
-								<ha-button @click=${this._dispatchFlashAnother}>
+								<ha-button @click=${this._dispatchCancel}>
 									${this.localize("flasher.flash_another")}
 								</ha-button>
 							</div>

@@ -1656,7 +1656,7 @@ describe("complete state haAdd branches", () => {
 		expect(listener).toHaveBeenCalled();
 	});
 
-	it("flash another button dispatches flash-another event", async () => {
+	it("flash another button dispatches flasher-cancel event", async () => {
 		const view = await renderWithHaAdd({ type: "added" });
 		const root = view.shadowRoot!;
 		const btn = Array.from(root.querySelectorAll("ha-button")).find((b) =>
@@ -1664,7 +1664,7 @@ describe("complete state haAdd branches", () => {
 		);
 		expect(btn).toBeTruthy();
 		const listener = vi.fn();
-		view.addEventListener("flash-another", listener);
+		view.addEventListener("flasher-cancel", listener);
 		(btn as HTMLElement).click();
 		expect(listener).toHaveBeenCalled();
 	});
