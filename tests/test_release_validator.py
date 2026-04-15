@@ -63,3 +63,21 @@ def test_fails_when_firmware_versions_disagree(tmp_path: Path):
     assert "firmware" in combined.lower()
     assert "0.91.0" in combined
     assert "0.92.0" in combined
+
+
+def test_passes_when_firmware_matches_tag(tmp_path: Path):
+    """Firmware-changing release: manifest = firmware = tag."""
+    fixture = _make_fixture(tmp_path, manifest_version="0.93.0", firmware_version="0.93.0")
+
+    result = _run(fixture, "0.93.0")
+
+    assert result.returncode == 0
+
+
+def test_passes_when_firmware_older_than_tag(tmp_path: Path):
+    """Integration-only release: manifest = tag, firmware = older (aligned across the three firmware files)."""
+    fixture = _make_fixture(tmp_path, manifest_version="0.93.1", firmware_version="0.92.0")
+
+    result = _run(fixture, "0.93.1")
+
+    assert result.returncode == 0
