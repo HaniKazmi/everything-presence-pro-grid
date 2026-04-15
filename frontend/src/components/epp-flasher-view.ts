@@ -58,6 +58,7 @@ export class EppFlasherView extends LitElement {
 	@state() private _hasWebSerial: boolean =
 		typeof navigator !== "undefined" && "serial" in navigator;
 	@state() private _showUsbFlash = false;
+	@state() private _cancelling = false;
 
 	// WiFi provisioning state
 	@state() private _wifiScanning = false;
@@ -179,13 +180,43 @@ export class EppFlasherView extends LitElement {
 	}
 
 	private _dispatchCancel(): void {
-		// Exit the USB-flash view. The panel's `flasher-cancel` handler resets
-		// controller state; this flag is view-local, so clearing it here is the
-		// only path back to the device-list view.
-		this._showUsbFlash = false;
+		// Cancel from the variant picker (no in-flight op) exits the USB
+		// flash view to the device list. Cancel mid-flow keeps the user on
+		// the flash screen with a "Cancelling…" button so it's obvious the
+		// click registered while the panel awaits the in-flight op (~1-2s
+		// for serial-port unwind); the panel resets usbFlashState when
+		// done, which renders the variant picker.
+		if (this.usbFlashState == null) {
+			this._showUsbFlash = false;
+		} else {
+			this._cancelling = true;
+		}
 		this.dispatchEvent(
 			new CustomEvent("flasher-cancel", { bubbles: true, composed: true }),
 		);
+	}
+
+	updated(changed: Map<string, unknown>): void {
+		// Reset _cancelling once the panel has cleared usbFlashState (i.e.
+		// the cancel handler awaited the in-flight op + closed the port).
+		if (changed.has("usbFlashState") && this.usbFlashState == null) {
+			this._cancelling = false;
+		}
+	}
+
+	/** Render a Cancel button that flips to "Cancelling…" while the panel
+	 *  awaits the in-flight op (~1-2s). Without this feedback the button
+	 *  appears unresponsive even though the click registered. */
+	private _renderCancelButton(extraClass?: string) {
+		const label = this._cancelling
+			? this.localize("flasher.cancelling")
+			: this.localize("flasher.cancel");
+		const cls = extraClass ?? "";
+		return html`<ha-button
+			class=${cls}
+			@click=${this._dispatchCancel}
+			?disabled=${this._cancelling}
+		>${label}</ha-button>`;
 	}
 
 	private async _copyIp(ip: string): Promise<void> {
@@ -314,9 +345,7 @@ export class EppFlasherView extends LitElement {
             ></ha-textfield>
 
             <div class="confirm-actions">
-              <ha-button @click=${this._dispatchCancel}>
-                ${this.localize("flasher.cancel")}
-              </ha-button>
+              ${this._renderCancelButton()}
               <ha-button @click=${this._dispatchWifiScan}>
                 ${this._wifiScanning ? this.localize("flasher.scanning") : this.localize("flasher.scan")}
               </ha-button>
@@ -570,9 +599,7 @@ export class EppFlasherView extends LitElement {
 									: nothing
 							}
 							<div class="confirm-actions">
-								<ha-button @click=${this._dispatchCancel}>
-									${this.localize("flasher.cancel")}
-								</ha-button>
+								${this._renderCancelButton()}
 							</div>
 						</div>
 					</ha-card>
@@ -700,9 +727,7 @@ export class EppFlasherView extends LitElement {
 								${
 									canCancel
 										? html`<div class="confirm-actions">
-											<ha-button class="cancel-btn" @click=${this._dispatchCancel}>
-												${this.localize("flasher.cancel")}
-											</ha-button>
+											${this._renderCancelButton("cancel-btn")}
 										</div>`
 										: nothing
 								}
@@ -747,9 +772,7 @@ export class EppFlasherView extends LitElement {
 							>${this.localize("flasher.ethernet")}</ha-button>
 						</div>
 						<div class="confirm-actions">
-							<ha-button @click=${this._dispatchCancel}>
-								${this.localize("flasher.cancel")}
-							</ha-button>
+							${this._renderCancelButton()}
 							<ha-button raised @click=${this._dispatchUsbFlash}>
 								${this.localize("flasher.usb_flash")}
 							</ha-button>

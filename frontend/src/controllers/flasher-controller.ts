@@ -305,7 +305,6 @@ export class FlasherController implements ReactiveController {
 		this.usbFlashState = null;
 		this.wifiNetworks = [];
 		this._opId++;
-		// Release any known reader/writer locks
 		try {
 			(this as any)._serialReader?.releaseLock();
 		} catch {}
@@ -314,7 +313,6 @@ export class FlasherController implements ReactiveController {
 		} catch {}
 		(this as any)._serialReader = null;
 		(this as any)._serialWriter = null;
-		// Clear port reference — don't force-close (crashes Chrome if streams locked)
 		this._serialPort = null;
 		this._host.requestUpdate();
 	}

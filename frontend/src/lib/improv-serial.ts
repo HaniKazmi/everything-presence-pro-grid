@@ -6,6 +6,19 @@
 // Header bytes: ASCII "IMPROV"
 export const IMPROV_HEADER = [0x49, 0x4d, 0x50, 0x52, 0x4f, 0x56];
 
+// Module-level text buffer used by readImprovResponse's debug logging to
+// reassemble serial chunks into complete lines before flushing to console.
+// ESPHome's UART emits chunks sized to USB packet boundaries, not newlines.
+let _logBuffer = "";
+
+// Built via constructor so the literal control character (0x1b / ESC)
+// doesn't trip biome's noControlCharactersInRegex rule. We strip ANSI
+// SGR escape sequences from ESPHome log output before printing.
+const _ANSI_PATTERN = new RegExp(
+	`${String.fromCharCode(0x1b)}\\[[0-9;]*m`,
+	"g",
+);
+
 export const TYPE_CURRENT_STATE = 0x01;
 export const TYPE_ERROR_STATE = 0x02;
 export const TYPE_RPC_COMMAND = 0x03;
@@ -109,6 +122,59 @@ export function buildWifiCommand(ssid: string, password: string): Uint8Array {
 	];
 
 	return buildImprovPacket(TYPE_RPC_COMMAND, data);
+}
+
+/**
+ * Human-readable description of an Improv packet — used by the console.debug
+ * logs in readImprovResponse. Keeps the diagnostic output usable without
+ * forcing readers to remember the 0x01/0x04 type codes.
+ */
+export function describeImprovPacket(p: ImprovPacket): string {
+	switch (p.type) {
+		case TYPE_CURRENT_STATE: {
+			const stateByte = p.data[0];
+			const stateName =
+				stateByte === STATE_AUTHORIZED
+					? "AUTHORIZED"
+					: stateByte === STATE_PROVISIONED
+						? "PROVISIONED"
+						: `state=0x${stateByte?.toString(16).padStart(2, "0")}`;
+			return `CURRENT_STATE ${stateName}`;
+		}
+		case TYPE_ERROR_STATE: {
+			const errByte = p.data[0];
+			return `ERROR_STATE 0x${errByte?.toString(16).padStart(2, "0")}`;
+		}
+		case TYPE_RPC_COMMAND: {
+			const cmd = p.data[0];
+			return `RPC_COMMAND 0x${cmd?.toString(16).padStart(2, "0")}`;
+		}
+		case TYPE_RPC_RESULT: {
+			const cmd = p.data[0];
+			const cmdName =
+				cmd === CMD_GET_CURRENT_STATE
+					? "GET_CURRENT_STATE"
+					: cmd === CMD_GET_DEVICE_INFO
+						? "GET_DEVICE_INFO"
+						: cmd === CMD_WIFI_SCAN
+							? "WIFI_SCAN"
+							: cmd === CMD_WIFI_SETTINGS
+								? "WIFI_SETTINGS"
+								: `cmd=0x${cmd?.toString(16).padStart(2, "0")}`;
+			// RPC_RESULT data: [cmd, total_len, str_len, ...str_bytes, ...]
+			// For GET_CURRENT_STATE the first string is the URL.
+			if (cmd === CMD_GET_CURRENT_STATE && p.data.length >= 3) {
+				const strLen = p.data[2];
+				if (p.data.length >= 3 + strLen) {
+					const str = new TextDecoder().decode(p.data.slice(3, 3 + strLen));
+					return `RPC_RESULT ${cmdName} url="${str}"`;
+				}
+			}
+			return `RPC_RESULT ${cmdName} (${p.data.length} bytes)`;
+		}
+		default:
+			return `type=0x${p.type.toString(16).padStart(2, "0")} (${p.data.length} bytes)`;
+	}
 }
 
 /**
@@ -221,9 +287,25 @@ export async function readImprovResponse(
 		]);
 
 		if (result.value) {
+			// Accumulate decoded text and flush on newline boundaries so
+			// ESPHome log lines aren't split across multiple console entries.
+			_logBuffer += new TextDecoder("utf-8", { fatal: false })
+				.decode(result.value)
+				.replace(_ANSI_PATTERN, "");
+			const nlIdx = _logBuffer.lastIndexOf("\n");
+			if (nlIdx >= 0) {
+				const complete = _logBuffer.slice(0, nlIdx);
+				_logBuffer = _logBuffer.slice(nlIdx + 1);
+				for (const line of complete.split("\n")) {
+					if (line.length > 0) console.debug(line);
+				}
+			}
 			buffer.push(...result.value);
 			const { packets, consumed } = parseImprovPackets(new Uint8Array(buffer));
 			if (packets.length > 0) {
+				for (const p of packets) {
+					console.debug(`[improv] ${describeImprovPacket(p)}`);
+				}
 				buffer.splice(0, consumed);
 				return { packets, buffer };
 			}

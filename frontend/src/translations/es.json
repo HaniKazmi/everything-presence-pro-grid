@@ -332,6 +332,7 @@
 		"usb_wifi_desc": "Configura el WiFi en un dispositivo que ya tiene firmware instalado.",
 		"usb_browser_warning": "La instalación por USB requiere el navegador Chrome o Edge.",
 		"select_variant": "Selecciona la variante de firmware:",
+		"cancelling": "Cancelando...",
 		"wifi": "WiFi",
 		"ethernet": "Ethernet",
 		"go_to_config": "Ir a la configuración del dispositivo",
@@ -394,7 +395,8 @@
 			"update_failed_generic": "Error en la actualización",
 			"ota_failed_version_unchanged": "Actualización fallida — la versión del firmware no ha cambiado",
 			"flash_cancelled": "Instalación cancelada",
-			"timeout": "Tiempo de espera agotado"
+			"timeout": "Tiempo de espera agotado",
+			"aborted": "Cancelado"
 		}
 	},
 	"connection": {
