@@ -119,6 +119,26 @@ if [ "$NO_PUSH" = "true" ]; then
   exit 0
 fi
 
-# Push + open PR — implemented in Task 21.
-echo "error: push/PR creation not yet implemented" >&2
-exit 1
+# Push the release branch.
+git push -u origin "$BRANCH"
+
+# Open the PR.
+if [ "$FIRMWARE_CHANGED" = "true" ]; then
+  BODY="Firmware-changing release: firmware version bumped to \`$VERSION\`."
+else
+  BODY="Integration-only release: firmware version unchanged at \`$PREV_TAG\`."
+fi
+
+gh pr create \
+  --title "chore: release $TAG" \
+  --body "$BODY
+
+After merge, push the tag to trigger the firmware-release workflow:
+
+\`\`\`
+git tag $TAG
+git push origin $TAG
+\`\`\`
+"
+
+echo "Release $TAG branch pushed and PR opened."
