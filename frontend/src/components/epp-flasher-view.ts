@@ -727,6 +727,14 @@ export class EppFlasherView extends LitElement {
 					<div class="card-header">${this.localize("flasher.title")}</div>
 					<div class="card-content">
 						<p class="usb-select-label">${this.localize("flasher.select_variant")}</p>
+						${
+							this.firmwareVersion
+								? html`<p class="firmware-version-hint">
+									${this.localize("flasher.firmware_version_hint")}
+									<code>${this.firmwareVersion}</code>
+								</p>`
+								: nothing
+						}
 						<div class="variant-selector">
 							<ha-button
 								class="${this._selectedVariant === "wifi" ? "selected" : "unselected"}"

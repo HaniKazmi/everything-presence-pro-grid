@@ -891,6 +891,21 @@ describe("USB flash view — state-driven", () => {
 		expect(c.querySelector(".variant-selector")).not.toBeNull();
 	});
 
+	it("shows firmware version to be installed in idle state", () => {
+		const el = createView();
+		(el as any)._showUsbFlash = true;
+		(el as any).usbFlashState = null;
+		(el as any).firmwareVersion = "0.91.0";
+		const tpl = (el as any).render();
+		const c = renderTo(tpl);
+
+		const hint = c.querySelector(".firmware-version-hint");
+		expect(hint).not.toBeNull();
+		expect(hint?.textContent).toMatch(
+			/flasher\.firmware_version_hint\s+0\.91\.0/,
+		);
+	});
+
 	it("does not render iframe", () => {
 		const el = createView();
 		(el as any)._showUsbFlash = true;
