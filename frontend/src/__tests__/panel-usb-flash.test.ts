@@ -1257,6 +1257,18 @@ describe("flasher-cancel handler", () => {
 
 		expect(ctrl.cancelledDeviceIpHint).toBeNull();
 	});
+
+	it("swallows port.close() rejection silently", async () => {
+		const ctrl = (panel as any)._flasherCtrl;
+		mockPort.close = vi.fn().mockRejectedValue(new Error("port busy"));
+		ctrl.serialPort = mockPort;
+		ctrl.updateUsbState({ step: "wifi_scan" });
+
+		expect(() => (panel as any)._handleFlasherCancel()).not.toThrow();
+		// Let the rejected close() promise settle so the .catch fires
+		await Promise.resolve();
+		await Promise.resolve();
+	});
 });
 
 // =========================================================
