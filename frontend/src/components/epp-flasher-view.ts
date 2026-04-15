@@ -53,6 +53,7 @@ export class EppFlasherView extends LitElement {
 	@property({ attribute: false }) wifiNetworks: WifiNetwork[] = [];
 	@property({ attribute: false }) otaStates: Record<string, OtaDeviceState> =
 		{};
+	@property({ attribute: false }) cancelledDeviceIpHint: string | null = null;
 
 	@state() private _hasWebSerial: boolean =
 		typeof navigator !== "undefined" && "serial" in navigator;
@@ -707,6 +708,13 @@ export class EppFlasherView extends LitElement {
 		// Idle state — variant selector + flash button
 		return html`
 			<div class="flasher-content">
+				${
+					this.cancelledDeviceIpHint
+						? html`<div class="cancelled-ip-hint">
+							${this.localize("flasher.cancelled_ip_hint", { ip: this.cancelledDeviceIpHint })}
+						</div>`
+						: nothing
+				}
 				<ha-card>
 					<div class="card-header">${this.localize("flasher.title")}</div>
 					<div class="card-content">

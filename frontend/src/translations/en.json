@@ -385,6 +385,7 @@
 		"ota_retry": "Retry",
 		"cancel": "Cancel",
 		"start_over": "Start over",
+		"cancelled_ip_hint": "Device reachable at {ip} — it should appear in Home Assistant discovery shortly.",
 		"errors": {
 			"start_failed": "Failed to start update. Is the device online?",
 			"connect_failed": "Failed to connect to device",

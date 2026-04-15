@@ -1018,6 +1018,15 @@ export const flasherStyles = css`
     opacity: 0.8;
   }
 
+  .cancelled-ip-hint {
+    padding: 10px 14px;
+    margin-bottom: 12px;
+    background: var(--info-color, #3b82f6);
+    color: var(--text-primary-color, white);
+    border-radius: 4px;
+    font-size: 0.9em;
+  }
+
 `;
 
 export const liveMenuStyles = css`

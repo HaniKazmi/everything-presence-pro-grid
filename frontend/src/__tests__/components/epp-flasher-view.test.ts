@@ -1874,4 +1874,39 @@ describe("idle variant picker", () => {
 		);
 		expect(backBtn).toBeUndefined();
 	});
+
+	describe("cancelled IP hint banner", () => {
+		it("renders banner on idle variant picker when cancelledDeviceIpHint is set", () => {
+			const el = createView({
+				cancelledDeviceIpHint: "192.168.1.42",
+				usbFlashState: { step: "idle" },
+			});
+			el.localize = Object.assign(
+				((k: string, params?: Record<string, string | number>) => {
+					if (k === "flasher.cancelled_ip_hint" && params)
+						return `Device reachable at ${params.ip} — it should appear in Home Assistant discovery shortly.`;
+					return k;
+				}) as typeof el.localize,
+				{ formatNumber: (v: number, d = 1) => v.toFixed(d), lang: "en" },
+			);
+			(el as any)._showUsbFlash = true;
+			const tpl = (el as any).render();
+			const c = renderTo(tpl);
+			const banner = c.querySelector(".cancelled-ip-hint");
+			expect(banner).not.toBeNull();
+			expect(banner!.textContent).toContain("192.168.1.42");
+			expect(banner!.textContent).toContain("Device reachable at");
+		});
+
+		it("does NOT render banner when cancelledDeviceIpHint is null", () => {
+			const el = createView({
+				cancelledDeviceIpHint: null,
+				usbFlashState: { step: "idle" },
+			});
+			(el as any)._showUsbFlash = true;
+			const tpl = (el as any).render();
+			const c = renderTo(tpl);
+			expect(c.querySelector(".cancelled-ip-hint")).toBeNull();
+		});
+	});
 });
