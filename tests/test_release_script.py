@@ -122,3 +122,31 @@ def test_rejects_main_behind_origin(tmp_path: Path):
     assert result.returncode != 0
     combined = (result.stdout + result.stderr).lower()
     assert "up to date" in combined or "behind" in combined
+
+
+def test_integration_only_release_bumps_manifest_only(tmp_path: Path):
+    _init_repo(tmp_path)
+    result = _run(tmp_path, "0.93.0", "--no-push")
+    assert result.returncode == 0, result.stdout + result.stderr
+
+    # Branch exists
+    branches = subprocess.check_output(
+        ["git", "branch", "--list", "release-v0.93.0"], cwd=tmp_path, text=True
+    )
+    assert "release-v0.93.0" in branches
+
+    # Switch to that branch and inspect
+    subprocess.run(["git", "checkout", "-q", "release-v0.93.0"], cwd=tmp_path, check=True)
+
+    manifest = (tmp_path / "custom_components" / "eppgrid" / "manifest.json").read_text()
+    assert '"version": "0.93.0"' in manifest
+
+    # Firmware files UNCHANGED (integration-only release)
+    const_py = (tmp_path / "custom_components" / "eppgrid" / "const.py").read_text()
+    assert 'FIRMWARE_VERSION = "0.92.0"' in const_py
+
+    base_yaml = (tmp_path / "firmware" / "common" / "everything-presence-pro-base.yaml").read_text()
+    assert 'version: "0.92.0"' in base_yaml
+
+    header = (tmp_path / "firmware" / "components" / "epp" / "epp_component.h").read_text()
+    assert 'FIRMWARE_VERSION_STR = "0.92.0"' in header
