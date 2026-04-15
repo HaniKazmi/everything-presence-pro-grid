@@ -13,9 +13,7 @@ def _make_fixture(tmp_path: Path, *, manifest_version: str, firmware_version: st
     (tmp_path / "custom_components" / "eppgrid" / "manifest.json").write_text(
         f'{{"domain": "eppgrid", "version": "{manifest_version}"}}\n'
     )
-    (tmp_path / "custom_components" / "eppgrid" / "const.py").write_text(
-        f'FIRMWARE_VERSION = "{firmware_version}"\n'
-    )
+    (tmp_path / "custom_components" / "eppgrid" / "const.py").write_text(f'FIRMWARE_VERSION = "{firmware_version}"\n')
     (tmp_path / "firmware" / "common").mkdir(parents=True)
     (tmp_path / "firmware" / "common" / "everything-presence-pro-base.yaml").write_text(
         f'esphome:\n  project:\n    version: "{firmware_version}"\n'
@@ -52,9 +50,7 @@ def test_fails_when_firmware_versions_disagree(tmp_path: Path):
     fixture = _make_fixture(tmp_path, manifest_version="0.93.0", firmware_version="0.92.0")
 
     base_yaml = fixture / "firmware" / "common" / "everything-presence-pro-base.yaml"
-    base_yaml.write_text(
-        'esphome:\n  project:\n    version: "0.91.0"\n'
-    )
+    base_yaml.write_text('esphome:\n  project:\n    version: "0.91.0"\n')
 
     result = _run(fixture, "0.93.0")
 
@@ -93,16 +89,10 @@ def test_fails_when_const_py_has_no_firmware_version_line(tmp_path: Path):
     fixture = _make_fixture(tmp_path, manifest_version="0.93.0", firmware_version="0.92.0")
 
     # Corrupt const.py so the FIRMWARE_VERSION regex won't match
-    (fixture / "custom_components" / "eppgrid" / "const.py").write_text(
-        "# no firmware version here\n"
-    )
+    (fixture / "custom_components" / "eppgrid" / "const.py").write_text("# no firmware version here\n")
     # Corrupt the other two so all three return '' and trigger the silent-pass bug
-    (fixture / "firmware" / "common" / "everything-presence-pro-base.yaml").write_text(
-        "# no version here\n"
-    )
-    (fixture / "firmware" / "components" / "epp" / "epp_component.h").write_text(
-        "// no version here\n"
-    )
+    (fixture / "firmware" / "common" / "everything-presence-pro-base.yaml").write_text("# no version here\n")
+    (fixture / "firmware" / "components" / "epp" / "epp_component.h").write_text("// no version here\n")
 
     result = _run(fixture, "0.93.0")
 

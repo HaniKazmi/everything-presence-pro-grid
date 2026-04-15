@@ -54,9 +54,7 @@ def _init_repo(tmp_path: Path, *, branch: str = "main", dirty: bool = False) -> 
     (tmp_path / "custom_components" / "eppgrid" / "manifest.json").write_text(
         '{\n  "domain": "eppgrid",\n  "version": "0.92.0"\n}\n'
     )
-    (tmp_path / "custom_components" / "eppgrid" / "const.py").write_text(
-        'FIRMWARE_VERSION = "0.92.0"\n'
-    )
+    (tmp_path / "custom_components" / "eppgrid" / "const.py").write_text('FIRMWARE_VERSION = "0.92.0"\n')
     (tmp_path / "firmware" / "common").mkdir(parents=True)
     (tmp_path / "firmware" / "common" / "everything-presence-pro-base.yaml").write_text(
         'substitutions:\n  project:\n    version: "0.92.0"\n'
@@ -131,9 +129,7 @@ def test_integration_only_release_bumps_manifest_only(tmp_path: Path):
     assert result.returncode == 0, result.stdout + result.stderr
 
     # Branch exists
-    branches = subprocess.check_output(
-        ["git", "branch", "--list", "release-v0.93.0"], cwd=tmp_path, text=True
-    )
+    branches = subprocess.check_output(["git", "branch", "--list", "release-v0.93.0"], cwd=tmp_path, text=True)
     assert "release-v0.93.0" in branches
 
     # Switch to that branch and inspect
@@ -194,9 +190,7 @@ def test_pushes_and_opens_pr(tmp_path: Path, monkeypatch):
 
     # fake gh records arguments and exits success
     (fake_bin / "gh").write_text(
-        "#!/usr/bin/env bash\n"
-        f"echo \"gh $*\" >> \"{log}\"\n"
-        "echo https://github.com/fake/repo/pull/1\n"
+        f'#!/usr/bin/env bash\necho "gh $*" >> "{log}"\necho https://github.com/fake/repo/pull/1\n'
     )
     (fake_bin / "gh").chmod(0o755)
 
@@ -204,9 +198,7 @@ def test_pushes_and_opens_pr(tmp_path: Path, monkeypatch):
     # records pushes then forwards to real git for everything else.
     real_git = subprocess.check_output(["which", "git"], text=True).strip()
     (fake_bin / "git").write_text(
-        "#!/usr/bin/env bash\n"
-        f"if [ \"$1\" = \"push\" ]; then echo \"git $*\" >> \"{log}\"; exit 0; fi\n"
-        f"exec {real_git} \"$@\"\n"
+        f'#!/usr/bin/env bash\nif [ "$1" = "push" ]; then echo "git $*" >> "{log}"; exit 0; fi\nexec {real_git} "$@"\n'
     )
     (fake_bin / "git").chmod(0o755)
 
