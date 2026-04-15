@@ -53,6 +53,7 @@ export class EppFlasherView extends LitElement {
 	@property({ attribute: false }) wifiNetworks: WifiNetwork[] = [];
 	@property({ attribute: false }) otaStates: Record<string, OtaDeviceState> =
 		{};
+	@property({ attribute: false }) cancelledDeviceIpHint: string | null = null;
 
 	@state() private _hasWebSerial: boolean =
 		typeof navigator !== "undefined" && "serial" in navigator;
@@ -171,23 +172,19 @@ export class EppFlasherView extends LitElement {
 		);
 	}
 
-	private _onUsbBack(): void {
-		this._showUsbFlash = false;
-		this._showWifiProvisioning = false;
-		this.dispatchEvent(
-			new CustomEvent("usb-retry", { bubbles: true, composed: true }),
-		);
-	}
-
 	private _dispatchRetryHaAdd(): void {
 		this.dispatchEvent(
 			new CustomEvent("retry-ha-add", { bubbles: true, composed: true }),
 		);
 	}
 
-	private _dispatchFlashAnother(): void {
+	private _dispatchCancel(): void {
+		// Exit the USB-flash view. The panel's `flasher-cancel` handler resets
+		// controller state; this flag is view-local, so clearing it here is the
+		// only path back to the device-list view.
+		this._showUsbFlash = false;
 		this.dispatchEvent(
-			new CustomEvent("flash-another", { bubbles: true, composed: true }),
+			new CustomEvent("flasher-cancel", { bubbles: true, composed: true }),
 		);
 	}
 
@@ -317,8 +314,8 @@ export class EppFlasherView extends LitElement {
             ></ha-textfield>
 
             <div class="confirm-actions">
-              <ha-button @click=${this._onUsbBack}>
-                ${this.localize("flasher.usb_back")}
+              <ha-button @click=${this._dispatchCancel}>
+                ${this.localize("flasher.cancel")}
               </ha-button>
               <ha-button @click=${this._dispatchWifiScan}>
                 ${this._wifiScanning ? this.localize("flasher.scanning") : this.localize("flasher.scan")}
@@ -527,11 +524,8 @@ export class EppFlasherView extends LitElement {
 								<p>${state.errorKey ? this.localize(state.errorKey, state.errorParams) : ""}</p>
 							</div>
 							<div class="confirm-actions">
-								<ha-button @click=${this._onUsbBack}>
-									${this.localize("flasher.usb_back")}
-								</ha-button>
-								<ha-button @click=${this._dispatchFlashAnother}>
-									${this.localize("flasher.flash_another")}
+								<ha-button @click=${this._dispatchCancel}>
+									${this.localize("flasher.start_over")}
 								</ha-button>
 								${
 									state.fatal
@@ -561,6 +555,24 @@ export class EppFlasherView extends LitElement {
 							<div class="ha-add-progress">
 								<ha-circular-progress indeterminate size="small"></ha-circular-progress>
 								<span>${this.localize("flasher.ha_add.adding")}</span>
+							</div>
+							${
+								state.autoSkipped
+									? html`<div class="wifi-override-row">
+										<ha-button
+											class="wifi-override-link"
+											appearance="plain"
+											@click=${this._dispatchWifiScan}
+										>
+											${this.localize("flasher.configure_wifi_override")}
+										</ha-button>
+									</div>`
+									: nothing
+							}
+							<div class="confirm-actions">
+								<ha-button @click=${this._dispatchCancel}>
+									${this.localize("flasher.cancel")}
+								</ha-button>
 							</div>
 						</div>
 					</ha-card>
@@ -636,7 +648,7 @@ export class EppFlasherView extends LitElement {
 											</ha-button>
 										`
 								}
-								<ha-button @click=${this._dispatchFlashAnother}>
+								<ha-button @click=${this._dispatchCancel}>
 									${this.localize("flasher.flash_another")}
 								</ha-button>
 							</div>
@@ -646,11 +658,12 @@ export class EppFlasherView extends LitElement {
 			`;
 		}
 
-		// In-progress states (connecting, flashing, wifi_scan, reading_ip)
+		// In-progress states (connecting, flashing, wifi_check, wifi_scan, reading_ip, wifi_connecting)
 		if (state && state.step !== "idle") {
 			const stepKeyMap: Record<string, string> = {
 				connecting: "flasher.usb_step_connecting",
 				flashing: "flasher.usb_step_flashing",
+				wifi_check: "flasher.usb_step_wifi_check",
 				wifi_scan: "flasher.usb_step_scanning",
 				wifi_provision: "flasher.usb_step_provisioning",
 				wifi_connecting: "flasher.usb_step_wifi_connecting",
@@ -661,6 +674,10 @@ export class EppFlasherView extends LitElement {
 				state.step === "flashing"
 					? { version: this.firmwareVersion }
 					: undefined;
+			// Cancel is not offered during `flashing` (risk of bricking) or
+			// during `connecting` (native picker is modal).
+			const canCancel =
+				state.step !== "flashing" && state.step !== "connecting";
 			return html`
 				<div class="flasher-content">
 					<ha-card>
@@ -680,6 +697,15 @@ export class EppFlasherView extends LitElement {
 										? html`<p class="usb-hint">${this.localize("flasher.wifi_scan_hint")}</p>`
 										: nothing
 								}
+								${
+									canCancel
+										? html`<div class="confirm-actions">
+											<ha-button class="cancel-btn" @click=${this._dispatchCancel}>
+												${this.localize("flasher.cancel")}
+											</ha-button>
+										</div>`
+										: nothing
+								}
 							</div>
 						</div>
 					</ha-card>
@@ -690,6 +716,13 @@ export class EppFlasherView extends LitElement {
 		// Idle state — variant selector + flash button
 		return html`
 			<div class="flasher-content">
+				${
+					this.cancelledDeviceIpHint
+						? html`<div class="cancelled-ip-hint">
+							${this.localize("flasher.cancelled_ip_hint", { ip: this.cancelledDeviceIpHint })}
+						</div>`
+						: nothing
+				}
 				<ha-card>
 					<div class="card-header">${this.localize("flasher.title")}</div>
 					<div class="card-content">
@@ -711,8 +744,8 @@ export class EppFlasherView extends LitElement {
 							>${this.localize("flasher.ethernet")}</ha-button>
 						</div>
 						<div class="confirm-actions">
-							<ha-button @click=${this._onUsbBack}>
-								${this.localize("flasher.usb_back")}
+							<ha-button @click=${this._dispatchCancel}>
+								${this.localize("flasher.cancel")}
 							</ha-button>
 							<ha-button raised @click=${this._dispatchUsbFlash}>
 								${this.localize("flasher.usb_flash")}

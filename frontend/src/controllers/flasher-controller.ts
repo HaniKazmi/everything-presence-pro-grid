@@ -19,6 +19,8 @@ export class FlasherController implements ReactiveController {
 	usbFlashState: UsbFlashState | null = null;
 	wifiNetworks: WifiNetwork[] = [];
 	otaStates: Record<string, OtaDeviceState> = {};
+	cancelledDeviceIpHint: string | null = null;
+	private _cancelledIpTimeout: ReturnType<typeof setTimeout> | null = null;
 
 	onDeviceListChanged?: () => void;
 
@@ -315,6 +317,27 @@ export class FlasherController implements ReactiveController {
 		// Clear port reference — don't force-close (crashes Chrome if streams locked)
 		this._serialPort = null;
 		this._host.requestUpdate();
+	}
+
+	setCancelledDeviceIpHint(ip: string | null): void {
+		this.cancelledDeviceIpHint = ip;
+		if (this._cancelledIpTimeout) {
+			clearTimeout(this._cancelledIpTimeout);
+			this._cancelledIpTimeout = null;
+		}
+		if (ip) {
+			this._cancelledIpTimeout = setTimeout(() => {
+				this.cancelledDeviceIpHint = null;
+				this._cancelledIpTimeout = null;
+				this._host.requestUpdate();
+			}, 8000);
+		}
+		this._host.requestUpdate();
+	}
+
+	/** Invalidate any in-flight operation keyed off the current opId. */
+	bumpOpId(): void {
+		this._opId++;
 	}
 
 	set serialPort(port: SerialPort | null) {

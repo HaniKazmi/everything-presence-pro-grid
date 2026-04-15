@@ -911,6 +911,17 @@ describe("USB flash view — state-driven", () => {
 		expect(c.textContent).toContain("flasher.usb_step_connecting");
 	});
 
+	it("renders wifi_check state", () => {
+		const el = createView();
+		(el as any)._showUsbFlash = true;
+		(el as any).usbFlashState = { step: "wifi_check" };
+		const tpl = (el as any).render();
+		const c = renderTo(tpl);
+
+		expect(c.querySelector(".usb-status")).not.toBeNull();
+		expect(c.textContent).toContain("flasher.usb_step_wifi_check");
+	});
+
 	it("renders wifi scan state", () => {
 		const el = createView();
 		(el as any)._showUsbFlash = true;
@@ -965,9 +976,9 @@ describe("USB flash view — state-driven", () => {
 		};
 		const tpl = (el as any).render();
 		const c = renderTo(tpl);
-		// Should have Back button + Flash another, but no Retry
+		// Should have Start over only, no Retry
 		const btns = c.querySelectorAll(".confirm-actions ha-button");
-		expect(btns.length).toBe(2); // Back + Flash another
+		expect(btns.length).toBe(1); // Start over only
 	});
 
 	it("shows Retry button when error is not fatal", () => {
@@ -980,7 +991,7 @@ describe("USB flash view — state-driven", () => {
 		const tpl = (el as any).render();
 		const c = renderTo(tpl);
 		const btns = c.querySelectorAll(".confirm-actions ha-button");
-		expect(btns.length).toBe(3); // Back + Flash another + Retry
+		expect(btns.length).toBe(2); // Start over + Retry
 	});
 
 	it("renders wifi_provision state with existing WiFi provisioning UI", () => {
@@ -1048,12 +1059,15 @@ describe("USB flash view — state-driven", () => {
 		expect(events.length).toBe(1);
 	});
 
-	it("cancel hides USB flash view and resets state", async () => {
+	it("cancel button on idle picker fires flasher-cancel", async () => {
 		const el = createView();
 		(el as any)._showUsbFlash = true;
 		(el as any).usbFlashState = null;
 		document.body.appendChild(el);
 		await el.updateComplete;
+
+		const events: Event[] = [];
+		el.addEventListener("flasher-cancel", (e) => events.push(e));
 
 		const root = el.shadowRoot!;
 		const cancelBtn = root.querySelector(
@@ -1061,7 +1075,7 @@ describe("USB flash view — state-driven", () => {
 		) as HTMLElement;
 		cancelBtn.click();
 
-		expect((el as any)._showUsbFlash).toBe(false);
+		expect(events.length).toBe(1);
 	});
 
 	it("clicking ethernet variant button in USB flash idle updates _selectedVariant", async () => {
@@ -1129,8 +1143,11 @@ describe("wifi_configured state", () => {
 
 		expect(c.textContent).toContain("192.168.1.42");
 		expect(c.querySelector("ha-circular-progress")).toBeTruthy();
-		// Should not show any buttons in this transient state
-		expect(c.querySelectorAll("ha-button").length).toBe(0);
+		// Should show only a Cancel button in this transient state
+		expect(c.querySelectorAll("ha-button").length).toBe(1);
+		expect(c.querySelector("ha-button")!.textContent).toContain(
+			"flasher.cancel",
+		);
 	});
 });
 
@@ -1639,7 +1656,7 @@ describe("complete state haAdd branches", () => {
 		expect(listener).toHaveBeenCalled();
 	});
 
-	it("flash another button dispatches flash-another event", async () => {
+	it("flash another button dispatches flasher-cancel event", async () => {
 		const view = await renderWithHaAdd({ type: "added" });
 		const root = view.shadowRoot!;
 		const btn = Array.from(root.querySelectorAll("ha-button")).find((b) =>
@@ -1647,7 +1664,7 @@ describe("complete state haAdd branches", () => {
 		);
 		expect(btn).toBeTruthy();
 		const listener = vi.fn();
-		view.addEventListener("flash-another", listener);
+		view.addEventListener("flasher-cancel", listener);
 		(btn as HTMLElement).click();
 		expect(listener).toHaveBeenCalled();
 	});
@@ -1668,8 +1685,8 @@ describe("complete state haAdd branches", () => {
 	});
 });
 
-describe("error state — Flash another button", () => {
-	it("renders a flash-another button alongside back/retry", async () => {
+describe("error state — buttons", () => {
+	it("renders Start over and Retry buttons (no Flash another) on error screen", async () => {
 		const view = createView();
 		(view as any)._showUsbFlash = true;
 		(view as any).usbFlashState = {
@@ -1684,8 +1701,212 @@ describe("error state — Flash another button", () => {
 		);
 		expect(buttons).toEqual(
 			expect.arrayContaining([
+				expect.stringMatching(/start_over|Start over/i),
+				expect.stringMatching(/usb_retry|Retry/i),
+			]),
+		);
+		// Flash another is no longer on the error screen
+		expect(buttons).not.toEqual(
+			expect.arrayContaining([
 				expect.stringMatching(/flash_another|Flash another/i),
 			]),
 		);
+	});
+});
+
+describe("render() wifi_configured with autoSkipped", () => {
+	it("renders Configure WiFi override link when autoSkipped=true", () => {
+		const el = createView({
+			usbFlashState: {
+				step: "wifi_configured",
+				ip: "192.168.1.42",
+				autoSkipped: true,
+			},
+		});
+		const tpl = (el as any).render();
+		const c = renderTo(tpl);
+		expect(c.querySelector(".wifi-override-link")).not.toBeNull();
+		expect(c.querySelector(".wifi-override-link")!.textContent).toContain(
+			"flasher.configure_wifi_override",
+		);
+	});
+
+	it("does NOT render override link when autoSkipped is falsy", () => {
+		const el = createView({
+			usbFlashState: { step: "wifi_configured", ip: "192.168.1.42" },
+		});
+		const tpl = (el as any).render();
+		const c = renderTo(tpl);
+		expect(c.querySelector(".wifi-override-link")).toBeNull();
+	});
+
+	it("fires wifi-scan event when override link is clicked", () => {
+		const el = createView({
+			usbFlashState: {
+				step: "wifi_configured",
+				ip: "192.168.1.42",
+				autoSkipped: true,
+			},
+		});
+		const fired: string[] = [];
+		el.addEventListener("wifi-scan", () => fired.push("wifi-scan"));
+		(el as any)._dispatchWifiScan();
+		expect(fired).toEqual(["wifi-scan"]);
+	});
+});
+
+describe("cancel button on in-flight states", () => {
+	it("renders Cancel on wifi_scan and fires flasher-cancel", () => {
+		const el = createView({
+			usbFlashState: { step: "wifi_scan" },
+		});
+		const fired: string[] = [];
+		el.addEventListener("flasher-cancel", () => fired.push("flasher-cancel"));
+		const tpl = (el as any).render();
+		const c = renderTo(tpl);
+		const btn = c.querySelector(".cancel-btn") as HTMLElement | null;
+		expect(btn).not.toBeNull();
+		// Direct-dispatch pattern: call the method since click() doesn't route through Lit's bound handlers in detached render.
+		(el as any)._dispatchCancel();
+		expect(fired).toEqual(["flasher-cancel"]);
+	});
+
+	it("renders Cancel on wifi_check and fires flasher-cancel", () => {
+		const el = createView({
+			usbFlashState: { step: "wifi_check" },
+		});
+		const tpl = (el as any).render();
+		const c = renderTo(tpl);
+		expect(c.querySelector(".cancel-btn")).not.toBeNull();
+	});
+
+	it("does NOT render cancel during flashing (mid-flash abort risks bricking)", () => {
+		const el = createView({
+			usbFlashState: { step: "flashing", progress: 42 },
+		});
+		const tpl = (el as any).render();
+		const c = renderTo(tpl);
+		expect(c.querySelector(".cancel-btn")).toBeNull();
+	});
+
+	it("does NOT render cancel during connecting (native port picker is modal)", () => {
+		const el = createView({
+			usbFlashState: { step: "connecting" },
+		});
+		const tpl = (el as any).render();
+		const c = renderTo(tpl);
+		expect(c.querySelector(".cancel-btn")).toBeNull();
+	});
+});
+
+describe("cancel on wifi_provision", () => {
+	it("Cancel button fires flasher-cancel (not usb-retry)", () => {
+		const el = createView({
+			usbFlashState: { step: "wifi_provision" },
+			wifiNetworks: [{ ssid: "TestNet", rssi: -50, authRequired: true }],
+		});
+		const tpl = (el as any).render();
+		renderTo(tpl);
+		// Direct-call pattern matching existing tests
+		const fired: string[] = [];
+		el.addEventListener("flasher-cancel", () => fired.push("flasher-cancel"));
+		el.addEventListener("usb-retry", () => fired.push("usb-retry"));
+		(el as any)._dispatchCancel();
+		expect(fired).toEqual(["flasher-cancel"]);
+	});
+});
+
+describe("cancel on wifi_configured", () => {
+	it("renders a Cancel button that fires flasher-cancel", () => {
+		const el = createView({
+			usbFlashState: { step: "wifi_configured", ip: "192.168.1.1" },
+		});
+		const tpl = (el as any).render();
+		const c = renderTo(tpl);
+		const cancelBtn = [...c.querySelectorAll("ha-button")].find((b) =>
+			b.textContent?.includes("flasher.cancel"),
+		);
+		expect(cancelBtn).toBeDefined();
+	});
+});
+
+describe("error screen migration", () => {
+	it("renders a Start over button (fires flasher-cancel)", () => {
+		const el = createView({
+			usbFlashState: { step: "error", errorKey: "usb.errors.flash_failed" },
+		});
+		const tpl = (el as any).render();
+		const c = renderTo(tpl);
+		const startOverBtn = [...c.querySelectorAll("ha-button")].find((b) =>
+			b.textContent?.includes("flasher.start_over"),
+		);
+		expect(startOverBtn).toBeDefined();
+	});
+
+	it("Retry button still present (fires usb-retry)", () => {
+		const el = createView({
+			usbFlashState: { step: "error", errorKey: "usb.errors.flash_failed" },
+		});
+		const tpl = (el as any).render();
+		const c = renderTo(tpl);
+		const retryBtn = [...c.querySelectorAll("ha-button")].find((b) =>
+			b.textContent?.includes("flasher.usb_retry"),
+		);
+		expect(retryBtn).toBeDefined();
+	});
+});
+
+describe("idle variant picker", () => {
+	it("renders Cancel button (not Back) in variant picker", () => {
+		// Force _showUsbFlash=true so _renderUsbFlash(idle) path is hit
+		const el = createView({
+			usbFlashState: { step: "idle" },
+		});
+		(el as any)._showUsbFlash = true;
+		const tpl = (el as any).render();
+		const c = renderTo(tpl);
+		const cancelBtn = [...c.querySelectorAll("ha-button")].find((b) =>
+			b.textContent?.includes("flasher.cancel"),
+		);
+		expect(cancelBtn).toBeDefined();
+		const backBtn = [...c.querySelectorAll("ha-button")].find((b) =>
+			b.textContent?.includes("flasher.usb_back"),
+		);
+		expect(backBtn).toBeUndefined();
+	});
+
+	describe("cancelled IP hint banner", () => {
+		it("renders banner on idle variant picker when cancelledDeviceIpHint is set", () => {
+			const el = createView({
+				cancelledDeviceIpHint: "192.168.1.42",
+				usbFlashState: { step: "idle" },
+			});
+			el.localize = Object.assign(
+				((k: string, params?: Record<string, string | number>) => {
+					if (k === "flasher.cancelled_ip_hint" && params)
+						return `Device reachable at ${params.ip} — it should appear in Home Assistant discovery shortly.`;
+					return k;
+				}) as typeof el.localize,
+				{ formatNumber: (v: number, d = 1) => v.toFixed(d), lang: "en" },
+			);
+			(el as any)._showUsbFlash = true;
+			const tpl = (el as any).render();
+			const c = renderTo(tpl);
+			const banner = c.querySelector(".cancelled-ip-hint");
+			expect(banner).not.toBeNull();
+			expect(banner!.textContent).toContain("192.168.1.42");
+			expect(banner!.textContent).toContain("Device reachable at");
+		});
+
+		it("does NOT render banner when cancelledDeviceIpHint is null", () => {
+			const el = createView({
+				cancelledDeviceIpHint: null,
+				usbFlashState: { step: "idle" },
+			});
+			(el as any)._showUsbFlash = true;
+			const tpl = (el as any).render();
+			const c = renderTo(tpl);
+			expect(c.querySelector(".cancelled-ip-hint")).toBeNull();
+		});
 	});
 });

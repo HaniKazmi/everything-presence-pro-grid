@@ -858,6 +858,30 @@ describe("FlasherController", () => {
 	});
 });
 
+describe("cancelledDeviceIpHint", () => {
+	it("stores the IP and auto-clears after 8 seconds", async () => {
+		vi.useFakeTimers();
+		const host = { requestUpdate: vi.fn(), addController: vi.fn() };
+		const ctrl = new FlasherController(host as any);
+
+		ctrl.setCancelledDeviceIpHint("192.168.1.42");
+		expect(ctrl.cancelledDeviceIpHint).toBe("192.168.1.42");
+		expect(host.requestUpdate).toHaveBeenCalled();
+
+		vi.advanceTimersByTime(8000);
+		expect(ctrl.cancelledDeviceIpHint).toBeNull();
+		vi.useRealTimers();
+	});
+
+	it("clears on subsequent setCancelledDeviceIpHint(null)", () => {
+		const host = { requestUpdate: vi.fn(), addController: vi.fn() };
+		const ctrl = new FlasherController(host as any);
+		ctrl.setCancelledDeviceIpHint("192.168.1.42");
+		ctrl.setCancelledDeviceIpHint(null);
+		expect(ctrl.cancelledDeviceIpHint).toBeNull();
+	});
+});
+
 describe("FlasherController error translation keys", () => {
 	let host: any;
 	let controller: FlasherController;

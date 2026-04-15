@@ -68,6 +68,7 @@ export type UsbFlashStep =
 	| "idle"
 	| "connecting"
 	| "flashing"
+	| "wifi_check"
 	| "wifi_scan"
 	| "wifi_provision"
 	| "wifi_connecting"
@@ -85,6 +86,7 @@ export interface UsbFlashState {
 	variant?: string;
 	fatal?: boolean;
 	haAdd?: HaAddResult;
+	autoSkipped?: boolean;
 }
 
 export type OtaState = "updating" | "success" | "error";

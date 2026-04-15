@@ -52,6 +52,7 @@ import { renderTemplateThumbnail } from "./lib/template-thumbnail.js";
 import {
 	detectIpAddress,
 	flashFirmware,
+	queryImprovState,
 	runWifiProvision,
 	runWifiScan,
 } from "./lib/usb-flash-service.js";
@@ -1147,6 +1148,7 @@ export class EPPGridPanel extends LitElement {
 					.firmwareVersion=${this._flasherCtrl.firmwareVersion}
 					.integrationVersion=${this._flasherCtrl.integrationVersion}
 					.otaStates=${this._flasherCtrl.otaStates}
+					.cancelledDeviceIpHint=${this._flasherCtrl.cancelledDeviceIpHint}
 					@flash-complete=${() => {
 						this._flasherCtrl.resetUsbState();
 						this._loadDevices();
@@ -1172,7 +1174,7 @@ export class EPPGridPanel extends LitElement {
 						this._handleUsbWifiConfig();
 					}}
 					@retry-ha-add=${this._handleRetryHaAdd}
-					@flash-another=${this._handleFlashAnother}
+					@flasher-cancel=${this._handleFlasherCancel}
 					@wifi-scan=${() => {
 						this._handleWifiScan();
 					}}
@@ -2542,7 +2544,56 @@ export class EPPGridPanel extends LitElement {
 				return;
 			}
 
-			// Step 3: WiFi scan
+			// Step 3: Check if device is already provisioned (firmware-upgrade path)
+			ctrl.updateUsbState({ step: "wifi_check" });
+			let skipIp: string | null = null;
+			let skipWriter: WritableStreamDefaultWriter<Uint8Array> | null = null;
+			let skipReader: ReadableStreamDefaultReader<Uint8Array> | null = null;
+			try {
+				const info = await queryImprovState(port);
+				if (info.state === "PROVISIONED" && info.ip && info.ip !== "0.0.0.0") {
+					skipIp = info.ip;
+					skipWriter = info.writer;
+					skipReader = info.reader;
+				} else {
+					try {
+						info.writer.releaseLock();
+					} catch {}
+					try {
+						info.reader.releaseLock();
+					} catch {}
+				}
+			} catch {
+				// Fall through to scan flow — runWifiScan has its own handshake-with-retry.
+			}
+
+			if (ctrl.opId !== myOp) {
+				ctrl.opRunning = false;
+				return;
+			}
+
+			if (skipIp && skipWriter && skipReader) {
+				// Device is already on the network — release the query's serial locks
+				// so `runWifiScan` can re-acquire them if the user clicks the
+				// "Configure WiFi" override. Keep the port itself open and attached
+				// to ctrl.serialPort for that override path.
+				try {
+					skipReader.releaseLock();
+				} catch {}
+				try {
+					skipWriter.releaseLock();
+				} catch {}
+				ctrl.updateUsbState({
+					step: "wifi_configured",
+					ip: skipIp,
+					autoSkipped: true,
+				});
+				ctrl.opRunning = false;
+				await this._addToHa(skipIp);
+				return;
+			}
+
+			// Step 4: WiFi scan
 			ctrl.updateUsbState({ step: "wifi_scan" });
 			const { writer, reader, networks } = await runWifiScan(port);
 			if (ctrl.opId !== myOp) {
@@ -2553,7 +2604,6 @@ export class EPPGridPanel extends LitElement {
 			ctrl.wifiNetworks = networks;
 			ctrl.updateUsbState({ step: "wifi_provision" });
 
-			// Store writer/reader for provisioning step
 			(ctrl as any)._serialWriter = writer;
 			(ctrl as any)._serialReader = reader;
 			ctrl.opRunning = false;
@@ -2652,30 +2702,7 @@ export class EPPGridPanel extends LitElement {
 			// WiFi side succeeded. Intermediate state while HA-add runs.
 			ctrl.updateUsbState({ step: "wifi_configured", ip });
 
-			let haAdd: HaAddResult;
-			try {
-				haAdd = await ctrl.addEsphomeDevice(ip);
-			} catch (err) {
-				const msg = (err as { message?: string })?.message;
-				haAdd = { type: "failed", reason: msg ?? "unknown" };
-			}
-			if (ctrl.opId !== myOp) return;
-
-			// The device's ESPHome API may not have finished booting on the
-			// first attempt right after WiFi associates. Retry once silently.
-			if (haAdd.type === "cannot_connect") {
-				await new Promise((r) => setTimeout(r, 3000));
-				if (ctrl.opId !== myOp) return;
-				try {
-					haAdd = await ctrl.addEsphomeDevice(ip);
-				} catch (err) {
-					const msg = (err as { message?: string })?.message;
-					haAdd = { type: "failed", reason: msg ?? "unknown" };
-				}
-				if (ctrl.opId !== myOp) return;
-			}
-
-			ctrl.updateUsbState({ step: "complete", ip, haAdd });
+			await this._addToHa(ip);
 		} catch (err: any) {
 			try {
 				(ctrl as any)._serialReader?.releaseLock();
@@ -2701,6 +2728,36 @@ export class EPPGridPanel extends LitElement {
 		}
 	}
 
+	private async _addToHa(ip: string): Promise<void> {
+		const ctrl = this._flasherCtrl;
+		const myOp = ctrl.opId;
+
+		let haAdd: HaAddResult;
+		try {
+			haAdd = await ctrl.addEsphomeDevice(ip);
+		} catch (err) {
+			const msg = (err as { message?: string })?.message;
+			haAdd = { type: "failed", reason: msg ?? "unknown" };
+		}
+		if (ctrl.opId !== myOp) return;
+
+		// The device's ESPHome API may not have finished booting on the
+		// first attempt right after WiFi associates. Retry once silently.
+		if (haAdd.type === "cannot_connect") {
+			await new Promise((r) => setTimeout(r, 3000));
+			if (ctrl.opId !== myOp) return;
+			try {
+				haAdd = await ctrl.addEsphomeDevice(ip);
+			} catch (err) {
+				const msg = (err as { message?: string })?.message;
+				haAdd = { type: "failed", reason: msg ?? "unknown" };
+			}
+			if (ctrl.opId !== myOp) return;
+		}
+
+		ctrl.updateUsbState({ step: "complete", ip, haAdd });
+	}
+
 	private async _handleRetryHaAdd(): Promise<void> {
 		const ctrl = this._flasherCtrl;
 		const state = ctrl.usbFlashState;
@@ -2718,13 +2775,26 @@ export class EPPGridPanel extends LitElement {
 		ctrl.updateUsbState({ step: "complete", ip: state.ip, haAdd });
 	}
 
-	private _handleFlashAnother(): void {
-		this._flasherCtrl.resetUsbState();
+	private _handleFlasherCancel(): void {
+		const ctrl = this._flasherCtrl;
+		const state = ctrl.usbFlashState;
+		if (state?.step === "wifi_configured" && state.ip) {
+			ctrl.setCancelledDeviceIpHint(state.ip);
+		}
+		// resetUsbState releases controller-tracked locks, bumps opId, and
+		// nulls the port reference without force-closing it — closing a port
+		// whose stream locks are held by an in-flight read (e.g. a running
+		// queryImprovState or runWifiScan) can crash Chrome. Any in-flight op
+		// will observe the opId bump and release its own locks.
+		ctrl.resetUsbState();
+		ctrl.opRunning = false;
 	}
 
 	private async _handleWifiScan(): Promise<void> {
 		const ctrl = this._flasherCtrl;
 		if (!ctrl.serialPort) return;
+		ctrl.bumpOpId();
+		const myOp = ctrl.opId;
 		try {
 			ctrl.updateUsbState({ step: "wifi_scan" });
 			const writer = (ctrl as any)._serialWriter;
@@ -2738,11 +2808,23 @@ export class EPPGridPanel extends LitElement {
 			} catch {}
 
 			const result = await runWifiScan(ctrl.serialPort);
+			if (ctrl.opId !== myOp) {
+				// Cancelled or superseded while the scan was in flight — release
+				// the fresh locks and bail out so we don't resurrect the flow.
+				try {
+					result.reader.releaseLock();
+				} catch {}
+				try {
+					result.writer.releaseLock();
+				} catch {}
+				return;
+			}
 			(ctrl as any)._serialWriter = result.writer;
 			(ctrl as any)._serialReader = result.reader;
 			ctrl.wifiNetworks = result.networks;
 			ctrl.updateUsbState({ step: "wifi_provision" });
 		} catch (err: any) {
+			if (ctrl.opId !== myOp) return;
 			console.error("WiFi scan failed:", err);
 			const e = err as {
 				errorKey?: string;
