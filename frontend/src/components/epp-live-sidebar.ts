@@ -88,6 +88,7 @@ export class EppLiveSidebar extends LitElement {
       height: 10px;
       border-radius: 50%;
       flex-shrink: 0;
+      box-sizing: border-box;
     }
 
     .live-sensor-dot.on {
@@ -202,7 +203,13 @@ export class EppLiveSidebar extends LitElement {
 		];
 
 		// Zone occupancy entries: always include rest-of-room, plus configured zones
-		const zoneDefs: typeof sensorDefs = [];
+		const zoneDefs: {
+			id: string;
+			label: string;
+			on: boolean;
+			info: string;
+			color: string | null;
+		}[] = [];
 		for (let i = 0; i < MAX_ZONES; i++) {
 			const zone = this.zoneConfigs[i];
 			if (!zone) continue;
@@ -214,6 +221,7 @@ export class EppLiveSidebar extends LitElement {
 				label: zone.name,
 				on: occupied,
 				info: this.localize("info.zone_occupancy", { slot, count }),
+				color: zone.color,
 			});
 		}
 		// Rest-of-room zone (slot 0) — always shown
@@ -226,6 +234,7 @@ export class EppLiveSidebar extends LitElement {
 			info: this.localize("info.rest_of_room_occupancy", {
 				count: rorCount,
 			}),
+			color: null,
 		});
 
 		// Environment sensors
@@ -304,7 +313,14 @@ export class EppLiveSidebar extends LitElement {
         ${zoneDefs.map(
 					(s) => html`
           <div class="live-sensor-row">
-            <div class="live-sensor-dot ${s.on ? "on" : "off"}"></div>
+            <div
+              class="live-sensor-dot"
+              style=${
+								s.color
+									? `background: ${s.color};${s.on ? ` box-shadow: 0 0 6px 2px ${s.color};` : ""}`
+									: `background: #fff; border: 1px solid #ccc;${s.on ? " box-shadow: 0 0 6px 2px #999;" : ""}`
+							}
+            ></div>
             <span class="live-sensor-label">${s.label}</span>
             <span class="live-sensor-state ${s.on ? "detected" : ""}">${s.on ? this.localize("live.detected") : this.localize("live.clear")}</span>
             <button class="live-sensor-info-btn"

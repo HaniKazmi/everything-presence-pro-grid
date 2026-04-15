@@ -283,6 +283,107 @@ describe("epp-live-sidebar element", () => {
 		document.body.removeChild(c2);
 	});
 
+	it("renders configured zone dot with the zone's color as background", () => {
+		const el = document.createElement("epp-live-sidebar") as any;
+		el.perspective = [1, 0, 0, 0, 1, 0, 0, 0];
+		el.zoneConfigs = new Array(7).fill(null);
+		el.zoneConfigs[0] = {
+			name: "Kitchen",
+			color: "#B8E7FF",
+			type: "normal",
+		};
+		el.zoneState = {
+			occupancy: { 1: false, 0: false },
+			target_counts: { 1: 0, 0: 0 },
+			frame_count: 1,
+		};
+		const tpl = el.render();
+		const c = renderTo(tpl);
+
+		const dots = c.querySelectorAll(".live-sensor-dot");
+		// 4 presence + 1 zone + 1 rest-of-room = 6
+		expect(dots.length).toBe(6);
+		// 5th dot (index 4) is the Kitchen zone dot
+		const zoneDot = dots[4] as HTMLElement;
+		const style = zoneDot.getAttribute("style") ?? "";
+		expect(style.toLowerCase()).toContain("background: #b8e7ff");
+		// Not occupied: no box-shadow
+		expect(style).not.toContain("box-shadow");
+
+		document.body.removeChild(c);
+	});
+
+	it("renders occupied configured zone dot with colored glow", () => {
+		const el = document.createElement("epp-live-sidebar") as any;
+		el.perspective = [1, 0, 0, 0, 1, 0, 0, 0];
+		el.zoneConfigs = new Array(7).fill(null);
+		el.zoneConfigs[0] = {
+			name: "Kitchen",
+			color: "#B8E7FF",
+			type: "normal",
+		};
+		el.zoneState = {
+			occupancy: { 1: true, 0: false },
+			target_counts: { 1: 2, 0: 0 },
+			frame_count: 1,
+		};
+		const tpl = el.render();
+		const c = renderTo(tpl);
+
+		const dots = c.querySelectorAll(".live-sensor-dot");
+		const zoneDot = dots[4] as HTMLElement;
+		const style = zoneDot.getAttribute("style") ?? "";
+		expect(style.toLowerCase()).toContain("background: #b8e7ff");
+		expect(style.toLowerCase()).toContain("box-shadow");
+		// glow uses the zone color
+		expect(style.toLowerCase()).toContain("#b8e7ff");
+
+		document.body.removeChild(c);
+	});
+
+	it("renders rest-of-room dot with white background and gray border", () => {
+		const el = document.createElement("epp-live-sidebar") as any;
+		el.perspective = [1, 0, 0, 0, 1, 0, 0, 0];
+		el.zoneConfigs = new Array(7).fill(null);
+		el.zoneState = {
+			occupancy: { 0: false },
+			target_counts: { 0: 0 },
+			frame_count: 1,
+		};
+		const tpl = el.render();
+		const c = renderTo(tpl);
+
+		const dots = c.querySelectorAll(".live-sensor-dot");
+		// 4 presence + 1 rest-of-room = 5
+		const rorDot = dots[4] as HTMLElement;
+		const style = rorDot.getAttribute("style") ?? "";
+		expect(style.toLowerCase()).toContain("background: #fff");
+		expect(style).toContain("border");
+		expect(style).not.toContain("box-shadow");
+
+		document.body.removeChild(c);
+	});
+
+	it("renders occupied rest-of-room with gray glow", () => {
+		const el = document.createElement("epp-live-sidebar") as any;
+		el.perspective = [1, 0, 0, 0, 1, 0, 0, 0];
+		el.zoneConfigs = new Array(7).fill(null);
+		el.zoneState = {
+			occupancy: { 0: true },
+			target_counts: { 0: 1 },
+			frame_count: 1,
+		};
+		const tpl = el.render();
+		const c = renderTo(tpl);
+
+		const dots = c.querySelectorAll(".live-sensor-dot");
+		const rorDot = dots[4] as HTMLElement;
+		const style = rorDot.getAttribute("style") ?? "";
+		expect(style).toContain("box-shadow");
+
+		document.body.removeChild(c);
+	});
+
 	it("renders rest-of-room zone even with no configured zones", () => {
 		const el = document.createElement("epp-live-sidebar") as any;
 		el.perspective = [1, 0, 0, 0, 1, 0, 0, 0];

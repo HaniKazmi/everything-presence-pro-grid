@@ -299,6 +299,79 @@ describe("epp-grid occupancy", () => {
 
 		document.body.removeChild(el);
 	});
+
+	it("gives occupied zone cells a zone-colored outer glow that overflows cell bounds", async () => {
+		const grid = initGridFromRoom(3000, 4000);
+		const zoneConfigs = new Array(7).fill(null);
+		const zoneColor = ZONE_COLORS[0]; // "#B8E7FF"
+		zoneConfigs[0] = { name: "Zone 1", color: zoneColor, type: "normal" };
+
+		for (let i = 0; i < grid.length; i++) {
+			if (grid[i] & CELL_ROOM_BIT) {
+				grid[i] = cellSetZone(grid[i], 1);
+			}
+		}
+
+		const el = createGrid({
+			grid,
+			zoneConfigs,
+			occupancy: { 1: true },
+		});
+		document.body.appendChild(el);
+		await el.updateComplete;
+
+		const cells = el.shadowRoot!.querySelectorAll(
+			".cell",
+		) as NodeListOf<HTMLElement>;
+		const shadowed = Array.from(cells).find((c) =>
+			c.style.cssText.includes("box-shadow"),
+		);
+		expect(shadowed).toBeDefined();
+		const css = shadowed!.style.cssText.toLowerCase();
+		// Outer shadow (no inset) so it can overlap adjacent cells.
+		expect(css).not.toContain("inset");
+		// Shadow references the zone color (e.g., via color-mix).
+		expect(css).toContain(zoneColor.toLowerCase());
+		// Not the old dark-grey outline.
+		expect(css).not.toContain("rgba(0,0,0,0.4)");
+		// Non-zero blur radius present.
+		expect(css).toMatch(/box-shadow:[^;]*\b([1-9]\d*)px\b/);
+		// Positioned + elevated so the outer shadow paints on top of neighbors.
+		expect(css).toContain("position: relative");
+		expect(css).toContain("z-index: 1");
+
+		document.body.removeChild(el);
+	});
+
+	it("gives occupied rest-of-room (zone 0) cells the same outer glow approach", async () => {
+		const grid = initGridFromRoom(3000, 4000);
+		// initGridFromRoom marks all inside cells with zone 0 by default.
+
+		const el = createGrid({
+			grid,
+			zoneConfigs: new Array(7).fill(null),
+			occupancy: { 0: true },
+		});
+		document.body.appendChild(el);
+		await el.updateComplete;
+
+		const cells = el.shadowRoot!.querySelectorAll(
+			".cell",
+		) as NodeListOf<HTMLElement>;
+		const shadowed = Array.from(cells).find((c) =>
+			c.style.cssText.includes("box-shadow"),
+		);
+		expect(shadowed).toBeDefined();
+		const css = shadowed!.style.cssText.toLowerCase();
+		// Same outer-glow treatment as named zones.
+		expect(css).not.toContain("inset");
+		expect(css).not.toContain("rgba(0,0,0,0.4)");
+		expect(css).toContain("position: relative");
+		expect(css).toContain("z-index: 1");
+		expect(css).toMatch(/box-shadow:[^;]*\b([1-9]\d*)px\b/);
+
+		document.body.removeChild(el);
+	});
 });
 
 describe("epp-grid heatmap", () => {
