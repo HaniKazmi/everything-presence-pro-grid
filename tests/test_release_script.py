@@ -94,3 +94,31 @@ def test_rejects_existing_tag(tmp_path: Path):
     result = _run(tmp_path, "0.92.0")  # tag v0.92.0 already exists
     assert result.returncode != 0
     assert "tag" in (result.stdout + result.stderr).lower()
+
+
+def test_rejects_main_behind_origin(tmp_path: Path):
+    """If local main has fewer commits than origin/main, fail."""
+    # Create a bare "origin" and a local clone.
+    origin = tmp_path / "origin.git"
+    subprocess.run(["git", "init", "-q", "--bare", "-b", "main", str(origin)], check=True)
+
+    local = tmp_path / "local"
+    local.mkdir()
+    _init_repo(local)
+    subprocess.run(["git", "remote", "add", "origin", str(origin)], cwd=local, check=True)
+    subprocess.run(["git", "push", "-q", "origin", "main", "--tags"], cwd=local, check=True)
+
+    # Add a commit on origin that local doesn't have.
+    other = tmp_path / "other"
+    subprocess.run(["git", "clone", "-q", str(origin), str(other)], check=True)
+    subprocess.run(["git", "config", "user.email", "t@test"], cwd=other, check=True)
+    subprocess.run(["git", "config", "user.name", "t"], cwd=other, check=True)
+    (other / "new.txt").write_text("x")
+    subprocess.run(["git", "add", "."], cwd=other, check=True)
+    subprocess.run(["git", "commit", "-qm", "new"], cwd=other, check=True)
+    subprocess.run(["git", "push", "-q", "origin", "main"], cwd=other, check=True)
+
+    result = _run(local, "0.93.0")
+    assert result.returncode != 0
+    combined = (result.stdout + result.stderr).lower()
+    assert "up to date" in combined or "behind" in combined
