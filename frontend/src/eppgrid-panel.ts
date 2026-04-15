@@ -2783,6 +2783,7 @@ export class EPPGridPanel extends LitElement {
 			ctrl.setCancelledDeviceIpHint(state.ip);
 		}
 		ctrl.resetUsbState();
+		ctrl.opRunning = false;
 		if (port) {
 			port.close().catch(() => {});
 		}
