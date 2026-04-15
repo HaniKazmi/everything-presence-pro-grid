@@ -10,7 +10,6 @@ import {
 	cellIsInside,
 	cellZone,
 	GRID_COLS,
-	GRID_ROWS,
 	getRoomBounds,
 	MAX_RANGE,
 } from "../lib/grid.js";
@@ -19,7 +18,6 @@ import {
 	computeSensorFov,
 	getGridRoomMetrics,
 	isCellInSensorRange,
-	makeSensorRangeFilter,
 	type SensorFov,
 } from "../lib/room-geometry.js";
 import type { ZoneConfig } from "../lib/zone-defaults.js";
@@ -147,17 +145,12 @@ export class EppGrid extends LitElement {
 	`;
 
 	render() {
-		const rangeFilter = makeSensorRangeFilter(
-			this.perspective,
-			this.roomWidth,
-			this.maxRangeMm,
-		);
-		const bounds = this.frozenBounds ?? getRoomBounds(this.grid, rangeFilter);
+		const bounds = this.frozenBounds ?? getRoomBounds(this.grid);
 		const noRoom = bounds.minCol > bounds.maxCol;
 		const minCol = noRoom ? 0 : bounds.minCol;
 		const maxCol = noRoom ? GRID_COLS - 1 : bounds.maxCol;
 		const minRow = noRoom ? 0 : bounds.minRow;
-		const maxRow = noRoom ? GRID_ROWS - 1 : bounds.maxRow;
+		const maxRow = noRoom ? bounds.maxRow : bounds.maxRow;
 		const visCols = maxCol - minCol + 1;
 		const visRows = maxRow - minRow + 1;
 		const cellPx = Math.min(

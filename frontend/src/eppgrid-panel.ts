@@ -46,7 +46,6 @@ import {
 	getGridRoomMetrics,
 	getSensorRoomPosition,
 	isCellInSensorRange,
-	makeSensorRangeFilter,
 	type SensorFov,
 } from "./lib/room-geometry.js";
 import { renderTemplateThumbnail } from "./lib/template-thumbnail.js";
@@ -665,12 +664,7 @@ export class EPPGridPanel extends LitElement {
 		minRow: number;
 		maxRow: number;
 	} {
-		const filter = makeSensorRangeFilter(
-			this._perspective,
-			this._roomWidth,
-			this._computeMaxRangeMm(),
-		);
-		return getRoomBounds(this._grid, filter);
+		return getRoomBounds(this._grid);
 	}
 
 	/** Save the current grid and zone config to the backend */

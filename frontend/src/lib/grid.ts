@@ -38,16 +38,8 @@ export const cellSetInterference = (v: number, level: number): number =>
 			~CELL_OVERLAY_ENTRY
 		: v & ~CELL_INTERFERENCE_MASK;
 
-/**
- * Get room bounds with 1-cell padding around inside cells.
- *
- * Optional `filter` excludes inside cells for which it returns false — used to
- * hide inside-room cells that fall outside the sensor's FoV/range.
- */
-export function getRoomBounds(
-	grid: Uint8Array,
-	filter?: (col: number, row: number) => boolean,
-): {
+/** Get room bounds with 1-cell padding around inside cells. */
+export function getRoomBounds(grid: Uint8Array): {
 	minCol: number;
 	maxCol: number;
 	minRow: number;
@@ -61,7 +53,6 @@ export function getRoomBounds(
 		if (cellIsInside(grid[i])) {
 			const col = i % GRID_COLS;
 			const row = Math.floor(i / GRID_COLS);
-			if (filter && !filter(col, row)) continue;
 			if (col < minCol) minCol = col;
 			if (col > maxCol) maxCol = col;
 			if (row < minRow) minRow = row;

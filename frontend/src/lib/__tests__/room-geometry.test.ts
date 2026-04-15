@@ -14,7 +14,6 @@ import {
 	getGridRoomMetrics,
 	getSensorRoomPosition,
 	isCellInSensorRange,
-	makeSensorRangeFilter,
 	median,
 	medianPoint,
 	type SensorFov,
@@ -150,36 +149,6 @@ describe("isCellInSensorRange", () => {
 		// roomWidth=3000 → roomCols=10, startCol=5
 		// Cell (10, 0) centre: (10-5+0.5)*300=1650, (0+0.5)*300=150
 		expect(isCellInSensorRange(10, 0, fov, 3000, 6000)).toBe(true);
-	});
-});
-
-describe("makeSensorRangeFilter", () => {
-	it("returns a no-op predicate when perspective is null", () => {
-		const filter = makeSensorRangeFilter(null, 3000, 6000);
-		expect(filter(0, 0)).toBe(true);
-		expect(filter(GRID_COLS - 1, 19)).toBe(true);
-		expect(filter(5, 5)).toBe(true);
-	});
-
-	it("returns a no-op predicate when perspective is undefined", () => {
-		const filter = makeSensorRangeFilter(undefined, 3000, 6000);
-		expect(filter(7, 7)).toBe(true);
-	});
-
-	it("matches isCellInSensorRange for a calibrated perspective", () => {
-		const p = makeSimplePerspective();
-		const fov = computeSensorFov(p);
-		const filter = makeSensorRangeFilter(p, 2000, 6000);
-		// Sample a handful of cells across the grid; predicate must agree
-		for (const [c, r] of [
-			[0, 0],
-			[5, 5],
-			[10, 5],
-			[15, 10],
-			[19, 19],
-		]) {
-			expect(filter(c, r)).toBe(isCellInSensorRange(c, r, fov, 2000, 6000));
-		}
 	});
 });
 

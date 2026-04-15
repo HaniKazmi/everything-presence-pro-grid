@@ -145,22 +145,6 @@ describe("getRoomBounds", () => {
 		expect(bounds.minCol).toBeGreaterThanOrEqual(0);
 		expect(bounds.maxCol).toBeLessThan(GRID_COLS);
 	});
-
-	it("excludes inside cells filtered out by the callback", () => {
-		const grid = new Uint8Array(GRID_CELL_COUNT);
-		// Inside block: rows 3-5, cols 5-10
-		for (let r = 3; r <= 5; r++) {
-			for (let c = 5; c <= 10; c++) {
-				grid[r * GRID_COLS + c] = CELL_ROOM_BIT;
-			}
-		}
-		// Filter simulates sensor range: include cols <= 7 only
-		const bounds = getRoomBounds(grid, (col) => col <= 7);
-		expect(bounds.minCol).toBe(4); // 5-1
-		expect(bounds.maxCol).toBe(8); // 7+1 — cols 8-10 excluded by filter
-		expect(bounds.minRow).toBe(2); // 3-1
-		expect(bounds.maxRow).toBe(6); // 5+1
-	});
 });
 
 describe("getRawRoomBounds", () => {
