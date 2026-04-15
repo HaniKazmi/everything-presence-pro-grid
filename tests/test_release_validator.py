@@ -45,3 +45,21 @@ def test_fails_when_manifest_version_does_not_match_tag(tmp_path: Path):
     assert "manifest.json" in (result.stdout + result.stderr)
     assert "0.93.0" in (result.stdout + result.stderr)
     assert "0.99.0" in (result.stdout + result.stderr)
+
+
+def test_fails_when_firmware_versions_disagree(tmp_path: Path):
+    """const.py says 0.92.0 but base.yaml says 0.91.0 — misalignment."""
+    fixture = _make_fixture(tmp_path, manifest_version="0.93.0", firmware_version="0.92.0")
+
+    base_yaml = fixture / "firmware" / "common" / "everything-presence-pro-base.yaml"
+    base_yaml.write_text(
+        'substitutions:\n  project:\n    version: "0.91.0"\n'
+    )
+
+    result = _run(fixture, "0.93.0")
+
+    assert result.returncode != 0
+    combined = result.stdout + result.stderr
+    assert "firmware" in combined.lower()
+    assert "0.91.0" in combined
+    assert "0.92.0" in combined
