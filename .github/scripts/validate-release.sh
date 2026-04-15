@@ -37,13 +37,21 @@ text = open('custom_components/eppgrid/const.py').read()
 m = re.search(r'^FIRMWARE_VERSION\s*=\s*\"([^\"]+)\"', text, re.M)
 print(m.group(1) if m else '')
 ")
+if [ -z "$CONST_FW" ]; then
+  echo "::error::Could not extract FIRMWARE_VERSION from custom_components/eppgrid/const.py" >&2
+  exit 1
+fi
 
 YAML_FW=$(python3 -c "
 import re
 text = open('firmware/common/everything-presence-pro-base.yaml').read()
-m = re.search(r'^\s*version:\s*\"([^\"]+)\"', text, re.M)
+m = re.search(r'^ {4}version:\s*\"([^\"]+)\"', text, re.M)
 print(m.group(1) if m else '')
 ")
+if [ -z "$YAML_FW" ]; then
+  echo "::error::Could not extract version from firmware/common/everything-presence-pro-base.yaml" >&2
+  exit 1
+fi
 
 HEADER_FW=$(python3 -c "
 import re
@@ -51,6 +59,10 @@ text = open('firmware/components/epp/epp_component.h').read()
 m = re.search(r'FIRMWARE_VERSION_STR\s*=\s*\"([^\"]+)\"', text)
 print(m.group(1) if m else '')
 ")
+if [ -z "$HEADER_FW" ]; then
+  echo "::error::Could not extract FIRMWARE_VERSION_STR from firmware/components/epp/epp_component.h" >&2
+  exit 1
+fi
 
 if [ "$CONST_FW" != "$YAML_FW" ] || [ "$CONST_FW" != "$HEADER_FW" ]; then
   echo "::error::Firmware versions disagree:" >&2
