@@ -1002,6 +1002,22 @@ export const flasherStyles = css`
     font-size: 14px;
   }
 
+  .wifi-override-row {
+    margin-top: 12px;
+    text-align: center;
+  }
+
+  .wifi-override-link {
+    color: var(--primary-color);
+    cursor: pointer;
+    text-decoration: underline;
+    font-size: 0.9em;
+  }
+
+  .wifi-override-link:hover {
+    opacity: 0.8;
+  }
+
 `;
 
 export const liveMenuStyles = css`

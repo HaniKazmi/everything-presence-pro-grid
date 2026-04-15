@@ -358,6 +358,7 @@
 		"usb_step_wifi_connecting": "Connecting to WiFi...",
 		"usb_step_reading_ip": "Detecting device IP address...",
 		"wifi_configured": "WiFi configured successfully",
+		"configure_wifi_override": "Not this network? Configure WiFi",
 		"go_to_integrations": "Go to Integrations",
 		"copy_ip": "Copy IP address",
 		"retry_ha_add": "Retry adding to Home Assistant",

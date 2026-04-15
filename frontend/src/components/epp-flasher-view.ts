@@ -562,6 +562,15 @@ export class EppFlasherView extends LitElement {
 								<ha-circular-progress indeterminate size="small"></ha-circular-progress>
 								<span>${this.localize("flasher.ha_add.adding")}</span>
 							</div>
+							${
+								state.autoSkipped
+									? html`<div class="wifi-override-row">
+										<a class="wifi-override-link" @click=${this._dispatchWifiScan}>
+											${this.localize("flasher.configure_wifi_override")}
+										</a>
+									</div>`
+									: nothing
+							}
 						</div>
 					</ha-card>
 				</div>
