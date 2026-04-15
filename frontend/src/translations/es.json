@@ -375,7 +375,6 @@
 		"usb_ethernet_hint": "Conecta el dispositivo a tu red mediante cable Ethernet. ESPHome lo detectará automáticamente.",
 		"go_to_devices": "Ir a Ajustes → Dispositivos",
 		"usb_retry": "Reintentar",
-		"usb_back": "Atrás",
 		"confirm_delete_message": "Este dispositivo se configuró anteriormente con el firmware original. La configuración antigua se eliminará de Home Assistant.",
 		"update": "Actualizar",
 		"integration_update": "Actualización de la integración necesaria",
