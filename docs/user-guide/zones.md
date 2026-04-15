@@ -1,4 +1,4 @@
-# Zones
+# Detection Zones
 
 A zone is a named set of grid cells — typically a region of your room you care about, like "Desk", "Sofa", or "Doorway". Each zone gets its own occupancy and target-count entities in Home Assistant, which you can wire up in automations. This page covers creating zones, painting cells into them, tuning their behaviour, and what entities end up in HA.
 
