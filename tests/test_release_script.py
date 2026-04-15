@@ -1,5 +1,6 @@
 """Tests for bin/release.sh."""
 
+import os
 import subprocess
 from pathlib import Path
 
@@ -178,3 +179,48 @@ def test_firmware_release_bumps_all_four_versions(tmp_path: Path):
 
     header = (tmp_path / "firmware" / "components" / "epp" / "epp_component.h").read_text()
     assert 'FIRMWARE_VERSION_STR = "0.93.0"' in header
+
+
+def test_pushes_and_opens_pr(tmp_path: Path, monkeypatch):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _init_repo(repo)
+
+    # Shim gh and git push into a fake bin dir that records calls.
+    # Keep fake_bin outside the git repo so it doesn't dirty the working tree.
+    fake_bin = tmp_path / "fake_bin"
+    fake_bin.mkdir()
+    log = tmp_path / "calls.log"
+
+    # fake gh records arguments and exits success
+    (fake_bin / "gh").write_text(
+        "#!/usr/bin/env bash\n"
+        f"echo \"gh $*\" >> \"{log}\"\n"
+        "echo https://github.com/fake/repo/pull/1\n"
+    )
+    (fake_bin / "gh").chmod(0o755)
+
+    # We still need real git for commits, etc. So shim only via a wrapper that
+    # records pushes then forwards to real git for everything else.
+    real_git = subprocess.check_output(["which", "git"], text=True).strip()
+    (fake_bin / "git").write_text(
+        "#!/usr/bin/env bash\n"
+        f"if [ \"$1\" = \"push\" ]; then echo \"git $*\" >> \"{log}\"; exit 0; fi\n"
+        f"exec {real_git} \"$@\"\n"
+    )
+    (fake_bin / "git").chmod(0o755)
+
+    env = {**os.environ, "PATH": f"{fake_bin}:{os.environ['PATH']}"}
+    result = subprocess.run(
+        ["bash", str(SCRIPT), "0.93.0"],
+        cwd=repo,
+        capture_output=True,
+        text=True,
+        env=env,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+
+    call_log = log.read_text()
+    assert "git push" in call_log
+    assert "gh pr create" in call_log
+    assert "release-v0.93.0" in call_log
