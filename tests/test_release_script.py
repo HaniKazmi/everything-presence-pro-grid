@@ -8,12 +8,32 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 SCRIPT = REPO_ROOT / "bin" / "release.sh"
 
 
+def _clean_env(extra: dict | None = None) -> dict:
+    """Return os.environ with all GIT_* vars stripped, plus any extras.
+
+    Without this, subprocess git calls in tests inherit GIT_DIR / GIT_WORK_TREE /
+    GIT_INDEX_FILE from a parent context (e.g. a pre-push hook) and operate on
+    the wrong repo. That caused the test fixture's `git config user.name=t` to
+    leak into the main repo's local config.
+    """
+    env = {k: v for k, v in os.environ.items() if not k.startswith("GIT_")}
+    if extra:
+        env.update(extra)
+    return env
+
+
+def _git(*args: str, cwd: Path, check: bool = True, **kwargs) -> subprocess.CompletedProcess:
+    """Run a git command with GIT_* env scrubbed."""
+    return subprocess.run(["git", *args], cwd=cwd, check=check, env=_clean_env(), **kwargs)
+
+
 def _run(cwd: Path, *args: str) -> subprocess.CompletedProcess:
     return subprocess.run(
         ["bash", str(SCRIPT), *args],
         cwd=cwd,
         capture_output=True,
         text=True,
+        env=_clean_env(),
     )
 
 
@@ -46,9 +66,9 @@ def test_accepts_rc_suffix(tmp_path: Path):
 
 def _init_repo(tmp_path: Path, *, branch: str = "main", dirty: bool = False) -> Path:
     """Create a tiny git repo with version files on the named branch."""
-    subprocess.run(["git", "init", "-q", "-b", branch], cwd=tmp_path, check=True)
-    subprocess.run(["git", "config", "user.email", "t@test"], cwd=tmp_path, check=True)
-    subprocess.run(["git", "config", "user.name", "t"], cwd=tmp_path, check=True)
+    _git("init", "-q", "-b", branch, cwd=tmp_path)
+    _git("config", "user.email", "t@test", cwd=tmp_path)
+    _git("config", "user.name", "t", cwd=tmp_path)
 
     (tmp_path / "custom_components" / "eppgrid").mkdir(parents=True)
     (tmp_path / "custom_components" / "eppgrid" / "manifest.json").write_text(
@@ -63,9 +83,9 @@ def _init_repo(tmp_path: Path, *, branch: str = "main", dirty: bool = False) -> 
     (tmp_path / "firmware" / "components" / "epp" / "epp_component.h").write_text(
         '  static constexpr const char* FIRMWARE_VERSION_STR = "0.92.0";\n'
     )
-    subprocess.run(["git", "add", "."], cwd=tmp_path, check=True)
-    subprocess.run(["git", "commit", "-qm", "init"], cwd=tmp_path, check=True)
-    subprocess.run(["git", "tag", "v0.92.0"], cwd=tmp_path, check=True)
+    _git("add", ".", cwd=tmp_path)
+    _git("commit", "-qm", "init", cwd=tmp_path)
+    _git("tag", "v0.92.0", cwd=tmp_path)
 
     if dirty:
         (tmp_path / "dirt").write_text("x")
@@ -99,23 +119,23 @@ def test_rejects_main_behind_origin(tmp_path: Path):
     """If local main has fewer commits than origin/main, fail."""
     # Create a bare "origin" and a local clone.
     origin = tmp_path / "origin.git"
-    subprocess.run(["git", "init", "-q", "--bare", "-b", "main", str(origin)], check=True)
+    _git("init", "-q", "--bare", "-b", "main", str(origin), cwd=tmp_path)
 
     local = tmp_path / "local"
     local.mkdir()
     _init_repo(local)
-    subprocess.run(["git", "remote", "add", "origin", str(origin)], cwd=local, check=True)
-    subprocess.run(["git", "push", "-q", "origin", "main", "--tags"], cwd=local, check=True)
+    _git("remote", "add", "origin", str(origin), cwd=local)
+    _git("push", "-q", "origin", "main", "--tags", cwd=local)
 
     # Add a commit on origin that local doesn't have.
     other = tmp_path / "other"
-    subprocess.run(["git", "clone", "-q", str(origin), str(other)], check=True)
-    subprocess.run(["git", "config", "user.email", "t@test"], cwd=other, check=True)
-    subprocess.run(["git", "config", "user.name", "t"], cwd=other, check=True)
+    _git("clone", "-q", str(origin), str(other), cwd=tmp_path)
+    _git("config", "user.email", "t@test", cwd=other)
+    _git("config", "user.name", "t", cwd=other)
     (other / "new.txt").write_text("x")
-    subprocess.run(["git", "add", "."], cwd=other, check=True)
-    subprocess.run(["git", "commit", "-qm", "new"], cwd=other, check=True)
-    subprocess.run(["git", "push", "-q", "origin", "main"], cwd=other, check=True)
+    _git("add", ".", cwd=other)
+    _git("commit", "-qm", "new", cwd=other)
+    _git("push", "-q", "origin", "main", cwd=other)
 
     result = _run(local, "0.93.0")
     assert result.returncode != 0
@@ -129,11 +149,11 @@ def test_integration_only_release_bumps_manifest_only(tmp_path: Path):
     assert result.returncode == 0, result.stdout + result.stderr
 
     # Branch exists
-    branches = subprocess.check_output(["git", "branch", "--list", "release-v0.93.0"], cwd=tmp_path, text=True)
+    branches = _git("branch", "--list", "release-v0.93.0", cwd=tmp_path, capture_output=True, text=True).stdout
     assert "release-v0.93.0" in branches
 
     # Switch to that branch and inspect
-    subprocess.run(["git", "checkout", "-q", "release-v0.93.0"], cwd=tmp_path, check=True)
+    _git("checkout", "-q", "release-v0.93.0", cwd=tmp_path)
 
     manifest = (tmp_path / "custom_components" / "eppgrid" / "manifest.json").read_text()
     assert '"version": "0.93.0"' in manifest
@@ -156,13 +176,13 @@ def test_firmware_release_bumps_all_four_versions(tmp_path: Path):
     # (not a version field — we're simulating real firmware code churn).
     hw_pins = tmp_path / "firmware" / "common" / "hardware.yaml"
     hw_pins.write_text("# fake firmware code change\n")
-    subprocess.run(["git", "add", "."], cwd=tmp_path, check=True)
-    subprocess.run(["git", "commit", "-qm", "firmware: add hardware.yaml"], cwd=tmp_path, check=True)
+    _git("add", ".", cwd=tmp_path)
+    _git("commit", "-qm", "firmware: add hardware.yaml", cwd=tmp_path)
 
     result = _run(tmp_path, "0.93.0", "--no-push")
     assert result.returncode == 0, result.stdout + result.stderr
 
-    subprocess.run(["git", "checkout", "-q", "release-v0.93.0"], cwd=tmp_path, check=True)
+    _git("checkout", "-q", "release-v0.93.0", cwd=tmp_path)
 
     manifest = (tmp_path / "custom_components" / "eppgrid" / "manifest.json").read_text()
     assert '"version": "0.93.0"' in manifest
@@ -202,7 +222,7 @@ def test_pushes_and_opens_pr(tmp_path: Path, monkeypatch):
     )
     (fake_bin / "git").chmod(0o755)
 
-    env = {**os.environ, "PATH": f"{fake_bin}:{os.environ['PATH']}"}
+    env = _clean_env({"PATH": f"{fake_bin}:{os.environ['PATH']}"})
     result = subprocess.run(
         ["bash", str(SCRIPT), "0.93.0"],
         cwd=repo,
@@ -216,3 +236,26 @@ def test_pushes_and_opens_pr(tmp_path: Path, monkeypatch):
     assert "git push" in call_log
     assert "gh pr create" in call_log
     assert "release-v0.93.0" in call_log
+
+
+def test_does_not_leak_to_parent_git_dir_via_env(tmp_path: Path, monkeypatch):
+    """If GIT_DIR is set in the env (e.g. by a hook or wrapper), tests must not
+    accidentally write to that repo. Regression for the bug that caused
+    'user.name = t' from the test fixture to end up in the main repo's config
+    during a pre-push hook run."""
+    parent = tmp_path / "parent_repo"
+    parent.mkdir()
+    subprocess.run(["git", "init", "-q", "-b", "main", str(parent)], check=True)
+    parent_git = parent / ".git"
+    config_before = (parent_git / "config").read_text()
+
+    monkeypatch.setenv("GIT_DIR", str(parent_git))
+
+    fixture = tmp_path / "fixture"
+    fixture.mkdir()
+    _init_repo(fixture)
+
+    config_after = (parent_git / "config").read_text()
+    assert config_before == config_after, (
+        f"_init_repo leaked into GIT_DIR config:\n--- before ---\n{config_before}\n--- after ---\n{config_after}"
+    )
