@@ -17,6 +17,7 @@ vi.mock("../lib/usb-flash-service.js", () => ({
 	runWifiScan: vi.fn(),
 	runWifiProvision: vi.fn(),
 	detectIpAddress: vi.fn(),
+	queryImprovState: vi.fn(),
 }));
 
 // Mock improv-serial (used transitively by usb-flash-service)
@@ -34,6 +35,7 @@ vi.mock("../lib/improv-serial.js", () => ({
 import {
 	detectIpAddress,
 	flashFirmware,
+	queryImprovState,
 	runWifiProvision,
 	runWifiScan,
 } from "../lib/usb-flash-service.js";
@@ -55,6 +57,9 @@ function resetServiceMocks() {
 	(runWifiProvision as ReturnType<typeof vi.fn>).mockResolvedValue(undefined);
 	(detectIpAddress as ReturnType<typeof vi.fn>).mockResolvedValue(
 		"192.168.1.42",
+	);
+	(queryImprovState as ReturnType<typeof vi.fn>).mockRejectedValue(
+		new Error("no state"),
 	);
 }
 
@@ -445,6 +450,83 @@ describe("_handleUsbFlash", () => {
 		// Should not show error — just set opRunning false
 		expect(ctrl.usbFlashState?.step).not.toBe("error");
 		expect(ctrl.opRunning).toBe(false);
+	});
+
+	it("skips wifi_scan when device reports PROVISIONED + real IP after flashing", async () => {
+		(queryImprovState as ReturnType<typeof vi.fn>).mockResolvedValue({
+			state: "PROVISIONED",
+			ip: "192.168.1.42",
+			writer: { releaseLock: vi.fn() },
+			reader: { releaseLock: vi.fn() },
+		});
+
+		const ctrl = (panel as any)._flasherCtrl;
+		const updateSpy = vi.spyOn(ctrl, "updateUsbState");
+
+		await (panel as any)._handleUsbFlash("eppgrid-wifi");
+
+		const steps = updateSpy.mock.calls.map((c: any[]) => c[0].step);
+		expect(steps).toContain("wifi_check");
+		expect(steps).not.toContain("wifi_scan");
+		const configured = updateSpy.mock.calls.find(
+			(c: any[]) => c[0].step === "wifi_configured",
+		);
+		expect(configured?.[0]).toMatchObject({
+			ip: "192.168.1.42",
+			autoSkipped: true,
+		});
+		expect(runWifiScan).not.toHaveBeenCalled();
+	});
+
+	it("falls through to wifi_scan when device reports PROVISIONED + 0.0.0.0", async () => {
+		(queryImprovState as ReturnType<typeof vi.fn>).mockResolvedValue({
+			state: "PROVISIONED",
+			ip: "0.0.0.0",
+			writer: { releaseLock: vi.fn() },
+			reader: { releaseLock: vi.fn() },
+		});
+
+		const ctrl = (panel as any)._flasherCtrl;
+		const updateSpy = vi.spyOn(ctrl, "updateUsbState");
+
+		await (panel as any)._handleUsbFlash("eppgrid-wifi");
+
+		const steps = updateSpy.mock.calls.map((c: any[]) => c[0].step);
+		expect(steps).toContain("wifi_check");
+		expect(steps).toContain("wifi_scan");
+		expect(runWifiScan).toHaveBeenCalledWith(mockPort);
+	});
+
+	it("falls through to wifi_scan when device reports AUTHORIZED (no creds)", async () => {
+		(queryImprovState as ReturnType<typeof vi.fn>).mockResolvedValue({
+			state: "AUTHORIZED",
+			writer: { releaseLock: vi.fn() },
+			reader: { releaseLock: vi.fn() },
+		});
+
+		const ctrl = (panel as any)._flasherCtrl;
+		const updateSpy = vi.spyOn(ctrl, "updateUsbState");
+
+		await (panel as any)._handleUsbFlash("eppgrid-wifi");
+
+		const steps = updateSpy.mock.calls.map((c: any[]) => c[0].step);
+		expect(steps).toContain("wifi_check");
+		expect(steps).toContain("wifi_scan");
+	});
+
+	it("falls through to wifi_scan when queryImprovState throws", async () => {
+		(queryImprovState as ReturnType<typeof vi.fn>).mockRejectedValue(
+			new Error("boom"),
+		);
+
+		const ctrl = (panel as any)._flasherCtrl;
+		const updateSpy = vi.spyOn(ctrl, "updateUsbState");
+
+		await (panel as any)._handleUsbFlash("eppgrid-wifi");
+
+		const steps = updateSpy.mock.calls.map((c: any[]) => c[0].step);
+		expect(steps).toContain("wifi_check");
+		expect(steps).toContain("wifi_scan");
 	});
 });
 

@@ -52,6 +52,7 @@ import { renderTemplateThumbnail } from "./lib/template-thumbnail.js";
 import {
 	detectIpAddress,
 	flashFirmware,
+	queryImprovState,
 	runWifiProvision,
 	runWifiScan,
 } from "./lib/usb-flash-service.js";
@@ -2542,7 +2543,58 @@ export class EPPGridPanel extends LitElement {
 				return;
 			}
 
-			// Step 3: WiFi scan
+			// Step 3: Check if device is already provisioned (firmware-upgrade path)
+			ctrl.updateUsbState({ step: "wifi_check" });
+			let skipIp: string | null = null;
+			let skipWriter: WritableStreamDefaultWriter<Uint8Array> | null = null;
+			let skipReader: ReadableStreamDefaultReader<Uint8Array> | null = null;
+			try {
+				const info = await queryImprovState(port);
+				if (info.state === "PROVISIONED" && info.ip && info.ip !== "0.0.0.0") {
+					skipIp = info.ip;
+					skipWriter = info.writer;
+					skipReader = info.reader;
+				} else {
+					try {
+						info.writer.releaseLock();
+					} catch {}
+					try {
+						info.reader.releaseLock();
+					} catch {}
+				}
+			} catch {
+				// Fall through to scan flow — runWifiScan has its own handshake-with-retry.
+			}
+
+			if (ctrl.opId !== myOp) {
+				ctrl.opRunning = false;
+				return;
+			}
+
+			if (skipIp && skipWriter && skipReader) {
+				// The device is already on the network — we don't need the serial port
+				// anymore. Release locks and close the port before the HA-add call so
+				// the Configure WiFi override (which re-opens the port via runWifiScan)
+				// starts from a clean state.
+				try {
+					skipReader.releaseLock();
+				} catch {}
+				try {
+					skipWriter.releaseLock();
+				} catch {}
+				await port.close().catch(() => {});
+				ctrl.serialPort = null;
+				ctrl.updateUsbState({
+					step: "wifi_configured",
+					ip: skipIp,
+					autoSkipped: true,
+				});
+				ctrl.opRunning = false;
+				await this._addToHa(skipIp);
+				return;
+			}
+
+			// Step 4: WiFi scan
 			ctrl.updateUsbState({ step: "wifi_scan" });
 			const { writer, reader, networks } = await runWifiScan(port);
 			if (ctrl.opId !== myOp) {
@@ -2553,7 +2605,6 @@ export class EPPGridPanel extends LitElement {
 			ctrl.wifiNetworks = networks;
 			ctrl.updateUsbState({ step: "wifi_provision" });
 
-			// Store writer/reader for provisioning step
 			(ctrl as any)._serialWriter = writer;
 			(ctrl as any)._serialReader = reader;
 			ctrl.opRunning = false;
@@ -2652,30 +2703,7 @@ export class EPPGridPanel extends LitElement {
 			// WiFi side succeeded. Intermediate state while HA-add runs.
 			ctrl.updateUsbState({ step: "wifi_configured", ip });
 
-			let haAdd: HaAddResult;
-			try {
-				haAdd = await ctrl.addEsphomeDevice(ip);
-			} catch (err) {
-				const msg = (err as { message?: string })?.message;
-				haAdd = { type: "failed", reason: msg ?? "unknown" };
-			}
-			if (ctrl.opId !== myOp) return;
-
-			// The device's ESPHome API may not have finished booting on the
-			// first attempt right after WiFi associates. Retry once silently.
-			if (haAdd.type === "cannot_connect") {
-				await new Promise((r) => setTimeout(r, 3000));
-				if (ctrl.opId !== myOp) return;
-				try {
-					haAdd = await ctrl.addEsphomeDevice(ip);
-				} catch (err) {
-					const msg = (err as { message?: string })?.message;
-					haAdd = { type: "failed", reason: msg ?? "unknown" };
-				}
-				if (ctrl.opId !== myOp) return;
-			}
-
-			ctrl.updateUsbState({ step: "complete", ip, haAdd });
+			await this._addToHa(ip);
 		} catch (err: any) {
 			try {
 				(ctrl as any)._serialReader?.releaseLock();
@@ -2699,6 +2727,36 @@ export class EPPGridPanel extends LitElement {
 					| undefined,
 			});
 		}
+	}
+
+	private async _addToHa(ip: string): Promise<void> {
+		const ctrl = this._flasherCtrl;
+		const myOp = ctrl.opId;
+
+		let haAdd: HaAddResult;
+		try {
+			haAdd = await ctrl.addEsphomeDevice(ip);
+		} catch (err) {
+			const msg = (err as { message?: string })?.message;
+			haAdd = { type: "failed", reason: msg ?? "unknown" };
+		}
+		if (ctrl.opId !== myOp) return;
+
+		// The device's ESPHome API may not have finished booting on the
+		// first attempt right after WiFi associates. Retry once silently.
+		if (haAdd.type === "cannot_connect") {
+			await new Promise((r) => setTimeout(r, 3000));
+			if (ctrl.opId !== myOp) return;
+			try {
+				haAdd = await ctrl.addEsphomeDevice(ip);
+			} catch (err) {
+				const msg = (err as { message?: string })?.message;
+				haAdd = { type: "failed", reason: msg ?? "unknown" };
+			}
+			if (ctrl.opId !== myOp) return;
+		}
+
+		ctrl.updateUsbState({ step: "complete", ip, haAdd });
 	}
 
 	private async _handleRetryHaAdd(): Promise<void> {
