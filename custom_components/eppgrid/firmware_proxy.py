@@ -1,4 +1,4 @@
-"""HTTP proxy for firmware manifests and binaries (GitHub Pages)."""
+"""HTTP proxy for firmware manifests and binaries from GitHub Releases."""
 
 from __future__ import annotations
 
@@ -16,14 +16,14 @@ _VALID_FILENAME = re.compile(r"^[a-z0-9][a-z0-9._-]*\.(json|bin|ota\.bin)$")
 
 
 class FirmwareProxyView(HomeAssistantView):
-    """Proxy GET requests for firmware assets from GitHub Pages."""
+    """Proxy GET requests for firmware assets from GitHub Releases."""
 
     url = "/api/eppgrid/firmware/{filename}"
     name = "api:eppgrid:firmware"
     requires_auth = False  # The panel already handles auth
 
     async def get(self, request: web.Request, filename: str) -> web.Response:
-        """Fetch a firmware file from GitHub Pages and return it."""
+        """Fetch a firmware file from GitHub Releases and return it."""
         if not _VALID_FILENAME.match(filename):
             return web.Response(status=400, text="Invalid filename")
 

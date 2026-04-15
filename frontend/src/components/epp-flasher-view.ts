@@ -550,7 +550,7 @@ export class EppFlasherView extends LitElement {
 							<div class="usb-complete">
 								<ha-icon icon="mdi:check-circle-outline"></ha-icon>
 								<p>${this.localize("flasher.wifi_configured")}</p>
-								<p class="usb-ip">${this.localize("flasher.ip_address")}: ${state.ip}</p>
+								${state.ip ? html`<p class="usb-ip">${this.localize("flasher.ip_address", { ip: state.ip })}</p>` : nothing}
 							</div>
 							<div class="ha-add-progress">
 								<ha-circular-progress indeterminate size="small"></ha-circular-progress>
@@ -622,7 +622,7 @@ export class EppFlasherView extends LitElement {
 								<p>${this.localize("flasher.wifi_configured")}</p>
 								${
 									ip
-										? html`<p class="usb-ip">${this.localize("flasher.ip_address")}: ${ip}</p>`
+										? html`<p class="usb-ip">${this.localize("flasher.ip_address", { ip })}</p>`
 										: nothing
 								}
 								<p class="ha-add-result">

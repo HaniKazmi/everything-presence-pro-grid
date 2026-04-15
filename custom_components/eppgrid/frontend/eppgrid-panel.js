@@ -1287,7 +1287,7 @@ const dt={attribute:!0,type:String,converter:E,reflect:!1,hasChanged:m},At=(t=dt
 							<div class="usb-complete">
 								<ha-icon icon="mdi:check-circle-outline"></ha-icon>
 								<p>${this.localize("flasher.wifi_configured")}</p>
-								<p class="usb-ip">${this.localize("flasher.ip_address")}: ${t.ip}</p>
+								${t.ip?Y`<p class="usb-ip">${this.localize("flasher.ip_address",{ip:t.ip})}</p>`:J}
 							</div>
 							<div class="ha-add-progress">
 								<ha-circular-progress indeterminate size="small"></ha-circular-progress>
@@ -1334,7 +1334,7 @@ const dt={attribute:!0,type:String,converter:E,reflect:!1,hasChanged:m},At=(t=dt
 							<div class="usb-complete">
 								<ha-icon icon=${r}></ha-icon>
 								<p>${this.localize("flasher.wifi_configured")}</p>
-								${i?Y`<p class="usb-ip">${this.localize("flasher.ip_address")}: ${i}</p>`:J}
+								${i?Y`<p class="usb-ip">${this.localize("flasher.ip_address",{ip:i})}</p>`:J}
 								<p class="ha-add-result">
 									${this.localize(`flasher.ha_add.${a}`,{reason:n})}
 								</p>

@@ -18,10 +18,16 @@ function createView(
 	el.hass = { callWS: () => Promise.resolve({}) };
 	el.flashableDevices = [];
 	el.loading = false;
-	el.localize = Object.assign(((k: string) => k) as typeof el.localize, {
-		formatNumber: (v: number, d = 1) => v.toFixed(d),
-		lang: "en",
-	});
+	el.localize = Object.assign(
+		((k: string, params?: Record<string, unknown>) =>
+			params
+				? `${k} ${Object.values(params).join(" ")}`
+				: k) as typeof el.localize,
+		{
+			formatNumber: (v: number, d = 1) => v.toFixed(d),
+			lang: "en",
+		},
+	);
 	for (const [k, v] of Object.entries(overrides)) {
 		(el as any)[k] = v;
 	}
