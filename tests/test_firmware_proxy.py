@@ -158,5 +158,7 @@ class TestFirmwareProxyView:
         from custom_components.eppgrid.const import FIRMWARE_VERSION
 
         call_url = session.get.call_args[0][0]
-        assert f"github.io/everything-presence-pro-grid/fw/v{FIRMWARE_VERSION}/" in call_url
+        assert (
+            f"github.com/clintongormley/everything-presence-pro-grid/releases/download/v{FIRMWARE_VERSION}/" in call_url
+        )
         assert call_url.endswith("everything-presence-pro-wifi-ble-co2-manifest.json")

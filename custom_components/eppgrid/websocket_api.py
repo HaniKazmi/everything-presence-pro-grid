@@ -1219,7 +1219,7 @@ async def websocket_update_firmware(
     if variant is None:
         _send_no_firmware_variant(connection, msg["id"], network)
         return
-    manifest_url = f"{MANIFEST_BASE_URL}/{variant}.json"
+    manifest_url = f"{MANIFEST_BASE_URL}/everything-presence-pro-{variant}-manifest.json"
 
     if dev.host is None:
         connection.send_error(
