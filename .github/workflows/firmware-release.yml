@@ -17,6 +17,8 @@ jobs:
           - wifi-ble-co2
           - ethernet-ble-co2
     name: "Build ${{ matrix.variant }}"
+    outputs:
+      is_firmware_release: ${{ steps.firmware.outputs.is_firmware_release }}
     steps:
       - uses: actions/checkout@v5
       - name: Extract version
@@ -94,12 +96,12 @@ jobs:
     name: Create Release
     steps:
       - name: Download all artifacts
+        if: needs.build.outputs.is_firmware_release == 'true'
         uses: actions/download-artifact@v5
         with:
           path: dist
           pattern: firmware-*
           merge-multiple: true
-        continue-on-error: true
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
