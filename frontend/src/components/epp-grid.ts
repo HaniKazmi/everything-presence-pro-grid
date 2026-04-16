@@ -215,7 +215,7 @@ export class EppGrid extends LitElement {
 				let bg = inRange
 					? getCellColor(cellVal, this.zoneConfigs)
 					: CELL_BG_OUT_OF_RANGE;
-				let border = "";
+				let occupancyStyle = "";
 				if (inRange && cellIsInside(cellVal)) {
 					const zoneId = cellZone(cellVal);
 					if (heatmap) {
@@ -225,7 +225,11 @@ export class EppGrid extends LitElement {
 						}
 					}
 					if (occupancy[zoneId]) {
-						border = `box-shadow: inset 0 0 0 1px rgba(0,0,0,0.4);`;
+						const namedColor =
+							zoneId > 0 ? this.zoneConfigs[zoneId - 1]?.color : null;
+						const zoneColor = namedColor ?? "#999";
+						const mixBase = namedColor ? "#222" : "#444";
+						occupancyStyle = `position: relative; z-index: 1; box-shadow: 0 0 8px 1px color-mix(in srgb, ${zoneColor} 60%, ${mixBase});`;
 					}
 				}
 				let overlayMarker = "";
@@ -247,7 +251,7 @@ export class EppGrid extends LitElement {
 				cells.push(html`
 					<div
 						class="cell"
-						style="background: ${bg}; width: ${cellPx}px; height: ${cellPx}px; ${border} ${overlayMarker}"
+						style="background: ${bg}; width: ${cellPx}px; height: ${cellPx}px; ${occupancyStyle} ${overlayMarker}"
 						@mousedown=${() => {
 							if (inRange) this._onCellMouseDown(idx);
 						}}
