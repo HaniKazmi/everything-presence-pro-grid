@@ -305,7 +305,6 @@ Saves and pushes all publish intervals and window duration.
 | `list_templates` | List saved room templates |
 | `save_template` | Save a room template |
 | `delete_template` | Delete a room template |
-| `apply_template` | Apply a template to a device |
 
 ### Flasher Commands
 
