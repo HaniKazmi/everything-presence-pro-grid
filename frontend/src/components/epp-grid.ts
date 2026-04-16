@@ -11,13 +11,13 @@ import {
 	cellZone,
 	GRID_COLS,
 	GRID_ROWS,
-	getRoomBounds,
 	MAX_RANGE,
 } from "../lib/grid.js";
 import { CELL_BG_OUT_OF_RANGE, getCellColor } from "../lib/heatmap.js";
 import {
 	computeSensorFov,
 	getGridRoomMetrics,
+	getVisibleRoomBounds,
 	isCellInSensorRange,
 	type SensorFov,
 } from "../lib/room-geometry.js";
@@ -146,7 +146,14 @@ export class EppGrid extends LitElement {
 	`;
 
 	render() {
-		const bounds = this.frozenBounds ?? getRoomBounds(this.grid);
+		const bounds =
+			this.frozenBounds ??
+			getVisibleRoomBounds(
+				this.grid,
+				this._getSensorFov(),
+				this.roomWidth,
+				this.maxRangeMm,
+			);
 		const noRoom = bounds.minCol > bounds.maxCol;
 		const minCol = noRoom ? 0 : bounds.minCol;
 		const maxCol = noRoom ? GRID_COLS - 1 : bounds.maxCol;

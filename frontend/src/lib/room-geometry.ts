@@ -90,6 +90,41 @@ export function isCellInSensorRange(
 }
 
 /**
+ * Room bounds (with 1-cell padding) considering only cells that are both
+ * inside the room AND within the sensor's FOV and range.  Cells that are
+ * inside but outside the FOV are ignored so that fully out-of-FOV
+ * columns/rows collapse from the visible grid.
+ */
+export function getVisibleRoomBounds(
+	grid: Uint8Array,
+	fov: SensorFov | null,
+	roomWidth: number,
+	maxRangeMm: number,
+): { minCol: number; maxCol: number; minRow: number; maxRow: number } {
+	let minCol = GRID_COLS;
+	let maxCol = 0;
+	let minRow = GRID_COLS; // intentionally GRID_COLS (== GRID_ROWS == 20)
+	let maxRow = 0;
+	for (let i = 0; i < GRID_CELL_COUNT; i++) {
+		if (!cellIsInside(grid[i])) continue;
+		const col = i % GRID_COLS;
+		const row = Math.floor(i / GRID_COLS);
+		if (!isCellInSensorRange(col, row, fov, roomWidth, maxRangeMm)) continue;
+		if (col < minCol) minCol = col;
+		if (col > maxCol) maxCol = col;
+		if (row < minRow) minRow = row;
+		if (row > maxRow) maxRow = row;
+	}
+	if (minCol > maxCol) return { minCol, maxCol, minRow, maxRow };
+	return {
+		minCol: Math.max(0, minCol - 1),
+		maxCol: Math.min(GRID_COLS - 1, maxCol + 1),
+		minRow: Math.max(0, minRow - 1),
+		maxRow: Math.min(GRID_COLS - 1, maxRow + 1),
+	};
+}
+
+/**
  * Compute the effective maximum range in mm, given the current settings.
  *
  * When auto-range is enabled, uses the auto-computed range (capped at 6m).

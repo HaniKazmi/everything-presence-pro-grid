@@ -6,6 +6,7 @@ import {
 	CELL_ROOM_BIT,
 	cellInterference,
 	GRID_CELL_COUNT,
+	getRoomBounds,
 	MAX_ZONES,
 } from "../../lib/grid.js";
 import { ZONE_COLORS, type ZoneConfig } from "../../lib/zone-defaults.js";
@@ -48,6 +49,9 @@ function mockHost(overrides: Record<string, any> = {}) {
 		_view: "edit",
 		_saving: false,
 		shadowRoot: null,
+		_getVisibleRoomBounds() {
+			return getRoomBounds(this._grid);
+		},
 		...overrides,
 	};
 }

@@ -46,6 +46,7 @@ import {
 	computeSensorFov,
 	getGridRoomMetrics,
 	getSensorRoomPosition,
+	getVisibleRoomBounds,
 	isCellInSensorRange,
 	type SensorFov,
 } from "./lib/room-geometry.js";
@@ -666,6 +667,21 @@ export class EPPGridPanel extends LitElement {
 		maxRow: number;
 	} {
 		return getRoomBounds(this._grid);
+	}
+
+	/** Bounds excluding out-of-FOV cells — used by the editor/controller. */
+	_getVisibleRoomBounds(): {
+		minCol: number;
+		maxCol: number;
+		minRow: number;
+		maxRow: number;
+	} {
+		return getVisibleRoomBounds(
+			this._grid,
+			this._getSensorFov(),
+			this._roomWidth,
+			this._editorMaxRangeMm(),
+		);
 	}
 
 	/** Save the current grid and zone config to the backend */

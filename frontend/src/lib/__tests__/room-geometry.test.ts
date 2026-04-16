@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
+	CELL_ROOM_BIT,
 	GRID_CELL_COUNT,
 	GRID_CELL_MM,
 	GRID_COLS,
+	GRID_ROWS,
 	initGridFromRoom,
 } from "../grid.js";
 import { solvePerspective } from "../perspective.js";
@@ -13,6 +15,7 @@ import {
 	computeSensorFov,
 	getGridRoomMetrics,
 	getSensorRoomPosition,
+	getVisibleRoomBounds,
 	isCellInSensorRange,
 	median,
 	medianPoint,
@@ -345,6 +348,92 @@ describe("medianPoint", () => {
 		];
 		const result = medianPoint(samples);
 		expect(result).toEqual({ x: 4, y: 40 });
+	});
+});
+
+describe("getVisibleRoomBounds", () => {
+	it("matches getRoomBounds when fov is null (no calibration)", () => {
+		const grid = initGridFromRoom(3000, 3000);
+		const bounds = getVisibleRoomBounds(grid, null, 3000, 6000);
+		// Without FOV, should include all inside cells + 1-cell padding
+		// Room is 10 cols (5..14), 10 rows (0..9)
+		const roomCols = Math.ceil(3000 / GRID_CELL_MM);
+		const startCol = Math.floor((GRID_COLS - roomCols) / 2);
+		expect(bounds.minCol).toBe(Math.max(0, startCol - 1));
+		expect(bounds.maxCol).toBe(Math.min(GRID_COLS - 1, startCol + roomCols));
+		expect(bounds.minRow).toBe(0); // row 0 is first inside row, padding goes to max(0, -1) = 0
+		expect(bounds.maxRow).toBe(Math.min(GRID_ROWS - 1, roomCols)); // 10 rows + 1 padding
+	});
+
+	it("excludes out-of-range cells from bounds", () => {
+		// Create a 6-column, 4-row room with sensor looking straight ahead
+		const grid = new Uint8Array(GRID_CELL_COUNT);
+		// Place room: cols 5-10, rows 0-3
+		for (let r = 0; r < 4; r++) {
+			for (let c = 5; c <= 10; c++) {
+				grid[r * GRID_COLS + c] = CELL_ROOM_BIT;
+			}
+		}
+
+		// Sensor at centre of room width, looking ahead (down)
+		const fov: SensorFov = {
+			sensorPos: { x: 900, y: 0 }, // centre of 6-col room (cols 5-10, roomWidth=1800)
+			dirX: 0,
+			dirY: 1,
+		};
+
+		// With full range, bounds should include all cells
+		const fullBounds = getVisibleRoomBounds(grid, fov, 1800, 6000);
+		expect(fullBounds.maxCol).toBe(11); // col 10 + 1 padding
+
+		// With very short range (300mm = 1 cell), only nearby cells are in range
+		const shortBounds = getVisibleRoomBounds(grid, fov, 1800, 300);
+		// Only cells within 300mm of sensor should count
+		// Sensor at (900, 0), so only row 0 cells near center
+		expect(shortBounds.maxRow).toBeLessThan(fullBounds.maxRow);
+	});
+
+	it("shrinks bounds when a column has only out-of-FOV cells remaining", () => {
+		// Simulate the user's scenario:
+		// Sensor in top-right corner looking left, FOV doesn't reach far-right columns
+		const grid = new Uint8Array(GRID_CELL_COUNT);
+		// Place room: cols 5-14, rows 0-9
+		for (let r = 0; r < 10; r++) {
+			for (let c = 5; c <= 14; c++) {
+				grid[r * GRID_COLS + c] = CELL_ROOM_BIT;
+			}
+		}
+
+		// Sensor looking down-left from top-right — cells at far right + bottom are out of FOV
+		const fov: SensorFov = {
+			sensorPos: { x: 2850, y: 150 }, // near col 14, row 0
+			dirX: -0.5,
+			dirY: 0.866, // looking 30° left of straight ahead
+		};
+
+		// Full range — some right-edge cells should be outside the 120° FOV
+		const bounds = getVisibleRoomBounds(grid, fov, 3000, 6000);
+
+		// Now remove all in-range cells from col 14 (paint them grey)
+		// Only out-of-FOV cells should remain in that column
+		for (let r = 0; r < 10; r++) {
+			const idx = r * GRID_COLS + 14;
+			if (isCellInSensorRange(14, r, fov, 3000, 6000)) {
+				grid[idx] = 0; // clear room bit
+			}
+		}
+
+		const shrunkBounds = getVisibleRoomBounds(grid, fov, 3000, 6000);
+		// Column 14 should no longer contribute to bounds since its remaining
+		// cells are all out of FOV
+		expect(shrunkBounds.maxCol).toBeLessThan(bounds.maxCol);
+	});
+
+	it("returns inverted bounds when no visible cells exist", () => {
+		const grid = new Uint8Array(GRID_CELL_COUNT);
+		const bounds = getVisibleRoomBounds(grid, null, 3000, 6000);
+		// No inside cells → minCol > maxCol
+		expect(bounds.minCol).toBeGreaterThan(bounds.maxCol);
 	});
 });
 
