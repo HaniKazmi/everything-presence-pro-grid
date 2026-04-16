@@ -258,38 +258,75 @@ export function medianPoint(
 /**
  * Compute room dimensions and furthest point from sensor based on grid.
  *
+ * When `fov` and `maxRangeMm` are supplied, only cells that are both
+ * inside the room AND within the sensor's FOV/range are considered.
+ * This prevents out-of-FOV (hatched) cells from inflating the metrics.
+ *
  * @param grid The grid array
  * @param roomWidth Room width in mm
  * @param perspective Perspective coefficients (null = no calibration)
+ * @param fov Sensor FOV geometry (null = count all inside cells)
+ * @param maxRangeMm Maximum detection range in mm (ignored when fov is null)
  * @returns { widthM, depthM, furthestM } as numbers in metres,
- *          or null if grid has no inside cells
+ *          or null if grid has no visible cells
  */
 export function getGridRoomMetrics(
 	grid: Uint8Array,
 	roomWidth: number,
 	perspective: number[] | null,
+	fov?: SensorFov | null,
+	maxRangeMm?: number,
 ): { widthM: number; depthM: number; furthestM: number } | null {
-	const raw = getRawRoomBounds(grid);
-	if (raw.minCol > raw.maxCol) return null;
-
-	const widthCells = raw.maxCol - raw.minCol + 1;
-	const depthCells = raw.maxRow - raw.minRow + 1;
-	const widthMm = widthCells * GRID_CELL_MM;
-	const depthMm = depthCells * GRID_CELL_MM;
-
-	// Sensor position in room-space, or fallback to top-centre of room
-	const sensorPos = getSensorRoomPosition(perspective);
 	const roomCols = Math.ceil(roomWidth / GRID_CELL_MM);
 	const startCol = Math.floor((GRID_COLS - roomCols) / 2);
-	const sensorMmX = sensorPos ? sensorPos.x : widthMm / 2;
-	const sensorMmY = sensorPos ? sensorPos.y : 0;
 
-	// Find furthest inside cell from sensor
+	// Compute bounds and furthest distance in a single pass
+	let minCol = GRID_COLS;
+	let maxCol = 0;
+	let minRow = GRID_ROWS;
+	let maxRow = 0;
+
+	const sensorPos = getSensorRoomPosition(perspective);
+	let sensorMmX = 0;
+	let sensorMmY = 0;
 	let maxDistSq = 0;
+
+	// First pass: determine bounds (needed for fallback sensor position)
 	for (let i = 0; i < GRID_CELL_COUNT; i++) {
 		if (!cellIsInside(grid[i])) continue;
 		const col = i % GRID_COLS;
 		const row = Math.floor(i / GRID_COLS);
+		if (
+			fov &&
+			maxRangeMm != null &&
+			!isCellInSensorRange(col, row, fov, roomWidth, maxRangeMm)
+		)
+			continue;
+		if (col < minCol) minCol = col;
+		if (col > maxCol) maxCol = col;
+		if (row < minRow) minRow = row;
+		if (row > maxRow) maxRow = row;
+	}
+
+	if (minCol > maxCol) return null;
+
+	const widthMm = (maxCol - minCol + 1) * GRID_CELL_MM;
+	const depthMm = (maxRow - minRow + 1) * GRID_CELL_MM;
+
+	sensorMmX = sensorPos ? sensorPos.x : widthMm / 2;
+	sensorMmY = sensorPos ? sensorPos.y : 0;
+
+	// Second pass: furthest visible cell from sensor
+	for (let i = 0; i < GRID_CELL_COUNT; i++) {
+		if (!cellIsInside(grid[i])) continue;
+		const col = i % GRID_COLS;
+		const row = Math.floor(i / GRID_COLS);
+		if (
+			fov &&
+			maxRangeMm != null &&
+			!isCellInSensorRange(col, row, fov, roomWidth, maxRangeMm)
+		)
+			continue;
 		const cellMmX = (col - startCol + 0.5) * GRID_CELL_MM;
 		const cellMmY = (row + 0.5) * GRID_CELL_MM;
 		const dx = cellMmX - sensorMmX;

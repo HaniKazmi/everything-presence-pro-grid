@@ -416,6 +416,8 @@ export class EppGrid extends LitElement {
 			this.grid,
 			this.roomWidth,
 			this.perspective,
+			this._getSensorFov(),
+			this.maxRangeMm,
 		);
 		if (!metrics) return nothing;
 		return html`

@@ -478,4 +478,51 @@ describe("getGridRoomMetrics", () => {
 		expect(result!.depthM).toBe(0.9);
 		expect(typeof result!.furthestM).toBe("number");
 	});
+
+	it("excludes out-of-range cells from dimensions when maxRangeMm is provided", () => {
+		// 6-col, 10-row room with sensor at top-centre looking straight ahead
+		const grid = new Uint8Array(GRID_CELL_COUNT);
+		// Place room: cols 7-12, rows 0-9
+		for (let r = 0; r < 10; r++) {
+			for (let c = 7; c <= 12; c++) {
+				grid[r * GRID_COLS + c] = CELL_ROOM_BIT;
+			}
+		}
+		const roomWidth = 1800; // 6 cols
+		const fov: SensorFov = {
+			sensorPos: { x: 900, y: 0 }, // top-centre of room
+			dirX: 0,
+			dirY: 1,
+		};
+
+		// Without maxRangeMm, all cells count
+		const full = getGridRoomMetrics(grid, roomWidth, null);
+		expect(full).not.toBeNull();
+		expect(full!.depthM).toBe(3); // 10 rows * 300mm = 3000mm
+
+		// With short range, only nearby cells count — depth should shrink
+		const limited = getGridRoomMetrics(grid, roomWidth, null, fov, 600);
+		expect(limited).not.toBeNull();
+		expect(limited!.depthM).toBeLessThan(full!.depthM);
+	});
+
+	it("excludes out-of-range cells from furthest point", () => {
+		const grid = new Uint8Array(GRID_CELL_COUNT);
+		for (let r = 0; r < 10; r++) {
+			for (let c = 7; c <= 12; c++) {
+				grid[r * GRID_COLS + c] = CELL_ROOM_BIT;
+			}
+		}
+		const fov: SensorFov = {
+			sensorPos: { x: 900, y: 0 },
+			dirX: 0,
+			dirY: 1,
+		};
+
+		const full = getGridRoomMetrics(grid, 1800, null);
+		const limited = getGridRoomMetrics(grid, 1800, null, fov, 600);
+
+		expect(limited).not.toBeNull();
+		expect(limited!.furthestM).toBeLessThan(full!.furthestM);
+	});
 });
