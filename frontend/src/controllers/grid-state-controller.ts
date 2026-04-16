@@ -73,7 +73,7 @@ export class GridStateController implements ReactiveController {
 			const level =
 				this.host._overlayMode === "suppress" ? CELL_INTERFERENCE_SUPPRESS : 1;
 			this.host._isPainting = true;
-			this.host._frozenBounds = getRoomBounds(this.host._grid);
+			this.host._frozenBounds = this.host._getVisibleRoomBounds();
 			this.host._paintAction = determineInterferencePaintAction(
 				this.host._grid[index],
 				level,
@@ -89,7 +89,7 @@ export class GridStateController implements ReactiveController {
 		// Overlay painting mode
 		if (this.host._overlayMode === "entry") {
 			this.host._isPainting = true;
-			this.host._frozenBounds = getRoomBounds(this.host._grid);
+			this.host._frozenBounds = this.host._getVisibleRoomBounds();
 			this.host._paintAction = determineOverlayPaintAction(
 				this.host._grid[index],
 			);
@@ -105,7 +105,7 @@ export class GridStateController implements ReactiveController {
 		if (this.host._sidebarTab !== "zones" || this.host._activeZone === null)
 			return;
 		this.host._isPainting = true;
-		this.host._frozenBounds = getRoomBounds(this.host._grid);
+		this.host._frozenBounds = this.host._getVisibleRoomBounds();
 		this.host._paintAction = determinePaintAction(
 			this.host._grid[index],
 			this.host._activeZone,
@@ -355,7 +355,7 @@ export class GridStateController implements ReactiveController {
 				(f) => f.id === ds.id,
 			);
 			// Compute visible grid bounds in room-relative mm
-			const bounds = getRoomBounds(this.host._grid);
+			const bounds = this.host._getVisibleRoomBounds();
 			const roomCols = Math.ceil(this.host._roomWidth / GRID_CELL_MM);
 			const startCol = Math.floor((GRID_COLS - roomCols) / 2);
 			const visMinX = (bounds.minCol - startCol) * GRID_CELL_MM;
@@ -507,7 +507,9 @@ export class GridStateController implements ReactiveController {
 			}
 		}
 
-		// Filter furniture completely outside the visible grid
+		// Filter furniture completely outside the room (use physical room
+		// bounds, not FOV-aware bounds, so furniture in out-of-FOV areas
+		// isn't silently dropped on save)
 		const bounds = getRoomBounds(this.host._grid);
 		let filteredFurniture = this.host._furniture as FurnitureItem[];
 		if (bounds.minCol <= bounds.maxCol && bounds.minRow <= bounds.maxRow) {

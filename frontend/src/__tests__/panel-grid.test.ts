@@ -8,6 +8,9 @@ import {
 	cellZone,
 	GRID_CELL_COUNT,
 	GRID_COLS,
+	getRawRoomBounds,
+	initGridFromRoom,
+	MAX_RANGE,
 } from "../lib/grid.js";
 
 function createPanel(): EPPGridPanel {
@@ -249,6 +252,50 @@ describe("room dimensions update after boundary change", () => {
 		// Calibrated room dimensions must stay consistent with the perspective
 		expect(a._roomWidth).toBe(3000);
 		expect(a._roomDepth).toBe(3000);
+	});
+});
+
+describe("editor FOV range", () => {
+	let el: EPPGridPanel;
+
+	beforeEach(() => {
+		el = createPanel();
+	});
+
+	it("uses MAX_RANGE when auto-distance is on", () => {
+		const a = el as any;
+		a._targetAutoDistance = true;
+		a._targetMaxDistance = 6.0;
+		a._roomWidth = 3300;
+		a._roomDepth = 4800;
+		a._grid = initGridFromRoom(3300, 4800);
+
+		expect(a._editorMaxRangeMm()).toBe(MAX_RANGE);
+	});
+
+	it("stays at MAX_RANGE after removing cells when auto-distance is on", () => {
+		const a = el as any;
+		a._targetAutoDistance = true;
+		a._targetMaxDistance = 6.0;
+		a._roomWidth = 3300;
+		a._roomDepth = 4800;
+		a._grid = initGridFromRoom(3300, 4800);
+
+		// Remove the bottom-left cell (furthest from sensor in top-right)
+		const raw = getRawRoomBounds(a._grid);
+		const cellIdx = raw.maxRow * GRID_COLS + raw.minCol;
+		a._grid = new Uint8Array(a._grid);
+		a._grid[cellIdx] = 0;
+
+		expect(a._editorMaxRangeMm()).toBe(MAX_RANGE);
+	});
+
+	it("uses manual distance when auto-distance is off", () => {
+		const a = el as any;
+		a._targetAutoDistance = false;
+		a._targetMaxDistance = 3.0;
+
+		expect(a._editorMaxRangeMm()).toBe(3000);
 	});
 });
 

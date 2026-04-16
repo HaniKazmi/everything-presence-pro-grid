@@ -265,8 +265,8 @@ describe("parseImprovPackets", () => {
 	});
 });
 
-import { readFileSync } from "fs";
-import { join } from "path";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 
 describe("improv-serial timeout error", () => {
 	it("thrown timeout error has errorKey flasher.errors.timeout", () => {

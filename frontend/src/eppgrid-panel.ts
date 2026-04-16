@@ -35,6 +35,7 @@ import {
 	getRawRoomBounds,
 	getRoomBounds,
 	initGridFromRoom,
+	MAX_RANGE,
 	MAX_ZONES,
 } from "./lib/grid.js";
 import { CELL_BG_OUT_OF_RANGE, getCellColor } from "./lib/heatmap.js";
@@ -45,6 +46,7 @@ import {
 	computeSensorFov,
 	getGridRoomMetrics,
 	getSensorRoomPosition,
+	getVisibleRoomBounds,
 	isCellInSensorRange,
 	type SensorFov,
 } from "./lib/room-geometry.js";
@@ -667,6 +669,21 @@ export class EPPGridPanel extends LitElement {
 		return getRoomBounds(this._grid);
 	}
 
+	/** Bounds excluding out-of-FOV cells — used by the editor/controller. */
+	_getVisibleRoomBounds(): {
+		minCol: number;
+		maxCol: number;
+		minRow: number;
+		maxRow: number;
+	} {
+		return getVisibleRoomBounds(
+			this._grid,
+			this._getSensorFov(),
+			this._roomWidth,
+			this._editorMaxRangeMm(),
+		);
+	}
+
 	/** Save the current grid and zone config to the backend */
 	private async _applyLayout(): Promise<void> {
 		return this._gridCtrl.applyLayout();
@@ -809,6 +826,17 @@ export class EPPGridPanel extends LitElement {
 			this._targetAutoDistance ? this._autoDetectionRange() : 0,
 			this._targetMaxDistance,
 		);
+	}
+
+	/**
+	 * Max range for the editor grid.  When auto-distance is on the firmware
+	 * is widened to MAX_RANGE during editing (_pushWidenedDistanceOverride),
+	 * so the FOV visualisation must match.  When manual, use the user's value.
+	 */
+	private _editorMaxRangeMm(): number {
+		return this._targetAutoDistance
+			? MAX_RANGE
+			: this._targetMaxDistance * 1000;
 	}
 
 	/** Compute room dimensions and furthest point from sensor based on grid */
@@ -1910,7 +1938,7 @@ export class EPPGridPanel extends LitElement {
                 .heatmapColors=${this._showHitCounts ? this._computeHeatmapColors() : null}
                 .localize=${this._localize}
                 .maxGridPx=${480}
-                .maxRangeMm=${computeMaxRangeMm(this._targetAutoDistance, this._autoDetectionRange(), this._targetMaxDistance)}
+                .maxRangeMm=${this._editorMaxRangeMm()}
                 .frozenBounds=${this._frozenBounds}
                 @cell-paint=${(e: CustomEvent) => {
 									const { index, action } = e.detail;
