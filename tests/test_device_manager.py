@@ -3088,3 +3088,24 @@ def test_resolve_zone_name_falls_back_to_english_for_unknown_language():
 
     assert _resolve_zone_name("xx", index=0, zone_name=None, target_count=False) == "Zone Rest of Room"
     assert _resolve_zone_name("zz-ZZ", index=1, zone_name="Kitchen", target_count=False) == "Zone Kitchen"
+
+
+def test_resolve_zone_name_strips_redundant_zone_prefix():
+    """Names already starting with the localized prefix must not be double-prefixed."""
+    from custom_components.eppgrid.device_manager import _resolve_zone_name
+
+    # English: default "Zone 1" → "Zone 1", not "Zone Zone 1"
+    assert _resolve_zone_name("en", index=1, zone_name="Zone 1", target_count=False) == "Zone 1"
+    assert _resolve_zone_name("en", index=2, zone_name="Zone 2", target_count=True) == "Zone 2 Target Count"
+
+    # English: custom name starting with "Zone" → no double prefix
+    assert _resolve_zone_name("en", index=1, zone_name="Zone of Danger", target_count=False) == "Zone of Danger"
+
+    # Spanish: name starting with "Zona" → no double prefix
+    assert _resolve_zone_name("es", index=1, zone_name="Zona Cocina", target_count=False) == "Zona Cocina"
+
+    # Spanish: English default "Zone 1" → localized "Zona 1"
+    assert _resolve_zone_name("es", index=3, zone_name="Zone 3", target_count=False) == "Zona 3"
+
+    # Names not starting with the prefix still get it
+    assert _resolve_zone_name("en", index=1, zone_name="Kitchen", target_count=False) == "Zone Kitchen"
