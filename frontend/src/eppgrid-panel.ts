@@ -32,10 +32,10 @@ import {
 	GRID_CELL_MM,
 	GRID_COLS,
 	GRID_ROWS,
-	MAX_RANGE,
 	getRawRoomBounds,
 	getRoomBounds,
 	initGridFromRoom,
+	MAX_RANGE,
 	MAX_ZONES,
 } from "./lib/grid.js";
 import { CELL_BG_OUT_OF_RANGE, getCellColor } from "./lib/heatmap.js";

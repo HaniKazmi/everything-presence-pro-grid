@@ -132,7 +132,7 @@ describe("setupLocalize", () => {
 
 		it("respects explicit decimal count", () => {
 			const localize = setupLocalize();
-			expect(localize.formatNumber(3.141, 2)).toBe("3.14");
+			expect(localize.formatNumber(3.149, 2)).toBe("3.15");
 		});
 
 		it("caches Intl.NumberFormat instances for repeated calls", () => {
@@ -152,7 +152,7 @@ describe("defaultLocalize", () => {
 
 	it("formatNumber falls back to toFixed", () => {
 		expect(defaultLocalize.formatNumber(3.5, 1)).toBe("3.5");
-		expect(defaultLocalize.formatNumber(3.14159, 2)).toBe("3.14");
+		expect(defaultLocalize.formatNumber(3.149, 2)).toBe("3.15");
 	});
 
 	it("lang is 'en'", () => {

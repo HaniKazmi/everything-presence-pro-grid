@@ -8,9 +8,9 @@ import {
 	cellZone,
 	GRID_CELL_COUNT,
 	GRID_COLS,
-	MAX_RANGE,
 	getRawRoomBounds,
 	initGridFromRoom,
+	MAX_RANGE,
 } from "../lib/grid.js";
 
 function createPanel(): EPPGridPanel {
