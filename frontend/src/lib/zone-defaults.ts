@@ -1,11 +1,14 @@
-export interface ZoneConfig {
-	name: string;
-	color: string;
+export interface Zone0Config {
 	type: "normal" | "thoroughfare" | "rest" | "custom";
 	trigger?: number; // 0-9 threshold, 0=disabled, higher=harder
 	renew?: number; // 0-9 threshold, 0=disabled, higher=harder
 	timeout?: number; // seconds, if undefined use type default
 	handoff_timeout?: number; // seconds, time for zone to clear after target leaves
+}
+
+export interface ZoneConfig extends Zone0Config {
+	name: string;
+	color: string;
 }
 
 export const ZONE_TYPE_DEFAULTS: Record<

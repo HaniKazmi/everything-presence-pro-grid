@@ -4,12 +4,10 @@ import {
 	parseConfig,
 	parseFurniture,
 	parseGrid,
-	parseRoomThresholds,
 	parseSettings,
 	parseZoneConfigs,
 } from "../config-serialization.js";
 import { cellIsInside, GRID_CELL_COUNT, MAX_ZONES } from "../grid.js";
-import { ZONE_COLORS, ZONE_TYPE_DEFAULTS } from "../zone-defaults.js";
 
 describe("parseCalibration", () => {
 	it("returns perspective and room dimensions when valid", () => {
@@ -189,17 +187,19 @@ describe("parseGrid", () => {
 });
 
 describe("parseZoneConfigs", () => {
-	it("returns MAX_ZONES null entries for empty layout", () => {
+	it("returns MAX_ZONES null entries and default zone0 for empty layout", () => {
 		const result = parseZoneConfigs({});
-		expect(result).toHaveLength(MAX_ZONES);
-		for (const z of result) {
+		expect(result.zone0).toEqual({ type: "normal" });
+		expect(result.zones).toHaveLength(MAX_ZONES);
+		for (const z of result.zones) {
 			expect(z).toBeNull();
 		}
 	});
 
-	it("parses zone_slots", () => {
+	it("parses named zones from zone_slots indices 1-7", () => {
 		const layout = {
 			zone_slots: [
+				null,
 				{
 					name: "Kitchen",
 					color: "#FF0000",
@@ -212,7 +212,7 @@ describe("parseZoneConfigs", () => {
 			],
 		};
 		const result = parseZoneConfigs(layout);
-		expect(result[0]).toEqual({
+		expect(result.zones[0]).toEqual({
 			name: "Kitchen",
 			color: "#FF0000",
 			type: "custom",
@@ -223,92 +223,64 @@ describe("parseZoneConfigs", () => {
 		});
 		// Rest should be null
 		for (let i = 1; i < MAX_ZONES; i++) {
-			expect(result[i]).toBeNull();
-		}
-	});
-
-	it("falls back to legacy zones key", () => {
-		const layout = {
-			zones: [{ name: "Living Room" }],
-		};
-		const result = parseZoneConfigs(layout);
-		expect(result[0]!.name).toBe("Living Room");
-	});
-
-	it("applies defaults for missing zone fields", () => {
-		const layout = {
-			zone_slots: [{}],
-		};
-		const result = parseZoneConfigs(layout);
-		expect(result[0]!.name).toBe("Zone 1");
-		expect(result[0]!.color).toBe(ZONE_COLORS[0]);
-		expect(result[0]!.type).toBe("normal");
-	});
-
-	it("cycles zone colors for slots without color", () => {
-		const slots = Array.from({ length: MAX_ZONES }, () => ({}));
-		const layout = { zone_slots: slots };
-		const result = parseZoneConfigs(layout);
-		for (let i = 0; i < MAX_ZONES; i++) {
-			expect(result[i]!.color).toBe(ZONE_COLORS[i % ZONE_COLORS.length]);
+			expect(result.zones[i]).toBeNull();
 		}
 	});
 
 	it("handles null layout", () => {
 		const result = parseZoneConfigs(null);
-		expect(result).toHaveLength(MAX_ZONES);
-		for (const z of result) {
+		expect(result.zone0).toEqual({ type: "normal" });
+		expect(result.zones).toHaveLength(MAX_ZONES);
+		for (const z of result.zones) {
 			expect(z).toBeNull();
 		}
 	});
+
+	it("defaults zone0.type to 'normal' when slot 0 has no type", () => {
+		const layout = { zone_slots: [{}] };
+		const result = parseZoneConfigs(layout);
+		expect(result.zone0.type).toBe("normal");
+	});
 });
 
-describe("parseRoomThresholds", () => {
-	it("returns normal defaults for empty layout", () => {
-		const result = parseRoomThresholds({});
-		expect(result.roomType).toBe("normal");
-		expect(result.roomTrigger).toBe(ZONE_TYPE_DEFAULTS.normal.trigger);
-		expect(result.roomRenew).toBe(ZONE_TYPE_DEFAULTS.normal.renew);
-		expect(result.roomTimeout).toBe(ZONE_TYPE_DEFAULTS.normal.timeout);
-		expect(result.roomHandoffTimeout).toBe(
-			ZONE_TYPE_DEFAULTS.normal.handoff_timeout,
-		);
-	});
-
-	it("uses specified room_type defaults", () => {
-		const layout = { room_type: "thoroughfare" };
-		const result = parseRoomThresholds(layout);
-		expect(result.roomType).toBe("thoroughfare");
-		expect(result.roomTrigger).toBe(ZONE_TYPE_DEFAULTS.thoroughfare.trigger);
-		expect(result.roomRenew).toBe(ZONE_TYPE_DEFAULTS.thoroughfare.renew);
-		expect(result.roomTimeout).toBe(ZONE_TYPE_DEFAULTS.thoroughfare.timeout);
-	});
-
-	it("uses explicit values over defaults", () => {
+describe("parseZoneConfigs (length 8)", () => {
+	it("parses zone 0 from slot 0", () => {
 		const layout = {
-			room_type: "normal",
-			room_trigger: 9,
-			room_renew: 1,
-			room_timeout: 60,
-			room_handoff_timeout: 15,
+			zone_slots: [
+				{
+					type: "rest",
+					trigger: 7,
+					renew: 1,
+					timeout: 30,
+					handoff_timeout: 10,
+				},
+				{
+					name: "Living",
+					color: "#ff0000",
+					type: "normal",
+					trigger: 5,
+					renew: 3,
+					timeout: 10,
+					handoff_timeout: 3,
+				},
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+			],
 		};
-		const result = parseRoomThresholds(layout);
-		expect(result.roomTrigger).toBe(9);
-		expect(result.roomRenew).toBe(1);
-		expect(result.roomTimeout).toBe(60);
-		expect(result.roomHandoffTimeout).toBe(15);
-	});
-
-	it("handles null layout", () => {
-		const result = parseRoomThresholds(null);
-		expect(result.roomType).toBe("normal");
-	});
-
-	it("falls back to normal defaults for unknown room type", () => {
-		const layout = { room_type: "unknown_type" };
-		const result = parseRoomThresholds(layout);
-		// ZONE_TYPE_DEFAULTS["unknown_type"] is undefined, falls back to normal
-		expect(result.roomTrigger).toBe(ZONE_TYPE_DEFAULTS.normal.trigger);
+		const result = parseZoneConfigs(layout);
+		expect(result.zone0).toEqual({
+			type: "rest",
+			trigger: 7,
+			renew: 1,
+			timeout: 30,
+			handoff_timeout: 10,
+		});
+		expect(result.zones[0]?.name).toBe("Living");
+		expect(result.zones).toHaveLength(7);
 	});
 });
 
@@ -430,8 +402,7 @@ describe("parseConfig", () => {
 			room_layout: {
 				furniture: [{ icon: "mdi:table", label: "Table" }],
 				grid_bytes: new Array(GRID_CELL_COUNT).fill(0),
-				zone_slots: [{ name: "Zone A" }],
-				room_type: "rest",
+				zone_slots: [{ type: "rest" }, { name: "Zone A" }],
 			},
 			settings: {
 				temperature_offset: 5,
@@ -447,7 +418,7 @@ describe("parseConfig", () => {
 		expect(result.furniture).toHaveLength(1);
 		expect(result.grid.length).toBe(GRID_CELL_COUNT);
 		expect(result.zoneConfigs[0]!.name).toBe("Zone A");
-		expect(result.roomThresholds.roomType).toBe("rest");
+		expect(result.zone0.type).toBe("rest");
 		expect(result.settings.temperatureOffset).toBe(5);
 		expect(result.settings.motionTimeout).toBe(10);
 		expect(result.settings.entities).toEqual({ room_occupancy: true });
@@ -459,7 +430,7 @@ describe("parseConfig", () => {
 		expect(result.furniture).toEqual([]);
 		expect(result.grid.length).toBe(GRID_CELL_COUNT);
 		expect(result.zoneConfigs.every((z) => z === null)).toBe(true);
-		expect(result.roomThresholds.roomType).toBe("normal");
+		expect(result.zone0.type).toBe("normal");
 		expect(result.settings.temperatureOffset).toBe(0);
 		expect(result.settings.motionTimeout).toBe(5);
 		expect(result.settings.entities).toEqual({});

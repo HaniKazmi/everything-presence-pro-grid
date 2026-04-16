@@ -1,10 +1,6 @@
 import type { FurnitureItem } from "./furniture.js";
 import { GRID_CELL_COUNT, initGridFromRoom, MAX_ZONES } from "./grid.js";
-import {
-	ZONE_COLORS,
-	ZONE_TYPE_DEFAULTS,
-	type ZoneConfig,
-} from "./zone-defaults.js";
+import type { Zone0Config, ZoneConfig } from "./zone-defaults.js";
 
 /**
  * Parsed calibration data from config.
@@ -13,17 +9,6 @@ export interface ParsedCalibration {
 	perspective: number[] | null;
 	roomWidth: number;
 	roomDepth: number;
-}
-
-/**
- * Parsed room thresholds (room-level zone settings).
- */
-export interface ParsedRoomThresholds {
-	roomType: ZoneConfig["type"];
-	roomTrigger: number;
-	roomRenew: number;
-	roomTimeout: number;
-	roomHandoffTimeout: number;
 }
 
 /**
@@ -61,8 +46,8 @@ export interface ParsedConfig {
 	calibration: ParsedCalibration;
 	furniture: FurnitureItem[];
 	grid: Uint8Array;
+	zone0: Zone0Config;
 	zoneConfigs: (ZoneConfig | null)[];
-	roomThresholds: ParsedRoomThresholds;
 	settings: ParsedSettings;
 }
 
@@ -128,45 +113,42 @@ export function parseGrid(
 }
 
 /**
- * Parse zone configurations from layout data, applying defaults.
- *
- * @param layout Raw layout object (should contain zone_slots or zones array)
- * @returns Array of MAX_ZONES zone configs (null for empty slots)
+ * Parsed zone configurations: zone 0 (room boundary) and named zones 1-7.
  */
-export function parseZoneConfigs(layout: any): (ZoneConfig | null)[] {
-	const slots = layout?.zone_slots || layout?.zones || [];
-	return Array.from({ length: MAX_ZONES }, (_, i) => {
-		const z = slots[i];
-		if (!z) return null;
-		return {
-			name: z.name || `Zone ${i + 1}`,
-			color: z.color || ZONE_COLORS[i % ZONE_COLORS.length],
-			type: z.type ?? "normal",
-			trigger: z.trigger,
-			renew: z.renew,
-			timeout: z.timeout,
-			handoff_timeout: z.handoff_timeout,
-		};
-	});
+export interface ParsedZoneConfigs {
+	zone0: Zone0Config;
+	zones: (ZoneConfig | null)[];
 }
 
 /**
- * Parse room-level threshold settings from layout data.
+ * Parse zone configurations from layout data.
  *
- * @param layout Raw layout object
- * @returns Parsed room thresholds with defaults applied
+ * `zone_slots` is a length-8 array: index 0 holds zone 0's settings
+ * (`{ type, trigger?, renew?, timeout?, handoff_timeout? }`, no name/color);
+ * indices 1-7 hold named zones (`ZoneConfig | null`).
+ *
+ * @param layout Raw layout object (should contain a `zone_slots` array)
+ * @returns Parsed zone 0 config plus MAX_ZONES named zone configs
  */
-export function parseRoomThresholds(layout: any): ParsedRoomThresholds {
-	const roomType: ZoneConfig["type"] = layout?.room_type ?? "normal";
-	const defaults = ZONE_TYPE_DEFAULTS[roomType] ?? ZONE_TYPE_DEFAULTS.normal;
-	return {
-		roomType,
-		roomTrigger: layout?.room_trigger ?? defaults?.trigger ?? 5,
-		roomRenew: layout?.room_renew ?? defaults?.renew ?? 3,
-		roomTimeout: layout?.room_timeout ?? defaults?.timeout ?? 10,
-		roomHandoffTimeout:
-			layout?.room_handoff_timeout ?? defaults?.handoff_timeout ?? 3,
-	};
+export function parseZoneConfigs(layout: any): ParsedZoneConfigs {
+	const slots: any[] = Array.isArray(layout?.zone_slots)
+		? layout.zone_slots
+		: [];
+	const zone0: Zone0Config =
+		slots[0] && typeof slots[0] === "object"
+			? {
+					type: slots[0].type ?? "normal",
+					trigger: slots[0].trigger,
+					renew: slots[0].renew,
+					timeout: slots[0].timeout,
+					handoff_timeout: slots[0].handoff_timeout,
+				}
+			: { type: "normal" };
+	const zones = Array.from({ length: MAX_ZONES }, (_, i) => {
+		const s = slots[i + 1];
+		return s && typeof s === "object" ? (s as ZoneConfig) : null;
+	});
+	return { zone0, zones };
 }
 
 /**
@@ -221,15 +203,14 @@ export function parseConfig(config: any): ParsedConfig {
 
 	const furniture = parseFurniture(layout.furniture);
 	const grid = parseGrid(layout, calibration.roomWidth, calibration.roomDepth);
-	const zoneConfigs = parseZoneConfigs(layout);
-	const roomThresholds = parseRoomThresholds(layout);
+	const { zone0, zones: zoneConfigs } = parseZoneConfigs(layout);
 
 	return {
 		calibration,
 		furniture,
 		grid,
+		zone0,
 		zoneConfigs,
-		roomThresholds,
 		settings: parseSettings(
 			config?.settings,
 			config?.entities,
