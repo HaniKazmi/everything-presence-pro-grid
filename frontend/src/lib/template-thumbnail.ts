@@ -82,16 +82,28 @@ export function renderTemplateThumbnail(
 	const patternDefs =
 		neededPatterns.size > 0
 			? svg`<defs>
-			${neededPatterns.has("entry") ? svg`<pattern id="overlay-entry" width="0.25" height="0.25" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+			${
+				neededPatterns.has("entry")
+					? svg`<pattern id="overlay-entry" width="0.25" height="0.25" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
 				<line x1="0" y1="0" x2="0" y2="0.25" stroke="rgba(80,80,80,0.5)" stroke-width="0.08" />
-			</pattern>` : ""}
-			${neededPatterns.has("interference") ? svg`<pattern id="overlay-interference" width="0.25" height="0.25" patternUnits="userSpaceOnUse" patternTransform="rotate(-45)">
+			</pattern>`
+					: ""
+			}
+			${
+				neededPatterns.has("interference")
+					? svg`<pattern id="overlay-interference" width="0.25" height="0.25" patternUnits="userSpaceOnUse" patternTransform="rotate(-45)">
 				<line x1="0" y1="0" x2="0" y2="0.25" stroke="rgba(244,67,54,0.5)" stroke-width="0.08" />
-			</pattern>` : ""}
-			${neededPatterns.has("suppress") ? svg`<pattern id="overlay-suppress" width="0.25" height="0.25" patternUnits="userSpaceOnUse">
+			</pattern>`
+					: ""
+			}
+			${
+				neededPatterns.has("suppress")
+					? svg`<pattern id="overlay-suppress" width="0.25" height="0.25" patternUnits="userSpaceOnUse">
 				<line x1="0" y1="0" x2="0.25" y2="0.25" stroke="rgba(244,67,54,0.5)" stroke-width="0.06" />
 				<line x1="0.25" y1="0" x2="0" y2="0.25" stroke="rgba(244,67,54,0.5)" stroke-width="0.06" />
-			</pattern>` : ""}
+			</pattern>`
+					: ""
+			}
 		</defs>`
 			: "";
 
@@ -120,7 +132,8 @@ export function renderTemplateThumbnail(
 			const sx = fw / vw;
 			const sy = fh / vh;
 			// Rotation is around the item center in grid-cell units
-			const groupTransform = `${rotateTransform}translate(${fx}, ${fy}) scale(${sx}, ${sy}) translate(${-vx}, ${-vy})`.trim();
+			const groupTransform =
+				`${rotateTransform}translate(${fx}, ${fy}) scale(${sx}, ${sy}) translate(${-vx}, ${-vy})`.trim();
 			furnitureElements.push(
 				svg`<g transform="${groupTransform}">
 					${unsafeSVG(floorPlan.content)}
