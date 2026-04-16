@@ -2018,11 +2018,7 @@ export class EPPGridPanel extends LitElement {
 								? html`<epp-zone-sidebar
                     .zoneConfigs=${this._namedZones()}
                     .activeZone=${this._activeZone}
-                    .roomType=${this._zoneConfigs[0].type}
-                    .roomTrigger=${this._zoneConfigs[0].trigger ?? ZONE_TYPE_DEFAULTS.normal.trigger}
-                    .roomRenew=${this._zoneConfigs[0].renew ?? ZONE_TYPE_DEFAULTS.normal.renew}
-                    .roomTimeout=${this._zoneConfigs[0].timeout ?? ZONE_TYPE_DEFAULTS.normal.timeout}
-                    .roomHandoffTimeout=${this._zoneConfigs[0].handoff_timeout ?? ZONE_TYPE_DEFAULTS.normal.handoff_timeout}
+                    .zone0=${this._zoneConfigs[0]}
                     .localZoneState=${this._zoneEngineState.localZoneState}
                     .localize=${this._localize}
                     @zone-select=${(e: CustomEvent) => {
@@ -2052,23 +2048,11 @@ export class EPPGridPanel extends LitElement {
 											configs[slot] = { ...current, ...updates };
 											this._zoneConfigs = configs as unknown as ZoneSlots;
 										}}
-                    @room-config-change=${(e: CustomEvent) => {
-											const { updates } = e.detail;
-											const z0: Zone0Config = { ...this._zoneConfigs[0] };
-											if (updates.roomType !== undefined)
-												z0.type = updates.roomType;
-											if (updates.roomTrigger !== undefined)
-												z0.trigger = updates.roomTrigger;
-											if (updates.roomRenew !== undefined)
-												z0.renew = updates.roomRenew;
-											if (updates.roomTimeout !== undefined)
-												z0.timeout = updates.roomTimeout;
-											if (updates.roomHandoffTimeout !== undefined)
-												z0.handoff_timeout = updates.roomHandoffTimeout;
-											this._zoneConfigs = [
-												z0,
-												...this._zoneConfigs.slice(1),
-											] as unknown as ZoneSlots;
+                    @zone0-change=${(e: CustomEvent<Partial<Zone0Config>>) => {
+											const current = this._zoneConfigs[0];
+											const next = [...this._zoneConfigs];
+											next[0] = { ...current, ...e.detail };
+											this._zoneConfigs = next as unknown as ZoneSlots;
 										}}
                     @dirty=${() => {
 											this._dirty = true;

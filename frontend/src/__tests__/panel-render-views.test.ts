@@ -927,7 +927,7 @@ describe("_renderVisibleCells", () => {
 describe("epp-zone-sidebar renders boundary type controls", () => {
 	it("renders for normal type", () => {
 		const el = document.createElement("epp-zone-sidebar") as any;
-		el.roomType = "normal";
+		el.zone0 = { type: "normal" };
 		el.activeZone = 0;
 		el.zoneConfigs = new Array(7).fill(null);
 		const result = el.render();
@@ -936,7 +936,7 @@ describe("epp-zone-sidebar renders boundary type controls", () => {
 
 	it("renders for custom type", () => {
 		const el = document.createElement("epp-zone-sidebar") as any;
-		el.roomType = "custom";
+		el.zone0 = { type: "custom" };
 		el.activeZone = 0;
 		el.zoneConfigs = new Array(7).fill(null);
 		const result = el.render();
@@ -945,7 +945,7 @@ describe("epp-zone-sidebar renders boundary type controls", () => {
 
 	it("renders for thoroughfare type", () => {
 		const el = document.createElement("epp-zone-sidebar") as any;
-		el.roomType = "thoroughfare";
+		el.zone0 = { type: "thoroughfare" };
 		el.activeZone = 0;
 		el.zoneConfigs = new Array(7).fill(null);
 		const result = el.render();

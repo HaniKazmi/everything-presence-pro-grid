@@ -1054,11 +1054,13 @@ describe("stopPropagation handlers in zone sidebar", () => {
 			null,
 		];
 		el.activeZone = 1;
-		el.roomType = "normal";
-		el.roomTrigger = ZONE_TYPE_DEFAULTS.normal.trigger;
-		el.roomRenew = ZONE_TYPE_DEFAULTS.normal.renew;
-		el.roomTimeout = ZONE_TYPE_DEFAULTS.normal.timeout;
-		el.roomHandoffTimeout = ZONE_TYPE_DEFAULTS.normal.handoff_timeout;
+		el.zone0 = {
+			type: "normal",
+			trigger: ZONE_TYPE_DEFAULTS.normal.trigger,
+			renew: ZONE_TYPE_DEFAULTS.normal.renew,
+			timeout: ZONE_TYPE_DEFAULTS.normal.timeout,
+			handoff_timeout: ZONE_TYPE_DEFAULTS.normal.handoff_timeout,
+		};
 		el.localZoneState = new Map();
 		el.localize = (k: string) => k;
 		const tpl = el._renderZoneSidebar();

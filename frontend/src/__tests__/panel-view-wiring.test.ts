@@ -283,31 +283,29 @@ describe("Editor view event wiring", () => {
 		expect(a._zoneConfigs[1]).toBe(null);
 	});
 
-	it("room-config-change updates zone 0 type", () => {
+	it("zone0-change updates zone 0 type", () => {
 		const [el, container] = editorPanel();
 		const sidebar = container.querySelector("epp-zone-sidebar")!;
 		sidebar.dispatchEvent(
-			new CustomEvent("room-config-change", {
-				detail: { updates: { roomType: "rest" } },
+			new CustomEvent("zone0-change", {
+				detail: { type: "rest" },
 				bubbles: true,
 			}),
 		);
 		expect((el as any)._zoneConfigs[0].type).toBe("rest");
 	});
 
-	it("room-config-change updates all zone 0 fields", () => {
+	it("zone0-change updates all zone 0 fields", () => {
 		const [el, container] = editorPanel();
 		const a = el as any;
 		const sidebar = container.querySelector("epp-zone-sidebar")!;
 		sidebar.dispatchEvent(
-			new CustomEvent("room-config-change", {
+			new CustomEvent("zone0-change", {
 				detail: {
-					updates: {
-						roomTrigger: 3,
-						roomRenew: 2,
-						roomTimeout: 5,
-						roomHandoffTimeout: 1,
-					},
+					trigger: 3,
+					renew: 2,
+					timeout: 5,
+					handoff_timeout: 1,
 				},
 				bubbles: true,
 			}),

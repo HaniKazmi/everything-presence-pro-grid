@@ -833,11 +833,13 @@ describe("_renderZoneSidebar boundary occupancy glow", () => {
 		const el = document.createElement("epp-zone-sidebar") as any;
 		el.zoneConfigs = new Array(7).fill(null);
 		el.activeZone = 0;
-		el.roomType = "normal";
-		el.roomTrigger = ZONE_TYPE_DEFAULTS.normal.trigger;
-		el.roomRenew = ZONE_TYPE_DEFAULTS.normal.renew;
-		el.roomTimeout = ZONE_TYPE_DEFAULTS.normal.timeout;
-		el.roomHandoffTimeout = ZONE_TYPE_DEFAULTS.normal.handoff_timeout;
+		el.zone0 = {
+			type: "normal",
+			trigger: ZONE_TYPE_DEFAULTS.normal.trigger,
+			renew: ZONE_TYPE_DEFAULTS.normal.renew,
+			timeout: ZONE_TYPE_DEFAULTS.normal.timeout,
+			handoff_timeout: ZONE_TYPE_DEFAULTS.normal.handoff_timeout,
+		};
 		el.localZoneState = new Map([
 			[
 				0,
@@ -862,14 +864,24 @@ describe("stopPropagation handlers coverage", () => {
 		const el = document.createElement("epp-zone-sidebar") as any;
 		el.zoneConfigs = new Array(7).fill(null);
 		el.activeZone = 0;
-		el.roomType = "normal";
-		el.roomTrigger = ZONE_TYPE_DEFAULTS.normal.trigger;
-		el.roomRenew = ZONE_TYPE_DEFAULTS.normal.renew;
-		el.roomTimeout = ZONE_TYPE_DEFAULTS.normal.timeout;
-		el.roomHandoffTimeout = ZONE_TYPE_DEFAULTS.normal.handoff_timeout;
+		el.zone0 = {
+			type: "normal",
+			trigger: ZONE_TYPE_DEFAULTS.normal.trigger,
+			renew: ZONE_TYPE_DEFAULTS.normal.renew,
+			timeout: ZONE_TYPE_DEFAULTS.normal.timeout,
+			handoff_timeout: ZONE_TYPE_DEFAULTS.normal.handoff_timeout,
+		};
 		el.localZoneState = new Map();
 		el.localize = (k: string) => k;
-		Object.assign(el, overrides);
+		for (const [k, v] of Object.entries(overrides)) {
+			if (k === "roomType") el.zone0 = { ...el.zone0, type: v };
+			else if (k === "roomTrigger") el.zone0 = { ...el.zone0, trigger: v };
+			else if (k === "roomRenew") el.zone0 = { ...el.zone0, renew: v };
+			else if (k === "roomTimeout") el.zone0 = { ...el.zone0, timeout: v };
+			else if (k === "roomHandoffTimeout")
+				el.zone0 = { ...el.zone0, handoff_timeout: v };
+			else el[k] = v;
+		}
 		return el;
 	}
 
@@ -1506,11 +1518,13 @@ describe("zone sidebar occupancy glow branch", () => {
 			null,
 		];
 		el.activeZone = 0; // boundary selected, not zone 1
-		el.roomType = "normal";
-		el.roomTrigger = ZONE_TYPE_DEFAULTS.normal.trigger;
-		el.roomRenew = ZONE_TYPE_DEFAULTS.normal.renew;
-		el.roomTimeout = ZONE_TYPE_DEFAULTS.normal.timeout;
-		el.roomHandoffTimeout = ZONE_TYPE_DEFAULTS.normal.handoff_timeout;
+		el.zone0 = {
+			type: "normal",
+			trigger: ZONE_TYPE_DEFAULTS.normal.trigger,
+			renew: ZONE_TYPE_DEFAULTS.normal.renew,
+			timeout: ZONE_TYPE_DEFAULTS.normal.timeout,
+			handoff_timeout: ZONE_TYPE_DEFAULTS.normal.handoff_timeout,
+		};
 		el.localZoneState = new Map([
 			[
 				1,
@@ -1531,11 +1545,13 @@ describe("zone sidebar occupancy glow branch", () => {
 		const el = document.createElement("epp-zone-sidebar") as any;
 		el.zoneConfigs = new Array(7).fill(null);
 		el.activeZone = 0;
-		el.roomType = "normal";
-		el.roomTrigger = ZONE_TYPE_DEFAULTS.normal.trigger;
-		el.roomRenew = ZONE_TYPE_DEFAULTS.normal.renew;
-		el.roomTimeout = ZONE_TYPE_DEFAULTS.normal.timeout;
-		el.roomHandoffTimeout = ZONE_TYPE_DEFAULTS.normal.handoff_timeout;
+		el.zone0 = {
+			type: "normal",
+			trigger: ZONE_TYPE_DEFAULTS.normal.trigger,
+			renew: ZONE_TYPE_DEFAULTS.normal.renew,
+			timeout: ZONE_TYPE_DEFAULTS.normal.timeout,
+			handoff_timeout: ZONE_TYPE_DEFAULTS.normal.handoff_timeout,
+		};
 		el.localZoneState = new Map([
 			[
 				0,

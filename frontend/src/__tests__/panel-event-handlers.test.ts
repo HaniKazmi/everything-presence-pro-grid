@@ -684,7 +684,7 @@ describe("_renderDetectionRanges inline handlers", () => {
 // _renderBoundaryTypeControls inline handlers
 // ========================
 describe("_renderBoundaryTypeControls inline handlers", () => {
-	// These tests replicate the room-config-change handler's effect on
+	// These tests replicate the zone0-change handler's effect on
 	// _zoneConfigs[0] — the zone-0 (room-boundary) settings.
 	function updateZone0(a: any, patch: Partial<Record<string, any>>) {
 		a._zoneConfigs = [
