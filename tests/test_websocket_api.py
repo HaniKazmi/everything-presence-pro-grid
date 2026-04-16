@@ -1290,37 +1290,41 @@ class TestEntityMapping:
         assert _entity_key_for_object_id("target_0_position") is None
         assert _entity_key_for_object_id("target_1_position") is None
 
-    def test_entity_key_mapping_underscore_format(self) -> None:
-        """Full unique_ids with underscore format (older ESPHome) map correctly."""
+    def test_entity_key_mapping_via_unique_id(self) -> None:
+        """Real unique_ids (hyphen format) map correctly via _object_id_from_unique_id."""
         from custom_components.eppgrid.websocket_api import _entity_key_for_object_id
+        from custom_components.eppgrid.websocket_api import _object_id_from_unique_id
 
-        # Room-level entities
-        assert _entity_key_for_object_id("esphome_aabbccddeeff_occupancy") == "room_occupancy"
-        assert _entity_key_for_object_id("esphome_aabbccddeeff_static_presence") == "room_static_presence"
-        assert _entity_key_for_object_id("esphome_aabbccddeeff_motion_presence") == "room_motion_presence"
-        assert _entity_key_for_object_id("esphome_aabbccddeeff_temperature") == "env_temperature"
-        assert _entity_key_for_object_id("esphome_aabbccddeeff_co2") == "env_co2"
-        # Zone entities
-        assert _entity_key_for_object_id("esphome_aabbccddeeff_zone_0_presence") == "zone_presence"
-        assert _entity_key_for_object_id("esphome_aabbccddeeff_zone_7_presence") == "zone_presence"
-        # Structured target entities
-        assert _entity_key_for_object_id("esphome_aabbccddeeff_target_1_x") == "target_xy"
-        # Transport sensors are unmanaged
-        assert _entity_key_for_object_id("esphome_aabbccddeeff_target_0_position") is None
+        cases = {
+            "AA:BB:CC:DD:EE:FF-sensor-occupancy": "room_occupancy",
+            "AA:BB:CC:DD:EE:FF-sensor-static_presence": "room_static_presence",
+            "AA:BB:CC:DD:EE:FF-sensor-motion_presence": "room_motion_presence",
+            "AA:BB:CC:DD:EE:FF-sensor-temperature": "env_temperature",
+            "AA:BB:CC:DD:EE:FF-sensor-co2": "env_co2",
+            "AA:BB:CC:DD:EE:FF-button-calibrate_co2": "env_co2_calibrate",
+            "AA:BB:CC:DD:EE:FF-switch-system_alarm_relay": "relay_output",
+            "AA:BB:CC:DD:EE:FF-sensor-zone_0_presence": "zone_presence",
+            "AA:BB:CC:DD:EE:FF-sensor-zone_7_presence": "zone_presence",
+            "AA:BB:CC:DD:EE:FF-sensor-target_1_x": "target_xy",
+            "AA:BB:CC:DD:EE:FF-sensor-target_0_position": None,
+            "AA:BB:CC:DD:EE:FF-sensor-config_protocol": None,
+        }
+        for unique_id, expected in cases.items():
+            object_id = _object_id_from_unique_id(unique_id)
+            result = _entity_key_for_object_id(object_id)
+            assert result == expected, f"{unique_id} -> {object_id} -> {result}, expected {expected}"
 
     def test_entity_key_mapping_relay(self) -> None:
         """system_alarm_relay maps to relay_output."""
         from custom_components.eppgrid.websocket_api import _entity_key_for_object_id
 
         assert _entity_key_for_object_id("system_alarm_relay") == "relay_output"
-        assert _entity_key_for_object_id("esphome_aabbccddeeff_system_alarm_relay") == "relay_output"
 
     def test_entity_key_mapping_calibrate_co2(self) -> None:
         """calibrate_co2 maps to env_co2_calibrate, not env_co2."""
         from custom_components.eppgrid.websocket_api import _entity_key_for_object_id
 
         assert _entity_key_for_object_id("calibrate_co2") == "env_co2_calibrate"
-        assert _entity_key_for_object_id("esphome_aabbccddeeff_calibrate_co2") == "env_co2_calibrate"
         assert _entity_key_for_object_id("co2") == "env_co2"
 
     def test_entity_key_mapping_unknown(self) -> None:
@@ -1329,7 +1333,6 @@ class TestEntityMapping:
 
         assert _entity_key_for_object_id("config_protocol") is None
         assert _entity_key_for_object_id("zone_engine_version") is None
-        assert _entity_key_for_object_id("esphome_aabbccddeeff_zone_engine_version") is None
         assert _entity_key_for_object_id("led") is None
 
 

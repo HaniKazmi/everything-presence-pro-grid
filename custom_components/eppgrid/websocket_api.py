@@ -505,24 +505,13 @@ def _object_id_from_unique_id(unique_id: str) -> str:
 def _entity_key_for_object_id(object_id: str) -> str | None:
     """Map an ESPHome object_id to its frontend entity key, or None.
 
-    Handles both formats:
-    - Extracted object_id (hyphen format): "zone_0_presence"
-    - Full unique_id (underscore format): "esphome_aabbccddeeff_zone_0_presence"
+    Expects the extracted object_id (e.g. "co2", "zone_0_presence"),
+    not the full unique_id. Use _object_id_from_unique_id() first.
     """
-    # Exact match — works for extracted object_ids (hyphen format)
     if object_id in _ENTITY_OBJECT_ID_MAP:
         return _ENTITY_OBJECT_ID_MAP[object_id]
     for prefix, suffix, key in _ENTITY_PREFIX_MAP:
         if object_id.startswith(prefix) and object_id.endswith(suffix):
-            return key
-    # Fallback: substring match for full unique_ids (underscore format).
-    # Check prefix patterns first (more specific) to avoid e.g. zone_0_presence
-    # matching the "occupancy" → "room_occupancy" suffix rule.
-    for prefix, suffix, key in _ENTITY_PREFIX_MAP:
-        if f"_{prefix}" in object_id and object_id.endswith(suffix):
-            return key
-    for oid, key in sorted(_ENTITY_OBJECT_ID_MAP.items(), key=lambda x: len(x[0]), reverse=True):
-        if object_id.endswith(f"_{oid}"):
             return key
     return None
 
