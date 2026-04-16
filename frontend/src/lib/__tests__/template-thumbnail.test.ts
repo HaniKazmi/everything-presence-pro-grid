@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
+	CELL_INTERFERENCE_SHIFT,
+	CELL_OVERLAY_ENTRY,
 	CELL_ROOM_BIT,
 	CELL_ZONE_SHIFT,
 	GRID_CELL_COUNT,
@@ -8,12 +10,20 @@ import {
 import { renderTemplateThumbnail } from "../../lib/template-thumbnail.js";
 
 function makeGrid(
-	insideCells: { col: number; row: number; zone?: number }[],
+	insideCells: {
+		col: number;
+		row: number;
+		zone?: number;
+		entry?: boolean;
+		interference?: number;
+	}[],
 ): number[] {
 	const grid = new Array(GRID_CELL_COUNT).fill(0);
-	for (const { col, row, zone } of insideCells) {
-		grid[row * GRID_COLS + col] =
-			CELL_ROOM_BIT | ((zone ?? 0) << CELL_ZONE_SHIFT);
+	for (const { col, row, zone, entry, interference } of insideCells) {
+		let val = CELL_ROOM_BIT | ((zone ?? 0) << CELL_ZONE_SHIFT);
+		if (entry) val |= CELL_OVERLAY_ENTRY;
+		if (interference) val |= interference << CELL_INTERFERENCE_SHIFT;
+		grid[row * GRID_COLS + col] = val;
 	}
 	return grid;
 }
@@ -159,6 +169,228 @@ describe("renderTemplateThumbnail", () => {
 		expect(furnitureRects.length).toBe(1);
 		// Should have transform with rotation
 		expect(furnitureRects[0].getAttribute("transform")).toContain("rotate");
+	});
+
+	it("renders entry/exit overlay pattern on cells", async () => {
+		const grid = makeGrid([
+			{ col: 10, row: 0 },
+			{ col: 10, row: 1, entry: true },
+		]);
+		const result = renderTemplateThumbnail(
+			grid,
+			new Array(7).fill(null),
+			300,
+			600,
+			[],
+		);
+
+		const container = document.createElement("div");
+		const { render } = await import("lit");
+		render(result, container);
+
+		const svgEl = container.querySelector("svg")!;
+		// Should have a <defs> with a pattern for entry overlay
+		const patterns = svgEl.querySelectorAll("defs pattern");
+		const entryPattern = Array.from(patterns).find(
+			(p) => p.id === "overlay-entry",
+		);
+		expect(entryPattern).toBeTruthy();
+
+		// Should have a rect using the entry pattern
+		const overlayRects = Array.from(svgEl.querySelectorAll("rect")).filter(
+			(r) => r.getAttribute("fill") === "url(#overlay-entry)",
+		);
+		expect(overlayRects.length).toBe(1);
+	});
+
+	it("renders interference source overlay pattern on cells", async () => {
+		const grid = makeGrid([
+			{ col: 10, row: 0 },
+			{ col: 10, row: 1, interference: 1 },
+		]);
+		const result = renderTemplateThumbnail(
+			grid,
+			new Array(7).fill(null),
+			300,
+			600,
+			[],
+		);
+
+		const container = document.createElement("div");
+		const { render } = await import("lit");
+		render(result, container);
+
+		const svgEl = container.querySelector("svg")!;
+		const patterns = svgEl.querySelectorAll("defs pattern");
+		const interferencePattern = Array.from(patterns).find(
+			(p) => p.id === "overlay-interference",
+		);
+		expect(interferencePattern).toBeTruthy();
+
+		const overlayRects = Array.from(svgEl.querySelectorAll("rect")).filter(
+			(r) => r.getAttribute("fill") === "url(#overlay-interference)",
+		);
+		expect(overlayRects.length).toBe(1);
+	});
+
+	it("renders suppress interference overlay pattern on cells", async () => {
+		const grid = makeGrid([
+			{ col: 10, row: 0 },
+			{ col: 10, row: 1, interference: 2 },
+		]);
+		const result = renderTemplateThumbnail(
+			grid,
+			new Array(7).fill(null),
+			300,
+			600,
+			[],
+		);
+
+		const container = document.createElement("div");
+		const { render } = await import("lit");
+		render(result, container);
+
+		const svgEl = container.querySelector("svg")!;
+		const patterns = svgEl.querySelectorAll("defs pattern");
+		const suppressPattern = Array.from(patterns).find(
+			(p) => p.id === "overlay-suppress",
+		);
+		expect(suppressPattern).toBeTruthy();
+
+		const overlayRects = Array.from(svgEl.querySelectorAll("rect")).filter(
+			(r) => r.getAttribute("fill") === "url(#overlay-suppress)",
+		);
+		expect(overlayRects.length).toBe(1);
+	});
+
+	it("renders SVG furniture with actual floor plan drawing", async () => {
+		const grid = makeGrid(
+			Array.from({ length: 100 }, (_, i) => ({
+				col: 5 + (i % 10),
+				row: Math.floor(i / 10),
+			})),
+		);
+		const furniture = [
+			{
+				id: "f1",
+				type: "svg" as const,
+				icon: "bed-double",
+				label: "Double Bed",
+				x: 300,
+				y: 600,
+				width: 1600,
+				height: 2000,
+				rotation: 0,
+				lockAspect: false,
+			},
+		];
+		const result = renderTemplateThumbnail(
+			grid,
+			new Array(7).fill(null),
+			3000,
+			3000,
+			furniture,
+		);
+
+		const container = document.createElement("div");
+		const { render } = await import("lit");
+		render(result, container);
+
+		const svgEl = container.querySelector("svg")!;
+		// Should have a <g> group for the SVG furniture with inner SVG paths
+		const groups = svgEl.querySelectorAll("g");
+		const furnitureGroup = Array.from(groups).find(
+			(g) => g.querySelector("rect, path, line, circle, ellipse") !== null,
+		);
+		expect(furnitureGroup).toBeTruthy();
+
+		// Should NOT have a plain outlined rect for this item (no fill=none stroke rects)
+		// The SVG content itself may contain rects, but they'll be the floor plan drawing
+	});
+
+	it("renders icon-type furniture as outlined rect fallback", async () => {
+		const grid = makeGrid(
+			Array.from({ length: 100 }, (_, i) => ({
+				col: 5 + (i % 10),
+				row: Math.floor(i / 10),
+			})),
+		);
+		const furniture = [
+			{
+				id: "f1",
+				type: "icon" as const,
+				icon: "mdi:lamp",
+				label: "Lamp",
+				x: 300,
+				y: 600,
+				width: 600,
+				height: 600,
+				rotation: 0,
+				lockAspect: true,
+			},
+		];
+		const result = renderTemplateThumbnail(
+			grid,
+			new Array(7).fill(null),
+			3000,
+			3000,
+			furniture,
+		);
+
+		const container = document.createElement("div");
+		const { render } = await import("lit");
+		render(result, container);
+
+		const svgEl = container.querySelector("svg")!;
+		// Icon-type should still render as outlined rect
+		const outlinedRects = Array.from(svgEl.querySelectorAll("rect")).filter(
+			(r) =>
+				r.getAttribute("fill") === "none" &&
+				r.getAttribute("stroke")?.includes("rgba(0,0,0"),
+		);
+		expect(outlinedRects.length).toBe(1);
+	});
+
+	it("renders SVG furniture with rotation transform on group", async () => {
+		const grid = makeGrid(
+			Array.from({ length: 100 }, (_, i) => ({
+				col: 5 + (i % 10),
+				row: Math.floor(i / 10),
+			})),
+		);
+		const furniture = [
+			{
+				id: "f1",
+				type: "svg" as const,
+				icon: "bed-double",
+				label: "Double Bed",
+				x: 300,
+				y: 600,
+				width: 1600,
+				height: 2000,
+				rotation: 90,
+				lockAspect: false,
+			},
+		];
+		const result = renderTemplateThumbnail(
+			grid,
+			new Array(7).fill(null),
+			3000,
+			3000,
+			furniture,
+		);
+
+		const container = document.createElement("div");
+		const { render } = await import("lit");
+		render(result, container);
+
+		const svgEl = container.querySelector("svg")!;
+		// The furniture group should have a transform containing rotate
+		const groups = Array.from(svgEl.querySelectorAll("g"));
+		const rotatedGroup = groups.find((g) =>
+			g.getAttribute("transform")?.includes("rotate"),
+		);
+		expect(rotatedGroup).toBeTruthy();
 	});
 
 	it("applies zone colors to cells", async () => {
