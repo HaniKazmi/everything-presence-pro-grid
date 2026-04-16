@@ -226,9 +226,29 @@ Saves perspective calibration. Clears room layout. Pushes to device. Sets `setti
 
 ### `set_room_layout`
 
-Saves grid, zones, room settings, furniture. Pushes config to device. Updates zone entity enable/disable/rename via `async_update_zone_entities`. Zone presence entities are named `"Zone {name}"` (e.g. `"Zone Armchair"`), target count entities `"Zone {name} Target Count"`. Zone 0 uses `"Zone Rest of Room"` / `"Zone Rest of Room Target Count"`.
+Saves grid, zones, furniture. Pushes config to device. Updates zone entity enable/disable/rename via `async_update_zone_entities`. Zone presence entities are named `"Zone {name}"` (e.g. `"Zone Armchair"`), target count entities `"Zone {name} Target Count"`. Zone 0 uses `"Zone Rest of Room"` / `"Zone Rest of Room Target Count"`.
 
-**Request:** `{ "type": "eppgrid/set_room_layout", "mac": str, "grid_bytes": int[], "zone_slots": list, "room_type": str, ... }`
+**Request:** `{ "type": "eppgrid/set_room_layout", "mac": str, "grid_bytes": int[], "zone_slots": ZoneSlot[8], "furniture": list }`
+
+`zone_slots` is a fixed-length-8 array. Slot 0 is zone 0 (always present, no name/color); slots 1-7 are named zones or `null` when unused.
+
+```
+ZoneSlot[0] = Zone0Config {
+    type: "normal" | "thoroughfare" | "rest" | "custom",
+    trigger: int,
+    renew: int,
+    timeout: float,
+    handoff_timeout: float
+}
+
+ZoneSlot[1..7] = ZoneConfig | null
+ZoneConfig = Zone0Config & {
+    name: str,
+    color: str  // hex "#rrggbb"
+}
+```
+
+Wire-protocol-wise this is a 0.94.0-or-newer contract. Earlier firmware (0.93.x) received zone 0 as top-level `room_type`/`room_trigger`/`room_renew`/`room_timeout`/`room_handoff_timeout` fields; those have been removed. No migration — the single-user project re-applies the layout once after upgrade.
 
 Each cell in `grid_bytes` is a uint8 with bit layout: bit 0 = room (inside/outside), bits 1-3 = zone (0-7), bit 4 = entry/exit overlay (bypasses gating on entry, uses handoff timeout on exit), bits 5-7 = interference level (0=none, 1=interference source, 2=suppress detection).
 
@@ -305,6 +325,11 @@ Saves and pushes all publish intervals and window duration.
 | `list_templates` | List saved room templates |
 | `save_template` | Save a room template |
 | `delete_template` | Delete a room template |
+
+Applying a template is a frontend-side operation: the template dialog restores
+the saved `grid`/`zones`/`furniture` into panel state and then calls
+`set_room_layout` through the usual path. There is no server-side
+`apply_template` command.
 
 ### Flasher Commands
 
@@ -387,7 +412,7 @@ The frontend enricher replaces zone IDs with names for display.
 {
     "AA:BB:CC:DD:EE:FF": {
         "calibration": {"perspective": [8 floats], "room_width": float, "room_depth": float},
-        "room_layout": {"grid_bytes": [400 ints], "zone_slots": [...], "room_type": str, ...},
+        "room_layout": {"grid_bytes": [400 ints], "zone_slots": ZoneSlot[8], "furniture": [...]},
         "env_calibration": {"temperature_offset": float, "humidity_offset": float, "illuminance_offset": float},
         "motion_timeout": {"timeout": float},
         "tracking": {"max_range": float},
@@ -397,6 +422,31 @@ The frontend enricher replaces zone IDs with names for display.
     }
 }
 ```
+
+`room_layout.zone_slots` is a fixed-length-8 array using the same `ZoneSlot`
+shape as the `set_room_layout` wire payload: slot 0 holds zone 0 (always
+present), slots 1-7 hold named zones or `null`. This is the 0.94.0-or-newer
+storage format; layouts written by 0.93.x (with top-level `room_*` fields)
+are not migrated and must be re-applied once after upgrade.
+
+Templates are stored separately in `EPPGridStore.templates` using a matching
+shape:
+
+```python
+{
+    "Living Room Setup": {
+        "grid": [400 ints],
+        "zones": ZoneSlot[8],   // same shape as room_layout.zone_slots
+        "roomWidth": float,
+        "roomDepth": float,
+        "furniture": [...]
+    }
+}
+```
+
+Templates saved under 0.93.x (with a length-7 `zones` array and no zone 0)
+are rejected on load — the frontend throws and the user re-saves the
+template. No migration.
 
 All config is pushed to the device on save and on reconnect. The push
 prefers the existing frontend session connection when one is active
