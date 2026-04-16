@@ -111,7 +111,7 @@ All signal processing runs on-device in the C++ zone engine:
 
 1. **LD2450 UART** (~10Hz raw frames) → rolling median filter
 2. **Perspective transform** maps sensor coords to room coords
-3. **Zone engine** processes through tumbling window + state machine
+3. **Zone engine** processes through rolling window + state machine
 4. **Sensor presence** — static (SEN0609) and motion (PIR) binary sensors are
    fed into the zone engine with software-managed timeouts (active→pending→inactive).
    Hardware timeouts are set to 1s for debounce; the zone engine manages the real
@@ -353,7 +353,7 @@ The zone engine must behave identically in firmware and frontend:
 ### C++ (doctest)
 
 Tests in `firmware/lib/epp_zone_engine/tests/`:
-zone engine, grid, calibration, rolling/tumbling windows.
+zone engine, grid, calibration, rolling window.
 
 ### TypeScript (vitest)
 

@@ -1,7 +1,7 @@
 #pragma once
 
 #include "epp_grid.h"
-#include "epp_tumbling_window.h"
+#include "epp_window.h"
 #include "epp_types.h"
 
 #include <algorithm>
