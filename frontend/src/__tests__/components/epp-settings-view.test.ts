@@ -2307,8 +2307,8 @@ describe("relay section", () => {
 
 describe("epp-settings-view localization (tasks 13-15)", () => {
 	it("does not contain hardcoded 'Reset to default' strings outside translation keys", () => {
-		const { readFileSync } = require("fs");
-		const { join } = require("path");
+		const { readFileSync } = require("node:fs");
+		const { join } = require("node:path");
 		const src = readFileSync(
 			join(__dirname, "..", "..", "components", "epp-settings-view.ts"),
 			"utf8",
@@ -2320,8 +2320,8 @@ describe("epp-settings-view localization (tasks 13-15)", () => {
 	});
 
 	it("uses localize() for frequency labels", () => {
-		const { readFileSync } = require("fs");
-		const { join } = require("path");
+		const { readFileSync } = require("node:fs");
+		const { join } = require("node:path");
 		const src = readFileSync(
 			join(__dirname, "..", "..", "components", "epp-settings-view.ts"),
 			"utf8",
@@ -2334,8 +2334,8 @@ describe("epp-settings-view localization (tasks 13-15)", () => {
 	});
 
 	it("uses localize() for log level labels but keeps English wire values", () => {
-		const { readFileSync } = require("fs");
-		const { join } = require("path");
+		const { readFileSync } = require("node:fs");
+		const { join } = require("node:path");
 		const src = readFileSync(
 			join(__dirname, "..", "..", "components", "epp-settings-view.ts"),
 			"utf8",
