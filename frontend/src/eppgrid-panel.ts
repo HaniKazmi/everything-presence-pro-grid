@@ -32,6 +32,7 @@ import {
 	GRID_CELL_MM,
 	GRID_COLS,
 	GRID_ROWS,
+	MAX_RANGE,
 	getRawRoomBounds,
 	getRoomBounds,
 	initGridFromRoom,
@@ -809,6 +810,17 @@ export class EPPGridPanel extends LitElement {
 			this._targetAutoDistance ? this._autoDetectionRange() : 0,
 			this._targetMaxDistance,
 		);
+	}
+
+	/**
+	 * Max range for the editor grid.  When auto-distance is on the firmware
+	 * is widened to MAX_RANGE during editing (_pushWidenedDistanceOverride),
+	 * so the FOV visualisation must match.  When manual, use the user's value.
+	 */
+	private _editorMaxRangeMm(): number {
+		return this._targetAutoDistance
+			? MAX_RANGE
+			: this._targetMaxDistance * 1000;
 	}
 
 	/** Compute room dimensions and furthest point from sensor based on grid */
@@ -1910,7 +1922,7 @@ export class EPPGridPanel extends LitElement {
                 .heatmapColors=${this._showHitCounts ? this._computeHeatmapColors() : null}
                 .localize=${this._localize}
                 .maxGridPx=${480}
-                .maxRangeMm=${computeMaxRangeMm(this._targetAutoDistance, this._autoDetectionRange(), this._targetMaxDistance)}
+                .maxRangeMm=${this._editorMaxRangeMm()}
                 .frozenBounds=${this._frozenBounds}
                 @cell-paint=${(e: CustomEvent) => {
 									const { index, action } = e.detail;
