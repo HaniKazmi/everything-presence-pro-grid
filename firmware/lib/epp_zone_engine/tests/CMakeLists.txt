@@ -41,7 +41,6 @@ add_executable(epp_zone_config_parser_tests
 )
 target_link_libraries(epp_zone_config_parser_tests PRIVATE epp_zone_engine doctest::doctest)
 target_include_directories(epp_zone_config_parser_tests PRIVATE
-    ${CMAKE_CURRENT_SOURCE_DIR}/../../../components/epp
     ${arduinojson_SOURCE_DIR}/src
 )
 

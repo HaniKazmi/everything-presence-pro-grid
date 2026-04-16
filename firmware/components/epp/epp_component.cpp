@@ -520,7 +520,12 @@ void EPPComponent::restore_from_nvs_() {
   size_t str_len = 0;
   if (nvs_get_str(handle, "zones", nullptr, &str_len) == ESP_OK && str_len > 1) {
     std::string zones_str(str_len - 1, '\0');  // str_len includes null terminator
-    nvs_get_str(handle, "zones", &zones_str[0], &str_len);
+    esp_err_t err = nvs_get_str(handle, "zones", &zones_str[0], &str_len);
+    if (err != ESP_OK) {
+      ESP_LOGW(TAG, "Failed to read zones from NVS: %s", esp_err_to_name(err));
+      nvs_close(handle);
+      return;
+    }
     nvs_close(handle);  // Close before calling set_zones (which re-opens for save)
     // Parse and apply but don't re-save — call the shared parsing helper.
     JsonDocument doc;
