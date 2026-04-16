@@ -1,6 +1,6 @@
 #pragma once
 
-#include "epp_tumbling_window.h"  // TargetInput, WindowOutput, TargetWindow, compute_median
+#include "epp_window.h"  // TargetInput, WindowOutput, TargetWindow
 
 namespace epp {
 

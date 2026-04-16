@@ -7,8 +7,7 @@ namespace epp {
 
 namespace {
 
-// compute_median from epp_tumbling_window.h uses RAW_FPS+2 buffer.
-// RollingWindow can hold up to 16 entries, so we need a larger buffer here.
+// RollingWindow can hold up to 16 entries; size the stack buffer accordingly.
 static constexpr int ROLLING_MAX_FRAMES = 16;
 
 static float rolling_median(const float* data, int count) {

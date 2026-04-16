@@ -12,7 +12,6 @@ endif()
 # Library
 add_library(epp_zone_engine
     src/epp_grid.cpp
-    src/epp_tumbling_window.cpp
     src/epp_rolling_window.cpp
     src/epp_zone_engine.cpp
     src/epp_calibration.cpp
@@ -27,13 +26,6 @@ FetchContent_Declare(
     GIT_TAG v3.11.3
 )
 FetchContent_MakeAvailable(json)
-
-# Replay tool (host binary, not for ESP32)
-option(EPP_BUILD_TOOLS "Build host tools" ON)
-if(EPP_BUILD_TOOLS)
-    add_executable(replay tools/replay.cpp)
-    target_link_libraries(replay PRIVATE epp_zone_engine nlohmann_json::nlohmann_json)
-endif()
 
 # Tests
 option(EPP_BUILD_TESTS "Build tests" ON)

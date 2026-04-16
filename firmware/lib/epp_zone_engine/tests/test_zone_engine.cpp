@@ -1,7 +1,7 @@
 #define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
 #include <doctest/doctest.h>
 #include "epp_grid.h"
-#include "epp_tumbling_window.h"
+#include "epp_window.h"
 #include "epp_zone_engine.h"
 
 using namespace epp;

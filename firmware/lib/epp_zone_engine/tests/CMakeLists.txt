@@ -8,11 +8,6 @@ add_executable(epp_calibration_tests
 )
 target_link_libraries(epp_calibration_tests PRIVATE epp_zone_engine doctest::doctest)
 
-add_executable(epp_tumbling_window_tests
-    test_tumbling_window.cpp
-)
-target_link_libraries(epp_tumbling_window_tests PRIVATE epp_zone_engine doctest::doctest)
-
 add_executable(epp_zone_engine_tests
     test_zone_engine.cpp
 )
@@ -42,7 +37,6 @@ target_link_libraries(epp_zone_engine_logging_tests PRIVATE epp_zone_engine doct
 include(${doctest_SOURCE_DIR}/scripts/cmake/doctest.cmake)
 doctest_discover_tests(epp_tests)
 doctest_discover_tests(epp_calibration_tests)
-doctest_discover_tests(epp_tumbling_window_tests)
 doctest_discover_tests(epp_zone_engine_tests)
 doctest_discover_tests(epp_parity_tests)
 doctest_discover_tests(epp_rolling_window_tests)
