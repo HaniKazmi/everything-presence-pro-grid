@@ -750,10 +750,10 @@ export class EPPGridPanel extends LitElement {
 		this._pushWidenedDistanceOverride();
 	}
 
-	// -- Template management (localStorage) --
+	// -- Template management (backend WS API) --
 
 	private _getTemplates() {
-		return this._gridCtrl.getTemplates();
+		return this._gridCtrl.templates;
 	}
 
 	private _saveTemplate(): void {

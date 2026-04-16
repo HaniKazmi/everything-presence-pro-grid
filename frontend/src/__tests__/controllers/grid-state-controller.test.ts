@@ -49,6 +49,9 @@ function mockHost(overrides: Record<string, any> = {}) {
 		_view: "edit",
 		_saving: false,
 		shadowRoot: null,
+		hass: {
+			callWS: vi.fn().mockResolvedValue({}),
+		},
 		_getVisibleRoomBounds() {
 			return getRoomBounds(this._grid);
 		},
@@ -339,13 +342,55 @@ describe("GridStateController", () => {
 	});
 
 	// =========================================================================
-	// saveTemplate() / loadTemplate() / deleteTemplate()
+	// fetchTemplates() / saveTemplate() / loadTemplate() / deleteTemplate()
 	// =========================================================================
+
+	describe("fetchTemplates()", () => {
+		it("fetches templates from backend and populates cache", async () => {
+			host.hass.callWS.mockResolvedValueOnce({
+				templates: {
+					"Living Room": {
+						grid: [0, 0, CELL_ROOM_BIT],
+						zones: [{ name: "Zone 1", color: ZONE_COLORS[0], type: "normal" }],
+						roomWidth: 3000,
+						roomDepth: 4000,
+					},
+					Kitchen: {
+						grid: [CELL_ROOM_BIT],
+						zones: [],
+						roomWidth: 2000,
+						roomDepth: 2500,
+					},
+				},
+			});
+			await ctrl.fetchTemplates();
+			expect(host.hass.callWS).toHaveBeenCalledWith({
+				type: "eppgrid/list_templates",
+			});
+			expect(ctrl.templates).toHaveLength(2);
+			expect(ctrl.templates[0].name).toBe("Living Room");
+			expect(ctrl.templates[0].roomWidth).toBe(3000);
+			expect(ctrl.templates[1].name).toBe("Kitchen");
+		});
+
+		it("sets empty array when backend returns no templates", async () => {
+			host.hass.callWS.mockResolvedValueOnce({ templates: {} });
+			await ctrl.fetchTemplates();
+			expect(ctrl.templates).toEqual([]);
+		});
+
+		it("sets empty array on WS error", async () => {
+			host.hass.callWS.mockRejectedValueOnce(new Error("WS fail"));
+			await ctrl.fetchTemplates();
+			expect(ctrl.templates).toEqual([]);
+		});
+	});
+
 	describe("saveTemplate()", () => {
 		beforeEach(() => {
 			host._templateName = "My Template";
 			host._grid = new Uint8Array(GRID_CELL_COUNT);
-			host._grid[5] = CELL_ROOM_BIT; // mark one inside cell
+			host._grid[5] = CELL_ROOM_BIT;
 			host._zoneConfigs = [
 				{ name: "Zone 1", color: ZONE_COLORS[0], type: "normal" },
 				...Array(MAX_ZONES - 1).fill(null),
@@ -353,81 +398,63 @@ describe("GridStateController", () => {
 			host._roomWidth = 3000;
 			host._roomDepth = 4000;
 			host._furniture = [];
+			// Mock list_templates response for the refresh after save
+			host.hass.callWS.mockResolvedValue({ templates: {} });
 		});
 
-		it("saves template data to localStorage", () => {
-			ctrl.saveTemplate();
-			const stored = JSON.parse(
-				localStorage.getItem("epp_layout_templates") || "[]",
+		it("calls save_template WS with name and template data", async () => {
+			await ctrl.saveTemplate();
+			const calls = host.hass.callWS.mock.calls;
+			const saveCall = calls.find(
+				(c: any[]) => c[0].type === "eppgrid/save_template",
 			);
-			expect(stored).toHaveLength(1);
-			expect(stored[0].name).toBe("My Template");
+			expect(saveCall).toBeDefined();
+			expect(saveCall![0].name).toBe("My Template");
+			expect(saveCall![0].template.roomWidth).toBe(3000);
+			expect(saveCall![0].template.roomDepth).toBe(4000);
+			expect(saveCall![0].template.grid[5]).toBe(CELL_ROOM_BIT);
 		});
 
-		it("stores grid bytes, zone configs, and room dimensions", () => {
-			ctrl.saveTemplate();
-			const stored = JSON.parse(
-				localStorage.getItem("epp_layout_templates") || "[]",
-			);
-			const tmpl = stored[0];
-			expect(tmpl.grid[5]).toBe(CELL_ROOM_BIT);
-			expect(tmpl.roomWidth).toBe(3000);
-			expect(tmpl.roomDepth).toBe(4000);
-			expect(tmpl.zones[0].name).toBe("Zone 1");
-		});
-
-		it("clears _templateName and hides the save dialog", () => {
+		it("clears _templateName and hides the save dialog", async () => {
 			host._showTemplateSave = true;
-			ctrl.saveTemplate();
+			await ctrl.saveTemplate();
 			expect(host._templateName).toBe("");
 			expect(host._showTemplateSave).toBe(false);
 		});
 
-		it("overwrites an existing template with the same name", () => {
-			ctrl.saveTemplate();
-			host._templateName = "My Template";
-			host._roomWidth = 5000;
-			ctrl.saveTemplate();
-			const stored = JSON.parse(
-				localStorage.getItem("epp_layout_templates") || "[]",
-			);
-			expect(stored).toHaveLength(1);
-			expect(stored[0].roomWidth).toBe(5000);
-		});
-
-		it("does nothing when template name is blank", () => {
+		it("does nothing when template name is blank", async () => {
 			host._templateName = "   ";
-			ctrl.saveTemplate();
-			const stored = JSON.parse(
-				localStorage.getItem("epp_layout_templates") || "[]",
-			);
-			expect(stored).toHaveLength(0);
+			await ctrl.saveTemplate();
+			expect(host.hass.callWS).not.toHaveBeenCalled();
 		});
 
-		it("appends a second template with a different name", () => {
-			ctrl.saveTemplate();
-			host._templateName = "Other Template";
-			ctrl.saveTemplate();
-			const stored = JSON.parse(
-				localStorage.getItem("epp_layout_templates") || "[]",
+		it("refreshes cache after saving (calls list_templates)", async () => {
+			await ctrl.saveTemplate();
+			const listCalls = host.hass.callWS.mock.calls.filter(
+				(c: any[]) => c[0].type === "eppgrid/list_templates",
 			);
-			expect(stored).toHaveLength(2);
+			expect(listCalls.length).toBeGreaterThanOrEqual(1);
 		});
 	});
 
 	describe("loadTemplate()", () => {
-		const TEMPLATE = {
-			name: "Loaded",
+		const TEMPLATE_DATA = {
 			grid: Array.from({ length: GRID_CELL_COUNT }, (_, i) =>
 				i === 3 ? CELL_ROOM_BIT : 0,
 			),
-			zones: [{ name: "Zone 1", color: ZONE_COLORS[0], type: "normal" }],
+			zones: [
+				{
+					name: "Zone 1",
+					color: ZONE_COLORS[0],
+					type: "normal" as const,
+				},
+			],
 			roomWidth: 2400,
 			roomDepth: 3600,
 			furniture: [
 				{
 					id: "f_x",
-					type: "icon",
+					type: "icon" as const,
 					icon: "mdi:sofa",
 					label: "sofa",
 					x: 100,
@@ -441,10 +468,11 @@ describe("GridStateController", () => {
 		};
 
 		beforeEach(() => {
-			localStorage.setItem("epp_layout_templates", JSON.stringify([TEMPLATE]));
+			// Pre-populate the templates cache
+			ctrl.templates = [{ name: "Loaded", ...TEMPLATE_DATA }];
 		});
 
-		it("restores grid, room dimensions, zones, and furniture", () => {
+		it("restores grid, room dimensions, zones, and furniture from cache", () => {
 			ctrl.loadTemplate("Loaded");
 			expect(host._roomWidth).toBe(2400);
 			expect(host._roomDepth).toBe(3600);
@@ -457,7 +485,6 @@ describe("GridStateController", () => {
 		it("pads zoneConfigs to MAX_ZONES slots", () => {
 			ctrl.loadTemplate("Loaded");
 			expect(host._zoneConfigs).toHaveLength(MAX_ZONES);
-			// Slots beyond the saved template should be null
 			for (let i = 1; i < MAX_ZONES; i++) {
 				expect(host._zoneConfigs[i]).toBeNull();
 			}
@@ -475,11 +502,8 @@ describe("GridStateController", () => {
 		});
 
 		it("handles templates without furniture field", () => {
-			const tmplNoFurniture = { ...TEMPLATE, furniture: undefined };
-			localStorage.setItem(
-				"epp_layout_templates",
-				JSON.stringify([tmplNoFurniture]),
-			);
+			const { furniture: _, ...noFurniture } = TEMPLATE_DATA;
+			ctrl.templates = [{ name: "Loaded", ...noFurniture } as any];
 			ctrl.loadTemplate("Loaded");
 			expect(host._furniture).toEqual([]);
 		});
@@ -487,39 +511,27 @@ describe("GridStateController", () => {
 
 	describe("deleteTemplate()", () => {
 		beforeEach(() => {
-			localStorage.setItem(
-				"epp_layout_templates",
-				JSON.stringify([
-					{ name: "Alpha", grid: [], zones: [], roomWidth: 0, roomDepth: 0 },
-					{ name: "Beta", grid: [], zones: [], roomWidth: 0, roomDepth: 0 },
-				]),
-			);
+			// Mock list_templates response for the refresh after delete
+			host.hass.callWS.mockResolvedValue({ templates: {} });
 		});
 
-		it("removes the named template from localStorage", () => {
-			ctrl.deleteTemplate("Alpha");
-			const stored = JSON.parse(
-				localStorage.getItem("epp_layout_templates") || "[]",
+		it("calls delete_template WS and refreshes cache", async () => {
+			await ctrl.deleteTemplate("Alpha");
+			const deleteCall = host.hass.callWS.mock.calls.find(
+				(c: any[]) => c[0].type === "eppgrid/delete_template",
 			);
-			expect(stored.map((t: any) => t.name)).not.toContain("Alpha");
+			expect(deleteCall).toBeDefined();
+			expect(deleteCall![0].name).toBe("Alpha");
+			// Should also refresh
+			const listCalls = host.hass.callWS.mock.calls.filter(
+				(c: any[]) => c[0].type === "eppgrid/list_templates",
+			);
+			expect(listCalls.length).toBeGreaterThanOrEqual(1);
 		});
 
-		it("leaves other templates intact", () => {
-			ctrl.deleteTemplate("Alpha");
-			const stored = JSON.parse(
-				localStorage.getItem("epp_layout_templates") || "[]",
-			);
-			expect(stored).toHaveLength(1);
-			expect(stored[0].name).toBe("Beta");
-		});
-
-		it("calls requestUpdate", () => {
-			ctrl.deleteTemplate("Alpha");
+		it("calls requestUpdate after delete", async () => {
+			await ctrl.deleteTemplate("Alpha");
 			expect(host.requestUpdate).toHaveBeenCalled();
-		});
-
-		it("does not throw when the name does not exist", () => {
-			expect(() => ctrl.deleteTemplate("Nonexistent")).not.toThrow();
 		});
 	});
 

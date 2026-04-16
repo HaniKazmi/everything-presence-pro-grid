@@ -412,32 +412,39 @@ export class GridStateController implements ReactiveController {
 	}
 
 	// =====================================================================
-	// Template management (localStorage)
+	// Template management (backend WS API)
 	// =====================================================================
 
-	getTemplates(): {
+	templates: {
 		name: string;
 		grid: number[];
 		zones: (ZoneConfig | null)[];
 		roomWidth: number;
 		roomDepth: number;
 		furniture?: FurnitureItem[];
-	}[] {
+	}[] = [];
+
+	async fetchTemplates(): Promise<void> {
 		try {
-			return JSON.parse(localStorage.getItem("epp_layout_templates") || "[]");
+			const resp = await (this.host as any).hass.callWS({
+				type: "eppgrid/list_templates",
+			});
+			const dict = resp.templates || {};
+			this.templates = Object.entries(dict).map(
+				([name, data]: [string, any]) => ({
+					name,
+					...data,
+				}),
+			);
 		} catch {
-			return [];
+			this.templates = [];
 		}
 	}
 
-	saveTemplate(): void {
+	async saveTemplate(): Promise<void> {
 		const name = (this.host._templateName as string).trim();
 		if (!name) return;
-		const templates = this.getTemplates();
-		// Overwrite if same name exists
-		const existing = templates.findIndex((t) => t.name === name);
-		const entry = {
-			name,
+		const template = {
 			grid: Array.from(this.host._grid as Uint8Array),
 			zones: (this.host._zoneConfigs as (ZoneConfig | null)[]).map((z) =>
 				z !== null ? { ...z } : null,
@@ -448,22 +455,20 @@ export class GridStateController implements ReactiveController {
 				...f,
 			})),
 		};
-		if (existing >= 0) {
-			templates[existing] = entry;
-		} else {
-			templates.push(entry);
-		}
-		localStorage.setItem("epp_layout_templates", JSON.stringify(templates));
+		await (this.host as any).hass.callWS({
+			type: "eppgrid/save_template",
+			name,
+			template,
+		});
 		this.host._showTemplateSave = false;
 		this.host._templateName = "";
+		await this.fetchTemplates();
 	}
 
 	loadTemplate(name: string): void {
-		const templates = this.getTemplates();
-		const tmpl = templates.find((t) => t.name === name);
+		const tmpl = this.templates.find((t) => t.name === name);
 		if (!tmpl) return;
 		this.host._grid = new Uint8Array(tmpl.grid);
-		// Pad to 7 slots for backwards compat with old packed templates
 		const zones = tmpl.zones || [];
 		this.host._zoneConfigs = Array.from(
 			{ length: MAX_ZONES },
@@ -477,9 +482,12 @@ export class GridStateController implements ReactiveController {
 		this.host._showTemplateLoad = false;
 	}
 
-	deleteTemplate(name: string): void {
-		const templates = this.getTemplates().filter((t) => t.name !== name);
-		localStorage.setItem("epp_layout_templates", JSON.stringify(templates));
+	async deleteTemplate(name: string): Promise<void> {
+		await (this.host as any).hass.callWS({
+			type: "eppgrid/delete_template",
+			name,
+		});
+		await this.fetchTemplates();
 		this.host.requestUpdate();
 	}
 
