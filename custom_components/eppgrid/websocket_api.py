@@ -87,7 +87,6 @@ def async_register_websocket_commands(hass: HomeAssistant, manager: Any) -> None
     websocket_api.async_register_command(hass, websocket_list_templates)
     websocket_api.async_register_command(hass, websocket_save_template)
     websocket_api.async_register_command(hass, websocket_delete_template)
-    websocket_api.async_register_command(hass, websocket_apply_template)
     websocket_api.async_register_command(hass, websocket_subscribe_device)
     websocket_api.async_register_command(hass, websocket_subscribe_grid_targets)
     websocket_api.async_register_command(hass, websocket_subscribe_raw_targets)
@@ -409,40 +408,6 @@ async def websocket_delete_template(
         _send_not_loaded(connection, msg["id"])
         return
     manager._store.templates.pop(msg["name"], None)
-    await manager._store.async_save()
-    connection.send_result(msg["id"])
-
-
-@websocket_api.websocket_command(
-    {
-        vol.Required("type"): "eppgrid/apply_template",
-        vol.Required("mac"): str,
-        vol.Required("template_name"): str,
-    }
-)
-@websocket_api.async_response
-async def websocket_apply_template(
-    hass: HomeAssistant,
-    connection: websocket_api.ActiveConnection,
-    msg: dict[str, Any],
-) -> None:
-    """Apply a template to a device."""
-    manager = _get_manager(hass)
-    if manager is None:
-        _send_not_loaded(connection, msg["id"])
-        return
-    template = manager._store.templates.get(msg["template_name"])
-    if template is None:
-        connection.send_error(
-            msg["id"],
-            "not_found",
-            "Template not found",
-            translation_domain=DOMAIN,
-            translation_key="template_not_found",
-        )
-        return
-    device_config = manager._store.devices.setdefault(msg["mac"], {})
-    device_config["room_layout"] = dict(template)
     await manager._store.async_save()
     connection.send_result(msg["id"])
 

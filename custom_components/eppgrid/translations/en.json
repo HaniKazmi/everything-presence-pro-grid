@@ -27,7 +27,6 @@
     "device_host_unknown": { "message": "Device host unknown" },
     "connection_failed": { "message": "Failed to connect to device" },
     "no_active_session": { "message": "No active session — call subscribe_device first" },
-    "template_not_found": { "message": "Template not found" },
     "no_firmware_variant": { "message": "No firmware variant for network type: {network}" },
     "ota_unsupported": { "message": "Device does not support OTA update" },
     "build_flags_unavailable": { "message": "Device build flags not yet available" },

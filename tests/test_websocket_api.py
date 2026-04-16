@@ -468,50 +468,11 @@ class TestWebSocketTemplates:
         assert "old" not in mock_dm._store.templates
         mock_dm._store.async_save.assert_awaited()
 
-    async def test_apply_template(self, hass: HomeAssistant, config_entry: MockConfigEntry) -> None:
-        """apply_template copies template to device config."""
-        mock_dm = await setup_integration(hass, config_entry)
-        mock_dm._store.templates["bedroom"] = {"grid_bytes": [1] * 400, "zone_slots": []}
+    async def test_apply_template_command_removed(self) -> None:
+        """eppgrid/apply_template is no longer a valid command."""
+        from custom_components.eppgrid import websocket_api as ws_mod
 
-        from custom_components.eppgrid.websocket_api import websocket_apply_template
-
-        connection = MagicMock()
-        msg = {
-            "id": 9,
-            "type": "eppgrid/apply_template",
-            "mac": "AA:BB:CC:DD:EE:FF",
-            "template_name": "bedroom",
-        }
-
-        await call_async_handler(hass, websocket_apply_template, connection, msg)
-
-        layout = mock_dm._store.devices["AA:BB:CC:DD:EE:FF"]["room_layout"]
-        assert layout["grid_bytes"] == [1] * 400
-        mock_dm._store.async_save.assert_awaited()
-
-    async def test_apply_template_not_found(self, hass: HomeAssistant, config_entry: MockConfigEntry) -> None:
-        """apply_template returns error for unknown template."""
-        await setup_integration(hass, config_entry)
-
-        from custom_components.eppgrid.websocket_api import websocket_apply_template
-
-        connection = MagicMock()
-        msg = {
-            "id": 10,
-            "type": "eppgrid/apply_template",
-            "mac": "AA:BB:CC:DD:EE:FF",
-            "template_name": "nonexistent",
-        }
-
-        await call_async_handler(hass, websocket_apply_template, connection, msg)
-
-        connection.send_error.assert_called_once_with(
-            10,
-            "not_found",
-            "Template not found",
-            translation_domain=DOMAIN,
-            translation_key="template_not_found",
-        )
+        assert not hasattr(ws_mod, "websocket_apply_template")
 
 
 class TestWebSocketSettings:
@@ -1976,7 +1937,6 @@ class TestNotReadyGuards:
             ("websocket_list_templates", {}, False),
             ("websocket_save_template", {"name": "t", "template": {}}, True),
             ("websocket_delete_template", {"name": "t"}, True),
-            ("websocket_apply_template", {"mac": "AA:BB", "template_name": "t"}, True),
             ("websocket_subscribe_device", {"mac": "AA:BB"}, True),
             ("websocket_subscribe_raw_targets", {"mac": "AA:BB"}, True),
             ("websocket_subscribe_grid_targets", {"mac": "AA:BB"}, True),
