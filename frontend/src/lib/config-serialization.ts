@@ -1,5 +1,10 @@
 import type { FurnitureItem } from "./furniture.js";
-import { GRID_CELL_COUNT, initGridFromRoom, MAX_ZONES } from "./grid.js";
+import {
+	GRID_CELL_COUNT,
+	initGridFromRoom,
+	MAX_ZONES,
+	NUM_ZONE_SLOTS,
+} from "./grid.js";
 import type { Zone0Config, ZoneConfig } from "./zone-defaults.js";
 
 /**
@@ -127,23 +132,33 @@ export interface ParsedZoneConfigs {
  * (`{ type, trigger?, renew?, timeout?, handoff_timeout? }`, no name/color);
  * indices 1-7 hold named zones (`ZoneConfig | null`).
  *
+ * Fail-closed at the storage boundary: if the incoming data isn't exactly
+ * length NUM_ZONE_SLOTS or slot 0 isn't an object, return the default shape
+ * rather than risk silently shifting zone indices (e.g. legacy length-7
+ * arrays where slot 0 was a named zone, not zone 0).
+ *
  * @param layout Raw layout object (should contain a `zone_slots` array)
  * @returns Parsed zone 0 config plus MAX_ZONES named zone configs
  */
 export function parseZoneConfigs(layout: any): ParsedZoneConfigs {
-	const slots: any[] = Array.isArray(layout?.zone_slots)
-		? layout.zone_slots
-		: [];
-	const zone0: Zone0Config =
-		slots[0] && typeof slots[0] === "object"
-			? {
-					type: slots[0].type ?? "normal",
-					trigger: slots[0].trigger,
-					renew: slots[0].renew,
-					timeout: slots[0].timeout,
-					handoff_timeout: slots[0].handoff_timeout,
-				}
-			: { type: "normal" };
+	const defaultResult: ParsedZoneConfigs = {
+		zone0: { type: "normal" },
+		zones: Array(MAX_ZONES).fill(null),
+	};
+	const slots = layout?.zone_slots;
+	if (!Array.isArray(slots) || slots.length !== NUM_ZONE_SLOTS) {
+		return defaultResult;
+	}
+	if (!slots[0] || typeof slots[0] !== "object") {
+		return defaultResult;
+	}
+	const zone0: Zone0Config = {
+		type: slots[0].type ?? "normal",
+		trigger: slots[0].trigger,
+		renew: slots[0].renew,
+		timeout: slots[0].timeout,
+		handoff_timeout: slots[0].handoff_timeout,
+	};
 	const zones = Array.from({ length: MAX_ZONES }, (_, i) => {
 		const s = slots[i + 1];
 		return s && typeof s === "object" ? (s as ZoneConfig) : null;

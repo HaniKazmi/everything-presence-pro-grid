@@ -1195,6 +1195,84 @@ class TestPushConfig:
             call_data = mock_client.execute_service.call_args[0][1]
             assert "zones_json" in call_data
 
+    async def test_push_config_skips_zones_on_malformed_length(self, caplog: pytest.LogCaptureFixture) -> None:
+        """Malformed zone_slots (wrong length) skips zone push, logs a warning, other pushes still run."""
+        conn = DeviceConnection("192.168.1.100")
+
+        mock_perspective = MagicMock()
+        mock_perspective.name = "epp_set_perspective"
+        mock_grid = MagicMock()
+        mock_grid.name = "epp_set_grid"
+        mock_zones = MagicMock()
+        mock_zones.name = "epp_set_zones"
+
+        with patch("custom_components.eppgrid.device_manager.APIClient") as mock_cls:
+            mock_client = mock_cls.return_value
+            mock_client.connect = AsyncMock()
+            mock_client.list_entities_services = AsyncMock(return_value=([], [mock_perspective, mock_grid, mock_zones]))
+            mock_client.execute_service = AsyncMock()
+
+            await conn.async_connect()
+            import logging
+
+            with caplog.at_level(logging.WARNING, logger="custom_components.eppgrid.device_manager"):
+                await conn.async_push_config(
+                    {
+                        "calibration": {
+                            "perspective": [1.0] * 8,
+                            "room_width": 3000.0,
+                            "room_depth": 4000.0,
+                        },
+                        "room_layout": {
+                            "grid_bytes": [0] * 100,
+                            # Length-7: malformed, missing zone 0 slot.
+                            "zone_slots": [{"name": "X", "color": "#000", "type": "normal"}] + [None] * 6,
+                        },
+                    }
+                )
+
+            # Warning logged about the malformed slots.
+            assert any("zone_slots" in rec.getMessage().lower() for rec in caplog.records)
+            # Perspective + grid pushed, but NOT zones.
+            call_services = [c[0][0] for c in mock_client.execute_service.await_args_list]
+            assert mock_perspective in call_services
+            assert mock_grid in call_services
+            assert mock_zones not in call_services
+
+    async def test_push_config_skips_zones_on_non_dict_slot_0(self, caplog: pytest.LogCaptureFixture) -> None:
+        """Malformed zone_slots (slot 0 not a dict) skips zone push; grid push still runs."""
+        conn = DeviceConnection("192.168.1.100")
+
+        mock_grid = MagicMock()
+        mock_grid.name = "epp_set_grid"
+        mock_zones = MagicMock()
+        mock_zones.name = "epp_set_zones"
+
+        with patch("custom_components.eppgrid.device_manager.APIClient") as mock_cls:
+            mock_client = mock_cls.return_value
+            mock_client.connect = AsyncMock()
+            mock_client.list_entities_services = AsyncMock(return_value=([], [mock_grid, mock_zones]))
+            mock_client.execute_service = AsyncMock()
+
+            await conn.async_connect()
+            import logging
+
+            with caplog.at_level(logging.WARNING, logger="custom_components.eppgrid.device_manager"):
+                await conn.async_push_config(
+                    {
+                        "calibration": {"room_width": 3000.0},
+                        "room_layout": {
+                            "grid_bytes": [0] * 100,
+                            "zone_slots": [None] * 8,  # slot 0 null = malformed
+                        },
+                    }
+                )
+
+            assert any("zone_slots" in rec.getMessage().lower() for rec in caplog.records)
+            call_services = [c[0][0] for c in mock_client.execute_service.await_args_list]
+            assert mock_grid in call_services
+            assert mock_zones not in call_services
+
     async def test_push_config_settings(self) -> None:
         """push_config reads unified settings key and pushes to 4 firmware actions."""
         conn = DeviceConnection("192.168.1.100")
@@ -2670,6 +2748,81 @@ class TestZoneEntities:
         assert ztc1_entry.name == "Zone Office Target Count"
         # Zone 2 target count should be disabled (unused slot)
         assert ent_reg.async_get(ztc2.entity_id).disabled_by == er.RegistryEntryDisabler.INTEGRATION
+
+    async def test_update_zone_entities_tolerates_malformed_slot(
+        self, hass: HomeAssistant, manager: DeviceManager
+    ) -> None:
+        """Malformed zone slots (missing 'name', non-dict) don't crash entity updates.
+
+        Even if corrupt data ever reaches storage, async_update_zone_entities
+        must use `.get('name')` with a fallback rather than raising KeyError.
+        """
+        dev_reg = dr.async_get(hass)
+        ent_reg = er.async_get(hass)
+
+        esphome_entry = MockConfigEntry(domain="esphome", data={"host": "192.168.1.50"}, title="EPP")
+        esphome_entry.add_to_hass(hass)
+
+        device = dev_reg.async_get_or_create(
+            config_entry_id=esphome_entry.entry_id,
+            connections={("mac", "aa:bb:cc:dd:ee:ff")},
+            name="EPP",
+        )
+
+        # Create zone 1 entities for both presence + target_count
+        zone1_pres = ent_reg.async_get_or_create(
+            "binary_sensor",
+            "esphome",
+            unique_id="AA:BB:CC:DD:EE:FF-binary_sensor-zone_1_presence",
+            config_entry=esphome_entry,
+            device_id=device.id,
+        )
+        zone1_tc = ent_reg.async_get_or_create(
+            "sensor",
+            "esphome",
+            unique_id="AA:BB:CC:DD:EE:FF-sensor-zone_1_target_count",
+            config_entry=esphome_entry,
+            device_id=device.id,
+        )
+        zone2_pres = ent_reg.async_get_or_create(
+            "binary_sensor",
+            "esphome",
+            unique_id="AA:BB:CC:DD:EE:FF-binary_sensor-zone_2_presence",
+            config_entry=esphome_entry,
+            device_id=device.id,
+        )
+
+        manager.devices["AA:BB:CC:DD:EE:FF"] = ManagedDevice(
+            mac="AA:BB:CC:DD:EE:FF", name="EPP", host="192.168.1.50", device_id=device.id
+        )
+        manager._store.devices["AA:BB:CC:DD:EE:FF"] = {"settings": {"zone_presence": True, "zone_target_count": True}}
+
+        # Slot 1 is a dict without 'name'; slot 2 is a non-dict (malformed).
+        zone_slots = [
+            {"type": "normal"},
+            {"color": "#ff0000", "type": "normal"},  # missing 'name'
+            "not a dict",  # non-dict malformed slot
+            None,
+            None,
+            None,
+            None,
+            None,
+        ]
+
+        # Must not raise.
+        await manager.async_update_zone_entities("AA:BB:CC:DD:EE:FF", zone_slots)
+
+        # Slot 1 (dict without name) should still be enabled, with a default fallback name.
+        z1p = ent_reg.async_get(zone1_pres.entity_id)
+        assert z1p.disabled_by is None
+        assert z1p.name  # not empty
+        z1tc = ent_reg.async_get(zone1_tc.entity_id)
+        assert z1tc.disabled_by is None
+        assert z1tc.name
+
+        # Slot 2 ("not a dict") is treated as non-existent → disabled by integration.
+        z2p = ent_reg.async_get(zone2_pres.entity_id)
+        assert z2p.disabled_by == er.RegistryEntryDisabler.INTEGRATION
 
     async def test_update_zone_entities_target_count_disabled_when_setting_off(
         self, hass: HomeAssistant, manager: DeviceManager

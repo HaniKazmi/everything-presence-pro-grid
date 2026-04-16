@@ -27,6 +27,41 @@ except Exception:
 _REGISTERED: set[str] = set()
 
 
+def _validate_zone_slots(value: Any) -> list:
+    """Validate the shape of a `zone_slots` list coming from the frontend.
+
+    Enforces at the websocket boundary (fail-closed) so malformed data never
+    reaches storage / firmware pushes / entity renaming:
+
+    - Must be a list of exactly NUM_ZONE_SLOTS entries.
+    - Slot 0 (zone 0, "rest of room") must be a dict with a `type` key.
+    - Slots 1-7 (named zones) must be `None` OR a dict with required string
+      keys `name`, `color`, and `type`.
+
+    Optional timing fields (trigger / renew / timeout / handoff_timeout) are
+    not enforced here — their values are tolerated by downstream code.
+    """
+    if not isinstance(value, list) or len(value) != NUM_ZONE_SLOTS:
+        raise vol.Invalid(f"zone_slots must be a list of length {NUM_ZONE_SLOTS}")
+    zone0 = value[0]
+    if not isinstance(zone0, dict):
+        raise vol.Invalid("zone_slots[0] (zone 0) must be a dict")
+    if "type" not in zone0:
+        raise vol.Invalid("zone_slots[0] must have 'type'")
+    for i, slot in enumerate(value[1:], start=1):
+        if slot is None:
+            continue
+        if not isinstance(slot, dict):
+            raise vol.Invalid(f"zone_slots[{i}] must be null or a dict")
+        if "name" not in slot or not isinstance(slot["name"], str):
+            raise vol.Invalid(f"zone_slots[{i}] must have string 'name'")
+        if "color" not in slot or not isinstance(slot["color"], str):
+            raise vol.Invalid(f"zone_slots[{i}] must have string 'color'")
+        if "type" not in slot or not isinstance(slot["type"], str):
+            raise vol.Invalid(f"zone_slots[{i}] must have string 'type'")
+    return value
+
+
 def _send_not_loaded(connection: websocket_api.ActiveConnection, msg_id: int) -> None:
     """Send the standard 'Integration not loaded' error via translation key."""
     connection.send_error(
@@ -306,7 +341,7 @@ async def websocket_set_setup(
         vol.Required("type"): "eppgrid/set_room_layout",
         vol.Required("mac"): str,
         vol.Required("grid_bytes"): [int],
-        vol.Required("zone_slots"): vol.All([vol.Any(dict, None)], vol.Length(min=NUM_ZONE_SLOTS, max=NUM_ZONE_SLOTS)),
+        vol.Required("zone_slots"): _validate_zone_slots,
         vol.Optional("furniture", default=[]): list,
     }
 )

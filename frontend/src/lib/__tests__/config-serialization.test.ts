@@ -199,7 +199,7 @@ describe("parseZoneConfigs", () => {
 	it("parses named zones from zone_slots indices 1-7", () => {
 		const layout = {
 			zone_slots: [
-				null,
+				{ type: "normal" },
 				{
 					name: "Kitchen",
 					color: "#FF0000",
@@ -209,6 +209,12 @@ describe("parseZoneConfigs", () => {
 					timeout: 5,
 					handoff_timeout: 1,
 				},
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
 			],
 		};
 		const result = parseZoneConfigs(layout);
@@ -236,8 +242,72 @@ describe("parseZoneConfigs", () => {
 		}
 	});
 
-	it("defaults zone0.type to 'normal' when slot 0 has no type", () => {
-		const layout = { zone_slots: [{}] };
+	it("fails closed for length-7 zone_slots (legacy data)", () => {
+		// Old storage used length 7 (named zones only); fail-close so the
+		// indices never silently shift into the zone 0 slot. Without
+		// fail-close, slots[0] (a named zone) would be read as zone 0.
+		const layout = {
+			zone_slots: [
+				{ name: "Kitchen", color: "#FF0000", type: "custom_type" },
+				{ name: "Hallway", color: "#00FF00", type: "hallway" },
+				null,
+				null,
+				null,
+				null,
+				null,
+			],
+		};
+		const result = parseZoneConfigs(layout);
+		// Default-shape zone 0, NOT the legacy slot 0 leaking in.
+		expect(result.zone0).toEqual({ type: "normal" });
+		expect(result.zones).toHaveLength(MAX_ZONES);
+		for (const z of result.zones) {
+			expect(z).toBeNull();
+		}
+	});
+
+	it("fails closed when slot 0 is null", () => {
+		const layout = {
+			zone_slots: [null, null, null, null, null, null, null, null],
+		};
+		const result = parseZoneConfigs(layout);
+		expect(result.zone0).toEqual({ type: "normal" });
+		for (const z of result.zones) {
+			expect(z).toBeNull();
+		}
+	});
+
+	it("fails closed when slot 0 is not an object", () => {
+		const layout = {
+			zone_slots: ["garbage", null, null, null, null, null, null, null],
+		};
+		const result = parseZoneConfigs(layout);
+		expect(result.zone0).toEqual({ type: "normal" });
+		for (const z of result.zones) {
+			expect(z).toBeNull();
+		}
+	});
+
+	it("fails closed when zone_slots is missing entirely", () => {
+		const result = parseZoneConfigs({ grid_bytes: [0, 0, 0] });
+		expect(result.zone0).toEqual({ type: "normal" });
+		for (const z of result.zones) {
+			expect(z).toBeNull();
+		}
+	});
+
+	it("fails closed when zone_slots is not an array", () => {
+		const result = parseZoneConfigs({ zone_slots: "not an array" });
+		expect(result.zone0).toEqual({ type: "normal" });
+		for (const z of result.zones) {
+			expect(z).toBeNull();
+		}
+	});
+
+	it("defaults zone0.type to 'normal' when slot 0 is valid but has no type", () => {
+		const layout = {
+			zone_slots: [{}, null, null, null, null, null, null, null],
+		};
 		const result = parseZoneConfigs(layout);
 		expect(result.zone0.type).toBe("normal");
 	});
@@ -402,7 +472,16 @@ describe("parseConfig", () => {
 			room_layout: {
 				furniture: [{ icon: "mdi:table", label: "Table" }],
 				grid_bytes: new Array(GRID_CELL_COUNT).fill(0),
-				zone_slots: [{ type: "rest" }, { name: "Zone A" }],
+				zone_slots: [
+					{ type: "rest" },
+					{ name: "Zone A", color: "#ff0000", type: "normal" },
+					null,
+					null,
+					null,
+					null,
+					null,
+					null,
+				],
 			},
 			settings: {
 				temperature_offset: 5,

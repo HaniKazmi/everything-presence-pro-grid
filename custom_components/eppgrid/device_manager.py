@@ -30,6 +30,7 @@ from .const import EPP_MODEL
 from .const import GRID_CELL_SIZE_MM
 from .const import GRID_COLS
 from .const import MAX_ZONES
+from .const import NUM_ZONE_SLOTS
 from .storage import EPPGridStore
 
 _LOGGER = logging.getLogger(__name__)
@@ -316,19 +317,35 @@ class DeviceConnection:
 
         zone_slots = layout.get("zone_slots")
         if zone_slots is not None:
-            service = self._services.get("epp_set_zones")
-            if service:
-                # Count named zones (1-7); zone 0 is always present at index 0 and
-                # isn't a "named" zone for logging purposes.
-                named = [s for s in zone_slots[1:] if s is not None]
-                zone_data = {"zone_slots": zone_slots}
-                await self._client.execute_service(
-                    service,
-                    {
-                        "zones_json": json.dumps(zone_data),
-                    },
+            # Fail-closed on malformed shape: length MUST be NUM_ZONE_SLOTS and
+            # slot 0 must be a dict. Log a warning and skip the zone push so
+            # other config pushes (perspective/grid/settings) still run.
+            if (
+                not isinstance(zone_slots, list)
+                or len(zone_slots) != NUM_ZONE_SLOTS
+                or not isinstance(zone_slots[0], dict)
+            ):
+                length = len(zone_slots) if isinstance(zone_slots, list) else "N/A"
+                slot0_type = type(zone_slots[0]).__name__ if isinstance(zone_slots, list) and zone_slots else "N/A"
+                _LOGGER.warning(
+                    "Skipping zone push — malformed zone_slots (length %s, slot 0 type %s)",
+                    length,
+                    slot0_type,
                 )
-                _LOGGER.info("Pushed %d zones to %s", len(named), self._host)
+            else:
+                service = self._services.get("epp_set_zones")
+                if service:
+                    # Count named zones (1-7); zone 0 is always present at index 0 and
+                    # isn't a "named" zone for logging purposes.
+                    named = [s for s in zone_slots[1:] if s is not None]
+                    zone_data = {"zone_slots": zone_slots}
+                    await self._client.execute_service(
+                        service,
+                        {
+                            "zones_json": json.dumps(zone_data),
+                        },
+                    )
+                    _LOGGER.info("Pushed %d zones to %s", len(named), self._host)
 
         # Push device settings from unified settings key
         settings = config.get("settings")
@@ -1039,10 +1056,18 @@ class DeviceManager:
         zone_target_count = settings.get("zone_target_count", False)
 
         def _zone_exists(i: int) -> bool:
-            """Check if zone slot i exists (zone 0 = room, always exists)."""
+            """Check if zone slot i exists (zone 0 = room, always exists).
+
+            Named slots count as existing only if they are dicts — malformed
+            non-dict slots (should be unreachable thanks to the websocket
+            validator, but guard regardless) are treated as non-existent.
+            """
             if i == 0:
                 return True
-            return i < len(zone_slots) and zone_slots[i] is not None
+            if i >= len(zone_slots):
+                return False
+            slot = zone_slots[i]
+            return isinstance(slot, dict)
 
         for i in range(MAX_ZONES + 1):  # zones 0-7
             exists = _zone_exists(i)
@@ -1064,10 +1089,12 @@ class DeviceManager:
                     if entry_obj and entry_obj.disabled_by == er.RegistryEntryDisabler.USER:
                         pass  # Don't override user-disabled entities
                     else:
+                        # .get() with fallback — _resolve_zone_name tolerates zone_name=None.
+                        zone_name = zone.get("name") if isinstance(zone, dict) else None
                         ent_reg.async_update_entity(
                             entity_id,
                             disabled_by=None,
-                            name=_resolve_zone_name(language, index=i, zone_name=zone["name"], target_count=False),
+                            name=_resolve_zone_name(language, index=i, zone_name=zone_name, target_count=False),
                         )
 
             # Zone target count entity
@@ -1085,10 +1112,11 @@ class DeviceManager:
                         )
                     else:
                         zone = zone_slots[i]
+                        zone_name = zone.get("name") if isinstance(zone, dict) else None
                         ent_reg.async_update_entity(
                             tc_entity_id,
                             disabled_by=None,
-                            name=_resolve_zone_name(language, index=i, zone_name=zone["name"], target_count=True),
+                            name=_resolve_zone_name(language, index=i, zone_name=zone_name, target_count=True),
                         )
                 else:
                     ent_reg.async_update_entity(tc_entity_id, disabled_by=er.RegistryEntryDisabler.INTEGRATION)

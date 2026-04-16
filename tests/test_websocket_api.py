@@ -415,6 +415,142 @@ class TestWebSocketSetRoomLayout:
         mock_dm.async_update_zone_entities.assert_awaited_with("AA:BB:CC:DD:EE:FF", zone_slots)
 
 
+class TestZoneSlotsValidator:
+    """Tests for the _validate_zone_slots voluptuous validator used by set_room_layout."""
+
+    def _valid_slots(self) -> list:
+        """Return a minimal valid zone_slots list."""
+        return [{"type": "normal"}] + [None] * 7
+
+    def test_accepts_valid_zone_slots(self) -> None:
+        """Valid slots: zone 0 dict with type, slots 1-7 null or named dict."""
+        from custom_components.eppgrid.websocket_api import _validate_zone_slots
+
+        valid = self._valid_slots()
+        assert _validate_zone_slots(valid) == valid
+
+        valid_named = [
+            {"type": "normal", "trigger": 5, "renew": 3, "timeout": 10.0, "handoff_timeout": 3.0},
+            {"name": "Office", "color": "#ff0000", "type": "normal"},
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+        ]
+        assert _validate_zone_slots(valid_named) == valid_named
+
+    def test_rejects_wrong_length(self) -> None:
+        """Lists not of length NUM_ZONE_SLOTS are rejected."""
+        import voluptuous as vol
+
+        from custom_components.eppgrid.websocket_api import _validate_zone_slots
+
+        with pytest.raises(vol.Invalid):
+            _validate_zone_slots([{"type": "normal"}] + [None] * 6)  # length 7
+        with pytest.raises(vol.Invalid):
+            _validate_zone_slots([{"type": "normal"}] + [None] * 8)  # length 9
+        with pytest.raises(vol.Invalid):
+            _validate_zone_slots([])
+
+    def test_rejects_non_list(self) -> None:
+        """Non-list inputs are rejected."""
+        import voluptuous as vol
+
+        from custom_components.eppgrid.websocket_api import _validate_zone_slots
+
+        with pytest.raises(vol.Invalid):
+            _validate_zone_slots("not a list")
+        with pytest.raises(vol.Invalid):
+            _validate_zone_slots({"type": "normal"})
+        with pytest.raises(vol.Invalid):
+            _validate_zone_slots(None)
+
+    def test_rejects_none_at_slot_0(self) -> None:
+        """Slot 0 must not be None."""
+        import voluptuous as vol
+
+        from custom_components.eppgrid.websocket_api import _validate_zone_slots
+
+        slots = [None] * 8
+        with pytest.raises(vol.Invalid):
+            _validate_zone_slots(slots)
+
+    def test_rejects_non_dict_at_slot_0(self) -> None:
+        """Slot 0 must be a dict."""
+        import voluptuous as vol
+
+        from custom_components.eppgrid.websocket_api import _validate_zone_slots
+
+        slots = ["not a dict"] + [None] * 7
+        with pytest.raises(vol.Invalid):
+            _validate_zone_slots(slots)
+
+    def test_rejects_slot_0_without_type(self) -> None:
+        """Slot 0 must have a 'type' key."""
+        import voluptuous as vol
+
+        from custom_components.eppgrid.websocket_api import _validate_zone_slots
+
+        slots = [{}] + [None] * 7
+        with pytest.raises(vol.Invalid):
+            _validate_zone_slots(slots)
+
+    def test_rejects_non_dict_at_named_slot(self) -> None:
+        """Named slots (1-7) must be null or a dict."""
+        import voluptuous as vol
+
+        from custom_components.eppgrid.websocket_api import _validate_zone_slots
+
+        slots = [{"type": "normal"}, "not a dict"] + [None] * 6
+        with pytest.raises(vol.Invalid):
+            _validate_zone_slots(slots)
+
+    def test_rejects_named_slot_without_name(self) -> None:
+        """Named slots must have a string 'name'."""
+        import voluptuous as vol
+
+        from custom_components.eppgrid.websocket_api import _validate_zone_slots
+
+        slots = [{"type": "normal"}, {"color": "#ff0000", "type": "normal"}] + [None] * 6
+        with pytest.raises(vol.Invalid):
+            _validate_zone_slots(slots)
+
+    def test_rejects_named_slot_without_color(self) -> None:
+        """Named slots must have a string 'color'."""
+        import voluptuous as vol
+
+        from custom_components.eppgrid.websocket_api import _validate_zone_slots
+
+        slots = [{"type": "normal"}, {"name": "Office", "type": "normal"}] + [None] * 6
+        with pytest.raises(vol.Invalid):
+            _validate_zone_slots(slots)
+
+    def test_rejects_named_slot_without_type(self) -> None:
+        """Named slots must have a string 'type'."""
+        import voluptuous as vol
+
+        from custom_components.eppgrid.websocket_api import _validate_zone_slots
+
+        slots = [{"type": "normal"}, {"name": "Office", "color": "#ff0000"}] + [None] * 6
+        with pytest.raises(vol.Invalid):
+            _validate_zone_slots(slots)
+
+    def test_rejects_named_slot_with_non_string_name(self) -> None:
+        """Named slot 'name' must be a string."""
+        import voluptuous as vol
+
+        from custom_components.eppgrid.websocket_api import _validate_zone_slots
+
+        slots = [
+            {"type": "normal"},
+            {"name": 123, "color": "#ff0000", "type": "normal"},
+        ] + [None] * 6
+        with pytest.raises(vol.Invalid):
+            _validate_zone_slots(slots)
+
+
 class TestWebSocketTemplates:
     """Tests for template CRUD commands."""
 
