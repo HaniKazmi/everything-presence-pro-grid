@@ -280,15 +280,12 @@ export function getGridRoomMetrics(
 	const roomCols = Math.ceil(roomWidth / GRID_CELL_MM);
 	const startCol = Math.floor((GRID_COLS - roomCols) / 2);
 
-	// Compute bounds and furthest distance in a single pass
+	// Compute bounds first, then compute furthest distance in a second pass.
 	let minCol = GRID_COLS;
 	let maxCol = 0;
 	let minRow = GRID_ROWS;
 	let maxRow = 0;
 
-	const sensorPos = getSensorRoomPosition(perspective);
-	let sensorMmX = 0;
-	let sensorMmY = 0;
 	let maxDistSq = 0;
 
 	// First pass: determine bounds (needed for fallback sensor position)
@@ -313,8 +310,10 @@ export function getGridRoomMetrics(
 	const widthMm = (maxCol - minCol + 1) * GRID_CELL_MM;
 	const depthMm = (maxRow - minRow + 1) * GRID_CELL_MM;
 
-	sensorMmX = sensorPos ? sensorPos.x : widthMm / 2;
-	sensorMmY = sensorPos ? sensorPos.y : 0;
+	// Sensor position: prefer fov (when provided), then perspective, then fallback
+	const sensorPos = fov?.sensorPos ?? getSensorRoomPosition(perspective);
+	const sensorMmX = sensorPos ? sensorPos.x : widthMm / 2;
+	const sensorMmY = sensorPos ? sensorPos.y : 0;
 
 	// Second pass: furthest visible cell from sensor
 	for (let i = 0; i < GRID_CELL_COUNT; i++) {

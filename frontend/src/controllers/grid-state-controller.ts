@@ -25,6 +25,7 @@ import {
 	cellZone,
 	GRID_CELL_MM,
 	GRID_COLS,
+	getRoomBounds,
 	initGridFromRoom,
 	MAX_ZONES,
 } from "../lib/grid.js";
@@ -506,8 +507,10 @@ export class GridStateController implements ReactiveController {
 			}
 		}
 
-		// Filter furniture completely outside the visible grid
-		const bounds = this.host._getVisibleRoomBounds();
+		// Filter furniture completely outside the room (use physical room
+		// bounds, not FOV-aware bounds, so furniture in out-of-FOV areas
+		// isn't silently dropped on save)
+		const bounds = getRoomBounds(this.host._grid);
 		let filteredFurniture = this.host._furniture as FurnitureItem[];
 		if (bounds.minCol <= bounds.maxCol && bounds.minRow <= bounds.maxRow) {
 			const roomCols = Math.ceil(this.host._roomWidth / GRID_CELL_MM);
