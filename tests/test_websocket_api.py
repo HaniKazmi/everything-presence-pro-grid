@@ -1320,6 +1320,7 @@ class TestEntityMapping:
         from custom_components.eppgrid.websocket_api import _entity_key_for_object_id
 
         assert _entity_key_for_object_id("calibrate_co2") == "env_co2_calibrate"
+        assert _entity_key_for_object_id("esphome_aabbccddeeff_calibrate_co2") == "env_co2_calibrate"
         assert _entity_key_for_object_id("co2") == "env_co2"
 
     def test_entity_key_mapping_unknown(self) -> None:
@@ -1414,6 +1415,45 @@ class TestApplyEntityStates:
 
             mock_registry.async_update_entity.assert_any_call("sensor.co2", disabled_by=None)
             mock_registry.async_update_entity.assert_any_call("button.calibrate_co2", disabled_by=None)
+
+    async def test_apply_entity_states_disables_followers(
+        self, hass: HomeAssistant, config_entry: MockConfigEntry
+    ) -> None:
+        """Disabling env_co2 also disables env_co2_calibrate follower."""
+        from homeassistant.helpers.entity_registry import RegistryEntryDisabler
+
+        from custom_components.eppgrid.device_manager import ManagedDevice
+        from custom_components.eppgrid.websocket_api import _apply_entity_states
+
+        mock_dm = await setup_integration(hass, config_entry)
+        mock_dm.devices["AA:BB:CC:DD:EE:FF"] = ManagedDevice(mac="AA:BB:CC:DD:EE:FF", name="EPP", host="192.168.1.50")
+        mock_dm.devices["AA:BB:CC:DD:EE:FF"].device_id = "dev123"
+
+        co2_entry = MagicMock()
+        co2_entry.unique_id = "AA:BB:CC:DD:EE:FF-sensor-co2"
+        co2_entry.entity_id = "sensor.co2"
+        co2_entry.disabled_by = None
+
+        calibrate_entry = MagicMock()
+        calibrate_entry.unique_id = "AA:BB:CC:DD:EE:FF-button-calibrate_co2"
+        calibrate_entry.entity_id = "button.calibrate_co2"
+        calibrate_entry.disabled_by = None
+
+        with (
+            patch("custom_components.eppgrid.websocket_api.er.async_get") as mock_er,
+            patch("custom_components.eppgrid.websocket_api.er.async_entries_for_device") as mock_entries,
+        ):
+            mock_registry = mock_er.return_value
+            mock_entries.return_value = [co2_entry, calibrate_entry]
+
+            _apply_entity_states(hass, "AA:BB:CC:DD:EE:FF", {"env_co2": False})
+
+            mock_registry.async_update_entity.assert_any_call(
+                "sensor.co2", disabled_by=RegistryEntryDisabler.INTEGRATION
+            )
+            mock_registry.async_update_entity.assert_any_call(
+                "button.calibrate_co2", disabled_by=RegistryEntryDisabler.INTEGRATION
+            )
 
     async def test_get_entity_states_excludes_followers(
         self, hass: HomeAssistant, config_entry: MockConfigEntry

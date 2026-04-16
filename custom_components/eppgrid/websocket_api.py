@@ -521,7 +521,7 @@ def _entity_key_for_object_id(object_id: str) -> str | None:
     for prefix, suffix, key in _ENTITY_PREFIX_MAP:
         if f"_{prefix}" in object_id and object_id.endswith(suffix):
             return key
-    for oid, key in _ENTITY_OBJECT_ID_MAP.items():
+    for oid, key in sorted(_ENTITY_OBJECT_ID_MAP.items(), key=lambda x: len(x[0]), reverse=True):
         if object_id.endswith(f"_{oid}"):
             return key
     return None
