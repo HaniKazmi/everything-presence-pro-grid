@@ -62,7 +62,10 @@ describe("_saveTemplate", () => {
 		await a._saveTemplate();
 
 		expect(a.hass.callWS).toHaveBeenCalledWith(
-			expect.objectContaining({ type: "eppgrid/save_template", name: "My layout" }),
+			expect.objectContaining({
+				type: "eppgrid/save_template",
+				name: "My layout",
+			}),
 		);
 	});
 });
