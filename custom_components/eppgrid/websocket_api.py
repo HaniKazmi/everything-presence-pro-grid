@@ -527,9 +527,7 @@ def _entity_key_for_object_id(object_id: str) -> str | None:
     return None
 
 
-_FOLLOWER_KEYS: frozenset[str] = frozenset(
-    k for followers in _ENTITY_KEY_FOLLOWERS.values() for k in followers
-)
+_FOLLOWER_KEYS: frozenset[str] = frozenset(k for followers in _ENTITY_KEY_FOLLOWERS.values() for k in followers)
 
 
 def _get_entity_states(hass: HomeAssistant, mac: str) -> dict[str, bool]:

@@ -1379,7 +1379,6 @@ class TestApplyEntityStates:
             # INTEGRATION-disabled entry should be enabled
             mock_registry.async_update_entity.assert_any_call("sensor.target_2_x", disabled_by=None)
 
-
     async def test_apply_entity_states_expands_followers(
         self, hass: HomeAssistant, config_entry: MockConfigEntry
     ) -> None:
@@ -2279,9 +2278,7 @@ class TestSubscriptionCallbacks:
         # Numeric sensor updates don't trigger send_message (only target positions do)
         connection.send_message.assert_not_called()
 
-    async def test_grid_targets_on_state_co2_sensor(
-        self, hass: HomeAssistant, config_entry: MockConfigEntry
-    ) -> None:
+    async def test_grid_targets_on_state_co2_sensor(self, hass: HomeAssistant, config_entry: MockConfigEntry) -> None:
         """CO2 SensorState updates sensors.co2 in accumulated state."""
         mock_dm = await setup_integration(hass, config_entry)
 
