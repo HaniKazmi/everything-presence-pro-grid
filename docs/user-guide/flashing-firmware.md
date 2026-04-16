@@ -31,9 +31,6 @@ This page covers flashing Everything Presence Pro Grid firmware onto your device
 !!! warning
     If the browser shows no ports when you click Connect, the cable is the most common cause. Swap for a known-good data cable before troubleshooting the device.
 
-!!! example "Screenshot placeholder"
-    **Flasher mid-flash — progress indicator showing "Flashing firmware…".** `firmware/flasher-progress.png`
-
 ## Add the device to ESPHome
 
 The Wi-Fi flashing flow usually adds the device to Home Assistant automatically via ESPHome. If not — or if you flashed the Ethernet variant — add it manually:
