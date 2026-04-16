@@ -4151,11 +4151,11 @@ const dt={attribute:!0,type:String,converter:E,reflect:!1,hasChanged:m},At=(t=dt
 				<line x1="0" y1="0" x2="0.25" y2="0.25" stroke="rgba(244,67,54,0.5)" stroke-width="0.06" />
 				<line x1="0.25" y1="0" x2="0" y2="0.25" stroke="rgba(244,67,54,0.5)" stroke-width="0.06" />
 			</pattern>`:""}
-		</defs>`:"",f=Math.ceil(i/si),w=Math.floor((ti-f)/2),E=[];for(const t of o){const e=t.x/si+w-n,i=t.y/si-c,s=t.width/si,o=t.height/si,r=e+s/2,a=i+o/2,l=t.rotation?` rotate(${t.rotation}, ${r}, ${a})`:"",h="svg"===t.type?ui[t.icon]:void 0;if(h){const[t,r,a,n]=h.viewBox.split(" ").map(Number),c=`${l}translate(${e}, ${i}) scale(${s/a}, ${o/n}) translate(${-t}, ${-r})`.trim();E.push($`<g transform="${c}">
-					${qe(h.content)}
-				</g>`)}else E.push($`<rect x="${e}" y="${i}" width="${s}" height="${o}"
+		</defs>`:"",f=Math.ceil(i/si),w=Math.floor((ti-f)/2),E=[];for(const t of o){const e=t.x/si+w-n,i=t.y/si-c,s=t.width/si,o=t.height/si,r=e+s/2,a=i+o/2,l="svg"===t.type?ui[t.icon]:void 0;if(l){const[n,c,h,d]=l.viewBox.split(" ").map(Number),A=s/h,g=o/d,u=[t.rotation?`rotate(${t.rotation}, ${r}, ${a})`:"",`translate(${e}, ${i})`,`scale(${A}, ${g})`,`translate(${-n}, ${-c})`].filter(Boolean);E.push($`<g transform="${u.join(" ")}">
+					${qe(l.content)}
+				</g>`)}else{const n=t.rotation?`rotate(${t.rotation}, ${r}, ${a})`:"";E.push($`<rect x="${e}" y="${i}" width="${s}" height="${o}"
 					fill="none" stroke="rgba(0,0,0,0.4)" stroke-width="0.15"
-					rx="0.1" transform="${l.trim()}" />`)}return $`<svg viewBox="0 0 ${d} ${A}" preserveAspectRatio="xMidYMid meet">
+					rx="0.1" transform="${n}" />`)}}return $`<svg viewBox="0 0 ${d} ${A}" preserveAspectRatio="xMidYMid meet">
     ${_}
     ${g}
     ${u}

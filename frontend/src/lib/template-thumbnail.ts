@@ -119,10 +119,6 @@ export function renderTemplateThumbnail(
 		const fh = item.height / GRID_CELL_MM;
 		const cx = fx + fw / 2;
 		const cy = fy + fh / 2;
-		const rotateTransform = item.rotation
-			? ` rotate(${item.rotation}, ${cx}, ${cy})`
-			: "";
-
 		const floorPlan =
 			item.type === "svg" ? FLOOR_PLAN_SVGS[item.icon] : undefined;
 
@@ -131,20 +127,27 @@ export function renderTemplateThumbnail(
 			const [vx, vy, vw, vh] = floorPlan.viewBox.split(" ").map(Number);
 			const sx = fw / vw;
 			const sy = fh / vh;
-			// Rotation is around the item center in grid-cell units
-			const groupTransform =
-				`${rotateTransform}translate(${fx}, ${fy}) scale(${sx}, ${sy}) translate(${-vx}, ${-vy})`.trim();
+			// Build transform as array to ensure proper spacing between functions
+			const parts = [
+				item.rotation ? `rotate(${item.rotation}, ${cx}, ${cy})` : "",
+				`translate(${fx}, ${fy})`,
+				`scale(${sx}, ${sy})`,
+				`translate(${-vx}, ${-vy})`,
+			].filter(Boolean);
 			furnitureElements.push(
-				svg`<g transform="${groupTransform}">
+				svg`<g transform="${parts.join(" ")}">
 					${unsafeSVG(floorPlan.content)}
 				</g>`,
 			);
 		} else {
 			// Icon-type or unknown SVG: outlined rect fallback
+			const transform = item.rotation
+				? `rotate(${item.rotation}, ${cx}, ${cy})`
+				: "";
 			furnitureElements.push(
 				svg`<rect x="${fx}" y="${fy}" width="${fw}" height="${fh}"
 					fill="none" stroke="rgba(0,0,0,0.4)" stroke-width="0.15"
-					rx="0.1" transform="${rotateTransform.trim()}" />`,
+					rx="0.1" transform="${transform}" />`,
 			);
 		}
 	}

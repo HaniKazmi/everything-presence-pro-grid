@@ -304,8 +304,13 @@ describe("renderTemplateThumbnail", () => {
 		);
 		expect(furnitureGroup).toBeTruthy();
 
-		// Should NOT have a plain outlined rect for this item (no fill=none stroke rects)
-		// The SVG content itself may contain rects, but they'll be the floor plan drawing
+		// Should NOT have a plain outlined fallback rect for this item
+		const outlinedRects = Array.from(svgEl.querySelectorAll("rect")).filter(
+			(r) =>
+				r.getAttribute("fill") === "none" &&
+				r.getAttribute("stroke")?.includes("rgba(0,0,0"),
+		);
+		expect(outlinedRects.length).toBe(0);
 	});
 
 	it("renders icon-type furniture as outlined rect fallback", async () => {
