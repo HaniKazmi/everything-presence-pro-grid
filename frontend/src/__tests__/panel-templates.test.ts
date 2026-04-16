@@ -188,15 +188,20 @@ describe("_loadTemplate", () => {
 
 		expect((a._zoneConfigs[0] as Zone0Config).type).toBe("rest");
 		expect((a._zoneConfigs[1] as ZoneConfig)?.name).toBe("Living");
-		// auto-apply fired set_room_layout
-		expect(callWS).toHaveBeenCalledWith(
-			expect.objectContaining({
-				type: "eppgrid/set_room_layout",
-				zone_slots: expect.arrayContaining([
-					expect.objectContaining({ type: "rest", trigger: 7 }),
-				]),
-			}),
+		// auto-apply fired set_room_layout — assert exact shape so a
+		// regression that re-introduces .slice(1) (length-7 zone_slots)
+		// is caught.
+		const roomLayoutCalls = callWS.mock.calls.filter(
+			(c) => (c[0] as { type?: string })?.type === "eppgrid/set_room_layout",
 		);
+		expect(roomLayoutCalls).toHaveLength(1);
+		const payload = roomLayoutCalls[0][0] as { zone_slots: any[] };
+		expect(payload.zone_slots).toHaveLength(8);
+		expect(payload.zone_slots[0]).toMatchObject({ type: "rest", trigger: 7 });
+		expect(payload.zone_slots[1]).toMatchObject({
+			name: "Living",
+			type: "normal",
+		});
 	});
 
 	it("throws on old-format template with length-7 zones", async () => {
@@ -211,10 +216,14 @@ describe("_loadTemplate", () => {
 				furniture: [],
 			},
 		];
+		a._showTemplateLoad = true;
 
 		const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
 		await a._loadTemplate("Old");
 		expect(errSpy).toHaveBeenCalled();
+		// Dialog stays open so the failure is visible and the user can
+		// try another template.
+		expect(a._showTemplateLoad).toBe(true);
 		errSpy.mockRestore();
 	});
 

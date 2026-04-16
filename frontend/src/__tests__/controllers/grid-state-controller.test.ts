@@ -477,9 +477,13 @@ describe("GridStateController", () => {
 		// Length-8 zones matches the unified zone_slots model.
 		// Slot 0 = Zone0Config (room boundary), slots 1-7 = named zones.
 		const TEMPLATE_DATA = {
-			grid: Array.from({ length: GRID_CELL_COUNT }, (_, i) =>
-				i === 3 ? CELL_ROOM_BIT : 0,
-			),
+			// Cell 3 is zone 0 (room boundary), cell 4 is zone 1 so applyLayout
+			// doesn't prune zone 1 as empty.
+			grid: Array.from({ length: GRID_CELL_COUNT }, (_, i) => {
+				if (i === 3) return CELL_ROOM_BIT;
+				if (i === 4) return CELL_ROOM_BIT | (1 << 1); // zone 1
+				return 0;
+			}),
 			zones: [
 				{
 					type: "normal" as const,
@@ -527,6 +531,12 @@ describe("GridStateController", () => {
 		});
 
 		it("restores grid, room dimensions, zones, and furniture from cache", async () => {
+			// Mock applyLayout to no-op so we can assert the full pre-apply
+			// state restoration (otherwise applyLayout prunes empty zones and
+			// out-of-bounds furniture before we can check them).
+			const applySpy = vi
+				.spyOn(ctrl, "applyLayout")
+				.mockResolvedValue(undefined);
 			await ctrl.loadTemplate("Loaded");
 			expect(host._roomWidth).toBe(2400);
 			expect(host._roomDepth).toBe(3600);
@@ -534,10 +544,13 @@ describe("GridStateController", () => {
 			// Length-8 tuple: slot 0 = Zone0Config, slots 1-7 = named zones.
 			expect(host._zoneConfigs).toHaveLength(MAX_ZONES + 1);
 			expect(host._zoneConfigs[0]).toMatchObject({ type: "normal" });
-			// Zone 1 has zero painted cells so applyLayout prunes it.
-			// That's the expected behaviour; the key assertion is slot 0
-			// survives and carries the Zone0Config.
-			expect(host._furniture).toHaveLength(0); // pruned (outside bounds)
+			expect(host._zoneConfigs[1]).toMatchObject({
+				name: "Zone 1",
+				type: "normal",
+			});
+			expect(host._furniture).toHaveLength(1);
+			expect(host._furniture[0]).toMatchObject({ id: "f_x", icon: "mdi:sofa" });
+			applySpy.mockRestore();
 		});
 
 		it("populates all 8 slots so length is 8", async () => {
@@ -571,11 +584,30 @@ describe("GridStateController", () => {
 
 		it("auto-applies the layout (sends set_room_layout WS)", async () => {
 			await ctrl.loadTemplate("Loaded");
-			expect(host.hass.callWS).toHaveBeenCalledWith(
-				expect.objectContaining({
-					type: "eppgrid/set_room_layout",
-				}),
+			const roomLayoutCalls = host.hass.callWS.mock.calls.filter(
+				(c: any[]) => c[0]?.type === "eppgrid/set_room_layout",
 			);
+			expect(roomLayoutCalls).toHaveLength(1);
+			const payload = roomLayoutCalls[0][0] as { zone_slots: any[] };
+			// Length must be exactly 8 — guards against a .slice(1) regression.
+			expect(payload.zone_slots).toHaveLength(MAX_ZONES + 1);
+			expect(payload.zone_slots[0]).toMatchObject({ type: "normal" });
+			expect(payload.zone_slots[1]).toMatchObject({
+				name: "Zone 1",
+				type: "normal",
+			});
+		});
+
+		it("sets _dirty=true before applyLayout so failures stay recoverable", async () => {
+			// applyLayout throws — user should still see an Apply button to
+			// retry, which requires _dirty === true.
+			const applySpy = vi
+				.spyOn(ctrl, "applyLayout")
+				.mockRejectedValue(new Error("WS failure"));
+			host._dirty = false;
+			await expect(ctrl.loadTemplate("Loaded")).rejects.toThrow(/WS failure/);
+			expect(host._dirty).toBe(true);
+			applySpy.mockRestore();
 		});
 
 		it("throws on old-format template (length-7 zones)", async () => {
@@ -590,6 +622,23 @@ describe("GridStateController", () => {
 				} as any,
 			];
 			await expect(ctrl.loadTemplate("Old")).rejects.toThrow(/old format/);
+		});
+
+		it("leaves the load dialog open when rejecting an old-format template", async () => {
+			ctrl.templates = [
+				{
+					name: "Old",
+					grid: TEMPLATE_DATA.grid,
+					zones: [null, null, null, null, null, null, null],
+					roomWidth: 2400,
+					roomDepth: 3600,
+				} as any,
+			];
+			host._showTemplateLoad = true;
+			await expect(ctrl.loadTemplate("Old")).rejects.toThrow(/old format/);
+			// Dialog should remain open so the failure is visible and the user
+			// can try another template.
+			expect(host._showTemplateLoad).toBe(true);
 		});
 
 		it("throws on template with null zone 0", async () => {

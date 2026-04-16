@@ -494,9 +494,10 @@ export class GridStateController implements ReactiveController {
 		if (!tmpl) return;
 		const zones = tmpl.zones || [];
 		// Length-8 with a populated zone 0 is required (per no-BWC policy).
-		// Old-format templates throw so the user re-saves them.
+		// Old-format templates throw so the user re-saves them. Leave the
+		// load dialog open so the failure is visible and the user can try
+		// another template.
 		if (zones.length !== NUM_ZONE_SLOTS || zones[0] == null) {
-			this.host._showTemplateLoad = false;
 			throw new Error(
 				`Template "${name}" is in an old format — please re-save it`,
 			);
@@ -512,6 +513,11 @@ export class GridStateController implements ReactiveController {
 			...f,
 		}));
 		this.host._showTemplateLoad = false;
+		// Mark dirty before auto-apply: if applyLayout throws (e.g. websocket
+		// failure), the UI state has changed but the backend hasn't, so the
+		// user needs an Apply button to retry. On success, applyLayout clears
+		// _dirty = false itself.
+		this.host._dirty = true;
 		await this.applyLayout();
 	}
 
