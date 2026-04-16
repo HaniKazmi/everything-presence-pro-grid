@@ -311,7 +311,7 @@ class TestDeviceManager:
         ent_reg.async_get_or_create(
             "sensor",
             "esphome",
-            unique_id="esphome_aabbccddeeff_firmware_version",
+            unique_id="AA:BB:CC:DD:EE:FF-sensor-firmware_version",
             suggested_object_id="epp_firmware_version",
             config_entry=esphome_entry,
             device_id=device.id,
@@ -349,7 +349,7 @@ class TestDeviceManager:
         ent_reg.async_get_or_create(
             "sensor",
             "esphome",
-            unique_id="esphome_aabbccddeeff_firmware_version",
+            unique_id="AA:BB:CC:DD:EE:FF-sensor-firmware_version",
             suggested_object_id="epp_firmware_version",
             config_entry=esphome_entry,
             device_id=device.id,
@@ -381,7 +381,7 @@ class TestDeviceManager:
         ent_reg.async_get_or_create(
             "sensor",
             "esphome",
-            unique_id="esphome_112233445566_temperature",
+            unique_id="11:22:33:44:55:66-sensor-temperature",
             config_entry=esphome_entry,
             device_id=device.id,
         )
@@ -535,7 +535,7 @@ class TestDeviceManager:
         entity = ent_reg.async_get_or_create(
             "sensor",
             "esphome",
-            unique_id="esphome_aabbccddeeff01_online_entity",
+            unique_id="AA:BB:CC:DD:EE:01-sensor-online_entity",
             config_entry=esphome_entry,
             device_id=device.id,
         )
@@ -644,7 +644,7 @@ class TestDeviceManager:
             entry = ent_reg.async_get_or_create(
                 "sensor",
                 "esphome",
-                unique_id=f"esphome_aabbccddeeff_sensor_{i}",
+                unique_id=f"AA:BB:CC:DD:EE:FF-sensor-sensor_{i}",
                 config_entry=esphome_entry,
                 device_id=device.id,
             )
@@ -708,7 +708,7 @@ class TestDeviceManager:
         entry = ent_reg.async_get_or_create(
             "sensor",
             "esphome",
-            unique_id="esphome_aabbccddeeff_current_connections",
+            unique_id="AA:BB:CC:DD:EE:FF-sensor-current_connections",
             suggested_object_id="epp_current_connections",
             config_entry=esphome_entry,
             device_id=device.id,
@@ -748,7 +748,7 @@ class TestDeviceManager:
         entry = ent_reg.async_get_or_create(
             "sensor",
             "esphome",
-            unique_id="esphome_aabbccddeeff_current_connections",
+            unique_id="AA:BB:CC:DD:EE:FF-sensor-current_connections",
             suggested_object_id="epp_current_connections",
             config_entry=esphome_entry,
             device_id=device.id,
@@ -816,7 +816,7 @@ class TestFirmwareVersion:
         fw_entry = ent_reg.async_get_or_create(
             "sensor",
             "esphome",
-            unique_id="esphome_aabbccddeeff_firmware_version",
+            unique_id="AA:BB:CC:DD:EE:FF-sensor-firmware_version",
             suggested_object_id="epp_firmware_version",
             config_entry=esphome_entry,
             device_id=device.id,
@@ -849,7 +849,7 @@ class TestFirmwareVersion:
         fw_entry = ent_reg.async_get_or_create(
             "sensor",
             "esphome",
-            unique_id="esphome_aabbccddeeff_firmware_version",
+            unique_id="AA:BB:CC:DD:EE:FF-sensor-firmware_version",
             suggested_object_id="epp_firmware_version",
             config_entry=esphome_entry,
             device_id=device.id,
@@ -916,7 +916,7 @@ class TestFirmwareVersion:
         fw_entry = ent_reg.async_get_or_create(
             "sensor",
             "esphome",
-            unique_id="esphome_aabbccddeeff_firmware_version",
+            unique_id="AA:BB:CC:DD:EE:FF-sensor-firmware_version",
             suggested_object_id="epp_firmware_version",
             config_entry=esphome_entry,
             device_id=device.id,
@@ -971,7 +971,7 @@ class TestFirmwareVersion:
         fw_entry = ent_reg.async_get_or_create(
             "sensor",
             "esphome",
-            unique_id="esphome_aabbccddeeff_firmware_version",
+            unique_id="AA:BB:CC:DD:EE:FF-sensor-firmware_version",
             suggested_object_id="epp_firmware_version",
             config_entry=esphome_entry,
             device_id=device.id,
@@ -1011,7 +1011,7 @@ class TestFirmwareVersion:
         fw_entry = ent_reg.async_get_or_create(
             "sensor",
             "esphome",
-            unique_id="esphome_aabbccddeeff_firmware_version",
+            unique_id="AA:BB:CC:DD:EE:FF-sensor-firmware_version",
             suggested_object_id="epp_firmware_version",
             config_entry=esphome_entry,
             device_id=device.id,
@@ -1060,7 +1060,7 @@ class TestFirmwareVersion:
         fw_entry = ent_reg.async_get_or_create(
             "sensor",
             "esphome",
-            unique_id="esphome_aabbccddeeff_firmware_version",
+            unique_id="AA:BB:CC:DD:EE:FF-sensor-firmware_version",
             suggested_object_id="epp_firmware_version",
             config_entry=esphome_entry,
             device_id=device.id,
@@ -1099,7 +1099,7 @@ class TestFirmwareVersion:
         ent_reg.async_get_or_create(
             "sensor",
             "esphome",
-            unique_id="esphome_aabbccddeeff_firmware_version",
+            unique_id="AA:BB:CC:DD:EE:FF-sensor-firmware_version",
             suggested_object_id="epp_firmware_version",
             config_entry=esphome_entry,
             device_id=device.id,
@@ -1543,7 +1543,7 @@ class TestEventCallbacks:
         entity = ent_reg.async_get_or_create(
             "sensor",
             "esphome",
-            unique_id="esphome_new_firmware_version",
+            unique_id="AA:BB:CC:DD:EE:04-sensor-firmware_version",
             config_entry=esphome_entry,
             device_id=device.id,
         )
@@ -1592,7 +1592,7 @@ class TestEventCallbacks:
         entity = ent_reg.async_get_or_create(
             "sensor",
             "esphome",
-            unique_id="esphome_known_something",
+            unique_id="AA:BB:CC:DD:EE:05-sensor-something",
             config_entry=esphome_entry,
             device_id=device.id,
         )
@@ -1655,7 +1655,7 @@ class TestEventCallbacks:
         entity = ent_reg.async_get_or_create(
             "sensor",
             "esphome",
-            unique_id="esphome_aabbccddeeff_temperature",
+            unique_id="AA:BB:CC:DD:EE:FF-sensor-temperature",
             config_entry=esphome_entry,
             device_id=device.id,
         )
@@ -1709,7 +1709,7 @@ class TestEventCallbacks:
         entity = ent_reg.async_get_or_create(
             "sensor",
             "esphome",
-            unique_id="esphome_aabbccddee02_temperature",
+            unique_id="AA:BB:CC:DD:EE:02-sensor-temperature",
             config_entry=esphome_entry,
             device_id=device.id,
         )
@@ -1784,7 +1784,7 @@ class TestEventCallbacks:
         entity = ent_reg.async_get_or_create(
             "sensor",
             "esphome",
-            unique_id="esphome_aabbccddee03_temperature",
+            unique_id="AA:BB:CC:DD:EE:03-sensor-temperature",
             config_entry=esphome_entry,
             device_id=device.id,
         )
@@ -1866,7 +1866,7 @@ class TestEventCallbacks:
         entity = ent_reg.async_get_or_create(
             "sensor",
             "esphome",
-            unique_id="esphome_aabbccddeeff_unavail",
+            unique_id="AA:BB:CC:DD:EE:FF-sensor-unavail",
             config_entry=esphome_entry,
             device_id=device.id,
         )
@@ -1915,7 +1915,7 @@ class TestEventCallbacks:
         ent_reg.async_get_or_create(
             "sensor",
             "esphome",
-            unique_id="esphome_aabbccddeeff_avail_check",
+            unique_id="AA:BB:CC:DD:EE:FF-sensor-avail_check",
             config_entry=esphome_entry,
             device_id=device.id,
         )
@@ -1950,7 +1950,7 @@ class TestEventCallbacks:
         entity = ent_reg.async_get_or_create(
             "sensor",
             "esphome",
-            unique_id="esphome_aabbccddeeff_avail_ok",
+            unique_id="AA:BB:CC:DD:EE:FF-sensor-avail_ok",
             config_entry=esphome_entry,
             device_id=device.id,
         )
@@ -1987,7 +1987,7 @@ class TestEventCallbacks:
         ent_reg.async_get_or_create(
             "sensor",
             "esphome",
-            unique_id="esphome_aabbccddeeff_session_check",
+            unique_id="AA:BB:CC:DD:EE:FF-sensor-session_check",
             config_entry=esphome_entry,
             device_id=device.id,
         )
@@ -2417,21 +2417,21 @@ class TestZoneEntities:
         zone0_entry = ent_reg.async_get_or_create(
             "binary_sensor",
             "esphome",
-            unique_id="esphome_aabbccddeeff_zone_0_presence",
+            unique_id="AA:BB:CC:DD:EE:FF-binary_sensor-zone_0_presence",
             config_entry=esphome_entry,
             device_id=device.id,
         )
         zone1_entry = ent_reg.async_get_or_create(
             "binary_sensor",
             "esphome",
-            unique_id="esphome_aabbccddeeff_zone_1_presence",
+            unique_id="AA:BB:CC:DD:EE:FF-binary_sensor-zone_1_presence",
             config_entry=esphome_entry,
             device_id=device.id,
         )
         zone2_entry = ent_reg.async_get_or_create(
             "binary_sensor",
             "esphome",
-            unique_id="esphome_aabbccddeeff_zone_2_presence",
+            unique_id="AA:BB:CC:DD:EE:FF-binary_sensor-zone_2_presence",
             config_entry=esphome_entry,
             device_id=device.id,
         )
@@ -2475,14 +2475,14 @@ class TestZoneEntities:
         zone0_entry = ent_reg.async_get_or_create(
             "binary_sensor",
             "esphome",
-            unique_id="esphome_aabbccddeeff_zone_0_presence",
+            unique_id="AA:BB:CC:DD:EE:FF-binary_sensor-zone_0_presence",
             config_entry=esphome_entry,
             device_id=device.id,
         )
         zone1_entry = ent_reg.async_get_or_create(
             "binary_sensor",
             "esphome",
-            unique_id="esphome_aabbccddeeff_zone_1_presence",
+            unique_id="AA:BB:CC:DD:EE:FF-binary_sensor-zone_1_presence",
             config_entry=esphome_entry,
             device_id=device.id,
         )
@@ -2523,7 +2523,7 @@ class TestZoneEntities:
         zone1_entry = ent_reg.async_get_or_create(
             "binary_sensor",
             "esphome",
-            unique_id="esphome_aabbccddeeff_zone_1_presence",
+            unique_id="AA:BB:CC:DD:EE:FF-binary_sensor-zone_1_presence",
             config_entry=esphome_entry,
             device_id=device.id,
         )
@@ -2567,21 +2567,21 @@ class TestZoneEntities:
         ztc0 = ent_reg.async_get_or_create(
             "sensor",
             "esphome",
-            unique_id="esphome_aabbccddeeff_zone_0_target_count",
+            unique_id="AA:BB:CC:DD:EE:FF-sensor-zone_0_target_count",
             config_entry=esphome_entry,
             device_id=device.id,
         )
         ztc1 = ent_reg.async_get_or_create(
             "sensor",
             "esphome",
-            unique_id="esphome_aabbccddeeff_zone_1_target_count",
+            unique_id="AA:BB:CC:DD:EE:FF-sensor-zone_1_target_count",
             config_entry=esphome_entry,
             device_id=device.id,
         )
         ztc2 = ent_reg.async_get_or_create(
             "sensor",
             "esphome",
-            unique_id="esphome_aabbccddeeff_zone_2_target_count",
+            unique_id="AA:BB:CC:DD:EE:FF-sensor-zone_2_target_count",
             config_entry=esphome_entry,
             device_id=device.id,
         )
@@ -2625,7 +2625,7 @@ class TestZoneEntities:
         ztc0 = ent_reg.async_get_or_create(
             "sensor",
             "esphome",
-            unique_id="esphome_aabbccddeeff_zone_0_target_count",
+            unique_id="AA:BB:CC:DD:EE:FF-sensor-zone_0_target_count",
             config_entry=esphome_entry,
             device_id=device.id,
         )
