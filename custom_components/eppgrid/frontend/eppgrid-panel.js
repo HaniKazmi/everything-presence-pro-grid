@@ -4140,11 +4140,26 @@ const dt={attribute:!0,type:String,converter:E,reflect:!1,hasChanged:m},At=(t=dt
                         <ha-icon icon="mdi:close"></ha-icon>
                       </button>
                       <div class="template-card-thumbnail">
-                        ${function(t,e,i,s,o){const r=t instanceof Uint8Array?t:new Uint8Array(t),a=di(r);if(a.minCol>a.maxCol||a.minRow>a.maxRow)return $`<svg viewBox="0 0 1 1" preserveAspectRatio="xMidYMid meet"></svg>`;const{minCol:n,maxCol:l,minRow:c,maxRow:h}=a,d=l-n+1,A=h-c+1,g=[];for(let t=c;t<=h;t++)for(let i=n;i<=l;i++){const s=r[t*ti+i];if(!ri(s))continue;const o=Mi(s,e);g.push($`<rect x="${i-n}" y="${t-c}" width="1" height="1" fill="${o}" />`)}const u=Math.ceil(i/si),p=Math.floor((ti-u)/2),_=[];for(const t of o){const e=t.x/si+p-n,i=t.y/si-c,s=t.width/si,o=t.height/si,r=e+s/2,a=i+o/2,l=t.rotation?`rotate(${t.rotation}, ${r}, ${a})`:void 0;_.push($`<rect x="${e}" y="${i}" width="${s}" height="${o}"
-        fill="none" stroke="rgba(0,0,0,0.4)" stroke-width="0.15"
-        rx="0.1" transform="${l??""}" />`)}return $`<svg viewBox="0 0 ${d} ${A}" preserveAspectRatio="xMidYMid meet">
-    ${g}
+                        ${function(t,e,i,s,o){const r=t instanceof Uint8Array?t:new Uint8Array(t),a=di(r);if(a.minCol>a.maxCol||a.minRow>a.maxRow)return $`<svg viewBox="0 0 1 1" preserveAspectRatio="xMidYMid meet"></svg>`;const{minCol:n,maxCol:l,minRow:c,maxRow:h}=a,d=l-n+1,A=h-c+1,g=[],u=[],p=new Set;for(let t=c;t<=h;t++)for(let i=n;i<=l;i++){const s=r[t*ti+i];if(!ri(s))continue;const o=Mi(s,e);g.push($`<rect x="${i-n}" y="${t-c}" width="1" height="1" fill="${o}" />`);const a=i-n,l=t-c;li(s)&&(p.add("entry"),u.push($`<rect x="${a}" y="${l}" width="1" height="1" fill="url(#overlay-entry)" />`));const h=ci(s);1===h?(p.add("interference"),u.push($`<rect x="${a}" y="${l}" width="1" height="1" fill="url(#overlay-interference)" />`)):2===h&&(p.add("suppress"),u.push($`<rect x="${a}" y="${l}" width="1" height="1" fill="url(#overlay-suppress)" />`))}const _=p.size>0?$`<defs>
+			${p.has("entry")?$`<pattern id="overlay-entry" width="0.25" height="0.25" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+				<line x1="0" y1="0" x2="0" y2="0.25" stroke="rgba(80,80,80,0.5)" stroke-width="0.08" />
+			</pattern>`:""}
+			${p.has("interference")?$`<pattern id="overlay-interference" width="0.25" height="0.25" patternUnits="userSpaceOnUse" patternTransform="rotate(-45)">
+				<line x1="0" y1="0" x2="0" y2="0.25" stroke="rgba(244,67,54,0.5)" stroke-width="0.08" />
+			</pattern>`:""}
+			${p.has("suppress")?$`<pattern id="overlay-suppress" width="0.25" height="0.25" patternUnits="userSpaceOnUse">
+				<line x1="0" y1="0" x2="0.25" y2="0.25" stroke="rgba(244,67,54,0.5)" stroke-width="0.06" />
+				<line x1="0.25" y1="0" x2="0" y2="0.25" stroke="rgba(244,67,54,0.5)" stroke-width="0.06" />
+			</pattern>`:""}
+		</defs>`:"",f=Math.ceil(i/si),w=Math.floor((ti-f)/2),E=[];for(const t of o){const e=t.x/si+w-n,i=t.y/si-c,s=t.width/si,o=t.height/si,r=e+s/2,a=i+o/2,l="svg"===t.type?ui[t.icon]:void 0;if(l){const[n,c,h,d]=l.viewBox.split(" ").map(Number),A=s/h,g=o/d,u=[t.rotation?`rotate(${t.rotation}, ${r}, ${a})`:"",`translate(${e}, ${i})`,`scale(${A}, ${g})`,`translate(${-n}, ${-c})`].filter(Boolean);E.push($`<g transform="${u.join(" ")}">
+					${qe(l.content)}
+				</g>`)}else{const n=t.rotation?`rotate(${t.rotation}, ${r}, ${a})`:"";E.push($`<rect x="${e}" y="${i}" width="${s}" height="${o}"
+					fill="none" stroke="rgba(0,0,0,0.4)" stroke-width="0.15"
+					rx="0.1" transform="${n}" />`)}}return $`<svg viewBox="0 0 ${d} ${A}" preserveAspectRatio="xMidYMid meet">
     ${_}
+    ${g}
+    ${u}
+    ${E}
   </svg>`}(t.grid,t.zones?.map(t=>t??null)??new Array(7).fill(null),t.roomWidth,t.roomDepth,t.furniture??[])}
                       </div>
                       <div class="template-card-info">

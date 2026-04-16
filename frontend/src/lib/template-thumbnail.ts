@@ -1,7 +1,11 @@
 import type { SVGTemplateResult } from "lit";
 import { svg } from "lit";
+import { unsafeSVG } from "lit/directives/unsafe-svg.js";
+import { FLOOR_PLAN_SVGS } from "../constants.js";
 import type { FurnitureItem } from "./furniture.js";
 import {
+	cellHasOverlayEntry,
+	cellInterference,
 	cellIsInside,
 	GRID_CELL_MM,
 	GRID_COLS,
@@ -37,6 +41,9 @@ export function renderTemplateThumbnail(
 	const rows = maxRow - minRow + 1;
 
 	const cellRects: SVGTemplateResult[] = [];
+	const overlayRects: SVGTemplateResult[] = [];
+	const neededPatterns = new Set<string>();
+
 	for (let r = minRow; r <= maxRow; r++) {
 		for (let c = minCol; c <= maxCol; c++) {
 			const idx = r * GRID_COLS + c;
@@ -46,14 +53,65 @@ export function renderTemplateThumbnail(
 			cellRects.push(
 				svg`<rect x="${c - minCol}" y="${r - minRow}" width="1" height="1" fill="${color}" />`,
 			);
+
+			// Overlay markers
+			const x = c - minCol;
+			const y = r - minRow;
+			if (cellHasOverlayEntry(val)) {
+				neededPatterns.add("entry");
+				overlayRects.push(
+					svg`<rect x="${x}" y="${y}" width="1" height="1" fill="url(#overlay-entry)" />`,
+				);
+			}
+			const interf = cellInterference(val);
+			if (interf === 1) {
+				neededPatterns.add("interference");
+				overlayRects.push(
+					svg`<rect x="${x}" y="${y}" width="1" height="1" fill="url(#overlay-interference)" />`,
+				);
+			} else if (interf === 2) {
+				neededPatterns.add("suppress");
+				overlayRects.push(
+					svg`<rect x="${x}" y="${y}" width="1" height="1" fill="url(#overlay-suppress)" />`,
+				);
+			}
 		}
 	}
+
+	// SVG pattern definitions for overlays (only included when needed)
+	const patternDefs =
+		neededPatterns.size > 0
+			? svg`<defs>
+			${
+				neededPatterns.has("entry")
+					? svg`<pattern id="overlay-entry" width="0.25" height="0.25" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+				<line x1="0" y1="0" x2="0" y2="0.25" stroke="rgba(80,80,80,0.5)" stroke-width="0.08" />
+			</pattern>`
+					: ""
+			}
+			${
+				neededPatterns.has("interference")
+					? svg`<pattern id="overlay-interference" width="0.25" height="0.25" patternUnits="userSpaceOnUse" patternTransform="rotate(-45)">
+				<line x1="0" y1="0" x2="0" y2="0.25" stroke="rgba(244,67,54,0.5)" stroke-width="0.08" />
+			</pattern>`
+					: ""
+			}
+			${
+				neededPatterns.has("suppress")
+					? svg`<pattern id="overlay-suppress" width="0.25" height="0.25" patternUnits="userSpaceOnUse">
+				<line x1="0" y1="0" x2="0.25" y2="0.25" stroke="rgba(244,67,54,0.5)" stroke-width="0.06" />
+				<line x1="0.25" y1="0" x2="0" y2="0.25" stroke="rgba(244,67,54,0.5)" stroke-width="0.06" />
+			</pattern>`
+					: ""
+			}
+		</defs>`
+			: "";
 
 	// Furniture: convert mm positions to grid-cell units relative to room bounds
 	const roomCols = Math.ceil(roomWidth / GRID_CELL_MM);
 	const startCol = Math.floor((GRID_COLS - roomCols) / 2);
 
-	const furnitureRects: SVGTemplateResult[] = [];
+	const furnitureElements: SVGTemplateResult[] = [];
 	for (const item of furniture) {
 		const fx = item.x / GRID_CELL_MM + startCol - minCol;
 		const fy = item.y / GRID_CELL_MM - minRow;
@@ -61,18 +119,43 @@ export function renderTemplateThumbnail(
 		const fh = item.height / GRID_CELL_MM;
 		const cx = fx + fw / 2;
 		const cy = fy + fh / 2;
-		const transform = item.rotation
-			? `rotate(${item.rotation}, ${cx}, ${cy})`
-			: undefined;
-		furnitureRects.push(
-			svg`<rect x="${fx}" y="${fy}" width="${fw}" height="${fh}"
-        fill="none" stroke="rgba(0,0,0,0.4)" stroke-width="0.15"
-        rx="0.1" transform="${transform ?? ""}" />`,
-		);
+		const floorPlan =
+			item.type === "svg" ? FLOOR_PLAN_SVGS[item.icon] : undefined;
+
+		if (floorPlan) {
+			// Parse viewBox to get the SVG's native coordinate space
+			const [vx, vy, vw, vh] = floorPlan.viewBox.split(" ").map(Number);
+			const sx = fw / vw;
+			const sy = fh / vh;
+			// Build transform as array to ensure proper spacing between functions
+			const parts = [
+				item.rotation ? `rotate(${item.rotation}, ${cx}, ${cy})` : "",
+				`translate(${fx}, ${fy})`,
+				`scale(${sx}, ${sy})`,
+				`translate(${-vx}, ${-vy})`,
+			].filter(Boolean);
+			furnitureElements.push(
+				svg`<g transform="${parts.join(" ")}">
+					${unsafeSVG(floorPlan.content)}
+				</g>`,
+			);
+		} else {
+			// Icon-type or unknown SVG: outlined rect fallback
+			const transform = item.rotation
+				? `rotate(${item.rotation}, ${cx}, ${cy})`
+				: "";
+			furnitureElements.push(
+				svg`<rect x="${fx}" y="${fy}" width="${fw}" height="${fh}"
+					fill="none" stroke="rgba(0,0,0,0.4)" stroke-width="0.15"
+					rx="0.1" transform="${transform}" />`,
+			);
+		}
 	}
 
 	return svg`<svg viewBox="0 0 ${cols} ${rows}" preserveAspectRatio="xMidYMid meet">
+    ${patternDefs}
     ${cellRects}
-    ${furnitureRects}
+    ${overlayRects}
+    ${furnitureElements}
   </svg>`;
 }
