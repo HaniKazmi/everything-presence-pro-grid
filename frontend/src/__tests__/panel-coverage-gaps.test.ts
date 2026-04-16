@@ -786,13 +786,28 @@ describe("_renderFurnitureOverlay DOM events", () => {
 // Template load dialog: load and delete button clicks
 // =========================================================
 describe("_renderTemplateLoadDialog DOM events", () => {
-	it("load button calls _loadTemplate", () => {
+	it("load button calls _loadTemplate", async () => {
 		const a = createPanel() as any;
 		a._gridCtrl.templates = [
 			{
 				name: "T1",
 				grid: new Array(GRID_CELL_COUNT).fill(0),
-				zones: [],
+				zones: [
+					{
+						type: "normal",
+						trigger: 5,
+						renew: 3,
+						timeout: 10,
+						handoff_timeout: 3,
+					},
+					null,
+					null,
+					null,
+					null,
+					null,
+					null,
+					null,
+				],
 				roomWidth: 5000,
 				roomDepth: 6000,
 			},
@@ -803,7 +818,10 @@ describe("_renderTemplateLoadDialog DOM events", () => {
 		const card = c.querySelector(".template-card") as HTMLElement;
 		expect(card).not.toBeNull();
 		card.click();
-		expect(a._roomWidth).toBe(5000);
+		// Async loadTemplate -> applyLayout chain; wait for it.
+		await vi.waitFor(() => {
+			expect(a._roomWidth).toBe(5000);
+		});
 		document.body.removeChild(c);
 	});
 
@@ -891,10 +909,11 @@ describe("epp-furniture-sidebar icon picker event", () => {
 });
 
 // =========================================================
-// _loadTemplate with zones shorter than 7
+// Old-format templates (missing or length-7 zones) — per the no-BWC
+// policy, these throw rather than being silently accepted.
 // =========================================================
-describe("_loadTemplate backwards compat", () => {
-	it("handles missing zones array", () => {
+describe("_loadTemplate rejects old-format templates", () => {
+	it("logs an error when zones field is missing", async () => {
 		const a = createPanel() as any;
 		a._gridCtrl.templates = [
 			{
@@ -904,13 +923,11 @@ describe("_loadTemplate backwards compat", () => {
 				roomDepth: 4000,
 			},
 		];
-		a._loadTemplate("NoZones");
-
-		// Length-8 zone-slots tuple: slot 0 keeps the existing Zone0Config,
-		// slots 1-7 are null when the template has no zones.
-		expect(a._zoneConfigs).toHaveLength(8);
-		expect(a._zoneConfigs[0]).toMatchObject({ type: "normal" });
-		expect(a._zoneConfigs.slice(1).every((z: any) => z === null)).toBe(true);
+		const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+		await a._loadTemplate("NoZones");
+		// The wrapper catches the error and logs it.
+		expect(errSpy).toHaveBeenCalled();
+		errSpy.mockRestore();
 	});
 });
 

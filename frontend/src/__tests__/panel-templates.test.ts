@@ -3,6 +3,19 @@ import { describe, expect, it, vi } from "vitest";
 import type { EPPGridPanel } from "../eppgrid-panel.js";
 import "../eppgrid-panel.js";
 import { CELL_ROOM_BIT, GRID_CELL_COUNT, GRID_COLS } from "../lib/grid.js";
+import type { Zone0Config, ZoneConfig } from "../lib/zone-defaults.js";
+
+// Valid length-8 zone slots for test templates (slot 0 = Zone0Config).
+const VALID_ZONES: (Zone0Config | ZoneConfig | null)[] = [
+	{ type: "normal", trigger: 5, renew: 3, timeout: 10, handoff_timeout: 3 },
+	null,
+	null,
+	null,
+	null,
+	null,
+	null,
+	null,
+];
 
 function createPanel(): EPPGridPanel {
 	const el = document.createElement("eppgrid-panel") as EPPGridPanel;
@@ -40,7 +53,13 @@ describe("_getTemplates", () => {
 	it("returns templates from controller cache", () => {
 		const a = createPanel() as any;
 		const templates = [
-			{ name: "Test", grid: [], zones: [], roomWidth: 3000, roomDepth: 4000 },
+			{
+				name: "Test",
+				grid: [],
+				zones: VALID_ZONES,
+				roomWidth: 3000,
+				roomDepth: 4000,
+			},
 		];
 		a._gridCtrl.templates = templates;
 		expect(a._getTemplates()).toEqual(templates);
@@ -88,7 +107,7 @@ describe("_saveTemplate", () => {
 });
 
 describe("_loadTemplate", () => {
-	it("loads a template from controller cache", () => {
+	it("loads a template from controller cache", async () => {
 		const grid = new Array(GRID_CELL_COUNT).fill(0);
 		grid[0] = CELL_ROOM_BIT;
 		const a = createPanel() as any;
@@ -96,18 +115,126 @@ describe("_loadTemplate", () => {
 			{
 				name: "Saved",
 				grid,
-				zones: [{ name: "Z1", color: "#ff0000", type: "normal" }],
+				zones: [
+					{
+						type: "normal",
+						trigger: 5,
+						renew: 3,
+						timeout: 10,
+						handoff_timeout: 3,
+					},
+					{ name: "Z1", color: "#ff0000", type: "normal" },
+					null,
+					null,
+					null,
+					null,
+					null,
+					null,
+				],
 				roomWidth: 5000,
 				roomDepth: 6000,
 				furniture: [],
 			},
 		];
 
-		a._loadTemplate("Saved");
+		await a._loadTemplate("Saved");
 
 		expect(a._grid[0]).toBe(CELL_ROOM_BIT);
 		expect(a._roomWidth).toBe(5000);
 		expect(a._showTemplateLoad).toBe(false);
+	});
+
+	it("loadTemplate restores zone 0 and auto-applies", async () => {
+		const a = createPanel() as any;
+		// Grid with at least one cell painted as zone 1, so applyLayout's
+		// zero-cell pruning doesn't drop it.
+		const grid = new Array(GRID_CELL_COUNT).fill(CELL_ROOM_BIT);
+		grid[0] = CELL_ROOM_BIT | (1 << 1); // cell in zone 1
+		const tmpl = {
+			name: "Saved",
+			grid,
+			zones: [
+				{
+					type: "rest",
+					trigger: 7,
+					renew: 1,
+					timeout: 30,
+					handoff_timeout: 10,
+				},
+				{
+					name: "Living",
+					color: "#f00",
+					type: "normal",
+					trigger: 5,
+					renew: 3,
+					timeout: 10,
+					handoff_timeout: 3,
+				},
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+			],
+			roomWidth: 4000,
+			roomDepth: 3000,
+			furniture: [],
+		};
+		a._gridCtrl.templates = [tmpl];
+		const callWS = vi.spyOn(a.hass, "callWS").mockResolvedValue({});
+
+		await a._loadTemplate("Saved");
+
+		expect((a._zoneConfigs[0] as Zone0Config).type).toBe("rest");
+		expect((a._zoneConfigs[1] as ZoneConfig)?.name).toBe("Living");
+		// auto-apply fired set_room_layout
+		expect(callWS).toHaveBeenCalledWith(
+			expect.objectContaining({
+				type: "eppgrid/set_room_layout",
+				zone_slots: expect.arrayContaining([
+					expect.objectContaining({ type: "rest", trigger: 7 }),
+				]),
+			}),
+		);
+	});
+
+	it("throws on old-format template with length-7 zones", async () => {
+		const a = createPanel() as any;
+		a._gridCtrl.templates = [
+			{
+				name: "Old",
+				grid: new Array(GRID_CELL_COUNT).fill(0),
+				zones: [null, null, null, null, null, null, null], // length 7, old format
+				roomWidth: 3000,
+				roomDepth: 4000,
+				furniture: [],
+			},
+		];
+
+		const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+		await a._loadTemplate("Old");
+		expect(errSpy).toHaveBeenCalled();
+		errSpy.mockRestore();
+	});
+
+	it("throws on template with null zone 0", async () => {
+		const a = createPanel() as any;
+		a._gridCtrl.templates = [
+			{
+				name: "NullZone0",
+				grid: new Array(GRID_CELL_COUNT).fill(0),
+				zones: [null, null, null, null, null, null, null, null],
+				roomWidth: 3000,
+				roomDepth: 4000,
+				furniture: [],
+			},
+		];
+
+		const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+		await a._loadTemplate("NullZone0");
+		expect(errSpy).toHaveBeenCalled();
+		errSpy.mockRestore();
 	});
 });
 
@@ -139,7 +266,16 @@ describe("_renderTemplateLoadDialog", () => {
 			{
 				name: "Test Room",
 				grid,
-				zones: [{ name: "Z1", color: "#E69F00", type: "normal" }],
+				zones: [
+					VALID_ZONES[0],
+					{ name: "Z1", color: "#E69F00", type: "normal" },
+					null,
+					null,
+					null,
+					null,
+					null,
+					null,
+				],
 				roomWidth: 600,
 				roomDepth: 600,
 				furniture: [],
@@ -178,7 +314,7 @@ describe("_renderTemplateLoadDialog", () => {
 		document.body.removeChild(c);
 	});
 
-	it("clicking card triggers load", () => {
+	it("clicking card triggers load", async () => {
 		const grid = new Array(GRID_CELL_COUNT).fill(0);
 		grid[0] = CELL_ROOM_BIT;
 		const a = createPanel() as any;
@@ -186,7 +322,7 @@ describe("_renderTemplateLoadDialog", () => {
 			{
 				name: "Clickable",
 				grid,
-				zones: [],
+				zones: VALID_ZONES,
 				roomWidth: 3000,
 				roomDepth: 4000,
 				furniture: [],
@@ -201,14 +337,16 @@ describe("_renderTemplateLoadDialog", () => {
 		const card = c.querySelector(".template-card") as HTMLElement;
 		expect(card).not.toBeNull();
 		card.click();
-
-		expect(a._showTemplateLoad).toBe(false);
-		expect(a._roomWidth).toBe(3000);
+		// Wait for the async _loadTemplate -> applyLayout chain to settle.
+		await vi.waitFor(() => {
+			expect(a._showTemplateLoad).toBe(false);
+			expect(a._roomWidth).toBe(3000);
+		});
 
 		document.body.removeChild(c);
 	});
 
-	it("Enter key on card triggers load", () => {
+	it("Enter key on card triggers load", async () => {
 		const grid = new Array(GRID_CELL_COUNT).fill(0);
 		grid[0] = CELL_ROOM_BIT;
 		const a = createPanel() as any;
@@ -216,7 +354,7 @@ describe("_renderTemplateLoadDialog", () => {
 			{
 				name: "Keyboard",
 				grid,
-				zones: [],
+				zones: VALID_ZONES,
 				roomWidth: 4000,
 				roomDepth: 5000,
 				furniture: [],
@@ -232,8 +370,10 @@ describe("_renderTemplateLoadDialog", () => {
 		expect(card).not.toBeNull();
 		card.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter" }));
 
-		expect(a._showTemplateLoad).toBe(false);
-		expect(a._roomWidth).toBe(4000);
+		await vi.waitFor(() => {
+			expect(a._showTemplateLoad).toBe(false);
+			expect(a._roomWidth).toBe(4000);
+		});
 
 		document.body.removeChild(c);
 	});
@@ -246,7 +386,7 @@ describe("_renderTemplateLoadDialog", () => {
 			{
 				name: "Keep",
 				grid,
-				zones: [],
+				zones: VALID_ZONES,
 				roomWidth: 3000,
 				roomDepth: 4000,
 				furniture: [],
@@ -254,7 +394,7 @@ describe("_renderTemplateLoadDialog", () => {
 			{
 				name: "Delete",
 				grid,
-				zones: [],
+				zones: VALID_ZONES,
 				roomWidth: 3000,
 				roomDepth: 4000,
 				furniture: [],
@@ -267,7 +407,7 @@ describe("_renderTemplateLoadDialog", () => {
 				templates: {
 					Keep: {
 						grid,
-						zones: [],
+						zones: VALID_ZONES,
 						roomWidth: 3000,
 						roomDepth: 4000,
 						furniture: [],
@@ -308,7 +448,7 @@ describe("_renderTemplateLoadDialog", () => {
 			{
 				name: "T1",
 				grid,
-				zones: [],
+				zones: VALID_ZONES,
 				roomWidth: 3000,
 				roomDepth: 4000,
 				furniture: [],

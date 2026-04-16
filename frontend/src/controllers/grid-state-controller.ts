@@ -28,6 +28,7 @@ import {
 	getRoomBounds,
 	initGridFromRoom,
 	MAX_ZONES,
+	NUM_ZONE_SLOTS,
 } from "../lib/grid.js";
 import { autoDetectionRange } from "../lib/room-geometry.js";
 import {
@@ -423,7 +424,9 @@ export class GridStateController implements ReactiveController {
 	templates: {
 		name: string;
 		grid: number[];
-		zones?: (ZoneConfig | null)[];
+		// Length-8 zone slots: slot 0 = Zone0Config (room boundary),
+		// slots 1-7 = named ZoneConfig | null.
+		zones: (Zone0Config | ZoneConfig | null)[];
 		roomWidth: number;
 		roomDepth: number;
 		furniture?: FurnitureItem[];
@@ -449,17 +452,27 @@ export class GridStateController implements ReactiveController {
 	async saveTemplate(): Promise<void> {
 		const name = (this.host._templateName as string).trim();
 		if (!name) return;
-		// Template payload stores only the named zones (slots 1..7). Zone 0
-		// settings travel with the room, not with a saved template. Task 7 will
-		// overhaul template storage; this preserves the current template schema.
-		const namedZones = (
+		// Length-8 zones matches the unified zone_slots model. Slot 0 is the
+		// Zone0Config (room boundary), slots 1-7 are named ZoneConfig | null.
+		const zones = (
 			this.host._zoneConfigs as (ZoneConfig | Zone0Config | null)[]
-		)
-			.slice(1)
-			.map((z) => (z !== null ? { ...(z as ZoneConfig) } : null));
+		).map((z, i) => {
+			if (z === null) return null;
+			if (i === 0) {
+				const z0 = z as Zone0Config;
+				return {
+					type: z0.type,
+					trigger: z0.trigger,
+					renew: z0.renew,
+					timeout: z0.timeout,
+					handoff_timeout: z0.handoff_timeout,
+				};
+			}
+			return { ...(z as ZoneConfig) };
+		});
 		const template = {
 			grid: Array.from(this.host._grid as Uint8Array),
-			zones: namedZones,
+			zones,
 			roomWidth: this.host._roomWidth as number,
 			roomDepth: this.host._roomDepth as number,
 			furniture: (this.host._furniture as FurnitureItem[]).map((f) => ({
@@ -476,24 +489,30 @@ export class GridStateController implements ReactiveController {
 		await this.fetchTemplates();
 	}
 
-	loadTemplate(name: string): void {
+	async loadTemplate(name: string): Promise<void> {
 		const tmpl = this.templates.find((t) => t.name === name);
 		if (!tmpl) return;
-		this.host._grid = new Uint8Array(tmpl.grid);
 		const zones = tmpl.zones || [];
-		// Preserve existing zone 0 (room-boundary) config; templates only
-		// carry the named-zones list (slots 1..7).
-		const namedSlots = Array.from(
-			{ length: MAX_ZONES },
+		// Length-8 with a populated zone 0 is required (per no-BWC policy).
+		// Old-format templates throw so the user re-saves them.
+		if (zones.length !== NUM_ZONE_SLOTS || zones[0] == null) {
+			this.host._showTemplateLoad = false;
+			throw new Error(
+				`Template "${name}" is in an old format — please re-save it`,
+			);
+		}
+		this.host._grid = new Uint8Array(tmpl.grid);
+		this.host._zoneConfigs = Array.from(
+			{ length: NUM_ZONE_SLOTS },
 			(_, i) => zones[i] ?? null,
 		);
-		this.host._zoneConfigs = [this.host._zoneConfigs[0], ...namedSlots];
 		this.host._roomWidth = tmpl.roomWidth;
 		this.host._roomDepth = tmpl.roomDepth;
 		this.host._furniture = (tmpl.furniture || []).map((f: any) => ({
 			...f,
 		}));
 		this.host._showTemplateLoad = false;
+		await this.applyLayout();
 	}
 
 	async deleteTemplate(name: string): Promise<void> {

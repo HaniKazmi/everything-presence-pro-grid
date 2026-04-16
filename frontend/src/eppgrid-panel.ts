@@ -794,8 +794,12 @@ export class EPPGridPanel extends LitElement {
 		}
 	}
 
-	private _loadTemplate(name: string): void {
-		this._gridCtrl.loadTemplate(name);
+	private async _loadTemplate(name: string): Promise<void> {
+		try {
+			await this._gridCtrl.loadTemplate(name);
+		} catch (err) {
+			console.error(`Failed to load template "${name}"`, err);
+		}
 	}
 
 	private async _deleteTemplate(name: string): Promise<void> {
@@ -2179,7 +2183,11 @@ export class EPPGridPanel extends LitElement {
                       <div class="template-card-thumbnail">
                         ${renderTemplateThumbnail(
 													t.grid,
-													t.zones?.map((z: any) => z ?? null) ??
+													// New schema: zones is length-8 with slot 0 =
+													// Zone0Config and slots 1-7 = named zones. The
+													// thumbnail only uses the named zones (for cell
+													// colouring, indexed by zoneId-1), so strip slot 0.
+													(t.zones?.slice(1) as (ZoneConfig | null)[]) ??
 														new Array(7).fill(null),
 													t.roomWidth,
 													t.roomDepth,

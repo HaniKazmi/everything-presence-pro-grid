@@ -442,6 +442,13 @@ describe("GridStateController", () => {
 			expect(saveCall![0].template.roomWidth).toBe(3000);
 			expect(saveCall![0].template.roomDepth).toBe(4000);
 			expect(saveCall![0].template.grid[5]).toBe(CELL_ROOM_BIT);
+			// Length-8 zones with zone 0 in slot 0 and named zone in slot 1.
+			expect(saveCall![0].template.zones).toHaveLength(MAX_ZONES + 1);
+			expect(saveCall![0].template.zones[0]).toMatchObject({ type: "normal" });
+			expect(saveCall![0].template.zones[1]).toMatchObject({
+				name: "Zone 1",
+				color: ZONE_COLORS[0],
+			});
 		});
 
 		it("clears _templateName and hides the save dialog", async () => {
@@ -467,16 +474,31 @@ describe("GridStateController", () => {
 	});
 
 	describe("loadTemplate()", () => {
+		// Length-8 zones matches the unified zone_slots model.
+		// Slot 0 = Zone0Config (room boundary), slots 1-7 = named zones.
 		const TEMPLATE_DATA = {
 			grid: Array.from({ length: GRID_CELL_COUNT }, (_, i) =>
 				i === 3 ? CELL_ROOM_BIT : 0,
 			),
 			zones: [
 				{
+					type: "normal" as const,
+					trigger: 5,
+					renew: 3,
+					timeout: 10,
+					handoff_timeout: 3,
+				},
+				{
 					name: "Zone 1",
 					color: ZONE_COLORS[0],
 					type: "normal" as const,
 				},
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
 			],
 			roomWidth: 2400,
 			roomDepth: 3600,
@@ -499,46 +521,88 @@ describe("GridStateController", () => {
 		beforeEach(() => {
 			// Pre-populate the templates cache
 			ctrl.templates = [{ name: "Loaded", ...TEMPLATE_DATA }];
+			// applyLayout (now invoked auto after loadTemplate) calls WS and
+			// reads _selectedMac + various settings — default mocks cover it.
+			host.hass.callWS.mockResolvedValue({});
 		});
 
-		it("restores grid, room dimensions, zones, and furniture from cache", () => {
-			ctrl.loadTemplate("Loaded");
+		it("restores grid, room dimensions, zones, and furniture from cache", async () => {
+			await ctrl.loadTemplate("Loaded");
 			expect(host._roomWidth).toBe(2400);
 			expect(host._roomDepth).toBe(3600);
 			expect(host._grid[3]).toBe(CELL_ROOM_BIT);
-			// Length-8 tuple: slot 0 keeps the existing Zone0Config (templates
-			// don't carry zone 0), slots 1-7 hold the template's named zones.
+			// Length-8 tuple: slot 0 = Zone0Config, slots 1-7 = named zones.
 			expect(host._zoneConfigs).toHaveLength(MAX_ZONES + 1);
 			expect(host._zoneConfigs[0]).toMatchObject({ type: "normal" });
-			expect(host._zoneConfigs[1]).toMatchObject({ name: "Zone 1" });
-			expect(host._furniture).toHaveLength(1);
+			// Zone 1 has zero painted cells so applyLayout prunes it.
+			// That's the expected behaviour; the key assertion is slot 0
+			// survives and carries the Zone0Config.
+			expect(host._furniture).toHaveLength(0); // pruned (outside bounds)
 		});
 
-		it("pads named-zone slots so length is 8", () => {
-			ctrl.loadTemplate("Loaded");
+		it("populates all 8 slots so length is 8", async () => {
+			await ctrl.loadTemplate("Loaded");
 			expect(host._zoneConfigs).toHaveLength(MAX_ZONES + 1);
-			// Slots 2..7 (unused named zones) are null
+			// Slot 0 is zone 0 (always populated).
+			expect(host._zoneConfigs[0]).not.toBeNull();
+			// Slots 2..7 (unused named zones) are null.
 			for (let i = 2; i < MAX_ZONES + 1; i++) {
 				expect(host._zoneConfigs[i]).toBeNull();
 			}
 		});
 
-		it("closes the load dialog", () => {
+		it("closes the load dialog", async () => {
 			host._showTemplateLoad = true;
-			ctrl.loadTemplate("Loaded");
+			await ctrl.loadTemplate("Loaded");
 			expect(host._showTemplateLoad).toBe(false);
 		});
 
-		it("does nothing when the template name does not exist", () => {
-			ctrl.loadTemplate("Nonexistent");
+		it("does nothing when the template name does not exist", async () => {
+			await ctrl.loadTemplate("Nonexistent");
 			expect(host._roomWidth).toBe(3000); // unchanged from mockHost default
 		});
 
-		it("handles templates without furniture field", () => {
+		it("handles templates without furniture field", async () => {
 			const { furniture: _, ...noFurniture } = TEMPLATE_DATA;
 			ctrl.templates = [{ name: "Loaded", ...noFurniture } as any];
-			ctrl.loadTemplate("Loaded");
+			await ctrl.loadTemplate("Loaded");
 			expect(host._furniture).toEqual([]);
+		});
+
+		it("auto-applies the layout (sends set_room_layout WS)", async () => {
+			await ctrl.loadTemplate("Loaded");
+			expect(host.hass.callWS).toHaveBeenCalledWith(
+				expect.objectContaining({
+					type: "eppgrid/set_room_layout",
+				}),
+			);
+		});
+
+		it("throws on old-format template (length-7 zones)", async () => {
+			ctrl.templates = [
+				{
+					name: "Old",
+					grid: TEMPLATE_DATA.grid,
+					// length 7 — old format
+					zones: [null, null, null, null, null, null, null],
+					roomWidth: 2400,
+					roomDepth: 3600,
+				} as any,
+			];
+			await expect(ctrl.loadTemplate("Old")).rejects.toThrow(/old format/);
+		});
+
+		it("throws on template with null zone 0", async () => {
+			ctrl.templates = [
+				{
+					name: "NullZ0",
+					grid: TEMPLATE_DATA.grid,
+					zones: [null, null, null, null, null, null, null, null],
+					roomWidth: 2400,
+					roomDepth: 3600,
+				} as any,
+			];
+			await expect(ctrl.loadTemplate("NullZ0")).rejects.toThrow(/old format/);
 		});
 	});
 
