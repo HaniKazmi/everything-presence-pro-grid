@@ -402,7 +402,7 @@ describe("live overview menu branches (panel inline)", () => {
 		document.body.removeChild(c);
 	});
 
-	it("load template menu item sets _showTemplateLoad", () => {
+	it("load template menu item sets _showTemplateLoad", async () => {
 		const a = createPanel() as any;
 		a._showLiveMenu = true;
 		a._perspective = [1, 0, 0, 0, 1, 0, 0, 0];
@@ -414,7 +414,9 @@ describe("live overview menu branches (panel inline)", () => {
 			const text = items[i].textContent || "";
 			if (text.includes("dialogs.load_template")) {
 				(items[i] as HTMLElement).click();
-				expect(a._showTemplateLoad).toBe(true);
+				await vi.waitFor(() => {
+					expect(a._showTemplateLoad).toBe(true);
+				});
 				break;
 			}
 		}
@@ -778,19 +780,16 @@ describe("_renderFurnitureOverlay DOM events", () => {
 // =========================================================
 describe("_renderTemplateLoadDialog DOM events", () => {
 	it("load button calls _loadTemplate", () => {
-		localStorage.setItem(
-			"epp_layout_templates",
-			JSON.stringify([
-				{
-					name: "T1",
-					grid: new Array(GRID_CELL_COUNT).fill(0),
-					zones: [],
-					roomWidth: 5000,
-					roomDepth: 6000,
-				},
-			]),
-		);
 		const a = createPanel() as any;
+		a._gridCtrl.templates = [
+			{
+				name: "T1",
+				grid: new Array(GRID_CELL_COUNT).fill(0),
+				zones: [],
+				roomWidth: 5000,
+				roomDepth: 6000,
+			},
+		];
 		const tpl = a._renderTemplateLoadDialog();
 		const c = renderTo(tpl);
 
@@ -798,26 +797,30 @@ describe("_renderTemplateLoadDialog DOM events", () => {
 		expect(card).not.toBeNull();
 		card.click();
 		expect(a._roomWidth).toBe(5000);
-		localStorage.removeItem("epp_layout_templates");
 		document.body.removeChild(c);
 	});
 
-	it("delete button calls _deleteTemplate", () => {
-		localStorage.setItem(
-			"epp_layout_templates",
-			JSON.stringify([
-				{ name: "T1", grid: [], zones: [], roomWidth: 3000, roomDepth: 4000 },
-			]),
-		);
+	it("delete button calls _deleteTemplate", async () => {
 		const a = createPanel() as any;
+		a._gridCtrl.templates = [
+			{ name: "T1", grid: [], zones: [], roomWidth: 3000, roomDepth: 4000 },
+		];
+		a.hass.callWS = vi.fn().mockImplementation((msg: any) => {
+			if (msg.type === "eppgrid/delete_template") return Promise.resolve({});
+			if (msg.type === "eppgrid/list_templates")
+				return Promise.resolve({ templates: {} });
+			return Promise.resolve({});
+		});
 		const tpl = a._renderTemplateLoadDialog();
 		const c = renderTo(tpl);
 
 		const deleteBtn = c.querySelector(".template-card-delete") as HTMLElement;
 		expect(deleteBtn).not.toBeNull();
 		deleteBtn.click();
-		expect(a._getTemplates().length).toBe(0);
-		localStorage.removeItem("epp_layout_templates");
+		// Wait for async _deleteTemplate to complete
+		await vi.waitFor(() => {
+			expect(a._gridCtrl.templates.length).toBe(0);
+		});
 		document.body.removeChild(c);
 	});
 });
@@ -826,18 +829,25 @@ describe("_renderTemplateLoadDialog DOM events", () => {
 // _renderTemplateSaveDialog: save button click
 // =========================================================
 describe("_renderTemplateSaveDialog DOM events", () => {
-	it("save button calls _saveTemplate", () => {
+	it("save button calls _saveTemplate", async () => {
 		const a = createPanel() as any;
 		a._templateName = "Test";
+		a.hass.callWS = vi.fn().mockImplementation((msg: any) => {
+			if (msg.type === "eppgrid/save_template") return Promise.resolve({});
+			if (msg.type === "eppgrid/list_templates")
+				return Promise.resolve({ templates: {} });
+			return Promise.resolve({});
+		});
 		const tpl = a._renderTemplateSaveDialog();
 		const c = renderTo(tpl);
 
 		const primaryBtn = c.querySelector(".wizard-btn-primary") as HTMLElement;
 		if (primaryBtn) {
 			primaryBtn.click();
-			expect(a._showTemplateSave).toBe(false);
+			await vi.waitFor(() => {
+				expect(a._showTemplateSave).toBe(false);
+			});
 		}
-		localStorage.removeItem("epp_layout_templates");
 		document.body.removeChild(c);
 	});
 });
@@ -878,24 +888,19 @@ describe("epp-furniture-sidebar icon picker event", () => {
 // =========================================================
 describe("_loadTemplate backwards compat", () => {
 	it("handles missing zones array", () => {
-		localStorage.setItem(
-			"epp_layout_templates",
-			JSON.stringify([
-				{
-					name: "NoZones",
-					grid: new Array(GRID_CELL_COUNT).fill(0),
-					roomWidth: 3000,
-					roomDepth: 4000,
-				},
-			]),
-		);
 		const a = createPanel() as any;
+		a._gridCtrl.templates = [
+			{
+				name: "NoZones",
+				grid: new Array(GRID_CELL_COUNT).fill(0),
+				roomWidth: 3000,
+				roomDepth: 4000,
+			},
+		];
 		a._loadTemplate("NoZones");
 
 		expect(a._zoneConfigs).toHaveLength(7);
 		expect(a._zoneConfigs.every((z: any) => z === null)).toBe(true);
-
-		localStorage.removeItem("epp_layout_templates");
 	});
 });
 

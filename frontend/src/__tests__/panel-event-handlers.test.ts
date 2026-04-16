@@ -1038,46 +1038,43 @@ describe("_renderTemplateLoadDialog inline handlers", () => {
 
 	it("load button calls _loadTemplate", () => {
 		const a = createPanel() as any;
-		localStorage.setItem(
-			"epp_layout_templates",
-			JSON.stringify([
-				{
-					name: "T1",
-					grid: new Array(GRID_CELL_COUNT).fill(0),
-					zones: [],
-					roomWidth: 3000,
-					roomDepth: 4000,
-				},
-			]),
-		);
+		a._gridCtrl.templates = [
+			{
+				name: "T1",
+				grid: new Array(GRID_CELL_COUNT).fill(0),
+				zones: [],
+				roomWidth: 3000,
+				roomDepth: 4000,
+			},
+		];
 
 		// Replicate handler (line 4590)
 		a._loadTemplate("T1");
 		expect(a._roomWidth).toBe(3000);
-
-		localStorage.removeItem("epp_layout_templates");
 	});
 
-	it("delete button calls _deleteTemplate", () => {
+	it("delete button calls _deleteTemplate", async () => {
 		const a = createPanel() as any;
-		localStorage.setItem(
-			"epp_layout_templates",
-			JSON.stringify([
-				{
-					name: "T1",
-					grid: [],
-					zones: [],
-					roomWidth: 3000,
-					roomDepth: 4000,
-				},
-			]),
-		);
+		a._gridCtrl.templates = [
+			{
+				name: "T1",
+				grid: [],
+				zones: [],
+				roomWidth: 3000,
+				roomDepth: 4000,
+			},
+		];
+
+		a.hass.callWS = vi.fn().mockImplementation((msg: any) => {
+			if (msg.type === "eppgrid/delete_template") return Promise.resolve({});
+			if (msg.type === "eppgrid/list_templates")
+				return Promise.resolve({ templates: {} });
+			return Promise.resolve({});
+		});
 
 		// Replicate handler (line 4601)
-		a._deleteTemplate("T1");
-		expect(a._getTemplates()).toHaveLength(0);
-
-		localStorage.removeItem("epp_layout_templates");
+		await a._deleteTemplate("T1");
+		expect(a._gridCtrl.templates).toHaveLength(0);
 	});
 });
 

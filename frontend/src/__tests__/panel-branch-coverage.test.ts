@@ -1061,26 +1061,29 @@ describe("_infoTip DOM click handler", () => {
 // =========================================================
 describe("_renderTemplateLoadDialog item events", () => {
 	it("fires load and delete on template items", () => {
-		localStorage.setItem(
-			"epp_layout_templates",
-			JSON.stringify([
-				{
-					name: "T1",
-					grid: new Array(GRID_CELL_COUNT).fill(0),
-					zones: [],
-					roomWidth: 5000,
-					roomDepth: 6000,
-				},
-				{
-					name: "T2",
-					grid: new Array(GRID_CELL_COUNT).fill(0),
-					zones: [],
-					roomWidth: 3000,
-					roomDepth: 4000,
-				},
-			]),
-		);
 		const a = createPanel() as any;
+		a._gridCtrl.templates = [
+			{
+				name: "T1",
+				grid: new Array(GRID_CELL_COUNT).fill(0),
+				zones: [],
+				roomWidth: 5000,
+				roomDepth: 6000,
+			},
+			{
+				name: "T2",
+				grid: new Array(GRID_CELL_COUNT).fill(0),
+				zones: [],
+				roomWidth: 3000,
+				roomDepth: 4000,
+			},
+		];
+		a.hass.callWS = vi.fn().mockImplementation((msg: any) => {
+			if (msg.type === "eppgrid/delete_template") return Promise.resolve({});
+			if (msg.type === "eppgrid/list_templates")
+				return Promise.resolve({ templates: {} });
+			return Promise.resolve({});
+		});
 		const tpl = a._renderTemplateLoadDialog();
 		const c = document.createElement("div");
 		document.body.appendChild(c);
@@ -1097,7 +1100,6 @@ describe("_renderTemplateLoadDialog item events", () => {
 			(deleteBtns[1] as HTMLElement).click();
 		}
 
-		localStorage.removeItem("epp_layout_templates");
 		document.body.removeChild(c);
 	});
 });

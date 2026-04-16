@@ -1192,28 +1192,23 @@ describe("_renderTemplateLoadDialog DOM events", () => {
 	});
 
 	it("load and delete buttons with templates", () => {
-		localStorage.setItem(
-			"epp_layout_templates",
-			JSON.stringify([
-				{
-					name: "T1",
-					grid: new Array(GRID_CELL_COUNT).fill(0),
-					zones: [],
-					roomWidth: 3000,
-					roomDepth: 4000,
-				},
-			]),
-		);
-
 		const a = createPanel() as any;
+		a._gridCtrl.templates = [
+			{
+				name: "T1",
+				grid: new Array(GRID_CELL_COUNT).fill(0),
+				zones: [],
+				roomWidth: 3000,
+				roomDepth: 4000,
+			},
+		];
+
 		const tpl = a._renderTemplateLoadDialog();
 		const c = renderTo(tpl);
 
 		const card = c.querySelector(".template-card") as HTMLElement;
 		expect(card).not.toBeNull();
 		card.click();
-
-		localStorage.removeItem("epp_layout_templates");
 	});
 });
 
