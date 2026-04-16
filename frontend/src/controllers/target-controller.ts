@@ -106,7 +106,15 @@ export class TargetController implements ReactiveController {
 		const ss = this.host._sensorState;
 		const slots = this.host._zoneConfigs;
 		const z0 = slots[0];
-		const defaults = ZONE_TYPE_DEFAULTS.normal;
+		// Select defaults by zone type; mirrors getZoneThresholds semantics in
+		// lib/zone-defaults.ts. For non-custom types the type defaults are
+		// authoritative (user-supplied trigger/renew/etc. are ignored); only
+		// "custom" honours user overrides. The engine re-resolves internally
+		// via getZoneThresholds, so for non-custom types these values are
+		// effectively ignored downstream — but we mirror the semantics here
+		// so the params block matches the engine's view of the world.
+		const defaults = ZONE_TYPE_DEFAULTS[z0.type] ?? ZONE_TYPE_DEFAULTS.normal;
+		const useCustom = z0.type === "custom";
 		const result = runLocalZoneEngine(this._zoneEngineState, {
 			targets: this.host._targets,
 			grid: this.host._grid,
@@ -114,10 +122,16 @@ export class TargetController implements ReactiveController {
 			roomDepth: this.host._roomDepth,
 			zoneConfigs: slots.slice(1),
 			roomType: z0.type,
-			roomTrigger: z0.trigger ?? defaults.trigger,
-			roomRenew: z0.renew ?? defaults.renew,
-			roomTimeout: z0.timeout ?? defaults.timeout,
-			roomHandoffTimeout: z0.handoff_timeout ?? defaults.handoff_timeout,
+			roomTrigger: useCustom
+				? (z0.trigger ?? defaults.trigger)
+				: defaults.trigger,
+			roomRenew: useCustom ? (z0.renew ?? defaults.renew) : defaults.renew,
+			roomTimeout: useCustom
+				? (z0.timeout ?? defaults.timeout)
+				: defaults.timeout,
+			roomHandoffTimeout: useCustom
+				? (z0.handoff_timeout ?? defaults.handoff_timeout)
+				: defaults.handoff_timeout,
 			staticPresence: ss?.static_presence ?? false,
 			motionPresence: ss?.motion_presence ?? false,
 			// Timeouts default to 10s — the real timeout logic runs on the firmware.

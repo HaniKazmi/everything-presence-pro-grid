@@ -2040,8 +2040,16 @@ export class EPPGridPanel extends LitElement {
 											// Sidebar indexes are 0-based over named zones;
 											// shift by +1 to index the unified zone-slots tuple.
 											const slot = index + 1;
+											// Guard: slot 0 is Zone0Config (never owned by this event)
+											// and slot >= length is out of bounds.
+											if (slot < 1 || slot >= this._zoneConfigs.length) return;
+											const current = this._zoneConfigs[slot];
+											// Defense-in-depth: the sidebar should only fire for
+											// existing named zones, but a null slot would produce
+											// a config object missing name/color/type.
+											if (current === null) return;
 											const configs = [...this._zoneConfigs];
-											configs[slot] = { ...configs[slot]!, ...updates };
+											configs[slot] = { ...current, ...updates };
 											this._zoneConfigs = configs as unknown as ZoneSlots;
 										}}
                     @room-config-change=${(e: CustomEvent) => {
@@ -2327,14 +2335,23 @@ export class EPPGridPanel extends LitElement {
 		handoffTimeout: number;
 	} {
 		const z0 = this._zoneConfigs[0];
+		// Select defaults by zone type; mirrors getZoneThresholds semantics.
+		// For non-custom types the type defaults are authoritative and the
+		// roomTrigger/roomRenew/etc. args we pass in are ignored by
+		// getZoneThresholds — we still align on type defaults here so the
+		// values match the engine's view.
+		const defaults = ZONE_TYPE_DEFAULTS[z0.type] ?? ZONE_TYPE_DEFAULTS.normal;
+		const useCustom = z0.type === "custom";
 		return getZoneThresholds(
 			zid,
 			this._namedZones(),
 			z0.type,
-			z0.trigger ?? ZONE_TYPE_DEFAULTS.normal.trigger,
-			z0.renew ?? ZONE_TYPE_DEFAULTS.normal.renew,
-			z0.timeout ?? ZONE_TYPE_DEFAULTS.normal.timeout,
-			z0.handoff_timeout ?? ZONE_TYPE_DEFAULTS.normal.handoff_timeout,
+			useCustom ? (z0.trigger ?? defaults.trigger) : defaults.trigger,
+			useCustom ? (z0.renew ?? defaults.renew) : defaults.renew,
+			useCustom ? (z0.timeout ?? defaults.timeout) : defaults.timeout,
+			useCustom
+				? (z0.handoff_timeout ?? defaults.handoff_timeout)
+				: defaults.handoff_timeout,
 		);
 	}
 

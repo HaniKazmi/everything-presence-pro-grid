@@ -201,6 +201,88 @@ describe("Editor view event wiring", () => {
 		expect(a._zoneConfigs[1].trigger).toBe(8);
 	});
 
+	it("zone-config-change ignores out-of-range negative index", () => {
+		const [el, _container] = editorPanel();
+		const a = el as any;
+		a._zoneConfigs = [
+			a._zoneConfigs[0],
+			{
+				name: "Zone 1",
+				color: "#ff0000",
+				type: "normal",
+				trigger: 5,
+				renew: 2,
+				timeout: 10,
+				handoff_timeout: 2,
+			},
+			null,
+			null,
+			null,
+			null,
+			null,
+			null,
+		];
+		const before = a._zoneConfigs;
+		const container2 = renderPanel(el);
+		const sidebar = container2.querySelector("epp-zone-sidebar")!;
+		// index = -1 → slot = 0, which is Zone0Config and should never be
+		// overwritten via zone-config-change. Handler must be a no-op.
+		sidebar.dispatchEvent(
+			new CustomEvent("zone-config-change", {
+				detail: { index: -1, updates: { trigger: 99 } },
+				bubbles: true,
+			}),
+		);
+		expect(a._zoneConfigs).toBe(before);
+		expect(a._zoneConfigs[0].trigger).toBe(5);
+	});
+
+	it("zone-config-change ignores out-of-range high index", () => {
+		const [el, _container] = editorPanel();
+		const a = el as any;
+		const before = a._zoneConfigs;
+		const container2 = renderPanel(el);
+		const sidebar = container2.querySelector("epp-zone-sidebar")!;
+		// index = 7 → slot = 8, out of bounds for the length-8 zone-slots tuple.
+		sidebar.dispatchEvent(
+			new CustomEvent("zone-config-change", {
+				detail: { index: 7, updates: { trigger: 99 } },
+				bubbles: true,
+			}),
+		);
+		expect(a._zoneConfigs).toBe(before);
+		expect(a._zoneConfigs.length).toBe(8);
+	});
+
+	it("zone-config-change ignores null slot (defense-in-depth)", () => {
+		const [el, _container] = editorPanel();
+		const a = el as any;
+		// Slot 1 is explicitly null.
+		a._zoneConfigs = [
+			a._zoneConfigs[0],
+			null,
+			null,
+			null,
+			null,
+			null,
+			null,
+			null,
+		];
+		const before = a._zoneConfigs;
+		const container2 = renderPanel(el);
+		const sidebar = container2.querySelector("epp-zone-sidebar")!;
+		// index 0 → slot 1 (null). Spreading null would produce a bogus
+		// config missing name/color/type. Handler must short-circuit instead.
+		sidebar.dispatchEvent(
+			new CustomEvent("zone-config-change", {
+				detail: { index: 0, updates: { trigger: 99 } },
+				bubbles: true,
+			}),
+		);
+		expect(a._zoneConfigs).toBe(before);
+		expect(a._zoneConfigs[1]).toBe(null);
+	});
+
 	it("room-config-change updates zone 0 type", () => {
 		const [el, container] = editorPanel();
 		const sidebar = container.querySelector("epp-zone-sidebar")!;

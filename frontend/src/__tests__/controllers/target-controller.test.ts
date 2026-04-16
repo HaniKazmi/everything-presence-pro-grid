@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { DEBUG_LOG_MAX } from "../../constants.js";
 import type { TargetData } from "../../controllers/device-controller.js";
 import { TargetController } from "../../controllers/target-controller.js";
@@ -602,6 +602,104 @@ describe("TargetController", () => {
 			host._zoneState.target_counts = {};
 			const result = ctrl.computeHeatmapColors();
 			expect(result.size).toBe(0);
+		});
+	});
+
+	// -------------------------------------------------------------------------
+	// runLocalZoneEngine — default resolution by zone type
+	// -------------------------------------------------------------------------
+	describe("runLocalZoneEngine default resolution", () => {
+		let engineSpy: ReturnType<typeof vi.spyOn>;
+
+		beforeEach(async () => {
+			const mod = await import("../../lib/zone-engine.js");
+			// Spy replaces the module export; target-controller.ts captured the
+			// binding at import time, but vitest rewrites ESM imports so
+			// spyOn on the module works.
+			engineSpy = vi.spyOn(mod, "runLocalZoneEngine");
+		});
+
+		afterEach(() => {
+			engineSpy.mockRestore();
+		});
+
+		it("resolves room defaults by z0.type when trigger is unset ('rest' → 7, not normal → 5)", () => {
+			host._zoneConfigs = [
+				{ type: "rest" as const },
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+			];
+			host._grid = new Uint8Array(GRID_CELL_COUNT);
+			ctrl.runLocalZoneEngine();
+			expect(engineSpy).toHaveBeenCalledTimes(1);
+			const params = (engineSpy.mock.calls[0] as any[])[1];
+			expect(params.roomType).toBe("rest");
+			// rest defaults: trigger 7, renew 1, timeout 30, handoff_timeout 10
+			expect(params.roomTrigger).toBe(7);
+			expect(params.roomRenew).toBe(1);
+			expect(params.roomTimeout).toBe(30);
+			expect(params.roomHandoffTimeout).toBe(10);
+		});
+
+		it("uses type defaults authoritatively for non-custom types, ignoring user-supplied trigger", () => {
+			// z0.type = "rest" but with stale user-supplied overrides from a
+			// previous custom config; per getZoneThresholds semantics, the
+			// rest defaults must win.
+			host._zoneConfigs = [
+				{
+					type: "rest" as const,
+					trigger: 2,
+					renew: 9,
+					timeout: 99,
+					handoff_timeout: 99,
+				},
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+			];
+			host._grid = new Uint8Array(GRID_CELL_COUNT);
+			ctrl.runLocalZoneEngine();
+			const params = (engineSpy.mock.calls[0] as any[])[1];
+			expect(params.roomTrigger).toBe(7);
+			expect(params.roomRenew).toBe(1);
+			expect(params.roomTimeout).toBe(30);
+			expect(params.roomHandoffTimeout).toBe(10);
+		});
+
+		it("honours user-supplied values for type 'custom'", () => {
+			host._zoneConfigs = [
+				{
+					type: "custom" as const,
+					trigger: 4,
+					renew: 2,
+					timeout: 20,
+					handoff_timeout: 5,
+				},
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+			];
+			host._grid = new Uint8Array(GRID_CELL_COUNT);
+			ctrl.runLocalZoneEngine();
+			const params = (engineSpy.mock.calls[0] as any[])[1];
+			expect(params.roomType).toBe("custom");
+			expect(params.roomTrigger).toBe(4);
+			expect(params.roomRenew).toBe(2);
+			expect(params.roomTimeout).toBe(20);
+			expect(params.roomHandoffTimeout).toBe(5);
 		});
 	});
 
