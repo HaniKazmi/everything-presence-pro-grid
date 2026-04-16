@@ -1,4 +1,5 @@
 #include "epp_component.h"
+#include "epp_zone_config_parser.h"
 #include "esphome/core/log.h"
 
 #include <ArduinoJson.h>
@@ -414,13 +415,6 @@ void EPPComponent::set_grid(const std::string &grid_data,
 // Service: set_zones
 // ---------------------------------------------------------------------------
 
-static ZoneType type_str_to_enum(const char *s) {
-  if (strcmp(s, "thoroughfare") == 0) return ZoneType::THOROUGHFARE;
-  if (strcmp(s, "rest") == 0) return ZoneType::REST;
-  if (strcmp(s, "custom") == 0) return ZoneType::CUSTOM;
-  return ZoneType::NORMAL;
-}
-
 void EPPComponent::set_zones(const std::string &zones_json) {
   JsonDocument doc;
   if (deserializeJson(doc, zones_json)) {
@@ -430,33 +424,7 @@ void EPPComponent::set_zones(const std::string &zones_json) {
 
   ZoneConfig configs[MAX_ZONE_SLOTS];
   int count = 0;
-
-  // Zone 0 (room) from root-level fields
-  configs[count] = {
-    0,
-    type_str_to_enum(doc["room_type"] | "normal"),
-    doc["room_trigger"] | 5,
-    doc["room_renew"] | 3,
-    doc["room_timeout"] | 10.0f,
-    doc["room_handoff_timeout"] | 3.0f
-  };
-  count++;
-
-  // Named zones 1-7 from zone_slots array
-  JsonArray slots = doc["zone_slots"].as<JsonArray>();
-  for (size_t i = 0; i < slots.size() && count < MAX_ZONE_SLOTS; i++) {
-    if (slots[i].isNull()) continue;
-    JsonObject z = slots[i].as<JsonObject>();
-    configs[count] = {
-      z["id"] | static_cast<int>(i + 1),
-      type_str_to_enum(z["type"] | "normal"),
-      z["trigger"] | 5,
-      z["renew"] | 3,
-      z["timeout"] | 10.0f,
-      z["handoff_timeout"] | 3.0f
-    };
-    count++;
-  }
+  parse_zone_configs(doc, configs, count);
 
   zone_engine_.set_zones(configs, count);
   ESP_LOGI(TAG, "Configured %d zones", count);
@@ -554,36 +522,12 @@ void EPPComponent::restore_from_nvs_() {
     std::string zones_str(str_len - 1, '\0');  // str_len includes null terminator
     nvs_get_str(handle, "zones", &zones_str[0], &str_len);
     nvs_close(handle);  // Close before calling set_zones (which re-opens for save)
-    // Parse and apply but don't re-save — call the parsing logic directly
+    // Parse and apply but don't re-save — call the shared parsing helper.
     JsonDocument doc;
     if (!deserializeJson(doc, zones_str)) {
       ZoneConfig configs[MAX_ZONE_SLOTS];
       int count = 0;
-
-      configs[count] = {
-        0,
-        type_str_to_enum(doc["room_type"] | "normal"),
-        doc["room_trigger"] | 5,
-        doc["room_renew"] | 3,
-        doc["room_timeout"] | 10.0f,
-        doc["room_handoff_timeout"] | 3.0f
-      };
-      count++;
-
-      JsonArray slots = doc["zone_slots"].as<JsonArray>();
-      for (size_t i = 0; i < slots.size() && count < MAX_ZONE_SLOTS; i++) {
-        if (slots[i].isNull()) continue;
-        JsonObject z = slots[i].as<JsonObject>();
-        configs[count] = {
-          z["id"] | static_cast<int>(i + 1),
-          type_str_to_enum(z["type"] | "normal"),
-          z["trigger"] | 5,
-          z["renew"] | 3,
-          z["timeout"] | 10.0f,
-          z["handoff_timeout"] | 3.0f
-        };
-        count++;
-      }
+      parse_zone_configs(doc, configs, count);
 
       zone_engine_.set_zones(configs, count);
       last_zones_json_ = zones_str;

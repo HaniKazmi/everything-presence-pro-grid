@@ -34,6 +34,17 @@ add_executable(epp_zone_engine_logging_tests
 )
 target_link_libraries(epp_zone_engine_logging_tests PRIVATE epp_zone_engine doctest::doctest)
 
+# Zone-config parser test — exercises the ArduinoJson-based helper shared by
+# both set_zones() and restore_from_nvs_() in the firmware component.
+add_executable(epp_zone_config_parser_tests
+    test_zone_config_parser.cpp
+)
+target_link_libraries(epp_zone_config_parser_tests PRIVATE epp_zone_engine doctest::doctest)
+target_include_directories(epp_zone_config_parser_tests PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../../components/epp
+    ${arduinojson_SOURCE_DIR}/src
+)
+
 include(${doctest_SOURCE_DIR}/scripts/cmake/doctest.cmake)
 doctest_discover_tests(epp_tests)
 doctest_discover_tests(epp_calibration_tests)
@@ -42,3 +53,4 @@ doctest_discover_tests(epp_parity_tests)
 doctest_discover_tests(epp_rolling_window_tests)
 doctest_discover_tests(epp_relay_tests)
 doctest_discover_tests(epp_zone_engine_logging_tests)
+doctest_discover_tests(epp_zone_config_parser_tests)
