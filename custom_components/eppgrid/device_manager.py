@@ -68,6 +68,16 @@ def _resolve_zone_name(
     if index == 0:
         key = "zone_rest_of_room_target_count" if target_count else "zone_rest_of_room"
         return table.get(key, en[key])
+    # If the name already starts with the localized "Zone"/"Zona" prefix
+    # (or the English default), strip it to avoid "Zone Zone 1".
+    if zone_name:
+        loc_prefix = table.get("zone_with_name", en["zone_with_name"]).split("{name}")[0].rstrip()
+        en_prefix = en["zone_with_name"].split("{name}")[0].rstrip()
+        for prefix in (loc_prefix, en_prefix):
+            if zone_name.startswith(prefix + " "):
+                zone_name = zone_name.removeprefix(prefix + " ")
+                break
+
     key = "zone_with_name_target_count" if target_count else "zone_with_name"
     template = table.get(key, en[key])
     return template.replace("{name}", zone_name or "")
