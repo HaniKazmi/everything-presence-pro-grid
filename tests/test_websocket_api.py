@@ -336,7 +336,16 @@ class TestWebSocketSetRoomLayout:
 
         from custom_components.eppgrid.websocket_api import websocket_set_room_layout
 
-        zone_slots = [{"name": "Office", "type": "normal"}]
+        zone_slots = [
+            {"type": "normal", "trigger": 5, "renew": 3, "timeout": 10.0, "handoff_timeout": 3.0},
+            {"name": "Office", "type": "normal"},
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+        ]
         connection = MagicMock()
         msg = {
             "id": 5,
@@ -344,19 +353,66 @@ class TestWebSocketSetRoomLayout:
             "mac": "AA:BB:CC:DD:EE:FF",
             "grid_bytes": [1] * 400,
             "zone_slots": zone_slots,
-            "room_type": "normal",
             "furniture": [],
         }
 
         await call_async_handler(hass, websocket_set_room_layout, connection, msg)
 
         layout = mock_dm._store.devices["AA:BB:CC:DD:EE:FF"]["room_layout"]
-        assert layout["room_type"] == "normal"
         assert layout["zone_slots"] == zone_slots
+        assert layout["zone_slots"][0]["type"] == "normal"
         mock_dm._store.async_save.assert_awaited()
         mock_dm._push_config_to_device.assert_awaited()
         mock_dm.async_update_zone_entities.assert_awaited_with("AA:BB:CC:DD:EE:FF", zone_slots)
         connection.send_result.assert_called_once_with(5)
+
+    async def test_set_room_layout_stores_zone_0_in_zone_slots(
+        self, hass: HomeAssistant, config_entry: MockConfigEntry
+    ) -> None:
+        """set_room_layout stores zone 0 settings at zone_slots[0], not room_*."""
+        mock_dm = await setup_integration(hass, config_entry)
+        mock_dm.async_update_zone_entities = AsyncMock()
+        mock_dm._push_config_to_device = AsyncMock()
+        mock_dm.devices["AA:BB:CC:DD:EE:FF"] = MagicMock(host="1.2.3.4")
+
+        zone_slots = [
+            {"type": "normal", "trigger": 5, "renew": 3, "timeout": 10.0, "handoff_timeout": 3.0},
+            {
+                "name": "Living",
+                "color": "#ff0000",
+                "type": "rest",
+                "trigger": 7,
+                "renew": 1,
+                "timeout": 30.0,
+                "handoff_timeout": 10.0,
+            },
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+        ]
+
+        from custom_components.eppgrid.websocket_api import websocket_set_room_layout
+
+        connection = MagicMock()
+        msg = {
+            "id": 1,
+            "type": "eppgrid/set_room_layout",
+            "mac": "AA:BB:CC:DD:EE:FF",
+            "grid_bytes": [0] * 400,
+            "zone_slots": zone_slots,
+            "furniture": [],
+        }
+
+        await call_async_handler(hass, websocket_set_room_layout, connection, msg)
+
+        layout = mock_dm._store.devices["AA:BB:CC:DD:EE:FF"]["room_layout"]
+        assert layout["zone_slots"] == zone_slots
+        assert "room_type" not in layout
+        assert "room_trigger" not in layout
+        mock_dm.async_update_zone_entities.assert_awaited_with("AA:BB:CC:DD:EE:FF", zone_slots)
 
 
 class TestWebSocketTemplates:
@@ -1916,7 +1972,7 @@ class TestNotReadyGuards:
     @pytest.mark.parametrize(
         "handler_name,extra_fields,is_async",
         [
-            ("websocket_set_room_layout", {"mac": "AA:BB", "grid_bytes": [], "zone_slots": [], "room_type": "n"}, True),
+            ("websocket_set_room_layout", {"mac": "AA:BB", "grid_bytes": [], "zone_slots": []}, True),
             ("websocket_list_templates", {}, False),
             ("websocket_save_template", {"name": "t", "template": {}}, True),
             ("websocket_delete_template", {"name": "t"}, True),
@@ -2627,7 +2683,19 @@ class TestProtocolVersionGuard:
         [
             (
                 "websocket_set_room_layout",
-                {"grid_bytes": [0] * 400, "zone_slots": [None] * 7, "room_type": "normal"},
+                {
+                    "grid_bytes": [0] * 400,
+                    "zone_slots": [
+                        {"type": "normal", "trigger": 5, "renew": 3, "timeout": 10.0, "handoff_timeout": 3.0},
+                        None,
+                        None,
+                        None,
+                        None,
+                        None,
+                        None,
+                        None,
+                    ],
+                },
             ),
             (
                 "websocket_set_entity_enabled",

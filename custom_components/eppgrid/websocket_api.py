@@ -15,6 +15,7 @@ from homeassistant.core import callback
 from homeassistant.helpers import entity_registry as er
 
 from .const import DOMAIN
+from .const import NUM_ZONE_SLOTS
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -292,9 +293,7 @@ async def websocket_set_setup(
             hass.loop.call_later(60, manager._entity_update_macs.discard, mac)
         _apply_entity_states(hass, mac, {"target_xy": False})
 
-    from .const import MAX_ZONES
-
-    zone_slots = device_config.get("room_layout", {}).get("zone_slots", [None] * MAX_ZONES)
+    zone_slots = device_config.get("room_layout", {}).get("zone_slots", [None] * NUM_ZONE_SLOTS)
     await manager.async_update_zone_entities(mac, zone_slots)
 
     connection.send_result(msg["id"])
@@ -308,12 +307,7 @@ async def websocket_set_setup(
         vol.Required("type"): "eppgrid/set_room_layout",
         vol.Required("mac"): str,
         vol.Required("grid_bytes"): [int],
-        vol.Required("zone_slots"): list,
-        vol.Required("room_type"): str,
-        vol.Optional("room_trigger"): vol.Coerce(int),
-        vol.Optional("room_renew"): vol.Coerce(int),
-        vol.Optional("room_timeout"): vol.Coerce(float),
-        vol.Optional("room_handoff_timeout"): vol.Coerce(float),
+        vol.Required("zone_slots"): vol.All([vol.Any(dict, None)], vol.Length(min=NUM_ZONE_SLOTS, max=NUM_ZONE_SLOTS)),
         vol.Optional("furniture", default=[]): list,
     }
 )
@@ -341,11 +335,6 @@ async def websocket_set_room_layout(
     device_config["room_layout"] = {
         "grid_bytes": msg["grid_bytes"],
         "zone_slots": msg["zone_slots"],
-        "room_type": msg["room_type"],
-        "room_trigger": msg.get("room_trigger"),
-        "room_renew": msg.get("room_renew"),
-        "room_timeout": msg.get("room_timeout"),
-        "room_handoff_timeout": msg.get("room_handoff_timeout"),
         "furniture": msg.get("furniture", []),
     }
     await manager._store.async_save()
@@ -1071,9 +1060,7 @@ async def websocket_set_settings(
         # Zone entities need layout-aware handling: enable zone_0 + named zones only
         if "zone_presence" in entities or "zone_target_count" in entities:
             layout = device_config.get("room_layout", {})
-            from .const import MAX_ZONES
-
-            zone_slots = layout.get("zone_slots", [None] * MAX_ZONES)
+            zone_slots = layout.get("zone_slots", [None] * NUM_ZONE_SLOTS)
             await manager.async_update_zone_entities(mac, zone_slots)
         await manager._push_pipeline_to_device(mac)
     connection.send_result(msg["id"])

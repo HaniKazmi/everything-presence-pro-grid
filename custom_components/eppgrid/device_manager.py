@@ -314,25 +314,21 @@ class DeviceConnection:
                 )
                 _LOGGER.info("Pushed grid to %s", self._host)
 
-        zone_slots = layout.get("zone_slots", [None] * MAX_ZONES)
-        service = self._services.get("epp_set_zones")
-        if service:
-            named = [s for s in zone_slots if s is not None]
-            zone_data = {
-                "zone_slots": zone_slots,
-                "room_type": layout.get("room_type", "normal"),
-                "room_trigger": layout.get("room_trigger", 5),
-                "room_renew": layout.get("room_renew", 3),
-                "room_timeout": layout.get("room_timeout", 10.0),
-                "room_handoff_timeout": layout.get("room_handoff_timeout", 3.0),
-            }
-            await self._client.execute_service(
-                service,
-                {
-                    "zones_json": json.dumps(zone_data),
-                },
-            )
-            _LOGGER.info("Pushed %d zones to %s", len(named), self._host)
+        zone_slots = layout.get("zone_slots")
+        if zone_slots is not None:
+            service = self._services.get("epp_set_zones")
+            if service:
+                # Count named zones (1-7); zone 0 is always present at index 0 and
+                # isn't a "named" zone for logging purposes.
+                named = [s for s in zone_slots[1:] if s is not None]
+                zone_data = {"zone_slots": zone_slots}
+                await self._client.execute_service(
+                    service,
+                    {
+                        "zones_json": json.dumps(zone_data),
+                    },
+                )
+                _LOGGER.info("Pushed %d zones to %s", len(named), self._host)
 
         # Push device settings from unified settings key
         settings = config.get("settings")
@@ -588,14 +584,12 @@ class DeviceManager:
             if is_new:
                 found_new = True
                 _LOGGER.info("Discovered zone engine device: %s (%s)", device.name, mac)
-                # Apply zone entity management on first discovery
+                # Apply zone entity management on first discovery (only if the
+                # device has a stored layout — otherwise there's nothing to sync).
                 config = self._store.get_device(mac)
-                zone_slots = (
-                    config.get("room_layout", {}).get("zone_slots", [None] * MAX_ZONES)
-                    if config
-                    else [None] * MAX_ZONES
-                )
-                await self.async_update_zone_entities(mac, zone_slots)
+                zone_slots = config.get("room_layout", {}).get("zone_slots") if config else None
+                if zone_slots is not None:
+                    await self.async_update_zone_entities(mac, zone_slots)
 
         if found_new:
             self._fire_device_list_changed()
@@ -1048,7 +1042,7 @@ class DeviceManager:
             """Check if zone slot i exists (zone 0 = room, always exists)."""
             if i == 0:
                 return True
-            return i <= len(zone_slots) and zone_slots[i - 1] is not None
+            return i < len(zone_slots) and zone_slots[i] is not None
 
         for i in range(MAX_ZONES + 1):  # zones 0-7
             exists = _zone_exists(i)
@@ -1066,7 +1060,7 @@ class DeviceManager:
                         name=_resolve_zone_name(language, index=0, zone_name=None, target_count=False),
                     )
                 else:
-                    zone = zone_slots[i - 1]
+                    zone = zone_slots[i]
                     if entry_obj and entry_obj.disabled_by == er.RegistryEntryDisabler.USER:
                         pass  # Don't override user-disabled entities
                     else:
@@ -1090,7 +1084,7 @@ class DeviceManager:
                             name=_resolve_zone_name(language, index=0, zone_name=None, target_count=True),
                         )
                     else:
-                        zone = zone_slots[i - 1]
+                        zone = zone_slots[i]
                         ent_reg.async_update_entity(
                             tc_entity_id,
                             disabled_by=None,

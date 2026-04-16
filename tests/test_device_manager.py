@@ -324,10 +324,10 @@ class TestDeviceManager:
         assert dev.name == "EPP Living Room"
         assert dev.host == "192.168.1.50"
 
-    async def test_discover_calls_update_zone_entities_without_config(
+    async def test_discover_skips_update_zone_entities_without_config(
         self, hass: HomeAssistant, manager: DeviceManager
     ) -> None:
-        """Discovery calls async_update_zone_entities even without stored config."""
+        """Discovery skips async_update_zone_entities when no layout is stored."""
         dev_reg = dr.async_get(hass)
         ent_reg = er.async_get(hass)
 
@@ -355,10 +355,10 @@ class TestDeviceManager:
             device_id=device.id,
         )
 
-        # No stored config for this device
+        # No stored config for this device — nothing to sync, so no call.
         with patch.object(manager, "async_update_zone_entities", new_callable=AsyncMock) as mock_update:
             await manager.async_discover()
-            mock_update.assert_awaited_once()
+            mock_update.assert_not_awaited()
 
     async def test_discover_ignores_non_firmware_version(self, hass: HomeAssistant, manager: DeviceManager) -> None:
         """Entities without firmware_version are ignored."""
@@ -1149,8 +1149,11 @@ class TestPushConfig:
                     },
                     "room_layout": {
                         "grid_bytes": [0] * 100,
-                        "zone_slots": [{"name": "Office"}] + [None] * (MAX_ZONES - 1),
-                        "room_type": "normal",
+                        "zone_slots": [
+                            {"type": "normal", "trigger": 5, "renew": 3, "timeout": 10.0, "handoff_timeout": 3.0},
+                            {"name": "Office"},
+                        ]
+                        + [None] * (MAX_ZONES - 1),
                     },
                 }
             )
@@ -1179,12 +1182,11 @@ class TestPushConfig:
             await conn.async_push_config(
                 {
                     "room_layout": {
-                        "zone_slots": [{"name": "Living"}] + [None] * (MAX_ZONES - 1),
-                        "room_type": "hallway",
-                        "room_trigger": 3,
-                        "room_renew": 2,
-                        "room_timeout": 5.0,
-                        "room_handoff_timeout": 2.0,
+                        "zone_slots": [
+                            {"type": "hallway", "trigger": 3, "renew": 2, "timeout": 5.0, "handoff_timeout": 2.0},
+                            {"name": "Living"},
+                        ]
+                        + [None] * (MAX_ZONES - 1),
                     },
                 }
             )
@@ -2441,7 +2443,10 @@ class TestZoneEntities:
         )
         manager._store.devices["AA:BB:CC:DD:EE:FF"] = {"settings": {"zone_presence": True}}
 
-        zone_slots = [{"name": "Office"}] + [None] * (MAX_ZONES - 1)
+        zone_slots = [
+            {"type": "normal", "trigger": 5, "renew": 3, "timeout": 10.0, "handoff_timeout": 3.0},
+            {"name": "Office"},
+        ] + [None] * (MAX_ZONES - 1)
         await manager.async_update_zone_entities("AA:BB:CC:DD:EE:FF", zone_slots)
 
         # Zone 0 should be enabled with name "Zone Rest of Room"
@@ -2493,7 +2498,9 @@ class TestZoneEntities:
         manager._store.devices["AA:BB:CC:DD:EE:FF"] = {"settings": {"zone_presence": True}}
 
         # No named zones
-        zone_slots = [None] * MAX_ZONES
+        zone_slots = [
+            {"type": "normal", "trigger": 5, "renew": 3, "timeout": 10.0, "handoff_timeout": 3.0},
+        ] + [None] * MAX_ZONES
         await manager.async_update_zone_entities("AA:BB:CC:DD:EE:FF", zone_slots)
 
         # Zone 0 always enabled
@@ -2535,7 +2542,10 @@ class TestZoneEntities:
         )
         manager._store.devices["AA:BB:CC:DD:EE:FF"] = {"settings": {"zone_presence": True}}
 
-        zone_slots = [{"name": "Office"}] + [None] * (MAX_ZONES - 1)
+        zone_slots = [
+            {"type": "normal", "trigger": 5, "renew": 3, "timeout": 10.0, "handoff_timeout": 3.0},
+            {"name": "Office"},
+        ] + [None] * (MAX_ZONES - 1)
         await manager.async_update_zone_entities("AA:BB:CC:DD:EE:FF", zone_slots)
 
         # Zone 1 should remain user-disabled
@@ -2544,8 +2554,60 @@ class TestZoneEntities:
 
     async def test_update_zone_entities_unknown_device(self, hass: HomeAssistant, manager: DeviceManager) -> None:
         """Unknown device is a no-op."""
-        await manager.async_update_zone_entities("00:00:00:00:00:00", [None] * MAX_ZONES)
+        await manager.async_update_zone_entities("00:00:00:00:00:00", [None] * (MAX_ZONES + 1))
         # Should not raise
+
+    async def test_update_zone_entities_indexes_named_zones_by_slot_position(
+        self, hass: HomeAssistant, manager: DeviceManager
+    ) -> None:
+        """Zone N's name comes from zone_slots[N] (length-8 indexing), not [N-1]."""
+        dev_reg = dr.async_get(hass)
+        ent_reg = er.async_get(hass)
+
+        esphome_entry = MockConfigEntry(domain="esphome", data={"host": "192.168.1.50"}, title="EPP")
+        esphome_entry.add_to_hass(hass)
+
+        device = dev_reg.async_get_or_create(
+            config_entry_id=esphome_entry.entry_id,
+            connections={("mac", "aa:bb:cc:dd:ee:ff")},
+            name="EPP",
+        )
+
+        zone1_entry = ent_reg.async_get_or_create(
+            "binary_sensor",
+            "esphome",
+            unique_id="AA:BB:CC:DD:EE:FF-binary_sensor-zone_1_presence",
+            config_entry=esphome_entry,
+            device_id=device.id,
+        )
+        zone2_entry = ent_reg.async_get_or_create(
+            "binary_sensor",
+            "esphome",
+            unique_id="AA:BB:CC:DD:EE:FF-binary_sensor-zone_2_presence",
+            config_entry=esphome_entry,
+            device_id=device.id,
+        )
+
+        manager.devices["AA:BB:CC:DD:EE:FF"] = ManagedDevice(
+            mac="AA:BB:CC:DD:EE:FF", name="EPP", host="192.168.1.50", device_id=device.id
+        )
+        manager._store.devices["AA:BB:CC:DD:EE:FF"] = {"settings": {"zone_presence": True}}
+
+        # Length-8 slots: index 0 = zone 0, index 1 = "Kitchen", index 2 = "Bedroom".
+        zone_slots = [
+            {"type": "normal", "trigger": 5, "renew": 3, "timeout": 10.0, "handoff_timeout": 3.0},
+            {"name": "Kitchen"},
+            {"name": "Bedroom"},
+            None,
+            None,
+            None,
+            None,
+            None,
+        ]
+        await manager.async_update_zone_entities("AA:BB:CC:DD:EE:FF", zone_slots)
+
+        assert ent_reg.async_get(zone1_entry.entity_id).name == "Zone Kitchen"
+        assert ent_reg.async_get(zone2_entry.entity_id).name == "Zone Bedroom"
 
     async def test_update_zone_entities_target_count_only_for_existing_zones(
         self, hass: HomeAssistant, manager: DeviceManager
@@ -2592,7 +2654,10 @@ class TestZoneEntities:
         manager._store.devices["AA:BB:CC:DD:EE:FF"] = {"settings": {"zone_target_count": True}}
 
         # Only zone 0 (room) + zone 1 (named "Office") exist
-        zone_slots = [{"name": "Office"}] + [None] * (MAX_ZONES - 1)
+        zone_slots = [
+            {"type": "normal", "trigger": 5, "renew": 3, "timeout": 10.0, "handoff_timeout": 3.0},
+            {"name": "Office"},
+        ] + [None] * (MAX_ZONES - 1)
         await manager.async_update_zone_entities("AA:BB:CC:DD:EE:FF", zone_slots)
 
         # Zone 0 target count should be enabled with room name
@@ -2635,7 +2700,10 @@ class TestZoneEntities:
         )
         manager._store.devices["AA:BB:CC:DD:EE:FF"] = {"settings": {"zone_target_count": False}}
 
-        zone_slots = [{"name": "Office"}] + [None] * (MAX_ZONES - 1)
+        zone_slots = [
+            {"type": "normal", "trigger": 5, "renew": 3, "timeout": 10.0, "handoff_timeout": 3.0},
+            {"name": "Office"},
+        ] + [None] * (MAX_ZONES - 1)
         await manager.async_update_zone_entities("AA:BB:CC:DD:EE:FF", zone_slots)
 
         # Even zone 0 should be disabled when zone_target_count setting is off
