@@ -3,6 +3,7 @@ import {
 	GRID_CELL_COUNT,
 	GRID_CELL_MM,
 	GRID_COLS,
+	GRID_ROWS,
 	getRawRoomBounds,
 } from "./grid.js";
 import { applyPerspective } from "./perspective.js";
@@ -103,7 +104,7 @@ export function getVisibleRoomBounds(
 ): { minCol: number; maxCol: number; minRow: number; maxRow: number } {
 	let minCol = GRID_COLS;
 	let maxCol = 0;
-	let minRow = GRID_COLS; // intentionally GRID_COLS (== GRID_ROWS == 20)
+	let minRow = GRID_ROWS;
 	let maxRow = 0;
 	for (let i = 0; i < GRID_CELL_COUNT; i++) {
 		if (!cellIsInside(grid[i])) continue;
@@ -120,7 +121,7 @@ export function getVisibleRoomBounds(
 		minCol: Math.max(0, minCol - 1),
 		maxCol: Math.min(GRID_COLS - 1, maxCol + 1),
 		minRow: Math.max(0, minRow - 1),
-		maxRow: Math.min(GRID_COLS - 1, maxRow + 1),
+		maxRow: Math.min(GRID_ROWS - 1, maxRow + 1),
 	};
 }
 
