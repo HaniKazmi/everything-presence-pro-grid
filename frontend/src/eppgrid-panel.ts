@@ -756,16 +756,16 @@ export class EPPGridPanel extends LitElement {
 		return this._gridCtrl.templates;
 	}
 
-	private _saveTemplate(): void {
-		this._gridCtrl.saveTemplate();
+	private async _saveTemplate(): Promise<void> {
+		await this._gridCtrl.saveTemplate();
 	}
 
 	private _loadTemplate(name: string): void {
 		this._gridCtrl.loadTemplate(name);
 	}
 
-	private _deleteTemplate(name: string): void {
-		this._gridCtrl.deleteTemplate(name);
+	private async _deleteTemplate(name: string): Promise<void> {
+		await this._gridCtrl.deleteTemplate(name);
 	}
 
 	/** Initialize grid from room dimensions after wizard finishes */
@@ -1771,7 +1771,8 @@ export class EPPGridPanel extends LitElement {
 										}}>
                       <ha-icon icon="mdi:content-save" style="--mdc-icon-size: 18px;"></ha-icon> ${this._localize("dialogs.save_template")}
                     </button>
-                    <button class="sidebar-menu-item" @click=${() => {
+                    <button class="sidebar-menu-item" @click=${async () => {
+											await this._gridCtrl.fetchTemplates();
 											this._showTemplateLoad = true;
 										}}>
                       <ha-icon icon="mdi:folder-open" style="--mdc-icon-size: 18px;"></ha-icon> ${this._localize("dialogs.load_template")}
