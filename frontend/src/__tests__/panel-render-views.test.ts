@@ -832,22 +832,20 @@ describe("_renderTemplateSaveDialog", () => {
 
 describe("_renderTemplateLoadDialog", () => {
 	it("renders load dialog with no templates", () => {
-		localStorage.removeItem("epp_layout_templates");
 		const a = createPanel() as any;
+		a._gridCtrl.templates = [];
 		const result = a._renderTemplateLoadDialog();
 		expect(result).toBeDefined();
 	});
 
 	it("renders load dialog with templates", () => {
-		const templates = [
+		const a = createPanel() as any;
+		a._gridCtrl.templates = [
 			{ name: "T1", grid: [], zones: [], roomWidth: 3000, roomDepth: 4000 },
 			{ name: "T2", grid: [], zones: [], roomWidth: 5000, roomDepth: 6000 },
 		];
-		localStorage.setItem("epp_layout_templates", JSON.stringify(templates));
-		const a = createPanel() as any;
 		const result = a._renderTemplateLoadDialog();
 		expect(result).toBeDefined();
-		localStorage.removeItem("epp_layout_templates");
 	});
 });
 
