@@ -25,6 +25,7 @@ button:
   - platform: template
     name: "Calibrate CO2"
     id: calibrate_scd40
+    disabled_by_default: true
     on_press:
       - scd4x.perform_forced_calibration:
           value: 419

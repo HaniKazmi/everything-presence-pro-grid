@@ -1315,6 +1315,13 @@ class TestEntityMapping:
         assert _entity_key_for_object_id("system_alarm_relay") == "relay_output"
         assert _entity_key_for_object_id("esphome_aabbccddeeff_system_alarm_relay") == "relay_output"
 
+    def test_entity_key_mapping_calibrate_co2(self) -> None:
+        """calibrate_co2 maps to env_co2_calibrate, not env_co2."""
+        from custom_components.eppgrid.websocket_api import _entity_key_for_object_id
+
+        assert _entity_key_for_object_id("calibrate_co2") == "env_co2_calibrate"
+        assert _entity_key_for_object_id("co2") == "env_co2"
+
     def test_entity_key_mapping_unknown(self) -> None:
         """Unknown object_ids return None."""
         from custom_components.eppgrid.websocket_api import _entity_key_for_object_id
@@ -1371,6 +1378,73 @@ class TestApplyEntityStates:
             assert "sensor.target_1_x" not in entity_ids_updated
             # INTEGRATION-disabled entry should be enabled
             mock_registry.async_update_entity.assert_any_call("sensor.target_2_x", disabled_by=None)
+
+
+    async def test_apply_entity_states_expands_followers(
+        self, hass: HomeAssistant, config_entry: MockConfigEntry
+    ) -> None:
+        """Toggling env_co2 also toggles env_co2_calibrate follower."""
+        from homeassistant.helpers.entity_registry import RegistryEntryDisabler
+
+        from custom_components.eppgrid.device_manager import ManagedDevice
+        from custom_components.eppgrid.websocket_api import _apply_entity_states
+
+        mock_dm = await setup_integration(hass, config_entry)
+        mock_dm.devices["AA:BB:CC:DD:EE:FF"] = ManagedDevice(mac="AA:BB:CC:DD:EE:FF", name="EPP", host="192.168.1.50")
+        mock_dm.devices["AA:BB:CC:DD:EE:FF"].device_id = "dev123"
+
+        co2_entry = MagicMock()
+        co2_entry.unique_id = "AA:BB:CC:DD:EE:FF-sensor-co2"
+        co2_entry.entity_id = "sensor.co2"
+        co2_entry.disabled_by = RegistryEntryDisabler.INTEGRATION
+
+        calibrate_entry = MagicMock()
+        calibrate_entry.unique_id = "AA:BB:CC:DD:EE:FF-button-calibrate_co2"
+        calibrate_entry.entity_id = "button.calibrate_co2"
+        calibrate_entry.disabled_by = RegistryEntryDisabler.INTEGRATION
+
+        with (
+            patch("custom_components.eppgrid.websocket_api.er.async_get") as mock_er,
+            patch("custom_components.eppgrid.websocket_api.er.async_entries_for_device") as mock_entries,
+        ):
+            mock_registry = mock_er.return_value
+            mock_entries.return_value = [co2_entry, calibrate_entry]
+
+            # Enable env_co2 — should also enable the calibrate button
+            _apply_entity_states(hass, "AA:BB:CC:DD:EE:FF", {"env_co2": True})
+
+            mock_registry.async_update_entity.assert_any_call("sensor.co2", disabled_by=None)
+            mock_registry.async_update_entity.assert_any_call("button.calibrate_co2", disabled_by=None)
+
+    async def test_get_entity_states_excludes_followers(
+        self, hass: HomeAssistant, config_entry: MockConfigEntry
+    ) -> None:
+        """_get_entity_states should not include follower keys like env_co2_calibrate."""
+        from custom_components.eppgrid.device_manager import ManagedDevice
+        from custom_components.eppgrid.websocket_api import _get_entity_states
+
+        mock_dm = await setup_integration(hass, config_entry)
+        mock_dm.devices["AA:BB:CC:DD:EE:FF"] = ManagedDevice(mac="AA:BB:CC:DD:EE:FF", name="EPP", host="192.168.1.50")
+        mock_dm.devices["AA:BB:CC:DD:EE:FF"].device_id = "dev123"
+
+        co2_entry = MagicMock()
+        co2_entry.unique_id = "AA:BB:CC:DD:EE:FF-sensor-co2"
+        co2_entry.disabled_by = None  # enabled
+
+        calibrate_entry = MagicMock()
+        calibrate_entry.unique_id = "AA:BB:CC:DD:EE:FF-button-calibrate_co2"
+        calibrate_entry.disabled_by = None  # enabled
+
+        with (
+            patch("custom_components.eppgrid.websocket_api.er.async_get"),
+            patch("custom_components.eppgrid.websocket_api.er.async_entries_for_device") as mock_entries,
+        ):
+            mock_entries.return_value = [co2_entry, calibrate_entry]
+
+            result = _get_entity_states(hass, "AA:BB:CC:DD:EE:FF")
+
+            assert "env_co2" in result
+            assert "env_co2_calibrate" not in result
 
 
 class TestWebSocketEntityEnabled:
@@ -2204,6 +2278,51 @@ class TestSubscriptionCallbacks:
 
         # Numeric sensor updates don't trigger send_message (only target positions do)
         connection.send_message.assert_not_called()
+
+    async def test_grid_targets_on_state_co2_sensor(
+        self, hass: HomeAssistant, config_entry: MockConfigEntry
+    ) -> None:
+        """CO2 SensorState updates sensors.co2 in accumulated state."""
+        mock_dm = await setup_integration(hass, config_entry)
+
+        co2_entity = MagicMock()
+        co2_entity.key = 600
+        co2_entity.name = "CO2"
+
+        # Need a target entity so we can trigger send_message and inspect sensors
+        target0 = MagicMock()
+        target0.key = 100
+        target0.name = "Target 1 Position"
+
+        mock_device_conn = MagicMock()
+        mock_device_conn._entities = [co2_entity, target0]
+        mock_device_conn.subscribe_states = MagicMock()
+        mock_device_conn.unsubscribe_states = MagicMock()
+        mock_dm.get_session = MagicMock(return_value=mock_device_conn)
+
+        from custom_components.eppgrid.websocket_api import websocket_subscribe_grid_targets
+
+        connection = MagicMock()
+        connection.subscriptions = {}
+        msg = {"id": 50, "type": "eppgrid/subscribe_grid_targets", "mac": "AA:BB:CC:DD:EE:FF"}
+
+        await call_async_handler(hass, websocket_subscribe_grid_targets, connection, msg)
+
+        on_state = mock_device_conn.subscribe_states.call_args[0][0]
+
+        from aioesphomeapi import SensorState
+        from aioesphomeapi import TextSensorState
+
+        # Send CO2 value
+        state = SensorState(key=600, state=412.0, missing_state=False)
+        on_state(state)
+
+        # Trigger a target position update to get a send_message with accumulated state
+        target_state = TextSensorState(key=100, state="1.0,2.0,active", missing_state=False)
+        on_state(target_state)
+
+        event = connection.send_message.call_args[0][0]
+        assert event["event"]["sensors"]["co2"] == 412.0
 
     async def test_grid_targets_unsub(self, hass: HomeAssistant, config_entry: MockConfigEntry) -> None:
         """Unsubscribe callback removes state subscription."""

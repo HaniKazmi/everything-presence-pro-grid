@@ -474,8 +474,15 @@ _ENTITY_OBJECT_ID_MAP: dict[str, str] = {
     "humidity": "env_humidity",
     "illuminance": "env_illuminance",
     "co2": "env_co2",
+    "calibrate_co2": "env_co2_calibrate",
     "system_alarm_relay": "relay_output",
     "target_count": "target_count",
+}
+
+# Entity keys that should follow another key's enable/disable state.
+# When the leader key is toggled, followers are toggled to match.
+_ENTITY_KEY_FOLLOWERS: dict[str, list[str]] = {
+    "env_co2": ["env_co2_calibrate"],
 }
 
 # Prefix patterns: object_ids starting with these prefixes map to a category key.
@@ -520,8 +527,17 @@ def _entity_key_for_object_id(object_id: str) -> str | None:
     return None
 
 
+_FOLLOWER_KEYS: frozenset[str] = frozenset(
+    k for followers in _ENTITY_KEY_FOLLOWERS.values() for k in followers
+)
+
+
 def _get_entity_states(hass: HomeAssistant, mac: str) -> dict[str, bool]:
-    """Read entity enabled/disabled states from HA entity registry."""
+    """Read entity enabled/disabled states from HA entity registry.
+
+    Follower keys (e.g. env_co2_calibrate) are excluded — the toggle state
+    should reflect only the primary entity, not its followers.
+    """
     manager = _get_manager(hass)
     if manager is None:
         return {}
@@ -535,7 +551,7 @@ def _get_entity_states(hass: HomeAssistant, mac: str) -> dict[str, bool]:
     for entry in entries:
         object_id = _object_id_from_unique_id(entry.unique_id)
         key = _entity_key_for_object_id(object_id)
-        if key is None:
+        if key is None or key in _FOLLOWER_KEYS:
             continue
         enabled = entry.disabled_by is None
         # For category keys (zone_presence, target_xy), any enabled = category enabled.
@@ -557,15 +573,22 @@ def _apply_entity_states(hass: HomeAssistant, mac: str, entities: dict[str, bool
     ent_reg = er.async_get(hass)
     entries = er.async_entries_for_device(ent_reg, dev.device_id, include_disabled_entities=True)
 
+    # Expand follower keys: if env_co2 is toggled, also toggle env_co2_calibrate
+    expanded = dict(entities)
+    for leader, followers in _ENTITY_KEY_FOLLOWERS.items():
+        if leader in expanded:
+            for follower in followers:
+                expanded.setdefault(follower, expanded[leader])
+
     for entry in entries:
         object_id = _object_id_from_unique_id(entry.unique_id)
         key = _entity_key_for_object_id(object_id)
-        if key is None or key not in entities:
+        if key is None or key not in expanded:
             continue
         # Never overwrite entities the user has manually disabled
         if entry.disabled_by == er.RegistryEntryDisabler.USER:
             continue
-        desired = entities[key]
+        desired = expanded[key]
         if desired:
             ent_reg.async_update_entity(entry.entity_id, disabled_by=None)
         else:
@@ -774,6 +797,7 @@ async def websocket_subscribe_grid_targets(
         ("Temperature", "temperature"),
         ("Humidity", "humidity"),
         ("Illuminance", "illuminance"),
+        ("CO2", "co2"),
     ):
         if name in key_map:
             numeric_sensor_keys[key_map[name]] = field
