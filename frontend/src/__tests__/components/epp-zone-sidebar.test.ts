@@ -24,16 +24,8 @@ function createSidebar(overrides: Record<string, any> = {}): EppZoneSidebar {
 	};
 	el.localZoneState = new Map();
 	el.localize = (k: string) => k;
-	// Apply overrides; rewrite roomType shorthand into zone0 patches if present
-	// so individual tests can keep the old ergonomic form.
 	for (const [k, v] of Object.entries(overrides)) {
-		if (k === "roomType") el.zone0 = { ...el.zone0, type: v };
-		else if (k === "roomTrigger") el.zone0 = { ...el.zone0, trigger: v };
-		else if (k === "roomRenew") el.zone0 = { ...el.zone0, renew: v };
-		else if (k === "roomTimeout") el.zone0 = { ...el.zone0, timeout: v };
-		else if (k === "roomHandoffTimeout")
-			el.zone0 = { ...el.zone0, handoff_timeout: v };
-		else el[k] = v;
+		el[k] = v;
 	}
 	return el as EppZoneSidebar;
 }

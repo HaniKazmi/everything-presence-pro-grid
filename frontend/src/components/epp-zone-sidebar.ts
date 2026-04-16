@@ -1,6 +1,7 @@
 import { css, html, LitElement, nothing } from "lit";
 import { property } from "lit/decorators.js";
 import {
+	resolveZone0Params,
 	ZONE_TYPE_DEFAULTS,
 	type Zone0Config,
 	type ZoneConfig,
@@ -367,20 +368,11 @@ export class EppZoneSidebar extends LitElement {
 	private _renderBoundaryTypeControls() {
 		const z0 = this.zone0;
 		const isCustom = z0.type === "custom";
-		const defaults = ZONE_TYPE_DEFAULTS[z0.type] || ZONE_TYPE_DEFAULTS.normal;
-		// Mirrors getZoneThresholds semantics: non-custom types use type
-		// defaults exclusively; "custom" honors user overrides (falling back
-		// to normal-defaults when an override is missing).
-		const trigger = isCustom
-			? (z0.trigger ?? defaults.trigger)
-			: defaults.trigger;
-		const renew = isCustom ? (z0.renew ?? defaults.renew) : defaults.renew;
-		const timeout = isCustom
-			? (z0.timeout ?? defaults.timeout)
-			: defaults.timeout;
-		const handoffTimeout = isCustom
-			? (z0.handoff_timeout ?? defaults.handoff_timeout)
-			: defaults.handoff_timeout;
+		const resolved = resolveZone0Params(z0);
+		const trigger = resolved.trigger;
+		const renew = resolved.renew;
+		const timeout = resolved.timeout;
+		const handoffTimeout = resolved.handoff_timeout;
 		const rowStyle = `width: 100%; display: flex; align-items: center; gap: 4px; font-size: 12px; opacity: ${isCustom ? 1 : 0.5};`;
 		return html`
 			<div

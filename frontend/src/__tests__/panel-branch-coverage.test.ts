@@ -874,19 +874,13 @@ describe("stopPropagation handlers coverage", () => {
 		el.localZoneState = new Map();
 		el.localize = (k: string) => k;
 		for (const [k, v] of Object.entries(overrides)) {
-			if (k === "roomType") el.zone0 = { ...el.zone0, type: v };
-			else if (k === "roomTrigger") el.zone0 = { ...el.zone0, trigger: v };
-			else if (k === "roomRenew") el.zone0 = { ...el.zone0, renew: v };
-			else if (k === "roomTimeout") el.zone0 = { ...el.zone0, timeout: v };
-			else if (k === "roomHandoffTimeout")
-				el.zone0 = { ...el.zone0, handoff_timeout: v };
-			else el[k] = v;
+			el[k] = v;
 		}
 		return el;
 	}
 
 	it("boundary type select click calls stopPropagation", () => {
-		const s = createSidebar({ roomType: "custom" });
+		const s = createSidebar({ zone0: { type: "custom" } });
 		const tpl = (s as any)._renderBoundaryTypeControls();
 		const c = document.createElement("div");
 		document.body.appendChild(c);

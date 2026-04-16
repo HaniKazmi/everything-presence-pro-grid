@@ -59,6 +59,7 @@ import {
 } from "./lib/usb-flash-service.js";
 import {
 	getZoneThresholds,
+	resolveZone0Params,
 	ZONE_TYPE_DEFAULTS,
 	type Zone0Config,
 	type ZoneConfig,
@@ -2318,24 +2319,15 @@ export class EPPGridPanel extends LitElement {
 		timeout: number;
 		handoffTimeout: number;
 	} {
-		const z0 = this._zoneConfigs[0];
-		// Select defaults by zone type; mirrors getZoneThresholds semantics.
-		// For non-custom types the type defaults are authoritative and the
-		// roomTrigger/roomRenew/etc. args we pass in are ignored by
-		// getZoneThresholds — we still align on type defaults here so the
-		// values match the engine's view.
-		const defaults = ZONE_TYPE_DEFAULTS[z0.type] ?? ZONE_TYPE_DEFAULTS.normal;
-		const useCustom = z0.type === "custom";
+		const z0 = resolveZone0Params(this._zoneConfigs[0]);
 		return getZoneThresholds(
 			zid,
 			this._namedZones(),
 			z0.type,
-			useCustom ? (z0.trigger ?? defaults.trigger) : defaults.trigger,
-			useCustom ? (z0.renew ?? defaults.renew) : defaults.renew,
-			useCustom ? (z0.timeout ?? defaults.timeout) : defaults.timeout,
-			useCustom
-				? (z0.handoff_timeout ?? defaults.handoff_timeout)
-				: defaults.handoff_timeout,
+			z0.trigger,
+			z0.renew,
+			z0.timeout,
+			z0.handoff_timeout,
 		);
 	}
 
