@@ -9,7 +9,27 @@ import {
 	getRoomBounds,
 	MAX_ZONES,
 } from "../../lib/grid.js";
-import { ZONE_COLORS, type ZoneConfig } from "../../lib/zone-defaults.js";
+import {
+	ZONE_COLORS,
+	type Zone0Config,
+	type ZoneConfig,
+} from "../../lib/zone-defaults.js";
+
+// Length-8 tuple: slot 0 = Zone0Config, slots 1-7 = named zones.
+// Helper to build a fresh "empty" zone-slots state (zone 0 populated,
+// named zones all null) — matches the panel's INITIAL_ZONE_SLOTS shape.
+function emptyZoneSlots(): (Zone0Config | ZoneConfig | null)[] {
+	return [
+		{ type: "normal", trigger: 5, renew: 3, timeout: 10, handoff_timeout: 3 },
+		null,
+		null,
+		null,
+		null,
+		null,
+		null,
+		null,
+	];
+}
 
 // Build a minimal host with all properties the controller reads/writes
 function mockHost(overrides: Record<string, any> = {}) {
@@ -34,11 +54,8 @@ function mockHost(overrides: Record<string, any> = {}) {
 		_dragState: null as any,
 		// Overlays
 		_overlayMode: null as string | null,
-		// Zones
-		_zoneConfigs: Array.from(
-			{ length: MAX_ZONES },
-			() => null,
-		) as (ZoneConfig | null)[],
+		// Zones — length-8 tuple (slot 0 = Zone0Config, slots 1..7 = named).
+		_zoneConfigs: emptyZoneSlots() as (Zone0Config | ZoneConfig | null)[],
 		// Furniture
 		_furniture: [] as FurnitureItem[],
 		// Templates
@@ -80,9 +97,9 @@ describe("GridStateController", () => {
 		it("stores the host reference", () => {
 			// Verify the controller can operate on the host by exercising a simple
 			// method — the private `host` reference was set correctly.
-			host._zoneConfigs = [null, null, null, null, null, null, null];
+			host._zoneConfigs = emptyZoneSlots();
 			ctrl.addZone();
-			expect(host._zoneConfigs[0]).not.toBeNull();
+			expect(host._zoneConfigs[1]).not.toBeNull();
 		});
 	});
 
@@ -92,24 +109,26 @@ describe("GridStateController", () => {
 	describe("addZone()", () => {
 		it("fills the first empty slot", () => {
 			ctrl.addZone();
-			expect(host._zoneConfigs[0]).not.toBeNull();
-			expect(host._zoneConfigs[0]!.name).toBe("Zone 1");
+			// With the length-8 tuple, slot 0 is always Zone0Config; the first
+			// named zone fills slot 1.
+			expect(host._zoneConfigs[1]).not.toBeNull();
+			expect((host._zoneConfigs[1] as ZoneConfig).name).toBe("Zone 1");
 		});
 
 		it("uses the first unused color", () => {
 			ctrl.addZone();
-			expect(host._zoneConfigs[0]!.color).toBe(ZONE_COLORS[0]);
+			expect((host._zoneConfigs[1] as ZoneConfig).color).toBe(ZONE_COLORS[0]);
 		});
 
 		it("skips already-used colors when picking a color", () => {
-			// Manually occupy slot 0 with the first color
-			host._zoneConfigs[0] = {
+			// Manually occupy slot 1 (zone 1) with the first color
+			host._zoneConfigs[1] = {
 				name: "Zone 1",
 				color: ZONE_COLORS[0],
 				type: "normal",
 			};
-			ctrl.addZone(); // should fill slot 1
-			expect(host._zoneConfigs[1]!.color).toBe(ZONE_COLORS[1]);
+			ctrl.addZone(); // should fill slot 2 (zone 2)
+			expect((host._zoneConfigs[2] as ZoneConfig).color).toBe(ZONE_COLORS[1]);
 		});
 
 		it("sets _activeZone to the 1-based slot number", () => {
@@ -123,28 +142,32 @@ describe("GridStateController", () => {
 		});
 
 		it("fills a gap rather than always using slot 0", () => {
-			// Occupy slots 0 and 2 so slot 1 is the first empty
-			host._zoneConfigs[0] = {
+			// Occupy slots 1 and 3 (zones 1 and 3) so slot 2 (zone 2) is the
+			// first empty named slot.
+			host._zoneConfigs[1] = {
 				name: "Zone 1",
 				color: ZONE_COLORS[0],
 				type: "normal",
 			};
-			host._zoneConfigs[2] = {
+			host._zoneConfigs[3] = {
 				name: "Zone 3",
 				color: ZONE_COLORS[2],
 				type: "normal",
 			};
 			ctrl.addZone();
-			expect(host._zoneConfigs[1]).not.toBeNull();
+			expect(host._zoneConfigs[2]).not.toBeNull();
 			expect(host._activeZone).toBe(2);
 		});
 
 		it("does nothing when all slots are full", () => {
-			host._zoneConfigs = ZONE_COLORS.map((color, i) => ({
-				name: `Zone ${i + 1}`,
-				color,
-				type: "normal" as const,
-			}));
+			host._zoneConfigs = [
+				host._zoneConfigs[0],
+				...ZONE_COLORS.map((color, i) => ({
+					name: `Zone ${i + 1}`,
+					color,
+					type: "normal" as const,
+				})),
+			];
 			ctrl.addZone();
 			// _dirty would only be set if a zone was actually added — it was already false
 			expect(host._dirty).toBe(false);
@@ -156,8 +179,8 @@ describe("GridStateController", () => {
 	// =========================================================================
 	describe("removeZone(slot)", () => {
 		beforeEach(() => {
-			// Add a zone in slot 1
-			host._zoneConfigs[0] = {
+			// Add a zone in slot 1 (named zone 1)
+			host._zoneConfigs[1] = {
 				name: "Zone 1",
 				color: ZONE_COLORS[0],
 				type: "normal",
@@ -167,7 +190,7 @@ describe("GridStateController", () => {
 
 		it("nulls out the slot", () => {
 			ctrl.removeZone(1);
-			expect(host._zoneConfigs[0]).toBeNull();
+			expect(host._zoneConfigs[1]).toBeNull();
 		});
 
 		it("clears all grid cells painted with that zone", () => {
@@ -189,7 +212,7 @@ describe("GridStateController", () => {
 		});
 
 		it("leaves _activeZone unchanged when a different slot is removed", () => {
-			host._zoneConfigs[1] = {
+			host._zoneConfigs[2] = {
 				name: "Zone 2",
 				color: ZONE_COLORS[1],
 				type: "normal",
@@ -392,8 +415,14 @@ describe("GridStateController", () => {
 			host._grid = new Uint8Array(GRID_CELL_COUNT);
 			host._grid[5] = CELL_ROOM_BIT;
 			host._zoneConfigs = [
+				host._zoneConfigs[0],
 				{ name: "Zone 1", color: ZONE_COLORS[0], type: "normal" },
-				...Array(MAX_ZONES - 1).fill(null),
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
 			];
 			host._roomWidth = 3000;
 			host._roomDepth = 4000;
@@ -477,15 +506,19 @@ describe("GridStateController", () => {
 			expect(host._roomWidth).toBe(2400);
 			expect(host._roomDepth).toBe(3600);
 			expect(host._grid[3]).toBe(CELL_ROOM_BIT);
-			expect(host._zoneConfigs).toHaveLength(MAX_ZONES);
-			expect(host._zoneConfigs[0]).toMatchObject({ name: "Zone 1" });
+			// Length-8 tuple: slot 0 keeps the existing Zone0Config (templates
+			// don't carry zone 0), slots 1-7 hold the template's named zones.
+			expect(host._zoneConfigs).toHaveLength(MAX_ZONES + 1);
+			expect(host._zoneConfigs[0]).toMatchObject({ type: "normal" });
+			expect(host._zoneConfigs[1]).toMatchObject({ name: "Zone 1" });
 			expect(host._furniture).toHaveLength(1);
 		});
 
-		it("pads zoneConfigs to MAX_ZONES slots", () => {
+		it("pads named-zone slots so length is 8", () => {
 			ctrl.loadTemplate("Loaded");
-			expect(host._zoneConfigs).toHaveLength(MAX_ZONES);
-			for (let i = 1; i < MAX_ZONES; i++) {
+			expect(host._zoneConfigs).toHaveLength(MAX_ZONES + 1);
+			// Slots 2..7 (unused named zones) are null
+			for (let i = 2; i < MAX_ZONES + 1; i++) {
 				expect(host._zoneConfigs[i]).toBeNull();
 			}
 		});

@@ -17,7 +17,6 @@ import "../components/epp-settings-view.js";
 import "../components/epp-wizard.js";
 import "../components/epp-zone-sidebar.js";
 import { GRID_CELL_COUNT, initGridFromRoom } from "../lib/grid.js";
-import { ZONE_TYPE_DEFAULTS } from "../lib/zone-defaults.js";
 import { createZoneEngineState } from "../lib/zone-engine.js";
 
 function createPanel(): EPPGridPanel {
@@ -28,7 +27,16 @@ function createPanel(): EPPGridPanel {
 	};
 	const a = el as any;
 	a._grid = initGridFromRoom(3000, 4000);
-	a._zoneConfigs = new Array(7).fill(null);
+	a._zoneConfigs = [
+		{ type: "normal", trigger: 5, renew: 3, timeout: 10, handoff_timeout: 3 },
+		null,
+		null,
+		null,
+		null,
+		null,
+		null,
+		null,
+	];
 	a._activeZone = 0;
 	a._dirty = false;
 	a._loading = false;
@@ -74,11 +82,7 @@ function createPanel(): EPPGridPanel {
 	a._staticAutoDistance = true;
 	a._staticMinDistance = 0.3;
 	a._staticMaxDistance = 16;
-	a._roomType = "normal";
-	a._roomTrigger = ZONE_TYPE_DEFAULTS.normal.trigger;
-	a._roomRenew = ZONE_TYPE_DEFAULTS.normal.renew;
-	a._roomTimeout = ZONE_TYPE_DEFAULTS.normal.timeout;
-	a._roomHandoffTimeout = ZONE_TYPE_DEFAULTS.normal.handoff_timeout;
+	// Zone 0 defaults live on _zoneConfigs[0]; set up above.
 	a._showHitCounts = false;
 	a._zoneEngineState = createZoneEngineState();
 	a._showCustomIconPicker = false;
@@ -161,19 +165,29 @@ describe("Editor view event wiring", () => {
 		expect(spy).toHaveBeenCalledWith(2);
 	});
 
-	it("zone-config-change updates _zoneConfigs[0].trigger", () => {
+	it("zone-config-change updates the named zone at the dispatched index", () => {
 		const [el, _container] = editorPanel();
 		const a = el as any;
-		// Set a non-null zone config at index 0
-		a._zoneConfigs[0] = {
-			name: "Zone 1",
-			color: "#ff0000",
-			type: "normal",
-			trigger: 5,
-			renew: 2,
-			timeout: 10,
-			handoff_timeout: 2,
-		};
+		// Populate slot 1 (named zone 1) with a config; the sidebar iterates
+		// over the named-zones list and dispatches 0-based indices.
+		a._zoneConfigs = [
+			a._zoneConfigs[0],
+			{
+				name: "Zone 1",
+				color: "#ff0000",
+				type: "normal",
+				trigger: 5,
+				renew: 2,
+				timeout: 10,
+				handoff_timeout: 2,
+			},
+			null,
+			null,
+			null,
+			null,
+			null,
+			null,
+		];
 		// Re-render with the zone config in place
 		const container2 = renderPanel(el);
 		const sidebar = container2.querySelector("epp-zone-sidebar")!;
@@ -183,10 +197,11 @@ describe("Editor view event wiring", () => {
 				bubbles: true,
 			}),
 		);
-		expect(a._zoneConfigs[0].trigger).toBe(8);
+		// index 0 (named-zone offset) maps to slot 1 in _zoneConfigs.
+		expect(a._zoneConfigs[1].trigger).toBe(8);
 	});
 
-	it("room-config-change updates _roomType", () => {
+	it("room-config-change updates zone 0 type", () => {
 		const [el, container] = editorPanel();
 		const sidebar = container.querySelector("epp-zone-sidebar")!;
 		sidebar.dispatchEvent(
@@ -195,10 +210,10 @@ describe("Editor view event wiring", () => {
 				bubbles: true,
 			}),
 		);
-		expect((el as any)._roomType).toBe("rest");
+		expect((el as any)._zoneConfigs[0].type).toBe("rest");
 	});
 
-	it("room-config-change updates all room fields", () => {
+	it("room-config-change updates all zone 0 fields", () => {
 		const [el, container] = editorPanel();
 		const a = el as any;
 		const sidebar = container.querySelector("epp-zone-sidebar")!;
@@ -215,10 +230,10 @@ describe("Editor view event wiring", () => {
 				bubbles: true,
 			}),
 		);
-		expect(a._roomTrigger).toBe(3);
-		expect(a._roomRenew).toBe(2);
-		expect(a._roomTimeout).toBe(5);
-		expect(a._roomHandoffTimeout).toBe(1);
+		expect(a._zoneConfigs[0].trigger).toBe(3);
+		expect(a._zoneConfigs[0].renew).toBe(2);
+		expect(a._zoneConfigs[0].timeout).toBe(5);
+		expect(a._zoneConfigs[0].handoff_timeout).toBe(1);
 	});
 
 	it("dirty sets _dirty to true", () => {

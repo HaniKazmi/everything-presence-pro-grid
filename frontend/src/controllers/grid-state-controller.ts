@@ -30,7 +30,11 @@ import {
 	MAX_ZONES,
 } from "../lib/grid.js";
 import { autoDetectionRange } from "../lib/room-geometry.js";
-import { ZONE_COLORS, type ZoneConfig } from "../lib/zone-defaults.js";
+import {
+	ZONE_COLORS,
+	type Zone0Config,
+	type ZoneConfig,
+} from "../lib/zone-defaults.js";
 
 /**
  * Host interface — the subset of the panel that this controller reads/writes.
@@ -182,44 +186,45 @@ export class GridStateController implements ReactiveController {
 	// =====================================================================
 
 	addZone(): void {
-		const firstEmpty = this.host._zoneConfigs.findIndex(
-			(z: ZoneConfig | null) => z === null,
-		);
-		if (firstEmpty === -1) return; // All 7 slots full
+		// Slot 0 is the always-present Zone0Config; named zones live in 1..7.
+		// findIndex returns the first slot that's null — for a length-8 tuple
+		// that's guaranteed to be >=1, so the index is directly the slot number.
+		const configs: (ZoneConfig | Zone0Config | null)[] = [
+			...this.host._zoneConfigs,
+		];
+		const firstEmpty = configs.findIndex((z, idx) => idx > 0 && z === null);
+		if (firstEmpty === -1) return; // All 7 named slots full
 
 		// Pick first unused color
 		const usedColors = new Set(
-			this.host._zoneConfigs
-				.filter((z: ZoneConfig | null): z is ZoneConfig => z !== null)
-				.map((z: ZoneConfig) => z.color),
+			configs
+				.filter((z, idx): z is ZoneConfig => idx > 0 && z !== null)
+				.map((z) => (z as ZoneConfig).color),
 		);
 		const color =
 			ZONE_COLORS.find((c) => !usedColors.has(c)) ??
-			ZONE_COLORS[firstEmpty % ZONE_COLORS.length];
-		const configs = [...this.host._zoneConfigs];
+			ZONE_COLORS[(firstEmpty - 1) % ZONE_COLORS.length];
 		configs[firstEmpty] = {
-			name: `Zone ${firstEmpty + 1}`,
+			name: `Zone ${firstEmpty}`,
 			color,
 			type: "normal",
 		};
 		this.host._zoneConfigs = configs;
-		this.host._activeZone = firstEmpty + 1; // 1-based slot number
+		this.host._activeZone = firstEmpty; // slot index = 1-based zone number
 		this.host._dirty = true;
 	}
 
 	removeZone(slot: number): void {
-		if (
-			slot < 1 ||
-			slot > MAX_ZONES ||
-			this.host._zoneConfigs[slot - 1] === null
-		)
+		if (slot < 1 || slot > MAX_ZONES || this.host._zoneConfigs[slot] === null)
 			return;
 		// Clear all grid cells with this zone back to zone 0
 		const cleared = clearZoneFromGrid(this.host._grid, slot);
 		if (cleared) this.host._grid = cleared;
 		// No renumbering — just null out the slot
-		const configs = [...this.host._zoneConfigs];
-		configs[slot - 1] = null;
+		const configs: (ZoneConfig | Zone0Config | null)[] = [
+			...this.host._zoneConfigs,
+		];
+		configs[slot] = null;
 		this.host._zoneConfigs = configs;
 		if (this.host._activeZone === slot) {
 			this.host._activeZone = null;
@@ -444,11 +449,17 @@ export class GridStateController implements ReactiveController {
 	async saveTemplate(): Promise<void> {
 		const name = (this.host._templateName as string).trim();
 		if (!name) return;
+		// Template payload stores only the named zones (slots 1..7). Zone 0
+		// settings travel with the room, not with a saved template. Task 7 will
+		// overhaul template storage; this preserves the current template schema.
+		const namedZones = (
+			this.host._zoneConfigs as (ZoneConfig | Zone0Config | null)[]
+		)
+			.slice(1)
+			.map((z) => (z !== null ? { ...(z as ZoneConfig) } : null));
 		const template = {
 			grid: Array.from(this.host._grid as Uint8Array),
-			zones: (this.host._zoneConfigs as (ZoneConfig | null)[]).map((z) =>
-				z !== null ? { ...z } : null,
-			),
+			zones: namedZones,
 			roomWidth: this.host._roomWidth as number,
 			roomDepth: this.host._roomDepth as number,
 			furniture: (this.host._furniture as FurnitureItem[]).map((f) => ({
@@ -470,10 +481,13 @@ export class GridStateController implements ReactiveController {
 		if (!tmpl) return;
 		this.host._grid = new Uint8Array(tmpl.grid);
 		const zones = tmpl.zones || [];
-		this.host._zoneConfigs = Array.from(
+		// Preserve existing zone 0 (room-boundary) config; templates only
+		// carry the named-zones list (slots 1..7).
+		const namedSlots = Array.from(
 			{ length: MAX_ZONES },
 			(_, i) => zones[i] ?? null,
 		);
+		this.host._zoneConfigs = [this.host._zoneConfigs[0], ...namedSlots];
 		this.host._roomWidth = tmpl.roomWidth;
 		this.host._roomDepth = tmpl.roomDepth;
 		this.host._furniture = (tmpl.furniture || []).map((f: any) => ({
@@ -506,14 +520,15 @@ export class GridStateController implements ReactiveController {
 				}
 			}
 		}
-		for (let i = 0; i < this.host._zoneConfigs.length; i++) {
-			if (
-				this.host._zoneConfigs[i] !== null &&
-				(zoneCellCounts.get(i + 1) ?? 0) === 0
-			) {
-				this.host._zoneConfigs[i] = null;
-			}
-		}
+		const prunedSlots = this.host._zoneConfigs.map(
+			(z: ZoneConfig | Zone0Config | null, idx: number) => {
+				// Slot 0 is the Zone0Config (room boundary) and is always kept.
+				if (idx === 0) return z;
+				if (z !== null && (zoneCellCounts.get(idx) ?? 0) === 0) return null;
+				return z;
+			},
+		);
+		this.host._zoneConfigs = prunedSlots;
 
 		// Filter furniture completely outside the room (use physical room
 		// bounds, not FOV-aware bounds, so furniture in out-of-FOV areas
@@ -538,25 +553,31 @@ export class GridStateController implements ReactiveController {
 				type: "eppgrid/set_room_layout",
 				mac: this.host._selectedMac,
 				grid_bytes: Array.from(this.host._grid),
-				room_type: this.host._roomType,
-				room_trigger: this.host._roomTrigger,
-				room_renew: this.host._roomRenew,
-				room_timeout: this.host._roomTimeout,
-				room_handoff_timeout: this.host._roomHandoffTimeout,
-				zone_slots: (this.host._zoneConfigs as (ZoneConfig | null)[]).map(
-					(z) =>
-						z !== null
-							? {
-									name: z.name,
-									color: z.color,
-									type: z.type,
-									trigger: z.trigger,
-									renew: z.renew,
-									timeout: z.timeout,
-									handoff_timeout: z.handoff_timeout,
-								}
-							: null,
-				),
+				zone_slots: (
+					this.host._zoneConfigs as (ZoneConfig | Zone0Config | null)[]
+				).map((z, idx) => {
+					if (z === null) return null;
+					if (idx === 0) {
+						const z0 = z as Zone0Config;
+						return {
+							type: z0.type,
+							trigger: z0.trigger,
+							renew: z0.renew,
+							timeout: z0.timeout,
+							handoff_timeout: z0.handoff_timeout,
+						};
+					}
+					const nz = z as ZoneConfig;
+					return {
+						name: nz.name,
+						color: nz.color,
+						type: nz.type,
+						trigger: nz.trigger,
+						renew: nz.renew,
+						timeout: nz.timeout,
+						handoff_timeout: nz.handoff_timeout,
+					};
+				}),
 				furniture: filteredFurniture.map((f) => ({
 					type: f.type,
 					icon: f.icon,

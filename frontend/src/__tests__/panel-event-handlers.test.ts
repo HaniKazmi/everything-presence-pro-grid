@@ -23,7 +23,16 @@ function createPanel(): EPPGridPanel {
 	};
 	const a = el as any;
 	a._grid = new Uint8Array(GRID_CELL_COUNT);
-	a._zoneConfigs = new Array(7).fill(null);
+	a._zoneConfigs = [
+		{ type: "normal", trigger: 5, renew: 3, timeout: 10, handoff_timeout: 3 },
+		null,
+		null,
+		null,
+		null,
+		null,
+		null,
+		null,
+	];
 	a._activeZone = 0;
 	a._dirty = false;
 	a._loading = false;
@@ -69,11 +78,7 @@ function createPanel(): EPPGridPanel {
 	a._staticAutoDistance = true;
 	a._staticMinDistance = 0.3;
 	a._staticMaxDistance = 16;
-	a._roomType = "normal";
-	a._roomTrigger = ZONE_TYPE_DEFAULTS.normal.trigger;
-	a._roomRenew = ZONE_TYPE_DEFAULTS.normal.renew;
-	a._roomTimeout = ZONE_TYPE_DEFAULTS.normal.timeout;
-	a._roomHandoffTimeout = ZONE_TYPE_DEFAULTS.normal.handoff_timeout;
+	// Zone 0 defaults live on _zoneConfigs[0]; set up above.
 	a._showHitCounts = false;
 	a._zoneEngineState = createZoneEngineState();
 	a._showCustomIconPicker = false;
@@ -679,78 +684,84 @@ describe("_renderDetectionRanges inline handlers", () => {
 // _renderBoundaryTypeControls inline handlers
 // ========================
 describe("_renderBoundaryTypeControls inline handlers", () => {
+	// These tests replicate the room-config-change handler's effect on
+	// _zoneConfigs[0] — the zone-0 (room-boundary) settings.
+	function updateZone0(a: any, patch: Partial<Record<string, any>>) {
+		a._zoneConfigs = [
+			{ ...a._zoneConfigs[0], ...patch },
+			...a._zoneConfigs.slice(1),
+		];
+	}
+
 	it("room type change to thoroughfare", () => {
 		const a = createPanel() as any;
-		// Replicate handler (line 4895-4904)
-		const val = "thoroughfare";
+		const val = "thoroughfare" as const;
 		const d = ZONE_TYPE_DEFAULTS[val] || ZONE_TYPE_DEFAULTS.normal;
-		a._roomType = val;
-		a._roomTrigger = d.trigger;
-		a._roomRenew = d.renew;
-		a._roomTimeout = d.timeout;
-		a._roomHandoffTimeout = d.handoff_timeout;
+		updateZone0(a, {
+			type: val,
+			trigger: d.trigger,
+			renew: d.renew,
+			timeout: d.timeout,
+			handoff_timeout: d.handoff_timeout,
+		});
 		a._dirty = true;
 
-		expect(a._roomType).toBe("thoroughfare");
+		expect(a._zoneConfigs[0].type).toBe("thoroughfare");
 		expect(a._dirty).toBe(true);
 	});
 
 	it("room trigger input", () => {
 		const a = createPanel() as any;
-		// Replicate handler (line 4918-4920)
-		a._roomTrigger = 7;
+		updateZone0(a, { trigger: 7 });
 		a._dirty = true;
-		expect(a._roomTrigger).toBe(7);
+		expect(a._zoneConfigs[0].trigger).toBe(7);
 	});
 
 	it("room renew input", () => {
 		const a = createPanel() as any;
-		// Replicate handler (line 4928-4930)
-		a._roomRenew = 4;
+		updateZone0(a, { renew: 4 });
 		a._dirty = true;
-		expect(a._roomRenew).toBe(4);
+		expect(a._zoneConfigs[0].renew).toBe(4);
 	});
 
 	it("room timeout input (valid > 0)", () => {
 		const a = createPanel() as any;
-		// Replicate handler (line 4939-4943)
 		const v = 15;
 		if (v > 0) {
-			a._roomTimeout = v;
+			updateZone0(a, { timeout: v });
 			a._dirty = true;
 		}
-		expect(a._roomTimeout).toBe(15);
+		expect(a._zoneConfigs[0].timeout).toBe(15);
 	});
 
 	it("room timeout input (invalid <= 0 is no-op)", () => {
 		const a = createPanel() as any;
-		a._roomTimeout = 10;
+		updateZone0(a, { timeout: 10 });
 		a._dirty = false;
 		const v = 0;
 		if (v > 0) {
-			a._roomTimeout = v;
+			updateZone0(a, { timeout: v });
 			a._dirty = true;
 		}
-		expect(a._roomTimeout).toBe(10);
+		expect(a._zoneConfigs[0].timeout).toBe(10);
 		expect(a._dirty).toBe(false);
 	});
 
 	it("room handoff timeout input", () => {
 		const a = createPanel() as any;
-		// Replicate handler (line 4953-4957)
 		const v = 5;
 		if (v > 0) {
-			a._roomHandoffTimeout = v;
+			updateZone0(a, { handoff_timeout: v });
 			a._dirty = true;
 		}
-		expect(a._roomHandoffTimeout).toBe(5);
+		expect(a._zoneConfigs[0].handoff_timeout).toBe(5);
 	});
 
 	it("room handoff timeout change", () => {
 		const a = createPanel() as any;
-		a._roomHandoffTimeout = 5;
+		updateZone0(a, { handoff_timeout: 5 });
 		a._dirty = true;
-		expect(a._roomHandoffTimeout).toBe(5);
+		expect(a._zoneConfigs[0].handoff_timeout).toBe(5);
 	});
 });
 
@@ -760,15 +771,15 @@ describe("_renderBoundaryTypeControls inline handlers", () => {
 describe("_renderZoneTypeControls inline handlers", () => {
 	it("zone type change updates config", () => {
 		const a = createPanel() as any;
-		a._zoneConfigs[0] = { name: "Z1", color: "#ff0000", type: "normal" };
+		a._zoneConfigs[1] = { name: "Z1", color: "#ff0000", type: "normal" };
 
 		// Replicate handler (line 4997-5011)
 		const val = "rest";
-		const zone = a._zoneConfigs[0]!;
+		const zone = a._zoneConfigs[1]!;
 		const index = 0;
 		const d = ZONE_TYPE_DEFAULTS[val] || ZONE_TYPE_DEFAULTS.normal;
 		const configs = [...a._zoneConfigs];
-		configs[index] = {
+		configs[index + 1] = {
 			...zone,
 			type: val,
 			trigger: d.trigger,
@@ -779,12 +790,12 @@ describe("_renderZoneTypeControls inline handlers", () => {
 		a._zoneConfigs = configs;
 		a._dirty = true;
 
-		expect(a._zoneConfigs[0].type).toBe("rest");
+		expect(a._zoneConfigs[1].type).toBe("rest");
 	});
 
 	it("zone trigger input", () => {
 		const a = createPanel() as any;
-		a._zoneConfigs[0] = {
+		a._zoneConfigs[1] = {
 			name: "Z1",
 			color: "#ff0000",
 			type: "custom",
@@ -795,18 +806,18 @@ describe("_renderZoneTypeControls inline handlers", () => {
 		};
 
 		// Replicate handler (line 5025-5032)
-		const zone = a._zoneConfigs[0]!;
+		const zone = a._zoneConfigs[1]!;
 		const configs = [...a._zoneConfigs];
-		configs[0] = { ...zone, trigger: 8 };
+		configs[1] = { ...zone, trigger: 8 };
 		a._zoneConfigs = configs;
 		a._dirty = true;
 
-		expect(a._zoneConfigs[0].trigger).toBe(8);
+		expect(a._zoneConfigs[1].trigger).toBe(8);
 	});
 
 	it("zone renew input", () => {
 		const a = createPanel() as any;
-		a._zoneConfigs[0] = {
+		a._zoneConfigs[1] = {
 			name: "Z1",
 			color: "#ff0000",
 			type: "custom",
@@ -817,18 +828,18 @@ describe("_renderZoneTypeControls inline handlers", () => {
 		};
 
 		// Replicate handler (line 5040-5047)
-		const zone = a._zoneConfigs[0]!;
+		const zone = a._zoneConfigs[1]!;
 		const configs = [...a._zoneConfigs];
-		configs[0] = { ...zone, renew: 6 };
+		configs[1] = { ...zone, renew: 6 };
 		a._zoneConfigs = configs;
 		a._dirty = true;
 
-		expect(a._zoneConfigs[0].renew).toBe(6);
+		expect(a._zoneConfigs[1].renew).toBe(6);
 	});
 
 	it("zone timeout input", () => {
 		const a = createPanel() as any;
-		a._zoneConfigs[0] = {
+		a._zoneConfigs[1] = {
 			name: "Z1",
 			color: "#ff0000",
 			type: "custom",
@@ -841,19 +852,19 @@ describe("_renderZoneTypeControls inline handlers", () => {
 		// Replicate handler (line 5056-5062)
 		const v = 20;
 		if (v > 0) {
-			const zone = a._zoneConfigs[0]!;
+			const zone = a._zoneConfigs[1]!;
 			const configs = [...a._zoneConfigs];
-			configs[0] = { ...zone, timeout: v };
+			configs[1] = { ...zone, timeout: v };
 			a._zoneConfigs = configs;
 			a._dirty = true;
 		}
 
-		expect(a._zoneConfigs[0].timeout).toBe(20);
+		expect(a._zoneConfigs[1].timeout).toBe(20);
 	});
 
 	it("zone handoff timeout input", () => {
 		const a = createPanel() as any;
-		a._zoneConfigs[0] = {
+		a._zoneConfigs[1] = {
 			name: "Z1",
 			color: "#ff0000",
 			type: "custom",
@@ -866,31 +877,31 @@ describe("_renderZoneTypeControls inline handlers", () => {
 		// Replicate handler (line 5072-5078)
 		const v = 7;
 		if (v > 0) {
-			const zone = a._zoneConfigs[0]!;
+			const zone = a._zoneConfigs[1]!;
 			const configs = [...a._zoneConfigs];
-			configs[0] = { ...zone, handoff_timeout: v };
+			configs[1] = { ...zone, handoff_timeout: v };
 			a._zoneConfigs = configs;
 			a._dirty = true;
 		}
 
-		expect(a._zoneConfigs[0].handoff_timeout).toBe(7);
+		expect(a._zoneConfigs[1].handoff_timeout).toBe(7);
 	});
 
 	it("zone timeout change", () => {
 		const a = createPanel() as any;
-		a._zoneConfigs[0] = {
+		a._zoneConfigs[1] = {
 			name: "Z1",
 			color: "#ff0000",
 			type: "custom",
 		};
 
-		const zone = a._zoneConfigs[0]!;
+		const zone = a._zoneConfigs[1]!;
 		const configs = [...a._zoneConfigs];
-		configs[0] = { ...zone, timeout: 30 };
+		configs[1] = { ...zone, timeout: 30 };
 		a._zoneConfigs = configs;
 		a._dirty = true;
 
-		expect(a._zoneConfigs[0].timeout).toBe(30);
+		expect(a._zoneConfigs[1].timeout).toBe(30);
 	});
 });
 
@@ -908,7 +919,7 @@ describe("_renderZoneSidebar inline handlers", () => {
 
 	it("zone item click sets activeZone", () => {
 		const a = createPanel() as any;
-		a._zoneConfigs[0] = { name: "Z1", color: "#ff0000", type: "normal" };
+		a._zoneConfigs[1] = { name: "Z1", color: "#ff0000", type: "normal" };
 		const slot = 1;
 		// Replicate handler (line 5139-5140)
 		a._activeZone = slot;
@@ -917,33 +928,33 @@ describe("_renderZoneSidebar inline handlers", () => {
 
 	it("zone color picker input", () => {
 		const a = createPanel() as any;
-		a._zoneConfigs[0] = { name: "Z1", color: "#ff0000", type: "normal" };
+		a._zoneConfigs[1] = { name: "Z1", color: "#ff0000", type: "normal" };
 
 		// Replicate handler (line 5152-5157)
 		const val = "#00ff00";
-		const zone = a._zoneConfigs[0]!;
-		const i = 0;
+		const zone = a._zoneConfigs[1]!;
+		const _i = 0;
 		const configs = [...a._zoneConfigs];
-		configs[i] = { ...zone, color: val };
+		configs[1] = { ...zone, color: val };
 		a._zoneConfigs = configs;
 		a._dirty = true;
 
-		expect(a._zoneConfigs[0].color).toBe("#00ff00");
+		expect(a._zoneConfigs[1].color).toBe("#00ff00");
 	});
 
 	it("zone name input", () => {
 		const a = createPanel() as any;
-		a._zoneConfigs[0] = { name: "Z1", color: "#ff0000", type: "normal" };
+		a._zoneConfigs[1] = { name: "Z1", color: "#ff0000", type: "normal" };
 
 		// Replicate handler (line 5170-5174)
 		const val = "Kitchen";
-		const zone = a._zoneConfigs[0]!;
-		const i = 0;
+		const zone = a._zoneConfigs[1]!;
+		const _i = 0;
 		const configs = [...a._zoneConfigs];
-		configs[i] = { ...zone, name: val };
+		configs[1] = { ...zone, name: val };
 		a._zoneConfigs = configs;
 
-		expect(a._zoneConfigs[0].name).toBe("Kitchen");
+		expect(a._zoneConfigs[1].name).toBe("Kitchen");
 	});
 
 	it("zone name click sets active zone", () => {
@@ -964,11 +975,11 @@ describe("_renderZoneSidebar inline handlers", () => {
 
 	it("zone remove button calls _removeZone", () => {
 		const a = createPanel() as any;
-		a._zoneConfigs[0] = { name: "Z1", color: "#ff0000", type: "normal" };
+		a._zoneConfigs[1] = { name: "Z1", color: "#ff0000", type: "normal" };
 		const slot = 1;
 		// Replicate handler (line 5186-5188)
 		a._removeZone(slot);
-		expect(a._zoneConfigs[0]).toBeNull();
+		expect(a._zoneConfigs[1]).toBeNull();
 	});
 });
 

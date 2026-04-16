@@ -32,15 +32,28 @@ function mockHost() {
 		},
 
 		// Zone config / room geometry
-		_zoneConfigs: [] as any[],
+		// Length-8 zone-slots tuple: slot 0 = Zone0Config (room boundary),
+		// slots 1-7 = named-zone configs or null. Tests override slots 1-7
+		// via `host._zoneConfigs = [host._zoneConfigs[0], ...namedZones]`.
+		_zoneConfigs: [
+			{
+				type: "normal" as const,
+				trigger: 5,
+				renew: 3,
+				timeout: 10,
+				handoff_timeout: 3,
+			},
+			null,
+			null,
+			null,
+			null,
+			null,
+			null,
+			null,
+		] as any[],
 		_grid: new Uint8Array(GRID_CELL_COUNT),
 		_roomWidth: 6000,
 		_roomDepth: 6000,
-		_roomType: "normal" as const,
-		_roomTrigger: 5,
-		_roomRenew: 3,
-		_roomTimeout: 10,
-		_roomHandoffTimeout: 3,
 
 		// Debug log (frontend)
 		_showDebugLog: false,
@@ -224,7 +237,16 @@ describe("TargetController", () => {
 
 		it("appends backend debug log when _showBackendDebugLog is true and debug_log present", () => {
 			host._showBackendDebugLog = true;
-			host._zoneConfigs = [{ name: "Lounge", color: "#fff", type: "normal" }];
+			host._zoneConfigs = [
+				host._zoneConfigs[0],
+				{ name: "Lounge", color: "#fff", type: "normal" },
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+			];
 			ctrl.handleTargetData(
 				makeTargetData({
 					zones: {
@@ -353,9 +375,16 @@ describe("TargetController", () => {
 	// -------------------------------------------------------------------------
 	describe("enrichDebugLog", () => {
 		beforeEach(() => {
-			// Zone 0 = Room, Zone 1 = first entry in _zoneConfigs
+			// Slot 0 = Zone0Config; slot 1 = first named zone (zone 1).
 			host._zoneConfigs = [
+				host._zoneConfigs[0],
 				{ name: "Hallway", color: "#E69F00", type: "normal" },
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
 			];
 		});
 
@@ -424,7 +453,16 @@ describe("TargetController", () => {
 		let container: HTMLDivElement;
 
 		beforeEach(() => {
-			host._zoneConfigs = [{ name: "Lounge", color: "#fff", type: "normal" }];
+			host._zoneConfigs = [
+				host._zoneConfigs[0],
+				{ name: "Lounge", color: "#fff", type: "normal" },
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+			];
 			container = document.createElement("div");
 			container.id = "backend-debug-log-scroll";
 			host._mockBackendContainer = container;
@@ -544,7 +582,16 @@ describe("TargetController", () => {
 		});
 
 		it("returns colours for zones with non-zero target counts", () => {
-			host._zoneConfigs = [{ name: "Study", color: "#56B4E9", type: "normal" }];
+			host._zoneConfigs = [
+				host._zoneConfigs[0],
+				{ name: "Study", color: "#56B4E9", type: "normal" },
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+			];
 			host._zoneState.target_counts = { 1: 3 };
 			const result = ctrl.computeHeatmapColors();
 			// Zone 1 has hits so it should have an entry
@@ -573,7 +620,17 @@ describe("TargetController", () => {
 
 		beforeEach(() => {
 			host._grid = makeSimpleGrid();
-			host._zoneConfigs = [];
+			// Keep zone 0 (slot 0); clear all named-zone slots.
+			host._zoneConfigs = [
+				host._zoneConfigs[0],
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+			];
 		});
 
 		it("returns a ZoneEngineResult with occupancy and targets arrays", () => {

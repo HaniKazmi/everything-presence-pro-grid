@@ -36,7 +36,6 @@ import {
 	getRoomBounds,
 	initGridFromRoom,
 	MAX_RANGE,
-	MAX_ZONES,
 } from "./lib/grid.js";
 import { CELL_BG_OUT_OF_RANGE, getCellColor } from "./lib/heatmap.js";
 import { applyPerspective, getInversePerspective } from "./lib/perspective.js";
@@ -61,6 +60,7 @@ import {
 import {
 	getZoneThresholds,
 	ZONE_TYPE_DEFAULTS,
+	type Zone0Config,
 	type ZoneConfig,
 } from "./lib/zone-defaults.js";
 import type { ZoneEngineResult, ZoneEngineState } from "./lib/zone-engine.js";
@@ -84,6 +84,39 @@ import type {
 	Target,
 } from "./types.js";
 
+/**
+ * Length-8 tuple of zone configurations.
+ * Slot 0 is always `Zone0Config` (the room-boundary zone).
+ * Slots 1-7 hold named zones (`ZoneConfig | null`).
+ */
+export type ZoneSlots = readonly [
+	Zone0Config,
+	ZoneConfig | null,
+	ZoneConfig | null,
+	ZoneConfig | null,
+	ZoneConfig | null,
+	ZoneConfig | null,
+	ZoneConfig | null,
+	ZoneConfig | null,
+];
+
+const INITIAL_ZONE_SLOTS: ZoneSlots = [
+	{
+		type: "normal",
+		trigger: ZONE_TYPE_DEFAULTS.normal.trigger,
+		renew: ZONE_TYPE_DEFAULTS.normal.renew,
+		timeout: ZONE_TYPE_DEFAULTS.normal.timeout,
+		handoff_timeout: ZONE_TYPE_DEFAULTS.normal.handoff_timeout,
+	},
+	null,
+	null,
+	null,
+	null,
+	null,
+	null,
+	null,
+];
+
 export class EPPGridPanel extends LitElement {
 	@property({ attribute: false }) hass: any;
 
@@ -103,16 +136,10 @@ export class EPPGridPanel extends LitElement {
 
 	// Grid data: byte per cell using the encoding above
 	@state() private _grid: Uint8Array = new Uint8Array(GRID_CELL_COUNT);
-	@state() private _zoneConfigs: (ZoneConfig | null)[] = new Array(
-		MAX_ZONES,
-	).fill(null);
+	// Length-8 zone-slots tuple: slot 0 = room-boundary Zone0Config (always
+	// populated); slots 1-7 = named zones (ZoneConfig | null).
+	@state() private _zoneConfigs: ZoneSlots = INITIAL_ZONE_SLOTS;
 	@state() private _activeZone: number | null = null; // null = none selected, 0 = room, 1-7 = named zones
-	@state() private _roomType: ZoneConfig["type"] = "normal";
-	@state() private _roomTrigger: number = ZONE_TYPE_DEFAULTS.normal.trigger;
-	@state() private _roomRenew: number = ZONE_TYPE_DEFAULTS.normal.renew;
-	@state() private _roomTimeout: number = ZONE_TYPE_DEFAULTS.normal.timeout;
-	@state() private _roomHandoffTimeout: number =
-		ZONE_TYPE_DEFAULTS.normal.handoff_timeout;
 	@state() private _targetAutoDistance = true;
 	@state() private _targetMaxDistance = 6.0;
 	@state() private _staticAutoDistance = true;
@@ -542,14 +569,10 @@ export class EPPGridPanel extends LitElement {
 		// Apply layout
 		this._furniture = parsed.furniture;
 		this._grid = parsed.grid;
-		this._zoneConfigs = parsed.zoneConfigs;
-
-		// Apply room thresholds
-		this._roomType = parsed.roomThresholds.roomType;
-		this._roomTrigger = parsed.roomThresholds.roomTrigger;
-		this._roomRenew = parsed.roomThresholds.roomRenew;
-		this._roomTimeout = parsed.roomThresholds.roomTimeout;
-		this._roomHandoffTimeout = parsed.roomThresholds.roomHandoffTimeout;
+		this._zoneConfigs = [
+			parsed.zone0,
+			...parsed.zoneConfigs,
+		] as unknown as ZoneSlots;
 
 		// Apply settings
 		const s = parsed.settings;
@@ -655,8 +678,14 @@ export class EPPGridPanel extends LitElement {
 
 	// -- Grid cell display helpers --
 
+	/** Return named-zone slots (indices 1..7) as the length-7 array that
+	 * downstream components and helpers expect. */
+	private _namedZones(): (ZoneConfig | null)[] {
+		return this._zoneConfigs.slice(1) as (ZoneConfig | null)[];
+	}
+
 	private _getCellColor(index: number): string {
-		return getCellColor(this._grid[index], this._zoneConfigs);
+		return getCellColor(this._grid[index], this._namedZones());
 	}
 
 	/** Compute the bounding box of inside-room cells (for zoom) */
@@ -1351,12 +1380,7 @@ export class EPPGridPanel extends LitElement {
 		this._roomWidth = 0;
 		this._roomDepth = 0;
 		this._grid = new Uint8Array(GRID_COLS * GRID_ROWS);
-		this._zoneConfigs = new Array(MAX_ZONES).fill(null);
-		this._roomType = "normal";
-		this._roomTrigger = ZONE_TYPE_DEFAULTS.normal.trigger;
-		this._roomRenew = ZONE_TYPE_DEFAULTS.normal.renew;
-		this._roomTimeout = ZONE_TYPE_DEFAULTS.normal.timeout;
-		this._roomHandoffTimeout = ZONE_TYPE_DEFAULTS.normal.handoff_timeout;
+		this._zoneConfigs = INITIAL_ZONE_SLOTS;
 		this._furniture = [];
 		// set_setup will disable zone_presence and target_xy — update local state
 		this._entitiesConfig = {
@@ -1411,8 +1435,19 @@ export class EPPGridPanel extends LitElement {
 				type: "eppgrid/set_room_layout",
 				mac: this._selectedMac,
 				grid_bytes: Array.from(this._grid),
-				zone_slots: this._zoneConfigs.map(() => null),
-				room_type: "normal",
+				zone_slots: this._zoneConfigs.map((z, idx) => {
+					if (idx === 0) {
+						const z0 = z as Zone0Config;
+						return {
+							type: z0.type,
+							trigger: z0.trigger,
+							renew: z0.renew,
+							timeout: z0.timeout,
+							handoff_timeout: z0.handoff_timeout,
+						};
+					}
+					return null;
+				}),
 				furniture: [],
 			});
 		} catch (e) {
@@ -1553,7 +1588,7 @@ export class EPPGridPanel extends LitElement {
 		return html`
 			<epp-grid
 				.grid=${this._grid}
-				.zoneConfigs=${this._zoneConfigs}
+				.zoneConfigs=${this._namedZones()}
 				.targets=${this._targets}
 				.roomWidth=${this._roomWidth}
 				.roomDepth=${this._roomDepth}
@@ -1795,7 +1830,7 @@ export class EPPGridPanel extends LitElement {
               <epp-live-sidebar
                 .sensorState=${this._sensorState}
                 .zoneState=${this._zoneState}
-                .zoneConfigs=${this._zoneConfigs}
+                .zoneConfigs=${this._namedZones()}
                 .perspective=${this._perspective}
                 .localize=${this._localize}
                 @view-change=${(e: CustomEvent) => {
@@ -1931,7 +1966,7 @@ export class EPPGridPanel extends LitElement {
 						}}>
               <epp-grid
                 .grid=${this._grid}
-                .zoneConfigs=${this._zoneConfigs}
+                .zoneConfigs=${this._namedZones()}
                 .targets=${this._targets}
                 .roomWidth=${this._roomWidth}
                 .roomDepth=${this._roomDepth}
@@ -1981,13 +2016,13 @@ export class EPPGridPanel extends LitElement {
             ${
 							this._sidebarTab === "zones"
 								? html`<epp-zone-sidebar
-                    .zoneConfigs=${this._zoneConfigs}
+                    .zoneConfigs=${this._namedZones()}
                     .activeZone=${this._activeZone}
-                    .roomType=${this._roomType}
-                    .roomTrigger=${this._roomTrigger}
-                    .roomRenew=${this._roomRenew}
-                    .roomTimeout=${this._roomTimeout}
-                    .roomHandoffTimeout=${this._roomHandoffTimeout}
+                    .roomType=${this._zoneConfigs[0].type}
+                    .roomTrigger=${this._zoneConfigs[0].trigger ?? ZONE_TYPE_DEFAULTS.normal.trigger}
+                    .roomRenew=${this._zoneConfigs[0].renew ?? ZONE_TYPE_DEFAULTS.normal.renew}
+                    .roomTimeout=${this._zoneConfigs[0].timeout ?? ZONE_TYPE_DEFAULTS.normal.timeout}
+                    .roomHandoffTimeout=${this._zoneConfigs[0].handoff_timeout ?? ZONE_TYPE_DEFAULTS.normal.handoff_timeout}
                     .localZoneState=${this._zoneEngineState.localZoneState}
                     .localize=${this._localize}
                     @zone-select=${(e: CustomEvent) => {
@@ -2002,22 +2037,30 @@ export class EPPGridPanel extends LitElement {
 										}}
                     @zone-config-change=${(e: CustomEvent) => {
 											const { index, updates } = e.detail;
+											// Sidebar indexes are 0-based over named zones;
+											// shift by +1 to index the unified zone-slots tuple.
+											const slot = index + 1;
 											const configs = [...this._zoneConfigs];
-											configs[index] = { ...configs[index]!, ...updates };
-											this._zoneConfigs = configs;
+											configs[slot] = { ...configs[slot]!, ...updates };
+											this._zoneConfigs = configs as unknown as ZoneSlots;
 										}}
                     @room-config-change=${(e: CustomEvent) => {
 											const { updates } = e.detail;
+											const z0: Zone0Config = { ...this._zoneConfigs[0] };
 											if (updates.roomType !== undefined)
-												this._roomType = updates.roomType;
+												z0.type = updates.roomType;
 											if (updates.roomTrigger !== undefined)
-												this._roomTrigger = updates.roomTrigger;
+												z0.trigger = updates.roomTrigger;
 											if (updates.roomRenew !== undefined)
-												this._roomRenew = updates.roomRenew;
+												z0.renew = updates.roomRenew;
 											if (updates.roomTimeout !== undefined)
-												this._roomTimeout = updates.roomTimeout;
+												z0.timeout = updates.roomTimeout;
 											if (updates.roomHandoffTimeout !== undefined)
-												this._roomHandoffTimeout = updates.roomHandoffTimeout;
+												z0.handoff_timeout = updates.roomHandoffTimeout;
+											this._zoneConfigs = [
+												z0,
+												...this._zoneConfigs.slice(1),
+											] as unknown as ZoneSlots;
 										}}
                     @dirty=${() => {
 											this._dirty = true;
@@ -2283,14 +2326,15 @@ export class EPPGridPanel extends LitElement {
 		timeout: number;
 		handoffTimeout: number;
 	} {
+		const z0 = this._zoneConfigs[0];
 		return getZoneThresholds(
 			zid,
-			this._zoneConfigs,
-			this._roomType,
-			this._roomTrigger,
-			this._roomRenew,
-			this._roomTimeout,
-			this._roomHandoffTimeout,
+			this._namedZones(),
+			z0.type,
+			z0.trigger ?? ZONE_TYPE_DEFAULTS.normal.trigger,
+			z0.renew ?? ZONE_TYPE_DEFAULTS.normal.renew,
+			z0.timeout ?? ZONE_TYPE_DEFAULTS.normal.timeout,
+			z0.handoff_timeout ?? ZONE_TYPE_DEFAULTS.normal.handoff_timeout,
 		);
 	}
 

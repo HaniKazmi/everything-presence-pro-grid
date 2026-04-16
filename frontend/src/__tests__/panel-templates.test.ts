@@ -12,7 +12,16 @@ function createPanel(): EPPGridPanel {
 	};
 	const a = el as any;
 	a._grid = new Uint8Array(GRID_CELL_COUNT);
-	a._zoneConfigs = new Array(7).fill(null);
+	a._zoneConfigs = [
+		{ type: "normal", trigger: 5, renew: 3, timeout: 10, handoff_timeout: 3 },
+		null,
+		null,
+		null,
+		null,
+		null,
+		null,
+		null,
+	];
 	a._activeZone = 0;
 	a._dirty = false;
 	a._loading = false;
@@ -52,7 +61,16 @@ describe("_saveTemplate", () => {
 		a._roomWidth = 5000;
 		a._roomDepth = 6000;
 		a._furniture = [];
-		a._zoneConfigs = new Array(7).fill(null);
+		a._zoneConfigs = [
+			{ type: "normal", trigger: 5, renew: 3, timeout: 10, handoff_timeout: 3 },
+			null,
+			null,
+			null,
+			null,
+			null,
+			null,
+			null,
+		];
 
 		a.hass.callWS
 			.mockResolvedValueOnce({}) // save_template

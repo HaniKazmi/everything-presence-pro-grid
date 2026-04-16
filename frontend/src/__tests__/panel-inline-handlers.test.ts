@@ -13,7 +13,7 @@ import {
 	GRID_ROWS,
 	initGridFromRoom,
 } from "../lib/grid.js";
-import { ZONE_COLORS, ZONE_TYPE_DEFAULTS } from "../lib/zone-defaults.js";
+import { ZONE_COLORS } from "../lib/zone-defaults.js";
 import { createZoneEngineState } from "../lib/zone-engine.js";
 
 function createPanel(): EPPGridPanel {
@@ -24,7 +24,16 @@ function createPanel(): EPPGridPanel {
 	};
 	const a = el as any;
 	a._grid = new Uint8Array(GRID_CELL_COUNT);
-	a._zoneConfigs = new Array(7).fill(null);
+	a._zoneConfigs = [
+		{ type: "normal", trigger: 5, renew: 3, timeout: 10, handoff_timeout: 3 },
+		null,
+		null,
+		null,
+		null,
+		null,
+		null,
+		null,
+	];
 	a._activeZone = 0;
 	a._dirty = false;
 	a._loading = false;
@@ -78,11 +87,7 @@ function createPanel(): EPPGridPanel {
 	a._staticAutoDistance = true;
 	a._staticMinDistance = 0.3;
 	a._staticMaxDistance = 16;
-	a._roomType = "normal";
-	a._roomTrigger = ZONE_TYPE_DEFAULTS.normal.trigger;
-	a._roomRenew = ZONE_TYPE_DEFAULTS.normal.renew;
-	a._roomTimeout = ZONE_TYPE_DEFAULTS.normal.timeout;
-	a._roomHandoffTimeout = ZONE_TYPE_DEFAULTS.normal.handoff_timeout;
+	// Zone 0 defaults live on _zoneConfigs[0]; set up above.
 	a._showHitCounts = false;
 	a._zoneEngineState = createZoneEngineState();
 	a._showCustomIconPicker = false;
@@ -114,7 +119,7 @@ describe("zone engine in _renderVisibleCells", () => {
 		a._grid = initGridFromRoom(3000, 4000);
 
 		// Set up zone 1 on some cells
-		a._zoneConfigs[0] = {
+		a._zoneConfigs[1] = {
 			name: "Zone 1",
 			color: ZONE_COLORS[0],
 			type: "normal",
@@ -215,7 +220,7 @@ describe("zone engine in _renderVisibleCells", () => {
 	it("runs zone engine with continuity tracking", () => {
 		const a = createPanel() as any;
 		a._grid = initGridFromRoom(3000, 4000);
-		a._zoneConfigs[0] = {
+		a._zoneConfigs[1] = {
 			name: "Zone 1",
 			color: ZONE_COLORS[0],
 			type: "normal",
@@ -247,7 +252,7 @@ describe("zone engine in _renderVisibleCells", () => {
 	it("handles gating for non-entry-point zones", () => {
 		const a = createPanel() as any;
 		a._grid = initGridFromRoom(3000, 4000);
-		a._zoneConfigs[0] = {
+		a._zoneConfigs[1] = {
 			name: "Zone 1",
 			color: ZONE_COLORS[0],
 			type: "normal",
@@ -284,7 +289,7 @@ describe("zone engine in _renderVisibleCells", () => {
 	it("handles zone state machine transitions (clear->occupied->pending->clear)", () => {
 		const a = createPanel() as any;
 		a._grid = initGridFromRoom(3000, 4000);
-		a._zoneConfigs[0] = {
+		a._zoneConfigs[1] = {
 			name: "Zone 1",
 			color: ZONE_COLORS[0],
 			type: "custom",
@@ -327,12 +332,12 @@ describe("zone engine in _renderVisibleCells", () => {
 		a._roomDepth = 6000;
 
 		// Create two zones
-		a._zoneConfigs[0] = {
+		a._zoneConfigs[1] = {
 			name: "Zone 1",
 			color: ZONE_COLORS[0],
 			type: "normal",
 		};
-		a._zoneConfigs[1] = {
+		a._zoneConfigs[2] = {
 			name: "Zone 2",
 			color: ZONE_COLORS[1],
 			type: "normal",
@@ -387,7 +392,7 @@ describe("zone engine in _renderVisibleCells", () => {
 	it("handles gating with signal below threshold", () => {
 		const a = createPanel() as any;
 		a._grid = initGridFromRoom(3000, 4000);
-		a._zoneConfigs[0] = {
+		a._zoneConfigs[1] = {
 			name: "Zone 1",
 			color: ZONE_COLORS[0],
 			type: "normal",
@@ -420,7 +425,7 @@ describe("zone engine in _renderVisibleCells", () => {
 	it("handles signal below baseTrigger for non-gated path", () => {
 		const a = createPanel() as any;
 		a._grid = initGridFromRoom(3000, 4000);
-		a._zoneConfigs[0] = {
+		a._zoneConfigs[1] = {
 			name: "Zone 1",
 			color: ZONE_COLORS[0],
 			type: "custom",
@@ -452,7 +457,7 @@ describe("zone engine in _renderVisibleCells", () => {
 	it("state machine: PENDING with confirmed target -> back to OCCUPIED", () => {
 		const a = createPanel() as any;
 		a._grid = initGridFromRoom(3000, 4000);
-		a._zoneConfigs[0] = {
+		a._zoneConfigs[1] = {
 			name: "Zone 1",
 			color: ZONE_COLORS[0],
 			type: "custom",
@@ -496,7 +501,7 @@ describe("zone engine in _renderVisibleCells", () => {
 	it("handles multiple targets", () => {
 		const a = createPanel() as any;
 		a._grid = initGridFromRoom(3000, 4000);
-		a._zoneConfigs[0] = {
+		a._zoneConfigs[1] = {
 			name: "Zone 1",
 			color: ZONE_COLORS[0],
 			type: "normal",
@@ -541,7 +546,7 @@ describe("zone engine in _renderVisibleCells", () => {
 		a._roomWidth = 6000;
 		a._roomDepth = 6000;
 
-		a._zoneConfigs[0] = {
+		a._zoneConfigs[1] = {
 			name: "Zone 1",
 			color: ZONE_COLORS[0],
 			type: "custom",
@@ -550,7 +555,7 @@ describe("zone engine in _renderVisibleCells", () => {
 			timeout: 100,
 			handoff_timeout: 1,
 		};
-		a._zoneConfigs[1] = {
+		a._zoneConfigs[2] = {
 			name: "Zone 2",
 			color: ZONE_COLORS[1],
 			type: "normal",
@@ -818,7 +823,7 @@ describe("_applyLayout zone/furniture serialization", () => {
 		const a = createPanel() as any;
 		a._selectedMac = "AA:BB:CC:DD:EE:01";
 		a._dirty = true;
-		a._zoneConfigs[0] = {
+		a._zoneConfigs[1] = {
 			name: "Kitchen",
 			color: "#ff0000",
 			type: "custom",
@@ -852,7 +857,13 @@ describe("_applyLayout zone/furniture serialization", () => {
 		await a._applyLayout();
 
 		const call = a.hass.callWS.mock.calls[0][0];
+		// zone_slots is a length-8 array: slot 0 is the Zone0Config (room
+		// boundary), slot 1 is named zone 1.
+		expect(call.zone_slots).toHaveLength(8);
 		expect(call.zone_slots[0]).toEqual(
+			expect.objectContaining({ type: "normal" }),
+		);
+		expect(call.zone_slots[1]).toEqual(
 			expect.objectContaining({
 				name: "Kitchen",
 				type: "custom",

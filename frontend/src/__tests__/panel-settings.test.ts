@@ -12,7 +12,16 @@ function createPanel(): EPPGridPanel {
 	};
 	const a = el as any;
 	a._grid = new Uint8Array(GRID_CELL_COUNT);
-	a._zoneConfigs = new Array(7).fill(null);
+	a._zoneConfigs = [
+		{ type: "normal", trigger: 5, renew: 3, timeout: 10, handoff_timeout: 3 },
+		null,
+		null,
+		null,
+		null,
+		null,
+		null,
+		null,
+	];
 	a._activeZone = 0;
 	a._dirty = false;
 	a._loading = false;
@@ -57,11 +66,7 @@ function createPanel(): EPPGridPanel {
 	a._staticAutoDistance = true;
 	a._staticMinDistance = 0.3;
 	a._staticMaxDistance = 16;
-	a._roomType = "normal";
-	a._roomTrigger = 5;
-	a._roomRenew = 3;
-	a._roomTimeout = 10;
-	a._roomHandoffTimeout = 3;
+	// Zone 0 defaults live on _zoneConfigs[0]; set up above.
 	a._showHitCounts = false;
 	a._zoneEngineState = createZoneEngineState();
 	a._showCustomIconPicker = false;
@@ -202,15 +207,25 @@ describe("_getZoneThresholds", () => {
 
 	it("uses zone-specific thresholds for named zones", () => {
 		const a = createPanel() as any;
-		a._zoneConfigs[0] = {
-			name: "Kitchen",
-			color: "#ff0000",
-			type: "custom",
-			trigger: 7,
-			renew: 5,
-			timeout: 15,
-			handoff_timeout: 5,
-		};
+		// Named zone 1 lives at slot 1 (slot 0 is Zone0Config).
+		a._zoneConfigs = [
+			a._zoneConfigs[0],
+			{
+				name: "Kitchen",
+				color: "#ff0000",
+				type: "custom",
+				trigger: 7,
+				renew: 5,
+				timeout: 15,
+				handoff_timeout: 5,
+			},
+			null,
+			null,
+			null,
+			null,
+			null,
+			null,
+		];
 
 		const result = a._getZoneThresholds(1);
 		expect(result.trigger).toBe(7);
