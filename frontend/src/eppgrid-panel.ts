@@ -757,7 +757,11 @@ export class EPPGridPanel extends LitElement {
 	}
 
 	private async _saveTemplate(): Promise<void> {
-		await this._gridCtrl.saveTemplate();
+		try {
+			await this._gridCtrl.saveTemplate();
+		} catch (err) {
+			console.error("Failed to save template", err);
+		}
 	}
 
 	private _loadTemplate(name: string): void {
@@ -765,7 +769,11 @@ export class EPPGridPanel extends LitElement {
 	}
 
 	private async _deleteTemplate(name: string): Promise<void> {
-		await this._gridCtrl.deleteTemplate(name);
+		try {
+			await this._gridCtrl.deleteTemplate(name);
+		} catch (err) {
+			console.error(`Failed to delete template "${name}"`, err);
+		}
 	}
 
 	/** Initialize grid from room dimensions after wizard finishes */

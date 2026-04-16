@@ -418,7 +418,7 @@ export class GridStateController implements ReactiveController {
 	templates: {
 		name: string;
 		grid: number[];
-		zones: (ZoneConfig | null)[];
+		zones?: (ZoneConfig | null)[];
 		roomWidth: number;
 		roomDepth: number;
 		furniture?: FurnitureItem[];
@@ -432,8 +432,8 @@ export class GridStateController implements ReactiveController {
 			const dict = resp.templates || {};
 			this.templates = Object.entries(dict).map(
 				([name, data]: [string, any]) => ({
-					name,
 					...data,
+					name,
 				}),
 			);
 		} catch {
