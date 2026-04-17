@@ -8,6 +8,7 @@ dist/
 .vscode/
 .superpowers/
 .worktrees/
+.claude/
 *.code-workspace
 .coverage
 coverage.json

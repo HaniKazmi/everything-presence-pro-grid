@@ -53,16 +53,21 @@ def _expand_zone_slot(slot: dict[str, Any]) -> dict[str, Any]:
     """Fill in timing fields from ZONE_TYPE_DEFAULTS for non-custom zones.
 
     Custom zones are returned as-is — user-supplied timing is authoritative.
+    Non-custom zones have their timing OVERWRITTEN with the type defaults even
+    if stale timing is stored (e.g. from before the serializer stripped it) —
+    ZONE_TYPE_DEFAULTS is the single source of truth so bumping the defaults
+    in code rolls through to every device on next push.
+
     Always returns a copy so the caller can't mutate stored state.
     """
     if slot.get("type") == "custom":
         return dict(slot)
     defaults = ZONE_TYPE_DEFAULTS.get(slot.get("type"), ZONE_TYPE_DEFAULTS["normal"])
     expanded = dict(slot)
-    expanded.setdefault("trigger", defaults["trigger"])
-    expanded.setdefault("renew", defaults["renew"])
-    expanded.setdefault("timeout", defaults["timeout"])
-    expanded.setdefault("handoff_timeout", defaults["handoff_timeout"])
+    expanded["trigger"] = defaults["trigger"]
+    expanded["renew"] = defaults["renew"]
+    expanded["timeout"] = defaults["timeout"]
+    expanded["handoff_timeout"] = defaults["handoff_timeout"]
     return expanded
 
 

@@ -1451,6 +1451,54 @@ class TestPushConfig:
             assert source_slot == {"type": "normal"}
             assert named_slot == {"name": "Office", "color": "#CFDB70", "type": "normal"}
 
+    async def test_push_config_overwrites_stale_timing_on_non_custom(self) -> None:
+        """Non-custom zones: stale stored timing is overwritten by type defaults.
+
+        ZONE_TYPE_DEFAULTS is the single source of truth for non-custom types,
+        so bumping the defaults in code rolls through to every device. If the
+        store somehow holds leftover timing values for a non-custom zone (e.g.
+        from before the serializer stripped them), they must not survive the
+        expansion — the type defaults are authoritative.
+        """
+        conn = DeviceConnection("192.168.1.100")
+
+        mock_zones = MagicMock()
+        mock_zones.name = "epp_set_zones"
+
+        with patch("custom_components.eppgrid.device_manager.APIClient") as mock_cls:
+            mock_client = mock_cls.return_value
+            mock_client.connect = AsyncMock()
+            mock_client.list_entities_services = AsyncMock(return_value=([], [mock_zones]))
+            mock_client.execute_service = AsyncMock()
+
+            await conn.async_connect()
+            # Stale timing on a "rest" zone — defaults say 7/1/30/10, but the
+            # stored slot has 99/99/99/99. After expansion, defaults must win.
+            await conn.async_push_config(
+                {
+                    "room_layout": {
+                        "zone_slots": [
+                            {
+                                "type": "rest",
+                                "trigger": 99,
+                                "renew": 99,
+                                "timeout": 99.0,
+                                "handoff_timeout": 99.0,
+                            },
+                        ]
+                        + [None] * MAX_ZONES,
+                    },
+                }
+            )
+
+            call_data = mock_client.execute_service.call_args[0][1]
+            pushed = json.loads(call_data["zones_json"])
+            slot = pushed["zone_slots"][0]
+            assert slot["trigger"] == 7
+            assert slot["renew"] == 1
+            assert slot["timeout"] == 30.0
+            assert slot["handoff_timeout"] == 10.0
+
     async def test_push_config_settings(self) -> None:
         """push_config reads unified settings key and pushes to 4 firmware actions."""
         conn = DeviceConnection("192.168.1.100")
