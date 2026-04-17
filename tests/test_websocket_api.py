@@ -550,6 +550,93 @@ class TestZoneSlotsValidator:
         with pytest.raises(vol.Invalid):
             _validate_zone_slots(slots)
 
+    def test_rejects_slot_0_with_non_string_type(self) -> None:
+        """Slot 0 'type' must be a string (consistent with named zones)."""
+        import voluptuous as vol
+
+        from custom_components.eppgrid.websocket_api import _validate_zone_slots
+
+        slots = [{"type": 42}] + [None] * 7
+        with pytest.raises(vol.Invalid):
+            _validate_zone_slots(slots)
+
+    def test_rejects_slot_0_with_non_numeric_trigger(self) -> None:
+        """Slot 0 optional timing fields must be numeric when present."""
+        import voluptuous as vol
+
+        from custom_components.eppgrid.websocket_api import _validate_zone_slots
+
+        slots = [{"type": "normal", "trigger": "5"}] + [None] * 7
+        with pytest.raises(vol.Invalid):
+            _validate_zone_slots(slots)
+
+    def test_rejects_slot_0_with_non_numeric_renew(self) -> None:
+        """Slot 0 'renew' must be numeric when present."""
+        import voluptuous as vol
+
+        from custom_components.eppgrid.websocket_api import _validate_zone_slots
+
+        slots = [{"type": "normal", "renew": "3"}] + [None] * 7
+        with pytest.raises(vol.Invalid):
+            _validate_zone_slots(slots)
+
+    def test_rejects_slot_0_with_non_numeric_timeout(self) -> None:
+        """Slot 0 'timeout' must be numeric when present."""
+        import voluptuous as vol
+
+        from custom_components.eppgrid.websocket_api import _validate_zone_slots
+
+        slots = [{"type": "normal", "timeout": "10"}] + [None] * 7
+        with pytest.raises(vol.Invalid):
+            _validate_zone_slots(slots)
+
+    def test_rejects_slot_0_with_non_numeric_handoff_timeout(self) -> None:
+        """Slot 0 'handoff_timeout' must be numeric when present."""
+        import voluptuous as vol
+
+        from custom_components.eppgrid.websocket_api import _validate_zone_slots
+
+        slots = [{"type": "normal", "handoff_timeout": "3"}] + [None] * 7
+        with pytest.raises(vol.Invalid):
+            _validate_zone_slots(slots)
+
+    def test_rejects_named_slot_with_non_numeric_trigger(self) -> None:
+        """Named slot timing fields must be numeric when present."""
+        import voluptuous as vol
+
+        from custom_components.eppgrid.websocket_api import _validate_zone_slots
+
+        slots = [
+            {"type": "normal"},
+            {"name": "Office", "color": "#ff0000", "type": "normal", "trigger": "5"},
+        ] + [None] * 6
+        with pytest.raises(vol.Invalid):
+            _validate_zone_slots(slots)
+
+    def test_accepts_numeric_timing_fields(self) -> None:
+        """int and float values for timing fields are both accepted."""
+        from custom_components.eppgrid.websocket_api import _validate_zone_slots
+
+        slots = [
+            {
+                "type": "normal",
+                "trigger": 5,
+                "renew": 3.5,
+                "timeout": 10,
+                "handoff_timeout": 3.0,
+            },
+            {
+                "name": "Office",
+                "color": "#ff0000",
+                "type": "normal",
+                "trigger": 4,
+                "renew": 2.0,
+                "timeout": 12.5,
+                "handoff_timeout": 2,
+            },
+        ] + [None] * 6
+        assert _validate_zone_slots(slots) == slots
+
 
 class TestWebSocketTemplates:
     """Tests for template CRUD commands."""

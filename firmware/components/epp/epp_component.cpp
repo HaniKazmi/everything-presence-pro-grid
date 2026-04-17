@@ -519,12 +519,20 @@ void EPPComponent::restore_from_nvs_() {
   // Restore zones (stored as JSON string)
   size_t str_len = 0;
   if (nvs_get_str(handle, "zones", nullptr, &str_len) == ESP_OK && str_len > 1) {
-    std::string zones_str(str_len - 1, '\0');  // str_len includes null terminator
+    // nvs_get_str writes str_len bytes (payload + trailing null) into the
+    // buffer, so allocate the full capacity and trim the null afterward.
+    // Allocating str_len - 1 would let nvs_get_str write one byte past the
+    // std::string's logical end into its internal terminator slot (UB).
+    std::string zones_str(str_len, '\0');
     esp_err_t err = nvs_get_str(handle, "zones", &zones_str[0], &str_len);
     if (err != ESP_OK) {
       ESP_LOGW(TAG, "Failed to read zones from NVS: %s", esp_err_to_name(err));
       nvs_close(handle);
       return;
+    }
+    // Trim the embedded null terminator that nvs_get_str wrote at the end.
+    if (!zones_str.empty() && zones_str.back() == '\0') {
+      zones_str.pop_back();
     }
     nvs_close(handle);  // Close before calling set_zones (which re-opens for save)
     // Parse and apply but don't re-save — call the shared parsing helper.

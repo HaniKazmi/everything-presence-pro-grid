@@ -27,6 +27,9 @@ except Exception:
 _REGISTERED: set[str] = set()
 
 
+_TIMING_FIELDS = ("trigger", "renew", "timeout", "handoff_timeout")
+
+
 def _validate_zone_slots(value: Any) -> list:
     """Validate the shape of a `zone_slots` list coming from the frontend.
 
@@ -34,20 +37,22 @@ def _validate_zone_slots(value: Any) -> list:
     reaches storage / firmware pushes / entity renaming:
 
     - Must be a list of exactly NUM_ZONE_SLOTS entries.
-    - Slot 0 (zone 0, "rest of room") must be a dict with a `type` key.
+    - Slot 0 (zone 0, "rest of room") must be a dict with a string `type`.
     - Slots 1-7 (named zones) must be `None` OR a dict with required string
       keys `name`, `color`, and `type`.
-
-    Optional timing fields (trigger / renew / timeout / handoff_timeout) are
-    not enforced here — their values are tolerated by downstream code.
+    - Optional timing fields (trigger / renew / timeout / handoff_timeout),
+      when present on any slot, must be numeric (int or float).
     """
     if not isinstance(value, list) or len(value) != NUM_ZONE_SLOTS:
         raise vol.Invalid(f"zone_slots must be a list of length {NUM_ZONE_SLOTS}")
     zone0 = value[0]
     if not isinstance(zone0, dict):
         raise vol.Invalid("zone_slots[0] (zone 0) must be a dict")
-    if "type" not in zone0:
-        raise vol.Invalid("zone_slots[0] must have 'type'")
+    if "type" not in zone0 or not isinstance(zone0["type"], str):
+        raise vol.Invalid("zone_slots[0] must have string 'type'")
+    for field in _TIMING_FIELDS:
+        if field in zone0 and not isinstance(zone0[field], (int, float)):
+            raise vol.Invalid(f"zone_slots[0] '{field}' must be numeric when present")
     for i, slot in enumerate(value[1:], start=1):
         if slot is None:
             continue
@@ -59,6 +64,9 @@ def _validate_zone_slots(value: Any) -> list:
             raise vol.Invalid(f"zone_slots[{i}] must have string 'color'")
         if "type" not in slot or not isinstance(slot["type"], str):
             raise vol.Invalid(f"zone_slots[{i}] must have string 'type'")
+        for field in _TIMING_FIELDS:
+            if field in slot and not isinstance(slot[field], (int, float)):
+                raise vol.Invalid(f"zone_slots[{i}] '{field}' must be numeric when present")
     return value
 
 

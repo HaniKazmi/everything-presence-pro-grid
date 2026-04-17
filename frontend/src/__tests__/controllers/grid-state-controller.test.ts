@@ -653,6 +653,108 @@ describe("GridStateController", () => {
 			];
 			await expect(ctrl.loadTemplate("NullZ0")).rejects.toThrow(/old format/);
 		});
+
+		it("throws when zone 0 is missing the type field", async () => {
+			ctrl.templates = [
+				{
+					name: "BadZ0NoType",
+					grid: TEMPLATE_DATA.grid,
+					zones: [{ trigger: 5 }, null, null, null, null, null, null, null],
+					roomWidth: 2400,
+					roomDepth: 3600,
+				} as any,
+			];
+			await expect(ctrl.loadTemplate("BadZ0NoType")).rejects.toThrow(
+				/old format/,
+			);
+		});
+
+		it("throws when zone 0 has non-string type", async () => {
+			ctrl.templates = [
+				{
+					name: "BadZ0TypeNum",
+					grid: TEMPLATE_DATA.grid,
+					zones: [{ type: 42 }, null, null, null, null, null, null, null],
+					roomWidth: 2400,
+					roomDepth: 3600,
+				} as any,
+			];
+			await expect(ctrl.loadTemplate("BadZ0TypeNum")).rejects.toThrow(
+				/old format/,
+			);
+		});
+
+		it("throws when a named slot is missing the name field", async () => {
+			ctrl.templates = [
+				{
+					name: "BadNamedNoName",
+					grid: TEMPLATE_DATA.grid,
+					zones: [
+						{ type: "normal" },
+						{ color: "#ff0000", type: "normal" },
+						null,
+						null,
+						null,
+						null,
+						null,
+						null,
+					],
+					roomWidth: 2400,
+					roomDepth: 3600,
+				} as any,
+			];
+			await expect(ctrl.loadTemplate("BadNamedNoName")).rejects.toThrow(
+				/old format/,
+			);
+		});
+
+		it("throws when a named slot has non-string color", async () => {
+			ctrl.templates = [
+				{
+					name: "BadNamedColor",
+					grid: TEMPLATE_DATA.grid,
+					zones: [
+						{ type: "normal" },
+						{ name: "Office", color: 0xff0000, type: "normal" },
+						null,
+						null,
+						null,
+						null,
+						null,
+						null,
+					],
+					roomWidth: 2400,
+					roomDepth: 3600,
+				} as any,
+			];
+			await expect(ctrl.loadTemplate("BadNamedColor")).rejects.toThrow(
+				/old format/,
+			);
+		});
+
+		it("throws when a named slot is not null and not an object", async () => {
+			ctrl.templates = [
+				{
+					name: "BadNamedNonObject",
+					grid: TEMPLATE_DATA.grid,
+					zones: [
+						{ type: "normal" },
+						"not an object",
+						null,
+						null,
+						null,
+						null,
+						null,
+						null,
+					],
+					roomWidth: 2400,
+					roomDepth: 3600,
+				} as any,
+			];
+			await expect(ctrl.loadTemplate("BadNamedNonObject")).rejects.toThrow(
+				/old format/,
+			);
+		});
 	});
 
 	describe("deleteTemplate()", () => {

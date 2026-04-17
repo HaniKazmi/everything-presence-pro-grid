@@ -493,14 +493,32 @@ export class GridStateController implements ReactiveController {
 		const tmpl = this.templates.find((t) => t.name === name);
 		if (!tmpl) return;
 		const zones = tmpl.zones || [];
-		// Length-8 with a populated zone 0 is required (per no-BWC policy).
-		// Old-format templates throw so the user re-saves them. Leave the
-		// load dialog open so the failure is visible and the user can try
-		// another template.
-		if (zones.length !== NUM_ZONE_SLOTS || zones[0] == null) {
-			throw new Error(
-				`Template "${name}" is in an old format — please re-save it`,
-			);
+		// Length-8 with a populated, well-shaped zone 0 and correctly-shaped
+		// named slots is required (per no-BWC policy). Old- or corrupt-format
+		// templates throw so the user re-saves them. Leave the load dialog
+		// open so the failure is visible and the user can try another template.
+		const isZone0Shape = (s: any): boolean =>
+			s != null && typeof s === "object" && typeof s.type === "string";
+		const isNamedZoneShape = (s: any): boolean =>
+			s === null ||
+			(s != null &&
+				typeof s === "object" &&
+				typeof s.name === "string" &&
+				typeof s.color === "string" &&
+				typeof s.type === "string");
+		const oldFormatError = new Error(
+			`Template "${name}" is in an old format — please re-save it`,
+		);
+		if (zones.length !== NUM_ZONE_SLOTS) {
+			throw oldFormatError;
+		}
+		if (!isZone0Shape(zones[0])) {
+			throw oldFormatError;
+		}
+		for (let i = 1; i < NUM_ZONE_SLOTS; i++) {
+			if (!isNamedZoneShape(zones[i])) {
+				throw oldFormatError;
+			}
 		}
 		this.host._grid = new Uint8Array(tmpl.grid);
 		this.host._zoneConfigs = Array.from(
