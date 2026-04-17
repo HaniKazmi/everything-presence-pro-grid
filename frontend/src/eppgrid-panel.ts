@@ -2197,14 +2197,18 @@ export class EPPGridPanel extends LitElement {
                       <div class="template-card-info">
                         <div class="template-card-name">${t.name}</div>
                         <div class="template-card-size">${(() => {
-													// Prefer the painted-cell bounding box so the card
-													// label matches the footer's "Current grid" readout
-													// and the thumbnail the user sees. Falls back to the
-													// calibration values if nothing is painted.
+													// Use the same FOV-aware metrics the footer uses
+													// so the card matches the live grid readout — cells
+													// marked inside the room but outside the sensor's
+													// FOV/range (grey-hatched) are excluded. Falls back
+													// to the stored calibration values if nothing is
+													// painted.
 													const metrics = getGridRoomMetrics(
 														new Uint8Array(t.grid),
 														t.roomWidth,
-														null,
+														this._perspective,
+														this._getSensorFov(),
+														this._computeMaxRangeMm(),
 													);
 													const widthM = metrics
 														? metrics.widthM
