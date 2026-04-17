@@ -308,6 +308,44 @@ describe("_renderTemplateLoadDialog", () => {
 		document.body.removeChild(c);
 	});
 
+	it("template-card-size reflects painted-cell bounding box, not stored roomWidth", () => {
+		// Template stores a small roomWidth from calibration (600mm), but the
+		// painted grid extends further. The card label should match what the
+		// footer shows (getGridRoomMetrics on the painted cells), so the user
+		// sees the dimensions of the visible layout, not the calibration-time
+		// room size.
+		const grid = new Array(GRID_CELL_COUNT).fill(0);
+		// Paint a 3-col × 2-row block at the top-left corner (0.9m × 0.6m).
+		for (let row = 0; row < 2; row++) {
+			for (let col = 0; col < 3; col++) {
+				grid[row * GRID_COLS + col] = CELL_ROOM_BIT;
+			}
+		}
+
+		const a = createPanel() as any;
+		a._gridCtrl.templates = [
+			{
+				name: "Mismatch",
+				grid,
+				zones: VALID_ZONES,
+				roomWidth: 600, // calibration-time value
+				roomDepth: 600,
+				furniture: [],
+			},
+		];
+
+		const tpl = a._renderTemplateLoadDialog();
+		const c = document.createElement("div");
+		document.body.appendChild(c);
+		render(tpl, c);
+
+		const size = c.querySelector(".template-card-size");
+		// Painted box: 3 cols × 300mm = 0.9m, 2 rows × 300mm = 0.6m.
+		expect(size?.textContent).toBe("0.9m × 0.6m");
+
+		document.body.removeChild(c);
+	});
+
 	it("renders no-templates message when cache is empty", () => {
 		const a = createPanel() as any;
 		a._gridCtrl.templates = [];

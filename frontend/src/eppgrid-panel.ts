@@ -2196,7 +2196,24 @@ export class EPPGridPanel extends LitElement {
                       </div>
                       <div class="template-card-info">
                         <div class="template-card-name">${t.name}</div>
-                        <div class="template-card-size">${this._localize.formatNumber(t.roomWidth / 1000, 1)}m × ${this._localize.formatNumber(t.roomDepth / 1000, 1)}m</div>
+                        <div class="template-card-size">${(() => {
+													// Prefer the painted-cell bounding box so the card
+													// label matches the footer's "Current grid" readout
+													// and the thumbnail the user sees. Falls back to the
+													// calibration values if nothing is painted.
+													const metrics = getGridRoomMetrics(
+														new Uint8Array(t.grid),
+														t.roomWidth,
+														null,
+													);
+													const widthM = metrics
+														? metrics.widthM
+														: t.roomWidth / 1000;
+													const depthM = metrics
+														? metrics.depthM
+														: t.roomDepth / 1000;
+													return `${this._localize.formatNumber(widthM, 1)}m × ${this._localize.formatNumber(depthM, 1)}m`;
+												})()}</div>
                       </div>
                     </div>
                   `,

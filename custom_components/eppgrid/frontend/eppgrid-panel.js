@@ -4160,7 +4160,7 @@ const dt={attribute:!0,type:String,converter:E,reflect:!1,hasChanged:m},At=(t=dt
                       </div>
                       <div class="template-card-info">
                         <div class="template-card-name">${t.name}</div>
-                        <div class="template-card-size">${this._localize.formatNumber(t.roomWidth/1e3,1)}m × ${this._localize.formatNumber(t.roomDepth/1e3,1)}m</div>
+                        <div class="template-card-size">${(()=>{const e=Hi(new Uint8Array(t.grid),t.roomWidth,null),i=e?e.widthM:t.roomWidth/1e3,s=e?e.depthM:t.roomDepth/1e3;return`${this._localize.formatNumber(i,1)}m × ${this._localize.formatNumber(s,1)}m`})()}</div>
                       </div>
                     </div>
                   `)}
