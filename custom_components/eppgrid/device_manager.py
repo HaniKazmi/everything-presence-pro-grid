@@ -1076,10 +1076,23 @@ class DeviceManager:
 
         Handles both zone_presence and zone_target_count entities.
         When enabled, zone 0 + named zones are enabled; unused slots are disabled.
+
+        Fails closed on malformed ``zone_slots`` shape. A legacy 0.93.x layout
+        stored with length 7 (or any other shape where slot 0 is not a dict)
+        would otherwise silently shift indices — the user's old "first named
+        zone" would get renamed into zone 0, etc. Instead we treat every zone
+        as non-existent and disable all HA zone entities until the user
+        re-applies their layout via the panel (which writes length-8 shape).
         """
         dev = self.devices.get(mac)
         if dev is None or dev.device_id is None:
             return
+
+        # Shape guard: fail-closed on anything that isn't the expected length-8
+        # list with a dict at slot 0.
+        shape_ok = (
+            isinstance(zone_slots, list) and len(zone_slots) == NUM_ZONE_SLOTS and isinstance(zone_slots[0], dict)
+        )
 
         language = self._hass.config.language
         ent_reg = er.async_get(self._hass)
@@ -1089,16 +1102,17 @@ class DeviceManager:
         zone_target_count = settings.get("zone_target_count", False)
 
         def _zone_exists(i: int) -> bool:
-            """Check if zone slot i exists (zone 0 = room, always exists).
+            """Check if zone slot i exists.
 
-            Named slots count as existing only if they are dicts — malformed
-            non-dict slots (should be unreachable thanks to the websocket
-            validator, but guard regardless) are treated as non-existent.
+            When the shape is OK, zone 0 (room) always exists, and named slots
+            1..7 exist only when they are dicts. When the shape is malformed,
+            every zone is treated as non-existent — the loop below then falls
+            through to the INTEGRATION-disable path for each entity.
             """
+            if not shape_ok:
+                return False
             if i == 0:
                 return True
-            if i >= len(zone_slots):
-                return False
             slot = zone_slots[i]
             return isinstance(slot, dict)
 

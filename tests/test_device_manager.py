@@ -3040,6 +3040,152 @@ class TestZoneEntities:
         # Even zone 0 should be disabled when zone_target_count setting is off
         assert ent_reg.async_get(ztc0.entity_id).disabled_by == er.RegistryEntryDisabler.INTEGRATION
 
+    async def test_update_zone_entities_fail_closed_on_legacy_length_7(
+        self, hass: HomeAssistant, manager: DeviceManager
+    ) -> None:
+        """Legacy length-7 layout in storage disables all zone entities (fail-closed).
+
+        Before the length-8 migration, storage held a length-7 zone_slots list
+        where index 0 was the FIRST named zone (not zone 0 / room). If discovery
+        replays that legacy shape through async_update_zone_entities, we MUST
+        NOT silently shift indices — instead treat every zone as non-existent
+        so the user sees entities disabled until they re-save their layout via
+        the panel with the new length-8 shape.
+        """
+        dev_reg = dr.async_get(hass)
+        ent_reg = er.async_get(hass)
+
+        esphome_entry = MockConfigEntry(domain="esphome", data={"host": "192.168.1.50"}, title="EPP")
+        esphome_entry.add_to_hass(hass)
+
+        device = dev_reg.async_get_or_create(
+            config_entry_id=esphome_entry.entry_id,
+            connections={("mac", "aa:bb:cc:dd:ee:ff")},
+            name="EPP",
+        )
+
+        zone0_entry = ent_reg.async_get_or_create(
+            "binary_sensor",
+            "esphome",
+            unique_id="AA:BB:CC:DD:EE:FF-binary_sensor-zone_0_presence",
+            config_entry=esphome_entry,
+            device_id=device.id,
+        )
+        zone1_entry = ent_reg.async_get_or_create(
+            "binary_sensor",
+            "esphome",
+            unique_id="AA:BB:CC:DD:EE:FF-binary_sensor-zone_1_presence",
+            config_entry=esphome_entry,
+            device_id=device.id,
+        )
+        zone1_tc = ent_reg.async_get_or_create(
+            "sensor",
+            "esphome",
+            unique_id="AA:BB:CC:DD:EE:FF-sensor-zone_1_target_count",
+            config_entry=esphome_entry,
+            device_id=device.id,
+        )
+
+        manager.devices["AA:BB:CC:DD:EE:FF"] = ManagedDevice(
+            mac="AA:BB:CC:DD:EE:FF", name="EPP", host="192.168.1.50", device_id=device.id
+        )
+        manager._store.devices["AA:BB:CC:DD:EE:FF"] = {"settings": {"zone_presence": True, "zone_target_count": True}}
+
+        # Legacy length-7 layout: index 0 was once "first named zone".
+        zone_slots = [{"name": "Office"}] + [None] * 6
+        await manager.async_update_zone_entities("AA:BB:CC:DD:EE:FF", zone_slots)
+
+        # Zone 0 MUST be disabled — we cannot trust any index semantics.
+        assert ent_reg.async_get(zone0_entry.entity_id).disabled_by == er.RegistryEntryDisabler.INTEGRATION
+        # Zone 1 entities MUST be disabled — do not silently adopt the old "Office" name.
+        assert ent_reg.async_get(zone1_entry.entity_id).disabled_by == er.RegistryEntryDisabler.INTEGRATION
+        assert ent_reg.async_get(zone1_tc.entity_id).disabled_by == er.RegistryEntryDisabler.INTEGRATION
+
+    async def test_update_zone_entities_fail_closed_when_slot0_is_none(
+        self, hass: HomeAssistant, manager: DeviceManager
+    ) -> None:
+        """Length-8 zone_slots with slot 0 = None disables all zone entities."""
+        dev_reg = dr.async_get(hass)
+        ent_reg = er.async_get(hass)
+
+        esphome_entry = MockConfigEntry(domain="esphome", data={"host": "192.168.1.50"}, title="EPP")
+        esphome_entry.add_to_hass(hass)
+
+        device = dev_reg.async_get_or_create(
+            config_entry_id=esphome_entry.entry_id,
+            connections={("mac", "aa:bb:cc:dd:ee:ff")},
+            name="EPP",
+        )
+
+        zone0_entry = ent_reg.async_get_or_create(
+            "binary_sensor",
+            "esphome",
+            unique_id="AA:BB:CC:DD:EE:FF-binary_sensor-zone_0_presence",
+            config_entry=esphome_entry,
+            device_id=device.id,
+        )
+        zone1_entry = ent_reg.async_get_or_create(
+            "binary_sensor",
+            "esphome",
+            unique_id="AA:BB:CC:DD:EE:FF-binary_sensor-zone_1_presence",
+            config_entry=esphome_entry,
+            device_id=device.id,
+        )
+
+        manager.devices["AA:BB:CC:DD:EE:FF"] = ManagedDevice(
+            mac="AA:BB:CC:DD:EE:FF", name="EPP", host="192.168.1.50", device_id=device.id
+        )
+        manager._store.devices["AA:BB:CC:DD:EE:FF"] = {"settings": {"zone_presence": True}}
+
+        zone_slots = [None] * (MAX_ZONES + 1)  # slot 0 is None — malformed
+        await manager.async_update_zone_entities("AA:BB:CC:DD:EE:FF", zone_slots)
+
+        assert ent_reg.async_get(zone0_entry.entity_id).disabled_by == er.RegistryEntryDisabler.INTEGRATION
+        assert ent_reg.async_get(zone1_entry.entity_id).disabled_by == er.RegistryEntryDisabler.INTEGRATION
+
+    async def test_update_zone_entities_fail_closed_when_slot0_not_dict(
+        self, hass: HomeAssistant, manager: DeviceManager
+    ) -> None:
+        """Length-8 zone_slots with slot 0 = non-dict (e.g. list) disables all zone entities."""
+        dev_reg = dr.async_get(hass)
+        ent_reg = er.async_get(hass)
+
+        esphome_entry = MockConfigEntry(domain="esphome", data={"host": "192.168.1.50"}, title="EPP")
+        esphome_entry.add_to_hass(hass)
+
+        device = dev_reg.async_get_or_create(
+            config_entry_id=esphome_entry.entry_id,
+            connections={("mac", "aa:bb:cc:dd:ee:ff")},
+            name="EPP",
+        )
+
+        zone0_entry = ent_reg.async_get_or_create(
+            "binary_sensor",
+            "esphome",
+            unique_id="AA:BB:CC:DD:EE:FF-binary_sensor-zone_0_presence",
+            config_entry=esphome_entry,
+            device_id=device.id,
+        )
+        zone1_entry = ent_reg.async_get_or_create(
+            "binary_sensor",
+            "esphome",
+            unique_id="AA:BB:CC:DD:EE:FF-binary_sensor-zone_1_presence",
+            config_entry=esphome_entry,
+            device_id=device.id,
+        )
+
+        manager.devices["AA:BB:CC:DD:EE:FF"] = ManagedDevice(
+            mac="AA:BB:CC:DD:EE:FF", name="EPP", host="192.168.1.50", device_id=device.id
+        )
+        manager._store.devices["AA:BB:CC:DD:EE:FF"] = {"settings": {"zone_presence": True}}
+
+        # Slot 0 is a list — not a dict. Malformed.
+        zone_slots: list = [["not", "a", "dict"]] + [None] * MAX_ZONES
+        await manager.async_update_zone_entities("AA:BB:CC:DD:EE:FF", zone_slots)
+
+        assert ent_reg.async_get(zone0_entry.entity_id).disabled_by == er.RegistryEntryDisabler.INTEGRATION
+        assert ent_reg.async_get(zone1_entry.entity_id).disabled_by == er.RegistryEntryDisabler.INTEGRATION
+
 
 # ---------------------------------------------------------------------------
 # Helper function tests
