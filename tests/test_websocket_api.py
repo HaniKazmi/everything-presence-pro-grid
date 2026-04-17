@@ -203,6 +203,36 @@ class TestWebSocketSetSetup:
         mock_dm._push_config_to_device.assert_awaited_with("AA:BB:CC:DD:EE:FF")
         connection.send_result.assert_called_once_with(3)
 
+    async def test_set_setup_updates_zone_entities_with_valid_empty_shape(
+        self, hass: HomeAssistant, config_entry: MockConfigEntry
+    ) -> None:
+        """After calibration clears room_layout, the fallback passed to
+        async_update_zone_entities must be a valid length-8 shape with a
+        Zone0Config at index 0 — otherwise the fail-closed guard would
+        disable zone 0 unexpectedly."""
+        mock_dm = await setup_integration(hass, config_entry)
+        mock_dm.async_update_zone_entities = AsyncMock()
+
+        from custom_components.eppgrid.websocket_api import websocket_set_setup
+
+        connection = MagicMock()
+        msg = {
+            "id": 101,
+            "type": "eppgrid/set_setup",
+            "mac": "AA:BB:CC:DD:EE:FF",
+            "perspective": [1.0] * 8,
+            "room_width": 3000.0,
+            "room_depth": 4000.0,
+        }
+        await call_async_handler(hass, websocket_set_setup, connection, msg)
+
+        mock_dm.async_update_zone_entities.assert_awaited_once()
+        zone_slots = mock_dm.async_update_zone_entities.call_args[0][1]
+        assert len(zone_slots) == 8
+        assert isinstance(zone_slots[0], dict)
+        assert zone_slots[0] == {"type": "normal"}
+        assert zone_slots[1:] == [None] * 7
+
     async def test_set_setup_clears_room_layout(self, hass: HomeAssistant, config_entry: MockConfigEntry) -> None:
         """set_setup clears existing room layout when calibration changes."""
         mock_dm = await setup_integration(hass, config_entry)
@@ -884,6 +914,54 @@ class TestWebSocketSettings:
             # both zone_presence and zone_target_count, so the other category may
             # still need zone-aware filtering
             mock_dm.async_update_zone_entities.assert_awaited_once()
+
+    async def test_set_settings_passes_valid_empty_shape_when_no_layout(
+        self, hass: HomeAssistant, config_entry: MockConfigEntry
+    ) -> None:
+        """When no room_layout is stored, the zone-entity update must receive
+        a valid length-8 shape (Zone0Config at index 0), not [None] * 8 which
+        would trip the fail-closed guard and disable zone 0 unexpectedly."""
+        mock_dm = await setup_integration(hass, config_entry)
+        # Device has no stored room_layout (fresh setup or post-calibration).
+        mock_dm._store.devices["AA:BB:CC:DD:EE:FF"] = {}
+
+        from custom_components.eppgrid.websocket_api import websocket_set_settings
+
+        connection = MagicMock()
+        msg = {
+            "id": 12,
+            "type": "eppgrid/set_settings",
+            "mac": "AA:BB:CC:DD:EE:FF",
+            "temperature_offset": 0,
+            "humidity_offset": 0,
+            "illuminance_offset": 0,
+            "motion_timeout": 5.0,
+            "target_auto_distance": True,
+            "target_max_distance": 6.0,
+            "static_auto_distance": True,
+            "static_min_distance": 0.3,
+            "static_max_distance": 16.0,
+            "static_trigger_threshold": 3,
+            "static_renew_threshold": 3,
+            "static_timeout": 30.0,
+            "static_on_delay": 0.0,
+            "led_mode": "Manual Control",
+            "led_brightness": 1.0,
+            "led_presence_color": "#CC33FF",
+            "relay_trigger_mode": "disabled",
+            "relay_contact_mode": "no",
+            "entities": {"zone_presence": True},
+        }
+
+        with patch("custom_components.eppgrid.websocket_api._apply_entity_states"):
+            mock_dm.async_update_zone_entities = AsyncMock()
+            await call_async_handler(hass, websocket_set_settings, connection, msg)
+
+            mock_dm.async_update_zone_entities.assert_awaited_once()
+            zone_slots = mock_dm.async_update_zone_entities.call_args[0][1]
+            assert len(zone_slots) == 8
+            assert zone_slots[0] == {"type": "normal"}
+            assert zone_slots[1:] == [None] * 7
 
     async def test_set_settings_zone_presence_true_calls_update_zone_entities(
         self, hass: HomeAssistant, config_entry: MockConfigEntry

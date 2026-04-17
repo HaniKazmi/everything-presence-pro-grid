@@ -49,6 +49,9 @@ inline void parse_zone_configs(const JsonDocument &doc, ZoneConfig out[], int &c
     if (slots[i].isNull()) {
       continue;  // unused named-zone slot; zone 0 absent if slot 0 is null
     }
+    if (!slots[i].is<JsonObjectConst>()) {
+      continue;  // corrupt/non-object entry — fail closed, don't fabricate a zone
+    }
     JsonObjectConst z = slots[i].as<JsonObjectConst>();
     out[count] = {
         static_cast<int>(i),  // index = slot position (0 = zone 0, 1-7 = named)

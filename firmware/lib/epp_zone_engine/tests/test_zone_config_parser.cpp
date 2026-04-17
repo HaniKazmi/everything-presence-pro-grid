@@ -112,6 +112,28 @@ TEST_CASE("missing zone_slots array yields no zones") {
   CHECK(count == 0);
 }
 
+TEST_CASE("non-object slot entries are skipped (no phantom zones)") {
+  // If the stored JSON is corrupted and a slot is a string/number/array,
+  // parse_zone_configs must NOT fabricate a zone with default thresholds.
+  const char *json =
+      "{"
+      "\"zone_slots\":["
+      "\"not an object\","
+      "42,"
+      "[],"
+      "{\"id\":3,\"type\":\"normal\",\"trigger\":5,\"renew\":3,\"timeout\":10.0,\"handoff_timeout\":3.0},"
+      "null,null,null,null"
+      "]"
+      "}";
+
+  ZoneConfig configs[MAX_ZONE_SLOTS]{};
+  int count = parse_from_string(json, configs);
+
+  // Only the valid object at slot 3 produces a zone.
+  REQUIRE(count == 1);
+  CHECK(configs[0].id == 3);
+}
+
 TEST_CASE("slot id field is ignored in favour of slot index") {
   // Even if the payload carries an id, the slot position wins. Prevents a
   // stale id from shifting a zone's slot.
