@@ -235,10 +235,11 @@ Saves grid, zones, furniture. Pushes config to device. Updates zone entity enabl
 ```
 ZoneSlot[0] = Zone0Config {
     type: "normal" | "thoroughfare" | "rest" | "custom",
-    trigger: int,
-    renew: int,
-    timeout: float,
-    handoff_timeout: float
+    // trigger/renew/timeout/handoff_timeout present ONLY when type === "custom"
+    trigger?: int,
+    renew?: int,
+    timeout?: float,
+    handoff_timeout?: float
 }
 
 ZoneSlot[1..7] = ZoneConfig | null
@@ -247,6 +248,8 @@ ZoneConfig = Zone0Config & {
     color: str  // hex "#rrggbb"
 }
 ```
+
+Non-custom types (`normal` / `thoroughfare` / `rest`) carry only `type` (plus `name` / `color` on named slots) in storage and on the websocket. Their timing is resolved from `ZONE_TYPE_DEFAULTS` — defined in `frontend/src/lib/zone-defaults.ts` and mirrored in `custom_components/eppgrid/device_manager.py`. The backend expands non-custom slots with those defaults just before pushing to firmware, so the firmware wire format is unchanged (every slot it receives has `trigger`/`renew`/`timeout`/`handoff_timeout`). Upgrading the defaults = bump both tables; `test_zone_type_defaults_match_frontend` fails if they drift.
 
 Wire-protocol-wise this is a 0.94.0-or-newer contract. Earlier firmware (0.93.x) received zone 0 as top-level `room_type`/`room_trigger`/`room_renew`/`room_timeout`/`room_handoff_timeout` fields; those have been removed. No migration — the single-user project re-applies the layout once after upgrade.
 

@@ -36,6 +36,36 @@ from .storage import EPPGridStore
 _LOGGER = logging.getLogger(__name__)
 _DEVICE_LOGGER = logging.getLogger(f"{__name__}.device_logs")
 
+# Mirror of frontend/src/lib/zone-defaults.ts ZONE_TYPE_DEFAULTS.
+# Keep in sync — test_zone_type_defaults_match_frontend asserts the two
+# tables agree. Non-custom zones carry only `type` (plus name/color) in
+# storage/wire; the backend expands them here before pushing to firmware,
+# which keeps the firmware format unchanged (it still reads trigger|5).
+# Upgrading defaults = bump this table + the TS table, no firmware release.
+ZONE_TYPE_DEFAULTS: dict[str, dict[str, float]] = {
+    "normal": {"trigger": 5, "renew": 3, "timeout": 10.0, "handoff_timeout": 3.0},
+    "thoroughfare": {"trigger": 3, "renew": 2, "timeout": 3.0, "handoff_timeout": 1.0},
+    "rest": {"trigger": 7, "renew": 1, "timeout": 30.0, "handoff_timeout": 10.0},
+}
+
+
+def _expand_zone_slot(slot: dict[str, Any]) -> dict[str, Any]:
+    """Fill in timing fields from ZONE_TYPE_DEFAULTS for non-custom zones.
+
+    Custom zones are returned as-is — user-supplied timing is authoritative.
+    Always returns a copy so the caller can't mutate stored state.
+    """
+    if slot.get("type") == "custom":
+        return dict(slot)
+    defaults = ZONE_TYPE_DEFAULTS.get(slot.get("type"), ZONE_TYPE_DEFAULTS["normal"])
+    expanded = dict(slot)
+    expanded.setdefault("trigger", defaults["trigger"])
+    expanded.setdefault("renew", defaults["renew"])
+    expanded.setdefault("timeout", defaults["timeout"])
+    expanded.setdefault("handoff_timeout", defaults["handoff_timeout"])
+    return expanded
+
+
 # Map aioesphomeapi LogLevel values to Python logging levels
 _ESPHOME_TO_PYTHON_LOG = {
     LogLevel.LOG_LEVEL_ERROR: logging.ERROR,
@@ -338,7 +368,10 @@ class DeviceConnection:
                     # Count named zones (1-7); zone 0 is always present at index 0 and
                     # isn't a "named" zone for logging purposes.
                     named = [s for s in zone_slots[1:] if s is not None]
-                    zone_data = {"zone_slots": zone_slots}
+                    # Expand non-custom slots to include type defaults — storage
+                    # / wire stays lean, firmware sees a fully-populated record.
+                    expanded_slots = [_expand_zone_slot(s) if s is not None else None for s in zone_slots]
+                    zone_data = {"zone_slots": expanded_slots}
                     await self._client.execute_service(
                         service,
                         {

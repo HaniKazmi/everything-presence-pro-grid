@@ -471,6 +471,138 @@ describe("GridStateController", () => {
 			);
 			expect(listCalls.length).toBeGreaterThanOrEqual(1);
 		});
+
+		it("omits timing fields for non-custom zone 0", async () => {
+			// Zone 0 is type "normal" — its timing should come from
+			// ZONE_TYPE_DEFAULTS at push time, so we don't store it.
+			host._zoneConfigs = [
+				{
+					type: "normal",
+					trigger: 5,
+					renew: 3,
+					timeout: 10,
+					handoff_timeout: 3,
+				},
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+			];
+			await ctrl.saveTemplate();
+			const saveCall = host.hass.callWS.mock.calls.find(
+				(c: any[]) => c[0].type === "eppgrid/save_template",
+			);
+			const z0 = saveCall![0].template.zones[0];
+			expect(z0).toEqual({ type: "normal" });
+			expect(z0).not.toHaveProperty("trigger");
+			expect(z0).not.toHaveProperty("renew");
+			expect(z0).not.toHaveProperty("timeout");
+			expect(z0).not.toHaveProperty("handoff_timeout");
+		});
+
+		it("includes timing fields for custom zone 0", async () => {
+			host._zoneConfigs = [
+				{
+					type: "custom",
+					trigger: 6,
+					renew: 4,
+					timeout: 20,
+					handoff_timeout: 5,
+				},
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+			];
+			await ctrl.saveTemplate();
+			const saveCall = host.hass.callWS.mock.calls.find(
+				(c: any[]) => c[0].type === "eppgrid/save_template",
+			);
+			const z0 = saveCall![0].template.zones[0];
+			expect(z0).toEqual({
+				type: "custom",
+				trigger: 6,
+				renew: 4,
+				timeout: 20,
+				handoff_timeout: 5,
+			});
+		});
+
+		it("omits timing fields for non-custom named zone", async () => {
+			host._zoneConfigs = [
+				host._zoneConfigs[0],
+				{
+					name: "Office",
+					color: ZONE_COLORS[1],
+					type: "thoroughfare",
+					trigger: 3,
+					renew: 2,
+					timeout: 3,
+					handoff_timeout: 1,
+				} as ZoneConfig,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+			];
+			await ctrl.saveTemplate();
+			const saveCall = host.hass.callWS.mock.calls.find(
+				(c: any[]) => c[0].type === "eppgrid/save_template",
+			);
+			const z1 = saveCall![0].template.zones[1];
+			expect(z1).toEqual({
+				name: "Office",
+				color: ZONE_COLORS[1],
+				type: "thoroughfare",
+			});
+			expect(z1).not.toHaveProperty("trigger");
+			expect(z1).not.toHaveProperty("renew");
+			expect(z1).not.toHaveProperty("timeout");
+			expect(z1).not.toHaveProperty("handoff_timeout");
+		});
+
+		it("includes timing fields for custom named zone", async () => {
+			host._zoneConfigs = [
+				host._zoneConfigs[0],
+				{
+					name: "Lab",
+					color: ZONE_COLORS[2],
+					type: "custom",
+					trigger: 8,
+					renew: 4,
+					timeout: 45,
+					handoff_timeout: 12,
+				} as ZoneConfig,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+			];
+			await ctrl.saveTemplate();
+			const saveCall = host.hass.callWS.mock.calls.find(
+				(c: any[]) => c[0].type === "eppgrid/save_template",
+			);
+			const z1 = saveCall![0].template.zones[1];
+			expect(z1).toEqual({
+				name: "Lab",
+				color: ZONE_COLORS[2],
+				type: "custom",
+				trigger: 8,
+				renew: 4,
+				timeout: 45,
+				handoff_timeout: 12,
+			});
+		});
 	});
 
 	describe("loadTemplate()", () => {
@@ -780,6 +912,170 @@ describe("GridStateController", () => {
 		it("calls requestUpdate after delete", async () => {
 			await ctrl.deleteTemplate("Alpha");
 			expect(host.requestUpdate).toHaveBeenCalled();
+		});
+	});
+
+	// =========================================================================
+	// applyLayout() — zone_slots serialization
+	// =========================================================================
+	describe("applyLayout() zone_slots serialization", () => {
+		beforeEach(() => {
+			// Re-create the host with the extra fields applyLayout reads.
+			host = mockHost({
+				_selectedMac: "AA:BB:CC:DD:EE:FF",
+				_targetAutoDistance: false,
+				_staticAutoDistance: false,
+			});
+			ctrl = new GridStateController(host);
+			host._grid = new Uint8Array(GRID_CELL_COUNT);
+			// Paint a single inside cell for zone 1 so it isn't pruned.
+			host._grid[0] = CELL_ROOM_BIT;
+			host._grid[1] = CELL_ROOM_BIT | (1 << 1);
+			host.hass.callWS.mockResolvedValue({});
+		});
+
+		it("omits timing fields for non-custom zone 0 in set_room_layout payload", async () => {
+			host._zoneConfigs = [
+				{
+					type: "normal",
+					trigger: 5,
+					renew: 3,
+					timeout: 10,
+					handoff_timeout: 3,
+				},
+				{
+					name: "Zone 1",
+					color: ZONE_COLORS[0],
+					type: "normal",
+				} as ZoneConfig,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+			];
+			await ctrl.applyLayout();
+			const call = host.hass.callWS.mock.calls.find(
+				(c: any[]) => c[0]?.type === "eppgrid/set_room_layout",
+			);
+			const slots = call![0].zone_slots;
+			expect(slots[0]).toEqual({ type: "normal" });
+			expect(slots[0]).not.toHaveProperty("trigger");
+			expect(slots[0]).not.toHaveProperty("timeout");
+		});
+
+		it("includes timing fields for custom zone 0 in set_room_layout payload", async () => {
+			host._zoneConfigs = [
+				{
+					type: "custom",
+					trigger: 6,
+					renew: 4,
+					timeout: 20,
+					handoff_timeout: 5,
+				},
+				{
+					name: "Zone 1",
+					color: ZONE_COLORS[0],
+					type: "normal",
+				} as ZoneConfig,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+			];
+			await ctrl.applyLayout();
+			const call = host.hass.callWS.mock.calls.find(
+				(c: any[]) => c[0]?.type === "eppgrid/set_room_layout",
+			);
+			expect(call![0].zone_slots[0]).toEqual({
+				type: "custom",
+				trigger: 6,
+				renew: 4,
+				timeout: 20,
+				handoff_timeout: 5,
+			});
+		});
+
+		it("omits timing fields for non-custom named zone in set_room_layout payload", async () => {
+			host._zoneConfigs = [
+				{
+					type: "normal",
+					trigger: 5,
+					renew: 3,
+					timeout: 10,
+					handoff_timeout: 3,
+				},
+				{
+					name: "Hallway",
+					color: ZONE_COLORS[1],
+					type: "thoroughfare",
+					trigger: 3,
+					renew: 2,
+					timeout: 3,
+					handoff_timeout: 1,
+				} as ZoneConfig,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+			];
+			await ctrl.applyLayout();
+			const call = host.hass.callWS.mock.calls.find(
+				(c: any[]) => c[0]?.type === "eppgrid/set_room_layout",
+			);
+			const z1 = call![0].zone_slots[1];
+			expect(z1).toEqual({
+				name: "Hallway",
+				color: ZONE_COLORS[1],
+				type: "thoroughfare",
+			});
+			expect(z1).not.toHaveProperty("trigger");
+			expect(z1).not.toHaveProperty("timeout");
+		});
+
+		it("includes timing fields for custom named zone in set_room_layout payload", async () => {
+			host._zoneConfigs = [
+				{
+					type: "normal",
+					trigger: 5,
+					renew: 3,
+					timeout: 10,
+					handoff_timeout: 3,
+				},
+				{
+					name: "Lab",
+					color: ZONE_COLORS[2],
+					type: "custom",
+					trigger: 8,
+					renew: 4,
+					timeout: 45,
+					handoff_timeout: 12,
+				} as ZoneConfig,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+			];
+			await ctrl.applyLayout();
+			const call = host.hass.callWS.mock.calls.find(
+				(c: any[]) => c[0]?.type === "eppgrid/set_room_layout",
+			);
+			expect(call![0].zone_slots[1]).toEqual({
+				name: "Lab",
+				color: ZONE_COLORS[2],
+				type: "custom",
+				trigger: 8,
+				renew: 4,
+				timeout: 45,
+				handoff_timeout: 12,
+			});
 		});
 	});
 

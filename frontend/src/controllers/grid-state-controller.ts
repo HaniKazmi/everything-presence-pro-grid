@@ -48,6 +48,48 @@ import {
  */
 export type GridHost = ReactiveControllerHost & Record<string, any>;
 
+/**
+ * Serialize a zone slot for storage / wire.
+ *
+ * Non-custom types (normal / thoroughfare / rest) drop their timing fields —
+ * the backend and frontend both resolve timing from ZONE_TYPE_DEFAULTS at
+ * push/render time, so storing them is dead weight and blocks the "bump
+ * defaults in code, roll through every stored layout" upgrade path.
+ *
+ * Only `type === "custom"` honours user-supplied trigger/renew/timeout/
+ * handoff_timeout, so only custom zones keep them in the payload.
+ */
+function serializeSlot(
+	z: Zone0Config | ZoneConfig | null,
+	idx: number,
+): Record<string, unknown> | null {
+	if (z === null) return null;
+	if (idx === 0) {
+		const z0 = z as Zone0Config;
+		const slot: Record<string, unknown> = { type: z0.type };
+		if (z0.type === "custom") {
+			slot.trigger = z0.trigger;
+			slot.renew = z0.renew;
+			slot.timeout = z0.timeout;
+			slot.handoff_timeout = z0.handoff_timeout;
+		}
+		return slot;
+	}
+	const nz = z as ZoneConfig;
+	const slot: Record<string, unknown> = {
+		name: nz.name,
+		color: nz.color,
+		type: nz.type,
+	};
+	if (nz.type === "custom") {
+		slot.trigger = nz.trigger;
+		slot.renew = nz.renew;
+		slot.timeout = nz.timeout;
+		slot.handoff_timeout = nz.handoff_timeout;
+	}
+	return slot;
+}
+
 export class GridStateController implements ReactiveController {
 	private host: GridHost;
 
@@ -454,22 +496,11 @@ export class GridStateController implements ReactiveController {
 		if (!name) return;
 		// Length-8 zones matches the unified zone_slots model. Slot 0 is the
 		// Zone0Config (room boundary), slots 1-7 are named ZoneConfig | null.
+		// serializeSlot strips timing for non-custom types — those zones pick
+		// their timing up from ZONE_TYPE_DEFAULTS at push/render time.
 		const zones = (
 			this.host._zoneConfigs as (ZoneConfig | Zone0Config | null)[]
-		).map((z, i) => {
-			if (z === null) return null;
-			if (i === 0) {
-				const z0 = z as Zone0Config;
-				return {
-					type: z0.type,
-					trigger: z0.trigger,
-					renew: z0.renew,
-					timeout: z0.timeout,
-					handoff_timeout: z0.handoff_timeout,
-				};
-			}
-			return { ...(z as ZoneConfig) };
-		});
+		).map((z, i) => serializeSlot(z, i));
 		const template = {
 			grid: Array.from(this.host._grid as Uint8Array),
 			zones,
@@ -598,29 +629,7 @@ export class GridStateController implements ReactiveController {
 				grid_bytes: Array.from(this.host._grid),
 				zone_slots: (
 					this.host._zoneConfigs as (ZoneConfig | Zone0Config | null)[]
-				).map((z, idx) => {
-					if (z === null) return null;
-					if (idx === 0) {
-						const z0 = z as Zone0Config;
-						return {
-							type: z0.type,
-							trigger: z0.trigger,
-							renew: z0.renew,
-							timeout: z0.timeout,
-							handoff_timeout: z0.handoff_timeout,
-						};
-					}
-					const nz = z as ZoneConfig;
-					return {
-						name: nz.name,
-						color: nz.color,
-						type: nz.type,
-						trigger: nz.trigger,
-						renew: nz.renew,
-						timeout: nz.timeout,
-						handoff_timeout: nz.handoff_timeout,
-					};
-				}),
+				).map((z, idx) => serializeSlot(z, idx)),
 				furniture: filteredFurniture.map((f) => ({
 					type: f.type,
 					icon: f.icon,

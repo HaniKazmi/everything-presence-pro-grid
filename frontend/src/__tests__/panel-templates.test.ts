@@ -197,11 +197,14 @@ describe("_loadTemplate", () => {
 		expect(roomLayoutCalls).toHaveLength(1);
 		const payload = roomLayoutCalls[0][0] as { zone_slots: any[] };
 		expect(payload.zone_slots).toHaveLength(8);
-		expect(payload.zone_slots[0]).toMatchObject({ type: "rest", trigger: 7 });
+		// Non-custom types carry only `type` (plus name/color for named
+		// slots) — backend fills timing from ZONE_TYPE_DEFAULTS.
+		expect(payload.zone_slots[0]).toEqual({ type: "rest" });
 		expect(payload.zone_slots[1]).toMatchObject({
 			name: "Living",
 			type: "normal",
 		});
+		expect(payload.zone_slots[1]).not.toHaveProperty("trigger");
 	});
 
 	it("throws on old-format template with length-7 zones", async () => {

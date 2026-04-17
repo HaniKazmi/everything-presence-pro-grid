@@ -1273,6 +1273,184 @@ class TestPushConfig:
             assert mock_grid in call_services
             assert mock_zones not in call_services
 
+    async def test_push_config_expands_non_custom_zone_timing(self) -> None:
+        """Non-custom zones get timing filled in from ZONE_TYPE_DEFAULTS before push."""
+        conn = DeviceConnection("192.168.1.100")
+
+        mock_zones = MagicMock()
+        mock_zones.name = "epp_set_zones"
+
+        with patch("custom_components.eppgrid.device_manager.APIClient") as mock_cls:
+            mock_client = mock_cls.return_value
+            mock_client.connect = AsyncMock()
+            mock_client.list_entities_services = AsyncMock(return_value=([], [mock_zones]))
+            mock_client.execute_service = AsyncMock()
+
+            await conn.async_connect()
+            # Slot 0 = rest, slot 1 = thoroughfare — both non-custom, stored
+            # without timing. Expansion should fill each with its type defaults.
+            await conn.async_push_config(
+                {
+                    "room_layout": {
+                        "zone_slots": [
+                            {"type": "rest"},
+                            {"name": "Hall", "color": "#abc", "type": "thoroughfare"},
+                        ]
+                        + [None] * (MAX_ZONES - 1),
+                    },
+                }
+            )
+
+            mock_client.execute_service.assert_awaited_once()
+            call_data = mock_client.execute_service.call_args[0][1]
+            pushed = json.loads(call_data["zones_json"])
+            slots = pushed["zone_slots"]
+            # Zone 0 (rest) defaults: trigger=7, renew=1, timeout=30, handoff=10.
+            assert slots[0] == {
+                "type": "rest",
+                "trigger": 7,
+                "renew": 1,
+                "timeout": 30.0,
+                "handoff_timeout": 10.0,
+            }
+            # Zone 1 (thoroughfare): trigger=3, renew=2, timeout=3, handoff=1.
+            # name/color must be preserved.
+            assert slots[1] == {
+                "name": "Hall",
+                "color": "#abc",
+                "type": "thoroughfare",
+                "trigger": 3,
+                "renew": 2,
+                "timeout": 3.0,
+                "handoff_timeout": 1.0,
+            }
+
+    async def test_push_config_passes_through_custom_timing(self) -> None:
+        """Custom zones honour user-supplied timing — no expansion, no mutation."""
+        conn = DeviceConnection("192.168.1.100")
+
+        mock_zones = MagicMock()
+        mock_zones.name = "epp_set_zones"
+
+        with patch("custom_components.eppgrid.device_manager.APIClient") as mock_cls:
+            mock_client = mock_cls.return_value
+            mock_client.connect = AsyncMock()
+            mock_client.list_entities_services = AsyncMock(return_value=([], [mock_zones]))
+            mock_client.execute_service = AsyncMock()
+
+            await conn.async_connect()
+            await conn.async_push_config(
+                {
+                    "room_layout": {
+                        "zone_slots": [
+                            {
+                                "type": "custom",
+                                "trigger": 6,
+                                "renew": 4,
+                                "timeout": 20.0,
+                                "handoff_timeout": 5.0,
+                            },
+                            {
+                                "name": "Lab",
+                                "color": "#def",
+                                "type": "custom",
+                                "trigger": 8,
+                                "renew": 4,
+                                "timeout": 45.0,
+                                "handoff_timeout": 12.0,
+                            },
+                        ]
+                        + [None] * (MAX_ZONES - 1),
+                    },
+                }
+            )
+
+            call_data = mock_client.execute_service.call_args[0][1]
+            pushed = json.loads(call_data["zones_json"])
+            slots = pushed["zone_slots"]
+            assert slots[0] == {
+                "type": "custom",
+                "trigger": 6,
+                "renew": 4,
+                "timeout": 20.0,
+                "handoff_timeout": 5.0,
+            }
+            assert slots[1] == {
+                "name": "Lab",
+                "color": "#def",
+                "type": "custom",
+                "trigger": 8,
+                "renew": 4,
+                "timeout": 45.0,
+                "handoff_timeout": 12.0,
+            }
+
+    async def test_push_config_expansion_preserves_name_and_color(self) -> None:
+        """Expanded non-custom named zone keeps its name and color fields."""
+        conn = DeviceConnection("192.168.1.100")
+
+        mock_zones = MagicMock()
+        mock_zones.name = "epp_set_zones"
+
+        with patch("custom_components.eppgrid.device_manager.APIClient") as mock_cls:
+            mock_client = mock_cls.return_value
+            mock_client.connect = AsyncMock()
+            mock_client.list_entities_services = AsyncMock(return_value=([], [mock_zones]))
+            mock_client.execute_service = AsyncMock()
+
+            await conn.async_connect()
+            await conn.async_push_config(
+                {
+                    "room_layout": {
+                        "zone_slots": [
+                            {"type": "normal"},
+                            {"name": "Office", "color": "#CFDB70", "type": "normal"},
+                        ]
+                        + [None] * (MAX_ZONES - 1),
+                    },
+                }
+            )
+
+            call_data = mock_client.execute_service.call_args[0][1]
+            pushed = json.loads(call_data["zones_json"])
+            slot = pushed["zone_slots"][1]
+            assert slot["name"] == "Office"
+            assert slot["color"] == "#CFDB70"
+            assert slot["type"] == "normal"
+            assert slot["trigger"] == 5
+            assert slot["renew"] == 3
+            assert slot["timeout"] == 10.0
+            assert slot["handoff_timeout"] == 3.0
+
+    async def test_push_config_expansion_does_not_mutate_source(self) -> None:
+        """Expansion copies per slot — the original zone_slots dict is untouched."""
+        conn = DeviceConnection("192.168.1.100")
+
+        mock_zones = MagicMock()
+        mock_zones.name = "epp_set_zones"
+
+        source_slot = {"type": "normal"}
+        named_slot = {"name": "Office", "color": "#CFDB70", "type": "normal"}
+
+        with patch("custom_components.eppgrid.device_manager.APIClient") as mock_cls:
+            mock_client = mock_cls.return_value
+            mock_client.connect = AsyncMock()
+            mock_client.list_entities_services = AsyncMock(return_value=([], [mock_zones]))
+            mock_client.execute_service = AsyncMock()
+
+            await conn.async_connect()
+            await conn.async_push_config(
+                {
+                    "room_layout": {
+                        "zone_slots": [source_slot, named_slot] + [None] * (MAX_ZONES - 1),
+                    },
+                }
+            )
+
+            # Originals must be untouched (no timing fields leaked in).
+            assert source_slot == {"type": "normal"}
+            assert named_slot == {"name": "Office", "color": "#CFDB70", "type": "normal"}
+
     async def test_push_config_settings(self) -> None:
         """push_config reads unified settings key and pushes to 4 firmware actions."""
         conn = DeviceConnection("192.168.1.100")
@@ -3330,3 +3508,51 @@ def test_resolve_zone_name_strips_redundant_zone_prefix():
 
     # Names not starting with the prefix still get it
     assert _resolve_zone_name("en", index=1, zone_name="Kitchen", target_count=False) == "Zone Kitchen"
+
+
+def test_zone_type_defaults_match_frontend():
+    """Python ZONE_TYPE_DEFAULTS must match frontend/src/lib/zone-defaults.ts.
+
+    The two tables are the single source of truth for non-custom zone timing
+    — if they drift, upgrade rollouts silently diverge between the frontend
+    display (resolveZone0Params / getZoneThresholds) and what the backend
+    actually pushes to firmware. Keep them in lockstep.
+    """
+    import re
+    from pathlib import Path
+
+    from custom_components.eppgrid.device_manager import ZONE_TYPE_DEFAULTS
+
+    ts_path = Path(__file__).parent.parent / "frontend/src/lib/zone-defaults.ts"
+    ts_source = ts_path.read_text()
+    assert "ZONE_TYPE_DEFAULTS" in ts_source, "zone-defaults.ts missing ZONE_TYPE_DEFAULTS"
+
+    # Entries look like:
+    #   normal: { trigger: 5, renew: 3, timeout: 10, handoff_timeout: 3 },
+    # Match those directly anywhere in the file — only ZONE_TYPE_DEFAULTS
+    # uses exactly this 4-field shape with these field names in order.
+    entry_re = re.compile(
+        r"(\w+):\s*\{\s*"
+        r"trigger:\s*(\d+(?:\.\d+)?),\s*"
+        r"renew:\s*(\d+(?:\.\d+)?),\s*"
+        r"timeout:\s*(\d+(?:\.\d+)?),\s*"
+        r"handoff_timeout:\s*(\d+(?:\.\d+)?)\s*\}"
+    )
+    ts_defaults: dict[str, dict[str, float]] = {}
+    for name, t, r, to, h in entry_re.findall(ts_source):
+        ts_defaults[name] = {
+            "trigger": float(t),
+            "renew": float(r),
+            "timeout": float(to),
+            "handoff_timeout": float(h),
+        }
+
+    assert ts_defaults, "Failed to parse any entries from ZONE_TYPE_DEFAULTS"
+
+    # Every type in the Python table must exist in TS with identical values.
+    # (TS may have extra types like "custom"; we only assert shared keys match.)
+    for type_name, fields in ZONE_TYPE_DEFAULTS.items():
+        assert type_name in ts_defaults, f"type {type_name!r} missing from TS ZONE_TYPE_DEFAULTS"
+        for field_name, py_value in fields.items():
+            ts_value = ts_defaults[type_name][field_name]
+            assert float(ts_value) == float(py_value), f"{type_name}.{field_name}: Python={py_value} vs TS={ts_value}"
