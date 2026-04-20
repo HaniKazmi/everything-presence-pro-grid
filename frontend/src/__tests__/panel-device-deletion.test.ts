@@ -148,4 +148,19 @@ describe("panel device deletion handling", () => {
 		expect(loadSpy).toHaveBeenCalledWith("bb");
 		document.body.removeChild(el);
 	});
+
+	it("does not load config when the device list becomes empty", async () => {
+		const dev1 = mockDeviceInfo("aa", "Alpha");
+		const { el, a, pushDeviceList } = await mountPanel([dev1]);
+		const loadSpy = vi.spyOn(a, "_loadDeviceConfig");
+		loadSpy.mockClear();
+
+		pushDeviceList([]);
+		await el.updateComplete;
+		await new Promise((r) => setTimeout(r, 0));
+
+		expect(a._selectedMac).toBe("");
+		expect(loadSpy).not.toHaveBeenCalled();
+		document.body.removeChild(el);
+	});
 });
