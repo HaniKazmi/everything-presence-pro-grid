@@ -163,4 +163,22 @@ describe("panel device deletion handling", () => {
 		expect(loadSpy).not.toHaveBeenCalled();
 		document.body.removeChild(el);
 	});
+
+	it("fires a hass-notification toast when the selected device is removed", async () => {
+		const dev1 = mockDeviceInfo("aa", "Alpha");
+		const { el, a, pushDeviceList } = await mountPanel([dev1]);
+		const events: CustomEvent[] = [];
+		el.addEventListener("hass-notification", (e) =>
+			events.push(e as CustomEvent),
+		);
+
+		pushDeviceList([]);
+		await el.updateComplete;
+
+		expect(events.length).toBe(1);
+		expect(events[0].detail.message).toMatch(/removed/i);
+		expect(events[0].bubbles).toBe(true);
+		expect(events[0].composed).toBe(true);
+		document.body.removeChild(el);
+	});
 });

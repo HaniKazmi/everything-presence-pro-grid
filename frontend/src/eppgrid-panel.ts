@@ -542,6 +542,13 @@ export class EPPGridPanel extends LitElement {
 	}
 
 	private _handleSelectedDeviceRemoved(): void {
+		this.dispatchEvent(
+			new CustomEvent("hass-notification", {
+				detail: { message: "Device was removed" },
+				bubbles: true,
+				composed: true,
+			}),
+		);
 		this._closeDeviceSession();
 		this._perspective = null;
 		this._roomWidth = 0;
