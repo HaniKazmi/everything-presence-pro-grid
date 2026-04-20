@@ -709,9 +709,7 @@ describe("DeviceController", () => {
 		});
 
 		it("resets availability tracker to avoid stale-edge reconnect", () => {
-			const loadSpy = vi
-				.spyOn(ctrl, "loadDeviceConfig")
-				.mockResolvedValue({});
+			const loadSpy = vi.spyOn(ctrl, "loadDeviceConfig").mockResolvedValue({});
 
 			const makeDevice = (mac: string, available: boolean): DeviceInfo => ({
 				mac,
@@ -853,9 +851,7 @@ describe("DeviceController", () => {
 		}
 
 		it("re-opens session when selected device transitions offline→online", async () => {
-			const loadSpy = vi
-				.spyOn(ctrl, "loadDeviceConfig")
-				.mockResolvedValue({});
+			const loadSpy = vi.spyOn(ctrl, "loadDeviceConfig").mockResolvedValue({});
 
 			// Prime with an available device and select it
 			(ctrl as any)._applyDeviceList(deviceList("aa", true));
@@ -872,9 +868,7 @@ describe("DeviceController", () => {
 		});
 
 		it("does not reconnect when a non-selected device flips availability", async () => {
-			const loadSpy = vi
-				.spyOn(ctrl, "loadDeviceConfig")
-				.mockResolvedValue({});
+			const loadSpy = vi.spyOn(ctrl, "loadDeviceConfig").mockResolvedValue({});
 
 			(ctrl as any)._applyDeviceList([
 				...deviceList("aa", true),
@@ -897,9 +891,7 @@ describe("DeviceController", () => {
 		});
 
 		it("does not reconnect on the first device_list message", async () => {
-			const loadSpy = vi
-				.spyOn(ctrl, "loadDeviceConfig")
-				.mockResolvedValue({});
+			const loadSpy = vi.spyOn(ctrl, "loadDeviceConfig").mockResolvedValue({});
 
 			// First push with selected device already available must not trigger
 			// a reconnect (the host's first-load flow drives the initial connect).
