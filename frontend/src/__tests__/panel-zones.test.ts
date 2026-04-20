@@ -19,7 +19,17 @@ function createPanel(): EPPGridPanel {
 	};
 	const a = el as any;
 	a._grid = new Uint8Array(GRID_CELL_COUNT);
-	a._zoneConfigs = new Array(MAX_ZONES).fill(null);
+	// Length-8 tuple: slot 0 = Zone0Config, slots 1..7 = named zones.
+	a._zoneConfigs = [
+		{ type: "normal", trigger: 5, renew: 3, timeout: 10, handoff_timeout: 3 },
+		null,
+		null,
+		null,
+		null,
+		null,
+		null,
+		null,
+	];
 	a._activeZone = 0;
 	a._dirty = false;
 	a._loading = false;
@@ -36,23 +46,24 @@ describe("_addZone", () => {
 	it("creates a zone in the first empty slot", () => {
 		const a = el as any;
 		a._addZone();
-		expect(a._zoneConfigs[0]).not.toBeNull();
-		expect(a._zoneConfigs[0].name).toBe("Zone 1");
+		// Slot 1 is the first named-zone slot (slot 0 is Zone0Config).
+		expect(a._zoneConfigs[1]).not.toBeNull();
+		expect(a._zoneConfigs[1].name).toBe("Zone 1");
 	});
 
 	it("picks an unused color from ZONE_COLORS", () => {
 		const a = el as any;
 		a._addZone();
-		expect(ZONE_COLORS).toContain(a._zoneConfigs[0].color);
-		expect(a._zoneConfigs[0].color).toBe(ZONE_COLORS[0]);
+		expect(ZONE_COLORS).toContain(a._zoneConfigs[1].color);
+		expect(a._zoneConfigs[1].color).toBe(ZONE_COLORS[0]);
 	});
 
 	it("picks the next unused color when first is taken", () => {
 		const a = el as any;
 		a._addZone();
 		a._addZone();
-		expect(a._zoneConfigs[0].color).toBe(ZONE_COLORS[0]);
-		expect(a._zoneConfigs[1].color).toBe(ZONE_COLORS[1]);
+		expect(a._zoneConfigs[1].color).toBe(ZONE_COLORS[0]);
+		expect(a._zoneConfigs[2].color).toBe(ZONE_COLORS[1]);
 	});
 
 	it("sets _dirty = true", () => {
@@ -70,8 +81,9 @@ describe("_addZone", () => {
 
 	it("fills a gap when earlier slots are occupied", () => {
 		const a = el as any;
-		// Fill slot 0 manually
+		// Fill slot 1 (zone 1) manually so slot 2 is the next empty.
 		a._zoneConfigs = [
+			a._zoneConfigs[0],
 			{ name: "Zone 1", color: ZONE_COLORS[0], type: "normal" },
 			null,
 			null,
@@ -81,8 +93,8 @@ describe("_addZone", () => {
 			null,
 		];
 		a._addZone();
-		expect(a._zoneConfigs[1]).not.toBeNull();
-		expect(a._zoneConfigs[1].name).toBe("Zone 2");
+		expect(a._zoneConfigs[2]).not.toBeNull();
+		expect(a._zoneConfigs[2].name).toBe("Zone 2");
 		expect(a._activeZone).toBe(2);
 	});
 
@@ -91,9 +103,9 @@ describe("_addZone", () => {
 		const fullConfigs = Array.from({ length: MAX_ZONES }, (_, i) => ({
 			name: `Zone ${i + 1}`,
 			color: ZONE_COLORS[i % ZONE_COLORS.length],
-			type: "normal",
+			type: "normal" as const,
 		}));
-		a._zoneConfigs = [...fullConfigs];
+		a._zoneConfigs = [a._zoneConfigs[0], ...fullConfigs];
 		a._dirty = false;
 		a._activeZone = 0;
 
@@ -103,7 +115,7 @@ describe("_addZone", () => {
 		expect(a._dirty).toBe(false);
 		expect(a._activeZone).toBe(0);
 		for (let i = 0; i < MAX_ZONES; i++) {
-			expect(a._zoneConfigs[i].name).toBe(`Zone ${i + 1}`);
+			expect(a._zoneConfigs[i + 1].name).toBe(`Zone ${i + 1}`);
 		}
 	});
 });
@@ -117,12 +129,12 @@ describe("_removeZone", () => {
 
 	it("nulls the slot and sets _dirty = true", () => {
 		const a = el as any;
-		a._addZone(); // slot 0 -> zone 1
+		a._addZone(); // slot 1 -> zone 1
 		a._dirty = false;
 
 		a._removeZone(1);
 
-		expect(a._zoneConfigs[0]).toBeNull();
+		expect(a._zoneConfigs[1]).toBeNull();
 		expect(a._dirty).toBe(true);
 	});
 
@@ -172,7 +184,8 @@ describe("_removeZone", () => {
 
 		a._removeZone(0);
 		expect(a._dirty).toBe(false);
-		expect(a._zoneConfigs[0]).not.toBeNull();
+		// Named zone 1 is untouched (lives at slot 1 in the length-8 tuple).
+		expect(a._zoneConfigs[1]).not.toBeNull();
 	});
 
 	it("is a no-op with slot > MAX_ZONES", () => {

@@ -1,11 +1,14 @@
-export interface ZoneConfig {
-	name: string;
-	color: string;
+export interface Zone0Config {
 	type: "normal" | "thoroughfare" | "rest" | "custom";
 	trigger?: number; // 0-9 threshold, 0=disabled, higher=harder
 	renew?: number; // 0-9 threshold, 0=disabled, higher=harder
 	timeout?: number; // seconds, if undefined use type default
 	handoff_timeout?: number; // seconds, time for zone to clear after target leaves
+}
+
+export interface ZoneConfig extends Zone0Config {
+	name: string;
+	color: string;
 }
 
 export const ZONE_TYPE_DEFAULTS: Record<
@@ -36,6 +39,33 @@ export interface ZoneThresholds {
 	renew: number;
 	timeout: number;
 	handoffTimeout: number;
+}
+
+/**
+ * Non-custom types use the type's defaults exclusively (user-supplied
+ * trigger/renew/... is ignored). Custom honours user values, falling back
+ * to normal's defaults when a field is missing (there is no "custom" entry
+ * in ZONE_TYPE_DEFAULTS). Works for zone 0 and named zones — both share
+ * the Zone0Config structural base.
+ */
+export function resolveZoneParams(z: Zone0Config): {
+	type: Zone0Config["type"];
+	trigger: number;
+	renew: number;
+	timeout: number;
+	handoff_timeout: number;
+} {
+	const d = ZONE_TYPE_DEFAULTS[z.type] ?? ZONE_TYPE_DEFAULTS.normal;
+	const useCustom = z.type === "custom";
+	return {
+		type: z.type,
+		trigger: useCustom ? (z.trigger ?? d.trigger) : d.trigger,
+		renew: useCustom ? (z.renew ?? d.renew) : d.renew,
+		timeout: useCustom ? (z.timeout ?? d.timeout) : d.timeout,
+		handoff_timeout: useCustom
+			? (z.handoff_timeout ?? d.handoff_timeout)
+			: d.handoff_timeout,
+	};
 }
 
 /**

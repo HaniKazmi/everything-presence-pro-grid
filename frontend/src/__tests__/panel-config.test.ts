@@ -7,6 +7,7 @@ import {
 	cellSetZone,
 	GRID_CELL_COUNT,
 	initGridFromRoom,
+	NUM_ZONE_SLOTS,
 } from "../lib/grid.js";
 
 function createPanel(): EPPGridPanel {
@@ -17,7 +18,16 @@ function createPanel(): EPPGridPanel {
 	};
 	const a = el as any;
 	a._grid = new Uint8Array(GRID_CELL_COUNT);
-	a._zoneConfigs = new Array(7).fill(null);
+	a._zoneConfigs = [
+		{ type: "normal", trigger: 5, renew: 3, timeout: 10, handoff_timeout: 3 },
+		null,
+		null,
+		null,
+		null,
+		null,
+		null,
+		null,
+	];
 	a._activeZone = 0;
 	a._dirty = false;
 	a._loading = false;
@@ -604,7 +614,7 @@ describe("_applyConfig", () => {
 		expect(a._furniture[0].icon).toBe("armchair");
 	});
 
-	it("applies room thresholds from config", () => {
+	it("applies zone 0 (room-boundary) settings from zone_slots[0]", () => {
 		const a = el as any;
 		const config = {
 			calibration: {
@@ -613,21 +623,34 @@ describe("_applyConfig", () => {
 				room_depth: 0,
 			},
 			room_layout: {
-				room_type: "thoroughfare",
-				room_trigger: 3,
-				room_renew: 2,
-				room_timeout: 5,
-				room_handoff_timeout: 2,
+				zone_slots: [
+					{
+						type: "thoroughfare",
+						trigger: 3,
+						renew: 2,
+						timeout: 5,
+						handoff_timeout: 2,
+					},
+					null,
+					null,
+					null,
+					null,
+					null,
+					null,
+					null,
+				],
 			},
 		};
 
 		a._applyConfig(config);
 
-		expect(a._roomType).toBe("thoroughfare");
-		expect(a._roomTrigger).toBe(3);
-		expect(a._roomRenew).toBe(2);
-		expect(a._roomTimeout).toBe(5);
-		expect(a._roomHandoffTimeout).toBe(2);
+		expect(a._zoneConfigs[0]).toEqual({
+			type: "thoroughfare",
+			trigger: 3,
+			renew: 2,
+			timeout: 5,
+			handoff_timeout: 2,
+		});
 	});
 
 	it("applies settings from config", () => {
@@ -681,11 +704,22 @@ describe("_applyLayout", () => {
 		const a = el as any;
 		a._selectedMac = "AA:BB:CC:DD:EE:01";
 		a._dirty = true;
-		a._roomType = "normal";
-		a._roomTrigger = 5;
-		a._roomRenew = 3;
-		a._roomTimeout = 10;
-		a._roomHandoffTimeout = 3;
+		a._zoneConfigs = [
+			{
+				type: "normal",
+				trigger: 5,
+				renew: 3,
+				timeout: 10,
+				handoff_timeout: 3,
+			},
+			null,
+			null,
+			null,
+			null,
+			null,
+			null,
+			null,
+		];
 
 		el.hass = {
 			callWS: vi.fn().mockResolvedValue({}),
@@ -711,8 +745,17 @@ describe("_applyLayout", () => {
 		a._roomWidth = 3000;
 		a._roomDepth = 4000;
 		a._grid = initGridFromRoom(3000, 4000);
-		a._zoneConfigs[0] = { name: "Z1", color: "#ff0000", type: "normal" };
-		a._zoneConfigs[1] = { name: "Z2", color: "#00ff00", type: "normal" };
+		// Slot 0 is zone 0; slots 1..7 are named zones 1..7.
+		a._zoneConfigs = [
+			{ type: "normal" },
+			{ name: "Z1", color: "#ff0000", type: "normal" },
+			{ name: "Z2", color: "#00ff00", type: "normal" },
+			null,
+			null,
+			null,
+			null,
+			null,
+		];
 		// Paint one cell with zone 1 but leave zone 2 unpainted
 		for (let i = 0; i < a._grid.length; i++) {
 			if (a._grid[i] & CELL_ROOM_BIT) {
@@ -728,8 +771,8 @@ describe("_applyLayout", () => {
 		await a._applyLayout();
 
 		// Zone 1 kept (has cells), zone 2 removed (no cells)
-		expect(a._zoneConfigs[0]).not.toBeNull();
-		expect(a._zoneConfigs[1]).toBeNull();
+		expect(a._zoneConfigs[1]).not.toBeNull();
+		expect(a._zoneConfigs[2]).toBeNull();
 	});
 
 	it("saves settings after layout", async () => {
@@ -996,11 +1039,13 @@ describe("_deleteCalibration", () => {
 		expect(a._perspective).toBeNull();
 		expect(a._roomWidth).toBe(0);
 		expect(a._roomDepth).toBe(0);
-		expect(a._zoneConfigs.every((z: any) => z === null)).toBe(true);
+		// Slot 0 is always populated with the default Zone0Config; slots 1-7
+		// are reset to null.
+		expect(a._zoneConfigs[0]).toMatchObject({ type: "normal" });
+		expect(a._zoneConfigs.slice(1).every((z: any) => z === null)).toBe(true);
 		expect(a._furniture).toEqual([]);
 		expect(a._dirty).toBe(false);
 		expect(a._view).toBe("live");
-		expect(a._roomType).toBe("normal");
 
 		// set_distance_override (widen) + set_setup + set_room_layout
 		expect(el.hass.callWS).toHaveBeenCalledTimes(3);
@@ -1110,5 +1155,20 @@ describe("_renderConnectionBanner", () => {
 		// Values should contain the offline localization key
 		const vals = JSON.stringify((result as any).values);
 		expect(vals).toContain("connection.offline");
+	});
+});
+
+describe("_zoneConfigs shape", () => {
+	it("exposes zone 0 settings via _zoneConfigs[0]", () => {
+		const panel = createPanel();
+		const a = panel as any;
+		expect(a._zoneConfigs).toHaveLength(NUM_ZONE_SLOTS);
+		expect(a._zoneConfigs[0]).toMatchObject({ type: "normal" });
+		// Old fields are gone:
+		expect(a._roomType).toBeUndefined();
+		expect(a._roomTrigger).toBeUndefined();
+		expect(a._roomRenew).toBeUndefined();
+		expect(a._roomTimeout).toBeUndefined();
+		expect(a._roomHandoffTimeout).toBeUndefined();
 	});
 });

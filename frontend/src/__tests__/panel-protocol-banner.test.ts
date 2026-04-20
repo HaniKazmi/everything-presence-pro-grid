@@ -22,7 +22,16 @@ function createPanel(
 	};
 	const a = el as any;
 	a._grid = initGridFromRoom(3000, 4000);
-	a._zoneConfigs = new Array(7).fill(null);
+	a._zoneConfigs = [
+		{ type: "normal", trigger: 5, renew: 3, timeout: 10, handoff_timeout: 3 },
+		null,
+		null,
+		null,
+		null,
+		null,
+		null,
+		null,
+	];
 	a._activeZone = 0;
 	a._dirty = false;
 	a._loading = false;

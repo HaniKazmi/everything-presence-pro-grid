@@ -27,7 +27,16 @@ function createPanel(): EPPGridPanel {
 	};
 	const a = el as any;
 	a._grid = initGridFromRoom(3000, 4000);
-	a._zoneConfigs = new Array(7).fill(null);
+	a._zoneConfigs = [
+		{ type: "normal", trigger: 5, renew: 3, timeout: 10, handoff_timeout: 3 },
+		null,
+		null,
+		null,
+		null,
+		null,
+		null,
+		null,
+	];
 	a._activeZone = 0;
 	a._dirty = false;
 	a._loading = false;
@@ -72,11 +81,7 @@ function createPanel(): EPPGridPanel {
 	a._staticAutoDistance = true;
 	a._staticMinDistance = 0.3;
 	a._staticMaxDistance = 16;
-	a._roomType = "normal";
-	a._roomTrigger = ZONE_TYPE_DEFAULTS.normal.trigger;
-	a._roomRenew = ZONE_TYPE_DEFAULTS.normal.renew;
-	a._roomTimeout = ZONE_TYPE_DEFAULTS.normal.timeout;
-	a._roomHandoffTimeout = ZONE_TYPE_DEFAULTS.normal.handoff_timeout;
+	// Zone 0 defaults live on _zoneConfigs[0]; set up above.
 	a._showHitCounts = false;
 	a._zoneEngineState = createZoneEngineState();
 	a._showCustomIconPicker = false;
@@ -472,14 +477,18 @@ describe("_renderBoundaryTypeControls DOM events", () => {
 		const el = document.createElement("epp-zone-sidebar") as any;
 		el.zoneConfigs = new Array(7).fill(null);
 		el.activeZone = 0;
-		el.roomType = "normal";
-		el.roomTrigger = ZONE_TYPE_DEFAULTS.normal.trigger;
-		el.roomRenew = ZONE_TYPE_DEFAULTS.normal.renew;
-		el.roomTimeout = ZONE_TYPE_DEFAULTS.normal.timeout;
-		el.roomHandoffTimeout = ZONE_TYPE_DEFAULTS.normal.handoff_timeout;
+		el.zone0 = {
+			type: "normal",
+			trigger: ZONE_TYPE_DEFAULTS.normal.trigger,
+			renew: ZONE_TYPE_DEFAULTS.normal.renew,
+			timeout: ZONE_TYPE_DEFAULTS.normal.timeout,
+			handoff_timeout: ZONE_TYPE_DEFAULTS.normal.handoff_timeout,
+		};
 		el.localZoneState = new Map();
 		el.localize = (k: string) => k;
-		Object.assign(el, overrides);
+		for (const [k, v] of Object.entries(overrides)) {
+			el[k] = v;
+		}
 		return el;
 	}
 
@@ -489,7 +498,7 @@ describe("_renderBoundaryTypeControls DOM events", () => {
 		const c = renderTo(tpl);
 
 		const events: CustomEvent[] = [];
-		s.addEventListener("room-config-change", (e: Event) =>
+		s.addEventListener("zone0-change", (e: Event) =>
 			events.push(e as CustomEvent),
 		);
 		s.addEventListener("dirty", (e: Event) => events.push(e as CustomEvent));
@@ -500,9 +509,7 @@ describe("_renderBoundaryTypeControls DOM events", () => {
 			select.dispatchEvent(new Event("change", { bubbles: true }));
 			expect(
 				events.some(
-					(e) =>
-						e.type === "room-config-change" &&
-						e.detail.updates.roomType === "thoroughfare",
+					(e) => e.type === "zone0-change" && e.detail.type === "thoroughfare",
 				),
 			).toBe(true);
 			expect(events.some((e) => e.type === "dirty")).toBe(true);
@@ -510,12 +517,12 @@ describe("_renderBoundaryTypeControls DOM events", () => {
 	});
 
 	it("trigger range input updates", () => {
-		const s = createSidebar({ roomType: "custom" });
+		const s = createSidebar({ zone0: { type: "custom" } });
 		const tpl = (s as any)._renderBoundaryTypeControls();
 		const c = renderTo(tpl);
 
 		const events: CustomEvent[] = [];
-		s.addEventListener("room-config-change", (e: Event) =>
+		s.addEventListener("zone0-change", (e: Event) =>
 			events.push(e as CustomEvent),
 		);
 
@@ -524,17 +531,17 @@ describe("_renderBoundaryTypeControls DOM events", () => {
 			const range = ranges[0] as HTMLInputElement;
 			range.value = "7";
 			range.dispatchEvent(new Event("input", { bubbles: true }));
-			expect(events.some((e) => e.detail.updates.roomTrigger === 7)).toBe(true);
+			expect(events.some((e) => e.detail.trigger === 7)).toBe(true);
 		}
 	});
 
 	it("renew range input updates", () => {
-		const s = createSidebar({ roomType: "custom" });
+		const s = createSidebar({ zone0: { type: "custom" } });
 		const tpl = (s as any)._renderBoundaryTypeControls();
 		const c = renderTo(tpl);
 
 		const events: CustomEvent[] = [];
-		s.addEventListener("room-config-change", (e: Event) =>
+		s.addEventListener("zone0-change", (e: Event) =>
 			events.push(e as CustomEvent),
 		);
 
@@ -543,17 +550,17 @@ describe("_renderBoundaryTypeControls DOM events", () => {
 			const range = ranges[1] as HTMLInputElement;
 			range.value = "4";
 			range.dispatchEvent(new Event("input", { bubbles: true }));
-			expect(events.some((e) => e.detail.updates.roomRenew === 4)).toBe(true);
+			expect(events.some((e) => e.detail.renew === 4)).toBe(true);
 		}
 	});
 
 	it("presence timeout number input updates", () => {
-		const s = createSidebar({ roomType: "custom" });
+		const s = createSidebar({ zone0: { type: "custom" } });
 		const tpl = (s as any)._renderBoundaryTypeControls();
 		const c = renderTo(tpl);
 
 		const events: CustomEvent[] = [];
-		s.addEventListener("room-config-change", (e: Event) =>
+		s.addEventListener("zone0-change", (e: Event) =>
 			events.push(e as CustomEvent),
 		);
 
@@ -562,19 +569,17 @@ describe("_renderBoundaryTypeControls DOM events", () => {
 			const input = numbers[0] as HTMLInputElement;
 			input.value = "15";
 			input.dispatchEvent(new Event("input", { bubbles: true }));
-			expect(events.some((e) => e.detail.updates.roomTimeout === 15)).toBe(
-				true,
-			);
+			expect(events.some((e) => e.detail.timeout === 15)).toBe(true);
 		}
 	});
 
 	it("handoff timeout number input updates", () => {
-		const s = createSidebar({ roomType: "custom" });
+		const s = createSidebar({ zone0: { type: "custom" } });
 		const tpl = (s as any)._renderBoundaryTypeControls();
 		const c = renderTo(tpl);
 
 		const events: CustomEvent[] = [];
-		s.addEventListener("room-config-change", (e: Event) =>
+		s.addEventListener("zone0-change", (e: Event) =>
 			events.push(e as CustomEvent),
 		);
 
@@ -583,9 +588,7 @@ describe("_renderBoundaryTypeControls DOM events", () => {
 			const input = numbers[1] as HTMLInputElement;
 			input.value = "5";
 			input.dispatchEvent(new Event("input", { bubbles: true }));
-			expect(
-				events.some((e) => e.detail.updates.roomHandoffTimeout === 5),
-			).toBe(true);
+			expect(events.some((e) => e.detail.handoff_timeout === 5)).toBe(true);
 		}
 	});
 });
@@ -595,14 +598,18 @@ describe("_renderZoneTypeControls DOM events", () => {
 		const el = document.createElement("epp-zone-sidebar") as any;
 		el.zoneConfigs = new Array(7).fill(null);
 		el.activeZone = 0;
-		el.roomType = "normal";
-		el.roomTrigger = ZONE_TYPE_DEFAULTS.normal.trigger;
-		el.roomRenew = ZONE_TYPE_DEFAULTS.normal.renew;
-		el.roomTimeout = ZONE_TYPE_DEFAULTS.normal.timeout;
-		el.roomHandoffTimeout = ZONE_TYPE_DEFAULTS.normal.handoff_timeout;
+		el.zone0 = {
+			type: "normal",
+			trigger: ZONE_TYPE_DEFAULTS.normal.trigger,
+			renew: ZONE_TYPE_DEFAULTS.normal.renew,
+			timeout: ZONE_TYPE_DEFAULTS.normal.timeout,
+			handoff_timeout: ZONE_TYPE_DEFAULTS.normal.handoff_timeout,
+		};
 		el.localZoneState = new Map();
 		el.localize = (k: string) => k;
-		Object.assign(el, overrides);
+		for (const [k, v] of Object.entries(overrides)) {
+			el[k] = v;
+		}
 		return el;
 	}
 
@@ -749,14 +756,18 @@ describe("_renderZoneSidebar DOM events", () => {
 		const el = document.createElement("epp-zone-sidebar") as any;
 		el.zoneConfigs = new Array(7).fill(null);
 		el.activeZone = 0;
-		el.roomType = "normal";
-		el.roomTrigger = ZONE_TYPE_DEFAULTS.normal.trigger;
-		el.roomRenew = ZONE_TYPE_DEFAULTS.normal.renew;
-		el.roomTimeout = ZONE_TYPE_DEFAULTS.normal.timeout;
-		el.roomHandoffTimeout = ZONE_TYPE_DEFAULTS.normal.handoff_timeout;
+		el.zone0 = {
+			type: "normal",
+			trigger: ZONE_TYPE_DEFAULTS.normal.trigger,
+			renew: ZONE_TYPE_DEFAULTS.normal.renew,
+			timeout: ZONE_TYPE_DEFAULTS.normal.timeout,
+			handoff_timeout: ZONE_TYPE_DEFAULTS.normal.handoff_timeout,
+		};
 		el.localZoneState = new Map();
 		el.localize = (k: string) => k;
-		Object.assign(el, overrides);
+		for (const [k, v] of Object.entries(overrides)) {
+			el[k] = v;
+		}
 		return el;
 	}
 

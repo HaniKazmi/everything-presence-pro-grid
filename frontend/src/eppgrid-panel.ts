@@ -12,7 +12,10 @@ import "./components/epp-overlay-sidebar.js";
 import "./components/epp-zone-sidebar.js";
 import { DeviceController } from "./controllers/device-controller.js";
 import { FlasherController } from "./controllers/flasher-controller.js";
-import { GridStateController } from "./controllers/grid-state-controller.js";
+import {
+	GridStateController,
+	serializeSlot,
+} from "./controllers/grid-state-controller.js";
 import { TargetController } from "./controllers/target-controller.js";
 import type { PaintAction } from "./lib/cell-painting.js";
 import { parseConfig } from "./lib/config-serialization.js";
@@ -36,7 +39,6 @@ import {
 	getRoomBounds,
 	initGridFromRoom,
 	MAX_RANGE,
-	MAX_ZONES,
 } from "./lib/grid.js";
 import { CELL_BG_OUT_OF_RANGE, getCellColor } from "./lib/heatmap.js";
 import { applyPerspective, getInversePerspective } from "./lib/perspective.js";
@@ -60,7 +62,8 @@ import {
 } from "./lib/usb-flash-service.js";
 import {
 	getZoneThresholds,
-	ZONE_TYPE_DEFAULTS,
+	resolveZoneParams,
+	type Zone0Config,
 	type ZoneConfig,
 } from "./lib/zone-defaults.js";
 import type { ZoneEngineResult, ZoneEngineState } from "./lib/zone-engine.js";
@@ -84,6 +87,35 @@ import type {
 	Target,
 } from "./types.js";
 
+/**
+ * Length-8 tuple of zone configurations.
+ * Slot 0 is always `Zone0Config` (the room-boundary zone).
+ * Slots 1-7 hold named zones (`ZoneConfig | null`).
+ */
+export type ZoneSlots = readonly [
+	Zone0Config,
+	ZoneConfig | null,
+	ZoneConfig | null,
+	ZoneConfig | null,
+	ZoneConfig | null,
+	ZoneConfig | null,
+	ZoneConfig | null,
+	ZoneConfig | null,
+];
+
+// Slot 0 carries only `type` for non-custom — timing is resolved from
+// ZONE_TYPE_DEFAULTS at read/push time (see resolveZoneParams).
+const INITIAL_ZONE_SLOTS: ZoneSlots = [
+	{ type: "normal" },
+	null,
+	null,
+	null,
+	null,
+	null,
+	null,
+	null,
+];
+
 export class EPPGridPanel extends LitElement {
 	@property({ attribute: false }) hass: any;
 
@@ -103,16 +135,10 @@ export class EPPGridPanel extends LitElement {
 
 	// Grid data: byte per cell using the encoding above
 	@state() private _grid: Uint8Array = new Uint8Array(GRID_CELL_COUNT);
-	@state() private _zoneConfigs: (ZoneConfig | null)[] = new Array(
-		MAX_ZONES,
-	).fill(null);
+	// Length-8 zone-slots tuple: slot 0 = room-boundary Zone0Config (always
+	// populated); slots 1-7 = named zones (ZoneConfig | null).
+	@state() private _zoneConfigs: ZoneSlots = INITIAL_ZONE_SLOTS;
 	@state() private _activeZone: number | null = null; // null = none selected, 0 = room, 1-7 = named zones
-	@state() private _roomType: ZoneConfig["type"] = "normal";
-	@state() private _roomTrigger: number = ZONE_TYPE_DEFAULTS.normal.trigger;
-	@state() private _roomRenew: number = ZONE_TYPE_DEFAULTS.normal.renew;
-	@state() private _roomTimeout: number = ZONE_TYPE_DEFAULTS.normal.timeout;
-	@state() private _roomHandoffTimeout: number =
-		ZONE_TYPE_DEFAULTS.normal.handoff_timeout;
 	@state() private _targetAutoDistance = true;
 	@state() private _targetMaxDistance = 6.0;
 	@state() private _staticAutoDistance = true;
@@ -542,14 +568,10 @@ export class EPPGridPanel extends LitElement {
 		// Apply layout
 		this._furniture = parsed.furniture;
 		this._grid = parsed.grid;
-		this._zoneConfigs = parsed.zoneConfigs;
-
-		// Apply room thresholds
-		this._roomType = parsed.roomThresholds.roomType;
-		this._roomTrigger = parsed.roomThresholds.roomTrigger;
-		this._roomRenew = parsed.roomThresholds.roomRenew;
-		this._roomTimeout = parsed.roomThresholds.roomTimeout;
-		this._roomHandoffTimeout = parsed.roomThresholds.roomHandoffTimeout;
+		this._zoneConfigs = [
+			parsed.zone0,
+			...parsed.zoneConfigs,
+		] as unknown as ZoneSlots;
 
 		// Apply settings
 		const s = parsed.settings;
@@ -655,8 +677,14 @@ export class EPPGridPanel extends LitElement {
 
 	// -- Grid cell display helpers --
 
+	/** Return named-zone slots (indices 1..7) as the length-7 array that
+	 * downstream components and helpers expect. */
+	private _namedZones(): (ZoneConfig | null)[] {
+		return this._zoneConfigs.slice(1) as (ZoneConfig | null)[];
+	}
+
 	private _getCellColor(index: number): string {
-		return getCellColor(this._grid[index], this._zoneConfigs);
+		return getCellColor(this._grid[index], this._namedZones());
 	}
 
 	/** Compute the bounding box of inside-room cells (for zoom) */
@@ -764,8 +792,12 @@ export class EPPGridPanel extends LitElement {
 		}
 	}
 
-	private _loadTemplate(name: string): void {
-		this._gridCtrl.loadTemplate(name);
+	private async _loadTemplate(name: string): Promise<void> {
+		try {
+			await this._gridCtrl.loadTemplate(name);
+		} catch (err) {
+			console.error(`Failed to load template "${name}"`, err);
+		}
 	}
 
 	private async _deleteTemplate(name: string): Promise<void> {
@@ -828,12 +860,80 @@ export class EPPGridPanel extends LitElement {
 		return this._fovCache;
 	}
 
+	// _computeMaxRangeMm does a full-grid scan via _autoDetectionRange when
+	// auto-distance is on; cache against the inputs so hot paths (template
+	// card render, per-cell range check) don't re-scan every render.
+	private _maxRangeCache: number | null = null;
+	private _maxRangeCacheGrid: Uint8Array | null = null;
+	private _maxRangeCacheAuto: boolean | null = null;
+	private _maxRangeCacheMax: number | null = null;
+
 	private _computeMaxRangeMm(): number {
-		return computeMaxRangeMm(
+		if (
+			this._maxRangeCache !== null &&
+			this._maxRangeCacheGrid === this._grid &&
+			this._maxRangeCacheAuto === this._targetAutoDistance &&
+			this._maxRangeCacheMax === this._targetMaxDistance
+		) {
+			return this._maxRangeCache;
+		}
+		const value = computeMaxRangeMm(
 			this._targetAutoDistance,
 			this._targetAutoDistance ? this._autoDetectionRange() : 0,
 			this._targetMaxDistance,
 		);
+		this._maxRangeCacheGrid = this._grid;
+		this._maxRangeCacheAuto = this._targetAutoDistance;
+		this._maxRangeCacheMax = this._targetMaxDistance;
+		this._maxRangeCache = value;
+		return value;
+	}
+
+	// Template card metrics cache — keyed by template object reference.
+	// Invalidated when perspective or max-range changes (FOV inputs).
+	// fetchTemplates returns fresh objects each call, so stale entries drop
+	// naturally via WeakMap GC when the old array is replaced.
+	private _templateMetricsCache = new WeakMap<
+		object,
+		{
+			perspective: number[] | null;
+			maxRangeMm: number;
+			widthM: number;
+			depthM: number;
+		}
+	>();
+
+	private _getTemplateMetrics(t: {
+		grid: number[];
+		roomWidth: number;
+		roomDepth: number;
+	}): { widthM: number; depthM: number } {
+		const perspective = this._perspective;
+		const maxRangeMm = this._computeMaxRangeMm();
+		const cached = this._templateMetricsCache.get(t);
+		if (
+			cached &&
+			cached.perspective === perspective &&
+			cached.maxRangeMm === maxRangeMm
+		) {
+			return { widthM: cached.widthM, depthM: cached.depthM };
+		}
+		const metrics = getGridRoomMetrics(
+			new Uint8Array(t.grid),
+			t.roomWidth,
+			perspective,
+			this._getSensorFov(),
+			maxRangeMm,
+		);
+		const widthM = metrics ? metrics.widthM : t.roomWidth / 1000;
+		const depthM = metrics ? metrics.depthM : t.roomDepth / 1000;
+		this._templateMetricsCache.set(t, {
+			perspective,
+			maxRangeMm,
+			widthM,
+			depthM,
+		});
+		return { widthM, depthM };
 	}
 
 	/**
@@ -845,15 +945,6 @@ export class EPPGridPanel extends LitElement {
 		return this._targetAutoDistance
 			? MAX_RANGE
 			: this._targetMaxDistance * 1000;
-	}
-
-	/** Compute room dimensions and furthest point from sensor based on grid */
-	private _getGridRoomMetrics(): {
-		widthM: number;
-		depthM: number;
-		furthestM: number;
-	} | null {
-		return getGridRoomMetrics(this._grid, this._roomWidth, this._perspective);
 	}
 
 	/** Get raw room bounds without padding (only actual inside cells) */
@@ -1351,12 +1442,7 @@ export class EPPGridPanel extends LitElement {
 		this._roomWidth = 0;
 		this._roomDepth = 0;
 		this._grid = new Uint8Array(GRID_COLS * GRID_ROWS);
-		this._zoneConfigs = new Array(MAX_ZONES).fill(null);
-		this._roomType = "normal";
-		this._roomTrigger = ZONE_TYPE_DEFAULTS.normal.trigger;
-		this._roomRenew = ZONE_TYPE_DEFAULTS.normal.renew;
-		this._roomTimeout = ZONE_TYPE_DEFAULTS.normal.timeout;
-		this._roomHandoffTimeout = ZONE_TYPE_DEFAULTS.normal.handoff_timeout;
+		this._zoneConfigs = INITIAL_ZONE_SLOTS;
 		this._furniture = [];
 		// set_setup will disable zone_presence and target_xy — update local state
 		this._entitiesConfig = {
@@ -1411,8 +1497,9 @@ export class EPPGridPanel extends LitElement {
 				type: "eppgrid/set_room_layout",
 				mac: this._selectedMac,
 				grid_bytes: Array.from(this._grid),
-				zone_slots: this._zoneConfigs.map(() => null),
-				room_type: "normal",
+				zone_slots: this._zoneConfigs.map((z, idx) =>
+					idx === 0 ? serializeSlot(z, 0) : null,
+				),
 				furniture: [],
 			});
 		} catch (e) {
@@ -1553,7 +1640,7 @@ export class EPPGridPanel extends LitElement {
 		return html`
 			<epp-grid
 				.grid=${this._grid}
-				.zoneConfigs=${this._zoneConfigs}
+				.zoneConfigs=${this._namedZones()}
 				.targets=${this._targets}
 				.roomWidth=${this._roomWidth}
 				.roomDepth=${this._roomDepth}
@@ -1795,7 +1882,7 @@ export class EPPGridPanel extends LitElement {
               <epp-live-sidebar
                 .sensorState=${this._sensorState}
                 .zoneState=${this._zoneState}
-                .zoneConfigs=${this._zoneConfigs}
+                .zoneConfigs=${this._namedZones()}
                 .perspective=${this._perspective}
                 .localize=${this._localize}
                 @view-change=${(e: CustomEvent) => {
@@ -1931,7 +2018,7 @@ export class EPPGridPanel extends LitElement {
 						}}>
               <epp-grid
                 .grid=${this._grid}
-                .zoneConfigs=${this._zoneConfigs}
+                .zoneConfigs=${this._namedZones()}
                 .targets=${this._targets}
                 .roomWidth=${this._roomWidth}
                 .roomDepth=${this._roomDepth}
@@ -1981,13 +2068,9 @@ export class EPPGridPanel extends LitElement {
             ${
 							this._sidebarTab === "zones"
 								? html`<epp-zone-sidebar
-                    .zoneConfigs=${this._zoneConfigs}
+                    .zoneConfigs=${this._namedZones()}
                     .activeZone=${this._activeZone}
-                    .roomType=${this._roomType}
-                    .roomTrigger=${this._roomTrigger}
-                    .roomRenew=${this._roomRenew}
-                    .roomTimeout=${this._roomTimeout}
-                    .roomHandoffTimeout=${this._roomHandoffTimeout}
+                    .zone0=${this._zoneConfigs[0]}
                     .localZoneState=${this._zoneEngineState.localZoneState}
                     .localize=${this._localize}
                     @zone-select=${(e: CustomEvent) => {
@@ -2002,22 +2085,20 @@ export class EPPGridPanel extends LitElement {
 										}}
                     @zone-config-change=${(e: CustomEvent) => {
 											const { index, updates } = e.detail;
+											// Sidebar index is 0-based over named zones; slot = index + 1.
+											const slot = index + 1;
+											if (slot < 1 || slot >= this._zoneConfigs.length) return;
+											const current = this._zoneConfigs[slot];
+											if (current === null) return;
 											const configs = [...this._zoneConfigs];
-											configs[index] = { ...configs[index]!, ...updates };
-											this._zoneConfigs = configs;
+											configs[slot] = { ...current, ...updates };
+											this._zoneConfigs = configs as unknown as ZoneSlots;
 										}}
-                    @room-config-change=${(e: CustomEvent) => {
-											const { updates } = e.detail;
-											if (updates.roomType !== undefined)
-												this._roomType = updates.roomType;
-											if (updates.roomTrigger !== undefined)
-												this._roomTrigger = updates.roomTrigger;
-											if (updates.roomRenew !== undefined)
-												this._roomRenew = updates.roomRenew;
-											if (updates.roomTimeout !== undefined)
-												this._roomTimeout = updates.roomTimeout;
-											if (updates.roomHandoffTimeout !== undefined)
-												this._roomHandoffTimeout = updates.roomHandoffTimeout;
+                    @zone0-change=${(e: CustomEvent<Partial<Zone0Config>>) => {
+											const current = this._zoneConfigs[0];
+											const next = [...this._zoneConfigs];
+											next[0] = { ...current, ...e.detail };
+											this._zoneConfigs = next as unknown as ZoneSlots;
 										}}
                     @dirty=${() => {
 											this._dirty = true;
@@ -2143,7 +2224,11 @@ export class EPPGridPanel extends LitElement {
                       <div class="template-card-thumbnail">
                         ${renderTemplateThumbnail(
 													t.grid,
-													t.zones?.map((z: any) => z ?? null) ??
+													// New schema: zones is length-8 with slot 0 =
+													// Zone0Config and slots 1-7 = named zones. The
+													// thumbnail only uses the named zones (for cell
+													// colouring, indexed by zoneId-1), so strip slot 0.
+													(t.zones?.slice(1) as (ZoneConfig | null)[]) ??
 														new Array(7).fill(null),
 													t.roomWidth,
 													t.roomDepth,
@@ -2152,7 +2237,13 @@ export class EPPGridPanel extends LitElement {
                       </div>
                       <div class="template-card-info">
                         <div class="template-card-name">${t.name}</div>
-                        <div class="template-card-size">${this._localize.formatNumber(t.roomWidth / 1000, 1)}m × ${this._localize.formatNumber(t.roomDepth / 1000, 1)}m</div>
+                        <div class="template-card-size">${(() => {
+													// Same FOV-aware metrics the live footer uses; cached
+													// per template to avoid re-scanning the grid every render.
+													const { widthM, depthM } =
+														this._getTemplateMetrics(t);
+													return `${this._localize.formatNumber(widthM, 1)}m × ${this._localize.formatNumber(depthM, 1)}m`;
+												})()}</div>
                       </div>
                     </div>
                   `,
@@ -2283,14 +2374,15 @@ export class EPPGridPanel extends LitElement {
 		timeout: number;
 		handoffTimeout: number;
 	} {
+		const z0 = resolveZoneParams(this._zoneConfigs[0]);
 		return getZoneThresholds(
 			zid,
-			this._zoneConfigs,
-			this._roomType,
-			this._roomTrigger,
-			this._roomRenew,
-			this._roomTimeout,
-			this._roomHandoffTimeout,
+			this._namedZones(),
+			z0.type,
+			z0.trigger,
+			z0.renew,
+			z0.timeout,
+			z0.handoff_timeout,
 		);
 	}
 

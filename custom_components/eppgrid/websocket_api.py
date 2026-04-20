@@ -15,6 +15,12 @@ from homeassistant.core import callback
 from homeassistant.helpers import entity_registry as er
 
 from .const import DOMAIN
+from .const import MAX_ZONES
+from .const import NUM_ZONE_SLOTS
+
+# Fallback shape for async_update_zone_entities when no layout is stored —
+# must pass is_valid_zone_slots_shape, so slot 0 is a dict.
+_EMPTY_ZONE_SLOTS: list[dict[str, str] | None] = [{"type": "normal"}, *([None] * MAX_ZONES)]
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -24,6 +30,49 @@ except Exception:
     _INTEGRATION_VERSION: str = "unknown"
 
 _REGISTERED: set[str] = set()
+
+
+_TIMING_FIELDS = ("trigger", "renew", "timeout", "handoff_timeout")
+
+
+def _validate_zone_slots(value: Any) -> list:
+    """Validate the shape of a `zone_slots` list coming from the frontend.
+
+    Enforces at the websocket boundary (fail-closed) so malformed data never
+    reaches storage / firmware pushes / entity renaming:
+
+    - Must be a list of exactly NUM_ZONE_SLOTS entries.
+    - Slot 0 (zone 0, "rest of room") must be a dict with a string `type`.
+    - Slots 1-7 (named zones) must be `None` OR a dict with required string
+      keys `name`, `color`, and `type`.
+    - Optional timing fields (trigger / renew / timeout / handoff_timeout),
+      when present on any slot, must be numeric (int or float).
+    """
+    if not isinstance(value, list) or len(value) != NUM_ZONE_SLOTS:
+        raise vol.Invalid(f"zone_slots must be a list of length {NUM_ZONE_SLOTS}")
+    zone0 = value[0]
+    if not isinstance(zone0, dict):
+        raise vol.Invalid("zone_slots[0] (zone 0) must be a dict")
+    if "type" not in zone0 or not isinstance(zone0["type"], str):
+        raise vol.Invalid("zone_slots[0] must have string 'type'")
+    for field in _TIMING_FIELDS:
+        if field in zone0 and not isinstance(zone0[field], (int, float)):
+            raise vol.Invalid(f"zone_slots[0] '{field}' must be numeric when present")
+    for i, slot in enumerate(value[1:], start=1):
+        if slot is None:
+            continue
+        if not isinstance(slot, dict):
+            raise vol.Invalid(f"zone_slots[{i}] must be null or a dict")
+        if "name" not in slot or not isinstance(slot["name"], str):
+            raise vol.Invalid(f"zone_slots[{i}] must have string 'name'")
+        if "color" not in slot or not isinstance(slot["color"], str):
+            raise vol.Invalid(f"zone_slots[{i}] must have string 'color'")
+        if "type" not in slot or not isinstance(slot["type"], str):
+            raise vol.Invalid(f"zone_slots[{i}] must have string 'type'")
+        for field in _TIMING_FIELDS:
+            if field in slot and not isinstance(slot[field], (int, float)):
+                raise vol.Invalid(f"zone_slots[{i}] '{field}' must be numeric when present")
+    return value
 
 
 def _send_not_loaded(connection: websocket_api.ActiveConnection, msg_id: int) -> None:
@@ -86,7 +135,6 @@ def async_register_websocket_commands(hass: HomeAssistant, manager: Any) -> None
     websocket_api.async_register_command(hass, websocket_list_templates)
     websocket_api.async_register_command(hass, websocket_save_template)
     websocket_api.async_register_command(hass, websocket_delete_template)
-    websocket_api.async_register_command(hass, websocket_apply_template)
     websocket_api.async_register_command(hass, websocket_subscribe_device)
     websocket_api.async_register_command(hass, websocket_subscribe_grid_targets)
     websocket_api.async_register_command(hass, websocket_subscribe_raw_targets)
@@ -292,9 +340,7 @@ async def websocket_set_setup(
             hass.loop.call_later(60, manager._entity_update_macs.discard, mac)
         _apply_entity_states(hass, mac, {"target_xy": False})
 
-    from .const import MAX_ZONES
-
-    zone_slots = device_config.get("room_layout", {}).get("zone_slots", [None] * MAX_ZONES)
+    zone_slots = device_config.get("room_layout", {}).get("zone_slots", _EMPTY_ZONE_SLOTS)
     await manager.async_update_zone_entities(mac, zone_slots)
 
     connection.send_result(msg["id"])
@@ -308,12 +354,7 @@ async def websocket_set_setup(
         vol.Required("type"): "eppgrid/set_room_layout",
         vol.Required("mac"): str,
         vol.Required("grid_bytes"): [int],
-        vol.Required("zone_slots"): list,
-        vol.Required("room_type"): str,
-        vol.Optional("room_trigger"): vol.Coerce(int),
-        vol.Optional("room_renew"): vol.Coerce(int),
-        vol.Optional("room_timeout"): vol.Coerce(float),
-        vol.Optional("room_handoff_timeout"): vol.Coerce(float),
+        vol.Required("zone_slots"): _validate_zone_slots,
         vol.Optional("furniture", default=[]): list,
     }
 )
@@ -341,11 +382,6 @@ async def websocket_set_room_layout(
     device_config["room_layout"] = {
         "grid_bytes": msg["grid_bytes"],
         "zone_slots": msg["zone_slots"],
-        "room_type": msg["room_type"],
-        "room_trigger": msg.get("room_trigger"),
-        "room_renew": msg.get("room_renew"),
-        "room_timeout": msg.get("room_timeout"),
-        "room_handoff_timeout": msg.get("room_handoff_timeout"),
         "furniture": msg.get("furniture", []),
     }
     await manager._store.async_save()
@@ -420,40 +456,6 @@ async def websocket_delete_template(
         _send_not_loaded(connection, msg["id"])
         return
     manager._store.templates.pop(msg["name"], None)
-    await manager._store.async_save()
-    connection.send_result(msg["id"])
-
-
-@websocket_api.websocket_command(
-    {
-        vol.Required("type"): "eppgrid/apply_template",
-        vol.Required("mac"): str,
-        vol.Required("template_name"): str,
-    }
-)
-@websocket_api.async_response
-async def websocket_apply_template(
-    hass: HomeAssistant,
-    connection: websocket_api.ActiveConnection,
-    msg: dict[str, Any],
-) -> None:
-    """Apply a template to a device."""
-    manager = _get_manager(hass)
-    if manager is None:
-        _send_not_loaded(connection, msg["id"])
-        return
-    template = manager._store.templates.get(msg["template_name"])
-    if template is None:
-        connection.send_error(
-            msg["id"],
-            "not_found",
-            "Template not found",
-            translation_domain=DOMAIN,
-            translation_key="template_not_found",
-        )
-        return
-    device_config = manager._store.devices.setdefault(msg["mac"], {})
-    device_config["room_layout"] = dict(template)
     await manager._store.async_save()
     connection.send_result(msg["id"])
 
@@ -1071,9 +1073,7 @@ async def websocket_set_settings(
         # Zone entities need layout-aware handling: enable zone_0 + named zones only
         if "zone_presence" in entities or "zone_target_count" in entities:
             layout = device_config.get("room_layout", {})
-            from .const import MAX_ZONES
-
-            zone_slots = layout.get("zone_slots", [None] * MAX_ZONES)
+            zone_slots = layout.get("zone_slots", _EMPTY_ZONE_SLOTS)
             await manager.async_update_zone_entities(mac, zone_slots)
         await manager._push_pipeline_to_device(mac)
     connection.send_result(msg["id"])

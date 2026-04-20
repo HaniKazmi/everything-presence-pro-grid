@@ -316,9 +316,10 @@ a cell falls within the 120° FOV cone and max range — used by `<epp-grid>`
 to render out-of-range cells with a cross-hatched pattern and block painting.
 `autoDetectionRange()` computes range from the furthest room cell.
 
-**zone-defaults.ts** — `ZoneConfig` interface, `ZONE_TYPE_DEFAULTS` with
-thresholds per zone type, color palette (7 colorblind-friendly colors),
-`getZoneThresholds()` resolver.
+**zone-defaults.ts** — `Zone0Config` (zone 0 settings: type + timing) and
+`ZoneConfig` (named zones: `Zone0Config` + name + color) interfaces,
+`ZONE_TYPE_DEFAULTS` with thresholds per zone type, color palette
+(7 colorblind-friendly colors), `getZoneThresholds()` resolver.
 
 ### Local Zone Engine Replica (`lib/zone-engine.ts`)
 

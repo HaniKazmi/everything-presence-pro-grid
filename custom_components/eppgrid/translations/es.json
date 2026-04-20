@@ -27,7 +27,6 @@
     "device_host_unknown": { "message": "Host del dispositivo desconocido" },
     "connection_failed": { "message": "No se ha podido conectar al dispositivo" },
     "no_active_session": { "message": "No hay sesión activa — llama primero a subscribe_device" },
-    "template_not_found": { "message": "Plantilla no encontrada" },
     "no_firmware_variant": { "message": "No hay variante de firmware para el tipo de red: {network}" },
     "ota_unsupported": { "message": "El dispositivo no admite actualización OTA" },
     "build_flags_unavailable": { "message": "Los indicadores de compilación del dispositivo aún no están disponibles" },

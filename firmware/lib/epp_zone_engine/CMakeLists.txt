@@ -31,6 +31,23 @@ FetchContent_MakeAvailable(json)
 option(EPP_BUILD_TESTS "Build tests" ON)
 if(EPP_BUILD_TESTS)
     enable_testing()
+
+    # ArduinoJson (header-only, used by the firmware component parser; fetched
+    # here so host tests can exercise the same parsing helper used in firmware).
+    # Only fetched when building tests — non-test consumers never need it.
+    #
+    # ArduinoJson version MUST stay in sync with the version ESPHome resolves
+    # for firmware builds (currently 7.4.2). If ESPHome upgrades, bump GIT_TAG here
+    # so host tests exercise the same API surface. Check the resolved version at
+    # firmware/variants/.esphome/.espressif/bblanchon__arduinojson_*/CMakeLists.txt
+    # after a clean esphome compile.
+    FetchContent_Declare(
+        arduinojson
+        GIT_REPOSITORY https://github.com/bblanchon/ArduinoJson.git
+        GIT_TAG v7.4.2
+    )
+    FetchContent_MakeAvailable(arduinojson)
+
     FetchContent_Declare(
         doctest
         GIT_REPOSITORY https://github.com/doctest/doctest.git

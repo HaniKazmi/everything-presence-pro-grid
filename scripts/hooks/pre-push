@@ -3,7 +3,12 @@ set -euo pipefail
 
 ROOT="$(git rev-parse --show-toplevel)"
 FRONTEND="$ROOT/frontend"
+LOG_FILE="/tmp/epp-pre-push.log"
 failed=0
+
+# Mirror all output to a log file so post-mortem doesn't require re-running.
+# Overwritten on every push — the last run's output is always at $LOG_FILE.
+exec > >(tee "$LOG_FILE") 2>&1
 
 step() { printf '\n\033[1;34m▶ %s\033[0m\n' "$1"; }
 fail() { printf '\033[1;31m✗ %s\033[0m\n' "$1"; failed=1; }
@@ -195,6 +200,12 @@ fi
 echo ""
 if [ "$failed" -ne 0 ]; then
     printf '\033[1;31m✗ Pre-push checks failed. Push aborted.\033[0m\n'
+    printf '\n\033[1mFailures:\033[0m\n'
+    # Strip ANSI and filter to the ✗ summary lines so the user sees exactly
+    # what failed without scrolling through the full output.
+    # perl for the ANSI strip — BSD sed (macOS) doesn't support \xHH escapes.
+    perl -pe 's/\e\[[0-9;]*m//g' "$LOG_FILE" | grep -E "^✗ " | sed 's/^/  /'
+    printf '\n\033[1mFull log:\033[0m %s\n' "$LOG_FILE"
     exit 1
 else
     printf '\033[1;32m✓ All pre-push checks passed.\033[0m\n'

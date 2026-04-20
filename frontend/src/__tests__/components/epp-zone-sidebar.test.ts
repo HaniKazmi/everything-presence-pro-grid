@@ -15,14 +15,18 @@ function createSidebar(overrides: Record<string, any> = {}): EppZoneSidebar {
 	const el = document.createElement("epp-zone-sidebar") as any;
 	el.zoneConfigs = new Array(7).fill(null);
 	el.activeZone = 0;
-	el.roomType = "normal";
-	el.roomTrigger = ZONE_TYPE_DEFAULTS.normal.trigger;
-	el.roomRenew = ZONE_TYPE_DEFAULTS.normal.renew;
-	el.roomTimeout = ZONE_TYPE_DEFAULTS.normal.timeout;
-	el.roomHandoffTimeout = ZONE_TYPE_DEFAULTS.normal.handoff_timeout;
+	el.zone0 = {
+		type: "normal",
+		trigger: ZONE_TYPE_DEFAULTS.normal.trigger,
+		renew: ZONE_TYPE_DEFAULTS.normal.renew,
+		timeout: ZONE_TYPE_DEFAULTS.normal.timeout,
+		handoff_timeout: ZONE_TYPE_DEFAULTS.normal.handoff_timeout,
+	};
 	el.localZoneState = new Map();
 	el.localize = (k: string) => k;
-	Object.assign(el, overrides);
+	for (const [k, v] of Object.entries(overrides)) {
+		el[k] = v;
+	}
 	return el as EppZoneSidebar;
 }
 
@@ -321,10 +325,10 @@ describe("epp-zone-sidebar events", () => {
 		document.body.removeChild(c);
 	});
 
-	it("fires room-config-change on boundary type select", () => {
+	it("fires zone0-change on boundary type select", () => {
 		const el = createSidebar({ activeZone: 0 });
 		const handler = vi.fn();
-		el.addEventListener("room-config-change", handler);
+		el.addEventListener("zone0-change", handler);
 
 		const tpl = (el as any)._renderBoundaryTypeControls();
 		const c = renderTo(tpl);
@@ -334,9 +338,7 @@ describe("epp-zone-sidebar events", () => {
 		select.dispatchEvent(new Event("change", { bubbles: true }));
 
 		expect(handler).toHaveBeenCalledTimes(1);
-		expect(handler.mock.calls[0][0].detail.updates.roomType).toBe(
-			"thoroughfare",
-		);
+		expect(handler.mock.calls[0][0].detail.type).toBe("thoroughfare");
 
 		document.body.removeChild(c);
 	});

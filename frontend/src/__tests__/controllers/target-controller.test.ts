@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { DEBUG_LOG_MAX } from "../../constants.js";
 import type { TargetData } from "../../controllers/device-controller.js";
 import { TargetController } from "../../controllers/target-controller.js";
@@ -32,15 +32,28 @@ function mockHost() {
 		},
 
 		// Zone config / room geometry
-		_zoneConfigs: [] as any[],
+		// Length-8 zone-slots tuple: slot 0 = Zone0Config (room boundary),
+		// slots 1-7 = named-zone configs or null. Tests override slots 1-7
+		// via `host._zoneConfigs = [host._zoneConfigs[0], ...namedZones]`.
+		_zoneConfigs: [
+			{
+				type: "normal" as const,
+				trigger: 5,
+				renew: 3,
+				timeout: 10,
+				handoff_timeout: 3,
+			},
+			null,
+			null,
+			null,
+			null,
+			null,
+			null,
+			null,
+		] as any[],
 		_grid: new Uint8Array(GRID_CELL_COUNT),
 		_roomWidth: 6000,
 		_roomDepth: 6000,
-		_roomType: "normal" as const,
-		_roomTrigger: 5,
-		_roomRenew: 3,
-		_roomTimeout: 10,
-		_roomHandoffTimeout: 3,
 
 		// Debug log (frontend)
 		_showDebugLog: false,
@@ -224,7 +237,16 @@ describe("TargetController", () => {
 
 		it("appends backend debug log when _showBackendDebugLog is true and debug_log present", () => {
 			host._showBackendDebugLog = true;
-			host._zoneConfigs = [{ name: "Lounge", color: "#fff", type: "normal" }];
+			host._zoneConfigs = [
+				host._zoneConfigs[0],
+				{ name: "Lounge", color: "#fff", type: "normal" },
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+			];
 			ctrl.handleTargetData(
 				makeTargetData({
 					zones: {
@@ -353,9 +375,16 @@ describe("TargetController", () => {
 	// -------------------------------------------------------------------------
 	describe("enrichDebugLog", () => {
 		beforeEach(() => {
-			// Zone 0 = Room, Zone 1 = first entry in _zoneConfigs
+			// Slot 0 = Zone0Config; slot 1 = first named zone (zone 1).
 			host._zoneConfigs = [
+				host._zoneConfigs[0],
 				{ name: "Hallway", color: "#E69F00", type: "normal" },
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
 			];
 		});
 
@@ -424,7 +453,16 @@ describe("TargetController", () => {
 		let container: HTMLDivElement;
 
 		beforeEach(() => {
-			host._zoneConfigs = [{ name: "Lounge", color: "#fff", type: "normal" }];
+			host._zoneConfigs = [
+				host._zoneConfigs[0],
+				{ name: "Lounge", color: "#fff", type: "normal" },
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+			];
 			container = document.createElement("div");
 			container.id = "backend-debug-log-scroll";
 			host._mockBackendContainer = container;
@@ -544,7 +582,16 @@ describe("TargetController", () => {
 		});
 
 		it("returns colours for zones with non-zero target counts", () => {
-			host._zoneConfigs = [{ name: "Study", color: "#56B4E9", type: "normal" }];
+			host._zoneConfigs = [
+				host._zoneConfigs[0],
+				{ name: "Study", color: "#56B4E9", type: "normal" },
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+			];
 			host._zoneState.target_counts = { 1: 3 };
 			const result = ctrl.computeHeatmapColors();
 			// Zone 1 has hits so it should have an entry
@@ -555,6 +602,104 @@ describe("TargetController", () => {
 			host._zoneState.target_counts = {};
 			const result = ctrl.computeHeatmapColors();
 			expect(result.size).toBe(0);
+		});
+	});
+
+	// -------------------------------------------------------------------------
+	// runLocalZoneEngine — default resolution by zone type
+	// -------------------------------------------------------------------------
+	describe("runLocalZoneEngine default resolution", () => {
+		let engineSpy: ReturnType<typeof vi.spyOn>;
+
+		beforeEach(async () => {
+			const mod = await import("../../lib/zone-engine.js");
+			// Spy replaces the module export; target-controller.ts captured the
+			// binding at import time, but vitest rewrites ESM imports so
+			// spyOn on the module works.
+			engineSpy = vi.spyOn(mod, "runLocalZoneEngine");
+		});
+
+		afterEach(() => {
+			engineSpy.mockRestore();
+		});
+
+		it("resolves room defaults by z0.type when trigger is unset ('rest' → 7, not normal → 5)", () => {
+			host._zoneConfigs = [
+				{ type: "rest" as const },
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+			];
+			host._grid = new Uint8Array(GRID_CELL_COUNT);
+			ctrl.runLocalZoneEngine();
+			expect(engineSpy).toHaveBeenCalledTimes(1);
+			const params = (engineSpy.mock.calls[0] as any[])[1];
+			expect(params.roomType).toBe("rest");
+			// rest defaults: trigger 7, renew 1, timeout 30, handoff_timeout 10
+			expect(params.roomTrigger).toBe(7);
+			expect(params.roomRenew).toBe(1);
+			expect(params.roomTimeout).toBe(30);
+			expect(params.roomHandoffTimeout).toBe(10);
+		});
+
+		it("uses type defaults authoritatively for non-custom types, ignoring user-supplied trigger", () => {
+			// z0.type = "rest" but with stale user-supplied overrides from a
+			// previous custom config; per getZoneThresholds semantics, the
+			// rest defaults must win.
+			host._zoneConfigs = [
+				{
+					type: "rest" as const,
+					trigger: 2,
+					renew: 9,
+					timeout: 99,
+					handoff_timeout: 99,
+				},
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+			];
+			host._grid = new Uint8Array(GRID_CELL_COUNT);
+			ctrl.runLocalZoneEngine();
+			const params = (engineSpy.mock.calls[0] as any[])[1];
+			expect(params.roomTrigger).toBe(7);
+			expect(params.roomRenew).toBe(1);
+			expect(params.roomTimeout).toBe(30);
+			expect(params.roomHandoffTimeout).toBe(10);
+		});
+
+		it("honours user-supplied values for type 'custom'", () => {
+			host._zoneConfigs = [
+				{
+					type: "custom" as const,
+					trigger: 4,
+					renew: 2,
+					timeout: 20,
+					handoff_timeout: 5,
+				},
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+			];
+			host._grid = new Uint8Array(GRID_CELL_COUNT);
+			ctrl.runLocalZoneEngine();
+			const params = (engineSpy.mock.calls[0] as any[])[1];
+			expect(params.roomType).toBe("custom");
+			expect(params.roomTrigger).toBe(4);
+			expect(params.roomRenew).toBe(2);
+			expect(params.roomTimeout).toBe(20);
+			expect(params.roomHandoffTimeout).toBe(5);
 		});
 	});
 
@@ -573,7 +718,17 @@ describe("TargetController", () => {
 
 		beforeEach(() => {
 			host._grid = makeSimpleGrid();
-			host._zoneConfigs = [];
+			// Keep zone 0 (slot 0); clear all named-zone slots.
+			host._zoneConfigs = [
+				host._zoneConfigs[0],
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+			];
 		});
 
 		it("returns a ZoneEngineResult with occupancy and targets arrays", () => {

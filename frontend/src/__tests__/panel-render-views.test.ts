@@ -17,7 +17,7 @@ import {
 	GRID_CELL_COUNT,
 	initGridFromRoom,
 } from "../lib/grid.js";
-import { ZONE_COLORS, ZONE_TYPE_DEFAULTS } from "../lib/zone-defaults.js";
+import { ZONE_COLORS } from "../lib/zone-defaults.js";
 import { createZoneEngineState } from "../lib/zone-engine.js";
 
 function createPanel(): EPPGridPanel {
@@ -28,7 +28,16 @@ function createPanel(): EPPGridPanel {
 	};
 	const a = el as any;
 	a._grid = new Uint8Array(GRID_CELL_COUNT);
-	a._zoneConfigs = new Array(7).fill(null);
+	a._zoneConfigs = [
+		{ type: "normal", trigger: 5, renew: 3, timeout: 10, handoff_timeout: 3 },
+		null,
+		null,
+		null,
+		null,
+		null,
+		null,
+		null,
+	];
 	a._activeZone = 0;
 	a._dirty = false;
 	a._loading = false;
@@ -74,11 +83,7 @@ function createPanel(): EPPGridPanel {
 	a._staticAutoDistance = true;
 	a._staticMinDistance = 0.3;
 	a._staticMaxDistance = 16;
-	a._roomType = "normal";
-	a._roomTrigger = ZONE_TYPE_DEFAULTS.normal.trigger;
-	a._roomRenew = ZONE_TYPE_DEFAULTS.normal.renew;
-	a._roomTimeout = ZONE_TYPE_DEFAULTS.normal.timeout;
-	a._roomHandoffTimeout = ZONE_TYPE_DEFAULTS.normal.handoff_timeout;
+	// Zone 0 defaults live on _zoneConfigs[0]; set up above.
 	a._showHitCounts = false;
 	a._zoneEngineState = createZoneEngineState();
 	a._showCustomIconPicker = false;
@@ -879,7 +884,7 @@ describe("_renderVisibleCells", () => {
 				signal: 5,
 			},
 		];
-		a._zoneConfigs[0] = {
+		a._zoneConfigs[1] = {
 			name: "Zone 1",
 			color: ZONE_COLORS[0],
 			type: "normal",
@@ -898,7 +903,7 @@ describe("_renderVisibleCells", () => {
 				break;
 			}
 		}
-		a._zoneConfigs[0] = {
+		a._zoneConfigs[1] = {
 			name: "Zone 1",
 			color: ZONE_COLORS[0],
 			type: "normal",
@@ -922,7 +927,7 @@ describe("_renderVisibleCells", () => {
 describe("epp-zone-sidebar renders boundary type controls", () => {
 	it("renders for normal type", () => {
 		const el = document.createElement("epp-zone-sidebar") as any;
-		el.roomType = "normal";
+		el.zone0 = { type: "normal" };
 		el.activeZone = 0;
 		el.zoneConfigs = new Array(7).fill(null);
 		const result = el.render();
@@ -931,7 +936,7 @@ describe("epp-zone-sidebar renders boundary type controls", () => {
 
 	it("renders for custom type", () => {
 		const el = document.createElement("epp-zone-sidebar") as any;
-		el.roomType = "custom";
+		el.zone0 = { type: "custom" };
 		el.activeZone = 0;
 		el.zoneConfigs = new Array(7).fill(null);
 		const result = el.render();
@@ -940,7 +945,7 @@ describe("epp-zone-sidebar renders boundary type controls", () => {
 
 	it("renders for thoroughfare type", () => {
 		const el = document.createElement("epp-zone-sidebar") as any;
-		el.roomType = "thoroughfare";
+		el.zone0 = { type: "thoroughfare" };
 		el.activeZone = 0;
 		el.zoneConfigs = new Array(7).fill(null);
 		const result = el.render();

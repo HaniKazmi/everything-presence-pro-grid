@@ -203,6 +203,36 @@ class TestWebSocketSetSetup:
         mock_dm._push_config_to_device.assert_awaited_with("AA:BB:CC:DD:EE:FF")
         connection.send_result.assert_called_once_with(3)
 
+    async def test_set_setup_updates_zone_entities_with_valid_empty_shape(
+        self, hass: HomeAssistant, config_entry: MockConfigEntry
+    ) -> None:
+        """After calibration clears room_layout, the fallback passed to
+        async_update_zone_entities must be a valid length-8 shape with a
+        Zone0Config at index 0 — otherwise the fail-closed guard would
+        disable zone 0 unexpectedly."""
+        mock_dm = await setup_integration(hass, config_entry)
+        mock_dm.async_update_zone_entities = AsyncMock()
+
+        from custom_components.eppgrid.websocket_api import websocket_set_setup
+
+        connection = MagicMock()
+        msg = {
+            "id": 101,
+            "type": "eppgrid/set_setup",
+            "mac": "AA:BB:CC:DD:EE:FF",
+            "perspective": [1.0] * 8,
+            "room_width": 3000.0,
+            "room_depth": 4000.0,
+        }
+        await call_async_handler(hass, websocket_set_setup, connection, msg)
+
+        mock_dm.async_update_zone_entities.assert_awaited_once()
+        zone_slots = mock_dm.async_update_zone_entities.call_args[0][1]
+        assert len(zone_slots) == 8
+        assert isinstance(zone_slots[0], dict)
+        assert zone_slots[0] == {"type": "normal"}
+        assert zone_slots[1:] == [None] * 7
+
     async def test_set_setup_clears_room_layout(self, hass: HomeAssistant, config_entry: MockConfigEntry) -> None:
         """set_setup clears existing room layout when calibration changes."""
         mock_dm = await setup_integration(hass, config_entry)
@@ -336,7 +366,16 @@ class TestWebSocketSetRoomLayout:
 
         from custom_components.eppgrid.websocket_api import websocket_set_room_layout
 
-        zone_slots = [{"name": "Office", "type": "normal"}]
+        zone_slots = [
+            {"type": "normal", "trigger": 5, "renew": 3, "timeout": 10.0, "handoff_timeout": 3.0},
+            {"name": "Office", "type": "normal"},
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+        ]
         connection = MagicMock()
         msg = {
             "id": 5,
@@ -344,19 +383,289 @@ class TestWebSocketSetRoomLayout:
             "mac": "AA:BB:CC:DD:EE:FF",
             "grid_bytes": [1] * 400,
             "zone_slots": zone_slots,
-            "room_type": "normal",
             "furniture": [],
         }
 
         await call_async_handler(hass, websocket_set_room_layout, connection, msg)
 
         layout = mock_dm._store.devices["AA:BB:CC:DD:EE:FF"]["room_layout"]
-        assert layout["room_type"] == "normal"
         assert layout["zone_slots"] == zone_slots
+        assert layout["zone_slots"][0]["type"] == "normal"
         mock_dm._store.async_save.assert_awaited()
         mock_dm._push_config_to_device.assert_awaited()
         mock_dm.async_update_zone_entities.assert_awaited_with("AA:BB:CC:DD:EE:FF", zone_slots)
         connection.send_result.assert_called_once_with(5)
+
+    async def test_set_room_layout_stores_zone_0_in_zone_slots(
+        self, hass: HomeAssistant, config_entry: MockConfigEntry
+    ) -> None:
+        """set_room_layout stores zone 0 settings at zone_slots[0], not room_*."""
+        mock_dm = await setup_integration(hass, config_entry)
+        mock_dm.async_update_zone_entities = AsyncMock()
+        mock_dm._push_config_to_device = AsyncMock()
+        mock_dm.devices["AA:BB:CC:DD:EE:FF"] = MagicMock(host="1.2.3.4")
+
+        zone_slots = [
+            {"type": "normal", "trigger": 5, "renew": 3, "timeout": 10.0, "handoff_timeout": 3.0},
+            {
+                "name": "Living",
+                "color": "#ff0000",
+                "type": "rest",
+                "trigger": 7,
+                "renew": 1,
+                "timeout": 30.0,
+                "handoff_timeout": 10.0,
+            },
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+        ]
+
+        from custom_components.eppgrid.websocket_api import websocket_set_room_layout
+
+        connection = MagicMock()
+        msg = {
+            "id": 1,
+            "type": "eppgrid/set_room_layout",
+            "mac": "AA:BB:CC:DD:EE:FF",
+            "grid_bytes": [0] * 400,
+            "zone_slots": zone_slots,
+            "furniture": [],
+        }
+
+        await call_async_handler(hass, websocket_set_room_layout, connection, msg)
+
+        layout = mock_dm._store.devices["AA:BB:CC:DD:EE:FF"]["room_layout"]
+        assert layout["zone_slots"] == zone_slots
+        assert "room_type" not in layout
+        assert "room_trigger" not in layout
+        mock_dm.async_update_zone_entities.assert_awaited_with("AA:BB:CC:DD:EE:FF", zone_slots)
+
+
+class TestZoneSlotsValidator:
+    """Tests for the _validate_zone_slots voluptuous validator used by set_room_layout."""
+
+    def _valid_slots(self) -> list:
+        """Return a minimal valid zone_slots list."""
+        return [{"type": "normal"}] + [None] * 7
+
+    def test_accepts_valid_zone_slots(self) -> None:
+        """Valid slots: zone 0 dict with type, slots 1-7 null or named dict."""
+        from custom_components.eppgrid.websocket_api import _validate_zone_slots
+
+        valid = self._valid_slots()
+        assert _validate_zone_slots(valid) == valid
+
+        valid_named = [
+            {"type": "normal", "trigger": 5, "renew": 3, "timeout": 10.0, "handoff_timeout": 3.0},
+            {"name": "Office", "color": "#ff0000", "type": "normal"},
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+        ]
+        assert _validate_zone_slots(valid_named) == valid_named
+
+    def test_rejects_wrong_length(self) -> None:
+        """Lists not of length NUM_ZONE_SLOTS are rejected."""
+        import voluptuous as vol
+
+        from custom_components.eppgrid.websocket_api import _validate_zone_slots
+
+        with pytest.raises(vol.Invalid):
+            _validate_zone_slots([{"type": "normal"}] + [None] * 6)  # length 7
+        with pytest.raises(vol.Invalid):
+            _validate_zone_slots([{"type": "normal"}] + [None] * 8)  # length 9
+        with pytest.raises(vol.Invalid):
+            _validate_zone_slots([])
+
+    def test_rejects_non_list(self) -> None:
+        """Non-list inputs are rejected."""
+        import voluptuous as vol
+
+        from custom_components.eppgrid.websocket_api import _validate_zone_slots
+
+        with pytest.raises(vol.Invalid):
+            _validate_zone_slots("not a list")
+        with pytest.raises(vol.Invalid):
+            _validate_zone_slots({"type": "normal"})
+        with pytest.raises(vol.Invalid):
+            _validate_zone_slots(None)
+
+    def test_rejects_none_at_slot_0(self) -> None:
+        """Slot 0 must not be None."""
+        import voluptuous as vol
+
+        from custom_components.eppgrid.websocket_api import _validate_zone_slots
+
+        slots = [None] * 8
+        with pytest.raises(vol.Invalid):
+            _validate_zone_slots(slots)
+
+    def test_rejects_non_dict_at_slot_0(self) -> None:
+        """Slot 0 must be a dict."""
+        import voluptuous as vol
+
+        from custom_components.eppgrid.websocket_api import _validate_zone_slots
+
+        slots = ["not a dict"] + [None] * 7
+        with pytest.raises(vol.Invalid):
+            _validate_zone_slots(slots)
+
+    def test_rejects_slot_0_without_type(self) -> None:
+        """Slot 0 must have a 'type' key."""
+        import voluptuous as vol
+
+        from custom_components.eppgrid.websocket_api import _validate_zone_slots
+
+        slots = [{}] + [None] * 7
+        with pytest.raises(vol.Invalid):
+            _validate_zone_slots(slots)
+
+    def test_rejects_non_dict_at_named_slot(self) -> None:
+        """Named slots (1-7) must be null or a dict."""
+        import voluptuous as vol
+
+        from custom_components.eppgrid.websocket_api import _validate_zone_slots
+
+        slots = [{"type": "normal"}, "not a dict"] + [None] * 6
+        with pytest.raises(vol.Invalid):
+            _validate_zone_slots(slots)
+
+    def test_rejects_named_slot_without_name(self) -> None:
+        """Named slots must have a string 'name'."""
+        import voluptuous as vol
+
+        from custom_components.eppgrid.websocket_api import _validate_zone_slots
+
+        slots = [{"type": "normal"}, {"color": "#ff0000", "type": "normal"}] + [None] * 6
+        with pytest.raises(vol.Invalid):
+            _validate_zone_slots(slots)
+
+    def test_rejects_named_slot_without_color(self) -> None:
+        """Named slots must have a string 'color'."""
+        import voluptuous as vol
+
+        from custom_components.eppgrid.websocket_api import _validate_zone_slots
+
+        slots = [{"type": "normal"}, {"name": "Office", "type": "normal"}] + [None] * 6
+        with pytest.raises(vol.Invalid):
+            _validate_zone_slots(slots)
+
+    def test_rejects_named_slot_without_type(self) -> None:
+        """Named slots must have a string 'type'."""
+        import voluptuous as vol
+
+        from custom_components.eppgrid.websocket_api import _validate_zone_slots
+
+        slots = [{"type": "normal"}, {"name": "Office", "color": "#ff0000"}] + [None] * 6
+        with pytest.raises(vol.Invalid):
+            _validate_zone_slots(slots)
+
+    def test_rejects_named_slot_with_non_string_name(self) -> None:
+        """Named slot 'name' must be a string."""
+        import voluptuous as vol
+
+        from custom_components.eppgrid.websocket_api import _validate_zone_slots
+
+        slots = [
+            {"type": "normal"},
+            {"name": 123, "color": "#ff0000", "type": "normal"},
+        ] + [None] * 6
+        with pytest.raises(vol.Invalid):
+            _validate_zone_slots(slots)
+
+    def test_rejects_slot_0_with_non_string_type(self) -> None:
+        """Slot 0 'type' must be a string (consistent with named zones)."""
+        import voluptuous as vol
+
+        from custom_components.eppgrid.websocket_api import _validate_zone_slots
+
+        slots = [{"type": 42}] + [None] * 7
+        with pytest.raises(vol.Invalid):
+            _validate_zone_slots(slots)
+
+    def test_rejects_slot_0_with_non_numeric_trigger(self) -> None:
+        """Slot 0 optional timing fields must be numeric when present."""
+        import voluptuous as vol
+
+        from custom_components.eppgrid.websocket_api import _validate_zone_slots
+
+        slots = [{"type": "normal", "trigger": "5"}] + [None] * 7
+        with pytest.raises(vol.Invalid):
+            _validate_zone_slots(slots)
+
+    def test_rejects_slot_0_with_non_numeric_renew(self) -> None:
+        """Slot 0 'renew' must be numeric when present."""
+        import voluptuous as vol
+
+        from custom_components.eppgrid.websocket_api import _validate_zone_slots
+
+        slots = [{"type": "normal", "renew": "3"}] + [None] * 7
+        with pytest.raises(vol.Invalid):
+            _validate_zone_slots(slots)
+
+    def test_rejects_slot_0_with_non_numeric_timeout(self) -> None:
+        """Slot 0 'timeout' must be numeric when present."""
+        import voluptuous as vol
+
+        from custom_components.eppgrid.websocket_api import _validate_zone_slots
+
+        slots = [{"type": "normal", "timeout": "10"}] + [None] * 7
+        with pytest.raises(vol.Invalid):
+            _validate_zone_slots(slots)
+
+    def test_rejects_slot_0_with_non_numeric_handoff_timeout(self) -> None:
+        """Slot 0 'handoff_timeout' must be numeric when present."""
+        import voluptuous as vol
+
+        from custom_components.eppgrid.websocket_api import _validate_zone_slots
+
+        slots = [{"type": "normal", "handoff_timeout": "3"}] + [None] * 7
+        with pytest.raises(vol.Invalid):
+            _validate_zone_slots(slots)
+
+    def test_rejects_named_slot_with_non_numeric_trigger(self) -> None:
+        """Named slot timing fields must be numeric when present."""
+        import voluptuous as vol
+
+        from custom_components.eppgrid.websocket_api import _validate_zone_slots
+
+        slots = [
+            {"type": "normal"},
+            {"name": "Office", "color": "#ff0000", "type": "normal", "trigger": "5"},
+        ] + [None] * 6
+        with pytest.raises(vol.Invalid):
+            _validate_zone_slots(slots)
+
+    def test_accepts_numeric_timing_fields(self) -> None:
+        """int and float values for timing fields are both accepted."""
+        from custom_components.eppgrid.websocket_api import _validate_zone_slots
+
+        slots = [
+            {
+                "type": "normal",
+                "trigger": 5,
+                "renew": 3.5,
+                "timeout": 10,
+                "handoff_timeout": 3.0,
+            },
+            {
+                "name": "Office",
+                "color": "#ff0000",
+                "type": "normal",
+                "trigger": 4,
+                "renew": 2.0,
+                "timeout": 12.5,
+                "handoff_timeout": 2,
+            },
+        ] + [None] * 6
+        assert _validate_zone_slots(slots) == slots
 
 
 class TestWebSocketTemplates:
@@ -412,50 +721,11 @@ class TestWebSocketTemplates:
         assert "old" not in mock_dm._store.templates
         mock_dm._store.async_save.assert_awaited()
 
-    async def test_apply_template(self, hass: HomeAssistant, config_entry: MockConfigEntry) -> None:
-        """apply_template copies template to device config."""
-        mock_dm = await setup_integration(hass, config_entry)
-        mock_dm._store.templates["bedroom"] = {"grid_bytes": [1] * 400, "zone_slots": []}
+    async def test_apply_template_command_removed(self) -> None:
+        """eppgrid/apply_template is no longer a valid command."""
+        from custom_components.eppgrid import websocket_api as ws_mod
 
-        from custom_components.eppgrid.websocket_api import websocket_apply_template
-
-        connection = MagicMock()
-        msg = {
-            "id": 9,
-            "type": "eppgrid/apply_template",
-            "mac": "AA:BB:CC:DD:EE:FF",
-            "template_name": "bedroom",
-        }
-
-        await call_async_handler(hass, websocket_apply_template, connection, msg)
-
-        layout = mock_dm._store.devices["AA:BB:CC:DD:EE:FF"]["room_layout"]
-        assert layout["grid_bytes"] == [1] * 400
-        mock_dm._store.async_save.assert_awaited()
-
-    async def test_apply_template_not_found(self, hass: HomeAssistant, config_entry: MockConfigEntry) -> None:
-        """apply_template returns error for unknown template."""
-        await setup_integration(hass, config_entry)
-
-        from custom_components.eppgrid.websocket_api import websocket_apply_template
-
-        connection = MagicMock()
-        msg = {
-            "id": 10,
-            "type": "eppgrid/apply_template",
-            "mac": "AA:BB:CC:DD:EE:FF",
-            "template_name": "nonexistent",
-        }
-
-        await call_async_handler(hass, websocket_apply_template, connection, msg)
-
-        connection.send_error.assert_called_once_with(
-            10,
-            "not_found",
-            "Template not found",
-            translation_domain=DOMAIN,
-            translation_key="template_not_found",
-        )
+        assert not hasattr(ws_mod, "websocket_apply_template")
 
 
 class TestWebSocketSettings:
@@ -644,6 +914,54 @@ class TestWebSocketSettings:
             # both zone_presence and zone_target_count, so the other category may
             # still need zone-aware filtering
             mock_dm.async_update_zone_entities.assert_awaited_once()
+
+    async def test_set_settings_passes_valid_empty_shape_when_no_layout(
+        self, hass: HomeAssistant, config_entry: MockConfigEntry
+    ) -> None:
+        """When no room_layout is stored, the zone-entity update must receive
+        a valid length-8 shape (Zone0Config at index 0), not [None] * 8 which
+        would trip the fail-closed guard and disable zone 0 unexpectedly."""
+        mock_dm = await setup_integration(hass, config_entry)
+        # Device has no stored room_layout (fresh setup or post-calibration).
+        mock_dm._store.devices["AA:BB:CC:DD:EE:FF"] = {}
+
+        from custom_components.eppgrid.websocket_api import websocket_set_settings
+
+        connection = MagicMock()
+        msg = {
+            "id": 12,
+            "type": "eppgrid/set_settings",
+            "mac": "AA:BB:CC:DD:EE:FF",
+            "temperature_offset": 0,
+            "humidity_offset": 0,
+            "illuminance_offset": 0,
+            "motion_timeout": 5.0,
+            "target_auto_distance": True,
+            "target_max_distance": 6.0,
+            "static_auto_distance": True,
+            "static_min_distance": 0.3,
+            "static_max_distance": 16.0,
+            "static_trigger_threshold": 3,
+            "static_renew_threshold": 3,
+            "static_timeout": 30.0,
+            "static_on_delay": 0.0,
+            "led_mode": "Manual Control",
+            "led_brightness": 1.0,
+            "led_presence_color": "#CC33FF",
+            "relay_trigger_mode": "disabled",
+            "relay_contact_mode": "no",
+            "entities": {"zone_presence": True},
+        }
+
+        with patch("custom_components.eppgrid.websocket_api._apply_entity_states"):
+            mock_dm.async_update_zone_entities = AsyncMock()
+            await call_async_handler(hass, websocket_set_settings, connection, msg)
+
+            mock_dm.async_update_zone_entities.assert_awaited_once()
+            zone_slots = mock_dm.async_update_zone_entities.call_args[0][1]
+            assert len(zone_slots) == 8
+            assert zone_slots[0] == {"type": "normal"}
+            assert zone_slots[1:] == [None] * 7
 
     async def test_set_settings_zone_presence_true_calls_update_zone_entities(
         self, hass: HomeAssistant, config_entry: MockConfigEntry
@@ -1916,11 +2234,10 @@ class TestNotReadyGuards:
     @pytest.mark.parametrize(
         "handler_name,extra_fields,is_async",
         [
-            ("websocket_set_room_layout", {"mac": "AA:BB", "grid_bytes": [], "zone_slots": [], "room_type": "n"}, True),
+            ("websocket_set_room_layout", {"mac": "AA:BB", "grid_bytes": [], "zone_slots": []}, True),
             ("websocket_list_templates", {}, False),
             ("websocket_save_template", {"name": "t", "template": {}}, True),
             ("websocket_delete_template", {"name": "t"}, True),
-            ("websocket_apply_template", {"mac": "AA:BB", "template_name": "t"}, True),
             ("websocket_subscribe_device", {"mac": "AA:BB"}, True),
             ("websocket_subscribe_raw_targets", {"mac": "AA:BB"}, True),
             ("websocket_subscribe_grid_targets", {"mac": "AA:BB"}, True),
@@ -2627,7 +2944,19 @@ class TestProtocolVersionGuard:
         [
             (
                 "websocket_set_room_layout",
-                {"grid_bytes": [0] * 400, "zone_slots": [None] * 7, "room_type": "normal"},
+                {
+                    "grid_bytes": [0] * 400,
+                    "zone_slots": [
+                        {"type": "normal", "trigger": 5, "renew": 3, "timeout": 10.0, "handoff_timeout": 3.0},
+                        None,
+                        None,
+                        None,
+                        None,
+                        None,
+                        None,
+                        None,
+                    ],
+                },
             ),
             (
                 "websocket_set_entity_enabled",

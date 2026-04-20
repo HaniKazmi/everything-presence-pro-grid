@@ -30,10 +30,47 @@ from .const import EPP_MODEL
 from .const import GRID_CELL_SIZE_MM
 from .const import GRID_COLS
 from .const import MAX_ZONES
+from .const import NUM_ZONE_SLOTS
 from .storage import EPPGridStore
 
 _LOGGER = logging.getLogger(__name__)
 _DEVICE_LOGGER = logging.getLogger(f"{__name__}.device_logs")
+
+# Mirror of frontend ZONE_TYPE_DEFAULTS — test_zone_type_defaults_match_frontend
+# asserts the two agree. Non-custom zones store only `type`; the backend
+# expands via _expand_zone_slot on push so firmware always receives full timing.
+ZONE_TYPE_DEFAULTS: dict[str, dict[str, float]] = {
+    "normal": {"trigger": 5, "renew": 3, "timeout": 10.0, "handoff_timeout": 3.0},
+    "thoroughfare": {"trigger": 3, "renew": 2, "timeout": 3.0, "handoff_timeout": 1.0},
+    "rest": {"trigger": 7, "renew": 1, "timeout": 30.0, "handoff_timeout": 10.0},
+}
+
+
+def is_valid_zone_slots_shape(value: Any) -> bool:
+    """Length-8 list with a dict at index 0 (zone 0) — matches the websocket
+    validator. Inner shape guards (push, entity update) share this one rule
+    so they can't drift.
+    """
+    return isinstance(value, list) and len(value) == NUM_ZONE_SLOTS and isinstance(value[0], dict)
+
+
+def _expand_zone_slot(slot: dict[str, Any]) -> dict[str, Any]:
+    """Expand to full timing for firmware push. Returns a copy.
+
+    Custom: user-supplied timing is authoritative.
+    Non-custom: ZONE_TYPE_DEFAULTS always wins (stored timing is overwritten,
+    not defaulted — keeps the defaults-table the single source of truth).
+    """
+    if slot.get("type") == "custom":
+        return dict(slot)
+    defaults = ZONE_TYPE_DEFAULTS.get(slot.get("type"), ZONE_TYPE_DEFAULTS["normal"])
+    expanded = dict(slot)
+    expanded["trigger"] = defaults["trigger"]
+    expanded["renew"] = defaults["renew"]
+    expanded["timeout"] = defaults["timeout"]
+    expanded["handoff_timeout"] = defaults["handoff_timeout"]
+    return expanded
+
 
 # Map aioesphomeapi LogLevel values to Python logging levels
 _ESPHOME_TO_PYTHON_LOG = {
@@ -314,25 +351,36 @@ class DeviceConnection:
                 )
                 _LOGGER.info("Pushed grid to %s", self._host)
 
-        zone_slots = layout.get("zone_slots", [None] * MAX_ZONES)
-        service = self._services.get("epp_set_zones")
-        if service:
-            named = [s for s in zone_slots if s is not None]
-            zone_data = {
-                "zone_slots": zone_slots,
-                "room_type": layout.get("room_type", "normal"),
-                "room_trigger": layout.get("room_trigger", 5),
-                "room_renew": layout.get("room_renew", 3),
-                "room_timeout": layout.get("room_timeout", 10.0),
-                "room_handoff_timeout": layout.get("room_handoff_timeout", 3.0),
-            }
-            await self._client.execute_service(
-                service,
-                {
-                    "zones_json": json.dumps(zone_data),
-                },
-            )
-            _LOGGER.info("Pushed %d zones to %s", len(named), self._host)
+        zone_slots = layout.get("zone_slots")
+        if zone_slots is not None:
+            # Skip the zone push on malformed shape; other config pushes
+            # (perspective/grid/settings) still run. Legacy 0.93.x storage
+            # would trip this because it had length-7 zone_slots.
+            if not is_valid_zone_slots_shape(zone_slots):
+                length = len(zone_slots) if isinstance(zone_slots, list) else "N/A"
+                slot0_type = type(zone_slots[0]).__name__ if isinstance(zone_slots, list) and zone_slots else "N/A"
+                _LOGGER.warning(
+                    "Skipping zone push — malformed zone_slots (length %s, slot 0 type %s)",
+                    length,
+                    slot0_type,
+                )
+            else:
+                service = self._services.get("epp_set_zones")
+                if service:
+                    # Count named zones (1-7); zone 0 is always present at index 0 and
+                    # isn't a "named" zone for logging purposes.
+                    named = [s for s in zone_slots[1:] if s is not None]
+                    # Expand non-custom slots to include type defaults — storage
+                    # / wire stays lean, firmware sees a fully-populated record.
+                    expanded_slots = [_expand_zone_slot(s) if s is not None else None for s in zone_slots]
+                    zone_data = {"zone_slots": expanded_slots}
+                    await self._client.execute_service(
+                        service,
+                        {
+                            "zones_json": json.dumps(zone_data),
+                        },
+                    )
+                    _LOGGER.info("Pushed %d zones to %s", len(named), self._host)
 
         # Push device settings from unified settings key
         settings = config.get("settings")
@@ -588,14 +636,12 @@ class DeviceManager:
             if is_new:
                 found_new = True
                 _LOGGER.info("Discovered zone engine device: %s (%s)", device.name, mac)
-                # Apply zone entity management on first discovery
+                # Apply zone entity management on first discovery (only if the
+                # device has a stored layout — otherwise there's nothing to sync).
                 config = self._store.get_device(mac)
-                zone_slots = (
-                    config.get("room_layout", {}).get("zone_slots", [None] * MAX_ZONES)
-                    if config
-                    else [None] * MAX_ZONES
-                )
-                await self.async_update_zone_entities(mac, zone_slots)
+                zone_slots = config.get("room_layout", {}).get("zone_slots") if config else None
+                if zone_slots is not None:
+                    await self.async_update_zone_entities(mac, zone_slots)
 
         if found_new:
             self._fire_device_list_changed()
@@ -1032,10 +1078,21 @@ class DeviceManager:
 
         Handles both zone_presence and zone_target_count entities.
         When enabled, zone 0 + named zones are enabled; unused slots are disabled.
+
+        Fails closed on malformed ``zone_slots`` shape. A legacy 0.93.x layout
+        stored with length 7 (or any other shape where slot 0 is not a dict)
+        would otherwise silently shift indices — the user's old "first named
+        zone" would get renamed into zone 0, etc. Instead we treat every zone
+        as non-existent and disable all HA zone entities until the user
+        re-applies their layout via the panel (which writes length-8 shape).
         """
         dev = self.devices.get(mac)
         if dev is None or dev.device_id is None:
             return
+
+        # Shape guard: fail-closed on anything that isn't the expected length-8
+        # list with a dict at slot 0.
+        shape_ok = is_valid_zone_slots_shape(zone_slots)
 
         language = self._hass.config.language
         ent_reg = er.async_get(self._hass)
@@ -1045,10 +1102,19 @@ class DeviceManager:
         zone_target_count = settings.get("zone_target_count", False)
 
         def _zone_exists(i: int) -> bool:
-            """Check if zone slot i exists (zone 0 = room, always exists)."""
+            """Check if zone slot i exists.
+
+            When the shape is OK, zone 0 (room) always exists, and named slots
+            1..7 exist only when they are dicts. When the shape is malformed,
+            every zone is treated as non-existent — the loop below then falls
+            through to the INTEGRATION-disable path for each entity.
+            """
+            if not shape_ok:
+                return False
             if i == 0:
                 return True
-            return i <= len(zone_slots) and zone_slots[i - 1] is not None
+            slot = zone_slots[i]
+            return isinstance(slot, dict)
 
         for i in range(MAX_ZONES + 1):  # zones 0-7
             exists = _zone_exists(i)
@@ -1066,14 +1132,16 @@ class DeviceManager:
                         name=_resolve_zone_name(language, index=0, zone_name=None, target_count=False),
                     )
                 else:
-                    zone = zone_slots[i - 1]
+                    zone = zone_slots[i]
                     if entry_obj and entry_obj.disabled_by == er.RegistryEntryDisabler.USER:
                         pass  # Don't override user-disabled entities
                     else:
+                        # .get() with fallback — _resolve_zone_name tolerates zone_name=None.
+                        zone_name = zone.get("name") if isinstance(zone, dict) else None
                         ent_reg.async_update_entity(
                             entity_id,
                             disabled_by=None,
-                            name=_resolve_zone_name(language, index=i, zone_name=zone["name"], target_count=False),
+                            name=_resolve_zone_name(language, index=i, zone_name=zone_name, target_count=False),
                         )
 
             # Zone target count entity
@@ -1090,11 +1158,12 @@ class DeviceManager:
                             name=_resolve_zone_name(language, index=0, zone_name=None, target_count=True),
                         )
                     else:
-                        zone = zone_slots[i - 1]
+                        zone = zone_slots[i]
+                        zone_name = zone.get("name") if isinstance(zone, dict) else None
                         ent_reg.async_update_entity(
                             tc_entity_id,
                             disabled_by=None,
-                            name=_resolve_zone_name(language, index=i, zone_name=zone["name"], target_count=True),
+                            name=_resolve_zone_name(language, index=i, zone_name=zone_name, target_count=True),
                         )
                 else:
                     ent_reg.async_update_entity(tc_entity_id, disabled_by=er.RegistryEntryDisabler.INTEGRATION)

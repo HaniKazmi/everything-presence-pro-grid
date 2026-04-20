@@ -28,9 +28,14 @@ import {
 	getRoomBounds,
 	initGridFromRoom,
 	MAX_ZONES,
+	NUM_ZONE_SLOTS,
 } from "../lib/grid.js";
 import { autoDetectionRange } from "../lib/room-geometry.js";
-import { ZONE_COLORS, type ZoneConfig } from "../lib/zone-defaults.js";
+import {
+	ZONE_COLORS,
+	type Zone0Config,
+	type ZoneConfig,
+} from "../lib/zone-defaults.js";
 
 /**
  * Host interface — the subset of the panel that this controller reads/writes.
@@ -42,6 +47,41 @@ import { ZONE_COLORS, type ZoneConfig } from "../lib/zone-defaults.js";
  * logic while the reactive state stays on the panel.
  */
 export type GridHost = ReactiveControllerHost & Record<string, any>;
+
+/**
+ * Serialize a zone slot for storage / wire. Non-custom types drop timing —
+ * backend + frontend resolve it from ZONE_TYPE_DEFAULTS at push/render time.
+ */
+export function serializeSlot(
+	z: Zone0Config | ZoneConfig | null,
+	idx: number,
+): Record<string, unknown> | null {
+	if (z === null) return null;
+	if (idx === 0) {
+		const z0 = z as Zone0Config;
+		const slot: Record<string, unknown> = { type: z0.type };
+		if (z0.type === "custom") {
+			slot.trigger = z0.trigger;
+			slot.renew = z0.renew;
+			slot.timeout = z0.timeout;
+			slot.handoff_timeout = z0.handoff_timeout;
+		}
+		return slot;
+	}
+	const nz = z as ZoneConfig;
+	const slot: Record<string, unknown> = {
+		name: nz.name,
+		color: nz.color,
+		type: nz.type,
+	};
+	if (nz.type === "custom") {
+		slot.trigger = nz.trigger;
+		slot.renew = nz.renew;
+		slot.timeout = nz.timeout;
+		slot.handoff_timeout = nz.handoff_timeout;
+	}
+	return slot;
+}
 
 export class GridStateController implements ReactiveController {
 	private host: GridHost;
@@ -182,44 +222,45 @@ export class GridStateController implements ReactiveController {
 	// =====================================================================
 
 	addZone(): void {
-		const firstEmpty = this.host._zoneConfigs.findIndex(
-			(z: ZoneConfig | null) => z === null,
-		);
-		if (firstEmpty === -1) return; // All 7 slots full
+		// Slot 0 is the always-present Zone0Config; named zones live in 1..7.
+		// findIndex returns the first slot that's null — for a length-8 tuple
+		// that's guaranteed to be >=1, so the index is directly the slot number.
+		const configs: (ZoneConfig | Zone0Config | null)[] = [
+			...this.host._zoneConfigs,
+		];
+		const firstEmpty = configs.findIndex((z, idx) => idx > 0 && z === null);
+		if (firstEmpty === -1) return; // All 7 named slots full
 
 		// Pick first unused color
 		const usedColors = new Set(
-			this.host._zoneConfigs
-				.filter((z: ZoneConfig | null): z is ZoneConfig => z !== null)
-				.map((z: ZoneConfig) => z.color),
+			configs
+				.filter((z, idx): z is ZoneConfig => idx > 0 && z !== null)
+				.map((z) => (z as ZoneConfig).color),
 		);
 		const color =
 			ZONE_COLORS.find((c) => !usedColors.has(c)) ??
-			ZONE_COLORS[firstEmpty % ZONE_COLORS.length];
-		const configs = [...this.host._zoneConfigs];
+			ZONE_COLORS[(firstEmpty - 1) % ZONE_COLORS.length];
 		configs[firstEmpty] = {
-			name: `Zone ${firstEmpty + 1}`,
+			name: `Zone ${firstEmpty}`,
 			color,
 			type: "normal",
 		};
 		this.host._zoneConfigs = configs;
-		this.host._activeZone = firstEmpty + 1; // 1-based slot number
+		this.host._activeZone = firstEmpty; // slot index = 1-based zone number
 		this.host._dirty = true;
 	}
 
 	removeZone(slot: number): void {
-		if (
-			slot < 1 ||
-			slot > MAX_ZONES ||
-			this.host._zoneConfigs[slot - 1] === null
-		)
+		if (slot < 1 || slot > MAX_ZONES || this.host._zoneConfigs[slot] === null)
 			return;
 		// Clear all grid cells with this zone back to zone 0
 		const cleared = clearZoneFromGrid(this.host._grid, slot);
 		if (cleared) this.host._grid = cleared;
 		// No renumbering — just null out the slot
-		const configs = [...this.host._zoneConfigs];
-		configs[slot - 1] = null;
+		const configs: (ZoneConfig | Zone0Config | null)[] = [
+			...this.host._zoneConfigs,
+		];
+		configs[slot] = null;
 		this.host._zoneConfigs = configs;
 		if (this.host._activeZone === slot) {
 			this.host._activeZone = null;
@@ -418,7 +459,9 @@ export class GridStateController implements ReactiveController {
 	templates: {
 		name: string;
 		grid: number[];
-		zones?: (ZoneConfig | null)[];
+		// Length-8 zone slots: slot 0 = Zone0Config (room boundary),
+		// slots 1-7 = named ZoneConfig | null.
+		zones: (Zone0Config | ZoneConfig | null)[];
 		roomWidth: number;
 		roomDepth: number;
 		furniture?: FurnitureItem[];
@@ -444,11 +487,12 @@ export class GridStateController implements ReactiveController {
 	async saveTemplate(): Promise<void> {
 		const name = (this.host._templateName as string).trim();
 		if (!name) return;
+		const zones = (
+			this.host._zoneConfigs as (ZoneConfig | Zone0Config | null)[]
+		).map((z, i) => serializeSlot(z, i));
 		const template = {
 			grid: Array.from(this.host._grid as Uint8Array),
-			zones: (this.host._zoneConfigs as (ZoneConfig | null)[]).map((z) =>
-				z !== null ? { ...z } : null,
-			),
+			zones,
 			roomWidth: this.host._roomWidth as number,
 			roomDepth: this.host._roomDepth as number,
 			furniture: (this.host._furniture as FurnitureItem[]).map((f) => ({
@@ -465,13 +509,40 @@ export class GridStateController implements ReactiveController {
 		await this.fetchTemplates();
 	}
 
-	loadTemplate(name: string): void {
+	async loadTemplate(name: string): Promise<void> {
 		const tmpl = this.templates.find((t) => t.name === name);
 		if (!tmpl) return;
-		this.host._grid = new Uint8Array(tmpl.grid);
 		const zones = tmpl.zones || [];
+		// Length-8 with a populated, well-shaped zone 0 and correctly-shaped
+		// named slots is required (per no-BWC policy). Old- or corrupt-format
+		// templates throw so the user re-saves them. Leave the load dialog
+		// open so the failure is visible and the user can try another template.
+		const isZone0Shape = (s: any): boolean =>
+			s != null && typeof s === "object" && typeof s.type === "string";
+		const isNamedZoneShape = (s: any): boolean =>
+			s === null ||
+			(s != null &&
+				typeof s === "object" &&
+				typeof s.name === "string" &&
+				typeof s.color === "string" &&
+				typeof s.type === "string");
+		const oldFormatError = new Error(
+			`Template "${name}" is in an old format — please re-save it`,
+		);
+		if (zones.length !== NUM_ZONE_SLOTS) {
+			throw oldFormatError;
+		}
+		if (!isZone0Shape(zones[0])) {
+			throw oldFormatError;
+		}
+		for (let i = 1; i < NUM_ZONE_SLOTS; i++) {
+			if (!isNamedZoneShape(zones[i])) {
+				throw oldFormatError;
+			}
+		}
+		this.host._grid = new Uint8Array(tmpl.grid);
 		this.host._zoneConfigs = Array.from(
-			{ length: MAX_ZONES },
+			{ length: NUM_ZONE_SLOTS },
 			(_, i) => zones[i] ?? null,
 		);
 		this.host._roomWidth = tmpl.roomWidth;
@@ -480,6 +551,12 @@ export class GridStateController implements ReactiveController {
 			...f,
 		}));
 		this.host._showTemplateLoad = false;
+		// Mark dirty before auto-apply: if applyLayout throws (e.g. websocket
+		// failure), the UI state has changed but the backend hasn't, so the
+		// user needs an Apply button to retry. On success, applyLayout clears
+		// _dirty = false itself.
+		this.host._dirty = true;
+		await this.applyLayout();
 	}
 
 	async deleteTemplate(name: string): Promise<void> {
@@ -506,14 +583,15 @@ export class GridStateController implements ReactiveController {
 				}
 			}
 		}
-		for (let i = 0; i < this.host._zoneConfigs.length; i++) {
-			if (
-				this.host._zoneConfigs[i] !== null &&
-				(zoneCellCounts.get(i + 1) ?? 0) === 0
-			) {
-				this.host._zoneConfigs[i] = null;
-			}
-		}
+		const prunedSlots = this.host._zoneConfigs.map(
+			(z: ZoneConfig | Zone0Config | null, idx: number) => {
+				// Slot 0 is the Zone0Config (room boundary) and is always kept.
+				if (idx === 0) return z;
+				if (z !== null && (zoneCellCounts.get(idx) ?? 0) === 0) return null;
+				return z;
+			},
+		);
+		this.host._zoneConfigs = prunedSlots;
 
 		// Filter furniture completely outside the room (use physical room
 		// bounds, not FOV-aware bounds, so furniture in out-of-FOV areas
@@ -538,25 +616,9 @@ export class GridStateController implements ReactiveController {
 				type: "eppgrid/set_room_layout",
 				mac: this.host._selectedMac,
 				grid_bytes: Array.from(this.host._grid),
-				room_type: this.host._roomType,
-				room_trigger: this.host._roomTrigger,
-				room_renew: this.host._roomRenew,
-				room_timeout: this.host._roomTimeout,
-				room_handoff_timeout: this.host._roomHandoffTimeout,
-				zone_slots: (this.host._zoneConfigs as (ZoneConfig | null)[]).map(
-					(z) =>
-						z !== null
-							? {
-									name: z.name,
-									color: z.color,
-									type: z.type,
-									trigger: z.trigger,
-									renew: z.renew,
-									timeout: z.timeout,
-									handoff_timeout: z.handoff_timeout,
-								}
-							: null,
-				),
+				zone_slots: (
+					this.host._zoneConfigs as (ZoneConfig | Zone0Config | null)[]
+				).map((z, idx) => serializeSlot(z, idx)),
 				furniture: filteredFurniture.map((f) => ({
 					type: f.type,
 					icon: f.icon,

@@ -3,6 +3,7 @@ import { DEBUG_LOG_MAX } from "../constants.js";
 import { mapTargetToGridCell } from "../lib/coordinates.js";
 import { cellIsInside, cellZone, GRID_COLS, GRID_ROWS } from "../lib/grid.js";
 import { computeHeatmapColors } from "../lib/heatmap.js";
+import { resolveZoneParams } from "../lib/zone-defaults.js";
 import {
 	createZoneEngineState,
 	runLocalZoneEngine,
@@ -103,17 +104,19 @@ export class TargetController implements ReactiveController {
 	 */
 	runLocalZoneEngine(): ZoneEngineResult {
 		const ss = this.host._sensorState;
+		const slots = this.host._zoneConfigs;
+		const z0 = resolveZoneParams(slots[0]);
 		const result = runLocalZoneEngine(this._zoneEngineState, {
 			targets: this.host._targets,
 			grid: this.host._grid,
 			roomWidth: this.host._roomWidth,
 			roomDepth: this.host._roomDepth,
-			zoneConfigs: this.host._zoneConfigs,
-			roomType: this.host._roomType,
-			roomTrigger: this.host._roomTrigger,
-			roomRenew: this.host._roomRenew,
-			roomTimeout: this.host._roomTimeout,
-			roomHandoffTimeout: this.host._roomHandoffTimeout,
+			zoneConfigs: slots.slice(1),
+			roomType: z0.type,
+			roomTrigger: z0.trigger,
+			roomRenew: z0.renew,
+			roomTimeout: z0.timeout,
+			roomHandoffTimeout: z0.handoff_timeout,
 			staticPresence: ss?.static_presence ?? false,
 			motionPresence: ss?.motion_presence ?? false,
 			// Timeouts default to 10s — the real timeout logic runs on the firmware.
@@ -145,8 +148,10 @@ export class TargetController implements ReactiveController {
 		const t = this.host._localize;
 		const zoneName = (zid: number): string => {
 			if (zid === 0) return t("live.debug.room");
-			const cfg = this.host._zoneConfigs[zid - 1];
-			return cfg ? cfg.name : t("live.debug.zone_n", { n: zid });
+			const cfg = this.host._zoneConfigs[zid];
+			return cfg && "name" in cfg
+				? cfg.name
+				: t("live.debug.zone_n", { n: zid });
 		};
 		const statusName: Record<string, string> = {
 			A: t("live.debug.active"),
@@ -242,7 +247,7 @@ export class TargetController implements ReactiveController {
 	computeHeatmapColors(): Map<number, string> {
 		return computeHeatmapColors(
 			this.host._zoneState.target_counts,
-			this.host._zoneConfigs,
+			this.host._zoneConfigs.slice(1),
 		);
 	}
 

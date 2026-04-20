@@ -13,7 +13,6 @@ import {
 	GRID_COLS,
 	initGridFromRoom,
 } from "../lib/grid.js";
-import { ZONE_TYPE_DEFAULTS } from "../lib/zone-defaults.js";
 import { createZoneEngineState } from "../lib/zone-engine.js";
 
 function createPanel(): EPPGridPanel {
@@ -24,7 +23,16 @@ function createPanel(): EPPGridPanel {
 	};
 	const a = el as any;
 	a._grid = initGridFromRoom(3000, 4000);
-	a._zoneConfigs = new Array(7).fill(null);
+	a._zoneConfigs = [
+		{ type: "normal", trigger: 5, renew: 3, timeout: 10, handoff_timeout: 3 },
+		null,
+		null,
+		null,
+		null,
+		null,
+		null,
+		null,
+	];
 	a._activeZone = 0;
 	a._dirty = false;
 	a._loading = false;
@@ -78,11 +86,7 @@ function createPanel(): EPPGridPanel {
 	a._staticAutoDistance = true;
 	a._staticMinDistance = 0.3;
 	a._staticMaxDistance = 16;
-	a._roomType = "normal";
-	a._roomTrigger = ZONE_TYPE_DEFAULTS.normal.trigger;
-	a._roomRenew = ZONE_TYPE_DEFAULTS.normal.renew;
-	a._roomTimeout = ZONE_TYPE_DEFAULTS.normal.timeout;
-	a._roomHandoffTimeout = ZONE_TYPE_DEFAULTS.normal.handoff_timeout;
+	// Zone 0 defaults live on _zoneConfigs[0]; set up above.
 	a._showHitCounts = false;
 	a._zoneEngineState = createZoneEngineState();
 	a._showCustomIconPicker = false;

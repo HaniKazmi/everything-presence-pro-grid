@@ -31,7 +31,16 @@ function createPanel() {
 	};
 	const a = el as any;
 	a._grid = initGridFromRoom(3000, 4000);
-	a._zoneConfigs = new Array(7).fill(null);
+	a._zoneConfigs = [
+		{ type: "normal", trigger: 5, renew: 3, timeout: 10, handoff_timeout: 3 },
+		null,
+		null,
+		null,
+		null,
+		null,
+		null,
+		null,
+	];
 	a._activeZone = 0;
 	a._dirty = false;
 	a._loading = false;
@@ -76,11 +85,7 @@ function createPanel() {
 	a._staticAutoDistance = true;
 	a._staticMinDistance = 0.3;
 	a._staticMaxDistance = 16;
-	a._roomType = "normal";
-	a._roomTrigger = ZONE_TYPE_DEFAULTS.normal.trigger;
-	a._roomRenew = ZONE_TYPE_DEFAULTS.normal.renew;
-	a._roomTimeout = ZONE_TYPE_DEFAULTS.normal.timeout;
-	a._roomHandoffTimeout = ZONE_TYPE_DEFAULTS.normal.handoff_timeout;
+	// Zone 0 defaults live on _zoneConfigs[0]; set up above.
 	a._showHitCounts = false;
 	a._zoneEngineState = createZoneEngineState();
 	a._showCustomIconPicker = false;
@@ -307,7 +312,7 @@ describe("zone engine branch coverage", () => {
 	it("target not on inside cell", () => {
 		const a = createPanel() as any;
 		a._grid = initGridFromRoom(3000, 4000);
-		a._zoneConfigs[0] = { name: "Z1", color: ZONE_COLORS[0], type: "normal" };
+		a._zoneConfigs[1] = { name: "Z1", color: ZONE_COLORS[0], type: "normal" };
 
 		// Place target at position that maps to an outside cell
 		a._targets = [
@@ -332,7 +337,7 @@ describe("zone engine branch coverage", () => {
 		for (let i = 0; i < a._grid.length; i++) {
 			if (a._grid[i] & CELL_ROOM_BIT) a._grid[i] = cellSetZone(a._grid[i], 1);
 		}
-		a._zoneConfigs[0] = {
+		a._zoneConfigs[1] = {
 			name: "Z1",
 			color: ZONE_COLORS[0],
 			type: "custom",
@@ -364,7 +369,7 @@ describe("zone engine branch coverage", () => {
 		for (let i = 0; i < a._grid.length; i++) {
 			if (a._grid[i] & CELL_ROOM_BIT) a._grid[i] = cellSetZone(a._grid[i], 1);
 		}
-		a._zoneConfigs[0] = {
+		a._zoneConfigs[1] = {
 			name: "Z1",
 			color: ZONE_COLORS[0],
 			type: "custom",
@@ -405,7 +410,7 @@ describe("zone engine branch coverage", () => {
 		for (let i = 0; i < a._grid.length; i++) {
 			if (a._grid[i] & CELL_ROOM_BIT) a._grid[i] = cellSetZone(a._grid[i], 1);
 		}
-		a._zoneConfigs[0] = {
+		a._zoneConfigs[1] = {
 			name: "Z1",
 			color: ZONE_COLORS[0],
 			type: "custom",
@@ -438,7 +443,7 @@ describe("zone engine branch coverage", () => {
 		for (let i = 0; i < a._grid.length; i++) {
 			if (a._grid[i] & CELL_ROOM_BIT) a._grid[i] = cellSetZone(a._grid[i], 1);
 		}
-		a._zoneConfigs[0] = {
+		a._zoneConfigs[1] = {
 			name: "Z1",
 			color: ZONE_COLORS[0],
 			type: "normal", // NOT entry point
@@ -471,8 +476,8 @@ describe("zone engine branch coverage", () => {
 		a._roomDepth = 6000;
 
 		// Zone 1 in top half, zone 2 in bottom half
-		a._zoneConfigs[0] = { name: "Z1", color: ZONE_COLORS[0], type: "normal" };
-		a._zoneConfigs[1] = { name: "Z2", color: ZONE_COLORS[1], type: "normal" };
+		a._zoneConfigs[1] = { name: "Z1", color: ZONE_COLORS[0], type: "normal" };
+		a._zoneConfigs[2] = { name: "Z2", color: ZONE_COLORS[1], type: "normal" };
 		for (let r = 0; r < GRID_ROWS; r++) {
 			for (let c = 0; c < GRID_COLS; c++) {
 				const idx = r * GRID_COLS + c;
@@ -575,7 +580,7 @@ describe("_renderVisibleCells inRange false branches", () => {
 	it("cells have correct background based on zone", () => {
 		const a = createPanel() as any;
 		a._grid = initGridFromRoom(3000, 4000);
-		a._zoneConfigs[0] = { name: "Z1", color: ZONE_COLORS[0], type: "normal" };
+		a._zoneConfigs[1] = { name: "Z1", color: ZONE_COLORS[0], type: "normal" };
 		a._showHitCounts = true;
 		a._zoneState = {
 			occupancy: { 1: true },
@@ -711,33 +716,19 @@ describe("_renderLiveGrid target branches", () => {
 describe("_addZone fallback branch", () => {
 	it("picks color from fallback when all are used", () => {
 		const a = createPanel() as any;
-		// Fill slots 0-5 with colors 0-5, slot 6 empty
-		for (let i = 0; i < 6; i++) {
+		// Fill named-zone slots 1-6 with colors 0-5, slot 7 empty.
+		// (Slot 0 is the zone-0 Zone0Config and is not a named-zone slot.)
+		for (let i = 1; i <= 6; i++) {
 			a._zoneConfigs[i] = {
-				name: `Z${i + 1}`,
-				color: ZONE_COLORS[i],
+				name: `Z${i}`,
+				color: ZONE_COLORS[i - 1],
 				type: "normal",
 			};
 		}
-		// Add ZONE_COLORS[6] as a duplicate on slot 5 so all 7 colors are "used"
-		// but slot 5 keeps both colors in the Set (override with a custom color list)
-		// Actually: _addZone uses a Set of existing colors. We need all 7 in the Set.
-		// With 6 slots we can only have 6 colors. Trick: monkeypatch _zoneConfigs
-		// to include ZONE_COLORS[6] by overriding slot 5 with it + readding ZONE_COLORS[5]
-		// on slot 4. But sets dedupe. Instead: just use _addZone with a zone that
-		// already has extra colors by giving two slots the same color.
-		// Slots: 0=C0, 1=C1, 2=C2, 3=C3, 4=C5, 5=C6 => C4 is unused -> find returns C4
-		// So we need: 0=C0, 1=C1, 2=C2, 3=C3, 4=C4, 5=C5+C6? No, one slot = one color.
-		// With 7 colors and 6 filled slots, find() always returns the unused color.
-		// The ?? fallback only fires if ZONE_COLORS has fewer entries than MAX_ZONES.
-		// Since they're equal (both 7), the fallback is dead code. Cover it by
-		// temporarily extending usedColors. Actually, just accept it: the ?? is
-		// defensive code. Rewrite the test to verify the non-fallback path works
-		// and move on.
 		a._addZone();
-		// Slot 6 fills with ZONE_COLORS[6] (the only unused color)
-		expect(a._zoneConfigs[6]).not.toBeNull();
-		expect(a._zoneConfigs[6].color).toBe(ZONE_COLORS[6]);
+		// Slot 7 fills with ZONE_COLORS[6] (the only unused color).
+		expect(a._zoneConfigs[7]).not.toBeNull();
+		expect(a._zoneConfigs[7].color).toBe(ZONE_COLORS[6]);
 	});
 });
 
@@ -842,11 +833,13 @@ describe("_renderZoneSidebar boundary occupancy glow", () => {
 		const el = document.createElement("epp-zone-sidebar") as any;
 		el.zoneConfigs = new Array(7).fill(null);
 		el.activeZone = 0;
-		el.roomType = "normal";
-		el.roomTrigger = ZONE_TYPE_DEFAULTS.normal.trigger;
-		el.roomRenew = ZONE_TYPE_DEFAULTS.normal.renew;
-		el.roomTimeout = ZONE_TYPE_DEFAULTS.normal.timeout;
-		el.roomHandoffTimeout = ZONE_TYPE_DEFAULTS.normal.handoff_timeout;
+		el.zone0 = {
+			type: "normal",
+			trigger: ZONE_TYPE_DEFAULTS.normal.trigger,
+			renew: ZONE_TYPE_DEFAULTS.normal.renew,
+			timeout: ZONE_TYPE_DEFAULTS.normal.timeout,
+			handoff_timeout: ZONE_TYPE_DEFAULTS.normal.handoff_timeout,
+		};
 		el.localZoneState = new Map([
 			[
 				0,
@@ -871,19 +864,23 @@ describe("stopPropagation handlers coverage", () => {
 		const el = document.createElement("epp-zone-sidebar") as any;
 		el.zoneConfigs = new Array(7).fill(null);
 		el.activeZone = 0;
-		el.roomType = "normal";
-		el.roomTrigger = ZONE_TYPE_DEFAULTS.normal.trigger;
-		el.roomRenew = ZONE_TYPE_DEFAULTS.normal.renew;
-		el.roomTimeout = ZONE_TYPE_DEFAULTS.normal.timeout;
-		el.roomHandoffTimeout = ZONE_TYPE_DEFAULTS.normal.handoff_timeout;
+		el.zone0 = {
+			type: "normal",
+			trigger: ZONE_TYPE_DEFAULTS.normal.trigger,
+			renew: ZONE_TYPE_DEFAULTS.normal.renew,
+			timeout: ZONE_TYPE_DEFAULTS.normal.timeout,
+			handoff_timeout: ZONE_TYPE_DEFAULTS.normal.handoff_timeout,
+		};
 		el.localZoneState = new Map();
 		el.localize = (k: string) => k;
-		Object.assign(el, overrides);
+		for (const [k, v] of Object.entries(overrides)) {
+			el[k] = v;
+		}
 		return el;
 	}
 
 	it("boundary type select click calls stopPropagation", () => {
-		const s = createSidebar({ roomType: "custom" });
+		const s = createSidebar({ zone0: { type: "custom" } });
 		const tpl = (s as any)._renderBoundaryTypeControls();
 		const c = document.createElement("div");
 		document.body.appendChild(c);
@@ -1136,7 +1133,7 @@ describe("_loadDevices null name sorting", () => {
 describe("_removeZone grid clearing", () => {
 	it("replaces grid when cells have the zone", () => {
 		const a = createPanel() as any;
-		a._zoneConfigs[0] = { name: "Z1", color: "#ff0000", type: "normal" };
+		a._zoneConfigs[1] = { name: "Z1", color: "#ff0000", type: "normal" };
 		// Paint some cells with zone 1
 		for (let i = 0; i < a._grid.length; i++) {
 			if (a._grid[i] & CELL_ROOM_BIT) {
@@ -1146,15 +1143,15 @@ describe("_removeZone grid clearing", () => {
 		}
 
 		a._removeZone(1);
-		expect(a._zoneConfigs[0]).toBeNull();
+		expect(a._zoneConfigs[1]).toBeNull();
 	});
 
 	it("removes zone config even when zone has no painted cells", () => {
 		const a = createPanel() as any;
-		a._zoneConfigs[0] = { name: "Z1", color: "#ff0000", type: "normal" };
+		a._zoneConfigs[1] = { name: "Z1", color: "#ff0000", type: "normal" };
 		// No cells painted with zone 1
 		a._removeZone(1);
-		expect(a._zoneConfigs[0]).toBeNull();
+		expect(a._zoneConfigs[1]).toBeNull();
 		expect(a._dirty).toBe(true);
 	});
 });
@@ -1515,11 +1512,13 @@ describe("zone sidebar occupancy glow branch", () => {
 			null,
 		];
 		el.activeZone = 0; // boundary selected, not zone 1
-		el.roomType = "normal";
-		el.roomTrigger = ZONE_TYPE_DEFAULTS.normal.trigger;
-		el.roomRenew = ZONE_TYPE_DEFAULTS.normal.renew;
-		el.roomTimeout = ZONE_TYPE_DEFAULTS.normal.timeout;
-		el.roomHandoffTimeout = ZONE_TYPE_DEFAULTS.normal.handoff_timeout;
+		el.zone0 = {
+			type: "normal",
+			trigger: ZONE_TYPE_DEFAULTS.normal.trigger,
+			renew: ZONE_TYPE_DEFAULTS.normal.renew,
+			timeout: ZONE_TYPE_DEFAULTS.normal.timeout,
+			handoff_timeout: ZONE_TYPE_DEFAULTS.normal.handoff_timeout,
+		};
 		el.localZoneState = new Map([
 			[
 				1,
@@ -1540,11 +1539,13 @@ describe("zone sidebar occupancy glow branch", () => {
 		const el = document.createElement("epp-zone-sidebar") as any;
 		el.zoneConfigs = new Array(7).fill(null);
 		el.activeZone = 0;
-		el.roomType = "normal";
-		el.roomTrigger = ZONE_TYPE_DEFAULTS.normal.trigger;
-		el.roomRenew = ZONE_TYPE_DEFAULTS.normal.renew;
-		el.roomTimeout = ZONE_TYPE_DEFAULTS.normal.timeout;
-		el.roomHandoffTimeout = ZONE_TYPE_DEFAULTS.normal.handoff_timeout;
+		el.zone0 = {
+			type: "normal",
+			trigger: ZONE_TYPE_DEFAULTS.normal.trigger,
+			renew: ZONE_TYPE_DEFAULTS.normal.renew,
+			timeout: ZONE_TYPE_DEFAULTS.normal.timeout,
+			handoff_timeout: ZONE_TYPE_DEFAULTS.normal.handoff_timeout,
+		};
 		el.localZoneState = new Map([
 			[
 				0,
@@ -1837,7 +1838,7 @@ describe("_renderVisibleCells debug log branches", () => {
 		for (let i = 0; i < a._grid.length; i++) {
 			if (a._grid[i] & CELL_ROOM_BIT) a._grid[i] = cellSetZone(a._grid[i], 1);
 		}
-		a._zoneConfigs[0] = {
+		a._zoneConfigs[1] = {
 			name: "Living Room",
 			color: ZONE_COLORS[0],
 			type: "normal",
@@ -1900,7 +1901,7 @@ describe("_renderVisibleCells debug log branches", () => {
 		for (let i = 0; i < a._grid.length; i++) {
 			if (a._grid[i] & CELL_ROOM_BIT) a._grid[i] = cellSetZone(a._grid[i], 1);
 		}
-		a._zoneConfigs[0] = {
+		a._zoneConfigs[1] = {
 			name: "Entry",
 			color: ZONE_COLORS[0],
 			type: "normal",
@@ -1934,7 +1935,7 @@ describe("_renderVisibleCells debug log branches", () => {
 		for (let i = 0; i < a._grid.length; i++) {
 			if (a._grid[i] & CELL_ROOM_BIT) a._grid[i] = cellSetZone(a._grid[i], 1);
 		}
-		a._zoneConfigs[0] = null; // null config for zone slot 1
+		a._zoneConfigs[1] = null; // null config for zone slot 1
 		a._showDebugLog = true;
 		a._debugLogLines = [];
 		a._debugLogPrev = null;
@@ -1996,7 +1997,7 @@ describe("_renderVisibleCells debug log branches", () => {
 		for (let i = 0; i < a._grid.length; i++) {
 			if (a._grid[i] & CELL_ROOM_BIT) a._grid[i] = cellSetZone(a._grid[i], 1);
 		}
-		a._zoneConfigs[0] = { name: "Z1", color: ZONE_COLORS[0], type: "normal" };
+		a._zoneConfigs[1] = { name: "Z1", color: ZONE_COLORS[0], type: "normal" };
 		a._showDebugLog = true;
 		a._debugLogLines = [];
 		a._debugLogPrev = null;

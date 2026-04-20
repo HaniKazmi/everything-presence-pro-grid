@@ -9,7 +9,27 @@ import {
 	getRoomBounds,
 	MAX_ZONES,
 } from "../../lib/grid.js";
-import { ZONE_COLORS, type ZoneConfig } from "../../lib/zone-defaults.js";
+import {
+	ZONE_COLORS,
+	type Zone0Config,
+	type ZoneConfig,
+} from "../../lib/zone-defaults.js";
+
+// Length-8 tuple: slot 0 = Zone0Config, slots 1-7 = named zones.
+// Helper to build a fresh "empty" zone-slots state (zone 0 populated,
+// named zones all null) — matches the panel's INITIAL_ZONE_SLOTS shape.
+function emptyZoneSlots(): (Zone0Config | ZoneConfig | null)[] {
+	return [
+		{ type: "normal", trigger: 5, renew: 3, timeout: 10, handoff_timeout: 3 },
+		null,
+		null,
+		null,
+		null,
+		null,
+		null,
+		null,
+	];
+}
 
 // Build a minimal host with all properties the controller reads/writes
 function mockHost(overrides: Record<string, any> = {}) {
@@ -34,11 +54,8 @@ function mockHost(overrides: Record<string, any> = {}) {
 		_dragState: null as any,
 		// Overlays
 		_overlayMode: null as string | null,
-		// Zones
-		_zoneConfigs: Array.from(
-			{ length: MAX_ZONES },
-			() => null,
-		) as (ZoneConfig | null)[],
+		// Zones — length-8 tuple (slot 0 = Zone0Config, slots 1..7 = named).
+		_zoneConfigs: emptyZoneSlots() as (Zone0Config | ZoneConfig | null)[],
 		// Furniture
 		_furniture: [] as FurnitureItem[],
 		// Templates
@@ -80,9 +97,9 @@ describe("GridStateController", () => {
 		it("stores the host reference", () => {
 			// Verify the controller can operate on the host by exercising a simple
 			// method — the private `host` reference was set correctly.
-			host._zoneConfigs = [null, null, null, null, null, null, null];
+			host._zoneConfigs = emptyZoneSlots();
 			ctrl.addZone();
-			expect(host._zoneConfigs[0]).not.toBeNull();
+			expect(host._zoneConfigs[1]).not.toBeNull();
 		});
 	});
 
@@ -92,24 +109,26 @@ describe("GridStateController", () => {
 	describe("addZone()", () => {
 		it("fills the first empty slot", () => {
 			ctrl.addZone();
-			expect(host._zoneConfigs[0]).not.toBeNull();
-			expect(host._zoneConfigs[0]!.name).toBe("Zone 1");
+			// With the length-8 tuple, slot 0 is always Zone0Config; the first
+			// named zone fills slot 1.
+			expect(host._zoneConfigs[1]).not.toBeNull();
+			expect((host._zoneConfigs[1] as ZoneConfig).name).toBe("Zone 1");
 		});
 
 		it("uses the first unused color", () => {
 			ctrl.addZone();
-			expect(host._zoneConfigs[0]!.color).toBe(ZONE_COLORS[0]);
+			expect((host._zoneConfigs[1] as ZoneConfig).color).toBe(ZONE_COLORS[0]);
 		});
 
 		it("skips already-used colors when picking a color", () => {
-			// Manually occupy slot 0 with the first color
-			host._zoneConfigs[0] = {
+			// Manually occupy slot 1 (zone 1) with the first color
+			host._zoneConfigs[1] = {
 				name: "Zone 1",
 				color: ZONE_COLORS[0],
 				type: "normal",
 			};
-			ctrl.addZone(); // should fill slot 1
-			expect(host._zoneConfigs[1]!.color).toBe(ZONE_COLORS[1]);
+			ctrl.addZone(); // should fill slot 2 (zone 2)
+			expect((host._zoneConfigs[2] as ZoneConfig).color).toBe(ZONE_COLORS[1]);
 		});
 
 		it("sets _activeZone to the 1-based slot number", () => {
@@ -123,28 +142,32 @@ describe("GridStateController", () => {
 		});
 
 		it("fills a gap rather than always using slot 0", () => {
-			// Occupy slots 0 and 2 so slot 1 is the first empty
-			host._zoneConfigs[0] = {
+			// Occupy slots 1 and 3 (zones 1 and 3) so slot 2 (zone 2) is the
+			// first empty named slot.
+			host._zoneConfigs[1] = {
 				name: "Zone 1",
 				color: ZONE_COLORS[0],
 				type: "normal",
 			};
-			host._zoneConfigs[2] = {
+			host._zoneConfigs[3] = {
 				name: "Zone 3",
 				color: ZONE_COLORS[2],
 				type: "normal",
 			};
 			ctrl.addZone();
-			expect(host._zoneConfigs[1]).not.toBeNull();
+			expect(host._zoneConfigs[2]).not.toBeNull();
 			expect(host._activeZone).toBe(2);
 		});
 
 		it("does nothing when all slots are full", () => {
-			host._zoneConfigs = ZONE_COLORS.map((color, i) => ({
-				name: `Zone ${i + 1}`,
-				color,
-				type: "normal" as const,
-			}));
+			host._zoneConfigs = [
+				host._zoneConfigs[0],
+				...ZONE_COLORS.map((color, i) => ({
+					name: `Zone ${i + 1}`,
+					color,
+					type: "normal" as const,
+				})),
+			];
 			ctrl.addZone();
 			// _dirty would only be set if a zone was actually added — it was already false
 			expect(host._dirty).toBe(false);
@@ -156,8 +179,8 @@ describe("GridStateController", () => {
 	// =========================================================================
 	describe("removeZone(slot)", () => {
 		beforeEach(() => {
-			// Add a zone in slot 1
-			host._zoneConfigs[0] = {
+			// Add a zone in slot 1 (named zone 1)
+			host._zoneConfigs[1] = {
 				name: "Zone 1",
 				color: ZONE_COLORS[0],
 				type: "normal",
@@ -167,7 +190,7 @@ describe("GridStateController", () => {
 
 		it("nulls out the slot", () => {
 			ctrl.removeZone(1);
-			expect(host._zoneConfigs[0]).toBeNull();
+			expect(host._zoneConfigs[1]).toBeNull();
 		});
 
 		it("clears all grid cells painted with that zone", () => {
@@ -189,7 +212,7 @@ describe("GridStateController", () => {
 		});
 
 		it("leaves _activeZone unchanged when a different slot is removed", () => {
-			host._zoneConfigs[1] = {
+			host._zoneConfigs[2] = {
 				name: "Zone 2",
 				color: ZONE_COLORS[1],
 				type: "normal",
@@ -392,8 +415,14 @@ describe("GridStateController", () => {
 			host._grid = new Uint8Array(GRID_CELL_COUNT);
 			host._grid[5] = CELL_ROOM_BIT;
 			host._zoneConfigs = [
+				host._zoneConfigs[0],
 				{ name: "Zone 1", color: ZONE_COLORS[0], type: "normal" },
-				...Array(MAX_ZONES - 1).fill(null),
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
 			];
 			host._roomWidth = 3000;
 			host._roomDepth = 4000;
@@ -413,6 +442,13 @@ describe("GridStateController", () => {
 			expect(saveCall![0].template.roomWidth).toBe(3000);
 			expect(saveCall![0].template.roomDepth).toBe(4000);
 			expect(saveCall![0].template.grid[5]).toBe(CELL_ROOM_BIT);
+			// Length-8 zones with zone 0 in slot 0 and named zone in slot 1.
+			expect(saveCall![0].template.zones).toHaveLength(MAX_ZONES + 1);
+			expect(saveCall![0].template.zones[0]).toMatchObject({ type: "normal" });
+			expect(saveCall![0].template.zones[1]).toMatchObject({
+				name: "Zone 1",
+				color: ZONE_COLORS[0],
+			});
 		});
 
 		it("clears _templateName and hides the save dialog", async () => {
@@ -435,19 +471,170 @@ describe("GridStateController", () => {
 			);
 			expect(listCalls.length).toBeGreaterThanOrEqual(1);
 		});
+
+		it("omits timing fields for non-custom zone 0", async () => {
+			// Zone 0 is type "normal" — its timing should come from
+			// ZONE_TYPE_DEFAULTS at push time, so we don't store it.
+			host._zoneConfigs = [
+				{
+					type: "normal",
+					trigger: 5,
+					renew: 3,
+					timeout: 10,
+					handoff_timeout: 3,
+				},
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+			];
+			await ctrl.saveTemplate();
+			const saveCall = host.hass.callWS.mock.calls.find(
+				(c: any[]) => c[0].type === "eppgrid/save_template",
+			);
+			const z0 = saveCall![0].template.zones[0];
+			expect(z0).toEqual({ type: "normal" });
+			expect(z0).not.toHaveProperty("trigger");
+			expect(z0).not.toHaveProperty("renew");
+			expect(z0).not.toHaveProperty("timeout");
+			expect(z0).not.toHaveProperty("handoff_timeout");
+		});
+
+		it("includes timing fields for custom zone 0", async () => {
+			host._zoneConfigs = [
+				{
+					type: "custom",
+					trigger: 6,
+					renew: 4,
+					timeout: 20,
+					handoff_timeout: 5,
+				},
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+			];
+			await ctrl.saveTemplate();
+			const saveCall = host.hass.callWS.mock.calls.find(
+				(c: any[]) => c[0].type === "eppgrid/save_template",
+			);
+			const z0 = saveCall![0].template.zones[0];
+			expect(z0).toEqual({
+				type: "custom",
+				trigger: 6,
+				renew: 4,
+				timeout: 20,
+				handoff_timeout: 5,
+			});
+		});
+
+		it("omits timing fields for non-custom named zone", async () => {
+			host._zoneConfigs = [
+				host._zoneConfigs[0],
+				{
+					name: "Office",
+					color: ZONE_COLORS[1],
+					type: "thoroughfare",
+					trigger: 3,
+					renew: 2,
+					timeout: 3,
+					handoff_timeout: 1,
+				} as ZoneConfig,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+			];
+			await ctrl.saveTemplate();
+			const saveCall = host.hass.callWS.mock.calls.find(
+				(c: any[]) => c[0].type === "eppgrid/save_template",
+			);
+			const z1 = saveCall![0].template.zones[1];
+			expect(z1).toEqual({
+				name: "Office",
+				color: ZONE_COLORS[1],
+				type: "thoroughfare",
+			});
+			expect(z1).not.toHaveProperty("trigger");
+			expect(z1).not.toHaveProperty("renew");
+			expect(z1).not.toHaveProperty("timeout");
+			expect(z1).not.toHaveProperty("handoff_timeout");
+		});
+
+		it("includes timing fields for custom named zone", async () => {
+			host._zoneConfigs = [
+				host._zoneConfigs[0],
+				{
+					name: "Lab",
+					color: ZONE_COLORS[2],
+					type: "custom",
+					trigger: 8,
+					renew: 4,
+					timeout: 45,
+					handoff_timeout: 12,
+				} as ZoneConfig,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+			];
+			await ctrl.saveTemplate();
+			const saveCall = host.hass.callWS.mock.calls.find(
+				(c: any[]) => c[0].type === "eppgrid/save_template",
+			);
+			const z1 = saveCall![0].template.zones[1];
+			expect(z1).toEqual({
+				name: "Lab",
+				color: ZONE_COLORS[2],
+				type: "custom",
+				trigger: 8,
+				renew: 4,
+				timeout: 45,
+				handoff_timeout: 12,
+			});
+		});
 	});
 
 	describe("loadTemplate()", () => {
+		// Length-8 zones matches the unified zone_slots model.
+		// Slot 0 = Zone0Config (room boundary), slots 1-7 = named zones.
 		const TEMPLATE_DATA = {
-			grid: Array.from({ length: GRID_CELL_COUNT }, (_, i) =>
-				i === 3 ? CELL_ROOM_BIT : 0,
-			),
+			// Cell 3 is zone 0 (room boundary), cell 4 is zone 1 so applyLayout
+			// doesn't prune zone 1 as empty.
+			grid: Array.from({ length: GRID_CELL_COUNT }, (_, i) => {
+				if (i === 3) return CELL_ROOM_BIT;
+				if (i === 4) return CELL_ROOM_BIT | (1 << 1); // zone 1
+				return 0;
+			}),
 			zones: [
+				{
+					type: "normal" as const,
+					trigger: 5,
+					renew: 3,
+					timeout: 10,
+					handoff_timeout: 3,
+				},
 				{
 					name: "Zone 1",
 					color: ZONE_COLORS[0],
 					type: "normal" as const,
 				},
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
 			],
 			roomWidth: 2400,
 			roomDepth: 3600,
@@ -470,42 +657,235 @@ describe("GridStateController", () => {
 		beforeEach(() => {
 			// Pre-populate the templates cache
 			ctrl.templates = [{ name: "Loaded", ...TEMPLATE_DATA }];
+			// applyLayout (now invoked auto after loadTemplate) calls WS and
+			// reads _selectedMac + various settings — default mocks cover it.
+			host.hass.callWS.mockResolvedValue({});
 		});
 
-		it("restores grid, room dimensions, zones, and furniture from cache", () => {
-			ctrl.loadTemplate("Loaded");
+		it("restores grid, room dimensions, zones, and furniture from cache", async () => {
+			// Mock applyLayout to no-op so we can assert the full pre-apply
+			// state restoration (otherwise applyLayout prunes empty zones and
+			// out-of-bounds furniture before we can check them).
+			const applySpy = vi
+				.spyOn(ctrl, "applyLayout")
+				.mockResolvedValue(undefined);
+			await ctrl.loadTemplate("Loaded");
 			expect(host._roomWidth).toBe(2400);
 			expect(host._roomDepth).toBe(3600);
 			expect(host._grid[3]).toBe(CELL_ROOM_BIT);
-			expect(host._zoneConfigs).toHaveLength(MAX_ZONES);
-			expect(host._zoneConfigs[0]).toMatchObject({ name: "Zone 1" });
+			// Length-8 tuple: slot 0 = Zone0Config, slots 1-7 = named zones.
+			expect(host._zoneConfigs).toHaveLength(MAX_ZONES + 1);
+			expect(host._zoneConfigs[0]).toMatchObject({ type: "normal" });
+			expect(host._zoneConfigs[1]).toMatchObject({
+				name: "Zone 1",
+				type: "normal",
+			});
 			expect(host._furniture).toHaveLength(1);
+			expect(host._furniture[0]).toMatchObject({ id: "f_x", icon: "mdi:sofa" });
+			applySpy.mockRestore();
 		});
 
-		it("pads zoneConfigs to MAX_ZONES slots", () => {
-			ctrl.loadTemplate("Loaded");
-			expect(host._zoneConfigs).toHaveLength(MAX_ZONES);
-			for (let i = 1; i < MAX_ZONES; i++) {
+		it("populates all 8 slots so length is 8", async () => {
+			await ctrl.loadTemplate("Loaded");
+			expect(host._zoneConfigs).toHaveLength(MAX_ZONES + 1);
+			// Slot 0 is zone 0 (always populated).
+			expect(host._zoneConfigs[0]).not.toBeNull();
+			// Slots 2..7 (unused named zones) are null.
+			for (let i = 2; i < MAX_ZONES + 1; i++) {
 				expect(host._zoneConfigs[i]).toBeNull();
 			}
 		});
 
-		it("closes the load dialog", () => {
+		it("closes the load dialog", async () => {
 			host._showTemplateLoad = true;
-			ctrl.loadTemplate("Loaded");
+			await ctrl.loadTemplate("Loaded");
 			expect(host._showTemplateLoad).toBe(false);
 		});
 
-		it("does nothing when the template name does not exist", () => {
-			ctrl.loadTemplate("Nonexistent");
+		it("does nothing when the template name does not exist", async () => {
+			await ctrl.loadTemplate("Nonexistent");
 			expect(host._roomWidth).toBe(3000); // unchanged from mockHost default
 		});
 
-		it("handles templates without furniture field", () => {
+		it("handles templates without furniture field", async () => {
 			const { furniture: _, ...noFurniture } = TEMPLATE_DATA;
 			ctrl.templates = [{ name: "Loaded", ...noFurniture } as any];
-			ctrl.loadTemplate("Loaded");
+			await ctrl.loadTemplate("Loaded");
 			expect(host._furniture).toEqual([]);
+		});
+
+		it("auto-applies the layout (sends set_room_layout WS)", async () => {
+			await ctrl.loadTemplate("Loaded");
+			const roomLayoutCalls = host.hass.callWS.mock.calls.filter(
+				(c: any[]) => c[0]?.type === "eppgrid/set_room_layout",
+			);
+			expect(roomLayoutCalls).toHaveLength(1);
+			const payload = roomLayoutCalls[0][0] as { zone_slots: any[] };
+			// Length must be exactly 8 — guards against a .slice(1) regression.
+			expect(payload.zone_slots).toHaveLength(MAX_ZONES + 1);
+			expect(payload.zone_slots[0]).toMatchObject({ type: "normal" });
+			expect(payload.zone_slots[1]).toMatchObject({
+				name: "Zone 1",
+				type: "normal",
+			});
+		});
+
+		it("sets _dirty=true before applyLayout so failures stay recoverable", async () => {
+			// applyLayout throws — user should still see an Apply button to
+			// retry, which requires _dirty === true.
+			const applySpy = vi
+				.spyOn(ctrl, "applyLayout")
+				.mockRejectedValue(new Error("WS failure"));
+			host._dirty = false;
+			await expect(ctrl.loadTemplate("Loaded")).rejects.toThrow(/WS failure/);
+			expect(host._dirty).toBe(true);
+			applySpy.mockRestore();
+		});
+
+		it("throws on old-format template (length-7 zones)", async () => {
+			ctrl.templates = [
+				{
+					name: "Old",
+					grid: TEMPLATE_DATA.grid,
+					// length 7 — old format
+					zones: [null, null, null, null, null, null, null],
+					roomWidth: 2400,
+					roomDepth: 3600,
+				} as any,
+			];
+			await expect(ctrl.loadTemplate("Old")).rejects.toThrow(/old format/);
+		});
+
+		it("leaves the load dialog open when rejecting an old-format template", async () => {
+			ctrl.templates = [
+				{
+					name: "Old",
+					grid: TEMPLATE_DATA.grid,
+					zones: [null, null, null, null, null, null, null],
+					roomWidth: 2400,
+					roomDepth: 3600,
+				} as any,
+			];
+			host._showTemplateLoad = true;
+			await expect(ctrl.loadTemplate("Old")).rejects.toThrow(/old format/);
+			// Dialog should remain open so the failure is visible and the user
+			// can try another template.
+			expect(host._showTemplateLoad).toBe(true);
+		});
+
+		it("throws on template with null zone 0", async () => {
+			ctrl.templates = [
+				{
+					name: "NullZ0",
+					grid: TEMPLATE_DATA.grid,
+					zones: [null, null, null, null, null, null, null, null],
+					roomWidth: 2400,
+					roomDepth: 3600,
+				} as any,
+			];
+			await expect(ctrl.loadTemplate("NullZ0")).rejects.toThrow(/old format/);
+		});
+
+		it("throws when zone 0 is missing the type field", async () => {
+			ctrl.templates = [
+				{
+					name: "BadZ0NoType",
+					grid: TEMPLATE_DATA.grid,
+					zones: [{ trigger: 5 }, null, null, null, null, null, null, null],
+					roomWidth: 2400,
+					roomDepth: 3600,
+				} as any,
+			];
+			await expect(ctrl.loadTemplate("BadZ0NoType")).rejects.toThrow(
+				/old format/,
+			);
+		});
+
+		it("throws when zone 0 has non-string type", async () => {
+			ctrl.templates = [
+				{
+					name: "BadZ0TypeNum",
+					grid: TEMPLATE_DATA.grid,
+					zones: [{ type: 42 }, null, null, null, null, null, null, null],
+					roomWidth: 2400,
+					roomDepth: 3600,
+				} as any,
+			];
+			await expect(ctrl.loadTemplate("BadZ0TypeNum")).rejects.toThrow(
+				/old format/,
+			);
+		});
+
+		it("throws when a named slot is missing the name field", async () => {
+			ctrl.templates = [
+				{
+					name: "BadNamedNoName",
+					grid: TEMPLATE_DATA.grid,
+					zones: [
+						{ type: "normal" },
+						{ color: "#ff0000", type: "normal" },
+						null,
+						null,
+						null,
+						null,
+						null,
+						null,
+					],
+					roomWidth: 2400,
+					roomDepth: 3600,
+				} as any,
+			];
+			await expect(ctrl.loadTemplate("BadNamedNoName")).rejects.toThrow(
+				/old format/,
+			);
+		});
+
+		it("throws when a named slot has non-string color", async () => {
+			ctrl.templates = [
+				{
+					name: "BadNamedColor",
+					grid: TEMPLATE_DATA.grid,
+					zones: [
+						{ type: "normal" },
+						{ name: "Office", color: 0xff0000, type: "normal" },
+						null,
+						null,
+						null,
+						null,
+						null,
+						null,
+					],
+					roomWidth: 2400,
+					roomDepth: 3600,
+				} as any,
+			];
+			await expect(ctrl.loadTemplate("BadNamedColor")).rejects.toThrow(
+				/old format/,
+			);
+		});
+
+		it("throws when a named slot is not null and not an object", async () => {
+			ctrl.templates = [
+				{
+					name: "BadNamedNonObject",
+					grid: TEMPLATE_DATA.grid,
+					zones: [
+						{ type: "normal" },
+						"not an object",
+						null,
+						null,
+						null,
+						null,
+						null,
+						null,
+					],
+					roomWidth: 2400,
+					roomDepth: 3600,
+				} as any,
+			];
+			await expect(ctrl.loadTemplate("BadNamedNonObject")).rejects.toThrow(
+				/old format/,
+			);
 		});
 	});
 
@@ -532,6 +912,170 @@ describe("GridStateController", () => {
 		it("calls requestUpdate after delete", async () => {
 			await ctrl.deleteTemplate("Alpha");
 			expect(host.requestUpdate).toHaveBeenCalled();
+		});
+	});
+
+	// =========================================================================
+	// applyLayout() — zone_slots serialization
+	// =========================================================================
+	describe("applyLayout() zone_slots serialization", () => {
+		beforeEach(() => {
+			// Re-create the host with the extra fields applyLayout reads.
+			host = mockHost({
+				_selectedMac: "AA:BB:CC:DD:EE:FF",
+				_targetAutoDistance: false,
+				_staticAutoDistance: false,
+			});
+			ctrl = new GridStateController(host);
+			host._grid = new Uint8Array(GRID_CELL_COUNT);
+			// Paint a single inside cell for zone 1 so it isn't pruned.
+			host._grid[0] = CELL_ROOM_BIT;
+			host._grid[1] = CELL_ROOM_BIT | (1 << 1);
+			host.hass.callWS.mockResolvedValue({});
+		});
+
+		it("omits timing fields for non-custom zone 0 in set_room_layout payload", async () => {
+			host._zoneConfigs = [
+				{
+					type: "normal",
+					trigger: 5,
+					renew: 3,
+					timeout: 10,
+					handoff_timeout: 3,
+				},
+				{
+					name: "Zone 1",
+					color: ZONE_COLORS[0],
+					type: "normal",
+				} as ZoneConfig,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+			];
+			await ctrl.applyLayout();
+			const call = host.hass.callWS.mock.calls.find(
+				(c: any[]) => c[0]?.type === "eppgrid/set_room_layout",
+			);
+			const slots = call![0].zone_slots;
+			expect(slots[0]).toEqual({ type: "normal" });
+			expect(slots[0]).not.toHaveProperty("trigger");
+			expect(slots[0]).not.toHaveProperty("timeout");
+		});
+
+		it("includes timing fields for custom zone 0 in set_room_layout payload", async () => {
+			host._zoneConfigs = [
+				{
+					type: "custom",
+					trigger: 6,
+					renew: 4,
+					timeout: 20,
+					handoff_timeout: 5,
+				},
+				{
+					name: "Zone 1",
+					color: ZONE_COLORS[0],
+					type: "normal",
+				} as ZoneConfig,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+			];
+			await ctrl.applyLayout();
+			const call = host.hass.callWS.mock.calls.find(
+				(c: any[]) => c[0]?.type === "eppgrid/set_room_layout",
+			);
+			expect(call![0].zone_slots[0]).toEqual({
+				type: "custom",
+				trigger: 6,
+				renew: 4,
+				timeout: 20,
+				handoff_timeout: 5,
+			});
+		});
+
+		it("omits timing fields for non-custom named zone in set_room_layout payload", async () => {
+			host._zoneConfigs = [
+				{
+					type: "normal",
+					trigger: 5,
+					renew: 3,
+					timeout: 10,
+					handoff_timeout: 3,
+				},
+				{
+					name: "Hallway",
+					color: ZONE_COLORS[1],
+					type: "thoroughfare",
+					trigger: 3,
+					renew: 2,
+					timeout: 3,
+					handoff_timeout: 1,
+				} as ZoneConfig,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+			];
+			await ctrl.applyLayout();
+			const call = host.hass.callWS.mock.calls.find(
+				(c: any[]) => c[0]?.type === "eppgrid/set_room_layout",
+			);
+			const z1 = call![0].zone_slots[1];
+			expect(z1).toEqual({
+				name: "Hallway",
+				color: ZONE_COLORS[1],
+				type: "thoroughfare",
+			});
+			expect(z1).not.toHaveProperty("trigger");
+			expect(z1).not.toHaveProperty("timeout");
+		});
+
+		it("includes timing fields for custom named zone in set_room_layout payload", async () => {
+			host._zoneConfigs = [
+				{
+					type: "normal",
+					trigger: 5,
+					renew: 3,
+					timeout: 10,
+					handoff_timeout: 3,
+				},
+				{
+					name: "Lab",
+					color: ZONE_COLORS[2],
+					type: "custom",
+					trigger: 8,
+					renew: 4,
+					timeout: 45,
+					handoff_timeout: 12,
+				} as ZoneConfig,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+			];
+			await ctrl.applyLayout();
+			const call = host.hass.callWS.mock.calls.find(
+				(c: any[]) => c[0]?.type === "eppgrid/set_room_layout",
+			);
+			expect(call![0].zone_slots[1]).toEqual({
+				name: "Lab",
+				color: ZONE_COLORS[2],
+				type: "custom",
+				trigger: 8,
+				renew: 4,
+				timeout: 45,
+				handoff_timeout: 12,
+			});
 		});
 	});
 

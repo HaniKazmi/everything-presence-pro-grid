@@ -1,6 +1,11 @@
 import { css, html, LitElement, nothing } from "lit";
 import { property } from "lit/decorators.js";
-import { ZONE_TYPE_DEFAULTS, type ZoneConfig } from "../lib/zone-defaults.js";
+import {
+	resolveZoneParams,
+	ZONE_TYPE_DEFAULTS,
+	type Zone0Config,
+	type ZoneConfig,
+} from "../lib/zone-defaults.js";
 import { defaultLocalize, type LocalizeFn } from "../localize.js";
 import { toggleStyles } from "../styles.js";
 
@@ -14,15 +19,7 @@ export class EppZoneSidebar extends LitElement {
 	@property({ attribute: false }) grid!: Uint8Array;
 	@property({ attribute: false }) zoneConfigs: (ZoneConfig | null)[] = [];
 	@property({ attribute: false }) activeZone: number | null = null;
-	@property({ attribute: false }) roomType: ZoneConfig["type"] = "normal";
-	@property({ attribute: false }) roomTrigger: number =
-		ZONE_TYPE_DEFAULTS.normal.trigger;
-	@property({ attribute: false }) roomRenew: number =
-		ZONE_TYPE_DEFAULTS.normal.renew;
-	@property({ attribute: false }) roomTimeout: number =
-		ZONE_TYPE_DEFAULTS.normal.timeout;
-	@property({ attribute: false }) roomHandoffTimeout: number =
-		ZONE_TYPE_DEFAULTS.normal.handoff_timeout;
+	@property({ attribute: false }) zone0: Zone0Config = { type: "normal" };
 	@property({ attribute: false }) localZoneState: Map<number, LocalZoneInfo> =
 		new Map();
 	@property({ attribute: false }) localize: LocalizeFn = defaultLocalize;
@@ -352,16 +349,30 @@ export class EppZoneSidebar extends LitElement {
 		`;
 	}
 
+	private _emitZone0Change(updates: Partial<Zone0Config>) {
+		this.dispatchEvent(
+			new CustomEvent<Partial<Zone0Config>>("zone0-change", {
+				detail: updates,
+				bubbles: true,
+				composed: true,
+			}),
+		);
+		this.dispatchEvent(
+			new CustomEvent("dirty", {
+				bubbles: true,
+				composed: true,
+			}),
+		);
+	}
+
 	private _renderBoundaryTypeControls() {
-		const isCustom = this.roomType === "custom";
-		const defaults =
-			ZONE_TYPE_DEFAULTS[this.roomType] || ZONE_TYPE_DEFAULTS.normal;
-		const trigger = isCustom ? this.roomTrigger : defaults.trigger;
-		const renew = isCustom ? this.roomRenew : defaults.renew;
-		const timeout = isCustom ? this.roomTimeout : defaults.timeout;
-		const handoffTimeout = isCustom
-			? this.roomHandoffTimeout
-			: defaults.handoff_timeout;
+		const z0 = this.zone0;
+		const isCustom = z0.type === "custom";
+		const resolved = resolveZoneParams(z0);
+		const trigger = resolved.trigger;
+		const renew = resolved.renew;
+		const timeout = resolved.timeout;
+		const handoffTimeout = resolved.handoff_timeout;
 		const rowStyle = `width: 100%; display: flex; align-items: center; gap: 4px; font-size: 12px; opacity: ${isCustom ? 1 : 0.5};`;
 		return html`
 			<div
@@ -378,32 +389,32 @@ export class EppZoneSidebar extends LitElement {
 					<select
 						class="sensitivity-select"
 						style="flex: 1; min-width: 0;"
-						.value=${this.roomType}
+						.value=${z0.type}
 						@change=${(e: Event) => {
 							const val = (e.target as HTMLSelectElement)
-								.value as ZoneConfig["type"];
-							const d = ZONE_TYPE_DEFAULTS[val] || ZONE_TYPE_DEFAULTS.normal;
-							this.dispatchEvent(
-								new CustomEvent("room-config-change", {
-									detail: {
-										updates: {
-											roomType: val,
-											roomTrigger: d.trigger,
-											roomRenew: d.renew,
-											roomTimeout: d.timeout,
-											roomHandoffTimeout: d.handoff_timeout,
-										},
-									},
-									bubbles: true,
-									composed: true,
-								}),
-							);
-							this.dispatchEvent(
-								new CustomEvent("dirty", {
-									bubbles: true,
-									composed: true,
-								}),
-							);
+								.value as Zone0Config["type"];
+							// Non-custom types resolve timing from ZONE_TYPE_DEFAULTS on read;
+							// emit only the type so we don't persist dead data. Switching
+							// INTO custom seeds the sliders with the current type's defaults
+							// so the user has a sane starting point.
+							if (val === "custom") {
+								const d = resolveZoneParams(this.zone0);
+								this._emitZone0Change({
+									type: val,
+									trigger: d.trigger,
+									renew: d.renew,
+									timeout: d.timeout,
+									handoff_timeout: d.handoff_timeout,
+								});
+							} else {
+								this._emitZone0Change({
+									type: val,
+									trigger: undefined,
+									renew: undefined,
+									timeout: undefined,
+									handoff_timeout: undefined,
+								});
+							}
 						}}
 						@click=${(e: Event) => e.stopPropagation()}
 					>
@@ -433,23 +444,9 @@ export class EppZoneSidebar extends LitElement {
 						.value=${String(trigger)}
 						?disabled=${!isCustom}
 						@input=${(e: Event) => {
-							this.dispatchEvent(
-								new CustomEvent("room-config-change", {
-									detail: {
-										updates: {
-											roomTrigger: Number((e.target as HTMLInputElement).value),
-										},
-									},
-									bubbles: true,
-									composed: true,
-								}),
-							);
-							this.dispatchEvent(
-								new CustomEvent("dirty", {
-									bubbles: true,
-									composed: true,
-								}),
-							);
+							this._emitZone0Change({
+								trigger: Number((e.target as HTMLInputElement).value),
+							});
 						}}
 						@click=${(e: Event) => e.stopPropagation()}
 					/>
@@ -470,23 +467,9 @@ export class EppZoneSidebar extends LitElement {
 						.value=${String(renew)}
 						?disabled=${!isCustom}
 						@input=${(e: Event) => {
-							this.dispatchEvent(
-								new CustomEvent("room-config-change", {
-									detail: {
-										updates: {
-											roomRenew: Number((e.target as HTMLInputElement).value),
-										},
-									},
-									bubbles: true,
-									composed: true,
-								}),
-							);
-							this.dispatchEvent(
-								new CustomEvent("dirty", {
-									bubbles: true,
-									composed: true,
-								}),
-							);
+							this._emitZone0Change({
+								renew: Number((e.target as HTMLInputElement).value),
+							});
 						}}
 						@click=${(e: Event) => e.stopPropagation()}
 					/>
@@ -510,21 +493,7 @@ export class EppZoneSidebar extends LitElement {
 						@input=${(e: Event) => {
 							const v = Number((e.target as HTMLInputElement).value);
 							if (v > 0) {
-								this.dispatchEvent(
-									new CustomEvent("room-config-change", {
-										detail: {
-											updates: { roomTimeout: v },
-										},
-										bubbles: true,
-										composed: true,
-									}),
-								);
-								this.dispatchEvent(
-									new CustomEvent("dirty", {
-										bubbles: true,
-										composed: true,
-									}),
-								);
+								this._emitZone0Change({ timeout: v });
 							}
 						}}
 						@click=${(e: Event) => e.stopPropagation()}
@@ -549,23 +518,7 @@ export class EppZoneSidebar extends LitElement {
 						@input=${(e: Event) => {
 							const v = Number((e.target as HTMLInputElement).value);
 							if (v > 0) {
-								this.dispatchEvent(
-									new CustomEvent("room-config-change", {
-										detail: {
-											updates: {
-												roomHandoffTimeout: v,
-											},
-										},
-										bubbles: true,
-										composed: true,
-									}),
-								);
-								this.dispatchEvent(
-									new CustomEvent("dirty", {
-										bubbles: true,
-										composed: true,
-									}),
-								);
+								this._emitZone0Change({ handoff_timeout: v });
 							}
 						}}
 						@click=${(e: Event) => e.stopPropagation()}
@@ -606,19 +559,21 @@ export class EppZoneSidebar extends LitElement {
 						@change=${(e: Event) => {
 							const val = (e.target as HTMLSelectElement)
 								.value as ZoneConfig["type"];
-							const d = ZONE_TYPE_DEFAULTS[val] || ZONE_TYPE_DEFAULTS.normal;
+							// Mirror the zone-0 contract: only custom persists timing;
+							// other types are resolved from ZONE_TYPE_DEFAULTS at read/push.
+							const updates: Partial<ZoneConfig> =
+								val === "custom"
+									? { ...resolveZoneParams(zone), type: val }
+									: {
+											type: val,
+											trigger: undefined,
+											renew: undefined,
+											timeout: undefined,
+											handoff_timeout: undefined,
+										};
 							this.dispatchEvent(
 								new CustomEvent("zone-config-change", {
-									detail: {
-										index,
-										updates: {
-											type: val,
-											trigger: d.trigger,
-											renew: d.renew,
-											timeout: d.timeout,
-											handoff_timeout: d.handoff_timeout,
-										},
-									},
+									detail: { index, updates },
 									bubbles: true,
 									composed: true,
 								}),

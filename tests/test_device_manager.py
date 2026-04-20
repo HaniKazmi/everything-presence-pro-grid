@@ -324,10 +324,10 @@ class TestDeviceManager:
         assert dev.name == "EPP Living Room"
         assert dev.host == "192.168.1.50"
 
-    async def test_discover_calls_update_zone_entities_without_config(
+    async def test_discover_skips_update_zone_entities_without_config(
         self, hass: HomeAssistant, manager: DeviceManager
     ) -> None:
-        """Discovery calls async_update_zone_entities even without stored config."""
+        """Discovery skips async_update_zone_entities when no layout is stored."""
         dev_reg = dr.async_get(hass)
         ent_reg = er.async_get(hass)
 
@@ -355,10 +355,10 @@ class TestDeviceManager:
             device_id=device.id,
         )
 
-        # No stored config for this device
+        # No stored config for this device — nothing to sync, so no call.
         with patch.object(manager, "async_update_zone_entities", new_callable=AsyncMock) as mock_update:
             await manager.async_discover()
-            mock_update.assert_awaited_once()
+            mock_update.assert_not_awaited()
 
     async def test_discover_ignores_non_firmware_version(self, hass: HomeAssistant, manager: DeviceManager) -> None:
         """Entities without firmware_version are ignored."""
@@ -1149,8 +1149,11 @@ class TestPushConfig:
                     },
                     "room_layout": {
                         "grid_bytes": [0] * 100,
-                        "zone_slots": [{"name": "Office"}] + [None] * (MAX_ZONES - 1),
-                        "room_type": "normal",
+                        "zone_slots": [
+                            {"type": "normal", "trigger": 5, "renew": 3, "timeout": 10.0, "handoff_timeout": 3.0},
+                            {"name": "Office"},
+                        ]
+                        + [None] * (MAX_ZONES - 1),
                     },
                 }
             )
@@ -1179,12 +1182,11 @@ class TestPushConfig:
             await conn.async_push_config(
                 {
                     "room_layout": {
-                        "zone_slots": [{"name": "Living"}] + [None] * (MAX_ZONES - 1),
-                        "room_type": "hallway",
-                        "room_trigger": 3,
-                        "room_renew": 2,
-                        "room_timeout": 5.0,
-                        "room_handoff_timeout": 2.0,
+                        "zone_slots": [
+                            {"type": "hallway", "trigger": 3, "renew": 2, "timeout": 5.0, "handoff_timeout": 2.0},
+                            {"name": "Living"},
+                        ]
+                        + [None] * (MAX_ZONES - 1),
                     },
                 }
             )
@@ -1192,6 +1194,310 @@ class TestPushConfig:
             mock_client.execute_service.assert_awaited_once()
             call_data = mock_client.execute_service.call_args[0][1]
             assert "zones_json" in call_data
+
+    async def test_push_config_skips_zones_on_malformed_length(self, caplog: pytest.LogCaptureFixture) -> None:
+        """Malformed zone_slots (wrong length) skips zone push, logs a warning, other pushes still run."""
+        conn = DeviceConnection("192.168.1.100")
+
+        mock_perspective = MagicMock()
+        mock_perspective.name = "epp_set_perspective"
+        mock_grid = MagicMock()
+        mock_grid.name = "epp_set_grid"
+        mock_zones = MagicMock()
+        mock_zones.name = "epp_set_zones"
+
+        with patch("custom_components.eppgrid.device_manager.APIClient") as mock_cls:
+            mock_client = mock_cls.return_value
+            mock_client.connect = AsyncMock()
+            mock_client.list_entities_services = AsyncMock(return_value=([], [mock_perspective, mock_grid, mock_zones]))
+            mock_client.execute_service = AsyncMock()
+
+            await conn.async_connect()
+            import logging
+
+            with caplog.at_level(logging.WARNING, logger="custom_components.eppgrid.device_manager"):
+                await conn.async_push_config(
+                    {
+                        "calibration": {
+                            "perspective": [1.0] * 8,
+                            "room_width": 3000.0,
+                            "room_depth": 4000.0,
+                        },
+                        "room_layout": {
+                            "grid_bytes": [0] * 100,
+                            # Length-7: malformed, missing zone 0 slot.
+                            "zone_slots": [{"name": "X", "color": "#000", "type": "normal"}] + [None] * 6,
+                        },
+                    }
+                )
+
+            # Warning logged about the malformed slots.
+            assert any("zone_slots" in rec.getMessage().lower() for rec in caplog.records)
+            # Perspective + grid pushed, but NOT zones.
+            call_services = [c[0][0] for c in mock_client.execute_service.await_args_list]
+            assert mock_perspective in call_services
+            assert mock_grid in call_services
+            assert mock_zones not in call_services
+
+    async def test_push_config_skips_zones_on_non_dict_slot_0(self, caplog: pytest.LogCaptureFixture) -> None:
+        """Malformed zone_slots (slot 0 not a dict) skips zone push; grid push still runs."""
+        conn = DeviceConnection("192.168.1.100")
+
+        mock_grid = MagicMock()
+        mock_grid.name = "epp_set_grid"
+        mock_zones = MagicMock()
+        mock_zones.name = "epp_set_zones"
+
+        with patch("custom_components.eppgrid.device_manager.APIClient") as mock_cls:
+            mock_client = mock_cls.return_value
+            mock_client.connect = AsyncMock()
+            mock_client.list_entities_services = AsyncMock(return_value=([], [mock_grid, mock_zones]))
+            mock_client.execute_service = AsyncMock()
+
+            await conn.async_connect()
+            import logging
+
+            with caplog.at_level(logging.WARNING, logger="custom_components.eppgrid.device_manager"):
+                await conn.async_push_config(
+                    {
+                        "calibration": {"room_width": 3000.0},
+                        "room_layout": {
+                            "grid_bytes": [0] * 100,
+                            "zone_slots": [None] * 8,  # slot 0 null = malformed
+                        },
+                    }
+                )
+
+            assert any("zone_slots" in rec.getMessage().lower() for rec in caplog.records)
+            call_services = [c[0][0] for c in mock_client.execute_service.await_args_list]
+            assert mock_grid in call_services
+            assert mock_zones not in call_services
+
+    async def test_push_config_expands_non_custom_zone_timing(self) -> None:
+        """Non-custom zones get timing filled in from ZONE_TYPE_DEFAULTS before push."""
+        conn = DeviceConnection("192.168.1.100")
+
+        mock_zones = MagicMock()
+        mock_zones.name = "epp_set_zones"
+
+        with patch("custom_components.eppgrid.device_manager.APIClient") as mock_cls:
+            mock_client = mock_cls.return_value
+            mock_client.connect = AsyncMock()
+            mock_client.list_entities_services = AsyncMock(return_value=([], [mock_zones]))
+            mock_client.execute_service = AsyncMock()
+
+            await conn.async_connect()
+            # Slot 0 = rest, slot 1 = thoroughfare — both non-custom, stored
+            # without timing. Expansion should fill each with its type defaults.
+            await conn.async_push_config(
+                {
+                    "room_layout": {
+                        "zone_slots": [
+                            {"type": "rest"},
+                            {"name": "Hall", "color": "#abc", "type": "thoroughfare"},
+                        ]
+                        + [None] * (MAX_ZONES - 1),
+                    },
+                }
+            )
+
+            mock_client.execute_service.assert_awaited_once()
+            call_data = mock_client.execute_service.call_args[0][1]
+            pushed = json.loads(call_data["zones_json"])
+            slots = pushed["zone_slots"]
+            # Zone 0 (rest) defaults: trigger=7, renew=1, timeout=30, handoff=10.
+            assert slots[0] == {
+                "type": "rest",
+                "trigger": 7,
+                "renew": 1,
+                "timeout": 30.0,
+                "handoff_timeout": 10.0,
+            }
+            # Zone 1 (thoroughfare): trigger=3, renew=2, timeout=3, handoff=1.
+            # name/color must be preserved.
+            assert slots[1] == {
+                "name": "Hall",
+                "color": "#abc",
+                "type": "thoroughfare",
+                "trigger": 3,
+                "renew": 2,
+                "timeout": 3.0,
+                "handoff_timeout": 1.0,
+            }
+
+    async def test_push_config_passes_through_custom_timing(self) -> None:
+        """Custom zones honour user-supplied timing — no expansion, no mutation."""
+        conn = DeviceConnection("192.168.1.100")
+
+        mock_zones = MagicMock()
+        mock_zones.name = "epp_set_zones"
+
+        with patch("custom_components.eppgrid.device_manager.APIClient") as mock_cls:
+            mock_client = mock_cls.return_value
+            mock_client.connect = AsyncMock()
+            mock_client.list_entities_services = AsyncMock(return_value=([], [mock_zones]))
+            mock_client.execute_service = AsyncMock()
+
+            await conn.async_connect()
+            await conn.async_push_config(
+                {
+                    "room_layout": {
+                        "zone_slots": [
+                            {
+                                "type": "custom",
+                                "trigger": 6,
+                                "renew": 4,
+                                "timeout": 20.0,
+                                "handoff_timeout": 5.0,
+                            },
+                            {
+                                "name": "Lab",
+                                "color": "#def",
+                                "type": "custom",
+                                "trigger": 8,
+                                "renew": 4,
+                                "timeout": 45.0,
+                                "handoff_timeout": 12.0,
+                            },
+                        ]
+                        + [None] * (MAX_ZONES - 1),
+                    },
+                }
+            )
+
+            call_data = mock_client.execute_service.call_args[0][1]
+            pushed = json.loads(call_data["zones_json"])
+            slots = pushed["zone_slots"]
+            assert slots[0] == {
+                "type": "custom",
+                "trigger": 6,
+                "renew": 4,
+                "timeout": 20.0,
+                "handoff_timeout": 5.0,
+            }
+            assert slots[1] == {
+                "name": "Lab",
+                "color": "#def",
+                "type": "custom",
+                "trigger": 8,
+                "renew": 4,
+                "timeout": 45.0,
+                "handoff_timeout": 12.0,
+            }
+
+    async def test_push_config_expansion_preserves_name_and_color(self) -> None:
+        """Expanded non-custom named zone keeps its name and color fields."""
+        conn = DeviceConnection("192.168.1.100")
+
+        mock_zones = MagicMock()
+        mock_zones.name = "epp_set_zones"
+
+        with patch("custom_components.eppgrid.device_manager.APIClient") as mock_cls:
+            mock_client = mock_cls.return_value
+            mock_client.connect = AsyncMock()
+            mock_client.list_entities_services = AsyncMock(return_value=([], [mock_zones]))
+            mock_client.execute_service = AsyncMock()
+
+            await conn.async_connect()
+            await conn.async_push_config(
+                {
+                    "room_layout": {
+                        "zone_slots": [
+                            {"type": "normal"},
+                            {"name": "Office", "color": "#CFDB70", "type": "normal"},
+                        ]
+                        + [None] * (MAX_ZONES - 1),
+                    },
+                }
+            )
+
+            call_data = mock_client.execute_service.call_args[0][1]
+            pushed = json.loads(call_data["zones_json"])
+            slot = pushed["zone_slots"][1]
+            assert slot["name"] == "Office"
+            assert slot["color"] == "#CFDB70"
+            assert slot["type"] == "normal"
+            assert slot["trigger"] == 5
+            assert slot["renew"] == 3
+            assert slot["timeout"] == 10.0
+            assert slot["handoff_timeout"] == 3.0
+
+    async def test_push_config_expansion_does_not_mutate_source(self) -> None:
+        """Expansion copies per slot — the original zone_slots dict is untouched."""
+        conn = DeviceConnection("192.168.1.100")
+
+        mock_zones = MagicMock()
+        mock_zones.name = "epp_set_zones"
+
+        source_slot = {"type": "normal"}
+        named_slot = {"name": "Office", "color": "#CFDB70", "type": "normal"}
+
+        with patch("custom_components.eppgrid.device_manager.APIClient") as mock_cls:
+            mock_client = mock_cls.return_value
+            mock_client.connect = AsyncMock()
+            mock_client.list_entities_services = AsyncMock(return_value=([], [mock_zones]))
+            mock_client.execute_service = AsyncMock()
+
+            await conn.async_connect()
+            await conn.async_push_config(
+                {
+                    "room_layout": {
+                        "zone_slots": [source_slot, named_slot] + [None] * (MAX_ZONES - 1),
+                    },
+                }
+            )
+
+            # Originals must be untouched (no timing fields leaked in).
+            assert source_slot == {"type": "normal"}
+            assert named_slot == {"name": "Office", "color": "#CFDB70", "type": "normal"}
+
+    async def test_push_config_overwrites_stale_timing_on_non_custom(self) -> None:
+        """Non-custom zones: stale stored timing is overwritten by type defaults.
+
+        ZONE_TYPE_DEFAULTS is the single source of truth for non-custom types,
+        so bumping the defaults in code rolls through to every device. If the
+        store somehow holds leftover timing values for a non-custom zone (e.g.
+        from before the serializer stripped them), they must not survive the
+        expansion — the type defaults are authoritative.
+        """
+        conn = DeviceConnection("192.168.1.100")
+
+        mock_zones = MagicMock()
+        mock_zones.name = "epp_set_zones"
+
+        with patch("custom_components.eppgrid.device_manager.APIClient") as mock_cls:
+            mock_client = mock_cls.return_value
+            mock_client.connect = AsyncMock()
+            mock_client.list_entities_services = AsyncMock(return_value=([], [mock_zones]))
+            mock_client.execute_service = AsyncMock()
+
+            await conn.async_connect()
+            # Stale timing on a "rest" zone — defaults say 7/1/30/10, but the
+            # stored slot has 99/99/99/99. After expansion, defaults must win.
+            await conn.async_push_config(
+                {
+                    "room_layout": {
+                        "zone_slots": [
+                            {
+                                "type": "rest",
+                                "trigger": 99,
+                                "renew": 99,
+                                "timeout": 99.0,
+                                "handoff_timeout": 99.0,
+                            },
+                        ]
+                        + [None] * MAX_ZONES,
+                    },
+                }
+            )
+
+            call_data = mock_client.execute_service.call_args[0][1]
+            pushed = json.loads(call_data["zones_json"])
+            slot = pushed["zone_slots"][0]
+            assert slot["trigger"] == 7
+            assert slot["renew"] == 1
+            assert slot["timeout"] == 30.0
+            assert slot["handoff_timeout"] == 10.0
 
     async def test_push_config_settings(self) -> None:
         """push_config reads unified settings key and pushes to 4 firmware actions."""
@@ -2441,7 +2747,10 @@ class TestZoneEntities:
         )
         manager._store.devices["AA:BB:CC:DD:EE:FF"] = {"settings": {"zone_presence": True}}
 
-        zone_slots = [{"name": "Office"}] + [None] * (MAX_ZONES - 1)
+        zone_slots = [
+            {"type": "normal", "trigger": 5, "renew": 3, "timeout": 10.0, "handoff_timeout": 3.0},
+            {"name": "Office"},
+        ] + [None] * (MAX_ZONES - 1)
         await manager.async_update_zone_entities("AA:BB:CC:DD:EE:FF", zone_slots)
 
         # Zone 0 should be enabled with name "Zone Rest of Room"
@@ -2493,7 +2802,9 @@ class TestZoneEntities:
         manager._store.devices["AA:BB:CC:DD:EE:FF"] = {"settings": {"zone_presence": True}}
 
         # No named zones
-        zone_slots = [None] * MAX_ZONES
+        zone_slots = [
+            {"type": "normal", "trigger": 5, "renew": 3, "timeout": 10.0, "handoff_timeout": 3.0},
+        ] + [None] * MAX_ZONES
         await manager.async_update_zone_entities("AA:BB:CC:DD:EE:FF", zone_slots)
 
         # Zone 0 always enabled
@@ -2535,7 +2846,10 @@ class TestZoneEntities:
         )
         manager._store.devices["AA:BB:CC:DD:EE:FF"] = {"settings": {"zone_presence": True}}
 
-        zone_slots = [{"name": "Office"}] + [None] * (MAX_ZONES - 1)
+        zone_slots = [
+            {"type": "normal", "trigger": 5, "renew": 3, "timeout": 10.0, "handoff_timeout": 3.0},
+            {"name": "Office"},
+        ] + [None] * (MAX_ZONES - 1)
         await manager.async_update_zone_entities("AA:BB:CC:DD:EE:FF", zone_slots)
 
         # Zone 1 should remain user-disabled
@@ -2544,8 +2858,60 @@ class TestZoneEntities:
 
     async def test_update_zone_entities_unknown_device(self, hass: HomeAssistant, manager: DeviceManager) -> None:
         """Unknown device is a no-op."""
-        await manager.async_update_zone_entities("00:00:00:00:00:00", [None] * MAX_ZONES)
+        await manager.async_update_zone_entities("00:00:00:00:00:00", [None] * (MAX_ZONES + 1))
         # Should not raise
+
+    async def test_update_zone_entities_indexes_named_zones_by_slot_position(
+        self, hass: HomeAssistant, manager: DeviceManager
+    ) -> None:
+        """Zone N's name comes from zone_slots[N] (length-8 indexing), not [N-1]."""
+        dev_reg = dr.async_get(hass)
+        ent_reg = er.async_get(hass)
+
+        esphome_entry = MockConfigEntry(domain="esphome", data={"host": "192.168.1.50"}, title="EPP")
+        esphome_entry.add_to_hass(hass)
+
+        device = dev_reg.async_get_or_create(
+            config_entry_id=esphome_entry.entry_id,
+            connections={("mac", "aa:bb:cc:dd:ee:ff")},
+            name="EPP",
+        )
+
+        zone1_entry = ent_reg.async_get_or_create(
+            "binary_sensor",
+            "esphome",
+            unique_id="AA:BB:CC:DD:EE:FF-binary_sensor-zone_1_presence",
+            config_entry=esphome_entry,
+            device_id=device.id,
+        )
+        zone2_entry = ent_reg.async_get_or_create(
+            "binary_sensor",
+            "esphome",
+            unique_id="AA:BB:CC:DD:EE:FF-binary_sensor-zone_2_presence",
+            config_entry=esphome_entry,
+            device_id=device.id,
+        )
+
+        manager.devices["AA:BB:CC:DD:EE:FF"] = ManagedDevice(
+            mac="AA:BB:CC:DD:EE:FF", name="EPP", host="192.168.1.50", device_id=device.id
+        )
+        manager._store.devices["AA:BB:CC:DD:EE:FF"] = {"settings": {"zone_presence": True}}
+
+        # Length-8 slots: index 0 = zone 0, index 1 = "Kitchen", index 2 = "Bedroom".
+        zone_slots = [
+            {"type": "normal", "trigger": 5, "renew": 3, "timeout": 10.0, "handoff_timeout": 3.0},
+            {"name": "Kitchen"},
+            {"name": "Bedroom"},
+            None,
+            None,
+            None,
+            None,
+            None,
+        ]
+        await manager.async_update_zone_entities("AA:BB:CC:DD:EE:FF", zone_slots)
+
+        assert ent_reg.async_get(zone1_entry.entity_id).name == "Zone Kitchen"
+        assert ent_reg.async_get(zone2_entry.entity_id).name == "Zone Bedroom"
 
     async def test_update_zone_entities_target_count_only_for_existing_zones(
         self, hass: HomeAssistant, manager: DeviceManager
@@ -2592,7 +2958,10 @@ class TestZoneEntities:
         manager._store.devices["AA:BB:CC:DD:EE:FF"] = {"settings": {"zone_target_count": True}}
 
         # Only zone 0 (room) + zone 1 (named "Office") exist
-        zone_slots = [{"name": "Office"}] + [None] * (MAX_ZONES - 1)
+        zone_slots = [
+            {"type": "normal", "trigger": 5, "renew": 3, "timeout": 10.0, "handoff_timeout": 3.0},
+            {"name": "Office"},
+        ] + [None] * (MAX_ZONES - 1)
         await manager.async_update_zone_entities("AA:BB:CC:DD:EE:FF", zone_slots)
 
         # Zone 0 target count should be enabled with room name
@@ -2605,6 +2974,81 @@ class TestZoneEntities:
         assert ztc1_entry.name == "Zone Office Target Count"
         # Zone 2 target count should be disabled (unused slot)
         assert ent_reg.async_get(ztc2.entity_id).disabled_by == er.RegistryEntryDisabler.INTEGRATION
+
+    async def test_update_zone_entities_tolerates_malformed_slot(
+        self, hass: HomeAssistant, manager: DeviceManager
+    ) -> None:
+        """Malformed zone slots (missing 'name', non-dict) don't crash entity updates.
+
+        Even if corrupt data ever reaches storage, async_update_zone_entities
+        must use `.get('name')` with a fallback rather than raising KeyError.
+        """
+        dev_reg = dr.async_get(hass)
+        ent_reg = er.async_get(hass)
+
+        esphome_entry = MockConfigEntry(domain="esphome", data={"host": "192.168.1.50"}, title="EPP")
+        esphome_entry.add_to_hass(hass)
+
+        device = dev_reg.async_get_or_create(
+            config_entry_id=esphome_entry.entry_id,
+            connections={("mac", "aa:bb:cc:dd:ee:ff")},
+            name="EPP",
+        )
+
+        # Create zone 1 entities for both presence + target_count
+        zone1_pres = ent_reg.async_get_or_create(
+            "binary_sensor",
+            "esphome",
+            unique_id="AA:BB:CC:DD:EE:FF-binary_sensor-zone_1_presence",
+            config_entry=esphome_entry,
+            device_id=device.id,
+        )
+        zone1_tc = ent_reg.async_get_or_create(
+            "sensor",
+            "esphome",
+            unique_id="AA:BB:CC:DD:EE:FF-sensor-zone_1_target_count",
+            config_entry=esphome_entry,
+            device_id=device.id,
+        )
+        zone2_pres = ent_reg.async_get_or_create(
+            "binary_sensor",
+            "esphome",
+            unique_id="AA:BB:CC:DD:EE:FF-binary_sensor-zone_2_presence",
+            config_entry=esphome_entry,
+            device_id=device.id,
+        )
+
+        manager.devices["AA:BB:CC:DD:EE:FF"] = ManagedDevice(
+            mac="AA:BB:CC:DD:EE:FF", name="EPP", host="192.168.1.50", device_id=device.id
+        )
+        manager._store.devices["AA:BB:CC:DD:EE:FF"] = {"settings": {"zone_presence": True, "zone_target_count": True}}
+
+        # Slot 1 is a dict without 'name'; slot 2 is a non-dict (malformed).
+        zone_slots = [
+            {"type": "normal"},
+            {"color": "#ff0000", "type": "normal"},  # missing 'name'
+            "not a dict",  # non-dict malformed slot
+            None,
+            None,
+            None,
+            None,
+            None,
+        ]
+
+        # Must not raise.
+        await manager.async_update_zone_entities("AA:BB:CC:DD:EE:FF", zone_slots)
+
+        # Slot 1 (dict without name) should still be enabled, with a default fallback name.
+        z1p = ent_reg.async_get(zone1_pres.entity_id)
+        assert z1p.disabled_by is None
+        assert z1p.name  # not empty
+        z1tc = ent_reg.async_get(zone1_tc.entity_id)
+        assert z1tc.disabled_by is None
+        assert z1tc.name
+
+        # Slot 2 ("not a dict") is treated as non-existent → disabled by integration.
+        z2p = ent_reg.async_get(zone2_pres.entity_id)
+        assert z2p.disabled_by == er.RegistryEntryDisabler.INTEGRATION
 
     async def test_update_zone_entities_target_count_disabled_when_setting_off(
         self, hass: HomeAssistant, manager: DeviceManager
@@ -2635,11 +3079,160 @@ class TestZoneEntities:
         )
         manager._store.devices["AA:BB:CC:DD:EE:FF"] = {"settings": {"zone_target_count": False}}
 
-        zone_slots = [{"name": "Office"}] + [None] * (MAX_ZONES - 1)
+        zone_slots = [
+            {"type": "normal", "trigger": 5, "renew": 3, "timeout": 10.0, "handoff_timeout": 3.0},
+            {"name": "Office"},
+        ] + [None] * (MAX_ZONES - 1)
         await manager.async_update_zone_entities("AA:BB:CC:DD:EE:FF", zone_slots)
 
         # Even zone 0 should be disabled when zone_target_count setting is off
         assert ent_reg.async_get(ztc0.entity_id).disabled_by == er.RegistryEntryDisabler.INTEGRATION
+
+    async def test_update_zone_entities_fail_closed_on_legacy_length_7(
+        self, hass: HomeAssistant, manager: DeviceManager
+    ) -> None:
+        """Legacy length-7 layout in storage disables all zone entities (fail-closed).
+
+        Before the length-8 migration, storage held a length-7 zone_slots list
+        where index 0 was the FIRST named zone (not zone 0 / room). If discovery
+        replays that legacy shape through async_update_zone_entities, we MUST
+        NOT silently shift indices — instead treat every zone as non-existent
+        so the user sees entities disabled until they re-save their layout via
+        the panel with the new length-8 shape.
+        """
+        dev_reg = dr.async_get(hass)
+        ent_reg = er.async_get(hass)
+
+        esphome_entry = MockConfigEntry(domain="esphome", data={"host": "192.168.1.50"}, title="EPP")
+        esphome_entry.add_to_hass(hass)
+
+        device = dev_reg.async_get_or_create(
+            config_entry_id=esphome_entry.entry_id,
+            connections={("mac", "aa:bb:cc:dd:ee:ff")},
+            name="EPP",
+        )
+
+        zone0_entry = ent_reg.async_get_or_create(
+            "binary_sensor",
+            "esphome",
+            unique_id="AA:BB:CC:DD:EE:FF-binary_sensor-zone_0_presence",
+            config_entry=esphome_entry,
+            device_id=device.id,
+        )
+        zone1_entry = ent_reg.async_get_or_create(
+            "binary_sensor",
+            "esphome",
+            unique_id="AA:BB:CC:DD:EE:FF-binary_sensor-zone_1_presence",
+            config_entry=esphome_entry,
+            device_id=device.id,
+        )
+        zone1_tc = ent_reg.async_get_or_create(
+            "sensor",
+            "esphome",
+            unique_id="AA:BB:CC:DD:EE:FF-sensor-zone_1_target_count",
+            config_entry=esphome_entry,
+            device_id=device.id,
+        )
+
+        manager.devices["AA:BB:CC:DD:EE:FF"] = ManagedDevice(
+            mac="AA:BB:CC:DD:EE:FF", name="EPP", host="192.168.1.50", device_id=device.id
+        )
+        manager._store.devices["AA:BB:CC:DD:EE:FF"] = {"settings": {"zone_presence": True, "zone_target_count": True}}
+
+        # Legacy length-7 layout: index 0 was once "first named zone".
+        zone_slots = [{"name": "Office"}] + [None] * 6
+        await manager.async_update_zone_entities("AA:BB:CC:DD:EE:FF", zone_slots)
+
+        # Zone 0 MUST be disabled — we cannot trust any index semantics.
+        assert ent_reg.async_get(zone0_entry.entity_id).disabled_by == er.RegistryEntryDisabler.INTEGRATION
+        # Zone 1 entities MUST be disabled — do not silently adopt the old "Office" name.
+        assert ent_reg.async_get(zone1_entry.entity_id).disabled_by == er.RegistryEntryDisabler.INTEGRATION
+        assert ent_reg.async_get(zone1_tc.entity_id).disabled_by == er.RegistryEntryDisabler.INTEGRATION
+
+    async def test_update_zone_entities_fail_closed_when_slot0_is_none(
+        self, hass: HomeAssistant, manager: DeviceManager
+    ) -> None:
+        """Length-8 zone_slots with slot 0 = None disables all zone entities."""
+        dev_reg = dr.async_get(hass)
+        ent_reg = er.async_get(hass)
+
+        esphome_entry = MockConfigEntry(domain="esphome", data={"host": "192.168.1.50"}, title="EPP")
+        esphome_entry.add_to_hass(hass)
+
+        device = dev_reg.async_get_or_create(
+            config_entry_id=esphome_entry.entry_id,
+            connections={("mac", "aa:bb:cc:dd:ee:ff")},
+            name="EPP",
+        )
+
+        zone0_entry = ent_reg.async_get_or_create(
+            "binary_sensor",
+            "esphome",
+            unique_id="AA:BB:CC:DD:EE:FF-binary_sensor-zone_0_presence",
+            config_entry=esphome_entry,
+            device_id=device.id,
+        )
+        zone1_entry = ent_reg.async_get_or_create(
+            "binary_sensor",
+            "esphome",
+            unique_id="AA:BB:CC:DD:EE:FF-binary_sensor-zone_1_presence",
+            config_entry=esphome_entry,
+            device_id=device.id,
+        )
+
+        manager.devices["AA:BB:CC:DD:EE:FF"] = ManagedDevice(
+            mac="AA:BB:CC:DD:EE:FF", name="EPP", host="192.168.1.50", device_id=device.id
+        )
+        manager._store.devices["AA:BB:CC:DD:EE:FF"] = {"settings": {"zone_presence": True}}
+
+        zone_slots = [None] * (MAX_ZONES + 1)  # slot 0 is None — malformed
+        await manager.async_update_zone_entities("AA:BB:CC:DD:EE:FF", zone_slots)
+
+        assert ent_reg.async_get(zone0_entry.entity_id).disabled_by == er.RegistryEntryDisabler.INTEGRATION
+        assert ent_reg.async_get(zone1_entry.entity_id).disabled_by == er.RegistryEntryDisabler.INTEGRATION
+
+    async def test_update_zone_entities_fail_closed_when_slot0_not_dict(
+        self, hass: HomeAssistant, manager: DeviceManager
+    ) -> None:
+        """Length-8 zone_slots with slot 0 = non-dict (e.g. list) disables all zone entities."""
+        dev_reg = dr.async_get(hass)
+        ent_reg = er.async_get(hass)
+
+        esphome_entry = MockConfigEntry(domain="esphome", data={"host": "192.168.1.50"}, title="EPP")
+        esphome_entry.add_to_hass(hass)
+
+        device = dev_reg.async_get_or_create(
+            config_entry_id=esphome_entry.entry_id,
+            connections={("mac", "aa:bb:cc:dd:ee:ff")},
+            name="EPP",
+        )
+
+        zone0_entry = ent_reg.async_get_or_create(
+            "binary_sensor",
+            "esphome",
+            unique_id="AA:BB:CC:DD:EE:FF-binary_sensor-zone_0_presence",
+            config_entry=esphome_entry,
+            device_id=device.id,
+        )
+        zone1_entry = ent_reg.async_get_or_create(
+            "binary_sensor",
+            "esphome",
+            unique_id="AA:BB:CC:DD:EE:FF-binary_sensor-zone_1_presence",
+            config_entry=esphome_entry,
+            device_id=device.id,
+        )
+
+        manager.devices["AA:BB:CC:DD:EE:FF"] = ManagedDevice(
+            mac="AA:BB:CC:DD:EE:FF", name="EPP", host="192.168.1.50", device_id=device.id
+        )
+        manager._store.devices["AA:BB:CC:DD:EE:FF"] = {"settings": {"zone_presence": True}}
+
+        # Slot 0 is a list — not a dict. Malformed.
+        zone_slots: list = [["not", "a", "dict"]] + [None] * MAX_ZONES
+        await manager.async_update_zone_entities("AA:BB:CC:DD:EE:FF", zone_slots)
+
+        assert ent_reg.async_get(zone0_entry.entity_id).disabled_by == er.RegistryEntryDisabler.INTEGRATION
+        assert ent_reg.async_get(zone1_entry.entity_id).disabled_by == er.RegistryEntryDisabler.INTEGRATION
 
 
 # ---------------------------------------------------------------------------
@@ -3109,3 +3702,51 @@ def test_resolve_zone_name_strips_redundant_zone_prefix():
 
     # Names not starting with the prefix still get it
     assert _resolve_zone_name("en", index=1, zone_name="Kitchen", target_count=False) == "Zone Kitchen"
+
+
+def test_zone_type_defaults_match_frontend():
+    """Python ZONE_TYPE_DEFAULTS must match frontend/src/lib/zone-defaults.ts.
+
+    The two tables are the single source of truth for non-custom zone timing
+    — if they drift, upgrade rollouts silently diverge between the frontend
+    display (resolveZone0Params / getZoneThresholds) and what the backend
+    actually pushes to firmware. Keep them in lockstep.
+    """
+    import re
+    from pathlib import Path
+
+    from custom_components.eppgrid.device_manager import ZONE_TYPE_DEFAULTS
+
+    ts_path = Path(__file__).parent.parent / "frontend/src/lib/zone-defaults.ts"
+    ts_source = ts_path.read_text()
+    assert "ZONE_TYPE_DEFAULTS" in ts_source, "zone-defaults.ts missing ZONE_TYPE_DEFAULTS"
+
+    # Entries look like:
+    #   normal: { trigger: 5, renew: 3, timeout: 10, handoff_timeout: 3 },
+    # Match those directly anywhere in the file — only ZONE_TYPE_DEFAULTS
+    # uses exactly this 4-field shape with these field names in order.
+    entry_re = re.compile(
+        r"(\w+):\s*\{\s*"
+        r"trigger:\s*(\d+(?:\.\d+)?),\s*"
+        r"renew:\s*(\d+(?:\.\d+)?),\s*"
+        r"timeout:\s*(\d+(?:\.\d+)?),\s*"
+        r"handoff_timeout:\s*(\d+(?:\.\d+)?)\s*\}"
+    )
+    ts_defaults: dict[str, dict[str, float]] = {}
+    for name, t, r, to, h in entry_re.findall(ts_source):
+        ts_defaults[name] = {
+            "trigger": float(t),
+            "renew": float(r),
+            "timeout": float(to),
+            "handoff_timeout": float(h),
+        }
+
+    assert ts_defaults, "Failed to parse any entries from ZONE_TYPE_DEFAULTS"
+
+    # Every type in the Python table must exist in TS with identical values.
+    # (TS may have extra types like "custom"; we only assert shared keys match.)
+    for type_name, fields in ZONE_TYPE_DEFAULTS.items():
+        assert type_name in ts_defaults, f"type {type_name!r} missing from TS ZONE_TYPE_DEFAULTS"
+        for field_name, py_value in fields.items():
+            ts_value = ts_defaults[type_name][field_name]
+            assert float(ts_value) == float(py_value), f"{type_name}.{field_name}: Python={py_value} vs TS={ts_value}"

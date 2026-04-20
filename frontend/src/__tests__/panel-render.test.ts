@@ -77,12 +77,15 @@ describe("panel renders without throwing", () => {
 		expect(a._grid.length).toBe(GRID_CELL_COUNT);
 	});
 
-	it("has default zone configs array of length 7", () => {
+	it("has default zone-slots tuple of length 8 with Zone0Config at slot 0", () => {
 		const el = document.createElement("eppgrid-panel") as EPPGridPanel;
 		const a = el as any;
-		expect(a._zoneConfigs).toHaveLength(7);
-		for (const cfg of a._zoneConfigs) {
-			expect(cfg).toBeNull();
+		// Length-8 tuple: slot 0 is always Zone0Config (room boundary);
+		// slots 1..7 are named-zone configs or null.
+		expect(a._zoneConfigs).toHaveLength(8);
+		expect(a._zoneConfigs[0]).toMatchObject({ type: "normal" });
+		for (let i = 1; i < 8; i++) {
+			expect(a._zoneConfigs[i]).toBeNull();
 		}
 	});
 

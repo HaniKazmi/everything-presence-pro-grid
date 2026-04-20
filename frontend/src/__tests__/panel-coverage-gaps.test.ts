@@ -26,7 +26,16 @@ function createPanel(): EPPGridPanel {
 	};
 	const a = el as any;
 	a._grid = initGridFromRoom(3000, 4000);
-	a._zoneConfigs = new Array(7).fill(null);
+	a._zoneConfigs = [
+		{ type: "normal", trigger: 5, renew: 3, timeout: 10, handoff_timeout: 3 },
+		null,
+		null,
+		null,
+		null,
+		null,
+		null,
+		null,
+	];
 	a._activeZone = 0;
 	a._dirty = false;
 	a._loading = false;
@@ -71,11 +80,7 @@ function createPanel(): EPPGridPanel {
 	a._staticAutoDistance = true;
 	a._staticMinDistance = 0.3;
 	a._staticMaxDistance = 16;
-	a._roomType = "normal";
-	a._roomTrigger = ZONE_TYPE_DEFAULTS.normal.trigger;
-	a._roomRenew = ZONE_TYPE_DEFAULTS.normal.renew;
-	a._roomTimeout = ZONE_TYPE_DEFAULTS.normal.timeout;
-	a._roomHandoffTimeout = ZONE_TYPE_DEFAULTS.normal.handoff_timeout;
+	// Zone 0 defaults live on _zoneConfigs[0]; set up above.
 	a._showHitCounts = false;
 	a._zoneEngineState = createZoneEngineState();
 	a._showCustomIconPicker = false;
@@ -216,7 +221,8 @@ describe("_applyPaintToCell edge cases", () => {
 describe("_removeZone grid clearing branch", () => {
 	it("does not replace grid when clearZoneFromGrid returns null (no cells)", () => {
 		const a = createPanel() as any;
-		a._zoneConfigs[0] = { name: "Z1", color: "#ff0000", type: "normal" };
+		// Named zone 1 lives at slot 1 (slot 0 is Zone0Config).
+		a._zoneConfigs[1] = { name: "Z1", color: "#ff0000", type: "normal" };
 		// Grid has no cells with zone 1
 		const _gridRef = a._grid;
 
@@ -225,7 +231,7 @@ describe("_removeZone grid clearing branch", () => {
 		// Grid ref should remain the same object since no cells had zone 1
 		// (clearZoneFromGrid returns null when nothing changed)
 		// Just verify zone was removed
-		expect(a._zoneConfigs[0]).toBeNull();
+		expect(a._zoneConfigs[1]).toBeNull();
 	});
 });
 
@@ -235,20 +241,21 @@ describe("_removeZone grid clearing branch", () => {
 describe("_addZone color fallback", () => {
 	it("uses modulo fallback when all colors are in use", () => {
 		const a = createPanel() as any;
-		// Fill all colors in first 6 slots
-		for (let i = 0; i < 6; i++) {
+		// Fill named-zone slots 1-6 with colors 0-5; slot 7 is the first
+		// empty named slot.
+		for (let i = 1; i <= 6; i++) {
 			a._zoneConfigs[i] = {
-				name: `Zone ${i + 1}`,
-				color: ZONE_COLORS[i % ZONE_COLORS.length],
+				name: `Zone ${i}`,
+				color: ZONE_COLORS[(i - 1) % ZONE_COLORS.length],
 				type: "normal",
 			};
 		}
 
-		a._addZone(); // adds to slot 6 (index 6)
+		a._addZone(); // fills slot 7
 
-		expect(a._zoneConfigs[6]).not.toBeNull();
+		expect(a._zoneConfigs[7]).not.toBeNull();
 		// Should pick a color (may or may not repeat)
-		expect(a._zoneConfigs[6].color).toBeDefined();
+		expect(a._zoneConfigs[7].color).toBeDefined();
 	});
 });
 
@@ -779,13 +786,28 @@ describe("_renderFurnitureOverlay DOM events", () => {
 // Template load dialog: load and delete button clicks
 // =========================================================
 describe("_renderTemplateLoadDialog DOM events", () => {
-	it("load button calls _loadTemplate", () => {
+	it("load button calls _loadTemplate", async () => {
 		const a = createPanel() as any;
 		a._gridCtrl.templates = [
 			{
 				name: "T1",
 				grid: new Array(GRID_CELL_COUNT).fill(0),
-				zones: [],
+				zones: [
+					{
+						type: "normal",
+						trigger: 5,
+						renew: 3,
+						timeout: 10,
+						handoff_timeout: 3,
+					},
+					null,
+					null,
+					null,
+					null,
+					null,
+					null,
+					null,
+				],
 				roomWidth: 5000,
 				roomDepth: 6000,
 			},
@@ -796,7 +818,10 @@ describe("_renderTemplateLoadDialog DOM events", () => {
 		const card = c.querySelector(".template-card") as HTMLElement;
 		expect(card).not.toBeNull();
 		card.click();
-		expect(a._roomWidth).toBe(5000);
+		// Async loadTemplate -> applyLayout chain; wait for it.
+		await vi.waitFor(() => {
+			expect(a._roomWidth).toBe(5000);
+		});
 		document.body.removeChild(c);
 	});
 
@@ -884,10 +909,11 @@ describe("epp-furniture-sidebar icon picker event", () => {
 });
 
 // =========================================================
-// _loadTemplate with zones shorter than 7
+// Old-format templates (missing or length-7 zones) — per the no-BWC
+// policy, these throw rather than being silently accepted.
 // =========================================================
-describe("_loadTemplate backwards compat", () => {
-	it("handles missing zones array", () => {
+describe("_loadTemplate rejects old-format templates", () => {
+	it("logs an error when zones field is missing", async () => {
 		const a = createPanel() as any;
 		a._gridCtrl.templates = [
 			{
@@ -897,10 +923,11 @@ describe("_loadTemplate backwards compat", () => {
 				roomDepth: 4000,
 			},
 		];
-		a._loadTemplate("NoZones");
-
-		expect(a._zoneConfigs).toHaveLength(7);
-		expect(a._zoneConfigs.every((z: any) => z === null)).toBe(true);
+		const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+		await a._loadTemplate("NoZones");
+		// The wrapper catches the error and logs it.
+		expect(errSpy).toHaveBeenCalled();
+		errSpy.mockRestore();
 	});
 });
 
@@ -1044,11 +1071,13 @@ describe("stopPropagation handlers in zone sidebar", () => {
 			null,
 		];
 		el.activeZone = 1;
-		el.roomType = "normal";
-		el.roomTrigger = ZONE_TYPE_DEFAULTS.normal.trigger;
-		el.roomRenew = ZONE_TYPE_DEFAULTS.normal.renew;
-		el.roomTimeout = ZONE_TYPE_DEFAULTS.normal.timeout;
-		el.roomHandoffTimeout = ZONE_TYPE_DEFAULTS.normal.handoff_timeout;
+		el.zone0 = {
+			type: "normal",
+			trigger: ZONE_TYPE_DEFAULTS.normal.trigger,
+			renew: ZONE_TYPE_DEFAULTS.normal.renew,
+			timeout: ZONE_TYPE_DEFAULTS.normal.timeout,
+			handoff_timeout: ZONE_TYPE_DEFAULTS.normal.handoff_timeout,
+		};
 		el.localZoneState = new Map();
 		el.localize = (k: string) => k;
 		const tpl = el._renderZoneSidebar();

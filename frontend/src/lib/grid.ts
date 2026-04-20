@@ -9,7 +9,8 @@ export const CELL_OVERLAY_ENTRY = 0x10; // bit 4
 export const CELL_INTERFERENCE_MASK = 0xe0; // bits 5-7
 export const CELL_INTERFERENCE_SHIFT = 5;
 export const CELL_INTERFERENCE_SUPPRESS = 2;
-export const MAX_ZONES = 7;
+export const MAX_ZONES = 7; // named zones 1-7
+export const NUM_ZONE_SLOTS = 8; // zone 0 + named zones 1-7
 
 export const GRID_COLS = 20;
 export const GRID_ROWS = 20;

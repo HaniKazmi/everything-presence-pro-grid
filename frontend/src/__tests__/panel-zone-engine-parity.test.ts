@@ -25,7 +25,7 @@ import {
 	GRID_COLS,
 } from "../lib/grid.js";
 
-const MAX_ZONES = 7;
+const _MAX_ZONES = 7;
 
 /** Room: 1200×1200mm, centered in 20-col grid → cols 8-11, rows 0-3. */
 function makeParityGrid(): Uint8Array {
@@ -72,24 +72,28 @@ function createParityPanel(): EPPGridPanel {
 	};
 	const a = el as any;
 	a._grid = makeParityGrid();
-	a._zoneConfigs = new Array(MAX_ZONES).fill(null);
-	// Zone 1: custom type (trigger=3, renew=2, timeout=5, handoff=1)
-	a._zoneConfigs[0] = {
-		name: "Zone 1",
-		color: "#ff0000",
-		type: "custom",
-		trigger: 3,
-		renew: 2,
-		timeout: 5,
-		handoff_timeout: 1,
-	};
+	// Length-8 zone slots tuple; slot 0 = Zone0Config, slot 1 = named zone 1
+	// configured as custom (trigger=3, renew=2, timeout=5, handoff=1).
+	a._zoneConfigs = [
+		{ type: "normal", trigger: 5, renew: 3, timeout: 10, handoff_timeout: 3 },
+		{
+			name: "Zone 1",
+			color: "#ff0000",
+			type: "custom",
+			trigger: 3,
+			renew: 2,
+			timeout: 5,
+			handoff_timeout: 1,
+		},
+		null,
+		null,
+		null,
+		null,
+		null,
+		null,
+	];
 	a._roomWidth = 1200;
 	a._roomDepth = 1200;
-	a._roomType = "normal";
-	a._roomTrigger = 5;
-	a._roomRenew = 3;
-	a._roomTimeout = 10;
-	a._roomHandoffTimeout = 3;
 	a._targets = [];
 	a._loading = false;
 	return el;

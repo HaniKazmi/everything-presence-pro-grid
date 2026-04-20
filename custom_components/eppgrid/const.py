@@ -10,11 +10,12 @@ GRID_CELL_SIZE_MM = 300  # Fixed 300mm x 300mm cells
 DEFAULT_PORT = 6053
 
 MAX_ZONES = 7
+NUM_ZONE_SLOTS = MAX_ZONES + 1  # 8: zone 0 + named zones 1-7
 
 # Firmware version this integration requires.
 # Must match the firmware's Firmware Version text sensor value.
 # Bump when releasing new firmware. GitHub release tag is v{FIRMWARE_VERSION}.
-FIRMWARE_VERSION = "0.93.0"
+FIRMWARE_VERSION = "0.94.0"
 
 # Original EPP firmware identifiers (for device discovery)
 EPP_MANUFACTURER = "EverythingSmartTechnology"
