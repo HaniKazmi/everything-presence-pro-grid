@@ -286,6 +286,7 @@ async def websocket_set_show_calibration_tutorial(
         return
     manager._store.show_room_calibration_tutorial = msg["value"]
     await manager._store.async_save()
+    manager._fire_device_list_changed()
     connection.send_result(msg["id"])
 
 

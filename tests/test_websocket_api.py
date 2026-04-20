@@ -156,6 +156,7 @@ class TestWebSocketSetShowCalibrationTutorial:
 
         assert mock_dm._store.show_room_calibration_tutorial is False
         mock_dm._store.async_save.assert_awaited()
+        mock_dm._fire_device_list_changed.assert_called_once()
         connection.send_result.assert_called_once_with(7)
 
     async def test_set_not_ready(self, hass: HomeAssistant) -> None:

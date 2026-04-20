@@ -51,6 +51,7 @@ class EPPGridOptionsFlow(OptionsFlow):
                 manager._store.sidebar_panel = user_input["sidebar_panel"]
                 manager._store.show_room_calibration_tutorial = user_input["show_room_calibration_tutorial"]
                 await manager._store.async_save()
+                manager._fire_device_list_changed()
             return self.async_create_entry(title="", data=user_input)
 
         # Get current values from store
