@@ -577,6 +577,11 @@ export class EPPGridPanel extends LitElement {
 		this._activeZone = null;
 		this._selectedFurnitureId = null;
 		this._overlayMode = null;
+		if (this._selectedMac) {
+			localStorage.setItem("epp_selected_mac", this._selectedMac);
+		} else {
+			localStorage.removeItem("epp_selected_mac");
+		}
 		if (this._selectedMac && this._isSelectedDeviceAvailable()) {
 			this._loadDeviceConfig(this._selectedMac);
 		}
@@ -662,6 +667,7 @@ export class EPPGridPanel extends LitElement {
 		this._rawTargets = [];
 		this._sensorState = createInitialSensorState();
 		this._zoneState = createInitialZoneState();
+		this._targetCtrl.resetZoneEngineState();
 	}
 
 	// -- Grid cell painting --

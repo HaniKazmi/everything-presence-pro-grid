@@ -419,4 +419,41 @@ describe("panel device deletion handling", () => {
 		document.body.removeChild(el1);
 		document.body.removeChild(el2);
 	});
+
+	it("persists the replacement MAC to localStorage on auto-select", async () => {
+		const dev1 = mockDeviceInfo("aa", "Alpha");
+		const dev2 = mockDeviceInfo("bb", "Bravo");
+		const { el, pushDeviceList } = await mountPanel([dev1, dev2]);
+		expect(localStorage.getItem("epp_selected_mac")).toBe("aa");
+
+		pushDeviceList([dev2]);
+		await el.updateComplete;
+
+		expect(localStorage.getItem("epp_selected_mac")).toBe("bb");
+		document.body.removeChild(el);
+	});
+
+	it("removes the stored MAC when the last device is deleted", async () => {
+		const dev1 = mockDeviceInfo("aa", "Alpha");
+		const { el, pushDeviceList } = await mountPanel([dev1]);
+		expect(localStorage.getItem("epp_selected_mac")).toBe("aa");
+
+		pushDeviceList([]);
+		await el.updateComplete;
+
+		expect(localStorage.getItem("epp_selected_mac")).toBeNull();
+		document.body.removeChild(el);
+	});
+
+	it("resets the zone engine state when the session closes", async () => {
+		const dev1 = mockDeviceInfo("aa", "Alpha");
+		const { el, a, pushDeviceList } = await mountPanel([dev1]);
+		const resetSpy = vi.spyOn(a._targetCtrl, "resetZoneEngineState");
+
+		pushDeviceList([]);
+		await el.updateComplete;
+
+		expect(resetSpy).toHaveBeenCalled();
+		document.body.removeChild(el);
+	});
 });
