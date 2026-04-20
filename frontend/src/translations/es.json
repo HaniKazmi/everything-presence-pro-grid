@@ -104,6 +104,9 @@
 		"no_templates": "No hay plantillas guardadas.",
 		"template_name": "Nombre de la plantilla"
 	},
+	"notifications": {
+		"device_removed": "Dispositivo eliminado"
+	},
 	"menu": {
 		"settings": "Ajustes",
 		"room_calibration": "Calibración de tamaño de la habitación",

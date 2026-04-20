@@ -104,6 +104,9 @@
 		"no_templates": "No saved templates.",
 		"template_name": "Template name"
 	},
+	"notifications": {
+		"device_removed": "Device was removed"
+	},
 	"menu": {
 		"settings": "Settings",
 		"room_calibration": "Room size calibration",

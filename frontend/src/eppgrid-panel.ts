@@ -544,7 +544,7 @@ export class EPPGridPanel extends LitElement {
 	private _handleSelectedDeviceRemoved(): void {
 		this.dispatchEvent(
 			new CustomEvent("hass-notification", {
-				detail: { message: "Device was removed" },
+				detail: { message: this._localize("notifications.device_removed") },
 				bubbles: true,
 				composed: true,
 			}),
