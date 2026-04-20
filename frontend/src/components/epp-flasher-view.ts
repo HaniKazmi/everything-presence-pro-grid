@@ -65,6 +65,7 @@ export class EppFlasherView extends LitElement {
 	@state() private _selectedSsid = "";
 	@state() private _manualSsid = false;
 	@state() private _wifiPassword = "";
+	@state() private _showPassword = false;
 	@state() private _wifiConnected = false;
 	@state() private _deviceIp: string | null = null;
 	@state() private _showWifiProvisioning = false;
@@ -336,13 +337,25 @@ export class EppFlasherView extends LitElement {
 
             <ha-textfield
               .label=${this.localize("flasher.wifi_password")}
-              type="password"
+              type=${this._showPassword ? "text" : "password"}
               autocomplete="new-password"
               .value=${this._wifiPassword}
               @input=${(e: Event) => {
 								this._wifiPassword = (e.target as any).value;
 							}}
             ></ha-textfield>
+
+            <ha-formfield
+              data-show-password
+              .label=${this.localize("flasher.show_password")}
+            >
+              <ha-checkbox
+                .checked=${this._showPassword}
+                @change=${(e: Event) => {
+									this._showPassword = (e.target as any).checked;
+								}}
+              ></ha-checkbox>
+            </ha-formfield>
 
             <div class="confirm-actions">
               ${this._renderCancelButton()}

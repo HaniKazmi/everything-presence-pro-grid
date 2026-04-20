@@ -873,6 +873,59 @@ describe("WiFi provisioning DOM event handlers", () => {
 
 		expect((el as any)._wifiPassword).toBe("mypassword");
 	});
+
+	it("password field is type=password by default with show-password toggle unchecked", () => {
+		const el = createView();
+		(el as any)._showWifiProvisioning = true;
+		(el as any)._wifiConnected = false;
+		const tpl = (el as any).render();
+		const c = renderTo(tpl);
+
+		expect(c.querySelector("ha-textfield[type='password']")).not.toBeNull();
+		const toggle = c.querySelector(
+			"ha-formfield[data-show-password] ha-checkbox",
+		) as any;
+		expect(toggle).not.toBeNull();
+		expect(toggle.checked).toBe(false);
+	});
+
+	it("password field becomes type=text when _showPassword=true", () => {
+		const el = createView();
+		(el as any)._showWifiProvisioning = true;
+		(el as any)._wifiConnected = false;
+		(el as any)._showPassword = true;
+		const tpl = (el as any).render();
+		const c = renderTo(tpl);
+
+		expect(c.querySelector("ha-textfield[type='password']")).toBeNull();
+		const pwField = c.querySelector(
+			"ha-textfield[autocomplete='new-password']",
+		) as any;
+		expect(pwField).not.toBeNull();
+		expect(pwField.getAttribute("type")).toBe("text");
+	});
+
+	it("show-password checkbox toggles _showPassword", async () => {
+		const el = createView();
+		(el as any)._showWifiProvisioning = true;
+		(el as any)._wifiConnected = false;
+		document.body.appendChild(el);
+		await el.updateComplete;
+
+		const root = el.shadowRoot!;
+		const toggle = root.querySelector(
+			"ha-formfield[data-show-password] ha-checkbox",
+		) as any;
+		expect(toggle).not.toBeNull();
+
+		toggle.checked = true;
+		toggle.dispatchEvent(new Event("change"));
+		expect((el as any)._showPassword).toBe(true);
+
+		toggle.checked = false;
+		toggle.dispatchEvent(new Event("change"));
+		expect((el as any)._showPassword).toBe(false);
+	});
 });
 
 describe("USB flash view — state-driven", () => {
