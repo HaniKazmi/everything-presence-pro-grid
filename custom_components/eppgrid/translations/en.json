@@ -14,7 +14,8 @@
     "step": {
       "init": {
         "data": {
-          "sidebar_panel": "Show in sidebar"
+          "sidebar_panel": "Show in sidebar",
+          "show_room_calibration_tutorial": "Show room calibration tutorial"
         }
       }
     }

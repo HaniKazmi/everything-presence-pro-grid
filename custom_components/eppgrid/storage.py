@@ -25,6 +25,7 @@ class EPPGridStore:
         self.devices: dict[str, dict[str, Any]] = {}
         self.templates: dict[str, dict[str, Any]] = {}
         self.sidebar_panel: bool = True
+        self.show_room_calibration_tutorial: bool = True
 
     async def async_load(self) -> None:
         """Load stored data."""
@@ -34,6 +35,7 @@ class EPPGridStore:
         self.devices = data.get("devices", {})
         self.templates = data.get("templates", {})
         self.sidebar_panel = data.get("sidebar_panel", True)
+        self.show_room_calibration_tutorial = data.get("show_room_calibration_tutorial", True)
 
     async def async_save(self) -> None:
         """Persist current data."""
@@ -42,6 +44,7 @@ class EPPGridStore:
                 "devices": self.devices,
                 "templates": self.templates,
                 "sidebar_panel": self.sidebar_panel,
+                "show_room_calibration_tutorial": self.show_room_calibration_tutorial,
             }
         )
 

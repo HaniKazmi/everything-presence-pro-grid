@@ -1423,6 +1423,8 @@ export class EPPGridPanel extends LitElement {
             .localize=${this._localize}
             .initialRoomWidth=${this._roomWidth}
             .initialRoomDepth=${this._roomDepth}
+            .initialStep=${this._setupStep}
+            @dismiss-tutorial=${() => this._onDismissTutorial()}
             @calibration-complete=${async (e: CustomEvent) => {
 							const { perspective, roomWidth, roomDepth } = e.detail;
 							this._perspective = perspective;
@@ -1575,9 +1577,25 @@ export class EPPGridPanel extends LitElement {
 
 	private _changePlacement(): void {
 		this._guardNavigation(() => {
-			this._setupStep = "guide";
+			this._setupStep = this._deviceCtrl.showRoomCalibrationTutorial
+				? "guide"
+				: "corners";
 			this._pushWidenedDistanceOverride();
 		});
+	}
+
+	private async _onDismissTutorial(): Promise<void> {
+		const prior = this._deviceCtrl.showRoomCalibrationTutorial;
+		this._deviceCtrl.setShowRoomCalibrationTutorial(false);
+		try {
+			await this.hass.callWS({
+				type: "eppgrid/set_show_room_calibration_tutorial",
+				value: false,
+			});
+		} catch (e) {
+			console.error("Failed to persist show_room_calibration_tutorial", e);
+			this._deviceCtrl.setShowRoomCalibrationTutorial(prior);
+		}
 	}
 
 	private _renderHeader() {

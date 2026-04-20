@@ -65,6 +65,7 @@ class TestOptionsFlow:
         """Form reads sidebar_panel from the manager store."""
         mock_manager = MagicMock()
         mock_manager._store.sidebar_panel = False
+        mock_manager._store.show_room_calibration_tutorial = True
         hass.data[DOMAIN] = mock_manager
 
         entry = MagicMock()
@@ -73,8 +74,24 @@ class TestOptionsFlow:
         result = await flow.async_step_init(user_input=None)
         assert result["type"] == "form"
 
+    async def test_init_form_schema_includes_tutorial_toggle(self, hass: HomeAssistant) -> None:
+        """The options form exposes show_room_calibration_tutorial with the stored value as default."""
+        mock_manager = MagicMock()
+        mock_manager._store.sidebar_panel = True
+        mock_manager._store.show_room_calibration_tutorial = False
+        hass.data[DOMAIN] = mock_manager
+
+        entry = MagicMock()
+        flow = EPPGridOptionsFlow(entry)
+        flow.hass = hass
+        result = await flow.async_step_init(user_input=None)
+        schema = result["data_schema"].schema
+        keys = {str(k): k for k in schema}
+        assert "show_room_calibration_tutorial" in keys
+        assert keys["show_room_calibration_tutorial"].default() is False
+
     async def test_init_saves_setting(self, hass: HomeAssistant) -> None:
-        """Submitting options saves sidebar_panel to store."""
+        """Submitting options saves sidebar_panel and tutorial flag to store."""
         mock_manager = MagicMock()
         mock_manager._store.async_save = AsyncMock()
         hass.data[DOMAIN] = mock_manager
@@ -82,15 +99,48 @@ class TestOptionsFlow:
         entry = MagicMock()
         flow = EPPGridOptionsFlow(entry)
         flow.hass = hass
-        result = await flow.async_step_init(user_input={"sidebar_panel": False})
+        result = await flow.async_step_init(
+            user_input={"sidebar_panel": False, "show_room_calibration_tutorial": False}
+        )
         assert result["type"] == "create_entry"
         assert mock_manager._store.sidebar_panel is False
+        assert mock_manager._store.show_room_calibration_tutorial is False
         mock_manager._store.async_save.assert_awaited_once()
+
+    async def test_init_notifies_subscribers_on_save(self, hass: HomeAssistant) -> None:
+        """Saving options re-broadcasts the device list so connected clients pick up the flag change."""
+        mock_manager = MagicMock()
+        mock_manager._store.sidebar_panel = True
+        mock_manager._store.show_room_calibration_tutorial = True
+        mock_manager._store.async_save = AsyncMock()
+        hass.data[DOMAIN] = mock_manager
+
+        entry = MagicMock()
+        flow = EPPGridOptionsFlow(entry)
+        flow.hass = hass
+        await flow.async_step_init(user_input={"sidebar_panel": True, "show_room_calibration_tutorial": False})
+        mock_manager._fire_device_list_changed.assert_called_once()
+
+    async def test_init_skips_save_and_broadcast_when_unchanged(self, hass: HomeAssistant) -> None:
+        """If neither flag changes, the options submit must not save or broadcast."""
+        mock_manager = MagicMock()
+        mock_manager._store.sidebar_panel = True
+        mock_manager._store.show_room_calibration_tutorial = False
+        mock_manager._store.async_save = AsyncMock()
+        hass.data[DOMAIN] = mock_manager
+
+        entry = MagicMock()
+        flow = EPPGridOptionsFlow(entry)
+        flow.hass = hass
+        result = await flow.async_step_init(user_input={"sidebar_panel": True, "show_room_calibration_tutorial": False})
+        assert result["type"] == "create_entry"
+        mock_manager._store.async_save.assert_not_awaited()
+        mock_manager._fire_device_list_changed.assert_not_called()
 
     async def test_init_saves_without_manager(self, hass: HomeAssistant) -> None:
         """Submitting options when no manager exists still creates entry."""
         entry = MagicMock()
         flow = EPPGridOptionsFlow(entry)
         flow.hass = hass
-        result = await flow.async_step_init(user_input={"sidebar_panel": True})
+        result = await flow.async_step_init(user_input={"sidebar_panel": True, "show_room_calibration_tutorial": True})
         assert result["type"] == "create_entry"

@@ -19,7 +19,9 @@ The wizard is accessed from the Device Configuration tab. Look for **Start room 
 
 ### 1. Read the positioning guide
 
-The first screen shows a diagram of a room with the four corners numbered 1–4 and the sensor marked (in the example diagram, the sensor sits at corner 2, but it can be anywhere). Skim the instructions, then click **Begin marking corners**.
+The first screen shows a diagram of a room with the four corners numbered 1–4 and the sensor marked (in the example diagram, the sensor sits at corner 2, but it can be anywhere). Skim the instructions, then click **Start calibration**.
+
+Tick **Don't show this again** before clicking **Start calibration** to skip straight to corner marking on future calibrations. You can re-enable the guide from the integration's options under **Show room calibration tutorial**.
 
 !!! example "Screenshot placeholder"
     **Wizard guide screen — room diagram with numbered corners and walking instructions.** `calibration/wizard-guide.png`

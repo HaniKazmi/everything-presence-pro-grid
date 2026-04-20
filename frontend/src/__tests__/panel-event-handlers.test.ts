@@ -1387,3 +1387,107 @@ describe("_infoTip click handler logic", () => {
 		expect(tip.style.display).toBe("none");
 	});
 });
+
+describe("room calibration tutorial toggle", () => {
+	async function mountPanelForWizardRender(
+		showRoomCalibrationTutorial: boolean,
+	): Promise<any> {
+		const a = createPanel() as any;
+		a._selectedMac = "AA:BB:CC:DD:EE:01";
+		a._perspective = null;
+		a._deviceCtrl.showRoomCalibrationTutorial = showRoomCalibrationTutorial;
+		a.hass = {
+			callWS: vi.fn().mockResolvedValue({}),
+			connection: { subscribeMessage: vi.fn().mockResolvedValue(() => {}) },
+		};
+		// Stub _initialize so it doesn't race with our test state writes.
+		a._initialize = () => Promise.resolve();
+		a._loading = false;
+		a._devices = [
+			{
+				mac: "AA:BB:CC:DD:EE:01",
+				name: "Test",
+				host: null,
+				available: true,
+				configured: true,
+			},
+		];
+		document.body.appendChild(a);
+		await a.updateComplete;
+		return a;
+	}
+
+	it("_changePlacement renders the wizard on the guide step when tutorial is enabled", async () => {
+		const a = await mountPanelForWizardRender(true);
+		try {
+			a._changePlacement();
+			await a.updateComplete;
+			const wizard = a.shadowRoot?.querySelector("epp-wizard") as any;
+			expect(wizard).toBeTruthy();
+			await wizard.updateComplete;
+			expect(wizard._setupStep).toBe("guide");
+		} finally {
+			a.remove();
+		}
+	});
+
+	it("_changePlacement skips straight to corners when tutorial is disabled", async () => {
+		const a = await mountPanelForWizardRender(false);
+		try {
+			a._changePlacement();
+			await a.updateComplete;
+			const wizard = a.shadowRoot?.querySelector("epp-wizard") as any;
+			expect(wizard).toBeTruthy();
+			await wizard.updateComplete;
+			expect(wizard._setupStep).toBe("corners");
+		} finally {
+			a.remove();
+		}
+	});
+
+	it("_onDismissTutorial persists show=false via the controller setter", async () => {
+		const a = createPanel() as any;
+		a._selectedMac = "AA:BB:CC:DD:EE:01";
+		a._deviceCtrl.showRoomCalibrationTutorial = true;
+		const setSpy = vi.spyOn(a._deviceCtrl, "setShowRoomCalibrationTutorial");
+		const callWS = vi.fn().mockResolvedValue({});
+		a.hass = { callWS };
+
+		await a._onDismissTutorial();
+
+		expect(setSpy).toHaveBeenCalledWith(false);
+		expect(callWS).toHaveBeenCalledWith({
+			type: "eppgrid/set_show_room_calibration_tutorial",
+			value: false,
+		});
+	});
+
+	it("_onDismissTutorial reverts local state if the WS call fails", async () => {
+		const a = createPanel() as any;
+		a._selectedMac = "AA:BB:CC:DD:EE:01";
+		a._deviceCtrl.showRoomCalibrationTutorial = true;
+		a.hass = { callWS: vi.fn().mockRejectedValue(new Error("nope")) };
+		const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+		await a._onDismissTutorial();
+
+		expect(a._deviceCtrl.showRoomCalibrationTutorial).toBe(true);
+		errorSpy.mockRestore();
+	});
+
+	it("_onDismissTutorial rollback preserves a prior-false value (no spurious re-enable)", async () => {
+		// If a concurrent broadcast flips the flag to false *before* the WS
+		// rejection lands, hard-coding `true` as the rollback value would
+		// incorrectly re-enable the tutorial. Capture and restore the prior value.
+		const a = createPanel() as any;
+		a._selectedMac = "AA:BB:CC:DD:EE:01";
+		a._deviceCtrl.showRoomCalibrationTutorial = false;
+		a.hass = { callWS: vi.fn().mockRejectedValue(new Error("nope")) };
+		const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+		await a._onDismissTutorial();
+
+		expect(a._deviceCtrl.showRoomCalibrationTutorial).toBe(false);
+		errorSpy.mockRestore();
+	});
+});

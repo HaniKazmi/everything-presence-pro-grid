@@ -14,7 +14,8 @@
     "step": {
       "init": {
         "data": {
-          "sidebar_panel": "Mostrar en la barra lateral"
+          "sidebar_panel": "Mostrar en la barra lateral",
+          "show_room_calibration_tutorial": "Mostrar el tutorial de calibración de la habitación"
         }
       }
     }

@@ -65,7 +65,7 @@
 		"how_calibration_works": "How room calibration works",
 		"calibrate_room_size": "Calibrate room size",
 		"start_calibration": "Start room size calibration",
-		"begin_marking": "Begin marking corners",
+		"begin_marking": "Start calibration",
 		"mark_corner": "Mark {corner}",
 		"recording": "Recording... {current}s / {total}s",
 		"paused": "Paused — need exactly one target visible",
@@ -92,7 +92,8 @@
 		"sensor": "Sensor",
 		"horizontal_correct": "Slightly down ✓",
 		"angled_wrong": "Wrong angle ✗",
-		"no_presence": "No presence"
+		"no_presence": "No presence",
+		"dont_show_again": "Don't show this again"
 	},
 	"dialogs": {
 		"delete_calibration_title": "Delete room calibration?",

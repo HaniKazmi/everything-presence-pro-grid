@@ -105,6 +105,76 @@ describe("setup wizard delegates header to parent panel", () => {
 	});
 });
 
+describe("don't show tutorial again checkbox", () => {
+	it("renders an ha-checkbox on the guide step", async () => {
+		const el = createWizard({ mode: "wizard" });
+		(el as any)._setupStep = "guide";
+		document.body.appendChild(el);
+		await el.updateComplete;
+
+		const root = el.shadowRoot!;
+		const cb = root.querySelector(".dont-show-again ha-checkbox");
+		expect(cb).not.toBeNull();
+	});
+
+	it("does not render the checkbox on the corners step", async () => {
+		const el = createWizard({ mode: "wizard" });
+		const a = el as any;
+		a._setupStep = "corners";
+		document.body.appendChild(el);
+		await el.updateComplete;
+
+		const root = el.shadowRoot!;
+		expect(root.querySelector(".dont-show-again")).toBeNull();
+	});
+
+	it("dispatches dismiss-tutorial when 'Begin marking corners' is clicked with checkbox ticked", async () => {
+		const el = createWizard({ mode: "wizard" });
+		(el as any)._setupStep = "guide";
+		document.body.appendChild(el);
+		await el.updateComplete;
+
+		const events: CustomEvent[] = [];
+		el.addEventListener("dismiss-tutorial", (e) =>
+			events.push(e as CustomEvent),
+		);
+
+		const root = el.shadowRoot!;
+		const cb = root.querySelector<HTMLInputElement>(
+			".dont-show-again ha-checkbox",
+		)!;
+		cb.checked = true;
+		cb.dispatchEvent(new Event("change"));
+
+		const beginBtn = Array.from(
+			root.querySelectorAll<HTMLButtonElement>("button"),
+		).find((b) => b.textContent?.includes("wizard.begin_marking"))!;
+		beginBtn.click();
+
+		expect(events).toHaveLength(1);
+	});
+
+	it("does not dispatch dismiss-tutorial when checkbox is unchecked", async () => {
+		const el = createWizard({ mode: "wizard" });
+		(el as any)._setupStep = "guide";
+		document.body.appendChild(el);
+		await el.updateComplete;
+
+		let fired = false;
+		el.addEventListener("dismiss-tutorial", () => {
+			fired = true;
+		});
+
+		const root = el.shadowRoot!;
+		const beginBtn = Array.from(
+			root.querySelectorAll<HTMLButtonElement>("button"),
+		).find((b) => b.textContent?.includes("wizard.begin_marking"))!;
+		beginBtn.click();
+
+		expect(fired).toBe(false);
+	});
+});
+
 describe("capture cancel click", () => {
 	it("resets capturing state when cancel button is clicked", async () => {
 		const el = createWizard({ mode: "wizard" });

@@ -65,7 +65,7 @@
 		"how_calibration_works": "Cómo funciona la calibración de la habitación",
 		"calibrate_room_size": "Calibrar tamaño de la habitación",
 		"start_calibration": "Iniciar calibración de tamaño de la habitación",
-		"begin_marking": "Comenzar a marcar esquinas",
+		"begin_marking": "Iniciar calibración",
 		"mark_corner": "Marcar {corner}",
 		"recording": "Grabando... {current}s / {total}s",
 		"paused": "En pausa — se necesita exactamente un objetivo visible",
@@ -92,7 +92,8 @@
 		"sensor": "Sensor",
 		"horizontal_correct": "Ligeramente inclinado ✓",
 		"angled_wrong": "Ángulo incorrecto ✗",
-		"no_presence": "Sin presencia"
+		"no_presence": "Sin presencia",
+		"dont_show_again": "No mostrar esto de nuevo"
 	},
 	"dialogs": {
 		"delete_calibration_title": "¿Eliminar la calibración de la habitación?",

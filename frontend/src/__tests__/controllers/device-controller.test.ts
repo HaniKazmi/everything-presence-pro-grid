@@ -198,6 +198,25 @@ describe("DeviceController", () => {
 			expect(ctrl.devices).toEqual([]);
 		});
 
+		it("populates showRoomCalibrationTutorial from the response", async () => {
+			const devices: DeviceInfo[] = [];
+			ctrl.hass = {
+				callWS: vi.fn().mockResolvedValue({
+					devices,
+					show_room_calibration_tutorial: false,
+				}),
+				connection: { subscribeMessage: vi.fn() },
+			};
+			await ctrl.loadDevices();
+			expect(ctrl.showRoomCalibrationTutorial).toBe(false);
+		});
+
+		it("defaults showRoomCalibrationTutorial to true when flag is missing", async () => {
+			ctrl.hass = mockHass([]);
+			await ctrl.loadDevices();
+			expect(ctrl.showRoomCalibrationTutorial).toBe(true);
+		});
+
 		it("calls host.requestUpdate after loading", async () => {
 			const devices: DeviceInfo[] = [
 				{
@@ -218,6 +237,51 @@ describe("DeviceController", () => {
 	});
 
 	// --- loadDeviceConfig ---
+	describe("setShowRoomCalibrationTutorial", () => {
+		it("updates the flag and triggers a host update when the value changes", () => {
+			ctrl.showRoomCalibrationTutorial = true;
+			host.requestUpdate.mockClear();
+
+			ctrl.setShowRoomCalibrationTutorial(false);
+
+			expect(ctrl.showRoomCalibrationTutorial).toBe(false);
+			expect(host.requestUpdate).toHaveBeenCalledTimes(1);
+		});
+
+		it("does not trigger a host update when the value is unchanged", () => {
+			ctrl.showRoomCalibrationTutorial = true;
+			host.requestUpdate.mockClear();
+
+			ctrl.setShowRoomCalibrationTutorial(true);
+
+			expect(host.requestUpdate).not.toHaveBeenCalled();
+		});
+	});
+
+	describe("subscribeDeviceList", () => {
+		it("updates showRoomCalibrationTutorial from subscription messages", async () => {
+			let capturedCb: ((msg: any) => void) | null = null;
+			ctrl.hass = {
+				callWS: vi.fn(),
+				connection: {
+					subscribeMessage: vi.fn((cb: any) => {
+						capturedCb = cb;
+						return Promise.resolve(() => {});
+					}),
+				},
+			};
+
+			await ctrl.subscribeDeviceList();
+			expect(capturedCb).not.toBeNull();
+
+			capturedCb!({ devices: [], show_room_calibration_tutorial: false });
+			expect(ctrl.showRoomCalibrationTutorial).toBe(false);
+
+			capturedCb!({ devices: [], show_room_calibration_tutorial: true });
+			expect(ctrl.showRoomCalibrationTutorial).toBe(true);
+		});
+	});
+
 	describe("loadDeviceConfig", () => {
 		it("returns the config from the backend", async () => {
 			ctrl.hass = {

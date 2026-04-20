@@ -125,6 +125,7 @@ def async_register_websocket_commands(hass: HomeAssistant, manager: Any) -> None
 
     websocket_api.async_register_command(hass, websocket_subscribe_device_list)
     websocket_api.async_register_command(hass, websocket_list_devices)
+    websocket_api.async_register_command(hass, websocket_set_show_room_calibration_tutorial)
     websocket_api.async_register_command(hass, websocket_get_config)
     websocket_api.async_register_command(hass, websocket_set_setup)
     websocket_api.async_register_command(hass, websocket_set_room_layout)
@@ -217,7 +218,15 @@ def websocket_subscribe_device_list(
 
     @callback
     def _send_update() -> None:
-        connection.send_message(websocket_api.event_message(msg["id"], {"devices": manager.list_devices()}))
+        connection.send_message(
+            websocket_api.event_message(
+                msg["id"],
+                {
+                    "devices": manager.list_devices(),
+                    "show_room_calibration_tutorial": manager._store.show_room_calibration_tutorial,
+                },
+            )
+        )
 
     unsub = manager.on_device_list_changed(_send_update)
 
@@ -246,7 +255,43 @@ def websocket_list_devices(
     if manager is None:
         _send_not_loaded(connection, msg["id"])
         return
-    connection.send_result(msg["id"], {"devices": manager.list_devices()})
+    connection.send_result(
+        msg["id"],
+        {
+            "devices": manager.list_devices(),
+            "show_room_calibration_tutorial": manager._store.show_room_calibration_tutorial,
+        },
+    )
+
+
+# -- set_show_room_calibration_tutorial --
+
+
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): "eppgrid/set_show_room_calibration_tutorial",
+        vol.Required("value"): bool,
+    }
+)
+@websocket_api.async_response
+async def websocket_set_show_room_calibration_tutorial(
+    hass: HomeAssistant,
+    connection: websocket_api.ActiveConnection,
+    msg: dict[str, Any],
+) -> None:
+    """Persist the global show_room_calibration_tutorial flag."""
+    manager = _get_manager(hass)
+    if manager is None:
+        _send_not_loaded(connection, msg["id"])
+        return
+    new_value = msg["value"]
+    if manager._store.show_room_calibration_tutorial == new_value:
+        connection.send_result(msg["id"])
+        return
+    manager._store.show_room_calibration_tutorial = new_value
+    await manager._store.async_save()
+    manager._fire_device_list_changed()
+    connection.send_result(msg["id"])
 
 
 # -- get_config --

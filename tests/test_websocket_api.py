@@ -119,6 +119,76 @@ class TestWebSocketListDevices:
             translation_key="integration_not_loaded",
         )
 
+    async def test_list_devices_includes_show_tutorial_flag(
+        self, hass: HomeAssistant, config_entry: MockConfigEntry
+    ) -> None:
+        """list_devices exposes the global show_room_calibration_tutorial flag."""
+        mock_dm = await setup_integration(hass, config_entry)
+        mock_dm._store.show_room_calibration_tutorial = False
+
+        from custom_components.eppgrid.websocket_api import websocket_list_devices
+
+        connection = MagicMock()
+        msg = {"id": 1, "type": "eppgrid/list_devices"}
+        websocket_list_devices(hass, connection, msg)
+
+        payload = connection.send_result.call_args[0][1]
+        assert payload["show_room_calibration_tutorial"] is False
+
+
+class TestWebSocketSetShowCalibrationTutorial:
+    """Tests for eppgrid/set_show_room_calibration_tutorial."""
+
+    async def test_set_persists_and_returns(self, hass: HomeAssistant, config_entry: MockConfigEntry) -> None:
+        """Handler updates the store flag and persists."""
+        mock_dm = await setup_integration(hass, config_entry)
+        mock_dm._store.show_room_calibration_tutorial = True
+
+        from custom_components.eppgrid.websocket_api import websocket_set_show_room_calibration_tutorial
+
+        connection = MagicMock()
+        msg = {
+            "id": 7,
+            "type": "eppgrid/set_show_room_calibration_tutorial",
+            "value": False,
+        }
+        await call_async_handler(hass, websocket_set_show_room_calibration_tutorial, connection, msg)
+
+        assert mock_dm._store.show_room_calibration_tutorial is False
+        mock_dm._store.async_save.assert_awaited()
+        mock_dm._fire_device_list_changed.assert_called_once()
+        connection.send_result.assert_called_once_with(7)
+
+    async def test_set_not_ready(self, hass: HomeAssistant) -> None:
+        """Handler returns not_ready when integration is not loaded."""
+        from custom_components.eppgrid.websocket_api import websocket_set_show_room_calibration_tutorial
+
+        connection = MagicMock()
+        msg = {"id": 7, "type": "eppgrid/set_show_room_calibration_tutorial", "value": False}
+        await call_async_handler(hass, websocket_set_show_room_calibration_tutorial, connection, msg)
+        connection.send_error.assert_called_once()
+
+    async def test_set_skips_save_and_broadcast_when_unchanged(
+        self, hass: HomeAssistant, config_entry: MockConfigEntry
+    ) -> None:
+        """Setting the same value must not write to disk or re-broadcast."""
+        mock_dm = await setup_integration(hass, config_entry)
+        mock_dm._store.show_room_calibration_tutorial = False
+
+        from custom_components.eppgrid.websocket_api import websocket_set_show_room_calibration_tutorial
+
+        connection = MagicMock()
+        msg = {
+            "id": 9,
+            "type": "eppgrid/set_show_room_calibration_tutorial",
+            "value": False,
+        }
+        await call_async_handler(hass, websocket_set_show_room_calibration_tutorial, connection, msg)
+
+        mock_dm._store.async_save.assert_not_awaited()
+        mock_dm._fire_device_list_changed.assert_not_called()
+        connection.send_result.assert_called_once_with(9)
+
 
 class TestWebSocketGetConfig:
     """Tests for eppgrid/get_config."""
@@ -2012,6 +2082,7 @@ class TestSubscribeDeviceList:
         """subscribe_device_list sends the current device list immediately."""
         mock_dm = await setup_integration(hass, config_entry)
         mock_dm.list_devices.return_value = [{"mac": "AA:BB:CC:DD:EE:FF", "name": "EPP"}]
+        mock_dm._store.show_room_calibration_tutorial = False
         mock_dm.on_device_list_changed = MagicMock(return_value=lambda: None)
 
         from custom_components.eppgrid.websocket_api import websocket_subscribe_device_list
@@ -2027,6 +2098,7 @@ class TestSubscribeDeviceList:
         event_msg = connection.send_message.call_args[0][0]
         assert event_msg["id"] == 30
         assert event_msg["event"]["devices"][0]["mac"] == "AA:BB:CC:DD:EE:FF"
+        assert event_msg["event"]["show_room_calibration_tutorial"] is False
         assert 30 in connection.subscriptions
 
     async def test_subscribe_pushes_updates(self, hass: HomeAssistant, config_entry: MockConfigEntry) -> None:
