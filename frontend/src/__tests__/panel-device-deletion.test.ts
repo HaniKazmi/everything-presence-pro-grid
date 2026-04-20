@@ -1,8 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { EPPGridPanel } from "../eppgrid-panel.js";
 import "../eppgrid-panel.js";
-import { GRID_CELL_COUNT } from "../lib/grid.js";
 import { INITIAL_ZONE_SLOTS } from "../eppgrid-panel.js";
+import { GRID_CELL_COUNT } from "../lib/grid.js";
 
 type DeviceListCb = (msg: { devices: any[] }) => void;
 
@@ -19,7 +19,9 @@ function mockDeviceInfo(mac: string, name: string, available = true) {
 }
 
 function makeHass(initialDevices: any[]) {
-	const captured: { deviceListCb: DeviceListCb | null } = { deviceListCb: null };
+	const captured: { deviceListCb: DeviceListCb | null } = {
+		deviceListCb: null,
+	};
 	const hass = {
 		callWS: vi.fn().mockImplementation((msg: any) => {
 			if (msg.type === "eppgrid/get_config") {
@@ -101,9 +103,21 @@ describe("panel device deletion handling", () => {
 		a._roomWidth = 4000;
 		a._roomDepth = 3000;
 		a._setupStep = "mark-corner-0";
-		a._furniture = [{ id: "f1", x: 0, y: 0, width: 300, height: 300, rot: 0, type: "bed" } as any];
+		a._furniture = [
+			{
+				id: "f1",
+				x: 0,
+				y: 0,
+				width: 300,
+				height: 300,
+				rot: 0,
+				type: "bed",
+			} as any,
+		];
 		a._grid = new Uint8Array(GRID_CELL_COUNT).fill(1);
-		a._zoneConfigs = INITIAL_ZONE_SLOTS.map((z) => (z ? { ...z } : null)) as any;
+		a._zoneConfigs = INITIAL_ZONE_SLOTS.map((z) =>
+			z ? { ...z } : null,
+		) as any;
 		await el.updateComplete;
 
 		pushDeviceList([]);
@@ -166,7 +180,7 @@ describe("panel device deletion handling", () => {
 
 	it("fires a hass-notification toast when the selected device is removed", async () => {
 		const dev1 = mockDeviceInfo("aa", "Alpha");
-		const { el, a, pushDeviceList } = await mountPanel([dev1]);
+		const { el, pushDeviceList } = await mountPanel([dev1]);
 		const events: CustomEvent[] = [];
 		el.addEventListener("hass-notification", (e) =>
 			events.push(e as CustomEvent),
@@ -217,7 +231,9 @@ describe("panel device deletion handling", () => {
 		a._roomDepth = 3000;
 		await el.updateComplete;
 		const html1 = el.shadowRoot?.innerHTML ?? "";
-		expect(html1).toMatch(/epp-zone-sidebar|epp-overlay-sidebar|epp-furniture-sidebar/);
+		expect(html1).toMatch(
+			/epp-zone-sidebar|epp-overlay-sidebar|epp-furniture-sidebar/,
+		);
 
 		pushDeviceList([]);
 		await el.updateComplete;
