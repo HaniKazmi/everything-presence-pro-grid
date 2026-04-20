@@ -105,7 +105,7 @@ export type ZoneSlots = readonly [
 
 // Slot 0 carries only `type` for non-custom — timing is resolved from
 // ZONE_TYPE_DEFAULTS at read/push time (see resolveZoneParams).
-const INITIAL_ZONE_SLOTS: ZoneSlots = [
+export const INITIAL_ZONE_SLOTS: ZoneSlots = [
 	{ type: "normal" },
 	null,
 	null,
