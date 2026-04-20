@@ -551,6 +551,9 @@ export class EPPGridPanel extends LitElement {
 		this._grid = new Uint8Array(GRID_CELL_COUNT);
 		this._zoneConfigs = INITIAL_ZONE_SLOTS;
 		this._view = "live";
+		if (this._selectedMac) {
+			this._loadDeviceConfig(this._selectedMac);
+		}
 	}
 
 	private async _loadDevices(): Promise<void> {
