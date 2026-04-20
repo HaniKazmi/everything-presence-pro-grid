@@ -20,6 +20,19 @@ function mockHass(devices: DeviceInfo[] = []) {
 	};
 }
 
+function makeDevice(mac: string, available: boolean): DeviceInfo {
+	return {
+		mac,
+		name: "EPP",
+		host: null,
+		available,
+		configured: true,
+		firmware_status: "compatible",
+		current_connection_count: null,
+		area: null,
+	};
+}
+
 describe("DeviceController", () => {
 	let host: ReturnType<typeof mockHost>;
 	let hass: ReturnType<typeof mockHass>;
@@ -711,17 +724,6 @@ describe("DeviceController", () => {
 		it("resets availability tracker to avoid stale-edge reconnect", () => {
 			const loadSpy = vi.spyOn(ctrl, "loadDeviceConfig").mockResolvedValue({});
 
-			const makeDevice = (mac: string, available: boolean): DeviceInfo => ({
-				mac,
-				name: "EPP",
-				host: null,
-				available,
-				configured: true,
-				firmware_status: "compatible",
-				current_connection_count: null,
-				area: null,
-			});
-
 			// Prime: "aa" available → offline. Tracker latches to false.
 			(ctrl as any)._applyDeviceList([makeDevice("aa", true)]);
 			(ctrl as any)._applyDeviceList([makeDevice("aa", false)]);
@@ -731,9 +733,6 @@ describe("DeviceController", () => {
 			// is treated as an initial observation (prev === null) and not
 			// a stale false→true rising edge.
 			ctrl.selectDevice("bb");
-
-			// Push a list where "bb" is already available. Without the reset,
-			// prev === false + nowAvailable === true would fire a reconnect.
 			(ctrl as any)._applyDeviceList([makeDevice("bb", true)]);
 
 			expect(loadSpy).not.toHaveBeenCalled();
@@ -835,35 +834,17 @@ describe("DeviceController", () => {
 
 	// --- Availability edge transitions ---
 	describe("availability transitions", () => {
-		function deviceList(mac: string, available: boolean): DeviceInfo[] {
-			return [
-				{
-					mac,
-					name: "EPP",
-					host: null,
-					available,
-					configured: true,
-					firmware_status: "compatible",
-					current_connection_count: null,
-					area: null,
-				},
-			];
-		}
-
 		it("re-opens session when selected device transitions offline→online", async () => {
 			const loadSpy = vi.spyOn(ctrl, "loadDeviceConfig").mockResolvedValue({});
 
-			// Prime with an available device and select it
-			(ctrl as any)._applyDeviceList(deviceList("aa", true));
+			(ctrl as any)._applyDeviceList([makeDevice("aa", true)]);
 			ctrl.selectedMac = "aa";
 			loadSpy.mockClear();
 
-			// Device goes offline
-			(ctrl as any)._applyDeviceList(deviceList("aa", false));
+			(ctrl as any)._applyDeviceList([makeDevice("aa", false)]);
 			expect(loadSpy).not.toHaveBeenCalled();
 
-			// Device comes back online → reconnect
-			(ctrl as any)._applyDeviceList(deviceList("aa", true));
+			(ctrl as any)._applyDeviceList([makeDevice("aa", true)]);
 			expect(loadSpy).toHaveBeenCalledWith("aa");
 		});
 
@@ -871,32 +852,32 @@ describe("DeviceController", () => {
 			const loadSpy = vi.spyOn(ctrl, "loadDeviceConfig").mockResolvedValue({});
 
 			(ctrl as any)._applyDeviceList([
-				...deviceList("aa", true),
-				...deviceList("bb", true).map((d) => ({ ...d, mac: "bb" })),
+				makeDevice("aa", true),
+				makeDevice("bb", true),
 			]);
 			ctrl.selectedMac = "aa";
 			loadSpy.mockClear();
 
 			// "bb" goes offline and back — "aa" stays available
 			(ctrl as any)._applyDeviceList([
-				...deviceList("aa", true),
-				...deviceList("bb", false).map((d) => ({ ...d, mac: "bb" })),
+				makeDevice("aa", true),
+				makeDevice("bb", false),
 			]);
 			(ctrl as any)._applyDeviceList([
-				...deviceList("aa", true),
-				...deviceList("bb", true).map((d) => ({ ...d, mac: "bb" })),
+				makeDevice("aa", true),
+				makeDevice("bb", true),
 			]);
 
 			expect(loadSpy).not.toHaveBeenCalled();
 		});
 
 		it("does not reconnect on the first device_list message", async () => {
+			// The host's first-load flow drives the initial connect, so the
+			// controller must not pre-empt it when prev === null.
 			const loadSpy = vi.spyOn(ctrl, "loadDeviceConfig").mockResolvedValue({});
 
-			// First push with selected device already available must not trigger
-			// a reconnect (the host's first-load flow drives the initial connect).
 			ctrl.selectedMac = "aa";
-			(ctrl as any)._applyDeviceList(deviceList("aa", true));
+			(ctrl as any)._applyDeviceList([makeDevice("aa", true)]);
 
 			expect(loadSpy).not.toHaveBeenCalled();
 		});
@@ -904,13 +885,11 @@ describe("DeviceController", () => {
 		it("closes device session when selected device transitions online→offline", async () => {
 			const closeSpy = vi.spyOn(ctrl, "closeDeviceSession");
 
-			// Prime: device online, session implicitly "open"
-			(ctrl as any)._applyDeviceList(deviceList("aa", true));
+			(ctrl as any)._applyDeviceList([makeDevice("aa", true)]);
 			ctrl.selectedMac = "aa";
 			closeSpy.mockClear();
 
-			// Device goes offline
-			(ctrl as any)._applyDeviceList(deviceList("aa", false));
+			(ctrl as any)._applyDeviceList([makeDevice("aa", false)]);
 
 			expect(closeSpy).toHaveBeenCalledTimes(1);
 		});
