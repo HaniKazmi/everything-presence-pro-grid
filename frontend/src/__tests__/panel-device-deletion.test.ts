@@ -120,4 +120,16 @@ describe("panel device deletion handling", () => {
 		expect(a._zoneConfigs).toEqual(INITIAL_ZONE_SLOTS);
 		document.body.removeChild(el);
 	});
+
+	it("closes the device session when the selected device is removed", async () => {
+		const dev1 = mockDeviceInfo("aa", "Alpha");
+		const { el, a, pushDeviceList } = await mountPanel([dev1]);
+		const closeSpy = vi.spyOn(a._deviceCtrl, "closeDeviceSession");
+
+		pushDeviceList([]);
+		await el.updateComplete;
+
+		expect(closeSpy).toHaveBeenCalled();
+		document.body.removeChild(el);
+	});
 });
