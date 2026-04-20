@@ -125,7 +125,7 @@ def async_register_websocket_commands(hass: HomeAssistant, manager: Any) -> None
 
     websocket_api.async_register_command(hass, websocket_subscribe_device_list)
     websocket_api.async_register_command(hass, websocket_list_devices)
-    websocket_api.async_register_command(hass, websocket_set_show_calibration_tutorial)
+    websocket_api.async_register_command(hass, websocket_set_show_room_calibration_tutorial)
     websocket_api.async_register_command(hass, websocket_get_config)
     websocket_api.async_register_command(hass, websocket_set_setup)
     websocket_api.async_register_command(hass, websocket_set_room_layout)
@@ -264,17 +264,17 @@ def websocket_list_devices(
     )
 
 
-# -- set_show_calibration_tutorial --
+# -- set_show_room_calibration_tutorial --
 
 
 @websocket_api.websocket_command(
     {
-        vol.Required("type"): "eppgrid/set_show_calibration_tutorial",
+        vol.Required("type"): "eppgrid/set_show_room_calibration_tutorial",
         vol.Required("value"): bool,
     }
 )
 @websocket_api.async_response
-async def websocket_set_show_calibration_tutorial(
+async def websocket_set_show_room_calibration_tutorial(
     hass: HomeAssistant,
     connection: websocket_api.ActiveConnection,
     msg: dict[str, Any],

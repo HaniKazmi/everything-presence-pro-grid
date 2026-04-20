@@ -1585,15 +1585,16 @@ export class EPPGridPanel extends LitElement {
 	}
 
 	private async _onDismissTutorial(): Promise<void> {
+		const prior = this._deviceCtrl.showRoomCalibrationTutorial;
 		this._deviceCtrl.setShowRoomCalibrationTutorial(false);
 		try {
 			await this.hass.callWS({
-				type: "eppgrid/set_show_calibration_tutorial",
+				type: "eppgrid/set_show_room_calibration_tutorial",
 				value: false,
 			});
 		} catch (e) {
 			console.error("Failed to persist show_room_calibration_tutorial", e);
-			this._deviceCtrl.setShowRoomCalibrationTutorial(true);
+			this._deviceCtrl.setShowRoomCalibrationTutorial(prior);
 		}
 	}
 

@@ -1458,7 +1458,7 @@ describe("room calibration tutorial toggle", () => {
 
 		expect(setSpy).toHaveBeenCalledWith(false);
 		expect(callWS).toHaveBeenCalledWith({
-			type: "eppgrid/set_show_calibration_tutorial",
+			type: "eppgrid/set_show_room_calibration_tutorial",
 			value: false,
 		});
 	});
@@ -1473,6 +1473,22 @@ describe("room calibration tutorial toggle", () => {
 		await a._onDismissTutorial();
 
 		expect(a._deviceCtrl.showRoomCalibrationTutorial).toBe(true);
+		errorSpy.mockRestore();
+	});
+
+	it("_onDismissTutorial rollback preserves a prior-false value (no spurious re-enable)", async () => {
+		// If a concurrent broadcast flips the flag to false *before* the WS
+		// rejection lands, hard-coding `true` as the rollback value would
+		// incorrectly re-enable the tutorial. Capture and restore the prior value.
+		const a = createPanel() as any;
+		a._selectedMac = "AA:BB:CC:DD:EE:01";
+		a._deviceCtrl.showRoomCalibrationTutorial = false;
+		a.hass = { callWS: vi.fn().mockRejectedValue(new Error("nope")) };
+		const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+		await a._onDismissTutorial();
+
+		expect(a._deviceCtrl.showRoomCalibrationTutorial).toBe(false);
 		errorSpy.mockRestore();
 	});
 });

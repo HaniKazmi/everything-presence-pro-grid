@@ -137,22 +137,22 @@ class TestWebSocketListDevices:
 
 
 class TestWebSocketSetShowCalibrationTutorial:
-    """Tests for eppgrid/set_show_calibration_tutorial."""
+    """Tests for eppgrid/set_show_room_calibration_tutorial."""
 
     async def test_set_persists_and_returns(self, hass: HomeAssistant, config_entry: MockConfigEntry) -> None:
         """Handler updates the store flag and persists."""
         mock_dm = await setup_integration(hass, config_entry)
         mock_dm._store.show_room_calibration_tutorial = True
 
-        from custom_components.eppgrid.websocket_api import websocket_set_show_calibration_tutorial
+        from custom_components.eppgrid.websocket_api import websocket_set_show_room_calibration_tutorial
 
         connection = MagicMock()
         msg = {
             "id": 7,
-            "type": "eppgrid/set_show_calibration_tutorial",
+            "type": "eppgrid/set_show_room_calibration_tutorial",
             "value": False,
         }
-        await call_async_handler(hass, websocket_set_show_calibration_tutorial, connection, msg)
+        await call_async_handler(hass, websocket_set_show_room_calibration_tutorial, connection, msg)
 
         assert mock_dm._store.show_room_calibration_tutorial is False
         mock_dm._store.async_save.assert_awaited()
@@ -161,11 +161,11 @@ class TestWebSocketSetShowCalibrationTutorial:
 
     async def test_set_not_ready(self, hass: HomeAssistant) -> None:
         """Handler returns not_ready when integration is not loaded."""
-        from custom_components.eppgrid.websocket_api import websocket_set_show_calibration_tutorial
+        from custom_components.eppgrid.websocket_api import websocket_set_show_room_calibration_tutorial
 
         connection = MagicMock()
-        msg = {"id": 7, "type": "eppgrid/set_show_calibration_tutorial", "value": False}
-        await call_async_handler(hass, websocket_set_show_calibration_tutorial, connection, msg)
+        msg = {"id": 7, "type": "eppgrid/set_show_room_calibration_tutorial", "value": False}
+        await call_async_handler(hass, websocket_set_show_room_calibration_tutorial, connection, msg)
         connection.send_error.assert_called_once()
 
 
