@@ -3,7 +3,7 @@ import { DEBUG_LOG_MAX } from "../constants.js";
 import { mapTargetToGridCell } from "../lib/coordinates.js";
 import { cellIsInside, cellZone, GRID_COLS, GRID_ROWS } from "../lib/grid.js";
 import { computeHeatmapColors } from "../lib/heatmap.js";
-import { resolveZone0Params } from "../lib/zone-defaults.js";
+import { resolveZoneParams } from "../lib/zone-defaults.js";
 import {
 	createZoneEngineState,
 	runLocalZoneEngine,
@@ -105,7 +105,7 @@ export class TargetController implements ReactiveController {
 	runLocalZoneEngine(): ZoneEngineResult {
 		const ss = this.host._sensorState;
 		const slots = this.host._zoneConfigs;
-		const z0 = resolveZone0Params(slots[0]);
+		const z0 = resolveZoneParams(slots[0]);
 		const result = runLocalZoneEngine(this._zoneEngineState, {
 			targets: this.host._targets,
 			grid: this.host._grid,

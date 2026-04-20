@@ -18,8 +18,8 @@ from .const import DOMAIN
 from .const import MAX_ZONES
 from .const import NUM_ZONE_SLOTS
 
-# Valid empty-layout shape for async_update_zone_entities fallbacks.
-# Zone 0 is always present (default "normal"); no named zones configured.
+# Fallback shape for async_update_zone_entities when no layout is stored —
+# must pass is_valid_zone_slots_shape, so slot 0 is a dict.
 _EMPTY_ZONE_SLOTS: list[dict[str, str] | None] = [{"type": "normal"}, *([None] * MAX_ZONES)]
 
 _LOGGER = logging.getLogger(__name__)

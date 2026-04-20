@@ -36,12 +36,9 @@ from .storage import EPPGridStore
 _LOGGER = logging.getLogger(__name__)
 _DEVICE_LOGGER = logging.getLogger(f"{__name__}.device_logs")
 
-# Mirror of frontend/src/lib/zone-defaults.ts ZONE_TYPE_DEFAULTS.
-# Keep in sync — test_zone_type_defaults_match_frontend asserts the two
-# tables agree. Non-custom zones carry only `type` (plus name/color) in
-# storage/wire; the backend expands them here before pushing to firmware,
-# which keeps the firmware format unchanged (it still reads trigger|5).
-# Upgrading defaults = bump this table + the TS table, no firmware release.
+# Mirror of frontend ZONE_TYPE_DEFAULTS — test_zone_type_defaults_match_frontend
+# asserts the two agree. Non-custom zones store only `type`; the backend
+# expands via _expand_zone_slot on push so firmware always receives full timing.
 ZONE_TYPE_DEFAULTS: dict[str, dict[str, float]] = {
     "normal": {"trigger": 5, "renew": 3, "timeout": 10.0, "handoff_timeout": 3.0},
     "thoroughfare": {"trigger": 3, "renew": 2, "timeout": 3.0, "handoff_timeout": 1.0},
@@ -49,16 +46,20 @@ ZONE_TYPE_DEFAULTS: dict[str, dict[str, float]] = {
 }
 
 
+def is_valid_zone_slots_shape(value: Any) -> bool:
+    """Length-8 list with a dict at index 0 (zone 0) — matches the websocket
+    validator. Inner shape guards (push, entity update) share this one rule
+    so they can't drift.
+    """
+    return isinstance(value, list) and len(value) == NUM_ZONE_SLOTS and isinstance(value[0], dict)
+
+
 def _expand_zone_slot(slot: dict[str, Any]) -> dict[str, Any]:
-    """Fill in timing fields from ZONE_TYPE_DEFAULTS for non-custom zones.
+    """Expand to full timing for firmware push. Returns a copy.
 
-    Custom zones are returned as-is — user-supplied timing is authoritative.
-    Non-custom zones have their timing OVERWRITTEN with the type defaults even
-    if stale timing is stored (e.g. from before the serializer stripped it) —
-    ZONE_TYPE_DEFAULTS is the single source of truth so bumping the defaults
-    in code rolls through to every device on next push.
-
-    Always returns a copy so the caller can't mutate stored state.
+    Custom: user-supplied timing is authoritative.
+    Non-custom: ZONE_TYPE_DEFAULTS always wins (stored timing is overwritten,
+    not defaulted — keeps the defaults-table the single source of truth).
     """
     if slot.get("type") == "custom":
         return dict(slot)
@@ -352,14 +353,10 @@ class DeviceConnection:
 
         zone_slots = layout.get("zone_slots")
         if zone_slots is not None:
-            # Fail-closed on malformed shape: length MUST be NUM_ZONE_SLOTS and
-            # slot 0 must be a dict. Log a warning and skip the zone push so
-            # other config pushes (perspective/grid/settings) still run.
-            if (
-                not isinstance(zone_slots, list)
-                or len(zone_slots) != NUM_ZONE_SLOTS
-                or not isinstance(zone_slots[0], dict)
-            ):
+            # Skip the zone push on malformed shape; other config pushes
+            # (perspective/grid/settings) still run. Legacy 0.93.x storage
+            # would trip this because it had length-7 zone_slots.
+            if not is_valid_zone_slots_shape(zone_slots):
                 length = len(zone_slots) if isinstance(zone_slots, list) else "N/A"
                 slot0_type = type(zone_slots[0]).__name__ if isinstance(zone_slots, list) and zone_slots else "N/A"
                 _LOGGER.warning(
@@ -1095,9 +1092,7 @@ class DeviceManager:
 
         # Shape guard: fail-closed on anything that isn't the expected length-8
         # list with a dict at slot 0.
-        shape_ok = (
-            isinstance(zone_slots, list) and len(zone_slots) == NUM_ZONE_SLOTS and isinstance(zone_slots[0], dict)
-        )
+        shape_ok = is_valid_zone_slots_shape(zone_slots)
 
         language = self._hass.config.language
         ent_reg = er.async_get(self._hass)

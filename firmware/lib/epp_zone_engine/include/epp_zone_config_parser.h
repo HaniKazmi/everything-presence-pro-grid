@@ -19,28 +19,12 @@ inline ZoneType zone_type_from_str(const char *s) {
   return ZoneType::NORMAL;
 }
 
-/// Parse zone configs from the `zone_slots` array at the root of the given
-/// JsonDocument. Writes up to `MAX_ZONE_SLOTS` entries into `out`, updating
-/// `count` with the number written.
+/// Parse zone configs from `doc["zone_slots"]`. Writes up to MAX_ZONE_SLOTS
+/// entries into `out`, updating `count`.
 ///
-/// Expected shape (zone 0 unified into zone_slots[0]):
-///   {
-///     "zone_slots": [
-///       {"type": "...", "trigger": N, "renew": N, "timeout": F, "handoff_timeout": F},
-///       {"id": 1, "name": "...", "type": "...", ...},
-///       null,
-///       ...
-///     ]
-///   }
-///
-/// Rules:
-/// - Slot index drives the zone id. Index 0 is zone 0 (whole-room), indices
-///   1-7 are named zones. Any `id` field in the slot payload is ignored —
-///   slot position is authoritative.
-/// - `null` entries are skipped. If slot 0 is null or the array is shorter
-///   than 1, zone 0 is absent from the output; the zone engine then reports
-///   zone 0 occupancy as false (acceptable fail-closed behavior).
-/// - If `zone_slots` is missing or not an array, no entries are written.
+/// Slot index IS the zone id (any `id` in the payload is ignored). Null or
+/// non-object entries are skipped — if slot 0 is missing, zone 0 is absent
+/// and zone-0 occupancy reports false (fail-closed).
 ///
 /// Callers must pass a freshly-initialised `out` and `count == 0`.
 inline void parse_zone_configs(const JsonDocument &doc, ZoneConfig out[], int &count) {

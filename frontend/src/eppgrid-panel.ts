@@ -12,7 +12,10 @@ import "./components/epp-overlay-sidebar.js";
 import "./components/epp-zone-sidebar.js";
 import { DeviceController } from "./controllers/device-controller.js";
 import { FlasherController } from "./controllers/flasher-controller.js";
-import { GridStateController } from "./controllers/grid-state-controller.js";
+import {
+	GridStateController,
+	serializeSlot,
+} from "./controllers/grid-state-controller.js";
 import { TargetController } from "./controllers/target-controller.js";
 import type { PaintAction } from "./lib/cell-painting.js";
 import { parseConfig } from "./lib/config-serialization.js";
@@ -59,8 +62,7 @@ import {
 } from "./lib/usb-flash-service.js";
 import {
 	getZoneThresholds,
-	resolveZone0Params,
-	ZONE_TYPE_DEFAULTS,
+	resolveZoneParams,
 	type Zone0Config,
 	type ZoneConfig,
 } from "./lib/zone-defaults.js";
@@ -101,14 +103,10 @@ export type ZoneSlots = readonly [
 	ZoneConfig | null,
 ];
 
+// Slot 0 carries only `type` for non-custom — timing is resolved from
+// ZONE_TYPE_DEFAULTS at read/push time (see resolveZoneParams).
 const INITIAL_ZONE_SLOTS: ZoneSlots = [
-	{
-		type: "normal",
-		trigger: ZONE_TYPE_DEFAULTS.normal.trigger,
-		renew: ZONE_TYPE_DEFAULTS.normal.renew,
-		timeout: ZONE_TYPE_DEFAULTS.normal.timeout,
-		handoff_timeout: ZONE_TYPE_DEFAULTS.normal.handoff_timeout,
-	},
+	{ type: "normal" },
 	null,
 	null,
 	null,
@@ -862,12 +860,80 @@ export class EPPGridPanel extends LitElement {
 		return this._fovCache;
 	}
 
+	// _computeMaxRangeMm does a full-grid scan via _autoDetectionRange when
+	// auto-distance is on; cache against the inputs so hot paths (template
+	// card render, per-cell range check) don't re-scan every render.
+	private _maxRangeCache: number | null = null;
+	private _maxRangeCacheGrid: Uint8Array | null = null;
+	private _maxRangeCacheAuto: boolean | null = null;
+	private _maxRangeCacheMax: number | null = null;
+
 	private _computeMaxRangeMm(): number {
-		return computeMaxRangeMm(
+		if (
+			this._maxRangeCache !== null &&
+			this._maxRangeCacheGrid === this._grid &&
+			this._maxRangeCacheAuto === this._targetAutoDistance &&
+			this._maxRangeCacheMax === this._targetMaxDistance
+		) {
+			return this._maxRangeCache;
+		}
+		const value = computeMaxRangeMm(
 			this._targetAutoDistance,
 			this._targetAutoDistance ? this._autoDetectionRange() : 0,
 			this._targetMaxDistance,
 		);
+		this._maxRangeCacheGrid = this._grid;
+		this._maxRangeCacheAuto = this._targetAutoDistance;
+		this._maxRangeCacheMax = this._targetMaxDistance;
+		this._maxRangeCache = value;
+		return value;
+	}
+
+	// Template card metrics cache — keyed by template object reference.
+	// Invalidated when perspective or max-range changes (FOV inputs).
+	// fetchTemplates returns fresh objects each call, so stale entries drop
+	// naturally via WeakMap GC when the old array is replaced.
+	private _templateMetricsCache = new WeakMap<
+		object,
+		{
+			perspective: number[] | null;
+			maxRangeMm: number;
+			widthM: number;
+			depthM: number;
+		}
+	>();
+
+	private _getTemplateMetrics(t: {
+		grid: number[];
+		roomWidth: number;
+		roomDepth: number;
+	}): { widthM: number; depthM: number } {
+		const perspective = this._perspective;
+		const maxRangeMm = this._computeMaxRangeMm();
+		const cached = this._templateMetricsCache.get(t);
+		if (
+			cached &&
+			cached.perspective === perspective &&
+			cached.maxRangeMm === maxRangeMm
+		) {
+			return { widthM: cached.widthM, depthM: cached.depthM };
+		}
+		const metrics = getGridRoomMetrics(
+			new Uint8Array(t.grid),
+			t.roomWidth,
+			perspective,
+			this._getSensorFov(),
+			maxRangeMm,
+		);
+		const widthM = metrics ? metrics.widthM : t.roomWidth / 1000;
+		const depthM = metrics ? metrics.depthM : t.roomDepth / 1000;
+		this._templateMetricsCache.set(t, {
+			perspective,
+			maxRangeMm,
+			widthM,
+			depthM,
+		});
+		return { widthM, depthM };
 	}
 
 	/**
@@ -879,15 +945,6 @@ export class EPPGridPanel extends LitElement {
 		return this._targetAutoDistance
 			? MAX_RANGE
 			: this._targetMaxDistance * 1000;
-	}
-
-	/** Compute room dimensions and furthest point from sensor based on grid */
-	private _getGridRoomMetrics(): {
-		widthM: number;
-		depthM: number;
-		furthestM: number;
-	} | null {
-		return getGridRoomMetrics(this._grid, this._roomWidth, this._perspective);
 	}
 
 	/** Get raw room bounds without padding (only actual inside cells) */
@@ -1440,19 +1497,9 @@ export class EPPGridPanel extends LitElement {
 				type: "eppgrid/set_room_layout",
 				mac: this._selectedMac,
 				grid_bytes: Array.from(this._grid),
-				zone_slots: this._zoneConfigs.map((z, idx) => {
-					if (idx === 0) {
-						const z0 = z as Zone0Config;
-						return {
-							type: z0.type,
-							trigger: z0.trigger,
-							renew: z0.renew,
-							timeout: z0.timeout,
-							handoff_timeout: z0.handoff_timeout,
-						};
-					}
-					return null;
-				}),
+				zone_slots: this._zoneConfigs.map((z, idx) =>
+					idx === 0 ? serializeSlot(z, 0) : null,
+				),
 				furniture: [],
 			});
 		} catch (e) {
@@ -2038,16 +2085,10 @@ export class EPPGridPanel extends LitElement {
 										}}
                     @zone-config-change=${(e: CustomEvent) => {
 											const { index, updates } = e.detail;
-											// Sidebar indexes are 0-based over named zones;
-											// shift by +1 to index the unified zone-slots tuple.
+											// Sidebar index is 0-based over named zones; slot = index + 1.
 											const slot = index + 1;
-											// Guard: slot 0 is Zone0Config (never owned by this event)
-											// and slot >= length is out of bounds.
 											if (slot < 1 || slot >= this._zoneConfigs.length) return;
 											const current = this._zoneConfigs[slot];
-											// Defense-in-depth: the sidebar should only fire for
-											// existing named zones, but a null slot would produce
-											// a config object missing name/color/type.
 											if (current === null) return;
 											const configs = [...this._zoneConfigs];
 											configs[slot] = { ...current, ...updates };
@@ -2197,25 +2238,10 @@ export class EPPGridPanel extends LitElement {
                       <div class="template-card-info">
                         <div class="template-card-name">${t.name}</div>
                         <div class="template-card-size">${(() => {
-													// Use the same FOV-aware metrics the footer uses
-													// so the card matches the live grid readout — cells
-													// marked inside the room but outside the sensor's
-													// FOV/range (grey-hatched) are excluded. Falls back
-													// to the stored calibration values if nothing is
-													// painted.
-													const metrics = getGridRoomMetrics(
-														new Uint8Array(t.grid),
-														t.roomWidth,
-														this._perspective,
-														this._getSensorFov(),
-														this._computeMaxRangeMm(),
-													);
-													const widthM = metrics
-														? metrics.widthM
-														: t.roomWidth / 1000;
-													const depthM = metrics
-														? metrics.depthM
-														: t.roomDepth / 1000;
+													// Same FOV-aware metrics the live footer uses; cached
+													// per template to avoid re-scanning the grid every render.
+													const { widthM, depthM } =
+														this._getTemplateMetrics(t);
 													return `${this._localize.formatNumber(widthM, 1)}m × ${this._localize.formatNumber(depthM, 1)}m`;
 												})()}</div>
                       </div>
@@ -2348,7 +2374,7 @@ export class EPPGridPanel extends LitElement {
 		timeout: number;
 		handoffTimeout: number;
 	} {
-		const z0 = resolveZone0Params(this._zoneConfigs[0]);
+		const z0 = resolveZoneParams(this._zoneConfigs[0]);
 		return getZoneThresholds(
 			zid,
 			this._namedZones(),

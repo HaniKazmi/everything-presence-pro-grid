@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
 	getZoneThresholds,
-	resolveZone0Params,
+	resolveZoneParams,
 	ZONE_COLORS,
 	ZONE_TYPE_DEFAULTS,
 	type Zone0Config,
@@ -168,10 +168,10 @@ describe("getZoneThresholds", () => {
 	});
 });
 
-describe("resolveZone0Params", () => {
+describe("resolveZoneParams", () => {
 	it("non-custom type with no user fields: returns the type's defaults", () => {
 		const z0: Zone0Config = { type: "rest" };
-		expect(resolveZone0Params(z0)).toEqual({
+		expect(resolveZoneParams(z0)).toEqual({
 			type: "rest",
 			trigger: 7,
 			renew: 1,
@@ -188,7 +188,7 @@ describe("resolveZone0Params", () => {
 			timeout: 999,
 			handoff_timeout: 42,
 		};
-		expect(resolveZone0Params(z0)).toEqual({
+		expect(resolveZoneParams(z0)).toEqual({
 			type: "rest",
 			trigger: 7,
 			renew: 1,
@@ -199,7 +199,7 @@ describe("resolveZone0Params", () => {
 
 	it("non-custom thoroughfare type: returns thoroughfare defaults", () => {
 		const z0: Zone0Config = { type: "thoroughfare" };
-		expect(resolveZone0Params(z0)).toEqual({
+		expect(resolveZoneParams(z0)).toEqual({
 			type: "thoroughfare",
 			trigger: 3,
 			renew: 2,
@@ -216,7 +216,7 @@ describe("resolveZone0Params", () => {
 			timeout: 15,
 			handoff_timeout: 5,
 		};
-		expect(resolveZone0Params(z0)).toEqual({
+		expect(resolveZoneParams(z0)).toEqual({
 			type: "custom",
 			trigger: 8,
 			renew: 2,
@@ -231,7 +231,7 @@ describe("resolveZone0Params", () => {
 			trigger: 8,
 			// renew, timeout, handoff_timeout unset
 		};
-		expect(resolveZone0Params(z0)).toEqual({
+		expect(resolveZoneParams(z0)).toEqual({
 			type: "custom",
 			trigger: 8,
 			renew: ZONE_TYPE_DEFAULTS.normal.renew,
@@ -242,7 +242,7 @@ describe("resolveZone0Params", () => {
 
 	it("custom type with no user fields: all fields fall back to normal defaults", () => {
 		const z0: Zone0Config = { type: "custom" };
-		expect(resolveZone0Params(z0)).toEqual({
+		expect(resolveZoneParams(z0)).toEqual({
 			type: "custom",
 			trigger: ZONE_TYPE_DEFAULTS.normal.trigger,
 			renew: ZONE_TYPE_DEFAULTS.normal.renew,
@@ -253,6 +253,6 @@ describe("resolveZone0Params", () => {
 
 	it("preserves the original zone type in the return value", () => {
 		const z0: Zone0Config = { type: "normal" };
-		expect(resolveZone0Params(z0).type).toBe("normal");
+		expect(resolveZoneParams(z0).type).toBe("normal");
 	});
 });

@@ -394,19 +394,6 @@ describe("_computeMaxRangeMm", () => {
 	});
 });
 
-describe("_getGridRoomMetrics", () => {
-	it("returns null for empty grid", () => {
-		const el = createPanel();
-		const a = el as any;
-		a._grid = new Uint8Array(GRID_CELL_COUNT);
-		a._roomWidth = 0;
-		a._perspective = null;
-
-		const result = a._getGridRoomMetrics();
-		expect(result).toBeNull();
-	});
-});
-
 describe("raw target display subscription", () => {
 	it("writes raw positions directly to _rawTargets", async () => {
 		const el = createPanel();

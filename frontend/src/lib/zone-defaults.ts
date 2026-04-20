@@ -42,29 +42,27 @@ export interface ZoneThresholds {
 }
 
 /**
- * Resolve zone 0's timing parameters against ZONE_TYPE_DEFAULTS.
- *
- * Matches getZoneThresholds semantics: non-custom types use the type's
- * defaults exclusively (any user-supplied trigger/renew/... on z0 is
- * ignored). Custom type honours user-supplied values with the type
- * defaults as a fallback.
+ * Non-custom types use the type's defaults exclusively (user-supplied
+ * trigger/renew/... is ignored). Custom honours user values with the type
+ * defaults as a fallback. Works for zone 0 and named zones — both share
+ * the Zone0Config structural base.
  */
-export function resolveZone0Params(z0: Zone0Config): {
+export function resolveZoneParams(z: Zone0Config): {
 	type: Zone0Config["type"];
 	trigger: number;
 	renew: number;
 	timeout: number;
 	handoff_timeout: number;
 } {
-	const d = ZONE_TYPE_DEFAULTS[z0.type] ?? ZONE_TYPE_DEFAULTS.normal;
-	const useCustom = z0.type === "custom";
+	const d = ZONE_TYPE_DEFAULTS[z.type] ?? ZONE_TYPE_DEFAULTS.normal;
+	const useCustom = z.type === "custom";
 	return {
-		type: z0.type,
-		trigger: useCustom ? (z0.trigger ?? d.trigger) : d.trigger,
-		renew: useCustom ? (z0.renew ?? d.renew) : d.renew,
-		timeout: useCustom ? (z0.timeout ?? d.timeout) : d.timeout,
+		type: z.type,
+		trigger: useCustom ? (z.trigger ?? d.trigger) : d.trigger,
+		renew: useCustom ? (z.renew ?? d.renew) : d.renew,
+		timeout: useCustom ? (z.timeout ?? d.timeout) : d.timeout,
 		handoff_timeout: useCustom
-			? (z0.handoff_timeout ?? d.handoff_timeout)
+			? (z.handoff_timeout ?? d.handoff_timeout)
 			: d.handoff_timeout,
 	};
 }

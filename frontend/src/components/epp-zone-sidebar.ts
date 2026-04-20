@@ -1,7 +1,7 @@
 import { css, html, LitElement, nothing } from "lit";
 import { property } from "lit/decorators.js";
 import {
-	resolveZone0Params,
+	resolveZoneParams,
 	ZONE_TYPE_DEFAULTS,
 	type Zone0Config,
 	type ZoneConfig,
@@ -368,7 +368,7 @@ export class EppZoneSidebar extends LitElement {
 	private _renderBoundaryTypeControls() {
 		const z0 = this.zone0;
 		const isCustom = z0.type === "custom";
-		const resolved = resolveZone0Params(z0);
+		const resolved = resolveZoneParams(z0);
 		const trigger = resolved.trigger;
 		const renew = resolved.renew;
 		const timeout = resolved.timeout;
@@ -393,14 +393,28 @@ export class EppZoneSidebar extends LitElement {
 						@change=${(e: Event) => {
 							const val = (e.target as HTMLSelectElement)
 								.value as Zone0Config["type"];
-							const d = ZONE_TYPE_DEFAULTS[val] || ZONE_TYPE_DEFAULTS.normal;
-							this._emitZone0Change({
-								type: val,
-								trigger: d.trigger,
-								renew: d.renew,
-								timeout: d.timeout,
-								handoff_timeout: d.handoff_timeout,
-							});
+							// Non-custom types resolve timing from ZONE_TYPE_DEFAULTS on read;
+							// emit only the type so we don't persist dead data. Switching
+							// INTO custom seeds the sliders with the current type's defaults
+							// so the user has a sane starting point.
+							if (val === "custom") {
+								const d = resolveZoneParams(this.zone0);
+								this._emitZone0Change({
+									type: val,
+									trigger: d.trigger,
+									renew: d.renew,
+									timeout: d.timeout,
+									handoff_timeout: d.handoff_timeout,
+								});
+							} else {
+								this._emitZone0Change({
+									type: val,
+									trigger: undefined,
+									renew: undefined,
+									timeout: undefined,
+									handoff_timeout: undefined,
+								});
+							}
 						}}
 						@click=${(e: Event) => e.stopPropagation()}
 					>
@@ -545,19 +559,21 @@ export class EppZoneSidebar extends LitElement {
 						@change=${(e: Event) => {
 							const val = (e.target as HTMLSelectElement)
 								.value as ZoneConfig["type"];
-							const d = ZONE_TYPE_DEFAULTS[val] || ZONE_TYPE_DEFAULTS.normal;
+							// Mirror the zone-0 contract: only custom persists timing;
+							// other types are resolved from ZONE_TYPE_DEFAULTS at read/push.
+							const updates: Partial<ZoneConfig> =
+								val === "custom"
+									? { ...resolveZoneParams(zone), type: val }
+									: {
+											type: val,
+											trigger: undefined,
+											renew: undefined,
+											timeout: undefined,
+											handoff_timeout: undefined,
+										};
 							this.dispatchEvent(
 								new CustomEvent("zone-config-change", {
-									detail: {
-										index,
-										updates: {
-											type: val,
-											trigger: d.trigger,
-											renew: d.renew,
-											timeout: d.timeout,
-											handoff_timeout: d.handoff_timeout,
-										},
-									},
+									detail: { index, updates },
 									bubbles: true,
 									composed: true,
 								}),

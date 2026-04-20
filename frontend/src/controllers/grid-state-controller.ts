@@ -49,17 +49,10 @@ import {
 export type GridHost = ReactiveControllerHost & Record<string, any>;
 
 /**
- * Serialize a zone slot for storage / wire.
- *
- * Non-custom types (normal / thoroughfare / rest) drop their timing fields —
- * the backend and frontend both resolve timing from ZONE_TYPE_DEFAULTS at
- * push/render time, so storing them is dead weight and blocks the "bump
- * defaults in code, roll through every stored layout" upgrade path.
- *
- * Only `type === "custom"` honours user-supplied trigger/renew/timeout/
- * handoff_timeout, so only custom zones keep them in the payload.
+ * Serialize a zone slot for storage / wire. Non-custom types drop timing —
+ * backend + frontend resolve it from ZONE_TYPE_DEFAULTS at push/render time.
  */
-function serializeSlot(
+export function serializeSlot(
 	z: Zone0Config | ZoneConfig | null,
 	idx: number,
 ): Record<string, unknown> | null {
@@ -494,10 +487,6 @@ export class GridStateController implements ReactiveController {
 	async saveTemplate(): Promise<void> {
 		const name = (this.host._templateName as string).trim();
 		if (!name) return;
-		// Length-8 zones matches the unified zone_slots model. Slot 0 is the
-		// Zone0Config (room boundary), slots 1-7 are named ZoneConfig | null.
-		// serializeSlot strips timing for non-custom types — those zones pick
-		// their timing up from ZONE_TYPE_DEFAULTS at push/render time.
 		const zones = (
 			this.host._zoneConfigs as (ZoneConfig | Zone0Config | null)[]
 		).map((z, i) => serializeSlot(z, i));
