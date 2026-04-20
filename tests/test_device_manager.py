@@ -2685,6 +2685,47 @@ class TestSessionLifecycle:
         new_conn.async_connect.assert_awaited_once()
         assert result is new_conn
 
+    async def test_device_connection_on_stop_marks_disconnected(
+        self, hass: HomeAssistant, manager: DeviceManager
+    ) -> None:
+        """aioesphomeapi on_stop callback flips connected=False and clears subscribers."""
+        from custom_components.eppgrid.device_manager import DeviceConnection
+
+        captured_on_stop: list = []
+
+        class FakeClient:
+            def __init__(self, *args, **kwargs) -> None:
+                pass
+
+            async def connect(self, on_stop=None, login=False, log_errors=True) -> None:
+                captured_on_stop.append(on_stop)
+
+            async def list_entities_services(self):
+                return ([], [])
+
+            async def disconnect(self) -> None:
+                pass
+
+        with patch("custom_components.eppgrid.device_manager.APIClient", FakeClient):
+            conn = DeviceConnection("192.168.1.50")
+            await conn.async_connect()
+
+            # Simulate a live state subscriber
+            conn._state_subscribers.append(lambda _state: None)
+            conn._states_subscribed = True
+            assert conn.connected is True
+
+            # aioesphomeapi reports the underlying socket died
+            assert len(captured_on_stop) == 1 and captured_on_stop[0] is not None
+            on_stop = captured_on_stop[0]
+            result = on_stop(False)
+            if asyncio.iscoroutine(result):
+                await result
+
+        assert conn.connected is False
+        assert conn._state_subscribers == []
+        assert conn._states_subscribed is False
+
     async def test_async_start_registers_listeners(self, hass: HomeAssistant, manager: DeviceManager) -> None:
         """async_start discovers devices and registers event listeners."""
         with patch.object(manager, "async_discover", new_callable=AsyncMock):

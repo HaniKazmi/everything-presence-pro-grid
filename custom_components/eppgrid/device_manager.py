@@ -171,8 +171,20 @@ class DeviceConnection:
         if self.connected:
             return
         client = APIClient(self._host, self._port, "", noise_psk=self._noise_psk)
+
+        async def _on_stop(expected_disconnect: bool) -> None:
+            # aioesphomeapi reports the underlying socket died. Flip state so
+            # get_session() returns None and the next async_open_session opens
+            # a fresh client.
+            self.connected = False
+            self._state_subscribers.clear()
+            self._states_subscribed = False
+            _LOGGER.debug(
+                "Device %s connection stopped (expected=%s)", self._host, expected_disconnect
+            )
+
         try:
-            await client.connect(login=True)
+            await client.connect(on_stop=_on_stop, login=True)
             entities, services = await client.list_entities_services()
         except Exception:
             await client.disconnect()
