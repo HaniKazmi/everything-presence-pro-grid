@@ -301,7 +301,9 @@ describe("panel device deletion handling", () => {
 		const loadPromise = new Promise<any>((resolve) => {
 			resolveLoad = resolve;
 		});
-		vi.spyOn(a._deviceCtrl, "loadDeviceConfig").mockImplementation(() => loadPromise);
+		vi.spyOn(a._deviceCtrl, "loadDeviceConfig").mockImplementation(
+			() => loadPromise,
+		);
 
 		// Step 1: delete dev1 (the selected device). DeviceController picks dev2 as replacement.
 		// The panel fires _loadDeviceConfig("bb") which awaits the pending loadPromise.
