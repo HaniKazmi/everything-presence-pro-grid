@@ -915,8 +915,6 @@ describe("DeviceController", () => {
 			// Prime: device online, session implicitly "open"
 			(ctrl as any)._applyDeviceList(deviceList("aa", true));
 			ctrl.selectedMac = "aa";
-			// Let the internal cache see an "available" value first
-			(ctrl as any)._lastSelectedAvailable = true;
 			closeSpy.mockClear();
 
 			// Device goes offline
