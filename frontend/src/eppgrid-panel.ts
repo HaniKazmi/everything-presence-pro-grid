@@ -579,6 +579,9 @@ export class EPPGridPanel extends LitElement {
 			this._targetCtrl.handleRawTargetData(rawTargets);
 		};
 		const config = await this._deviceCtrl.loadDeviceConfig(mac);
+		if (this._selectedMac !== mac) {
+			return;
+		}
 		if (config) {
 			this._applyConfig(config);
 		}

@@ -283,4 +283,55 @@ describe("panel device deletion handling", () => {
 		expect(a._zoneState.frame_count).toBe(0);
 		document.body.removeChild(el);
 	});
+
+	it("does not apply stale device config when selected device changed during load", async () => {
+		const dev1 = mockDeviceInfo("aa", "Alpha");
+		const dev2 = mockDeviceInfo("bb", "Bravo");
+		const { el, a, pushDeviceList } = await mountPanel([dev1, dev2]);
+
+		// Seed a known clean baseline.
+		a._perspective = null;
+		a._grid = new Uint8Array(GRID_CELL_COUNT);
+		await el.updateComplete;
+
+		// Stub the device controller's loadDeviceConfig to return a Promise we control.
+		// When the second pushDeviceList fires, dev2 is selected and _loadDeviceConfig("bb")
+		// runs. We want that call to hang until AFTER we've deleted dev2.
+		let resolveLoad: ((config: any) => void) | null = null;
+		const loadPromise = new Promise<any>((resolve) => {
+			resolveLoad = resolve;
+		});
+		vi.spyOn(a._deviceCtrl, "loadDeviceConfig").mockImplementation(() => loadPromise);
+
+		// Step 1: delete dev1 (the selected device). DeviceController picks dev2 as replacement.
+		// The panel fires _loadDeviceConfig("bb") which awaits the pending loadPromise.
+		pushDeviceList([dev2]);
+		await el.updateComplete;
+		await new Promise((r) => setTimeout(r, 0));
+		expect(a._selectedMac).toBe("bb");
+
+		// Step 2: delete dev2 before the pending load resolves. Now _selectedMac === "".
+		pushDeviceList([]);
+		await el.updateComplete;
+		expect(a._selectedMac).toBe("");
+
+		// Step 3: resolve the pending load with dev2 config that would populate state.
+		// Because _selectedMac is no longer "bb", the result MUST be dropped.
+		resolveLoad!({
+			calibration: {
+				perspective: [1, 2, 3, 4, 5, 6, 7, 8, 9],
+				room_width: 4000,
+				room_depth: 3000,
+			},
+			room_layout: {},
+		});
+		await new Promise((r) => setTimeout(r, 0));
+		await new Promise((r) => setTimeout(r, 0));
+		await el.updateComplete;
+
+		expect(a._perspective).toBeNull();
+		expect(a._roomWidth).toBe(0);
+		expect(a._roomDepth).toBe(0);
+		document.body.removeChild(el);
+	});
 });
