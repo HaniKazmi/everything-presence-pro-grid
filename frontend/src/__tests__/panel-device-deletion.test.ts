@@ -206,4 +206,27 @@ describe("panel device deletion handling", () => {
 		expect(closeSpy).not.toHaveBeenCalled();
 		document.body.removeChild(el);
 	});
+
+	it("unmounts editor components after the selected device is removed", async () => {
+		const dev1 = mockDeviceInfo("aa", "Alpha");
+		const { el, a, pushDeviceList } = await mountPanel([dev1]);
+		// Put the panel in a state that renders editor children.
+		a._view = "editor";
+		a._perspective = [1, 2, 3, 4, 5, 6, 7, 8, 9];
+		a._roomWidth = 4000;
+		a._roomDepth = 3000;
+		await el.updateComplete;
+		const html1 = el.shadowRoot?.innerHTML ?? "";
+		expect(html1).toMatch(/epp-zone-sidebar|epp-overlay-sidebar|epp-furniture-sidebar/);
+
+		pushDeviceList([]);
+		await el.updateComplete;
+
+		const html2 = el.shadowRoot?.innerHTML ?? "";
+		expect(html2).not.toMatch(/epp-zone-sidebar/);
+		expect(html2).not.toMatch(/epp-overlay-sidebar/);
+		expect(html2).not.toMatch(/epp-furniture-sidebar/);
+		expect(html2).not.toMatch(/epp-settings-view/);
+		document.body.removeChild(el);
+	});
 });
