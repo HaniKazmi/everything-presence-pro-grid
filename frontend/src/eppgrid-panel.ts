@@ -542,6 +542,13 @@ export class EPPGridPanel extends LitElement {
 	}
 
 	private _handleSelectedDeviceRemoved(): void {
+		this._perspective = null;
+		this._roomWidth = 0;
+		this._roomDepth = 0;
+		this._setupStep = null;
+		this._furniture = [];
+		this._grid = new Uint8Array(GRID_CELL_COUNT);
+		this._zoneConfigs = INITIAL_ZONE_SLOTS;
 		this._view = "live";
 	}
 

@@ -92,4 +92,32 @@ describe("panel device deletion handling", () => {
 		expect(a._view).toBe("live");
 		document.body.removeChild(el);
 	});
+
+	it("clears cached per-device state when the selected device is removed", async () => {
+		const dev1 = mockDeviceInfo("aa", "Alpha");
+		const { el, a, pushDeviceList } = await mountPanel([dev1]);
+		// Simulate loaded config state.
+		a._perspective = [1, 2, 3, 4, 5, 6, 7, 8, 9];
+		a._roomWidth = 4000;
+		a._roomDepth = 3000;
+		a._setupStep = "mark-corner-0";
+		a._furniture = [{ id: "f1", x: 0, y: 0, width: 300, height: 300, rot: 0, type: "bed" } as any];
+		a._grid = new Uint8Array(GRID_CELL_COUNT).fill(1);
+		a._zoneConfigs = INITIAL_ZONE_SLOTS.map((z) => (z ? { ...z } : null)) as any;
+		await el.updateComplete;
+
+		pushDeviceList([]);
+		await el.updateComplete;
+
+		expect(a._perspective).toBeNull();
+		expect(a._roomWidth).toBe(0);
+		expect(a._roomDepth).toBe(0);
+		expect(a._setupStep).toBeNull();
+		expect(a._furniture).toEqual([]);
+		expect(Array.from(a._grid as Uint8Array)).toEqual(
+			Array.from(new Uint8Array(GRID_CELL_COUNT)),
+		);
+		expect(a._zoneConfigs).toEqual(INITIAL_ZONE_SLOTS);
+		document.body.removeChild(el);
+	});
 });
