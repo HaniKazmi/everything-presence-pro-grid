@@ -2200,6 +2200,62 @@ class TestEventCallbacks:
         assert "AA:BB:CC:DD:EE:FF" not in manager._pushing
         mock_fire.assert_called_once()
 
+    async def test_on_state_changed_closes_active_session_on_offline(
+        self, hass: HomeAssistant, manager: DeviceManager
+    ) -> None:
+        """Device going unavailable closes any active session so the next open is fresh."""
+        dev_reg = dr.async_get(hass)
+        ent_reg = er.async_get(hass)
+
+        esphome_entry = MockConfigEntry(
+            domain="esphome",
+            data={"host": "192.168.1.50"},
+            title="EPP Device",
+        )
+        esphome_entry.add_to_hass(hass)
+
+        device = dev_reg.async_get_or_create(
+            config_entry_id=esphome_entry.entry_id,
+            connections={("mac", "aa:bb:cc:dd:ee:ff")},
+            name="EPP Device",
+        )
+
+        entity = ent_reg.async_get_or_create(
+            "sensor",
+            "esphome",
+            unique_id="AA:BB:CC:DD:EE:FF-sensor-close",
+            config_entry=esphome_entry,
+            device_id=device.id,
+        )
+
+        mac = "AA:BB:CC:DD:EE:FF"
+        manager.devices[mac] = ManagedDevice(
+            mac=mac, name="EPP", host="192.168.1.50", device_id=device.id
+        )
+
+        # Populate an active session (frontend had a live overview open)
+        stale_conn = MagicMock()
+        stale_conn.connected = True
+        stale_conn.async_disconnect = AsyncMock()
+        manager._active_connections[mac] = stale_conn
+
+        with patch.object(manager, "async_close_session", new_callable=AsyncMock) as mock_close:
+            old_state = MagicMock()
+            old_state.state = "25.5"
+            new_state = MagicMock()
+            new_state.state = STATE_UNAVAILABLE
+
+            event = MagicMock()
+            event.data = {
+                "entity_id": entity.entity_id,
+                "old_state": old_state,
+                "new_state": new_state,
+            }
+            manager._on_state_changed(event)
+            await hass.async_block_till_done()
+
+        mock_close.assert_awaited_once_with(mac)
+
     async def test_is_device_available_all_unavailable(self, hass: HomeAssistant, manager: DeviceManager) -> None:
         """_is_device_available returns False when all ESPHome entities are unavailable."""
         dev_reg = dr.async_get(hass)

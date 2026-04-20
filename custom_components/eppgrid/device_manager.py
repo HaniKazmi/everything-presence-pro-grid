@@ -707,8 +707,12 @@ class DeviceManager:
         offline_states = (STATE_UNAVAILABLE, STATE_UNKNOWN)
 
         if new_state.state in offline_states:
-            # Device went offline — allow a fresh push when it comes back
+            # Device went offline — allow a fresh push when it comes back and
+            # close any active session so the stale APIClient is replaced on
+            # the next frontend reconnect.
             self._pushing.discard(mac)
+            if mac in self._active_connections:
+                self._hass.async_create_task(self.async_close_session(mac))
             self._fire_device_list_changed()
             return
 
