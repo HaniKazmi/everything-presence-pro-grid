@@ -370,4 +370,53 @@ describe("panel device deletion handling", () => {
 		expect(closeSpy).toHaveBeenCalled();
 		document.body.removeChild(el);
 	});
+
+	it("clears editor state (_dirty, _activeZone, selection, overlay) on deletion", async () => {
+		const dev1 = mockDeviceInfo("aa", "Alpha");
+		const { el, a, pushDeviceList } = await mountPanel([dev1]);
+		a._dirty = true;
+		a._activeZone = 2;
+		a._selectedFurnitureId = "f1";
+		a._overlayMode = "edit";
+		await el.updateComplete;
+
+		pushDeviceList([]);
+		await el.updateComplete;
+
+		expect(a._dirty).toBe(false);
+		expect(a._activeZone).toBeNull();
+		expect(a._selectedFurnitureId).toBeNull();
+		expect(a._overlayMode).toBeNull();
+		document.body.removeChild(el);
+	});
+
+	it("does not auto-load when the replacement device is offline", async () => {
+		const dev1 = mockDeviceInfo("aa", "Alpha");
+		const dev2 = mockDeviceInfo("bb", "Bravo", false);
+		const { el, a, pushDeviceList } = await mountPanel([dev1, dev2]);
+		const loadSpy = vi.spyOn(a, "_loadDeviceConfig");
+		loadSpy.mockClear();
+
+		pushDeviceList([dev2]);
+		await el.updateComplete;
+		await new Promise((r) => setTimeout(r, 0));
+
+		expect(a._selectedMac).toBe("bb");
+		expect(loadSpy).not.toHaveBeenCalled();
+		document.body.removeChild(el);
+	});
+
+	it("does not share sensor state reference across panel instances", async () => {
+		const dev1 = mockDeviceInfo("aa", "Alpha");
+		const { el: el1, a: a1 } = await mountPanel([dev1]);
+		const { el: el2, a: a2 } = await mountPanel([dev1]);
+
+		a1._sensorState.occupancy = true;
+		await el1.updateComplete;
+		await el2.updateComplete;
+
+		expect(a2._sensorState.occupancy).toBe(false);
+		document.body.removeChild(el1);
+		document.body.removeChild(el2);
+	});
 });

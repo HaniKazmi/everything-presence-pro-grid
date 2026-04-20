@@ -127,7 +127,10 @@ type SensorState = {
 	co2: number | null;
 };
 
-const INITIAL_SENSOR_STATE: SensorState = {
+// Factory — returns a fresh object each call. Sensor state is mutated in-place
+// during render (see `_sensorState.occupancy = ...` in render paths), so
+// handing out the same reference would corrupt future resets.
+const createInitialSensorState = (): SensorState => ({
 	occupancy: false,
 	static_presence: false,
 	motion_presence: false,
@@ -136,7 +139,7 @@ const INITIAL_SENSOR_STATE: SensorState = {
 	temperature: null,
 	humidity: null,
 	co2: null,
-};
+});
 
 type ZoneState = {
 	occupancy: Record<number, boolean>;
@@ -144,11 +147,11 @@ type ZoneState = {
 	frame_count: number;
 };
 
-const INITIAL_ZONE_STATE: ZoneState = {
+const createInitialZoneState = (): ZoneState => ({
 	occupancy: {},
 	target_counts: {},
 	frame_count: 0,
-};
+});
 
 export class EPPGridPanel extends LitElement {
 	@property({ attribute: false }) hass: any;
@@ -224,8 +227,8 @@ export class EPPGridPanel extends LitElement {
 	} | null = null;
 	@state() private _targets: Target[] = [];
 	@state() private _rawTargets: RawTarget[] = [];
-	@state() private _sensorState: SensorState = INITIAL_SENSOR_STATE;
-	@state() private _zoneState: ZoneState = INITIAL_ZONE_STATE;
+	@state() private _sensorState: SensorState = createInitialSensorState();
+	@state() private _zoneState: ZoneState = createInitialZoneState();
 	@state() private _showHitCounts = false;
 	@state() private _showDebugLog = false;
 	private _debugLogLines: string[] = [];
@@ -570,7 +573,11 @@ export class EPPGridPanel extends LitElement {
 		this._grid = new Uint8Array(GRID_CELL_COUNT);
 		this._zoneConfigs = INITIAL_ZONE_SLOTS;
 		this._view = "live";
-		if (this._selectedMac) {
+		this._dirty = false;
+		this._activeZone = null;
+		this._selectedFurnitureId = null;
+		this._overlayMode = null;
+		if (this._selectedMac && this._isSelectedDeviceAvailable()) {
 			this._loadDeviceConfig(this._selectedMac);
 		}
 	}
@@ -653,8 +660,8 @@ export class EPPGridPanel extends LitElement {
 		this._deviceCtrl.closeDeviceSession();
 		this._targets = [];
 		this._rawTargets = [];
-		this._sensorState = INITIAL_SENSOR_STATE;
-		this._zoneState = INITIAL_ZONE_STATE;
+		this._sensorState = createInitialSensorState();
+		this._zoneState = createInitialZoneState();
 	}
 
 	// -- Grid cell painting --
