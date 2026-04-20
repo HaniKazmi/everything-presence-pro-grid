@@ -39,6 +39,7 @@ export class DeviceController implements ReactiveController {
 	devices: DeviceInfo[] = [];
 	selectedMac = "";
 	loading = true;
+	showRoomCalibrationTutorial = true;
 
 	// --- Callbacks set by the host ---
 	onTargetData?: (data: TargetData) => void;
@@ -99,6 +100,12 @@ export class DeviceController implements ReactiveController {
 		return this._connectionFailed;
 	}
 
+	setShowRoomCalibrationTutorial(value: boolean): void {
+		if (this.showRoomCalibrationTutorial === value) return;
+		this.showRoomCalibrationTutorial = value;
+		this._host.requestUpdate();
+	}
+
 	// --- Device loading ---
 	async loadDevices(): Promise<void> {
 		if (!this._hass) return;
@@ -108,6 +115,9 @@ export class DeviceController implements ReactiveController {
 			});
 			this.devices = ((result as any).devices as DeviceInfo[]).sort((a, b) =>
 				(a.name || "").localeCompare(b.name || ""),
+			);
+			this.setShowRoomCalibrationTutorial(
+				(result as any).show_room_calibration_tutorial ?? true,
 			);
 		} catch {
 			this.devices = [];
@@ -132,6 +142,9 @@ export class DeviceController implements ReactiveController {
 		try {
 			this._unsubDeviceList = await this._hass.connection.subscribeMessage(
 				(msg: any) => {
+					this.setShowRoomCalibrationTutorial(
+						msg.show_room_calibration_tutorial ?? true,
+					);
 					this._applyDeviceList(msg.devices as DeviceInfo[]);
 				},
 				{ type: "eppgrid/subscribe_device_list" },

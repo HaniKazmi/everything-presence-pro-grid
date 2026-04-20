@@ -23,6 +23,7 @@ class TestEPPGridStore:
         assert store.devices == {}
         assert store.templates == {}
         assert store.sidebar_panel is True
+        assert store.show_room_calibration_tutorial is True
 
     async def test_save_and_load_roundtrip(self, hass: HomeAssistant, store: EPPGridStore) -> None:
         """Data survives save/load cycle."""
@@ -32,6 +33,7 @@ class TestEPPGridStore:
         }
         store.templates["bedroom"] = {"grid_bytes": [1] * 400}
         store.sidebar_panel = False
+        store.show_room_calibration_tutorial = False
         await store.async_save()
 
         store2 = EPPGridStore(hass)
@@ -40,6 +42,7 @@ class TestEPPGridStore:
         assert store2.devices["AA:BB:CC:DD:EE:FF"]["calibration"]["room_width"] == 3000.0
         assert "bedroom" in store2.templates
         assert store2.sidebar_panel is False
+        assert store2.show_room_calibration_tutorial is False
 
     async def test_get_device_returns_none_for_unknown(self, store: EPPGridStore) -> None:
         """get_device returns None for unknown MAC."""

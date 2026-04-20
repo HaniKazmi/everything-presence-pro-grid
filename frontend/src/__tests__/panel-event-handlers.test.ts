@@ -1387,3 +1387,57 @@ describe("_infoTip click handler logic", () => {
 		expect(tip.style.display).toBe("none");
 	});
 });
+
+describe("room calibration tutorial toggle", () => {
+	it("_changePlacement starts at the guide step when tutorial is enabled", () => {
+		const a = createPanel() as any;
+		a._selectedMac = "AA:BB:CC:DD:EE:01";
+		a._deviceCtrl.showRoomCalibrationTutorial = true;
+		a.hass = { callWS: vi.fn().mockResolvedValue({}) };
+
+		a._changePlacement();
+
+		expect(a._setupStep).toBe("guide");
+	});
+
+	it("_changePlacement skips straight to corners when tutorial is disabled", () => {
+		const a = createPanel() as any;
+		a._selectedMac = "AA:BB:CC:DD:EE:01";
+		a._deviceCtrl.showRoomCalibrationTutorial = false;
+		a.hass = { callWS: vi.fn().mockResolvedValue({}) };
+
+		a._changePlacement();
+
+		expect(a._setupStep).toBe("corners");
+	});
+
+	it("_onDismissTutorial persists show=false via the controller setter", async () => {
+		const a = createPanel() as any;
+		a._selectedMac = "AA:BB:CC:DD:EE:01";
+		a._deviceCtrl.showRoomCalibrationTutorial = true;
+		const setSpy = vi.spyOn(a._deviceCtrl, "setShowRoomCalibrationTutorial");
+		const callWS = vi.fn().mockResolvedValue({});
+		a.hass = { callWS };
+
+		await a._onDismissTutorial();
+
+		expect(setSpy).toHaveBeenCalledWith(false);
+		expect(callWS).toHaveBeenCalledWith({
+			type: "eppgrid/set_show_calibration_tutorial",
+			value: false,
+		});
+	});
+
+	it("_onDismissTutorial reverts local state if the WS call fails", async () => {
+		const a = createPanel() as any;
+		a._selectedMac = "AA:BB:CC:DD:EE:01";
+		a._deviceCtrl.showRoomCalibrationTutorial = true;
+		a.hass = { callWS: vi.fn().mockRejectedValue(new Error("nope")) };
+		const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+		await a._onDismissTutorial();
+
+		expect(a._deviceCtrl.showRoomCalibrationTutorial).toBe(true);
+		errorSpy.mockRestore();
+	});
+});

@@ -44,25 +44,29 @@ class EPPGridOptionsFlow(OptionsFlow):
     async def async_step_init(self, user_input: dict[str, Any] | None = None) -> Any:
         """Handle options."""
         if user_input is not None:
-            # Update the store's sidebar_panel setting
+            # Update the store's settings
             store = self.hass.data.get(DOMAIN)
             if store is not None:
                 manager = store  # hass.data[DOMAIN] is the DeviceManager
                 manager._store.sidebar_panel = user_input["sidebar_panel"]
+                manager._store.show_room_calibration_tutorial = user_input["show_room_calibration_tutorial"]
                 await manager._store.async_save()
             return self.async_create_entry(title="", data=user_input)
 
-        # Get current value from store
+        # Get current values from store
         sidebar_panel = True
+        show_tutorial = True
         manager = self.hass.data.get(DOMAIN)
         if manager is not None:
             sidebar_panel = manager._store.sidebar_panel
+            show_tutorial = manager._store.show_room_calibration_tutorial
 
         return self.async_show_form(
             step_id="init",
             data_schema=vol.Schema(
                 {
                     vol.Required("sidebar_panel", default=sidebar_panel): bool,
+                    vol.Required("show_room_calibration_tutorial", default=show_tutorial): bool,
                 }
             ),
         )

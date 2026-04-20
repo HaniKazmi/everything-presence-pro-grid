@@ -61,6 +61,7 @@ export class EppWizard extends LitElement {
 	@state() private _wizardCapturePaused = false;
 	@state() private _wizardOffsetSide = "";
 	@state() private _wizardOffsetFb = "";
+	@state() private _dismissTutorial = false;
 
 	private _wizardCaptureCancelled = false;
 	private _smoothBuffer: SmoothBufferEntry[] = [];
@@ -530,6 +531,10 @@ export class EppWizard extends LitElement {
       .live-nav-link:hover {
         background: var(--secondary-background-color, #f5f5f5);
       }
+
+      .dont-show-again {
+        margin-top: 16px;
+      }
     `,
 	];
 
@@ -728,6 +733,15 @@ export class EppWizard extends LitElement {
           </div>
         </div>
 
+        <ha-formfield class="dont-show-again" .label=${this.localize("wizard.dont_show_again")}>
+          <ha-checkbox
+            .checked=${this._dismissTutorial}
+            @change=${(e: Event) => {
+							this._dismissTutorial = (e.target as HTMLInputElement).checked;
+						}}
+          ></ha-checkbox>
+        </ha-formfield>
+
         <div style="display: flex; justify-content: space-between; margin-top: 20px;">
           <button class="wizard-btn wizard-btn-back"
             @click=${() => {
@@ -735,9 +749,7 @@ export class EppWizard extends LitElement {
 						}}
           >${this.localize("common.cancel")}</button>
           <button class="wizard-btn wizard-btn-primary"
-            @click=${() => {
-							this._setupStep = "corners";
-						}}
+            @click=${() => this._onBeginMarking()}
           >${this.localize("wizard.begin_marking")}</button>
         </div>
       </div>
@@ -1224,6 +1236,20 @@ export class EppWizard extends LitElement {
 				composed: true,
 			}),
 		);
+	}
+
+	private _fireDismissTutorial(): void {
+		this.dispatchEvent(
+			new CustomEvent("dismiss-tutorial", {
+				bubbles: true,
+				composed: true,
+			}),
+		);
+	}
+
+	private _onBeginMarking(): void {
+		if (this._dismissTutorial) this._fireDismissTutorial();
+		this._setupStep = "corners";
 	}
 
 	private _fireCancel(): void {

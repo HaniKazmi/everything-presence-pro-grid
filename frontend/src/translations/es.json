@@ -92,7 +92,8 @@
 		"sensor": "Sensor",
 		"horizontal_correct": "Ligeramente inclinado ✓",
 		"angled_wrong": "Ángulo incorrecto ✗",
-		"no_presence": "Sin presencia"
+		"no_presence": "Sin presencia",
+		"dont_show_again": "No mostrar esto de nuevo"
 	},
 	"dialogs": {
 		"delete_calibration_title": "¿Eliminar la calibración de la habitación?",
