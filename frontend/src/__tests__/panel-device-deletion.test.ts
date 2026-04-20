@@ -181,4 +181,29 @@ describe("panel device deletion handling", () => {
 		expect(events[0].composed).toBe(true);
 		document.body.removeChild(el);
 	});
+
+	it("does not trigger cleanup when a non-selected device is removed", async () => {
+		const dev1 = mockDeviceInfo("aa", "Alpha");
+		const dev2 = mockDeviceInfo("bb", "Bravo");
+		const { el, a, pushDeviceList } = await mountPanel([dev1, dev2]);
+		// Pre-seed cached state that cleanup would clobber.
+		a._grid = new Uint8Array(GRID_CELL_COUNT).fill(1);
+		a._view = "editor";
+		const events: CustomEvent[] = [];
+		el.addEventListener("hass-notification", (e) =>
+			events.push(e as CustomEvent),
+		);
+		const closeSpy = vi.spyOn(a._deviceCtrl, "closeDeviceSession");
+
+		pushDeviceList([dev1]); // remove dev2, keep selected dev1
+
+		await el.updateComplete;
+
+		expect(a._selectedMac).toBe("aa");
+		expect(a._view).toBe("editor");
+		expect(Array.from(a._grid as Uint8Array).every((b) => b === 1)).toBe(true);
+		expect(events.length).toBe(0);
+		expect(closeSpy).not.toHaveBeenCalled();
+		document.body.removeChild(el);
+	});
 });
