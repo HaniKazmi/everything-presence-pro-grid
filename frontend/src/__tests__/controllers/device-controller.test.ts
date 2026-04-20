@@ -801,4 +801,79 @@ describe("DeviceController", () => {
 			expect(deviceSubs).toHaveLength(1);
 		});
 	});
+
+	// --- Availability edge transitions ---
+	describe("availability transitions", () => {
+		function deviceList(mac: string, available: boolean): DeviceInfo[] {
+			return [
+				{
+					mac,
+					name: "EPP",
+					host: null,
+					available,
+					configured: true,
+					firmware_status: "compatible",
+					current_connection_count: null,
+					area: null,
+				},
+			];
+		}
+
+		it("re-opens session when selected device transitions offline→online", async () => {
+			const loadSpy = vi
+				.spyOn(ctrl, "loadDeviceConfig")
+				.mockResolvedValue({});
+
+			// Prime with an available device and select it
+			(ctrl as any)._applyDeviceList(deviceList("aa", true));
+			ctrl.selectedMac = "aa";
+			loadSpy.mockClear();
+
+			// Device goes offline
+			(ctrl as any)._applyDeviceList(deviceList("aa", false));
+			expect(loadSpy).not.toHaveBeenCalled();
+
+			// Device comes back online → reconnect
+			(ctrl as any)._applyDeviceList(deviceList("aa", true));
+			expect(loadSpy).toHaveBeenCalledWith("aa");
+		});
+
+		it("does not reconnect when a non-selected device flips availability", async () => {
+			const loadSpy = vi
+				.spyOn(ctrl, "loadDeviceConfig")
+				.mockResolvedValue({});
+
+			(ctrl as any)._applyDeviceList([
+				...deviceList("aa", true),
+				...deviceList("bb", true).map((d) => ({ ...d, mac: "bb" })),
+			]);
+			ctrl.selectedMac = "aa";
+			loadSpy.mockClear();
+
+			// "bb" goes offline and back — "aa" stays available
+			(ctrl as any)._applyDeviceList([
+				...deviceList("aa", true),
+				...deviceList("bb", false).map((d) => ({ ...d, mac: "bb" })),
+			]);
+			(ctrl as any)._applyDeviceList([
+				...deviceList("aa", true),
+				...deviceList("bb", true).map((d) => ({ ...d, mac: "bb" })),
+			]);
+
+			expect(loadSpy).not.toHaveBeenCalled();
+		});
+
+		it("does not reconnect on the first device_list message", async () => {
+			const loadSpy = vi
+				.spyOn(ctrl, "loadDeviceConfig")
+				.mockResolvedValue({});
+
+			// First push with selected device already available must not trigger
+			// a reconnect (the host's first-load flow drives the initial connect).
+			ctrl.selectedMac = "aa";
+			(ctrl as any)._applyDeviceList(deviceList("aa", true));
+
+			expect(loadSpy).not.toHaveBeenCalled();
+		});
+	});
 });
