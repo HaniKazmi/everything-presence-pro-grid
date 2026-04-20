@@ -25,6 +25,7 @@ from homeassistant.helpers import entity_registry as er
 
 from .const import DEFAULT_PORT
 from .const import DOMAIN
+from .const import EMPTY_ZONE_SLOTS
 from .const import EPP_MANUFACTURER
 from .const import EPP_MODEL
 from .const import GRID_CELL_SIZE_MM
@@ -636,12 +637,11 @@ class DeviceManager:
             if is_new:
                 found_new = True
                 _LOGGER.info("Discovered zone engine device: %s (%s)", device.name, mac)
-                # Apply zone entity management on first discovery (only if the
-                # device has a stored layout — otherwise there's nothing to sync).
+                # Always sync — the empty fallback resets stale entity registry
+                # entries left behind by a device delete+readd.
                 config = self._store.get_device(mac)
                 zone_slots = config.get("room_layout", {}).get("zone_slots") if config else None
-                if zone_slots is not None:
-                    await self.async_update_zone_entities(mac, zone_slots)
+                await self.async_update_zone_entities(mac, zone_slots or EMPTY_ZONE_SLOTS)
 
         if found_new:
             self._fire_device_list_changed()
@@ -1124,7 +1124,7 @@ class DeviceManager:
             if entity_id is not None:
                 entry_obj = ent_reg.async_get(entity_id)
                 if not zone_presence or not exists:
-                    ent_reg.async_update_entity(entity_id, disabled_by=er.RegistryEntryDisabler.INTEGRATION)
+                    ent_reg.async_update_entity(entity_id, disabled_by=er.RegistryEntryDisabler.INTEGRATION, name=None)
                 elif i == 0:
                     ent_reg.async_update_entity(
                         entity_id,
@@ -1166,7 +1166,9 @@ class DeviceManager:
                             name=_resolve_zone_name(language, index=i, zone_name=zone_name, target_count=True),
                         )
                 else:
-                    ent_reg.async_update_entity(tc_entity_id, disabled_by=er.RegistryEntryDisabler.INTEGRATION)
+                    ent_reg.async_update_entity(
+                        tc_entity_id, disabled_by=er.RegistryEntryDisabler.INTEGRATION, name=None
+                    )
 
     def _find_zone_entity(
         self, ent_reg: er.EntityRegistry, device_id: str, zone_index: int, suffix: str = "presence"

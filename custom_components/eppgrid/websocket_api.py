@@ -15,12 +15,8 @@ from homeassistant.core import callback
 from homeassistant.helpers import entity_registry as er
 
 from .const import DOMAIN
-from .const import MAX_ZONES
+from .const import EMPTY_ZONE_SLOTS
 from .const import NUM_ZONE_SLOTS
-
-# Fallback shape for async_update_zone_entities when no layout is stored —
-# must pass is_valid_zone_slots_shape, so slot 0 is a dict.
-_EMPTY_ZONE_SLOTS: list[dict[str, str] | None] = [{"type": "normal"}, *([None] * MAX_ZONES)]
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -340,7 +336,7 @@ async def websocket_set_setup(
             hass.loop.call_later(60, manager._entity_update_macs.discard, mac)
         _apply_entity_states(hass, mac, {"target_xy": False})
 
-    zone_slots = device_config.get("room_layout", {}).get("zone_slots", _EMPTY_ZONE_SLOTS)
+    zone_slots = device_config.get("room_layout", {}).get("zone_slots", EMPTY_ZONE_SLOTS)
     await manager.async_update_zone_entities(mac, zone_slots)
 
     connection.send_result(msg["id"])
@@ -1073,7 +1069,7 @@ async def websocket_set_settings(
         # Zone entities need layout-aware handling: enable zone_0 + named zones only
         if "zone_presence" in entities or "zone_target_count" in entities:
             layout = device_config.get("room_layout", {})
-            zone_slots = layout.get("zone_slots", _EMPTY_ZONE_SLOTS)
+            zone_slots = layout.get("zone_slots", EMPTY_ZONE_SLOTS)
             await manager.async_update_zone_entities(mac, zone_slots)
         await manager._push_pipeline_to_device(mac)
     connection.send_result(msg["id"])
