@@ -2229,9 +2229,7 @@ class TestEventCallbacks:
         )
 
         mac = "AA:BB:CC:DD:EE:FF"
-        manager.devices[mac] = ManagedDevice(
-            mac=mac, name="EPP", host="192.168.1.50", device_id=device.id
-        )
+        manager.devices[mac] = ManagedDevice(mac=mac, name="EPP", host="192.168.1.50", device_id=device.id)
 
         # Populate an active session (frontend had a live overview open)
         stale_conn = MagicMock()

@@ -179,9 +179,7 @@ class DeviceConnection:
             self.connected = False
             self._state_subscribers.clear()
             self._states_subscribed = False
-            _LOGGER.debug(
-                "Device %s connection stopped (expected=%s)", self._host, expected_disconnect
-            )
+            _LOGGER.debug("Device %s connection stopped (expected=%s)", self._host, expected_disconnect)
 
         try:
             await client.connect(on_stop=_on_stop, login=True)
