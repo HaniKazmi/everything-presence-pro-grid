@@ -1389,26 +1389,61 @@ describe("_infoTip click handler logic", () => {
 });
 
 describe("room calibration tutorial toggle", () => {
-	it("_changePlacement starts at the guide step when tutorial is enabled", () => {
+	async function mountPanelForWizardRender(
+		showRoomCalibrationTutorial: boolean,
+	): Promise<any> {
 		const a = createPanel() as any;
 		a._selectedMac = "AA:BB:CC:DD:EE:01";
-		a._deviceCtrl.showRoomCalibrationTutorial = true;
-		a.hass = { callWS: vi.fn().mockResolvedValue({}) };
+		a._perspective = null;
+		a._deviceCtrl.showRoomCalibrationTutorial = showRoomCalibrationTutorial;
+		a.hass = {
+			callWS: vi.fn().mockResolvedValue({}),
+			connection: { subscribeMessage: vi.fn().mockResolvedValue(() => {}) },
+		};
+		document.body.appendChild(a);
+		// Let _initialize() settle so its late _loading=true doesn't clobber us.
+		await a.updateComplete;
+		await new Promise((r) => setTimeout(r, 0));
+		a._loading = false;
+		a._devices = [
+			{
+				mac: "AA:BB:CC:DD:EE:01",
+				name: "Test",
+				host: null,
+				available: true,
+				configured: true,
+			},
+		];
+		await a.updateComplete;
+		return a;
+	}
 
-		a._changePlacement();
-
-		expect(a._setupStep).toBe("guide");
+	it("_changePlacement renders the wizard on the guide step when tutorial is enabled", async () => {
+		const a = await mountPanelForWizardRender(true);
+		try {
+			a._changePlacement();
+			await a.updateComplete;
+			const wizard = a.shadowRoot?.querySelector("epp-wizard") as any;
+			expect(wizard).toBeTruthy();
+			await wizard.updateComplete;
+			expect(wizard._setupStep).toBe("guide");
+		} finally {
+			a.remove();
+		}
 	});
 
-	it("_changePlacement skips straight to corners when tutorial is disabled", () => {
-		const a = createPanel() as any;
-		a._selectedMac = "AA:BB:CC:DD:EE:01";
-		a._deviceCtrl.showRoomCalibrationTutorial = false;
-		a.hass = { callWS: vi.fn().mockResolvedValue({}) };
-
-		a._changePlacement();
-
-		expect(a._setupStep).toBe("corners");
+	it("_changePlacement skips straight to corners when tutorial is disabled", async () => {
+		const a = await mountPanelForWizardRender(false);
+		try {
+			a._changePlacement();
+			await a.updateComplete;
+			const wizard = a.shadowRoot?.querySelector("epp-wizard") as any;
+			expect(wizard).toBeTruthy();
+			await wizard.updateComplete;
+			expect(wizard._setupStep).toBe("corners");
+		} finally {
+			a.remove();
+		}
 	});
 
 	it("_onDismissTutorial persists show=false via the controller setter", async () => {

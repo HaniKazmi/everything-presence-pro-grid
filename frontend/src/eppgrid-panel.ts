@@ -1423,6 +1423,7 @@ export class EPPGridPanel extends LitElement {
             .localize=${this._localize}
             .initialRoomWidth=${this._roomWidth}
             .initialRoomDepth=${this._roomDepth}
+            .initialStep=${this._setupStep}
             @dismiss-tutorial=${() => this._onDismissTutorial()}
             @calibration-complete=${async (e: CustomEvent) => {
 							const { perspective, roomWidth, roomDepth } = e.detail;

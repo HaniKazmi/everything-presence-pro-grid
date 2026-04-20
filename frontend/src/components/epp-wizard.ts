@@ -34,6 +34,7 @@ export class EppWizard extends LitElement {
 	// Initial room dimensions (for re-calibration)
 	@property({ type: Number }) initialRoomWidth = 0;
 	@property({ type: Number }) initialRoomDepth = 0;
+	@property({ type: String }) initialStep: SetupStep | null = null;
 
 	// Rendering mode:
 	//   "wizard" (default) — full calibration flow (guide -> corners)
@@ -73,6 +74,7 @@ export class EppWizard extends LitElement {
 		super.connectedCallback();
 		this._wizardRoomWidth = this.initialRoomWidth;
 		this._wizardRoomDepth = this.initialRoomDepth;
+		if (this.initialStep !== null) this._setupStep = this.initialStep;
 	}
 
 	// --- Sync corner offsets ---
@@ -737,7 +739,7 @@ export class EppWizard extends LitElement {
           <ha-checkbox
             .checked=${this._dismissTutorial}
             @change=${(e: Event) => {
-							this._dismissTutorial = (e.target as HTMLInputElement).checked;
+							this._dismissTutorial = (e.currentTarget as any).checked;
 						}}
           ></ha-checkbox>
         </ha-formfield>
