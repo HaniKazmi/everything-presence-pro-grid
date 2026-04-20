@@ -105,7 +105,7 @@ export type ZoneSlots = readonly [
 
 // Slot 0 carries only `type` for non-custom — timing is resolved from
 // ZONE_TYPE_DEFAULTS at read/push time (see resolveZoneParams).
-const INITIAL_ZONE_SLOTS: ZoneSlots = [
+export const INITIAL_ZONE_SLOTS: ZoneSlots = [
 	{ type: "normal" },
 	null,
 	null,
@@ -115,6 +115,43 @@ const INITIAL_ZONE_SLOTS: ZoneSlots = [
 	null,
 	null,
 ];
+
+type SensorState = {
+	occupancy: boolean;
+	static_presence: boolean;
+	motion_presence: boolean;
+	target_presence: boolean;
+	illuminance: number | null;
+	temperature: number | null;
+	humidity: number | null;
+	co2: number | null;
+};
+
+// Factory — returns a fresh object each call. Sensor state is mutated in-place
+// during render (see `_sensorState.occupancy = ...` in render paths), so
+// handing out the same reference would corrupt future resets.
+const createInitialSensorState = (): SensorState => ({
+	occupancy: false,
+	static_presence: false,
+	motion_presence: false,
+	target_presence: false,
+	illuminance: null,
+	temperature: null,
+	humidity: null,
+	co2: null,
+});
+
+type ZoneState = {
+	occupancy: Record<number, boolean>;
+	target_counts: Record<number, number>;
+	frame_count: number;
+};
+
+const createInitialZoneState = (): ZoneState => ({
+	occupancy: {},
+	target_counts: {},
+	frame_count: 0,
+});
 
 export class EPPGridPanel extends LitElement {
 	@property({ attribute: false }) hass: any;
@@ -190,30 +227,8 @@ export class EPPGridPanel extends LitElement {
 	} | null = null;
 	@state() private _targets: Target[] = [];
 	@state() private _rawTargets: RawTarget[] = [];
-	@state() private _sensorState: {
-		occupancy: boolean;
-		static_presence: boolean;
-		motion_presence: boolean;
-		target_presence: boolean;
-		illuminance: number | null;
-		temperature: number | null;
-		humidity: number | null;
-		co2: number | null;
-	} = {
-		occupancy: false,
-		static_presence: false,
-		motion_presence: false,
-		target_presence: false,
-		illuminance: null,
-		temperature: null,
-		humidity: null,
-		co2: null,
-	};
-	@state() private _zoneState: {
-		occupancy: Record<number, boolean>;
-		target_counts: Record<number, number>;
-		frame_count: number;
-	} = { occupancy: {}, target_counts: {}, frame_count: 0 };
+	@state() private _sensorState: SensorState = createInitialSensorState();
+	@state() private _zoneState: ZoneState = createInitialZoneState();
 	@state() private _showHitCounts = false;
 	@state() private _showDebugLog = false;
 	private _debugLogLines: string[] = [];
@@ -517,8 +532,15 @@ export class EPPGridPanel extends LitElement {
 	private async _subscribeDevices(): Promise<void> {
 		this._deviceCtrl.hass = this.hass;
 		this._deviceCtrl.onDeviceListChanged = () => {
-			this._devices = this._deviceCtrl.devices;
+			const prevMac = this._selectedMac;
+			const newDevices = this._deviceCtrl.devices;
+			const wasRemoved =
+				prevMac !== "" && !newDevices.find((d) => d.mac === prevMac);
+			this._devices = newDevices;
 			this._selectedMac = this._deviceCtrl.selectedMac;
+			if (wasRemoved) {
+				this._handleSelectedDeviceRemoved();
+			}
 		};
 		this._deviceCtrl.onSessionClosed = () => {
 			this._targets = [];
@@ -532,6 +554,37 @@ export class EPPGridPanel extends LitElement {
 	private _isSelectedDeviceAvailable(): boolean {
 		const dev = this._devices.find((d) => d.mac === this._selectedMac);
 		return !!dev?.available;
+	}
+
+	private _handleSelectedDeviceRemoved(): void {
+		this.dispatchEvent(
+			new CustomEvent("hass-notification", {
+				detail: { message: this._localize("notifications.device_removed") },
+				bubbles: true,
+				composed: true,
+			}),
+		);
+		this._closeDeviceSession();
+		this._perspective = null;
+		this._roomWidth = 0;
+		this._roomDepth = 0;
+		this._setupStep = null;
+		this._furniture = [];
+		this._grid = new Uint8Array(GRID_CELL_COUNT);
+		this._zoneConfigs = INITIAL_ZONE_SLOTS;
+		this._view = "live";
+		this._dirty = false;
+		this._activeZone = null;
+		this._selectedFurnitureId = null;
+		this._overlayMode = null;
+		if (this._selectedMac) {
+			localStorage.setItem("epp_selected_mac", this._selectedMac);
+		} else {
+			localStorage.removeItem("epp_selected_mac");
+		}
+		if (this._selectedMac && this._isSelectedDeviceAvailable()) {
+			this._loadDeviceConfig(this._selectedMac);
+		}
 	}
 
 	private async _loadDevices(): Promise<void> {
@@ -550,6 +603,10 @@ export class EPPGridPanel extends LitElement {
 			this._targetCtrl.handleRawTargetData(rawTargets);
 		};
 		const config = await this._deviceCtrl.loadDeviceConfig(mac);
+		if (this._selectedMac !== mac) {
+			this._deviceCtrl.closeDeviceSession();
+			return;
+		}
 		if (config) {
 			this._applyConfig(config);
 		}
@@ -608,6 +665,9 @@ export class EPPGridPanel extends LitElement {
 		this._deviceCtrl.closeDeviceSession();
 		this._targets = [];
 		this._rawTargets = [];
+		this._sensorState = createInitialSensorState();
+		this._zoneState = createInitialZoneState();
+		this._targetCtrl.resetZoneEngineState();
 	}
 
 	// -- Grid cell painting --
