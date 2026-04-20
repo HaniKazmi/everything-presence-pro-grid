@@ -336,4 +336,38 @@ describe("panel device deletion handling", () => {
 		expect(a._roomDepth).toBe(0);
 		document.body.removeChild(el);
 	});
+
+	it("closes the stale device session when selection changes during load", async () => {
+		const dev1 = mockDeviceInfo("aa", "Alpha");
+		const dev2 = mockDeviceInfo("bb", "Bravo");
+		const { el, a, pushDeviceList } = await mountPanel([dev1, dev2]);
+
+		let resolveLoad: ((config: any) => void) | null = null;
+		const loadPromise = new Promise<any>((resolve) => {
+			resolveLoad = resolve;
+		});
+		vi.spyOn(a._deviceCtrl, "loadDeviceConfig").mockImplementation(
+			() => loadPromise,
+		);
+		const closeSpy = vi.spyOn(a._deviceCtrl, "closeDeviceSession");
+
+		pushDeviceList([dev2]);
+		await el.updateComplete;
+		await new Promise((r) => setTimeout(r, 0));
+
+		pushDeviceList([]);
+		await el.updateComplete;
+
+		closeSpy.mockClear();
+		resolveLoad!({
+			calibration: { perspective: null, room_width: 0, room_depth: 0 },
+			room_layout: {},
+		});
+		await new Promise((r) => setTimeout(r, 0));
+		await new Promise((r) => setTimeout(r, 0));
+		await el.updateComplete;
+
+		expect(closeSpy).toHaveBeenCalled();
+		document.body.removeChild(el);
+	});
 });

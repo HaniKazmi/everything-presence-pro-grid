@@ -116,6 +116,40 @@ export const INITIAL_ZONE_SLOTS: ZoneSlots = [
 	null,
 ];
 
+type SensorState = {
+	occupancy: boolean;
+	static_presence: boolean;
+	motion_presence: boolean;
+	target_presence: boolean;
+	illuminance: number | null;
+	temperature: number | null;
+	humidity: number | null;
+	co2: number | null;
+};
+
+const INITIAL_SENSOR_STATE: SensorState = {
+	occupancy: false,
+	static_presence: false,
+	motion_presence: false,
+	target_presence: false,
+	illuminance: null,
+	temperature: null,
+	humidity: null,
+	co2: null,
+};
+
+type ZoneState = {
+	occupancy: Record<number, boolean>;
+	target_counts: Record<number, number>;
+	frame_count: number;
+};
+
+const INITIAL_ZONE_STATE: ZoneState = {
+	occupancy: {},
+	target_counts: {},
+	frame_count: 0,
+};
+
 export class EPPGridPanel extends LitElement {
 	@property({ attribute: false }) hass: any;
 
@@ -190,30 +224,8 @@ export class EPPGridPanel extends LitElement {
 	} | null = null;
 	@state() private _targets: Target[] = [];
 	@state() private _rawTargets: RawTarget[] = [];
-	@state() private _sensorState: {
-		occupancy: boolean;
-		static_presence: boolean;
-		motion_presence: boolean;
-		target_presence: boolean;
-		illuminance: number | null;
-		temperature: number | null;
-		humidity: number | null;
-		co2: number | null;
-	} = {
-		occupancy: false,
-		static_presence: false,
-		motion_presence: false,
-		target_presence: false,
-		illuminance: null,
-		temperature: null,
-		humidity: null,
-		co2: null,
-	};
-	@state() private _zoneState: {
-		occupancy: Record<number, boolean>;
-		target_counts: Record<number, number>;
-		frame_count: number;
-	} = { occupancy: {}, target_counts: {}, frame_count: 0 };
+	@state() private _sensorState: SensorState = INITIAL_SENSOR_STATE;
+	@state() private _zoneState: ZoneState = INITIAL_ZONE_STATE;
 	@state() private _showHitCounts = false;
 	@state() private _showDebugLog = false;
 	private _debugLogLines: string[] = [];
@@ -580,6 +592,7 @@ export class EPPGridPanel extends LitElement {
 		};
 		const config = await this._deviceCtrl.loadDeviceConfig(mac);
 		if (this._selectedMac !== mac) {
+			this._deviceCtrl.closeDeviceSession();
 			return;
 		}
 		if (config) {
@@ -640,17 +653,8 @@ export class EPPGridPanel extends LitElement {
 		this._deviceCtrl.closeDeviceSession();
 		this._targets = [];
 		this._rawTargets = [];
-		this._sensorState = {
-			occupancy: false,
-			static_presence: false,
-			motion_presence: false,
-			target_presence: false,
-			illuminance: null,
-			temperature: null,
-			humidity: null,
-			co2: null,
-		};
-		this._zoneState = { occupancy: {}, target_counts: {}, frame_count: 0 };
+		this._sensorState = INITIAL_SENSOR_STATE;
+		this._zoneState = INITIAL_ZONE_STATE;
 	}
 
 	// -- Grid cell painting --
