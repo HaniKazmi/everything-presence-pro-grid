@@ -324,10 +324,16 @@ class TestDeviceManager:
         assert dev.name == "EPP Living Room"
         assert dev.host == "192.168.1.50"
 
-    async def test_discover_skips_update_zone_entities_without_config(
+    async def test_discover_syncs_zone_entities_with_empty_layout_when_no_config(
         self, hass: HomeAssistant, manager: DeviceManager
     ) -> None:
-        """Discovery skips async_update_zone_entities when no layout is stored."""
+        """Discovery syncs zone entities with an empty layout when no stored config.
+
+        Covers the re-add case: stale zone entities from a previous installation
+        must be reset, so we always call async_update_zone_entities. With no
+        stored config, the empty fallback layout disables all zones and clears
+        custom names.
+        """
         dev_reg = dr.async_get(hass)
         ent_reg = er.async_get(hass)
 
@@ -355,10 +361,15 @@ class TestDeviceManager:
             device_id=device.id,
         )
 
-        # No stored config for this device — nothing to sync, so no call.
         with patch.object(manager, "async_update_zone_entities", new_callable=AsyncMock) as mock_update:
             await manager.async_discover()
-            mock_update.assert_not_awaited()
+
+        mock_update.assert_awaited_once()
+        mac_arg, zone_slots_arg = mock_update.await_args.args
+        assert mac_arg == "AA:BB:CC:DD:EE:FF"
+        # Empty fallback: zone 0 is a dict, all named slots are None.
+        assert isinstance(zone_slots_arg[0], dict)
+        assert all(slot is None for slot in zone_slots_arg[1:])
 
     async def test_discover_ignores_non_firmware_version(self, hass: HomeAssistant, manager: DeviceManager) -> None:
         """Entities without firmware_version are ignored."""
@@ -2604,6 +2615,80 @@ class TestEventCallbacks:
         await manager.async_discover()
 
         cb.assert_called_once()
+
+    async def test_discovery_resets_stale_zone_entities_on_readd(
+        self, hass: HomeAssistant, manager: DeviceManager
+    ) -> None:
+        """Re-adding a deleted device resets leftover zone entity names and disables them.
+
+        When a user deletes a device and re-adds it, ESPHome/HA may leave stale
+        zone entity registry entries with custom names ("Zone Cupboard") and
+        disabled_by=None. On rediscovery with no stored layout, EPP must reset
+        those entries so the device looks fresh.
+        """
+        dev_reg = dr.async_get(hass)
+        ent_reg = er.async_get(hass)
+        esphome_entry = MockConfigEntry(domain="esphome", data={"host": "192.168.1.50"}, title="EPP")
+        esphome_entry.add_to_hass(hass)
+        device = dev_reg.async_get_or_create(
+            config_entry_id=esphome_entry.entry_id,
+            connections={("mac", "aa:bb:cc:dd:ee:ff")},
+            name="EPP",
+            manufacturer="EverythingSmartTechnology",
+            model="Everything Presence Pro",
+        )
+        ent_reg.async_get_or_create(
+            "sensor",
+            "esphome",
+            unique_id="aabbccddeeff-firmware_version",
+            config_entry=esphome_entry,
+            device_id=device.id,
+        )
+
+        # Leftover zone entities from prior configuration — custom names,
+        # enabled. Simulate state after delete+readd where HA didn't purge them.
+        zone0 = ent_reg.async_get_or_create(
+            "binary_sensor",
+            "esphome",
+            unique_id="AA:BB:CC:DD:EE:FF-binary_sensor-zone_0_presence",
+            config_entry=esphome_entry,
+            device_id=device.id,
+        )
+        ent_reg.async_update_entity(zone0.entity_id, name="Zone Rest of Room", disabled_by=None)
+        zone1 = ent_reg.async_get_or_create(
+            "binary_sensor",
+            "esphome",
+            unique_id="AA:BB:CC:DD:EE:FF-binary_sensor-zone_1_presence",
+            config_entry=esphome_entry,
+            device_id=device.id,
+        )
+        ent_reg.async_update_entity(zone1.entity_id, name="Zone Cupboard", disabled_by=None)
+        zone1_tc = ent_reg.async_get_or_create(
+            "sensor",
+            "esphome",
+            unique_id="AA:BB:CC:DD:EE:FF-sensor-zone_1_target_count",
+            config_entry=esphome_entry,
+            device_id=device.id,
+        )
+        ent_reg.async_update_entity(zone1_tc.entity_id, name="Zone Cupboard Target Count", disabled_by=None)
+
+        # No stored layout — device was deleted, so storage was cleared.
+        assert manager._store.get_device("AA:BB:CC:DD:EE:FF") is None
+
+        await manager.async_discover()
+
+        # All stale zone entities reset: no custom name, disabled by integration.
+        zone0_after = ent_reg.async_get(zone0.entity_id)
+        assert zone0_after.name is None
+        assert zone0_after.disabled_by == er.RegistryEntryDisabler.INTEGRATION
+
+        zone1_after = ent_reg.async_get(zone1.entity_id)
+        assert zone1_after.name is None
+        assert zone1_after.disabled_by == er.RegistryEntryDisabler.INTEGRATION
+
+        zone1_tc_after = ent_reg.async_get(zone1_tc.entity_id)
+        assert zone1_tc_after.name is None
+        assert zone1_tc_after.disabled_by == er.RegistryEntryDisabler.INTEGRATION
 
     async def test_on_device_removed_ignores_unknown_device(self, hass: HomeAssistant, manager: DeviceManager) -> None:
         """Device removal for unknown device_id is a no-op."""
