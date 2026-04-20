@@ -168,6 +168,27 @@ class TestWebSocketSetShowCalibrationTutorial:
         await call_async_handler(hass, websocket_set_show_room_calibration_tutorial, connection, msg)
         connection.send_error.assert_called_once()
 
+    async def test_set_skips_save_and_broadcast_when_unchanged(
+        self, hass: HomeAssistant, config_entry: MockConfigEntry
+    ) -> None:
+        """Setting the same value must not write to disk or re-broadcast."""
+        mock_dm = await setup_integration(hass, config_entry)
+        mock_dm._store.show_room_calibration_tutorial = False
+
+        from custom_components.eppgrid.websocket_api import websocket_set_show_room_calibration_tutorial
+
+        connection = MagicMock()
+        msg = {
+            "id": 9,
+            "type": "eppgrid/set_show_room_calibration_tutorial",
+            "value": False,
+        }
+        await call_async_handler(hass, websocket_set_show_room_calibration_tutorial, connection, msg)
+
+        mock_dm._store.async_save.assert_not_awaited()
+        mock_dm._fire_device_list_changed.assert_not_called()
+        connection.send_result.assert_called_once_with(9)
+
 
 class TestWebSocketGetConfig:
     """Tests for eppgrid/get_config."""

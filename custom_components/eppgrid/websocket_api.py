@@ -284,7 +284,11 @@ async def websocket_set_show_room_calibration_tutorial(
     if manager is None:
         _send_not_loaded(connection, msg["id"])
         return
-    manager._store.show_room_calibration_tutorial = msg["value"]
+    new_value = msg["value"]
+    if manager._store.show_room_calibration_tutorial == new_value:
+        connection.send_result(msg["id"])
+        return
+    manager._store.show_room_calibration_tutorial = new_value
     await manager._store.async_save()
     manager._fire_device_list_changed()
     connection.send_result(msg["id"])

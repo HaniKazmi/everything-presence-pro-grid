@@ -110,6 +110,8 @@ class TestOptionsFlow:
     async def test_init_notifies_subscribers_on_save(self, hass: HomeAssistant) -> None:
         """Saving options re-broadcasts the device list so connected clients pick up the flag change."""
         mock_manager = MagicMock()
+        mock_manager._store.sidebar_panel = True
+        mock_manager._store.show_room_calibration_tutorial = True
         mock_manager._store.async_save = AsyncMock()
         hass.data[DOMAIN] = mock_manager
 
@@ -118,6 +120,22 @@ class TestOptionsFlow:
         flow.hass = hass
         await flow.async_step_init(user_input={"sidebar_panel": True, "show_room_calibration_tutorial": False})
         mock_manager._fire_device_list_changed.assert_called_once()
+
+    async def test_init_skips_save_and_broadcast_when_unchanged(self, hass: HomeAssistant) -> None:
+        """If neither flag changes, the options submit must not save or broadcast."""
+        mock_manager = MagicMock()
+        mock_manager._store.sidebar_panel = True
+        mock_manager._store.show_room_calibration_tutorial = False
+        mock_manager._store.async_save = AsyncMock()
+        hass.data[DOMAIN] = mock_manager
+
+        entry = MagicMock()
+        flow = EPPGridOptionsFlow(entry)
+        flow.hass = hass
+        result = await flow.async_step_init(user_input={"sidebar_panel": True, "show_room_calibration_tutorial": False})
+        assert result["type"] == "create_entry"
+        mock_manager._store.async_save.assert_not_awaited()
+        mock_manager._fire_device_list_changed.assert_not_called()
 
     async def test_init_saves_without_manager(self, hass: HomeAssistant) -> None:
         """Submitting options when no manager exists still creates entry."""

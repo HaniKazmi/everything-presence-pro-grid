@@ -1400,10 +1400,8 @@ describe("room calibration tutorial toggle", () => {
 			callWS: vi.fn().mockResolvedValue({}),
 			connection: { subscribeMessage: vi.fn().mockResolvedValue(() => {}) },
 		};
-		document.body.appendChild(a);
-		// Let _initialize() settle so its late _loading=true doesn't clobber us.
-		await a.updateComplete;
-		await new Promise((r) => setTimeout(r, 0));
+		// Stub _initialize so it doesn't race with our test state writes.
+		a._initialize = () => Promise.resolve();
 		a._loading = false;
 		a._devices = [
 			{
@@ -1414,6 +1412,7 @@ describe("room calibration tutorial toggle", () => {
 				configured: true,
 			},
 		];
+		document.body.appendChild(a);
 		await a.updateComplete;
 		return a;
 	}
