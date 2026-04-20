@@ -517,8 +517,15 @@ export class EPPGridPanel extends LitElement {
 	private async _subscribeDevices(): Promise<void> {
 		this._deviceCtrl.hass = this.hass;
 		this._deviceCtrl.onDeviceListChanged = () => {
-			this._devices = this._deviceCtrl.devices;
+			const prevMac = this._selectedMac;
+			const newDevices = this._deviceCtrl.devices;
+			const wasRemoved =
+				prevMac !== "" && !newDevices.find((d) => d.mac === prevMac);
+			this._devices = newDevices;
 			this._selectedMac = this._deviceCtrl.selectedMac;
+			if (wasRemoved) {
+				this._handleSelectedDeviceRemoved();
+			}
 		};
 		this._deviceCtrl.onSessionClosed = () => {
 			this._targets = [];
@@ -532,6 +539,10 @@ export class EPPGridPanel extends LitElement {
 	private _isSelectedDeviceAvailable(): boolean {
 		const dev = this._devices.find((d) => d.mac === this._selectedMac);
 		return !!dev?.available;
+	}
+
+	private _handleSelectedDeviceRemoved(): void {
+		this._view = "live";
 	}
 
 	private async _loadDevices(): Promise<void> {
