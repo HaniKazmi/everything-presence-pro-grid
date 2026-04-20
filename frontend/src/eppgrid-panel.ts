@@ -637,6 +637,17 @@ export class EPPGridPanel extends LitElement {
 		this._deviceCtrl.closeDeviceSession();
 		this._targets = [];
 		this._rawTargets = [];
+		this._sensorState = {
+			occupancy: false,
+			static_presence: false,
+			motion_presence: false,
+			target_presence: false,
+			illuminance: null,
+			temperature: null,
+			humidity: null,
+			co2: null,
+		};
+		this._zoneState = { occupancy: {}, target_counts: {}, frame_count: 0 };
 	}
 
 	// -- Grid cell painting --

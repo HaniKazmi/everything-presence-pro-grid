@@ -245,4 +245,42 @@ describe("panel device deletion handling", () => {
 		expect(html2).not.toMatch(/epp-settings-view/);
 		document.body.removeChild(el);
 	});
+
+	it("clears sensor and zone observable state when the selected device is removed", async () => {
+		const dev1 = mockDeviceInfo("aa", "Alpha");
+		const { el, a, pushDeviceList } = await mountPanel([dev1]);
+		// Pre-seed observable state that cleanup should clobber.
+		a._sensorState = {
+			occupancy: true,
+			static_presence: true,
+			motion_presence: true,
+			target_presence: true,
+			illuminance: 500,
+			temperature: 22,
+			humidity: 40,
+			co2: 600,
+		};
+		a._zoneState = {
+			occupancy: { 1: true },
+			target_counts: { 1: 2 },
+			frame_count: 42,
+		};
+		await el.updateComplete;
+
+		pushDeviceList([]);
+		await el.updateComplete;
+
+		expect(a._sensorState.occupancy).toBe(false);
+		expect(a._sensorState.static_presence).toBe(false);
+		expect(a._sensorState.motion_presence).toBe(false);
+		expect(a._sensorState.target_presence).toBe(false);
+		expect(a._sensorState.illuminance).toBeNull();
+		expect(a._sensorState.temperature).toBeNull();
+		expect(a._sensorState.humidity).toBeNull();
+		expect(a._sensorState.co2).toBeNull();
+		expect(a._zoneState.occupancy).toEqual({});
+		expect(a._zoneState.target_counts).toEqual({});
+		expect(a._zoneState.frame_count).toBe(0);
+		document.body.removeChild(el);
+	});
 });
