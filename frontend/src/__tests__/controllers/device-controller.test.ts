@@ -908,5 +908,21 @@ describe("DeviceController", () => {
 
 			expect(loadSpy).not.toHaveBeenCalled();
 		});
+
+		it("closes device session when selected device transitions online→offline", async () => {
+			const closeSpy = vi.spyOn(ctrl, "closeDeviceSession");
+
+			// Prime: device online, session implicitly "open"
+			(ctrl as any)._applyDeviceList(deviceList("aa", true));
+			ctrl.selectedMac = "aa";
+			// Let the internal cache see an "available" value first
+			(ctrl as any)._lastSelectedAvailable = true;
+			closeSpy.mockClear();
+
+			// Device goes offline
+			(ctrl as any)._applyDeviceList(deviceList("aa", false));
+
+			expect(closeSpy).toHaveBeenCalledTimes(1);
+		});
 	});
 });

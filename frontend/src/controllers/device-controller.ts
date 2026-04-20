@@ -166,6 +166,11 @@ export class DeviceController implements ReactiveController {
 		const prev = this._lastSelectedAvailable;
 		this._lastSelectedAvailable = nowAvailable;
 
+		// Falling edge: selected device went offline → drop stale subscriptions.
+		if (prev === true && !nowAvailable) {
+			this.closeDeviceSession();
+		}
+
 		// Rising edge: selected device came back online → rebuild the session.
 		// The initial device_list push has prev === null and is skipped; the
 		// host drives the first connect via loadDeviceConfig itself.
