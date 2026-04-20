@@ -348,6 +348,7 @@
 		"manual_ssid": "Introducir SSID manualmente (red oculta)",
 		"enter_ssid": "Introducir SSID",
 		"wifi_password": "Contraseña WiFi",
+		"show_password": "Mostrar contraseña",
 		"connected_to": "Conectado a {ssid}",
 		"ip_address": "Dirección IP: {ip}",
 		"continue": "Continuar",

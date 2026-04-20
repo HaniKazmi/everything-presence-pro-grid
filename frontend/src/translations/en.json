@@ -348,6 +348,7 @@
 		"manual_ssid": "Enter SSID manually (hidden network)",
 		"enter_ssid": "Enter SSID",
 		"wifi_password": "WiFi password",
+		"show_password": "Show password",
 		"connected_to": "Connected to {ssid}",
 		"ip_address": "IP Address: {ip}",
 		"continue": "Continue",
