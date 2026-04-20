@@ -43,8 +43,9 @@ export interface ZoneThresholds {
 
 /**
  * Non-custom types use the type's defaults exclusively (user-supplied
- * trigger/renew/... is ignored). Custom honours user values with the type
- * defaults as a fallback. Works for zone 0 and named zones — both share
+ * trigger/renew/... is ignored). Custom honours user values, falling back
+ * to normal's defaults when a field is missing (there is no "custom" entry
+ * in ZONE_TYPE_DEFAULTS). Works for zone 0 and named zones — both share
  * the Zone0Config structural base.
  */
 export function resolveZoneParams(z: Zone0Config): {

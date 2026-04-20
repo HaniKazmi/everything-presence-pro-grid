@@ -203,7 +203,8 @@ if [ "$failed" -ne 0 ]; then
     printf '\n\033[1mFailures:\033[0m\n'
     # Strip ANSI and filter to the ✗ summary lines so the user sees exactly
     # what failed without scrolling through the full output.
-    sed -E 's/\x1b\[[0-9;]*m//g' "$LOG_FILE" | grep -E "^✗ " | sed 's/^/  /'
+    # perl for the ANSI strip — BSD sed (macOS) doesn't support \xHH escapes.
+    perl -pe 's/\e\[[0-9;]*m//g' "$LOG_FILE" | grep -E "^✗ " | sed 's/^/  /'
     printf '\n\033[1mFull log:\033[0m %s\n' "$LOG_FILE"
     exit 1
 else
