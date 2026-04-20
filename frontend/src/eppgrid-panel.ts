@@ -520,6 +520,10 @@ export class EPPGridPanel extends LitElement {
 			this._devices = this._deviceCtrl.devices;
 			this._selectedMac = this._deviceCtrl.selectedMac;
 		};
+		this._deviceCtrl.onSessionClosed = () => {
+			this._targets = [];
+			this._rawTargets = [];
+		};
 		await this._deviceCtrl.subscribeDeviceList();
 		this._devices = this._deviceCtrl.devices;
 		this._selectedMac = this._deviceCtrl.selectedMac;

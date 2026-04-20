@@ -44,6 +44,7 @@ export class DeviceController implements ReactiveController {
 	onTargetData?: (data: TargetData) => void;
 	onRawTargetData?: (targets: RawTarget[]) => void;
 	onDeviceListChanged?: () => void;
+	onSessionClosed?: () => void;
 
 	private _host: ReactiveControllerHost;
 	private _hass: any = null;
@@ -54,6 +55,7 @@ export class DeviceController implements ReactiveController {
 	private _targetRetryTimer?: ReturnType<typeof setTimeout>;
 	private _reconnecting = false;
 	private _connectionFailed = false;
+	private _lastSelectedAvailable: boolean | null = null;
 
 	constructor(host: ReactiveControllerHost) {
 		this._host = host;
@@ -159,6 +161,21 @@ export class DeviceController implements ReactiveController {
 		const match =
 			stored && this.devices.find((d: DeviceInfo) => d.mac === stored);
 		this.selectedMac = match ? stored! : (this.devices[0]?.mac ?? "");
+
+		const selected = this.devices.find((d) => d.mac === this.selectedMac);
+		const nowAvailable = selected?.available ?? false;
+		const prev = this._lastSelectedAvailable;
+		this._lastSelectedAvailable = nowAvailable;
+
+		if (prev === true && !nowAvailable) {
+			this.closeDeviceSession();
+			this.onSessionClosed?.();
+		}
+		// Initial push has prev === null; the host drives the first connect.
+		if (prev === false && nowAvailable && this.selectedMac) {
+			this.loadDeviceConfig(this.selectedMac).catch(() => {});
+		}
+
 		this.onDeviceListChanged?.();
 		this._host.requestUpdate();
 	}
@@ -375,6 +392,7 @@ export class DeviceController implements ReactiveController {
 	// --- Device selection ---
 	selectDevice(mac: string): void {
 		this.selectedMac = mac;
+		this._lastSelectedAvailable = null;
 		this._connectionFailed = false;
 		localStorage.setItem("epp_selected_mac", mac);
 		this._host.requestUpdate();

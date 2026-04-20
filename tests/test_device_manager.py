@@ -2211,6 +2211,60 @@ class TestEventCallbacks:
         assert "AA:BB:CC:DD:EE:FF" not in manager._pushing
         mock_fire.assert_called_once()
 
+    async def test_on_state_changed_closes_active_session_on_offline(
+        self, hass: HomeAssistant, manager: DeviceManager
+    ) -> None:
+        """Device going unavailable closes any active session so the next open is fresh."""
+        dev_reg = dr.async_get(hass)
+        ent_reg = er.async_get(hass)
+
+        esphome_entry = MockConfigEntry(
+            domain="esphome",
+            data={"host": "192.168.1.50"},
+            title="EPP Device",
+        )
+        esphome_entry.add_to_hass(hass)
+
+        device = dev_reg.async_get_or_create(
+            config_entry_id=esphome_entry.entry_id,
+            connections={("mac", "aa:bb:cc:dd:ee:ff")},
+            name="EPP Device",
+        )
+
+        entity = ent_reg.async_get_or_create(
+            "sensor",
+            "esphome",
+            unique_id="AA:BB:CC:DD:EE:FF-sensor-close",
+            config_entry=esphome_entry,
+            device_id=device.id,
+        )
+
+        mac = "AA:BB:CC:DD:EE:FF"
+        manager.devices[mac] = ManagedDevice(mac=mac, name="EPP", host="192.168.1.50", device_id=device.id)
+
+        # Populate an active session (frontend had a live overview open)
+        stale_conn = MagicMock()
+        stale_conn.connected = True
+        stale_conn.async_disconnect = AsyncMock()
+        manager._active_connections[mac] = stale_conn
+
+        with patch.object(manager, "async_close_session", new_callable=AsyncMock) as mock_close:
+            old_state = MagicMock()
+            old_state.state = "25.5"
+            new_state = MagicMock()
+            new_state.state = STATE_UNAVAILABLE
+
+            event = MagicMock()
+            event.data = {
+                "entity_id": entity.entity_id,
+                "old_state": old_state,
+                "new_state": new_state,
+            }
+            manager._on_state_changed(event)
+            await hass.async_block_till_done()
+
+        mock_close.assert_awaited_once_with(mac)
+
     async def test_is_device_available_all_unavailable(self, hass: HomeAssistant, manager: DeviceManager) -> None:
         """_is_device_available returns False when all ESPHome entities are unavailable."""
         dev_reg = dr.async_get(hass)
@@ -2769,6 +2823,47 @@ class TestSessionLifecycle:
         stale_conn.async_disconnect.assert_awaited_once()
         new_conn.async_connect.assert_awaited_once()
         assert result is new_conn
+
+    async def test_device_connection_on_stop_marks_disconnected(
+        self, hass: HomeAssistant, manager: DeviceManager
+    ) -> None:
+        """aioesphomeapi on_stop callback flips connected=False and clears subscribers."""
+        from custom_components.eppgrid.device_manager import DeviceConnection
+
+        captured_on_stop: list = []
+
+        class FakeClient:
+            def __init__(self, *args, **kwargs) -> None:
+                pass
+
+            async def connect(self, on_stop=None, login=False, log_errors=True) -> None:
+                captured_on_stop.append(on_stop)
+
+            async def list_entities_services(self):
+                return ([], [])
+
+            async def disconnect(self) -> None:
+                pass
+
+        with patch("custom_components.eppgrid.device_manager.APIClient", FakeClient):
+            conn = DeviceConnection("192.168.1.50")
+            await conn.async_connect()
+
+            # Simulate a live state subscriber
+            conn._state_subscribers.append(lambda _state: None)
+            conn._states_subscribed = True
+            assert conn.connected is True
+
+            # aioesphomeapi reports the underlying socket died
+            assert len(captured_on_stop) == 1 and captured_on_stop[0] is not None
+            on_stop = captured_on_stop[0]
+            result = on_stop(False)
+            if asyncio.iscoroutine(result):
+                await result
+
+        assert conn.connected is False
+        assert conn._state_subscribers == []
+        assert conn._states_subscribed is False
 
     async def test_async_start_registers_listeners(self, hass: HomeAssistant, manager: DeviceManager) -> None:
         """async_start discovers devices and registers event listeners."""

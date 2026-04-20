@@ -172,8 +172,12 @@ class DeviceConnection:
         if self.connected:
             return
         client = APIClient(self._host, self._port, "", noise_psk=self._noise_psk)
+
+        async def _on_stop(expected_disconnect: bool) -> None:
+            self._release_references()
+
         try:
-            await client.connect(login=True)
+            await client.connect(on_stop=_on_stop, login=True)
             entities, services = await client.list_entities_services()
         except Exception:
             await client.disconnect()
@@ -189,13 +193,18 @@ class DeviceConnection:
         self.unsubscribe_logs()
         if self._client is not None:
             await self._client.disconnect()
+        self._release_references()
+
+    def _release_references(self) -> None:
+        """Release references to the (now-dead) APIClient without contacting it."""
+        self.connected = False
         self._client = None
         self._services.clear()
         self._entities = []
         self._state_subscribers.clear()
-        self._log_callbacks.clear()
         self._states_subscribed = False
-        self.connected = False
+        self._log_callbacks.clear()
+        self._unsub_logs = None
 
     def subscribe_states(self, cb: Any) -> None:
         """Add a state subscriber. All subscribers receive every state update."""
@@ -695,8 +704,12 @@ class DeviceManager:
         offline_states = (STATE_UNAVAILABLE, STATE_UNKNOWN)
 
         if new_state.state in offline_states:
-            # Device went offline — allow a fresh push when it comes back
+            # Device went offline — allow a fresh push when it comes back and
+            # close any active session so the stale APIClient is replaced on
+            # the next frontend reconnect.
             self._pushing.discard(mac)
+            if mac in self._active_connections:
+                self._hass.async_create_task(self.async_close_session(mac))
             self._fire_device_list_changed()
             return
 
