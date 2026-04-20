@@ -707,6 +707,39 @@ describe("DeviceController", () => {
 			ctrl.selectDevice("cc:dd");
 			expect(host.requestUpdate).toHaveBeenCalled();
 		});
+
+		it("resets availability tracker to avoid stale-edge reconnect", () => {
+			const loadSpy = vi
+				.spyOn(ctrl, "loadDeviceConfig")
+				.mockResolvedValue({});
+
+			const makeDevice = (mac: string, available: boolean): DeviceInfo => ({
+				mac,
+				name: "EPP",
+				host: null,
+				available,
+				configured: true,
+				firmware_status: "compatible",
+				current_connection_count: null,
+				area: null,
+			});
+
+			// Prime: "aa" available → offline. Tracker latches to false.
+			(ctrl as any)._applyDeviceList([makeDevice("aa", true)]);
+			(ctrl as any)._applyDeviceList([makeDevice("aa", false)]);
+			loadSpy.mockClear();
+
+			// User switches to "bb" — tracker must reset so the next push
+			// is treated as an initial observation (prev === null) and not
+			// a stale false→true rising edge.
+			ctrl.selectDevice("bb");
+
+			// Push a list where "bb" is already available. Without the reset,
+			// prev === false + nowAvailable === true would fire a reconnect.
+			(ctrl as any)._applyDeviceList([makeDevice("bb", true)]);
+
+			expect(loadSpy).not.toHaveBeenCalled();
+		});
 	});
 
 	// --- hass getter/setter ---
