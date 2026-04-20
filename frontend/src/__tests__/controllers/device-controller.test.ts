@@ -893,5 +893,18 @@ describe("DeviceController", () => {
 
 			expect(closeSpy).toHaveBeenCalledTimes(1);
 		});
+
+		it("fires onSessionClosed so host can clear live-target state", () => {
+			const onClosed = vi.fn();
+			ctrl.onSessionClosed = onClosed;
+
+			(ctrl as any)._applyDeviceList([makeDevice("aa", true)]);
+			ctrl.selectedMac = "aa";
+			onClosed.mockClear();
+
+			(ctrl as any)._applyDeviceList([makeDevice("aa", false)]);
+
+			expect(onClosed).toHaveBeenCalledTimes(1);
+		});
 	});
 });

@@ -44,6 +44,7 @@ export class DeviceController implements ReactiveController {
 	onTargetData?: (data: TargetData) => void;
 	onRawTargetData?: (targets: RawTarget[]) => void;
 	onDeviceListChanged?: () => void;
+	onSessionClosed?: () => void;
 
 	private _host: ReactiveControllerHost;
 	private _hass: any = null;
@@ -168,6 +169,7 @@ export class DeviceController implements ReactiveController {
 
 		if (prev === true && !nowAvailable) {
 			this.closeDeviceSession();
+			this.onSessionClosed?.();
 		}
 		// Initial push has prev === null; the host drives the first connect.
 		if (prev === false && nowAvailable && this.selectedMac) {
