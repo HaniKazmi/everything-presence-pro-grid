@@ -303,15 +303,25 @@ export async function readImprovResponse(
 		}
 
 		let timerId: ReturnType<typeof setTimeout> | undefined;
-		const raced = await Promise.race<
-			ReadableStreamReadResult<Uint8Array> | typeof TIMEOUT
-		>([
-			pending,
-			new Promise<typeof TIMEOUT>((resolve) => {
-				timerId = setTimeout(() => resolve(TIMEOUT), remaining);
-			}),
-		]);
-		clearTimeout(timerId);
+		let raced: ReadableStreamReadResult<Uint8Array> | typeof TIMEOUT;
+		try {
+			raced = await Promise.race<
+				ReadableStreamReadResult<Uint8Array> | typeof TIMEOUT
+			>([
+				pending,
+				new Promise<typeof TIMEOUT>((resolve) => {
+					timerId = setTimeout(() => resolve(TIMEOUT), remaining);
+				}),
+			]);
+		} catch (err) {
+			// pending rejected (stream error) — clear it so a future caller
+			// can try a fresh reader.read() instead of immediately rethrowing
+			// the same stale rejection.
+			_pendingReads.delete(reader);
+			throw err;
+		} finally {
+			clearTimeout(timerId);
+		}
 
 		if (raced === TIMEOUT) {
 			// Leave the pending read in the WeakMap — the next call will

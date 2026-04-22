@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
 	buildImprovPacket as buildPacket,
 	buildScanCommand,
@@ -137,40 +137,86 @@ describe("readImprovResponse", () => {
 		expect(result2.packets[0].data).toEqual(new Uint8Array([0x02]));
 	});
 
-	it("does not lose a chunk when reader.read() is in-flight during timeout", async () => {
-		// Chunk resolves 150ms after the first call's 50ms budget — the
-		// second call must re-await the same pending read rather than
-		// issuing a fresh read() (which would swallow the chunk).
-		const pkt = buildPacket(TYPE_RPC_RESULT, [0x42]);
-		const reader = mockReader([pkt], { delayMs: 150 });
-		const buffer: number[] = [];
+	describe("timeout behaviour (fake timers)", () => {
+		beforeEach(() => {
+			vi.useFakeTimers();
+		});
+		afterEach(() => {
+			vi.useRealTimers();
+		});
 
-		await expect(readImprovResponse(reader, 50, buffer)).rejects.toThrow(
-			"timeout",
-		);
+		it("does not lose a chunk when reader.read() is in-flight during timeout", async () => {
+			// Chunk resolves 150ms after the first call's 50ms budget — the
+			// second call must re-await the same pending read rather than
+			// issuing a fresh read() (which would swallow the chunk).
+			const pkt = buildPacket(TYPE_RPC_RESULT, [0x42]);
+			const reader = mockReader([pkt], { delayMs: 150 });
+			const buffer: number[] = [];
 
-		const result = await readImprovResponse(reader, 500, buffer);
-		expect(result.packets.length).toBe(1);
-		expect(result.packets[0].data[0]).toBe(0x42);
-		expect(reader.read).toHaveBeenCalledTimes(1);
-	});
+			const firstCall = readImprovResponse(reader, 50, buffer);
+			const firstAssertion = expect(firstCall).rejects.toThrow("timeout");
+			await vi.advanceTimersByTimeAsync(50);
+			await firstAssertion;
 
-	it("preserves bytes read during a timed-out call via in-place buffer mutation", async () => {
-		const pkt = buildPacket(TYPE_RPC_RESULT, [0x01, 0x02, 0x03, 0x04]);
-		const chunk1 = pkt.slice(0, 9); // header + version + type + length — not enough to checksum
-		const chunk2 = pkt.slice(9);
+			const secondCall = readImprovResponse(reader, 500, buffer);
+			await vi.advanceTimersByTimeAsync(150);
+			const result = await secondCall;
 
-		const buffer: number[] = [];
-		await expect(
-			readImprovResponse(mockReader([chunk1]), 50, buffer),
-		).rejects.toThrow("timeout");
-		expect(Array.from(buffer)).toEqual(Array.from(chunk1));
+			expect(result.packets.length).toBe(1);
+			expect(result.packets[0].data[0]).toBe(0x42);
+			expect(reader.read).toHaveBeenCalledTimes(1);
+		});
 
-		const result = await readImprovResponse(mockReader([chunk2]), 1000, buffer);
-		expect(result.packets.length).toBe(1);
-		expect(Array.from(result.packets[0].data)).toEqual([
-			0x01, 0x02, 0x03, 0x04,
-		]);
+		it("preserves bytes read during a timed-out call via in-place buffer mutation", async () => {
+			const pkt = buildPacket(TYPE_RPC_RESULT, [0x01, 0x02, 0x03, 0x04]);
+			const chunk1 = pkt.slice(0, 9); // header + version + type + length — not enough to checksum
+			const chunk2 = pkt.slice(9);
+
+			const buffer: number[] = [];
+			const firstCall = readImprovResponse(mockReader([chunk1]), 50, buffer);
+			const firstAssertion = expect(firstCall).rejects.toThrow("timeout");
+			await vi.advanceTimersByTimeAsync(50);
+			await firstAssertion;
+			expect(Array.from(buffer)).toEqual(Array.from(chunk1));
+
+			const result = await readImprovResponse(
+				mockReader([chunk2]),
+				1000,
+				buffer,
+			);
+			expect(result.packets.length).toBe(1);
+			expect(Array.from(result.packets[0].data)).toEqual([
+				0x01, 0x02, 0x03, 0x04,
+			]);
+		});
+
+		it("clears pending read and timer when the read rejects", async () => {
+			// pending's rejection must not leave a stale entry in the
+			// WeakMap — otherwise the next call would rethrow the same
+			// stale error forever.
+			const err = new Error("stream error");
+			const reader = {
+				read: vi
+					.fn()
+					.mockRejectedValueOnce(err)
+					.mockResolvedValueOnce({
+						value: buildPacket(TYPE_RPC_RESULT, [0x99]),
+						done: false,
+					}),
+				cancel: vi.fn().mockResolvedValue(undefined),
+				closed: Promise.resolve(undefined),
+				releaseLock: vi.fn(),
+			} as unknown as ReadableStreamDefaultReader<Uint8Array>;
+			const buffer: number[] = [];
+
+			await expect(readImprovResponse(reader, 500, buffer)).rejects.toThrow(
+				"stream error",
+			);
+
+			const result = await readImprovResponse(reader, 500, buffer);
+			expect(result.packets[0].data[0]).toBe(0x99);
+			expect(reader.read).toHaveBeenCalledTimes(2);
+		});
 	});
 });
 
