@@ -1464,7 +1464,10 @@ export class EPPGridPanel extends LitElement {
 			</div>`;
 		}
 
-		if (this._deviceCtrl.connectionFailed) {
+		const dev = this._devices.find((d) => d.mac === this._selectedMac);
+		const isOffline = dev?.firmware_status === "unavailable";
+
+		if (this._deviceCtrl.connectionFailed || isOffline) {
 			return html`<div class="tab-layout">
 				${this._renderTabBar()}
 				<div class="panel">
@@ -1475,11 +1478,7 @@ export class EPPGridPanel extends LitElement {
 			</div>`;
 		}
 
-		const dev = this._devices.find((d) => d.mac === this._selectedMac);
-		const protocolOk =
-			!dev ||
-			dev.firmware_status === "compatible" ||
-			dev.firmware_status === "unavailable";
+		const protocolOk = !dev || dev.firmware_status === "compatible";
 
 		if (!protocolOk) {
 			return html`<div class="tab-layout">
@@ -1665,10 +1664,10 @@ export class EPPGridPanel extends LitElement {
 	}
 
 	private _renderConnectionBanner() {
-		if (!this._deviceCtrl.connectionFailed) return nothing;
-
 		const dev = this._devices.find((d) => d.mac === this._selectedMac);
 		const isOffline = dev?.firmware_status === "unavailable";
+
+		if (!this._deviceCtrl.connectionFailed && !isOffline) return nothing;
 
 		if (isOffline) {
 			return html`
