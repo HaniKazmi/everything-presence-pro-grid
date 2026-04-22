@@ -4,12 +4,20 @@ import {
 	CELL_INTERFERENCE_SHIFT,
 	CELL_INTERFERENCE_SUPPRESS,
 	CELL_OVERLAY_ENTRY,
+	CELL_OVERLAY_ENTRY_LEGACY_MASK,
+	CELL_OVERLAY_INTERFERENCE,
+	CELL_OVERLAY_MASK,
+	CELL_OVERLAY_NONE,
+	CELL_OVERLAY_SHIFT,
+	CELL_OVERLAY_SUPPRESS,
 	CELL_ROOM_BIT,
 	cellHasOverlayEntry,
 	cellInterference,
 	cellIsInside,
+	cellOverlay,
 	cellSetInside,
 	cellSetInterference,
+	cellSetOverlay,
 	cellSetOverlayEntry,
 	cellSetZone,
 	cellZone,
@@ -217,11 +225,13 @@ describe("cellHasOverlayEntry", () => {
 	});
 
 	it("returns true when overlay bit is set", () => {
-		expect(cellHasOverlayEntry(CELL_ROOM_BIT | CELL_OVERLAY_ENTRY)).toBe(true);
+		expect(
+			cellHasOverlayEntry(CELL_ROOM_BIT | CELL_OVERLAY_ENTRY_LEGACY_MASK),
+		).toBe(true);
 	});
 
 	it("returns true regardless of zone bits", () => {
-		const val = CELL_ROOM_BIT | CELL_OVERLAY_ENTRY | (3 << 1);
+		const val = CELL_ROOM_BIT | CELL_OVERLAY_ENTRY_LEGACY_MASK | (3 << 1);
 		expect(cellHasOverlayEntry(val)).toBe(true);
 	});
 });
@@ -236,7 +246,7 @@ describe("cellSetOverlayEntry", () => {
 	});
 
 	it("clears overlay bit while preserving room and zone", () => {
-		const val = CELL_ROOM_BIT | CELL_OVERLAY_ENTRY | (2 << 1);
+		const val = CELL_ROOM_BIT | CELL_OVERLAY_ENTRY_LEGACY_MASK | (2 << 1);
 		const result = cellSetOverlayEntry(val, false);
 		expect(cellHasOverlayEntry(result)).toBe(false);
 		expect(cellIsInside(result)).toBe(true);
@@ -266,21 +276,21 @@ describe("interference helpers", () => {
 	});
 
 	it("cellSetInterference sets bits 5-7 without affecting other bits", () => {
-		const cell = CELL_ROOM_BIT | CELL_OVERLAY_ENTRY;
+		const cell = CELL_ROOM_BIT | CELL_OVERLAY_ENTRY_LEGACY_MASK;
 		const result = cellSetInterference(cell, 2);
 		expect(cellInterference(result)).toBe(2);
 		expect(result & CELL_ROOM_BIT).toBe(CELL_ROOM_BIT);
 	});
 
 	it("cellSetInterference clears entry overlay (mutual exclusivity)", () => {
-		const cell = CELL_ROOM_BIT | CELL_OVERLAY_ENTRY;
+		const cell = CELL_ROOM_BIT | CELL_OVERLAY_ENTRY_LEGACY_MASK;
 		const result = cellSetInterference(cell, 1);
 		expect(cellHasOverlayEntry(result)).toBe(false);
 		expect(cellInterference(result)).toBe(1);
 	});
 
 	it("cellSetInterference with 0 does not clear entry overlay", () => {
-		const cell = CELL_ROOM_BIT | CELL_OVERLAY_ENTRY;
+		const cell = CELL_ROOM_BIT | CELL_OVERLAY_ENTRY_LEGACY_MASK;
 		const result = cellSetInterference(cell, 0);
 		expect(cellHasOverlayEntry(result)).toBe(true);
 		expect(cellInterference(result)).toBe(0);
@@ -309,5 +319,70 @@ describe("interference helpers", () => {
 
 	it("CELL_INTERFERENCE_SUPPRESS is 2", () => {
 		expect(CELL_INTERFERENCE_SUPPRESS).toBe(2);
+	});
+});
+
+describe("cellOverlay (new 2-bit overlay field)", () => {
+	it("returns CELL_OVERLAY_NONE for plain room cell", () => {
+		expect(cellOverlay(CELL_ROOM_BIT)).toBe(CELL_OVERLAY_NONE);
+	});
+
+	it("extracts entry kind from bits 4-5", () => {
+		const v = CELL_ROOM_BIT | (CELL_OVERLAY_ENTRY << CELL_OVERLAY_SHIFT);
+		expect(cellOverlay(v)).toBe(CELL_OVERLAY_ENTRY);
+	});
+
+	it("extracts interference kind from bits 4-5", () => {
+		const v = CELL_ROOM_BIT | (CELL_OVERLAY_INTERFERENCE << CELL_OVERLAY_SHIFT);
+		expect(cellOverlay(v)).toBe(CELL_OVERLAY_INTERFERENCE);
+	});
+
+	it("extracts suppress kind from bits 4-5", () => {
+		const v = CELL_ROOM_BIT | (CELL_OVERLAY_SUPPRESS << CELL_OVERLAY_SHIFT);
+		expect(cellOverlay(v)).toBe(CELL_OVERLAY_SUPPRESS);
+	});
+
+	it("ignores bits outside the overlay mask", () => {
+		// Set bits 6-7 (unused) and zone bits — should not affect overlay read
+		const v = 0b11_00_111_1 | (CELL_OVERLAY_INTERFERENCE << CELL_OVERLAY_SHIFT);
+		expect(cellOverlay(v)).toBe(CELL_OVERLAY_INTERFERENCE);
+	});
+});
+
+describe("cellSetOverlay", () => {
+	it("sets entry kind, preserves room and zone", () => {
+		const v = cellSetZone(CELL_ROOM_BIT, 5);
+		const result = cellSetOverlay(v, CELL_OVERLAY_ENTRY);
+		expect(cellOverlay(result)).toBe(CELL_OVERLAY_ENTRY);
+		expect(cellIsInside(result)).toBe(true);
+		expect(cellZone(result)).toBe(5);
+	});
+
+	it("overwrites previous overlay kind", () => {
+		let v = cellSetOverlay(CELL_ROOM_BIT, CELL_OVERLAY_ENTRY);
+		v = cellSetOverlay(v, CELL_OVERLAY_SUPPRESS);
+		expect(cellOverlay(v)).toBe(CELL_OVERLAY_SUPPRESS);
+	});
+
+	it("clears overlay when kind is CELL_OVERLAY_NONE", () => {
+		const v = cellSetOverlay(CELL_ROOM_BIT, CELL_OVERLAY_INTERFERENCE);
+		const result = cellSetOverlay(v, CELL_OVERLAY_NONE);
+		expect(cellOverlay(result)).toBe(CELL_OVERLAY_NONE);
+	});
+
+	it("clamps kind to 2 bits (0-3)", () => {
+		const result = cellSetOverlay(0, 0xff);
+		expect(cellOverlay(result)).toBe(3);
+	});
+
+	it("round-trips for each kind", () => {
+		for (const k of [
+			CELL_OVERLAY_NONE,
+			CELL_OVERLAY_ENTRY,
+			CELL_OVERLAY_INTERFERENCE,
+			CELL_OVERLAY_SUPPRESS,
+		]) {
+			expect(cellOverlay(cellSetOverlay(CELL_ROOM_BIT, k))).toBe(k);
+		}
 	});
 });
