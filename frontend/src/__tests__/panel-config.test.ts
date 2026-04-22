@@ -489,6 +489,41 @@ describe("updated() reconnecting guard", () => {
 		loadSpy.mockRestore();
 	});
 
+	it("swallows reopenSession rejections from the updated() guard", async () => {
+		const el = createPanel();
+		const a = el as any;
+		a._loading = false;
+		a._devices = [
+			{
+				mac: "AA:BB:CC:DD:EE:01",
+				name: "T",
+				host: null,
+				available: true,
+				configured: true,
+			},
+		];
+		a._selectedMac = "AA:BB:CC:DD:EE:01";
+		a._deviceCtrl.closeDeviceSession();
+
+		vi.spyOn(a._deviceCtrl, "reopenSession").mockRejectedValue(
+			new Error("connection_failed"),
+		);
+		const unhandled: unknown[] = [];
+		const handler = (reason: unknown) => {
+			unhandled.push(reason);
+		};
+		process.on("unhandledRejection", handler);
+		try {
+			const changed = new Map<string, any>([["hass", undefined]]);
+			a.updated(changed);
+			await new Promise((r) => setTimeout(r, 0));
+			await new Promise((r) => setTimeout(r, 0));
+			expect(unhandled).toEqual([]);
+		} finally {
+			process.off("unhandledRejection", handler);
+		}
+	});
+
 	it("does not auto-load config for a device reporting available=false", () => {
 		const el = createPanel();
 		const a = el as any;
@@ -1163,6 +1198,58 @@ describe("_renderConnectionBanner", () => {
 		// Values should contain the offline localization key
 		const vals = JSON.stringify((result as any).values);
 		expect(vals).toContain("connection.offline");
+	});
+});
+
+describe("_retryConnection", () => {
+	it("re-opens the device session without refetching config", () => {
+		const el = createPanel();
+		const a = el as any;
+		a._selectedMac = "AA:BB:CC:DD:EE:01";
+		const reopenSpy = vi
+			.spyOn(a._deviceCtrl, "reopenSession")
+			.mockResolvedValue(undefined);
+		const loadSpy = vi
+			.spyOn(a, "_loadDeviceConfig")
+			.mockResolvedValue(undefined);
+
+		a._retryConnection();
+
+		expect(reopenSpy).toHaveBeenCalledWith("AA:BB:CC:DD:EE:01");
+		expect(loadSpy).not.toHaveBeenCalled();
+	});
+
+	it("is a no-op when no device is selected", () => {
+		const el = createPanel();
+		const a = el as any;
+		a._selectedMac = "";
+		const reopenSpy = vi.spyOn(a._deviceCtrl, "reopenSession");
+
+		a._retryConnection();
+
+		expect(reopenSpy).not.toHaveBeenCalled();
+	});
+
+	it("swallows reopenSession rejections without leaking unhandled errors", async () => {
+		const el = createPanel();
+		const a = el as any;
+		a._selectedMac = "AA:BB:CC:DD:EE:01";
+		vi.spyOn(a._deviceCtrl, "reopenSession").mockRejectedValue(
+			new Error("connection_failed"),
+		);
+		const unhandled: unknown[] = [];
+		const handler = (reason: unknown) => {
+			unhandled.push(reason);
+		};
+		process.on("unhandledRejection", handler);
+		try {
+			a._retryConnection();
+			await new Promise((r) => setTimeout(r, 0));
+			await new Promise((r) => setTimeout(r, 0));
+			expect(unhandled).toEqual([]);
+		} finally {
+			process.off("unhandledRejection", handler);
+		}
 	});
 });
 
