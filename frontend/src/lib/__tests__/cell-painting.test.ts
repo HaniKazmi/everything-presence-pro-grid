@@ -1,25 +1,25 @@
 import { describe, expect, it } from "vitest";
 import {
-	applyInterferencePaintToCell,
-	applyOverlayPaintToCell,
-	applyPaintToCell,
-	clearZoneFromGrid,
-	determineInterferencePaintAction,
-	determineOverlayPaintAction,
-	determinePaintAction,
-} from "../cell-painting.js";
-import {
 	CELL_OVERLAY_ENTRY,
+	CELL_OVERLAY_INTERFERENCE,
+	CELL_OVERLAY_NONE,
+	CELL_OVERLAY_SUPPRESS,
 	CELL_ROOM_BIT,
-	cellHasOverlayEntry,
-	cellInterference,
 	cellIsInside,
-	cellSetInterference,
+	cellOverlay,
+	cellSetOverlay,
 	cellSetZone,
 	cellZone,
 	GRID_CELL_COUNT,
 	MAX_ZONES,
 } from "../grid.js";
+import {
+	applyOverlayPaintToCell,
+	applyPaintToCell,
+	clearZoneFromGrid,
+	determineOverlayPaintAction,
+	determinePaintAction,
+} from "../cell-painting.js";
 
 describe("determinePaintAction", () => {
 	describe("boundary painting (activeZone === 0)", () => {
@@ -183,96 +183,87 @@ describe("clearZoneFromGrid", () => {
 
 describe("determineOverlayPaintAction", () => {
 	it("returns 'set' when cell has no overlay", () => {
-		expect(determineOverlayPaintAction(CELL_ROOM_BIT)).toBe("set");
+		expect(determineOverlayPaintAction(CELL_ROOM_BIT, CELL_OVERLAY_ENTRY)).toBe(
+			"set",
+		);
 	});
 
-	it("returns 'clear' when cell already has overlay", () => {
+	it("returns 'clear' when cell already has same overlay kind", () => {
+		const cell = cellSetOverlay(CELL_ROOM_BIT, CELL_OVERLAY_ENTRY);
+		expect(determineOverlayPaintAction(cell, CELL_OVERLAY_ENTRY)).toBe("clear");
+	});
+
+	it("returns 'set' when cell has a different overlay kind", () => {
+		const cell = cellSetOverlay(CELL_ROOM_BIT, CELL_OVERLAY_ENTRY);
 		expect(
-			determineOverlayPaintAction(CELL_ROOM_BIT | CELL_OVERLAY_ENTRY),
-		).toBe("clear");
+			determineOverlayPaintAction(cell, CELL_OVERLAY_INTERFERENCE),
+		).toBe("set");
 	});
 });
 
 describe("applyOverlayPaintToCell", () => {
-	it("sets overlay on inside-room cell", () => {
-		const result = applyOverlayPaintToCell(CELL_ROOM_BIT, "set");
+	it("sets entry overlay on inside cell", () => {
+		const result = applyOverlayPaintToCell(
+			CELL_ROOM_BIT,
+			CELL_OVERLAY_ENTRY,
+			"set",
+		);
 		expect(result).not.toBeNull();
-		expect(cellHasOverlayEntry(result!)).toBe(true);
+		expect(cellOverlay(result!)).toBe(CELL_OVERLAY_ENTRY);
 	});
 
-	it("clears overlay on inside-room cell with overlay", () => {
-		const val = CELL_ROOM_BIT | CELL_OVERLAY_ENTRY;
-		const result = applyOverlayPaintToCell(val, "clear");
+	it("sets interference overlay on inside cell", () => {
+		const result = applyOverlayPaintToCell(
+			CELL_ROOM_BIT,
+			CELL_OVERLAY_INTERFERENCE,
+			"set",
+		);
 		expect(result).not.toBeNull();
-		expect(cellHasOverlayEntry(result!)).toBe(false);
+		expect(cellOverlay(result!)).toBe(CELL_OVERLAY_INTERFERENCE);
 	});
 
-	it("returns null for outside-room cell", () => {
-		expect(applyOverlayPaintToCell(0x00, "set")).toBeNull();
+	it("sets suppress overlay on inside cell", () => {
+		const result = applyOverlayPaintToCell(
+			CELL_ROOM_BIT,
+			CELL_OVERLAY_SUPPRESS,
+			"set",
+		);
+		expect(result).not.toBeNull();
+		expect(cellOverlay(result!)).toBe(CELL_OVERLAY_SUPPRESS);
+	});
+
+	it("clears overlay on inside cell", () => {
+		const cell = cellSetOverlay(CELL_ROOM_BIT, CELL_OVERLAY_INTERFERENCE);
+		const result = applyOverlayPaintToCell(
+			cell,
+			CELL_OVERLAY_INTERFERENCE,
+			"clear",
+		);
+		expect(result).not.toBeNull();
+		expect(cellOverlay(result!)).toBe(CELL_OVERLAY_NONE);
+	});
+
+	it("returns null for outside cell", () => {
+		expect(
+			applyOverlayPaintToCell(0x00, CELL_OVERLAY_ENTRY, "set"),
+		).toBeNull();
+	});
+
+	it("overwriting different kind replaces (mutual exclusivity by construction)", () => {
+		const cell = cellSetOverlay(CELL_ROOM_BIT, CELL_OVERLAY_ENTRY);
+		const result = applyOverlayPaintToCell(
+			cell,
+			CELL_OVERLAY_INTERFERENCE,
+			"set",
+		);
+		expect(result).not.toBeNull();
+		expect(cellOverlay(result!)).toBe(CELL_OVERLAY_INTERFERENCE);
 	});
 
 	it("preserves zone bits", () => {
 		const val = cellSetZone(CELL_ROOM_BIT, 3);
-		const result = applyOverlayPaintToCell(val, "set");
-		expect(result).not.toBeNull();
-		expect(cellHasOverlayEntry(result!)).toBe(true);
-		expect((result! >> 1) & 0x07).toBe(3); // zone preserved
-	});
-});
-
-describe("determineInterferencePaintAction", () => {
-	it("returns 'set' when cell has no interference at this level", () => {
-		expect(determineInterferencePaintAction(CELL_ROOM_BIT, 2)).toBe("set");
-	});
-
-	it("returns 'clear' when cell already has this interference level", () => {
-		const cell = cellSetInterference(CELL_ROOM_BIT, 2);
-		expect(determineInterferencePaintAction(cell, 2)).toBe("clear");
-	});
-
-	it("returns 'set' when cell has a different interference level", () => {
-		const cell = cellSetInterference(CELL_ROOM_BIT, 1);
-		expect(determineInterferencePaintAction(cell, 3)).toBe("set");
-	});
-});
-
-describe("applyInterferencePaintToCell", () => {
-	it("sets interference level on inside cell", () => {
-		const result = applyInterferencePaintToCell(CELL_ROOM_BIT, 2, "set");
-		expect(result).not.toBeNull();
-		expect(cellInterference(result!)).toBe(2);
-	});
-
-	it("clears interference on inside cell", () => {
-		const cell = cellSetInterference(CELL_ROOM_BIT, 3);
-		const result = applyInterferencePaintToCell(cell, 3, "clear");
-		expect(result).not.toBeNull();
-		expect(cellInterference(result!)).toBe(0);
-	});
-
-	it("returns null for outside cell", () => {
-		expect(applyInterferencePaintToCell(0, 2, "set")).toBeNull();
-	});
-
-	it("clears entry overlay when setting interference (mutual exclusivity)", () => {
-		const cell = CELL_ROOM_BIT | CELL_OVERLAY_ENTRY;
-		const result = applyInterferencePaintToCell(cell, 1, "set");
-		expect(result).not.toBeNull();
-		expect(cellHasOverlayEntry(result!)).toBe(false);
-		expect(cellInterference(result!)).toBe(1);
-	});
-
-	it("preserves zone bits when setting interference", () => {
-		const cell = cellSetZone(CELL_ROOM_BIT, 3);
-		const result = applyInterferencePaintToCell(cell, 2, "set");
+		const result = applyOverlayPaintToCell(val, CELL_OVERLAY_ENTRY, "set");
 		expect(result).not.toBeNull();
 		expect(cellZone(result!)).toBe(3);
-		expect(cellInterference(result!)).toBe(2);
-	});
-
-	it("sets suppress level (7)", () => {
-		const result = applyInterferencePaintToCell(CELL_ROOM_BIT, 7, "set");
-		expect(result).not.toBeNull();
-		expect(cellInterference(result!)).toBe(7);
 	});
 });
