@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
 import {
+	applyOverlayPaintToCell,
+	applyPaintToCell,
+	clearZoneFromGrid,
+	determineOverlayPaintAction,
+	determinePaintAction,
+} from "../cell-painting.js";
+import {
 	CELL_OVERLAY_ENTRY,
 	CELL_OVERLAY_INTERFERENCE,
 	CELL_OVERLAY_NONE,
@@ -13,13 +20,6 @@ import {
 	GRID_CELL_COUNT,
 	MAX_ZONES,
 } from "../grid.js";
-import {
-	applyOverlayPaintToCell,
-	applyPaintToCell,
-	clearZoneFromGrid,
-	determineOverlayPaintAction,
-	determinePaintAction,
-} from "../cell-painting.js";
 
 describe("determinePaintAction", () => {
 	describe("boundary painting (activeZone === 0)", () => {
@@ -195,9 +195,9 @@ describe("determineOverlayPaintAction", () => {
 
 	it("returns 'set' when cell has a different overlay kind", () => {
 		const cell = cellSetOverlay(CELL_ROOM_BIT, CELL_OVERLAY_ENTRY);
-		expect(
-			determineOverlayPaintAction(cell, CELL_OVERLAY_INTERFERENCE),
-		).toBe("set");
+		expect(determineOverlayPaintAction(cell, CELL_OVERLAY_INTERFERENCE)).toBe(
+			"set",
+		);
 	});
 });
 
@@ -244,9 +244,7 @@ describe("applyOverlayPaintToCell", () => {
 	});
 
 	it("returns null for outside cell", () => {
-		expect(
-			applyOverlayPaintToCell(0x00, CELL_OVERLAY_ENTRY, "set"),
-		).toBeNull();
+		expect(applyOverlayPaintToCell(0x00, CELL_OVERLAY_ENTRY, "set")).toBeNull();
 	});
 
 	it("overwriting different kind replaces (mutual exclusivity by construction)", () => {
