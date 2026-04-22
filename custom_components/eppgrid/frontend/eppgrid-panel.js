@@ -1854,6 +1854,7 @@ const dt={attribute:!0,type:String,converter:E,reflect:!1,hasChanged:m},At=(t=dt
 		.grid-targets-wrapper {
 			position: relative;
 			display: inline-block;
+			vertical-align: top;
 		}
 
 		:host(:not([editable])) .grid-targets-wrapper {
