@@ -239,6 +239,77 @@ describe("render() dispatches to correct view", () => {
 	});
 });
 
+describe("render() handles offline device", () => {
+	it("renders offline banner (not uncalibrated-fov wizard) when device is offline and uncalibrated", () => {
+		const a = createPanel() as any;
+		a._view = "live";
+		a._perspective = null;
+		a._devices = [
+			{
+				mac: "AA:BB:CC:DD:EE:01",
+				name: "Test",
+				host: null,
+				available: false,
+				configured: true,
+				firmware_status: "unavailable",
+			},
+		];
+		a._selectedMac = "AA:BB:CC:DD:EE:01";
+
+		const result = a.render();
+		const str = JSON.stringify(result);
+
+		expect(str).not.toContain("uncalibrated-fov");
+		expect(str).toContain("connection.offline");
+	});
+
+	it("renders offline banner when device is offline and calibrated", () => {
+		const a = createPanel() as any;
+		a._view = "live";
+		a._perspective = [1, 0, 0, 0, 1, 0, 0, 0];
+		a._grid = initGridFromRoom(3000, 4000);
+		a._devices = [
+			{
+				mac: "AA:BB:CC:DD:EE:01",
+				name: "Test",
+				host: null,
+				available: false,
+				configured: true,
+				firmware_status: "unavailable",
+			},
+		];
+		a._selectedMac = "AA:BB:CC:DD:EE:01";
+
+		const result = a.render();
+		const str = JSON.stringify(result);
+
+		expect(str).toContain("connection.offline");
+	});
+
+	it("still renders uncalibrated-fov wizard when device is online and uncalibrated", () => {
+		const a = createPanel() as any;
+		a._view = "live";
+		a._perspective = null;
+		a._devices = [
+			{
+				mac: "AA:BB:CC:DD:EE:01",
+				name: "Test",
+				host: null,
+				available: true,
+				configured: true,
+				firmware_status: "compatible",
+			},
+		];
+		a._selectedMac = "AA:BB:CC:DD:EE:01";
+
+		const result = a.render();
+		const str = JSON.stringify(result);
+
+		expect(str).toContain("uncalibrated-fov");
+		expect(str).not.toContain("connection.offline");
+	});
+});
+
 describe("_renderHeader", () => {
 	it("returns defined result", () => {
 		const a = createPanel() as any;

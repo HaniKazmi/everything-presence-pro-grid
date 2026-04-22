@@ -3825,21 +3825,21 @@ const dt={attribute:!0,type:String,converter:E,reflect:!1,hasChanged:m},At=(t=dt
 					</div>
 				</div>
 				${this._renderGlobalDialogs()}
-			</div>`;if(this._deviceCtrl.connectionFailed)return $`<div class="tab-layout">
+			</div>`;const t=this._devices.find(t=>t.mac===this._selectedMac),e="unavailable"===t?.firmware_status;if(this._deviceCtrl.connectionFailed||e)return $`<div class="tab-layout">
 				${this._renderTabBar()}
 				<div class="panel">
 					${this._renderHeader()}
 					${this._renderConnectionBanner()}
 				</div>
 				${this._renderGlobalDialogs()}
-			</div>`;const t=this._devices.find(t=>t.mac===this._selectedMac);if(!(!t||"compatible"===t.firmware_status||"unavailable"===t.firmware_status))return $`<div class="tab-layout">
+			</div>`;if(!(!t||"compatible"===t.firmware_status))return $`<div class="tab-layout">
 				${this._renderTabBar()}
 				<div class="panel">
 					${this._renderHeader()}
 					${this._renderProtocolBanner()}
 				</div>
 				${this._renderGlobalDialogs()}
-			</div>`;const e="settings"===this._view?this._renderSettings():"editor"===this._view&&this._perspective?this._renderEditor():this._renderLiveOverview();return $`<div class="tab-layout">${this._renderTabBar()}${e}${this._renderGlobalDialogs()}</div>`}async _deleteCalibration(){this._showDeleteCalibrationDialog=!1,this._perspective=null,this._roomWidth=0,this._roomDepth=0,this._grid=new Uint8Array(400),this._zoneConfigs=In,this._furniture=[],this._entitiesConfig={...this._entitiesConfig,zone_presence:!1,target_xy:!1},this._targetAutoDistance&&(this._targetMaxDistance=6),this._staticAutoDistance&&(this._staticMinDistance=.3,this._staticMaxDistance=16);try{(this._targetAutoDistance||this._staticAutoDistance)&&await this.hass.callWS({type:"eppgrid/set_settings",mac:this._selectedMac,temperature_offset:this._temperatureOffset,humidity_offset:this._humidityOffset,illuminance_offset:this._illuminanceOffset,motion_timeout:this._motionTimeout,target_auto_distance:this._targetAutoDistance,target_max_distance:this._targetMaxDistance,static_auto_distance:this._staticAutoDistance,static_min_distance:this._staticMinDistance,static_max_distance:this._staticMaxDistance,static_trigger_threshold:this._staticTriggerThreshold,static_renew_threshold:this._staticRenewThreshold,static_timeout:this._staticTimeout,static_on_delay:this._staticOnDelay,led_mode:this._ledMode,led_brightness:this._ledBrightness,led_presence_color:this._ledPresenceColor,relay_trigger_mode:this._relayTriggerMode,relay_contact_mode:this._relayContactMode,entities:this._entitiesConfig||{}}),await this.hass.callWS({type:"eppgrid/set_setup",mac:this._selectedMac,perspective:[0,0,0,0,0,0,0,0],room_width:0,room_depth:0}),await this.hass.callWS({type:"eppgrid/set_room_layout",mac:this._selectedMac,grid_bytes:Array.from(this._grid),zone_slots:this._zoneConfigs.map((t,e)=>0===e?qi(t,0):null),furniture:[]})}catch(t){console.error("Failed to delete calibration",t)}this._dirty=!1,this._view="live"}_changePlacement(){this._guardNavigation(()=>{this._setupStep=this._deviceCtrl.showRoomCalibrationTutorial?"guide":"corners",this._pushWidenedDistanceOverride()})}async _onDismissTutorial(){const t=this._deviceCtrl.showRoomCalibrationTutorial;this._deviceCtrl.setShowRoomCalibrationTutorial(!1);try{await this.hass.callWS({type:"eppgrid/set_show_room_calibration_tutorial",value:!1})}catch(e){console.error("Failed to persist show_room_calibration_tutorial",e),this._deviceCtrl.setShowRoomCalibrationTutorial(t)}}_renderHeader(){return $`
+			</div>`;const i="settings"===this._view?this._renderSettings():"editor"===this._view&&this._perspective?this._renderEditor():this._renderLiveOverview();return $`<div class="tab-layout">${this._renderTabBar()}${i}${this._renderGlobalDialogs()}</div>`}async _deleteCalibration(){this._showDeleteCalibrationDialog=!1,this._perspective=null,this._roomWidth=0,this._roomDepth=0,this._grid=new Uint8Array(400),this._zoneConfigs=In,this._furniture=[],this._entitiesConfig={...this._entitiesConfig,zone_presence:!1,target_xy:!1},this._targetAutoDistance&&(this._targetMaxDistance=6),this._staticAutoDistance&&(this._staticMinDistance=.3,this._staticMaxDistance=16);try{(this._targetAutoDistance||this._staticAutoDistance)&&await this.hass.callWS({type:"eppgrid/set_settings",mac:this._selectedMac,temperature_offset:this._temperatureOffset,humidity_offset:this._humidityOffset,illuminance_offset:this._illuminanceOffset,motion_timeout:this._motionTimeout,target_auto_distance:this._targetAutoDistance,target_max_distance:this._targetMaxDistance,static_auto_distance:this._staticAutoDistance,static_min_distance:this._staticMinDistance,static_max_distance:this._staticMaxDistance,static_trigger_threshold:this._staticTriggerThreshold,static_renew_threshold:this._staticRenewThreshold,static_timeout:this._staticTimeout,static_on_delay:this._staticOnDelay,led_mode:this._ledMode,led_brightness:this._ledBrightness,led_presence_color:this._ledPresenceColor,relay_trigger_mode:this._relayTriggerMode,relay_contact_mode:this._relayContactMode,entities:this._entitiesConfig||{}}),await this.hass.callWS({type:"eppgrid/set_setup",mac:this._selectedMac,perspective:[0,0,0,0,0,0,0,0],room_width:0,room_depth:0}),await this.hass.callWS({type:"eppgrid/set_room_layout",mac:this._selectedMac,grid_bytes:Array.from(this._grid),zone_slots:this._zoneConfigs.map((t,e)=>0===e?qi(t,0):null),furniture:[]})}catch(t){console.error("Failed to delete calibration",t)}this._dirty=!1,this._view="live"}_changePlacement(){this._guardNavigation(()=>{this._setupStep=this._deviceCtrl.showRoomCalibrationTutorial?"guide":"corners",this._pushWidenedDistanceOverride()})}async _onDismissTutorial(){const t=this._deviceCtrl.showRoomCalibrationTutorial;this._deviceCtrl.setShowRoomCalibrationTutorial(!1);try{await this.hass.callWS({type:"eppgrid/set_show_room_calibration_tutorial",value:!1})}catch(e){console.error("Failed to persist show_room_calibration_tutorial",e),this._deviceCtrl.setShowRoomCalibrationTutorial(t)}}_renderHeader(){return $`
       <div class="panel-header">
         <ha-select
           .value=${this._selectedMac}
@@ -3858,7 +3858,7 @@ const dt={attribute:!0,type:String,converter:E,reflect:!1,hasChanged:m},At=(t=dt
 				${r?$`<a href="/hacs/repository/1172848595" class="protocol-link"
 					>${this._localize("protocol.open_hacs")}</a>`:J}
 			</div>
-		`}_renderConnectionBanner(){if(!this._deviceCtrl.connectionFailed)return J;const t=this._devices.find(t=>t.mac===this._selectedMac);if("unavailable"===t?.firmware_status)return $`
+		`}_renderConnectionBanner(){const t=this._devices.find(t=>t.mac===this._selectedMac),e="unavailable"===t?.firmware_status;if(!this._deviceCtrl.connectionFailed&&!e)return J;if(e)return $`
 				<div class="protocol-fullpage protocol-fullpage-info">
 					<ha-icon icon="mdi:access-point-off"></ha-icon>
 					<p>${this._localize("connection.offline")}</p>
@@ -3866,11 +3866,11 @@ const dt={attribute:!0,type:String,converter:E,reflect:!1,hasChanged:m},At=(t=dt
 						@click=${()=>this._retryConnection()}
 					>${this._localize("connection.retry")}</button>
 				</div>
-			`;const e=t?.current_connection_count;return $`
+			`;const i=t?.current_connection_count;return $`
 			<div class="protocol-fullpage protocol-fullpage-warning">
 				<ha-icon icon="mdi:connection"></ha-icon>
 				<p>${this._localize("connection.failed")}</p>
-				${null!=e?$`<p>${this._localize("connection.client_count",{count:e})}</p>`:J}
+				${null!=i?$`<p>${this._localize("connection.client_count",{count:i})}</p>`:J}
 				<p style="opacity: 0.7; font-size: 0.9em">${this._localize("connection.check_connections")}</p>
 				<button class="wizard-btn wizard-btn-primary"
 					@click=${()=>this._retryConnection()}
