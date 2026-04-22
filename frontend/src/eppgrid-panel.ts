@@ -27,9 +27,11 @@ import {
 	pxToMm,
 } from "./lib/furniture.js";
 import {
-	CELL_INTERFERENCE_SUPPRESS,
+	CELL_OVERLAY_INTERFERENCE,
+	CELL_OVERLAY_SUPPRESS,
 	cellIsInside,
-	cellSetInterference,
+	cellSetOverlay,
+	cellZone,
 	GRID_CELL_COUNT,
 	GRID_CELL_MM,
 	GRID_COLS,
@@ -1846,7 +1848,7 @@ export class EPPGridPanel extends LitElement {
 		this.requestUpdate();
 	}
 
-	private async _setInterference(level: number): Promise<void> {
+	private async _setOverlay(kind: number): Promise<void> {
 		if (!this._targetMenu) return;
 		const idx = this._targetCellIndex(this._targetMenu.x, this._targetMenu.y);
 		if (idx < 0 || !cellIsInside(this._grid[idx])) {
@@ -1854,7 +1856,7 @@ export class EPPGridPanel extends LitElement {
 			return;
 		}
 		this._grid = new Uint8Array(this._grid);
-		this._grid[idx] = cellSetInterference(this._grid[idx], level);
+		this._grid[idx] = cellSetOverlay(this._grid[idx], kind);
 		this._dirty = true;
 		this._closeTargetMenu();
 		await this._gridCtrl.applyLayout();
@@ -1869,10 +1871,10 @@ export class EPPGridPanel extends LitElement {
 				<button class="target-menu-item" @click=${() => this._dismissTarget()}>
 					${this._localize("live.delete_target")}
 				</button>
-				<button class="target-menu-item" @click=${() => this._setInterference(1)}>
+				<button class="target-menu-item" @click=${() => this._setOverlay(CELL_OVERLAY_INTERFERENCE)}>
 					${this._localize("live.mark_interference")}
 				</button>
-				<button class="target-menu-item" @click=${() => this._setInterference(CELL_INTERFERENCE_SUPPRESS)}>
+				<button class="target-menu-item" @click=${() => this._setOverlay(CELL_OVERLAY_SUPPRESS)}>
 					${this._localize("live.suppress_detection")}
 				</button>
 			</div>
