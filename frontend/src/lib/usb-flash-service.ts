@@ -274,7 +274,7 @@ export async function runWifiScan(
 		// split across serial reads are not lost.
 		const networks: WifiNetwork[] = [];
 		const deadline = Date.now() + 5000;
-		let buffer: number[] = [];
+		const buffer: number[] = [];
 		let scanComplete = false;
 
 		while (Date.now() < deadline && !scanComplete) {
@@ -284,7 +284,6 @@ export async function runWifiScan(
 					deadline - Date.now(),
 					buffer,
 				);
-				buffer = result.buffer;
 				for (const pkt of result.packets) {
 					if (pkt.type === TYPE_RPC_RESULT && pkt.data[0] === 0x04) {
 						// RPC result format: [command(1), data_length(1), ...strings, checksum(1)]
@@ -368,7 +367,7 @@ export async function queryImprovState(
 
 		const readBudget = timings?.readDelay ?? 3000;
 		const start = Date.now();
-		let buffer: number[] = [];
+		const buffer: number[] = [];
 		let stateByte: number | undefined;
 
 		// Read just enough to know the state byte. The state arrives quickly
@@ -389,7 +388,6 @@ export async function queryImprovState(
 					Math.min(remaining, 500),
 					buffer,
 				);
-				buffer = result.buffer;
 				for (const pkt of result.packets) {
 					if (pkt.type === TYPE_CURRENT_STATE && pkt.data.length >= 1) {
 						stateByte = pkt.data[0];
@@ -502,9 +500,7 @@ export async function detectIpAddress(
 	const decoder = new TextDecoder();
 	const ipPattern = /(\d+\.\d+\.\d+\.\d+)/;
 	const deadline = Date.now() + timeoutMs;
-	let buffer: number[] = options?.initialBuffer
-		? [...options.initialBuffer]
-		: [];
+	const buffer: number[] = options?.initialBuffer ?? [];
 	let lastPollAt = 0; // 0 ensures the first poll fires immediately after seeing 0.0.0.0
 	// If the caller has already seen a 0.0.0.0 URL (e.g. queryImprovState
 	// during the wifi-check phase), start polling straight away rather than
@@ -512,13 +508,19 @@ export async function detectIpAddress(
 	let sawZeroUrl = options?.startPolling ?? false;
 	const signal = options?.signal;
 
+	console.debug(
+		`[detectIpAddress] enter timeout=${timeoutMs}ms initialBuffer=${buffer.length}B startPolling=${sawZeroUrl}`,
+	);
+
 	while (Date.now() < deadline) {
 		if (signal?.aborted) {
+			console.debug(`[detectIpAddress] aborted via signal`);
 			throw Object.assign(new Error("aborted"), {
 				errorKey: "flasher.errors.aborted",
 			});
 		}
 		if (sawZeroUrl && Date.now() - lastPollAt >= POLL_INTERVAL_MS) {
+			console.debug(`[detectIpAddress] polling GET_CURRENT_STATE`);
 			await sendImprovPacket(writer, buildGetStateCommand());
 			lastPollAt = Date.now();
 		}
@@ -528,7 +530,6 @@ export async function detectIpAddress(
 			// at least that often, even on the "not yet polling" path.
 			const readBudget = Math.min(POLL_INTERVAL_MS, deadline - Date.now());
 			const result = await readImprovResponse(reader, readBudget, buffer);
-			buffer = result.buffer;
 			for (const pkt of result.packets) {
 				if (pkt.type === TYPE_ERROR_STATE) {
 					const code = pkt.data[0];
@@ -545,6 +546,7 @@ export async function detectIpAddress(
 						4: "wifi.errors.not_authorized",
 					};
 					const key = errorKeyByCode[code] ?? "wifi.errors.error_code";
+					console.debug(`[detectIpAddress] ERROR_STATE code=${code} → ${key}`);
 					throw Object.assign(
 						new Error(messages[code] ?? `WiFi error (code ${code})`),
 						{
@@ -564,11 +566,15 @@ export async function detectIpAddress(
 					if (pkt.data.length < 3 + urlLen) {
 						// Malformed or truncated packet — skip to avoid decoding
 						// garbage that happens to match the IP regex.
+						console.debug(
+							`[detectIpAddress] truncated RPC_RESULT cmd=0x${pkt.data[0]?.toString(16)} urlLen=${urlLen} dataLen=${pkt.data.length} — skipped`,
+						);
 						continue;
 					}
 					const url = decoder.decode(pkt.data.slice(3, 3 + urlLen));
 					const match = ipPattern.exec(url);
 					if (match && match[1] !== "0.0.0.0") {
+						console.debug(`[detectIpAddress] exit: IP=${match[1]}`);
 						return match[1];
 					}
 					if (match && match[1] === "0.0.0.0") {
@@ -582,12 +588,16 @@ export async function detectIpAddress(
 				(err as Error & { errorKey?: string }).errorKey !==
 					"flasher.errors.timeout"
 			) {
+				console.debug(
+					`[detectIpAddress] exit: error "${(err as Error).message}"`,
+				);
 				throw err;
 			}
 			// timeout from readImprovResponse — loop will check deadline and maybe poll again
 		}
 	}
 
+	console.debug(`[detectIpAddress] exit: deadline exhausted, no IP received`);
 	throw Object.assign(
 		new Error("WiFi connection failed — check SSID/password and try again"),
 		{ errorKey: "wifi.errors.connection_failed" },

@@ -11,6 +11,17 @@ export const IMPROV_HEADER = [0x49, 0x4d, 0x50, 0x52, 0x4f, 0x56];
 // ESPHome's UART emits chunks sized to USB packet boundaries, not newlines.
 let _logBuffer = "";
 
+// Per-reader pending reader.read() promise. readImprovResponse's Promise.race
+// against a setTimeout abandons the in-flight read when the timeout wins —
+// Web Streams has no way to cancel a read without releasing the reader. The
+// abandoned promise still resolves later with a chunk from the stream, and
+// that chunk would be dropped on the floor. We stash the pending promise here
+// so the next call re-awaits it instead of calling read() again.
+const _pendingReads = new WeakMap<
+	ReadableStreamDefaultReader<Uint8Array>,
+	Promise<ReadableStreamReadResult<Uint8Array>>
+>();
+
 // Built via constructor so the literal control character (0x1b / ESC)
 // doesn't trip biome's noControlCharactersInRegex rule. We strip ANSI
 // SGR escape sequences from ESPHome log output before printing.
@@ -162,8 +173,11 @@ export function describeImprovPacket(p: ImprovPacket): string {
 								? "WIFI_SETTINGS"
 								: `cmd=0x${cmd?.toString(16).padStart(2, "0")}`;
 			// RPC_RESULT data: [cmd, total_len, str_len, ...str_bytes, ...]
-			// For GET_CURRENT_STATE the first string is the URL.
-			if (cmd === CMD_GET_CURRENT_STATE && p.data.length >= 3) {
+			// For GET_CURRENT_STATE and WIFI_SETTINGS the first string is the URL.
+			if (
+				(cmd === CMD_GET_CURRENT_STATE || cmd === CMD_WIFI_SETTINGS) &&
+				p.data.length >= 3
+			) {
 				const strLen = p.data[2];
 				if (p.data.length >= 3 + strLen) {
 					const str = new TextDecoder().decode(p.data.slice(3, 3 + strLen));
@@ -264,27 +278,48 @@ export async function sendImprovPacket(
 
 /**
  * Reads from a serial reader until valid Improv packets are found or timeout.
- * Accumulates data across chunks, skips non-Improv bytes (log text).
- * Throws on timeout.
+ * Accumulates data across chunks, skips non-Improv bytes (log text). Throws on
+ * timeout. Bytes read before a timeout remain available to the caller for the
+ * next call via `initialBuffer`, so a packet split across the read budget is
+ * not lost.
  */
 export async function readImprovResponse(
 	reader: ReadableStreamDefaultReader<Uint8Array>,
 	timeoutMs: number,
 	initialBuffer?: number[],
 ): Promise<{ packets: ImprovPacket[]; buffer: number[] }> {
-	const buffer: number[] = initialBuffer ? [...initialBuffer] : [];
+	const buffer: number[] = initialBuffer ?? [];
 	const deadline = Date.now() + timeoutMs;
+	const TIMEOUT = Symbol();
 
 	while (Date.now() < deadline) {
 		const remaining = deadline - Date.now();
 		if (remaining <= 0) break;
 
-		const result = await Promise.race([
-			reader.read(),
-			new Promise<{ value: undefined; done: true }>((resolve) =>
-				setTimeout(() => resolve({ value: undefined, done: true }), remaining),
-			),
+		let pending = _pendingReads.get(reader);
+		if (!pending) {
+			pending = reader.read();
+			_pendingReads.set(reader, pending);
+		}
+
+		let timerId: ReturnType<typeof setTimeout> | undefined;
+		const raced = await Promise.race<
+			ReadableStreamReadResult<Uint8Array> | typeof TIMEOUT
+		>([
+			pending,
+			new Promise<typeof TIMEOUT>((resolve) => {
+				timerId = setTimeout(() => resolve(TIMEOUT), remaining);
+			}),
 		]);
+		clearTimeout(timerId);
+
+		if (raced === TIMEOUT) {
+			// Leave the pending read in the WeakMap — the next call will
+			// re-await it and receive the chunk that resolves it.
+			break;
+		}
+		_pendingReads.delete(reader);
+		const result = raced;
 
 		if (result.value) {
 			// Accumulate decoded text and flush on newline boundaries so
