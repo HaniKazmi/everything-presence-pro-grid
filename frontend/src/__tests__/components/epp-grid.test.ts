@@ -3,9 +3,10 @@ import "../../components/epp-grid.js";
 import type { EppGrid } from "../../components/epp-grid.js";
 import type { FurnitureItem } from "../../lib/furniture.js";
 import {
-	CELL_INTERFERENCE_SUPPRESS,
+	CELL_OVERLAY_INTERFERENCE,
+	CELL_OVERLAY_SUPPRESS,
 	CELL_ROOM_BIT,
-	cellSetInterference,
+	cellSetOverlay,
 	cellSetZone,
 	GRID_CELL_COUNT,
 	initGridFromRoom,
@@ -715,7 +716,7 @@ describe("epp-grid darkness (sensor FOV)", () => {
 		// Set interference on ALL inside cells so any dark inside cell would show stripes
 		for (let i = 0; i < grid.length; i++) {
 			if (grid[i] & CELL_ROOM_BIT) {
-				grid[i] = cellSetInterference(grid[i], 1);
+				grid[i] = cellSetOverlay(grid[i], CELL_OVERLAY_INTERFERENCE);
 			}
 		}
 		const el = createGrid({
@@ -941,8 +942,8 @@ describe("epp-grid interference target suppression", () => {
 
 	it("hides a target on an interference cell when zone is not occupied", async () => {
 		const grid = initGridFromRoom(3000, 4000);
-		// Cell 130: set interference level 1 (zone stays 0 = unoccupied)
-		grid[130] = cellSetInterference(grid[130], 1);
+		// Cell 130: set interference (zone stays 0 = unoccupied)
+		grid[130] = cellSetOverlay(grid[130], CELL_OVERLAY_INTERFERENCE);
 
 		const targets: Target[] = [
 			{ x: 1500, y: 2000, speed: 0, status: "active", signal: 7 },
@@ -959,8 +960,8 @@ describe("epp-grid interference target suppression", () => {
 
 	it("shows a target on an interference cell when the zone IS occupied", async () => {
 		const grid = initGridFromRoom(3000, 4000);
-		// Cell 130: set interference level 1 AND zone 1
-		grid[130] = cellSetInterference(grid[130], 1);
+		// Cell 130: set interference AND zone 1
+		grid[130] = cellSetOverlay(grid[130], CELL_OVERLAY_INTERFERENCE);
 		grid[130] = cellSetZone(grid[130], 1);
 
 		const targets: Target[] = [
@@ -990,18 +991,18 @@ describe("epp-grid interference stripes", () => {
 		return null;
 	}
 
-	function buildGridWithInterference(level: number): Uint8Array {
+	function buildGridWithInterference(kind: number): Uint8Array {
 		const grid = initGridFromRoom(3000, 4000);
 		for (let i = 0; i < grid.length; i++) {
 			if (grid[i] & CELL_ROOM_BIT) {
-				grid[i] = cellSetInterference(grid[i], level);
+				grid[i] = cellSetOverlay(grid[i], kind);
 			}
 		}
 		return grid;
 	}
 
 	it("renders -45deg cc3333 stripe for interference (level 1)", async () => {
-		const grid = buildGridWithInterference(1);
+		const grid = buildGridWithInterference(CELL_OVERLAY_INTERFERENCE);
 		const el = createGrid({ grid });
 		document.body.appendChild(el);
 		await el.updateComplete;
@@ -1018,7 +1019,7 @@ describe("epp-grid interference stripes", () => {
 	});
 
 	it("renders cross-hatch (both -45deg and 45deg) for suppress interference", async () => {
-		const grid = buildGridWithInterference(CELL_INTERFERENCE_SUPPRESS);
+		const grid = buildGridWithInterference(CELL_OVERLAY_SUPPRESS);
 		const el = createGrid({ grid });
 		document.body.appendChild(el);
 		await el.updateComplete;
@@ -1038,8 +1039,8 @@ describe("epp-grid interference stripes", () => {
 		// interference bits set manually — outside cells must not show stripes.
 		const grid = new Uint8Array(GRID_CELL_COUNT);
 		for (let i = 0; i < grid.length; i++) {
-			// Set interference level 1 without room bit
-			grid[i] = cellSetInterference(grid[i], 1);
+			// Set interference without room bit
+			grid[i] = cellSetOverlay(grid[i], CELL_OVERLAY_INTERFERENCE);
 		}
 		const el = createGrid({ grid });
 		document.body.appendChild(el);

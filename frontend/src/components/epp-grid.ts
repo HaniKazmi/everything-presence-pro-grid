@@ -4,10 +4,11 @@ import { TARGET_COLORS } from "../constants.js";
 import { mapTargetToGridCell } from "../lib/coordinates.js";
 import type { FurnitureItem } from "../lib/furniture.js";
 import {
-	CELL_INTERFERENCE_SUPPRESS,
-	cellHasOverlayEntry,
-	cellInterference,
+	CELL_OVERLAY_ENTRY,
+	CELL_OVERLAY_INTERFERENCE,
+	CELL_OVERLAY_SUPPRESS,
 	cellIsInside,
+	cellOverlay,
 	cellZone,
 	GRID_COLS,
 	GRID_ROWS,
@@ -258,18 +259,16 @@ export class EppGrid extends LitElement {
 				}
 				let overlayMarker = "";
 				if (inRange && cellIsInside(cellVal)) {
-					if (cellHasOverlayEntry(cellVal)) {
+					const overlay = cellOverlay(cellVal);
+					if (overlay === CELL_OVERLAY_ENTRY) {
 						overlayMarker =
 							"background-image: repeating-linear-gradient(45deg, transparent, transparent 6px, rgba(60,60,60,0.7) 6px, rgba(60,60,60,0.7) 8px);";
-					} else {
-						const interf = cellInterference(cellVal);
-						if (interf === CELL_INTERFERENCE_SUPPRESS) {
-							overlayMarker =
-								"background-image: repeating-linear-gradient(-45deg, transparent, transparent 5px, #cc3333 5px, #cc3333 7px), repeating-linear-gradient(45deg, transparent, transparent 5px, #cc3333 5px, #cc3333 7px);";
-						} else if (interf > 0) {
-							overlayMarker =
-								"background-image: repeating-linear-gradient(-45deg, transparent, transparent 5px, #cc3333 5px, #cc3333 7px);";
-						}
+					} else if (overlay === CELL_OVERLAY_SUPPRESS) {
+						overlayMarker =
+							"background-image: repeating-linear-gradient(-45deg, transparent, transparent 5px, #cc3333 5px, #cc3333 7px), repeating-linear-gradient(45deg, transparent, transparent 5px, #cc3333 5px, #cc3333 7px);";
+					} else if (overlay === CELL_OVERLAY_INTERFERENCE) {
+						overlayMarker =
+							"background-image: repeating-linear-gradient(-45deg, transparent, transparent 5px, #cc3333 5px, #cc3333 7px);";
 					}
 				}
 				cells.push(html`
@@ -381,8 +380,11 @@ export class EppGrid extends LitElement {
 						const row = Math.floor(pos.row);
 						const idx = row * GRID_COLS + col;
 						if (idx >= 0 && idx < this.grid.length) {
-							const interf = cellInterference(this.grid[idx]);
-							if (interf > 0) {
+							const overlay = cellOverlay(this.grid[idx]);
+							if (
+								overlay === CELL_OVERLAY_INTERFERENCE ||
+								overlay === CELL_OVERLAY_SUPPRESS
+							) {
 								const zid = cellZone(this.grid[idx]);
 								if (!this.occupancy[zid]) {
 									return nothing;
