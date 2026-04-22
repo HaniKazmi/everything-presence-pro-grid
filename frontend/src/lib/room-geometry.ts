@@ -5,6 +5,7 @@ import {
 	GRID_COLS,
 	GRID_ROWS,
 	getRawRoomBounds,
+	MAX_RANGE,
 } from "./grid.js";
 import { applyPerspective } from "./perspective.js";
 
@@ -48,6 +49,60 @@ export function getSensorRoomPosition(
 }
 
 /**
+ * Classification of a grid cell relative to the sensor:
+ *  - "in_range"         — inside the 120° cone AND within the configured max range
+ *  - "out_of_cone"      — outside the 60° half-angle OR beyond the sensor's
+ *                         physical MAX_RANGE (a permanent blind spot)
+ *  - "beyond_max_range" — inside the cone but beyond the user's configured
+ *                         max range (reachable physically, limited by config)
+ */
+export type CellRangeStatus = "in_range" | "out_of_cone" | "beyond_max_range";
+
+/**
+ * Classify a grid cell (col, row) relative to the sensor's FOV and range.
+ *
+ * @param col Grid column index
+ * @param row Grid row index
+ * @param fov Sensor FOV geometry (null = no calibration; always "in_range")
+ * @param roomWidth Room width in mm
+ * @param maxRangeMm Maximum detection range in mm (user-configured)
+ */
+export function classifyCellInSensor(
+	col: number,
+	row: number,
+	fov: SensorFov | null,
+	roomWidth: number,
+	maxRangeMm: number,
+): CellRangeStatus {
+	if (!fov) return "in_range"; // no calibration — allow all
+
+	// Cell centre in room-space mm
+	const roomCols = Math.ceil(roomWidth / GRID_CELL_MM);
+	const startCol = Math.floor((GRID_COLS - roomCols) / 2);
+	const rx = (col - startCol + 0.5) * GRID_CELL_MM;
+	const ry = (row + 0.5) * GRID_CELL_MM;
+
+	// Vector from sensor to cell in room-space
+	const dx = rx - fov.sensorPos.x;
+	const dy = ry - fov.sensorPos.y;
+	const distSq = dx * dx + dy * dy;
+	if (distSq < 1) return "in_range"; // at sensor position
+
+	// Angle check (120° cone): dot/dist >= cos(60°) = 0.5.
+	const dot = dx * fov.dirX + dy * fov.dirY;
+	if (dot <= 0) return "out_of_cone"; // behind sensor
+	if (dot * dot < 0.25 * distSq) return "out_of_cone"; // angle > 60°
+
+	// Beyond physical sensor reach → also out-of-cone (permanent blind spot).
+	if (distSq > MAX_RANGE * MAX_RANGE) return "out_of_cone";
+
+	// Inside cone; compare against configured range.
+	if (distSq > maxRangeMm * maxRangeMm) return "beyond_max_range";
+
+	return "in_range";
+}
+
+/**
  * Check if a grid cell (col, row) is within the sensor's FOV and range.
  *
  * @param col Grid column index
@@ -64,37 +119,17 @@ export function isCellInSensorRange(
 	roomWidth: number,
 	maxRangeMm: number,
 ): boolean {
-	if (!fov) return true; // no calibration — allow all
-
-	// Cell centre in room-space mm
-	const roomCols = Math.ceil(roomWidth / GRID_CELL_MM);
-	const startCol = Math.floor((GRID_COLS - roomCols) / 2);
-	const rx = (col - startCol + 0.5) * GRID_CELL_MM;
-	const ry = (row + 0.5) * GRID_CELL_MM;
-
-	// Vector from sensor to cell in room-space
-	const dx = rx - fov.sensorPos.x;
-	const dy = ry - fov.sensorPos.y;
-	const distSq = dx * dx + dy * dy;
-	if (distSq < 1) return true; // at sensor position
-
-	// Distance check first (cheaper than angle)
-	if (distSq > maxRangeMm * maxRangeMm) return false;
-
-	// Angle check via dot-product: cos(60°) = 0.5, so dot/dist >= 0.5
-	// Equivalent to: dot >= 0.5 * dist, square both sides (dot is positive here):
-	const dot = dx * fov.dirX + dy * fov.dirY;
-	if (dot <= 0) return false; // behind sensor
-	if (dot * dot < 0.25 * distSq) return false; // angle > 60°
-
-	return true;
+	return (
+		classifyCellInSensor(col, row, fov, roomWidth, maxRangeMm) === "in_range"
+	);
 }
 
 /**
- * Room bounds (with 1-cell padding) considering only cells that are both
- * inside the room AND within the sensor's FOV and range.  Cells that are
- * inside but outside the FOV are ignored so that fully out-of-FOV
- * columns/rows collapse from the visible grid.
+ * Room bounds (with 1-cell padding) of inside cells that the sensor could
+ * physically reach — i.e. that are not out of the FOV cone.  Cells that are
+ * inside but beyond the user's configured max range stay in bounds so the
+ * "beyond-max-range" decoration can be drawn on them; only true blind-spot
+ * cells (outside the 120° cone or past MAX_RANGE) collapse the grid.
  */
 export function getVisibleRoomBounds(
 	grid: Uint8Array,
@@ -110,7 +145,11 @@ export function getVisibleRoomBounds(
 		if (!cellIsInside(grid[i])) continue;
 		const col = i % GRID_COLS;
 		const row = Math.floor(i / GRID_COLS);
-		if (!isCellInSensorRange(col, row, fov, roomWidth, maxRangeMm)) continue;
+		if (
+			classifyCellInSensor(col, row, fov, roomWidth, maxRangeMm) ===
+			"out_of_cone"
+		)
+			continue;
 		if (col < minCol) minCol = col;
 		if (col > maxCol) maxCol = col;
 		if (row < minRow) minRow = row;

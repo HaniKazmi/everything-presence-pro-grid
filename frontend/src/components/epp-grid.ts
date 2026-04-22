@@ -13,12 +13,16 @@ import {
 	GRID_ROWS,
 	MAX_RANGE,
 } from "../lib/grid.js";
-import { CELL_BG_OUT_OF_RANGE, getCellColor } from "../lib/heatmap.js";
 import {
+	CELL_BG_BEYOND_MAX_RANGE,
+	CELL_BG_OUT_OF_RANGE,
+	getCellColor,
+} from "../lib/heatmap.js";
+import {
+	classifyCellInSensor,
 	computeSensorFov,
 	getGridRoomMetrics,
 	getVisibleRoomBounds,
-	isCellInSensorRange,
 	type SensorFov,
 } from "../lib/room-geometry.js";
 import type { ZoneConfig } from "../lib/zone-defaults.js";
@@ -212,16 +216,22 @@ export class EppGrid extends LitElement {
 			for (let c = minCol; c <= maxCol; c++) {
 				const idx = r * GRID_COLS + c;
 				const cellVal = this.grid[idx];
-				const inRange = isCellInSensorRange(
+				const status = classifyCellInSensor(
 					c,
 					r,
 					fov,
 					this.roomWidth,
 					maxRange,
 				);
-				let bg = inRange
-					? getCellColor(cellVal, this.zoneConfigs)
-					: CELL_BG_OUT_OF_RANGE;
+				const inRange = status === "in_range";
+				let bg: string;
+				if (status === "in_range") {
+					bg = getCellColor(cellVal, this.zoneConfigs);
+				} else if (status === "beyond_max_range") {
+					bg = CELL_BG_BEYOND_MAX_RANGE;
+				} else {
+					bg = CELL_BG_OUT_OF_RANGE;
+				}
 				let occupancyStyle = "";
 				if (inRange && cellIsInside(cellVal)) {
 					const zoneId = cellZone(cellVal);

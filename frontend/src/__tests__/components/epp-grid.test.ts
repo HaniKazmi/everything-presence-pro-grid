@@ -531,6 +531,19 @@ describe("epp-grid furniture overlay", () => {
 	});
 });
 
+// Beyond-max-range cells use CELL_BG_BEYOND_MAX_RANGE (cross-hatch on #fff).
+// JSDOM collapses the compound gradient so only the surviving fill colour
+// reliably distinguishes it from CELL_BG_OUT_OF_RANGE (#c8c8c8) and from the
+// #cc3333 interference patterns.
+function isBeyondMaxRangeCell(c: HTMLElement): boolean {
+	const bg = c.style.cssText;
+	return (
+		bg.includes("repeating-linear-gradient") &&
+		bg.includes("#fff") &&
+		!bg.includes("#cc3333")
+	);
+}
+
 describe("epp-grid darkness (sensor FOV)", () => {
 	it("renders dark background for cells outside sensor FOV", async () => {
 		// Perspective: sensor at centre-top (1500,0), looking down (+Y)
@@ -575,7 +588,7 @@ describe("epp-grid darkness (sensor FOV)", () => {
 		document.body.removeChild(el);
 	});
 
-	it("cells beyond maxRangeMm get dark background", async () => {
+	it("cells beyond maxRangeMm render with beyond-max-range decoration (hatch on white, not c8c8c8)", async () => {
 		// Sensor at centre-top looking down, tiny range = 500mm
 		const perspective = [1, 0, 1500, 0, 1, 0, 0, 0];
 		const el = createGrid({
@@ -590,11 +603,35 @@ describe("epp-grid darkness (sensor FOV)", () => {
 		const cells = el.shadowRoot!.querySelectorAll(
 			".cell",
 		) as NodeListOf<HTMLElement>;
-		const darkCount = Array.from(cells).filter((c) =>
-			c.style.cssText.includes("c8c8c8"),
-		).length;
-		// With 500mm range, most cells should be dark
-		expect(darkCount).toBeGreaterThan(cells.length / 2);
+		const beyondCount = Array.from(cells).filter(isBeyondMaxRangeCell).length;
+		expect(beyondCount).toBeGreaterThan(0);
+
+		document.body.removeChild(el);
+	});
+
+	it("does not emit cell-paint for beyond-max-range cells", async () => {
+		const perspective = [1, 0, 1500, 0, 1, 0, 0, 0];
+		const el = createGrid({
+			perspective,
+			maxRangeMm: 500,
+			roomWidth: 3000,
+			roomDepth: 4000,
+			editable: true,
+		});
+		document.body.appendChild(el);
+		await el.updateComplete;
+
+		const events: CustomEvent[] = [];
+		el.addEventListener("cell-paint", (e) => events.push(e as CustomEvent));
+
+		const cells = el.shadowRoot!.querySelectorAll(
+			".cell",
+		) as NodeListOf<HTMLElement>;
+		const beyondCell = Array.from(cells).find(isBeyondMaxRangeCell);
+		expect(beyondCell).toBeDefined();
+		beyondCell!.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
+
+		expect(events.length).toBe(0);
 
 		document.body.removeChild(el);
 	});

@@ -8,6 +8,14 @@ export const CELL_COLOR_OUTSIDE = "var(--secondary-background-color, #e0e0e0)";
 export const CELL_COLOR_ROOM = "var(--card-background-color, #fff)";
 export const CELL_BG_OUT_OF_RANGE =
 	"repeating-linear-gradient(45deg, transparent, transparent 3px, rgba(0,0,0,0.13) 3px, rgba(0,0,0,0.13) 4px), repeating-linear-gradient(-45deg, transparent, transparent 3px, rgba(0,0,0,0.13) 3px, rgba(0,0,0,0.13) 4px), #c8c8c8";
+/**
+ * Decoration for cells inside the 120° cone but beyond the user's configured
+ * max detection range.  Same cross-hatch pattern as CELL_BG_OUT_OF_RANGE, but
+ * on the inside-room white background — reads as "same visual language, lesser
+ * constraint (reachable physically, limited by config)".
+ */
+export const CELL_BG_BEYOND_MAX_RANGE =
+	"repeating-linear-gradient(45deg, transparent, transparent 3px, rgba(0,0,0,0.13) 3px, rgba(0,0,0,0.13) 4px), repeating-linear-gradient(-45deg, transparent, transparent 3px, rgba(0,0,0,0.13) 3px, rgba(0,0,0,0.13) 4px), #fff";
 
 /**
  * Get the CSS color for a grid cell.

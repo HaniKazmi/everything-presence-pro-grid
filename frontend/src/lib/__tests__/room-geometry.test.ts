@@ -11,6 +11,7 @@ import { solvePerspective } from "../perspective.js";
 import {
 	autoComputeRoomDimensions,
 	autoDetectionRange,
+	classifyCellInSensor,
 	computeMaxRangeMm,
 	computeSensorFov,
 	getGridRoomMetrics,
@@ -152,6 +153,68 @@ describe("isCellInSensorRange", () => {
 		// roomWidth=3000 → roomCols=10, startCol=5
 		// Cell (10, 0) centre: (10-5+0.5)*300=1650, (0+0.5)*300=150
 		expect(isCellInSensorRange(10, 0, fov, 3000, 6000)).toBe(true);
+	});
+});
+
+describe("classifyCellInSensor", () => {
+	it("returns 'in_range' when fov is null (no calibration)", () => {
+		expect(classifyCellInSensor(5, 5, null, 3000, 6000)).toBe("in_range");
+	});
+
+	it("returns 'in_range' for cell within cone and within maxRangeMm", () => {
+		const fov: SensorFov = {
+			sensorPos: { x: 1500, y: 0 },
+			dirX: 0,
+			dirY: 1,
+		};
+		// Cell directly ahead within range (same as isCellInSensorRange "within range" test)
+		expect(classifyCellInSensor(10, 5, fov, 3000, 6000)).toBe("in_range");
+	});
+
+	it("returns 'out_of_cone' for cell outside 60° FOV angle", () => {
+		const fov: SensorFov = {
+			sensorPos: { x: 1500, y: 0 },
+			dirX: 0,
+			dirY: 1,
+		};
+		// Far to the side — angle from look-direction > 60°
+		expect(classifyCellInSensor(0, 1, fov, 3000, 6000)).toBe("out_of_cone");
+	});
+
+	it("returns 'out_of_cone' for cell beyond MAX_RANGE even if angle is fine", () => {
+		const fov: SensorFov = {
+			sensorPos: { x: 1500, y: 0 },
+			dirX: 0,
+			dirY: 1,
+		};
+		// A cell far ahead, beyond 6m physical sensor limit.
+		// Row 21 with cell size 300mm → y ≈ 21.5 * 300 = 6450mm > 6000.
+		// Even if we pass maxRangeMm=6000, cell is still beyond the cone's
+		// physical cap, so it must classify as out_of_cone (not beyond_max_range).
+		expect(classifyCellInSensor(10, 21, fov, 3000, 6000)).toBe("out_of_cone");
+	});
+
+	it("returns 'beyond_max_range' for cell within cone but beyond configured maxRangeMm", () => {
+		const fov: SensorFov = {
+			sensorPos: { x: 1500, y: 0 },
+			dirX: 0,
+			dirY: 1,
+		};
+		// Cell directly ahead at row 5 → y ≈ 5.5 * 300 = 1650mm from sensor.
+		// Within the 6m cone (physically reachable), but configured max is 1000mm.
+		expect(classifyCellInSensor(10, 5, fov, 3000, 1000)).toBe(
+			"beyond_max_range",
+		);
+	});
+
+	it("returns 'in_range' for cell very close to sensor regardless of maxRangeMm", () => {
+		const fov: SensorFov = {
+			sensorPos: { x: 1650, y: 150 },
+			dirX: 0,
+			dirY: 1,
+		};
+		// Cell at the sensor's own position — must classify as in_range.
+		expect(classifyCellInSensor(10, 0, fov, 3000, 1)).toBe("in_range");
 	});
 });
 
@@ -365,7 +428,7 @@ describe("getVisibleRoomBounds", () => {
 		expect(bounds.maxRow).toBe(Math.min(GRID_ROWS - 1, roomCols)); // 10 rows + 1 padding
 	});
 
-	it("excludes out-of-range cells from bounds", () => {
+	it("keeps beyond-max-range cells in bounds (only out-of-cone cells are excluded)", () => {
 		// Create a 6-column, 4-row room with sensor looking straight ahead
 		const grid = new Uint8Array(GRID_CELL_COUNT);
 		// Place room: cols 5-10, rows 0-3
@@ -386,11 +449,15 @@ describe("getVisibleRoomBounds", () => {
 		const fullBounds = getVisibleRoomBounds(grid, fov, 1800, 6000);
 		expect(fullBounds.maxCol).toBe(11); // col 10 + 1 padding
 
-		// With very short range (300mm = 1 cell), only nearby cells are in range
+		// With very short range (300mm = 1 cell), inside cells beyond that
+		// range are still inside the 120° cone (sensor looks straight ahead,
+		// room is directly in front). They must stay in the visible bounds so
+		// that the "beyond-max-range" decoration can be drawn on them.
 		const shortBounds = getVisibleRoomBounds(grid, fov, 1800, 300);
-		// Only cells within 300mm of sensor should count
-		// Sensor at (900, 0), so only row 0 cells near center
-		expect(shortBounds.maxRow).toBeLessThan(fullBounds.maxRow);
+		expect(shortBounds.maxRow).toBe(fullBounds.maxRow);
+		expect(shortBounds.minRow).toBe(fullBounds.minRow);
+		expect(shortBounds.minCol).toBe(fullBounds.minCol);
+		expect(shortBounds.maxCol).toBe(fullBounds.maxCol);
 	});
 
 	it("shrinks bounds when a column has only out-of-FOV cells remaining", () => {
