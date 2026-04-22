@@ -282,6 +282,133 @@ describe("DeviceController", () => {
 		});
 	});
 
+	describe("reopenSession", () => {
+		it("opens the device session and subscribes to targets without fetching config", async () => {
+			const unsub = vi.fn();
+			const callWS = vi.fn().mockResolvedValue({ config: {} });
+			const subscribeMessage = vi.fn().mockResolvedValue(unsub);
+			ctrl.hass = { callWS, connection: { subscribeMessage } };
+
+			await ctrl.reopenSession("aa");
+
+			// No config fetch on the reconnect path.
+			const getConfigCalls = callWS.mock.calls.filter(
+				(c: any[]) => c[0]?.type === "eppgrid/get_config",
+			);
+			expect(getConfigCalls).toHaveLength(0);
+
+			// Session and target subscriptions are opened.
+			const subTypes = subscribeMessage.mock.calls.map(
+				(c: any[]) => c[1]?.type,
+			);
+			expect(subTypes).toContain("eppgrid/subscribe_device");
+			expect(subTypes).toContain("eppgrid/subscribe_grid_targets");
+			expect(ctrl.hasDeviceSession).toBe(true);
+		});
+
+		it("dedupes concurrent calls — only one session-open pipeline runs at a time", async () => {
+			// Panel `updated()` can fire very frequently (every hass prop
+			// update).  Without re-entrancy protection, multiple concurrent
+			// reopens would churn subscriptions.  Verify a second call
+			// while the first is in flight reuses the in-flight promise
+			// rather than kicking off a parallel subscribe.
+			let resolveDevice!: (unsub: () => void) => void;
+			const subscribeMessage = vi.fn().mockImplementation((_cb, msg) => {
+				if (msg.type === "eppgrid/subscribe_device") {
+					return new Promise<() => void>((resolve) => {
+						resolveDevice = resolve;
+					});
+				}
+				return Promise.resolve(vi.fn());
+			});
+			ctrl.hass = {
+				callWS: vi.fn().mockResolvedValue({}),
+				connection: { subscribeMessage },
+			};
+
+			const p1 = ctrl.reopenSession("aa");
+			const p2 = ctrl.reopenSession("aa");
+			await new Promise((r) => setTimeout(r, 0));
+
+			// Only ONE subscribe_device call has been issued so far.
+			const deviceSubs = subscribeMessage.mock.calls.filter(
+				(c: any[]) => c[1]?.type === "eppgrid/subscribe_device",
+			);
+			expect(deviceSubs).toHaveLength(1);
+
+			resolveDevice(vi.fn());
+			await Promise.all([p1, p2]);
+
+			// Still only ONE subscribe_device call after both resolve.
+			const finalDeviceSubs = subscribeMessage.mock.calls.filter(
+				(c: any[]) => c[1]?.type === "eppgrid/subscribe_device",
+			);
+			expect(finalDeviceSubs).toHaveLength(1);
+		});
+
+		it("allows a fresh reopen after a previous one completes", async () => {
+			ctrl.hass = {
+				callWS: vi.fn().mockResolvedValue({}),
+				connection: {
+					subscribeMessage: vi.fn().mockResolvedValue(vi.fn()),
+				},
+			};
+
+			await ctrl.reopenSession("aa");
+			await ctrl.reopenSession("aa");
+
+			const deviceSubs = (
+				ctrl.hass.connection.subscribeMessage as any
+			).mock.calls.filter(
+				(c: any[]) => c[1]?.type === "eppgrid/subscribe_device",
+			);
+			expect(deviceSubs).toHaveLength(2);
+		});
+
+		it("does NOT dedupe concurrent calls for different macs — the new mac must open its own session", async () => {
+			// Simulates a device-switch arriving while a reopen for the
+			// previous mac is still in flight. The reopen for the new mac
+			// must eventually subscribe to the new device, not silently
+			// attach the panel to the old one.
+			let resolveAa!: (unsub: () => void) => void;
+			const unsubs: Record<string, () => void> = {};
+			const subscribeMessage = vi.fn().mockImplementation((_cb, msg) => {
+				if (msg.type === "eppgrid/subscribe_device") {
+					if (msg.mac === "aa") {
+						return new Promise<() => void>((resolve) => {
+							resolveAa = (fn) => {
+								unsubs.aa = fn;
+								resolve(fn);
+							};
+						});
+					}
+					const unsubBb = vi.fn();
+					unsubs.bb = unsubBb;
+					return Promise.resolve(unsubBb);
+				}
+				return Promise.resolve(vi.fn());
+			});
+			ctrl.hass = {
+				callWS: vi.fn().mockResolvedValue({}),
+				connection: { subscribeMessage },
+			};
+
+			const p1 = ctrl.reopenSession("aa");
+			const p2 = ctrl.reopenSession("bb");
+			resolveAa(vi.fn());
+			await Promise.all([p1, p2]);
+
+			const deviceSubs = subscribeMessage.mock.calls.filter(
+				(c: any[]) => c[1]?.type === "eppgrid/subscribe_device",
+			);
+			const subbedMacs = deviceSubs.map((c: any[]) => c[1].mac);
+			expect(subbedMacs).toContain("aa");
+			expect(subbedMacs).toContain("bb");
+			// After both settle, the "bb" session is the live one.
+			expect(ctrl.hasDeviceSession).toBe(true);
+		});
+	});
+
 	describe("loadDeviceConfig", () => {
 		it("returns the config from the backend", async () => {
 			ctrl.hass = {
@@ -786,12 +913,13 @@ describe("DeviceController", () => {
 		});
 
 		it("resets availability tracker to avoid stale-edge reconnect", () => {
-			const loadSpy = vi.spyOn(ctrl, "loadDeviceConfig").mockResolvedValue({});
+			const onSelectedAvailable = vi.fn();
+			ctrl.onSelectedAvailable = onSelectedAvailable;
 
 			// Prime: "aa" available → offline. Tracker latches to false.
 			(ctrl as any)._applyDeviceList([makeDevice("aa", true)]);
 			(ctrl as any)._applyDeviceList([makeDevice("aa", false)]);
-			loadSpy.mockClear();
+			onSelectedAvailable.mockClear();
 
 			// User switches to "bb" — tracker must reset so the next push
 			// is treated as an initial observation (prev === null) and not
@@ -799,7 +927,7 @@ describe("DeviceController", () => {
 			ctrl.selectDevice("bb");
 			(ctrl as any)._applyDeviceList([makeDevice("bb", true)]);
 
-			expect(loadSpy).not.toHaveBeenCalled();
+			expect(onSelectedAvailable).not.toHaveBeenCalled();
 		});
 	});
 
@@ -898,31 +1026,35 @@ describe("DeviceController", () => {
 
 	// --- Availability edge transitions ---
 	describe("availability transitions", () => {
-		it("re-opens session when selected device transitions offline→online", async () => {
-			const loadSpy = vi.spyOn(ctrl, "loadDeviceConfig").mockResolvedValue({});
+		it("fires onSelectedAvailable (not reopenSession directly) when selected device transitions offline→online", async () => {
+			// The controller hands off to the host via onSelectedAvailable
+			// so the host can choose reopenSession vs loadDeviceConfig based
+			// on whether it has already loaded config for this device.
+			const onSelectedAvailable = vi.fn();
+			ctrl.onSelectedAvailable = onSelectedAvailable;
 
 			(ctrl as any)._applyDeviceList([makeDevice("aa", true)]);
 			ctrl.selectedMac = "aa";
-			loadSpy.mockClear();
+			onSelectedAvailable.mockClear();
 
 			(ctrl as any)._applyDeviceList([makeDevice("aa", false)]);
-			expect(loadSpy).not.toHaveBeenCalled();
+			expect(onSelectedAvailable).not.toHaveBeenCalled();
 
 			(ctrl as any)._applyDeviceList([makeDevice("aa", true)]);
-			expect(loadSpy).toHaveBeenCalledWith("aa");
+			expect(onSelectedAvailable).toHaveBeenCalledWith("aa");
 		});
 
-		it("does not reconnect when a non-selected device flips availability", async () => {
-			const loadSpy = vi.spyOn(ctrl, "loadDeviceConfig").mockResolvedValue({});
+		it("does not fire onSelectedAvailable when a non-selected device flips availability", async () => {
+			const onSelectedAvailable = vi.fn();
+			ctrl.onSelectedAvailable = onSelectedAvailable;
 
 			(ctrl as any)._applyDeviceList([
 				makeDevice("aa", true),
 				makeDevice("bb", true),
 			]);
 			ctrl.selectedMac = "aa";
-			loadSpy.mockClear();
+			onSelectedAvailable.mockClear();
 
-			// "bb" goes offline and back — "aa" stays available
 			(ctrl as any)._applyDeviceList([
 				makeDevice("aa", true),
 				makeDevice("bb", false),
@@ -932,18 +1064,19 @@ describe("DeviceController", () => {
 				makeDevice("bb", true),
 			]);
 
-			expect(loadSpy).not.toHaveBeenCalled();
+			expect(onSelectedAvailable).not.toHaveBeenCalled();
 		});
 
-		it("does not reconnect on the first device_list message", async () => {
+		it("does not fire onSelectedAvailable on the first device_list message", async () => {
 			// The host's first-load flow drives the initial connect, so the
 			// controller must not pre-empt it when prev === null.
-			const loadSpy = vi.spyOn(ctrl, "loadDeviceConfig").mockResolvedValue({});
+			const onSelectedAvailable = vi.fn();
+			ctrl.onSelectedAvailable = onSelectedAvailable;
 
 			ctrl.selectedMac = "aa";
 			(ctrl as any)._applyDeviceList([makeDevice("aa", true)]);
 
-			expect(loadSpy).not.toHaveBeenCalled();
+			expect(onSelectedAvailable).not.toHaveBeenCalled();
 		});
 
 		it("closes device session when selected device transitions online→offline", async () => {
@@ -969,6 +1102,33 @@ describe("DeviceController", () => {
 			(ctrl as any)._applyDeviceList([makeDevice("aa", false)]);
 
 			expect(onClosed).toHaveBeenCalledTimes(1);
+		});
+	});
+
+	describe("_applyDeviceList seeds selectedMac from localStorage on empty list", () => {
+		it("seeds selectedMac from localStorage when an empty list arrives with no prior selection", () => {
+			// Scenario: HA restart, panel mounts with _selectedMac="" but
+			// localStorage still has the user's previous choice. First
+			// subscribe push arrives empty (integration still booting).
+			// Without the seed, the render falls through to the "no devices"
+			// placeholder; with it, the offline banner is shown instead and
+			// the persisted selection survives the reconnect window.
+			localStorage.setItem("epp_selected_mac", "aa");
+			expect(ctrl.selectedMac).toBe("");
+
+			(ctrl as any)._applyDeviceList([]);
+
+			expect(ctrl.selectedMac).toBe("aa");
+		});
+
+		it("does not overwrite an already-set selectedMac on empty list", () => {
+			localStorage.setItem("epp_selected_mac", "bb");
+			ctrl.selectedMac = "aa";
+
+			(ctrl as any)._applyDeviceList([]);
+
+			// Empty list is ambiguous; preserve whatever selection we had.
+			expect(ctrl.selectedMac).toBe("aa");
 		});
 	});
 });

@@ -49,6 +49,12 @@ import {
 	getVisibleRoomBounds,
 	type SensorFov,
 } from "./lib/room-geometry.js";
+import {
+	persistSelectedMac,
+	persistView,
+	readStoredView,
+	type ViewMode,
+} from "./lib/storage.js";
 import { renderTemplateThumbnail } from "./lib/template-thumbnail.js";
 import {
 	detectIpAddress,
@@ -270,6 +276,19 @@ export class EPPGridPanel extends LitElement {
 	@state() private _devices: DeviceInfo[] = [];
 	@state() private _selectedMac = "";
 	@state() private _loading = true;
+	// Tracks which device we've successfully loaded config for, so
+	// reconnect paths can re-establish the live stream without refetching
+	// config (which would clobber unsaved edits and, during HA startup,
+	// can race with the backend returning an empty config before the
+	// store is fully loaded — setting _perspective to null and flipping
+	// the editor view to the uncalibrated-FOV wizard).
+	private _loadedConfigMac: string | null = null;
+	// Consecutive empty device-list retries. Used to escape from a
+	// persisted-selection + genuinely-empty-list deadlock (user deleted
+	// last device, or localStorage has a stale mac from a prior session)
+	// by showing the "no devices configured" placeholder once we're
+	// confident the integration isn't just slow to discover devices.
+	@state() private _initRetryCount = 0;
 
 	// HA WebSocket connection state. Tracks the live state of
 	// `hass.connection.connected` so we can render a "reconnecting" UI
@@ -281,7 +300,9 @@ export class EPPGridPanel extends LitElement {
 		this._haConnected = true;
 		if (wasDisconnected) {
 			// Device list / session subscriptions may have been torn down during
-			// the outage — re-bootstrap so the UI recovers without a manual reload.
+			// the outage — re-bootstrap so the UI recovers without a manual
+			// reload. `_initialize` keys off `_loadedConfigMac` so it won't
+			// refetch config for a device we've already loaded.
 			this._initialize().catch(() => {
 				// _initialize already traps its own failures; guard here too so
 				// a late rejection can't surface as uncaught.
@@ -295,8 +316,11 @@ export class EPPGridPanel extends LitElement {
 	// Setup wizard — perspective corner marking
 	@state() private _setupStep: SetupStep | null = null;
 
-	// View mode: live (default), editor (grid/zones), or settings (configuration)
-	@state() private _view: "live" | "editor" | "settings" = "live";
+	// View mode: live (default), editor (grid/zones), or settings (configuration).
+	// Persisted to localStorage so a panel recreation (e.g. after HA frontend
+	// refresh on container restart) returns the user to their last tab instead
+	// of dumping them back on the live overview.
+	@state() private _view: ViewMode = readStoredView();
 	@state() private _openAccordions: Set<string> = new Set();
 
 	// Perspective transform state (client-side, set after corner marking)
@@ -470,6 +494,9 @@ export class EPPGridPanel extends LitElement {
 				this._localize = setupLocalize(this.hass);
 			}
 		}
+		if (changed.has("_view")) {
+			persistView(this._view);
+		}
 	}
 
 	updated(changedProps: PropertyValues): void {
@@ -492,13 +519,30 @@ export class EPPGridPanel extends LitElement {
 				!this._deviceCtrl.hasDeviceSession &&
 				!this._deviceCtrl.reconnecting
 			) {
-				// Session lost (e.g. after HA reconnect) — re-open
-				this._loadDeviceConfig(this._selectedMac);
+				// Session lost (e.g. after HA reconnect) — re-establish it,
+				// falling back to a config fetch only if we haven't loaded
+				// config for this device yet.
+				this._ensureSession(this._selectedMac);
 			}
 		}
 	}
 
 	private _initRetryTimer?: ReturnType<typeof setTimeout>;
+
+	/**
+	 * Re-establish the live session for `mac`, loading config from the
+	 * backend only if we haven't already loaded it for this device. The
+	 * "already loaded" path preserves any unsaved editor edits and
+	 * avoids racing with an HA-startup window where the backend store
+	 * may not yet be populated.
+	 */
+	private _ensureSession(mac: string): void {
+		if (this._loadedConfigMac === mac) {
+			this._deviceCtrl.reopenSession(mac).catch(() => {});
+		} else {
+			this._loadDeviceConfig(mac).catch(() => {});
+		}
+	}
 
 	private async _initialize(): Promise<void> {
 		if (!this.hass) return;
@@ -512,16 +556,22 @@ export class EPPGridPanel extends LitElement {
 		}
 		this._deviceCtrl.hass = this.hass;
 		await this._subscribeDevices();
-		if (!this._selectedMac && this._devices.length === 0) {
-			// Integration may not be loaded yet — retry silently in the
-			// background so the UI does not flicker between "no devices"
-			// and "loading" every 2 seconds.
+		if (this._devices.length === 0) {
+			// Either first boot before devices are configured, or the HA
+			// integration is still coming up after a restart (custom WS
+			// commands not yet registered, initial push empty).  Retry
+			// silently so the UI doesn't flicker between "no devices" and
+			// "loading" every 2 seconds.
+			this._initRetryCount += 1;
 			this._loading = false;
-			this._initRetryTimer = setTimeout(() => this._initialize(), 2000);
+			this._initRetryTimer = setTimeout(() => {
+				this._initialize().catch(() => {});
+			}, 2000);
 			return;
 		}
+		this._initRetryCount = 0;
 		if (this._selectedMac && this._isSelectedDeviceAvailable()) {
-			await this._loadDeviceConfig(this._selectedMac);
+			this._ensureSession(this._selectedMac);
 		}
 		this._loading = false;
 	}
@@ -530,18 +580,38 @@ export class EPPGridPanel extends LitElement {
 		this._deviceCtrl.hass = this.hass;
 		this._deviceCtrl.onDeviceListChanged = () => {
 			const prevMac = this._selectedMac;
-			const newDevices = this._deviceCtrl.devices;
-			const wasRemoved =
-				prevMac !== "" && !newDevices.find((d) => d.mac === prevMac);
-			this._devices = newDevices;
+			this._devices = this._deviceCtrl.devices;
 			this._selectedMac = this._deviceCtrl.selectedMac;
-			if (wasRemoved) {
-				this._handleSelectedDeviceRemoved();
+			if (this._devices.length > 0) {
+				this._initRetryCount = 0;
+			}
+			if (
+				prevMac !== "" &&
+				this._selectedMac !== "" &&
+				prevMac !== this._selectedMac
+			) {
+				// Selection auto-switched to a different device (previous
+				// one was removed from HA, another remained).
+				persistSelectedMac(this._selectedMac);
+				if (this._isSelectedDeviceAvailable()) {
+					this._loadDeviceConfig(this._selectedMac).catch(() => {});
+				}
 			}
 		};
+		this._deviceCtrl.onSelectedAvailable = (mac) => {
+			this._ensureSession(mac);
+		};
 		this._deviceCtrl.onSessionClosed = () => {
+			// Live-data has no meaning once the device is gone — clear it so
+			// the UI doesn't keep showing stale readings. Config-derived
+			// state (perspective, furniture, zones) is intentionally kept
+			// so the user returns to where they were when the device
+			// comes back.
 			this._targets = [];
 			this._rawTargets = [];
+			this._sensorState = createInitialSensorState();
+			this._zoneState = createInitialZoneState();
+			this._targetCtrl.resetZoneEngineState();
 		};
 		await this._deviceCtrl.subscribeDeviceList();
 		this._devices = this._deviceCtrl.devices;
@@ -551,37 +621,6 @@ export class EPPGridPanel extends LitElement {
 	private _isSelectedDeviceAvailable(): boolean {
 		const dev = this._devices.find((d) => d.mac === this._selectedMac);
 		return !!dev?.available;
-	}
-
-	private _handleSelectedDeviceRemoved(): void {
-		this.dispatchEvent(
-			new CustomEvent("hass-notification", {
-				detail: { message: this._localize("notifications.device_removed") },
-				bubbles: true,
-				composed: true,
-			}),
-		);
-		this._closeDeviceSession();
-		this._perspective = null;
-		this._roomWidth = 0;
-		this._roomDepth = 0;
-		this._setupStep = null;
-		this._furniture = [];
-		this._grid = new Uint8Array(GRID_CELL_COUNT);
-		this._zoneConfigs = INITIAL_ZONE_SLOTS;
-		this._view = "live";
-		this._dirty = false;
-		this._activeZone = null;
-		this._selectedFurnitureId = null;
-		this._overlayMode = null;
-		if (this._selectedMac) {
-			localStorage.setItem("epp_selected_mac", this._selectedMac);
-		} else {
-			localStorage.removeItem("epp_selected_mac");
-		}
-		if (this._selectedMac && this._isSelectedDeviceAvailable()) {
-			this._loadDeviceConfig(this._selectedMac);
-		}
 	}
 
 	private async _loadDevices(): Promise<void> {
@@ -656,6 +695,8 @@ export class EPPGridPanel extends LitElement {
 		this._ledMode = parsed.settings.ledMode;
 		this._ledBrightness = parsed.settings.ledBrightness;
 		this._ledPresenceColor = parsed.settings.ledPresenceColor;
+
+		this._loadedConfigMac = this._selectedMac;
 	}
 
 	private _closeDeviceSession(): void {
@@ -1387,7 +1428,14 @@ export class EPPGridPanel extends LitElement {
 			</div>`;
 		}
 
-		if (!this._devices.length) {
+		// Show the "no devices configured" placeholder when either we have
+		// no prior selection, or the list has been stably empty for several
+		// retries (user deleted the last device, or the persisted selection
+		// is stale from a prior session). A short retry window gives the
+		// HA integration time to re-discover devices after a restart before
+		// we fall back to the CTA.
+		const emptyListStable = this._initRetryCount >= 3;
+		if (!this._devices.length && (!this._selectedMac || emptyListStable)) {
 			return html`<div class="tab-layout">
 				${this._renderTabBar()}
 				<div class="empty-state">
@@ -1458,7 +1506,11 @@ export class EPPGridPanel extends LitElement {
 		}
 
 		const dev = this._devices.find((d) => d.mac === this._selectedMac);
-		const isOffline = dev?.firmware_status === "unavailable";
+		// Missing-from-list is treated as offline so a transient empty
+		// device list during HA reload shows the offline banner instead
+		// of falling through to a half-rendered grid without data.
+		const isOffline =
+			!!this._selectedMac && (!dev || dev.firmware_status === "unavailable");
 
 		if (this._deviceCtrl.connectionFailed || isOffline) {
 			return html`<div class="tab-layout">
@@ -1605,7 +1657,7 @@ export class EPPGridPanel extends LitElement {
 						this._guardNavigation(async () => {
 							this._closeDeviceSession();
 							this._selectedMac = val;
-							localStorage.setItem("epp_selected_mac", val);
+							persistSelectedMac(val);
 							await this._loadDeviceConfig(val);
 						});
 					}}
@@ -1658,7 +1710,8 @@ export class EPPGridPanel extends LitElement {
 
 	private _renderConnectionBanner() {
 		const dev = this._devices.find((d) => d.mac === this._selectedMac);
-		const isOffline = dev?.firmware_status === "unavailable";
+		const isOffline =
+			!!this._selectedMac && (!dev || dev.firmware_status === "unavailable");
 
 		if (!this._deviceCtrl.connectionFailed && !isOffline) return nothing;
 
@@ -1691,7 +1744,7 @@ export class EPPGridPanel extends LitElement {
 
 	private _retryConnection(): void {
 		if (this._selectedMac) {
-			this._loadDeviceConfig(this._selectedMac);
+			this._ensureSession(this._selectedMac);
 		}
 	}
 

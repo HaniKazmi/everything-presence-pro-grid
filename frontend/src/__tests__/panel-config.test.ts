@@ -453,7 +453,7 @@ describe("updated() reconnecting guard", () => {
 		a._deviceCtrl._reconnecting = false;
 	});
 
-	it("calls _loadDeviceConfig when session is lost and not reconnecting", () => {
+	it("reopens the session (without refetching config) when the session is lost for a device whose config is already loaded", () => {
 		const el = createPanel();
 		const a = el as any;
 		a._loading = false;
@@ -467,10 +467,15 @@ describe("updated() reconnecting guard", () => {
 			},
 		];
 		a._selectedMac = "AA:BB:CC:DD:EE:01";
+		// Config was already loaded for this device — reconnect path.
+		a._loadedConfigMac = "AA:BB:CC:DD:EE:01";
 
 		// Simulate: no active session and not reconnecting
 		a._deviceCtrl.closeDeviceSession();
 
+		const reopenSpy = vi
+			.spyOn(a._deviceCtrl, "reopenSession")
+			.mockResolvedValue(undefined);
 		const loadSpy = vi
 			.spyOn(a, "_loadDeviceConfig")
 			.mockResolvedValue(undefined);
@@ -478,8 +483,83 @@ describe("updated() reconnecting guard", () => {
 		const changed = new Map<string, any>([["hass", undefined]]);
 		a.updated(changed);
 
-		expect(loadSpy).toHaveBeenCalledWith("AA:BB:CC:DD:EE:01");
+		expect(reopenSpy).toHaveBeenCalledWith("AA:BB:CC:DD:EE:01");
+		// Config must NOT be refetched on the reconnect path — any dirty
+		// editor edits survive the round-trip.
+		expect(loadSpy).not.toHaveBeenCalled();
+		reopenSpy.mockRestore();
 		loadSpy.mockRestore();
+	});
+
+	it("loads config when the session is lost for a device whose config is NOT yet loaded", () => {
+		// Covers the Copilot-flagged edge: panel mounted while device was
+		// offline (loadDeviceConfig was never called). When session comes
+		// up, we need a fetch — reopenSession alone would leave the UI
+		// stuck with default/stale state.
+		const el = createPanel();
+		const a = el as any;
+		a._loading = false;
+		a._devices = [
+			{
+				mac: "AA:BB:CC:DD:EE:01",
+				name: "T",
+				host: null,
+				available: true,
+				configured: true,
+			},
+		];
+		a._selectedMac = "AA:BB:CC:DD:EE:01";
+		a._loadedConfigMac = null;
+		a._deviceCtrl.closeDeviceSession();
+
+		const reopenSpy = vi
+			.spyOn(a._deviceCtrl, "reopenSession")
+			.mockResolvedValue(undefined);
+		const loadSpy = vi
+			.spyOn(a, "_loadDeviceConfig")
+			.mockResolvedValue(undefined);
+
+		a.updated(new Map<string, any>([["hass", undefined]]));
+
+		expect(loadSpy).toHaveBeenCalledWith("AA:BB:CC:DD:EE:01");
+		expect(reopenSpy).not.toHaveBeenCalled();
+		reopenSpy.mockRestore();
+		loadSpy.mockRestore();
+	});
+
+	it("swallows reopenSession rejections from the updated() guard", async () => {
+		const el = createPanel();
+		const a = el as any;
+		a._loading = false;
+		a._devices = [
+			{
+				mac: "AA:BB:CC:DD:EE:01",
+				name: "T",
+				host: null,
+				available: true,
+				configured: true,
+			},
+		];
+		a._selectedMac = "AA:BB:CC:DD:EE:01";
+		a._deviceCtrl.closeDeviceSession();
+
+		vi.spyOn(a._deviceCtrl, "reopenSession").mockRejectedValue(
+			new Error("connection_failed"),
+		);
+		const unhandled: unknown[] = [];
+		const handler = (reason: unknown) => {
+			unhandled.push(reason);
+		};
+		process.on("unhandledRejection", handler);
+		try {
+			const changed = new Map<string, any>([["hass", undefined]]);
+			a.updated(changed);
+			await new Promise((r) => setTimeout(r, 0));
+			await new Promise((r) => setTimeout(r, 0));
+			expect(unhandled).toEqual([]);
+		} finally {
+			process.off("unhandledRejection", handler);
+		}
 	});
 
 	it("does not auto-load config for a device reporting available=false", () => {
@@ -512,7 +592,7 @@ describe("updated() reconnecting guard", () => {
 		loadSpy.mockRestore();
 	});
 
-	it("auto-loads config once the selected device flips to available=true", () => {
+	it("reopens the session once the selected device flips to available=true (config already loaded)", () => {
 		const el = createPanel();
 		const a = el as any;
 		a._loading = false;
@@ -526,22 +606,24 @@ describe("updated() reconnecting guard", () => {
 			},
 		];
 		a._selectedMac = "AA:BB:CC:DD:EE:02";
+		a._loadedConfigMac = "AA:BB:CC:DD:EE:02";
 		a._haConnected = true;
 
 		// Simulate: no active session and not reconnecting
 		a._deviceCtrl.closeDeviceSession();
 
-		const loadSpy = vi
-			.spyOn(a, "_loadDeviceConfig")
+		const reopenSpy = vi
+			.spyOn(a._deviceCtrl, "reopenSession")
 			.mockResolvedValue(undefined);
 
 		const changed = new Map<string, any>([["hass", undefined]]);
 
 		// First update: device is still unavailable, guard must block
 		a.updated(changed);
-		expect(loadSpy).not.toHaveBeenCalled();
+		expect(reopenSpy).not.toHaveBeenCalled();
 
-		// Device list push flips availability — next update must trigger load
+		// Device list push flips availability — next update must reopen
+		// the session (no config refetch).
 		a._devices = [
 			{
 				mac: "AA:BB:CC:DD:EE:02",
@@ -553,8 +635,8 @@ describe("updated() reconnecting guard", () => {
 		];
 		a.updated(changed);
 
-		expect(loadSpy).toHaveBeenCalledWith("AA:BB:CC:DD:EE:02");
-		loadSpy.mockRestore();
+		expect(reopenSpy).toHaveBeenCalledWith("AA:BB:CC:DD:EE:02");
+		reopenSpy.mockRestore();
 	});
 });
 
@@ -1155,6 +1237,78 @@ describe("_renderConnectionBanner", () => {
 		// Values should contain the offline localization key
 		const vals = JSON.stringify((result as any).values);
 		expect(vals).toContain("connection.offline");
+	});
+});
+
+describe("_retryConnection", () => {
+	it("re-opens the device session without refetching config when config is already loaded", () => {
+		const el = createPanel();
+		const a = el as any;
+		a._selectedMac = "AA:BB:CC:DD:EE:01";
+		a._loadedConfigMac = "AA:BB:CC:DD:EE:01";
+		const reopenSpy = vi
+			.spyOn(a._deviceCtrl, "reopenSession")
+			.mockResolvedValue(undefined);
+		const loadSpy = vi
+			.spyOn(a, "_loadDeviceConfig")
+			.mockResolvedValue(undefined);
+
+		a._retryConnection();
+
+		expect(reopenSpy).toHaveBeenCalledWith("AA:BB:CC:DD:EE:01");
+		expect(loadSpy).not.toHaveBeenCalled();
+	});
+
+	it("loads config when retry is triggered before any config has been loaded", () => {
+		const el = createPanel();
+		const a = el as any;
+		a._selectedMac = "AA:BB:CC:DD:EE:01";
+		a._loadedConfigMac = null;
+		const reopenSpy = vi
+			.spyOn(a._deviceCtrl, "reopenSession")
+			.mockResolvedValue(undefined);
+		const loadSpy = vi
+			.spyOn(a, "_loadDeviceConfig")
+			.mockResolvedValue(undefined);
+
+		a._retryConnection();
+
+		expect(loadSpy).toHaveBeenCalledWith("AA:BB:CC:DD:EE:01");
+		expect(reopenSpy).not.toHaveBeenCalled();
+	});
+
+	it("is a no-op when no device is selected", () => {
+		const el = createPanel();
+		const a = el as any;
+		a._selectedMac = "";
+		const reopenSpy = vi.spyOn(a._deviceCtrl, "reopenSession");
+
+		a._retryConnection();
+
+		expect(reopenSpy).not.toHaveBeenCalled();
+	});
+
+	it("swallows reopenSession rejections without leaking unhandled errors", async () => {
+		const el = createPanel();
+		const a = el as any;
+		a._selectedMac = "AA:BB:CC:DD:EE:01";
+		a._loadedConfigMac = "AA:BB:CC:DD:EE:01";
+		vi.spyOn(a._deviceCtrl, "reopenSession").mockRejectedValue(
+			new Error("connection_failed"),
+		);
+		const unhandled: unknown[] = [];
+		const handler = (reason: unknown) => {
+			unhandled.push(reason);
+		};
+		process.on("unhandledRejection", handler);
+		try {
+			a._retryConnection();
+			await new Promise((r) => setTimeout(r, 0));
+			await new Promise((r) => setTimeout(r, 0));
+			expect(unhandled).toEqual([]);
+		} finally {
+			process.off("unhandledRejection", handler);
+		}
 	});
 });
 

@@ -1,4 +1,5 @@
 import type { ReactiveController, ReactiveControllerHost } from "lit";
+import { persistSelectedMac, readStoredMac } from "../lib/storage.js";
 import type { DeviceInfo, RawTarget, Target, TargetStatus } from "../types.js";
 
 /**
@@ -46,6 +47,9 @@ export class DeviceController implements ReactiveController {
 	onRawTargetData?: (targets: RawTarget[]) => void;
 	onDeviceListChanged?: () => void;
 	onSessionClosed?: () => void;
+	/** Selected device transitioned to available. Host decides whether to
+	 * reopen the session (config already loaded) or load config fresh. */
+	onSelectedAvailable?: (mac: string) => void;
 
 	private _host: ReactiveControllerHost;
 	private _hass: any = null;
@@ -57,6 +61,7 @@ export class DeviceController implements ReactiveController {
 	private _reconnecting = false;
 	private _connectionFailed = false;
 	private _lastSelectedAvailable: boolean | null = null;
+	private _reopenInFlight?: { mac: string; promise: Promise<void> };
 
 	constructor(host: ReactiveControllerHost) {
 		this._host = host;
@@ -125,7 +130,7 @@ export class DeviceController implements ReactiveController {
 			return;
 		}
 
-		const stored = localStorage.getItem("epp_selected_mac");
+		const stored = readStoredMac();
 		const match =
 			stored && this.devices.find((d: DeviceInfo) => d.mac === stored);
 		this.selectedMac = match ? stored! : (this.devices[0]?.mac ?? "");
@@ -170,10 +175,28 @@ export class DeviceController implements ReactiveController {
 		this.devices = devices.sort((a, b) =>
 			(a.name || "").localeCompare(b.name || ""),
 		);
-		const stored = localStorage.getItem("epp_selected_mac");
-		const match =
-			stored && this.devices.find((d: DeviceInfo) => d.mac === stored);
-		this.selectedMac = match ? stored! : (this.devices[0]?.mac ?? "");
+		// A transient empty list during HA/integration reload is
+		// indistinguishable from a real deletion, so never invalidate the
+		// current selection on an empty list — otherwise the panel flips
+		// to the "no devices" placeholder mid-reconnect. An empty list
+		// just means "I don't know yet".
+		const prevSelectedMac = this.selectedMac;
+		const stored = readStoredMac();
+		if (this.devices.length > 0) {
+			const match = stored && this.devices.find((d) => d.mac === stored);
+			this.selectedMac = match ? stored! : this.devices[0].mac;
+		} else if (!this.selectedMac && stored) {
+			// Empty list but a previous selection is persisted — seed from
+			// localStorage so the UI falls through to the offline banner
+			// (which treats missing-from-list as offline) instead of the
+			// "no devices configured" placeholder.
+			this.selectedMac = stored;
+		}
+		if (prevSelectedMac !== this.selectedMac) {
+			// Treat the next push as an initial observation for the new
+			// device so we don't fire a stale false→true rising edge.
+			this._lastSelectedAvailable = null;
+		}
 
 		const selected = this.devices.find((d) => d.mac === this.selectedMac);
 		const nowAvailable = selected?.available ?? false;
@@ -184,9 +207,12 @@ export class DeviceController implements ReactiveController {
 			this.closeDeviceSession();
 			this.onSessionClosed?.();
 		}
-		// Initial push has prev === null; the host drives the first connect.
+		// Initial push (prev === null) is skipped — the host's first-load
+		// flow drives the initial connect.  On a real unavailable→available
+		// transition, hand off to the host so it can choose between
+		// reopenSession (config already in memory) and a fresh config load.
 		if (prev === false && nowAvailable && this.selectedMac) {
-			this.loadDeviceConfig(this.selectedMac).catch(() => {});
+			this.onSelectedAvailable?.(this.selectedMac);
 		}
 
 		this.onDeviceListChanged?.();
@@ -213,16 +239,56 @@ export class DeviceController implements ReactiveController {
 			} catch {
 				// Device may not be ready yet
 			}
-			// Open device session, then subscribe to data streams
-			await this.openDeviceSession(mac);
-			if (this._unsubDevice) {
-				this.subscribeTargets(mac);
-			}
+			await this.reopenSession(mac);
 			return config;
 		} finally {
 			this._reconnecting = false;
 			this._host.requestUpdate();
 		}
+	}
+
+	/**
+	 * Re-establish the live device session and target/display streams
+	 * without re-fetching config. Used on reconnect paths where the
+	 * host's in-memory config is still valid — avoids clobbering any
+	 * unsaved edits with a server round-trip.
+	 *
+	 * Dedupes concurrent calls for the same mac: the panel's `updated()`
+	 * guard fires on every hass property change, which would otherwise
+	 * kick off many parallel `openDeviceSession` pipelines while the
+	 * first subscribe is still in flight, leaking subscriptions
+	 * server-side.  A call for a *different* mac (e.g. user switched
+	 * devices mid-reconnect) waits for the in-flight one to finish,
+	 * then starts a fresh reopen so the new selection wins.
+	 */
+	async reopenSession(mac: string): Promise<void> {
+		if (!this._hass || !mac) return;
+		const inFlight = this._reopenInFlight;
+		if (inFlight) {
+			if (inFlight.mac === mac) return inFlight.promise;
+			// Different mac requested — let the old reopen settle so its
+			// subscribe / closeDeviceSession sequence doesn't race with
+			// ours, then proceed with a fresh reopen for the new mac.
+			await inFlight.promise.catch(() => {});
+		}
+		const entry: { mac: string; promise: Promise<void> } = {
+			mac,
+			promise: undefined as unknown as Promise<void>,
+		};
+		entry.promise = (async () => {
+			try {
+				await this.openDeviceSession(mac);
+				if (this._unsubDevice) {
+					this.subscribeTargets(mac);
+				}
+			} finally {
+				if (this._reopenInFlight === entry) {
+					this._reopenInFlight = undefined;
+				}
+			}
+		})();
+		this._reopenInFlight = entry;
+		return entry.promise;
 	}
 
 	// --- Session management ---
@@ -407,7 +473,7 @@ export class DeviceController implements ReactiveController {
 		this.selectedMac = mac;
 		this._lastSelectedAvailable = null;
 		this._connectionFailed = false;
-		localStorage.setItem("epp_selected_mac", mac);
+		persistSelectedMac(mac);
 		this._host.requestUpdate();
 	}
 }
