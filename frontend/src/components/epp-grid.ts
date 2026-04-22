@@ -74,6 +74,7 @@ export class EppGrid extends LitElement {
 		.grid-targets-wrapper {
 			position: relative;
 			display: inline-block;
+			vertical-align: top;
 		}
 
 		:host(:not([editable])) .grid-targets-wrapper {
