@@ -115,6 +115,28 @@ describe("panel device list transitions", () => {
 		expect(localStorage.getItem("epp_selected_mac")).toBe("bb");
 	});
 
+	it("swallows _loadDeviceConfig rejection on auto-switch without leaking an unhandled promise", async () => {
+		const dev1 = mockDeviceInfo("aa", "Alpha");
+		const dev2 = mockDeviceInfo("bb", "Bravo");
+		const { el, a, pushDeviceList } = await mountPanel([dev1, dev2]);
+		vi.spyOn(a, "_loadDeviceConfig").mockRejectedValue(new Error("nope"));
+
+		const unhandled: unknown[] = [];
+		const handler = (reason: unknown) => {
+			unhandled.push(reason);
+		};
+		process.on("unhandledRejection", handler);
+		try {
+			pushDeviceList([dev2]);
+			await el.updateComplete;
+			await new Promise((r) => setTimeout(r, 0));
+			await new Promise((r) => setTimeout(r, 0));
+			expect(unhandled).toEqual([]);
+		} finally {
+			process.off("unhandledRejection", handler);
+		}
+	});
+
 	it("does not auto-load when the replacement device is offline", async () => {
 		const dev1 = mockDeviceInfo("aa", "Alpha");
 		const dev2 = mockDeviceInfo("bb", "Bravo", false);
