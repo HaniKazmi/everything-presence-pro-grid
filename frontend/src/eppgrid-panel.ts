@@ -492,8 +492,10 @@ export class EPPGridPanel extends LitElement {
 				!this._deviceCtrl.hasDeviceSession &&
 				!this._deviceCtrl.reconnecting
 			) {
-				// Session lost (e.g. after HA reconnect) — re-open
-				this._loadDeviceConfig(this._selectedMac);
+				// Session lost (e.g. after HA reconnect) — re-open the live
+				// stream only. Config stays as-is so any in-flight edits
+				// in the editor survive the round-trip.
+				this._deviceCtrl.reopenSession(this._selectedMac).catch(() => {});
 			}
 		}
 	}
@@ -530,18 +532,33 @@ export class EPPGridPanel extends LitElement {
 		this._deviceCtrl.hass = this.hass;
 		this._deviceCtrl.onDeviceListChanged = () => {
 			const prevMac = this._selectedMac;
-			const newDevices = this._deviceCtrl.devices;
-			const wasRemoved =
-				prevMac !== "" && !newDevices.find((d) => d.mac === prevMac);
-			this._devices = newDevices;
+			this._devices = this._deviceCtrl.devices;
 			this._selectedMac = this._deviceCtrl.selectedMac;
-			if (wasRemoved) {
-				this._handleSelectedDeviceRemoved();
+			if (
+				prevMac !== "" &&
+				this._selectedMac !== "" &&
+				prevMac !== this._selectedMac
+			) {
+				// The selection auto-switched to a different device (e.g. the
+				// previous one was removed from HA while another remained).
+				// Persist the new choice and load its config.
+				localStorage.setItem("epp_selected_mac", this._selectedMac);
+				if (this._isSelectedDeviceAvailable()) {
+					this._loadDeviceConfig(this._selectedMac);
+				}
 			}
 		};
 		this._deviceCtrl.onSessionClosed = () => {
+			// Live-data has no meaning once the device is gone — clear it so
+			// the UI doesn't keep showing stale readings. Config-derived
+			// state (perspective, furniture, zones) is intentionally kept
+			// so the user returns to where they were when the device
+			// comes back.
 			this._targets = [];
 			this._rawTargets = [];
+			this._sensorState = createInitialSensorState();
+			this._zoneState = createInitialZoneState();
+			this._targetCtrl.resetZoneEngineState();
 		};
 		await this._deviceCtrl.subscribeDeviceList();
 		this._devices = this._deviceCtrl.devices;
@@ -551,37 +568,6 @@ export class EPPGridPanel extends LitElement {
 	private _isSelectedDeviceAvailable(): boolean {
 		const dev = this._devices.find((d) => d.mac === this._selectedMac);
 		return !!dev?.available;
-	}
-
-	private _handleSelectedDeviceRemoved(): void {
-		this.dispatchEvent(
-			new CustomEvent("hass-notification", {
-				detail: { message: this._localize("notifications.device_removed") },
-				bubbles: true,
-				composed: true,
-			}),
-		);
-		this._closeDeviceSession();
-		this._perspective = null;
-		this._roomWidth = 0;
-		this._roomDepth = 0;
-		this._setupStep = null;
-		this._furniture = [];
-		this._grid = new Uint8Array(GRID_CELL_COUNT);
-		this._zoneConfigs = INITIAL_ZONE_SLOTS;
-		this._view = "live";
-		this._dirty = false;
-		this._activeZone = null;
-		this._selectedFurnitureId = null;
-		this._overlayMode = null;
-		if (this._selectedMac) {
-			localStorage.setItem("epp_selected_mac", this._selectedMac);
-		} else {
-			localStorage.removeItem("epp_selected_mac");
-		}
-		if (this._selectedMac && this._isSelectedDeviceAvailable()) {
-			this._loadDeviceConfig(this._selectedMac);
-		}
 	}
 
 	private async _loadDevices(): Promise<void> {
@@ -1387,7 +1373,12 @@ export class EPPGridPanel extends LitElement {
 			</div>`;
 		}
 
-		if (!this._devices.length) {
+		// Show the "no devices configured" placeholder only when we have
+		// neither a current list nor a previous selection. If we had a
+		// device but the list just arrived empty (transient HA/integration
+		// reload), we keep the selection and fall through to the offline
+		// banner below so in-progress state survives.
+		if (!this._devices.length && !this._selectedMac) {
 			return html`<div class="tab-layout">
 				${this._renderTabBar()}
 				<div class="empty-state">
@@ -1458,7 +1449,11 @@ export class EPPGridPanel extends LitElement {
 		}
 
 		const dev = this._devices.find((d) => d.mac === this._selectedMac);
-		const isOffline = dev?.firmware_status === "unavailable";
+		// Missing-from-list is treated as offline so a transient empty
+		// device list during HA reload shows the offline banner instead
+		// of falling through to a half-rendered grid without data.
+		const isOffline =
+			!!this._selectedMac && (!dev || dev.firmware_status === "unavailable");
 
 		if (this._deviceCtrl.connectionFailed || isOffline) {
 			return html`<div class="tab-layout">
@@ -1658,7 +1653,8 @@ export class EPPGridPanel extends LitElement {
 
 	private _renderConnectionBanner() {
 		const dev = this._devices.find((d) => d.mac === this._selectedMac);
-		const isOffline = dev?.firmware_status === "unavailable";
+		const isOffline =
+			!!this._selectedMac && (!dev || dev.firmware_status === "unavailable");
 
 		if (!this._deviceCtrl.connectionFailed && !isOffline) return nothing;
 
@@ -1691,7 +1687,9 @@ export class EPPGridPanel extends LitElement {
 
 	private _retryConnection(): void {
 		if (this._selectedMac) {
-			this._loadDeviceConfig(this._selectedMac);
+			// Re-open the live session without re-fetching config so any
+			// editor edits survive the retry.
+			this._deviceCtrl.reopenSession(this._selectedMac).catch(() => {});
 		}
 	}
 

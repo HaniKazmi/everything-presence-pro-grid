@@ -170,10 +170,22 @@ export class DeviceController implements ReactiveController {
 		this.devices = devices.sort((a, b) =>
 			(a.name || "").localeCompare(b.name || ""),
 		);
-		const stored = localStorage.getItem("epp_selected_mac");
-		const match =
-			stored && this.devices.find((d: DeviceInfo) => d.mac === stored);
-		this.selectedMac = match ? stored! : (this.devices[0]?.mac ?? "");
+		// A transient empty list during HA/integration reload is
+		// indistinguishable from a real deletion, so never invalidate the
+		// current selection on an empty list — otherwise the panel flips
+		// to the "no devices" placeholder mid-reconnect. An empty list
+		// just means "I don't know yet".
+		const prevSelectedMac = this.selectedMac;
+		if (this.devices.length > 0) {
+			const stored = localStorage.getItem("epp_selected_mac");
+			const match = stored && this.devices.find((d) => d.mac === stored);
+			this.selectedMac = match ? stored! : this.devices[0].mac;
+		}
+		if (prevSelectedMac !== this.selectedMac) {
+			// Treat the next push as an initial observation for the new
+			// device so we don't fire a stale false→true rising edge.
+			this._lastSelectedAvailable = null;
+		}
 
 		const selected = this.devices.find((d) => d.mac === this.selectedMac);
 		const nowAvailable = selected?.available ?? false;
@@ -185,8 +197,10 @@ export class DeviceController implements ReactiveController {
 			this.onSessionClosed?.();
 		}
 		// Initial push has prev === null; the host drives the first connect.
+		// On reconnect we re-open the live session only — we do NOT re-fetch
+		// config, so any unsaved edits in the panel survive the round-trip.
 		if (prev === false && nowAvailable && this.selectedMac) {
-			this.loadDeviceConfig(this.selectedMac).catch(() => {});
+			this.reopenSession(this.selectedMac).catch(() => {});
 		}
 
 		this.onDeviceListChanged?.();
@@ -213,15 +227,25 @@ export class DeviceController implements ReactiveController {
 			} catch {
 				// Device may not be ready yet
 			}
-			// Open device session, then subscribe to data streams
-			await this.openDeviceSession(mac);
-			if (this._unsubDevice) {
-				this.subscribeTargets(mac);
-			}
+			await this.reopenSession(mac);
 			return config;
 		} finally {
 			this._reconnecting = false;
 			this._host.requestUpdate();
+		}
+	}
+
+	/**
+	 * Re-establish the live device session and target/display streams
+	 * without re-fetching config. Used on reconnect paths where the
+	 * host's in-memory config is still valid — avoids clobbering any
+	 * unsaved edits with a server round-trip.
+	 */
+	async reopenSession(mac: string): Promise<void> {
+		if (!this._hass || !mac) return;
+		await this.openDeviceSession(mac);
+		if (this._unsubDevice) {
+			this.subscribeTargets(mac);
 		}
 	}
 

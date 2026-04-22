@@ -282,6 +282,31 @@ describe("DeviceController", () => {
 		});
 	});
 
+	describe("reopenSession", () => {
+		it("opens the device session and subscribes to targets without fetching config", async () => {
+			const unsub = vi.fn();
+			const callWS = vi.fn().mockResolvedValue({ config: {} });
+			const subscribeMessage = vi.fn().mockResolvedValue(unsub);
+			ctrl.hass = { callWS, connection: { subscribeMessage } };
+
+			await ctrl.reopenSession("aa");
+
+			// No config fetch on the reconnect path.
+			const getConfigCalls = callWS.mock.calls.filter(
+				(c: any[]) => c[0]?.type === "eppgrid/get_config",
+			);
+			expect(getConfigCalls).toHaveLength(0);
+
+			// Session and target subscriptions are opened.
+			const subTypes = subscribeMessage.mock.calls.map(
+				(c: any[]) => c[1]?.type,
+			);
+			expect(subTypes).toContain("eppgrid/subscribe_device");
+			expect(subTypes).toContain("eppgrid/subscribe_grid_targets");
+			expect(ctrl.hasDeviceSession).toBe(true);
+		});
+	});
+
 	describe("loadDeviceConfig", () => {
 		it("returns the config from the backend", async () => {
 			ctrl.hass = {
@@ -786,12 +811,12 @@ describe("DeviceController", () => {
 		});
 
 		it("resets availability tracker to avoid stale-edge reconnect", () => {
-			const loadSpy = vi.spyOn(ctrl, "loadDeviceConfig").mockResolvedValue({});
+			const reopenSpy = vi.spyOn(ctrl, "reopenSession").mockResolvedValue();
 
 			// Prime: "aa" available → offline. Tracker latches to false.
 			(ctrl as any)._applyDeviceList([makeDevice("aa", true)]);
 			(ctrl as any)._applyDeviceList([makeDevice("aa", false)]);
-			loadSpy.mockClear();
+			reopenSpy.mockClear();
 
 			// User switches to "bb" — tracker must reset so the next push
 			// is treated as an initial observation (prev === null) and not
@@ -799,7 +824,7 @@ describe("DeviceController", () => {
 			ctrl.selectDevice("bb");
 			(ctrl as any)._applyDeviceList([makeDevice("bb", true)]);
 
-			expect(loadSpy).not.toHaveBeenCalled();
+			expect(reopenSpy).not.toHaveBeenCalled();
 		});
 	});
 
@@ -898,29 +923,34 @@ describe("DeviceController", () => {
 
 	// --- Availability edge transitions ---
 	describe("availability transitions", () => {
-		it("re-opens session when selected device transitions offline→online", async () => {
-			const loadSpy = vi.spyOn(ctrl, "loadDeviceConfig").mockResolvedValue({});
+		it("re-opens session (without refetching config) when selected device transitions offline→online", async () => {
+			const reopenSpy = vi.spyOn(ctrl, "reopenSession").mockResolvedValue();
+			const loadSpy = vi.spyOn(ctrl, "loadDeviceConfig");
 
 			(ctrl as any)._applyDeviceList([makeDevice("aa", true)]);
 			ctrl.selectedMac = "aa";
+			reopenSpy.mockClear();
 			loadSpy.mockClear();
 
 			(ctrl as any)._applyDeviceList([makeDevice("aa", false)]);
-			expect(loadSpy).not.toHaveBeenCalled();
+			expect(reopenSpy).not.toHaveBeenCalled();
 
 			(ctrl as any)._applyDeviceList([makeDevice("aa", true)]);
-			expect(loadSpy).toHaveBeenCalledWith("aa");
+			expect(reopenSpy).toHaveBeenCalledWith("aa");
+			// Config must NOT be re-fetched on the reconnect path — the
+			// host keeps its in-memory config so local edits survive.
+			expect(loadSpy).not.toHaveBeenCalled();
 		});
 
 		it("does not reconnect when a non-selected device flips availability", async () => {
-			const loadSpy = vi.spyOn(ctrl, "loadDeviceConfig").mockResolvedValue({});
+			const reopenSpy = vi.spyOn(ctrl, "reopenSession").mockResolvedValue();
 
 			(ctrl as any)._applyDeviceList([
 				makeDevice("aa", true),
 				makeDevice("bb", true),
 			]);
 			ctrl.selectedMac = "aa";
-			loadSpy.mockClear();
+			reopenSpy.mockClear();
 
 			// "bb" goes offline and back — "aa" stays available
 			(ctrl as any)._applyDeviceList([
@@ -932,18 +962,18 @@ describe("DeviceController", () => {
 				makeDevice("bb", true),
 			]);
 
-			expect(loadSpy).not.toHaveBeenCalled();
+			expect(reopenSpy).not.toHaveBeenCalled();
 		});
 
 		it("does not reconnect on the first device_list message", async () => {
 			// The host's first-load flow drives the initial connect, so the
 			// controller must not pre-empt it when prev === null.
-			const loadSpy = vi.spyOn(ctrl, "loadDeviceConfig").mockResolvedValue({});
+			const reopenSpy = vi.spyOn(ctrl, "reopenSession").mockResolvedValue();
 
 			ctrl.selectedMac = "aa";
 			(ctrl as any)._applyDeviceList([makeDevice("aa", true)]);
 
-			expect(loadSpy).not.toHaveBeenCalled();
+			expect(reopenSpy).not.toHaveBeenCalled();
 		});
 
 		it("closes device session when selected device transitions online→offline", async () => {

@@ -453,7 +453,7 @@ describe("updated() reconnecting guard", () => {
 		a._deviceCtrl._reconnecting = false;
 	});
 
-	it("calls _loadDeviceConfig when session is lost and not reconnecting", () => {
+	it("reopens the session (without refetching config) when the session is lost and not reconnecting", () => {
 		const el = createPanel();
 		const a = el as any;
 		a._loading = false;
@@ -471,6 +471,9 @@ describe("updated() reconnecting guard", () => {
 		// Simulate: no active session and not reconnecting
 		a._deviceCtrl.closeDeviceSession();
 
+		const reopenSpy = vi
+			.spyOn(a._deviceCtrl, "reopenSession")
+			.mockResolvedValue(undefined);
 		const loadSpy = vi
 			.spyOn(a, "_loadDeviceConfig")
 			.mockResolvedValue(undefined);
@@ -478,7 +481,11 @@ describe("updated() reconnecting guard", () => {
 		const changed = new Map<string, any>([["hass", undefined]]);
 		a.updated(changed);
 
-		expect(loadSpy).toHaveBeenCalledWith("AA:BB:CC:DD:EE:01");
+		expect(reopenSpy).toHaveBeenCalledWith("AA:BB:CC:DD:EE:01");
+		// Config must NOT be refetched on the reconnect path — any dirty
+		// editor edits survive the round-trip.
+		expect(loadSpy).not.toHaveBeenCalled();
+		reopenSpy.mockRestore();
 		loadSpy.mockRestore();
 	});
 
@@ -512,7 +519,7 @@ describe("updated() reconnecting guard", () => {
 		loadSpy.mockRestore();
 	});
 
-	it("auto-loads config once the selected device flips to available=true", () => {
+	it("reopens the session once the selected device flips to available=true", () => {
 		const el = createPanel();
 		const a = el as any;
 		a._loading = false;
@@ -531,17 +538,18 @@ describe("updated() reconnecting guard", () => {
 		// Simulate: no active session and not reconnecting
 		a._deviceCtrl.closeDeviceSession();
 
-		const loadSpy = vi
-			.spyOn(a, "_loadDeviceConfig")
+		const reopenSpy = vi
+			.spyOn(a._deviceCtrl, "reopenSession")
 			.mockResolvedValue(undefined);
 
 		const changed = new Map<string, any>([["hass", undefined]]);
 
 		// First update: device is still unavailable, guard must block
 		a.updated(changed);
-		expect(loadSpy).not.toHaveBeenCalled();
+		expect(reopenSpy).not.toHaveBeenCalled();
 
-		// Device list push flips availability — next update must trigger load
+		// Device list push flips availability — next update must reopen
+		// the session (no config refetch).
 		a._devices = [
 			{
 				mac: "AA:BB:CC:DD:EE:02",
@@ -553,8 +561,8 @@ describe("updated() reconnecting guard", () => {
 		];
 		a.updated(changed);
 
-		expect(loadSpy).toHaveBeenCalledWith("AA:BB:CC:DD:EE:02");
-		loadSpy.mockRestore();
+		expect(reopenSpy).toHaveBeenCalledWith("AA:BB:CC:DD:EE:02");
+		reopenSpy.mockRestore();
 	});
 });
 
