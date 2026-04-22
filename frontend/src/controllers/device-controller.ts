@@ -57,6 +57,7 @@ export class DeviceController implements ReactiveController {
 	private _reconnecting = false;
 	private _connectionFailed = false;
 	private _lastSelectedAvailable: boolean | null = null;
+	private _reopenInFlight?: Promise<void>;
 
 	constructor(host: ReactiveControllerHost) {
 		this._host = host;
@@ -240,13 +241,28 @@ export class DeviceController implements ReactiveController {
 	 * without re-fetching config. Used on reconnect paths where the
 	 * host's in-memory config is still valid — avoids clobbering any
 	 * unsaved edits with a server round-trip.
+	 *
+	 * Dedupes concurrent calls: the panel's `updated()` guard fires on
+	 * every hass property change, which would otherwise kick off many
+	 * parallel `openDeviceSession` pipelines while the first subscribe
+	 * is still in flight, leaking subscriptions server-side.
 	 */
 	async reopenSession(mac: string): Promise<void> {
 		if (!this._hass || !mac) return;
-		await this.openDeviceSession(mac);
-		if (this._unsubDevice) {
-			this.subscribeTargets(mac);
+		if (this._reopenInFlight) {
+			return this._reopenInFlight;
 		}
+		this._reopenInFlight = (async () => {
+			try {
+				await this.openDeviceSession(mac);
+				if (this._unsubDevice) {
+					this.subscribeTargets(mac);
+				}
+			} finally {
+				this._reopenInFlight = undefined;
+			}
+		})();
+		return this._reopenInFlight;
 	}
 
 	// --- Session management ---

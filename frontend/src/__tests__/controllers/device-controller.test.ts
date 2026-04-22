@@ -305,6 +305,65 @@ describe("DeviceController", () => {
 			expect(subTypes).toContain("eppgrid/subscribe_grid_targets");
 			expect(ctrl.hasDeviceSession).toBe(true);
 		});
+
+		it("dedupes concurrent calls — only one session-open pipeline runs at a time", async () => {
+			// Panel `updated()` can fire very frequently (every hass prop
+			// update).  Without re-entrancy protection, multiple concurrent
+			// reopens would churn subscriptions.  Verify a second call
+			// while the first is in flight reuses the in-flight promise
+			// rather than kicking off a parallel subscribe.
+			let resolveDevice!: (unsub: () => void) => void;
+			const subscribeMessage = vi.fn().mockImplementation((_cb, msg) => {
+				if (msg.type === "eppgrid/subscribe_device") {
+					return new Promise<() => void>((resolve) => {
+						resolveDevice = resolve;
+					});
+				}
+				return Promise.resolve(vi.fn());
+			});
+			ctrl.hass = {
+				callWS: vi.fn().mockResolvedValue({}),
+				connection: { subscribeMessage },
+			};
+
+			const p1 = ctrl.reopenSession("aa");
+			const p2 = ctrl.reopenSession("aa");
+			await new Promise((r) => setTimeout(r, 0));
+
+			// Only ONE subscribe_device call has been issued so far.
+			const deviceSubs = subscribeMessage.mock.calls.filter(
+				(c: any[]) => c[1]?.type === "eppgrid/subscribe_device",
+			);
+			expect(deviceSubs).toHaveLength(1);
+
+			resolveDevice(vi.fn());
+			await Promise.all([p1, p2]);
+
+			// Still only ONE subscribe_device call after both resolve.
+			const finalDeviceSubs = subscribeMessage.mock.calls.filter(
+				(c: any[]) => c[1]?.type === "eppgrid/subscribe_device",
+			);
+			expect(finalDeviceSubs).toHaveLength(1);
+		});
+
+		it("allows a fresh reopen after a previous one completes", async () => {
+			ctrl.hass = {
+				callWS: vi.fn().mockResolvedValue({}),
+				connection: {
+					subscribeMessage: vi.fn().mockResolvedValue(vi.fn()),
+				},
+			};
+
+			await ctrl.reopenSession("aa");
+			await ctrl.reopenSession("aa");
+
+			const deviceSubs = (
+				ctrl.hass.connection.subscribeMessage as any
+			).mock.calls.filter(
+				(c: any[]) => c[1]?.type === "eppgrid/subscribe_device",
+			);
+			expect(deviceSubs).toHaveLength(2);
+		});
 	});
 
 	describe("loadDeviceConfig", () => {
