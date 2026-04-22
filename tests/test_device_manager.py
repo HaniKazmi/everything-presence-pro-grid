@@ -2790,6 +2790,181 @@ class TestEventCallbacks:
 
         cb.assert_not_called()
 
+    async def test_esphome_host_change_updates_device_and_closes_session(
+        self, hass: HomeAssistant, manager: DeviceManager
+    ) -> None:
+        """ESPHome host update refreshes dev.host and closes any stale session."""
+        dev_reg = dr.async_get(hass)
+        ent_reg = er.async_get(hass)
+
+        esphome_entry = MockConfigEntry(
+            domain="esphome",
+            data={"host": "192.168.1.50"},
+            title="EPP Living Room",
+        )
+        esphome_entry.add_to_hass(hass)
+
+        device = dev_reg.async_get_or_create(
+            config_entry_id=esphome_entry.entry_id,
+            connections={("mac", "aa:bb:cc:dd:ee:ff")},
+            name="EPP Living Room",
+            manufacturer="EverythingSmartTechnology",
+            model="Everything Presence Pro",
+        )
+
+        ent_reg.async_get_or_create(
+            "sensor",
+            "esphome",
+            unique_id="AA:BB:CC:DD:EE:FF-sensor-firmware_version",
+            config_entry=esphome_entry,
+            device_id=device.id,
+        )
+
+        await manager.async_discover()
+        mac = "AA:BB:CC:DD:EE:FF"
+        assert manager.devices[mac].host == "192.168.1.50"
+
+        stale_conn = MagicMock()
+        stale_conn.connected = True
+        stale_conn.async_disconnect = AsyncMock()
+        manager._active_connections[mac] = stale_conn
+        manager._pushing.add(mac)
+
+        hass.config_entries.async_update_entry(esphome_entry, data={**esphome_entry.data, "host": "192.168.1.99"})
+        await hass.async_block_till_done()
+
+        assert manager.devices[mac].host == "192.168.1.99"
+        assert mac not in manager._active_connections
+        stale_conn.async_disconnect.assert_awaited_once()
+        assert mac not in manager._pushing
+
+    async def test_esphome_entry_update_without_host_change_is_noop(
+        self, hass: HomeAssistant, manager: DeviceManager
+    ) -> None:
+        """ESPHome entry updates that don't change host must not disturb the session."""
+        dev_reg = dr.async_get(hass)
+        ent_reg = er.async_get(hass)
+
+        esphome_entry = MockConfigEntry(
+            domain="esphome",
+            data={"host": "192.168.1.50"},
+            title="EPP Living Room",
+        )
+        esphome_entry.add_to_hass(hass)
+
+        device = dev_reg.async_get_or_create(
+            config_entry_id=esphome_entry.entry_id,
+            connections={("mac", "aa:bb:cc:dd:ee:ff")},
+            name="EPP Living Room",
+            manufacturer="EverythingSmartTechnology",
+            model="Everything Presence Pro",
+        )
+
+        ent_reg.async_get_or_create(
+            "sensor",
+            "esphome",
+            unique_id="AA:BB:CC:DD:EE:FF-sensor-firmware_version",
+            config_entry=esphome_entry,
+            device_id=device.id,
+        )
+
+        await manager.async_discover()
+        mac = "AA:BB:CC:DD:EE:FF"
+
+        live_conn = MagicMock()
+        live_conn.connected = True
+        live_conn.async_disconnect = AsyncMock()
+        manager._active_connections[mac] = live_conn
+        manager._pushing.add(mac)
+
+        # Title change only — host is identical.
+        hass.config_entries.async_update_entry(esphome_entry, title="EPP Renamed")
+        await hass.async_block_till_done()
+
+        assert manager.devices[mac].host == "192.168.1.50"
+        assert manager._active_connections.get(mac) is live_conn
+        live_conn.async_disconnect.assert_not_awaited()
+        assert mac in manager._pushing
+
+    async def test_device_removal_unsubs_esphome_entry_update_listener(
+        self, hass: HomeAssistant, manager: DeviceManager
+    ) -> None:
+        """Removing a device unsubscribes its ESPHome entry listener to avoid leaks."""
+        dev_reg = dr.async_get(hass)
+        ent_reg = er.async_get(hass)
+
+        esphome_entry = MockConfigEntry(
+            domain="esphome",
+            data={"host": "192.168.1.50"},
+            title="EPP Living Room",
+        )
+        esphome_entry.add_to_hass(hass)
+
+        device = dev_reg.async_get_or_create(
+            config_entry_id=esphome_entry.entry_id,
+            connections={("mac", "aa:bb:cc:dd:ee:ff")},
+            name="EPP Living Room",
+            manufacturer="EverythingSmartTechnology",
+            model="Everything Presence Pro",
+        )
+
+        ent_reg.async_get_or_create(
+            "sensor",
+            "esphome",
+            unique_id="AA:BB:CC:DD:EE:FF-sensor-firmware_version",
+            config_entry=esphome_entry,
+            device_id=device.id,
+        )
+
+        await manager.async_discover()
+        mac = "AA:BB:CC:DD:EE:FF"
+        assert esphome_entry.entry_id in manager._entry_update_unsubs
+
+        await manager._on_device_removed(mac)
+
+        assert esphome_entry.entry_id not in manager._entry_update_unsubs
+
+    async def test_async_stop_unsubs_esphome_entry_update_listener(
+        self, hass: HomeAssistant, manager: DeviceManager
+    ) -> None:
+        """async_stop tears down ESPHome entry update listeners."""
+        dev_reg = dr.async_get(hass)
+        ent_reg = er.async_get(hass)
+
+        esphome_entry = MockConfigEntry(
+            domain="esphome",
+            data={"host": "192.168.1.50"},
+            title="EPP Living Room",
+        )
+        esphome_entry.add_to_hass(hass)
+
+        device = dev_reg.async_get_or_create(
+            config_entry_id=esphome_entry.entry_id,
+            connections={("mac", "aa:bb:cc:dd:ee:ff")},
+            name="EPP Living Room",
+            manufacturer="EverythingSmartTechnology",
+            model="Everything Presence Pro",
+        )
+
+        ent_reg.async_get_or_create(
+            "sensor",
+            "esphome",
+            unique_id="AA:BB:CC:DD:EE:FF-sensor-firmware_version",
+            config_entry=esphome_entry,
+            device_id=device.id,
+        )
+
+        await manager.async_discover()
+        mac = "AA:BB:CC:DD:EE:FF"
+
+        await manager.async_stop()
+
+        hass.config_entries.async_update_entry(esphome_entry, data={**esphome_entry.data, "host": "192.168.1.200"})
+        await hass.async_block_till_done()
+
+        # Listener was unsubscribed — host in our cache stays at the old value.
+        assert manager.devices[mac].host == "192.168.1.50"
+
 
 # ---------------------------------------------------------------------------
 # Stale connection and start/stop tests

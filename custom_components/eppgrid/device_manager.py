@@ -13,6 +13,7 @@ from typing import Any
 from aioesphomeapi import APIClient
 from aioesphomeapi import LogLevel
 from aioesphomeapi import UserService
+from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import STATE_UNAVAILABLE
 from homeassistant.const import STATE_UNKNOWN
 from homeassistant.core import HomeAssistant
@@ -506,6 +507,8 @@ class DeviceManager:
         self._active_connections: dict[str, DeviceConnection] = {}
         self._session_locks: dict[str, asyncio.Lock] = {}
         self._device_list_callbacks: list[Any] = []
+        # Unsub callables for ESPHome config-entry update listeners, keyed by entry_id
+        self._entry_update_unsubs: dict[str, Any] = {}
 
     @callback
     def on_device_list_changed(self, cb: Any) -> Any:
@@ -564,6 +567,9 @@ class DeviceManager:
         for unsub in self._unsub_listeners:
             unsub()
         self._unsub_listeners.clear()
+        for unsub in self._entry_update_unsubs.values():
+            unsub()
+        self._entry_update_unsubs.clear()
         for conn in self._active_connections.values():
             await conn.async_disconnect()
         self._active_connections.clear()
@@ -645,6 +651,7 @@ class DeviceManager:
 
             if is_new:
                 found_new = True
+                self._ensure_esphome_entry_listener(entry.config_entry_id)
                 _LOGGER.info("Discovered zone engine device: %s (%s)", device.name, mac)
                 # Always sync — the empty fallback resets stale entity registry
                 # entries left behind by a device delete+readd.
@@ -722,6 +729,33 @@ class DeviceManager:
             self._hass.async_create_task(self._on_device_available(mac))
 
     @callback
+    def _ensure_esphome_entry_listener(self, entry_id: str | None) -> None:
+        """Register an ESPHome config-entry update listener once per entry."""
+        if entry_id is None or entry_id in self._entry_update_unsubs:
+            return
+        entry = self._hass.config_entries.async_get_entry(entry_id)
+        if entry is None:
+            return
+        self._entry_update_unsubs[entry_id] = entry.add_update_listener(self._on_esphome_entry_updated)
+
+    async def _on_esphome_entry_updated(self, hass: HomeAssistant, entry: ConfigEntry) -> None:
+        """Pick up IP changes from the ESPHome integration without an HA restart."""
+        new_host = entry.data.get("host")
+        for mac, dev in self.devices.items():
+            if dev.esphome_config_entry_id != entry.entry_id:
+                continue
+            if dev.host == new_host:
+                return
+            _LOGGER.info("ESPHome host for %s changed: %s → %s", dev.name, dev.host, new_host)
+            dev.host = new_host
+            # Drop the push guard so the next online transition re-pushes config.
+            self._pushing.discard(mac)
+            # Close the stale session; its APIClient is bound to the old IP.
+            if mac in self._active_connections:
+                await self.async_close_session(mac)
+            return
+
+    @callback
     def _on_device_registry_updated(self, event: Any) -> None:
         """Handle device registry changes — clean up on remove, push refresh on update."""
         action = event.data.get("action")
@@ -750,7 +784,11 @@ class DeviceManager:
         """Clean up stored settings and runtime state for a removed device."""
         await self.async_close_session(mac)
         self._store.devices.pop(mac, None)
-        self.devices.pop(mac, None)
+        dev = self.devices.pop(mac, None)
+        if dev is not None and dev.esphome_config_entry_id:
+            unsub = self._entry_update_unsubs.pop(dev.esphome_config_entry_id, None)
+            if unsub is not None:
+                unsub()
         self._build_flags.pop(mac, None)
         self._session_locks.pop(mac, None)
         self._entity_update_macs.discard(mac)
