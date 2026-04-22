@@ -1334,17 +1334,13 @@ describe("_dismissTooltips with tooltips", () => {
 	});
 });
 
-// ========================
-// _renderVisibleCells mousedown/mouseenter handlers
-// ========================
-describe("_renderVisibleCells cell handlers", () => {
-	it("cell mousedown handler with inRange=true calls _onCellMouseDown", () => {
+describe("cell mousedown handler", () => {
+	it("mousedown on inside cell sets dirty", () => {
 		const a = createPanel() as any;
 		a._grid = initGridFromRoom(3000, 4000);
 		a._activeZone = 0;
 		a._dirty = false;
 
-		// Find an inside cell
 		let insideIdx = -1;
 		for (let i = 0; i < a._grid.length; i++) {
 			if (a._grid[i] & CELL_ROOM_BIT) {

@@ -1223,34 +1223,6 @@ describe("_renderTemplateLoadDialog DOM events", () => {
 	});
 });
 
-describe("_renderVisibleCells cell events", () => {
-	it("cell mousedown triggers painting", () => {
-		const a = createPanel() as any;
-		a._activeZone = 0;
-		const result = a._renderVisibleCells(5, 15, 0, 10, 20);
-		const c = renderTo(result[0]); // render just first cell
-
-		const cell = c.querySelector(".cell") as HTMLElement;
-		if (cell) {
-			cell.dispatchEvent(new MouseEvent("mousedown"));
-		}
-	});
-
-	it("cell mouseenter triggers paint continue", () => {
-		const a = createPanel() as any;
-		a._activeZone = 0;
-		a._isPainting = true;
-		a._paintAction = "set";
-		const result = a._renderVisibleCells(5, 15, 0, 10, 20);
-		const c = renderTo(result[0]);
-
-		const cell = c.querySelector(".cell") as HTMLElement;
-		if (cell) {
-			cell.dispatchEvent(new MouseEvent("mouseenter"));
-		}
-	});
-});
-
 describe("render delete calibration dialog event", () => {
 	it("cancel button in delete dialog", () => {
 		const a = createPanel() as any;

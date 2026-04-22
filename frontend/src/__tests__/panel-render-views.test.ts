@@ -11,12 +11,7 @@ import type { EppFurnitureSidebar } from "../components/epp-furniture-sidebar.js
 import type { EppGrid } from "../components/epp-grid.js";
 import type { EppSettingsView } from "../components/epp-settings-view.js";
 import type { EppWizard } from "../components/epp-wizard.js";
-import {
-	CELL_ROOM_BIT,
-	cellSetZone,
-	GRID_CELL_COUNT,
-	initGridFromRoom,
-} from "../lib/grid.js";
+import { GRID_CELL_COUNT, initGridFromRoom } from "../lib/grid.js";
 import { ZONE_COLORS } from "../lib/zone-defaults.js";
 import { createZoneEngineState } from "../lib/zone-engine.js";
 
@@ -921,76 +916,6 @@ describe("_renderTemplateLoadDialog", () => {
 			{ name: "T2", grid: [], zones: [], roomWidth: 5000, roomDepth: 6000 },
 		];
 		const result = a._renderTemplateLoadDialog();
-		expect(result).toBeDefined();
-	});
-});
-
-describe("_renderVisibleCells", () => {
-	it("renders cells for a visible region", () => {
-		const a = createPanel() as any;
-		a._grid = initGridFromRoom(3000, 4000);
-		const result = a._renderVisibleCells(5, 15, 0, 10, 20);
-		expect(result).toBeDefined();
-		expect(Array.isArray(result)).toBe(true);
-		expect(result.length).toBeGreaterThan(0);
-	});
-
-	it("renders cells with hit counts and targets", () => {
-		const a = createPanel() as any;
-		a._grid = initGridFromRoom(3000, 4000);
-		a._showHitCounts = true;
-		a._zoneState = {
-			occupancy: { 0: true },
-			target_counts: { 0: 5 },
-			frame_count: 100,
-		};
-		a._targets = [
-			{
-				x: 1500,
-				y: 2000,
-				raw_x: 1500,
-				raw_y: 2000,
-				speed: 0,
-				status: "active" as const,
-				signal: 5,
-			},
-		];
-		a._zoneConfigs[1] = {
-			name: "Zone 1",
-			color: ZONE_COLORS[0],
-			type: "normal",
-		};
-		const result = a._renderVisibleCells(5, 15, 0, 10, 20);
-		expect(result).toBeDefined();
-	});
-
-	it("renders cells with zone occupancy", () => {
-		const a = createPanel() as any;
-		a._grid = initGridFromRoom(3000, 4000);
-		// Paint some zone 1
-		for (let i = 0; i < a._grid.length; i++) {
-			if (a._grid[i] & CELL_ROOM_BIT) {
-				a._grid[i] = cellSetZone(a._grid[i], 1);
-				break;
-			}
-		}
-		a._zoneConfigs[1] = {
-			name: "Zone 1",
-			color: ZONE_COLORS[0],
-			type: "normal",
-		};
-		a._targets = [
-			{
-				x: 1500,
-				y: 2000,
-				raw_x: 1500,
-				raw_y: 2000,
-				speed: 0,
-				status: "active" as const,
-				signal: 5,
-			},
-		];
-		const result = a._renderVisibleCells(5, 15, 0, 10, 20);
 		expect(result).toBeDefined();
 	});
 });

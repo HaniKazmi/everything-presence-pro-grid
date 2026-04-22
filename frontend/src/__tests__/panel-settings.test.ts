@@ -108,21 +108,6 @@ describe("_toggleAccordion", () => {
 	});
 });
 
-describe("_getCellColor", () => {
-	it("returns a color string for outside cells", () => {
-		const a = createPanel() as any;
-		const result = a._getCellColor(0);
-		expect(typeof result).toBe("string");
-	});
-
-	it("returns a color string for inside cells", () => {
-		const a = createPanel() as any;
-		a._grid[0] = 0x80; // CELL_ROOM_BIT
-		const result = a._getCellColor(0);
-		expect(typeof result).toBe("string");
-	});
-});
-
 describe("_getRoomBounds", () => {
 	it("returns bounds for empty grid", () => {
 		const a = createPanel() as any;
