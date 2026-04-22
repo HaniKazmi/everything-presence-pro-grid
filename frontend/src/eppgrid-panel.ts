@@ -281,8 +281,10 @@ export class EPPGridPanel extends LitElement {
 		this._haConnected = true;
 		if (wasDisconnected) {
 			// Device list / session subscriptions may have been torn down during
-			// the outage — re-bootstrap so the UI recovers without a manual reload.
-			this._initialize().catch(() => {
+			// the outage — re-bootstrap so the UI recovers without a manual
+			// reload.  Use refetchConfig=false so _applyConfig doesn't clobber
+			// in-memory state (perspective, furniture, zones, unsaved edits).
+			this._initialize({ refetchConfig: false }).catch(() => {
 				// _initialize already traps its own failures; guard here too so
 				// a late rejection can't surface as uncaught.
 			});
@@ -502,8 +504,11 @@ export class EPPGridPanel extends LitElement {
 
 	private _initRetryTimer?: ReturnType<typeof setTimeout>;
 
-	private async _initialize(): Promise<void> {
+	private async _initialize(
+		opts: { refetchConfig?: boolean } = {},
+	): Promise<void> {
 		if (!this.hass) return;
+		const refetchConfig = opts.refetchConfig !== false;
 		const isRetry = this._initRetryTimer !== undefined;
 		if (this._initRetryTimer) {
 			clearTimeout(this._initRetryTimer);
@@ -514,16 +519,24 @@ export class EPPGridPanel extends LitElement {
 		}
 		this._deviceCtrl.hass = this.hass;
 		await this._subscribeDevices();
-		if (!this._selectedMac && this._devices.length === 0) {
-			// Integration may not be loaded yet — retry silently in the
-			// background so the UI does not flicker between "no devices"
-			// and "loading" every 2 seconds.
+		if (this._devices.length === 0) {
+			// Either first boot before devices are configured, or the HA
+			// integration is still coming up after a restart (custom WS
+			// commands not yet registered, initial push empty).  Retry
+			// silently so the UI doesn't flicker between "no devices" and
+			// "loading" every 2 seconds.
 			this._loading = false;
-			this._initRetryTimer = setTimeout(() => this._initialize(), 2000);
+			this._initRetryTimer = setTimeout(() => this._initialize(opts), 2000);
 			return;
 		}
 		if (this._selectedMac && this._isSelectedDeviceAvailable()) {
-			await this._loadDeviceConfig(this._selectedMac);
+			if (refetchConfig) {
+				await this._loadDeviceConfig(this._selectedMac);
+			} else {
+				// Reconnect path: keep the in-memory config (and any unsaved
+				// edits) intact, just re-establish the live stream.
+				await this._deviceCtrl.reopenSession(this._selectedMac).catch(() => {});
+			}
 		}
 		this._loading = false;
 	}

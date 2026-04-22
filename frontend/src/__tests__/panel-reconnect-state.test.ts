@@ -201,4 +201,119 @@ describe("panel state survives device offline→online", () => {
 		expect(sessionSubCount()).toBeGreaterThan(before);
 		expect(a._deviceCtrl.hasDeviceSession).toBe(true);
 	});
+
+	// --- HA WebSocket disconnect/reconnect paths ---
+	//
+	// On HA restart / WS drop, `_onHaReady` fires after reconnect and
+	// triggers `_initialize`. That path must not refetch config (which
+	// would call `_applyConfig` and overwrite in-memory state), and must
+	// keep retrying when the device list comes back empty (integration
+	// hasn't registered its custom WS commands yet).
+
+	it("does not refetch config when _onHaReady fires after a WS drop", async () => {
+		const { el, a, hass, getConfigCallCount } = await mountPanel([
+			makeDevice("aa", true),
+		]);
+		const before = getConfigCallCount();
+		// Simulate HA dropping the socket, then reconnecting.
+		a._haConnected = false;
+		(hass.connection as any).connected = true;
+		a._onHaReady();
+		await new Promise((r) => setTimeout(r, 0));
+		await new Promise((r) => setTimeout(r, 0));
+		await el.updateComplete;
+
+		// No additional get_config round-trip — in-memory config is kept.
+		expect(getConfigCallCount()).toBe(before);
+	});
+
+	it("preserves editor state across an HA reconnect", async () => {
+		const { el, a, hass } = await mountPanel([makeDevice("aa", true)]);
+		a._perspective = [1, 2, 3, 4, 5, 6, 7, 8, 9];
+		a._roomWidth = 4000;
+		a._roomDepth = 3000;
+		a._view = "editor";
+		a._dirty = true;
+		a._furniture = [
+			{
+				id: "f1",
+				type: "icon",
+				icon: "mdi:sofa",
+				label: "Sofa",
+				x: 0,
+				y: 0,
+				width: 600,
+				height: 600,
+				rotation: 0,
+				lockAspect: true,
+			},
+		];
+		await el.updateComplete;
+
+		a._haConnected = false;
+		(hass.connection as any).connected = true;
+		a._onHaReady();
+		await new Promise((r) => setTimeout(r, 0));
+		await new Promise((r) => setTimeout(r, 0));
+		await el.updateComplete;
+
+		expect(a._view).toBe("editor");
+		expect(a._dirty).toBe(true);
+		expect(a._perspective).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9]);
+		expect(a._furniture).toHaveLength(1);
+	});
+
+	it("retries subscribeDeviceList when the list arrives empty (integration still booting)", async () => {
+		// Mount with an empty initial list, simulating HA restart where
+		// `eppgrid/subscribe_device_list` succeeds but the integration
+		// hasn't discovered devices yet.  The panel should schedule a
+		// silent retry even though `_selectedMac` is still set from a
+		// prior session.
+		vi.useFakeTimers();
+		try {
+			localStorage.setItem("epp_selected_mac", "aa");
+			let hasDevice = false;
+			let subscribeCount = 0;
+			const hass: any = {
+				callWS: vi.fn().mockResolvedValue({}),
+				connection: {
+					connected: true,
+					addEventListener: vi.fn(),
+					removeEventListener: vi.fn(),
+					subscribeMessage: vi.fn().mockImplementation((cb: any, msg: any) => {
+						if (msg.type === "eppgrid/subscribe_device_list") {
+							subscribeCount++;
+							cb({ devices: hasDevice ? [makeDevice("aa", true)] : [] });
+						}
+						return Promise.resolve(() => {});
+					}),
+				},
+				locale: { language: "en" },
+				language: "en",
+			};
+			const el = document.createElement("eppgrid-panel") as EPPGridPanel;
+			el.hass = hass;
+			document.body.appendChild(el);
+			mountedPanels.push(el);
+			await el.updateComplete;
+			await vi.advanceTimersByTimeAsync(0);
+			await vi.advanceTimersByTimeAsync(0);
+
+			// Nothing available yet — empty device list, retry scheduled.
+			expect((el as any)._devices).toEqual([]);
+			const before = subscribeCount;
+
+			// Simulate the integration finishing its load: the next
+			// subscription will now return the device.
+			hasDevice = true;
+			await vi.advanceTimersByTimeAsync(2000);
+			await vi.advanceTimersByTimeAsync(0);
+
+			expect(subscribeCount).toBeGreaterThan(before);
+			expect((el as any)._devices).toHaveLength(1);
+			expect((el as any)._devices[0].mac).toBe("aa");
+		} finally {
+			vi.useRealTimers();
+		}
+	});
 });
