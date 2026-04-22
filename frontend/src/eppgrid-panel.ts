@@ -2810,6 +2810,7 @@ export class EPPGridPanel extends LitElement {
 
 		try {
 			ctrl.updateUsbState({ step: "wifi_connecting" });
+			console.debug(`[wifi-provision] sending WIFI_SETTINGS ssid="${ssid}"`);
 			await runWifiProvision(writer, ssid, password);
 			if (ctrl.opId !== myOp) return;
 
