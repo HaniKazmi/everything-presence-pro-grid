@@ -853,7 +853,7 @@ describe("interference zones", () => {
 		expect(state.localZoneState.get(1)?.pendingSince).not.toBeNull();
 	});
 
-	it("interference suppress (7) prevents detection entirely", () => {
+	it("suppress overlay prevents detection entirely", () => {
 		const grid = makeParityGrid();
 		grid[1 * GRID_COLS + 9] = cellSetOverlay(
 			cellSetZone(CELL_ROOM_BIT, 1),
