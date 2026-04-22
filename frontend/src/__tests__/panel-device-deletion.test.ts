@@ -1,9 +1,11 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { EPPGridPanel } from "../eppgrid-panel.js";
 import "../eppgrid-panel.js";
 import { GRID_CELL_COUNT } from "../lib/grid.js";
 
 type DeviceListCb = (msg: { devices: any[] }) => void;
+
+const mountedPanels: EPPGridPanel[] = [];
 
 function mockDeviceInfo(mac: string, name: string, available = true) {
 	return {
@@ -65,6 +67,7 @@ async function mountPanel(initialDevices: any[]): Promise<{
 	const el = document.createElement("eppgrid-panel") as EPPGridPanel;
 	el.hass = hass;
 	document.body.appendChild(el);
+	mountedPanels.push(el);
 	await el.updateComplete;
 	await new Promise((r) => setTimeout(r, 0));
 	await new Promise((r) => setTimeout(r, 0));
@@ -79,6 +82,18 @@ async function mountPanel(initialDevices: any[]): Promise<{
 describe("panel device list transitions", () => {
 	beforeEach(() => {
 		localStorage.clear();
+	});
+
+	afterEach(() => {
+		// Tear down every panel mounted via mountPanel() so DOM / controllers
+		// / listeners don't leak between tests and cause order-dependent
+		// failures.
+		while (mountedPanels.length) {
+			const el = mountedPanels.pop()!;
+			if (el.parentNode) {
+				el.parentNode.removeChild(el);
+			}
+		}
 	});
 
 	// --- Auto-switch when the selected device disappears but others remain ---
@@ -276,7 +291,5 @@ describe("panel device list transitions", () => {
 		await el2.updateComplete;
 
 		expect(a2._sensorState.occupancy).toBe(false);
-		document.body.removeChild(el1);
-		document.body.removeChild(el2);
 	});
 });

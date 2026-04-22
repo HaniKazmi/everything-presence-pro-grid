@@ -7,11 +7,13 @@
  * behind your back.
  */
 
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { EPPGridPanel } from "../eppgrid-panel.js";
 import "../eppgrid-panel.js";
 
 type DeviceListCb = (msg: { devices: any[] }) => void;
+
+const mountedPanels: EPPGridPanel[] = [];
 
 function makeDevice(mac: string, available: boolean) {
 	return {
@@ -64,6 +66,7 @@ async function mountPanel(initialDevices: any[]) {
 	const el = document.createElement("eppgrid-panel") as EPPGridPanel;
 	el.hass = hass;
 	document.body.appendChild(el);
+	mountedPanels.push(el);
 	await el.updateComplete;
 	await new Promise((r) => setTimeout(r, 0));
 	await new Promise((r) => setTimeout(r, 0));
@@ -87,6 +90,15 @@ async function mountPanel(initialDevices: any[]) {
 describe("panel state survives device offline→online", () => {
 	beforeEach(() => {
 		localStorage.clear();
+	});
+
+	afterEach(() => {
+		while (mountedPanels.length) {
+			const el = mountedPanels.pop()!;
+			if (el.parentNode) {
+				el.parentNode.removeChild(el);
+			}
+		}
 	});
 
 	it("preserves editor view and dirty state across unavailable→available", async () => {
@@ -132,7 +144,6 @@ describe("panel state survives device offline→online", () => {
 		expect(a._perspective).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9]);
 		expect(a._roomWidth).toBe(4000);
 		expect(a._roomDepth).toBe(3000);
-		document.body.removeChild(el);
 	});
 
 	it("preserves perspective when device list arrives transiently empty then repopulates", async () => {
@@ -158,7 +169,6 @@ describe("panel state survives device offline→online", () => {
 		expect(a._perspective).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9]);
 		expect(a._view).toBe("editor");
 		expect(a._selectedMac).toBe("aa");
-		document.body.removeChild(el);
 	});
 
 	it("does not refetch or reapply config on the reconnect path", async () => {
@@ -174,7 +184,6 @@ describe("panel state survives device offline→online", () => {
 		await new Promise((r) => setTimeout(r, 0));
 
 		expect(getConfigCallCount()).toBe(before);
-		document.body.removeChild(el);
 	});
 
 	it("re-opens a fresh device session when the device transitions back to available", async () => {
@@ -191,6 +200,5 @@ describe("panel state survives device offline→online", () => {
 
 		expect(sessionSubCount()).toBeGreaterThan(before);
 		expect(a._deviceCtrl.hasDeviceSession).toBe(true);
-		document.body.removeChild(el);
 	});
 });
