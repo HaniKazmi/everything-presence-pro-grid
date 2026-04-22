@@ -364,6 +364,49 @@ describe("DeviceController", () => {
 			);
 			expect(deviceSubs).toHaveLength(2);
 		});
+
+		it("does NOT dedupe concurrent calls for different macs — the new mac must open its own session", async () => {
+			// Simulates a device-switch arriving while a reopen for the
+			// previous mac is still in flight. The reopen for the new mac
+			// must eventually subscribe to the new device, not silently
+			// attach the panel to the old one.
+			let resolveAa!: (unsub: () => void) => void;
+			const unsubs: Record<string, () => void> = {};
+			const subscribeMessage = vi.fn().mockImplementation((_cb, msg) => {
+				if (msg.type === "eppgrid/subscribe_device") {
+					if (msg.mac === "aa") {
+						return new Promise<() => void>((resolve) => {
+							resolveAa = (fn) => {
+								unsubs.aa = fn;
+								resolve(fn);
+							};
+						});
+					}
+					const unsubBb = vi.fn();
+					unsubs.bb = unsubBb;
+					return Promise.resolve(unsubBb);
+				}
+				return Promise.resolve(vi.fn());
+			});
+			ctrl.hass = {
+				callWS: vi.fn().mockResolvedValue({}),
+				connection: { subscribeMessage },
+			};
+
+			const p1 = ctrl.reopenSession("aa");
+			const p2 = ctrl.reopenSession("bb");
+			resolveAa(vi.fn());
+			await Promise.all([p1, p2]);
+
+			const deviceSubs = subscribeMessage.mock.calls.filter(
+				(c: any[]) => c[1]?.type === "eppgrid/subscribe_device",
+			);
+			const subbedMacs = deviceSubs.map((c: any[]) => c[1].mac);
+			expect(subbedMacs).toContain("aa");
+			expect(subbedMacs).toContain("bb");
+			// After both settle, the "bb" session is the live one.
+			expect(ctrl.hasDeviceSession).toBe(true);
+		});
 	});
 
 	describe("loadDeviceConfig", () => {
@@ -1058,6 +1101,33 @@ describe("DeviceController", () => {
 			(ctrl as any)._applyDeviceList([makeDevice("aa", false)]);
 
 			expect(onClosed).toHaveBeenCalledTimes(1);
+		});
+	});
+
+	describe("_applyDeviceList seeds selectedMac from localStorage on empty list", () => {
+		it("seeds selectedMac from localStorage when an empty list arrives with no prior selection", () => {
+			// Scenario: HA restart, panel mounts with _selectedMac="" but
+			// localStorage still has the user's previous choice. First
+			// subscribe push arrives empty (integration still booting).
+			// Without the seed, the render falls through to the "no devices"
+			// placeholder; with it, the offline banner is shown instead and
+			// the persisted selection survives the reconnect window.
+			localStorage.setItem("epp_selected_mac", "aa");
+			expect(ctrl.selectedMac).toBe("");
+
+			(ctrl as any)._applyDeviceList([]);
+
+			expect(ctrl.selectedMac).toBe("aa");
+		});
+
+		it("does not overwrite an already-set selectedMac on empty list", () => {
+			localStorage.setItem("epp_selected_mac", "bb");
+			ctrl.selectedMac = "aa";
+
+			(ctrl as any)._applyDeviceList([]);
+
+			// Empty list is ambiguous; preserve whatever selection we had.
+			expect(ctrl.selectedMac).toBe("aa");
 		});
 	});
 });

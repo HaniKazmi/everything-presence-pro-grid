@@ -57,7 +57,7 @@ export class DeviceController implements ReactiveController {
 	private _reconnecting = false;
 	private _connectionFailed = false;
 	private _lastSelectedAvailable: boolean | null = null;
-	private _reopenInFlight?: Promise<void>;
+	private _reopenInFlight?: { mac: string; promise: Promise<void> };
 
 	constructor(host: ReactiveControllerHost) {
 		this._host = host;
@@ -177,10 +177,16 @@ export class DeviceController implements ReactiveController {
 		// to the "no devices" placeholder mid-reconnect. An empty list
 		// just means "I don't know yet".
 		const prevSelectedMac = this.selectedMac;
+		const stored = localStorage.getItem("epp_selected_mac");
 		if (this.devices.length > 0) {
-			const stored = localStorage.getItem("epp_selected_mac");
 			const match = stored && this.devices.find((d) => d.mac === stored);
 			this.selectedMac = match ? stored! : this.devices[0].mac;
+		} else if (!this.selectedMac && stored) {
+			// Empty list but a previous selection is persisted — seed from
+			// localStorage so the UI falls through to the offline banner
+			// (which treats missing-from-list as offline) instead of the
+			// "no devices configured" placeholder.
+			this.selectedMac = stored;
 		}
 		if (prevSelectedMac !== this.selectedMac) {
 			// Treat the next push as an initial observation for the new
@@ -242,27 +248,42 @@ export class DeviceController implements ReactiveController {
 	 * host's in-memory config is still valid — avoids clobbering any
 	 * unsaved edits with a server round-trip.
 	 *
-	 * Dedupes concurrent calls: the panel's `updated()` guard fires on
-	 * every hass property change, which would otherwise kick off many
-	 * parallel `openDeviceSession` pipelines while the first subscribe
-	 * is still in flight, leaking subscriptions server-side.
+	 * Dedupes concurrent calls for the same mac: the panel's `updated()`
+	 * guard fires on every hass property change, which would otherwise
+	 * kick off many parallel `openDeviceSession` pipelines while the
+	 * first subscribe is still in flight, leaking subscriptions
+	 * server-side.  A call for a *different* mac (e.g. user switched
+	 * devices mid-reconnect) waits for the in-flight one to finish,
+	 * then starts a fresh reopen so the new selection wins.
 	 */
 	async reopenSession(mac: string): Promise<void> {
 		if (!this._hass || !mac) return;
-		if (this._reopenInFlight) {
-			return this._reopenInFlight;
+		const inFlight = this._reopenInFlight;
+		if (inFlight) {
+			if (inFlight.mac === mac) return inFlight.promise;
+			// Different mac requested — let the old reopen settle so its
+			// subscribe / closeDeviceSession sequence doesn't race with
+			// ours, then proceed with a fresh reopen for the new mac.
+			await inFlight.promise.catch(() => {});
 		}
-		this._reopenInFlight = (async () => {
+		const entry: { mac: string; promise: Promise<void> } = {
+			mac,
+			promise: Promise.resolve(),
+		};
+		entry.promise = (async () => {
 			try {
 				await this.openDeviceSession(mac);
 				if (this._unsubDevice) {
 					this.subscribeTargets(mac);
 				}
 			} finally {
-				this._reopenInFlight = undefined;
+				if (this._reopenInFlight === entry) {
+					this._reopenInFlight = undefined;
+				}
 			}
 		})();
-		return this._reopenInFlight;
+		this._reopenInFlight = entry;
+		return entry.promise;
 	}
 
 	// --- Session management ---
