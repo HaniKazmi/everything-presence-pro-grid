@@ -19,10 +19,10 @@ constexpr uint8_t CELL_ZONE_MASK = 0x0E;
 // Overlay field — bits 4-5, kind 0..3
 constexpr uint8_t CELL_OVERLAY_MASK = 0x30;
 constexpr int CELL_OVERLAY_SHIFT = 4;
-constexpr int CELL_OVERLAY_NONE = 0;
-constexpr int CELL_OVERLAY_ENTRY = 1;
-constexpr int CELL_OVERLAY_INTERFERENCE = 2;
-constexpr int CELL_OVERLAY_SUPPRESS = 3;
+constexpr uint8_t CELL_OVERLAY_NONE = 0;
+constexpr uint8_t CELL_OVERLAY_ENTRY = 1;
+constexpr uint8_t CELL_OVERLAY_INTERFERENCE = 2;
+constexpr uint8_t CELL_OVERLAY_SUPPRESS = 3;
 
 // Limits
 constexpr int MAX_TARGETS = 3;

@@ -296,7 +296,7 @@ const ProcessingResult& ZoneEngine::tick(const WindowOutput& window, float times
 
             // Use raw-frame on_overlay (sticky from component) — catches cases
             // where the median position hasn't reached the overlay cell yet
-            bool on_overlay = tw.on_overlay || (grid_.cell_overlay(cell) == CELL_OVERLAY_ENTRY);
+            bool on_overlay = tw.on_overlay || (overlay == CELL_OVERLAY_ENTRY);
             bool needs_gating = !on_overlay && !continuous;
             // Instant entry suppressed when target cell carries interference —
             // overlay on a neighbour must not negate the raised threshold.

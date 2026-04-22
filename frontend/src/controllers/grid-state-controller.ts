@@ -18,9 +18,6 @@ import {
 	updateFurnitureItem,
 } from "../lib/furniture.js";
 import {
-	CELL_OVERLAY_ENTRY,
-	CELL_OVERLAY_INTERFERENCE,
-	CELL_OVERLAY_SUPPRESS,
 	cellIsInside,
 	cellZone,
 	GRID_CELL_MM,
@@ -29,6 +26,8 @@ import {
 	initGridFromRoom,
 	MAX_ZONES,
 	NUM_ZONE_SLOTS,
+	OVERLAY_MODE_TO_KIND,
+	type OverlayMode,
 } from "../lib/grid.js";
 import { autoDetectionRange } from "../lib/room-geometry.js";
 import {
@@ -37,17 +36,8 @@ import {
 	type ZoneConfig,
 } from "../lib/zone-defaults.js";
 
-function overlayModeToKind(mode: string | null): number | null {
-	switch (mode) {
-		case "entry":
-			return CELL_OVERLAY_ENTRY;
-		case "interference":
-			return CELL_OVERLAY_INTERFERENCE;
-		case "suppress":
-			return CELL_OVERLAY_SUPPRESS;
-		default:
-			return null;
-	}
+function overlayModeToKind(mode: OverlayMode): number | null {
+	return mode === null ? null : OVERLAY_MODE_TO_KIND[mode];
 }
 
 /**
@@ -118,32 +108,25 @@ export class GridStateController implements ReactiveController {
 			this.host._selectedFurnitureId = null;
 			return;
 		}
-		// Overlay painting mode (entry / interference / suppress)
 		const overlayKind = overlayModeToKind(this.host._overlayMode);
 		if (overlayKind !== null) {
-			this.host._isPainting = true;
-			this.host._frozenBounds = this.host._getVisibleRoomBounds();
 			this.host._paintAction = determineOverlayPaintAction(
 				this.host._grid[index],
 				overlayKind,
 			);
-			this.applyPaintToCell(index);
-			const onUp = () => {
-				this.onCellMouseUp();
-				window.removeEventListener("mouseup", onUp);
-			};
-			window.addEventListener("mouseup", onUp);
+		} else if (
+			this.host._sidebarTab === "zones" &&
+			this.host._activeZone !== null
+		) {
+			this.host._paintAction = determinePaintAction(
+				this.host._grid[index],
+				this.host._activeZone,
+			);
+		} else {
 			return;
 		}
-		// Zone painting mode — only on zones tab
-		if (this.host._sidebarTab !== "zones" || this.host._activeZone === null)
-			return;
 		this.host._isPainting = true;
 		this.host._frozenBounds = this.host._getVisibleRoomBounds();
-		this.host._paintAction = determinePaintAction(
-			this.host._grid[index],
-			this.host._activeZone,
-		);
 		this.applyPaintToCell(index);
 		const onUp = () => {
 			this.onCellMouseUp();
@@ -187,7 +170,7 @@ export class GridStateController implements ReactiveController {
 				this.host._paintAction,
 			);
 		}
-		if (newValue === null) return;
+		if (newValue === null || newValue === this.host._grid[index]) return;
 
 		this.host._grid = new Uint8Array(this.host._grid);
 		this.host._grid[index] = newValue;

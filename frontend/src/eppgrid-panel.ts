@@ -40,6 +40,7 @@ import {
 	getRoomBounds,
 	initGridFromRoom,
 	MAX_RANGE,
+	type OverlayMode,
 } from "./lib/grid.js";
 import { applyPerspective, getInversePerspective } from "./lib/perspective.js";
 import {
@@ -248,7 +249,7 @@ export class EPPGridPanel extends LitElement {
 	private set _zoneEngineState(value: ZoneEngineState) {
 		this._targetCtrl.zoneEngineState = value;
 	}
-	@state() private _overlayMode: string | null = null;
+	@state() private _overlayMode: OverlayMode = null;
 	@state() private _targetMenu: {
 		x: number;
 		y: number;
@@ -2237,7 +2238,9 @@ export class EPPGridPanel extends LitElement {
 									? html`<epp-overlay-sidebar
                     .overlayMode=${this._overlayMode}
                     .localize=${this._localize}
-                    @overlay-select=${(e: CustomEvent) => {
+                    @overlay-select=${(
+											e: CustomEvent<{ mode: OverlayMode }>,
+										) => {
 											this._overlayMode = e.detail.mode;
 										}}
                   ></epp-overlay-sidebar>`

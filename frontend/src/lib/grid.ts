@@ -31,6 +31,15 @@ export const cellOverlay = (v: number): number =>
 export const cellSetOverlay = (v: number, kind: number): number =>
 	(v & ~CELL_OVERLAY_MASK) | ((kind & 0x03) << CELL_OVERLAY_SHIFT);
 
+/** UI-level overlay mode. null = not in overlay paint mode. */
+export type OverlayMode = "entry" | "interference" | "suppress" | null;
+
+export const OVERLAY_MODE_TO_KIND: Record<NonNullable<OverlayMode>, number> = {
+	entry: CELL_OVERLAY_ENTRY,
+	interference: CELL_OVERLAY_INTERFERENCE,
+	suppress: CELL_OVERLAY_SUPPRESS,
+};
+
 /** Get room bounds with 1-cell padding around inside cells. */
 export function getRoomBounds(grid: Uint8Array): {
 	minCol: number;

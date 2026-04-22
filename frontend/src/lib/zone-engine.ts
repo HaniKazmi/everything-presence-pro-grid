@@ -85,6 +85,27 @@ export function createZoneEngineState(): ZoneEngineState {
 const MAX_MOVEMENT_CELLS = 5;
 const MAX_TARGETS = 3;
 
+/** True if any cell in the 3×3 around (row,col) is an entry overlay in the same zone. */
+function hasEntryOverlayNear(
+	grid: Uint8Array,
+	row: number,
+	col: number,
+	zoneId: number,
+): boolean {
+	for (let dr = -1; dr <= 1; dr++) {
+		for (let dc = -1; dc <= 1; dc++) {
+			const nr = row + dr;
+			const nc = col + dc;
+			if (nr < 0 || nr >= GRID_ROWS || nc < 0 || nc >= GRID_COLS) continue;
+			const nv = grid[nr * GRID_COLS + nc];
+			if (cellOverlay(nv) === CELL_OVERLAY_ENTRY && cellZone(nv) === zoneId) {
+				return true;
+			}
+		}
+	}
+	return false;
+}
+
 export function runLocalZoneEngine(
 	state: ZoneEngineState,
 	params: ZoneEngineParams,
@@ -97,40 +118,29 @@ export function runLocalZoneEngine(
 	const targetZoneCurr: (number | null)[] = [null, null, null];
 	const targetLeftRoom: boolean[] = [false, false, false];
 
-	// Snapshot prev cell overlay info before per-target loop clears it.
-	// Check the target's cell AND its neighbours — the median position may
-	// land one cell away from the actual overlay cell at the boundary.
+	// Snapshot prev-position overlay/zone before the per-target loop overwrites
+	// state.targetPrev. The median position may land one cell away from the
+	// actual overlay cell at a boundary, so we check 3×3 neighbours.
 	const targetWasOnOverlay: boolean[] = [false, false, false];
 	const targetPrevZone: (number | null)[] = [null, null, null];
 	for (let i = 0; i < MAX_TARGETS && i < params.targets.length; i++) {
 		const prev = state.targetPrev[i];
-		if (prev !== null) {
-			const prevIdx = prev.row * GRID_COLS + prev.col;
-			if (
-				prevIdx >= 0 &&
-				prevIdx < GRID_CELL_COUNT &&
-				cellIsInside(params.grid[prevIdx])
-			) {
-				const prevZid = cellZone(params.grid[prevIdx]);
-				targetPrevZone[i] = prevZid;
-				// Check cell and same-zone neighbours for overlay
-				for (let dr = -1; dr <= 1 && !targetWasOnOverlay[i]; dr++) {
-					for (let dc = -1; dc <= 1 && !targetWasOnOverlay[i]; dc++) {
-						const nr = prev.row + dr;
-						const nc = prev.col + dc;
-						if (nr >= 0 && nr < GRID_ROWS && nc >= 0 && nc < GRID_COLS) {
-							const ni = nr * GRID_COLS + nc;
-							if (
-								cellOverlay(params.grid[ni]) === CELL_OVERLAY_ENTRY &&
-								cellZone(params.grid[ni]) === prevZid
-							) {
-								targetWasOnOverlay[i] = true;
-							}
-						}
-					}
-				}
-			}
-		}
+		if (prev === null) continue;
+		const prevIdx = prev.row * GRID_COLS + prev.col;
+		if (
+			prevIdx < 0 ||
+			prevIdx >= GRID_CELL_COUNT ||
+			!cellIsInside(params.grid[prevIdx])
+		)
+			continue;
+		const prevZid = cellZone(params.grid[prevIdx]);
+		targetPrevZone[i] = prevZid;
+		targetWasOnOverlay[i] = hasEntryOverlayNear(
+			params.grid,
+			prev.row,
+			prev.col,
+			prevZid,
+		);
 	}
 
 	for (let i = 0; i < MAX_TARGETS && i < params.targets.length; i++) {
@@ -239,25 +249,9 @@ export function runLocalZoneEngine(
 		const effectiveRenew = hasInterference ? 9 : renew;
 
 		let baseTrigger = isClear ? trigger : effectiveRenew;
-		// Check cell and same-zone neighbours for overlay (median may lag behind actual position)
-		let onEntryOverlay = overlay === CELL_OVERLAY_ENTRY;
-		if (!onEntryOverlay) {
-			for (let dr = -1; dr <= 1 && !onEntryOverlay; dr++) {
-				for (let dc = -1; dc <= 1 && !onEntryOverlay; dc++) {
-					const nr = row + dr;
-					const nc = col + dc;
-					if (nr >= 0 && nr < GRID_ROWS && nc >= 0 && nc < GRID_COLS) {
-						const ni = nr * GRID_COLS + nc;
-						if (
-							cellOverlay(params.grid[ni]) === CELL_OVERLAY_ENTRY &&
-							cellZone(params.grid[ni]) === zid
-						) {
-							onEntryOverlay = true;
-						}
-					}
-				}
-			}
-		}
+		const onEntryOverlay =
+			overlay === CELL_OVERLAY_ENTRY ||
+			hasEntryOverlayNear(params.grid, row, col, zid);
 		const needsGating = !onEntryOverlay && !continuous;
 		// Instant entry suppressed when target cell carries interference —
 		// overlay on a neighbour must not negate the raised threshold.

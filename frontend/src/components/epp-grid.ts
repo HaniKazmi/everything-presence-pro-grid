@@ -31,6 +31,15 @@ import type { Target } from "../types.js";
 import "./epp-furniture-overlay.js";
 import { defaultLocalize, type LocalizeFn } from "../localize.js";
 
+const OVERLAY_STRIPE_CSS: Record<number, string> = {
+	[CELL_OVERLAY_ENTRY]:
+		"background-image: repeating-linear-gradient(45deg, transparent, transparent 6px, rgba(60,60,60,0.7) 6px, rgba(60,60,60,0.7) 8px);",
+	[CELL_OVERLAY_INTERFERENCE]:
+		"background-image: repeating-linear-gradient(-45deg, transparent, transparent 5px, #cc3333 5px, #cc3333 7px);",
+	[CELL_OVERLAY_SUPPRESS]:
+		"background-image: repeating-linear-gradient(-45deg, transparent, transparent 5px, #cc3333 5px, #cc3333 7px), repeating-linear-gradient(45deg, transparent, transparent 5px, #cc3333 5px, #cc3333 7px);",
+};
+
 export class EppGrid extends LitElement {
 	@property({ attribute: false }) grid: Uint8Array = new Uint8Array(0);
 	@property({ attribute: false }) zoneConfigs: (ZoneConfig | null)[] = [];
@@ -257,20 +266,10 @@ export class EppGrid extends LitElement {
 						occupancyStyle = `position: relative; z-index: 1; box-shadow: 0 0 8px 1px color-mix(in srgb, ${zoneColor} 60%, ${mixBase});`;
 					}
 				}
-				let overlayMarker = "";
-				if (inRange && cellIsInside(cellVal)) {
-					const overlay = cellOverlay(cellVal);
-					if (overlay === CELL_OVERLAY_ENTRY) {
-						overlayMarker =
-							"background-image: repeating-linear-gradient(45deg, transparent, transparent 6px, rgba(60,60,60,0.7) 6px, rgba(60,60,60,0.7) 8px);";
-					} else if (overlay === CELL_OVERLAY_INTERFERENCE) {
-						overlayMarker =
-							"background-image: repeating-linear-gradient(-45deg, transparent, transparent 5px, #cc3333 5px, #cc3333 7px);";
-					} else if (overlay === CELL_OVERLAY_SUPPRESS) {
-						overlayMarker =
-							"background-image: repeating-linear-gradient(-45deg, transparent, transparent 5px, #cc3333 5px, #cc3333 7px), repeating-linear-gradient(45deg, transparent, transparent 5px, #cc3333 5px, #cc3333 7px);";
-					}
-				}
+				const overlayMarker =
+					inRange && cellIsInside(cellVal)
+						? (OVERLAY_STRIPE_CSS[cellOverlay(cellVal)] ?? "")
+						: "";
 				cells.push(html`
 					<div
 						class="cell"

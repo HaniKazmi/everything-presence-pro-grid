@@ -113,7 +113,7 @@ class EPPComponent : public esphome::Component {
  protected:
   static constexpr int NUM_TARGETS = 3;
   static constexpr uint8_t NVS_SCHEMA_VERSION = 2;
-  static constexpr const char* FIRMWARE_VERSION_STR = "0.94.0";
+  static constexpr const char* FIRMWARE_VERSION_STR = "0.95.0";
 
   // Target data from LD2450
   ParsedTarget targets_[NUM_TARGETS]{};

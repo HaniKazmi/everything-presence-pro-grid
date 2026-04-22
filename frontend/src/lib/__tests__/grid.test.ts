@@ -210,7 +210,7 @@ describe("initGridFromRoom", () => {
 	});
 });
 
-describe("cellOverlay (new 2-bit overlay field)", () => {
+describe("cellOverlay", () => {
 	it("returns CELL_OVERLAY_NONE for plain room cell", () => {
 		expect(cellOverlay(CELL_ROOM_BIT)).toBe(CELL_OVERLAY_NONE);
 	});
