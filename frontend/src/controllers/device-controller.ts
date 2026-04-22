@@ -1,4 +1,5 @@
 import type { ReactiveController, ReactiveControllerHost } from "lit";
+import { STORAGE_KEY_SELECTED_MAC } from "../lib/storage.js";
 import type { DeviceInfo, RawTarget, Target, TargetStatus } from "../types.js";
 
 /**
@@ -46,6 +47,9 @@ export class DeviceController implements ReactiveController {
 	onRawTargetData?: (targets: RawTarget[]) => void;
 	onDeviceListChanged?: () => void;
 	onSessionClosed?: () => void;
+	/** Selected device transitioned to available. Host decides whether to
+	 * reopen the session (config already loaded) or load config fresh. */
+	onSelectedAvailable?: (mac: string) => void;
 
 	private _host: ReactiveControllerHost;
 	private _hass: any = null;
@@ -126,7 +130,7 @@ export class DeviceController implements ReactiveController {
 			return;
 		}
 
-		const stored = localStorage.getItem("epp_selected_mac");
+		const stored = localStorage.getItem(STORAGE_KEY_SELECTED_MAC);
 		const match =
 			stored && this.devices.find((d: DeviceInfo) => d.mac === stored);
 		this.selectedMac = match ? stored! : (this.devices[0]?.mac ?? "");
@@ -177,7 +181,7 @@ export class DeviceController implements ReactiveController {
 		// to the "no devices" placeholder mid-reconnect. An empty list
 		// just means "I don't know yet".
 		const prevSelectedMac = this.selectedMac;
-		const stored = localStorage.getItem("epp_selected_mac");
+		const stored = localStorage.getItem(STORAGE_KEY_SELECTED_MAC);
 		if (this.devices.length > 0) {
 			const match = stored && this.devices.find((d) => d.mac === stored);
 			this.selectedMac = match ? stored! : this.devices[0].mac;
@@ -203,11 +207,12 @@ export class DeviceController implements ReactiveController {
 			this.closeDeviceSession();
 			this.onSessionClosed?.();
 		}
-		// Initial push has prev === null; the host drives the first connect.
-		// On reconnect we re-open the live session only — we do NOT re-fetch
-		// config, so any unsaved edits in the panel survive the round-trip.
+		// Initial push (prev === null) is skipped — the host's first-load
+		// flow drives the initial connect.  On a real unavailable→available
+		// transition, hand off to the host so it can choose between
+		// reopenSession (config already in memory) and a fresh config load.
 		if (prev === false && nowAvailable && this.selectedMac) {
-			this.reopenSession(this.selectedMac).catch(() => {});
+			this.onSelectedAvailable?.(this.selectedMac);
 		}
 
 		this.onDeviceListChanged?.();
@@ -268,7 +273,7 @@ export class DeviceController implements ReactiveController {
 		}
 		const entry: { mac: string; promise: Promise<void> } = {
 			mac,
-			promise: Promise.resolve(),
+			promise: undefined as unknown as Promise<void>,
 		};
 		entry.promise = (async () => {
 			try {
@@ -468,7 +473,7 @@ export class DeviceController implements ReactiveController {
 		this.selectedMac = mac;
 		this._lastSelectedAvailable = null;
 		this._connectionFailed = false;
-		localStorage.setItem("epp_selected_mac", mac);
+		localStorage.setItem(STORAGE_KEY_SELECTED_MAC, mac);
 		this._host.requestUpdate();
 	}
 }

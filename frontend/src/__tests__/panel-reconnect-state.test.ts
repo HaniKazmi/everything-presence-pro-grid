@@ -7,9 +7,10 @@
  * behind your back.
  */
 
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { EPPGridPanel } from "../eppgrid-panel.js";
 import "../eppgrid-panel.js";
+import { registerPanelCleanup } from "./helpers/panel-cleanup.js";
 
 type DeviceListCb = (msg: { devices: any[] }) => void;
 
@@ -92,14 +93,7 @@ describe("panel state survives device offline→online", () => {
 		localStorage.clear();
 	});
 
-	afterEach(() => {
-		while (mountedPanels.length) {
-			const el = mountedPanels.pop()!;
-			if (el.parentNode) {
-				el.parentNode.removeChild(el);
-			}
-		}
-	});
+	registerPanelCleanup(mountedPanels);
 
 	it("preserves editor view and dirty state across unavailable→available", async () => {
 		const { el, a, pushDeviceList } = await mountPanel([
@@ -326,6 +320,33 @@ describe("panel state survives device offline→online", () => {
 		mountedPanels.push(el2);
 		await el2.updateComplete;
 		expect((el2 as any)._view).toBe("editor");
+	});
+
+	it("loads config (not just reopens session) when the device becomes available for the first time", async () => {
+		// Scenario: user opens the panel while their device is offline.
+		// The controller's auto-reconnect used to always call
+		// reopenSession() on the transition, which doesn't fetch config.
+		// If the panel never successfully loaded config, we need a fetch
+		// here or the UI is stuck on stale/default state forever.
+		const { el, a, pushDeviceList, getConfigCallCount } = await mountPanel([
+			makeDevice("aa", false),
+		]);
+		await el.updateComplete;
+		// No config yet — device was offline on mount, so
+		// `_isSelectedDeviceAvailable` gated out the fetch.
+		expect(a._loadedConfigMac).toBeNull();
+		const before = getConfigCallCount();
+
+		// Device flips to available via a device-list push.
+		pushDeviceList([makeDevice("aa", true)]);
+		await el.updateComplete;
+		await new Promise((r) => setTimeout(r, 0));
+		await new Promise((r) => setTimeout(r, 0));
+		await el.updateComplete;
+
+		// The panel should now have fetched + applied config for "aa".
+		expect(getConfigCallCount()).toBeGreaterThan(before);
+		expect(a._loadedConfigMac).toBe("aa");
 	});
 
 	it("clears the persisted _view when user navigates back to live", async () => {

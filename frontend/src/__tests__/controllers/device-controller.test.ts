@@ -913,12 +913,13 @@ describe("DeviceController", () => {
 		});
 
 		it("resets availability tracker to avoid stale-edge reconnect", () => {
-			const reopenSpy = vi.spyOn(ctrl, "reopenSession").mockResolvedValue();
+			const onSelectedAvailable = vi.fn();
+			ctrl.onSelectedAvailable = onSelectedAvailable;
 
 			// Prime: "aa" available → offline. Tracker latches to false.
 			(ctrl as any)._applyDeviceList([makeDevice("aa", true)]);
 			(ctrl as any)._applyDeviceList([makeDevice("aa", false)]);
-			reopenSpy.mockClear();
+			onSelectedAvailable.mockClear();
 
 			// User switches to "bb" — tracker must reset so the next push
 			// is treated as an initial observation (prev === null) and not
@@ -926,7 +927,7 @@ describe("DeviceController", () => {
 			ctrl.selectDevice("bb");
 			(ctrl as any)._applyDeviceList([makeDevice("bb", true)]);
 
-			expect(reopenSpy).not.toHaveBeenCalled();
+			expect(onSelectedAvailable).not.toHaveBeenCalled();
 		});
 	});
 
@@ -1025,36 +1026,35 @@ describe("DeviceController", () => {
 
 	// --- Availability edge transitions ---
 	describe("availability transitions", () => {
-		it("re-opens session (without refetching config) when selected device transitions offline→online", async () => {
-			const reopenSpy = vi.spyOn(ctrl, "reopenSession").mockResolvedValue();
-			const loadSpy = vi.spyOn(ctrl, "loadDeviceConfig");
+		it("fires onSelectedAvailable (not reopenSession directly) when selected device transitions offline→online", async () => {
+			// The controller hands off to the host via onSelectedAvailable
+			// so the host can choose reopenSession vs loadDeviceConfig based
+			// on whether it has already loaded config for this device.
+			const onSelectedAvailable = vi.fn();
+			ctrl.onSelectedAvailable = onSelectedAvailable;
 
 			(ctrl as any)._applyDeviceList([makeDevice("aa", true)]);
 			ctrl.selectedMac = "aa";
-			reopenSpy.mockClear();
-			loadSpy.mockClear();
+			onSelectedAvailable.mockClear();
 
 			(ctrl as any)._applyDeviceList([makeDevice("aa", false)]);
-			expect(reopenSpy).not.toHaveBeenCalled();
+			expect(onSelectedAvailable).not.toHaveBeenCalled();
 
 			(ctrl as any)._applyDeviceList([makeDevice("aa", true)]);
-			expect(reopenSpy).toHaveBeenCalledWith("aa");
-			// Config must NOT be re-fetched on the reconnect path — the
-			// host keeps its in-memory config so local edits survive.
-			expect(loadSpy).not.toHaveBeenCalled();
+			expect(onSelectedAvailable).toHaveBeenCalledWith("aa");
 		});
 
-		it("does not reconnect when a non-selected device flips availability", async () => {
-			const reopenSpy = vi.spyOn(ctrl, "reopenSession").mockResolvedValue();
+		it("does not fire onSelectedAvailable when a non-selected device flips availability", async () => {
+			const onSelectedAvailable = vi.fn();
+			ctrl.onSelectedAvailable = onSelectedAvailable;
 
 			(ctrl as any)._applyDeviceList([
 				makeDevice("aa", true),
 				makeDevice("bb", true),
 			]);
 			ctrl.selectedMac = "aa";
-			reopenSpy.mockClear();
+			onSelectedAvailable.mockClear();
 
-			// "bb" goes offline and back — "aa" stays available
 			(ctrl as any)._applyDeviceList([
 				makeDevice("aa", true),
 				makeDevice("bb", false),
@@ -1064,18 +1064,19 @@ describe("DeviceController", () => {
 				makeDevice("bb", true),
 			]);
 
-			expect(reopenSpy).not.toHaveBeenCalled();
+			expect(onSelectedAvailable).not.toHaveBeenCalled();
 		});
 
-		it("does not reconnect on the first device_list message", async () => {
+		it("does not fire onSelectedAvailable on the first device_list message", async () => {
 			// The host's first-load flow drives the initial connect, so the
 			// controller must not pre-empt it when prev === null.
-			const reopenSpy = vi.spyOn(ctrl, "reopenSession").mockResolvedValue();
+			const onSelectedAvailable = vi.fn();
+			ctrl.onSelectedAvailable = onSelectedAvailable;
 
 			ctrl.selectedMac = "aa";
 			(ctrl as any)._applyDeviceList([makeDevice("aa", true)]);
 
-			expect(reopenSpy).not.toHaveBeenCalled();
+			expect(onSelectedAvailable).not.toHaveBeenCalled();
 		});
 
 		it("closes device session when selected device transitions online→offline", async () => {

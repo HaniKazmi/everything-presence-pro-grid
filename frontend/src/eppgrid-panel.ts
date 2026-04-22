@@ -49,6 +49,12 @@ import {
 	getVisibleRoomBounds,
 	type SensorFov,
 } from "./lib/room-geometry.js";
+import {
+	persistView,
+	readStoredView,
+	STORAGE_KEY_SELECTED_MAC,
+	type ViewMode,
+} from "./lib/storage.js";
 import { renderTemplateThumbnail } from "./lib/template-thumbnail.js";
 import {
 	detectIpAddress,
@@ -149,30 +155,6 @@ const createInitialZoneState = (): ZoneState => ({
 	target_counts: {},
 	frame_count: 0,
 });
-
-const VIEW_STORAGE_KEY = "epp_view";
-
-function readStoredView(): "live" | "editor" | "settings" {
-	try {
-		const v = localStorage.getItem(VIEW_STORAGE_KEY);
-		if (v === "editor" || v === "settings") return v;
-	} catch {
-		/* localStorage unavailable */
-	}
-	return "live";
-}
-
-function persistView(view: "live" | "editor" | "settings"): void {
-	try {
-		if (view === "live") {
-			localStorage.removeItem(VIEW_STORAGE_KEY);
-		} else {
-			localStorage.setItem(VIEW_STORAGE_KEY, view);
-		}
-	} catch {
-		/* localStorage unavailable */
-	}
-}
 
 export class EPPGridPanel extends LitElement {
 	@property({ attribute: false }) hass: any;
@@ -332,7 +314,7 @@ export class EPPGridPanel extends LitElement {
 	// Persisted to localStorage so a panel recreation (e.g. after HA frontend
 	// refresh on container restart) returns the user to their last tab instead
 	// of dumping them back on the live overview.
-	@state() private _view: "live" | "editor" | "settings" = readStoredView();
+	@state() private _view: ViewMode = readStoredView();
 	@state() private _openAccordions: Set<string> = new Set();
 
 	// Perspective transform state (client-side, set after corner marking)
@@ -531,15 +513,30 @@ export class EPPGridPanel extends LitElement {
 				!this._deviceCtrl.hasDeviceSession &&
 				!this._deviceCtrl.reconnecting
 			) {
-				// Session lost (e.g. after HA reconnect) — re-open the live
-				// stream only. Config stays as-is so any in-flight edits
-				// in the editor survive the round-trip.
-				this._deviceCtrl.reopenSession(this._selectedMac).catch(() => {});
+				// Session lost (e.g. after HA reconnect) — re-establish it,
+				// falling back to a config fetch only if we haven't loaded
+				// config for this device yet.
+				this._ensureSession(this._selectedMac);
 			}
 		}
 	}
 
 	private _initRetryTimer?: ReturnType<typeof setTimeout>;
+
+	/**
+	 * Re-establish the live session for `mac`, loading config from the
+	 * backend only if we haven't already loaded it for this device. The
+	 * "already loaded" path preserves any unsaved editor edits and
+	 * avoids racing with an HA-startup window where the backend store
+	 * may not yet be populated.
+	 */
+	private _ensureSession(mac: string): void {
+		if (this._loadedConfigMac === mac) {
+			this._deviceCtrl.reopenSession(mac).catch(() => {});
+		} else {
+			this._loadDeviceConfig(mac).catch(() => {});
+		}
+	}
 
 	private async _initialize(): Promise<void> {
 		if (!this.hass) return;
@@ -560,20 +557,13 @@ export class EPPGridPanel extends LitElement {
 			// silently so the UI doesn't flicker between "no devices" and
 			// "loading" every 2 seconds.
 			this._loading = false;
-			this._initRetryTimer = setTimeout(() => this._initialize(), 2000);
+			this._initRetryTimer = setTimeout(() => {
+				this._initialize().catch(() => {});
+			}, 2000);
 			return;
 		}
 		if (this._selectedMac && this._isSelectedDeviceAvailable()) {
-			if (this._loadedConfigMac === this._selectedMac) {
-				// Config for this device is already in memory — this is a
-				// reconnect, not a fresh load. Re-establish the live stream
-				// only; any unsaved editor edits (and the backend's saved
-				// perspective, which could be missing mid-HA-startup) stay
-				// as-is.
-				await this._deviceCtrl.reopenSession(this._selectedMac).catch(() => {});
-			} else {
-				await this._loadDeviceConfig(this._selectedMac);
-			}
+			this._ensureSession(this._selectedMac);
 		}
 		this._loading = false;
 	}
@@ -589,14 +579,16 @@ export class EPPGridPanel extends LitElement {
 				this._selectedMac !== "" &&
 				prevMac !== this._selectedMac
 			) {
-				// The selection auto-switched to a different device (e.g. the
-				// previous one was removed from HA while another remained).
-				// Persist the new choice and load its config.
-				localStorage.setItem("epp_selected_mac", this._selectedMac);
+				// Selection auto-switched to a different device (previous
+				// one was removed from HA, another remained).
+				localStorage.setItem(STORAGE_KEY_SELECTED_MAC, this._selectedMac);
 				if (this._isSelectedDeviceAvailable()) {
 					this._loadDeviceConfig(this._selectedMac);
 				}
 			}
+		};
+		this._deviceCtrl.onSelectedAvailable = (mac) => {
+			this._ensureSession(mac);
 		};
 		this._deviceCtrl.onSessionClosed = () => {
 			// Live-data has no meaning once the device is gone — clear it so
@@ -1652,7 +1644,7 @@ export class EPPGridPanel extends LitElement {
 						this._guardNavigation(async () => {
 							this._closeDeviceSession();
 							this._selectedMac = val;
-							localStorage.setItem("epp_selected_mac", val);
+							localStorage.setItem(STORAGE_KEY_SELECTED_MAC, val);
 							await this._loadDeviceConfig(val);
 						});
 					}}
@@ -1739,9 +1731,7 @@ export class EPPGridPanel extends LitElement {
 
 	private _retryConnection(): void {
 		if (this._selectedMac) {
-			// Re-open the live session without re-fetching config so any
-			// editor edits survive the retry.
-			this._deviceCtrl.reopenSession(this._selectedMac).catch(() => {});
+			this._ensureSession(this._selectedMac);
 		}
 	}
 

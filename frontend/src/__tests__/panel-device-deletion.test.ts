@@ -1,7 +1,8 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { EPPGridPanel } from "../eppgrid-panel.js";
 import "../eppgrid-panel.js";
 import { GRID_CELL_COUNT } from "../lib/grid.js";
+import { registerPanelCleanup } from "./helpers/panel-cleanup.js";
 
 type DeviceListCb = (msg: { devices: any[] }) => void;
 
@@ -84,17 +85,7 @@ describe("panel device list transitions", () => {
 		localStorage.clear();
 	});
 
-	afterEach(() => {
-		// Tear down every panel mounted via mountPanel() so DOM / controllers
-		// / listeners don't leak between tests and cause order-dependent
-		// failures.
-		while (mountedPanels.length) {
-			const el = mountedPanels.pop()!;
-			if (el.parentNode) {
-				el.parentNode.removeChild(el);
-			}
-		}
-	});
+	registerPanelCleanup(mountedPanels);
 
 	// --- Auto-switch when the selected device disappears but others remain ---
 
