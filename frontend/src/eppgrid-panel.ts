@@ -30,7 +30,6 @@ import {
 	CELL_INTERFERENCE_SUPPRESS,
 	cellIsInside,
 	cellSetInterference,
-	cellZone,
 	GRID_CELL_COUNT,
 	GRID_CELL_MM,
 	GRID_COLS,
@@ -40,7 +39,6 @@ import {
 	initGridFromRoom,
 	MAX_RANGE,
 } from "./lib/grid.js";
-import { CELL_BG_OUT_OF_RANGE, getCellColor } from "./lib/heatmap.js";
 import { applyPerspective, getInversePerspective } from "./lib/perspective.js";
 import {
 	autoDetectionRange,
@@ -49,7 +47,6 @@ import {
 	getGridRoomMetrics,
 	getSensorRoomPosition,
 	getVisibleRoomBounds,
-	isCellInSensorRange,
 	type SensorFov,
 } from "./lib/room-geometry.js";
 import { renderTemplateThumbnail } from "./lib/template-thumbnail.js";
@@ -745,10 +742,6 @@ export class EPPGridPanel extends LitElement {
 	 * downstream components and helpers expect. */
 	private _namedZones(): (ZoneConfig | null)[] {
 		return this._zoneConfigs.slice(1) as (ZoneConfig | null)[];
-	}
-
-	private _getCellColor(index: number): string {
-		return getCellColor(this._grid[index], this._namedZones());
 	}
 
 	/** Compute the bounding box of inside-room cells (for zoom) */
@@ -2342,95 +2335,6 @@ export class EPPGridPanel extends LitElement {
         </div>
       </div>
     `;
-	}
-
-	private _renderVisibleCells(
-		minCol: number,
-		maxCol: number,
-		minRow: number,
-		maxRow: number,
-		cellPx: number,
-		useBackendOccupancy = false,
-	) {
-		// Pre-compute heatmap colours per zone if enabled
-		const heatmap = this._showHitCounts ? this._computeHeatmapColors() : null;
-
-		let occupancy: Record<number, boolean>;
-
-		if (useBackendOccupancy) {
-			// Use zone occupancy from backend websocket data
-			occupancy = {};
-			for (const [k, v] of Object.entries(this._zoneState.occupancy)) {
-				occupancy[Number(k)] = v as boolean;
-			}
-		} else {
-			// Run local zone engine replica (matches backend zone_engine._tick)
-			const engineResult = this._runLocalZoneEngine();
-			occupancy = engineResult.occupancy;
-
-			// Overwrite _targets status from frontend zone engine.
-			// Position for pending targets is handled by the shared rendering
-			// logic using _zoneEngineState.targetPrevXY.
-			for (
-				let i = 0;
-				i < engineResult.targets.length && i < this._targets.length;
-				i++
-			) {
-				this._targets[i].status = engineResult.targets[i].status;
-			}
-
-			// Derive sensors.occupancy from unsaved zone config
-			const roomOccupied = Object.values(occupancy).some((v) => v);
-			this._sensorState.occupancy =
-				this._sensorState.static_presence ||
-				this._sensorState.motion_presence ||
-				roomOccupied;
-		}
-
-		const fov = this._getSensorFov();
-		const maxRangeMm = this._computeMaxRangeMm();
-
-		const cells = [];
-		for (let r = minRow; r <= maxRow; r++) {
-			for (let c = minCol; c <= maxCol; c++) {
-				const idx = r * GRID_COLS + c;
-				const cellVal = this._grid[idx];
-				const inRange = isCellInSensorRange(
-					c,
-					r,
-					fov,
-					this._roomWidth,
-					maxRangeMm,
-				);
-				let bg = inRange ? this._getCellColor(idx) : CELL_BG_OUT_OF_RANGE;
-				let border = "";
-				if (inRange && cellIsInside(cellVal)) {
-					const zoneId = cellZone(cellVal);
-					if (heatmap) {
-						const overlay = heatmap.get(zoneId);
-						if (overlay) {
-							bg = `linear-gradient(${overlay}, ${overlay}), linear-gradient(${bg}, ${bg})`;
-						}
-					}
-					if (occupancy[zoneId]) {
-						border = `box-shadow: inset 0 0 0 1px rgba(0,0,0,0.4);`;
-					}
-				}
-				cells.push(html`
-          <div
-            class="cell"
-            style="background: ${bg}; width: ${cellPx}px; height: ${cellPx}px; ${border}"
-            @mousedown=${() => {
-							if (inRange) this._onCellMouseDown(idx);
-						}}
-            @mouseenter=${() => {
-							if (inRange) this._onCellMouseEnter(idx);
-						}}
-          ></div>
-        `);
-			}
-		}
-		return cells;
 	}
 
 	/** Run local zone engine replica — delegated to TargetController. */

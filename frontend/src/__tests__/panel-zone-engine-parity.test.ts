@@ -429,8 +429,8 @@ describe("Pending target position fallback (_renderTargetDots)", () => {
 	});
 
 	/**
-	 * Run the zone engine and apply the status overwrite to _targets
-	 * (same as _renderVisibleCells does in the real component).
+	 * Run the zone engine and apply the status overwrite to _targets,
+	 * mirroring what the editor render path does in the real component.
 	 */
 	function runEngineAndOverwrite() {
 		const engineResult = a._runLocalZoneEngine();

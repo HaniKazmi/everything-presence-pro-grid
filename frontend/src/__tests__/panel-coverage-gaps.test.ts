@@ -1156,29 +1156,6 @@ describe("backend debug log copy and clear buttons", () => {
 	});
 });
 
-describe("_renderVisibleCells uses backend occupancy in live view", () => {
-	it("uses backend zone occupancy when not in editor", () => {
-		const a = createPanel() as any;
-		a._view = "live";
-		a._zoneState = {
-			occupancy: { 1: true },
-			target_counts: {},
-			frame_count: 0,
-		};
-		a._targets = [];
-		// Call _renderVisibleCells which internally branches on useBackendOccupancy
-		const bounds = a._getRoomBounds();
-		const cells = a._renderVisibleCells(
-			bounds.minCol,
-			bounds.maxCol,
-			bounds.minRow,
-			bounds.maxRow,
-			16,
-		);
-		expect(cells).toBeDefined();
-	});
-});
-
 describe("settings slider input handlers", () => {
 	it("static max distance slider clamps below min", () => {
 		const sv = createSettingsView({
