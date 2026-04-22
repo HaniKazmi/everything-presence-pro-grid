@@ -224,11 +224,17 @@ export class EppGrid extends LitElement {
 					maxRange,
 				);
 				const inRange = status === "in_range";
+				const inside = cellIsInside(cellVal);
 				let bg: string;
 				if (status === "in_range") {
 					bg = getCellColor(cellVal, this.zoneConfigs);
-				} else if (status === "beyond_max_range") {
+				} else if (status === "beyond_max_range" && inside) {
+					// Only inside-room cells get the hatch-on-white "configured out"
+					// decoration; outside-room padding rendered as plain outside so
+					// it doesn't read as an inside-room cell limited by config.
 					bg = CELL_BG_BEYOND_MAX_RANGE;
+				} else if (status === "beyond_max_range") {
+					bg = getCellColor(cellVal, this.zoneConfigs);
 				} else {
 					bg = CELL_BG_OUT_OF_RANGE;
 				}

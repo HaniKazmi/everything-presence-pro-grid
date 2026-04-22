@@ -609,6 +609,50 @@ describe("epp-grid darkness (sensor FOV)", () => {
 		document.body.removeChild(el);
 	});
 
+	it("does not apply beyond-max-range decoration to outside-room padding cells", async () => {
+		// Sensor at top-centre of a 3×3m room, with a very tight range so
+		// most cells classify as beyond_max_range.  The visible grid adds a
+		// 1-cell padding ring around the inside room — those padding cells
+		// are *outside* the room and must not render as inside-cell hatch
+		// (#fff + cross-hatch), which would read as inside-but-limited.
+		const perspective = [1, 0, 1500, 0, 1, 0, 0, 0];
+		const el = createGrid({
+			perspective,
+			maxRangeMm: 500,
+			roomWidth: 3000,
+			roomDepth: 3000,
+			grid: initGridFromRoom(3000, 3000),
+		});
+		document.body.appendChild(el);
+		await el.updateComplete;
+
+		const cells = el.shadowRoot!.querySelectorAll(
+			".cell",
+		) as NodeListOf<HTMLElement>;
+		// JSDOM strips `var()` from style.cssText, so read the raw style
+		// attribute instead — it preserves everything the template emitted.
+		const styles = Array.from(cells).map((c) => c.getAttribute("style") ?? "");
+
+		// Any cell rendered with the outside-room colour (CELL_COLOR_OUTSIDE)
+		// must not also carry the beyond-max-range hatch on white — the two
+		// are mutually exclusive.
+		const conflicting = styles.filter(
+			(s) =>
+				s.includes("secondary-background-color") &&
+				s.includes("repeating-linear-gradient"),
+		);
+		expect(conflicting).toEqual([]);
+
+		// Sanity check: at least one padding cell exists with the outside
+		// colour, otherwise the test silently passes on an empty set.
+		const outsideCells = styles.filter((s) =>
+			s.includes("secondary-background-color"),
+		);
+		expect(outsideCells.length).toBeGreaterThan(0);
+
+		document.body.removeChild(el);
+	});
+
 	it("does not emit cell-paint for beyond-max-range cells", async () => {
 		const perspective = [1, 0, 1500, 0, 1, 0, 0, 0];
 		const el = createGrid({
