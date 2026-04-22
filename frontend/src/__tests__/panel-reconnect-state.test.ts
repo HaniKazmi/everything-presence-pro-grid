@@ -306,6 +306,39 @@ describe("panel state survives device offline→online", () => {
 		expect(a._perspective).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9]);
 	});
 
+	it("persists _view to localStorage so a panel recreation (full HA container restart) returns to the same tab", async () => {
+		// A full HA container restart can trigger the HA frontend to
+		// recreate panel elements from scratch — losing any @state()
+		// that isn't persisted.  _view is user-facing navigation and
+		// must survive this cycle so the editor/settings tab is
+		// restored when the panel remounts.
+		const { el, a } = await mountPanel([makeDevice("aa", true)]);
+		a._view = "editor";
+		await el.updateComplete;
+		expect(localStorage.getItem("epp_view")).toBe("editor");
+
+		// Simulate the panel being torn down and recreated. Don't clear
+		// localStorage — a real panel recreation doesn't wipe it.
+		document.body.removeChild(el);
+		mountedPanels.length = 0;
+		const el2 = document.createElement("eppgrid-panel") as EPPGridPanel;
+		document.body.appendChild(el2);
+		mountedPanels.push(el2);
+		await el2.updateComplete;
+		expect((el2 as any)._view).toBe("editor");
+	});
+
+	it("clears the persisted _view when user navigates back to live", async () => {
+		const { el, a } = await mountPanel([makeDevice("aa", true)]);
+		a._view = "editor";
+		await el.updateComplete;
+		expect(localStorage.getItem("epp_view")).toBe("editor");
+
+		a._view = "live";
+		await el.updateComplete;
+		expect(localStorage.getItem("epp_view")).toBeNull();
+	});
+
 	it("retries subscribeDeviceList when the list arrives empty (integration still booting)", async () => {
 		// Mount with an empty initial list, simulating HA restart where
 		// `eppgrid/subscribe_device_list` succeeds but the integration

@@ -150,6 +150,30 @@ const createInitialZoneState = (): ZoneState => ({
 	frame_count: 0,
 });
 
+const VIEW_STORAGE_KEY = "epp_view";
+
+function readStoredView(): "live" | "editor" | "settings" {
+	try {
+		const v = localStorage.getItem(VIEW_STORAGE_KEY);
+		if (v === "editor" || v === "settings") return v;
+	} catch {
+		/* localStorage unavailable */
+	}
+	return "live";
+}
+
+function persistView(view: "live" | "editor" | "settings"): void {
+	try {
+		if (view === "live") {
+			localStorage.removeItem(VIEW_STORAGE_KEY);
+		} else {
+			localStorage.setItem(VIEW_STORAGE_KEY, view);
+		}
+	} catch {
+		/* localStorage unavailable */
+	}
+}
+
 export class EPPGridPanel extends LitElement {
 	@property({ attribute: false }) hass: any;
 
@@ -304,8 +328,11 @@ export class EPPGridPanel extends LitElement {
 	// Setup wizard — perspective corner marking
 	@state() private _setupStep: SetupStep | null = null;
 
-	// View mode: live (default), editor (grid/zones), or settings (configuration)
-	@state() private _view: "live" | "editor" | "settings" = "live";
+	// View mode: live (default), editor (grid/zones), or settings (configuration).
+	// Persisted to localStorage so a panel recreation (e.g. after HA frontend
+	// refresh on container restart) returns the user to their last tab instead
+	// of dumping them back on the live overview.
+	@state() private _view: "live" | "editor" | "settings" = readStoredView();
 	@state() private _openAccordions: Set<string> = new Set();
 
 	// Perspective transform state (client-side, set after corner marking)
@@ -478,6 +505,9 @@ export class EPPGridPanel extends LitElement {
 				this._currentLang = newLang;
 				this._localize = setupLocalize(this.hass);
 			}
+		}
+		if (changed.has("_view")) {
+			persistView(this._view);
 		}
 	}
 
