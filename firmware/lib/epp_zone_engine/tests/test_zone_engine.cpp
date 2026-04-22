@@ -22,7 +22,9 @@ static Grid make_parity_grid() {
         }
     }
     // Zone 1 on cell (col=9, row=1), with overlay entry bit
-    grid.cell(1 * GRID_COLS + 9) = CELL_ROOM_BIT | (1 << CELL_ZONE_SHIFT) | CELL_OVERLAY_ENTRY;
+    grid.cell(1 * GRID_COLS + 9) = CELL_ROOM_BIT |
+                                    (1 << CELL_ZONE_SHIFT) |
+                                    (CELL_OVERLAY_ENTRY << CELL_OVERLAY_SHIFT);
     return grid;
 }
 
@@ -144,7 +146,8 @@ TEST_CASE("entry point bypasses gating") {
     // Zone 1 cell is at (9,1). Set overlay entry bit.
     Grid grid = engine.grid();
     int cell_idx = 1 * GRID_COLS + 9;  // row=1, col=9
-    grid.cell(cell_idx) = grid.cell(cell_idx) | CELL_OVERLAY_ENTRY;
+    grid.cell(cell_idx) = (grid.cell(cell_idx) & ~CELL_OVERLAY_MASK) |
+                          (CELL_OVERLAY_ENTRY << CELL_OVERLAY_SHIFT);
     engine.set_grid(grid);
 
     // Zone 1 trigger=3, target at (2850, 450)
@@ -163,7 +166,8 @@ TEST_CASE("cell overlay entry bypasses gating") {
     // Get the grid and set overlay entry bit on cell (8,0) — zone 0
     Grid grid = engine.grid();
     int cell_idx = 0 * GRID_COLS + 8;  // row=0, col=8
-    grid.cell(cell_idx) = grid.cell(cell_idx) | CELL_OVERLAY_ENTRY;
+    grid.cell(cell_idx) = (grid.cell(cell_idx) & ~CELL_OVERLAY_MASK) |
+                          (CELL_OVERLAY_ENTRY << CELL_OVERLAY_SHIFT);
     engine.set_grid(grid);
 
     // Target at (2550, 150) lands on cell (8,0) in zone 0.
@@ -708,7 +712,7 @@ TEST_CASE("non-overlay exit uses full timeout") {
     // Remove overlay from zone 1 cell so it behaves normally
     Grid grid = engine.grid();
     int cell_idx = 1 * GRID_COLS + 9;
-    grid.cell(cell_idx) = grid.cell(cell_idx) & ~CELL_OVERLAY_ENTRY;
+    grid.cell(cell_idx) = grid.cell(cell_idx) & ~CELL_OVERLAY_MASK;
     engine.set_grid(grid);
 
     // Zone 0 (normal: timeout=10, handoff=3). No overlay.

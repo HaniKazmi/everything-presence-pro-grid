@@ -57,7 +57,8 @@ static Grid build_grid(const json& grid_config) {
             int col = cell[0].get<int>();
             int row = cell[1].get<int>();
             int idx = row * GRID_COLS + col;
-            grid.cell(idx) = grid.cell(idx) | CELL_OVERLAY_ENTRY;
+            grid.cell(idx) = (grid.cell(idx) & ~CELL_OVERLAY_MASK) |
+                             (CELL_OVERLAY_ENTRY << CELL_OVERLAY_SHIFT);
         }
     }
 
@@ -144,7 +145,7 @@ static void run_scenario(const std::string& name, const json& scenario,
             if (wo.targets[ti].active) {
                 int cell = grid.xy_to_cell(wo.targets[ti].median_x, wo.targets[ti].median_y);
                 if (cell != -1 && grid.cell_is_room(cell)) {
-                    target_on_overlay[ti] = grid.cell_has_overlay_entry(cell);
+                    target_on_overlay[ti] = (grid.cell_overlay(cell) == CELL_OVERLAY_ENTRY);
                 }
             }
             wo.targets[ti].on_overlay = target_on_overlay[ti];

@@ -66,7 +66,7 @@ void EPPComponent::loop() {
       auto [fx, fy] = transform_.apply(raw_inputs[i].x, raw_inputs[i].y);
       int cell = grid_.xy_to_cell(fx, fy);
       if (cell != -1 && grid_.cell_is_room(cell)) {
-        if (grid_.cell_has_overlay_entry(cell)) {
+        if (grid_.cell_overlay(cell) == CELL_OVERLAY_ENTRY) {
           target_touched_overlay_[i] = true;
         } else {
           target_touched_overlay_[i] = false;
@@ -403,7 +403,7 @@ void EPPComponent::set_grid(const std::string &grid_data,
 
   int overlay_count = 0;
   for (int i = 0; i < GRID_CELL_COUNT; i++) {
-    if (grid_.cell_has_overlay_entry(i)) overlay_count++;
+    if (grid_.cell_overlay(i) == CELL_OVERLAY_ENTRY) overlay_count++;
   }
   ESP_LOGI(TAG, "Grid set: origin (%.0f, %.0f), %d cells, %d overlay",
            origin_x, origin_y, GRID_CELL_COUNT, overlay_count);

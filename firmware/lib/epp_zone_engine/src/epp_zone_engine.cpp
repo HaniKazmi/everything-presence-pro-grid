@@ -218,12 +218,13 @@ const ProcessingResult& ZoneEngine::tick(const WindowOutput& window, float times
         }
 
         // Interference suppress: skip this cell entirely
-        int interference = grid_.cell_interference(cell);
-        if (interference == CELL_INTERFERENCE_SUPPRESS) {
+        int overlay = grid_.cell_overlay(cell);
+        if (overlay == CELL_OVERLAY_SUPPRESS) {
             target_has_prev_[i] = false;
             target_gate_count_[i] = 0;
             continue;
         }
+        bool has_interference = (overlay == CELL_OVERLAY_INTERFERENCE);
 
         int zone_id = grid_.cell_zone(cell);
         target_zone_curr[i] = zone_id;
@@ -273,14 +274,14 @@ const ProcessingResult& ZoneEngine::tick(const WindowOutput& window, float times
             // No first appearance: targets cannot originate in interference zones.
             // They must be handed off from a clean zone (continuity required).
             // Only applies when zone is CLEAR — once occupied, targets can be re-confirmed.
-            if (interference > 0 && !continuous && rt.state == ZoneState::CLEAR) {
+            if (has_interference && !continuous && rt.state == ZoneState::CLEAR) {
                 target_has_prev_[i] = false;
                 target_gate_count_[i] = 0;
                 continue;
             }
 
             // Interference: renew requires signal 9 to prevent fans sustaining occupancy
-            if (interference > 0) {
+            if (has_interference) {
                 renew_thresh = 9;
             }
 
@@ -295,11 +296,11 @@ const ProcessingResult& ZoneEngine::tick(const WindowOutput& window, float times
 
             // Use raw-frame on_overlay (sticky from component) — catches cases
             // where the median position hasn't reached the overlay cell yet
-            bool on_overlay = tw.on_overlay || grid_.cell_has_overlay_entry(cell);
+            bool on_overlay = tw.on_overlay || (grid_.cell_overlay(cell) == CELL_OVERLAY_ENTRY);
             bool needs_gating = !on_overlay && !continuous;
             // Instant entry suppressed when target cell carries interference —
             // overlay on a neighbour must not negate the raised threshold.
-            if (on_overlay && rt.state == ZoneState::CLEAR && interference == 0) {
+            if (on_overlay && rt.state == ZoneState::CLEAR && !has_interference) {
                 base_thresh = 1;
             }
 
