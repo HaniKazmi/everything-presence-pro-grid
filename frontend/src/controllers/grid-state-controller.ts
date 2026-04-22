@@ -1,10 +1,8 @@
 import type { ReactiveController, ReactiveControllerHost } from "lit";
 import {
-	applyInterferencePaintToCell,
 	applyOverlayPaintToCell,
 	applyPaintToCell,
 	clearZoneFromGrid,
-	determineInterferencePaintAction,
 	determineOverlayPaintAction,
 	determinePaintAction,
 } from "../lib/cell-painting.js";
@@ -20,7 +18,9 @@ import {
 	updateFurnitureItem,
 } from "../lib/furniture.js";
 import {
-	CELL_INTERFERENCE_SUPPRESS,
+	CELL_OVERLAY_ENTRY,
+	CELL_OVERLAY_INTERFERENCE,
+	CELL_OVERLAY_SUPPRESS,
 	cellIsInside,
 	cellZone,
 	GRID_CELL_MM,
@@ -36,6 +36,19 @@ import {
 	type Zone0Config,
 	type ZoneConfig,
 } from "../lib/zone-defaults.js";
+
+function overlayModeToKind(mode: string | null): number | null {
+	switch (mode) {
+		case "entry":
+			return CELL_OVERLAY_ENTRY;
+		case "interference":
+			return CELL_OVERLAY_INTERFERENCE;
+		case "suppress":
+			return CELL_OVERLAY_SUPPRESS;
+		default:
+			return null;
+	}
+}
 
 /**
  * Host interface — the subset of the panel that this controller reads/writes.
@@ -105,33 +118,14 @@ export class GridStateController implements ReactiveController {
 			this.host._selectedFurnitureId = null;
 			return;
 		}
-		// Interference / suppress painting mode
-		if (
-			this.host._overlayMode === "interference" ||
-			this.host._overlayMode === "suppress"
-		) {
-			const level =
-				this.host._overlayMode === "suppress" ? CELL_INTERFERENCE_SUPPRESS : 1;
-			this.host._isPainting = true;
-			this.host._frozenBounds = this.host._getVisibleRoomBounds();
-			this.host._paintAction = determineInterferencePaintAction(
-				this.host._grid[index],
-				level,
-			);
-			this.applyPaintToCell(index);
-			const onUp = () => {
-				this.onCellMouseUp();
-				window.removeEventListener("mouseup", onUp);
-			};
-			window.addEventListener("mouseup", onUp);
-			return;
-		}
-		// Overlay painting mode
-		if (this.host._overlayMode === "entry") {
+		// Overlay painting mode (entry / interference / suppress)
+		const overlayKind = overlayModeToKind(this.host._overlayMode);
+		if (overlayKind !== null) {
 			this.host._isPainting = true;
 			this.host._frozenBounds = this.host._getVisibleRoomBounds();
 			this.host._paintAction = determineOverlayPaintAction(
 				this.host._grid[index],
+				overlayKind,
 			);
 			this.applyPaintToCell(index);
 			const onUp = () => {
@@ -178,20 +172,11 @@ export class GridStateController implements ReactiveController {
 
 	applyPaintToCell(index: number): void {
 		let newValue: number | null;
-		if (
-			this.host._overlayMode === "interference" ||
-			this.host._overlayMode === "suppress"
-		) {
-			const level =
-				this.host._overlayMode === "suppress" ? CELL_INTERFERENCE_SUPPRESS : 1;
-			newValue = applyInterferencePaintToCell(
-				this.host._grid[index],
-				level,
-				this.host._paintAction,
-			);
-		} else if (this.host._overlayMode === "entry") {
+		const overlayKind = overlayModeToKind(this.host._overlayMode);
+		if (overlayKind !== null) {
 			newValue = applyOverlayPaintToCell(
 				this.host._grid[index],
+				overlayKind,
 				this.host._paintAction,
 			);
 		} else {
