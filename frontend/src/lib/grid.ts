@@ -5,22 +5,12 @@
 export const CELL_ROOM_BIT = 0x01;
 export const CELL_ZONE_MASK = 0x0e; // bits 1-3
 export const CELL_ZONE_SHIFT = 1;
-
-// Legacy overlay constants — retained during migration, removed in Task 9.
-// CELL_OVERLAY_ENTRY's value will change from 0x10 to 1 after migration.
-export const CELL_OVERLAY_ENTRY_LEGACY_MASK = 0x10; // bit 4 (old)
-export const CELL_INTERFERENCE_MASK = 0xe0; // bits 5-7 (old)
-export const CELL_INTERFERENCE_SHIFT = 5; // (old)
-export const CELL_INTERFERENCE_SUPPRESS = 2; // (old)
-
-// New overlay field — bits 4-5, kind value 0..3
-export const CELL_OVERLAY_MASK = 0x30;
+export const CELL_OVERLAY_MASK = 0x30; // bits 4-5
 export const CELL_OVERLAY_SHIFT = 4;
 export const CELL_OVERLAY_NONE = 0;
 export const CELL_OVERLAY_ENTRY = 1;
 export const CELL_OVERLAY_INTERFERENCE = 2;
 export const CELL_OVERLAY_SUPPRESS = 3;
-
 export const MAX_ZONES = 7; // named zones 1-7
 export const NUM_ZONE_SLOTS = 8; // zone 0 + named zones 1-7
 
@@ -40,20 +30,6 @@ export const cellOverlay = (v: number): number =>
 	(v >> CELL_OVERLAY_SHIFT) & 0x03;
 export const cellSetOverlay = (v: number, kind: number): number =>
 	(v & ~CELL_OVERLAY_MASK) | ((kind & 0x03) << CELL_OVERLAY_SHIFT);
-export const cellHasOverlayEntry = (v: number): boolean =>
-	(v & CELL_OVERLAY_ENTRY_LEGACY_MASK) !== 0;
-export const cellSetOverlayEntry = (v: number, on: boolean): number =>
-	on
-		? (v | CELL_OVERLAY_ENTRY_LEGACY_MASK) & ~CELL_INTERFERENCE_MASK
-		: v & ~CELL_OVERLAY_ENTRY_LEGACY_MASK;
-export const cellInterference = (v: number): number =>
-	(v >> CELL_INTERFERENCE_SHIFT) & 0x07;
-export const cellSetInterference = (v: number, level: number): number =>
-	level > 0
-		? ((v & ~CELL_INTERFERENCE_MASK) |
-				((level & 0x07) << CELL_INTERFERENCE_SHIFT)) &
-			~CELL_OVERLAY_ENTRY_LEGACY_MASK
-		: v & ~CELL_INTERFERENCE_MASK;
 
 /** Get room bounds with 1-cell padding around inside cells. */
 export function getRoomBounds(grid: Uint8Array): {

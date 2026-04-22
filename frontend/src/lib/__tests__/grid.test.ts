@@ -1,24 +1,15 @@
 import { describe, expect, it } from "vitest";
 import {
-	CELL_INTERFERENCE_MASK,
-	CELL_INTERFERENCE_SHIFT,
-	CELL_INTERFERENCE_SUPPRESS,
 	CELL_OVERLAY_ENTRY,
-	CELL_OVERLAY_ENTRY_LEGACY_MASK,
 	CELL_OVERLAY_INTERFERENCE,
-	CELL_OVERLAY_MASK,
 	CELL_OVERLAY_NONE,
 	CELL_OVERLAY_SHIFT,
 	CELL_OVERLAY_SUPPRESS,
 	CELL_ROOM_BIT,
-	cellHasOverlayEntry,
-	cellInterference,
 	cellIsInside,
 	cellOverlay,
 	cellSetInside,
-	cellSetInterference,
 	cellSetOverlay,
-	cellSetOverlayEntry,
 	cellSetZone,
 	cellZone,
 	GRID_CELL_COUNT,
@@ -216,109 +207,6 @@ describe("initGridFromRoom", () => {
 	it("has correct grid size", () => {
 		const grid = initGridFromRoom(3000, 3000);
 		expect(grid.length).toBe(GRID_CELL_COUNT);
-	});
-});
-
-describe("cellHasOverlayEntry", () => {
-	it("returns false for plain inside cell", () => {
-		expect(cellHasOverlayEntry(CELL_ROOM_BIT)).toBe(false);
-	});
-
-	it("returns true when overlay bit is set", () => {
-		expect(
-			cellHasOverlayEntry(CELL_ROOM_BIT | CELL_OVERLAY_ENTRY_LEGACY_MASK),
-		).toBe(true);
-	});
-
-	it("returns true regardless of zone bits", () => {
-		const val = CELL_ROOM_BIT | CELL_OVERLAY_ENTRY_LEGACY_MASK | (3 << 1);
-		expect(cellHasOverlayEntry(val)).toBe(true);
-	});
-});
-
-describe("cellSetOverlayEntry", () => {
-	it("sets overlay bit while preserving room and zone", () => {
-		const val = cellSetZone(CELL_ROOM_BIT, 5);
-		const result = cellSetOverlayEntry(val, true);
-		expect(cellHasOverlayEntry(result)).toBe(true);
-		expect(cellIsInside(result)).toBe(true);
-		expect(cellZone(result)).toBe(5);
-	});
-
-	it("clears overlay bit while preserving room and zone", () => {
-		const val = CELL_ROOM_BIT | CELL_OVERLAY_ENTRY_LEGACY_MASK | (2 << 1);
-		const result = cellSetOverlayEntry(val, false);
-		expect(cellHasOverlayEntry(result)).toBe(false);
-		expect(cellIsInside(result)).toBe(true);
-		expect(cellZone(result)).toBe(2);
-	});
-
-	it("round-trips with cellHasOverlayEntry", () => {
-		const val = CELL_ROOM_BIT;
-		expect(cellHasOverlayEntry(cellSetOverlayEntry(val, true))).toBe(true);
-		expect(cellHasOverlayEntry(cellSetOverlayEntry(val, false))).toBe(false);
-	});
-});
-
-describe("interference helpers", () => {
-	it("cellInterference returns 0 for plain room cell", () => {
-		expect(cellInterference(CELL_ROOM_BIT)).toBe(0);
-	});
-
-	it("cellInterference extracts value from bits 5-7", () => {
-		const cell = CELL_ROOM_BIT | (3 << 5); // level 3
-		expect(cellInterference(cell)).toBe(3);
-	});
-
-	it("cellInterference extracts suppress sentinel (7)", () => {
-		const cell = CELL_ROOM_BIT | (7 << 5);
-		expect(cellInterference(cell)).toBe(7);
-	});
-
-	it("cellSetInterference sets bits 5-7 without affecting other bits", () => {
-		const cell = CELL_ROOM_BIT | CELL_OVERLAY_ENTRY_LEGACY_MASK;
-		const result = cellSetInterference(cell, 2);
-		expect(cellInterference(result)).toBe(2);
-		expect(result & CELL_ROOM_BIT).toBe(CELL_ROOM_BIT);
-	});
-
-	it("cellSetInterference clears entry overlay (mutual exclusivity)", () => {
-		const cell = CELL_ROOM_BIT | CELL_OVERLAY_ENTRY_LEGACY_MASK;
-		const result = cellSetInterference(cell, 1);
-		expect(cellHasOverlayEntry(result)).toBe(false);
-		expect(cellInterference(result)).toBe(1);
-	});
-
-	it("cellSetInterference with 0 does not clear entry overlay", () => {
-		const cell = CELL_ROOM_BIT | CELL_OVERLAY_ENTRY_LEGACY_MASK;
-		const result = cellSetInterference(cell, 0);
-		expect(cellHasOverlayEntry(result)).toBe(true);
-		expect(cellInterference(result)).toBe(0);
-	});
-
-	it("cellSetOverlayEntry clears interference (mutual exclusivity)", () => {
-		const cell = CELL_ROOM_BIT | (3 << 5);
-		const result = cellSetOverlayEntry(cell, true);
-		expect(cellInterference(result)).toBe(0);
-		expect(cellHasOverlayEntry(result)).toBe(true);
-	});
-
-	it("cellSetOverlayEntry(false) does not clear interference", () => {
-		const cell = CELL_ROOM_BIT | (2 << 5);
-		const result = cellSetOverlayEntry(cell, false);
-		expect(cellInterference(result)).toBe(2);
-	});
-
-	it("CELL_INTERFERENCE_MASK is 0xE0", () => {
-		expect(CELL_INTERFERENCE_MASK).toBe(0xe0);
-	});
-
-	it("CELL_INTERFERENCE_SHIFT is 5", () => {
-		expect(CELL_INTERFERENCE_SHIFT).toBe(5);
-	});
-
-	it("CELL_INTERFERENCE_SUPPRESS is 2", () => {
-		expect(CELL_INTERFERENCE_SUPPRESS).toBe(2);
 	});
 });
 

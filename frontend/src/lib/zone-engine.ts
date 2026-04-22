@@ -185,9 +185,7 @@ export function runLocalZoneEngine(
 			state.targetGateCount[i] = 0;
 			continue;
 		}
-		const hasInterference =
-			overlay === CELL_OVERLAY_INTERFERENCE ||
-			overlay === CELL_OVERLAY_SUPPRESS;
+		const hasInterference = overlay === CELL_OVERLAY_INTERFERENCE;
 
 		const zid = cellZone(cellVal);
 		targetZoneCurr[i] = zid;

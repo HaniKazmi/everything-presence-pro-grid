@@ -263,12 +263,12 @@ export class EppGrid extends LitElement {
 					if (overlay === CELL_OVERLAY_ENTRY) {
 						overlayMarker =
 							"background-image: repeating-linear-gradient(45deg, transparent, transparent 6px, rgba(60,60,60,0.7) 6px, rgba(60,60,60,0.7) 8px);";
-					} else if (overlay === CELL_OVERLAY_SUPPRESS) {
-						overlayMarker =
-							"background-image: repeating-linear-gradient(-45deg, transparent, transparent 5px, #cc3333 5px, #cc3333 7px), repeating-linear-gradient(45deg, transparent, transparent 5px, #cc3333 5px, #cc3333 7px);";
 					} else if (overlay === CELL_OVERLAY_INTERFERENCE) {
 						overlayMarker =
 							"background-image: repeating-linear-gradient(-45deg, transparent, transparent 5px, #cc3333 5px, #cc3333 7px);";
+					} else if (overlay === CELL_OVERLAY_SUPPRESS) {
+						overlayMarker =
+							"background-image: repeating-linear-gradient(-45deg, transparent, transparent 5px, #cc3333 5px, #cc3333 7px), repeating-linear-gradient(45deg, transparent, transparent 5px, #cc3333 5px, #cc3333 7px);";
 					}
 				}
 				cells.push(html`
@@ -373,8 +373,8 @@ export class EppGrid extends LitElement {
 							}),
 						);
 					}
-					// Hide target if on an interference cell and zone is not occupied
-					// (blocked by no-first-appearance rule — not a confirmed presence)
+					// Hide target if on an interference or suppress cell and zone is not
+					// occupied (blocked by no-first-appearance rule — not a confirmed presence)
 					if (this.grid.length > 0) {
 						const col = Math.floor(pos.col);
 						const row = Math.floor(pos.row);
