@@ -360,6 +360,56 @@ describe("panel state survives device offline→online", () => {
 		expect(localStorage.getItem("epp_view")).toBeNull();
 	});
 
+	it("falls back to the 'no devices' placeholder after a stably empty list, even with a persisted selection", async () => {
+		// Scenario: localStorage holds a mac from a prior session (or the
+		// user just deleted the last device). Without an escape hatch, the
+		// panel would keep showing the offline banner forever because
+		// selectedMac is seeded from localStorage. After N empty retries
+		// we render the "no devices configured" CTA instead.
+		vi.useFakeTimers();
+		try {
+			localStorage.setItem("epp_selected_mac", "aa");
+			const hass: any = {
+				callWS: vi.fn().mockResolvedValue({}),
+				connection: {
+					connected: true,
+					addEventListener: vi.fn(),
+					removeEventListener: vi.fn(),
+					subscribeMessage: vi.fn().mockImplementation((cb: any, msg: any) => {
+						if (msg.type === "eppgrid/subscribe_device_list") {
+							cb({ devices: [] });
+						}
+						return Promise.resolve(() => {});
+					}),
+				},
+				locale: { language: "en" },
+				language: "en",
+			};
+			const el = document.createElement("eppgrid-panel") as EPPGridPanel;
+			el.hass = hass;
+			document.body.appendChild(el);
+			mountedPanels.push(el);
+			await el.updateComplete;
+			await vi.advanceTimersByTimeAsync(0);
+			await vi.advanceTimersByTimeAsync(0);
+
+			// Advance the retry timer enough times to cross the escape
+			// threshold (the _initialize retry fires every 2s).
+			await vi.advanceTimersByTimeAsync(2000);
+			await vi.advanceTimersByTimeAsync(2000);
+			await vi.advanceTimersByTimeAsync(2000);
+			await vi.advanceTimersByTimeAsync(0);
+			await el.updateComplete;
+
+			const html = el.shadowRoot?.innerHTML ?? "";
+			expect(html).toContain("empty-state");
+			// Offline banner should NOT be showing anymore.
+			expect(html).not.toContain("mdi:access-point-off");
+		} finally {
+			vi.useRealTimers();
+		}
+	});
+
 	it("retries subscribeDeviceList when the list arrives empty (integration still booting)", async () => {
 		// Mount with an empty initial list, simulating HA restart where
 		// `eppgrid/subscribe_device_list` succeeds but the integration

@@ -50,9 +50,9 @@ import {
 	type SensorFov,
 } from "./lib/room-geometry.js";
 import {
+	persistSelectedMac,
 	persistView,
 	readStoredView,
-	STORAGE_KEY_SELECTED_MAC,
 	type ViewMode,
 } from "./lib/storage.js";
 import { renderTemplateThumbnail } from "./lib/template-thumbnail.js";
@@ -283,6 +283,12 @@ export class EPPGridPanel extends LitElement {
 	// store is fully loaded — setting _perspective to null and flipping
 	// the editor view to the uncalibrated-FOV wizard).
 	private _loadedConfigMac: string | null = null;
+	// Consecutive empty device-list retries. Used to escape from a
+	// persisted-selection + genuinely-empty-list deadlock (user deleted
+	// last device, or localStorage has a stale mac from a prior session)
+	// by showing the "no devices configured" placeholder once we're
+	// confident the integration isn't just slow to discover devices.
+	@state() private _initRetryCount = 0;
 
 	// HA WebSocket connection state. Tracks the live state of
 	// `hass.connection.connected` so we can render a "reconnecting" UI
@@ -556,12 +562,14 @@ export class EPPGridPanel extends LitElement {
 			// commands not yet registered, initial push empty).  Retry
 			// silently so the UI doesn't flicker between "no devices" and
 			// "loading" every 2 seconds.
+			this._initRetryCount += 1;
 			this._loading = false;
 			this._initRetryTimer = setTimeout(() => {
 				this._initialize().catch(() => {});
 			}, 2000);
 			return;
 		}
+		this._initRetryCount = 0;
 		if (this._selectedMac && this._isSelectedDeviceAvailable()) {
 			this._ensureSession(this._selectedMac);
 		}
@@ -574,6 +582,9 @@ export class EPPGridPanel extends LitElement {
 			const prevMac = this._selectedMac;
 			this._devices = this._deviceCtrl.devices;
 			this._selectedMac = this._deviceCtrl.selectedMac;
+			if (this._devices.length > 0) {
+				this._initRetryCount = 0;
+			}
 			if (
 				prevMac !== "" &&
 				this._selectedMac !== "" &&
@@ -581,9 +592,9 @@ export class EPPGridPanel extends LitElement {
 			) {
 				// Selection auto-switched to a different device (previous
 				// one was removed from HA, another remained).
-				localStorage.setItem(STORAGE_KEY_SELECTED_MAC, this._selectedMac);
+				persistSelectedMac(this._selectedMac);
 				if (this._isSelectedDeviceAvailable()) {
-					this._loadDeviceConfig(this._selectedMac);
+					this._loadDeviceConfig(this._selectedMac).catch(() => {});
 				}
 			}
 		};
@@ -1417,12 +1428,14 @@ export class EPPGridPanel extends LitElement {
 			</div>`;
 		}
 
-		// Show the "no devices configured" placeholder only when we have
-		// neither a current list nor a previous selection. If we had a
-		// device but the list just arrived empty (transient HA/integration
-		// reload), we keep the selection and fall through to the offline
-		// banner below so in-progress state survives.
-		if (!this._devices.length && !this._selectedMac) {
+		// Show the "no devices configured" placeholder when either we have
+		// no prior selection, or the list has been stably empty for several
+		// retries (user deleted the last device, or the persisted selection
+		// is stale from a prior session). A short retry window gives the
+		// HA integration time to re-discover devices after a restart before
+		// we fall back to the CTA.
+		const emptyListStable = this._initRetryCount >= 3;
+		if (!this._devices.length && (!this._selectedMac || emptyListStable)) {
 			return html`<div class="tab-layout">
 				${this._renderTabBar()}
 				<div class="empty-state">
@@ -1644,7 +1657,7 @@ export class EPPGridPanel extends LitElement {
 						this._guardNavigation(async () => {
 							this._closeDeviceSession();
 							this._selectedMac = val;
-							localStorage.setItem(STORAGE_KEY_SELECTED_MAC, val);
+							persistSelectedMac(val);
 							await this._loadDeviceConfig(val);
 						});
 					}}

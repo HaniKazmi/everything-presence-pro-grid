@@ -1,5 +1,5 @@
 import type { ReactiveController, ReactiveControllerHost } from "lit";
-import { STORAGE_KEY_SELECTED_MAC } from "../lib/storage.js";
+import { persistSelectedMac, readStoredMac } from "../lib/storage.js";
 import type { DeviceInfo, RawTarget, Target, TargetStatus } from "../types.js";
 
 /**
@@ -130,7 +130,7 @@ export class DeviceController implements ReactiveController {
 			return;
 		}
 
-		const stored = localStorage.getItem(STORAGE_KEY_SELECTED_MAC);
+		const stored = readStoredMac();
 		const match =
 			stored && this.devices.find((d: DeviceInfo) => d.mac === stored);
 		this.selectedMac = match ? stored! : (this.devices[0]?.mac ?? "");
@@ -181,7 +181,7 @@ export class DeviceController implements ReactiveController {
 		// to the "no devices" placeholder mid-reconnect. An empty list
 		// just means "I don't know yet".
 		const prevSelectedMac = this.selectedMac;
-		const stored = localStorage.getItem(STORAGE_KEY_SELECTED_MAC);
+		const stored = readStoredMac();
 		if (this.devices.length > 0) {
 			const match = stored && this.devices.find((d) => d.mac === stored);
 			this.selectedMac = match ? stored! : this.devices[0].mac;
@@ -473,7 +473,7 @@ export class DeviceController implements ReactiveController {
 		this.selectedMac = mac;
 		this._lastSelectedAvailable = null;
 		this._connectionFailed = false;
-		localStorage.setItem(STORAGE_KEY_SELECTED_MAC, mac);
+		persistSelectedMac(mac);
 		this._host.requestUpdate();
 	}
 }

@@ -28,3 +28,23 @@ export function persistView(view: ViewMode): void {
 		/* localStorage unavailable */
 	}
 }
+
+export function readStoredMac(): string | null {
+	try {
+		return localStorage.getItem(STORAGE_KEY_SELECTED_MAC);
+	} catch {
+		return null;
+	}
+}
+
+export function persistSelectedMac(mac: string): void {
+	try {
+		if (mac === "") {
+			localStorage.removeItem(STORAGE_KEY_SELECTED_MAC);
+		} else {
+			localStorage.setItem(STORAGE_KEY_SELECTED_MAC, mac);
+		}
+	} catch {
+		/* localStorage unavailable */
+	}
+}
