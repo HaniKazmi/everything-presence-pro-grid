@@ -270,6 +270,13 @@ export class EPPGridPanel extends LitElement {
 	@state() private _devices: DeviceInfo[] = [];
 	@state() private _selectedMac = "";
 	@state() private _loading = true;
+	// Tracks which device we've successfully loaded config for, so
+	// reconnect paths can re-establish the live stream without refetching
+	// config (which would clobber unsaved edits and, during HA startup,
+	// can race with the backend returning an empty config before the
+	// store is fully loaded — setting _perspective to null and flipping
+	// the editor view to the uncalibrated-FOV wizard).
+	private _loadedConfigMac: string | null = null;
 
 	// HA WebSocket connection state. Tracks the live state of
 	// `hass.connection.connected` so we can render a "reconnecting" UI
@@ -282,9 +289,9 @@ export class EPPGridPanel extends LitElement {
 		if (wasDisconnected) {
 			// Device list / session subscriptions may have been torn down during
 			// the outage — re-bootstrap so the UI recovers without a manual
-			// reload.  Use refetchConfig=false so _applyConfig doesn't clobber
-			// in-memory state (perspective, furniture, zones, unsaved edits).
-			this._initialize({ refetchConfig: false }).catch(() => {
+			// reload. `_initialize` keys off `_loadedConfigMac` so it won't
+			// refetch config for a device we've already loaded.
+			this._initialize().catch(() => {
 				// _initialize already traps its own failures; guard here too so
 				// a late rejection can't surface as uncaught.
 			});
@@ -504,11 +511,8 @@ export class EPPGridPanel extends LitElement {
 
 	private _initRetryTimer?: ReturnType<typeof setTimeout>;
 
-	private async _initialize(
-		opts: { refetchConfig?: boolean } = {},
-	): Promise<void> {
+	private async _initialize(): Promise<void> {
 		if (!this.hass) return;
-		const refetchConfig = opts.refetchConfig !== false;
 		const isRetry = this._initRetryTimer !== undefined;
 		if (this._initRetryTimer) {
 			clearTimeout(this._initRetryTimer);
@@ -526,16 +530,19 @@ export class EPPGridPanel extends LitElement {
 			// silently so the UI doesn't flicker between "no devices" and
 			// "loading" every 2 seconds.
 			this._loading = false;
-			this._initRetryTimer = setTimeout(() => this._initialize(opts), 2000);
+			this._initRetryTimer = setTimeout(() => this._initialize(), 2000);
 			return;
 		}
 		if (this._selectedMac && this._isSelectedDeviceAvailable()) {
-			if (refetchConfig) {
-				await this._loadDeviceConfig(this._selectedMac);
-			} else {
-				// Reconnect path: keep the in-memory config (and any unsaved
-				// edits) intact, just re-establish the live stream.
+			if (this._loadedConfigMac === this._selectedMac) {
+				// Config for this device is already in memory — this is a
+				// reconnect, not a fresh load. Re-establish the live stream
+				// only; any unsaved editor edits (and the backend's saved
+				// perspective, which could be missing mid-HA-startup) stay
+				// as-is.
 				await this._deviceCtrl.reopenSession(this._selectedMac).catch(() => {});
+			} else {
+				await this._loadDeviceConfig(this._selectedMac);
 			}
 		}
 		this._loading = false;
@@ -655,6 +662,8 @@ export class EPPGridPanel extends LitElement {
 		this._ledMode = parsed.settings.ledMode;
 		this._ledBrightness = parsed.settings.ledBrightness;
 		this._ledPresenceColor = parsed.settings.ledPresenceColor;
+
+		this._loadedConfigMac = this._selectedMac;
 	}
 
 	private _closeDeviceSession(): void {

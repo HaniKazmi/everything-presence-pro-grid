@@ -263,6 +263,49 @@ describe("panel state survives device offline→online", () => {
 		expect(a._furniture).toHaveLength(1);
 	});
 
+	it("keeps editor + perspective when reconnect goes through the offline banner (device initially unavailable)", async () => {
+		// Scenario mirroring the user's bug report: "if it hits device
+		// offline then goes back to live overview; if not, goes back to
+		// editor".  Simulates HA restart where the first post-reconnect
+		// device list push marks the device unavailable (integration
+		// still booting), THEN flips it back to available.  The panel
+		// must not refetch config during this cycle — if it did,
+		// get_config could race with the backend's half-loaded store
+		// and come back with an empty config, setting _perspective to
+		// null and flipping editor → uncalibrated-FOV wizard.
+		const { el, a, hass, pushDeviceList, getConfigCallCount } =
+			await mountPanel([makeDevice("aa", true)]);
+		a._perspective = [1, 2, 3, 4, 5, 6, 7, 8, 9];
+		a._roomWidth = 4000;
+		a._roomDepth = 3000;
+		a._view = "editor";
+		await el.updateComplete;
+		const before = getConfigCallCount();
+
+		// WS drops, reconnects. Push arrives with the device marked
+		// unavailable first (triggering offline banner).
+		a._haConnected = false;
+		(hass.connection as any).connected = true;
+		pushDeviceList([makeDevice("aa", false)]);
+		await el.updateComplete;
+		a._onHaReady();
+		await new Promise((r) => setTimeout(r, 0));
+		await new Promise((r) => setTimeout(r, 0));
+		await el.updateComplete;
+
+		// Device comes back online.
+		pushDeviceList([makeDevice("aa", true)]);
+		await el.updateComplete;
+		await new Promise((r) => setTimeout(r, 0));
+		await el.updateComplete;
+
+		// No config refetch during the whole reconnect cycle.
+		expect(getConfigCallCount()).toBe(before);
+		// Editor view and perspective survive the offline detour.
+		expect(a._view).toBe("editor");
+		expect(a._perspective).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9]);
+	});
+
 	it("retries subscribeDeviceList when the list arrives empty (integration still booting)", async () => {
 		// Mount with an empty initial list, simulating HA restart where
 		// `eppgrid/subscribe_device_list` succeeds but the integration
