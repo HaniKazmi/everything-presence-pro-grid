@@ -335,7 +335,8 @@ export function getGridRoomMetrics(
 		if (
 			fov &&
 			maxRangeMm != null &&
-			!isCellInSensorRange(col, row, fov, roomWidth, maxRangeMm)
+			classifyCellInSensor(col, row, fov, roomWidth, maxRangeMm) ===
+				"out_of_cone"
 		)
 			continue;
 		if (col < minCol) minCol = col;
@@ -362,7 +363,8 @@ export function getGridRoomMetrics(
 		if (
 			fov &&
 			maxRangeMm != null &&
-			!isCellInSensorRange(col, row, fov, roomWidth, maxRangeMm)
+			classifyCellInSensor(col, row, fov, roomWidth, maxRangeMm) ===
+				"out_of_cone"
 		)
 			continue;
 		const cellMmX = (col - startCol + 0.5) * GRID_CELL_MM;

@@ -546,50 +546,51 @@ describe("getGridRoomMetrics", () => {
 		expect(typeof result!.furthestM).toBe("number");
 	});
 
-	it("excludes out-of-range cells from dimensions when maxRangeMm is provided", () => {
-		// 6-col, 10-row room with sensor at top-centre looking straight ahead
-		const grid = new Uint8Array(GRID_CELL_COUNT);
-		// Place room: cols 7-12, rows 0-9
-		for (let r = 0; r < 10; r++) {
-			for (let c = 7; c <= 12; c++) {
-				grid[r * GRID_COLS + c] = CELL_ROOM_BIT;
-			}
-		}
-		const roomWidth = 1800; // 6 cols
-		const fov: SensorFov = {
-			sensorPos: { x: 900, y: 0 }, // top-centre of room
-			dirX: 0,
-			dirY: 1,
-		};
-
-		// Without maxRangeMm, all cells count
-		const full = getGridRoomMetrics(grid, roomWidth, null);
-		expect(full).not.toBeNull();
-		expect(full!.depthM).toBe(3); // 10 rows * 300mm = 3000mm
-
-		// With short range, only nearby cells count — depth should shrink
-		const limited = getGridRoomMetrics(grid, roomWidth, null, fov, 600);
-		expect(limited).not.toBeNull();
-		expect(limited!.depthM).toBeLessThan(full!.depthM);
-	});
-
-	it("excludes out-of-range cells from furthest point", () => {
+	it("keeps beyond-max-range cells in dimensions (only out-of-cone is excluded)", () => {
+		// 6-col, 10-row room with sensor at top-centre looking straight ahead.
+		// All room cells are in the 120° cone — a tight configured range must
+		// NOT shrink the reported dimensions, otherwise the numeric label
+		// disagrees with the visible grid (which keeps beyond-range cells).
 		const grid = new Uint8Array(GRID_CELL_COUNT);
 		for (let r = 0; r < 10; r++) {
 			for (let c = 7; c <= 12; c++) {
 				grid[r * GRID_COLS + c] = CELL_ROOM_BIT;
 			}
 		}
+		const roomWidth = 1800;
 		const fov: SensorFov = {
 			sensorPos: { x: 900, y: 0 },
 			dirX: 0,
 			dirY: 1,
 		};
 
-		const full = getGridRoomMetrics(grid, 1800, null);
-		const limited = getGridRoomMetrics(grid, 1800, null, fov, 600);
-
+		const full = getGridRoomMetrics(grid, roomWidth, null);
+		const limited = getGridRoomMetrics(grid, roomWidth, null, fov, 600);
 		expect(limited).not.toBeNull();
-		expect(limited!.furthestM).toBeLessThan(full!.furthestM);
+		expect(limited!.depthM).toBe(full!.depthM);
+		expect(limited!.widthM).toBe(full!.widthM);
+		expect(limited!.furthestM).toBeCloseTo(full!.furthestM, 6);
+	});
+
+	it("excludes out-of-cone cells from dimensions", () => {
+		// Sensor at top-centre of the room, looking straight down.  Row 0
+		// sits directly beside the sensor (dot-product is 0 → out of cone),
+		// so dimensions must not include that row.
+		const grid = new Uint8Array(GRID_CELL_COUNT);
+		for (let r = 0; r < 10; r++) {
+			for (let c = 5; c <= 14; c++) {
+				grid[r * GRID_COLS + c] = CELL_ROOM_BIT;
+			}
+		}
+		const fov: SensorFov = {
+			sensorPos: { x: 1500, y: 150 },
+			dirX: 0,
+			dirY: 1,
+		};
+
+		const full = getGridRoomMetrics(grid, 3000, null);
+		const coneLimited = getGridRoomMetrics(grid, 3000, null, fov, 6000);
+		expect(coneLimited).not.toBeNull();
+		expect(coneLimited!.depthM).toBeLessThan(full!.depthM);
 	});
 });
