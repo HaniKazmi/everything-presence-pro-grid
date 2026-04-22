@@ -372,8 +372,9 @@ export class EppGrid extends LitElement {
 							}),
 						);
 					}
-					// Hide target if on an interference or suppress cell and zone is not
-					// occupied (blocked by no-first-appearance rule — not a confirmed presence)
+					// Interference/suppress cells don't confirm presence by themselves:
+					// suppress is skipped by the engine, interference requires continuity.
+					// Hide the dot when the zone isn't already occupied via another path.
 					if (this.grid.length > 0) {
 						const col = Math.floor(pos.col);
 						const row = Math.floor(pos.row);

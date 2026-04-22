@@ -31,7 +31,6 @@ import {
 	CELL_OVERLAY_SUPPRESS,
 	cellIsInside,
 	cellSetOverlay,
-	cellZone,
 	GRID_CELL_COUNT,
 	GRID_CELL_MM,
 	GRID_COLS,
