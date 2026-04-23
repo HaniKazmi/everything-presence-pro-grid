@@ -797,7 +797,7 @@ describe("_handleWifiProvision", () => {
 		const updateSpy = vi.spyOn(ctrl, "updateUsbState");
 
 		const promise = (panel as any)._handleWifiProvision("MySSID", "s3cr3t");
-		await vi.advanceTimersByTimeAsync(3500); // 200ms initial + 3s retry delay
+		await vi.advanceTimersByTimeAsync(11000); // 200ms initial + 10s retry delay
 		await promise;
 
 		expect(addSpy).toHaveBeenCalledTimes(2);
@@ -822,7 +822,8 @@ describe("_handleWifiProvision", () => {
 		const updateSpy = vi.spyOn(ctrl, "updateUsbState");
 
 		const promise = (panel as any)._handleWifiProvision("MySSID", "s3cr3t");
-		await vi.advanceTimersByTimeAsync(31000);
+		// 200ms provision + 5 × 10s backoff = 50.2s
+		await vi.advanceTimersByTimeAsync(51000);
 		await promise;
 
 		const completeCall = (updateSpy.mock.calls as any[][]).find(
@@ -860,7 +861,7 @@ describe("_handleWifiProvision", () => {
 		const updateSpy = vi.spyOn(ctrl, "updateUsbState");
 
 		const promise = (panel as any)._handleWifiProvision("MySSID", "s3cr3t");
-		await vi.advanceTimersByTimeAsync(3500);
+		await vi.advanceTimersByTimeAsync(11000);
 		await promise;
 
 		const completeCall = (updateSpy.mock.calls as any[][]).find(
@@ -873,7 +874,7 @@ describe("_handleWifiProvision", () => {
 		});
 	});
 
-	it("retries up to 6 times with backoff on persistent cannot_connect", async () => {
+	it("retries up to 6 times at 10s intervals on persistent cannot_connect", async () => {
 		(detectIpAddress as ReturnType<typeof vi.fn>).mockResolvedValue(
 			"192.168.1.42",
 		);
@@ -889,8 +890,8 @@ describe("_handleWifiProvision", () => {
 		const updateSpy = vi.spyOn(ctrl, "updateUsbState");
 
 		const promise = (panel as any)._handleWifiProvision("MySSID", "s3cr3t");
-		// 200ms provision + backoff sum (1+2+4+8+15=30s) + slack
-		await vi.advanceTimersByTimeAsync(31000);
+		// 200ms provision + 5 × 10s retry delays = 50.2s
+		await vi.advanceTimersByTimeAsync(51000);
 		await promise;
 
 		expect(addSpy).toHaveBeenCalledTimes(6);
@@ -916,7 +917,7 @@ describe("_handleWifiProvision", () => {
 		const updateSpy = vi.spyOn(ctrl, "updateUsbState");
 
 		const promise = (panel as any)._handleWifiProvision("MySSID", "s3cr3t");
-		await vi.advanceTimersByTimeAsync(5000);
+		await vi.advanceTimersByTimeAsync(21000);
 		await promise;
 
 		// Attempts 2 and 3 should have published progress into wifi_configured.
@@ -931,6 +932,29 @@ describe("_handleWifiProvision", () => {
 		expect(attempts).toContain(2);
 		expect(attempts).toContain(3);
 		expect(retryCalls[0].haAddMaxAttempts).toBe(6);
+	});
+
+	it("aborts backoff promptly when opId changes mid-retry", async () => {
+		(detectIpAddress as ReturnType<typeof vi.fn>).mockResolvedValue(
+			"192.168.1.42",
+		);
+		const ctrl = (panel as any)._flasherCtrl;
+		const addSpy = vi
+			.spyOn(ctrl, "addEsphomeDevice")
+			.mockResolvedValue({ type: "cannot_connect" });
+
+		const promise = (panel as any)._handleWifiProvision("MySSID", "s3cr3t");
+		// Reach the middle of the first 10s backoff.
+		await vi.advanceTimersByTimeAsync(11200);
+		expect(addSpy).toHaveBeenCalledTimes(2);
+
+		// Cancel: bump opId and advance only one poll step (250ms).
+		ctrl.bumpOpId();
+		await vi.advanceTimersByTimeAsync(300);
+		await promise;
+
+		// Retry loop must have exited without waiting out the remaining backoff.
+		expect(addSpy).toHaveBeenCalledTimes(2);
 	});
 
 	it("sets error state when runWifiProvision throws", async () => {
