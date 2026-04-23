@@ -44,7 +44,6 @@ TEST_CASE("zone_slots[0] provides zone 0 timing (no id/name, just timing)") {
 
   // Zone 0 (slot 0): parsed from zone_slots[0], not from root room_* fields.
   CHECK(configs[0].id == 0);
-  CHECK(configs[0].type == ZoneType::NORMAL);
   CHECK(configs[0].trigger == 5);
   CHECK(configs[0].renew == 3);
   CHECK(configs[0].timeout == doctest::Approx(10.0f));
@@ -52,15 +51,14 @@ TEST_CASE("zone_slots[0] provides zone 0 timing (no id/name, just timing)") {
 
   // Zone 1 (slot 1): parsed from zone_slots[1], id = slot index.
   CHECK(configs[1].id == 1);
-  CHECK(configs[1].type == ZoneType::REST);
   CHECK(configs[1].trigger == 7);
   CHECK(configs[1].renew == 1);
   CHECK(configs[1].timeout == doctest::Approx(30.0f));
   CHECK(configs[1].handoff_timeout == doctest::Approx(10.0f));
 }
 
-TEST_CASE("zone 0 timing values are respected (REST type propagates)") {
-  // Proves the parser reads type/trigger/renew/timeout/handoff_timeout from
+TEST_CASE("zone 0 timing values from wire are respected") {
+  // Proves the parser reads trigger/renew/timeout/handoff_timeout from
   // zone_slots[0] and not from root-level room_* fields. The root-level
   // fields are absent here.
   const char *json =
@@ -76,7 +74,6 @@ TEST_CASE("zone 0 timing values are respected (REST type propagates)") {
 
   REQUIRE(count == 1);
   CHECK(configs[0].id == 0);
-  CHECK(configs[0].type == ZoneType::REST);
   CHECK(configs[0].trigger == 7);
   CHECK(configs[0].renew == 1);
   CHECK(configs[0].timeout == doctest::Approx(30.0f));

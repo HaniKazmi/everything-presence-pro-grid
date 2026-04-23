@@ -65,19 +65,11 @@ static Grid build_grid(const json& grid_config) {
     return grid;
 }
 
-static ZoneType parse_zone_type(const std::string& type_str) {
-    if (type_str == "normal") return ZoneType::NORMAL;
-    if (type_str == "thoroughfare") return ZoneType::THOROUGHFARE;
-    if (type_str == "rest") return ZoneType::REST;
-    return ZoneType::CUSTOM;
-}
-
 static std::vector<ZoneConfig> build_zones(const json& zone_configs) {
     std::vector<ZoneConfig> zones;
     for (auto& [zid_str, cfg] : zone_configs.items()) {
         ZoneConfig zc{};
         zc.id = std::stoi(zid_str);
-        zc.type = parse_zone_type(cfg["type"].get<std::string>());
         zc.trigger = cfg["trigger"].get<int>();
         zc.renew = cfg["renew"].get<int>();
         zc.timeout = cfg["timeout"].get<float>();

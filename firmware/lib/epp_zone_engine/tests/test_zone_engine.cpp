@@ -34,7 +34,6 @@ static ZoneEngine make_parity_engine() {
     // Zone 1: custom, trigger=3, renew=2, timeout=5, handoff_timeout=1
     ZoneConfig zone1{};
     zone1.id = 1;
-    zone1.type = ZoneType::CUSTOM;
     zone1.trigger = 3;
     zone1.renew = 2;
     zone1.timeout = 5.0f;
@@ -43,7 +42,6 @@ static ZoneEngine make_parity_engine() {
     // Zone 0: normal, trigger=5, renew=3, timeout=10, handoff_timeout=3
     ZoneConfig zone0{};
     zone0.id = 0;
-    zone0.type = ZoneType::NORMAL;
     zone0.trigger = 5;
     zone0.renew = 3;
     zone0.timeout = 10.0f;
@@ -423,7 +421,6 @@ TEST_CASE("set_zones skips invalid zone IDs") {
     engine.set_grid(make_parity_grid());
     ZoneConfig bad{};
     bad.id = 99;  // out of range (MAX_ZONE_SLOTS=8)
-    bad.type = ZoneType::CUSTOM;
     bad.trigger = 1;
     engine.set_zones(&bad, 1);
     // Only zone 0 should exist; zone 1 cell should not trigger zone 1 occupancy
@@ -438,7 +435,7 @@ TEST_CASE("set_zones resets per-target gating state") {
     engine.tick(make_window_1(X_OFF + 150, 150, 7), t);
     // Re-configure zones → should reset gate count
     ZoneConfig zone1{};
-    zone1.id = 1; zone1.type = ZoneType::CUSTOM; zone1.trigger = 3;
+    zone1.id = 1; zone1.trigger = 3;
     zone1.renew = 2; zone1.timeout = 5.0f; zone1.handoff_timeout = 1.0f;
     engine.set_zones(&zone1, 1);
     // Next tick should be treated as first gating tick again (not second)
@@ -519,7 +516,7 @@ TEST_CASE("set_zones resets zone occupancy state") {
     engine.tick(make_window_1(X_OFF + 450, 450, 5), 100.0f);
     // Reconfigure
     ZoneConfig zone1{};
-    zone1.id = 1; zone1.type = ZoneType::CUSTOM; zone1.trigger = 3;
+    zone1.id = 1; zone1.trigger = 3;
     zone1.renew = 2; zone1.timeout = 5.0f; zone1.handoff_timeout = 1.0f;
     engine.set_zones(&zone1, 1);
     // Zone state should be reset to CLEAR

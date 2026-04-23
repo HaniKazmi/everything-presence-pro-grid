@@ -65,39 +65,6 @@ struct LogEntry {
 
 constexpr int MAX_LOG_ENTRIES = 16;
 
-// Zone type — matches Python const.py ZONE_TYPE_* constants
-enum class ZoneType : uint8_t {
-    NORMAL = 0,
-    THOROUGHFARE = 1,
-    REST = 2,
-    CUSTOM = 3,
-};
-
-// Default parameters per zone type — matches Python ZONE_TYPE_DEFAULTS
-struct ZoneTypeDefaults {
-    int trigger;
-    int renew;
-    float timeout;
-    float handoff_timeout;
-};
-
-// Defaults indexed by ZoneType ordinal (NORMAL, THOROUGHFARE, REST).
-// CUSTOM has no built-in defaults.
-constexpr std::array<ZoneTypeDefaults, 3> ZONE_TYPE_DEFAULTS = {{
-    {5, 3, 10.0f, 3.0f},   // NORMAL
-    {3, 2, 3.0f, 1.0f},    // THOROUGHFARE
-    {7, 1, 30.0f, 10.0f},  // REST
-}};
-
-// Get defaults for a zone type. Returns NORMAL defaults for CUSTOM or unknown.
-inline ZoneTypeDefaults zone_type_defaults(ZoneType type) {
-    auto idx = static_cast<unsigned>(type);
-    if (idx < ZONE_TYPE_DEFAULTS.size()) {
-        return ZONE_TYPE_DEFAULTS[idx];
-    }
-    return ZONE_TYPE_DEFAULTS[0];  // NORMAL as fallback
-}
-
 // Convert a threshold value to a frame count (minimum 1).
 inline int threshold_to_frame_count(int threshold) {
     return std::max(1, threshold);
