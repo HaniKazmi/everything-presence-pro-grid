@@ -2,6 +2,7 @@
 #include <doctest/doctest.h>
 #include "epp_grid.h"
 #include "epp_types.h"
+#include "epp_zone_engine.h"
 
 TEST_CASE("constants match expected values") {
     CHECK(epp::GRID_COLS == 20);
@@ -189,4 +190,19 @@ TEST_CASE("cell_overlay returns kind 0..3") {
     CHECK(grid.cell_overlay(1) == epp::CELL_OVERLAY_INTERFERENCE);
     CHECK(grid.cell_zone(1) == 3);
     CHECK(grid.cell_is_room(1));
+}
+
+TEST_CASE("ZoneConfig has no type field") {
+    // Regression guard: after the zone-types-rework, firmware is
+    // type-agnostic. ZoneConfig carries only id + timing. If someone
+    // re-adds a type field, this test compiles but documents the intent.
+    epp::ZoneConfig zc{};
+    zc.id = 0;
+    zc.trigger = 5;
+    zc.renew = 3;
+    zc.timeout = 10.0f;
+    zc.handoff_timeout = 3.0f;
+    CHECK(zc.id == 0);
+    CHECK(zc.trigger == 5);
+    CHECK(zc.timeout == 10.0f);
 }
