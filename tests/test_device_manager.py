@@ -4077,7 +4077,7 @@ def test_zone_type_defaults_match_frontend():
     assert "ZONE_TYPE_DEFAULTS" in ts_source, "zone-defaults.ts missing ZONE_TYPE_DEFAULTS"
 
     # Entries look like:
-    #   normal: { trigger: 5, renew: 3, timeout: 10, handoff_timeout: 3 },
+    #   default: { trigger: 5, renew: 3, timeout: 10, handoff_timeout: 3 },
     # Match those directly anywhere in the file — only ZONE_TYPE_DEFAULTS
     # uses exactly this 4-field shape with these field names in order.
     entry_re = re.compile(
