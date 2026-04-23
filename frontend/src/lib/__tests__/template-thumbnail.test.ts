@@ -1,9 +1,11 @@
 import { describe, expect, it } from "vitest";
 import {
-	CELL_INTERFERENCE_SHIFT,
 	CELL_OVERLAY_ENTRY,
+	CELL_OVERLAY_INTERFERENCE,
+	CELL_OVERLAY_SUPPRESS,
 	CELL_ROOM_BIT,
 	CELL_ZONE_SHIFT,
+	cellSetOverlay,
 	GRID_CELL_COUNT,
 	GRID_COLS,
 } from "../../lib/grid.js";
@@ -14,15 +16,13 @@ function makeGrid(
 		col: number;
 		row: number;
 		zone?: number;
-		entry?: boolean;
-		interference?: number;
+		overlay?: number; // CELL_OVERLAY_* value
 	}[],
 ): number[] {
 	const grid = new Array(GRID_CELL_COUNT).fill(0);
-	for (const { col, row, zone, entry, interference } of insideCells) {
+	for (const { col, row, zone, overlay } of insideCells) {
 		let val = CELL_ROOM_BIT | ((zone ?? 0) << CELL_ZONE_SHIFT);
-		if (entry) val |= CELL_OVERLAY_ENTRY;
-		if (interference) val |= interference << CELL_INTERFERENCE_SHIFT;
+		if (overlay) val = cellSetOverlay(val, overlay);
 		grid[row * GRID_COLS + col] = val;
 	}
 	return grid;
@@ -174,7 +174,7 @@ describe("renderTemplateThumbnail", () => {
 	it("renders entry/exit overlay pattern on cells", async () => {
 		const grid = makeGrid([
 			{ col: 10, row: 0 },
-			{ col: 10, row: 1, entry: true },
+			{ col: 10, row: 1, overlay: CELL_OVERLAY_ENTRY },
 		]);
 		const result = renderTemplateThumbnail(
 			grid,
@@ -206,7 +206,7 @@ describe("renderTemplateThumbnail", () => {
 	it("renders interference source overlay pattern on cells", async () => {
 		const grid = makeGrid([
 			{ col: 10, row: 0 },
-			{ col: 10, row: 1, interference: 1 },
+			{ col: 10, row: 1, overlay: CELL_OVERLAY_INTERFERENCE },
 		]);
 		const result = renderTemplateThumbnail(
 			grid,
@@ -236,7 +236,7 @@ describe("renderTemplateThumbnail", () => {
 	it("renders suppress interference overlay pattern on cells", async () => {
 		const grid = makeGrid([
 			{ col: 10, row: 0 },
-			{ col: 10, row: 1, interference: 2 },
+			{ col: 10, row: 1, overlay: CELL_OVERLAY_SUPPRESS },
 		]);
 		const result = renderTemplateThumbnail(
 			grid,

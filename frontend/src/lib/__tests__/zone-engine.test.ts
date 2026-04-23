@@ -1,9 +1,10 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import {
-	CELL_INTERFERENCE_SUPPRESS,
+	CELL_OVERLAY_ENTRY,
+	CELL_OVERLAY_INTERFERENCE,
+	CELL_OVERLAY_SUPPRESS,
 	CELL_ROOM_BIT,
-	cellSetInterference,
-	cellSetOverlayEntry,
+	cellSetOverlay,
 	cellSetZone,
 	GRID_CELL_COUNT,
 	GRID_COLS,
@@ -110,7 +111,7 @@ describe("runLocalZoneEngine", () => {
 
 	it("target with signal >= trigger causes occupancy (overlay entry, no gating)", () => {
 		const grid = makeParityGrid();
-		grid[29] = cellSetOverlayEntry(grid[29], true);
+		grid[29] = cellSetOverlay(grid[29], CELL_OVERLAY_ENTRY);
 		const params = makeDefaultParams({
 			targets: [makeTarget(450, 450, 3)],
 		});
@@ -131,7 +132,7 @@ describe("runLocalZoneEngine", () => {
 	it("occupancy persists during pending timeout after target leaves", () => {
 		const now = Date.now() / 1000;
 		const grid = makeParityGrid();
-		grid[29] = cellSetOverlayEntry(grid[29], true);
+		grid[29] = cellSetOverlay(grid[29], CELL_OVERLAY_ENTRY);
 		// Occupy zone 1
 		const params1 = makeDefaultParams({
 			targets: [makeTarget(450, 450, 5)],
@@ -219,7 +220,7 @@ describe("runLocalZoneEngine", () => {
 	it("entry-point zone bypasses gating", () => {
 		const grid = makeParityGrid();
 		// Cell (9,1) = index 29 is zone 1. Set overlay entry bit.
-		grid[29] = cellSetOverlayEntry(grid[29], true);
+		grid[29] = cellSetOverlay(grid[29], CELL_OVERLAY_ENTRY);
 		const params = makeDefaultParams({
 			targets: [makeTarget(450, 450, 3)],
 		});
@@ -232,7 +233,7 @@ describe("runLocalZoneEngine", () => {
 		// Zone 0 (normal type, no entry_point) but cell has overlay
 		const grid = makeParityGrid();
 		// Cell at (8,0) = index 8 — zone 0, inside room. Set overlay bit.
-		grid[8] = cellSetOverlayEntry(grid[8], true);
+		grid[8] = cellSetOverlay(grid[8], CELL_OVERLAY_ENTRY);
 		const params = makeDefaultParams({
 			targets: [makeTarget(150, 150, 5)], // target lands on cell (8,0) = zone 0
 			zoneConfigs: [
@@ -250,7 +251,7 @@ describe("runLocalZoneEngine", () => {
 	it("target reappears during pending -> back to occupied", () => {
 		const now = Date.now() / 1000;
 		const grid = makeParityGrid();
-		grid[29] = cellSetOverlayEntry(grid[29], true);
+		grid[29] = cellSetOverlay(grid[29], CELL_OVERLAY_ENTRY);
 		// Occupy zone 1
 		const params1 = makeDefaultParams({
 			targets: [makeTarget(450, 450, 5)],
@@ -281,7 +282,7 @@ describe("runLocalZoneEngine", () => {
 	it("two targets in different zones -> both zones occupied", () => {
 		const now = Date.now() / 1000;
 		const grid = makeParityGrid();
-		grid[29] = cellSetOverlayEntry(grid[29], true);
+		grid[29] = cellSetOverlay(grid[29], CELL_OVERLAY_ENTRY);
 		const params = makeDefaultParams({
 			targets: [makeTarget(450, 450, 5), makeTarget(150, 150, 7)],
 			now,
@@ -643,7 +644,7 @@ describe("runLocalZoneEngine", () => {
 		const grid = makeParityGrid();
 		// Cell (9,1) = index 29 is zone 1 (custom type: timeout=5, handoff=1).
 		// Set overlay entry bit.
-		grid[29] = cellSetOverlayEntry(grid[29], true);
+		grid[29] = cellSetOverlay(grid[29], CELL_OVERLAY_ENTRY);
 
 		// Tick 1: target in zone 1, confirmed
 		const params1 = makeDefaultParams({
@@ -773,13 +774,13 @@ describe("interference zones", () => {
 		// Zone 1 trigger=3. With interference, trigger stays 3.
 		// Target enters via continuity, signal 3 >= trigger 3 → should occupy.
 		const grid = makeParityGrid();
-		grid[1 * GRID_COLS + 9] = cellSetInterference(
+		grid[1 * GRID_COLS + 9] = cellSetOverlay(
 			cellSetZone(CELL_ROOM_BIT, 1),
-			1,
+			CELL_OVERLAY_INTERFERENCE,
 		);
-		grid[1 * GRID_COLS + 8] = cellSetOverlayEntry(
+		grid[1 * GRID_COLS + 8] = cellSetOverlay(
 			cellSetZone(CELL_ROOM_BIT, 1),
-			true,
+			CELL_OVERLAY_ENTRY,
 		);
 
 		// First tick: establish position in clean cell
@@ -810,13 +811,13 @@ describe("interference zones", () => {
 		// Zone 1 renew=2, but with interference renew=9.
 		// Signal 8 < 9 → should start pending-clear.
 		const grid = makeParityGrid();
-		grid[1 * GRID_COLS + 9] = cellSetInterference(
+		grid[1 * GRID_COLS + 9] = cellSetOverlay(
 			cellSetZone(CELL_ROOM_BIT, 1),
-			1,
+			CELL_OVERLAY_INTERFERENCE,
 		);
-		grid[1 * GRID_COLS + 8] = cellSetOverlayEntry(
+		grid[1 * GRID_COLS + 8] = cellSetOverlay(
 			cellSetZone(CELL_ROOM_BIT, 1),
-			true,
+			CELL_OVERLAY_ENTRY,
 		);
 
 		const now = Date.now() / 1000;
@@ -852,15 +853,15 @@ describe("interference zones", () => {
 		expect(state.localZoneState.get(1)?.pendingSince).not.toBeNull();
 	});
 
-	it("interference suppress (7) prevents detection entirely", () => {
+	it("suppress overlay prevents detection entirely", () => {
 		const grid = makeParityGrid();
-		grid[1 * GRID_COLS + 9] = cellSetInterference(
+		grid[1 * GRID_COLS + 9] = cellSetOverlay(
 			cellSetZone(CELL_ROOM_BIT, 1),
-			CELL_INTERFERENCE_SUPPRESS,
+			CELL_OVERLAY_SUPPRESS,
 		);
-		grid[1 * GRID_COLS + 8] = cellSetOverlayEntry(
+		grid[1 * GRID_COLS + 8] = cellSetOverlay(
 			cellSetZone(CELL_ROOM_BIT, 1),
-			true,
+			CELL_OVERLAY_ENTRY,
 		);
 
 		const params = makeDefaultParams({
@@ -875,14 +876,14 @@ describe("interference zones", () => {
 		// A target appearing directly in an interference cell with no prior position
 		// should be skipped — it must be handed off from a clean zone.
 		const grid = makeParityGrid();
-		grid[1 * GRID_COLS + 9] = cellSetInterference(
+		grid[1 * GRID_COLS + 9] = cellSetOverlay(
 			cellSetZone(CELL_ROOM_BIT, 1),
-			1,
+			CELL_OVERLAY_INTERFERENCE,
 		);
 		// Adjacent overlay to bypass gating — but "no first appearance" should still block
-		grid[1 * GRID_COLS + 8] = cellSetOverlayEntry(
+		grid[1 * GRID_COLS + 8] = cellSetOverlay(
 			cellSetZone(CELL_ROOM_BIT, 1),
-			true,
+			CELL_OVERLAY_ENTRY,
 		);
 
 		const params = makeDefaultParams({
@@ -897,13 +898,13 @@ describe("interference zones", () => {
 	it("no first appearance: target with continuity from clean zone is allowed", () => {
 		// First tick: target in clean zone 0 cell (col=8, row=1) → establishes position
 		const grid = makeParityGrid();
-		grid[1 * GRID_COLS + 9] = cellSetInterference(
+		grid[1 * GRID_COLS + 9] = cellSetOverlay(
 			cellSetZone(CELL_ROOM_BIT, 1),
-			1,
+			CELL_OVERLAY_INTERFERENCE,
 		);
-		grid[1 * GRID_COLS + 8] = cellSetOverlayEntry(
+		grid[1 * GRID_COLS + 8] = cellSetOverlay(
 			cellSetZone(CELL_ROOM_BIT, 1),
-			true,
+			CELL_OVERLAY_ENTRY,
 		);
 
 		const params1 = makeDefaultParams({
@@ -926,9 +927,9 @@ describe("interference zones", () => {
 		// Simulates a fan: same target appears at same interference cell every tick,
 		// but never has continuity because targetPrev is cleared each time.
 		const grid = makeParityGrid();
-		grid[1 * GRID_COLS + 9] = cellSetInterference(
+		grid[1 * GRID_COLS + 9] = cellSetOverlay(
 			cellSetZone(CELL_ROOM_BIT, 1),
-			1,
+			CELL_OVERLAY_INTERFERENCE,
 		);
 
 		const now = Date.now() / 1000;
@@ -946,13 +947,13 @@ describe("interference zones", () => {
 	it("no first appearance: does not apply when zone is already occupied", () => {
 		// First: occupy zone via continuity from clean zone
 		const grid = makeParityGrid();
-		grid[1 * GRID_COLS + 9] = cellSetInterference(
+		grid[1 * GRID_COLS + 9] = cellSetOverlay(
 			cellSetZone(CELL_ROOM_BIT, 1),
-			1,
+			CELL_OVERLAY_INTERFERENCE,
 		);
-		grid[1 * GRID_COLS + 8] = cellSetOverlayEntry(
+		grid[1 * GRID_COLS + 8] = cellSetOverlay(
 			cellSetZone(CELL_ROOM_BIT, 1),
-			true,
+			CELL_OVERLAY_ENTRY,
 		);
 
 		// Tick 1: target in clean cell

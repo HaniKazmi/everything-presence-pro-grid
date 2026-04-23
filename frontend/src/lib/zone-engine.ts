@@ -1,9 +1,10 @@
 import { mapTargetToGridCell } from "./coordinates.js";
 import {
-	CELL_INTERFERENCE_SUPPRESS,
-	cellHasOverlayEntry,
-	cellInterference,
+	CELL_OVERLAY_ENTRY,
+	CELL_OVERLAY_INTERFERENCE,
+	CELL_OVERLAY_SUPPRESS,
 	cellIsInside,
+	cellOverlay,
 	cellZone,
 	GRID_CELL_COUNT,
 	GRID_COLS,
@@ -84,6 +85,27 @@ export function createZoneEngineState(): ZoneEngineState {
 const MAX_MOVEMENT_CELLS = 5;
 const MAX_TARGETS = 3;
 
+/** True if any cell in the 3×3 around (row,col) is an entry overlay in the same zone. */
+function hasEntryOverlayNear(
+	grid: Uint8Array,
+	row: number,
+	col: number,
+	zoneId: number,
+): boolean {
+	for (let dr = -1; dr <= 1; dr++) {
+		for (let dc = -1; dc <= 1; dc++) {
+			const nr = row + dr;
+			const nc = col + dc;
+			if (nr < 0 || nr >= GRID_ROWS || nc < 0 || nc >= GRID_COLS) continue;
+			const nv = grid[nr * GRID_COLS + nc];
+			if (cellOverlay(nv) === CELL_OVERLAY_ENTRY && cellZone(nv) === zoneId) {
+				return true;
+			}
+		}
+	}
+	return false;
+}
+
 export function runLocalZoneEngine(
 	state: ZoneEngineState,
 	params: ZoneEngineParams,
@@ -96,40 +118,29 @@ export function runLocalZoneEngine(
 	const targetZoneCurr: (number | null)[] = [null, null, null];
 	const targetLeftRoom: boolean[] = [false, false, false];
 
-	// Snapshot prev cell overlay info before per-target loop clears it.
-	// Check the target's cell AND its neighbours — the median position may
-	// land one cell away from the actual overlay cell at the boundary.
+	// Snapshot prev-position overlay/zone before the per-target loop overwrites
+	// state.targetPrev. The median position may land one cell away from the
+	// actual overlay cell at a boundary, so we check 3×3 neighbours.
 	const targetWasOnOverlay: boolean[] = [false, false, false];
 	const targetPrevZone: (number | null)[] = [null, null, null];
 	for (let i = 0; i < MAX_TARGETS && i < params.targets.length; i++) {
 		const prev = state.targetPrev[i];
-		if (prev !== null) {
-			const prevIdx = prev.row * GRID_COLS + prev.col;
-			if (
-				prevIdx >= 0 &&
-				prevIdx < GRID_CELL_COUNT &&
-				cellIsInside(params.grid[prevIdx])
-			) {
-				const prevZid = cellZone(params.grid[prevIdx]);
-				targetPrevZone[i] = prevZid;
-				// Check cell and same-zone neighbours for overlay
-				for (let dr = -1; dr <= 1 && !targetWasOnOverlay[i]; dr++) {
-					for (let dc = -1; dc <= 1 && !targetWasOnOverlay[i]; dc++) {
-						const nr = prev.row + dr;
-						const nc = prev.col + dc;
-						if (nr >= 0 && nr < GRID_ROWS && nc >= 0 && nc < GRID_COLS) {
-							const ni = nr * GRID_COLS + nc;
-							if (
-								cellHasOverlayEntry(params.grid[ni]) &&
-								cellZone(params.grid[ni]) === prevZid
-							) {
-								targetWasOnOverlay[i] = true;
-							}
-						}
-					}
-				}
-			}
-		}
+		if (prev === null) continue;
+		const prevIdx = prev.row * GRID_COLS + prev.col;
+		if (
+			prevIdx < 0 ||
+			prevIdx >= GRID_CELL_COUNT ||
+			!cellIsInside(params.grid[prevIdx])
+		)
+			continue;
+		const prevZid = cellZone(params.grid[prevIdx]);
+		targetPrevZone[i] = prevZid;
+		targetWasOnOverlay[i] = hasEntryOverlayNear(
+			params.grid,
+			prev.row,
+			prev.col,
+			prevZid,
+		);
 	}
 
 	for (let i = 0; i < MAX_TARGETS && i < params.targets.length; i++) {
@@ -178,12 +189,13 @@ export function runLocalZoneEngine(
 		}
 
 		// Interference suppress: skip this cell entirely
-		const interference = cellInterference(cellVal);
-		if (interference === CELL_INTERFERENCE_SUPPRESS) {
+		const overlay = cellOverlay(cellVal);
+		if (overlay === CELL_OVERLAY_SUPPRESS) {
 			state.targetPrev[i] = null;
 			state.targetGateCount[i] = 0;
 			continue;
 		}
+		const hasInterference = overlay === CELL_OVERLAY_INTERFERENCE;
 
 		const zid = cellZone(cellVal);
 		targetZoneCurr[i] = zid;
@@ -227,39 +239,23 @@ export function runLocalZoneEngine(
 		// No first appearance: targets cannot originate in interference zones.
 		// They must be handed off from a clean zone (continuity required).
 		// Only applies when zone is CLEAR — once occupied, targets can be re-confirmed.
-		if (interference > 0 && !continuous && isClear) {
+		if (hasInterference && !continuous && isClear) {
 			state.targetPrev[i] = null;
 			state.targetGateCount[i] = 0;
 			continue;
 		}
 
 		// Interference: renew requires signal 9 to prevent fans sustaining occupancy
-		const effectiveRenew = interference > 0 ? 9 : renew;
+		const effectiveRenew = hasInterference ? 9 : renew;
 
 		let baseTrigger = isClear ? trigger : effectiveRenew;
-		// Check cell and same-zone neighbours for overlay (median may lag behind actual position)
-		let cellOverlay = cellHasOverlayEntry(cellVal);
-		if (!cellOverlay) {
-			for (let dr = -1; dr <= 1 && !cellOverlay; dr++) {
-				for (let dc = -1; dc <= 1 && !cellOverlay; dc++) {
-					const nr = row + dr;
-					const nc = col + dc;
-					if (nr >= 0 && nr < GRID_ROWS && nc >= 0 && nc < GRID_COLS) {
-						const ni = nr * GRID_COLS + nc;
-						if (
-							cellHasOverlayEntry(params.grid[ni]) &&
-							cellZone(params.grid[ni]) === zid
-						) {
-							cellOverlay = true;
-						}
-					}
-				}
-			}
-		}
-		const needsGating = !cellOverlay && !continuous;
+		const onEntryOverlay =
+			overlay === CELL_OVERLAY_ENTRY ||
+			hasEntryOverlayNear(params.grid, row, col, zid);
+		const needsGating = !onEntryOverlay && !continuous;
 		// Instant entry suppressed when target cell carries interference —
 		// overlay on a neighbour must not negate the raised threshold.
-		if (cellOverlay && isClear && interference === 0) {
+		if (onEntryOverlay && isClear && !hasInterference) {
 			baseTrigger = 1;
 		}
 

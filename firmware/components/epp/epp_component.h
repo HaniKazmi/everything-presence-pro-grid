@@ -113,7 +113,12 @@ class EPPComponent : public esphome::Component {
  protected:
   static constexpr int NUM_TARGETS = 3;
   static constexpr uint8_t NVS_SCHEMA_VERSION = 2;
-  static constexpr const char* FIRMWARE_VERSION_STR = "0.94.0";
+  // Derived from esphome.project.version in yaml. ESPHome defines the macro
+  // during codegen; the fallback covers builds outside ESPHome (unit tests).
+  #ifndef ESPHOME_PROJECT_VERSION
+  #define ESPHOME_PROJECT_VERSION "0.0.0-dev"
+  #endif
+  static constexpr const char* FIRMWARE_VERSION_STR = ESPHOME_PROJECT_VERSION;
 
   // Target data from LD2450
   ParsedTarget targets_[NUM_TARGETS]{};

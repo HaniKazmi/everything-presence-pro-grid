@@ -18,8 +18,9 @@ import { beforeEach, describe, expect, it } from "vitest";
 import type { EPPGridPanel } from "../eppgrid-panel.js";
 import "../eppgrid-panel.js";
 import {
+	CELL_OVERLAY_ENTRY,
 	CELL_ROOM_BIT,
-	cellSetOverlayEntry,
+	cellSetOverlay,
 	cellSetZone,
 	GRID_CELL_COUNT,
 	GRID_COLS,
@@ -35,10 +36,10 @@ function makeParityGrid(): Uint8Array {
 			grid[r * GRID_COLS + c] = CELL_ROOM_BIT; // zone 0 (room)
 		}
 	}
-	// Zone 1 on cell (col=9, row=1) with overlay entry bit
-	grid[1 * GRID_COLS + 9] = cellSetOverlayEntry(
+	// Zone 1 on cell (col=9, row=1) with entry overlay
+	grid[1 * GRID_COLS + 9] = cellSetOverlay(
 		cellSetZone(CELL_ROOM_BIT, 1),
-		true,
+		CELL_OVERLAY_ENTRY,
 	);
 	return grid;
 }

@@ -1,6 +1,6 @@
 /**
  * Tests for the target context menu methods on EPPGridPanel:
- *   _targetCellIndex, _setInterference, _dismissTarget,
+ *   _targetCellIndex, _setOverlay, _dismissTarget,
  *   _showTargetMenu, _closeTargetMenu
  */
 import { describe, expect, it, vi } from "vitest";
@@ -8,8 +8,10 @@ import type { EPPGridPanel } from "../eppgrid-panel.js";
 import "../eppgrid-panel.js";
 import { mapTargetToGridCell } from "../lib/coordinates.js";
 import {
-	CELL_INTERFERENCE_SUPPRESS,
-	cellInterference,
+	CELL_OVERLAY_INTERFERENCE,
+	CELL_OVERLAY_NONE,
+	CELL_OVERLAY_SUPPRESS,
+	cellOverlay,
 	GRID_COLS,
 	initGridFromRoom,
 } from "../lib/grid.js";
@@ -235,32 +237,32 @@ describe("_dismissTarget", () => {
 	});
 });
 
-describe("_setInterference", () => {
-	it("sets interference level 1 on the target's cell and calls applyLayout", async () => {
+describe("_setOverlay", () => {
+	it("sets interference overlay on the target's cell and calls applyLayout", async () => {
 		const a = createPanel() as any;
 		a._gridCtrl = { applyLayout: vi.fn().mockResolvedValue(undefined) };
 		const { x, y, idx } = insideCellCoords(3000, 4000);
 		a._targetMenu = makeMenuDetail(x, y, 0);
 
-		expect(cellInterference(a._grid[idx])).toBe(0);
+		expect(cellOverlay(a._grid[idx])).toBe(CELL_OVERLAY_NONE);
 
-		await a._setInterference(1);
+		await a._setOverlay(CELL_OVERLAY_INTERFERENCE);
 
-		expect(cellInterference(a._grid[idx])).toBe(1);
+		expect(cellOverlay(a._grid[idx])).toBe(CELL_OVERLAY_INTERFERENCE);
 		expect(a._dirty).toBe(true);
 		expect(a._gridCtrl.applyLayout).toHaveBeenCalledOnce();
 		expect(a._targetMenu).toBeNull();
 	});
 
-	it("sets suppress level on the target's cell", async () => {
+	it("sets suppress overlay on the target's cell", async () => {
 		const a = createPanel() as any;
 		a._gridCtrl = { applyLayout: vi.fn().mockResolvedValue(undefined) };
 		const { x, y, idx } = insideCellCoords(3000, 4000);
 		a._targetMenu = makeMenuDetail(x, y, 0);
 
-		await a._setInterference(CELL_INTERFERENCE_SUPPRESS);
+		await a._setOverlay(CELL_OVERLAY_SUPPRESS);
 
-		expect(cellInterference(a._grid[idx])).toBe(CELL_INTERFERENCE_SUPPRESS);
+		expect(cellOverlay(a._grid[idx])).toBe(CELL_OVERLAY_SUPPRESS);
 		expect(a._gridCtrl.applyLayout).toHaveBeenCalledOnce();
 	});
 
@@ -269,7 +271,7 @@ describe("_setInterference", () => {
 		a._gridCtrl = { applyLayout: vi.fn().mockResolvedValue(undefined) };
 		a._targetMenu = null;
 
-		await a._setInterference(1);
+		await a._setOverlay(CELL_OVERLAY_INTERFERENCE);
 
 		expect(a._gridCtrl.applyLayout).not.toHaveBeenCalled();
 		expect(a._dirty).toBe(false);
@@ -278,10 +280,9 @@ describe("_setInterference", () => {
 	it("does nothing for outside-room cells and closes menu", async () => {
 		const a = createPanel() as any;
 		a._gridCtrl = { applyLayout: vi.fn().mockResolvedValue(undefined) };
-		// Use a target position that is outside the room
 		a._targetMenu = makeMenuDetail(-1000, -1000, 0);
 
-		await a._setInterference(1);
+		await a._setOverlay(CELL_OVERLAY_INTERFERENCE);
 
 		expect(a._gridCtrl.applyLayout).not.toHaveBeenCalled();
 		expect(a._dirty).toBe(false);
@@ -293,7 +294,7 @@ describe("_setInterference", () => {
 		a._gridCtrl = { applyLayout: vi.fn().mockResolvedValue(undefined) };
 		a._targetMenu = makeMenuDetail(99999, 99999, 0);
 
-		await a._setInterference(1);
+		await a._setOverlay(CELL_OVERLAY_INTERFERENCE);
 
 		expect(a._gridCtrl.applyLayout).not.toHaveBeenCalled();
 		expect(a._dirty).toBe(false);

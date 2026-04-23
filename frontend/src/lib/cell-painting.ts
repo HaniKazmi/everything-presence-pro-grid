@@ -1,10 +1,9 @@
 import {
+	CELL_OVERLAY_NONE,
 	CELL_ROOM_BIT,
-	cellHasOverlayEntry,
-	cellInterference,
 	cellIsInside,
-	cellSetInterference,
-	cellSetOverlayEntry,
+	cellOverlay,
+	cellSetOverlay,
 	cellSetZone,
 	cellZone,
 	GRID_CELL_COUNT,
@@ -75,39 +74,35 @@ export function applyPaintToCell(
  * Determine the paint action for an overlay paint stroke.
  *
  * @param cellValue Current cell byte value
- * @returns "clear" if cell has overlay, "set" otherwise
+ * @param kind The overlay kind being painted (CELL_OVERLAY_ENTRY |
+ *   CELL_OVERLAY_INTERFERENCE | CELL_OVERLAY_SUPPRESS)
+ * @returns "clear" if cell already has this overlay kind, "set" otherwise
  */
-export function determineOverlayPaintAction(cellValue: number): PaintAction {
-	return cellHasOverlayEntry(cellValue) ? "clear" : "set";
+export function determineOverlayPaintAction(
+	cellValue: number,
+	kind: number,
+): PaintAction {
+	return cellOverlay(cellValue) === kind ? "clear" : "set";
 }
 
 /**
  * Apply an overlay paint action to a single grid cell.
  *
+ * When setting, the overlay kind replaces any prior overlay on the cell.
+ * When clearing, the overlay is removed regardless of its current kind.
+ *
  * Returns null if the cell is outside the room.
  */
 export function applyOverlayPaintToCell(
 	cellValue: number,
+	kind: number,
 	paintAction: PaintAction,
 ): number | null {
 	if (!cellIsInside(cellValue)) return null;
-	return cellSetOverlayEntry(cellValue, paintAction === "set");
-}
-
-export function determineInterferencePaintAction(
-	cellValue: number,
-	level: number,
-): PaintAction {
-	return cellInterference(cellValue) === level ? "clear" : "set";
-}
-
-export function applyInterferencePaintToCell(
-	cellValue: number,
-	level: number,
-	paintAction: PaintAction,
-): number | null {
-	if (!cellIsInside(cellValue)) return null;
-	return cellSetInterference(cellValue, paintAction === "set" ? level : 0);
+	return cellSetOverlay(
+		cellValue,
+		paintAction === "set" ? kind : CELL_OVERLAY_NONE,
+	);
 }
 
 /**

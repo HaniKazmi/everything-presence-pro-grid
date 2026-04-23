@@ -4,10 +4,11 @@ import { TARGET_COLORS } from "../constants.js";
 import { mapTargetToGridCell } from "../lib/coordinates.js";
 import type { FurnitureItem } from "../lib/furniture.js";
 import {
-	CELL_INTERFERENCE_SUPPRESS,
-	cellHasOverlayEntry,
-	cellInterference,
+	CELL_OVERLAY_ENTRY,
+	CELL_OVERLAY_INTERFERENCE,
+	CELL_OVERLAY_SUPPRESS,
 	cellIsInside,
+	cellOverlay,
 	cellZone,
 	GRID_COLS,
 	GRID_ROWS,
@@ -29,6 +30,15 @@ import type { ZoneConfig } from "../lib/zone-defaults.js";
 import type { Target } from "../types.js";
 import "./epp-furniture-overlay.js";
 import { defaultLocalize, type LocalizeFn } from "../localize.js";
+
+const OVERLAY_STRIPE_CSS: Record<number, string> = {
+	[CELL_OVERLAY_ENTRY]:
+		"background-image: repeating-linear-gradient(45deg, transparent, transparent 6px, rgba(60,60,60,0.7) 6px, rgba(60,60,60,0.7) 8px);",
+	[CELL_OVERLAY_INTERFERENCE]:
+		"background-image: repeating-linear-gradient(-45deg, transparent, transparent 5px, #cc3333 5px, #cc3333 7px);",
+	[CELL_OVERLAY_SUPPRESS]:
+		"background-image: repeating-linear-gradient(-45deg, transparent, transparent 5px, #cc3333 5px, #cc3333 7px), repeating-linear-gradient(45deg, transparent, transparent 5px, #cc3333 5px, #cc3333 7px);",
+};
 
 export class EppGrid extends LitElement {
 	@property({ attribute: false }) grid: Uint8Array = new Uint8Array(0);
@@ -256,22 +266,10 @@ export class EppGrid extends LitElement {
 						occupancyStyle = `position: relative; z-index: 1; box-shadow: 0 0 8px 1px color-mix(in srgb, ${zoneColor} 60%, ${mixBase});`;
 					}
 				}
-				let overlayMarker = "";
-				if (inRange && cellIsInside(cellVal)) {
-					if (cellHasOverlayEntry(cellVal)) {
-						overlayMarker =
-							"background-image: repeating-linear-gradient(45deg, transparent, transparent 6px, rgba(60,60,60,0.7) 6px, rgba(60,60,60,0.7) 8px);";
-					} else {
-						const interf = cellInterference(cellVal);
-						if (interf === CELL_INTERFERENCE_SUPPRESS) {
-							overlayMarker =
-								"background-image: repeating-linear-gradient(-45deg, transparent, transparent 5px, #cc3333 5px, #cc3333 7px), repeating-linear-gradient(45deg, transparent, transparent 5px, #cc3333 5px, #cc3333 7px);";
-						} else if (interf > 0) {
-							overlayMarker =
-								"background-image: repeating-linear-gradient(-45deg, transparent, transparent 5px, #cc3333 5px, #cc3333 7px);";
-						}
-					}
-				}
+				const overlayMarker =
+					inRange && cellIsInside(cellVal)
+						? (OVERLAY_STRIPE_CSS[cellOverlay(cellVal)] ?? "")
+						: "";
 				cells.push(html`
 					<div
 						class="cell"
@@ -374,15 +372,19 @@ export class EppGrid extends LitElement {
 							}),
 						);
 					}
-					// Hide target if on an interference cell and zone is not occupied
-					// (blocked by no-first-appearance rule — not a confirmed presence)
+					// Interference/suppress cells don't confirm presence by themselves:
+					// suppress is skipped by the engine, interference requires continuity.
+					// Hide the dot when the zone isn't already occupied via another path.
 					if (this.grid.length > 0) {
 						const col = Math.floor(pos.col);
 						const row = Math.floor(pos.row);
 						const idx = row * GRID_COLS + col;
 						if (idx >= 0 && idx < this.grid.length) {
-							const interf = cellInterference(this.grid[idx]);
-							if (interf > 0) {
+							const overlay = cellOverlay(this.grid[idx]);
+							if (
+								overlay === CELL_OVERLAY_INTERFERENCE ||
+								overlay === CELL_OVERLAY_SUPPRESS
+							) {
 								const zid = cellZone(this.grid[idx]);
 								if (!this.occupancy[zid]) {
 									return nothing;

@@ -2,9 +2,13 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { GridStateController } from "../../controllers/grid-state-controller.js";
 import type { FurnitureItem, FurnitureSticker } from "../../lib/furniture.js";
 import {
-	CELL_INTERFERENCE_SHIFT,
+	CELL_OVERLAY_ENTRY,
+	CELL_OVERLAY_INTERFERENCE,
+	CELL_OVERLAY_NONE,
+	CELL_OVERLAY_SUPPRESS,
 	CELL_ROOM_BIT,
-	cellInterference,
+	cellOverlay,
+	cellSetOverlay,
 	GRID_CELL_COUNT,
 	getRoomBounds,
 	MAX_ZONES,
@@ -1154,55 +1158,54 @@ describe("GridStateController", () => {
 	});
 
 	// =========================================================================
-	// Interference painting via onCellMouseDown / applyPaintToCell
+	// Overlay painting via onCellMouseDown / applyPaintToCell
 	// =========================================================================
-	describe("interference painting", () => {
+	describe("overlay painting", () => {
 		beforeEach(() => {
-			// Mark cell 5 as inside the room so paint functions accept it
 			host._grid[5] = CELL_ROOM_BIT;
 			host._overlayMode = "interference";
 			vi.spyOn(window, "addEventListener").mockImplementation(() => {});
 		});
 
-		it("onCellMouseDown sets isPainting and applies interference paint", () => {
+		it("onCellMouseDown in interference mode paints CELL_OVERLAY_INTERFERENCE", () => {
 			ctrl.onCellMouseDown(5);
 			expect(host._isPainting).toBe(true);
-			// Interference mode always paints level 1
-			expect(cellInterference(host._grid[5])).toBe(1);
+			expect(cellOverlay(host._grid[5])).toBe(CELL_OVERLAY_INTERFERENCE);
 			expect(host._dirty).toBe(true);
 		});
 
-		it("onCellMouseDown uses determineInterferencePaintAction (toggles off when already set)", () => {
-			// Pre-paint cell 5 with interference level 1 (what mode "interference" paints)
-			host._grid[5] = CELL_ROOM_BIT | (1 << CELL_INTERFERENCE_SHIFT);
+		it("onCellMouseDown in interference mode toggles off when already set", () => {
+			host._grid[5] = cellSetOverlay(CELL_ROOM_BIT, CELL_OVERLAY_INTERFERENCE);
 			ctrl.onCellMouseDown(5);
-			// Same level → should toggle to clear
 			expect(host._paintAction).toBe("clear");
-			expect(cellInterference(host._grid[5])).toBe(0);
+			expect(cellOverlay(host._grid[5])).toBe(CELL_OVERLAY_NONE);
 		});
 
-		it("applyPaintToCell with interference mode calls applyInterferencePaintToCell", () => {
-			host._paintAction = "set";
-			ctrl.applyPaintToCell(5);
-			// Interference mode paints level 1
-			expect(cellInterference(host._grid[5])).toBe(1);
-			expect(host._dirty).toBe(true);
+		it("onCellMouseDown in suppress mode paints CELL_OVERLAY_SUPPRESS", () => {
+			host._overlayMode = "suppress";
+			ctrl.onCellMouseDown(5);
+			expect(cellOverlay(host._grid[5])).toBe(CELL_OVERLAY_SUPPRESS);
 		});
 
-		it("applyPaintToCell with interference mode clears when paintAction is clear", () => {
-			// Pre-paint cell 5 with interference level 2
-			host._grid[5] = CELL_ROOM_BIT | (2 << CELL_INTERFERENCE_SHIFT);
-			host._paintAction = "clear";
-			ctrl.applyPaintToCell(5);
-			expect(cellInterference(host._grid[5])).toBe(0);
-		});
-
-		it("onCellMouseDown with entry overlay mode still works", () => {
+		it("onCellMouseDown in entry mode paints CELL_OVERLAY_ENTRY", () => {
 			host._overlayMode = "entry";
 			ctrl.onCellMouseDown(5);
 			expect(host._isPainting).toBe(true);
-			// Entry overlay sets bit 4
-			expect(host._grid[5] & 0x10).toBe(0x10);
+			expect(cellOverlay(host._grid[5])).toBe(CELL_OVERLAY_ENTRY);
+		});
+
+		it("applyPaintToCell in interference mode sets overlay", () => {
+			host._paintAction = "set";
+			ctrl.applyPaintToCell(5);
+			expect(cellOverlay(host._grid[5])).toBe(CELL_OVERLAY_INTERFERENCE);
+			expect(host._dirty).toBe(true);
+		});
+
+		it("applyPaintToCell clears when paintAction is clear", () => {
+			host._grid[5] = cellSetOverlay(CELL_ROOM_BIT, CELL_OVERLAY_INTERFERENCE);
+			host._paintAction = "clear";
+			ctrl.applyPaintToCell(5);
+			expect(cellOverlay(host._grid[5])).toBe(CELL_OVERLAY_NONE);
 		});
 	});
 

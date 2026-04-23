@@ -4,9 +4,11 @@ import { unsafeSVG } from "lit/directives/unsafe-svg.js";
 import { FLOOR_PLAN_SVGS } from "../constants.js";
 import type { FurnitureItem } from "./furniture.js";
 import {
-	cellHasOverlayEntry,
-	cellInterference,
+	CELL_OVERLAY_ENTRY,
+	CELL_OVERLAY_INTERFERENCE,
+	CELL_OVERLAY_SUPPRESS,
 	cellIsInside,
+	cellOverlay,
 	GRID_CELL_MM,
 	GRID_COLS,
 	getRoomBounds,
@@ -57,19 +59,18 @@ export function renderTemplateThumbnail(
 			// Overlay markers
 			const x = c - minCol;
 			const y = r - minRow;
-			if (cellHasOverlayEntry(val)) {
+			const overlay = cellOverlay(val);
+			if (overlay === CELL_OVERLAY_ENTRY) {
 				neededPatterns.add("entry");
 				overlayRects.push(
 					svg`<rect x="${x}" y="${y}" width="1" height="1" fill="url(#overlay-entry)" />`,
 				);
-			}
-			const interf = cellInterference(val);
-			if (interf === 1) {
+			} else if (overlay === CELL_OVERLAY_INTERFERENCE) {
 				neededPatterns.add("interference");
 				overlayRects.push(
 					svg`<rect x="${x}" y="${y}" width="1" height="1" fill="url(#overlay-interference)" />`,
 				);
-			} else if (interf === 2) {
+			} else if (overlay === CELL_OVERLAY_SUPPRESS) {
 				neededPatterns.add("suppress");
 				overlayRects.push(
 					svg`<rect x="${x}" y="${y}" width="1" height="1" fill="url(#overlay-suppress)" />`,

@@ -177,50 +177,35 @@ TEST_CASE("threshold_to_frame_count") {
     CHECK(epp::threshold_to_frame_count(-3) == 1);
 }
 
-TEST_CASE("cell_has_overlay_entry") {
-    epp::Grid grid;
-    grid.cell(0) = epp::CELL_ROOM_BIT;
-    CHECK_FALSE(grid.cell_has_overlay_entry(0));
-
-    grid.cell(0) = epp::CELL_ROOM_BIT | epp::CELL_OVERLAY_ENTRY;
-    CHECK(grid.cell_has_overlay_entry(0));
-
-    // Preserves zone bits
-    grid.cell(1) = epp::CELL_ROOM_BIT | epp::CELL_OVERLAY_ENTRY | (3 << epp::CELL_ZONE_SHIFT);
-    CHECK(grid.cell_has_overlay_entry(1));
-    CHECK(grid.cell_zone(1) == 3);
-    CHECK(grid.cell_is_room(1));
+TEST_CASE("overlay constants") {
+    CHECK(epp::CELL_OVERLAY_MASK == 0x30);
+    CHECK(epp::CELL_OVERLAY_SHIFT == 4);
+    CHECK(epp::CELL_OVERLAY_NONE == 0);
+    CHECK(epp::CELL_OVERLAY_ENTRY == 1);
+    CHECK(epp::CELL_OVERLAY_INTERFERENCE == 2);
+    CHECK(epp::CELL_OVERLAY_SUPPRESS == 3);
 }
 
-TEST_CASE("cell_interference extracts bits 5-7") {
+TEST_CASE("cell_overlay returns kind 0..3") {
     epp::Grid grid;
 
-    // No interference
     grid.cell(0) = epp::CELL_ROOM_BIT;
-    CHECK(grid.cell_interference(0) == 0);
+    CHECK(grid.cell_overlay(0) == epp::CELL_OVERLAY_NONE);
 
-    // Level 1: bit 5
-    grid.cell(0) = epp::CELL_ROOM_BIT | (1 << epp::CELL_INTERFERENCE_SHIFT);
-    CHECK(grid.cell_interference(0) == 1);
+    grid.cell(0) = epp::CELL_ROOM_BIT | (epp::CELL_OVERLAY_ENTRY << epp::CELL_OVERLAY_SHIFT);
+    CHECK(grid.cell_overlay(0) == epp::CELL_OVERLAY_ENTRY);
 
-    // Level 3: bits 5+6
-    grid.cell(0) = epp::CELL_ROOM_BIT | (3 << epp::CELL_INTERFERENCE_SHIFT);
-    CHECK(grid.cell_interference(0) == 3);
+    grid.cell(0) = epp::CELL_ROOM_BIT | (epp::CELL_OVERLAY_INTERFERENCE << epp::CELL_OVERLAY_SHIFT);
+    CHECK(grid.cell_overlay(0) == epp::CELL_OVERLAY_INTERFERENCE);
 
-    // Suppress (7): bits 5-7 all set
-    grid.cell(0) = epp::CELL_ROOM_BIT | (epp::CELL_INTERFERENCE_SUPPRESS << epp::CELL_INTERFERENCE_SHIFT);
-    CHECK(grid.cell_interference(0) == epp::CELL_INTERFERENCE_SUPPRESS);
+    grid.cell(0) = epp::CELL_ROOM_BIT | (epp::CELL_OVERLAY_SUPPRESS << epp::CELL_OVERLAY_SHIFT);
+    CHECK(grid.cell_overlay(0) == epp::CELL_OVERLAY_SUPPRESS);
 
-    // Preserves other bits — zone + room + overlay unchanged
-    grid.cell(1) = epp::CELL_ROOM_BIT | epp::CELL_OVERLAY_ENTRY | (3 << epp::CELL_ZONE_SHIFT) | (2 << epp::CELL_INTERFERENCE_SHIFT);
-    CHECK(grid.cell_interference(1) == 2);
+    // Preserves zone + room
+    grid.cell(1) = epp::CELL_ROOM_BIT |
+                   (3 << epp::CELL_ZONE_SHIFT) |
+                   (epp::CELL_OVERLAY_INTERFERENCE << epp::CELL_OVERLAY_SHIFT);
+    CHECK(grid.cell_overlay(1) == epp::CELL_OVERLAY_INTERFERENCE);
     CHECK(grid.cell_zone(1) == 3);
     CHECK(grid.cell_is_room(1));
-    CHECK(grid.cell_has_overlay_entry(1));
-}
-
-TEST_CASE("interference constants") {
-    CHECK(epp::CELL_INTERFERENCE_MASK == 0xE0);
-    CHECK(epp::CELL_INTERFERENCE_SHIFT == 5);
-    CHECK(epp::CELL_INTERFERENCE_SUPPRESS == 2);
 }

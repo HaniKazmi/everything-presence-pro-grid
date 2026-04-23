@@ -1,9 +1,10 @@
 import { css, html, LitElement } from "lit";
 import { property } from "lit/decorators.js";
+import type { OverlayMode } from "../lib/grid.js";
 import { defaultLocalize, type LocalizeFn } from "../localize.js";
 
 export class EppOverlaySidebar extends LitElement {
-	@property({ attribute: false }) overlayMode: string | null = null;
+	@property({ attribute: false }) overlayMode: OverlayMode = null;
 	@property({ attribute: false }) localize: LocalizeFn = defaultLocalize;
 
 	static styles = css`

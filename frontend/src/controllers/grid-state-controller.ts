@@ -1,10 +1,8 @@
 import type { ReactiveController, ReactiveControllerHost } from "lit";
 import {
-	applyInterferencePaintToCell,
 	applyOverlayPaintToCell,
 	applyPaintToCell,
 	clearZoneFromGrid,
-	determineInterferencePaintAction,
 	determineOverlayPaintAction,
 	determinePaintAction,
 } from "../lib/cell-painting.js";
@@ -20,7 +18,6 @@ import {
 	updateFurnitureItem,
 } from "../lib/furniture.js";
 import {
-	CELL_INTERFERENCE_SUPPRESS,
 	cellIsInside,
 	cellZone,
 	GRID_CELL_MM,
@@ -29,6 +26,8 @@ import {
 	initGridFromRoom,
 	MAX_ZONES,
 	NUM_ZONE_SLOTS,
+	OVERLAY_MODE_TO_KIND,
+	type OverlayMode,
 } from "../lib/grid.js";
 import { autoDetectionRange } from "../lib/room-geometry.js";
 import {
@@ -36,6 +35,10 @@ import {
 	type Zone0Config,
 	type ZoneConfig,
 } from "../lib/zone-defaults.js";
+
+function overlayModeToKind(mode: OverlayMode): number | null {
+	return mode === null ? null : OVERLAY_MODE_TO_KIND[mode];
+}
 
 /**
  * Host interface — the subset of the panel that this controller reads/writes.
@@ -105,51 +108,25 @@ export class GridStateController implements ReactiveController {
 			this.host._selectedFurnitureId = null;
 			return;
 		}
-		// Interference / suppress painting mode
-		if (
-			this.host._overlayMode === "interference" ||
-			this.host._overlayMode === "suppress"
-		) {
-			const level =
-				this.host._overlayMode === "suppress" ? CELL_INTERFERENCE_SUPPRESS : 1;
-			this.host._isPainting = true;
-			this.host._frozenBounds = this.host._getVisibleRoomBounds();
-			this.host._paintAction = determineInterferencePaintAction(
-				this.host._grid[index],
-				level,
-			);
-			this.applyPaintToCell(index);
-			const onUp = () => {
-				this.onCellMouseUp();
-				window.removeEventListener("mouseup", onUp);
-			};
-			window.addEventListener("mouseup", onUp);
-			return;
-		}
-		// Overlay painting mode
-		if (this.host._overlayMode === "entry") {
-			this.host._isPainting = true;
-			this.host._frozenBounds = this.host._getVisibleRoomBounds();
+		const overlayKind = overlayModeToKind(this.host._overlayMode);
+		if (overlayKind !== null) {
 			this.host._paintAction = determineOverlayPaintAction(
 				this.host._grid[index],
+				overlayKind,
 			);
-			this.applyPaintToCell(index);
-			const onUp = () => {
-				this.onCellMouseUp();
-				window.removeEventListener("mouseup", onUp);
-			};
-			window.addEventListener("mouseup", onUp);
+		} else if (
+			this.host._sidebarTab === "zones" &&
+			this.host._activeZone !== null
+		) {
+			this.host._paintAction = determinePaintAction(
+				this.host._grid[index],
+				this.host._activeZone,
+			);
+		} else {
 			return;
 		}
-		// Zone painting mode — only on zones tab
-		if (this.host._sidebarTab !== "zones" || this.host._activeZone === null)
-			return;
 		this.host._isPainting = true;
 		this.host._frozenBounds = this.host._getVisibleRoomBounds();
-		this.host._paintAction = determinePaintAction(
-			this.host._grid[index],
-			this.host._activeZone,
-		);
 		this.applyPaintToCell(index);
 		const onUp = () => {
 			this.onCellMouseUp();
@@ -178,20 +155,11 @@ export class GridStateController implements ReactiveController {
 
 	applyPaintToCell(index: number): void {
 		let newValue: number | null;
-		if (
-			this.host._overlayMode === "interference" ||
-			this.host._overlayMode === "suppress"
-		) {
-			const level =
-				this.host._overlayMode === "suppress" ? CELL_INTERFERENCE_SUPPRESS : 1;
-			newValue = applyInterferencePaintToCell(
-				this.host._grid[index],
-				level,
-				this.host._paintAction,
-			);
-		} else if (this.host._overlayMode === "entry") {
+		const overlayKind = overlayModeToKind(this.host._overlayMode);
+		if (overlayKind !== null) {
 			newValue = applyOverlayPaintToCell(
 				this.host._grid[index],
+				overlayKind,
 				this.host._paintAction,
 			);
 		} else {
@@ -202,7 +170,7 @@ export class GridStateController implements ReactiveController {
 				this.host._paintAction,
 			);
 		}
-		if (newValue === null) return;
+		if (newValue === null || newValue === this.host._grid[index]) return;
 
 		this.host._grid = new Uint8Array(this.host._grid);
 		this.host._grid[index] = newValue;
