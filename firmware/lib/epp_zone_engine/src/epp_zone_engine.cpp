@@ -52,16 +52,9 @@ void ZoneEngine::set_zones(const ZoneConfig zones[], int count) {
     // Clear all slots
     std::memset(zone_enabled_, 0, sizeof(zone_enabled_));
 
-    // Always include zone 0 (room-level) with default fallback timing —
-    // overridden below if the wire payload supplies a slot 0.  Backend is
-    // the source of truth for type-specific defaults; firmware no longer
-    // knows what "default" or "bed" mean.
+    // Zone 0 gets ZoneConfig's in-class defaults; the wire payload's slot 0
+    // overrides below if supplied.
     zones_[0] = ZoneRuntime{};
-    zones_[0].config.id = 0;
-    zones_[0].config.trigger = 5;
-    zones_[0].config.renew = 3;
-    zones_[0].config.timeout = 10.0f;
-    zones_[0].config.handoff_timeout = 3.0f;
     zone_enabled_[0] = true;
     zone_count_ = 1;
 

@@ -3,6 +3,7 @@ import { property } from "lit/decorators.js";
 import {
 	resolveZoneParams,
 	ZONE_TYPE_DEFAULTS,
+	ZONE_TYPE_KEYS,
 	type Zone0Config,
 	type ZoneConfig,
 } from "../lib/zone-defaults.js";
@@ -418,21 +419,10 @@ export class EppZoneSidebar extends LitElement {
 						}}
 						@click=${(e: Event) => e.stopPropagation()}
 					>
-						<option value="default">
-							${this.localize("zones.default")}
-						</option>
-						<option value="bed">
-							${this.localize("zones.bed")}
-						</option>
-						<option value="seating">
-							${this.localize("zones.seating")}
-						</option>
-						<option value="transit">
-							${this.localize("zones.transit")}
-						</option>
-						<option value="custom">
-							${this.localize("zones.custom")}
-						</option>
+						${ZONE_TYPE_KEYS.map(
+							(k) =>
+								html`<option value=${k}>${this.localize(`zones.${k}`)}</option>`,
+						)}
 					</select>
 				</div>
 				<div style="${rowStyle}">
@@ -591,21 +581,10 @@ export class EppZoneSidebar extends LitElement {
 						}}
 						@click=${(e: Event) => e.stopPropagation()}
 					>
-						<option value="default">
-							${this.localize("zones.default")}
-						</option>
-						<option value="bed">
-							${this.localize("zones.bed")}
-						</option>
-						<option value="seating">
-							${this.localize("zones.seating")}
-						</option>
-						<option value="transit">
-							${this.localize("zones.transit")}
-						</option>
-						<option value="custom">
-							${this.localize("zones.custom")}
-						</option>
+						${ZONE_TYPE_KEYS.map(
+							(k) =>
+								html`<option value=${k}>${this.localize(`zones.${k}`)}</option>`,
+						)}
 					</select>
 				</div>
 				<div style="${rowStyle}">

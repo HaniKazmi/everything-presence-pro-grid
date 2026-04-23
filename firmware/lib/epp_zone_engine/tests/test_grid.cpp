@@ -191,20 +191,3 @@ TEST_CASE("cell_overlay returns kind 0..3") {
     CHECK(grid.cell_zone(1) == 3);
     CHECK(grid.cell_is_room(1));
 }
-
-TEST_CASE("ZoneConfig field shape documentation") {
-    // Documents the current struct shape (id + four timing fields) so
-    // readers of the test suite can see it at a glance. NOT a compile-time
-    // guard: adding a new field to ZoneConfig would still compile and pass
-    // this test. The stricter guarantee lives in the absence of any
-    // .type = ... assignments throughout the rest of the test suite.
-    epp::ZoneConfig zc{};
-    zc.id = 0;
-    zc.trigger = 5;
-    zc.renew = 3;
-    zc.timeout = 10.0f;
-    zc.handoff_timeout = 3.0f;
-    CHECK(zc.id == 0);
-    CHECK(zc.trigger == 5);
-    CHECK(zc.timeout == 10.0f);
-}

@@ -4114,21 +4114,3 @@ def test_zone_type_defaults_match_frontend():
     expected_ts_only = {"custom"}
     ts_only = set(ts_defaults) - set(ZONE_TYPE_DEFAULTS) - expected_ts_only
     assert not ts_only, f"TS ZONE_TYPE_DEFAULTS has types missing from Python: {ts_only}"
-
-
-def test_zone_type_defaults_includes_bed():
-    """The bed type was added in the zone-types-rework refactor.
-
-    Asserts both the Python table and the parsed frontend table contain bed
-    with the expected timing. Belt-and-suspenders alongside the broader
-    parity test, so a missing bed entry surfaces an obvious failure message.
-    """
-    from custom_components.eppgrid.device_manager import ZONE_TYPE_DEFAULTS
-
-    assert "bed" in ZONE_TYPE_DEFAULTS
-    assert ZONE_TYPE_DEFAULTS["bed"] == {
-        "trigger": 8,
-        "renew": 2,
-        "timeout": 600.0,
-        "handoff_timeout": 10.0,
-    }

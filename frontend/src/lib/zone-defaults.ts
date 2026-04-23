@@ -21,6 +21,16 @@ export const ZONE_TYPE_DEFAULTS: Record<
 	transit: { trigger: 3, renew: 2, timeout: 3, handoff_timeout: 1 },
 };
 
+// Dropdown order for zone-type <select> options. `custom` has no defaults
+// row (user values are authoritative), so it's only in this list.
+export const ZONE_TYPE_KEYS: Zone0Config["type"][] = [
+	"default",
+	"bed",
+	"seating",
+	"transit",
+	"custom",
+];
+
 // Color-blind-friendly pale palette (Paul Tol's "light qualitative scheme",
 // further softened ~30% toward white for a uniformly pale look while
 // preserving distinguishability across protanopia, deuteranopia, and
