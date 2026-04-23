@@ -272,7 +272,7 @@ describe("epp-grid occupancy", () => {
 	it("applies box-shadow to occupied zone cells", async () => {
 		const grid = initGridFromRoom(3000, 4000);
 		const zoneConfigs = new Array(7).fill(null);
-		zoneConfigs[0] = { name: "Zone 1", color: ZONE_COLORS[0], type: "normal" };
+		zoneConfigs[0] = { name: "Zone 1", color: ZONE_COLORS[0], type: "default" };
 
 		// Paint zone 1 on inside cells
 		for (let i = 0; i < grid.length; i++) {
@@ -305,7 +305,7 @@ describe("epp-grid occupancy", () => {
 		const grid = initGridFromRoom(3000, 4000);
 		const zoneConfigs = new Array(7).fill(null);
 		const zoneColor = ZONE_COLORS[0]; // "#B8E7FF"
-		zoneConfigs[0] = { name: "Zone 1", color: zoneColor, type: "normal" };
+		zoneConfigs[0] = { name: "Zone 1", color: zoneColor, type: "default" };
 
 		for (let i = 0; i < grid.length; i++) {
 			if (grid[i] & CELL_ROOM_BIT) {
@@ -379,7 +379,7 @@ describe("epp-grid heatmap", () => {
 	it("applies heatmap overlay to zone cells", async () => {
 		const grid = initGridFromRoom(3000, 4000);
 		const zoneConfigs = new Array(7).fill(null);
-		zoneConfigs[0] = { name: "Zone 1", color: ZONE_COLORS[0], type: "normal" };
+		zoneConfigs[0] = { name: "Zone 1", color: ZONE_COLORS[0], type: "default" };
 
 		for (let i = 0; i < grid.length; i++) {
 			if (grid[i] & CELL_ROOM_BIT) {

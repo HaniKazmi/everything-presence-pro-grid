@@ -24,7 +24,7 @@ import {
 // named zones all null) — matches the panel's INITIAL_ZONE_SLOTS shape.
 function emptyZoneSlots(): (Zone0Config | ZoneConfig | null)[] {
 	return [
-		{ type: "normal", trigger: 5, renew: 3, timeout: 10, handoff_timeout: 3 },
+		{ type: "default", trigger: 5, renew: 3, timeout: 10, handoff_timeout: 3 },
 		null,
 		null,
 		null,
@@ -129,7 +129,7 @@ describe("GridStateController", () => {
 			host._zoneConfigs[1] = {
 				name: "Zone 1",
 				color: ZONE_COLORS[0],
-				type: "normal",
+				type: "default",
 			};
 			ctrl.addZone(); // should fill slot 2 (zone 2)
 			expect((host._zoneConfigs[2] as ZoneConfig).color).toBe(ZONE_COLORS[1]);
@@ -151,12 +151,12 @@ describe("GridStateController", () => {
 			host._zoneConfigs[1] = {
 				name: "Zone 1",
 				color: ZONE_COLORS[0],
-				type: "normal",
+				type: "default",
 			};
 			host._zoneConfigs[3] = {
 				name: "Zone 3",
 				color: ZONE_COLORS[2],
-				type: "normal",
+				type: "default",
 			};
 			ctrl.addZone();
 			expect(host._zoneConfigs[2]).not.toBeNull();
@@ -169,7 +169,7 @@ describe("GridStateController", () => {
 				...ZONE_COLORS.map((color, i) => ({
 					name: `Zone ${i + 1}`,
 					color,
-					type: "normal" as const,
+					type: "default" as const,
 				})),
 			];
 			ctrl.addZone();
@@ -187,7 +187,7 @@ describe("GridStateController", () => {
 			host._zoneConfigs[1] = {
 				name: "Zone 1",
 				color: ZONE_COLORS[0],
-				type: "normal",
+				type: "default",
 			};
 			host._activeZone = 1;
 		});
@@ -219,7 +219,7 @@ describe("GridStateController", () => {
 			host._zoneConfigs[2] = {
 				name: "Zone 2",
 				color: ZONE_COLORS[1],
-				type: "normal",
+				type: "default",
 			};
 			host._activeZone = 1;
 			ctrl.removeZone(2);
@@ -378,7 +378,7 @@ describe("GridStateController", () => {
 				templates: {
 					"Living Room": {
 						grid: [0, 0, CELL_ROOM_BIT],
-						zones: [{ name: "Zone 1", color: ZONE_COLORS[0], type: "normal" }],
+						zones: [{ name: "Zone 1", color: ZONE_COLORS[0], type: "default" }],
 						roomWidth: 3000,
 						roomDepth: 4000,
 					},
@@ -420,7 +420,7 @@ describe("GridStateController", () => {
 			host._grid[5] = CELL_ROOM_BIT;
 			host._zoneConfigs = [
 				host._zoneConfigs[0],
-				{ name: "Zone 1", color: ZONE_COLORS[0], type: "normal" },
+				{ name: "Zone 1", color: ZONE_COLORS[0], type: "default" },
 				null,
 				null,
 				null,
@@ -448,7 +448,7 @@ describe("GridStateController", () => {
 			expect(saveCall![0].template.grid[5]).toBe(CELL_ROOM_BIT);
 			// Length-8 zones with zone 0 in slot 0 and named zone in slot 1.
 			expect(saveCall![0].template.zones).toHaveLength(MAX_ZONES + 1);
-			expect(saveCall![0].template.zones[0]).toMatchObject({ type: "normal" });
+			expect(saveCall![0].template.zones[0]).toMatchObject({ type: "default" });
 			expect(saveCall![0].template.zones[1]).toMatchObject({
 				name: "Zone 1",
 				color: ZONE_COLORS[0],
@@ -477,11 +477,11 @@ describe("GridStateController", () => {
 		});
 
 		it("omits timing fields for non-custom zone 0", async () => {
-			// Zone 0 is type "normal" — its timing should come from
+			// Zone 0 is type "default" — its timing should come from
 			// ZONE_TYPE_DEFAULTS at push time, so we don't store it.
 			host._zoneConfigs = [
 				{
-					type: "normal",
+					type: "default",
 					trigger: 5,
 					renew: 3,
 					timeout: 10,
@@ -500,7 +500,7 @@ describe("GridStateController", () => {
 				(c: any[]) => c[0].type === "eppgrid/save_template",
 			);
 			const z0 = saveCall![0].template.zones[0];
-			expect(z0).toEqual({ type: "normal" });
+			expect(z0).toEqual({ type: "default" });
 			expect(z0).not.toHaveProperty("trigger");
 			expect(z0).not.toHaveProperty("renew");
 			expect(z0).not.toHaveProperty("timeout");
@@ -544,7 +544,7 @@ describe("GridStateController", () => {
 				{
 					name: "Office",
 					color: ZONE_COLORS[1],
-					type: "thoroughfare",
+					type: "transit",
 					trigger: 3,
 					renew: 2,
 					timeout: 3,
@@ -565,7 +565,7 @@ describe("GridStateController", () => {
 			expect(z1).toEqual({
 				name: "Office",
 				color: ZONE_COLORS[1],
-				type: "thoroughfare",
+				type: "transit",
 			});
 			expect(z1).not.toHaveProperty("trigger");
 			expect(z1).not.toHaveProperty("renew");
@@ -622,7 +622,7 @@ describe("GridStateController", () => {
 			}),
 			zones: [
 				{
-					type: "normal" as const,
+					type: "default" as const,
 					trigger: 5,
 					renew: 3,
 					timeout: 10,
@@ -631,7 +631,7 @@ describe("GridStateController", () => {
 				{
 					name: "Zone 1",
 					color: ZONE_COLORS[0],
-					type: "normal" as const,
+					type: "default" as const,
 				},
 				null,
 				null,
@@ -679,10 +679,10 @@ describe("GridStateController", () => {
 			expect(host._grid[3]).toBe(CELL_ROOM_BIT);
 			// Length-8 tuple: slot 0 = Zone0Config, slots 1-7 = named zones.
 			expect(host._zoneConfigs).toHaveLength(MAX_ZONES + 1);
-			expect(host._zoneConfigs[0]).toMatchObject({ type: "normal" });
+			expect(host._zoneConfigs[0]).toMatchObject({ type: "default" });
 			expect(host._zoneConfigs[1]).toMatchObject({
 				name: "Zone 1",
-				type: "normal",
+				type: "default",
 			});
 			expect(host._furniture).toHaveLength(1);
 			expect(host._furniture[0]).toMatchObject({ id: "f_x", icon: "mdi:sofa" });
@@ -727,10 +727,10 @@ describe("GridStateController", () => {
 			const payload = roomLayoutCalls[0][0] as { zone_slots: any[] };
 			// Length must be exactly 8 — guards against a .slice(1) regression.
 			expect(payload.zone_slots).toHaveLength(MAX_ZONES + 1);
-			expect(payload.zone_slots[0]).toMatchObject({ type: "normal" });
+			expect(payload.zone_slots[0]).toMatchObject({ type: "default" });
 			expect(payload.zone_slots[1]).toMatchObject({
 				name: "Zone 1",
-				type: "normal",
+				type: "default",
 			});
 		});
 
@@ -826,8 +826,8 @@ describe("GridStateController", () => {
 					name: "BadNamedNoName",
 					grid: TEMPLATE_DATA.grid,
 					zones: [
-						{ type: "normal" },
-						{ color: "#ff0000", type: "normal" },
+						{ type: "default" },
+						{ color: "#ff0000", type: "default" },
 						null,
 						null,
 						null,
@@ -850,8 +850,8 @@ describe("GridStateController", () => {
 					name: "BadNamedColor",
 					grid: TEMPLATE_DATA.grid,
 					zones: [
-						{ type: "normal" },
-						{ name: "Office", color: 0xff0000, type: "normal" },
+						{ type: "default" },
+						{ name: "Office", color: 0xff0000, type: "default" },
 						null,
 						null,
 						null,
@@ -874,7 +874,7 @@ describe("GridStateController", () => {
 					name: "BadNamedNonObject",
 					grid: TEMPLATE_DATA.grid,
 					zones: [
-						{ type: "normal" },
+						{ type: "default" },
 						"not an object",
 						null,
 						null,
@@ -941,7 +941,7 @@ describe("GridStateController", () => {
 		it("omits timing fields for non-custom zone 0 in set_room_layout payload", async () => {
 			host._zoneConfigs = [
 				{
-					type: "normal",
+					type: "default",
 					trigger: 5,
 					renew: 3,
 					timeout: 10,
@@ -950,7 +950,7 @@ describe("GridStateController", () => {
 				{
 					name: "Zone 1",
 					color: ZONE_COLORS[0],
-					type: "normal",
+					type: "default",
 				} as ZoneConfig,
 				null,
 				null,
@@ -964,7 +964,7 @@ describe("GridStateController", () => {
 				(c: any[]) => c[0]?.type === "eppgrid/set_room_layout",
 			);
 			const slots = call![0].zone_slots;
-			expect(slots[0]).toEqual({ type: "normal" });
+			expect(slots[0]).toEqual({ type: "default" });
 			expect(slots[0]).not.toHaveProperty("trigger");
 			expect(slots[0]).not.toHaveProperty("timeout");
 		});
@@ -981,7 +981,7 @@ describe("GridStateController", () => {
 				{
 					name: "Zone 1",
 					color: ZONE_COLORS[0],
-					type: "normal",
+					type: "default",
 				} as ZoneConfig,
 				null,
 				null,
@@ -1006,7 +1006,7 @@ describe("GridStateController", () => {
 		it("omits timing fields for non-custom named zone in set_room_layout payload", async () => {
 			host._zoneConfigs = [
 				{
-					type: "normal",
+					type: "default",
 					trigger: 5,
 					renew: 3,
 					timeout: 10,
@@ -1015,7 +1015,7 @@ describe("GridStateController", () => {
 				{
 					name: "Hallway",
 					color: ZONE_COLORS[1],
-					type: "thoroughfare",
+					type: "transit",
 					trigger: 3,
 					renew: 2,
 					timeout: 3,
@@ -1036,7 +1036,7 @@ describe("GridStateController", () => {
 			expect(z1).toEqual({
 				name: "Hallway",
 				color: ZONE_COLORS[1],
-				type: "thoroughfare",
+				type: "transit",
 			});
 			expect(z1).not.toHaveProperty("trigger");
 			expect(z1).not.toHaveProperty("timeout");
@@ -1045,7 +1045,7 @@ describe("GridStateController", () => {
 		it("includes timing fields for custom named zone in set_room_layout payload", async () => {
 			host._zoneConfigs = [
 				{
-					type: "normal",
+					type: "default",
 					trigger: 5,
 					renew: 3,
 					timeout: 10,

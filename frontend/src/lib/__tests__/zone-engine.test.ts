@@ -72,7 +72,7 @@ function makeDefaultParams(
 		roomWidth: 1200,
 		roomDepth: 1200,
 		zoneConfigs,
-		roomType: "normal",
+		roomType: "default",
 		roomTrigger: 5,
 		roomRenew: 3,
 		roomTimeout: 10,
@@ -230,14 +230,14 @@ describe("runLocalZoneEngine", () => {
 	});
 
 	it("cell overlay entry bypasses gating (not zone entry_point)", () => {
-		// Zone 0 (normal type, no entry_point) but cell has overlay
+		// Zone 0 (default type, no entry_point) but cell has overlay
 		const grid = makeParityGrid();
 		// Cell at (8,0) = index 8 — zone 0, inside room. Set overlay bit.
 		grid[8] = cellSetOverlay(grid[8], CELL_OVERLAY_ENTRY);
 		const params = makeDefaultParams({
 			targets: [makeTarget(150, 150, 5)], // target lands on cell (8,0) = zone 0
 			zoneConfigs: [
-				{ name: "Zone 1", color: "#56B4E9", type: "normal" },
+				{ name: "Zone 1", color: "#56B4E9", type: "default" },
 				...new Array(6).fill(null),
 			],
 		});
@@ -680,7 +680,7 @@ describe("runLocalZoneEngine", () => {
 	it("non-overlay exit uses full timeout (no acceleration)", () => {
 		const now = Date.now() / 1000;
 		const grid = makeParityGrid();
-		// Zone 0 (normal: timeout=10, handoff=3). No overlay.
+		// Zone 0 (default: timeout=10, handoff=3). No overlay.
 		// Cell (8,0) = index 8. Need 2 gating ticks to confirm zone 0.
 		const params1a = makeDefaultParams({
 			targets: [makeTarget(150, 150, 7)],

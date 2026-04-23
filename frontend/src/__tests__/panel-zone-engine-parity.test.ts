@@ -76,7 +76,7 @@ function createParityPanel(): EPPGridPanel {
 	// Length-8 zone slots tuple; slot 0 = Zone0Config, slot 1 = named zone 1
 	// configured as custom (trigger=3, renew=2, timeout=5, handoff=1).
 	a._zoneConfigs = [
-		{ type: "normal", trigger: 5, renew: 3, timeout: 10, handoff_timeout: 3 },
+		{ type: "default", trigger: 5, renew: 3, timeout: 10, handoff_timeout: 3 },
 		{
 			name: "Zone 1",
 			color: "#ff0000",

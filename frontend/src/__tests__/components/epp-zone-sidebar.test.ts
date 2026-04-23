@@ -16,11 +16,11 @@ function createSidebar(overrides: Record<string, any> = {}): EppZoneSidebar {
 	el.zoneConfigs = new Array(7).fill(null);
 	el.activeZone = 0;
 	el.zone0 = {
-		type: "normal",
-		trigger: ZONE_TYPE_DEFAULTS.normal.trigger,
-		renew: ZONE_TYPE_DEFAULTS.normal.renew,
-		timeout: ZONE_TYPE_DEFAULTS.normal.timeout,
-		handoff_timeout: ZONE_TYPE_DEFAULTS.normal.handoff_timeout,
+		type: "default",
+		trigger: ZONE_TYPE_DEFAULTS.default.trigger,
+		renew: ZONE_TYPE_DEFAULTS.default.renew,
+		timeout: ZONE_TYPE_DEFAULTS.default.timeout,
+		handoff_timeout: ZONE_TYPE_DEFAULTS.default.handoff_timeout,
 	};
 	el.localZoneState = new Map();
 	el.localize = (k: string) => k;
@@ -61,8 +61,8 @@ describe("epp-zone-sidebar element", () => {
 	it("renders named zones", () => {
 		const el = createSidebar();
 		(el as any).zoneConfigs = [
-			{ name: "Kitchen", color: ZONE_COLORS[0], type: "normal" },
-			{ name: "Living Room", color: ZONE_COLORS[1], type: "normal" },
+			{ name: "Kitchen", color: ZONE_COLORS[0], type: "default" },
+			{ name: "Living Room", color: ZONE_COLORS[1], type: "default" },
 			null,
 			null,
 			null,
@@ -95,7 +95,7 @@ describe("epp-zone-sidebar element", () => {
 		(el as any).zoneConfigs = Array.from({ length: 7 }, (_, i) => ({
 			name: `Z${i + 1}`,
 			color: ZONE_COLORS[i],
-			type: "normal",
+			type: "default",
 		}));
 		const tpl = (el as any)._renderZoneSidebar();
 		const c = renderTo(tpl);
@@ -120,7 +120,7 @@ describe("epp-zone-sidebar element", () => {
 	it("shows zone type controls when a named zone is active", () => {
 		const el = createSidebar({ activeZone: 1 });
 		(el as any).zoneConfigs = [
-			{ name: "Z1", color: ZONE_COLORS[0], type: "normal" },
+			{ name: "Z1", color: ZONE_COLORS[0], type: "default" },
 			null,
 			null,
 			null,
@@ -140,7 +140,7 @@ describe("epp-zone-sidebar element", () => {
 	it("shows color picker for active named zone", () => {
 		const el = createSidebar({ activeZone: 1 });
 		(el as any).zoneConfigs = [
-			{ name: "Z1", color: "#ff0000", type: "normal" },
+			{ name: "Z1", color: "#ff0000", type: "default" },
 			null,
 			null,
 			null,
@@ -160,7 +160,7 @@ describe("epp-zone-sidebar element", () => {
 	it("shows color dot (not picker) for inactive named zone", () => {
 		const el = createSidebar({ activeZone: 0 });
 		(el as any).zoneConfigs = [
-			{ name: "Z1", color: "#ff0000", type: "normal" },
+			{ name: "Z1", color: "#ff0000", type: "default" },
 			null,
 			null,
 			null,
@@ -203,7 +203,7 @@ describe("epp-zone-sidebar events", () => {
 	it("fires zone-select on named zone click", () => {
 		const el = createSidebar();
 		(el as any).zoneConfigs = [
-			{ name: "Z1", color: "#ff0000", type: "normal" },
+			{ name: "Z1", color: "#ff0000", type: "default" },
 			null,
 			null,
 			null,
@@ -245,7 +245,7 @@ describe("epp-zone-sidebar events", () => {
 	it("fires zone-remove on remove button click", () => {
 		const el = createSidebar({ activeZone: 1 });
 		(el as any).zoneConfigs = [
-			{ name: "Z1", color: "#ff0000", type: "normal" },
+			{ name: "Z1", color: "#ff0000", type: "default" },
 			null,
 			null,
 			null,
@@ -271,7 +271,7 @@ describe("epp-zone-sidebar events", () => {
 	it("fires zone-config-change on name input", () => {
 		const el = createSidebar();
 		(el as any).zoneConfigs = [
-			{ name: "Z1", color: "#ff0000", type: "normal" },
+			{ name: "Z1", color: "#ff0000", type: "default" },
 			null,
 			null,
 			null,
@@ -299,7 +299,7 @@ describe("epp-zone-sidebar events", () => {
 	it("fires zone-config-change on color picker input", () => {
 		const el = createSidebar({ activeZone: 1 });
 		(el as any).zoneConfigs = [
-			{ name: "Z1", color: "#ff0000", type: "normal" },
+			{ name: "Z1", color: "#ff0000", type: "default" },
 			null,
 			null,
 			null,
@@ -334,11 +334,11 @@ describe("epp-zone-sidebar events", () => {
 		const c = renderTo(tpl);
 
 		const select = c.querySelector(".sensitivity-select") as HTMLSelectElement;
-		select.value = "thoroughfare";
+		select.value = "transit";
 		select.dispatchEvent(new Event("change", { bubbles: true }));
 
 		expect(handler).toHaveBeenCalledTimes(1);
-		expect(handler.mock.calls[0][0].detail.type).toBe("thoroughfare");
+		expect(handler.mock.calls[0][0].detail.type).toBe("transit");
 
 		document.body.removeChild(c);
 	});
@@ -352,7 +352,7 @@ describe("epp-zone-sidebar events", () => {
 		const c = renderTo(tpl);
 
 		const select = c.querySelector(".sensitivity-select") as HTMLSelectElement;
-		select.value = "rest";
+		select.value = "seating";
 		select.dispatchEvent(new Event("change", { bubbles: true }));
 
 		expect(handler).toHaveBeenCalledTimes(1);
@@ -362,7 +362,7 @@ describe("epp-zone-sidebar events", () => {
 
 	it("fires zone-config-change on zone type select", () => {
 		const el = createSidebar();
-		const zone = { name: "Z1", color: "#ff0000", type: "normal" as const };
+		const zone = { name: "Z1", color: "#ff0000", type: "default" as const };
 		const handler = vi.fn();
 		el.addEventListener("zone-config-change", handler);
 
@@ -370,12 +370,12 @@ describe("epp-zone-sidebar events", () => {
 		const c = renderTo(tpl);
 
 		const select = c.querySelector(".sensitivity-select") as HTMLSelectElement;
-		select.value = "rest";
+		select.value = "seating";
 		select.dispatchEvent(new Event("change", { bubbles: true }));
 
 		expect(handler).toHaveBeenCalledTimes(1);
 		expect(handler.mock.calls[0][0].detail.index).toBe(0);
-		expect(handler.mock.calls[0][0].detail.updates.type).toBe("rest");
+		expect(handler.mock.calls[0][0].detail.updates.type).toBe("seating");
 
 		document.body.removeChild(c);
 	});
@@ -416,7 +416,7 @@ describe("epp-zone-sidebar occupancy glow", () => {
 		]);
 		const el = createSidebar({ activeZone: 0, localZoneState });
 		(el as any).zoneConfigs = [
-			{ name: "Z1", color: ZONE_COLORS[0], type: "normal" },
+			{ name: "Z1", color: ZONE_COLORS[0], type: "default" },
 			null,
 			null,
 			null,
@@ -438,7 +438,7 @@ describe("epp-zone-sidebar occupancy glow", () => {
 	it("zone dot has no glow when not occupied", () => {
 		const el = createSidebar();
 		(el as any).zoneConfigs = [
-			{ name: "Z1", color: ZONE_COLORS[0], type: "normal" },
+			{ name: "Z1", color: ZONE_COLORS[0], type: "default" },
 			null,
 			null,
 			null,

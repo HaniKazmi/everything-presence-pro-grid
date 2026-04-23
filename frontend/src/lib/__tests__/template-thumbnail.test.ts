@@ -404,7 +404,7 @@ describe("renderTemplateThumbnail", () => {
 			{ col: 10, row: 1, zone: 1 },
 		]);
 		const zoneConfigs = [
-			{ name: "Kitchen", color: "#E69F00", type: "normal" as const },
+			{ name: "Kitchen", color: "#E69F00", type: "default" as const },
 			null,
 			null,
 			null,

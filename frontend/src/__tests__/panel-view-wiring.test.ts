@@ -28,7 +28,7 @@ function createPanel(): EPPGridPanel {
 	const a = el as any;
 	a._grid = initGridFromRoom(3000, 4000);
 	a._zoneConfigs = [
-		{ type: "normal", trigger: 5, renew: 3, timeout: 10, handoff_timeout: 3 },
+		{ type: "default", trigger: 5, renew: 3, timeout: 10, handoff_timeout: 3 },
 		null,
 		null,
 		null,
@@ -175,7 +175,7 @@ describe("Editor view event wiring", () => {
 			{
 				name: "Zone 1",
 				color: "#ff0000",
-				type: "normal",
+				type: "default",
 				trigger: 5,
 				renew: 2,
 				timeout: 10,
@@ -209,7 +209,7 @@ describe("Editor view event wiring", () => {
 			{
 				name: "Zone 1",
 				color: "#ff0000",
-				type: "normal",
+				type: "default",
 				trigger: 5,
 				renew: 2,
 				timeout: 10,
@@ -288,11 +288,11 @@ describe("Editor view event wiring", () => {
 		const sidebar = container.querySelector("epp-zone-sidebar")!;
 		sidebar.dispatchEvent(
 			new CustomEvent("zone0-change", {
-				detail: { type: "rest" },
+				detail: { type: "seating" },
 				bubbles: true,
 			}),
 		);
-		expect((el as any)._zoneConfigs[0].type).toBe("rest");
+		expect((el as any)._zoneConfigs[0].type).toBe("seating");
 	});
 
 	it("zone0-change updates all zone 0 fields", () => {

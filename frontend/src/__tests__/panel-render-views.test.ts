@@ -24,7 +24,7 @@ function createPanel(): EPPGridPanel {
 	const a = el as any;
 	a._grid = new Uint8Array(GRID_CELL_COUNT);
 	a._zoneConfigs = [
-		{ type: "normal", trigger: 5, renew: 3, timeout: 10, handoff_timeout: 3 },
+		{ type: "default", trigger: 5, renew: 3, timeout: 10, handoff_timeout: 3 },
 		null,
 		null,
 		null,
@@ -921,9 +921,9 @@ describe("_renderTemplateLoadDialog", () => {
 });
 
 describe("epp-zone-sidebar renders boundary type controls", () => {
-	it("renders for normal type", () => {
+	it("renders for default type", () => {
 		const el = document.createElement("epp-zone-sidebar") as any;
-		el.zone0 = { type: "normal" };
+		el.zone0 = { type: "default" };
 		el.activeZone = 0;
 		el.zoneConfigs = new Array(7).fill(null);
 		const result = el.render();
@@ -939,9 +939,9 @@ describe("epp-zone-sidebar renders boundary type controls", () => {
 		expect(result).toBeDefined();
 	});
 
-	it("renders for thoroughfare type", () => {
+	it("renders for transit type", () => {
 		const el = document.createElement("epp-zone-sidebar") as any;
-		el.zone0 = { type: "thoroughfare" };
+		el.zone0 = { type: "transit" };
 		el.activeZone = 0;
 		el.zoneConfigs = new Array(7).fill(null);
 		const result = el.render();
@@ -950,10 +950,10 @@ describe("epp-zone-sidebar renders boundary type controls", () => {
 });
 
 describe("epp-zone-sidebar renders zone type controls", () => {
-	it("renders for normal zone", () => {
+	it("renders for default zone", () => {
 		const el = document.createElement("epp-zone-sidebar") as any;
 		el.zoneConfigs = [
-			{ name: "Zone 1", color: "#ff0000", type: "normal" },
+			{ name: "Zone 1", color: "#ff0000", type: "default" },
 			...new Array(6).fill(null),
 		];
 		el.activeZone = 1;
@@ -995,12 +995,12 @@ describe("epp-zone-sidebar renders zone sidebar", () => {
 		el.zoneConfigs[0] = {
 			name: "Kitchen",
 			color: ZONE_COLORS[0],
-			type: "normal",
+			type: "default",
 		};
 		el.zoneConfigs[1] = {
 			name: "Living",
 			color: ZONE_COLORS[1],
-			type: "normal",
+			type: "default",
 		};
 		el.activeZone = 1;
 		const result = el.render();
@@ -1018,7 +1018,7 @@ describe("epp-zone-sidebar renders zone sidebar", () => {
 	it("renders with zone occupancy glow", () => {
 		const el = document.createElement("epp-zone-sidebar") as any;
 		el.zoneConfigs = new Array(7).fill(null);
-		el.zoneConfigs[0] = { name: "Z1", color: ZONE_COLORS[0], type: "normal" };
+		el.zoneConfigs[0] = { name: "Z1", color: ZONE_COLORS[0], type: "default" };
 		el.activeZone = 1;
 		el.localZoneState = new Map([
 			[
@@ -1041,7 +1041,7 @@ describe("epp-zone-sidebar renders zone sidebar", () => {
 			el.zoneConfigs[i] = {
 				name: `Zone ${i + 1}`,
 				color: ZONE_COLORS[i % ZONE_COLORS.length],
-				type: "normal",
+				type: "default",
 			};
 		}
 		const result = el.render();
@@ -1136,7 +1136,7 @@ describe("epp-live-sidebar via panel", () => {
 		el.zoneConfigs[0] = {
 			name: "Kitchen",
 			color: ZONE_COLORS[0],
-			type: "normal",
+			type: "default",
 		};
 		el.zoneState = {
 			occupancy: { 1: true },

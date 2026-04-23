@@ -19,7 +19,7 @@ function createPanel(): EPPGridPanel {
 	const a = el as any;
 	a._grid = new Uint8Array(GRID_CELL_COUNT);
 	a._zoneConfigs = [
-		{ type: "normal", trigger: 5, renew: 3, timeout: 10, handoff_timeout: 3 },
+		{ type: "default", trigger: 5, renew: 3, timeout: 10, handoff_timeout: 3 },
 		null,
 		null,
 		null,
@@ -707,7 +707,7 @@ describe("_applyConfig", () => {
 			room_layout: {
 				zone_slots: [
 					{
-						type: "thoroughfare",
+						type: "transit",
 						trigger: 3,
 						renew: 2,
 						timeout: 5,
@@ -727,7 +727,7 @@ describe("_applyConfig", () => {
 		a._applyConfig(config);
 
 		expect(a._zoneConfigs[0]).toEqual({
-			type: "thoroughfare",
+			type: "transit",
 			trigger: 3,
 			renew: 2,
 			timeout: 5,
@@ -788,7 +788,7 @@ describe("_applyLayout", () => {
 		a._dirty = true;
 		a._zoneConfigs = [
 			{
-				type: "normal",
+				type: "default",
 				trigger: 5,
 				renew: 3,
 				timeout: 10,
@@ -829,9 +829,9 @@ describe("_applyLayout", () => {
 		a._grid = initGridFromRoom(3000, 4000);
 		// Slot 0 is zone 0; slots 1..7 are named zones 1..7.
 		a._zoneConfigs = [
-			{ type: "normal" },
-			{ name: "Z1", color: "#ff0000", type: "normal" },
-			{ name: "Z2", color: "#00ff00", type: "normal" },
+			{ type: "default" },
+			{ name: "Z1", color: "#ff0000", type: "default" },
+			{ name: "Z2", color: "#00ff00", type: "default" },
 			null,
 			null,
 			null,
@@ -1123,7 +1123,7 @@ describe("_deleteCalibration", () => {
 		expect(a._roomDepth).toBe(0);
 		// Slot 0 is always populated with the default Zone0Config; slots 1-7
 		// are reset to null.
-		expect(a._zoneConfigs[0]).toMatchObject({ type: "normal" });
+		expect(a._zoneConfigs[0]).toMatchObject({ type: "default" });
 		expect(a._zoneConfigs.slice(1).every((z: any) => z === null)).toBe(true);
 		expect(a._furniture).toEqual([]);
 		expect(a._dirty).toBe(false);
@@ -1317,7 +1317,7 @@ describe("_zoneConfigs shape", () => {
 		const panel = createPanel();
 		const a = panel as any;
 		expect(a._zoneConfigs).toHaveLength(NUM_ZONE_SLOTS);
-		expect(a._zoneConfigs[0]).toMatchObject({ type: "normal" });
+		expect(a._zoneConfigs[0]).toMatchObject({ type: "default" });
 		// Old fields are gone:
 		expect(a._roomType).toBeUndefined();
 		expect(a._roomTrigger).toBeUndefined();

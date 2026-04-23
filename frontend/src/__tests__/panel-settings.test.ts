@@ -13,7 +13,7 @@ function createPanel(): EPPGridPanel {
 	const a = el as any;
 	a._grid = new Uint8Array(GRID_CELL_COUNT);
 	a._zoneConfigs = [
-		{ type: "normal", trigger: 5, renew: 3, timeout: 10, handoff_timeout: 3 },
+		{ type: "default", trigger: 5, renew: 3, timeout: 10, handoff_timeout: 3 },
 		null,
 		null,
 		null,

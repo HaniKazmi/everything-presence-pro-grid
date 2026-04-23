@@ -28,7 +28,7 @@ function createPanel(): EPPGridPanel {
 	const a = el as any;
 	a._grid = initGridFromRoom(3000, 4000);
 	a._zoneConfigs = [
-		{ type: "normal", trigger: 5, renew: 3, timeout: 10, handoff_timeout: 3 },
+		{ type: "default", trigger: 5, renew: 3, timeout: 10, handoff_timeout: 3 },
 		null,
 		null,
 		null,
@@ -478,11 +478,11 @@ describe("_renderBoundaryTypeControls DOM events", () => {
 		el.zoneConfigs = new Array(7).fill(null);
 		el.activeZone = 0;
 		el.zone0 = {
-			type: "normal",
-			trigger: ZONE_TYPE_DEFAULTS.normal.trigger,
-			renew: ZONE_TYPE_DEFAULTS.normal.renew,
-			timeout: ZONE_TYPE_DEFAULTS.normal.timeout,
-			handoff_timeout: ZONE_TYPE_DEFAULTS.normal.handoff_timeout,
+			type: "default",
+			trigger: ZONE_TYPE_DEFAULTS.default.trigger,
+			renew: ZONE_TYPE_DEFAULTS.default.renew,
+			timeout: ZONE_TYPE_DEFAULTS.default.timeout,
+			handoff_timeout: ZONE_TYPE_DEFAULTS.default.handoff_timeout,
 		};
 		el.localZoneState = new Map();
 		el.localize = (k: string) => k;
@@ -505,11 +505,11 @@ describe("_renderBoundaryTypeControls DOM events", () => {
 
 		const select = c.querySelector(".sensitivity-select") as HTMLSelectElement;
 		if (select) {
-			select.value = "thoroughfare";
+			select.value = "transit";
 			select.dispatchEvent(new Event("change", { bubbles: true }));
 			expect(
 				events.some(
-					(e) => e.type === "zone0-change" && e.detail.type === "thoroughfare",
+					(e) => e.type === "zone0-change" && e.detail.type === "transit",
 				),
 			).toBe(true);
 			expect(events.some((e) => e.type === "dirty")).toBe(true);
@@ -599,11 +599,11 @@ describe("_renderZoneTypeControls DOM events", () => {
 		el.zoneConfigs = new Array(7).fill(null);
 		el.activeZone = 0;
 		el.zone0 = {
-			type: "normal",
-			trigger: ZONE_TYPE_DEFAULTS.normal.trigger,
-			renew: ZONE_TYPE_DEFAULTS.normal.renew,
-			timeout: ZONE_TYPE_DEFAULTS.normal.timeout,
-			handoff_timeout: ZONE_TYPE_DEFAULTS.normal.handoff_timeout,
+			type: "default",
+			trigger: ZONE_TYPE_DEFAULTS.default.trigger,
+			renew: ZONE_TYPE_DEFAULTS.default.renew,
+			timeout: ZONE_TYPE_DEFAULTS.default.timeout,
+			handoff_timeout: ZONE_TYPE_DEFAULTS.default.handoff_timeout,
 		};
 		el.localZoneState = new Map();
 		el.localize = (k: string) => k;
@@ -615,7 +615,7 @@ describe("_renderZoneTypeControls DOM events", () => {
 
 	it("zone type select changes zone config", () => {
 		const s = createSidebar();
-		const zone = { name: "Z1", color: "#ff0000", type: "normal" as const };
+		const zone = { name: "Z1", color: "#ff0000", type: "default" as const };
 		const tpl = (s as any)._renderZoneTypeControls(zone, 0);
 		const c = renderTo(tpl);
 
@@ -626,11 +626,11 @@ describe("_renderZoneTypeControls DOM events", () => {
 
 		const select = c.querySelector(".sensitivity-select") as HTMLSelectElement;
 		if (select) {
-			select.value = "rest";
+			select.value = "seating";
 			select.dispatchEvent(new Event("change", { bubbles: true }));
 			expect(
 				events.some(
-					(e) => e.detail.index === 0 && e.detail.updates.type === "rest",
+					(e) => e.detail.index === 0 && e.detail.updates.type === "seating",
 				),
 			).toBe(true);
 		}
@@ -757,11 +757,11 @@ describe("_renderZoneSidebar DOM events", () => {
 		el.zoneConfigs = new Array(7).fill(null);
 		el.activeZone = 0;
 		el.zone0 = {
-			type: "normal",
-			trigger: ZONE_TYPE_DEFAULTS.normal.trigger,
-			renew: ZONE_TYPE_DEFAULTS.normal.renew,
-			timeout: ZONE_TYPE_DEFAULTS.normal.timeout,
-			handoff_timeout: ZONE_TYPE_DEFAULTS.normal.handoff_timeout,
+			type: "default",
+			trigger: ZONE_TYPE_DEFAULTS.default.trigger,
+			renew: ZONE_TYPE_DEFAULTS.default.renew,
+			timeout: ZONE_TYPE_DEFAULTS.default.timeout,
+			handoff_timeout: ZONE_TYPE_DEFAULTS.default.handoff_timeout,
 		};
 		el.localZoneState = new Map();
 		el.localize = (k: string) => k;
@@ -791,7 +791,7 @@ describe("_renderZoneSidebar DOM events", () => {
 	it("named zone click", () => {
 		const s = createSidebar();
 		s.zoneConfigs = [
-			{ name: "Z1", color: "#ff0000", type: "normal" },
+			{ name: "Z1", color: "#ff0000", type: "default" },
 			null,
 			null,
 			null,
@@ -826,7 +826,7 @@ describe("_renderZoneSidebar DOM events", () => {
 	it("zone remove button", () => {
 		const s = createSidebar({ activeZone: 1 });
 		s.zoneConfigs = [
-			{ name: "Z1", color: "#ff0000", type: "normal" },
+			{ name: "Z1", color: "#ff0000", type: "default" },
 			null,
 			null,
 			null,
@@ -852,7 +852,7 @@ describe("_renderZoneSidebar DOM events", () => {
 	it("zone name input focus", () => {
 		const s = createSidebar({ activeZone: 0 });
 		s.zoneConfigs = [
-			{ name: "Z1", color: "#ff0000", type: "normal" },
+			{ name: "Z1", color: "#ff0000", type: "default" },
 			null,
 			null,
 			null,
@@ -878,7 +878,7 @@ describe("_renderZoneSidebar DOM events", () => {
 	it("zone name input click sets active", () => {
 		const s = createSidebar({ activeZone: 0 });
 		s.zoneConfigs = [
-			{ name: "Z1", color: "#ff0000", type: "normal" },
+			{ name: "Z1", color: "#ff0000", type: "default" },
 			null,
 			null,
 			null,
@@ -904,7 +904,7 @@ describe("_renderZoneSidebar DOM events", () => {
 	it("zone name input changes name", () => {
 		const s = createSidebar();
 		s.zoneConfigs = [
-			{ name: "Z1", color: "#ff0000", type: "normal" },
+			{ name: "Z1", color: "#ff0000", type: "default" },
 			null,
 			null,
 			null,
@@ -935,7 +935,7 @@ describe("_renderZoneSidebar DOM events", () => {
 	it("zone color picker input", () => {
 		const s = createSidebar({ activeZone: 1 });
 		s.zoneConfigs = [
-			{ name: "Z1", color: "#ff0000", type: "normal" },
+			{ name: "Z1", color: "#ff0000", type: "default" },
 			null,
 			null,
 			null,

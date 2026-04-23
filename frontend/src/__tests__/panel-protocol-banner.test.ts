@@ -23,7 +23,7 @@ function createPanel(
 	const a = el as any;
 	a._grid = initGridFromRoom(3000, 4000);
 	a._zoneConfigs = [
-		{ type: "normal", trigger: 5, renew: 3, timeout: 10, handoff_timeout: 3 },
+		{ type: "default", trigger: 5, renew: 3, timeout: 10, handoff_timeout: 3 },
 		null,
 		null,
 		null,

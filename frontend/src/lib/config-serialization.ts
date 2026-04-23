@@ -142,7 +142,7 @@ export interface ParsedZoneConfigs {
  */
 export function parseZoneConfigs(layout: any): ParsedZoneConfigs {
 	const defaultResult: ParsedZoneConfigs = {
-		zone0: { type: "normal" },
+		zone0: { type: "default" },
 		zones: Array(MAX_ZONES).fill(null),
 	};
 	const slots = layout?.zone_slots;
@@ -153,7 +153,7 @@ export function parseZoneConfigs(layout: any): ParsedZoneConfigs {
 		return defaultResult;
 	}
 	const zone0: Zone0Config = {
-		type: slots[0].type ?? "normal",
+		type: slots[0].type ?? "default",
 		trigger: slots[0].trigger,
 		renew: slots[0].renew,
 		timeout: slots[0].timeout,

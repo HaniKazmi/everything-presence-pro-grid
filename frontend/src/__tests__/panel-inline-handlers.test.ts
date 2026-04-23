@@ -22,7 +22,7 @@ function createPanel(): EPPGridPanel {
 	const a = el as any;
 	a._grid = new Uint8Array(GRID_CELL_COUNT);
 	a._zoneConfigs = [
-		{ type: "normal", trigger: 5, renew: 3, timeout: 10, handoff_timeout: 3 },
+		{ type: "default", trigger: 5, renew: 3, timeout: 10, handoff_timeout: 3 },
 		null,
 		null,
 		null,
@@ -368,7 +368,7 @@ describe("_applyLayout zone/furniture serialization", () => {
 		// boundary), slot 1 is named zone 1.
 		expect(call.zone_slots).toHaveLength(8);
 		expect(call.zone_slots[0]).toEqual(
-			expect.objectContaining({ type: "normal" }),
+			expect.objectContaining({ type: "default" }),
 		);
 		expect(call.zone_slots[1]).toEqual(
 			expect.objectContaining({

@@ -30,7 +30,7 @@ function createPanel() {
 	const a = el as any;
 	a._grid = initGridFromRoom(3000, 4000);
 	a._zoneConfigs = [
-		{ type: "normal", trigger: 5, renew: 3, timeout: 10, handoff_timeout: 3 },
+		{ type: "default", trigger: 5, renew: 3, timeout: 10, handoff_timeout: 3 },
 		null,
 		null,
 		null,
@@ -465,7 +465,7 @@ describe("_addZone fallback branch", () => {
 			a._zoneConfigs[i] = {
 				name: `Z${i}`,
 				color: ZONE_COLORS[i - 1],
-				type: "normal",
+				type: "default",
 			};
 		}
 		a._addZone();
@@ -557,7 +557,7 @@ describe("epp-live-sidebar env sensor branches", () => {
 	it("renders zone with target count = 1 (singular)", () => {
 		const el = document.createElement("epp-live-sidebar") as any;
 		el.zoneConfigs = new Array(7).fill(null);
-		el.zoneConfigs[0] = { name: "Z1", color: ZONE_COLORS[0], type: "normal" };
+		el.zoneConfigs[0] = { name: "Z1", color: ZONE_COLORS[0], type: "default" };
 		el.zoneState = {
 			occupancy: { 1: true },
 			target_counts: { 1: 1 },
@@ -577,11 +577,11 @@ describe("_renderZoneSidebar boundary occupancy glow", () => {
 		el.zoneConfigs = new Array(7).fill(null);
 		el.activeZone = 0;
 		el.zone0 = {
-			type: "normal",
-			trigger: ZONE_TYPE_DEFAULTS.normal.trigger,
-			renew: ZONE_TYPE_DEFAULTS.normal.renew,
-			timeout: ZONE_TYPE_DEFAULTS.normal.timeout,
-			handoff_timeout: ZONE_TYPE_DEFAULTS.normal.handoff_timeout,
+			type: "default",
+			trigger: ZONE_TYPE_DEFAULTS.default.trigger,
+			renew: ZONE_TYPE_DEFAULTS.default.renew,
+			timeout: ZONE_TYPE_DEFAULTS.default.timeout,
+			handoff_timeout: ZONE_TYPE_DEFAULTS.default.handoff_timeout,
 		};
 		el.localZoneState = new Map([
 			[
@@ -608,11 +608,11 @@ describe("stopPropagation handlers coverage", () => {
 		el.zoneConfigs = new Array(7).fill(null);
 		el.activeZone = 0;
 		el.zone0 = {
-			type: "normal",
-			trigger: ZONE_TYPE_DEFAULTS.normal.trigger,
-			renew: ZONE_TYPE_DEFAULTS.normal.renew,
-			timeout: ZONE_TYPE_DEFAULTS.normal.timeout,
-			handoff_timeout: ZONE_TYPE_DEFAULTS.normal.handoff_timeout,
+			type: "default",
+			trigger: ZONE_TYPE_DEFAULTS.default.trigger,
+			renew: ZONE_TYPE_DEFAULTS.default.renew,
+			timeout: ZONE_TYPE_DEFAULTS.default.timeout,
+			handoff_timeout: ZONE_TYPE_DEFAULTS.default.handoff_timeout,
 		};
 		el.localZoneState = new Map();
 		el.localize = (k: string) => k;
@@ -876,7 +876,7 @@ describe("_loadDevices null name sorting", () => {
 describe("_removeZone grid clearing", () => {
 	it("replaces grid when cells have the zone", () => {
 		const a = createPanel() as any;
-		a._zoneConfigs[1] = { name: "Z1", color: "#ff0000", type: "normal" };
+		a._zoneConfigs[1] = { name: "Z1", color: "#ff0000", type: "default" };
 		// Paint some cells with zone 1
 		for (let i = 0; i < a._grid.length; i++) {
 			if (a._grid[i] & CELL_ROOM_BIT) {
@@ -891,7 +891,7 @@ describe("_removeZone grid clearing", () => {
 
 	it("removes zone config even when zone has no painted cells", () => {
 		const a = createPanel() as any;
-		a._zoneConfigs[1] = { name: "Z1", color: "#ff0000", type: "normal" };
+		a._zoneConfigs[1] = { name: "Z1", color: "#ff0000", type: "default" };
 		// No cells painted with zone 1
 		a._removeZone(1);
 		expect(a._zoneConfigs[1]).toBeNull();
@@ -1146,7 +1146,7 @@ describe("epp-live-sidebar target count branches", () => {
 	it("renders zone with 0 targets", () => {
 		const el = document.createElement("epp-live-sidebar") as any;
 		el.zoneConfigs = new Array(7).fill(null);
-		el.zoneConfigs[0] = { name: "Z1", color: ZONE_COLORS[0], type: "normal" };
+		el.zoneConfigs[0] = { name: "Z1", color: ZONE_COLORS[0], type: "default" };
 		el.zoneState = {
 			occupancy: { 1: false },
 			target_counts: { 1: 0 },
@@ -1246,7 +1246,7 @@ describe("zone sidebar occupancy glow branch", () => {
 	it("zone color dot shows glow when zone is occupied", () => {
 		const el = document.createElement("epp-zone-sidebar") as any;
 		el.zoneConfigs = [
-			{ name: "Z1", color: ZONE_COLORS[0], type: "normal" },
+			{ name: "Z1", color: ZONE_COLORS[0], type: "default" },
 			null,
 			null,
 			null,
@@ -1256,11 +1256,11 @@ describe("zone sidebar occupancy glow branch", () => {
 		];
 		el.activeZone = 0; // boundary selected, not zone 1
 		el.zone0 = {
-			type: "normal",
-			trigger: ZONE_TYPE_DEFAULTS.normal.trigger,
-			renew: ZONE_TYPE_DEFAULTS.normal.renew,
-			timeout: ZONE_TYPE_DEFAULTS.normal.timeout,
-			handoff_timeout: ZONE_TYPE_DEFAULTS.normal.handoff_timeout,
+			type: "default",
+			trigger: ZONE_TYPE_DEFAULTS.default.trigger,
+			renew: ZONE_TYPE_DEFAULTS.default.renew,
+			timeout: ZONE_TYPE_DEFAULTS.default.timeout,
+			handoff_timeout: ZONE_TYPE_DEFAULTS.default.handoff_timeout,
 		};
 		el.localZoneState = new Map([
 			[
@@ -1283,11 +1283,11 @@ describe("zone sidebar occupancy glow branch", () => {
 		el.zoneConfigs = new Array(7).fill(null);
 		el.activeZone = 0;
 		el.zone0 = {
-			type: "normal",
-			trigger: ZONE_TYPE_DEFAULTS.normal.trigger,
-			renew: ZONE_TYPE_DEFAULTS.normal.renew,
-			timeout: ZONE_TYPE_DEFAULTS.normal.timeout,
-			handoff_timeout: ZONE_TYPE_DEFAULTS.normal.handoff_timeout,
+			type: "default",
+			trigger: ZONE_TYPE_DEFAULTS.default.trigger,
+			renew: ZONE_TYPE_DEFAULTS.default.renew,
+			timeout: ZONE_TYPE_DEFAULTS.default.timeout,
+			handoff_timeout: ZONE_TYPE_DEFAULTS.default.handoff_timeout,
 		};
 		el.localZoneState = new Map([
 			[

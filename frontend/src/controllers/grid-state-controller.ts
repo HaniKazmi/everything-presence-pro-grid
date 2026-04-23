@@ -211,7 +211,7 @@ export class GridStateController implements ReactiveController {
 		configs[firstEmpty] = {
 			name: `Zone ${firstEmpty}`,
 			color,
-			type: "normal",
+			type: "default",
 		};
 		this.host._zoneConfigs = configs;
 		this.host._activeZone = firstEmpty; // slot index = 1-based zone number

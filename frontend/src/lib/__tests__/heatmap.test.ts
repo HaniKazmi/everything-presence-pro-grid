@@ -12,7 +12,7 @@ import type { ZoneConfig } from "../zone-defaults.js";
 const makeZoneConfig = (overrides: Partial<ZoneConfig> = {}): ZoneConfig => ({
 	name: "Test Zone",
 	color: "#E69F00",
-	type: "normal",
+	type: "default",
 	...overrides,
 });
 
