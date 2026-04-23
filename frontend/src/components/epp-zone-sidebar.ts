@@ -537,7 +537,8 @@ export class EppZoneSidebar extends LitElement {
 
 	private _renderZoneTypeControls(zone: ZoneConfig, index: number) {
 		const isCustom = zone.type === "custom";
-		const defaults = ZONE_TYPE_DEFAULTS[zone.type] || ZONE_TYPE_DEFAULTS.default;
+		const defaults =
+			ZONE_TYPE_DEFAULTS[zone.type] || ZONE_TYPE_DEFAULTS.default;
 		const trigger = zone.trigger ?? defaults.trigger;
 		const renew = zone.renew ?? defaults.renew;
 		const timeout = zone.timeout ?? defaults.timeout;

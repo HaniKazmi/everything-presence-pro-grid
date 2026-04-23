@@ -81,7 +81,13 @@ describe("_saveTemplate", () => {
 		a._roomDepth = 6000;
 		a._furniture = [];
 		a._zoneConfigs = [
-			{ type: "default", trigger: 5, renew: 3, timeout: 10, handoff_timeout: 3 },
+			{
+				type: "default",
+				trigger: 5,
+				renew: 3,
+				timeout: 10,
+				handoff_timeout: 3,
+			},
 			null,
 			null,
 			null,
