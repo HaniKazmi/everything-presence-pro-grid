@@ -368,6 +368,7 @@
 		"flash_another": "Flashear otro dispositivo",
 		"ha_add": {
 			"adding": "Añadiendo dispositivo a Home Assistant...",
+			"retrying": "Esperando a que el dispositivo esté disponible (intento {attempt} de {max})...",
 			"added": "Dispositivo añadido a Home Assistant",
 			"already_added": "El dispositivo ya está en Home Assistant",
 			"needs_auth": "Dispositivo accesible — completa la configuración en Integraciones para proporcionar la clave de cifrado",

@@ -596,7 +596,16 @@ export class EppFlasherView extends LitElement {
 							</div>
 							<div class="ha-add-progress">
 								<ha-circular-progress indeterminate size="small"></ha-circular-progress>
-								<span>${this.localize("flasher.ha_add.adding")}</span>
+								<span>
+									${
+										state.haAddAttempt && state.haAddMaxAttempts
+											? this.localize("flasher.ha_add.retrying", {
+													attempt: state.haAddAttempt,
+													max: state.haAddMaxAttempts,
+												})
+											: this.localize("flasher.ha_add.adding")
+									}
+								</span>
 							</div>
 							${
 								state.autoSkipped

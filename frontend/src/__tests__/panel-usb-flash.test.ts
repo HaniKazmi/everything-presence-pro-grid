@@ -811,7 +811,7 @@ describe("_handleWifiProvision", () => {
 		});
 	});
 
-	it("keeps cannot_connect when both initial and retry fail", async () => {
+	it("keeps cannot_connect when all retries fail", async () => {
 		(detectIpAddress as ReturnType<typeof vi.fn>).mockResolvedValue(
 			"192.168.1.42",
 		);
@@ -822,7 +822,7 @@ describe("_handleWifiProvision", () => {
 		const updateSpy = vi.spyOn(ctrl, "updateUsbState");
 
 		const promise = (panel as any)._handleWifiProvision("MySSID", "s3cr3t");
-		await vi.advanceTimersByTimeAsync(3500);
+		await vi.advanceTimersByTimeAsync(31000);
 		await promise;
 
 		const completeCall = (updateSpy.mock.calls as any[][]).find(
@@ -871,6 +871,66 @@ describe("_handleWifiProvision", () => {
 			ip: "192.168.1.42",
 			haAdd: { type: "failed", reason: "network dropped" },
 		});
+	});
+
+	it("retries up to 6 times with backoff on persistent cannot_connect", async () => {
+		(detectIpAddress as ReturnType<typeof vi.fn>).mockResolvedValue(
+			"192.168.1.42",
+		);
+		const ctrl = (panel as any)._flasherCtrl;
+		const addSpy = vi
+			.spyOn(ctrl, "addEsphomeDevice")
+			.mockResolvedValueOnce({ type: "cannot_connect" })
+			.mockResolvedValueOnce({ type: "cannot_connect" })
+			.mockResolvedValueOnce({ type: "cannot_connect" })
+			.mockResolvedValueOnce({ type: "cannot_connect" })
+			.mockResolvedValueOnce({ type: "cannot_connect" })
+			.mockResolvedValueOnce({ type: "added" });
+		const updateSpy = vi.spyOn(ctrl, "updateUsbState");
+
+		const promise = (panel as any)._handleWifiProvision("MySSID", "s3cr3t");
+		// 200ms provision + backoff sum (1+2+4+8+15=30s) + slack
+		await vi.advanceTimersByTimeAsync(31000);
+		await promise;
+
+		expect(addSpy).toHaveBeenCalledTimes(6);
+		const completeCall = (updateSpy.mock.calls as any[][]).find(
+			(c) => c[0].step === "complete",
+		);
+		expect(completeCall?.[0]).toMatchObject({
+			step: "complete",
+			ip: "192.168.1.42",
+			haAdd: { type: "added" },
+		});
+	});
+
+	it("exposes haAddAttempt on usbFlashState during retry loop", async () => {
+		(detectIpAddress as ReturnType<typeof vi.fn>).mockResolvedValue(
+			"192.168.1.42",
+		);
+		const ctrl = (panel as any)._flasherCtrl;
+		vi.spyOn(ctrl, "addEsphomeDevice")
+			.mockResolvedValueOnce({ type: "cannot_connect" })
+			.mockResolvedValueOnce({ type: "cannot_connect" })
+			.mockResolvedValueOnce({ type: "added" });
+		const updateSpy = vi.spyOn(ctrl, "updateUsbState");
+
+		const promise = (panel as any)._handleWifiProvision("MySSID", "s3cr3t");
+		await vi.advanceTimersByTimeAsync(5000);
+		await promise;
+
+		// Attempts 2 and 3 should have published progress into wifi_configured.
+		const retryCalls = (updateSpy.mock.calls as any[][])
+			.map((c) => c[0])
+			.filter(
+				(s) =>
+					s.step === "wifi_configured" && typeof s.haAddAttempt === "number",
+			);
+		expect(retryCalls.length).toBeGreaterThanOrEqual(2);
+		const attempts = retryCalls.map((s) => s.haAddAttempt);
+		expect(attempts).toContain(2);
+		expect(attempts).toContain(3);
+		expect(retryCalls[0].haAddMaxAttempts).toBe(6);
 	});
 
 	it("sets error state when runWifiProvision throws", async () => {
