@@ -4105,3 +4105,21 @@ def test_zone_type_defaults_match_frontend():
         for field_name, py_value in fields.items():
             ts_value = ts_defaults[type_name][field_name]
             assert float(ts_value) == float(py_value), f"{type_name}.{field_name}: Python={py_value} vs TS={ts_value}"
+
+
+def test_zone_type_defaults_includes_bed():
+    """The bed type was added in the zone-types-rework refactor.
+
+    Asserts both the Python table and the parsed frontend table contain bed
+    with the expected timing. Belt-and-suspenders alongside the broader
+    parity test, so a missing bed entry surfaces an obvious failure message.
+    """
+    from custom_components.eppgrid.device_manager import ZONE_TYPE_DEFAULTS
+
+    assert "bed" in ZONE_TYPE_DEFAULTS
+    assert ZONE_TYPE_DEFAULTS["bed"] == {
+        "trigger": 8,
+        "renew": 2,
+        "timeout": 600.0,
+        "handoff_timeout": 10.0,
+    }
