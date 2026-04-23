@@ -4106,6 +4106,15 @@ def test_zone_type_defaults_match_frontend():
             ts_value = ts_defaults[type_name][field_name]
             assert float(ts_value) == float(py_value), f"{type_name}.{field_name}: Python={py_value} vs TS={ts_value}"
 
+    # Reverse direction: every TS type must also exist in Python, EXCEPT for
+    # `custom` which intentionally has no defaults row (user values are
+    # authoritative). Guards against adding a new type to the frontend
+    # while forgetting the backend mirror — which would silently fall
+    # through to the "default" defaults in _expand_zone_slot.
+    expected_ts_only = {"custom"}
+    ts_only = set(ts_defaults) - set(ZONE_TYPE_DEFAULTS) - expected_ts_only
+    assert not ts_only, f"TS ZONE_TYPE_DEFAULTS has types missing from Python: {ts_only}"
+
 
 def test_zone_type_defaults_includes_bed():
     """The bed type was added in the zone-types-rework refactor.
