@@ -2930,7 +2930,6 @@ export class EPPGridPanel extends LitElement {
 		for (let attempt = 1; attempt <= maxAttempts; attempt++) {
 			if (attempt > 1) {
 				ctrl.updateUsbState({
-					...ctrl.usbFlashState,
 					step: "wifi_configured",
 					ip,
 					haAddAttempt: attempt,
@@ -2987,8 +2986,10 @@ export class EPPGridPanel extends LitElement {
 		if (state?.step !== "complete" || !state.ip) return;
 
 		const ip = state.ip;
+		const myOp = ctrl.opId;
 		ctrl.updateUsbState({ step: "wifi_configured", ip });
 		const haAdd = await this._addToHaWithRetry(ip);
+		if (ctrl.opId !== myOp) return;
 		ctrl.updateUsbState({ step: "complete", ip, haAdd });
 	}
 

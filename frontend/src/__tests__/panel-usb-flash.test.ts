@@ -1279,8 +1279,13 @@ describe("_handleRetryHaAdd", () => {
 
 	beforeEach(() => {
 		vi.clearAllMocks();
+		vi.useFakeTimers();
 		resetServiceMocks();
 		panel = createPanel();
+	});
+
+	afterEach(() => {
+		vi.useRealTimers();
 	});
 
 	it("re-enters wifi_configured and emits complete with new haAdd on retry", async () => {
@@ -1346,6 +1351,38 @@ describe("_handleRetryHaAdd", () => {
 			ip: "192.168.1.42",
 			haAdd: { type: "failed", reason: "network unreachable" },
 		});
+	});
+
+	it("does not overwrite reset state when cancelled mid-retry", async () => {
+		const ctrl = (panel as any)._flasherCtrl;
+		ctrl.usbFlashState = {
+			step: "complete",
+			ip: "192.168.1.42",
+			haAdd: { type: "cannot_connect" },
+		};
+		vi.spyOn(ctrl, "addEsphomeDevice").mockResolvedValue({
+			type: "cannot_connect",
+		});
+		const updateSpy = vi.spyOn(ctrl, "updateUsbState");
+
+		const promise = (panel as any)._handleRetryHaAdd();
+		// Let attempt 1 resolve (cannot_connect) so we are inside the first backoff.
+		await vi.advanceTimersByTimeAsync(50);
+		expect(
+			updateSpy.mock.calls.some((c: any[]) => c[0].step === "complete"),
+		).toBe(false);
+
+		// Simulate cancel: bump opId and clear state as the cancel handler would.
+		ctrl.bumpOpId();
+		ctrl.usbFlashState = null;
+		await vi.advanceTimersByTimeAsync(300);
+		await promise;
+
+		// After cancel, retry handler must not publish a stale `complete` state.
+		const lateComplete = updateSpy.mock.calls.some(
+			(c: any[]) => c[0].step === "complete",
+		);
+		expect(lateComplete).toBe(false);
 	});
 });
 
