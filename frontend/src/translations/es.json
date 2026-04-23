@@ -185,9 +185,10 @@
 	},
 	"zones": {
 		"type": "Tipo",
-		"normal": "Normal",
-		"thoroughfare": "Paso",
-		"rest_area": "Zona de descanso",
+		"default": "Predeterminado",
+		"bed": "Cama",
+		"seating": "Asiento",
+		"transit": "Tránsito",
 		"custom": "Personalizado",
 		"trigger": "Activación",
 		"renew": "Renovación",
