@@ -80,9 +80,10 @@ TEST_CASE("zone 0 timing values from wire are respected") {
   CHECK(configs[0].handoff_timeout == doctest::Approx(10.0f));
 }
 
-TEST_CASE("null at zone_slots[0] omits zone 0 (fail-closed)") {
+TEST_CASE("null at zone_slots[0] emits no zone-0 entry") {
   // If backend guarantee fails (zone 0 missing), the parser must not
-  // fabricate one. No zone 0 → occupancy reports false.
+  // fabricate one. Downstream, ZoneEngine::set_zones falls back to
+  // ZoneConfig's in-class defaults for zone 0.
   const char *json =
       "{"
       "\"zone_slots\":["

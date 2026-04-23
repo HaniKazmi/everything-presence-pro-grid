@@ -11,8 +11,9 @@ namespace epp {
 /// entries into `out`, updating `count`.
 ///
 /// Slot index IS the zone id (any `id` in the payload is ignored). Null or
-/// non-object entries are skipped — if slot 0 is missing, zone 0 is absent
-/// and zone-0 occupancy reports false (fail-closed).
+/// non-object entries are skipped. If slot 0 is missing/null the parser
+/// emits no zone-0 entry; downstream, ZoneEngine::set_zones seeds zone 0
+/// from ZoneConfig's in-class defaults so occupancy tracking still runs.
 ///
 /// The payload's `"type"` field (if present) is informational-only and is
 /// ignored by firmware. The backend is the sole owner of type→timing
@@ -23,10 +24,10 @@ inline void parse_zone_configs(const JsonDocument &doc, ZoneConfig out[], int &c
   JsonArrayConst slots = doc["zone_slots"].as<JsonArrayConst>();
   for (size_t i = 0; i < slots.size() && count < MAX_ZONE_SLOTS; i++) {
     if (slots[i].isNull()) {
-      continue;  // unused named-zone slot; zone 0 absent if slot 0 is null
+      continue;  // unused named-zone slot; slot 0 null → engine falls back to struct defaults
     }
     if (!slots[i].is<JsonObjectConst>()) {
-      continue;  // corrupt/non-object entry — fail closed, don't fabricate a zone
+      continue;  // corrupt/non-object entry — don't fabricate a zone from bad data
     }
     JsonObjectConst z = slots[i].as<JsonObjectConst>();
     out[count] = {

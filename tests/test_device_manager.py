@@ -4106,11 +4106,14 @@ def test_zone_type_defaults_match_frontend():
             ts_value = ts_defaults[type_name][field_name]
             assert float(ts_value) == float(py_value), f"{type_name}.{field_name}: Python={py_value} vs TS={ts_value}"
 
-    # Reverse direction: every TS type must also exist in Python, EXCEPT for
-    # `custom` which intentionally has no defaults row (user values are
-    # authoritative). Guards against adding a new type to the frontend
-    # while forgetting the backend mirror — which would silently fall
-    # through to the "default" defaults in _expand_zone_slot.
-    expected_ts_only = {"custom"}
-    ts_only = set(ts_defaults) - set(ZONE_TYPE_DEFAULTS) - expected_ts_only
+    # custom is user-authoritative and must NOT have a defaults row in either
+    # table. Adding one would make resolveZoneParams's custom branch ambiguous.
+    assert "custom" not in ts_defaults, "TS ZONE_TYPE_DEFAULTS should not contain 'custom'"
+    assert "custom" not in ZONE_TYPE_DEFAULTS, "Python ZONE_TYPE_DEFAULTS should not contain 'custom'"
+
+    # Reverse direction: every TS type must also exist in Python. Guards
+    # against adding a new type to the frontend while forgetting the backend
+    # mirror — which would silently fall through to the "default" defaults
+    # in _expand_zone_slot.
+    ts_only = set(ts_defaults) - set(ZONE_TYPE_DEFAULTS)
     assert not ts_only, f"TS ZONE_TYPE_DEFAULTS has types missing from Python: {ts_only}"

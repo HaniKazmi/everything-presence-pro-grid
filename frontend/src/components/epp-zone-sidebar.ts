@@ -479,7 +479,7 @@ export class EppZoneSidebar extends LitElement {
 					<input
 						type="number"
 						min="1"
-						max="300"
+						max="3600"
 						style="width: 48px; text-align: right; font: inherit; font-size: 12px;"
 						.value=${String(timeout)}
 						?disabled=${!isCustom}
@@ -671,7 +671,7 @@ export class EppZoneSidebar extends LitElement {
 					<input
 						type="number"
 						min="1"
-						max="300"
+						max="3600"
 						style="width: 48px; text-align: right; font: inherit; font-size: 12px; margin-right: 0;"
 						.value=${String(timeout)}
 						?disabled=${!isCustom}

@@ -311,6 +311,42 @@ describe("parseZoneConfigs", () => {
 		const result = parseZoneConfigs(layout);
 		expect(result.zone0.type).toBe("default");
 	});
+
+	it("normalizes legacy type strings on zone 0 to 'default'", () => {
+		for (const legacy of ["normal", "thoroughfare", "rest", "garbage"]) {
+			const layout = {
+				zone_slots: [
+					{ type: legacy },
+					null,
+					null,
+					null,
+					null,
+					null,
+					null,
+					null,
+				],
+			};
+			expect(parseZoneConfigs(layout).zone0.type).toBe("default");
+		}
+	});
+
+	it("normalizes legacy type strings on named zones to 'default'", () => {
+		const layout = {
+			zone_slots: [
+				{ type: "default" },
+				{ name: "Z1", color: "#fff", type: "rest" },
+				{ name: "Z2", color: "#000", type: "thoroughfare" },
+				null,
+				null,
+				null,
+				null,
+				null,
+			],
+		};
+		const result = parseZoneConfigs(layout);
+		expect(result.zones[0]?.type).toBe("default");
+		expect(result.zones[1]?.type).toBe("default");
+	});
 });
 
 describe("parseZoneConfigs (length 8)", () => {
