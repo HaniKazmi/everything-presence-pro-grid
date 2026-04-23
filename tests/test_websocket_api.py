@@ -300,7 +300,7 @@ class TestWebSocketSetSetup:
         zone_slots = mock_dm.async_update_zone_entities.call_args[0][1]
         assert len(zone_slots) == 8
         assert isinstance(zone_slots[0], dict)
-        assert zone_slots[0] == {"type": "normal"}
+        assert zone_slots[0] == {"type": "default"}
         assert zone_slots[1:] == [None] * 7
 
     async def test_set_setup_clears_room_layout(self, hass: HomeAssistant, config_entry: MockConfigEntry) -> None:
@@ -437,8 +437,8 @@ class TestWebSocketSetRoomLayout:
         from custom_components.eppgrid.websocket_api import websocket_set_room_layout
 
         zone_slots = [
-            {"type": "normal", "trigger": 5, "renew": 3, "timeout": 10.0, "handoff_timeout": 3.0},
-            {"name": "Office", "type": "normal"},
+            {"type": "default", "trigger": 5, "renew": 3, "timeout": 10.0, "handoff_timeout": 3.0},
+            {"name": "Office", "type": "default"},
             None,
             None,
             None,
@@ -460,7 +460,7 @@ class TestWebSocketSetRoomLayout:
 
         layout = mock_dm._store.devices["AA:BB:CC:DD:EE:FF"]["room_layout"]
         assert layout["zone_slots"] == zone_slots
-        assert layout["zone_slots"][0]["type"] == "normal"
+        assert layout["zone_slots"][0]["type"] == "default"
         mock_dm._store.async_save.assert_awaited()
         mock_dm._push_config_to_device.assert_awaited()
         mock_dm.async_update_zone_entities.assert_awaited_with("AA:BB:CC:DD:EE:FF", zone_slots)
@@ -476,11 +476,11 @@ class TestWebSocketSetRoomLayout:
         mock_dm.devices["AA:BB:CC:DD:EE:FF"] = MagicMock(host="1.2.3.4")
 
         zone_slots = [
-            {"type": "normal", "trigger": 5, "renew": 3, "timeout": 10.0, "handoff_timeout": 3.0},
+            {"type": "default", "trigger": 5, "renew": 3, "timeout": 10.0, "handoff_timeout": 3.0},
             {
                 "name": "Living",
                 "color": "#ff0000",
-                "type": "rest",
+                "type": "seating",
                 "trigger": 7,
                 "renew": 1,
                 "timeout": 30.0,
@@ -520,7 +520,7 @@ class TestZoneSlotsValidator:
 
     def _valid_slots(self) -> list:
         """Return a minimal valid zone_slots list."""
-        return [{"type": "normal"}] + [None] * 7
+        return [{"type": "default"}] + [None] * 7
 
     def test_accepts_valid_zone_slots(self) -> None:
         """Valid slots: zone 0 dict with type, slots 1-7 null or named dict."""
@@ -530,8 +530,8 @@ class TestZoneSlotsValidator:
         assert _validate_zone_slots(valid) == valid
 
         valid_named = [
-            {"type": "normal", "trigger": 5, "renew": 3, "timeout": 10.0, "handoff_timeout": 3.0},
-            {"name": "Office", "color": "#ff0000", "type": "normal"},
+            {"type": "default", "trigger": 5, "renew": 3, "timeout": 10.0, "handoff_timeout": 3.0},
+            {"name": "Office", "color": "#ff0000", "type": "default"},
             None,
             None,
             None,
@@ -548,9 +548,9 @@ class TestZoneSlotsValidator:
         from custom_components.eppgrid.websocket_api import _validate_zone_slots
 
         with pytest.raises(vol.Invalid):
-            _validate_zone_slots([{"type": "normal"}] + [None] * 6)  # length 7
+            _validate_zone_slots([{"type": "default"}] + [None] * 6)  # length 7
         with pytest.raises(vol.Invalid):
-            _validate_zone_slots([{"type": "normal"}] + [None] * 8)  # length 9
+            _validate_zone_slots([{"type": "default"}] + [None] * 8)  # length 9
         with pytest.raises(vol.Invalid):
             _validate_zone_slots([])
 
@@ -563,7 +563,7 @@ class TestZoneSlotsValidator:
         with pytest.raises(vol.Invalid):
             _validate_zone_slots("not a list")
         with pytest.raises(vol.Invalid):
-            _validate_zone_slots({"type": "normal"})
+            _validate_zone_slots({"type": "default"})
         with pytest.raises(vol.Invalid):
             _validate_zone_slots(None)
 
@@ -603,7 +603,7 @@ class TestZoneSlotsValidator:
 
         from custom_components.eppgrid.websocket_api import _validate_zone_slots
 
-        slots = [{"type": "normal"}, "not a dict"] + [None] * 6
+        slots = [{"type": "default"}, "not a dict"] + [None] * 6
         with pytest.raises(vol.Invalid):
             _validate_zone_slots(slots)
 
@@ -613,7 +613,7 @@ class TestZoneSlotsValidator:
 
         from custom_components.eppgrid.websocket_api import _validate_zone_slots
 
-        slots = [{"type": "normal"}, {"color": "#ff0000", "type": "normal"}] + [None] * 6
+        slots = [{"type": "default"}, {"color": "#ff0000", "type": "default"}] + [None] * 6
         with pytest.raises(vol.Invalid):
             _validate_zone_slots(slots)
 
@@ -623,7 +623,7 @@ class TestZoneSlotsValidator:
 
         from custom_components.eppgrid.websocket_api import _validate_zone_slots
 
-        slots = [{"type": "normal"}, {"name": "Office", "type": "normal"}] + [None] * 6
+        slots = [{"type": "default"}, {"name": "Office", "type": "default"}] + [None] * 6
         with pytest.raises(vol.Invalid):
             _validate_zone_slots(slots)
 
@@ -633,7 +633,7 @@ class TestZoneSlotsValidator:
 
         from custom_components.eppgrid.websocket_api import _validate_zone_slots
 
-        slots = [{"type": "normal"}, {"name": "Office", "color": "#ff0000"}] + [None] * 6
+        slots = [{"type": "default"}, {"name": "Office", "color": "#ff0000"}] + [None] * 6
         with pytest.raises(vol.Invalid):
             _validate_zone_slots(slots)
 
@@ -644,8 +644,8 @@ class TestZoneSlotsValidator:
         from custom_components.eppgrid.websocket_api import _validate_zone_slots
 
         slots = [
-            {"type": "normal"},
-            {"name": 123, "color": "#ff0000", "type": "normal"},
+            {"type": "default"},
+            {"name": 123, "color": "#ff0000", "type": "default"},
         ] + [None] * 6
         with pytest.raises(vol.Invalid):
             _validate_zone_slots(slots)
@@ -666,7 +666,7 @@ class TestZoneSlotsValidator:
 
         from custom_components.eppgrid.websocket_api import _validate_zone_slots
 
-        slots = [{"type": "normal", "trigger": "5"}] + [None] * 7
+        slots = [{"type": "default", "trigger": "5"}] + [None] * 7
         with pytest.raises(vol.Invalid):
             _validate_zone_slots(slots)
 
@@ -676,7 +676,7 @@ class TestZoneSlotsValidator:
 
         from custom_components.eppgrid.websocket_api import _validate_zone_slots
 
-        slots = [{"type": "normal", "renew": "3"}] + [None] * 7
+        slots = [{"type": "default", "renew": "3"}] + [None] * 7
         with pytest.raises(vol.Invalid):
             _validate_zone_slots(slots)
 
@@ -686,7 +686,7 @@ class TestZoneSlotsValidator:
 
         from custom_components.eppgrid.websocket_api import _validate_zone_slots
 
-        slots = [{"type": "normal", "timeout": "10"}] + [None] * 7
+        slots = [{"type": "default", "timeout": "10"}] + [None] * 7
         with pytest.raises(vol.Invalid):
             _validate_zone_slots(slots)
 
@@ -696,7 +696,7 @@ class TestZoneSlotsValidator:
 
         from custom_components.eppgrid.websocket_api import _validate_zone_slots
 
-        slots = [{"type": "normal", "handoff_timeout": "3"}] + [None] * 7
+        slots = [{"type": "default", "handoff_timeout": "3"}] + [None] * 7
         with pytest.raises(vol.Invalid):
             _validate_zone_slots(slots)
 
@@ -707,8 +707,8 @@ class TestZoneSlotsValidator:
         from custom_components.eppgrid.websocket_api import _validate_zone_slots
 
         slots = [
-            {"type": "normal"},
-            {"name": "Office", "color": "#ff0000", "type": "normal", "trigger": "5"},
+            {"type": "default"},
+            {"name": "Office", "color": "#ff0000", "type": "default", "trigger": "5"},
         ] + [None] * 6
         with pytest.raises(vol.Invalid):
             _validate_zone_slots(slots)
@@ -719,7 +719,7 @@ class TestZoneSlotsValidator:
 
         slots = [
             {
-                "type": "normal",
+                "type": "default",
                 "trigger": 5,
                 "renew": 3.5,
                 "timeout": 10,
@@ -728,7 +728,7 @@ class TestZoneSlotsValidator:
             {
                 "name": "Office",
                 "color": "#ff0000",
-                "type": "normal",
+                "type": "default",
                 "trigger": 4,
                 "renew": 2.0,
                 "timeout": 12.5,
@@ -1030,7 +1030,7 @@ class TestWebSocketSettings:
             mock_dm.async_update_zone_entities.assert_awaited_once()
             zone_slots = mock_dm.async_update_zone_entities.call_args[0][1]
             assert len(zone_slots) == 8
-            assert zone_slots[0] == {"type": "normal"}
+            assert zone_slots[0] == {"type": "default"}
             assert zone_slots[1:] == [None] * 7
 
     async def test_set_settings_zone_presence_true_calls_update_zone_entities(
@@ -3019,7 +3019,7 @@ class TestProtocolVersionGuard:
                 {
                     "grid_bytes": [0] * 400,
                     "zone_slots": [
-                        {"type": "normal", "trigger": 5, "renew": 3, "timeout": 10.0, "handoff_timeout": 3.0},
+                        {"type": "default", "trigger": 5, "renew": 3, "timeout": 10.0, "handoff_timeout": 3.0},
                         None,
                         None,
                         None,

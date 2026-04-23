@@ -7,7 +7,7 @@ import type { Zone0Config, ZoneConfig } from "../lib/zone-defaults.js";
 
 // Valid length-8 zone slots for test templates (slot 0 = Zone0Config).
 const VALID_ZONES: (Zone0Config | ZoneConfig | null)[] = [
-	{ type: "normal", trigger: 5, renew: 3, timeout: 10, handoff_timeout: 3 },
+	{ type: "default", trigger: 5, renew: 3, timeout: 10, handoff_timeout: 3 },
 	null,
 	null,
 	null,
@@ -26,7 +26,7 @@ function createPanel(): EPPGridPanel {
 	const a = el as any;
 	a._grid = new Uint8Array(GRID_CELL_COUNT);
 	a._zoneConfigs = [
-		{ type: "normal", trigger: 5, renew: 3, timeout: 10, handoff_timeout: 3 },
+		{ type: "default", trigger: 5, renew: 3, timeout: 10, handoff_timeout: 3 },
 		null,
 		null,
 		null,
@@ -81,7 +81,13 @@ describe("_saveTemplate", () => {
 		a._roomDepth = 6000;
 		a._furniture = [];
 		a._zoneConfigs = [
-			{ type: "normal", trigger: 5, renew: 3, timeout: 10, handoff_timeout: 3 },
+			{
+				type: "default",
+				trigger: 5,
+				renew: 3,
+				timeout: 10,
+				handoff_timeout: 3,
+			},
 			null,
 			null,
 			null,
@@ -117,13 +123,13 @@ describe("_loadTemplate", () => {
 				grid,
 				zones: [
 					{
-						type: "normal",
+						type: "default",
 						trigger: 5,
 						renew: 3,
 						timeout: 10,
 						handoff_timeout: 3,
 					},
-					{ name: "Z1", color: "#ff0000", type: "normal" },
+					{ name: "Z1", color: "#ff0000", type: "default" },
 					null,
 					null,
 					null,
@@ -155,7 +161,7 @@ describe("_loadTemplate", () => {
 			grid,
 			zones: [
 				{
-					type: "rest",
+					type: "seating",
 					trigger: 7,
 					renew: 1,
 					timeout: 30,
@@ -164,7 +170,7 @@ describe("_loadTemplate", () => {
 				{
 					name: "Living",
 					color: "#f00",
-					type: "normal",
+					type: "default",
 					trigger: 5,
 					renew: 3,
 					timeout: 10,
@@ -186,7 +192,7 @@ describe("_loadTemplate", () => {
 
 		await a._loadTemplate("Saved");
 
-		expect((a._zoneConfigs[0] as Zone0Config).type).toBe("rest");
+		expect((a._zoneConfigs[0] as Zone0Config).type).toBe("seating");
 		expect((a._zoneConfigs[1] as ZoneConfig)?.name).toBe("Living");
 		// auto-apply fired set_room_layout — assert exact shape so a
 		// regression that re-introduces .slice(1) (length-7 zone_slots)
@@ -199,10 +205,10 @@ describe("_loadTemplate", () => {
 		expect(payload.zone_slots).toHaveLength(8);
 		// Non-custom types carry only `type` (plus name/color for named
 		// slots) — backend fills timing from ZONE_TYPE_DEFAULTS.
-		expect(payload.zone_slots[0]).toEqual({ type: "rest" });
+		expect(payload.zone_slots[0]).toEqual({ type: "seating" });
 		expect(payload.zone_slots[1]).toMatchObject({
 			name: "Living",
-			type: "normal",
+			type: "default",
 		});
 		expect(payload.zone_slots[1]).not.toHaveProperty("trigger");
 	});
@@ -280,7 +286,7 @@ describe("_renderTemplateLoadDialog", () => {
 				grid,
 				zones: [
 					VALID_ZONES[0],
-					{ name: "Z1", color: "#E69F00", type: "normal" },
+					{ name: "Z1", color: "#E69F00", type: "default" },
 					null,
 					null,
 					null,

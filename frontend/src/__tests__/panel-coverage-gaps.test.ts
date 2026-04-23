@@ -27,7 +27,7 @@ function createPanel(): EPPGridPanel {
 	const a = el as any;
 	a._grid = initGridFromRoom(3000, 4000);
 	a._zoneConfigs = [
-		{ type: "normal", trigger: 5, renew: 3, timeout: 10, handoff_timeout: 3 },
+		{ type: "default", trigger: 5, renew: 3, timeout: 10, handoff_timeout: 3 },
 		null,
 		null,
 		null,
@@ -222,7 +222,7 @@ describe("_removeZone grid clearing branch", () => {
 	it("does not replace grid when clearZoneFromGrid returns null (no cells)", () => {
 		const a = createPanel() as any;
 		// Named zone 1 lives at slot 1 (slot 0 is Zone0Config).
-		a._zoneConfigs[1] = { name: "Z1", color: "#ff0000", type: "normal" };
+		a._zoneConfigs[1] = { name: "Z1", color: "#ff0000", type: "default" };
 		// Grid has no cells with zone 1
 		const _gridRef = a._grid;
 
@@ -247,7 +247,7 @@ describe("_addZone color fallback", () => {
 			a._zoneConfigs[i] = {
 				name: `Zone ${i}`,
 				color: ZONE_COLORS[(i - 1) % ZONE_COLORS.length],
-				type: "normal",
+				type: "default",
 			};
 		}
 
@@ -582,7 +582,7 @@ describe("epp-live-sidebar zone info toggles", () => {
 		el.zoneConfigs[0] = {
 			name: "Kitchen",
 			color: ZONE_COLORS[0],
-			type: "normal",
+			type: "default",
 		};
 		el.perspective = [1, 0, 0, 0, 1, 0, 0, 0];
 		el.zoneState = {
@@ -794,7 +794,7 @@ describe("_renderTemplateLoadDialog DOM events", () => {
 				grid: new Array(GRID_CELL_COUNT).fill(0),
 				zones: [
 					{
-						type: "normal",
+						type: "default",
 						trigger: 5,
 						renew: 3,
 						timeout: 10,
@@ -1062,7 +1062,7 @@ describe("stopPropagation handlers in zone sidebar", () => {
 	it("color picker click event has stopPropagation", () => {
 		const el = document.createElement("epp-zone-sidebar") as any;
 		el.zoneConfigs = [
-			{ name: "Z1", color: "#ff0000", type: "normal" },
+			{ name: "Z1", color: "#ff0000", type: "default" },
 			null,
 			null,
 			null,
@@ -1072,11 +1072,11 @@ describe("stopPropagation handlers in zone sidebar", () => {
 		];
 		el.activeZone = 1;
 		el.zone0 = {
-			type: "normal",
-			trigger: ZONE_TYPE_DEFAULTS.normal.trigger,
-			renew: ZONE_TYPE_DEFAULTS.normal.renew,
-			timeout: ZONE_TYPE_DEFAULTS.normal.timeout,
-			handoff_timeout: ZONE_TYPE_DEFAULTS.normal.handoff_timeout,
+			type: "default",
+			trigger: ZONE_TYPE_DEFAULTS.default.trigger,
+			renew: ZONE_TYPE_DEFAULTS.default.renew,
+			timeout: ZONE_TYPE_DEFAULTS.default.timeout,
+			handoff_timeout: ZONE_TYPE_DEFAULTS.default.handoff_timeout,
 		};
 		el.localZoneState = new Map();
 		el.localize = (k: string) => k;

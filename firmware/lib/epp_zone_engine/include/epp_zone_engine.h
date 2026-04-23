@@ -15,7 +15,6 @@ namespace epp {
 
 struct ZoneConfig {
     int id = 0;                     // 0-7 (0=rest-of-room)
-    ZoneType type = ZoneType::NORMAL;
     int trigger = 5;
     int renew = 3;
     float timeout = 10.0f;

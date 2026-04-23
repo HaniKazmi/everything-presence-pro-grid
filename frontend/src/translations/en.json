@@ -185,9 +185,10 @@
 	},
 	"zones": {
 		"type": "Type",
-		"normal": "Normal",
-		"thoroughfare": "Thoroughfare",
-		"rest_area": "Rest area",
+		"default": "Default",
+		"bed": "Bed",
+		"seating": "Seating",
+		"transit": "Transit",
 		"custom": "Custom",
 		"trigger": "Trigger",
 		"renew": "Renew",

@@ -52,15 +52,9 @@ void ZoneEngine::set_zones(const ZoneConfig zones[], int count) {
     // Clear all slots
     std::memset(zone_enabled_, 0, sizeof(zone_enabled_));
 
-    // Always include zone 0 (room-level) with normal type defaults.
-    ZoneTypeDefaults defaults = zone_type_defaults(ZoneType::NORMAL);
+    // Zone 0 gets ZoneConfig's in-class defaults; the wire payload's slot 0
+    // overrides below if supplied.
     zones_[0] = ZoneRuntime{};
-    zones_[0].config.id = 0;
-    zones_[0].config.type = ZoneType::NORMAL;
-    zones_[0].config.trigger = defaults.trigger;
-    zones_[0].config.renew = defaults.renew;
-    zones_[0].config.timeout = defaults.timeout;
-    zones_[0].config.handoff_timeout = defaults.handoff_timeout;
     zone_enabled_[0] = true;
     zone_count_ = 1;
 

@@ -61,7 +61,7 @@ describe("epp-live-sidebar element", () => {
 		el.zoneConfigs[0] = {
 			name: "Kitchen",
 			color: ZONE_COLORS[0],
-			type: "normal",
+			type: "default",
 		};
 		el.zoneState = {
 			occupancy: { 1: true, 0: false },
@@ -89,7 +89,7 @@ describe("epp-live-sidebar element", () => {
 		el.zoneConfigs[0] = {
 			name: "Kitchen",
 			color: ZONE_COLORS[0],
-			type: "normal",
+			type: "default",
 		};
 
 		const tpl = el.render();
@@ -290,7 +290,7 @@ describe("epp-live-sidebar element", () => {
 		el.zoneConfigs[0] = {
 			name: "Kitchen",
 			color: "#B8E7FF",
-			type: "normal",
+			type: "default",
 		};
 		el.zoneState = {
 			occupancy: { 1: false, 0: false },
@@ -320,7 +320,7 @@ describe("epp-live-sidebar element", () => {
 		el.zoneConfigs[0] = {
 			name: "Kitchen",
 			color: "#B8E7FF",
-			type: "normal",
+			type: "default",
 		};
 		el.zoneState = {
 			occupancy: { 1: true, 0: false },

@@ -14,7 +14,7 @@ NUM_ZONE_SLOTS = MAX_ZONES + 1  # 8: zone 0 + named zones 1-7
 
 # Fallback layout when a device has no stored room_layout. Must satisfy
 # is_valid_zone_slots_shape (length-8 list, dict at slot 0).
-EMPTY_ZONE_SLOTS: list[dict[str, str] | None] = [{"type": "normal"}, *([None] * MAX_ZONES)]
+EMPTY_ZONE_SLOTS: list[dict[str, str] | None] = [{"type": "default"}, *([None] * MAX_ZONES)]
 
 # Firmware version this integration requires.
 # Must match the firmware's Firmware Version text sensor value.

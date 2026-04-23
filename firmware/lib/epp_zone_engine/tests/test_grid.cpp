@@ -2,6 +2,7 @@
 #include <doctest/doctest.h>
 #include "epp_grid.h"
 #include "epp_types.h"
+#include "epp_zone_engine.h"
 
 TEST_CASE("constants match expected values") {
     CHECK(epp::GRID_COLS == 20);
@@ -149,25 +150,6 @@ TEST_CASE("Grid accessors") {
     CHECK(grid.rows() == 15);
     CHECK(grid.cell_size() == 250);
     CHECK(grid.cell_count() == 150);
-}
-
-TEST_CASE("ZoneType defaults") {
-    auto normal = epp::zone_type_defaults(epp::ZoneType::NORMAL);
-    CHECK(normal.trigger == 5);
-    CHECK(normal.renew == 3);
-    CHECK(normal.timeout == 10.0f);
-    CHECK(normal.handoff_timeout == 3.0f);
-
-    auto thoroughfare = epp::zone_type_defaults(epp::ZoneType::THOROUGHFARE);
-    CHECK(thoroughfare.timeout == 3.0f);
-
-    auto rest = epp::zone_type_defaults(epp::ZoneType::REST);
-    CHECK(rest.trigger == 7);
-    CHECK(rest.timeout == 30.0f);
-
-    // CUSTOM falls back to NORMAL
-    auto custom = epp::zone_type_defaults(epp::ZoneType::CUSTOM);
-    CHECK(custom.trigger == normal.trigger);
 }
 
 TEST_CASE("threshold_to_frame_count") {

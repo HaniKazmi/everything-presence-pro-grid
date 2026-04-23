@@ -24,7 +24,7 @@ function createPanel(): EPPGridPanel {
 	const a = el as any;
 	a._grid = new Uint8Array(GRID_CELL_COUNT);
 	a._zoneConfigs = [
-		{ type: "normal", trigger: 5, renew: 3, timeout: 10, handoff_timeout: 3 },
+		{ type: "default", trigger: 5, renew: 3, timeout: 10, handoff_timeout: 3 },
 		null,
 		null,
 		null,
@@ -693,10 +693,10 @@ describe("_renderBoundaryTypeControls inline handlers", () => {
 		];
 	}
 
-	it("room type change to thoroughfare", () => {
+	it("room type change to transit", () => {
 		const a = createPanel() as any;
-		const val = "thoroughfare" as const;
-		const d = ZONE_TYPE_DEFAULTS[val] || ZONE_TYPE_DEFAULTS.normal;
+		const val = "transit" as const;
+		const d = ZONE_TYPE_DEFAULTS[val] || ZONE_TYPE_DEFAULTS.default;
 		updateZone0(a, {
 			type: val,
 			trigger: d.trigger,
@@ -706,7 +706,7 @@ describe("_renderBoundaryTypeControls inline handlers", () => {
 		});
 		a._dirty = true;
 
-		expect(a._zoneConfigs[0].type).toBe("thoroughfare");
+		expect(a._zoneConfigs[0].type).toBe("transit");
 		expect(a._dirty).toBe(true);
 	});
 
@@ -771,13 +771,13 @@ describe("_renderBoundaryTypeControls inline handlers", () => {
 describe("_renderZoneTypeControls inline handlers", () => {
 	it("zone type change updates config", () => {
 		const a = createPanel() as any;
-		a._zoneConfigs[1] = { name: "Z1", color: "#ff0000", type: "normal" };
+		a._zoneConfigs[1] = { name: "Z1", color: "#ff0000", type: "default" };
 
 		// Replicate handler (line 4997-5011)
-		const val = "rest";
+		const val = "seating";
 		const zone = a._zoneConfigs[1]!;
 		const index = 0;
-		const d = ZONE_TYPE_DEFAULTS[val] || ZONE_TYPE_DEFAULTS.normal;
+		const d = ZONE_TYPE_DEFAULTS[val] || ZONE_TYPE_DEFAULTS.default;
 		const configs = [...a._zoneConfigs];
 		configs[index + 1] = {
 			...zone,
@@ -790,7 +790,7 @@ describe("_renderZoneTypeControls inline handlers", () => {
 		a._zoneConfigs = configs;
 		a._dirty = true;
 
-		expect(a._zoneConfigs[1].type).toBe("rest");
+		expect(a._zoneConfigs[1].type).toBe("seating");
 	});
 
 	it("zone trigger input", () => {
@@ -919,7 +919,7 @@ describe("_renderZoneSidebar inline handlers", () => {
 
 	it("zone item click sets activeZone", () => {
 		const a = createPanel() as any;
-		a._zoneConfigs[1] = { name: "Z1", color: "#ff0000", type: "normal" };
+		a._zoneConfigs[1] = { name: "Z1", color: "#ff0000", type: "default" };
 		const slot = 1;
 		// Replicate handler (line 5139-5140)
 		a._activeZone = slot;
@@ -928,7 +928,7 @@ describe("_renderZoneSidebar inline handlers", () => {
 
 	it("zone color picker input", () => {
 		const a = createPanel() as any;
-		a._zoneConfigs[1] = { name: "Z1", color: "#ff0000", type: "normal" };
+		a._zoneConfigs[1] = { name: "Z1", color: "#ff0000", type: "default" };
 
 		// Replicate handler (line 5152-5157)
 		const val = "#00ff00";
@@ -944,7 +944,7 @@ describe("_renderZoneSidebar inline handlers", () => {
 
 	it("zone name input", () => {
 		const a = createPanel() as any;
-		a._zoneConfigs[1] = { name: "Z1", color: "#ff0000", type: "normal" };
+		a._zoneConfigs[1] = { name: "Z1", color: "#ff0000", type: "default" };
 
 		// Replicate handler (line 5170-5174)
 		const val = "Kitchen";
@@ -975,7 +975,7 @@ describe("_renderZoneSidebar inline handlers", () => {
 
 	it("zone remove button calls _removeZone", () => {
 		const a = createPanel() as any;
-		a._zoneConfigs[1] = { name: "Z1", color: "#ff0000", type: "normal" };
+		a._zoneConfigs[1] = { name: "Z1", color: "#ff0000", type: "default" };
 		const slot = 1;
 		// Replicate handler (line 5186-5188)
 		a._removeZone(slot);

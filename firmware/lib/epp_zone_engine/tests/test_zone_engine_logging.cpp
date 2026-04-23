@@ -32,7 +32,6 @@ static ZoneEngine make_engine() {
 
     ZoneConfig zone1{};
     zone1.id = 1;
-    zone1.type = ZoneType::CUSTOM;
     zone1.trigger = 3;
     zone1.renew = 2;
     zone1.timeout = 5.0f;
@@ -40,7 +39,6 @@ static ZoneEngine make_engine() {
 
     ZoneConfig zone0{};
     zone0.id = 0;
-    zone0.type = ZoneType::NORMAL;
     zone0.trigger = 5;
     zone0.renew = 3;
     zone0.timeout = 10.0f;

@@ -83,7 +83,7 @@ describe("panel renders without throwing", () => {
 		// Length-8 tuple: slot 0 is always Zone0Config (room boundary);
 		// slots 1..7 are named-zone configs or null.
 		expect(a._zoneConfigs).toHaveLength(8);
-		expect(a._zoneConfigs[0]).toMatchObject({ type: "normal" });
+		expect(a._zoneConfigs[0]).toMatchObject({ type: "default" });
 		for (let i = 1; i < 8; i++) {
 			expect(a._zoneConfigs[i]).toBeNull();
 		}

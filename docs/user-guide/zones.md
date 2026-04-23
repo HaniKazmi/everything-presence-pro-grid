@@ -47,9 +47,10 @@ Once calibration is done and the room boundary looks right, add your first named
 
 Each zone has a **type**, which picks sensible defaults for four behaviour thresholds. For most rooms, one of the built-in types works without further tuning.
 
-- **Normal** — balanced defaults. Use for living-room zones, kitchen zones, generic "somebody's in this area" detection.
-- **Thoroughfare** — faster fall-off. Use for hallways and doorways where you want presence to drop quickly after someone has walked through, so it doesn't keep a light on forever.
-- **Rest** — slower fall-off. Use for beds, reading chairs, long sofas where people are still for extended periods. Tolerant of stillness.
+- **Default** — balanced defaults. Use for living-room zones, kitchen zones, generic "somebody's in this area" detection.
+- **Bed** — long presence timeout for bedroom monitoring. Designed for someone lying still in bed for extended periods (10-minute presence timeout, slower trigger).
+- **Seating** — for sofas, reading chairs, dining seats. Slower trigger but a longer hold-on so brief stillness doesn't drop presence.
+- **Transit** — fast fall-off. Use for hallways and doorways where you want presence to drop quickly after someone has walked through, so it doesn't keep a light on forever.
 - **Custom** — expose the four thresholds below for direct tuning.
 
 The four thresholds (editable in Custom mode):
@@ -82,7 +83,7 @@ Both toggles are device-wide, not per-zone. Turning **Zone Presence** on gives y
 | Renamed a zone but the HA entity display name still says "Zone N Presence" | Integration hasn't refreshed the entity registry entry yet | Reload the **Everything Presence Pro Grid** integration from Settings → Devices & Services, or reboot the device. |
 | Zone never fires even with obvious presence | Zone has no cells painted, or cells are outside the room boundary | Reopen the zone in the editor and verify cells are painted inside the room. Cells outside the room boundary don't get tracked. |
 | `Zone Rest of Room` is always `on`, even when nobody's in the room | An interference source is inside the room but outside any named zone | Paint an Interference overlay on the problem cells. See [Overlays](overlays.md). |
-| Zone flaps on and off on someone who isn't moving much | Zone type is "Normal" — presence timeout is short | Change the zone's type to **Rest** (sofa, bed) or **Custom** with a longer Presence timeout. |
+| Zone flaps on and off on someone who isn't moving much | Zone type is "Default" — presence timeout is short | Change the zone's type to **Seating** (sofa, chair), **Bed** (bedroom), or **Custom** with a longer Presence timeout. |
 
 See also: the [central Troubleshooting](troubleshooting.md) page for conceptual FAQ and how to open a GitHub issue.
 

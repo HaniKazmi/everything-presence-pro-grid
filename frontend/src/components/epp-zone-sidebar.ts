@@ -3,6 +3,7 @@ import { property } from "lit/decorators.js";
 import {
 	resolveZoneParams,
 	ZONE_TYPE_DEFAULTS,
+	ZONE_TYPE_KEYS,
 	type Zone0Config,
 	type ZoneConfig,
 } from "../lib/zone-defaults.js";
@@ -19,7 +20,7 @@ export class EppZoneSidebar extends LitElement {
 	@property({ attribute: false }) grid!: Uint8Array;
 	@property({ attribute: false }) zoneConfigs: (ZoneConfig | null)[] = [];
 	@property({ attribute: false }) activeZone: number | null = null;
-	@property({ attribute: false }) zone0: Zone0Config = { type: "normal" };
+	@property({ attribute: false }) zone0: Zone0Config = { type: "default" };
 	@property({ attribute: false }) localZoneState: Map<number, LocalZoneInfo> =
 		new Map();
 	@property({ attribute: false }) localize: LocalizeFn = defaultLocalize;
@@ -418,18 +419,10 @@ export class EppZoneSidebar extends LitElement {
 						}}
 						@click=${(e: Event) => e.stopPropagation()}
 					>
-						<option value="normal">
-							${this.localize("zones.normal")}
-						</option>
-						<option value="thoroughfare">
-							${this.localize("zones.thoroughfare")}
-						</option>
-						<option value="rest">
-							${this.localize("zones.rest_area")}
-						</option>
-						<option value="custom">
-							${this.localize("zones.custom")}
-						</option>
+						${ZONE_TYPE_KEYS.map(
+							(k) =>
+								html`<option value=${k}>${this.localize(`zones.${k}`)}</option>`,
+						)}
 					</select>
 				</div>
 				<div style="${rowStyle}">
@@ -486,7 +479,7 @@ export class EppZoneSidebar extends LitElement {
 					<input
 						type="number"
 						min="1"
-						max="300"
+						max="3600"
 						style="width: 48px; text-align: right; font: inherit; font-size: 12px;"
 						.value=${String(timeout)}
 						?disabled=${!isCustom}
@@ -534,7 +527,8 @@ export class EppZoneSidebar extends LitElement {
 
 	private _renderZoneTypeControls(zone: ZoneConfig, index: number) {
 		const isCustom = zone.type === "custom";
-		const defaults = ZONE_TYPE_DEFAULTS[zone.type] || ZONE_TYPE_DEFAULTS.normal;
+		const defaults =
+			ZONE_TYPE_DEFAULTS[zone.type] || ZONE_TYPE_DEFAULTS.default;
 		const trigger = zone.trigger ?? defaults.trigger;
 		const renew = zone.renew ?? defaults.renew;
 		const timeout = zone.timeout ?? defaults.timeout;
@@ -587,18 +581,10 @@ export class EppZoneSidebar extends LitElement {
 						}}
 						@click=${(e: Event) => e.stopPropagation()}
 					>
-						<option value="normal">
-							${this.localize("zones.normal")}
-						</option>
-						<option value="thoroughfare">
-							${this.localize("zones.thoroughfare")}
-						</option>
-						<option value="rest">
-							${this.localize("zones.rest_area")}
-						</option>
-						<option value="custom">
-							${this.localize("zones.custom")}
-						</option>
+						${ZONE_TYPE_KEYS.map(
+							(k) =>
+								html`<option value=${k}>${this.localize(`zones.${k}`)}</option>`,
+						)}
 					</select>
 				</div>
 				<div style="${rowStyle}">
@@ -685,7 +671,7 @@ export class EppZoneSidebar extends LitElement {
 					<input
 						type="number"
 						min="1"
-						max="300"
+						max="3600"
 						style="width: 48px; text-align: right; font: inherit; font-size: 12px; margin-right: 0;"
 						.value=${String(timeout)}
 						?disabled=${!isCustom}

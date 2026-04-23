@@ -42,9 +42,10 @@ _DEVICE_LOGGER = logging.getLogger(f"{__name__}.device_logs")
 # asserts the two agree. Non-custom zones store only `type`; the backend
 # expands via _expand_zone_slot on push so firmware always receives full timing.
 ZONE_TYPE_DEFAULTS: dict[str, dict[str, float]] = {
-    "normal": {"trigger": 5, "renew": 3, "timeout": 10.0, "handoff_timeout": 3.0},
-    "thoroughfare": {"trigger": 3, "renew": 2, "timeout": 3.0, "handoff_timeout": 1.0},
-    "rest": {"trigger": 7, "renew": 1, "timeout": 30.0, "handoff_timeout": 10.0},
+    "default": {"trigger": 5, "renew": 3, "timeout": 10.0, "handoff_timeout": 3.0},
+    "bed": {"trigger": 8, "renew": 2, "timeout": 600.0, "handoff_timeout": 10.0},
+    "seating": {"trigger": 7, "renew": 1, "timeout": 30.0, "handoff_timeout": 10.0},
+    "transit": {"trigger": 3, "renew": 2, "timeout": 3.0, "handoff_timeout": 1.0},
 }
 
 
@@ -65,7 +66,7 @@ def _expand_zone_slot(slot: dict[str, Any]) -> dict[str, Any]:
     """
     if slot.get("type") == "custom":
         return dict(slot)
-    defaults = ZONE_TYPE_DEFAULTS.get(slot.get("type"), ZONE_TYPE_DEFAULTS["normal"])
+    defaults = ZONE_TYPE_DEFAULTS.get(slot.get("type"), ZONE_TYPE_DEFAULTS["default"])
     expanded = dict(slot)
     expanded["trigger"] = defaults["trigger"]
     expanded["renew"] = defaults["renew"]

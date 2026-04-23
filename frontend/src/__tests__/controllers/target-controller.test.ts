@@ -37,7 +37,7 @@ function mockHost() {
 		// via `host._zoneConfigs = [host._zoneConfigs[0], ...namedZones]`.
 		_zoneConfigs: [
 			{
-				type: "normal" as const,
+				type: "default" as const,
 				trigger: 5,
 				renew: 3,
 				timeout: 10,
@@ -239,7 +239,7 @@ describe("TargetController", () => {
 			host._showBackendDebugLog = true;
 			host._zoneConfigs = [
 				host._zoneConfigs[0],
-				{ name: "Lounge", color: "#fff", type: "normal" },
+				{ name: "Lounge", color: "#fff", type: "default" },
 				null,
 				null,
 				null,
@@ -378,7 +378,7 @@ describe("TargetController", () => {
 			// Slot 0 = Zone0Config; slot 1 = first named zone (zone 1).
 			host._zoneConfigs = [
 				host._zoneConfigs[0],
-				{ name: "Hallway", color: "#E69F00", type: "normal" },
+				{ name: "Hallway", color: "#E69F00", type: "default" },
 				null,
 				null,
 				null,
@@ -455,7 +455,7 @@ describe("TargetController", () => {
 		beforeEach(() => {
 			host._zoneConfigs = [
 				host._zoneConfigs[0],
-				{ name: "Lounge", color: "#fff", type: "normal" },
+				{ name: "Lounge", color: "#fff", type: "default" },
 				null,
 				null,
 				null,
@@ -584,7 +584,7 @@ describe("TargetController", () => {
 		it("returns colours for zones with non-zero target counts", () => {
 			host._zoneConfigs = [
 				host._zoneConfigs[0],
-				{ name: "Study", color: "#56B4E9", type: "normal" },
+				{ name: "Study", color: "#56B4E9", type: "default" },
 				null,
 				null,
 				null,
@@ -623,9 +623,9 @@ describe("TargetController", () => {
 			engineSpy.mockRestore();
 		});
 
-		it("resolves room defaults by z0.type when trigger is unset ('rest' → 7, not normal → 5)", () => {
+		it("resolves room defaults by z0.type when trigger is unset ('seating' → 7, not default → 5)", () => {
 			host._zoneConfigs = [
-				{ type: "rest" as const },
+				{ type: "seating" as const },
 				null,
 				null,
 				null,
@@ -638,7 +638,7 @@ describe("TargetController", () => {
 			ctrl.runLocalZoneEngine();
 			expect(engineSpy).toHaveBeenCalledTimes(1);
 			const params = (engineSpy.mock.calls[0] as any[])[1];
-			expect(params.roomType).toBe("rest");
+			expect(params.roomType).toBe("seating");
 			// rest defaults: trigger 7, renew 1, timeout 30, handoff_timeout 10
 			expect(params.roomTrigger).toBe(7);
 			expect(params.roomRenew).toBe(1);
@@ -647,12 +647,12 @@ describe("TargetController", () => {
 		});
 
 		it("uses type defaults authoritatively for non-custom types, ignoring user-supplied trigger", () => {
-			// z0.type = "rest" but with stale user-supplied overrides from a
+			// z0.type = "seating" but with stale user-supplied overrides from a
 			// previous custom config; per getZoneThresholds semantics, the
 			// rest defaults must win.
 			host._zoneConfigs = [
 				{
-					type: "rest" as const,
+					type: "seating" as const,
 					trigger: 2,
 					renew: 9,
 					timeout: 99,

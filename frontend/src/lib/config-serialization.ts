@@ -5,7 +5,20 @@ import {
 	MAX_ZONES,
 	NUM_ZONE_SLOTS,
 } from "./grid.js";
-import type { Zone0Config, ZoneConfig } from "./zone-defaults.js";
+import {
+	ZONE_TYPE_KEYS,
+	type Zone0Config,
+	type ZoneConfig,
+} from "./zone-defaults.js";
+
+// Coerce an unknown stored `type` to a valid key. Pre-0.95 layouts used
+// "normal"/"thoroughfare"/"rest" — those (and anything else unrecognised)
+// fall through to "default" so the <select> has a matching option.
+function normalizeType(raw: unknown): Zone0Config["type"] {
+	return ZONE_TYPE_KEYS.includes(raw as Zone0Config["type"])
+		? (raw as Zone0Config["type"])
+		: "default";
+}
 
 /**
  * Parsed calibration data from config.
@@ -142,7 +155,7 @@ export interface ParsedZoneConfigs {
  */
 export function parseZoneConfigs(layout: any): ParsedZoneConfigs {
 	const defaultResult: ParsedZoneConfigs = {
-		zone0: { type: "normal" },
+		zone0: { type: "default" },
 		zones: Array(MAX_ZONES).fill(null),
 	};
 	const slots = layout?.zone_slots;
@@ -153,7 +166,7 @@ export function parseZoneConfigs(layout: any): ParsedZoneConfigs {
 		return defaultResult;
 	}
 	const zone0: Zone0Config = {
-		type: slots[0].type ?? "normal",
+		type: normalizeType(slots[0].type),
 		trigger: slots[0].trigger,
 		renew: slots[0].renew,
 		timeout: slots[0].timeout,
@@ -161,7 +174,8 @@ export function parseZoneConfigs(layout: any): ParsedZoneConfigs {
 	};
 	const zones = Array.from({ length: MAX_ZONES }, (_, i) => {
 		const s = slots[i + 1];
-		return s && typeof s === "object" ? (s as ZoneConfig) : null;
+		if (!s || typeof s !== "object") return null;
+		return { ...s, type: normalizeType(s.type) } as ZoneConfig;
 	});
 	return { zone0, zones };
 }
