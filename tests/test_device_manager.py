@@ -1298,7 +1298,7 @@ class TestPushConfig:
             mock_client.execute_service = AsyncMock()
 
             await conn.async_connect()
-            # Slot 0 = rest, slot 1 = thoroughfare — both non-custom, stored
+            # Slot 0 = seating, slot 1 = transit — both non-custom, stored
             # without timing. Expansion should fill each with its type defaults.
             await conn.async_push_config(
                 {
@@ -1316,7 +1316,7 @@ class TestPushConfig:
             call_data = mock_client.execute_service.call_args[0][1]
             pushed = json.loads(call_data["zones_json"])
             slots = pushed["zone_slots"]
-            # Zone 0 (rest) defaults: trigger=7, renew=1, timeout=30, handoff=10.
+            # Zone 0 (seating) defaults: trigger=7, renew=1, timeout=30, handoff=10.
             assert slots[0] == {
                 "type": "seating",
                 "trigger": 7,
@@ -1324,7 +1324,7 @@ class TestPushConfig:
                 "timeout": 30.0,
                 "handoff_timeout": 10.0,
             }
-            # Zone 1 (thoroughfare): trigger=3, renew=2, timeout=3, handoff=1.
+            # Zone 1 (transit): trigger=3, renew=2, timeout=3, handoff=1.
             # name/color must be preserved.
             assert slots[1] == {
                 "name": "Hall",
