@@ -337,6 +337,10 @@ class TestAddEsphomeDevice:
                 {"type": "already_added"},
             ),
             (
+                {"type": "abort", "reason": "already_configured_updates"},
+                {"type": "already_added"},
+            ),
+            (
                 {"type": "abort", "reason": "cannot_connect"},
                 {"type": "cannot_connect"},
             ),

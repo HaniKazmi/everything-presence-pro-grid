@@ -1639,7 +1639,7 @@ def _map_esphome_flow_result(result: dict[str, Any]) -> dict[str, str]:
         return {"type": "needs_auth"}
     if flow_type == "abort":
         reason = result.get("reason") or "unknown"
-        if reason == "already_configured":
+        if reason in ("already_configured", "already_configured_updates"):
             return {"type": "already_added"}
         if reason in ("cannot_connect", "connection_error"):
             return {"type": "cannot_connect"}
