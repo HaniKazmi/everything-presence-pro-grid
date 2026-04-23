@@ -9,14 +9,15 @@ import {
 } from "../zone-defaults.js";
 
 describe("ZONE_TYPE_DEFAULTS", () => {
-	it("has all three zone types", () => {
-		expect(ZONE_TYPE_DEFAULTS).toHaveProperty("normal");
-		expect(ZONE_TYPE_DEFAULTS).toHaveProperty("thoroughfare");
-		expect(ZONE_TYPE_DEFAULTS).toHaveProperty("rest");
+	it("has all four zone types", () => {
+		expect(ZONE_TYPE_DEFAULTS).toHaveProperty("default");
+		expect(ZONE_TYPE_DEFAULTS).toHaveProperty("bed");
+		expect(ZONE_TYPE_DEFAULTS).toHaveProperty("seating");
+		expect(ZONE_TYPE_DEFAULTS).toHaveProperty("transit");
 	});
 
 	it("each type has trigger, renew, timeout, handoff_timeout", () => {
-		for (const type of ["normal", "thoroughfare", "rest"]) {
+		for (const type of ["default", "bed", "seating", "transit"]) {
 			const d = ZONE_TYPE_DEFAULTS[type];
 			expect(d.trigger).toBeTypeOf("number");
 			expect(d.renew).toBeTypeOf("number");
@@ -25,12 +26,39 @@ describe("ZONE_TYPE_DEFAULTS", () => {
 		}
 	});
 
-	it("normal type has expected defaults", () => {
-		expect(ZONE_TYPE_DEFAULTS.normal).toEqual({
+	it("default type has expected defaults", () => {
+		expect(ZONE_TYPE_DEFAULTS.default).toEqual({
 			trigger: 5,
 			renew: 3,
 			timeout: 10,
 			handoff_timeout: 3,
+		});
+	});
+
+	it("bed type has expected defaults", () => {
+		expect(ZONE_TYPE_DEFAULTS.bed).toEqual({
+			trigger: 8,
+			renew: 2,
+			timeout: 600,
+			handoff_timeout: 10,
+		});
+	});
+
+	it("seating type has expected defaults", () => {
+		expect(ZONE_TYPE_DEFAULTS.seating).toEqual({
+			trigger: 7,
+			renew: 1,
+			timeout: 30,
+			handoff_timeout: 10,
+		});
+	});
+
+	it("transit type has expected defaults", () => {
+		expect(ZONE_TYPE_DEFAULTS.transit).toEqual({
+			trigger: 3,
+			renew: 2,
+			timeout: 3,
+			handoff_timeout: 1,
 		});
 	});
 });
@@ -50,8 +78,8 @@ describe("ZONE_COLORS", () => {
 describe("getZoneThresholds", () => {
 	const emptyConfigs: (ZoneConfig | null)[] = new Array(7).fill(null);
 
-	it("zone 0 normal: returns normal defaults", () => {
-		const result = getZoneThresholds(0, emptyConfigs, "normal", 5, 3, 10, 3);
+	it("zone 0 default: returns default defaults", () => {
+		const result = getZoneThresholds(0, emptyConfigs, "default", 5, 3, 10, 3);
 		expect(result).toEqual({
 			trigger: 5,
 			renew: 3,
@@ -70,16 +98,16 @@ describe("getZoneThresholds", () => {
 		});
 	});
 
-	it("named zone with normal type: returns normal defaults", () => {
+	it("named zone with default type: returns default defaults", () => {
 		const configs: (ZoneConfig | null)[] = [
 			{
 				name: "Zone 1",
 				color: "#E69F00",
-				type: "normal",
+				type: "default",
 			},
 			...new Array(6).fill(null),
 		];
-		const result = getZoneThresholds(1, configs, "normal", 5, 3, 10, 3);
+		const result = getZoneThresholds(1, configs, "default", 5, 3, 10, 3);
 		expect(result).toEqual({
 			trigger: 5,
 			renew: 3,
@@ -102,7 +130,7 @@ describe("getZoneThresholds", () => {
 			},
 			...new Array(5).fill(null),
 		];
-		const result = getZoneThresholds(2, configs, "normal", 5, 3, 10, 3);
+		const result = getZoneThresholds(2, configs, "default", 5, 3, 10, 3);
 		expect(result).toEqual({
 			trigger: 9,
 			renew: 1,
@@ -111,7 +139,7 @@ describe("getZoneThresholds", () => {
 		});
 	});
 
-	it("named zone with custom type: falls back to normal defaults for undefined fields", () => {
+	it("named zone with custom type: falls back to default defaults for undefined fields", () => {
 		const configs: (ZoneConfig | null)[] = [
 			{
 				name: "Zone 1",
@@ -121,8 +149,8 @@ describe("getZoneThresholds", () => {
 			},
 			...new Array(6).fill(null),
 		];
-		const result = getZoneThresholds(1, configs, "normal", 5, 3, 10, 3);
-		// Falls back to ZONE_TYPE_DEFAULTS.normal values
+		const result = getZoneThresholds(1, configs, "default", 5, 3, 10, 3);
+		// Falls back to ZONE_TYPE_DEFAULTS.default values
 		expect(result.trigger).toBe(5);
 		expect(result.renew).toBe(3);
 		expect(result.timeout).toBe(10);
@@ -130,7 +158,7 @@ describe("getZoneThresholds", () => {
 	});
 
 	it("null config for named zone: returns fallback defaults", () => {
-		const result = getZoneThresholds(3, emptyConfigs, "normal", 5, 3, 10, 3);
+		const result = getZoneThresholds(3, emptyConfigs, "default", 5, 3, 10, 3);
 		expect(result).toEqual({
 			trigger: 5,
 			renew: 3,
@@ -140,7 +168,7 @@ describe("getZoneThresholds", () => {
 	});
 
 	it("out-of-range zone id: returns fallback defaults", () => {
-		const result = getZoneThresholds(99, emptyConfigs, "normal", 5, 3, 10, 3);
+		const result = getZoneThresholds(99, emptyConfigs, "default", 5, 3, 10, 3);
 		expect(result).toEqual({
 			trigger: 5,
 			renew: 3,
@@ -149,16 +177,16 @@ describe("getZoneThresholds", () => {
 		});
 	});
 
-	it("rest zone type: returns rest defaults", () => {
+	it("seating zone type: returns seating defaults", () => {
 		const configs: (ZoneConfig | null)[] = [
 			{
 				name: "Bedroom",
 				color: "#F0E442",
-				type: "rest",
+				type: "seating",
 			},
 			...new Array(6).fill(null),
 		];
-		const result = getZoneThresholds(1, configs, "normal", 5, 3, 10, 3);
+		const result = getZoneThresholds(1, configs, "default", 5, 3, 10, 3);
 		expect(result).toEqual({
 			trigger: 7,
 			renew: 1,
@@ -170,9 +198,9 @@ describe("getZoneThresholds", () => {
 
 describe("resolveZoneParams", () => {
 	it("non-custom type with no user fields: returns the type's defaults", () => {
-		const z0: Zone0Config = { type: "rest" };
+		const z0: Zone0Config = { type: "seating" };
 		expect(resolveZoneParams(z0)).toEqual({
-			type: "rest",
+			type: "seating",
 			trigger: 7,
 			renew: 1,
 			timeout: 30,
@@ -182,14 +210,14 @@ describe("resolveZoneParams", () => {
 
 	it("non-custom type with user fields set: IGNORES user fields, returns type defaults", () => {
 		const z0: Zone0Config = {
-			type: "rest",
+			type: "seating",
 			trigger: 1,
 			renew: 9,
 			timeout: 999,
 			handoff_timeout: 42,
 		};
 		expect(resolveZoneParams(z0)).toEqual({
-			type: "rest",
+			type: "seating",
 			trigger: 7,
 			renew: 1,
 			timeout: 30,
@@ -197,10 +225,10 @@ describe("resolveZoneParams", () => {
 		});
 	});
 
-	it("non-custom thoroughfare type: returns thoroughfare defaults", () => {
-		const z0: Zone0Config = { type: "thoroughfare" };
+	it("non-custom transit type: returns transit defaults", () => {
+		const z0: Zone0Config = { type: "transit" };
 		expect(resolveZoneParams(z0)).toEqual({
-			type: "thoroughfare",
+			type: "transit",
 			trigger: 3,
 			renew: 2,
 			timeout: 3,
@@ -225,7 +253,7 @@ describe("resolveZoneParams", () => {
 		});
 	});
 
-	it("custom type with partial user fields: missing fields fall back to normal defaults", () => {
+	it("custom type with partial user fields: missing fields fall back to default defaults", () => {
 		const z0: Zone0Config = {
 			type: "custom",
 			trigger: 8,
@@ -234,25 +262,25 @@ describe("resolveZoneParams", () => {
 		expect(resolveZoneParams(z0)).toEqual({
 			type: "custom",
 			trigger: 8,
-			renew: ZONE_TYPE_DEFAULTS.normal.renew,
-			timeout: ZONE_TYPE_DEFAULTS.normal.timeout,
-			handoff_timeout: ZONE_TYPE_DEFAULTS.normal.handoff_timeout,
+			renew: ZONE_TYPE_DEFAULTS.default.renew,
+			timeout: ZONE_TYPE_DEFAULTS.default.timeout,
+			handoff_timeout: ZONE_TYPE_DEFAULTS.default.handoff_timeout,
 		});
 	});
 
-	it("custom type with no user fields: all fields fall back to normal defaults", () => {
+	it("custom type with no user fields: all fields fall back to default defaults", () => {
 		const z0: Zone0Config = { type: "custom" };
 		expect(resolveZoneParams(z0)).toEqual({
 			type: "custom",
-			trigger: ZONE_TYPE_DEFAULTS.normal.trigger,
-			renew: ZONE_TYPE_DEFAULTS.normal.renew,
-			timeout: ZONE_TYPE_DEFAULTS.normal.timeout,
-			handoff_timeout: ZONE_TYPE_DEFAULTS.normal.handoff_timeout,
+			trigger: ZONE_TYPE_DEFAULTS.default.trigger,
+			renew: ZONE_TYPE_DEFAULTS.default.renew,
+			timeout: ZONE_TYPE_DEFAULTS.default.timeout,
+			handoff_timeout: ZONE_TYPE_DEFAULTS.default.handoff_timeout,
 		});
 	});
 
 	it("preserves the original zone type in the return value", () => {
-		const z0: Zone0Config = { type: "normal" };
-		expect(resolveZoneParams(z0).type).toBe("normal");
+		const z0: Zone0Config = { type: "default" };
+		expect(resolveZoneParams(z0).type).toBe("default");
 	});
 });

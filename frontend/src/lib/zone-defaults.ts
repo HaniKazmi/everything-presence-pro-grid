@@ -1,5 +1,5 @@
 export interface Zone0Config {
-	type: "normal" | "thoroughfare" | "rest" | "custom";
+	type: "default" | "bed" | "seating" | "transit" | "custom";
 	trigger?: number; // 0-9 threshold, 0=disabled, higher=harder
 	renew?: number; // 0-9 threshold, 0=disabled, higher=harder
 	timeout?: number; // seconds, if undefined use type default
@@ -15,9 +15,10 @@ export const ZONE_TYPE_DEFAULTS: Record<
 	string,
 	{ trigger: number; renew: number; timeout: number; handoff_timeout: number }
 > = {
-	normal: { trigger: 5, renew: 3, timeout: 10, handoff_timeout: 3 },
-	thoroughfare: { trigger: 3, renew: 2, timeout: 3, handoff_timeout: 1 },
-	rest: { trigger: 7, renew: 1, timeout: 30, handoff_timeout: 10 },
+	default: { trigger: 5, renew: 3, timeout: 10, handoff_timeout: 3 },
+	bed: { trigger: 8, renew: 2, timeout: 600, handoff_timeout: 10 },
+	seating: { trigger: 7, renew: 1, timeout: 30, handoff_timeout: 10 },
+	transit: { trigger: 3, renew: 2, timeout: 3, handoff_timeout: 1 },
 };
 
 // Color-blind-friendly pale palette (Paul Tol's "light qualitative scheme",
@@ -44,9 +45,9 @@ export interface ZoneThresholds {
 /**
  * Non-custom types use the type's defaults exclusively (user-supplied
  * trigger/renew/... is ignored). Custom honours user values, falling back
- * to normal's defaults when a field is missing (there is no "custom" entry
- * in ZONE_TYPE_DEFAULTS). Works for zone 0 and named zones — both share
- * the Zone0Config structural base.
+ * to the default type's values when a field is missing (there is no
+ * "custom" entry in ZONE_TYPE_DEFAULTS). Works for zone 0 and named
+ * zones — both share the Zone0Config structural base.
  */
 export function resolveZoneParams(z: Zone0Config): {
 	type: Zone0Config["type"];
@@ -55,7 +56,7 @@ export function resolveZoneParams(z: Zone0Config): {
 	timeout: number;
 	handoff_timeout: number;
 } {
-	const d = ZONE_TYPE_DEFAULTS[z.type] ?? ZONE_TYPE_DEFAULTS.normal;
+	const d = ZONE_TYPE_DEFAULTS[z.type] ?? ZONE_TYPE_DEFAULTS.default;
 	const useCustom = z.type === "custom";
 	return {
 		type: z.type,
@@ -84,7 +85,7 @@ export function getZoneThresholds(
 	roomHandoffTimeout: number,
 ): ZoneThresholds {
 	if (zid === 0) {
-		const d = ZONE_TYPE_DEFAULTS[roomType] || ZONE_TYPE_DEFAULTS.normal;
+		const d = ZONE_TYPE_DEFAULTS[roomType] || ZONE_TYPE_DEFAULTS.default;
 		const isCustom = roomType === "custom";
 		return isCustom
 			? {
@@ -103,7 +104,7 @@ export function getZoneThresholds(
 	if (zid > 0 && zid <= zoneConfigs.length) {
 		const cfg = zoneConfigs[zid - 1];
 		if (cfg) {
-			const d = ZONE_TYPE_DEFAULTS[cfg.type] || ZONE_TYPE_DEFAULTS.normal;
+			const d = ZONE_TYPE_DEFAULTS[cfg.type] || ZONE_TYPE_DEFAULTS.default;
 			const isCustom = cfg.type === "custom";
 			return isCustom
 				? {
