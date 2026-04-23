@@ -31,7 +31,7 @@ The original firmware sends raw sensor data to Home Assistant. That leaves a few
 
 - **Perspective-corrected grid.** A four-corner calibration wizard maps the sensor view onto your room. Walls are straight; zones line up with real-world geometry. Cells are 30 cm × 30 cm (1 ft × 1 ft).
 - **Seven painted zones**, plus an eighth "Rest of room" fallback. Polygonal, can be discontinuous, drawn by clicking grid cells.
-- **Zone types** — `Thoroughfare`, `Bed`, and others — preset sensitivity and hysteresis for the zone's purpose. `Custom` exposes the underlying parameters.
+- **Zone types** — `Default`, `Bed`, `Seating`, `Transit` — preset sensitivity and hysteresis for the zone's purpose. `Custom` exposes the underlying parameters.
 - **Cross-zone target tracking.** Targets are followed as they move between zones, allowing quick transitions from one zone to another.
 - **Overlays** for refining detection — mark doorways (Entry/Exit) and noise sources (Interference/Suppress).
 - **Furniture layout.** Drop furniture stickers on the grid so the live view is readable. Visual only; doesn't affect detection.
