@@ -401,12 +401,17 @@ void EPPComponent::set_grid(const std::string &grid_data,
   grid_.load_from_bytes(decoded, GRID_CELL_COUNT);
   zone_engine_.set_grid(grid_);
 
-  int overlay_count = 0;
+  int entry_count = 0;
+  int interference_count = 0;
+  int suppress_count = 0;
   for (int i = 0; i < GRID_CELL_COUNT; i++) {
-    if (grid_.cell_overlay(i) == CELL_OVERLAY_ENTRY) overlay_count++;
+    int kind = grid_.cell_overlay(i);
+    if (kind == CELL_OVERLAY_ENTRY) entry_count++;
+    else if (kind == CELL_OVERLAY_INTERFERENCE) interference_count++;
+    else if (kind == CELL_OVERLAY_SUPPRESS) suppress_count++;
   }
-  ESP_LOGI(TAG, "Grid set: origin (%.0f, %.0f), %d cells, %d overlay",
-           origin_x, origin_y, GRID_CELL_COUNT, overlay_count);
+  ESP_LOGI(TAG, "Grid set: origin (%.0f, %.0f), %d cells, %d entry / %d interference / %d suppress",
+           origin_x, origin_y, GRID_CELL_COUNT, entry_count, interference_count, suppress_count);
 
   save_grid_to_nvs_();
 }

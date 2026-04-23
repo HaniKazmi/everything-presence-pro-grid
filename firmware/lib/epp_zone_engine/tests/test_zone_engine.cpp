@@ -143,7 +143,7 @@ TEST_CASE("zone 0 gating: needs 2 consecutive qualifying ticks") {
 
 TEST_CASE("entry point bypasses gating") {
     ZoneEngine engine = make_parity_engine();
-    // Zone 1 cell is at (9,1). Set overlay entry bit.
+    // Zone 1 cell is at (9,1). Set its overlay kind to entry.
     Grid grid = engine.grid();
     int cell_idx = 1 * GRID_COLS + 9;  // row=1, col=9
     grid.cell(cell_idx) = (grid.cell(cell_idx) & ~CELL_OVERLAY_MASK) |
@@ -163,7 +163,7 @@ TEST_CASE("entry point bypasses gating") {
 
 TEST_CASE("cell overlay entry bypasses gating") {
     ZoneEngine engine = make_parity_engine();
-    // Get the grid and set overlay entry bit on cell (8,0) — zone 0
+    // Get the grid and set overlay kind to entry on cell (8,0) — zone 0
     Grid grid = engine.grid();
     int cell_idx = 0 * GRID_COLS + 8;  // row=0, col=8
     grid.cell(cell_idx) = (grid.cell(cell_idx) & ~CELL_OVERLAY_MASK) |
