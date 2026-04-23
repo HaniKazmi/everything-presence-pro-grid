@@ -19,7 +19,7 @@ export class EppZoneSidebar extends LitElement {
 	@property({ attribute: false }) grid!: Uint8Array;
 	@property({ attribute: false }) zoneConfigs: (ZoneConfig | null)[] = [];
 	@property({ attribute: false }) activeZone: number | null = null;
-	@property({ attribute: false }) zone0: Zone0Config = { type: "normal" };
+	@property({ attribute: false }) zone0: Zone0Config = { type: "default" };
 	@property({ attribute: false }) localZoneState: Map<number, LocalZoneInfo> =
 		new Map();
 	@property({ attribute: false }) localize: LocalizeFn = defaultLocalize;
@@ -418,14 +418,17 @@ export class EppZoneSidebar extends LitElement {
 						}}
 						@click=${(e: Event) => e.stopPropagation()}
 					>
-						<option value="normal">
-							${this.localize("zones.normal")}
+						<option value="default">
+							${this.localize("zones.default")}
 						</option>
-						<option value="thoroughfare">
-							${this.localize("zones.thoroughfare")}
+						<option value="bed">
+							${this.localize("zones.bed")}
 						</option>
-						<option value="rest">
-							${this.localize("zones.rest_area")}
+						<option value="seating">
+							${this.localize("zones.seating")}
+						</option>
+						<option value="transit">
+							${this.localize("zones.transit")}
 						</option>
 						<option value="custom">
 							${this.localize("zones.custom")}
@@ -534,7 +537,7 @@ export class EppZoneSidebar extends LitElement {
 
 	private _renderZoneTypeControls(zone: ZoneConfig, index: number) {
 		const isCustom = zone.type === "custom";
-		const defaults = ZONE_TYPE_DEFAULTS[zone.type] || ZONE_TYPE_DEFAULTS.normal;
+		const defaults = ZONE_TYPE_DEFAULTS[zone.type] || ZONE_TYPE_DEFAULTS.default;
 		const trigger = zone.trigger ?? defaults.trigger;
 		const renew = zone.renew ?? defaults.renew;
 		const timeout = zone.timeout ?? defaults.timeout;
@@ -587,14 +590,17 @@ export class EppZoneSidebar extends LitElement {
 						}}
 						@click=${(e: Event) => e.stopPropagation()}
 					>
-						<option value="normal">
-							${this.localize("zones.normal")}
+						<option value="default">
+							${this.localize("zones.default")}
 						</option>
-						<option value="thoroughfare">
-							${this.localize("zones.thoroughfare")}
+						<option value="bed">
+							${this.localize("zones.bed")}
 						</option>
-						<option value="rest">
-							${this.localize("zones.rest_area")}
+						<option value="seating">
+							${this.localize("zones.seating")}
+						</option>
+						<option value="transit">
+							${this.localize("zones.transit")}
 						</option>
 						<option value="custom">
 							${this.localize("zones.custom")}
