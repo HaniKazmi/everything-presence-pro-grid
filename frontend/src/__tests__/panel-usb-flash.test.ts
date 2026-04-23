@@ -797,7 +797,7 @@ describe("_handleWifiProvision", () => {
 		const updateSpy = vi.spyOn(ctrl, "updateUsbState");
 
 		const promise = (panel as any)._handleWifiProvision("MySSID", "s3cr3t");
-		await vi.advanceTimersByTimeAsync(3500); // 200ms initial + 3s retry delay
+		await vi.advanceTimersByTimeAsync(11000); // 200ms initial + 10s retry delay
 		await promise;
 
 		expect(addSpy).toHaveBeenCalledTimes(2);
@@ -811,7 +811,7 @@ describe("_handleWifiProvision", () => {
 		});
 	});
 
-	it("keeps cannot_connect when both initial and retry fail", async () => {
+	it("keeps cannot_connect when all retries fail", async () => {
 		(detectIpAddress as ReturnType<typeof vi.fn>).mockResolvedValue(
 			"192.168.1.42",
 		);
@@ -822,7 +822,8 @@ describe("_handleWifiProvision", () => {
 		const updateSpy = vi.spyOn(ctrl, "updateUsbState");
 
 		const promise = (panel as any)._handleWifiProvision("MySSID", "s3cr3t");
-		await vi.advanceTimersByTimeAsync(3500);
+		// 200ms provision + 5 × 10s backoff = 50.2s
+		await vi.advanceTimersByTimeAsync(51000);
 		await promise;
 
 		const completeCall = (updateSpy.mock.calls as any[][]).find(
@@ -860,7 +861,7 @@ describe("_handleWifiProvision", () => {
 		const updateSpy = vi.spyOn(ctrl, "updateUsbState");
 
 		const promise = (panel as any)._handleWifiProvision("MySSID", "s3cr3t");
-		await vi.advanceTimersByTimeAsync(3500);
+		await vi.advanceTimersByTimeAsync(11000);
 		await promise;
 
 		const completeCall = (updateSpy.mock.calls as any[][]).find(
@@ -871,6 +872,89 @@ describe("_handleWifiProvision", () => {
 			ip: "192.168.1.42",
 			haAdd: { type: "failed", reason: "network dropped" },
 		});
+	});
+
+	it("retries up to 6 times at 10s intervals on persistent cannot_connect", async () => {
+		(detectIpAddress as ReturnType<typeof vi.fn>).mockResolvedValue(
+			"192.168.1.42",
+		);
+		const ctrl = (panel as any)._flasherCtrl;
+		const addSpy = vi
+			.spyOn(ctrl, "addEsphomeDevice")
+			.mockResolvedValueOnce({ type: "cannot_connect" })
+			.mockResolvedValueOnce({ type: "cannot_connect" })
+			.mockResolvedValueOnce({ type: "cannot_connect" })
+			.mockResolvedValueOnce({ type: "cannot_connect" })
+			.mockResolvedValueOnce({ type: "cannot_connect" })
+			.mockResolvedValueOnce({ type: "added" });
+		const updateSpy = vi.spyOn(ctrl, "updateUsbState");
+
+		const promise = (panel as any)._handleWifiProvision("MySSID", "s3cr3t");
+		// 200ms provision + 5 × 10s retry delays = 50.2s
+		await vi.advanceTimersByTimeAsync(51000);
+		await promise;
+
+		expect(addSpy).toHaveBeenCalledTimes(6);
+		const completeCall = (updateSpy.mock.calls as any[][]).find(
+			(c) => c[0].step === "complete",
+		);
+		expect(completeCall?.[0]).toMatchObject({
+			step: "complete",
+			ip: "192.168.1.42",
+			haAdd: { type: "added" },
+		});
+	});
+
+	it("exposes haAddAttempt on usbFlashState during retry loop", async () => {
+		(detectIpAddress as ReturnType<typeof vi.fn>).mockResolvedValue(
+			"192.168.1.42",
+		);
+		const ctrl = (panel as any)._flasherCtrl;
+		vi.spyOn(ctrl, "addEsphomeDevice")
+			.mockResolvedValueOnce({ type: "cannot_connect" })
+			.mockResolvedValueOnce({ type: "cannot_connect" })
+			.mockResolvedValueOnce({ type: "added" });
+		const updateSpy = vi.spyOn(ctrl, "updateUsbState");
+
+		const promise = (panel as any)._handleWifiProvision("MySSID", "s3cr3t");
+		await vi.advanceTimersByTimeAsync(21000);
+		await promise;
+
+		// Attempts 2 and 3 should have published progress into wifi_configured.
+		const retryCalls = (updateSpy.mock.calls as any[][])
+			.map((c) => c[0])
+			.filter(
+				(s) =>
+					s.step === "wifi_configured" && typeof s.haAddAttempt === "number",
+			);
+		expect(retryCalls.length).toBeGreaterThanOrEqual(2);
+		const attempts = retryCalls.map((s) => s.haAddAttempt);
+		expect(attempts).toContain(2);
+		expect(attempts).toContain(3);
+		expect(retryCalls[0].haAddMaxAttempts).toBe(6);
+	});
+
+	it("aborts backoff promptly when opId changes mid-retry", async () => {
+		(detectIpAddress as ReturnType<typeof vi.fn>).mockResolvedValue(
+			"192.168.1.42",
+		);
+		const ctrl = (panel as any)._flasherCtrl;
+		const addSpy = vi
+			.spyOn(ctrl, "addEsphomeDevice")
+			.mockResolvedValue({ type: "cannot_connect" });
+
+		const promise = (panel as any)._handleWifiProvision("MySSID", "s3cr3t");
+		// Reach the middle of the first 10s backoff.
+		await vi.advanceTimersByTimeAsync(11200);
+		expect(addSpy).toHaveBeenCalledTimes(2);
+
+		// Cancel: bump opId and advance only one poll step (250ms).
+		ctrl.bumpOpId();
+		await vi.advanceTimersByTimeAsync(300);
+		await promise;
+
+		// Retry loop must have exited without waiting out the remaining backoff.
+		expect(addSpy).toHaveBeenCalledTimes(2);
 	});
 
 	it("sets error state when runWifiProvision throws", async () => {
@@ -1195,8 +1279,13 @@ describe("_handleRetryHaAdd", () => {
 
 	beforeEach(() => {
 		vi.clearAllMocks();
+		vi.useFakeTimers();
 		resetServiceMocks();
 		panel = createPanel();
+	});
+
+	afterEach(() => {
+		vi.useRealTimers();
 	});
 
 	it("re-enters wifi_configured and emits complete with new haAdd on retry", async () => {
@@ -1262,6 +1351,38 @@ describe("_handleRetryHaAdd", () => {
 			ip: "192.168.1.42",
 			haAdd: { type: "failed", reason: "network unreachable" },
 		});
+	});
+
+	it("does not overwrite reset state when cancelled mid-retry", async () => {
+		const ctrl = (panel as any)._flasherCtrl;
+		ctrl.usbFlashState = {
+			step: "complete",
+			ip: "192.168.1.42",
+			haAdd: { type: "cannot_connect" },
+		};
+		vi.spyOn(ctrl, "addEsphomeDevice").mockResolvedValue({
+			type: "cannot_connect",
+		});
+		const updateSpy = vi.spyOn(ctrl, "updateUsbState");
+
+		const promise = (panel as any)._handleRetryHaAdd();
+		// Let attempt 1 resolve (cannot_connect) so we are inside the first backoff.
+		await vi.advanceTimersByTimeAsync(50);
+		expect(
+			updateSpy.mock.calls.some((c: any[]) => c[0].step === "complete"),
+		).toBe(false);
+
+		// Simulate cancel: bump opId and clear state as the cancel handler would.
+		ctrl.bumpOpId();
+		ctrl.usbFlashState = null;
+		await vi.advanceTimersByTimeAsync(300);
+		await promise;
+
+		// After cancel, retry handler must not publish a stale `complete` state.
+		const lateComplete = updateSpy.mock.calls.some(
+			(c: any[]) => c[0].step === "complete",
+		);
+		expect(lateComplete).toBe(false);
 	});
 });
 

@@ -368,6 +368,7 @@
 		"flash_another": "Flash another device",
 		"ha_add": {
 			"adding": "Adding device to Home Assistant...",
+			"retrying": "Waiting for device to come online (attempt {attempt} of {max})...",
 			"added": "Device added to Home Assistant",
 			"already_added": "Device is already in Home Assistant",
 			"needs_auth": "Device reached — complete setup in Integrations to provide the encryption key",

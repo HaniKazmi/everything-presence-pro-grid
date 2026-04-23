@@ -2915,32 +2915,67 @@ export class EPPGridPanel extends LitElement {
 		}
 	}
 
-	private async _addToHa(ip: string): Promise<void> {
+	// After a fresh WiFi association the device's API socket / mDNS / DHCP can
+	// take up to ~50s to settle. Retry at a steady 10s cadence so the UI has
+	// predictable progress rather than front-loaded flurry + long silence.
+	private static readonly HA_ADD_RETRY_DELAY_MS = 10_000;
+	private static readonly HA_ADD_MAX_ATTEMPTS = 6;
+
+	private async _addToHaWithRetry(ip: string): Promise<HaAddResult> {
 		const ctrl = this._flasherCtrl;
 		const myOp = ctrl.opId;
+		const maxAttempts = EPPGridPanel.HA_ADD_MAX_ATTEMPTS;
+		const delay = EPPGridPanel.HA_ADD_RETRY_DELAY_MS;
 
-		let haAdd: HaAddResult;
-		try {
-			haAdd = await ctrl.addEsphomeDevice(ip);
-		} catch (err) {
-			const msg = (err as { message?: string })?.message;
-			haAdd = { type: "failed", reason: msg ?? "unknown" };
-		}
-		if (ctrl.opId !== myOp) return;
+		for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+			if (attempt > 1) {
+				ctrl.updateUsbState({
+					step: "wifi_configured",
+					ip,
+					haAddAttempt: attempt,
+					haAddMaxAttempts: maxAttempts,
+				});
+				const cancelled = await this._sleepUntilOpChanges(delay, myOp);
+				if (cancelled) return { type: "cannot_connect" };
+			}
 
-		// The device's ESPHome API may not have finished booting on the
-		// first attempt right after WiFi associates. Retry once silently.
-		if (haAdd.type === "cannot_connect") {
-			await new Promise((r) => setTimeout(r, 3000));
-			if (ctrl.opId !== myOp) return;
+			let haAdd: HaAddResult;
 			try {
 				haAdd = await ctrl.addEsphomeDevice(ip);
 			} catch (err) {
 				const msg = (err as { message?: string })?.message;
-				haAdd = { type: "failed", reason: msg ?? "unknown" };
+				return { type: "failed", reason: msg ?? "unknown" };
 			}
-			if (ctrl.opId !== myOp) return;
+			if (ctrl.opId !== myOp) return haAdd;
+			if (haAdd.type !== "cannot_connect") return haAdd;
 		}
+		return { type: "cannot_connect" };
+	}
+
+	// Sleep up to `ms`, waking early (returning true) if opId changes so cancel
+	// doesn't have to wait out the full backoff. Polls at 250ms granularity.
+	private async _sleepUntilOpChanges(
+		ms: number,
+		expectedOpId: number,
+	): Promise<boolean> {
+		const ctrl = this._flasherCtrl;
+		const step = 250;
+		let remaining = ms;
+		while (remaining > 0) {
+			if (ctrl.opId !== expectedOpId) return true;
+			const chunk = Math.min(remaining, step);
+			await new Promise((r) => setTimeout(r, chunk));
+			remaining -= chunk;
+		}
+		return ctrl.opId !== expectedOpId;
+	}
+
+	private async _addToHa(ip: string): Promise<void> {
+		const ctrl = this._flasherCtrl;
+		const myOp = ctrl.opId;
+
+		const haAdd = await this._addToHaWithRetry(ip);
+		if (ctrl.opId !== myOp) return;
 
 		ctrl.updateUsbState({ step: "complete", ip, haAdd });
 	}
@@ -2950,16 +2985,12 @@ export class EPPGridPanel extends LitElement {
 		const state = ctrl.usbFlashState;
 		if (state?.step !== "complete" || !state.ip) return;
 
-		ctrl.updateUsbState({ step: "wifi_configured", ip: state.ip });
-
-		let haAdd: HaAddResult;
-		try {
-			haAdd = await ctrl.addEsphomeDevice(state.ip);
-		} catch (err) {
-			const msg = (err as { message?: string })?.message;
-			haAdd = { type: "failed", reason: msg ?? "unknown" };
-		}
-		ctrl.updateUsbState({ step: "complete", ip: state.ip, haAdd });
+		const ip = state.ip;
+		const myOp = ctrl.opId;
+		ctrl.updateUsbState({ step: "wifi_configured", ip });
+		const haAdd = await this._addToHaWithRetry(ip);
+		if (ctrl.opId !== myOp) return;
+		ctrl.updateUsbState({ step: "complete", ip, haAdd });
 	}
 
 	private _handleUsbRetry = (): void => {
