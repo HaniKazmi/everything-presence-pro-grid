@@ -1161,7 +1161,7 @@ class TestPushConfig:
                     "room_layout": {
                         "grid_bytes": [0] * 100,
                         "zone_slots": [
-                            {"type": "normal", "trigger": 5, "renew": 3, "timeout": 10.0, "handoff_timeout": 3.0},
+                            {"type": "default", "trigger": 5, "renew": 3, "timeout": 10.0, "handoff_timeout": 3.0},
                             {"name": "Office"},
                         ]
                         + [None] * (MAX_ZONES - 1),
@@ -1237,7 +1237,7 @@ class TestPushConfig:
                         "room_layout": {
                             "grid_bytes": [0] * 100,
                             # Length-7: malformed, missing zone 0 slot.
-                            "zone_slots": [{"name": "X", "color": "#000", "type": "normal"}] + [None] * 6,
+                            "zone_slots": [{"name": "X", "color": "#000", "type": "default"}] + [None] * 6,
                         },
                     }
                 )
@@ -1304,8 +1304,8 @@ class TestPushConfig:
                 {
                     "room_layout": {
                         "zone_slots": [
-                            {"type": "rest"},
-                            {"name": "Hall", "color": "#abc", "type": "thoroughfare"},
+                            {"type": "seating"},
+                            {"name": "Hall", "color": "#abc", "type": "transit"},
                         ]
                         + [None] * (MAX_ZONES - 1),
                     },
@@ -1318,7 +1318,7 @@ class TestPushConfig:
             slots = pushed["zone_slots"]
             # Zone 0 (rest) defaults: trigger=7, renew=1, timeout=30, handoff=10.
             assert slots[0] == {
-                "type": "rest",
+                "type": "seating",
                 "trigger": 7,
                 "renew": 1,
                 "timeout": 30.0,
@@ -1329,7 +1329,7 @@ class TestPushConfig:
             assert slots[1] == {
                 "name": "Hall",
                 "color": "#abc",
-                "type": "thoroughfare",
+                "type": "transit",
                 "trigger": 3,
                 "renew": 2,
                 "timeout": 3.0,
@@ -1414,8 +1414,8 @@ class TestPushConfig:
                 {
                     "room_layout": {
                         "zone_slots": [
-                            {"type": "normal"},
-                            {"name": "Office", "color": "#CFDB70", "type": "normal"},
+                            {"type": "default"},
+                            {"name": "Office", "color": "#CFDB70", "type": "default"},
                         ]
                         + [None] * (MAX_ZONES - 1),
                     },
@@ -1427,7 +1427,7 @@ class TestPushConfig:
             slot = pushed["zone_slots"][1]
             assert slot["name"] == "Office"
             assert slot["color"] == "#CFDB70"
-            assert slot["type"] == "normal"
+            assert slot["type"] == "default"
             assert slot["trigger"] == 5
             assert slot["renew"] == 3
             assert slot["timeout"] == 10.0
@@ -1440,8 +1440,8 @@ class TestPushConfig:
         mock_zones = MagicMock()
         mock_zones.name = "epp_set_zones"
 
-        source_slot = {"type": "normal"}
-        named_slot = {"name": "Office", "color": "#CFDB70", "type": "normal"}
+        source_slot = {"type": "default"}
+        named_slot = {"name": "Office", "color": "#CFDB70", "type": "default"}
 
         with patch("custom_components.eppgrid.device_manager.APIClient") as mock_cls:
             mock_client = mock_cls.return_value
@@ -1459,8 +1459,8 @@ class TestPushConfig:
             )
 
             # Originals must be untouched (no timing fields leaked in).
-            assert source_slot == {"type": "normal"}
-            assert named_slot == {"name": "Office", "color": "#CFDB70", "type": "normal"}
+            assert source_slot == {"type": "default"}
+            assert named_slot == {"name": "Office", "color": "#CFDB70", "type": "default"}
 
     async def test_push_config_overwrites_stale_timing_on_non_custom(self) -> None:
         """Non-custom zones: stale stored timing is overwritten by type defaults.
@@ -1483,14 +1483,14 @@ class TestPushConfig:
             mock_client.execute_service = AsyncMock()
 
             await conn.async_connect()
-            # Stale timing on a "rest" zone — defaults say 7/1/30/10, but the
+            # Stale timing on a "seating" zone — defaults say 7/1/30/10, but the
             # stored slot has 99/99/99/99. After expansion, defaults must win.
             await conn.async_push_config(
                 {
                     "room_layout": {
                         "zone_slots": [
                             {
-                                "type": "rest",
+                                "type": "seating",
                                 "trigger": 99,
                                 "renew": 99,
                                 "timeout": 99.0,
@@ -3103,7 +3103,7 @@ class TestZoneEntities:
         manager._store.devices["AA:BB:CC:DD:EE:FF"] = {"settings": {"zone_presence": True}}
 
         zone_slots = [
-            {"type": "normal", "trigger": 5, "renew": 3, "timeout": 10.0, "handoff_timeout": 3.0},
+            {"type": "default", "trigger": 5, "renew": 3, "timeout": 10.0, "handoff_timeout": 3.0},
             {"name": "Office"},
         ] + [None] * (MAX_ZONES - 1)
         await manager.async_update_zone_entities("AA:BB:CC:DD:EE:FF", zone_slots)
@@ -3158,7 +3158,7 @@ class TestZoneEntities:
 
         # No named zones
         zone_slots = [
-            {"type": "normal", "trigger": 5, "renew": 3, "timeout": 10.0, "handoff_timeout": 3.0},
+            {"type": "default", "trigger": 5, "renew": 3, "timeout": 10.0, "handoff_timeout": 3.0},
         ] + [None] * MAX_ZONES
         await manager.async_update_zone_entities("AA:BB:CC:DD:EE:FF", zone_slots)
 
@@ -3202,7 +3202,7 @@ class TestZoneEntities:
         manager._store.devices["AA:BB:CC:DD:EE:FF"] = {"settings": {"zone_presence": True}}
 
         zone_slots = [
-            {"type": "normal", "trigger": 5, "renew": 3, "timeout": 10.0, "handoff_timeout": 3.0},
+            {"type": "default", "trigger": 5, "renew": 3, "timeout": 10.0, "handoff_timeout": 3.0},
             {"name": "Office"},
         ] + [None] * (MAX_ZONES - 1)
         await manager.async_update_zone_entities("AA:BB:CC:DD:EE:FF", zone_slots)
@@ -3254,7 +3254,7 @@ class TestZoneEntities:
 
         # Length-8 slots: index 0 = zone 0, index 1 = "Kitchen", index 2 = "Bedroom".
         zone_slots = [
-            {"type": "normal", "trigger": 5, "renew": 3, "timeout": 10.0, "handoff_timeout": 3.0},
+            {"type": "default", "trigger": 5, "renew": 3, "timeout": 10.0, "handoff_timeout": 3.0},
             {"name": "Kitchen"},
             {"name": "Bedroom"},
             None,
@@ -3314,7 +3314,7 @@ class TestZoneEntities:
 
         # Only zone 0 (room) + zone 1 (named "Office") exist
         zone_slots = [
-            {"type": "normal", "trigger": 5, "renew": 3, "timeout": 10.0, "handoff_timeout": 3.0},
+            {"type": "default", "trigger": 5, "renew": 3, "timeout": 10.0, "handoff_timeout": 3.0},
             {"name": "Office"},
         ] + [None] * (MAX_ZONES - 1)
         await manager.async_update_zone_entities("AA:BB:CC:DD:EE:FF", zone_slots)
@@ -3380,8 +3380,8 @@ class TestZoneEntities:
 
         # Slot 1 is a dict without 'name'; slot 2 is a non-dict (malformed).
         zone_slots = [
-            {"type": "normal"},
-            {"color": "#ff0000", "type": "normal"},  # missing 'name'
+            {"type": "default"},
+            {"color": "#ff0000", "type": "default"},  # missing 'name'
             "not a dict",  # non-dict malformed slot
             None,
             None,
@@ -3435,7 +3435,7 @@ class TestZoneEntities:
         manager._store.devices["AA:BB:CC:DD:EE:FF"] = {"settings": {"zone_target_count": False}}
 
         zone_slots = [
-            {"type": "normal", "trigger": 5, "renew": 3, "timeout": 10.0, "handoff_timeout": 3.0},
+            {"type": "default", "trigger": 5, "renew": 3, "timeout": 10.0, "handoff_timeout": 3.0},
             {"name": "Office"},
         ] + [None] * (MAX_ZONES - 1)
         await manager.async_update_zone_entities("AA:BB:CC:DD:EE:FF", zone_slots)
