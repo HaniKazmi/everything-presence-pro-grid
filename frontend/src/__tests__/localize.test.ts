@@ -47,6 +47,28 @@ describe("setupLocalize", () => {
 		expect(result).toContain("3 targets detected");
 	});
 
+	it("formats live overview env sensor values to 1 decimal place", () => {
+		const localize = setupLocalize();
+		expect(localize("live.temperature_value", { value: 23.456 })).toBe(
+			"23.5 °C",
+		);
+		expect(localize("live.humidity_value", { value: 47.123 })).toBe("47.1 %");
+		expect(localize("live.illuminance_value", { value: 123.789 })).toBe(
+			"123.8 lux",
+		);
+	});
+
+	it("formats grid_dimensions values to 1 decimal place", () => {
+		const localize = setupLocalize();
+		expect(
+			localize("live.grid_dimensions", {
+				width: 4.123,
+				depth: 3.456,
+				furthest: 5.789,
+			}),
+		).toBe("4.1m × 3.5m · Furthest point: 5.8m");
+	});
+
 	it("reads language from hass.locale.language", () => {
 		const localize = setupLocalize({
 			locale: { language: "en" },
