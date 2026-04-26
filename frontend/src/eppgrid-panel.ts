@@ -1166,6 +1166,7 @@ export class EPPGridPanel extends LitElement {
     }
 
     .debug-log-container {
+      margin-top: 4px;
       max-height: 200px;
       overflow-y: auto;
       overflow-x: hidden;
@@ -2431,53 +2432,61 @@ export class EPPGridPanel extends LitElement {
 	private _renderBackendDebugLog() {
 		return html`
       <div style="margin-top: 8px; min-width: 0;">
-        <button
-          class="live-section-header live-section-link"
-          style="font-size: 12px; gap: 4px;"
-          @click=${() => {
-						this._showBackendDebugLog = !this._showBackendDebugLog;
-						if (!this._showBackendDebugLog) {
-							this._backendDebugLogLines = [];
-							this._backendDebugLogPrev = null;
-						}
-					}}
-        >
-          <ha-icon icon=${this._showBackendDebugLog ? "mdi:chevron-down" : "mdi:chevron-right"} style="--mdc-icon-size: 14px;"></ha-icon>
-          ${this._localize("live.debug.detection_events")}
-        </button>
+        <div style="display: flex; align-items: center; gap: 4px;">
+          <button
+            class="live-section-header live-section-link"
+            style="font-size: 12px; gap: 4px; min-width: 0; overflow: hidden;"
+            @click=${() => {
+							this._showBackendDebugLog = !this._showBackendDebugLog;
+							if (!this._showBackendDebugLog) {
+								this._backendDebugLogLines = [];
+								this._backendDebugLogPrev = null;
+							}
+						}}
+          >
+            <ha-icon icon=${this._showBackendDebugLog ? "mdi:chevron-down" : "mdi:chevron-right"} style="--mdc-icon-size: 14px;"></ha-icon>
+            ${this._localize("live.debug.detection_events")}
+          </button>
+          ${
+						this._showBackendDebugLog
+							? html`
+            <div style="margin-left: auto; display: flex; gap: 4px;">
+              <button
+                class="debug-log-btn"
+                @click=${() => {
+									navigator.clipboard.writeText(
+										this._backendDebugLogLines.join("\n"),
+									);
+								}}
+              >${this._localize("live.debug.copy_all")}</button>
+              <button
+                class="debug-log-btn"
+                @click=${() => {
+									this._backendDebugLogLines = [];
+									this._backendDebugLogPrev = null;
+									const el = this.shadowRoot?.getElementById(
+										"backend-debug-log-scroll",
+									);
+									if (el) {
+										el.innerHTML = "";
+										const placeholder = document.createElement("div");
+										placeholder.style.cssText =
+											"color: var(--secondary-text-color, #999); font-style: italic;";
+										placeholder.textContent = this._localize(
+											"live.debug.waiting_for_events",
+										);
+										el.appendChild(placeholder);
+									}
+								}}
+              >${this._localize("live.debug.clear")}</button>
+            </div>
+          `
+							: nothing
+					}
+        </div>
         ${
 					this._showBackendDebugLog
 						? html`
-          <div style="display: flex; justify-content: flex-end; margin-bottom: 4px; gap: 4px;">
-            <button
-              class="debug-log-btn"
-              @click=${() => {
-								navigator.clipboard.writeText(
-									this._backendDebugLogLines.join("\n"),
-								);
-							}}
-            >${this._localize("live.debug.copy_all")}</button>
-            <button
-              class="debug-log-btn"
-              @click=${() => {
-								this._backendDebugLogLines = [];
-								this._backendDebugLogPrev = null;
-								const el = this.shadowRoot?.getElementById(
-									"backend-debug-log-scroll",
-								);
-								if (el) {
-									el.innerHTML = "";
-									const placeholder = document.createElement("div");
-									placeholder.style.cssText =
-										"color: var(--secondary-text-color, #999); font-style: italic;";
-									placeholder.textContent = this._localize(
-										"live.debug.waiting_for_events",
-									);
-									el.appendChild(placeholder);
-								}
-							}}
-            >${this._localize("live.debug.clear")}</button>
-          </div>
           <div class="debug-log-container" id="backend-debug-log-scroll">
             <div style="color: var(--secondary-text-color, #999); font-style: italic;">${this._localize("live.debug.waiting_for_events")}</div>
           </div>
@@ -2491,49 +2500,58 @@ export class EPPGridPanel extends LitElement {
 	private _renderDebugLog() {
 		return html`
       <div style="margin-top: 8px; min-width: 0;">
-        <button
-          class="live-section-header live-section-link"
-          style="font-size: 12px; gap: 4px;"
-          @click=${() => {
-						this._showDebugLog = !this._showDebugLog;
-						if (!this._showDebugLog) {
-							this._debugLogLines = [];
-							this._debugLogPrev = null;
-						}
-					}}
-        >
-          <ha-icon icon=${this._showDebugLog ? "mdi:chevron-down" : "mdi:chevron-right"} style="--mdc-icon-size: 14px;"></ha-icon>
-          ${this._localize("live.debug.detection_events")}
-        </button>
+        <div style="display: flex; align-items: center; gap: 4px;">
+          <button
+            class="live-section-header live-section-link"
+            style="font-size: 12px; gap: 4px; min-width: 0; overflow: hidden;"
+            @click=${() => {
+							this._showDebugLog = !this._showDebugLog;
+							if (!this._showDebugLog) {
+								this._debugLogLines = [];
+								this._debugLogPrev = null;
+							}
+						}}
+          >
+            <ha-icon icon=${this._showDebugLog ? "mdi:chevron-down" : "mdi:chevron-right"} style="--mdc-icon-size: 14px;"></ha-icon>
+            ${this._localize("live.debug.detection_events")}
+          </button>
+          ${
+						this._showDebugLog
+							? html`
+            <div style="margin-left: auto; display: flex; gap: 4px;">
+              <button
+                class="debug-log-btn"
+                @click=${() => {
+									navigator.clipboard.writeText(this._debugLogLines.join("\n"));
+								}}
+              >${this._localize("live.debug.copy_all")}</button>
+              <button
+                class="debug-log-btn"
+                @click=${() => {
+									this._debugLogLines = [];
+									this._debugLogPrev = null;
+									const el =
+										this.shadowRoot?.getElementById("debug-log-scroll");
+									if (el) {
+										el.innerHTML = "";
+										const placeholder = document.createElement("div");
+										placeholder.style.cssText =
+											"color: var(--secondary-text-color, #999); font-style: italic;";
+										placeholder.textContent = this._localize(
+											"live.debug.waiting_for_events",
+										);
+										el.appendChild(placeholder);
+									}
+								}}
+              >${this._localize("live.debug.clear")}</button>
+            </div>
+          `
+							: nothing
+					}
+        </div>
         ${
 					this._showDebugLog
 						? html`
-          <div style="display: flex; justify-content: flex-end; margin-bottom: 4px; gap: 4px;">
-            <button
-              class="debug-log-btn"
-              @click=${() => {
-								navigator.clipboard.writeText(this._debugLogLines.join("\n"));
-							}}
-            >${this._localize("live.debug.copy_all")}</button>
-            <button
-              class="debug-log-btn"
-              @click=${() => {
-								this._debugLogLines = [];
-								this._debugLogPrev = null;
-								const el = this.shadowRoot?.getElementById("debug-log-scroll");
-								if (el) {
-									el.innerHTML = "";
-									const placeholder = document.createElement("div");
-									placeholder.style.cssText =
-										"color: var(--secondary-text-color, #999); font-style: italic;";
-									placeholder.textContent = this._localize(
-										"live.debug.waiting_for_events",
-									);
-									el.appendChild(placeholder);
-								}
-							}}
-            >${this._localize("live.debug.clear")}</button>
-          </div>
           <div class="debug-log-container" id="debug-log-scroll">
             <div style="color: var(--secondary-text-color, #999); font-style: italic;">${this._localize("live.debug.waiting_for_events")}</div>
           </div>

@@ -1795,4 +1795,58 @@ describe("_renderDebugLog render branches", () => {
 		expect(writeText).toHaveBeenCalledWith("line 1\nline 2");
 		document.body.removeChild(c);
 	});
+
+	it("places header button and Copy/Clear buttons on the same row when expanded", () => {
+		const a = createPanel() as any;
+		a._showDebugLog = true;
+		a._debugLogLines = ["line 1"];
+
+		const tpl = a._renderDebugLog();
+		const c = document.createElement("div");
+		document.body.appendChild(c);
+		render(tpl, c);
+
+		const wrapper = c.firstElementChild as HTMLElement;
+		const header = c.querySelector("button.live-section-header") as HTMLElement;
+		const container = c.querySelector("#debug-log-scroll") as HTMLElement;
+		// header lives inside a header-row sub-div, not directly in the wrapper
+		expect(header.parentElement).not.toBe(wrapper);
+		// the log container is a sibling of that sub-row, not a child of it
+		expect(container.parentElement).toBe(wrapper);
+		// both action buttons live alongside the header in the same row
+		const actionButtons = (
+			header.parentElement as HTMLElement
+		).querySelectorAll("button.debug-log-btn");
+		expect(actionButtons.length).toBe(2);
+		document.body.removeChild(c);
+	});
+});
+
+// =========================================================
+// _renderBackendDebugLog: same-line header layout
+// =========================================================
+describe("_renderBackendDebugLog same-line header layout", () => {
+	it("places header button and Copy/Clear buttons on the same row when expanded", () => {
+		const a = createPanel() as any;
+		a._showBackendDebugLog = true;
+		a._backendDebugLogLines = ["line 1"];
+
+		const tpl = a._renderBackendDebugLog();
+		const c = document.createElement("div");
+		document.body.appendChild(c);
+		render(tpl, c);
+
+		const wrapper = c.firstElementChild as HTMLElement;
+		const header = c.querySelector("button.live-section-header") as HTMLElement;
+		const container = c.querySelector(
+			"#backend-debug-log-scroll",
+		) as HTMLElement;
+		expect(header.parentElement).not.toBe(wrapper);
+		expect(container.parentElement).toBe(wrapper);
+		const actionButtons = (
+			header.parentElement as HTMLElement
+		).querySelectorAll("button.debug-log-btn");
+		expect(actionButtons.length).toBe(2);
+		document.body.removeChild(c);
+	});
 });
