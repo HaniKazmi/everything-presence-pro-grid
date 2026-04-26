@@ -53,8 +53,11 @@ import {
 } from "./lib/room-geometry.js";
 import {
 	persistSelectedMac,
+	persistSidebarTab,
 	persistView,
+	readStoredSidebarTab,
 	readStoredView,
+	type SidebarTab,
 	type ViewMode,
 } from "./lib/storage.js";
 import { renderTemplateThumbnail } from "./lib/template-thumbnail.js";
@@ -205,8 +208,7 @@ export class EPPGridPanel extends LitElement {
 	@state() private _targetUpdateRateMs = 1000;
 	@state() private _zoneUpdateRateMs = 1000;
 	@state() private _entitiesConfig: Record<string, any> = {};
-	@state() private _sidebarTab: "zones" | "overlays" | "furniture" | "live" =
-		"zones";
+	@state() private _sidebarTab: SidebarTab = readStoredSidebarTab();
 	@state() private _panelTab: "config" | "flasher" = "config";
 	@state() private _showDeleteCalibrationDialog = false;
 	@state() private _showLiveMenu = false;
@@ -498,6 +500,9 @@ export class EPPGridPanel extends LitElement {
 		}
 		if (changed.has("_view")) {
 			persistView(this._view);
+		}
+		if (changed.has("_sidebarTab")) {
+			persistSidebarTab(this._sidebarTab);
 		}
 	}
 

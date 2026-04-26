@@ -360,6 +360,26 @@ describe("panel state survives device offline→online", () => {
 		expect(localStorage.getItem("epp_view")).toBeNull();
 	});
 
+	it("persists _sidebarTab so an HA restart returns to the same editor tab", async () => {
+		// Same recreation cycle as _view: an HA container restart can wipe
+		// element state, so the sidebar tab (zones / overlays / furniture)
+		// has to round-trip through localStorage too — otherwise users in
+		// the furniture editor are silently dropped onto the zones tab.
+		const { el, a } = await mountPanel([makeDevice("aa", true)]);
+		a._view = "editor";
+		a._sidebarTab = "furniture";
+		await el.updateComplete;
+		expect(localStorage.getItem("epp_sidebar_tab")).toBe("furniture");
+
+		document.body.removeChild(el);
+		mountedPanels.length = 0;
+		const el2 = document.createElement("eppgrid-panel") as EPPGridPanel;
+		document.body.appendChild(el2);
+		mountedPanels.push(el2);
+		await el2.updateComplete;
+		expect((el2 as any)._sidebarTab).toBe("furniture");
+	});
+
 	it("falls back to the 'no devices' placeholder after a stably empty list, even with a persisted selection", async () => {
 		// Scenario: localStorage holds a mac from a prior session (or the
 		// user just deleted the last device). Without an escape hatch, the

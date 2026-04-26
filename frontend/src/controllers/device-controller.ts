@@ -60,7 +60,7 @@ export class DeviceController implements ReactiveController {
 	private _targetRetryTimer?: ReturnType<typeof setTimeout>;
 	private _reconnecting = false;
 	private _connectionFailed = false;
-	private _lastSelectedAvailable: boolean | null = null;
+	private _lastSelectedOnline: boolean | null = null;
 	private _reopenInFlight?: { mac: string; promise: Promise<void> };
 
 	constructor(host: ReactiveControllerHost) {
@@ -195,23 +195,32 @@ export class DeviceController implements ReactiveController {
 		if (prevSelectedMac !== this.selectedMac) {
 			// Treat the next push as an initial observation for the new
 			// device so we don't fire a stale false→true rising edge.
-			this._lastSelectedAvailable = null;
+			this._lastSelectedOnline = null;
 		}
 
 		const selected = this.devices.find((d) => d.mac === this.selectedMac);
-		const nowAvailable = selected?.available ?? false;
-		const prev = this._lastSelectedAvailable;
-		this._lastSelectedAvailable = nowAvailable;
+		// Treat `firmware_status="unavailable"` as offline even when HA still
+		// reports `available: true` — that combination happens when only the
+		// `firmware_version` text sensor went unavailable while other entities
+		// are still reporting. The backend's per-state handler closes its end
+		// of the session whenever any entity goes offline, so without
+		// tracking firmware_status we'd leave the live target stream dead
+		// once it recovers.
+		const nowOnline =
+			(selected?.available ?? false) &&
+			selected?.firmware_status !== "unavailable";
+		const prev = this._lastSelectedOnline;
+		this._lastSelectedOnline = nowOnline;
 
-		if (prev === true && !nowAvailable) {
+		if (prev === true && !nowOnline) {
 			this.closeDeviceSession();
 			this.onSessionClosed?.();
 		}
 		// Initial push (prev === null) is skipped — the host's first-load
-		// flow drives the initial connect.  On a real unavailable→available
+		// flow drives the initial connect.  On a real offline→online
 		// transition, hand off to the host so it can choose between
 		// reopenSession (config already in memory) and a fresh config load.
-		if (prev === false && nowAvailable && this.selectedMac) {
+		if (prev === false && nowOnline && this.selectedMac) {
 			this.onSelectedAvailable?.(this.selectedMac);
 		}
 
@@ -471,7 +480,7 @@ export class DeviceController implements ReactiveController {
 	// --- Device selection ---
 	selectDevice(mac: string): void {
 		this.selectedMac = mac;
-		this._lastSelectedAvailable = null;
+		this._lastSelectedOnline = null;
 		this._connectionFailed = false;
 		persistSelectedMac(mac);
 		this._host.requestUpdate();

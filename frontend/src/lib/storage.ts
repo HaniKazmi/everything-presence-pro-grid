@@ -4,8 +4,10 @@
 
 export const STORAGE_KEY_SELECTED_MAC = "epp_selected_mac";
 export const STORAGE_KEY_VIEW = "epp_view";
+export const STORAGE_KEY_SIDEBAR_TAB = "epp_sidebar_tab";
 
 export type ViewMode = "live" | "editor" | "settings";
+export type SidebarTab = "zones" | "overlays" | "furniture" | "live";
 
 export function readStoredView(): ViewMode {
 	try {
@@ -43,6 +45,29 @@ export function persistSelectedMac(mac: string): void {
 			localStorage.removeItem(STORAGE_KEY_SELECTED_MAC);
 		} else {
 			localStorage.setItem(STORAGE_KEY_SELECTED_MAC, mac);
+		}
+	} catch {
+		/* localStorage unavailable */
+	}
+}
+
+export function readStoredSidebarTab(): SidebarTab {
+	try {
+		const v = localStorage.getItem(STORAGE_KEY_SIDEBAR_TAB);
+		if (v === "overlays" || v === "furniture" || v === "live" || v === "zones")
+			return v;
+	} catch {
+		/* localStorage unavailable */
+	}
+	return "zones";
+}
+
+export function persistSidebarTab(tab: SidebarTab): void {
+	try {
+		if (tab === "zones") {
+			localStorage.removeItem(STORAGE_KEY_SIDEBAR_TAB);
+		} else {
+			localStorage.setItem(STORAGE_KEY_SIDEBAR_TAB, tab);
 		}
 	} catch {
 		/* localStorage unavailable */

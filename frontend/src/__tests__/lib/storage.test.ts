@@ -1,10 +1,13 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
 	persistSelectedMac,
+	persistSidebarTab,
 	persistView,
 	readStoredMac,
+	readStoredSidebarTab,
 	readStoredView,
 	STORAGE_KEY_SELECTED_MAC,
+	STORAGE_KEY_SIDEBAR_TAB,
 	STORAGE_KEY_VIEW,
 } from "../../lib/storage.js";
 
@@ -104,6 +107,61 @@ describe("lib/storage", () => {
 					throw new Error("blocked");
 				});
 			expect(() => persistSelectedMac("aa:bb:cc")).not.toThrow();
+			spy.mockRestore();
+		});
+	});
+
+	describe("readStoredSidebarTab", () => {
+		it("returns 'zones' when nothing is stored", () => {
+			expect(readStoredSidebarTab()).toBe("zones");
+		});
+
+		it("returns each valid tab when stored", () => {
+			localStorage.setItem(STORAGE_KEY_SIDEBAR_TAB, "furniture");
+			expect(readStoredSidebarTab()).toBe("furniture");
+			localStorage.setItem(STORAGE_KEY_SIDEBAR_TAB, "overlays");
+			expect(readStoredSidebarTab()).toBe("overlays");
+			localStorage.setItem(STORAGE_KEY_SIDEBAR_TAB, "live");
+			expect(readStoredSidebarTab()).toBe("live");
+			localStorage.setItem(STORAGE_KEY_SIDEBAR_TAB, "zones");
+			expect(readStoredSidebarTab()).toBe("zones");
+		});
+
+		it("falls back to 'zones' for an invalid stored value", () => {
+			localStorage.setItem(STORAGE_KEY_SIDEBAR_TAB, "bogus");
+			expect(readStoredSidebarTab()).toBe("zones");
+		});
+
+		it("returns 'zones' when localStorage throws", () => {
+			const spy = vi
+				.spyOn(Storage.prototype, "getItem")
+				.mockImplementation(() => {
+					throw new Error("blocked");
+				});
+			expect(readStoredSidebarTab()).toBe("zones");
+			spy.mockRestore();
+		});
+	});
+
+	describe("persistSidebarTab", () => {
+		it("writes non-default tabs to localStorage", () => {
+			persistSidebarTab("furniture");
+			expect(localStorage.getItem(STORAGE_KEY_SIDEBAR_TAB)).toBe("furniture");
+		});
+
+		it("removes the key when persisting 'zones'", () => {
+			localStorage.setItem(STORAGE_KEY_SIDEBAR_TAB, "furniture");
+			persistSidebarTab("zones");
+			expect(localStorage.getItem(STORAGE_KEY_SIDEBAR_TAB)).toBeNull();
+		});
+
+		it("swallows errors when localStorage is unavailable", () => {
+			const spy = vi
+				.spyOn(Storage.prototype, "setItem")
+				.mockImplementation(() => {
+					throw new Error("blocked");
+				});
+			expect(() => persistSidebarTab("furniture")).not.toThrow();
 			spy.mockRestore();
 		});
 	});
