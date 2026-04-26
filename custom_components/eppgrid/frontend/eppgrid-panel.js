@@ -4179,25 +4179,29 @@ const dt={attribute:!0,type:String,converter:E,reflect:!1,hasChanged:m},At=(t=dt
       </div>
     `}_runLocalZoneEngine(){return this._targetCtrl.runLocalZoneEngine()}_enrichDebugLog(t){return this._targetCtrl.enrichDebugLog(t)}_computeHeatmapColors(){return this._targetCtrl.computeHeatmapColors()}_getZoneThresholds(t){const e=Xi(this._zoneConfigs[0]);return qi(t,this._namedZones(),e.type,e.trigger,e.renew,e.timeout,e.handoff_timeout)}_renderBackendDebugLog(){return $`
       <div style="margin-top: 8px; min-width: 0;">
-        <button
-          class="live-section-header live-section-link"
-          style="font-size: 12px; gap: 4px;"
-          @click=${()=>{this._showBackendDebugLog=!this._showBackendDebugLog,this._showBackendDebugLog||(this._backendDebugLogLines=[],this._backendDebugLogPrev=null)}}
-        >
-          <ha-icon icon=${this._showBackendDebugLog?"mdi:chevron-down":"mdi:chevron-right"} style="--mdc-icon-size: 14px;"></ha-icon>
-          ${this._localize("live.debug.detection_events")}
-        </button>
+        <div style="display: flex; align-items: center; gap: 4px; margin-bottom: 4px;">
+          <button
+            class="live-section-header live-section-link"
+            style="font-size: 12px; gap: 4px;"
+            @click=${()=>{this._showBackendDebugLog=!this._showBackendDebugLog,this._showBackendDebugLog||(this._backendDebugLogLines=[],this._backendDebugLogPrev=null)}}
+          >
+            <ha-icon icon=${this._showBackendDebugLog?"mdi:chevron-down":"mdi:chevron-right"} style="--mdc-icon-size: 14px;"></ha-icon>
+            ${this._localize("live.debug.detection_events")}
+          </button>
+          ${this._showBackendDebugLog?$`
+            <div style="margin-left: auto; display: flex; gap: 4px;">
+              <button
+                class="debug-log-btn"
+                @click=${()=>{navigator.clipboard.writeText(this._backendDebugLogLines.join("\n"))}}
+              >${this._localize("live.debug.copy_all")}</button>
+              <button
+                class="debug-log-btn"
+                @click=${()=>{this._backendDebugLogLines=[],this._backendDebugLogPrev=null;const t=this.shadowRoot?.getElementById("backend-debug-log-scroll");if(t){t.innerHTML="";const e=document.createElement("div");e.style.cssText="color: var(--secondary-text-color, #999); font-style: italic;",e.textContent=this._localize("live.debug.waiting_for_events"),t.appendChild(e)}}}
+              >${this._localize("live.debug.clear")}</button>
+            </div>
+          `:J}
+        </div>
         ${this._showBackendDebugLog?$`
-          <div style="display: flex; justify-content: flex-end; margin-bottom: 4px; gap: 4px;">
-            <button
-              class="debug-log-btn"
-              @click=${()=>{navigator.clipboard.writeText(this._backendDebugLogLines.join("\n"))}}
-            >${this._localize("live.debug.copy_all")}</button>
-            <button
-              class="debug-log-btn"
-              @click=${()=>{this._backendDebugLogLines=[],this._backendDebugLogPrev=null;const t=this.shadowRoot?.getElementById("backend-debug-log-scroll");if(t){t.innerHTML="";const e=document.createElement("div");e.style.cssText="color: var(--secondary-text-color, #999); font-style: italic;",e.textContent=this._localize("live.debug.waiting_for_events"),t.appendChild(e)}}}
-            >${this._localize("live.debug.clear")}</button>
-          </div>
           <div class="debug-log-container" id="backend-debug-log-scroll">
             <div style="color: var(--secondary-text-color, #999); font-style: italic;">${this._localize("live.debug.waiting_for_events")}</div>
           </div>
@@ -4205,25 +4209,29 @@ const dt={attribute:!0,type:String,converter:E,reflect:!1,hasChanged:m},At=(t=dt
       </div>
     `}_renderDebugLog(){return $`
       <div style="margin-top: 8px; min-width: 0;">
-        <button
-          class="live-section-header live-section-link"
-          style="font-size: 12px; gap: 4px;"
-          @click=${()=>{this._showDebugLog=!this._showDebugLog,this._showDebugLog||(this._debugLogLines=[],this._debugLogPrev=null)}}
-        >
-          <ha-icon icon=${this._showDebugLog?"mdi:chevron-down":"mdi:chevron-right"} style="--mdc-icon-size: 14px;"></ha-icon>
-          ${this._localize("live.debug.detection_events")}
-        </button>
+        <div style="display: flex; align-items: center; gap: 4px; margin-bottom: 4px;">
+          <button
+            class="live-section-header live-section-link"
+            style="font-size: 12px; gap: 4px;"
+            @click=${()=>{this._showDebugLog=!this._showDebugLog,this._showDebugLog||(this._debugLogLines=[],this._debugLogPrev=null)}}
+          >
+            <ha-icon icon=${this._showDebugLog?"mdi:chevron-down":"mdi:chevron-right"} style="--mdc-icon-size: 14px;"></ha-icon>
+            ${this._localize("live.debug.detection_events")}
+          </button>
+          ${this._showDebugLog?$`
+            <div style="margin-left: auto; display: flex; gap: 4px;">
+              <button
+                class="debug-log-btn"
+                @click=${()=>{navigator.clipboard.writeText(this._debugLogLines.join("\n"))}}
+              >${this._localize("live.debug.copy_all")}</button>
+              <button
+                class="debug-log-btn"
+                @click=${()=>{this._debugLogLines=[],this._debugLogPrev=null;const t=this.shadowRoot?.getElementById("debug-log-scroll");if(t){t.innerHTML="";const e=document.createElement("div");e.style.cssText="color: var(--secondary-text-color, #999); font-style: italic;",e.textContent=this._localize("live.debug.waiting_for_events"),t.appendChild(e)}}}
+              >${this._localize("live.debug.clear")}</button>
+            </div>
+          `:J}
+        </div>
         ${this._showDebugLog?$`
-          <div style="display: flex; justify-content: flex-end; margin-bottom: 4px; gap: 4px;">
-            <button
-              class="debug-log-btn"
-              @click=${()=>{navigator.clipboard.writeText(this._debugLogLines.join("\n"))}}
-            >${this._localize("live.debug.copy_all")}</button>
-            <button
-              class="debug-log-btn"
-              @click=${()=>{this._debugLogLines=[],this._debugLogPrev=null;const t=this.shadowRoot?.getElementById("debug-log-scroll");if(t){t.innerHTML="";const e=document.createElement("div");e.style.cssText="color: var(--secondary-text-color, #999); font-style: italic;",e.textContent=this._localize("live.debug.waiting_for_events"),t.appendChild(e)}}}
-            >${this._localize("live.debug.clear")}</button>
-          </div>
           <div class="debug-log-container" id="debug-log-scroll">
             <div style="color: var(--secondary-text-color, #999); font-style: italic;">${this._localize("live.debug.waiting_for_events")}</div>
           </div>

@@ -1795,4 +1795,45 @@ describe("_renderDebugLog render branches", () => {
 		expect(writeText).toHaveBeenCalledWith("line 1\nline 2");
 		document.body.removeChild(c);
 	});
+
+	it("places header button and Copy/Clear buttons on the same flex row when expanded", () => {
+		const a = createPanel() as any;
+		a._showDebugLog = true;
+		a._debugLogLines = ["line 1"];
+
+		const tpl = a._renderDebugLog();
+		const c = document.createElement("div");
+		document.body.appendChild(c);
+		render(tpl, c);
+
+		const header = c.querySelector("button.live-section-header") as HTMLElement;
+		const headerRow = header.parentElement as HTMLElement;
+		expect(headerRow.style.display).toBe("flex");
+		const actionButtons = headerRow.querySelectorAll("button.debug-log-btn");
+		expect(actionButtons.length).toBe(2);
+		document.body.removeChild(c);
+	});
+});
+
+// =========================================================
+// _renderBackendDebugLog: same-line header layout
+// =========================================================
+describe("_renderBackendDebugLog same-line header layout", () => {
+	it("places header button and Copy/Clear buttons on the same flex row when expanded", () => {
+		const a = createPanel() as any;
+		a._showBackendDebugLog = true;
+		a._backendDebugLogLines = ["line 1"];
+
+		const tpl = a._renderBackendDebugLog();
+		const c = document.createElement("div");
+		document.body.appendChild(c);
+		render(tpl, c);
+
+		const header = c.querySelector("button.live-section-header") as HTMLElement;
+		const headerRow = header.parentElement as HTMLElement;
+		expect(headerRow.style.display).toBe("flex");
+		const actionButtons = headerRow.querySelectorAll("button.debug-log-btn");
+		expect(actionButtons.length).toBe(2);
+		document.body.removeChild(c);
+	});
 });
