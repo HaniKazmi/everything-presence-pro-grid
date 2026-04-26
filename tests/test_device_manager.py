@@ -1998,6 +1998,75 @@ class TestEventCallbacks:
 
         mock_push.assert_awaited_once_with("AA:BB:CC:DD:EE:FF")
 
+    async def test_on_state_changed_subsequent_online_still_fires_change(
+        self, hass: HomeAssistant, manager: DeviceManager
+    ) -> None:
+        """A second offline→online transition while a push is in flight must still
+        notify subscribers.
+
+        After a network blip, ESPHome restores entity states one at a time. The
+        first transition starts an `_on_device_available` task and adds `mac` to
+        `_pushing`; subsequent transitions arrive while that task is still
+        running. Without firing the device-list-changed event for them, the
+        frontend's last-seen `firmware_status` (computed from the
+        `firmware_version` sensor's state) can stay `"unavailable"` forever if
+        that sensor happens to come back after the first push completes.
+        """
+        dev_reg = dr.async_get(hass)
+        ent_reg = er.async_get(hass)
+
+        esphome_entry = MockConfigEntry(
+            domain="esphome",
+            data={"host": "192.168.1.60"},
+            title="EPP Device",
+        )
+        esphome_entry.add_to_hass(hass)
+
+        device = dev_reg.async_get_or_create(
+            config_entry_id=esphome_entry.entry_id,
+            connections={("mac", "aa:bb:cc:dd:ee:60")},
+            name="EPP Device",
+        )
+
+        entity = ent_reg.async_get_or_create(
+            "sensor",
+            "esphome",
+            unique_id="AA:BB:CC:DD:EE:60-sensor-firmware_version",
+            config_entry=esphome_entry,
+            device_id=device.id,
+        )
+
+        mac = "AA:BB:CC:DD:EE:60"
+        manager.devices[mac] = ManagedDevice(mac=mac, name="EPP", host="192.168.1.60", device_id=device.id)
+
+        # Simulate the in-flight state: a prior entity already triggered the
+        # online task, so `mac` is in `_pushing` but the task hasn't finished.
+        manager._pushing.add(mac)
+
+        fire_calls: list[None] = []
+        manager.on_device_list_changed(lambda: fire_calls.append(None))
+
+        with patch.object(manager, "_on_device_available", new_callable=AsyncMock) as mock_avail:
+            old_state = MagicMock()
+            old_state.state = STATE_UNAVAILABLE
+            new_state = MagicMock()
+            new_state.state = "1.2.3"
+
+            event = MagicMock()
+            event.data = {
+                "entity_id": entity.entity_id,
+                "old_state": old_state,
+                "new_state": new_state,
+            }
+            manager._on_state_changed(event)
+            await hass.async_block_till_done()
+
+        # Don't double-push config — the in-flight task handles that.
+        mock_avail.assert_not_awaited()
+        # But subscribers must still see the change so the frontend re-reads
+        # firmware_status after this entity flipped online.
+        assert len(fire_calls) == 1
+
     async def test_on_state_changed_treats_unknown_like_unavailable(
         self, hass: HomeAssistant, manager: DeviceManager
     ) -> None:

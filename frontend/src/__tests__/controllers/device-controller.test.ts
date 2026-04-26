@@ -1103,6 +1103,70 @@ describe("DeviceController", () => {
 
 			expect(onClosed).toHaveBeenCalledTimes(1);
 		});
+
+		it("fires onSessionClosed when firmware_status flips to unavailable while available stays true", () => {
+			// Entity-level flap scenario: a non-critical entity stays online so
+			// HA still reports `available: true`, but the firmware_version
+			// sensor went unavailable (so `firmware_status="unavailable"`). The
+			// backend's per-state close fired when any entity went offline,
+			// leaving the live-target stream dead even though `available`
+			// never flipped.
+			const onClosed = vi.fn();
+			ctrl.onSessionClosed = onClosed;
+
+			(ctrl as any)._applyDeviceList([
+				{
+					...makeDevice("aa", true),
+					firmware_status: "compatible",
+				},
+			]);
+			ctrl.selectedMac = "aa";
+			onClosed.mockClear();
+
+			(ctrl as any)._applyDeviceList([
+				{
+					...makeDevice("aa", true),
+					firmware_status: "unavailable",
+				},
+			]);
+
+			expect(onClosed).toHaveBeenCalledTimes(1);
+		});
+
+		it("fires onSelectedAvailable when firmware_status recovers from unavailable while available stays true", () => {
+			const onSelectedAvailable = vi.fn();
+			ctrl.onSelectedAvailable = onSelectedAvailable;
+
+			(ctrl as any)._applyDeviceList([
+				{
+					...makeDevice("aa", true),
+					firmware_status: "compatible",
+				},
+			]);
+			ctrl.selectedMac = "aa";
+			onSelectedAvailable.mockClear();
+
+			// firmware_version sensor goes unavailable — `available` stays
+			// true because other entities are still reporting.
+			(ctrl as any)._applyDeviceList([
+				{
+					...makeDevice("aa", true),
+					firmware_status: "unavailable",
+				},
+			]);
+			expect(onSelectedAvailable).not.toHaveBeenCalled();
+
+			// firmware_version sensor comes back. The host needs to re-open
+			// the session (the backend closed its end when the entity went
+			// offline) so the live target stream resumes.
+			(ctrl as any)._applyDeviceList([
+				{
+					...makeDevice("aa", true),
+					firmware_status: "compatible",
+				},
+			]);
+			expect(onSelectedAvailable).toHaveBeenCalledWith("aa");
+		});
 	});
 
 	describe("_applyDeviceList seeds selectedMac from localStorage on empty list", () => {

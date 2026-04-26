@@ -724,10 +724,19 @@ class DeviceManager:
         if old_state.state not in offline_states:
             return
 
-        # Device came online — push config once
+        # Device came online — push config once. The `_pushing` guard
+        # debounces the burst of per-entity transitions on reconnect so we
+        # don't kick off N parallel push tasks; subsequent transitions still
+        # need to notify subscribers, otherwise an entity that flips back
+        # *after* the first task fires its event (e.g. `firmware_version`
+        # arriving late) leaves the frontend stuck on a stale
+        # `firmware_status="unavailable"` until something else triggers a
+        # refresh.
         if mac not in self._pushing:
             self._pushing.add(mac)
             self._hass.async_create_task(self._on_device_available(mac))
+        else:
+            self._fire_device_list_changed()
 
     @callback
     def _ensure_esphome_entry_listener(self, entry_id: str | None) -> None:
