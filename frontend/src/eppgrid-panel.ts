@@ -1166,6 +1166,7 @@ export class EPPGridPanel extends LitElement {
     }
 
     .debug-log-container {
+      margin-top: 4px;
       max-height: 200px;
       overflow-y: auto;
       overflow-x: hidden;
@@ -2431,10 +2432,10 @@ export class EPPGridPanel extends LitElement {
 	private _renderBackendDebugLog() {
 		return html`
       <div style="margin-top: 8px; min-width: 0;">
-        <div style="display: flex; align-items: center; gap: 4px; margin-bottom: 4px;">
+        <div style="display: flex; align-items: center; gap: 4px;">
           <button
             class="live-section-header live-section-link"
-            style="font-size: 12px; gap: 4px;"
+            style="font-size: 12px; gap: 4px; min-width: 0; overflow: hidden;"
             @click=${() => {
 							this._showBackendDebugLog = !this._showBackendDebugLog;
 							if (!this._showBackendDebugLog) {
@@ -2499,10 +2500,10 @@ export class EPPGridPanel extends LitElement {
 	private _renderDebugLog() {
 		return html`
       <div style="margin-top: 8px; min-width: 0;">
-        <div style="display: flex; align-items: center; gap: 4px; margin-bottom: 4px;">
+        <div style="display: flex; align-items: center; gap: 4px;">
           <button
             class="live-section-header live-section-link"
-            style="font-size: 12px; gap: 4px;"
+            style="font-size: 12px; gap: 4px; min-width: 0; overflow: hidden;"
             @click=${() => {
 							this._showDebugLog = !this._showDebugLog;
 							if (!this._showDebugLog) {

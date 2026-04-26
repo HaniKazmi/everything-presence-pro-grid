@@ -4179,10 +4179,10 @@ const dt={attribute:!0,type:String,converter:E,reflect:!1,hasChanged:m},At=(t=dt
       </div>
     `}_runLocalZoneEngine(){return this._targetCtrl.runLocalZoneEngine()}_enrichDebugLog(t){return this._targetCtrl.enrichDebugLog(t)}_computeHeatmapColors(){return this._targetCtrl.computeHeatmapColors()}_getZoneThresholds(t){const e=Xi(this._zoneConfigs[0]);return qi(t,this._namedZones(),e.type,e.trigger,e.renew,e.timeout,e.handoff_timeout)}_renderBackendDebugLog(){return $`
       <div style="margin-top: 8px; min-width: 0;">
-        <div style="display: flex; align-items: center; gap: 4px; margin-bottom: 4px;">
+        <div style="display: flex; align-items: center; gap: 4px;">
           <button
             class="live-section-header live-section-link"
-            style="font-size: 12px; gap: 4px;"
+            style="font-size: 12px; gap: 4px; min-width: 0; overflow: hidden;"
             @click=${()=>{this._showBackendDebugLog=!this._showBackendDebugLog,this._showBackendDebugLog||(this._backendDebugLogLines=[],this._backendDebugLogPrev=null)}}
           >
             <ha-icon icon=${this._showBackendDebugLog?"mdi:chevron-down":"mdi:chevron-right"} style="--mdc-icon-size: 14px;"></ha-icon>
@@ -4209,10 +4209,10 @@ const dt={attribute:!0,type:String,converter:E,reflect:!1,hasChanged:m},At=(t=dt
       </div>
     `}_renderDebugLog(){return $`
       <div style="margin-top: 8px; min-width: 0;">
-        <div style="display: flex; align-items: center; gap: 4px; margin-bottom: 4px;">
+        <div style="display: flex; align-items: center; gap: 4px;">
           <button
             class="live-section-header live-section-link"
-            style="font-size: 12px; gap: 4px;"
+            style="font-size: 12px; gap: 4px; min-width: 0; overflow: hidden;"
             @click=${()=>{this._showDebugLog=!this._showDebugLog,this._showDebugLog||(this._debugLogLines=[],this._debugLogPrev=null)}}
           >
             <ha-icon icon=${this._showDebugLog?"mdi:chevron-down":"mdi:chevron-right"} style="--mdc-icon-size: 14px;"></ha-icon>
@@ -4318,6 +4318,7 @@ const dt={attribute:!0,type:String,converter:E,reflect:!1,hasChanged:m},At=(t=dt
     }
 
     .debug-log-container {
+      margin-top: 4px;
       max-height: 200px;
       overflow-y: auto;
       overflow-x: hidden;
