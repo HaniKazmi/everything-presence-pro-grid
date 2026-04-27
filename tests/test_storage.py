@@ -116,9 +116,7 @@ class TestEPPGridStore:
         assert list(store.configurations.keys()) == ["new"]
         assert store.configurations["new"]["settings"] == {"foo": 1}
 
-    async def test_migration_preserves_non_default_sidebar_and_tutorial(
-        self, hass: HomeAssistant
-    ) -> None:
+    async def test_migration_preserves_non_default_sidebar_and_tutorial(self, hass: HomeAssistant) -> None:
         """Migration must not reset sidebar_panel or tutorial to defaults."""
         seed_store = EPPGridStore(hass)
         await seed_store._store.async_save(

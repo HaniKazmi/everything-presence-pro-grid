@@ -34,15 +34,12 @@ class EPPGridStore:
             return
         self.devices = data.get("devices", {})
         self.sidebar_panel = data.get("sidebar_panel", True)
-        self.show_room_calibration_tutorial = data.get(
-            "show_room_calibration_tutorial", True
-        )
+        self.show_room_calibration_tutorial = data.get("show_room_calibration_tutorial", True)
         self.configurations = data.get("configurations", {})
         # One-shot migration from pre-rename storage shape.
         if not self.configurations and "templates" in data:
             self.configurations = {
-                name: {**blob, "settings": blob.get("settings", {})}
-                for name, blob in data["templates"].items()
+                name: {**blob, "settings": blob.get("settings", {})} for name, blob in data["templates"].items()
             }
             await self.async_save()
 
