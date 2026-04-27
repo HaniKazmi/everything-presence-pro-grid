@@ -1005,6 +1005,7 @@ export class EppSettingsView extends LitElement {
 							}}
               @closed=${(e: Event) => e.stopPropagation()}
             ></ha-select>
+            ${this.infoTip(this.localize("info.relay_trigger_mode"))}
           </div>
           ${
 						isAutomatic
@@ -1023,6 +1024,7 @@ export class EppSettingsView extends LitElement {
 								}}
                 @closed=${(e: Event) => e.stopPropagation()}
               ></ha-select>
+              ${this.infoTip(this.localize("info.relay_contact_mode"))}
             </div>
           `
 							: nothing
