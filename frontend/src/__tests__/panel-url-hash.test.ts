@@ -119,6 +119,21 @@ describe("panel — internal view changes update the hash via replaceState", () 
 		el.remove();
 	});
 
+	it("preserves history.state when rewriting the hash", async () => {
+		setHash("");
+		const el = createPanel();
+		document.body.appendChild(el);
+		const a = el as any;
+		await el.updateComplete;
+		// Simulate HA's router seeding state.
+		history.replaceState({ haRouter: "live" }, "", location.pathname);
+		a._view = "editor";
+		await el.updateComplete;
+		expect(history.state).toEqual({ haRouter: "live" });
+		expect(location.hash).toBe("#zones");
+		el.remove();
+	});
+
 	it("changing _sidebarTab while in editor replaces the hash", async () => {
 		setHash("#zones");
 		const el = createPanel();

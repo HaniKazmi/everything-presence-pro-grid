@@ -518,7 +518,8 @@ export class EPPGridPanel extends LitElement {
 		const target = `${location.pathname}${location.search}${hash}`;
 		const replace =
 			this._originalReplaceState ?? history.replaceState.bind(history);
-		replace(null, "", target);
+		// Preserve history.state so HA's router state isn't clobbered.
+		replace(history.state, "", target);
 	}
 
 	private _syncHashFromState(): void {
