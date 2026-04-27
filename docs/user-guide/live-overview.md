@@ -49,7 +49,7 @@ In the  **Environment** section, you can see the four environmental sensors:
 - **Illuminance** (lux) 
 - **Temperature** (°C)
 - **Humidity** (%)
-- **CO2** (ppm) — the CO2 sensor is an optional extra and may not be installed on your device. You will only see the CO2 reading on the live overview if the chip is present and producing readings.
+- **CO2** (ppm) — the CO2 sensor is an optional extra and may not be installed on your device. You will only see the CO2 reading on the live overview if the chip is present and producing readings. See [Integrate the Carbon Dioxide (CO2) module](https://docs.everythingsmart.io/s/products/doc/integrate-the-carbon-dioxide-co2-module-biegKGfCWu) for the hardware install.
 
 The **Illuminance**, **Temperature**, and **Humidity** entities are enabled by default. The **CO2** entity (and the related **Calibrate CO2 button**) is disabled by default.
 

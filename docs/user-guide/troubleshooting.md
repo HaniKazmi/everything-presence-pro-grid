@@ -4,6 +4,10 @@ This page handles the conceptual "why does X behave this way?" questions that do
 
 ## FAQ
 
+**How do I install and configure the CO2 sensor?**
+
+The CO2 module is an add-on board sold separately by Everything Smart Technology. Follow the official integration guide at [docs.everythingsmart.io — Integrate the Carbon Dioxide (CO2) module](https://docs.everythingsmart.io/s/products/doc/integrate-the-carbon-dioxide-co2-module-biegKGfCWu) for the hardware install. Once it's wired up, enable the **CO2** entity on the device page in Home Assistant.
+
 **Why is my CO2 sensor showing `unavailable`?**
 
 The SCD4x CO2 sensor is disabled by default in Home Assistant — enable it on the device page to get readings. It also takes about 5 minutes after power-on to warm up; until then it reports `unavailable` even once enabled.

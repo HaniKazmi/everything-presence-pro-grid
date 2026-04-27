@@ -1,28 +1,26 @@
 # Overlays
 
-Overlays are an extra layer of information the zone engine uses when interpreting the grid. They don't define where targets are counted — that's zones — but they do change how the engine reacts to appearances, disappearances, and detections in specific cells. This page covers the three overlay types and when to use each.
+Overlays change how the zone engine reacts to radar signals in specific cells. They don't define where targets are counted — that's what [zones](detection-zones.md) do — but they tell the engine whether to trust, doubt, or ignore what it sees. A cell can belong to a zone and carry an overlay at the same time.
 
-## The three overlay types
+There are three overlay types:
 
-Everything Presence Pro Grid has three overlay types, all optional, all independent of zones. A single cell can belong to a zone **and** carry an overlay at the same time.
-
-- **Entry/Exit** — mark doorway cells. Targets that appear or disappear near these cells are classified as expected transitions (someone walking in or out) rather than ghost detections. Zones near doors stop flapping every time someone crosses the threshold.
-- **Interference** — mark cells near noise sources like ceiling fans, billowing curtains, or reflective surfaces. The zone engine raises its thresholds in those cells: targets can't originate there, they need a stronger radar return to sustain occupancy, and instant-entry from the entry/exit overlay is disabled. False positives from fans and curtains go away, while real people still register if they're actually present.
-- **Suppress** — mark cells you want the engine to **ignore entirely**. Unlike Interference (which makes detection harder), Suppress makes it impossible: no target counts, no zone entry, nothing happens in those cells. Use it for regions that produce consistent radar returns with no chance of a real person being there (a swaying plant you can't move, an oscillating fan on a fixed path).
-
-Think of it as a gradient: zones are "pay attention here", Interference is "be sceptical here", Suppress is "don't look here at all".
+| Overlay | Appearance | Purpose |
+| --- | --- | --- |
+| **Entry/Exit** | ![Dark diagonal stripes](../images/overlays/entry-exit.png) | Mark entrances and exits to a room |
+| **Interference** | ![Red diagonal stripes](../images/overlays/interference.png)   | Mark cells near noise sources such as fans or curtains |
+| **Suppress** | ![Red cross-hatch stripes](../images/overlays/suppress.png)  | Mark cells to ignore entirely |
 
 ## Drawing overlays
 
 1. Switch to the **Overlays** editor mode in the sidebar.
-2. Click the overlay-type button you want (Entry/Exit, Interference, or Suppress). That button stays depressed to show which paint mode is active.
-3. Click-and-drag on the grid to paint cells, same interaction as zone painting. The stroke's action (paint or erase) is decided by the first cell you press on: if that cell already has the overlay, the stroke erases; otherwise it paints.
+2. Click the overlay-type button you want (Entry/Exit, Interference, or Suppress). 
+3. Click-and-drag on the grid to paint cells, with the same interaction as zone painting. The stroke's action (paint or erase) is decided by the first cell you press on: if that cell already has the overlay, the stroke erases; otherwise it paints.
 4. Click the active overlay-type button again to exit paint mode.
 
 Only one overlay-type paint mode is active at a time — clicking another overlay type switches to it.
 
 !!! note
-    Overlays only paint on cells that are **inside the room**. Painting a cell outside the room is a no-op — the engine doesn't track anything there anyway. If a cell near a wall refuses to paint, extend the room boundary first via the Room zone in the [Detection zones](detection-zones.md) editor.
+    Overlays only paint on cells that are **inside the room**. If a cell near a wall refuses to paint, extend the room boundary first via the Room zone in the [Detection zones](detection-zones.md) editor.
 
 !!! example "Screenshot placeholder"
     **Overlays sidebar with the three type buttons (Entry/Exit, Interference, Suppress), with Interference active.** `overlays/sidebar-buttons.png`
@@ -30,16 +28,30 @@ Only one overlay-type paint mode is active at a time — clicking another overla
 !!! example "Screenshot placeholder"
     **Grid with entry/exit cells painted across a doorway and an interference region painted around a ceiling fan.** `overlays/mixed-overlays.png`
 
-## When to use each
+---
 
-### Entry/Exit
+## Entry/Exit
+
+### When to use it
 
 - Every door or archway the room opens onto.
 - Windows that are large enough and low enough for someone to climb through, if you want those tracked the same as a door.
 
-The zone engine uses entry/exit cells to decide whether a new target is "a person walking in" (expected event) or "a ghost that just appeared in the middle of the room" (suspicious event — treated as low confidence until the target persists).
+Paint the overlay across the entire walkable area of the opening, not just a single cell at the edge.
 
-### Interference
+### How it affects detection
+
+The Entry/Exit overlay changes two things about how the zone engine handles targets on those cells:
+
+**Instant entry.** Normally, when a target appears in a zone that is currently clear, the engine applies *gating* — it requires two consecutive frames at a raised threshold before it will activate the zone. This guards against transient ghost detections. On an Entry/Exit cell, gating is bypassed: the zone activates immediately on a single frame at the normal trigger threshold. A target appearing at a doorway is almost certainly a real person walking in, not a sensor ghost.
+
+**Faster exit.** When the last target in a zone disappears from a non-overlay cell, the zone waits for the full **Presence timeout** before clearing. When the last target disappears from an Entry/Exit cell, the zone uses the shorter **Handoff timeout** instead. This prevents lights from staying on after someone walks out through a doorway. The default Handoff timeout varies by zone type: 3 seconds for Default zones, 1 second for Transit zones, and 10 seconds for Bed and Seating zones.
+
+---
+
+## Interference
+
+### When to use it
 
 - Ceiling fans and oscillating pedestal fans — the blades produce real radar returns.
 - Curtains and blinds that move in a draught.
@@ -48,24 +60,32 @@ The zone engine uses entry/exit cells to decide whether a new target is "a perso
 
 Interference is the right tool when the cell occasionally has a real person too. A living-room ceiling fan is a classic case: you don't want the fan triggering presence, but you do want to detect someone sitting underneath it.
 
-### Suppress
+### How it affects detection
+
+The Interference overlay makes the zone engine much harder to convince in three ways:
+
+**No first appearance.** A target cannot originate on an interference cell when the zone is clear. It must have been tracked continuously from a clean cell first. Once the zone is already occupied, targets can still be detected on interference cells — the restriction only applies to the initial activation. This prevents a fan from triggering a zone on its own.
+
+**Hardened renew threshold.** When a zone is already occupied, the engine normally uses the zone's configured renew threshold to decide whether a target is still present. On interference cells, the renew threshold is forced to the maximum signal level (9). This means only a very strong radar return — a real person, not fan blades — can sustain occupancy.
+
+**Blocks instant entry.** Even if a cell has both the Entry/Exit and Interference overlays, the instant-entry bypass is disabled. The interference flag takes precedence, so gating still applies.
+
+---
+
+## Suppress
+
+### When to use it
 
 - Plants in stable positions that consistently show up as false targets.
 - Fish tanks, aquarium pumps, or other fixed moving-fluid setups.
 - Robot vacuums parked on their dock.
 - Any cell where you've tried Interference and it wasn't strong enough.
 
-Suppress is a hammer — it blocks detection in those cells entirely. Use it sparingly, and prefer Interference first.
+Suppress is a hammer — it blocks detection entirely. Use it sparingly, and prefer Interference first.
 
-## Interaction with zones
+### How it affects detection
 
-Overlays and zones are independent layers. A cell can be part of a zone *and* carry an overlay — the zone decides which detection events belong to which named region, and the overlay adjusts how the engine reacts to the radar signal itself.
-
-Common combinations:
-
-- A doorway cell is usually part of the Room zone (fallback) **and** carries Entry/Exit.
-- A cell under a ceiling fan might be part of a "Living Room" zone **and** carry Interference.
-- A cell behind a plant might be part of a "Kitchen" zone **and** carry Suppress.
+**Complete rejection.** The zone engine skips suppressed cells entirely. No target tracking, no zone entry, no signal processing — as far as the engine is concerned, nothing exists in those cells.
 
 ## Troubleshooting
 

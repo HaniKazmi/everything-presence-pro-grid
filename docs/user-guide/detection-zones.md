@@ -41,6 +41,8 @@ Once calibration is done and the room boundary looks right, add your first named
 - **Recolour** — click the colour swatch next to the zone name; a colour picker appears. Pick a colour that stands out against your other zones; the live overview uses it to shade the zone.
 - **Delete** — click the **×** button on the zone's sidebar row. The zone and its cells disappear; any cells that were in the zone fall back into the Room zone.
 
+![Changing the colour of a detection zone.](../images/detection-zones/colours.png "Changing the colour of a detection zone.")
+
 ## Per-zone settings
 
 The LD2450 target tracker can lose a target when there is no movement for a few seconds, such as happens when the target is asleep in bed. To avoid zone presence sensors flapping states every few seconds, you can specify the type of presence you expect for a particular zone. For instance, you would expect:

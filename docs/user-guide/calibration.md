@@ -19,13 +19,16 @@ The wizard is accessed from the **Live overview** screen on the Device Configura
 
 ![Uncalibrated live overview screen](../images/calibration/uncalibrated.png "Uncalibrated live overview screen")
 
-### 1. Read the positioning guide
+### 1. Read the calibration tutorial
 
 The first screen shows a diagram of a room with the four corners numbered 1–4 and the sensor marked (in the example diagram, the sensor sits at corner 2, but it can be anywhere). Skim the instructions, then click **Start calibration**.
 
-Tick **Don't show this again** before clicking **Start calibration** to skip straight to corner marking on future calibrations. You can re-enable the guide from the integration's options under **Show room calibration tutorial**.
-
 ![How to calibrate room size](../images/calibration/wizard-guide.png "How to calibrate room size")
+
+!!! tip
+
+    Tick **Don't show this again** before clicking **Start calibration** to skip straight to corner marking on future calibrations. You can re-enable the guide from the integration's options under **Show room calibration tutorial**.
+
 
 ### 2. Mark each corner in order
 

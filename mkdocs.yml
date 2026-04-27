@@ -83,7 +83,9 @@ nav:
     - Live overview: user-guide/live-overview.md
     - Detection zones: user-guide/detection-zones.md
     - Overlays: user-guide/overlays.md
+    - How detection works: user-guide/how-detection-works.md
     - Furniture: user-guide/furniture.md
+    - Templates: user-guide/templates.md
     - Settings:
       - user-guide/settings/index.md
       - Entities: user-guide/settings/entities.md
