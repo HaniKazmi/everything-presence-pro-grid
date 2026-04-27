@@ -881,7 +881,16 @@ export class EPPGridPanel extends LitElement {
 		return this._gridCtrl.applyLayout();
 	}
 
-	/** Full 22-field settings payload sourced from panel reactive properties. */
+	/**
+	 * Build the full settings payload sent to `eppgrid/set_settings`.
+	 *
+	 * Used by `saveConfiguration()` so backups capture the full settings shape.
+	 * The fields here MUST stay in sync with `_emitSave()` in
+	 * `components/epp-settings-view.ts` — that method builds the same payload from
+	 * the live settings-view overrides during an active edit session, while this
+	 * method reads the panel's reactive state (which is up-to-date when not in an
+	 * active settings edit). Adding a new settings field requires updating both.
+	 */
 	private _buildSettingsPayload(): Record<string, any> {
 		return {
 			temperature_offset: this._temperatureOffset,
