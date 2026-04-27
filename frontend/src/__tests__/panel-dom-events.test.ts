@@ -1167,12 +1167,12 @@ describe("_renderNeedsCalibration DOM events (via EppWizard)", () => {
 });
 
 describe("_renderConfigurationBackupDialog DOM events", () => {
-	it("template name input and save", () => {
+	it("configuration name input and save", () => {
 		const a = createPanel() as any;
 		const tpl = a._renderConfigurationBackupDialog();
 		const c = renderTo(tpl);
 
-		const input = c.querySelector(".template-name-input") as HTMLInputElement;
+		const input = c.querySelector(".configuration-name-input") as HTMLInputElement;
 		if (input) {
 			input.value = "My Template";
 			input.dispatchEvent(new Event("input"));

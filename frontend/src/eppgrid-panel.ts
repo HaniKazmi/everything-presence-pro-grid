@@ -2367,7 +2367,7 @@ export class EPPGridPanel extends LitElement {
           <h3>${this._localize("dialogs.backup_configuration")}</h3>
           <input
             type="text"
-            class="template-name-input"
+            class="configuration-name-input"
             placeholder="${this._localize("dialogs.configuration_name")}"
             .value=${this._configurationName}
             @input=${(e: Event) => {

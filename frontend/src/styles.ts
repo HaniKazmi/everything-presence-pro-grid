@@ -57,7 +57,7 @@ export const dialogStyles = css`
     gap: 12px;
   }
 
-  .template-name-input {
+  .configuration-name-input {
     width: 100%;
     padding: 10px 12px;
     border: 1px solid var(--divider-color, #e0e0e0);
@@ -66,31 +66,6 @@ export const dialogStyles = css`
     box-sizing: border-box;
     background: var(--card-background-color, #fff);
     color: var(--primary-text-color, #212121);
-  }
-
-  .template-item {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    padding: 8px;
-    border-radius: 8px;
-    border: 1px solid var(--divider-color, #e0e0e0);
-  }
-
-  .template-item-name {
-    flex: 1;
-    font-size: 14px;
-    font-weight: 500;
-  }
-
-  .template-item-size {
-    font-size: 12px;
-    color: var(--secondary-text-color, #757575);
-  }
-
-  .template-item-btn {
-    padding: 4px 12px;
-    font-size: 13px;
   }
 
   .configuration-card-grid {
