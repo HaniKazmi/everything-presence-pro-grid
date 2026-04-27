@@ -453,7 +453,7 @@ def websocket_list_templates(
     if manager is None:
         _send_not_loaded(connection, msg["id"])
         return
-    connection.send_result(msg["id"], {"templates": manager._store.templates})
+    connection.send_result(msg["id"], {"templates": manager._store.configurations})
 
 
 @websocket_api.websocket_command(
@@ -474,7 +474,7 @@ async def websocket_save_template(
     if manager is None:
         _send_not_loaded(connection, msg["id"])
         return
-    manager._store.templates[msg["name"]] = msg["template"]
+    manager._store.configurations[msg["name"]] = msg["template"]
     await manager._store.async_save()
     connection.send_result(msg["id"])
 
@@ -496,7 +496,7 @@ async def websocket_delete_template(
     if manager is None:
         _send_not_loaded(connection, msg["id"])
         return
-    manager._store.templates.pop(msg["name"], None)
+    manager._store.configurations.pop(msg["name"], None)
     await manager._store.async_save()
     connection.send_result(msg["id"])
 

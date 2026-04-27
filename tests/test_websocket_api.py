@@ -51,7 +51,7 @@ async def setup_integration(hass: HomeAssistant, config_entry: MockConfigEntry) 
         mock_dm.async_stop = AsyncMock()
         mock_dm._store = MagicMock()
         mock_dm._store.devices = {}
-        mock_dm._store.templates = {}
+        mock_dm._store.configurations = {}
         mock_dm._store.async_save = AsyncMock()
         mock_dm.devices = {}
         mock_dm.list_devices.return_value = []
@@ -744,7 +744,7 @@ class TestWebSocketTemplates:
     async def test_list_templates(self, hass: HomeAssistant, config_entry: MockConfigEntry) -> None:
         """list_templates returns stored templates."""
         mock_dm = await setup_integration(hass, config_entry)
-        mock_dm._store.templates = {"bedroom": {"grid_bytes": [1] * 400}}
+        mock_dm._store.configurations = {"bedroom": {"grid_bytes": [1] * 400}}
 
         from custom_components.eppgrid.websocket_api import websocket_list_templates
 
@@ -772,14 +772,14 @@ class TestWebSocketTemplates:
 
         await call_async_handler(hass, websocket_save_template, connection, msg)
 
-        assert "office" in mock_dm._store.templates
+        assert "office" in mock_dm._store.configurations
         mock_dm._store.async_save.assert_awaited()
         connection.send_result.assert_called_once_with(7)
 
     async def test_delete_template(self, hass: HomeAssistant, config_entry: MockConfigEntry) -> None:
         """delete_template removes a template."""
         mock_dm = await setup_integration(hass, config_entry)
-        mock_dm._store.templates["old"] = {"data": True}
+        mock_dm._store.configurations["old"] = {"data": True}
 
         from custom_components.eppgrid.websocket_api import websocket_delete_template
 
@@ -788,7 +788,7 @@ class TestWebSocketTemplates:
 
         await call_async_handler(hass, websocket_delete_template, connection, msg)
 
-        assert "old" not in mock_dm._store.templates
+        assert "old" not in mock_dm._store.configurations
         mock_dm._store.async_save.assert_awaited()
 
     async def test_apply_template_command_removed(self) -> None:

@@ -1,4 +1,4 @@
-"""Persistent storage for EPP Grid device configs and templates."""
+"""Persistent storage for EPP Grid device configs and saved configurations."""
 
 from __future__ import annotations
 
@@ -17,13 +17,13 @@ STORAGE_KEY = DOMAIN
 
 
 class EPPGridStore:
-    """Store for per-device configuration and room templates."""
+    """Store for per-device configuration and saved configurations."""
 
     def __init__(self, hass: HomeAssistant) -> None:
         self._hass = hass
         self._store = Store[dict[str, Any]](hass, STORAGE_VERSION, STORAGE_KEY)
         self.devices: dict[str, dict[str, Any]] = {}
-        self.templates: dict[str, dict[str, Any]] = {}
+        self.configurations: dict[str, dict[str, Any]] = {}
         self.sidebar_panel: bool = True
         self.show_room_calibration_tutorial: bool = True
 
@@ -33,16 +33,25 @@ class EPPGridStore:
         if data is None:
             return
         self.devices = data.get("devices", {})
-        self.templates = data.get("templates", {})
+        self.configurations = data.get("configurations", {})
+        # One-shot migration from pre-rename storage shape.
+        if not self.configurations and "templates" in data:
+            self.configurations = {
+                name: {**blob, "settings": blob.get("settings", {})}
+                for name, blob in data["templates"].items()
+            }
+            await self.async_save()
         self.sidebar_panel = data.get("sidebar_panel", True)
-        self.show_room_calibration_tutorial = data.get("show_room_calibration_tutorial", True)
+        self.show_room_calibration_tutorial = data.get(
+            "show_room_calibration_tutorial", True
+        )
 
     async def async_save(self) -> None:
         """Persist current data."""
         await self._store.async_save(
             {
                 "devices": self.devices,
-                "templates": self.templates,
+                "configurations": self.configurations,
                 "sidebar_panel": self.sidebar_panel,
                 "show_room_calibration_tutorial": self.show_room_calibration_tutorial,
             }
