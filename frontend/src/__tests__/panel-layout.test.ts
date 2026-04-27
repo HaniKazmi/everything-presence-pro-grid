@@ -83,7 +83,6 @@ function createPanel(): EPPGridPanel {
 	a._isPainting = false;
 	a._frozenBounds = null;
 	a._sidebarTab = "zones";
-	a._setupStep = null;
 	a._wizardCornerIndex = 0;
 	a._wizardCorners = [null, null, null, null];
 	a._wizardRoomWidth = 3000;
@@ -282,6 +281,7 @@ describe("setup wizard layout structure", () => {
 	it("wraps wizard in .panel so content is centered like other views", () => {
 		const el = createPanel();
 		const a = el as any;
+		a._view = "calibrate";
 		a._setupStep = "guide";
 
 		const result = a.render();
@@ -297,6 +297,7 @@ describe("setup wizard layout structure", () => {
 	it("wizard header uses the panel device dropdown that shows area", () => {
 		const el = createPanel();
 		const a = el as any;
+		a._view = "calibrate";
 		a._setupStep = "guide";
 		a._devices = [
 			{

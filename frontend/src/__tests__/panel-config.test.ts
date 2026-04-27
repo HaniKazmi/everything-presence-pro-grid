@@ -38,7 +38,6 @@ function createPanel(): EPPGridPanel {
 	a._roomDepth = 0;
 	a._furniture = [];
 	a._selectedFurnitureId = null;
-	a._setupStep = null;
 	a._saving = false;
 	a._showUnsavedDialog = false;
 	a._pendingNavigation = null;
@@ -663,7 +662,6 @@ describe("_applyConfig", () => {
 		expect(a._perspective).toEqual([1, 0, 0, 0, 1, 0, 0, 0]);
 		expect(a._roomWidth).toBe(3000);
 		expect(a._roomDepth).toBe(4000);
-		expect(a._setupStep).toBeNull();
 	});
 
 	it("applies furniture from config", () => {

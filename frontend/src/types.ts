@@ -38,8 +38,6 @@ export interface WizardCorner {
 	offset_fb: number;
 }
 
-export type SetupStep = "guide" | "corners" | "preview";
-
 export interface FlashableDevice {
 	mac: string;
 	name: string;
