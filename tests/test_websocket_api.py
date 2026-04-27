@@ -819,7 +819,14 @@ class TestWebSocketConfigurations:
             "roomWidth": 3.0,
             "roomDepth": 4.0,
             "furniture": [],
-            "settings": {"target_update_rate_ms": 500, "zone_presence": True},
+            "settings": {
+                "temperature_offset": 0.5,
+                "motion_timeout": 30,
+                "led_mode": "Presence",
+                "target_update_rate_ms": 500,
+                "entities": {"zone_presence": True},
+                "log_levels": {"sensor": "Info"},
+            },
         }
         save_msg = {
             "id": 9,
@@ -838,7 +845,14 @@ class TestWebSocketConfigurations:
 
         result = list_connection.send_result.call_args[0]
         saved_blob = result[1]["configurations"]["Bedroom"]
-        assert saved_blob["settings"] == {"target_update_rate_ms": 500, "zone_presence": True}
+        assert saved_blob["settings"] == {
+            "temperature_offset": 0.5,
+            "motion_timeout": 30,
+            "led_mode": "Presence",
+            "target_update_rate_ms": 500,
+            "entities": {"zone_presence": True},
+            "log_levels": {"sensor": "Info"},
+        }
 
 
 class TestWebSocketSettings:

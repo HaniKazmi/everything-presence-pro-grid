@@ -409,12 +409,12 @@ describe("_renderProtocolBanner update firmware button", () => {
 });
 
 // ---------------------------------------------------------
-// _renderTemplateLoadDialog: delete configuration button (line 1429)
+// _renderConfigurationRestoreDialog: delete configuration button (line 1429)
 // ---------------------------------------------------------
 describe("_renderConfigurationRestoreDialog delete configuration button", () => {
 	it("@click calls _deleteConfiguration with configuration name", () => {
 		const a = createPanel() as any;
-		// Seed a template into localStorage
+		// Seed a configuration into localStorage
 		const templates = [
 			{
 				name: "MyTemplate",

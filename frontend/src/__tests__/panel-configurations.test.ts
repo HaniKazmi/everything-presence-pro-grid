@@ -152,7 +152,7 @@ describe("_saveConfiguration", () => {
 		// Set some non-default settings values so we can assert they appear
 		a._temperatureOffset = 1.5;
 		a._targetUpdateRateMs = 500;
-		a._logLevels = { esp32: "DEBUG" };
+		a._logLevels = { esp32: "Debug" };
 
 		a.hass.callWS
 			.mockResolvedValueOnce({}) // save_configuration
@@ -172,7 +172,7 @@ describe("_saveConfiguration", () => {
 		expect(payload.configuration.settings.temperature_offset).toBe(1.5);
 		expect(payload.configuration.settings.target_update_rate_ms).toBe(500);
 		expect(payload.configuration.settings.log_levels).toEqual({
-			esp32: "DEBUG",
+			esp32: "Debug",
 		});
 	});
 });
@@ -202,7 +202,7 @@ describe("_buildSettingsPayload", () => {
 		a._targetUpdateRateMs = 500;
 		a._zoneUpdateRateMs = 250;
 		a._entitiesConfig = { zone_presence: true };
-		a._logLevels = { esp32: "WARN" };
+		a._logLevels = { esp32: "Warning" };
 
 		const payload = a._buildSettingsPayload();
 
@@ -229,7 +229,7 @@ describe("_buildSettingsPayload", () => {
 			target_update_rate_ms: 500,
 			zone_update_rate_ms: 250,
 			entities: { zone_presence: true },
-			log_levels: { esp32: "WARN" },
+			log_levels: { esp32: "Warning" },
 		});
 		// Exactly 22 keys — no extras, no omissions
 		expect(Object.keys(payload)).toHaveLength(22);

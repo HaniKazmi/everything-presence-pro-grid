@@ -548,8 +548,8 @@ export class GridStateController implements ReactiveController {
 			this.host._relayContactMode = s.relay_contact_mode;
 			this.host._targetUpdateRateMs = s.target_update_rate_ms;
 			this.host._zoneUpdateRateMs = s.zone_update_rate_ms;
-			this.host._entitiesConfig = s.entities;
-			this.host._logLevels = s.log_levels;
+			this.host._entitiesConfig = s.entities || {};
+			this.host._logLevels = s.log_levels || {};
 		}
 
 		this.host._showConfigurationRestore = false;

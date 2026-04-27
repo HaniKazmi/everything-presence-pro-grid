@@ -49,7 +49,7 @@ class TestDiagnosticDump:
     async def test_with_device_and_config(
         self, hass: HomeAssistant, config_entry: MockConfigEntry, manager: DeviceManager, store: EPPGridStore
     ) -> None:
-        """Dump includes device info, stored config, and templates."""
+        """Dump includes device info, stored config, and configurations."""
         mac = "AA:BB:CC:DD:EE:FF"
         manager.devices[mac] = ManagedDevice(mac=mac, name="Office", host="192.168.1.100")
         store.devices[mac] = {

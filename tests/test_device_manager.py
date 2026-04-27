@@ -2678,7 +2678,7 @@ class TestEventCallbacks:
         manager._build_flags[mac] = {"has_co2": True}
         manager._entity_update_macs.add(mac)
 
-        # Pre-populate templates that should survive
+        # Pre-populate configurations that should survive
         manager._store.configurations["Living Room"] = {"grid_bytes": [1, 2, 3]}
 
         with patch.object(manager, "async_close_session", new_callable=AsyncMock) as mock_close:
