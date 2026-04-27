@@ -435,7 +435,7 @@ describe("GridStateController", () => {
 			host.hass.callWS.mockResolvedValue({ configurations: {} });
 		});
 
-		it("calls save_template WS with name and template data", async () => {
+		it("calls save_configuration WS with name and configuration data", async () => {
 			await ctrl.saveConfiguration();
 			const calls = host.hass.callWS.mock.calls;
 			const saveCall = calls.find(

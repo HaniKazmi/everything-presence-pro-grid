@@ -399,7 +399,7 @@ describe("live overview menu branches (panel inline)", () => {
 		const items = c.querySelectorAll(".sidebar-menu-item");
 		for (let i = 0; i < items.length; i++) {
 			const text = items[i].textContent || "";
-			if (text.includes("dialogs.save_template")) {
+			if (text.includes("dialogs.backup_configuration")) {
 				(items[i] as HTMLElement).click();
 				expect(a._showConfigurationBackup).toBe(true);
 				break;
@@ -418,7 +418,7 @@ describe("live overview menu branches (panel inline)", () => {
 		const items = c.querySelectorAll(".sidebar-menu-item");
 		for (let i = 0; i < items.length; i++) {
 			const text = items[i].textContent || "";
-			if (text.includes("dialogs.load_template")) {
+			if (text.includes("dialogs.restore_configuration")) {
 				(items[i] as HTMLElement).click();
 				await vi.waitFor(() => {
 					expect(a._showConfigurationRestore).toBe(true);
