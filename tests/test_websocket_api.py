@@ -793,6 +793,9 @@ class TestWebSocketConfigurations:
 
     async def test_apply_template_command_removed(self) -> None:
         """eppgrid/apply_template is no longer a valid command."""
+        # Tombstone: eppgrid/apply_template (an unrelated, previously-removed
+        # command) must not be reintroduced. Not related to the templates →
+        # configurations rename.
         from custom_components.eppgrid import websocket_api as ws_mod
 
         assert not hasattr(ws_mod, "websocket_apply_template")
@@ -800,7 +803,11 @@ class TestWebSocketConfigurations:
     async def test_save_configuration_round_trips_settings(
         self, hass: HomeAssistant, config_entry: MockConfigEntry
     ) -> None:
-        """save_configuration persists `settings` field as part of the blob."""
+        """save_configuration persists `settings` field as part of the blob.
+
+        Uses direct handler invocation (consistent with the rest of this class) —
+        voluptuous schema dispatch is not exercised here.
+        """
         mock_dm = await setup_integration(hass, config_entry)
 
         from custom_components.eppgrid.websocket_api import websocket_list_configurations
