@@ -110,6 +110,111 @@ describe("_saveConfiguration", () => {
 			}),
 		);
 	});
+
+	it("includes a non-empty settings dict in the saved configuration blob", async () => {
+		const a = createPanel() as any;
+		a._configurationName = "With Settings";
+		a._grid = new Uint8Array(GRID_CELL_COUNT);
+		a._roomWidth = 3000;
+		a._roomDepth = 4000;
+		a._furniture = [];
+		a._zoneConfigs = [
+			{
+				type: "default",
+				trigger: 5,
+				renew: 3,
+				timeout: 10,
+				handoff_timeout: 3,
+			},
+			null,
+			null,
+			null,
+			null,
+			null,
+			null,
+			null,
+		];
+		// Set some non-default settings values so we can assert they appear
+		a._temperatureOffset = 1.5;
+		a._targetUpdateRateMs = 500;
+		a._logLevels = { esp32: "DEBUG" };
+
+		a.hass.callWS
+			.mockResolvedValueOnce({}) // save_configuration
+			.mockResolvedValueOnce({ configurations: {} }); // list_configurations
+
+		await a._saveConfiguration();
+
+		const call = a.hass.callWS.mock.calls.find(
+			(c: any[]) =>
+				(c[0] as { type?: string })?.type === "eppgrid/save_configuration",
+		);
+		expect(call).toBeDefined();
+		const payload = call![0] as { configuration: { settings: Record<string, any> } };
+		expect(payload.configuration.settings).toBeDefined();
+		expect(payload.configuration.settings.temperature_offset).toBe(1.5);
+		expect(payload.configuration.settings.target_update_rate_ms).toBe(500);
+		expect(payload.configuration.settings.log_levels).toEqual({ esp32: "DEBUG" });
+	});
+});
+
+describe("_buildSettingsPayload", () => {
+	it("buildSettingsPayload matches the set_settings WS payload shape", () => {
+		const a = createPanel() as any;
+		// Set all properties to non-default values for clear assertion
+		a._temperatureOffset = 0.5;
+		a._humidityOffset = 1.0;
+		a._illuminanceOffset = -2;
+		a._motionTimeout = 10;
+		a._targetAutoDistance = false;
+		a._targetMaxDistance = 5.0;
+		a._staticAutoDistance = false;
+		a._staticMinDistance = 0.5;
+		a._staticMaxDistance = 12.0;
+		a._staticTriggerThreshold = 4;
+		a._staticRenewThreshold = 2;
+		a._staticTimeout = 60;
+		a._staticOnDelay = 1;
+		a._ledMode = "Presence";
+		a._ledBrightness = 0.8;
+		a._ledPresenceColor = "#FF0000";
+		a._relayTriggerMode = "presence";
+		a._relayContactMode = "nc";
+		a._targetUpdateRateMs = 500;
+		a._zoneUpdateRateMs = 250;
+		a._entitiesConfig = { zone_presence: true };
+		a._logLevels = { esp32: "WARN" };
+
+		const payload = a._buildSettingsPayload();
+
+		// Verify all 22 fields are present
+		expect(payload).toMatchObject({
+			temperature_offset: 0.5,
+			humidity_offset: 1.0,
+			illuminance_offset: -2,
+			motion_timeout: 10,
+			target_auto_distance: false,
+			target_max_distance: 5.0,
+			static_auto_distance: false,
+			static_min_distance: 0.5,
+			static_max_distance: 12.0,
+			static_trigger_threshold: 4,
+			static_renew_threshold: 2,
+			static_timeout: 60,
+			static_on_delay: 1,
+			led_mode: "Presence",
+			led_brightness: 0.8,
+			led_presence_color: "#FF0000",
+			relay_trigger_mode: "presence",
+			relay_contact_mode: "nc",
+			target_update_rate_ms: 500,
+			zone_update_rate_ms: 250,
+			entities: { zone_presence: true },
+			log_levels: { esp32: "WARN" },
+		});
+		// Exactly 22 keys — no extras, no omissions
+		expect(Object.keys(payload)).toHaveLength(22);
+	});
 });
 
 describe("_loadConfiguration", () => {

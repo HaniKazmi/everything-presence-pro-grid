@@ -76,6 +76,32 @@ function mockHost(overrides: Record<string, any> = {}) {
 		_getVisibleRoomBounds() {
 			return getRoomBounds(this._grid);
 		},
+		_buildSettingsPayload() {
+			return {
+				temperature_offset: 0,
+				humidity_offset: 0,
+				illuminance_offset: 0,
+				motion_timeout: 5,
+				target_auto_distance: true,
+				target_max_distance: 6,
+				static_auto_distance: true,
+				static_min_distance: 0.3,
+				static_max_distance: 16,
+				static_trigger_threshold: 3,
+				static_renew_threshold: 3,
+				static_timeout: 30,
+				static_on_delay: 0,
+				led_mode: "Manual Control",
+				led_brightness: 1.0,
+				led_presence_color: "#CC33FF",
+				relay_trigger_mode: "disabled",
+				relay_contact_mode: "no",
+				target_update_rate_ms: 1000,
+				zone_update_rate_ms: 1000,
+				entities: {},
+				log_levels: {},
+			};
+		},
 		...overrides,
 	};
 }

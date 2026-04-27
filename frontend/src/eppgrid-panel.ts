@@ -881,6 +881,34 @@ export class EPPGridPanel extends LitElement {
 		return this._gridCtrl.applyLayout();
 	}
 
+	/** Full 22-field settings payload sourced from panel reactive properties. */
+	private _buildSettingsPayload(): Record<string, any> {
+		return {
+			temperature_offset: this._temperatureOffset,
+			humidity_offset: this._humidityOffset,
+			illuminance_offset: this._illuminanceOffset,
+			motion_timeout: this._motionTimeout,
+			target_auto_distance: this._targetAutoDistance,
+			target_max_distance: this._targetMaxDistance,
+			static_auto_distance: this._staticAutoDistance,
+			static_min_distance: this._staticMinDistance,
+			static_max_distance: this._staticMaxDistance,
+			static_trigger_threshold: this._staticTriggerThreshold,
+			static_renew_threshold: this._staticRenewThreshold,
+			static_timeout: this._staticTimeout,
+			static_on_delay: this._staticOnDelay,
+			led_mode: this._ledMode,
+			led_brightness: this._ledBrightness,
+			led_presence_color: this._ledPresenceColor,
+			relay_trigger_mode: this._relayTriggerMode,
+			relay_contact_mode: this._relayContactMode,
+			target_update_rate_ms: this._targetUpdateRateMs,
+			zone_update_rate_ms: this._zoneUpdateRateMs,
+			entities: this._entitiesConfig || {},
+			log_levels: this._logLevels || {},
+		};
+	}
+
 	private async _saveSettings(payload?: Record<string, any>): Promise<void> {
 		return this._gridCtrl.saveSettings(payload || {});
 	}

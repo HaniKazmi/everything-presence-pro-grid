@@ -467,6 +467,7 @@ export class GridStateController implements ReactiveController {
 			furniture: (this.host._furniture as FurnitureItem[]).map((f) => ({
 				...f,
 			})),
+			settings: (this.host as any)._buildSettingsPayload(),
 		};
 		await (this.host as any).hass.callWS({
 			type: "eppgrid/save_configuration",
