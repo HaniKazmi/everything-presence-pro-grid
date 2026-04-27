@@ -116,6 +116,24 @@ class TestEPPGridStore:
         assert list(store.configurations.keys()) == ["new"]
         assert store.configurations["new"]["settings"] == {"foo": 1}
 
+    async def test_migration_skipped_when_configurations_empty_dict(self, hass: HomeAssistant) -> None:
+        """Empty `configurations: {}` (user deleted all) must not re-import legacy templates."""
+        seed_store = EPPGridStore(hass)
+        await seed_store._store.async_save(
+            {
+                "devices": {},
+                "configurations": {},
+                "templates": {"old": {"grid": [], "zones": []}},
+                "sidebar_panel": True,
+                "show_room_calibration_tutorial": True,
+            }
+        )
+
+        store = EPPGridStore(hass)
+        await store.async_load()
+
+        assert store.configurations == {}
+
     async def test_migration_preserves_non_default_sidebar_and_tutorial(self, hass: HomeAssistant) -> None:
         """Migration must not reset sidebar_panel or tutorial to defaults."""
         seed_store = EPPGridStore(hass)

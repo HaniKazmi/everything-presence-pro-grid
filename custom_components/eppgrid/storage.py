@@ -36,8 +36,11 @@ class EPPGridStore:
         self.sidebar_panel = data.get("sidebar_panel", True)
         self.show_room_calibration_tutorial = data.get("show_room_calibration_tutorial", True)
         self.configurations = data.get("configurations", {})
-        # One-shot migration from pre-rename storage shape.
-        if not self.configurations and "templates" in data:
+        # One-shot migration from pre-rename storage shape. Triggered by absence
+        # of the new key (not emptiness) so that a user who legitimately
+        # deleted all their saved configurations doesn't get the legacy
+        # `templates` re-imported on every load.
+        if "configurations" not in data and "templates" in data:
             self.configurations = {
                 name: {**blob, "settings": blob.get("settings", {})} for name, blob in data["templates"].items()
             }
