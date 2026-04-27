@@ -33,6 +33,10 @@ class EPPGridStore:
         if data is None:
             return
         self.devices = data.get("devices", {})
+        self.sidebar_panel = data.get("sidebar_panel", True)
+        self.show_room_calibration_tutorial = data.get(
+            "show_room_calibration_tutorial", True
+        )
         self.configurations = data.get("configurations", {})
         # One-shot migration from pre-rename storage shape.
         if not self.configurations and "templates" in data:
@@ -41,10 +45,6 @@ class EPPGridStore:
                 for name, blob in data["templates"].items()
             }
             await self.async_save()
-        self.sidebar_panel = data.get("sidebar_panel", True)
-        self.show_room_calibration_tutorial = data.get(
-            "show_room_calibration_tutorial", True
-        )
 
     async def async_save(self) -> None:
         """Persist current data."""

@@ -115,3 +115,29 @@ class TestEPPGridStore:
 
         assert list(store.configurations.keys()) == ["new"]
         assert store.configurations["new"]["settings"] == {"foo": 1}
+
+    async def test_migration_preserves_non_default_sidebar_and_tutorial(
+        self, hass: HomeAssistant
+    ) -> None:
+        """Migration must not reset sidebar_panel or tutorial to defaults."""
+        seed_store = EPPGridStore(hass)
+        await seed_store._store.async_save(
+            {
+                "devices": {},
+                "templates": {"x": {"grid": [], "zones": []}},
+                "sidebar_panel": False,
+                "show_room_calibration_tutorial": False,
+            }
+        )
+
+        store = EPPGridStore(hass)
+        await store.async_load()
+
+        assert store.sidebar_panel is False
+        assert store.show_room_calibration_tutorial is False
+
+        # Persisted data must reflect the same — migration triggered async_save
+        store2 = EPPGridStore(hass)
+        await store2.async_load()
+        assert store2.sidebar_panel is False
+        assert store2.show_room_calibration_tutorial is False

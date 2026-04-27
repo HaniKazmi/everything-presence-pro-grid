@@ -43,7 +43,7 @@ class TestDiagnosticDump:
         assert "integration_version" in result
         assert result["devices"] == []
         assert result["stored_configs"] == {}
-        assert result["templates"] == {}
+        assert result["configurations"] == {}
         assert result["entity_states"] == {}
 
     async def test_with_device_and_config(
@@ -56,7 +56,7 @@ class TestDiagnosticDump:
             "calibration": {"perspective": [1.0] * 8, "room_width": 3000.0},
             "settings": {"timeout": 10},
         }
-        store.templates["bedroom"] = {"grid_bytes": [0] * 400}
+        store.configurations["bedroom"] = {"grid_bytes": [0] * 400}
         manager._build_flags[mac] = {"has_ble": True}
 
         result = await async_get_config_entry_diagnostics(hass, config_entry)
@@ -70,8 +70,8 @@ class TestDiagnosticDump:
         assert mac in result["stored_configs"]
         assert result["stored_configs"][mac]["calibration"]["room_width"] == 3000.0
 
-        assert "bedroom" in result["templates"]
-        assert result["templates"]["bedroom"]["grid_bytes"] == [0] * 400
+        assert "bedroom" in result["configurations"]
+        assert result["configurations"]["bedroom"]["grid_bytes"] == [0] * 400
 
     async def test_entity_states_collected(
         self, hass: HomeAssistant, config_entry: MockConfigEntry, manager: DeviceManager

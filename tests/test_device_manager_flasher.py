@@ -18,7 +18,7 @@ from custom_components.eppgrid.storage import EPPGridStore
 def mock_store():
     store = MagicMock(spec=EPPGridStore)
     store.devices = {}
-    store.templates = {}
+    store.configurations = {}
     store.sidebar_panel = True
     store.get_device = MagicMock(return_value=None)
     return store
