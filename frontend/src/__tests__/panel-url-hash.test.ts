@@ -213,6 +213,53 @@ describe("panel — external hash changes feed back into _view / _sidebarTab", (
 		el.remove();
 	});
 
+	it("entering editor via hash resets _overlayMode and pushes widened range", async () => {
+		setHash("");
+		const el = createPanel();
+		document.body.appendChild(el);
+		const a = el as any;
+		a._overlayMode = "heatmap";
+		const spy = vi.spyOn(a, "_pushWidenedDistanceOverride");
+		await el.updateComplete;
+		setHash("#zones");
+		window.dispatchEvent(new HashChangeEvent("hashchange"));
+		await el.updateComplete;
+		expect(a._view).toBe("editor");
+		expect(a._overlayMode).toBeNull();
+		expect(spy).toHaveBeenCalled();
+		el.remove();
+	});
+
+	it("entering editor + overlays via hash preserves _overlayMode", async () => {
+		setHash("");
+		const el = createPanel();
+		document.body.appendChild(el);
+		const a = el as any;
+		a._overlayMode = "heatmap";
+		await el.updateComplete;
+		setHash("#overlays");
+		window.dispatchEvent(new HashChangeEvent("hashchange"));
+		await el.updateComplete;
+		expect(a._sidebarTab).toBe("overlays");
+		expect(a._overlayMode).toBe("heatmap");
+		el.remove();
+	});
+
+	it("entering calibrate via hash pushes widened range", async () => {
+		setHash("");
+		const el = createPanel();
+		document.body.appendChild(el);
+		const a = el as any;
+		const spy = vi.spyOn(a, "_pushWidenedDistanceOverride");
+		await el.updateComplete;
+		setHash("#calibrate");
+		window.dispatchEvent(new HashChangeEvent("hashchange"));
+		await el.updateComplete;
+		expect(a._view).toBe("calibrate");
+		expect(spy).toHaveBeenCalled();
+		el.remove();
+	});
+
 	it("clearing the hash externally returns the panel to live", async () => {
 		setHash("#furniture");
 		const el = createPanel();

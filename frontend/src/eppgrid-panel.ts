@@ -64,6 +64,7 @@ import {
 	parseViewHash,
 	type SidebarTab,
 	type ViewMode,
+	type ViewState,
 	viewHash,
 } from "./lib/view-hash.js";
 import {
@@ -527,6 +528,26 @@ export class EPPGridPanel extends LitElement {
 	}
 
 	/**
+	 * Move to a target view + sub-tab. Centralises the side effects
+	 * (overlay-mode reset, range widening) so click handlers and
+	 * URL-driven navigation behave the same.
+	 */
+	private _applyView(state: ViewState): void {
+		this._view = state.view;
+		this._sidebarTab = state.sidebarTab;
+		if (state.view === "editor" && state.sidebarTab !== "overlays") {
+			this._overlayMode = null;
+		}
+		if (
+			state.view === "editor" ||
+			state.view === "tutorial" ||
+			state.view === "calibrate"
+		) {
+			this._pushWidenedDistanceOverride();
+		}
+	}
+
+	/**
 	 * React to external hash changes (browser back/forward, sidebar
 	 * icon, manual URL edit). When dirty, snap the URL back so the
 	 * queued navigation only fires once the user discards.
@@ -541,10 +562,7 @@ export class EPPGridPanel extends LitElement {
 				viewHash({ view: this._view, sidebarTab: this._sidebarTab }),
 			);
 		}
-		this._guardNavigation(() => {
-			this._view = next.view;
-			this._sidebarTab = next.sidebarTab;
-		});
+		this._guardNavigation(() => this._applyView(next));
 	};
 
 	updated(changedProps: PropertyValues): void {
@@ -916,13 +934,10 @@ export class EPPGridPanel extends LitElement {
 		}
 	}
 
-	private _enterEditor(tab: "zones" | "overlays" | "furniture"): void {
-		this._guardNavigation(() => {
-			this._view = "editor";
-			this._sidebarTab = tab;
-			if (tab !== "overlays") this._overlayMode = null;
-			this._pushWidenedDistanceOverride();
-		});
+	private _enterEditor(tab: SidebarTab): void {
+		this._guardNavigation(() =>
+			this._applyView({ view: "editor", sidebarTab: tab }),
+		);
 	}
 
 	// -- Template management (backend WS API) --
@@ -1672,12 +1687,14 @@ export class EPPGridPanel extends LitElement {
 	}
 
 	private _changePlacement(): void {
-		this._guardNavigation(() => {
-			this._view = this._deviceCtrl.showRoomCalibrationTutorial
-				? "tutorial"
-				: "calibrate";
-			this._pushWidenedDistanceOverride();
-		});
+		this._guardNavigation(() =>
+			this._applyView({
+				view: this._deviceCtrl.showRoomCalibrationTutorial
+					? "tutorial"
+					: "calibrate",
+				sidebarTab: this._sidebarTab,
+			}),
+		);
 	}
 
 	private async _onDismissTutorial(): Promise<void> {
@@ -2020,9 +2037,12 @@ export class EPPGridPanel extends LitElement {
 												: nothing
 										}
                     <button class="sidebar-menu-item" @click=${() => {
-											this._guardNavigation(() => {
-												this._view = "settings";
-											});
+											this._guardNavigation(() =>
+												this._applyView({
+													view: "settings",
+													sidebarTab: this._sidebarTab,
+												}),
+											);
 										}}>
                       <ha-icon icon="mdi:cog" style="--mdc-icon-size: 18px;"></ha-icon> ${this._localize("menu.settings")}
                     </button>
@@ -2067,11 +2087,12 @@ export class EPPGridPanel extends LitElement {
                 .perspective=${this._perspective}
                 .localize=${this._localize}
                 @view-change=${(e: CustomEvent) => {
-									this._guardNavigation(() => {
-										this._view = e.detail.view;
-										if (e.detail.sidebarTab)
-											this._sidebarTab = e.detail.sidebarTab;
-									});
+									this._guardNavigation(() =>
+										this._applyView({
+											view: e.detail.view,
+											sidebarTab: e.detail.sidebarTab ?? this._sidebarTab,
+										}),
+									);
 								}}
               ></epp-live-sidebar>
             </div>
