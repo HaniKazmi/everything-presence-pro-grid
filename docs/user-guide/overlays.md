@@ -19,23 +19,17 @@ There are three overlay types:
 
 Only one overlay-type paint mode is active at a time — clicking another overlay type switches to it.
 
+![Overlays sidebar with the three type buttons (Entry/Exit, Interference, Suppress), with Interference active.](../images/overlays/sidebar-buttons.png "Overlays sidebar with the three type buttons (Entry/Exit, Interference, Suppress), with Interference active.")
+
 !!! note
     Overlays only paint on cells that are **inside the room**. If a cell near a wall refuses to paint, extend the room boundary first via the Room zone in the [Detection zones](detection-zones.md) editor.
 
-!!! example "Screenshot placeholder"
-    **Overlays sidebar with the three type buttons (Entry/Exit, Interference, Suppress), with Interference active.** `overlays/sidebar-buttons.png`
-
-!!! example "Screenshot placeholder"
-    **Grid with entry/exit cells painted across a doorway and an interference region painted around a ceiling fan.** `overlays/mixed-overlays.png`
-
----
 
 ## Entry/Exit
 
 ### When to use it
 
-- Every door or archway the room opens onto.
-- Windows that are large enough and low enough for someone to climb through, if you want those tracked the same as a door.
+- Any entry or exit point in a room. Use it any place where a target might appear out of nowhere.
 
 Paint the overlay across the entire walkable area of the opening, not just a single cell at the edge.
 
@@ -43,17 +37,15 @@ Paint the overlay across the entire walkable area of the opening, not just a sin
 
 The Entry/Exit overlay changes two things about how the zone engine handles targets on those cells:
 
-**Instant entry.** Normally, when a target appears in a zone that is currently clear, the engine applies *gating* — it requires two consecutive frames at a raised threshold before it will activate the zone. This guards against transient ghost detections. On an Entry/Exit cell, gating is bypassed: the zone activates immediately on a single frame at the normal trigger threshold. A target appearing at a doorway is almost certainly a real person walking in, not a sensor ghost.
+**Instant entry.** Normally, when a target appears in a zone that is currently clear, the engine applies *gating* — it requires two consecutive frames at a raised threshold before it will activate the zone. This guards against transient ghost detections. On an Entry/Exit cell, gating is bypassed: the zone activates immediately on a single frame at the configured trigger threshold. A target appearing at a doorway is almost certainly a real person walking in, not a sensor ghost.
 
-**Faster exit.** When the last target in a zone disappears from a non-overlay cell, the zone waits for the full **Presence timeout** before clearing. When the last target disappears from an Entry/Exit cell, the zone uses the shorter **Handoff timeout** instead. This prevents lights from staying on after someone walks out through a doorway. The default Handoff timeout varies by zone type: 3 seconds for Default zones, 1 second for Transit zones, and 10 seconds for Bed and Seating zones.
-
----
+**Faster exit.** When the last target in a zone disappears from a non-overlay cell, the zone waits for the full **Presence timeout** before clearing. When the last target disappears from an Entry/Exit cell, the zone uses the shorter **Handoff timeout** instead. 
 
 ## Interference
 
 ### When to use it
 
-- Ceiling fans and oscillating pedestal fans — the blades produce real radar returns.
+- Ceiling fans and oscillating pedestal fans.
 - Curtains and blinds that move in a draught.
 - Large reflective surfaces near the sensor — mirrors, glass cabinets, metal radiators.
 - TV screens on walls (some LCDs produce interference).
@@ -62,15 +54,11 @@ Interference is the right tool when the cell occasionally has a real person too.
 
 ### How it affects detection
 
-The Interference overlay makes the zone engine much harder to convince in three ways:
+The Interference overlay makes the zone engine much harder to convince in two ways:
 
 **No first appearance.** A target cannot originate on an interference cell when the zone is clear. It must have been tracked continuously from a clean cell first. Once the zone is already occupied, targets can still be detected on interference cells — the restriction only applies to the initial activation. This prevents a fan from triggering a zone on its own.
 
 **Hardened renew threshold.** When a zone is already occupied, the engine normally uses the zone's configured renew threshold to decide whether a target is still present. On interference cells, the renew threshold is forced to the maximum signal level (9). This means only a very strong radar return — a real person, not fan blades — can sustain occupancy.
-
-**Blocks instant entry.** Even if a cell has both the Entry/Exit and Interference overlays, the instant-entry bypass is disabled. The interference flag takes precedence, so gating still applies.
-
----
 
 ## Suppress
 
@@ -81,7 +69,7 @@ The Interference overlay makes the zone engine much harder to convince in three 
 - Robot vacuums parked on their dock.
 - Any cell where you've tried Interference and it wasn't strong enough.
 
-Suppress is a hammer — it blocks detection entirely. Use it sparingly, and prefer Interference first.
+Suppress blocks detection entirely. Use it sparingly, and prefer Interference first.
 
 ### How it affects detection
 

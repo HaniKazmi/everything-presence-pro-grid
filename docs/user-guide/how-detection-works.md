@@ -148,5 +148,7 @@ See also: the [central Troubleshooting](troubleshooting.md) page for conceptual 
 
 ## Where to next
 
-- **[Detection zones →](detection-zones.md)** — paint zones and pick a type.
-- **[Overlays →](overlays.md)** — mark doorways and noise sources to refine the engine's behaviour.
+- **[Furniture →](furniture.md)** — place furniture on the grid so you can read the live overview at a glance.
+- **[Detection zones](detection-zones.md)** — paint zones and pick a type.
+- **[Overlays](overlays.md)** — mark doorways and noise sources to refine the engine's behaviour.
+- **[Settings](settings/index.md)** — tune sensor timeouts, entity exposure, reporting, and more.

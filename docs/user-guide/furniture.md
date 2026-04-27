@@ -1,6 +1,6 @@
 # Furniture
 
-Furniture is a purely visual layer. You place icons for sofas, beds, tables, and appliances on the grid so the live overview is immediately interpretable — the dot moving near the bottom-left is someone sitting on the sofa, not a ghost. Unlike zones and overlays, furniture **does not affect detection** at all; it's decoration that helps you and future you reason about what the sensor is seeing.
+Furniture is a purely visual layer. You place icons for sofas, beds, tables, and appliances on the grid so the live overview is immediately interpretable. Unlike zones and overlays, furniture **does not affect detection** at all; it's decoration that helps you and future you reason about what the sensor is seeing.
 
 ## Why place furniture
 
@@ -16,19 +16,11 @@ Without furniture, the live overview is a coloured grid with dots moving on it. 
 ## Adding furniture
 
 1. Switch to the **Furniture** editor mode in the sidebar.
-2. The sidebar shows a 2-column grid of furniture "stickers" covering 35 presets, grouped by category:
-    - **Seating** — armchair, two-seater sofa, three-seater sofa.
-    - **Beds** — single bed, double bed, bedside table.
-    - **Tables and work surfaces** — desk, dining table, round dining table, side table, counter, kitchen island.
-    - **Bathroom** — bath, shower, toilet, bidet, hot tub.
-    - **Kitchen and appliances** — fridge, oven, washing machine, cabinet, cupboard.
-    - **Doors and windows** — door (left-swing), door (right-swing), sliding door, window.
-    - **Other** — television, speaker, floor lamp, plant, carpet, cat bed, dog bed, car, pool.
-3. Click a sticker. The item lands centred in the room at its default size (in millimetres, so real-world-accurate).
+2. The sidebar lists the preset stickers — beds, sofas, tables, kitchen and bathroom items, doors, plants, and so on. Use the search box at the top to filter by name.
+3. Click a sticker. The item lands centred in the room at its default real-world dimensions (in millimetres).
 4. Drag the item to position it on the grid.
 
-!!! example "Screenshot placeholder"
-    **Furniture sidebar with the 32-preset sticker catalogue visible.** `furniture/sidebar-stickers.png`
+![Searching for a furniture icon with 'table' in the name.](../images/furniture/adding.png "Searching for a furniture icon with 'table' in the name.")
 
 ## Moving, resizing, rotating
 
@@ -45,25 +37,25 @@ Select a furniture item on the grid by clicking it. Handles appear for every ope
 !!! example "Screenshot placeholder"
     **Grid with a dressed room — bed, dining table and chairs, sofa, doors marked at entry points.** `furniture/dressed-room.png`
 
+## Keyboard shortcuts
+
+When a furniture item is selected, the following keyboard shortcuts are enabled:
+
+| Key | Action |
+| --- | --- |
+| **Delete** / **Backspace** | Delete the selected item |
+| **Escape** | Deselect |
+| **Ctrl/Cmd + C** | Copy |
+| **Ctrl/Cmd + X** | Cut |
+| **Ctrl/Cmd + V** | Paste — the new item lands one cell offset from the original so you can see it |
+
 ## Custom icons
 
-If none of the 32 presets match what you want to represent, pick the custom-icon slot at the end of the sticker list. You can attach a custom SVG, and from there it behaves like any other furniture item: placed, moved, resized, rotated, deleted.
-
-Useful for:
-
-- Items specific to your layout that don't have a preset (e.g. wardrobes, bookshelves, specific appliances).
-- Non-furniture annotations — a coloured marker to remind yourself something specific about that cell.
+If none of the presets match what you want to represent, pick the **+** custom-icon slot at the end of the sticker list. It opens Home Assistant's built-in icon picker, which lets you choose any icon from the standard Material Design Icons set (`mdi:*`) bundled with HA. Once added, the item behaves like any other piece of furniture: placed, moved, resized, rotated, deleted.
 
 ## Troubleshooting
 
-| Symptom | Likely cause | Fix |
-| --- | --- | --- |
-| Clicking a sticker doesn't add a furniture item to the grid | Furniture editor mode isn't active | Select **Furniture** in the sidebar first. Zone / Overlays editors don't react to furniture stickers. |
-| Furniture disappears from a different panel session or a different browser | Furniture layout is stored per-browser (localStorage), not pushed to the device | Redraw on the new browser, or use the same browser session. Zones and overlays are the ones synced to the device. |
-| Rotation handle isn't visible on a selected item | Another item is rendered on top of it | Move the overlapping item, or deselect and re-select the item underneath. |
-| Furniture placed but the item's default size doesn't match real-world dimensions | Presets ship with typical dimensions in millimetres, which vary by make | Resize using the eight handles around the item to match your actual furniture. |
-
-See also: the [central Troubleshooting](troubleshooting.md) page for conceptual FAQ and how to open a GitHub issue.
+See: the [central Troubleshooting](troubleshooting.md) page for conceptual FAQ and how to open a GitHub issue.
 
 ## Where to next
 
