@@ -76,7 +76,10 @@ import {
 } from "./lib/zone-defaults.js";
 import type { ZoneEngineResult, ZoneEngineState } from "./lib/zone-engine.js";
 import { setupLocalize } from "./localize.js";
-import { installPanelMountGuard } from "./panel-mount-guard.js";
+import {
+	ensureObserversAttached,
+	installPanelMountGuard,
+} from "./panel-mount-guard.js";
 import {
 	buttonStyles,
 	dialogStyles,
@@ -420,6 +423,10 @@ export class EPPGridPanel extends LitElement {
 
 	connectedCallback(): void {
 		super.connectedCallback();
+		// installPanelMountGuard runs at module load, before HA has built
+		// the panel resolver — so the observers couldn't attach then.
+		// Now that we're connected, the tree exists; wire them up.
+		ensureObserversAttached();
 		this._initialize().catch(() => {
 			// _initialize traps its own failures; guard here so that any
 			// late rejection can't surface as "Uncaught (in promise)".
