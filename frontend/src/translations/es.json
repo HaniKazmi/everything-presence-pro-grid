@@ -100,7 +100,7 @@
 		"delete_calibration_body": "Esto también eliminará todas las zonas de detección y el mobiliario. Esta acción no se puede deshacer.",
 		"unsaved_changes": "Tienes cambios sin guardar",
 		"unsaved_changes_body": "Los cambios se perderán si navegas a otra página sin aplicarlos.",
-		"backup_configuration": "Copia de seguridad",
+		"backup_configuration": "Respaldar configuración",
 		"restore_configuration": "Restaurar configuración",
 		"no_configurations": "No hay configuraciones guardadas.",
 		"configuration_name": "Nombre de la configuración"

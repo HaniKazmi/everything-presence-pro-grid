@@ -373,7 +373,7 @@ describe("GridStateController", () => {
 	// =========================================================================
 
 	describe("fetchConfigurations()", () => {
-		it("fetches templates from backend and populates cache", async () => {
+		it("fetches configurations from backend and populates cache", async () => {
 			host.hass.callWS.mockResolvedValueOnce({
 				configurations: {
 					"Living Room": {
@@ -400,7 +400,7 @@ describe("GridStateController", () => {
 			expect(ctrl.configurations[1].name).toBe("Kitchen");
 		});
 
-		it("sets empty array when backend returns no templates", async () => {
+		it("sets empty array when backend returns no configurations", async () => {
 			host.hass.callWS.mockResolvedValueOnce({ configurations: {} });
 			await ctrl.fetchConfigurations();
 			expect(ctrl.configurations).toEqual([]);
@@ -431,7 +431,7 @@ describe("GridStateController", () => {
 			host._roomWidth = 3000;
 			host._roomDepth = 4000;
 			host._furniture = [];
-			// Mock list_templates response for the refresh after save
+			// Mock list_configurations response for the refresh after save
 			host.hass.callWS.mockResolvedValue({ configurations: {} });
 		});
 
@@ -468,7 +468,7 @@ describe("GridStateController", () => {
 			expect(host.hass.callWS).not.toHaveBeenCalled();
 		});
 
-		it("refreshes cache after saving (calls list_templates)", async () => {
+		it("refreshes cache after saving (calls list_configurations)", async () => {
 			await ctrl.saveConfiguration();
 			const listCalls = host.hass.callWS.mock.calls.filter(
 				(c: any[]) => c[0].type === "eppgrid/list_configurations",
@@ -895,11 +895,11 @@ describe("GridStateController", () => {
 
 	describe("deleteConfiguration()", () => {
 		beforeEach(() => {
-			// Mock list_templates response for the refresh after delete
+			// Mock list_configurations response for the refresh after delete
 			host.hass.callWS.mockResolvedValue({ configurations: {} });
 		});
 
-		it("calls delete_template WS and refreshes cache", async () => {
+		it("calls delete_configuration WS and refreshes cache", async () => {
 			await ctrl.deleteConfiguration("Alpha");
 			const deleteCall = host.hass.callWS.mock.calls.find(
 				(c: any[]) => c[0].type === "eppgrid/delete_configuration",
