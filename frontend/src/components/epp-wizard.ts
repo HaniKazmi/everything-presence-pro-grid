@@ -19,7 +19,9 @@ import {
 } from "../lib/room-geometry.js";
 import { defaultLocalize, type LocalizeFn } from "../localize.js";
 import { buttonStyles, headerStyles, settingStyles } from "../styles.js";
-import type { RawTarget, SetupStep, WizardCorner } from "../types.js";
+import type { RawTarget, WizardCorner } from "../types.js";
+
+export type SetupStep = "guide" | "corners";
 
 export class EppWizard extends LitElement {
 	// --- Properties set by the parent panel ---
@@ -1252,6 +1254,9 @@ export class EppWizard extends LitElement {
 	private _onBeginMarking(): void {
 		if (this._dismissTutorial) this._fireDismissTutorial();
 		this._setupStep = "corners";
+		this.dispatchEvent(
+			new CustomEvent("begin-corners", { bubbles: true, composed: true }),
+		);
 	}
 
 	private _fireCancel(): void {

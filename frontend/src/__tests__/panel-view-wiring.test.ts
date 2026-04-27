@@ -90,7 +90,6 @@ function createPanel(): EPPGridPanel {
 	a._isPainting = false;
 	a._frozenBounds = null;
 	a._sidebarTab = "zones";
-	a._setupStep = null;
 	a._wizardCornerIndex = 0;
 	a._wizardCorners = [null, null, null, null];
 	a._wizardRoomWidth = 3000;
@@ -574,12 +573,12 @@ describe("Wizard completion event wiring", () => {
 	function wizardPanel(): [EPPGridPanel, HTMLDivElement] {
 		const el = createPanel();
 		const a = el as any;
-		a._setupStep = "guide";
+		a._view = "calibrate";
 		const container = renderPanel(el);
 		return [el, container];
 	}
 
-	it("calibration-complete sets perspective, dimensions, clears setupStep, goes live", () => {
+	it("calibration-complete sets perspective, dimensions, returns to live", () => {
 		const [el, container] = wizardPanel();
 		const a = el as any;
 		const wizard = container.querySelector("epp-wizard")!;
@@ -596,7 +595,6 @@ describe("Wizard completion event wiring", () => {
 		expect(a._perspective).toEqual([1, 0, 0, 0, 1, 0, 0, 0]);
 		expect(a._roomWidth).toBe(4000);
 		expect(a._roomDepth).toBe(5000);
-		expect(a._setupStep).toBeNull();
 		expect(a._view).toBe("live");
 	});
 
@@ -619,12 +617,22 @@ describe("Wizard completion event wiring", () => {
 		expect(a._grid).toEqual(expected);
 	});
 
-	it("wizard-cancel clears _setupStep", () => {
+	it("wizard-cancel returns to live", () => {
 		const [el, container] = wizardPanel();
 		const a = el as any;
 		const wizard = container.querySelector("epp-wizard")!;
 		wizard.dispatchEvent(new CustomEvent("wizard-cancel", { bubbles: true }));
-		expect(a._setupStep).toBeNull();
+		expect(a._view).toBe("live");
+	});
+
+	it("begin-corners promotes a tutorial view to calibrate", () => {
+		const el = createPanel();
+		const a = el as any;
+		a._view = "tutorial";
+		const container = renderPanel(el);
+		const wizard = container.querySelector("epp-wizard")!;
+		wizard.dispatchEvent(new CustomEvent("begin-corners", { bubbles: true }));
+		expect(a._view).toBe("calibrate");
 	});
 });
 
@@ -632,12 +640,13 @@ describe("Wizard completion event wiring", () => {
 // 5. Navigation guards (direct method calls)
 // =========================================================
 describe("Navigation guards", () => {
-	it("_changePlacement when not dirty sets _setupStep to guide", () => {
+	it("_changePlacement when not dirty enters the tutorial when the preference is set", () => {
 		const el = createPanel();
 		const a = el as any;
 		a._dirty = false;
+		a._deviceCtrl.showRoomCalibrationTutorial = true;
 		a._changePlacement();
-		expect(a._setupStep).toBe("guide");
+		expect(a._view).toBe("tutorial");
 	});
 
 	it("_changePlacement when dirty shows unsaved dialog", () => {

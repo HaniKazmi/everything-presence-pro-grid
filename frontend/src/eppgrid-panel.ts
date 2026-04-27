@@ -51,15 +51,7 @@ import {
 	getVisibleRoomBounds,
 	type SensorFov,
 } from "./lib/room-geometry.js";
-import {
-	persistSelectedMac,
-	persistSidebarTab,
-	persistView,
-	readStoredSidebarTab,
-	readStoredView,
-	type SidebarTab,
-	type ViewMode,
-} from "./lib/storage.js";
+import { persistSelectedMac } from "./lib/storage.js";
 import { renderTemplateThumbnail } from "./lib/template-thumbnail.js";
 import {
 	detectIpAddress,
@@ -68,6 +60,13 @@ import {
 	runWifiProvision,
 	runWifiScan,
 } from "./lib/usb-flash-service.js";
+import {
+	parseViewHash,
+	type SidebarTab,
+	type ViewMode,
+	type ViewState,
+	viewHash,
+} from "./lib/view-hash.js";
 import {
 	getZoneThresholds,
 	resolveZoneParams,
@@ -90,13 +89,7 @@ import {
 	panelStyles,
 	protocolFullpageStyles,
 } from "./styles.js";
-import type {
-	DeviceInfo,
-	HaAddResult,
-	RawTarget,
-	SetupStep,
-	Target,
-} from "./types.js";
+import type { DeviceInfo, HaAddResult, RawTarget, Target } from "./types.js";
 
 /**
  * Length-8 tuple of zone configurations.
@@ -211,7 +204,9 @@ export class EPPGridPanel extends LitElement {
 	@state() private _targetUpdateRateMs = 1000;
 	@state() private _zoneUpdateRateMs = 1000;
 	@state() private _entitiesConfig: Record<string, any> = {};
-	@state() private _sidebarTab: SidebarTab = readStoredSidebarTab();
+	@state() private _sidebarTab: SidebarTab = parseViewHash(
+		typeof location !== "undefined" ? location.hash : "",
+	).sidebarTab;
 	@state() private _panelTab: "config" | "flasher" = "config";
 	@state() private _showDeleteCalibrationDialog = false;
 	@state() private _showLiveMenu = false;
@@ -320,14 +315,13 @@ export class EPPGridPanel extends LitElement {
 		this._haConnected = false;
 	};
 
-	// Setup wizard — perspective corner marking
-	@state() private _setupStep: SetupStep | null = null;
-
 	// View mode: live (default), editor (grid/zones), or settings (configuration).
-	// Persisted to localStorage so a panel recreation (e.g. after HA frontend
-	// refresh on container restart) returns the user to their last tab instead
-	// of dumping them back on the live overview.
-	@state() private _view: ViewMode = readStoredView();
+	// Per-tab state — derived from the URL fragment so each browser tab has
+	// its own view, the sidebar icon (no fragment) returns to live, and
+	// reload preserves the *current* tab's view.
+	@state() private _view: ViewMode = parseViewHash(
+		typeof location !== "undefined" ? location.hash : "",
+	).view;
 	@state() private _openAccordions: Set<string> = new Set();
 
 	// Perspective transform state (client-side, set after corner marking)
@@ -434,30 +428,32 @@ export class EPPGridPanel extends LitElement {
 		window.addEventListener("beforeunload", this._beforeUnloadHandler);
 		window.addEventListener("click", this._dismissTooltips);
 		window.addEventListener("keydown", this._onKeyDown);
+		window.addEventListener("hashchange", this._onHashChange);
 
-		// Intercept HA's client-side routing (pushState/replaceState)
+		// Intercept HA's client-side routing. pushState/replaceState do
+		// not fire hashchange/popstate even when the hash changes, so
+		// after delegating we sync if (and only if) the hash moved.
 		this._originalPushState = history.pushState.bind(history);
 		this._originalReplaceState = history.replaceState.bind(history);
+		history.pushState = this._wrapHistoryMethod(this._originalPushState);
+		history.replaceState = this._wrapHistoryMethod(this._originalReplaceState);
+	}
 
-		history.pushState = (...args) => {
+	private _wrapHistoryMethod(
+		original: typeof history.pushState,
+	): typeof history.pushState {
+		return (data, unused, url) => {
 			if (this._interceptNavigation()) {
 				this._pendingNavigation = () => {
-					this._originalPushState!(...args);
+					original(data, unused, url);
 					window.dispatchEvent(new PopStateEvent("popstate"));
+					this._onHashChange();
 				};
 				return;
 			}
-			this._originalPushState!(...args);
-		};
-		history.replaceState = (...args) => {
-			if (this._interceptNavigation()) {
-				this._pendingNavigation = () => {
-					this._originalReplaceState!(...args);
-					window.dispatchEvent(new PopStateEvent("popstate"));
-				};
-				return;
-			}
-			this._originalReplaceState!(...args);
+			const before = location.hash;
+			original(data, unused, url);
+			if (location.hash !== before) this._onHashChange();
 		};
 	}
 
@@ -472,6 +468,7 @@ export class EPPGridPanel extends LitElement {
 		window.removeEventListener("beforeunload", this._beforeUnloadHandler);
 		window.removeEventListener("click", this._dismissTooltips);
 		window.removeEventListener("keydown", this._onKeyDown);
+		window.removeEventListener("hashchange", this._onHashChange);
 
 		// Restore original history methods
 		if (this._originalPushState) history.pushState = this._originalPushState;
@@ -505,13 +502,69 @@ export class EPPGridPanel extends LitElement {
 				this._localize = setupLocalize(this.hass);
 			}
 		}
-		if (changed.has("_view")) {
-			persistView(this._view);
-		}
-		if (changed.has("_sidebarTab")) {
-			persistSidebarTab(this._sidebarTab);
+		if (changed.has("_view") || changed.has("_sidebarTab")) {
+			this._syncHashFromState();
 		}
 	}
+
+	/**
+	 * Write the URL fragment via the un-patched replaceState (saved in
+	 * connectedCallback) so panel-driven hash updates don't re-enter
+	 * the dirty-navigation interceptor.
+	 */
+	private _replaceHash(hash: string): void {
+		if (typeof location === "undefined") return;
+		if (hash === location.hash) return;
+		const target = `${location.pathname}${location.search}${hash}`;
+		const replace =
+			this._originalReplaceState ?? history.replaceState.bind(history);
+		// Preserve history.state so HA's router state isn't clobbered.
+		replace(history.state, "", target);
+	}
+
+	private _syncHashFromState(): void {
+		this._replaceHash(
+			viewHash({ view: this._view, sidebarTab: this._sidebarTab }),
+		);
+	}
+
+	/**
+	 * Move to a target view + sub-tab. Centralises the side effects
+	 * (overlay-mode reset, range widening) so click handlers and
+	 * URL-driven navigation behave the same.
+	 */
+	private _applyView(state: ViewState): void {
+		this._view = state.view;
+		this._sidebarTab = state.sidebarTab;
+		if (state.view === "editor" && state.sidebarTab !== "overlays") {
+			this._overlayMode = null;
+		}
+		if (
+			state.view === "editor" ||
+			state.view === "tutorial" ||
+			state.view === "calibrate"
+		) {
+			this._pushWidenedDistanceOverride();
+		}
+	}
+
+	/**
+	 * React to external hash changes (browser back/forward, sidebar
+	 * icon, manual URL edit). When dirty, snap the URL back so the
+	 * queued navigation only fires once the user discards.
+	 */
+	private _onHashChange = (): void => {
+		const next = parseViewHash(location.hash);
+		if (next.view === this._view && next.sidebarTab === this._sidebarTab) {
+			return;
+		}
+		if (this._dirty) {
+			this._replaceHash(
+				viewHash({ view: this._view, sidebarTab: this._sidebarTab }),
+			);
+		}
+		this._guardNavigation(() => this._applyView(next));
+	};
 
 	updated(changedProps: PropertyValues): void {
 		if (changedProps.has("hass") && this.hass) {
@@ -674,7 +727,6 @@ export class EPPGridPanel extends LitElement {
 		this._perspective = parsed.calibration.perspective;
 		this._roomWidth = parsed.calibration.roomWidth;
 		this._roomDepth = parsed.calibration.roomDepth;
-		this._setupStep = null;
 
 		// Apply layout
 		this._furniture = parsed.furniture;
@@ -883,11 +935,10 @@ export class EPPGridPanel extends LitElement {
 		}
 	}
 
-	private _enterEditor(tab: "zones" | "overlays" | "furniture"): void {
-		this._view = "editor";
-		this._sidebarTab = tab;
-		if (tab !== "overlays") this._overlayMode = null;
-		this._pushWidenedDistanceOverride();
+	private _enterEditor(tab: SidebarTab): void {
+		this._guardNavigation(() =>
+			this._applyView({ view: "editor", sidebarTab: tab }),
+		);
 	}
 
 	// -- Template management (backend WS API) --
@@ -1466,7 +1517,7 @@ export class EPPGridPanel extends LitElement {
 			</div>`;
 		}
 
-		if (this._setupStep !== null) {
+		if (this._view === "tutorial" || this._view === "calibrate") {
 			return html`<div class="tab-layout">
         ${this._renderTabBar()}
         <div class="panel">
@@ -1479,15 +1530,17 @@ export class EPPGridPanel extends LitElement {
             .localize=${this._localize}
             .initialRoomWidth=${this._roomWidth}
             .initialRoomDepth=${this._roomDepth}
-            .initialStep=${this._setupStep}
+            .initialStep=${this._view === "tutorial" ? "guide" : "corners"}
             @dismiss-tutorial=${() => this._onDismissTutorial()}
+            @begin-corners=${() => {
+							this._view = "calibrate";
+						}}
             @calibration-complete=${async (e: CustomEvent) => {
 							const { perspective, roomWidth, roomDepth } = e.detail;
 							this._perspective = perspective;
 							this._roomWidth = roomWidth;
 							this._roomDepth = roomDepth;
 							this._initGridFromRoom();
-							this._setupStep = null;
 							this._view = "live";
 							// set_setup enables zone_presence — update local state
 							this._entitiesConfig = {
@@ -1499,7 +1552,7 @@ export class EPPGridPanel extends LitElement {
 							});
 						}}
           @wizard-cancel=${() => {
-						this._setupStep = null;
+						this._view = "live";
 					}}
           ></epp-wizard>
         </div>
@@ -1635,12 +1688,14 @@ export class EPPGridPanel extends LitElement {
 	}
 
 	private _changePlacement(): void {
-		this._guardNavigation(() => {
-			this._setupStep = this._deviceCtrl.showRoomCalibrationTutorial
-				? "guide"
-				: "corners";
-			this._pushWidenedDistanceOverride();
-		});
+		this._guardNavigation(() =>
+			this._applyView({
+				view: this._deviceCtrl.showRoomCalibrationTutorial
+					? "tutorial"
+					: "calibrate",
+				sidebarTab: this._sidebarTab,
+			}),
+		);
 	}
 
 	private async _onDismissTutorial(): Promise<void> {
@@ -1983,7 +2038,12 @@ export class EPPGridPanel extends LitElement {
 												: nothing
 										}
                     <button class="sidebar-menu-item" @click=${() => {
-											this._view = "settings";
+											this._guardNavigation(() =>
+												this._applyView({
+													view: "settings",
+													sidebarTab: this._sidebarTab,
+												}),
+											);
 										}}>
                       <ha-icon icon="mdi:cog" style="--mdc-icon-size: 18px;"></ha-icon> ${this._localize("menu.settings")}
                     </button>
@@ -2028,9 +2088,12 @@ export class EPPGridPanel extends LitElement {
                 .perspective=${this._perspective}
                 .localize=${this._localize}
                 @view-change=${(e: CustomEvent) => {
-									this._view = e.detail.view;
-									if (e.detail.sidebarTab)
-										this._sidebarTab = e.detail.sidebarTab;
+									this._guardNavigation(() =>
+										this._applyView({
+											view: e.detail.view,
+											sidebarTab: e.detail.sidebarTab ?? this._sidebarTab,
+										}),
+									);
 								}}
               ></epp-live-sidebar>
             </div>

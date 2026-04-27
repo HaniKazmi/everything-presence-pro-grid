@@ -300,19 +300,20 @@ describe("panel state survives device offline→online", () => {
 		expect(a._perspective).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9]);
 	});
 
-	it("persists _view to localStorage so a panel recreation (full HA container restart) returns to the same tab", async () => {
+	it("mirrors _view to the URL fragment so a panel recreation returns to the same tab", async () => {
 		// A full HA container restart can trigger the HA frontend to
-		// recreate panel elements from scratch — losing any @state()
-		// that isn't persisted.  _view is user-facing navigation and
-		// must survive this cycle so the editor/settings tab is
-		// restored when the panel remounts.
+		// recreate panel elements from scratch — losing any @state().
+		// _view is user-facing navigation and must survive this cycle
+		// (per-tab) so the editor/settings tab is restored when the
+		// panel remounts.
 		const { el, a } = await mountPanel([makeDevice("aa", true)]);
 		a._view = "editor";
 		await el.updateComplete;
-		expect(localStorage.getItem("epp_view")).toBe("editor");
+		expect(location.hash).toBe("#zones");
 
-		// Simulate the panel being torn down and recreated. Don't clear
-		// localStorage — a real panel recreation doesn't wipe it.
+		// Simulate the panel being torn down and recreated. The URL
+		// fragment is preserved across the remount — that's the whole
+		// point of using it.
 		document.body.removeChild(el);
 		mountedPanels.length = 0;
 		const el2 = document.createElement("eppgrid-panel") as EPPGridPanel;
@@ -349,27 +350,27 @@ describe("panel state survives device offline→online", () => {
 		expect(a._loadedConfigMac).toBe("aa");
 	});
 
-	it("clears the persisted _view when user navigates back to live", async () => {
+	it("clears the URL fragment when user navigates back to live", async () => {
 		const { el, a } = await mountPanel([makeDevice("aa", true)]);
 		a._view = "editor";
 		await el.updateComplete;
-		expect(localStorage.getItem("epp_view")).toBe("editor");
+		expect(location.hash).toBe("#zones");
 
 		a._view = "live";
 		await el.updateComplete;
-		expect(localStorage.getItem("epp_view")).toBeNull();
+		expect(location.hash).toBe("");
 	});
 
-	it("persists _sidebarTab so an HA restart returns to the same editor tab", async () => {
+	it("mirrors _sidebarTab to the URL fragment so a panel recreation returns to the same editor tab", async () => {
 		// Same recreation cycle as _view: an HA container restart can wipe
 		// element state, so the sidebar tab (zones / overlays / furniture)
-		// has to round-trip through localStorage too — otherwise users in
-		// the furniture editor are silently dropped onto the zones tab.
+		// has to round-trip through the URL fragment too — otherwise users
+		// in the furniture editor are silently dropped onto the zones tab.
 		const { el, a } = await mountPanel([makeDevice("aa", true)]);
 		a._view = "editor";
 		a._sidebarTab = "furniture";
 		await el.updateComplete;
-		expect(localStorage.getItem("epp_sidebar_tab")).toBe("furniture");
+		expect(location.hash).toBe("#furniture");
 
 		document.body.removeChild(el);
 		mountedPanels.length = 0;

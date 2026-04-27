@@ -86,7 +86,6 @@ function createPanel(): EPPGridPanel {
 	a._isPainting = false;
 	a._frozenBounds = null;
 	a._sidebarTab = "zones";
-	a._setupStep = null;
 	a._wizardCornerIndex = 0;
 	a._wizardCorners = [null, null, null, null];
 	a._wizardRoomWidth = 3000;
@@ -194,9 +193,9 @@ describe("render() dispatches to correct view", () => {
 		expect(result).toBeDefined();
 	});
 
-	it("renders wizard when _setupStep is set", () => {
+	it("renders wizard when _view is 'tutorial'", () => {
 		const a = createPanel() as any;
-		a._setupStep = "guide";
+		a._view = "tutorial";
 		const result = a.render();
 		expect(result).toBeDefined();
 	});

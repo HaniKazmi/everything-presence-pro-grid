@@ -74,7 +74,6 @@ function createPanel(): EPPGridPanel {
 	a._isPainting = false;
 	a._frozenBounds = null;
 	a._sidebarTab = "zones";
-	a._setupStep = null;
 	return el;
 }
 

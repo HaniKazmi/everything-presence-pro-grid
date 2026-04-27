@@ -86,7 +86,6 @@ function createPanel(): EPPGridPanel {
 	a._isPainting = false;
 	a._frozenBounds = null;
 	a._sidebarTab = "zones";
-	a._setupStep = null;
 	a._wizardCornerIndex = 0;
 	a._wizardCorners = [null, null, null, null];
 	a._wizardRoomWidth = 3000;
