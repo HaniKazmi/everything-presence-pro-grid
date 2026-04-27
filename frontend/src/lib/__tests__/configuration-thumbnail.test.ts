@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { renderConfigurationThumbnail } from "../../lib/configuration-thumbnail.js";
 import {
 	CELL_OVERLAY_ENTRY,
 	CELL_OVERLAY_INTERFERENCE,
@@ -9,7 +10,6 @@ import {
 	GRID_CELL_COUNT,
 	GRID_COLS,
 } from "../../lib/grid.js";
-import { renderConfigurationThumbnail } from "../../lib/configuration-thumbnail.js";
 
 function makeGrid(
 	insideCells: {
@@ -412,7 +412,13 @@ describe("renderConfigurationThumbnail", () => {
 			null,
 			null,
 		];
-		const result = renderConfigurationThumbnail(grid, zoneConfigs, 300, 600, []);
+		const result = renderConfigurationThumbnail(
+			grid,
+			zoneConfigs,
+			300,
+			600,
+			[],
+		);
 
 		const container = document.createElement("div");
 		const { render } = await import("lit");

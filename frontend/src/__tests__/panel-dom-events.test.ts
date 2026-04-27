@@ -1172,7 +1172,9 @@ describe("_renderConfigurationBackupDialog DOM events", () => {
 		const tpl = a._renderConfigurationBackupDialog();
 		const c = renderTo(tpl);
 
-		const input = c.querySelector(".configuration-name-input") as HTMLInputElement;
+		const input = c.querySelector(
+			".configuration-name-input",
+		) as HTMLInputElement;
 		if (input) {
 			input.value = "My Template";
 			input.dispatchEvent(new Event("input"));

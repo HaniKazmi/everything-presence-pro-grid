@@ -830,7 +830,8 @@ describe("_renderConfigurationRestoreDialog DOM events", () => {
 			{ name: "T1", grid: [], zones: [], roomWidth: 3000, roomDepth: 4000 },
 		];
 		a.hass.callWS = vi.fn().mockImplementation((msg: any) => {
-			if (msg.type === "eppgrid/delete_configuration") return Promise.resolve({});
+			if (msg.type === "eppgrid/delete_configuration")
+				return Promise.resolve({});
 			if (msg.type === "eppgrid/list_configurations")
 				return Promise.resolve({ configurations: {} });
 			return Promise.resolve({});
@@ -838,7 +839,9 @@ describe("_renderConfigurationRestoreDialog DOM events", () => {
 		const tpl = a._renderConfigurationRestoreDialog();
 		const c = renderTo(tpl);
 
-		const deleteBtn = c.querySelector(".configuration-card-delete") as HTMLElement;
+		const deleteBtn = c.querySelector(
+			".configuration-card-delete",
+		) as HTMLElement;
 		expect(deleteBtn).not.toBeNull();
 		deleteBtn.click();
 		// Wait for async _deleteConfiguration to complete

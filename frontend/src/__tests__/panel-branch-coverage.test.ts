@@ -818,7 +818,8 @@ describe("_renderConfigurationRestoreDialog item events", () => {
 			},
 		];
 		a.hass.callWS = vi.fn().mockImplementation((msg: any) => {
-			if (msg.type === "eppgrid/delete_configuration") return Promise.resolve({});
+			if (msg.type === "eppgrid/delete_configuration")
+				return Promise.resolve({});
 			if (msg.type === "eppgrid/list_configurations")
 				return Promise.resolve({ configurations: {} });
 			return Promise.resolve({});

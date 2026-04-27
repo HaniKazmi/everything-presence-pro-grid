@@ -426,11 +426,15 @@ describe("_renderConfigurationRestoreDialog delete configuration button", () => 
 			},
 		];
 		vi.spyOn(a, "_getConfigurations").mockReturnValue(templates);
-		const spy = vi.spyOn(a, "_deleteConfiguration").mockImplementation(() => {});
+		const spy = vi
+			.spyOn(a, "_deleteConfiguration")
+			.mockImplementation(() => {});
 
 		const tpl = a._renderConfigurationRestoreDialog();
 		const c = renderTo(tpl);
-		const deleteBtn = c.querySelector(".configuration-card-delete") as HTMLElement;
+		const deleteBtn = c.querySelector(
+			".configuration-card-delete",
+		) as HTMLElement;
 		expect(deleteBtn).not.toBeNull();
 		deleteBtn.click();
 		expect(spy).toHaveBeenCalledWith("MyTemplate");

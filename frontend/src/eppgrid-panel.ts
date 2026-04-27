@@ -19,6 +19,7 @@ import {
 import { TargetController } from "./controllers/target-controller.js";
 import type { PaintAction } from "./lib/cell-painting.js";
 import { parseConfig } from "./lib/config-serialization.js";
+import { renderConfigurationThumbnail } from "./lib/configuration-thumbnail.js";
 import { mapTargetToGridCell, mapTargetToPercent } from "./lib/coordinates.js";
 import {
 	type FurnitureItem,
@@ -52,7 +53,6 @@ import {
 	type SensorFov,
 } from "./lib/room-geometry.js";
 import { persistSelectedMac } from "./lib/storage.js";
-import { renderConfigurationThumbnail } from "./lib/configuration-thumbnail.js";
 import {
 	detectIpAddress,
 	flashFirmware,

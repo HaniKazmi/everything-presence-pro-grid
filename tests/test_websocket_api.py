@@ -808,7 +808,7 @@ class TestWebSocketConfigurations:
         Uses direct handler invocation (consistent with the rest of this class) —
         voluptuous schema dispatch is not exercised here.
         """
-        mock_dm = await setup_integration(hass, config_entry)
+        await setup_integration(hass, config_entry)
 
         from custom_components.eppgrid.websocket_api import websocket_list_configurations
         from custom_components.eppgrid.websocket_api import websocket_save_configuration

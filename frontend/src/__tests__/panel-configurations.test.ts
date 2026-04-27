@@ -165,11 +165,15 @@ describe("_saveConfiguration", () => {
 				(c[0] as { type?: string })?.type === "eppgrid/save_configuration",
 		);
 		expect(call).toBeDefined();
-		const payload = call![0] as { configuration: { settings: Record<string, any> } };
+		const payload = call![0] as {
+			configuration: { settings: Record<string, any> };
+		};
 		expect(payload.configuration.settings).toBeDefined();
 		expect(payload.configuration.settings.temperature_offset).toBe(1.5);
 		expect(payload.configuration.settings.target_update_rate_ms).toBe(500);
-		expect(payload.configuration.settings.log_levels).toEqual({ esp32: "DEBUG" });
+		expect(payload.configuration.settings.log_levels).toEqual({
+			esp32: "DEBUG",
+		});
 	});
 });
 
@@ -431,7 +435,8 @@ describe("_loadConfiguration", () => {
 
 		// set_settings was called with the restored payload
 		const setSettingsCall = callWS.mock.calls.find(
-			(c: any[]) => (c[0] as { type?: string })?.type === "eppgrid/set_settings",
+			(c: any[]) =>
+				(c[0] as { type?: string })?.type === "eppgrid/set_settings",
 		);
 		expect(setSettingsCall).toBeDefined();
 		expect(setSettingsCall![0]).toMatchObject({
@@ -473,7 +478,8 @@ describe("_loadConfiguration", () => {
 		expect(a._motionTimeout).toBe(25);
 		// No set_settings call from the settings-restore path
 		const setSettingsCall = callWS.mock.calls.find(
-			(c: any[]) => (c[0] as { type?: string })?.type === "eppgrid/set_settings",
+			(c: any[]) =>
+				(c[0] as { type?: string })?.type === "eppgrid/set_settings",
 		);
 		expect(setSettingsCall).toBeUndefined();
 	});
@@ -505,7 +511,8 @@ describe("_loadConfiguration", () => {
 		expect(a._temperatureOffset).toBe(0.7);
 		// No set_settings call from the settings-restore path
 		const setSettingsCall = callWS.mock.calls.find(
-			(c: any[]) => (c[0] as { type?: string })?.type === "eppgrid/set_settings",
+			(c: any[]) =>
+				(c[0] as { type?: string })?.type === "eppgrid/set_settings",
 		);
 		expect(setSettingsCall).toBeUndefined();
 	});
@@ -521,7 +528,10 @@ describe("_deleteConfiguration", () => {
 		await a._deleteConfiguration("Old");
 
 		expect(a.hass.callWS).toHaveBeenCalledWith(
-			expect.objectContaining({ type: "eppgrid/delete_configuration", name: "Old" }),
+			expect.objectContaining({
+				type: "eppgrid/delete_configuration",
+				name: "Old",
+			}),
 		);
 	});
 });
@@ -732,7 +742,9 @@ describe("_renderConfigurationRestoreDialog", () => {
 		document.body.appendChild(c);
 		render(tpl, c);
 
-		const deleteBtn = c.querySelector(".configuration-card-delete") as HTMLElement;
+		const deleteBtn = c.querySelector(
+			".configuration-card-delete",
+		) as HTMLElement;
 		expect(deleteBtn).not.toBeNull();
 		deleteBtn.click();
 
@@ -771,7 +783,9 @@ describe("_renderConfigurationRestoreDialog", () => {
 		document.body.appendChild(c);
 		render(tpl, c);
 
-		const deleteBtn = c.querySelector(".configuration-card-delete") as HTMLElement;
+		const deleteBtn = c.querySelector(
+			".configuration-card-delete",
+		) as HTMLElement;
 		expect(deleteBtn).not.toBeNull();
 		const cardKeydownSpy = vi.fn();
 		const card = c.querySelector(".configuration-card") as HTMLElement;

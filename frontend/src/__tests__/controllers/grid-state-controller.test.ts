@@ -474,7 +474,9 @@ describe("GridStateController", () => {
 			expect(saveCall![0].configuration.grid[5]).toBe(CELL_ROOM_BIT);
 			// Length-8 zones with zone 0 in slot 0 and named zone in slot 1.
 			expect(saveCall![0].configuration.zones).toHaveLength(MAX_ZONES + 1);
-			expect(saveCall![0].configuration.zones[0]).toMatchObject({ type: "default" });
+			expect(saveCall![0].configuration.zones[0]).toMatchObject({
+				type: "default",
+			});
 			expect(saveCall![0].configuration.zones[1]).toMatchObject({
 				name: "Zone 1",
 				color: ZONE_COLORS[0],
@@ -767,7 +769,9 @@ describe("GridStateController", () => {
 				.spyOn(ctrl, "applyLayout")
 				.mockRejectedValue(new Error("WS failure"));
 			host._dirty = false;
-			await expect(ctrl.loadConfiguration("Loaded")).rejects.toThrow(/WS failure/);
+			await expect(ctrl.loadConfiguration("Loaded")).rejects.toThrow(
+				/WS failure/,
+			);
 			expect(host._dirty).toBe(true);
 			applySpy.mockRestore();
 		});
@@ -813,7 +817,9 @@ describe("GridStateController", () => {
 					roomDepth: 3600,
 				} as any,
 			];
-			await expect(ctrl.loadConfiguration("NullZ0")).rejects.toThrow(/old format/);
+			await expect(ctrl.loadConfiguration("NullZ0")).rejects.toThrow(
+				/old format/,
+			);
 		});
 
 		it("throws when zone 0 is missing the type field", async () => {
