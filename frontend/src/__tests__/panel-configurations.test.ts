@@ -5,6 +5,21 @@ import "../eppgrid-panel.js";
 import { CELL_ROOM_BIT, GRID_CELL_COUNT, GRID_COLS } from "../lib/grid.js";
 import type { Zone0Config, ZoneConfig } from "../lib/zone-defaults.js";
 
+// Helper to build a valid length-8 zone slots array (mirrors VALID_ZONES but
+// returned as a fresh array so tests can't mutate the shared constant).
+function makeValidZoneSlots(): (Zone0Config | ZoneConfig | null)[] {
+	return [
+		{ type: "default", trigger: 5, renew: 3, timeout: 10, handoff_timeout: 3 },
+		null,
+		null,
+		null,
+		null,
+		null,
+		null,
+		null,
+	];
+}
+
 // Valid length-8 zone slots for test configurations (slot 0 = Zone0Config).
 const VALID_ZONES: (Zone0Config | ZoneConfig | null)[] = [
 	{ type: "default", trigger: 5, renew: 3, timeout: 10, handoff_timeout: 3 },
@@ -358,6 +373,141 @@ describe("_loadConfiguration", () => {
 		await a._loadConfiguration("NullZone0");
 		expect(errSpy).toHaveBeenCalled();
 		errSpy.mockRestore();
+	});
+
+	it("restores settings to panel state and pushes via set_settings when blob has non-empty settings", async () => {
+		const a = createPanel() as any;
+		const validZones = makeValidZoneSlots();
+		const cfg = {
+			name: "Bedroom",
+			grid: Array.from(new Uint8Array(GRID_CELL_COUNT)),
+			zones: validZones,
+			roomWidth: 3,
+			roomDepth: 4,
+			furniture: [],
+			settings: {
+				temperature_offset: 1.5,
+				humidity_offset: 0,
+				illuminance_offset: 0,
+				motion_timeout: 60,
+				target_auto_distance: false,
+				target_max_distance: 5,
+				static_auto_distance: true,
+				static_min_distance: 0.3,
+				static_max_distance: 16,
+				static_trigger_threshold: 50,
+				static_renew_threshold: 60,
+				static_timeout: 4,
+				static_on_delay: 1,
+				led_mode: "Presence",
+				led_brightness: 0.4,
+				led_presence_color: "#00ffaa",
+				relay_trigger_mode: "presence",
+				relay_contact_mode: "no",
+				target_update_rate_ms: 500,
+				zone_update_rate_ms: 200,
+				entities: { zone_presence: true },
+				log_levels: { sensor: "Info" },
+			},
+		};
+		a._gridCtrl.configurations = [cfg];
+
+		const callWS = vi.fn().mockResolvedValue({});
+		a.hass = { ...a.hass, callWS };
+		a._selectedMac = "AA:BB:CC:DD:EE:FF";
+
+		await a._loadConfiguration("Bedroom");
+
+		// Layout applied
+		expect(a._roomWidth).toBe(3);
+		expect(a._roomDepth).toBe(4);
+		// Settings applied to panel state
+		expect(a._temperatureOffset).toBe(1.5);
+		expect(a._motionTimeout).toBe(60);
+		expect(a._ledMode).toBe("Presence");
+		expect(a._targetUpdateRateMs).toBe(500);
+		expect(a._entitiesConfig).toEqual({ zone_presence: true });
+		expect(a._logLevels).toEqual({ sensor: "Info" });
+
+		// set_settings was called with the restored payload
+		const setSettingsCall = callWS.mock.calls.find(
+			(c: any[]) => (c[0] as { type?: string })?.type === "eppgrid/set_settings",
+		);
+		expect(setSettingsCall).toBeDefined();
+		expect(setSettingsCall![0]).toMatchObject({
+			mac: "AA:BB:CC:DD:EE:FF",
+			temperature_offset: 1.5,
+			led_mode: "Presence",
+		});
+	});
+
+	it("does not call set_settings or change panel settings state when blob settings is missing", async () => {
+		const a = createPanel() as any;
+		const validZones = makeValidZoneSlots();
+		a._temperatureOffset = 0.7; // current device value
+		a._motionTimeout = 25;
+		// Disable auto-distance so applyLayout doesn't inject its own set_settings call
+		a._targetAutoDistance = false;
+		a._staticAutoDistance = false;
+		a._gridCtrl.configurations = [
+			{
+				name: "OldStyle",
+				grid: Array.from(new Uint8Array(GRID_CELL_COUNT)),
+				zones: validZones,
+				roomWidth: 3,
+				roomDepth: 4,
+				furniture: [],
+				// no settings field — migrated entry shape
+			},
+		];
+
+		const callWS = vi.fn().mockResolvedValue({});
+		a.hass = { ...a.hass, callWS };
+
+		await a._loadConfiguration("OldStyle");
+
+		// Layout applied
+		expect(a._roomWidth).toBe(3);
+		// Settings panel state untouched
+		expect(a._temperatureOffset).toBe(0.7);
+		expect(a._motionTimeout).toBe(25);
+		// No set_settings call from the settings-restore path
+		const setSettingsCall = callWS.mock.calls.find(
+			(c: any[]) => (c[0] as { type?: string })?.type === "eppgrid/set_settings",
+		);
+		expect(setSettingsCall).toBeUndefined();
+	});
+
+	it("does not call set_settings when blob settings is an empty object", async () => {
+		const a = createPanel() as any;
+		const validZones = makeValidZoneSlots();
+		a._temperatureOffset = 0.7;
+		// Disable auto-distance so applyLayout doesn't inject its own set_settings call
+		a._targetAutoDistance = false;
+		a._staticAutoDistance = false;
+		a._gridCtrl.configurations = [
+			{
+				name: "MigratedEmpty",
+				grid: Array.from(new Uint8Array(GRID_CELL_COUNT)),
+				zones: validZones,
+				roomWidth: 3,
+				roomDepth: 4,
+				furniture: [],
+				settings: {},
+			},
+		];
+
+		const callWS = vi.fn().mockResolvedValue({});
+		a.hass = { ...a.hass, callWS };
+
+		await a._loadConfiguration("MigratedEmpty");
+
+		expect(a._temperatureOffset).toBe(0.7);
+		// No set_settings call from the settings-restore path
+		const setSettingsCall = callWS.mock.calls.find(
+			(c: any[]) => (c[0] as { type?: string })?.type === "eppgrid/set_settings",
+		);
+		expect(setSettingsCall).toBeUndefined();
 	});
 });
 

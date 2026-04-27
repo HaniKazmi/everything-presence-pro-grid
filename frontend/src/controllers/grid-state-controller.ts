@@ -510,6 +510,8 @@ export class GridStateController implements ReactiveController {
 				throw oldFormatError;
 			}
 		}
+
+		// Apply layout
 		this.host._grid = new Uint8Array(cfg.grid);
 		this.host._zoneConfigs = Array.from(
 			{ length: NUM_ZONE_SLOTS },
@@ -520,6 +522,36 @@ export class GridStateController implements ReactiveController {
 		this.host._furniture = (cfg.furniture || []).map((f: any) => ({
 			...f,
 		}));
+
+		// Apply settings (skip when missing or empty — matches migrated-entry behavior)
+		const s = cfg.settings;
+		const hasSettings =
+			s != null && typeof s === "object" && Object.keys(s).length > 0;
+		if (hasSettings) {
+			this.host._temperatureOffset = s.temperature_offset;
+			this.host._humidityOffset = s.humidity_offset;
+			this.host._illuminanceOffset = s.illuminance_offset;
+			this.host._motionTimeout = s.motion_timeout;
+			this.host._targetAutoDistance = s.target_auto_distance;
+			this.host._targetMaxDistance = s.target_max_distance;
+			this.host._staticAutoDistance = s.static_auto_distance;
+			this.host._staticMinDistance = s.static_min_distance;
+			this.host._staticMaxDistance = s.static_max_distance;
+			this.host._staticTriggerThreshold = s.static_trigger_threshold;
+			this.host._staticRenewThreshold = s.static_renew_threshold;
+			this.host._staticTimeout = s.static_timeout;
+			this.host._staticOnDelay = s.static_on_delay;
+			this.host._ledMode = s.led_mode;
+			this.host._ledBrightness = s.led_brightness;
+			this.host._ledPresenceColor = s.led_presence_color;
+			this.host._relayTriggerMode = s.relay_trigger_mode;
+			this.host._relayContactMode = s.relay_contact_mode;
+			this.host._targetUpdateRateMs = s.target_update_rate_ms;
+			this.host._zoneUpdateRateMs = s.zone_update_rate_ms;
+			this.host._entitiesConfig = s.entities || {};
+			this.host._logLevels = s.log_levels || {};
+		}
+
 		this.host._showConfigurationRestore = false;
 		// Mark dirty before auto-apply: if applyLayout throws (e.g. websocket
 		// failure), the UI state has changed but the backend hasn't, so the
@@ -527,6 +559,14 @@ export class GridStateController implements ReactiveController {
 		// _dirty = false itself.
 		this.host._dirty = true;
 		await this.applyLayout();
+
+		if (hasSettings) {
+			await (this.host as any).hass.callWS({
+				type: "eppgrid/set_settings",
+				mac: this.host._selectedMac,
+				...(this.host as any)._buildSettingsPayload(),
+			});
+		}
 	}
 
 	async deleteConfiguration(name: string): Promise<void> {
