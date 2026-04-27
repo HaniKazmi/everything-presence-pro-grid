@@ -100,10 +100,10 @@
 		"delete_calibration_body": "This will also delete all detection zones and furniture. This cannot be undone.",
 		"unsaved_changes": "You have unsaved changes",
 		"unsaved_changes_body": "Your changes will be lost if you navigate away without applying.",
-		"save_template": "Save template",
-		"load_template": "Load template",
-		"no_templates": "No saved templates.",
-		"template_name": "Template name"
+		"backup_configuration": "Backup configuration",
+		"restore_configuration": "Restore configuration",
+		"no_configurations": "No saved configurations.",
+		"configuration_name": "Configuration name"
 	},
 	"menu": {
 		"settings": "Settings",

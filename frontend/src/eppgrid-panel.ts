@@ -2066,13 +2066,13 @@ export class EPPGridPanel extends LitElement {
                     <button class="sidebar-menu-item" @click=${() => {
 											this._showConfigurationBackup = true;
 										}}>
-                      <ha-icon icon="mdi:content-save" style="--mdc-icon-size: 18px;"></ha-icon> ${this._localize("dialogs.save_template")}
+                      <ha-icon icon="mdi:content-save" style="--mdc-icon-size: 18px;"></ha-icon> ${this._localize("dialogs.backup_configuration")}
                     </button>
                     <button class="sidebar-menu-item" @click=${async () => {
 											await this._gridCtrl.fetchConfigurations();
 											this._showConfigurationRestore = true;
 										}}>
-                      <ha-icon icon="mdi:folder-open" style="--mdc-icon-size: 18px;"></ha-icon> ${this._localize("dialogs.load_template")}
+                      <ha-icon icon="mdi:folder-open" style="--mdc-icon-size: 18px;"></ha-icon> ${this._localize("dialogs.restore_configuration")}
                     </button>
                   </div>
                 `
@@ -2364,11 +2364,11 @@ export class EPPGridPanel extends LitElement {
 		return html`
       <div class="template-dialog">
         <div class="template-dialog-card">
-          <h3>${this._localize("dialogs.save_template")}</h3>
+          <h3>${this._localize("dialogs.backup_configuration")}</h3>
           <input
             type="text"
             class="template-name-input"
-            placeholder="${this._localize("dialogs.template_name")}"
+            placeholder="${this._localize("dialogs.configuration_name")}"
             .value=${this._configurationName}
             @input=${(e: Event) => {
 							this._configurationName = (e.target as HTMLInputElement).value;
@@ -2397,10 +2397,10 @@ export class EPPGridPanel extends LitElement {
 		return html`
       <div class="template-dialog">
         <div class="template-dialog-card">
-          <h3>${this._localize("dialogs.load_template")}</h3>
+          <h3>${this._localize("dialogs.restore_configuration")}</h3>
           ${
 						configurations.length === 0
-							? html`<p class="overlay-help">${this._localize("dialogs.no_templates")}</p>`
+							? html`<p class="overlay-help">${this._localize("dialogs.no_configurations")}</p>`
 							: html`<div class="template-card-grid">
                   ${configurations.map(
 										(t) => html`
