@@ -100,4 +100,5 @@ See also: the [central Troubleshooting](troubleshooting.md) page for conceptual 
 
 ## Where to next
 
+- **[How detection works →](how-detection-works.md)** — the engine behind the scenes: signal strength, the zone state machine, gating, and the Occupancy entity.
 - **[Furniture →](furniture.md)** — place furniture on the grid so you can read the live overview at a glance.

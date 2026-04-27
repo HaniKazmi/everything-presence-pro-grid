@@ -62,9 +62,9 @@ Each zone has a **type**, which picks sensible defaults for four behaviour thres
 - **Transit** — fast fall-off. Use for hallways and doorways where you want presence to drop quickly after someone has walked through, so it doesn't keep a light on forever.
 - **Custom** — expose the four thresholds below for direct tuning.
 
-![The four settings exposed by the Custom zone type.](../images/detection-zones/custom-settings.png "The four settings exposed by the Custom zone type.")
-
 ## Zone presence and custom settings
+
+![The four settings exposed by the Custom zone type.](../images/detection-zones/custom-settings.png "The four settings exposed by the Custom zone type.")
 
 The zone presence algorithm works as follows:
 
@@ -103,3 +103,4 @@ See also: the [central Troubleshooting](troubleshooting.md) page for conceptual 
 ## Where to next
 
 - **[Overlays →](overlays.md)** — mark doorways and interference sources on the grid to refine how the zone engine interprets events.
+- **[How detection works →](how-detection-works.md)** — the engine behind the scenes: signal strength, the zone state machine, gating, and the Occupancy entity.
