@@ -430,7 +430,7 @@ describe("_renderConfigurationRestoreDialog delete configuration button", () => 
 
 		const tpl = a._renderConfigurationRestoreDialog();
 		const c = renderTo(tpl);
-		const deleteBtn = c.querySelector(".template-card-delete") as HTMLElement;
+		const deleteBtn = c.querySelector(".configuration-card-delete") as HTMLElement;
 		expect(deleteBtn).not.toBeNull();
 		deleteBtn.click();
 		expect(spy).toHaveBeenCalledWith("MyTemplate");

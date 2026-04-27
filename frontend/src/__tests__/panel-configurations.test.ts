@@ -305,19 +305,19 @@ describe("_renderConfigurationRestoreDialog", () => {
 		document.body.appendChild(c);
 		render(tpl, c);
 
-		const card = c.querySelector(".template-card");
+		const card = c.querySelector(".configuration-card");
 		expect(card).not.toBeNull();
 
-		const svgEl = c.querySelector(".template-card-thumbnail svg");
+		const svgEl = c.querySelector(".configuration-card-thumbnail svg");
 		expect(svgEl).not.toBeNull();
 
-		const name = c.querySelector(".template-card-name");
+		const name = c.querySelector(".configuration-card-name");
 		expect(name?.textContent).toBe("Test Room");
 
 		document.body.removeChild(c);
 	});
 
-	it("template-card-size reflects painted-cell bounding box, not stored roomWidth", () => {
+	it("configuration-card-size reflects painted-cell bounding box, not stored roomWidth", () => {
 		// Configuration stores a small roomWidth from calibration (600mm), but the
 		// painted grid extends further. The card label should match what the
 		// footer shows (getGridRoomMetrics on the painted cells), so the user
@@ -348,7 +348,7 @@ describe("_renderConfigurationRestoreDialog", () => {
 		document.body.appendChild(c);
 		render(tpl, c);
 
-		const size = c.querySelector(".template-card-size");
+		const size = c.querySelector(".configuration-card-size");
 		// Painted box: 3 cols × 300mm = 0.9m, 2 rows × 300mm = 0.6m.
 		expect(size?.textContent).toBe("0.9m × 0.6m");
 
@@ -390,7 +390,7 @@ describe("_renderConfigurationRestoreDialog", () => {
 		document.body.appendChild(c);
 		render(tpl, c);
 
-		const card = c.querySelector(".template-card") as HTMLElement;
+		const card = c.querySelector(".configuration-card") as HTMLElement;
 		expect(card).not.toBeNull();
 		card.click();
 		// Wait for the async _loadConfiguration -> applyLayout chain to settle.
@@ -422,7 +422,7 @@ describe("_renderConfigurationRestoreDialog", () => {
 		document.body.appendChild(c);
 		render(tpl, c);
 
-		const card = c.querySelector(".template-card") as HTMLElement;
+		const card = c.querySelector(".configuration-card") as HTMLElement;
 		expect(card).not.toBeNull();
 		card.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter" }));
 
@@ -477,7 +477,7 @@ describe("_renderConfigurationRestoreDialog", () => {
 		document.body.appendChild(c);
 		render(tpl, c);
 
-		const deleteBtn = c.querySelector(".template-card-delete") as HTMLElement;
+		const deleteBtn = c.querySelector(".configuration-card-delete") as HTMLElement;
 		expect(deleteBtn).not.toBeNull();
 		deleteBtn.click();
 
@@ -516,10 +516,10 @@ describe("_renderConfigurationRestoreDialog", () => {
 		document.body.appendChild(c);
 		render(tpl, c);
 
-		const deleteBtn = c.querySelector(".template-card-delete") as HTMLElement;
+		const deleteBtn = c.querySelector(".configuration-card-delete") as HTMLElement;
 		expect(deleteBtn).not.toBeNull();
 		const cardKeydownSpy = vi.fn();
-		const card = c.querySelector(".template-card") as HTMLElement;
+		const card = c.querySelector(".configuration-card") as HTMLElement;
 		card.addEventListener("keydown", cardKeydownSpy);
 		deleteBtn.dispatchEvent(
 			new KeyboardEvent("keydown", { key: " ", bubbles: true }),

@@ -52,7 +52,7 @@ import {
 	type SensorFov,
 } from "./lib/room-geometry.js";
 import { persistSelectedMac } from "./lib/storage.js";
-import { renderTemplateThumbnail } from "./lib/template-thumbnail.js";
+import { renderConfigurationThumbnail } from "./lib/configuration-thumbnail.js";
 import {
 	detectIpAddress,
 	flashFirmware,
@@ -2401,10 +2401,10 @@ export class EPPGridPanel extends LitElement {
           ${
 						configurations.length === 0
 							? html`<p class="overlay-help">${this._localize("dialogs.no_configurations")}</p>`
-							: html`<div class="template-card-grid">
+							: html`<div class="configuration-card-grid">
                   ${configurations.map(
 										(t) => html`
-                    <div class="template-card"
+                    <div class="configuration-card"
                       role="button"
                       tabindex="0"
                       @click=${() => this._loadConfiguration(t.name)}
@@ -2415,7 +2415,7 @@ export class EPPGridPanel extends LitElement {
 												}
 											}}
                     >
-                      <button class="template-card-delete"
+                      <button class="configuration-card-delete"
                         type="button"
                         aria-label="${this._localize("common.delete")}"
                         @click=${(e: Event) => {
@@ -2428,8 +2428,8 @@ export class EPPGridPanel extends LitElement {
                       >
                         <ha-icon icon="mdi:close"></ha-icon>
                       </button>
-                      <div class="template-card-thumbnail">
-                        ${renderTemplateThumbnail(
+                      <div class="configuration-card-thumbnail">
+                        ${renderConfigurationThumbnail(
 													t.grid,
 													// New schema: zones is length-8 with slot 0 =
 													// Zone0Config and slots 1-7 = named zones. The
@@ -2442,9 +2442,9 @@ export class EPPGridPanel extends LitElement {
 													t.furniture ?? [],
 												)}
                       </div>
-                      <div class="template-card-info">
-                        <div class="template-card-name">${t.name}</div>
-                        <div class="template-card-size">${(() => {
+                      <div class="configuration-card-info">
+                        <div class="configuration-card-name">${t.name}</div>
+                        <div class="configuration-card-size">${(() => {
 													// Same FOV-aware metrics the live footer uses; cached
 													// per template to avoid re-scanning the grid every render.
 													const { widthM, depthM } =

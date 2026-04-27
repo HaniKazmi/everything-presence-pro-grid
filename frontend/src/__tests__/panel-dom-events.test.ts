@@ -1216,7 +1216,7 @@ describe("_renderConfigurationRestoreDialog DOM events", () => {
 		const tpl = a._renderConfigurationRestoreDialog();
 		const c = renderTo(tpl);
 
-		const card = c.querySelector(".template-card") as HTMLElement;
+		const card = c.querySelector(".configuration-card") as HTMLElement;
 		expect(card).not.toBeNull();
 		card.click();
 	});

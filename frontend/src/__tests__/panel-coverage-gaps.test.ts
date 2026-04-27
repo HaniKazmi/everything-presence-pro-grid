@@ -814,7 +814,7 @@ describe("_renderConfigurationRestoreDialog DOM events", () => {
 		const tpl = a._renderConfigurationRestoreDialog();
 		const c = renderTo(tpl);
 
-		const card = c.querySelector(".template-card") as HTMLElement;
+		const card = c.querySelector(".configuration-card") as HTMLElement;
 		expect(card).not.toBeNull();
 		card.click();
 		// Async loadTemplate -> applyLayout chain; wait for it.
@@ -838,7 +838,7 @@ describe("_renderConfigurationRestoreDialog DOM events", () => {
 		const tpl = a._renderConfigurationRestoreDialog();
 		const c = renderTo(tpl);
 
-		const deleteBtn = c.querySelector(".template-card-delete") as HTMLElement;
+		const deleteBtn = c.querySelector(".configuration-card-delete") as HTMLElement;
 		expect(deleteBtn).not.toBeNull();
 		deleteBtn.click();
 		// Wait for async _deleteConfiguration to complete

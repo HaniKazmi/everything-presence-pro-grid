@@ -829,12 +829,12 @@ describe("_renderConfigurationRestoreDialog item events", () => {
 		render(tpl, c);
 
 		// Should have template cards for each template
-		const cards = c.querySelectorAll(".template-card");
+		const cards = c.querySelectorAll(".configuration-card");
 		expect(cards.length).toBe(2);
 		// Click load for first template card
 		(cards[0] as HTMLElement).click();
 		// Click delete button for second template card
-		const deleteBtns = c.querySelectorAll(".template-card-delete");
+		const deleteBtns = c.querySelectorAll(".configuration-card-delete");
 		if (deleteBtns.length >= 2) {
 			(deleteBtns[1] as HTMLElement).click();
 		}
