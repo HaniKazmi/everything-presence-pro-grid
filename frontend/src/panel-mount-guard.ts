@@ -1,11 +1,17 @@
+function findPanelResolver(): Element | null {
+	return (
+		document
+			.querySelector("home-assistant")
+			?.shadowRoot?.querySelector("home-assistant-main")
+			?.shadowRoot?.querySelector("partial-panel-resolver") ?? null
+	);
+}
+
 export function findEppPanelHost(): HTMLElement | null {
-	const haRoot = document.querySelector("home-assistant");
-	if (!haRoot) return null;
-	const main = haRoot.shadowRoot?.querySelector("home-assistant-main");
-	if (!main) return null;
-	const resolver = main.shadowRoot?.querySelector("partial-panel-resolver");
-	if (!resolver) return null;
-	return resolver.querySelector("ha-panel-custom") as HTMLElement | null;
+	return (
+		(findPanelResolver()?.querySelector("ha-panel-custom") as HTMLElement) ??
+		null
+	);
 }
 
 export function isEppPanelMissing(host: HTMLElement): boolean {
@@ -38,14 +44,63 @@ const handleVisibilityChange = (): void => {
 	}
 };
 
+type Observed = { node: Element; observer: MutationObserver };
+
+let observedHost: Observed | null = null;
+let observedResolver: Observed | null = null;
+
+function replaceObserver(
+	current: Observed | null,
+	node: Element,
+	callback: MutationCallback,
+): Observed {
+	if (current?.node === node) return current;
+	current?.observer.disconnect();
+	const observer = new MutationObserver(callback);
+	observer.observe(node, { childList: true });
+	return { node, observer };
+}
+
+function attachHostObserver(node: Element): void {
+	observedHost = replaceObserver(observedHost, node, () => checkAndRemount());
+}
+
+// Observes partial-panel-resolver so a fresh ha-panel-custom (e.g. after HA
+// frontend rebuild) gets a new inner observer attached. Without this, a
+// resolver-level swap would orphan our previous host observer and leave the
+// new empty host invisible to us until the next visibilitychange.
+function attachResolverObserver(node: Element): void {
+	observedResolver = replaceObserver(observedResolver, node, () => {
+		const host = node.querySelector("ha-panel-custom") as HTMLElement | null;
+		if (host) attachHostObserver(host);
+		checkAndRemount();
+	});
+}
+
+// Reattaches the observers if HA has replaced the resolver or host since we
+// last looked. Idempotent — safe to call from connectedCallback on every
+// remount.
+export function ensureObserversAttached(): void {
+	const resolver = findPanelResolver();
+	if (!resolver) return;
+	attachResolverObserver(resolver);
+	const host = resolver.querySelector("ha-panel-custom") as HTMLElement | null;
+	if (host) attachHostObserver(host);
+}
+
 export function installPanelMountGuard(): void {
 	if ((window as any).__eppGridMountGuardInstalled) return;
 	(window as any).__eppGridMountGuardInstalled = true;
 	document.addEventListener("visibilitychange", handleVisibilityChange);
+	ensureObserversAttached();
 }
 
 export function uninstallPanelMountGuard(): void {
 	if (!(window as any).__eppGridMountGuardInstalled) return;
 	document.removeEventListener("visibilitychange", handleVisibilityChange);
+	observedHost?.observer.disconnect();
+	observedResolver?.observer.disconnect();
+	observedHost = null;
+	observedResolver = null;
 	delete (window as any).__eppGridMountGuardInstalled;
 }

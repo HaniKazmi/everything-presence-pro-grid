@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
 	checkAndRemount,
+	ensureObserversAttached,
 	findEppPanelHost,
 	installPanelMountGuard,
 	isEppPanelMissing,
@@ -309,5 +310,177 @@ describe("module-level install", () => {
 		uninstallPanelMountGuard();
 		await import("../eppgrid-panel.js");
 		expect((window as any).__eppGridMountGuardInstalled).toBe(true);
+	});
+});
+
+describe("installPanelMountGuard MutationObserver", () => {
+	afterEach(() => {
+		uninstallPanelMountGuard();
+		document.body.innerHTML = "";
+	});
+
+	function flushMicrotasks(): Promise<void> {
+		return new Promise((resolve) => setTimeout(resolve, 0));
+	}
+
+	it("remounts when host loses its child while tab stays visible", async () => {
+		const haRoot = buildHaShadowTree(true);
+		(haRoot as any).hass = { any: "value" };
+		document.body.appendChild(haRoot);
+		const host = haRoot
+			.shadowRoot!.querySelector("home-assistant-main")!
+			.shadowRoot!.querySelector("partial-panel-resolver")!
+			.querySelector("ha-panel-custom") as HTMLElement;
+		(host as any).panel = {
+			config: { _panel_custom: { name: "eppgrid-panel" } },
+		};
+		host.appendChild(document.createElement("eppgrid-panel"));
+
+		// Tab is and stays visible — no visibilitychange will fire.
+		Object.defineProperty(document, "visibilityState", {
+			value: "visible",
+			configurable: true,
+		});
+
+		installPanelMountGuard();
+
+		// Simulate HA's panel resolver clearing our child during a WS reconnect.
+		host.removeChild(host.firstElementChild!);
+		await flushMicrotasks();
+
+		expect(host.children.length).toBe(1);
+		expect(host.firstElementChild?.tagName.toLowerCase()).toBe("eppgrid-panel");
+	});
+
+	it("re-attaches the inner observer when partial-panel-resolver swaps host", async () => {
+		const haRoot = buildHaShadowTree(true);
+		(haRoot as any).hass = { any: "value" };
+		document.body.appendChild(haRoot);
+		const resolver = haRoot
+			.shadowRoot!.querySelector("home-assistant-main")!
+			.shadowRoot!.querySelector("partial-panel-resolver")!;
+		const oldHost = resolver.querySelector("ha-panel-custom") as HTMLElement;
+		(oldHost as any).panel = {
+			config: { _panel_custom: { name: "eppgrid-panel" } },
+		};
+		oldHost.appendChild(document.createElement("eppgrid-panel"));
+
+		Object.defineProperty(document, "visibilityState", {
+			value: "visible",
+			configurable: true,
+		});
+		installPanelMountGuard();
+
+		// Resolver replaces ha-panel-custom with a fresh empty one (still our panel)
+		resolver.removeChild(oldHost);
+		const newHost = document.createElement("ha-panel-custom");
+		(newHost as any).panel = {
+			config: { _panel_custom: { name: "eppgrid-panel" } },
+		};
+		resolver.appendChild(newHost);
+		await flushMicrotasks();
+
+		// First mutation (resolver childList) should trigger remount of the new
+		// empty host AND attach a fresh inner observer. Verify both halves:
+		expect(newHost.children.length).toBe(1);
+		expect(newHost.firstElementChild?.tagName.toLowerCase()).toBe(
+			"eppgrid-panel",
+		);
+
+		// Now if the new host's child is removed, the freshly-attached inner
+		// observer should remount it too.
+		newHost.removeChild(newHost.firstElementChild!);
+		await flushMicrotasks();
+		expect(newHost.children.length).toBe(1);
+	});
+
+	it("does not remount when the configured panel is not eppgrid-panel", async () => {
+		const haRoot = buildHaShadowTree(true);
+		(haRoot as any).hass = { any: "value" };
+		document.body.appendChild(haRoot);
+		const host = haRoot
+			.shadowRoot!.querySelector("home-assistant-main")!
+			.shadowRoot!.querySelector("partial-panel-resolver")!
+			.querySelector("ha-panel-custom") as HTMLElement;
+		(host as any).panel = {
+			config: { _panel_custom: { name: "some-other-panel" } },
+		};
+		host.appendChild(document.createElement("other-panel"));
+
+		Object.defineProperty(document, "visibilityState", {
+			value: "visible",
+			configurable: true,
+		});
+		installPanelMountGuard();
+
+		host.removeChild(host.firstElementChild!);
+		await flushMicrotasks();
+
+		expect(host.children.length).toBe(0);
+	});
+
+	it("uninstall disconnects the observers so later mutations are ignored", async () => {
+		const haRoot = buildHaShadowTree(true);
+		(haRoot as any).hass = { any: "value" };
+		document.body.appendChild(haRoot);
+		const host = haRoot
+			.shadowRoot!.querySelector("home-assistant-main")!
+			.shadowRoot!.querySelector("partial-panel-resolver")!
+			.querySelector("ha-panel-custom") as HTMLElement;
+		(host as any).panel = {
+			config: { _panel_custom: { name: "eppgrid-panel" } },
+		};
+		host.appendChild(document.createElement("eppgrid-panel"));
+
+		Object.defineProperty(document, "visibilityState", {
+			value: "visible",
+			configurable: true,
+		});
+		installPanelMountGuard();
+		uninstallPanelMountGuard();
+
+		host.removeChild(host.firstElementChild!);
+		await flushMicrotasks();
+
+		expect(host.children.length).toBe(0);
+	});
+
+	it("install is safe when partial-panel-resolver is not yet present", () => {
+		// No HA shadow tree at install time — must not throw.
+		expect(() => installPanelMountGuard()).not.toThrow();
+	});
+
+	it("ensureObserversAttached attaches observers when DOM appears after install", async () => {
+		// Install BEFORE the HA tree exists — mirrors the real load order
+		// where our module is imported before partial-panel-resolver is built.
+		Object.defineProperty(document, "visibilityState", {
+			value: "visible",
+			configurable: true,
+		});
+		installPanelMountGuard();
+
+		// Now build the HA tree — observers were never attached during install.
+		const haRoot = buildHaShadowTree(true);
+		(haRoot as any).hass = { any: "value" };
+		document.body.appendChild(haRoot);
+		const host = haRoot
+			.shadowRoot!.querySelector("home-assistant-main")!
+			.shadowRoot!.querySelector("partial-panel-resolver")!
+			.querySelector("ha-panel-custom") as HTMLElement;
+		(host as any).panel = {
+			config: { _panel_custom: { name: "eppgrid-panel" } },
+		};
+		host.appendChild(document.createElement("eppgrid-panel"));
+
+		// The panel calls this from connectedCallback to wire observers
+		// once the DOM is actually present.
+		ensureObserversAttached();
+
+		// Tab stays visible the whole time — only the MutationObserver can save us.
+		host.removeChild(host.firstElementChild!);
+		await flushMicrotasks();
+
+		expect(host.children.length).toBe(1);
+		expect(host.firstElementChild?.tagName.toLowerCase()).toBe("eppgrid-panel");
 	});
 });
