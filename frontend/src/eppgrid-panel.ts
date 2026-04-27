@@ -270,9 +270,9 @@ export class EPPGridPanel extends LitElement {
 	@state() private _dirty = false;
 	@state() private _showUnsavedDialog = false;
 	private _pendingNavigation: (() => void) | null = null;
-	@state() private _showTemplateSave = false;
-	@state() private _showTemplateLoad = false;
-	@state() private _templateName = "";
+	@state() private _showConfigurationBackup = false;
+	@state() private _showConfigurationRestore = false;
+	@state() private _configurationName = "";
 
 	// Multi-device support
 	@state() private _devices: DeviceInfo[] = [];
@@ -941,33 +941,33 @@ export class EPPGridPanel extends LitElement {
 		);
 	}
 
-	// -- Template management (backend WS API) --
+	// -- Configuration management (backend WS API) --
 
-	private _getTemplates() {
-		return this._gridCtrl.templates;
+	private _getConfigurations() {
+		return this._gridCtrl.configurations;
 	}
 
-	private async _saveTemplate(): Promise<void> {
+	private async _saveConfiguration(): Promise<void> {
 		try {
-			await this._gridCtrl.saveTemplate();
+			await this._gridCtrl.saveConfiguration();
 		} catch (err) {
-			console.error("Failed to save template", err);
+			console.error("Failed to save configuration", err);
 		}
 	}
 
-	private async _loadTemplate(name: string): Promise<void> {
+	private async _loadConfiguration(name: string): Promise<void> {
 		try {
-			await this._gridCtrl.loadTemplate(name);
+			await this._gridCtrl.loadConfiguration(name);
 		} catch (err) {
-			console.error(`Failed to load template "${name}"`, err);
+			console.error(`Failed to load configuration "${name}"`, err);
 		}
 	}
 
-	private async _deleteTemplate(name: string): Promise<void> {
+	private async _deleteConfiguration(name: string): Promise<void> {
 		try {
-			await this._gridCtrl.deleteTemplate(name);
+			await this._gridCtrl.deleteConfiguration(name);
 		} catch (err) {
-			console.error(`Failed to delete template "${name}"`, err);
+			console.error(`Failed to delete configuration "${name}"`, err);
 		}
 	}
 
@@ -1052,11 +1052,11 @@ export class EPPGridPanel extends LitElement {
 		return value;
 	}
 
-	// Template card metrics cache — keyed by template object reference.
+	// Configuration card metrics cache — keyed by template object reference.
 	// Invalidated when perspective or max-range changes (FOV inputs).
-	// fetchTemplates returns fresh objects each call, so stale entries drop
+	// fetchConfigurations returns fresh objects each call, so stale entries drop
 	// naturally via WeakMap GC when the old array is replaced.
-	private _templateMetricsCache = new WeakMap<
+	private _configurationMetricsCache = new WeakMap<
 		object,
 		{
 			perspective: number[] | null;
@@ -1066,14 +1066,14 @@ export class EPPGridPanel extends LitElement {
 		}
 	>();
 
-	private _getTemplateMetrics(t: {
+	private _getConfigurationMetrics(t: {
 		grid: number[];
 		roomWidth: number;
 		roomDepth: number;
 	}): { widthM: number; depthM: number } {
 		const perspective = this._perspective;
 		const maxRangeMm = this._computeMaxRangeMm();
-		const cached = this._templateMetricsCache.get(t);
+		const cached = this._configurationMetricsCache.get(t);
 		if (
 			cached &&
 			cached.perspective === perspective &&
@@ -1090,7 +1090,7 @@ export class EPPGridPanel extends LitElement {
 		);
 		const widthM = metrics ? metrics.widthM : t.roomWidth / 1000;
 		const depthM = metrics ? metrics.depthM : t.roomDepth / 1000;
-		this._templateMetricsCache.set(t, {
+		this._configurationMetricsCache.set(t, {
 			perspective,
 			maxRangeMm,
 			widthM,
@@ -1352,8 +1352,8 @@ export class EPPGridPanel extends LitElement {
 
 	private _renderGlobalDialogs() {
 		return html`
-      ${this._showTemplateSave ? this._renderTemplateSaveDialog() : nothing}
-      ${this._showTemplateLoad ? this._renderTemplateLoadDialog() : nothing}
+      ${this._showConfigurationBackup ? this._renderConfigurationBackupDialog() : nothing}
+      ${this._showConfigurationRestore ? this._renderConfigurationRestoreDialog() : nothing}
       ${
 				this._showUnsavedDialog
 					? html`
@@ -2064,13 +2064,13 @@ export class EPPGridPanel extends LitElement {
 										}
                     <hr style="border: none; border-top: 1px solid var(--divider-color, #eee); margin: 4px 0;"/>
                     <button class="sidebar-menu-item" @click=${() => {
-											this._showTemplateSave = true;
+											this._showConfigurationBackup = true;
 										}}>
                       <ha-icon icon="mdi:content-save" style="--mdc-icon-size: 18px;"></ha-icon> ${this._localize("dialogs.save_template")}
                     </button>
                     <button class="sidebar-menu-item" @click=${async () => {
-											await this._gridCtrl.fetchTemplates();
-											this._showTemplateLoad = true;
+											await this._gridCtrl.fetchConfigurations();
+											this._showConfigurationRestore = true;
 										}}>
                       <ha-icon icon="mdi:folder-open" style="--mdc-icon-size: 18px;"></ha-icon> ${this._localize("dialogs.load_template")}
                     </button>
@@ -2360,7 +2360,7 @@ export class EPPGridPanel extends LitElement {
     `;
 	}
 
-	private _renderTemplateSaveDialog() {
+	private _renderConfigurationBackupDialog() {
 		return html`
       <div class="template-dialog">
         <div class="template-dialog-card">
@@ -2369,22 +2369,22 @@ export class EPPGridPanel extends LitElement {
             type="text"
             class="template-name-input"
             placeholder="${this._localize("dialogs.template_name")}"
-            .value=${this._templateName}
+            .value=${this._configurationName}
             @input=${(e: Event) => {
-							this._templateName = (e.target as HTMLInputElement).value;
+							this._configurationName = (e.target as HTMLInputElement).value;
 						}}
           />
           <div class="template-dialog-actions">
             <button
               class="wizard-btn wizard-btn-back"
               @click=${() => {
-								this._showTemplateSave = false;
+								this._showConfigurationBackup = false;
 							}}
             >${this._localize("common.cancel")}</button>
             <button
               class="wizard-btn wizard-btn-primary"
-              ?disabled=${!this._templateName.trim()}
-              @click=${() => this._saveTemplate()}
+              ?disabled=${!this._configurationName.trim()}
+              @click=${() => this._saveConfiguration()}
             >${this._localize("common.save")}</button>
           </div>
         </div>
@@ -2392,26 +2392,26 @@ export class EPPGridPanel extends LitElement {
     `;
 	}
 
-	private _renderTemplateLoadDialog() {
-		const templates = this._getTemplates();
+	private _renderConfigurationRestoreDialog() {
+		const configurations = this._getConfigurations();
 		return html`
       <div class="template-dialog">
         <div class="template-dialog-card">
           <h3>${this._localize("dialogs.load_template")}</h3>
           ${
-						templates.length === 0
+						configurations.length === 0
 							? html`<p class="overlay-help">${this._localize("dialogs.no_templates")}</p>`
 							: html`<div class="template-card-grid">
-                  ${templates.map(
+                  ${configurations.map(
 										(t) => html`
                     <div class="template-card"
                       role="button"
                       tabindex="0"
-                      @click=${() => this._loadTemplate(t.name)}
+                      @click=${() => this._loadConfiguration(t.name)}
                       @keydown=${(e: KeyboardEvent) => {
 												if (e.key === "Enter" || e.key === " ") {
 													e.preventDefault();
-													this._loadTemplate(t.name);
+													this._loadConfiguration(t.name);
 												}
 											}}
                     >
@@ -2420,7 +2420,7 @@ export class EPPGridPanel extends LitElement {
                         aria-label="${this._localize("common.delete")}"
                         @click=${(e: Event) => {
 													e.stopPropagation();
-													this._deleteTemplate(t.name);
+													this._deleteConfiguration(t.name);
 												}}
                         @keydown=${(e: KeyboardEvent) => {
 													e.stopPropagation();
@@ -2448,7 +2448,7 @@ export class EPPGridPanel extends LitElement {
 													// Same FOV-aware metrics the live footer uses; cached
 													// per template to avoid re-scanning the grid every render.
 													const { widthM, depthM } =
-														this._getTemplateMetrics(t);
+														this._getConfigurationMetrics(t);
 													return `${this._localize.formatNumber(widthM, 1)}m × ${this._localize.formatNumber(depthM, 1)}m`;
 												})()}</div>
                       </div>
@@ -2461,7 +2461,7 @@ export class EPPGridPanel extends LitElement {
             <button
               class="wizard-btn wizard-btn-back"
               @click=${() => {
-								this._showTemplateLoad = false;
+								this._showConfigurationRestore = false;
 							}}
             >${this._localize("common.close")}</button>
           </div>

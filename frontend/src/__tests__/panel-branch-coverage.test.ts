@@ -75,8 +75,8 @@ function createPanel() {
 	a._pendingNavigation = null;
 	a._saving = false;
 	a._showDeleteCalibrationDialog = false;
-	a._showTemplateSave = false;
-	a._showTemplateLoad = false;
+	a._showConfigurationBackup = false;
+	a._showConfigurationRestore = false;
 	a._entitiesConfig = {};
 	a._targetAutoDistance = true;
 	a._targetMaxDistance = 6;
@@ -102,7 +102,7 @@ function createPanel() {
 	a._wizardOffsetSide = "";
 	a._wizardOffsetFb = "";
 	a._wizardSaving = false;
-	a._templateName = "";
+	a._configurationName = "";
 	a._fovCache = null;
 	a._fovPerspective = null;
 	a._localize = setupLocalize();
@@ -798,10 +798,10 @@ describe("_infoTip DOM click handler", () => {
 // =========================================================
 // _renderTemplateLoadDialog: load and delete on templates
 // =========================================================
-describe("_renderTemplateLoadDialog item events", () => {
+describe("_renderConfigurationRestoreDialog item events", () => {
 	it("fires load and delete on template items", () => {
 		const a = createPanel() as any;
-		a._gridCtrl.templates = [
+		a._gridCtrl.configurations = [
 			{
 				name: "T1",
 				grid: new Array(GRID_CELL_COUNT).fill(0),
@@ -818,12 +818,12 @@ describe("_renderTemplateLoadDialog item events", () => {
 			},
 		];
 		a.hass.callWS = vi.fn().mockImplementation((msg: any) => {
-			if (msg.type === "eppgrid/delete_template") return Promise.resolve({});
-			if (msg.type === "eppgrid/list_templates")
-				return Promise.resolve({ templates: {} });
+			if (msg.type === "eppgrid/delete_configuration") return Promise.resolve({});
+			if (msg.type === "eppgrid/list_configurations")
+				return Promise.resolve({ configurations: {} });
 			return Promise.resolve({});
 		});
-		const tpl = a._renderTemplateLoadDialog();
+		const tpl = a._renderConfigurationRestoreDialog();
 		const c = document.createElement("div");
 		document.body.appendChild(c);
 		render(tpl, c);

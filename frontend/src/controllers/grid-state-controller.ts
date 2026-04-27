@@ -421,10 +421,10 @@ export class GridStateController implements ReactiveController {
 	}
 
 	// =====================================================================
-	// Template management (backend WS API)
+	// Saved configurations (backend WS API)
 	// =====================================================================
 
-	templates: {
+	configurations: {
 		name: string;
 		grid: number[];
 		// Length-8 zone slots: slot 0 = Zone0Config (room boundary),
@@ -433,32 +433,33 @@ export class GridStateController implements ReactiveController {
 		roomWidth: number;
 		roomDepth: number;
 		furniture?: FurnitureItem[];
+		settings?: { [key: string]: any };
 	}[] = [];
 
-	async fetchTemplates(): Promise<void> {
+	async fetchConfigurations(): Promise<void> {
 		try {
 			const resp = await (this.host as any).hass.callWS({
-				type: "eppgrid/list_templates",
+				type: "eppgrid/list_configurations",
 			});
-			const dict = resp.templates || {};
-			this.templates = Object.entries(dict).map(
+			const dict = resp.configurations || {};
+			this.configurations = Object.entries(dict).map(
 				([name, data]: [string, any]) => ({
 					...data,
 					name,
 				}),
 			);
 		} catch {
-			this.templates = [];
+			this.configurations = [];
 		}
 	}
 
-	async saveTemplate(): Promise<void> {
-		const name = (this.host._templateName as string).trim();
+	async saveConfiguration(): Promise<void> {
+		const name = (this.host._configurationName as string).trim();
 		if (!name) return;
 		const zones = (
 			this.host._zoneConfigs as (ZoneConfig | Zone0Config | null)[]
 		).map((z, i) => serializeSlot(z, i));
-		const template = {
+		const configuration = {
 			grid: Array.from(this.host._grid as Uint8Array),
 			zones,
 			roomWidth: this.host._roomWidth as number,
@@ -468,23 +469,23 @@ export class GridStateController implements ReactiveController {
 			})),
 		};
 		await (this.host as any).hass.callWS({
-			type: "eppgrid/save_template",
+			type: "eppgrid/save_configuration",
 			name,
-			template,
+			configuration,
 		});
-		this.host._showTemplateSave = false;
-		this.host._templateName = "";
-		await this.fetchTemplates();
+		this.host._showConfigurationBackup = false;
+		this.host._configurationName = "";
+		await this.fetchConfigurations();
 	}
 
-	async loadTemplate(name: string): Promise<void> {
-		const tmpl = this.templates.find((t) => t.name === name);
-		if (!tmpl) return;
-		const zones = tmpl.zones || [];
+	async loadConfiguration(name: string): Promise<void> {
+		const cfg = this.configurations.find((t) => t.name === name);
+		if (!cfg) return;
+		const zones = cfg.zones || [];
 		// Length-8 with a populated, well-shaped zone 0 and correctly-shaped
 		// named slots is required (per no-BWC policy). Old- or corrupt-format
-		// templates throw so the user re-saves them. Leave the load dialog
-		// open so the failure is visible and the user can try another template.
+		// configurations throw so the user re-saves them. Leave the restore dialog
+		// open so the failure is visible and the user can try another configuration.
 		const isZone0Shape = (s: any): boolean =>
 			s != null && typeof s === "object" && typeof s.type === "string";
 		const isNamedZoneShape = (s: any): boolean =>
@@ -495,7 +496,7 @@ export class GridStateController implements ReactiveController {
 				typeof s.color === "string" &&
 				typeof s.type === "string");
 		const oldFormatError = new Error(
-			`Template "${name}" is in an old format — please re-save it`,
+			`Configuration "${name}" is in an old format — please re-save it`,
 		);
 		if (zones.length !== NUM_ZONE_SLOTS) {
 			throw oldFormatError;
@@ -508,17 +509,17 @@ export class GridStateController implements ReactiveController {
 				throw oldFormatError;
 			}
 		}
-		this.host._grid = new Uint8Array(tmpl.grid);
+		this.host._grid = new Uint8Array(cfg.grid);
 		this.host._zoneConfigs = Array.from(
 			{ length: NUM_ZONE_SLOTS },
 			(_, i) => zones[i] ?? null,
 		);
-		this.host._roomWidth = tmpl.roomWidth;
-		this.host._roomDepth = tmpl.roomDepth;
-		this.host._furniture = (tmpl.furniture || []).map((f: any) => ({
+		this.host._roomWidth = cfg.roomWidth;
+		this.host._roomDepth = cfg.roomDepth;
+		this.host._furniture = (cfg.furniture || []).map((f: any) => ({
 			...f,
 		}));
-		this.host._showTemplateLoad = false;
+		this.host._showConfigurationRestore = false;
 		// Mark dirty before auto-apply: if applyLayout throws (e.g. websocket
 		// failure), the UI state has changed but the backend hasn't, so the
 		// user needs an Apply button to retry. On success, applyLayout clears
@@ -527,12 +528,12 @@ export class GridStateController implements ReactiveController {
 		await this.applyLayout();
 	}
 
-	async deleteTemplate(name: string): Promise<void> {
+	async deleteConfiguration(name: string): Promise<void> {
 		await (this.host as any).hass.callWS({
-			type: "eppgrid/delete_template",
+			type: "eppgrid/delete_configuration",
 			name,
 		});
-		await this.fetchTemplates();
+		await this.fetchConfigurations();
 		this.host.requestUpdate();
 	}
 

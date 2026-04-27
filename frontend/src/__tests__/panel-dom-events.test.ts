@@ -73,8 +73,8 @@ function createPanel(): EPPGridPanel {
 	a._pendingNavigation = null;
 	a._saving = false;
 	a._showDeleteCalibrationDialog = false;
-	a._showTemplateSave = false;
-	a._showTemplateLoad = false;
+	a._showConfigurationBackup = false;
+	a._showConfigurationRestore = false;
 	a._entitiesConfig = {};
 	a._targetAutoDistance = true;
 	a._targetMaxDistance = 6;
@@ -100,7 +100,7 @@ function createPanel(): EPPGridPanel {
 	a._wizardOffsetSide = "";
 	a._wizardOffsetFb = "";
 	a._wizardSaving = false;
-	a._templateName = "";
+	a._configurationName = "";
 	a._fovCache = null;
 	a._fovPerspective = null;
 	return el;
@@ -1166,44 +1166,44 @@ describe("_renderNeedsCalibration DOM events (via EppWizard)", () => {
 	});
 });
 
-describe("_renderTemplateSaveDialog DOM events", () => {
+describe("_renderConfigurationBackupDialog DOM events", () => {
 	it("template name input and save", () => {
 		const a = createPanel() as any;
-		const tpl = a._renderTemplateSaveDialog();
+		const tpl = a._renderConfigurationBackupDialog();
 		const c = renderTo(tpl);
 
 		const input = c.querySelector(".template-name-input") as HTMLInputElement;
 		if (input) {
 			input.value = "My Template";
 			input.dispatchEvent(new Event("input"));
-			expect(a._templateName).toBe("My Template");
+			expect(a._configurationName).toBe("My Template");
 		}
 
 		const cancel = c.querySelector(".wizard-btn-back") as HTMLElement;
 		if (cancel) {
 			cancel.click();
-			expect(a._showTemplateSave).toBe(false);
+			expect(a._showConfigurationBackup).toBe(false);
 		}
 	});
 });
 
-describe("_renderTemplateLoadDialog DOM events", () => {
+describe("_renderConfigurationRestoreDialog DOM events", () => {
 	it("close button works", () => {
 		const a = createPanel() as any;
-		a._showTemplateLoad = true;
-		const tpl = a._renderTemplateLoadDialog();
+		a._showConfigurationRestore = true;
+		const tpl = a._renderConfigurationRestoreDialog();
 		const c = renderTo(tpl);
 
 		const closeBtn = c.querySelector(".wizard-btn-back") as HTMLElement;
 		if (closeBtn) {
 			closeBtn.click();
-			expect(a._showTemplateLoad).toBe(false);
+			expect(a._showConfigurationRestore).toBe(false);
 		}
 	});
 
 	it("load and delete buttons with templates", () => {
 		const a = createPanel() as any;
-		a._gridCtrl.templates = [
+		a._gridCtrl.configurations = [
 			{
 				name: "T1",
 				grid: new Array(GRID_CELL_COUNT).fill(0),
@@ -1213,7 +1213,7 @@ describe("_renderTemplateLoadDialog DOM events", () => {
 			},
 		];
 
-		const tpl = a._renderTemplateLoadDialog();
+		const tpl = a._renderConfigurationRestoreDialog();
 		const c = renderTo(tpl);
 
 		const card = c.querySelector(".template-card") as HTMLElement;

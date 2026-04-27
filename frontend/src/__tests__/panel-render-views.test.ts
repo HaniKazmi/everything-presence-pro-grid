@@ -70,8 +70,8 @@ function createPanel(): EPPGridPanel {
 	a._saving = false;
 
 	a._showDeleteCalibrationDialog = false;
-	a._showTemplateSave = false;
-	a._showTemplateLoad = false;
+	a._showConfigurationBackup = false;
+	a._showConfigurationRestore = false;
 	a._entitiesConfig = {};
 	a._targetAutoDistance = true;
 	a._targetMaxDistance = 6;
@@ -97,7 +97,7 @@ function createPanel(): EPPGridPanel {
 	a._wizardOffsetSide = "";
 	a._wizardOffsetFb = "";
 	a._wizardSaving = false;
-	a._templateName = "";
+	a._configurationName = "";
 	a._fovCache = null;
 	a._fovPerspective = null;
 	return el;
@@ -812,7 +812,7 @@ describe("_renderEditor", () => {
 	it("renders editor with template save dialog", () => {
 		const a = createPanel() as any;
 		a._view = "editor";
-		a._showTemplateSave = true;
+		a._showConfigurationBackup = true;
 		a._grid = initGridFromRoom(3000, 4000);
 		const result = a._renderEditor();
 		expect(result).toBeDefined();
@@ -821,7 +821,7 @@ describe("_renderEditor", () => {
 	it("renders editor with template load dialog", () => {
 		const a = createPanel() as any;
 		a._view = "editor";
-		a._showTemplateLoad = true;
+		a._showConfigurationRestore = true;
 		a._grid = initGridFromRoom(3000, 4000);
 		const result = a._renderEditor();
 		expect(result).toBeDefined();
@@ -891,30 +891,30 @@ describe("_renderEditor", () => {
 	});
 });
 
-describe("_renderTemplateSaveDialog", () => {
+describe("_renderConfigurationBackupDialog", () => {
 	it("renders save dialog", () => {
 		const a = createPanel() as any;
-		a._templateName = "Test";
-		const result = a._renderTemplateSaveDialog();
+		a._configurationName = "Test";
+		const result = a._renderConfigurationBackupDialog();
 		expect(result).toBeDefined();
 	});
 });
 
-describe("_renderTemplateLoadDialog", () => {
+describe("_renderConfigurationRestoreDialog", () => {
 	it("renders load dialog with no templates", () => {
 		const a = createPanel() as any;
-		a._gridCtrl.templates = [];
-		const result = a._renderTemplateLoadDialog();
+		a._gridCtrl.configurations = [];
+		const result = a._renderConfigurationRestoreDialog();
 		expect(result).toBeDefined();
 	});
 
 	it("renders load dialog with templates", () => {
 		const a = createPanel() as any;
-		a._gridCtrl.templates = [
+		a._gridCtrl.configurations = [
 			{ name: "T1", grid: [], zones: [], roomWidth: 3000, roomDepth: 4000 },
 			{ name: "T2", grid: [], zones: [], roomWidth: 5000, roomDepth: 6000 },
 		];
-		const result = a._renderTemplateLoadDialog();
+		const result = a._renderConfigurationRestoreDialog();
 		expect(result).toBeDefined();
 	});
 });

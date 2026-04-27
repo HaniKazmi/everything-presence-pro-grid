@@ -70,8 +70,8 @@ function createPanel(): EPPGridPanel {
 	a._saving = false;
 
 	a._showDeleteCalibrationDialog = false;
-	a._showTemplateSave = false;
-	a._showTemplateLoad = false;
+	a._showConfigurationBackup = false;
+	a._showConfigurationRestore = false;
 	a._entitiesConfig = {};
 	a._targetAutoDistance = true;
 	a._targetMaxDistance = 6;
@@ -97,7 +97,7 @@ function createPanel(): EPPGridPanel {
 	a._wizardOffsetSide = "";
 	a._wizardOffsetFb = "";
 	a._wizardSaving = false;
-	a._templateName = "";
+	a._configurationName = "";
 	a._fovCache = null;
 	a._fovPerspective = null;
 	return el;
@@ -575,18 +575,18 @@ describe("_renderLiveOverview inline handlers", () => {
 		expect(a._showDeleteCalibrationDialog).toBe(true);
 	});
 
-	it("save template button shows dialog", () => {
+	it("save configuration button shows dialog", () => {
 		const a = createPanel() as any;
 		// Replicate handler (line 3628-3629)
-		a._showTemplateSave = true;
-		expect(a._showTemplateSave).toBe(true);
+		a._showConfigurationBackup = true;
+		expect(a._showConfigurationBackup).toBe(true);
 	});
 
-	it("load template button shows dialog", () => {
+	it("load configuration button shows dialog", () => {
 		const a = createPanel() as any;
 		// Replicate handler (line 3633-3634)
-		a._showTemplateLoad = true;
-		expect(a._showTemplateLoad).toBe(true);
+		a._showConfigurationRestore = true;
+		expect(a._showConfigurationRestore).toBe(true);
 	});
 });
 
@@ -1017,38 +1017,38 @@ describe("_renderEditor inline handlers", () => {
 // ========================
 // _renderTemplateSaveDialog inline handlers
 // ========================
-describe("_renderTemplateSaveDialog inline handlers", () => {
-	it("template name input updates _templateName", () => {
+describe("_renderConfigurationBackupDialog inline handlers", () => {
+	it("template name input updates _configurationName", () => {
 		const a = createPanel() as any;
 		// Replicate handler (line 4548-4549)
-		a._templateName = "My Layout";
-		expect(a._templateName).toBe("My Layout");
+		a._configurationName = "My Layout";
+		expect(a._configurationName).toBe("My Layout");
 	});
 
 	it("cancel button hides save dialog", () => {
 		const a = createPanel() as any;
-		a._showTemplateSave = true;
+		a._showConfigurationBackup = true;
 		// Replicate handler (line 4555-4556)
-		a._showTemplateSave = false;
-		expect(a._showTemplateSave).toBe(false);
+		a._showConfigurationBackup = false;
+		expect(a._showConfigurationBackup).toBe(false);
 	});
 });
 
 // ========================
 // _renderTemplateLoadDialog inline handlers
 // ========================
-describe("_renderTemplateLoadDialog inline handlers", () => {
+describe("_renderConfigurationRestoreDialog inline handlers", () => {
 	it("close button hides load dialog", () => {
 		const a = createPanel() as any;
-		a._showTemplateLoad = true;
+		a._showConfigurationRestore = true;
 		// Replicate handler (line 4586)
-		a._showTemplateLoad = false;
-		expect(a._showTemplateLoad).toBe(false);
+		a._showConfigurationRestore = false;
+		expect(a._showConfigurationRestore).toBe(false);
 	});
 
 	it("load button calls _loadTemplate", () => {
 		const a = createPanel() as any;
-		a._gridCtrl.templates = [
+		a._gridCtrl.configurations = [
 			{
 				name: "T1",
 				grid: new Array(GRID_CELL_COUNT).fill(0),
@@ -1059,13 +1059,13 @@ describe("_renderTemplateLoadDialog inline handlers", () => {
 		];
 
 		// Replicate handler (line 4590)
-		a._loadTemplate("T1");
+		a._loadConfiguration("T1");
 		expect(a._roomWidth).toBe(3000);
 	});
 
 	it("delete button calls _deleteTemplate", async () => {
 		const a = createPanel() as any;
-		a._gridCtrl.templates = [
+		a._gridCtrl.configurations = [
 			{
 				name: "T1",
 				grid: [],
@@ -1076,15 +1076,15 @@ describe("_renderTemplateLoadDialog inline handlers", () => {
 		];
 
 		a.hass.callWS = vi.fn().mockImplementation((msg: any) => {
-			if (msg.type === "eppgrid/delete_template") return Promise.resolve({});
-			if (msg.type === "eppgrid/list_templates")
-				return Promise.resolve({ templates: {} });
+			if (msg.type === "eppgrid/delete_configuration") return Promise.resolve({});
+			if (msg.type === "eppgrid/list_configurations")
+				return Promise.resolve({ configurations: {} });
 			return Promise.resolve({});
 		});
 
 		// Replicate handler (line 4601)
-		await a._deleteTemplate("T1");
-		expect(a._gridCtrl.templates).toHaveLength(0);
+		await a._deleteConfiguration("T1");
+		expect(a._gridCtrl.configurations).toHaveLength(0);
 	});
 });
 

@@ -72,8 +72,8 @@ function createPanel(): EPPGridPanel {
 	a._pendingNavigation = null;
 	a._saving = false;
 	a._showDeleteCalibrationDialog = false;
-	a._showTemplateSave = false;
-	a._showTemplateLoad = false;
+	a._showConfigurationBackup = false;
+	a._showConfigurationRestore = false;
 	a._entitiesConfig = {};
 	a._targetAutoDistance = true;
 	a._targetMaxDistance = 6;
@@ -99,7 +99,7 @@ function createPanel(): EPPGridPanel {
 	a._wizardOffsetSide = "";
 	a._wizardOffsetFb = "";
 	a._wizardSaving = false;
-	a._templateName = "";
+	a._configurationName = "";
 	a._fovCache = null;
 	a._fovPerspective = null;
 	return el;
@@ -389,7 +389,7 @@ describe("live overview menu branches (panel inline)", () => {
 		document.body.removeChild(c);
 	});
 
-	it("save template menu item sets _showTemplateSave", () => {
+	it("save configuration menu item sets _showConfigurationBackup", () => {
 		const a = createPanel() as any;
 		a._showLiveMenu = true;
 		a._perspective = [1, 0, 0, 0, 1, 0, 0, 0];
@@ -401,14 +401,14 @@ describe("live overview menu branches (panel inline)", () => {
 			const text = items[i].textContent || "";
 			if (text.includes("dialogs.save_template")) {
 				(items[i] as HTMLElement).click();
-				expect(a._showTemplateSave).toBe(true);
+				expect(a._showConfigurationBackup).toBe(true);
 				break;
 			}
 		}
 		document.body.removeChild(c);
 	});
 
-	it("load template menu item sets _showTemplateLoad", async () => {
+	it("load configuration menu item sets _showConfigurationRestore", async () => {
 		const a = createPanel() as any;
 		a._showLiveMenu = true;
 		a._perspective = [1, 0, 0, 0, 1, 0, 0, 0];
@@ -421,7 +421,7 @@ describe("live overview menu branches (panel inline)", () => {
 			if (text.includes("dialogs.load_template")) {
 				(items[i] as HTMLElement).click();
 				await vi.waitFor(() => {
-					expect(a._showTemplateLoad).toBe(true);
+					expect(a._showConfigurationRestore).toBe(true);
 				});
 				break;
 			}
@@ -784,10 +784,10 @@ describe("_renderFurnitureOverlay DOM events", () => {
 // =========================================================
 // Template load dialog: load and delete button clicks
 // =========================================================
-describe("_renderTemplateLoadDialog DOM events", () => {
+describe("_renderConfigurationRestoreDialog DOM events", () => {
 	it("load button calls _loadTemplate", async () => {
 		const a = createPanel() as any;
-		a._gridCtrl.templates = [
+		a._gridCtrl.configurations = [
 			{
 				name: "T1",
 				grid: new Array(GRID_CELL_COUNT).fill(0),
@@ -811,7 +811,7 @@ describe("_renderTemplateLoadDialog DOM events", () => {
 				roomDepth: 6000,
 			},
 		];
-		const tpl = a._renderTemplateLoadDialog();
+		const tpl = a._renderConfigurationRestoreDialog();
 		const c = renderTo(tpl);
 
 		const card = c.querySelector(".template-card") as HTMLElement;
@@ -826,16 +826,16 @@ describe("_renderTemplateLoadDialog DOM events", () => {
 
 	it("delete button calls _deleteTemplate", async () => {
 		const a = createPanel() as any;
-		a._gridCtrl.templates = [
+		a._gridCtrl.configurations = [
 			{ name: "T1", grid: [], zones: [], roomWidth: 3000, roomDepth: 4000 },
 		];
 		a.hass.callWS = vi.fn().mockImplementation((msg: any) => {
-			if (msg.type === "eppgrid/delete_template") return Promise.resolve({});
-			if (msg.type === "eppgrid/list_templates")
-				return Promise.resolve({ templates: {} });
+			if (msg.type === "eppgrid/delete_configuration") return Promise.resolve({});
+			if (msg.type === "eppgrid/list_configurations")
+				return Promise.resolve({ configurations: {} });
 			return Promise.resolve({});
 		});
-		const tpl = a._renderTemplateLoadDialog();
+		const tpl = a._renderConfigurationRestoreDialog();
 		const c = renderTo(tpl);
 
 		const deleteBtn = c.querySelector(".template-card-delete") as HTMLElement;
@@ -843,7 +843,7 @@ describe("_renderTemplateLoadDialog DOM events", () => {
 		deleteBtn.click();
 		// Wait for async _deleteTemplate to complete
 		await vi.waitFor(() => {
-			expect(a._gridCtrl.templates.length).toBe(0);
+			expect(a._gridCtrl.configurations.length).toBe(0);
 		});
 		document.body.removeChild(c);
 	});
@@ -852,24 +852,24 @@ describe("_renderTemplateLoadDialog DOM events", () => {
 // =========================================================
 // _renderTemplateSaveDialog: save button click
 // =========================================================
-describe("_renderTemplateSaveDialog DOM events", () => {
+describe("_renderConfigurationBackupDialog DOM events", () => {
 	it("save button calls _saveTemplate", async () => {
 		const a = createPanel() as any;
-		a._templateName = "Test";
+		a._configurationName = "Test";
 		a.hass.callWS = vi.fn().mockImplementation((msg: any) => {
-			if (msg.type === "eppgrid/save_template") return Promise.resolve({});
-			if (msg.type === "eppgrid/list_templates")
-				return Promise.resolve({ templates: {} });
+			if (msg.type === "eppgrid/save_configuration") return Promise.resolve({});
+			if (msg.type === "eppgrid/list_configurations")
+				return Promise.resolve({ configurations: {} });
 			return Promise.resolve({});
 		});
-		const tpl = a._renderTemplateSaveDialog();
+		const tpl = a._renderConfigurationBackupDialog();
 		const c = renderTo(tpl);
 
 		const primaryBtn = c.querySelector(".wizard-btn-primary") as HTMLElement;
 		if (primaryBtn) {
 			primaryBtn.click();
 			await vi.waitFor(() => {
-				expect(a._showTemplateSave).toBe(false);
+				expect(a._showConfigurationBackup).toBe(false);
 			});
 		}
 		document.body.removeChild(c);
@@ -914,7 +914,7 @@ describe("epp-furniture-sidebar icon picker event", () => {
 describe("_loadTemplate rejects old-format templates", () => {
 	it("logs an error when zones field is missing", async () => {
 		const a = createPanel() as any;
-		a._gridCtrl.templates = [
+		a._gridCtrl.configurations = [
 			{
 				name: "NoZones",
 				grid: new Array(GRID_CELL_COUNT).fill(0),
@@ -923,7 +923,7 @@ describe("_loadTemplate rejects old-format templates", () => {
 			},
 		];
 		const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
-		await a._loadTemplate("NoZones");
+		await a._loadConfiguration("NoZones");
 		// The wrapper catches the error and logs it.
 		expect(errSpy).toHaveBeenCalled();
 		errSpy.mockRestore();
@@ -986,8 +986,8 @@ describe("_renderWizard capture overlay branches (via EppWizard)", () => {
 describe("_renderGlobalDialogs branch coverage", () => {
 	it("renders template save dialog", () => {
 		const a = createPanel() as any;
-		a._showTemplateSave = true;
-		a._templateName = "test";
+		a._showConfigurationBackup = true;
+		a._configurationName = "test";
 		const tpl = a._renderGlobalDialogs();
 		const c = renderTo(tpl);
 		expect(c.querySelectorAll(".template-dialog").length).toBeGreaterThan(0);
@@ -996,7 +996,7 @@ describe("_renderGlobalDialogs branch coverage", () => {
 
 	it("renders template load dialog", () => {
 		const a = createPanel() as any;
-		a._showTemplateLoad = true;
+		a._showConfigurationRestore = true;
 		const tpl = a._renderGlobalDialogs();
 		const c = renderTo(tpl);
 		expect(c.querySelectorAll(".template-dialog").length).toBeGreaterThan(0);
@@ -1185,10 +1185,10 @@ describe("settings slider input handlers", () => {
 describe("template delete button", () => {
 	it("delete button calls _deleteTemplate", () => {
 		const a = createPanel() as any;
-		a._showTemplateLoad = true;
+		a._showConfigurationRestore = true;
 		a._savedTemplates = [{ name: "test-tmpl", data: {} }];
 		a._deleteTemplate = vi.fn();
-		const tpl = a._renderTemplateLoadDialog();
+		const tpl = a._renderConfigurationRestoreDialog();
 		const c = document.createElement("div");
 		render(tpl, c);
 

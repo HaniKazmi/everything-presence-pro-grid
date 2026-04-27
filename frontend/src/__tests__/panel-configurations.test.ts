@@ -5,7 +5,7 @@ import "../eppgrid-panel.js";
 import { CELL_ROOM_BIT, GRID_CELL_COUNT, GRID_COLS } from "../lib/grid.js";
 import type { Zone0Config, ZoneConfig } from "../lib/zone-defaults.js";
 
-// Valid length-8 zone slots for test templates (slot 0 = Zone0Config).
+// Valid length-8 zone slots for test configurations (slot 0 = Zone0Config).
 const VALID_ZONES: (Zone0Config | ZoneConfig | null)[] = [
 	{ type: "default", trigger: 5, renew: 3, timeout: 10, handoff_timeout: 3 },
 	null,
@@ -43,16 +43,16 @@ function createPanel(): EPPGridPanel {
 	a._roomDepth = 4000;
 	a._furniture = [];
 	a._selectedFurnitureId = null;
-	a._showTemplateSave = false;
-	a._showTemplateLoad = false;
-	a._templateName = "";
+	a._showConfigurationBackup = false;
+	a._showConfigurationRestore = false;
+	a._configurationName = "";
 	return el;
 }
 
-describe("_getTemplates", () => {
-	it("returns templates from controller cache", () => {
+describe("_getConfigurations", () => {
+	it("returns configurations from controller cache", () => {
 		const a = createPanel() as any;
-		const templates = [
+		const configurations = [
 			{
 				name: "Test",
 				grid: [],
@@ -61,21 +61,21 @@ describe("_getTemplates", () => {
 				roomDepth: 4000,
 			},
 		];
-		a._gridCtrl.templates = templates;
-		expect(a._getTemplates()).toEqual(templates);
+		a._gridCtrl.configurations = configurations;
+		expect(a._getConfigurations()).toEqual(configurations);
 	});
 
 	it("returns empty array when cache is empty", () => {
 		const a = createPanel() as any;
-		a._gridCtrl.templates = [];
-		expect(a._getTemplates()).toEqual([]);
+		a._gridCtrl.configurations = [];
+		expect(a._getConfigurations()).toEqual([]);
 	});
 });
 
-describe("_saveTemplate", () => {
-	it("calls controller saveTemplate", async () => {
+describe("_saveConfiguration", () => {
+	it("calls controller saveConfiguration", async () => {
 		const a = createPanel() as any;
-		a._templateName = "My layout";
+		a._configurationName = "My layout";
 		a._grid = new Uint8Array(GRID_CELL_COUNT);
 		a._roomWidth = 5000;
 		a._roomDepth = 6000;
@@ -98,26 +98,26 @@ describe("_saveTemplate", () => {
 		];
 
 		a.hass.callWS
-			.mockResolvedValueOnce({}) // save_template
-			.mockResolvedValueOnce({ templates: {} }); // list_templates
+			.mockResolvedValueOnce({}) // save_configuration
+			.mockResolvedValueOnce({ configurations: {} }); // list_configurations
 
-		await a._saveTemplate();
+		await a._saveConfiguration();
 
 		expect(a.hass.callWS).toHaveBeenCalledWith(
 			expect.objectContaining({
-				type: "eppgrid/save_template",
+				type: "eppgrid/save_configuration",
 				name: "My layout",
 			}),
 		);
 	});
 });
 
-describe("_loadTemplate", () => {
-	it("loads a template from controller cache", async () => {
+describe("_loadConfiguration", () => {
+	it("loads a configuration from controller cache", async () => {
 		const grid = new Array(GRID_CELL_COUNT).fill(0);
 		grid[0] = CELL_ROOM_BIT;
 		const a = createPanel() as any;
-		a._gridCtrl.templates = [
+		a._gridCtrl.configurations = [
 			{
 				name: "Saved",
 				grid,
@@ -143,20 +143,20 @@ describe("_loadTemplate", () => {
 			},
 		];
 
-		await a._loadTemplate("Saved");
+		await a._loadConfiguration("Saved");
 
 		expect(a._grid[0]).toBe(CELL_ROOM_BIT);
 		expect(a._roomWidth).toBe(5000);
-		expect(a._showTemplateLoad).toBe(false);
+		expect(a._showConfigurationRestore).toBe(false);
 	});
 
-	it("loadTemplate restores zone 0 and auto-applies", async () => {
+	it("loadConfiguration restores zone 0 and auto-applies", async () => {
 		const a = createPanel() as any;
 		// Grid with at least one cell painted as zone 1, so applyLayout's
 		// zero-cell pruning doesn't drop it.
 		const grid = new Array(GRID_CELL_COUNT).fill(CELL_ROOM_BIT);
 		grid[0] = CELL_ROOM_BIT | (1 << 1); // cell in zone 1
-		const tmpl = {
+		const cfg = {
 			name: "Saved",
 			grid,
 			zones: [
@@ -187,10 +187,10 @@ describe("_loadTemplate", () => {
 			roomDepth: 3000,
 			furniture: [],
 		};
-		a._gridCtrl.templates = [tmpl];
+		a._gridCtrl.configurations = [cfg];
 		const callWS = vi.spyOn(a.hass, "callWS").mockResolvedValue({});
 
-		await a._loadTemplate("Saved");
+		await a._loadConfiguration("Saved");
 
 		expect((a._zoneConfigs[0] as Zone0Config).type).toBe("seating");
 		expect((a._zoneConfigs[1] as ZoneConfig)?.name).toBe("Living");
@@ -213,9 +213,9 @@ describe("_loadTemplate", () => {
 		expect(payload.zone_slots[1]).not.toHaveProperty("trigger");
 	});
 
-	it("throws on old-format template with length-7 zones", async () => {
+	it("throws on old-format configuration with length-7 zones", async () => {
 		const a = createPanel() as any;
-		a._gridCtrl.templates = [
+		a._gridCtrl.configurations = [
 			{
 				name: "Old",
 				grid: new Array(GRID_CELL_COUNT).fill(0),
@@ -225,20 +225,20 @@ describe("_loadTemplate", () => {
 				furniture: [],
 			},
 		];
-		a._showTemplateLoad = true;
+		a._showConfigurationRestore = true;
 
 		const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
-		await a._loadTemplate("Old");
+		await a._loadConfiguration("Old");
 		expect(errSpy).toHaveBeenCalled();
 		// Dialog stays open so the failure is visible and the user can
-		// try another template.
-		expect(a._showTemplateLoad).toBe(true);
+		// try another configuration.
+		expect(a._showConfigurationRestore).toBe(true);
 		errSpy.mockRestore();
 	});
 
-	it("throws on template with null zone 0", async () => {
+	it("throws on configuration with null zone 0", async () => {
 		const a = createPanel() as any;
-		a._gridCtrl.templates = [
+		a._gridCtrl.configurations = [
 			{
 				name: "NullZone0",
 				grid: new Array(GRID_CELL_COUNT).fill(0),
@@ -250,29 +250,29 @@ describe("_loadTemplate", () => {
 		];
 
 		const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
-		await a._loadTemplate("NullZone0");
+		await a._loadConfiguration("NullZone0");
 		expect(errSpy).toHaveBeenCalled();
 		errSpy.mockRestore();
 	});
 });
 
-describe("_deleteTemplate", () => {
-	it("calls controller deleteTemplate", async () => {
+describe("_deleteConfiguration", () => {
+	it("calls controller deleteConfiguration", async () => {
 		const a = createPanel() as any;
 		a.hass.callWS
-			.mockResolvedValueOnce({}) // delete_template
-			.mockResolvedValueOnce({ templates: {} }); // list_templates
+			.mockResolvedValueOnce({}) // delete_configuration
+			.mockResolvedValueOnce({ configurations: {} }); // list_configurations
 
-		await a._deleteTemplate("Old");
+		await a._deleteConfiguration("Old");
 
 		expect(a.hass.callWS).toHaveBeenCalledWith(
-			expect.objectContaining({ type: "eppgrid/delete_template", name: "Old" }),
+			expect.objectContaining({ type: "eppgrid/delete_configuration", name: "Old" }),
 		);
 	});
 });
 
-describe("_renderTemplateLoadDialog", () => {
-	it("renders template cards with SVG thumbnails", () => {
+describe("_renderConfigurationRestoreDialog", () => {
+	it("renders configuration cards with SVG thumbnails", () => {
 		const grid = new Array(GRID_CELL_COUNT).fill(0);
 		grid[0] = CELL_ROOM_BIT;
 		grid[1] = CELL_ROOM_BIT;
@@ -280,7 +280,7 @@ describe("_renderTemplateLoadDialog", () => {
 		grid[GRID_COLS + 1] = CELL_ROOM_BIT;
 
 		const a = createPanel() as any;
-		a._gridCtrl.templates = [
+		a._gridCtrl.configurations = [
 			{
 				name: "Test Room",
 				grid,
@@ -300,7 +300,7 @@ describe("_renderTemplateLoadDialog", () => {
 			},
 		];
 
-		const tpl = a._renderTemplateLoadDialog();
+		const tpl = a._renderConfigurationRestoreDialog();
 		const c = document.createElement("div");
 		document.body.appendChild(c);
 		render(tpl, c);
@@ -318,7 +318,7 @@ describe("_renderTemplateLoadDialog", () => {
 	});
 
 	it("template-card-size reflects painted-cell bounding box, not stored roomWidth", () => {
-		// Template stores a small roomWidth from calibration (600mm), but the
+		// Configuration stores a small roomWidth from calibration (600mm), but the
 		// painted grid extends further. The card label should match what the
 		// footer shows (getGridRoomMetrics on the painted cells), so the user
 		// sees the dimensions of the visible layout, not the calibration-time
@@ -332,7 +332,7 @@ describe("_renderTemplateLoadDialog", () => {
 		}
 
 		const a = createPanel() as any;
-		a._gridCtrl.templates = [
+		a._gridCtrl.configurations = [
 			{
 				name: "Mismatch",
 				grid,
@@ -343,7 +343,7 @@ describe("_renderTemplateLoadDialog", () => {
 			},
 		];
 
-		const tpl = a._renderTemplateLoadDialog();
+		const tpl = a._renderConfigurationRestoreDialog();
 		const c = document.createElement("div");
 		document.body.appendChild(c);
 		render(tpl, c);
@@ -355,11 +355,11 @@ describe("_renderTemplateLoadDialog", () => {
 		document.body.removeChild(c);
 	});
 
-	it("renders no-templates message when cache is empty", () => {
+	it("renders no-configurations message when cache is empty", () => {
 		const a = createPanel() as any;
-		a._gridCtrl.templates = [];
+		a._gridCtrl.configurations = [];
 
-		const tpl = a._renderTemplateLoadDialog();
+		const tpl = a._renderConfigurationRestoreDialog();
 		const c = document.createElement("div");
 		document.body.appendChild(c);
 		render(tpl, c);
@@ -374,7 +374,7 @@ describe("_renderTemplateLoadDialog", () => {
 		const grid = new Array(GRID_CELL_COUNT).fill(0);
 		grid[0] = CELL_ROOM_BIT;
 		const a = createPanel() as any;
-		a._gridCtrl.templates = [
+		a._gridCtrl.configurations = [
 			{
 				name: "Clickable",
 				grid,
@@ -385,7 +385,7 @@ describe("_renderTemplateLoadDialog", () => {
 			},
 		];
 
-		const tpl = a._renderTemplateLoadDialog();
+		const tpl = a._renderConfigurationRestoreDialog();
 		const c = document.createElement("div");
 		document.body.appendChild(c);
 		render(tpl, c);
@@ -393,9 +393,9 @@ describe("_renderTemplateLoadDialog", () => {
 		const card = c.querySelector(".template-card") as HTMLElement;
 		expect(card).not.toBeNull();
 		card.click();
-		// Wait for the async _loadTemplate -> applyLayout chain to settle.
+		// Wait for the async _loadConfiguration -> applyLayout chain to settle.
 		await vi.waitFor(() => {
-			expect(a._showTemplateLoad).toBe(false);
+			expect(a._showConfigurationRestore).toBe(false);
 			expect(a._roomWidth).toBe(3000);
 		});
 
@@ -406,7 +406,7 @@ describe("_renderTemplateLoadDialog", () => {
 		const grid = new Array(GRID_CELL_COUNT).fill(0);
 		grid[0] = CELL_ROOM_BIT;
 		const a = createPanel() as any;
-		a._gridCtrl.templates = [
+		a._gridCtrl.configurations = [
 			{
 				name: "Keyboard",
 				grid,
@@ -417,7 +417,7 @@ describe("_renderTemplateLoadDialog", () => {
 			},
 		];
 
-		const tpl = a._renderTemplateLoadDialog();
+		const tpl = a._renderConfigurationRestoreDialog();
 		const c = document.createElement("div");
 		document.body.appendChild(c);
 		render(tpl, c);
@@ -427,18 +427,18 @@ describe("_renderTemplateLoadDialog", () => {
 		card.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter" }));
 
 		await vi.waitFor(() => {
-			expect(a._showTemplateLoad).toBe(false);
+			expect(a._showConfigurationRestore).toBe(false);
 			expect(a._roomWidth).toBe(4000);
 		});
 
 		document.body.removeChild(c);
 	});
 
-	it("clicking delete button removes template without loading", async () => {
+	it("clicking delete button removes configuration without loading", async () => {
 		const grid = new Array(GRID_CELL_COUNT).fill(0);
 		grid[0] = CELL_ROOM_BIT;
 		const a = createPanel() as any;
-		a._gridCtrl.templates = [
+		a._gridCtrl.configurations = [
 			{
 				name: "Keep",
 				grid,
@@ -458,9 +458,9 @@ describe("_renderTemplateLoadDialog", () => {
 		];
 
 		a.hass.callWS
-			.mockResolvedValueOnce({}) // delete_template
+			.mockResolvedValueOnce({}) // delete_configuration
 			.mockResolvedValueOnce({
-				templates: {
+				configurations: {
 					Keep: {
 						grid,
 						zones: VALID_ZONES,
@@ -472,7 +472,7 @@ describe("_renderTemplateLoadDialog", () => {
 			});
 
 		const origWidth = a._roomWidth;
-		const tpl = a._renderTemplateLoadDialog();
+		const tpl = a._renderConfigurationRestoreDialog();
 		const c = document.createElement("div");
 		document.body.appendChild(c);
 		render(tpl, c);
@@ -485,7 +485,7 @@ describe("_renderTemplateLoadDialog", () => {
 		await vi.waitFor(() => {
 			expect(a.hass.callWS).toHaveBeenCalledWith(
 				expect.objectContaining({
-					type: "eppgrid/delete_template",
+					type: "eppgrid/delete_configuration",
 					name: "Keep",
 				}),
 			);
@@ -500,7 +500,7 @@ describe("_renderTemplateLoadDialog", () => {
 		const grid = new Array(GRID_CELL_COUNT).fill(0);
 		grid[0] = CELL_ROOM_BIT;
 		const a = createPanel() as any;
-		a._gridCtrl.templates = [
+		a._gridCtrl.configurations = [
 			{
 				name: "T1",
 				grid,
@@ -511,7 +511,7 @@ describe("_renderTemplateLoadDialog", () => {
 			},
 		];
 
-		const tpl = a._renderTemplateLoadDialog();
+		const tpl = a._renderConfigurationRestoreDialog();
 		const c = document.createElement("div");
 		document.body.appendChild(c);
 		render(tpl, c);
