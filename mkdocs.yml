@@ -89,9 +89,8 @@ nav:
     - Settings:
       - user-guide/settings/index.md
       - Entities: user-guide/settings/entities.md
-      - Detection: user-guide/settings/detection.md
-      - Reporting: user-guide/settings/reporting.md
-      - Environmental: user-guide/settings/environmental.md
+      - Detection ranges: user-guide/settings/detection-ranges.md
+      - Sensor calibration: user-guide/settings/sensor-calibration.md
       - LED and relay: user-guide/settings/led-relay.md
       - Logging: user-guide/settings/logging.md
     - Automations: user-guide/automations.md

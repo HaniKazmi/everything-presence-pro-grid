@@ -132,7 +132,7 @@ The static and motion sensors fix that. The engine watches a specific combinatio
 When all three hold, every *pending* zone is force-cleared immediately, and Occupancy drops to `off`. The reasoning: if neither hardware sensor sees anyone and the radar isn't currently tracking a target, the room is empty — there's nothing to wait for.
 
 !!! note 
-    The static-presence sensor (SEN0609) and PIR have their own timeouts, configurable in [Detection settings](settings/detection.md). When you read "static is inactive" above, that means the sensor's *own* pending state has already expired — not just that the chip currently reports no presence.
+    The static-presence sensor (SEN0609) and PIR have their own timeouts, configurable in [Sensor calibration](settings/sensor-calibration.md). When you read "static is inactive" above, that means the sensor's *own* pending state has already expired — not just that the chip currently reports no presence.
 
 ## Troubleshooting
 
@@ -140,9 +140,9 @@ When all three hold, every *pending* zone is force-cleared immediately, and Occu
 | --- | --- | --- |
 | Zone activates briefly when nothing's there | Single-frame ghost slipped past gating | Raise the zone's Trigger threshold, or paint Interference overlay on the cell. |
 | Zone never activates when you walk in | Trigger threshold too high for the signal at that distance | Lower Trigger, or check the [Live overview](live-overview.md) to see what signal that cell reports when occupied. |
-| Bedroom zone stays `on` long after you leave | The Bed type's *pending* state runs for ten minutes; the sensor-assisted clear can only fire once both the static and motion sensors have gone inactive | Lower the **Static sensor timeout** in [Detection settings](settings/detection.md) so the static sensor reports empty sooner. |
-| Occupancy stays `on` with no visible target and no zone glow | The static or motion sensor is still active or in its own pending state, holding Occupancy on by itself | Wait for the sensor to time out, or lower the **Static sensor timeout** in [Detection settings](settings/detection.md). |
-| Occupancy clears too quickly when somebody is sitting still | Static-presence timeout and zone Presence timeout are both shorter than the time the person stays still | Increase **Static sensor timeout** in [Detection settings](settings/detection.md), or set the zone's type to **Seating** (or **Custom** with a longer Presence timeout). |
+| Bedroom zone stays `on` long after you leave | The Bed type's *pending* state runs for ten minutes; the sensor-assisted clear can only fire once both the static and motion sensors have gone inactive | Lower the **Static sensor timeout** in [Sensor calibration](settings/sensor-calibration.md) so the static sensor reports empty sooner. |
+| Occupancy stays `on` with no visible target and no zone glow | The static or motion sensor is still active or in its own pending state, holding Occupancy on by itself | Wait for the sensor to time out, or lower the **Static sensor timeout** in [Sensor calibration](settings/sensor-calibration.md). |
+| Occupancy clears too quickly when somebody is sitting still | Static-presence timeout and zone Presence timeout are both shorter than the time the person stays still | Increase **Static sensor timeout** in [Sensor calibration](settings/sensor-calibration.md), or set the zone's type to **Seating** (or **Custom** with a longer Presence timeout). |
 
 See also: the [central Troubleshooting](troubleshooting.md) page for conceptual FAQ and how to open a GitHub issue.
 
