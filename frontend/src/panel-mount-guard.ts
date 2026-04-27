@@ -71,7 +71,7 @@ function attachHostObserver(node: Element): void {
 // new empty host invisible to us until the next visibilitychange.
 function attachResolverObserver(node: Element): void {
 	observedResolver = replaceObserver(observedResolver, node, () => {
-		const host = findEppPanelHost();
+		const host = node.querySelector("ha-panel-custom") as HTMLElement | null;
 		if (host) attachHostObserver(host);
 		checkAndRemount();
 	});
@@ -82,8 +82,9 @@ function attachResolverObserver(node: Element): void {
 // remount.
 export function ensureObserversAttached(): void {
 	const resolver = findPanelResolver();
-	if (resolver) attachResolverObserver(resolver);
-	const host = findEppPanelHost();
+	if (!resolver) return;
+	attachResolverObserver(resolver);
+	const host = resolver.querySelector("ha-panel-custom") as HTMLElement | null;
 	if (host) attachHostObserver(host);
 }
 
