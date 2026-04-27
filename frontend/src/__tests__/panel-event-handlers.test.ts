@@ -1046,7 +1046,7 @@ describe("_renderConfigurationRestoreDialog inline handlers", () => {
 		expect(a._showConfigurationRestore).toBe(false);
 	});
 
-	it("load button calls _loadTemplate", () => {
+	it("load button calls _loadConfiguration", () => {
 		const a = createPanel() as any;
 		a._gridCtrl.configurations = [
 			{
@@ -1063,7 +1063,7 @@ describe("_renderConfigurationRestoreDialog inline handlers", () => {
 		expect(a._roomWidth).toBe(3000);
 	});
 
-	it("delete button calls _deleteTemplate", async () => {
+	it("delete button calls _deleteConfiguration", async () => {
 		const a = createPanel() as any;
 		a._gridCtrl.configurations = [
 			{

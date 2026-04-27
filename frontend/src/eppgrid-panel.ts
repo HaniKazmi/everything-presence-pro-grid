@@ -1052,7 +1052,7 @@ export class EPPGridPanel extends LitElement {
 		return value;
 	}
 
-	// Configuration card metrics cache — keyed by template object reference.
+	// Configuration card metrics cache — keyed by configuration object reference.
 	// Invalidated when perspective or max-range changes (FOV inputs).
 	// fetchConfigurations returns fresh objects each call, so stale entries drop
 	// naturally via WeakMap GC when the old array is replaced.

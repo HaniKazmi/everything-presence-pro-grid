@@ -659,9 +659,9 @@ describe("GridStateController", () => {
 		};
 
 		beforeEach(() => {
-			// Pre-populate the templates cache
+			// Pre-populate the configurations cache
 			ctrl.configurations = [{ name: "Loaded", ...TEMPLATE_DATA }];
-			// applyLayout (now invoked auto after loadTemplate) calls WS and
+			// applyLayout (now invoked auto after loadConfiguration) calls WS and
 			// reads _selectedMac + various settings — default mocks cover it.
 			host.hass.callWS.mockResolvedValue({});
 		});

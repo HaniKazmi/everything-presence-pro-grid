@@ -785,7 +785,7 @@ describe("_renderFurnitureOverlay DOM events", () => {
 // Template load dialog: load and delete button clicks
 // =========================================================
 describe("_renderConfigurationRestoreDialog DOM events", () => {
-	it("load button calls _loadTemplate", async () => {
+	it("load button calls _loadConfiguration", async () => {
 		const a = createPanel() as any;
 		a._gridCtrl.configurations = [
 			{
@@ -824,7 +824,7 @@ describe("_renderConfigurationRestoreDialog DOM events", () => {
 		document.body.removeChild(c);
 	});
 
-	it("delete button calls _deleteTemplate", async () => {
+	it("delete button calls _deleteConfiguration", async () => {
 		const a = createPanel() as any;
 		a._gridCtrl.configurations = [
 			{ name: "T1", grid: [], zones: [], roomWidth: 3000, roomDepth: 4000 },
@@ -841,7 +841,7 @@ describe("_renderConfigurationRestoreDialog DOM events", () => {
 		const deleteBtn = c.querySelector(".template-card-delete") as HTMLElement;
 		expect(deleteBtn).not.toBeNull();
 		deleteBtn.click();
-		// Wait for async _deleteTemplate to complete
+		// Wait for async _deleteConfiguration to complete
 		await vi.waitFor(() => {
 			expect(a._gridCtrl.configurations.length).toBe(0);
 		});
@@ -853,7 +853,7 @@ describe("_renderConfigurationRestoreDialog DOM events", () => {
 // _renderTemplateSaveDialog: save button click
 // =========================================================
 describe("_renderConfigurationBackupDialog DOM events", () => {
-	it("save button calls _saveTemplate", async () => {
+	it("save button calls _saveConfiguration", async () => {
 		const a = createPanel() as any;
 		a._configurationName = "Test";
 		a.hass.callWS = vi.fn().mockImplementation((msg: any) => {
@@ -911,7 +911,7 @@ describe("epp-furniture-sidebar icon picker event", () => {
 // Old-format templates (missing or length-7 zones) — per the no-BWC
 // policy, these throw rather than being silently accepted.
 // =========================================================
-describe("_loadTemplate rejects old-format templates", () => {
+describe("_loadConfiguration rejects old-format configurations", () => {
 	it("logs an error when zones field is missing", async () => {
 		const a = createPanel() as any;
 		a._gridCtrl.configurations = [
