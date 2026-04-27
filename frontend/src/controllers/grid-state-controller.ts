@@ -558,8 +558,12 @@ export class GridStateController implements ReactiveController {
 		// user needs an Apply button to retry. On success, applyLayout clears
 		// _dirty = false itself.
 		this.host._dirty = true;
-		await this.applyLayout();
 
+		// Push settings BEFORE applyLayout. If auto-distance is enabled in the
+		// restored settings, applyLayout will fire its own set_settings with
+		// current-room auto-computed distances — and we want those values to win
+		// on the device, not the (possibly stale) max_distance from the saved
+		// blob. Reversing the order would clobber applyLayout's auto-correction.
 		if (hasSettings) {
 			await (this.host as any).hass.callWS({
 				type: "eppgrid/set_settings",
@@ -567,6 +571,8 @@ export class GridStateController implements ReactiveController {
 				...(this.host as any)._buildSettingsPayload(),
 			});
 		}
+
+		await this.applyLayout();
 	}
 
 	async deleteConfiguration(name: string): Promise<void> {
