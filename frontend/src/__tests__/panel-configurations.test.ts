@@ -11,6 +11,7 @@ import {
 import {
 	ENTITY_DEFAULTS,
 	SETTINGS_DEFAULTS,
+	SETTINGS_FIELD_MAP,
 } from "../lib/settings-defaults.js";
 import type { Zone0Config, ZoneConfig } from "../lib/zone-defaults.js";
 
@@ -27,6 +28,16 @@ function makeValidZoneSlots(): (Zone0Config | ZoneConfig | null)[] {
 		null,
 		null,
 	];
+}
+
+function seedDefaultPanelState(a: any): void {
+	for (const [key, prop] of SETTINGS_FIELD_MAP) {
+		if (key === "entities") {
+			a[prop] = { ...ENTITY_DEFAULTS };
+		} else {
+			a[prop] = (SETTINGS_DEFAULTS as Record<string, any>)[key];
+		}
+	}
 }
 
 // Valid length-8 zone slots for test configurations (slot 0 = Zone0Config).
@@ -276,28 +287,7 @@ describe("_buildSparseSettings (via saveConfiguration)", () => {
 			null,
 		];
 		// Set every settings property to its default value
-		a._temperatureOffset = SETTINGS_DEFAULTS.temperature_offset;
-		a._humidityOffset = SETTINGS_DEFAULTS.humidity_offset;
-		a._illuminanceOffset = SETTINGS_DEFAULTS.illuminance_offset;
-		a._motionTimeout = SETTINGS_DEFAULTS.motion_timeout;
-		a._targetAutoDistance = SETTINGS_DEFAULTS.target_auto_distance;
-		a._targetMaxDistance = SETTINGS_DEFAULTS.target_max_distance;
-		a._staticAutoDistance = SETTINGS_DEFAULTS.static_auto_distance;
-		a._staticMinDistance = SETTINGS_DEFAULTS.static_min_distance;
-		a._staticMaxDistance = SETTINGS_DEFAULTS.static_max_distance;
-		a._staticTriggerThreshold = SETTINGS_DEFAULTS.static_trigger_threshold;
-		a._staticRenewThreshold = SETTINGS_DEFAULTS.static_renew_threshold;
-		a._staticTimeout = SETTINGS_DEFAULTS.static_timeout;
-		a._staticOnDelay = SETTINGS_DEFAULTS.static_on_delay;
-		a._ledMode = SETTINGS_DEFAULTS.led_mode;
-		a._ledBrightness = SETTINGS_DEFAULTS.led_brightness;
-		a._ledPresenceColor = SETTINGS_DEFAULTS.led_presence_color;
-		a._relayTriggerMode = SETTINGS_DEFAULTS.relay_trigger_mode;
-		a._relayContactMode = SETTINGS_DEFAULTS.relay_contact_mode;
-		a._targetUpdateRateMs = SETTINGS_DEFAULTS.target_update_rate_ms;
-		a._zoneUpdateRateMs = SETTINGS_DEFAULTS.zone_update_rate_ms;
-		a._entitiesConfig = {};
-		a._logLevels = {};
+		seedDefaultPanelState(a);
 
 		const callWS = vi
 			.fn()
@@ -338,30 +328,8 @@ describe("_buildSparseSettings (via saveConfiguration)", () => {
 			null,
 			null,
 		];
-		// Set everything to default first
-		a._temperatureOffset = SETTINGS_DEFAULTS.temperature_offset;
-		a._humidityOffset = SETTINGS_DEFAULTS.humidity_offset;
-		a._illuminanceOffset = SETTINGS_DEFAULTS.illuminance_offset;
-		a._motionTimeout = SETTINGS_DEFAULTS.motion_timeout;
-		a._targetAutoDistance = SETTINGS_DEFAULTS.target_auto_distance;
-		a._targetMaxDistance = SETTINGS_DEFAULTS.target_max_distance;
-		a._staticAutoDistance = SETTINGS_DEFAULTS.static_auto_distance;
-		a._staticMinDistance = SETTINGS_DEFAULTS.static_min_distance;
-		a._staticMaxDistance = SETTINGS_DEFAULTS.static_max_distance;
-		a._staticTriggerThreshold = SETTINGS_DEFAULTS.static_trigger_threshold;
-		a._staticRenewThreshold = SETTINGS_DEFAULTS.static_renew_threshold;
-		a._staticTimeout = SETTINGS_DEFAULTS.static_timeout;
-		a._staticOnDelay = SETTINGS_DEFAULTS.static_on_delay;
-		a._ledMode = SETTINGS_DEFAULTS.led_mode;
-		a._ledBrightness = SETTINGS_DEFAULTS.led_brightness;
-		a._ledPresenceColor = SETTINGS_DEFAULTS.led_presence_color;
-		a._relayTriggerMode = SETTINGS_DEFAULTS.relay_trigger_mode;
-		a._relayContactMode = SETTINGS_DEFAULTS.relay_contact_mode;
-		a._targetUpdateRateMs = SETTINGS_DEFAULTS.target_update_rate_ms;
-		a._zoneUpdateRateMs = SETTINGS_DEFAULTS.zone_update_rate_ms;
-		a._entitiesConfig = { ...ENTITY_DEFAULTS };
-		a._logLevels = {};
-		// Then customise a few
+		// Set everything to default, then customise a few
+		seedDefaultPanelState(a);
 		a._motionTimeout = 60;
 		a._ledMode = "Presence";
 		// Use a truly non-default entity flag: room_occupancy defaults to true,
@@ -390,28 +358,9 @@ describe("_buildSparseSettings (via saveConfiguration)", () => {
 	it("omits target_max_distance from save blob when target_auto_distance is at default", async () => {
 		const a = createPanel() as any;
 		a._configurationName = "AutoOn";
-		a._temperatureOffset = 0;
-		a._humidityOffset = 0;
-		a._illuminanceOffset = 0;
-		a._motionTimeout = 5;
+		seedDefaultPanelState(a);
 		a._targetAutoDistance = true; // DEFAULT — auto on
 		a._targetMaxDistance = 4; // would be stored as non-default, but shouldn't be
-		a._staticAutoDistance = true;
-		a._staticMinDistance = 0.3;
-		a._staticMaxDistance = 16.0;
-		a._staticTriggerThreshold = 3;
-		a._staticRenewThreshold = 3;
-		a._staticTimeout = 30;
-		a._staticOnDelay = 0;
-		a._ledMode = "Manual Control";
-		a._ledBrightness = 1.0;
-		a._ledPresenceColor = "#CC33FF";
-		a._relayTriggerMode = "disabled";
-		a._relayContactMode = "no";
-		a._targetUpdateRateMs = 1000;
-		a._zoneUpdateRateMs = 1000;
-		a._entitiesConfig = {};
-		a._logLevels = {};
 
 		const callWS = vi
 			.fn()
@@ -438,28 +387,10 @@ describe("_buildSparseSettings (via saveConfiguration)", () => {
 	it("omits static_min_distance and static_max_distance from save blob when static_auto_distance is at default", async () => {
 		const a = createPanel() as any;
 		a._configurationName = "AutoOn";
-		a._temperatureOffset = 0;
-		a._humidityOffset = 0;
-		a._illuminanceOffset = 0;
-		a._motionTimeout = 5;
-		a._targetAutoDistance = true;
-		a._targetMaxDistance = 6.0;
+		seedDefaultPanelState(a);
 		a._staticAutoDistance = true; // DEFAULT — auto on
 		a._staticMinDistance = 0.4; // non-default value, should still be omitted
 		a._staticMaxDistance = 6; // non-default value, should still be omitted
-		a._staticTriggerThreshold = 3;
-		a._staticRenewThreshold = 3;
-		a._staticTimeout = 30;
-		a._staticOnDelay = 0;
-		a._ledMode = "Manual Control";
-		a._ledBrightness = 1.0;
-		a._ledPresenceColor = "#CC33FF";
-		a._relayTriggerMode = "disabled";
-		a._relayContactMode = "no";
-		a._targetUpdateRateMs = 1000;
-		a._zoneUpdateRateMs = 1000;
-		a._entitiesConfig = {};
-		a._logLevels = {};
 
 		const callWS = vi
 			.fn()
@@ -487,28 +418,12 @@ describe("_buildSparseSettings (via saveConfiguration)", () => {
 	it("stores manual distance values when auto-distance is explicitly off", async () => {
 		const a = createPanel() as any;
 		a._configurationName = "Manual";
-		a._temperatureOffset = 0;
-		a._humidityOffset = 0;
-		a._illuminanceOffset = 0;
-		a._motionTimeout = 5;
+		seedDefaultPanelState(a);
 		a._targetAutoDistance = false; // EXPLICITLY OFF — non-default
 		a._targetMaxDistance = 5; // non-default, should be stored
 		a._staticAutoDistance = false; // non-default
 		a._staticMinDistance = 0.5; // non-default, should be stored
 		a._staticMaxDistance = 10; // non-default, should be stored
-		a._staticTriggerThreshold = 3;
-		a._staticRenewThreshold = 3;
-		a._staticTimeout = 30;
-		a._staticOnDelay = 0;
-		a._ledMode = "Manual Control";
-		a._ledBrightness = 1.0;
-		a._ledPresenceColor = "#CC33FF";
-		a._relayTriggerMode = "disabled";
-		a._relayContactMode = "no";
-		a._targetUpdateRateMs = 1000;
-		a._zoneUpdateRateMs = 1000;
-		a._entitiesConfig = { ...ENTITY_DEFAULTS };
-		a._logLevels = {};
 
 		const callWS = vi
 			.fn()
@@ -534,45 +449,7 @@ describe("_buildSparseSettings (via saveConfiguration)", () => {
 	it("omits entities entirely when all flags are at their per-entity defaults", async () => {
 		const a = createPanel() as any;
 		a._configurationName = "AllDefaults";
-		a._temperatureOffset = 0;
-		a._humidityOffset = 0;
-		a._illuminanceOffset = 0;
-		a._motionTimeout = 5;
-		a._targetAutoDistance = true;
-		a._targetMaxDistance = 6.0;
-		a._staticAutoDistance = true;
-		a._staticMinDistance = 0.3;
-		a._staticMaxDistance = 16.0;
-		a._staticTriggerThreshold = 3;
-		a._staticRenewThreshold = 3;
-		a._staticTimeout = 30;
-		a._staticOnDelay = 0;
-		a._ledMode = "Manual Control";
-		a._ledBrightness = 1.0;
-		a._ledPresenceColor = "#CC33FF";
-		a._relayTriggerMode = "disabled";
-		a._relayContactMode = "no";
-		a._targetUpdateRateMs = 1000;
-		a._zoneUpdateRateMs = 1000;
-		// Entities at canonical defaults: 5 enabled, others false
-		a._entitiesConfig = {
-			room_occupancy: true,
-			zone_presence: true,
-			env_temperature: true,
-			env_humidity: true,
-			env_illuminance: true,
-			room_target_presence: false,
-			room_static_presence: false,
-			room_motion_presence: false,
-			env_co2: false,
-			target_active: false,
-			target_xy: false,
-			target_signal: false,
-			target_zone: false,
-			zone_target_count: false,
-			target_count: false,
-		};
-		a._logLevels = {};
+		seedDefaultPanelState(a);
 
 		const callWS = vi
 			.fn()
@@ -591,27 +468,7 @@ describe("_buildSparseSettings (via saveConfiguration)", () => {
 	it("stores only entity flags differing from their per-entity default", async () => {
 		const a = createPanel() as any;
 		a._configurationName = "MixedEntities";
-		a._temperatureOffset = 0;
-		a._humidityOffset = 0;
-		a._illuminanceOffset = 0;
-		a._motionTimeout = 5;
-		a._targetAutoDistance = true;
-		a._targetMaxDistance = 6.0;
-		a._staticAutoDistance = true;
-		a._staticMinDistance = 0.3;
-		a._staticMaxDistance = 16.0;
-		a._staticTriggerThreshold = 3;
-		a._staticRenewThreshold = 3;
-		a._staticTimeout = 30;
-		a._staticOnDelay = 0;
-		a._ledMode = "Manual Control";
-		a._ledBrightness = 1.0;
-		a._ledPresenceColor = "#CC33FF";
-		a._relayTriggerMode = "disabled";
-		a._relayContactMode = "no";
-		a._targetUpdateRateMs = 1000;
-		a._zoneUpdateRateMs = 1000;
-		a._logLevels = {};
+		seedDefaultPanelState(a);
 		// Entity overrides: turn off room_occupancy (default true), turn on target_xy (default false)
 		a._entitiesConfig = {
 			room_occupancy: false, // non-default
@@ -645,28 +502,9 @@ describe("_buildSparseSettings (via saveConfiguration)", () => {
 	it("omits relay_contact_mode when relay_trigger_mode is at default", async () => {
 		const a = createPanel() as any;
 		a._configurationName = "RelayDisabled";
-		a._temperatureOffset = 0;
-		a._humidityOffset = 0;
-		a._illuminanceOffset = 0;
-		a._motionTimeout = 5;
-		a._targetAutoDistance = true;
-		a._targetMaxDistance = 6.0;
-		a._staticAutoDistance = true;
-		a._staticMinDistance = 0.3;
-		a._staticMaxDistance = 16.0;
-		a._staticTriggerThreshold = 3;
-		a._staticRenewThreshold = 3;
-		a._staticTimeout = 30;
-		a._staticOnDelay = 0;
-		a._ledMode = "Manual Control";
-		a._ledBrightness = 1.0;
-		a._ledPresenceColor = "#CC33FF";
+		seedDefaultPanelState(a);
 		a._relayTriggerMode = "disabled"; // DEFAULT
 		a._relayContactMode = "nc"; // non-default, but should be dropped
-		a._targetUpdateRateMs = 1000;
-		a._zoneUpdateRateMs = 1000;
-		a._entitiesConfig = { ...ENTITY_DEFAULTS };
-		a._logLevels = {};
 
 		const callWS = vi
 			.fn()
@@ -690,28 +528,9 @@ describe("_buildSparseSettings (via saveConfiguration)", () => {
 	it("stores relay_contact_mode when relay_trigger_mode is non-default", async () => {
 		const a = createPanel() as any;
 		a._configurationName = "RelayActive";
-		a._temperatureOffset = 0;
-		a._humidityOffset = 0;
-		a._illuminanceOffset = 0;
-		a._motionTimeout = 5;
-		a._targetAutoDistance = true;
-		a._targetMaxDistance = 6.0;
-		a._staticAutoDistance = true;
-		a._staticMinDistance = 0.3;
-		a._staticMaxDistance = 16.0;
-		a._staticTriggerThreshold = 3;
-		a._staticRenewThreshold = 3;
-		a._staticTimeout = 30;
-		a._staticOnDelay = 0;
-		a._ledMode = "Manual Control";
-		a._ledBrightness = 1.0;
-		a._ledPresenceColor = "#CC33FF";
+		seedDefaultPanelState(a);
 		a._relayTriggerMode = "presence"; // non-default
 		a._relayContactMode = "nc"; // non-default
-		a._targetUpdateRateMs = 1000;
-		a._zoneUpdateRateMs = 1000;
-		a._entitiesConfig = { ...ENTITY_DEFAULTS };
-		a._logLevels = {};
 
 		const callWS = vi
 			.fn()

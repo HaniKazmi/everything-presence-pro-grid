@@ -65,28 +65,62 @@ export const SETTINGS_DEFAULTS = {
 export type SettingsKey = keyof typeof SETTINGS_DEFAULTS;
 
 /**
- * Returns true when `value` is semantically equal to `defaultValue`.
+ * Compare a value against its canonical default.
  *
- * - Scalars: strict equality (`===`).
- * - Objects (log_levels): default is empty {}; treat any empty object as
- *   default. This is kept as a function so callers don't need to know
- *   whether a key's default is a scalar or an object.
- * - Note: entities are NOT handled here — they use buildSparseEntities /
- *   expandEntities for per-entity-flag comparison.
+ * Handles two shapes:
+ * - Scalar default: strict equality.
+ * - Empty-object default (e.g. `log_levels: {}`): true when the value is
+ *   itself an empty object.
+ *
+ * NOT correct for non-empty object defaults — those need bespoke comparison
+ * logic (see `buildSparseEntities` for the entities case).
  */
-export function isSettingsValueDefault(value: any, defaultValue: any): boolean {
+export function isSettingsValueDefault(
+	value: unknown,
+	defaultValue: unknown,
+): boolean {
 	if (typeof defaultValue === "object" && defaultValue !== null) {
-		// log_levels: default is empty {}; treat any empty object as default.
-		// entities is excluded from this path (handled by buildSparseEntities).
 		return (
-			value !== null &&
 			typeof value === "object" &&
-			Object.keys(value).length === Object.keys(defaultValue).length &&
-			Object.keys(defaultValue).length === 0
+			value !== null &&
+			Object.keys(value).length === 0
 		);
 	}
 	return value === defaultValue;
 }
+
+/**
+ * Mapping from each settings key to the corresponding panel reactive
+ * property. The pattern is snake_case → `_camelCase`, with `entities`
+ * being the one outlier (`_entitiesConfig`, not `_entities`).
+ *
+ * Used by `loadConfiguration` to drive the restore field-by-field, and
+ * by tests that need to seed the panel with all-default values.
+ */
+export const SETTINGS_FIELD_MAP: Array<[SettingsKey, string]> = [
+	["temperature_offset", "_temperatureOffset"],
+	["humidity_offset", "_humidityOffset"],
+	["illuminance_offset", "_illuminanceOffset"],
+	["motion_timeout", "_motionTimeout"],
+	["target_auto_distance", "_targetAutoDistance"],
+	["target_max_distance", "_targetMaxDistance"],
+	["static_auto_distance", "_staticAutoDistance"],
+	["static_min_distance", "_staticMinDistance"],
+	["static_max_distance", "_staticMaxDistance"],
+	["static_trigger_threshold", "_staticTriggerThreshold"],
+	["static_renew_threshold", "_staticRenewThreshold"],
+	["static_timeout", "_staticTimeout"],
+	["static_on_delay", "_staticOnDelay"],
+	["led_mode", "_ledMode"],
+	["led_brightness", "_ledBrightness"],
+	["led_presence_color", "_ledPresenceColor"],
+	["relay_trigger_mode", "_relayTriggerMode"],
+	["relay_contact_mode", "_relayContactMode"],
+	["target_update_rate_ms", "_targetUpdateRateMs"],
+	["zone_update_rate_ms", "_zoneUpdateRateMs"],
+	["entities", "_entitiesConfig"],
+	["log_levels", "_logLevels"],
+];
 
 /**
  * Filter an entities dict to only flags that differ from their default.

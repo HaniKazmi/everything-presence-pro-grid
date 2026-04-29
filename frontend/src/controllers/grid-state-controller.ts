@@ -30,7 +30,11 @@ import {
 	type OverlayMode,
 } from "../lib/grid.js";
 import { autoDetectionRange } from "../lib/room-geometry.js";
-import { expandEntities, SETTINGS_DEFAULTS } from "../lib/settings-defaults.js";
+import {
+	expandEntities,
+	SETTINGS_DEFAULTS,
+	SETTINGS_FIELD_MAP,
+} from "../lib/settings-defaults.js";
 import {
 	ZONE_COLORS,
 	type Zone0Config,
@@ -530,32 +534,16 @@ export class GridStateController implements ReactiveController {
 		const s = cfg.settings;
 		const hasSettings = s != null && typeof s === "object";
 		if (hasSettings) {
-			const get = <K extends keyof typeof SETTINGS_DEFAULTS>(key: K) =>
-				key in s ? (s as any)[key] : SETTINGS_DEFAULTS[key];
-			this.host._temperatureOffset = get("temperature_offset");
-			this.host._humidityOffset = get("humidity_offset");
-			this.host._illuminanceOffset = get("illuminance_offset");
-			this.host._motionTimeout = get("motion_timeout");
-			this.host._targetAutoDistance = get("target_auto_distance");
-			this.host._targetMaxDistance = get("target_max_distance");
-			this.host._staticAutoDistance = get("static_auto_distance");
-			this.host._staticMinDistance = get("static_min_distance");
-			this.host._staticMaxDistance = get("static_max_distance");
-			this.host._staticTriggerThreshold = get("static_trigger_threshold");
-			this.host._staticRenewThreshold = get("static_renew_threshold");
-			this.host._staticTimeout = get("static_timeout");
-			this.host._staticOnDelay = get("static_on_delay");
-			this.host._ledMode = get("led_mode");
-			this.host._ledBrightness = get("led_brightness");
-			this.host._ledPresenceColor = get("led_presence_color");
-			this.host._relayTriggerMode = get("relay_trigger_mode");
-			this.host._relayContactMode = get("relay_contact_mode");
-			this.host._targetUpdateRateMs = get("target_update_rate_ms");
-			this.host._zoneUpdateRateMs = get("zone_update_rate_ms");
-			this.host._entitiesConfig = expandEntities(
-				"entities" in s ? (s as Record<string, any>).entities : undefined,
-			);
-			this.host._logLevels = get("log_levels");
+			for (const [key, prop] of SETTINGS_FIELD_MAP) {
+				if (key === "entities") {
+					(this.host as any)[prop] = expandEntities(
+						"entities" in s ? (s as Record<string, any>).entities : undefined,
+					);
+				} else {
+					(this.host as any)[prop] =
+						key in s ? (s as Record<string, any>)[key] : SETTINGS_DEFAULTS[key];
+				}
+			}
 		}
 
 		this.host._showConfigurationRestore = false;
