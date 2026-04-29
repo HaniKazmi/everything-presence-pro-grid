@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import type { EPPGridPanel } from "../eppgrid-panel.js";
 import "../eppgrid-panel.js";
 import { CELL_ROOM_BIT, GRID_CELL_COUNT, GRID_COLS } from "../lib/grid.js";
+import { SETTINGS_DEFAULTS } from "../lib/settings-defaults.js";
 import type { Zone0Config, ZoneConfig } from "../lib/zone-defaults.js";
 
 // Helper to build a valid length-8 zone slots array (mirrors VALID_ZONES but
@@ -126,7 +127,7 @@ describe("_saveConfiguration", () => {
 		);
 	});
 
-	it("includes a non-empty settings dict in the saved configuration blob", async () => {
+	it("saves only non-default fields in the settings blob (sparse storage)", async () => {
 		const a = createPanel() as any;
 		a._configurationName = "With Settings";
 		a._grid = new Uint8Array(GRID_CELL_COUNT);
@@ -149,10 +150,11 @@ describe("_saveConfiguration", () => {
 			null,
 			null,
 		];
-		// Set some non-default settings values so we can assert they appear
-		a._temperatureOffset = 1.5;
-		a._targetUpdateRateMs = 500;
-		a._logLevels = { esp32: "Debug" };
+		// Set some non-default settings values — these should appear in the blob
+		a._temperatureOffset = 1.5; // non-default (default: 0)
+		a._targetUpdateRateMs = 500; // non-default (default: 1000)
+		a._logLevels = { esp32: "Debug" }; // non-default (default: {})
+		// Leave all other settings at their panel defaults
 
 		a.hass.callWS
 			.mockResolvedValueOnce({}) // save_configuration
@@ -169,11 +171,16 @@ describe("_saveConfiguration", () => {
 			configuration: { settings: Record<string, any> };
 		};
 		expect(payload.configuration.settings).toBeDefined();
+		// Non-default fields are present
 		expect(payload.configuration.settings.temperature_offset).toBe(1.5);
 		expect(payload.configuration.settings.target_update_rate_ms).toBe(500);
 		expect(payload.configuration.settings.log_levels).toEqual({
 			esp32: "Debug",
 		});
+		// Default-valued fields are NOT stored
+		expect("motion_timeout" in payload.configuration.settings).toBe(false);
+		expect("led_mode" in payload.configuration.settings).toBe(false);
+		expect("humidity_offset" in payload.configuration.settings).toBe(false);
 	});
 });
 
@@ -233,6 +240,142 @@ describe("_buildSettingsPayload", () => {
 		});
 		// Exactly 22 keys — no extras, no omissions
 		expect(Object.keys(payload)).toHaveLength(22);
+	});
+});
+
+describe("_buildSparseSettings (via saveConfiguration)", () => {
+	it("save produces empty settings blob when all fields are at defaults", async () => {
+		const a = createPanel() as any;
+		a._configurationName = "Bedroom";
+		a._grid = new Uint8Array(GRID_CELL_COUNT);
+		a._roomWidth = 3000;
+		a._roomDepth = 4000;
+		a._furniture = [];
+		a._zoneConfigs = [
+			{
+				type: "default",
+				trigger: 5,
+				renew: 3,
+				timeout: 10,
+				handoff_timeout: 3,
+			},
+			null,
+			null,
+			null,
+			null,
+			null,
+			null,
+			null,
+		];
+		// Set every settings property to its default value
+		a._temperatureOffset = SETTINGS_DEFAULTS.temperature_offset;
+		a._humidityOffset = SETTINGS_DEFAULTS.humidity_offset;
+		a._illuminanceOffset = SETTINGS_DEFAULTS.illuminance_offset;
+		a._motionTimeout = SETTINGS_DEFAULTS.motion_timeout;
+		a._targetAutoDistance = SETTINGS_DEFAULTS.target_auto_distance;
+		a._targetMaxDistance = SETTINGS_DEFAULTS.target_max_distance;
+		a._staticAutoDistance = SETTINGS_DEFAULTS.static_auto_distance;
+		a._staticMinDistance = SETTINGS_DEFAULTS.static_min_distance;
+		a._staticMaxDistance = SETTINGS_DEFAULTS.static_max_distance;
+		a._staticTriggerThreshold = SETTINGS_DEFAULTS.static_trigger_threshold;
+		a._staticRenewThreshold = SETTINGS_DEFAULTS.static_renew_threshold;
+		a._staticTimeout = SETTINGS_DEFAULTS.static_timeout;
+		a._staticOnDelay = SETTINGS_DEFAULTS.static_on_delay;
+		a._ledMode = SETTINGS_DEFAULTS.led_mode;
+		a._ledBrightness = SETTINGS_DEFAULTS.led_brightness;
+		a._ledPresenceColor = SETTINGS_DEFAULTS.led_presence_color;
+		a._relayTriggerMode = SETTINGS_DEFAULTS.relay_trigger_mode;
+		a._relayContactMode = SETTINGS_DEFAULTS.relay_contact_mode;
+		a._targetUpdateRateMs = SETTINGS_DEFAULTS.target_update_rate_ms;
+		a._zoneUpdateRateMs = SETTINGS_DEFAULTS.zone_update_rate_ms;
+		a._entitiesConfig = {};
+		a._logLevels = {};
+
+		const callWS = vi
+			.fn()
+			.mockResolvedValueOnce({})
+			.mockResolvedValueOnce({ configurations: {} });
+		a.hass = { ...a.hass, callWS };
+
+		await a._saveConfiguration();
+
+		const saveCall = callWS.mock.calls.find(
+			(c: any[]) =>
+				(c[0] as { type?: string })?.type === "eppgrid/save_configuration",
+		);
+		expect(saveCall).toBeDefined();
+		expect(saveCall![0].configuration.settings).toEqual({});
+	});
+
+	it("save produces sparse settings blob containing only non-default fields", async () => {
+		const a = createPanel() as any;
+		a._configurationName = "Bedroom";
+		a._grid = new Uint8Array(GRID_CELL_COUNT);
+		a._roomWidth = 3000;
+		a._roomDepth = 4000;
+		a._furniture = [];
+		a._zoneConfigs = [
+			{
+				type: "default",
+				trigger: 5,
+				renew: 3,
+				timeout: 10,
+				handoff_timeout: 3,
+			},
+			null,
+			null,
+			null,
+			null,
+			null,
+			null,
+			null,
+		];
+		// Set everything to default first
+		a._temperatureOffset = SETTINGS_DEFAULTS.temperature_offset;
+		a._humidityOffset = SETTINGS_DEFAULTS.humidity_offset;
+		a._illuminanceOffset = SETTINGS_DEFAULTS.illuminance_offset;
+		a._motionTimeout = SETTINGS_DEFAULTS.motion_timeout;
+		a._targetAutoDistance = SETTINGS_DEFAULTS.target_auto_distance;
+		a._targetMaxDistance = SETTINGS_DEFAULTS.target_max_distance;
+		a._staticAutoDistance = SETTINGS_DEFAULTS.static_auto_distance;
+		a._staticMinDistance = SETTINGS_DEFAULTS.static_min_distance;
+		a._staticMaxDistance = SETTINGS_DEFAULTS.static_max_distance;
+		a._staticTriggerThreshold = SETTINGS_DEFAULTS.static_trigger_threshold;
+		a._staticRenewThreshold = SETTINGS_DEFAULTS.static_renew_threshold;
+		a._staticTimeout = SETTINGS_DEFAULTS.static_timeout;
+		a._staticOnDelay = SETTINGS_DEFAULTS.static_on_delay;
+		a._ledMode = SETTINGS_DEFAULTS.led_mode;
+		a._ledBrightness = SETTINGS_DEFAULTS.led_brightness;
+		a._ledPresenceColor = SETTINGS_DEFAULTS.led_presence_color;
+		a._relayTriggerMode = SETTINGS_DEFAULTS.relay_trigger_mode;
+		a._relayContactMode = SETTINGS_DEFAULTS.relay_contact_mode;
+		a._targetUpdateRateMs = SETTINGS_DEFAULTS.target_update_rate_ms;
+		a._zoneUpdateRateMs = SETTINGS_DEFAULTS.zone_update_rate_ms;
+		a._entitiesConfig = {};
+		a._logLevels = {};
+		// Then customise a few
+		a._motionTimeout = 60;
+		a._ledMode = "Presence";
+		a._entitiesConfig = { zone_presence: true };
+
+		const callWS = vi
+			.fn()
+			.mockResolvedValueOnce({})
+			.mockResolvedValueOnce({ configurations: {} });
+		a.hass = { ...a.hass, callWS };
+
+		await a._saveConfiguration();
+
+		const saveCall = callWS.mock.calls.find(
+			(c: any[]) =>
+				(c[0] as { type?: string })?.type === "eppgrid/save_configuration",
+		);
+		expect(saveCall).toBeDefined();
+		expect(saveCall![0].configuration.settings).toEqual({
+			motion_timeout: 60,
+			led_mode: "Presence",
+			entities: { zone_presence: true },
+		});
 	});
 });
 
@@ -484,16 +627,19 @@ describe("_loadConfiguration", () => {
 		expect(setSettingsCall).toBeUndefined();
 	});
 
-	it("does not call set_settings when blob settings is an empty object", async () => {
+	it("restores all defaults to panel state and pushes via set_settings when blob settings is empty", async () => {
 		const a = createPanel() as any;
 		const validZones = makeValidZoneSlots();
-		a._temperatureOffset = 0.7;
+		// Pre-populate panel with non-default values to verify they get reset
+		a._temperatureOffset = 1.5;
+		a._motionTimeout = 60;
+		a._ledMode = "Presence";
 		// Disable auto-distance so applyLayout doesn't inject its own set_settings call
 		a._targetAutoDistance = false;
 		a._staticAutoDistance = false;
 		a._gridCtrl.configurations = [
 			{
-				name: "MigratedEmpty",
+				name: "AllDefaults",
 				grid: Array.from(new Uint8Array(GRID_CELL_COUNT)),
 				zones: validZones,
 				roomWidth: 3,
@@ -505,16 +651,63 @@ describe("_loadConfiguration", () => {
 
 		const callWS = vi.fn().mockResolvedValue({});
 		a.hass = { ...a.hass, callWS };
+		a._selectedMac = "AA:BB:CC:DD:EE:FF";
 
-		await a._loadConfiguration("MigratedEmpty");
+		await a._loadConfiguration("AllDefaults");
 
-		expect(a._temperatureOffset).toBe(0.7);
-		// No set_settings call from the settings-restore path
+		// Panel state reset to defaults
+		expect(a._temperatureOffset).toBe(0);
+		expect(a._motionTimeout).toBe(5);
+		expect(a._ledMode).toBe("Manual Control");
+
+		// set_settings was called with the default payload
 		const setSettingsCall = callWS.mock.calls.find(
 			(c: any[]) =>
 				(c[0] as { type?: string })?.type === "eppgrid/set_settings",
 		);
-		expect(setSettingsCall).toBeUndefined();
+		expect(setSettingsCall).toBeDefined();
+		expect(setSettingsCall![0]).toMatchObject({
+			mac: "AA:BB:CC:DD:EE:FF",
+			temperature_offset: 0,
+			motion_timeout: 5,
+			led_mode: "Manual Control",
+		});
+	});
+
+	it("restores partial settings using blob values for present fields and defaults for missing", async () => {
+		const a = createPanel() as any;
+		const validZones = makeValidZoneSlots();
+		a._temperatureOffset = 99; // current panel value (will be reset to default)
+		a._motionTimeout = 99;
+		// Disable auto-distance so applyLayout doesn't inject its own set_settings call
+		a._targetAutoDistance = false;
+		a._staticAutoDistance = false;
+		a._gridCtrl.configurations = [
+			{
+				name: "Partial",
+				grid: Array.from(new Uint8Array(GRID_CELL_COUNT)),
+				zones: validZones,
+				roomWidth: 3,
+				roomDepth: 4,
+				furniture: [],
+				settings: {
+					motion_timeout: 60,
+					led_mode: "Presence",
+				},
+			},
+		];
+
+		const callWS = vi.fn().mockResolvedValue({});
+		a.hass = { ...a.hass, callWS };
+		a._selectedMac = "AA:BB:CC:DD:EE:FF";
+
+		await a._loadConfiguration("Partial");
+
+		// Present fields use blob values
+		expect(a._motionTimeout).toBe(60);
+		expect(a._ledMode).toBe("Presence");
+		// Missing fields reset to defaults
+		expect(a._temperatureOffset).toBe(0);
 	});
 });
 

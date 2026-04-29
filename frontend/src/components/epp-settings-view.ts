@@ -1055,7 +1055,9 @@ export class EppSettingsView extends LitElement {
 	 * `eppgrid/set_settings`. The shape here MUST stay in sync with
 	 * `_buildSettingsPayload()` on `eppgrid-panel.ts` — that helper reads the same
 	 * fields from panel state for the backup-configuration flow. Adding a new
-	 * settings field requires updating both.
+	 * settings field requires updating all THREE places: this method,
+	 * `_buildSettingsPayload()`, AND `SETTINGS_DEFAULTS` in
+	 * `lib/settings-defaults.ts`.
 	 */
 	private _emitSave() {
 		const o = this._overrides;

@@ -40,6 +40,13 @@ class EPPGridStore:
         # of the new key (not emptiness) so that a user who legitimately
         # deleted all their saved configurations doesn't get the legacy
         # `templates` re-imported on every load.
+        #
+        # Legacy templates lacked a settings field; the migration sets
+        # `settings: {}` to mark them as "saved with all defaults". On restore,
+        # the frontend treats `{}` as "apply all defaults" — the device's
+        # settings will be reset to factory defaults, and the user can re-tune
+        # afterwards. (Layout-only restore for these entries is no longer
+        # supported under the sparse-settings storage model.)
         if "configurations" not in data and "templates" in data:
             self.configurations = {
                 name: {**blob, "settings": blob.get("settings", {})} for name, blob in data["templates"].items()

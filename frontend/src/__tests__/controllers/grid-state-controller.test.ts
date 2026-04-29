@@ -102,6 +102,10 @@ function mockHost(overrides: Record<string, any> = {}) {
 				log_levels: {},
 			};
 		},
+		_buildSparseSettings() {
+			// All values are at defaults in the mock host, so sparse = {}
+			return {};
+		},
 		...overrides,
 	};
 }

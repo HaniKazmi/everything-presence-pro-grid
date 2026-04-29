@@ -52,6 +52,10 @@ import {
 	getVisibleRoomBounds,
 	type SensorFov,
 } from "./lib/room-geometry.js";
+import {
+	isSettingsValueDefault,
+	SETTINGS_DEFAULTS,
+} from "./lib/settings-defaults.js";
 import { persistSelectedMac } from "./lib/storage.js";
 import {
 	detectIpAddress,
@@ -884,12 +888,13 @@ export class EPPGridPanel extends LitElement {
 	/**
 	 * Build the full settings payload sent to `eppgrid/set_settings`.
 	 *
-	 * Used by `saveConfiguration()` so backups capture the full settings shape.
 	 * The fields here MUST stay in sync with `_emitSave()` in
 	 * `components/epp-settings-view.ts` — that method builds the same payload from
 	 * the live settings-view overrides during an active edit session, while this
 	 * method reads the panel's reactive state (which is up-to-date when not in an
-	 * active settings edit). Adding a new settings field requires updating both.
+	 * active settings edit). Adding a new settings field requires updating all THREE
+	 * places: this method, `_emitSave()`, AND `SETTINGS_DEFAULTS` in
+	 * `lib/settings-defaults.ts`.
 	 */
 	private _buildSettingsPayload(): Record<string, any> {
 		return {
@@ -916,6 +921,26 @@ export class EPPGridPanel extends LitElement {
 			entities: this._entitiesConfig || {},
 			log_levels: this._logLevels || {},
 		};
+	}
+
+	/**
+	 * Build a sparse settings payload for backup storage — only fields whose
+	 * current value differs from their default. A configuration with all-default
+	 * settings produces `{}`. The restore flow fills missing fields back in from
+	 * `SETTINGS_DEFAULTS`.
+	 *
+	 * Stays in sync with `_buildSettingsPayload()` and `SETTINGS_DEFAULTS`.
+	 */
+	private _buildSparseSettings(): Record<string, any> {
+		const full = this._buildSettingsPayload();
+		const sparse: Record<string, any> = {};
+		for (const [key, value] of Object.entries(full)) {
+			const defaultValue = (SETTINGS_DEFAULTS as Record<string, any>)[key];
+			if (!isSettingsValueDefault(value, defaultValue)) {
+				sparse[key] = value;
+			}
+		}
+		return sparse;
 	}
 
 	private async _saveSettings(payload?: Record<string, any>): Promise<void> {

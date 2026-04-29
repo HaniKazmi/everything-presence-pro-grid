@@ -30,6 +30,7 @@ import {
 	type OverlayMode,
 } from "../lib/grid.js";
 import { autoDetectionRange } from "../lib/room-geometry.js";
+import { SETTINGS_DEFAULTS } from "../lib/settings-defaults.js";
 import {
 	ZONE_COLORS,
 	type Zone0Config,
@@ -467,7 +468,7 @@ export class GridStateController implements ReactiveController {
 			furniture: (this.host._furniture as FurnitureItem[]).map((f) => ({
 				...f,
 			})),
-			settings: (this.host as any)._buildSettingsPayload(),
+			settings: (this.host as any)._buildSparseSettings(),
 		};
 		await (this.host as any).hass.callWS({
 			type: "eppgrid/save_configuration",
@@ -523,33 +524,36 @@ export class GridStateController implements ReactiveController {
 			...f,
 		}));
 
-		// Apply settings (skip when missing or empty — matches migrated-entry behavior)
+		// Apply settings (skip only when missing — undefined/null means "no settings
+		// in blob, leave device as-is"). An empty object {} means "all defaults",
+		// which restores every field to its canonical default value.
 		const s = cfg.settings;
-		const hasSettings =
-			s != null && typeof s === "object" && Object.keys(s).length > 0;
+		const hasSettings = s != null && typeof s === "object";
 		if (hasSettings) {
-			this.host._temperatureOffset = s.temperature_offset;
-			this.host._humidityOffset = s.humidity_offset;
-			this.host._illuminanceOffset = s.illuminance_offset;
-			this.host._motionTimeout = s.motion_timeout;
-			this.host._targetAutoDistance = s.target_auto_distance;
-			this.host._targetMaxDistance = s.target_max_distance;
-			this.host._staticAutoDistance = s.static_auto_distance;
-			this.host._staticMinDistance = s.static_min_distance;
-			this.host._staticMaxDistance = s.static_max_distance;
-			this.host._staticTriggerThreshold = s.static_trigger_threshold;
-			this.host._staticRenewThreshold = s.static_renew_threshold;
-			this.host._staticTimeout = s.static_timeout;
-			this.host._staticOnDelay = s.static_on_delay;
-			this.host._ledMode = s.led_mode;
-			this.host._ledBrightness = s.led_brightness;
-			this.host._ledPresenceColor = s.led_presence_color;
-			this.host._relayTriggerMode = s.relay_trigger_mode;
-			this.host._relayContactMode = s.relay_contact_mode;
-			this.host._targetUpdateRateMs = s.target_update_rate_ms;
-			this.host._zoneUpdateRateMs = s.zone_update_rate_ms;
-			this.host._entitiesConfig = s.entities || {};
-			this.host._logLevels = s.log_levels || {};
+			const get = <K extends keyof typeof SETTINGS_DEFAULTS>(key: K) =>
+				key in s ? (s as any)[key] : SETTINGS_DEFAULTS[key];
+			this.host._temperatureOffset = get("temperature_offset");
+			this.host._humidityOffset = get("humidity_offset");
+			this.host._illuminanceOffset = get("illuminance_offset");
+			this.host._motionTimeout = get("motion_timeout");
+			this.host._targetAutoDistance = get("target_auto_distance");
+			this.host._targetMaxDistance = get("target_max_distance");
+			this.host._staticAutoDistance = get("static_auto_distance");
+			this.host._staticMinDistance = get("static_min_distance");
+			this.host._staticMaxDistance = get("static_max_distance");
+			this.host._staticTriggerThreshold = get("static_trigger_threshold");
+			this.host._staticRenewThreshold = get("static_renew_threshold");
+			this.host._staticTimeout = get("static_timeout");
+			this.host._staticOnDelay = get("static_on_delay");
+			this.host._ledMode = get("led_mode");
+			this.host._ledBrightness = get("led_brightness");
+			this.host._ledPresenceColor = get("led_presence_color");
+			this.host._relayTriggerMode = get("relay_trigger_mode");
+			this.host._relayContactMode = get("relay_contact_mode");
+			this.host._targetUpdateRateMs = get("target_update_rate_ms");
+			this.host._zoneUpdateRateMs = get("zone_update_rate_ms");
+			this.host._entitiesConfig = get("entities");
+			this.host._logLevels = get("log_levels");
 		}
 
 		this.host._showConfigurationRestore = false;
@@ -564,11 +568,14 @@ export class GridStateController implements ReactiveController {
 		// current-room auto-computed distances — and we want those values to win
 		// on the device, not the (possibly stale) max_distance from the saved
 		// blob. Reversing the order would clobber applyLayout's auto-correction.
+		// Use _buildSettingsPayload() (not ...s) so sparse blobs get all fields
+		// filled in from panel state (which was just populated above with
+		// defaults+blob values), satisfying the WS schema.
 		if (hasSettings) {
 			await (this.host as any).hass.callWS({
 				type: "eppgrid/set_settings",
 				mac: this.host._selectedMac,
-				...s,
+				...(this.host as any)._buildSettingsPayload(),
 			});
 		}
 
