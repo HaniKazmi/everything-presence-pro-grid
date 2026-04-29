@@ -53,6 +53,7 @@ import {
 	type SensorFov,
 } from "./lib/room-geometry.js";
 import {
+	buildSparseEntities,
 	isSettingsValueDefault,
 	SETTINGS_DEFAULTS,
 } from "./lib/settings-defaults.js";
@@ -935,24 +936,36 @@ export class EPPGridPanel extends LitElement {
 		const full = this._buildSettingsPayload();
 		const sparse: Record<string, any> = {};
 		for (const [key, value] of Object.entries(full)) {
+			// Entities are sparse-handled below against per-entity defaults.
+			if (key === "entities") continue;
 			const defaultValue = (SETTINGS_DEFAULTS as Record<string, any>)[key];
 			if (!isSettingsValueDefault(value, defaultValue)) {
 				sparse[key] = value;
 			}
 		}
 
-		// Distance values are only meaningful when auto-distance is off. When
-		// the auto flag is at its default (true), the actual max/min are derived
-		// from room geometry at apply-time, so storing them as "non-default" is
-		// misleading — the sparse blob now drops target_max_distance when
-		// target_auto_distance is omitted, and drops static_min_distance /
-		// static_max_distance when static_auto_distance is omitted.
+		// Coupled-field rules: drop fields whose meaning depends on a gating
+		// field that's at its default.
 		if (!("target_auto_distance" in sparse)) {
+			// Distance values are only meaningful when auto-distance is off. When
+			// the auto flag is at its default (true), the actual max/min are derived
+			// from room geometry at apply-time, so storing them as "non-default" is
+			// misleading.
 			delete sparse.target_max_distance;
 		}
 		if (!("static_auto_distance" in sparse)) {
 			delete sparse.static_min_distance;
 			delete sparse.static_max_distance;
+		}
+		if (!("relay_trigger_mode" in sparse)) {
+			// When relay is disabled (default), contact mode is meaningless.
+			delete sparse.relay_contact_mode;
+		}
+
+		// Entities: only include flags that differ from their per-entity default.
+		const sparseEntities = buildSparseEntities(full.entities);
+		if (Object.keys(sparseEntities).length > 0) {
+			sparse.entities = sparseEntities;
 		}
 
 		return sparse;

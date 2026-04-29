@@ -2,8 +2,16 @@ import { render } from "lit";
 import { describe, expect, it, vi } from "vitest";
 import type { EPPGridPanel } from "../eppgrid-panel.js";
 import "../eppgrid-panel.js";
-import { CELL_ROOM_BIT, GRID_CELL_COUNT, GRID_COLS } from "../lib/grid.js";
-import { SETTINGS_DEFAULTS } from "../lib/settings-defaults.js";
+import {
+	CELL_ROOM_BIT,
+	GRID_CELL_COUNT,
+	GRID_COLS,
+	GRID_ROWS,
+} from "../lib/grid.js";
+import {
+	ENTITY_DEFAULTS,
+	SETTINGS_DEFAULTS,
+} from "../lib/settings-defaults.js";
 import type { Zone0Config, ZoneConfig } from "../lib/zone-defaults.js";
 
 // Helper to build a valid length-8 zone slots array (mirrors VALID_ZONES but
@@ -351,12 +359,14 @@ describe("_buildSparseSettings (via saveConfiguration)", () => {
 		a._relayContactMode = SETTINGS_DEFAULTS.relay_contact_mode;
 		a._targetUpdateRateMs = SETTINGS_DEFAULTS.target_update_rate_ms;
 		a._zoneUpdateRateMs = SETTINGS_DEFAULTS.zone_update_rate_ms;
-		a._entitiesConfig = {};
+		a._entitiesConfig = { ...ENTITY_DEFAULTS };
 		a._logLevels = {};
 		// Then customise a few
 		a._motionTimeout = 60;
 		a._ledMode = "Presence";
-		a._entitiesConfig = { zone_presence: true };
+		// Use a truly non-default entity flag: room_occupancy defaults to true,
+		// so setting it to false is non-default and must appear in the sparse blob.
+		a._entitiesConfig = { room_occupancy: false };
 
 		const callWS = vi
 			.fn()
@@ -374,7 +384,7 @@ describe("_buildSparseSettings (via saveConfiguration)", () => {
 		expect(saveCall![0].configuration.settings).toEqual({
 			motion_timeout: 60,
 			led_mode: "Presence",
-			entities: { zone_presence: true },
+			entities: { room_occupancy: false },
 		});
 	});
 	it("omits target_max_distance from save blob when target_auto_distance is at default", async () => {
@@ -497,7 +507,7 @@ describe("_buildSparseSettings (via saveConfiguration)", () => {
 		a._relayContactMode = "no";
 		a._targetUpdateRateMs = 1000;
 		a._zoneUpdateRateMs = 1000;
-		a._entitiesConfig = {};
+		a._entitiesConfig = { ...ENTITY_DEFAULTS };
 		a._logLevels = {};
 
 		const callWS = vi
@@ -518,6 +528,205 @@ describe("_buildSparseSettings (via saveConfiguration)", () => {
 			static_auto_distance: false,
 			static_min_distance: 0.5,
 			static_max_distance: 10,
+		});
+	});
+
+	it("omits entities entirely when all flags are at their per-entity defaults", async () => {
+		const a = createPanel() as any;
+		a._configurationName = "AllDefaults";
+		a._temperatureOffset = 0;
+		a._humidityOffset = 0;
+		a._illuminanceOffset = 0;
+		a._motionTimeout = 5;
+		a._targetAutoDistance = true;
+		a._targetMaxDistance = 6.0;
+		a._staticAutoDistance = true;
+		a._staticMinDistance = 0.3;
+		a._staticMaxDistance = 16.0;
+		a._staticTriggerThreshold = 3;
+		a._staticRenewThreshold = 3;
+		a._staticTimeout = 30;
+		a._staticOnDelay = 0;
+		a._ledMode = "Manual Control";
+		a._ledBrightness = 1.0;
+		a._ledPresenceColor = "#CC33FF";
+		a._relayTriggerMode = "disabled";
+		a._relayContactMode = "no";
+		a._targetUpdateRateMs = 1000;
+		a._zoneUpdateRateMs = 1000;
+		// Entities at canonical defaults: 5 enabled, others false
+		a._entitiesConfig = {
+			room_occupancy: true,
+			zone_presence: true,
+			env_temperature: true,
+			env_humidity: true,
+			env_illuminance: true,
+			room_target_presence: false,
+			room_static_presence: false,
+			room_motion_presence: false,
+			env_co2: false,
+			target_active: false,
+			target_xy: false,
+			target_signal: false,
+			target_zone: false,
+			zone_target_count: false,
+			target_count: false,
+		};
+		a._logLevels = {};
+
+		const callWS = vi
+			.fn()
+			.mockResolvedValueOnce({})
+			.mockResolvedValueOnce({ configurations: {} });
+		a.hass = { ...a.hass, callWS };
+
+		await a._saveConfiguration();
+
+		const saveCall = callWS.mock.calls.find(
+			(c: any[]) => c[0]?.type === "eppgrid/save_configuration",
+		);
+		expect(saveCall![0].configuration.settings).toEqual({});
+	});
+
+	it("stores only entity flags differing from their per-entity default", async () => {
+		const a = createPanel() as any;
+		a._configurationName = "MixedEntities";
+		a._temperatureOffset = 0;
+		a._humidityOffset = 0;
+		a._illuminanceOffset = 0;
+		a._motionTimeout = 5;
+		a._targetAutoDistance = true;
+		a._targetMaxDistance = 6.0;
+		a._staticAutoDistance = true;
+		a._staticMinDistance = 0.3;
+		a._staticMaxDistance = 16.0;
+		a._staticTriggerThreshold = 3;
+		a._staticRenewThreshold = 3;
+		a._staticTimeout = 30;
+		a._staticOnDelay = 0;
+		a._ledMode = "Manual Control";
+		a._ledBrightness = 1.0;
+		a._ledPresenceColor = "#CC33FF";
+		a._relayTriggerMode = "disabled";
+		a._relayContactMode = "no";
+		a._targetUpdateRateMs = 1000;
+		a._zoneUpdateRateMs = 1000;
+		a._logLevels = {};
+		// Entity overrides: turn off room_occupancy (default true), turn on target_xy (default false)
+		a._entitiesConfig = {
+			room_occupancy: false, // non-default
+			zone_presence: true, // default
+			env_temperature: true, // default
+			env_humidity: true, // default
+			env_illuminance: true, // default
+			target_xy: true, // non-default
+			// Others left out of dict — sparse panel state representation
+		};
+
+		const callWS = vi
+			.fn()
+			.mockResolvedValueOnce({})
+			.mockResolvedValueOnce({ configurations: {} });
+		a.hass = { ...a.hass, callWS };
+
+		await a._saveConfiguration();
+
+		const saveCall = callWS.mock.calls.find(
+			(c: any[]) => c[0]?.type === "eppgrid/save_configuration",
+		);
+		expect(saveCall![0].configuration.settings).toEqual({
+			entities: {
+				room_occupancy: false,
+				target_xy: true,
+			},
+		});
+	});
+
+	it("omits relay_contact_mode when relay_trigger_mode is at default", async () => {
+		const a = createPanel() as any;
+		a._configurationName = "RelayDisabled";
+		a._temperatureOffset = 0;
+		a._humidityOffset = 0;
+		a._illuminanceOffset = 0;
+		a._motionTimeout = 5;
+		a._targetAutoDistance = true;
+		a._targetMaxDistance = 6.0;
+		a._staticAutoDistance = true;
+		a._staticMinDistance = 0.3;
+		a._staticMaxDistance = 16.0;
+		a._staticTriggerThreshold = 3;
+		a._staticRenewThreshold = 3;
+		a._staticTimeout = 30;
+		a._staticOnDelay = 0;
+		a._ledMode = "Manual Control";
+		a._ledBrightness = 1.0;
+		a._ledPresenceColor = "#CC33FF";
+		a._relayTriggerMode = "disabled"; // DEFAULT
+		a._relayContactMode = "nc"; // non-default, but should be dropped
+		a._targetUpdateRateMs = 1000;
+		a._zoneUpdateRateMs = 1000;
+		a._entitiesConfig = { ...ENTITY_DEFAULTS };
+		a._logLevels = {};
+
+		const callWS = vi
+			.fn()
+			.mockResolvedValueOnce({})
+			.mockResolvedValueOnce({ configurations: {} });
+		a.hass = { ...a.hass, callWS };
+
+		await a._saveConfiguration();
+
+		const saveCall = callWS.mock.calls.find(
+			(c: any[]) => c[0]?.type === "eppgrid/save_configuration",
+		);
+		expect(saveCall![0].configuration.settings).not.toHaveProperty(
+			"relay_contact_mode",
+		);
+		expect(saveCall![0].configuration.settings).not.toHaveProperty(
+			"relay_trigger_mode",
+		);
+	});
+
+	it("stores relay_contact_mode when relay_trigger_mode is non-default", async () => {
+		const a = createPanel() as any;
+		a._configurationName = "RelayActive";
+		a._temperatureOffset = 0;
+		a._humidityOffset = 0;
+		a._illuminanceOffset = 0;
+		a._motionTimeout = 5;
+		a._targetAutoDistance = true;
+		a._targetMaxDistance = 6.0;
+		a._staticAutoDistance = true;
+		a._staticMinDistance = 0.3;
+		a._staticMaxDistance = 16.0;
+		a._staticTriggerThreshold = 3;
+		a._staticRenewThreshold = 3;
+		a._staticTimeout = 30;
+		a._staticOnDelay = 0;
+		a._ledMode = "Manual Control";
+		a._ledBrightness = 1.0;
+		a._ledPresenceColor = "#CC33FF";
+		a._relayTriggerMode = "presence"; // non-default
+		a._relayContactMode = "nc"; // non-default
+		a._targetUpdateRateMs = 1000;
+		a._zoneUpdateRateMs = 1000;
+		a._entitiesConfig = { ...ENTITY_DEFAULTS };
+		a._logLevels = {};
+
+		const callWS = vi
+			.fn()
+			.mockResolvedValueOnce({})
+			.mockResolvedValueOnce({ configurations: {} });
+		a.hass = { ...a.hass, callWS };
+
+		await a._saveConfiguration();
+
+		const saveCall = callWS.mock.calls.find(
+			(c: any[]) => c[0]?.type === "eppgrid/save_configuration",
+		);
+		expect(saveCall![0].configuration.settings).toMatchObject({
+			relay_trigger_mode: "presence",
+			relay_contact_mode: "nc",
 		});
 	});
 });
@@ -716,7 +925,10 @@ describe("_loadConfiguration", () => {
 		expect(a._motionTimeout).toBe(60);
 		expect(a._ledMode).toBe("Presence");
 		expect(a._targetUpdateRateMs).toBe(500);
-		expect(a._entitiesConfig).toEqual({ zone_presence: true });
+		// Blob stored { zone_presence: true } — expandEntities merges it with
+		// ENTITY_DEFAULTS, so we get the full 5-key canonical defaults object
+		// (zone_presence: true is the default, so no change from defaults here).
+		expect(a._entitiesConfig).toEqual({ ...ENTITY_DEFAULTS });
 		expect(a._logLevels).toEqual({ sensor: "Info" });
 
 		// set_settings was called with the restored payload
@@ -851,6 +1063,76 @@ describe("_loadConfiguration", () => {
 		expect(a._ledMode).toBe("Presence");
 		// Missing fields reset to defaults
 		expect(a._temperatureOffset).toBe(0);
+	});
+
+	it("expands sparse entities to full defaults+overrides on restore", async () => {
+		const a = createPanel() as any;
+		const validZones = makeValidZoneSlots();
+		a._gridCtrl.configurations = [
+			{
+				name: "SparseEntities",
+				grid: Array.from(new Uint8Array(GRID_COLS * GRID_ROWS)),
+				zones: validZones,
+				roomWidth: 3,
+				roomDepth: 4,
+				furniture: [],
+				settings: {
+					entities: {
+						room_occupancy: false, // override default true
+						target_xy: true, // override default false
+					},
+				},
+			},
+		];
+
+		const callWS = vi.fn().mockResolvedValue({});
+		a.hass = { ...a.hass, callWS };
+		a._selectedMac = "AA:BB:CC:DD:EE:FF";
+
+		await a._loadConfiguration("SparseEntities");
+
+		// Defaults preserved
+		expect(a._entitiesConfig.zone_presence).toBe(true);
+		expect(a._entitiesConfig.env_temperature).toBe(true);
+		expect(a._entitiesConfig.env_humidity).toBe(true);
+		expect(a._entitiesConfig.env_illuminance).toBe(true);
+		// Overrides applied
+		expect(a._entitiesConfig.room_occupancy).toBe(false);
+		expect(a._entitiesConfig.target_xy).toBe(true);
+	});
+
+	it("restores all-default entities when settings has no entities key", async () => {
+		const a = createPanel() as any;
+		const validZones = makeValidZoneSlots();
+		a._entitiesConfig = { weird: true }; // some pre-existing state
+		// Disable auto-distance so applyLayout doesn't inject its own set_settings call
+		a._targetAutoDistance = false;
+		a._staticAutoDistance = false;
+		a._gridCtrl.configurations = [
+			{
+				name: "DefaultEntities",
+				grid: Array.from(new Uint8Array(GRID_COLS * GRID_ROWS)),
+				zones: validZones,
+				roomWidth: 3,
+				roomDepth: 4,
+				furniture: [],
+				settings: { motion_timeout: 60 }, // no entities key
+			},
+		];
+
+		const callWS = vi.fn().mockResolvedValue({});
+		a.hass = { ...a.hass, callWS };
+		a._selectedMac = "AA:BB:CC:DD:EE:FF";
+
+		await a._loadConfiguration("DefaultEntities");
+
+		expect(a._entitiesConfig).toEqual({
+			room_occupancy: true,
+			zone_presence: true,
+			env_temperature: true,
+			env_humidity: true,
+			env_illuminance: true,
+		});
 	});
 });
 

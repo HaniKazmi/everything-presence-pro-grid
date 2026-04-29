@@ -30,7 +30,7 @@ import {
 	type OverlayMode,
 } from "../lib/grid.js";
 import { autoDetectionRange } from "../lib/room-geometry.js";
-import { SETTINGS_DEFAULTS } from "../lib/settings-defaults.js";
+import { expandEntities, SETTINGS_DEFAULTS } from "../lib/settings-defaults.js";
 import {
 	ZONE_COLORS,
 	type Zone0Config,
@@ -552,7 +552,9 @@ export class GridStateController implements ReactiveController {
 			this.host._relayContactMode = get("relay_contact_mode");
 			this.host._targetUpdateRateMs = get("target_update_rate_ms");
 			this.host._zoneUpdateRateMs = get("zone_update_rate_ms");
-			this.host._entitiesConfig = get("entities");
+			this.host._entitiesConfig = expandEntities(
+				"entities" in s ? (s as Record<string, any>).entities : undefined,
+			);
 			this.host._logLevels = get("log_levels");
 		}
 

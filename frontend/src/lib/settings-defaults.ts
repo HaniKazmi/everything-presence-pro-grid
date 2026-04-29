@@ -1,4 +1,16 @@
 /**
+ * Canonical per-entity default state. Entities not listed here default
+ * to `false` (disabled).
+ */
+export const ENTITY_DEFAULTS: Record<string, boolean> = {
+	room_occupancy: true,
+	zone_presence: true,
+	env_temperature: true,
+	env_humidity: true,
+	env_illuminance: true,
+};
+
+/**
  * Canonical default values for every settings field that
  * `eppgrid/set_settings` accepts.
  *
@@ -34,7 +46,7 @@ export const SETTINGS_DEFAULTS = {
 	relay_contact_mode: "no",
 	target_update_rate_ms: 1000,
 	zone_update_rate_ms: 1000,
-	entities: {} as Record<string, boolean>,
+	entities: { ...ENTITY_DEFAULTS } as Record<string, boolean>,
 	log_levels: {} as Record<string, string>,
 } as const;
 
@@ -44,15 +56,16 @@ export type SettingsKey = keyof typeof SETTINGS_DEFAULTS;
  * Returns true when `value` is semantically equal to `defaultValue`.
  *
  * - Scalars: strict equality (`===`).
- * - Objects (entities, log_levels): both must be empty objects — the
- *   current object defaults are all `{}`, so any non-empty object is
- *   non-default. This is kept as a function so callers don't need to
- *   know whether a key's default is a scalar or an object, and so the
- *   logic can be extended if a future default object has content.
+ * - Objects (log_levels): default is empty {}; treat any empty object as
+ *   default. This is kept as a function so callers don't need to know
+ *   whether a key's default is a scalar or an object.
+ * - Note: entities are NOT handled here — they use buildSparseEntities /
+ *   expandEntities for per-entity-flag comparison.
  */
 export function isSettingsValueDefault(value: any, defaultValue: any): boolean {
 	if (typeof defaultValue === "object" && defaultValue !== null) {
-		// entities, log_levels: default is empty {}; treat any empty object as default
+		// log_levels: default is empty {}; treat any empty object as default.
+		// entities is excluded from this path (handled by buildSparseEntities).
 		return (
 			value !== null &&
 			typeof value === "object" &&
@@ -61,4 +74,33 @@ export function isSettingsValueDefault(value: any, defaultValue: any): boolean {
 		);
 	}
 	return value === defaultValue;
+}
+
+/**
+ * Filter an entities dict to only flags that differ from their default.
+ * Returns `{}` if every flag is at its default.
+ */
+export function buildSparseEntities(
+	entities: Record<string, boolean> | undefined,
+): Record<string, boolean> {
+	if (!entities) return {};
+	const sparse: Record<string, boolean> = {};
+	for (const [key, value] of Object.entries(entities)) {
+		const def = ENTITY_DEFAULTS[key] ?? false;
+		if (value !== def) {
+			sparse[key] = value;
+		}
+	}
+	return sparse;
+}
+
+/**
+ * Reconstruct a full entities dict from a sparse blob: start with the
+ * canonical defaults for known entities, then layer the sparse overrides
+ * on top. Used by restore.
+ */
+export function expandEntities(
+	sparse: Record<string, boolean> | undefined,
+): Record<string, boolean> {
+	return { ...ENTITY_DEFAULTS, ...(sparse || {}) };
 }
