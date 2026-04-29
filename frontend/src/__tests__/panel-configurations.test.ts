@@ -1126,13 +1126,48 @@ describe("_loadConfiguration", () => {
 
 		await a._loadConfiguration("DefaultEntities");
 
-		expect(a._entitiesConfig).toEqual({
-			room_occupancy: true,
-			zone_presence: true,
-			env_temperature: true,
-			env_humidity: true,
-			env_illuminance: true,
-		});
+		expect(a._entitiesConfig).toEqual({ ...ENTITY_DEFAULTS });
+	});
+
+	it("resets non-default entity (zone_target_count) on restore with empty settings blob", async () => {
+		const a = createPanel() as any;
+		const validZones = makeValidZoneSlots();
+		// User had zone_target_count toggled ON before restore
+		a._entitiesConfig = {
+			...ENTITY_DEFAULTS,
+			zone_target_count: true,
+		};
+		a._gridCtrl.configurations = [
+			{
+				name: "AllDefaults",
+				grid: Array.from(new Uint8Array(GRID_COLS * GRID_ROWS)),
+				zones: validZones,
+				roomWidth: 3,
+				roomDepth: 4,
+				furniture: [],
+				settings: {},
+			},
+		];
+
+		const callWS = vi.fn().mockResolvedValue({});
+		a.hass = { ...a.hass, callWS };
+		a._selectedMac = "AA:BB:CC:DD:EE:FF";
+
+		await a._loadConfiguration("AllDefaults");
+
+		// Panel state reset to default
+		expect(a._entitiesConfig.zone_target_count).toBe(false);
+		// The set_settings call must explicitly include zone_target_count: false
+		// so the backend's per-key update loop resets it.
+		const setSettingsCall = callWS.mock.calls.find(
+			(c: any[]) =>
+				(c[0] as { type?: string })?.type === "eppgrid/set_settings",
+		);
+		expect(setSettingsCall).toBeDefined();
+		expect(setSettingsCall![0].entities).toHaveProperty(
+			"zone_target_count",
+			false,
+		);
 	});
 });
 
