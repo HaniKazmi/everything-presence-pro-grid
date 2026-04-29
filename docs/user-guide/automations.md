@@ -1,40 +1,101 @@
 # Automations
 
-Motion sensors in Home Assistant are typically a single boolean — "somebody's there / nobody's there" — and that's what causes rooms to go dark while someone's reading, or lights to flap on and off when someone walks past the door. Everything Presence Pro Grid solves that on the device side: the **Occupancy** binary sensor is the firmware's combined output from the PIR, LD2450 moving-target detection, and SEN0609 static-presence detection. When someone's in the room — whether they're moving, still, or somewhere in between — Occupancy stays on. When they're really gone, it goes off.
-
 This page walks through how to use Occupancy and the per-zone entities to build reliable automations.
 
 ## The three phases of presence
 
-Think of a typical "someone walks in, uses the room, leaves" sequence as three phases. Each phase wants a different signal.
+Think of a typical "someone walks in, uses the room, leaves" sequence as three phases. Each phase wants a different *kind* of signal — not because of how the device works, but because of what makes a good automation.
 
-- **Fast trigger** — low-latency "somebody just walked in" signal. Use the **Occupancy** binary sensor: `binary_sensor.<device>_occupancy`. Turn on general room lighting. Tolerate false positives — a light briefly on by mistake is forgivable.
-- **Zone-specific** — someone is in a named region. Use `binary_sensor.<device>_zone_<N>_presence`. Fire targeted actions: mirror light, shower light, extractor fan, radiator, desk lamp.
-- **Empty gate** — Occupancy has been off for a real timeout window. Turn things off. Because the firmware folds still-but-breathing detection into Occupancy on the device, you don't need to combine multiple entities — a simple `Occupancy → off` trigger with a `for:` duration is enough.
+- **Fast trigger** — somebody just walked in. Low latency matters; you want the lights on before the person has crossed the threshold. 
+- **Zone-specific** — the person is now in a particular region. Targeted actions fire: a mirror light, an extractor fan, a desk lamp. 
+- **Empty gate** — the room has been empty long enough that you can safely turn things off. Latency doesn't matter at all; false negatives (declaring the room empty too soon) are the only risk worth caring about.
 
-!!! example "Screenshot placeholder"
-    **Phase timeline — a horizontal time axis showing the three phases firing in sequence as someone enters, uses a zone, settles still, and eventually leaves.** `automations/phase-timeline.png`
+![Phase timeline — a single visit, with the three automation phases mapped onto the Occupancy and zone-presence signals.](../images/automations/phase-timeline.svg){ width="100%" }
 
-## What about `Motion Presence` and `Static Presence`?
+## Solving it with Occupancy and zone presence
 
-The firmware publishes these as separate entities (both disabled by default) so you can see which specific presence component is contributing. They're useful for debugging a zone that's misbehaving or an automation that's firing at the wrong moment, but you don't normally automate against them directly:
+For almost every automation, two entities cover the three phases between them:
 
-- **`binary_sensor.<device>_motion_presence`** — the LD2450 moving-target stream on its own. Narrower than Occupancy; drops within seconds if the person stops moving.
-- **`binary_sensor.<device>_static_presence`** — the SEN0609 still-presence stream on its own.
+- **Occupancy** — `binary_sensor.<device>_occupancy`. A single combined "someone is in the room" signal. The firmware combines the PIR motion sensor, the SEN0609 static-presence radar, and any active zones together on the device, so you get fast detection which remains `on` as long as there is somebody in the room.  See [How detection works → The Occupancy entity](how-detection-works.md#the-occupancy-entity).
+- **Zone presence** — `binary_sensor.<device>_zone_<N>_presence`, one per zone you've painted on the grid. Each zone has its own state machine with timing tuned to its [zone type](how-detection-works.md#zone-types-as-preset-bundles) — Bed, Seating, Transit, etc — so a zone holds its presence appropriately for the type of occupation that it represents.
 
-Occupancy is what the firmware has *already* combined, and is the right automation trigger in almost every case. Enable the individual entities if you want to peek under the hood; leave them disabled otherwise.
+!!! warning
+    The target tracker which makes zone presence sensing work loses its targets when they are still for an extended period. This integration
+    works around that with the **Presence timeout** and the **Handoff timeout**. That said, you may still experience false negatives 
+    where a zone reports `Clear (off)` while it is still occupied. 
+    
+    Prefer using zone presence sensing turning `Detected (on)` to take positive action (turning lights on),
+    and the occupancy sensor turning `Clear (off)` to take negative action (turning lights off).
 
-## Sensor-to-phase mapping
 
-Quick reference:
-
-- **Fast trigger:** `binary_sensor.<device>_occupancy`, or an entry-specific zone: `binary_sensor.<device>_zone_<N>_presence`.
-- **Zone-specific:** `binary_sensor.<device>_zone_<N>_presence`. Cross-reference with `sensor.<device>_zone_<N>_target_count` when the number of people matters.
-- **Empty gate:** `binary_sensor.<device>_occupancy` off for a duration, using `for:` in the automation trigger. Use 2 minutes for a bathroom, 5 minutes for a bedroom, depending on how patient the room should be.
+For zone-specific actions where the number of people matters, use the `sensor.<device>_zone_<N>_target_count` entities, which 
+can be enabled with **Settings** > **Entities** > **Zone level** > **Target count**.
 
 !!! note
-    The integration renames zone entities by friendly name (`Zone <name>` in the HA UI) — but **entity IDs stay as `zone_<N>_presence`** where `<N>` is 0–7. Use entity IDs (not display names) in automations so they keep working if you rename a zone.
+    Zone entities are translated by their friendly name (`Zone <name>` in the HA UI), but **entity IDs stay as `zone_<N>_presence`** where `<N>` is 0–7. Use entity IDs (not display names) in automations so they keep working if you rename a zone.
 
+## Worked example: passage light
+
+Below are two simple automations, one which turns the passage light on when somebody enters:
+
+```yaml
+description: "Turn passage light on when somebody enters"
+triggers:
+  - trigger: state
+    entity_id: binary_sensor.passage_presence_occupancy
+    to: "on"
+actions:
+  - action: light.turn_on
+    target:
+      entity_id: light.passage
+
+```
+
+and the other which turns the light off when the person exits:
+
+```yaml
+description: "Turn passage light off when the last person exits"
+triggers:
+  - trigger: state
+    entity_id: binary_sensor.passage_presence_occupancy
+    to: "off"
+actions:
+  - action: light.turn_off
+    target:
+      entity_id: light.passage
+```
+
+It is usually preferred to combine both of these automations into a single automation which uses trigger IDs to determine
+what action to take:
+
+```yaml
+triggers:
+  - trigger: state
+    entity_id: binary_sensor.passage_presence_occupancy
+    to: "off"
+    id: occupancy_off
+  - trigger: state
+    entity_id: binary_sensor.passage_presence_occupancy
+    to: "on"
+    id: occupancy_on
+actions:
+  - choose:
+      - conditions:
+          - condition: trigger
+            id: occupancy_on
+        sequence:
+          - action: light.turn_on
+            target:
+              entity_id: light.passage
+      - conditions:
+          - condition: trigger
+            id: occupancy_off
+        sequence:
+          - action: light.turn_off
+            target:
+              entity_id: light.passage
+
+```
 ## Worked example: bathroom
 
 A bathroom with a **Shower** zone (slot 1) and a **Toilet** zone (slot 2) defined. The aim:
