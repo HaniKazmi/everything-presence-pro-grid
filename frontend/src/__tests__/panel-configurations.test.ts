@@ -377,6 +377,149 @@ describe("_buildSparseSettings (via saveConfiguration)", () => {
 			entities: { zone_presence: true },
 		});
 	});
+	it("omits target_max_distance from save blob when target_auto_distance is at default", async () => {
+		const a = createPanel() as any;
+		a._configurationName = "AutoOn";
+		a._temperatureOffset = 0;
+		a._humidityOffset = 0;
+		a._illuminanceOffset = 0;
+		a._motionTimeout = 5;
+		a._targetAutoDistance = true; // DEFAULT — auto on
+		a._targetMaxDistance = 4; // would be stored as non-default, but shouldn't be
+		a._staticAutoDistance = true;
+		a._staticMinDistance = 0.3;
+		a._staticMaxDistance = 16.0;
+		a._staticTriggerThreshold = 3;
+		a._staticRenewThreshold = 3;
+		a._staticTimeout = 30;
+		a._staticOnDelay = 0;
+		a._ledMode = "Manual Control";
+		a._ledBrightness = 1.0;
+		a._ledPresenceColor = "#CC33FF";
+		a._relayTriggerMode = "disabled";
+		a._relayContactMode = "no";
+		a._targetUpdateRateMs = 1000;
+		a._zoneUpdateRateMs = 1000;
+		a._entitiesConfig = {};
+		a._logLevels = {};
+
+		const callWS = vi
+			.fn()
+			.mockResolvedValueOnce({})
+			.mockResolvedValueOnce({ configurations: {} });
+		a.hass = { ...a.hass, callWS };
+
+		await a._saveConfiguration();
+
+		const saveCall = callWS.mock.calls.find(
+			(c: any[]) =>
+				(c[0] as { type?: string })?.type === "eppgrid/save_configuration",
+		);
+		// target_max_distance must be absent when auto is on (default)
+		expect(saveCall![0].configuration.settings).not.toHaveProperty(
+			"target_max_distance",
+		);
+		// target_auto_distance is at default (true), so also absent
+		expect(saveCall![0].configuration.settings).not.toHaveProperty(
+			"target_auto_distance",
+		);
+	});
+
+	it("omits static_min_distance and static_max_distance from save blob when static_auto_distance is at default", async () => {
+		const a = createPanel() as any;
+		a._configurationName = "AutoOn";
+		a._temperatureOffset = 0;
+		a._humidityOffset = 0;
+		a._illuminanceOffset = 0;
+		a._motionTimeout = 5;
+		a._targetAutoDistance = true;
+		a._targetMaxDistance = 6.0;
+		a._staticAutoDistance = true; // DEFAULT — auto on
+		a._staticMinDistance = 0.4; // non-default value, should still be omitted
+		a._staticMaxDistance = 6; // non-default value, should still be omitted
+		a._staticTriggerThreshold = 3;
+		a._staticRenewThreshold = 3;
+		a._staticTimeout = 30;
+		a._staticOnDelay = 0;
+		a._ledMode = "Manual Control";
+		a._ledBrightness = 1.0;
+		a._ledPresenceColor = "#CC33FF";
+		a._relayTriggerMode = "disabled";
+		a._relayContactMode = "no";
+		a._targetUpdateRateMs = 1000;
+		a._zoneUpdateRateMs = 1000;
+		a._entitiesConfig = {};
+		a._logLevels = {};
+
+		const callWS = vi
+			.fn()
+			.mockResolvedValueOnce({})
+			.mockResolvedValueOnce({ configurations: {} });
+		a.hass = { ...a.hass, callWS };
+
+		await a._saveConfiguration();
+
+		const saveCall = callWS.mock.calls.find(
+			(c: any[]) =>
+				(c[0] as { type?: string })?.type === "eppgrid/save_configuration",
+		);
+		expect(saveCall![0].configuration.settings).not.toHaveProperty(
+			"static_min_distance",
+		);
+		expect(saveCall![0].configuration.settings).not.toHaveProperty(
+			"static_max_distance",
+		);
+		expect(saveCall![0].configuration.settings).not.toHaveProperty(
+			"static_auto_distance",
+		);
+	});
+
+	it("stores manual distance values when auto-distance is explicitly off", async () => {
+		const a = createPanel() as any;
+		a._configurationName = "Manual";
+		a._temperatureOffset = 0;
+		a._humidityOffset = 0;
+		a._illuminanceOffset = 0;
+		a._motionTimeout = 5;
+		a._targetAutoDistance = false; // EXPLICITLY OFF — non-default
+		a._targetMaxDistance = 5; // non-default, should be stored
+		a._staticAutoDistance = false; // non-default
+		a._staticMinDistance = 0.5; // non-default, should be stored
+		a._staticMaxDistance = 10; // non-default, should be stored
+		a._staticTriggerThreshold = 3;
+		a._staticRenewThreshold = 3;
+		a._staticTimeout = 30;
+		a._staticOnDelay = 0;
+		a._ledMode = "Manual Control";
+		a._ledBrightness = 1.0;
+		a._ledPresenceColor = "#CC33FF";
+		a._relayTriggerMode = "disabled";
+		a._relayContactMode = "no";
+		a._targetUpdateRateMs = 1000;
+		a._zoneUpdateRateMs = 1000;
+		a._entitiesConfig = {};
+		a._logLevels = {};
+
+		const callWS = vi
+			.fn()
+			.mockResolvedValueOnce({})
+			.mockResolvedValueOnce({ configurations: {} });
+		a.hass = { ...a.hass, callWS };
+
+		await a._saveConfiguration();
+
+		const saveCall = callWS.mock.calls.find(
+			(c: any[]) =>
+				(c[0] as { type?: string })?.type === "eppgrid/save_configuration",
+		);
+		expect(saveCall![0].configuration.settings).toMatchObject({
+			target_auto_distance: false,
+			target_max_distance: 5,
+			static_auto_distance: false,
+			static_min_distance: 0.5,
+			static_max_distance: 10,
+		});
+	});
 });
 
 describe("_loadConfiguration", () => {

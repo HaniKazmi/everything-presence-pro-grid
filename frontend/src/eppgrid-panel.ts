@@ -940,6 +940,21 @@ export class EPPGridPanel extends LitElement {
 				sparse[key] = value;
 			}
 		}
+
+		// Distance values are only meaningful when auto-distance is off. When
+		// the auto flag is at its default (true), the actual max/min are derived
+		// from room geometry at apply-time, so storing them as "non-default" is
+		// misleading — the sparse blob now drops target_max_distance when
+		// target_auto_distance is omitted, and drops static_min_distance /
+		// static_max_distance when static_auto_distance is omitted.
+		if (!("target_auto_distance" in sparse)) {
+			delete sparse.target_max_distance;
+		}
+		if (!("static_auto_distance" in sparse)) {
+			delete sparse.static_min_distance;
+			delete sparse.static_max_distance;
+		}
+
 		return sparse;
 	}
 
