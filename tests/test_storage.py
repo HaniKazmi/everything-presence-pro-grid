@@ -21,7 +21,7 @@ class TestEPPGridStore:
         """Loading with no stored data gives empty defaults."""
         await store.async_load()
         assert store.devices == {}
-        assert store.templates == {}
+        assert store.configurations == {}
         assert store.sidebar_panel is True
         assert store.show_room_calibration_tutorial is True
 
@@ -31,7 +31,7 @@ class TestEPPGridStore:
         store.devices["AA:BB:CC:DD:EE:FF"] = {
             "calibration": {"perspective": [1.0] * 8, "room_width": 3000.0, "room_depth": 4000.0},
         }
-        store.templates["bedroom"] = {"grid_bytes": [1] * 400}
+        store.configurations["bedroom"] = {"grid_bytes": [1] * 400}
         store.sidebar_panel = False
         store.show_room_calibration_tutorial = False
         await store.async_save()
@@ -40,7 +40,7 @@ class TestEPPGridStore:
         await store2.async_load()
         assert "AA:BB:CC:DD:EE:FF" in store2.devices
         assert store2.devices["AA:BB:CC:DD:EE:FF"]["calibration"]["room_width"] == 3000.0
-        assert "bedroom" in store2.templates
+        assert "bedroom" in store2.configurations
         assert store2.sidebar_panel is False
         assert store2.show_room_calibration_tutorial is False
 
@@ -67,3 +67,93 @@ class TestEPPGridStore:
         await store2.async_load()
         assert store2.devices["AA:BB:CC:DD:EE:01"]["name"] == "device1"
         assert store2.devices["AA:BB:CC:DD:EE:02"]["name"] == "device2"
+
+    async def test_migrates_legacy_templates_key(self, hass: HomeAssistant) -> None:
+        """Legacy `templates` key is migrated to `configurations` with settings defaulted."""
+        legacy_store = EPPGridStore(hass)
+        # Seed underlying HA Store with legacy shape
+        await legacy_store._store.async_save(
+            {
+                "devices": {},
+                "templates": {
+                    "Bedroom": {"grid": [0], "zones": [], "roomWidth": 3.0, "roomDepth": 4.0},
+                },
+                "sidebar_panel": True,
+                "show_room_calibration_tutorial": True,
+            }
+        )
+
+        store = EPPGridStore(hass)
+        await store.async_load()
+
+        assert "Bedroom" in store.configurations
+        assert store.configurations["Bedroom"]["settings"] == {}
+        assert store.configurations["Bedroom"]["roomWidth"] == 3.0
+
+        # Re-loading after migration gives no `templates` key in persisted data
+        store2 = EPPGridStore(hass)
+        await store2.async_load()
+        raw = await store2._store.async_load()
+        assert "templates" not in raw
+        assert "Bedroom" in raw["configurations"]
+
+    async def test_migration_skipped_when_configurations_present(self, hass: HomeAssistant) -> None:
+        """If `configurations` key already exists, legacy `templates` is ignored."""
+        seed_store = EPPGridStore(hass)
+        await seed_store._store.async_save(
+            {
+                "devices": {},
+                "configurations": {"new": {"grid": [], "zones": [], "settings": {"foo": 1}}},
+                "templates": {"old": {"grid": [], "zones": []}},
+                "sidebar_panel": True,
+                "show_room_calibration_tutorial": True,
+            }
+        )
+
+        store = EPPGridStore(hass)
+        await store.async_load()
+
+        assert list(store.configurations.keys()) == ["new"]
+        assert store.configurations["new"]["settings"] == {"foo": 1}
+
+    async def test_migration_skipped_when_configurations_empty_dict(self, hass: HomeAssistant) -> None:
+        """Empty `configurations: {}` (user deleted all) must not re-import legacy templates."""
+        seed_store = EPPGridStore(hass)
+        await seed_store._store.async_save(
+            {
+                "devices": {},
+                "configurations": {},
+                "templates": {"old": {"grid": [], "zones": []}},
+                "sidebar_panel": True,
+                "show_room_calibration_tutorial": True,
+            }
+        )
+
+        store = EPPGridStore(hass)
+        await store.async_load()
+
+        assert store.configurations == {}
+
+    async def test_migration_preserves_non_default_sidebar_and_tutorial(self, hass: HomeAssistant) -> None:
+        """Migration must not reset sidebar_panel or tutorial to defaults."""
+        seed_store = EPPGridStore(hass)
+        await seed_store._store.async_save(
+            {
+                "devices": {},
+                "templates": {"x": {"grid": [], "zones": []}},
+                "sidebar_panel": False,
+                "show_room_calibration_tutorial": False,
+            }
+        )
+
+        store = EPPGridStore(hass)
+        await store.async_load()
+
+        assert store.sidebar_panel is False
+        assert store.show_room_calibration_tutorial is False
+
+        # Persisted data must reflect the same — migration triggered async_save
+        store2 = EPPGridStore(hass)
+        await store2.async_load()
+        assert store2.sidebar_panel is False
+        assert store2.show_room_calibration_tutorial is False

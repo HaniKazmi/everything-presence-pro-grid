@@ -40,6 +40,6 @@ async def async_get_config_entry_diagnostics(hass: HomeAssistant, entry: ConfigE
         "firmware_version": FIRMWARE_VERSION,
         "devices": manager.list_devices(),
         "stored_configs": dict(manager._store.devices),
-        "templates": dict(manager._store.templates),
+        "configurations": dict(manager._store.configurations),
         "entity_states": entity_states,
     }

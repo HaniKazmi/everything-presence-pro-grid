@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { renderConfigurationThumbnail } from "../../lib/configuration-thumbnail.js";
 import {
 	CELL_OVERLAY_ENTRY,
 	CELL_OVERLAY_INTERFERENCE,
@@ -9,7 +10,6 @@ import {
 	GRID_CELL_COUNT,
 	GRID_COLS,
 } from "../../lib/grid.js";
-import { renderTemplateThumbnail } from "../../lib/template-thumbnail.js";
 
 function makeGrid(
 	insideCells: {
@@ -28,7 +28,7 @@ function makeGrid(
 	return grid;
 }
 
-describe("renderTemplateThumbnail", () => {
+describe("renderConfigurationThumbnail", () => {
 	it("renders svg with rect elements for inside cells", async () => {
 		// 2x2 room at cols 9-10, rows 0-1 (centered in 20-col grid for 600mm width)
 		const grid = makeGrid([
@@ -37,7 +37,7 @@ describe("renderTemplateThumbnail", () => {
 			{ col: 9, row: 1 },
 			{ col: 10, row: 1 },
 		]);
-		const result = renderTemplateThumbnail(
+		const result = renderConfigurationThumbnail(
 			grid,
 			new Array(7).fill(null),
 			600,
@@ -65,7 +65,7 @@ describe("renderTemplateThumbnail", () => {
 
 	it("returns empty svg when grid has no inside cells", async () => {
 		const grid = new Array(GRID_CELL_COUNT).fill(0);
-		const result = renderTemplateThumbnail(
+		const result = renderConfigurationThumbnail(
 			grid,
 			new Array(7).fill(null),
 			3000,
@@ -106,7 +106,7 @@ describe("renderTemplateThumbnail", () => {
 				lockAspect: false,
 			},
 		];
-		const result = renderTemplateThumbnail(
+		const result = renderConfigurationThumbnail(
 			grid,
 			new Array(7).fill(null),
 			3000,
@@ -149,7 +149,7 @@ describe("renderTemplateThumbnail", () => {
 				lockAspect: false,
 			},
 		];
-		const result = renderTemplateThumbnail(
+		const result = renderConfigurationThumbnail(
 			grid,
 			new Array(7).fill(null),
 			3000,
@@ -176,7 +176,7 @@ describe("renderTemplateThumbnail", () => {
 			{ col: 10, row: 0 },
 			{ col: 10, row: 1, overlay: CELL_OVERLAY_ENTRY },
 		]);
-		const result = renderTemplateThumbnail(
+		const result = renderConfigurationThumbnail(
 			grid,
 			new Array(7).fill(null),
 			300,
@@ -208,7 +208,7 @@ describe("renderTemplateThumbnail", () => {
 			{ col: 10, row: 0 },
 			{ col: 10, row: 1, overlay: CELL_OVERLAY_INTERFERENCE },
 		]);
-		const result = renderTemplateThumbnail(
+		const result = renderConfigurationThumbnail(
 			grid,
 			new Array(7).fill(null),
 			300,
@@ -238,7 +238,7 @@ describe("renderTemplateThumbnail", () => {
 			{ col: 10, row: 0 },
 			{ col: 10, row: 1, overlay: CELL_OVERLAY_SUPPRESS },
 		]);
-		const result = renderTemplateThumbnail(
+		const result = renderConfigurationThumbnail(
 			grid,
 			new Array(7).fill(null),
 			300,
@@ -284,7 +284,7 @@ describe("renderTemplateThumbnail", () => {
 				lockAspect: false,
 			},
 		];
-		const result = renderTemplateThumbnail(
+		const result = renderConfigurationThumbnail(
 			grid,
 			new Array(7).fill(null),
 			3000,
@@ -334,7 +334,7 @@ describe("renderTemplateThumbnail", () => {
 				lockAspect: true,
 			},
 		];
-		const result = renderTemplateThumbnail(
+		const result = renderConfigurationThumbnail(
 			grid,
 			new Array(7).fill(null),
 			3000,
@@ -377,7 +377,7 @@ describe("renderTemplateThumbnail", () => {
 				lockAspect: false,
 			},
 		];
-		const result = renderTemplateThumbnail(
+		const result = renderConfigurationThumbnail(
 			grid,
 			new Array(7).fill(null),
 			3000,
@@ -412,7 +412,13 @@ describe("renderTemplateThumbnail", () => {
 			null,
 			null,
 		];
-		const result = renderTemplateThumbnail(grid, zoneConfigs, 300, 600, []);
+		const result = renderConfigurationThumbnail(
+			grid,
+			zoneConfigs,
+			300,
+			600,
+			[],
+		);
 
 		const container = document.createElement("div");
 		const { render } = await import("lit");

@@ -75,8 +75,8 @@ function createPanel() {
 	a._pendingNavigation = null;
 	a._saving = false;
 	a._showDeleteCalibrationDialog = false;
-	a._showTemplateSave = false;
-	a._showTemplateLoad = false;
+	a._showConfigurationBackup = false;
+	a._showConfigurationRestore = false;
 	a._entitiesConfig = {};
 	a._targetAutoDistance = true;
 	a._targetMaxDistance = 6;
@@ -102,7 +102,7 @@ function createPanel() {
 	a._wizardOffsetSide = "";
 	a._wizardOffsetFb = "";
 	a._wizardSaving = false;
-	a._templateName = "";
+	a._configurationName = "";
 	a._fovCache = null;
 	a._fovPerspective = null;
 	a._localize = setupLocalize();
@@ -796,12 +796,12 @@ describe("_infoTip DOM click handler", () => {
 });
 
 // =========================================================
-// _renderTemplateLoadDialog: load and delete on templates
+// _renderConfigurationRestoreDialog: load and delete on configuration items
 // =========================================================
-describe("_renderTemplateLoadDialog item events", () => {
-	it("fires load and delete on template items", () => {
+describe("_renderConfigurationRestoreDialog item events", () => {
+	it("fires load and delete on configuration items", () => {
 		const a = createPanel() as any;
-		a._gridCtrl.templates = [
+		a._gridCtrl.configurations = [
 			{
 				name: "T1",
 				grid: new Array(GRID_CELL_COUNT).fill(0),
@@ -818,23 +818,24 @@ describe("_renderTemplateLoadDialog item events", () => {
 			},
 		];
 		a.hass.callWS = vi.fn().mockImplementation((msg: any) => {
-			if (msg.type === "eppgrid/delete_template") return Promise.resolve({});
-			if (msg.type === "eppgrid/list_templates")
-				return Promise.resolve({ templates: {} });
+			if (msg.type === "eppgrid/delete_configuration")
+				return Promise.resolve({});
+			if (msg.type === "eppgrid/list_configurations")
+				return Promise.resolve({ configurations: {} });
 			return Promise.resolve({});
 		});
-		const tpl = a._renderTemplateLoadDialog();
+		const tpl = a._renderConfigurationRestoreDialog();
 		const c = document.createElement("div");
 		document.body.appendChild(c);
 		render(tpl, c);
 
-		// Should have template cards for each template
-		const cards = c.querySelectorAll(".template-card");
+		// Should have configuration cards for each configuration
+		const cards = c.querySelectorAll(".configuration-card");
 		expect(cards.length).toBe(2);
-		// Click load for first template card
+		// Click load for first configuration card
 		(cards[0] as HTMLElement).click();
-		// Click delete button for second template card
-		const deleteBtns = c.querySelectorAll(".template-card-delete");
+		// Click delete button for second configuration card
+		const deleteBtns = c.querySelectorAll(".configuration-card-delete");
 		if (deleteBtns.length >= 2) {
 			(deleteBtns[1] as HTMLElement).click();
 		}

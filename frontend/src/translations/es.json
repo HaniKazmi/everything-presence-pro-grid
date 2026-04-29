@@ -100,10 +100,10 @@
 		"delete_calibration_body": "Esto también eliminará todas las zonas de detección y el mobiliario. Esta acción no se puede deshacer.",
 		"unsaved_changes": "Tienes cambios sin guardar",
 		"unsaved_changes_body": "Los cambios se perderán si navegas a otra página sin aplicarlos.",
-		"save_template": "Guardar plantilla",
-		"load_template": "Cargar plantilla",
-		"no_templates": "No hay plantillas guardadas.",
-		"template_name": "Nombre de la plantilla"
+		"backup_configuration": "Respaldar configuración",
+		"restore_configuration": "Restaurar configuración",
+		"no_configurations": "No hay configuraciones guardadas.",
+		"configuration_name": "Nombre de la configuración"
 	},
 	"menu": {
 		"settings": "Ajustes",

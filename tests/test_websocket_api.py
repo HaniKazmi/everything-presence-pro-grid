@@ -51,7 +51,7 @@ async def setup_integration(hass: HomeAssistant, config_entry: MockConfigEntry) 
         mock_dm.async_stop = AsyncMock()
         mock_dm._store = MagicMock()
         mock_dm._store.devices = {}
-        mock_dm._store.templates = {}
+        mock_dm._store.configurations = {}
         mock_dm._store.async_save = AsyncMock()
         mock_dm.devices = {}
         mock_dm.list_devices.return_value = []
@@ -738,64 +738,121 @@ class TestZoneSlotsValidator:
         assert _validate_zone_slots(slots) == slots
 
 
-class TestWebSocketTemplates:
-    """Tests for template CRUD commands."""
+class TestWebSocketConfigurations:
+    """Tests for configuration CRUD commands."""
 
-    async def test_list_templates(self, hass: HomeAssistant, config_entry: MockConfigEntry) -> None:
-        """list_templates returns stored templates."""
+    async def test_list_configurations(self, hass: HomeAssistant, config_entry: MockConfigEntry) -> None:
+        """list_configurations returns stored configurations."""
         mock_dm = await setup_integration(hass, config_entry)
-        mock_dm._store.templates = {"bedroom": {"grid_bytes": [1] * 400}}
+        mock_dm._store.configurations = {"bedroom": {"grid_bytes": [1] * 400}}
 
-        from custom_components.eppgrid.websocket_api import websocket_list_templates
+        from custom_components.eppgrid.websocket_api import websocket_list_configurations
 
         connection = MagicMock()
-        msg = {"id": 6, "type": "eppgrid/list_templates"}
+        msg = {"id": 6, "type": "eppgrid/list_configurations"}
 
-        websocket_list_templates(hass, connection, msg)
+        websocket_list_configurations(hass, connection, msg)
 
         result = connection.send_result.call_args[0]
-        assert "bedroom" in result[1]["templates"]
+        assert "bedroom" in result[1]["configurations"]
 
-    async def test_save_template(self, hass: HomeAssistant, config_entry: MockConfigEntry) -> None:
-        """save_template stores a new template."""
+    async def test_save_configuration(self, hass: HomeAssistant, config_entry: MockConfigEntry) -> None:
+        """save_configuration stores a new configuration."""
         mock_dm = await setup_integration(hass, config_entry)
 
-        from custom_components.eppgrid.websocket_api import websocket_save_template
+        from custom_components.eppgrid.websocket_api import websocket_save_configuration
 
         connection = MagicMock()
         msg = {
             "id": 7,
-            "type": "eppgrid/save_template",
+            "type": "eppgrid/save_configuration",
             "name": "office",
-            "template": {"grid_bytes": [0] * 400},
+            "configuration": {"grid_bytes": [0] * 400},
         }
 
-        await call_async_handler(hass, websocket_save_template, connection, msg)
+        await call_async_handler(hass, websocket_save_configuration, connection, msg)
 
-        assert "office" in mock_dm._store.templates
+        assert "office" in mock_dm._store.configurations
         mock_dm._store.async_save.assert_awaited()
         connection.send_result.assert_called_once_with(7)
 
-    async def test_delete_template(self, hass: HomeAssistant, config_entry: MockConfigEntry) -> None:
-        """delete_template removes a template."""
+    async def test_delete_configuration(self, hass: HomeAssistant, config_entry: MockConfigEntry) -> None:
+        """delete_configuration removes a configuration."""
         mock_dm = await setup_integration(hass, config_entry)
-        mock_dm._store.templates["old"] = {"data": True}
+        mock_dm._store.configurations["old"] = {"data": True}
 
-        from custom_components.eppgrid.websocket_api import websocket_delete_template
+        from custom_components.eppgrid.websocket_api import websocket_delete_configuration
 
         connection = MagicMock()
-        msg = {"id": 8, "type": "eppgrid/delete_template", "name": "old"}
+        msg = {"id": 8, "type": "eppgrid/delete_configuration", "name": "old"}
 
-        await call_async_handler(hass, websocket_delete_template, connection, msg)
+        await call_async_handler(hass, websocket_delete_configuration, connection, msg)
 
-        assert "old" not in mock_dm._store.templates
+        assert "old" not in mock_dm._store.configurations
         mock_dm._store.async_save.assert_awaited()
 
     async def test_apply_template_command_removed(self) -> None:
         """eppgrid/apply_template is no longer a valid command."""
+        # Tombstone: eppgrid/apply_template (an unrelated, previously-removed
+        # command) must not be reintroduced. Not related to the templates →
+        # configurations rename.
         from custom_components.eppgrid import websocket_api as ws_mod
 
         assert not hasattr(ws_mod, "websocket_apply_template")
+
+    async def test_save_configuration_round_trips_settings(
+        self, hass: HomeAssistant, config_entry: MockConfigEntry
+    ) -> None:
+        """save_configuration persists `settings` field as part of the blob.
+
+        Uses direct handler invocation (consistent with the rest of this class) —
+        voluptuous schema dispatch is not exercised here.
+        """
+        await setup_integration(hass, config_entry)
+
+        from custom_components.eppgrid.websocket_api import websocket_list_configurations
+        from custom_components.eppgrid.websocket_api import websocket_save_configuration
+
+        blob = {
+            "grid": [0, 1, 2],
+            "zones": [None] * 8,
+            "roomWidth": 3.0,
+            "roomDepth": 4.0,
+            "furniture": [],
+            "settings": {
+                "temperature_offset": 0.5,
+                "motion_timeout": 30,
+                "led_mode": "Presence",
+                "target_update_rate_ms": 500,
+                "entities": {"zone_presence": True},
+                "log_levels": {"sensor": "Info"},
+            },
+        }
+        save_msg = {
+            "id": 9,
+            "type": "eppgrid/save_configuration",
+            "name": "Bedroom",
+            "configuration": blob,
+        }
+
+        save_connection = MagicMock()
+        await call_async_handler(hass, websocket_save_configuration, save_connection, save_msg)
+        save_connection.send_result.assert_called_once_with(9)
+
+        list_connection = MagicMock()
+        list_msg = {"id": 10, "type": "eppgrid/list_configurations"}
+        websocket_list_configurations(hass, list_connection, list_msg)
+
+        result = list_connection.send_result.call_args[0]
+        saved_blob = result[1]["configurations"]["Bedroom"]
+        assert saved_blob["settings"] == {
+            "temperature_offset": 0.5,
+            "motion_timeout": 30,
+            "led_mode": "Presence",
+            "target_update_rate_ms": 500,
+            "entities": {"zone_presence": True},
+            "log_levels": {"sensor": "Info"},
+        }
 
 
 class TestWebSocketSettings:
@@ -2307,9 +2364,9 @@ class TestNotReadyGuards:
         "handler_name,extra_fields,is_async",
         [
             ("websocket_set_room_layout", {"mac": "AA:BB", "grid_bytes": [], "zone_slots": []}, True),
-            ("websocket_list_templates", {}, False),
-            ("websocket_save_template", {"name": "t", "template": {}}, True),
-            ("websocket_delete_template", {"name": "t"}, True),
+            ("websocket_list_configurations", {}, False),
+            ("websocket_save_configuration", {"name": "t", "configuration": {}}, True),
+            ("websocket_delete_configuration", {"name": "t"}, True),
             ("websocket_subscribe_device", {"mac": "AA:BB"}, True),
             ("websocket_subscribe_raw_targets", {"mac": "AA:BB"}, True),
             ("websocket_subscribe_grid_targets", {"mac": "AA:BB"}, True),

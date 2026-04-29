@@ -74,8 +74,8 @@ function createPanel(): EPPGridPanel {
 	a._pendingNavigation = null;
 	a._saving = false;
 	a._showDeleteCalibrationDialog = false;
-	a._showTemplateSave = false;
-	a._showTemplateLoad = false;
+	a._showConfigurationBackup = false;
+	a._showConfigurationRestore = false;
 	a._entitiesConfig = {};
 	a._targetAutoDistance = true;
 	a._targetMaxDistance = 6;
@@ -101,7 +101,7 @@ function createPanel(): EPPGridPanel {
 	a._wizardOffsetSide = "";
 	a._wizardOffsetFb = "";
 	a._wizardSaving = false;
-	a._templateName = "";
+	a._configurationName = "";
 	a._fovCache = null;
 	a._fovPerspective = null;
 	return el;
@@ -460,20 +460,20 @@ describe("Live overview event wiring", () => {
 		expect(a._showDeleteCalibrationDialog).toBe(true);
 	});
 
-	it("menu sets _showTemplateSave via panel state", () => {
+	it("menu sets _showConfigurationBackup via panel state", () => {
 		const el = createPanel();
 		const a = el as any;
-		a._showTemplateSave = false;
-		a._showTemplateSave = true;
-		expect(a._showTemplateSave).toBe(true);
+		a._showConfigurationBackup = false;
+		a._showConfigurationBackup = true;
+		expect(a._showConfigurationBackup).toBe(true);
 	});
 
-	it("menu sets _showTemplateLoad via panel state", () => {
+	it("menu sets _showConfigurationRestore via panel state", () => {
 		const el = createPanel();
 		const a = el as any;
-		a._showTemplateLoad = false;
-		a._showTemplateLoad = true;
-		expect(a._showTemplateLoad).toBe(true);
+		a._showConfigurationRestore = false;
+		a._showConfigurationRestore = true;
+		expect(a._showConfigurationRestore).toBe(true);
 	});
 
 	it("uncalibrated wizard start-calibration calls _changePlacement", () => {

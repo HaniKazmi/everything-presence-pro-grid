@@ -66,8 +66,8 @@ function createPanel(): EPPGridPanel {
 	a._pendingNavigation = null;
 	a._saving = false;
 	a._showDeleteCalibrationDialog = false;
-	a._showTemplateSave = false;
-	a._showTemplateLoad = false;
+	a._showConfigurationBackup = false;
+	a._showConfigurationRestore = false;
 	a._reportingConfig = {};
 	a._offsetsConfig = {};
 	a._targetAutoRange = true;
@@ -94,7 +94,7 @@ function createPanel(): EPPGridPanel {
 	a._wizardOffsetSide = "";
 	a._wizardOffsetFb = "";
 	a._wizardSaving = false;
-	a._templateName = "";
+	a._configurationName = "";
 	a._fovCache = null;
 	a._fovPerspective = null;
 	return el;

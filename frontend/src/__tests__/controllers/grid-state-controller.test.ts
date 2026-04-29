@@ -62,10 +62,10 @@ function mockHost(overrides: Record<string, any> = {}) {
 		_zoneConfigs: emptyZoneSlots() as (Zone0Config | ZoneConfig | null)[],
 		// Furniture
 		_furniture: [] as FurnitureItem[],
-		// Templates
-		_templateName: "",
-		_showTemplateSave: false,
-		_showTemplateLoad: false,
+		// Configurations
+		_configurationName: "",
+		_showConfigurationBackup: false,
+		_showConfigurationRestore: false,
 		// Misc
 		_view: "edit",
 		_saving: false,
@@ -75,6 +75,36 @@ function mockHost(overrides: Record<string, any> = {}) {
 		},
 		_getVisibleRoomBounds() {
 			return getRoomBounds(this._grid);
+		},
+		_buildSettingsPayload() {
+			return {
+				temperature_offset: 0,
+				humidity_offset: 0,
+				illuminance_offset: 0,
+				motion_timeout: 5,
+				target_auto_distance: true,
+				target_max_distance: 6,
+				static_auto_distance: true,
+				static_min_distance: 0.3,
+				static_max_distance: 16,
+				static_trigger_threshold: 3,
+				static_renew_threshold: 3,
+				static_timeout: 30,
+				static_on_delay: 0,
+				led_mode: "Manual Control",
+				led_brightness: 1.0,
+				led_presence_color: "#CC33FF",
+				relay_trigger_mode: "disabled",
+				relay_contact_mode: "no",
+				target_update_rate_ms: 1000,
+				zone_update_rate_ms: 1000,
+				entities: {},
+				log_levels: {},
+			};
+		},
+		_buildSparseSettings() {
+			// All values are at defaults in the mock host, so sparse = {}
+			return {};
 		},
 		...overrides,
 	};
@@ -369,13 +399,13 @@ describe("GridStateController", () => {
 	});
 
 	// =========================================================================
-	// fetchTemplates() / saveTemplate() / loadTemplate() / deleteTemplate()
+	// fetchConfigurations() / saveConfiguration() / loadConfiguration() / deleteConfiguration()
 	// =========================================================================
 
-	describe("fetchTemplates()", () => {
-		it("fetches templates from backend and populates cache", async () => {
+	describe("fetchConfigurations()", () => {
+		it("fetches configurations from backend and populates cache", async () => {
 			host.hass.callWS.mockResolvedValueOnce({
-				templates: {
+				configurations: {
 					"Living Room": {
 						grid: [0, 0, CELL_ROOM_BIT],
 						zones: [{ name: "Zone 1", color: ZONE_COLORS[0], type: "default" }],
@@ -390,32 +420,32 @@ describe("GridStateController", () => {
 					},
 				},
 			});
-			await ctrl.fetchTemplates();
+			await ctrl.fetchConfigurations();
 			expect(host.hass.callWS).toHaveBeenCalledWith({
-				type: "eppgrid/list_templates",
+				type: "eppgrid/list_configurations",
 			});
-			expect(ctrl.templates).toHaveLength(2);
-			expect(ctrl.templates[0].name).toBe("Living Room");
-			expect(ctrl.templates[0].roomWidth).toBe(3000);
-			expect(ctrl.templates[1].name).toBe("Kitchen");
+			expect(ctrl.configurations).toHaveLength(2);
+			expect(ctrl.configurations[0].name).toBe("Living Room");
+			expect(ctrl.configurations[0].roomWidth).toBe(3000);
+			expect(ctrl.configurations[1].name).toBe("Kitchen");
 		});
 
-		it("sets empty array when backend returns no templates", async () => {
-			host.hass.callWS.mockResolvedValueOnce({ templates: {} });
-			await ctrl.fetchTemplates();
-			expect(ctrl.templates).toEqual([]);
+		it("sets empty array when backend returns no configurations", async () => {
+			host.hass.callWS.mockResolvedValueOnce({ configurations: {} });
+			await ctrl.fetchConfigurations();
+			expect(ctrl.configurations).toEqual([]);
 		});
 
 		it("sets empty array on WS error", async () => {
 			host.hass.callWS.mockRejectedValueOnce(new Error("WS fail"));
-			await ctrl.fetchTemplates();
-			expect(ctrl.templates).toEqual([]);
+			await ctrl.fetchConfigurations();
+			expect(ctrl.configurations).toEqual([]);
 		});
 	});
 
-	describe("saveTemplate()", () => {
+	describe("saveConfiguration()", () => {
 		beforeEach(() => {
-			host._templateName = "My Template";
+			host._configurationName = "My Template";
 			host._grid = new Uint8Array(GRID_CELL_COUNT);
 			host._grid[5] = CELL_ROOM_BIT;
 			host._zoneConfigs = [
@@ -431,47 +461,49 @@ describe("GridStateController", () => {
 			host._roomWidth = 3000;
 			host._roomDepth = 4000;
 			host._furniture = [];
-			// Mock list_templates response for the refresh after save
-			host.hass.callWS.mockResolvedValue({ templates: {} });
+			// Mock list_configurations response for the refresh after save
+			host.hass.callWS.mockResolvedValue({ configurations: {} });
 		});
 
-		it("calls save_template WS with name and template data", async () => {
-			await ctrl.saveTemplate();
+		it("calls save_configuration WS with name and configuration data", async () => {
+			await ctrl.saveConfiguration();
 			const calls = host.hass.callWS.mock.calls;
 			const saveCall = calls.find(
-				(c: any[]) => c[0].type === "eppgrid/save_template",
+				(c: any[]) => c[0].type === "eppgrid/save_configuration",
 			);
 			expect(saveCall).toBeDefined();
 			expect(saveCall![0].name).toBe("My Template");
-			expect(saveCall![0].template.roomWidth).toBe(3000);
-			expect(saveCall![0].template.roomDepth).toBe(4000);
-			expect(saveCall![0].template.grid[5]).toBe(CELL_ROOM_BIT);
+			expect(saveCall![0].configuration.roomWidth).toBe(3000);
+			expect(saveCall![0].configuration.roomDepth).toBe(4000);
+			expect(saveCall![0].configuration.grid[5]).toBe(CELL_ROOM_BIT);
 			// Length-8 zones with zone 0 in slot 0 and named zone in slot 1.
-			expect(saveCall![0].template.zones).toHaveLength(MAX_ZONES + 1);
-			expect(saveCall![0].template.zones[0]).toMatchObject({ type: "default" });
-			expect(saveCall![0].template.zones[1]).toMatchObject({
+			expect(saveCall![0].configuration.zones).toHaveLength(MAX_ZONES + 1);
+			expect(saveCall![0].configuration.zones[0]).toMatchObject({
+				type: "default",
+			});
+			expect(saveCall![0].configuration.zones[1]).toMatchObject({
 				name: "Zone 1",
 				color: ZONE_COLORS[0],
 			});
 		});
 
-		it("clears _templateName and hides the save dialog", async () => {
-			host._showTemplateSave = true;
-			await ctrl.saveTemplate();
-			expect(host._templateName).toBe("");
-			expect(host._showTemplateSave).toBe(false);
+		it("clears _configurationName and hides the save dialog", async () => {
+			host._showConfigurationBackup = true;
+			await ctrl.saveConfiguration();
+			expect(host._configurationName).toBe("");
+			expect(host._showConfigurationBackup).toBe(false);
 		});
 
-		it("does nothing when template name is blank", async () => {
-			host._templateName = "   ";
-			await ctrl.saveTemplate();
+		it("does nothing when configuration name is blank", async () => {
+			host._configurationName = "   ";
+			await ctrl.saveConfiguration();
 			expect(host.hass.callWS).not.toHaveBeenCalled();
 		});
 
-		it("refreshes cache after saving (calls list_templates)", async () => {
-			await ctrl.saveTemplate();
+		it("refreshes cache after saving (calls list_configurations)", async () => {
+			await ctrl.saveConfiguration();
 			const listCalls = host.hass.callWS.mock.calls.filter(
-				(c: any[]) => c[0].type === "eppgrid/list_templates",
+				(c: any[]) => c[0].type === "eppgrid/list_configurations",
 			);
 			expect(listCalls.length).toBeGreaterThanOrEqual(1);
 		});
@@ -495,11 +527,11 @@ describe("GridStateController", () => {
 				null,
 				null,
 			];
-			await ctrl.saveTemplate();
+			await ctrl.saveConfiguration();
 			const saveCall = host.hass.callWS.mock.calls.find(
-				(c: any[]) => c[0].type === "eppgrid/save_template",
+				(c: any[]) => c[0].type === "eppgrid/save_configuration",
 			);
-			const z0 = saveCall![0].template.zones[0];
+			const z0 = saveCall![0].configuration.zones[0];
 			expect(z0).toEqual({ type: "default" });
 			expect(z0).not.toHaveProperty("trigger");
 			expect(z0).not.toHaveProperty("renew");
@@ -524,11 +556,11 @@ describe("GridStateController", () => {
 				null,
 				null,
 			];
-			await ctrl.saveTemplate();
+			await ctrl.saveConfiguration();
 			const saveCall = host.hass.callWS.mock.calls.find(
-				(c: any[]) => c[0].type === "eppgrid/save_template",
+				(c: any[]) => c[0].type === "eppgrid/save_configuration",
 			);
-			const z0 = saveCall![0].template.zones[0];
+			const z0 = saveCall![0].configuration.zones[0];
 			expect(z0).toEqual({
 				type: "custom",
 				trigger: 6,
@@ -557,11 +589,11 @@ describe("GridStateController", () => {
 				null,
 				null,
 			];
-			await ctrl.saveTemplate();
+			await ctrl.saveConfiguration();
 			const saveCall = host.hass.callWS.mock.calls.find(
-				(c: any[]) => c[0].type === "eppgrid/save_template",
+				(c: any[]) => c[0].type === "eppgrid/save_configuration",
 			);
-			const z1 = saveCall![0].template.zones[1];
+			const z1 = saveCall![0].configuration.zones[1];
 			expect(z1).toEqual({
 				name: "Office",
 				color: ZONE_COLORS[1],
@@ -592,11 +624,11 @@ describe("GridStateController", () => {
 				null,
 				null,
 			];
-			await ctrl.saveTemplate();
+			await ctrl.saveConfiguration();
 			const saveCall = host.hass.callWS.mock.calls.find(
-				(c: any[]) => c[0].type === "eppgrid/save_template",
+				(c: any[]) => c[0].type === "eppgrid/save_configuration",
 			);
-			const z1 = saveCall![0].template.zones[1];
+			const z1 = saveCall![0].configuration.zones[1];
 			expect(z1).toEqual({
 				name: "Lab",
 				color: ZONE_COLORS[2],
@@ -609,7 +641,7 @@ describe("GridStateController", () => {
 		});
 	});
 
-	describe("loadTemplate()", () => {
+	describe("loadConfiguration()", () => {
 		// Length-8 zones matches the unified zone_slots model.
 		// Slot 0 = Zone0Config (room boundary), slots 1-7 = named zones.
 		const TEMPLATE_DATA = {
@@ -659,9 +691,9 @@ describe("GridStateController", () => {
 		};
 
 		beforeEach(() => {
-			// Pre-populate the templates cache
-			ctrl.templates = [{ name: "Loaded", ...TEMPLATE_DATA }];
-			// applyLayout (now invoked auto after loadTemplate) calls WS and
+			// Pre-populate the configurations cache
+			ctrl.configurations = [{ name: "Loaded", ...TEMPLATE_DATA }];
+			// applyLayout (now invoked auto after loadConfiguration) calls WS and
 			// reads _selectedMac + various settings — default mocks cover it.
 			host.hass.callWS.mockResolvedValue({});
 		});
@@ -673,7 +705,7 @@ describe("GridStateController", () => {
 			const applySpy = vi
 				.spyOn(ctrl, "applyLayout")
 				.mockResolvedValue(undefined);
-			await ctrl.loadTemplate("Loaded");
+			await ctrl.loadConfiguration("Loaded");
 			expect(host._roomWidth).toBe(2400);
 			expect(host._roomDepth).toBe(3600);
 			expect(host._grid[3]).toBe(CELL_ROOM_BIT);
@@ -690,7 +722,7 @@ describe("GridStateController", () => {
 		});
 
 		it("populates all 8 slots so length is 8", async () => {
-			await ctrl.loadTemplate("Loaded");
+			await ctrl.loadConfiguration("Loaded");
 			expect(host._zoneConfigs).toHaveLength(MAX_ZONES + 1);
 			// Slot 0 is zone 0 (always populated).
 			expect(host._zoneConfigs[0]).not.toBeNull();
@@ -701,25 +733,25 @@ describe("GridStateController", () => {
 		});
 
 		it("closes the load dialog", async () => {
-			host._showTemplateLoad = true;
-			await ctrl.loadTemplate("Loaded");
-			expect(host._showTemplateLoad).toBe(false);
+			host._showConfigurationRestore = true;
+			await ctrl.loadConfiguration("Loaded");
+			expect(host._showConfigurationRestore).toBe(false);
 		});
 
-		it("does nothing when the template name does not exist", async () => {
-			await ctrl.loadTemplate("Nonexistent");
+		it("does nothing when the configuration name does not exist", async () => {
+			await ctrl.loadConfiguration("Nonexistent");
 			expect(host._roomWidth).toBe(3000); // unchanged from mockHost default
 		});
 
-		it("handles templates without furniture field", async () => {
+		it("handles configurations without furniture field", async () => {
 			const { furniture: _, ...noFurniture } = TEMPLATE_DATA;
-			ctrl.templates = [{ name: "Loaded", ...noFurniture } as any];
-			await ctrl.loadTemplate("Loaded");
+			ctrl.configurations = [{ name: "Loaded", ...noFurniture } as any];
+			await ctrl.loadConfiguration("Loaded");
 			expect(host._furniture).toEqual([]);
 		});
 
 		it("auto-applies the layout (sends set_room_layout WS)", async () => {
-			await ctrl.loadTemplate("Loaded");
+			await ctrl.loadConfiguration("Loaded");
 			const roomLayoutCalls = host.hass.callWS.mock.calls.filter(
 				(c: any[]) => c[0]?.type === "eppgrid/set_room_layout",
 			);
@@ -741,13 +773,15 @@ describe("GridStateController", () => {
 				.spyOn(ctrl, "applyLayout")
 				.mockRejectedValue(new Error("WS failure"));
 			host._dirty = false;
-			await expect(ctrl.loadTemplate("Loaded")).rejects.toThrow(/WS failure/);
+			await expect(ctrl.loadConfiguration("Loaded")).rejects.toThrow(
+				/WS failure/,
+			);
 			expect(host._dirty).toBe(true);
 			applySpy.mockRestore();
 		});
 
-		it("throws on old-format template (length-7 zones)", async () => {
-			ctrl.templates = [
+		it("throws on old-format configuration (length-7 zones)", async () => {
+			ctrl.configurations = [
 				{
 					name: "Old",
 					grid: TEMPLATE_DATA.grid,
@@ -757,11 +791,11 @@ describe("GridStateController", () => {
 					roomDepth: 3600,
 				} as any,
 			];
-			await expect(ctrl.loadTemplate("Old")).rejects.toThrow(/old format/);
+			await expect(ctrl.loadConfiguration("Old")).rejects.toThrow(/old format/);
 		});
 
-		it("leaves the load dialog open when rejecting an old-format template", async () => {
-			ctrl.templates = [
+		it("leaves the load dialog open when rejecting an old-format configuration", async () => {
+			ctrl.configurations = [
 				{
 					name: "Old",
 					grid: TEMPLATE_DATA.grid,
@@ -770,15 +804,15 @@ describe("GridStateController", () => {
 					roomDepth: 3600,
 				} as any,
 			];
-			host._showTemplateLoad = true;
-			await expect(ctrl.loadTemplate("Old")).rejects.toThrow(/old format/);
+			host._showConfigurationRestore = true;
+			await expect(ctrl.loadConfiguration("Old")).rejects.toThrow(/old format/);
 			// Dialog should remain open so the failure is visible and the user
-			// can try another template.
-			expect(host._showTemplateLoad).toBe(true);
+			// can try another configuration.
+			expect(host._showConfigurationRestore).toBe(true);
 		});
 
-		it("throws on template with null zone 0", async () => {
-			ctrl.templates = [
+		it("throws on configuration with null zone 0", async () => {
+			ctrl.configurations = [
 				{
 					name: "NullZ0",
 					grid: TEMPLATE_DATA.grid,
@@ -787,11 +821,13 @@ describe("GridStateController", () => {
 					roomDepth: 3600,
 				} as any,
 			];
-			await expect(ctrl.loadTemplate("NullZ0")).rejects.toThrow(/old format/);
+			await expect(ctrl.loadConfiguration("NullZ0")).rejects.toThrow(
+				/old format/,
+			);
 		});
 
 		it("throws when zone 0 is missing the type field", async () => {
-			ctrl.templates = [
+			ctrl.configurations = [
 				{
 					name: "BadZ0NoType",
 					grid: TEMPLATE_DATA.grid,
@@ -800,13 +836,13 @@ describe("GridStateController", () => {
 					roomDepth: 3600,
 				} as any,
 			];
-			await expect(ctrl.loadTemplate("BadZ0NoType")).rejects.toThrow(
+			await expect(ctrl.loadConfiguration("BadZ0NoType")).rejects.toThrow(
 				/old format/,
 			);
 		});
 
 		it("throws when zone 0 has non-string type", async () => {
-			ctrl.templates = [
+			ctrl.configurations = [
 				{
 					name: "BadZ0TypeNum",
 					grid: TEMPLATE_DATA.grid,
@@ -815,13 +851,13 @@ describe("GridStateController", () => {
 					roomDepth: 3600,
 				} as any,
 			];
-			await expect(ctrl.loadTemplate("BadZ0TypeNum")).rejects.toThrow(
+			await expect(ctrl.loadConfiguration("BadZ0TypeNum")).rejects.toThrow(
 				/old format/,
 			);
 		});
 
 		it("throws when a named slot is missing the name field", async () => {
-			ctrl.templates = [
+			ctrl.configurations = [
 				{
 					name: "BadNamedNoName",
 					grid: TEMPLATE_DATA.grid,
@@ -839,13 +875,13 @@ describe("GridStateController", () => {
 					roomDepth: 3600,
 				} as any,
 			];
-			await expect(ctrl.loadTemplate("BadNamedNoName")).rejects.toThrow(
+			await expect(ctrl.loadConfiguration("BadNamedNoName")).rejects.toThrow(
 				/old format/,
 			);
 		});
 
 		it("throws when a named slot has non-string color", async () => {
-			ctrl.templates = [
+			ctrl.configurations = [
 				{
 					name: "BadNamedColor",
 					grid: TEMPLATE_DATA.grid,
@@ -863,13 +899,13 @@ describe("GridStateController", () => {
 					roomDepth: 3600,
 				} as any,
 			];
-			await expect(ctrl.loadTemplate("BadNamedColor")).rejects.toThrow(
+			await expect(ctrl.loadConfiguration("BadNamedColor")).rejects.toThrow(
 				/old format/,
 			);
 		});
 
 		it("throws when a named slot is not null and not an object", async () => {
-			ctrl.templates = [
+			ctrl.configurations = [
 				{
 					name: "BadNamedNonObject",
 					grid: TEMPLATE_DATA.grid,
@@ -887,34 +923,34 @@ describe("GridStateController", () => {
 					roomDepth: 3600,
 				} as any,
 			];
-			await expect(ctrl.loadTemplate("BadNamedNonObject")).rejects.toThrow(
+			await expect(ctrl.loadConfiguration("BadNamedNonObject")).rejects.toThrow(
 				/old format/,
 			);
 		});
 	});
 
-	describe("deleteTemplate()", () => {
+	describe("deleteConfiguration()", () => {
 		beforeEach(() => {
-			// Mock list_templates response for the refresh after delete
-			host.hass.callWS.mockResolvedValue({ templates: {} });
+			// Mock list_configurations response for the refresh after delete
+			host.hass.callWS.mockResolvedValue({ configurations: {} });
 		});
 
-		it("calls delete_template WS and refreshes cache", async () => {
-			await ctrl.deleteTemplate("Alpha");
+		it("calls delete_configuration WS and refreshes cache", async () => {
+			await ctrl.deleteConfiguration("Alpha");
 			const deleteCall = host.hass.callWS.mock.calls.find(
-				(c: any[]) => c[0].type === "eppgrid/delete_template",
+				(c: any[]) => c[0].type === "eppgrid/delete_configuration",
 			);
 			expect(deleteCall).toBeDefined();
 			expect(deleteCall![0].name).toBe("Alpha");
 			// Should also refresh
 			const listCalls = host.hass.callWS.mock.calls.filter(
-				(c: any[]) => c[0].type === "eppgrid/list_templates",
+				(c: any[]) => c[0].type === "eppgrid/list_configurations",
 			);
 			expect(listCalls.length).toBeGreaterThanOrEqual(1);
 		});
 
 		it("calls requestUpdate after delete", async () => {
-			await ctrl.deleteTemplate("Alpha");
+			await ctrl.deleteConfiguration("Alpha");
 			expect(host.requestUpdate).toHaveBeenCalled();
 		});
 	});

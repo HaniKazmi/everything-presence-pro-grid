@@ -51,7 +51,7 @@ async def setup_integration(hass: HomeAssistant, config_entry: MockConfigEntry) 
         mock_dm.async_stop = AsyncMock()
         mock_dm._store = MagicMock()
         mock_dm._store.devices = {}
-        mock_dm._store.templates = {}
+        mock_dm._store.configurations = {}
         mock_dm._store.async_save = AsyncMock()
         mock_dm.devices = {}
         mock_dm.list_devices.return_value = []

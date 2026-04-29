@@ -57,7 +57,7 @@ export const dialogStyles = css`
     gap: 12px;
   }
 
-  .template-name-input {
+  .configuration-name-input {
     width: 100%;
     padding: 10px 12px;
     border: 1px solid var(--divider-color, #e0e0e0);
@@ -68,38 +68,13 @@ export const dialogStyles = css`
     color: var(--primary-text-color, #212121);
   }
 
-  .template-item {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    padding: 8px;
-    border-radius: 8px;
-    border: 1px solid var(--divider-color, #e0e0e0);
-  }
-
-  .template-item-name {
-    flex: 1;
-    font-size: 14px;
-    font-weight: 500;
-  }
-
-  .template-item-size {
-    font-size: 12px;
-    color: var(--secondary-text-color, #757575);
-  }
-
-  .template-item-btn {
-    padding: 4px 12px;
-    font-size: 13px;
-  }
-
-  .template-card-grid {
+  .configuration-card-grid {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
     gap: 12px;
   }
 
-  .template-card {
+  .configuration-card {
     position: relative;
     border: 1px solid var(--divider-color, #e0e0e0);
     border-radius: 8px;
@@ -108,17 +83,17 @@ export const dialogStyles = css`
     transition: box-shadow 0.15s;
   }
 
-  .template-card:hover {
+  .configuration-card:hover {
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
   }
 
-  .template-card:focus-visible,
-  .template-card-delete:focus-visible {
+  .configuration-card:focus-visible,
+  .configuration-card-delete:focus-visible {
     outline: 2px solid var(--primary-color, #03a9f4);
     outline-offset: 2px;
   }
 
-  .template-card-thumbnail {
+  .configuration-card-thumbnail {
     background: var(--secondary-background-color, #f5f5f5);
     padding: 8px;
     aspect-ratio: 1;
@@ -127,16 +102,16 @@ export const dialogStyles = css`
     justify-content: center;
   }
 
-  .template-card-thumbnail svg {
+  .configuration-card-thumbnail svg {
     width: 100%;
     height: 100%;
   }
 
-  .template-card-info {
+  .configuration-card-info {
     padding: 6px 8px;
   }
 
-  .template-card-name {
+  .configuration-card-name {
     font-size: 12px;
     font-weight: 500;
     white-space: nowrap;
@@ -144,12 +119,12 @@ export const dialogStyles = css`
     text-overflow: ellipsis;
   }
 
-  .template-card-size {
+  .configuration-card-size {
     font-size: 10px;
     color: var(--secondary-text-color, #757575);
   }
 
-  .template-card-delete {
+  .configuration-card-delete {
     position: absolute;
     top: 4px;
     right: 4px;
@@ -167,11 +142,11 @@ export const dialogStyles = css`
     z-index: 1;
   }
 
-  .template-card-delete:hover {
+  .configuration-card-delete:hover {
     background: var(--error-color, #f44336);
   }
 
-  .template-card-delete ha-icon {
+  .configuration-card-delete ha-icon {
     --mdc-icon-size: 14px;
   }
 `;

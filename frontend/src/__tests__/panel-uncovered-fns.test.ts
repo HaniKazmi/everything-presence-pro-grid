@@ -76,8 +76,8 @@ function createPanel(): EPPGridPanel {
 	a._pendingNavigation = null;
 	a._saving = false;
 	a._showDeleteCalibrationDialog = false;
-	a._showTemplateSave = false;
-	a._showTemplateLoad = false;
+	a._showConfigurationBackup = false;
+	a._showConfigurationRestore = false;
 	a._entitiesConfig = {};
 	a._targetAutoDistance = true;
 	a._targetMaxDistance = 6;
@@ -103,7 +103,7 @@ function createPanel(): EPPGridPanel {
 	a._wizardOffsetSide = "";
 	a._wizardOffsetFb = "";
 	a._wizardSaving = false;
-	a._templateName = "";
+	a._configurationName = "";
 	a._fovCache = null;
 	a._fovPerspective = null;
 	a._showLiveMenu = false;
@@ -409,12 +409,12 @@ describe("_renderProtocolBanner update firmware button", () => {
 });
 
 // ---------------------------------------------------------
-// _renderTemplateLoadDialog: delete template button (line 1429)
+// _renderConfigurationRestoreDialog: delete configuration button (line 1429)
 // ---------------------------------------------------------
-describe("_renderTemplateLoadDialog delete template button", () => {
-	it("@click calls _deleteTemplate with template name", () => {
+describe("_renderConfigurationRestoreDialog delete configuration button", () => {
+	it("@click calls _deleteConfiguration with configuration name", () => {
 		const a = createPanel() as any;
-		// Seed a template into localStorage
+		// Seed a configuration into localStorage
 		const templates = [
 			{
 				name: "MyTemplate",
@@ -425,12 +425,16 @@ describe("_renderTemplateLoadDialog delete template button", () => {
 				furniture: [],
 			},
 		];
-		vi.spyOn(a, "_getTemplates").mockReturnValue(templates);
-		const spy = vi.spyOn(a, "_deleteTemplate").mockImplementation(() => {});
+		vi.spyOn(a, "_getConfigurations").mockReturnValue(templates);
+		const spy = vi
+			.spyOn(a, "_deleteConfiguration")
+			.mockImplementation(() => {});
 
-		const tpl = a._renderTemplateLoadDialog();
+		const tpl = a._renderConfigurationRestoreDialog();
 		const c = renderTo(tpl);
-		const deleteBtn = c.querySelector(".template-card-delete") as HTMLElement;
+		const deleteBtn = c.querySelector(
+			".configuration-card-delete",
+		) as HTMLElement;
 		expect(deleteBtn).not.toBeNull();
 		deleteBtn.click();
 		expect(spy).toHaveBeenCalledWith("MyTemplate");

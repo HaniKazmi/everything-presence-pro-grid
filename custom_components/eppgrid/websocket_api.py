@@ -129,9 +129,9 @@ def async_register_websocket_commands(hass: HomeAssistant, manager: Any) -> None
     websocket_api.async_register_command(hass, websocket_get_config)
     websocket_api.async_register_command(hass, websocket_set_setup)
     websocket_api.async_register_command(hass, websocket_set_room_layout)
-    websocket_api.async_register_command(hass, websocket_list_templates)
-    websocket_api.async_register_command(hass, websocket_save_template)
-    websocket_api.async_register_command(hass, websocket_delete_template)
+    websocket_api.async_register_command(hass, websocket_list_configurations)
+    websocket_api.async_register_command(hass, websocket_save_configuration)
+    websocket_api.async_register_command(hass, websocket_delete_configuration)
     websocket_api.async_register_command(hass, websocket_subscribe_device)
     websocket_api.async_register_command(hass, websocket_subscribe_grid_targets)
     websocket_api.async_register_command(hass, websocket_subscribe_raw_targets)
@@ -438,65 +438,65 @@ async def websocket_set_room_layout(
     connection.send_result(msg["id"])
 
 
-# -- Template commands --
+# -- Configuration commands --
 
 
-@websocket_api.websocket_command({vol.Required("type"): "eppgrid/list_templates"})
+@websocket_api.websocket_command({vol.Required("type"): "eppgrid/list_configurations"})
 @callback
-def websocket_list_templates(
+def websocket_list_configurations(
     hass: HomeAssistant,
     connection: websocket_api.ActiveConnection,
     msg: dict[str, Any],
 ) -> None:
-    """List saved room templates."""
+    """List saved configurations."""
     manager = _get_manager(hass)
     if manager is None:
         _send_not_loaded(connection, msg["id"])
         return
-    connection.send_result(msg["id"], {"templates": manager._store.templates})
+    connection.send_result(msg["id"], {"configurations": manager._store.configurations})
 
 
 @websocket_api.websocket_command(
     {
-        vol.Required("type"): "eppgrid/save_template",
+        vol.Required("type"): "eppgrid/save_configuration",
         vol.Required("name"): str,
-        vol.Required("template"): dict,
+        vol.Required("configuration"): dict,
     }
 )
 @websocket_api.async_response
-async def websocket_save_template(
+async def websocket_save_configuration(
     hass: HomeAssistant,
     connection: websocket_api.ActiveConnection,
     msg: dict[str, Any],
 ) -> None:
-    """Save a room template."""
+    """Save a named configuration."""
     manager = _get_manager(hass)
     if manager is None:
         _send_not_loaded(connection, msg["id"])
         return
-    manager._store.templates[msg["name"]] = msg["template"]
+    manager._store.configurations[msg["name"]] = msg["configuration"]
     await manager._store.async_save()
     connection.send_result(msg["id"])
 
 
 @websocket_api.websocket_command(
     {
-        vol.Required("type"): "eppgrid/delete_template",
+        vol.Required("type"): "eppgrid/delete_configuration",
         vol.Required("name"): str,
     }
 )
 @websocket_api.async_response
-async def websocket_delete_template(
+async def websocket_delete_configuration(
     hass: HomeAssistant,
     connection: websocket_api.ActiveConnection,
     msg: dict[str, Any],
 ) -> None:
-    """Delete a room template."""
+    """Delete a saved configuration."""
     manager = _get_manager(hass)
     if manager is None:
         _send_not_loaded(connection, msg["id"])
         return
-    manager._store.templates.pop(msg["name"], None)
+    manager._store.configurations.pop(msg["name"], None)
     await manager._store.async_save()
     connection.send_result(msg["id"])
 

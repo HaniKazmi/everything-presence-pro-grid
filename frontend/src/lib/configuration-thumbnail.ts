@@ -17,13 +17,13 @@ import { getCellColor } from "./heatmap.js";
 import type { ZoneConfig } from "./zone-defaults.js";
 
 /**
- * Render an SVG thumbnail of a room template.
+ * Render an SVG thumbnail of a saved configuration.
  *
  * Shows zone-colored grid cells and furniture outlines.
  * The SVG viewBox is cropped to the padded room bounds (including the 1-cell
  * margin added by `getRoomBounds()`) so it fills any container size.
  */
-export function renderTemplateThumbnail(
+export function renderConfigurationThumbnail(
 	grid: number[],
 	zoneConfigs: (ZoneConfig | null)[],
 	roomWidth: number,

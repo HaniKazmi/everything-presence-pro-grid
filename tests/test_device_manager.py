@@ -2678,8 +2678,8 @@ class TestEventCallbacks:
         manager._build_flags[mac] = {"has_co2": True}
         manager._entity_update_macs.add(mac)
 
-        # Pre-populate templates that should survive
-        manager._store.templates["Living Room"] = {"grid_bytes": [1, 2, 3]}
+        # Pre-populate configurations that should survive
+        manager._store.configurations["Living Room"] = {"grid_bytes": [1, 2, 3]}
 
         with patch.object(manager, "async_close_session", new_callable=AsyncMock) as mock_close:
             event = MagicMock()
@@ -2692,7 +2692,7 @@ class TestEventCallbacks:
         assert mac not in manager.devices
         assert mac not in manager._build_flags
         assert mac not in manager._entity_update_macs
-        assert "Living Room" in manager._store.templates
+        assert "Living Room" in manager._store.configurations
 
     async def test_on_device_removed_notifies_subscribers(self, hass: HomeAssistant, manager: DeviceManager) -> None:
         """Device removal fires device list callbacks."""
