@@ -796,10 +796,10 @@ describe("_infoTip DOM click handler", () => {
 });
 
 // =========================================================
-// _renderTemplateLoadDialog: load and delete on templates
+// _renderConfigurationRestoreDialog: load and delete on configuration items
 // =========================================================
 describe("_renderConfigurationRestoreDialog item events", () => {
-	it("fires load and delete on template items", () => {
+	it("fires load and delete on configuration items", () => {
 		const a = createPanel() as any;
 		a._gridCtrl.configurations = [
 			{
@@ -829,12 +829,12 @@ describe("_renderConfigurationRestoreDialog item events", () => {
 		document.body.appendChild(c);
 		render(tpl, c);
 
-		// Should have template cards for each template
+		// Should have configuration cards for each configuration
 		const cards = c.querySelectorAll(".configuration-card");
 		expect(cards.length).toBe(2);
-		// Click load for first template card
+		// Click load for first configuration card
 		(cards[0] as HTMLElement).click();
-		// Click delete button for second template card
+		// Click delete button for second configuration card
 		const deleteBtns = c.querySelectorAll(".configuration-card-delete");
 		if (deleteBtns.length >= 2) {
 			(deleteBtns[1] as HTMLElement).click();

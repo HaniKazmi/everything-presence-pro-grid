@@ -1203,7 +1203,7 @@ describe("_renderConfigurationRestoreDialog DOM events", () => {
 		}
 	});
 
-	it("load and delete buttons with templates", () => {
+	it("load and delete buttons with configurations", () => {
 		const a = createPanel() as any;
 		a._gridCtrl.configurations = [
 			{

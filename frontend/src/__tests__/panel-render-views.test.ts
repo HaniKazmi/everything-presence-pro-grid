@@ -809,7 +809,7 @@ describe("_renderEditor", () => {
 		expect(result).toBeDefined();
 	});
 
-	it("renders editor with template save dialog", () => {
+	it("renders editor with configuration backup dialog", () => {
 		const a = createPanel() as any;
 		a._view = "editor";
 		a._showConfigurationBackup = true;
@@ -818,7 +818,7 @@ describe("_renderEditor", () => {
 		expect(result).toBeDefined();
 	});
 
-	it("renders editor with template load dialog", () => {
+	it("renders editor with configuration restore dialog", () => {
 		const a = createPanel() as any;
 		a._view = "editor";
 		a._showConfigurationRestore = true;
@@ -901,14 +901,14 @@ describe("_renderConfigurationBackupDialog", () => {
 });
 
 describe("_renderConfigurationRestoreDialog", () => {
-	it("renders load dialog with no templates", () => {
+	it("renders restore dialog with no configurations", () => {
 		const a = createPanel() as any;
 		a._gridCtrl.configurations = [];
 		const result = a._renderConfigurationRestoreDialog();
 		expect(result).toBeDefined();
 	});
 
-	it("renders load dialog with templates", () => {
+	it("renders restore dialog with configurations", () => {
 		const a = createPanel() as any;
 		a._gridCtrl.configurations = [
 			{ name: "T1", grid: [], zones: [], roomWidth: 3000, roomDepth: 4000 },

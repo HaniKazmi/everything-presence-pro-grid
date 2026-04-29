@@ -911,7 +911,7 @@ describe("epp-furniture-sidebar icon picker event", () => {
 });
 
 // =========================================================
-// Old-format templates (missing or length-7 zones) — per the no-BWC
+// Old-format configurations (missing or length-7 zones) — per the no-BWC
 // policy, these throw rather than being silently accepted.
 // =========================================================
 describe("_loadConfiguration rejects old-format configurations", () => {

@@ -62,7 +62,7 @@ function mockHost(overrides: Record<string, any> = {}) {
 		_zoneConfigs: emptyZoneSlots() as (Zone0Config | ZoneConfig | null)[],
 		// Furniture
 		_furniture: [] as FurnitureItem[],
-		// Templates
+		// Configurations
 		_configurationName: "",
 		_showConfigurationBackup: false,
 		_showConfigurationRestore: false,
@@ -494,7 +494,7 @@ describe("GridStateController", () => {
 			expect(host._showConfigurationBackup).toBe(false);
 		});
 
-		it("does nothing when template name is blank", async () => {
+		it("does nothing when configuration name is blank", async () => {
 			host._configurationName = "   ";
 			await ctrl.saveConfiguration();
 			expect(host.hass.callWS).not.toHaveBeenCalled();
@@ -738,12 +738,12 @@ describe("GridStateController", () => {
 			expect(host._showConfigurationRestore).toBe(false);
 		});
 
-		it("does nothing when the template name does not exist", async () => {
+		it("does nothing when the configuration name does not exist", async () => {
 			await ctrl.loadConfiguration("Nonexistent");
 			expect(host._roomWidth).toBe(3000); // unchanged from mockHost default
 		});
 
-		it("handles templates without furniture field", async () => {
+		it("handles configurations without furniture field", async () => {
 			const { furniture: _, ...noFurniture } = TEMPLATE_DATA;
 			ctrl.configurations = [{ name: "Loaded", ...noFurniture } as any];
 			await ctrl.loadConfiguration("Loaded");
@@ -780,7 +780,7 @@ describe("GridStateController", () => {
 			applySpy.mockRestore();
 		});
 
-		it("throws on old-format template (length-7 zones)", async () => {
+		it("throws on old-format configuration (length-7 zones)", async () => {
 			ctrl.configurations = [
 				{
 					name: "Old",
@@ -794,7 +794,7 @@ describe("GridStateController", () => {
 			await expect(ctrl.loadConfiguration("Old")).rejects.toThrow(/old format/);
 		});
 
-		it("leaves the load dialog open when rejecting an old-format template", async () => {
+		it("leaves the load dialog open when rejecting an old-format configuration", async () => {
 			ctrl.configurations = [
 				{
 					name: "Old",
@@ -807,11 +807,11 @@ describe("GridStateController", () => {
 			host._showConfigurationRestore = true;
 			await expect(ctrl.loadConfiguration("Old")).rejects.toThrow(/old format/);
 			// Dialog should remain open so the failure is visible and the user
-			// can try another template.
+			// can try another configuration.
 			expect(host._showConfigurationRestore).toBe(true);
 		});
 
-		it("throws on template with null zone 0", async () => {
+		it("throws on configuration with null zone 0", async () => {
 			ctrl.configurations = [
 				{
 					name: "NullZ0",

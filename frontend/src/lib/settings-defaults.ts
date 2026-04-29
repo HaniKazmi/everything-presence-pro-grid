@@ -80,6 +80,12 @@ export function isSettingsValueDefault(
 	defaultValue: unknown,
 ): boolean {
 	if (typeof defaultValue === "object" && defaultValue !== null) {
+		// This helper only supports empty-object defaults (e.g. log_levels).
+		// Non-empty object defaults need bespoke comparison logic — see
+		// buildSparseEntities for the entities case.
+		if (Object.keys(defaultValue).length !== 0) {
+			return false;
+		}
 		return (
 			typeof value === "object" &&
 			value !== null &&
