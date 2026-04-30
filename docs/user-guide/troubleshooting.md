@@ -1,87 +1,34 @@
 # Troubleshooting
 
-This page handles the conceptual "why does X behave this way?" questions that don't fit a feature page, and walks through how to collect diagnostics and open a GitHub issue when something's actually broken. For specific symptom-based fixes (e.g. "my automation isn't firing", "targets drift", "HACS install doesn't show up"), jump to the relevant feature page's Troubleshooting section — the list at the bottom of this page links to each one.
+Each feature page in this user guide ends with a Troubleshooting table that covers the symptoms specific to that area. If you've worked through the relevant one and the problem isn't there, the next step is to open a GitHub issue.
 
-## FAQ
+## Collect diagnostics
 
-**How do I install and configure the CO2 sensor?**
-
-The CO2 module is an add-on board sold separately by Everything Smart Technology. Follow the official integration guide at [docs.everythingsmart.io — Integrate the Carbon Dioxide (CO2) module](https://docs.everythingsmart.io/s/products/doc/integrate-the-carbon-dioxide-co2-module-biegKGfCWu) for the hardware install. Once it's wired up, enable the **CO2** entity on the device page in Home Assistant.
-
-**Why is my CO2 sensor showing `unavailable`?**
-
-The SCD4x CO2 sensor is disabled by default in Home Assistant — enable it on the device page to get readings. It also takes about 5 minutes after power-on to warm up; until then it reports `unavailable` even once enabled.
-
-**Do I need to use all the exposed entities?**
-
-No. Most users want only **Occupancy**, the per-zone presence entities (for zones they care about), and the environmental sensors. **Motion Presence** and **Static Presence** are debug-visibility entities showing which specific component is contributing to Occupancy — leave them disabled unless you need that level of detail.
-
-**Do I need to re-calibrate if I just rename a zone?**
-
-No. Calibration is per-device and independent of zone names. Only re-calibrate if the sensor has moved, the room has been rearranged, or you've swapped the hardware.
-
-**What's the difference between `Zone Rest of Room` and `Occupancy`?**
-
-`Zone Rest of Room` (zone 0) fires when a target is in the room but outside any named zone. `Occupancy` is the combined "any presence signal, anywhere in the room" output from the firmware — it fires whenever the PIR (passive infrared) motion sensor, LD2450, or SEN0609 reports presence. They overlap but aren't the same: use Occupancy as the fast trigger for general automations, not zone 0.
-
-**Why do my zone entities disappear from HA when I delete a zone?**
-
-Expected behaviour. Deleting a zone in the panel removes its cells from the device's config; the integration auto-disables the corresponding `zone_<N>_presence` and `zone_<N>_target_count` entities because they no longer have meaning. Recreate the zone in the same slot to get them back; Home Assistant remembers previously-tracked entities by unique ID.
-
-**Why doesn't the integration see my device?**
-
-The integration only picks up devices running Everything Presence Pro Grid firmware. It looks for a **Firmware Version** sensor on the ESPHome device — if that sensor doesn't exist, the device is still running the original firmware. The flasher tab in the panel can see devices on original firmware (so you can upgrade them), but the main device list won't include them until they've been flashed.
-
-**What's the max number of zones?**
-
-Seven named zones, plus zone 0 ("Rest of Room") as the always-present fallback. The **Add zone** button greys out when all seven named-zone slots are used.
-
-**Does ceiling-mounting ever work?**
-
-No. The LD2450's 35° pitch cone only reaches a small circle of floor directly below a ceiling-mounted device — most of the room ends up in the sensor's blind spot. The sensor is designed for wall mounting. See [Placement](placement.md) for the full argument.
-
-## Getting help
-
-If none of the per-page troubleshooting tables covers your problem, the next step is to collect diagnostics and open a GitHub issue.
-
-### Collect diagnostics first
-
-1. In Home Assistant, go to **Settings → Devices & Services**.
+1. In Home Assistant, go to **Settings → Devices & services**.
 2. Find **Everything Presence Pro Grid** in the integration list.
 3. Click the three-dot menu on the integration card → **Download diagnostics**.
-4. Save the JSON file; you'll attach it to the GitHub issue.
+4. Save the JSON file and attach it to the issue.
 
-The diagnostics dump contains the integration's device config, entity states, and any recent error traces — without it, most issue reports can't be debugged.
+If the bug is something the integration itself logs about (errors in HA system logs, the panel showing a connection error, an automation behaving wrong), also turn on debug logging *before* reproducing the issue:
 
-!!! example "Screenshot placeholder"
-    **The HA diagnostics download menu on the integration card.** `troubleshooting/diagnostics-download.png`
+- **In the panel**, raise the relevant firmware component to **Debug** under [Settings → Logging](settings/logging.md).
+- **In Home Assistant**, enable integration logging at **Settings → Devices & services → Everything Presence Pro Grid → ⋮ → Enable debug logging**.
+- Reproduce the bug.
+- Click **Disable debug logging** on the integration page. Home Assistant writes the captured logs to a downloadable file — attach it to the issue alongside the diagnostics JSON.
 
-### Open a GitHub issue
+For the full walkthrough, see [Settings → Logging → Reading the logs](settings/logging.md#reading-the-logs).
 
-There isn't a repo-level issue template yet, so include the following in the issue description:
-
-- **Home Assistant version** (e.g. 2025.3.2)
-- **Everything Presence Pro Grid integration version** (from HACS or `manifest.json`)
-- **Device firmware version** (from the device's Firmware Version sensor)
-- **Steps to reproduce** — numbered, starting from a known state
-- **Expected vs actual behaviour**
-- **Diagnostics JSON** — attach the file from the previous step
-- **Relevant HA log excerpts** (if any) — check Settings → System → Logs, filter for `eppgrid`
+## Open the issue
 
 Open the issue at [github.com/clintongormley/everything-presence-pro-grid/issues](https://github.com/clintongormley/everything-presence-pro-grid/issues).
 
-## Where to look first
+Include the following in the issue description:
 
-Pick the feature that most closely matches where things are going wrong:
+- **Home Assistant version** (e.g. 2026.4.2).
+- **Everything Presence Pro Grid integration version** (from HACS, or the `manifest.json`).
+- **Device firmware version** (from the device's **Firmware Version** sensor).
+- **Steps to reproduce** — numbered, starting from a known state.
+- **Expected vs actual behaviour.**
+- **Diagnostics JSON** — attach the file you saved above.
+- **Debug log file** — if you turned on debug logging, attach the downloaded log too.
 
-- **[Installation](installation.md#troubleshooting)** — HACS install, panel not appearing in the sidebar.
-- **[Flashing firmware](flashing-firmware.md#troubleshooting)** — USB flash failures, browser picker empty, device not showing in HA after flash.
-- **[Firmware upgrades](firmware-upgrades.md#troubleshooting)** — OTA errors, integration/firmware version mismatches.
-- **[Calibration](calibration.md#troubleshooting)** — wizard capture issues, skewed grids after save.
-- **[Detection zones](detection-zones.md#troubleshooting)** — missing zone entities, zones never firing, zone flapping.
-- **[Overlays](overlays.md#troubleshooting)** — paint refused, ghosts persisting despite overlays.
-- **[Furniture](furniture.md#troubleshooting)** — items not appearing, rotation handle missing.
-- **[Live overview](live-overview.md#troubleshooting)** — blank grid, drifting targets, sensors missing from sidebar.
-- **[Automations](automations.md#troubleshooting)** — entities not firing, wrong triggers, timing surprises.
-
-Looking for contributor documentation? See [Developers](../developers/index.md) for the codebase walkthrough and contribution guide.

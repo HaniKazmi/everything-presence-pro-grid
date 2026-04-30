@@ -55,7 +55,7 @@ If none of the presets match what you want to represent, pick the **+** custom-i
 
 ## Troubleshooting
 
-See: the [central Troubleshooting](troubleshooting.md) page for conceptual FAQ and how to open a GitHub issue.
+Still stuck? See [Troubleshooting](troubleshooting.md) for how to open an issue.
 
 ## Where to next
 

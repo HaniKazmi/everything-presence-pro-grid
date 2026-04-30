@@ -84,7 +84,7 @@ Suppress blocks detection entirely. Use it sparingly, and prefer Interference fi
 | Interference overlay painted but ghosts still appear | Interference threshold isn't strong enough for that source | Escalate those cells to **Suppress**. Suppress blocks the cells entirely rather than just raising detection thresholds. |
 | Entry/Exit overlay painted at the doorway but zones still flap on entry | Overlay doesn't cover the full walkable area of the doorway | Paint overlay cells covering the entire door opening, not just one cell to the side of it. |
 
-See also: the [central Troubleshooting](troubleshooting.md) page for conceptual FAQ and how to open a GitHub issue.
+Still stuck? See [Troubleshooting](troubleshooting.md) for how to open an issue.
 
 ## Where to next
 

@@ -68,7 +68,7 @@ When something's wrong, the live grid is replaced by a banner rather than being 
 | Targets jump around or drift outside walls | Calibration is off | Re-run the calibration wizard. See [Calibration](calibration.md). |
 | Target stuck on a fixed cell with nobody there | Interference source at that cell (fan, curtain, reflective surface) | Add an Interference overlay at that cell. If it's still problematic, escalate to Suppress. See [Overlays](overlays.md). |
 
-See also: the [central Troubleshooting](troubleshooting.md) page for conceptual FAQ and how to open a GitHub issue.
+Still stuck? See [Troubleshooting](troubleshooting.md) for how to open an issue.
 
 ## Where to next
 

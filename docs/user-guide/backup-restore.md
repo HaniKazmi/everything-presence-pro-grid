@@ -72,7 +72,7 @@ Open the Restore dialog, hover a card, and click the **X** in the top-right corn
 | Restore dialog says "No configurations" | No backup has been saved on this Home Assistant instance yet | Save a backup first from any device. Backups are shared across all devices in the same HA instance. |
 | Restored backup but the radar puts targets in the wrong cells | The device's calibration doesn't match the room dimensions in the backup | Recalibrate the device. The backup's grid is fine; the perspective transform needs to be redone. |
 
-See also: the [central Troubleshooting](troubleshooting.md) page for conceptual FAQ and how to open a GitHub issue.
+Still stuck? See [Troubleshooting](troubleshooting.md) for how to open an issue.
 
 ## Where to next
 

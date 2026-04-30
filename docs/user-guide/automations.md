@@ -237,7 +237,7 @@ actions:
 | Sofa / reading-chair zone flaps on and off | Zone type is "Default" — fall-off too fast | Change the zone's type to **Seating** in the [Detection zones](detection-zones.md) editor. |
 | Bedroom zone flaps on and off when sleeping | Zone type is "Default" — presence timeout too short | Change the zone's type to **Bed** in the [Detection zones](detection-zones.md) editor. |
 
-See also: the [central Troubleshooting](troubleshooting.md) page for conceptual FAQ and how to open a GitHub issue.
+Still stuck? See [Troubleshooting](troubleshooting.md) for how to open an issue.
 
 ## Where to next
 

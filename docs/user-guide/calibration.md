@@ -88,7 +88,7 @@ You can recalibrate the room size from the **Live overview** menu.
 | Walls don't line up with the grid | One corner's captured position is off | Redo the room calibration |
 
 
-See also: the [central Troubleshooting](troubleshooting.md) page for conceptual FAQ and how to open a GitHub issue.
+Still stuck? See [Troubleshooting](troubleshooting.md) for how to open an issue.
 
 ## Where to next
 

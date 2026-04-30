@@ -144,7 +144,7 @@ When all three hold, every *pending* zone is force-cleared immediately, and Occu
 | Occupancy stays `on` with no visible target and no zone glow | The static or motion sensor is still active or in its own pending state, holding Occupancy on by itself | Wait for the sensor to time out, or lower the **Static sensor timeout** in [Sensor calibration](settings/sensor-calibration.md). |
 | Occupancy clears too quickly when somebody is sitting still | Static-presence timeout and zone Presence timeout are both shorter than the time the person stays still | Increase **Static sensor timeout** in [Sensor calibration](settings/sensor-calibration.md), or set the zone's type to **Seating** (or **Custom** with a longer Presence timeout). |
 
-See also: the [central Troubleshooting](troubleshooting.md) page for conceptual FAQ and how to open a GitHub issue.
+Still stuck? See [Troubleshooting](troubleshooting.md) for how to open an issue.
 
 ## Where to next
 
