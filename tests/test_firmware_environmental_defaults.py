@@ -17,27 +17,14 @@ from pathlib import Path
 
 import yaml
 
+from tests.esphome_yaml import ESPHomeLoader
+
 REPO_ROOT = Path(__file__).resolve().parents[1]
-
-
-class _ESPHomeLoader(yaml.SafeLoader):
-    """SafeLoader treating ESPHome custom tags as opaque strings."""
-
-
-def _esphome_tag_passthrough(loader, node):
-    if isinstance(node, yaml.ScalarNode):
-        return loader.construct_scalar(node)
-    if isinstance(node, yaml.SequenceNode):
-        return loader.construct_sequence(node, deep=True)
-    return loader.construct_mapping(node, deep=True)
-
-
-_ESPHomeLoader.add_constructor(None, _esphome_tag_passthrough)
 
 
 def _load_base_yaml() -> dict:
     text = (REPO_ROOT / "firmware" / "common" / "everything-presence-pro-base.yaml").read_text()
-    return yaml.load(text, Loader=_ESPHomeLoader)
+    return yaml.load(text, Loader=ESPHomeLoader)
 
 
 def _find_sensor_by_id(sensors: list, sensor_id: str) -> dict | None:

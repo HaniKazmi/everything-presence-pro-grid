@@ -29,6 +29,8 @@ from pathlib import Path
 
 import yaml
 
+from tests.esphome_yaml import ESPHomeLoader
+
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
 
@@ -39,27 +41,11 @@ def _read_const_firmware_version() -> str:
     return match.group(1)
 
 
-class _ESPHomeLoader(yaml.SafeLoader):
-    """SafeLoader that treats ESPHome custom tags (!lambda, !include, !secret,
-    !extend, etc.) as opaque strings so the file can be parsed in tests."""
-
-
-def _esphome_tag_passthrough(loader, node):
-    if isinstance(node, yaml.ScalarNode):
-        return loader.construct_scalar(node)
-    if isinstance(node, yaml.SequenceNode):
-        return loader.construct_sequence(node, deep=True)
-    return loader.construct_mapping(node, deep=True)
-
-
-_ESPHomeLoader.add_constructor(None, _esphome_tag_passthrough)
-
-
 def _read_yaml_firmware_version() -> str:
     # Parse the yaml properly so formatting changes (indent, quote style)
     # don't silently break this test.
     text = (REPO_ROOT / "firmware" / "common" / "everything-presence-pro-base.yaml").read_text()
-    doc = yaml.load(text, Loader=_ESPHomeLoader)
+    doc = yaml.load(text, Loader=ESPHomeLoader)
     version = (doc or {}).get("esphome", {}).get("project", {}).get("version")
     assert version, "esphome.project.version not found in everything-presence-pro-base.yaml"
     return str(version)
