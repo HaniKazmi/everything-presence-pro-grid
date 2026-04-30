@@ -59,6 +59,6 @@ See: the [central Troubleshooting](troubleshooting.md) page for conceptual FAQ a
 
 ## Where to next
 
-- **[Templates →](templates.md)** — save a room layout so you can reuse it on identical sensors.
+- **[Backup and restore →](backup-restore.md)** — save the device configuration so you can roll back after recalibration or experiments.
 - **[Settings →](settings/index.md)** — tune detection, reporting, environmental offsets, LED and relay behaviour.
 - **[Automations →](automations.md)** — put it all to use with worked examples.

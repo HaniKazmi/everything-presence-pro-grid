@@ -85,7 +85,7 @@ nav:
     - Overlays: user-guide/overlays.md
     - How detection works: user-guide/how-detection-works.md
     - Furniture: user-guide/furniture.md
-    - Templates: user-guide/templates.md
+    - Backup and restore: user-guide/backup-restore.md
     - Settings:
       - user-guide/settings/index.md
       - Entities: user-guide/settings/entities.md

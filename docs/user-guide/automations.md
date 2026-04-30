@@ -66,7 +66,7 @@ actions:
 ```
 
 It is usually preferred to combine both of these automations into a single automation which uses trigger IDs to determine
-what action to take:
+which action to take:
 
 ```yaml
 mode: restart
