@@ -34,7 +34,7 @@ On the right-hand side bar, you will see live data being fed directly from the s
 - **Static Presence** — the SEN0609 static-presence sensor. 
 - **Target Presence** - the LD2450 target tracking presence.
 
-By default, only the Occupancy entity is enabled under ESPHome.
+Of these four, only **Occupancy** is enabled by default — the other three are useful for debugging or for automations that need a specific source as a separate trigger. Enable them under [Settings → Entities](settings/entities.md) if you want them.
 
 ### Detection zones occupancy glow
 

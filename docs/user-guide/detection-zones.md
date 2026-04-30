@@ -33,7 +33,7 @@ Once calibration is done and the room boundary looks right, add your first named
 2. On the grid, click-and-drag to paint cells into the zone. The action for the whole drag — paint or erase — is decided by the cell you first press on: if it's already part of the zone, the stroke erases; otherwise the stroke paints.
 3. Release the mouse to commit the stroke.
 
-![Mid-drag painting a zone — cells being added to a new "Wash basins" zone.](../images/detection-zones/painting.png "Mid-drag painting a zone — cells being added to a new "Wash basins" zone.")
+![Mid-drag painting a zone — cells being added to a new 'Wash basins' zone.](../images/detection-zones/painting.png "Mid-drag painting a zone — cells being added to a new 'Wash basins' zone.")
 
 ## Renaming, recolouring, deleting
 

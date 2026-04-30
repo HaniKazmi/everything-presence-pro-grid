@@ -17,7 +17,7 @@ Three things feed the engine on every tick:
 Raw radar positions jitter from frame to frame, even when a person is standing still, and individual frames sometimes drop out entirely. The engine smooths this with a rolling one-second window per target:
 
 - The last second of frames is held in memory.
-- Each tick the engine recomputes the **median** `x` and `y` across the frames in the window in which the target was active. In uses a median rather than a mean so that a single-frame outlier doesn't pull the position. Silent frames don't contribute.
+- Each tick the engine recomputes the **median** `x` and `y` across the frames in the window in which the target was active. It uses a median rather than a mean so that a single-frame outlier doesn't pull the position. Silent frames don't contribute.
 - The window **slides** — it's not chopped into independent one-second buckets. Each tick adds the newest frame and drops the oldest.
 - The smoothed median position is what the rest of the engine (cell mapping, continuity, gating) operates on.
 
