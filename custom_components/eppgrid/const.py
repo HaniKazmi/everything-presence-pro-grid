@@ -25,14 +25,32 @@ FIRMWARE_VERSION = "0.95.0"
 EPP_MANUFACTURER = "EverythingSmartTechnology"
 EPP_MODEL = "Everything Presence Pro"
 
-# Firmware download URL — GitHub release assets for v{FIRMWARE_VERSION}.
-# Anchored to the integration's required FIRMWARE_VERSION so the flasher and
-# OTA both install firmware that matches the integration. (ESPHome's built-in
-# update mechanism uses fw/latest/ on GH Pages — that is the "always-newest"
-# channel and is unrelated to this URL.)
+# Browser-side firmware artifacts (ESP Web Flasher) — GitHub release
+# assets for v{FIRMWARE_VERSION}. The ESP Web Tools manifest there has
+# absolute parts+offsets needed for an initial USB flash, and the proxy
+# at /api/eppgrid/firmware/{filename} fetches these server-side so the
+# browser doesn't need direct GitHub connectivity.
 MANIFEST_BASE_URL = (
     f"https://github.com/clintongormley/everything-presence-pro-grid/releases/download/v{FIRMWARE_VERSION}"
 )
+
+# Pinned-version manifest for the integration's OTA button (Path B) on
+# GitHub Pages. The ESP32's update.http_request component fetches this
+# manifest and then the OTA bin it references, so we need same-origin
+# manifest+bin to keep mbedtls within the heap budget.
+#
+# Why not MANIFEST_BASE_URL (GitHub releases): the release-asset URL
+# 302-redirects to a signed release-assets.githubusercontent.com URL,
+# requiring a second TLS context for the OTA bin fetch. The ESP32 fails
+# the second mbedtls_ssl_setup with MBEDTLS_ERR_SSL_ALLOC_FAILED, the HTTP
+# client can't open a socket, and the OTA aborts with "firmware unchanged".
+# Pages keeps both fetches on clintongormley.github.io with relative paths
+# (stage-firmware.sh publishes fw/v{V}/{variant}.json and {variant}.ota.bin
+# side by side), so a single TLS session covers everything.
+#
+# ESPHome's own update entity uses fw/latest/ on the same Pages site as
+# the "always-newest" channel; this URL is the per-version pin.
+OTA_MANIFEST_BASE_URL = f"https://clintongormley.github.io/everything-presence-pro-grid/fw/v{FIRMWARE_VERSION}"
 
 # Map UI network choice to firmware variant filename (matches fw/ filenames)
 FIRMWARE_VARIANTS = {

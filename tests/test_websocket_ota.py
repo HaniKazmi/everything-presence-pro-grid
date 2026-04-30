@@ -64,7 +64,7 @@ async def call_async_handler(hass, handler, connection, msg):
     await hass.async_block_till_done()
 
 
-def make_mock_device_conn(entities=None):
+def make_mock_device_conn(entities=None, services=None):
     conn = MagicMock()
     conn.connected = True
     conn._entities = entities or []
@@ -72,6 +72,14 @@ def make_mock_device_conn(entities=None):
     conn.unsubscribe_states = MagicMock()
     conn.add_log_callback = MagicMock()
     conn.remove_log_callback = MagicMock()
+    # By default, expose epp_set_log_level so subscribe_ota_progress can bump
+    # the device's log level. Pass services={} to simulate older firmware
+    # without the action.
+    if services is None:
+        services = {"epp_set_log_level": MagicMock()}
+    conn._services = services
+    conn._client = MagicMock()
+    conn._client.execute_service = AsyncMock()
     return conn
 
 
@@ -156,6 +164,50 @@ class TestSubscribeOtaProgress:
         device_conn.subscribe_states.assert_called_once()
         connection.send_result.assert_called_once_with(1)
         assert 1 in connection.subscriptions
+
+    async def test_bumps_device_log_level_to_error_on_subscribe(
+        self,
+        hass: HomeAssistant,
+        config_entry: MockConfigEntry,
+    ) -> None:
+        """The firmware silences logs to NONE on boot to keep API traffic low.
+        That means the integration's existing ERROR-log surface in _on_log
+        never fires — even fatal OTA failures stay invisible. Bumping the
+        device's system log level to Error when the user opens the OTA panel
+        keeps the surface working without flooding the API in steady state.
+        """
+        log_svc = MagicMock()
+        mock_dm = await setup_integration(hass, config_entry)
+        device_conn = make_mock_device_conn(services={"epp_set_log_level": log_svc})
+        mock_dm.get_session.return_value = device_conn
+        from custom_components.eppgrid.websocket_api import websocket_subscribe_ota_progress
+
+        connection = MagicMock()
+        connection.subscriptions = {}
+        msg = {"id": 1, "type": "eppgrid/subscribe_ota_progress", "mac": "AA:BB:CC:DD:EE:FF"}
+        await call_async_handler(hass, websocket_subscribe_ota_progress, connection, msg)
+
+        device_conn._client.execute_service.assert_awaited_once_with(log_svc, {"category": "system", "level": "Error"})
+
+    async def test_skips_log_bump_when_service_missing(
+        self,
+        hass: HomeAssistant,
+        config_entry: MockConfigEntry,
+    ) -> None:
+        """Older firmware does not expose epp_set_log_level. Subscribe must
+        still succeed (silently no-op the bump) instead of erroring out."""
+        mock_dm = await setup_integration(hass, config_entry)
+        device_conn = make_mock_device_conn(services={})
+        mock_dm.get_session.return_value = device_conn
+        from custom_components.eppgrid.websocket_api import websocket_subscribe_ota_progress
+
+        connection = MagicMock()
+        connection.subscriptions = {}
+        msg = {"id": 1, "type": "eppgrid/subscribe_ota_progress", "mac": "AA:BB:CC:DD:EE:FF"}
+        await call_async_handler(hass, websocket_subscribe_ota_progress, connection, msg)
+
+        device_conn._client.execute_service.assert_not_awaited()
+        connection.send_result.assert_called_once_with(1)
 
     async def test_forwards_progress_events(
         self,
@@ -360,6 +412,138 @@ class TestSubscribeOtaProgress:
         log_msg = MagicMock()
         log_msg.level = ESPLogLevel.LOG_LEVEL_ERROR
         log_msg.message = "[E][wifi:123]: Connection lost"
+        on_log(log_msg)
+
+        connection.send_message.assert_not_called()
+
+    async def test_forwards_http_request_idf_errors(
+        self,
+        hass: HomeAssistant,
+        config_entry: MockConfigEntry,
+    ) -> None:
+        """Real failure mode: when the OTA bin fetch fails at the IDF HTTP
+        client layer, the actionable log line is tagged http_request.idf,
+        not http_request.ota / .update. Captured live during the
+        cross-origin-redirect heap exhaustion that motivated this PR.
+        """
+        mock_dm = await setup_integration(hass, config_entry)
+        device_conn = make_mock_device_conn()
+        mock_dm.get_session.return_value = device_conn
+        from custom_components.eppgrid.websocket_api import websocket_subscribe_ota_progress
+
+        connection = MagicMock()
+        connection.subscriptions = {}
+        msg = {"id": 1, "type": "eppgrid/subscribe_ota_progress", "mac": "AA:BB:CC:DD:EE:FF"}
+        await call_async_handler(hass, websocket_subscribe_ota_progress, connection, msg)
+
+        on_log = device_conn.add_log_callback.call_args[0][0]
+        from aioesphomeapi import LogLevel as ESPLogLevel
+
+        log_msg = MagicMock()
+        log_msg.level = ESPLogLevel.LOG_LEVEL_ERROR
+        log_msg.message = "[E][http_request.idf:133]: HTTP Request failed: ESP_ERR_HTTP_CONNECT"
+        on_log(log_msg)
+
+        from homeassistant.components.websocket_api import event_message
+
+        connection.send_message.assert_called_once()
+        sent = connection.send_message.call_args[0][0]
+        assert sent == event_message(
+            1,
+            {"state": "error", "message": "HTTP Request failed: ESP_ERR_HTTP_CONNECT"},
+        )
+
+    async def test_forwards_actionable_set_error_flag_messages(
+        self,
+        hass: HomeAssistant,
+        config_entry: MockConfigEntry,
+    ) -> None:
+        """Component-level error flags carry the actionable failure message
+        as a suffix, e.g. `http_request.update set Error flag: Failed to
+        install firmware`. The previous filter blanket-skipped any line
+        containing 'set Error flag', dropping these. Forward them when the
+        suffix is non-trivial.
+        """
+        mock_dm = await setup_integration(hass, config_entry)
+        device_conn = make_mock_device_conn()
+        mock_dm.get_session.return_value = device_conn
+        from custom_components.eppgrid.websocket_api import websocket_subscribe_ota_progress
+
+        connection = MagicMock()
+        connection.subscriptions = {}
+        msg = {"id": 1, "type": "eppgrid/subscribe_ota_progress", "mac": "AA:BB:CC:DD:EE:FF"}
+        await call_async_handler(hass, websocket_subscribe_ota_progress, connection, msg)
+
+        on_log = device_conn.add_log_callback.call_args[0][0]
+        from aioesphomeapi import LogLevel as ESPLogLevel
+
+        log_msg = MagicMock()
+        log_msg.level = ESPLogLevel.LOG_LEVEL_ERROR
+        log_msg.message = "[E][component:420]: http_request.update set Error flag: Failed to install firmware"
+        on_log(log_msg)
+
+        from homeassistant.components.websocket_api import event_message
+
+        connection.send_message.assert_called_once()
+        sent = connection.send_message.call_args[0][0]
+        assert sent == event_message(
+            1,
+            {
+                "state": "error",
+                "message": "http_request.update set Error flag: Failed to install firmware",
+            },
+        )
+
+    async def test_ignores_unspecified_set_error_flag(
+        self,
+        hass: HomeAssistant,
+        config_entry: MockConfigEntry,
+    ) -> None:
+        """The vague `http_request set Error flag: unspecified` line carries
+        no actionable detail and is emitted alongside the more specific lines.
+        Drop it so the user sees the useful message, not the noise."""
+        mock_dm = await setup_integration(hass, config_entry)
+        device_conn = make_mock_device_conn()
+        mock_dm.get_session.return_value = device_conn
+        from custom_components.eppgrid.websocket_api import websocket_subscribe_ota_progress
+
+        connection = MagicMock()
+        connection.subscriptions = {}
+        msg = {"id": 1, "type": "eppgrid/subscribe_ota_progress", "mac": "AA:BB:CC:DD:EE:FF"}
+        await call_async_handler(hass, websocket_subscribe_ota_progress, connection, msg)
+
+        on_log = device_conn.add_log_callback.call_args[0][0]
+        from aioesphomeapi import LogLevel as ESPLogLevel
+
+        log_msg = MagicMock()
+        log_msg.level = ESPLogLevel.LOG_LEVEL_ERROR
+        log_msg.message = "[E][component:420]: http_request set Error flag: unspecified"
+        on_log(log_msg)
+
+        connection.send_message.assert_not_called()
+
+    async def test_ignores_cleared_error_flag(
+        self,
+        hass: HomeAssistant,
+        config_entry: MockConfigEntry,
+    ) -> None:
+        """Component recovery noise; existing behaviour preserved."""
+        mock_dm = await setup_integration(hass, config_entry)
+        device_conn = make_mock_device_conn()
+        mock_dm.get_session.return_value = device_conn
+        from custom_components.eppgrid.websocket_api import websocket_subscribe_ota_progress
+
+        connection = MagicMock()
+        connection.subscriptions = {}
+        msg = {"id": 1, "type": "eppgrid/subscribe_ota_progress", "mac": "AA:BB:CC:DD:EE:FF"}
+        await call_async_handler(hass, websocket_subscribe_ota_progress, connection, msg)
+
+        on_log = device_conn.add_log_callback.call_args[0][0]
+        from aioesphomeapi import LogLevel as ESPLogLevel
+
+        log_msg = MagicMock()
+        log_msg.level = ESPLogLevel.LOG_LEVEL_ERROR
+        log_msg.message = "[E][component:420]: http_request.update cleared Error flag"
         on_log(log_msg)
 
         connection.send_message.assert_not_called()
