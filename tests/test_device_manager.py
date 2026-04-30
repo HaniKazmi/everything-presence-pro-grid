@@ -696,6 +696,50 @@ class TestDeviceManager:
 
             mock_conn.async_disconnect.assert_awaited()
 
+    async def test_schedule_entity_update_clear_cancels_on_stop(
+        self, hass: HomeAssistant, manager: DeviceManager
+    ) -> None:
+        """async_stop must cancel pending entity-update-clear timers.
+
+        Without this, the 60s `set.discard(mac)` timer leaks past the config
+        entry's lifetime — HA 2026.4+ pytest fails the test on this leak.
+        Production-harmless, but a real leak nonetheless. Reproduces the
+        websocket_api.py:381 / :1106 lingering-timer regression seen on the
+        new HA test plugin.
+        """
+        mac = "AA:BB:CC:DD:EE:FF"
+
+        manager._schedule_entity_update_clear(mac)
+
+        # Mac flagged for entity-registry-update guard, cancel callable tracked.
+        assert mac in manager._entity_update_macs
+        assert mac in manager._entity_update_clear_cancels
+
+        await manager.async_stop()
+
+        # Cancel callable was invoked and dict is cleared — no lingering timer.
+        assert manager._entity_update_clear_cancels == {}
+
+    async def test_schedule_entity_update_clear_cancels_prior_for_same_mac(
+        self, hass: HomeAssistant, manager: DeviceManager
+    ) -> None:
+        """Re-scheduling for the same mac cancels the previous timer instead
+        of stacking handles. Otherwise the second call's timer also leaks."""
+        mac = "AA:BB:CC:DD:EE:FF"
+
+        manager._schedule_entity_update_clear(mac)
+        first_cancel = manager._entity_update_clear_cancels[mac]
+
+        manager._schedule_entity_update_clear(mac)
+        second_cancel = manager._entity_update_clear_cancels[mac]
+
+        assert first_cancel is not second_cancel, "second call must replace, not stack"
+        # Only one handle tracked for this mac.
+        assert len(manager._entity_update_clear_cancels) == 1
+
+        # Clean up so the test's own teardown is leak-free.
+        await manager.async_stop()
+
     async def test_read_current_connection_count_returns_value(
         self, hass: HomeAssistant, manager: DeviceManager
     ) -> None:

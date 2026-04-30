@@ -377,8 +377,7 @@ async def websocket_set_setup(
     # Apply entity registry changes after push, with reconnect guard
     if deleting:
         if push_ok:
-            manager._entity_update_macs.add(mac)
-            hass.loop.call_later(60, manager._entity_update_macs.discard, mac)
+            manager._schedule_entity_update_clear(mac)
         _apply_entity_states(hass, mac, {"target_xy": False})
 
     zone_slots = device_config.get("room_layout", {}).get("zone_slots", EMPTY_ZONE_SLOTS)
@@ -1102,8 +1101,7 @@ async def websocket_set_settings(
     await manager._push_config_to_device(mac)
     # Auto-enable/disable relay switch entity based on trigger mode
     relay_enabled = msg["relay_trigger_mode"] != "disabled"
-    manager._entity_update_macs.add(mac)
-    hass.loop.call_later(60, manager._entity_update_macs.discard, mac)
+    manager._schedule_entity_update_clear(mac)
     _apply_entity_states(hass, mac, {"relay_output": relay_enabled})
     # Manage device log subscription on the active session (if any)
     session_conn = manager.get_session(mac)
