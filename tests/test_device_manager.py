@@ -701,11 +701,10 @@ class TestDeviceManager:
     ) -> None:
         """async_stop must cancel pending entity-update-clear timers.
 
-        Without this, the 60s `set.discard(mac)` timer leaks past the config
-        entry's lifetime — HA 2026.4+ pytest fails the test on this leak.
-        Production-harmless, but a real leak nonetheless. Reproduces the
-        websocket_api.py:381 / :1106 lingering-timer regression seen on the
-        new HA test plugin.
+        Without this, the 60s `set.discard(mac)` timer scheduled by
+        websocket_set_setup (delete-calibration path) and websocket_set_settings
+        leaks past the config entry's lifetime. Production-harmless, but
+        HA 2026.4+ pytest fails the test on the lingering handle.
         """
         mac = "AA:BB:CC:DD:EE:FF"
 
