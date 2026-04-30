@@ -64,7 +64,7 @@ async def call_async_handler(hass, handler, connection, msg):
     await hass.async_block_till_done()
 
 
-def make_mock_device_conn(entities=None):
+def make_mock_device_conn(entities=None, services=None):
     conn = MagicMock()
     conn.connected = True
     conn._entities = entities or []
@@ -72,6 +72,14 @@ def make_mock_device_conn(entities=None):
     conn.unsubscribe_states = MagicMock()
     conn.add_log_callback = MagicMock()
     conn.remove_log_callback = MagicMock()
+    # By default, expose epp_set_log_level so subscribe_ota_progress can bump
+    # the device's log level. Pass services={} to simulate older firmware
+    # without the action.
+    if services is None:
+        services = {"epp_set_log_level": MagicMock()}
+    conn._services = services
+    conn._client = MagicMock()
+    conn._client.execute_service = AsyncMock()
     return conn
 
 
@@ -156,6 +164,50 @@ class TestSubscribeOtaProgress:
         device_conn.subscribe_states.assert_called_once()
         connection.send_result.assert_called_once_with(1)
         assert 1 in connection.subscriptions
+
+    async def test_bumps_device_log_level_to_error_on_subscribe(
+        self,
+        hass: HomeAssistant,
+        config_entry: MockConfigEntry,
+    ) -> None:
+        """The firmware silences logs to NONE on boot to keep API traffic low.
+        That means the integration's existing ERROR-log surface in _on_log
+        never fires — even fatal OTA failures stay invisible. Bumping the
+        device's system log level to Error when the user opens the OTA panel
+        keeps the surface working without flooding the API in steady state.
+        """
+        log_svc = MagicMock()
+        mock_dm = await setup_integration(hass, config_entry)
+        device_conn = make_mock_device_conn(services={"epp_set_log_level": log_svc})
+        mock_dm.get_session.return_value = device_conn
+        from custom_components.eppgrid.websocket_api import websocket_subscribe_ota_progress
+
+        connection = MagicMock()
+        connection.subscriptions = {}
+        msg = {"id": 1, "type": "eppgrid/subscribe_ota_progress", "mac": "AA:BB:CC:DD:EE:FF"}
+        await call_async_handler(hass, websocket_subscribe_ota_progress, connection, msg)
+
+        device_conn._client.execute_service.assert_awaited_once_with(log_svc, {"category": "system", "level": "Error"})
+
+    async def test_skips_log_bump_when_service_missing(
+        self,
+        hass: HomeAssistant,
+        config_entry: MockConfigEntry,
+    ) -> None:
+        """Older firmware does not expose epp_set_log_level. Subscribe must
+        still succeed (silently no-op the bump) instead of erroring out."""
+        mock_dm = await setup_integration(hass, config_entry)
+        device_conn = make_mock_device_conn(services={})
+        mock_dm.get_session.return_value = device_conn
+        from custom_components.eppgrid.websocket_api import websocket_subscribe_ota_progress
+
+        connection = MagicMock()
+        connection.subscriptions = {}
+        msg = {"id": 1, "type": "eppgrid/subscribe_ota_progress", "mac": "AA:BB:CC:DD:EE:FF"}
+        await call_async_handler(hass, websocket_subscribe_ota_progress, connection, msg)
+
+        device_conn._client.execute_service.assert_not_awaited()
+        connection.send_result.assert_called_once_with(1)
 
     async def test_forwards_progress_events(
         self,

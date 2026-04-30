@@ -1232,7 +1232,7 @@ async def websocket_update_firmware(
     msg: dict[str, Any],
 ) -> None:
     """Trigger firmware OTA update via set_update_manifest action."""
-    from .const import MANIFEST_BASE_URL
+    from .const import OTA_MANIFEST_BASE_URL
 
     manager = _get_manager(hass)
     if manager is None:
@@ -1269,7 +1269,7 @@ async def websocket_update_firmware(
     if variant is None:
         _send_no_firmware_variant(connection, msg["id"], network)
         return
-    manifest_url = f"{MANIFEST_BASE_URL}/everything-presence-pro-{variant}-manifest.json"
+    manifest_url = f"{OTA_MANIFEST_BASE_URL}/{variant}.json"
 
     if dev.host is None:
         connection.send_error(
@@ -1349,6 +1349,19 @@ async def websocket_subscribe_ota_progress(
 
     if device_conn._unsub_logs is None:
         device_conn.subscribe_logs(ESPLogLevel.LOG_LEVEL_ERROR)
+
+    # Firmware silences the ESPHome logger to NONE on boot, so even ERROR
+    # messages from http_request.ota / http_request.update never leave the
+    # device — the subscribe-logs surface above reads nothing. Bump the
+    # system log level to Error here so OTA failures actually reach the
+    # frontend. Older firmware that doesn't expose this action is left
+    # alone (older firmware also doesn't silence to NONE, so it works).
+    log_svc = device_conn._services.get("epp_set_log_level")
+    if log_svc is not None:
+        try:
+            await device_conn._client.execute_service(log_svc, {"category": "system", "level": "Error"})
+        except Exception:
+            _LOGGER.debug("Failed to bump device log level for OTA visibility", exc_info=True)
 
     @callback
     def _on_state(state: Any) -> None:
