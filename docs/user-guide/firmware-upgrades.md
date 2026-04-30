@@ -9,8 +9,7 @@ Once a device is running Everything Presence Pro Grid firmware and on your netwo
 3. Click **Update**. The device downloads the new firmware and flashes itself. Progress streams live to the panel.
 4. The device reboots automatically when done. The panel reports success or, on failure, an error reason and a Retry button.
 
-!!! example "Screenshot placeholder"
-    **Installed Devices list with an Update button and "Update needed" badge on one device.** `firmware/ota-available.png`
+![Installed Devices list with an Update button and "Update needed" badge on one device.](../images/firmware-upgrades/ota-available.png "Installed Devices list with an Update button and "Update needed" badge on one device.")
 
 !!! note
     The firmware also publishes an ESPHome `update` entity (display name **Firmware Update**), so pending updates appear on HA's standard Updates dashboard. Either place works to trigger the update — the panel gives richer progress and error reporting during the OTA.
