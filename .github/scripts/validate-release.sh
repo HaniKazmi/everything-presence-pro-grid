@@ -7,8 +7,14 @@
 # Invariants:
 #   (1) custom_components/eppgrid/manifest.json version == <tag-version>
 #   (2) custom_components/eppgrid/const.py FIRMWARE_VERSION ==
-#       firmware/common/everything-presence-pro-base.yaml version ==
-#       firmware/components/epp/epp_component.h FIRMWARE_VERSION_STR
+#       firmware/common/everything-presence-pro-base.yaml esphome.project.version
+#
+# The firmware C++ header (epp_component.h) derives FIRMWARE_VERSION_STR from
+# the ESPHOME_PROJECT_VERSION preprocessor macro, which ESPHome populates from
+# esphome.project.version at compile time. We don't compare a literal version
+# from the header, but we do re-assert the structural invariant ("header uses
+# the macro") below so a regression that bypasses the test suite still fails
+# at tag push.
 #
 # Note: firmware version does NOT have to equal the tag. Integration-only
 # releases have manifest=new, firmware=unchanged. The workflow decides
@@ -30,7 +36,7 @@ if [ "$TAG" != "$MANIFEST_VER" ]; then
   exit 1
 fi
 
-# Three-way firmware-version alignment.
+# Two-way firmware-version alignment.
 CONST_FW=$(python3 -c "
 import re
 text = open('custom_components/eppgrid/const.py').read()
@@ -53,21 +59,21 @@ if [ -z "$YAML_FW" ]; then
   exit 1
 fi
 
-HEADER_FW=$(python3 -c "
-import re
-text = open('firmware/components/epp/epp_component.h').read()
-m = re.search(r'FIRMWARE_VERSION_STR\s*=\s*\"([^\"]+)\"', text)
-print(m.group(1) if m else '')
-")
-if [ -z "$HEADER_FW" ]; then
-  echo "::error::Could not extract FIRMWARE_VERSION_STR from firmware/components/epp/epp_component.h" >&2
-  exit 1
-fi
-
-if [ "$CONST_FW" != "$YAML_FW" ] || [ "$CONST_FW" != "$HEADER_FW" ]; then
+if [ "$CONST_FW" != "$YAML_FW" ]; then
   echo "::error::Firmware versions disagree:" >&2
   echo "  const.py FIRMWARE_VERSION = $CONST_FW" >&2
   echo "  base.yaml version = $YAML_FW" >&2
-  echo "  epp_component.h FIRMWARE_VERSION_STR = $HEADER_FW" >&2
+  exit 1
+fi
+
+# Structural invariant: epp_component.h must derive FIRMWARE_VERSION_STR from
+# the ESPHOME_PROJECT_VERSION macro. The unit-test suite enforces this on PRs,
+# but this script is the only validation that runs on tag push, so re-check
+# here to catch a regression that bypassed the test suite (e.g. a tag pushed
+# at an older commit, or a direct push to main).
+HEADER_FILE="firmware/components/epp/epp_component.h"
+if ! grep -Eq 'FIRMWARE_VERSION_STR[[:space:]]*=[[:space:]]*ESPHOME_PROJECT_VERSION' "$HEADER_FILE"; then
+  echo "::error::epp_component.h must derive FIRMWARE_VERSION_STR from ESPHOME_PROJECT_VERSION;" >&2
+  echo "  hardcoded literals would ship mis-versioned firmware (see tests/test_firmware_version_alignment.py)." >&2
   exit 1
 fi

@@ -80,8 +80,13 @@ def _init_repo(tmp_path: Path, *, branch: str = "main", dirty: bool = False) -> 
         'substitutions:\n  project:\n    version: "0.92.0"\n'
     )
     (tmp_path / "firmware" / "components" / "epp").mkdir(parents=True)
+    # Header derives FIRMWARE_VERSION_STR from the ESPHOME_PROJECT_VERSION
+    # macro (post-refactor 572114d). The release script must not bump it.
     (tmp_path / "firmware" / "components" / "epp" / "epp_component.h").write_text(
-        '  static constexpr const char* FIRMWARE_VERSION_STR = "0.92.0";\n'
+        "#ifndef ESPHOME_PROJECT_VERSION\n"
+        '#define ESPHOME_PROJECT_VERSION "0.0.0-dev"\n'
+        "#endif\n"
+        "static constexpr const char* FIRMWARE_VERSION_STR = ESPHOME_PROJECT_VERSION;\n"
     )
     _git("add", ".", cwd=tmp_path)
     _git("commit", "-qm", "init", cwd=tmp_path)
@@ -166,10 +171,13 @@ def test_integration_only_release_bumps_manifest_only(tmp_path: Path):
     assert 'version: "0.92.0"' in base_yaml
 
     header = (tmp_path / "firmware" / "components" / "epp" / "epp_component.h").read_text()
-    assert 'FIRMWARE_VERSION_STR = "0.92.0"' in header
+    assert "FIRMWARE_VERSION_STR = ESPHOME_PROJECT_VERSION" in header
 
 
-def test_firmware_release_bumps_all_four_versions(tmp_path: Path):
+def test_firmware_release_bumps_three_versions(tmp_path: Path):
+    """Firmware-changing release bumps manifest.json, const.py, and base.yaml.
+    The C++ header uses ESPHOME_PROJECT_VERSION and follows base.yaml at
+    compile time, so the release script must leave it untouched."""
     _init_repo(tmp_path)
 
     # Simulate firmware code change since last tag by editing a firmware file
@@ -194,7 +202,82 @@ def test_firmware_release_bumps_all_four_versions(tmp_path: Path):
     assert 'version: "0.93.0"' in base_yaml
 
     header = (tmp_path / "firmware" / "components" / "epp" / "epp_component.h").read_text()
-    assert 'FIRMWARE_VERSION_STR = "0.93.0"' in header
+    assert "FIRMWARE_VERSION_STR = ESPHOME_PROJECT_VERSION" in header
+    assert "0.93.0" not in header, "release script must not bump the header literal"
+
+
+def test_succeeds_when_versions_already_at_target(tmp_path: Path):
+    """When versions are already bumped on main (e.g. in an earlier feature
+    commit) and there are firmware code changes since the last tag, the
+    release script must still succeed: create a chore: release marker commit
+    (possibly empty) so the tag points at a clear release commit.
+
+    This is the real-world "0.95.0 was bumped in a feature commit, now we want
+    to release" workflow.
+    """
+    _init_repo(tmp_path)  # versions at 0.92.0, tag v0.92.0
+
+    # Switch the header to macro form (so release.sh has nothing to bump there).
+    (tmp_path / "firmware" / "components" / "epp" / "epp_component.h").write_text(
+        "#ifndef ESPHOME_PROJECT_VERSION\n"
+        '#define ESPHOME_PROJECT_VERSION "0.0.0-dev"\n'
+        "#endif\n"
+        "static constexpr const char* FIRMWARE_VERSION_STR = ESPHOME_PROJECT_VERSION;\n"
+    )
+    # Pre-bump version files to 0.93.0 in a feature commit, alongside a fake
+    # firmware code change so FIRMWARE_CHANGED=true.
+    (tmp_path / "custom_components" / "eppgrid" / "manifest.json").write_text(
+        '{\n  "domain": "eppgrid",\n  "version": "0.93.0"\n}\n'
+    )
+    (tmp_path / "custom_components" / "eppgrid" / "const.py").write_text('FIRMWARE_VERSION = "0.93.0"\n')
+    (tmp_path / "firmware" / "common" / "everything-presence-pro-base.yaml").write_text(
+        'substitutions:\n  project:\n    version: "0.93.0"\n'
+    )
+    (tmp_path / "firmware" / "common" / "hardware.yaml").write_text("# fake firmware code change\n")
+    _git("add", ".", cwd=tmp_path)
+    _git("commit", "-qm", "feat: pre-bumped versions + firmware change", cwd=tmp_path)
+
+    result = _run(tmp_path, "0.93.0", "--no-push")
+    assert result.returncode == 0, result.stdout + result.stderr
+
+    # Release branch exists
+    branches = _git("branch", "--list", "release-v0.93.0", cwd=tmp_path, capture_output=True, text=True).stdout
+    assert "release-v0.93.0" in branches
+
+    # The release branch has a chore: release commit on top
+    _git("checkout", "-q", "release-v0.93.0", cwd=tmp_path)
+    last_msg = _git("log", "-1", "--format=%s", cwd=tmp_path, capture_output=True, text=True).stdout.strip()
+    assert "release v0.93.0" in last_msg, f"unexpected last commit message: {last_msg!r}"
+
+    # Versions still at 0.93.0 (no changes — the bump already happened)
+    manifest = (tmp_path / "custom_components" / "eppgrid" / "manifest.json").read_text()
+    assert '"version": "0.93.0"' in manifest
+
+
+def test_macro_form_header_is_left_unchanged(tmp_path: Path):
+    """The header derives FIRMWARE_VERSION_STR from ESPHOME_PROJECT_VERSION; the
+    release script must not try to rewrite the (no-longer-existing) literal."""
+    _init_repo(tmp_path)
+
+    # Replace the legacy literal-form header with the post-refactor macro form.
+    header = tmp_path / "firmware" / "components" / "epp" / "epp_component.h"
+    macro_header = (
+        "#ifndef ESPHOME_PROJECT_VERSION\n"
+        '#define ESPHOME_PROJECT_VERSION "0.0.0-dev"\n'
+        "#endif\n"
+        "static constexpr const char* FIRMWARE_VERSION_STR = ESPHOME_PROJECT_VERSION;\n"
+    )
+    header.write_text(macro_header)
+    # Add a fake firmware code change so FIRMWARE_CHANGED=true.
+    (tmp_path / "firmware" / "common" / "hardware.yaml").write_text("# fake firmware code change\n")
+    _git("add", ".", cwd=tmp_path)
+    _git("commit", "-qm", "refactor: switch header to macro + firmware change", cwd=tmp_path)
+
+    result = _run(tmp_path, "0.93.0", "--no-push")
+    assert result.returncode == 0, result.stdout + result.stderr
+
+    _git("checkout", "-q", "release-v0.93.0", cwd=tmp_path)
+    assert header.read_text() == macro_header, "release script must leave macro-form header untouched"
 
 
 def test_pushes_and_opens_pr(tmp_path: Path, monkeypatch):
