@@ -99,14 +99,16 @@ if [ "$FIRMWARE_CHANGED" = "true" ]; then
   rm -f firmware/common/everything-presence-pro-base.yaml.bak
   grep -q "^    version: \"$VERSION\"" firmware/common/everything-presence-pro-base.yaml
 
-  # Bump FIRMWARE_VERSION_STR in C++ header.
-  sed -i.bak "s/FIRMWARE_VERSION_STR = \".*\"/FIRMWARE_VERSION_STR = \"$VERSION\"/" firmware/components/epp/epp_component.h
-  rm -f firmware/components/epp/epp_component.h.bak
-  grep -q "FIRMWARE_VERSION_STR = \"$VERSION\"" firmware/components/epp/epp_component.h
+  # epp_component.h derives FIRMWARE_VERSION_STR from the ESPHOME_PROJECT_VERSION
+  # macro (ESPHome populates it from esphome.project.version at compile time),
+  # so there is no hardcoded version literal in the header to bump.
 fi
 
 git add -A
-git commit -qm "chore: release $TAG
+# --allow-empty supports the "version bumped in an earlier feature commit"
+# workflow: when manifest/const/yaml are already at $VERSION on main, the
+# release branch still gets a clear `chore: release v$VERSION` marker commit.
+git commit --allow-empty -qm "chore: release $TAG
 
 $(if [ "$FIRMWARE_CHANGED" = "true" ]; then echo "Firmware-changing release: bumped firmware versions to $VERSION."; else echo "Integration-only release: firmware version unchanged."; fi)"
 

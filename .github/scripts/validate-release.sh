@@ -7,8 +7,13 @@
 # Invariants:
 #   (1) custom_components/eppgrid/manifest.json version == <tag-version>
 #   (2) custom_components/eppgrid/const.py FIRMWARE_VERSION ==
-#       firmware/common/everything-presence-pro-base.yaml version ==
-#       firmware/components/epp/epp_component.h FIRMWARE_VERSION_STR
+#       firmware/common/everything-presence-pro-base.yaml esphome.project.version
+#
+# The firmware C++ header (epp_component.h) derives FIRMWARE_VERSION_STR from
+# the ESPHOME_PROJECT_VERSION preprocessor macro, which ESPHome populates from
+# esphome.project.version at compile time. There is no hardcoded version
+# literal to validate here; tests/test_firmware_version_alignment.py enforces
+# that the header keeps using the macro.
 #
 # Note: firmware version does NOT have to equal the tag. Integration-only
 # releases have manifest=new, firmware=unchanged. The workflow decides
@@ -30,7 +35,7 @@ if [ "$TAG" != "$MANIFEST_VER" ]; then
   exit 1
 fi
 
-# Three-way firmware-version alignment.
+# Two-way firmware-version alignment.
 CONST_FW=$(python3 -c "
 import re
 text = open('custom_components/eppgrid/const.py').read()
@@ -53,21 +58,9 @@ if [ -z "$YAML_FW" ]; then
   exit 1
 fi
 
-HEADER_FW=$(python3 -c "
-import re
-text = open('firmware/components/epp/epp_component.h').read()
-m = re.search(r'FIRMWARE_VERSION_STR\s*=\s*\"([^\"]+)\"', text)
-print(m.group(1) if m else '')
-")
-if [ -z "$HEADER_FW" ]; then
-  echo "::error::Could not extract FIRMWARE_VERSION_STR from firmware/components/epp/epp_component.h" >&2
-  exit 1
-fi
-
-if [ "$CONST_FW" != "$YAML_FW" ] || [ "$CONST_FW" != "$HEADER_FW" ]; then
+if [ "$CONST_FW" != "$YAML_FW" ]; then
   echo "::error::Firmware versions disagree:" >&2
   echo "  const.py FIRMWARE_VERSION = $CONST_FW" >&2
   echo "  base.yaml version = $YAML_FW" >&2
-  echo "  epp_component.h FIRMWARE_VERSION_STR = $HEADER_FW" >&2
   exit 1
 fi
