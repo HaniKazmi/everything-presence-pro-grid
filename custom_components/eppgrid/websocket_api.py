@@ -1422,10 +1422,19 @@ async def websocket_subscribe_ota_progress(
         text = text.rstrip()
         if not text:
             return
-        # Only match actual OTA/update errors, not status clears
-        if "cleared Error flag" in text or "set Error flag" in text:
+        # Drop noise: recovery transitions and the vague unspecified flag.
+        # Other `set Error flag: <message>` lines carry an actionable suffix
+        # (e.g. "Failed to install firmware") and pass through to the user.
+        if "cleared Error flag" in text:
             return
-        if "http_request.ota" not in text and "http_request.update" not in text:
+        if "set Error flag: unspecified" in text:
+            return
+        # Match any OTA-relevant component tag — `.ota` and `.update` are the
+        # ESPHome OTA components, `.idf` is the underlying ESP-IDF HTTP
+        # client (where ESP_ERR_HTTP_CONNECT etc. surface). Also catches
+        # `[E][component:...]: http_request.update set Error flag: ...`
+        # because the body mentions the qualified component name.
+        if not any(tag in text for tag in ("http_request.ota", "http_request.update", "http_request.idf")):
             return
         done = True
         # Extract message after the ESPHome component tag
