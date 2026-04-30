@@ -1,7 +1,7 @@
 esphome:
   project:
     name: EverythingSmartTechnology.Everything Presence Pro
-    version: "0.95.0"
+    version: "0.96.0"
   on_boot:
     - priority: 200
       then:
@@ -591,19 +591,22 @@ sensor:
     temperature:
       name: Temperature
       id: temperature_sensor
+      disabled_by_default: true
       filters:
         - lambda: "return x + id(env_temp_offset);"
     humidity:
       name: Humidity
       id: humidity_sensor
+      disabled_by_default: true
       filters:
         - lambda: "return x + id(env_humidity_offset);"
     address: 0x70
     update_interval: 30s
-  
+
   - platform: bh1750
     name: Illuminance
     id: illuminance_sensor
+    disabled_by_default: true
     i2c_id: bus_a
     address: 0x23
     update_interval: 2s
