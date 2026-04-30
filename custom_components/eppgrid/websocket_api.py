@@ -30,6 +30,11 @@ _REGISTERED: set[str] = set()
 
 _TIMING_FIELDS = ("trigger", "renew", "timeout", "handoff_timeout")
 
+# Wire-level vocabulary for the firmware's `epp_set_log_level` action — must
+# match the string-comparison branches in firmware/common/everything-presence-pro-base.yaml.
+_OTA_LOG_CATEGORY = "system"
+_OTA_LOG_LEVEL = "Error"
+
 
 def _validate_zone_slots(value: Any) -> list:
     """Validate the shape of a `zone_slots` list coming from the frontend.
@@ -1359,7 +1364,7 @@ async def websocket_subscribe_ota_progress(
     log_svc = device_conn._services.get("epp_set_log_level")
     if log_svc is not None:
         try:
-            await device_conn._client.execute_service(log_svc, {"category": "system", "level": "Error"})
+            await device_conn._client.execute_service(log_svc, {"category": _OTA_LOG_CATEGORY, "level": _OTA_LOG_LEVEL})
         except Exception:
             _LOGGER.debug("Failed to bump device log level for OTA visibility", exc_info=True)
 
