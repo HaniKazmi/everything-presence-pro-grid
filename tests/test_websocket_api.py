@@ -58,6 +58,12 @@ async def setup_integration(hass: HomeAssistant, config_entry: MockConfigEntry) 
         mock_dm._push_config_to_device = AsyncMock()
         mock_dm._push_pipeline_to_device = AsyncMock()
         mock_dm._entity_update_macs = set()
+        # Mirror the real method's behavioral effect (add mac to the guard set)
+        # so tests that assert on _entity_update_macs still hold. The cancel /
+        # stop semantics are covered directly by test_device_manager.py.
+        mock_dm._schedule_entity_update_clear = MagicMock(
+            side_effect=lambda mac, *args, **kwargs: mock_dm._entity_update_macs.add(mac)
+        )
         mock_dm.async_update_zone_entities = AsyncMock()
         mock_dm.async_open_session = AsyncMock(return_value=None)
         mock_dm.async_close_session = AsyncMock()

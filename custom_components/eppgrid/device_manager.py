@@ -23,6 +23,7 @@ from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import area_registry as ar
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers import entity_registry as er
+from homeassistant.helpers.event import async_call_later
 
 from .const import DEFAULT_PORT
 from .const import DOMAIN
@@ -503,6 +504,11 @@ class DeviceManager:
         self._unsub_listeners: list[Any] = []
         self._pushing: set[str] = set()
         self._entity_update_macs: set[str] = set()
+        # Cancel callables for the 60s "clear from _entity_update_macs" timers
+        # scheduled by _schedule_entity_update_clear, keyed by mac. Tracked so
+        # async_stop can cancel any in-flight handles instead of leaking them
+        # past the config entry's lifetime.
+        self._entity_update_clear_cancels: dict[str, Any] = {}
         self._build_flags: dict[str, dict[str, Any]] = {}
         # One connection per device, kept alive for the frontend session
         self._active_connections: dict[str, DeviceConnection] = {}
@@ -563,6 +569,31 @@ class DeviceManager:
                 self._pushing.add(mac)
                 self._hass.async_create_task(self._on_device_available(mac))
 
+    @callback
+    def _schedule_entity_update_clear(self, mac: str, delay: float = 60.0) -> None:
+        """Flag mac as having a pending entity-registry-update reload, then
+        clear that flag after `delay` seconds.
+
+        The flag suppresses our reaction to the entity-registry events that
+        ESPHome fires when it re-discovers entities post-config-push. Any
+        prior pending timer for the same mac is cancelled — re-scheduling
+        replaces, never stacks. The cancel callable is tracked so async_stop
+        can drop in-flight timers cleanly (HA 2026.4+ pytest fails the test
+        if a timer outlives the config entry).
+        """
+        if (cancel := self._entity_update_clear_cancels.pop(mac, None)) is not None:
+            cancel()
+        self._entity_update_macs.add(mac)
+        self._entity_update_clear_cancels[mac] = async_call_later(
+            self._hass, delay, lambda _now: self._clear_entity_update(mac)
+        )
+
+    @callback
+    def _clear_entity_update(self, mac: str) -> None:
+        """Timer fire-callback: drop the entity-update flag and the cancel handle."""
+        self._entity_update_macs.discard(mac)
+        self._entity_update_clear_cancels.pop(mac, None)
+
     async def async_stop(self) -> None:
         """Stop listeners and close all connections."""
         for unsub in self._unsub_listeners:
@@ -571,6 +602,9 @@ class DeviceManager:
         for unsub in self._entry_update_unsubs.values():
             unsub()
         self._entry_update_unsubs.clear()
+        for cancel in self._entity_update_clear_cancels.values():
+            cancel()
+        self._entity_update_clear_cancels.clear()
         for conn in self._active_connections.values():
             await conn.async_disconnect()
         self._active_connections.clear()
