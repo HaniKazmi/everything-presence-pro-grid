@@ -1,11 +1,11 @@
 # Flashing firmware
 
-This page covers flashing Everything Presence Pro Grid firmware onto your device for the first time. Once flashed, future updates happen over the air — see [Firmware upgrades](firmware-upgrades.md).
+The first flash of Everything Presence Pro Grid firmware happens over USB from your browser. Once flashed, future updates happen over the air — see [Firmware upgrades](firmware-upgrades.md).
 
 ## Prerequisites
 
 - **Chrome or Edge browser.** Flashing uses the Web Serial API, which only works in Chromium-based browsers.
-- **A data USB cable.** Charge-only cables won't work — the browser will show no ports.
+- **A data USB cable.** Charge-only cables show no ports in the browser picker.
 - **The device plugged into the same computer** as the Chrome/Edge browser.
 
 ## Flashing
@@ -58,8 +58,8 @@ To change Wi-Fi credentials on an already-flashed device without a full re-flash
 | --- | --- | --- |
 | Browser port picker shows no devices | Charge-only USB cable | Swap for a data cable. |
 | Device flashed but doesn't appear in HA | ESPHome hasn't discovered it yet | Add ESPHome manually with the device's hostname or IP, per the steps above. |
-| Device is on ESPHome but not showing in the Grid panel | Device running the original firmware, not Grid firmware | Check for a **Firmware Version** sensor on the ESPHome device page. If missing, re-flash. |
+| Device is on ESPHome but not showing in the Everything Presence Pro Grid panel | Device is still running the original firmware | Check for a **Firmware Version** sensor on the ESPHome device page. If missing, re-flash. |
 
 ## Where to next
 
-- **[Placement →](placement.md)** — mount the device where the sensors can do their job.
+- **[Placement →](placement.md)** — mount the device so the sensors can see the room.

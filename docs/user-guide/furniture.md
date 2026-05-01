@@ -1,17 +1,11 @@
 # Furniture
 
-Furniture is a purely visual layer. You place icons for sofas, beds, tables, and appliances on the grid so the live overview is immediately interpretable. Unlike zones and overlays, furniture **does not affect detection** at all; it's decoration that helps you and future you reason about what the sensor is seeing.
+Furniture is a purely visual layer. You place icons for sofas, beds, tables, and appliances on the grid so the live overview is easy to read. Furniture **does not affect detection** in any way; it's decoration.
 
-## Why place furniture
-
-Without furniture, the live overview is a coloured grid with dots moving on it. You can read it, but it takes effort. Adding furniture turns the grid into something that looks like your actual room:
-
-- Real-time targets make intuitive sense ("that's someone walking past the dining table").
-- Ghost detections become explainable ("that's always the ceiling fan over the reading chair").
-- When you come back to tune zones six months from now, you still know what each cell represents.
+Adding furniture turns the live overview into something that looks like your actual room. Real-time targets make intuitive sense ("that's someone walking past the dining table"), ghost detections become explainable ("that's always the ceiling fan over the reading chair"), and when you come back to tune zones six months from now, you still know what each cell represents.
 
 !!! note
-    Furniture has no effect on detection. Only the **Detection zones** editor (room boundary + named zones) and the **Overlays** editor (Entry/Exit, Interference, Suppress) change how the zone engine behaves. Anything you do in the Furniture editor is cosmetic.
+    Only the **Detection zones** editor (room boundary and named zones) and the **Overlays** editor (Entry/Exit, Interference, Suppress) change how the zone engine behaves. Anything you do in the Furniture editor is cosmetic.
 
 ## Adding furniture
 
@@ -24,15 +18,15 @@ Without furniture, the live overview is a coloured grid with dots moving on it. 
 
 ## Moving, resizing, rotating
 
-Select a furniture item on the grid by clicking it. Handles appear for every operation:
+Click a furniture item on the grid to select it. Handles appear for every operation:
 
-- **Move** — click and drag anywhere inside the item.
-- **Resize** — drag one of the eight resize handles: four corners, four edges (cardinal directions). The defaults match typical real-world dimensions, but real rooms are full of non-standard furniture — resize to match what you actually have.
-- **Rotate** — drag the circular handle on the rotation stem that extends above the item.
-- **Delete** — click the red **×** button at the top right of the selected item.
+- **Move:** click and drag anywhere inside the item.
+- **Resize:** drag one of the eight resize handles (four corners, four edges). The defaults match typical real-world dimensions; resize to match the actual furniture in your room.
+- **Rotate:** drag the circular handle on the rotation stem that extends above the item.
+- **Delete:** click the red **×** button at the top right of the selected item.
 
 !!! tip
-    Use the door stickers (`door-left-swing`, `door-right-swing`, `sliding-door`) exactly where you've drawn Entry/Exit [overlays](overlays.md). It gives future-you a visible reminder of why those overlays are there — otherwise the hatched overlay cells look arbitrary.
+    Place the door stickers (`door-left-swing`, `door-right-swing`, `sliding-door`) exactly where you've drawn Entry/Exit [overlays](overlays.md). The doorway icons make it easy to see why the hatched overlay cells are there.
 
 !!! example "Screenshot placeholder"
     **Grid with a dressed room — bed, dining table and chairs, sofa, doors marked at entry points.** `furniture/dressed-room.png`
@@ -47,11 +41,11 @@ When a furniture item is selected, the following keyboard shortcuts are enabled:
 | **Escape** | Deselect |
 | **Ctrl/Cmd + C** | Copy |
 | **Ctrl/Cmd + X** | Cut |
-| **Ctrl/Cmd + V** | Paste — the new item lands one cell offset from the original so you can see it |
+| **Ctrl/Cmd + V** | Paste. The new item lands one cell offset from the original so you can see it |
 
 ## Custom icons
 
-If none of the presets match what you want to represent, pick the **+** custom-icon slot at the end of the sticker list. It opens Home Assistant's built-in icon picker, which lets you choose any icon from the standard Material Design Icons set (`mdi:*`) bundled with HA. Once added, the item behaves like any other piece of furniture: placed, moved, resized, rotated, deleted.
+If none of the presets match what you want to represent, pick the **+** custom-icon slot at the end of the sticker list. It opens Home Assistant's built-in icon picker, which lets you choose any icon from the standard Material Design Icons set (`mdi:*`) bundled with HA. Once added, a custom icon behaves like any other piece of furniture.
 
 ## Troubleshooting
 

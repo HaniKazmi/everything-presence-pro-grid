@@ -1,6 +1,6 @@
 # Troubleshooting
 
-Each feature page in this user guide ends with a Troubleshooting table that covers the symptoms specific to that area. If you've worked through the relevant one and the problem isn't there, the next step is to open a GitHub issue.
+Each feature page in this user guide ends with a Troubleshooting table covering symptoms specific to that area. If you've worked through the relevant one and the problem isn't there, open a GitHub issue.
 
 ## Collect diagnostics
 
@@ -14,7 +14,7 @@ If the bug is something the integration itself logs about (errors in HA system l
 - **In the panel**, raise the relevant firmware component to **Debug** under [Settings → Logging](settings/logging.md).
 - **In Home Assistant**, enable integration logging at **Settings → Devices & services → Everything Presence Pro Grid → ⋮ → Enable debug logging**.
 - Reproduce the bug.
-- Click **Disable debug logging** on the integration page. Home Assistant writes the captured logs to a downloadable file — attach it to the issue alongside the diagnostics JSON.
+- Click **Disable debug logging** on the integration page. Home Assistant writes the captured logs to a downloadable file; attach it to the issue alongside the diagnostics JSON.
 
 For the full walkthrough, see [Settings → Logging → Reading the logs](settings/logging.md#reading-the-logs).
 

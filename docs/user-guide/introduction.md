@@ -1,6 +1,6 @@
 # Introduction
 
-Everything Presence Pro Grid is a custom Home Assistant integration for the Everything Presence Pro mmWave radar sensor. It runs smoothed target tracking and zone detection processing on the device, and provides a panel for configuration, calibration, live overview, and firmware flashing.
+Everything Presence Pro Grid is a Home Assistant integration for the Everything Presence Pro mmWave radar sensor. It ships with custom firmware that runs all the detection work — target smoothing, zone tracking, presence logic — on the device itself. The integration provides a Home Assistant panel for configuration, calibration, live overview, and firmware flashing, built around a calibrated grid that matches the real geometry of your room.
 
 For setup, see [Hardware](hardware.md), [Placement](placement.md), and [Installation](installation.md).
 
@@ -8,51 +8,47 @@ For setup, see [Hardware](hardware.md), [Placement](placement.md), and [Installa
 
 ## What is the Everything Presence Pro?
 
-The [Everything Presence Pro](https://shop.everythingsmart.io/products/everything-presence-pro) (EPP) is a presence sensor produced by [Everything Smart Technology](https://shop.everythingsmart.io/). Where a motion sensor only detects movement, a presence sensor uses low-powered mmWave radar to detect human presence even when the person is still.
+The [Everything Presence Pro](https://shop.everythingsmart.io/products/everything-presence-pro) (EPP) is a presence sensor from [Everything Smart Technology](https://shop.everythingsmart.io/). Its low-powered mmWave radar gives it two big advantages over a regular motion sensor: it can detect people who are sitting or lying still, and it tracks them as they move around the room — which is what makes zone-based automations possible.
 
-The EPP combines three sensors for the best of all worlds:
+The EPP contains three main sensors:
 
-- **PIR (passive infrared) motion sensor.** Low latency — useful for triggering main lights the moment someone enters.
-- **Target tracking radar (LD2450).** Tracks up to three targets in the room. Lets automations react to targets entering or leaving specific zones (turning on the extractor fan when someone uses the toilet, towel rail when someone showers).
-- **Static presence radar (DFRobot).** Detects ongoing presence through subtle movement like breathing, even when targets aren't moving. Lets automations safely turn lights off when the room is actually empty.
+- **PIR (passive infrared) motion sensor.** Reacts the instant someone enters the room — ideal for triggering main lights.
+- **Target tracking radar (LD2450).** Follows up to three people moving around the room, so automations can react to them entering or leaving specific zones — turning on the extractor fan when someone uses the toilet, the towel rail when someone showers.
+- **Static presence radar (DFRobot).** Picks up subtle movement like breathing, so a room stays marked occupied while someone is sitting still. Lets automations turn lights off only when the room is genuinely empty.
 
 ## Problems with the original firmware
 
-The original firmware sends raw sensor data to Home Assistant. That leaves a few gaps:
+The original firmware does basic "in zone or not" detection on the device and forwards raw target data to Home Assistant. That leaves a few gaps:
 
-- **Noise.** Target (X,Y) coordinates are passed through unsmoothed. The radar is jittery and that noise produces unreliable zone transitions.
-- **Distortion.** The default radar view is a polar projection — straight walls don't appear straight, which makes mapping a room difficult.
-- **Limited zones.** Four detection zones plus two exclusion zones, all rectangular and aligned with the sensor — but real-world rectangles aren't rectangles in the radar view.
-- **Coarse settings.** A target is either inside a zone or not. There's no notion of where it came from (entered through the doorway vs appeared mid-room), how long it's been there, or how long since last movement — a problem when people sleep still.
-- **Resolution mismatch.** The configurator draws at 5 cm precision but the LD2450 resolves at ~36 cm. The detail in the UI overstates what the sensor actually sees.
-- **Chattiness.** Each device streams a high volume of coordinate updates that Home Assistant mostly discards. With 10–15 sensors, that adds up.
+- **Noise.** Target coordinates aren't smoothed. The radar is jittery, and that jitter produces unreliable zone transitions.
+- **Distortion.** The radar's native view is distorted, so straight walls don't appear straight. That makes laying out a room tricky.
+- **Limited zones.** Only four detection zones and two exclusion zones, all rectangular and aligned with the sensor. Combined with the distortion above, a real rectangular zone isn't rectangular when drawn against the radar's coordinates.
+- **Coarse settings.** A target is either in a zone or it isn't. There's no way to express where it came from (the doorway vs. mid-room), how long it's been there, or how long since it last moved — which matters when someone is asleep.
+- **Resolution mismatch.** The configurator draws at 5 cm precision but the LD2450 actually resolves at about 36 cm. The detail in the UI overstates what the sensor sees.
+- **Chattiness.** Every device streams high volumes of coordinate updates that Home Assistant mostly discards. With 10–15 sensors that adds up.
 
 ## What this integration does differently
 
-- **Perspective-corrected grid.** A four-corner calibration wizard maps the sensor view onto your room. Walls are straight; zones line up with real-world geometry. Cells are 30 cm × 30 cm (1 ft × 1 ft).
-- **Seven painted zones**, plus an eighth "Rest of room" fallback. Polygonal, can be discontinuous, drawn by clicking grid cells.
-- **Zone types** — `Default`, `Bed`, `Seating`, `Transit` — preset sensitivity and hysteresis (stickiness) for the zone's purpose. `Custom` exposes the underlying parameters.
-- **Cross-zone target tracking.** Targets are followed as they move between zones, allowing quick transitions from one zone to another.
-- **Overlays** for refining detection — mark doorways (Entry/Exit) and noise sources (Interference/Suppress).
-- **Furniture layout.** Drop furniture stickers on the grid so the live overview is readable. Visual only; doesn't affect detection.
-- **On-chip processing.** Home Assistant gets a single `Occupancy` binary sensor plus per-zone presence sensors, instead of a stream of target coordinates.
-- **Rolling-median smoothing** of target positions, so brief radar jitter doesn't trigger ghost detections.
-- **Quiet updates.** Only the necessary information goes across the network.
-- **Built-in flasher** for installing and updating firmware from the panel.
+- **Perspective-corrected grid.** A four-corner calibration wizard maps the radar view onto your actual room. Walls are straight, and zones line up with real-world geometry. Cells are 30 cm × 30 cm (1 ft × 1 ft).
+- **Seven painted zones**, plus an eighth "Rest of room" fallback. Zones are polygonal, can be discontinuous, and are drawn by clicking grid cells.
+- **Zone types** — `Default`, `Bed`, `Seating`, `Transit` — bundle sensible thresholds and timeouts for each kind of area, so a bed zone can hold presence for minutes while a hallway zone clears in seconds. `Custom` exposes the underlying parameters.
+- **Cross-zone target tracking.** Targets are followed as they move from one zone to another, so the handoff between zones is clean.
+- **Overlays** for refining detection. Mark doorways with Entry/Exit overlays, and noise sources with Interference or Suppress overlays.
+- **Furniture layout.** Drop furniture stickers on the grid so the live overview is easy to read. Visual only — they don't affect detection.
+- **On-chip processing.** Home Assistant gets a single `Occupancy` binary sensor plus per-zone presence sensors, instead of a constant stream of target coordinates.
+- **Smoothed positions.** Brief radar jitter is filtered out before it reaches the zone engine, so zones don't flap when a target is near a boundary.
+- **Quiet network.** Only what Home Assistant needs goes across the wire.
+- **Built-in flasher.** Install and update firmware from the panel.
 
 ![Calibration wizard capturing the four corners of a room.](../images/introduction/calibration-wizard.png "Calibration wizard capturing the four corners of a room.")
 
 ## What you'll typically use in automations
 
-Most rooms only need:
-
-- `binary_sensor.<device>_occupancy` — anyone in the room. Combines the motion sensor, the static presence sensor, and the target tracking sensor into a single presence signal.
-- `binary_sensor.<device>_zone_<N>_presence` — one per named zone.
-- The environmental sensors (illuminance, temperature, humidity, CO2 if enabled).
+Most rooms only need a handful of entities. The **Occupancy** binary sensor (`binary_sensor.<device>_occupancy`) combines the motion, static-presence, and target-tracking signals into a single "anyone in the room" entity. For zone-specific actions, each named zone has its own **Zone Presence** entity (`binary_sensor.<device>_zone_<N>_presence`).
 
 ![Sensors enabled by default.](../images/introduction/default-entities.png "Sensors enabled by default.")
 
-These sensors are all you need to write sophisticated presence-tracking automations. See [Automations](automations.md) for worked examples.
+These sensors are enough to build quite sophisticated automations. See [Automations](automations.md) for worked examples.
 
 ## Where to next
 
