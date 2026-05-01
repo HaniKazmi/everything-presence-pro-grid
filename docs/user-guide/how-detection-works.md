@@ -119,6 +119,18 @@ Use **Occupancy** in automations when you just want "is anyone in the room". Eve
 
 The motion and static sensors have their own short pending state so a brief PIR dropout doesn't flap Occupancy off and back on.
 
+## The mmWave Presence entity
+
+A second combined binary sensor, **mmWave Presence**, follows the same recipe as Occupancy with the PIR left out:
+
+```mermaid
+flowchart LR
+    A[Any zone<br/>currently Occupied] --> O((mmWave Presence<br/>= on))
+    C[Static sensor<br/>Active or pending] --> O
+```
+
+Use it when PIR triggers from pets, radiators, or other heat sources are a problem and you want a presence signal that reflects only radar evidence. Disabled by default; enable it under Settings → Entities.
+
 ## Sensor-assisted clear
 
 The Bed zone holds *pending* for ten minutes. That's deliberate, since someone asleep in bed can drop off the radar for whole minutes at a time. The downside is that a stale *pending* state can keep an Occupancy entity `on` long after the room is actually empty.

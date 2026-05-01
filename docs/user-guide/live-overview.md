@@ -31,11 +31,12 @@ The right-hand side bar shows live data straight from the sensor. Not every read
 ### Presence sensors
 
 - **Occupancy** (`binary_sensor.<device>_occupancy`) — the combined signal from the motion sensor and both presence sensors, and the one you'll usually use for automations.
+- **mmWave Presence** (`binary_sensor.<device>_mmwave_presence`) — radar-only presence. Combines the static-presence sensor and the LD2450 zone activity, ignoring the PIR. Useful when you want a presence signal that pets or radiators won't trigger.
 - **Motion Presence** (`binary_sensor.<device>_motion`) — the PIR (passive infrared) sensor.
 - **Static Presence** (`binary_sensor.<device>_static_presence`) — the SEN0609 static-presence radar.
 - **Target Presence** (`binary_sensor.<device>_target_presence`) — `on` whenever the LD2450 is tracking at least one target.
 
-Only **Occupancy** is enabled by default. The other three are useful for debugging or for automations that need a specific source as a separate trigger. Enable them under [Settings → Entities](settings/entities.md) if you want them.
+Only **Occupancy** is enabled by default. The other four are useful for debugging or for automations that need a specific source as a separate trigger. Enable them under [Settings → Entities](settings/entities.md) if you want them.
 
 ### Zone occupancy
 

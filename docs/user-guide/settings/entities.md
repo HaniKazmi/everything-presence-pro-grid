@@ -13,6 +13,7 @@ Room-wide presence and target counts. These are the entities you'll most often a
 | Entity | Default | What it reports |
 | --- | --- | --- |
 | **Occupancy** (`binary_sensor.<device>_occupancy`) | On | Combined room presence. Flips on when any of the zone, motion, or static signals report "someone here". Use this for "is anyone in the room". See [How detection works](../how-detection-works.md#the-occupancy-entity). |
+| **mmWave Presence** (`binary_sensor.<device>_mmwave_presence`) | Off | Radar-only presence. Combines the static-presence sensor and zone activity from the LD2450, with the PIR ignored. Useful when you want a presence signal that pets, radiators, or other heat sources can't trigger. |
 | **Static presence** (`binary_sensor.<device>_static_presence`) | Off | Raw output of the SEN0609 mmWave static-presence radar, with its own pending state applied. Useful for debugging or for automations that should only react to genuine stillness. |
 | **Motion presence** (`binary_sensor.<device>_motion_presence`) | Off | Raw output of the PIR motion sensor, with its own pending state applied. Useful for low-latency triggers like entry detection or security automations. |
 | **Target presence** (`binary_sensor.<device>_target_presence`) | Off | True whenever the LD2450 is actively tracking at least one target. Independent of any zone. |
