@@ -62,6 +62,7 @@ export interface ZoneEngineResult {
 	staticState: "active" | "pending" | "inactive";
 	motionState: "active" | "pending" | "inactive";
 	sensorOccupancy: boolean;
+	mmwave: boolean;
 }
 
 // ---- Factory ----
@@ -508,6 +509,18 @@ export function runLocalZoneEngine(
 		state.motionState !== "inactive" ||
 		Object.values(occupancy).some((v) => v);
 
+	// mmwave: combines static presence + target tracker, ignores motion (PIR).
+	// On when static is active/pending OR any zone is OCCUPIED (not PENDING_CLEAR).
+	let mmwave = state.staticState !== "inactive";
+	if (!mmwave) {
+		for (const [, st] of state.localZoneState) {
+			if (st.occupied && st.pendingSince === null) {
+				mmwave = true;
+				break;
+			}
+		}
+	}
+
 	// Build per-target status (mirrors backend _tick lines 661-700).
 	// Only status is needed — position for pending display is handled
 	// by targetPrevXY in the rendering layer.
@@ -541,5 +554,6 @@ export function runLocalZoneEngine(
 		staticState: state.staticState,
 		motionState: state.motionState,
 		sensorOccupancy,
+		mmwave,
 	};
 }

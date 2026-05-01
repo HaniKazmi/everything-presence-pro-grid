@@ -644,6 +644,11 @@ export class EppSettingsView extends LitElement {
             ${this.infoTip(this.localize("info.room_target_presence"))}
           </div>
           <div class="setting-row">
+            <label>${this.localize("entities.mmwave")}</label>
+            <label class="toggle-switch"><input type="checkbox" @change=${entityToggleHandler} data-entity-key="room_mmwave" .checked=${isOn("room_mmwave", false)} /><span class="toggle-slider"></span></label>
+            ${this.infoTip(this.localize("info.room_mmwave"))}
+          </div>
+          <div class="setting-row">
             <label>${this.localize("entities.target_count")}</label>
             <label class="toggle-switch"><input type="checkbox" @change=${entityToggleHandler} data-entity-key="target_count" .checked=${isOn("target_count", false)} /><span class="toggle-slider"></span></label>
             ${this.infoTip(this.localize("info.room_target_count"))}

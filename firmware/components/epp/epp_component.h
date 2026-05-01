@@ -81,6 +81,9 @@ class EPPComponent : public esphome::Component {
   void set_occupancy_output(esphome::binary_sensor::BinarySensor *sensor) {
     occupancy_output_ = sensor;
   }
+  void set_mmwave_output(esphome::binary_sensor::BinarySensor *sensor) {
+    mmwave_output_ = sensor;
+  }
   void set_static_timeout(float timeout) { static_timeout_ = timeout; }
   void set_motion_timeout(float timeout) { motion_timeout_ = timeout; }
 
@@ -168,6 +171,7 @@ class EPPComponent : public esphome::Component {
   esphome::binary_sensor::BinarySensor *static_presence_output_{nullptr};
   esphome::binary_sensor::BinarySensor *motion_presence_output_{nullptr};
   esphome::binary_sensor::BinarySensor *occupancy_output_{nullptr};
+  esphome::binary_sensor::BinarySensor *mmwave_output_{nullptr};
 
   // Structured target entity sensors (per-target x, y, signal, active, zone)
   esphome::sensor::Sensor *target_x_sensors_[NUM_TARGETS]{};

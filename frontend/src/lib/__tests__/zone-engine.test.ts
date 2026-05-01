@@ -723,6 +723,111 @@ describe("runLocalZoneEngine", () => {
 		expect(result4.occupancy[0]).toBe(false);
 	});
 
+	it("mmwave: false with no input", () => {
+		const now = Date.now() / 1000;
+		const r = runLocalZoneEngine(
+			state,
+			makeDefaultParams({ targets: [], now }),
+		);
+		expect(r.mmwave).toBe(false);
+	});
+
+	it("mmwave: true when static presence active", () => {
+		const now = Date.now() / 1000;
+		const r = runLocalZoneEngine(
+			state,
+			makeDefaultParams({
+				targets: [],
+				staticPresence: true,
+				staticTimeout: 5,
+				now,
+			}),
+		);
+		expect(r.mmwave).toBe(true);
+	});
+
+	it("mmwave: true while static presence pending", () => {
+		const now = Date.now() / 1000;
+		runLocalZoneEngine(
+			state,
+			makeDefaultParams({
+				targets: [],
+				staticPresence: true,
+				staticTimeout: 5,
+				now,
+			}),
+		);
+		const r = runLocalZoneEngine(
+			state,
+			makeDefaultParams({
+				targets: [],
+				staticPresence: false,
+				staticTimeout: 5,
+				now: now + 1,
+			}),
+		);
+		expect(r.mmwave).toBe(true);
+	});
+
+	it("mmwave: ignores motion-only presence", () => {
+		const now = Date.now() / 1000;
+		const r = runLocalZoneEngine(
+			state,
+			makeDefaultParams({
+				targets: [],
+				motionPresence: true,
+				motionTimeout: 5,
+				now,
+			}),
+		);
+		// motion alone must not turn mmwave on
+		expect(r.mmwave).toBe(false);
+	});
+
+	it("mmwave: true when zone OCCUPIED with all sensors off", () => {
+		const now = Date.now() / 1000;
+		const grid = makeParityGrid();
+		grid[29] = cellSetOverlay(grid[29], CELL_OVERLAY_ENTRY);
+		const params = makeDefaultParams({
+			targets: [makeTarget(450, 450, 3)],
+			now,
+		});
+		params.grid = grid;
+		const r = runLocalZoneEngine(state, params);
+		expect(r.occupancy[1]).toBe(true);
+		expect(r.mmwave).toBe(true);
+	});
+
+	it("mmwave: off when static inactive and tracker pending (zone PENDING_CLEAR)", () => {
+		const now = Date.now() / 1000;
+		const grid = makeParityGrid();
+		grid[29] = cellSetOverlay(grid[29], CELL_OVERLAY_ENTRY);
+
+		// Confirm zone 1 with motion held on so force-clear cannot fire later.
+		const p1 = makeDefaultParams({
+			targets: [makeTarget(450, 450, 3)],
+			motionPresence: true,
+			motionTimeout: 100,
+			now,
+		});
+		p1.grid = grid;
+		runLocalZoneEngine(state, p1);
+
+		// Target gone, motion still on → zone goes PENDING_CLEAR but stays
+		// occupied (force-clear blocked by motion); static was never on.
+		const p2 = makeDefaultParams({
+			targets: [makeNullTarget()],
+			motionPresence: true,
+			motionTimeout: 100,
+			now: now + 1,
+		});
+		p2.grid = grid;
+		const r = runLocalZoneEngine(state, p2);
+		expect(r.occupancy[1]).toBe(true); // tracker still on (pending)
+		expect(r.staticState).toBe("inactive");
+		expect(r.mmwave).toBe(false); // static off + tracker pending → off
+	});
+
 	it("occupancy result: true when sensor active/pending, false when all inactive", () => {
 		const now = Date.now() / 1000;
 		const r1 = runLocalZoneEngine(

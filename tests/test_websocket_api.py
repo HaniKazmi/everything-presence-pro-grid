@@ -1708,6 +1708,7 @@ class TestEntityMapping:
         assert _entity_key_for_object_id("static_presence") == "room_static_presence"
         assert _entity_key_for_object_id("motion_presence") == "room_motion_presence"
         assert _entity_key_for_object_id("target_presence") == "room_target_presence"
+        assert _entity_key_for_object_id("mmwave_presence") == "room_mmwave"
 
     def test_entity_key_mapping_env_sensors(self) -> None:
         """Environmental sensors map to their correct keys."""
@@ -2693,6 +2694,7 @@ class TestSubscriptionCallbacks:
                     {"signal": 0, "status": "inactive"},
                 ],
                 "zones": {"occupancy": [True, False, False], "tracking": True},
+                "mmwave": True,
                 "frame_count": 42,
                 "debug_log": "test debug",
             }
@@ -2706,6 +2708,7 @@ class TestSubscriptionCallbacks:
         event = connection.send_message.call_args[0][0]
         assert event["event"]["zones"]["debug_log"] == "test debug"
         assert event["event"]["sensors"]["target_presence"] is True
+        assert event["event"]["sensors"]["mmwave"] is True
 
     async def test_grid_targets_on_state_binary_sensor(
         self, hass: HomeAssistant, config_entry: MockConfigEntry

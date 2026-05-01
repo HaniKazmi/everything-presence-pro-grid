@@ -12,6 +12,7 @@ export interface TargetData {
 		static_presence: boolean;
 		motion_presence: boolean;
 		target_presence: boolean;
+		mmwave: boolean;
 		static_state?: string;
 		motion_state?: string;
 		occupancy_state?: boolean;
@@ -384,6 +385,7 @@ export class DeviceController implements ReactiveController {
 								static_presence: event.sensors.static_presence ?? false,
 								motion_presence: event.sensors.motion_presence ?? false,
 								target_presence: event.sensors.target_presence ?? false,
+								mmwave: event.sensors.mmwave ?? false,
 								static_state: event.sensors.static_state,
 								motion_state: event.sensors.motion_state,
 								occupancy_state: event.sensors.occupancy_state,
@@ -397,6 +399,7 @@ export class DeviceController implements ReactiveController {
 								static_presence: false,
 								motion_presence: false,
 								target_presence: false,
+								mmwave: false,
 								static_state: undefined,
 								motion_state: undefined,
 								occupancy_state: undefined,

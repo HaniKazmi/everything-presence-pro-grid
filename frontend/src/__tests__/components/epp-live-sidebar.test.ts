@@ -35,6 +35,7 @@ describe("epp-live-sidebar element", () => {
 			static_presence: true,
 			motion_presence: false,
 			target_presence: true,
+			mmwave: true,
 			illuminance: null,
 			temperature: null,
 			humidity: null,
@@ -44,7 +45,7 @@ describe("epp-live-sidebar element", () => {
 		const c = renderTo(tpl);
 
 		const dots = c.querySelectorAll(".live-sensor-dot");
-		expect(dots.length).toBeGreaterThanOrEqual(4);
+		expect(dots.length).toBeGreaterThanOrEqual(5);
 
 		// First dot should be "on" (occupancy = true)
 		expect(dots[0].classList.contains("on")).toBe(true);
@@ -52,6 +53,36 @@ describe("epp-live-sidebar element", () => {
 		expect(dots[2].classList.contains("off")).toBe(true);
 
 		document.body.removeChild(c);
+	});
+
+	it("renders mmwave row reflecting mmwave field", () => {
+		const el = document.createElement("epp-live-sidebar") as any;
+		el.sensorState = {
+			occupancy: false,
+			static_presence: false,
+			motion_presence: false,
+			target_presence: false,
+			mmwave: true,
+			illuminance: null,
+			temperature: null,
+			humidity: null,
+			co2: null,
+		};
+		const tpl = el.render();
+		const c = renderTo(tpl);
+		const dots = c.querySelectorAll(".live-sensor-dot");
+		// Order: occupancy, static, motion, target, mmwave
+		expect(dots.length).toBeGreaterThanOrEqual(5);
+		expect(dots[4].classList.contains("on")).toBe(true);
+		document.body.removeChild(c);
+
+		// And off when mmwave=false
+		el.sensorState = { ...el.sensorState, mmwave: false };
+		const tpl2 = el.render();
+		const c2 = renderTo(tpl2);
+		const dots2 = c2.querySelectorAll(".live-sensor-dot");
+		expect(dots2[4].classList.contains("off")).toBe(true);
+		document.body.removeChild(c2);
 	});
 
 	it("renders zone section when perspective is set", () => {
@@ -75,9 +106,9 @@ describe("epp-live-sidebar element", () => {
 		const link = c.querySelector(".live-section-link");
 		expect(link).not.toBeNull();
 
-		// Should have zone dots (beyond the 4 presence sensors)
+		// Should have zone dots (beyond the 5 presence sensors)
 		const dots = c.querySelectorAll(".live-sensor-dot");
-		expect(dots.length).toBeGreaterThan(4);
+		expect(dots.length).toBeGreaterThan(5);
 
 		document.body.removeChild(c);
 	});
@@ -175,7 +206,7 @@ describe("epp-live-sidebar element", () => {
 		const c = renderTo(tpl);
 
 		const infoBtns = c.querySelectorAll(".live-sensor-info-btn");
-		expect(infoBtns.length).toBeGreaterThanOrEqual(4);
+		expect(infoBtns.length).toBeGreaterThanOrEqual(5);
 
 		// Click first info button — should expand
 		(infoBtns[0] as HTMLElement).click();
@@ -301,10 +332,10 @@ describe("epp-live-sidebar element", () => {
 		const c = renderTo(tpl);
 
 		const dots = c.querySelectorAll(".live-sensor-dot");
-		// 4 presence + 1 zone + 1 rest-of-room = 6
-		expect(dots.length).toBe(6);
-		// 5th dot (index 4) is the Kitchen zone dot
-		const zoneDot = dots[4] as HTMLElement;
+		// 5 presence + 1 zone + 1 rest-of-room = 7
+		expect(dots.length).toBe(7);
+		// 6th dot (index 5) is the Kitchen zone dot
+		const zoneDot = dots[5] as HTMLElement;
 		const style = zoneDot.getAttribute("style") ?? "";
 		expect(style.toLowerCase()).toContain("background: #b8e7ff");
 		// Not occupied: no box-shadow
@@ -331,7 +362,7 @@ describe("epp-live-sidebar element", () => {
 		const c = renderTo(tpl);
 
 		const dots = c.querySelectorAll(".live-sensor-dot");
-		const zoneDot = dots[4] as HTMLElement;
+		const zoneDot = dots[5] as HTMLElement;
 		const style = zoneDot.getAttribute("style") ?? "";
 		expect(style.toLowerCase()).toContain("background: #b8e7ff");
 		expect(style.toLowerCase()).toContain("box-shadow");
@@ -354,8 +385,8 @@ describe("epp-live-sidebar element", () => {
 		const c = renderTo(tpl);
 
 		const dots = c.querySelectorAll(".live-sensor-dot");
-		// 4 presence + 1 rest-of-room = 5
-		const rorDot = dots[4] as HTMLElement;
+		// 5 presence + 1 rest-of-room = 6
+		const rorDot = dots[5] as HTMLElement;
 		const style = rorDot.getAttribute("style") ?? "";
 		expect(style.toLowerCase()).toContain("background: #fff");
 		expect(style).toContain("border");
@@ -377,7 +408,7 @@ describe("epp-live-sidebar element", () => {
 		const c = renderTo(tpl);
 
 		const dots = c.querySelectorAll(".live-sensor-dot");
-		const rorDot = dots[4] as HTMLElement;
+		const rorDot = dots[5] as HTMLElement;
 		const style = rorDot.getAttribute("style") ?? "";
 		expect(style).toContain("box-shadow");
 
@@ -398,8 +429,8 @@ describe("epp-live-sidebar element", () => {
 
 		// Should still have dots beyond presence sensors (rest-of-room)
 		const dots = c.querySelectorAll(".live-sensor-dot");
-		// 4 presence + 1 rest-of-room = 5
-		expect(dots.length).toBe(5);
+		// 5 presence + 1 rest-of-room = 6
+		expect(dots.length).toBe(6);
 
 		document.body.removeChild(c);
 	});

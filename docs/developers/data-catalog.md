@@ -66,6 +66,7 @@ All entities are created by ESPHome firmware with `disabled_by_default` where ap
 | Static Presence | binary_sensor | zone engine processed (active/pending = on, inactive = off) |
 | Target Presence | binary_sensor | zone engine device-level tracking |
 | Tracking Presence | binary_sensor | LD2450 any-target-detected |
+| mmWave Presence | binary_sensor | static presence OR any zone OCCUPIED — ignores PIR motion, off when only zones are PENDING_CLEAR and static is INACTIVE |
 | Zone 0-7 Presence | binary_sensor | zone engine per-zone state |
 | Target 1-3 Position | text_sensor | "x,y,status" post-transform |
 | Raw Target 1-3 | text_sensor | "x,y" pre-transform (sensor-space) |
@@ -124,6 +125,7 @@ Parses Target Position, Zone State, and sensor entity updates into structured ev
         "static_presence": false,
         "motion_presence": false,
         "target_presence": true,
+        "mmwave": true,
         "static_state": "I",
         "motion_state": "P",
         "occupancy_state": true,

@@ -676,6 +676,22 @@ const ProcessingResult& ZoneEngine::tick(const WindowOutput& window, float times
         }
     }
 
+    // mmwave: combines static presence + target tracker, ignores motion (PIR).
+    // On when static is active/pending OR any zone is OCCUPIED.
+    // PENDING_CLEAR alone (target tracker "pending") does not count.
+    result_.mmwave = false;
+    if (static_state_ != SensorPresenceState::INACTIVE) {
+        result_.mmwave = true;
+    } else {
+        for (int zi = 0; zi < zone_count_; ++zi) {
+            if (!zone_enabled_[zi]) continue;
+            if (zones_[zi].state == ZoneState::OCCUPIED) {
+                result_.mmwave = true;
+                break;
+            }
+        }
+    }
+
     // Log occupancy transitions
     if (result_.occupancy != prev_occupancy_) {
         log_(LogLevel::INFO, "Occupancy: %s", result_.occupancy ? "on" : "off");

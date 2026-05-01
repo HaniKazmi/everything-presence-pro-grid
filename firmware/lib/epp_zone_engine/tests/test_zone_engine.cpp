@@ -683,6 +683,78 @@ TEST_CASE("occupancy: true when zone occupied even if sensors inactive") {
     CHECK(r.occupancy);  // zone occupied -> occupancy true
 }
 
+// ---------------------------------------------------------------------------
+// mmwave: combines static presence + target tracker, ignores motion (PIR).
+// On when static is active/pending OR any zone is OCCUPIED.
+// Off when static is inactive AND target tracker is "pending" (only
+// PENDING_CLEAR zones).
+// ---------------------------------------------------------------------------
+
+TEST_CASE("mmwave: false with no input") {
+    ZoneEngine engine = make_parity_engine();
+    SensorInput sensors;
+    const ProcessingResult& r = engine.tick(make_window_0(), 100.0f, sensors);
+    CHECK_FALSE(r.mmwave);
+}
+
+TEST_CASE("mmwave: true when static presence active") {
+    ZoneEngine engine = make_parity_engine();
+    SensorInput sensors;
+    sensors.static_on = true;
+    sensors.static_timeout = 5.0f;
+    const ProcessingResult& r = engine.tick(make_window_0(), 100.0f, sensors);
+    CHECK(r.mmwave);
+}
+
+TEST_CASE("mmwave: true while static presence pending") {
+    ZoneEngine engine = make_parity_engine();
+    SensorInput sensors;
+    sensors.static_on = true;
+    sensors.static_timeout = 5.0f;
+    engine.tick(make_window_0(), 100.0f, sensors);
+    sensors.static_on = false;
+    const ProcessingResult& r = engine.tick(make_window_0(), 101.0f, sensors);
+    CHECK(r.mmwave);  // static still PENDING within timeout
+}
+
+TEST_CASE("mmwave: true when zone OCCUPIED even with all sensors off") {
+    ZoneEngine engine = make_parity_engine();
+    SensorInput sensors;  // both off
+    const ProcessingResult& r = engine.tick(make_window_1(X_OFF + 450, 450, 5), 100.0f, sensors);
+    REQUIRE(r.zone_occupancy[1]);
+    CHECK(r.mmwave);
+}
+
+TEST_CASE("mmwave: ignores motion-only presence (no static, no zones)") {
+    ZoneEngine engine = make_parity_engine();
+    SensorInput sensors;
+    sensors.motion_on = true;
+    sensors.motion_timeout = 5.0f;
+    const ProcessingResult& r = engine.tick(make_window_0(), 100.0f, sensors);
+    REQUIRE(r.motion_state == SensorPresenceState::ACTIVE);
+    CHECK_FALSE(r.mmwave);  // motion alone must not turn mmwave on
+}
+
+TEST_CASE("mmwave: off when static inactive and target tracker pending") {
+    ZoneEngine engine = make_parity_engine();
+    float t = 100.0f;
+    SensorInput sensors;
+    sensors.motion_on = true;        // motion still pending — prevents force-clear
+    sensors.motion_timeout = 100.0f;
+    sensors.static_timeout = 1.0f;
+
+    // Confirm zone 1 with a target (zone 1 has overlay entry bit -> trigger bypassed).
+    engine.tick(make_window_1(X_OFF + 450, 450, 5), t, sensors);
+
+    // Target disappears -> zone 1 enters PENDING_CLEAR.
+    // Motion stays on (prevents force-clear); static was never on.
+    const ProcessingResult& r = engine.tick(make_window_0(), t + 1.0f, sensors);
+    REQUIRE(r.zone_states[1] == ZoneState::PENDING_CLEAR);
+    REQUIRE(r.zone_occupancy[1]);  // target_presence sensor still on (pending)
+    REQUIRE(r.static_state == SensorPresenceState::INACTIVE);
+    CHECK_FALSE(r.mmwave);  // static off + tracker pending -> mmwave off
+}
+
 TEST_CASE("overlay exit accelerates pending clear") {
     ZoneEngine engine = make_parity_engine();
     // Zone 1 cell (9,1) already has overlay entry bit in make_parity_grid()

@@ -9,6 +9,7 @@ export interface SensorState {
 	static_presence: boolean;
 	motion_presence: boolean;
 	target_presence: boolean;
+	mmwave: boolean;
 	static_state?: string; // "active" | "pending" | "inactive"
 	motion_state?: string; // "active" | "pending" | "inactive"
 	occupancy_state?: boolean;
@@ -30,6 +31,7 @@ export class EppLiveSidebar extends LitElement {
 		static_presence: false,
 		motion_presence: false,
 		target_presence: false,
+		mmwave: false,
 		illuminance: null,
 		temperature: null,
 		humidity: null,
@@ -199,6 +201,12 @@ export class EppLiveSidebar extends LitElement {
 				label: this.localize("live.target_presence"),
 				on: ss.target_presence,
 				info: this.localize("info.target_presence"),
+			},
+			{
+				id: "mmwave",
+				label: this.localize("live.mmwave"),
+				on: ss.mmwave,
+				info: this.localize("info.mmwave"),
 			},
 		];
 

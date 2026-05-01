@@ -1,7 +1,7 @@
 esphome:
   project:
     name: EverythingSmartTechnology.Everything Presence Pro
-    version: "0.96.0"
+    version: "0.97.0"
   on_boot:
     - priority: 200
       then:
@@ -234,6 +234,10 @@ epp:
     id: epp_occupancy
     name: "Occupancy"
     device_class: occupancy
+  mmwave_output:
+    name: "mmWave Presence"
+    device_class: occupancy
+    disabled_by_default: true
   relay_switch: system_alarm_relay
 
 # Enable logging
