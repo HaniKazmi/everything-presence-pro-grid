@@ -517,6 +517,7 @@ _ENTITY_OBJECT_ID_MAP: dict[str, str] = {
     "static_presence": "room_static_presence",
     "motion_presence": "room_motion_presence",
     "target_presence": "room_target_presence",
+    "mmwave_presence": "room_mmwave",
     "temperature": "env_temperature",
     "humidity": "env_humidity",
     "illuminance": "env_illuminance",
@@ -821,6 +822,7 @@ async def websocket_subscribe_grid_targets(
         ("Static Presence", "static_presence"),
         ("Motion Presence", "motion_presence"),
         ("Zone Tracking", "target_presence"),
+        ("mmWave Presence", "mmwave"),
     ):
         if name in key_map:
             binary_sensor_keys[key_map[name]] = field
@@ -843,6 +845,7 @@ async def websocket_subscribe_grid_targets(
         "static_presence": False,
         "motion_presence": False,
         "target_presence": False,
+        "mmwave": False,
         "temperature": None,
         "humidity": None,
         "illuminance": None,
@@ -908,6 +911,9 @@ async def websocket_subscribe_grid_targets(
                     fw_occupancy = zs.get("occupancy")
                     if fw_occupancy is not None:
                         sensors["occupancy_state"] = fw_occupancy
+                    fw_mmwave = zs.get("mmwave")
+                    if fw_mmwave is not None:
+                        sensors["mmwave"] = fw_mmwave
                     # Send event on zone state update (not just target position updates)
                     # so sensor state changes appear in the log without delay
                     connection.send_message(

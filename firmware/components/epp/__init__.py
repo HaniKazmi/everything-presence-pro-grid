@@ -28,6 +28,7 @@ CONF_MOTION_PRESENCE = "motion_presence"
 CONF_STATIC_PRESENCE_OUTPUT = "static_presence_output"
 CONF_MOTION_PRESENCE_OUTPUT = "motion_presence_output"
 CONF_OCCUPANCY_OUTPUT = "occupancy_output"
+CONF_MMWAVE_OUTPUT = "mmwave_output"
 CONF_RELAY_SWITCH = "relay_switch"
 CONF_TARGET_ENTITIES = "target_entities"
 CONF_ZONE_TARGET_COUNTS = "zone_target_counts"
@@ -69,6 +70,7 @@ CONFIG_SCHEMA = cv.Schema(
         cv.Optional(CONF_STATIC_PRESENCE_OUTPUT): binary_sensor.binary_sensor_schema(),
         cv.Optional(CONF_MOTION_PRESENCE_OUTPUT): binary_sensor.binary_sensor_schema(),
         cv.Optional(CONF_OCCUPANCY_OUTPUT): binary_sensor.binary_sensor_schema(),
+        cv.Optional(CONF_MMWAVE_OUTPUT): binary_sensor.binary_sensor_schema(),
         cv.Optional(CONF_RELAY_SWITCH): cv.use_id(switch.Switch),
         cv.Optional(CONF_TARGET_ENTITIES): TARGET_ENTITIES_SCHEMA,
         cv.Optional(CONF_ZONE_TARGET_COUNTS): ZONE_TARGET_COUNTS_SCHEMA,
@@ -151,6 +153,10 @@ async def to_code(config):
     if CONF_OCCUPANCY_OUTPUT in config:
         sens = await binary_sensor.new_binary_sensor(config[CONF_OCCUPANCY_OUTPUT])
         cg.add(var.set_occupancy_output(sens))
+
+    if CONF_MMWAVE_OUTPUT in config:
+        sens = await binary_sensor.new_binary_sensor(config[CONF_MMWAVE_OUTPUT])
+        cg.add(var.set_mmwave_output(sens))
 
     # Relay switch reference
     if CONF_RELAY_SWITCH in config:

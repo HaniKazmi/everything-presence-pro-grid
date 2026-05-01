@@ -39,6 +39,7 @@ struct ProcessingResult {
     SensorPresenceState static_state = SensorPresenceState::INACTIVE;
     SensorPresenceState motion_state = SensorPresenceState::INACTIVE;
     bool occupancy = false;
+    bool mmwave = false;
 
     // Diagnostic log entries produced during this tick
     LogEntry log[MAX_LOG_ENTRIES]{};

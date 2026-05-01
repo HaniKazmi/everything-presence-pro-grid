@@ -190,10 +190,12 @@ void EPPComponent::loop() {
       pos += snprintf(json + pos, sizeof(json) - pos,
           "],\"tracking\":%s},"
           "\"static_state\":\"%s\",\"motion_state\":\"%s\",\"occupancy\":%s,"
+          "\"mmwave\":%s,"
           "\"frame_count\":%d,\"debug_log\":\"",
           result.device_tracking_present ? "true" : "false",
           static_code, motion_code,
           result.occupancy ? "true" : "false",
+          result.mmwave ? "true" : "false",
           result.frame_count);
 
       // Debug log: "S:A M:P Occ:1|T0:Z1:A:5|Z0:O:1 Z1:O:1"
@@ -288,6 +290,8 @@ void EPPComponent::loop() {
       motion_presence_output_->publish_state(result.motion_state != SensorPresenceState::INACTIVE);
     if (occupancy_output_ != nullptr)
       occupancy_output_->publish_state(result.occupancy);
+    if (mmwave_output_ != nullptr)
+      mmwave_output_->publish_state(result.mmwave);
 
     // Relay evaluation
     if (relay_switch_ != nullptr) {

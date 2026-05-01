@@ -130,6 +130,7 @@ type SensorState = {
 	static_presence: boolean;
 	motion_presence: boolean;
 	target_presence: boolean;
+	mmwave: boolean;
 	illuminance: number | null;
 	temperature: number | null;
 	humidity: number | null;
@@ -144,6 +145,7 @@ const createInitialSensorState = (): SensorState => ({
 	static_presence: false,
 	motion_presence: false,
 	target_presence: false,
+	mmwave: false,
 	illuminance: null,
 	temperature: null,
 	humidity: null,
@@ -2288,6 +2290,7 @@ export class EPPGridPanel extends LitElement {
 			this._sensorState.static_presence ||
 			this._sensorState.motion_presence ||
 			roomOccupied;
+		this._sensorState.mmwave = engineResult.mmwave;
 
 		return html`
       <div class="panel" @click=${(e: Event) => {

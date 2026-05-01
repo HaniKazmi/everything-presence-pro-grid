@@ -13,6 +13,7 @@ export const ENTITY_DEFAULTS: Record<string, boolean> = {
 	room_target_presence: false,
 	room_static_presence: false,
 	room_motion_presence: false,
+	room_mmwave: false,
 	target_active: false,
 	target_xy: false,
 	target_signal: false,
