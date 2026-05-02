@@ -314,18 +314,24 @@ class DeviceManager:
         # to come online, but firmware_version may still be unavailable at
         # that moment, so the initial sync exits early with fw_ver=None.
         # Without this hook the stale issue would persist forever.
+        # Use read_firmware_version for the new value rather than
+        # new_state.state directly, so we treat empty string the same as
+        # unavailable/unknown — read_firmware_version is the single source
+        # of truth for "is this a real firmware version".
         if (
             entry.domain == "sensor"
             and "firmware_version" in entry.unique_id
             and old_state.state in offline_states
             and new_state.state not in offline_states
         ):
-            _sync_firmware_repair_issue(
-                self._hass,
-                mac=mac,
-                device_name=self.devices[mac].name,
-                fw_ver=new_state.state,
-            )
+            fw_ver = self.read_firmware_version(entry.device_id)
+            if fw_ver is not None:
+                _sync_firmware_repair_issue(
+                    self._hass,
+                    mac=mac,
+                    device_name=self.devices[mac].name,
+                    fw_ver=fw_ver,
+                )
 
         if new_state.state in offline_states:
             # Device went offline — allow a fresh push when it comes back and

@@ -436,6 +436,76 @@ async def test_late_firmware_version_arrival_re_syncs_repair_issue(hass: HomeAss
     )
 
 
+async def test_late_arrival_ignores_empty_string_firmware_version(hass: HomeAssistant) -> None:
+    """Empty string is also "no data" — must not be treated as a real version.
+
+    `read_firmware_version()` treats `STATE_UNAVAILABLE`, `STATE_UNKNOWN`,
+    `None`, AND empty string as offline. The state-change hook needs to use
+    the same definition; otherwise a transition from unavailable → "" would
+    pass to `_sync_firmware_repair_issue` with an empty version, which
+    `_compare_firmware_version` returns "firmware_behind" for (parse-failure
+    fallback) and creates a bogus issue.
+    """
+    from unittest.mock import AsyncMock
+    from unittest.mock import patch
+
+    from homeassistant.const import STATE_UNAVAILABLE
+    from homeassistant.helpers import device_registry as dr
+    from homeassistant.helpers import entity_registry as er
+    from pytest_homeassistant_custom_component.common import MockConfigEntry
+
+    from custom_components.eppgrid.device_manager import DeviceManager
+    from custom_components.eppgrid.device_manager import ManagedDevice
+    from custom_components.eppgrid.storage import EPPGridStore
+
+    mac = "AA:BB:CC:DD:EE:31"
+
+    esphome_entry = MockConfigEntry(domain="esphome", data={"host": "192.168.1.71"}, title="EPP Empty")
+    esphome_entry.add_to_hass(hass)
+    dev_reg = dr.async_get(hass)
+    device = dev_reg.async_get_or_create(
+        config_entry_id=esphome_entry.entry_id,
+        connections={("mac", mac.lower())},
+        name="EPP Empty",
+        manufacturer="EverythingSmartTechnology",
+        model="Everything Presence Pro",
+    )
+    ent_reg = er.async_get(hass)
+    fw_entry = ent_reg.async_get_or_create(
+        "sensor",
+        "esphome",
+        unique_id=f"{mac}-sensor-firmware_version",
+        suggested_object_id="epp_empty_firmware_version",
+        config_entry=esphome_entry,
+        device_id=device.id,
+    )
+
+    manager = DeviceManager(hass, EPPGridStore(hass))
+    manager.devices[mac] = ManagedDevice(
+        mac=mac,
+        name="EPP Empty",
+        host="192.168.1.71",
+        esphome_config_entry_id=esphome_entry.entry_id,
+        device_id=device.id,
+    )
+
+    with patch.object(manager, "_on_device_available", new=AsyncMock()):
+        hass.bus.async_listen("state_changed", manager._on_state_changed)
+        hass.states.async_set(fw_entry.entity_id, STATE_UNAVAILABLE)
+        await hass.async_block_till_done()
+
+        # Transition from unavailable → "" (empty string). This must NOT raise
+        # a Repairs issue — empty string is not a real firmware version.
+        hass.states.async_set(fw_entry.entity_id, "")
+        await hass.async_block_till_done()
+
+    reg = ir.async_get(hass)
+    assert reg.async_get_issue(DOMAIN, f"firmware_behind_{mac}") is None, (
+        "transition to empty string must not create a firmware_behind issue — "
+        "empty string is the same 'no data' signal as unavailable, not a real version"
+    )
+
+
 async def test_async_discover_creates_repair_issue_for_outdated_device(hass: HomeAssistant) -> None:
     """async_discover must surface a firmware-version mismatch via Repairs.
 
