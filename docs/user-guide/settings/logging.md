@@ -1,6 +1,6 @@
 # Logging
 
-The per-component log levels for the device firmware are useful when you're debugging an unfamiliar problem: raise the level on the relevant component, reproduce the issue, read the logs. Once you're done, set everything back to **None** so the you're not paying for verbose logging that you don't need.
+The per-component log levels for the device firmware are useful when you're debugging an unfamiliar problem: raise the level on the relevant component, reproduce the issue, read the logs. Once you're done, set everything back to **None** so you're not paying for verbose logging that you don't need.
 
 The controls live under **Settings → Logging** in the panel.
 

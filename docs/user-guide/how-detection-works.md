@@ -136,7 +136,7 @@ The Bed zone holds the *pending* state for ten minutes. That's deliberate, since
 The static and motion sensors fix that. The engine watches for a specific combination:
 
 - Static-presence sensor: **inactive**, and
-- Motion sensor: **inactive** (in the case of the *Occupancy** entity), and
+- Motion sensor: **inactive** (in the case of the **Occupancy** entity), and
 - No zone currently *occupied* (only *pending* ones remain).
 
 When all three hold, every *pending* zone is force-cleared immediately, and Occupancy and mmWave Presence drop to `off`. The reasoning: if neither hardware sensor sees anyone and the radar isn't currently tracking a target, the room is empty and there's nothing to wait for.
