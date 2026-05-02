@@ -7,7 +7,8 @@
 		"close": "Close",
 		"add": "Add",
 		"discard": "Discard",
-		"loading": "Loading..."
+		"loading": "Loading...",
+		"card_description": "Device configuration, calibration, zone editor, and firmware flasher"
 	},
 	"furniture": {
 		"armchair": "Armchair",

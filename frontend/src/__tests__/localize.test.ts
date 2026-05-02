@@ -116,6 +116,23 @@ describe("setupLocalize", () => {
 		expect(localize("common.save")).toBe("Guardar");
 	});
 
+	it("resolves common.card_description in English (used at customCards registration)", () => {
+		const localize = setupLocalize({ language: "en" });
+		const desc = localize("common.card_description");
+		expect(desc).not.toBe("common.card_description");
+		expect(desc.length).toBeGreaterThan(0);
+	});
+
+	it("resolves common.card_description in Spanish", () => {
+		const localize = setupLocalize({ language: "es" });
+		const desc = localize("common.card_description");
+		expect(desc).not.toBe("common.card_description");
+		expect(localize.lang).toBe("es");
+		expect(desc).not.toBe(
+			setupLocalize({ language: "en" })("common.card_description"),
+		);
+	});
+
 	it("falls back to base language when given a region-tagged code (es-ES → es)", () => {
 		const localize = setupLocalize({ locale: { language: "es-ES" } });
 		expect(localize("common.save")).toBe("Guardar");
