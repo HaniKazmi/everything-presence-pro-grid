@@ -1,5 +1,17 @@
 import { describe, expect, it } from "vitest";
-import { isSettingsValueDefault } from "../settings-defaults.js";
+import {
+	ENTITY_DEFAULTS,
+	isSettingsValueDefault,
+} from "../settings-defaults.js";
+
+describe("ENTITY_DEFAULTS", () => {
+	it("disables environmental sensors by default", () => {
+		expect(ENTITY_DEFAULTS.env_temperature).toBe(false);
+		expect(ENTITY_DEFAULTS.env_humidity).toBe(false);
+		expect(ENTITY_DEFAULTS.env_illuminance).toBe(false);
+		expect(ENTITY_DEFAULTS.env_co2).toBe(false);
+	});
+});
 
 describe("isSettingsValueDefault", () => {
 	it("returns false when defaultValue is a non-empty object (unsupported case)", () => {

@@ -473,9 +473,9 @@ describe("_buildSparseSettings (via saveConfiguration)", () => {
 		a._entitiesConfig = {
 			room_occupancy: false, // non-default
 			zone_presence: true, // default
-			env_temperature: true, // default
-			env_humidity: true, // default
-			env_illuminance: true, // default
+			env_temperature: false, // default
+			env_humidity: false, // default
+			env_illuminance: false, // default
 			target_xy: true, // non-default
 			// Others left out of dict — sparse panel state representation
 		};
@@ -912,9 +912,9 @@ describe("_loadConfiguration", () => {
 
 		// Defaults preserved
 		expect(a._entitiesConfig.zone_presence).toBe(true);
-		expect(a._entitiesConfig.env_temperature).toBe(true);
-		expect(a._entitiesConfig.env_humidity).toBe(true);
-		expect(a._entitiesConfig.env_illuminance).toBe(true);
+		expect(a._entitiesConfig.env_temperature).toBe(false);
+		expect(a._entitiesConfig.env_humidity).toBe(false);
+		expect(a._entitiesConfig.env_illuminance).toBe(false);
 		// Overrides applied
 		expect(a._entitiesConfig.room_occupancy).toBe(false);
 		expect(a._entitiesConfig.target_xy).toBe(true);
