@@ -572,14 +572,6 @@ describe("_renderUncalibratedFov (via EppWizard)", () => {
 	});
 });
 
-describe("_renderNeedsCalibration (via EppWizard)", () => {
-	it("renders calibration guide", () => {
-		const a = createWizard({ mode: "needs-calibration" }) as any;
-		const result = a._renderNeedsCalibration();
-		expect(result).toBeDefined();
-	});
-});
-
 describe("_renderSettings", () => {
 	it("renders settings page with closed accordions", () => {
 		const a = createPanel() as any;

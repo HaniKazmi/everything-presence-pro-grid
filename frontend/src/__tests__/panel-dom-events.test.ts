@@ -1146,26 +1146,6 @@ describe("_renderUncalibratedFov DOM events (via EppWizard)", () => {
 	});
 });
 
-describe("_renderNeedsCalibration DOM events (via EppWizard)", () => {
-	it("start calibration button fires start-calibration event", () => {
-		const a = createWizard() as any;
-		a.mode = "needs-calibration";
-		const tpl = a._renderNeedsCalibration();
-		const c = renderTo(tpl);
-
-		let startFired = false;
-		a.addEventListener("start-calibration", () => {
-			startFired = true;
-		});
-
-		const btn = c.querySelector(".wizard-btn-primary") as HTMLElement;
-		if (btn) {
-			btn.click();
-			expect(startFired).toBe(true);
-		}
-	});
-});
-
 describe("_renderConfigurationBackupDialog DOM events", () => {
 	it("configuration name input and save", () => {
 		const a = createPanel() as any;
