@@ -55,6 +55,10 @@ All entities are created by ESPHome firmware with `disabled_by_default` where ap
 | Zone Engine Version | text_sensor | firmware version string |
 | Config Protocol | sensor | config protocol version integer (e.g. `1`) |
 | Current Connections | sensor | current API client count (diagnostic, accuracy_decimals=0) |
+| Heap Free | sensor | current free heap bytes (diagnostic, 60s update via `debug` platform) |
+| Heap Largest Block | sensor | largest free contiguous block — TLS handshake limiter (diagnostic) |
+| Heap Min Free | sensor | all-time low-water mark via `heap_caps_get_minimum_free_size` (diagnostic) |
+| Loop Time | sensor | ESPHome main loop time in ms (diagnostic) |
 
 ### Disabled by Default
 
