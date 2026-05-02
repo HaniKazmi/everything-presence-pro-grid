@@ -140,9 +140,7 @@ def test_reset_reason_text_sensor_present():
         (ts for ts in text_sensors if isinstance(ts, dict) and ts.get("platform") == "debug"),
         None,
     )
-    assert debug_text_sensor is not None, (
-        "expected a `platform: debug` text_sensor block exposing reset_reason."
-    )
+    assert debug_text_sensor is not None, "expected a `platform: debug` text_sensor block exposing reset_reason."
     reset_reason = debug_text_sensor.get("reset_reason")
     assert isinstance(reset_reason, dict), (
         "debug text_sensor must define `reset_reason:` so the reason for the "
