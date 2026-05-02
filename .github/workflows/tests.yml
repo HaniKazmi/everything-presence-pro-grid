@@ -108,7 +108,7 @@ jobs:
               --ignore-errors inconsistent
       - name: Upload coverage report
         if: always()
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v7
         with:
           name: cpp-coverage-report
           path: firmware/lib/epp_zone_engine/build/coverage-html/
