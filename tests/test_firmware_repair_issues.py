@@ -407,21 +407,28 @@ async def test_late_firmware_version_arrival_re_syncs_repair_issue(hass: HomeAss
         esphome_config_entry_id=esphome_entry.entry_id,
         device_id=device.id,
     )
-    # Subscribe the state-change handler the way async_start would
-    hass.bus.async_listen("state_changed", manager._on_state_changed)
+    # The state-change handler also schedules `_on_device_available` for any
+    # entity transitioning offline → online; that path opens sockets to push
+    # config, which CI's strict-mode HA test framework blocks. Patch it to a
+    # no-op for this test — we're only verifying the new firmware_version
+    # re-sync hook, not the device-came-online flow.
+    with patch.object(manager, "_on_device_available", new=AsyncMock()):
+        hass.bus.async_listen("state_changed", manager._on_state_changed)
 
-    # Simulate the race: firmware_version is still unavailable when
-    # _on_device_available fires (some other entity came online first).
-    hass.states.async_set(fw_entry.entity_id, STATE_UNAVAILABLE)
-    with patch.object(manager, "_push_config_to_device", new=AsyncMock(return_value=True)):
-        await manager._on_device_available(mac)
+        # Pre-state on the bus: firmware_version sensor is offline, so any
+        # subsequent transition has the right "old_state" baseline.
+        hass.states.async_set(fw_entry.entity_id, STATE_UNAVAILABLE)
+        await hass.async_block_till_done()
 
-    # Issue is still there because read_firmware_version returned None
-    assert ir.async_get(hass).async_get_issue(DOMAIN, f"firmware_behind_{mac}") is not None
+        # Stale issue persists from before reboot — created above. The simulated
+        # bug condition is that the initial sync (which would have fired from
+        # _on_device_available against an unavailable firmware_version sensor)
+        # returned early without clearing it.
+        assert ir.async_get(hass).async_get_issue(DOMAIN, f"firmware_behind_{mac}") is not None
 
-    # Now the firmware_version sensor catches up and reports the matching version
-    hass.states.async_set(fw_entry.entity_id, FIRMWARE_VERSION)
-    await hass.async_block_till_done()
+        # Now the firmware_version sensor catches up and reports the matching version
+        hass.states.async_set(fw_entry.entity_id, FIRMWARE_VERSION)
+        await hass.async_block_till_done()
 
     assert ir.async_get(hass).async_get_issue(DOMAIN, f"firmware_behind_{mac}") is None, (
         "stale firmware_behind issue must be cleared when the firmware_version "
