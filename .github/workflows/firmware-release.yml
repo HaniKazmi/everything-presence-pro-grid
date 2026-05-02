@@ -85,7 +85,7 @@ jobs:
           EOF
       - name: Upload build artifacts
         if: steps.firmware.outputs.is_firmware_release == 'true'
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v7
         with:
           name: firmware-${{ matrix.variant }}
           path: dist/
@@ -97,13 +97,13 @@ jobs:
     steps:
       - name: Download all artifacts
         if: needs.build.outputs.is_firmware_release == 'true'
-        uses: actions/download-artifact@v5
+        uses: actions/download-artifact@v8
         with:
           path: dist
           pattern: firmware-*
           merge-multiple: true
       - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           files: dist/*
           fail_on_unmatched_files: false
