@@ -273,6 +273,57 @@ def test_opt_out_trailer_must_be_anchored_to_line(tmp_path: Path) -> None:
     assert result.returncode == 1
 
 
+# --- Copilot PR #145: styles.ts coverage --------------------------------
+
+
+def test_add_styles_file_blocks(tmp_path: Path) -> None:
+    """frontend/src/styles.ts is documented; adds must trigger the guard."""
+    repo = _init_repo(tmp_path)
+    _commit(repo, "add styles", {"frontend/src/styles.ts": "export {};\n"})
+    result = _run(repo, "HEAD~1..HEAD")
+    assert result.returncode == 1
+
+
+def test_modify_styles_file_warns(tmp_path: Path) -> None:
+    repo = _init_repo(tmp_path)
+    _commit(repo, "seed", {"frontend/src/styles.ts": "export const x = 1;\n"})
+    _commit(repo, "tweak", {"frontend/src/styles.ts": "export const x = 2;\n"})
+    result = _run(repo, "HEAD~1..HEAD")
+    assert result.returncode == 0
+    assert "doc" in (result.stdout + result.stderr).lower()
+
+
+# --- Copilot PR #145: doc deletion/rename must not satisfy --------------
+
+
+def test_delete_architecture_doc_does_not_satisfy_check(tmp_path: Path) -> None:
+    repo = _init_repo(tmp_path)
+    _commit(repo, "seed doc", {"docs/developers/architecture.md": "# arch\n"})
+    # Single commit: structural model add + doc delete
+    _git("rm", "-q", "docs/developers/architecture.md", cwd=repo)
+    _write(repo, "frontend/src/lib/foo.ts", "export {};\n")
+    _git("add", "frontend/src/lib/foo.ts", cwd=repo)
+    _git("commit", "-q", "-m", "add lib + delete arch", cwd=repo)
+    result = _run(repo, "HEAD~1..HEAD")
+    assert result.returncode == 1
+
+
+def test_rename_architecture_doc_does_not_satisfy_check(tmp_path: Path) -> None:
+    repo = _init_repo(tmp_path)
+    _commit(repo, "seed doc", {"docs/developers/architecture.md": "# arch\n"})
+    _git(
+        "mv",
+        "docs/developers/architecture.md",
+        "docs/developers/old-arch.md",
+        cwd=repo,
+    )
+    _write(repo, "frontend/src/lib/foo.ts", "export {};\n")
+    _git("add", "frontend/src/lib/foo.ts", cwd=repo)
+    _git("commit", "-q", "-m", "add lib + rename arch", cwd=repo)
+    result = _run(repo, "HEAD~1..HEAD")
+    assert result.returncode == 1
+
+
 # --- Usage --------------------------------------------------------------
 
 

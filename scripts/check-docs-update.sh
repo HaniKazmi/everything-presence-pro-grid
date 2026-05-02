@@ -31,7 +31,7 @@ RANGE="$1"
 # the full path from repo root.
 DOC_DESCRIBED_PATHS=(
     '^custom_components/eppgrid/[^/]+\.py$'
-    '^frontend/src/(eppgrid-panel|types|constants|strategy|localize|panel-mount-guard|index)\.ts$'
+    '^frontend/src/(eppgrid-panel|types|constants|styles|strategy|localize|panel-mount-guard|index)\.ts$'
     '^frontend/src/(lib|controllers|components)/[^/]+\.ts$'
     '^frontend/src/translations/[^/]+\.json$'
     '^firmware/lib/epp_zone_engine/include/[^/]+\.h$'
@@ -78,13 +78,18 @@ if [ "${#structural_files[@]}" -eq 0 ] && [ "${#modify_files[@]}" -eq 0 ]; then
     exit 0
 fi
 
-# Did any doc files get updated?
+# Did any doc files get updated? Only modifications (M) and additions (A) count.
+# Deleting or renaming-away the doc itself must NOT satisfy the check.
 docs_updated=false
-if echo "$status_lines" \
-    | awk -F '\t' '{for (i=2; i<=NF; i++) print $i}' \
-    | grep -qE "$DOC_FILES_PATTERN"; then
-    docs_updated=true
-fi
+while IFS=$'\t' read -r status p1 _p2; do
+    [ -z "${status:-}" ] && continue
+    if [[ "$status" =~ ^[MA]$ ]] \
+        && [ -n "${p1:-}" ] \
+        && echo "$p1" | grep -qE "$DOC_FILES_PATTERN"; then
+        docs_updated=true
+        break
+    fi
+done <<<"$status_lines"
 
 # Opt-out trailer (line-anchored) in any commit body in the range.
 opt_out=false
