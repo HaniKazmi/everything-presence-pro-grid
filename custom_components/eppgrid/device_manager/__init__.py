@@ -308,6 +308,25 @@ class DeviceManager:
         # that transition still means the device just came online.
         offline_states = (STATE_UNAVAILABLE, STATE_UNKNOWN)
 
+        # Re-sync Repairs whenever the firmware_version sensor specifically
+        # transitions from offline to a real value. Handles the post-OTA
+        # reconnect race: _on_device_available fires for the first entity
+        # to come online, but firmware_version may still be unavailable at
+        # that moment, so the initial sync exits early with fw_ver=None.
+        # Without this hook the stale issue would persist forever.
+        if (
+            entry.domain == "sensor"
+            and "firmware_version" in entry.unique_id
+            and old_state.state in offline_states
+            and new_state.state not in offline_states
+        ):
+            _sync_firmware_repair_issue(
+                self._hass,
+                mac=mac,
+                device_name=self.devices[mac].name,
+                fw_ver=new_state.state,
+            )
+
         if new_state.state in offline_states:
             # Device went offline — allow a fresh push when it comes back and
             # close any active session so the stale APIClient is replaced on

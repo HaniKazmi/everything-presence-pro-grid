@@ -342,6 +342,93 @@ async def test_repair_issue_resyncs_on_device_rename(hass: HomeAssistant) -> Non
     )
 
 
+async def test_late_firmware_version_arrival_re_syncs_repair_issue(hass: HomeAssistant) -> None:
+    """firmware_version sensor often arrives after _on_device_available fires.
+
+    On reconnect, ESPHome entities come online one by one in undefined order.
+    `_on_device_available` is triggered by the first entity that flips to a
+    real state — at that moment the firmware_version sensor may still be
+    'unavailable', so `read_firmware_version` returns None and the Repairs
+    sync exits early (it's correct to leave issues alone when offline).
+
+    Without a follow-up trigger, the stale Repairs issue persists. Hooking
+    state-change events for the firmware_version sensor specifically — when
+    it transitions from offline to a real value — fixes the race.
+    """
+    from unittest.mock import AsyncMock
+    from unittest.mock import patch
+
+    from homeassistant.const import STATE_UNAVAILABLE
+    from homeassistant.helpers import device_registry as dr
+    from homeassistant.helpers import entity_registry as er
+    from pytest_homeassistant_custom_component.common import MockConfigEntry
+
+    from custom_components.eppgrid.device_manager import DeviceManager
+    from custom_components.eppgrid.device_manager import ManagedDevice
+    from custom_components.eppgrid.storage import EPPGridStore
+
+    mac = "AA:BB:CC:DD:EE:30"
+
+    esphome_entry = MockConfigEntry(domain="esphome", data={"host": "192.168.1.70"}, title="EPP Late")
+    esphome_entry.add_to_hass(hass)
+    dev_reg = dr.async_get(hass)
+    device = dev_reg.async_get_or_create(
+        config_entry_id=esphome_entry.entry_id,
+        connections={("mac", mac.lower())},
+        name="EPP Late",
+        manufacturer="EverythingSmartTechnology",
+        model="Everything Presence Pro",
+    )
+    ent_reg = er.async_get(hass)
+    fw_entry = ent_reg.async_get_or_create(
+        "sensor",
+        "esphome",
+        unique_id=f"{mac}-sensor-firmware_version",
+        suggested_object_id="epp_late_firmware_version",
+        config_entry=esphome_entry,
+        device_id=device.id,
+    )
+
+    # Pre-state: stale firmware_behind issue from before reboot
+    ir.async_create_issue(
+        hass,
+        DOMAIN,
+        f"firmware_behind_{mac}",
+        is_fixable=False,
+        severity=ir.IssueSeverity.WARNING,
+        translation_key="firmware_behind",
+    )
+
+    manager = DeviceManager(hass, EPPGridStore(hass))
+    manager.devices[mac] = ManagedDevice(
+        mac=mac,
+        name="EPP Late",
+        host="192.168.1.70",
+        esphome_config_entry_id=esphome_entry.entry_id,
+        device_id=device.id,
+    )
+    # Subscribe the state-change handler the way async_start would
+    hass.bus.async_listen("state_changed", manager._on_state_changed)
+
+    # Simulate the race: firmware_version is still unavailable when
+    # _on_device_available fires (some other entity came online first).
+    hass.states.async_set(fw_entry.entity_id, STATE_UNAVAILABLE)
+    with patch.object(manager, "_push_config_to_device", new=AsyncMock(return_value=True)):
+        await manager._on_device_available(mac)
+
+    # Issue is still there because read_firmware_version returned None
+    assert ir.async_get(hass).async_get_issue(DOMAIN, f"firmware_behind_{mac}") is not None
+
+    # Now the firmware_version sensor catches up and reports the matching version
+    hass.states.async_set(fw_entry.entity_id, FIRMWARE_VERSION)
+    await hass.async_block_till_done()
+
+    assert ir.async_get(hass).async_get_issue(DOMAIN, f"firmware_behind_{mac}") is None, (
+        "stale firmware_behind issue must be cleared when the firmware_version "
+        "sensor transitions from unavailable to the matching version"
+    )
+
+
 async def test_async_discover_creates_repair_issue_for_outdated_device(hass: HomeAssistant) -> None:
     """async_discover must surface a firmware-version mismatch via Repairs.
 
