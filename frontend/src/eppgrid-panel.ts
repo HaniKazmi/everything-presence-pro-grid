@@ -1805,6 +1805,12 @@ export class EPPGridPanel extends LitElement {
 	}
 
 	private _renderHeader() {
+		// Skip the picker when the list is empty: ha-select would otherwise
+		// fall back to showing the raw `.value` (the deleted device's MAC)
+		// because no option matches. The offline banner still renders below.
+		if (!this._devices.length) {
+			return html`<div class="panel-header"></div>`;
+		}
 		return html`
       <div class="panel-header">
         <ha-select
