@@ -28,7 +28,7 @@ Alternatively, call the `logger.set_level` action from **Settings → Developer 
 ```
 action: logger.set_level
 data:
-    custom_components.epp: debug
+    custom_components.eppgrid: debug
 ```
 
 **3. Reproduce the bug.**

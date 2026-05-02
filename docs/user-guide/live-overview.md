@@ -32,7 +32,7 @@ The right-hand side bar shows live data straight from the sensor. Not every read
 
 - **Occupancy** (`binary_sensor.<device>_occupancy`) — the combined signal from the motion sensor and both presence sensors, and the one you'll usually use for automations.
 - **mmWave Presence** (`binary_sensor.<device>_mmwave_presence`) — radar-only presence. Combines the static-presence sensor and the LD2450 zone activity, ignoring the PIR. Useful when you need to limit the range of detection, which you can't do with the motion sensor.
-- **Motion Presence** (`binary_sensor.<device>_motion`) — the PIR (passive infrared) sensor.
+- **Motion Presence** (`binary_sensor.<device>_motion_presence`) — the PIR (passive infrared) sensor.
 - **Static Presence** (`binary_sensor.<device>_static_presence`) — the SEN0609 static-presence radar.
 - **Target Presence** (`binary_sensor.<device>_target_presence`) — `on` whenever the LD2450 is tracking at least one target.
 
