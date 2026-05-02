@@ -3179,6 +3179,80 @@ class TestProtocolVersionGuard:
         args = connection.send_error.call_args[0]
         assert args[1] == "firmware_behind"
 
+    async def test_firmware_behind_error_carries_translation_metadata(
+        self, hass: HomeAssistant, config_entry: MockConfigEntry
+    ) -> None:
+        """Firmware version errors must include translation_domain + translation_key.
+
+        The frontend renders the error using the localized strings.json entry — a
+        bare English string would not be translatable.
+        """
+        from custom_components.eppgrid.device_manager import ManagedDevice
+
+        mock_dm = await setup_integration(hass, config_entry)
+        mock_dm.devices = {
+            "AA:BB:CC:DD:EE:FF": ManagedDevice(
+                mac="AA:BB:CC:DD:EE:FF",
+                name="EPP",
+                host="192.168.1.50",
+            )
+        }
+        mock_dm.read_firmware_version.return_value = "0.1.0"  # behind
+
+        from custom_components.eppgrid.websocket_api import websocket_set_setup
+
+        connection = MagicMock()
+        msg = {
+            "id": 20,
+            "type": "eppgrid/set_setup",
+            "mac": "AA:BB:CC:DD:EE:FF",
+            "perspective": [1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0],
+            "room_width": 3000.0,
+            "room_depth": 4000.0,
+        }
+
+        await call_async_handler(hass, websocket_set_setup, connection, msg)
+
+        connection.send_error.assert_called_once()
+        kwargs = connection.send_error.call_args.kwargs
+        assert kwargs.get("translation_domain") == DOMAIN
+        assert kwargs.get("translation_key") == "firmware_behind"
+
+    async def test_firmware_ahead_error_carries_translation_metadata(
+        self, hass: HomeAssistant, config_entry: MockConfigEntry
+    ) -> None:
+        """Same as firmware_behind but for firmware_ahead."""
+        from custom_components.eppgrid.device_manager import ManagedDevice
+
+        mock_dm = await setup_integration(hass, config_entry)
+        mock_dm.devices = {
+            "AA:BB:CC:DD:EE:FF": ManagedDevice(
+                mac="AA:BB:CC:DD:EE:FF",
+                name="EPP",
+                host="192.168.1.50",
+            )
+        }
+        mock_dm.read_firmware_version.return_value = "99.0.0"  # ahead
+
+        from custom_components.eppgrid.websocket_api import websocket_set_setup
+
+        connection = MagicMock()
+        msg = {
+            "id": 21,
+            "type": "eppgrid/set_setup",
+            "mac": "AA:BB:CC:DD:EE:FF",
+            "perspective": [1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0],
+            "room_width": 3000.0,
+            "room_depth": 4000.0,
+        }
+
+        await call_async_handler(hass, websocket_set_setup, connection, msg)
+
+        connection.send_error.assert_called_once()
+        kwargs = connection.send_error.call_args.kwargs
+        assert kwargs.get("translation_domain") == DOMAIN
+        assert kwargs.get("translation_key") == "firmware_ahead"
+
 
 class TestWebSocketDismissTarget:
     """Tests for eppgrid/dismiss_target."""

@@ -99,6 +99,23 @@ def _send_no_firmware_variant(connection: websocket_api.ActiveConnection, msg_id
     )
 
 
+def _send_firmware_version_error(connection: websocket_api.ActiveConnection, msg_id: int, proto_err: str) -> None:
+    """Send a firmware version mismatch error with translation metadata.
+
+    `proto_err` is the code returned by `_check_firmware_version` — currently
+    `firmware_behind` or `firmware_ahead` — which doubles as both the wire-level
+    error code and the strings.json translation key.
+    """
+    fallback = "Firmware update required" if proto_err == "firmware_behind" else "Integration update required"
+    connection.send_error(
+        msg_id,
+        proto_err,
+        fallback,
+        translation_domain=DOMAIN,
+        translation_key=proto_err,
+    )
+
+
 def _send_exception(connection: websocket_api.ActiveConnection, msg_id: int, code: str, err: BaseException) -> None:
     """Send an error from a caught exception, preserving translation metadata if present.
 
@@ -351,11 +368,7 @@ async def websocket_set_setup(
         return
     proto_err = _check_firmware_version(manager, msg["mac"])
     if proto_err:
-        connection.send_error(
-            msg["id"],
-            proto_err,
-            "Firmware update required" if proto_err == "firmware_behind" else "Integration update required",
-        )
+        _send_firmware_version_error(connection, msg["id"], proto_err)
         return
     mac = msg["mac"]
     device_config = manager._store.devices.setdefault(mac, {})
@@ -416,11 +429,7 @@ async def websocket_set_room_layout(
         return
     proto_err = _check_firmware_version(manager, msg["mac"])
     if proto_err:
-        connection.send_error(
-            msg["id"],
-            proto_err,
-            "Firmware update required" if proto_err == "firmware_behind" else "Integration update required",
-        )
+        _send_firmware_version_error(connection, msg["id"], proto_err)
         return
     mac = msg["mac"]
     device_config = manager._store.devices.setdefault(mac, {})
@@ -981,11 +990,7 @@ def websocket_set_entity_enabled(
         return
     proto_err = _check_firmware_version(manager, msg["mac"])
     if proto_err:
-        connection.send_error(
-            msg["id"],
-            proto_err,
-            "Firmware update required" if proto_err == "firmware_behind" else "Integration update required",
-        )
+        _send_firmware_version_error(connection, msg["id"], proto_err)
         return
     ent_reg = er.async_get(hass)
     if msg["enabled"]:
@@ -1060,11 +1065,7 @@ async def websocket_set_settings(
         return
     proto_err = _check_firmware_version(manager, msg["mac"])
     if proto_err:
-        connection.send_error(
-            msg["id"],
-            proto_err,
-            "Firmware update required" if proto_err == "firmware_behind" else "Integration update required",
-        )
+        _send_firmware_version_error(connection, msg["id"], proto_err)
         return
     mac = msg["mac"]
     device_config = manager._store.devices.setdefault(mac, {})
@@ -1154,11 +1155,7 @@ async def websocket_set_distance_override(
         return
     proto_err = _check_firmware_version(manager, msg["mac"])
     if proto_err:
-        connection.send_error(
-            msg["id"],
-            proto_err,
-            "Firmware update required" if proto_err == "firmware_behind" else "Integration update required",
-        )
+        _send_firmware_version_error(connection, msg["id"], proto_err)
         return
     mac = msg["mac"]
     session = manager.get_session(mac)
@@ -1207,11 +1204,7 @@ async def websocket_set_pipeline(
         return
     proto_err = _check_firmware_version(manager, msg["mac"])
     if proto_err:
-        connection.send_error(
-            msg["id"],
-            proto_err,
-            "Firmware update required" if proto_err == "firmware_behind" else "Integration update required",
-        )
+        _send_firmware_version_error(connection, msg["id"], proto_err)
         return
     mac = msg["mac"]
     device_config = manager._store.devices.setdefault(mac, {})
