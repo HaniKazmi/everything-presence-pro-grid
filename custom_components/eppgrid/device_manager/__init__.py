@@ -32,6 +32,7 @@ from ._helpers import _extract_host
 from ._helpers import _extract_mac
 from ._helpers import _raise_service_unavailable as _raise_service_unavailable  # re-export for tests
 from ._helpers import _resolve_zone_name
+from ._helpers import _sync_firmware_repair_issue
 from ._helpers import is_valid_zone_slots_shape
 
 _LOGGER = logging.getLogger(__name__)
@@ -239,6 +240,13 @@ class DeviceManager:
                 device_id=device.id,
             )
 
+            _sync_firmware_repair_issue(
+                self._hass,
+                mac=mac,
+                device_name=self.devices[mac].name,
+                fw_ver=self.read_firmware_version(device.id),
+            )
+
             if is_new:
                 found_new = True
                 self._ensure_esphome_entry_listener(entry.config_entry_id)
@@ -299,6 +307,31 @@ class DeviceManager:
         # can go unknown → value without passing through unavailable, and
         # that transition still means the device just came online.
         offline_states = (STATE_UNAVAILABLE, STATE_UNKNOWN)
+
+        # Re-sync Repairs whenever the firmware_version sensor specifically
+        # transitions from offline to a real value. Handles the post-OTA
+        # reconnect race: _on_device_available fires for the first entity
+        # to come online, but firmware_version may still be unavailable at
+        # that moment, so the initial sync exits early with fw_ver=None.
+        # Without this hook the stale issue would persist forever.
+        # Use read_firmware_version for the new value rather than
+        # new_state.state directly, so we treat empty string the same as
+        # unavailable/unknown — read_firmware_version is the single source
+        # of truth for "is this a real firmware version".
+        if (
+            entry.domain == "sensor"
+            and "firmware_version" in entry.unique_id
+            and old_state.state in offline_states
+            and new_state.state not in offline_states
+        ):
+            fw_ver = self.read_firmware_version(entry.device_id)
+            if fw_ver is not None:
+                _sync_firmware_repair_issue(
+                    self._hass,
+                    mac=mac,
+                    device_name=self.devices[mac].name,
+                    fw_ver=fw_ver,
+                )
 
         if new_state.state in offline_states:
             # Device went offline — allow a fresh push when it comes back and
@@ -375,12 +408,29 @@ class DeviceManager:
             self._hass.async_create_task(self._on_device_removed(mac))
             return
 
-        # Update (rename, area change, etc.) — notify subscribers so the
-        # frontend re-fetches list_devices and picks up the fresh data.
+        # Update (rename, area change, etc.) — refresh the cached friendly
+        # name and re-sync the Repairs issue so its title/description tracks
+        # the new name, then notify subscribers so the frontend re-fetches
+        # list_devices and picks up the fresh data.
+        dev_reg = dr.async_get(self._hass)
+        device = dev_reg.async_get(device_id) if device_id else None
+        if device is not None:
+            new_name = device.name_by_user or device.name or "EPP Device"
+            self.devices[mac].name = new_name
+            _sync_firmware_repair_issue(
+                self._hass,
+                mac=mac,
+                device_name=new_name,
+                fw_ver=self.read_firmware_version(device_id),
+            )
         self._fire_device_list_changed()
 
     async def _on_device_removed(self, mac: str) -> None:
         """Clean up stored settings and runtime state for a removed device."""
+        from homeassistant.helpers import issue_registry as ir
+
+        from ..const import DOMAIN as _DOMAIN
+
         await self.async_close_session(mac)
         self._store.devices.pop(mac, None)
         dev = self.devices.pop(mac, None)
@@ -392,6 +442,11 @@ class DeviceManager:
         self._session_locks.pop(mac, None)
         self._entity_update_macs.discard(mac)
         self._pushing.discard(mac)
+        # Clear any Repairs issues we raised for this device — they'd
+        # otherwise hang in HA Settings → Repairs forever for a device
+        # that no longer exists.
+        ir.async_delete_issue(self._hass, _DOMAIN, f"firmware_behind_{mac}")
+        ir.async_delete_issue(self._hass, _DOMAIN, f"firmware_ahead_{mac}")
         await self._store.async_save()
         self._fire_device_list_changed()
         _LOGGER.info("Cleaned up settings for removed device %s", mac)
@@ -401,6 +456,16 @@ class DeviceManager:
         dev = self.devices.get(mac)
         if dev is not None:
             dev.available = True
+            # Re-evaluate firmware-version repair issues after reconnect:
+            # this is the OTA recovery path (reboot → reconnect → new
+            # firmware_version state arrives) where the issue from the
+            # previous version needs to be cleared or replaced.
+            _sync_firmware_repair_issue(
+                self._hass,
+                mac=mac,
+                device_name=dev.name,
+                fw_ver=self.read_firmware_version(dev.device_id),
+            )
 
         # Skip push if we caused this reconnect via entity registry updates.
         # Don't clear the guard here — multiple entities cycle through

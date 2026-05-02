@@ -225,6 +225,10 @@ The handler also monitors device log messages for `http_request.ota` and `http_r
 
 All config commands (`set_setup`, `set_room_layout`, `set_entity_enabled`, `set_settings`, `set_pipeline`) check `firmware_status` before executing. On mismatch, they return an error with code `"firmware_behind"`, `"firmware_ahead"`, or `"unavailable"`.
 
+In parallel, `device_manager._sync_firmware_repair_issue` raises an HA Repairs framework issue (`firmware_behind_{mac}` or `firmware_ahead_{mac}`) for any discovered device whose version doesn't match `FIRMWARE_VERSION`, and clears it once the versions come back in line. Hooks fire from `async_discover` (initial discovery) and `_on_device_available` (post-OTA reconnect), so users see the mismatch in HA Settings → Repairs without having to open the panel. Translations live under `issues.firmware_behind` / `issues.firmware_ahead` in `strings.json`.
+
+Because the integration is now the source of truth for firmware-update detection, the device-side auto-poll on `update.http_request` is set to `update_interval: never` in the variant YAMLs. The OTA button and the panel's `set_update_manifest` action still drive the same component for explicit checks/installs.
+
 ### `set_setup`
 
 Saves perspective calibration. Clears room layout. Pushes to device. Sets `settings.zone_presence` to `true` on calibration (`room_width > 0`) or `false` on delete (`room_width = 0`), then calls `async_update_zone_entities` to enable/disable zone entities accordingly.
