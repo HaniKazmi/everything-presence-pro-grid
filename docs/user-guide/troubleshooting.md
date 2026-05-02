@@ -2,6 +2,29 @@
 
 Each feature page in this user guide ends with a Troubleshooting table covering symptoms specific to that area. If you've worked through the relevant one and the problem isn't there, open a GitHub issue.
 
+## Device keeps going unavailable
+
+Each device has six diagnostic entities under **Settings → Devices & services → ESPHome → \[your device\] → Diagnostic** (filter by Diagnostic in the entity card menu). They make it easy to tell whether an "unavailable" episode in HA history was a real reboot (memory exhaustion, brownout, watchdog) or just a network blip:
+
+- **Heap Free** — current free RAM in bytes.
+- **Heap Largest Block** — biggest contiguous chunk available; lower than `Heap Free` indicates fragmentation.
+- **Heap Min Free** — lowest the heap has *ever* been since boot. Only resets on reboot.
+- **Loop Time** — max main-loop time in the last minute. Spikes correlate with memory pressure or BLE work.
+- **Uptime** — seconds since boot. Drops to ~0 on every reboot.
+- **Reset Reason** — *why* the last reboot happened: `POWERON` (cold start), `EXT` (manual restart), `SW_CPU` / `TASK_WDT` / `INT_WDT` / `LOAD_PROHIBITED` (firmware crash, often memory-related), `BROWNOUT` (power dip).
+
+**How to diagnose**: open HA history for **Heap Min Free** and **Uptime**. If `Uptime` dropped to 0 around the unavailable window, the device rebooted — check `Reset Reason` for the cause. If `Uptime` kept climbing through the unavailable window, the device stayed up and you have a network problem (WiFi, router, HA connectivity), not a firmware problem.
+
+A `Heap Min Free` reading below ~5 KB means the device has come close to running out of memory at some point this uptime cycle. If reboots correlate, you likely have an OOM problem — see the next section.
+
+## Free up memory by disabling BLE
+
+The biggest memory consumer on the wifi/ethernet-ble-co2 firmware is **Bluetooth Proxy** with active scanning — typically 30-80 KB resident, plus transient spikes during scan-result processing. If you're not using the device to relay BLE devices (Xiaomi temperature sensors, presence beacons, etc.) to Home Assistant, you can free most of that memory at runtime.
+
+Toggle the **BLE Scan** switch off under **Settings → Devices & services → ESPHome → \[your device\] → Configuration**. The device will reboot once to drop any active proxy connections, then come back up with scanning disabled — and the OFF state persists across future reboots. Re-enable any time by toggling the switch back on.
+
+The BLE controller stack itself stays loaded either way (about 10-15 KB), so this isn't a full BLE-off, but it does reclaim 15-30 KB of scan and processing buffers, which is usually enough to take a memory-pressured device out of the OOM danger zone.
+
 ## Collect diagnostics
 
 1. In Home Assistant, go to **Settings → Devices & services**.
