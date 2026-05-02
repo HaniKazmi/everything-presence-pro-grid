@@ -68,4 +68,5 @@ Still stuck? See [Troubleshooting](troubleshooting.md) for how to open an issue.
 
 ## Where to next
 
-- **[Calibration →](calibration.md)** — the one thing a backup doesn't restore for you.
+- **[Settings →](settings/index.md)** — tune detection, reporting, environmental offsets, LED and relay behaviour.
+- **[Calibration](calibration.md)** — the one thing a backup doesn't restore for you.

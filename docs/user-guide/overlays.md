@@ -1,6 +1,6 @@
 # Overlays
 
-Overlays tag specific cells to tell the zone engine how much to trust the radar there. [Zones](detection-zones.md) decide where targets are counted; overlays decide how the engine treats the signal in each cell. A cell can belong to a zone and carry an overlay at the same time.
+Overlays add extra information to specific cells to tell the zone engine how to interpret detections in that cell. A cell can belong to a zone and carry an overlay at the same time.
 
 There are three overlay types:
 
@@ -29,9 +29,7 @@ Only one overlay-type paint mode is active at a time. Clicking another overlay t
 
 ### When to use it
 
-Any entry or exit point in a room — anywhere a target legitimately appears out of nowhere.
-
-Paint the overlay across the entire walkable area of the opening, not just a single cell at the edge.
+Any entry or exit point in a room — anywhere a target could legitimately appear out of nowhere. Paint the overlay across the entire walkable area of the opening, not just a single cell at the edge.
 
 ### How it affects detection
 
@@ -64,6 +62,7 @@ The Interference overlay makes the zone engine much harder to convince in two wa
 
 ### When to use it
 
+- A pet's bed.
 - Plants in stable positions that consistently show up as false targets.
 - Fish tanks, aquarium pumps, or other fixed moving-fluid setups.
 - Robot vacuums parked on their dock.

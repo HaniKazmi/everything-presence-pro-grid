@@ -1,12 +1,10 @@
 # How detection works
 
-The defaults work. This page is for when you're tuning a zone or chasing one that misbehaves — it traces what the zone detection engine does between the radar producing a target and Home Assistant seeing a presence entity flip.
-
-The engine runs on the device, ten times a second.
+The default settings should normally be sufficient. This page is for when you're tuning a zone or chasing one that misbehaves — it explains what the zone detection engine does between the radar producing a target and Home Assistant seeing a presence entity activate.
 
 ## Inputs
 
-Three things feed the engine on every tick:
+Ten times a second the detection engine processes the available data to update room and zone detection status, and target positions. It does that by amalgamating the following information:
 
 - **Targets** — the LD2450 mmWave sensor reports up to three targets at roughly 10 frames per second. Each frame gives an `x, y` position in metres for any target it currently sees.
 - **Calibrated grid** — your room is divided into uniform cells. Each cell is either inside the room or outside, optionally belongs to a zone, and may carry an overlay (Entry/Exit, Interference, or Suppress). See [Detection zones](detection-zones.md) and [Overlays](overlays.md).
@@ -17,9 +15,9 @@ Three things feed the engine on every tick:
 Raw radar positions jitter from frame to frame even when a person is standing still, and individual frames sometimes drop out entirely. The engine smooths this with a one-second window of recent frames, sliding forward each tick:
 
 - The last second of frames is held in memory.
-- Each tick the engine takes the **median** of the `x` and `y` values from the frames in which the target was active. The median ignores single-frame outliers; a mean would let one bad sample pull the position. Silent frames don't contribute.
+- Each tick the engine takes the **median** of the `x` and `y` values from the frames in which the target was active. The median ignores single-frame outliers; a mean would let one bad sample skew the position. Silent frames don't contribute.
 - The window slides one frame at a time. Each tick adds the newest frame and drops the oldest, instead of being chopped into independent one-second buckets.
-- The smoothed median position is what the rest of the engine (cell mapping, continuity, gating) operates on.
+- The smoothed median position is what the rest of the engine operates on.
 
 The LD2450 produces frames at a fixed 10 Hz — one position update per tracked target every 100 ms — and the engine ticks once per frame. So the smoothed position updates ten times a second, but each update is always backed by a full second of measurements. Consecutive ticks share roughly nine-tenths of their input, which is why the position you see on the live overview glides smoothly across the grid.
 
@@ -62,10 +60,10 @@ stateDiagram-v2
 
 Both **Occupied** and **Pending** report as `on` to Home Assistant. The split exists so the engine can ride out short dropouts — radar targets routinely vanish for a frame or two — without flapping the entity.
 
-Two thresholds control entry and re-entry:
+Two signal thresholds control entry and re-entry:
 
 - **Trigger** — needed to push a *clear* zone into *occupied*. Higher means harder to activate. Defaults vary by zone type (see below).
-- **Renew** — needed to keep an *occupied* zone occupied, or to pull a *pending* zone back. Always ≤ Trigger, so once a zone is on, less signal sustains it.
+- **Renew** — needed to keep an *occupied* zone occupied, or to pull a *pending* zone back to *detected*. Always ≤ Trigger, so once a zone is on, less signal sustains it.
 
 The **Presence timeout** is how long a zone sits in *pending* before giving up and clearing.
 
@@ -86,7 +84,7 @@ For the engine the effect is much the same as marking the cell as outside the ro
 
 ## Handoff: leaving smoothly
 
-When a target moves from one zone to an adjacent zone, the source zone enters *pending* and clears after the shorter **Handoff timeout** instead of the full Presence timeout. The target hasn't disappeared; it just walked next door.
+When a target moves from one zone to an adjacent zone, the source zone enters the *pending* state and clears after the shorter **Handoff timeout** instead of the full Presence timeout. The target hasn't disappeared; it just walked next door.
 
 The same shortcut applies when the last target in a zone disappears from an Entry/Exit cell. The engine assumes the person walked out through the doorway and clears the zone in Handoff time. Without this, a hallway light tied to a Transit zone would stay on for the full presence timeout after someone walks past.
 
@@ -129,19 +127,19 @@ flowchart LR
     C[Static sensor<br/>Active or pending] --> O
 ```
 
-Use it when PIR triggers from pets, radiators, or other heat sources are a problem and you want a presence signal that reflects only radar evidence. Disabled by default; enable it under Settings → Entities.
+Use it when you need to limit the range of the sensors, for instance where you have two sensors in a room, each monitoring half the room. It is not possible to limit the range of the motion sensor in the way you can with the target and static sensors. Using the mmWave presence entity allows you to divide the room cleanly into two independent zones. Disabled by default; enable it under Settings → Entities.
 
 ## Sensor-assisted clear
 
-The Bed zone holds *pending* for ten minutes. That's deliberate, since someone asleep in bed can drop off the radar for whole minutes at a time. The downside is that a stale *pending* state can keep an Occupancy entity `on` long after the room is actually empty.
+The Bed zone holds the *pending* state for ten minutes. That's deliberate, since someone asleep in bed can drop off the radar for whole minutes at a time. The downside is that a stale *pending* state can keep an **Occupancy** or **mmWave Presence** entity `on` long after the room is actually empty.
 
 The static and motion sensors fix that. The engine watches for a specific combination:
 
 - Static-presence sensor: **inactive**, and
-- Motion sensor: **inactive**, and
+- Motion sensor: **inactive** (in the case of the *Occupancy** entity), and
 - No zone currently *occupied* (only *pending* ones remain).
 
-When all three hold, every *pending* zone is force-cleared immediately, and Occupancy drops to `off`. The reasoning: if neither hardware sensor sees anyone and the radar isn't currently tracking a target, the room is empty and there's nothing to wait for.
+When all three hold, every *pending* zone is force-cleared immediately, and Occupancy and mmWave Presence drop to `off`. The reasoning: if neither hardware sensor sees anyone and the radar isn't currently tracking a target, the room is empty and there's nothing to wait for.
 
 !!! note
     The static-presence sensor (SEN0609) and PIR have their own timeouts, configurable in [Sensor calibration](settings/sensor-calibration.md). "Static is inactive" above means the sensor's *own* pending state has already expired, not just that the chip currently reports no presence.

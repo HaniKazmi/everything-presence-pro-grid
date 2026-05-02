@@ -20,9 +20,9 @@ Practical guidance:
 
 ![Top-down view: mid-wall-mounted sensor — the 120° cone leaves blind triangles on both sides of the mount wall.](../images/placement/mid-wall-fov.svg){ width="80%" }
 
-## Mounting height (1.5–1.8 m)
+## Mounting height (1.3–2.0 m)
 
-Mount between 1.5 m and 1.8 m above the floor, and angle the device slightly down so the aim reaches about 1 m height in the opposite corner of the room.
+Mount between 1.3 m and 2.0 m above the floor, and angle the device slightly down so the aim reaches about 1 m height in the opposite corner of the room.
 
 The useful detection height is around 1 m, waist level for an adult. Aimed horizontally, the upper half of the cone clears adult head height and catches nothing useful. Tilting the device down a few degrees moves that coverage into the 0.5–1.5 m band where bodies are.
 

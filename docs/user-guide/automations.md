@@ -6,7 +6,7 @@ A typical "someone walks in, uses the room, leaves" sequence has three phases, a
 
 - **Fast trigger.** Somebody just walked in. Low latency matters; you want the lights on before the person has crossed the threshold.
 - **Zone-specific.** The person is now in a particular region. Targeted actions fire: a mirror light, an extractor fan, a desk lamp.
-- **Empty gate.** The room has been empty long enough that you can safely turn things off. Latency doesn't matter at all; the only risk worth caring about is declaring the room empty too soon.
+- **Empty gate.** The room has been empty long enough that you can safely turn things off. Latency isn't as important as mistakenly declaring a room empty too soon.
 
 ![Phase timeline showing a single visit with the three automation phases mapped onto the Occupancy and zone-presence signals.](../images/automations/phase-timeline.svg){ width="100%" }
 
@@ -23,7 +23,7 @@ For almost every automation, two entities cover the three phases between them.
 
     Use a zone presence going `Detected (on)` to take positive action (turning lights on), and the Occupancy entity going `Clear (off)` to take negative action (turning lights off).
 
-For zone-specific actions where the number of people matters, use `sensor.<device>_zone_<N>_target_count`. Enable it under **Settings** > **Entities** > **Zone level** > **Target count**.
+For zone-specific actions where the number of people matters, use `sensor.<device>_zone_<N>_target_count`. Enable it under **Settings** > **Entities** > **Zone level** > **Target count**, but be aware that you could have two people in the same zone, both sitting very still, making the target count read zero.
 
 !!! note
     Zone entities are translated by their friendly name (`Zone <name>` in the HA UI), but **entity IDs stay as `zone_<N>_presence`** where `<N>` is 0–7. Use entity IDs in automations so they keep working if you rename a zone.
@@ -59,7 +59,7 @@ actions:
       entity_id: light.passage
 ```
 
-It's usually cleaner to fold both of these into one automation that uses trigger IDs to choose which action to take:
+It's usually cleaner to fold both of these into a single automation that uses **trigger IDs** to choose which action to take:
 
 ```yaml
 mode: restart

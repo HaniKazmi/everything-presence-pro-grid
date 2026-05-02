@@ -1,19 +1,19 @@
 # Entities
 
-The defaults expose what most automations actually need: room occupancy and per-zone presence (once calibrated). Everything else is left disabled to keep the device quiet.
+The defaults expose what most automations actually need: room occupancy and per-zone presence (once calibrated). Everything else is left disabled to reduce network chatter and the update load on Home Assistant.
 
 Toggle a row under **Settings → Entities** and click **Save** to enable or disable the matching Home Assistant entity.
 
 ## Room level
 
-Room-wide presence and target counts. These are the entities you'll most often automate against.
+Room-wide presence and target counts. 
 
 ![Room level entities.](../../images/settings/entities/room.png "Room level entities.")
 
 | Entity | Default | What it reports |
 | --- | --- | --- |
 | **Occupancy** (`binary_sensor.<device>_occupancy`) | On | Combined room presence. Flips on when any of the zone, motion, or static signals report "someone here". Use this for "is anyone in the room". See [How detection works](../how-detection-works.md#the-occupancy-entity). |
-| **mmWave Presence** (`binary_sensor.<device>_mmwave_presence`) | Off | Radar-only presence. Combines the static-presence sensor and zone activity from the LD2450, with the PIR ignored. Useful when you want a presence signal that pets, radiators, or other heat sources can't trigger. |
+| **mmWave Presence** (`binary_sensor.<device>_mmwave_presence`) | Off | Radar-only presence. Combines the static-presence sensor and zone activity from the LD2450, with the PIR ignored. Useful when you need to limit the detection range. |
 | **Static presence** (`binary_sensor.<device>_static_presence`) | Off | Raw output of the SEN0609 mmWave static-presence radar, with its own pending state applied. Useful for debugging or for automations that should only react to genuine stillness. |
 | **Motion presence** (`binary_sensor.<device>_motion_presence`) | Off | Raw output of the PIR motion sensor, with its own pending state applied. Useful for low-latency triggers like entry detection or security automations. |
 | **Target presence** (`binary_sensor.<device>_target_presence`) | Off | True whenever the LD2450 is actively tracking at least one target. Independent of any zone. |
@@ -30,13 +30,13 @@ Per-zone state. There are eight zone slots: zone 0 (the **Rest of room**, everyt
 | --- | --- | --- |
 | **Presence** (`binary_sensor.<device>_zone_<N>_presence`) | On (when calibrated) | Per-zone occupancy from the [zone state machine](../how-detection-works.md#the-zone-state-machine). |
 | **Target count** (`sensor.<device>_zone_<N>_target_count`) | Off | Number of LD2450 targets currently inside the zone. |
-| **Update rate** | 1 Hz | How often the zone entities above publish. See [Update rate](#update-rate). |
+| **Update rate** | 1 Hz | How often the zone entities above get updated. See [Update rate](#update-rate). |
 
 These entities only appear once the room is calibrated, since before that there's no concept of zones.
 
 ## Target level
 
-Per-target output from the zone engine, exposed as up to three target slots. The position values are smoothed by the engine (see [How detection works → Smoothing and signal strength](../how-detection-works.md#smoothing-and-signal-strength)) and the signal value is the engine's 0–9 reliability score. These entities give you direct visibility into what the engine sees per target. The data updates frequently and is mainly useful for debugging or research; most automations won't need it.
+Per-target output from the zone engine, exposed as up to three target slots. The position values are smoothed by the engine (see [How detection works → Smoothing and signal strength](../how-detection-works.md#smoothing-and-signal-strength)) and the signal value is the engine's 0–9 detection score. These entities give you direct visibility into what the engine sees per target. The data updates frequently and is mainly useful for debugging or research; most automations won't need it.
 
 ![Target level entities.](../../images/settings/entities/target.png "Target level entities.")
 
@@ -65,7 +65,7 @@ Climate readings from the on-board sensors. They report room state independently
 | **CO₂** (`sensor.<device>_co2`) | Off | SCD4x. **Optional add-on**. The entity stays unavailable if the module isn't fitted. See [Hardware → Environmental sensors](../hardware.md#environmental-sensors). |
 
 !!! note
-    Temperature and humidity readings are biased by the device's own waste heat and by where it's mounted. Use the [environmental offsets](sensor-calibration.md#environmental-offsets) under Sensor calibration to nudge the average closer to a reference. Treat them as trend indicators.
+    Temperature and humidity readings are biased by the device's own waste heat and by where it's mounted. Use the [environmental offsets](sensor-calibration.md#environmental-offsets) under Sensor calibration to nudge the average closer to a reference. Treat them as trend indicators rather than reliable climate sensors.
 
 ## Update rate
 

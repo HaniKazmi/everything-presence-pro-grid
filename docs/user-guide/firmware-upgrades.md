@@ -38,3 +38,9 @@ To roll back or pin to a specific firmware version, flash via USB. See [Flashing
 | OTA reports "Update failed" on every retry | Flash partition unhealthy | Re-flash via USB. |
 | Panel refuses to control device | Firmware newer than installed integration | Update the integration in HACS. |
 | Device disappeared from the list after a variant swap | ESPHome cache stale | Remove and re-add the device in **Settings → Devices & services → ESPHome**. |
+
+Still stuck? See [Troubleshooting](troubleshooting.md) for how to open an issue.
+
+## Where to next
+
+- **[Troubleshooting →](troubleshooting.md)** — collect diagnostics and open an issue if something's not working right.

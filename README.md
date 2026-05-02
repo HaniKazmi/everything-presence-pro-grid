@@ -4,7 +4,7 @@
 [![HACS Validation](https://github.com/clintongormley/everything-presence-pro-grid/actions/workflows/hacs.yml/badge.svg)](https://github.com/clintongormley/everything-presence-pro-grid/actions/workflows/hacs.yml)
 [![Hassfest](https://github.com/clintongormley/everything-presence-pro-grid/actions/workflows/hassfest.yml/badge.svg)](https://github.com/clintongormley/everything-presence-pro-grid/actions/workflows/hassfest.yml)
 
-A Home Assistant custom integration for the [Everything Presence Pro](https://shop.everythingsmart.io/products/everything-presence-pro) mmWave radar sensor. It runs smoothed target tracking and zone detection on the device, and provides a panel for configuration, calibration, live view, and firmware flashing.
+Everything Presence Pro Grid is a Home Assistant integration for the [Everything Presence Pro](https://shop.everythingsmart.io/products/everything-presence-pro) mmWave radar sensor. It ships with custom firmware that runs all the detection work — target smoothing, zone tracking, presence logic — on the device itself. The integration provides a Home Assistant panel for configuration, calibration, live overview, and firmware flashing, built around a calibrated grid that matches the real geometry of your room.
 
 📖 **Full documentation:** <https://clintongormley.github.io/everything-presence-pro-grid/>
 
@@ -12,37 +12,36 @@ A Home Assistant custom integration for the [Everything Presence Pro](https://sh
 
 ## What is the Everything Presence Pro?
 
-The Everything Presence Pro (EPP) combines three sensors:
+The Everything Presence Pro (EPP) is a presence sensor from [Everything Smart Technology](https://shop.everythingsmart.io/). Its low-powered mmWave radar gives it two big advantages over a regular motion sensor: it can detect people who are sitting or lying still, and it tracks them as they move around the room — which is what makes zone-based automations possible.
 
-- **PIR motion sensor** — low-latency trigger for lights the moment someone enters.
-- **Target tracking radar (LD2450)** — tracks up to three targets and lets automations react to zone transitions (extractor fan on when the toilet is in use, towel rail on when someone showers).
-- **Static presence radar (DFRobot SEN0609)** — detects ongoing presence through breathing-level movement, so lights don't switch off on someone sitting still.
+The EPP contains three main sensors:
+
+- **PIR (passive infrared) motion sensor.** Reacts the instant someone enters the room — ideal for triggering main lights.
+- **Target tracking radar (LD2450).** Follows up to three people moving around the room, so automations can react to them entering or leaving specific zones — turning on the extractor fan when someone uses the toilet, the towel rail when someone showers.
+- **Static presence radar (DFRobot SEN0609).** Picks up subtle movement like breathing, so a room stays marked occupied while someone is sitting still. Lets automations turn lights off only when the room is genuinely empty.
 
 ## What this integration does differently
 
-The stock firmware sends raw, noisy, polar-projection radar data to Home Assistant. This integration replaces that with:
+The original firmware does basic "in zone or not" detection on the device and forwards raw target data to Home Assistant. Everything Presence Pro Grid replaces that with:
 
-- **Perspective-corrected grid.** A four-corner calibration wizard maps the sensor view onto your room. Walls are straight; zones line up with real-world geometry. Cells are 30 cm × 30 cm.
-- **Seven painted zones** plus a "Rest of room" fallback. Polygonal, can be discontinuous, drawn by clicking grid cells.
-- **Zone types** (`Thoroughfare`, `Bed`, …) preset sensitivity and hysteresis for the zone's purpose; `Custom` exposes the underlying parameters.
-- **Cross-zone target tracking.** Targets are followed as they move between zones.
-- **Overlays** for refining detection — mark doorways (Entry/Exit) and noise sources (Interference/Suppress).
-- **Furniture layout.** Drop furniture stickers on the grid so the live view is readable.
-- **On-chip processing.** Home Assistant gets a single `Occupancy` binary sensor plus per-zone presence sensors, instead of a stream of coordinates.
-- **Rolling-median smoothing** of target positions, so radar jitter doesn't trigger ghost detections.
-- **Built-in flasher** for installing and updating firmware from the panel.
+- **Perspective-corrected grid.** A four-corner calibration wizard maps the radar view onto your actual room. Walls are straight, and zones line up with real-world geometry. Cells are 30 cm × 30 cm (1 ft × 1 ft).
+- **Seven painted zones**, plus an eighth "Rest of room" fallback. Zones are polygonal, can be discontinuous, and are drawn by clicking grid cells.
+- **Zone types** — `Default`, `Bed`, `Seating`, `Transit` — bundle sensible thresholds and timeouts for each kind of area, so a bed zone can hold presence for minutes while a hallway zone clears in seconds. `Custom` exposes the underlying parameters.
+- **Cross-zone target tracking.** Targets are followed as they move from one zone to another, so the handoff between zones is clean.
+- **Overlays** for refining detection. Mark doorways with Entry/Exit overlays, and noise sources with Interference or Suppress overlays.
+- **Furniture layout.** Drop furniture stickers on the grid so the live overview is easy to read. Visual only — they don't affect detection.
+- **On-chip processing.** Home Assistant gets a single `Occupancy` binary sensor plus per-zone presence sensors, instead of a constant stream of target coordinates.
+- **Smoothed positions.** Brief radar jitter is filtered out before it reaches the zone engine, so zones don't flap when a target is near a boundary.
+- **Quiet network.** Only what Home Assistant needs goes across the wire.
+- **Built-in flasher.** Install and update firmware from the panel.
 
 ![Calibration wizard capturing the four corners of a room.](docs/images/introduction/calibration-wizard.png)
 
 ## Typical entities
 
-Most rooms only need:
+Most rooms only need a handful of entities. The **Occupancy** binary sensor (`binary_sensor.<device>_occupancy`) combines the motion, static-presence, and target-tracking signals into a single "anyone in the room" entity. For zone-specific actions, each named zone has its own **Zone Presence** entity (`binary_sensor.<device>_zone_<N>_presence`).
 
-- `binary_sensor.<device>_occupancy` — combines motion, static presence, and target tracking into a single presence signal.
-- `binary_sensor.<device>_zone_<N>_presence` — one per named zone.
-- The environmental sensors (illuminance, temperature, humidity, CO2 if fitted).
-
-See the [Automations guide](https://clintongormley.github.io/everything-presence-pro-grid/user-guide/automations/) for worked examples.
+These sensors are enough to build quite sophisticated automations. See the [Automations guide](https://clintongormley.github.io/everything-presence-pro-grid/user-guide/automations/) for worked examples.
 
 ## Installation
 
@@ -59,14 +58,6 @@ See the [Automations guide](https://clintongormley.github.io/everything-presence
 Copy the `custom_components/eppgrid` directory to your Home Assistant `custom_components` folder and restart Home Assistant.
 
 See the [Installation guide](https://clintongormley.github.io/everything-presence-pro-grid/user-guide/installation/) for the full walkthrough, including hardware setup, placement, calibration, and firmware flashing.
-
-## Development
-
-Enable the repo's pre-push hook (runs format/lint/tests/coverage for Python, C++, and TypeScript):
-
-```sh
-git config core.hooksPath scripts/hooks
-```
 
 ## Links
 
