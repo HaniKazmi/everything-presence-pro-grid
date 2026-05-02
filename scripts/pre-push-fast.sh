@@ -25,9 +25,21 @@ if ! ruff check custom_components/ tests/ firmware/; then
     exit 1
 fi
 
+printf '\n▶ mypy\n'
+if ! mypy; then
+    printf '\n✗ Python typecheck — see errors above\n'
+    exit 1
+fi
+
 printf '\n▶ biome check\n'
 if ! (cd frontend && npx biome check src/); then
     printf '\n✗ TypeScript format/lint — run: cd frontend && npx biome check --fix src/\n'
+    exit 1
+fi
+
+printf '\n▶ tsc --noEmit\n'
+if ! (cd frontend && npx tsc --noEmit); then
+    printf '\n✗ TypeScript typecheck — run: cd frontend && npm run typecheck\n'
     exit 1
 fi
 

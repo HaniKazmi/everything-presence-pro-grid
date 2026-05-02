@@ -8,6 +8,7 @@
 		"dev": "rollup -c -w",
 		"lint": "biome check src/",
 		"format": "biome format --write src/",
+		"typecheck": "tsc --noEmit",
 		"test": "vitest run",
 		"test:watch": "vitest",
 		"test:coverage": "vitest run --coverage"

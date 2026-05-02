@@ -11,6 +11,8 @@ test = [
     "pytest-cov",
     "pytest-homeassistant-custom-component",
     "ruff",
+    "mypy",
+    "voluptuous-stubs",
 ]
 
 [tool.setuptools]
@@ -34,3 +36,23 @@ known-first-party = ["custom_components.eppgrid"]
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
+
+[tool.mypy]
+python_version = "3.13"
+files = ["custom_components/eppgrid"]
+# Start pragmatic: catch real bugs without forcing every dict to be a TypedDict.
+# Tighten incrementally as the codebase converges.
+check_untyped_defs = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+warn_unreachable = true
+no_implicit_optional = true
+# HA + aioesphomeapi don't ship complete stubs; suppress missing-import noise.
+ignore_missing_imports = true
+
+# Skip following imports into third-party packages — we type-check our own code,
+# not HA / aioesphomeapi internals (and HA's source uses 3.14-only syntax that
+# trips mypy's 3.13 parser).
+[[tool.mypy.overrides]]
+module = ["homeassistant.*", "aioesphomeapi.*"]
+follow_imports = "skip"

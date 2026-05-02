@@ -13,7 +13,7 @@ from homeassistant.core import callback
 from .const import DOMAIN
 
 
-class EPPGridConfigFlow(ConfigFlow, domain=DOMAIN):
+class EPPGridConfigFlow(ConfigFlow, domain=DOMAIN):  # type: ignore[call-arg]
     """Config flow — single confirm step, singleton integration."""
 
     VERSION = 1
