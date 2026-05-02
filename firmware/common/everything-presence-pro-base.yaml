@@ -581,17 +581,9 @@ ota:
   - platform: esphome
   - platform: http_request
     id: ota_http_request
-    # Pause BLE scan for the OTA download. The mbedtls TLS context held during
-    # the multi-second binary fetch is the largest transient heap consumer on
-    # this firmware; combined with bluetooth_proxy + active scan it has caused
-    # OOM-driven reboots mid-OTA. On success the device reboots and scan
-    # resumes from boot; on failure we restart it explicitly.
-    on_begin:
-      - logger.log: "OTA started — pausing BLE scan to free heap"
-      - esp32_ble_tracker.stop_scan:
-    on_error:
-      - logger.log: "OTA failed — resuming BLE scan"
-      - esp32_ble_tracker.start_scan:
+    # OTA hooks that pause BLE scan for the duration of the download live in
+    # `bluetooth-base.yaml` (extending this id) so the dependency on
+    # esp32_ble_tracker is colocated with the component that defines it.
 
 debug:
   update_interval: 60s
