@@ -150,6 +150,9 @@ async def test_on_device_available_clears_repair_after_ota_brings_versions_in_li
     reboots and reconnects → firmware_version sensor reports new value →
     `_on_device_available` runs → issue must be cleared.
     """
+    from unittest.mock import AsyncMock
+    from unittest.mock import patch
+
     from homeassistant.helpers import device_registry as dr
     from homeassistant.helpers import entity_registry as er
     from pytest_homeassistant_custom_component.common import MockConfigEntry
@@ -201,9 +204,12 @@ async def test_on_device_available_clears_repair_after_ota_brings_versions_in_li
         device_id=device.id,
     )
 
-    # Device comes back online reporting the matching firmware version
+    # Device comes back online reporting the matching firmware version. Mock
+    # _push_config_to_device — it's incidental to what we're testing here, and
+    # the real path opens a network socket which the HA test framework blocks.
     hass.states.async_set(fw_entry.entity_id, FIRMWARE_VERSION)
-    await manager._on_device_available(mac)
+    with patch.object(manager, "_push_config_to_device", new=AsyncMock(return_value=True)):
+        await manager._on_device_available(mac)
 
     assert ir.async_get(hass).async_get_issue(DOMAIN, f"firmware_behind_{mac}") is None, (
         "firmware_behind issue must be cleared once a device reconnects on the matching firmware"
