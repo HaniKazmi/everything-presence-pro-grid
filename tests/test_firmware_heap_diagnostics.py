@@ -90,3 +90,16 @@ def test_min_free_heap_sensor_present():
         "heap_min_free sensor must use heap_caps_get_minimum_free_size() — "
         "ESP-IDF's only API for the all-time low-water mark."
     )
+
+
+def test_loop_time_sensor_present():
+    """ESPHome main-loop time often correlates with memory pressure / blocked tasks."""
+    doc = _load_base_yaml()
+    debug_sensor = _find_debug_sensor(doc["sensor"])
+    assert debug_sensor is not None, "no `platform: debug` sensor block found"
+    loop_time = debug_sensor.get("loop_time")
+    assert isinstance(loop_time, dict), (
+        "debug sensor must define `loop_time:` — long loop times often correlate "
+        "with memory pressure and are useful when triaging heap exhaustion."
+    )
+    assert loop_time.get("entity_category") == "diagnostic"
