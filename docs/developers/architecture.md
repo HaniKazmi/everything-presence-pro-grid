@@ -184,6 +184,23 @@ Headers (under `firmware/lib/epp_zone_engine/include/`):
 
 See `firmware/lib/epp_zone_engine/` for the implementation and tests.
 
+**Diagnostic sensors** (in `firmware/common/everything-presence-pro-base.yaml`):
+`Heap Free`, `Heap Largest Block`, `Heap Min Free`, `Loop Time`, `Uptime`,
+and `Reset Reason`. All are `entity_category: diagnostic`. `Heap Min Free`
+is the monotonically-decreasing low-water mark (resets only on reboot), so
+cross-referencing it with `Uptime` and `Reset Reason` in HA history is the
+fastest way to distinguish OOM-driven reboots from network blips.
+
+**BLE Scan switch** (in `firmware/common/bluetooth-base.yaml`): runtime
+toggle for the `esp32_ble_tracker` scan, exposed as a config-category
+switch. Disabling reboots the device so any in-flight `bluetooth_proxy`
+GATT-client connections drop cleanly; an `esphome.on_boot` reconciliation
+re-applies the persisted OFF state immediately on restart (template
+switches restore state but don't replay actions). PR #149's OTA `on_error`
+hook checks the toggle before restarting scan, so a failed OTA can't
+silently override the user's preference. The BLE controller stack
+(~10-15 KB) stays loaded regardless.
+
 ## HA Integration
 
 The Python integration is a thin layer between the device and the frontend.
@@ -212,6 +229,17 @@ subscriptions). Manages ESPHome zone entity enable/disable/rename.
 Fetches build flags from firmware on connect. Subscribes to device log
 stream when any log category is set above None, re-emitting messages under
 `custom_components.eppgrid.device_manager._connection.device_logs`.
+
+Surfaces firmware-version mismatches via HA's Repairs framework
+(`firmware_behind_{mac}` / `firmware_ahead_{mac}` issues) so users see
+the mismatch in **Settings → Repairs** without opening the panel. Issues
+are raised on initial discovery (`async_discover`), on post-OTA reconnect
+(`_on_device_available`), and when the firmware_version sensor transitions
+late (`_on_state_changed`); they're cleared on device removal and re-synced
+on rename. The integration is now the source of truth for firmware-update
+detection — the device-side `update.http_request` auto-poll is disabled
+(`update_interval: never` in the variant YAMLs) to eliminate the recurring
+~30-50 KB TLS-handshake spike to GitHub Pages.
 
 ### Storage (`storage.py`)
 
