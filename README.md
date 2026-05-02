@@ -48,10 +48,9 @@ These sensors are enough to build quite sophisticated automations. See the [Auto
 ### HACS (recommended)
 
 1. Open HACS in Home Assistant.
-2. Add this repository as a custom repository (category: Integration).
-3. Search for "Everything Presence Pro Grid" and install.
-4. Restart Home Assistant.
-5. Go to **Settings → Devices & Services → Add Integration** and choose **Everything Presence Pro Grid**.
+2. Search for "Everything Presence Pro Grid" and install.
+3. Restart Home Assistant.
+4. Go to **Settings → Devices & Services → Add Integration** and choose **Everything Presence Pro Grid**.
 
 ### Manual
 
