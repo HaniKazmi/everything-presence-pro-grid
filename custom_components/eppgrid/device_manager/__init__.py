@@ -383,12 +383,29 @@ class DeviceManager:
             self._hass.async_create_task(self._on_device_removed(mac))
             return
 
-        # Update (rename, area change, etc.) — notify subscribers so the
-        # frontend re-fetches list_devices and picks up the fresh data.
+        # Update (rename, area change, etc.) — refresh the cached friendly
+        # name and re-sync the Repairs issue so its title/description tracks
+        # the new name, then notify subscribers so the frontend re-fetches
+        # list_devices and picks up the fresh data.
+        dev_reg = dr.async_get(self._hass)
+        device = dev_reg.async_get(device_id) if device_id else None
+        if device is not None:
+            new_name = device.name_by_user or device.name or "EPP Device"
+            self.devices[mac].name = new_name
+            _sync_firmware_repair_issue(
+                self._hass,
+                mac=mac,
+                device_name=new_name,
+                fw_ver=self.read_firmware_version(device_id),
+            )
         self._fire_device_list_changed()
 
     async def _on_device_removed(self, mac: str) -> None:
         """Clean up stored settings and runtime state for a removed device."""
+        from homeassistant.helpers import issue_registry as ir
+
+        from ..const import DOMAIN as _DOMAIN
+
         await self.async_close_session(mac)
         self._store.devices.pop(mac, None)
         dev = self.devices.pop(mac, None)
@@ -400,6 +417,11 @@ class DeviceManager:
         self._session_locks.pop(mac, None)
         self._entity_update_macs.discard(mac)
         self._pushing.discard(mac)
+        # Clear any Repairs issues we raised for this device — they'd
+        # otherwise hang in HA Settings → Repairs forever for a device
+        # that no longer exists.
+        ir.async_delete_issue(self._hass, _DOMAIN, f"firmware_behind_{mac}")
+        ir.async_delete_issue(self._hass, _DOMAIN, f"firmware_ahead_{mac}")
         await self._store.async_save()
         self._fire_device_list_changed()
         _LOGGER.info("Cleaned up settings for removed device %s", mac)

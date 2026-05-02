@@ -216,6 +216,132 @@ async def test_on_device_available_clears_repair_after_ota_brings_versions_in_li
     )
 
 
+async def test_repair_issues_cleared_on_device_removal(hass: HomeAssistant) -> None:
+    """Removing a device from HA must clear its Repairs issues.
+
+    Without cleanup the firmware_behind_{mac} entry hangs around forever for
+    a device that no longer exists in HA — confusing the user and cluttering
+    Settings → Repairs.
+    """
+    from homeassistant.helpers import device_registry as dr
+    from pytest_homeassistant_custom_component.common import MockConfigEntry
+
+    from custom_components.eppgrid.device_manager import DeviceManager
+    from custom_components.eppgrid.device_manager import ManagedDevice
+    from custom_components.eppgrid.storage import EPPGridStore
+
+    mac = "AA:BB:CC:DD:EE:20"
+
+    esphome_entry = MockConfigEntry(domain="esphome", data={"host": "192.168.1.60"}, title="EPP Old")
+    esphome_entry.add_to_hass(hass)
+    dev_reg = dr.async_get(hass)
+    device = dev_reg.async_get_or_create(
+        config_entry_id=esphome_entry.entry_id,
+        connections={("mac", mac.lower())},
+        name="EPP Old",
+        manufacturer="EverythingSmartTechnology",
+        model="Everything Presence Pro",
+    )
+
+    manager = DeviceManager(hass, EPPGridStore(hass))
+    manager.devices[mac] = ManagedDevice(
+        mac=mac,
+        name="EPP Old",
+        host="192.168.1.60",
+        esphome_config_entry_id=esphome_entry.entry_id,
+        device_id=device.id,
+    )
+
+    # Pre-existing repair from before the user removed the device
+    ir.async_create_issue(
+        hass,
+        DOMAIN,
+        f"firmware_behind_{mac}",
+        is_fixable=False,
+        severity=ir.IssueSeverity.WARNING,
+        translation_key="firmware_behind",
+    )
+
+    await manager._on_device_removed(mac)
+
+    reg = ir.async_get(hass)
+    assert reg.async_get_issue(DOMAIN, f"firmware_behind_{mac}") is None
+    assert reg.async_get_issue(DOMAIN, f"firmware_ahead_{mac}") is None
+
+
+async def test_repair_issue_resyncs_on_device_rename(hass: HomeAssistant) -> None:
+    """A device rename must update the placeholder name on the Repairs issue.
+
+    `_sync_firmware_repair_issue` re-creates the issue with fresh placeholders
+    when called, so the device-registry update path needs to invoke it for
+    the issue title/description to track the new name.
+    """
+    from homeassistant.helpers import device_registry as dr
+    from homeassistant.helpers import entity_registry as er
+    from pytest_homeassistant_custom_component.common import MockConfigEntry
+
+    from custom_components.eppgrid.device_manager import DeviceManager
+    from custom_components.eppgrid.device_manager import ManagedDevice
+    from custom_components.eppgrid.storage import EPPGridStore
+
+    mac = "AA:BB:CC:DD:EE:21"
+    behind_version = _bump(FIRMWARE_VERSION, kind="behind")
+
+    esphome_entry = MockConfigEntry(domain="esphome", data={"host": "192.168.1.61"}, title="Original")
+    esphome_entry.add_to_hass(hass)
+    dev_reg = dr.async_get(hass)
+    device = dev_reg.async_get_or_create(
+        config_entry_id=esphome_entry.entry_id,
+        connections={("mac", mac.lower())},
+        name="Original",
+        manufacturer="EverythingSmartTechnology",
+        model="Everything Presence Pro",
+    )
+    ent_reg = er.async_get(hass)
+    fw_entry = ent_reg.async_get_or_create(
+        "sensor",
+        "esphome",
+        unique_id=f"{mac}-sensor-firmware_version",
+        suggested_object_id="epp_original_firmware_version",
+        config_entry=esphome_entry,
+        device_id=device.id,
+    )
+    hass.states.async_set(fw_entry.entity_id, behind_version)
+
+    manager = DeviceManager(hass, EPPGridStore(hass))
+    manager.devices[mac] = ManagedDevice(
+        mac=mac,
+        name="Original",
+        host="192.168.1.61",
+        esphome_config_entry_id=esphome_entry.entry_id,
+        device_id=device.id,
+    )
+
+    # Initial sync: issue exists with name "Original"
+    from custom_components.eppgrid.device_manager._helpers import _sync_firmware_repair_issue
+
+    _sync_firmware_repair_issue(hass, mac=mac, device_name="Original", fw_ver=behind_version)
+    issue = ir.async_get(hass).async_get_issue(DOMAIN, f"firmware_behind_{mac}")
+    assert issue is not None
+    assert issue.translation_placeholders is not None
+    assert issue.translation_placeholders["device_name"] == "Original"
+
+    # User renames the device in HA
+    dev_reg.async_update_device(device.id, name_by_user="Renamed")
+    manager.devices[mac].name = "Renamed"
+
+    # Simulate device-registry "update" event being delivered to the manager
+    fake_event = type("E", (), {"data": {"action": "update", "device_id": device.id}})()
+    manager._on_device_registry_updated(fake_event)
+    await hass.async_block_till_done()
+
+    issue = ir.async_get(hass).async_get_issue(DOMAIN, f"firmware_behind_{mac}")
+    assert issue is not None
+    assert issue.translation_placeholders["device_name"] == "Renamed", (
+        "device-registry update must re-sync the Repairs issue so the title/description tracks the new name"
+    )
+
+
 async def test_async_discover_creates_repair_issue_for_outdated_device(hass: HomeAssistant) -> None:
     """async_discover must surface a firmware-version mismatch via Repairs.
 
