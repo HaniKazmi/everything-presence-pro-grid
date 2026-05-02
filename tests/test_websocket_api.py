@@ -226,7 +226,7 @@ class TestWebSocketGetConfig:
         entity_states = {"room_occupancy": True, "zone_presence": False}
 
         with patch(
-            "custom_components.eppgrid.websocket_api._get_entity_states",
+            "custom_components.eppgrid.websocket_api._devices._get_entity_states",
             return_value=entity_states,
         ) as mock_get_entities:
             connection = MagicMock()
@@ -359,7 +359,7 @@ class TestWebSocketSetSetup:
 
         from custom_components.eppgrid.websocket_api import websocket_set_setup
 
-        with patch("custom_components.eppgrid.websocket_api._apply_entity_states") as mock_apply:
+        with patch("custom_components.eppgrid.websocket_api._devices._apply_entity_states") as mock_apply:
             connection = MagicMock()
             msg = {
                 "id": 5,
@@ -385,7 +385,7 @@ class TestWebSocketSetSetup:
 
         from custom_components.eppgrid.websocket_api import websocket_set_setup
 
-        with patch("custom_components.eppgrid.websocket_api._apply_entity_states"):
+        with patch("custom_components.eppgrid.websocket_api._devices._apply_entity_states"):
             connection = MagicMock()
             msg = {
                 "id": 5,
@@ -966,7 +966,7 @@ class TestWebSocketSettings:
 
         from custom_components.eppgrid.websocket_api import websocket_set_settings
 
-        with patch("custom_components.eppgrid.websocket_api._apply_entity_states") as mock_apply:
+        with patch("custom_components.eppgrid.websocket_api._devices._apply_entity_states") as mock_apply:
             connection = MagicMock()
             msg = {
                 "id": 11,
@@ -1039,7 +1039,7 @@ class TestWebSocketSettings:
             "entities": {"zone_presence": False},
         }
 
-        with patch("custom_components.eppgrid.websocket_api._apply_entity_states"):
+        with patch("custom_components.eppgrid.websocket_api._devices._apply_entity_states"):
             mock_dm.async_update_zone_entities = AsyncMock()
             await call_async_handler(hass, websocket_set_settings, connection, msg)
 
@@ -1086,7 +1086,7 @@ class TestWebSocketSettings:
             "entities": {"zone_presence": True},
         }
 
-        with patch("custom_components.eppgrid.websocket_api._apply_entity_states"):
+        with patch("custom_components.eppgrid.websocket_api._devices._apply_entity_states"):
             mock_dm.async_update_zone_entities = AsyncMock()
             await call_async_handler(hass, websocket_set_settings, connection, msg)
 
@@ -1130,7 +1130,7 @@ class TestWebSocketSettings:
             "entities": {"zone_presence": True},
         }
 
-        with patch("custom_components.eppgrid.websocket_api._apply_entity_states"):
+        with patch("custom_components.eppgrid.websocket_api._devices._apply_entity_states"):
             mock_dm.async_update_zone_entities = AsyncMock()
             await call_async_handler(hass, websocket_set_settings, connection, msg)
 
@@ -1378,7 +1378,7 @@ class TestWebSocketSettings:
 
         from custom_components.eppgrid.websocket_api import websocket_set_settings
 
-        with patch("custom_components.eppgrid.websocket_api._apply_entity_states") as mock_apply:
+        with patch("custom_components.eppgrid.websocket_api._devices._apply_entity_states") as mock_apply:
             connection = MagicMock()
             msg = {
                 "id": 11,
@@ -1416,7 +1416,7 @@ class TestWebSocketSettings:
 
         from custom_components.eppgrid.websocket_api import websocket_set_settings
 
-        with patch("custom_components.eppgrid.websocket_api._apply_entity_states") as mock_apply:
+        with patch("custom_components.eppgrid.websocket_api._devices._apply_entity_states") as mock_apply:
             connection = MagicMock()
             msg = {
                 "id": 11,
@@ -1560,7 +1560,7 @@ class TestZonePresencePreservation:
 
         from custom_components.eppgrid.websocket_api import websocket_set_settings
 
-        with patch("custom_components.eppgrid.websocket_api._apply_entity_states"):
+        with patch("custom_components.eppgrid.websocket_api._devices._apply_entity_states"):
             connection = MagicMock()
             msg = {
                 "id": 11,
@@ -1603,7 +1603,7 @@ class TestZonePresencePreservation:
 
         from custom_components.eppgrid.websocket_api import websocket_set_settings
 
-        with patch("custom_components.eppgrid.websocket_api._apply_entity_states"):
+        with patch("custom_components.eppgrid.websocket_api._devices._apply_entity_states"):
             connection = MagicMock()
             msg = {
                 "id": 11,
@@ -1816,8 +1816,8 @@ class TestApplyEntityStates:
         integration_disabled_entry.disabled_by = RegistryEntryDisabler.INTEGRATION
 
         with (
-            patch("custom_components.eppgrid.websocket_api.er.async_get") as mock_er,
-            patch("custom_components.eppgrid.websocket_api.er.async_entries_for_device") as mock_entries,
+            patch("custom_components.eppgrid.websocket_api._devices.er.async_get") as mock_er,
+            patch("custom_components.eppgrid.websocket_api._devices.er.async_entries_for_device") as mock_entries,
         ):
             mock_registry = mock_er.return_value
             mock_entries.return_value = [
@@ -1859,8 +1859,8 @@ class TestApplyEntityStates:
         calibrate_entry.disabled_by = RegistryEntryDisabler.INTEGRATION
 
         with (
-            patch("custom_components.eppgrid.websocket_api.er.async_get") as mock_er,
-            patch("custom_components.eppgrid.websocket_api.er.async_entries_for_device") as mock_entries,
+            patch("custom_components.eppgrid.websocket_api._devices.er.async_get") as mock_er,
+            patch("custom_components.eppgrid.websocket_api._devices.er.async_entries_for_device") as mock_entries,
         ):
             mock_registry = mock_er.return_value
             mock_entries.return_value = [co2_entry, calibrate_entry]
@@ -1895,8 +1895,8 @@ class TestApplyEntityStates:
         calibrate_entry.disabled_by = None
 
         with (
-            patch("custom_components.eppgrid.websocket_api.er.async_get") as mock_er,
-            patch("custom_components.eppgrid.websocket_api.er.async_entries_for_device") as mock_entries,
+            patch("custom_components.eppgrid.websocket_api._devices.er.async_get") as mock_er,
+            patch("custom_components.eppgrid.websocket_api._devices.er.async_entries_for_device") as mock_entries,
         ):
             mock_registry = mock_er.return_value
             mock_entries.return_value = [co2_entry, calibrate_entry]
@@ -1930,8 +1930,8 @@ class TestApplyEntityStates:
         calibrate_entry.disabled_by = None  # enabled
 
         with (
-            patch("custom_components.eppgrid.websocket_api.er.async_get"),
-            patch("custom_components.eppgrid.websocket_api.er.async_entries_for_device") as mock_entries,
+            patch("custom_components.eppgrid.websocket_api._devices.er.async_get"),
+            patch("custom_components.eppgrid.websocket_api._devices.er.async_entries_for_device") as mock_entries,
         ):
             mock_entries.return_value = [co2_entry, calibrate_entry]
 
@@ -1950,7 +1950,7 @@ class TestWebSocketEntityEnabled:
 
         from custom_components.eppgrid.websocket_api import websocket_set_entity_enabled
 
-        with patch("custom_components.eppgrid.websocket_api.er.async_get") as mock_er:
+        with patch("custom_components.eppgrid.websocket_api._devices.er.async_get") as mock_er:
             mock_registry = mock_er.return_value
 
             connection = MagicMock()
@@ -1977,7 +1977,7 @@ class TestWebSocketEntityEnabled:
 
         from custom_components.eppgrid.websocket_api import websocket_set_entity_enabled
 
-        with patch("custom_components.eppgrid.websocket_api.er.async_get") as mock_er:
+        with patch("custom_components.eppgrid.websocket_api._devices.er.async_get") as mock_er:
             mock_registry = mock_er.return_value
 
             connection = MagicMock()

@@ -55,7 +55,7 @@ class TestDeviceConnection:
         conn = DeviceConnection("192.168.1.100")
         assert not conn.connected
 
-        with patch("custom_components.eppgrid.device_manager.APIClient") as mock_cls:
+        with patch("custom_components.eppgrid.device_manager._connection.APIClient") as mock_cls:
             mock_client = mock_cls.return_value
             mock_client.connect = AsyncMock()
             mock_client.list_entities_services = AsyncMock(return_value=([], []))
@@ -73,7 +73,7 @@ class TestDeviceConnection:
         """Failed connect cleans up the client."""
         conn = DeviceConnection("192.168.1.100")
 
-        with patch("custom_components.eppgrid.device_manager.APIClient") as mock_cls:
+        with patch("custom_components.eppgrid.device_manager._connection.APIClient") as mock_cls:
             mock_client = mock_cls.return_value
             mock_client.connect = AsyncMock(side_effect=ConnectionError("timeout"))
             mock_client.disconnect = AsyncMock()
@@ -88,7 +88,7 @@ class TestDeviceConnection:
         """subscribe_states dispatches to all subscribers."""
         conn = DeviceConnection("192.168.1.100")
 
-        with patch("custom_components.eppgrid.device_manager.APIClient") as mock_cls:
+        with patch("custom_components.eppgrid.device_manager._connection.APIClient") as mock_cls:
             mock_client = mock_cls.return_value
             mock_client.connect = AsyncMock()
             mock_client.list_entities_services = AsyncMock(return_value=([], []))
@@ -111,7 +111,7 @@ class TestDeviceConnection:
         """unsubscribe_states removes the callback."""
         conn = DeviceConnection("192.168.1.100")
 
-        with patch("custom_components.eppgrid.device_manager.APIClient") as mock_cls:
+        with patch("custom_components.eppgrid.device_manager._connection.APIClient") as mock_cls:
             mock_client = mock_cls.return_value
             mock_client.connect = AsyncMock()
             mock_client.list_entities_services = AsyncMock(return_value=([], []))
@@ -133,7 +133,7 @@ class TestDeviceConnection:
         mock_service = MagicMock()
         mock_service.name = "epp_set_perspective"
 
-        with patch("custom_components.eppgrid.device_manager.APIClient") as mock_cls:
+        with patch("custom_components.eppgrid.device_manager._connection.APIClient") as mock_cls:
             mock_client = mock_cls.return_value
             mock_client.connect = AsyncMock()
             mock_client.list_entities_services = AsyncMock(return_value=([], [mock_service]))
@@ -178,7 +178,7 @@ class TestDeviceConnection:
 
         services = [svc_env, svc_motion, svc_tracking, svc_static]
 
-        with patch("custom_components.eppgrid.device_manager.APIClient") as mock_cls:
+        with patch("custom_components.eppgrid.device_manager._connection.APIClient") as mock_cls:
             mock_client = mock_cls.return_value
             mock_client.connect = AsyncMock()
             mock_client.list_entities_services = AsyncMock(return_value=([], services))
@@ -247,7 +247,7 @@ class TestDeviceConnection:
 
         services = [svc_env, svc_motion, svc_tracking, svc_static]
 
-        with patch("custom_components.eppgrid.device_manager.APIClient") as mock_cls:
+        with patch("custom_components.eppgrid.device_manager._connection.APIClient") as mock_cls:
             mock_client = mock_cls.return_value
             mock_client.connect = AsyncMock()
             mock_client.list_entities_services = AsyncMock(return_value=([], services))
@@ -1186,7 +1186,7 @@ class TestPushConfig:
         mock_zones = MagicMock()
         mock_zones.name = "epp_set_zones"
 
-        with patch("custom_components.eppgrid.device_manager.APIClient") as mock_cls:
+        with patch("custom_components.eppgrid.device_manager._connection.APIClient") as mock_cls:
             mock_client = mock_cls.return_value
             mock_client.connect = AsyncMock()
             mock_client.list_entities_services = AsyncMock(return_value=([], [mock_perspective, mock_grid, mock_zones]))
@@ -1226,7 +1226,7 @@ class TestPushConfig:
         mock_zones = MagicMock()
         mock_zones.name = "epp_set_zones"
 
-        with patch("custom_components.eppgrid.device_manager.APIClient") as mock_cls:
+        with patch("custom_components.eppgrid.device_manager._connection.APIClient") as mock_cls:
             mock_client = mock_cls.return_value
             mock_client.connect = AsyncMock()
             mock_client.list_entities_services = AsyncMock(return_value=([], [mock_zones]))
@@ -1260,7 +1260,7 @@ class TestPushConfig:
         mock_zones = MagicMock()
         mock_zones.name = "epp_set_zones"
 
-        with patch("custom_components.eppgrid.device_manager.APIClient") as mock_cls:
+        with patch("custom_components.eppgrid.device_manager._connection.APIClient") as mock_cls:
             mock_client = mock_cls.return_value
             mock_client.connect = AsyncMock()
             mock_client.list_entities_services = AsyncMock(return_value=([], [mock_perspective, mock_grid, mock_zones]))
@@ -1302,7 +1302,7 @@ class TestPushConfig:
         mock_zones = MagicMock()
         mock_zones.name = "epp_set_zones"
 
-        with patch("custom_components.eppgrid.device_manager.APIClient") as mock_cls:
+        with patch("custom_components.eppgrid.device_manager._connection.APIClient") as mock_cls:
             mock_client = mock_cls.return_value
             mock_client.connect = AsyncMock()
             mock_client.list_entities_services = AsyncMock(return_value=([], [mock_grid, mock_zones]))
@@ -1334,7 +1334,7 @@ class TestPushConfig:
         mock_zones = MagicMock()
         mock_zones.name = "epp_set_zones"
 
-        with patch("custom_components.eppgrid.device_manager.APIClient") as mock_cls:
+        with patch("custom_components.eppgrid.device_manager._connection.APIClient") as mock_cls:
             mock_client = mock_cls.return_value
             mock_client.connect = AsyncMock()
             mock_client.list_entities_services = AsyncMock(return_value=([], [mock_zones]))
@@ -1386,7 +1386,7 @@ class TestPushConfig:
         mock_zones = MagicMock()
         mock_zones.name = "epp_set_zones"
 
-        with patch("custom_components.eppgrid.device_manager.APIClient") as mock_cls:
+        with patch("custom_components.eppgrid.device_manager._connection.APIClient") as mock_cls:
             mock_client = mock_cls.return_value
             mock_client.connect = AsyncMock()
             mock_client.list_entities_services = AsyncMock(return_value=([], [mock_zones]))
@@ -1446,7 +1446,7 @@ class TestPushConfig:
         mock_zones = MagicMock()
         mock_zones.name = "epp_set_zones"
 
-        with patch("custom_components.eppgrid.device_manager.APIClient") as mock_cls:
+        with patch("custom_components.eppgrid.device_manager._connection.APIClient") as mock_cls:
             mock_client = mock_cls.return_value
             mock_client.connect = AsyncMock()
             mock_client.list_entities_services = AsyncMock(return_value=([], [mock_zones]))
@@ -1486,7 +1486,7 @@ class TestPushConfig:
         source_slot = {"type": "default"}
         named_slot = {"name": "Office", "color": "#CFDB70", "type": "default"}
 
-        with patch("custom_components.eppgrid.device_manager.APIClient") as mock_cls:
+        with patch("custom_components.eppgrid.device_manager._connection.APIClient") as mock_cls:
             mock_client = mock_cls.return_value
             mock_client.connect = AsyncMock()
             mock_client.list_entities_services = AsyncMock(return_value=([], [mock_zones]))
@@ -1519,7 +1519,7 @@ class TestPushConfig:
         mock_zones = MagicMock()
         mock_zones.name = "epp_set_zones"
 
-        with patch("custom_components.eppgrid.device_manager.APIClient") as mock_cls:
+        with patch("custom_components.eppgrid.device_manager._connection.APIClient") as mock_cls:
             mock_client = mock_cls.return_value
             mock_client.connect = AsyncMock()
             mock_client.list_entities_services = AsyncMock(return_value=([], [mock_zones]))
@@ -1566,7 +1566,7 @@ class TestPushConfig:
         mock_static = MagicMock()
         mock_static.name = "epp_set_static_presence"
 
-        with patch("custom_components.eppgrid.device_manager.APIClient") as mock_cls:
+        with patch("custom_components.eppgrid.device_manager._connection.APIClient") as mock_cls:
             mock_client = mock_cls.return_value
             mock_client.connect = AsyncMock()
             mock_client.list_entities_services = AsyncMock(
@@ -1633,7 +1633,7 @@ class TestPushConfig:
         mock_log_level = MagicMock()
         mock_log_level.name = "epp_set_log_level"
 
-        with patch("custom_components.eppgrid.device_manager.APIClient") as mock_cls:
+        with patch("custom_components.eppgrid.device_manager._connection.APIClient") as mock_cls:
             mock_client = mock_cls.return_value
             mock_client.connect = AsyncMock()
             mock_client.list_entities_services = AsyncMock(return_value=([], [mock_log_level]))
@@ -1656,7 +1656,7 @@ class TestPushConfig:
         """push_config skips log levels when epp_set_log_level service is not available."""
         conn = DeviceConnection("192.168.1.100")
 
-        with patch("custom_components.eppgrid.device_manager.APIClient") as mock_cls:
+        with patch("custom_components.eppgrid.device_manager._connection.APIClient") as mock_cls:
             mock_client = mock_cls.return_value
             mock_client.connect = AsyncMock()
             mock_client.list_entities_services = AsyncMock(return_value=([], []))
@@ -1679,7 +1679,7 @@ class TestPushConfig:
         mock_log_level = MagicMock()
         mock_log_level.name = "epp_set_log_level"
 
-        with patch("custom_components.eppgrid.device_manager.APIClient") as mock_cls:
+        with patch("custom_components.eppgrid.device_manager._connection.APIClient") as mock_cls:
             mock_client = mock_cls.return_value
             mock_client.connect = AsyncMock()
             mock_client.list_entities_services = AsyncMock(return_value=([], [mock_log_level]))
@@ -1706,7 +1706,7 @@ class TestPushConfig:
         mock_led = MagicMock()
         mock_led.name = "epp_set_led"
 
-        with patch("custom_components.eppgrid.device_manager.APIClient") as mock_cls:
+        with patch("custom_components.eppgrid.device_manager._connection.APIClient") as mock_cls:
             mock_client = mock_cls.return_value
             mock_client.connect = AsyncMock()
             mock_client.list_entities_services = AsyncMock(
@@ -1761,7 +1761,7 @@ class TestPushConfig:
         mock_led = MagicMock()
         mock_led.name = "epp_set_led"
 
-        with patch("custom_components.eppgrid.device_manager.APIClient") as mock_cls:
+        with patch("custom_components.eppgrid.device_manager._connection.APIClient") as mock_cls:
             mock_client = mock_cls.return_value
             mock_client.connect = AsyncMock()
             mock_client.list_entities_services = AsyncMock(return_value=([], [mock_static, mock_led]))
@@ -1791,7 +1791,7 @@ class TestPushConfig:
         mock_relay = MagicMock()
         mock_relay.name = "epp_set_relay"
 
-        with patch("custom_components.eppgrid.device_manager.APIClient") as mock_cls:
+        with patch("custom_components.eppgrid.device_manager._connection.APIClient") as mock_cls:
             mock_client = mock_cls.return_value
             mock_client.connect = AsyncMock()
             mock_client.list_entities_services = AsyncMock(return_value=([], [mock_relay]))
@@ -1819,7 +1819,7 @@ class TestPushConfig:
         mock_relay = MagicMock()
         mock_relay.name = "epp_set_relay"
 
-        with patch("custom_components.eppgrid.device_manager.APIClient") as mock_cls:
+        with patch("custom_components.eppgrid.device_manager._connection.APIClient") as mock_cls:
             mock_client = mock_cls.return_value
             mock_client.connect = AsyncMock()
             mock_client.list_entities_services = AsyncMock(return_value=([], [mock_relay]))
@@ -1837,7 +1837,7 @@ class TestPushConfig:
         """push_config skips relay when service not registered."""
         conn = DeviceConnection("192.168.1.100")
 
-        with patch("custom_components.eppgrid.device_manager.APIClient") as mock_cls:
+        with patch("custom_components.eppgrid.device_manager._connection.APIClient") as mock_cls:
             mock_client = mock_cls.return_value
             mock_client.connect = AsyncMock()
             mock_client.list_entities_services = AsyncMock(return_value=([], []))
@@ -1859,7 +1859,7 @@ class TestPushConfig:
         """async_connect is a no-op when already connected."""
         conn = DeviceConnection("192.168.1.100")
 
-        with patch("custom_components.eppgrid.device_manager.APIClient") as mock_cls:
+        with patch("custom_components.eppgrid.device_manager._connection.APIClient") as mock_cls:
             mock_client = mock_cls.return_value
             mock_client.connect = AsyncMock()
             mock_client.list_entities_services = AsyncMock(return_value=([], []))
@@ -3132,7 +3132,7 @@ class TestSessionLifecycle:
             async def disconnect(self) -> None:
                 pass
 
-        with patch("custom_components.eppgrid.device_manager.APIClient", FakeClient):
+        with patch("custom_components.eppgrid.device_manager._connection.APIClient", FakeClient):
             conn = DeviceConnection("192.168.1.50")
             await conn.async_connect()
 
@@ -3781,7 +3781,7 @@ class TestBuildFlags:
             "model": "pro",
         }
 
-        with patch("custom_components.eppgrid.device_manager.APIClient") as mock_cls:
+        with patch("custom_components.eppgrid.device_manager._connection.APIClient") as mock_cls:
             mock_client = mock_cls.return_value
             mock_client.connect = AsyncMock()
             mock_client.list_entities_services = AsyncMock(return_value=([], [mock_svc]))
@@ -3799,7 +3799,7 @@ class TestBuildFlags:
         """async_fetch_build_flags returns empty dict when service not available."""
         conn = DeviceConnection("192.168.1.100")
 
-        with patch("custom_components.eppgrid.device_manager.APIClient") as mock_cls:
+        with patch("custom_components.eppgrid.device_manager._connection.APIClient") as mock_cls:
             mock_client = mock_cls.return_value
             mock_client.connect = AsyncMock()
             mock_client.list_entities_services = AsyncMock(return_value=([], []))
@@ -3817,7 +3817,7 @@ class TestBuildFlags:
         mock_svc = MagicMock()
         mock_svc.name = "get_build_flags"
 
-        with patch("custom_components.eppgrid.device_manager.APIClient") as mock_cls:
+        with patch("custom_components.eppgrid.device_manager._connection.APIClient") as mock_cls:
             mock_client = mock_cls.return_value
             mock_client.connect = AsyncMock()
             mock_client.list_entities_services = AsyncMock(return_value=([], [mock_svc]))
@@ -3836,7 +3836,7 @@ class TestBuildFlags:
         mock_svc = MagicMock()
         mock_svc.name = "get_build_flags"
 
-        with patch("custom_components.eppgrid.device_manager.APIClient") as mock_cls:
+        with patch("custom_components.eppgrid.device_manager._connection.APIClient") as mock_cls:
             mock_client = mock_cls.return_value
             mock_client.connect = AsyncMock()
             mock_client.list_entities_services = AsyncMock(return_value=([], [mock_svc]))
@@ -4076,7 +4076,7 @@ class TestBuildFlags:
             await asyncio.sleep(60)
             return None
 
-        with patch("custom_components.eppgrid.device_manager.APIClient") as mock_cls:
+        with patch("custom_components.eppgrid.device_manager._connection.APIClient") as mock_cls:
             mock_client = mock_cls.return_value
             mock_client.connect = AsyncMock()
             mock_client.list_entities_services = AsyncMock(return_value=([], [mock_svc]))

@@ -8,11 +8,10 @@ import {
 	mdiWifiStrength4Lock,
 	mdiWifiStrength4LockOpen,
 } from "@mdi/js";
-import { html, LitElement, nothing } from "lit";
+import { css, html, LitElement, nothing } from "lit";
 import { property, state } from "lit/decorators.js";
 import type { WifiNetwork } from "../lib/improv-serial.js";
 import { defaultLocalize, type LocalizeFn } from "../localize.js";
-import { flasherStyles } from "../styles.js";
 import type {
 	FlashableDevice,
 	OtaDeviceState,
@@ -36,6 +35,499 @@ function wifiIconPath(rssi: number, authRequired: boolean): string {
 	const level = rssi >= -50 ? 3 : rssi >= -65 ? 2 : rssi >= -75 ? 1 : 0;
 	return authRequired ? WIFI_ICONS_LOCK[level] : WIFI_ICONS_OPEN[level];
 }
+
+const flasherStyles = css`
+  :host {
+    display: block;
+    padding: 16px;
+  }
+
+  .flasher-content {
+    max-width: 600px;
+    margin: 0 auto;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+  }
+
+  .card-header {
+    font-size: 18px;
+    font-weight: 400;
+    line-height: 48px;
+    padding: 8px 16px 0;
+    color: var(--ha-card-header-color, var(--primary-text-color, #212121));
+  }
+
+  .card-content {
+    padding: 16px;
+  }
+
+  .device-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .device-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 16px;
+    min-height: 60px;
+    background: var(--card-background-color, #fff);
+    border: 1px solid var(--divider-color, #e0e0e0);
+    border-radius: 10px;
+  }
+  .device-info-faded {
+    opacity: 0.5;
+  }
+
+  .device-info {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .device-name {
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--primary-text-color, #212121);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .device-mac {
+    font-weight: 400;
+    color: var(--secondary-text-color, #757575);
+  }
+  .device-host {
+    font-size: 12px;
+    color: var(--secondary-text-color, #757575);
+    margin-top: 2px;
+  }
+
+  .firmware-badge {
+    font-size: 11px;
+    font-weight: 600;
+    padding: 2px 8px;
+    border-radius: 10px;
+    flex-shrink: 0;
+  }
+
+  .firmware-badge-original {
+    background: #ff980020;
+    color: #e65100;
+  }
+
+  .firmware-badge-offline {
+    background: #9e9e9e20;
+    color: #616161;
+  }
+
+  .firmware-badge-behind {
+    background: var(--warning-color, #ff9800);
+    color: white;
+  }
+
+  .firmware-badge-online {
+    background: #4caf5020;
+    color: #2e7d32;
+  }
+
+  .firmware-badge-ahead {
+    background: var(--info-color, #2196f3);
+    color: white;
+  }
+
+  /* OTA progress indicators */
+  .ota-progress {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 36px;
+    height: 36px;
+    flex-shrink: 0;
+  }
+  .ota-progress svg {
+    transform: rotate(-90deg);
+  }
+  .ota-track {
+    fill: none;
+    stroke: var(--divider-color, #e0e0e0);
+    stroke-width: 3;
+  }
+  .ota-fill {
+    fill: none;
+    stroke: var(--primary-color, #03a9f4);
+    stroke-width: 3;
+    stroke-linecap: round;
+    transition: stroke-dashoffset 0.3s ease;
+  }
+  .ota-pct {
+    position: absolute;
+    font-size: 10px;
+    font-weight: 600;
+    color: var(--primary-text-color, #212121);
+  }
+  .ota-spinner {
+    width: 31px;
+    height: 31px;
+    border: 3px solid var(--divider-color, #e0e0e0);
+    border-top-color: var(--primary-color, #03a9f4);
+    border-radius: 50%;
+    box-sizing: border-box;
+    animation: ota-spin 0.8s linear infinite;
+    flex-shrink: 0;
+  }
+  @keyframes ota-spin {
+    to { transform: rotate(360deg); }
+  }
+  .ota-success {
+    --mdc-icon-size: 36px;
+    color: var(--success-color, #4caf50);
+    flex-shrink: 0;
+  }
+  .ota-error {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    position: relative;
+    flex-shrink: 0;
+  }
+  .ota-error-icon {
+    --mdc-icon-size: 20px;
+    color: var(--error-color, #f44336);
+    cursor: pointer;
+  }
+  .ota-error-popover {
+    position: absolute;
+    bottom: 100%;
+    right: 0;
+    background: var(--error-color, #f44336);
+    color: white;
+    padding: 8px 12px;
+    border-radius: 8px;
+    font-size: 12px;
+    white-space: nowrap;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+    z-index: 10;
+    margin-bottom: 4px;
+  }
+
+  .integration-version {
+    font-size: 0.8em;
+    font-weight: normal;
+    opacity: 0.7;
+    margin-left: 8px;
+  }
+
+  .update-banner {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    padding: 16px;
+    margin-bottom: 16px;
+    background: var(--info-color, #2196f3);
+    color: white;
+    border-radius: 8px;
+  }
+  .update-banner ha-icon {
+    --mdc-icon-size: 24px;
+    flex-shrink: 0;
+    margin-top: 2px;
+  }
+  .update-banner p {
+    margin: 4px 0 8px;
+  }
+  .update-banner .update-link {
+    color: white;
+    font-weight: 500;
+    text-decoration: underline;
+  }
+
+  ha-button[raised] {
+    --mdc-theme-primary: var(--primary-color, #03a9f4);
+  }
+
+  .usb-section {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    padding: 12px 8px;
+  }
+
+  .usb-icon {
+    --mdc-icon-size: 32px;
+    color: var(--secondary-text-color, #757575);
+    flex-shrink: 0;
+  }
+
+  .usb-section-text {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .usb-title {
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--primary-text-color, #212121);
+  }
+
+  .usb-description {
+    font-size: 13px;
+    color: var(--secondary-text-color, #757575);
+    margin-top: 2px;
+  }
+
+  .usb-actions {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .usb-action {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    padding: 16px;
+    border: 1px solid var(--divider-color, #e0e0e0);
+    border-radius: 12px;
+    cursor: pointer;
+    transition: background 0.15s;
+  }
+
+  .usb-action:hover {
+    background: var(--secondary-background-color, #f5f5f5);
+  }
+
+  .usb-action ha-icon {
+    --mdc-icon-size: 28px;
+    color: var(--primary-color, #03a9f4);
+    flex-shrink: 0;
+  }
+
+  .usb-action-text {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .usb-action-title {
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--primary-text-color, #212121);
+  }
+
+  .usb-action-desc {
+    font-size: 13px;
+    color: var(--secondary-text-color, #757575);
+    margin-top: 2px;
+  }
+
+  .usb-connect-btn {
+    padding: 8px 20px;
+    border-radius: 8px;
+    border: none;
+    cursor: pointer;
+    font-size: 14px;
+    font-weight: 500;
+    background: var(--primary-color, #03a9f4);
+    color: var(--text-primary-color, #fff);
+    flex-shrink: 0;
+  }
+
+  .usb-flash-iframe {
+    display: block;
+    width: 100%;
+    height: 500px;
+    border: 1px solid var(--divider-color, #e0e0e0);
+    border-radius: 12px;
+    margin: 16px 0;
+    background: var(--card-background-color, #fff);
+  }
+
+  .browser-warning {
+    margin-top: 8px;
+    font-size: 12px;
+    color: var(--warning-color, #ff9800);
+  }
+
+  .usb-select-label {
+    margin: 0 0 12px;
+    font-size: 14px;
+    color: var(--secondary-text-color, #757575);
+  }
+
+  .usb-error {
+    text-align: center;
+    padding: 24px 0;
+    color: var(--error-color, #f44336);
+  }
+
+  .usb-error ha-icon {
+    --mdc-icon-size: 48px;
+    margin-bottom: 8px;
+  }
+
+  .usb-error p {
+    margin: 0;
+    font-size: 14px;
+  }
+
+  .usb-complete {
+    text-align: center;
+    padding: 24px 0;
+    color: var(--success-color, #4caf50);
+    max-width: 400px;
+    margin: 0 auto;
+  }
+
+  .usb-complete ha-icon {
+    --mdc-icon-size: 48px;
+    margin-bottom: 16px;
+  }
+
+  .usb-complete p {
+    margin: 4px 0;
+    font-size: 14px;
+  }
+
+  .usb-ip {
+    color: var(--primary-text-color, #212121);
+    font-weight: 500;
+    margin-top: 4px;
+  }
+
+  .ha-add-result {
+    color: var(--secondary-text-color);
+    font-size: 14px;
+    margin-top: 8px;
+  }
+
+  .usb-status {
+    text-align: center;
+    padding: 24px 0;
+  }
+
+  .usb-status p {
+    margin: 0;
+    font-size: 14px;
+    color: var(--primary-text-color, #212121);
+  }
+
+  .usb-hint {
+    margin-top: 12px !important;
+    font-size: 12px !important;
+    color: var(--secondary-text-color, #757575) !important;
+  }
+
+  .wifi-form {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  ha-select,
+  ha-textfield {
+    width: 100%;
+  }
+
+  .usb-progress {
+    margin-top: 16px;
+    background: var(--divider-color, #e0e0e0);
+    border-radius: 4px;
+    height: 8px;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .usb-progress-bar {
+    height: 100%;
+    background: var(--primary-color, #03a9f4);
+    border-radius: 4px;
+    transition: width 0.3s ease;
+  }
+
+  .usb-progress span {
+    display: block;
+    text-align: center;
+    margin-top: 8px;
+    font-size: 13px;
+    color: var(--secondary-text-color, #757575);
+  }
+
+  .flasher-loading {
+    padding: 32px 24px;
+    text-align: center;
+    color: var(--secondary-text-color, #757575);
+    font-size: 14px;
+  }
+
+  .flasher-empty {
+    padding: 24px 16px 32px;
+    text-align: center;
+    color: var(--secondary-text-color, #757575);
+  }
+
+  .flasher-empty ha-icon {
+    --mdc-icon-size: 48px;
+    margin-bottom: 8px;
+    opacity: 0.5;
+  }
+
+  .flasher-empty p {
+    margin: 0;
+    font-size: 14px;
+  }
+
+  .variant-selector {
+    display: flex;
+    gap: 12px;
+    margin-bottom: 16px;
+  }
+
+
+  .confirm-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 12px;
+  }
+
+  .ha-add-progress {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-top: 16px;
+    color: var(--secondary-text-color);
+    font-size: 14px;
+  }
+
+  .wifi-override-row {
+    margin-top: 12px;
+    text-align: center;
+  }
+
+  .wifi-override-link {
+    color: var(--primary-color);
+    cursor: pointer;
+    text-decoration: underline;
+    font-size: 0.9em;
+  }
+
+  .wifi-override-link:hover {
+    opacity: 0.8;
+  }
+
+  .cancelled-ip-hint {
+    padding: 10px 14px;
+    margin-bottom: 12px;
+    background: var(--info-color, #3b82f6);
+    color: var(--text-primary-color, white);
+    border-radius: 4px;
+    font-size: 0.9em;
+  }
+
+`;
 
 export class EppFlasherView extends LitElement {
 	static styles = [flasherStyles];

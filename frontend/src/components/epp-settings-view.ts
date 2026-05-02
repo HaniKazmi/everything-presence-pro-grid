@@ -5,13 +5,7 @@ import {
 	getGridRoomMetrics,
 } from "../lib/room-geometry.js";
 import { defaultLocalize, type LocalizeFn } from "../localize.js";
-import {
-	accordionStyles,
-	buttonStyles,
-	settingStyles,
-	toggleStyles,
-	tooltipStyles,
-} from "../styles.js";
+import { buttonStyles, settingStyles, toggleStyles } from "../styles.js";
 
 export interface SensorState {
 	occupancy: boolean;
@@ -23,6 +17,105 @@ export interface SensorState {
 	humidity: number | null;
 	co2: number | null;
 }
+
+const accordionStyles = css`
+  .accordion {
+    border: 1px solid var(--divider-color, #e0e0e0);
+    border-radius: 12px;
+    margin-bottom: 12px;
+    background: var(--card-background-color, #fff);
+  }
+
+  .accordion-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 14px 16px;
+    cursor: pointer;
+    user-select: none;
+    background: var(--card-background-color, #fff);
+    border: none;
+    border-radius: 12px;
+    width: 100%;
+    text-align: left;
+    font-size: 15px;
+    font-weight: 500;
+    color: var(--primary-text-color, #212121);
+  }
+
+  .accordion-header[data-open] {
+    border-radius: 12px 12px 0 0;
+  }
+
+  .accordion-header:hover {
+    background: var(--secondary-background-color, #f5f5f5);
+  }
+
+  .accordion-header ha-icon {
+    --mdc-icon-size: 20px;
+    color: var(--secondary-text-color, #757575);
+  }
+
+  .accordion-header .accordion-title {
+    flex: 1;
+  }
+
+  .accordion-chevron {
+    transition: transform 0.2s ease;
+    --mdc-icon-size: 20px;
+    color: var(--secondary-text-color, #757575);
+  }
+
+  .accordion-chevron[data-open] {
+    transform: rotate(180deg);
+  }
+
+  .accordion-body {
+    padding: 0 16px 16px;
+  }
+`;
+
+const tooltipStyles = css`
+  .setting-info {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    flex-shrink: 0;
+    margin-left: 8px;
+  }
+
+  button.setting-info {
+    background: none;
+    border: none;
+    padding: 0;
+    cursor: pointer;
+    color: inherit;
+    font: inherit;
+  }
+
+  .setting-info ha-icon {
+    --mdc-icon-size: 18px;
+    color: var(--primary-text-color, #212121);
+    cursor: default;
+  }
+
+  .setting-info .setting-info-tooltip {
+    display: none;
+    position: fixed;
+    background: var(--card-background-color, #fff);
+    border: 1px solid var(--divider-color, #e0e0e0);
+    border-radius: 8px;
+    padding: 10px 12px;
+    font-size: 12px;
+    color: var(--primary-text-color, #212121);
+    box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+    white-space: normal;
+    width: 240px;
+    z-index: 9999;
+    line-height: 1.4;
+    pointer-events: none;
+  }
+`;
 
 export class EppSettingsView extends LitElement {
 	@property({ attribute: false }) sensorState: SensorState = {

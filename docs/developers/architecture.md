@@ -57,9 +57,16 @@ everything-presence-pro-grid/
 │   ├── manifest.json            # Integration metadata
 │   ├── const.py                 # Constants (domain, grid geometry, FIRMWARE_VERSION)
 │   ├── config_flow.py           # HA config UI (singleton confirm step)
-│   ├── device_manager.py        # Discovery, connections, config push, log relay
+│   ├── device_manager/          # Discovery, connections, config push, log relay
+│   │   ├── __init__.py            # DeviceManager + ManagedDevice
+│   │   ├── _connection.py         # DeviceConnection (per-device aioesphomeapi wrapper)
+│   │   └── _helpers.py            # Pure helpers: zone-slot expand, version compare, etc.
 │   ├── storage.py               # Per-device config + saved configurations (room layouts)
-│   ├── websocket_api.py         # Frontend ↔ device relay, commands
+│   ├── websocket_api/           # Frontend ↔ device relay, commands
+│   │   ├── __init__.py            # Registration, validators, error/version helpers
+│   │   ├── _devices.py            # Device list/config, sessions, settings, pipeline
+│   │   ├── _firmware.py           # OTA, dismiss target
+│   │   └── _flasher.py            # Flashable devices, ESPHome device CRUD
 │   ├── firmware_proxy.py        # CORS-free proxy for firmware binaries from GitHub Releases
 │   ├── diagnostics.py           # HA diagnostics dump (entry + per-device snapshots)
 │   ├── zone_name_translations.py # Zone entity name translation via entity_registry
@@ -191,19 +198,20 @@ global `extra_js_url`, so `<epp-device-card>` and the dashboard strategy are
 available everywhere — not just on the sidebar panel page. The sidebar panel
 itself is registered conditionally on the `sidebar_panel` config flag.
 
-### Device Manager (`device_manager.py`)
+### Device Manager (`device_manager/`)
 
 Discovers ESPHome devices with `zone_engine_version` entities. Reads the
 `Config Protocol` sensor to determine firmware-integration compatibility:
 old firmware shows a banner prompting the user to upgrade, and config
 commands refuse to push until the firmware reports a compatible version.
-Manages on-demand aioesphomeapi connections for frontend sessions. Pushes
-stored config to devices on save and on reconnect via temporary connections
-(separate from the frontend session to avoid consuming API slots or racing
-with UI subscriptions). Manages ESPHome zone entity enable/disable/rename.
+Manages on-demand aioesphomeapi connections for frontend sessions (via
+`DeviceConnection` in `_connection.py`). Pushes stored config to devices
+on save and on reconnect via temporary connections (separate from the
+frontend session to avoid consuming API slots or racing with UI
+subscriptions). Manages ESPHome zone entity enable/disable/rename.
 Fetches build flags from firmware on connect. Subscribes to device log
 stream when any log category is set above None, re-emitting messages under
-`custom_components.eppgrid.device_manager.device_logs`.
+`custom_components.eppgrid.device_manager._connection.device_logs`.
 
 ### Storage (`storage.py`)
 
@@ -214,7 +222,7 @@ Settings are stored sparsely: only fields that differ from `SETTINGS_DEFAULTS`
 are written, and missing fields are filled from defaults on restore. A legacy
 `templates` key is one-time migrated to `configurations` on first load.
 
-### WebSocket API (`websocket_api.py`)
+### WebSocket API (`websocket_api/`)
 
 Relays device state to the frontend and handles config commands. Two live
 subscriptions parse ESPHome text sensor updates into structured events:

@@ -84,16 +84,7 @@ import {
 	ensureObserversAttached,
 	installPanelMountGuard,
 } from "./panel-mount-guard.js";
-import {
-	buttonStyles,
-	dialogStyles,
-	headerStyles,
-	hostStyles,
-	layoutStyles,
-	liveMenuStyles,
-	panelStyles,
-	protocolFullpageStyles,
-} from "./styles.js";
+import { buttonStyles, dialogStyles, headerStyles } from "./styles.js";
 import type { DeviceInfo, HaAddResult, RawTarget, Target } from "./types.js";
 
 /**
@@ -163,6 +154,177 @@ const createInitialZoneState = (): ZoneState => ({
 	target_counts: {},
 	frame_count: 0,
 });
+
+const hostStyles = css`
+  :host {
+    display: flex;
+    height: 100%;
+    background: var(--primary-background-color, #fafafa);
+    color: var(--primary-text-color, #212121);
+    font-family: var(--paper-font-body1_-_font-family, "Roboto", sans-serif);
+  }
+`;
+
+const panelStyles = css`
+  .panel {
+    padding: 24px;
+    max-width: 1100px;
+    margin: 0 auto;
+    font-size: 14px;
+  }
+`;
+
+const protocolFullpageStyles = css`
+  .protocol-fullpage {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 16px;
+    padding: 48px 24px;
+    margin: 16px;
+    border-radius: 12px;
+    text-align: center;
+    flex: 1;
+  }
+  .protocol-fullpage-warning {
+    background: var(--warning-color, #ff9800);
+    color: white;
+  }
+  .protocol-fullpage-info {
+    background: var(--info-color, #2196f3);
+    color: white;
+  }
+  .protocol-fullpage ha-icon {
+    --mdc-icon-size: 48px;
+  }
+  .protocol-fullpage p {
+    margin: 0;
+    font-size: 16px;
+    max-width: 480px;
+    line-height: 1.5;
+  }
+  .protocol-fullpage .wizard-btn {
+    box-shadow: inset 0 0 0 2px white;
+  }
+  .protocol-link {
+    color: white;
+    font-weight: 500;
+    text-decoration: underline;
+    font-size: 16px;
+  }
+`;
+
+// Exported so panel-layout.test.ts can introspect .cssText for regression checks.
+export const layoutStyles = css`
+  .editor-layout {
+    display: flex;
+    gap: 24px;
+    align-items: flex-start;
+  }
+
+  .grid-column {
+    min-width: 0;
+    max-width: min-content;
+  }
+
+  .grid-container {
+    position: relative;
+    max-width: 100%;
+    overflow: visible;
+  }
+
+  .sidebar-scroll {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+  }
+
+  .zone-sidebar {
+    width: 240px;
+    flex-shrink: 0;
+    background: var(--card-background-color, #fff);
+    border-left: 1px solid var(--divider-color, #e0e0e0);
+    padding: 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    overflow: visible;
+  }
+
+  .zone-sidebar.scrollable {
+    max-height: 70vh;
+  }
+
+  .sidebar-title {
+    font-size: 15px;
+    font-weight: 600;
+    padding: 10px 12px 8px;
+    color: var(--primary-text-color, #212121);
+  }
+`;
+
+const liveMenuStyles = css`
+  .sidebar-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 6px 4px 4px 12px;
+  }
+
+  .sidebar-header .sidebar-title {
+    padding: 0;
+  }
+
+  .sidebar-menu-wrapper {
+    position: relative;
+  }
+
+  .sidebar-menu-btn {
+    background: none;
+    border: none;
+    color: var(--secondary-text-color, #757575);
+    cursor: pointer;
+    padding: 4px;
+    border-radius: 6px;
+    display: flex;
+  }
+
+  .sidebar-menu-btn:hover {
+    background: var(--secondary-background-color, #f0f0f0);
+  }
+
+  .sidebar-menu {
+    position: absolute;
+    top: 100%;
+    right: 0;
+    background: var(--card-background-color, #fff);
+    border: 1px solid var(--divider-color, #e0e0e0);
+    border-radius: 10px;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+    z-index: 100;
+    min-width: 220px;
+    padding: 4px 0;
+  }
+
+  .sidebar-menu-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+    padding: 8px 14px;
+    border: none;
+    background: none;
+    color: var(--primary-text-color, #212121);
+    font-size: 13px;
+    cursor: pointer;
+    text-align: left;
+  }
+
+  .sidebar-menu-item:hover {
+    background: var(--secondary-background-color, #f5f5f5);
+  }
+`;
 
 export class EPPGridPanel extends LitElement {
 	@property({ attribute: false }) hass: any;

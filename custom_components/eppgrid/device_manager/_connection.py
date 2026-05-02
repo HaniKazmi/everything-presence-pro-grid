@@ -1,0 +1,355 @@
+"""DeviceConnection — on-demand aioesphomeapi client wrapper for one device."""
+
+from __future__ import annotations
+
+import asyncio
+import base64
+import contextlib
+import json
+import logging
+from typing import Any
+
+from aioesphomeapi import APIClient
+from aioesphomeapi import LogLevel
+from aioesphomeapi import UserService
+
+from ..const import DEFAULT_PORT
+from ..const import GRID_CELL_SIZE_MM
+from ..const import GRID_COLS
+from ._helpers import _ESPHOME_TO_PYTHON_LOG
+from ._helpers import _expand_zone_slot
+from ._helpers import _raise_service_unavailable
+from ._helpers import is_valid_zone_slots_shape
+
+_LOGGER = logging.getLogger(__name__)
+_DEVICE_LOGGER = logging.getLogger(f"{__name__}.device_logs")
+
+
+class DeviceConnection:
+    """On-demand API connection to an EPP device."""
+
+    def __init__(self, host: str, port: int = DEFAULT_PORT, noise_psk: str = "") -> None:
+        self._host = host
+        self._port = port
+        self._noise_psk = noise_psk
+        self._client: APIClient | None = None
+        self._services: dict[str, UserService] = {}
+        self._entities: list = []
+        self._state_subscribers: list[Any] = []
+        self._states_subscribed: bool = False
+        self._log_callbacks: list[Any] = []
+        self._unsub_logs: Any = None
+        self.connected: bool = False
+        self.raw_target_subs: int = 0
+        self.grid_target_subs: int = 0
+
+    async def async_connect(self) -> None:
+        """Connect to the device and cache available services."""
+        if self.connected:
+            return
+        client = APIClient(self._host, self._port, "", noise_psk=self._noise_psk)
+
+        async def _on_stop(expected_disconnect: bool) -> None:
+            self._release_references()
+
+        try:
+            await client.connect(on_stop=_on_stop, login=True)
+            entities, services = await client.list_entities_services()
+        except Exception:
+            await client.disconnect()
+            raise
+        self._client = client
+        self._services = {s.name: s for s in services}
+        self._entities = entities
+        self.connected = True
+        _LOGGER.debug("Connected to %s", self._host)
+
+    async def async_disconnect(self) -> None:
+        """Disconnect from the device."""
+        self.unsubscribe_logs()
+        if self._client is not None:
+            await self._client.disconnect()
+        self._release_references()
+
+    def _release_references(self) -> None:
+        """Release references to the (now-dead) APIClient without contacting it."""
+        self.connected = False
+        self._client = None
+        self._services.clear()
+        self._entities = []
+        self._state_subscribers.clear()
+        self._states_subscribed = False
+        self._log_callbacks.clear()
+        self._unsub_logs = None
+
+    def subscribe_states(self, cb: Any) -> None:
+        """Add a state subscriber. All subscribers receive every state update."""
+        self._state_subscribers.append(cb)
+        if not self._states_subscribed and self._client is not None:
+            self._states_subscribed = True
+            self._client.subscribe_states(self._dispatch_state)
+
+    def unsubscribe_states(self, cb: Any) -> None:
+        """Remove a state subscriber."""
+        with contextlib.suppress(ValueError):
+            self._state_subscribers.remove(cb)
+
+    def _dispatch_state(self, state: Any) -> None:
+        """Fan out state updates to all subscribers."""
+        for cb in self._state_subscribers:
+            cb(state)
+
+    def add_log_callback(self, cb: Any) -> None:
+        """Add a log callback. Receives raw log messages from the device."""
+        self._log_callbacks.append(cb)
+
+    def remove_log_callback(self, cb: Any) -> None:
+        """Remove a log callback."""
+        with contextlib.suppress(ValueError):
+            self._log_callbacks.remove(cb)
+
+    def subscribe_logs(self, log_level: LogLevel = LogLevel.LOG_LEVEL_DEBUG) -> None:
+        """Subscribe to device log messages and re-emit via Python logger."""
+        if self._client is None:
+            return
+
+        # If already subscribed, unsubscribe first (level may have changed)
+        if self._unsub_logs is not None:
+            self._unsub_logs()
+            self._unsub_logs = None
+
+        def _on_log(msg: Any) -> None:
+            py_level = _ESPHOME_TO_PYTHON_LOG.get(msg.level)
+            if py_level is None:
+                return
+            text = msg.message
+            if isinstance(text, bytes):
+                text = text.decode("utf-8", errors="replace")
+            text = text.rstrip()
+            if text:
+                _DEVICE_LOGGER.log(py_level, "[%s] %s", self._host, text)
+            for cb in self._log_callbacks:
+                cb(msg)
+
+        self._unsub_logs = self._client.subscribe_logs(_on_log, log_level=log_level)
+        _LOGGER.debug("Subscribed to device logs from %s (level=%s)", self._host, log_level)
+
+    def unsubscribe_logs(self) -> None:
+        """Stop receiving device log messages."""
+        if self._unsub_logs is not None:
+            self._unsub_logs()
+            self._unsub_logs = None
+            _LOGGER.debug("Unsubscribed from device logs from %s", self._host)
+
+    async def async_fetch_build_flags(self, timeout: float = 2.0) -> dict[str, Any]:
+        """Fetch build flags from device via get_build_flags action."""
+        if self._client is None:
+            return {}
+        svc = self._services.get("get_build_flags")
+        if svc is None:
+            return {}
+        try:
+            resp = await asyncio.wait_for(
+                self._client.execute_service(svc, {}, return_response=True),
+                timeout=timeout,
+            )
+            if resp is None or not resp.response_data:
+                return {}
+            decoded = json.loads(resp.response_data)
+            if not isinstance(decoded, dict):
+                return {}
+            return decoded
+        except (json.JSONDecodeError, Exception):
+            _LOGGER.debug("Failed to fetch build flags from %s", self._host)
+            return {}
+
+    async def async_push_distance_override(self, override: dict[str, Any]) -> None:
+        """Push distance override to device without persisting."""
+        if self._client is None:
+            return
+        svc = self._services.get("epp_set_tracking")
+        if svc:
+            await self._client.execute_service(
+                svc,
+                {"max_range": override.get("target_max_distance", 6.0) * 1000},
+            )
+        svc = self._services.get("epp_set_static_presence")
+        if svc:
+            await self._client.execute_service(
+                svc,
+                {
+                    "min_range": override.get("static_min_distance", 0.3),
+                    "max_range": override.get("static_max_distance", 16.0),
+                    "trigger_range": override.get("static_max_distance", 16.0),
+                    "trigger_sensitivity": 10 - override.get("static_trigger_threshold", 3),
+                    "sustain_sensitivity": 10 - override.get("static_renew_threshold", 3),
+                    "timeout": override.get("static_timeout", 30.0),
+                    "on_delay": override.get("static_on_delay", 0.0),
+                    "led_enabled": True,
+                },
+            )
+
+    async def async_dismiss_target(self, target_index: int, cell_index: int) -> None:
+        """Send dismiss target command to firmware."""
+        service = self._services.get("epp_dismiss_target")
+        if not service or not self._client:
+            _raise_service_unavailable("epp_dismiss_target")
+        await self._client.execute_service(service, {"target_index": target_index, "cell_index": cell_index})
+
+    async def async_push_config(self, config: dict[str, Any]) -> None:
+        """Push perspective, grid, and zones to the device."""
+        if self._client is None:
+            return
+
+        cal = config.get("calibration", {})
+        perspective = cal.get("perspective")
+        if perspective:
+            service = self._services.get("epp_set_perspective")
+            if service:
+                await self._client.execute_service(
+                    service,
+                    {
+                        "perspective": ",".join(str(c) for c in perspective),
+                        "room_width": cal.get("room_width", 0.0),
+                        "room_depth": cal.get("room_depth", 0.0),
+                    },
+                )
+                _LOGGER.info("Pushed perspective to %s", self._host)
+
+        layout = config.get("room_layout", {})
+        grid_bytes = layout.get("grid_bytes")
+        if grid_bytes:
+            service = self._services.get("epp_set_grid")
+            if service:
+                grid_b64 = base64.b64encode(bytes(grid_bytes)).decode("ascii")
+                # Compute origin from grid dimensions (room centered in grid)
+                room_width = cal.get("room_width", 6000.0)
+                room_cols = max(1, -(-int(room_width) // GRID_CELL_SIZE_MM))
+                start_col = (GRID_COLS - room_cols) // 2
+                origin_x = -start_col * GRID_CELL_SIZE_MM
+                await self._client.execute_service(
+                    service,
+                    {
+                        "grid_data": grid_b64,
+                        "origin_x": float(origin_x),
+                        "origin_y": 0.0,
+                    },
+                )
+                _LOGGER.info("Pushed grid to %s", self._host)
+
+        zone_slots = layout.get("zone_slots")
+        if zone_slots is not None:
+            # Skip the zone push on malformed shape; other config pushes
+            # (perspective/grid/settings) still run. Legacy 0.93.x storage
+            # would trip this because it had length-7 zone_slots.
+            if not is_valid_zone_slots_shape(zone_slots):
+                length = len(zone_slots) if isinstance(zone_slots, list) else "N/A"
+                slot0_type = type(zone_slots[0]).__name__ if isinstance(zone_slots, list) and zone_slots else "N/A"
+                _LOGGER.warning(
+                    "Skipping zone push — malformed zone_slots (length %s, slot 0 type %s)",
+                    length,
+                    slot0_type,
+                )
+            else:
+                service = self._services.get("epp_set_zones")
+                if service:
+                    # Count named zones (1-7); zone 0 is always present at index 0 and
+                    # isn't a "named" zone for logging purposes.
+                    named = [s for s in zone_slots[1:] if s is not None]
+                    # Expand non-custom slots to include type defaults — storage
+                    # / wire stays lean, firmware sees a fully-populated record.
+                    expanded_slots = [_expand_zone_slot(s) if s is not None else None for s in zone_slots]
+                    zone_data = {"zone_slots": expanded_slots}
+                    await self._client.execute_service(
+                        service,
+                        {
+                            "zones_json": json.dumps(zone_data),
+                        },
+                    )
+                    _LOGGER.info("Pushed %d zones to %s", len(named), self._host)
+
+        # Push device settings from unified settings key
+        settings = config.get("settings")
+        if settings is not None:
+            svc = self._services.get("epp_set_env_calibration")
+            if svc:
+                await self._client.execute_service(
+                    svc,
+                    {
+                        "temperature_offset": settings.get("temperature_offset", 0.0),
+                        "humidity_offset": settings.get("humidity_offset", 0.0),
+                        "illuminance_offset": settings.get("illuminance_offset", 0.0),
+                    },
+                )
+                _LOGGER.info("Pushed env_calibration to %s", self._host)
+
+            svc = self._services.get("epp_set_motion_timeout")
+            if svc:
+                await self._client.execute_service(
+                    svc,
+                    {"timeout": settings.get("motion_timeout", 5.0)},
+                )
+                _LOGGER.info("Pushed motion_timeout to %s", self._host)
+
+            svc = self._services.get("epp_set_tracking")
+            if svc:
+                await self._client.execute_service(
+                    svc,
+                    {"max_range": settings.get("target_max_distance", 6.0) * 1000},
+                )
+                _LOGGER.info("Pushed tracking to %s", self._host)
+
+            svc = self._services.get("epp_set_static_presence")
+            if svc:
+                await self._client.execute_service(
+                    svc,
+                    {
+                        "min_range": settings.get("static_min_distance", 0.3),
+                        "max_range": settings.get("static_max_distance", 16.0),
+                        "trigger_range": settings.get("static_max_distance", 16.0),
+                        "trigger_sensitivity": 10 - settings.get("static_trigger_threshold", 3),
+                        "sustain_sensitivity": 10 - settings.get("static_renew_threshold", 3),
+                        "timeout": settings.get("static_timeout", 30.0),
+                        "on_delay": settings.get("static_on_delay", 0.0),
+                        "led_enabled": True,
+                    },
+                )
+                _LOGGER.info("Pushed static_presence to %s", self._host)
+
+            svc = self._services.get("epp_set_led")
+            if svc:
+                color_hex = settings.get("led_presence_color", "#CC33FF")
+                await self._client.execute_service(
+                    svc,
+                    {
+                        "mode": settings.get("led_mode", "Manual Control"),
+                        "brightness": settings.get("led_brightness", 1.0),
+                        "presence_red": int(color_hex[1:3], 16) / 255.0,
+                        "presence_green": int(color_hex[3:5], 16) / 255.0,
+                        "presence_blue": int(color_hex[5:7], 16) / 255.0,
+                    },
+                )
+                _LOGGER.info("Pushed led to %s", self._host)
+
+            svc = self._services.get("epp_set_relay")
+            if svc:
+                await self._client.execute_service(
+                    svc,
+                    {
+                        "trigger_mode": settings.get("relay_trigger_mode", "disabled"),
+                        "contact_mode": settings.get("relay_contact_mode", "no"),
+                    },
+                )
+                _LOGGER.info("Pushed relay settings to %s", self._host)
+
+        # Push log levels
+        log_levels = config.get("log_levels")
+        if log_levels:
+            svc = self._services.get("epp_set_log_level")
+            if svc:
+                for category, level in log_levels.items():
+                    await self._client.execute_service(
+                        svc,
+                        {"category": category, "level": level},
+                    )
+                _LOGGER.info("Pushed log levels to %s", self._host)
