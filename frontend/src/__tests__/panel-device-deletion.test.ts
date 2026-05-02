@@ -273,6 +273,23 @@ describe("panel device list transitions", () => {
 		expect(a._view).toBe("editor");
 	});
 
+	it("does not render the device picker when the device list is empty", async () => {
+		// When the last device is deleted, _selectedMac is intentionally
+		// retained (to survive HA reconnects), but the picker has no options
+		// to render. ha-select then falls back to displaying the raw MAC
+		// value as its label, which leaks the deleted device's MAC into the
+		// UI. Hide the picker entirely while the list is empty.
+		const dev1 = mockDeviceInfo("aa:bb:cc:dd:ee:ff", "Alpha");
+		const { el, pushDeviceList } = await mountPanel([dev1]);
+
+		pushDeviceList([]);
+		await el.updateComplete;
+
+		expect(el.shadowRoot?.querySelector("ha-select")).toBeNull();
+		const html = el.shadowRoot?.innerHTML ?? "";
+		expect(html).not.toMatch(/aa:bb:cc:dd:ee:ff/i);
+	});
+
 	// --- Non-selected device changes ---
 
 	it("does not disturb UI state when a non-selected device is removed", async () => {
