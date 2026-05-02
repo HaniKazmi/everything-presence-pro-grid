@@ -7,24 +7,37 @@ esp32_ble_tracker:
 bluetooth_proxy:
   active: true
 
-# User-facing toggle for the BLE scan. Bluetooth Proxy + 100%-duty-cycle
+# User-facing toggle for the BLE scan. Bluetooth proxy + 100%-duty-cycle
 # active scan is the dominant heap consumer on this firmware (~30-80 KB
 # resident with periodic transient spikes during scan-result processing).
-# Users who don't actually have BLE devices to proxy can free that heap
-# without reflashing. Defaults ON for backwards compatibility; deliberate
+# Users who don't actually have BLE devices to proxy can free most of
+# that heap without reflashing.
+#
+# Scope of control:
+#   - Off: stops esp32_ble_tracker scanning and reboots so any in-flight
+#     bluetooth_proxy GATT-client connections drop cleanly.
+#   - On: restarts scanning. (No reboot required — proxy and controller
+#     stay loaded throughout.)
+#
+# What stays loaded even when off:
+#   - bluetooth_proxy component code
+#   - BLE controller stack (~10-15 KB) — initialized by ESPHome before
+#     our on_boot reconciliation runs.
+#
+# Defaults ON for backwards compatibility on first flash; a deliberate
 # OFF persists across reboots.
 switch:
   - platform: template
-    name: "Bluetooth Proxy"
+    name: "BLE Scan"
     id: ble_scan_enabled
     entity_category: config
     restore_mode: RESTORE_DEFAULT_ON
     optimistic: true
     turn_on_action:
-      - logger.log: "Bluetooth Proxy enabled — starting BLE scan"
+      - logger.log: "BLE Scan enabled — starting tracker scan"
       - esp32_ble_tracker.start_scan:
     turn_off_action:
-      - logger.log: "Bluetooth Proxy disabled — stopping BLE scan and rebooting to drop active proxy connections"
+      - logger.log: "BLE Scan disabled — stopping tracker scan and rebooting to drop active proxy connections"
       - esp32_ble_tracker.stop_scan:
       # Reboot so any in-flight bluetooth_proxy GATT-client connections
       # drop cleanly; on_boot reconciliation re-applies the OFF state
@@ -47,7 +60,7 @@ esphome:
                 switch.is_on: ble_scan_enabled
             then:
               - esp32_ble_tracker.stop_scan:
-              - logger.log: "Bluetooth Proxy disabled by user — BLE scan stopped on boot"
+              - logger.log: "BLE Scan disabled by user — tracker stopped on boot"
 
 # Pause BLE scan for the OTA download. The mbedtls TLS context held during the
 # multi-second binary fetch is the largest transient heap consumer on this
