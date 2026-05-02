@@ -64,7 +64,6 @@
 	"wizard": {
 		"how_calibration_works": "Cómo funciona la calibración de la habitación",
 		"calibrate_room_size": "Calibrar tamaño de la habitación",
-		"start_calibration": "Iniciar calibración de tamaño de la habitación",
 		"begin_marking": "Iniciar calibración",
 		"mark_corner": "Marcar {corner}",
 		"recording": "Grabando... {current}s / {total}s",
@@ -80,18 +79,9 @@
 		"corner_step": "Esquina {index}/4: Camina hasta la {corner}",
 		"distance_from": "Distancia desde:",
 		"distance_from_side": "Distancia desde {wall} (cm)",
-		"how_to_position": "Cómo colocar el sensor",
-		"mount_height": "Altura de montaje",
-		"mount_height_desc": "Coloca el sensor a <strong>1,5 a 1,8 metros</strong> del suelo",
-		"placement": "Ubicación",
-		"placement_desc": "Colócalo en <strong>una esquina o en una pared</strong>, apuntando hacia la esquina opuesta más lejana",
-		"beam_direction": "Dirección del haz",
-		"beam_direction_desc": "Inclínalo <strong>ligeramente hacia abajo</strong>, apuntando a 1 m sobre el suelo en la esquina más lejana",
 		"front_wall_label": "Pared frontal (lado del sensor)",
 		"back_wall_label": "Pared del fondo",
 		"sensor": "Sensor",
-		"horizontal_correct": "Ligeramente inclinado ✓",
-		"angled_wrong": "Ángulo incorrecto ✗",
 		"no_presence": "Sin presencia",
 		"dont_show_again": "No mostrar esto de nuevo"
 	},
@@ -107,7 +97,7 @@
 	},
 	"menu": {
 		"settings": "Ajustes",
-		"room_calibration": "Calibración de tamaño de la habitación",
+		"room_calibration": "Calibrar tamaño de la habitación",
 		"delete_calibration": "Eliminar calibración de la habitación",
 		"detection_zones": "Zonas de detección",
 		"furniture": "Mobiliario",
@@ -305,7 +295,9 @@
 		"log_co2": "Registros del sensor de CO2 (SCD4x).",
 		"led_mode": "Controla el comportamiento del LED RGB. El control manual desactiva el LED automático y permite controlarlo como una entidad de luz estándar de HA.",
 		"led_brightness": "Multiplicador de brillo para el LED RGB en los modos automáticos.",
-		"led_presence_color": "Color utilizado para indicar ocupación cuando el LED está en modo Ocupación o Ambiental + Ocupación."
+		"led_presence_color": "Color utilizado para indicar ocupación cuando el LED está en modo Ocupación o Ambiental + Ocupación.",
+		"relay_trigger_mode": "Qué activa el relé. Desactivado deja el relé bajo control manual a través de la entidad de interruptor del relé. Cualquier otro modo sigue automáticamente la señal de presencia elegida y anula el control manual.",
+		"relay_contact_mode": "Normalmente abierto cierra el relé cuando se dispara el activador (típico \"activo = cerrado\"). Normalmente cerrado lo abre en su lugar — útil para circuitos de seguridad que esperan un bucle cerrado en estado inactivo."
 	},
 	"dimensions": {
 		"width_cm": "An (cm)",

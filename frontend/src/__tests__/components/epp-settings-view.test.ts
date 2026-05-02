@@ -2176,6 +2176,31 @@ describe("relay section", () => {
 		document.body.removeChild(c);
 	});
 
+	it("trigger mode row exposes an info tooltip", () => {
+		const sv = createView();
+		const tpl = (sv as any).renderRelay();
+		const c = renderTo(tpl);
+
+		const rows = c.querySelectorAll(".setting-row");
+		const triggerInfoBtn = rows[0].querySelector(".setting-info");
+		expect(triggerInfoBtn).not.toBeNull();
+		document.body.removeChild(c);
+	});
+
+	it("contact mode row exposes an info tooltip", () => {
+		const sv = createView({
+			relayTriggerMode: "motion",
+			relayContactMode: "no",
+		});
+		const tpl = (sv as any).renderRelay();
+		const c = renderTo(tpl);
+
+		const rows = c.querySelectorAll(".setting-row");
+		const contactInfoBtn = rows[1].querySelector(".setting-info");
+		expect(contactInfoBtn).not.toBeNull();
+		document.body.removeChild(c);
+	});
+
 	it("trigger mode select change updates overrides and fires dirty", () => {
 		const sv = createView({
 			relayTriggerMode: "disabled",

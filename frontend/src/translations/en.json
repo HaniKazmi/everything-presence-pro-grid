@@ -64,7 +64,6 @@
 	"wizard": {
 		"how_calibration_works": "How room calibration works",
 		"calibrate_room_size": "Calibrate room size",
-		"start_calibration": "Start room size calibration",
 		"begin_marking": "Start calibration",
 		"mark_corner": "Mark {corner}",
 		"recording": "Recording... {current}s / {total}s",
@@ -80,18 +79,9 @@
 		"corner_step": "Corner {index}/4: Walk to the {corner}",
 		"distance_from": "Distance from:",
 		"distance_from_side": "Distance from {wall} (cm)",
-		"how_to_position": "How to position your sensor",
-		"mount_height": "Mount height",
-		"mount_height_desc": "Place the sensor <strong>1.5 to 1.8 meters</strong> from the floor",
-		"placement": "Placement",
-		"placement_desc": "Place in a <strong>corner or on a wall</strong>, pointing toward the most distant opposite corner",
-		"beam_direction": "Beam direction",
-		"beam_direction_desc": "Aim <strong>slightly down</strong> — toward about 1 m above the floor in the far corner",
 		"front_wall_label": "Front wall (sensor side)",
 		"back_wall_label": "Back wall",
 		"sensor": "Sensor",
-		"horizontal_correct": "Slightly down ✓",
-		"angled_wrong": "Wrong angle ✗",
 		"no_presence": "No presence",
 		"dont_show_again": "Don't show this again"
 	},
@@ -107,7 +97,7 @@
 	},
 	"menu": {
 		"settings": "Settings",
-		"room_calibration": "Room size calibration",
+		"room_calibration": "Calibrate room size",
 		"delete_calibration": "Delete room calibration",
 		"detection_zones": "Detection zones",
 		"furniture": "Furniture",
@@ -305,7 +295,9 @@
 		"log_co2": "CO2 sensor (SCD4x) logs.",
 		"led_mode": "Controls the RGB LED behavior. Manual Control disables automatic LED and lets you control it as a standard HA light entity.",
 		"led_brightness": "Brightness multiplier for the RGB LED in automatic modes.",
-		"led_presence_color": "Color used for occupancy indication when LED is in Occupancy or Environmental + Occupancy mode."
+		"led_presence_color": "Color used for occupancy indication when LED is in Occupancy or Environmental + Occupancy mode.",
+		"relay_trigger_mode": "What activates the relay. Disabled leaves the relay under manual control via the relay switch entity. Any other mode follows the chosen presence signal automatically and overrides manual control.",
+		"relay_contact_mode": "Normally Open closes the relay when the trigger fires (typical \"active = closed\"). Normally Closed opens it instead — useful for security circuits that expect a closed loop in the idle state."
 	},
 	"dimensions": {
 		"width_cm": "W (cm)",

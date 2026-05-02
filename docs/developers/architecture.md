@@ -75,12 +75,13 @@ everything-presence-pro-grid/
 │   │   │   └── target-controller.ts    # Target/sensor/zone state, zone engine
 │   │   ├── components/
 │   │   │   ├── epp-wizard.ts           # Calibration wizard (guide, corners, capture)
-│   │   │   ├── epp-live-view.ts        # Live overview composite
-│   │   │   ├── epp-editor-view.ts      # Zone/furniture editor composite
 │   │   │   ├── epp-settings-view.ts    # Device settings (accordions, ranges)
+│   │   │   ├── epp-flasher-view.ts     # USB/Wi-Fi firmware flasher flow
+│   │   │   ├── epp-device-card.ts      # Device picker card in the header
 │   │   │   ├── epp-grid.ts             # Shared grid renderer
 │   │   │   ├── epp-live-sidebar.ts     # Sensor/zone status display
 │   │   │   ├── epp-zone-sidebar.ts     # Zone list + type controls
+│   │   │   ├── epp-overlay-sidebar.ts  # Entry/Exit, Interference, Suppress modes
 │   │   │   ├── epp-furniture-sidebar.ts # Furniture catalog
 │   │   │   └── epp-furniture-overlay.ts # Furniture drag/resize/rotate
 │   │   └── lib/
@@ -186,26 +187,31 @@ The frontend is a Lit-based component tree rooted in `<eppgrid-panel>`,
 which serves as an orchestrator. State flows via reactive controllers,
 rendering is delegated to focused sub-components.
 
-**Orchestrator (`eppgrid-panel.ts`)** — View routing (live/editor/settings/wizard),
-device selector, global dialogs, navigation guards, controller creation.
+**Orchestrator (`eppgrid-panel.ts`)** — View routing (live/editor/settings/wizard/flasher),
+device selector, global dialogs, navigation guards, controller creation. The live overview
+and editor screens are rendered inline via `_renderLiveOverview()` and `_renderEditor()`
+rather than through dedicated composite components.
 
 **Controllers** (shared state, no DOM):
 - `DeviceController` — WS subscriptions, device loading, session lifecycle
 - `GridStateController` — grid/zone/furniture mutation, template persistence, save
 - `TargetController` — target/sensor/zone state, zone engine, debug logs
 
-**Composite views:**
-- `<epp-live-view>` — live grid + sidebar + menu dropdown
-- `<epp-editor-view>` — editable grid + zone/furniture sidebars + debug log
-- `<epp-settings-view>` — accordion panels for detection ranges, reporting, env offsets, LED control, log levels
-- `<epp-wizard>` — calibration flow (guide, 4-corner capture, perspective solve)
+**Views rendered inline by the panel** — the orchestrator builds the live overview and editor screens directly from the shared components below, using `_renderLiveOverview()` and `_renderEditor()` in `eppgrid-panel.ts`. Only the heavier, self-contained flows live in their own components:
 
-**Shared components:**
+- `<epp-wizard>` — calibration flow (guide, 4-corner capture, perspective solve)
+- `<epp-settings-view>` — accordion panels for detection ranges, reporting, env offsets, LED control, log levels
+- `<epp-flasher-view>` — USB/Wi-Fi firmware flashing flow
+
+**Shared components** — composed by the panel's inline renderers:
+
 - `<epp-grid>` — grid cell rendering, target dots, furniture overlay, FOV darkness (live + editor)
 - `<epp-live-sidebar>` — presence/zone/environment sensor display
 - `<epp-zone-sidebar>` — zone list, type controls, add/remove
+- `<epp-overlay-sidebar>` — Entry/Exit, Interference, and Suppress paint-mode controls
 - `<epp-furniture-sidebar>` — sticker catalog, custom icons
 - `<epp-furniture-overlay>` — drag, resize, rotate furniture items
+- `<epp-device-card>` — device picker card shown in the panel header
 
 **State flow:** Controllers own cross-cutting state (device, grid, targets).
 Components receive data as properties, fire `CustomEvent`s for mutations.

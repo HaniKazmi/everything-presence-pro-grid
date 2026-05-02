@@ -80,16 +80,17 @@ nav:
     - Flashing firmware: user-guide/flashing-firmware.md
     - Placement: user-guide/placement.md
     - Calibration: user-guide/calibration.md
-    - Live view: user-guide/live-view.md
-    - Zones: user-guide/zones.md
+    - Live overview: user-guide/live-overview.md
+    - Detection zones: user-guide/detection-zones.md
     - Overlays: user-guide/overlays.md
+    - How detection works: user-guide/how-detection-works.md
     - Furniture: user-guide/furniture.md
+    - Backup and restore: user-guide/backup-restore.md
     - Settings:
       - user-guide/settings/index.md
       - Entities: user-guide/settings/entities.md
-      - Detection: user-guide/settings/detection.md
-      - Reporting: user-guide/settings/reporting.md
-      - Environmental: user-guide/settings/environmental.md
+      - Detection ranges: user-guide/settings/detection-ranges.md
+      - Sensor calibration: user-guide/settings/sensor-calibration.md
       - LED and relay: user-guide/settings/led-relay.md
       - Logging: user-guide/settings/logging.md
     - Automations: user-guide/automations.md

@@ -1,0 +1,54 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="20 20 224 165" preserveAspectRatio="xMidYMid meet">
+  <style>
+    .label { fill: #444; font-family: -apple-system, system-ui, sans-serif; }
+    .body { font-size: 11px; }
+    .caption { font-size: 10px; opacity: 0.75; }
+    .sensor { fill: #E53935; }
+    .wall { fill: none; stroke: #444; stroke-width: 2; }
+    .tracking-fill { fill: #F57C00; fill-opacity: 0.22; }
+    .tracking-stroke { fill: none; stroke: #F57C00; stroke-width: 1.2; stroke-dasharray: 4 3; }
+    .static-fill { fill: #1976D2; fill-opacity: 0.15; }
+    .static-stroke { fill: none; stroke: #1976D2; stroke-width: 1.2; stroke-dasharray: 4 3; }
+    .furniture { fill: #888; opacity: 0.5; }
+    @media (prefers-color-scheme: dark) {
+      .label { fill: #ddd; }
+      .wall { stroke: #ddd; }
+      .furniture { fill: #aaa; opacity: 0.5; }
+    }
+  </style>
+
+  <!-- Static-presence annulus: outer quarter at ~12.2 m (the diagonal-corner distance for a 10×7 m room) minus inner 6 m quarter, even-odd fill -->
+  <path d="M 30,30 L 176.48,30 A 146.48,146.48 0 0,1 30,176.48 Z M 30,30 L 102,30 A 72,72 0 0,1 30,102 Z" fill-rule="evenodd" class="static-fill"/>
+
+  <!-- 6 m tracking disc (drawn after annulus, so its orange fill sits in the centre) -->
+  <path d="M 30,30 L 102,30 A 72,72 0 0,1 30,102 Z" class="tracking-fill"/>
+
+  <!-- Arc outlines -->
+  <path d="M 102,30 A 72,72 0 0,1 30,102" class="tracking-stroke"/>
+  <path d="M 176.48,30 A 146.48,146.48 0 0,1 30,176.48" class="static-stroke"/>
+
+  <!-- Room (10 m × 7 m at 12 px/m); entrances in top and left walls -->
+  <line x1="30" y1="30" x2="80" y2="30" class="wall"/>
+  <line x1="95" y1="30" x2="150" y2="30" class="wall"/>
+  <line x1="150" y1="30" x2="150" y2="114" class="wall"/>
+  <line x1="30" y1="114" x2="150" y2="114" class="wall"/>
+  <line x1="30" y1="30" x2="30" y2="70" class="wall"/>
+  <line x1="30" y1="85" x2="30" y2="114" class="wall"/>
+
+  <!-- L-shaped sofa tucked into the far corner (outside tracking, inside static-presence) -->
+  <path d="M 80,96 L 120,96 L 120,60 L 150,60 L 150,114 L 80,114 Z" class="furniture"/>
+
+  <!-- Sensor -->
+  <circle cx="30" cy="30" r="4" class="sensor"/>
+
+  <!-- 6 m arc label (just outside the tracking arc, inside the static-presence ring) -->
+  <text x="88" y="78" class="label body">6 m</text>
+  <text x="88" y="91" class="label caption">tracking</text>
+
+  <!-- 12 m arc label (just inside the static arc, outside the room) -->
+  <text x="60" y="160" class="label body">12 m</text>
+  <text x="60" y="173" class="label caption">max distance</text>
+
+  <!-- Sofa label on the base of the L -->
+  <text x="115" y="108" text-anchor="middle" class="label caption">sofas</text>
+</svg>

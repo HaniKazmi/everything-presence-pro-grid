@@ -6,9 +6,6 @@ export const ENTITY_DEFAULTS: Record<string, boolean> = {
 	// Enabled by default
 	room_occupancy: true,
 	zone_presence: true,
-	env_temperature: true,
-	env_humidity: true,
-	env_illuminance: true,
 	// Disabled by default
 	room_target_presence: false,
 	room_static_presence: false,
@@ -20,6 +17,9 @@ export const ENTITY_DEFAULTS: Record<string, boolean> = {
 	target_zone: false,
 	zone_target_count: false,
 	target_count: false,
+	env_temperature: false,
+	env_humidity: false,
+	env_illuminance: false,
 	env_co2: false,
 };
 

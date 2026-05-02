@@ -25,7 +25,7 @@ It provides:
 1. [Install](user-guide/installation.md) the integration via HACS.
 2. [Flash](user-guide/flashing-firmware.md) the Grid firmware onto your device via USB.
 3. [Mount](user-guide/placement.md) the device and [calibrate](user-guide/calibration.md) the grid.
-4. Paint [zones](user-guide/zones.md) on the grid.
+4. Paint [detection zones](user-guide/detection-zones.md) on the grid.
 5. Build [automations](user-guide/automations.md).
 
 ---

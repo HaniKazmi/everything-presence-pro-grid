@@ -30,12 +30,13 @@ Frontend (eppgrid-panel.ts — orchestrator)
   │   └── target-controller.ts — target/sensor/zone state, zone engine, debug logs
   ├── components/
   │   ├── epp-wizard.ts — calibration wizard (guide, corners, capture)
-  │   ├── epp-live-view.ts — live overview composite (grid, sidebar, menu)
-  │   ├── epp-editor-view.ts — zone/furniture editor composite
   │   ├── epp-settings-view.ts — device settings (accordions, ranges, reporting)
+  │   ├── epp-flasher-view.ts — USB/Wi-Fi firmware flasher flow
+  │   ├── epp-device-card.ts — device picker card in the panel header
   │   ├── epp-grid.ts — shared grid renderer (live + editor)
   │   ├── epp-live-sidebar.ts — sensor/zone status display
   │   ├── epp-zone-sidebar.ts — zone list + type controls
+  │   ├── epp-overlay-sidebar.ts — Entry/Exit, Interference, Suppress paint modes
   │   ├── epp-furniture-sidebar.ts — furniture catalog + custom icons
   │   └── epp-furniture-overlay.ts — furniture drag/resize/rotate
   └── lib/

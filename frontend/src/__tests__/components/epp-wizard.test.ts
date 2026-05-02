@@ -40,17 +40,6 @@ describe("render mode branches", () => {
 		expect(root.innerHTML.length).toBeGreaterThan(0);
 	});
 
-	it("mode = 'needs-calibration' renders content", async () => {
-		const el = createWizard({ mode: "needs-calibration" });
-		document.body.appendChild(el);
-		await el.updateComplete;
-
-		const root = el.shadowRoot!;
-		// Should render the positioning guide with SVG diagrams
-		expect(root.querySelector("svg")).not.toBeNull();
-		expect(root.innerHTML.length).toBeGreaterThan(0);
-	});
-
 	it("mode = 'wizard' with _setupStep = null renders nothing", async () => {
 		const el = createWizard();
 		(el as any)._setupStep = null;

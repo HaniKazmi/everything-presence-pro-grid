@@ -9,27 +9,26 @@ Once a device is running Everything Presence Pro Grid firmware and on your netwo
 3. Click **Update**. The device downloads the new firmware and flashes itself. Progress streams live to the panel.
 4. The device reboots automatically when done. The panel reports success or, on failure, an error reason and a Retry button.
 
-!!! example "Screenshot placeholder"
-    **Installed Devices list with an Update button and "Update needed" badge on one device.** `firmware/ota-available.png`
+![Installed Devices list with an Update button and "Update needed" badge on one device.](../images/firmware-upgrades/ota-available.png 'Installed Devices list with an Update button and "Update needed" badge on one device.')
 
 !!! note
-    The firmware also publishes an ESPHome `update` entity (display name **Firmware Update**), so pending updates appear on HA's standard Updates dashboard. Either place works to trigger the update — the panel gives richer progress and error reporting during the OTA.
+    The firmware also publishes an ESPHome `update` entity (display name **Firmware Update**), so pending updates also appear on HA's standard Updates dashboard. Either place works to trigger the update; the panel gives richer progress and error reporting during the OTA.
 
 ## When OTA fails
 
 The panel reports a specific error and offers Retry. Common causes:
 
-- **Connection lost during update** — the device fell off the network mid-flash. Power-cycle and retry. If it keeps happening, check the Wi-Fi signal at the device or switch to the Ethernet variant.
-- **Update timed out** — the device didn't finish within the expected window. Usually a one-off; retry.
-- **Update failed** — the device refused the update or the flash partition is unhealthy. Retry via OTA; if that fails, re-flash via USB (see [Flashing firmware](flashing-firmware.md)).
+- **Connection lost during update.** The device fell off the network mid-flash. Power-cycle and retry. If it keeps happening, check the Wi-Fi signal at the device or switch to the Ethernet variant.
+- **Update timed out.** The device didn't finish within the expected window. Usually a one-off; retry.
+- **Update failed.** The device refused the update or the flash partition is unhealthy. Retry via OTA; if that fails, re-flash via USB (see [Flashing firmware](flashing-firmware.md)).
 
 ## Integration vs firmware versions
 
-If your firmware version is *newer* than your installed Everything Presence Pro Grid integration, the panel refuses to operate the device until the integration is updated. Look for the **Integration update required** banner — update the integration via HACS.
+If your firmware version is *newer* than your installed Everything Presence Pro Grid integration, the panel refuses to operate the device until the integration is updated. Look for the **Integration update required** banner and update the integration via HACS.
 
 ## Flashing a specific version
 
-To roll back or pin to a specific firmware version, flash via USB rather than OTA. See [Flashing firmware](flashing-firmware.md).
+To roll back or pin to a specific firmware version, flash via USB. See [Flashing firmware](flashing-firmware.md).
 
 ## Troubleshooting
 
@@ -39,3 +38,9 @@ To roll back or pin to a specific firmware version, flash via USB rather than OT
 | OTA reports "Update failed" on every retry | Flash partition unhealthy | Re-flash via USB. |
 | Panel refuses to control device | Firmware newer than installed integration | Update the integration in HACS. |
 | Device disappeared from the list after a variant swap | ESPHome cache stale | Remove and re-add the device in **Settings → Devices & services → ESPHome**. |
+
+Still stuck? See [Troubleshooting](troubleshooting.md) for how to open an issue.
+
+## Where to next
+
+- **[Troubleshooting →](troubleshooting.md)** — collect diagnostics and open an issue if something's not working right.

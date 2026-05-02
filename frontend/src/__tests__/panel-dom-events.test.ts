@@ -1127,7 +1127,7 @@ describe("epp-furniture-sidebar DOM events", () => {
 });
 
 describe("_renderUncalibratedFov DOM events (via EppWizard)", () => {
-	it("calibrate button fires start-calibration event", () => {
+	it("calibrate button is styled as a primary button and fires start-calibration on click", () => {
 		const a = createWizard() as any;
 		a.mode = "uncalibrated-fov";
 		const tpl = a._renderUncalibratedFov();
@@ -1138,31 +1138,11 @@ describe("_renderUncalibratedFov DOM events (via EppWizard)", () => {
 			startFired = true;
 		});
 
-		const link = c.querySelector(".live-nav-link") as HTMLElement;
-		if (link) {
-			link.click();
-			expect(startFired).toBe(true);
-		}
-	});
-});
-
-describe("_renderNeedsCalibration DOM events (via EppWizard)", () => {
-	it("start calibration button fires start-calibration event", () => {
-		const a = createWizard() as any;
-		a.mode = "needs-calibration";
-		const tpl = a._renderNeedsCalibration();
-		const c = renderTo(tpl);
-
-		let startFired = false;
-		a.addEventListener("start-calibration", () => {
-			startFired = true;
-		});
-
 		const btn = c.querySelector(".wizard-btn-primary") as HTMLElement;
-		if (btn) {
-			btn.click();
-			expect(startFired).toBe(true);
-		}
+		expect(btn).not.toBeNull();
+		expect(c.querySelector(".live-nav-link")).toBeNull();
+		btn.click();
+		expect(startFired).toBe(true);
 	});
 });
 
