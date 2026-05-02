@@ -3218,6 +3218,50 @@ class TestProtocolVersionGuard:
         assert kwargs.get("translation_domain") == DOMAIN
         assert kwargs.get("translation_key") == "firmware_behind"
 
+    async def test_firmware_unavailable_error_uses_device_not_available_key(
+        self, hass: HomeAssistant, config_entry: MockConfigEntry
+    ) -> None:
+        """When firmware version cannot be read, WS error must point at an
+        existing translation key. `_check_firmware_version` returns
+        `"unavailable"` in that case; the helper must NOT pass that through as a
+        translation_key (it does not exist in strings.json) — instead map it to
+        the existing `device_not_available` exception.
+        """
+        from custom_components.eppgrid.device_manager import ManagedDevice
+
+        mock_dm = await setup_integration(hass, config_entry)
+        mock_dm.devices = {
+            "AA:BB:CC:DD:EE:FF": ManagedDevice(
+                mac="AA:BB:CC:DD:EE:FF",
+                name="EPP",
+                host="192.168.1.50",
+            )
+        }
+        mock_dm.read_firmware_version.return_value = None  # firmware version unknown
+
+        from custom_components.eppgrid.websocket_api import websocket_set_setup
+
+        connection = MagicMock()
+        msg = {
+            "id": 22,
+            "type": "eppgrid/set_setup",
+            "mac": "AA:BB:CC:DD:EE:FF",
+            "perspective": [1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0],
+            "room_width": 3000.0,
+            "room_depth": 4000.0,
+        }
+
+        await call_async_handler(hass, websocket_set_setup, connection, msg)
+
+        connection.send_error.assert_called_once()
+        args = connection.send_error.call_args[0]
+        kwargs = connection.send_error.call_args.kwargs
+        # Wire-level error code preserves the proto_err for frontend dispatch
+        assert args[1] == "unavailable"
+        # But the translation_key must reference an existing exceptions entry
+        assert kwargs.get("translation_domain") == DOMAIN
+        assert kwargs.get("translation_key") == "device_not_available"
+
     async def test_firmware_ahead_error_carries_translation_metadata(
         self, hass: HomeAssistant, config_entry: MockConfigEntry
     ) -> None:

@@ -99,20 +99,34 @@ def _send_no_firmware_variant(connection: websocket_api.ActiveConnection, msg_id
     )
 
 
+# Map _check_firmware_version() return codes to (translation_key, English fallback)
+# pairs. `firmware_behind` / `firmware_ahead` reuse the same string as the wire
+# code; `unavailable` is the offline-device case where no firmware version was
+# reported, which we route to the existing `device_not_available` exception.
+_FIRMWARE_VERSION_ERRORS: dict[str, tuple[str, str]] = {
+    "firmware_behind": ("firmware_behind", "Firmware update required"),
+    "firmware_ahead": ("firmware_ahead", "Integration update required"),
+    "unavailable": ("device_not_available", "Device not available"),
+}
+
+
 def _send_firmware_version_error(connection: websocket_api.ActiveConnection, msg_id: int, proto_err: str) -> None:
     """Send a firmware version mismatch error with translation metadata.
 
-    `proto_err` is the code returned by `_check_firmware_version` — currently
-    `firmware_behind` or `firmware_ahead` — which doubles as both the wire-level
-    error code and the strings.json translation key.
+    `proto_err` is the code returned by `_check_firmware_version`. The wire-level
+    error code (`proto_err`) is preserved for frontend dispatch; the
+    `translation_key` is mapped via `_FIRMWARE_VERSION_ERRORS` to a key that
+    actually exists in strings.json.
     """
-    fallback = "Firmware update required" if proto_err == "firmware_behind" else "Integration update required"
+    translation_key, fallback = _FIRMWARE_VERSION_ERRORS.get(
+        proto_err, ("device_not_available", "Device not available")
+    )
     connection.send_error(
         msg_id,
         proto_err,
         fallback,
         translation_domain=DOMAIN,
-        translation_key=proto_err,
+        translation_key=translation_key,
     )
 
 
