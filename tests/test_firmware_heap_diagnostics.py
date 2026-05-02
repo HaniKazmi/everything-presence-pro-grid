@@ -1,0 +1,105 @@
+"""Heap diagnostic sensors exposed by firmware base YAML.
+
+The wifi-ble-co2 variant is tight on RAM (ESP32 with ~320 KB usable heap).
+A previous OTA bug surfaced because two simultaneous TLS handshakes exceeded
+the largest contiguous free block during a cross-origin redirect. We need
+ongoing visibility into:
+
+  - Current free heap
+  - Lowest ever free heap (low-water mark, catches transient spikes)
+  - Largest free contiguous block (catches fragmentation, the real TLS killer)
+
+These are exposed as diagnostic sensors so users can see real numbers and
+we can correlate failures with actual margin instead of guessing.
+"""
+
+from pathlib import Path
+
+import yaml
+
+from tests.esphome_yaml import ESPHomeLoader
+
+REPO_ROOT = Path(__file__).resolve().parents[1]
+
+
+def _load_base_yaml() -> dict:
+    text = (REPO_ROOT / "firmware" / "common" / "everything-presence-pro-base.yaml").read_text()
+    return yaml.load(text, Loader=ESPHomeLoader)
+
+
+def _find_sensor_by_id(sensors: list, sensor_id: str) -> dict | None:
+    for s in sensors:
+        if isinstance(s, dict) and s.get("id") == sensor_id:
+            return s
+    return None
+
+
+def _find_debug_sensor(sensors: list) -> dict | None:
+    for s in sensors:
+        if isinstance(s, dict) and s.get("platform") == "debug":
+            return s
+    return None
+
+
+def test_debug_component_enabled():
+    """The `debug` component must be present so the debug sensor platform works."""
+    doc = _load_base_yaml()
+    assert "debug" in doc, (
+        "firmware base YAML must declare a top-level `debug:` component — "
+        "required for the `platform: debug` heap sensors."
+    )
+
+
+def test_free_heap_sensor_present():
+    """Current free heap exposed as a diagnostic sensor."""
+    doc = _load_base_yaml()
+    debug_sensor = _find_debug_sensor(doc["sensor"])
+    assert debug_sensor is not None, "no `platform: debug` sensor block found"
+    free = debug_sensor.get("free")
+    assert isinstance(free, dict), "debug sensor must define `free:` for current heap"
+    assert free.get("entity_category") == "diagnostic", "Heap Free sensor must be entity_category: diagnostic"
+
+
+def test_largest_free_block_sensor_present():
+    """Largest contiguous free block — what TLS allocations actually need."""
+    doc = _load_base_yaml()
+    debug_sensor = _find_debug_sensor(doc["sensor"])
+    assert debug_sensor is not None, "no `platform: debug` sensor block found"
+    block = debug_sensor.get("block")
+    assert isinstance(block, dict), (
+        "debug sensor must define `block:` for largest free contiguous block — "
+        "this is what catches fragmentation that breaks TLS handshakes even "
+        "when total free heap looks fine."
+    )
+    assert block.get("entity_category") == "diagnostic"
+
+
+def test_min_free_heap_sensor_present():
+    """Low-water mark — catches transient spikes (e.g. dual TLS handshake)."""
+    doc = _load_base_yaml()
+    sensor = _find_sensor_by_id(doc["sensor"], "heap_min_free")
+    assert sensor is not None, (
+        "expected a sensor with id `heap_min_free` reporting the lowest ever "
+        "free heap value (heap_caps_get_minimum_free_size). Total free heap "
+        "samples once per minute miss transient drops during OTA / TLS bursts."
+    )
+    assert sensor.get("entity_category") == "diagnostic"
+    assert sensor.get("platform") == "template"
+    lambda_body = sensor.get("lambda", "")
+    assert "heap_caps_get_minimum_free_size" in lambda_body, (
+        "heap_min_free sensor must use heap_caps_get_minimum_free_size() — "
+        "ESP-IDF's only API for the all-time low-water mark."
+    )
+
+
+def test_loop_time_sensor_present():
+    """ESPHome main-loop time often correlates with memory pressure / blocked tasks."""
+    doc = _load_base_yaml()
+    debug_sensor = _find_debug_sensor(doc["sensor"])
+    assert debug_sensor is not None, "no `platform: debug` sensor block found"
+    loop_time = debug_sensor.get("loop_time")
+    assert isinstance(loop_time, dict), (
+        "debug sensor must define `loop_time:` — long loop times often correlate "
+        "with memory pressure and are useful when triaging heap exhaustion."
+    )
+    assert loop_time.get("entity_category") == "diagnostic"

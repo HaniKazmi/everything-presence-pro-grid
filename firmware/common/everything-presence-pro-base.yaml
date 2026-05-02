@@ -582,7 +582,35 @@ ota:
   - platform: http_request
     id: ota_http_request
 
+debug:
+  update_interval: 60s
+
 sensor:
+  - platform: debug
+    free:
+      name: "Heap Free"
+      id: heap_free
+      entity_category: diagnostic
+    block:
+      name: "Heap Largest Block"
+      id: heap_largest_block
+      entity_category: diagnostic
+    loop_time:
+      name: "Loop Time"
+      id: loop_time
+      entity_category: diagnostic
+
+  - platform: template
+    name: "Heap Min Free"
+    id: heap_min_free
+    entity_category: diagnostic
+    unit_of_measurement: "B"
+    accuracy_decimals: 0
+    state_class: measurement
+    update_interval: 60s
+    lambda: |-
+      return (float) heap_caps_get_minimum_free_size(MALLOC_CAP_DEFAULT);
+
   - platform: template
     name: "Current Connections"
     id: current_connection_count_sensor
