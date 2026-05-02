@@ -36,5 +36,15 @@
     "service_not_available": { "message": "El servicio {service} no está disponible" },
     "firmware_behind": { "message": "Actualización de firmware necesaria" },
     "firmware_ahead": { "message": "Actualización de la integración necesaria" }
+  },
+  "issues": {
+    "firmware_behind": {
+      "title": "{device_name}: actualización de firmware necesaria",
+      "description": "La integración Everything Presence Pro Grid requiere el firmware **{required_version}**, pero {device_name} está ejecutando **{current_version}**. Abre el panel EPP Grid y usa el botón **Actualizar firmware** en la tarjeta del dispositivo para instalar el firmware necesario. Algunas funciones de la integración pueden no funcionar correctamente hasta que se actualice el firmware."
+    },
+    "firmware_ahead": {
+      "title": "{device_name}: actualización de la integración necesaria",
+      "description": "{device_name} está ejecutando el firmware **{current_version}**, pero la integración Everything Presence Pro Grid está fijada a **{required_version}**. Actualiza la integración a través de HACS para que pueda comunicarse con el firmware más reciente. Algunas funciones de la integración pueden no funcionar correctamente hasta que se actualice la integración."
+    }
   }
 }

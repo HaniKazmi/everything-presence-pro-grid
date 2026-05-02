@@ -32,6 +32,7 @@ from ._helpers import _extract_host
 from ._helpers import _extract_mac
 from ._helpers import _raise_service_unavailable as _raise_service_unavailable  # re-export for tests
 from ._helpers import _resolve_zone_name
+from ._helpers import _sync_firmware_repair_issue
 from ._helpers import is_valid_zone_slots_shape
 
 _LOGGER = logging.getLogger(__name__)
@@ -239,6 +240,13 @@ class DeviceManager:
                 device_id=device.id,
             )
 
+            _sync_firmware_repair_issue(
+                self._hass,
+                mac=mac,
+                device_name=self.devices[mac].name,
+                fw_ver=self.read_firmware_version(device.id),
+            )
+
             if is_new:
                 found_new = True
                 self._ensure_esphome_entry_listener(entry.config_entry_id)
@@ -401,6 +409,16 @@ class DeviceManager:
         dev = self.devices.get(mac)
         if dev is not None:
             dev.available = True
+            # Re-evaluate firmware-version repair issues after reconnect:
+            # this is the OTA recovery path (reboot → reconnect → new
+            # firmware_version state arrives) where the issue from the
+            # previous version needs to be cleared or replaced.
+            _sync_firmware_repair_issue(
+                self._hass,
+                mac=mac,
+                device_name=dev.name,
+                fw_ver=self.read_firmware_version(dev.device_id),
+            )
 
         # Skip push if we caused this reconnect via entity registry updates.
         # Don't clear the guard here — multiple entities cycle through

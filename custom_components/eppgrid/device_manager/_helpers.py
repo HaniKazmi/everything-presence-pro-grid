@@ -129,6 +129,68 @@ def _compare_firmware_version(device_version: str) -> str:
     return "firmware_ahead"
 
 
+def _sync_firmware_repair_issue(
+    hass: HomeAssistant,
+    *,
+    mac: str,
+    device_name: str,
+    fw_ver: str | None,
+) -> None:
+    """Create or clear Repairs issues based on the device's firmware version.
+
+    The integration's pinned FIRMWARE_VERSION is the source of truth for
+    which firmware a given release expects. This raises a Repairs issue
+    when the device is on a different version so the user notices without
+    having to open the EPP Grid panel.
+
+    Offline devices (fw_ver is None) leave existing issues alone — clearing
+    them on disconnect would mask a real problem the moment the device
+    reappears.
+    """
+    from homeassistant.helpers import issue_registry as ir
+
+    from ..const import FIRMWARE_VERSION
+
+    behind_id = f"firmware_behind_{mac}"
+    ahead_id = f"firmware_ahead_{mac}"
+
+    if fw_ver is None:
+        return
+
+    status = _compare_firmware_version(fw_ver)
+    placeholders = {
+        "device_name": device_name,
+        "current_version": fw_ver,
+        "required_version": FIRMWARE_VERSION,
+    }
+
+    if status == "firmware_behind":
+        ir.async_delete_issue(hass, DOMAIN, ahead_id)
+        ir.async_create_issue(
+            hass,
+            DOMAIN,
+            behind_id,
+            is_fixable=False,
+            severity=ir.IssueSeverity.WARNING,
+            translation_key="firmware_behind",
+            translation_placeholders=placeholders,
+        )
+    elif status == "firmware_ahead":
+        ir.async_delete_issue(hass, DOMAIN, behind_id)
+        ir.async_create_issue(
+            hass,
+            DOMAIN,
+            ahead_id,
+            is_fixable=False,
+            severity=ir.IssueSeverity.WARNING,
+            translation_key="firmware_ahead",
+            translation_placeholders=placeholders,
+        )
+    else:
+        ir.async_delete_issue(hass, DOMAIN, behind_id)
+        ir.async_delete_issue(hass, DOMAIN, ahead_id)
+
+
 def _extract_mac(device: dr.DeviceEntry) -> str | None:
     """Extract MAC address from device connections, normalised to uppercase."""
     for conn_type, conn_id in device.connections:
