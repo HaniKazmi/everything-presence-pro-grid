@@ -103,3 +103,50 @@ def test_loop_time_sensor_present():
         "with memory pressure and are useful when triaging heap exhaustion."
     )
     assert loop_time.get("entity_category") == "diagnostic"
+
+
+def test_uptime_sensor_present():
+    """Uptime distinguishes a reboot from a network blip.
+
+    `Heap Min Free` only resets on reboot; cross-referencing it with an Uptime
+    sensor that drops to ~0 lets us confirm whether a "device unavailable"
+    period in HA history was an OOM-driven reboot or just lost connectivity.
+    """
+    doc = _load_base_yaml()
+    sensor = _find_sensor_by_id(doc["sensor"], "uptime_sensor")
+    assert sensor is not None, (
+        "expected a sensor with id `uptime_sensor` reporting seconds since boot. "
+        "Required to distinguish reboots from network blips when triaging "
+        "device-unavailable episodes."
+    )
+    assert sensor.get("platform") == "uptime"
+    assert sensor.get("entity_category") == "diagnostic"
+
+
+def test_reset_reason_text_sensor_present():
+    """Reset Reason explains *why* the device rebooted.
+
+    Uptime tells us a reboot happened; Reset Reason tells us if it was a crash
+    (SW_CPU / TASK_WDT / INT_WDT / LOAD_PROHIBITED — all OOM- or fault-adjacent),
+    a brownout (BROWNOUT), a manual restart (EXT), or a power cycle (POWERON).
+    """
+    doc = _load_base_yaml()
+    text_sensors = doc.get("text_sensor", [])
+    assert isinstance(text_sensors, list) and text_sensors, (
+        "expected a top-level `text_sensor:` list with at least one entry — "
+        "needed for the debug component's reset_reason text sensor."
+    )
+    debug_text_sensor = next(
+        (ts for ts in text_sensors if isinstance(ts, dict) and ts.get("platform") == "debug"),
+        None,
+    )
+    assert debug_text_sensor is not None, (
+        "expected a `platform: debug` text_sensor block exposing reset_reason."
+    )
+    reset_reason = debug_text_sensor.get("reset_reason")
+    assert isinstance(reset_reason, dict), (
+        "debug text_sensor must define `reset_reason:` so the reason for the "
+        "last reboot is visible in HA. Crucial for distinguishing OOM-driven "
+        "crashes from brownouts or manual restarts."
+    )
+    assert reset_reason.get("entity_category") == "diagnostic"

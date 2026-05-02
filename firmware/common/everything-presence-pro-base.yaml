@@ -617,6 +617,12 @@ sensor:
     accuracy_decimals: 0
     entity_category: diagnostic
 
+  - platform: uptime
+    name: "Uptime"
+    id: uptime_sensor
+    entity_category: diagnostic
+    update_interval: 60s
+
   - platform: shtcx
     id: "shtc3_sensor"
     i2c_id: bus_a
@@ -649,6 +655,13 @@ sensor:
           - delta: 2
       - clamp:
           min_value: 0
+
+text_sensor:
+  - platform: debug
+    reset_reason:
+      name: "Reset Reason"
+      id: reset_reason
+      entity_category: diagnostic
 
 i2c:
   - id: bus_a
