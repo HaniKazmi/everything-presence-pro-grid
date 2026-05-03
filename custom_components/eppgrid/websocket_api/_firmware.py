@@ -27,6 +27,7 @@ from . import _send_no_firmware_variant
         vol.Required("mac"): str,
     }
 )
+@websocket_api.require_admin
 @websocket_api.async_response
 @_require_manager
 async def websocket_update_firmware(

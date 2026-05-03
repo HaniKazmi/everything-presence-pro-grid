@@ -194,6 +194,27 @@ class TestWebSocketSetShowCalibrationTutorial:
         mock_dm._fire_device_list_changed.assert_not_called()
         connection.send_result.assert_called_once_with(9)
 
+    async def test_set_requires_admin(self, hass: HomeAssistant, config_entry: MockConfigEntry) -> None:
+        """Non-admin users cannot change the tutorial flag."""
+        from homeassistant.exceptions import Unauthorized
+
+        await setup_integration(hass, config_entry)
+
+        from custom_components.eppgrid.websocket_api import websocket_set_show_room_calibration_tutorial
+
+        connection = MagicMock()
+        connection.user.is_admin = False
+        msg = {
+            "id": 10,
+            "type": "eppgrid/set_show_room_calibration_tutorial",
+            "value": False,
+        }
+
+        with pytest.raises(Unauthorized):
+            websocket_set_show_room_calibration_tutorial(hass, connection, msg)
+
+        connection.send_result.assert_not_called()
+
 
 class TestWebSocketGetConfig:
     """Tests for eppgrid/get_config."""
@@ -421,6 +442,30 @@ class TestWebSocketSetSetup:
         settings = mock_dm._store.devices["AA:BB:CC:DD:EE:FF"]["settings"]
         assert "target_xy" not in settings
 
+    async def test_set_setup_requires_admin(self, hass: HomeAssistant, config_entry: MockConfigEntry) -> None:
+        """Non-admin users cannot push perspective calibration."""
+        from homeassistant.exceptions import Unauthorized
+
+        await setup_integration(hass, config_entry)
+
+        from custom_components.eppgrid.websocket_api import websocket_set_setup
+
+        connection = MagicMock()
+        connection.user.is_admin = False
+        msg = {
+            "id": 7,
+            "type": "eppgrid/set_setup",
+            "mac": "AA:BB:CC:DD:EE:FF",
+            "perspective": [1.0] * 8,
+            "room_width": 3000.0,
+            "room_depth": 4000.0,
+        }
+
+        with pytest.raises(Unauthorized):
+            websocket_set_setup(hass, connection, msg)
+
+        connection.send_result.assert_not_called()
+
 
 class TestWebSocketSetRoomLayout:
     """Tests for eppgrid/set_room_layout."""
@@ -469,6 +514,30 @@ class TestWebSocketSetRoomLayout:
         mock_dm._push_config_to_device.assert_awaited()
         mock_dm.async_update_zone_entities.assert_awaited_with("AA:BB:CC:DD:EE:FF", zone_slots)
         connection.send_result.assert_called_once_with(5)
+
+    async def test_set_room_layout_requires_admin(self, hass: HomeAssistant, config_entry: MockConfigEntry) -> None:
+        """Non-admin users cannot push room layout."""
+        from homeassistant.exceptions import Unauthorized
+
+        await setup_integration(hass, config_entry)
+
+        from custom_components.eppgrid.websocket_api import websocket_set_room_layout
+
+        connection = MagicMock()
+        connection.user.is_admin = False
+        msg = {
+            "id": 8,
+            "type": "eppgrid/set_room_layout",
+            "mac": "AA:BB:CC:DD:EE:FF",
+            "grid_bytes": [1] * 400,
+            "zone_slots": [{"type": "default"}] + [None] * 7,
+            "furniture": [],
+        }
+
+        with pytest.raises(Unauthorized):
+            websocket_set_room_layout(hass, connection, msg)
+
+        connection.send_result.assert_not_called()
 
     async def test_set_room_layout_stores_zone_0_in_zone_slots(
         self, hass: HomeAssistant, config_entry: MockConfigEntry
@@ -780,6 +849,28 @@ class TestWebSocketConfigurations:
         mock_dm._store.async_save.assert_awaited()
         connection.send_result.assert_called_once_with(7)
 
+    async def test_save_configuration_requires_admin(self, hass: HomeAssistant, config_entry: MockConfigEntry) -> None:
+        """Non-admin users cannot save a configuration."""
+        from homeassistant.exceptions import Unauthorized
+
+        await setup_integration(hass, config_entry)
+
+        from custom_components.eppgrid.websocket_api import websocket_save_configuration
+
+        connection = MagicMock()
+        connection.user.is_admin = False
+        msg = {
+            "id": 11,
+            "type": "eppgrid/save_configuration",
+            "name": "office",
+            "configuration": {"grid_bytes": [0] * 400},
+        }
+
+        with pytest.raises(Unauthorized):
+            websocket_save_configuration(hass, connection, msg)
+
+        connection.send_result.assert_not_called()
+
     async def test_delete_configuration(self, hass: HomeAssistant, config_entry: MockConfigEntry) -> None:
         """delete_configuration removes a configuration."""
         mock_dm = await setup_integration(hass, config_entry)
@@ -794,6 +885,28 @@ class TestWebSocketConfigurations:
 
         assert "old" not in mock_dm._store.configurations
         mock_dm._store.async_save.assert_awaited()
+
+    async def test_delete_configuration_requires_admin(
+        self, hass: HomeAssistant, config_entry: MockConfigEntry
+    ) -> None:
+        """Non-admin users cannot delete a configuration."""
+        from homeassistant.exceptions import Unauthorized
+
+        mock_dm = await setup_integration(hass, config_entry)
+        mock_dm._store.configurations["old"] = {"data": True}
+
+        from custom_components.eppgrid.websocket_api import websocket_delete_configuration
+
+        connection = MagicMock()
+        connection.user.is_admin = False
+        msg = {"id": 12, "type": "eppgrid/delete_configuration", "name": "old"}
+
+        with pytest.raises(Unauthorized):
+            websocket_delete_configuration(hass, connection, msg)
+
+        connection.send_result.assert_not_called()
+        # Configuration should NOT have been removed
+        assert "old" in mock_dm._store.configurations
 
     async def test_apply_template_command_removed(self) -> None:
         """eppgrid/apply_template is no longer a valid command."""
@@ -861,6 +974,45 @@ class TestWebSocketConfigurations:
 
 class TestWebSocketSettings:
     """Tests for the unified eppgrid/set_settings command."""
+
+    async def test_set_settings_requires_admin(self, hass: HomeAssistant, config_entry: MockConfigEntry) -> None:
+        """Non-admin users cannot push settings to the device."""
+        from homeassistant.exceptions import Unauthorized
+
+        await setup_integration(hass, config_entry)
+
+        from custom_components.eppgrid.websocket_api import websocket_set_settings
+
+        connection = MagicMock()
+        connection.user.is_admin = False
+        msg = {
+            "id": 30,
+            "type": "eppgrid/set_settings",
+            "mac": "AA:BB:CC:DD:EE:FF",
+            "temperature_offset": 0.0,
+            "humidity_offset": 0.0,
+            "illuminance_offset": 0.0,
+            "motion_timeout": 5.0,
+            "target_auto_distance": True,
+            "target_max_distance": 4.0,
+            "static_auto_distance": False,
+            "static_min_distance": 0.3,
+            "static_max_distance": 8.0,
+            "static_trigger_threshold": 3,
+            "static_renew_threshold": 3,
+            "static_timeout": 30.0,
+            "static_on_delay": 0.0,
+            "led_mode": "Manual Control",
+            "led_brightness": 1.0,
+            "led_presence_color": "#CC33FF",
+            "relay_trigger_mode": "disabled",
+            "relay_contact_mode": "no",
+        }
+
+        with pytest.raises(Unauthorized):
+            websocket_set_settings(hass, connection, msg)
+
+        connection.send_result.assert_not_called()
 
     async def test_set_settings_stores_all_values(self, hass: HomeAssistant, config_entry: MockConfigEntry) -> None:
         """set_settings stores all values under device_config['settings']."""
@@ -1471,6 +1623,32 @@ class TestWebSocketSettings:
         assert pipeline["zone_state_interval"] == 1000
         assert pipeline["window_duration"] == 1000
 
+    async def test_set_pipeline_requires_admin(self, hass: HomeAssistant, config_entry: MockConfigEntry) -> None:
+        """Non-admin users cannot push pipeline settings."""
+        from homeassistant.exceptions import Unauthorized
+
+        await setup_integration(hass, config_entry)
+
+        from custom_components.eppgrid.websocket_api import websocket_set_pipeline
+
+        connection = MagicMock()
+        connection.user.is_admin = False
+        msg = {
+            "id": 16,
+            "type": "eppgrid/set_pipeline",
+            "mac": "AA:BB:CC:DD:EE:FF",
+            "entity_target_interval": 1000,
+            "entity_zone_interval": 1000,
+            "display_interval": 200,
+            "zone_state_interval": 1000,
+            "window_duration": 1000,
+        }
+
+        with pytest.raises(Unauthorized):
+            websocket_set_pipeline(hass, connection, msg)
+
+        connection.send_result.assert_not_called()
+
 
 class TestZonePresencePreservation:
     """Tests for zone_presence preservation across set_settings calls."""
@@ -2060,6 +2238,33 @@ class TestWebSocketEntityEnabled:
                 disabled_by=RegistryEntryDisabler.INTEGRATION,
             )
 
+    async def test_set_entity_enabled_requires_admin(self, hass: HomeAssistant, config_entry: MockConfigEntry) -> None:
+        """Non-admin users cannot toggle entity enabled state."""
+        from homeassistant.exceptions import Unauthorized
+
+        await setup_integration(hass, config_entry)
+
+        from custom_components.eppgrid.websocket_api import websocket_set_entity_enabled
+
+        with patch("custom_components.eppgrid.websocket_api._devices.er.async_get") as mock_er:
+            mock_registry = mock_er.return_value
+
+            connection = MagicMock()
+            connection.user.is_admin = False
+            msg = {
+                "id": 18,
+                "type": "eppgrid/set_entity_enabled",
+                "mac": "AA:BB:CC:DD:EE:FF",
+                "entity_id": "binary_sensor.epp_zone_1_presence",
+                "enabled": True,
+            }
+
+            with pytest.raises(Unauthorized):
+                websocket_set_entity_enabled(hass, connection, msg)
+
+            mock_registry.async_update_entity.assert_not_called()
+            connection.send_result.assert_not_called()
+
 
 class TestWebSocketSubscriptions:
     """Tests for subscription commands (subscribe_device, subscribe_raw_targets, subscribe_grid_targets)."""
@@ -2432,6 +2637,23 @@ class TestUpdateFirmware:
             translation_domain=DOMAIN,
             translation_key="integration_not_loaded",
         )
+
+    async def test_update_firmware_requires_admin(self, hass: HomeAssistant, config_entry: MockConfigEntry) -> None:
+        """Non-admin users cannot trigger an OTA update."""
+        from homeassistant.exceptions import Unauthorized
+
+        await setup_integration(hass, config_entry)
+
+        from custom_components.eppgrid.websocket_api import websocket_update_firmware
+
+        connection = MagicMock()
+        connection.user.is_admin = False
+        msg = {"id": 24, "type": "eppgrid/update_firmware", "mac": "AA:BB:CC:DD:EE:FF"}
+
+        with pytest.raises(Unauthorized):
+            websocket_update_firmware(hass, connection, msg)
+
+        connection.send_result.assert_not_called()
 
 
 class TestNotReadyGuards:
@@ -3041,6 +3263,32 @@ class TestWebSocketDistanceOverride:
 
         connection.send_result.assert_called_once_with(100)
         mock_dm._store.async_save.assert_not_awaited()
+
+    async def test_set_distance_override_requires_admin(
+        self, hass: HomeAssistant, config_entry: MockConfigEntry
+    ) -> None:
+        """Non-admin users cannot push distance overrides."""
+        from homeassistant.exceptions import Unauthorized
+
+        await setup_integration(hass, config_entry)
+
+        from custom_components.eppgrid.websocket_api import websocket_set_distance_override
+
+        connection = MagicMock()
+        connection.user.is_admin = False
+        msg = {
+            "id": 101,
+            "type": "eppgrid/set_distance_override",
+            "mac": "AA:BB:CC:DD:EE:FF",
+            "target_max_distance": 5.0,
+            "static_min_distance": 0.5,
+            "static_max_distance": 10.0,
+        }
+
+        with pytest.raises(Unauthorized):
+            websocket_set_distance_override(hass, connection, msg)
+
+        connection.send_result.assert_not_called()
 
 
 class TestProtocolVersionGuard:
