@@ -237,6 +237,15 @@ class EPPComponent : public esphome::Component {
 
   // Cached zone result
   ProcessingResult last_zone_result_{};
+
+  // Boot settling — gate relay state changes until the device has either
+  // received its first frame or waited out BOOT_SETTLE_MS. Template switches
+  // re-fire turn_on/turn_off on boot from HA's restored state, and acting on
+  // the very first loop tick (before LD2450 frames or HA restoration) can
+  // produce a brief incorrect state. See project memory feedback_template_switch_restore.
+  bool boot_settled_ = false;
+  uint32_t boot_ms_ = 0;
+  static constexpr uint32_t BOOT_SETTLE_MS = 2000;
 };
 
 }  // namespace epp

@@ -19,6 +19,9 @@ static const char *const NVS_NAMESPACE = "epp";
 void EPPComponent::setup() {
   ESP_LOGI(TAG, "EPP Zone Engine component initialized");
 
+  // Capture boot wall-clock so the relay gate can compute a settling window.
+  boot_ms_ = esphome::millis();
+
   // Publish firmware version
   if (firmware_version_sensor_ != nullptr) {
     firmware_version_sensor_->publish_state(FIRMWARE_VERSION_STR);
@@ -334,8 +337,18 @@ void EPPComponent::loop() {
     if (mmwave_output_ != nullptr)
       mmwave_output_->publish_state(result.mmwave);
 
-    // Relay evaluation
-    if (relay_switch_ != nullptr) {
+    // Relay evaluation.
+    // Gate side-effecting relay state changes until boot has settled — see
+    // boot_settled_ rationale in epp_component.h. Without this gate the very
+    // first loop tick can flip the relay before the LD2450 has produced any
+    // frames and before HA has restored template switch state, causing a
+    // brief incorrect output state on every boot.
+    if (!boot_settled_) {
+      if (frame_count_ > 0 && now - boot_ms_ >= BOOT_SETTLE_MS) {
+        boot_settled_ = true;
+      }
+    }
+    if (boot_settled_ && relay_switch_ != nullptr) {
       RelayEvalInput relay_input{
           relay_trigger_mode_,
           relay_contact_mode_,
