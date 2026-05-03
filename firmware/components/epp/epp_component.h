@@ -13,6 +13,7 @@
 #include "epp_relay.h"
 #include "epp_frame_ring_buffer.h"
 #include "epp_nvs_layout.h"
+#include "epp_relay_publish.h"
 
 #include <string>
 
@@ -266,6 +267,13 @@ class EPPComponent : public esphome::Component {
   bool boot_settled_ = false;
   uint32_t boot_ms_ = 0;
   static constexpr uint32_t BOOT_SETTLE_MS = 2000;
+
+  // Track our own last-issued relay desired state so we don't fight a
+  // user-driven toggle from HA. See epp_relay_publish.h for the rationale.
+  // Reading relay_switch_->state instead would re-issue every loop tick after
+  // the user toggled the switch, undoing user intent.
+  bool relay_desired_state_ = false;
+  bool has_relay_desired_state_ = false;
 };
 
 }  // namespace epp

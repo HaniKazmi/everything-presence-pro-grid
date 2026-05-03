@@ -412,12 +412,20 @@ void EPPComponent::loop() {
           result.occupancy,
       };
       auto relay_result = evaluate_relay(relay_input);
-      if (relay_result.desired_state != relay_switch_->state) {
+      // Use the component's own last-issued desired state — never read
+      // relay_switch_->state directly. The switch's state can be flipped by
+      // HA, an automation, or an optimistic update; reacting to it makes
+      // us fight user intent on the next loop tick. See epp_relay_publish.h.
+      if (relay_should_update(relay_result.desired_state,
+                              relay_desired_state_,
+                              has_relay_desired_state_)) {
         if (relay_result.desired_state) {
           relay_switch_->turn_on();
         } else {
           relay_switch_->turn_off();
         }
+        relay_desired_state_ = relay_result.desired_state;
+        has_relay_desired_state_ = true;
       }
     }
   }
