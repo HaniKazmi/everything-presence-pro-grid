@@ -10,12 +10,12 @@ from homeassistant.core import HomeAssistant
 from homeassistant.core import callback
 
 from ..const import DOMAIN
-from . import _INTEGRATION_VERSION
+from . import _integration_version
 from . import _require_manager
 from . import _send_exception
 
 
-async def _flashable_payload(manager: Any) -> dict[str, Any]:
+async def _flashable_payload(hass: HomeAssistant, manager: Any) -> dict[str, Any]:
     """Build the payload shared by `subscribe_flashable_devices` / `list_flashable_devices`."""
     from ..const import FIRMWARE_VERSION
 
@@ -24,7 +24,7 @@ async def _flashable_payload(manager: Any) -> dict[str, Any]:
         "devices": devices,
         "firmware_base_url": "/api/eppgrid/firmware",
         "latest_firmware_version": f"v{FIRMWARE_VERSION}",
-        "integration_version": _INTEGRATION_VERSION,
+        "integration_version": _integration_version(hass),
     }
 
 
@@ -43,7 +43,7 @@ async def websocket_subscribe_flashable_devices(
     """Subscribe to flashable device list changes."""
 
     async def _send_update() -> None:
-        connection.send_message(websocket_api.event_message(msg["id"], await _flashable_payload(manager)))
+        connection.send_message(websocket_api.event_message(msg["id"], await _flashable_payload(hass, manager)))
 
     @callback
     def _on_changed() -> None:
@@ -70,7 +70,7 @@ async def websocket_list_flashable_devices(
     manager: Any,
 ) -> None:
     """List all EPP devices available for flashing."""
-    connection.send_result(msg["id"], await _flashable_payload(manager))
+    connection.send_result(msg["id"], await _flashable_payload(hass, manager))
 
 
 # -- delete_esphome_device --

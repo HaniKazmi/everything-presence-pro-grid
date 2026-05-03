@@ -19,10 +19,9 @@ from custom_components.eppgrid.const import DOMAIN
 # ---------------------------------------------------------------------------
 
 
-@pytest.fixture(autouse=True)
-def _clear_registered():
-    """Clear the module-global _REGISTERED set between tests."""
-    ws_module._REGISTERED.clear()
+def test_websocket_api_module_has_no_registered_set() -> None:
+    """No module-level _REGISTERED set should leak across submodules."""
+    assert not hasattr(ws_module, "_REGISTERED")
 
 
 # ---------------------------------------------------------------------------
@@ -202,7 +201,7 @@ class TestWebSocketGetConfig:
     async def test_get_config(self, hass: HomeAssistant, config_entry: MockConfigEntry) -> None:
         """get_config returns stored config for a device."""
         mock_dm = await setup_integration(hass, config_entry)
-        mock_dm._store.get_device = MagicMock(return_value={"calibration": {"perspective": [1.0] * 8}})
+        mock_dm._store.devices = {"AA:BB:CC:DD:EE:FF": {"calibration": {"perspective": [1.0] * 8}}}
 
         from custom_components.eppgrid.websocket_api import websocket_get_config
 
@@ -218,8 +217,7 @@ class TestWebSocketGetConfig:
     async def test_get_config_includes_entity_states(self, hass: HomeAssistant, config_entry: MockConfigEntry) -> None:
         """get_config includes entity enabled/disabled states from HA registry."""
         mock_dm = await setup_integration(hass, config_entry)
-        mock_dm._store.devices["AA:BB:CC:DD:EE:FF"] = {"settings": {}}
-        mock_dm._store.get_device = MagicMock(return_value={"settings": {}})
+        mock_dm._store.devices = {"AA:BB:CC:DD:EE:FF": {"settings": {}}}
 
         from custom_components.eppgrid.websocket_api import websocket_get_config
 
@@ -1939,6 +1937,72 @@ class TestApplyEntityStates:
 
             assert "env_co2" in result
             assert "env_co2_calibrate" not in result
+
+    async def test_get_entity_states_category_uses_all_enabled_semantics(
+        self, hass: HomeAssistant, config_entry: MockConfigEntry
+    ) -> None:
+        """Category key (e.g. zone_presence) is True only when ALL entities in the category are enabled.
+
+        _apply_entity_states bulk-toggles every entity for a category, so the
+        getter must mirror that — anything-enabled would silently flip to True
+        the moment a single matching entity is enabled.
+        """
+        from homeassistant.helpers.entity_registry import RegistryEntryDisabler
+
+        from custom_components.eppgrid.device_manager import ManagedDevice
+        from custom_components.eppgrid.websocket_api import _get_entity_states
+
+        mock_dm = await setup_integration(hass, config_entry)
+        mock_dm.devices["AA:BB:CC:DD:EE:FF"] = ManagedDevice(mac="AA:BB:CC:DD:EE:FF", name="EPP", host="192.168.1.50")
+        mock_dm.devices["AA:BB:CC:DD:EE:FF"].device_id = "dev123"
+
+        zone0 = MagicMock()
+        zone0.unique_id = "AA:BB:CC:DD:EE:FF-sensor-zone_0_presence"
+        zone0.disabled_by = None  # enabled
+
+        zone1 = MagicMock()
+        zone1.unique_id = "AA:BB:CC:DD:EE:FF-sensor-zone_1_presence"
+        zone1.disabled_by = RegistryEntryDisabler.USER  # disabled
+
+        with (
+            patch("custom_components.eppgrid.websocket_api._devices.er.async_get"),
+            patch("custom_components.eppgrid.websocket_api._devices.er.async_entries_for_device") as mock_entries,
+        ):
+            mock_entries.return_value = [zone0, zone1]
+
+            result = _get_entity_states(hass, "AA:BB:CC:DD:EE:FF")
+
+        # Mixed state ⇒ category reports disabled.
+        assert result["zone_presence"] is False
+
+    async def test_get_entity_states_category_all_enabled_returns_true(
+        self, hass: HomeAssistant, config_entry: MockConfigEntry
+    ) -> None:
+        """Category key is True when all entities in the category are enabled."""
+        from custom_components.eppgrid.device_manager import ManagedDevice
+        from custom_components.eppgrid.websocket_api import _get_entity_states
+
+        mock_dm = await setup_integration(hass, config_entry)
+        mock_dm.devices["AA:BB:CC:DD:EE:FF"] = ManagedDevice(mac="AA:BB:CC:DD:EE:FF", name="EPP", host="192.168.1.50")
+        mock_dm.devices["AA:BB:CC:DD:EE:FF"].device_id = "dev123"
+
+        zone0 = MagicMock()
+        zone0.unique_id = "AA:BB:CC:DD:EE:FF-sensor-zone_0_presence"
+        zone0.disabled_by = None
+
+        zone1 = MagicMock()
+        zone1.unique_id = "AA:BB:CC:DD:EE:FF-sensor-zone_1_presence"
+        zone1.disabled_by = None
+
+        with (
+            patch("custom_components.eppgrid.websocket_api._devices.er.async_get"),
+            patch("custom_components.eppgrid.websocket_api._devices.er.async_entries_for_device") as mock_entries,
+        ):
+            mock_entries.return_value = [zone0, zone1]
+
+            result = _get_entity_states(hass, "AA:BB:CC:DD:EE:FF")
+
+        assert result["zone_presence"] is True
 
 
 class TestWebSocketEntityEnabled:
@@ -3683,7 +3747,7 @@ class TestFlashablePayload:
         from custom_components.eppgrid.const import FIRMWARE_VERSION
         from custom_components.eppgrid.websocket_api._flasher import _flashable_payload
 
-        payload = await _flashable_payload(mock_dm)
+        payload = await _flashable_payload(hass, mock_dm)
 
         assert payload["devices"] == [{"mac": "AA:BB"}]
         assert payload["firmware_base_url"] == "/api/eppgrid/firmware"

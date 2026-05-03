@@ -11,19 +11,7 @@ from homeassistant.core import HomeAssistant
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.eppgrid import async_setup_entry
-from custom_components.eppgrid import websocket_api as ws_module
 from custom_components.eppgrid.const import DOMAIN
-
-# ---------------------------------------------------------------------------
-# Fixtures
-# ---------------------------------------------------------------------------
-
-
-@pytest.fixture(autouse=True)
-def _clear_registered():
-    """Clear the module-global _REGISTERED set between tests."""
-    ws_module._REGISTERED.clear()
-
 
 # ---------------------------------------------------------------------------
 # Helpers

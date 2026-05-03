@@ -4,14 +4,13 @@ from __future__ import annotations
 
 import functools
 import inspect
-import json
 import logging
-from pathlib import Path
 from typing import Any
 
 import voluptuous as vol
 from homeassistant.components import websocket_api
 from homeassistant.core import HomeAssistant
+from homeassistant.loader import async_get_loaded_integration
 
 from ..const import DOMAIN
 from ..const import NUM_ZONE_SLOTS
@@ -19,12 +18,13 @@ from ..device_manager._helpers import _compare_firmware_version
 
 _LOGGER = logging.getLogger(__name__)
 
-try:
-    _INTEGRATION_VERSION: str = json.loads((Path(__file__).parent.parent / "manifest.json").read_text())["version"]
-except Exception:
-    _INTEGRATION_VERSION = "unknown"
 
-_REGISTERED: set[str] = set()
+def _integration_version(hass: HomeAssistant) -> str:
+    """Return the integration version from the loaded integration metadata."""
+    try:
+        return async_get_loaded_integration(hass, DOMAIN).version or "unknown"
+    except Exception:  # defensive: integration loader may raise during teardown
+        return "unknown"
 
 
 _TIMING_FIELDS = ("trigger", "renew", "timeout", "handoff_timeout")
@@ -153,11 +153,12 @@ def _send_exception(connection: websocket_api.ActiveConnection, msg_id: int, cod
 
 
 def async_register_websocket_commands(hass: HomeAssistant, manager: Any) -> None:
-    """Register WebSocket commands."""
-    if DOMAIN in _REGISTERED:
-        return
-    _REGISTERED.add(DOMAIN)
+    """Register WebSocket commands.
 
+    `websocket_api.async_register_command` is idempotent — it stores the
+    handler in `hass.data` indexed by command type, so re-registration on
+    config-entry reload simply overwrites the prior entry.
+    """
     websocket_api.async_register_command(hass, websocket_subscribe_device_list)
     websocket_api.async_register_command(hass, websocket_list_devices)
     websocket_api.async_register_command(hass, websocket_set_show_room_calibration_tutorial)
@@ -253,7 +254,7 @@ def _require_manager(func=None, *, check_firmware: bool = False):
 
 
 # Submodule re-exports — must come after the helpers above (_get_manager,
-# _send_*, _INTEGRATION_VERSION) so submodules can import them at load time.
+# _send_*, _integration_version) so submodules can import them at load time.
 # These re-exports keep `from .websocket_api import websocket_X` working for
 # tests and let async_register_websocket_commands reference them by bare name.
 from ._devices import _apply_entity_states  # noqa: E402, F401

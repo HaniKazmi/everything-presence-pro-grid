@@ -8,6 +8,8 @@ import os
 
 from homeassistant.components import panel_custom
 from homeassistant.components.frontend import add_extra_js_url
+from homeassistant.components.frontend import async_remove_panel
+from homeassistant.components.frontend import remove_extra_js_url
 from homeassistant.components.http import StaticPathConfig
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
@@ -26,6 +28,12 @@ FRONTEND_DIR = os.path.join(os.path.dirname(__file__), "frontend")
 # HTTP component. Static path registration can only happen once per HA process
 # and will error on duplicate registration, so we guard it with a flag.
 _STATIC_PATH_REGISTERED_KEY = f"{DOMAIN}_static_path_registered"
+# Key tracking the last-registered JS module URL so reloads can remove the
+# previous URL before adding the new one (otherwise URLs accumulate).
+_JS_URL_KEY = f"{DOMAIN}_js_url"
+# Key tracking whether the sidebar panel was registered, so unload can remove
+# it without warning when the user had it disabled.
+_PANEL_REGISTERED_KEY = f"{DOMAIN}_panel_registered"
 
 
 def _hash_file(path: str) -> str:
@@ -47,13 +55,21 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     if store.sidebar_panel:
         await _register_panel(hass, module_url)
+        hass.data[_PANEL_REGISTERED_KEY] = True
 
     hass.data[DOMAIN] = manager
     async_register_websocket_commands(hass, manager)
     hass.http.register_view(FirmwareProxyView())
     await manager.async_start()
 
+    entry.async_on_unload(entry.add_update_listener(_async_update_listener))
+
     return True
+
+
+async def _async_update_listener(hass: HomeAssistant, entry: ConfigEntry) -> None:
+    """Reload the integration when options change."""
+    await hass.config_entries.async_reload(entry.entry_id)
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
@@ -61,10 +77,14 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     manager = hass.data.pop(DOMAIN, None)
     if manager is not None:
         await manager.async_stop()
-    # Allow WS commands to be re-registered on next setup
-    from .websocket_api import _REGISTERED
 
-    _REGISTERED.discard(DOMAIN)
+    if hass.data.pop(_PANEL_REGISTERED_KEY, False):
+        async_remove_panel(hass, DOMAIN, warn_if_unknown=False)
+
+    js_url = hass.data.pop(_JS_URL_KEY, None)
+    if js_url is not None:
+        remove_extra_js_url(hass, js_url)
+
     return True
 
 
@@ -72,10 +92,9 @@ async def _register_frontend_resources(hass: HomeAssistant) -> str:
     """Register the static path and add the JS bundle as a global frontend module.
 
     Returns the versioned module URL. The static path is registered only once
-    per HA process, but the bundle hash is recomputed on every call so a
-    config entry reload picks up a new bundle without needing an HA restart.
-    add_extra_js_url is backed by a set, so adding the same URL repeatedly is
-    a no-op.
+    per HA process. The JS URL is recomputed on every call (so reloads pick up
+    new bundles) and the previously-registered URL is removed first to keep
+    the global list from accumulating stale entries.
     """
     if not hass.data.get(_STATIC_PATH_REGISTERED_KEY):
         await hass.http.async_register_static_paths(
@@ -96,7 +115,11 @@ async def _register_frontend_resources(hass: HomeAssistant) -> str:
         js_hash = "0"
 
     module_url = f"/{DOMAIN}_static/eppgrid-panel.js?v={js_hash}"
+    previous_url = hass.data.get(_JS_URL_KEY)
+    if previous_url is not None:
+        remove_extra_js_url(hass, previous_url)
     add_extra_js_url(hass, module_url)
+    hass.data[_JS_URL_KEY] = module_url
     return module_url
 
 

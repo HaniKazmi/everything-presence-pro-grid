@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+from unittest.mock import MagicMock
+from unittest.mock import patch
+
 import pytest
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import device_registry as dr
@@ -115,3 +118,17 @@ class TestDiagnosticDump:
         result = await async_get_config_entry_diagnostics(hass, config_entry)
 
         assert result["entity_states"][mac] == {}
+
+    async def test_integration_version_uses_loader(
+        self, hass: HomeAssistant, config_entry: MockConfigEntry, manager: DeviceManager
+    ) -> None:
+        """integration_version is read from async_get_loaded_integration, not a static manifest cache."""
+        fake_integration = MagicMock()
+        fake_integration.version = "9.9.9-test"
+        with patch(
+            "custom_components.eppgrid.diagnostics.async_get_loaded_integration",
+            return_value=fake_integration,
+        ):
+            result = await async_get_config_entry_diagnostics(hass, config_entry)
+
+        assert result["integration_version"] == "9.9.9-test"
