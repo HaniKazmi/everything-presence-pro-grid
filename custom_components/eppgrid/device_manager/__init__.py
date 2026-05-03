@@ -376,6 +376,19 @@ class DeviceManager:
             existing = self.devices.get(mac)
             if existing is not None and existing.device_id and existing.device_id != device.id:
                 self._device_id_to_mac.pop(existing.device_id, None)
+            # If the same MAC is rediscovered under a different ESPHome
+            # config entry (e.g. user removed and re-added the integration
+            # without going through HA's device-removal flow), drop the
+            # stale entry-update listener so the rest of the code doesn't
+            # leak it AND we still get host-update events on the new entry.
+            if (
+                existing is not None
+                and existing.esphome_config_entry_id is not None
+                and existing.esphome_config_entry_id != entry.config_entry_id
+            ):
+                stale_unsub = self._entry_update_unsubs.pop(existing.esphome_config_entry_id, None)
+                if stale_unsub is not None:
+                    stale_unsub()
             self.devices[mac] = ManagedDevice(
                 mac=mac,
                 name=device.name_by_user or device.name or "EPP Device",
@@ -384,6 +397,10 @@ class DeviceManager:
                 device_id=device.id,
             )
             self._device_id_to_mac[device.id] = mac
+            # Re-register the listener on every discovery — `_ensure_esphome_entry_listener`
+            # is idempotent (skips if already subscribed for this entry_id), so this
+            # is a no-op for unchanged entries and a fresh subscribe for new ones.
+            self._ensure_esphome_entry_listener(entry.config_entry_id)
 
             self._maybe_sync_repair_issue(
                 mac,
@@ -393,7 +410,6 @@ class DeviceManager:
 
             if is_new:
                 found_new = True
-                self._ensure_esphome_entry_listener(entry.config_entry_id)
                 _LOGGER.info("Discovered zone engine device: %s (%s)", device.name, mac)
                 # Always sync — the empty fallback resets stale entity registry
                 # entries left behind by a device delete+readd.
@@ -957,8 +973,13 @@ class DeviceManager:
                 for e in entries
             )
 
+            # Filter to ESPHome — HA devices can aggregate entities from
+            # multiple integrations; a live non-ESPHome sibling shouldn't
+            # mark this flashable target available when every ESPHome
+            # entity is offline.
             available = any(
-                (state := self._hass.states.get(e.entity_id)) is not None
+                e.platform == "esphome"
+                and (state := self._hass.states.get(e.entity_id)) is not None
                 and state.state not in ("unavailable", "unknown")
                 for e in entries
             )

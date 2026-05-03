@@ -3180,6 +3180,66 @@ class TestEventCallbacks:
 
         assert device.id not in manager._device_id_to_mac
 
+    async def test_rediscovery_under_new_esphome_entry_swaps_listener(
+        self, hass: HomeAssistant, manager: DeviceManager
+    ) -> None:
+        """When the same MAC is rediscovered under a different ESPHome config
+        entry (e.g. user removed and re-added the integration), the stale
+        entry-update listener for the old entry must be unsubscribed and a
+        new listener registered for the new entry. Otherwise host-update
+        events on the new entry are missed and the old listener leaks past
+        the device's lifetime."""
+        mac = "AA:BB:CC:DD:EE:FF"
+
+        old_unsub = MagicMock()
+        new_unsub = MagicMock()
+
+        # Pre-existing state: device known under entry "old_entry".
+        manager.devices[mac] = ManagedDevice(
+            mac=mac,
+            name="EPP",
+            host="192.168.1.50",
+            esphome_config_entry_id="old_entry",
+            device_id="dev_old",
+        )
+        manager._device_id_to_mac["dev_old"] = mac
+        manager._entry_update_unsubs["old_entry"] = old_unsub
+
+        # Build a new device-registry entry with a different config_entry_id.
+        dev_reg = dr.async_get(hass)
+        ent_reg = er.async_get(hass)
+        new_entry = MockConfigEntry(domain="esphome", data={"host": "192.168.1.51"}, title="EPP")
+        new_entry.add_to_hass(hass)
+        new_device = dev_reg.async_get_or_create(
+            config_entry_id=new_entry.entry_id,
+            connections={("mac", mac.lower())},
+            name="EPP",
+            manufacturer="EverythingSmartTechnology",
+            model="Everything Presence Pro",
+        )
+        ent_reg.async_get_or_create(
+            "sensor",
+            "esphome",
+            unique_id=f"{mac}-firmware_version",
+            config_entry=new_entry,
+            device_id=new_device.id,
+        )
+
+        # Patch add_update_listener to track new-entry subscribe.
+        with patch.object(new_entry, "add_update_listener", return_value=new_unsub):
+            await manager.async_discover()
+
+        # Old listener was unsubscribed.
+        old_unsub.assert_called_once()
+        # New listener registered under the new entry id.
+        assert new_entry.entry_id in manager._entry_update_unsubs
+        assert manager._entry_update_unsubs[new_entry.entry_id] is new_unsub
+        # Old entry id no longer tracked.
+        assert "old_entry" not in manager._entry_update_unsubs
+        # Device tracking moved to the new entry / device id.
+        assert manager.devices[mac].esphome_config_entry_id == new_entry.entry_id
+        assert manager.devices[mac].device_id == new_device.id
+
     async def test_discovery_notifies_subscribers(self, hass: HomeAssistant, manager: DeviceManager) -> None:
         """Discovering a new device fires device list callbacks."""
         dev_reg = dr.async_get(hass)
