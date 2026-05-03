@@ -378,9 +378,15 @@ class DeviceManager:
                 self._device_id_to_mac.pop(existing.device_id, None)
             # If the same MAC is rediscovered under a different ESPHome
             # config entry (e.g. user removed and re-added the integration
-            # without going through HA's device-removal flow), drop the
-            # stale entry-update listener so the rest of the code doesn't
-            # leak it AND we still get host-update events on the new entry.
+            # without going through HA's device-removal flow):
+            #   - drop the stale entry-update listener so the rest of the
+            #     code doesn't leak it AND host-update events on the new
+            #     entry actually fire,
+            #   - close any active session — its APIClient is bound to the
+            #     old host and would otherwise keep being reused by
+            #     get_session()/_push_config_to_device(),
+            #   - drop the push guard so the next online transition
+            #     re-pushes config on the new connection.
             if (
                 existing is not None
                 and existing.esphome_config_entry_id is not None
@@ -389,6 +395,9 @@ class DeviceManager:
                 stale_unsub = self._entry_update_unsubs.pop(existing.esphome_config_entry_id, None)
                 if stale_unsub is not None:
                     stale_unsub()
+                self._pushing.discard(mac)
+                if mac in self._active_connections:
+                    await self.async_close_session(mac)
             self.devices[mac] = ManagedDevice(
                 mac=mac,
                 name=device.name_by_user or device.name or "EPP Device",
@@ -452,13 +461,19 @@ class DeviceManager:
         entry = ent_reg.async_get(entity_id)
         if entry is None or entry.platform != "esphome":
             return
-        # Skip if this entity's device is already discovered
+        # Skip only if the entity's device is already discovered AND the
+        # underlying HA device.id matches what we have. If device.id changed
+        # for a known MAC (the user removed and re-added the ESPHome
+        # integration without going through HA's device-removal flow), we
+        # need to re-run discovery so the rediscovery branch in
+        # async_discover gets a chance to swap listeners and close the stale
+        # session. Skipping here would freeze us on the old entry forever.
         if entry.device_id:
             dev_reg = dr.async_get(self._hass)
             device = dev_reg.async_get(entry.device_id)
             if device:
                 mac = _extract_mac(device)
-                if mac and mac in self.devices:
+                if mac and mac in self.devices and self.devices[mac].device_id == entry.device_id:
                     return
         self._hass.async_create_task(self.async_discover())
 
