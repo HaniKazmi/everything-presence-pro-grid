@@ -42,7 +42,7 @@ class TestEndToEndPipelineFlow:
 
         await mock_dm._push_pipeline_to_device(mac)
 
-        call_args = mock_session.async_execute_service.call_args
+        call_args = mock_session.async_execute_service.await_args
         assert call_args[0][0] == "epp_set_pipeline"
         pipeline = call_args[0][1]
         assert pipeline["entity_target_interval"] == 500
@@ -68,7 +68,7 @@ class TestEndToEndPipelineFlow:
 
         await mock_dm._push_pipeline_to_device(mac)
 
-        call_args = mock_session.async_execute_service.call_args
+        call_args = mock_session.async_execute_service.await_args
         assert call_args[0][0] == "epp_set_pipeline"
         pipeline = call_args[0][1]
         assert pipeline["entity_target_interval"] == 0
@@ -95,7 +95,7 @@ class TestEndToEndPipelineFlow:
 
         await mock_dm._push_pipeline_to_device(mac)
 
-        call_args = mock_session.async_execute_service.call_args
+        call_args = mock_session.async_execute_service.await_args
         assert call_args[0][0] == "epp_set_pipeline"
         pipeline = call_args[0][1]
         assert pipeline["display_interval"] == 200
@@ -128,7 +128,7 @@ class TestEndToEndPipelineFlow:
 
         await mock_dm._push_pipeline_to_device(mac)
 
-        call_args = mock_session.async_execute_service.call_args
+        call_args = mock_session.async_execute_service.await_args
         assert call_args[0][0] == "epp_set_pipeline"
         pipeline = call_args[0][1]
         assert pipeline["entity_target_interval"] == 0  # Rate ignored, entities all off
