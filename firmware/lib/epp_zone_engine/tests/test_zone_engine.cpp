@@ -524,6 +524,112 @@ TEST_CASE("set_zones resets zone occupancy state") {
     CHECK_FALSE(r.zone_occupancy[1]);
 }
 
+TEST_CASE("set_zones clears dismissed_cell_ for all targets") {
+    ZoneEngine engine = make_parity_engine();
+    int zone1_cell = 1 * GRID_COLS + 9;
+    float zone1_x = X_OFF + 450.0f;
+
+    // Confirm target 0 then dismiss it
+    engine.tick(make_window_1(zone1_x, 450.0f, 5), 100.0f);
+    engine.dismiss_target(0, zone1_cell);
+
+    // Reconfigure zones — dismiss state must be cleared, otherwise the
+    // dismissed cell would silently suppress occupancy after re-config.
+    ZoneConfig zone1{};
+    zone1.id = 1; zone1.trigger = 3;
+    zone1.renew = 2; zone1.timeout = 5.0f; zone1.handoff_timeout = 1.0f;
+    engine.set_zones(&zone1, 1);
+
+    // Target back at the previously-dismissed cell — should confirm normally.
+    const ProcessingResult& r = engine.tick(make_window_1(zone1_x, 450.0f, 5), 101.0f);
+    CHECK(r.zone_occupancy[1]);
+}
+
+TEST_CASE("set_raw_fps changes the signal denominator floor") {
+    // signal = (frame_count * 9 + frames/2) / frames, where frames =
+    // max(window.total_frames, raw_fps_). With raw_fps_=10 and total_frames=5
+    // the denominator is clamped UP to 10, so frame_count=5 yields signal=5.
+    // Lowering raw_fps_ to 5 lets the denominator collapse to 5, so the same
+    // frame_count=5 yields signal=9.
+    ZoneEngine engine = make_parity_engine();
+
+    // Default RAW_FPS=10 path: 5 frames of presence on overlay cell → signal 5.
+    {
+        WindowOutput wo = make_window_1(X_OFF + 450.0f, 450.0f, 5);
+        wo.total_frames = 5;
+        wo.targets[0].on_overlay = true;
+        const ProcessingResult& r = engine.tick(wo, 100.0f);
+        REQUIRE(r.target_count >= 1);
+        // signal = (5*9 + 10/2)/10 = 50/10 = 5
+        CHECK(r.targets[0].signal == 5);
+    }
+
+    // Override raw_fps to 5 — same frame_count now hits signal 9.
+    engine.set_raw_fps(5);
+    CHECK(engine.raw_fps() == 5);
+
+    {
+        // Reset engine state so the previous tick doesn't bias the next.
+        ZoneEngine fresh = make_parity_engine();
+        fresh.set_raw_fps(5);
+
+        WindowOutput wo = make_window_1(X_OFF + 450.0f, 450.0f, 5);
+        wo.total_frames = 5;
+        wo.targets[0].on_overlay = true;
+        const ProcessingResult& r = fresh.tick(wo, 100.0f);
+        REQUIRE(r.target_count >= 1);
+        // signal = (5*9 + 5/2)/5 = 47/5 = 9 (clamped to 9)
+        CHECK(r.targets[0].signal == 9);
+    }
+
+    // raw_fps <= 0 falls back to the RAW_FPS default.
+    engine.set_raw_fps(0);
+    CHECK(engine.raw_fps() == RAW_FPS);
+    engine.set_raw_fps(-3);
+    CHECK(engine.raw_fps() == RAW_FPS);
+}
+
+TEST_CASE("set_grid clears dismissed_cell_ across coordinate-system change") {
+    // Reproduces the Copilot review concern: dismiss target at cell N under
+    // grid A; switching to grid B re-uses cell index N at a different room
+    // location, which would silently suppress occupancy until the target
+    // moves elsewhere unless set_grid clears the dismiss state.
+    ZoneEngine engine = make_parity_engine();
+    int zone1_cell = 1 * GRID_COLS + 9;
+    float zone1_x = X_OFF + 450.0f;
+
+    // Confirm + dismiss target 0 at zone 1 cell.
+    engine.tick(make_window_1(zone1_x, 450.0f, 5), 100.0f);
+    engine.dismiss_target(0, zone1_cell);
+
+    // Re-load the grid (e.g. user edited room layout). Build a fresh grid so
+    // the engine's stored grid is replaced.
+    Grid new_grid = make_parity_grid();
+    engine.set_grid(new_grid);
+
+    // Target back at the (now-meaningfully-different) cell that previously
+    // held the dismiss must be processed normally.
+    const ProcessingResult& r = engine.tick(make_window_1(zone1_x, 450.0f, 5), 101.0f);
+    CHECK(r.zone_occupancy[1]);
+}
+
+TEST_CASE("set_zones drops a zone that is no longer configured") {
+    ZoneEngine engine = make_parity_engine();
+    // Confirm zone 1 occupied
+    engine.tick(make_window_1(X_OFF + 450, 450, 5), 100.0f);
+
+    // Reconfigure with ONLY zone 0 — zone 1 must lose its stale runtime.
+    ZoneConfig zone0{};
+    zone0.id = 0; zone0.trigger = 5;
+    zone0.renew = 3; zone0.timeout = 10.0f; zone0.handoff_timeout = 3.0f;
+    engine.set_zones(&zone0, 1);
+
+    // Tick with empty window — zone 1 must NOT report occupancy from prior run.
+    const ProcessingResult& r = engine.tick(make_window_0(), 101.0f);
+    CHECK_FALSE(r.zone_occupancy[1]);
+    CHECK(r.zone_states[1] == ZoneState::CLEAR);
+}
+
 // ---------------------------------------------------------------------------
 // Sensor presence state tests
 // ---------------------------------------------------------------------------
@@ -776,6 +882,30 @@ TEST_CASE("overlay exit accelerates pending clear") {
     CHECK_FALSE(r3.zone_occupancy[1]);
 }
 
+TEST_CASE("overlay exit handoff fires from engine sticky bit alone") {
+    // Tighter: simulates a caller that does NOT maintain on_overlay
+    // stickiness for inactive targets. The engine must remember the last
+    // in-room overlay state itself, otherwise the handoff is silently lost.
+    ZoneEngine engine = make_parity_engine();
+
+    // Tick 1: target on the entry overlay cell. on_overlay flag from raw
+    // frames is true.
+    WindowOutput wo1 = make_window_1(X_OFF + 450, 450, 5);
+    wo1.targets[0].on_overlay = true;
+    const ProcessingResult& r1 = engine.tick(wo1, 100.0f);
+    CHECK(r1.zone_occupancy[1]);
+
+    // Tick 2: target gone. Caller does NOT carry on_overlay across — this is
+    // the regression case the engine sticky bit defends against.
+    WindowOutput wo2 = make_window_0();
+    // (deliberately NOT setting wo2.targets[0].on_overlay = true)
+    engine.tick(wo2, 101.0f);
+
+    // Tick 3: 1.5s after — handoff_timeout=1s should have collapsed the zone.
+    const ProcessingResult& r3 = engine.tick(make_window_0(), 102.5f);
+    CHECK_FALSE(r3.zone_occupancy[1]);
+}
+
 TEST_CASE("non-overlay exit uses full timeout") {
     ZoneEngine engine = make_parity_engine();
     // Remove overlay from zone 1 cell so it behaves normally
@@ -895,4 +1025,29 @@ TEST_CASE("dismiss_target resets zone state to CLEAR") {
     const ProcessingResult& r2 = engine.tick(make_window_0(), t + 1.0f);
     CHECK_FALSE(r2.zone_occupancy[1]);
     CHECK(r2.zone_states[1] == ZoneState::CLEAR);
+}
+
+TEST_CASE("dismiss_target only clears the dismissed target's confirmation bit") {
+    ZoneEngine engine = make_parity_engine();
+    float t = 100.0f;
+
+    // Two targets confirmed in zone 1 at the entry cell.
+    int zone1_cell = 1 * GRID_COLS + 9;
+    float zone1_x = X_OFF + 450.0f;
+    float zone1_y = 450.0f;
+
+    const ProcessingResult& r1 = engine.tick(
+        make_window_2(zone1_x, zone1_y, 5, zone1_x, zone1_y, 5), t);
+    CHECK(r1.zone_occupancy[1]);
+    CHECK(r1.zone_states[1] == ZoneState::OCCUPIED);
+
+    // Dismiss target 0 only. Target 1 was confirmed at the same cell.
+    engine.dismiss_target(0, zone1_cell);
+
+    // Now target 1 leaves entirely. With the bug (confirmed_targets=0 on
+    // dismiss), the zone is already CLEAR and goes nowhere. With the fix,
+    // target 1's bit was preserved → zone was still OCCUPIED → it must now
+    // transition to PENDING_CLEAR.
+    const ProcessingResult& r2 = engine.tick(make_window_0(), t + 1.0f);
+    CHECK(r2.zone_states[1] == ZoneState::PENDING_CLEAR);
 }

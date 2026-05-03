@@ -1,10 +1,12 @@
 #include "epp_calibration.h"
 
 #include <cmath>
+#include <limits>
 
 namespace epp {
 
 void SensorTransform::set_coefficients(const float coeffs[8], float room_width, float room_depth) {
+    if (coeffs == nullptr) return;  // ignore null silently; caller's contract
     for (int i = 0; i < 8; ++i) {
         coeffs_[i] = coeffs[i];
     }
@@ -18,6 +20,13 @@ bool SensorTransform::has_perspective() const {
 }
 
 std::pair<float, float> SensorTransform::apply(float x, float y) const {
+    // Reject non-finite input explicitly. Without this NaN/Inf would silently
+    // propagate downstream into Grid::xy_to_cell where the float→int cast is UB.
+    if (!std::isfinite(x) || !std::isfinite(y)) {
+        return {std::numeric_limits<float>::quiet_NaN(),
+                std::numeric_limits<float>::quiet_NaN()};
+    }
+
     if (!has_perspective_) {
         return {x, y};
     }

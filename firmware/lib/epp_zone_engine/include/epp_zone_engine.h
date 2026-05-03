@@ -80,11 +80,18 @@ public:
                                  const SensorInput& sensors = SensorInput{});
     void dismiss_target(int target_index, int cell_index);
 
+    /// Override the assumed raw-sensor frame rate (default RAW_FPS = 10).
+    /// Determines the floor used for signal denominators in tick(). Must be > 0.
+    void set_raw_fps(int fps) { raw_fps_ = (fps > 0) ? fps : RAW_FPS; }
+    int raw_fps() const { return raw_fps_; }
+
 private:
     Grid grid_;
     ZoneRuntime zones_[MAX_ZONE_SLOTS]{};
     bool zone_enabled_[MAX_ZONE_SLOTS]{};  // which slots are configured
     int zone_count_ = 0;  // highest configured zone_id + 1
+
+    int raw_fps_ = RAW_FPS;
 
     // Per-target tracking state
     int target_prev_col_[MAX_TARGETS]{};
@@ -95,7 +102,8 @@ private:
     bool target_has_prev_xy_[MAX_TARGETS]{};
     int target_gate_count_[MAX_TARGETS]{};
     int target_last_zone_[MAX_TARGETS]{};   // last zone while in-room (-1 = unknown)
-    int dismissed_cell_[MAX_TARGETS] = {-1, -1, -1};
+    int dismissed_cell_[MAX_TARGETS]{};     // cell index target was dismissed at, or -1
+    bool target_overlay_sticky_[MAX_TARGETS]{};  // last in-room on_overlay value
 
     // Per-target log state (for transition-only logging)
     int target_log_zone_[MAX_TARGETS]{};      // zone confirmed in last tick (-1 = none)
@@ -112,10 +120,12 @@ private:
     ProcessingResult result_;
 
     /// Find the ZoneRuntime index for a given zone_id. Returns -1 if not found.
+    /// Invariant: slot index == config.id; established by parse_zone_configs.
     int find_zone_index(int zone_id) const;
 
     /// Append a log entry to result_.log[] (silently drops if full)
-    void log_(LogLevel level, const char* fmt, ...);
+    void log_(LogLevel level, const char* fmt, ...)
+        __attribute__((format(printf, 3, 4)));
 };
 
 }  // namespace epp

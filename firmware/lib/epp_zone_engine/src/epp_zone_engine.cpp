@@ -36,12 +36,36 @@ ZoneEngine::ZoneEngine() {
     std::memset(target_prev_y_, 0, sizeof(target_prev_y_));
     std::memset(target_has_prev_xy_, 0, sizeof(target_has_prev_xy_));
     std::memset(target_gate_count_, 0, sizeof(target_gate_count_));
-    for (int i = 0; i < MAX_TARGETS; ++i) { target_log_zone_[i] = -1; target_last_zone_[i] = -1; }
+    std::memset(target_overlay_sticky_, 0, sizeof(target_overlay_sticky_));
+    for (int i = 0; i < MAX_TARGETS; ++i) {
+        target_log_zone_[i] = -1;
+        target_last_zone_[i] = -1;
+        dismissed_cell_[i] = -1;
+    }
     std::memset(target_log_in_room_, 0, sizeof(target_log_in_room_));
 }
 
 void ZoneEngine::set_grid(const Grid& grid) {
     grid_ = grid;
+    // Per-target prev-cell coords are indexed by the OLD grid's coordinate
+    // system; reset them so the next tick computes fresh continuity from the
+    // new grid. dismissed_cell_ is also a cell-index reference under the OLD
+    // grid — keeping it would silently suppress occupancy at whatever room
+    // location the same index now points to. target_log_zone_ /
+    // target_log_in_room_ are also OLD-grid-relative; carrying them across
+    // would emit spurious "left zone" / "below threshold" entries on the
+    // first post-edit tick. Zone state is intentionally preserved (only
+    // set_zones resets).
+    for (int i = 0; i < MAX_TARGETS; ++i) {
+        target_has_prev_[i] = false;
+        target_has_prev_xy_[i] = false;
+        target_gate_count_[i] = 0;
+        target_overlay_sticky_[i] = false;
+        target_last_zone_[i] = -1;
+        dismissed_cell_[i] = -1;
+        target_log_zone_[i] = -1;
+        target_log_in_room_[i] = false;
+    }
 }
 
 const Grid& ZoneEngine::grid() const {
@@ -49,26 +73,29 @@ const Grid& ZoneEngine::grid() const {
 }
 
 void ZoneEngine::set_zones(const ZoneConfig zones[], int count) {
-    // Clear all slots
+    // Reset every slot up front (not just the ones we're about to configure)
+    // so a disabled slot can't carry stale state into a future re-enable.
     std::memset(zone_enabled_, 0, sizeof(zone_enabled_));
+    for (int i = 0; i < MAX_ZONE_SLOTS; ++i) {
+        zones_[i] = ZoneRuntime{};
+    }
 
     // Zone 0 gets ZoneConfig's in-class defaults; the wire payload's slot 0
     // overrides below if supplied.
-    zones_[0] = ZoneRuntime{};
     zone_enabled_[0] = true;
     zone_count_ = 1;
 
+    // Invariant (set by parse_zone_configs): zc.id IS the slot index, in
+    // [0, MAX_ZONE_SLOTS). Manual callers must follow suit; out-of-range or
+    // duplicate ids are silently dropped (last-writer-wins on duplicates).
     for (int i = 0; i < count; ++i) {
         const ZoneConfig& zc = zones[i];
         int idx = zc.id;
         if (idx < 0 || idx >= MAX_ZONE_SLOTS) continue;
 
         if (idx == 0) {
-            // Override zone 0 with provided config
-            zones_[0] = ZoneRuntime{};
             zones_[0].config = zc;
         } else {
-            zones_[idx] = ZoneRuntime{};
             zones_[idx].config = zc;
             zone_enabled_[idx] = true;
             if (idx >= zone_count_) {
@@ -77,13 +104,18 @@ void ZoneEngine::set_zones(const ZoneConfig zones[], int count) {
         }
     }
 
-    // Reset per-target tracking
+    // Reset per-target tracking — including target_last_zone_ (zone-membership
+    // memory) and dismissed_cell_ (sticky dismiss). Otherwise a manual dismiss
+    // before a re-config can silently suppress occupancy in the new layout.
     for (int i = 0; i < MAX_TARGETS; ++i) {
         target_has_prev_[i] = false;
         target_has_prev_xy_[i] = false;
         target_gate_count_[i] = 0;
         target_log_zone_[i] = -1;
         target_log_in_room_[i] = false;
+        target_last_zone_[i] = -1;
+        dismissed_cell_[i] = -1;
+        target_overlay_sticky_[i] = false;
     }
 
     // Reset sensor state
@@ -99,20 +131,32 @@ void ZoneEngine::dismiss_target(int target_index, int cell_index) {
     if (target_index < 0 || target_index >= MAX_TARGETS) return;
     dismissed_cell_[target_index] = cell_index;
 
-    // Reset zone state: find which zone this cell belongs to and clear it
+    // Drop only THIS target's confirmation bit. Other targets confirmed in the
+    // same zone keep their evidence — clearing the whole bitmask would falsely
+    // unoccupy a still-populated zone.
     if (cell_index >= 0 && cell_index < grid_.cell_count() && grid_.cell_is_room(cell_index)) {
         int zone_id = grid_.cell_zone(cell_index);
         int zi = find_zone_index(zone_id);
         if (zi >= 0) {
-            zones_[zi].state = ZoneState::CLEAR;
-            zones_[zi].pending_since = -1.0f;
-            zones_[zi].confirmed_targets = 0;
+            ZoneRuntime& rt = zones_[zi];
+            rt.confirmed_targets &= ~(1 << target_index);
+            if (rt.confirmed_targets == 0) {
+                // Last evidence gone — collapse the zone to CLEAR immediately.
+                // (We do NOT route through PENDING_CLEAR here: a manual dismiss
+                // is an explicit user action, not a sensor-driven transition.)
+                rt.state = ZoneState::CLEAR;
+                rt.pending_since = -1.0f;
+            }
+            // If other bits remain, leave state/pending_since alone — the
+            // tick loop will run state machine on next frame as usual.
         }
     }
 
-    // Reset target tracking
+    // Reset this target's tracking only.
     target_has_prev_[target_index] = false;
     target_gate_count_[target_index] = 0;
+    target_overlay_sticky_[target_index] = false;
+    target_last_zone_[target_index] = -1;
 }
 
 int ZoneEngine::find_zone_index(int zone_id) const {
@@ -127,7 +171,7 @@ int ZoneEngine::find_zone_index(int zone_id) const {
 
 const ProcessingResult& ZoneEngine::tick(const WindowOutput& window, float timestamp,
                                          const SensorInput& sensors) {
-    int frames = std::max(window.total_frames, RAW_FPS);
+    int frames = std::max(window.total_frames, raw_fps_);
 
     // Snapshot previous states for transition logging
     ZoneState prev_zone_state[MAX_ZONE_SLOTS]{};
@@ -220,6 +264,13 @@ const ProcessingResult& ZoneEngine::tick(const WindowOutput& window, float times
         }
         bool has_interference = (overlay == CELL_OVERLAY_INTERFERENCE);
 
+        // Engine-side sticky overlay flag: track whichever of (raw-frame
+        // sticky from component, current cell is entry overlay) was true
+        // while this target was in-room. Step 2b reads this — never
+        // window.targets[i].on_overlay — so we don't depend on the caller
+        // continuing to set on_overlay after the target goes inactive.
+        target_overlay_sticky_[i] = tw.on_overlay || (overlay == CELL_OVERLAY_ENTRY);
+
         int zone_id = grid_.cell_zone(cell);
         target_zone_curr[i] = zone_id;
         target_last_zone_[i] = zone_id;
@@ -229,9 +280,16 @@ const ProcessingResult& ZoneEngine::tick(const WindowOutput& window, float times
         target_prev_y_[i] = tw.median_y;
         target_has_prev_xy_[i] = true;
 
-        // Compute current cell position as (col, row)
-        int col = static_cast<int>((tw.median_x - grid_.origin_x()) / grid_.cell_size());
-        int row = static_cast<int>((tw.median_y - grid_.origin_y()) / grid_.cell_size());
+        // Compute current cell position as (col, row). Reuse Grid's helper
+        // so this and xy_to_cell stay in lockstep on rounding/sign behaviour.
+        int col = 0, row = 0;
+        if (!grid_.xy_to_col_row(tw.median_x, tw.median_y, col, row)) {
+            // Should be unreachable: cell != -1 above already guaranteed inside-grid.
+            // Bail defensively rather than store garbage in target_prev_col_/row_.
+            target_has_prev_[i] = false;
+            target_gate_count_[i] = 0;
+            continue;
+        }
 
         // Determine previous zone from previous position
         if (target_has_prev_[i]) {
@@ -289,8 +347,8 @@ const ProcessingResult& ZoneEngine::tick(const WindowOutput& window, float times
             }
 
             // Use raw-frame on_overlay (sticky from component) — catches cases
-            // where the median position hasn't reached the overlay cell yet
-            bool on_overlay = tw.on_overlay || (overlay == CELL_OVERLAY_ENTRY);
+            // where the median position hasn't reached the overlay cell yet.
+            bool on_overlay = target_overlay_sticky_[i];
             bool needs_gating = !on_overlay && !continuous;
             // Instant entry suppressed when target cell carries interference —
             // overlay on a neighbour must not negate the raised threshold.
@@ -431,7 +489,9 @@ const ProcessingResult& ZoneEngine::tick(const WindowOutput& window, float times
     for (int i = 0; i < MAX_TARGETS; ++i) {
         bool gone = !target_active[i];
         bool left_room = target_active[i] && target_zone_curr[i] < 0;
-        bool on_overlay = window.targets[i].on_overlay;
+        // Use engine's sticky bit, not window.targets[i].on_overlay — we
+        // can't rely on a caller maintaining stickiness for inactive targets.
+        bool on_overlay = target_overlay_sticky_[i];
         if ((gone || left_room) && on_overlay) {
             int prev_zid = target_last_zone_[i];
             int zi = find_zone_index(prev_zid);
@@ -452,6 +512,7 @@ const ProcessingResult& ZoneEngine::tick(const WindowOutput& window, float times
             }
             // Consume: don't re-fire on subsequent ticks
             target_last_zone_[i] = -1;
+            target_overlay_sticky_[i] = false;
         }
     }
 
@@ -493,17 +554,12 @@ const ProcessingResult& ZoneEngine::tick(const WindowOutput& window, float times
                 break;
         }
 
-        // Log zone state transitions
-        if (rt.state != prev_zone_state[zone_id]) {
-            const char* state_name =
-                rt.state == ZoneState::OCCUPIED ? "occupied" :
-                rt.state == ZoneState::PENDING_CLEAR ? "pending" : "clear";
-            log_(LogLevel::INFO, "Zone %d: %s", zone_id, state_name);
-        }
-
         result_.zone_occupancy[zone_id] = (rt.state != ZoneState::CLEAR);
         result_.zone_states[zone_id] = rt.state;
     }
+    // NOTE: zone state-transition logging is deferred until after Step 5c so
+    // that force-clear (which can run AFTER step 3 and rewrite state) emits
+    // its own "clear" transition log instead of being silently swallowed.
 
     // -----------------------------------------------------------------------
     // Step 4: Per-target results (Python lines 661-701)
@@ -656,6 +712,22 @@ const ProcessingResult& ZoneEngine::tick(const WindowOutput& window, float times
                     result_.zone_states[zid] = ZoneState::CLEAR;
                 }
             }
+        }
+    }
+
+    // Deferred state-transition logging (after Step 3 + Step 5c).
+    // Force-clear can rewrite state from PENDING_CLEAR to CLEAR; doing the
+    // transition log here means the user sees the final state transition
+    // instead of step 3's intermediate value being swallowed.
+    for (int zi = 0; zi < zone_count_; ++zi) {
+        if (!zone_enabled_[zi]) continue;
+        ZoneRuntime& rt = zones_[zi];
+        int zone_id = rt.config.id;
+        if (rt.state != prev_zone_state[zone_id]) {
+            const char* state_name =
+                rt.state == ZoneState::OCCUPIED ? "occupied" :
+                rt.state == ZoneState::PENDING_CLEAR ? "pending" : "clear";
+            log_(LogLevel::INFO, "Zone %d: %s", zone_id, state_name);
         }
     }
 

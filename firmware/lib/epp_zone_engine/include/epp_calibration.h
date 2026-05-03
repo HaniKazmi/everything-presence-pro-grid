@@ -16,7 +16,11 @@ public:
     bool has_perspective() const;
 
     /// Apply the perspective transform to (x, y).
-    /// Returns the input unchanged if no perspective is set or denominator is near zero.
+    ///
+    /// Returns the input unchanged when no perspective is set or the denominator
+    /// is near zero. Returns (NaN, NaN) when either input is non-finite — the
+    /// caller is expected to treat that as "skip this sample" so a malformed
+    /// frame can't fold into a valid grid cell.
     std::pair<float, float> apply(float x, float y) const;
 
     float room_width() const { return room_width_; }

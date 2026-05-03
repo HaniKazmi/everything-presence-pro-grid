@@ -343,6 +343,10 @@ TEST_CASE("log: force-clear produces info log") {
     const ProcessingResult& r = engine.tick(make_window_0(), t + 3.5f, sensors);
     CHECK_FALSE(r.zone_occupancy[0]);
     CHECK(has_info(r, "force-clear"));
+    // Force-clear must also emit the matching state-transition log so
+    // consumers see "Zone 0: clear" — not just "force-clear" — even though
+    // step 3 saw the zone in PENDING_CLEAR state on the same tick.
+    CHECK(has_info(r, "Zone 0: clear"));
 }
 
 // ---------------------------------------------------------------------------
