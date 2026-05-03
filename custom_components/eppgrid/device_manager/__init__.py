@@ -32,6 +32,7 @@ from ._helpers import _compare_firmware_version
 from ._helpers import _compute_pipeline
 from ._helpers import _extract_host
 from ._helpers import _extract_mac
+from ._helpers import _extract_noise_psk
 from ._helpers import _raise_service_unavailable as _raise_service_unavailable  # re-export for tests
 from ._helpers import _resolve_zone_name
 from ._helpers import _sync_firmware_repair_issue
@@ -252,7 +253,10 @@ class DeviceManager:
                 translation_key="ota_in_progress",
             )
         async with lock:
-            conn = DeviceConnection(dev.host)
+            conn = DeviceConnection(
+                dev.host,
+                noise_psk=_extract_noise_psk(dev.esphome_config_entry_id, self._hass),
+            )
             try:
                 try:
                     await conn.async_connect()
@@ -759,7 +763,10 @@ class DeviceManager:
                 self._fire_device_list_changed()
             return
 
-        conn = DeviceConnection(dev.host)
+        conn = DeviceConnection(
+            dev.host,
+            noise_psk=_extract_noise_psk(dev.esphome_config_entry_id, self._hass),
+        )
         try:
             await asyncio.wait_for(conn.async_connect(), timeout=30)
             try:
@@ -802,7 +809,10 @@ class DeviceManager:
                 return False
 
         # No active session — use temporary connection (e.g., on-boot push)
-        conn = DeviceConnection(dev.host)
+        conn = DeviceConnection(
+            dev.host,
+            noise_psk=_extract_noise_psk(dev.esphome_config_entry_id, self._hass),
+        )
         try:
             await asyncio.wait_for(conn.async_connect(), timeout=30)
             await conn.async_push_config(config)
@@ -878,7 +888,10 @@ class DeviceManager:
                     return conn
                 # Stale connection — clean up
                 await conn.async_disconnect()
-            conn = DeviceConnection(dev.host)
+            conn = DeviceConnection(
+                dev.host,
+                noise_psk=_extract_noise_psk(dev.esphome_config_entry_id, self._hass),
+            )
             await asyncio.wait_for(conn.async_connect(), timeout=30)
             self._active_connections[mac] = conn
             _LOGGER.info("Opened session for %s (%s)", dev.name, mac)

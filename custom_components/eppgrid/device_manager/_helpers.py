@@ -248,3 +248,20 @@ def _extract_host(device: dr.DeviceEntry, config_entry_id: str | None, hass: Hom
     if entry is None:
         return None
     return entry.data.get("host")
+
+
+def _extract_noise_psk(config_entry_id: str | None, hass: HomeAssistant) -> str:
+    """Read ``noise_psk`` from an ESPHome config entry, or return ``""``.
+
+    Encrypted ESPHome devices store the PSK on the integration's config
+    entry (sibling of ``host``); the EPP integration mirrors the value
+    onto its own ``DeviceConnection`` so the wrapped ``APIClient`` can
+    authenticate. Missing entry / missing key both return ``""``, matching
+    the unencrypted-device default.
+    """
+    if config_entry_id is None:
+        return ""
+    entry = hass.config_entries.async_get_entry(config_entry_id)
+    if entry is None:
+        return ""
+    return entry.data.get("noise_psk", "") or ""

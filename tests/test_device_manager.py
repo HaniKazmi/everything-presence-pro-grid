@@ -1320,6 +1320,61 @@ class TestAsyncTriggerOta:
 
 
 # ---------------------------------------------------------------------------
+# TestNoisePsk tests
+# ---------------------------------------------------------------------------
+
+
+class TestNoisePsk:
+    async def test_extract_noise_psk_returns_psk_from_esphome_entry(self, hass: HomeAssistant) -> None:
+        """Noise PSK is read from the ESPHome config entry data."""
+        from custom_components.eppgrid.device_manager._helpers import _extract_noise_psk
+
+        entry = MockConfigEntry(
+            domain="esphome",
+            data={"host": "192.168.1.50", "noise_psk": "abcdef=="},
+        )
+        entry.add_to_hass(hass)
+        assert _extract_noise_psk(entry.entry_id, hass) == "abcdef=="
+
+    async def test_extract_noise_psk_returns_empty_when_absent(self, hass: HomeAssistant) -> None:
+        from custom_components.eppgrid.device_manager._helpers import _extract_noise_psk
+
+        entry = MockConfigEntry(domain="esphome", data={"host": "192.168.1.50"})
+        entry.add_to_hass(hass)
+        assert _extract_noise_psk(entry.entry_id, hass) == ""
+
+    async def test_extract_noise_psk_returns_empty_when_entry_missing(self, hass: HomeAssistant) -> None:
+        from custom_components.eppgrid.device_manager._helpers import _extract_noise_psk
+
+        assert _extract_noise_psk(None, hass) == ""
+        assert _extract_noise_psk("does_not_exist", hass) == ""
+
+    async def test_open_session_passes_noise_psk_to_connection(
+        self, hass: HomeAssistant, manager: DeviceManager
+    ) -> None:
+        """async_open_session must pass the ESPHome entry's noise_psk through to
+        DeviceConnection so encrypted devices connect."""
+        entry = MockConfigEntry(
+            domain="esphome",
+            data={"host": "192.168.1.50", "noise_psk": "abcdef=="},
+        )
+        entry.add_to_hass(hass)
+        manager.devices["AA:BB:CC:DD:EE:FF"] = ManagedDevice(
+            mac="AA:BB:CC:DD:EE:FF",
+            name="EPP",
+            host="192.168.1.50",
+            esphome_config_entry_id=entry.entry_id,
+        )
+        with patch("custom_components.eppgrid.device_manager.DeviceConnection") as mock_cls:
+            mock_conn = mock_cls.return_value
+            mock_conn.async_connect = AsyncMock()
+            mock_conn.async_disconnect = AsyncMock()
+            mock_conn.connected = True
+            await manager.async_open_session("AA:BB:CC:DD:EE:FF")
+        mock_cls.assert_called_once_with("192.168.1.50", noise_psk="abcdef==")
+
+
+# ---------------------------------------------------------------------------
 # TestFirmwareVersion tests
 # ---------------------------------------------------------------------------
 
