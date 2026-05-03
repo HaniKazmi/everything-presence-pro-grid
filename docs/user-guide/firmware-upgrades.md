@@ -2,17 +2,33 @@
 
 Once a device is running Everything Presence Pro Grid firmware and on your network, updates happen over the air. No USB cable needed.
 
-## Over-the-air updates (OTA)
+The Everything Presence Pro Grid integration is pinned to a specific firmware version. When you upgrade the integration via HACS to a release that expects a newer firmware than what your devices are running, the integration notifies you and offers to upgrade.
+
+## Two ways to upgrade
+
+When the integration detects a device is on older firmware than expected, it raises a notification under HA's **Settings → Repairs** with the device name. You can update from either of two places:
+
+### From Settings → Repairs (one-click)
+
+1. Open **Settings → Repairs**.
+2. Click the **{device_name} firmware update required** entry.
+3. Click **Submit** to start the upgrade. The dialog shows a spinner while the device downloads, flashes, reboots, and reconnects.
+4. On success the dialog closes; on failure it shows the error and a Retry button.
+
+This is the path most users will take when upgrading the integration.
+
+### From the EPP Grid panel's Flash Firmware tab
 
 1. The **Flash Firmware** tab lists your devices and their firmware versions.
-2. When a newer firmware version is available, an **Update** button appears next to the device with an "Update needed" badge.
-3. Click **Update**. The device downloads the new firmware and flashes itself. Progress streams live to the panel.
-4. The device reboots automatically when done. The panel reports success or, on failure, an error reason and a Retry button.
+2. Devices on older firmware show an **Update** button with an "Update needed" badge.
+3. Click **Update**. Progress streams live to the panel with richer per-device detail and immediate error messages from the device log.
 
 ![Installed Devices list with an Update button and "Update needed" badge on one device.](../images/firmware-upgrades/ota-available.png 'Installed Devices list with an Update button and "Update needed" badge on one device.')
 
+Both paths trigger the same OTA on the device. Use the panel when you want richer real-time progress; use Repairs when you just want to click Submit and move on.
+
 !!! note
-    The firmware also publishes an ESPHome `update` entity (display name **Firmware Update**), so pending updates also appear on HA's standard Updates dashboard. Either place works to trigger the update; the panel gives richer progress and error reporting during the OTA.
+    The firmware also publishes an ESPHome **Firmware Update** entity, but its automatic version-check polling is disabled — the integration drives version detection itself, so the entity won't show pending updates on HA's standard Updates dashboard. Use Repairs or the panel.
 
 ## When OTA fails
 
