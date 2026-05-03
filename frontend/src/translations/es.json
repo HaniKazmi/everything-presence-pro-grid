@@ -185,7 +185,8 @@
 		"renew": "Renovación",
 		"presence_timeout": "Tiempo de espera de presencia",
 		"handoff_timeout": "Tiempo de espera de transferencia",
-		"seconds_suffix": "s"
+		"seconds_suffix": "s",
+		"remove_zone": "Eliminar zona"
 	},
 	"overlays": {
 		"entry_exit": "Entrada / Salida",
@@ -197,6 +198,7 @@
 		"presence": "Presencia",
 		"detected": "Detectado",
 		"clear": "Sin detección",
+		"show_info": "Mostrar información",
 		"environment": "Entorno",
 		"occupancy": "Ocupación",
 		"static_presence": "Presencia estática",

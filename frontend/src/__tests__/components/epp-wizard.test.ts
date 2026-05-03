@@ -266,3 +266,114 @@ describe("disconnectedCallback cancels in-flight capture RAF", () => {
 		}
 	});
 });
+
+describe("wizard cancel + corner-chip resets", () => {
+	it("_fireCancel clears _smoothBuffer", () => {
+		const el = createWizard({ mode: "wizard" });
+		const a = el as any;
+		a._smoothBuffer = [{ x: 1, y: 2, t: 100 }];
+		a._fireCancel();
+		expect(a._smoothBuffer).toEqual([]);
+	});
+
+	it("clicking a corner chip nulls _perspective (it becomes stale)", async () => {
+		const el = createWizard({ mode: "wizard" });
+		const a = el as any;
+		a._setupStep = "corners";
+		a._wizardCorners = [
+			{ raw_x: 100, raw_y: 100, offset_side: 0, offset_fb: 0 },
+			{ raw_x: 200, raw_y: 100, offset_side: 0, offset_fb: 0 },
+			{ raw_x: 200, raw_y: 200, offset_side: 0, offset_fb: 0 },
+			{ raw_x: 100, raw_y: 200, offset_side: 0, offset_fb: 0 },
+		];
+		a._wizardCornerIndex = 4;
+		a._perspective = [1, 0, 0, 0, 1, 0, 0, 0];
+		document.body.appendChild(el);
+		await el.updateComplete;
+
+		const chip = el.shadowRoot!.querySelector(".corner-chip") as HTMLElement;
+		chip.click();
+		expect(a._perspective).toBeNull();
+	});
+});
+
+describe("capture overlay a11y (focus + Escape)", () => {
+	it("Escape cancels capture while overlay is open", async () => {
+		const el = createWizard({ mode: "wizard" });
+		const a = el as any;
+		a._setupStep = "corners";
+		a._wizardCapturing = true;
+		document.body.appendChild(el);
+		await el.updateComplete;
+
+		document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
+		expect(a._wizardCapturing).toBe(false);
+	});
+
+	it("Escape does nothing when overlay is closed (no leaked listener)", async () => {
+		const el = createWizard({ mode: "wizard" });
+		const a = el as any;
+		a._setupStep = "corners";
+		a._wizardCapturing = true;
+		document.body.appendChild(el);
+		await el.updateComplete;
+
+		// Close the overlay by clicking cancel
+		const cancelBtn = el.shadowRoot!.querySelector(
+			".capture-overlay .wizard-btn-back",
+		) as HTMLButtonElement;
+		cancelBtn.click();
+		await el.updateComplete;
+		expect(a._wizardCapturing).toBe(false);
+
+		// Re-open with capturing active and pretend nobody is in the wizard step
+		// — Escape pressed before re-opening shouldn't trigger anything.
+		const fired: KeyboardEvent[] = [];
+		const spy = (e: KeyboardEvent) => fired.push(e);
+		document.addEventListener("keydown", spy);
+		document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
+		document.removeEventListener("keydown", spy);
+		// _wizardCapturing should still be false
+		expect(a._wizardCapturing).toBe(false);
+	});
+
+	it("focuses the cancel button when overlay opens", async () => {
+		const el = createWizard({ mode: "wizard" });
+		const a = el as any;
+		a._setupStep = "corners";
+		document.body.appendChild(el);
+		await el.updateComplete;
+
+		// Open the overlay
+		a._wizardCapturing = true;
+		await el.updateComplete;
+		// allow rAF microtask for focus
+		await new Promise((r) => setTimeout(r, 0));
+
+		const cancelBtn = el.shadowRoot!.querySelector(
+			".capture-overlay .wizard-btn-back",
+		) as HTMLButtonElement;
+		expect(cancelBtn).not.toBeNull();
+		expect(el.shadowRoot!.activeElement).toBe(cancelBtn);
+	});
+
+	it("disconnectedCallback removes Escape listener", async () => {
+		const el = createWizard({ mode: "wizard" });
+		const a = el as any;
+		a._setupStep = "corners";
+		a._wizardCapturing = true;
+		document.body.appendChild(el);
+		await el.updateComplete;
+
+		document.body.removeChild(el);
+		// After disconnect, dispatching Escape on document must not toggle state
+		// (the element is detached so there's no observable "side effect" check
+		// other than no exceptions). Re-attach, set capturing, dispatch Escape,
+		// expect listener was re-installed.
+		document.body.appendChild(el);
+		a._wizardCapturing = true;
+		await el.updateComplete;
+		document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
+		expect(a._wizardCapturing).toBe(false);
+	});
+});

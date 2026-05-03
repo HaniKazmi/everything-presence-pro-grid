@@ -138,7 +138,7 @@ const hostStyles = css`
     height: 100%;
     background: var(--primary-background-color, #fafafa);
     color: var(--primary-text-color, #212121);
-    font-family: var(--paper-font-body1_-_font-family, "Roboto", sans-serif);
+    font-family: var(--ha-font-family-body, "Roboto", sans-serif);
   }
 `;
 
@@ -848,6 +848,7 @@ export class EPPGridPanel extends LitElement {
 				// Selection auto-switched to a different device (previous
 				// one was removed from HA, another remained).
 				persistSelectedMac(this._selectedMac);
+				this._furnitureClipboard = null;
 				if (this._isSelectedDeviceAvailable()) {
 					this._loadDeviceConfig(this._selectedMac).catch(() => {});
 				}
@@ -1023,8 +1024,9 @@ export class EPPGridPanel extends LitElement {
 		id: string,
 		type: "move" | "resize" | "rotate",
 		handle?: string,
+		rotation?: number,
 	): void {
-		this._gridCtrl.onFurniturePointerDown(e, id, type, handle);
+		this._gridCtrl.onFurniturePointerDown(e, id, type, handle, rotation);
 	}
 
 	private _onFurnitureDrag(e: PointerEvent): void {
@@ -1989,6 +1991,10 @@ export class EPPGridPanel extends LitElement {
 							this._closeDeviceSession();
 							this._selectedMac = val;
 							persistSelectedMac(val);
+							// Furniture clipboard belongs to the previous device's
+							// layout — reset it so paste doesn't smuggle stale items
+							// into the new device.
+							this._furnitureClipboard = null;
 							await this._loadDeviceConfig(val);
 						});
 					}}
@@ -2117,8 +2123,8 @@ export class EPPGridPanel extends LitElement {
 					this._selectedFurnitureId = e.detail;
 				}}
 				@furniture-pointer-down=${(e: CustomEvent) => {
-					const { e: ptrEvent, id, type, handle } = e.detail;
-					this._onFurniturePointerDown(ptrEvent, id, type, handle);
+					const { e: ptrEvent, id, type, handle, rotation } = e.detail;
+					this._onFurniturePointerDown(ptrEvent, id, type, handle, rotation);
 				}}
 				@furniture-delete=${(e: CustomEvent) => {
 					this._removeFurniture(e.detail);
@@ -2198,11 +2204,37 @@ export class EPPGridPanel extends LitElement {
 			this._closeTargetMenu();
 			return;
 		}
-		this._grid = new Uint8Array(this._grid);
-		this._grid[idx] = cellSetOverlay(this._grid[idx], kind);
-		this._dirty = true;
+		const previousGrid = this._grid;
+		const next = new Uint8Array(this._grid);
+		next[idx] = cellSetOverlay(this._grid[idx], kind);
+		this._grid = next;
 		this._closeTargetMenu();
-		await this._gridCtrl.applyLayout();
+		// One-shot save: persist directly without going through applyLayout
+		// (which prunes zones, filters furniture, switches view, and clears
+		// the dirty flag — all undesirable for a single overlay click).
+		try {
+			await this.hass.callWS({
+				type: "eppgrid/set_room_layout",
+				mac: this._selectedMac,
+				grid_bytes: Array.from(this._grid),
+				zone_slots: this._zoneConfigs.map((z, i) => serializeSlot(z, i)),
+				furniture: this._furniture.map((f) => ({
+					type: f.type,
+					icon: f.icon,
+					label: f.label,
+					x: f.x,
+					y: f.y,
+					width: f.width,
+					height: f.height,
+					rotation: f.rotation,
+					lockAspect: f.lockAspect,
+				})),
+			});
+		} catch (err) {
+			// Roll back local mutation so the UI matches what's persisted.
+			this._grid = previousGrid;
+			console.warn("[eppgrid] set overlay cell failed", err);
+		}
 	}
 
 	private _renderTargetMenu() {
@@ -2531,8 +2563,14 @@ export class EPPGridPanel extends LitElement {
 									this._selectedFurnitureId = e.detail;
 								}}
                 @furniture-pointer-down=${(e: CustomEvent) => {
-									const { e: ptrEvent, id, type, handle } = e.detail;
-									this._onFurniturePointerDown(ptrEvent, id, type, handle);
+									const { e: ptrEvent, id, type, handle, rotation } = e.detail;
+									this._onFurniturePointerDown(
+										ptrEvent,
+										id,
+										type,
+										handle,
+										rotation,
+									);
 								}}
                 @furniture-delete=${(e: CustomEvent) => {
 									this._removeFurniture(e.detail);
@@ -2581,14 +2619,13 @@ export class EPPGridPanel extends LitElement {
 											const configs = [...this._zoneConfigs];
 											configs[slot] = { ...current, ...updates };
 											this._zoneConfigs = configs as unknown as ZoneSlots;
+											this._dirty = true;
 										}}
                     @zone0-change=${(e: CustomEvent<Partial<Zone0Config>>) => {
 											const current = this._zoneConfigs[0];
 											const next = [...this._zoneConfigs];
 											next[0] = { ...current, ...e.detail };
 											this._zoneConfigs = next as unknown as ZoneSlots;
-										}}
-                    @dirty=${() => {
 											this._dirty = true;
 										}}
                   ></epp-zone-sidebar>`
@@ -2676,7 +2713,13 @@ export class EPPGridPanel extends LitElement {
 	}
 
 	private _renderConfigurationRestoreDialog() {
-		const configurations = this._getConfigurations();
+		// Only show configurations whose zone array fits the current slot
+		// schema (length = 8). Older or malformed entries are filtered out
+		// because loading them would fail.
+		const configurations = this._getConfigurations().filter(
+			(t: { zones?: unknown }) =>
+				Array.isArray(t.zones) && t.zones.length === 8,
+		);
 		return html`
       <div class="template-dialog">
         <div class="template-dialog-card">
@@ -2812,9 +2855,11 @@ export class EPPGridPanel extends LitElement {
               <button
                 class="debug-log-btn"
                 @click=${() => {
-									navigator.clipboard.writeText(
-										this._backendDebugLogLines.join("\n"),
-									);
+									navigator.clipboard
+										.writeText(this._backendDebugLogLines.join("\n"))
+										.catch((err) =>
+											console.warn("Clipboard write failed", err),
+										);
 								}}
               >${this._localize("live.debug.copy_all")}</button>
               <button
@@ -2880,7 +2925,11 @@ export class EPPGridPanel extends LitElement {
               <button
                 class="debug-log-btn"
                 @click=${() => {
-									navigator.clipboard.writeText(this._debugLogLines.join("\n"));
+									navigator.clipboard
+										.writeText(this._debugLogLines.join("\n"))
+										.catch((err) =>
+											console.warn("Clipboard write failed", err),
+										);
 								}}
               >${this._localize("live.debug.copy_all")}</button>
               <button
@@ -2945,8 +2994,8 @@ export class EPPGridPanel extends LitElement {
 					this._selectedFurnitureId = e.detail;
 				}}
 				@furniture-pointer-down=${(e: CustomEvent) => {
-					const { e: ptrEvent, id, type, handle } = e.detail;
-					this._onFurniturePointerDown(ptrEvent, id, type, handle);
+					const { e: ptrEvent, id, type, handle, rotation } = e.detail;
+					this._onFurniturePointerDown(ptrEvent, id, type, handle, rotation);
 				}}
 				@furniture-delete=${(e: CustomEvent) => {
 					this._removeFurniture(e.detail);

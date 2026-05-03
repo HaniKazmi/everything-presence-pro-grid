@@ -173,26 +173,24 @@ export class EppSettingsView extends LitElement {
 	// handlers update reactive properties, Lit crashes with concurrent re-renders.
 	private _overrides: Record<string, any> = {};
 
+	// Tracks user edits since the last time the parent's `dirty` prop was true.
+	// Read during render() (no setter side-effects), so the natural panel
+	// re-render cycle picks it up — no DOM mutation needed.
+	private _localDirty = false;
+
 	@property({ attribute: false }) localize: LocalizeFn = defaultLocalize;
 
-	private _dismissTooltips = (): void => {
-		const root = this.shadowRoot;
-		if (!root) return;
-		root.querySelectorAll(".setting-info-tooltip").forEach((t) => {
-			(t as HTMLElement).style.display = "none";
-		});
+	// Shared no-op closed handler — stops the ha-select's "closed" event from
+	// bubbling out to ancestor menu/dialog widgets that would otherwise treat
+	// it as their own close signal.
+	private _stopClosed = (e: Event): void => {
+		e.stopPropagation();
 	};
 
-	connectedCallback(): void {
-		super.connectedCallback();
-		window.addEventListener("click", this._dismissTooltips);
-	}
-
-	disconnectedCallback(): void {
-		super.disconnectedCallback();
-		window.removeEventListener("click", this._dismissTooltips);
-	}
-
+	// Tooltip lifecycle (open/close + outside-click/Escape/scroll/resize) is
+	// owned by infoTip() and tied to disconnectedCallback() lower in the file —
+	// the previous window-level _dismissTooltips listener has been removed in
+	// favour of that per-tooltip approach.
 	static styles = [
 		accordionStyles,
 		buttonStyles,
@@ -440,11 +438,9 @@ export class EppSettingsView extends LitElement {
 		if (key) {
 			this._overrides[key] = value;
 		}
-		// Enable save button directly — no events, no reactive changes
-		const btn = this.shadowRoot?.querySelector(
-			".save-btn",
-		) as HTMLButtonElement;
-		if (btn) btn.disabled = false;
+		// Mark dirty without mutating DOM — the next panel-driven re-render
+		// (≤200ms at 5Hz) reads this and re-enables the save button.
+		this._localDirty = true;
 	}
 
 	resetBtn(defaultValue: number, key?: string) {
@@ -468,11 +464,68 @@ export class EppSettingsView extends LitElement {
 		><ha-icon icon="mdi:restart"></ha-icon></button>`;
 	}
 
+	private _tipIdCounter = 0;
+	private _openTooltip: HTMLElement | null = null;
+	private _openTooltipBtn: HTMLElement | null = null;
+	private _tipListenersAttached = false;
+
+	private _attachTooltipListeners(): void {
+		if (this._tipListenersAttached) return;
+		document.addEventListener("keydown", this._onTooltipKeydown);
+		document.addEventListener("pointerdown", this._onTooltipPointerDown, true);
+		window.addEventListener("scroll", this._onTooltipViewportChange, true);
+		window.addEventListener("resize", this._onTooltipViewportChange);
+		this._tipListenersAttached = true;
+	}
+
+	private _detachTooltipListeners(): void {
+		if (!this._tipListenersAttached) return;
+		document.removeEventListener("keydown", this._onTooltipKeydown);
+		document.removeEventListener(
+			"pointerdown",
+			this._onTooltipPointerDown,
+			true,
+		);
+		window.removeEventListener("scroll", this._onTooltipViewportChange, true);
+		window.removeEventListener("resize", this._onTooltipViewportChange);
+		this._tipListenersAttached = false;
+	}
+
+	private _closeOpenTooltip(): void {
+		if (this._openTooltip) {
+			this._openTooltip.style.display = "none";
+			this._openTooltip = null;
+			this._openTooltipBtn = null;
+		}
+		this._detachTooltipListeners();
+	}
+
+	private _onTooltipKeydown = (e: KeyboardEvent): void => {
+		if (e.key === "Escape") this._closeOpenTooltip();
+	};
+
+	private _onTooltipViewportChange = (): void => {
+		this._closeOpenTooltip();
+	};
+
+	private _onTooltipPointerDown = (e: Event): void => {
+		const path = e.composedPath();
+		if (this._openTooltipBtn && path.includes(this._openTooltipBtn)) return;
+		this._closeOpenTooltip();
+	};
+
+	disconnectedCallback(): void {
+		super.disconnectedCallback();
+		this._closeOpenTooltip();
+	}
+
 	infoTip(text: string) {
+		const tipId = `epp-tip-${++this._tipIdCounter}`;
 		return html`<button
 			type="button"
 			class="setting-info"
 			aria-label=${this.localize("settings.show_info")}
+			aria-describedby=${tipId}
 			title=${this.localize("settings.show_info")}
 			@click=${(e: Event) => {
 				e.stopPropagation();
@@ -486,13 +539,21 @@ export class EppSettingsView extends LitElement {
 						(t as HTMLElement).style.display = "none";
 					},
 				);
-				if (wasOpen) return;
+				if (wasOpen) {
+					this._openTooltip = null;
+					this._openTooltipBtn = null;
+					this._detachTooltipListeners();
+					return;
+				}
 				const rect = icon.getBoundingClientRect();
 				tip.style.display = "block";
 				tip.style.left = `${Math.max(8, Math.min(rect.right - 240, window.innerWidth - 256))}px`;
 				tip.style.top = `${rect.bottom + 6}px`;
+				this._openTooltip = tip;
+				this._openTooltipBtn = icon;
+				this._attachTooltipListeners();
 			}}
-		><ha-icon icon="mdi:help-circle-outline"></ha-icon><span class="setting-info-tooltip">${text}</span></button>`;
+		><ha-icon icon="mdi:help-circle-outline"></ha-icon><span id=${tipId} class="setting-info-tooltip" role="tooltip">${text}</span></button>`;
 	}
 
 	renderDetectionRanges() {
@@ -730,54 +791,22 @@ export class EppSettingsView extends LitElement {
           <h4>${this.localize("entities.room_level")}</h4>
           <div class="setting-row">
             <label>${this.localize("entities.occupancy")}</label>
-            <label class="toggle-switch"><input type="checkbox" @change=${(
-							e: Event,
-						) => {
-							const el = e.target as HTMLInputElement;
-							const key = el.dataset.entityKey!;
-							if (!this._overrides.entities) this._overrides.entities = {};
-							this._overrides.entities[key] = el.checked;
-							this._fireDirty();
-						}} data-entity-key="room_occupancy" .checked=${isOn("room_occupancy", true)} /><span class="toggle-slider"></span></label>
+            <label class="toggle-switch"><input type="checkbox" @change=${entityToggleHandler} data-entity-key="room_occupancy" .checked=${isOn("room_occupancy", true)} /><span class="toggle-slider"></span></label>
             ${this.infoTip(this.localize("info.room_occupancy"))}
           </div>
           <div class="setting-row">
             <label>${this.localize("entities.static_presence")}</label>
-            <label class="toggle-switch"><input type="checkbox" @change=${(
-							e: Event,
-						) => {
-							const el = e.target as HTMLInputElement;
-							const key = el.dataset.entityKey!;
-							if (!this._overrides.entities) this._overrides.entities = {};
-							this._overrides.entities[key] = el.checked;
-							this._fireDirty();
-						}} data-entity-key="room_static_presence" .checked=${isOn("room_static_presence", false)} /><span class="toggle-slider"></span></label>
+            <label class="toggle-switch"><input type="checkbox" @change=${entityToggleHandler} data-entity-key="room_static_presence" .checked=${isOn("room_static_presence", false)} /><span class="toggle-slider"></span></label>
             ${this.infoTip(this.localize("info.room_static"))}
           </div>
           <div class="setting-row">
             <label>${this.localize("entities.motion_presence")}</label>
-            <label class="toggle-switch"><input type="checkbox" @change=${(
-							e: Event,
-						) => {
-							const el = e.target as HTMLInputElement;
-							const key = el.dataset.entityKey!;
-							if (!this._overrides.entities) this._overrides.entities = {};
-							this._overrides.entities[key] = el.checked;
-							this._fireDirty();
-						}} data-entity-key="room_motion_presence" .checked=${isOn("room_motion_presence", false)} /><span class="toggle-slider"></span></label>
+            <label class="toggle-switch"><input type="checkbox" @change=${entityToggleHandler} data-entity-key="room_motion_presence" .checked=${isOn("room_motion_presence", false)} /><span class="toggle-slider"></span></label>
             ${this.infoTip(this.localize("info.room_motion"))}
           </div>
           <div class="setting-row">
             <label>${this.localize("entities.target_presence")}</label>
-            <label class="toggle-switch"><input type="checkbox" @change=${(
-							e: Event,
-						) => {
-							const el = e.target as HTMLInputElement;
-							const key = el.dataset.entityKey!;
-							if (!this._overrides.entities) this._overrides.entities = {};
-							this._overrides.entities[key] = el.checked;
-							this._fireDirty();
-						}} data-entity-key="room_target_presence" .checked=${isOn("room_target_presence", false)} /><span class="toggle-slider"></span></label>
+            <label class="toggle-switch"><input type="checkbox" @change=${entityToggleHandler} data-entity-key="room_target_presence" .checked=${isOn("room_target_presence", false)} /><span class="toggle-slider"></span></label>
             ${this.infoTip(this.localize("info.room_target_presence"))}
           </div>
           <div class="setting-row">
@@ -818,7 +847,7 @@ export class EppSettingsView extends LitElement {
 									// ha-select already shows the user's picked value.
 								}
 							}}
-              @closed=${(e: Event) => e.stopPropagation()}>
+              @closed=${this._stopClosed}>
             </ha-select>
           </div>
         </div>
@@ -859,7 +888,7 @@ export class EppSettingsView extends LitElement {
 									// ha-select already shows the user's picked value.
 								}
 							}}
-              @closed=${(e: Event) => e.stopPropagation()}>
+              @closed=${this._stopClosed}>
             </ha-select>
           </div>
         </div>
@@ -867,54 +896,22 @@ export class EppSettingsView extends LitElement {
           <h4>${this.localize("settings.environmental")}</h4>
           <div class="setting-row">
             <label>${this.localize("entities.illuminance")}</label>
-            <label class="toggle-switch"><input type="checkbox" @change=${(
-							e: Event,
-						) => {
-							const el = e.target as HTMLInputElement;
-							const key = el.dataset.entityKey!;
-							if (!this._overrides.entities) this._overrides.entities = {};
-							this._overrides.entities[key] = el.checked;
-							this._fireDirty();
-						}} data-entity-key="env_illuminance" .checked=${isOn("env_illuminance", false)} /><span class="toggle-slider"></span></label>
+            <label class="toggle-switch"><input type="checkbox" @change=${entityToggleHandler} data-entity-key="env_illuminance" .checked=${isOn("env_illuminance", false)} /><span class="toggle-slider"></span></label>
             ${this.infoTip(this.localize("info.illuminance"))}
           </div>
           <div class="setting-row">
             <label>${this.localize("entities.humidity")}</label>
-            <label class="toggle-switch"><input type="checkbox" @change=${(
-							e: Event,
-						) => {
-							const el = e.target as HTMLInputElement;
-							const key = el.dataset.entityKey!;
-							if (!this._overrides.entities) this._overrides.entities = {};
-							this._overrides.entities[key] = el.checked;
-							this._fireDirty();
-						}} data-entity-key="env_humidity" .checked=${isOn("env_humidity", false)} /><span class="toggle-slider"></span></label>
+            <label class="toggle-switch"><input type="checkbox" @change=${entityToggleHandler} data-entity-key="env_humidity" .checked=${isOn("env_humidity", false)} /><span class="toggle-slider"></span></label>
             ${this.infoTip(this.localize("info.humidity"))}
           </div>
           <div class="setting-row">
             <label>${this.localize("entities.temperature")}</label>
-            <label class="toggle-switch"><input type="checkbox" @change=${(
-							e: Event,
-						) => {
-							const el = e.target as HTMLInputElement;
-							const key = el.dataset.entityKey!;
-							if (!this._overrides.entities) this._overrides.entities = {};
-							this._overrides.entities[key] = el.checked;
-							this._fireDirty();
-						}} data-entity-key="env_temperature" .checked=${isOn("env_temperature", false)} /><span class="toggle-slider"></span></label>
+            <label class="toggle-switch"><input type="checkbox" @change=${entityToggleHandler} data-entity-key="env_temperature" .checked=${isOn("env_temperature", false)} /><span class="toggle-slider"></span></label>
             ${this.infoTip(this.localize("info.temperature"))}
           </div>
           <div class="setting-row">
             <label>${this.localize("entities.co2")}</label>
-            <label class="toggle-switch"><input type="checkbox" @change=${(
-							e: Event,
-						) => {
-							const el = e.target as HTMLInputElement;
-							const key = el.dataset.entityKey!;
-							if (!this._overrides.entities) this._overrides.entities = {};
-							this._overrides.entities[key] = el.checked;
-							this._fireDirty();
-						}} data-entity-key="env_co2" .checked=${isOn("env_co2", false)} /><span class="toggle-slider"></span></label>
+            <label class="toggle-switch"><input type="checkbox" @change=${entityToggleHandler} data-entity-key="env_co2" .checked=${isOn("env_co2", false)} /><span class="toggle-slider"></span></label>
             ${this.infoTip(this.localize("info.co2"))}
           </div>
         </div>
@@ -1000,7 +997,7 @@ export class EppSettingsView extends LitElement {
 										// early return works on subsequent picks.
 										this.requestUpdate();
 									}}
-                  @closed=${(e: Event) => e.stopPropagation()}
+                  @closed=${this._stopClosed}
                 ></ha-select>
                 <button
 								type="button"
@@ -1071,7 +1068,7 @@ export class EppSettingsView extends LitElement {
 								// brightness slider and presence color rows downstream.
 								this.requestUpdate();
 							}
-						}} @closed=${(e: Event) => e.stopPropagation()}>
+						}} @closed=${this._stopClosed}>
             </ha-select>
             ${this.infoTip(this.localize("info.led_mode"))}
           </div>
@@ -1152,7 +1149,7 @@ export class EppSettingsView extends LitElement {
 								// captured `currentTrigger` for the early-return check.
 								this.requestUpdate();
 							}}
-              @closed=${(e: Event) => e.stopPropagation()}
+              @closed=${this._stopClosed}
             ></ha-select>
             ${this.infoTip(this.localize("info.relay_trigger_mode"))}
           </div>
@@ -1174,7 +1171,7 @@ export class EppSettingsView extends LitElement {
 									// latest override on subsequent picks.
 									this.requestUpdate();
 								}}
-                @closed=${(e: Event) => e.stopPropagation()}
+                @closed=${this._stopClosed}
               ></ha-select>
               ${this.infoTip(this.localize("info.relay_contact_mode"))}
             </div>
@@ -1187,6 +1184,14 @@ export class EppSettingsView extends LitElement {
 	}
 
 	renderSaveCancelButtons() {
+		// Reset the local-edit flag once the parent has flipped its `dirty`
+		// prop back to false (post-save). Keeping the flag in sync this way
+		// avoids a stale-enabled save button without needing updated() hooks
+		// that would race with concurrent re-renders.
+		if (!this.dirty && this._localDirty && !this.saving) {
+			this._localDirty = false;
+		}
+		const isDirty = this.dirty || this._localDirty;
 		return html`
       <div class="save-cancel-bar">
         <button class="wizard-btn wizard-btn-back"
@@ -1200,7 +1205,7 @@ export class EppSettingsView extends LitElement {
 					}}
         >${this.localize("common.cancel")}</button>
         <button class="wizard-btn wizard-btn-primary save-btn"
-          ?disabled=${this.saving || !this.dirty}
+          ?disabled=${this.saving || !isDirty}
           @click=${() => {
 						this._emitSave();
 					}}
@@ -1296,12 +1301,11 @@ export class EppSettingsView extends LitElement {
 	}
 
 	private _fireDirty() {
-		// Enable save button directly via DOM — setting reactive properties
-		// here crashes Lit when combined with the panel's 5Hz re-renders.
-		const btn = this.shadowRoot?.querySelector(
-			".save-btn",
-		) as HTMLButtonElement;
-		if (btn) btn.disabled = false;
+		// Track edits in a non-reactive flag — the panel re-renders at 5Hz so
+		// the save button picks up the change on the next frame without us
+		// having to call requestUpdate (which would race with the panel's
+		// concurrent re-render and crash Lit).
+		this._localDirty = true;
 		this.dispatchEvent(
 			new CustomEvent("dirty", {
 				bubbles: true,

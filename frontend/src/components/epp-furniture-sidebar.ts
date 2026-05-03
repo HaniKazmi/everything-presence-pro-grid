@@ -184,7 +184,14 @@ export class EppFurnitureSidebar extends LitElement {
 								<label>
 									${this.localize("dimensions.rotation")}
 									<input type="number" step="5" .value=${String(Math.round(selected.rotation))}
-										@change=${(e: Event) => this._fireUpdate(selected.id, { rotation: parseInt((e.target as HTMLInputElement).value, 10) % 360 })}
+										@change=${(e: Event) => {
+											const v = parseFloat(
+												(e.target as HTMLInputElement).value,
+											);
+											if (!Number.isFinite(v)) return;
+											const wrapped = ((v % 360) + 360) % 360;
+											this._fireUpdate(selected.id, { rotation: wrapped });
+										}}
 									/>
 								</label>
 							</div>
@@ -234,9 +241,14 @@ export class EppFurnitureSidebar extends LitElement {
 									.hass=${this.hass}
 									.value=${this.customIconValue}
 									@value-changed=${(e: CustomEvent) => {
+										// ha-icon-picker emits null on clear, "" on empty input —
+										// preserve the distinction so the panel can tell the
+										// difference between "user cleared" and "user typed
+										// nothing yet".
+										const v = e.detail?.value;
 										this.dispatchEvent(
 											new CustomEvent("custom-icon-change", {
-												detail: e.detail.value || "",
+												detail: v === undefined ? "" : v,
 												bubbles: true,
 												composed: true,
 											}),

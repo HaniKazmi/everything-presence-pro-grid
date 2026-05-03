@@ -115,28 +115,28 @@ const flasherStyles = css`
   }
 
   .firmware-badge-original {
-    background: #ff980020;
-    color: #e65100;
+    background: color-mix(in srgb, var(--warning-color, #ff9800) 12%, transparent);
+    color: var(--warning-color, #ff9800);
   }
 
   .firmware-badge-offline {
-    background: #9e9e9e20;
-    color: #616161;
+    background: color-mix(in srgb, var(--secondary-text-color, #757575) 12%, transparent);
+    color: var(--secondary-text-color, #757575);
   }
 
   .firmware-badge-behind {
     background: var(--warning-color, #ff9800);
-    color: white;
+    color: var(--text-primary-color, #fff);
   }
 
   .firmware-badge-online {
-    background: #4caf5020;
-    color: #2e7d32;
+    background: color-mix(in srgb, var(--success-color, #4caf50) 12%, transparent);
+    color: var(--success-color, #4caf50);
   }
 
   .firmware-badge-ahead {
     background: var(--info-color, #2196f3);
-    color: white;
+    color: var(--text-primary-color, #fff);
   }
 
   /* OTA progress indicators */
@@ -244,10 +244,6 @@ const flasherStyles = css`
     color: white;
     font-weight: 500;
     text-decoration: underline;
-  }
-
-  ha-button[raised] {
-    --mdc-theme-primary: var(--primary-color, #03a9f4);
   }
 
   .usb-section {
@@ -563,6 +559,7 @@ export class EppFlasherView extends LitElement {
 	@state() private _showWifiProvisioning = false;
 
 	@state() private _errorPopoverMac: string | null = null;
+	@state() private _retryPendingMac: string | null = null;
 
 	private _dispatchUpdateFirmware(device: FlashableDevice): void {
 		this.dispatchEvent(
@@ -581,6 +578,7 @@ export class EppFlasherView extends LitElement {
 
 	private _dispatchRetryOta(device: FlashableDevice): void {
 		this._errorPopoverMac = null;
+		this._retryPendingMac = device.mac;
 		this.dispatchEvent(
 			new CustomEvent("retry-ota", {
 				detail: { mac: device.mac },
@@ -617,7 +615,8 @@ export class EppFlasherView extends LitElement {
 			}
 			case "success":
 				return html`<ha-icon class="ota-success" icon="mdi:check-circle"></ha-icon>`;
-			case "error":
+			case "error": {
+				const retryPending = this._retryPendingMac === device.mac;
 				return html`
 					<div class="ota-error">
 						<ha-icon class="ota-error-icon"
@@ -626,9 +625,16 @@ export class EppFlasherView extends LitElement {
 						></ha-icon>
 						${
 							device.available
-								? html`<ha-button @click=${() => this._dispatchRetryOta(device)}>
-								${this.localize("flasher.ota_retry")}
-							</ha-button>`
+								? html`<ha-button
+									?disabled=${retryPending}
+									@click=${() => this._dispatchRetryOta(device)}>
+									${
+										retryPending
+											? html`<div class="ota-spinner" style="width:14px;height:14px;border-width:2px;display:inline-block;vertical-align:middle;margin-right:6px;"></div>`
+											: nothing
+									}
+									${this.localize("flasher.ota_retry")}
+								</ha-button>`
 								: nothing
 						}
 						${
@@ -637,6 +643,7 @@ export class EppFlasherView extends LitElement {
 								: nothing
 						}
 					</div>`;
+			}
 		}
 	}
 
@@ -684,6 +691,7 @@ export class EppFlasherView extends LitElement {
 		} else {
 			this._cancelling = true;
 		}
+		this._wifiPassword = "";
 		this.dispatchEvent(
 			new CustomEvent("flasher-cancel", { bubbles: true, composed: true }),
 		);
@@ -694,6 +702,14 @@ export class EppFlasherView extends LitElement {
 		// the cancel handler awaited the in-flight op + closed the port).
 		if (changed.has("usbFlashState") && this.usbFlashState == null) {
 			this._cancelling = false;
+		}
+		// Clear the retry-pending spinner once OTA state moves away from
+		// "error" (the retry actually started, succeeded, or failed again).
+		if (changed.has("otaStates") && this._retryPendingMac) {
+			const next = this.otaStates[this._retryPendingMac];
+			if (!next || next.state !== "error") {
+				this._retryPendingMac = null;
+			}
 		}
 	}
 
@@ -760,7 +776,7 @@ export class EppFlasherView extends LitElement {
                 ${this._deviceIp ? html`<p class="usb-ip">${this.localize("flasher.ip_address", { ip: this._deviceIp })}</p>` : nothing}
               </div>
               <div class="confirm-actions">
-                <ha-button raised @click=${this._dispatchWifiComplete}>
+                <ha-button appearance="accent" @click=${this._dispatchWifiComplete}>
                   ${this.localize("flasher.continue")}
                 </ha-button>
               </div>
@@ -793,6 +809,9 @@ export class EppFlasherView extends LitElement {
 										iconPath: wifiIconPath(n.rssi, n.authRequired),
 									}))}
                   @selected=${(e: CustomEvent<{ value: string }>) => {
+										if (e.detail.value !== this._selectedSsid) {
+											this._wifiPassword = "";
+										}
 										this._selectedSsid = e.detail.value;
 										this._manualSsid = false;
 									}}
@@ -808,6 +827,7 @@ export class EppFlasherView extends LitElement {
                 @change=${(e: Event) => {
 									this._manualSsid = (e.target as any).checked;
 									if (!this._manualSsid) this._selectedSsid = "";
+									this._wifiPassword = "";
 								}}
               ></ha-checkbox>
             </ha-formfield>
@@ -855,7 +875,7 @@ export class EppFlasherView extends LitElement {
                 ${this._wifiScanning ? this.localize("flasher.scanning") : this.localize("flasher.scan")}
               </ha-button>
               <ha-button
-                raised
+                appearance="accent"
                 .disabled=${!this._selectedSsid}
                 @click=${this._dispatchWifiProvision}
               >
@@ -955,7 +975,7 @@ export class EppFlasherView extends LitElement {
 																(device.update_available ||
 																	device.firmware_status === "firmware_behind")
 															? html`<ha-button
-																		raised
+																		appearance="accent"
 																		@click=${() => this._dispatchUpdateFirmware(device)}
 																	>${this.localize("flasher.update")}</ha-button>`
 															: nothing
@@ -1064,7 +1084,7 @@ export class EppFlasherView extends LitElement {
 								${
 									state.fatal
 										? nothing
-										: html`<ha-button raised @click=${this._dispatchUsbRetry}>
+										: html`<ha-button appearance="accent" @click=${this._dispatchUsbRetry}>
 									${this.localize("flasher.usb_retry")}
 								</ha-button>`
 								}
@@ -1137,7 +1157,7 @@ export class EppFlasherView extends LitElement {
 								</div>
 								<div class="confirm-actions">
 									<a href="/config/devices/dashboard">
-										<ha-button raised>${this.localize("flasher.go_to_devices")}</ha-button>
+										<ha-button appearance="accent">${this.localize("flasher.go_to_devices")}</ha-button>
 									</a>
 								</div>
 							</div>
@@ -1174,18 +1194,18 @@ export class EppFlasherView extends LitElement {
 							<div class="confirm-actions">
 								${
 									success
-										? html`<ha-button raised @click=${this._dispatchFlashComplete}>
+										? html`<ha-button appearance="accent" @click=${this._dispatchFlashComplete}>
 										${this.localize("flasher.go_to_config")}
 									</ha-button>`
 										: haAdd?.type === "needs_auth"
 											? html`<a href="/config/integrations/dashboard">
-											<ha-button raised>${this.localize("flasher.go_to_integrations")}</ha-button>
+											<ha-button appearance="accent">${this.localize("flasher.go_to_integrations")}</ha-button>
 										</a>`
 											: html`
 											<ha-button @click=${() => this._copyIp(ip ?? "")}>
 												${this.localize("flasher.copy_ip")}
 											</ha-button>
-											<ha-button raised @click=${this._dispatchRetryHaAdd}>
+											<ha-button appearance="accent" @click=${this._dispatchRetryHaAdd}>
 												${this.localize("flasher.retry_ha_add")}
 											</ha-button>
 										`
@@ -1288,7 +1308,7 @@ export class EppFlasherView extends LitElement {
 						</div>
 						<div class="confirm-actions">
 							${this._renderCancelButton()}
-							<ha-button raised @click=${this._dispatchUsbFlash}>
+							<ha-button appearance="accent" @click=${this._dispatchUsbFlash}>
 								${this.localize("flasher.usb_flash")}
 							</ha-button>
 						</div>

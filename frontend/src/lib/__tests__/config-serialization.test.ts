@@ -69,6 +69,97 @@ describe("parseCalibration", () => {
 		const result = parseCalibration(config);
 		expect(result.roomDepth).toBe(0);
 	});
+
+	it("rejects all-zero perspective coefficients (degenerate)", () => {
+		const config = {
+			calibration: {
+				perspective: [0, 0, 0, 0, 0, 0, 0, 0],
+				room_width: 3000,
+				room_depth: 4000,
+			},
+		};
+		const result = parseCalibration(config);
+		expect(result.perspective).toBeNull();
+	});
+
+	it("rejects perspective array of wrong length", () => {
+		const config = {
+			calibration: {
+				perspective: [1, 0, 0],
+				room_width: 3000,
+				room_depth: 4000,
+			},
+		};
+		const result = parseCalibration(config);
+		expect(result.perspective).toBeNull();
+	});
+});
+
+describe("parseFurniture type validation", () => {
+	it("coerces string numerics to numbers", () => {
+		const raw = [
+			{
+				id: "f1",
+				type: "icon",
+				icon: "mdi:sofa",
+				label: "Sofa",
+				x: "100",
+				y: "200",
+				width: "600",
+				height: "400",
+				rotation: "45",
+			},
+		];
+		const out = parseFurniture(raw);
+		expect(out[0].x).toBe(100);
+		expect(out[0].y).toBe(200);
+		expect(out[0].width).toBe(600);
+		expect(out[0].height).toBe(400);
+		expect(out[0].rotation).toBe(45);
+	});
+
+	it("falls back to defaults for invalid numeric fields", () => {
+		const raw = [
+			{
+				id: "f1",
+				type: "svg",
+				icon: "armchair",
+				label: "Chair",
+				x: "potato",
+				y: NaN,
+				width: -10,
+				height: "abc",
+				rotation: Infinity,
+			},
+		];
+		const out = parseFurniture(raw);
+		expect(out[0].x).toBe(0);
+		expect(out[0].y).toBe(0);
+		// width/height enforce a minimum positive default
+		expect(out[0].width).toBe(600);
+		expect(out[0].height).toBe(600);
+		expect(out[0].rotation).toBe(0);
+	});
+
+	it("coerces string id/type/icon/label to strings or default", () => {
+		const raw = [
+			{
+				id: 42,
+				type: 7,
+				icon: null,
+				label: undefined,
+				x: 1,
+				y: 2,
+				width: 50,
+				height: 50,
+			},
+		];
+		const out = parseFurniture(raw);
+		expect(typeof out[0].id).toBe("string");
+		expect(typeof out[0].type).toBe("string");
+		expect(typeof out[0].icon).toBe("string");
+		expect(typeof out[0].label).toBe("string");
+	});
 });
 
 describe("parseFurniture", () => {

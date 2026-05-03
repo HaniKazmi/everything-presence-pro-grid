@@ -465,10 +465,12 @@ describe("epp-zone-sidebar events", () => {
 		document.body.removeChild(c);
 	});
 
-	it("fires dirty on boundary type change", () => {
+	it("fires zone0-change (only) on boundary type change", () => {
 		const el = createSidebar({ activeZone: 0 });
-		const handler = vi.fn();
-		el.addEventListener("dirty", handler);
+		const z0Handler = vi.fn();
+		const dirtyHandler = vi.fn();
+		el.addEventListener("zone0-change", z0Handler);
+		el.addEventListener("dirty", dirtyHandler);
 
 		const tpl = (el as any)._renderBoundaryTypeControls();
 		const c = renderTo(tpl);
@@ -477,7 +479,10 @@ describe("epp-zone-sidebar events", () => {
 		select.value = "seating";
 		select.dispatchEvent(new Event("change", { bubbles: true }));
 
-		expect(handler).toHaveBeenCalledTimes(1);
+		// Panel listens for zone0-change and marks dirty itself; the
+		// sidebar no longer emits a redundant dirty event.
+		expect(z0Handler).toHaveBeenCalledTimes(1);
+		expect(dirtyHandler).not.toHaveBeenCalled();
 
 		document.body.removeChild(c);
 	});

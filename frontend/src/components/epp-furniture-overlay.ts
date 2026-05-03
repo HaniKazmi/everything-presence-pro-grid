@@ -81,23 +81,34 @@ export class EppFurnitureOverlay extends LitElement {
 
 		.furn-handle {
 			position: absolute;
+			width: 22px;
+			height: 22px;
+			background: transparent;
+			pointer-events: auto;
+			z-index: 2;
+			display: flex;
+			align-items: center;
+			justify-content: center;
+		}
+
+		/* Visible square (8×8) sits centered inside the larger touch area. */
+		.furn-handle::before {
+			content: "";
 			width: 8px;
 			height: 8px;
 			background: var(--primary-color, #03a9f4);
-			border: 1px solid #fff;
+			border: 1px solid var(--card-background-color, #fff);
 			border-radius: 2px;
-			pointer-events: auto;
-			z-index: 2;
 		}
 
-		.furn-handle-n { top: -4px; left: 50%; transform: translateX(-50%); }
-		.furn-handle-s { bottom: -4px; left: 50%; transform: translateX(-50%); }
-		.furn-handle-e { right: -4px; top: 50%; transform: translateY(-50%); }
-		.furn-handle-w { left: -4px; top: 50%; transform: translateY(-50%); }
-		.furn-handle-ne { top: -4px; right: -4px; }
-		.furn-handle-nw { top: -4px; left: -4px; }
-		.furn-handle-se { bottom: -4px; right: -4px; }
-		.furn-handle-sw { bottom: -4px; left: -4px; }
+		.furn-handle-n { top: -11px; left: 50%; transform: translateX(-50%); }
+		.furn-handle-s { bottom: -11px; left: 50%; transform: translateX(-50%); }
+		.furn-handle-e { right: -11px; top: 50%; transform: translateY(-50%); }
+		.furn-handle-w { left: -11px; top: 50%; transform: translateY(-50%); }
+		.furn-handle-ne { top: -11px; right: -11px; }
+		.furn-handle-nw { top: -11px; left: -11px; }
+		.furn-handle-se { bottom: -11px; right: -11px; }
+		.furn-handle-sw { bottom: -11px; left: -11px; }
 
 		.furn-rotate-stem {
 			position: absolute;
@@ -156,9 +167,18 @@ export class EppFurnitureOverlay extends LitElement {
 		);
 	}
 
+	private _itemRotation(id: string): number {
+		return this.furniture.find((f) => f.id === id)?.rotation ?? 0;
+	}
+
 	private _onItemPointerDown(e: PointerEvent, id: string): void {
 		this._fireEvent("furniture-select", id);
-		this._fireEvent("furniture-pointer-down", { e, id, type: "move" });
+		this._fireEvent("furniture-pointer-down", {
+			e,
+			id,
+			type: "move",
+			rotation: this._itemRotation(id),
+		});
 	}
 
 	private _onResizePointerDown(
@@ -171,11 +191,17 @@ export class EppFurnitureOverlay extends LitElement {
 			id,
 			type: "resize",
 			handle,
+			rotation: this._itemRotation(id),
 		});
 	}
 
 	private _onRotatePointerDown(e: PointerEvent, id: string): void {
-		this._fireEvent("furniture-pointer-down", { e, id, type: "rotate" });
+		this._fireEvent("furniture-pointer-down", {
+			e,
+			id,
+			type: "rotate",
+			rotation: this._itemRotation(id),
+		});
 	}
 
 	private _onDeletePointerDown(e: PointerEvent, id: string): void {

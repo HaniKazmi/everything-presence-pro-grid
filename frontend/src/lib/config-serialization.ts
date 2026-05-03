@@ -77,9 +77,15 @@ export interface ParsedConfig {
  */
 export function parseCalibration(config: any): ParsedCalibration {
 	const cal = config?.calibration;
-	if (cal?.perspective && cal.room_width > 0) {
+	const persp = cal?.perspective;
+	const valid =
+		Array.isArray(persp) &&
+		persp.length === 8 &&
+		persp.every((c) => typeof c === "number" && Number.isFinite(c)) &&
+		persp.some((c) => Math.abs(c) > 1e-9);
+	if (valid && cal.room_width > 0) {
 		return {
-			perspective: cal.perspective,
+			perspective: persp,
 			roomWidth: cal.room_width || 0,
 			roomDepth: cal.room_depth || 0,
 		};
@@ -93,19 +99,40 @@ export function parseCalibration(config: any): ParsedCalibration {
  * @param rawFurniture Raw furniture array from layout
  * @returns Parsed furniture items with all fields filled
  */
+function toFiniteNumber(v: unknown, fallback: number): number {
+	const n = typeof v === "number" ? v : typeof v === "string" ? Number(v) : NaN;
+	return Number.isFinite(n) ? n : fallback;
+}
+
+function toPositiveSize(v: unknown, fallback: number): number {
+	const n = toFiniteNumber(v, fallback);
+	return n > 0 ? n : fallback;
+}
+
+function toNonEmptyString(v: unknown, fallback: string): string {
+	if (typeof v === "string" && v.length > 0) return v;
+	if (typeof v === "number" && Number.isFinite(v)) return String(v);
+	return fallback;
+}
+
 export function parseFurniture(rawFurniture: any[]): FurnitureItem[] {
-	return (rawFurniture || []).map((f: any, i: number) => ({
-		id: f.id || `f_load_${i}`,
-		type: f.type || "icon",
-		icon: f.icon || "mdi:help",
-		label: f.label || "Item",
-		x: f.x ?? 0,
-		y: f.y ?? 0,
-		width: f.width ?? 600,
-		height: f.height ?? 600,
-		rotation: f.rotation ?? 0,
-		lockAspect: f.lockAspect ?? f.type !== "svg",
-	}));
+	return (rawFurniture || []).map((f: any, i: number) => {
+		const rawType = toNonEmptyString(f?.type, "icon");
+		const type: "icon" | "svg" = rawType === "svg" ? "svg" : "icon";
+		return {
+			id: toNonEmptyString(f?.id, `f_load_${i}`),
+			type,
+			icon: toNonEmptyString(f?.icon, "mdi:help"),
+			label: toNonEmptyString(f?.label, "Item"),
+			x: toFiniteNumber(f?.x, 0),
+			y: toFiniteNumber(f?.y, 0),
+			width: toPositiveSize(f?.width, 600),
+			height: toPositiveSize(f?.height, 600),
+			rotation: toFiniteNumber(f?.rotation, 0),
+			lockAspect:
+				typeof f?.lockAspect === "boolean" ? f.lockAspect : type !== "svg",
+		};
+	});
 }
 
 /**

@@ -237,9 +237,10 @@ describe("_dismissTarget", () => {
 });
 
 describe("_setOverlay", () => {
-	it("sets interference overlay on the target's cell and calls applyLayout", async () => {
+	it("sets interference overlay on the target's cell and persists via WS without dirty/view-switch", async () => {
 		const a = createPanel() as any;
 		a._gridCtrl = { applyLayout: vi.fn().mockResolvedValue(undefined) };
+		a._view = "live";
 		const { x, y, idx } = insideCellCoords(3000, 4000);
 		a._targetMenu = makeMenuDetail(x, y, 0);
 
@@ -248,8 +249,16 @@ describe("_setOverlay", () => {
 		await a._setOverlay(CELL_OVERLAY_INTERFERENCE);
 
 		expect(cellOverlay(a._grid[idx])).toBe(CELL_OVERLAY_INTERFERENCE);
-		expect(a._dirty).toBe(true);
-		expect(a._gridCtrl.applyLayout).toHaveBeenCalledOnce();
+		// One-shot save: should not mark the layout dirty or switch views
+		expect(a._dirty).toBe(false);
+		expect(a._view).toBe("live");
+		// Should not go through applyLayout (which has side effects)
+		expect(a._gridCtrl.applyLayout).not.toHaveBeenCalled();
+		// Should call set_room_layout WS endpoint directly
+		const callWS = a.hass.callWS as ReturnType<typeof vi.fn>;
+		expect(callWS).toHaveBeenCalledWith(
+			expect.objectContaining({ type: "eppgrid/set_room_layout" }),
+		);
 		expect(a._targetMenu).toBeNull();
 	});
 
@@ -262,7 +271,22 @@ describe("_setOverlay", () => {
 		await a._setOverlay(CELL_OVERLAY_SUPPRESS);
 
 		expect(cellOverlay(a._grid[idx])).toBe(CELL_OVERLAY_SUPPRESS);
-		expect(a._gridCtrl.applyLayout).toHaveBeenCalledOnce();
+		expect(
+			(a.hass.callWS as ReturnType<typeof vi.fn>).mock.calls[0][0].type,
+		).toBe("eppgrid/set_room_layout");
+	});
+
+	it("reverts grid mutation when WS save fails", async () => {
+		const a = createPanel() as any;
+		const { x, y, idx } = insideCellCoords(3000, 4000);
+		const before = a._grid[idx];
+		a.hass.callWS = vi.fn().mockRejectedValue(new Error("boom"));
+		a._targetMenu = makeMenuDetail(x, y, 0);
+
+		await a._setOverlay(CELL_OVERLAY_INTERFERENCE);
+
+		expect(cellOverlay(a._grid[idx])).toBe(cellOverlay(before));
+		expect(a._dirty).toBe(false);
 	});
 
 	it("does nothing when _targetMenu is null", async () => {

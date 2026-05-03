@@ -36,9 +36,9 @@ const OVERLAY_STRIPE_CSS: Record<number, string> = {
 	[CELL_OVERLAY_ENTRY]:
 		"background-image: repeating-linear-gradient(45deg, transparent, transparent 6px, rgba(60,60,60,0.7) 6px, rgba(60,60,60,0.7) 8px);",
 	[CELL_OVERLAY_INTERFERENCE]:
-		"background-image: repeating-linear-gradient(-45deg, transparent, transparent 5px, #cc3333 5px, #cc3333 7px);",
+		"background-image: repeating-linear-gradient(-45deg, transparent, transparent 5px, var(--error-color, #cc3333) 5px, var(--error-color, #cc3333) 7px);",
 	[CELL_OVERLAY_SUPPRESS]:
-		"background-image: repeating-linear-gradient(-45deg, transparent, transparent 5px, #cc3333 5px, #cc3333 7px), repeating-linear-gradient(45deg, transparent, transparent 5px, #cc3333 5px, #cc3333 7px);",
+		"background-image: repeating-linear-gradient(-45deg, transparent, transparent 5px, var(--error-color, #cc3333) 5px, var(--error-color, #cc3333) 7px), repeating-linear-gradient(45deg, transparent, transparent 5px, var(--error-color, #cc3333) 5px, var(--error-color, #cc3333) 7px);",
 };
 
 export class EppGrid extends LitElement {
@@ -130,7 +130,7 @@ export class EppGrid extends LitElement {
 			height: 14px;
 			border-radius: 50%;
 			background: var(--primary-color, #03a9f4);
-			border: 2px solid #fff;
+			border: 2px solid var(--card-background-color, #fff);
 			box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
 			transform: translate(-50%, -50%);
 			z-index: 10;

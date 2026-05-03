@@ -332,10 +332,11 @@ describe("epp-live-sidebar element", () => {
 		const c = renderTo(tpl);
 
 		const dots = c.querySelectorAll(".live-sensor-dot");
-		// 5 presence + 1 zone + 1 rest-of-room = 7
+		// 5 presence + 1 rest-of-room (slot 0) + 1 named zone = 7
 		expect(dots.length).toBe(7);
-		// 6th dot (index 5) is the Kitchen zone dot
-		const zoneDot = dots[5] as HTMLElement;
+		// Slot 0 (rest-of-room) is rendered first to match the editor order;
+		// the named Kitchen zone is therefore at index 6.
+		const zoneDot = dots[6] as HTMLElement;
 		const style = zoneDot.getAttribute("style") ?? "";
 		expect(style.toLowerCase()).toContain("background: #b8e7ff");
 		// Not occupied: no box-shadow
@@ -362,12 +363,46 @@ describe("epp-live-sidebar element", () => {
 		const c = renderTo(tpl);
 
 		const dots = c.querySelectorAll(".live-sensor-dot");
-		const zoneDot = dots[5] as HTMLElement;
+		const zoneDot = dots[6] as HTMLElement;
 		const style = zoneDot.getAttribute("style") ?? "";
 		expect(style.toLowerCase()).toContain("background: #b8e7ff");
 		expect(style.toLowerCase()).toContain("box-shadow");
 		// glow uses the zone color
 		expect(style.toLowerCase()).toContain("#b8e7ff");
+
+		document.body.removeChild(c);
+	});
+
+	it("places rest-of-room (slot 0) before any named zones (matches editor order)", () => {
+		const el = document.createElement("epp-live-sidebar") as any;
+		el.perspective = [1, 0, 0, 0, 1, 0, 0, 0];
+		el.zoneConfigs = new Array(7).fill(null);
+		el.zoneConfigs[0] = { name: "Kitchen", color: "#B8E7FF", type: "default" };
+		el.zoneConfigs[1] = { name: "Sofa", color: "#FFB347", type: "default" };
+		el.zoneState = {
+			occupancy: { 0: false, 1: false, 2: false },
+			target_counts: { 0: 0, 1: 0, 2: 0 },
+			frame_count: 1,
+		};
+		const tpl = el.render();
+		const c = renderTo(tpl);
+
+		const dots = c.querySelectorAll(".live-sensor-dot");
+		// 5 presence + 1 rest-of-room + 2 named zones = 8
+		expect(dots.length).toBe(8);
+		// Rest-of-room sits in the first zone position (index 5),
+		// then named zones in slot order (Kitchen, Sofa).
+		const rorDot = dots[5] as HTMLElement;
+		const rorStyle = (rorDot.getAttribute("style") ?? "").toLowerCase();
+		expect(rorStyle).toContain("background: #fff");
+
+		const kitchenDot = dots[6] as HTMLElement;
+		const kitchenStyle = (kitchenDot.getAttribute("style") ?? "").toLowerCase();
+		expect(kitchenStyle).toContain("background: #b8e7ff");
+
+		const sofaDot = dots[7] as HTMLElement;
+		const sofaStyle = (sofaDot.getAttribute("style") ?? "").toLowerCase();
+		expect(sofaStyle).toContain("background: #ffb347");
 
 		document.body.removeChild(c);
 	});

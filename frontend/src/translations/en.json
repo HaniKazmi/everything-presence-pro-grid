@@ -185,7 +185,8 @@
 		"renew": "Renew",
 		"presence_timeout": "Presence timeout",
 		"handoff_timeout": "Handoff timeout",
-		"seconds_suffix": "s"
+		"seconds_suffix": "s",
+		"remove_zone": "Remove zone"
 	},
 	"overlays": {
 		"entry_exit": "Entry / Exit",
@@ -197,6 +198,7 @@
 		"presence": "Presence",
 		"detected": "Detected",
 		"clear": "Clear",
+		"show_info": "Show info",
 		"environment": "Environment",
 		"occupancy": "Occupancy",
 		"static_presence": "Static presence",

@@ -149,11 +149,17 @@ describe("_renderLiveGrid inline event handlers", () => {
 		const fakePtr = { clientX: 10, clientY: 20 };
 		grid.dispatchEvent(
 			new CustomEvent("furniture-pointer-down", {
-				detail: { e: fakePtr, id: "f1", type: "move", handle: null },
+				detail: {
+					e: fakePtr,
+					id: "f1",
+					type: "move",
+					handle: null,
+					rotation: 30,
+				},
 				bubbles: true,
 			}),
 		);
-		expect(spy).toHaveBeenCalledWith(fakePtr, "f1", "move", null);
+		expect(spy).toHaveBeenCalledWith(fakePtr, "f1", "move", null, 30);
 	});
 
 	it("@furniture-delete calls _removeFurniture", () => {
@@ -268,11 +274,17 @@ describe("_renderEditor epp-grid inline event handlers", () => {
 		const fakePtr = { clientX: 1, clientY: 2 };
 		grid.dispatchEvent(
 			new CustomEvent("furniture-pointer-down", {
-				detail: { e: fakePtr, id: "f2", type: "resize", handle: "se" },
+				detail: {
+					e: fakePtr,
+					id: "f2",
+					type: "resize",
+					handle: "se",
+					rotation: 90,
+				},
 				bubbles: true,
 			}),
 		);
-		expect(spy).toHaveBeenCalledWith(fakePtr, "f2", "resize", "se");
+		expect(spy).toHaveBeenCalledWith(fakePtr, "f2", "resize", "se", 90);
 	});
 
 	it("@furniture-delete on editor grid calls _removeFurniture", () => {
@@ -421,7 +433,7 @@ describe("_renderConfigurationRestoreDialog delete configuration button", () => 
 				roomWidth: 3000,
 				roomDepth: 4000,
 				grid: "",
-				zones: [],
+				zones: new Array(8).fill(null),
 				furniture: [],
 			},
 		];
@@ -486,11 +498,17 @@ describe("_renderFurnitureOverlay inline event handlers", () => {
 		const fakePtr = { clientX: 5, clientY: 5 };
 		overlay.dispatchEvent(
 			new CustomEvent("furniture-pointer-down", {
-				detail: { e: fakePtr, id: "f1", type: "move", handle: null },
+				detail: {
+					e: fakePtr,
+					id: "f1",
+					type: "move",
+					handle: null,
+					rotation: 0,
+				},
 				bubbles: true,
 			}),
 		);
-		expect(spy).toHaveBeenCalledWith(fakePtr, "f1", "move", null);
+		expect(spy).toHaveBeenCalledWith(fakePtr, "f1", "move", null, 0);
 	});
 
 	it("@furniture-delete calls _removeFurniture", () => {

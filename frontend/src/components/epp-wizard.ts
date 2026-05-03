@@ -74,10 +74,57 @@ export class EppWizard extends LitElement {
 		this._wizardRoomWidth = this.initialRoomWidth;
 		this._wizardRoomDepth = this.initialRoomDepth;
 		if (this.initialStep !== null) this._setupStep = this.initialStep;
+		if (this._wizardCapturing) this._attachCaptureOverlayListeners();
+	}
+
+	// Note: a second disconnectedCallback further down in this file handles
+	// in-flight capture RAF cancellation; merged into one below.
+
+	private _captureOverlayListenersAttached = false;
+
+	private _onCaptureOverlayKeydown = (e: KeyboardEvent): void => {
+		if (e.key === "Escape") {
+			e.preventDefault();
+			this._wizardCancelCapture();
+		} else if (e.key === "Tab") {
+			// Trap focus on the single Cancel button inside the overlay.
+			e.preventDefault();
+			const cancelBtn = this.shadowRoot?.querySelector(
+				".capture-overlay .wizard-btn-back",
+			) as HTMLElement | null;
+			cancelBtn?.focus();
+		}
+	};
+
+	private _attachCaptureOverlayListeners(): void {
+		if (this._captureOverlayListenersAttached) return;
+		document.addEventListener("keydown", this._onCaptureOverlayKeydown);
+		this._captureOverlayListenersAttached = true;
+	}
+
+	private _detachCaptureOverlayListeners(): void {
+		if (!this._captureOverlayListenersAttached) return;
+		document.removeEventListener("keydown", this._onCaptureOverlayKeydown);
+		this._captureOverlayListenersAttached = false;
+	}
+
+	updated(changed: Map<string, unknown>): void {
+		if (changed.has("_wizardCapturing")) {
+			if (this._wizardCapturing) {
+				this._attachCaptureOverlayListeners();
+				const cancelBtn = this.shadowRoot?.querySelector(
+					".capture-overlay .wizard-btn-back",
+				) as HTMLElement | null;
+				cancelBtn?.focus();
+			} else {
+				this._detachCaptureOverlayListeners();
+			}
+		}
 	}
 
 	disconnectedCallback(): void {
 		super.disconnectedCallback();
+		this._detachCaptureOverlayListeners();
 		this._wizardCaptureCancelled = true;
 		if (this._captureRafId !== null) {
 			cancelAnimationFrame(this._captureRafId);
@@ -350,8 +397,8 @@ export class EppWizard extends LitElement {
         width: 16px;
         height: 16px;
         border-radius: 50%;
-        background: #4caf50;
-        border: 2px solid #fff;
+        background: var(--success-color, #4caf50);
+        border: 2px solid var(--card-background-color, #fff);
         box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
         transform: translate(-50%, -50%);
         z-index: 10;
@@ -363,8 +410,8 @@ export class EppWizard extends LitElement {
         width: 10px;
         height: 10px;
         border-radius: 50%;
-        background: #ff9800;
-        border: 2px solid #fff;
+        background: var(--warning-color, #ff9800);
+        border: 2px solid var(--card-background-color, #fff);
         transform: translate(-50%, -50%);
         z-index: 8;
       }
@@ -372,7 +419,7 @@ export class EppWizard extends LitElement {
       .sensor-fov-view {
         width: 480px;
         aspect-ratio: 1.732 / 1;
-        background: #1a1a2e;
+        background: var(--secondary-background-color, #1a1a2e);
         border: 2px solid var(--divider-color, #e0e0e0);
         border-radius: 8px;
         position: relative;
@@ -789,6 +836,9 @@ export class EppWizard extends LitElement {
 										this._wizardCornerIndex = i;
 										this._wizardCorners = [...this._wizardCorners];
 										this._wizardCorners[i] = null;
+										// Re-marking a corner invalidates any previously
+										// computed perspective.
+										this._perspective = null;
 										this._wizardOffsetSide = prev?.offset_side
 											? String(prev.offset_side / 10)
 											: "";
@@ -1091,6 +1141,8 @@ export class EppWizard extends LitElement {
 		this._wizardCornerIndex = 0;
 		this._wizardOffsetSide = "";
 		this._wizardOffsetFb = "";
+		this._smoothBuffer = [];
+		this._perspective = null;
 		this.dispatchEvent(
 			new CustomEvent("wizard-cancel", {
 				bubbles: true,

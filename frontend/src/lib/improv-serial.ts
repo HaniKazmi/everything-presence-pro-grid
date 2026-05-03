@@ -428,8 +428,8 @@ export function parseScanResults(data: Uint8Array): WifiNetwork | null {
 		return value;
 	};
 
-	const ssid = readString();
-	if (ssid === null) return null;
+	const ssidRaw = readString();
+	if (ssidRaw === null) return null;
 
 	const rssiStr = readString();
 	if (rssiStr === null) return null;
@@ -439,6 +439,12 @@ export function parseScanResults(data: Uint8Array): WifiNetwork | null {
 
 	const rssi = Number.parseInt(rssiStr, 10);
 	if (Number.isNaN(rssi)) return null;
+
+	// Strip ASCII control characters (incl. NUL, BEL, ESC) and clamp to the
+	// 802.11 maximum SSID length so a malformed device payload can't inject
+	// terminal escapes or unbounded strings into the UI.
+	// biome-ignore lint/suspicious/noControlCharactersInRegex: intentional for SSID sanitisation
+	const ssid = ssidRaw.replace(/[\x00-\x1f\x7f]/g, "").slice(0, 32);
 
 	return {
 		ssid,

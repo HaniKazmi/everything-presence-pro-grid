@@ -65,7 +65,13 @@ export function setupLocalize(hass?: {
 
 		let fmt = formatCache.get(raw);
 		if (!fmt) {
-			fmt = new IntlMessageFormat(raw, lang);
+			try {
+				fmt = new IntlMessageFormat(raw, lang);
+			} catch {
+				// Malformed ICU pattern — fall back to the raw string so
+				// translations with stray braces don't crash the panel.
+				return raw;
+			}
 			if (formatCache.size >= FORMAT_CACHE_CAP) {
 				// Evict the oldest entry. Map iteration is in insertion order.
 				const oldest = formatCache.keys().next().value;
@@ -73,7 +79,11 @@ export function setupLocalize(hass?: {
 			}
 			formatCache.set(raw, fmt);
 		}
-		return fmt.format(params) as string;
+		try {
+			return fmt.format(params) as string;
+		} catch {
+			return raw;
+		}
 	}) as LocalizeFn;
 
 	localize.formatNumber = (value: number, decimals = 1): string => {
