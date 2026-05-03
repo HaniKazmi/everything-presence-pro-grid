@@ -48,11 +48,16 @@ void EPPComponent::loop() {
   while (frame_buffer_.pop(frame)) {
     frame_count_++;
 
-    // Stage 1: Feed raw positions into rolling median
+    // Stage 1: Feed raw positions into rolling median.
+    // NaN guard: LD2450 occasionally emits NaN; without this they'd poison
+    // the rolling median's running stats. The window has no internal NaN
+    // filter so we sanitise at the producer boundary.
     TargetInput raw_inputs[NUM_TARGETS];
     for (int i = 0; i < NUM_TARGETS; i++) {
       raw_inputs[i] = {frame.targets[i].x, frame.targets[i].y,
-                       frame.targets[i].detected && frame.targets[i].y != 0.0f};
+                       frame.targets[i].detected && frame.targets[i].y != 0.0f &&
+                       std::isfinite(frame.targets[i].x) &&
+                       std::isfinite(frame.targets[i].y)};
     }
     window_.feed(raw_inputs, NUM_TARGETS, now);
 
