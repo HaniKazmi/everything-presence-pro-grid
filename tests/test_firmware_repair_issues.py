@@ -49,7 +49,10 @@ async def test_creates_behind_issue_when_device_older(hass: HomeAssistant) -> No
         "required_version": FIRMWARE_VERSION,
     }
     assert issue.severity == ir.IssueSeverity.WARNING
-    assert issue.is_fixable is False
+    # firmware_behind issues are fixable via FirmwareUpdateRepairFlow in
+    # repairs.py, which triggers an OTA on Submit. See
+    # tests/test_firmware_repair_fix_flow.py for the flow's coverage.
+    assert issue.is_fixable is True
 
 
 async def test_creates_ahead_issue_when_device_newer(hass: HomeAssistant) -> None:

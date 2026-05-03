@@ -40,7 +40,17 @@
   "issues": {
     "firmware_behind": {
       "title": "{device_name}: actualización de firmware necesaria",
-      "description": "La integración Everything Presence Pro Grid requiere el firmware **{required_version}**, pero {device_name} está ejecutando **{current_version}**. Abre el panel EPP Grid y usa el botón **Actualizar firmware** en la tarjeta del dispositivo para instalar el firmware necesario. Algunas funciones de la integración pueden no funcionar correctamente hasta que se actualice el firmware."
+      "fix_flow": {
+        "step": {
+          "init": {
+            "title": "Actualizar el firmware de {device_name}",
+            "description": "La integración Everything Presence Pro Grid requiere el firmware **{required_version}**, pero **{device_name}** está ejecutando **{current_version}**. Pulsa **Enviar** para instalar el firmware por aire ahora. El dispositivo se reiniciará al terminar — suele tardar alrededor de un minuto. Algunas funciones de la integración pueden no funcionar correctamente hasta que se actualice el firmware."
+          }
+        },
+        "error": {
+          "ota_trigger_failed": "No se ha podido iniciar la actualización del firmware. Puede que el dispositivo esté desconectado o no sea accesible, que sus indicadores de compilación aún no estén en caché, o que su firmware sea demasiado antiguo para admitir actualizaciones OTA desde la integración. Consulta los registros de Home Assistant para más detalles e inténtalo de nuevo."
+        }
+      }
     },
     "firmware_ahead": {
       "title": "{device_name}: actualización de la integración necesaria",

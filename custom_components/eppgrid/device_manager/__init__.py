@@ -165,6 +165,80 @@ class DeviceManager:
             await conn.async_disconnect()
         self._active_connections.clear()
 
+    async def async_trigger_ota(self, mac: str) -> None:
+        """Trigger firmware OTA update on a device.
+
+        Derives the firmware variant from cached build flags, constructs the
+        manifest URL from `OTA_MANIFEST_BASE_URL`, and calls the device's
+        `set_update_manifest` API action over a temporary connection. Shared
+        by the panel's `update_firmware` websocket handler and the Repairs
+        framework's `FirmwareUpdateRepairFlow`.
+
+        Raises HomeAssistantError with a translation_key on every failure
+        path so callers can map the failure to a user-facing message.
+        """
+        from homeassistant.exceptions import HomeAssistantError
+
+        from ..const import DOMAIN as _DOMAIN
+        from ..const import FIRMWARE_VARIANTS
+        from ..const import OTA_MANIFEST_BASE_URL
+
+        dev = self.devices.get(mac)
+        if dev is None:
+            raise HomeAssistantError(
+                f"Device {mac} not found",
+                translation_domain=_DOMAIN,
+                translation_key="device_not_found",
+            )
+        if dev.host is None:
+            raise HomeAssistantError(
+                f"Device {mac} host unknown",
+                translation_domain=_DOMAIN,
+                translation_key="device_host_unknown",
+            )
+        flags = self._build_flags.get(mac, {})
+        if not flags:
+            raise HomeAssistantError(
+                f"Build flags for {mac} not yet available",
+                translation_domain=_DOMAIN,
+                translation_key="build_flags_unavailable",
+            )
+        network = "ethernet" if flags.get("ethernet_enabled") else "wifi"
+        variant = FIRMWARE_VARIANTS.get(network)
+        if variant is None:
+            raise HomeAssistantError(
+                f"No firmware variant for network type: {network}",
+                translation_domain=_DOMAIN,
+                translation_key="no_firmware_variant",
+                translation_placeholders={"network": network},
+            )
+        manifest_url = f"{OTA_MANIFEST_BASE_URL}/{variant}.json"
+
+        conn = DeviceConnection(dev.host)
+        try:
+            try:
+                await conn.async_connect()
+                svc = conn._services.get("set_update_manifest")
+                if svc is None:
+                    raise HomeAssistantError(
+                        f"Device {mac} firmware does not expose set_update_manifest",
+                        translation_domain=_DOMAIN,
+                        translation_key="ota_unsupported",
+                    )
+                assert conn._client is not None
+                await conn._client.execute_service(svc, {"url": manifest_url})
+            except HomeAssistantError:
+                raise
+            except Exception as err:
+                # Wrap aioesphomeapi (and any other unexpected) exceptions so
+                # callers see a stable message-bearing type rather than raw
+                # technical text from a third-party library.
+                _LOGGER.warning("OTA trigger for %s failed", mac, exc_info=True)
+                raise HomeAssistantError(f"Could not contact device {mac}: {err}") from err
+            _LOGGER.info("Triggered OTA for %s (manifest=%s)", mac, manifest_url)
+        finally:
+            await conn.async_disconnect()
+
     def read_firmware_version(self, device_id: str | None) -> str | None:
         """Read the Firmware Version text sensor value for a device.
 

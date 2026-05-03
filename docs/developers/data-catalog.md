@@ -227,6 +227,8 @@ All config commands (`set_setup`, `set_room_layout`, `set_entity_enabled`, `set_
 
 In parallel, `device_manager._sync_firmware_repair_issue` raises an HA Repairs framework issue (`firmware_behind_{mac}` or `firmware_ahead_{mac}`) for any discovered device whose version doesn't match `FIRMWARE_VERSION`, and clears it once the versions come back in line. Hooks fire from `async_discover` (initial discovery) and `_on_device_available` (post-OTA reconnect), so users see the mismatch in HA Settings → Repairs without having to open the panel. Translations live under `issues.firmware_behind` / `issues.firmware_ahead` in `strings.json`.
 
+`firmware_behind` issues are `is_fixable=True` and resolve via `repairs.FirmwareUpdateRepairFlow` — Submit in the Repairs UI walks the user through a confirm step and triggers an OTA via `repairs._trigger_ota` (the same `set_update_manifest` API action the panel's Update Firmware button uses). `firmware_ahead` stays unfixable: the resolution is to update the integration via HACS, which the Repairs framework can't drive.
+
 Because the integration is now the source of truth for firmware-update detection, the device-side auto-poll on `update.http_request` is set to `update_interval: never` in the variant YAMLs. The OTA button and the panel's `set_update_manifest` action still drive the same component for explicit checks/installs.
 
 ### `set_setup`
