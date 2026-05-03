@@ -340,16 +340,33 @@ void EPPComponent::loop() {
       last_frames_dropped_log_ts_ = now;
     }
 
-    if (device_tracking_sensor_ != nullptr)
-      device_tracking_sensor_->publish_state(result.device_tracking_present);
-    if (static_presence_output_ != nullptr)
-      static_presence_output_->publish_state(result.static_state != SensorPresenceState::INACTIVE);
-    if (motion_presence_output_ != nullptr)
-      motion_presence_output_->publish_state(result.motion_state != SensorPresenceState::INACTIVE);
-    if (occupancy_output_ != nullptr)
-      occupancy_output_->publish_state(result.occupancy);
-    if (mmwave_output_ != nullptr)
-      mmwave_output_->publish_state(result.mmwave);
+    // Skip publish_state when the value matches our last publish so the API
+    // event stream isn't flooded once per second with unchanged binary states.
+    // ESPHome dedupes the wire-side transport but still fires the API event.
+    auto publish_bool_if_changed = [](esphome::binary_sensor::BinarySensor *sensor,
+                                      bool value, int8_t &cache) {
+      if (sensor == nullptr) return;
+      int8_t v = value ? 1 : 0;
+      if (cache == v) return;
+      sensor->publish_state(value);
+      cache = v;
+    };
+
+    publish_bool_if_changed(device_tracking_sensor_,
+                            result.device_tracking_present,
+                            last_device_tracking_published_);
+    publish_bool_if_changed(static_presence_output_,
+                            result.static_state != SensorPresenceState::INACTIVE,
+                            last_static_presence_published_);
+    publish_bool_if_changed(motion_presence_output_,
+                            result.motion_state != SensorPresenceState::INACTIVE,
+                            last_motion_presence_published_);
+    publish_bool_if_changed(occupancy_output_,
+                            result.occupancy,
+                            last_occupancy_published_);
+    publish_bool_if_changed(mmwave_output_,
+                            result.mmwave,
+                            last_mmwave_published_);
 
     // Relay evaluation.
     // Gate side-effecting relay state changes until boot has settled — see

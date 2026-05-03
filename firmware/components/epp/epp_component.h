@@ -239,6 +239,16 @@ class EPPComponent : public esphome::Component {
   // Cached zone result
   ProcessingResult last_zone_result_{};
 
+  // Cached last-published values for the System block's binary_sensor outputs.
+  // ESPHome's binary_sensor::publish_state already dedupes the wire transport,
+  // but the API event still fires every call. Skip when the value matches our
+  // last publish to keep HA's event stream quiet. -1 sentinel = never published.
+  int8_t last_device_tracking_published_ = -1;
+  int8_t last_static_presence_published_ = -1;
+  int8_t last_motion_presence_published_ = -1;
+  int8_t last_occupancy_published_ = -1;
+  int8_t last_mmwave_published_ = -1;
+
   // Boot settling — gate relay state changes until the device has either
   // received its first frame or waited out BOOT_SETTLE_MS. Template switches
   // re-fire turn_on/turn_off on boot from HA's restored state, and acting on
