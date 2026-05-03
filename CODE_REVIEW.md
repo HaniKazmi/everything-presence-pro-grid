@@ -10,8 +10,8 @@ Severity legend: **C** = critical (security/data-loss/correctness), **H** = high
 
 Goal: lock down trust boundaries. Single self-contained PR.
 
-- [x] **C: Firmware proxy is unauthenticated** — [custom_components/eppgrid/firmware_proxy.py:26](custom_components/eppgrid/firmware_proxy.py#L26) — _shipped: PR firmware-proxy-auth_
-  Set `requires_auth = True` (panel auto-attaches token). Add `aiohttp.ClientTimeout(total=60)` and stream via `web.StreamResponse` with a 16 MiB cap instead of `await resp.read()`.
+- [x] **C: Firmware proxy is unauthenticated** — [custom_components/eppgrid/firmware_proxy.py:26](custom_components/eppgrid/firmware_proxy.py#L26) — _shipped: PR #164_
+  Set `requires_auth = True` (panel attaches `Authorization: Bearer <hass.auth.accessToken>`). Add `aiohttp.ClientTimeout(total=60, sock_read=15)` and a 16 MiB cap enforced via `Content-Length` pre-check + running total over `iter_chunked(64 KiB)`. Body is buffered (bounded by the cap) into a `web.Response`, not streamed via `StreamResponse` — the cap is the load-bearing security property; streaming was deemed unnecessary given a 16 MiB ceiling. Timeouts return 504; oversize uploads return 502.
 
 - [ ] **C: Add `@websocket_api.require_admin` to every state-mutating WS command** — [custom_components/eppgrid/websocket_api/_devices.py](custom_components/eppgrid/websocket_api/_devices.py), [_firmware.py](custom_components/eppgrid/websocket_api/_firmware.py)
   Affected: `update_firmware`, `set_setup`, `set_room_layout`, `set_settings`, `set_distance_override`, `set_pipeline`, `set_entity_enabled`, `save_configuration`, `delete_configuration`, `set_show_room_calibration_tutorial`. Read-only `list_*`/`subscribe_*`/`get_config` stay open.

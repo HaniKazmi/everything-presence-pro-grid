@@ -34,10 +34,13 @@ class FirmwareProxyView(HomeAssistantView):
 
     url = "/api/eppgrid/firmware/{filename}"
     name = "api:eppgrid:firmware"
-    # Authenticated: panel `fetch()` calls are same-origin and carry HA's
-    # session cookie automatically. Direct unauthenticated GETs would let any
-    # LAN client (or anyone reachable through Nabu Casa / a reverse proxy) use
-    # HA as a free firmware-download proxy and DoS amplifier.
+    # Authenticated: the panel attaches an `Authorization: Bearer <token>`
+    # header (`hass.auth.accessToken`) on its `fetch()` calls in
+    # `usb-flash-service.ts`. Cookies aren't relied on because they aren't
+    # reliable across HA reverse-proxy / Nabu Casa setups. Direct
+    # unauthenticated GETs would let any LAN client (or anyone reachable via
+    # Nabu Casa / a reverse proxy) use HA as a free firmware-download proxy
+    # and DoS amplifier.
     requires_auth = True
 
     async def get(self, request: web.Request, filename: str) -> web.Response:
