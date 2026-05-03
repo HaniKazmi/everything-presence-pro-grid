@@ -11,6 +11,8 @@
 #include "epp_rolling_window.h"
 #include "epp_zone_engine.h"
 #include "epp_relay.h"
+#include "epp_frame_ring_buffer.h"
+#include "epp_nvs_layout.h"
 
 #include <string>
 
@@ -115,7 +117,9 @@ class EPPComponent : public esphome::Component {
 
  protected:
   static constexpr int NUM_TARGETS = 3;
-  static constexpr uint8_t NVS_SCHEMA_VERSION = 2;
+  // Per-blob NVS schema versions live in epp_nvs_layout.h. Each save_*_to_nvs_
+  // writes its own version key (persp_v, grid_v, zones_v, relay_v) so changing
+  // one blob's layout doesn't invalidate the others. See PR-8 item #2.
   // Derived from esphome.project.version in yaml. ESPHome defines the macro
   // during codegen; the fallback covers builds outside ESPHome (unit tests).
   #ifndef ESPHOME_PROJECT_VERSION
@@ -123,10 +127,29 @@ class EPPComponent : public esphome::Component {
   #endif
   static constexpr const char* FIRMWARE_VERSION_STR = ESPHOME_PROJECT_VERSION;
 
-  // Target data from LD2450
-  ParsedTarget targets_[NUM_TARGETS]{};
-  bool frame_ready_ = false;
+  // Target data from LD2450 — pushed by feed_targets() (UART lambda),
+  // drained by loop(). The ring buffer protects against ESPHome scheduling
+  // jitter: if loop() runs late and a second UART frame arrives before the
+  // first is consumed, both are preserved (oldest dropped on overflow). See
+  // epp_frame_ring_buffer.h for the full rationale.
+  //
+  // FRAME_BUFFER_CAPACITY: 3 frames at 10Hz LD2450 → 300ms of slack before
+  // the oldest gets evicted. ESPHome loop()s under typical load run every
+  // ~16ms; 300ms is a generous margin without burning RAM.
+  static constexpr size_t FRAME_BUFFER_CAPACITY = 3;
+  struct TargetFrame {
+    ParsedTarget targets[NUM_TARGETS]{};
+  };
+  FrameRingBuffer<TargetFrame, FRAME_BUFFER_CAPACITY> frame_buffer_;
   uint32_t frame_count_ = 0;
+  uint32_t frames_dropped_ = 0;  // bumped when push() reports overflow
+  uint32_t last_frames_dropped_log_ = 0;  // last frames_dropped_ value logged
+  uint32_t last_frames_dropped_log_ts_ = 0;  // ms when last drop log fired
+  // Only log frame drops when the delta since last log clears this threshold,
+  // otherwise sustained drops at 10Hz spam the log every second forever. Five
+  // dropped frames means loop() hung roughly half a second — clearly worth
+  // surfacing while still leaving headroom for transient single-frame jitter.
+  static constexpr uint32_t FRAME_DROP_LOG_THRESHOLD = 5;
 
   // Zone engine pipeline
   SensorTransform transform_;
@@ -142,12 +165,19 @@ class EPPComponent : public esphome::Component {
   void save_zones_to_nvs_(const std::string &zones_json);
   void save_relay_to_nvs_();
 
-  // Cached perspective blob for NVS (8 coeffs + room_width + room_depth)
+  // Cached perspective blob for NVS (8 coeffs + room_width + room_depth).
+  // Doubles as the idempotency cache for set_perspective() — see
+  // epp_change_detector.h.
   float persp_cache_[10]{};
   bool has_persp_cache_ = false;
 
-  // Cached zones JSON for NVS persistence
+  // Cached zones JSON for NVS persistence + idempotency.
   std::string last_zones_json_;
+  bool has_zones_cache_ = false;
+
+  // Cached grid blob for NVS idempotency.
+  uint8_t last_grid_blob_[GRID_BLOB_SIZE]{};
+  bool has_grid_cache_ = false;
 
   // Sensor pointers
   esphome::binary_sensor::BinarySensor *device_tracking_sensor_{nullptr};

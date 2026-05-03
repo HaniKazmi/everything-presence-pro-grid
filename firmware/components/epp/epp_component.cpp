@@ -1,5 +1,7 @@
 #include "epp_component.h"
 #include "epp_zone_config_parser.h"
+#include "epp_nvs_layout.h"
+#include "epp_change_detector.h"
 #include "esphome/core/log.h"
 
 #include <ArduinoJson.h>
@@ -26,89 +28,109 @@ void EPPComponent::setup() {
 }
 
 void EPPComponent::loop() {
-  if (!frame_ready_) return;
-  frame_ready_ = false;
-  frame_count_++;
+  if (frame_buffer_.empty()) return;
 
   uint32_t now = esphome::millis();
   float ts = now / 1000.0f;
 
-  // === PROCESSING PIPELINE (runs every frame) ===
+  // === PROCESSING PIPELINE — drain ALL queued frames ===
+  //
+  // If loop() ran on time we drain a single frame. If ESPHome was held up
+  // (e.g. by a slow component) and multiple LD2450 frames have arrived, we
+  // process them all in FIFO order so the rolling window and zone engine
+  // see every sample — no silent merging that would otherwise distort the
+  // median or under-count detection events.
+  //
+  // The publish-throttle block below runs once per loop call against the
+  // freshest result (last_zone_result_), which is what HA needs.
+  TargetFrame frame;
+  WindowOutput last_win{};
+  while (frame_buffer_.pop(frame)) {
+    frame_count_++;
 
-  // Stage 1: Feed raw positions into rolling median
-  TargetInput raw_inputs[NUM_TARGETS];
-  for (int i = 0; i < NUM_TARGETS; i++) {
-    raw_inputs[i] = {targets_[i].x, targets_[i].y,
-                     targets_[i].detected && targets_[i].y != 0.0f};
-  }
-  window_.feed(raw_inputs, NUM_TARGETS, now);
-
-  // Stage 2: Get smoothed raw, transform to grid coordinates
-  const auto &win = window_.output();
-  TargetInput grid_inputs[NUM_TARGETS];
-  for (int i = 0; i < NUM_TARGETS; i++) {
-    if (win.targets[i].active) {
-      auto [rx, ry] = transform_.apply(
-          win.targets[i].median_x, win.targets[i].median_y);
-      grid_inputs[i] = {rx, ry, true};
-    } else {
-      grid_inputs[i] = {0.0f, 0.0f, false};
+    // Stage 1: Feed raw positions into rolling median
+    TargetInput raw_inputs[NUM_TARGETS];
+    for (int i = 0; i < NUM_TARGETS; i++) {
+      raw_inputs[i] = {frame.targets[i].x, frame.targets[i].y,
+                       frame.targets[i].detected && frame.targets[i].y != 0.0f};
     }
-  }
+    window_.feed(raw_inputs, NUM_TARGETS, now);
 
-  // Stage 2b: Track per-frame overlay cell crossings
-  // The median position may skip over boundary overlay cells, so we check
-  // each raw frame's transformed position directly. The flag is sticky:
-  // set when any frame lands on an overlay cell, cleared when a frame
-  // lands on a non-overlay room cell.
-  for (int i = 0; i < NUM_TARGETS; i++) {
-    if (raw_inputs[i].active) {
-      auto [fx, fy] = transform_.apply(raw_inputs[i].x, raw_inputs[i].y);
-      int cell = grid_.xy_to_cell(fx, fy);
-      if (cell != -1 && grid_.cell_is_room(cell)) {
-        if (grid_.cell_overlay(cell) == CELL_OVERLAY_ENTRY) {
-          target_touched_overlay_[i] = true;
-        } else {
-          target_touched_overlay_[i] = false;
-        }
+    // Stage 2: Get smoothed raw, transform to grid coordinates
+    const auto &win = window_.output();
+    last_win = win;  // remember the freshest window output for the publish block
+    TargetInput grid_inputs[NUM_TARGETS];
+    for (int i = 0; i < NUM_TARGETS; i++) {
+      if (win.targets[i].active) {
+        auto [rx, ry] = transform_.apply(
+            win.targets[i].median_x, win.targets[i].median_y);
+        grid_inputs[i] = {rx, ry, true};
+      } else {
+        grid_inputs[i] = {0.0f, 0.0f, false};
       }
-      // If outside room, keep current flag value (sticky until next room cell)
-    } else {
-      // Target inactive — don't clear, let zone engine use the flag
     }
-  }
 
-  // Stage 3: Zone engine tick — uses transformed positions + frame counts
-  WindowOutput zone_input;
-  zone_input.total_frames = win.total_frames;
-  for (int i = 0; i < NUM_TARGETS; i++) {
-    zone_input.targets[i].active = win.targets[i].active;
-    zone_input.targets[i].frame_count = win.targets[i].frame_count;
-    zone_input.targets[i].median_x = grid_inputs[i].x;
-    zone_input.targets[i].median_y = grid_inputs[i].y;
-    zone_input.targets[i].on_overlay = target_touched_overlay_[i];
-  }
-  // Build sensor input for zone engine
-  SensorInput sensor_input;
-  if (static_presence_sensor_ != nullptr)
-    sensor_input.static_on = static_presence_sensor_->state;
-  if (motion_presence_sensor_ != nullptr)
-    sensor_input.motion_on = motion_presence_sensor_->state;
-  sensor_input.static_timeout = static_timeout_;
-  sensor_input.motion_timeout = motion_timeout_;
-
-  const auto &result = zone_engine_.tick(zone_input, ts, sensor_input);
-
-  // Output zone engine log entries immediately (before throttle may overwrite)
-  for (int i = 0; i < result.log_count; ++i) {
-    if (result.log[i].level == epp::LogLevel::INFO) {
-      ESP_LOGI(TAG, "%s", result.log[i].message);
-    } else {
-      ESP_LOGD(TAG, "%s", result.log[i].message);
+    // Stage 2b: Track per-frame overlay cell crossings
+    // The median position may skip over boundary overlay cells, so we check
+    // each raw frame's transformed position directly. The flag is sticky:
+    // set when any frame lands on an overlay cell, cleared when a frame
+    // lands on a non-overlay room cell.
+    for (int i = 0; i < NUM_TARGETS; i++) {
+      if (raw_inputs[i].active) {
+        auto [fx, fy] = transform_.apply(raw_inputs[i].x, raw_inputs[i].y);
+        int cell = grid_.xy_to_cell(fx, fy);
+        if (cell != -1 && grid_.cell_is_room(cell)) {
+          if (grid_.cell_overlay(cell) == CELL_OVERLAY_ENTRY) {
+            target_touched_overlay_[i] = true;
+          } else {
+            target_touched_overlay_[i] = false;
+          }
+        }
+        // If outside room, keep current flag value (sticky until next room cell)
+      } else {
+        // Target inactive — don't clear, let zone engine use the flag
+      }
     }
+
+    // Stage 3: Zone engine tick — uses transformed positions + frame counts
+    WindowOutput zone_input;
+    zone_input.total_frames = win.total_frames;
+    for (int i = 0; i < NUM_TARGETS; i++) {
+      zone_input.targets[i].active = win.targets[i].active;
+      zone_input.targets[i].frame_count = win.targets[i].frame_count;
+      zone_input.targets[i].median_x = grid_inputs[i].x;
+      zone_input.targets[i].median_y = grid_inputs[i].y;
+      zone_input.targets[i].on_overlay = target_touched_overlay_[i];
+    }
+    // Build sensor input for zone engine
+    SensorInput sensor_input;
+    if (static_presence_sensor_ != nullptr)
+      sensor_input.static_on = static_presence_sensor_->state;
+    if (motion_presence_sensor_ != nullptr)
+      sensor_input.motion_on = motion_presence_sensor_->state;
+    sensor_input.static_timeout = static_timeout_;
+    sensor_input.motion_timeout = motion_timeout_;
+
+    const auto &result = zone_engine_.tick(zone_input, ts, sensor_input);
+
+    // Output zone engine log entries immediately (before throttle may overwrite)
+    for (int i = 0; i < result.log_count; ++i) {
+      if (result.log[i].level == epp::LogLevel::INFO) {
+        ESP_LOGI(TAG, "%s", result.log[i].message);
+      } else {
+        ESP_LOGD(TAG, "%s", result.log[i].message);
+      }
+    }
+
+    last_zone_result_ = result;
   }
 
-  last_zone_result_ = result;
+  // The publish block below references `win` (last frame's window output)
+  // and `result` (cached in last_zone_result_). Re-bind `win` to the last
+  // processed frame's window output so the existing code reads the same
+  // snapshot it always did.
+  const auto &win = last_win;
+  const auto &result = last_zone_result_;
 
   // === PUBLISH THROTTLES (do not affect processing) ===
 
@@ -282,6 +304,20 @@ void EPPComponent::loop() {
   if (now - last_system_ms_ >= SYSTEM_INTERVAL_MS) {
     last_system_ms_ = now;
 
+    // Surface frame-buffer overflow when new drops accumulate past the
+    // threshold. The ring buffer absorbs short scheduling stalls silently;
+    // persistent drops mean loop() can't keep up with the LD2450 producer
+    // and want investigation. We rate-limit on the *delta* since last log
+    // (not equality) so sustained 10Hz drops don't spam every second
+    // indefinitely with monotonically growing totals.
+    uint32_t drop_delta = frames_dropped_ - last_frames_dropped_log_;
+    if (drop_delta >= FRAME_DROP_LOG_THRESHOLD) {
+      ESP_LOGW(TAG, "LD2450 frame ring buffer dropped %u frames in %ums (total %u)",
+               drop_delta, now - last_frames_dropped_log_ts_, frames_dropped_);
+      last_frames_dropped_log_ = frames_dropped_;
+      last_frames_dropped_log_ts_ = now;
+    }
+
     if (device_tracking_sensor_ != nullptr)
       device_tracking_sensor_->publish_state(result.device_tracking_present);
     if (static_presence_output_ != nullptr)
@@ -321,10 +357,15 @@ float EPPComponent::get_setup_priority() const {
 void EPPComponent::feed_targets(float x1, float y1, bool d1,
                                 float x2, float y2, bool d2,
                                 float x3, float y3, bool d3) {
-  targets_[0] = {x1, y1, d1};
-  targets_[1] = {x2, y2, d2};
-  targets_[2] = {x3, y3, d3};
-  frame_ready_ = true;
+  TargetFrame frame;
+  frame.targets[0] = {x1, y1, d1};
+  frame.targets[1] = {x2, y2, d2};
+  frame.targets[2] = {x3, y3, d3};
+  if (!frame_buffer_.push(frame)) {
+    // Buffer was full — oldest frame evicted. Bump the counter so the issue
+    // is visible in diagnostics rather than disappearing silently.
+    frames_dropped_++;
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -366,15 +407,26 @@ void EPPComponent::set_perspective(const std::string &perspective,
 
   transform_.set_coefficients(coeffs, room_width, room_depth);
 
-  // Cache for NVS persistence
-  memcpy(persp_cache_, coeffs, 8 * sizeof(float));
-  persp_cache_[8] = room_width;
-  persp_cache_[9] = room_depth;
+  // Build candidate cache, then test against the prior cache before
+  // overwriting. Skipping nvs_set_blob saves a flash erase cycle when the
+  // frontend republishes identical config.
+  float candidate[10];
+  memcpy(candidate, coeffs, 8 * sizeof(float));
+  candidate[8] = room_width;
+  candidate[9] = room_depth;
+
+  bool changed = did_perspective_change(candidate, has_persp_cache_, persp_cache_);
+
+  memcpy(persp_cache_, candidate, sizeof(persp_cache_));
   has_persp_cache_ = true;
 
   ESP_LOGI(TAG, "Perspective set: room %.0fx%.0f mm", room_width, room_depth);
 
-  save_perspective_to_nvs_();
+  if (changed) {
+    save_perspective_to_nvs_();
+  } else {
+    ESP_LOGD(TAG, "Perspective unchanged, skipping NVS write");
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -415,7 +467,25 @@ void EPPComponent::set_grid(const std::string &grid_data,
   ESP_LOGI(TAG, "Grid set: origin (%.0f, %.0f), %d cells, %d entry / %d interference / %d suppress",
            origin_x, origin_y, GRID_CELL_COUNT, entry_count, interference_count, suppress_count);
 
-  save_grid_to_nvs_();
+  // Build candidate blob (same layout as save_grid_to_nvs_) and test
+  // against the cache before writing. The cache is updated unconditionally
+  // so future calls compare against the latest in-RAM grid.
+  uint8_t candidate[GRID_BLOB_SIZE];
+  memcpy(candidate, decoded, GRID_CELL_COUNT);
+  memcpy(candidate + GRID_CELL_COUNT, &origin_x, sizeof(float));
+  memcpy(candidate + GRID_CELL_COUNT + sizeof(float), &origin_y, sizeof(float));
+
+  bool changed = did_grid_change(candidate, sizeof(candidate),
+                                 has_grid_cache_,
+                                 last_grid_blob_, sizeof(last_grid_blob_));
+  memcpy(last_grid_blob_, candidate, sizeof(last_grid_blob_));
+  has_grid_cache_ = true;
+
+  if (changed) {
+    save_grid_to_nvs_();
+  } else {
+    ESP_LOGD(TAG, "Grid unchanged, skipping NVS write");
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -436,7 +506,12 @@ void EPPComponent::set_zones(const std::string &zones_json) {
   zone_engine_.set_zones(configs, count);
   ESP_LOGI(TAG, "Configured %d zones", count);
 
-  save_zones_to_nvs_(zones_json);
+  // Skip the flash write when the JSON matches the last saved payload.
+  if (did_zones_change(zones_json, has_zones_cache_, last_zones_json_)) {
+    save_zones_to_nvs_(zones_json);
+  } else {
+    ESP_LOGD(TAG, "Zones unchanged, skipping NVS write");
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -473,87 +548,121 @@ void EPPComponent::restore_from_nvs_() {
     return;
   }
 
-  uint8_t version = 0;
-  if (nvs_get_u8(handle, "version", &version) != ESP_OK || version != NVS_SCHEMA_VERSION) {
-    ESP_LOGW(TAG, "NVS schema version mismatch (got %d, expected %d), skipping restore",
-             version, NVS_SCHEMA_VERSION);
-    nvs_close(handle);
-    return;
-  }
+  // Per-blob version gating: each blob (perspective, grid, zones, relay)
+  // tracks its own schema version. A bump to one schema invalidates only
+  // that blob; the others restore independently. See epp_nvs_layout.h.
 
   // Restore perspective (8 floats + room_width + room_depth = 40 bytes)
-  size_t len = sizeof(persp_cache_);
-  if (nvs_get_blob(handle, "persp", persp_cache_, &len) == ESP_OK && len == sizeof(persp_cache_)) {
-    transform_.set_coefficients(persp_cache_, persp_cache_[8], persp_cache_[9]);
-    has_persp_cache_ = true;
-    ESP_LOGI(TAG, "Restored perspective from NVS");
+  uint8_t persp_v = 0;
+  nvs_get_u8(handle, "persp_v", &persp_v);
+  if (should_load_blob(persp_v, PERSP_SCHEMA_V)) {
+    size_t len = sizeof(persp_cache_);
+    if (nvs_get_blob(handle, "persp", persp_cache_, &len) == ESP_OK && len == sizeof(persp_cache_)) {
+      transform_.set_coefficients(persp_cache_, persp_cache_[8], persp_cache_[9]);
+      has_persp_cache_ = true;
+      ESP_LOGI(TAG, "Restored perspective from NVS");
+    }
+  } else if (persp_v != 0) {
+    ESP_LOGW(TAG, "Perspective NVS schema mismatch (stored=%u, expected=%u), skipping",
+             persp_v, PERSP_SCHEMA_V);
   }
 
-  // Restore grid (400 cell bytes + origin_x + origin_y = 408 bytes)
-  len = 408;
-  uint8_t grid_buf[408];
-  if (nvs_get_blob(handle, "grid", grid_buf, &len) == ESP_OK && len == 408) {
-    float origin_x, origin_y;
-    memcpy(&origin_x, grid_buf + GRID_CELL_COUNT, sizeof(float));
-    memcpy(&origin_y, grid_buf + GRID_CELL_COUNT + sizeof(float), sizeof(float));
-    grid_ = Grid(origin_x, origin_y);
-    grid_.load_from_bytes(grid_buf, GRID_CELL_COUNT);
-    zone_engine_.set_grid(grid_);
-    ESP_LOGI(TAG, "Restored grid from NVS (origin %.0f, %.0f)", origin_x, origin_y);
+  // Restore grid (GRID_CELL_COUNT cell bytes + origin_x + origin_y).
+  // GRID_BLOB_SIZE is centralised in epp_nvs_layout.h and pinned by a
+  // static_assert there.
+  uint8_t grid_v = 0;
+  nvs_get_u8(handle, "grid_v", &grid_v);
+  if (should_load_blob(grid_v, GRID_SCHEMA_V)) {
+    size_t len = GRID_BLOB_SIZE;
+    uint8_t grid_buf[GRID_BLOB_SIZE];
+    if (nvs_get_blob(handle, "grid", grid_buf, &len) == ESP_OK && len == GRID_BLOB_SIZE) {
+      float origin_x, origin_y;
+      memcpy(&origin_x, grid_buf + GRID_CELL_COUNT, sizeof(float));
+      memcpy(&origin_y, grid_buf + GRID_CELL_COUNT + sizeof(float), sizeof(float));
+      grid_ = Grid(origin_x, origin_y);
+      grid_.load_from_bytes(grid_buf, GRID_CELL_COUNT);
+      zone_engine_.set_grid(grid_);
+      // Seed the idempotency cache so a republish of the same grid won't
+      // trigger a redundant flash write on first connect after boot.
+      memcpy(last_grid_blob_, grid_buf, sizeof(last_grid_blob_));
+      has_grid_cache_ = true;
+      ESP_LOGI(TAG, "Restored grid from NVS (origin %.0f, %.0f)", origin_x, origin_y);
+    }
+  } else if (grid_v != 0) {
+    ESP_LOGW(TAG, "Grid NVS schema mismatch (stored=%u, expected=%u), skipping",
+             grid_v, GRID_SCHEMA_V);
   }
 
   // Restore relay settings
-  uint8_t relay_trig = 0;
-  if (nvs_get_u8(handle, "relay_trig", &relay_trig) == ESP_OK) {
-    if (relay_trig <= static_cast<uint8_t>(RelayTriggerMode::OCCUPANCY)) {
-      relay_trigger_mode_ = static_cast<RelayTriggerMode>(relay_trig);
-    } else {
-      ESP_LOGW(TAG, "Invalid relay trigger mode %d in NVS, defaulting to DISABLED", relay_trig);
-      relay_trigger_mode_ = RelayTriggerMode::DISABLED;
+  uint8_t relay_v = 0;
+  nvs_get_u8(handle, "relay_v", &relay_v);
+  if (should_load_blob(relay_v, RELAY_SCHEMA_V)) {
+    uint8_t relay_trig = 0;
+    if (nvs_get_u8(handle, "relay_trig", &relay_trig) == ESP_OK) {
+      if (relay_trig <= static_cast<uint8_t>(RelayTriggerMode::OCCUPANCY)) {
+        relay_trigger_mode_ = static_cast<RelayTriggerMode>(relay_trig);
+      } else {
+        ESP_LOGW(TAG, "Invalid relay trigger mode %d in NVS, defaulting to DISABLED", relay_trig);
+        relay_trigger_mode_ = RelayTriggerMode::DISABLED;
+      }
+      uint8_t relay_cont = 0;
+      nvs_get_u8(handle, "relay_cont", &relay_cont);
+      if (relay_cont <= static_cast<uint8_t>(RelayContactMode::NORMALLY_CLOSED)) {
+        relay_contact_mode_ = static_cast<RelayContactMode>(relay_cont);
+      } else {
+        ESP_LOGW(TAG, "Invalid relay contact mode %d in NVS, defaulting to NO", relay_cont);
+        relay_contact_mode_ = RelayContactMode::NORMALLY_OPEN;
+      }
+      ESP_LOGI(TAG, "Restored relay settings from NVS (trigger=%d, contact=%d)",
+               static_cast<int>(relay_trigger_mode_), static_cast<int>(relay_contact_mode_));
     }
-    uint8_t relay_cont = 0;
-    nvs_get_u8(handle, "relay_cont", &relay_cont);
-    if (relay_cont <= static_cast<uint8_t>(RelayContactMode::NORMALLY_CLOSED)) {
-      relay_contact_mode_ = static_cast<RelayContactMode>(relay_cont);
-    } else {
-      ESP_LOGW(TAG, "Invalid relay contact mode %d in NVS, defaulting to NO", relay_cont);
-      relay_contact_mode_ = RelayContactMode::NORMALLY_OPEN;
-    }
-    ESP_LOGI(TAG, "Restored relay settings from NVS (trigger=%d, contact=%d)",
-             static_cast<int>(relay_trigger_mode_), static_cast<int>(relay_contact_mode_));
+  } else if (relay_v != 0) {
+    ESP_LOGW(TAG, "Relay NVS schema mismatch (stored=%u, expected=%u), skipping",
+             relay_v, RELAY_SCHEMA_V);
   }
 
   // Restore zones (stored as JSON string)
-  size_t str_len = 0;
-  if (nvs_get_str(handle, "zones", nullptr, &str_len) == ESP_OK && str_len > 1) {
-    // nvs_get_str writes str_len bytes (payload + trailing null) into the
-    // buffer, so allocate the full capacity and trim the null afterward.
-    // Allocating str_len - 1 would let nvs_get_str write one byte past the
-    // std::string's logical end into its internal terminator slot (UB).
-    std::string zones_str(str_len, '\0');
-    esp_err_t err = nvs_get_str(handle, "zones", &zones_str[0], &str_len);
-    if (err != ESP_OK) {
-      ESP_LOGW(TAG, "Failed to read zones from NVS: %s", esp_err_to_name(err));
-      nvs_close(handle);
-      return;
-    }
-    // Trim the embedded null terminator that nvs_get_str wrote at the end.
-    if (!zones_str.empty() && zones_str.back() == '\0') {
-      zones_str.pop_back();
-    }
-    nvs_close(handle);  // Close before calling set_zones (which re-opens for save)
-    // Parse and apply but don't re-save — call the shared parsing helper.
-    JsonDocument doc;
-    if (!deserializeJson(doc, zones_str)) {
-      ZoneConfig configs[MAX_ZONE_SLOTS];
-      int count = 0;
-      parse_zone_configs(doc, configs, count);
+  uint8_t zones_v = 0;
+  nvs_get_u8(handle, "zones_v", &zones_v);
+  if (should_load_blob(zones_v, ZONES_SCHEMA_V)) {
+    size_t str_len = 0;
+    if (nvs_get_str(handle, "zones", nullptr, &str_len) == ESP_OK && str_len > 1) {
+      // nvs_get_str writes str_len bytes (payload + trailing null) into the
+      // buffer, so allocate the full capacity and trim the null afterward.
+      // Allocating str_len - 1 would let nvs_get_str write one byte past the
+      // std::string's logical end into its internal terminator slot (UB).
+      std::string zones_str(str_len, '\0');
+      esp_err_t err = nvs_get_str(handle, "zones", &zones_str[0], &str_len);
+      if (err != ESP_OK) {
+        ESP_LOGW(TAG, "Failed to read zones from NVS: %s", esp_err_to_name(err));
+        nvs_close(handle);
+        return;
+      }
+      // Trim the embedded null terminator that nvs_get_str wrote at the end.
+      if (!zones_str.empty() && zones_str.back() == '\0') {
+        zones_str.pop_back();
+      }
+      // Parse and apply but don't re-save — call the shared parsing helper.
+      JsonDocument doc;
+      DeserializationError parse_err = deserializeJson(doc, zones_str);
+      if (!parse_err) {
+        ZoneConfig configs[MAX_ZONE_SLOTS];
+        int count = 0;
+        parse_zone_configs(doc, configs, count);
 
-      zone_engine_.set_zones(configs, count);
-      last_zones_json_ = zones_str;
-      ESP_LOGI(TAG, "Restored %d zones from NVS", count);
+        zone_engine_.set_zones(configs, count);
+        last_zones_json_ = zones_str;
+        has_zones_cache_ = true;  // seed idempotency cache (see set_zones)
+        ESP_LOGI(TAG, "Restored %d zones from NVS", count);
+      } else {
+        // Without this log, a corrupt blob silently drops all zones at boot.
+        // The user would see no zones in HA and no clue why.
+        ESP_LOGW(TAG, "Corrupt zones JSON in NVS, skipping restore: %s", parse_err.c_str());
+      }
     }
-    return;
+  } else if (zones_v != 0) {
+    ESP_LOGW(TAG, "Zones NVS schema mismatch (stored=%u, expected=%u), skipping",
+             zones_v, ZONES_SCHEMA_V);
   }
 
   nvs_close(handle);
@@ -572,10 +681,20 @@ void EPPComponent::save_perspective_to_nvs_() {
     return;
   }
 
-  nvs_set_u8(handle, "version", NVS_SCHEMA_VERSION);
-  nvs_set_blob(handle, "persp", persp_cache_, sizeof(persp_cache_));
-  nvs_commit(handle);
+  // Per-blob version key: bumping PERSP_SCHEMA_V invalidates only this blob.
+  // Check every NVS call: if any fails we must clear has_persp_cache_ so the
+  // next set_perspective() call retries instead of being suppressed by the
+  // idempotency cache (set_perspective short-circuits when the new value
+  // equals persp_cache_ and has_persp_cache_ is true).
+  esp_err_t err = nvs_set_u8(handle, "persp_v", PERSP_SCHEMA_V);
+  if (err == ESP_OK) err = nvs_set_blob(handle, "persp", persp_cache_, sizeof(persp_cache_));
+  if (err == ESP_OK) err = nvs_commit(handle);
   nvs_close(handle);
+  if (err != ESP_OK) {
+    ESP_LOGE(TAG, "Failed to save perspective to NVS: %s", esp_err_to_name(err));
+    has_persp_cache_ = false;
+    return;
+  }
   ESP_LOGD(TAG, "Perspective saved to NVS (40 bytes)");
 }
 
@@ -586,8 +705,8 @@ void EPPComponent::save_grid_to_nvs_() {
     return;
   }
 
-  // Pack cell data + origin into blob
-  uint8_t buf[GRID_CELL_COUNT + 2 * sizeof(float)];
+  // Pack cell data + origin into blob (size = GRID_BLOB_SIZE)
+  uint8_t buf[GRID_BLOB_SIZE];
   for (int i = 0; i < GRID_CELL_COUNT; i++) {
     buf[i] = grid_.cell(i);
   }
@@ -596,10 +715,17 @@ void EPPComponent::save_grid_to_nvs_() {
   memcpy(buf + GRID_CELL_COUNT, &ox, sizeof(float));
   memcpy(buf + GRID_CELL_COUNT + sizeof(float), &oy, sizeof(float));
 
-  nvs_set_u8(handle, "version", NVS_SCHEMA_VERSION);
-  nvs_set_blob(handle, "grid", buf, sizeof(buf));
-  nvs_commit(handle);
+  // Check every NVS call: on failure clear has_grid_cache_ so set_grid()'s
+  // idempotency check doesn't permanently suppress the retry.
+  esp_err_t err = nvs_set_u8(handle, "grid_v", GRID_SCHEMA_V);
+  if (err == ESP_OK) err = nvs_set_blob(handle, "grid", buf, sizeof(buf));
+  if (err == ESP_OK) err = nvs_commit(handle);
   nvs_close(handle);
+  if (err != ESP_OK) {
+    ESP_LOGE(TAG, "Failed to save grid to NVS: %s", esp_err_to_name(err));
+    has_grid_cache_ = false;
+    return;
+  }
   ESP_LOGD(TAG, "Grid saved to NVS (%d bytes)", (int)sizeof(buf));
 }
 
@@ -611,10 +737,18 @@ void EPPComponent::save_zones_to_nvs_(const std::string &zones_json) {
   }
 
   last_zones_json_ = zones_json;
-  nvs_set_u8(handle, "version", NVS_SCHEMA_VERSION);
-  nvs_set_str(handle, "zones", zones_json.c_str());
-  nvs_commit(handle);
+  has_zones_cache_ = true;
+  // Check every NVS call: on failure clear has_zones_cache_ so set_zones()'s
+  // idempotency check doesn't permanently suppress the retry.
+  esp_err_t err = nvs_set_u8(handle, "zones_v", ZONES_SCHEMA_V);
+  if (err == ESP_OK) err = nvs_set_str(handle, "zones", zones_json.c_str());
+  if (err == ESP_OK) err = nvs_commit(handle);
   nvs_close(handle);
+  if (err != ESP_OK) {
+    ESP_LOGE(TAG, "Failed to save zones to NVS: %s", esp_err_to_name(err));
+    has_zones_cache_ = false;
+    return;
+  }
   ESP_LOGD(TAG, "Zones saved to NVS (%d bytes)", (int)zones_json.size());
 }
 
@@ -625,11 +759,17 @@ void EPPComponent::save_relay_to_nvs_() {
     return;
   }
 
-  nvs_set_u8(handle, "version", NVS_SCHEMA_VERSION);
-  nvs_set_u8(handle, "relay_trig", static_cast<uint8_t>(relay_trigger_mode_));
-  nvs_set_u8(handle, "relay_cont", static_cast<uint8_t>(relay_contact_mode_));
-  nvs_commit(handle);
+  // No idempotency cache to clear here — every set_relay() rewrites
+  // unconditionally — so just log and return on failure.
+  esp_err_t err = nvs_set_u8(handle, "relay_v", RELAY_SCHEMA_V);
+  if (err == ESP_OK) err = nvs_set_u8(handle, "relay_trig", static_cast<uint8_t>(relay_trigger_mode_));
+  if (err == ESP_OK) err = nvs_set_u8(handle, "relay_cont", static_cast<uint8_t>(relay_contact_mode_));
+  if (err == ESP_OK) err = nvs_commit(handle);
   nvs_close(handle);
+  if (err != ESP_OK) {
+    ESP_LOGE(TAG, "Failed to save relay settings to NVS: %s", esp_err_to_name(err));
+    return;
+  }
   ESP_LOGD(TAG, "Relay settings saved to NVS");
 }
 
