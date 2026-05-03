@@ -716,12 +716,15 @@ export class EppFlasherView extends LitElement {
 			this._cancelling = false;
 		}
 		// Clear the retry-pending spinner once the dispatcher has handled the
-		// retry. We compare entry references instead of state values: any
-		// update (start, progress, or another error from a failed WS call)
-		// produces a fresh entry, which lets us re-enable the button even if
-		// the retry failed and the state stayed at "error" — otherwise the
-		// button would be permanently stuck.
-		if (changed.has("otaStates") && this._retryPendingMacs.size > 0) {
+		// retry. We can't gate on `changed.has("otaStates")` because the
+		// FlasherController mutates the same Record reference in place
+		// (otaStates[mac] = {...}), so Lit never flags otaStates as changed.
+		// Reconcile on every updated() instead: compare the current OTA entry
+		// reference for each pending mac against the snapshot we captured at
+		// click time. Any reference change (start, progress, success, or a
+		// fresh error from a failed retry) means the dispatcher ran, so we
+		// re-enable the button — preventing the spinner from getting stuck.
+		if (this._retryPendingMacs.size > 0) {
 			let cleared: Set<string> | null = null;
 			for (const mac of this._retryPendingMacs) {
 				const next = this.otaStates[mac];

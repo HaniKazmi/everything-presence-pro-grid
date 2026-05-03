@@ -327,6 +327,43 @@ describe("_setOverlay", () => {
 		expect(a._dirty).toBe(false);
 	});
 
+	it("rollback only reverts the mutated cell — preserves concurrent edits", async () => {
+		const a = createPanel() as any;
+		const { x, y, idx } = insideCellCoords(3000, 4000);
+		// Pick a different inside cell on the same row.
+		const otherIdx = idx + 1;
+		const otherOriginal = a._grid[otherIdx];
+		const ourOriginal = a._grid[idx];
+
+		// Resolve the WS save AFTER the test makes a concurrent edit.
+		let resolveWs: (() => void) | undefined;
+		a.hass.callWS = vi.fn().mockImplementation(
+			() =>
+				new Promise<void>((_resolve, reject) => {
+					resolveWs = () => reject(new Error("boom"));
+				}),
+		);
+		a._targetMenu = makeMenuDetail(x, y, 0);
+
+		const setOverlayPromise = a._setOverlay(CELL_OVERLAY_INTERFERENCE);
+
+		// While the WS call is "in flight", simulate the user editing
+		// another cell on the same grid.
+		const concurrentEdit = new Uint8Array(a._grid);
+		concurrentEdit[otherIdx] = 0xff;
+		a._grid = concurrentEdit;
+
+		// Now reject the WS save.
+		resolveWs!();
+		await setOverlayPromise;
+
+		// Our optimistic cell rolled back to its original value…
+		expect(cellOverlay(a._grid[idx])).toBe(cellOverlay(ourOriginal));
+		// …but the concurrent edit on the OTHER cell survived.
+		expect(a._grid[otherIdx]).toBe(0xff);
+		expect(a._grid[otherIdx]).not.toBe(otherOriginal);
+	});
+
 	it("does nothing when _targetMenu is null", async () => {
 		const a = createPanel() as any;
 		a._gridCtrl = { applyLayout: vi.fn().mockResolvedValue(undefined) };

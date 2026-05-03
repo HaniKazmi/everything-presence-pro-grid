@@ -115,8 +115,12 @@ function toNonEmptyString(v: unknown, fallback: string): string {
 	return fallback;
 }
 
-export function parseFurniture(rawFurniture: any[]): FurnitureItem[] {
-	return (rawFurniture || []).map((f: any, i: number) => {
+export function parseFurniture(rawFurniture: unknown): FurnitureItem[] {
+	// Defensive: persisted config may legitimately be missing furniture
+	// (undefined / null) but a corrupted blob could also hand us an object
+	// or other non-array — bail to [] rather than throwing on .map().
+	const arr = Array.isArray(rawFurniture) ? rawFurniture : [];
+	return arr.map((f: any, i: number) => {
 		const rawType = toNonEmptyString(f?.type, "icon");
 		const type: "icon" | "svg" = rawType === "svg" ? "svg" : "icon";
 		return {

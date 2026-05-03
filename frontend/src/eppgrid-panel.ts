@@ -2204,9 +2204,10 @@ export class EPPGridPanel extends LitElement {
 			this._closeTargetMenu();
 			return;
 		}
-		const previousGrid = this._grid;
+		const previousByte = this._grid[idx];
+		const optimisticByte = cellSetOverlay(this._grid[idx], kind);
 		const next = new Uint8Array(this._grid);
-		next[idx] = cellSetOverlay(this._grid[idx], kind);
+		next[idx] = optimisticByte;
 		this._grid = next;
 		this._closeTargetMenu();
 		// One-shot save: persist directly without going through applyLayout
@@ -2231,8 +2232,14 @@ export class EPPGridPanel extends LitElement {
 				})),
 			});
 		} catch (err) {
-			// Roll back local mutation so the UI matches what's persisted.
-			this._grid = previousGrid;
+			// Roll back ONLY the cell we mutated, and only if it still holds our
+			// optimistic value. Reverting the whole _grid reference would clobber
+			// any other edits the user made while the WS call was in flight.
+			if (this._grid[idx] === optimisticByte) {
+				const reverted = new Uint8Array(this._grid);
+				reverted[idx] = previousByte;
+				this._grid = reverted;
+			}
 			console.warn("[eppgrid] set overlay cell failed", err);
 		}
 	}

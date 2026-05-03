@@ -141,6 +141,14 @@ describe("parseFurniture type validation", () => {
 		expect(out[0].rotation).toBe(0);
 	});
 
+	it("returns [] for non-array input (object, string, number, etc.)", () => {
+		expect(parseFurniture({} as any)).toEqual([]);
+		expect(parseFurniture("oops" as any)).toEqual([]);
+		expect(parseFurniture(42 as any)).toEqual([]);
+		expect(parseFurniture(null as any)).toEqual([]);
+		expect(parseFurniture(undefined as any)).toEqual([]);
+	});
+
 	it("coerces string id/type/icon/label to strings or default", () => {
 		const raw = [
 			{
