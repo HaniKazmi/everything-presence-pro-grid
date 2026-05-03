@@ -2920,7 +2920,7 @@ class TestWebSocketSubscriptions:
         mock_device_conn._entities = [
             TextSensorInfo(object_id="raw_target_1", key=1, name="Raw Target 1"),
         ]
-        mock_device_conn.subscribe_states = MagicMock()
+        mock_device_conn.subscribe_states = AsyncMock()
         mock_device_conn.unsubscribe_states = MagicMock()
         mock_dm.get_session = MagicMock(return_value=mock_device_conn)
 
@@ -2931,7 +2931,7 @@ class TestWebSocketSubscriptions:
         msg = {"id": 26, "type": "eppgrid/subscribe_raw_targets", "mac": "AA:BB:CC:DD:EE:FF"}
 
         await call_async_handler(hass, websocket_subscribe_raw_targets, connection, msg)
-        on_state = mock_device_conn.subscribe_states.call_args[0][0]
+        on_state = mock_device_conn.subscribe_states.await_args[0][0]
         connection.send_message.reset_mock()
 
         # Single-field state — parts[1] would IndexError.
@@ -2954,7 +2954,7 @@ class TestWebSocketSubscriptions:
         mock_device_conn._entities = [
             TextSensorInfo(object_id="target_1_position", key=1, name="Target 1 Position"),
         ]
-        mock_device_conn.subscribe_states = MagicMock()
+        mock_device_conn.subscribe_states = AsyncMock()
         mock_device_conn.unsubscribe_states = MagicMock()
         mock_dm.get_session = MagicMock(return_value=mock_device_conn)
 
@@ -2965,7 +2965,7 @@ class TestWebSocketSubscriptions:
         msg = {"id": 27, "type": "eppgrid/subscribe_grid_targets", "mac": "AA:BB:CC:DD:EE:FF"}
 
         await call_async_handler(hass, websocket_subscribe_grid_targets, connection, msg)
-        on_state = mock_device_conn.subscribe_states.call_args[0][0]
+        on_state = mock_device_conn.subscribe_states.await_args[0][0]
         connection.send_message.reset_mock()
 
         on_state(TextSensorState(key=1, state="single", missing_state=False))

@@ -161,11 +161,11 @@ class DeviceConnection:
         Returns ``{}`` only when the device firmware doesn't expose
         ``get_build_flags`` (older firmware, original EPP firmware) — that
         result is safely cacheable. All transient failures (timeout,
-        connection error, malformed JSON) propagate so the caller can
-        decide whether to retry.
+        connection error, malformed JSON, dropped client) propagate so the
+        caller can decide whether to retry.
         """
         if self._client is None:
-            return {}
+            raise RuntimeError("DeviceConnection is not connected")
         svc = self._services.get("get_build_flags")
         if svc is None:
             return {}

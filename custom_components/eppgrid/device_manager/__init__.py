@@ -902,21 +902,13 @@ class DeviceManager:
             return conn
 
     async def async_close_session(self, mac: str) -> None:
-        """Close the frontend session connection for a device.
-
-        Acquires the same per-mac lock as ``async_open_session`` so a
-        concurrent open can't see an empty ``_active_connections`` slot
-        while we're still awaiting ``async_disconnect`` on the popped
-        connection.
-        """
-        lock = self._session_locks.setdefault(mac, asyncio.Lock())
-        async with lock:
-            conn = self._active_connections.pop(mac, None)
-            if conn is not None:
-                await conn.async_disconnect()
-                dev = self.devices.get(mac)
-                name = dev.name if dev else mac
-                _LOGGER.info("Closed session for %s (%s)", name, mac)
+        """Close the frontend session connection for a device."""
+        conn = self._active_connections.pop(mac, None)
+        if conn is not None:
+            await conn.async_disconnect()
+            dev = self.devices.get(mac)
+            name = dev.name if dev else mac
+            _LOGGER.info("Closed session for %s (%s)", name, mac)
 
     @callback
     def schedule_close_session(self, mac: str) -> asyncio.Task:

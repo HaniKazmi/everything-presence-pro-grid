@@ -895,7 +895,7 @@ class TestSubscribeOtaProgress:
         args = connection.send_error.call_args[0]
         assert args[0] == 1
         assert args[1] == "no_session"
-        device_conn.subscribe_states.assert_not_called()
+        device_conn.subscribe_states.assert_not_awaited()
 
     async def test_first_state_post_ota_emits_success_after_initial_mismatch(
         self,
@@ -916,7 +916,7 @@ class TestSubscribeOtaProgress:
         connection.subscriptions = {}
         msg = {"id": 1, "type": "eppgrid/subscribe_ota_progress", "mac": "AA:BB:CC:DD:EE:FF"}
         await call_async_handler(hass, websocket_subscribe_ota_progress, connection, msg)
-        on_state = device_conn.subscribe_states.call_args[0][0]
+        on_state = device_conn.subscribe_states.await_args[0][0]
 
         # First state: device shows update is pending (versions mismatch) but
         # in_progress=False because we missed the initial flip.
@@ -947,7 +947,7 @@ class TestSubscribeOtaProgress:
         connection.subscriptions = {}
         msg = {"id": 1, "type": "eppgrid/subscribe_ota_progress", "mac": "AA:BB:CC:DD:EE:FF"}
         await call_async_handler(hass, websocket_subscribe_ota_progress, connection, msg)
-        on_state = device_conn.subscribe_states.call_args[0][0]
+        on_state = device_conn.subscribe_states.await_args[0][0]
 
         on_state(make_update_state(in_progress=False, current_version="0.90.0-alpha", latest_version="0.90.0-alpha"))
         connection.send_message.assert_not_called()
@@ -973,7 +973,7 @@ class TestSubscribeOtaProgress:
 
         with patch("custom_components.eppgrid.websocket_api._firmware.async_call_later") as mock_call_later:
             await call_async_handler(hass, websocket_subscribe_ota_progress, connection, msg)
-            on_state = device_conn.subscribe_states.call_args[0][0]
+            on_state = device_conn.subscribe_states.await_args[0][0]
 
             # Simulate an OTA in progress so the outer timer is armed.
             on_state(make_update_state(in_progress=True, has_progress=True, progress=10.0))
@@ -1016,7 +1016,7 @@ class TestSubscribeOtaProgress:
 
         with patch("custom_components.eppgrid.websocket_api._firmware.async_call_later") as mock_call_later:
             await call_async_handler(hass, websocket_subscribe_ota_progress, connection, msg)
-            on_state = device_conn.subscribe_states.call_args[0][0]
+            on_state = device_conn.subscribe_states.await_args[0][0]
 
             on_state(make_update_state(in_progress=True, has_progress=True, progress=100.0))
             on_state(

@@ -402,6 +402,16 @@ class TestDeviceConnection:
         with pytest.raises(ValueError):
             await conn.async_fetch_build_flags()
 
+    async def test_fetch_build_flags_raises_when_client_disconnected(self) -> None:
+        """If the connection dropped between connect and fetch, raise rather
+        than returning {} — otherwise we'd cache disconnect-during-fetch as
+        'firmware doesn't expose get_build_flags' and block OTA forever."""
+        conn = DeviceConnection("192.168.1.100")
+        conn._client = None
+        conn._services = {}
+        with pytest.raises(RuntimeError):
+            await conn.async_fetch_build_flags()
+
 
 # ---------------------------------------------------------------------------
 # DeviceManager tests
@@ -927,29 +937,19 @@ class TestDeviceManager:
             # Only one connect attempt
             assert connect_count == 1
 
-    async def test_close_session_uses_session_lock(self, hass: HomeAssistant, manager: DeviceManager) -> None:
-        """async_close_session must hold the same per-mac lock as async_open_session
-        so a concurrent open can't slip past a half-finished close. Without the
-        lock, the close pop()s the active connection and then yields on
-        async_disconnect; an open running on the same mac sees no active conn
-        and starts a brand-new connect, leaving two APIClients in flight."""
+    async def test_open_after_scheduled_close_does_not_deadlock(
+        self, hass: HomeAssistant, manager: DeviceManager
+    ) -> None:
+        """A close scheduled via schedule_close_session() must not deadlock a
+        subsequent async_open_session() — _pending_closes is the serialization
+        point, not the per-mac asyncio.Lock."""
         mac = "AA:BB:CC:DD:EE:FF"
         manager.devices[mac] = ManagedDevice(mac=mac, name="EPP", host="192.168.1.50")
 
-        # Pre-seed an active connection. We will verify open waits behind close.
         seeded = MagicMock()
         seeded.async_disconnect = AsyncMock()
-        seeded.connected = False  # stale → open() should connect a fresh one
+        seeded.connected = True
         manager._active_connections[mac] = seeded
-
-        # Block the disconnect until we explicitly release it; that's the window
-        # in which the bug would let `async_open_session` interleave.
-        release = asyncio.Event()
-
-        async def slow_disconnect():
-            await release.wait()
-
-        seeded.async_disconnect.side_effect = slow_disconnect
 
         with patch("custom_components.eppgrid.device_manager.DeviceConnection") as mock_cls:
             fresh = mock_cls.return_value
@@ -957,21 +957,13 @@ class TestDeviceManager:
             fresh.async_disconnect = AsyncMock()
             fresh.connected = True
 
-            close_task = asyncio.create_task(manager.async_close_session(mac))
-            # Yield once so close_task enters its lock + starts awaiting disconnect.
-            await asyncio.sleep(0)
+            manager.schedule_close_session(mac)
+            # Open must not deadlock; it should wait for the close, then connect a fresh conn.
+            result = await asyncio.wait_for(manager.async_open_session(mac), timeout=2.0)
 
-            open_task = asyncio.create_task(manager.async_open_session(mac))
-            # Give open a chance to run if the lock weren't held — it shouldn't.
-            await asyncio.sleep(0)
-            assert not open_task.done(), "open_session ran while close held the lock"
-            assert fresh.async_connect.await_count == 0
-
-            release.set()
-            await close_task
-            await open_task
-
-            assert fresh.async_connect.await_count == 1
+        assert result is fresh
+        seeded.async_disconnect.assert_awaited_once()
+        fresh.async_connect.assert_awaited_once()
 
     async def test_multiple_state_changes_push_config_once(self, hass: HomeAssistant, manager: DeviceManager) -> None:
         """Multiple entities becoming available should only push config once."""
@@ -1237,6 +1229,39 @@ class TestAsyncTriggerOta:
         assert url.endswith("/wifi-ble-co2.json"), url
         assert "clintongormley.github.io/everything-presence-pro-grid/fw/v" in url, url
         mock_conn.async_disconnect.assert_awaited_once()
+
+    async def test_async_trigger_ota_passes_noise_psk_to_temp_connection(
+        self, hass: HomeAssistant, manager: DeviceManager
+    ) -> None:
+        """When no session exists, the OTA temp connection must pass noise_psk
+        so encrypted ESPHome devices authenticate. Regression for the field
+        regression where encrypted-device OTA broke after a refactor."""
+        mac = "AA:BB:CC:DD:EE:FF"
+        entry = MockConfigEntry(
+            domain="esphome",
+            data={"host": "192.168.1.50", "noise_psk": "abcdef=="},
+        )
+        entry.add_to_hass(hass)
+        manager.devices[mac] = ManagedDevice(
+            mac=mac,
+            name="EPP",
+            host="192.168.1.50",
+            esphome_config_entry_id=entry.entry_id,
+        )
+        manager._build_flags[mac] = {"ethernet_enabled": False}
+
+        with patch("custom_components.eppgrid.device_manager.DeviceConnection") as mock_cls:
+            mock_conn = mock_cls.return_value
+            mock_conn.async_connect = AsyncMock()
+            mock_conn.async_disconnect = AsyncMock()
+            mock_conn._services = {"set_update_manifest": MagicMock()}
+            mock_conn._client = MagicMock()
+            mock_conn._client.execute_service = AsyncMock()
+            mock_conn.connected = True
+
+            await manager.async_trigger_ota(mac)
+
+        mock_cls.assert_called_once_with("192.168.1.50", noise_psk="abcdef==")
 
     async def test_uses_ethernet_variant_when_flagged(self, hass: HomeAssistant, manager: DeviceManager) -> None:
         self._setup_device(manager)
@@ -3166,6 +3191,50 @@ class TestEventCallbacks:
         session.async_fetch_build_flags.return_value = {"ethernet_enabled": True}
         await manager._fetch_build_flags(mac)
         assert manager._build_flags[mac] == {"ethernet_enabled": True}
+
+    async def test_push_config_to_device_does_not_cache_build_flags_on_session_fetch_failure(
+        self, hass: HomeAssistant, store: EPPGridStore, manager: DeviceManager
+    ) -> None:
+        """When async_fetch_build_flags raises mid-push (session path), the
+        cache stays empty so a subsequent push retries the fetch."""
+        mac = "AA:BB:CC:DD:EE:FF"
+        manager.devices[mac] = ManagedDevice(mac=mac, name="EPP", host="192.168.1.50")
+        store.devices[mac] = {"settings": {}}
+
+        session = MagicMock()
+        session.connected = True
+        session.async_push_config = AsyncMock()
+        session.async_fetch_build_flags = AsyncMock(side_effect=ConnectionError("boom"))
+        manager._active_connections[mac] = session
+
+        with patch.object(manager, "_push_pipeline_to_device", new_callable=AsyncMock):
+            result = await manager._push_config_to_device(mac)
+
+        assert result is True  # push succeeded; only flags fetch failed
+        assert mac not in manager._build_flags  # cache not poisoned
+
+    async def test_push_config_to_device_does_not_cache_build_flags_on_temp_conn_fetch_failure(
+        self, hass: HomeAssistant, store: EPPGridStore, manager: DeviceManager
+    ) -> None:
+        """Same invariant for the temp-connection path used at boot."""
+        mac = "AA:BB:CC:DD:EE:FF"
+        manager.devices[mac] = ManagedDevice(mac=mac, name="EPP", host="192.168.1.50")
+        store.devices[mac] = {"settings": {}}
+
+        with patch("custom_components.eppgrid.device_manager.DeviceConnection") as mock_cls:
+            conn = mock_cls.return_value
+            conn.async_connect = AsyncMock()
+            conn.async_disconnect = AsyncMock()
+            conn.async_push_config = AsyncMock()
+            conn.async_fetch_build_flags = AsyncMock(side_effect=TimeoutError())
+            conn.connected = True
+            conn._services = {}
+            conn._client = MagicMock()
+
+            result = await manager._push_config_to_device(mac)
+
+        assert result is True
+        assert mac not in manager._build_flags
 
     async def test_push_config_to_device_opens_session(
         self, hass: HomeAssistant, store: EPPGridStore, manager: DeviceManager
