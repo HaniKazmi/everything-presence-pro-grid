@@ -1364,7 +1364,7 @@ const dt={attribute:!0,type:String,converter:E,reflect:!1,hasChanged:m},At=(t=dt
 								</label>
 								<label>
 									${this.localize("dimensions.rotation")}
-									<input type="number" step="5" .value=${String(Math.round(t.rotation))}
+									<input type="number" step="5" .value=${String(Math.round(10*t.rotation)/10)}
 										@change=${e=>{const i=parseFloat(e.target.value);if(!Number.isFinite(i))return;const s=(i%360+360)%360;this._fireUpdate(t.id,{rotation:s})}}
 									/>
 								</label>

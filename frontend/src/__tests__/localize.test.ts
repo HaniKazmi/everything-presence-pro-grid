@@ -182,6 +182,24 @@ describe("setupLocalize", () => {
 			expect(r2).toBe("2.5");
 		});
 	});
+
+	describe("malformed ICU patterns", () => {
+		it("returns the raw key when the cached IntlMessageFormat constructor throws", () => {
+			const localize = setupLocalize();
+			// Stray opening brace — IntlMessageFormat treats it as syntax error.
+			const result = localize("{value, plural, one {", { value: 1 });
+			expect(typeof result).toBe("string");
+			// Falls back to raw string, not a thrown exception.
+			expect(result).toBe("{value, plural, one {");
+		});
+
+		it("returns the raw key when format() throws (e.g. missing param)", () => {
+			const localize = setupLocalize();
+			// Plural with no `other` branch + missing arg → format() throws.
+			const result = localize("{x, plural, one {a}}", {});
+			expect(typeof result).toBe("string");
+		});
+	});
 });
 
 describe("defaultLocalize", () => {
