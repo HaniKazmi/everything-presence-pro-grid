@@ -584,6 +584,13 @@ void EPPComponent::set_grid(const std::string &grid_data,
 // ---------------------------------------------------------------------------
 
 void EPPComponent::set_zones(const std::string &zones_json) {
+  // ArduinoJson v7 unified JsonDocument: it owns its memory pool internally
+  // and grows on demand. The pool sits on the JsonDocument object, so when
+  // `doc` lives on the stack the pool's first chunk does too — no hidden heap
+  // alloc for typical-size payloads (~8 zones × ~60 bytes resolved fields ≈
+  // 0.5 KB). parse_zone_configs only copies primitives (ints/floats) into
+  // ZoneConfig — see the retention-guard test in test_zone_config_parser.cpp
+  // — so the doc can safely go out of scope once we've parsed.
   JsonDocument doc;
   if (deserializeJson(doc, zones_json)) {
     ESP_LOGE(TAG, "Failed to parse zones JSON");
@@ -734,6 +741,8 @@ void EPPComponent::restore_from_nvs_() {
         zones_str.pop_back();
       }
       // Parse and apply but don't re-save — call the shared parsing helper.
+      // See set_zones() for why the JsonDocument is safe on the stack and
+      // why parse_zone_configs doesn't retain pointers into the doc.
       JsonDocument doc;
       DeserializationError parse_err = deserializeJson(doc, zones_str);
       if (!parse_err) {
