@@ -116,6 +116,9 @@ class DeviceManager:
         # can't re-register a listener after Phase 1 has already cleared
         # `_entry_update_unsubs`.
         self._stopping: bool = False
+        # Unsub callable for the targeted state-change tracker. Rebuilt
+        # whenever the managed-device set changes — see _refresh_state_listener.
+        self._state_track_unsub: Any = None
 
     @callback
     def on_device_list_changed(self, cb: Any) -> Any:
@@ -156,8 +159,9 @@ class DeviceManager:
         self._unsub_listeners.append(
             self._hass.bus.async_listen(er.EVENT_ENTITY_REGISTRY_UPDATED, self._on_entity_registry_updated)
         )
-        # Listen for state changes to detect device availability
-        self._unsub_listeners.append(self._hass.bus.async_listen("state_changed", self._on_state_changed))
+        # Targeted state-change tracker; rebuilt on each managed-device
+        # change so we only see events for entities we care about.
+        self._refresh_state_listener()
         # Listen for device removal to clean up stored settings
         self._unsub_listeners.append(
             self._hass.bus.async_listen(dr.EVENT_DEVICE_REGISTRY_UPDATED, self._on_device_registry_updated)
@@ -206,6 +210,31 @@ class DeviceManager:
         self._entity_update_macs.discard(mac)
         self._entity_update_clear_cancels.pop(mac, None)
 
+    @callback
+    def _refresh_state_listener(self) -> None:
+        """Rebuild the targeted state-change tracker.
+
+        Drops the previous unsub, computes the entity_id set across every
+        managed device, and registers ``async_track_state_change_event``
+        for that set. Called on start and whenever managed devices change.
+        """
+        from homeassistant.helpers.event import async_track_state_change_event
+
+        if self._state_track_unsub is not None:
+            self._state_track_unsub()
+            self._state_track_unsub = None
+        ent_reg = er.async_get(self._hass)
+        entity_ids: list[str] = []
+        for dev in self.devices.values():
+            if dev.device_id is None:
+                continue
+            for entry in er.async_entries_for_device(ent_reg, dev.device_id, include_disabled_entities=True):
+                if entry.platform == "esphome":
+                    entity_ids.append(entry.entity_id)
+        if not entity_ids:
+            return
+        self._state_track_unsub = async_track_state_change_event(self._hass, entity_ids, self._on_state_changed)
+
     async def async_stop(self) -> None:
         """Stop listeners and close all connections.
 
@@ -245,6 +274,9 @@ class DeviceManager:
         for unsub in self._entry_update_unsubs.values():
             unsub()
         self._entry_update_unsubs.clear()
+        if self._state_track_unsub is not None:
+            self._state_track_unsub()
+            self._state_track_unsub = None
         for cancel in self._entity_update_clear_cancels.values():
             cancel()
         self._entity_update_clear_cancels.clear()
@@ -570,6 +602,7 @@ class DeviceManager:
                 await self.async_update_zone_entities(mac, zone_slots)
 
         if found_new:
+            self._refresh_state_listener()
             self._fire_device_list_changed()
 
     def _maybe_sync_repair_issue(self, mac: str, *, device_name: str, fw_ver: str | None) -> None:
@@ -599,6 +632,10 @@ class DeviceManager:
         entry = ent_reg.async_get(entity_id)
         if entry is None or entry.platform != "esphome":
             return
+        # New ESPHome entity — refresh the targeted state-change tracker so
+        # the new entity_id gets included, whether it's on a brand-new
+        # device (about to be discovered below) or an existing managed one.
+        self._refresh_state_listener()
         # Skip only if the entity's device is already discovered AND the
         # underlying HA device.id matches what we have. If device.id changed
         # for a known MAC (the user removed and re-added the ESPHome
@@ -792,6 +829,7 @@ class DeviceManager:
         # A delayed-save here can resurrect the deleted config if HA is
         # force-restarted within the debounce window.
         await self._store.async_save()
+        self._refresh_state_listener()
         self._fire_device_list_changed()
         _LOGGER.info("Cleaned up settings for removed device %s", mac)
 

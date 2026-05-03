@@ -11,6 +11,7 @@ from unittest.mock import patch
 import pytest
 from homeassistant.const import STATE_UNAVAILABLE
 from homeassistant.core import HomeAssistant
+from homeassistant.core import callback
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers import entity_registry as er
 from pytest_homeassistant_custom_component.common import MockConfigEntry
@@ -4670,6 +4671,52 @@ class TestEventCallbacks:
             release.set()
             await asyncio.wait_for(handler_task, timeout=1.0)
 
+    async def test_state_change_listener_does_not_fire_for_unrelated_entities(
+        self, hass: HomeAssistant, manager: DeviceManager
+    ) -> None:
+        """The listener must only see state changes for managed ESPHome entities,
+        not every state change on the HA bus."""
+        dev_reg = dr.async_get(hass)
+        ent_reg = er.async_get(hass)
+        esphome_entry = MockConfigEntry(domain="esphome", data={"host": "192.168.1.50"})
+        esphome_entry.add_to_hass(hass)
+        device = dev_reg.async_get_or_create(
+            config_entry_id=esphome_entry.entry_id,
+            connections={("mac", "aa:bb:cc:dd:ee:ff")},
+            name="EPP",
+        )
+        ent_reg.async_get_or_create(
+            "sensor",
+            "esphome",
+            unique_id="AA:BB:CC:DD:EE:FF-sensor-temperature",
+            config_entry=esphome_entry,
+            device_id=device.id,
+        )
+        manager.devices["AA:BB:CC:DD:EE:FF"] = ManagedDevice(
+            mac="AA:BB:CC:DD:EE:FF", name="EPP", host="192.168.1.50", device_id=device.id
+        )
+        # Other-domain entity not under management.
+        other = MockConfigEntry(domain="hue", data={})
+        other.add_to_hass(hass)
+        ent_reg.async_get_or_create("light", "hue", unique_id="hue_1", config_entry=other)
+
+        fired: list[str] = []
+        orig = manager._on_state_changed
+
+        @callback
+        def spy(evt):
+            fired.append(evt.data.get("entity_id", ""))
+            orig(evt)
+
+        manager._on_state_changed = spy  # type: ignore[assignment]
+        await manager.async_start()
+        try:
+            hass.states.async_set("light.hue_1", "on")
+            await hass.async_block_till_done()
+            assert "light.hue_1" not in fired
+        finally:
+            await manager.async_stop()
+
 
 # ---------------------------------------------------------------------------
 # Stale connection and start/stop tests
@@ -4750,7 +4797,10 @@ class TestSessionLifecycle:
         with patch.object(manager, "async_discover", new_callable=AsyncMock):
             await manager.async_start()
 
-        assert len(manager._unsub_listeners) == 3
+        # Two bus listeners: entity_registry_updated and device_registry_updated.
+        # The state-change tracker is targeted (async_track_state_change_event)
+        # and lives on _state_track_unsub, not _unsub_listeners.
+        assert len(manager._unsub_listeners) == 2
 
         # Cleanup
         await manager.async_stop()
