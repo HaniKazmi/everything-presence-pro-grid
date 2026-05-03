@@ -48,7 +48,7 @@
           }
         },
         "error": {
-          "ota_trigger_failed": "Could not start the firmware update — the device may be offline, or its build flags may not be cached yet. Try again in a moment."
+          "ota_trigger_failed": "Could not start the firmware update. The device may be offline or unreachable, its build flags may not be cached yet, or its firmware may be too old to support OTA updates from the integration. See Home Assistant logs for details, then try again."
         }
       }
     },
