@@ -259,6 +259,34 @@ TEST_CASE("load_from_bytes zeros the tail when len < cell_count") {
     CHECK(grid.cell(epp::GRID_CELL_COUNT - 1) == 0x00);
 }
 
+TEST_CASE("Grid constructor clamps cols/rows to fit fixed storage") {
+    // Backing storage is std::array<uint8_t, GRID_CELL_COUNT>. The public
+    // constructor accepts arbitrary cols/rows, so a malformed call could imply
+    // more cells than fit. The constructor must clamp logical dimensions so
+    // cell_count() <= storage size, otherwise bounds-checked accessors would
+    // happily read/write past the array end.
+    epp::Grid grid(0.0f, 0.0f, 30, 30, 300);
+    CHECK(grid.cols() <= epp::GRID_COLS);
+    CHECK(grid.rows() <= epp::GRID_ROWS);
+    CHECK(grid.cell_count() <= epp::GRID_CELL_COUNT);
+
+    // Negative dimensions clamp to 0 (no UB on unsigned conversions / loops).
+    epp::Grid neg(0.0f, 0.0f, -5, -5, 300);
+    CHECK(neg.cols() == 0);
+    CHECK(neg.rows() == 0);
+    CHECK(neg.cell_count() == 0);
+
+    // Bounds checks must hold against the storage even after a too-large ask.
+    // load_from_bytes writes up to cell_count(); on the clamped grid this stays
+    // within bounds. Construct then load — must not crash / corrupt.
+    uint8_t big_data[1024];
+    for (int i = 0; i < 1024; ++i) big_data[i] = static_cast<uint8_t>(i & 0xFF);
+    grid.load_from_bytes(big_data, 1024);
+    // Just verify a sample cell is reachable; the important assertion is the
+    // absence of an OOB write (caught by sanitizers / asan).
+    CHECK(grid.cell(0) == 0x00);
+}
+
 TEST_CASE("Grid accessors") {
     epp::Grid grid(100.0f, 200.0f, 10, 15, 250);
 

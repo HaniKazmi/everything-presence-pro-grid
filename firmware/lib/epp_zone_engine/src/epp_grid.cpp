@@ -8,9 +8,14 @@ namespace epp {
 Grid::Grid(float origin_x, float origin_y, int cols, int rows, int cell_size)
     : origin_x_(origin_x),
       origin_y_(origin_y),
-      cols_(cols),
-      rows_(rows),
+      cols_(std::clamp(cols, 0, GRID_COLS)),
+      rows_(std::clamp(rows, 0, GRID_ROWS)),
       cell_size_(cell_size) {
+    // Backing storage is fixed at GRID_CELL_COUNT (= GRID_COLS * GRID_ROWS).
+    // Clamping the logical dimensions in the initializer list guarantees
+    // cell_count() <= cells_.size(), so every bounds check that compares
+    // against cell_count() (cell_zone, cell_is_room, cell_overlay,
+    // load_from_bytes, ...) stays safe even on malformed input.
     cells_.fill(0);
 }
 
