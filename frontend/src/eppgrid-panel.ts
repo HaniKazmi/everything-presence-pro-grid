@@ -2455,12 +2455,12 @@ export class EPPGridPanel extends LitElement {
 		const editorOccupancy = engineResult.occupancy;
 
 		// Build a NEW targets array overlaying engine-computed status onto
-		// each target. Each element is a fresh object so the original
-		// `_targets[i]` references stay untouched.
-		const editorTargets = this._targets.map((t, i) => {
-			const engineStatus = engineResult.targets[i]?.status;
-			return engineStatus !== undefined ? { ...t, status: engineStatus } : t;
-		});
+		// each target. Every element is a fresh object so downstream
+		// consumers can never mutate the original `_targets[i]` refs.
+		const editorTargets = this._targets.map((t, i) => ({
+			...t,
+			status: engineResult.targets[i]?.status ?? t.status,
+		}));
 
 		// Editor preview previously mutated `_sensorState.occupancy` and
 		// `_sensorState.mmwave` here, contaminating live-view consumers

@@ -405,7 +405,9 @@ export class EppSettingsView extends LitElement {
 		if (!slider) return;
 		const oldSliderVal = parseFloat(slider.value);
 		slider.value = String(value);
-		const display = slider.nextElementSibling as HTMLElement;
+		const display = slider.parentElement?.querySelector(
+			".setting-value",
+		) as HTMLElement | null;
 		if (display) {
 			const oldDisplay = parseFloat(display.textContent || "");
 			if (slider.dataset.offsetKey) {

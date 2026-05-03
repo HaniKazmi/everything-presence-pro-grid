@@ -1346,6 +1346,7 @@ describe("_resetSlider edge cases", () => {
 		slider.max = "120";
 		slider.value = "10";
 		const display = document.createElement("span");
+		display.className = "setting-value";
 		display.textContent = "10";
 		row.appendChild(slider);
 		row.appendChild(display);
@@ -1364,6 +1365,7 @@ describe("_resetSlider edge cases", () => {
 		slider.className = "setting-range";
 		slider.value = "10";
 		const display = document.createElement("span");
+		display.className = "setting-value";
 		display.textContent = "10";
 		row.appendChild(slider);
 		row.appendChild(display);
@@ -1399,6 +1401,7 @@ describe("_resetSlider edge cases", () => {
 		slider.dataset.displayMin = "0";
 		slider.dataset.displayMax = "Infinity";
 		const display = document.createElement("span");
+		display.className = "setting-value";
 		display.textContent = "\u2014"; // dash (NaN when parsed)
 		row.appendChild(slider);
 		row.appendChild(display);
