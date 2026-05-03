@@ -805,6 +805,52 @@ class TestDeviceManager:
             # Only one connect attempt
             assert connect_count == 1
 
+    async def test_close_session_uses_session_lock(self, hass: HomeAssistant, manager: DeviceManager) -> None:
+        """async_close_session must hold the same per-mac lock as async_open_session
+        so a concurrent open can't slip past a half-finished close. Without the
+        lock, the close pop()s the active connection and then yields on
+        async_disconnect; an open running on the same mac sees no active conn
+        and starts a brand-new connect, leaving two APIClients in flight."""
+        mac = "AA:BB:CC:DD:EE:FF"
+        manager.devices[mac] = ManagedDevice(mac=mac, name="EPP", host="192.168.1.50")
+
+        # Pre-seed an active connection. We will verify open waits behind close.
+        seeded = MagicMock()
+        seeded.async_disconnect = AsyncMock()
+        seeded.connected = False  # stale → open() should connect a fresh one
+        manager._active_connections[mac] = seeded
+
+        # Block the disconnect until we explicitly release it; that's the window
+        # in which the bug would let `async_open_session` interleave.
+        release = asyncio.Event()
+
+        async def slow_disconnect():
+            await release.wait()
+
+        seeded.async_disconnect.side_effect = slow_disconnect
+
+        with patch("custom_components.eppgrid.device_manager.DeviceConnection") as mock_cls:
+            fresh = mock_cls.return_value
+            fresh.async_connect = AsyncMock()
+            fresh.async_disconnect = AsyncMock()
+            fresh.connected = True
+
+            close_task = asyncio.create_task(manager.async_close_session(mac))
+            # Yield once so close_task enters its lock + starts awaiting disconnect.
+            await asyncio.sleep(0)
+
+            open_task = asyncio.create_task(manager.async_open_session(mac))
+            # Give open a chance to run if the lock weren't held — it shouldn't.
+            await asyncio.sleep(0)
+            assert not open_task.done(), "open_session ran while close held the lock"
+            assert fresh.async_connect.await_count == 0
+
+            release.set()
+            await close_task
+            await open_task
+
+            assert fresh.async_connect.await_count == 1
+
     async def test_multiple_state_changes_push_config_once(self, hass: HomeAssistant, manager: DeviceManager) -> None:
         """Multiple entities becoming available should only push config once."""
         dev_reg = dr.async_get(hass)
