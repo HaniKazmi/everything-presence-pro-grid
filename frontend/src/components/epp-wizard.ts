@@ -63,6 +63,7 @@ export class EppWizard extends LitElement {
 	@state() private _dismissTutorial = false;
 
 	private _wizardCaptureCancelled = false;
+	private _captureRafId: number | null = null;
 	private _smoothBuffer: SmoothBufferEntry[] = [];
 
 	// Perspective computed during wizard (not emitted until finish)
@@ -73,6 +74,15 @@ export class EppWizard extends LitElement {
 		this._wizardRoomWidth = this.initialRoomWidth;
 		this._wizardRoomDepth = this.initialRoomDepth;
 		if (this.initialStep !== null) this._setupStep = this.initialStep;
+	}
+
+	disconnectedCallback(): void {
+		super.disconnectedCallback();
+		this._wizardCaptureCancelled = true;
+		if (this._captureRafId !== null) {
+			cancelAnimationFrame(this._captureRafId);
+			this._captureRafId = null;
+		}
 	}
 
 	// --- Sync corner offsets ---
@@ -150,11 +160,12 @@ export class EppWizard extends LitElement {
 			this._wizardCaptureProgress = Math.min(goodElapsed / duration, 1);
 
 			if (goodElapsed < duration) {
-				requestAnimationFrame(tick);
+				this._captureRafId = requestAnimationFrame(tick);
 				return;
 			}
 
-			// Done -- compute median position
+			// Done -- clear stale RAF id and compute median position
+			this._captureRafId = null;
 			this._wizardCapturing = false;
 			this._wizardCapturePaused = false;
 			if (samples.length === 0) return;
@@ -183,7 +194,7 @@ export class EppWizard extends LitElement {
 			}
 		};
 
-		requestAnimationFrame(tick);
+		this._captureRafId = requestAnimationFrame(tick);
 	}
 
 	_autoComputeRoomDimensions(): void {
