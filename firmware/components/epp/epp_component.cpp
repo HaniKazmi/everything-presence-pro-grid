@@ -503,13 +503,12 @@ void EPPComponent::dump_config() {
   ESP_LOGCONFIG(TAG, "    zones:       %s", has_zones_cache_ ? "loaded" : "absent");
 }
 
-void EPPComponent::feed_targets(float x1, float y1, bool d1,
-                                float x2, float y2, bool d2,
-                                float x3, float y3, bool d3) {
+void EPPComponent::feed_targets(const float xy[NUM_TARGETS][2],
+                                const bool detected[NUM_TARGETS]) {
   TargetFrame frame;
-  frame.targets[0] = {x1, y1, d1};
-  frame.targets[1] = {x2, y2, d2};
-  frame.targets[2] = {x3, y3, d3};
+  for (int i = 0; i < NUM_TARGETS; i++) {
+    frame.targets[i] = {xy[i][0], xy[i][1], detected[i]};
+  }
   // Record receipt time for the stale-frame watchdog. If we set last_frame_ms_
   // in loop()'s drain instead, a delayed loop draining old buffered frames
   // would clear staleness for another STALE_FRAME_MS window even though the

@@ -34,10 +34,11 @@ class EPPComponent : public esphome::Component {
   void dump_config() override;
   float get_setup_priority() const override;
 
-  /// Called from LD2450 UART lambda with parsed target data
-  void feed_targets(float x1, float y1, bool d1,
-                    float x2, float y2, bool d2,
-                    float x3, float y3, bool d3);
+  /// Called from LD2450 UART lambda with parsed target data.
+  /// `xy[i][0]` = x_mm, `xy[i][1]` = y_mm; `detected[i]` = whether the LD2450
+  /// reported a real return for slot i. Float arrays (rather than ParsedTarget)
+  /// keep the yaml lambda free of any C++-type dependency.
+  void feed_targets(const float xy[NUM_TARGETS][2], const bool detected[NUM_TARGETS]);
 
   /// Configuration services (called from API actions)
   void set_perspective(const std::string &perspective, float room_width, float room_depth);
