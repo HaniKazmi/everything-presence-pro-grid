@@ -349,6 +349,37 @@ describe("flashFirmware", () => {
 		);
 	});
 
+	it("attaches Authorization: Bearer header when accessToken is provided", async () => {
+		const port = mockPort();
+		await flashFirmware(port, "wifi-ble-co2", vi.fn(), {
+			baseUrl: TEST_BASE_URL,
+			accessToken: "test-token-abc123",
+		});
+
+		const fetchMock = vi.mocked(fetch);
+		expect(fetchMock).toHaveBeenCalled();
+		for (const call of fetchMock.mock.calls) {
+			const init = call[1] as RequestInit | undefined;
+			const headers = init?.headers as Record<string, string> | undefined;
+			expect(headers?.Authorization).toBe("Bearer test-token-abc123");
+		}
+	});
+
+	it("omits Authorization header when accessToken is not provided", async () => {
+		const port = mockPort();
+		await flashFirmware(port, "wifi-ble-co2", vi.fn(), {
+			baseUrl: TEST_BASE_URL,
+		});
+
+		const fetchMock = vi.mocked(fetch);
+		expect(fetchMock).toHaveBeenCalled();
+		for (const call of fetchMock.mock.calls) {
+			const init = call[1] as RequestInit | undefined;
+			const headers = init?.headers as Record<string, string> | undefined;
+			expect(headers?.Authorization).toBeUndefined();
+		}
+	});
+
 	it("baseUrl missing error carries errorKey usb.errors.base_url_required", async () => {
 		const port = mockPort();
 		try {

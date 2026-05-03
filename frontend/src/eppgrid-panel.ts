@@ -3038,6 +3038,7 @@ export class EPPGridPanel extends LitElement {
 				},
 				{
 					baseUrl: ctrl.firmwareBaseUrl,
+					accessToken: this.hass?.auth?.accessToken,
 					beforeFlash: async (mac: string | undefined) => {
 						if (!mac) return;
 						const matched = ctrl.flashableDevices.find(
