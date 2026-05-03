@@ -52,8 +52,8 @@ void EPPComponent::loop() {
   // at its last value. See is_frame_stale in epp_frame_staleness.h.
   TargetFrame frame;
   while (frame_buffer_.pop(frame)) {
-    last_frame_ms_ = now;
-    has_received_frame_ = true;
+    // last_frame_ms_ / has_received_frame_ are set in feed_targets so the
+    // stale-frame watchdog reflects actual receipt time, not drain time.
     frame_count_++;
 
     // Stage 1: Feed raw positions into rolling median.
@@ -497,6 +497,13 @@ void EPPComponent::feed_targets(float x1, float y1, bool d1,
   frame.targets[0] = {x1, y1, d1};
   frame.targets[1] = {x2, y2, d2};
   frame.targets[2] = {x3, y3, d3};
+  // Record receipt time for the stale-frame watchdog. If we set last_frame_ms_
+  // in loop()'s drain instead, a delayed loop draining old buffered frames
+  // would clear staleness for another STALE_FRAME_MS window even though the
+  // radar may have stopped sending — see is_frame_stale in
+  // epp_frame_staleness.h.
+  last_frame_ms_ = esphome::millis();
+  has_received_frame_ = true;
   if (!frame_buffer_.push(frame)) {
     // Buffer was full — oldest frame evicted. Bump the counter so the issue
     // is visible in diagnostics rather than disappearing silently.
