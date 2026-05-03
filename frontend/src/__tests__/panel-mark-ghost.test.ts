@@ -276,6 +276,44 @@ describe("_setOverlay", () => {
 		).toBe("eppgrid/set_room_layout");
 	});
 
+	it("includes serialized furniture in the WS payload", async () => {
+		const a = createPanel() as any;
+		const { x, y } = insideCellCoords(3000, 4000);
+		a._furniture = [
+			{
+				id: "f1",
+				type: "icon",
+				icon: "mdi:sofa",
+				label: "Sofa",
+				x: 100,
+				y: 200,
+				width: 600,
+				height: 400,
+				rotation: 30,
+				lockAspect: false,
+			},
+		];
+		a._targetMenu = makeMenuDetail(x, y, 0);
+
+		await a._setOverlay(CELL_OVERLAY_INTERFERENCE);
+
+		const callArg = (a.hass.callWS as ReturnType<typeof vi.fn>).mock
+			.calls[0][0];
+		expect(callArg.furniture).toEqual([
+			{
+				type: "icon",
+				icon: "mdi:sofa",
+				label: "Sofa",
+				x: 100,
+				y: 200,
+				width: 600,
+				height: 400,
+				rotation: 30,
+				lockAspect: false,
+			},
+		]);
+	});
+
 	it("reverts grid mutation when WS save fails", async () => {
 		const a = createPanel() as any;
 		const { x, y, idx } = insideCellCoords(3000, 4000);

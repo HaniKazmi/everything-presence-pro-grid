@@ -1221,6 +1221,53 @@ describe("backend debug log copy and clear buttons", () => {
 			expect(writeTextMock).toHaveBeenCalledWith("line1\nline2");
 		}
 	});
+
+	it("backend debug copy swallows clipboard rejection", async () => {
+		const a = createPanel() as any;
+		a._showBackendDebugLog = true;
+		a._backendDebugLogLines = ["line1"];
+		const tpl = a._renderBackendDebugLog();
+		const c = document.createElement("div");
+		render(tpl, c);
+
+		const writeTextMock = vi.fn().mockRejectedValue(new Error("denied"));
+		Object.defineProperty(navigator, "clipboard", {
+			value: { writeText: writeTextMock },
+			writable: true,
+			configurable: true,
+		});
+		const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+		const copyBtn = c.querySelector(".debug-log-btn") as HTMLElement;
+		copyBtn.click();
+		// Wait one microtask for the promise rejection to surface to .catch
+		await new Promise((r) => setTimeout(r, 0));
+		expect(warn).toHaveBeenCalled();
+		warn.mockRestore();
+	});
+
+	it("frontend debug copy swallows clipboard rejection", async () => {
+		const a = createPanel() as any;
+		a._showDebugLog = true;
+		a._debugLogLines = ["line1"];
+		const tpl = a._renderDebugLog();
+		const c = document.createElement("div");
+		render(tpl, c);
+
+		const writeTextMock = vi.fn().mockRejectedValue(new Error("denied"));
+		Object.defineProperty(navigator, "clipboard", {
+			value: { writeText: writeTextMock },
+			writable: true,
+			configurable: true,
+		});
+		const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+		const copyBtn = c.querySelector(".debug-log-btn") as HTMLElement;
+		copyBtn.click();
+		await new Promise((r) => setTimeout(r, 0));
+		expect(warn).toHaveBeenCalled();
+		warn.mockRestore();
+	});
 });
 
 describe("settings slider input handlers", () => {
