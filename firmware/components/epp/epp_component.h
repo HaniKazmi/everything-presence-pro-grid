@@ -21,6 +21,11 @@
 
 namespace epp {
 
+// Number of LD2450 hardware targets. Distinct from the engine's MAX_TARGETS
+// (which is the post-processing slot count); kept at namespace scope so it can
+// be referenced in EPPComponent::feed_targets's parameter array bounds.
+inline constexpr int NUM_TARGETS = 3;
+
 struct ParsedTarget {
   float x = 0.0f;       // mm, sensor coordinate space (transformed)
   float y = 0.0f;       // mm
@@ -118,7 +123,6 @@ class EPPComponent : public esphome::Component {
   }
 
  protected:
-  static constexpr int NUM_TARGETS = 3;
   // Per-blob NVS schema versions live in epp_nvs_layout.h. Each save_*_to_nvs_
   // writes its own version key (persp_v, grid_v, zones_v, relay_v) so changing
   // one blob's layout doesn't invalidate the others. See PR-8 item #2.
