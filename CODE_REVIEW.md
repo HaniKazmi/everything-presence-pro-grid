@@ -580,50 +580,50 @@ PR 8 was split into 4 stacked sub-PRs (#171, #177, #180, #183). All 28 items add
 
 ## PR 14 — Frontend: dead code, duplication, types
 
-- [ ] **H: `FOV_X_EXTENT` declared in two places** — [coordinates.ts:51](frontend/src/lib/coordinates.ts#L51) + [constants.ts:446-447](frontend/src/constants.ts#L446-L447). Consolidate.
+- [x] **H: `FOV_X_EXTENT` declared in two places** — [coordinates.ts:51](frontend/src/lib/coordinates.ts#L51) + [constants.ts:446-447](frontend/src/constants.ts#L446-L447). Consolidate. _shipped: PR 175 (dead)_
 
-- [ ] **M: `Target.x/y` typed non-nullable but backend sends null** — [types.ts:3-9](frontend/src/types.ts#L3-L9), [device-controller.ts:375-381](frontend/src/controllers/device-controller.ts#L375-L381). Change to `number | null`.
+- [x] **M: `Target.x/y` typed non-nullable but backend sends null** — [types.ts:3-9](frontend/src/types.ts#L3-L9), [device-controller.ts:375-381](frontend/src/controllers/device-controller.ts#L375-L381). Change to `number | null`. _shipped: PR 175 (dead)_
 
-- [ ] **M: `Target.speed` always 0; never read** — `types.ts:6`, `device-controller.ts:378`. Drop or wire.
+- [x] **M: `Target.speed` always 0; never read** — `types.ts:6`, `device-controller.ts:378`. Drop or wire. _shipped: PR 175 (dead) — dropped_
 
-- [ ] **M: `DeviceController.loading` field unused** — `device-controller.ts:43`. Delete.
+- [x] **M: `DeviceController.loading` field unused** — `device-controller.ts:43`. Delete. _shipped: PR 175 (dead)_
 
-- [ ] **L: `_perspective` prop in live-sidebar only used as boolean** — [epp-live-sidebar.ts:49](frontend/src/components/epp-live-sidebar.ts#L49). Pass `hasPerspective: boolean`.
+- [x] **L: `_perspective` prop in live-sidebar only used as boolean** — [epp-live-sidebar.ts:49](frontend/src/components/epp-live-sidebar.ts#L49). Pass `hasPerspective: boolean`. _shipped: PR 175 (dead)_
 
-- [ ] **L: Empty `.level-selector`/`.level-buttons` CSS classes** — [epp-overlay-sidebar.ts:64-77](frontend/src/components/epp-overlay-sidebar.ts#L64-L77). Remove dead CSS.
+- [x] **L: Empty `.level-selector`/`.level-buttons` CSS classes** — [epp-overlay-sidebar.ts:64-77](frontend/src/components/epp-overlay-sidebar.ts#L64-L77). Remove dead CSS. _shipped: PR 175 (dead)_
 
-- [ ] **L: `_buildSparseSettings` / `_buildSettingsPayload` / `SETTINGS_DEFAULTS` triple-source-of-truth** — `eppgrid-panel.ts:1099-1136`
-  Single `SETTINGS_FIELDS` schema; derive both serialization and field-map.
+- [x] **L: `_buildSparseSettings` / `_buildSettingsPayload` / `SETTINGS_DEFAULTS` triple-source-of-truth** — `eppgrid-panel.ts:1099-1136`
+  Single `SETTINGS_FIELDS` schema; derive both serialization and field-map. _shipped: PR 175 (dead) — `_buildSettingsPayload` derives from `SETTINGS_FIELD_MAP`_
 
-- [ ] **L: Duplicated unsubscribe try/catch idiom across all four controllers** — 5 sites. Extract `safeUnsub(unsub)` helper.
+- [x] **L: Duplicated unsubscribe try/catch idiom across all four controllers** — 5 sites. Extract `safeUnsub(unsub)` helper. _shipped: PR 175 (dead)_
 
-- [ ] **L: Duplicated debug-log timestamp/dedupe/cap logic** — `target-controller.ts:262-327`. Extract `_appendLog` helper.
+- [x] **L: Duplicated debug-log timestamp/dedupe/cap logic** — `target-controller.ts:262-327`. Extract `_appendLog` helper. _shipped: PR 175 (dead)_
 
-- [ ] **L: `(this.host as any).hass.callWS` mixed with `this.host.hass.callWS`** — grid-state-controller.ts multiple. Drop redundant casts.
+- [x] **L: `(this.host as any).hass.callWS` mixed with `this.host.hass.callWS`** — grid-state-controller.ts multiple. Drop redundant casts. _shipped: PR 175 (dead)_
 
-- [ ] **L: Inconsistent `requestUpdate()` calls after @state mutations** — `grid-state-controller.ts:197-243, 273-287`. Drop redundants.
+- [x] **L: Inconsistent `requestUpdate()` calls after @state mutations** — `grid-state-controller.ts:197-243, 273-287`. Drop redundants. _shipped: PR 175 (dead)_
 
-- [ ] **L: `addZone` color-fallback branch unreachable** — `grid-state-controller.ts:213-215`. Drop fallback.
+- [x] **L: `addZone` color-fallback branch unreachable** — `grid-state-controller.ts:213-215`. Drop fallback. _shipped: PR 175 (dead)_
 
-- [ ] **L: `getResizeCursor` "default" branch unreachable** — `furniture.ts:316-335`.
+- [x] **L: `getResizeCursor` "default" branch unreachable** — `furniture.ts:316-335`. _shipped: PR 175 (dead)_
 
-- [ ] **L: `getRoomBounds`/`getRawRoomBounds` duplicated logic** — `grid.ts:44-95`. Refactor.
+- [x] **L: `getRoomBounds`/`getRawRoomBounds` duplicated logic** — `grid.ts:44-95`. Refactor. _shipped: PR 175 (dead)_
 
-- [ ] **L: `getZoneThresholds` silent hardcoded fallback** — `zone-defaults.ts:134-139`. Warn or return null.
+- [x] **L: `getZoneThresholds` silent hardcoded fallback** — `zone-defaults.ts:134-139`. Warn or return null. _shipped: PR 175 (dead) — warn-once-per-zid + canonical defaults_
 
-- [ ] **L: `solvePerspective` Gaussian elim no row scaling** — `perspective.ts:9-53`. Pre-scale source coords.
+- [x] **L: `solvePerspective` Gaussian elim no row scaling** — `perspective.ts:9-53`. Pre-scale source coords. _shipped: PR 175 (dead)_
 
-- [ ] **L: `static_state`/`motion_state` type comment wrong** — `epp-live-sidebar.ts:13-14`. Use `"A" | "P" | "I"`.
+- [x] **L: `static_state`/`motion_state` type comment wrong** — `epp-live-sidebar.ts:13-14`. Use `"A" | "P" | "I"`. _shipped: PR 175 (dead)_
 
-- [ ] **L: TARGET_COLORS palette has 3 entries; assert cap** — `epp-grid.ts:399, 421-422`.
+- [x] **L: TARGET_COLORS palette has 3 entries; assert cap** — `epp-grid.ts:399, 421-422`. _shipped: PR 175 (dead) — hoisted `MAX_TARGETS`, runtime assertion, capped iteration_
 
-- [ ] **L: `parseInt(z?.replace("Z", "") ?? "0", 10)` produces "Zone NaN"** — `target-controller.ts:214, 225`. `Number.isFinite` guard.
+- [x] **L: `parseInt(z?.replace("Z", "") ?? "0", 10)` produces "Zone NaN"** — `target-controller.ts:214, 225`. `Number.isFinite` guard. _shipped: PR 175 (dead)_
 
-- [ ] **L: `console.warn`/`console.error` only error surface in `saveSettings`** — `grid-state-controller.ts:761`. Add `onError?` host callback.
+- [x] **L: `console.warn`/`console.error` only error surface in `saveSettings`** — `grid-state-controller.ts:761`. Add `onError?` host callback. _shipped: PR 175 (dead) — `onError?` hook + retained `console.error` for diagnostics_
 
-- [ ] **L: `host: ReactiveControllerHost & Record<string, any>` permits typos** — `target-controller.ts:25`, `grid-state-controller.ts:57`. Define real interface.
+- [x] **L: `host: ReactiveControllerHost & Record<string, any>` permits typos** — `target-controller.ts:25`, `grid-state-controller.ts:57`. Define real interface. _shipped: PR 188 (host-types) — typed `PanelHost` interface in `controllers/panel-host.ts`; `ZoneSlots` moved to `lib/zone-defaults.ts`; panel `@state` fields became public so the panel structurally satisfies `PanelHost` (no `as unknown as` cast); `SETTINGS_FIELD_MAP` prop column typed via `SettingsHostProp` literal union_
 
-- [ ] **L: `firmwareBaseUrl` not URL-validated** — `epp-flasher-view.ts:541, 1037-1040`. Assert `https:` protocol.
+- [x] **L: `firmwareBaseUrl` not URL-validated** — `epp-flasher-view.ts:541, 1037-1040`. Assert `https:` protocol. _shipped: PR 175 (dead) — `sanitizeFirmwareBaseUrl` accepts same-origin relative + `http(s)://`, rejects `javascript:`/`data:`/`file:`/`vbscript:`/protocol-relative_
 
 ---
 
