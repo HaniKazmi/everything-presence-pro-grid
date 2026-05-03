@@ -220,65 +220,68 @@ Goal: lock down trust boundaries. Single self-contained PR.
 
 ## PR 7 — Firmware: zone engine library bugs
 
-- [ ] **C: `Grid::xy_to_cell` truncates negative offsets toward zero** — [epp_grid.cpp:17-25](firmware/lib/epp_zone_engine/src/epp_grid.cpp#L17-L25)
-  Use `std::floor`; check raw float against zero before `static_cast<int>`. Fix duplicate inline copy in `epp_zone_engine.cpp:233-234` via shared `Grid::xy_to_col_row(...)` helper.
+- [x] **C: `Grid::xy_to_cell` truncates negative offsets toward zero** — [epp_grid.cpp:17-25](firmware/lib/epp_zone_engine/src/epp_grid.cpp#L17-L25)
+  Use `std::floor`; bounds-check `fx`/`fy` in float space before the int cast (avoids UB on huge finite inputs). Shared `Grid::xy_to_col_row` helper extracted; `ZoneEngine::tick` reuses it.
 
-- [ ] **H: `RollingWindow::MAX_FRAMES` and file-local `ROLLING_MAX_FRAMES` can desynchronize** — [epp_rolling_window.cpp:11](firmware/lib/epp_zone_engine/src/epp_rolling_window.cpp#L11)
-  Use `RollingWindow::MAX_FRAMES` directly; `static_assert` if stuck with two constants.
+- [x] **H: `RollingWindow::MAX_FRAMES` and file-local `ROLLING_MAX_FRAMES` can desynchronize** — [epp_rolling_window.cpp:11](firmware/lib/epp_zone_engine/src/epp_rolling_window.cpp#L11)
+  `MAX_FRAMES` promoted to public; file-local duplicate dropped.
 
-- [ ] **H: Rolling-window `expire_old` unsigned-subtraction underflow on out-of-order timestamps** — `epp_rolling_window.cpp:38-48`
-  Guard `now_ms < tail_ts` explicitly; document monotonic-millis assumption.
+- [x] **H: Rolling-window `expire_old` unsigned-subtraction underflow on out-of-order timestamps** — `epp_rolling_window.cpp:38-48`
+  Out-of-order `now_ms < tail_ts` resets the buffer (monotonic-violation handling). Guarding the underflow alone left disordered frames behind a no-longer-monotonic tail — a later in-order feed could fail to expire frames already past the window.
 
-- [ ] **H: Cell-coord arithmetic duplicated and unsynchronized between Grid and ZoneEngine::tick** — `epp_zone_engine.cpp:233-234, 240-242`
-  Extract `Grid::xy_to_col_row(x, y, &col, &row) -> bool`. Always validate before storing into `target_prev_col_/row_`.
+- [x] **H: Cell-coord arithmetic duplicated and unsynchronized between Grid and ZoneEngine::tick** — `epp_zone_engine.cpp:233-234, 240-242`
+  Extracted `Grid::xy_to_col_row(x, y, &col, &row) -> bool`. tick() bails defensively if the helper rejects, instead of storing garbage in `target_prev_col_/row_`.
 
-- [ ] **H: `Grid::cell_zone`/`cell_is_room`/`cell_overlay` lack bounds checks** — [epp_grid.cpp:27-37](firmware/lib/epp_zone_engine/src/epp_grid.cpp#L27-L37)
-  Bounds-check or return safe sentinel.
+- [x] **H: `Grid::cell_zone`/`cell_is_room`/`cell_overlay` lack bounds checks** — [epp_grid.cpp:27-37](firmware/lib/epp_zone_engine/src/epp_grid.cpp#L27-L37)
+  Each returns a safe default (0 / false / 0) on out-of-bounds index.
 
-- [ ] **H: `parse_zone_configs` silently drops 9th+ slot; no value-range validation on trigger/renew/timeout** — [epp_zone_config_parser.h:25-41](firmware/lib/epp_zone_engine/include/epp_zone_config_parser.h#L25-L41)
-  Log truncation; clamp ranges; fail-safe on negative timeouts.
+- [x] **H: `parse_zone_configs` silently drops 9th+ slot; no value-range validation on trigger/renew/timeout** — [epp_zone_config_parser.h:25-41](firmware/lib/epp_zone_engine/include/epp_zone_config_parser.h#L25-L41)
+  Drop slot indices >= MAX_ZONE_SLOTS; clamp `trigger`/`renew` to [1, 9]; clamp `timeout`/`handoff_timeout` to >= 0.
 
-- [ ] **H: `find_zone_index` couples zone_id to slot-index by convention only** — `epp_zone_engine.cpp:118-122, 51-78`
-  Assert/log mismatch in `set_zones`, or make `config.id` implicit in slot index.
+- [x] **H: `find_zone_index` couples zone_id to slot-index by convention only** — `epp_zone_engine.cpp:118-122, 51-78`
+  Documented invariant (slot_index == config.id, established by parse_zone_configs).
 
-- [ ] **H: Step-2b overlay-exit handoff reads `tw.on_overlay` for inactive targets** — [epp_zone_engine.cpp:431-456](firmware/lib/epp_zone_engine/src/epp_zone_engine.cpp#L431-L456)
-  Either propagate sticky `on_overlay` for inactive targets in RollingWindow, or track sticky bit in ZoneEngine, or remove the dead `gone` branch.
+- [x] **H: Step-2b overlay-exit handoff reads `tw.on_overlay` for inactive targets** — [epp_zone_engine.cpp:431-456](firmware/lib/epp_zone_engine/src/epp_zone_engine.cpp#L431-L456)
+  Engine now tracks its own sticky `target_overlay_sticky_[]` so step-2b doesn't depend on the caller's stickiness contract.
 
-- [ ] **M: `set_zones` doesn't fully reset `ZoneRuntime[]`** — `epp_zone_engine.cpp:51-78`
-  Reset all `MAX_ZONE_SLOTS` slots before re-applying configs.
+- [x] **M: `set_zones` doesn't fully reset `ZoneRuntime[]`** — `epp_zone_engine.cpp:51-78`
+  Resets every slot up front (not just the configured ones), so a disabled slot can't carry stale state into a future re-enable.
 
-- [ ] **M: `set_zones` doesn't reset `target_last_zone_[]` or `dismissed_cell_[]`** — `epp_zone_engine.cpp:81-87`. Reset both.
+- [x] **M: `set_zones` doesn't reset `target_last_zone_[]` or `dismissed_cell_[]`** — `epp_zone_engine.cpp:81-87`. Both reset, plus overlay sticky.
 
-- [ ] **M: `dismiss_target` clobbers ALL targets' confirmation bits** — `epp_zone_engine.cpp:98-116`
-  Only clear bit `(1 << target_index)`; recompute state from remaining mask.
+- [x] **M: `dismiss_target` clobbers ALL targets' confirmation bits** — `epp_zone_engine.cpp:98-116`
+  Clears only the dismissed target's bit. If other targets remain confirmed, zone state is preserved.
 
-- [ ] **M: `tick()` clears result but not log buffer; consumers may read stale `[log_count, MAX)` entries** — `epp_zone_engine.cpp:143-144`
-  Document or zero unused entries.
+- [x] **M: `tick()` clears result but not log buffer; consumers may read stale `[log_count, MAX)` entries** — `epp_zone_engine.cpp:143-144`
+  Documented (existing comment): consumers must respect `log_count`. Trade-off accepted: no per-tick zeroing of unused slots.
 
-- [ ] **M: Force-clear (Step 5c) doesn't emit "clear" log when triggered after Step 3 already snapshotted state** — `epp_zone_engine.cpp:483-495`
-  Move "log transitions" loop after Step 5c.
+- [x] **M: Force-clear (Step 5c) doesn't emit "clear" log when triggered after Step 3 already snapshotted state** — `epp_zone_engine.cpp:483-495`
+  Moved "log transitions" loop after Step 5c. Force-clear now emits both `Zone N: force-clear` and `Zone N: clear`.
 
-- [ ] **M: `log_()` lacks `__attribute__((format(printf, 3, 4)))`** — [epp_zone_engine.h:118](firmware/lib/epp_zone_engine/include/epp_zone_engine.h#L118).
+- [x] **M: `log_()` lacks `__attribute__((format(printf, 3, 4)))`** — [epp_zone_engine.h:118](firmware/lib/epp_zone_engine/include/epp_zone_engine.h#L118). Added.
 
-- [ ] **L: `RelayEvalResult.should_update` always true (dead field)** — [epp_relay.h:32-55](firmware/lib/epp_zone_engine/include/epp_relay.h#L32-L55).
+- [x] **L: `RelayEvalResult.should_update` always true (dead field)** — [epp_relay.h:32-55](firmware/lib/epp_zone_engine/include/epp_relay.h#L32-L55). Dropped; consumer simplified.
 
 - [ ] **L: `Grid::cell()` non-const overload is unused & unbounded** — [epp_grid.h:38-39](firmware/lib/epp_zone_engine/include/epp_grid.h#L38-L39).
+  Skipped: review's "unused" premise was wrong — used by `epp_component.cpp` and ~30 test sites for cell setup. Migrating tests to a bounded setter is too much churn for an L-priority cleanup.
 
 - [ ] **L: `RollingWindow::output()` stack buffers are 384 B per call** — `epp_rolling_window.cpp:80-83`
-  Move buffers to ZoneEngine state; consider insertion-sort median for n<=16.
+  Skipped: 384 B is fine for ESP32 stack (~8 KB main task); refactor cost (API churn) outweighs benefit until MAX_FRAMES grows.
 
-- [ ] **L: `RAW_FPS=10` hardcoded denominator** — `epp_zone_engine.cpp:130`. Make configurable.
+- [x] **L: `RAW_FPS=10` hardcoded denominator** — `epp_zone_engine.cpp:130`. Made configurable via `set_raw_fps()`.
 
-- [ ] **L: `dismissed_cell_` brace-init `{-1, -1, -1}` breaks if `MAX_TARGETS` changes** — [epp_zone_engine.h:98](firmware/lib/epp_zone_engine/include/epp_zone_engine.h#L98).
+- [x] **L: `dismissed_cell_` brace-init `{-1, -1, -1}` breaks if `MAX_TARGETS` changes** — [epp_zone_engine.h:98](firmware/lib/epp_zone_engine/include/epp_zone_engine.h#L98). Initialised in the constructor instead.
 
-- [ ] **L: `set_grid` doesn't invalidate per-target / zone caches** — `epp_zone_engine.cpp:43-45`.
+- [x] **L: `set_grid` doesn't invalidate per-target / zone caches** — `epp_zone_engine.cpp:43-45`.
+  Resets target tracking + dismissed_cell_ + overlay sticky (cell indices are meaningful only under the grid that produced them).
 
-- [ ] **L: `Grid::load_from_bytes` doesn't zero tail when len < cell_count** — `epp_grid.cpp:39-44`.
+- [x] **L: `Grid::load_from_bytes` doesn't zero tail when len < cell_count** — `epp_grid.cpp:39-44`.
+  Zeroes the tail; also early-returns on negative `len` to avoid OOB write.
 
-- [ ] **L: `set_coefficients(nullptr)` crashes** — [epp_calibration.cpp:7-14](firmware/lib/epp_zone_engine/src/epp_calibration.cpp#L7-L14). Null guard.
+- [x] **L: `set_coefficients(nullptr)` crashes** — [epp_calibration.cpp:7-14](firmware/lib/epp_zone_engine/src/epp_calibration.cpp#L7-L14). Silent no-op.
 
-- [ ] **L: NaN propagation in `SensorTransform::apply` and `Grid::xy_to_cell`** — `epp_calibration.cpp:20-37`
-  `std::isfinite(x) && std::isfinite(y)` at entry; clamp output to room AABB.
+- [x] **L: NaN propagation in `SensorTransform::apply` and `Grid::xy_to_cell`** — `epp_calibration.cpp:20-37`
+  Both reject NaN/Inf at entry; Grid also bounds-checks in float space before the int cast (avoids UB on huge finite inputs).
 
 ---
 
