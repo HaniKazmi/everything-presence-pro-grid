@@ -38,9 +38,14 @@ _LOGGER = logging.getLogger(__name__)
 _FIRMWARE_BEHIND_PREFIX = "firmware_behind_"
 
 # How long to wait for the device to come back on the new firmware before we
-# give up and offer the user a retry. Worst case OTA: ~90 s download + ~15 s
-# reboot + ~15 s reconnect + headroom for a flaky connection.
-_OTA_COMPLETION_TIMEOUT_S = 5 * 60
+# give up and offer the user a retry. A successful OTA on typical WiFi is
+# 1-3 min (download + reboot + reconnect + sensor refresh); 3 min keeps a
+# small safety margin while bailing fast on real failures so the user can
+# retry without the dialog feeling stuck. False-fail on a slow OTA is
+# recoverable: the firmware_version sensor eventually updates and the
+# Repairs issue auto-clears via _on_state_changed, and the failed step
+# offers a retry button anyway.
+_OTA_COMPLETION_TIMEOUT_S = 3 * 60
 
 # Poll interval while waiting for the firmware_version sensor to flip to the
 # new value.
