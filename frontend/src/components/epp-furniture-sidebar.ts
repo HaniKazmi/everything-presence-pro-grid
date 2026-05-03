@@ -183,7 +183,12 @@ export class EppFurnitureSidebar extends LitElement {
 								</label>
 								<label>
 									${this.localize("dimensions.rotation")}
-									<input type="number" step="5" .value=${String(Math.round(selected.rotation))}
+									<input type="number" step="5" .value=${String(
+										// Render the stored value (trimmed to one decimal place
+										// to avoid long floats from free-rotate drags) so what
+										// the user sees matches what's saved and emitted.
+										Math.round(selected.rotation * 10) / 10,
+									)}
 										@change=${(e: Event) => {
 											const v = parseFloat(
 												(e.target as HTMLInputElement).value,
