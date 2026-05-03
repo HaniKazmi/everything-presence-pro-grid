@@ -12,6 +12,7 @@
 #include "epp_zone_engine.h"
 #include "epp_relay.h"
 #include "epp_frame_ring_buffer.h"
+#include "epp_nvs_layout.h"
 
 #include <string>
 
@@ -143,6 +144,12 @@ class EPPComponent : public esphome::Component {
   uint32_t frame_count_ = 0;
   uint32_t frames_dropped_ = 0;  // bumped when push() reports overflow
   uint32_t last_frames_dropped_log_ = 0;  // last frames_dropped_ value logged
+  uint32_t last_frames_dropped_log_ts_ = 0;  // ms when last drop log fired
+  // Only log frame drops when the delta since last log clears this threshold,
+  // otherwise sustained drops at 10Hz spam the log every second forever. Five
+  // dropped frames means loop() hung roughly half a second — clearly worth
+  // surfacing while still leaving headroom for transient single-frame jitter.
+  static constexpr uint32_t FRAME_DROP_LOG_THRESHOLD = 5;
 
   // Zone engine pipeline
   SensorTransform transform_;
@@ -168,9 +175,8 @@ class EPPComponent : public esphome::Component {
   std::string last_zones_json_;
   bool has_zones_cache_ = false;
 
-  // Cached grid blob for NVS idempotency. Sized via GRID_BLOB_SIZE in the
-  // .cpp where epp_nvs_layout.h is included.
-  uint8_t last_grid_blob_[GRID_CELL_COUNT + 2 * sizeof(float)]{};
+  // Cached grid blob for NVS idempotency.
+  uint8_t last_grid_blob_[GRID_BLOB_SIZE]{};
   bool has_grid_cache_ = false;
 
   // Sensor pointers

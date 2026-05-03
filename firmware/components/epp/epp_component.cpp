@@ -304,14 +304,18 @@ void EPPComponent::loop() {
   if (now - last_system_ms_ >= SYSTEM_INTERVAL_MS) {
     last_system_ms_ = now;
 
-    // Surface frame-buffer overflow once per second when new drops occur.
-    // The ring buffer absorbs short scheduling stalls silently; persistent
-    // drops mean loop() can't keep up with the LD2450 producer and want
-    // investigation.
-    if (frames_dropped_ != last_frames_dropped_log_) {
-      ESP_LOGW(TAG, "LD2450 frame ring buffer dropped %u total frames",
-               frames_dropped_);
+    // Surface frame-buffer overflow when new drops accumulate past the
+    // threshold. The ring buffer absorbs short scheduling stalls silently;
+    // persistent drops mean loop() can't keep up with the LD2450 producer
+    // and want investigation. We rate-limit on the *delta* since last log
+    // (not equality) so sustained 10Hz drops don't spam every second
+    // indefinitely with monotonically growing totals.
+    uint32_t drop_delta = frames_dropped_ - last_frames_dropped_log_;
+    if (drop_delta >= FRAME_DROP_LOG_THRESHOLD) {
+      ESP_LOGW(TAG, "LD2450 frame ring buffer dropped %u frames in %ums (total %u)",
+               drop_delta, now - last_frames_dropped_log_ts_, frames_dropped_);
       last_frames_dropped_log_ = frames_dropped_;
+      last_frames_dropped_log_ts_ = now;
     }
 
     if (device_tracking_sensor_ != nullptr)
