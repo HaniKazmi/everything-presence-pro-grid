@@ -59,9 +59,19 @@ class TestDeviceConnection:
 
         with patch("custom_components.eppgrid.device_manager._connection.APIClient") as mock_cls:
             mock_client = mock_cls.return_value
-            mock_client.connect = AsyncMock()
+            captured_on_stop: list = []
+
+            async def fake_connect(*, on_stop, login):
+                captured_on_stop.append(on_stop)
+
+            mock_client.connect = AsyncMock(side_effect=fake_connect)
             mock_client.list_entities_services = AsyncMock(return_value=([], []))
-            mock_client.disconnect = AsyncMock()
+
+            async def fake_disconnect():
+                # Simulate aioesphomeapi firing on_stop on disconnect.
+                await captured_on_stop[0](True)
+
+            mock_client.disconnect = AsyncMock(side_effect=fake_disconnect)
 
             await conn.async_connect()
             assert conn.connected
@@ -70,6 +80,33 @@ class TestDeviceConnection:
             await conn.async_disconnect()
             assert not conn.connected
             mock_client.disconnect.assert_awaited_once()
+
+    async def test_async_disconnect_releases_references_via_on_stop(self) -> None:
+        """async_disconnect must drop the client + state-subscribers, but only
+        once — _on_stop is the canonical clearer."""
+        conn = DeviceConnection("192.168.1.100")
+        with patch("custom_components.eppgrid.device_manager._connection.APIClient") as mock_cls:
+            mock_client = mock_cls.return_value
+            mock_client.connect = AsyncMock()
+            mock_client.list_entities_services = AsyncMock(return_value=([], []))
+            captured_on_stop: list = []
+
+            async def fake_connect(*, on_stop, login):
+                captured_on_stop.append(on_stop)
+
+            mock_client.connect = AsyncMock(side_effect=fake_connect)
+
+            async def fake_disconnect():
+                # Simulate aioesphomeapi firing on_stop on disconnect.
+                await captured_on_stop[0](True)
+
+            mock_client.disconnect = AsyncMock(side_effect=fake_disconnect)
+            await conn.async_connect()
+            cb = MagicMock()
+            conn._state_subscribers.append(cb)
+            await conn.async_disconnect()
+            assert conn._state_subscribers == []
+            assert not conn.connected
 
     async def test_connect_failure_disconnects(self) -> None:
         """Failed connect cleans up the client."""
@@ -101,8 +138,8 @@ class TestDeviceConnection:
 
             cb1 = MagicMock()
             cb2 = MagicMock()
-            conn.subscribe_states(cb1)
-            conn.subscribe_states(cb2)
+            await conn.subscribe_states(cb1)
+            await conn.subscribe_states(cb2)
 
             # Simulate a state dispatch
             conn._dispatch_state("fake_state")
@@ -122,11 +159,64 @@ class TestDeviceConnection:
             await conn.async_connect()
 
             cb = MagicMock()
-            conn.subscribe_states(cb)
+            await conn.subscribe_states(cb)
             conn.unsubscribe_states(cb)
 
             conn._dispatch_state("state")
             cb.assert_not_called()
+
+    async def test_subscribe_states_race_subscribes_once(self) -> None:
+        """Two concurrent subscribe_states calls must only call the underlying
+        client.subscribe_states once."""
+        conn = DeviceConnection("192.168.1.100")
+        with patch("custom_components.eppgrid.device_manager._connection.APIClient") as mock_cls:
+            mock_client = mock_cls.return_value
+            mock_client.connect = AsyncMock()
+            mock_client.list_entities_services = AsyncMock(return_value=([], []))
+            mock_client.disconnect = AsyncMock()
+            mock_client.subscribe_states = MagicMock()
+            await conn.async_connect()
+            cb1 = MagicMock()
+            cb2 = MagicMock()
+            await asyncio.gather(conn.subscribe_states(cb1), conn.subscribe_states(cb2))
+            mock_client.subscribe_states.assert_called_once()
+
+    async def test_dispatch_state_isolates_subscriber_exceptions(self) -> None:
+        """A subscriber raising must not stop later subscribers from receiving
+        the state."""
+        conn = DeviceConnection("192.168.1.100")
+        bad = MagicMock(side_effect=RuntimeError("boom"))
+        good = MagicMock()
+        conn._state_subscribers = [bad, good]
+        conn._dispatch_state(MagicMock())
+        good.assert_called_once()
+
+    async def test_dispatch_state_drops_failed_subscriber(self) -> None:
+        """A subscriber that raises is dropped after logging — keeping it
+        registered would flood logs at the device's state-update rate."""
+        conn = DeviceConnection("192.168.1.100")
+        bad = MagicMock(side_effect=RuntimeError("boom"))
+        good = MagicMock()
+        conn._state_subscribers = [bad, good]
+        conn._dispatch_state(MagicMock())
+        # Bad subscriber dropped; only good remains.
+        assert conn._state_subscribers == [good]
+        # Second dispatch only hits good — bad isn't called again.
+        conn._dispatch_state(MagicMock())
+        assert bad.call_count == 1
+        assert good.call_count == 2
+
+    async def test_subscribe_states_raises_when_disconnected(self) -> None:
+        """Subscribing on a closed connection must raise rather than silently
+        appending — otherwise the caller gets back success but never receives
+        any state updates (because _client is None and we'd skip the underlying
+        client.subscribe_states)."""
+        conn = DeviceConnection("192.168.1.100")
+        conn._client = None  # post-disconnect state
+        cb = MagicMock()
+        with pytest.raises(RuntimeError):
+            await conn.subscribe_states(cb)
+        assert cb not in conn._state_subscribers
 
     async def test_push_config_perspective(self) -> None:
         """push_config sends perspective coefficients to device."""
@@ -279,6 +369,75 @@ class TestDeviceConnection:
                 "on_delay": 0.0,
                 "led_enabled": True,
             }
+
+    async def test_fetch_build_flags_returns_empty_when_service_missing(self) -> None:
+        """No get_build_flags service -> cacheable empty result."""
+        conn = DeviceConnection("192.168.1.100")
+        # Simulate post-connect state without the service.
+        conn._client = MagicMock()
+        conn._services = {}
+        flags = await conn.async_fetch_build_flags()
+        assert flags == {}
+
+    async def test_fetch_build_flags_reraises_on_timeout(self) -> None:
+        """Transient timeout must not be cached as empty -- propagate to caller."""
+        conn = DeviceConnection("192.168.1.100")
+        conn._client = MagicMock()
+        svc = MagicMock()
+        conn._services = {"get_build_flags": svc}
+
+        async def hang(*_a, **_kw):
+            await asyncio.sleep(10)
+
+        conn._client.execute_service = MagicMock(side_effect=hang)
+        with pytest.raises(asyncio.TimeoutError):
+            await conn.async_fetch_build_flags(timeout=0.05)
+
+    async def test_fetch_build_flags_reraises_on_invalid_json(self) -> None:
+        """Corrupt response is a real failure, not a cacheable empty answer."""
+        conn = DeviceConnection("192.168.1.100")
+        conn._client = MagicMock()
+        svc = MagicMock()
+        conn._services = {"get_build_flags": svc}
+        resp = MagicMock()
+        resp.response_data = "not-json{"
+        conn._client.execute_service = AsyncMock(return_value=resp)
+        with pytest.raises(json.JSONDecodeError):
+            await conn.async_fetch_build_flags()
+
+    async def test_fetch_build_flags_raises_on_empty_response(self) -> None:
+        """Empty response_data must raise -- firmware always returns a JSON object."""
+        conn = DeviceConnection("192.168.1.100")
+        conn._client = MagicMock()
+        svc = MagicMock()
+        conn._services = {"get_build_flags": svc}
+        resp = MagicMock()
+        resp.response_data = ""
+        conn._client.execute_service = AsyncMock(return_value=resp)
+        with pytest.raises(ValueError):
+            await conn.async_fetch_build_flags()
+
+    async def test_fetch_build_flags_raises_on_non_dict_response(self) -> None:
+        """A non-object payload (list, scalar) must raise so the cache isn't poisoned."""
+        conn = DeviceConnection("192.168.1.100")
+        conn._client = MagicMock()
+        svc = MagicMock()
+        conn._services = {"get_build_flags": svc}
+        resp = MagicMock()
+        resp.response_data = "[1, 2, 3]"  # parses to a list, not a dict
+        conn._client.execute_service = AsyncMock(return_value=resp)
+        with pytest.raises(ValueError):
+            await conn.async_fetch_build_flags()
+
+    async def test_fetch_build_flags_raises_when_client_disconnected(self) -> None:
+        """If the connection dropped between connect and fetch, raise rather
+        than returning {} — otherwise we'd cache disconnect-during-fetch as
+        'firmware doesn't expose get_build_flags' and block OTA forever."""
+        conn = DeviceConnection("192.168.1.100")
+        conn._client = None
+        conn._services = {}
+        with pytest.raises(RuntimeError):
+            await conn.async_fetch_build_flags()
 
 
 # ---------------------------------------------------------------------------
@@ -805,6 +964,34 @@ class TestDeviceManager:
             # Only one connect attempt
             assert connect_count == 1
 
+    async def test_open_after_scheduled_close_does_not_deadlock(
+        self, hass: HomeAssistant, manager: DeviceManager
+    ) -> None:
+        """A close scheduled via schedule_close_session() must not deadlock a
+        subsequent async_open_session() — _pending_closes is the serialization
+        point, not the per-mac asyncio.Lock."""
+        mac = "AA:BB:CC:DD:EE:FF"
+        manager.devices[mac] = ManagedDevice(mac=mac, name="EPP", host="192.168.1.50")
+
+        seeded = MagicMock()
+        seeded.async_disconnect = AsyncMock()
+        seeded.connected = True
+        manager._active_connections[mac] = seeded
+
+        with patch("custom_components.eppgrid.device_manager.DeviceConnection") as mock_cls:
+            fresh = mock_cls.return_value
+            fresh.async_connect = AsyncMock()
+            fresh.async_disconnect = AsyncMock()
+            fresh.connected = True
+
+            manager.schedule_close_session(mac)
+            # Open must not deadlock; it should wait for the close, then connect a fresh conn.
+            result = await asyncio.wait_for(manager.async_open_session(mac), timeout=2.0)
+
+        assert result is fresh
+        seeded.async_disconnect.assert_awaited_once()
+        fresh.async_connect.assert_awaited_once()
+
     async def test_multiple_state_changes_push_config_once(self, hass: HomeAssistant, manager: DeviceManager) -> None:
         """Multiple entities becoming available should only push config once."""
         dev_reg = dr.async_get(hass)
@@ -1070,6 +1257,39 @@ class TestAsyncTriggerOta:
         assert "clintongormley.github.io/everything-presence-pro-grid/fw/v" in url, url
         mock_conn.async_disconnect.assert_awaited_once()
 
+    async def test_async_trigger_ota_passes_noise_psk_to_temp_connection(
+        self, hass: HomeAssistant, manager: DeviceManager
+    ) -> None:
+        """When no session exists, the OTA temp connection must pass noise_psk
+        so encrypted ESPHome devices authenticate. Regression for the field
+        regression where encrypted-device OTA broke after a refactor."""
+        mac = "AA:BB:CC:DD:EE:FF"
+        entry = MockConfigEntry(
+            domain="esphome",
+            data={"host": "192.168.1.50", "noise_psk": "abcdef=="},
+        )
+        entry.add_to_hass(hass)
+        manager.devices[mac] = ManagedDevice(
+            mac=mac,
+            name="EPP",
+            host="192.168.1.50",
+            esphome_config_entry_id=entry.entry_id,
+        )
+        manager._build_flags[mac] = {"ethernet_enabled": False}
+
+        with patch("custom_components.eppgrid.device_manager.DeviceConnection") as mock_cls:
+            mock_conn = mock_cls.return_value
+            mock_conn.async_connect = AsyncMock()
+            mock_conn.async_disconnect = AsyncMock()
+            mock_conn._services = {"set_update_manifest": MagicMock()}
+            mock_conn._client = MagicMock()
+            mock_conn._client.execute_service = AsyncMock()
+            mock_conn.connected = True
+
+            await manager.async_trigger_ota(mac)
+
+        mock_cls.assert_called_once_with("192.168.1.50", noise_psk="abcdef==")
+
     async def test_uses_ethernet_variant_when_flagged(self, hass: HomeAssistant, manager: DeviceManager) -> None:
         self._setup_device(manager)
         manager._build_flags["AA:BB:CC:DD:EE:FF"] = {
@@ -1236,6 +1456,61 @@ class TestAsyncTriggerOta:
             # Second call should succeed after first failed
             mock_conn._client.execute_service.side_effect = None
             await manager.async_trigger_ota("AA:BB:CC:DD:EE:FF")
+
+
+# ---------------------------------------------------------------------------
+# TestNoisePsk tests
+# ---------------------------------------------------------------------------
+
+
+class TestNoisePsk:
+    async def test_extract_noise_psk_returns_psk_from_esphome_entry(self, hass: HomeAssistant) -> None:
+        """Noise PSK is read from the ESPHome config entry data."""
+        from custom_components.eppgrid.device_manager._helpers import _extract_noise_psk
+
+        entry = MockConfigEntry(
+            domain="esphome",
+            data={"host": "192.168.1.50", "noise_psk": "abcdef=="},
+        )
+        entry.add_to_hass(hass)
+        assert _extract_noise_psk(entry.entry_id, hass) == "abcdef=="
+
+    async def test_extract_noise_psk_returns_empty_when_absent(self, hass: HomeAssistant) -> None:
+        from custom_components.eppgrid.device_manager._helpers import _extract_noise_psk
+
+        entry = MockConfigEntry(domain="esphome", data={"host": "192.168.1.50"})
+        entry.add_to_hass(hass)
+        assert _extract_noise_psk(entry.entry_id, hass) == ""
+
+    async def test_extract_noise_psk_returns_empty_when_entry_missing(self, hass: HomeAssistant) -> None:
+        from custom_components.eppgrid.device_manager._helpers import _extract_noise_psk
+
+        assert _extract_noise_psk(None, hass) == ""
+        assert _extract_noise_psk("does_not_exist", hass) == ""
+
+    async def test_open_session_passes_noise_psk_to_connection(
+        self, hass: HomeAssistant, manager: DeviceManager
+    ) -> None:
+        """async_open_session must pass the ESPHome entry's noise_psk through to
+        DeviceConnection so encrypted devices connect."""
+        entry = MockConfigEntry(
+            domain="esphome",
+            data={"host": "192.168.1.50", "noise_psk": "abcdef=="},
+        )
+        entry.add_to_hass(hass)
+        manager.devices["AA:BB:CC:DD:EE:FF"] = ManagedDevice(
+            mac="AA:BB:CC:DD:EE:FF",
+            name="EPP",
+            host="192.168.1.50",
+            esphome_config_entry_id=entry.entry_id,
+        )
+        with patch("custom_components.eppgrid.device_manager.DeviceConnection") as mock_cls:
+            mock_conn = mock_cls.return_value
+            mock_conn.async_connect = AsyncMock()
+            mock_conn.async_disconnect = AsyncMock()
+            mock_conn.connected = True
+            await manager.async_open_session("AA:BB:CC:DD:EE:FF")
+        mock_cls.assert_called_once_with("192.168.1.50", noise_psk="abcdef==")
 
 
 # ---------------------------------------------------------------------------
@@ -2922,6 +3197,71 @@ class TestEventCallbacks:
         with patch.object(manager, "_fetch_build_flags", new_callable=AsyncMock) as mock_fetch:
             await manager._push_config_to_device("AA:BB:CC:DD:EE:FF")
             mock_fetch.assert_awaited_once_with("AA:BB:CC:DD:EE:FF")
+
+    async def test_fetch_build_flags_does_not_cache_on_transient_failure(
+        self, hass: HomeAssistant, manager: DeviceManager
+    ) -> None:
+        """A timeout while fetching build flags must leave the slot empty so a
+        subsequent call retries instead of being short-circuited by the cache."""
+        mac = "AA:BB:CC:DD:EE:FF"
+        manager.devices[mac] = ManagedDevice(mac=mac, name="EPP", host="192.168.1.50")
+        session = MagicMock()
+        session.async_fetch_build_flags = AsyncMock(side_effect=TimeoutError())
+        session.connected = True
+        manager._active_connections[mac] = session
+
+        await manager._fetch_build_flags(mac)
+        assert mac not in manager._build_flags  # transient -> not cached
+
+        # Second call retries (no early-return from the cache).
+        session.async_fetch_build_flags.side_effect = None
+        session.async_fetch_build_flags.return_value = {"ethernet_enabled": True}
+        await manager._fetch_build_flags(mac)
+        assert manager._build_flags[mac] == {"ethernet_enabled": True}
+
+    async def test_push_config_to_device_does_not_cache_build_flags_on_session_fetch_failure(
+        self, hass: HomeAssistant, store: EPPGridStore, manager: DeviceManager
+    ) -> None:
+        """When async_fetch_build_flags raises mid-push (session path), the
+        cache stays empty so a subsequent push retries the fetch."""
+        mac = "AA:BB:CC:DD:EE:FF"
+        manager.devices[mac] = ManagedDevice(mac=mac, name="EPP", host="192.168.1.50")
+        store.devices[mac] = {"settings": {}}
+
+        session = MagicMock()
+        session.connected = True
+        session.async_push_config = AsyncMock()
+        session.async_fetch_build_flags = AsyncMock(side_effect=ConnectionError("boom"))
+        manager._active_connections[mac] = session
+
+        with patch.object(manager, "_push_pipeline_to_device", new_callable=AsyncMock):
+            result = await manager._push_config_to_device(mac)
+
+        assert result is True  # push succeeded; only flags fetch failed
+        assert mac not in manager._build_flags  # cache not poisoned
+
+    async def test_push_config_to_device_does_not_cache_build_flags_on_temp_conn_fetch_failure(
+        self, hass: HomeAssistant, store: EPPGridStore, manager: DeviceManager
+    ) -> None:
+        """Same invariant for the temp-connection path used at boot."""
+        mac = "AA:BB:CC:DD:EE:FF"
+        manager.devices[mac] = ManagedDevice(mac=mac, name="EPP", host="192.168.1.50")
+        store.devices[mac] = {"settings": {}}
+
+        with patch("custom_components.eppgrid.device_manager.DeviceConnection") as mock_cls:
+            conn = mock_cls.return_value
+            conn.async_connect = AsyncMock()
+            conn.async_disconnect = AsyncMock()
+            conn.async_push_config = AsyncMock()
+            conn.async_fetch_build_flags = AsyncMock(side_effect=TimeoutError())
+            conn.connected = True
+            conn._services = {}
+            conn._client = MagicMock()
+
+            result = await manager._push_config_to_device(mac)
+
+        assert result is True
+        assert mac not in manager._build_flags
 
     async def test_push_config_to_device_opens_session(
         self, hass: HomeAssistant, store: EPPGridStore, manager: DeviceManager
@@ -4612,8 +4952,8 @@ class TestBuildFlags:
 
         assert result == {}
 
-    async def test_fetch_build_flags_exception_returns_empty(self) -> None:
-        """async_fetch_build_flags returns empty dict on exception."""
+    async def test_fetch_build_flags_reraises_connection_error(self) -> None:
+        """async_fetch_build_flags propagates transient connection errors."""
         conn = DeviceConnection("192.168.1.100")
 
         mock_svc = MagicMock()
@@ -4627,12 +4967,11 @@ class TestBuildFlags:
             mock_client.disconnect = AsyncMock()
 
             await conn.async_connect()
-            result = await conn.async_fetch_build_flags()
+            with pytest.raises(ConnectionError):
+                await conn.async_fetch_build_flags()
 
-        assert result == {}
-
-    async def test_fetch_build_flags_non_dict_returns_empty(self) -> None:
-        """async_fetch_build_flags returns empty dict when response is not a dict."""
+    async def test_fetch_build_flags_raises_on_none_response(self) -> None:
+        """A ``None`` response from the device is a malformed reply, not an empty cacheable result."""
         conn = DeviceConnection("192.168.1.100")
 
         mock_svc = MagicMock()
@@ -4646,9 +4985,8 @@ class TestBuildFlags:
             mock_client.disconnect = AsyncMock()
 
             await conn.async_connect()
-            result = await conn.async_fetch_build_flags()
-
-        assert result == {}
+            with pytest.raises(ValueError):
+                await conn.async_fetch_build_flags()
 
     async def test_push_config_caches_build_flags_temporary_conn(
         self, hass: HomeAssistant, store: EPPGridStore, manager: DeviceManager
@@ -4868,7 +5206,7 @@ class TestBuildFlags:
         mock_conn.async_connect.assert_not_awaited()
 
     async def test_fetch_build_flags_times_out_fast(self) -> None:
-        """async_fetch_build_flags returns {} within timeout when execute_service hangs."""
+        """async_fetch_build_flags raises TimeoutError within the override window."""
         conn = DeviceConnection("192.168.1.100")
 
         mock_svc = MagicMock()
@@ -4888,11 +5226,11 @@ class TestBuildFlags:
             await conn.async_connect()
             loop = asyncio.get_running_loop()
             start = loop.time()
-            result = await conn.async_fetch_build_flags(timeout=0.05)
+            with pytest.raises(asyncio.TimeoutError):
+                await conn.async_fetch_build_flags(timeout=0.05)
             elapsed = loop.time() - start
 
-        assert result == {}
-        # Tight bound proves the override was honored (not the 2.0s default).
+        # Tight bound proves the override was honored (not the 10s default).
         assert elapsed < 0.5, f"expected timeout~=0.05s, took {elapsed:.3f}s"
 
     async def test_list_devices_no_build_flags(self, hass: HomeAssistant, manager: DeviceManager) -> None:

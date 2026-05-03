@@ -2853,7 +2853,7 @@ class TestWebSocketSubscriptions:
 
         mock_device_conn = MagicMock()
         mock_device_conn._entities = []
-        mock_device_conn.subscribe_states = MagicMock()
+        mock_device_conn.subscribe_states = AsyncMock()
         mock_device_conn.unsubscribe_states = MagicMock()
         mock_dm.get_session = MagicMock(return_value=mock_device_conn)
 
@@ -2866,7 +2866,7 @@ class TestWebSocketSubscriptions:
         await call_async_handler(hass, websocket_subscribe_raw_targets, connection, msg)
 
         connection.send_result.assert_called_once_with(23)
-        mock_device_conn.subscribe_states.assert_called_once()
+        mock_device_conn.subscribe_states.assert_awaited_once()
         assert 23 in connection.subscriptions
 
     async def test_subscribe_grid_targets_no_session(self, hass: HomeAssistant, config_entry: MockConfigEntry) -> None:
@@ -2890,7 +2890,7 @@ class TestWebSocketSubscriptions:
 
         mock_device_conn = MagicMock()
         mock_device_conn._entities = []
-        mock_device_conn.subscribe_states = MagicMock()
+        mock_device_conn.subscribe_states = AsyncMock()
         mock_device_conn.unsubscribe_states = MagicMock()
         mock_dm.get_session = MagicMock(return_value=mock_device_conn)
 
@@ -2903,7 +2903,7 @@ class TestWebSocketSubscriptions:
         await call_async_handler(hass, websocket_subscribe_grid_targets, connection, msg)
 
         connection.send_result.assert_called_once_with(25)
-        mock_device_conn.subscribe_states.assert_called_once()
+        mock_device_conn.subscribe_states.assert_awaited_once()
         assert 25 in connection.subscriptions
 
     async def test_raw_targets_handles_malformed_position(
@@ -2920,7 +2920,7 @@ class TestWebSocketSubscriptions:
         mock_device_conn._entities = [
             TextSensorInfo(object_id="raw_target_1", key=1, name="Raw Target 1"),
         ]
-        mock_device_conn.subscribe_states = MagicMock()
+        mock_device_conn.subscribe_states = AsyncMock()
         mock_device_conn.unsubscribe_states = MagicMock()
         mock_dm.get_session = MagicMock(return_value=mock_device_conn)
 
@@ -2931,7 +2931,7 @@ class TestWebSocketSubscriptions:
         msg = {"id": 26, "type": "eppgrid/subscribe_raw_targets", "mac": "AA:BB:CC:DD:EE:FF"}
 
         await call_async_handler(hass, websocket_subscribe_raw_targets, connection, msg)
-        on_state = mock_device_conn.subscribe_states.call_args[0][0]
+        on_state = mock_device_conn.subscribe_states.await_args[0][0]
         connection.send_message.reset_mock()
 
         # Single-field state — parts[1] would IndexError.
@@ -2954,7 +2954,7 @@ class TestWebSocketSubscriptions:
         mock_device_conn._entities = [
             TextSensorInfo(object_id="target_1_position", key=1, name="Target 1 Position"),
         ]
-        mock_device_conn.subscribe_states = MagicMock()
+        mock_device_conn.subscribe_states = AsyncMock()
         mock_device_conn.unsubscribe_states = MagicMock()
         mock_dm.get_session = MagicMock(return_value=mock_device_conn)
 
@@ -2965,7 +2965,7 @@ class TestWebSocketSubscriptions:
         msg = {"id": 27, "type": "eppgrid/subscribe_grid_targets", "mac": "AA:BB:CC:DD:EE:FF"}
 
         await call_async_handler(hass, websocket_subscribe_grid_targets, connection, msg)
-        on_state = mock_device_conn.subscribe_states.call_args[0][0]
+        on_state = mock_device_conn.subscribe_states.await_args[0][0]
         connection.send_message.reset_mock()
 
         on_state(TextSensorState(key=1, state="single", missing_state=False))
@@ -3235,7 +3235,7 @@ class TestSubscriptionCallbacks:
 
         mock_device_conn = MagicMock()
         mock_device_conn._entities = [raw0, raw1]
-        mock_device_conn.subscribe_states = MagicMock()
+        mock_device_conn.subscribe_states = AsyncMock()
         mock_device_conn.unsubscribe_states = MagicMock()
         mock_dm.get_session = MagicMock(return_value=mock_device_conn)
 
@@ -3248,7 +3248,7 @@ class TestSubscriptionCallbacks:
         await call_async_handler(hass, websocket_subscribe_raw_targets, connection, msg)
 
         # Get the registered _on_state callback
-        on_state = mock_device_conn.subscribe_states.call_args[0][0]
+        on_state = mock_device_conn.subscribe_states.await_args[0][0]
 
         from aioesphomeapi import TextSensorState
 
@@ -3271,7 +3271,7 @@ class TestSubscriptionCallbacks:
 
         mock_device_conn = MagicMock()
         mock_device_conn._entities = [raw0]
-        mock_device_conn.subscribe_states = MagicMock()
+        mock_device_conn.subscribe_states = AsyncMock()
         mock_device_conn.unsubscribe_states = MagicMock()
         mock_dm.get_session = MagicMock(return_value=mock_device_conn)
 
@@ -3283,7 +3283,7 @@ class TestSubscriptionCallbacks:
 
         await call_async_handler(hass, websocket_subscribe_raw_targets, connection, msg)
 
-        on_state = mock_device_conn.subscribe_states.call_args[0][0]
+        on_state = mock_device_conn.subscribe_states.await_args[0][0]
 
         from aioesphomeapi import TextSensorState
 
@@ -3304,7 +3304,7 @@ class TestSubscriptionCallbacks:
 
         mock_device_conn = MagicMock()
         mock_device_conn._entities = [raw0]
-        mock_device_conn.subscribe_states = MagicMock()
+        mock_device_conn.subscribe_states = AsyncMock()
         mock_device_conn.unsubscribe_states = MagicMock()
         mock_dm.get_session = MagicMock(return_value=mock_device_conn)
 
@@ -3316,7 +3316,7 @@ class TestSubscriptionCallbacks:
 
         await call_async_handler(hass, websocket_subscribe_raw_targets, connection, msg)
 
-        on_state = mock_device_conn.subscribe_states.call_args[0][0]
+        on_state = mock_device_conn.subscribe_states.await_args[0][0]
 
         from aioesphomeapi import BinarySensorState
 
@@ -3331,7 +3331,7 @@ class TestSubscriptionCallbacks:
 
         mock_device_conn = MagicMock()
         mock_device_conn._entities = []
-        mock_device_conn.subscribe_states = MagicMock()
+        mock_device_conn.subscribe_states = AsyncMock()
         mock_device_conn.unsubscribe_states = MagicMock()
         mock_dm.get_session = MagicMock(return_value=mock_device_conn)
 
@@ -3359,7 +3359,7 @@ class TestSubscriptionCallbacks:
 
         mock_device_conn = MagicMock()
         mock_device_conn._entities = [target0]
-        mock_device_conn.subscribe_states = MagicMock()
+        mock_device_conn.subscribe_states = AsyncMock()
         mock_device_conn.unsubscribe_states = MagicMock()
         mock_dm.get_session = MagicMock(return_value=mock_device_conn)
 
@@ -3371,7 +3371,7 @@ class TestSubscriptionCallbacks:
 
         await call_async_handler(hass, websocket_subscribe_grid_targets, connection, msg)
 
-        on_state = mock_device_conn.subscribe_states.call_args[0][0]
+        on_state = mock_device_conn.subscribe_states.await_args[0][0]
 
         from aioesphomeapi import TextSensorState
 
@@ -3398,7 +3398,7 @@ class TestSubscriptionCallbacks:
 
         mock_device_conn = MagicMock()
         mock_device_conn._entities = [target0]
-        mock_device_conn.subscribe_states = MagicMock()
+        mock_device_conn.subscribe_states = AsyncMock()
         mock_device_conn.unsubscribe_states = MagicMock()
         mock_dm.get_session = MagicMock(return_value=mock_device_conn)
 
@@ -3410,7 +3410,7 @@ class TestSubscriptionCallbacks:
 
         await call_async_handler(hass, websocket_subscribe_grid_targets, connection, msg)
 
-        on_state = mock_device_conn.subscribe_states.call_args[0][0]
+        on_state = mock_device_conn.subscribe_states.await_args[0][0]
 
         from aioesphomeapi import TextSensorState
 
@@ -3433,7 +3433,7 @@ class TestSubscriptionCallbacks:
 
         mock_device_conn = MagicMock()
         mock_device_conn._entities = [zone_state_entity]
-        mock_device_conn.subscribe_states = MagicMock()
+        mock_device_conn.subscribe_states = AsyncMock()
         mock_device_conn.unsubscribe_states = MagicMock()
         mock_dm.get_session = MagicMock(return_value=mock_device_conn)
 
@@ -3445,7 +3445,7 @@ class TestSubscriptionCallbacks:
 
         await call_async_handler(hass, websocket_subscribe_grid_targets, connection, msg)
 
-        on_state = mock_device_conn.subscribe_states.call_args[0][0]
+        on_state = mock_device_conn.subscribe_states.await_args[0][0]
 
         from aioesphomeapi import TextSensorState
 
@@ -3484,7 +3484,7 @@ class TestSubscriptionCallbacks:
 
         mock_device_conn = MagicMock()
         mock_device_conn._entities = [occupancy]
-        mock_device_conn.subscribe_states = MagicMock()
+        mock_device_conn.subscribe_states = AsyncMock()
         mock_device_conn.unsubscribe_states = MagicMock()
         mock_dm.get_session = MagicMock(return_value=mock_device_conn)
 
@@ -3496,7 +3496,7 @@ class TestSubscriptionCallbacks:
 
         await call_async_handler(hass, websocket_subscribe_grid_targets, connection, msg)
 
-        on_state = mock_device_conn.subscribe_states.call_args[0][0]
+        on_state = mock_device_conn.subscribe_states.await_args[0][0]
 
         from aioesphomeapi import BinarySensorState
 
@@ -3518,7 +3518,7 @@ class TestSubscriptionCallbacks:
 
         mock_device_conn = MagicMock()
         mock_device_conn._entities = [temp]
-        mock_device_conn.subscribe_states = MagicMock()
+        mock_device_conn.subscribe_states = AsyncMock()
         mock_device_conn.unsubscribe_states = MagicMock()
         mock_dm.get_session = MagicMock(return_value=mock_device_conn)
 
@@ -3530,7 +3530,7 @@ class TestSubscriptionCallbacks:
 
         await call_async_handler(hass, websocket_subscribe_grid_targets, connection, msg)
 
-        on_state = mock_device_conn.subscribe_states.call_args[0][0]
+        on_state = mock_device_conn.subscribe_states.await_args[0][0]
 
         from aioesphomeapi import SensorState
 
@@ -3559,7 +3559,7 @@ class TestSubscriptionCallbacks:
 
         mock_device_conn = MagicMock()
         mock_device_conn._entities = [co2_entity, target0]
-        mock_device_conn.subscribe_states = MagicMock()
+        mock_device_conn.subscribe_states = AsyncMock()
         mock_device_conn.unsubscribe_states = MagicMock()
         mock_dm.get_session = MagicMock(return_value=mock_device_conn)
 
@@ -3571,7 +3571,7 @@ class TestSubscriptionCallbacks:
 
         await call_async_handler(hass, websocket_subscribe_grid_targets, connection, msg)
 
-        on_state = mock_device_conn.subscribe_states.call_args[0][0]
+        on_state = mock_device_conn.subscribe_states.await_args[0][0]
 
         from aioesphomeapi import SensorState
         from aioesphomeapi import TextSensorState
@@ -3593,7 +3593,7 @@ class TestSubscriptionCallbacks:
 
         mock_device_conn = MagicMock()
         mock_device_conn._entities = []
-        mock_device_conn.subscribe_states = MagicMock()
+        mock_device_conn.subscribe_states = AsyncMock()
         mock_device_conn.unsubscribe_states = MagicMock()
         mock_dm.get_session = MagicMock(return_value=mock_device_conn)
 

@@ -37,6 +37,7 @@ class DeviceConnection:
         self._entities: list = []
         self._state_subscribers: list[Any] = []
         self._states_subscribed: bool = False
+        self._subscribe_lock = asyncio.Lock()
         self._log_callbacks: list[Any] = []
         self._unsub_logs: Any = None
         self.connected: bool = False
@@ -65,10 +66,19 @@ class DeviceConnection:
         _LOGGER.debug("Connected to %s", self._host)
 
     async def async_disconnect(self) -> None:
-        """Disconnect from the device."""
+        """Disconnect from the device. Idempotent.
+
+        Delegates reference cleanup to ``_on_stop`` (the aioesphomeapi
+        disconnect callback). Only clears local state directly when no
+        client was ever set up — in that case ``_on_stop`` won't fire,
+        so the defensive release covers the partially-constructed path.
+        """
         self.unsubscribe_logs()
         if self._client is not None:
             await self._client.disconnect()
+            # _on_stop runs from disconnect and clears references.
+            return
+        # No client to disconnect — clear local state defensively.
         self._release_references()
 
     def _release_references(self) -> None:
@@ -82,12 +92,21 @@ class DeviceConnection:
         self._log_callbacks.clear()
         self._unsub_logs = None
 
-    def subscribe_states(self, cb: Any) -> None:
-        """Add a state subscriber. All subscribers receive every state update."""
-        self._state_subscribers.append(cb)
-        if not self._states_subscribed and self._client is not None:
-            self._states_subscribed = True
-            self._client.subscribe_states(self._dispatch_state)
+    async def subscribe_states(self, cb: Any) -> None:
+        """Add a state subscriber. Idempotent under concurrent callers.
+
+        Raises ``RuntimeError`` if the connection is closed — silently
+        appending to ``_state_subscribers`` on a dead client would leave
+        the caller with a subscription that never fires (``_client`` is
+        ``None`` so we'd skip the underlying ``client.subscribe_states``).
+        """
+        async with self._subscribe_lock:
+            if self._client is None:
+                raise RuntimeError("Cannot subscribe to states: connection is closed")
+            self._state_subscribers.append(cb)
+            if not self._states_subscribed:
+                self._states_subscribed = True
+                self._client.subscribe_states(self._dispatch_state)
 
     def unsubscribe_states(self, cb: Any) -> None:
         """Remove a state subscriber."""
@@ -95,9 +114,22 @@ class DeviceConnection:
             self._state_subscribers.remove(cb)
 
     def _dispatch_state(self, state: Any) -> None:
-        """Fan out state updates to all subscribers."""
-        for cb in self._state_subscribers:
-            cb(state)
+        """Fan out state updates to all subscribers, isolating exceptions.
+
+        A subscriber that raises is dropped after logging once — keeping
+        it registered would flood HA logs at the device's state-update
+        rate (potentially many Hz on a busy device).
+        """
+        failed: list[Any] = []
+        for cb in list(self._state_subscribers):
+            try:
+                cb(state)
+            except Exception:
+                _LOGGER.exception("State subscriber raised; dropping subscriber")
+                failed.append(cb)
+        for cb in failed:
+            with contextlib.suppress(ValueError):
+                self._state_subscribers.remove(cb)
 
     def add_log_callback(self, cb: Any) -> None:
         """Add a log callback. Receives raw log messages from the device."""
@@ -141,27 +173,30 @@ class DeviceConnection:
             self._unsub_logs = None
             _LOGGER.debug("Unsubscribed from device logs from %s", self._host)
 
-    async def async_fetch_build_flags(self, timeout: float = 2.0) -> dict[str, Any]:
-        """Fetch build flags from device via get_build_flags action."""
+    async def async_fetch_build_flags(self, timeout: float = 10.0) -> dict[str, Any]:
+        """Fetch build flags from the device via the get_build_flags action.
+
+        Returns ``{}`` only when the device firmware doesn't expose
+        ``get_build_flags`` (older firmware, original EPP firmware) — that
+        result is safely cacheable. All transient failures (timeout,
+        connection error, malformed JSON, dropped client) propagate so the
+        caller can decide whether to retry.
+        """
         if self._client is None:
-            return {}
+            raise RuntimeError("DeviceConnection is not connected")
         svc = self._services.get("get_build_flags")
         if svc is None:
             return {}
-        try:
-            resp = await asyncio.wait_for(
-                self._client.execute_service(svc, {}, return_response=True),
-                timeout=timeout,
-            )
-            if resp is None or not resp.response_data:
-                return {}
-            decoded = json.loads(resp.response_data)
-            if not isinstance(decoded, dict):
-                return {}
-            return decoded
-        except (json.JSONDecodeError, Exception):
-            _LOGGER.debug("Failed to fetch build flags from %s", self._host)
-            return {}
+        resp = await asyncio.wait_for(
+            self._client.execute_service(svc, {}, return_response=True),
+            timeout=timeout,
+        )
+        if resp is None or not resp.response_data:
+            raise ValueError("get_build_flags returned no response_data")
+        decoded = json.loads(resp.response_data)
+        if not isinstance(decoded, dict):
+            raise ValueError(f"get_build_flags returned non-dict: {type(decoded).__name__}")
+        return decoded
 
     async def async_push_distance_override(self, override: dict[str, Any]) -> None:
         """Push distance override to device without persisting."""

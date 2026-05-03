@@ -32,6 +32,7 @@ from ._helpers import _compare_firmware_version
 from ._helpers import _compute_pipeline
 from ._helpers import _extract_host
 from ._helpers import _extract_mac
+from ._helpers import _extract_noise_psk
 from ._helpers import _raise_service_unavailable as _raise_service_unavailable  # re-export for tests
 from ._helpers import _resolve_zone_name
 from ._helpers import _sync_firmware_repair_issue
@@ -252,7 +253,10 @@ class DeviceManager:
                 translation_key="ota_in_progress",
             )
         async with lock:
-            conn = DeviceConnection(dev.host)
+            conn = DeviceConnection(
+                dev.host,
+                noise_psk=_extract_noise_psk(dev.esphome_config_entry_id, self._hass),
+            )
             try:
                 try:
                     await conn.async_connect()
@@ -734,7 +738,12 @@ class DeviceManager:
                 _LOGGER.info("Pushed pipeline to %s", mac)
 
     async def _fetch_build_flags(self, mac: str) -> None:
-        """Fetch and cache build flags from a device."""
+        """Fetch and cache build flags from a device.
+
+        Only caches successful results (including the legitimate "{}" =
+        firmware doesn't expose get_build_flags). Transient failures are
+        logged and left uncached so the next call retries.
+        """
         if mac in self._build_flags:
             return
         dev = self.devices.get(mac)
@@ -744,23 +753,32 @@ class DeviceManager:
         # Prefer existing session to avoid hitting ESP32 concurrent connection limit
         session = self.get_session(mac)
         if session is not None:
-            flags = await session.async_fetch_build_flags()
-            # Cache the result (even {}) so we don't retry every save on
-            # firmware that never responds to get_build_flags.
+            try:
+                flags = await session.async_fetch_build_flags()
+            except Exception:
+                _LOGGER.debug("build_flags fetch via session failed for %s", mac, exc_info=True)
+                return
             self._build_flags[mac] = flags
             if flags:
                 self._fire_device_list_changed()
             return
 
-        conn = DeviceConnection(dev.host)
+        conn = DeviceConnection(
+            dev.host,
+            noise_psk=_extract_noise_psk(dev.esphome_config_entry_id, self._hass),
+        )
         try:
             await asyncio.wait_for(conn.async_connect(), timeout=30)
-            flags = await conn.async_fetch_build_flags()
+            try:
+                flags = await conn.async_fetch_build_flags()
+            except Exception:
+                _LOGGER.debug("build_flags fetch via fresh conn failed for %s", mac, exc_info=True)
+                return
             self._build_flags[mac] = flags
             if flags:
                 self._fire_device_list_changed()
         except Exception:
-            _LOGGER.debug("Failed to fetch build flags from %s", mac)
+            _LOGGER.debug("Failed to connect for build_flags fetch from %s", mac, exc_info=True)
         finally:
             await conn.async_disconnect()
 
@@ -781,7 +799,8 @@ class DeviceManager:
                 await session_conn.async_push_config(config)
                 await self._push_pipeline_to_device(mac)
                 if mac not in self._build_flags:
-                    self._build_flags[mac] = await session_conn.async_fetch_build_flags()
+                    with contextlib.suppress(Exception):
+                        self._build_flags[mac] = await session_conn.async_fetch_build_flags()
                 self._manage_log_subscription(session_conn, config)
                 return True
             except Exception:
@@ -790,7 +809,10 @@ class DeviceManager:
                 return False
 
         # No active session — use temporary connection (e.g., on-boot push)
-        conn = DeviceConnection(dev.host)
+        conn = DeviceConnection(
+            dev.host,
+            noise_psk=_extract_noise_psk(dev.esphome_config_entry_id, self._hass),
+        )
         try:
             await asyncio.wait_for(conn.async_connect(), timeout=30)
             await conn.async_push_config(config)
@@ -801,7 +823,8 @@ class DeviceManager:
                 assert conn._client is not None  # async_connect succeeded
                 await conn._client.execute_service(svc, pipeline)
             if mac not in self._build_flags:
-                self._build_flags[mac] = await conn.async_fetch_build_flags()
+                with contextlib.suppress(Exception):
+                    self._build_flags[mac] = await conn.async_fetch_build_flags()
             return True
         except Exception:
             _LOGGER.warning("Failed to push config to %s (%s)", dev.name, mac)
@@ -865,7 +888,10 @@ class DeviceManager:
                     return conn
                 # Stale connection — clean up
                 await conn.async_disconnect()
-            conn = DeviceConnection(dev.host)
+            conn = DeviceConnection(
+                dev.host,
+                noise_psk=_extract_noise_psk(dev.esphome_config_entry_id, self._hass),
+            )
             await asyncio.wait_for(conn.async_connect(), timeout=30)
             self._active_connections[mac] = conn
             _LOGGER.info("Opened session for %s (%s)", dev.name, mac)
