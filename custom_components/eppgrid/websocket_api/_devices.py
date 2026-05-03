@@ -874,7 +874,12 @@ async def websocket_set_settings(
         # Zone entities need layout-aware handling: enable zone_0 + named zones only
         if "zone_presence" in entities or "zone_target_count" in entities:
             layout = device_config.get("room_layout", {})
-            zone_slots = layout.get("zone_slots") or empty_zone_slots()
+            # Only fall back when the key is actually missing (None); a
+            # falsy-but-present value (e.g. []) must pass through so
+            # async_update_zone_entities can fail closed on malformed shapes.
+            zone_slots = layout.get("zone_slots")
+            if zone_slots is None:
+                zone_slots = empty_zone_slots()
             await manager.async_update_zone_entities(mac, zone_slots)
         await manager._push_pipeline_to_device(mac)
     connection.send_result(msg["id"])

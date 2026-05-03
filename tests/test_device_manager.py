@@ -373,6 +373,46 @@ class TestDeviceManager:
         assert isinstance(zone_slots_arg[0], dict)
         assert all(slot is None for slot in zone_slots_arg[1:])
 
+    async def test_discover_passes_malformed_zone_slots_through_to_fail_closed(
+        self, hass: HomeAssistant, manager: DeviceManager
+    ) -> None:
+        """Stored zone_slots that aren't None must reach async_update_zone_entities verbatim.
+
+        async_update_zone_entities fails closed on malformed shapes (e.g. an
+        empty list or a 0.93.x length-7 layout). The empty-layout fallback
+        must only fire when zone_slots is missing/None — never when it is a
+        falsy-but-present malformed list — so the fail-closed path can run.
+        """
+        dev_reg = dr.async_get(hass)
+        ent_reg = er.async_get(hass)
+
+        esphome_entry = MockConfigEntry(domain="esphome", data={"host": "192.168.1.50"}, title="EPP")
+        esphome_entry.add_to_hass(hass)
+        device = dev_reg.async_get_or_create(
+            config_entry_id=esphome_entry.entry_id,
+            connections={("mac", "aa:bb:cc:dd:ee:ff")},
+            name="EPP",
+            manufacturer="EverythingSmartTechnology",
+            model="Everything Presence Pro",
+        )
+        ent_reg.async_get_or_create(
+            "sensor",
+            "esphome",
+            unique_id="AA:BB:CC:DD:EE:FF-sensor-firmware_version",
+            config_entry=esphome_entry,
+            device_id=device.id,
+        )
+        # Seed a malformed (empty list) stored layout.
+        manager._store.devices["AA:BB:CC:DD:EE:FF"] = {"room_layout": {"zone_slots": []}}
+
+        with patch.object(manager, "async_update_zone_entities", new_callable=AsyncMock) as mock_update:
+            await manager.async_discover()
+
+        mock_update.assert_awaited_once()
+        _mac, zone_slots_arg = mock_update.await_args.args
+        # The malformed [] must reach the call; the function will fail closed.
+        assert zone_slots_arg == []
+
     async def test_discover_ignores_non_firmware_version(self, hass: HomeAssistant, manager: DeviceManager) -> None:
         """Entities without firmware_version are ignored."""
         dev_reg = dr.async_get(hass)

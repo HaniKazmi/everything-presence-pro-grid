@@ -334,7 +334,12 @@ class DeviceManager:
                 # entries left behind by a device delete+readd.
                 config = self._store.devices.get(mac)
                 zone_slots = config.get("room_layout", {}).get("zone_slots") if config else None
-                await self.async_update_zone_entities(mac, zone_slots or empty_zone_slots())
+                # Only fall back when the key is actually missing (None);
+                # falsy-but-present values (e.g. []) must pass through so
+                # async_update_zone_entities can fail closed on malformed shapes.
+                if zone_slots is None:
+                    zone_slots = empty_zone_slots()
+                await self.async_update_zone_entities(mac, zone_slots)
 
         if found_new:
             self._fire_device_list_changed()
