@@ -224,6 +224,9 @@ class TestSubscribeOtaProgress:
         connection.send_message.assert_called_once()
         sent = connection.send_message.call_args[0][0]
         assert sent == event_message(1, {"state": "updating", "progress": 65.0})
+        # Tear down the 5-min timer the start sentinel arms — pytest-ha
+        # fails the test if any HA timer outlives it.
+        connection.subscriptions[1]()
 
     async def test_forwards_indeterminate_progress(
         self,
@@ -247,6 +250,7 @@ class TestSubscribeOtaProgress:
         connection.send_message.assert_called_once()
         sent = connection.send_message.call_args[0][0]
         assert sent == event_message(1, {"state": "updating", "progress": None})
+        connection.subscriptions[1]()
 
     async def test_ignores_non_update_states(
         self,
