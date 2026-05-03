@@ -285,8 +285,8 @@ void EPPComponent::loop() {
                static_code, motion_code, result.occupancy ? 1 : 0);
       // Targets part
       bool first_target = true;
-      for (int i = 0; i < result.target_count && i < NUM_TARGETS; i++) {
-        if (result.targets[i].status == TargetStatus::INACTIVE) continue;
+      for (int i = 0; i < NUM_TARGETS; i++) {
+        if (!is_target_active(result, i)) continue;
         const char *s = result.targets[i].status == TargetStatus::ACTIVE ? "A" : "P";
         int zone = 0;
         if (is_target_valid(result.targets[i].status,
@@ -326,7 +326,7 @@ void EPPComponent::loop() {
 
     int active_count = 0;
     for (int i = 0; i < NUM_TARGETS; i++) {
-      bool active = i < result.target_count && result.targets[i].status != TargetStatus::INACTIVE;
+      bool active = is_target_active(result, i);
       if (active) active_count++;
 
       if (target_x_sensors_[i] != nullptr)

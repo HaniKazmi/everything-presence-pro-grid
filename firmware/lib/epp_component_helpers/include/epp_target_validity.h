@@ -27,4 +27,16 @@ inline bool is_target_valid(TargetStatus status, float x, float y) {
   return std::isfinite(x) && std::isfinite(y);
 }
 
+/// True when slot `i` of `result` carries a non-INACTIVE target.
+///
+/// Wraps the two-part guard (slot index in range AND status != INACTIVE) used
+/// when iterating publish loops over result.targets[]. Coordinates are NOT
+/// validated here — use `is_target_valid` for that. This predicate is the
+/// "do I have anything to publish for this slot?" gate.
+template <typename ResultT>
+inline bool is_target_active(const ResultT &result, int i) {
+  if (i < 0 || i >= result.target_count) return false;
+  return result.targets[i].status != TargetStatus::INACTIVE;
+}
+
 }  // namespace epp

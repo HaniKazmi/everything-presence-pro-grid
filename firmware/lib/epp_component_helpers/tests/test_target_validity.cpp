@@ -66,3 +66,54 @@ TEST_CASE("infinite coords => invalid (engine never produces these but be defens
                         0.0f,
                         -std::numeric_limits<float>::infinity()) == false);
 }
+
+// ---- is_target_active ------------------------------------------------------
+
+namespace {
+
+struct FakeTarget {
+  TargetStatus status = TargetStatus::INACTIVE;
+};
+
+struct FakeResult {
+  int target_count = 0;
+  FakeTarget targets[3];
+};
+
+}  // namespace
+
+TEST_CASE("is_target_active: slot beyond target_count is inactive") {
+  FakeResult r;
+  r.target_count = 1;
+  r.targets[0].status = TargetStatus::ACTIVE;
+  r.targets[1].status = TargetStatus::ACTIVE;  // beyond count, ignored
+
+  CHECK(is_target_active(r, 0) == true);
+  CHECK(is_target_active(r, 1) == false);
+  CHECK(is_target_active(r, 2) == false);
+}
+
+TEST_CASE("is_target_active: negative index => false") {
+  FakeResult r;
+  r.target_count = 3;
+  r.targets[0].status = TargetStatus::ACTIVE;
+  CHECK(is_target_active(r, -1) == false);
+}
+
+TEST_CASE("is_target_active: INACTIVE slot inside count => false") {
+  FakeResult r;
+  r.target_count = 3;
+  r.targets[0].status = TargetStatus::ACTIVE;
+  r.targets[1].status = TargetStatus::INACTIVE;
+  r.targets[2].status = TargetStatus::PENDING;
+  CHECK(is_target_active(r, 0) == true);
+  CHECK(is_target_active(r, 1) == false);
+  CHECK(is_target_active(r, 2) == true);  // PENDING counts as active
+}
+
+TEST_CASE("is_target_active: target_count=0 => everything inactive") {
+  FakeResult r;
+  r.target_count = 0;
+  r.targets[0].status = TargetStatus::ACTIVE;
+  CHECK(is_target_active(r, 0) == false);
+}
