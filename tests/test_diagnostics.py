@@ -52,7 +52,9 @@ class TestDiagnosticDump:
     async def test_with_device_and_config(
         self, hass: HomeAssistant, config_entry: MockConfigEntry, manager: DeviceManager, store: EPPGridStore
     ) -> None:
-        """Dump includes device info, stored config, and configurations."""
+        """Dump includes device info (with mac/host redacted), stored config, and configurations."""
+        from homeassistant.components.diagnostics import REDACTED
+
         mac = "AA:BB:CC:DD:EE:FF"
         manager.devices[mac] = ManagedDevice(mac=mac, name="Office", host="192.168.1.100")
         store.devices[mac] = {
@@ -66,13 +68,16 @@ class TestDiagnosticDump:
 
         assert len(result["devices"]) == 1
         dev = result["devices"][0]
-        assert dev["mac"] == mac
+        # mac/host redacted, but the rest of the device dict is preserved.
+        assert dev["mac"] == REDACTED
         assert dev["name"] == "Office"
-        assert dev["host"] == "192.168.1.100"
+        assert dev["host"] == REDACTED
 
-        assert mac in result["stored_configs"]
-        assert result["stored_configs"][mac]["calibration"]["room_width"] == 3000.0
+        # MAC keys are reindexed to stable device_N slots.
+        assert "device_0" in result["stored_configs"]
+        assert result["stored_configs"]["device_0"]["calibration"]["room_width"] == 3000.0
 
+        # Top-level configurations are name-keyed (not MAC-keyed) so they're untouched.
         assert "bedroom" in result["configurations"]
         assert result["configurations"]["bedroom"]["grid_bytes"] == [0] * 400
 
@@ -105,8 +110,9 @@ class TestDiagnosticDump:
 
         result = await async_get_config_entry_diagnostics(hass, config_entry)
 
-        assert mac in result["entity_states"]
-        assert result["entity_states"][mac][entity_id] == "on"
+        # MAC keys are reindexed; the inner entity-state dict is preserved.
+        assert "device_0" in result["entity_states"]
+        assert result["entity_states"]["device_0"][entity_id] == "on"
 
     async def test_entity_states_skips_devices_without_device_id(
         self, hass: HomeAssistant, config_entry: MockConfigEntry, manager: DeviceManager
@@ -117,7 +123,43 @@ class TestDiagnosticDump:
 
         result = await async_get_config_entry_diagnostics(hass, config_entry)
 
-        assert result["entity_states"][mac] == {}
+        # MAC keys are reindexed; the empty inner dict is preserved.
+        assert result["entity_states"]["device_0"] == {}
+
+    async def test_redacts_mac_and_host_in_devices(
+        self, hass: HomeAssistant, config_entry: MockConfigEntry, manager: DeviceManager, store: EPPGridStore
+    ) -> None:
+        """Diagnostics output must redact MAC and host fields, and re-key MAC-keyed dicts.
+
+        Users routinely paste diagnostics dumps into public GitHub issues; the device
+        identifier (MAC) and LAN IP (host) leak the device's network-layer identity.
+        """
+        import json
+
+        from homeassistant.components.diagnostics import REDACTED
+
+        mac = "AA:BB:CC:DD:EE:FF"
+        manager.devices[mac] = ManagedDevice(mac=mac, name="Office", host="192.168.1.100")
+        store.devices[mac] = {
+            "calibration": {"perspective": [1.0] * 8, "room_width": 3000.0},
+        }
+
+        result = await async_get_config_entry_diagnostics(hass, config_entry)
+
+        # The serialized blob must not contain the raw MAC or host string anywhere.
+        serialized = json.dumps(result)
+        assert mac not in serialized
+        assert "192.168.1.100" not in serialized
+
+        # Devices list: mac/host fields are redacted.
+        assert len(result["devices"]) == 1
+        dev = result["devices"][0]
+        assert dev["mac"] == REDACTED
+        assert dev["host"] == REDACTED
+
+        # MAC-keyed dicts get reindexed so the key itself doesn't leak.
+        assert mac not in result["stored_configs"]
+        assert mac not in result["entity_states"]
 
     async def test_integration_version_uses_loader(
         self, hass: HomeAssistant, config_entry: MockConfigEntry, manager: DeviceManager

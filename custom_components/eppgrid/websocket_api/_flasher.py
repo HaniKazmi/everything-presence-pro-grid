@@ -12,6 +12,8 @@ from homeassistant.core import callback
 
 from ..const import DOMAIN
 from . import _LOGGER
+from . import CONFIG_ENTRY_ID_SCHEMA
+from . import HOST_SCHEMA
 from . import _integration_version
 from . import _require_manager
 from . import _send_exception
@@ -137,7 +139,7 @@ async def websocket_list_flashable_devices(
 @websocket_api.websocket_command(
     {
         vol.Required("type"): "eppgrid/delete_esphome_device",
-        vol.Required("config_entry_id"): str,
+        vol.Required("config_entry_id"): CONFIG_ENTRY_ID_SCHEMA,
     }
 )
 @websocket_api.require_admin
@@ -205,7 +207,7 @@ def _map_esphome_flow_result(result: dict[str, Any]) -> dict[str, str]:
 @websocket_api.websocket_command(
     {
         vol.Required("type"): "eppgrid/add_esphome_device",
-        vol.Required("host"): str,
+        vol.Required("host"): HOST_SCHEMA,
     }
 )
 @websocket_api.require_admin
@@ -227,9 +229,7 @@ async def websocket_add_esphome_device(
                 connection.send_result(msg["id"], {"type": "already_added"})
                 return
 
-        flow_context: dict[str, Any] = {"source": "user"}
-        if hasattr(connection, "context") and hasattr(connection.context, "user_id"):
-            flow_context["user_id"] = connection.context.user_id
+        flow_context: dict[str, Any] = {"source": "user", "user_id": connection.user.id}
         result = await hass.config_entries.flow.async_init(
             "esphome",
             context=flow_context,

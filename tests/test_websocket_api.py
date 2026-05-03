@@ -81,6 +81,19 @@ async def call_async_handler(hass, handler, connection, msg):
     await hass.async_block_till_done()
 
 
+def register_managed_device(
+    mock_dm: MagicMock, mac: str = "AA:BB:CC:DD:EE:FF", host: str | None = "192.168.1.50"
+) -> None:
+    """Register a ManagedDevice on the mocked manager so handlers pass _require_known_device.
+
+    State-mutating handlers (set_setup / set_room_layout / set_settings)
+    short-circuit unless the MAC is in `manager.devices` — see _require_known_device.
+    """
+    from custom_components.eppgrid.device_manager import ManagedDevice
+
+    mock_dm.devices[mac] = ManagedDevice(mac=mac, name="EPP", host=host)
+
+
 # ---------------------------------------------------------------------------
 # Tests
 # ---------------------------------------------------------------------------
@@ -275,6 +288,7 @@ class TestWebSocketSetSetup:
     async def test_set_setup_saves_and_pushes(self, hass: HomeAssistant, config_entry: MockConfigEntry) -> None:
         """set_setup saves calibration and pushes to device."""
         mock_dm = await setup_integration(hass, config_entry)
+        register_managed_device(mock_dm)
 
         from custom_components.eppgrid.websocket_api import websocket_set_setup
 
@@ -307,6 +321,7 @@ class TestWebSocketSetSetup:
         Zone0Config at index 0 — otherwise the fail-closed guard would
         disable zone 0 unexpectedly."""
         mock_dm = await setup_integration(hass, config_entry)
+        register_managed_device(mock_dm)
         mock_dm.async_update_zone_entities = AsyncMock()
 
         from custom_components.eppgrid.websocket_api import websocket_set_setup
@@ -332,6 +347,7 @@ class TestWebSocketSetSetup:
     async def test_set_setup_clears_room_layout(self, hass: HomeAssistant, config_entry: MockConfigEntry) -> None:
         """set_setup clears existing room layout when calibration changes."""
         mock_dm = await setup_integration(hass, config_entry)
+        register_managed_device(mock_dm)
         mock_dm._store.devices["AA:BB:CC:DD:EE:FF"] = {
             "room_layout": {"grid_bytes": [1] * 400},
         }
@@ -374,6 +390,7 @@ class TestWebSocketSetSetup:
     ) -> None:
         """Deleting calibration (room_width=0) disables target_xy and applies entity state."""
         mock_dm = await setup_integration(hass, config_entry)
+        register_managed_device(mock_dm)
         # Simulate target_xy was previously enabled
         mock_dm._store.devices["AA:BB:CC:DD:EE:FF"] = {"settings": {"target_xy": True}}
 
@@ -401,6 +418,7 @@ class TestWebSocketSetSetup:
     ) -> None:
         """Deleting calibration sets entity_update_macs guard to suppress reconnect push."""
         mock_dm = await setup_integration(hass, config_entry)
+        register_managed_device(mock_dm)
         mock_dm._store.devices["AA:BB:CC:DD:EE:FF"] = {"settings": {"target_xy": True}}
 
         from custom_components.eppgrid.websocket_api import websocket_set_setup
@@ -425,6 +443,7 @@ class TestWebSocketSetSetup:
     ) -> None:
         """Adding calibration (room_width>0) must NOT auto-enable target_xy."""
         mock_dm = await setup_integration(hass, config_entry)
+        register_managed_device(mock_dm)
 
         from custom_components.eppgrid.websocket_api import websocket_set_setup
 
@@ -787,6 +806,84 @@ class TestZoneSlotsValidator:
         with pytest.raises(vol.Invalid):
             _validate_zone_slots(slots)
 
+    def test_rejects_oversized_name(self) -> None:
+        """Zone name field must be capped (≤ 64 chars)."""
+        import voluptuous as vol
+
+        from custom_components.eppgrid.websocket_api import _validate_zone_slots
+
+        slots = [
+            {"type": "default"},
+            {"name": "x" * 65, "color": "#ff0000", "type": "default"},
+        ] + [None] * 6
+        with pytest.raises(vol.Invalid):
+            _validate_zone_slots(slots)
+
+    def test_rejects_oversized_type(self) -> None:
+        """Zone `type` field must be capped (≤ 32 chars)."""
+        import voluptuous as vol
+
+        from custom_components.eppgrid.websocket_api import _validate_zone_slots
+
+        slots = [{"type": "x" * 33}] + [None] * 7
+        with pytest.raises(vol.Invalid):
+            _validate_zone_slots(slots)
+
+        slots = [
+            {"type": "default"},
+            {"name": "Office", "color": "#ff0000", "type": "x" * 33},
+        ] + [None] * 6
+        with pytest.raises(vol.Invalid):
+            _validate_zone_slots(slots)
+
+    def test_rejects_malformed_color(self) -> None:
+        """Zone `color` must match `^#[0-9A-Fa-f]{6}$`."""
+        import voluptuous as vol
+
+        from custom_components.eppgrid.websocket_api import _validate_zone_slots
+
+        slots = [
+            {"type": "default"},
+            {"name": "Office", "color": "red", "type": "default"},
+        ] + [None] * 6
+        with pytest.raises(vol.Invalid):
+            _validate_zone_slots(slots)
+
+        # Hex without leading '#'
+        slots = [
+            {"type": "default"},
+            {"name": "Office", "color": "ff0000", "type": "default"},
+        ] + [None] * 6
+        with pytest.raises(vol.Invalid):
+            _validate_zone_slots(slots)
+
+        # Wrong length
+        slots = [
+            {"type": "default"},
+            {"name": "Office", "color": "#fff", "type": "default"},
+        ] + [None] * 6
+        with pytest.raises(vol.Invalid):
+            _validate_zone_slots(slots)
+
+    def test_rejects_bool_as_numeric_timing(self) -> None:
+        """bool must NOT slip through the numeric-timing-field check.
+
+        `isinstance(True, int)` returns True in Python (bool ⊂ int), so a naive
+        `isinstance(v, (int, float))` accepts booleans. Reject them explicitly so
+        a `True`/`False` value can't sneak into firmware as timing data.
+        """
+        import voluptuous as vol
+
+        from custom_components.eppgrid.websocket_api import _validate_zone_slots
+
+        slots = [{"type": "default", "trigger": True}] + [None] * 7
+        with pytest.raises(vol.Invalid):
+            _validate_zone_slots(slots)
+
+        slots = [{"type": "default"}, {"name": "x", "color": "#ff0000", "type": "default", "renew": False}] + [None] * 6
+        with pytest.raises(vol.Invalid):
+            _validate_zone_slots(slots)
+
     def test_accepts_numeric_timing_fields(self) -> None:
         """int and float values for timing fields are both accepted."""
         from custom_components.eppgrid.websocket_api import _validate_zone_slots
@@ -810,6 +907,385 @@ class TestZoneSlotsValidator:
             },
         ] + [None] * 6
         assert _validate_zone_slots(slots) == slots
+
+
+class TestSchemaInputBounds:
+    """Schema-level input validation for state-mutating WS commands.
+
+    Asserts the voluptuous `_ws_schema` attached by `@websocket_api.websocket_command`
+    rejects oversized / malformed payloads before they reach the handler body.
+    """
+
+    @staticmethod
+    def _validate(handler, payload: dict) -> None:
+        """Run the handler's voluptuous schema, raising vol.Invalid on rejection."""
+        handler._ws_schema(payload)
+
+    # ---- Item 1: grid_bytes schema unbounded ----
+
+    def test_grid_bytes_rejects_oversize_list(self) -> None:
+        """grid_bytes must be capped at GRID_COLS * GRID_ROWS entries."""
+        import voluptuous as vol
+
+        from custom_components.eppgrid.const import GRID_COLS
+        from custom_components.eppgrid.const import GRID_ROWS
+        from custom_components.eppgrid.websocket_api import websocket_set_room_layout
+
+        oversized = [0] * (GRID_COLS * GRID_ROWS + 1)
+        payload = {
+            "id": 1,
+            "type": "eppgrid/set_room_layout",
+            "mac": "AA:BB:CC:DD:EE:FF",
+            "grid_bytes": oversized,
+            "zone_slots": [{"type": "default"}] + [None] * 7,
+            "furniture": [],
+        }
+        with pytest.raises(vol.Invalid):
+            self._validate(websocket_set_room_layout, payload)
+
+    def test_grid_bytes_rejects_value_above_255(self) -> None:
+        """grid_bytes values must be in [0, 255]."""
+        import voluptuous as vol
+
+        from custom_components.eppgrid.const import GRID_COLS
+        from custom_components.eppgrid.const import GRID_ROWS
+        from custom_components.eppgrid.websocket_api import websocket_set_room_layout
+
+        payload = {
+            "id": 1,
+            "type": "eppgrid/set_room_layout",
+            "mac": "AA:BB:CC:DD:EE:FF",
+            "grid_bytes": [256] + [0] * (GRID_COLS * GRID_ROWS - 1),
+            "zone_slots": [{"type": "default"}] + [None] * 7,
+            "furniture": [],
+        }
+        with pytest.raises(vol.Invalid):
+            self._validate(websocket_set_room_layout, payload)
+
+    def test_grid_bytes_rejects_negative_value(self) -> None:
+        """grid_bytes values must not be negative."""
+        import voluptuous as vol
+
+        from custom_components.eppgrid.websocket_api import websocket_set_room_layout
+
+        payload = {
+            "id": 1,
+            "type": "eppgrid/set_room_layout",
+            "mac": "AA:BB:CC:DD:EE:FF",
+            "grid_bytes": [-1, 0, 0],
+            "zone_slots": [{"type": "default"}] + [None] * 7,
+            "furniture": [],
+        }
+        with pytest.raises(vol.Invalid):
+            self._validate(websocket_set_room_layout, payload)
+
+    def test_grid_bytes_accepts_valid_payload(self) -> None:
+        """A correctly-sized [0, 255] grid_bytes payload passes validation."""
+        from custom_components.eppgrid.const import GRID_COLS
+        from custom_components.eppgrid.const import GRID_ROWS
+        from custom_components.eppgrid.websocket_api import websocket_set_room_layout
+
+        payload = {
+            "id": 1,
+            "type": "eppgrid/set_room_layout",
+            "mac": "AA:BB:CC:DD:EE:FF",
+            "grid_bytes": [0, 1, 255] + [0] * (GRID_COLS * GRID_ROWS - 3),
+            "zone_slots": [{"type": "default"}] + [None] * 7,
+            "furniture": [],
+        }
+        # No exception
+        self._validate(websocket_set_room_layout, payload)
+
+    # ---- Item 2: malformed MAC format ----
+
+    @pytest.mark.parametrize(
+        "handler_name,extra",
+        [
+            (
+                "websocket_set_setup",
+                {
+                    "perspective": [1.0] * 8,
+                    "room_width": 3.0,
+                    "room_depth": 4.0,
+                },
+            ),
+            (
+                "websocket_set_room_layout",
+                {
+                    "grid_bytes": [0],
+                    "zone_slots": [{"type": "default"}] + [None] * 7,
+                    "furniture": [],
+                },
+            ),
+            ("websocket_get_config", {}),
+            (
+                "websocket_set_distance_override",
+                {
+                    "target_max_distance": 4.0,
+                    "static_min_distance": 0.3,
+                    "static_max_distance": 8.0,
+                },
+            ),
+            ("websocket_subscribe_device", {}),
+            ("websocket_subscribe_raw_targets", {}),
+            ("websocket_subscribe_grid_targets", {}),
+            (
+                "websocket_set_entity_enabled",
+                {
+                    "entity_id": "binary_sensor.x",
+                    "enabled": True,
+                },
+            ),
+            (
+                "websocket_dismiss_target",
+                {
+                    "target_index": 0,
+                    "cell_index": 1,
+                },
+            ),
+            ("websocket_update_firmware", {}),
+            ("websocket_subscribe_ota_progress", {}),
+        ],
+    )
+    def test_mac_format_rejected_by_schema(self, handler_name: str, extra: dict) -> None:
+        """All commands taking `mac` must reject malformed MAC strings at schema level."""
+        import importlib
+
+        import voluptuous as vol
+
+        ws_mod = importlib.import_module("custom_components.eppgrid.websocket_api")
+        handler = getattr(ws_mod, handler_name)
+        # Derive the command name from the schema for the payload "type"
+        cmd_type = handler._ws_command
+        payload = {"id": 1, "type": cmd_type, "mac": "not-a-mac", **extra}
+        with pytest.raises(vol.Invalid):
+            self._validate(handler, payload)
+
+    def test_mac_schema_normalizes_to_uppercase(self) -> None:
+        """MAC_SCHEMA must uppercase any-case input so it matches storage keys.
+
+        manager.devices keys are uppercased via _extract_mac().upper(); without
+        normalization, a lowercase but otherwise valid MAC passes schema
+        validation but then fails the _require_known_device lookup, surfacing
+        as a confusing "device_not_found" for what is actually a known device.
+        """
+        from custom_components.eppgrid.websocket_api import MAC_SCHEMA
+
+        assert MAC_SCHEMA("aa:bb:cc:dd:ee:ff") == "AA:BB:CC:DD:EE:FF"
+        assert MAC_SCHEMA("Aa:Bb:Cc:Dd:Ee:Ff") == "AA:BB:CC:DD:EE:FF"
+        assert MAC_SCHEMA("AA:BB:CC:DD:EE:FF") == "AA:BB:CC:DD:EE:FF"
+
+    # ---- Item 2: unknown MAC short-circuits ----
+
+    async def test_set_setup_rejects_unknown_mac(self, hass: HomeAssistant, config_entry: MockConfigEntry) -> None:
+        """set_setup must short-circuit with device_not_found when MAC is unknown."""
+        mock_dm = await setup_integration(hass, config_entry)
+        # No devices registered
+        assert mock_dm.devices == {}
+
+        from custom_components.eppgrid.websocket_api import websocket_set_setup
+
+        connection = MagicMock()
+        msg = {
+            "id": 1,
+            "type": "eppgrid/set_setup",
+            "mac": "AA:BB:CC:DD:EE:FF",
+            "perspective": [1.0] * 8,
+            "room_width": 3.0,
+            "room_depth": 4.0,
+        }
+        await call_async_handler(hass, websocket_set_setup, connection, msg)
+
+        connection.send_error.assert_called_once()
+        args = connection.send_error.call_args[0]
+        assert args[0] == 1
+        assert args[1] == "device_not_found"
+        # Storage must not have been mutated
+        assert "AA:BB:CC:DD:EE:FF" not in mock_dm._store.devices
+
+    async def test_set_room_layout_rejects_unknown_mac(
+        self, hass: HomeAssistant, config_entry: MockConfigEntry
+    ) -> None:
+        """set_room_layout rejects unknown MAC."""
+        mock_dm = await setup_integration(hass, config_entry)
+
+        from custom_components.eppgrid.websocket_api import websocket_set_room_layout
+
+        connection = MagicMock()
+        msg = {
+            "id": 1,
+            "type": "eppgrid/set_room_layout",
+            "mac": "AA:BB:CC:DD:EE:FF",
+            "grid_bytes": [0],
+            "zone_slots": [{"type": "default"}] + [None] * 7,
+            "furniture": [],
+        }
+        await call_async_handler(hass, websocket_set_room_layout, connection, msg)
+
+        connection.send_error.assert_called_once()
+        assert connection.send_error.call_args[0][1] == "device_not_found"
+        assert "AA:BB:CC:DD:EE:FF" not in mock_dm._store.devices
+
+    async def test_set_settings_rejects_unknown_mac(self, hass: HomeAssistant, config_entry: MockConfigEntry) -> None:
+        """set_settings rejects unknown MAC."""
+        mock_dm = await setup_integration(hass, config_entry)
+
+        from custom_components.eppgrid.websocket_api import websocket_set_settings
+
+        connection = MagicMock()
+        msg = {
+            "id": 1,
+            "type": "eppgrid/set_settings",
+            "mac": "AA:BB:CC:DD:EE:FF",
+            "temperature_offset": 0.0,
+            "humidity_offset": 0.0,
+            "illuminance_offset": 0.0,
+            "motion_timeout": 5.0,
+            "target_auto_distance": True,
+            "target_max_distance": 4.0,
+            "static_auto_distance": False,
+            "static_min_distance": 0.3,
+            "static_max_distance": 8.0,
+            "static_trigger_threshold": 3,
+            "static_renew_threshold": 3,
+            "static_timeout": 30.0,
+            "static_on_delay": 0.0,
+            "led_mode": "Manual Control",
+            "led_brightness": 1.0,
+            "led_presence_color": "#CC33FF",
+            "relay_trigger_mode": "disabled",
+            "relay_contact_mode": "no",
+        }
+        await call_async_handler(hass, websocket_set_settings, connection, msg)
+
+        connection.send_error.assert_called_once()
+        assert connection.send_error.call_args[0][1] == "device_not_found"
+        assert "AA:BB:CC:DD:EE:FF" not in mock_dm._store.devices
+
+    # ---- Item 4: All voluptuous string schemas unbounded ----
+
+    @pytest.mark.parametrize(
+        "handler_name,field,extra,too_long",
+        [
+            (
+                "websocket_save_configuration",
+                "name",
+                {"configuration": {}},
+                "x" * 129,  # NAME_SCHEMA is max=128
+            ),
+            (
+                "websocket_delete_configuration",
+                "name",
+                {},
+                "x" * 129,
+            ),
+            (
+                "websocket_set_entity_enabled",
+                "entity_id",
+                {"mac": "AA:BB:CC:DD:EE:FF", "enabled": True},
+                "binary_sensor." + "x" * 256,  # ENTITY_ID_SCHEMA is max=255
+            ),
+            (
+                "websocket_delete_esphome_device",
+                "config_entry_id",
+                {},
+                "x" * 65,  # CONFIG_ENTRY_ID_SCHEMA is max=64
+            ),
+        ],
+    )
+    def test_string_field_length_caps(self, handler_name: str, field: str, extra: dict, too_long: str) -> None:
+        """Schema-level length caps reject oversized string fields before handler runs."""
+        import importlib
+
+        import voluptuous as vol
+
+        ws_mod = importlib.import_module("custom_components.eppgrid.websocket_api")
+        handler = getattr(ws_mod, handler_name)
+        cmd_type = handler._ws_command
+        payload = {"id": 1, "type": cmd_type, **extra, field: too_long}
+        with pytest.raises(vol.Invalid):
+            self._validate(handler, payload)
+
+    # ---- Item 7: set_setup allows negative room dims ----
+
+    def test_set_setup_rejects_negative_room_width(self) -> None:
+        """Negative room dimensions must be rejected at the schema layer."""
+        import voluptuous as vol
+
+        from custom_components.eppgrid.websocket_api import websocket_set_setup
+
+        payload = {
+            "id": 1,
+            "type": "eppgrid/set_setup",
+            "mac": "AA:BB:CC:DD:EE:FF",
+            "perspective": [1.0] * 8,
+            "room_width": -1.0,
+            "room_depth": 4.0,
+        }
+        with pytest.raises(vol.Invalid):
+            self._validate(websocket_set_setup, payload)
+
+    def test_set_setup_rejects_unreasonable_room_dimension(self) -> None:
+        """Room dimensions above the 50 000 mm cap are rejected."""
+        import voluptuous as vol
+
+        from custom_components.eppgrid.websocket_api import websocket_set_setup
+
+        payload = {
+            "id": 1,
+            "type": "eppgrid/set_setup",
+            "mac": "AA:BB:CC:DD:EE:FF",
+            "perspective": [1.0] * 8,
+            "room_width": 1_000_000.0,
+            "room_depth": 4_000.0,
+        }
+        with pytest.raises(vol.Invalid):
+            self._validate(websocket_set_setup, payload)
+
+    def test_set_setup_accepts_zero_room_width(self) -> None:
+        """room_width=0 is the valid 'delete calibration' sentinel — must pass."""
+        from custom_components.eppgrid.websocket_api import websocket_set_setup
+
+        payload = {
+            "id": 1,
+            "type": "eppgrid/set_setup",
+            "mac": "AA:BB:CC:DD:EE:FF",
+            "perspective": [0.0] * 8,
+            "room_width": 0.0,
+            "room_depth": 0.0,
+        }
+        self._validate(websocket_set_setup, payload)
+
+    def test_set_setup_accepts_normal_room_dimensions(self) -> None:
+        """Normal room dimensions (millimetres, a few metres) pass validation."""
+        from custom_components.eppgrid.websocket_api import websocket_set_setup
+
+        payload = {
+            "id": 1,
+            "type": "eppgrid/set_setup",
+            "mac": "AA:BB:CC:DD:EE:FF",
+            "perspective": [1.0] * 8,
+            "room_width": 5_000.0,
+            "room_depth": 4_000.0,
+        }
+        self._validate(websocket_set_setup, payload)
+
+    def test_save_configuration_rejects_oversize_dict(self) -> None:
+        """save_configuration must reject configuration dicts beyond the JSON-size cap."""
+        import voluptuous as vol
+
+        from custom_components.eppgrid.websocket_api import websocket_save_configuration
+
+        # 256 KiB cap; build a dict whose JSON serialization exceeds it.
+        oversized = {"data": "x" * (300 * 1024)}
+        payload = {
+            "id": 1,
+            "type": "eppgrid/save_configuration",
+            "name": "test",
+            "configuration": oversized,
+        }
+        with pytest.raises(vol.Invalid):
+            self._validate(websocket_save_configuration, payload)
 
 
 class TestWebSocketConfigurations:
@@ -1018,6 +1494,7 @@ class TestWebSocketSettings:
     async def test_set_settings_stores_all_values(self, hass: HomeAssistant, config_entry: MockConfigEntry) -> None:
         """set_settings stores all values under device_config['settings']."""
         mock_dm = await setup_integration(hass, config_entry)
+        register_managed_device(mock_dm)
 
         from custom_components.eppgrid.websocket_api import websocket_set_settings
 
@@ -1073,6 +1550,7 @@ class TestWebSocketSettings:
     async def test_set_settings_stores_led_values(self, hass: HomeAssistant, config_entry: MockConfigEntry) -> None:
         """set_settings stores LED settings under device_config['settings']."""
         mock_dm = await setup_integration(hass, config_entry)
+        register_managed_device(mock_dm)
 
         from custom_components.eppgrid.websocket_api import websocket_set_settings
 
@@ -1113,7 +1591,8 @@ class TestWebSocketSettings:
         self, hass: HomeAssistant, config_entry: MockConfigEntry
     ) -> None:
         """set_settings calls _apply_entity_states when entities dict is provided."""
-        await setup_integration(hass, config_entry)
+        mock_dm = await setup_integration(hass, config_entry)
+        register_managed_device(mock_dm)
 
         from custom_components.eppgrid.websocket_api import websocket_set_settings
 
@@ -1161,6 +1640,7 @@ class TestWebSocketSettings:
     ) -> None:
         """zone_presence=false still calls async_update_zone_entities to maintain zone_target_count awareness."""
         mock_dm = await setup_integration(hass, config_entry)
+        register_managed_device(mock_dm)
 
         from custom_components.eppgrid.websocket_api import websocket_set_settings
 
@@ -1206,6 +1686,7 @@ class TestWebSocketSettings:
         a valid length-8 shape (Zone0Config at index 0), not [None] * 8 which
         would trip the fail-closed guard and disable zone 0 unexpectedly."""
         mock_dm = await setup_integration(hass, config_entry)
+        register_managed_device(mock_dm)
         # Device has no stored room_layout (fresh setup or post-calibration).
         mock_dm._store.devices["AA:BB:CC:DD:EE:FF"] = {}
 
@@ -1252,6 +1733,7 @@ class TestWebSocketSettings:
     ) -> None:
         """zone_presence=true should call async_update_zone_entities with layout."""
         mock_dm = await setup_integration(hass, config_entry)
+        register_managed_device(mock_dm)
 
         from custom_components.eppgrid.websocket_api import websocket_set_settings
 
@@ -1290,6 +1772,7 @@ class TestWebSocketSettings:
     async def test_set_settings_entities_not_stored(self, hass: HomeAssistant, config_entry: MockConfigEntry) -> None:
         """entities dict from the message is NOT stored in device_config['settings']."""
         mock_dm = await setup_integration(hass, config_entry)
+        register_managed_device(mock_dm)
 
         from custom_components.eppgrid.websocket_api import websocket_set_settings
 
@@ -1327,6 +1810,7 @@ class TestWebSocketSettings:
     async def test_set_settings_persists_log_levels(self, hass: HomeAssistant, config_entry: MockConfigEntry) -> None:
         """set_settings stores log_levels in device_config['log_levels'], separate from settings."""
         mock_dm = await setup_integration(hass, config_entry)
+        register_managed_device(mock_dm)
 
         from custom_components.eppgrid.websocket_api import websocket_set_settings
 
@@ -1413,6 +1897,7 @@ class TestWebSocketSettings:
     ) -> None:
         """set_settings with entities sets the entity update guard to suppress reconnect push."""
         mock_dm = await setup_integration(hass, config_entry)
+        register_managed_device(mock_dm)
 
         from custom_components.eppgrid.websocket_api import websocket_set_settings
 
@@ -1451,6 +1936,7 @@ class TestWebSocketSettings:
     ) -> None:
         """set_settings without entities still sets the entity update guard for relay state change."""
         mock_dm = await setup_integration(hass, config_entry)
+        register_managed_device(mock_dm)
 
         from custom_components.eppgrid.websocket_api import websocket_set_settings
 
@@ -1486,6 +1972,7 @@ class TestWebSocketSettings:
     async def test_set_settings_stores_relay_values(self, hass: HomeAssistant, config_entry: MockConfigEntry) -> None:
         """set_settings stores relay_trigger_mode and relay_contact_mode under settings."""
         mock_dm = await setup_integration(hass, config_entry)
+        register_managed_device(mock_dm)
 
         from custom_components.eppgrid.websocket_api import websocket_set_settings
 
@@ -1525,7 +2012,8 @@ class TestWebSocketSettings:
         self, hass: HomeAssistant, config_entry: MockConfigEntry
     ) -> None:
         """set_settings enables relay_output entity when trigger_mode != 'disabled'."""
-        await setup_integration(hass, config_entry)
+        mock_dm = await setup_integration(hass, config_entry)
+        register_managed_device(mock_dm)
 
         from custom_components.eppgrid.websocket_api import websocket_set_settings
 
@@ -1563,7 +2051,8 @@ class TestWebSocketSettings:
         self, hass: HomeAssistant, config_entry: MockConfigEntry
     ) -> None:
         """set_settings disables relay_output entity when trigger_mode == 'disabled'."""
-        await setup_integration(hass, config_entry)
+        mock_dm = await setup_integration(hass, config_entry)
+        register_managed_device(mock_dm)
 
         from custom_components.eppgrid.websocket_api import websocket_set_settings
 
@@ -1680,6 +2169,7 @@ class TestZonePresencePreservation:
     ) -> None:
         """set_settings with entities.target_xy persists the value to stored settings."""
         mock_dm = await setup_integration(hass, config_entry)
+        register_managed_device(mock_dm)
         mock_dm._store.devices["AA:BB:CC:DD:EE:FF"] = {"settings": {}}
 
         from custom_components.eppgrid.websocket_api import websocket_set_settings
@@ -1722,6 +2212,7 @@ class TestZonePresencePreservation:
     ) -> None:
         """New entity keys (target_active etc.) are persisted in stored settings."""
         mock_dm = await setup_integration(hass, config_entry)
+        register_managed_device(mock_dm)
         mac = "AA:BB:CC:DD:EE:FF"
         mock_dm._store.devices[mac] = {"settings": {}}
 

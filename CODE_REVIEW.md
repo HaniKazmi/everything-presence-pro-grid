@@ -13,30 +13,30 @@ Goal: lock down trust boundaries. Single self-contained PR.
 - [x] **C: Firmware proxy is unauthenticated** — [custom_components/eppgrid/firmware_proxy.py:26](custom_components/eppgrid/firmware_proxy.py#L26) — _shipped: PR #164_
   Set `requires_auth = True` (panel attaches `Authorization: Bearer <hass.auth.accessToken>`). Add `aiohttp.ClientTimeout(total=60, sock_read=15)` and a 16 MiB cap enforced via `Content-Length` pre-check + running total over `iter_chunked(64 KiB)`. Body is buffered (bounded by the cap) into a `web.Response`, not streamed via `StreamResponse` — the cap is the load-bearing security property; streaming was deemed unnecessary given a 16 MiB ceiling. Timeouts return 504; oversize uploads return 502.
 
-- [ ] **C: Add `@websocket_api.require_admin` to every state-mutating WS command** — [custom_components/eppgrid/websocket_api/_devices.py](custom_components/eppgrid/websocket_api/_devices.py), [_firmware.py](custom_components/eppgrid/websocket_api/_firmware.py)
+- [x] **C: Add `@websocket_api.require_admin` to every state-mutating WS command** — [custom_components/eppgrid/websocket_api/_devices.py](custom_components/eppgrid/websocket_api/_devices.py), [_firmware.py](custom_components/eppgrid/websocket_api/_firmware.py) — _shipped: PR #174_
   Affected: `update_firmware`, `set_setup`, `set_room_layout`, `set_settings`, `set_distance_override`, `set_pipeline`, `set_entity_enabled`, `save_configuration`, `delete_configuration`, `set_show_room_calibration_tutorial`. Read-only `list_*`/`subscribe_*`/`get_config` stay open.
 
-- [ ] **C: `grid_bytes` schema unbounded** — [_devices.py:211](custom_components/eppgrid/websocket_api/_devices.py#L211)
-  `vol.All([vol.All(int, vol.Range(min=0, max=255))], vol.Length(min=1, max=GRID_COLS*GRID_ROWS))`.
+- [x] **C: `grid_bytes` schema unbounded** — [_devices.py:211](custom_components/eppgrid/websocket_api/_devices.py#L211)
+  `vol.All([vol.All(int, vol.Range(min=0, max=255))], vol.Length(min=1, max=GRID_COLS*GRID_ROWS))`. — _shipped: PR 1 closeout_
 
-- [ ] **C: Unknown MACs flood storage** — `_devices.py:171, 232, 870, 1009`
-  After `_check_firmware_version`, assert `mac in manager.devices` and `send_error("device_not_found", ...)` otherwise. Validate MAC format with `vol.Match(...)` regex.
+- [x] **C: Unknown MACs flood storage** — `_devices.py:171, 232, 870, 1009`
+  After `_check_firmware_version`, assert `mac in manager.devices` and `send_error("device_not_found", ...)` otherwise. Validate MAC format with `vol.Match(...)` regex. — _shipped: PR 1 closeout_
 
-- [ ] **C: `add_esphome_device` user_id branch is dead** — [_flasher.py:170-200](custom_components/eppgrid/websocket_api/_flasher.py#L170-L200)
-  Replace `connection.context.user_id` (it's a method, not attr) with `connection.user.id`. Cap host length to 253.
+- [x] **C: `add_esphome_device` user_id branch is dead** — [_flasher.py:170-200](custom_components/eppgrid/websocket_api/_flasher.py#L170-L200)
+  Replace `connection.context.user_id` (it's a method, not attr) with `connection.user.id`. Cap host length to 253. — _shipped: PR 1 closeout_
 
-- [ ] **H: All voluptuous string schemas are unbounded** — across `_devices.py`/`_firmware.py`/`_flasher.py`
-  Apply `vol.All(str, vol.Length(max=N))` to every string field. Validate `mac` format. Cap `configuration` dict size.
+- [x] **H: All voluptuous string schemas are unbounded** — across `_devices.py`/`_firmware.py`/`_flasher.py`
+  Apply `vol.All(str, vol.Length(max=N))` to every string field. Validate `mac` format. Cap `configuration` dict size. — _shipped: PR 1 closeout_
 
-- [ ] **H: Diagnostics leak MAC + LAN IP** — [diagnostics.py:38-45](custom_components/eppgrid/diagnostics.py#L38-L45)
-  Run output through `async_redact_data(payload, {"mac", "host"})`. Replace MAC keys with stable indices.
+- [x] **H: Diagnostics leak MAC + LAN IP** — [diagnostics.py:38-45](custom_components/eppgrid/diagnostics.py#L38-L45)
+  Run output through `async_redact_data(payload, {"mac", "host"})`. Replace MAC keys with stable indices. — _shipped: PR 1 closeout_
 
-- [ ] **L: `_validate_zone_slots` accepts bool as numeric** — [websocket_api/__init__.py:56-71](custom_components/eppgrid/websocket_api/__init__.py#L56-L71)
-  `isinstance(v, (int, float)) and not isinstance(v, bool)`.
+- [x] **L: `_validate_zone_slots` accepts bool as numeric** — [websocket_api/__init__.py:56-71](custom_components/eppgrid/websocket_api/__init__.py#L56-L71)
+  `isinstance(v, (int, float)) and not isinstance(v, bool)`. — _shipped: PR 1 closeout_
 
-- [ ] **L: `set_setup` allows negative `room_width`/`room_depth`** — `_devices.py:151-153`. `vol.Range(min=0, max=50)`.
+- [x] **L: `set_setup` allows negative `room_width`/`room_depth`** — `_devices.py:151-153`. `vol.Range(min=0, max=50_000)` mm (firmware uses mm; ~50 m max room). — _shipped: PR 1 closeout_
 
-- [ ] **L: `_validate_zone_slots` doesn't bound `name`/`color`/`type` lengths** — [websocket_api/__init__.py:35-72](custom_components/eppgrid/websocket_api/__init__.py#L35-L72)
+- [x] **L: `_validate_zone_slots` doesn't bound `name`/`color`/`type` lengths** — [websocket_api/__init__.py:35-72](custom_components/eppgrid/websocket_api/__init__.py#L35-L72) — _shipped: PR 1 closeout_
 
 ---
 

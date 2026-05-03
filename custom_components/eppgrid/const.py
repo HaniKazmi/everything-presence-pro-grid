@@ -4,6 +4,7 @@ DOMAIN = "eppgrid"
 
 # Grid
 GRID_COLS = 20
+GRID_ROWS = 20
 GRID_CELL_SIZE_MM = 300  # Fixed 300mm x 300mm cells
 
 # ESPHome API
