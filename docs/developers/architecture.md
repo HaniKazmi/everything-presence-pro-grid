@@ -117,6 +117,7 @@ everything-presence-pro-grid/
 │   │       ├── heatmap.ts                # Per-zone CSS color resolution
 │   │       ├── view-hash.ts              # URL fragment ↔ ViewState encoding
 │   │       ├── storage.ts                # localStorage helper (selected device MAC)
+│   │       ├── safe-unsub.ts             # HA WS unsubscribe wrapper (swallows stale-subscription errors)
 │   │       ├── usb-flash-service.ts      # esptool.js orchestration + manifest fetch
 │   │       └── improv-serial.ts          # Improv Serial protocol
 │   ├── rollup.config.js         # Bundles TS → built JS
