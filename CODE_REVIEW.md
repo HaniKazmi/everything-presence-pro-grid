@@ -287,79 +287,91 @@ Goal: lock down trust boundaries. Single self-contained PR.
 
 ## PR 8 — Firmware: ESPHome component glue
 
-- [ ] **C: Frame data race between `feed_targets` and `loop()` drops frames silently** — [epp_component.cpp:28-31, 323-330](firmware/components/epp/epp_component.cpp#L28-L31)
-  Small ring buffer (size 2-3) of `ParsedTarget[NUM_TARGETS]` frames; drain in `loop()`.
+PR 8 was split into 4 stacked sub-PRs (#171, #177, #180, #183). All 28 items addressed; new host-testable lib `firmware/lib/epp_component_helpers/` (header-only INTERFACE) absorbed the pure-logic extractions, with ~78 doctest cases.
 
-- [ ] **C: NVS schema-version conflict — every save bumps version, but each path writes only its blob** — `epp_component.cpp:577, 601, 616, 630, 479`
-  Per-blob versioning (`persp_v`, `grid_v`, `zones_v`, `relay_v`) checked independently.
+- [x] **C: Frame data race between `feed_targets` and `loop()` drops frames silently** — _shipped: PR #171_
+  SPSC ring buffer (`FrameRingBuffer<TargetFrame, 3>` in `epp_frame_ring_buffer.h`); `feed_targets` pushes, `loop` drains FIFO. Overflow drops oldest with delta-rate `ESP_LOGW`. Receipt timestamp moved to `feed_targets` so the stale watchdog (PR #180) reflects actual UART arrival, not drain time.
 
-- [ ] **C: `nvs_get_str` corrupt-JSON branch silently drops zones** — `epp_component.cpp:546-558`. Add `ESP_LOGW` on parse failure.
+- [x] **C: NVS schema-version conflict — every save bumps version, but each path writes only its blob** — _shipped: PR #171_
+  Per-blob keys `persp_v`/`grid_v`/`zones_v`/`relay_v` in `epp_nvs_layout.h`; `should_load_blob(stored, expected)` constexpr predicate. Global `version` key dropped (no BWC).
 
-- [ ] **C: `set_zones`/`set_grid`/`set_perspective` write to flash on every call with no idempotency** — `epp_component.cpp:427-442, 386-405, 345-380`
-  Bound input length; compare against `last_*_` cache; commit only on change.
+- [x] **C: `nvs_get_str` corrupt-JSON branch silently drops zones** — _shipped: PR #171_
+  `ESP_LOGW(TAG, "Corrupt zones JSON in NVS, skipping restore: %s", err.c_str())` on `deserializeJson` failure.
 
-- [ ] **C: 408 magic number in grid save/restore path, no `static_assert`** — `epp_component.cpp:494-505`
-  `static constexpr size_t GRID_BLOB_SIZE = GRID_CELL_COUNT + 2*sizeof(float);` + `static_assert(sizeof(float) == 4)`.
+- [x] **C: `set_zones`/`set_grid`/`set_perspective` write to flash on every call with no idempotency** — _shipped: PR #171_
+  `did_*_change` helpers in `epp_change_detector.h` short-circuit redundant writes. Caches seeded by `restore_from_nvs_` so first reconnect doesn't redundantly write. NVS-write failure clears the cache so retries aren't suppressed.
 
-- [ ] **H: Inactive `target_signal_sensors_` publishes 0.0 instead of NaN** — `epp_component.cpp:246-266`
-  Publish NaN; matches x/y/zone semantics.
+- [x] **C: 408 magic number in grid save/restore path, no `static_assert`** — _shipped: PR #171_
+  `GRID_BLOB_SIZE = GRID_CELL_COUNT + 2 * sizeof(float)` + `static_assert(sizeof(float) == 4)` in `epp_nvs_layout.h`. Header buffer field also uses the constant directly.
 
-- [ ] **H: Target zone reports "0" for legitimate origin (0,0)** — `epp_component.cpp:211-216, 254-262`
-  Use `status != INACTIVE` and `!std::isnan(x)` as validity check.
+- [x] **H: Inactive `target_signal_sensors_` publishes 0.0 instead of NaN** — _shipped: PR #177_
+  Publish `NAN` when not active; matches x/y/zone semantics.
 
-- [ ] **H: Perspective coefficient parser silently truncates on extra commas; no NaN/Inf check** — `epp_component.cpp:345-380`
-  Validate `std::isfinite(coeffs[i])`; require full input consumption.
+- [x] **H: Target zone reports "0" for legitimate origin (0,0)** — _shipped: PR #177_
+  Extracted `is_target_valid(status, x, y)` in `epp_target_validity.h` (status != INACTIVE && finite coords). Replaces `(x != 0 || y != 0)` heuristic at both sites.
 
-- [ ] **H: `set_grid` decodes base64 from unbounded `std::string`** — `epp_component.cpp:386-405`
-  `if (grid_data.size() > GRID_BASE64_MAX) error`.
+- [x] **H: Perspective coefficient parser silently truncates on extra commas; no NaN/Inf check** — _shipped: PR #177_
+  Pure `parse_perspective_coefficients(input, out[8])` in `epp_perspective_parser.h`. Rejects NaN/Inf, double-commas, trailing garbage, wrong count. Caller in `set_perspective` logs length + 64-byte prefix on failure (no full-payload echo).
 
-- [ ] **H: Zone-state JSON `snprintf` accumulator can overflow without truncation guard** — `epp_component.cpp:166-232`
-  After each snprintf: `if (pos >= (int)sizeof(json)) break;`.
+- [x] **H: `set_grid` decodes base64 from unbounded `std::string`** — _shipped: PR #177_
+  `GRID_BASE64_MAX` constexpr in `epp_nvs_layout.h`; oversized input rejected with `ESP_LOGE` before decode.
 
-- [ ] **H: Boot-time relay can fire on first loop before sensors stabilized** — `epp_component.cpp:296-315`
-  Add `bool boot_settled_` flag (per `feedback_template_switch_restore`).
+- [x] **H: Zone-state JSON `snprintf` accumulator can overflow without truncation guard** — _shipped: PR #177_
+  `BoundedWriter` in `epp_json_writer.h`; replaces the chained-snprintf accumulator with a safe `printf` wrapper that no-ops post-truncation. Truncation is logged via `ESP_LOGW` when it happens.
 
-- [ ] **H: NaN can poison the median window from LD2450 glitches** — `epp_component.cpp:39-44`
-  Add `std::isfinite(x) && std::isfinite(y)` to `active` predicate.
+- [x] **H: Boot-time relay can fire on first loop before sensors stabilized** — _shipped: PR #177_
+  `boot_settled_` flag flips true on first frame received OR after 2s elapsed (whichever first). Relay block gated on it. OR semantics so a disconnected radar doesn't permanently lock the relay.
 
-- [ ] **M: Per-second binary_sensor `publish_state` floods regardless of change** — `epp_component.cpp:282-294`
-  Cache last published value; skip when unchanged.
+- [x] **H: NaN can poison the median window from LD2450 glitches** — _shipped: PR #177_
+  `std::isfinite(x) && std::isfinite(y)` added to the rolling-median active predicate at the producer boundary.
 
-- [ ] **M: text_sensor `publish_state("")` fires every display tick when no targets** — `epp_component.cpp:127-150`
-  Track `last_published[i]`; only re-publish on change.
+- [x] **M: Per-second binary_sensor `publish_state` floods regardless of change** — _shipped: PR #180_
+  5 sensor caches (`int8_t last_*_published_ = -1` sentinel + `publish_bool_if_changed` lambda).
 
-- [ ] **M: ArduinoJson `JsonDocument` heap allocation in `set_zones` hot path** — `epp_component.cpp:428, 548`
-  `StaticJsonDocument<N>`; verify `parse_zone_configs` doesn't retain string pointers.
+- [x] **M: text_sensor `publish_state("")` fires every display tick when no targets** — _shipped: PR #180_
+  `std::string last_*_text_[NUM_TARGETS]` + `bool has_*` flag + `publish_text_if_changed` lambda. Both raw_target and target_position sites covered.
 
-- [ ] **M: `dismiss_target(int, int)` service does no bounds check at glue layer** — `epp_component.cpp:336-339`
-  Reject `target_index < 0 || >= MAX_TARGETS`, `cell_index < -1 || >= GRID_CELL_COUNT`.
+- [x] **M: ArduinoJson `JsonDocument` heap allocation in `set_zones` hot path** — _shipped: PR #180_
+  ArduinoJson v7 unified `JsonDocument` owns its memory pool internally; no v7 API for size hints. Documented retention semantics (`parse_zone_configs` copies primitives into `ZoneConfig`, no pointers retained) and added a retention-guard test in `test_zone_config_parser.cpp` that pins the safety invariant via inner-scope destruction.
 
-- [ ] **M: `relay_switch_->state` read-modify-write pattern bypasses switch internal state** — `epp_component.cpp:307`
-  Track desired state in component; only call `turn_on/off` on transitions you authored.
+- [x] **M: `dismiss_target(int, int)` service does no bounds check at glue layer** — _shipped: PR #180_
+  Validates `target_index ∈ [0, MAX_TARGETS)` and `cell_index ∈ [-1, GRID_CELL_COUNT)` (cell -1 is "no cell" sentinel). Rejects with `ESP_LOGW`.
 
-- [ ] **M: No stale-frame watchdog — all sensors freeze if LD2450 stops sending** — `epp_component.cpp:28-29`
-  Run throttle timers unconditionally; flush-to-inactive on stale.
+- [x] **M: `relay_switch_->state` read-modify-write pattern bypasses switch internal state** — _shipped: PR #180_
+  Component tracks own desired state (`relay_desired_state_` + `has_relay_desired_state_`); `relay_should_update` helper in `epp_relay_publish.h` has no parameter for switch state, so reading it is impossible by construction.
 
-- [ ] **M: No `dump_config()` override** — [epp_component.h:25-30](firmware/components/epp/epp_component.h#L25-L30)
-  Print firmware version, intervals, sensor pointers, relay mode, NVS restore status.
+- [x] **M: No stale-frame watchdog — all sensors freeze if LD2450 stops sending** — _shipped: PR #180_
+  `is_frame_stale` in `epp_frame_staleness.h`; STALE_FRAME_MS = 5s. `loop()` no longer early-returns on empty buffer — throttles always run, and synthesized empty `WindowOutput`/`ProcessingResult` (`static const`) drive offline state when stale. One-shot edge logs on stale-onset and recovery (cold-start suppressed). `last_frame_ms_` set in `feed_targets` so a delayed loop draining old frames doesn't mask staleness.
 
-- [ ] **M: `set_perspective` doesn't validate `room_width > 0` and `room_depth > 0`** — `epp_component.cpp:345-380`.
+- [x] **M: No `dump_config()` override** — _shipped: PR #180_
+  Prints firmware version, all 5 throttle intervals, 6 sensor wiring flags, sensor timeouts, relay config, NVS restore status.
 
-- [ ] **L: `frame_count_` field write-only (dead)** — `epp_component.cpp:31, .h:129`. Remove or expose.
+- [x] **M: `set_perspective` doesn't validate `room_width > 0` and `room_depth > 0`** — _shipped: PR #180_
+  Guard via `!(x > 0)` form so NaN, -0.0, negatives, and -inf all reject.
 
-- [ ] **L: `last_zones_json_` field write-only (dead)** — `.h:150, .cpp:555, 615`. Remove or wire to idempotency check (PR-8 above).
+- [x] **L: `frame_count_` field write-only (dead)** — _shipped: PR #183_
+  Removed; PR #180's `has_received_frame_` covers the "ever received a frame?" semantic at the boot-settled gate.
 
-- [ ] **L: TAG `"zones"` covers all logs (relay/NVS/perspective/grid)** — `epp_component.cpp:14`. Use `"epp"` or split tags.
+- [x] **L: `last_zones_json_` field write-only (dead)** — _shipped: PR #171_ (item #4 above)
+  Already wired to `did_zones_change` as part of the idempotency cache.
 
-- [ ] **L: Repeated bounds-clamp setter pattern (11×) in header** — `epp_component.h:43-114`. Templated helper.
+- [x] **L: TAG `"zones"` covers all logs (relay/NVS/perspective/grid)** — _shipped: PR #183_
+  Renamed to `"epp"` in C++ AND in 5 yaml callsites in `firmware/common/everything-presence-pro-base.yaml` (lambdas + `logger.set_log_level` for the user-facing log-level control).
 
-- [ ] **L: "Is target i live" predicate computed 4× with subtle differences** — `epp_component.cpp:139, 171-178, 207-208, 242`. Extract helper.
+- [x] **L: Repeated bounds-clamp setter pattern (11×) in header** — _shipped: PR #183_
+  Templated `set_at(arr, idx, value)` free function in `epp_indexed_setter.h`. 9 setters reduced to one-liners (the original count of 11 was off; 9 was the actual count).
 
-- [ ] **L: Hardcoded `static_timeout_=10` and `motion_timeout_=10` defaults duplicated against engine's `SensorInput`** — `epp_component.h:167-168`. One source of truth.
+- [x] **L: "Is target i live" predicate computed 4× with subtle differences** — _shipped: PR #183_
+  `is_target_active(result, i)` template in `epp_target_validity.h` (templated for host-test isolation). Distinct from `is_target_valid` (PR #177): this is the "anything to publish?" gate; `is_target_valid` adds finite-coords for grid lookup. Both used in adjacent lines so the distinction is clear in context.
 
-- [ ] **L: `transform_.apply` called twice per frame (smoothed + raw)** — `epp_component.cpp:51-56, 64-79`. Combine; bail early if no perspective.
+- [x] **L: Hardcoded `static_timeout_=10` and `motion_timeout_=10` defaults duplicated against engine's `SensorInput`** — _shipped: PR #183_
+  `DEFAULT_STATIC_TIMEOUT_S` / `DEFAULT_MOTION_TIMEOUT_S` constexpr in `epp_zone_engine.h`, referenced by both `SensorInput` and `EPPComponent`.
 
-- [ ] **L: `feed_targets` accepts 9 floats inline, not an array** — `epp_component.h:32-34`. Pass `ParsedTarget targets[NUM_TARGETS]`.
+- [x] **L: `transform_.apply` called twice per frame (smoothed + raw)** — _shipped: PR #183_
+  Hoisted `transform_.has_perspective()` out of both Stage 2 (smoothed) and Stage 2b (raw-overlay) per-target loops. Pre-calibration the transform is identity, so the function-call + identity branch is skipped per slot.
+
+- [x] **L: `feed_targets` accepts 9 floats inline, not an array** — _shipped: PR #183_
+  Signature `feed_targets(const float xy[NUM_TARGETS][2], const bool detected[NUM_TARGETS])`; yaml lambda updated. `NUM_TARGETS` hoisted to namespace scope so the array-bound parameters resolve.
 
 ---
 
