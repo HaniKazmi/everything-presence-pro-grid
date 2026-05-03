@@ -125,6 +125,16 @@ export class TargetController implements ReactiveController {
 			motionTimeout: 10,
 		});
 
+		// Engine mutates `localZoneState` (a Map) in place. Lit's
+		// shouldUpdate compares property references, so without a fresh
+		// identity the `<epp-zone-sidebar>` won't re-render. Reassign the
+		// engine state with a shallow copy of the Map so consumers see
+		// reference change while preserving entry identity.
+		this._zoneEngineState = {
+			...this._zoneEngineState,
+			localZoneState: new Map(this._zoneEngineState.localZoneState),
+		};
+
 		// Build raw debug log (same format as firmware)
 		if (this.host._showDebugLog) {
 			this._buildFrontendDebugLog(result);
