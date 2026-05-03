@@ -664,6 +664,86 @@ class TestDeviceManager:
         release.set()
         await first_task
 
+    async def test_open_session_re_drains_pending_close_inside_lock(
+        self, hass: HomeAssistant, manager: DeviceManager
+    ) -> None:
+        """`async_open_session` checks `_pending_closes` BOTH before and
+        inside the lock. The in-lock check guards the race where a close
+        gets scheduled while open is queued for the lock — forcing this
+        timing in test is brittle, so we verify the in-lock check exists
+        by counting `_pending_closes.get(mac)` invocations instead."""
+        mac = "AA:BB:CC:DD:EE:FF"
+        manager.devices[mac] = ManagedDevice(mac=mac, name="EPP", host="192.168.1.50")
+
+        get_calls: list[str] = []
+
+        class CountingDict(dict):
+            def get(self, key, default=None):
+                if key == mac:
+                    get_calls.append("call")
+                return super().get(key, default)
+
+        manager._pending_closes = CountingDict(manager._pending_closes)  # type: ignore[assignment]
+
+        with patch("custom_components.eppgrid.device_manager.DeviceConnection") as mock_conn_cls:
+            conn = mock_conn_cls.return_value
+            conn.async_connect = AsyncMock()
+            conn.async_disconnect = AsyncMock()
+            conn.connected = True
+            await manager.async_open_session(mac)
+
+        # Pre-lock check + in-lock check = at least 2 lookups for the mac.
+        assert len(get_calls) >= 2, f"expected at least 2 _pending_closes.get calls, got {get_calls}"
+
+    async def test_state_changed_offline_transition_uses_schedule_close(
+        self, hass: HomeAssistant, manager: DeviceManager
+    ) -> None:
+        """The offline-transition path in `_on_state_changed` previously did
+        a raw `hass.async_create_task(self.async_close_session(...))`, leaving
+        a close task that wasn't tracked by `_pending_closes` and could
+        outlive `async_stop()`. It must route through `schedule_close_session`
+        so the task is tracked + drained on stop."""
+        mac = "AA:BB:CC:DD:EE:FF"
+        manager.devices[mac] = ManagedDevice(mac=mac, name="EPP", host="192.168.1.50")
+        existing = MagicMock()
+        existing.async_disconnect = AsyncMock()
+        existing.connected = True
+        manager._active_connections[mac] = existing
+
+        # Wire up the registry entries the handler walks to find the mac.
+        ent_reg = er.async_get(hass)
+        dev_reg = dr.async_get(hass)
+        config_entry = MockConfigEntry(domain="esphome", data={})
+        config_entry.add_to_hass(hass)
+        device = dev_reg.async_get_or_create(
+            config_entry_id=config_entry.entry_id,
+            identifiers={("esphome", mac)},
+            connections={(dr.CONNECTION_NETWORK_MAC, mac)},
+            manufacturer="Everything Smart Technology",
+            model="Everything Presence Pro Grid",
+        )
+        manager.devices[mac].device_id = device.id
+        ent = ent_reg.async_get_or_create(
+            domain="sensor",
+            platform="esphome",
+            unique_id="firmware_version_aa",
+            device_id=device.id,
+            suggested_object_id="fw",
+        )
+
+        # Synthesize the offline transition event the way HA fires it.
+        from homeassistant.core import State
+
+        old = State(ent.entity_id, "online")
+        new = State(ent.entity_id, STATE_UNAVAILABLE)
+        event = MagicMock()
+        event.data = {"old_state": old, "new_state": new, "entity_id": ent.entity_id}
+
+        with patch.object(manager, "schedule_close_session") as mock_sched:
+            manager._on_state_changed(event)
+
+        mock_sched.assert_called_once_with(mac)
+
     async def test_open_and_close_session(self, hass: HomeAssistant, manager: DeviceManager) -> None:
         """Open session creates a connection, close session cleans it up."""
         manager.devices["AA:BB:CC:DD:EE:FF"] = ManagedDevice(mac="AA:BB:CC:DD:EE:FF", name="EPP", host="192.168.1.50")

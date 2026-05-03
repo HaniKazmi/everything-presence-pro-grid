@@ -461,10 +461,12 @@ class DeviceManager:
         if new_state.state in offline_states:
             # Device went offline — allow a fresh push when it comes back and
             # close any active session so the stale APIClient is replaced on
-            # the next frontend reconnect.
+            # the next frontend reconnect. Route through schedule_close_session
+            # so the task is tracked in `_pending_closes` and async_stop can
+            # drain it instead of leaking past teardown.
             self._pushing.discard(mac)
             if mac in self._active_connections:
-                self._hass.async_create_task(self.async_close_session(mac))
+                self.schedule_close_session(mac)
             self._fire_device_list_changed()
             return
 
@@ -752,6 +754,13 @@ class DeviceManager:
                 return True
         return not has_esphome_entity  # No entities = unknown = try
 
+    async def _await_pending_close(self, mac: str) -> None:
+        """Wait for any in-flight close task for `mac` to finish. Loops because
+        a new close can be scheduled while we await the previous one."""
+        while (pending := self._pending_closes.get(mac)) is not None and not pending.done():
+            with contextlib.suppress(Exception):
+                await pending
+
     async def async_open_session(self, mac: str) -> DeviceConnection | None:
         """Open a persistent connection for a frontend session.
         Returns the connection, or None if the device is not available."""
@@ -764,12 +773,13 @@ class DeviceManager:
         # Wait for any pending close to complete first — otherwise a quick
         # unsubscribe→re-subscribe sequence races the close task and the
         # caller gets back a connection that's about to be disconnected.
-        pending = self._pending_closes.get(mac)
-        if pending is not None and not pending.done():
-            with contextlib.suppress(Exception):
-                await pending
+        # We drain *outside* the lock to avoid holding it during a slow
+        # disconnect, AND *inside* the lock to catch a close scheduled
+        # while we were queued for the lock.
+        await self._await_pending_close(mac)
         lock = self._session_locks.setdefault(mac, asyncio.Lock())
         async with lock:
+            await self._await_pending_close(mac)
             if mac in self._active_connections:
                 conn = self._active_connections[mac]
                 if conn.connected:
