@@ -408,6 +408,21 @@ void EPPComponent::feed_targets(float x1, float y1, bool d1,
 // ---------------------------------------------------------------------------
 
 void EPPComponent::dismiss_target(int target_index, int cell_index) {
+    // Glue-layer bounds check: HA can call this with arbitrary ints. cell_index
+    // == -1 is a valid sentinel meaning "no cell" (used by zone_engine to clear
+    // a per-target dismissal). The engine bounds-checks too, but short-
+    // circuiting bad user input here keeps the log clean and avoids touching
+    // engine state with garbage indices.
+    if (target_index < 0 || target_index >= MAX_TARGETS) {
+      ESP_LOGW(TAG, "dismiss_target: target_index %d out of range [0, %d)",
+               target_index, MAX_TARGETS);
+      return;
+    }
+    if (cell_index < -1 || cell_index >= GRID_CELL_COUNT) {
+      ESP_LOGW(TAG, "dismiss_target: cell_index %d out of range [-1, %d)",
+               cell_index, GRID_CELL_COUNT);
+      return;
+    }
     zone_engine_.dismiss_target(target_index, cell_index);
     ESP_LOGI(TAG, "Dismissed target %d at cell %d", target_index, cell_index);
 }
