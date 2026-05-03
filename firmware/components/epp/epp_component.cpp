@@ -455,6 +455,16 @@ void EPPComponent::set_perspective(const std::string &perspective,
 
 void EPPComponent::set_grid(const std::string &grid_data,
                             float origin_x, float origin_y) {
+  // Reject obviously-oversized inputs before invoking mbedtls. The WS API has
+  // already deserialised this string, so we can't prevent the upstream alloc,
+  // but capping here avoids handing a multi-MB blob to the decoder and gives
+  // the operator a clear log line. See GRID_BASE64_MAX in epp_nvs_layout.h.
+  if (grid_data.size() > GRID_BASE64_MAX) {
+    ESP_LOGE(TAG, "Grid base64 input too large (%u bytes, max %u)",
+             (unsigned)grid_data.size(), (unsigned)GRID_BASE64_MAX);
+    return;
+  }
+
   uint8_t decoded[GRID_CELL_COUNT];
   size_t decoded_len = 0;
 
