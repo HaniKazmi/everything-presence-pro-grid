@@ -800,7 +800,9 @@ export class GridStateController implements ReactiveController {
 			this.host._dirty = false;
 			this.host._view = "live";
 		} catch (e) {
-			// Stay on settings page, keep dirty. Host can surface the error.
+			// Stay on settings page, keep dirty. Always log for diagnostics;
+			// also notify the host so it can surface the failure in the UI.
+			console.error("Failed to save settings:", e);
 			this.onError?.("save_settings", e);
 		} finally {
 			this.host._saving = false;

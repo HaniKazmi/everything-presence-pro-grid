@@ -9,15 +9,21 @@ import type {
 } from "../types.js";
 
 /**
- * Backend supplies the firmware base URL — validate it's https before we
- * splice it into manifest URLs or hand it to the esp-web-flasher iframe.
- * Rejects javascript:, http:, file:, and other unsafe schemes.
+ * Backend supplies the firmware base URL — validate before we splice it into
+ * manifest URLs or hand it to the esp-web-flasher iframe.
+ *
+ * Accepted: same-origin relative path (the HA backend's default
+ * `/api/eppgrid/firmware`) or an absolute http(s):// URL. Rejects
+ * `javascript:`, `data:`, `file:`, `vbscript:`, protocol-relative `//host`,
+ * and anything else that could execute or escape origin.
  */
 function sanitizeFirmwareBaseUrl(raw: unknown): string {
 	if (typeof raw !== "string" || raw === "") return "";
+	// Same-origin relative path (must NOT be protocol-relative `//host`).
+	if (raw.startsWith("/") && !raw.startsWith("//")) return raw;
 	try {
 		const u = new URL(raw);
-		return u.protocol === "https:" ? raw : "";
+		return u.protocol === "https:" || u.protocol === "http:" ? raw : "";
 	} catch {
 		return "";
 	}

@@ -149,12 +149,31 @@ describe("FlasherController", () => {
 			expect(ctrl.firmwareBaseUrl).toBe("");
 		});
 
-		it("rejects non-https firmwareBaseUrl values", async () => {
-			for (const bad of [
-				"http://example.com/fw",
-				"javascript:alert(1)",
-				"file:///etc/passwd",
+		it("accepts same-origin relative paths and http(s) URLs", async () => {
+			for (const ok of [
+				"/api/eppgrid/firmware",
 				"/api/fw",
+				"https://example.com/fw",
+				"http://homeassistant.local:8123/api/eppgrid/firmware",
+			]) {
+				ctrl.hass = {
+					callWS: vi
+						.fn()
+						.mockResolvedValue({ devices: [], firmware_base_url: ok }),
+					connection: { subscribeMessage: vi.fn() },
+				};
+				await ctrl.loadDevices();
+				expect(ctrl.firmwareBaseUrl).toBe(ok);
+			}
+		});
+
+		it("rejects unsafe firmwareBaseUrl values", async () => {
+			for (const bad of [
+				"javascript:alert(1)",
+				"data:text/html,<script>alert(1)</script>",
+				"file:///etc/passwd",
+				"vbscript:msgbox(1)",
+				"//evil.example.com/fw",
 				"not a url",
 				42,
 				null,
