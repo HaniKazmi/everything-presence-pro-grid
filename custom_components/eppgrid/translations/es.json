@@ -40,12 +40,11 @@
   "issues": {
     "firmware_behind": {
       "title": "{device_name}: actualización de firmware necesaria",
-      "description": "La integración Everything Presence Pro Grid requiere el firmware **{required_version}**, pero {device_name} está ejecutando **{current_version}**. Pulsa **Enviar** abajo para instalar el firmware ahora. Algunas funciones de la integración pueden no funcionar correctamente hasta que se actualice el firmware.",
       "fix_flow": {
         "step": {
           "init": {
             "title": "Actualizar el firmware de {device_name}",
-            "description": "Instalar el firmware **{required_version}** en **{device_name}** (actualmente ejecuta **{current_version}**). El dispositivo descargará el firmware por aire y se reiniciará al terminar. Suele tardar alrededor de un minuto."
+            "description": "La integración Everything Presence Pro Grid requiere el firmware **{required_version}**, pero **{device_name}** está ejecutando **{current_version}**. Pulsa **Enviar** para instalar el firmware por aire ahora. El dispositivo se reiniciará al terminar — suele tardar alrededor de un minuto. Algunas funciones de la integración pueden no funcionar correctamente hasta que se actualice el firmware."
           }
         }
       }
