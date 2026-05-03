@@ -4213,6 +4213,34 @@ class TestEventCallbacks:
         # Listener was unsubscribed — host in our cache stays at the old value.
         assert manager.devices[mac].host == "192.168.1.50"
 
+    async def test_on_esphome_entry_updated_safe_under_concurrent_mutation(
+        self, hass: HomeAssistant, manager: DeviceManager
+    ) -> None:
+        """If a concurrent task mutates self.devices while
+        _on_esphome_entry_updated iterates, the handler must not raise
+        RuntimeError ('dictionary changed size during iteration')."""
+        entry = MockConfigEntry(domain="esphome", data={"host": "192.168.1.99"})
+        entry.add_to_hass(hass)
+        for i in range(5):
+            mac = f"AA:BB:CC:DD:EE:0{i}"
+            manager.devices[mac] = ManagedDevice(
+                mac=mac,
+                name=f"EPP{i}",
+                host="192.168.1.50",
+                esphome_config_entry_id=entry.entry_id,
+            )
+
+        async def mutator():
+            # Pop entries while the handler iterates.
+            for mac in list(manager.devices)[:2]:
+                manager.devices.pop(mac)
+
+        with patch.object(manager, "async_close_session", new_callable=AsyncMock):
+            await asyncio.gather(
+                manager._on_esphome_entry_updated(hass, entry),
+                mutator(),
+            )
+
 
 # ---------------------------------------------------------------------------
 # Stale connection and start/stop tests

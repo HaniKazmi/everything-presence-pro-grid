@@ -591,7 +591,7 @@ class DeviceManager:
     async def _on_esphome_entry_updated(self, hass: HomeAssistant, entry: ConfigEntry) -> None:
         """Pick up IP changes from the ESPHome integration without an HA restart."""
         new_host = entry.data.get("host")
-        for mac, dev in self.devices.items():
+        for mac, dev in list(self.devices.items()):
             if dev.esphome_config_entry_id != entry.entry_id:
                 continue
             if dev.host == new_host:
