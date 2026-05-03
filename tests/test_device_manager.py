@@ -3578,6 +3578,29 @@ class TestEventCallbacks:
         assert result is False
         assert mac not in manager._active_connections
 
+    async def test_on_device_available_retries_with_backoff(self, hass: HomeAssistant, manager: DeviceManager) -> None:
+        """A failing first push retries with bounded exponential backoff
+        (3 attempts, capped) and re-checks availability between them."""
+        mac = "AA:BB:CC:DD:EE:FF"
+        manager.devices[mac] = ManagedDevice(mac=mac, name="EPP", host="192.168.1.50")
+
+        attempts = 0
+
+        async def push(_mac: str) -> bool:
+            nonlocal attempts
+            attempts += 1
+            return attempts >= 3  # succeed on the third call
+
+        with (
+            patch.object(manager, "_push_config_to_device", side_effect=push),
+            patch.object(manager, "async_close_session", new_callable=AsyncMock),
+            patch.object(manager, "_is_device_available", return_value=True),
+            patch("custom_components.eppgrid.device_manager.asyncio.sleep", new=AsyncMock()),
+        ):
+            await manager._on_device_available(mac)
+
+        assert attempts == 3
+
     async def test_on_device_available_retries_after_stale_connection(
         self, hass: HomeAssistant, store: EPPGridStore, manager: DeviceManager
     ) -> None:
@@ -3593,20 +3616,22 @@ class TestEventCallbacks:
                 manager, "_push_config_to_device", new_callable=AsyncMock, side_effect=push_results
             ) as mock_push,
             patch.object(manager, "async_close_session", new_callable=AsyncMock) as mock_close,
+            patch.object(manager, "_is_device_available", return_value=True),
             patch("custom_components.eppgrid.device_manager.asyncio.sleep", new_callable=AsyncMock) as mock_sleep,
         ):
             await manager._on_device_available(mac)
 
         assert mock_push.await_count == 2
         mock_close.assert_awaited_once_with(mac)
-        mock_sleep.assert_awaited_once_with(5)
+        # First retry uses the smallest delay in the backoff schedule (1s).
+        mock_sleep.assert_awaited_once_with(1.0)
         # Guard stays set on success (not discarded)
         assert mac in manager._pushing
 
-    async def test_on_device_available_clears_guard_after_both_failures(
+    async def test_on_device_available_clears_guard_after_all_failures(
         self, hass: HomeAssistant, store: EPPGridStore, manager: DeviceManager
     ) -> None:
-        """_on_device_available clears _pushing guard only after both attempts fail."""
+        """_on_device_available clears _pushing guard only after all attempts fail."""
         mac = "AA:BB:CC:DD:EE:FF"
         store.devices[mac] = {"calibration": {"perspective": [1.0] * 8}}
         manager.devices[mac] = ManagedDevice(mac=mac, name="EPP", host="192.168.1.50")
@@ -3615,11 +3640,37 @@ class TestEventCallbacks:
         with (
             patch.object(manager, "_push_config_to_device", new_callable=AsyncMock, return_value=False) as mock_push,
             patch.object(manager, "async_close_session", new_callable=AsyncMock),
+            patch.object(manager, "_is_device_available", return_value=True),
+            patch("custom_components.eppgrid.device_manager.asyncio.sleep", new_callable=AsyncMock) as mock_sleep,
+        ):
+            await manager._on_device_available(mac)
+
+        # Initial push + 3 retries = 4 total
+        assert mock_push.await_count == 4
+        # 3 backoff sleeps with the bounded schedule.
+        assert [c.args for c in mock_sleep.await_args_list] == [(1.0,), (3.0,), (9.0,)]
+        assert mac not in manager._pushing
+
+    async def test_on_device_available_aborts_when_offline_during_retry(
+        self, hass: HomeAssistant, manager: DeviceManager
+    ) -> None:
+        """If the device drops offline mid-retry, abort and clear the guard."""
+        mac = "AA:BB:CC:DD:EE:FF"
+        manager.devices[mac] = ManagedDevice(mac=mac, name="EPP", host="192.168.1.50")
+        manager._pushing.add(mac)
+
+        # First availability check happens after the first sleep — return False
+        # to simulate the device dropping offline during the retry window.
+        with (
+            patch.object(manager, "_push_config_to_device", new_callable=AsyncMock, return_value=False) as mock_push,
+            patch.object(manager, "async_close_session", new_callable=AsyncMock),
+            patch.object(manager, "_is_device_available", return_value=False),
             patch("custom_components.eppgrid.device_manager.asyncio.sleep", new_callable=AsyncMock),
         ):
             await manager._on_device_available(mac)
 
-        assert mock_push.await_count == 2
+        # Initial push only — bailed before any retry push.
+        assert mock_push.await_count == 1
         assert mac not in manager._pushing
 
     async def test_on_device_available_skips_push_when_entity_update_guard_set(

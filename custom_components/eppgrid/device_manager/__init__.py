@@ -740,10 +740,18 @@ class DeviceManager:
 
         _LOGGER.info("Device %s became available, pushing config", mac)
         if not await self._push_config_to_device(mac):
-            # Close stale connection and retry after device stabilises
-            await self.async_close_session(mac)
-            await asyncio.sleep(5)
-            if not await self._push_config_to_device(mac):
+            # Bounded exponential backoff. Re-check availability between
+            # attempts so we don't keep hammering a device HA already
+            # knows is offline.
+            for delay in (1.0, 3.0, 9.0):
+                await self.async_close_session(mac)
+                await asyncio.sleep(delay)
+                if not self._is_device_available(mac):
+                    self._pushing.discard(mac)
+                    return
+                if await self._push_config_to_device(mac):
+                    break
+            else:
                 self._pushing.discard(mac)
 
         self._fire_device_list_changed()
