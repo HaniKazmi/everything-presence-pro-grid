@@ -1300,6 +1300,18 @@ class TestDeviceManager:
         result = manager.read_current_connection_count(device.id)
         assert result is None
 
+    async def test_manage_log_subscription_does_not_mutate_global_logger_level(
+        self, hass: HomeAssistant, manager: DeviceManager
+    ) -> None:
+        """App code must not override the user's logger: config — firmware
+        filtering already drops messages we don't want to see in HA."""
+        from custom_components.eppgrid.device_manager._connection import _DEVICE_LOGGER
+
+        pre = _DEVICE_LOGGER.level
+        conn = MagicMock()
+        DeviceManager._manage_log_subscription(conn, {"log_levels": {"general": "Debug"}})
+        assert _DEVICE_LOGGER.level == pre
+
 
 # ---------------------------------------------------------------------------
 # async_trigger_ota tests

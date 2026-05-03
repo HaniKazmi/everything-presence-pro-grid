@@ -27,7 +27,6 @@ from ..const import EPP_MODEL
 from ..const import MAX_ZONES
 from ..const import empty_zone_slots
 from ..storage import EPPGridStore
-from ._connection import _DEVICE_LOGGER
 from ._connection import DeviceConnection
 from ._helpers import ZONE_TYPE_DEFAULTS as ZONE_TYPE_DEFAULTS  # re-export for tests
 from ._helpers import _compare_firmware_version
@@ -774,9 +773,6 @@ class DeviceManager:
                 (esphome_level_map.get(v, LogLevel.LOG_LEVEL_WARN) for v in active_levels),
                 default=LogLevel.LOG_LEVEL_WARN,
             )
-            # Set Python logger to DEBUG so HA doesn't filter any messages;
-            # firmware-side filtering controls what actually gets sent.
-            _DEVICE_LOGGER.setLevel(logging.DEBUG)
             conn.subscribe_logs(esphome_level)
         else:
             conn.unsubscribe_logs()
