@@ -59,6 +59,15 @@ class DeviceManager:
         self._hass = hass
         self._store = store
         self.devices: dict[str, ManagedDevice] = {}
+        # Reverse index device_id → mac, kept in sync with `self.devices` at
+        # every insert/remove site so registry-update dispatch is O(1) instead
+        # of O(N) per HA device-registry event.
+        self._device_id_to_mac: dict[str, str] = {}
+        # Cache of (fw_ver, device_name) used in the last Repairs sync per mac.
+        # `_on_device_registry_updated` fires on every HA device-registry change
+        # (rename, area edit, label tweak…); only re-touch the issue registry
+        # when something the issue depends on actually changed.
+        self._last_repair_sync: dict[str, tuple[str | None, str]] = {}
         self._unsub_listeners: list[Any] = []
         self._pushing: set[str] = set()
         self._entity_update_macs: set[str] = set()
@@ -281,17 +290,25 @@ class DeviceManager:
             finally:
                 await conn.async_disconnect()
 
-    def read_firmware_version(self, device_id: str | None) -> str | None:
+    def read_firmware_version(
+        self, device_id: str | None, *, entries: list[er.RegistryEntry] | None = None
+    ) -> str | None:
         """Read the Firmware Version text sensor value for a device.
 
         Returns the version string, or None if the entity exists but the
         state is unavailable/unknown (device offline).
         Returns "0.0.0" if no firmware_version entity exists (old firmware).
+
+        `entries` lets the caller pass pre-fetched device entries so callers
+        looping over many devices don't re-scan the entity registry per
+        helper call.
         """
         if device_id is None:
             return "0.0.0"
-        ent_reg = er.async_get(self._hass)
-        for entry in er.async_entries_for_device(ent_reg, device_id, include_disabled_entities=True):
+        if entries is None:
+            ent_reg = er.async_get(self._hass)
+            entries = er.async_entries_for_device(ent_reg, device_id, include_disabled_entities=True)
+        for entry in entries:
             if (
                 entry.platform == "esphome"
                 and entry.domain == "sensor"
@@ -303,15 +320,19 @@ class DeviceManager:
                 return None
         return "0.0.0"
 
-    def read_current_connection_count(self, device_id: str | None) -> int | None:
+    def read_current_connection_count(
+        self, device_id: str | None, *, entries: list[er.RegistryEntry] | None = None
+    ) -> int | None:
         """Read the Current Connections sensor value for a device.
 
         Returns the count (int), or None if the entity is missing or unavailable.
         """
         if device_id is None:
             return None
-        ent_reg = er.async_get(self._hass)
-        for entry in er.async_entries_for_device(ent_reg, device_id, include_disabled_entities=True):
+        if entries is None:
+            ent_reg = er.async_get(self._hass)
+            entries = er.async_entries_for_device(ent_reg, device_id, include_disabled_entities=True)
+        for entry in entries:
             if entry.platform == "esphome" and entry.unique_id.endswith("current_connections"):
                 state = self._hass.states.get(entry.entity_id)
                 if state is not None and state.state not in (None, "unknown", "unavailable", ""):
@@ -352,6 +373,9 @@ class DeviceManager:
             host = _extract_host(device, entry.config_entry_id, self._hass)
 
             is_new = mac not in self.devices
+            existing = self.devices.get(mac)
+            if existing is not None and existing.device_id and existing.device_id != device.id:
+                self._device_id_to_mac.pop(existing.device_id, None)
             self.devices[mac] = ManagedDevice(
                 mac=mac,
                 name=device.name_by_user or device.name or "EPP Device",
@@ -359,10 +383,10 @@ class DeviceManager:
                 esphome_config_entry_id=entry.config_entry_id,
                 device_id=device.id,
             )
+            self._device_id_to_mac[device.id] = mac
 
-            _sync_firmware_repair_issue(
-                self._hass,
-                mac=mac,
+            self._maybe_sync_repair_issue(
+                mac,
                 device_name=self.devices[mac].name,
                 fw_ver=self.read_firmware_version(device.id),
             )
@@ -384,6 +408,23 @@ class DeviceManager:
 
         if found_new:
             self._fire_device_list_changed()
+
+    def _maybe_sync_repair_issue(self, mac: str, *, device_name: str, fw_ver: str | None) -> None:
+        """Call `_sync_firmware_repair_issue` only if (fw_ver, name) changed.
+
+        Cuts redundant issue-registry writes from every device-registry update
+        event. Cache key is the pair the issue actually renders.
+        """
+        key = (fw_ver, device_name)
+        if self._last_repair_sync.get(mac) == key:
+            return
+        self._last_repair_sync[mac] = key
+        _sync_firmware_repair_issue(
+            self._hass,
+            mac=mac,
+            device_name=device_name,
+            fw_ver=fw_ver,
+        )
 
     @callback
     def _on_entity_registry_updated(self, event: Any) -> None:
@@ -451,9 +492,8 @@ class DeviceManager:
         ):
             fw_ver = self.read_firmware_version(entry.device_id)
             if fw_ver is not None:
-                _sync_firmware_repair_issue(
-                    self._hass,
-                    mac=mac,
+                self._maybe_sync_repair_issue(
+                    mac,
                     device_name=self.devices[mac].name,
                     fw_ver=fw_ver,
                 )
@@ -522,12 +562,7 @@ class DeviceManager:
             return
 
         device_id = event.data.get("device_id")
-        mac = None
-        for m, dev in self.devices.items():
-            if dev.device_id == device_id:
-                mac = m
-                break
-
+        mac = self._device_id_to_mac.get(device_id) if device_id else None
         if mac is None:
             return
 
@@ -544,9 +579,8 @@ class DeviceManager:
         if device is not None:
             new_name = device.name_by_user or device.name or "EPP Device"
             self.devices[mac].name = new_name
-            _sync_firmware_repair_issue(
-                self._hass,
-                mac=mac,
+            self._maybe_sync_repair_issue(
+                mac,
                 device_name=new_name,
                 fw_ver=self.read_firmware_version(device_id),
             )
@@ -561,22 +595,28 @@ class DeviceManager:
         await self.async_close_session(mac)
         self._store.devices.pop(mac, None)
         dev = self.devices.pop(mac, None)
-        if dev is not None and dev.esphome_config_entry_id:
-            unsub = self._entry_update_unsubs.pop(dev.esphome_config_entry_id, None)
-            if unsub is not None:
-                unsub()
+        if dev is not None:
+            if dev.device_id:
+                self._device_id_to_mac.pop(dev.device_id, None)
+            if dev.esphome_config_entry_id:
+                unsub = self._entry_update_unsubs.pop(dev.esphome_config_entry_id, None)
+                if unsub is not None:
+                    unsub()
         self._build_flags.pop(mac, None)
         self._session_locks.pop(mac, None)
         self._ota_locks.pop(mac, None)
         self._connection_failed.discard(mac)
         self._entity_update_macs.discard(mac)
         self._pushing.discard(mac)
+        self._last_repair_sync.pop(mac, None)
         # Clear any Repairs issues we raised for this device — they'd
         # otherwise hang in HA Settings → Repairs forever for a device
         # that no longer exists.
         ir.async_delete_issue(self._hass, _DOMAIN, f"firmware_behind_{mac}")
         ir.async_delete_issue(self._hass, _DOMAIN, f"firmware_ahead_{mac}")
-        await self._store.async_save()
+        # Debounced — bulk delete-multiple-devices coalesces into one write,
+        # and HA's `homeassistant_final_write` listener flushes on shutdown.
+        self._store.async_schedule_save()
         self._fire_device_list_changed()
         _LOGGER.info("Cleaned up settings for removed device %s", mac)
 
@@ -589,9 +629,8 @@ class DeviceManager:
             # this is the OTA recovery path (reboot → reconnect → new
             # firmware_version state arrives) where the issue from the
             # previous version needs to be cleared or replaced.
-            _sync_firmware_repair_issue(
-                self._hass,
-                mac=mac,
+            self._maybe_sync_repair_issue(
+                mac,
                 device_name=dev.name,
                 fw_ver=self.read_firmware_version(dev.device_id),
             )
@@ -732,7 +771,7 @@ class DeviceManager:
         finally:
             await conn.async_disconnect()
 
-    def _is_device_available(self, mac: str) -> bool:
+    def _is_device_available(self, mac: str, *, entries: list[er.RegistryEntry] | None = None) -> bool:
         """Check HA entity states to determine if a device is reachable.
 
         Returns True if any ESPHome entity is in a live state (not
@@ -743,9 +782,11 @@ class DeviceManager:
         dev = self.devices.get(mac)
         if dev is None or dev.device_id is None:
             return True  # No device tracking — try to connect
-        ent_reg = er.async_get(self._hass)
+        if entries is None:
+            ent_reg = er.async_get(self._hass)
+            entries = er.async_entries_for_device(ent_reg, dev.device_id, include_disabled_entities=True)
         has_esphome_entity = False
-        for entry in er.async_entries_for_device(ent_reg, dev.device_id, include_disabled_entities=True):
+        for entry in entries:
             if entry.platform != "esphome":
                 continue
             has_esphome_entity = True
@@ -842,10 +883,16 @@ class DeviceManager:
         """Return serializable list of managed devices for the frontend."""
         dev_reg = dr.async_get(self._hass)
         area_reg = ar.async_get(self._hass)
+        ent_reg = er.async_get(self._hass)
         result = []
         for mac, dev in self.devices.items():
             config = self._store.devices.get(mac)
-            fw_ver = self.read_firmware_version(dev.device_id)
+            entries = (
+                er.async_entries_for_device(ent_reg, dev.device_id, include_disabled_entities=True)
+                if dev.device_id
+                else []
+            )
+            fw_ver = self.read_firmware_version(dev.device_id, entries=entries)
             registry_entry = dev_reg.async_get(dev.device_id) if dev.device_id else None
             fresh_name = ((registry_entry.name_by_user or registry_entry.name) if registry_entry else None) or dev.name
             area_name: str | None = None
@@ -858,11 +905,11 @@ class DeviceManager:
                     "mac": mac,
                     "name": config.get("name", fresh_name) if config else fresh_name,
                     "host": dev.host,
-                    "available": self._is_device_available(mac),
+                    "available": self._is_device_available(mac, entries=entries),
                     "configured": config is not None,
                     "area": area_name,
                     "firmware_status": ("unavailable" if fw_ver is None else _compare_firmware_version(fw_ver)),
-                    "current_connection_count": self.read_current_connection_count(dev.device_id),
+                    "current_connection_count": self.read_current_connection_count(dev.device_id, entries=entries),
                     **self._build_flags.get(mac, {}),
                 }
             )
@@ -897,31 +944,30 @@ class DeviceManager:
 
             host = _extract_host(device, esphome_config_entry_id, self._hass)
 
-            # Check if device has firmware_version entity (= our firmware)
-            has_firmware_version = False
-            for ent_entry in er.async_entries_for_device(ent_reg, device.id, include_disabled_entities=True):
-                if (
-                    ent_entry.platform == "esphome"
-                    and ent_entry.domain == "sensor"
-                    and ent_entry.unique_id.endswith("-firmware_version")
-                ):
-                    has_firmware_version = True
-                    break
+            # One registry scan per device for all three checks below.
+            # `include_disabled_entities=True` so a user-disabled entity
+            # doesn't make the device look like it has no entities at all
+            # (which would mis-report availability=False on a fully-disabled
+            # device that's actually online).
+            entries = er.async_entries_for_device(ent_reg, device.id, include_disabled_entities=True)
 
-            # Check availability: any non-unavailable entity means device is online
-            available = False
-            for ent_entry in er.async_entries_for_device(ent_reg, device.id):
-                state = self._hass.states.get(ent_entry.entity_id)
-                if state is not None and state.state not in ("unavailable", "unknown"):
-                    available = True
-                    break
+            has_firmware_version = any(
+                e.platform == "esphome" and e.domain == "sensor" and e.unique_id.endswith("-firmware_version")
+                for e in entries
+            )
+
+            available = any(
+                (state := self._hass.states.get(e.entity_id)) is not None
+                and state.state not in ("unavailable", "unknown")
+                for e in entries
+            )
 
             # Check if an update is available via ESPHome update entity. Loop
             # past disabled / not-yet-published update entities until we find
             # one with a readable state, otherwise a disabled sibling can mask
             # a real "update available".
             update_available = False
-            for ent_entry in er.async_entries_for_device(ent_reg, device.id, include_disabled_entities=True):
+            for ent_entry in entries:
                 if ent_entry.domain == "update" and ent_entry.platform == "esphome":
                     state = self._hass.states.get(ent_entry.entity_id)
                     if state is not None:
@@ -930,6 +976,12 @@ class DeviceManager:
                         break
 
             managed_dev = self.devices.get(mac)
+            fw_ver = (
+                self.read_firmware_version(managed_dev.device_id, entries=entries)
+                if has_firmware_version and managed_dev is not None
+                else None
+            )
+            sw_fallback = (device.sw_version or "").split(" (")[0] or "unknown"
             result.append(
                 {
                     "mac": mac,
@@ -938,18 +990,10 @@ class DeviceManager:
                     "available": available,
                     "firmware_type": "eppgrid" if has_firmware_version else "original",
                     "firmware_version": (
-                        self.read_firmware_version(managed_dev.device_id)
-                        or (device.sw_version or "").split(" (")[0]
-                        or "unknown"
-                        if has_firmware_version and managed_dev is not None
-                        else (device.sw_version or "").split(" (")[0] or "unknown"
+                        (fw_ver or sw_fallback) if has_firmware_version and managed_dev is not None else sw_fallback
                     ),
                     "firmware_status": (
-                        (
-                            "unavailable"
-                            if (fw := self.read_firmware_version(managed_dev.device_id)) is None
-                            else _compare_firmware_version(fw)
-                        )
+                        ("unavailable" if fw_ver is None else _compare_firmware_version(fw_ver))
                         if has_firmware_version and managed_dev is not None
                         else "unknown"
                     ),
@@ -1003,13 +1047,30 @@ class DeviceManager:
             slot = zone_slots[i]
             return isinstance(slot, dict)
 
+        # Build (zone_index, suffix) → RegistryEntry from a single device scan.
+        # Previously this method called `_find_zone_entity` 16 times, each time
+        # walking the *entire* entity registry, for ~16N work per push.
+        # Anchored `endswith` (not substring) so neighbouring sensors that
+        # happen to contain "zone_3_presence" can't false-match.
+        zone_entries: dict[tuple[int, str], er.RegistryEntry] = {}
+        for entry in er.async_entries_for_device(ent_reg, dev.device_id, include_disabled_entities=True):
+            if entry.platform != "esphome":
+                continue
+            for i in range(MAX_ZONES + 1):
+                if entry.unique_id.endswith(f"-zone_{i}_presence"):
+                    zone_entries[(i, "presence")] = entry
+                    break
+                if entry.unique_id.endswith(f"-zone_{i}_target_count"):
+                    zone_entries[(i, "target_count")] = entry
+                    break
+
         for i in range(MAX_ZONES + 1):  # zones 0-7
             exists = _zone_exists(i)
 
             # Zone presence entity
-            entity_id = self._find_zone_entity(ent_reg, dev.device_id, i, "presence")
-            if entity_id is not None:
-                entry_obj = ent_reg.async_get(entity_id)
+            presence_entry = zone_entries.get((i, "presence"))
+            if presence_entry is not None:
+                entity_id = presence_entry.entity_id
                 if not zone_presence or not exists:
                     ent_reg.async_update_entity(entity_id, disabled_by=er.RegistryEntryDisabler.INTEGRATION, name=None)
                 elif i == 0:
@@ -1020,7 +1081,7 @@ class DeviceManager:
                     )
                 else:
                     zone = zone_slots[i]
-                    if entry_obj and entry_obj.disabled_by == er.RegistryEntryDisabler.USER:
+                    if presence_entry.disabled_by == er.RegistryEntryDisabler.USER:
                         pass  # Don't override user-disabled entities
                     else:
                         # .get() with fallback — _resolve_zone_name tolerates zone_name=None.
@@ -1032,10 +1093,10 @@ class DeviceManager:
                         )
 
             # Zone target count entity
-            tc_entity_id = self._find_zone_entity(ent_reg, dev.device_id, i, "target_count")
-            if tc_entity_id is not None:
-                tc_entry = ent_reg.async_get(tc_entity_id)
-                if tc_entry and tc_entry.disabled_by == er.RegistryEntryDisabler.USER:
+            tc_entry = zone_entries.get((i, "target_count"))
+            if tc_entry is not None:
+                tc_entity_id = tc_entry.entity_id
+                if tc_entry.disabled_by == er.RegistryEntryDisabler.USER:
                     pass  # Don't override user-disabled entities
                 elif zone_target_count and exists:
                     if i == 0:
@@ -1056,13 +1117,3 @@ class DeviceManager:
                     ent_reg.async_update_entity(
                         tc_entity_id, disabled_by=er.RegistryEntryDisabler.INTEGRATION, name=None
                     )
-
-    def _find_zone_entity(
-        self, ent_reg: er.EntityRegistry, device_id: str, zone_index: int, suffix: str = "presence"
-    ) -> str | None:
-        """Find an ESPHome zone entity_id for a device, zone index, and suffix."""
-        suffix_match = f"-zone_{zone_index}_{suffix}"
-        for entry in ent_reg.entities.values():
-            if entry.device_id == device_id and entry.platform == "esphome" and entry.unique_id.endswith(suffix_match):
-                return entry.entity_id
-        return None

@@ -2,9 +2,14 @@
 
 from __future__ import annotations
 
+import json
+import math
 from typing import Any
 
 import voluptuous as vol
+from aioesphomeapi import BinarySensorState
+from aioesphomeapi import SensorState
+from aioesphomeapi import TextSensorState
 from homeassistant.components import websocket_api
 from homeassistant.core import HomeAssistant
 from homeassistant.core import callback
@@ -544,8 +549,6 @@ async def websocket_subscribe_raw_targets(
 
     @callback
     def _on_state(state: Any) -> None:
-        from aioesphomeapi import TextSensorState
-
         if not isinstance(state, TextSensorState):
             return
         if state.key not in raw_keys:
@@ -662,12 +665,6 @@ async def websocket_subscribe_grid_targets(
 
     @callback
     def _on_state(state: Any) -> None:
-        import json as json_mod
-
-        from aioesphomeapi import BinarySensorState
-        from aioesphomeapi import SensorState
-        from aioesphomeapi import TextSensorState
-
         if isinstance(state, TextSensorState):
             if state.key in target_keys:
                 idx = target_keys[state.key]
@@ -696,7 +693,7 @@ async def websocket_subscribe_grid_targets(
             elif zone_state_key is not None and state.key == zone_state_key and state.state:
                 # Parse zone state JSON (1Hz)
                 try:
-                    zs = json_mod.loads(state.state)
+                    zs = json.loads(state.state)
                     # Update target signal/status
                     for i, t in enumerate(zs.get("targets", [])):
                         if i < 3:
@@ -743,8 +740,6 @@ async def websocket_subscribe_grid_targets(
                 sensors[binary_sensor_keys[state.key]] = state.state
 
         elif isinstance(state, SensorState) and state.key in numeric_sensor_keys:
-            import math
-
             field = numeric_sensor_keys[state.key]
             sensors[field] = None if math.isnan(state.state) else state.state
 

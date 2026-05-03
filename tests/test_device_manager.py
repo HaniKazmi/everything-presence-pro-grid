@@ -3101,6 +3101,7 @@ class TestEventCallbacks:
         """Device registry removal cleans up stored settings and runtime state."""
         mac = "AA:BB:CC:DD:EE:FF"
         manager.devices[mac] = ManagedDevice(mac=mac, name="EPP", host="192.168.1.50", device_id="dev123")
+        manager._device_id_to_mac["dev123"] = mac
         manager._store.devices[mac] = {"settings": {"led_mode": "Manual"}}
         manager._build_flags[mac] = {"has_co2": True}
         manager._entity_update_macs.add(mac)
@@ -3121,10 +3122,37 @@ class TestEventCallbacks:
         assert mac not in manager._entity_update_macs
         assert "Living Room" in manager._store.configurations
 
+    async def test_on_device_removed_uses_debounced_save(self, hass: HomeAssistant, manager: DeviceManager) -> None:
+        """Removal schedules a debounced save instead of awaiting one immediately.
+
+        Bulk device deletions otherwise produce N synchronous JSON writes back
+        to back; coalescing them into one debounced write under HA's storage
+        layer (with a `homeassistant_final_write` flush) keeps disk traffic
+        proportional to operations, not events.
+        """
+        mac = "AA:BB:CC:DD:EE:FF"
+        manager.devices[mac] = ManagedDevice(mac=mac, name="EPP", host="192.168.1.50", device_id="dev123")
+        manager._device_id_to_mac["dev123"] = mac
+        manager._store.devices[mac] = {"settings": {"led_mode": "Manual"}}
+
+        with (
+            patch.object(manager, "async_close_session", new_callable=AsyncMock),
+            patch.object(manager._store, "async_save", new_callable=AsyncMock) as mock_immediate,
+            patch.object(manager._store, "async_schedule_save") as mock_schedule,
+        ):
+            event = MagicMock()
+            event.data = {"action": "remove", "device_id": "dev123"}
+            manager._on_device_registry_updated(event)
+            await hass.async_block_till_done()
+
+        mock_immediate.assert_not_awaited()
+        mock_schedule.assert_called_once()
+
     async def test_on_device_removed_notifies_subscribers(self, hass: HomeAssistant, manager: DeviceManager) -> None:
         """Device removal fires device list callbacks."""
         mac = "AA:BB:CC:DD:EE:FF"
         manager.devices[mac] = ManagedDevice(mac=mac, name="EPP", host="192.168.1.50", device_id="dev123")
+        manager._device_id_to_mac["dev123"] = mac
 
         cb = MagicMock()
         unsub = manager.on_device_list_changed(cb)
@@ -3137,6 +3165,46 @@ class TestEventCallbacks:
 
         cb.assert_called_once()
         unsub()
+
+    async def test_device_id_reverse_map_maintained_on_discover_and_remove(
+        self, hass: HomeAssistant, manager: DeviceManager
+    ) -> None:
+        """Discovery populates `_device_id_to_mac`; removal drops the entry.
+
+        The reverse index makes `_on_device_registry_updated` O(1); without
+        this invariant the registry-update path silently goes O(N) again or
+        leaks stale entries on remove.
+        """
+        dev_reg = dr.async_get(hass)
+        ent_reg = er.async_get(hass)
+        esphome_entry = MockConfigEntry(domain="esphome", data={"host": "192.168.1.50"}, title="EPP")
+        esphome_entry.add_to_hass(hass)
+        device = dev_reg.async_get_or_create(
+            config_entry_id=esphome_entry.entry_id,
+            connections={("mac", "aa:bb:cc:dd:ee:ff")},
+            name="EPP",
+            manufacturer="EverythingSmartTechnology",
+            model="Everything Presence Pro",
+        )
+        ent_reg.async_get_or_create(
+            "sensor",
+            "esphome",
+            unique_id="aabbccddeeff-firmware_version",
+            config_entry=esphome_entry,
+            device_id=device.id,
+        )
+
+        await manager.async_discover()
+
+        assert manager._device_id_to_mac.get(device.id) == "AA:BB:CC:DD:EE:FF"
+
+        with patch.object(manager, "async_close_session", new_callable=AsyncMock):
+            event = MagicMock()
+            event.data = {"action": "remove", "device_id": device.id}
+            manager._on_device_registry_updated(event)
+            await hass.async_block_till_done()
+
+        assert device.id not in manager._device_id_to_mac
 
     async def test_discovery_notifies_subscribers(self, hass: HomeAssistant, manager: DeviceManager) -> None:
         """Discovering a new device fires device list callbacks."""
@@ -3254,6 +3322,7 @@ class TestEventCallbacks:
         """Update events for managed devices fire device list callbacks (e.g. rename)."""
         mac = "AA:BB:CC:DD:EE:FF"
         manager.devices[mac] = ManagedDevice(mac=mac, name="EPP", host="192.168.1.50", device_id="dev123")
+        manager._device_id_to_mac["dev123"] = mac
         manager._store.devices[mac] = {"settings": {}}
 
         cb = MagicMock()
@@ -3269,6 +3338,49 @@ class TestEventCallbacks:
         assert mac in manager._store.devices
         # Callback fired so subscribers re-fetch the list
         cb.assert_called_once()
+
+    async def test_managed_update_skips_repair_sync_when_fw_and_name_unchanged(
+        self, hass: HomeAssistant, manager: DeviceManager
+    ) -> None:
+        """Update events with no firmware-version or name change skip the
+        Repairs re-sync — `_sync_firmware_repair_issue` is the only call in
+        this path that hits the issue registry, and re-firing it on every
+        bus event (area change, label edit, etc.) is pure noise."""
+        mac = "AA:BB:CC:DD:EE:FF"
+        manager.devices[mac] = ManagedDevice(mac=mac, name="EPP", host="192.168.1.50", device_id="dev123")
+        manager._device_id_to_mac["dev123"] = mac
+        manager._store.devices[mac] = {"settings": {}}
+
+        dev_reg = dr.async_get(hass)
+        esphome_entry = MockConfigEntry(domain="esphome", data={"host": "192.168.1.50"}, title="EPP")
+        esphome_entry.add_to_hass(hass)
+        dev_reg.async_get_or_create(
+            config_entry_id=esphome_entry.entry_id,
+            connections={("mac", "aa:bb:cc:dd:ee:ff")},
+            name="EPP",
+            manufacturer="EverythingSmartTechnology",
+            model="Everything Presence Pro",
+        )
+        # The mock device_id "dev123" won't match the real one, but we override
+        # the lookup result through the reverse map. Refit it.
+        real_device = next(d for d in dev_reg.devices.values() if d.name == "EPP")
+        manager.devices[mac].device_id = real_device.id
+        manager._device_id_to_mac.pop("dev123", None)
+        manager._device_id_to_mac[real_device.id] = mac
+
+        with patch("custom_components.eppgrid.device_manager._sync_firmware_repair_issue") as mock_sync:
+            event = MagicMock()
+            event.data = {"action": "update", "device_id": real_device.id}
+            # First call should sync — initial state has no cached value.
+            manager._on_device_registry_updated(event)
+            await hass.async_block_till_done()
+            assert mock_sync.call_count == 1
+
+            # Second call with no fw/name change must NOT re-sync.
+            mock_sync.reset_mock()
+            manager._on_device_registry_updated(event)
+            await hass.async_block_till_done()
+            mock_sync.assert_not_called()
 
     async def test_on_unmanaged_device_updated_does_not_fire(self, hass: HomeAssistant, manager: DeviceManager) -> None:
         """Update events for devices we don't manage don't fire the callback."""

@@ -201,6 +201,11 @@ class DeviceConnection:
         if self._client is None:
             return
 
+        # Per-section detail at debug; one info summary at the end. Push
+        # happens on every reconnect so 10 lines per device used to flood the
+        # HA log on a busy network.
+        pushed: list[str] = []
+
         cal = config.get("calibration", {})
         perspective = cal.get("perspective")
         if perspective:
@@ -214,7 +219,8 @@ class DeviceConnection:
                         "room_depth": cal.get("room_depth", 0.0),
                     },
                 )
-                _LOGGER.info("Pushed perspective to %s", self._host)
+                _LOGGER.debug("Pushed perspective to %s", self._host)
+                pushed.append("perspective")
 
         layout = config.get("room_layout", {})
         grid_bytes = layout.get("grid_bytes")
@@ -235,7 +241,8 @@ class DeviceConnection:
                         "origin_y": 0.0,
                     },
                 )
-                _LOGGER.info("Pushed grid to %s", self._host)
+                _LOGGER.debug("Pushed grid to %s", self._host)
+                pushed.append("grid")
 
         zone_slots = layout.get("zone_slots")
         if zone_slots is not None:
@@ -266,7 +273,8 @@ class DeviceConnection:
                             "zones_json": json.dumps(zone_data),
                         },
                     )
-                    _LOGGER.info("Pushed %d zones to %s", len(named), self._host)
+                    _LOGGER.debug("Pushed %d zones to %s", len(named), self._host)
+                    pushed.append(f"zones={len(named)}")
 
         # Push device settings from unified settings key
         settings = config.get("settings")
@@ -281,7 +289,8 @@ class DeviceConnection:
                         "illuminance_offset": settings.get("illuminance_offset", 0.0),
                     },
                 )
-                _LOGGER.info("Pushed env_calibration to %s", self._host)
+                _LOGGER.debug("Pushed env_calibration to %s", self._host)
+                pushed.append("env_calibration")
 
             svc = self._services.get("epp_set_motion_timeout")
             if svc:
@@ -289,7 +298,8 @@ class DeviceConnection:
                     svc,
                     {"timeout": settings.get("motion_timeout", 5.0)},
                 )
-                _LOGGER.info("Pushed motion_timeout to %s", self._host)
+                _LOGGER.debug("Pushed motion_timeout to %s", self._host)
+                pushed.append("motion_timeout")
 
             svc = self._services.get("epp_set_tracking")
             if svc:
@@ -297,7 +307,8 @@ class DeviceConnection:
                     svc,
                     {"max_range": settings.get("target_max_distance", 6.0) * 1000},
                 )
-                _LOGGER.info("Pushed tracking to %s", self._host)
+                _LOGGER.debug("Pushed tracking to %s", self._host)
+                pushed.append("tracking")
 
             svc = self._services.get("epp_set_static_presence")
             if svc:
@@ -314,7 +325,8 @@ class DeviceConnection:
                         "led_enabled": True,
                     },
                 )
-                _LOGGER.info("Pushed static_presence to %s", self._host)
+                _LOGGER.debug("Pushed static_presence to %s", self._host)
+                pushed.append("static_presence")
 
             svc = self._services.get("epp_set_led")
             if svc:
@@ -329,7 +341,8 @@ class DeviceConnection:
                         "presence_blue": int(color_hex[5:7], 16) / 255.0,
                     },
                 )
-                _LOGGER.info("Pushed led to %s", self._host)
+                _LOGGER.debug("Pushed led to %s", self._host)
+                pushed.append("led")
 
             svc = self._services.get("epp_set_relay")
             if svc:
@@ -340,7 +353,8 @@ class DeviceConnection:
                         "contact_mode": settings.get("relay_contact_mode", "no"),
                     },
                 )
-                _LOGGER.info("Pushed relay settings to %s", self._host)
+                _LOGGER.debug("Pushed relay settings to %s", self._host)
+                pushed.append("relay")
 
         # Push log levels
         log_levels = config.get("log_levels")
@@ -352,4 +366,8 @@ class DeviceConnection:
                         svc,
                         {"category": category, "level": level},
                     )
-                _LOGGER.info("Pushed log levels to %s", self._host)
+                _LOGGER.debug("Pushed log levels to %s", self._host)
+                pushed.append("log_levels")
+
+        if pushed:
+            _LOGGER.info("Pushed config to %s (%s)", self._host, ", ".join(pushed))
