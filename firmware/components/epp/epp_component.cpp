@@ -680,10 +680,19 @@ void EPPComponent::save_perspective_to_nvs_() {
   }
 
   // Per-blob version key: bumping PERSP_SCHEMA_V invalidates only this blob.
-  nvs_set_u8(handle, "persp_v", PERSP_SCHEMA_V);
-  nvs_set_blob(handle, "persp", persp_cache_, sizeof(persp_cache_));
-  nvs_commit(handle);
+  // Check every NVS call: if any fails we must clear has_persp_cache_ so the
+  // next set_perspective() call retries instead of being suppressed by the
+  // idempotency cache (set_perspective short-circuits when the new value
+  // equals persp_cache_ and has_persp_cache_ is true).
+  esp_err_t err = nvs_set_u8(handle, "persp_v", PERSP_SCHEMA_V);
+  if (err == ESP_OK) err = nvs_set_blob(handle, "persp", persp_cache_, sizeof(persp_cache_));
+  if (err == ESP_OK) err = nvs_commit(handle);
   nvs_close(handle);
+  if (err != ESP_OK) {
+    ESP_LOGE(TAG, "Failed to save perspective to NVS: %s", esp_err_to_name(err));
+    has_persp_cache_ = false;
+    return;
+  }
   ESP_LOGD(TAG, "Perspective saved to NVS (40 bytes)");
 }
 
@@ -704,10 +713,17 @@ void EPPComponent::save_grid_to_nvs_() {
   memcpy(buf + GRID_CELL_COUNT, &ox, sizeof(float));
   memcpy(buf + GRID_CELL_COUNT + sizeof(float), &oy, sizeof(float));
 
-  nvs_set_u8(handle, "grid_v", GRID_SCHEMA_V);
-  nvs_set_blob(handle, "grid", buf, sizeof(buf));
-  nvs_commit(handle);
+  // Check every NVS call: on failure clear has_grid_cache_ so set_grid()'s
+  // idempotency check doesn't permanently suppress the retry.
+  esp_err_t err = nvs_set_u8(handle, "grid_v", GRID_SCHEMA_V);
+  if (err == ESP_OK) err = nvs_set_blob(handle, "grid", buf, sizeof(buf));
+  if (err == ESP_OK) err = nvs_commit(handle);
   nvs_close(handle);
+  if (err != ESP_OK) {
+    ESP_LOGE(TAG, "Failed to save grid to NVS: %s", esp_err_to_name(err));
+    has_grid_cache_ = false;
+    return;
+  }
   ESP_LOGD(TAG, "Grid saved to NVS (%d bytes)", (int)sizeof(buf));
 }
 
@@ -720,10 +736,17 @@ void EPPComponent::save_zones_to_nvs_(const std::string &zones_json) {
 
   last_zones_json_ = zones_json;
   has_zones_cache_ = true;
-  nvs_set_u8(handle, "zones_v", ZONES_SCHEMA_V);
-  nvs_set_str(handle, "zones", zones_json.c_str());
-  nvs_commit(handle);
+  // Check every NVS call: on failure clear has_zones_cache_ so set_zones()'s
+  // idempotency check doesn't permanently suppress the retry.
+  esp_err_t err = nvs_set_u8(handle, "zones_v", ZONES_SCHEMA_V);
+  if (err == ESP_OK) err = nvs_set_str(handle, "zones", zones_json.c_str());
+  if (err == ESP_OK) err = nvs_commit(handle);
   nvs_close(handle);
+  if (err != ESP_OK) {
+    ESP_LOGE(TAG, "Failed to save zones to NVS: %s", esp_err_to_name(err));
+    has_zones_cache_ = false;
+    return;
+  }
   ESP_LOGD(TAG, "Zones saved to NVS (%d bytes)", (int)zones_json.size());
 }
 
@@ -734,11 +757,17 @@ void EPPComponent::save_relay_to_nvs_() {
     return;
   }
 
-  nvs_set_u8(handle, "relay_v", RELAY_SCHEMA_V);
-  nvs_set_u8(handle, "relay_trig", static_cast<uint8_t>(relay_trigger_mode_));
-  nvs_set_u8(handle, "relay_cont", static_cast<uint8_t>(relay_contact_mode_));
-  nvs_commit(handle);
+  // No idempotency cache to clear here — every set_relay() rewrites
+  // unconditionally — so just log and return on failure.
+  esp_err_t err = nvs_set_u8(handle, "relay_v", RELAY_SCHEMA_V);
+  if (err == ESP_OK) err = nvs_set_u8(handle, "relay_trig", static_cast<uint8_t>(relay_trigger_mode_));
+  if (err == ESP_OK) err = nvs_set_u8(handle, "relay_cont", static_cast<uint8_t>(relay_contact_mode_));
+  if (err == ESP_OK) err = nvs_commit(handle);
   nvs_close(handle);
+  if (err != ESP_OK) {
+    ESP_LOGE(TAG, "Failed to save relay settings to NVS: %s", esp_err_to_name(err));
+    return;
+  }
   ESP_LOGD(TAG, "Relay settings saved to NVS");
 }
 
