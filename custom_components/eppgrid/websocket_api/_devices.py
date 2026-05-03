@@ -16,9 +16,16 @@ from homeassistant.core import callback
 from homeassistant.helpers import entity_registry as er
 
 from ..const import DOMAIN
+from ..const import GRID_COLS
+from ..const import GRID_ROWS
 from ..const import empty_zone_slots
 from . import _LOGGER
+from . import CONFIGURATION_DICT_SCHEMA
+from . import ENTITY_ID_SCHEMA
+from . import MAC_SCHEMA
+from . import NAME_SCHEMA
 from . import _get_manager
+from . import _require_known_device
 from . import _require_manager
 from . import _validate_zone_slots
 
@@ -134,7 +141,7 @@ async def websocket_set_show_room_calibration_tutorial(
 @websocket_api.websocket_command(
     {
         vol.Required("type"): "eppgrid/get_config",
-        vol.Required("mac"): str,
+        vol.Required("mac"): MAC_SCHEMA,
     }
 )
 @callback
@@ -159,10 +166,16 @@ def websocket_get_config(
 @websocket_api.websocket_command(
     {
         vol.Required("type"): "eppgrid/set_setup",
-        vol.Required("mac"): str,
+        vol.Required("mac"): MAC_SCHEMA,
         vol.Required("perspective"): vol.All([vol.Coerce(float)], vol.Length(min=8, max=8)),
-        vol.Required("room_width"): vol.Coerce(float),
-        vol.Required("room_depth"): vol.Coerce(float),
+        # `room_width` / `room_depth` are millimetres (the firmware grid uses
+        # GRID_CELL_SIZE_MM=300 mm cells and the connection layer feeds these
+        # straight into the grid push). 0 is the "delete calibration" sentinel
+        # (handled in the body). 50 000 mm = 50 m, far above any real room —
+        # rejects negatives and absurd-large values that would otherwise be
+        # persisted before the firmware push silently no-ops them.
+        vol.Required("room_width"): vol.All(vol.Coerce(float), vol.Range(min=0, max=50_000)),
+        vol.Required("room_depth"): vol.All(vol.Coerce(float), vol.Range(min=0, max=50_000)),
     }
 )
 @websocket_api.require_admin
@@ -175,6 +188,8 @@ async def websocket_set_setup(
     manager: Any,
 ) -> None:
     """Save perspective calibration for a device."""
+    if not _require_known_device(connection, manager, msg):
+        return
     mac = msg["mac"]
     device_config = manager._store.devices.setdefault(mac, {})
     device_config["calibration"] = {
@@ -216,8 +231,11 @@ async def websocket_set_setup(
 @websocket_api.websocket_command(
     {
         vol.Required("type"): "eppgrid/set_room_layout",
-        vol.Required("mac"): str,
-        vol.Required("grid_bytes"): [int],
+        vol.Required("mac"): MAC_SCHEMA,
+        vol.Required("grid_bytes"): vol.All(
+            [vol.All(int, vol.Range(min=0, max=255))],
+            vol.Length(min=1, max=GRID_COLS * GRID_ROWS),
+        ),
         vol.Required("zone_slots"): _validate_zone_slots,
         vol.Optional("furniture", default=[]): list,
     }
@@ -232,6 +250,8 @@ async def websocket_set_room_layout(
     manager: Any,
 ) -> None:
     """Save room layout, zones, and furniture for a device."""
+    if not _require_known_device(connection, manager, msg):
+        return
     mac = msg["mac"]
     device_config = manager._store.devices.setdefault(mac, {})
     device_config["room_layout"] = {
@@ -271,8 +291,8 @@ def websocket_list_configurations(
 @websocket_api.websocket_command(
     {
         vol.Required("type"): "eppgrid/save_configuration",
-        vol.Required("name"): str,
-        vol.Required("configuration"): dict,
+        vol.Required("name"): NAME_SCHEMA,
+        vol.Required("configuration"): CONFIGURATION_DICT_SCHEMA,
     }
 )
 @websocket_api.require_admin
@@ -293,7 +313,7 @@ async def websocket_save_configuration(
 @websocket_api.websocket_command(
     {
         vol.Required("type"): "eppgrid/delete_configuration",
-        vol.Required("name"): str,
+        vol.Required("name"): NAME_SCHEMA,
     }
 )
 @websocket_api.require_admin
@@ -453,7 +473,7 @@ def _build_entity_key_map(entities: list) -> dict[str, int]:
 @websocket_api.websocket_command(
     {
         vol.Required("type"): "eppgrid/subscribe_device",
-        vol.Required("mac"): str,
+        vol.Required("mac"): MAC_SCHEMA,
     }
 )
 @websocket_api.async_response
@@ -511,7 +531,7 @@ async def websocket_subscribe_device(
 @websocket_api.websocket_command(
     {
         vol.Required("type"): "eppgrid/subscribe_raw_targets",
-        vol.Required("mac"): str,
+        vol.Required("mac"): MAC_SCHEMA,
     }
 )
 @websocket_api.async_response
@@ -587,7 +607,7 @@ async def websocket_subscribe_raw_targets(
 @websocket_api.websocket_command(
     {
         vol.Required("type"): "eppgrid/subscribe_grid_targets",
-        vol.Required("mac"): str,
+        vol.Required("mac"): MAC_SCHEMA,
     }
 )
 @websocket_api.async_response
@@ -767,8 +787,8 @@ async def websocket_subscribe_grid_targets(
 @websocket_api.websocket_command(
     {
         vol.Required("type"): "eppgrid/set_entity_enabled",
-        vol.Required("mac"): str,
-        vol.Required("entity_id"): str,
+        vol.Required("mac"): MAC_SCHEMA,
+        vol.Required("entity_id"): ENTITY_ID_SCHEMA,
         vol.Required("enabled"): bool,
     }
 )
@@ -817,7 +837,7 @@ _SETTINGS_KEYS = (
 @websocket_api.websocket_command(
     {
         vol.Required("type"): "eppgrid/set_settings",
-        vol.Required("mac"): str,
+        vol.Required("mac"): MAC_SCHEMA,
         vol.Required("temperature_offset"): vol.Coerce(float),
         vol.Required("humidity_offset"): vol.Coerce(float),
         vol.Required("illuminance_offset"): vol.Coerce(float),
@@ -852,6 +872,8 @@ async def websocket_set_settings(
     manager: Any,
 ) -> None:
     """Save all device settings in one call."""
+    if not _require_known_device(connection, manager, msg):
+        return
     mac = msg["mac"]
     device_config = manager._store.devices.setdefault(mac, {})
     new_settings = {k: msg[k] for k in _SETTINGS_KEYS}
@@ -926,7 +948,7 @@ async def websocket_set_settings(
 @websocket_api.websocket_command(
     {
         vol.Required("type"): "eppgrid/set_distance_override",
-        vol.Required("mac"): str,
+        vol.Required("mac"): MAC_SCHEMA,
         vol.Required("target_max_distance"): vol.Coerce(float),
         vol.Required("static_min_distance"): vol.Coerce(float),
         vol.Required("static_max_distance"): vol.Coerce(float),

@@ -15,6 +15,7 @@ from ..const import DOMAIN
 from . import _LOGGER
 from . import _OTA_LOG_CATEGORY
 from . import _OTA_LOG_LEVEL
+from . import MAC_SCHEMA
 from . import _require_manager
 from . import _send_exception
 
@@ -28,7 +29,7 @@ _OTA_OUTER_TIMEOUT_S = 300
 @websocket_api.websocket_command(
     {
         vol.Required("type"): "eppgrid/update_firmware",
-        vol.Required("mac"): str,
+        vol.Required("mac"): MAC_SCHEMA,
     }
 )
 @websocket_api.require_admin
@@ -57,7 +58,7 @@ async def websocket_update_firmware(
 @websocket_api.websocket_command(
     {
         vol.Required("type"): "eppgrid/subscribe_ota_progress",
-        vol.Required("mac"): str,
+        vol.Required("mac"): MAC_SCHEMA,
     }
 )
 @websocket_api.async_response
@@ -295,7 +296,7 @@ async def websocket_subscribe_ota_progress(
 @websocket_api.websocket_command(
     {
         vol.Required("type"): "eppgrid/dismiss_target",
-        vol.Required("mac"): str,
+        vol.Required("mac"): MAC_SCHEMA,
         vol.Required("target_index"): vol.Coerce(int),
         vol.Required("cell_index"): vol.Coerce(int),
     }

@@ -724,6 +724,53 @@ class TestAddEsphomeDevice:
         assert msg_id == 7
         assert payload == {"type": "already_added"}
 
+    async def test_propagates_user_id_to_flow_context(self, hass: HomeAssistant, config_entry: MockConfigEntry) -> None:
+        """add_esphome_device must forward `connection.user.id` into the flow context.
+
+        The original code branch reading `connection.context.user_id` was dead because
+        `connection.context` is a method, not an attribute — `hasattr(method, "user_id")`
+        is always False, so the audit-trail user_id never reached the config flow.
+        """
+        await setup_integration(hass, config_entry)
+
+        from custom_components.eppgrid.websocket_api import websocket_add_esphome_device
+
+        connection = MagicMock()
+        connection.user = MagicMock()
+        connection.user.id = "user-abc-123"
+        msg = {
+            "id": 4,
+            "type": "eppgrid/add_esphome_device",
+            "host": "192.168.1.99",
+        }
+        flow_result = {"type": "create_entry", "title": "esphome-device"}
+        with patch.object(
+            hass.config_entries.flow,
+            "async_init",
+            new_callable=AsyncMock,
+            return_value=flow_result,
+        ) as mock_init:
+            await call_async_handler(hass, websocket_add_esphome_device, connection, msg)
+
+        mock_init.assert_awaited_once()
+        ctx = mock_init.call_args[1]["context"]
+        assert ctx.get("user_id") == "user-abc-123"
+        assert ctx.get("source") == "user"
+
+    def test_host_length_capped_by_schema(self) -> None:
+        """add_esphome_device must reject overly long host strings at schema level."""
+        import voluptuous as vol
+
+        from custom_components.eppgrid.websocket_api import websocket_add_esphome_device
+
+        payload = {
+            "id": 1,
+            "type": "eppgrid/add_esphome_device",
+            "host": "x" * 254,
+        }
+        with pytest.raises(vol.Invalid):
+            websocket_add_esphome_device._ws_schema(payload)
+
     async def test_starts_flow_when_host_not_in_entries(
         self, hass: HomeAssistant, config_entry: MockConfigEntry
     ) -> None:

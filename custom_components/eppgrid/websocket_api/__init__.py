@@ -5,6 +5,7 @@ from __future__ import annotations
 import functools
 import inspect
 import logging
+import re
 from typing import Any
 
 import voluptuous as vol
@@ -28,6 +29,47 @@ def _integration_version(hass: HomeAssistant) -> str:
 
 
 _TIMING_FIELDS = ("trigger", "renew", "timeout", "handoff_timeout")
+
+# Reusable schema validators for common string fields. Bound lengths and
+# enforce regex shapes at the websocket boundary so unknown / oversized
+# inputs never reach storage or firmware pushes.
+MAC_SCHEMA: vol.All = vol.All(str, vol.Match(r"^([0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}$"))
+NAME_SCHEMA: vol.All = vol.All(str, vol.Length(min=1, max=128))
+ENTITY_ID_SCHEMA: vol.All = vol.All(str, vol.Length(min=1, max=255))
+CONFIG_ENTRY_ID_SCHEMA: vol.All = vol.All(str, vol.Length(min=1, max=64))
+HOST_SCHEMA: vol.All = vol.All(str, vol.Length(min=1, max=253))
+COLOR_HEX_SCHEMA: vol.Match = vol.Match(r"^#[0-9A-Fa-f]{6}$")
+
+# Cap a configuration blob's serialized JSON size at 256 KiB. Stored
+# configurations include grid bytes (~400 ints), zone slots (8), and
+# settings (a few dozen scalars) — well under 32 KiB in practice. The
+# 256 KiB ceiling is generous but keeps a malicious client from filling
+# .storage/eppgrid with arbitrary blobs.
+_MAX_CONFIGURATION_JSON_BYTES = 256 * 1024
+
+
+def _bounded_dict(value: Any) -> dict:
+    """Validate a dict value's JSON-serialized size is under the configured cap."""
+    import json
+
+    if not isinstance(value, dict):
+        raise vol.Invalid("must be a dict")
+    try:
+        size = len(json.dumps(value, separators=(",", ":")))
+    except (TypeError, ValueError) as err:
+        raise vol.Invalid(f"value not JSON-serializable: {err}") from err
+    if size > _MAX_CONFIGURATION_JSON_BYTES:
+        raise vol.Invalid(f"serialized size {size} bytes exceeds cap {_MAX_CONFIGURATION_JSON_BYTES}")
+    return value
+
+
+CONFIGURATION_DICT_SCHEMA: Any = _bounded_dict
+
+# Per-slot length / format caps for `_validate_zone_slots`. Bound here so a
+# malicious client can't flood storage with megabyte-long zone names or types.
+_ZONE_NAME_MAX = 64
+_ZONE_TYPE_MAX = 32
+_ZONE_COLOR_RE = re.compile(r"^#[0-9A-Fa-f]{6}$")
 
 # Wire-level vocabulary for the firmware's `epp_set_log_level` action — must
 # match the string-comparison branches in firmware/common/everything-presence-pro-base.yaml.
@@ -55,8 +97,10 @@ def _validate_zone_slots(value: Any) -> list:
         raise vol.Invalid("zone_slots[0] (zone 0) must be a dict")
     if "type" not in zone0 or not isinstance(zone0["type"], str):
         raise vol.Invalid("zone_slots[0] must have string 'type'")
+    if len(zone0["type"]) > _ZONE_TYPE_MAX:
+        raise vol.Invalid(f"zone_slots[0] 'type' must be ≤ {_ZONE_TYPE_MAX} chars")
     for field in _TIMING_FIELDS:
-        if field in zone0 and not isinstance(zone0[field], (int, float)):
+        if field in zone0 and (not isinstance(zone0[field], (int, float)) or isinstance(zone0[field], bool)):
             raise vol.Invalid(f"zone_slots[0] '{field}' must be numeric when present")
     for i, slot in enumerate(value[1:], start=1):
         if slot is None:
@@ -65,12 +109,18 @@ def _validate_zone_slots(value: Any) -> list:
             raise vol.Invalid(f"zone_slots[{i}] must be null or a dict")
         if "name" not in slot or not isinstance(slot["name"], str):
             raise vol.Invalid(f"zone_slots[{i}] must have string 'name'")
+        if len(slot["name"]) > _ZONE_NAME_MAX:
+            raise vol.Invalid(f"zone_slots[{i}] 'name' must be ≤ {_ZONE_NAME_MAX} chars")
         if "color" not in slot or not isinstance(slot["color"], str):
             raise vol.Invalid(f"zone_slots[{i}] must have string 'color'")
+        if not _ZONE_COLOR_RE.match(slot["color"]):
+            raise vol.Invalid(f"zone_slots[{i}] 'color' must match {_ZONE_COLOR_RE.pattern}")
         if "type" not in slot or not isinstance(slot["type"], str):
             raise vol.Invalid(f"zone_slots[{i}] must have string 'type'")
+        if len(slot["type"]) > _ZONE_TYPE_MAX:
+            raise vol.Invalid(f"zone_slots[{i}] 'type' must be ≤ {_ZONE_TYPE_MAX} chars")
         for field in _TIMING_FIELDS:
-            if field in slot and not isinstance(slot[field], (int, float)):
+            if field in slot and (not isinstance(slot[field], (int, float)) or isinstance(slot[field], bool)):
                 raise vol.Invalid(f"zone_slots[{i}] '{field}' must be numeric when present")
     return value
 
@@ -186,6 +236,24 @@ def async_register_websocket_commands(hass: HomeAssistant, manager: Any) -> None
 def _get_manager(hass: HomeAssistant) -> Any:
     """Get the device manager."""
     return hass.data.get(DOMAIN)
+
+
+def _require_known_device(connection: websocket_api.ActiveConnection, manager: Any, msg: dict[str, Any]) -> bool:
+    """Return True if `msg["mac"]` is a known device, else send `device_not_found` and return False.
+
+    Used by state-mutating handlers that would otherwise persist storage entries
+    keyed on arbitrary unknown MAC addresses.
+    """
+    if msg["mac"] not in manager.devices:
+        connection.send_error(
+            msg["id"],
+            "device_not_found",
+            "Device not found",
+            translation_domain=DOMAIN,
+            translation_key="device_not_found",
+        )
+        return False
+    return True
 
 
 def _check_firmware_version(manager: Any, mac: str) -> str | None:
