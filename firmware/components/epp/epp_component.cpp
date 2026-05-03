@@ -549,7 +549,8 @@ void EPPComponent::restore_from_nvs_() {
     nvs_close(handle);  // Close before calling set_zones (which re-opens for save)
     // Parse and apply but don't re-save — call the shared parsing helper.
     JsonDocument doc;
-    if (!deserializeJson(doc, zones_str)) {
+    DeserializationError err = deserializeJson(doc, zones_str);
+    if (!err) {
       ZoneConfig configs[MAX_ZONE_SLOTS];
       int count = 0;
       parse_zone_configs(doc, configs, count);
@@ -557,6 +558,10 @@ void EPPComponent::restore_from_nvs_() {
       zone_engine_.set_zones(configs, count);
       last_zones_json_ = zones_str;
       ESP_LOGI(TAG, "Restored %d zones from NVS", count);
+    } else {
+      // Without this log, a corrupt blob silently drops all zones at boot.
+      // The user would see no zones in HA and no clue why.
+      ESP_LOGW(TAG, "Corrupt zones JSON in NVS, skipping restore: %s", err.c_str());
     }
     return;
   }
