@@ -2,6 +2,7 @@
 #include "epp_zone_config_parser.h"
 #include "epp_nvs_layout.h"
 #include "epp_change_detector.h"
+#include "epp_target_validity.h"
 #include "esphome/core/log.h"
 
 #include <ArduinoJson.h>
@@ -238,7 +239,9 @@ void EPPComponent::loop() {
         if (result.targets[i].status == TargetStatus::INACTIVE) continue;
         const char *s = result.targets[i].status == TargetStatus::ACTIVE ? "A" : "P";
         int zone = 0;
-        if (result.targets[i].x != 0.0f || result.targets[i].y != 0.0f) {
+        if (is_target_valid(result.targets[i].status,
+                            result.targets[i].x,
+                            result.targets[i].y)) {
           auto cell = grid_.xy_to_cell(result.targets[i].x, result.targets[i].y);
           if (cell >= 0 && cell < GRID_CELL_COUNT) {
             zone = grid_.cell_zone(cell);
@@ -281,7 +284,12 @@ void EPPComponent::loop() {
       if (target_active_sensors_[i] != nullptr)
         target_active_sensors_[i]->publish_state(active);
       if (target_zone_sensors_[i] != nullptr) {
-        if (active && (result.targets[i].x != 0.0f || result.targets[i].y != 0.0f)) {
+        // `active` is the per-slot status check the throttle uses for x/y/etc.
+        // is_target_valid layers an additional finite-coords gate on top so a
+        // NaN position from the engine doesn't trip a spurious cell lookup.
+        if (active && is_target_valid(result.targets[i].status,
+                                      result.targets[i].x,
+                                      result.targets[i].y)) {
           auto cell = grid_.xy_to_cell(result.targets[i].x, result.targets[i].y);
           if (cell >= 0 && cell < GRID_CELL_COUNT)
             target_zone_sensors_[i]->publish_state(static_cast<float>(grid_.cell_zone(cell)));

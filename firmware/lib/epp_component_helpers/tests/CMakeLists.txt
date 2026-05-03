@@ -13,7 +13,13 @@ add_executable(epp_helpers_frame_ring_buffer_tests
 )
 target_link_libraries(epp_helpers_frame_ring_buffer_tests PRIVATE epp_component_helpers doctest::doctest)
 
+add_executable(epp_helpers_target_validity_tests
+    test_target_validity.cpp
+)
+target_link_libraries(epp_helpers_target_validity_tests PRIVATE epp_component_helpers doctest::doctest)
+
 include(${doctest_SOURCE_DIR}/scripts/cmake/doctest.cmake)
 doctest_discover_tests(epp_helpers_nvs_layout_tests)
 doctest_discover_tests(epp_helpers_change_detector_tests)
 doctest_discover_tests(epp_helpers_frame_ring_buffer_tests)
+doctest_discover_tests(epp_helpers_target_validity_tests)
