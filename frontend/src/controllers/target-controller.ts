@@ -266,9 +266,11 @@ export class TargetController implements ReactiveController {
 
 	/**
 	 * Shared dedupe + timestamp + cap pipeline for backend / frontend logs.
-	 * Mutates the named host fields in place; safe because @state is set via
-	 * the same array reference (push/slice) — Lit re-render isn't required
-	 * since the DOM append below updates the visible container directly.
+	 * Updates the named host fields and appends directly to the visible DOM.
+	 * The push() call mutates the array in place (no Lit re-render); the
+	 * slice() at the cap boundary replaces the array reference, which does
+	 * trigger a Lit re-render — both paths converge on the same final state
+	 * because `_appendToLogContainer` updates the live DOM unconditionally.
 	 */
 	private _appendLog(
 		body: string,

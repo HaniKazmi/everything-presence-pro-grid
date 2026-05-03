@@ -176,8 +176,7 @@ export class EppGrid extends LitElement {
 		if (this.dismissedTargets.size === 0) return;
 		for (const [i, dismissedIdx] of this.dismissedTargets) {
 			const t = this.targets[i];
-			if (!t || t.status === "inactive" || t.x == null || t.y == null)
-				continue;
+			if (!t || t.status === "inactive" || t.x == null || t.y == null) continue;
 			const pos = mapTargetToGridCell(t.x, t.y, this.roomWidth, this.roomDepth);
 			if (!pos) continue;
 			const col = Math.floor(pos.col);
