@@ -65,6 +65,7 @@ TypeScript/Lit panel. Runs inside the Home Assistant iframe.
     - `heatmap.ts` — live-overview target rendering.
     - `zone-defaults.ts` — default thresholds per zone type.
     - `room-geometry.ts`, `canvas-serialization.ts`, `sticker-thumbnail.ts` — supporting utilities.
+    - `safe-unsub.ts` — wrapper around HA WebSocket unsubscribe callbacks that swallows the "stale subscription" error from already-torn-down connections.
 - **`types.ts`, `localize.ts`, `strategy.ts`, `constants.ts`, `styles.ts`** — cross-cutting utilities.
 - **`translations/en.json`** — user-facing strings for the panel.
 - **`__tests__/`** — Vitest specs mirroring the source tree. See [Contributing](contributing.md) for how to run them.
