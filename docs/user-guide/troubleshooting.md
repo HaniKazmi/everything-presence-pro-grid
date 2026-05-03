@@ -19,11 +19,19 @@ A `Heap Min Free` reading below ~5 KB means the device has come close to running
 
 ## Free up memory by disabling BLE
 
-The biggest memory consumer on the wifi/ethernet-ble-co2 firmware is **Bluetooth Proxy** with active scanning — typically 30-80 KB resident, plus transient spikes during scan-result processing. If you're not using the device to relay BLE devices (Xiaomi temperature sensors, presence beacons, etc.) to Home Assistant, you can free most of that memory at runtime.
+If `Heap Min Free` keeps dipping into single-digit KB and reboots correlate, you can disable BLE scanning to give yourself more headroom. Measured costs of BLE-on with no proxied devices connected (your numbers will rise as you add proxied devices — roughly 5-10 KB per active GATT connection):
 
-Toggle the **BLE Scan** switch off under **Settings → Devices & services → ESPHome → \[your device\] → Configuration**. The device will reboot once to drop any active proxy connections, then come back up with scanning disabled — and the OFF state persists across future reboots. Re-enable any time by toggling the switch back on.
+| Metric | BLE off | BLE on | Cost of BLE-on |
+|---|---|---|---|
+| Heap Free (steady-state) | ~76 KB | ~71 KB | -4 KB |
+| Heap Largest Block | ~53 KB | ~43 KB | -10 KB |
+| Heap Min Free (worst-case dip) | ~54 KB | ~35 KB | -20 KB |
 
-The BLE controller stack itself stays loaded either way (about 10-15 KB), so this isn't a full BLE-off, but it does reclaim 15-30 KB of scan and processing buffers, which is usually enough to take a memory-pressured device out of the OOM danger zone.
+So the always-resident cost is small (~4 KB), but BLE causes ~20 KB transient spikes during scan-result processing — that's where the real headroom goes when something else (network, sensor activity) needs heap at the same moment.
+
+Toggle the **BLE Scan** switch off under **Settings → Devices & services → ESPHome → \[your device\] → Configuration**. The device reboots once to drop any active proxy GATT connections, then comes back up with scanning disabled — and the OFF state persists across future reboots. Re-enable any time by toggling the switch back on.
+
+The BLE controller stack itself stays loaded either way (~10-15 KB), so this isn't a full BLE-off — it stops the active scan and (after the reboot) drops any in-flight proxy connections. Most users don't need this knob; it's mostly a safety valve if you have heavy proxied-BLE load or are seeing OOM-driven reboots.
 
 ## Collect diagnostics
 
