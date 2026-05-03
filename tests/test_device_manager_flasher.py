@@ -20,7 +20,6 @@ def mock_store():
     store.devices = {}
     store.configurations = {}
     store.sidebar_panel = True
-    store.get_device = MagicMock(return_value=None)
     return store
 
 

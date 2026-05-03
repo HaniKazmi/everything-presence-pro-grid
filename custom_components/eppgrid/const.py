@@ -12,9 +12,16 @@ DEFAULT_PORT = 6053
 MAX_ZONES = 7
 NUM_ZONE_SLOTS = MAX_ZONES + 1  # 8: zone 0 + named zones 1-7
 
-# Fallback layout when a device has no stored room_layout. Must satisfy
-# is_valid_zone_slots_shape (length-8 list, dict at slot 0).
-EMPTY_ZONE_SLOTS: list[dict[str, str] | None] = [{"type": "default"}, *([None] * MAX_ZONES)]
+
+def empty_zone_slots() -> list[dict[str, str] | None]:
+    """Return a fresh fallback layout when a device has no stored room_layout.
+
+    Must satisfy is_valid_zone_slots_shape (length-8 list, dict at slot 0).
+    Returned as a fresh list with a fresh slot-0 dict so callers can safely
+    mutate without leaking changes into other call sites.
+    """
+    return [{"type": "default"}, *([None] * MAX_ZONES)]
+
 
 # Firmware version this integration requires.
 # Must match the firmware's Firmware Version text sensor value.

@@ -201,7 +201,7 @@ class TestWebSocketGetConfig:
     async def test_get_config(self, hass: HomeAssistant, config_entry: MockConfigEntry) -> None:
         """get_config returns stored config for a device."""
         mock_dm = await setup_integration(hass, config_entry)
-        mock_dm._store.get_device = MagicMock(return_value={"calibration": {"perspective": [1.0] * 8}})
+        mock_dm._store.devices = {"AA:BB:CC:DD:EE:FF": {"calibration": {"perspective": [1.0] * 8}}}
 
         from custom_components.eppgrid.websocket_api import websocket_get_config
 
@@ -217,8 +217,7 @@ class TestWebSocketGetConfig:
     async def test_get_config_includes_entity_states(self, hass: HomeAssistant, config_entry: MockConfigEntry) -> None:
         """get_config includes entity enabled/disabled states from HA registry."""
         mock_dm = await setup_integration(hass, config_entry)
-        mock_dm._store.devices["AA:BB:CC:DD:EE:FF"] = {"settings": {}}
-        mock_dm._store.get_device = MagicMock(return_value={"settings": {}})
+        mock_dm._store.devices = {"AA:BB:CC:DD:EE:FF": {"settings": {}}}
 
         from custom_components.eppgrid.websocket_api import websocket_get_config
 

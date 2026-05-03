@@ -47,7 +47,3 @@ class EPPGridStore:
                 "show_room_calibration_tutorial": self.show_room_calibration_tutorial,
             }
         )
-
-    def get_device(self, mac: str) -> dict[str, Any] | None:
-        """Get config for a device by MAC, or None."""
-        return self.devices.get(mac)

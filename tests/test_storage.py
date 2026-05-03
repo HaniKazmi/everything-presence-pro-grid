@@ -44,17 +44,21 @@ class TestEPPGridStore:
         assert store2.sidebar_panel is False
         assert store2.show_room_calibration_tutorial is False
 
-    async def test_get_device_returns_none_for_unknown(self, store: EPPGridStore) -> None:
-        """get_device returns None for unknown MAC."""
+    async def test_devices_dict_lookup_returns_none_for_unknown(self, store: EPPGridStore) -> None:
+        """Direct devices.get returns None for unknown MAC."""
         await store.async_load()
-        assert store.get_device("00:00:00:00:00:00") is None
+        assert store.devices.get("00:00:00:00:00:00") is None
 
-    async def test_get_device_returns_config(self, store: EPPGridStore) -> None:
-        """get_device returns stored config for known MAC."""
+    async def test_devices_dict_lookup_returns_config(self, store: EPPGridStore) -> None:
+        """Direct devices.get returns stored config for known MAC."""
         await store.async_load()
         config = {"calibration": {"perspective": [0.5] * 8}}
         store.devices["AA:BB:CC:DD:EE:FF"] = config
-        assert store.get_device("AA:BB:CC:DD:EE:FF") is config
+        assert store.devices.get("AA:BB:CC:DD:EE:FF") is config
+
+    def test_no_get_device_wrapper(self) -> None:
+        """get_device wrapper is removed; callers use .devices.get directly."""
+        assert not hasattr(EPPGridStore, "get_device")
 
     async def test_multiple_devices(self, hass: HomeAssistant, store: EPPGridStore) -> None:
         """Store handles multiple devices independently."""

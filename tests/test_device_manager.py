@@ -2839,7 +2839,7 @@ class TestEventCallbacks:
         ent_reg.async_update_entity(zone1_tc.entity_id, name="Zone Cupboard Target Count", disabled_by=None)
 
         # No stored layout — device was deleted, so storage was cleared.
-        assert manager._store.get_device("AA:BB:CC:DD:EE:FF") is None
+        assert manager._store.devices.get("AA:BB:CC:DD:EE:FF") is None
 
         await manager.async_discover()
 

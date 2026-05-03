@@ -19,10 +19,10 @@ from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.event import async_call_later
 
-from ..const import EMPTY_ZONE_SLOTS
 from ..const import EPP_MANUFACTURER
 from ..const import EPP_MODEL
 from ..const import MAX_ZONES
+from ..const import empty_zone_slots
 from ..storage import EPPGridStore
 from ._connection import _DEVICE_LOGGER
 from ._connection import DeviceConnection
@@ -328,9 +328,9 @@ class DeviceManager:
                 _LOGGER.info("Discovered zone engine device: %s (%s)", device.name, mac)
                 # Always sync — the empty fallback resets stale entity registry
                 # entries left behind by a device delete+readd.
-                config = self._store.get_device(mac)
+                config = self._store.devices.get(mac)
                 zone_slots = config.get("room_layout", {}).get("zone_slots") if config else None
-                await self.async_update_zone_entities(mac, zone_slots or EMPTY_ZONE_SLOTS)
+                await self.async_update_zone_entities(mac, zone_slots or empty_zone_slots())
 
         if found_new:
             self._fire_device_list_changed()
@@ -635,7 +635,7 @@ class DeviceManager:
 
     async def _push_config_to_device(self, mac: str) -> bool:
         """Push config to device, preferring an existing session connection."""
-        config = self._store.get_device(mac)
+        config = self._store.devices.get(mac)
         if config is None:
             await self._fetch_build_flags(mac)
             return True
@@ -722,7 +722,7 @@ class DeviceManager:
             self._active_connections[mac] = conn
             _LOGGER.info("Opened session for %s (%s)", dev.name, mac)
             # Subscribe to device logs if log levels are configured
-            config = self._store.get_device(mac)
+            config = self._store.devices.get(mac)
             if config:
                 self._manage_log_subscription(conn, config)
             return conn
@@ -749,7 +749,7 @@ class DeviceManager:
         area_reg = ar.async_get(self._hass)
         result = []
         for mac, dev in self.devices.items():
-            config = self._store.get_device(mac)
+            config = self._store.devices.get(mac)
             fw_ver = self.read_firmware_version(dev.device_id)
             registry_entry = dev_reg.async_get(dev.device_id) if dev.device_id else None
             fresh_name = ((registry_entry.name_by_user or registry_entry.name) if registry_entry else None) or dev.name
@@ -884,7 +884,7 @@ class DeviceManager:
 
         language = self._hass.config.language
         ent_reg = er.async_get(self._hass)
-        config = self._store.get_device(mac) or {}
+        config = self._store.devices.get(mac) or {}
         settings = config.get("settings", {})
         zone_presence = settings.get("zone_presence", False)
         zone_target_count = settings.get("zone_target_count", False)

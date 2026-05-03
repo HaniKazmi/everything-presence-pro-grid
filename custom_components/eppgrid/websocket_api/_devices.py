@@ -11,7 +11,7 @@ from homeassistant.core import callback
 from homeassistant.helpers import entity_registry as er
 
 from ..const import DOMAIN
-from ..const import EMPTY_ZONE_SLOTS
+from ..const import empty_zone_slots
 from . import _LOGGER
 from . import _get_manager
 from . import _require_manager
@@ -119,7 +119,7 @@ def websocket_get_config(
     manager: Any,
 ) -> None:
     """Get stored config for a device."""
-    config = manager._store.get_device(msg["mac"])
+    config = manager._store.devices.get(msg["mac"])
     # Return a shallow copy to avoid mutating the stored config
     response = dict(config) if config else {}
     response["entities"] = _get_entity_states(hass, msg["mac"])
@@ -175,8 +175,9 @@ async def websocket_set_setup(
             manager._schedule_entity_update_clear(mac)
         _apply_entity_states(hass, mac, {"target_xy": False})
 
-    zone_slots = device_config.get("room_layout", {}).get("zone_slots", EMPTY_ZONE_SLOTS)
-    await manager.async_update_zone_entities(mac, zone_slots)
+    # `room_layout` was popped above when calibration changed, so the zone
+    # slots always fall back to the empty layout here.
+    await manager.async_update_zone_entities(mac, empty_zone_slots())
 
     connection.send_result(msg["id"])
 
@@ -871,7 +872,7 @@ async def websocket_set_settings(
         # Zone entities need layout-aware handling: enable zone_0 + named zones only
         if "zone_presence" in entities or "zone_target_count" in entities:
             layout = device_config.get("room_layout", {})
-            zone_slots = layout.get("zone_slots", EMPTY_ZONE_SLOTS)
+            zone_slots = layout.get("zone_slots") or empty_zone_slots()
             await manager.async_update_zone_entities(mac, zone_slots)
         await manager._push_pipeline_to_device(mac)
     connection.send_result(msg["id"])
