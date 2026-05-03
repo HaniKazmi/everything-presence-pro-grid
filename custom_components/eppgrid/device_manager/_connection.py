@@ -93,10 +93,18 @@ class DeviceConnection:
         self._unsub_logs = None
 
     async def subscribe_states(self, cb: Any) -> None:
-        """Add a state subscriber. Idempotent under concurrent callers."""
+        """Add a state subscriber. Idempotent under concurrent callers.
+
+        Raises ``RuntimeError`` if the connection is closed — silently
+        appending to ``_state_subscribers`` on a dead client would leave
+        the caller with a subscription that never fires (``_client`` is
+        ``None`` so we'd skip the underlying ``client.subscribe_states``).
+        """
         async with self._subscribe_lock:
+            if self._client is None:
+                raise RuntimeError("Cannot subscribe to states: connection is closed")
             self._state_subscribers.append(cb)
-            if not self._states_subscribed and self._client is not None:
+            if not self._states_subscribed:
                 self._states_subscribed = True
                 self._client.subscribe_states(self._dispatch_state)
 
@@ -106,12 +114,22 @@ class DeviceConnection:
             self._state_subscribers.remove(cb)
 
     def _dispatch_state(self, state: Any) -> None:
-        """Fan out state updates to all subscribers, isolating exceptions."""
+        """Fan out state updates to all subscribers, isolating exceptions.
+
+        A subscriber that raises is dropped after logging once — keeping
+        it registered would flood HA logs at the device's state-update
+        rate (potentially many Hz on a busy device).
+        """
+        failed: list[Any] = []
         for cb in list(self._state_subscribers):
             try:
                 cb(state)
             except Exception:
-                _LOGGER.exception("State subscriber raised; isolating")
+                _LOGGER.exception("State subscriber raised; dropping subscriber")
+                failed.append(cb)
+        for cb in failed:
+            with contextlib.suppress(ValueError):
+                self._state_subscribers.remove(cb)
 
     def add_log_callback(self, cb: Any) -> None:
         """Add a log callback. Receives raw log messages from the device."""

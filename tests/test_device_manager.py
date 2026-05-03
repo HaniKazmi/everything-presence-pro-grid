@@ -191,6 +191,33 @@ class TestDeviceConnection:
         conn._dispatch_state(MagicMock())
         good.assert_called_once()
 
+    async def test_dispatch_state_drops_failed_subscriber(self) -> None:
+        """A subscriber that raises is dropped after logging — keeping it
+        registered would flood logs at the device's state-update rate."""
+        conn = DeviceConnection("192.168.1.100")
+        bad = MagicMock(side_effect=RuntimeError("boom"))
+        good = MagicMock()
+        conn._state_subscribers = [bad, good]
+        conn._dispatch_state(MagicMock())
+        # Bad subscriber dropped; only good remains.
+        assert conn._state_subscribers == [good]
+        # Second dispatch only hits good — bad isn't called again.
+        conn._dispatch_state(MagicMock())
+        assert bad.call_count == 1
+        assert good.call_count == 2
+
+    async def test_subscribe_states_raises_when_disconnected(self) -> None:
+        """Subscribing on a closed connection must raise rather than silently
+        appending — otherwise the caller gets back success but never receives
+        any state updates (because _client is None and we'd skip the underlying
+        client.subscribe_states)."""
+        conn = DeviceConnection("192.168.1.100")
+        conn._client = None  # post-disconnect state
+        cb = MagicMock()
+        with pytest.raises(RuntimeError):
+            await conn.subscribe_states(cb)
+        assert cb not in conn._state_subscribers
+
     async def test_push_config_perspective(self) -> None:
         """push_config sends perspective coefficients to device."""
         conn = DeviceConnection("192.168.1.100")
