@@ -464,7 +464,10 @@ export class EppSettingsView extends LitElement {
 		><ha-icon icon="mdi:restart"></ha-icon></button>`;
 	}
 
-	private _tipIdCounter = 0;
+	// Stable per-tooltip IDs keyed by the tip text. Reusing the same ID
+	// across re-renders avoids DOM churn / unstable aria-describedby targets
+	// (this view re-renders frequently from the panel's 5 Hz target stream).
+	private _tipIds: Map<string, string> = new Map();
 	private _openTooltip: HTMLElement | null = null;
 	private _openTooltipBtn: HTMLElement | null = null;
 	private _tipListenersAttached = false;
@@ -520,7 +523,11 @@ export class EppSettingsView extends LitElement {
 	}
 
 	infoTip(text: string) {
-		const tipId = `epp-tip-${++this._tipIdCounter}`;
+		let tipId = this._tipIds.get(text);
+		if (tipId === undefined) {
+			tipId = `epp-tip-${this._tipIds.size + 1}`;
+			this._tipIds.set(text, tipId);
+		}
 		return html`<button
 			type="button"
 			class="setting-info"

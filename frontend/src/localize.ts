@@ -52,9 +52,11 @@ export function setupLocalize(hass?: {
 	// echoed into a translation key) can't grow unbounded. The translation
 	// catalogue is well under this size, so normal use stays warm.
 	const FORMAT_CACHE_CAP = 256;
-	// `null` entries mark patterns that previously failed to compile or
-	// format, so repeated calls return raw immediately instead of paying the
-	// constructor/throw cost on every render tick.
+	// `null` entries mark patterns whose IntlMessageFormat constructor threw
+	// (a permanently malformed ICU pattern), so repeated calls return raw
+	// immediately instead of paying the constructor/throw cost on every render
+	// tick. format()-time failures are intentionally NOT cached — those are
+	// usually call-site bugs (missing param) that recover once fixed.
 	const formatCache = new Map<string, IntlMessageFormat | null>();
 	const numberCache = new Map<number, Intl.NumberFormat>();
 

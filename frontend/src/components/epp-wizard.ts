@@ -77,9 +77,6 @@ export class EppWizard extends LitElement {
 		if (this._wizardCapturing) this._attachCaptureOverlayListeners();
 	}
 
-	// Note: a second disconnectedCallback further down in this file handles
-	// in-flight capture RAF cancellation; merged into one below.
-
 	private _captureOverlayListenersAttached = false;
 
 	private _onCaptureOverlayKeydown = (e: KeyboardEvent): void => {
