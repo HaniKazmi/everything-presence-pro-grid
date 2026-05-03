@@ -91,7 +91,15 @@ async def websocket_subscribe_flashable_devices(
     unsub = manager.on_device_list_changed(_on_changed)
 
     connection.send_result(msg["id"])
-    connection.send_message(websocket_api.event_message(msg["id"], initial_payload))
+    try:
+        connection.send_message(websocket_api.event_message(msg["id"], initial_payload))
+    except Exception:
+        # Connection went away between send_result and the first event. The
+        # `_unsub` wrapper isn't yet in `connection.subscriptions`, so without
+        # this cleanup the device-list callback would leak forever.
+        _LOGGER.debug("Initial send_message failed for flashable_devices subscriber", exc_info=True)
+        unsub()
+        return
 
     @callback
     def _unsub() -> None:

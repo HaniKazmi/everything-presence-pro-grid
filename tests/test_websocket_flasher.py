@@ -227,6 +227,32 @@ class TestSubscribeFlashableDevices:
             # If we keep the subscription alive, an event must have been sent.
             connection.send_message.assert_called()
 
+    async def test_initial_send_message_failure_unsubs_device_list_callback(
+        self, hass: HomeAssistant, config_entry: MockConfigEntry
+    ) -> None:
+        """If the initial `send_message` raises (connection closed mid-send),
+        we must release the `on_device_list_changed` registration. Otherwise
+        the callback leaks: it's not yet wrapped in a `connection.subscriptions`
+        entry, so HA will never call it on connection close."""
+        mock_dm = await setup_integration(hass, config_entry)
+        mock_dm.list_flashable_devices = AsyncMock(return_value=[])
+
+        unsub_inner = MagicMock()
+        mock_dm.on_device_list_changed = MagicMock(return_value=unsub_inner)
+
+        from custom_components.eppgrid.websocket_api import websocket_subscribe_flashable_devices
+
+        connection = MagicMock()
+        connection.subscriptions = {}
+        # Make send_result succeed but the initial send_message fail.
+        connection.send_message.side_effect = ConnectionResetError("connection closed")
+        msg = {"id": 99, "type": "eppgrid/subscribe_flashable_devices"}
+
+        await call_async_handler(hass, websocket_subscribe_flashable_devices, connection, msg)
+
+        # The device-list callback must have been unsubscribed.
+        unsub_inner.assert_called_once()
+
     async def test_send_update_swallows_post_close_send_message_failure(
         self, hass: HomeAssistant, config_entry: MockConfigEntry
     ) -> None:
