@@ -12,6 +12,7 @@
 #include "epp_zone_engine.h"
 #include "epp_relay.h"
 #include "epp_frame_ring_buffer.h"
+#include "epp_frame_staleness.h"
 #include "epp_nvs_layout.h"
 #include "epp_relay_publish.h"
 
@@ -239,6 +240,10 @@ class EPPComponent : public esphome::Component {
 
   // Cached zone result
   ProcessingResult last_zone_result_{};
+  // Cached window output (rolling-median view) of the most recent frame
+  // processed. Used by the Display throttle when no new frames arrived this
+  // loop tick. See M6 stale-frame handling.
+  WindowOutput last_window_output_{};
 
   // Cached last-published values for the System block's binary_sensor outputs.
   // ESPHome's binary_sensor::publish_state already dedupes the wire transport,
@@ -274,6 +279,17 @@ class EPPComponent : public esphome::Component {
   // the user toggled the switch, undoing user intent.
   bool relay_desired_state_ = false;
   bool has_relay_desired_state_ = false;
+
+  // Stale-frame watchdog. If the LD2450 stops sending (radar dies, UART hangs)
+  // the throttle timers must still fire and publish "no signal" so HA sees
+  // the device go offline rather than having every sensor frozen at its last
+  // value. STALE_FRAME_MS is generous: at 10Hz LD2450 rate, 5s = 50 missed
+  // frames, well past any plausible scheduling jitter. See is_frame_stale in
+  // epp_frame_staleness.h.
+  uint32_t last_frame_ms_ = 0;
+  bool has_received_frame_ = false;
+  bool was_stale_ = false;  // edge-detect for one-shot stale/recover log lines
+  static constexpr uint32_t STALE_FRAME_MS = 5000;
 };
 
 }  // namespace epp

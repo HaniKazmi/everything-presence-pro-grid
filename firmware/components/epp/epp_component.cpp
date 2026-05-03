@@ -35,12 +35,10 @@ void EPPComponent::setup() {
 }
 
 void EPPComponent::loop() {
-  if (frame_buffer_.empty()) return;
-
   uint32_t now = esphome::millis();
   float ts = now / 1000.0f;
 
-  // === PROCESSING PIPELINE — drain ALL queued frames ===
+  // === PROCESSING PIPELINE — drain ALL queued frames (if any) ===
   //
   // If loop() ran on time we drain a single frame. If ESPHome was held up
   // (e.g. by a slow component) and multiple LD2450 frames have arrived, we
@@ -48,11 +46,15 @@ void EPPComponent::loop() {
   // see every sample — no silent merging that would otherwise distort the
   // median or under-count detection events.
   //
-  // The publish-throttle block below runs once per loop call against the
-  // freshest result (last_zone_result_), which is what HA needs.
+  // We do NOT early-return when the ring buffer is empty: the publish
+  // throttles below need to fire unconditionally so a dead LD2450 produces
+  // observable "no signal" state in HA rather than every sensor freezing
+  // at its last value. See is_frame_stale in epp_frame_staleness.h.
   TargetFrame frame;
   WindowOutput last_win{};
   while (frame_buffer_.pop(frame)) {
+    last_frame_ms_ = now;
+    has_received_frame_ = true;
     frame_count_++;
 
     // Stage 1: Feed raw positions into rolling median.
@@ -135,14 +137,35 @@ void EPPComponent::loop() {
     }
 
     last_zone_result_ = result;
+    last_window_output_ = last_win;
   }
 
+  // Stale-frame check: if the LD2450 has stopped sending, synthesize an empty
+  // window output and processing result so the publish blocks below emit
+  // "no signal" / INACTIVE state instead of the last known good values. This
+  // is what gives HA a visible "device offline" signal rather than frozen
+  // sensors that look alive.
+  bool stale = is_frame_stale(now, last_frame_ms_, has_received_frame_, STALE_FRAME_MS);
+  // One-shot edge log: surface the LD2450 going silent (and recovering) once,
+  // not every tick. Cold-start (has_received_frame_ == false) is treated as
+  // stale by is_frame_stale but we don't log a "lost" line until at least one
+  // frame has been seen, otherwise every boot logs a phantom radar failure.
+  if (stale && !was_stale_ && has_received_frame_) {
+    ESP_LOGW(TAG, "LD2450 frames stale (last frame %ums ago); publishing offline state",
+             now - last_frame_ms_);
+  } else if (!stale && was_stale_) {
+    ESP_LOGI(TAG, "LD2450 frames recovered");
+  }
+  was_stale_ = stale;
+
+  WindowOutput stale_win{};   // all targets inactive by struct default
+  ProcessingResult stale_result{};  // device_tracking false, all zones false, INACTIVE states
+
   // The publish block below references `win` (last frame's window output)
-  // and `result` (cached in last_zone_result_). Re-bind `win` to the last
-  // processed frame's window output so the existing code reads the same
-  // snapshot it always did.
-  const auto &win = last_win;
-  const auto &result = last_zone_result_;
+  // and `result` (cached in last_zone_result_). When stale, point them at the
+  // empty synthesized values so each throttle publishes the offline state.
+  const auto &win = stale ? stale_win : last_window_output_;
+  const auto &result = stale ? stale_result : last_zone_result_;
 
   // === PUBLISH THROTTLES (do not affect processing) ===
 
