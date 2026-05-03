@@ -115,6 +115,64 @@ async def test_fix_flow_triggers_ota_on_confirm(hass: HomeAssistant) -> None:
     assert result["type"] == "create_entry", "successful OTA trigger must close the flow with create_entry"
 
 
+async def test_fix_flow_re_shows_form_on_failure(hass: HomeAssistant) -> None:
+    """A failed OTA trigger must re-show the confirm form with an error key.
+
+    Without this, a transient failure (device offline, build flags missing,
+    network glitch) would just bubble up as a generic error in the Repairs
+    UI with no way for the user to retry. Better UX is to keep the dialog
+    open, surface a readable message, and let them click Submit again.
+    """
+    from custom_components.eppgrid.repairs import FirmwareUpdateRepairFlow
+
+    mac = "AA:BB:CC:DD:EE:50"
+    flow = FirmwareUpdateRepairFlow(mac=mac)
+    flow.hass = hass
+    flow.handler = DOMAIN
+    flow.issue_id = f"firmware_behind_{mac}"
+
+    failing = AsyncMock(side_effect=HomeAssistantError("Device offline"))
+    with patch("custom_components.eppgrid.repairs._trigger_ota", new=failing):
+        result = await flow.async_step_init(user_input={})
+
+    assert result["type"] == "form", "failed OTA must keep the dialog open instead of aborting"
+    assert result["step_id"] == "init"
+    assert result.get("errors"), "result must include an errors mapping so the UI shows the failure reason"
+
+
+async def test_trigger_ota_wraps_aioesphomeapi_errors(hass: HomeAssistant) -> None:
+    """aioesphomeapi connection failures must surface as HomeAssistantError.
+
+    Raw aioesphomeapi exceptions don't have a translation key and would show
+    in the Repairs UI as untranslated technical text. Wrapping them in
+    HomeAssistantError keeps the user-facing surface stable and lets us
+    attach translation keys for localized messages.
+    """
+    from aioesphomeapi import APIConnectionError
+
+    from custom_components.eppgrid.device_manager import DeviceManager
+    from custom_components.eppgrid.device_manager import ManagedDevice
+    from custom_components.eppgrid.repairs import _trigger_ota
+    from custom_components.eppgrid.storage import EPPGridStore
+
+    mac = "AA:BB:CC:DD:EE:51"
+    manager = DeviceManager(hass, EPPGridStore(hass))
+    manager.devices[mac] = ManagedDevice(mac=mac, name="X", host="192.168.1.99", device_id="dev1")
+    manager._build_flags[mac] = {"ethernet_enabled": False}
+    hass.data[DOMAIN] = manager
+
+    mock_conn = AsyncMock()
+    mock_conn.async_connect = AsyncMock(side_effect=APIConnectionError("connection refused"))
+    mock_conn._client = None
+
+    with (
+        patch("custom_components.eppgrid.repairs.DeviceConnection", return_value=mock_conn),
+        pytest.raises(HomeAssistantError),
+    ):
+        await _trigger_ota(hass, mac)
+    mock_conn.async_disconnect.assert_awaited_once()
+
+
 async def test_trigger_ota_calls_set_update_manifest(hass: HomeAssistant) -> None:
     """The shared OTA trigger must call the device's set_update_manifest service.
 

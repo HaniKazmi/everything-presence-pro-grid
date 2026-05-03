@@ -66,12 +66,21 @@ async def _trigger_ota(hass: HomeAssistant, mac: str) -> None:
 
     conn = DeviceConnection(dev.host)
     try:
-        await conn.async_connect()
-        svc = conn._services.get("set_update_manifest")
-        if svc is None:
-            raise HomeAssistantError(f"Device {mac} firmware does not expose set_update_manifest")
-        assert conn._client is not None
-        await conn._client.execute_service(svc, {"url": manifest_url})
+        try:
+            await conn.async_connect()
+            svc = conn._services.get("set_update_manifest")
+            if svc is None:
+                raise HomeAssistantError(f"Device {mac} firmware does not expose set_update_manifest")
+            assert conn._client is not None
+            await conn._client.execute_service(svc, {"url": manifest_url})
+        except HomeAssistantError:
+            raise
+        except Exception as err:
+            # Wrap aioesphomeapi (and any other unexpected) exceptions so the
+            # Repairs UI sees a stable, message-bearing error type rather
+            # than untranslated technical text bubbling up.
+            _LOGGER.warning("OTA trigger for %s failed: %s", mac, err)
+            raise HomeAssistantError(f"Could not contact device {mac}: {err}") from err
         _LOGGER.info("Triggered OTA for %s via Repairs fix flow (manifest=%s)", mac, manifest_url)
     finally:
         await conn.async_disconnect()
@@ -87,9 +96,18 @@ class FirmwareUpdateRepairFlow(RepairsFlow):
 
     async def async_step_init(self, user_input: dict[str, Any] | None = None) -> data_entry_flow.FlowResult:
         """Confirm with the user, then trigger the OTA."""
+        errors: dict[str, str] | None = None
         if user_input is not None:
-            await _trigger_ota(self.hass, self._mac)
-            return self.async_create_entry(data={})
+            try:
+                await _trigger_ota(self.hass, self._mac)
+            except HomeAssistantError as err:
+                # Keep the dialog open and surface the failure so the user
+                # can retry — the most common causes (device offline, build
+                # flags not yet cached) are transient.
+                _LOGGER.warning("OTA fix flow for %s failed: %s", self._mac, err)
+                errors = {"base": "ota_trigger_failed"}
+            else:
+                return self.async_create_entry(data={})
 
         # Pull device_name + version placeholders from the issue itself so the
         # confirmation dialog shows the same info the user saw on the issue.
@@ -102,6 +120,7 @@ class FirmwareUpdateRepairFlow(RepairsFlow):
             step_id="init",
             data_schema=vol.Schema({}),
             description_placeholders=placeholders,
+            errors=errors,
         )
 
 

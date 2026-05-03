@@ -46,6 +46,9 @@
             "title": "Update {device_name} firmware",
             "description": "The Everything Presence Pro Grid integration expects firmware **{required_version}** but **{device_name}** is running **{current_version}**. Click **Submit** to install the required firmware over the air now. The device will reboot once flashing completes — this usually takes about a minute. Some integration features may not work correctly until the firmware is updated."
           }
+        },
+        "error": {
+          "ota_trigger_failed": "Could not start the firmware update — the device may be offline, or its build flags may not be cached yet. Try again in a moment."
         }
       }
     },
