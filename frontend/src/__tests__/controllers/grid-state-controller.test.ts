@@ -43,6 +43,11 @@ function mockHost(overrides: Record<string, any> = {}) {
 		addController: vi.fn(),
 		removeController: vi.fn(),
 		updateComplete: Promise.resolve(true),
+		// Settings (subset — extended via overrides per test).
+		_motionTimeout: 5 as number,
+		_localize: undefined as
+			| ((key: string, params?: Record<string, any>) => string)
+			| undefined,
 		// Grid
 		_grid: new Uint8Array(GRID_CELL_COUNT),
 		_roomWidth: 3000,
@@ -205,6 +210,26 @@ describe("GridStateController", () => {
 			ctrl.addZone();
 			// _dirty would only be set if a zone was actually added — it was already false
 			expect(host._dirty).toBe(false);
+		});
+
+		it("uses host._localize for the zone name when available", () => {
+			// "Zone N" was previously hardcoded in English; non-English UIs
+			// got mismatched zone names compared to the rest of the panel.
+			host._localize = vi.fn(
+				(key: string, params?: Record<string, number | string>) => {
+					if (key === "live.debug.zone_n" && params) {
+						return `Zona ${params.n}`;
+					}
+					return key;
+				},
+			);
+
+			ctrl.addZone();
+
+			expect(host._localize).toHaveBeenCalledWith("live.debug.zone_n", {
+				n: 1,
+			});
+			expect((host._zoneConfigs[1] as ZoneConfig).name).toBe("Zona 1");
 		});
 	});
 
@@ -780,6 +805,48 @@ describe("GridStateController", () => {
 			applySpy.mockRestore();
 		});
 
+		it("rolls back grid/zones/room/furniture/settings if set_settings fails", async () => {
+			// settings comes BEFORE applyLayout. If set_settings fails, the
+			// panel was already mutated to the loaded blob's state but the
+			// device has neither the new settings nor the new layout. Rather
+			// than show stale UI, restore the pre-load snapshot so the user
+			// sees their previous state and the failure surfaces as "nothing
+			// changed".
+			ctrl.configurations = [
+				{
+					name: "WithSettings",
+					...TEMPLATE_DATA,
+					settings: { motion_timeout: 99 },
+				},
+			];
+			const beforeGrid = host._grid.slice();
+			const beforeZones = host._zoneConfigs.map((z: any) =>
+				z === null ? null : { ...z },
+			);
+			const beforeWidth = host._roomWidth;
+			const beforeDepth = host._roomDepth;
+			const beforeFurniture = host._furniture.map((f: any) => ({ ...f }));
+			const beforeMotionTimeout = host._motionTimeout;
+
+			host.hass.callWS.mockImplementation((req: any) => {
+				if (req.type === "eppgrid/set_settings") {
+					return Promise.reject(new Error("settings ws fail"));
+				}
+				return Promise.resolve({});
+			});
+
+			await expect(ctrl.loadConfiguration("WithSettings")).rejects.toThrow(
+				/settings ws fail/,
+			);
+
+			expect(Array.from(host._grid)).toEqual(Array.from(beforeGrid));
+			expect(host._zoneConfigs).toEqual(beforeZones);
+			expect(host._roomWidth).toBe(beforeWidth);
+			expect(host._roomDepth).toBe(beforeDepth);
+			expect(host._furniture).toEqual(beforeFurniture);
+			expect(host._motionTimeout).toBe(beforeMotionTimeout);
+		});
+
 		it("throws on old-format configuration (length-7 zones)", async () => {
 			ctrl.configurations = [
 				{
@@ -972,6 +1039,104 @@ describe("GridStateController", () => {
 			host._grid[0] = CELL_ROOM_BIT;
 			host._grid[1] = CELL_ROOM_BIT | (1 << 1);
 			host.hass.callWS.mockResolvedValue({});
+		});
+
+		it("does not mutate _zoneConfigs when set_room_layout fails", async () => {
+			// Pre-fix: applyLayout pruned _zoneConfigs in place before calling
+			// callWS. A WS failure left the panel claiming the prune happened
+			// but the device still had the old zones, so the next save sent
+			// "remove this zone" payloads that mismatched device state.
+			host._zoneConfigs = [
+				{
+					type: "default",
+					trigger: 5,
+					renew: 3,
+					timeout: 10,
+					handoff_timeout: 3,
+				},
+				{
+					name: "Zone 1",
+					color: ZONE_COLORS[0],
+					type: "default",
+				} as ZoneConfig,
+				// Slot 2 has zero painted cells; expected to be pruned only on success.
+				{
+					name: "Zone 2",
+					color: ZONE_COLORS[1],
+					type: "default",
+				} as ZoneConfig,
+				null,
+				null,
+				null,
+				null,
+				null,
+			];
+			const before = host._zoneConfigs.map((z: any) =>
+				z === null ? null : { ...z },
+			);
+			host.hass.callWS.mockRejectedValue(new Error("ws fail"));
+
+			await expect(ctrl.applyLayout()).rejects.toThrow();
+
+			expect(host._zoneConfigs).toEqual(before);
+		});
+
+		it("does not mutate _furniture when set_room_layout fails", async () => {
+			host._zoneConfigs = [
+				{
+					type: "default",
+					trigger: 5,
+					renew: 3,
+					timeout: 10,
+					handoff_timeout: 3,
+				},
+				{
+					name: "Zone 1",
+					color: ZONE_COLORS[0],
+					type: "default",
+				} as ZoneConfig,
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+			];
+			// One in-bounds, one outside the painted room.
+			host._furniture = [
+				{
+					id: "in",
+					type: "icon",
+					icon: "mdi:bed",
+					label: "Bed",
+					x: 0,
+					y: 0,
+					width: 600,
+					height: 600,
+					rotation: 0,
+					lockAspect: false,
+				},
+				{
+					id: "out",
+					type: "icon",
+					icon: "mdi:lamp",
+					label: "Lamp",
+					x: 1_000_000,
+					y: 1_000_000,
+					width: 600,
+					height: 600,
+					rotation: 0,
+					lockAspect: false,
+				},
+			];
+			const before = host._furniture.map((f: any) => ({ ...f }));
+			host.hass.callWS.mockRejectedValue(new Error("ws fail"));
+
+			await expect(ctrl.applyLayout()).rejects.toThrow();
+
+			expect(host._furniture.map((f: any) => f.id)).toEqual(
+				before.map((f: any) => f.id),
+			);
 		});
 
 		it("omits timing fields for non-custom zone 0 in set_room_layout payload", async () => {

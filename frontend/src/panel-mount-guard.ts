@@ -88,19 +88,51 @@ export function ensureObserversAttached(): void {
 	if (host) attachHostObserver(host);
 }
 
+// Per-module teardown closure — captures THIS module's listener function
+// identity and observer references, so a future install (potentially from a
+// freshly loaded module instance) can tear it down via the window-stashed
+// reference even though our module-level state is unreachable from there.
+function makeTeardown(): () => void {
+	return () => {
+		document.removeEventListener("visibilitychange", handleVisibilityChange);
+		observedHost?.observer.disconnect();
+		observedResolver?.observer.disconnect();
+		observedHost = null;
+		observedResolver = null;
+	};
+}
+
 export function installPanelMountGuard(): void {
-	if ((window as any).__eppGridMountGuardInstalled) return;
-	(window as any).__eppGridMountGuardInstalled = true;
+	// Tear down any previous install first. The module-level flag survives
+	// across module reloads, but the listener identity and observer
+	// references from the previous module instance aren't reachable from
+	// this module's lexical scope — calling removeEventListener with the
+	// new module's `handleVisibilityChange` reference would be a no-op,
+	// stacking listeners. The previous install stashed its teardown
+	// closure on `window`, so invoke that to release the old refs.
+	const w = window as any;
+	if (w.__eppGridMountGuardTeardown) {
+		try {
+			w.__eppGridMountGuardTeardown();
+		} catch {}
+	}
+	w.__eppGridMountGuardInstalled = true;
 	document.addEventListener("visibilitychange", handleVisibilityChange);
 	ensureObserversAttached();
+	w.__eppGridMountGuardTeardown = makeTeardown();
 }
 
 export function uninstallPanelMountGuard(): void {
-	if (!(window as any).__eppGridMountGuardInstalled) return;
-	document.removeEventListener("visibilitychange", handleVisibilityChange);
-	observedHost?.observer.disconnect();
-	observedResolver?.observer.disconnect();
-	observedHost = null;
-	observedResolver = null;
-	delete (window as any).__eppGridMountGuardInstalled;
+	const w = window as any;
+	if (!w.__eppGridMountGuardInstalled) return;
+	// A corrupt or externally-replaced teardown shouldn't be able to leave
+	// the guard wedged with the install flag set — type-check and try/catch
+	// around the call so the globals are always cleared.
+	if (typeof w.__eppGridMountGuardTeardown === "function") {
+		try {
+			w.__eppGridMountGuardTeardown();
+		} catch {}
+	}
+	delete w.__eppGridMountGuardInstalled;
+	delete w.__eppGridMountGuardTeardown;
 }

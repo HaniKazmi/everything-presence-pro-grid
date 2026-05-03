@@ -12,6 +12,14 @@ import {
 
 function createPanel(): EPPGridPanel {
 	const el = document.createElement("eppgrid-panel") as EPPGridPanel;
+	// Force isConnected=true without appending — appendChild fires
+	// connectedCallback which auto-runs _initialize and races with the
+	// explicit calls each test makes. _initialize early-exits on
+	// !isConnected to avoid scheduling retries against a detached host.
+	Object.defineProperty(el, "isConnected", {
+		value: true,
+		configurable: true,
+	});
 	el.hass = {
 		callWS: vi.fn().mockResolvedValue({}),
 		connection: { subscribeMessage: vi.fn().mockResolvedValue(() => {}) },
@@ -200,6 +208,37 @@ describe("_initialize", () => {
 		await vi.advanceTimersByTimeAsync(0);
 		expect(a._initRetryTimer).not.toBe(firstTimer);
 
+		vi.useRealTimers();
+	});
+
+	it("does not schedule a retry timer when the panel has been disconnected mid-init", async () => {
+		// _initialize awaits subscribeDevices, during which the panel can
+		// disconnect (e.g. user navigates away). When the await completes
+		// and devices.length === 0, scheduling a retry on a detached panel
+		// pins it in memory and runs _initialize() callbacks against
+		// torn-down controllers.
+		vi.useFakeTimers();
+		const a = el as any;
+		el.hass = {
+			callWS: vi.fn().mockResolvedValue({ devices: [] }),
+			connection: {
+				subscribeMessage: vi.fn().mockImplementation((cb: any) => {
+					cb({ devices: [] });
+					return Promise.resolve(() => {});
+				}),
+			},
+		};
+
+		// Force isConnected to read false so _initialize sees the panel as
+		// disconnected when it returns from the await.
+		Object.defineProperty(el, "isConnected", {
+			value: false,
+			configurable: true,
+		});
+
+		await a._initialize();
+
+		expect(a._initRetryTimer).toBeUndefined();
 		vi.useRealTimers();
 	});
 

@@ -22,6 +22,24 @@ const _pendingReads = new WeakMap<
 	Promise<ReadableStreamReadResult<Uint8Array>>
 >();
 
+/**
+ * Release a reader's stream lock and drop any in-flight pending-read entry
+ * tracked for it. Use this instead of bare `reader.releaseLock()` whenever
+ * a reader has been (or could have been) passed through readImprovResponse:
+ * release + re-acquire loops (e.g. runWifiScan) would otherwise leave the
+ * WeakMap holding a dead promise tied to the released reader until GC.
+ */
+export function releaseReader(
+	reader: ReadableStreamDefaultReader<Uint8Array>,
+): void {
+	_pendingReads.delete(reader);
+	try {
+		reader.releaseLock();
+	} catch {
+		// Already released or stream cancelled — nothing useful to do.
+	}
+}
+
 // Built via constructor so the literal control character (0x1b / ESC)
 // doesn't trip biome's noControlCharactersInRegex rule. We strip ANSI
 // SGR escape sequences from ESPHome log output before printing.

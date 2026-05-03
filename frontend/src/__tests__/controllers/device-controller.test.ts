@@ -439,6 +439,40 @@ describe("DeviceController", () => {
 			// subscribeMessage called for: device session, grid targets, raw targets
 			expect(ctrl.hass.connection.subscribeMessage).toHaveBeenCalledTimes(3);
 		});
+
+		it("dedupes concurrent calls for the same mac via the in-flight promise", async () => {
+			// Without the dedupe, a second call returns null (reconnecting
+			// guard) and the caller has no way to await the original load.
+			// With dedupe, both callers get the same resolved config.
+			let resolveCallWs!: (v: any) => void;
+			const callWS = vi.fn().mockImplementation((req: any) => {
+				if (req.type === "eppgrid/get_config") {
+					return new Promise((resolve) => {
+						resolveCallWs = resolve;
+					});
+				}
+				return Promise.resolve({});
+			});
+			ctrl.hass = {
+				callWS,
+				connection: { subscribeMessage: vi.fn().mockResolvedValue(vi.fn()) },
+			};
+
+			const p1 = ctrl.loadDeviceConfig("aa");
+			const p2 = ctrl.loadDeviceConfig("aa");
+
+			resolveCallWs({ config: { foo: "bar" } });
+			const [r1, r2] = await Promise.all([p1, p2]);
+
+			expect(r1).toEqual({ foo: "bar" });
+			expect(r2).toEqual({ foo: "bar" });
+			// get_config call only once — second caller piggybacked on the
+			// in-flight promise.
+			const getConfigCalls = (callWS as any).mock.calls.filter(
+				(c: any[]) => c[0]?.type === "eppgrid/get_config",
+			);
+			expect(getConfigCalls).toHaveLength(1);
+		});
 	});
 
 	// --- Session management ---
@@ -485,6 +519,50 @@ describe("DeviceController", () => {
 			};
 			expect(ctrl.hasDeviceSession).toBe(false);
 			expect(unsub1).not.toHaveBeenCalled();
+		});
+
+		it("clears the device-list subscription unsub on connection change", async () => {
+			// Stale unsubs against the dead connection do nothing useful and
+			// hide the fact that there's no live subscription on the new
+			// connection. Drop them so resubscribe is a clean slate.
+			const unsub = vi.fn();
+			ctrl.hass = {
+				callWS: vi.fn(),
+				connection: { subscribeMessage: vi.fn().mockResolvedValue(unsub) },
+			};
+			await ctrl.subscribeDeviceList();
+			expect((ctrl as any)._unsubDeviceList).toBe(unsub);
+
+			ctrl.hass = {
+				callWS: vi.fn(),
+				connection: { subscribeMessage: vi.fn().mockResolvedValue(vi.fn()) },
+			};
+			expect((ctrl as any)._unsubDeviceList).toBeUndefined();
+		});
+
+		it("cancels the target retry timer on connection change", async () => {
+			// Without this, the retry timer fires after reconnect, sees
+			// hass.connection !== conn, and silently returns — but the
+			// timer is still scheduled and pinned in memory until then.
+			ctrl.hass = {
+				callWS: vi.fn(),
+				connection: {
+					subscribeMessage: vi
+						.fn()
+						.mockRejectedValueOnce(new Error("unknown command"))
+						.mockResolvedValue(vi.fn()),
+				},
+			};
+			ctrl.subscribeTargets("aa");
+			// Allow grid subscribe rejection to schedule the retry timer.
+			await new Promise((r) => setTimeout(r, 0));
+			expect((ctrl as any)._targetRetryTimer).toBeDefined();
+
+			ctrl.hass = {
+				callWS: vi.fn(),
+				connection: { subscribeMessage: vi.fn().mockResolvedValue(vi.fn()) },
+			};
+			expect((ctrl as any)._targetRetryTimer).toBeUndefined();
 		});
 
 		it("does nothing when mac is empty", async () => {
@@ -630,6 +708,16 @@ describe("DeviceController", () => {
 			(ctrl as any)._unsubTargets = unsub;
 			ctrl.subscribeTargets("aa");
 			expect(unsub).toHaveBeenCalled();
+		});
+
+		it("does not throw when the previous unsub is stale (e.g. after a connection drop)", () => {
+			// A connection drop can leave _unsubTargets pointing at a closure
+			// against the dead socket; calling it throws. subscribeTargets
+			// must swallow that so the new subscription still goes through.
+			(ctrl as any)._unsubTargets = () => {
+				throw new Error("stale");
+			};
+			expect(() => ctrl.subscribeTargets("aa")).not.toThrow();
 		});
 
 		it("calls onTargetData callback with processed event data", async () => {
@@ -1168,6 +1256,177 @@ describe("DeviceController", () => {
 				},
 			]);
 			expect(onSelectedAvailable).toHaveBeenCalledWith("aa");
+		});
+	});
+
+	describe("subscription generation tokens", () => {
+		it("immediately unsubscribes a late grid_targets resolution after unsubscribeTargets", async () => {
+			// Subscribe → unsubscribe before promise resolves → promise resolves.
+			// Without a generation token, the resolved unsub gets stashed on
+			// `_unsubTargets` and the server-side subscription leaks.
+			let resolveSub!: (unsub: () => void) => void;
+			const unsubFn = vi.fn();
+			const subscribeMock = vi.fn().mockImplementation((_cb: any, msg: any) => {
+				if (msg.type === "eppgrid/subscribe_grid_targets") {
+					return new Promise<() => void>((resolve) => {
+						resolveSub = resolve;
+					});
+				}
+				return Promise.resolve(vi.fn());
+			});
+			ctrl.hass = {
+				callWS: vi.fn(),
+				connection: { subscribeMessage: subscribeMock },
+			};
+
+			ctrl.subscribeTargets("aa");
+			ctrl.unsubscribeTargets();
+			resolveSub(unsubFn);
+			await new Promise((r) => setTimeout(r, 0));
+
+			expect(unsubFn).toHaveBeenCalledTimes(1);
+			expect((ctrl as any)._unsubTargets).toBeUndefined();
+		});
+
+		it("immediately unsubscribes a late raw_targets resolution after unsubscribeDisplay", async () => {
+			let resolveSub!: (unsub: () => void) => void;
+			const unsubFn = vi.fn();
+			ctrl.hass = {
+				callWS: vi.fn(),
+				connection: {
+					subscribeMessage: vi.fn().mockImplementation(() => {
+						return new Promise<() => void>((resolve) => {
+							resolveSub = resolve;
+						});
+					}),
+				},
+			};
+
+			ctrl.subscribeDisplay("aa");
+			ctrl.unsubscribeDisplay();
+			resolveSub(unsubFn);
+			await new Promise((r) => setTimeout(r, 0));
+
+			expect(unsubFn).toHaveBeenCalledTimes(1);
+			expect((ctrl as any)._unsubDisplay).toBeUndefined();
+		});
+
+		it("immediately unsubscribes a late device_list resolution after unsubscribeDeviceList", async () => {
+			let resolveSub!: (unsub: () => void) => void;
+			const unsubFn = vi.fn();
+			ctrl.hass = {
+				callWS: vi.fn(),
+				connection: {
+					subscribeMessage: vi.fn().mockImplementation(() => {
+						return new Promise<() => void>((resolve) => {
+							resolveSub = resolve;
+						});
+					}),
+				},
+			};
+
+			ctrl.subscribeDeviceList();
+			ctrl.unsubscribeDeviceList();
+			resolveSub(unsubFn);
+			await new Promise((r) => setTimeout(r, 0));
+
+			expect(unsubFn).toHaveBeenCalledTimes(1);
+			expect((ctrl as any)._unsubDeviceList).toBeUndefined();
+		});
+
+		it("immediately unsubscribes a late grid_targets resolution after a connection swap", async () => {
+			// HA reconnects with a new connection while a subscribe is in
+			// flight. The pending promise resolves on the OLD connection;
+			// any unsub it returns is dead, but storing it would mask the
+			// fact that the new connection has no live subscription.
+			let resolveSub!: (unsub: () => void) => void;
+			const unsubFn = vi.fn();
+			const subscribeMock = vi.fn().mockImplementation((_cb: any, msg: any) => {
+				if (msg.type === "eppgrid/subscribe_grid_targets") {
+					return new Promise<() => void>((resolve) => {
+						resolveSub = resolve;
+					});
+				}
+				return Promise.resolve(vi.fn());
+			});
+			const oldConn = { subscribeMessage: subscribeMock };
+			ctrl.hass = { callWS: vi.fn(), connection: oldConn };
+
+			ctrl.subscribeTargets("aa");
+
+			// Connection swaps before the subscription resolves
+			ctrl.hass = {
+				callWS: vi.fn(),
+				connection: { subscribeMessage: vi.fn().mockResolvedValue(vi.fn()) },
+			};
+
+			resolveSub(unsubFn);
+			await new Promise((r) => setTimeout(r, 0));
+
+			expect((ctrl as any)._unsubTargets).toBeUndefined();
+			expect(unsubFn).toHaveBeenCalledTimes(1);
+		});
+	});
+
+	describe("_applyDeviceList defensive handling", () => {
+		it("does not crash and treats it as empty list when devices field is missing", async () => {
+			// The backend's subscribe_device_list push could omit `devices`
+			// during a transient marshal failure. Without a default, the
+			// `.sort` call on undefined throws and tears down the
+			// subscription callback.
+			let capturedCb: ((msg: any) => void) | null = null;
+			ctrl.hass = {
+				callWS: vi.fn(),
+				connection: {
+					subscribeMessage: vi.fn((cb: any) => {
+						capturedCb = cb;
+						return Promise.resolve(() => {});
+					}),
+				},
+			};
+			await ctrl.subscribeDeviceList();
+
+			expect(() => capturedCb!({})).not.toThrow();
+			expect(ctrl.devices).toEqual([]);
+		});
+
+		it("does not mutate the backend-supplied devices array", () => {
+			// The connection layer caches the last push and re-fires it on
+			// reconnect. If we sort in place, subsequent re-pushes show up
+			// already sorted, masking ordering bugs and (worse) accumulating
+			// any prior in-place mutations.
+			const incoming: DeviceInfo[] = [
+				makeDevice("zz", true),
+				makeDevice("aa", true),
+			];
+			incoming[0].name = "Zed";
+			incoming[1].name = "Alpha";
+			const snapshot = [...incoming];
+
+			(ctrl as any)._applyDeviceList(incoming);
+
+			expect(incoming).toEqual(snapshot);
+			expect(ctrl.devices.map((d) => d.name)).toEqual(["Alpha", "Zed"]);
+		});
+	});
+
+	describe("loadDevices defensive handling", () => {
+		it("does not mutate the backend-supplied devices array", async () => {
+			const incoming: DeviceInfo[] = [
+				makeDevice("zz", true),
+				makeDevice("aa", true),
+			];
+			incoming[0].name = "Zed";
+			incoming[1].name = "Alpha";
+			const snapshot = [...incoming];
+
+			ctrl.hass = {
+				callWS: vi.fn().mockResolvedValue({ devices: incoming }),
+				connection: { subscribeMessage: vi.fn() },
+			};
+			await ctrl.loadDevices();
+
+			expect(incoming).toEqual(snapshot);
 		});
 	});
 

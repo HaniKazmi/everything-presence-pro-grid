@@ -340,7 +340,11 @@ describe("_handleUsbFlash", () => {
 		expect(deleteSpy).toHaveBeenCalledWith("entry-123");
 	});
 
-	it("cancels flash when user declines confirm for original firmware device", async () => {
+	it("treats user-decline-confirm as a clean cancel (resetUsbState, no error UI)", async () => {
+		// Pre-fix: `lastStep="flashing"` was already set when the confirm
+		// dialog popped, so the throw landed in the catch block which
+		// rendered "flash_failed". A user-cancel should not look like a
+		// failure — clear the state instead.
 		const ctrl = (panel as any)._flasherCtrl;
 		ctrl.flashableDevices = [
 			{
@@ -367,7 +371,39 @@ describe("_handleUsbFlash", () => {
 		await (panel as any)._handleUsbFlash("ethernet-ble-co2");
 
 		expect(window.confirm).toHaveBeenCalled();
-		expect(ctrl.usbFlashState?.step).toBe("error");
+		expect(ctrl.usbFlashState).toBeNull();
+	});
+
+	it("awaits port.close before transitioning to error state", async () => {
+		// Pre-fix: close() was fire-and-forget. The "error" UI rendered
+		// while the port was still closing in the background. On the next
+		// retry attempt the port lock could still be held, surfacing as a
+		// confusing "serial port busy" instead of letting the user just
+		// retry.
+		const events: string[] = [];
+		mockPort.close = vi.fn().mockImplementation(
+			() =>
+				new Promise<void>((resolve) => {
+					setTimeout(() => {
+						events.push("close-resolved");
+						resolve();
+					}, 0);
+				}),
+		);
+		(flashFirmware as ReturnType<typeof vi.fn>).mockRejectedValue(
+			new Error("device disconnected"),
+		);
+
+		const ctrl = (panel as any)._flasherCtrl;
+		const origUpdate = ctrl.updateUsbState.bind(ctrl);
+		ctrl.updateUsbState = (s: any) => {
+			if (s.step === "error") events.push("error-set");
+			origUpdate(s);
+		};
+
+		await (panel as any)._handleUsbFlash("eppgrid-wifi");
+
+		expect(events).toEqual(["close-resolved", "error-set"]);
 	});
 
 	it("skips confirm when device has eppgrid firmware", async () => {

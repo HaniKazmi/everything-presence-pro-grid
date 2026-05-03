@@ -231,6 +231,27 @@ describe("FlasherController", () => {
 
 			expect(unsub1).toHaveBeenCalled();
 		});
+
+		it("immediately unsubscribes a late device_list resolution after unsubscribeDeviceList", async () => {
+			// Race fix: subscribe → unsubscribe before promise resolves →
+			// promise resolves. Without a generation token, the unsub
+			// would be stored on a torn-down controller.
+			let resolveSub!: (unsub: () => void) => void;
+			const unsubFn = vi.fn();
+			hass.connection.subscribeMessage = vi.fn().mockImplementation(() => {
+				return new Promise<() => void>((resolve) => {
+					resolveSub = resolve;
+				});
+			});
+
+			ctrl.subscribeDeviceList();
+			ctrl.unsubscribeDeviceList();
+			resolveSub(unsubFn);
+			await new Promise((r) => setTimeout(r, 0));
+
+			expect(unsubFn).toHaveBeenCalledTimes(1);
+			expect((ctrl as any)._unsubDeviceList).toBeUndefined();
+		});
 	});
 
 	// --- unsubscribeDeviceList ---
@@ -422,6 +443,25 @@ describe("FlasherController", () => {
 			(ctrl as any)._serialPort = mockPort;
 			ctrl.hostDisconnected();
 			expect(mockPort.close).toHaveBeenCalled();
+		});
+
+		it("releases reader/writer locks before closing the port", () => {
+			// Web Serial close() rejects with "the port has a readable or
+			// writable stream" if a reader/writer lock is still held. Fail
+			// to release them in hostDisconnected and the port stays open
+			// across panel reloads, blocking the next flash attempt.
+			const reader = { releaseLock: vi.fn() };
+			const writer = { releaseLock: vi.fn() };
+			const port = { close: vi.fn().mockResolvedValue(undefined) };
+			(ctrl as any)._serialReader = reader;
+			(ctrl as any)._serialWriter = writer;
+			(ctrl as any)._serialPort = port;
+
+			ctrl.hostDisconnected();
+
+			expect(reader.releaseLock).toHaveBeenCalled();
+			expect(writer.releaseLock).toHaveBeenCalled();
+			expect(port.close).toHaveBeenCalled();
 		});
 	});
 
@@ -793,6 +833,74 @@ describe("FlasherController", () => {
 			expect(ctrl.otaStates["AA:BB:CC:DD:EE:01"].state).toBe("updating");
 		});
 
+		it("connection swap drops stale OTA subscriptions and clears in-flight OTA state", async () => {
+			// HA reconnects with a new connection while OTA is in flight.
+			// The unsub callback we hold belongs to the dead socket — calling
+			// it does nothing useful, and leaving the otaStates entry around
+			// makes the UI claim an update is still happening on a freshly
+			// reconnected device. Drop the stale state so the user gets a
+			// clean slate after the reconnect settles.
+			vi.useFakeTimers();
+			const oldUnsub = vi.fn();
+			hass.connection.subscribeMessage = vi.fn().mockResolvedValue(oldUnsub);
+			await ctrl.startOta("AA:BB:CC:DD:EE:01");
+			expect(ctrl.otaStates["AA:BB:CC:DD:EE:01"]).toBeDefined();
+			expect((ctrl as any)._otaUnsubs["AA:BB:CC:DD:EE:01"]).toBe(oldUnsub);
+
+			// Connection swap — assign a hass with a different connection.
+			ctrl.hass = {
+				callWS: vi.fn(),
+				connection: { subscribeMessage: vi.fn().mockResolvedValue(vi.fn()) },
+			};
+
+			expect((ctrl as any)._otaUnsubs["AA:BB:CC:DD:EE:01"]).toBeUndefined();
+			expect((ctrl as any)._otaTimeouts["AA:BB:CC:DD:EE:01"]).toBeUndefined();
+			expect(ctrl.otaStates["AA:BB:CC:DD:EE:01"]).toBeUndefined();
+			vi.useRealTimers();
+		});
+
+		it("connection swap drops a stale device-list subscription unsub", async () => {
+			const staleUnsub = vi.fn();
+			hass.connection.subscribeMessage = vi.fn().mockResolvedValue(staleUnsub);
+			await ctrl.subscribeDeviceList();
+			expect((ctrl as any)._unsubDeviceList).toBe(staleUnsub);
+
+			ctrl.hass = {
+				callWS: vi.fn(),
+				connection: { subscribeMessage: vi.fn().mockResolvedValue(vi.fn()) },
+			};
+
+			expect((ctrl as any)._unsubDeviceList).toBeUndefined();
+		});
+
+		it("OTA success flow tolerates a throwing unsub callback without leaving state half-done", async () => {
+			// _unsubOta historically called the stored callback without
+			// try/catch. A stale subscription whose .then() resolved on a
+			// dead socket can throw on invoke; in the success path that
+			// would abort _otaSuccess before the auto-dismiss timer was
+			// scheduled and before _resetOtaTimeout ran, leaving the
+			// otaStates entry stuck on "success" forever.
+			vi.useFakeTimers();
+			const throwingUnsub = vi.fn(() => {
+				throw new Error("stale subscription");
+			});
+			hass.connection.subscribeMessage = vi
+				.fn()
+				.mockResolvedValue(throwingUnsub);
+
+			await ctrl.startOta("AA:BB:CC:DD:EE:01");
+			const callback = hass.connection.subscribeMessage.mock.calls[0][0];
+
+			expect(() => callback({ state: "success" })).not.toThrow();
+			expect(ctrl.otaStates["AA:BB:CC:DD:EE:01"].state).toBe("success");
+
+			// Auto-dismiss fires — proves the success path completed
+			// past the throwing unsub.
+			vi.advanceTimersByTime(5000);
+			expect(ctrl.otaStates["AA:BB:CC:DD:EE:01"]).toBeUndefined();
+			vi.useRealTimers();
+		});
+
 		it("hostDisconnected cleans up OTA subscriptions and timeouts", async () => {
 			vi.useFakeTimers();
 			await ctrl.startOta("AA:BB:CC:DD:EE:01");
@@ -841,6 +949,46 @@ describe("FlasherController", () => {
 			});
 		});
 
+		it("unknown event state does not orphan the watchdog timer", async () => {
+			// _handleOtaEvent should never leave us in updating state with no
+			// armed timeout. If the backend ever sends an unrecognised state
+			// (forward compatibility), the watchdog should still be armed so
+			// a stuck device doesn't appear as a perpetually-spinning UI.
+			vi.useFakeTimers();
+			await ctrl.startOta("AA:BB:CC:DD:EE:01");
+
+			const callback = hass.connection.subscribeMessage.mock.calls[0][0];
+			callback({ state: "updating", progress: 25 });
+			callback({ state: "made_up_state" });
+
+			// Original watchdog should still fire — we're still updating.
+			vi.advanceTimersByTime(10000);
+
+			expect(ctrl.otaStates["AA:BB:CC:DD:EE:01"].state).toBe("error");
+			vi.useRealTimers();
+		});
+
+		it("hostDisconnected clears the success-pending auto-dismiss timer", async () => {
+			// The 5-second post-success cleanup timeout was previously not
+			// tracked in _otaTimeouts. hostDisconnected's per-mac
+			// _resetOtaTimeout loop never saw it, so the timer survived the
+			// teardown and only fizzled out because otaStates was nulled.
+			// A *tracked* timer would be explicitly cleared.
+			vi.useFakeTimers();
+			const clearSpy = vi.spyOn(globalThis, "clearTimeout");
+
+			await ctrl.startOta("AA:BB:CC:DD:EE:01");
+			const callback = hass.connection.subscribeMessage.mock.calls[0][0];
+			callback({ state: "success" });
+
+			const beforeClears = clearSpy.mock.calls.length;
+			ctrl.hostDisconnected();
+			expect(clearSpy.mock.calls.length).toBeGreaterThan(beforeClears);
+
+			clearSpy.mockRestore();
+			vi.useRealTimers();
+		});
+
 		it("updating event with null progress uses 15s timeout", async () => {
 			vi.useFakeTimers();
 			await ctrl.startOta("AA:BB:CC:DD:EE:01");
@@ -879,6 +1027,25 @@ describe("cancelledDeviceIpHint", () => {
 		ctrl.setCancelledDeviceIpHint("192.168.1.42");
 		ctrl.setCancelledDeviceIpHint(null);
 		expect(ctrl.cancelledDeviceIpHint).toBeNull();
+	});
+
+	it("hostDisconnected clears the pending IP-hint timeout so it doesn't fire after teardown", () => {
+		// The 8-second auto-clear timer captures `this`, so if the panel is
+		// torn down (HA reload, hot-replace) before it fires we'd land in
+		// `requestUpdate` on a detached controller. Clearing the timer in
+		// hostDisconnected closes that window.
+		vi.useFakeTimers();
+		const host = { requestUpdate: vi.fn(), addController: vi.fn() };
+		const ctrl = new FlasherController(host as any);
+
+		ctrl.setCancelledDeviceIpHint("192.168.1.42");
+		host.requestUpdate.mockClear();
+
+		ctrl.hostDisconnected();
+
+		vi.advanceTimersByTime(10000);
+		expect(host.requestUpdate).not.toHaveBeenCalled();
+		vi.useRealTimers();
 	});
 });
 

@@ -213,8 +213,11 @@ export class GridStateController implements ReactiveController {
 		const color =
 			ZONE_COLORS.find((c) => !usedColors.has(c)) ??
 			ZONE_COLORS[(firstEmpty - 1) % ZONE_COLORS.length];
+		const name =
+			this.host._localize?.("live.debug.zone_n", { n: firstEmpty }) ??
+			`Zone ${firstEmpty}`;
 		configs[firstEmpty] = {
-			name: `Zone ${firstEmpty}`,
+			name,
 			color,
 			type: "default",
 		};
@@ -516,6 +519,23 @@ export class GridStateController implements ReactiveController {
 			}
 		}
 
+		// Snapshot pre-load state so we can roll back if the BEFORE-applyLayout
+		// portion (settings push) fails. Without a rollback the panel
+		// silently shows the loaded blob's UI state while the device still
+		// has the prior settings — a worse failure than "nothing changed".
+		// applyLayout failures keep state + _dirty=true so the user can hit
+		// Apply to retry; that recovery path stays untouched.
+		const snapshot = {
+			grid: this.host._grid,
+			zoneConfigs: this.host._zoneConfigs,
+			roomWidth: this.host._roomWidth,
+			roomDepth: this.host._roomDepth,
+			furniture: this.host._furniture,
+			showConfigurationRestore: this.host._showConfigurationRestore,
+			dirty: this.host._dirty,
+			settings: new Map<string, any>(),
+		};
+
 		// Apply layout
 		this.host._grid = new Uint8Array(cfg.grid);
 		this.host._zoneConfigs = Array.from(
@@ -535,6 +555,7 @@ export class GridStateController implements ReactiveController {
 		const hasSettings = s != null && typeof s === "object";
 		if (hasSettings) {
 			for (const [key, prop] of SETTINGS_FIELD_MAP) {
+				snapshot.settings.set(prop, (this.host as any)[prop]);
 				if (key === "entities") {
 					const sparse =
 						"entities" in s ? (s as Record<string, any>).entities : undefined;
@@ -562,11 +583,28 @@ export class GridStateController implements ReactiveController {
 		// filled in from panel state (which was just populated above with
 		// defaults+blob values), satisfying the WS schema.
 		if (hasSettings) {
-			await (this.host as any).hass.callWS({
-				type: "eppgrid/set_settings",
-				mac: this.host._selectedMac,
-				...(this.host as any)._buildSettingsPayload(),
-			});
+			try {
+				await (this.host as any).hass.callWS({
+					type: "eppgrid/set_settings",
+					mac: this.host._selectedMac,
+					...(this.host as any)._buildSettingsPayload(),
+				});
+			} catch (err) {
+				// Settings push failed — restore pre-load snapshot so the
+				// panel doesn't claim a state the device doesn't have.
+				this.host._grid = snapshot.grid;
+				this.host._zoneConfigs = snapshot.zoneConfigs;
+				this.host._roomWidth = snapshot.roomWidth;
+				this.host._roomDepth = snapshot.roomDepth;
+				this.host._furniture = snapshot.furniture;
+				this.host._showConfigurationRestore = snapshot.showConfigurationRestore;
+				this.host._dirty = snapshot.dirty;
+				for (const [prop, value] of snapshot.settings) {
+					(this.host as any)[prop] = value;
+				}
+				this.host.requestUpdate();
+				throw err;
+			}
 		}
 
 		await this.applyLayout();
@@ -586,7 +624,10 @@ export class GridStateController implements ReactiveController {
 	// =====================================================================
 
 	async applyLayout(): Promise<void> {
-		// Remove zones with zero painted cells
+		// Build pruned zone slots locally (don't commit until after WS save).
+		// Pre-fix this committed in place before the await; a WS failure left
+		// the panel claiming the prune happened while the device still had
+		// the old zones, mismatching state across the next save.
 		const zoneCellCounts = new Map<number, number>();
 		for (let i = 0; i < this.host._grid.length; i++) {
 			if (cellIsInside(this.host._grid[i])) {
@@ -596,15 +637,15 @@ export class GridStateController implements ReactiveController {
 				}
 			}
 		}
-		const prunedSlots = this.host._zoneConfigs.map(
-			(z: ZoneConfig | Zone0Config | null, idx: number) => {
-				// Slot 0 is the Zone0Config (room boundary) and is always kept.
-				if (idx === 0) return z;
-				if (z !== null && (zoneCellCounts.get(idx) ?? 0) === 0) return null;
-				return z;
-			},
-		);
-		this.host._zoneConfigs = prunedSlots;
+		const prunedSlots: (ZoneConfig | Zone0Config | null)[] =
+			this.host._zoneConfigs.map(
+				(z: ZoneConfig | Zone0Config | null, idx: number) => {
+					// Slot 0 is the Zone0Config (room boundary) and is always kept.
+					if (idx === 0) return z;
+					if (z !== null && (zoneCellCounts.get(idx) ?? 0) === 0) return null;
+					return z;
+				},
+			);
 
 		// Filter furniture completely outside the room (use physical room
 		// bounds, not FOV-aware bounds, so furniture in out-of-FOV areas
@@ -629,9 +670,7 @@ export class GridStateController implements ReactiveController {
 				type: "eppgrid/set_room_layout",
 				mac: this.host._selectedMac,
 				grid_bytes: Array.from(this.host._grid),
-				zone_slots: (
-					this.host._zoneConfigs as (ZoneConfig | Zone0Config | null)[]
-				).map((z, idx) => serializeSlot(z, idx)),
+				zone_slots: prunedSlots.map((z, idx) => serializeSlot(z, idx)),
 				furniture: filteredFurniture.map((f) => ({
 					type: f.type,
 					icon: f.icon,
@@ -644,7 +683,9 @@ export class GridStateController implements ReactiveController {
 					lockAspect: f.lockAspect,
 				})),
 			});
-			// Commit filtered furniture to panel state after successful save
+			// Commit pruned slots and filtered furniture only after the
+			// backend acknowledges the layout save.
+			this.host._zoneConfigs = prunedSlots;
 			this.host._furniture = filteredFurniture;
 			// Save settings after layout — only needed when auto distances
 			// may have changed; manual distances don't change with layout.
