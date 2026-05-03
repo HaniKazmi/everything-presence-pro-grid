@@ -1,6 +1,7 @@
 #include "epp_component.h"
 #include "epp_zone_config_parser.h"
 #include "epp_nvs_layout.h"
+#include "epp_change_detector.h"
 #include "esphome/core/log.h"
 
 #include <ArduinoJson.h>
@@ -369,15 +370,26 @@ void EPPComponent::set_perspective(const std::string &perspective,
 
   transform_.set_coefficients(coeffs, room_width, room_depth);
 
-  // Cache for NVS persistence
-  memcpy(persp_cache_, coeffs, 8 * sizeof(float));
-  persp_cache_[8] = room_width;
-  persp_cache_[9] = room_depth;
+  // Build candidate cache, then test against the prior cache before
+  // overwriting. Skipping nvs_set_blob saves a flash erase cycle when the
+  // frontend republishes identical config.
+  float candidate[10];
+  memcpy(candidate, coeffs, 8 * sizeof(float));
+  candidate[8] = room_width;
+  candidate[9] = room_depth;
+
+  bool changed = did_perspective_change(candidate, has_persp_cache_, persp_cache_);
+
+  memcpy(persp_cache_, candidate, sizeof(persp_cache_));
   has_persp_cache_ = true;
 
   ESP_LOGI(TAG, "Perspective set: room %.0fx%.0f mm", room_width, room_depth);
 
-  save_perspective_to_nvs_();
+  if (changed) {
+    save_perspective_to_nvs_();
+  } else {
+    ESP_LOGD(TAG, "Perspective unchanged, skipping NVS write");
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -418,7 +430,25 @@ void EPPComponent::set_grid(const std::string &grid_data,
   ESP_LOGI(TAG, "Grid set: origin (%.0f, %.0f), %d cells, %d entry / %d interference / %d suppress",
            origin_x, origin_y, GRID_CELL_COUNT, entry_count, interference_count, suppress_count);
 
-  save_grid_to_nvs_();
+  // Build candidate blob (same layout as save_grid_to_nvs_) and test
+  // against the cache before writing. The cache is updated unconditionally
+  // so future calls compare against the latest in-RAM grid.
+  uint8_t candidate[GRID_BLOB_SIZE];
+  memcpy(candidate, decoded, GRID_CELL_COUNT);
+  memcpy(candidate + GRID_CELL_COUNT, &origin_x, sizeof(float));
+  memcpy(candidate + GRID_CELL_COUNT + sizeof(float), &origin_y, sizeof(float));
+
+  bool changed = did_grid_change(candidate, sizeof(candidate),
+                                 has_grid_cache_,
+                                 last_grid_blob_, sizeof(last_grid_blob_));
+  memcpy(last_grid_blob_, candidate, sizeof(last_grid_blob_));
+  has_grid_cache_ = true;
+
+  if (changed) {
+    save_grid_to_nvs_();
+  } else {
+    ESP_LOGD(TAG, "Grid unchanged, skipping NVS write");
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -439,7 +469,12 @@ void EPPComponent::set_zones(const std::string &zones_json) {
   zone_engine_.set_zones(configs, count);
   ESP_LOGI(TAG, "Configured %d zones", count);
 
-  save_zones_to_nvs_(zones_json);
+  // Skip the flash write when the JSON matches the last saved payload.
+  if (did_zones_change(zones_json, has_zones_cache_, last_zones_json_)) {
+    save_zones_to_nvs_(zones_json);
+  } else {
+    ESP_LOGD(TAG, "Zones unchanged, skipping NVS write");
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -504,6 +539,10 @@ void EPPComponent::restore_from_nvs_() {
     grid_ = Grid(origin_x, origin_y);
     grid_.load_from_bytes(grid_buf, GRID_CELL_COUNT);
     zone_engine_.set_grid(grid_);
+    // Seed the idempotency cache so a republish of the same grid won't
+    // trigger a redundant flash write on first connect after boot.
+    memcpy(last_grid_blob_, grid_buf, sizeof(last_grid_blob_));
+    has_grid_cache_ = true;
     ESP_LOGI(TAG, "Restored grid from NVS (origin %.0f, %.0f)", origin_x, origin_y);
   }
 
@@ -557,6 +596,7 @@ void EPPComponent::restore_from_nvs_() {
 
       zone_engine_.set_zones(configs, count);
       last_zones_json_ = zones_str;
+      has_zones_cache_ = true;  // seed idempotency cache (see set_zones)
       ESP_LOGI(TAG, "Restored %d zones from NVS", count);
     } else {
       // Without this log, a corrupt blob silently drops all zones at boot.
@@ -621,6 +661,7 @@ void EPPComponent::save_zones_to_nvs_(const std::string &zones_json) {
   }
 
   last_zones_json_ = zones_json;
+  has_zones_cache_ = true;
   nvs_set_u8(handle, "version", NVS_SCHEMA_VERSION);
   nvs_set_str(handle, "zones", zones_json.c_str());
   nvs_commit(handle);

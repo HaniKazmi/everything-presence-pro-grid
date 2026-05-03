@@ -142,12 +142,20 @@ class EPPComponent : public esphome::Component {
   void save_zones_to_nvs_(const std::string &zones_json);
   void save_relay_to_nvs_();
 
-  // Cached perspective blob for NVS (8 coeffs + room_width + room_depth)
+  // Cached perspective blob for NVS (8 coeffs + room_width + room_depth).
+  // Doubles as the idempotency cache for set_perspective() — see
+  // epp_change_detector.h.
   float persp_cache_[10]{};
   bool has_persp_cache_ = false;
 
-  // Cached zones JSON for NVS persistence
+  // Cached zones JSON for NVS persistence + idempotency.
   std::string last_zones_json_;
+  bool has_zones_cache_ = false;
+
+  // Cached grid blob for NVS idempotency. Sized via GRID_BLOB_SIZE in the
+  // .cpp where epp_nvs_layout.h is included.
+  uint8_t last_grid_blob_[GRID_CELL_COUNT + 2 * sizeof(float)]{};
+  bool has_grid_cache_ = false;
 
   // Sensor pointers
   esphome::binary_sensor::BinarySensor *device_tracking_sensor_{nullptr};
