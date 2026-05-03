@@ -973,18 +973,26 @@ describe("epp-grid dismissedTargets", () => {
 		const targets: Target[] = [
 			{ x: 1800, y: 2000, speed: 0, status: "active", signal: 7 },
 		];
-		// Target is now at cell 131, but was dismissed at cell 130 → should render and clear
+		// Target is now at cell 131, but was dismissed at cell 130 → event fires
+		// and the parent (simulated by a listener here) reassigns the Map.
 		const dismissedTargets = new Map([[0, 130]]);
 		const el = createGrid({ targets, dismissedTargets });
 		document.body.appendChild(el);
+
+		// Simulate the panel-side handler: clone+delete on event.
+		el.addEventListener("target-undismissed", (e) => {
+			const idx = (e as CustomEvent).detail.targetIndex as number;
+			el.dismissedTargets = new Map(el.dismissedTargets);
+			el.dismissedTargets.delete(idx);
+		});
+
+		await el.updateComplete;
+		// Wait one more microtask cycle in case the listener triggered a re-render.
 		await el.updateComplete;
 
-		// Dot should be visible
+		// Dot should be visible after parent has cleared the dismiss entry.
 		const dots = el.shadowRoot!.querySelectorAll(".target-dot");
 		expect(dots.length).toBe(1);
-
-		// Dismiss entry should be cleared
-		expect(el.dismissedTargets.has(0)).toBe(false);
 
 		document.body.removeChild(el);
 	});
@@ -1007,6 +1015,53 @@ describe("epp-grid dismissedTargets", () => {
 
 		expect(events.length).toBe(1);
 		expect(events[0].detail.targetIndex).toBe(0);
+
+		document.body.removeChild(el);
+	});
+
+	it("does NOT mutate the dismissedTargets Map passed in by the parent", async () => {
+		// The child must treat dismissedTargets as a one-way prop. The parent
+		// owns the map; the child only dispatches the target-undismissed event.
+		const targets: Target[] = [
+			{ x: 1800, y: 2000, speed: 0, status: "active", signal: 7 },
+		];
+		const dismissedTargets = new Map([[0, 130]]);
+		const el = createGrid({ targets, dismissedTargets });
+		document.body.appendChild(el);
+
+		await el.updateComplete;
+
+		// The exact Map instance should still contain its original entry.
+		expect(dismissedTargets.has(0)).toBe(true);
+		expect(dismissedTargets.get(0)).toBe(130);
+
+		document.body.removeChild(el);
+	});
+
+	it("does NOT re-fire target-undismissed on subsequent updates with no movement", async () => {
+		// Once the parent has handled the event and cleared the dismiss, further
+		// re-renders (e.g. unrelated property changes) must not re-fire the event.
+		const targets: Target[] = [
+			{ x: 1800, y: 2000, speed: 0, status: "active", signal: 7 },
+		];
+		const dismissedTargets = new Map([[0, 130]]);
+		const el = createGrid({ targets, dismissedTargets });
+		document.body.appendChild(el);
+
+		const events: CustomEvent[] = [];
+		el.addEventListener("target-undismissed", (e) =>
+			events.push(e as CustomEvent),
+		);
+
+		await el.updateComplete;
+		expect(events.length).toBe(1);
+
+		// Trigger an unrelated property change. Neither targets nor
+		// dismissedTargets changed, so willUpdate must NOT re-dispatch.
+		el.maxGridPx = 500;
+		await el.updateComplete;
+
+		expect(events.length).toBe(1);
 
 		document.body.removeChild(el);
 	});
@@ -1124,6 +1179,123 @@ describe("epp-grid interference stripes", () => {
 
 		const cell = findInterferenceCell(el);
 		expect(cell).toBeNull();
+
+		document.body.removeChild(el);
+	});
+});
+
+describe("epp-grid target dot bounds check", () => {
+	// For roomWidth=3000, roomDepth=4000:
+	//   visible bounds with 1-cell padding: minCol=4, maxCol=15, minRow=0, maxRow=14
+	//   visCols=12, visRows=15
+	// Target x=3300, y=2100 → col = 5 + 11 = 16, row = 7 → just outside the
+	// visible right edge (maxCol=15). Off-by-one bug in the bounds check
+	// historically rendered this dot clamped to 100% on the right edge.
+
+	it("does not render a target whose mapped column is just past maxCol", async () => {
+		const targets: Target[] = [
+			{ x: 3300, y: 2100, speed: 0, status: "active", signal: 7 },
+		];
+		const el = createGrid({ targets });
+		document.body.appendChild(el);
+		await el.updateComplete;
+
+		const dots = el.shadowRoot!.querySelectorAll(".target-dot");
+		expect(dots.length).toBe(0);
+
+		document.body.removeChild(el);
+	});
+
+	it("does not render a target whose mapped row is just past maxRow", async () => {
+		// row = (maxRow+1)*300 = 15*300 = 4500
+		const targets: Target[] = [
+			{ x: 1500, y: 4500, speed: 0, status: "active", signal: 7 },
+		];
+		const el = createGrid({ targets });
+		document.body.appendChild(el);
+		await el.updateComplete;
+
+		const dots = el.shadowRoot!.querySelectorAll(".target-dot");
+		expect(dots.length).toBe(0);
+
+		document.body.removeChild(el);
+	});
+
+	it("still renders a target whose mapped cell is exactly at maxCol", async () => {
+		// col = 5 + 3000/300 = 15 = maxCol → must still render (boundary inclusive)
+		const targets: Target[] = [
+			{ x: 3000, y: 2100, speed: 0, status: "active", signal: 7 },
+		];
+		const el = createGrid({ targets });
+		document.body.appendChild(el);
+		await el.updateComplete;
+
+		const dots = el.shadowRoot!.querySelectorAll(".target-dot");
+		expect(dots.length).toBe(1);
+
+		document.body.removeChild(el);
+	});
+});
+
+describe("epp-grid target dot keying (per-target identity)", () => {
+	// When targets reorder/become inactive, Lit must reuse DOM nodes by key
+	// (target index) rather than positionally — otherwise the per-target color
+	// and signal pill follow the wrong target.
+
+	it("renders each target dot with its own color (TARGET_COLORS[i])", async () => {
+		const targets: Target[] = [
+			{ x: 1500, y: 2000, speed: 0, status: "active", signal: 7 },
+			{ x: 1800, y: 2000, speed: 0, status: "active", signal: 9 },
+		];
+		const el = createGrid({ targets });
+		document.body.appendChild(el);
+		await el.updateComplete;
+
+		const dots = el.shadowRoot!.querySelectorAll(
+			".target-dot",
+		) as NodeListOf<HTMLElement>;
+		expect(dots.length).toBe(2);
+		// Target 0 → TARGET_COLORS[0] (#2196F3 — blue)
+		expect(dots[0].style.background.toLowerCase()).toContain("#2196f3");
+		// Target 1 → TARGET_COLORS[1] (#FF5722 — red-orange)
+		expect(dots[1].style.background.toLowerCase()).toContain("#ff5722");
+
+		document.body.removeChild(el);
+	});
+
+	it("keeps each target's color and signal bound to its index when one becomes inactive", async () => {
+		// Two active targets at distinct positions/signals.
+		const el = createGrid({
+			targets: [
+				{ x: 1500, y: 2000, speed: 0, status: "active", signal: 7 },
+				{ x: 1800, y: 2000, speed: 0, status: "active", signal: 9 },
+			],
+		});
+		document.body.appendChild(el);
+		await el.updateComplete;
+
+		// Now mark target 0 as inactive — only target 1 should remain visible.
+		// Without keyed rendering, Lit would reuse the first DOM node (with
+		// color/signal of target 0) for the remaining template, leaking state.
+		el.targets = [
+			{ x: 1500, y: 2000, speed: 0, status: "inactive", signal: 0 },
+			{ x: 1800, y: 2000, speed: 0, status: "active", signal: 9 },
+		];
+		await el.updateComplete;
+
+		const dots = el.shadowRoot!.querySelectorAll(
+			".target-dot",
+		) as NodeListOf<HTMLElement>;
+		expect(dots.length).toBe(1);
+		// The remaining dot must reflect target index 1 (red-orange).
+		expect(dots[0].style.background.toLowerCase()).toContain("#ff5722");
+
+		// And the signal pill content must be 9, not 7.
+		const overlay = el.shadowRoot!.querySelector(
+			".targets-overlay",
+		) as HTMLElement;
+		expect(overlay.textContent).toContain("9");
+		expect(overlay.textContent).not.toContain("7");
 
 		document.body.removeChild(el);
 	});

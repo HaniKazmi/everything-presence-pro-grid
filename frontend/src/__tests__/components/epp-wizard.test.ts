@@ -188,3 +188,81 @@ describe("capture cancel click", () => {
 		expect(a._wizardCapturePaused).toBe(false);
 	});
 });
+
+describe("disconnectedCallback cancels in-flight capture RAF", () => {
+	it("cancels the pending RAF id and marks capture cancelled when detached", async () => {
+		const el = createWizard({ mode: "wizard" });
+		const a = el as any;
+		a._setupStep = "corners";
+		a.rawTargets = [{ raw_x: 500, raw_y: 1200 }];
+		document.body.appendChild(el);
+		await el.updateComplete;
+
+		// Stub RAF so we can capture the id we hand back to the component
+		const rafSpy = vi
+			.spyOn(window, "requestAnimationFrame")
+			.mockImplementation(() => 4242 as unknown as number);
+		const cancelSpy = vi.spyOn(window, "cancelAnimationFrame");
+
+		try {
+			a._wizardStartCapture();
+			expect(a._wizardCapturing).toBe(true);
+			expect(a._captureRafId).toBe(4242);
+			expect(a._wizardCaptureCancelled).toBe(false);
+
+			document.body.removeChild(el);
+
+			expect(a._wizardCaptureCancelled).toBe(true);
+			expect(cancelSpy).toHaveBeenCalledWith(4242);
+			expect(a._captureRafId).toBeNull();
+		} finally {
+			rafSpy.mockRestore();
+			cancelSpy.mockRestore();
+		}
+	});
+
+	it("does not run another tick after disconnect even if RAF queue is flushed", async () => {
+		const el = createWizard({ mode: "wizard" });
+		const a = el as any;
+		a._setupStep = "corners";
+		a.rawTargets = [{ raw_x: 500, raw_y: 1200 }];
+		document.body.appendChild(el);
+		await el.updateComplete;
+
+		// Capture every tick callback the component schedules so we can
+		// invoke them manually after disconnect.
+		const callbacks: FrameRequestCallback[] = [];
+		const rafSpy = vi
+			.spyOn(window, "requestAnimationFrame")
+			.mockImplementation((cb) => {
+				callbacks.push(cb);
+				return callbacks.length as unknown as number;
+			});
+
+		try {
+			a._wizardStartCapture();
+			expect(callbacks).toHaveLength(1);
+
+			// Detach the component mid-capture
+			document.body.removeChild(el);
+			expect(a._wizardCaptureCancelled).toBe(true);
+
+			// Snapshot mutable state, then flush the leaked closure.
+			const progressBefore = a._wizardCaptureProgress;
+			const capturingBefore = a._wizardCapturing;
+			const cornersBefore = a._wizardCorners;
+			const rafCallsBefore = rafSpy.mock.calls.length;
+
+			callbacks[0]?.(performance.now());
+
+			// The leaked closure must early-return: no state mutations,
+			// no further RAF scheduling.
+			expect(a._wizardCaptureProgress).toBe(progressBefore);
+			expect(a._wizardCapturing).toBe(capturingBefore);
+			expect(a._wizardCorners).toBe(cornersBefore);
+			expect(rafSpy.mock.calls.length).toBe(rafCallsBefore);
+		} finally {
+			rafSpy.mockRestore();
+		}
+	});
+});

@@ -1,5 +1,6 @@
-import { css, html, LitElement, nothing } from "lit";
+import { css, html, LitElement, nothing, type PropertyValues } from "lit";
 import { property } from "lit/decorators.js";
+import { repeat } from "lit/directives/repeat.js";
 import { TARGET_COLORS } from "../constants.js";
 import { mapTargetToGridCell } from "../lib/coordinates.js";
 import type { FurnitureItem } from "../lib/furniture.js";
@@ -160,6 +161,39 @@ export class EppGrid extends LitElement {
 		}
 	`;
 
+	willUpdate(changedProperties: PropertyValues) {
+		// Detect targets that have moved off their dismissed cell and dispatch
+		// `target-undismissed` events. Mutation of `this.dismissedTargets` lives
+		// in the parent (panel) — the child only signals the transition.
+		if (
+			!changedProperties.has("targets") &&
+			!changedProperties.has("dismissedTargets") &&
+			!changedProperties.has("roomWidth") &&
+			!changedProperties.has("roomDepth")
+		) {
+			return;
+		}
+		if (this.dismissedTargets.size === 0) return;
+		for (const [i, dismissedIdx] of this.dismissedTargets) {
+			const t = this.targets[i];
+			if (!t || t.status === "inactive" || t.x == null) continue;
+			const pos = mapTargetToGridCell(t.x, t.y, this.roomWidth, this.roomDepth);
+			if (!pos) continue;
+			const col = Math.floor(pos.col);
+			const row = Math.floor(pos.row);
+			const idx = row * GRID_COLS + col;
+			if (idx !== dismissedIdx) {
+				this.dispatchEvent(
+					new CustomEvent("target-undismissed", {
+						detail: { targetIndex: i },
+						bubbles: true,
+						composed: true,
+					}),
+				);
+			}
+		}
+	}
+
 	render() {
 		const bounds =
 			this.frozenBounds ??
@@ -192,7 +226,7 @@ export class EppGrid extends LitElement {
 					${this._renderVisibleCells(minCol, maxCol, minRow, maxRow, cellPx)}
 				</div>
 				${this._renderFurnitureOverlay(cellPx, minCol, minRow, visCols, visRows)}
-				${this._renderTargetDots(minCol, minRow, visCols, visRows)}
+				${this._renderTargetDots(minCol, maxCol, minRow, maxRow, visCols, visRows)}
 			</div>
 			${this._renderGridDimensions()}
 		`;
@@ -337,113 +371,117 @@ export class EppGrid extends LitElement {
 
 	private _renderTargetDots(
 		minCol: number,
+		maxCol: number,
 		minRow: number,
+		maxRow: number,
 		visCols: number,
 		visRows: number,
 	) {
 		return html`
 			<div class="targets-overlay" style="pointer-events: none;">
-				${this.targets.map((t, i) => {
-					if (t.status === "inactive") return nothing;
-					let pos =
-						t.x != null
-							? mapTargetToGridCell(t.x, t.y, this.roomWidth, this.roomDepth)
-							: null;
-					const onGrid =
-						pos &&
-						pos.col >= minCol &&
-						pos.col <= minCol + visCols &&
-						pos.row >= minRow &&
-						pos.row <= minRow + visRows;
-					if (t.status === "pending" && !onGrid && this.targetPrevXY[i]) {
-						pos = mapTargetToGridCell(
-							this.targetPrevXY[i]!.x,
-							this.targetPrevXY[i]!.y,
-							this.roomWidth,
-							this.roomDepth,
-						);
-					}
-					if (!pos) return nothing;
-					const xPct = Math.max(
-						0,
-						Math.min(100, ((pos.col - minCol) / visCols) * 100),
-					);
-					const yPct = Math.max(
-						0,
-						Math.min(100, ((pos.row - minRow) / visRows) * 100),
-					);
-					// Hide dismissed targets (until they move to a different cell)
-					if (this.dismissedTargets.has(i)) {
-						const col = Math.floor(pos.col);
-						const row = Math.floor(pos.row);
-						const idx = row * GRID_COLS + col;
-						if (this.dismissedTargets.get(i) === idx) {
+				${repeat(
+					this.targets,
+					(_t, i) => i,
+					(t, i) => {
+						if (t.status === "inactive") return nothing;
+						let pos =
+							t.x != null
+								? mapTargetToGridCell(t.x, t.y, this.roomWidth, this.roomDepth)
+								: null;
+						const onGrid =
+							pos &&
+							pos.col >= minCol &&
+							pos.col <= maxCol &&
+							pos.row >= minRow &&
+							pos.row <= maxRow;
+						if (t.status === "pending" && !onGrid && this.targetPrevXY[i]) {
+							pos = mapTargetToGridCell(
+								this.targetPrevXY[i]!.x,
+								this.targetPrevXY[i]!.y,
+								this.roomWidth,
+								this.roomDepth,
+							);
+						} else if (!onGrid) {
+							// Active target with a position outside the visible bounds
+							// must not render at the clamped edge.
 							return nothing;
 						}
-						// Target moved to a different cell — clear dismiss
-						this.dismissedTargets.delete(i);
-						this.dispatchEvent(
-							new CustomEvent("target-undismissed", {
-								detail: { targetIndex: i },
-								bubbles: true,
-								composed: true,
-							}),
+						if (!pos) return nothing;
+						const xPct = Math.max(
+							0,
+							Math.min(100, ((pos.col - minCol) / visCols) * 100),
 						);
-					}
-					// Interference/suppress cells don't confirm presence by themselves:
-					// suppress is skipped by the engine, interference requires continuity.
-					// Hide the dot when the zone isn't already occupied via another path.
-					if (this.grid.length > 0) {
-						const col = Math.floor(pos.col);
-						const row = Math.floor(pos.row);
-						const idx = row * GRID_COLS + col;
-						if (idx >= 0 && idx < this.grid.length) {
-							const overlay = cellOverlay(this.grid[idx]);
-							if (
-								overlay === CELL_OVERLAY_INTERFERENCE ||
-								overlay === CELL_OVERLAY_SUPPRESS
-							) {
-								const zid = cellZone(this.grid[idx]);
-								if (!this.occupancy[zid]) {
-									return nothing;
+						const yPct = Math.max(
+							0,
+							Math.min(100, ((pos.row - minRow) / visRows) * 100),
+						);
+						// Hide dismissed targets while they remain on the dismissed cell.
+						// Detection of "moved off the cell" lives in willUpdate, where
+						// the target-undismissed event is dispatched. The child never
+						// mutates this.dismissedTargets — that's the parent's prop.
+						if (this.dismissedTargets.has(i)) {
+							const col = Math.floor(pos.col);
+							const row = Math.floor(pos.row);
+							const idx = row * GRID_COLS + col;
+							if (this.dismissedTargets.get(i) === idx) {
+								return nothing;
+							}
+						}
+						// Interference/suppress cells don't confirm presence by themselves:
+						// suppress is skipped by the engine, interference requires continuity.
+						// Hide the dot when the zone isn't already occupied via another path.
+						if (this.grid.length > 0) {
+							const col = Math.floor(pos.col);
+							const row = Math.floor(pos.row);
+							const idx = row * GRID_COLS + col;
+							if (idx >= 0 && idx < this.grid.length) {
+								const overlay = cellOverlay(this.grid[idx]);
+								if (
+									overlay === CELL_OVERLAY_INTERFERENCE ||
+									overlay === CELL_OVERLAY_SUPPRESS
+								) {
+									const zid = cellZone(this.grid[idx]);
+									if (!this.occupancy[zid]) {
+										return nothing;
+									}
 								}
 							}
 						}
-					}
-					const opacity = t.status === "pending" ? 0.3 : 1;
-					return html`
-						<div
-							class="target-dot ${this.editable ? "" : "clickable"}"
-							style="left: ${xPct}%; top: ${yPct}%; background: ${TARGET_COLORS[i] || TARGET_COLORS[0]}; opacity: ${opacity}; transition: opacity 0.5s ease;"
-							@click=${(e: Event) => {
-								if (this.editable) return;
-								e.stopPropagation();
-								this.dispatchEvent(
-									new CustomEvent("target-click", {
-										detail: {
-											targetIndex: i,
-											x: t.x,
-											y: t.y,
-											pctX: xPct,
-											pctY: yPct,
-										},
-										bubbles: true,
-										composed: true,
-									}),
-								);
-							}}
-						></div>
-						${
-							t.status === "active" && t.signal > 0
-								? html`
-									<div style="position: absolute; left: ${xPct}%; top: ${yPct}%; transform: translate(-50%, -280%); background: rgba(0,0,0,0.7); color: #fff; font-size: 10px; font-weight: bold; padding: 0 4px; border-radius: 6px; pointer-events: none;">
-										${t.signal}
-									</div>
-								`
-								: nothing
-						}
-					`;
-				})}
+						const opacity = t.status === "pending" ? 0.3 : 1;
+						return html`
+							<div
+								class="target-dot ${this.editable ? "" : "clickable"}"
+								style="left: ${xPct}%; top: ${yPct}%; background: ${TARGET_COLORS[i] || TARGET_COLORS[0]}; opacity: ${opacity}; transition: opacity 0.5s ease;"
+								@click=${(e: Event) => {
+									if (this.editable) return;
+									e.stopPropagation();
+									this.dispatchEvent(
+										new CustomEvent("target-click", {
+											detail: {
+												targetIndex: i,
+												x: t.x,
+												y: t.y,
+												pctX: xPct,
+												pctY: yPct,
+											},
+											bubbles: true,
+											composed: true,
+										}),
+									);
+								}}
+							></div>
+							${
+								t.status === "active" && t.signal > 0
+									? html`
+										<div style="position: absolute; left: ${xPct}%; top: ${yPct}%; transform: translate(-50%, -280%); background: rgba(0,0,0,0.7); color: #fff; font-size: 10px; font-weight: bold; padding: 0 4px; border-radius: 6px; pointer-events: none;">
+											${t.signal}
+										</div>
+									`
+									: nothing
+							}
+						`;
+					},
+				)}
 			</div>
 		`;
 	}

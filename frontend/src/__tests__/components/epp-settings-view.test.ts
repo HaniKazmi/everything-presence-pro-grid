@@ -679,6 +679,56 @@ describe("renderEnvOffset", () => {
 		expect(valueSpan?.textContent).toBe("36.0");
 		document.body.removeChild(c);
 	});
+
+	it("slider input uses live sensorState reading, not stale render-time value", async () => {
+		// Item 5 regression: closure captured `reading` parameter at render time.
+		// If sensorState updates between render and slider drag, the displayed
+		// adjusted value must reflect the LIVE reading, not the stale one.
+		const sv = createView({ illuminanceOffset: 5 });
+		sv.sensorState = {
+			occupancy: false,
+			static_presence: false,
+			motion_presence: false,
+			target_presence: false,
+			illuminance: 100, // raw=95
+			temperature: null,
+			humidity: null,
+			co2: null,
+		};
+		document.body.appendChild(sv);
+		sv.openAccordions = new Set(["sensitivity"]);
+		await sv.updateComplete;
+
+		// Find the illuminance offset slider rendered with the original reading.
+		const slider = sv.shadowRoot!.querySelector(
+			'.setting-range[data-offset-key="illuminance"]',
+		) as HTMLInputElement;
+		expect(slider).not.toBeNull();
+
+		// Update sensorState — simulating a fresh sensor reading. Critically, we
+		// DO NOT wait for Lit's re-render. The user drags the slider while the
+		// pending re-render hasn't been applied yet — the @input handler must
+		// pull the live reading rather than relying on a closure-captured value.
+		sv.sensorState = {
+			occupancy: false,
+			static_presence: false,
+			motion_presence: false,
+			target_presence: false,
+			illuminance: 200, // raw=195
+			temperature: null,
+			humidity: null,
+			co2: null,
+		};
+
+		slider.value = "10"; // user drags offset to 10
+		slider.dispatchEvent(new Event("input"));
+
+		// Display should reflect raw=195 (from live reading=200) + new offset=10
+		// = 205.0. With the stale closure it would show 95 + 10 = 105.0.
+		const display = slider.parentElement!.querySelector(".setting-value");
+		expect(display?.textContent).toBe("205.0");
+		document.body.removeChild(sv);
+	});
 });
 
 describe("infoTip", () => {
@@ -1296,6 +1346,7 @@ describe("_resetSlider edge cases", () => {
 		slider.max = "120";
 		slider.value = "10";
 		const display = document.createElement("span");
+		display.className = "setting-value";
 		display.textContent = "10";
 		row.appendChild(slider);
 		row.appendChild(display);
@@ -1314,6 +1365,7 @@ describe("_resetSlider edge cases", () => {
 		slider.className = "setting-range";
 		slider.value = "10";
 		const display = document.createElement("span");
+		display.className = "setting-value";
 		display.textContent = "10";
 		row.appendChild(slider);
 		row.appendChild(display);
@@ -1349,12 +1401,135 @@ describe("_resetSlider edge cases", () => {
 		slider.dataset.displayMin = "0";
 		slider.dataset.displayMax = "Infinity";
 		const display = document.createElement("span");
+		display.className = "setting-value";
 		display.textContent = "\u2014"; // dash (NaN when parsed)
 		row.appendChild(slider);
 		row.appendChild(display);
 
 		// Should not throw even if NaN; the if (!Number.isNaN) guard skips adjusted display
 		expect(() => (sv as any)._resetSlider(row, 0)).not.toThrow();
+	});
+
+	it("sensitivity slider input updates setting-value when a wrapper is inserted between them", () => {
+		// Same regression as Item 10 but for one of the non-env sliders. Insert
+		// a wrapper between the slider and its `.setting-value` and verify the
+		// handler still resolves the value span via the parent.
+		const sv = createView({ motionTimeout: 5 });
+		const tpl = (sv as any).renderSensitivities();
+		const c = renderTo(tpl);
+
+		// Use the motion timeout slider — first .setting-range.
+		const slider = c.querySelector(".setting-range") as HTMLInputElement;
+		const valueSpan = slider.parentElement?.querySelector(
+			".setting-value",
+		) as HTMLElement;
+		expect(slider).not.toBeNull();
+		expect(valueSpan).not.toBeNull();
+
+		const wrapper = document.createElement("span");
+		wrapper.className = "extra-wrapper";
+		slider.parentNode?.insertBefore(wrapper, slider.nextSibling);
+		expect(slider.nextElementSibling).toBe(wrapper);
+
+		slider.value = "20";
+		expect(() => slider.dispatchEvent(new Event("input"))).not.toThrow();
+
+		expect(valueSpan.textContent).toBe("20");
+		expect(wrapper.textContent).toBe("");
+		document.body.removeChild(c);
+	});
+
+	it("slider input still updates setting-value when a wrapper is inserted between them", () => {
+		// Item 10 regression: the @input handlers used `el.nextElementSibling!`
+		// which was the immediate next sibling. If the markup ever inserts a
+		// wrapper or icon between the slider and its `.setting-value` span, the
+		// non-null assertion fires on a wrong (or absent) element. The handler
+		// must locate `.setting-value` via the parent so it stays robust.
+		const sv = createView({ illuminanceOffset: 0 });
+		sv.sensorState = {
+			occupancy: false,
+			static_presence: false,
+			motion_presence: false,
+			target_presence: false,
+			illuminance: 100, // raw=100
+			temperature: null,
+			humidity: null,
+			co2: null,
+		};
+		const tpl = (sv as any).renderEnvOffset(
+			"Illuminance",
+			() => sv.sensorState.illuminance,
+			"illuminance",
+			-500,
+			500,
+			1,
+			"lux",
+			1,
+			"Tip",
+			0,
+		);
+		const c = renderTo(tpl);
+		const slider = c.querySelector(".setting-range") as HTMLInputElement;
+		const valueSpan = c.querySelector(".setting-value") as HTMLElement;
+		expect(slider).not.toBeNull();
+		expect(valueSpan).not.toBeNull();
+
+		// Insert a wrapper element between slider and the .setting-value so
+		// `nextElementSibling` is no longer the value span.
+		const wrapper = document.createElement("span");
+		wrapper.className = "extra-wrapper";
+		slider.parentNode?.insertBefore(wrapper, slider.nextSibling);
+		expect(slider.nextElementSibling).toBe(wrapper);
+
+		slider.value = "5";
+		expect(() => slider.dispatchEvent(new Event("input"))).not.toThrow();
+
+		// .setting-value (raw=100, offset=5 → 105.0) should still be updated,
+		// not the wrapper.
+		expect(valueSpan.textContent).toBe("105.0");
+		expect(wrapper.textContent).toBe("");
+		document.body.removeChild(c);
+	});
+
+	it("_resetSlider on env offset preserves em dash when no live reading", () => {
+		// Item 12 regression: when sensorState.illuminance is null the display
+		// shows "\u2014". Clicking reset previously fell through to the else branch
+		// and overwrote the em dash with "0", losing the "no live reading" hint.
+		const sv = createView();
+		sv.sensorState = {
+			occupancy: false,
+			static_presence: false,
+			motion_presence: false,
+			target_presence: false,
+			illuminance: null, // no live reading
+			temperature: null,
+			humidity: null,
+			co2: null,
+		};
+		const tpl = (sv as any).renderEnvOffset(
+			"Illuminance",
+			() => sv.sensorState.illuminance,
+			"illuminance",
+			-500,
+			500,
+			1,
+			"lux",
+			1,
+			"Tip",
+			0,
+		);
+		const c = renderTo(tpl);
+		const valueSpan = c.querySelector(".setting-value")!;
+		expect(valueSpan.textContent).toBe("\u2014");
+
+		const row = c.querySelector(".setting-row") as HTMLElement;
+		(sv as any)._resetSlider(row, 0);
+
+		// The display should still show the em dash, not "0".
+		expect(valueSpan.textContent).toBe("\u2014");
+		// Reset still records the offset override so save persists 0.
+		expect((sv as any)._overrides.illuminanceOffset).toBe(0);
+		document.body.removeChild(c);
 	});
 });
 

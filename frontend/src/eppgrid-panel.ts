@@ -384,6 +384,7 @@ export class EPPGridPanel extends LitElement {
 	@state() private _furniture: FurnitureItem[] = [];
 	@state() private _selectedFurnitureId: string | null = null;
 	private _furnitureClipboard: FurnitureItem | null = null;
+	// Non-reactive: pointer drag bookkeeping. Repaint is driven by @state fields the drag handlers update (e.g. _furniture).
 	private _dragState: {
 		type: "move" | "resize" | "rotate";
 		id: string;
@@ -425,7 +426,7 @@ export class EPPGridPanel extends LitElement {
 		pctX: number;
 		pctY: number;
 	} | null = null;
-	private _dismissedTargets: Map<number, number> = new Map();
+	@state() private _dismissedTargets: Map<number, number> = new Map();
 	@state() private _isPainting = false;
 	private _justPainted = false;
 	@state() private _paintAction: PaintAction = "set";
@@ -2118,6 +2119,9 @@ export class EPPGridPanel extends LitElement {
 				@target-click=${(e: CustomEvent) => {
 					this._showTargetMenu(e.detail);
 				}}
+				@target-undismissed=${(e: CustomEvent) => {
+					this._handleTargetUndismissed(e.detail.targetIndex);
+				}}
 			></epp-grid>
 		`;
 	}
@@ -2145,6 +2149,18 @@ export class EPPGridPanel extends LitElement {
 		return row * GRID_COLS + col;
 	}
 
+	/**
+	 * Clear a dismissed-target entry in response to `target-undismissed`
+	 * dispatched by `<epp-grid>` (a target moved off its dismissed cell).
+	 * The grid component no longer mutates `dismissedTargets` itself; the
+	 * panel owns that state and rebuilds the Map for Lit reactivity.
+	 */
+	private _handleTargetUndismissed(targetIndex: number): void {
+		if (!this._dismissedTargets.has(targetIndex)) return;
+		this._dismissedTargets = new Map(this._dismissedTargets);
+		this._dismissedTargets.delete(targetIndex);
+	}
+
 	private async _dismissTarget(): Promise<void> {
 		if (!this._targetMenu) return;
 		const { targetIndex, x, y } = this._targetMenu;
@@ -2165,7 +2181,6 @@ export class EPPGridPanel extends LitElement {
 			}
 		}
 		this._closeTargetMenu();
-		this.requestUpdate();
 	}
 
 	private async _setOverlay(kind: number): Promise<void> {
@@ -2431,26 +2446,29 @@ export class EPPGridPanel extends LitElement {
 	}
 
 	private _renderEditor() {
-		// Run local zone engine replica and compute occupancy for editor view
+		// Run local zone engine replica and compute occupancy for editor view.
+		// IMPORTANT: this method must be a pure function of state — do NOT
+		// mutate `_targets[i].status` or `_sensorState`. Build derived data
+		// in local variables and route the children off those.
 		const engineResult = this._runLocalZoneEngine();
 		const editorOccupancy = engineResult.occupancy;
 
-		// Overwrite _targets status from frontend zone engine
-		for (
-			let i = 0;
-			i < engineResult.targets.length && i < this._targets.length;
-			i++
-		) {
-			this._targets[i].status = engineResult.targets[i].status;
-		}
+		// Build a NEW targets array overlaying engine-computed status onto
+		// each target. Every element is a fresh object so downstream
+		// consumers can never mutate the original `_targets[i]` refs.
+		const editorTargets = this._targets.map((t, i) => ({
+			...t,
+			status: engineResult.targets[i]?.status ?? t.status,
+		}));
 
-		// Derive sensors.occupancy from unsaved zone config
-		const roomOccupied = Object.values(editorOccupancy).some((v) => v);
-		this._sensorState.occupancy =
-			this._sensorState.static_presence ||
-			this._sensorState.motion_presence ||
-			roomOccupied;
-		this._sensorState.mmwave = engineResult.mmwave;
+		// Editor preview previously mutated `_sensorState.occupancy` and
+		// `_sensorState.mmwave` here, contaminating live-view consumers
+		// (see `.sensorState=...` bindings in `_renderLiveOverview` /
+		// wizard). Nothing in this template currently consumes those
+		// fields, so the derivation has been removed entirely; should a
+		// child component ever need them, build a local
+		// `editorSensorState = { ...this._sensorState, occupancy, mmwave }`
+		// and pass it explicitly — never mutate `this._sensorState`.
 
 		return html`
       <div class="panel" @click=${(e: Event) => {
@@ -2477,7 +2495,7 @@ export class EPPGridPanel extends LitElement {
               <epp-grid
                 .grid=${this._grid}
                 .zoneConfigs=${this._namedZones()}
-                .targets=${this._targets}
+                .targets=${editorTargets}
                 .roomWidth=${this._roomWidth}
                 .roomDepth=${this._roomDepth}
                 .perspective=${this._perspective}
@@ -2494,6 +2512,7 @@ export class EPPGridPanel extends LitElement {
                 .maxGridPx=${480}
                 .maxRangeMm=${this._editorMaxRangeMm()}
                 .frozenBounds=${this._frozenBounds}
+                .dismissedTargets=${this._dismissedTargets}
                 @cell-paint=${(e: CustomEvent) => {
 									const { index, action } = e.detail;
 									if (action === "down") this._onCellMouseDown(index);
@@ -2509,6 +2528,9 @@ export class EPPGridPanel extends LitElement {
 								}}
                 @furniture-delete=${(e: CustomEvent) => {
 									this._removeFurniture(e.detail);
+								}}
+                @target-undismissed=${(e: CustomEvent) => {
+									this._handleTargetUndismissed(e.detail.targetIndex);
 								}}
               ></epp-grid>
             </div>

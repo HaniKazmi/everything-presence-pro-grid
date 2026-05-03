@@ -322,7 +322,7 @@ export class EppSettingsView extends LitElement {
 
 	renderEnvOffset(
 		label: string,
-		reading: number | null,
+		readingOrGetter: number | null | (() => number | null),
 		offsetKey: string,
 		min: number,
 		max: number,
@@ -334,6 +334,11 @@ export class EppSettingsView extends LitElement {
 		displayMax = Infinity,
 	) {
 		const propName = `${offsetKey}Offset` as keyof this;
+		const getReading: () => number | null =
+			typeof readingOrGetter === "function"
+				? (readingOrGetter as () => number | null)
+				: () => readingOrGetter;
+		const reading = getReading();
 		const offset = (this as any)[propName] ?? 0;
 		// reading already has the saved offset applied by the coordinator,
 		// so subtract it to get the raw value
@@ -351,11 +356,17 @@ export class EppSettingsView extends LitElement {
 				) => {
 					const el = e.target as HTMLInputElement;
 					const off = parseFloat(el.value);
+					// Pull live reading and offset at event time \u2014 the closure must
+					// not rely on render-time values, since `sensorState` updates
+					// between renders while the slider remains bound.
+					const liveReading = getReading();
+					const liveOffset = (this as any)[propName] ?? 0;
+					const liveRaw = liveReading != null ? liveReading - liveOffset : null;
 					const val =
-						raw != null
-							? this.localize.formatNumber(clamp(raw + off), precision)
+						liveRaw != null
+							? this.localize.formatNumber(clamp(liveRaw + off), precision)
 							: "\u2014";
-					this._setText(el.nextElementSibling!, val);
+					this._setSettingValue(el, val);
 					this._overrides[`${offsetKey}Offset`] = off;
 					this._fireDirty();
 				}} /><span class="setting-value">${adjusted}</span> ${unit}</span>
@@ -376,6 +387,17 @@ export class EppSettingsView extends LitElement {
 		else el.textContent = text;
 	}
 
+	/**
+	 * Update the `.setting-value` span next to a slider input. Resolves the
+	 * span via the slider's parent rather than `nextElementSibling`, so
+	 * inserting wrapper elements in the markup doesn't silently break the
+	 * display update.
+	 */
+	private _setSettingValue(slider: HTMLInputElement, text: string): void {
+		const value = slider.parentElement?.querySelector(".setting-value");
+		if (value instanceof HTMLElement) this._setText(value, text);
+	}
+
 	private _resetSlider(settingRow: HTMLElement, value: number, key?: string) {
 		const slider = settingRow.querySelector(
 			".setting-range",
@@ -383,20 +405,33 @@ export class EppSettingsView extends LitElement {
 		if (!slider) return;
 		const oldSliderVal = parseFloat(slider.value);
 		slider.value = String(value);
-		const display = slider.nextElementSibling as HTMLElement;
+		const display = slider.parentElement?.querySelector(
+			".setting-value",
+		) as HTMLElement | null;
 		if (display) {
 			const oldDisplay = parseFloat(display.textContent || "");
-			if (slider.dataset.offsetKey && !Number.isNaN(oldDisplay)) {
-				// Env offset: display shows adjusted reading (raw + offset).
-				// Compute raw from current state and apply new offset.
-				const precision = parseInt(slider.dataset.precision ?? "0", 10);
-				const dMin = parseFloat(slider.dataset.displayMin ?? "-Infinity");
-				const dMax = parseFloat(slider.dataset.displayMax ?? "Infinity");
-				const adjusted = Math.max(
-					dMin,
-					Math.min(dMax, oldDisplay - oldSliderVal + value),
-				);
-				this._setText(display, this.localize.formatNumber(adjusted, precision));
+			if (slider.dataset.offsetKey) {
+				// Env offset slider. The display either shows the adjusted reading
+				// (raw + offset) as a number, or the em dash "—" when there is no
+				// live reading. Preserve that em dash on reset so the user still
+				// knows there's no live data; otherwise recompute the adjusted
+				// value from the previous display + slider deltas.
+				if (Number.isNaN(oldDisplay)) {
+					// No live reading — keep the em dash, just record the new offset.
+					this._setText(display, "—");
+				} else {
+					const precision = parseInt(slider.dataset.precision ?? "0", 10);
+					const dMin = parseFloat(slider.dataset.displayMin ?? "-Infinity");
+					const dMax = parseFloat(slider.dataset.displayMax ?? "Infinity");
+					const adjusted = Math.max(
+						dMin,
+						Math.min(dMax, oldDisplay - oldSliderVal + value),
+					);
+					this._setText(
+						display,
+						this.localize.formatNumber(adjusted, precision),
+					);
+				}
 				this._overrides[`${slider.dataset.offsetKey}Offset`] = value;
 			} else {
 				this._setText(display, String(value));
@@ -511,10 +546,7 @@ export class EppSettingsView extends LitElement {
 								const v = Number(el.value);
 								this._overrides.targetMaxDistance = v;
 								this._fireChange("targetMaxDistance", v);
-								this._setText(
-									el.nextElementSibling!,
-									this.localize.formatNumber(v, 1),
-								);
+								this._setSettingValue(el, this.localize.formatNumber(v, 1));
 							}} /><span class="setting-value">${this.localize.formatNumber(targetVal, 1)}</span><span class="setting-unit">m</span></span>
             ${this.resetBtn(targetAutoVal, "targetMaxDistance")}${this.infoTip(this.localize("info.target_max_distance"))}
           </div>
@@ -554,10 +586,7 @@ export class EppSettingsView extends LitElement {
 								}
 								this._overrides.staticMinDistance = v;
 								this._fireChange("staticMinDistance", v);
-								this._setText(
-									el.nextElementSibling!,
-									this.localize.formatNumber(v, 1),
-								);
+								this._setSettingValue(el, this.localize.formatNumber(v, 1));
 							}} /><span class="setting-value">${this.localize.formatNumber(this.staticAutoDistance ? 0.3 : this.staticMinDistance, 1)}</span><span class="setting-unit">m</span></span>
             ${this.resetBtn(0.3, "staticMinDistance")}${this.infoTip(this.localize("info.static_min_distance"))}
           </div>
@@ -575,10 +604,7 @@ export class EppSettingsView extends LitElement {
 								}
 								this._overrides.staticMaxDistance = v;
 								this._fireChange("staticMaxDistance", v);
-								this._setText(
-									el.nextElementSibling!,
-									this.localize.formatNumber(v, 1),
-								);
+								this._setSettingValue(el, this.localize.formatNumber(v, 1));
 							}} /><span class="setting-value">${this.localize.formatNumber(staticMaxVal, 1)}</span><span class="setting-unit">m</span></span>
             ${this.resetBtn(staticMaxAutoVal, "staticMaxDistance")}${this.infoTip(this.localize("info.static_max_distance"))}
           </div>
@@ -599,7 +625,7 @@ export class EppSettingsView extends LitElement {
 						) => {
 							const el = e.target as HTMLInputElement;
 							this._overrides.motionTimeout = Number(el.value);
-							this._setText(el.nextElementSibling!, el.value);
+							this._setSettingValue(el, el.value);
 							this._fireDirty();
 						}} /><span class="setting-value">${this.motionTimeout}</span><span class="setting-unit">s</span></span>
             ${this.resetBtn(5, "motionTimeout")}${this.infoTip(this.localize("info.motion_timeout"))}
@@ -614,7 +640,7 @@ export class EppSettingsView extends LitElement {
 						) => {
 							const el = e.target as HTMLInputElement;
 							this._overrides.staticOnDelay = Number(el.value);
-							this._setText(el.nextElementSibling!, el.value);
+							this._setSettingValue(el, el.value);
 							this._fireDirty();
 						}} /><span class="setting-value">${this.staticOnDelay}</span><span class="setting-unit">s</span></span>
             ${this.resetBtn(0, "staticOnDelay")}${this.infoTip(this.localize("info.presence_delay"))}
@@ -626,7 +652,7 @@ export class EppSettingsView extends LitElement {
 						) => {
 							const el = e.target as HTMLInputElement;
 							this._overrides.staticTimeout = Number(el.value);
-							this._setText(el.nextElementSibling!, el.value);
+							this._setSettingValue(el, el.value);
 							this._fireDirty();
 						}} /><span class="setting-value">${this.staticTimeout}</span><span class="setting-unit">s</span></span>
             ${this.resetBtn(30, "staticTimeout")}${this.infoTip(this.localize("info.static_timeout"))}
@@ -638,7 +664,7 @@ export class EppSettingsView extends LitElement {
 						) => {
 							const el = e.target as HTMLInputElement;
 							this._overrides.staticTriggerThreshold = Number(el.value);
-							this._setText(el.nextElementSibling!, el.value);
+							this._setSettingValue(el, el.value);
 							this._fireDirty();
 						}} /><span class="setting-value">${this.staticTriggerThreshold}</span><span class="setting-unit"></span></span>
             ${this.resetBtn(3, "staticTriggerThreshold")}${this.infoTip(this.localize("info.trigger_threshold"))}
@@ -650,7 +676,7 @@ export class EppSettingsView extends LitElement {
 						) => {
 							const el = e.target as HTMLInputElement;
 							this._overrides.staticRenewThreshold = Number(el.value);
-							this._setText(el.nextElementSibling!, el.value);
+							this._setSettingValue(el, el.value);
 							this._fireDirty();
 						}} /><span class="setting-value">${this.staticRenewThreshold}</span><span class="setting-unit"></span></span>
             ${this.resetBtn(3, "staticRenewThreshold")}${this.infoTip(this.localize("info.renew_threshold"))}
@@ -658,9 +684,9 @@ export class EppSettingsView extends LitElement {
         </div>
         <div class="setting-group">
           <h4>${this.localize("settings.environmental")}</h4>
-          ${this.renderEnvOffset(this.localize("settings.illuminance_offset"), this.sensorState.illuminance, "illuminance", -500, 500, 1, "lux", 1, this.localize("info.illuminance_offset"), 0)}
-          ${this.renderEnvOffset(this.localize("settings.humidity_offset"), this.sensorState.humidity, "humidity", -50, 50, 0.1, "%", 1, this.localize("info.humidity_offset"), 0, 100)}
-          ${this.renderEnvOffset(this.localize("settings.temperature_offset"), this.sensorState.temperature, "temperature", -20, 20, 0.1, "\u00b0C", 1, this.localize("info.temperature_offset"))}
+          ${this.renderEnvOffset(this.localize("settings.illuminance_offset"), () => this.sensorState.illuminance, "illuminance", -500, 500, 1, "lux", 1, this.localize("info.illuminance_offset"), 0)}
+          ${this.renderEnvOffset(this.localize("settings.humidity_offset"), () => this.sensorState.humidity, "humidity", -50, 50, 0.1, "%", 1, this.localize("info.humidity_offset"), 0, 100)}
+          ${this.renderEnvOffset(this.localize("settings.temperature_offset"), () => this.sensorState.temperature, "temperature", -20, 20, 0.1, "\u00b0C", 1, this.localize("info.temperature_offset"))}
         </div>
       </div>
     `;
@@ -788,7 +814,8 @@ export class EppSettingsView extends LitElement {
 								if (val) {
 									this._overrides.zoneUpdateRateMs = Number(val);
 									this._fireDirty();
-									this.requestUpdate();
+									// No requestUpdate: no sibling row reads this override and
+									// ha-select already shows the user's picked value.
 								}
 							}}
               @closed=${(e: Event) => e.stopPropagation()}>
@@ -828,7 +855,8 @@ export class EppSettingsView extends LitElement {
 								if (val) {
 									this._overrides.targetUpdateRateMs = Number(val);
 									this._fireDirty();
-									this.requestUpdate();
+									// No requestUpdate: no sibling row reads this override and
+									// ha-select already shows the user's picked value.
 								}
 							}}
               @closed=${(e: Event) => e.stopPropagation()}>
@@ -967,6 +995,9 @@ export class EppSettingsView extends LitElement {
 											this._overrides.logLevels = {};
 										this._overrides.logLevels[c.key] = val;
 										this._fireDirty();
+										// requestUpdate keeps the captured `current` in sync with
+										// `_overrides.logLevels[c.key]` so the `val === current`
+										// early return works on subsequent picks.
 										this.requestUpdate();
 									}}
                   @closed=${(e: Event) => e.stopPropagation()}
@@ -982,6 +1013,8 @@ export class EppSettingsView extends LitElement {
 										this._overrides.logLevels = {};
 									this._overrides.logLevels[c.key] = "None";
 									this._fireDirty();
+									// requestUpdate refreshes the ha-select's `.value` binding
+									// so the dropdown displays "None" after reset.
 									this.requestUpdate();
 								}}
 							><ha-icon icon="mdi:restart"></ha-icon></button>
@@ -1034,6 +1067,8 @@ export class EppSettingsView extends LitElement {
 							if (val) {
 								this._overrides.ledMode = val;
 								this._fireDirty();
+								// requestUpdate is required: changing mode shows/hides the
+								// brightness slider and presence color rows downstream.
 								this.requestUpdate();
 							}
 						}} @closed=${(e: Event) => e.stopPropagation()}>
@@ -1050,8 +1085,8 @@ export class EppSettingsView extends LitElement {
 						) => {
 							const el = e.target as HTMLInputElement;
 							this._overrides.ledBrightness = parseFloat(el.value);
-							this._setText(
-								el.nextElementSibling!,
+							this._setSettingValue(
+								el,
 								`${Math.round(parseFloat(el.value) * 100)}%`,
 							);
 							this._fireDirty();
@@ -1112,6 +1147,9 @@ export class EppSettingsView extends LitElement {
 								if (!val || val === currentTrigger) return;
 								this._overrides.relayTriggerMode = val;
 								this._fireChange("relayTriggerMode", val);
+								// requestUpdate is required: switching to/from "disabled"
+								// shows or hides the contact mode row, and refreshes the
+								// captured `currentTrigger` for the early-return check.
 								this.requestUpdate();
 							}}
               @closed=${(e: Event) => e.stopPropagation()}
@@ -1131,6 +1169,9 @@ export class EppSettingsView extends LitElement {
 									if (!val || val === currentContact) return;
 									this._overrides.relayContactMode = val;
 									this._fireChange("relayContactMode", val);
+									// requestUpdate refreshes the captured `currentContact` so
+									// the `val === currentContact` early return reflects the
+									// latest override on subsequent picks.
 									this.requestUpdate();
 								}}
                 @closed=${(e: Event) => e.stopPropagation()}
