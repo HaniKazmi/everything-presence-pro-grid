@@ -1597,58 +1597,6 @@ class TestWebSocketSettings:
 
             mock_apply.assert_called_once_with(hass, "AA:BB:CC:DD:EE:FF", {"relay_output": False})
 
-    async def test_set_pipeline(self, hass: HomeAssistant, config_entry: MockConfigEntry) -> None:
-        """set_pipeline saves pipeline settings and pushes."""
-        mock_dm = await setup_integration(hass, config_entry)
-
-        from custom_components.eppgrid.websocket_api import websocket_set_pipeline
-
-        connection = MagicMock()
-        msg = {
-            "id": 15,
-            "type": "eppgrid/set_pipeline",
-            "mac": "AA:BB:CC:DD:EE:FF",
-            "entity_target_interval": 1000,
-            "entity_zone_interval": 1000,
-            "display_interval": 200,
-            "zone_state_interval": 1000,
-        }
-
-        await call_async_handler(hass, websocket_set_pipeline, connection, msg)
-
-        pipeline = mock_dm._store.devices["AA:BB:CC:DD:EE:FF"]["pipeline"]
-        assert pipeline["entity_target_interval"] == 1000
-        assert pipeline["entity_zone_interval"] == 1000
-        assert pipeline["display_interval"] == 200
-        assert pipeline["zone_state_interval"] == 1000
-        assert "window_duration" not in pipeline
-
-    async def test_set_pipeline_requires_admin(self, hass: HomeAssistant, config_entry: MockConfigEntry) -> None:
-        """Non-admin users cannot push pipeline settings."""
-        from homeassistant.exceptions import Unauthorized
-
-        await setup_integration(hass, config_entry)
-
-        from custom_components.eppgrid.websocket_api import websocket_set_pipeline
-
-        connection = MagicMock()
-        connection.user.is_admin = False
-        msg = {
-            "id": 16,
-            "type": "eppgrid/set_pipeline",
-            "mac": "AA:BB:CC:DD:EE:FF",
-            "entity_target_interval": 1000,
-            "entity_zone_interval": 1000,
-            "display_interval": 200,
-            "zone_state_interval": 1000,
-            "window_duration": 1000,
-        }
-
-        with pytest.raises(Unauthorized):
-            await call_async_handler(hass, websocket_set_pipeline, connection, msg)
-
-        connection.send_result.assert_not_called()
-
 
 class TestZonePresencePreservation:
     """Tests for zone_presence preservation across set_settings calls."""
@@ -2743,15 +2691,6 @@ class TestNotReadyGuards:
                 True,
             ),
             (
-                "websocket_set_pipeline",
-                {
-                    "mac": "AA:BB",
-                    "display_interval_ms": 200,
-                    "zone_publish_interval_ms": 1000,
-                },
-                True,
-            ),
-            (
                 "websocket_set_distance_override",
                 {
                     "mac": "AA:BB",
@@ -3464,15 +3403,6 @@ class TestProtocolVersionGuard:
                     "led_presence_color": "#CC33FF",
                     "relay_trigger_mode": "disabled",
                     "relay_contact_mode": "no",
-                },
-            ),
-            (
-                "websocket_set_pipeline",
-                {
-                    "entity_target_interval": 1000,
-                    "entity_zone_interval": 1000,
-                    "display_interval": 200,
-                    "zone_state_interval": 1000,
                 },
             ),
         ],

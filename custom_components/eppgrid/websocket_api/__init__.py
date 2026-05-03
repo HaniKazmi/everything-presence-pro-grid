@@ -174,7 +174,6 @@ def async_register_websocket_commands(hass: HomeAssistant, manager: Any) -> None
     websocket_api.async_register_command(hass, websocket_set_entity_enabled)
     websocket_api.async_register_command(hass, websocket_set_settings)
     websocket_api.async_register_command(hass, websocket_set_distance_override)
-    websocket_api.async_register_command(hass, websocket_set_pipeline)
     websocket_api.async_register_command(hass, websocket_update_firmware)
     websocket_api.async_register_command(hass, websocket_subscribe_ota_progress)
     websocket_api.async_register_command(hass, websocket_dismiss_target)
@@ -269,7 +268,6 @@ from ._devices import websocket_list_devices  # noqa: E402
 from ._devices import websocket_save_configuration  # noqa: E402
 from ._devices import websocket_set_distance_override  # noqa: E402
 from ._devices import websocket_set_entity_enabled  # noqa: E402
-from ._devices import websocket_set_pipeline  # noqa: E402
 from ._devices import websocket_set_room_layout  # noqa: E402
 from ._devices import websocket_set_settings  # noqa: E402
 from ._devices import websocket_set_setup  # noqa: E402
