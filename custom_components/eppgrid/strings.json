@@ -40,7 +40,15 @@
   "issues": {
     "firmware_behind": {
       "title": "{device_name} firmware update required",
-      "description": "The Everything Presence Pro Grid integration expects firmware **{required_version}** but {device_name} is running **{current_version}**. Open the EPP Grid panel and use the **Update Firmware** button on the device card to install the required firmware. Some integration features may not work correctly until the firmware is updated."
+      "description": "The Everything Presence Pro Grid integration expects firmware **{required_version}** but {device_name} is running **{current_version}**. Click **Submit** below to install the required firmware now. Some integration features may not work correctly until the firmware is updated.",
+      "fix_flow": {
+        "step": {
+          "init": {
+            "title": "Update {device_name} firmware",
+            "description": "Install firmware **{required_version}** on **{device_name}** (currently running **{current_version}**). The device will download the firmware over the air and reboot once flashing completes. This usually takes about a minute."
+          }
+        }
+      }
     },
     "firmware_ahead": {
       "title": "{device_name} integration update required",

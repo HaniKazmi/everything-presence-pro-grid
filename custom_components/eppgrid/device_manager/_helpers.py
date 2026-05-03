@@ -170,7 +170,11 @@ def _sync_firmware_repair_issue(
             hass,
             DOMAIN,
             behind_id,
-            is_fixable=False,
+            # Fixable: the user can trigger an OTA update directly from the
+            # Repairs UI via FirmwareUpdateRepairFlow in repairs.py, which
+            # calls the same set_update_manifest action the panel uses.
+            # Single-click resolution from Settings -> Repairs.
+            is_fixable=True,
             severity=ir.IssueSeverity.WARNING,
             translation_key="firmware_behind",
             translation_placeholders=placeholders,
