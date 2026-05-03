@@ -43,6 +43,16 @@ async def websocket_subscribe_flashable_devices(
     manager: Any,
 ) -> None:
     """Subscribe to flashable device list changes."""
+    # Fetch the initial payload BEFORE confirming the subscription. If this
+    # fails, we error out cleanly instead of leaving the frontend with a
+    # successful subscription that never delivers — the panel would otherwise
+    # stay on its loading state forever.
+    try:
+        initial_payload = await _flashable_payload(hass, manager)
+    except Exception as err:
+        _send_exception(connection, msg["id"], "fetch_failed", err)
+        return
+
     # Track every in-flight push so _unsub can cancel them. A single
     # `latest task` reference would lose older tasks when `_on_changed`
     # fires faster than they finish — the older tasks would then keep
@@ -56,6 +66,9 @@ async def websocket_subscribe_flashable_devices(
         except asyncio.CancelledError:
             raise
         except Exception:
+            # Subsequent pushes happen on a long-lived subscription — log
+            # and skip this update rather than tearing the subscription
+            # down on a transient error.
             _LOGGER.exception("Failed to fetch flashable devices for subscriber")
             return
         if closed:
@@ -78,7 +91,7 @@ async def websocket_subscribe_flashable_devices(
     unsub = manager.on_device_list_changed(_on_changed)
 
     connection.send_result(msg["id"])
-    await _send_update()
+    connection.send_message(websocket_api.event_message(msg["id"], initial_payload))
 
     @callback
     def _unsub() -> None:

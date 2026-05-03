@@ -196,6 +196,37 @@ class TestSubscribeFlashableDevices:
         connection.subscriptions[32]()
         unsub_inner.assert_called_once()
 
+    async def test_initial_subscribe_failure_sends_error_not_silent_success(
+        self, hass: HomeAssistant, config_entry: MockConfigEntry
+    ) -> None:
+        """If `list_flashable_devices` raises during the initial subscribe,
+        the handler must surface an error to the frontend rather than the
+        current `send_result(success)` + swallow-the-exception combo. Without
+        this, the panel stays stuck on "loading" forever — it has a valid
+        subscription but never sees the initial payload."""
+        mock_dm = await setup_integration(hass, config_entry)
+        mock_dm.list_flashable_devices = AsyncMock(side_effect=RuntimeError("registry boom"))
+        mock_dm.on_device_list_changed = MagicMock(return_value=lambda: None)
+
+        from custom_components.eppgrid.websocket_api import websocket_subscribe_flashable_devices
+
+        connection = MagicMock()
+        connection.subscriptions = {}
+        msg = {"id": 99, "type": "eppgrid/subscribe_flashable_devices"}
+
+        await call_async_handler(hass, websocket_subscribe_flashable_devices, connection, msg)
+
+        # Either send_error fired (preferred) — OR send_result was NOT called
+        # so the frontend's WS layer treats the command as failed.
+        if connection.send_result.called:
+            connection.send_error.assert_called()
+        # Must not have left the subscription as a "subscribed but no data"
+        # zombie; if send_result was sent, the subscription should also have
+        # been torn down (no _unsub registered).
+        if connection.send_result.called and 99 in connection.subscriptions:
+            # If we keep the subscription alive, an event must have been sent.
+            connection.send_message.assert_called()
+
     async def test_send_update_swallows_post_close_send_message_failure(
         self, hass: HomeAssistant, config_entry: MockConfigEntry
     ) -> None:

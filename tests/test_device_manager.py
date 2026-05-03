@@ -1148,6 +1148,47 @@ class TestAsyncTriggerOta:
         assert excinfo.value.translation_domain
         mock_conn.async_disconnect.assert_awaited_once()
 
+    async def test_disconnect_failure_in_finally_does_not_propagate(
+        self, hass: HomeAssistant, manager: DeviceManager
+    ) -> None:
+        """If the cleanup `await conn.async_disconnect()` in the `finally:`
+        raises (e.g. transport already torn down), it must not escape as a
+        non-HA exception. The websocket handler only catches HomeAssistantError,
+        so a raw exception here would surface as an uncaught error to the
+        frontend after a successful OTA trigger."""
+
+        self._setup_device(manager)
+        manager._build_flags["AA:BB:CC:DD:EE:FF"] = {"bluetooth_enabled": True, "co2_enabled": True}
+        mock_conn = self._make_mock_conn()
+        # Successful OTA trigger, but disconnect raises during cleanup.
+        mock_conn.async_disconnect.side_effect = ConnectionError("disconnect boom")
+
+        with patch("custom_components.eppgrid.device_manager.DeviceConnection", return_value=mock_conn):
+            # Must not raise — cleanup failure is logged and swallowed.
+            await manager.async_trigger_ota("AA:BB:CC:DD:EE:FF")
+        mock_conn.async_disconnect.assert_awaited_once()
+
+    async def test_disconnect_failure_does_not_mask_real_error(
+        self, hass: HomeAssistant, manager: DeviceManager
+    ) -> None:
+        """Even when the OTA call itself fails (so we'll raise) and the
+        cleanup disconnect ALSO fails, the original wrapped HomeAssistantError
+        must surface — not the disconnect error."""
+        from homeassistant.exceptions import HomeAssistantError
+
+        self._setup_device(manager)
+        manager._build_flags["AA:BB:CC:DD:EE:FF"] = {"bluetooth_enabled": True, "co2_enabled": True}
+        mock_conn = self._make_mock_conn()
+        mock_conn._client.execute_service.side_effect = ConnectionError("execute boom")
+        mock_conn.async_disconnect.side_effect = ConnectionError("disconnect boom")
+
+        with (
+            patch("custom_components.eppgrid.device_manager.DeviceConnection", return_value=mock_conn),
+            pytest.raises(HomeAssistantError) as excinfo,
+        ):
+            await manager.async_trigger_ota("AA:BB:CC:DD:EE:FF")
+        assert excinfo.value.translation_key == "ota_trigger_failed"
+
     async def test_concurrent_trigger_ota_rejects_second_caller(
         self, hass: HomeAssistant, manager: DeviceManager
     ) -> None:
