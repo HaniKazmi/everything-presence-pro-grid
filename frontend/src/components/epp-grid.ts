@@ -292,6 +292,11 @@ export class EppGrid extends LitElement {
 	}
 
 	private _onCellMouseDown(index: number): void {
+		// Reset coalesce state at the start of every drag. The matching mouseup
+		// might be window-level (drag ends outside the grid), so we can't rely
+		// on _onCellMouseUp alone to clear _lastEnterIdx — otherwise the next
+		// stroke would skip the first enter on a re-entered cell.
+		this._lastEnterIdx = -1;
 		this.dispatchEvent(
 			new CustomEvent("cell-paint", {
 				detail: { index, action: "down" },

@@ -304,6 +304,77 @@ describe("epp-zone-sidebar events", () => {
 		}
 	});
 
+	it("flushes pending name update on blur (so Save doesn't race with debounce)", () => {
+		vi.useFakeTimers();
+		try {
+			const el = createSidebar();
+			(el as any).zoneConfigs = [
+				{ name: "Z1", color: "#ff0000", type: "default" },
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+			];
+			const handler = vi.fn();
+			el.addEventListener("zone-config-change", handler);
+
+			const tpl = (el as any)._renderZoneSidebar();
+			const c = renderTo(tpl);
+
+			const nameInput = c.querySelector(".zone-name-input") as HTMLInputElement;
+			nameInput.value = "Hallway";
+			nameInput.dispatchEvent(new Event("input", { bubbles: true }));
+			// User immediately blurs (e.g. clicks the Save button) before debounce expires
+			nameInput.dispatchEvent(new Event("blur", { bubbles: true }));
+
+			// The pending value must be flushed synchronously, not lost
+			expect(handler).toHaveBeenCalledTimes(1);
+			expect(handler.mock.calls[0][0].detail.updates.name).toBe("Hallway");
+
+			document.body.removeChild(c);
+		} finally {
+			vi.useRealTimers();
+		}
+	});
+
+	it("flushes pending name update on disconnect (sidebar unmount within debounce window)", () => {
+		vi.useFakeTimers();
+		try {
+			const el = createSidebar();
+			(el as any).zoneConfigs = [
+				{ name: "Z1", color: "#ff0000", type: "default" },
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+			];
+			document.body.appendChild(el);
+			const handler = vi.fn();
+			el.addEventListener("zone-config-change", handler);
+
+			const tpl = (el as any)._renderZoneSidebar();
+			const c = renderTo(tpl);
+
+			const nameInput = c.querySelector(".zone-name-input") as HTMLInputElement;
+			nameInput.value = "Bedroom";
+			nameInput.dispatchEvent(new Event("input", { bubbles: true }));
+
+			// Sidebar unmounts before debounce timer fires
+			document.body.removeChild(el);
+
+			expect(handler).toHaveBeenCalledTimes(1);
+			expect(handler.mock.calls[0][0].detail.updates.name).toBe("Bedroom");
+
+			document.body.removeChild(c);
+		} finally {
+			vi.useRealTimers();
+		}
+	});
+
 	it("coalesces rapid name keystrokes into a single zone-config-change", () => {
 		vi.useFakeTimers();
 		try {

@@ -189,6 +189,33 @@ describe("epp-grid cell events", () => {
 		document.body.removeChild(el);
 	});
 
+	it("re-fires mouseenter on the same cell when a new drag starts (mousedown resets coalesce state)", async () => {
+		// Drag can end with a window-level mouseup outside the grid; the next
+		// stroke must still paint the cell the user clicks first, even if it
+		// was the last cell they hovered.
+		const el = createGrid({ editable: true });
+		document.body.appendChild(el);
+		await el.updateComplete;
+
+		const events: CustomEvent[] = [];
+		el.addEventListener("cell-paint", (e) => events.push(e as CustomEvent));
+
+		const cell = el.shadowRoot!.querySelector(".cell") as HTMLElement;
+		cell.dispatchEvent(new MouseEvent("mouseenter", { bubbles: true }));
+		// Drag ended outside the grid — no mouseup event reaches epp-grid
+		cell.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
+		// User now drags back over the same cell
+		cell.dispatchEvent(new MouseEvent("mouseenter", { bubbles: true }));
+
+		// First enter, then mousedown, then enter again on the same cell — all 3
+		expect(events.length).toBe(3);
+		expect(events[0].detail.action).toBe("enter");
+		expect(events[1].detail.action).toBe("down");
+		expect(events[2].detail.action).toBe("enter");
+
+		document.body.removeChild(el);
+	});
+
 	it("re-fires mouseenter when entering a different cell", async () => {
 		const el = createGrid({ editable: true });
 		document.body.appendChild(el);

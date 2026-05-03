@@ -60,11 +60,12 @@ export class EppZoneSidebar extends LitElement {
 
 	disconnectedCallback(): void {
 		super.disconnectedCallback();
+		// Flush any pending update so unmounting within the debounce window
+		// doesn't drop the user's last keystrokes.
 		if (this._nameDebounceTimer !== null) {
 			clearTimeout(this._nameDebounceTimer);
-			this._nameDebounceTimer = null;
+			this._flushPendingName();
 		}
-		this._pendingNameUpdate = null;
 	}
 
 	static styles = [
@@ -304,6 +305,14 @@ export class EppZoneSidebar extends LitElement {
 									@input=${(e: Event) => {
 										const val = (e.target as HTMLInputElement).value;
 										this._onNameInput(i, val);
+									}}
+									@blur=${() => {
+										// Flush so a Save click that blurs the input doesn't race
+										// the debounce and drop the last keystrokes.
+										if (this._nameDebounceTimer !== null) {
+											clearTimeout(this._nameDebounceTimer);
+											this._flushPendingName();
+										}
 									}}
 									@click=${(e: Event) => {
 										e.stopPropagation();
