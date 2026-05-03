@@ -230,6 +230,11 @@ export class EppSettingsView extends LitElement {
 	];
 
 	render() {
+		// Reset the tooltip counter at the start of each render so infoTip()
+		// produces a stable, position-based ID on every re-render. render() is
+		// deterministic (same accordion config + state → same call order), so
+		// the same tooltip slot always gets the same id.
+		this._tipIdCounter = 0;
 		const sections: { id: string; label: string; icon: string }[] = [
 			{
 				id: "reporting",
@@ -464,10 +469,13 @@ export class EppSettingsView extends LitElement {
 		><ha-icon icon="mdi:restart"></ha-icon></button>`;
 	}
 
-	// Stable per-tooltip IDs keyed by the tip text. Reusing the same ID
-	// across re-renders avoids DOM churn / unstable aria-describedby targets
-	// (this view re-renders frequently from the panel's 5 Hz target stream).
-	private _tipIds: Map<string, string> = new Map();
+	// Per-render tooltip ID counter. infoTip() is deterministic within a
+	// render pass, so resetting here in willUpdate gives each call a stable
+	// position-based ID (1, 2, 3, …) that's reproduced on every re-render.
+	// Avoids DOM churn / unstable aria-describedby targets without the
+	// duplicate-ID risk of keying by tip text (some texts are reused in
+	// multiple places, e.g. info.target_auto_range in both detection rows).
+	private _tipIdCounter = 0;
 	private _openTooltip: HTMLElement | null = null;
 	private _openTooltipBtn: HTMLElement | null = null;
 	private _tipListenersAttached = false;
@@ -523,11 +531,7 @@ export class EppSettingsView extends LitElement {
 	}
 
 	infoTip(text: string) {
-		let tipId = this._tipIds.get(text);
-		if (tipId === undefined) {
-			tipId = `epp-tip-${this._tipIds.size + 1}`;
-			this._tipIds.set(text, tipId);
-		}
+		const tipId = `epp-tip-${++this._tipIdCounter}`;
 		return html`<button
 			type="button"
 			class="setting-info"
