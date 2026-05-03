@@ -59,9 +59,19 @@ class TestDeviceConnection:
 
         with patch("custom_components.eppgrid.device_manager._connection.APIClient") as mock_cls:
             mock_client = mock_cls.return_value
-            mock_client.connect = AsyncMock()
+            captured_on_stop: list = []
+
+            async def fake_connect(*, on_stop, login):
+                captured_on_stop.append(on_stop)
+
+            mock_client.connect = AsyncMock(side_effect=fake_connect)
             mock_client.list_entities_services = AsyncMock(return_value=([], []))
-            mock_client.disconnect = AsyncMock()
+
+            async def fake_disconnect():
+                # Simulate aioesphomeapi firing on_stop on disconnect.
+                await captured_on_stop[0](True)
+
+            mock_client.disconnect = AsyncMock(side_effect=fake_disconnect)
 
             await conn.async_connect()
             assert conn.connected
@@ -70,6 +80,33 @@ class TestDeviceConnection:
             await conn.async_disconnect()
             assert not conn.connected
             mock_client.disconnect.assert_awaited_once()
+
+    async def test_async_disconnect_releases_references_via_on_stop(self) -> None:
+        """async_disconnect must drop the client + state-subscribers, but only
+        once — _on_stop is the canonical clearer."""
+        conn = DeviceConnection("192.168.1.100")
+        with patch("custom_components.eppgrid.device_manager._connection.APIClient") as mock_cls:
+            mock_client = mock_cls.return_value
+            mock_client.connect = AsyncMock()
+            mock_client.list_entities_services = AsyncMock(return_value=([], []))
+            captured_on_stop: list = []
+
+            async def fake_connect(*, on_stop, login):
+                captured_on_stop.append(on_stop)
+
+            mock_client.connect = AsyncMock(side_effect=fake_connect)
+
+            async def fake_disconnect():
+                # Simulate aioesphomeapi firing on_stop on disconnect.
+                await captured_on_stop[0](True)
+
+            mock_client.disconnect = AsyncMock(side_effect=fake_disconnect)
+            await conn.async_connect()
+            cb = MagicMock()
+            conn._state_subscribers.append(cb)
+            await conn.async_disconnect()
+            assert conn._state_subscribers == []
+            assert not conn.connected
 
     async def test_connect_failure_disconnects(self) -> None:
         """Failed connect cleans up the client."""

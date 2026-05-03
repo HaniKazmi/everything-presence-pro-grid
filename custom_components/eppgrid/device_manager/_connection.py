@@ -66,10 +66,19 @@ class DeviceConnection:
         _LOGGER.debug("Connected to %s", self._host)
 
     async def async_disconnect(self) -> None:
-        """Disconnect from the device."""
+        """Disconnect from the device. Idempotent.
+
+        Delegates reference cleanup to ``_on_stop`` (the aioesphomeapi
+        disconnect callback). Only clears local state directly when no
+        client was ever set up — in that case ``_on_stop`` won't fire,
+        so the defensive release covers the partially-constructed path.
+        """
         self.unsubscribe_logs()
         if self._client is not None:
             await self._client.disconnect()
+            # _on_stop runs from disconnect and clears references.
+            return
+        # No client to disconnect — clear local state defensively.
         self._release_references()
 
     def _release_references(self) -> None:
