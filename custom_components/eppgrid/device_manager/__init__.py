@@ -614,9 +614,10 @@ class DeviceManager:
         # that no longer exists.
         ir.async_delete_issue(self._hass, _DOMAIN, f"firmware_behind_{mac}")
         ir.async_delete_issue(self._hass, _DOMAIN, f"firmware_ahead_{mac}")
-        # Debounced — bulk delete-multiple-devices coalesces into one write,
-        # and HA's `homeassistant_final_write` listener flushes on shutdown.
-        self._store.async_schedule_save()
+        # Synchronous — explicit user action, must be durable across crashes.
+        # A delayed-save here can resurrect the deleted config if HA is
+        # force-restarted within the debounce window.
+        await self._store.async_save()
         self._fire_device_list_changed()
         _LOGGER.info("Cleaned up settings for removed device %s", mac)
 

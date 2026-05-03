@@ -3122,32 +3122,6 @@ class TestEventCallbacks:
         assert mac not in manager._entity_update_macs
         assert "Living Room" in manager._store.configurations
 
-    async def test_on_device_removed_uses_debounced_save(self, hass: HomeAssistant, manager: DeviceManager) -> None:
-        """Removal schedules a debounced save instead of awaiting one immediately.
-
-        Bulk device deletions otherwise produce N synchronous JSON writes back
-        to back; coalescing them into one debounced write under HA's storage
-        layer (with a `homeassistant_final_write` flush) keeps disk traffic
-        proportional to operations, not events.
-        """
-        mac = "AA:BB:CC:DD:EE:FF"
-        manager.devices[mac] = ManagedDevice(mac=mac, name="EPP", host="192.168.1.50", device_id="dev123")
-        manager._device_id_to_mac["dev123"] = mac
-        manager._store.devices[mac] = {"settings": {"led_mode": "Manual"}}
-
-        with (
-            patch.object(manager, "async_close_session", new_callable=AsyncMock),
-            patch.object(manager._store, "async_save", new_callable=AsyncMock) as mock_immediate,
-            patch.object(manager._store, "async_schedule_save") as mock_schedule,
-        ):
-            event = MagicMock()
-            event.data = {"action": "remove", "device_id": "dev123"}
-            manager._on_device_registry_updated(event)
-            await hass.async_block_till_done()
-
-        mock_immediate.assert_not_awaited()
-        mock_schedule.assert_called_once()
-
     async def test_on_device_removed_notifies_subscribers(self, hass: HomeAssistant, manager: DeviceManager) -> None:
         """Device removal fires device list callbacks."""
         mac = "AA:BB:CC:DD:EE:FF"
@@ -4330,8 +4304,12 @@ class TestUniqueIdMatchingAnchors:
 
         assert manager.read_firmware_version(device.id) == "0.0.0"
 
-    async def test_find_zone_entity_anchors_zone_index(self, hass: HomeAssistant, manager: DeviceManager) -> None:
-        """_find_zone_entity must not let zone_2_presence match an unrelated _zone_2_presence_extra entity."""
+    async def test_zone_entity_lookup_anchors_zone_index(self, hass: HomeAssistant, manager: DeviceManager) -> None:
+        """async_update_zone_entities's single-pass scan must not let
+        `zone_2_presence` substring-match an unrelated `_zone_2_presence_extra`
+        entity. The anchored `endswith` check is the same protection the old
+        `_find_zone_entity` helper used; this test pins it on the new path.
+        """
         dev_reg = dr.async_get(hass)
         ent_reg = er.async_get(hass)
 
@@ -4342,18 +4320,32 @@ class TestUniqueIdMatchingAnchors:
             connections={(dr.CONNECTION_NETWORK_MAC, "AA:BB:CC:DD:EE:FF")},
             name="EPP",
         )
+        manager.devices["AA:BB:CC:DD:EE:FF"] = ManagedDevice(
+            mac="AA:BB:CC:DD:EE:FF",
+            name="EPP",
+            host="192.168.1.50",
+            device_id=device.id,
+        )
 
         # A non-canonical entity whose object_id happens to contain
-        # `zone_2_presence` as a substring.
-        ent_reg.async_get_or_create(
+        # `zone_2_presence` as a substring. `async_update_zone_entities` must
+        # leave it alone (no rename, no disable) — substring-matching it as
+        # zone 2's presence entity would clobber an unrelated sensor.
+        bogus = ent_reg.async_get_or_create(
             "sensor",
             "esphome",
             "AA:BB:CC:DD:EE:FF-sensor-zone_2_presence_extra",
             device_id=device.id,
             config_entry=esphome_entry,
         )
+        original_disabled_by = ent_reg.async_get(bogus.entity_id).disabled_by
 
-        assert manager._find_zone_entity(ent_reg, device.id, 2, "presence") is None
+        await manager.async_update_zone_entities("AA:BB:CC:DD:EE:FF", [{}, None, None, None, None, None, None, None])
+
+        after = ent_reg.async_get(bogus.entity_id)
+        assert after is not None
+        assert after.name is None
+        assert after.disabled_by == original_disabled_by
 
 
 # ---------------------------------------------------------------------------
