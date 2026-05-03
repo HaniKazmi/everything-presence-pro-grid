@@ -326,7 +326,7 @@ api:
         illuminance_offset: float
       then:
         - lambda: |-
-            ESP_LOGI("zones", "epp_set_env_calibration: temperature_offset=%.1f humidity_offset=%.1f illuminance_offset=%.1f",
+            ESP_LOGI("epp", "epp_set_env_calibration: temperature_offset=%.1f humidity_offset=%.1f illuminance_offset=%.1f",
                      temperature_offset, humidity_offset, illuminance_offset);
             id(env_temp_offset) = temperature_offset;
             id(env_humidity_offset) = humidity_offset;
@@ -338,7 +338,7 @@ api:
         timeout: float
       then:
         - lambda: |-
-            ESP_LOGI("zones", "epp_set_motion_timeout: timeout=%.1f", timeout);
+            ESP_LOGI("epp", "epp_set_motion_timeout: timeout=%.1f", timeout);
             // motion_timeout is a fixed 1s PIR debounce; the real timeout
             // is managed by the zone engine via set_motion_timeout()
             id(motion_timeout) = 1;
@@ -348,7 +348,7 @@ api:
         max_range: float
       then:
         - lambda: |-
-            ESP_LOGI("zones", "epp_set_tracking: max_range=%.0f", max_range);
+            ESP_LOGI("epp", "epp_set_tracking: max_range=%.0f", max_range);
             id(tracking_max_range) = max_range;
     - action: epp_set_static_presence
       variables:
@@ -362,7 +362,7 @@ api:
         led_enabled: bool
       then:
         - lambda: |-
-            ESP_LOGI("zones", "epp_set_static_presence: min_range=%.1f max_range=%.1f trigger_range=%.1f sustain_sensitivity=%d trigger_sensitivity=%d timeout=%.1f on_delay=%.2f led_enabled=%s",
+            ESP_LOGI("epp", "epp_set_static_presence: min_range=%.1f max_range=%.1f trigger_range=%.1f sustain_sensitivity=%d trigger_sensitivity=%d timeout=%.1f on_delay=%.2f led_enabled=%s",
                      min_range, max_range, trigger_range, sustain_sensitivity, trigger_sensitivity, timeout, on_delay, led_enabled ? "true" : "false");
         - uart.write:
             id: uart_bus_dfrobot
@@ -473,7 +473,7 @@ api:
             if (category == "system") {
               logger.set_log_level(log_level);
             } else if (category == "epp") {
-              logger.set_log_level("zones", log_level);
+              logger.set_log_level("epp", log_level);
             } else if (category == "led") {
               logger.set_log_level("control_leds", log_level);
             } else if (category == "networking") {

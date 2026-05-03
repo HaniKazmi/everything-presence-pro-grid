@@ -15,10 +15,16 @@
 #include "epp_frame_staleness.h"
 #include "epp_nvs_layout.h"
 #include "epp_relay_publish.h"
+#include "epp_indexed_setter.h"
 
 #include <string>
 
 namespace epp {
+
+// Number of LD2450 hardware targets. Distinct from the engine's MAX_TARGETS
+// (which is the post-processing slot count); kept at namespace scope so it can
+// be referenced in EPPComponent::feed_targets's parameter array bounds.
+inline constexpr int NUM_TARGETS = 3;
 
 struct ParsedTarget {
   float x = 0.0f;       // mm, sensor coordinate space (transformed)
@@ -33,10 +39,11 @@ class EPPComponent : public esphome::Component {
   void dump_config() override;
   float get_setup_priority() const override;
 
-  /// Called from LD2450 UART lambda with parsed target data
-  void feed_targets(float x1, float y1, bool d1,
-                    float x2, float y2, bool d2,
-                    float x3, float y3, bool d3);
+  /// Called from LD2450 UART lambda with parsed target data.
+  /// `xy[i][0]` = x_mm, `xy[i][1]` = y_mm; `detected[i]` = whether the LD2450
+  /// reported a real return for slot i. Float arrays (rather than ParsedTarget)
+  /// keep the yaml lambda free of any C++-type dependency.
+  void feed_targets(const float xy[NUM_TARGETS][2], const bool detected[NUM_TARGETS]);
 
   /// Configuration services (called from API actions)
   void set_perspective(const std::string &perspective, float room_width, float room_depth);
@@ -52,16 +59,13 @@ class EPPComponent : public esphome::Component {
     firmware_version_sensor_ = sensor;
   }
   void set_zone_occupancy_sensor(int index, esphome::binary_sensor::BinarySensor *sensor) {
-    if (index >= 0 && index < MAX_ZONE_SLOTS)
-      zone_occupancy_sensors_[index] = sensor;
+    set_at(zone_occupancy_sensors_, index, sensor);
   }
   void set_target_position_sensor(int index, esphome::text_sensor::TextSensor *sensor) {
-    if (index >= 0 && index < MAX_TARGETS)
-      target_position_sensors_[index] = sensor;
+    set_at(target_position_sensors_, index, sensor);
   }
   void set_raw_target_sensor(int index, esphome::text_sensor::TextSensor *sensor) {
-    if (index >= 0 && index < NUM_TARGETS)
-      raw_target_sensors_[index] = sensor;
+    set_at(raw_target_sensors_, index, sensor);
   }
   void set_zone_state_sensor(esphome::text_sensor::TextSensor *sensor) {
     zone_state_sensor_ = sensor;
@@ -96,29 +100,28 @@ class EPPComponent : public esphome::Component {
 
   // Structured target entity setters
   void set_target_x_sensor(int index, esphome::sensor::Sensor *sensor) {
-    if (index >= 0 && index < NUM_TARGETS) target_x_sensors_[index] = sensor;
+    set_at(target_x_sensors_, index, sensor);
   }
   void set_target_y_sensor(int index, esphome::sensor::Sensor *sensor) {
-    if (index >= 0 && index < NUM_TARGETS) target_y_sensors_[index] = sensor;
+    set_at(target_y_sensors_, index, sensor);
   }
   void set_target_signal_sensor(int index, esphome::sensor::Sensor *sensor) {
-    if (index >= 0 && index < NUM_TARGETS) target_signal_sensors_[index] = sensor;
+    set_at(target_signal_sensors_, index, sensor);
   }
   void set_target_active_sensor(int index, esphome::binary_sensor::BinarySensor *sensor) {
-    if (index >= 0 && index < NUM_TARGETS) target_active_sensors_[index] = sensor;
+    set_at(target_active_sensors_, index, sensor);
   }
   void set_target_zone_sensor(int index, esphome::sensor::Sensor *sensor) {
-    if (index >= 0 && index < NUM_TARGETS) target_zone_sensors_[index] = sensor;
+    set_at(target_zone_sensors_, index, sensor);
   }
   void set_zone_target_count_sensor(int index, esphome::sensor::Sensor *sensor) {
-    if (index >= 0 && index < MAX_ZONE_SLOTS) zone_target_count_sensors_[index] = sensor;
+    set_at(zone_target_count_sensors_, index, sensor);
   }
   void set_target_count_sensor(esphome::sensor::Sensor *sensor) {
     target_count_sensor_ = sensor;
   }
 
  protected:
-  static constexpr int NUM_TARGETS = 3;
   // Per-blob NVS schema versions live in epp_nvs_layout.h. Each save_*_to_nvs_
   // writes its own version key (persp_v, grid_v, zones_v, relay_v) so changing
   // one blob's layout doesn't invalidate the others. See PR-8 item #2.
@@ -143,7 +146,6 @@ class EPPComponent : public esphome::Component {
     ParsedTarget targets[NUM_TARGETS]{};
   };
   FrameRingBuffer<TargetFrame, FRAME_BUFFER_CAPACITY> frame_buffer_;
-  uint32_t frame_count_ = 0;
   uint32_t frames_dropped_ = 0;  // bumped when push() reports overflow
   uint32_t last_frames_dropped_log_ = 0;  // last frames_dropped_ value logged
   uint32_t last_frames_dropped_log_ts_ = 0;  // ms when last drop log fired
@@ -196,8 +198,8 @@ class EPPComponent : public esphome::Component {
   // Sensor presence inputs (references to raw hardware binary sensors)
   esphome::binary_sensor::BinarySensor *static_presence_sensor_{nullptr};
   esphome::binary_sensor::BinarySensor *motion_presence_sensor_{nullptr};
-  float static_timeout_{10.0f};
-  float motion_timeout_{10.0f};
+  float static_timeout_{DEFAULT_STATIC_TIMEOUT_S};
+  float motion_timeout_{DEFAULT_MOTION_TIMEOUT_S};
 
   // Sensor presence outputs (zone engine processed state)
   esphome::binary_sensor::BinarySensor *static_presence_output_{nullptr};

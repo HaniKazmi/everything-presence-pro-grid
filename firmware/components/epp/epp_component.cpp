@@ -17,7 +17,7 @@
 
 namespace epp {
 
-static const char *const TAG = "zones";
+static const char *const TAG = "epp";
 static const char *const NVS_NAMESPACE = "epp";
 
 void EPPComponent::setup() {
@@ -54,7 +54,6 @@ void EPPComponent::loop() {
   while (frame_buffer_.pop(frame)) {
     // last_frame_ms_ / has_received_frame_ are set in feed_targets so the
     // stale-frame watchdog reflects actual receipt time, not drain time.
-    frame_count_++;
 
     // Stage 1: Feed raw positions into rolling median.
     // NaN guard: LD2450 occasionally emits NaN; without this they'd poison
@@ -69,14 +68,22 @@ void EPPComponent::loop() {
     }
     window_.feed(raw_inputs, NUM_TARGETS, now);
 
-    // Stage 2: Get smoothed raw, transform to grid coordinates
+    // Stage 2: Get smoothed raw, transform to grid coordinates.
+    // Hoist has_perspective() out of the inner loop: pre-calibration the
+    // transform is identity, so we can pass median_x/median_y straight through
+    // without paying the function-call overhead and identity branch per slot.
+    const bool xform = transform_.has_perspective();
     const auto &win = window_.output();
     TargetInput grid_inputs[NUM_TARGETS];
     for (int i = 0; i < NUM_TARGETS; i++) {
       if (win.targets[i].active) {
-        auto [rx, ry] = transform_.apply(
-            win.targets[i].median_x, win.targets[i].median_y);
-        grid_inputs[i] = {rx, ry, true};
+        if (xform) {
+          auto [rx, ry] = transform_.apply(
+              win.targets[i].median_x, win.targets[i].median_y);
+          grid_inputs[i] = {rx, ry, true};
+        } else {
+          grid_inputs[i] = {win.targets[i].median_x, win.targets[i].median_y, true};
+        }
       } else {
         grid_inputs[i] = {0.0f, 0.0f, false};
       }
@@ -89,7 +96,13 @@ void EPPComponent::loop() {
     // lands on a non-overlay room cell.
     for (int i = 0; i < NUM_TARGETS; i++) {
       if (raw_inputs[i].active) {
-        auto [fx, fy] = transform_.apply(raw_inputs[i].x, raw_inputs[i].y);
+        float fx = raw_inputs[i].x;
+        float fy = raw_inputs[i].y;
+        if (xform) {
+          auto [tx, ty] = transform_.apply(fx, fy);
+          fx = tx;
+          fy = ty;
+        }
         int cell = grid_.xy_to_cell(fx, fy);
         if (cell != -1 && grid_.cell_is_room(cell)) {
           if (grid_.cell_overlay(cell) == CELL_OVERLAY_ENTRY) {
@@ -286,8 +299,8 @@ void EPPComponent::loop() {
                static_code, motion_code, result.occupancy ? 1 : 0);
       // Targets part
       bool first_target = true;
-      for (int i = 0; i < result.target_count && i < NUM_TARGETS; i++) {
-        if (result.targets[i].status == TargetStatus::INACTIVE) continue;
+      for (int i = 0; i < NUM_TARGETS; i++) {
+        if (!is_target_active(result, i)) continue;
         const char *s = result.targets[i].status == TargetStatus::ACTIVE ? "A" : "P";
         int zone = 0;
         if (is_target_valid(result.targets[i].status,
@@ -327,7 +340,7 @@ void EPPComponent::loop() {
 
     int active_count = 0;
     for (int i = 0; i < NUM_TARGETS; i++) {
-      bool active = i < result.target_count && result.targets[i].status != TargetStatus::INACTIVE;
+      bool active = is_target_active(result, i);
       if (active) active_count++;
 
       if (target_x_sensors_[i] != nullptr)
@@ -427,7 +440,7 @@ void EPPComponent::loop() {
     // grace period ensures a broken/disconnected LD2450 doesn't leave the
     // relay state machine permanently inert.
     if (!boot_settled_) {
-      if (frame_count_ > 0 || now - boot_ms_ >= BOOT_SETTLE_MS) {
+      if (has_received_frame_ || now - boot_ms_ >= BOOT_SETTLE_MS) {
         boot_settled_ = true;
       }
     }
@@ -490,13 +503,12 @@ void EPPComponent::dump_config() {
   ESP_LOGCONFIG(TAG, "    zones:       %s", has_zones_cache_ ? "loaded" : "absent");
 }
 
-void EPPComponent::feed_targets(float x1, float y1, bool d1,
-                                float x2, float y2, bool d2,
-                                float x3, float y3, bool d3) {
+void EPPComponent::feed_targets(const float xy[NUM_TARGETS][2],
+                                const bool detected[NUM_TARGETS]) {
   TargetFrame frame;
-  frame.targets[0] = {x1, y1, d1};
-  frame.targets[1] = {x2, y2, d2};
-  frame.targets[2] = {x3, y3, d3};
+  for (int i = 0; i < NUM_TARGETS; i++) {
+    frame.targets[i] = {xy[i][0], xy[i][1], detected[i]};
+  }
   // Record receipt time for the stale-frame watchdog. If we set last_frame_ms_
   // in loop()'s drain instead, a delayed loop draining old buffered frames
   // would clear staleness for another STALE_FRAME_MS window even though the
