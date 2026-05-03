@@ -19,10 +19,9 @@ from custom_components.eppgrid.const import DOMAIN
 # ---------------------------------------------------------------------------
 
 
-@pytest.fixture(autouse=True)
-def _clear_registered():
-    """Clear the module-global _REGISTERED set between tests."""
-    ws_module._REGISTERED.clear()
+def test_websocket_api_module_has_no_registered_set() -> None:
+    """No module-level _REGISTERED set should leak across submodules."""
+    assert not hasattr(ws_module, "_REGISTERED")
 
 
 # ---------------------------------------------------------------------------
@@ -3683,7 +3682,7 @@ class TestFlashablePayload:
         from custom_components.eppgrid.const import FIRMWARE_VERSION
         from custom_components.eppgrid.websocket_api._flasher import _flashable_payload
 
-        payload = await _flashable_payload(mock_dm)
+        payload = await _flashable_payload(hass, mock_dm)
 
         assert payload["devices"] == [{"mac": "AA:BB"}]
         assert payload["firmware_base_url"] == "/api/eppgrid/firmware"

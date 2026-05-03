@@ -141,6 +141,93 @@ async def test_unload_entry_no_manager(hass: HomeAssistant, config_entry: MockCo
     assert result is True
 
 
+async def test_setup_entry_registers_update_listener(hass: HomeAssistant, config_entry: MockConfigEntry) -> None:
+    """Setup adds an update listener so options changes trigger a config-entry reload."""
+    if hass.http is None:
+        hass.http = MagicMock()
+
+    with (
+        patch("custom_components.eppgrid.DeviceManager") as mock_dm_cls,
+        patch(
+            "custom_components.eppgrid._register_frontend_resources",
+            new_callable=AsyncMock,
+            return_value="/eppgrid_static/eppgrid-panel.js?v=deadbeef",
+        ),
+        patch("custom_components.eppgrid._register_panel", new_callable=AsyncMock),
+        patch.object(hass.config_entries, "async_reload", new_callable=AsyncMock) as mock_reload,
+    ):
+        mock_dm = mock_dm_cls.return_value
+        mock_dm.async_start = AsyncMock()
+        await async_setup_entry(hass, config_entry)
+
+        # Simulate an options update — the listener registered during setup
+        # should request a reload.
+        hass.config_entries.async_update_entry(config_entry, options={"sidebar_panel": False})
+        await hass.async_block_till_done()
+
+    mock_reload.assert_awaited_with(config_entry.entry_id)
+
+
+async def test_unload_entry_removes_panel_and_js_url(hass: HomeAssistant, config_entry: MockConfigEntry) -> None:
+    """Unload removes the sidebar panel and the previously-registered JS URL."""
+    if hass.http is None:
+        hass.http = MagicMock()
+
+    module_url = "/eppgrid_static/eppgrid-panel.js?v=deadbeef"
+    with (
+        patch("custom_components.eppgrid.DeviceManager") as mock_dm_cls,
+        patch(
+            "custom_components.eppgrid._register_frontend_resources",
+            new_callable=AsyncMock,
+            return_value=module_url,
+        ),
+        patch("custom_components.eppgrid._register_panel", new_callable=AsyncMock),
+        patch("custom_components.eppgrid.async_remove_panel") as mock_remove_panel,
+        patch("custom_components.eppgrid.remove_extra_js_url") as mock_remove_js,
+    ):
+        mock_dm = mock_dm_cls.return_value
+        mock_dm.async_start = AsyncMock()
+        mock_dm.async_stop = AsyncMock()
+        await async_setup_entry(hass, config_entry)
+        # Panel registration tracks the URL on hass.data so unload can remove it.
+        hass.data[f"{DOMAIN}_js_url"] = module_url
+
+        await async_unload_entry(hass, config_entry)
+
+    mock_remove_panel.assert_called_once()
+    mock_remove_js.assert_called_once_with(hass, module_url)
+
+
+async def test_unload_entry_skips_panel_when_not_registered(hass: HomeAssistant, config_entry: MockConfigEntry) -> None:
+    """Unload does not call async_remove_panel when sidebar panel was disabled."""
+    if hass.http is None:
+        hass.http = MagicMock()
+
+    with (
+        patch("custom_components.eppgrid.DeviceManager") as mock_dm_cls,
+        patch("custom_components.eppgrid.EPPGridStore") as mock_store_cls,
+        patch(
+            "custom_components.eppgrid._register_frontend_resources",
+            new_callable=AsyncMock,
+            return_value="/eppgrid_static/eppgrid-panel.js?v=deadbeef",
+        ),
+        patch("custom_components.eppgrid._register_panel", new_callable=AsyncMock),
+        patch("custom_components.eppgrid.async_remove_panel") as mock_remove_panel,
+        patch("custom_components.eppgrid.remove_extra_js_url"),
+    ):
+        mock_store = mock_store_cls.return_value
+        mock_store.async_load = AsyncMock()
+        mock_store.sidebar_panel = False
+        mock_dm = mock_dm_cls.return_value
+        mock_dm.async_start = AsyncMock()
+        mock_dm.async_stop = AsyncMock()
+        await async_setup_entry(hass, config_entry)
+
+        await async_unload_entry(hass, config_entry)
+
+    mock_remove_panel.assert_not_called()
+
+
 async def test_register_panel(hass: HomeAssistant) -> None:
     """_register_panel registers the panel with the given module URL."""
     from custom_components.eppgrid import _register_panel
@@ -201,6 +288,7 @@ async def test_register_frontend_resources_registers_static_path_once(hass: Home
     with (
         patch("custom_components.eppgrid._hash_file", return_value="abcd1234"),
         patch("custom_components.eppgrid.add_extra_js_url") as mock_add_js,
+        patch("custom_components.eppgrid.remove_extra_js_url"),
     ):
         first = await _register_frontend_resources(hass)
         second = await _register_frontend_resources(hass)
@@ -221,6 +309,7 @@ async def test_register_frontend_resources_recomputes_hash_on_reload(hass: HomeA
     with (
         patch("custom_components.eppgrid._hash_file", side_effect=lambda _p: next(hashes)),
         patch("custom_components.eppgrid.add_extra_js_url"),
+        patch("custom_components.eppgrid.remove_extra_js_url"),
     ):
         first = await _register_frontend_resources(hass)
         second = await _register_frontend_resources(hass)
@@ -228,6 +317,45 @@ async def test_register_frontend_resources_recomputes_hash_on_reload(hass: HomeA
     assert first.endswith("v=abcd1234")
     assert second.endswith("v=ef567890")
     hass.http.async_register_static_paths.assert_awaited_once()
+
+
+async def test_register_frontend_resources_removes_previous_url_before_adding_new(
+    hass: HomeAssistant,
+) -> None:
+    """Re-register removes the previously-registered URL before adding the new one."""
+    from custom_components.eppgrid import _register_frontend_resources
+
+    hass.http = MagicMock()
+    hass.http.async_register_static_paths = AsyncMock()
+
+    hashes = iter(["abcd1234", "ef567890"])
+    with (
+        patch("custom_components.eppgrid._hash_file", side_effect=lambda _p: next(hashes)),
+        patch("custom_components.eppgrid.add_extra_js_url"),
+        patch("custom_components.eppgrid.remove_extra_js_url") as mock_remove_js,
+    ):
+        first = await _register_frontend_resources(hass)
+        await _register_frontend_resources(hass)
+
+    mock_remove_js.assert_called_once_with(hass, first)
+    assert hass.data[f"{DOMAIN}_js_url"].endswith("v=ef567890")
+
+
+async def test_register_frontend_resources_first_call_does_not_remove(hass: HomeAssistant) -> None:
+    """First call has nothing to remove."""
+    from custom_components.eppgrid import _register_frontend_resources
+
+    hass.http = MagicMock()
+    hass.http.async_register_static_paths = AsyncMock()
+
+    with (
+        patch("custom_components.eppgrid._hash_file", return_value="abcd1234"),
+        patch("custom_components.eppgrid.add_extra_js_url"),
+        patch("custom_components.eppgrid.remove_extra_js_url") as mock_remove_js,
+    ):
+        await _register_frontend_resources(hass)
+
+    mock_remove_js.assert_not_called()
 
 
 async def test_hash_file(tmp_path) -> None:
