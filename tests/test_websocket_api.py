@@ -211,7 +211,7 @@ class TestWebSocketSetShowCalibrationTutorial:
         }
 
         with pytest.raises(Unauthorized):
-            websocket_set_show_room_calibration_tutorial(hass, connection, msg)
+            await call_async_handler(hass, websocket_set_show_room_calibration_tutorial, connection, msg)
 
         connection.send_result.assert_not_called()
 
@@ -462,7 +462,7 @@ class TestWebSocketSetSetup:
         }
 
         with pytest.raises(Unauthorized):
-            websocket_set_setup(hass, connection, msg)
+            await call_async_handler(hass, websocket_set_setup, connection, msg)
 
         connection.send_result.assert_not_called()
 
@@ -535,7 +535,7 @@ class TestWebSocketSetRoomLayout:
         }
 
         with pytest.raises(Unauthorized):
-            websocket_set_room_layout(hass, connection, msg)
+            await call_async_handler(hass, websocket_set_room_layout, connection, msg)
 
         connection.send_result.assert_not_called()
 
@@ -867,7 +867,7 @@ class TestWebSocketConfigurations:
         }
 
         with pytest.raises(Unauthorized):
-            websocket_save_configuration(hass, connection, msg)
+            await call_async_handler(hass, websocket_save_configuration, connection, msg)
 
         connection.send_result.assert_not_called()
 
@@ -902,7 +902,7 @@ class TestWebSocketConfigurations:
         msg = {"id": 12, "type": "eppgrid/delete_configuration", "name": "old"}
 
         with pytest.raises(Unauthorized):
-            websocket_delete_configuration(hass, connection, msg)
+            await call_async_handler(hass, websocket_delete_configuration, connection, msg)
 
         connection.send_result.assert_not_called()
         # Configuration should NOT have been removed
@@ -1010,7 +1010,7 @@ class TestWebSocketSettings:
         }
 
         with pytest.raises(Unauthorized):
-            websocket_set_settings(hass, connection, msg)
+            await call_async_handler(hass, websocket_set_settings, connection, msg)
 
         connection.send_result.assert_not_called()
 
@@ -1645,7 +1645,7 @@ class TestWebSocketSettings:
         }
 
         with pytest.raises(Unauthorized):
-            websocket_set_pipeline(hass, connection, msg)
+            await call_async_handler(hass, websocket_set_pipeline, connection, msg)
 
         connection.send_result.assert_not_called()
 
@@ -2651,7 +2651,7 @@ class TestUpdateFirmware:
         msg = {"id": 24, "type": "eppgrid/update_firmware", "mac": "AA:BB:CC:DD:EE:FF"}
 
         with pytest.raises(Unauthorized):
-            websocket_update_firmware(hass, connection, msg)
+            await call_async_handler(hass, websocket_update_firmware, connection, msg)
 
         connection.send_result.assert_not_called()
 
@@ -3286,7 +3286,7 @@ class TestWebSocketDistanceOverride:
         }
 
         with pytest.raises(Unauthorized):
-            websocket_set_distance_override(hass, connection, msg)
+            await call_async_handler(hass, websocket_set_distance_override, connection, msg)
 
         connection.send_result.assert_not_called()
 
