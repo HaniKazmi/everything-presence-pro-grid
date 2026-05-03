@@ -288,7 +288,13 @@ class DeviceManager:
                     ) from err
                 _LOGGER.info("Triggered OTA for %s (manifest=%s)", mac, manifest_url)
             finally:
-                await conn.async_disconnect()
+                # Best-effort cleanup. A failure here would otherwise mask
+                # the real OTA error (or surface a non-HA exception that the
+                # websocket handler doesn't catch) — log and swallow.
+                try:
+                    await conn.async_disconnect()
+                except Exception:
+                    _LOGGER.warning("OTA cleanup disconnect for %s failed", mac, exc_info=True)
 
     def read_firmware_version(
         self, device_id: str | None, *, entries: list[er.RegistryEntry] | None = None

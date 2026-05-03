@@ -196,6 +196,129 @@ class TestSubscribeFlashableDevices:
         connection.subscriptions[32]()
         unsub_inner.assert_called_once()
 
+    async def test_initial_subscribe_failure_sends_error_not_silent_success(
+        self, hass: HomeAssistant, config_entry: MockConfigEntry
+    ) -> None:
+        """If `list_flashable_devices` raises during the initial subscribe,
+        the handler must surface an error to the frontend rather than the
+        current `send_result(success)` + swallow-the-exception combo. Without
+        this, the panel stays stuck on "loading" forever — it has a valid
+        subscription but never sees the initial payload."""
+        mock_dm = await setup_integration(hass, config_entry)
+        mock_dm.list_flashable_devices = AsyncMock(side_effect=RuntimeError("registry boom"))
+        mock_dm.on_device_list_changed = MagicMock(return_value=lambda: None)
+
+        from custom_components.eppgrid.websocket_api import websocket_subscribe_flashable_devices
+
+        connection = MagicMock()
+        connection.subscriptions = {}
+        msg = {"id": 99, "type": "eppgrid/subscribe_flashable_devices"}
+
+        await call_async_handler(hass, websocket_subscribe_flashable_devices, connection, msg)
+
+        # Either send_error fired (preferred) — OR send_result was NOT called
+        # so the frontend's WS layer treats the command as failed.
+        if connection.send_result.called:
+            connection.send_error.assert_called()
+        # Must not have left the subscription as a "subscribed but no data"
+        # zombie; if send_result was sent, the subscription should also have
+        # been torn down (no _unsub registered).
+        if connection.send_result.called and 99 in connection.subscriptions:
+            # If we keep the subscription alive, an event must have been sent.
+            connection.send_message.assert_called()
+
+    async def test_change_during_initial_fetch_is_not_lost(
+        self, hass: HomeAssistant, config_entry: MockConfigEntry
+    ) -> None:
+        """If `_fire_device_list_changed` fires WHILE the initial
+        `_flashable_payload` await is still in flight, the change must not
+        be silently dropped — the callback has to be registered before the
+        fetch starts. Otherwise a new subscriber gets stale data and never
+        sees the in-flight change again."""
+        import asyncio
+
+        mock_dm = await setup_integration(hass, config_entry)
+
+        captured_cb = None
+
+        def capture_on_changed(cb):
+            nonlocal captured_cb
+            captured_cb = cb
+            return lambda: None
+
+        mock_dm.on_device_list_changed = MagicMock(side_effect=capture_on_changed)
+
+        # First call: simulate an in-flight change firing during the await.
+        # Second call (and beyond): return fresh data.
+        fetch_started = asyncio.Event()
+        release_first = asyncio.Event()
+        call_count = 0
+
+        async def maybe_slow_list():
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                fetch_started.set()
+                await release_first.wait()
+                return []  # initial (stale)
+            return [{"mac": "AA:BB:CC:DD:EE:FF", "name": "EPP"}]
+
+        mock_dm.list_flashable_devices = AsyncMock(side_effect=maybe_slow_list)
+
+        from custom_components.eppgrid.websocket_api import websocket_subscribe_flashable_devices
+
+        connection = MagicMock()
+        connection.subscriptions = {}
+        msg = {"id": 200, "type": "eppgrid/subscribe_flashable_devices"}
+
+        # Kick off the handler — @async_response runs the coroutine.
+        websocket_subscribe_flashable_devices(hass, connection, msg)
+        await fetch_started.wait()
+
+        # The change-callback MUST already be registered — otherwise a fire
+        # right now would be lost.
+        assert captured_cb is not None, "on_device_list_changed must be registered before initial fetch"
+
+        # Fire a change while the initial fetch is still pending.
+        captured_cb()
+
+        # Let the initial fetch complete.
+        release_first.set()
+        await hass.async_block_till_done()
+
+        # We should have seen at least two send_message calls: the initial
+        # (stale) payload and the change-triggered (fresh) payload. The
+        # second confirms the fired change wasn't dropped.
+        assert connection.send_message.call_count >= 2, (
+            f"expected initial + change-triggered send, got {connection.send_message.call_count}"
+        )
+
+    async def test_initial_send_message_failure_unsubs_device_list_callback(
+        self, hass: HomeAssistant, config_entry: MockConfigEntry
+    ) -> None:
+        """If the initial `send_message` raises (connection closed mid-send),
+        we must release the `on_device_list_changed` registration. Otherwise
+        the callback leaks: it's not yet wrapped in a `connection.subscriptions`
+        entry, so HA will never call it on connection close."""
+        mock_dm = await setup_integration(hass, config_entry)
+        mock_dm.list_flashable_devices = AsyncMock(return_value=[])
+
+        unsub_inner = MagicMock()
+        mock_dm.on_device_list_changed = MagicMock(return_value=unsub_inner)
+
+        from custom_components.eppgrid.websocket_api import websocket_subscribe_flashable_devices
+
+        connection = MagicMock()
+        connection.subscriptions = {}
+        # Make send_result succeed but the initial send_message fail.
+        connection.send_message.side_effect = ConnectionResetError("connection closed")
+        msg = {"id": 99, "type": "eppgrid/subscribe_flashable_devices"}
+
+        await call_async_handler(hass, websocket_subscribe_flashable_devices, connection, msg)
+
+        # The device-list callback must have been unsubscribed.
+        unsub_inner.assert_called_once()
+
     async def test_send_update_swallows_post_close_send_message_failure(
         self, hass: HomeAssistant, config_entry: MockConfigEntry
     ) -> None:

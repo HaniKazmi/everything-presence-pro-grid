@@ -56,6 +56,9 @@ async def websocket_subscribe_flashable_devices(
         except asyncio.CancelledError:
             raise
         except Exception:
+            # Subsequent pushes happen on a long-lived subscription — log
+            # and skip this update rather than tearing the subscription
+            # down on a transient error.
             _LOGGER.exception("Failed to fetch flashable devices for subscriber")
             return
         if closed:
@@ -75,10 +78,30 @@ async def websocket_subscribe_flashable_devices(
         in_flight.add(task)
         task.add_done_callback(in_flight.discard)
 
+    # Register the change callback BEFORE fetching the initial payload.
+    # Otherwise a `_fire_device_list_changed` that lands during the await
+    # is silently dropped: `on_device_list_changed` does not replay missed
+    # events, so a new subscriber would be stuck with stale data until the
+    # next change.
     unsub = manager.on_device_list_changed(_on_changed)
 
+    try:
+        initial_payload = await _flashable_payload(hass, manager)
+    except Exception as err:
+        unsub()
+        _send_exception(connection, msg["id"], "fetch_failed", err)
+        return
+
     connection.send_result(msg["id"])
-    await _send_update()
+    try:
+        connection.send_message(websocket_api.event_message(msg["id"], initial_payload))
+    except Exception:
+        # Connection went away between send_result and the first event. The
+        # `_unsub` wrapper isn't yet in `connection.subscriptions`, so without
+        # this cleanup the device-list callback would leak forever.
+        _LOGGER.debug("Initial send_message failed for flashable_devices subscriber", exc_info=True)
+        unsub()
+        return
 
     @callback
     def _unsub() -> None:
