@@ -34,6 +34,7 @@ invalid config.
 """
 
 from pathlib import Path
+from typing import Any
 
 import yaml
 
@@ -129,8 +130,63 @@ def test_disabling_ble_scan_reboots_to_drop_active_proxy_connections() -> None:
     )
 
 
+def _action_contains_reboot(action: Any) -> bool:
+    """True if `action` (any YAML node) is or contains a reboot call.
+
+    Recognises the three idiomatic ESPHome ways to restart from an
+    automation: `lambda: App.safe_reboot()`, `lambda: App.reboot()`, and
+    `button.press: <restart_button_id>`.
+    """
+    if isinstance(action, dict):
+        if "lambda" in action and isinstance(action["lambda"], str):
+            body = action["lambda"]
+            if "safe_reboot" in body or "App.reboot" in body:
+                return True
+        if "button.press" in action:
+            return True
+        # Recurse into common nested action keys (`then`, `else`, the body
+        # of an `if:`, etc.) so we don't have to enumerate every wrapper.
+        return any(_action_contains_reboot(v) for v in action.values())
+    if isinstance(action, list):
+        return any(_action_contains_reboot(item) for item in action)
+    return False
+
+
+def _find_reboot_inside_if_then(actions: list) -> bool:
+    """True iff a reboot exists *inside* an `if:` action's `then:` list.
+
+    Accepts the wrapping pattern:
+      - if:
+          condition: ...
+          then:
+            - ...
+            - <reboot here>
+    """
+    for step in actions:
+        if not isinstance(step, dict):
+            continue
+        if_block = step.get("if")
+        if isinstance(if_block, dict):
+            then_actions = if_block.get("then") or []
+            if isinstance(then_actions, list) and _action_contains_reboot(then_actions):
+                return True
+    return False
+
+
+def _action_has_top_level_reboot(actions: list) -> bool:
+    """True if any reboot exists as a direct member of the action list (not
+    wrapped in an `if:`). Used to detect the bootloop-causing pattern.
+    """
+    for step in actions:
+        if isinstance(step, dict) and "if" in step:
+            continue
+        if _action_contains_reboot(step):
+            return True
+    return False
+
+
 def test_turn_off_action_gates_reboot_to_avoid_bootloop() -> None:
-    """Reboot in turn_off_action must be conditional, not unconditional.
+    """Reboot in turn_off_action must live inside an `if:` `then:` block.
 
     ESPHome template switches re-fire the corresponding action on every
     boot when state is restored from NVS (see ESPHome
@@ -143,23 +199,27 @@ def test_turn_off_action_gates_reboot_to_avoid_bootloop() -> None:
     The fix is to gate the reboot on a "boot has settled" condition (a
     global flag set after a delay in on_boot) so state-restoration on
     boot stops the scan but does NOT reboot, while a real user-initiated
-    toggle (after boot is settled) still reboots cleanly.
+    toggle (after boot is settled) still reboots cleanly. Walk the action
+    structure to verify the reboot is *actually inside* the if block —
+    a string match on `"if:"` would be fooled by an unrelated `if:`
+    elsewhere in the action list.
     """
     doc = _load_bluetooth_base()
     sw = _find_switch_by_id(doc["switch"], "ble_scan_enabled")
     assert sw is not None
-    turn_off_action = sw.get("turn_off_action", [])
-    serialized = yaml.dump(turn_off_action)
-    assert "safe_reboot" in serialized or "App.reboot" in serialized, (
+    turn_off_action = sw.get("turn_off_action", []) or []
+    assert _action_contains_reboot(turn_off_action), (
         "turn_off_action must include a reboot to drop active proxy connections"
     )
-    # The reboot must be inside an `if` / condition block — not a
-    # top-level action. The simplest signal: there's an `if:` somewhere
-    # in turn_off_action wrapping the reboot.
-    assert "if:" in serialized and "condition" in serialized, (
-        "turn_off_action's reboot must be gated on a condition so it doesn't "
-        "fire when state is restored on boot. Found:\n"
-        f"{serialized}"
+    assert not _action_has_top_level_reboot(turn_off_action), (
+        "turn_off_action has a top-level reboot — that bootloops the device "
+        "on state-restored boot. Wrap it in an `if: condition: ... then:`. "
+        f"Found:\n{yaml.dump(turn_off_action)}"
+    )
+    assert _find_reboot_inside_if_then(turn_off_action), (
+        "turn_off_action must contain a reboot inside an `if:` `then:` block "
+        "gated on a 'boot is settled' condition. Found:\n"
+        f"{yaml.dump(turn_off_action)}"
     )
 
 
