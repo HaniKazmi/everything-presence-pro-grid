@@ -30,6 +30,19 @@ static_assert(sizeof(float) == 4,
               "epp NVS grid blob format assumes 32-bit float (IEEE-754 single)");
 static constexpr size_t GRID_BLOB_SIZE = GRID_CELL_COUNT + 2 * sizeof(float);
 
+// Upper bound on the base64-encoded grid input the API service should accept.
+// Standard base64 expansion is ceil(n/3)*4 bytes plus an optional final
+// newline. We allow 4 extra bytes of padding/whitespace slack so a stray
+// newline or trailing space from the WS layer doesn't trigger a false
+// rejection. Anything larger is treated as a buggy or malicious caller and
+// rejected before the base64 decoder is invoked. The runtime check in
+// tests/test_nvs_layout.cpp pins the numeric bounds (>= the canonical 536
+// for 400 bytes, <= a sane upper limit) so future GRID_COLS/ROWS changes
+// can't silently produce a too-small ceiling.
+static constexpr size_t GRID_BASE64_MAX = ((GRID_CELL_COUNT + 2) / 3) * 4 + 4;
+static_assert(GRID_BASE64_MAX >= GRID_CELL_COUNT,
+              "Encoded form must be at least as big as decoded form");
+
 // Per-blob schema versions. Start at 1 so the value 0 (returned by NVS when
 // the key is absent) acts as a sentinel for "missing" in should_load_blob().
 static constexpr uint8_t PERSP_SCHEMA_V = 1;

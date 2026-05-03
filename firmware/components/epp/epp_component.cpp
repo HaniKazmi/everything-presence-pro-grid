@@ -2,9 +2,13 @@
 #include "epp_zone_config_parser.h"
 #include "epp_nvs_layout.h"
 #include "epp_change_detector.h"
+#include "epp_target_validity.h"
+#include "epp_json_writer.h"
+#include "epp_perspective_parser.h"
 #include "esphome/core/log.h"
 
 #include <ArduinoJson.h>
+#include <algorithm>
 #include <cmath>
 #include <cstring>
 #include <mbedtls/base64.h>
@@ -18,6 +22,9 @@ static const char *const NVS_NAMESPACE = "epp";
 
 void EPPComponent::setup() {
   ESP_LOGI(TAG, "EPP Zone Engine component initialized");
+
+  // Capture boot wall-clock so the relay gate can compute a settling window.
+  boot_ms_ = esphome::millis();
 
   // Publish firmware version
   if (firmware_version_sensor_ != nullptr) {
@@ -48,11 +55,16 @@ void EPPComponent::loop() {
   while (frame_buffer_.pop(frame)) {
     frame_count_++;
 
-    // Stage 1: Feed raw positions into rolling median
+    // Stage 1: Feed raw positions into rolling median.
+    // NaN guard: LD2450 occasionally emits NaN; without this they'd poison
+    // the rolling median's running stats. The window has no internal NaN
+    // filter so we sanitise at the producer boundary.
     TargetInput raw_inputs[NUM_TARGETS];
     for (int i = 0; i < NUM_TARGETS; i++) {
       raw_inputs[i] = {frame.targets[i].x, frame.targets[i].y,
-                       frame.targets[i].detected && frame.targets[i].y != 0.0f};
+                       frame.targets[i].detected && frame.targets[i].y != 0.0f &&
+                       std::isfinite(frame.targets[i].x) &&
+                       std::isfinite(frame.targets[i].y)};
     }
     window_.feed(raw_inputs, NUM_TARGETS, now);
 
@@ -185,9 +197,12 @@ void EPPComponent::loop() {
       const char *motion_code = result.motion_state == SensorPresenceState::ACTIVE ? "A" :
                                  result.motion_state == SensorPresenceState::PENDING ? "P" : "I";
 
+      // BoundedWriter prevents the snprintf-accumulator underflow bug — see
+      // epp_json_writer.h. Once truncated, further printf calls are no-ops
+      // and ok() returns false so we can log a clear warning.
       char json[512];
-      int pos = snprintf(json, sizeof(json),
-          "{\"targets\":[");
+      BoundedWriter w(json, sizeof(json));
+      w.printf("{\"targets\":[");
       for (int i = 0; i < NUM_TARGETS; i++) {
         const char *status_str = "inactive";
         if (i < result.target_count) {
@@ -198,59 +213,61 @@ void EPPComponent::loop() {
           }
         }
         int signal = (i < result.target_count) ? result.targets[i].signal : 0;
-        pos += snprintf(json + pos, sizeof(json) - pos,
-            "%s{\"signal\":%d,\"status\":\"%s\"}",
-            i > 0 ? "," : "", signal, status_str);
+        w.printf("%s{\"signal\":%d,\"status\":\"%s\"}",
+                 i > 0 ? "," : "", signal, status_str);
       }
-      pos += snprintf(json + pos, sizeof(json) - pos,
-          "],\"zones\":{\"occupancy\":[");
+      w.printf("],\"zones\":{\"occupancy\":[");
       for (int i = 0; i < MAX_ZONE_SLOTS; i++) {
-        pos += snprintf(json + pos, sizeof(json) - pos,
-            "%s%s", i > 0 ? "," : "",
-            result.zone_occupancy[i] ? "true" : "false");
+        w.printf("%s%s", i > 0 ? "," : "",
+                 result.zone_occupancy[i] ? "true" : "false");
       }
-      pos += snprintf(json + pos, sizeof(json) - pos,
-          "],\"tracking\":%s},"
-          "\"static_state\":\"%s\",\"motion_state\":\"%s\",\"occupancy\":%s,"
-          "\"mmwave\":%s,"
-          "\"frame_count\":%d,\"debug_log\":\"",
-          result.device_tracking_present ? "true" : "false",
-          static_code, motion_code,
-          result.occupancy ? "true" : "false",
-          result.mmwave ? "true" : "false",
-          result.frame_count);
+      w.printf("],\"tracking\":%s},"
+               "\"static_state\":\"%s\",\"motion_state\":\"%s\",\"occupancy\":%s,"
+               "\"mmwave\":%s,"
+               "\"frame_count\":%d,\"debug_log\":\"",
+               result.device_tracking_present ? "true" : "false",
+               static_code, motion_code,
+               result.occupancy ? "true" : "false",
+               result.mmwave ? "true" : "false",
+               result.frame_count);
 
       // Debug log: "S:A M:P Occ:1|T0:Z1:A:5|Z0:O:1 Z1:O:1"
       // Sensor prefix
-      pos += snprintf(json + pos, sizeof(json) - pos,
-          "S:%s M:%s Occ:%d|", static_code, motion_code, result.occupancy ? 1 : 0);
+      w.printf("S:%s M:%s Occ:%d|",
+               static_code, motion_code, result.occupancy ? 1 : 0);
       // Targets part
       bool first_target = true;
       for (int i = 0; i < result.target_count && i < NUM_TARGETS; i++) {
         if (result.targets[i].status == TargetStatus::INACTIVE) continue;
         const char *s = result.targets[i].status == TargetStatus::ACTIVE ? "A" : "P";
         int zone = 0;
-        if (result.targets[i].x != 0.0f || result.targets[i].y != 0.0f) {
+        if (is_target_valid(result.targets[i].status,
+                            result.targets[i].x,
+                            result.targets[i].y)) {
           auto cell = grid_.xy_to_cell(result.targets[i].x, result.targets[i].y);
           if (cell >= 0 && cell < GRID_CELL_COUNT) {
             zone = grid_.cell_zone(cell);
           }
         }
-        pos += snprintf(json + pos, sizeof(json) - pos,
-            "%sT%d:Z%d:%s:%d", first_target ? "" : " ", i, zone, s, result.targets[i].signal);
+        w.printf("%sT%d:Z%d:%s:%d",
+                 first_target ? "" : " ", i, zone, s, result.targets[i].signal);
         first_target = false;
       }
       // Zones part
-      pos += snprintf(json + pos, sizeof(json) - pos, "|");
+      w.printf("|");
       bool first_zone = true;
       for (int i = 0; i < MAX_ZONE_SLOTS; i++) {
         if (!result.zone_occupancy[i]) continue;
         const char *zs = result.zone_states[i] == epp::ZoneState::PENDING_CLEAR ? "P" : "O";
-        pos += snprintf(json + pos, sizeof(json) - pos,
-            "%sZ%d:%s:%d", first_zone ? "" : " ", i, zs, result.zone_target_counts[i]);
+        w.printf("%sZ%d:%s:%d",
+                 first_zone ? "" : " ", i, zs, result.zone_target_counts[i]);
         first_zone = false;
       }
-      pos += snprintf(json + pos, sizeof(json) - pos, "\"}");
+      w.printf("\"}");
+      if (!w.ok()) {
+        ESP_LOGW(TAG, "zone-state JSON truncated to %u/%u bytes",
+                 (unsigned)w.size(), (unsigned)sizeof(json));
+      }
       zone_state_sensor_->publish_state(json);
     }
   }
@@ -269,11 +286,16 @@ void EPPComponent::loop() {
       if (target_y_sensors_[i] != nullptr)
         target_y_sensors_[i]->publish_state(active ? result.targets[i].y : NAN);
       if (target_signal_sensors_[i] != nullptr)
-        target_signal_sensors_[i]->publish_state(active ? static_cast<float>(result.targets[i].signal) : 0.0f);
+        target_signal_sensors_[i]->publish_state(active ? static_cast<float>(result.targets[i].signal) : NAN);
       if (target_active_sensors_[i] != nullptr)
         target_active_sensors_[i]->publish_state(active);
       if (target_zone_sensors_[i] != nullptr) {
-        if (active && (result.targets[i].x != 0.0f || result.targets[i].y != 0.0f)) {
+        // `active` is the per-slot status check the throttle uses for x/y/etc.
+        // is_target_valid layers an additional finite-coords gate on top so a
+        // NaN position from the engine doesn't trip a spurious cell lookup.
+        if (active && is_target_valid(result.targets[i].status,
+                                      result.targets[i].x,
+                                      result.targets[i].y)) {
           auto cell = grid_.xy_to_cell(result.targets[i].x, result.targets[i].y);
           if (cell >= 0 && cell < GRID_CELL_COUNT)
             target_zone_sensors_[i]->publish_state(static_cast<float>(grid_.cell_zone(cell)));
@@ -329,8 +351,21 @@ void EPPComponent::loop() {
     if (mmwave_output_ != nullptr)
       mmwave_output_->publish_state(result.mmwave);
 
-    // Relay evaluation
-    if (relay_switch_ != nullptr) {
+    // Relay evaluation.
+    // Gate side-effecting relay state changes until boot has settled — see
+    // boot_settled_ rationale in epp_component.h. Without this gate the very
+    // first loop tick can flip the relay before the LD2450 has produced any
+    // frames and before HA has restored template switch state, causing a
+    // brief incorrect output state on every boot. Open the gate when either
+    // the first frame has arrived OR the 2s settle window has elapsed — the
+    // grace period ensures a broken/disconnected LD2450 doesn't leave the
+    // relay state machine permanently inert.
+    if (!boot_settled_) {
+      if (frame_count_ > 0 || now - boot_ms_ >= BOOT_SETTLE_MS) {
+        boot_settled_ = true;
+      }
+    }
+    if (boot_settled_ && relay_switch_ != nullptr) {
       RelayEvalInput relay_input{
           relay_trigger_mode_,
           relay_contact_mode_,
@@ -383,25 +418,19 @@ void EPPComponent::dismiss_target(int target_index, int cell_index) {
 
 void EPPComponent::set_perspective(const std::string &perspective,
                                    float room_width, float room_depth) {
+  // Strict parser: requires exactly 8 finite floats, no empty fields, no
+  // trailing garbage. See epp_perspective_parser.h for the full contract.
+  // Logging stays here so the parser remains a pure helper testable on host.
   float coeffs[8];
-  int count = 0;
-
-  // Parse comma-separated floats
-  const char *p = perspective.c_str();
-  while (count < 8 && *p != '\0') {
-    char *end;
-    coeffs[count] = strtof(p, &end);
-    if (end == p) {
-      ESP_LOGE(TAG, "Failed to parse perspective coefficient at index %d", count);
-      return;
-    }
-    count++;
-    p = end;
-    if (*p == ',') p++;
-  }
-
-  if (count != 8) {
-    ESP_LOGE(TAG, "Expected 8 perspective coefficients, got %d", count);
+  if (!parse_perspective_coefficients(perspective, coeffs)) {
+    // Don't echo the full payload — a buggy or malicious caller could spam logs
+    // / wear flash by submitting megabytes of garbage. A length-bounded prefix
+    // is enough for triage.
+    constexpr size_t MAX_LOG_PREFIX = 64;
+    ESP_LOGE(TAG, "Invalid perspective payload (need 8 finite comma-separated floats), len=%u, prefix=\"%.*s\"",
+             static_cast<unsigned>(perspective.size()),
+             static_cast<int>(std::min(perspective.size(), MAX_LOG_PREFIX)),
+             perspective.c_str());
     return;
   }
 
@@ -435,6 +464,16 @@ void EPPComponent::set_perspective(const std::string &perspective,
 
 void EPPComponent::set_grid(const std::string &grid_data,
                             float origin_x, float origin_y) {
+  // Reject obviously-oversized inputs before invoking mbedtls. The WS API has
+  // already deserialised this string, so we can't prevent the upstream alloc,
+  // but capping here avoids handing a multi-MB blob to the decoder and gives
+  // the operator a clear log line. See GRID_BASE64_MAX in epp_nvs_layout.h.
+  if (grid_data.size() > GRID_BASE64_MAX) {
+    ESP_LOGE(TAG, "Grid base64 input too large (%u bytes, max %u)",
+             (unsigned)grid_data.size(), (unsigned)GRID_BASE64_MAX);
+    return;
+  }
+
   uint8_t decoded[GRID_CELL_COUNT];
   size_t decoded_len = 0;
 

@@ -54,3 +54,17 @@ TEST_CASE("should_load_blob returns false when stored version is absent (0)") {
   // leaves the caller's variable at its initial 0. Treat as missing.
   CHECK(should_load_blob(0, 1) == false);
 }
+
+TEST_CASE("GRID_BASE64_MAX bounds the API service input to a reasonable size") {
+  // Item H4 (PR-8): set_grid receives a base64 string from the API service.
+  // Without an explicit cap a buggy or malicious caller could send a huge
+  // payload that std::string would happily allocate before mbedtls_base64_decode
+  // refuses to decode it. We cap at the size of a fully-padded base64 encoding
+  // of GRID_CELL_COUNT bytes (plus a tiny slack for trailing whitespace).
+
+  // Standard base64 expansion is ceil(n/3)*4. For 400 bytes that's 536.
+  CHECK(GRID_BASE64_MAX >= 536);
+  // And the slack must keep it under a small constant — definitely well below
+  // 1KB. If this trips after a GRID_COLS/ROWS bump, revisit the slack budget.
+  CHECK(GRID_BASE64_MAX <= 1024);
+}
