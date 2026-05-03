@@ -25,6 +25,14 @@ export interface ZoneEngineState {
 	targetPrev: ({ col: number; row: number } | null)[];
 	targetGateCount: number[];
 	targetPrevXY: ({ x: number; y: number } | null)[];
+	// Last in-room zone per target; persists across ticks regardless of how
+	// many targets the next tick happens to contain. Mirrors the firmware's
+	// `target_last_zone_` semantics so the overlay-exit handoff (Step 2b)
+	// can fire even when the target list shrinks to empty.
+	lastZone: (number | null)[];
+	// Sticky flag: target's last in-room cell carried (or neighboured) an
+	// entry overlay. Cleared together with lastZone after the handoff fires.
+	lastOnOverlay: boolean[];
 	staticState: "active" | "pending" | "inactive";
 	motionState: "active" | "pending" | "inactive";
 	staticPendingSince: number | null;
@@ -72,6 +80,8 @@ export function createZoneEngineState(): ZoneEngineState {
 		targetPrev: [null, null, null],
 		targetGateCount: [0, 0, 0],
 		targetPrevXY: [null, null, null],
+		lastZone: [null, null, null],
+		lastOnOverlay: [false, false, false],
 		staticState: "inactive",
 		motionState: "inactive",
 		staticPendingSince: null,
@@ -117,31 +127,6 @@ export function runLocalZoneEngine(
 	const targetZonePrev: (number | null)[] = [null, null, null];
 	const targetZoneCurr: (number | null)[] = [null, null, null];
 	const targetLeftRoom: boolean[] = [false, false, false];
-
-	// Snapshot prev-position overlay/zone before the per-target loop overwrites
-	// state.targetPrev. The median position may land one cell away from the
-	// actual overlay cell at a boundary, so we check 3×3 neighbours.
-	const targetWasOnOverlay: boolean[] = [false, false, false];
-	const targetPrevZone: (number | null)[] = [null, null, null];
-	for (let i = 0; i < MAX_TARGETS && i < params.targets.length; i++) {
-		const prev = state.targetPrev[i];
-		if (prev === null) continue;
-		const prevIdx = prev.row * GRID_COLS + prev.col;
-		if (
-			prevIdx < 0 ||
-			prevIdx >= GRID_CELL_COUNT ||
-			!cellIsInside(params.grid[prevIdx])
-		)
-			continue;
-		const prevZid = cellZone(params.grid[prevIdx]);
-		targetPrevZone[i] = prevZid;
-		targetWasOnOverlay[i] = hasEntryOverlayNear(
-			params.grid,
-			prev.row,
-			prev.col,
-			prevZid,
-		);
-	}
 
 	for (let i = 0; i < MAX_TARGETS && i < params.targets.length; i++) {
 		const t = params.targets[i];
@@ -199,6 +184,13 @@ export function runLocalZoneEngine(
 
 		const zid = cellZone(cellVal);
 		targetZoneCurr[i] = zid;
+		// Mirror firmware target_last_zone_: persist last in-room zone across
+		// ticks. Used by overlay-exit handoff regardless of how the next tick's
+		// target list looks.
+		state.lastZone[i] = zid;
+		state.lastOnOverlay[i] =
+			overlay === CELL_OVERLAY_ENTRY ||
+			hasEntryOverlayNear(params.grid, row, col, zid);
 
 		const prev = state.targetPrev[i];
 		if (prev !== null) {
@@ -318,18 +310,19 @@ export function runLocalZoneEngine(
 		}
 	}
 
-	// Overlay exit handoff: target disappears or leaves room from overlay cell → use handoff timeout.
-	// We keep confirmedTargets intact so the target renders as PENDING.
-	for (let i = 0; i < MAX_TARGETS && i < params.targets.length; i++) {
-		const t = params.targets[i];
-		const isGone = t.x == null || t.y == null;
-		if (
-			(isGone || targetLeftRoom[i]) &&
-			targetWasOnOverlay[i] &&
-			targetPrevZone[i] !== null
-		) {
-			const prevZid = targetPrevZone[i] as number;
-			const st = state.localZoneState.get(prevZid);
+	// Overlay exit handoff: when the target disappears or leaves the room from
+	// an overlay cell, accelerate the source zone's pending timeout to the
+	// configured handoff_timeout. Iterates MAX_TARGETS (not just the current
+	// targets list) and reads state.lastZone/lastOnOverlay so the handoff
+	// fires even when the backend's target list shrinks. Mirrors firmware
+	// Step 2b (epp_zone_engine.cpp:431-456).
+	for (let i = 0; i < MAX_TARGETS; i++) {
+		const t = i < params.targets.length ? params.targets[i] : null;
+		const isGone = !t || t.x == null || t.y == null;
+		const leftRoom = !isGone && targetLeftRoom[i];
+		const lastZid = state.lastZone[i];
+		if ((isGone || leftRoom) && state.lastOnOverlay[i] && lastZid !== null) {
+			const st = state.localZoneState.get(lastZid);
 			if (st?.occupied) {
 				// Check if this target is the only confirmed target remaining
 				let remaining = 0;
@@ -338,7 +331,7 @@ export function runLocalZoneEngine(
 				}
 				if (remaining === 0) {
 					const th = getZoneThresholds(
-						prevZid,
+						lastZid,
 						params.zoneConfigs,
 						params.roomType,
 						params.roomTrigger,
@@ -354,6 +347,9 @@ export function runLocalZoneEngine(
 					}
 				}
 			}
+			// Consume so subsequent ticks don't re-fire the same handoff.
+			state.lastZone[i] = null;
+			state.lastOnOverlay[i] = false;
 		}
 	}
 

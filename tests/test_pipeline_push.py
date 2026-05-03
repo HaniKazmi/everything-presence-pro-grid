@@ -28,7 +28,6 @@ class TestEndToEndPipelineFlow:
                 "target_update_rate_ms": 500,
                 "zone_update_rate_ms": 1000,
             },
-            "pipeline": {"window_duration": 800},
         }
 
         mock_session = MagicMock()
@@ -51,7 +50,7 @@ class TestEndToEndPipelineFlow:
         assert pipeline["entity_zone_interval"] == 1000
         assert pipeline["display_interval"] == 200
         assert pipeline["zone_state_interval"] == 1000
-        assert pipeline["window_duration"] == 800
+        assert "window_duration" not in pipeline
 
     async def test_full_flow_no_entities_no_frontend(self, hass: HomeAssistant, config_entry: MockConfigEntry) -> None:
         """With nothing enabled and no frontend, all intervals are 0."""

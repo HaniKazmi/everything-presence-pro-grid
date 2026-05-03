@@ -982,7 +982,6 @@ async def websocket_set_distance_override(
         vol.Required("entity_zone_interval"): vol.All(vol.Coerce(int), vol.Range(min=0, max=2000)),
         vol.Required("display_interval"): vol.All(vol.Coerce(int), vol.Range(min=0, max=1000)),
         vol.Required("zone_state_interval"): vol.All(vol.Coerce(int), vol.Range(min=0, max=2000)),
-        vol.Required("window_duration"): vol.All(vol.Coerce(int), vol.Range(min=200, max=2000)),
     }
 )
 @websocket_api.require_admin
@@ -1002,7 +1001,6 @@ async def websocket_set_pipeline(
         "entity_zone_interval": msg["entity_zone_interval"],
         "display_interval": msg["display_interval"],
         "zone_state_interval": msg["zone_state_interval"],
-        "window_duration": msg["window_duration"],
     }
     await manager._store.async_save()
     await manager._push_pipeline_to_device(mac)

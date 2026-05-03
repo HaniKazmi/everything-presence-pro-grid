@@ -65,7 +65,7 @@ struct TargetSpec {
 
 static WindowOutput make_window(const TargetSpec specs[], int count) {
     WindowOutput wo{};
-    wo.total_frames = RAW_FPS;
+    wo.total_frames = CANONICAL_FRAMES;
     for (int i = 0; i < count && i < MAX_TARGETS; ++i) {
         wo.targets[i].median_x = specs[i].x;
         wo.targets[i].median_y = specs[i].y;
@@ -545,50 +545,6 @@ TEST_CASE("set_zones clears dismissed_cell_ for all targets") {
     CHECK(r.zone_occupancy[1]);
 }
 
-TEST_CASE("set_raw_fps changes the signal denominator floor") {
-    // signal = (frame_count * 9 + frames/2) / frames, where frames =
-    // max(window.total_frames, raw_fps_). With raw_fps_=10 and total_frames=5
-    // the denominator is clamped UP to 10, so frame_count=5 yields signal=5.
-    // Lowering raw_fps_ to 5 lets the denominator collapse to 5, so the same
-    // frame_count=5 yields signal=9.
-    ZoneEngine engine = make_parity_engine();
-
-    // Default RAW_FPS=10 path: 5 frames of presence on overlay cell → signal 5.
-    {
-        WindowOutput wo = make_window_1(X_OFF + 450.0f, 450.0f, 5);
-        wo.total_frames = 5;
-        wo.targets[0].on_overlay = true;
-        const ProcessingResult& r = engine.tick(wo, 100.0f);
-        REQUIRE(r.target_count >= 1);
-        // signal = (5*9 + 10/2)/10 = 50/10 = 5
-        CHECK(r.targets[0].signal == 5);
-    }
-
-    // Override raw_fps to 5 — same frame_count now hits signal 9.
-    engine.set_raw_fps(5);
-    CHECK(engine.raw_fps() == 5);
-
-    {
-        // Reset engine state so the previous tick doesn't bias the next.
-        ZoneEngine fresh = make_parity_engine();
-        fresh.set_raw_fps(5);
-
-        WindowOutput wo = make_window_1(X_OFF + 450.0f, 450.0f, 5);
-        wo.total_frames = 5;
-        wo.targets[0].on_overlay = true;
-        const ProcessingResult& r = fresh.tick(wo, 100.0f);
-        REQUIRE(r.target_count >= 1);
-        // signal = (5*9 + 5/2)/5 = 47/5 = 9 (clamped to 9)
-        CHECK(r.targets[0].signal == 9);
-    }
-
-    // raw_fps <= 0 falls back to the RAW_FPS default.
-    engine.set_raw_fps(0);
-    CHECK(engine.raw_fps() == RAW_FPS);
-    engine.set_raw_fps(-3);
-    CHECK(engine.raw_fps() == RAW_FPS);
-}
-
 TEST_CASE("set_grid clears dismissed_cell_ across coordinate-system change") {
     // Reproduces the Copilot review concern: dismiss target at cell N under
     // grid A; switching to grid B re-uses cell index N at a different room
@@ -1050,4 +1006,133 @@ TEST_CASE("dismiss_target only clears the dismissed target's confirmation bit") 
     // transition to PENDING_CLEAR.
     const ProcessingResult& r2 = engine.tick(make_window_0(), t + 1.0f);
     CHECK(r2.zone_states[1] == ZoneState::PENDING_CLEAR);
+}
+
+// ---------------------------------------------------------------------------
+// PR 9 — Frontend / firmware comparison-space parity
+//
+// The frontend zone engine compares the published `signal` (0–9) against the
+// user-set trigger threshold. The firmware must agree regardless of how many
+// frames the rolling window happens to hold: signal is `min(frame_count, 9)`
+// (sensor over-delivery is capped, never inflates the value), and the
+// firmware compares `signal >= clamp_threshold(trigger)` so its confirm
+// decision matches what the frontend sees.
+// ---------------------------------------------------------------------------
+
+TEST_CASE("over-delivered window: published signal not diluted by extra frames") {
+    ZoneEngine engine = make_parity_engine();
+
+    // Sensor over-delivered: 20 frames in the window, 5 active for the target.
+    // Published signal must reflect the active count, not be diluted by the
+    // larger denominator the rolling window happens to hold.
+    WindowOutput wo{};
+    wo.total_frames = 20;
+    wo.targets[0].median_x = X_OFF + 450;  // zone 1 cell
+    wo.targets[0].median_y = 450;
+    wo.targets[0].frame_count = 5;
+    wo.targets[0].active = true;
+    wo.targets[0].on_overlay = true;  // bypass gating
+
+    const ProcessingResult& r = engine.tick(wo, 100.0f);
+    CHECK(r.targets[0].signal == 5);
+}
+
+TEST_CASE("over-delivered window: published signal saturates at 9") {
+    ZoneEngine engine = make_parity_engine();
+
+    // Sensor over-delivered: 18 frames in the window, all 18 active.
+    WindowOutput wo{};
+    wo.total_frames = 18;
+    wo.targets[0].median_x = X_OFF + 450;
+    wo.targets[0].median_y = 450;
+    wo.targets[0].frame_count = 18;
+    wo.targets[0].active = true;
+    wo.targets[0].on_overlay = true;
+
+    const ProcessingResult& r = engine.tick(wo, 100.0f);
+    CHECK(r.targets[0].signal == 9);
+}
+
+TEST_CASE("over-delivered window: confirmation aligns with published signal") {
+    // Single-zone engine, trigger=5, no overlay on target cell so gating
+    // applies. Two consecutive ticks at the same position: tick 1 attempts
+    // gating, tick 2 is continuous (bypasses gating).
+    //
+    // With a 20-frame window and frame_count=8, post-fix:
+    //   signal = min(8, 9) = 8.
+    //   gated_thresh = min(trigger+2, 8) = 7. signal=8 >= 7 → tick 1 gate=1.
+    //   Tick 2 continuous, base_thresh=trigger=5, signal=8 >= 5 → CONFIRM.
+    //   Published signal = 8.
+    // Pre-fix:
+    //   fc=8 >= gated(7) → tick 1 gate=1. Tick 2 fc=8 >= 5 → CONFIRM.
+    //   Published signal = round(8*9/20) = 4 (frontend sees 4 < 5 → DISAGREE).
+    Grid grid = make_parity_grid();
+    ZoneConfig zone0{};
+    zone0.id = 0;
+    zone0.trigger = 5;
+    zone0.renew = 3;
+    zone0.timeout = 10.0f;
+    zone0.handoff_timeout = 3.0f;
+
+    ZoneEngine engine;
+    engine.set_grid(grid);
+    engine.set_zones(&zone0, 1);
+
+    auto build = [](int fc) {
+        WindowOutput wo{};
+        wo.total_frames = 20;
+        wo.targets[0].median_x = X_OFF + 150;  // zone 0
+        wo.targets[0].median_y = 150;
+        wo.targets[0].frame_count = fc;
+        wo.targets[0].active = (fc > 0);
+        return wo;
+    };
+
+    engine.tick(build(8), 100.0f);
+    const ProcessingResult& r = engine.tick(build(8), 101.0f);
+    CHECK(r.zone_occupancy[0]);
+    // The published signal must be at least the trigger threshold so the
+    // frontend zone engine reaches the same confirm decision.
+    CHECK(r.targets[0].signal >= zone0.trigger);
+    CHECK(r.targets[0].signal == 8);
+}
+
+TEST_CASE("over-delivered window: published signal matches firmware comparison threshold") {
+    // The pre-fix drift: firmware compares raw frame_count, but the published
+    // signal was diluted by total_frames > 10. Post-fix: signal == min(fc, 9)
+    // and the firmware compares signal-vs-trigger, so the value the frontend
+    // sees and uses is exactly what the firmware decided on.
+    //
+    // 20-frame window with frame_count=5 (just at trigger):
+    //   Pre-fix:  fc=5 >= gated(7)? NO. (No drift here — both engines fail gate.)
+    //            But the published signal was round(5*9/20) = 2, hiding intent.
+    //   Post-fix: signal = min(5, 9) = 5. gated_thresh=7. 5>=7? NO → no gate.
+    //            Tick 2 same → no confirm.
+    //   Published signal = 5 (matches what the user configured).
+    Grid grid = make_parity_grid();
+    ZoneConfig zone0{};
+    zone0.id = 0;
+    zone0.trigger = 5;
+    zone0.renew = 3;
+    zone0.timeout = 10.0f;
+    zone0.handoff_timeout = 3.0f;
+
+    ZoneEngine engine;
+    engine.set_grid(grid);
+    engine.set_zones(&zone0, 1);
+
+    auto build = [](int fc) {
+        WindowOutput wo{};
+        wo.total_frames = 20;
+        wo.targets[0].median_x = X_OFF + 150;
+        wo.targets[0].median_y = 150;
+        wo.targets[0].frame_count = fc;
+        wo.targets[0].active = (fc > 0);
+        return wo;
+    };
+
+    engine.tick(build(5), 100.0f);
+    const ProcessingResult& r = engine.tick(build(5), 101.0f);
+    CHECK_FALSE(r.zone_occupancy[0]);
+    CHECK(r.targets[0].signal == 5);
 }

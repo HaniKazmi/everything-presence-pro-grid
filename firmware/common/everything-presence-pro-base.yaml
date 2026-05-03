@@ -450,14 +450,12 @@ api:
         entity_zone_interval: int
         display_interval: int
         zone_state_interval: int
-        window_duration: int
       then:
         - lambda: |-
             id(epp_component).set_entity_target_interval(entity_target_interval);
             id(epp_component).set_entity_zone_interval(entity_zone_interval);
             id(epp_component).set_display_interval(display_interval);
             id(epp_component).set_zone_state_interval(zone_state_interval);
-            id(epp_component).set_window_duration(window_duration);
     - action: epp_set_log_level
       variables:
         category: string

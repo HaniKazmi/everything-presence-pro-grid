@@ -116,10 +116,10 @@ export class TargetController implements ReactiveController {
 			roomHandoffTimeout: z0.handoff_timeout,
 			staticPresence: ss?.static_presence ?? false,
 			motionPresence: ss?.motion_presence ?? false,
-			// Timeouts default to 10s — the real timeout logic runs on the firmware.
-			// The frontend zone engine is a local replica for the zone editor preview.
-			staticTimeout: 10,
-			motionTimeout: 10,
+			// Use the host's configured timeouts so the editor preview's
+			// pending-state behaviour mirrors the firmware's.
+			staticTimeout: this.host._staticTimeout,
+			motionTimeout: this.host._motionTimeout,
 		});
 
 		// Engine mutates `localZoneState` (a Map) in place. Lit's

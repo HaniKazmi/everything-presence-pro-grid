@@ -409,6 +409,45 @@ describe("Per-target status parity", () => {
 		expect(result.occupancy[0]).toBe(true);
 		expect(result.occupancy[1]).toBe(true);
 	});
+
+	it("overlay-exit handoff fires when target list shrinks to empty", () => {
+		// Mirrors firmware behaviour: target_last_zone_ persists across ticks
+		// regardless of how many targets the next tick happens to contain.
+		// Custom zone 1 has overlay entry at (9,1), timeout=5s, handoff_timeout=1s.
+		a._targets = [makeTarget(450, 450, 5)];
+		a._runLocalZoneEngine(); // tick 1: zone 1 occupied (overlay entry)
+		a._runLocalZoneEngine(); // tick 2: target in confirmedTargets
+
+		// Backend sends an empty targets list — sensor lost the target entirely.
+		a._targets = [];
+		const tNow = Date.now() / 1000;
+		a._runLocalZoneEngine();
+
+		const st = a._zoneEngineState.localZoneState.get(1);
+		// Zone 1 must accelerate to handoff_timeout, not the full timeout.
+		// pendingSince = now - (timeout - handoff_timeout) = now - (5 - 1) = now - 4
+		expect(st.pendingSince).not.toBeNull();
+		expect(st.pendingSince).toBeCloseTo(tNow - 4, 0);
+	});
+
+	it("overlay-exit handoff: lastZone is consumed and does not re-fire", () => {
+		// After the handoff fires, lastZone[i] should be cleared so subsequent
+		// empty-target ticks don't keep accelerating the same zone.
+		a._targets = [makeTarget(450, 450, 5)];
+		a._runLocalZoneEngine();
+		a._runLocalZoneEngine();
+
+		a._targets = [];
+		a._runLocalZoneEngine(); // handoff fires here, pendingSince accelerated
+		const st1 = a._zoneEngineState.localZoneState.get(1);
+		const firstPendingSince = st1.pendingSince;
+
+		// Subsequent empty tick (still no targets): pendingSince must NOT
+		// be re-accelerated to a newer/larger value.
+		a._runLocalZoneEngine();
+		const st2 = a._zoneEngineState.localZoneState.get(1);
+		expect(st2.pendingSince).toBe(firstPendingSince);
+	});
 });
 
 describe("Pending target position fallback (_renderTargetDots)", () => {

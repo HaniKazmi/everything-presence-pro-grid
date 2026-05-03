@@ -1612,7 +1612,6 @@ class TestWebSocketSettings:
             "entity_zone_interval": 1000,
             "display_interval": 200,
             "zone_state_interval": 1000,
-            "window_duration": 1000,
         }
 
         await call_async_handler(hass, websocket_set_pipeline, connection, msg)
@@ -1622,7 +1621,7 @@ class TestWebSocketSettings:
         assert pipeline["entity_zone_interval"] == 1000
         assert pipeline["display_interval"] == 200
         assert pipeline["zone_state_interval"] == 1000
-        assert pipeline["window_duration"] == 1000
+        assert "window_duration" not in pipeline
 
     async def test_set_pipeline_requires_admin(self, hass: HomeAssistant, config_entry: MockConfigEntry) -> None:
         """Non-admin users cannot push pipeline settings."""
@@ -2749,7 +2748,6 @@ class TestNotReadyGuards:
                     "mac": "AA:BB",
                     "display_interval_ms": 200,
                     "zone_publish_interval_ms": 1000,
-                    "window_duration_ms": 1000,
                 },
                 True,
             ),
@@ -3475,7 +3473,6 @@ class TestProtocolVersionGuard:
                     "entity_zone_interval": 1000,
                     "display_interval": 200,
                     "zone_state_interval": 1000,
-                    "window_duration": 1000,
                 },
             ),
         ],

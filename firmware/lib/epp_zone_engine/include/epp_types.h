@@ -28,7 +28,12 @@ constexpr int MAX_TARGETS = 3;
 constexpr int MAX_ZONES = 7;  // named zones 1-7; zone 0 is implicit rest-of-room
 constexpr int MAX_ZONE_SLOTS = 8;  // zone 0 + zones 1-7
 constexpr int MAX_MOVEMENT_CELLS = 5;  // continuity Chebyshev threshold
-constexpr int RAW_FPS = 10;  // expected frames per second from LD2450
+
+// Canonical rolling-window size: 1000ms at 10Hz nominal sensor rate. The
+// signal scale (0–9) is computed against this fixed denominator so that
+// sensor over-delivery cannot dilute the published signal and the firmware's
+// confirmation decision matches what the frontend zone engine sees.
+constexpr int CANONICAL_FRAMES = 10;
 
 // Target status
 enum class TargetStatus : uint8_t {
@@ -64,8 +69,18 @@ struct LogEntry {
 
 constexpr int MAX_LOG_ENTRIES = 16;
 
-// Convert a threshold value to a frame count (minimum 1).
-inline int threshold_to_frame_count(int threshold) {
+// Compute the published signal (0–9 scale) from a frame count.
+// Frames are counted over a fixed CANONICAL_FRAMES window (1000ms @ 10Hz nominal),
+// so the count maps 1:1 onto the signal scale and saturates at 9. Sensor
+// over-delivery (frame_count > CANONICAL_FRAMES) is capped, never inflated.
+inline int frame_count_to_signal(int frame_count) {
+    return std::min(frame_count, 9);
+}
+
+// Clamp a user-set threshold to a meaningful comparison value. Trigger/renew
+// are stored 0–9; 0 is treated as 1 ("any active frame triggers") so a
+// disabled-looking value never makes every tick confirm.
+inline int clamp_threshold(int threshold) {
     return std::max(1, threshold);
 }
 

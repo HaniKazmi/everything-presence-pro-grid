@@ -322,9 +322,9 @@ Pushes tracking + static presence ranges to firmware via session without persist
 
 ### `set_pipeline`
 
-Saves and pushes all publish intervals and window duration.
+Saves and pushes all publish intervals.
 
-**Request:** `{ "type": "eppgrid/set_pipeline", "mac": str, "entity_target_interval": int, "entity_zone_interval": int, "display_interval": int, "zone_state_interval": int, "window_duration": int }`
+**Request:** `{ "type": "eppgrid/set_pipeline", "mac": str, "entity_target_interval": int, "entity_zone_interval": int, "display_interval": int, "zone_state_interval": int }`
 
 | Parameter | Description |
 |-----------|-------------|
@@ -332,7 +332,8 @@ Saves and pushes all publish intervals and window duration.
 | `entity_zone_interval` | Publish interval for zone entity sensors (presence, target_count per zone) |
 | `display_interval` | Publish interval for raw + grid text sensor streams (frontend only) |
 | `zone_state_interval` | Publish interval for zone state JSON text sensor (frontend only) |
-| `window_duration` | Rolling median window duration |
+
+The firmware rolling-median window is fixed at 1000ms (10 frames at the LD2450's nominal 10Hz). Signal is `min(frame_count, 9)` over that window, so it stays bounded on sensor over-delivery and matches the comparison space the frontend uses.
 
 ### Saved-Configuration Commands
 
@@ -390,7 +391,7 @@ Triggers the ESPHome config flow for a given host (used to add a freshly-flashed
 
 ```
 LD2450 UART (~10Hz)
-  → rolling median (window_duration, computed every frame)
+  → rolling median (fixed 1000ms window, computed every frame)
     → perspective transform (every frame)
       → zone engine (every frame, counts frames per zone)
 
@@ -434,7 +435,7 @@ The frontend enricher replaces zone IDs with names for display.
         "tracking": {"max_range": float},
         "static_presence": {"min_range": float, "max_range": float, ...},
         "relay": {"trigger_mode": str, "contact_mode": str},
-        "pipeline": {"entity_target_interval": int, "entity_zone_interval": int, "display_interval": int, "zone_state_interval": int, "window_duration": int},
+        "pipeline": {"entity_target_interval": int, "entity_zone_interval": int, "display_interval": int, "zone_state_interval": int},
     }
 }
 ```
