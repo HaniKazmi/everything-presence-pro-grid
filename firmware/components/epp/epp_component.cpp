@@ -51,7 +51,6 @@ void EPPComponent::loop() {
   // observable "no signal" state in HA rather than every sensor freezing
   // at its last value. See is_frame_stale in epp_frame_staleness.h.
   TargetFrame frame;
-  WindowOutput last_win{};
   while (frame_buffer_.pop(frame)) {
     last_frame_ms_ = now;
     has_received_frame_ = true;
@@ -72,7 +71,6 @@ void EPPComponent::loop() {
 
     // Stage 2: Get smoothed raw, transform to grid coordinates
     const auto &win = window_.output();
-    last_win = win;  // remember the freshest window output for the publish block
     TargetInput grid_inputs[NUM_TARGETS];
     for (int i = 0; i < NUM_TARGETS; i++) {
       if (win.targets[i].active) {
@@ -137,7 +135,7 @@ void EPPComponent::loop() {
     }
 
     last_zone_result_ = result;
-    last_window_output_ = last_win;
+    last_window_output_ = win;
   }
 
   // Stale-frame check: if the LD2450 has stopped sending, synthesize an empty
@@ -150,13 +148,18 @@ void EPPComponent::loop() {
   // not every tick. Cold-start (has_received_frame_ == false) is treated as
   // stale by is_frame_stale but we don't log a "lost" line until at least one
   // frame has been seen, otherwise every boot logs a phantom radar failure.
+  // For the same reason, only latch was_stale_ after we've seen a real frame —
+  // otherwise the first frame after cold-start would trip the !stale &&
+  // was_stale_ branch and log a spurious "frames recovered" line.
   if (stale && !was_stale_ && has_received_frame_) {
     ESP_LOGW(TAG, "LD2450 frames stale (last frame %ums ago); publishing offline state",
              now - last_frame_ms_);
   } else if (!stale && was_stale_) {
     ESP_LOGI(TAG, "LD2450 frames recovered");
   }
-  was_stale_ = stale;
+  if (has_received_frame_) {
+    was_stale_ = stale;
+  }
 
   WindowOutput stale_win{};   // all targets inactive by struct default
   ProcessingResult stale_result{};  // device_tracking false, all zones false, INACTIVE states
