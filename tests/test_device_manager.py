@@ -378,6 +378,30 @@ class TestDeviceConnection:
         with pytest.raises(json.JSONDecodeError):
             await conn.async_fetch_build_flags()
 
+    async def test_fetch_build_flags_raises_on_empty_response(self) -> None:
+        """Empty response_data must raise -- firmware always returns a JSON object."""
+        conn = DeviceConnection("192.168.1.100")
+        conn._client = MagicMock()
+        svc = MagicMock()
+        conn._services = {"get_build_flags": svc}
+        resp = MagicMock()
+        resp.response_data = ""
+        conn._client.execute_service = AsyncMock(return_value=resp)
+        with pytest.raises(ValueError):
+            await conn.async_fetch_build_flags()
+
+    async def test_fetch_build_flags_raises_on_non_dict_response(self) -> None:
+        """A non-object payload (list, scalar) must raise so the cache isn't poisoned."""
+        conn = DeviceConnection("192.168.1.100")
+        conn._client = MagicMock()
+        svc = MagicMock()
+        conn._services = {"get_build_flags": svc}
+        resp = MagicMock()
+        resp.response_data = "[1, 2, 3]"  # parses to a list, not a dict
+        conn._client.execute_service = AsyncMock(return_value=resp)
+        with pytest.raises(ValueError):
+            await conn.async_fetch_build_flags()
+
 
 # ---------------------------------------------------------------------------
 # DeviceManager tests
@@ -4850,8 +4874,8 @@ class TestBuildFlags:
             with pytest.raises(ConnectionError):
                 await conn.async_fetch_build_flags()
 
-    async def test_fetch_build_flags_non_dict_returns_empty(self) -> None:
-        """async_fetch_build_flags returns empty dict when response is not a dict."""
+    async def test_fetch_build_flags_raises_on_none_response(self) -> None:
+        """A ``None`` response from the device is a malformed reply, not an empty cacheable result."""
         conn = DeviceConnection("192.168.1.100")
 
         mock_svc = MagicMock()
@@ -4865,9 +4889,8 @@ class TestBuildFlags:
             mock_client.disconnect = AsyncMock()
 
             await conn.async_connect()
-            result = await conn.async_fetch_build_flags()
-
-        assert result == {}
+            with pytest.raises(ValueError):
+                await conn.async_fetch_build_flags()
 
     async def test_push_config_caches_build_flags_temporary_conn(
         self, hass: HomeAssistant, store: EPPGridStore, manager: DeviceManager

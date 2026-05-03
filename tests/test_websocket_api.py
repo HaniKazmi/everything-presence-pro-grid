@@ -2866,7 +2866,7 @@ class TestWebSocketSubscriptions:
         await call_async_handler(hass, websocket_subscribe_raw_targets, connection, msg)
 
         connection.send_result.assert_called_once_with(23)
-        mock_device_conn.subscribe_states.assert_called_once()
+        mock_device_conn.subscribe_states.assert_awaited_once()
         assert 23 in connection.subscriptions
 
     async def test_subscribe_grid_targets_no_session(self, hass: HomeAssistant, config_entry: MockConfigEntry) -> None:
@@ -2903,7 +2903,7 @@ class TestWebSocketSubscriptions:
         await call_async_handler(hass, websocket_subscribe_grid_targets, connection, msg)
 
         connection.send_result.assert_called_once_with(25)
-        mock_device_conn.subscribe_states.assert_called_once()
+        mock_device_conn.subscribe_states.assert_awaited_once()
         assert 25 in connection.subscriptions
 
     async def test_raw_targets_handles_malformed_position(
@@ -3248,7 +3248,7 @@ class TestSubscriptionCallbacks:
         await call_async_handler(hass, websocket_subscribe_raw_targets, connection, msg)
 
         # Get the registered _on_state callback
-        on_state = mock_device_conn.subscribe_states.call_args[0][0]
+        on_state = mock_device_conn.subscribe_states.await_args[0][0]
 
         from aioesphomeapi import TextSensorState
 
@@ -3283,7 +3283,7 @@ class TestSubscriptionCallbacks:
 
         await call_async_handler(hass, websocket_subscribe_raw_targets, connection, msg)
 
-        on_state = mock_device_conn.subscribe_states.call_args[0][0]
+        on_state = mock_device_conn.subscribe_states.await_args[0][0]
 
         from aioesphomeapi import TextSensorState
 
@@ -3316,7 +3316,7 @@ class TestSubscriptionCallbacks:
 
         await call_async_handler(hass, websocket_subscribe_raw_targets, connection, msg)
 
-        on_state = mock_device_conn.subscribe_states.call_args[0][0]
+        on_state = mock_device_conn.subscribe_states.await_args[0][0]
 
         from aioesphomeapi import BinarySensorState
 
@@ -3371,7 +3371,7 @@ class TestSubscriptionCallbacks:
 
         await call_async_handler(hass, websocket_subscribe_grid_targets, connection, msg)
 
-        on_state = mock_device_conn.subscribe_states.call_args[0][0]
+        on_state = mock_device_conn.subscribe_states.await_args[0][0]
 
         from aioesphomeapi import TextSensorState
 
@@ -3410,7 +3410,7 @@ class TestSubscriptionCallbacks:
 
         await call_async_handler(hass, websocket_subscribe_grid_targets, connection, msg)
 
-        on_state = mock_device_conn.subscribe_states.call_args[0][0]
+        on_state = mock_device_conn.subscribe_states.await_args[0][0]
 
         from aioesphomeapi import TextSensorState
 
@@ -3445,7 +3445,7 @@ class TestSubscriptionCallbacks:
 
         await call_async_handler(hass, websocket_subscribe_grid_targets, connection, msg)
 
-        on_state = mock_device_conn.subscribe_states.call_args[0][0]
+        on_state = mock_device_conn.subscribe_states.await_args[0][0]
 
         from aioesphomeapi import TextSensorState
 
@@ -3496,7 +3496,7 @@ class TestSubscriptionCallbacks:
 
         await call_async_handler(hass, websocket_subscribe_grid_targets, connection, msg)
 
-        on_state = mock_device_conn.subscribe_states.call_args[0][0]
+        on_state = mock_device_conn.subscribe_states.await_args[0][0]
 
         from aioesphomeapi import BinarySensorState
 
@@ -3530,7 +3530,7 @@ class TestSubscriptionCallbacks:
 
         await call_async_handler(hass, websocket_subscribe_grid_targets, connection, msg)
 
-        on_state = mock_device_conn.subscribe_states.call_args[0][0]
+        on_state = mock_device_conn.subscribe_states.await_args[0][0]
 
         from aioesphomeapi import SensorState
 
@@ -3571,7 +3571,7 @@ class TestSubscriptionCallbacks:
 
         await call_async_handler(hass, websocket_subscribe_grid_targets, connection, msg)
 
-        on_state = mock_device_conn.subscribe_states.call_args[0][0]
+        on_state = mock_device_conn.subscribe_states.await_args[0][0]
 
         from aioesphomeapi import SensorState
         from aioesphomeapi import TextSensorState

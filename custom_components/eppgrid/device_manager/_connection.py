@@ -174,10 +174,10 @@ class DeviceConnection:
             timeout=timeout,
         )
         if resp is None or not resp.response_data:
-            return {}
+            raise ValueError("get_build_flags returned no response_data")
         decoded = json.loads(resp.response_data)
         if not isinstance(decoded, dict):
-            return {}
+            raise ValueError(f"get_build_flags returned non-dict: {type(decoded).__name__}")
         return decoded
 
     async def async_push_distance_override(self, override: dict[str, Any]) -> None:
