@@ -26,7 +26,7 @@ Frontend (eppgrid-panel.ts — orchestrator)
   ├── commands: set_setup, set_room_layout, set_env_calibration, etc.
   ├── controllers/
   │   ├── device-controller.ts — WS subscriptions, device loading
-  │   ├── grid-state-controller.ts — grid/zone/furniture mutation, templates
+  │   ├── grid-state-controller.ts — grid/zone/furniture mutation, saved configurations
   │   └── target-controller.ts — target/sensor/zone state, zone engine, debug logs
   ├── components/
   │   ├── epp-wizard.ts — calibration wizard (guide, corners, capture)
@@ -334,18 +334,18 @@ Saves and pushes all publish intervals and window duration.
 | `zone_state_interval` | Publish interval for zone state JSON text sensor (frontend only) |
 | `window_duration` | Rolling median window duration |
 
-### Template Commands
+### Saved-Configuration Commands
 
 | Command | Description |
 |---------|------------|
-| `list_templates` | List saved room templates |
-| `save_template` | Save a room template |
-| `delete_template` | Delete a room template |
+| `list_configurations` | List saved configurations (grid + zones + sparse settings) |
+| `save_configuration` | Save the current configuration under a name |
+| `delete_configuration` | Delete a saved configuration |
 
-Applying a template is a frontend-side operation: the template dialog restores
-the saved `grid`/`zones`/`furniture` into panel state and then calls
-`set_room_layout` through the usual path. There is no server-side
-`apply_template` command.
+Restoring a configuration is a frontend-side operation: the configuration
+dialog applies the saved `grid_bytes`/`zone_slots`/`settings` into panel
+state and then calls `set_room_layout` and `set_settings` through the usual
+path. There is no server-side `apply_configuration` command.
 
 ### Flasher Commands
 
@@ -445,24 +445,21 @@ present), slots 1-7 hold named zones or `null`. This is the 0.94.0-or-newer
 storage format; layouts written by 0.93.x (with top-level `room_*` fields)
 are not migrated and must be re-applied once after upgrade.
 
-Templates are stored separately in `EPPGridStore.templates` using a matching
-shape:
+Saved configurations are stored separately in `EPPGridStore.configurations`
+using a matching shape:
 
 ```python
 {
     "Living Room Setup": {
-        "grid": [400 ints],
-        "zones": ZoneSlot[8],   // same shape as room_layout.zone_slots
-        "roomWidth": float,
-        "roomDepth": float,
-        "furniture": [...]
+        "grid_bytes": [400 ints],
+        "zone_slots": ZoneSlot[8],   // same shape as room_layout.zone_slots
+        "room_width": float,
+        "room_depth": float,
+        "furniture": [...],
+        "settings": dict,            // sparse: only non-default fields
     }
 }
 ```
-
-Templates saved under 0.93.x (with a length-7 `zones` array and no zone 0)
-are rejected on load — the frontend throws and the user re-saves the
-template. No migration.
 
 All config is pushed to the device on save and on reconnect. The push
 prefers the existing frontend session connection when one is active
@@ -477,9 +474,9 @@ The integration implements the HA diagnostics platform (`diagnostics.py`). Users
 
 | Key | Description |
 |-----|-------------|
-| `integration_version` | Version from `manifest.json` |
+| `integration_version` | Version from `async_get_loaded_integration(hass, DOMAIN).version` |
 | `firmware_version` | `FIRMWARE_VERSION` constant |
 | `devices` | Output of `manager.list_devices()` — all managed devices with build flags |
 | `stored_configs` | Raw `EPPGridStore.devices` — per-device calibration, room layout, settings |
-| `templates` | Raw `EPPGridStore.templates` — saved room templates |
+| `configurations` | Raw `EPPGridStore.configurations` — saved configurations |
 | `entity_states` | Per-device dict of `{entity_id: state_value}` for all HA entities (including disabled) |
