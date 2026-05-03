@@ -36,8 +36,9 @@ static constexpr size_t GRID_BLOB_SIZE = GRID_CELL_COUNT + 2 * sizeof(float);
 // newline or trailing space from the WS layer doesn't trigger a false
 // rejection. Anything larger is treated as a buggy or malicious caller and
 // rejected before the base64 decoder is invoked. The runtime check in
-// tests/test_nvs_layout.cpp exercises the actual base64 encoder to confirm
-// the bound is tight enough.
+// tests/test_nvs_layout.cpp pins the numeric bounds (>= the canonical 536
+// for 400 bytes, <= a sane upper limit) so future GRID_COLS/ROWS changes
+// can't silently produce a too-small ceiling.
 static constexpr size_t GRID_BASE64_MAX = ((GRID_CELL_COUNT + 2) / 3) * 4 + 4;
 static_assert(GRID_BASE64_MAX >= GRID_CELL_COUNT,
               "Encoded form must be at least as big as decoded form");

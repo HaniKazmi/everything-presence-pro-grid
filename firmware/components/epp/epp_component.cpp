@@ -8,6 +8,7 @@
 #include "esphome/core/log.h"
 
 #include <ArduinoJson.h>
+#include <algorithm>
 #include <cmath>
 #include <cstring>
 #include <mbedtls/base64.h>
@@ -424,7 +425,13 @@ void EPPComponent::set_perspective(const std::string &perspective,
   // Logging stays here so the parser remains a pure helper testable on host.
   float coeffs[8];
   if (!parse_perspective_coefficients(perspective, coeffs)) {
-    ESP_LOGE(TAG, "Invalid perspective payload (need 8 finite comma-separated floats): %s",
+    // Don't echo the full payload — a buggy or malicious caller could spam logs
+    // / wear flash by submitting megabytes of garbage. A length-bounded prefix
+    // is enough for triage.
+    constexpr size_t MAX_LOG_PREFIX = 64;
+    ESP_LOGE(TAG, "Invalid perspective payload (need 8 finite comma-separated floats), len=%u, prefix=\"%.*s\"",
+             static_cast<unsigned>(perspective.size()),
+             static_cast<int>(std::min(perspective.size(), MAX_LOG_PREFIX)),
              perspective.c_str());
     return;
   }

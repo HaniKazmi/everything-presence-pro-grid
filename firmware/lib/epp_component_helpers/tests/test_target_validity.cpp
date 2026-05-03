@@ -15,6 +15,7 @@
 #include <doctest/doctest.h>
 
 #include <cmath>
+#include <limits>
 
 #include "epp_target_validity.h"
 #include "epp_types.h"
