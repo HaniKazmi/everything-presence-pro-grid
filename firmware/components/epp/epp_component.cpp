@@ -1,5 +1,6 @@
 #include "epp_component.h"
 #include "epp_zone_config_parser.h"
+#include "epp_nvs_layout.h"
 #include "esphome/core/log.h"
 
 #include <ArduinoJson.h>
@@ -491,10 +492,12 @@ void EPPComponent::restore_from_nvs_() {
     ESP_LOGI(TAG, "Restored perspective from NVS");
   }
 
-  // Restore grid (400 cell bytes + origin_x + origin_y = 408 bytes)
-  len = 408;
-  uint8_t grid_buf[408];
-  if (nvs_get_blob(handle, "grid", grid_buf, &len) == ESP_OK && len == 408) {
+  // Restore grid (GRID_CELL_COUNT cell bytes + origin_x + origin_y).
+  // GRID_BLOB_SIZE is centralised in epp_nvs_layout.h and pinned by a
+  // static_assert there.
+  len = GRID_BLOB_SIZE;
+  uint8_t grid_buf[GRID_BLOB_SIZE];
+  if (nvs_get_blob(handle, "grid", grid_buf, &len) == ESP_OK && len == GRID_BLOB_SIZE) {
     float origin_x, origin_y;
     memcpy(&origin_x, grid_buf + GRID_CELL_COUNT, sizeof(float));
     memcpy(&origin_y, grid_buf + GRID_CELL_COUNT + sizeof(float), sizeof(float));
@@ -588,8 +591,8 @@ void EPPComponent::save_grid_to_nvs_() {
     return;
   }
 
-  // Pack cell data + origin into blob
-  uint8_t buf[GRID_CELL_COUNT + 2 * sizeof(float)];
+  // Pack cell data + origin into blob (size = GRID_BLOB_SIZE)
+  uint8_t buf[GRID_BLOB_SIZE];
   for (int i = 0; i < GRID_CELL_COUNT; i++) {
     buf[i] = grid_.cell(i);
   }

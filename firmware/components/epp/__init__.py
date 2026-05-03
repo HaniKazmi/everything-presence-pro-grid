@@ -83,10 +83,11 @@ async def to_code(config):
     var = cg.new_Pvariable(config[CONF_ID])
     await cg.register_component(var, config)
 
-    # Add zone engine library
+    # Add zone engine library + pure-C++ helpers (host-testable, no ESPHome deps)
     lib_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "lib"))
     cg.add_platformio_option("lib_extra_dirs", lib_dir)
     cg.add_library("epp_zone_engine", None)
+    cg.add_library("epp_component_helpers", None)
 
     # Device tracking binary sensor
     if CONF_DEVICE_TRACKING in config:

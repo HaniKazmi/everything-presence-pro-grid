@@ -1,0 +1,11 @@
+{
+    "name": "epp_component_helpers",
+    "version": "1.0.0",
+    "description": "Pure-C++ host-testable helpers used by the EPP ESPHome glue component (frame ring buffer, NVS layout constants, change detection).",
+    "build": {
+        "flags": "-Iinclude"
+    },
+    "dependencies": {
+        "epp_zone_engine": "*"
+    }
+}
