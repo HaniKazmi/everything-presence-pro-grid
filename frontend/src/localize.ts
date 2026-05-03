@@ -93,9 +93,11 @@ export function setupLocalize(hass?: {
 		try {
 			return (fmt as IntlMessageFormat).format(params) as string;
 		} catch {
-			// format() can throw too (e.g. missing param for a plural with
-			// no `other` branch). Cache as bad so we short-circuit next time.
-			cacheSet(raw, null);
+			// format() failures are usually call-site bugs (e.g. missing
+			// param for a plural). Don't cache — once the caller fixes the
+			// params, subsequent calls should succeed. The compiled format
+			// instance stays in the cache, so we don't pay the constructor
+			// cost again on retry.
 			return raw;
 		}
 	}) as LocalizeFn;

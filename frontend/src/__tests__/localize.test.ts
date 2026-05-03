@@ -212,13 +212,22 @@ describe("setupLocalize", () => {
 			errSpy.mockRestore();
 		});
 
-		it("caches format() failures so subsequent calls short-circuit", () => {
+		it("does NOT cache format() failures — recovers when caller fixes params", () => {
 			const localize = setupLocalize();
-			// First call: constructor succeeds, format() throws → cached as null.
-			expect(() => {
-				for (let i = 0; i < 50; i++) localize("{x, plural, one {a}}", {});
-			}).not.toThrow();
-			expect(localize("{x, plural, one {a}}", {})).toBe("{x, plural, one {a}}");
+			// Plural without an `other` branch + missing arg → format() throws.
+			// We deliberately don't cache this kind of failure because it's
+			// usually a call-site bug; once the caller passes the right param,
+			// subsequent calls should succeed.
+			expect(() =>
+				localize("{count, plural, one {a} other {b}}", {}),
+			).not.toThrow();
+			// Same key with a valid param now formats successfully.
+			expect(localize("{count, plural, one {a} other {b}}", { count: 1 })).toBe(
+				"a",
+			);
+			expect(localize("{count, plural, one {a} other {b}}", { count: 5 })).toBe(
+				"b",
+			);
 		});
 	});
 });
