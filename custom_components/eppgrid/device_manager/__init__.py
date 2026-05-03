@@ -176,6 +176,12 @@ class DeviceManager:
         for cancel in self._entity_update_clear_cancels.values():
             cancel()
         self._entity_update_clear_cancels.clear()
+        # Drain any in-flight close tasks scheduled via schedule_close_session
+        # so a slow disconnect can't outlive teardown and keep running against
+        # a stopped manager.
+        if self._pending_closes:
+            await asyncio.gather(*self._pending_closes.values(), return_exceptions=True)
+            self._pending_closes.clear()
         for conn in self._active_connections.values():
             await conn.async_disconnect()
         self._active_connections.clear()
@@ -260,9 +266,17 @@ class DeviceManager:
                 except Exception as err:
                     # Wrap aioesphomeapi (and any other unexpected) exceptions so
                     # callers see a stable message-bearing type rather than raw
-                    # technical text from a third-party library.
+                    # technical text from a third-party library. Carry
+                    # translation metadata so the websocket / Repairs surfaces
+                    # can localize the message — the docstring promises a
+                    # translation_key on every failure path.
                     _LOGGER.warning("OTA trigger for %s failed", mac, exc_info=True)
-                    raise HomeAssistantError(f"Could not contact device {mac}: {err}") from err
+                    raise HomeAssistantError(
+                        f"Could not contact device {mac}: {err}",
+                        translation_domain=_DOMAIN,
+                        translation_key="ota_trigger_failed",
+                        translation_placeholders={"mac": mac, "error": str(err)},
+                    ) from err
                 _LOGGER.info("Triggered OTA for %s (manifest=%s)", mac, manifest_url)
             finally:
                 await conn.async_disconnect()
@@ -551,6 +565,8 @@ class DeviceManager:
                 unsub()
         self._build_flags.pop(mac, None)
         self._session_locks.pop(mac, None)
+        self._ota_locks.pop(mac, None)
+        self._connection_failed.discard(mac)
         self._entity_update_macs.discard(mac)
         self._pushing.discard(mac)
         # Clear any Repairs issues we raised for this device — they'd

@@ -790,6 +790,46 @@ class TestDeviceManager:
 
             mock_conn.async_disconnect.assert_awaited()
 
+    async def test_on_device_removed_clears_connection_failed(
+        self, hass: HomeAssistant, manager: DeviceManager
+    ) -> None:
+        """Removing a device must drop its mac from `_connection_failed`.
+        Otherwise a same-MAC re-discovery would inherit the stale failing
+        flag and suppress the first failure-transition broadcast."""
+        mac = "AA:BB:CC:DD:EE:FF"
+        manager.devices[mac] = ManagedDevice(mac=mac, name="EPP", host="192.168.1.50")
+        manager._connection_failed.add(mac)
+
+        await manager._on_device_removed(mac)
+        assert mac not in manager._connection_failed
+
+    async def test_stop_awaits_pending_closes(self, hass: HomeAssistant, manager: DeviceManager) -> None:
+        """async_stop must drain `_pending_closes` so a slow-disconnect close
+        task can't outlive teardown and keep running against a manager that
+        is supposed to be stopped."""
+        manager.devices["AA:BB:CC:DD:EE:FF"] = ManagedDevice(mac="AA:BB:CC:DD:EE:FF", name="EPP", host="192.168.1.50")
+
+        release = asyncio.Event()
+        existing = MagicMock()
+
+        async def slow_disconnect() -> None:
+            await release.wait()
+
+        existing.async_disconnect = AsyncMock(side_effect=slow_disconnect)
+        existing.connected = True
+        manager._active_connections["AA:BB:CC:DD:EE:FF"] = existing
+
+        # Schedule a close — this creates a pending task in _pending_closes.
+        manager.schedule_close_session("AA:BB:CC:DD:EE:FF")
+        assert "AA:BB:CC:DD:EE:FF" in manager._pending_closes
+
+        # async_stop must complete even though the close is still in flight.
+        # Release just before stop so the task can finish during the drain.
+        release.set()
+        await manager.async_stop()
+        # All pending close tasks drained.
+        assert manager._pending_closes == {}
+
     async def test_schedule_entity_update_clear_cancels_on_stop(
         self, hass: HomeAssistant, manager: DeviceManager
     ) -> None:
@@ -1008,6 +1048,10 @@ class TestAsyncTriggerOta:
         mock_conn.async_disconnect.assert_awaited_once()
 
     async def test_wraps_unexpected_exception(self, hass: HomeAssistant, manager: DeviceManager) -> None:
+        """Transport errors must be wrapped in a HomeAssistantError that
+        carries translation metadata so the websocket / Repairs surfaces
+        can localize them — the docstring promises a translation_key on
+        every failure path."""
         from homeassistant.exceptions import HomeAssistantError
 
         self._setup_device(manager)
@@ -1017,9 +1061,11 @@ class TestAsyncTriggerOta:
 
         with (
             patch("custom_components.eppgrid.device_manager.DeviceConnection", return_value=mock_conn),
-            pytest.raises(HomeAssistantError),
+            pytest.raises(HomeAssistantError) as excinfo,
         ):
             await manager.async_trigger_ota("AA:BB:CC:DD:EE:FF")
+        assert excinfo.value.translation_key == "ota_trigger_failed"
+        assert excinfo.value.translation_domain
         mock_conn.async_disconnect.assert_awaited_once()
 
     async def test_concurrent_trigger_ota_rejects_second_caller(

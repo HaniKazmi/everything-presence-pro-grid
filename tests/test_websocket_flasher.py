@@ -298,6 +298,73 @@ class TestSubscribeFlashableDevices:
         # The cancelled task should not have produced a new send_message
         assert connection.send_message.call_count == send_count_before
 
+    async def test_unsubscribe_cancels_all_concurrent_send_updates(
+        self, hass: HomeAssistant, config_entry: MockConfigEntry
+    ) -> None:
+        """If `on_device_list_changed` fires multiple times before the first
+        refresh finishes, every in-flight task must be cancelled on _unsub —
+        otherwise older tasks keep waiting on `list_flashable_devices` long
+        after the subscriber is gone, even if the `closed` guard prevents
+        a wrong send afterwards. Tracked via tasks-spawned vs tasks-cancelled."""
+        import asyncio
+
+        mock_dm = await setup_integration(hass, config_entry)
+
+        list_release = asyncio.Event()
+        spawned: list[asyncio.Future] = []
+
+        async def slow_list():
+            current = asyncio.current_task()
+            assert current is not None
+            spawned.append(current)
+            await list_release.wait()
+            return []
+
+        mock_dm.list_flashable_devices = AsyncMock(side_effect=slow_list)
+
+        captured_cb = None
+
+        def capture_on_changed(cb):
+            nonlocal captured_cb
+            captured_cb = cb
+            return lambda: None
+
+        mock_dm.on_device_list_changed = MagicMock(side_effect=capture_on_changed)
+
+        from custom_components.eppgrid.websocket_api import websocket_subscribe_flashable_devices
+
+        connection = MagicMock()
+        connection.subscriptions = {}
+        msg = {"id": 35, "type": "eppgrid/subscribe_flashable_devices"}
+
+        # Initial _send_update is awaited inside the handler — release for it
+        # then re-arm the gate.
+        list_release.set()
+        await call_async_handler(hass, websocket_subscribe_flashable_devices, connection, msg)
+        list_release.clear()
+
+        # Fire two _on_changed back-to-back. Both should be tracked.
+        captured_cb()
+        captured_cb()
+        # Let both tasks reach the await point.
+        for _ in range(5):
+            await asyncio.sleep(0)
+
+        # Both _on_changed tasks should have made it into slow_list and be
+        # parked on list_release.
+        on_changed_tasks = spawned[1:]  # spawned[0] was the initial _send_update
+        assert len(on_changed_tasks) == 2
+
+        # Unsubscribe — both pending tasks must be cancelled.
+        connection.subscriptions[35]()
+        await asyncio.sleep(0)
+
+        for t in on_changed_tasks:
+            assert t.cancelled() or t.done(), f"task {t!r} not cancelled by _unsub"
+
+        list_release.set()
+        await hass.async_block_till_done()
+
 
 class TestDeleteEsphomeDevice:
     """Tests for eppgrid/delete_esphome_device."""
