@@ -132,6 +132,41 @@ TEST_CASE("non-object slot entries are skipped (no phantom zones)") {
   CHECK(configs[0].id == 3);
 }
 
+TEST_CASE("parsed configs do not retain pointers into the JsonDocument") {
+  // PR-8 item M3: epp_component.cpp uses a `JsonDocument doc; deserializeJson(doc, json);
+  // parse_zone_configs(doc, ...);` pattern, then lets `doc` go out of scope.
+  // For this to be safe, ZoneConfig must store all its fields by VALUE — no
+  // const char * pointers into the doc's internal buffer. This test pins
+  // that invariant by populating ZoneConfig from a parser doc, destroying
+  // the doc, and checking the values still read correctly.
+  ZoneConfig configs[MAX_ZONE_SLOTS]{};
+  int count = 0;
+  {
+    const char *json =
+        "{"
+        "\"zone_slots\":["
+        "{\"trigger\":7,\"renew\":4,\"timeout\":33.5,\"handoff_timeout\":4.25},"
+        "{\"trigger\":2,\"renew\":1,\"timeout\":12.0,\"handoff_timeout\":3.0},"
+        "null,null,null,null,null,null"
+        "]"
+        "}";
+    JsonDocument doc;
+    REQUIRE(deserializeJson(doc, json) == DeserializationError::Ok);
+    parse_zone_configs(doc, configs, count);
+    // doc is destroyed at the end of this scope; if ZoneConfig held char* into
+    // its buffer, the assertions below would dereference freed memory.
+  }
+
+  REQUIRE(count == 2);
+  CHECK(configs[0].id == 0);
+  CHECK(configs[0].trigger == 7);
+  CHECK(configs[0].renew == 4);
+  CHECK(configs[0].timeout == doctest::Approx(33.5f));
+  CHECK(configs[0].handoff_timeout == doctest::Approx(4.25f));
+  CHECK(configs[1].id == 1);
+  CHECK(configs[1].trigger == 2);
+}
+
 TEST_CASE("slot id field is ignored in favour of slot index") {
   // Even if the payload carries an id, the slot position wins. Prevents a
   // stale id from shifting a zone's slot.

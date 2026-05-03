@@ -35,12 +35,10 @@ void EPPComponent::setup() {
 }
 
 void EPPComponent::loop() {
-  if (frame_buffer_.empty()) return;
-
   uint32_t now = esphome::millis();
   float ts = now / 1000.0f;
 
-  // === PROCESSING PIPELINE — drain ALL queued frames ===
+  // === PROCESSING PIPELINE — drain ALL queued frames (if any) ===
   //
   // If loop() ran on time we drain a single frame. If ESPHome was held up
   // (e.g. by a slow component) and multiple LD2450 frames have arrived, we
@@ -48,11 +46,14 @@ void EPPComponent::loop() {
   // see every sample — no silent merging that would otherwise distort the
   // median or under-count detection events.
   //
-  // The publish-throttle block below runs once per loop call against the
-  // freshest result (last_zone_result_), which is what HA needs.
+  // We do NOT early-return when the ring buffer is empty: the publish
+  // throttles below need to fire unconditionally so a dead LD2450 produces
+  // observable "no signal" state in HA rather than every sensor freezing
+  // at its last value. See is_frame_stale in epp_frame_staleness.h.
   TargetFrame frame;
-  WindowOutput last_win{};
   while (frame_buffer_.pop(frame)) {
+    // last_frame_ms_ / has_received_frame_ are set in feed_targets so the
+    // stale-frame watchdog reflects actual receipt time, not drain time.
     frame_count_++;
 
     // Stage 1: Feed raw positions into rolling median.
@@ -70,7 +71,6 @@ void EPPComponent::loop() {
 
     // Stage 2: Get smoothed raw, transform to grid coordinates
     const auto &win = window_.output();
-    last_win = win;  // remember the freshest window output for the publish block
     TargetInput grid_inputs[NUM_TARGETS];
     for (int i = 0; i < NUM_TARGETS; i++) {
       if (win.targets[i].active) {
@@ -135,20 +135,61 @@ void EPPComponent::loop() {
     }
 
     last_zone_result_ = result;
+    last_window_output_ = win;
   }
 
+  // Stale-frame check: if the LD2450 has stopped sending, synthesize an empty
+  // window output and processing result so the publish blocks below emit
+  // "no signal" / INACTIVE state instead of the last known good values. This
+  // is what gives HA a visible "device offline" signal rather than frozen
+  // sensors that look alive.
+  bool stale = is_frame_stale(now, last_frame_ms_, has_received_frame_, STALE_FRAME_MS);
+  // One-shot edge log: surface the LD2450 going silent (and recovering) once,
+  // not every tick. Cold-start (has_received_frame_ == false) is treated as
+  // stale by is_frame_stale but we don't log a "lost" line until at least one
+  // frame has been seen, otherwise every boot logs a phantom radar failure.
+  // For the same reason, only latch was_stale_ after we've seen a real frame —
+  // otherwise the first frame after cold-start would trip the !stale &&
+  // was_stale_ branch and log a spurious "frames recovered" line.
+  if (stale && !was_stale_ && has_received_frame_) {
+    ESP_LOGW(TAG, "LD2450 frames stale (last frame %ums ago); publishing offline state",
+             now - last_frame_ms_);
+  } else if (!stale && was_stale_) {
+    ESP_LOGI(TAG, "LD2450 frames recovered");
+  }
+  if (has_received_frame_) {
+    was_stale_ = stale;
+  }
+
+  // Static const so we don't pay the value-init cost (ProcessingResult holds a
+  // log buffer) on every loop tick. Both default to "all inactive / no log".
+  static const WindowOutput STALE_WIN{};
+  static const ProcessingResult STALE_RESULT{};
+
   // The publish block below references `win` (last frame's window output)
-  // and `result` (cached in last_zone_result_). Re-bind `win` to the last
-  // processed frame's window output so the existing code reads the same
-  // snapshot it always did.
-  const auto &win = last_win;
-  const auto &result = last_zone_result_;
+  // and `result` (cached in last_zone_result_). When stale, point them at the
+  // empty synthesized values so each throttle publishes the offline state.
+  const auto &win = stale ? STALE_WIN : last_window_output_;
+  const auto &result = stale ? STALE_RESULT : last_zone_result_;
 
   // === PUBLISH THROTTLES (do not affect processing) ===
 
   // Timer 1: Display (internal transport text sensors, frontend only)
   if (display_interval_ms_ > 0 && now - last_display_publish_ms_ >= display_interval_ms_) {
     last_display_publish_ms_ = now;
+
+    // Skip publish_state when the payload matches the last publish so the
+    // empty-string flood (when no targets are active) doesn't spam HA every
+    // display tick. ESPHome text_sensor doesn't dedupe string publishes.
+    auto publish_text_if_changed = [](esphome::text_sensor::TextSensor *sensor,
+                                       const char *value, std::string &cache,
+                                       bool &has_cache) {
+      if (sensor == nullptr) return;
+      if (has_cache && cache == value) return;
+      sensor->publish_state(value);
+      cache = value;
+      has_cache = true;
+    };
 
     // Publish raw target positions (pre-transform, smoothed)
     for (int i = 0; i < NUM_TARGETS; i++) {
@@ -158,9 +199,13 @@ void EPPComponent::loop() {
           snprintf(buf, sizeof(buf), "%.0f,%.0f",
                    win.targets[i].median_x,
                    win.targets[i].median_y);
-          raw_target_sensors_[i]->publish_state(buf);
+          publish_text_if_changed(raw_target_sensors_[i], buf,
+                                  last_raw_target_text_[i],
+                                  has_last_raw_target_text_[i]);
         } else {
-          raw_target_sensors_[i]->publish_state("");
+          publish_text_if_changed(raw_target_sensors_[i], "",
+                                  last_raw_target_text_[i],
+                                  has_last_raw_target_text_[i]);
         }
       }
     }
@@ -177,9 +222,13 @@ void EPPComponent::loop() {
           char buf[64];
           snprintf(buf, sizeof(buf), "%.0f,%.0f,%s",
                    result.targets[i].x, result.targets[i].y, status_str);
-          target_position_sensors_[i]->publish_state(buf);
+          publish_text_if_changed(target_position_sensors_[i], buf,
+                                  last_target_position_text_[i],
+                                  has_last_target_position_text_[i]);
         } else {
-          target_position_sensors_[i]->publish_state("");
+          publish_text_if_changed(target_position_sensors_[i], "",
+                                  last_target_position_text_[i],
+                                  has_last_target_position_text_[i]);
         }
       }
     }
@@ -340,16 +389,33 @@ void EPPComponent::loop() {
       last_frames_dropped_log_ts_ = now;
     }
 
-    if (device_tracking_sensor_ != nullptr)
-      device_tracking_sensor_->publish_state(result.device_tracking_present);
-    if (static_presence_output_ != nullptr)
-      static_presence_output_->publish_state(result.static_state != SensorPresenceState::INACTIVE);
-    if (motion_presence_output_ != nullptr)
-      motion_presence_output_->publish_state(result.motion_state != SensorPresenceState::INACTIVE);
-    if (occupancy_output_ != nullptr)
-      occupancy_output_->publish_state(result.occupancy);
-    if (mmwave_output_ != nullptr)
-      mmwave_output_->publish_state(result.mmwave);
+    // Skip publish_state when the value matches our last publish so the API
+    // event stream isn't flooded once per second with unchanged binary states.
+    // ESPHome dedupes the wire-side transport but still fires the API event.
+    auto publish_bool_if_changed = [](esphome::binary_sensor::BinarySensor *sensor,
+                                      bool value, int8_t &cache) {
+      if (sensor == nullptr) return;
+      int8_t v = value ? 1 : 0;
+      if (cache == v) return;
+      sensor->publish_state(value);
+      cache = v;
+    };
+
+    publish_bool_if_changed(device_tracking_sensor_,
+                            result.device_tracking_present,
+                            last_device_tracking_published_);
+    publish_bool_if_changed(static_presence_output_,
+                            result.static_state != SensorPresenceState::INACTIVE,
+                            last_static_presence_published_);
+    publish_bool_if_changed(motion_presence_output_,
+                            result.motion_state != SensorPresenceState::INACTIVE,
+                            last_motion_presence_published_);
+    publish_bool_if_changed(occupancy_output_,
+                            result.occupancy,
+                            last_occupancy_published_);
+    publish_bool_if_changed(mmwave_output_,
+                            result.mmwave,
+                            last_mmwave_published_);
 
     // Relay evaluation.
     // Gate side-effecting relay state changes until boot has settled — see
@@ -374,12 +440,20 @@ void EPPComponent::loop() {
           result.occupancy,
       };
       auto relay_result = evaluate_relay(relay_input);
-      if (relay_result.desired_state != relay_switch_->state) {
+      // Use the component's own last-issued desired state — never read
+      // relay_switch_->state directly. The switch's state can be flipped by
+      // HA, an automation, or an optimistic update; reacting to it makes
+      // us fight user intent on the next loop tick. See epp_relay_publish.h.
+      if (relay_should_update(relay_result.desired_state,
+                              relay_desired_state_,
+                              has_relay_desired_state_)) {
         if (relay_result.desired_state) {
           relay_switch_->turn_on();
         } else {
           relay_switch_->turn_off();
         }
+        relay_desired_state_ = relay_result.desired_state;
+        has_relay_desired_state_ = true;
       }
     }
   }
@@ -389,6 +463,33 @@ float EPPComponent::get_setup_priority() const {
   return esphome::setup_priority::DATA;
 }
 
+void EPPComponent::dump_config() {
+  ESP_LOGCONFIG(TAG, "EPP Zone Engine:");
+  ESP_LOGCONFIG(TAG, "  Firmware Version: %s", FIRMWARE_VERSION_STR);
+  ESP_LOGCONFIG(TAG, "  Throttle intervals (ms, 0 = disabled):");
+  ESP_LOGCONFIG(TAG, "    display:       %u", display_interval_ms_);
+  ESP_LOGCONFIG(TAG, "    zone_state:    %u", zone_state_interval_ms_);
+  ESP_LOGCONFIG(TAG, "    entity_target: %u", entity_target_interval_ms_);
+  ESP_LOGCONFIG(TAG, "    entity_zone:   %u", entity_zone_interval_ms_);
+  ESP_LOGCONFIG(TAG, "    system:        %u (fixed)", SYSTEM_INTERVAL_MS);
+  ESP_LOGCONFIG(TAG, "  Sensor wiring:");
+  ESP_LOGCONFIG(TAG, "    device_tracking:  %s", device_tracking_sensor_ ? "yes" : "no");
+  ESP_LOGCONFIG(TAG, "    firmware_version: %s", firmware_version_sensor_ ? "yes" : "no");
+  ESP_LOGCONFIG(TAG, "    zone_state:       %s", zone_state_sensor_ ? "yes" : "no");
+  ESP_LOGCONFIG(TAG, "    static_input:     %s", static_presence_sensor_ ? "yes" : "no");
+  ESP_LOGCONFIG(TAG, "    motion_input:     %s", motion_presence_sensor_ ? "yes" : "no");
+  ESP_LOGCONFIG(TAG, "    target_count:     %s", target_count_sensor_ ? "yes" : "no");
+  ESP_LOGCONFIG(TAG, "  Sensor timeouts: static=%.1fs motion=%.1fs", static_timeout_, motion_timeout_);
+  ESP_LOGCONFIG(TAG, "  Relay: trigger=%d contact=%d switch=%s",
+                static_cast<int>(relay_trigger_mode_),
+                static_cast<int>(relay_contact_mode_),
+                relay_switch_ ? "wired" : "unwired");
+  ESP_LOGCONFIG(TAG, "  NVS restore status:");
+  ESP_LOGCONFIG(TAG, "    perspective: %s", has_persp_cache_ ? "loaded" : "absent");
+  ESP_LOGCONFIG(TAG, "    grid:        %s", has_grid_cache_ ? "loaded" : "absent");
+  ESP_LOGCONFIG(TAG, "    zones:       %s", has_zones_cache_ ? "loaded" : "absent");
+}
+
 void EPPComponent::feed_targets(float x1, float y1, bool d1,
                                 float x2, float y2, bool d2,
                                 float x3, float y3, bool d3) {
@@ -396,6 +497,13 @@ void EPPComponent::feed_targets(float x1, float y1, bool d1,
   frame.targets[0] = {x1, y1, d1};
   frame.targets[1] = {x2, y2, d2};
   frame.targets[2] = {x3, y3, d3};
+  // Record receipt time for the stale-frame watchdog. If we set last_frame_ms_
+  // in loop()'s drain instead, a delayed loop draining old buffered frames
+  // would clear staleness for another STALE_FRAME_MS window even though the
+  // radar may have stopped sending — see is_frame_stale in
+  // epp_frame_staleness.h.
+  last_frame_ms_ = esphome::millis();
+  has_received_frame_ = true;
   if (!frame_buffer_.push(frame)) {
     // Buffer was full — oldest frame evicted. Bump the counter so the issue
     // is visible in diagnostics rather than disappearing silently.
@@ -408,8 +516,23 @@ void EPPComponent::feed_targets(float x1, float y1, bool d1,
 // ---------------------------------------------------------------------------
 
 void EPPComponent::dismiss_target(int target_index, int cell_index) {
-    zone_engine_.dismiss_target(target_index, cell_index);
-    ESP_LOGI(TAG, "Dismissed target %d at cell %d", target_index, cell_index);
+  // Glue-layer bounds check: HA can call this with arbitrary ints. cell_index
+  // == -1 is a valid sentinel meaning "no cell" (used by zone_engine to clear
+  // a per-target dismissal). The engine bounds-checks too, but short-
+  // circuiting bad user input here keeps the log clean and avoids touching
+  // engine state with garbage indices.
+  if (target_index < 0 || target_index >= MAX_TARGETS) {
+    ESP_LOGW(TAG, "dismiss_target: target_index %d out of range [0, %d)",
+             target_index, MAX_TARGETS);
+    return;
+  }
+  if (cell_index < -1 || cell_index >= GRID_CELL_COUNT) {
+    ESP_LOGW(TAG, "dismiss_target: cell_index %d out of range [-1, %d)",
+             cell_index, GRID_CELL_COUNT);
+    return;
+  }
+  zone_engine_.dismiss_target(target_index, cell_index);
+  ESP_LOGI(TAG, "Dismissed target %d at cell %d", target_index, cell_index);
 }
 
 // ---------------------------------------------------------------------------
@@ -431,6 +554,16 @@ void EPPComponent::set_perspective(const std::string &perspective,
              static_cast<unsigned>(perspective.size()),
              static_cast<int>(std::min(perspective.size(), MAX_LOG_PREFIX)),
              perspective.c_str());
+    return;
+  }
+
+  // Room dimensions must be strictly positive: downstream target→cell mapping
+  // divides by these values, and zero/negative dims silently produce garbage
+  // (NaN/Inf cells, wrong-sign coordinates). Reject at the glue boundary so
+  // bad input from HA is logged instead of silently corrupting state.
+  if (!(room_width > 0.0f) || !(room_depth > 0.0f)) {
+    ESP_LOGE(TAG, "Invalid room dimensions: width=%.1f depth=%.1f (both must be > 0)",
+             room_width, room_depth);
     return;
   }
 
@@ -532,6 +665,13 @@ void EPPComponent::set_grid(const std::string &grid_data,
 // ---------------------------------------------------------------------------
 
 void EPPComponent::set_zones(const std::string &zones_json) {
+  // ArduinoJson v7 unified JsonDocument: it owns its memory pool internally
+  // and grows on demand. The pool sits on the JsonDocument object, so when
+  // `doc` lives on the stack the pool's first chunk does too — no hidden heap
+  // alloc for typical-size payloads (~8 zones × ~60 bytes resolved fields ≈
+  // 0.5 KB). parse_zone_configs only copies primitives (ints/floats) into
+  // ZoneConfig — see the retention-guard test in test_zone_config_parser.cpp
+  // — so the doc can safely go out of scope once we've parsed.
   JsonDocument doc;
   if (deserializeJson(doc, zones_json)) {
     ESP_LOGE(TAG, "Failed to parse zones JSON");
@@ -682,6 +822,8 @@ void EPPComponent::restore_from_nvs_() {
         zones_str.pop_back();
       }
       // Parse and apply but don't re-save — call the shared parsing helper.
+      // See set_zones() for why the JsonDocument is safe on the stack and
+      // why parse_zone_configs doesn't retain pointers into the doc.
       JsonDocument doc;
       DeserializationError parse_err = deserializeJson(doc, zones_str);
       if (!parse_err) {

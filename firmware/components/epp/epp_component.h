@@ -12,7 +12,9 @@
 #include "epp_zone_engine.h"
 #include "epp_relay.h"
 #include "epp_frame_ring_buffer.h"
+#include "epp_frame_staleness.h"
 #include "epp_nvs_layout.h"
+#include "epp_relay_publish.h"
 
 #include <string>
 
@@ -28,6 +30,7 @@ class EPPComponent : public esphome::Component {
  public:
   void setup() override;
   void loop() override;
+  void dump_config() override;
   float get_setup_priority() const override;
 
   /// Called from LD2450 UART lambda with parsed target data
@@ -236,6 +239,29 @@ class EPPComponent : public esphome::Component {
 
   // Cached zone result
   ProcessingResult last_zone_result_{};
+  // Cached window output (rolling-median view) of the most recent frame
+  // processed. Used by the Display throttle when no new frames arrived this
+  // loop tick. See M6 stale-frame handling.
+  WindowOutput last_window_output_{};
+
+  // Cached last-published values for the System block's binary_sensor outputs.
+  // ESPHome's binary_sensor::publish_state already dedupes the wire transport,
+  // but the API event still fires every call. Skip when the value matches our
+  // last publish to keep HA's event stream quiet. -1 sentinel = never published.
+  int8_t last_device_tracking_published_ = -1;
+  int8_t last_static_presence_published_ = -1;
+  int8_t last_motion_presence_published_ = -1;
+  int8_t last_occupancy_published_ = -1;
+  int8_t last_mmwave_published_ = -1;
+
+  // Cached last-published text for the Display block's text_sensor outputs.
+  // Same rationale as the binary_sensor caches above: the empty-string publish
+  // when no targets are present floods HA every display tick (e.g. 4 Hz). Skip
+  // when the new payload matches the cached one.
+  std::string last_raw_target_text_[NUM_TARGETS]{};
+  std::string last_target_position_text_[NUM_TARGETS]{};
+  bool has_last_raw_target_text_[NUM_TARGETS]{};
+  bool has_last_target_position_text_[NUM_TARGETS]{};
 
   // Boot settling — gate relay state changes until the device has either
   // received its first frame or waited out BOOT_SETTLE_MS. Template switches
@@ -245,6 +271,24 @@ class EPPComponent : public esphome::Component {
   bool boot_settled_ = false;
   uint32_t boot_ms_ = 0;
   static constexpr uint32_t BOOT_SETTLE_MS = 2000;
+
+  // Track our own last-issued relay desired state so we don't fight a
+  // user-driven toggle from HA. See epp_relay_publish.h for the rationale.
+  // Reading relay_switch_->state instead would re-issue every loop tick after
+  // the user toggled the switch, undoing user intent.
+  bool relay_desired_state_ = false;
+  bool has_relay_desired_state_ = false;
+
+  // Stale-frame watchdog. If the LD2450 stops sending (radar dies, UART hangs)
+  // the throttle timers must still fire and publish "no signal" so HA sees
+  // the device go offline rather than having every sensor frozen at its last
+  // value. STALE_FRAME_MS is generous: at 10Hz LD2450 rate, 5s = 50 missed
+  // frames, well past any plausible scheduling jitter. See is_frame_stale in
+  // epp_frame_staleness.h.
+  uint32_t last_frame_ms_ = 0;
+  bool has_received_frame_ = false;
+  bool was_stale_ = false;  // edge-detect for one-shot stale/recover log lines
+  static constexpr uint32_t STALE_FRAME_MS = 5000;
 };
 
 }  // namespace epp
