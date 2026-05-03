@@ -63,6 +63,15 @@ export class DeviceController implements ReactiveController {
 	private _connectionFailed = false;
 	private _lastSelectedOnline: boolean | null = null;
 	private _reopenInFlight?: { mac: string; promise: Promise<void> };
+	private _loadConfigInFlight?: { mac: string; promise: Promise<any> };
+	// Generation tokens — incremented on (un)subscribe and connection swap.
+	// A subscribeMessage promise that resolves while its token has been
+	// bumped (host disconnected, user switched device, hass replaced) drops
+	// the returned unsub immediately so the server-side subscription doesn't
+	// leak.
+	private _targetsGen = 0;
+	private _displayGen = 0;
+	private _deviceListGen = 0;
 
 	constructor(host: ReactiveControllerHost) {
 		this._host = host;
@@ -88,6 +97,17 @@ export class DeviceController implements ReactiveController {
 			this._unsubDevice = undefined;
 			this._unsubTargets = undefined;
 			this._unsubDisplay = undefined;
+			this._unsubDeviceList = undefined;
+			if (this._targetRetryTimer) {
+				clearTimeout(this._targetRetryTimer);
+				this._targetRetryTimer = undefined;
+			}
+			// Bump generation tokens so any in-flight subscribeMessage
+			// promises against the old connection drop their unsub when
+			// they finally resolve.
+			this._targetsGen++;
+			this._displayGen++;
+			this._deviceListGen++;
 		}
 	}
 
@@ -119,8 +139,8 @@ export class DeviceController implements ReactiveController {
 			const result = await this._hass.callWS({
 				type: "eppgrid/list_devices",
 			});
-			this.devices = ((result as any).devices as DeviceInfo[]).sort((a, b) =>
-				(a.name || "").localeCompare(b.name || ""),
+			this.devices = [...((result as any).devices as DeviceInfo[])].sort(
+				(a, b) => (a.name || "").localeCompare(b.name || ""),
 			);
 			this.setShowRoomCalibrationTutorial(
 				(result as any).show_room_calibration_tutorial ?? true,
@@ -145,16 +165,24 @@ export class DeviceController implements ReactiveController {
 	async subscribeDeviceList(): Promise<void> {
 		this.unsubscribeDeviceList();
 		if (!this._hass) return;
+		const token = ++this._deviceListGen;
 		try {
-			this._unsubDeviceList = await this._hass.connection.subscribeMessage(
+			const unsub = await this._hass.connection.subscribeMessage(
 				(msg: any) => {
 					this.setShowRoomCalibrationTutorial(
 						msg.show_room_calibration_tutorial ?? true,
 					);
-					this._applyDeviceList(msg.devices as DeviceInfo[]);
+					this._applyDeviceList((msg.devices as DeviceInfo[]) ?? []);
 				},
 				{ type: "eppgrid/subscribe_device_list" },
 			);
+			if (this._deviceListGen !== token) {
+				try {
+					unsub();
+				} catch {}
+				return;
+			}
+			this._unsubDeviceList = unsub;
 		} catch {
 			// Fallback to one-shot load if subscription not supported
 			await this.loadDevices();
@@ -162,6 +190,7 @@ export class DeviceController implements ReactiveController {
 	}
 
 	unsubscribeDeviceList(): void {
+		this._deviceListGen++;
 		if (this._unsubDeviceList) {
 			try {
 				this._unsubDeviceList();
@@ -173,7 +202,7 @@ export class DeviceController implements ReactiveController {
 	}
 
 	private _applyDeviceList(devices: DeviceInfo[]): void {
-		this.devices = devices.sort((a, b) =>
+		this.devices = [...devices].sort((a, b) =>
 			(a.name || "").localeCompare(b.name || ""),
 		);
 		// A transient empty list during HA/integration reload is
@@ -235,26 +264,45 @@ export class DeviceController implements ReactiveController {
 	 * Also opens the device session and subscribes to data streams.
 	 */
 	async loadDeviceConfig(mac: string): Promise<any> {
-		if (this._reconnecting) return null;
-		this._reconnecting = true;
-		this._host.requestUpdate();
-		try {
-			let config: any = null;
-			try {
-				const result = await this._hass.callWS({
-					type: "eppgrid/get_config",
-					mac,
-				});
-				config = (result as any).config;
-			} catch {
-				// Device may not be ready yet
-			}
-			await this.reopenSession(mac);
-			return config;
-		} finally {
-			this._reconnecting = false;
-			this._host.requestUpdate();
+		// Dedupe concurrent loads for the same mac so callers always get the
+		// same config rather than null on re-entry.  Different macs still
+		// queue: the user switching device mid-load shouldn't start a fresh
+		// load before the prior one's session/subscribe pipeline settles.
+		const inFlight = this._loadConfigInFlight;
+		if (inFlight) {
+			if (inFlight.mac === mac) return inFlight.promise;
+			await inFlight.promise.catch(() => {});
 		}
+		const entry: { mac: string; promise: Promise<any> } = {
+			mac,
+			promise: undefined as unknown as Promise<any>,
+		};
+		entry.promise = (async () => {
+			this._reconnecting = true;
+			this._host.requestUpdate();
+			try {
+				let config: any = null;
+				try {
+					const result = await this._hass.callWS({
+						type: "eppgrid/get_config",
+						mac,
+					});
+					config = (result as any).config;
+				} catch {
+					// Device may not be ready yet
+				}
+				await this.reopenSession(mac);
+				return config;
+			} finally {
+				this._reconnecting = false;
+				if (this._loadConfigInFlight === entry) {
+					this._loadConfigInFlight = undefined;
+				}
+				this._host.requestUpdate();
+			}
+		})();
+		this._loadConfigInFlight = entry;
+		return entry.promise;
 	}
 
 	/**
@@ -335,15 +383,11 @@ export class DeviceController implements ReactiveController {
 
 	// --- Target subscription ---
 	subscribeTargets(mac: string): void {
-		this.unsubscribeDisplay();
-		if (this._targetRetryTimer) {
-			clearTimeout(this._targetRetryTimer);
-			this._targetRetryTimer = undefined;
-		}
-		if (this._unsubTargets) {
-			this._unsubTargets();
-			this._unsubTargets = undefined;
-		}
+		// Tear down any prior subscription via unsubscribeTargets so we get
+		// the same try/catch + generation-bump treatment as the explicit
+		// unsubscribe path. A stale unsub against a dead connection throws,
+		// and would otherwise abort the whole resubscribe pipeline.
+		this.unsubscribeTargets();
 		if (!this._hass || !mac) return;
 
 		const conn = this._hass.connection;
@@ -354,6 +398,7 @@ export class DeviceController implements ReactiveController {
 
 	unsubscribeTargets(): void {
 		this.unsubscribeDisplay();
+		this._targetsGen++;
 		if (this._targetRetryTimer) {
 			clearTimeout(this._targetRetryTimer);
 			this._targetRetryTimer = undefined;
@@ -369,6 +414,7 @@ export class DeviceController implements ReactiveController {
 	}
 
 	private _subscribeGridTargets(conn: any, mac: string): void {
+		const token = ++this._targetsGen;
 		conn
 			.subscribeMessage(
 				(event: any) => {
@@ -424,9 +470,16 @@ export class DeviceController implements ReactiveController {
 				},
 			)
 			.then((unsub: () => void) => {
+				if (this._targetsGen !== token) {
+					try {
+						unsub();
+					} catch {}
+					return;
+				}
 				this._unsubTargets = unsub;
 			})
 			.catch(() => {
+				if (this._targetsGen !== token) return;
 				if (this._targetRetryTimer) {
 					clearTimeout(this._targetRetryTimer);
 				}
@@ -443,6 +496,7 @@ export class DeviceController implements ReactiveController {
 		this.unsubscribeDisplay();
 		if (!this._hass || !mac) return;
 
+		const token = ++this._displayGen;
 		this._hass.connection
 			.subscribeMessage(
 				(event: any) => {
@@ -460,6 +514,12 @@ export class DeviceController implements ReactiveController {
 				},
 			)
 			.then((unsub: () => void) => {
+				if (this._displayGen !== token) {
+					try {
+						unsub();
+					} catch {}
+					return;
+				}
 				this._unsubDisplay = unsub;
 			})
 			.catch(() => {
@@ -470,6 +530,7 @@ export class DeviceController implements ReactiveController {
 	}
 
 	unsubscribeDisplay(): void {
+		this._displayGen++;
 		if (this._unsubDisplay) {
 			try {
 				this._unsubDisplay();

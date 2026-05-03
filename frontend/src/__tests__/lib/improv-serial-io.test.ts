@@ -4,6 +4,7 @@ import {
 	buildScanCommand,
 	drainSerial,
 	readImprovResponse,
+	releaseReader,
 	sendImprovPacket,
 	TYPE_RPC_RESULT,
 } from "../../lib/improv-serial.js";
@@ -217,6 +218,28 @@ describe("readImprovResponse", () => {
 			expect(result.packets[0].data[0]).toBe(0x99);
 			expect(reader.read).toHaveBeenCalledTimes(2);
 		});
+	});
+});
+
+describe("releaseReader", () => {
+	it("calls releaseLock and clears any pending read entry", async () => {
+		// runWifiScan releases & re-acquires readers across retry attempts.
+		// Without an explicit cleanup, the in-flight read promise would
+		// remain in the WeakMap keyed off the released reader. WeakMap
+		// auto-cleans on GC, but until then the entry is dead weight and
+		// any code path that stumbles on it would re-await a stale
+		// promise. Behavioral check: after release + re-acquire, the
+		// next read attempt must call read() afresh.
+		const reader = mockReader([buildPacket(TYPE_RPC_RESULT, [0x01])], {
+			delayMs: 200,
+		});
+		// Kick off a read so a pending promise is recorded internally.
+		const inFlight = readImprovResponse(reader, 50, []);
+		await expect(inFlight).rejects.toThrow("timeout");
+
+		releaseReader(reader);
+
+		expect(reader.releaseLock).toHaveBeenCalled();
 	});
 });
 

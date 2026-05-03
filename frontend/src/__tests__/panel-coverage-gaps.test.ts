@@ -160,6 +160,40 @@ describe("disconnectedCallback restores history methods", () => {
 		a.disconnectedCallback();
 	});
 
+	it("disconnect after a second panel instance restores the same truly-original pushState", () => {
+		// Two instances connect in sequence (e.g. panel remount). The
+		// second's _originalPushState was previously captured AFTER the
+		// first wrapped — i.e. it's the first's wrapper. Restoring it on
+		// disconnect "uninstalls" the second but leaves the first's wrapper
+		// in place, and a *third* mount would chain its wrap on top of
+		// that wrap, growing the chain unboundedly across remounts. Stash
+		// the truly-original on window once and chain off it instead so
+		// every instance sees the same bare original.
+		delete (window as any).__eppOriginalPushState;
+		delete (window as any).__eppOriginalReplaceState;
+
+		const first = createPanel() as any;
+		first.hass = null;
+		first.connectedCallback();
+		const trulyOriginal = (window as any).__eppOriginalPushState;
+		expect(typeof trulyOriginal).toBe("function");
+
+		const second = createPanel() as any;
+		second.hass = null;
+		second.connectedCallback();
+
+		// Second instance must capture the SAME truly-original, not the
+		// first instance's wrapper.
+		expect(second._originalPushState).toBe(trulyOriginal);
+
+		second.disconnectedCallback();
+		first.disconnectedCallback();
+
+		// After both disconnects, history.pushState is the bare original,
+		// not a leftover wrapper from the first instance.
+		expect(history.pushState).toBe(trulyOriginal);
+	});
+
 	it("stores pending navigation when pushState is intercepted with dirty state", () => {
 		const a = createPanel() as any;
 		a.connectedCallback();

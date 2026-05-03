@@ -8,6 +8,7 @@ import {
 	GRID_CELL_COUNT,
 } from "../lib/grid.js";
 import { ZONE_COLORS } from "../lib/zone-defaults.js";
+import { setupLocalize } from "../localize.js";
 
 const MAX_ZONES = 7;
 
@@ -18,6 +19,10 @@ function createPanel(): EPPGridPanel {
 		connection: { subscribeMessage: async () => () => {} },
 	};
 	const a = el as any;
+	// addZone() reads from this.host._localize for the zone name. Without an
+	// IDE/render lifecycle, willUpdate() never runs to populate it, so install
+	// the real one directly.
+	a._localize = setupLocalize(el.hass as any);
 	a._grid = new Uint8Array(GRID_CELL_COUNT);
 	// Length-8 tuple: slot 0 = Zone0Config, slots 1..7 = named zones.
 	a._zoneConfigs = [

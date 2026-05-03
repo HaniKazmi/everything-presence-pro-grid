@@ -89,7 +89,15 @@ export function ensureObserversAttached(): void {
 }
 
 export function installPanelMountGuard(): void {
-	if ((window as any).__eppGridMountGuardInstalled) return;
+	// Tear down any previous install first. The module-level flag survives
+	// across module reloads / repeat-install calls, but the observers and
+	// listener references in the previous module instance can't be cleaned
+	// up from here — they belong to the old lexical scope. Always re-attach
+	// from the current scope so we end up with exactly one listener bound to
+	// the current module's references.
+	if ((window as any).__eppGridMountGuardInstalled) {
+		uninstallPanelMountGuard();
+	}
 	(window as any).__eppGridMountGuardInstalled = true;
 	document.addEventListener("visibilitychange", handleVisibilityChange);
 	ensureObserversAttached();

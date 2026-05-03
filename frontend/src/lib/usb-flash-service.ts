@@ -8,6 +8,7 @@ import {
 	CMD_WIFI_SETTINGS,
 	parseScanResults,
 	readImprovResponse,
+	releaseReader,
 	STATE_PROVISIONED,
 	sendImprovPacket,
 	TYPE_CURRENT_STATE,
@@ -196,7 +197,7 @@ async function _connectImprov(
 		]);
 		if (r.done || !r.value) break;
 	}
-	drainReader.releaseLock();
+	releaseReader(drainReader);
 
 	const writer = port.writable!.getWriter();
 
@@ -216,7 +217,7 @@ async function _connectImprov(
 				await readImprovResponse(handshakeReader, handshakeTimeout);
 				handshakeOk = true;
 			} finally {
-				handshakeReader.releaseLock();
+				releaseReader(handshakeReader);
 			}
 		} catch {
 			// Not ready yet — retry
@@ -318,8 +319,10 @@ export async function runWifiScan(
 			return { writer, reader, networks };
 		}
 
-		// No results — release reader and retry
-		reader.releaseLock();
+		// No results — release reader and retry. Use the helper so the
+		// in-flight read entry tracked in improv-serial's WeakMap is cleaned
+		// up too (release/re-acquire loops would otherwise grow it).
+		releaseReader(reader);
 	}
 
 	// All attempts exhausted — return empty with a fresh reader
@@ -455,9 +458,7 @@ export async function queryImprovState(
 		try {
 			writer.releaseLock();
 		} catch {}
-		try {
-			reader.releaseLock();
-		} catch {}
+		releaseReader(reader);
 		throw err;
 	}
 }

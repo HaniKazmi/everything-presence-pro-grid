@@ -255,14 +255,40 @@ describe("installPanelMountGuard", () => {
 		expect(host.children.length).toBe(0);
 	});
 
-	it("registers the visibilitychange listener only once", () => {
-		const spy = vi.spyOn(document, "addEventListener");
+	it("ends up with a single net visibilitychange listener after repeated installs", () => {
+		// Repeated installs (e.g. HMR / module reload races) must not stack
+		// listeners — every fired event handles remount once, not N times.
+		const addSpy = vi.spyOn(document, "addEventListener");
+		const removeSpy = vi.spyOn(document, "removeEventListener");
+
 		installPanelMountGuard();
 		installPanelMountGuard();
-		const visibilityListeners = spy.mock.calls.filter(
+		installPanelMountGuard();
+
+		const adds = addSpy.mock.calls.filter(
 			([event]) => event === "visibilitychange",
-		);
-		expect(visibilityListeners).toHaveLength(1);
+		).length;
+		const removes = removeSpy.mock.calls.filter(
+			([event]) => event === "visibilitychange",
+		).length;
+		expect(adds - removes).toBe(1);
+		addSpy.mockRestore();
+		removeSpy.mockRestore();
+	});
+
+	it("re-installs cleanly when the flag is already set (e.g. module reload)", () => {
+		// Simulates a stale flag from a previous module instance: a second
+		// install must tear down old observers and re-register, not silently
+		// no-op leaving the new module's observers detached.
+		(window as any).__eppGridMountGuardInstalled = true;
+		const spy = vi.spyOn(document, "addEventListener");
+
+		installPanelMountGuard();
+
+		const adds = spy.mock.calls.filter(
+			([event]) => event === "visibilitychange",
+		).length;
+		expect(adds).toBe(1);
 		spy.mockRestore();
 	});
 

@@ -32,6 +32,10 @@ export class FlasherController implements ReactiveController {
 	private _opRunning = false;
 	private _otaUnsubs: Record<string, () => void> = {};
 	private _otaTimeouts: Record<string, ReturnType<typeof setTimeout>> = {};
+	// Generation token for the flashable-devices subscription. Bumped on
+	// (un)subscribe and connection swap so a late-resolving subscribeMessage
+	// promise drops its unsub instead of stashing it on a torn-down controller.
+	private _deviceListGen = 0;
 
 	constructor(host: ReactiveControllerHost) {
 		this._host = host;
@@ -41,8 +45,7 @@ export class FlasherController implements ReactiveController {
 	hostConnected(): void {}
 	hostDisconnected(): void {
 		this.unsubscribeDeviceList();
-		this._serialPort?.close().catch(() => {});
-		this._serialPort = null;
+		this._tearDownSerialPort();
 		for (const mac of Object.keys(this._otaUnsubs)) {
 			this._unsubOta(mac);
 		}
@@ -50,6 +53,27 @@ export class FlasherController implements ReactiveController {
 			this._resetOtaTimeout(mac);
 		}
 		this.otaStates = {};
+		if (this._cancelledIpTimeout) {
+			clearTimeout(this._cancelledIpTimeout);
+			this._cancelledIpTimeout = null;
+		}
+	}
+
+	// Releases any held reader/writer locks before closing the port.
+	// close() rejects with "the port has a readable or writable stream"
+	// while a lock is still held, leaving the port half-open and unusable
+	// until the page reloads.
+	private _tearDownSerialPort(): void {
+		try {
+			(this as any)._serialReader?.releaseLock();
+		} catch {}
+		try {
+			(this as any)._serialWriter?.releaseLock();
+		} catch {}
+		(this as any)._serialReader = null;
+		(this as any)._serialWriter = null;
+		this._serialPort?.close().catch(() => {});
+		this._serialPort = null;
 	}
 
 	async startOta(mac: string): Promise<void> {
@@ -93,8 +117,6 @@ export class FlasherController implements ReactiveController {
 	}
 
 	private _handleOtaEvent(mac: string, event: any): void {
-		this._resetOtaTimeout(mac);
-
 		switch (event.state) {
 			case "updating": {
 				const progress = event.progress ?? null;
@@ -120,9 +142,14 @@ export class FlasherController implements ReactiveController {
 					progress: null,
 					errorKey,
 				};
+				this._resetOtaTimeout(mac);
 				this._unsubOta(mac);
 				break;
 			}
+			default:
+				// Unknown state — leave the watchdog armed so a stuck device
+				// still trips the existing timeout instead of spinning forever.
+				break;
 		}
 		this._host.requestUpdate();
 	}
@@ -131,7 +158,8 @@ export class FlasherController implements ReactiveController {
 		this.otaStates[mac] = { state: "success", progress: null, errorKey: null };
 		this._unsubOta(mac);
 		this._resetOtaTimeout(mac);
-		setTimeout(() => {
+		this._otaTimeouts[mac] = setTimeout(() => {
+			delete this._otaTimeouts[mac];
 			if (this.otaStates[mac]?.state === "success") {
 				delete this.otaStates[mac];
 				this._host.requestUpdate();
@@ -191,7 +219,25 @@ export class FlasherController implements ReactiveController {
 		return this._hass;
 	}
 	set hass(value: any) {
+		const oldConn = this._hass?.connection;
 		this._hass = value;
+		if (value?.connection && value.connection !== oldConn && oldConn) {
+			// Connection swap (HA reconnect / hass replacement): every unsub
+			// we hold belongs to the dead socket. Drop them, clear OTA
+			// watchdog timers, and forget any in-flight OTA state — the
+			// device's actual update progress is unrecoverable from the new
+			// connection, and leaving "updating" on screen would be a lie.
+			this._unsubDeviceList = undefined;
+			this._deviceListGen++;
+			for (const mac of Object.keys(this._otaUnsubs)) {
+				delete this._otaUnsubs[mac];
+			}
+			for (const mac of Object.keys(this._otaTimeouts)) {
+				this._resetOtaTimeout(mac);
+			}
+			this.otaStates = {};
+			this._host.requestUpdate();
+		}
 	}
 
 	async loadDevices(): Promise<void> {
@@ -217,19 +263,28 @@ export class FlasherController implements ReactiveController {
 	async subscribeDeviceList(): Promise<void> {
 		this.unsubscribeDeviceList();
 		if (!this._hass) return;
+		const token = ++this._deviceListGen;
 		try {
-			this._unsubDeviceList = await this._hass.connection.subscribeMessage(
+			const unsub = await this._hass.connection.subscribeMessage(
 				(msg: any) => {
 					this._applyDeviceList(msg);
 				},
 				{ type: "eppgrid/subscribe_flashable_devices" },
 			);
+			if (this._deviceListGen !== token) {
+				try {
+					unsub();
+				} catch {}
+				return;
+			}
+			this._unsubDeviceList = unsub;
 		} catch {
 			await this.loadDevices();
 		}
 	}
 
 	unsubscribeDeviceList(): void {
+		this._deviceListGen++;
 		if (this._unsubDeviceList) {
 			try {
 				this._unsubDeviceList();

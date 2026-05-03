@@ -12,6 +12,11 @@ vi.mock("../../lib/improv-serial.js", () => ({
 	buildGetStateCommand: vi.fn().mockReturnValue(new Uint8Array([2, 2, 0])),
 	buildGetInfoCommand: vi.fn().mockReturnValue(new Uint8Array([3, 3, 0])),
 	buildWifiCommand: vi.fn().mockReturnValue(new Uint8Array([4, 5, 6])),
+	releaseReader: vi.fn((r: any) => {
+		try {
+			r?.releaseLock?.();
+		} catch {}
+	}),
 	CMD_WIFI_SETTINGS: 0x01,
 	CMD_GET_CURRENT_STATE: 0x02,
 	TYPE_CURRENT_STATE: 0x01,

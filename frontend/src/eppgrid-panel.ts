@@ -596,10 +596,24 @@ export class EPPGridPanel extends LitElement {
 		// Intercept HA's client-side routing. pushState/replaceState do
 		// not fire hashchange/popstate even when the hash changes, so
 		// after delegating we sync if (and only if) the hash moved.
-		this._originalPushState = history.pushState.bind(history);
-		this._originalReplaceState = history.replaceState.bind(history);
-		history.pushState = this._wrapHistoryMethod(this._originalPushState);
-		history.replaceState = this._wrapHistoryMethod(this._originalReplaceState);
+		// Stash the truly-original (pre-wrap) on window once: a second
+		// panel instance would otherwise capture the first's wrapper as
+		// "original", chaining wrappers and making it impossible to
+		// restore the bare browser implementation on disconnect.
+		const w = window as any;
+		if (!w.__eppOriginalPushState) {
+			w.__eppOriginalPushState = history.pushState.bind(history);
+		}
+		if (!w.__eppOriginalReplaceState) {
+			w.__eppOriginalReplaceState = history.replaceState.bind(history);
+		}
+		const origPush = w.__eppOriginalPushState as typeof history.pushState;
+		const origReplace =
+			w.__eppOriginalReplaceState as typeof history.replaceState;
+		this._originalPushState = origPush;
+		this._originalReplaceState = origReplace;
+		history.pushState = this._wrapHistoryMethod(origPush);
+		history.replaceState = this._wrapHistoryMethod(origReplace);
 	}
 
 	private _wrapHistoryMethod(
@@ -775,6 +789,7 @@ export class EPPGridPanel extends LitElement {
 
 	private async _initialize(): Promise<void> {
 		if (!this.hass) return;
+		if (!this.isConnected) return;
 		const isRetry = this._initRetryTimer !== undefined;
 		if (this._initRetryTimer) {
 			clearTimeout(this._initRetryTimer);
@@ -785,6 +800,11 @@ export class EPPGridPanel extends LitElement {
 		}
 		this._deviceCtrl.hass = this.hass;
 		await this._subscribeDevices();
+		// Re-check after the await: the panel could have been disconnected
+		// (user navigated away) while subscribeDevices was in flight.
+		// Scheduling a retry on a detached host pins the panel in memory and
+		// runs _initialize() against torn-down controllers.
+		if (!this.isConnected) return;
 		if (this._devices.length === 0) {
 			// Either first boot before devices are configured, or the HA
 			// integration is still coming up after a restart (custom WS
@@ -794,6 +814,7 @@ export class EPPGridPanel extends LitElement {
 			this._initRetryCount += 1;
 			this._loading = false;
 			this._initRetryTimer = setTimeout(() => {
+				if (!this.isConnected) return;
 				this._initialize().catch(() => {});
 			}, 2000);
 			return;
@@ -3167,20 +3188,39 @@ export class EPPGridPanel extends LitElement {
 				ctrl.resetUsbState();
 				return;
 			}
-			const lastStep = ctrl.usbFlashState?.step;
-			// Clean up port on error — don't leave it dangling
-			if (ctrl.serialPort) {
-				try {
-					ctrl.serialPort.close().catch(() => {});
-				} catch {}
-				ctrl.serialPort = null;
-			}
 			const e = err as {
 				errorKey?: string;
 				errorParams?: Record<string, unknown>;
 				message?: string;
 				name?: string;
 			};
+			// User-cancel from the original-firmware confirm dialog throws
+			// flasher.errors.flash_cancelled. The pre-fix path landed in the
+			// generic "error" UI because lastStep was already "flashing";
+			// surface this as a clean reset so the user can pick a different
+			// device or retry without a confusing failure banner.
+			if (e.errorKey === "flasher.errors.flash_cancelled") {
+				if (ctrl.serialPort) {
+					try {
+						await ctrl.serialPort.close().catch(() => {});
+					} catch {}
+					ctrl.serialPort = null;
+				}
+				ctrl.opRunning = false;
+				ctrl.resetUsbState();
+				return;
+			}
+			const lastStep = ctrl.usbFlashState?.step;
+			// Clean up port on error — don't leave it dangling. Await the
+			// close so the "error" UI renders only after the port is fully
+			// released (unawaited close left the port lock pending and the
+			// next retry surfaced as "serial port busy").
+			if (ctrl.serialPort) {
+				try {
+					await ctrl.serialPort.close().catch(() => {});
+				} catch {}
+				ctrl.serialPort = null;
+			}
 			const msg = e.message ?? "Unknown error";
 			const isPortBusy = /already open|already closed/i.test(msg);
 			const isDisconnect =
