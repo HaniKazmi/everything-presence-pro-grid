@@ -3,6 +3,7 @@
 #include "epp_nvs_layout.h"
 #include "epp_change_detector.h"
 #include "epp_target_validity.h"
+#include "epp_json_writer.h"
 #include "esphome/core/log.h"
 
 #include <ArduinoJson.h>
@@ -194,9 +195,12 @@ void EPPComponent::loop() {
       const char *motion_code = result.motion_state == SensorPresenceState::ACTIVE ? "A" :
                                  result.motion_state == SensorPresenceState::PENDING ? "P" : "I";
 
+      // BoundedWriter prevents the snprintf-accumulator underflow bug — see
+      // epp_json_writer.h. Once truncated, further printf calls are no-ops
+      // and ok() returns false so we can log a clear warning.
       char json[512];
-      int pos = snprintf(json, sizeof(json),
-          "{\"targets\":[");
+      BoundedWriter w(json, sizeof(json));
+      w.printf("{\"targets\":[");
       for (int i = 0; i < NUM_TARGETS; i++) {
         const char *status_str = "inactive";
         if (i < result.target_count) {
@@ -207,32 +211,28 @@ void EPPComponent::loop() {
           }
         }
         int signal = (i < result.target_count) ? result.targets[i].signal : 0;
-        pos += snprintf(json + pos, sizeof(json) - pos,
-            "%s{\"signal\":%d,\"status\":\"%s\"}",
-            i > 0 ? "," : "", signal, status_str);
+        w.printf("%s{\"signal\":%d,\"status\":\"%s\"}",
+                 i > 0 ? "," : "", signal, status_str);
       }
-      pos += snprintf(json + pos, sizeof(json) - pos,
-          "],\"zones\":{\"occupancy\":[");
+      w.printf("],\"zones\":{\"occupancy\":[");
       for (int i = 0; i < MAX_ZONE_SLOTS; i++) {
-        pos += snprintf(json + pos, sizeof(json) - pos,
-            "%s%s", i > 0 ? "," : "",
-            result.zone_occupancy[i] ? "true" : "false");
+        w.printf("%s%s", i > 0 ? "," : "",
+                 result.zone_occupancy[i] ? "true" : "false");
       }
-      pos += snprintf(json + pos, sizeof(json) - pos,
-          "],\"tracking\":%s},"
-          "\"static_state\":\"%s\",\"motion_state\":\"%s\",\"occupancy\":%s,"
-          "\"mmwave\":%s,"
-          "\"frame_count\":%d,\"debug_log\":\"",
-          result.device_tracking_present ? "true" : "false",
-          static_code, motion_code,
-          result.occupancy ? "true" : "false",
-          result.mmwave ? "true" : "false",
-          result.frame_count);
+      w.printf("],\"tracking\":%s},"
+               "\"static_state\":\"%s\",\"motion_state\":\"%s\",\"occupancy\":%s,"
+               "\"mmwave\":%s,"
+               "\"frame_count\":%d,\"debug_log\":\"",
+               result.device_tracking_present ? "true" : "false",
+               static_code, motion_code,
+               result.occupancy ? "true" : "false",
+               result.mmwave ? "true" : "false",
+               result.frame_count);
 
       // Debug log: "S:A M:P Occ:1|T0:Z1:A:5|Z0:O:1 Z1:O:1"
       // Sensor prefix
-      pos += snprintf(json + pos, sizeof(json) - pos,
-          "S:%s M:%s Occ:%d|", static_code, motion_code, result.occupancy ? 1 : 0);
+      w.printf("S:%s M:%s Occ:%d|",
+               static_code, motion_code, result.occupancy ? 1 : 0);
       // Targets part
       bool first_target = true;
       for (int i = 0; i < result.target_count && i < NUM_TARGETS; i++) {
@@ -247,21 +247,25 @@ void EPPComponent::loop() {
             zone = grid_.cell_zone(cell);
           }
         }
-        pos += snprintf(json + pos, sizeof(json) - pos,
-            "%sT%d:Z%d:%s:%d", first_target ? "" : " ", i, zone, s, result.targets[i].signal);
+        w.printf("%sT%d:Z%d:%s:%d",
+                 first_target ? "" : " ", i, zone, s, result.targets[i].signal);
         first_target = false;
       }
       // Zones part
-      pos += snprintf(json + pos, sizeof(json) - pos, "|");
+      w.printf("|");
       bool first_zone = true;
       for (int i = 0; i < MAX_ZONE_SLOTS; i++) {
         if (!result.zone_occupancy[i]) continue;
         const char *zs = result.zone_states[i] == epp::ZoneState::PENDING_CLEAR ? "P" : "O";
-        pos += snprintf(json + pos, sizeof(json) - pos,
-            "%sZ%d:%s:%d", first_zone ? "" : " ", i, zs, result.zone_target_counts[i]);
+        w.printf("%sZ%d:%s:%d",
+                 first_zone ? "" : " ", i, zs, result.zone_target_counts[i]);
         first_zone = false;
       }
-      pos += snprintf(json + pos, sizeof(json) - pos, "\"}");
+      w.printf("\"}");
+      if (!w.ok()) {
+        ESP_LOGW(TAG, "zone-state JSON truncated to %u/%u bytes",
+                 (unsigned)w.size(), (unsigned)sizeof(json));
+      }
       zone_state_sensor_->publish_state(json);
     }
   }
