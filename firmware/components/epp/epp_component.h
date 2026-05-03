@@ -15,6 +15,7 @@
 #include "epp_frame_staleness.h"
 #include "epp_nvs_layout.h"
 #include "epp_relay_publish.h"
+#include "epp_indexed_setter.h"
 
 #include <string>
 
@@ -52,16 +53,13 @@ class EPPComponent : public esphome::Component {
     firmware_version_sensor_ = sensor;
   }
   void set_zone_occupancy_sensor(int index, esphome::binary_sensor::BinarySensor *sensor) {
-    if (index >= 0 && index < MAX_ZONE_SLOTS)
-      zone_occupancy_sensors_[index] = sensor;
+    set_at(zone_occupancy_sensors_, index, sensor);
   }
   void set_target_position_sensor(int index, esphome::text_sensor::TextSensor *sensor) {
-    if (index >= 0 && index < MAX_TARGETS)
-      target_position_sensors_[index] = sensor;
+    set_at(target_position_sensors_, index, sensor);
   }
   void set_raw_target_sensor(int index, esphome::text_sensor::TextSensor *sensor) {
-    if (index >= 0 && index < NUM_TARGETS)
-      raw_target_sensors_[index] = sensor;
+    set_at(raw_target_sensors_, index, sensor);
   }
   void set_zone_state_sensor(esphome::text_sensor::TextSensor *sensor) {
     zone_state_sensor_ = sensor;
@@ -97,22 +95,22 @@ class EPPComponent : public esphome::Component {
 
   // Structured target entity setters
   void set_target_x_sensor(int index, esphome::sensor::Sensor *sensor) {
-    if (index >= 0 && index < NUM_TARGETS) target_x_sensors_[index] = sensor;
+    set_at(target_x_sensors_, index, sensor);
   }
   void set_target_y_sensor(int index, esphome::sensor::Sensor *sensor) {
-    if (index >= 0 && index < NUM_TARGETS) target_y_sensors_[index] = sensor;
+    set_at(target_y_sensors_, index, sensor);
   }
   void set_target_signal_sensor(int index, esphome::sensor::Sensor *sensor) {
-    if (index >= 0 && index < NUM_TARGETS) target_signal_sensors_[index] = sensor;
+    set_at(target_signal_sensors_, index, sensor);
   }
   void set_target_active_sensor(int index, esphome::binary_sensor::BinarySensor *sensor) {
-    if (index >= 0 && index < NUM_TARGETS) target_active_sensors_[index] = sensor;
+    set_at(target_active_sensors_, index, sensor);
   }
   void set_target_zone_sensor(int index, esphome::sensor::Sensor *sensor) {
-    if (index >= 0 && index < NUM_TARGETS) target_zone_sensors_[index] = sensor;
+    set_at(target_zone_sensors_, index, sensor);
   }
   void set_zone_target_count_sensor(int index, esphome::sensor::Sensor *sensor) {
-    if (index >= 0 && index < MAX_ZONE_SLOTS) zone_target_count_sensors_[index] = sensor;
+    set_at(zone_target_count_sensors_, index, sensor);
   }
   void set_target_count_sensor(esphome::sensor::Sensor *sensor) {
     target_count_sensor_ = sensor;
