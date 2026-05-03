@@ -33,9 +33,7 @@ class TestEndToEndPipelineFlow:
         mock_session = MagicMock()
         mock_session.raw_target_subs = 0
         mock_session.grid_target_subs = 1  # Frontend connected
-        mock_session._services = {"epp_set_pipeline": MagicMock()}
-        mock_session._client = MagicMock()
-        mock_session._client.execute_service = AsyncMock()
+        mock_session.async_execute_service = AsyncMock()
         mock_session.connected = True
         mock_dm.get_session = MagicMock(return_value=mock_session)
 
@@ -44,7 +42,8 @@ class TestEndToEndPipelineFlow:
 
         await mock_dm._push_pipeline_to_device(mac)
 
-        call_args = mock_session._client.execute_service.call_args
+        call_args = mock_session.async_execute_service.call_args
+        assert call_args[0][0] == "epp_set_pipeline"
         pipeline = call_args[0][1]
         assert pipeline["entity_target_interval"] == 500
         assert pipeline["entity_zone_interval"] == 1000
@@ -61,9 +60,7 @@ class TestEndToEndPipelineFlow:
         mock_session = MagicMock()
         mock_session.raw_target_subs = 0
         mock_session.grid_target_subs = 0
-        mock_session._services = {"epp_set_pipeline": MagicMock()}
-        mock_session._client = MagicMock()
-        mock_session._client.execute_service = AsyncMock()
+        mock_session.async_execute_service = AsyncMock()
         mock_session.connected = True
         mock_dm.get_session = MagicMock(return_value=mock_session)
 
@@ -71,7 +68,8 @@ class TestEndToEndPipelineFlow:
 
         await mock_dm._push_pipeline_to_device(mac)
 
-        call_args = mock_session._client.execute_service.call_args
+        call_args = mock_session.async_execute_service.call_args
+        assert call_args[0][0] == "epp_set_pipeline"
         pipeline = call_args[0][1]
         assert pipeline["entity_target_interval"] == 0
         assert pipeline["entity_zone_interval"] == 0
@@ -89,9 +87,7 @@ class TestEndToEndPipelineFlow:
         mock_session = MagicMock()
         mock_session.raw_target_subs = 1  # Calibration wizard open
         mock_session.grid_target_subs = 0
-        mock_session._services = {"epp_set_pipeline": MagicMock()}
-        mock_session._client = MagicMock()
-        mock_session._client.execute_service = AsyncMock()
+        mock_session.async_execute_service = AsyncMock()
         mock_session.connected = True
         mock_dm.get_session = MagicMock(return_value=mock_session)
 
@@ -99,7 +95,8 @@ class TestEndToEndPipelineFlow:
 
         await mock_dm._push_pipeline_to_device(mac)
 
-        call_args = mock_session._client.execute_service.call_args
+        call_args = mock_session.async_execute_service.call_args
+        assert call_args[0][0] == "epp_set_pipeline"
         pipeline = call_args[0][1]
         assert pipeline["display_interval"] == 200
         assert pipeline["zone_state_interval"] == 0  # Only grid subs trigger zone state
@@ -123,9 +120,7 @@ class TestEndToEndPipelineFlow:
         mock_session = MagicMock()
         mock_session.raw_target_subs = 0
         mock_session.grid_target_subs = 0
-        mock_session._services = {"epp_set_pipeline": MagicMock()}
-        mock_session._client = MagicMock()
-        mock_session._client.execute_service = AsyncMock()
+        mock_session.async_execute_service = AsyncMock()
         mock_session.connected = True
         mock_dm.get_session = MagicMock(return_value=mock_session)
 
@@ -133,6 +128,7 @@ class TestEndToEndPipelineFlow:
 
         await mock_dm._push_pipeline_to_device(mac)
 
-        call_args = mock_session._client.execute_service.call_args
+        call_args = mock_session.async_execute_service.call_args
+        assert call_args[0][0] == "epp_set_pipeline"
         pipeline = call_args[0][1]
         assert pipeline["entity_target_interval"] == 0  # Rate ignored, entities all off

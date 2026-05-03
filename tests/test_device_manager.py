@@ -439,6 +439,48 @@ class TestDeviceConnection:
         with pytest.raises(RuntimeError):
             await conn.async_fetch_build_flags()
 
+    async def test_async_execute_service_runs_named_service(self) -> None:
+        conn = DeviceConnection("192.168.1.100")
+        conn._client = MagicMock()
+        svc = MagicMock()
+        conn._services = {"epp_dismiss_target": svc}
+        conn._client.execute_service = AsyncMock()
+        await conn.async_execute_service("epp_dismiss_target", {"target_index": 0, "cell_index": 1})
+        conn._client.execute_service.assert_awaited_once_with(
+            svc, {"target_index": 0, "cell_index": 1}, return_response=False
+        )
+
+    async def test_async_execute_service_raises_when_service_missing(self) -> None:
+        from homeassistant.exceptions import HomeAssistantError
+
+        conn = DeviceConnection("192.168.1.100")
+        conn._client = MagicMock()
+        conn._services = {}
+        with pytest.raises(HomeAssistantError):
+            await conn.async_execute_service("epp_dismiss_target", {})
+
+    async def test_async_execute_service_raises_when_not_connected(self) -> None:
+        from homeassistant.exceptions import HomeAssistantError
+
+        conn = DeviceConnection("192.168.1.100")
+        conn._client = None
+        conn._services = {}
+        with pytest.raises(HomeAssistantError):
+            await conn.async_execute_service("epp_dismiss_target", {})
+
+    async def test_async_execute_service_honours_timeout(self) -> None:
+        conn = DeviceConnection("192.168.1.100")
+        conn._client = MagicMock()
+        svc = MagicMock()
+        conn._services = {"slow": svc}
+
+        async def hang(*_a, **_kw):
+            await asyncio.sleep(10)
+
+        conn._client.execute_service = MagicMock(side_effect=hang)
+        with pytest.raises((TimeoutError, asyncio.TimeoutError)):
+            await conn.async_execute_service("slow", {}, timeout=0.05)
+
 
 # ---------------------------------------------------------------------------
 # DeviceManager tests
@@ -1220,18 +1262,20 @@ class TestDeviceManager:
 
 
 class TestAsyncTriggerOta:
-    """Tests for DeviceManager.async_trigger_ota — manifest URL/variant logic."""
+    """Tests for DeviceManager.async_trigger_ota — manifest URL/variant logic.
+
+    Covers the temp-conn fallback path (no live session). The
+    session-reuse path is covered by ``TestAsyncTriggerOtaSessionReuse``.
+    """
 
     def _setup_device(self, manager: DeviceManager, *, host: str | None = "192.168.1.50") -> None:
         manager.devices["AA:BB:CC:DD:EE:FF"] = ManagedDevice(mac="AA:BB:CC:DD:EE:FF", name="EPP", host=host)
 
-    def _make_mock_conn(self, *, has_service: bool = True) -> MagicMock:
+    def _make_mock_conn(self) -> MagicMock:
         mock_conn = MagicMock()
         mock_conn.async_connect = AsyncMock()
         mock_conn.async_disconnect = AsyncMock()
-        mock_conn._client = MagicMock()
-        mock_conn._client.execute_service = AsyncMock()
-        mock_conn._services = {"set_update_manifest": MagicMock()} if has_service else {}
+        mock_conn.async_execute_service = AsyncMock()
         return mock_conn
 
     async def test_calls_set_update_manifest_with_wifi_variant(
@@ -1247,9 +1291,9 @@ class TestAsyncTriggerOta:
         with patch("custom_components.eppgrid.device_manager.DeviceConnection", return_value=mock_conn):
             await manager.async_trigger_ota("AA:BB:CC:DD:EE:FF")
 
-        mock_conn._client.execute_service.assert_awaited_once()
-        svc, payload = mock_conn._client.execute_service.call_args[0]
-        assert svc is mock_conn._services["set_update_manifest"]
+        mock_conn.async_execute_service.assert_awaited_once()
+        name, payload = mock_conn.async_execute_service.await_args.args
+        assert name == "set_update_manifest"
         url = payload["url"]
         # Pinned-version manifest on GitHub Pages — same origin as the OTA bin
         # so the ESP32 only opens one TLS context.
@@ -1281,9 +1325,7 @@ class TestAsyncTriggerOta:
             mock_conn = mock_cls.return_value
             mock_conn.async_connect = AsyncMock()
             mock_conn.async_disconnect = AsyncMock()
-            mock_conn._services = {"set_update_manifest": MagicMock()}
-            mock_conn._client = MagicMock()
-            mock_conn._client.execute_service = AsyncMock()
+            mock_conn.async_execute_service = AsyncMock()
             mock_conn.connected = True
 
             await manager.async_trigger_ota(mac)
@@ -1302,8 +1344,8 @@ class TestAsyncTriggerOta:
         with patch("custom_components.eppgrid.device_manager.DeviceConnection", return_value=mock_conn):
             await manager.async_trigger_ota("AA:BB:CC:DD:EE:FF")
 
-        url = mock_conn._client.execute_service.call_args[0][1]["url"]
-        assert url.endswith("/ethernet-ble-co2.json"), url
+        _name, payload = mock_conn.async_execute_service.await_args.args
+        assert payload["url"].endswith("/ethernet-ble-co2.json"), payload["url"]
 
     async def test_raises_device_not_found(self, hass: HomeAssistant, manager: DeviceManager) -> None:
         from homeassistant.exceptions import HomeAssistantError
@@ -1329,24 +1371,6 @@ class TestAsyncTriggerOta:
             await manager.async_trigger_ota("AA:BB:CC:DD:EE:FF")
         assert excinfo.value.translation_key == "build_flags_unavailable"
 
-    async def test_raises_ota_unsupported_when_service_missing(
-        self, hass: HomeAssistant, manager: DeviceManager
-    ) -> None:
-        from homeassistant.exceptions import HomeAssistantError
-
-        self._setup_device(manager)
-        manager._build_flags["AA:BB:CC:DD:EE:FF"] = {"bluetooth_enabled": True, "co2_enabled": True}
-        mock_conn = self._make_mock_conn(has_service=False)
-
-        with (
-            patch("custom_components.eppgrid.device_manager.DeviceConnection", return_value=mock_conn),
-            pytest.raises(HomeAssistantError) as excinfo,
-        ):
-            await manager.async_trigger_ota("AA:BB:CC:DD:EE:FF")
-        assert excinfo.value.translation_key == "ota_unsupported"
-        # Connection still cleaned up after failure
-        mock_conn.async_disconnect.assert_awaited_once()
-
     async def test_wraps_unexpected_exception(self, hass: HomeAssistant, manager: DeviceManager) -> None:
         """Transport errors must be wrapped in a HomeAssistantError that
         carries translation metadata so the websocket / Repairs surfaces
@@ -1357,7 +1381,7 @@ class TestAsyncTriggerOta:
         self._setup_device(manager)
         manager._build_flags["AA:BB:CC:DD:EE:FF"] = {"bluetooth_enabled": True, "co2_enabled": True}
         mock_conn = self._make_mock_conn()
-        mock_conn._client.execute_service.side_effect = ConnectionError("boom")
+        mock_conn.async_execute_service.side_effect = ConnectionError("boom")
 
         with (
             patch("custom_components.eppgrid.device_manager.DeviceConnection", return_value=mock_conn),
@@ -1399,7 +1423,7 @@ class TestAsyncTriggerOta:
         self._setup_device(manager)
         manager._build_flags["AA:BB:CC:DD:EE:FF"] = {"bluetooth_enabled": True, "co2_enabled": True}
         mock_conn = self._make_mock_conn()
-        mock_conn._client.execute_service.side_effect = ConnectionError("execute boom")
+        mock_conn.async_execute_service.side_effect = ConnectionError("execute boom")
         mock_conn.async_disconnect.side_effect = ConnectionError("disconnect boom")
 
         with (
@@ -1448,13 +1472,13 @@ class TestAsyncTriggerOta:
         self._setup_device(manager)
         manager._build_flags["AA:BB:CC:DD:EE:FF"] = {"bluetooth_enabled": True, "co2_enabled": True}
         mock_conn = self._make_mock_conn()
-        mock_conn._client.execute_service.side_effect = ConnectionError("boom")
+        mock_conn.async_execute_service.side_effect = ConnectionError("boom")
 
         with patch("custom_components.eppgrid.device_manager.DeviceConnection", return_value=mock_conn):
             with pytest.raises(HomeAssistantError):
                 await manager.async_trigger_ota("AA:BB:CC:DD:EE:FF")
             # Second call should succeed after first failed
-            mock_conn._client.execute_service.side_effect = None
+            mock_conn.async_execute_service.side_effect = None
             await manager.async_trigger_ota("AA:BB:CC:DD:EE:FF")
 
 
@@ -3303,10 +3327,9 @@ class TestEventCallbacks:
             conn.async_connect = AsyncMock()
             conn.async_disconnect = AsyncMock()
             conn.async_push_config = AsyncMock()
+            conn.async_execute_service = AsyncMock()
             conn.async_fetch_build_flags = AsyncMock(side_effect=TimeoutError())
             conn.connected = True
-            conn._services = {}
-            conn._client = MagicMock()
 
             result = await manager._push_config_to_device(mac)
 
@@ -3380,8 +3403,8 @@ class TestEventCallbacks:
         session_conn.raw_target_subs = 0
         session_conn.grid_target_subs = 0
         session_conn.async_push_config = AsyncMock()
+        session_conn.async_execute_service = AsyncMock()
         session_conn.async_fetch_build_flags = AsyncMock(return_value={})
-        session_conn._services = {}
         manager._active_connections[mac] = session_conn
 
         result = await manager._push_config_to_device(mac)
@@ -3401,10 +3424,9 @@ class TestEventCallbacks:
         mock_conn = MagicMock()
         mock_conn.async_connect = AsyncMock()
         mock_conn.async_push_config = AsyncMock()
+        mock_conn.async_execute_service = AsyncMock()
         mock_conn.async_fetch_build_flags = AsyncMock(return_value={})
         mock_conn.async_disconnect = AsyncMock()
-        mock_conn._services = {}
-        mock_conn._client = MagicMock()
 
         with patch(
             "custom_components.eppgrid.device_manager.DeviceConnection",
@@ -3432,10 +3454,9 @@ class TestEventCallbacks:
         mock_conn = MagicMock()
         mock_conn.async_connect = AsyncMock()
         mock_conn.async_push_config = AsyncMock()
+        mock_conn.async_execute_service = AsyncMock()
         mock_conn.async_fetch_build_flags = AsyncMock(return_value={})
         mock_conn.async_disconnect = AsyncMock()
-        mock_conn._services = {}
-        mock_conn._client = MagicMock()
 
         with patch(
             "custom_components.eppgrid.device_manager.DeviceConnection",
@@ -5051,10 +5072,9 @@ class TestBuildFlags:
         mock_conn = MagicMock()
         mock_conn.async_connect = AsyncMock()
         mock_conn.async_push_config = AsyncMock()
+        mock_conn.async_execute_service = AsyncMock()
         mock_conn.async_fetch_build_flags = AsyncMock(return_value=expected_flags)
         mock_conn.async_disconnect = AsyncMock()
-        mock_conn._services = {}
-        mock_conn._client = MagicMock()
 
         with patch(
             "custom_components.eppgrid.device_manager.DeviceConnection",
@@ -5081,8 +5101,8 @@ class TestBuildFlags:
         session_conn.raw_target_subs = 0
         session_conn.grid_target_subs = 0
         session_conn.async_push_config = AsyncMock()
+        session_conn.async_execute_service = AsyncMock()
         session_conn.async_fetch_build_flags = AsyncMock(return_value=expected_flags)
-        session_conn._services = {}
         manager._active_connections[mac] = session_conn
 
         result = await manager._push_config_to_device(mac)
@@ -5102,10 +5122,9 @@ class TestBuildFlags:
         mock_conn = MagicMock()
         mock_conn.async_connect = AsyncMock()
         mock_conn.async_push_config = AsyncMock()
+        mock_conn.async_execute_service = AsyncMock()
         mock_conn.async_fetch_build_flags = AsyncMock(return_value={})
         mock_conn.async_disconnect = AsyncMock()
-        mock_conn._services = {}
-        mock_conn._client = MagicMock()
 
         with patch(
             "custom_components.eppgrid.device_manager.DeviceConnection",
@@ -5177,8 +5196,8 @@ class TestBuildFlags:
         session_conn.raw_target_subs = 0
         session_conn.grid_target_subs = 0
         session_conn.async_push_config = AsyncMock()
+        session_conn.async_execute_service = AsyncMock()
         session_conn.async_fetch_build_flags = AsyncMock(return_value={})
-        session_conn._services = {}
         manager._active_connections[mac] = session_conn
 
         result = await manager._push_config_to_device(mac)
@@ -5199,10 +5218,9 @@ class TestBuildFlags:
         mock_conn = MagicMock()
         mock_conn.async_connect = AsyncMock()
         mock_conn.async_push_config = AsyncMock()
+        mock_conn.async_execute_service = AsyncMock()
         mock_conn.async_fetch_build_flags = AsyncMock(return_value={})
         mock_conn.async_disconnect = AsyncMock()
-        mock_conn._services = {}
-        mock_conn._client = MagicMock()
 
         with patch(
             "custom_components.eppgrid.device_manager.DeviceConnection",
@@ -5431,3 +5449,155 @@ def test_zone_type_defaults_match_frontend():
     # in _expand_zone_slot.
     ts_only = set(ts_defaults) - set(ZONE_TYPE_DEFAULTS)
     assert not ts_only, f"TS ZONE_TYPE_DEFAULTS has types missing from Python: {ts_only}"
+
+
+# ---------------------------------------------------------------------------
+# async_trigger_ota tests
+# ---------------------------------------------------------------------------
+
+
+class TestAsyncTriggerOtaSessionReuse:
+    """Tests for DeviceManager.async_trigger_ota — session reuse + temp-conn fallback."""
+
+    async def test_async_trigger_ota_reuses_active_session(
+        self, hass: HomeAssistant, store: EPPGridStore, manager: DeviceManager
+    ) -> None:
+        """When an active session exists for the mac, OTA is triggered through it
+        instead of opening a fresh DeviceConnection."""
+        mac = "AA:BB:CC:DD:EE:FF"
+        manager.devices[mac] = ManagedDevice(mac=mac, name="EPP", host="192.168.1.50")
+        manager._build_flags[mac] = {"ethernet_enabled": False}
+
+        seeded = MagicMock()
+        seeded.connected = True
+        seeded.async_execute_service = AsyncMock()
+        manager._active_connections[mac] = seeded
+
+        with patch("custom_components.eppgrid.device_manager.DeviceConnection") as mock_cls:
+            await manager.async_trigger_ota(mac)
+            mock_cls.assert_not_called()  # session reused, no fresh conn
+
+        seeded.async_execute_service.assert_awaited_once()
+        call_name = seeded.async_execute_service.await_args.args[0]
+        call_payload = seeded.async_execute_service.await_args.args[1]
+        assert call_name == "set_update_manifest"
+        assert "manifest" in call_payload["url"] or "wifi" in call_payload["url"] or "ethernet" in call_payload["url"]
+
+    async def test_async_trigger_ota_falls_back_to_temp_conn_when_no_session(
+        self, hass: HomeAssistant, store: EPPGridStore, manager: DeviceManager
+    ) -> None:
+        """Without an active session, OTA opens a fresh DeviceConnection and
+        triggers via async_execute_service on it."""
+        mac = "AA:BB:CC:DD:EE:FF"
+        manager.devices[mac] = ManagedDevice(mac=mac, name="EPP", host="192.168.1.50")
+        manager._build_flags[mac] = {"ethernet_enabled": True}
+
+        mock_conn = MagicMock()
+        mock_conn.async_connect = AsyncMock()
+        mock_conn.async_execute_service = AsyncMock()
+        mock_conn.async_disconnect = AsyncMock()
+
+        with patch(
+            "custom_components.eppgrid.device_manager.DeviceConnection",
+            return_value=mock_conn,
+        ):
+            await manager.async_trigger_ota(mac)
+
+        mock_conn.async_connect.assert_awaited_once()
+        mock_conn.async_execute_service.assert_awaited_once()
+        call_name = mock_conn.async_execute_service.await_args.args[0]
+        assert call_name == "set_update_manifest"
+        mock_conn.async_disconnect.assert_awaited_once()
+
+    async def test_async_trigger_ota_session_translation_error_propagates(
+        self, hass: HomeAssistant, store: EPPGridStore, manager: DeviceManager
+    ) -> None:
+        """If the session raises HomeAssistantError (e.g. service missing),
+        propagate it rather than wrapping it as a generic 'could not contact'."""
+        from homeassistant.exceptions import HomeAssistantError
+
+        mac = "AA:BB:CC:DD:EE:FF"
+        manager.devices[mac] = ManagedDevice(mac=mac, name="EPP", host="192.168.1.50")
+        manager._build_flags[mac] = {"ethernet_enabled": False}
+
+        seeded = MagicMock()
+        seeded.connected = True
+        seeded.async_execute_service = AsyncMock(side_effect=HomeAssistantError("translated"))
+        manager._active_connections[mac] = seeded
+
+        with pytest.raises(HomeAssistantError, match="translated"):
+            await manager.async_trigger_ota(mac)
+
+    async def test_async_trigger_ota_session_unexpected_error_wrapped(
+        self, hass: HomeAssistant, store: EPPGridStore, manager: DeviceManager
+    ) -> None:
+        """A non-HomeAssistantError raised by the session is wrapped with a
+        stable, user-readable message (so the panel doesn't surface raw
+        aioesphomeapi internals)."""
+        from homeassistant.exceptions import HomeAssistantError
+
+        mac = "AA:BB:CC:DD:EE:FF"
+        manager.devices[mac] = ManagedDevice(mac=mac, name="EPP", host="192.168.1.50")
+        manager._build_flags[mac] = {"ethernet_enabled": False}
+
+        seeded = MagicMock()
+        seeded.connected = True
+        seeded.async_execute_service = AsyncMock(side_effect=ConnectionError("socket gone"))
+        manager._active_connections[mac] = seeded
+
+        with pytest.raises(HomeAssistantError, match="Could not contact device"):
+            await manager.async_trigger_ota(mac)
+
+    async def test_async_trigger_ota_temp_conn_unexpected_error_wrapped(
+        self, hass: HomeAssistant, store: EPPGridStore, manager: DeviceManager
+    ) -> None:
+        """When the fallback temp-conn path raises a non-HomeAssistantError,
+        wrap it (still disconnect)."""
+        from homeassistant.exceptions import HomeAssistantError
+
+        mac = "AA:BB:CC:DD:EE:FF"
+        manager.devices[mac] = ManagedDevice(mac=mac, name="EPP", host="192.168.1.50")
+        manager._build_flags[mac] = {"ethernet_enabled": False}
+
+        mock_conn = MagicMock()
+        mock_conn.async_connect = AsyncMock(side_effect=OSError("dns fail"))
+        mock_conn.async_disconnect = AsyncMock()
+
+        with (
+            patch(
+                "custom_components.eppgrid.device_manager.DeviceConnection",
+                return_value=mock_conn,
+            ),
+            pytest.raises(HomeAssistantError, match="Could not contact device"),
+        ):
+            await manager.async_trigger_ota(mac)
+
+        mock_conn.async_disconnect.assert_awaited_once()
+
+    async def test_async_trigger_ota_temp_conn_translation_error_propagates(
+        self, hass: HomeAssistant, store: EPPGridStore, manager: DeviceManager
+    ) -> None:
+        """A HomeAssistantError raised from the temp-conn path (e.g. service
+        missing) propagates without being wrapped as a generic 'could not
+        contact'."""
+        from homeassistant.exceptions import HomeAssistantError
+
+        mac = "AA:BB:CC:DD:EE:FF"
+        manager.devices[mac] = ManagedDevice(mac=mac, name="EPP", host="192.168.1.50")
+        manager._build_flags[mac] = {"ethernet_enabled": False}
+
+        mock_conn = MagicMock()
+        mock_conn.async_connect = AsyncMock()
+        mock_conn.async_execute_service = AsyncMock(side_effect=HomeAssistantError("translated"))
+        mock_conn.async_disconnect = AsyncMock()
+
+        with (
+            patch(
+                "custom_components.eppgrid.device_manager.DeviceConnection",
+                return_value=mock_conn,
+            ),
+            pytest.raises(HomeAssistantError, match="translated"),
+        ):
+            await manager.async_trigger_ota(mac)
+
+        mock_conn.async_disconnect.assert_awaited_once()
