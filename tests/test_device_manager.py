@@ -280,6 +280,41 @@ class TestDeviceConnection:
                 "led_enabled": True,
             }
 
+    async def test_fetch_build_flags_returns_empty_when_service_missing(self) -> None:
+        """No get_build_flags service -> cacheable empty result."""
+        conn = DeviceConnection("192.168.1.100")
+        # Simulate post-connect state without the service.
+        conn._client = MagicMock()
+        conn._services = {}
+        flags = await conn.async_fetch_build_flags()
+        assert flags == {}
+
+    async def test_fetch_build_flags_reraises_on_timeout(self) -> None:
+        """Transient timeout must not be cached as empty -- propagate to caller."""
+        conn = DeviceConnection("192.168.1.100")
+        conn._client = MagicMock()
+        svc = MagicMock()
+        conn._services = {"get_build_flags": svc}
+
+        async def hang(*_a, **_kw):
+            await asyncio.sleep(10)
+
+        conn._client.execute_service = MagicMock(side_effect=hang)
+        with pytest.raises(asyncio.TimeoutError):
+            await conn.async_fetch_build_flags(timeout=0.05)
+
+    async def test_fetch_build_flags_reraises_on_invalid_json(self) -> None:
+        """Corrupt response is a real failure, not a cacheable empty answer."""
+        conn = DeviceConnection("192.168.1.100")
+        conn._client = MagicMock()
+        svc = MagicMock()
+        conn._services = {"get_build_flags": svc}
+        resp = MagicMock()
+        resp.response_data = "not-json{"
+        conn._client.execute_service = AsyncMock(return_value=resp)
+        with pytest.raises(json.JSONDecodeError):
+            await conn.async_fetch_build_flags()
+
 
 # ---------------------------------------------------------------------------
 # DeviceManager tests
@@ -2969,6 +3004,27 @@ class TestEventCallbacks:
             await manager._push_config_to_device("AA:BB:CC:DD:EE:FF")
             mock_fetch.assert_awaited_once_with("AA:BB:CC:DD:EE:FF")
 
+    async def test_fetch_build_flags_does_not_cache_on_transient_failure(
+        self, hass: HomeAssistant, manager: DeviceManager
+    ) -> None:
+        """A timeout while fetching build flags must leave the slot empty so a
+        subsequent call retries instead of being short-circuited by the cache."""
+        mac = "AA:BB:CC:DD:EE:FF"
+        manager.devices[mac] = ManagedDevice(mac=mac, name="EPP", host="192.168.1.50")
+        session = MagicMock()
+        session.async_fetch_build_flags = AsyncMock(side_effect=TimeoutError())
+        session.connected = True
+        manager._active_connections[mac] = session
+
+        await manager._fetch_build_flags(mac)
+        assert mac not in manager._build_flags  # transient -> not cached
+
+        # Second call retries (no early-return from the cache).
+        session.async_fetch_build_flags.side_effect = None
+        session.async_fetch_build_flags.return_value = {"ethernet_enabled": True}
+        await manager._fetch_build_flags(mac)
+        assert manager._build_flags[mac] == {"ethernet_enabled": True}
+
     async def test_push_config_to_device_opens_session(
         self, hass: HomeAssistant, store: EPPGridStore, manager: DeviceManager
     ) -> None:
@@ -4658,8 +4714,8 @@ class TestBuildFlags:
 
         assert result == {}
 
-    async def test_fetch_build_flags_exception_returns_empty(self) -> None:
-        """async_fetch_build_flags returns empty dict on exception."""
+    async def test_fetch_build_flags_reraises_connection_error(self) -> None:
+        """async_fetch_build_flags propagates transient connection errors."""
         conn = DeviceConnection("192.168.1.100")
 
         mock_svc = MagicMock()
@@ -4673,9 +4729,8 @@ class TestBuildFlags:
             mock_client.disconnect = AsyncMock()
 
             await conn.async_connect()
-            result = await conn.async_fetch_build_flags()
-
-        assert result == {}
+            with pytest.raises(ConnectionError):
+                await conn.async_fetch_build_flags()
 
     async def test_fetch_build_flags_non_dict_returns_empty(self) -> None:
         """async_fetch_build_flags returns empty dict when response is not a dict."""
@@ -4914,7 +4969,7 @@ class TestBuildFlags:
         mock_conn.async_connect.assert_not_awaited()
 
     async def test_fetch_build_flags_times_out_fast(self) -> None:
-        """async_fetch_build_flags returns {} within timeout when execute_service hangs."""
+        """async_fetch_build_flags raises TimeoutError within the override window."""
         conn = DeviceConnection("192.168.1.100")
 
         mock_svc = MagicMock()
@@ -4934,11 +4989,11 @@ class TestBuildFlags:
             await conn.async_connect()
             loop = asyncio.get_running_loop()
             start = loop.time()
-            result = await conn.async_fetch_build_flags(timeout=0.05)
+            with pytest.raises(asyncio.TimeoutError):
+                await conn.async_fetch_build_flags(timeout=0.05)
             elapsed = loop.time() - start
 
-        assert result == {}
-        # Tight bound proves the override was honored (not the 2.0s default).
+        # Tight bound proves the override was honored (not the 10s default).
         assert elapsed < 0.5, f"expected timeout~=0.05s, took {elapsed:.3f}s"
 
     async def test_list_devices_no_build_flags(self, hass: HomeAssistant, manager: DeviceManager) -> None:

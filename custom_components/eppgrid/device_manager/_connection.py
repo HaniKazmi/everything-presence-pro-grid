@@ -141,27 +141,30 @@ class DeviceConnection:
             self._unsub_logs = None
             _LOGGER.debug("Unsubscribed from device logs from %s", self._host)
 
-    async def async_fetch_build_flags(self, timeout: float = 2.0) -> dict[str, Any]:
-        """Fetch build flags from device via get_build_flags action."""
+    async def async_fetch_build_flags(self, timeout: float = 10.0) -> dict[str, Any]:
+        """Fetch build flags from the device via the get_build_flags action.
+
+        Returns ``{}`` only when the device firmware doesn't expose
+        ``get_build_flags`` (older firmware, original EPP firmware) — that
+        result is safely cacheable. All transient failures (timeout,
+        connection error, malformed JSON) propagate so the caller can
+        decide whether to retry.
+        """
         if self._client is None:
             return {}
         svc = self._services.get("get_build_flags")
         if svc is None:
             return {}
-        try:
-            resp = await asyncio.wait_for(
-                self._client.execute_service(svc, {}, return_response=True),
-                timeout=timeout,
-            )
-            if resp is None or not resp.response_data:
-                return {}
-            decoded = json.loads(resp.response_data)
-            if not isinstance(decoded, dict):
-                return {}
-            return decoded
-        except (json.JSONDecodeError, Exception):
-            _LOGGER.debug("Failed to fetch build flags from %s", self._host)
+        resp = await asyncio.wait_for(
+            self._client.execute_service(svc, {}, return_response=True),
+            timeout=timeout,
+        )
+        if resp is None or not resp.response_data:
             return {}
+        decoded = json.loads(resp.response_data)
+        if not isinstance(decoded, dict):
+            return {}
+        return decoded
 
     async def async_push_distance_override(self, override: dict[str, Any]) -> None:
         """Push distance override to device without persisting."""
