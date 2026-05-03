@@ -22,10 +22,33 @@ bluetooth_proxy:
 # What stays loaded even when off:
 #   - bluetooth_proxy component code
 #   - BLE controller stack (~10-15 KB) — initialized by ESPHome before
-#     our on_boot reconciliation runs.
+#     any of our automations run.
 #
 # Defaults ON for backwards compatibility on first flash; a deliberate
 # OFF persists across reboots.
+#
+# CRITICAL: ESPHome template switches re-fire turn_off_action / turn_on_action
+# on every boot when state is restored from NVS (see
+# esphome/components/template/switch/template_switch.cpp setup()).
+# An UNCONDITIONAL App.safe_reboot() in turn_off_action would therefore
+# bootloop a device that was deliberately turned off: NVS=OFF -> turn_off_action
+# fires -> reboot -> NVS still OFF -> repeat (WiFi never associates, device
+# unreachable until NVS is erased). The reboot must be gated on the
+# `ble_scan_safe_to_reboot` global, which we set to true 30 s post-boot.
+# State-restoration on boot stops the scan but does NOT reboot; a real
+# user-initiated toggle (after the 30 s settling delay) reboots cleanly.
+globals:
+  - id: ble_scan_safe_to_reboot
+    type: bool
+    initial_value: 'false'
+
+esphome:
+  on_boot:
+    - priority: -100  # very late — after WiFi/API setup
+      then:
+        - delay: 30s
+        - lambda: 'id(ble_scan_safe_to_reboot) = true;'
+
 switch:
   - platform: template
     name: "BLE Scan"
@@ -37,30 +60,15 @@ switch:
       - logger.log: "BLE Scan enabled — starting tracker scan"
       - esp32_ble_tracker.start_scan:
     turn_off_action:
-      - logger.log: "BLE Scan disabled — stopping tracker scan and rebooting to drop active proxy connections"
+      - logger.log: "BLE Scan disabled — stopping tracker scan"
       - esp32_ble_tracker.stop_scan:
-      # Reboot so any in-flight bluetooth_proxy GATT-client connections
-      # drop cleanly; on_boot reconciliation re-applies the OFF state
-      # immediately on restart. Brief delay so HA receives the switch
-      # state change before the device disappears.
-      - delay: 2s
-      - lambda: 'App.safe_reboot();'
-
-# Reconcile scan with restored switch state on boot. Template switches
-# restore their state but don't replay the configured actions, so a user
-# who toggled OFF before reboot would otherwise still come back with
-# scanning active.
-esphome:
-  on_boot:
-    - priority: 100
-      then:
-        - if:
-            condition:
-              not:
-                switch.is_on: ble_scan_enabled
-            then:
-              - esp32_ble_tracker.stop_scan:
-              - logger.log: "BLE Scan disabled by user — tracker stopped on boot"
+      - if:
+          condition:
+            lambda: 'return id(ble_scan_safe_to_reboot);'
+          then:
+            - delay: 2s
+            - logger.log: "Rebooting to drop active proxy GATT connections"
+            - lambda: 'App.safe_reboot();'
 
 # Pause BLE scan for the OTA download. The mbedtls TLS context held during the
 # multi-second binary fetch is the largest transient heap consumer on this

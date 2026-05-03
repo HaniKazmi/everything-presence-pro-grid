@@ -114,22 +114,110 @@ def test_disabling_ble_scan_reboots_to_drop_active_proxy_connections() -> None:
     active bluetooth_proxy GATT-client connections to BLE devices stay live
     until they naturally drop (which can take minutes-to-hours). A reboot
     cleanly tears them down — bringing the device back to its lowest-heap
-    steady state, which is the whole point of the toggle. The on_boot
-    reconciliation then re-applies the OFF state immediately on restart.
+    steady state, which is the whole point of the toggle.
     """
     doc = _load_bluetooth_base()
     sw = _find_switch_by_id(doc["switch"], "ble_scan_enabled")
     assert sw is not None
     turn_off_action = sw.get("turn_off_action", [])
     serialized = yaml.dump(turn_off_action)
-    # Accept either a `lambda` calling App.safe_reboot()/App.reboot() or a
-    # `button.press` of a restart button — both are idiomatic ways to
-    # restart from an automation in ESPHome.
     assert "safe_reboot" in serialized or "App.reboot" in serialized or "button.press" in serialized, (
         "turn_off_action must restart the device to drop active proxy GATT "
         "connections — stop_scan alone leaves them live until they naturally "
         "drop. Found turn_off_action:\n"
         f"{serialized}"
+    )
+
+
+def test_turn_off_action_gates_reboot_to_avoid_bootloop() -> None:
+    """Reboot in turn_off_action must be conditional, not unconditional.
+
+    ESPHome template switches re-fire the corresponding action on every
+    boot when state is restored from NVS (see ESPHome
+    `template/switch/template_switch.cpp` setup()). An unconditional
+    `App.safe_reboot()` in `turn_off_action` therefore bootloops a device
+    that's been deliberately turned off: NVS says OFF -> turn_off_action
+    fires -> reboot -> NVS still OFF -> repeat. WiFi never associates;
+    the device is unreachable until NVS is erased.
+
+    The fix is to gate the reboot on a "boot has settled" condition (a
+    global flag set after a delay in on_boot) so state-restoration on
+    boot stops the scan but does NOT reboot, while a real user-initiated
+    toggle (after boot is settled) still reboots cleanly.
+    """
+    doc = _load_bluetooth_base()
+    sw = _find_switch_by_id(doc["switch"], "ble_scan_enabled")
+    assert sw is not None
+    turn_off_action = sw.get("turn_off_action", [])
+    serialized = yaml.dump(turn_off_action)
+    assert "safe_reboot" in serialized or "App.reboot" in serialized, (
+        "turn_off_action must include a reboot to drop active proxy connections"
+    )
+    # The reboot must be inside an `if` / condition block — not a
+    # top-level action. The simplest signal: there's an `if:` somewhere
+    # in turn_off_action wrapping the reboot.
+    assert "if:" in serialized and "condition" in serialized, (
+        "turn_off_action's reboot must be gated on a condition so it doesn't "
+        "fire when state is restored on boot. Found:\n"
+        f"{serialized}"
+    )
+
+
+def test_boot_settled_global_flag_is_present() -> None:
+    """A global flag `ble_scan_safe_to_reboot` (or equivalent) must be
+    declared and set true after boot has settled, so turn_off_action can
+    distinguish boot-time state restoration from a real user toggle.
+    """
+    doc = _load_bluetooth_base()
+    globals_block = doc.get("globals", [])
+    assert isinstance(globals_block, list) and globals_block, (
+        "bluetooth-base.yaml must declare a `globals:` list with the "
+        "ble_scan_safe_to_reboot flag — required to gate the reboot in "
+        "turn_off_action and prevent the boot-time-restore bootloop."
+    )
+    flag = next(
+        (g for g in globals_block if isinstance(g, dict) and g.get("id") == "ble_scan_safe_to_reboot"),
+        None,
+    )
+    assert flag is not None, "expected a global with id `ble_scan_safe_to_reboot`"
+    assert flag.get("type") == "bool"
+    assert str(flag.get("initial_value", "")).strip("'\"") == "false", (
+        "ble_scan_safe_to_reboot must initialize to false so an early-boot "
+        "turn_off_action (state restore) sees the flag as false and skips "
+        f"the reboot. Got initial_value={flag.get('initial_value')!r}."
+    )
+
+    # And there must be an on_boot hook that flips the flag to true after
+    # a delay — otherwise it'd never become true and a real user toggle
+    # would never reboot.
+    esphome_block = doc.get("esphome", {})
+    on_boot_serialized = yaml.dump(esphome_block.get("on_boot", []))
+    assert "ble_scan_safe_to_reboot" in on_boot_serialized and "true" in on_boot_serialized, (
+        "an on_boot hook must set ble_scan_safe_to_reboot = true after a "
+        "delay so user-initiated turn_off_action calls reboot. Found on_boot:\n"
+        f"{on_boot_serialized}"
+    )
+
+
+def test_on_boot_reconciliation_block_no_longer_needed() -> None:
+    """The on_boot reconciliation hook is redundant once turn_off_action
+    fires automatically on state restore.
+
+    Template switches re-run turn_off_action on boot when state is restored
+    to OFF — so the explicit `esphome.on_boot if not switch.is_on then
+    stop_scan` block we used to have is doing the same thing twice. Remove
+    it to keep boot-time logic minimal and reduce the surface area for
+    similar early-boot timing bugs.
+    """
+    doc = _load_bluetooth_base()
+    esphome_block = doc.get("esphome", {})
+    on_boot_serialized = yaml.dump(esphome_block.get("on_boot", []))
+    assert "esp32_ble_tracker.stop_scan" not in on_boot_serialized and "switch.is_on" not in on_boot_serialized, (
+        "on_boot must NOT call stop_scan or check switch.is_on directly — "
+        "that's the reconciliation pattern that caused the early-boot "
+        "bricking issue. turn_off_action handles state restoration "
+        "automatically. Found on_boot:\n"
+        f"{on_boot_serialized}"
     )
 
 
@@ -167,35 +255,6 @@ def test_ble_scan_toggle_turn_on_action_calls_start_scan() -> None:
         "turn_on_action must call esp32_ble_tracker.start_scan. Without it the "
         "user toggling back ON would see the switch flip in HA but BLE scanning "
         "would stay off until reboot. Found turn_on_action:\n"
-        f"{serialized}"
-    )
-
-
-def test_on_boot_reconciliation_block_is_present() -> None:
-    """Boot reconciliation hook must reapply the persisted OFF state on restart.
-
-    Template switches restore their state across reboots but do NOT replay
-    the configured turn_off_action. Without an explicit on_boot block that
-    checks the restored switch state and calls stop_scan, BLE scanning
-    would come back up at boot for users who'd deliberately turned the
-    switch off — defeating the whole point of persistence.
-
-    This test parses bluetooth-base.yaml in isolation so it locks down the
-    structure of the boot block. End-to-end coverage that the block survives
-    package merging with the base file's existing on_boot hooks is provided
-    by the CI "Compile wifi-ble-co2" job (see module docstring).
-    """
-    doc = _load_bluetooth_base()
-    esphome_block = doc.get("esphome", {})
-    on_boot = esphome_block.get("on_boot", [])
-    assert isinstance(on_boot, list) and on_boot, (
-        "bluetooth-base.yaml must declare an `esphome.on_boot:` list with at "
-        "least one entry — needed to reconcile restored OFF state on boot."
-    )
-    serialized = yaml.dump(on_boot)
-    assert "ble_scan_enabled" in serialized and "esp32_ble_tracker.stop_scan" in serialized, (
-        "the on_boot hook must check `ble_scan_enabled` and call stop_scan. "
-        "Without that the restored OFF state has no effect at boot. Found:\n"
         f"{serialized}"
     )
 
