@@ -23,9 +23,6 @@ from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import issue_registry as ir
 
 from .const import DOMAIN
-from .const import FIRMWARE_VARIANTS
-from .const import OTA_MANIFEST_BASE_URL
-from .device_manager import DeviceConnection
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -35,55 +32,15 @@ _FIRMWARE_BEHIND_PREFIX = "firmware_behind_"
 async def _trigger_ota(hass: HomeAssistant, mac: str) -> None:
     """Trigger an OTA firmware update on a device.
 
-    Mirrors the panel's `update_firmware` websocket handler — derives the
-    firmware variant from build flags, constructs the manifest URL from
-    `OTA_MANIFEST_BASE_URL` and `FIRMWARE_VERSION`, then calls the device's
-    `set_update_manifest` API action over a temporary connection.
-
-    Raises HomeAssistantError on failure (no manager / device / build flags
-    / variant / host, or service call failure).
+    Thin wrapper over `DeviceManager.async_trigger_ota` so the OTA-trigger
+    logic stays in one place — shared with the panel's update_firmware
+    websocket handler. Raises HomeAssistantError on failure (no manager,
+    device, build flags, variant, host, service call failure).
     """
     manager = hass.data.get(DOMAIN)
     if manager is None:
         raise HomeAssistantError("EPP Grid integration not loaded")
-
-    dev = manager.devices.get(mac)
-    if dev is None:
-        raise HomeAssistantError(f"Device {mac} not found")
-    if dev.host is None:
-        raise HomeAssistantError(f"Device {mac} host unknown")
-
-    flags = manager._build_flags.get(mac, {})
-    if not flags:
-        raise HomeAssistantError(f"Build flags for {mac} not yet available")
-
-    network = "ethernet" if flags.get("ethernet_enabled") else "wifi"
-    variant = FIRMWARE_VARIANTS.get(network)
-    if variant is None:
-        raise HomeAssistantError(f"No firmware variant for network type: {network}")
-
-    manifest_url = f"{OTA_MANIFEST_BASE_URL}/{variant}.json"
-
-    conn = DeviceConnection(dev.host)
-    try:
-        try:
-            await conn.async_connect()
-            svc = conn._services.get("set_update_manifest")
-            if svc is None:
-                raise HomeAssistantError(f"Device {mac} firmware does not expose set_update_manifest")
-            assert conn._client is not None
-            await conn._client.execute_service(svc, {"url": manifest_url})
-        except HomeAssistantError:
-            raise
-        except Exception as err:
-            # Wrap aioesphomeapi (and any other unexpected) exceptions so the
-            # Repairs UI sees a stable, message-bearing error type rather
-            # than untranslated technical text bubbling up.
-            _LOGGER.warning("OTA trigger for %s failed: %s", mac, err)
-            raise HomeAssistantError(f"Could not contact device {mac}: {err}") from err
-        _LOGGER.info("Triggered OTA for %s via Repairs fix flow (manifest=%s)", mac, manifest_url)
-    finally:
-        await conn.async_disconnect()
+    await manager.async_trigger_ota(mac)
 
 
 class FirmwareUpdateRepairFlow(RepairsFlow):

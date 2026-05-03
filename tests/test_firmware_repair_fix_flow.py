@@ -166,7 +166,7 @@ async def test_trigger_ota_wraps_aioesphomeapi_errors(hass: HomeAssistant) -> No
     mock_conn._client = None
 
     with (
-        patch("custom_components.eppgrid.repairs.DeviceConnection", return_value=mock_conn),
+        patch("custom_components.eppgrid.device_manager.DeviceConnection", return_value=mock_conn),
         pytest.raises(HomeAssistantError),
     ):
         await _trigger_ota(hass, mac)
@@ -200,7 +200,7 @@ async def test_trigger_ota_calls_set_update_manifest(hass: HomeAssistant) -> Non
     mock_conn._services = {"set_update_manifest": object()}
     mock_conn._client = mock_client
 
-    with patch("custom_components.eppgrid.repairs.DeviceConnection", return_value=mock_conn):
+    with patch("custom_components.eppgrid.device_manager.DeviceConnection", return_value=mock_conn):
         await _trigger_ota(hass, mac)
 
     mock_conn.async_connect.assert_awaited_once()
