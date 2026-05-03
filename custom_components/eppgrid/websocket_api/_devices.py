@@ -82,6 +82,7 @@ def websocket_list_devices(
         vol.Required("value"): bool,
     }
 )
+@websocket_api.require_admin
 @websocket_api.async_response
 @_require_manager
 async def websocket_set_show_room_calibration_tutorial(
@@ -138,6 +139,7 @@ def websocket_get_config(
         vol.Required("room_depth"): vol.Coerce(float),
     }
 )
+@websocket_api.require_admin
 @websocket_api.async_response
 @_require_manager(check_firmware=True)
 async def websocket_set_setup(
@@ -194,6 +196,7 @@ async def websocket_set_setup(
         vol.Optional("furniture", default=[]): list,
     }
 )
+@websocket_api.require_admin
 @websocket_api.async_response
 @_require_manager(check_firmware=True)
 async def websocket_set_room_layout(
@@ -246,6 +249,7 @@ def websocket_list_configurations(
         vol.Required("configuration"): dict,
     }
 )
+@websocket_api.require_admin
 @websocket_api.async_response
 @_require_manager
 async def websocket_save_configuration(
@@ -266,6 +270,7 @@ async def websocket_save_configuration(
         vol.Required("name"): str,
     }
 )
+@websocket_api.require_admin
 @websocket_api.async_response
 @_require_manager
 async def websocket_delete_configuration(
@@ -739,6 +744,7 @@ async def websocket_subscribe_grid_targets(
         vol.Required("enabled"): bool,
     }
 )
+@websocket_api.require_admin
 @callback
 @_require_manager(check_firmware=True)
 def websocket_set_entity_enabled(
@@ -808,6 +814,7 @@ _SETTINGS_KEYS = (
         vol.Optional("zone_update_rate_ms"): vol.All(vol.Coerce(int), vol.In([200, 500, 1000, 2000])),
     }
 )
+@websocket_api.require_admin
 @websocket_api.async_response
 @_require_manager(check_firmware=True)
 async def websocket_set_settings(
@@ -897,6 +904,7 @@ async def websocket_set_settings(
         vol.Required("static_max_distance"): vol.Coerce(float),
     }
 )
+@websocket_api.require_admin
 @websocket_api.async_response
 @_require_manager(check_firmware=True)
 async def websocket_set_distance_override(
@@ -940,6 +948,7 @@ async def websocket_set_distance_override(
         vol.Required("window_duration"): vol.All(vol.Coerce(int), vol.Range(min=200, max=2000)),
     }
 )
+@websocket_api.require_admin
 @websocket_api.async_response
 @_require_manager(check_firmware=True)
 async def websocket_set_pipeline(
