@@ -54,13 +54,13 @@ static ZoneEngine make_engine() {
 
 static WindowOutput make_window_0() {
     WindowOutput wo{};
-    wo.total_frames = RAW_FPS;
+    wo.total_frames = CANONICAL_FRAMES;
     return wo;
 }
 
 static WindowOutput make_window_1(float x, float y, int fc) {
     WindowOutput wo{};
-    wo.total_frames = RAW_FPS;
+    wo.total_frames = CANONICAL_FRAMES;
     wo.targets[0].median_x = x;
     wo.targets[0].median_y = y;
     wo.targets[0].frame_count = fc;
@@ -71,7 +71,7 @@ static WindowOutput make_window_1(float x, float y, int fc) {
 static WindowOutput make_window_2(float x1, float y1, int fc1,
                                    float x2, float y2, int fc2) {
     WindowOutput wo{};
-    wo.total_frames = RAW_FPS;
+    wo.total_frames = CANONICAL_FRAMES;
     wo.targets[0] = {x1, y1, fc1, (fc1 > 0)};
     wo.targets[1] = {x2, y2, fc2, (fc2 > 0)};
     return wo;

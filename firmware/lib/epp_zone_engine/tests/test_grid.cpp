@@ -298,11 +298,25 @@ TEST_CASE("Grid accessors") {
     CHECK(grid.cell_count() == 150);
 }
 
-TEST_CASE("threshold_to_frame_count") {
-    CHECK(epp::threshold_to_frame_count(5) == 5);
-    CHECK(epp::threshold_to_frame_count(1) == 1);
-    CHECK(epp::threshold_to_frame_count(0) == 1);
-    CHECK(epp::threshold_to_frame_count(-3) == 1);
+TEST_CASE("clamp_threshold") {
+    CHECK(epp::clamp_threshold(5) == 5);
+    CHECK(epp::clamp_threshold(1) == 1);
+    CHECK(epp::clamp_threshold(0) == 1);
+    CHECK(epp::clamp_threshold(-3) == 1);
+}
+
+TEST_CASE("frame_count_to_signal: in-range frame counts map 1:1 to signal") {
+    CHECK(epp::frame_count_to_signal(0) == 0);
+    CHECK(epp::frame_count_to_signal(1) == 1);
+    CHECK(epp::frame_count_to_signal(5) == 5);
+    CHECK(epp::frame_count_to_signal(9) == 9);
+}
+
+TEST_CASE("frame_count_to_signal: over-delivery saturates at 9") {
+    CHECK(epp::frame_count_to_signal(10) == 9);
+    CHECK(epp::frame_count_to_signal(11) == 9);
+    CHECK(epp::frame_count_to_signal(15) == 9);
+    CHECK(epp::frame_count_to_signal(16) == 9);  // RollingWindow MAX_FRAMES
 }
 
 TEST_CASE("overlay constants") {

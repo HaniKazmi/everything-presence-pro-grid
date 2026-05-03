@@ -171,8 +171,6 @@ int ZoneEngine::find_zone_index(int zone_id) const {
 
 const ProcessingResult& ZoneEngine::tick(const WindowOutput& window, float timestamp,
                                          const SensorInput& sensors) {
-    int frames = std::max(window.total_frames, raw_fps_);
-
     // Snapshot previous states for transition logging
     ZoneState prev_zone_state[MAX_ZONE_SLOTS]{};
     for (int zi = 0; zi < zone_count_; ++zi) {
@@ -186,7 +184,7 @@ const ProcessingResult& ZoneEngine::tick(const WindowOutput& window, float times
     // Clear result (skip zeroing log buffer — log_count gates access)
     std::memset(&result_, 0, offsetof(ProcessingResult, log));
     result_.log_count = 0;
-    result_.frame_count = frames;
+    result_.frame_count = window.total_frames;
 
     // Per-zone tracking: confirmed flag, best signal, and target count
     bool zone_confirmed[MAX_ZONE_SLOTS]{};
@@ -228,8 +226,11 @@ const ProcessingResult& ZoneEngine::tick(const WindowOutput& window, float times
         }
 
         target_active[i] = true;
-        // Signal = proportion of frames target was active (0-9 scale, rounded)
-        int signal = (frames > 0) ? std::min((tw.frame_count * 9 + frames / 2) / frames, 9) : 0;
+        // Signal = number of frames in the rolling window where the target
+        // was active, capped at 9. Identical to the value the frontend
+        // receives, so the firmware's signal-vs-trigger comparison reaches
+        // the same decision as the frontend's editor preview.
+        int signal = frame_count_to_signal(tw.frame_count);
         int cell = grid_.xy_to_cell(tw.median_x, tw.median_y);
 
         if (cell == -1 || !grid_.cell_is_room(cell)) {
@@ -320,8 +321,8 @@ const ProcessingResult& ZoneEngine::tick(const WindowOutput& window, float times
         int zi = find_zone_index(zone_id);
         if (zi >= 0) {
             ZoneRuntime& rt = zones_[zi];
-            int trigger_thresh = threshold_to_frame_count(rt.config.trigger);
-            int renew_thresh = threshold_to_frame_count(rt.config.renew);
+            int trigger_thresh = clamp_threshold(rt.config.trigger);
+            int renew_thresh = clamp_threshold(rt.config.renew);
 
             // No first appearance: targets cannot originate in interference zones.
             // They must be handed off from a clean zone (continuity required).
@@ -365,7 +366,7 @@ const ProcessingResult& ZoneEngine::tick(const WindowOutput& window, float times
                 //   - Switch to wall-clock gating (require sustained signal for N seconds)
                 //   - Increase gated_thresh offset (currently +2)
                 int gated_thresh = std::min(base_thresh + 2, 8);
-                if (tw.frame_count >= gated_thresh) {
+                if (signal >= gated_thresh) {
                     target_gate_count_[i] += 1;
                     if (target_gate_count_[i] >= 2) {
                         // Confirmed after 2 qualifying ticks
@@ -393,7 +394,7 @@ const ProcessingResult& ZoneEngine::tick(const WindowOutput& window, float times
             } else {
                 // Not gated: entry point zone, continuous movement,
                 // or already occupied/pending
-                if (tw.frame_count >= base_thresh) {
+                if (signal >= base_thresh) {
                     target_confirmed_zone[i] = zone_id;
                     zone_confirmed[zone_id] = true;
                     rt.confirmed_targets |= (1 << i);

@@ -55,6 +55,10 @@ function mockHost() {
 		_roomWidth: 6000,
 		_roomDepth: 6000,
 
+		// Sensor timeouts forwarded to runLocalZoneEngine (panel defaults).
+		_staticTimeout: 30,
+		_motionTimeout: 5,
+
 		// Debug log (frontend)
 		_showDebugLog: false,
 		_debugLogLines: [] as string[],
@@ -706,6 +710,19 @@ describe("TargetController", () => {
 			expect(params.roomRenew).toBe(2);
 			expect(params.roomTimeout).toBe(20);
 			expect(params.roomHandoffTimeout).toBe(5);
+		});
+
+		it("forwards host static/motion timeout values (not hardcoded 10s)", () => {
+			// The host carries the user-configured sensor timeouts; the editor
+			// preview must mirror them so its pending-state behaviour matches
+			// the firmware.
+			host._staticTimeout = 30;
+			host._motionTimeout = 5;
+			host._grid = new Uint8Array(GRID_CELL_COUNT);
+			ctrl.runLocalZoneEngine();
+			const params = (engineSpy.mock.calls[0] as any[])[1];
+			expect(params.staticTimeout).toBe(30);
+			expect(params.motionTimeout).toBe(5);
 		});
 	});
 

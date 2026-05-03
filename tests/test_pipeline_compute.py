@@ -16,7 +16,6 @@ class TestComputePipeline:
             "entity_zone_interval": 0,
             "display_interval": 0,
             "zone_state_interval": 0,
-            "window_duration": 1000,
         }
 
     def test_target_entities_enabled_uses_configured_rate(self) -> None:
@@ -93,15 +92,13 @@ class TestComputePipeline:
         assert result["display_interval"] == 0
         assert result["zone_state_interval"] == 0
 
-    def test_window_duration_from_config(self) -> None:
+    def test_pipeline_result_has_no_window_duration_field(self) -> None:
+        """The rolling window is fixed (1000ms) on the firmware side; the
+        pipeline result no longer carries a window_duration knob."""
         from custom_components.eppgrid.device_manager._helpers import _compute_pipeline
 
-        result = _compute_pipeline(
-            config={"pipeline": {"window_duration": 500}},
-            raw_target_subs=0,
-            grid_target_subs=0,
-        )
-        assert result["window_duration"] == 500
+        result = _compute_pipeline(config={}, raw_target_subs=0, grid_target_subs=0)
+        assert "window_duration" not in result
 
     def test_default_rates_when_not_configured(self) -> None:
         from custom_components.eppgrid.device_manager._helpers import _compute_pipeline

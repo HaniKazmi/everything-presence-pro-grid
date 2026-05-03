@@ -24,9 +24,6 @@ static float rolling_median(const float* data, int count) {
 
 }  // namespace
 
-RollingWindow::RollingWindow(uint32_t window_ms)
-    : window_ms_(window_ms) {}
-
 void RollingWindow::reset() {
     head_ = 0;
     count_ = 0;
@@ -47,7 +44,7 @@ void RollingWindow::expire_old(uint32_t now_ms) {
             head_ = 0;
             return;
         }
-        if (now_ms - tail_ts > window_ms_) {
+        if (now_ms - tail_ts > WINDOW_MS) {
             --count_;
         } else {
             break;

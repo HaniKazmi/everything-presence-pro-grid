@@ -126,7 +126,6 @@ def _compute_pipeline(
 ) -> dict[str, int]:
     """Derive all pipeline intervals from current settings and subscriber counts."""
     settings = config.get("settings", {})
-    pipeline = config.get("pipeline", {})
 
     target_rate = settings.get("target_update_rate_ms", 1000)
     zone_rate = settings.get("zone_update_rate_ms", 1000)
@@ -141,7 +140,6 @@ def _compute_pipeline(
         "entity_zone_interval": zone_rate if any_zone else 0,
         "display_interval": 200 if has_display_sub else 0,
         "zone_state_interval": 1000 if grid_target_subs > 0 else 0,
-        "window_duration": pipeline.get("window_duration", 1000),
     }
 
 

@@ -63,7 +63,6 @@ class EPPComponent : public esphome::Component {
   void set_zone_state_sensor(esphome::text_sensor::TextSensor *sensor) {
     zone_state_sensor_ = sensor;
   }
-  void set_window_duration(uint32_t ms) { window_.set_window_duration(ms); }
   void set_entity_target_interval(uint32_t ms) { entity_target_interval_ms_ = ms; }
   void set_entity_zone_interval(uint32_t ms) { entity_zone_interval_ms_ = ms; }
   void set_display_interval(uint32_t ms) { display_interval_ms_ = ms; }
@@ -154,7 +153,7 @@ class EPPComponent : public esphome::Component {
   // Zone engine pipeline
   SensorTransform transform_;
   Grid grid_;
-  RollingWindow window_{1000};
+  RollingWindow window_;
   ZoneEngine zone_engine_;
   bool target_touched_overlay_[MAX_TARGETS]{};
 

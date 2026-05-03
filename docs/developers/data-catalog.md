@@ -223,7 +223,7 @@ The handler also monitors device log messages for `http_request.ota` and `http_r
 
 ### Firmware Version Guard
 
-All config commands (`set_setup`, `set_room_layout`, `set_entity_enabled`, `set_settings`, `set_pipeline`) check `firmware_status` before executing. On mismatch, they return an error with code `"firmware_behind"`, `"firmware_ahead"`, or `"unavailable"`.
+All config commands (`set_setup`, `set_room_layout`, `set_entity_enabled`, `set_settings`) check `firmware_status` before executing. On mismatch, they return an error with code `"firmware_behind"`, `"firmware_ahead"`, or `"unavailable"`.
 
 In parallel, `device_manager._sync_firmware_repair_issue` raises an HA Repairs framework issue (`firmware_behind_{mac}` or `firmware_ahead_{mac}`) for any discovered device whose version doesn't match `FIRMWARE_VERSION`, and clears it once the versions come back in line. Hooks fire from `async_discover` (initial discovery) and `_on_device_available` (post-OTA reconnect), so users see the mismatch in HA Settings → Repairs without having to open the panel. Translations live under `issues.firmware_behind` / `issues.firmware_ahead` in `strings.json`.
 
@@ -320,19 +320,18 @@ Pushes tracking + static presence ranges to firmware via session without persist
 
 **Request:** `{ "type": "eppgrid/set_distance_override", "mac": str, "target_max_distance": float, "static_min_distance": float, "static_max_distance": float }`
 
-### `set_pipeline`
+### Pipeline intervals (firmware push)
 
-Saves and pushes all publish intervals and window duration.
+Pipeline intervals are derived by `_compute_pipeline` from the device's stored `settings` (entity flags + `target_update_rate_ms` / `zone_update_rate_ms`) and live subscriber counts, then pushed to the firmware via the `epp_set_pipeline` ESPHome service. Backend-internal — not a WS command surface.
 
-**Request:** `{ "type": "eppgrid/set_pipeline", "mac": str, "entity_target_interval": int, "entity_zone_interval": int, "display_interval": int, "zone_state_interval": int, "window_duration": int }`
+| Field | Source |
+|-------|--------|
+| `entity_target_interval` | `settings.target_update_rate_ms` if any target entity is enabled, else `0` |
+| `entity_zone_interval` | `settings.zone_update_rate_ms` if any zone entity is enabled, else `0` |
+| `display_interval` | `200` when a frontend raw or grid subscription is open, else `0` |
+| `zone_state_interval` | `1000` when a frontend grid subscription is open, else `0` |
 
-| Parameter | Description |
-|-----------|-------------|
-| `entity_target_interval` | Publish interval for target entity sensors (X, Y, signal, active, zone, target_count) |
-| `entity_zone_interval` | Publish interval for zone entity sensors (presence, target_count per zone) |
-| `display_interval` | Publish interval for raw + grid text sensor streams (frontend only) |
-| `zone_state_interval` | Publish interval for zone state JSON text sensor (frontend only) |
-| `window_duration` | Rolling median window duration |
+The firmware rolling-median window is fixed at 1000ms (10 frames at the LD2450's nominal 10Hz). Signal is `min(frame_count, 9)` over that window, so it stays bounded on sensor over-delivery and matches the comparison space the frontend uses.
 
 ### Saved-Configuration Commands
 
@@ -390,7 +389,7 @@ Triggers the ESPHome config flow for a given host (used to add a freshly-flashed
 
 ```
 LD2450 UART (~10Hz)
-  → rolling median (window_duration, computed every frame)
+  → rolling median (fixed 1000ms window, computed every frame)
     → perspective transform (every frame)
       → zone engine (every frame, counts frames per zone)
 
@@ -434,7 +433,6 @@ The frontend enricher replaces zone IDs with names for display.
         "tracking": {"max_range": float},
         "static_presence": {"min_range": float, "max_range": float, ...},
         "relay": {"trigger_mode": str, "contact_mode": str},
-        "pipeline": {"entity_target_interval": int, "entity_zone_interval": int, "display_interval": int, "zone_state_interval": int, "window_duration": int},
     }
 }
 ```

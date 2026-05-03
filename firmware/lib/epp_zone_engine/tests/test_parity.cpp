@@ -81,7 +81,7 @@ static std::vector<ZoneConfig> build_zones(const json& zone_configs) {
 
 static WindowOutput build_window(const json& tick_data) {
     WindowOutput wo{};
-    wo.total_frames = RAW_FPS;
+    wo.total_frames = CANONICAL_FRAMES;
     auto& targets_arr = tick_data["targets"];
     for (int i = 0; i < static_cast<int>(targets_arr.size()) && i < MAX_TARGETS; ++i) {
         auto& t = targets_arr[i];

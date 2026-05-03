@@ -80,18 +80,11 @@ public:
                                  const SensorInput& sensors = SensorInput{});
     void dismiss_target(int target_index, int cell_index);
 
-    /// Override the assumed raw-sensor frame rate (default RAW_FPS = 10).
-    /// Determines the floor used for signal denominators in tick(). Must be > 0.
-    void set_raw_fps(int fps) { raw_fps_ = (fps > 0) ? fps : RAW_FPS; }
-    int raw_fps() const { return raw_fps_; }
-
 private:
     Grid grid_;
     ZoneRuntime zones_[MAX_ZONE_SLOTS]{};
     bool zone_enabled_[MAX_ZONE_SLOTS]{};  // which slots are configured
     int zone_count_ = 0;  // highest configured zone_id + 1
-
-    int raw_fps_ = RAW_FPS;
 
     // Per-target tracking state
     int target_prev_col_[MAX_TARGETS]{};

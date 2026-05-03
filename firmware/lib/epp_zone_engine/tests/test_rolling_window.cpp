@@ -29,7 +29,7 @@ TEST_CASE("single frame produces correct output") {
 
 // TEST 2: Multiple frames within window → correct median
 TEST_CASE("multiple frames within window produce correct median") {
-    RollingWindow rw(1000);
+    RollingWindow rw;
 
     // Feed 5 frames at 100ms intervals: x = 1,2,3,4,5 → median = 3
     for (int i = 0; i < 5; ++i) {
@@ -48,7 +48,7 @@ TEST_CASE("multiple frames within window produce correct median") {
 
 // TEST 3: Time-based expiry
 TEST_CASE("frames older than window_ms are expired") {
-    RollingWindow rw(1000);
+    RollingWindow rw;
 
     // Feed frames at 0, 100, 200, 300, 400, 500, 600, 700, 800, 900 ms
     for (int i = 0; i < 10; ++i) {
@@ -74,7 +74,7 @@ TEST_CASE("frames older than window_ms are expired") {
 
 // TEST 4: Median computation [1,3,5,2,4] → median_x = 3.0
 TEST_CASE("unsorted frame values produce correct median") {
-    RollingWindow rw(1000);
+    RollingWindow rw;
 
     float xs[] = {1.0f, 3.0f, 5.0f, 2.0f, 4.0f};
     for (int i = 0; i < 5; ++i) {
@@ -89,7 +89,7 @@ TEST_CASE("unsorted frame values produce correct median") {
 
 // TEST 5: frame_count per target (target 0 always active, target 1 only even frames)
 TEST_CASE("frame_count tracks active frames per target") {
-    RollingWindow rw(1000);
+    RollingWindow rw;
 
     for (int i = 0; i < 6; ++i) {
         TargetInput frame[MAX_TARGETS] = {
@@ -108,7 +108,7 @@ TEST_CASE("frame_count tracks active frames per target") {
 
 // TEST 6: total_frames counts all frames regardless of activity
 TEST_CASE("total_frames counts all frames regardless of target activity") {
-    RollingWindow rw(1000);
+    RollingWindow rw;
 
     for (int i = 0; i < 8; ++i) {
         TargetInput frame[MAX_TARGETS];
@@ -135,7 +135,7 @@ TEST_CASE("output before any feed returns all inactive targets") {
 
 // TEST 8: Variable frame rates
 TEST_CASE("variable frame rates accumulate correctly within window") {
-    RollingWindow rw(1000);
+    RollingWindow rw;
 
     // Irregular intervals: 0, 80, 200, 290, 400 ms
     uint32_t timestamps[] = {0, 80, 200, 290, 400};
@@ -153,9 +153,9 @@ TEST_CASE("variable frame rates accumulate correctly within window") {
     CHECK(out.targets[0].median_x == doctest::Approx(30.0f));
 }
 
-// TEST 9: Runtime duration change (1000ms → 500ms, old frames expelled)
-TEST_CASE("reducing window duration expels old frames on next feed") {
-    RollingWindow rw(1000);
+// TEST 9: Window duration is fixed at 1000ms — frames older than 1s expire
+TEST_CASE("rolling window expires frames older than 1000ms") {
+    RollingWindow rw;
 
     // Feed frames at 0, 200, 400, 600, 800 ms
     for (int i = 0; i < 5; ++i) {
@@ -167,32 +167,29 @@ TEST_CASE("reducing window duration expels old frames on next feed") {
     // All 5 frames within 1000ms
     CHECK(rw.output().total_frames == 5);
 
-    // Shrink window to 500ms
-    rw.set_window_duration(500);
-
-    // Feed at 900ms — frames before 400ms (900-500=400) are expired
-    // Expired: 0ms (x=1), 200ms (x=2) → frames at 400,600,800 remain
+    // Feed at 1100ms — frames before 100ms expire
+    // (1100 - 0 = 1100 > 1000 → frame at 0ms expires)
+    // Frames at 200,400,600,800 remain plus the new one at 1100
     TargetInput frame[MAX_TARGETS];
     make_frame(frame, 6.0f, 0.0f, true);
-    rw.feed(frame, MAX_TARGETS, 900);
+    rw.feed(frame, MAX_TARGETS, 1100);
 
     auto out = rw.output();
-    // Frames at 400ms(x=3), 600ms(x=4), 800ms(x=5), 900ms(x=6) = 4 frames
-    CHECK(out.total_frames == 4);
-    // Sorted: 3,4,5,6 → median = (4+5)/2 = 4.5
-    CHECK(out.targets[0].median_x == doctest::Approx(4.5f));
+    CHECK(out.total_frames == 5);
 }
 
-// TEST 10: Buffer overflow (> MAX_FRAMES frames, oldest dropped, output valid)
+// TEST 10: Buffer overflow (> MAX_FRAMES frames within window, oldest dropped)
 TEST_CASE("buffer overflow drops oldest frames and output remains valid") {
-    RollingWindow rw(100000);  // Very large window so no time-based expiry
+    RollingWindow rw;
 
-    // Feed MAX_FRAMES + 4 = 20 frames
+    // Feed 20 frames at 50ms intervals — span 950ms, all within the 1000ms
+    // window so the buffer-size limit (MAX_FRAMES=16) is what discards the
+    // oldest frames, not time-based expiry.
     constexpr int OVERFLOW_COUNT = 20;
     for (int i = 0; i < OVERFLOW_COUNT; ++i) {
         TargetInput frame[MAX_TARGETS];
         make_frame(frame, static_cast<float>(i + 1), 0.0f, true);
-        rw.feed(frame, MAX_TARGETS, static_cast<uint32_t>(i * 100));
+        rw.feed(frame, MAX_TARGETS, static_cast<uint32_t>(i * 50));
     }
 
     auto out = rw.output();
@@ -206,7 +203,7 @@ TEST_CASE("buffer overflow drops oldest frames and output remains valid") {
 
 // TEST 11: Inactive targets don't affect median or frame_count
 TEST_CASE("inactive targets do not contribute to median or frame_count") {
-    RollingWindow rw(1000);
+    RollingWindow rw;
 
     for (int i = 0; i < 5; ++i) {
         TargetInput frame[MAX_TARGETS] = {
@@ -229,7 +226,7 @@ TEST_CASE("inactive targets do not contribute to median or frame_count") {
 
 // TEST 12: Reset clears state
 TEST_CASE("reset clears all state") {
-    RollingWindow rw(1000);
+    RollingWindow rw;
 
     // Feed some frames
     for (int i = 0; i < 5; ++i) {
@@ -263,7 +260,7 @@ TEST_CASE("reset clears all state") {
 
 // TEST 13: Empty frame (target_count=0) counts as a frame but no active targets
 TEST_CASE("empty frame with target_count=0 counts as frame") {
-    RollingWindow rw(1000);
+    RollingWindow rw;
 
     TargetInput empty[MAX_TARGETS] = {};
     rw.feed(empty, 0, 0);
@@ -278,7 +275,7 @@ TEST_CASE("empty frame with target_count=0 counts as frame") {
 
 // TEST 14: target_count > MAX_TARGETS is truncated
 TEST_CASE("target_count greater than MAX_TARGETS is truncated") {
-    RollingWindow rw(1000);
+    RollingWindow rw;
 
     // Provide 5 targets but only first MAX_TARGETS should be stored
     TargetInput frame[5] = {
@@ -302,7 +299,7 @@ TEST_CASE("target_count greater than MAX_TARGETS is truncated") {
 
 // TEST 15: Multiple targets compute independent medians
 TEST_CASE("multiple targets compute independent medians") {
-    RollingWindow rw(1000);
+    RollingWindow rw;
 
     for (int i = 0; i < 5; ++i) {
         TargetInput frame[MAX_TARGETS] = {
@@ -327,7 +324,7 @@ TEST_CASE("multiple targets compute independent medians") {
 
 // TEST 16: feed after full expiry starts fresh
 TEST_CASE("feed after all frames expired starts fresh") {
-    RollingWindow rw(500);
+    RollingWindow rw;
 
     TargetInput frame[MAX_TARGETS];
     make_frame(frame, 100.0f, 200.0f, true);
@@ -336,7 +333,7 @@ TEST_CASE("feed after all frames expired starts fresh") {
 
     CHECK(rw.output().total_frames == 2);
 
-    // Feed well after window expires
+    // Feed well after window expires (5000ms - 100ms > 1000ms window)
     make_frame(frame, 999.0f, 888.0f, true);
     rw.feed(frame, MAX_TARGETS, 5000);
 
@@ -351,7 +348,7 @@ TEST_CASE("feed after all frames expired starts fresh") {
 // timestamp-disordered frames in the ring (which a later in-order feed would
 // then fail to expire correctly).
 TEST_CASE("out-of-order feed resets the window without underflow") {
-    RollingWindow rw(1000);
+    RollingWindow rw;
 
     TargetInput frame[MAX_TARGETS];
     make_frame(frame, 1.0f, 0.0f, true);
