@@ -8,6 +8,12 @@ add_executable(epp_helpers_change_detector_tests
 )
 target_link_libraries(epp_helpers_change_detector_tests PRIVATE epp_component_helpers doctest::doctest)
 
+add_executable(epp_helpers_frame_ring_buffer_tests
+    test_frame_ring_buffer.cpp
+)
+target_link_libraries(epp_helpers_frame_ring_buffer_tests PRIVATE epp_component_helpers doctest::doctest)
+
 include(${doctest_SOURCE_DIR}/scripts/cmake/doctest.cmake)
 doctest_discover_tests(epp_helpers_nvs_layout_tests)
 doctest_discover_tests(epp_helpers_change_detector_tests)
+doctest_discover_tests(epp_helpers_frame_ring_buffer_tests)

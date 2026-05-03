@@ -11,6 +11,7 @@
 #include "epp_rolling_window.h"
 #include "epp_zone_engine.h"
 #include "epp_relay.h"
+#include "epp_frame_ring_buffer.h"
 
 #include <string>
 
@@ -125,10 +126,23 @@ class EPPComponent : public esphome::Component {
   #endif
   static constexpr const char* FIRMWARE_VERSION_STR = ESPHOME_PROJECT_VERSION;
 
-  // Target data from LD2450
-  ParsedTarget targets_[NUM_TARGETS]{};
-  bool frame_ready_ = false;
+  // Target data from LD2450 — pushed by feed_targets() (UART lambda),
+  // drained by loop(). The ring buffer protects against ESPHome scheduling
+  // jitter: if loop() runs late and a second UART frame arrives before the
+  // first is consumed, both are preserved (oldest dropped on overflow). See
+  // epp_frame_ring_buffer.h for the full rationale.
+  //
+  // FRAME_BUFFER_CAPACITY: 3 frames at 10Hz LD2450 → 300ms of slack before
+  // the oldest gets evicted. ESPHome loop()s under typical load run every
+  // ~16ms; 300ms is a generous margin without burning RAM.
+  static constexpr size_t FRAME_BUFFER_CAPACITY = 3;
+  struct TargetFrame {
+    ParsedTarget targets[NUM_TARGETS]{};
+  };
+  FrameRingBuffer<TargetFrame, FRAME_BUFFER_CAPACITY> frame_buffer_;
   uint32_t frame_count_ = 0;
+  uint32_t frames_dropped_ = 0;  // bumped when push() reports overflow
+  uint32_t last_frames_dropped_log_ = 0;  // last frames_dropped_ value logged
 
   // Zone engine pipeline
   SensorTransform transform_;

@@ -28,89 +28,109 @@ void EPPComponent::setup() {
 }
 
 void EPPComponent::loop() {
-  if (!frame_ready_) return;
-  frame_ready_ = false;
-  frame_count_++;
+  if (frame_buffer_.empty()) return;
 
   uint32_t now = esphome::millis();
   float ts = now / 1000.0f;
 
-  // === PROCESSING PIPELINE (runs every frame) ===
+  // === PROCESSING PIPELINE — drain ALL queued frames ===
+  //
+  // If loop() ran on time we drain a single frame. If ESPHome was held up
+  // (e.g. by a slow component) and multiple LD2450 frames have arrived, we
+  // process them all in FIFO order so the rolling window and zone engine
+  // see every sample — no silent merging that would otherwise distort the
+  // median or under-count detection events.
+  //
+  // The publish-throttle block below runs once per loop call against the
+  // freshest result (last_zone_result_), which is what HA needs.
+  TargetFrame frame;
+  WindowOutput last_win{};
+  while (frame_buffer_.pop(frame)) {
+    frame_count_++;
 
-  // Stage 1: Feed raw positions into rolling median
-  TargetInput raw_inputs[NUM_TARGETS];
-  for (int i = 0; i < NUM_TARGETS; i++) {
-    raw_inputs[i] = {targets_[i].x, targets_[i].y,
-                     targets_[i].detected && targets_[i].y != 0.0f};
-  }
-  window_.feed(raw_inputs, NUM_TARGETS, now);
-
-  // Stage 2: Get smoothed raw, transform to grid coordinates
-  const auto &win = window_.output();
-  TargetInput grid_inputs[NUM_TARGETS];
-  for (int i = 0; i < NUM_TARGETS; i++) {
-    if (win.targets[i].active) {
-      auto [rx, ry] = transform_.apply(
-          win.targets[i].median_x, win.targets[i].median_y);
-      grid_inputs[i] = {rx, ry, true};
-    } else {
-      grid_inputs[i] = {0.0f, 0.0f, false};
+    // Stage 1: Feed raw positions into rolling median
+    TargetInput raw_inputs[NUM_TARGETS];
+    for (int i = 0; i < NUM_TARGETS; i++) {
+      raw_inputs[i] = {frame.targets[i].x, frame.targets[i].y,
+                       frame.targets[i].detected && frame.targets[i].y != 0.0f};
     }
-  }
+    window_.feed(raw_inputs, NUM_TARGETS, now);
 
-  // Stage 2b: Track per-frame overlay cell crossings
-  // The median position may skip over boundary overlay cells, so we check
-  // each raw frame's transformed position directly. The flag is sticky:
-  // set when any frame lands on an overlay cell, cleared when a frame
-  // lands on a non-overlay room cell.
-  for (int i = 0; i < NUM_TARGETS; i++) {
-    if (raw_inputs[i].active) {
-      auto [fx, fy] = transform_.apply(raw_inputs[i].x, raw_inputs[i].y);
-      int cell = grid_.xy_to_cell(fx, fy);
-      if (cell != -1 && grid_.cell_is_room(cell)) {
-        if (grid_.cell_overlay(cell) == CELL_OVERLAY_ENTRY) {
-          target_touched_overlay_[i] = true;
-        } else {
-          target_touched_overlay_[i] = false;
-        }
+    // Stage 2: Get smoothed raw, transform to grid coordinates
+    const auto &win = window_.output();
+    last_win = win;  // remember the freshest window output for the publish block
+    TargetInput grid_inputs[NUM_TARGETS];
+    for (int i = 0; i < NUM_TARGETS; i++) {
+      if (win.targets[i].active) {
+        auto [rx, ry] = transform_.apply(
+            win.targets[i].median_x, win.targets[i].median_y);
+        grid_inputs[i] = {rx, ry, true};
+      } else {
+        grid_inputs[i] = {0.0f, 0.0f, false};
       }
-      // If outside room, keep current flag value (sticky until next room cell)
-    } else {
-      // Target inactive — don't clear, let zone engine use the flag
     }
-  }
 
-  // Stage 3: Zone engine tick — uses transformed positions + frame counts
-  WindowOutput zone_input;
-  zone_input.total_frames = win.total_frames;
-  for (int i = 0; i < NUM_TARGETS; i++) {
-    zone_input.targets[i].active = win.targets[i].active;
-    zone_input.targets[i].frame_count = win.targets[i].frame_count;
-    zone_input.targets[i].median_x = grid_inputs[i].x;
-    zone_input.targets[i].median_y = grid_inputs[i].y;
-    zone_input.targets[i].on_overlay = target_touched_overlay_[i];
-  }
-  // Build sensor input for zone engine
-  SensorInput sensor_input;
-  if (static_presence_sensor_ != nullptr)
-    sensor_input.static_on = static_presence_sensor_->state;
-  if (motion_presence_sensor_ != nullptr)
-    sensor_input.motion_on = motion_presence_sensor_->state;
-  sensor_input.static_timeout = static_timeout_;
-  sensor_input.motion_timeout = motion_timeout_;
-
-  const auto &result = zone_engine_.tick(zone_input, ts, sensor_input);
-
-  // Output zone engine log entries immediately (before throttle may overwrite)
-  for (int i = 0; i < result.log_count; ++i) {
-    if (result.log[i].level == epp::LogLevel::INFO) {
-      ESP_LOGI(TAG, "%s", result.log[i].message);
-    } else {
-      ESP_LOGD(TAG, "%s", result.log[i].message);
+    // Stage 2b: Track per-frame overlay cell crossings
+    // The median position may skip over boundary overlay cells, so we check
+    // each raw frame's transformed position directly. The flag is sticky:
+    // set when any frame lands on an overlay cell, cleared when a frame
+    // lands on a non-overlay room cell.
+    for (int i = 0; i < NUM_TARGETS; i++) {
+      if (raw_inputs[i].active) {
+        auto [fx, fy] = transform_.apply(raw_inputs[i].x, raw_inputs[i].y);
+        int cell = grid_.xy_to_cell(fx, fy);
+        if (cell != -1 && grid_.cell_is_room(cell)) {
+          if (grid_.cell_overlay(cell) == CELL_OVERLAY_ENTRY) {
+            target_touched_overlay_[i] = true;
+          } else {
+            target_touched_overlay_[i] = false;
+          }
+        }
+        // If outside room, keep current flag value (sticky until next room cell)
+      } else {
+        // Target inactive — don't clear, let zone engine use the flag
+      }
     }
+
+    // Stage 3: Zone engine tick — uses transformed positions + frame counts
+    WindowOutput zone_input;
+    zone_input.total_frames = win.total_frames;
+    for (int i = 0; i < NUM_TARGETS; i++) {
+      zone_input.targets[i].active = win.targets[i].active;
+      zone_input.targets[i].frame_count = win.targets[i].frame_count;
+      zone_input.targets[i].median_x = grid_inputs[i].x;
+      zone_input.targets[i].median_y = grid_inputs[i].y;
+      zone_input.targets[i].on_overlay = target_touched_overlay_[i];
+    }
+    // Build sensor input for zone engine
+    SensorInput sensor_input;
+    if (static_presence_sensor_ != nullptr)
+      sensor_input.static_on = static_presence_sensor_->state;
+    if (motion_presence_sensor_ != nullptr)
+      sensor_input.motion_on = motion_presence_sensor_->state;
+    sensor_input.static_timeout = static_timeout_;
+    sensor_input.motion_timeout = motion_timeout_;
+
+    const auto &result = zone_engine_.tick(zone_input, ts, sensor_input);
+
+    // Output zone engine log entries immediately (before throttle may overwrite)
+    for (int i = 0; i < result.log_count; ++i) {
+      if (result.log[i].level == epp::LogLevel::INFO) {
+        ESP_LOGI(TAG, "%s", result.log[i].message);
+      } else {
+        ESP_LOGD(TAG, "%s", result.log[i].message);
+      }
+    }
+
+    last_zone_result_ = result;
   }
 
-  last_zone_result_ = result;
+  // The publish block below references `win` (last frame's window output)
+  // and `result` (cached in last_zone_result_). Re-bind `win` to the last
+  // processed frame's window output so the existing code reads the same
+  // snapshot it always did.
+  const auto &win = last_win;
+  const auto &result = last_zone_result_;
 
   // === PUBLISH THROTTLES (do not affect processing) ===
 
@@ -284,6 +304,16 @@ void EPPComponent::loop() {
   if (now - last_system_ms_ >= SYSTEM_INTERVAL_MS) {
     last_system_ms_ = now;
 
+    // Surface frame-buffer overflow once per second when new drops occur.
+    // The ring buffer absorbs short scheduling stalls silently; persistent
+    // drops mean loop() can't keep up with the LD2450 producer and want
+    // investigation.
+    if (frames_dropped_ != last_frames_dropped_log_) {
+      ESP_LOGW(TAG, "LD2450 frame ring buffer dropped %u total frames",
+               frames_dropped_);
+      last_frames_dropped_log_ = frames_dropped_;
+    }
+
     if (device_tracking_sensor_ != nullptr)
       device_tracking_sensor_->publish_state(result.device_tracking_present);
     if (static_presence_output_ != nullptr)
@@ -325,10 +355,15 @@ float EPPComponent::get_setup_priority() const {
 void EPPComponent::feed_targets(float x1, float y1, bool d1,
                                 float x2, float y2, bool d2,
                                 float x3, float y3, bool d3) {
-  targets_[0] = {x1, y1, d1};
-  targets_[1] = {x2, y2, d2};
-  targets_[2] = {x3, y3, d3};
-  frame_ready_ = true;
+  TargetFrame frame;
+  frame.targets[0] = {x1, y1, d1};
+  frame.targets[1] = {x2, y2, d2};
+  frame.targets[2] = {x3, y3, d3};
+  if (!frame_buffer_.push(frame)) {
+    // Buffer was full — oldest frame evicted. Bump the counter so the issue
+    // is visible in diagnostics rather than disappearing silently.
+    frames_dropped_++;
+  }
 }
 
 // ---------------------------------------------------------------------------
