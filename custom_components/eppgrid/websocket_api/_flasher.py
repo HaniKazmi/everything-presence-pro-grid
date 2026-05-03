@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from typing import Any
 
 import voluptuous as vol
@@ -10,6 +11,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.core import callback
 
 from ..const import DOMAIN
+from . import _LOGGER
 from . import _integration_version
 from . import _require_manager
 from . import _send_exception
@@ -41,20 +43,53 @@ async def websocket_subscribe_flashable_devices(
     manager: Any,
 ) -> None:
     """Subscribe to flashable device list changes."""
+    # Track every in-flight push so _unsub can cancel them. A single
+    # `latest task` reference would lose older tasks when `_on_changed`
+    # fires faster than they finish — the older tasks would then keep
+    # awaiting `list_flashable_devices` after the subscription is closed.
+    in_flight: set[asyncio.Task] = set()
+    closed = False
 
     async def _send_update() -> None:
-        connection.send_message(websocket_api.event_message(msg["id"], await _flashable_payload(hass, manager)))
+        try:
+            payload = await _flashable_payload(hass, manager)
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            _LOGGER.exception("Failed to fetch flashable devices for subscriber")
+            return
+        if closed:
+            return
+        try:
+            connection.send_message(websocket_api.event_message(msg["id"], payload))
+        except Exception:
+            # Connection closed mid-send (or any other transport error). The
+            # subscription is being torn down; just log and bow out.
+            _LOGGER.debug("send_message failed for flashable_devices subscriber", exc_info=True)
 
     @callback
     def _on_changed() -> None:
-        hass.async_create_task(_send_update())
+        if closed:
+            return
+        task = hass.async_create_task(_send_update())
+        in_flight.add(task)
+        task.add_done_callback(in_flight.discard)
 
     unsub = manager.on_device_list_changed(_on_changed)
 
     connection.send_result(msg["id"])
     await _send_update()
 
-    connection.subscriptions[msg["id"]] = unsub
+    @callback
+    def _unsub() -> None:
+        nonlocal closed
+        closed = True
+        unsub()
+        for task in in_flight:
+            if not task.done():
+                task.cancel()
+
+    connection.subscriptions[msg["id"]] = _unsub
 
 
 # -- list_flashable_devices --

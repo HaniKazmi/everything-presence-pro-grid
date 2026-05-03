@@ -395,6 +395,7 @@
 			"device_offline": "El dispositivo se desconectó durante la actualización",
 			"update_failed_generic": "Error en la actualización",
 			"ota_failed_version_unchanged": "Actualización fallida — la versión del firmware no ha cambiado",
+			"ota_timeout": "La actualización OTA ha agotado el tiempo de espera",
 			"flash_cancelled": "Instalación cancelada",
 			"timeout": "Tiempo de espera agotado",
 			"aborted": "Cancelado"

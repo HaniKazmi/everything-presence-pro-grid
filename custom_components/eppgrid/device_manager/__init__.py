@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import logging
 from dataclasses import dataclass
 from typing import Any
@@ -70,6 +71,19 @@ class DeviceManager:
         # One connection per device, kept alive for the frontend session
         self._active_connections: dict[str, DeviceConnection] = {}
         self._session_locks: dict[str, asyncio.Lock] = {}
+        # Serializes async_trigger_ota for a given mac. Held only while the
+        # set_update_manifest call is in flight; concurrent callers fail-fast
+        # with `ota_in_progress` rather than firing a duplicate OTA.
+        self._ota_locks: dict[str, asyncio.Lock] = {}
+        # In-flight close tasks keyed by mac. async_open_session awaits these
+        # before opening so a quick close→reopen doesn't return a connection
+        # that the close task is about to disconnect.
+        self._pending_closes: dict[str, asyncio.Task] = {}
+        # Macs whose last subscribe_device attempt failed to open a session.
+        # Only the *transition* from "OK" → "failing" fires the device-list
+        # broadcast; consecutive retries against the same already-failing
+        # device are silent so we don't spam every subscriber on every poll.
+        self._connection_failed: set[str] = set()
         self._device_list_callbacks: list[Any] = []
         # Unsub callables for ESPHome config-entry update listeners, keyed by entry_id
         self._entry_update_unsubs: dict[str, Any] = {}
@@ -215,30 +229,43 @@ class DeviceManager:
             )
         manifest_url = f"{OTA_MANIFEST_BASE_URL}/{variant}.json"
 
-        conn = DeviceConnection(dev.host)
-        try:
+        lock = self._ota_locks.setdefault(mac, asyncio.Lock())
+        if lock.locked():
+            raise HomeAssistantError(
+                f"OTA already in progress for {mac}",
+                translation_domain=_DOMAIN,
+                translation_key="ota_in_progress",
+            )
+        async with lock:
+            conn = DeviceConnection(dev.host)
             try:
-                await conn.async_connect()
-                svc = conn._services.get("set_update_manifest")
-                if svc is None:
-                    raise HomeAssistantError(
-                        f"Device {mac} firmware does not expose set_update_manifest",
-                        translation_domain=_DOMAIN,
-                        translation_key="ota_unsupported",
-                    )
-                assert conn._client is not None
-                await conn._client.execute_service(svc, {"url": manifest_url})
-            except HomeAssistantError:
-                raise
-            except Exception as err:
-                # Wrap aioesphomeapi (and any other unexpected) exceptions so
-                # callers see a stable message-bearing type rather than raw
-                # technical text from a third-party library.
-                _LOGGER.warning("OTA trigger for %s failed", mac, exc_info=True)
-                raise HomeAssistantError(f"Could not contact device {mac}: {err}") from err
-            _LOGGER.info("Triggered OTA for %s (manifest=%s)", mac, manifest_url)
-        finally:
-            await conn.async_disconnect()
+                try:
+                    await conn.async_connect()
+                    svc = conn._services.get("set_update_manifest")
+                    if svc is None:
+                        raise HomeAssistantError(
+                            f"Device {mac} firmware does not expose set_update_manifest",
+                            translation_domain=_DOMAIN,
+                            translation_key="ota_unsupported",
+                        )
+                    if conn._client is None:
+                        raise HomeAssistantError(
+                            f"Device {mac} client unavailable",
+                            translation_domain=_DOMAIN,
+                            translation_key="device_not_available",
+                        )
+                    await conn._client.execute_service(svc, {"url": manifest_url})
+                except HomeAssistantError:
+                    raise
+                except Exception as err:
+                    # Wrap aioesphomeapi (and any other unexpected) exceptions so
+                    # callers see a stable message-bearing type rather than raw
+                    # technical text from a third-party library.
+                    _LOGGER.warning("OTA trigger for %s failed", mac, exc_info=True)
+                    raise HomeAssistantError(f"Could not contact device {mac}: {err}") from err
+                _LOGGER.info("Triggered OTA for %s (manifest=%s)", mac, manifest_url)
+            finally:
+                await conn.async_disconnect()
 
     def read_firmware_version(self, device_id: str | None) -> str | None:
         """Read the Firmware Version text sensor value for a device.
@@ -718,6 +745,13 @@ class DeviceManager:
         # Fast-fail if HA already knows the device is unavailable
         if not self._is_device_available(mac):
             return None
+        # Wait for any pending close to complete first — otherwise a quick
+        # unsubscribe→re-subscribe sequence races the close task and the
+        # caller gets back a connection that's about to be disconnected.
+        pending = self._pending_closes.get(mac)
+        if pending is not None and not pending.done():
+            with contextlib.suppress(Exception):
+                await pending
         lock = self._session_locks.setdefault(mac, asyncio.Lock())
         async with lock:
             if mac in self._active_connections:
@@ -744,6 +778,32 @@ class DeviceManager:
             dev = self.devices.get(mac)
             name = dev.name if dev else mac
             _LOGGER.info("Closed session for %s (%s)", name, mac)
+
+    @callback
+    def schedule_close_session(self, mac: str) -> asyncio.Task:
+        """Schedule async_close_session as a tracked task for the given mac.
+
+        Subsequent async_open_session calls for the same mac await this task
+        before opening a fresh session — otherwise a quick close→reopen
+        sequence races the close and returns the about-to-be-closed conn.
+        Re-scheduling while a close is already in flight returns the existing
+        task instead of starting a duplicate.
+        """
+        existing = self._pending_closes.get(mac)
+        if existing is not None and not existing.done():
+            return existing
+        task = self._hass.async_create_task(self.async_close_session(mac))
+        self._pending_closes[mac] = task
+
+        def _drop(_: asyncio.Task) -> None:
+            # Only forget the task if it's still the one we registered. A
+            # close that errored mid-flight could otherwise be replaced by a
+            # new schedule before this callback fires.
+            if self._pending_closes.get(mac) is task:
+                self._pending_closes.pop(mac, None)
+
+        task.add_done_callback(_drop)
+        return task
 
     def get_session(self, mac: str) -> DeviceConnection | None:
         """Get the active session connection for a device, or None."""

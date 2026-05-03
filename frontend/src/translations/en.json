@@ -395,6 +395,7 @@
 			"device_offline": "Device went offline during update",
 			"update_failed_generic": "Update failed",
 			"ota_failed_version_unchanged": "Update failed — firmware version unchanged",
+			"ota_timeout": "OTA update timed out",
 			"flash_cancelled": "Flash cancelled",
 			"timeout": "Timeout",
 			"aborted": "Cancelled"

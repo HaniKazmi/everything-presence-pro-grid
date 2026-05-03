@@ -17,6 +17,27 @@ from . import _get_manager
 from . import _require_manager
 from . import _validate_zone_slots
 
+
+def _parse_position_csv(raw: str) -> tuple[float, float, str | None] | None:
+    """Parse a `x,y` or `x,y,status` text-sensor value from the firmware.
+
+    Returns (x, y, status) or None if the string is malformed (too few
+    fields, non-numeric coordinates, etc.). The status field is None when
+    the firmware emits only two fields (raw target sensor) and a string
+    like "active"/"pending" when it emits three (grid target sensor).
+    """
+    parts = raw.split(",")
+    if len(parts) < 2:
+        return None
+    try:
+        x = float(parts[0])
+        y = float(parts[1])
+    except (ValueError, IndexError):
+        return None
+    status = parts[2] if len(parts) >= 3 else None
+    return x, y, status
+
+
 # -- subscribe_device_list --
 
 
@@ -444,7 +465,12 @@ async def websocket_subscribe_device(
         device_conn = await manager.async_open_session(mac)
     except Exception as err:
         _LOGGER.warning("Failed to open session for %s: %s", mac, err)
-        manager._fire_device_list_changed()
+        # Only broadcast on the OK→failing transition. Repeated failures
+        # against an already-failing mac don't represent a state change for
+        # device-list subscribers and would spam every consumer on every retry.
+        if mac not in manager._connection_failed:
+            manager._connection_failed.add(mac)
+            manager._fire_device_list_changed()
         connection.send_error(
             msg["id"],
             "connection_failed",
@@ -462,11 +488,14 @@ async def websocket_subscribe_device(
             translation_key="device_not_available",
         )
         return
+    # Successful open clears the failure flag so the next failure (if any)
+    # is a transition and re-fires the broadcast.
+    manager._connection_failed.discard(mac)
     connection.send_result(msg["id"])
 
     @callback
     def _unsub() -> None:
-        hass.async_create_task(manager.async_close_session(mac))
+        manager.schedule_close_session(mac)
 
     connection.subscriptions[msg["id"]] = _unsub
 
@@ -523,8 +552,10 @@ async def websocket_subscribe_raw_targets(
             return
         idx = raw_keys[state.key]
         if state.state:
-            parts = state.state.split(",")
-            raw_targets[idx] = {"raw_x": float(parts[0]), "raw_y": float(parts[1])}
+            parsed = _parse_position_csv(state.state)
+            if parsed is None:
+                return  # garbled firmware emit — drop silently
+            raw_targets[idx] = {"raw_x": parsed[0], "raw_y": parsed[1]}
         else:
             raw_targets[idx] = {"raw_x": None, "raw_y": None}
         connection.send_message(websocket_api.event_message(msg["id"], {"targets": list(raw_targets)}))
@@ -641,12 +672,14 @@ async def websocket_subscribe_grid_targets(
             if state.key in target_keys:
                 idx = target_keys[state.key]
                 if state.state:
-                    parts = state.state.split(",")
-                    targets[idx]["x"] = float(parts[0])
-                    targets[idx]["y"] = float(parts[1])
+                    parsed = _parse_position_csv(state.state)
+                    if parsed is None:
+                        return  # garbled firmware emit — drop silently
+                    targets[idx]["x"] = parsed[0]
+                    targets[idx]["y"] = parsed[1]
                     # Status comes from position text sensor (active/pending)
-                    if len(parts) >= 3:
-                        targets[idx]["status"] = parts[2]
+                    if parsed[2] is not None:
+                        targets[idx]["status"] = parsed[2]
                 else:
                     targets[idx] = {"x": None, "y": None, "signal": 0, "status": "inactive"}
                 # Send full event on each position update (5Hz)
@@ -917,7 +950,16 @@ async def websocket_set_distance_override(
     mac = msg["mac"]
     session = manager.get_session(mac)
     if session is None:
-        connection.send_result(msg["id"])
+        # Don't lie to the frontend with `success` — the override never
+        # reaches the device when no session is open, so the slider in the
+        # UI would silently fail to take effect.
+        connection.send_error(
+            msg["id"],
+            "no_session",
+            "No active session — call subscribe_device first",
+            translation_domain=DOMAIN,
+            translation_key="no_active_session",
+        )
         return
     device_config = manager._store.devices.get(mac, {})
     stored_settings = device_config.get("settings", {})

@@ -196,6 +196,108 @@ class TestSubscribeFlashableDevices:
         connection.subscriptions[32]()
         unsub_inner.assert_called_once()
 
+    async def test_send_update_swallows_post_close_send_message_failure(
+        self, hass: HomeAssistant, config_entry: MockConfigEntry
+    ) -> None:
+        """If the WS connection closes mid-send, send_message raises — the
+        update task must not propagate that as an unhandled exception, just
+        log and move on. Otherwise a stale subscription noises the logs and
+        could destabilise other callbacks."""
+
+        mock_dm = await setup_integration(hass, config_entry)
+        mock_dm.list_flashable_devices = AsyncMock(return_value=[])
+
+        captured_cb = None
+
+        def capture_on_changed(cb):
+            nonlocal captured_cb
+            captured_cb = cb
+            return lambda: None
+
+        mock_dm.on_device_list_changed = MagicMock(side_effect=capture_on_changed)
+
+        from custom_components.eppgrid.websocket_api import websocket_subscribe_flashable_devices
+
+        connection = MagicMock()
+        connection.subscriptions = {}
+        msg = {"id": 33, "type": "eppgrid/subscribe_flashable_devices"}
+
+        await call_async_handler(hass, websocket_subscribe_flashable_devices, connection, msg)
+
+        # Now make send_message raise as if connection was closed
+        connection.send_message.side_effect = ConnectionResetError("connection closed")
+        captured_cb()
+        # Must not raise unhandled — just complete the task.
+        await hass.async_block_till_done()
+
+    async def test_unsubscribe_cancels_in_flight_send_update(
+        self, hass: HomeAssistant, config_entry: MockConfigEntry
+    ) -> None:
+        """An in-flight `_send_update` triggered by `_on_changed` must be
+        cancelled when the subscription unsubs — otherwise it can outlive
+        the connection and try to call send_message on a dead channel."""
+        import asyncio
+
+        mock_dm = await setup_integration(hass, config_entry)
+
+        list_started = asyncio.Event()
+        list_release = asyncio.Event()
+
+        async def slow_list():
+            list_started.set()
+            await list_release.wait()
+            return []
+
+        mock_dm.list_flashable_devices = AsyncMock(side_effect=slow_list)
+
+        captured_cb = None
+
+        def capture_on_changed(cb):
+            nonlocal captured_cb
+            captured_cb = cb
+            return lambda: None
+
+        mock_dm.on_device_list_changed = MagicMock(side_effect=capture_on_changed)
+
+        from custom_components.eppgrid.websocket_api import websocket_subscribe_flashable_devices
+
+        connection = MagicMock()
+        connection.subscriptions = {}
+        msg = {"id": 34, "type": "eppgrid/subscribe_flashable_devices"}
+
+        await call_async_handler(hass, websocket_subscribe_flashable_devices, connection, msg)
+        # Initial _send_update has finished by now (it ran with slow_list which
+        # would block; release for that one).
+        # Wait for the initial send to finish:
+        # Actually the initial send is awaited inside the handler, so we need
+        # to release it before call_async_handler returns. Adjusting:
+
+        # Re-do with the initial _send_update unblocked.
+        list_release.set()
+        await hass.async_block_till_done()
+        list_release.clear()
+        list_started.clear()
+
+        # Now trigger an _on_changed → kicks off a new _send_update task
+        captured_cb()
+        await list_started.wait()
+
+        # Track whatever task is in flight
+        in_flight_tasks = [t for t in asyncio.all_tasks() if "_send_update" in repr(t.get_coro()) and not t.done()]
+        assert in_flight_tasks, "expected an in-flight _send_update task"
+
+        # Now unsubscribe
+        connection.subscriptions[34]()
+
+        # The pending task must be cancelled (or at least not call send_message
+        # after unsub). Release the slow list and verify no send_message after
+        # unsub for the new event.
+        send_count_before = connection.send_message.call_count
+        list_release.set()
+        await hass.async_block_till_done()
+        # The cancelled task should not have produced a new send_message
+        assert connection.send_message.call_count == send_count_before
+
 
 class TestDeleteEsphomeDevice:
     """Tests for eppgrid/delete_esphome_device."""

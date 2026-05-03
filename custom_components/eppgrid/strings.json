@@ -30,6 +30,7 @@
     "no_active_session": { "message": "No active session — call subscribe_device first" },
     "no_firmware_variant": { "message": "No firmware variant for network type: {network}" },
     "ota_unsupported": { "message": "Device does not support OTA update" },
+    "ota_in_progress": { "message": "OTA update already in progress for this device" },
     "build_flags_unavailable": { "message": "Device build flags not yet available" },
     "config_entry_not_found": { "message": "Config entry not found" },
     "only_esphome_can_be_deleted": { "message": "Only ESPHome config entries can be deleted by this command" },
