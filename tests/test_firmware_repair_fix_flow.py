@@ -294,6 +294,36 @@ async def test_run_ota_task_triggers_then_waits_for_version_match(hass: HomeAssi
     assert read_calls[0] >= 2, "task must keep polling until the firmware_version matches the required version"
 
 
+async def test_progress_step_handles_cancelled_task_as_failed(hass: HomeAssistant) -> None:
+    """A cancelled OTA task (HA shutdown, integration reload) must be treated
+    as failed — not bubbled up as an unhandled CancelledError.
+
+    `Future.exception()` raises `CancelledError` when called on a cancelled
+    future, so the progress step's exception-check branch needs an explicit
+    cancelled-state check first.
+    """
+    flow = _make_flow(hass)
+    fut = asyncio.get_running_loop().create_future()
+    fut.cancel()
+    flow._ota_task = fut
+
+    result = await flow.async_step_progress(user_input=None)
+    assert result["type"] == "progress_done"
+    assert result["step_id"] == "failed"
+
+
+async def test_run_ota_task_raises_clean_error_when_integration_unloaded(hass: HomeAssistant) -> None:
+    """If the integration is unloaded between flow start and task run,
+    `_run_ota_task` must surface a HomeAssistantError instead of a raw
+    KeyError from `hass.data[DOMAIN]`.
+    """
+    hass.data.pop(DOMAIN, None)  # Simulate unloaded
+    flow = _make_flow(hass)
+
+    with pytest.raises(HomeAssistantError):
+        await flow._run_ota_task()
+
+
 async def test_run_ota_task_times_out_when_firmware_never_matches(hass: HomeAssistant) -> None:
     """If the device never reports the matching version, the task must time
     out so the flow can show the failed step rather than spinning forever.

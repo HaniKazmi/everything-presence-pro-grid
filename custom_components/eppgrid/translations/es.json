@@ -53,9 +53,6 @@
         },
         "progress": {
           "installing": "Instalando el firmware **{required_version}** en **{device_name}**. El dispositivo descargará el firmware por aire, se reiniciará y volverá a conectarse. Suele tardar alrededor de un minuto."
-        },
-        "error": {
-          "ota_trigger_failed": "No se ha podido iniciar la actualización del firmware. Puede que el dispositivo esté desconectado o no sea accesible, que sus indicadores de compilación aún no estén en caché, o que su firmware sea demasiado antiguo para admitir actualizaciones OTA desde la integración. Consulta los registros de Home Assistant para más detalles e inténtalo de nuevo."
         }
       }
     },

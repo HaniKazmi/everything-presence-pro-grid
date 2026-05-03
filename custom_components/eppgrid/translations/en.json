@@ -53,9 +53,6 @@
         },
         "progress": {
           "installing": "Installing firmware **{required_version}** on **{device_name}**. The device will download the firmware over the air, reboot, and reconnect. This usually takes about a minute."
-        },
-        "error": {
-          "ota_trigger_failed": "Could not start the firmware update. The device may be offline or unreachable, its build flags may not be cached yet, or its firmware may be too old to support OTA updates from the integration. See Home Assistant logs for details, then try again."
         }
       }
     },

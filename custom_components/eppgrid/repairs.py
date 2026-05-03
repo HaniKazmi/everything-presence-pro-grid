@@ -47,6 +47,31 @@ _OTA_COMPLETION_TIMEOUT_S = 5 * 60
 _OTA_POLL_INTERVAL_S = 2
 
 
+def _format_error(hass: HomeAssistant, exc: BaseException) -> str:
+    """Render a user-facing error string from an exception, preserving i18n.
+
+    HomeAssistantError instances raised by `DeviceManager.async_trigger_ota`
+    carry `translation_domain` + `translation_key` + `translation_placeholders`
+    so callers can localise the message. `str(exc)` would drop that metadata
+    and show the English fallback in non-English UIs, regressing the existing
+    i18n behaviour. Look the translated template up via HA's cached
+    translations and format it with the placeholders.
+    """
+    if isinstance(exc, HomeAssistantError) and exc.translation_key:
+        from homeassistant.helpers.translation import async_get_cached_translations
+
+        domain = exc.translation_domain or DOMAIN
+        translations = async_get_cached_translations(hass, hass.config.language, "exceptions", integrations=[domain])
+        template = translations.get(f"component.{domain}.exceptions.{exc.translation_key}.message")
+        if template:
+            placeholders = exc.translation_placeholders or {}
+            try:
+                return template.format(**placeholders)
+            except (KeyError, IndexError):
+                return template
+    return str(exc)
+
+
 async def _trigger_ota(hass: HomeAssistant, mac: str) -> None:
     """Trigger an OTA firmware update on a device.
 
@@ -114,10 +139,18 @@ class FirmwareUpdateRepairFlow(RepairsFlow):
                 description_placeholders=self._issue_placeholders(),
             )
 
-        # Task done — branch on outcome
+        # Task done — branch on outcome. Check cancelled() before calling
+        # exception() because Future.exception() raises CancelledError on a
+        # cancelled future rather than returning the cancellation as an exc.
+        # Cancellation can happen on integration reload or HA shutdown.
+        if self._ota_task.cancelled():
+            self._error_message = "Update was cancelled (integration reload or shutdown)."
+            _LOGGER.warning("OTA fix flow for %s cancelled", self._mac)
+            return self.async_show_progress_done(next_step_id="failed")
+
         exc = self._ota_task.exception()
         if exc is not None:
-            self._error_message = str(exc)
+            self._error_message = _format_error(self.hass, exc)
             _LOGGER.warning("OTA fix flow for %s failed: %s", self._mac, exc)
             return self.async_show_progress_done(next_step_id="failed")
         return self.async_show_progress_done(next_step_id="finish")
@@ -164,7 +197,10 @@ class FirmwareUpdateRepairFlow(RepairsFlow):
 
         Raises HomeAssistantError on trigger failure or on timeout.
         """
-        manager = self.hass.data[DOMAIN]
+        manager = self.hass.data.get(DOMAIN)
+        if manager is None:
+            raise HomeAssistantError("EPP Grid integration not loaded")
+
         await _trigger_ota(self.hass, self._mac)
 
         dev = manager.devices.get(self._mac)
