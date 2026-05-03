@@ -236,13 +236,16 @@ export class EppGrid extends LitElement {
 	// Contract: callers replace the array on update (the panel and wizard both
 	// reassign the field rather than mutating in place), so reference equality
 	// is a sufficient invalidation signal.
+	// Sentinel marks "no perspective cached yet" so degenerate perspectives
+	// (computeSensorFov returns null) still benefit from the cache instead
+	// of recomputing on every render.
+	private static readonly _FOV_UNCACHED: object = {};
 	private _fovCache: SensorFov | null = null;
-	private _fovPerspective: number[] | null = null;
+	private _fovPerspective: number[] | null | object = EppGrid._FOV_UNCACHED;
 
 	private _getSensorFov(): SensorFov | null {
 		if (!this.perspective) return null;
-		if (this._fovCache && this._fovPerspective === this.perspective)
-			return this._fovCache;
+		if (this._fovPerspective === this.perspective) return this._fovCache;
 		this._fovCache = computeSensorFov(this.perspective);
 		this._fovPerspective = this.perspective;
 		return this._fovCache;

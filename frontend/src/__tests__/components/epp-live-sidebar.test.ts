@@ -375,7 +375,7 @@ describe("epp-live-sidebar element", () => {
 
 	it("places rest-of-room (slot 0) before any named zones (matches editor order)", () => {
 		const el = document.createElement("epp-live-sidebar") as any;
-		el.perspective = [1, 0, 0, 0, 1, 0, 0, 0];
+		el.hasPerspective = true;
 		el.zoneConfigs = new Array(7).fill(null);
 		el.zoneConfigs[0] = { name: "Kitchen", color: "#B8E7FF", type: "default" };
 		el.zoneConfigs[1] = { name: "Sofa", color: "#FFB347", type: "default" };

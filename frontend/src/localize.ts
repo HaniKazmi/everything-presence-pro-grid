@@ -52,8 +52,20 @@ export function setupLocalize(hass?: {
 	// echoed into a translation key) can't grow unbounded. The translation
 	// catalogue is well under this size, so normal use stays warm.
 	const FORMAT_CACHE_CAP = 256;
-	const formatCache = new Map<string, IntlMessageFormat>();
+	// `null` entries mark patterns that previously failed to compile or
+	// format, so repeated calls return raw immediately instead of paying the
+	// constructor/throw cost on every render tick.
+	const formatCache = new Map<string, IntlMessageFormat | null>();
 	const numberCache = new Map<number, Intl.NumberFormat>();
+
+	const cacheSet = (key: string, value: IntlMessageFormat | null): void => {
+		if (formatCache.size >= FORMAT_CACHE_CAP && !formatCache.has(key)) {
+			// Evict the oldest entry. Map iteration is in insertion order.
+			const oldest = formatCache.keys().next().value;
+			if (oldest !== undefined) formatCache.delete(oldest);
+		}
+		formatCache.set(key, value);
+	};
 
 	const localize = ((key: string, params?: Params): string => {
 		const raw =
@@ -63,25 +75,27 @@ export function setupLocalize(hass?: {
 
 		if (!params) return raw;
 
-		let fmt = formatCache.get(raw);
-		if (!fmt) {
+		let fmt: IntlMessageFormat | null | undefined;
+		if (formatCache.has(raw)) {
+			fmt = formatCache.get(raw);
+			if (fmt === null) return raw; // known bad — skip the throw
+		} else {
 			try {
 				fmt = new IntlMessageFormat(raw, lang);
 			} catch {
-				// Malformed ICU pattern — fall back to the raw string so
-				// translations with stray braces don't crash the panel.
+				// Malformed ICU pattern — cache the failure so we don't
+				// re-throw on every subsequent call with the same key.
+				cacheSet(raw, null);
 				return raw;
 			}
-			if (formatCache.size >= FORMAT_CACHE_CAP) {
-				// Evict the oldest entry. Map iteration is in insertion order.
-				const oldest = formatCache.keys().next().value;
-				if (oldest !== undefined) formatCache.delete(oldest);
-			}
-			formatCache.set(raw, fmt);
+			cacheSet(raw, fmt);
 		}
 		try {
-			return fmt.format(params) as string;
+			return (fmt as IntlMessageFormat).format(params) as string;
 		} catch {
+			// format() can throw too (e.g. missing param for a plural with
+			// no `other` branch). Cache as bad so we short-circuit next time.
+			cacheSet(raw, null);
 			return raw;
 		}
 	}) as LocalizeFn;

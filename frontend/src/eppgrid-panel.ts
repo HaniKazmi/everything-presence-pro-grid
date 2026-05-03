@@ -1266,14 +1266,17 @@ export class EPPGridPanel extends LitElement {
 	 *  sensor-space via the inverse perspective, then check distance and FOV angle.
 	 */
 	/** Cache sensor FOV geometry in room-space (recomputed when perspective changes). */
+	// Sentinel marks "no perspective cached yet" so degenerate perspectives
+	// (computeSensorFov returns null) still benefit from the cache instead
+	// of recomputing on every render.
+	private static readonly _FOV_UNCACHED: object = {};
 	private _fovCache: SensorFov | null = null;
-	private _fovPerspective: number[] | null = null;
+	private _fovPerspective: number[] | null | object =
+		EPPGridPanel._FOV_UNCACHED;
 
 	private _getSensorFov(): SensorFov | null {
 		if (!this._perspective) return null;
-		if (this._fovCache && this._fovPerspective === this._perspective)
-			return this._fovCache;
-
+		if (this._fovPerspective === this._perspective) return this._fovCache;
 		this._fovCache = computeSensorFov(this._perspective);
 		this._fovPerspective = this._perspective;
 		return this._fovCache;

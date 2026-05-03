@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { defaultLocalize, setupLocalize } from "../localize.js";
 
 describe("setupLocalize", () => {
@@ -198,6 +198,27 @@ describe("setupLocalize", () => {
 			// Plural with no `other` branch + missing arg → format() throws.
 			const result = localize("{x, plural, one {a}}", {});
 			expect(typeof result).toBe("string");
+		});
+
+		it("caches malformed-pattern failures so subsequent calls don't re-throw", () => {
+			const localize = setupLocalize();
+			const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+			// Repeated calls with the same malformed key should each return
+			// the raw string without re-throwing (the failure is cached).
+			expect(() => {
+				for (let i = 0; i < 50; i++) localize("{bad", { x: i });
+			}).not.toThrow();
+			expect(localize("{bad", { x: 1 })).toBe("{bad");
+			errSpy.mockRestore();
+		});
+
+		it("caches format() failures so subsequent calls short-circuit", () => {
+			const localize = setupLocalize();
+			// First call: constructor succeeds, format() throws → cached as null.
+			expect(() => {
+				for (let i = 0; i < 50; i++) localize("{x, plural, one {a}}", {});
+			}).not.toThrow();
+			expect(localize("{x, plural, one {a}}", {})).toBe("{x, plural, one {a}}");
 		});
 	});
 });
