@@ -269,7 +269,7 @@ void EPPComponent::loop() {
       if (target_y_sensors_[i] != nullptr)
         target_y_sensors_[i]->publish_state(active ? result.targets[i].y : NAN);
       if (target_signal_sensors_[i] != nullptr)
-        target_signal_sensors_[i]->publish_state(active ? static_cast<float>(result.targets[i].signal) : 0.0f);
+        target_signal_sensors_[i]->publish_state(active ? static_cast<float>(result.targets[i].signal) : NAN);
       if (target_active_sensors_[i] != nullptr)
         target_active_sensors_[i]->publish_state(active);
       if (target_zone_sensors_[i] != nullptr) {
