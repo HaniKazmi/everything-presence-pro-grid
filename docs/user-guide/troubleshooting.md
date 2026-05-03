@@ -35,24 +35,24 @@ Toggle the **BLE Scan** switch off under **Settings → Devices & services → E
 
 The BLE controller stack itself stays loaded either way (~10-15 KB), so this isn't a full BLE-off — it stops the active scan and (after the reboot) drops any in-flight proxy connections. Most users don't need this knob; it's mostly a safety valve if you have heavy proxied-BLE load or are seeing OOM-driven reboots.
 
-## Collect diagnostics
+## Reporting an issue
+
+If you've worked through the relevant feature-page Troubleshooting table and the sections above and the problem isn't covered, open a GitHub issue. To get a useful diagnosis fast, gather the diagnostics and debug logs *before* filing.
+
+### 1. Collect diagnostics
 
 1. In Home Assistant, go to **Settings → Devices & services**.
 2. Find **Everything Presence Pro Grid** in the integration list.
 3. Click the three-dot menu on the integration card → **Download diagnostics**.
-4. Save the JSON file and attach it to the issue.
+4. Save the JSON file — you'll attach it to the issue below.
 
-## Capture debug logs
+### 2. Capture debug logs
 
 If the bug is something the integration logs about (errors in HA system logs, the panel showing a connection error, an automation behaving wrong), capture debug logs *before* reproducing the issue. Firmware logs stream out via the integration into Home Assistant's standard log system, but to actually see them you need both the firmware *and* the integration to be logging.
 
-**1. Raise the firmware log level for the relevant components.**
+**Raise the firmware log level for the relevant components.** Under [Settings → Logging](settings/logging.md) in the panel, set the components you care about to **Debug**. For zone-related issues that's typically **Zone Engine**; for connectivity issues, **Network** or **System**.
 
-Under [Settings → Logging](settings/logging.md) in the panel, set the components you care about to **Debug**. For zone-related issues that's typically **Zone Engine**; for connectivity issues, **Network** or **System**.
-
-**2. Enable debug logging on the integration in Home Assistant.**
-
-Go to **Settings → Devices & services → Everything Presence Pro Grid → ⋮ → Enable debug logging**.
+**Enable debug logging on the integration in Home Assistant.** Go to **Settings → Devices & services → Everything Presence Pro Grid → ⋮ → Enable debug logging**.
 
 ![Enabling debug logging.](../images/settings/logging/debug-logging.png "Enabling debug logging.")
 
@@ -64,17 +64,13 @@ data:
     custom_components.eppgrid: debug
 ```
 
-**3. Reproduce the bug.**
+**Reproduce the bug.** You can watch logs live at **Settings → System → Logs** in Home Assistant if you want to see messages as they appear. Firmware messages appear inline with the integration's own output.
 
-You can watch logs live at **Settings → System → Logs** in Home Assistant if you want to see messages as they appear. Firmware messages appear inline with the integration's own output.
-
-**4. Download the captured logs.**
-
-If you used the **Enable debug logging** option on the integration page, then click **Disable debug logging** on the same page. Home Assistant writes the captured logs to a file and downloads it; attach it to the issue alongside the diagnostics JSON.
+**Download the captured logs.** If you used the **Enable debug logging** option on the integration page, then click **Disable debug logging** on the same page. Home Assistant writes the captured logs to a file and downloads it; attach it to the issue alongside the diagnostics JSON.
 
 ![Disabling debug logging.](../images/settings/logging/disabling-debug-logging.png "Disabling debug logging.")
 
-## Open the issue
+### 3. File the issue
 
 Open the issue at [github.com/clintongormley/everything-presence-pro-grid/issues](https://github.com/clintongormley/everything-presence-pro-grid/issues).
 
