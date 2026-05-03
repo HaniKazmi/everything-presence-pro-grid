@@ -434,6 +434,16 @@ void EPPComponent::set_perspective(const std::string &perspective,
     return;
   }
 
+  // Room dimensions must be strictly positive: downstream target→cell mapping
+  // divides by these values, and zero/negative dims silently produce garbage
+  // (NaN/Inf cells, wrong-sign coordinates). Reject at the glue boundary so
+  // bad input from HA is logged instead of silently corrupting state.
+  if (!(room_width > 0.0f) || !(room_depth > 0.0f)) {
+    ESP_LOGE(TAG, "Invalid room dimensions: width=%.1f depth=%.1f (both must be > 0)",
+             room_width, room_depth);
+    return;
+  }
+
   transform_.set_coefficients(coeffs, room_width, room_depth);
 
   // Build candidate cache, then test against the prior cache before
