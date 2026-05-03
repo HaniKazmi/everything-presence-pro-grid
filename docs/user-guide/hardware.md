@@ -79,6 +79,8 @@ Two firmware variants differ only in which network interface is active:
 
 Both variants also include **Bluetooth LE**. Home Assistant exposes each device as a Bluetooth proxy for nearby BLE devices like temperature tags, buttons, or presence badges. If you've got BLE hardware around the house, each device becomes another reception point.
 
+A **BLE Scan** switch under the device's Configuration entities lets you turn the scan off when you don't need the proxy — useful if you have heavy proxied-BLE load and need to claw back heap headroom (each proxied device adds ~5-10 KB resident, plus transient processing spikes). See [Troubleshooting → Free up memory by disabling BLE](troubleshooting.md#free-up-memory-by-disabling-ble) for the trade-off in numbers.
+
 ## Where to next
 
 - **[Installation →](installation.md)** — install the integration and start flashing.
