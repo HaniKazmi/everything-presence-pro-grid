@@ -121,7 +121,7 @@ describe("GridStateController", () => {
 
 	beforeEach(() => {
 		host = mockHost();
-		ctrl = new GridStateController(host);
+		ctrl = new GridStateController(host as any);
 		localStorage.clear();
 	});
 
@@ -1028,7 +1028,7 @@ describe("GridStateController", () => {
 				_targetAutoDistance: false,
 				_staticAutoDistance: false,
 			});
-			ctrl = new GridStateController(host);
+			ctrl = new GridStateController(host as any);
 			host._grid = new Uint8Array(GRID_CELL_COUNT);
 			// Paint a single inside cell for zone 1 so it isn't pruned.
 			host._grid[0] = CELL_ROOM_BIT;

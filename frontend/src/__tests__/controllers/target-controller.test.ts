@@ -141,7 +141,7 @@ describe("TargetController", () => {
 
 	beforeEach(() => {
 		host = mockHost();
-		ctrl = new TargetController(host);
+		ctrl = new TargetController(host as any);
 	});
 
 	// -------------------------------------------------------------------------

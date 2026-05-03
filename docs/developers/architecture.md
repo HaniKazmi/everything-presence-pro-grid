@@ -90,7 +90,8 @@ everything-presence-pro-grid/
 │   │   │   ├── device-controller.ts      # WS subscriptions, device loading
 │   │   │   ├── grid-state-controller.ts  # Grid/zone/furniture mutation, configurations
 │   │   │   ├── target-controller.ts      # Target/sensor/zone state, zone engine
-│   │   │   └── flasher-controller.ts     # Serial port + USB flash state machine
+│   │   │   ├── flasher-controller.ts     # Serial port + USB flash state machine
+│   │   │   └── panel-host.ts             # Typed `PanelHost` interface declaring every panel field/method the controllers touch (friend-class shape)
 │   │   ├── components/
 │   │   │   ├── epp-device-card.ts        # Lovelace card wrapper around <eppgrid-panel>
 │   │   │   ├── epp-wizard.ts             # Calibration wizard (guide, corners, capture)
