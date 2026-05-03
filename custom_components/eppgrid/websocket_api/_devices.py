@@ -13,10 +13,8 @@ from homeassistant.helpers import entity_registry as er
 from ..const import DOMAIN
 from ..const import EMPTY_ZONE_SLOTS
 from . import _LOGGER
-from . import _check_firmware_version
 from . import _get_manager
-from . import _send_firmware_version_error
-from . import _send_not_loaded
+from . import _require_manager
 from . import _validate_zone_slots
 
 # -- subscribe_device_list --
@@ -24,16 +22,14 @@ from . import _validate_zone_slots
 
 @websocket_api.websocket_command({vol.Required("type"): "eppgrid/subscribe_device_list"})
 @callback
+@_require_manager
 def websocket_subscribe_device_list(
     hass: HomeAssistant,
     connection: websocket_api.ActiveConnection,
     msg: dict[str, Any],
+    manager: Any,
 ) -> None:
     """Subscribe to device list changes. Sends initial list immediately."""
-    manager = _get_manager(hass)
-    if manager is None:
-        _send_not_loaded(connection, msg["id"])
-        return
 
     @callback
     def _send_update() -> None:
@@ -52,11 +48,7 @@ def websocket_subscribe_device_list(
     connection.send_result(msg["id"])
     _send_update()
 
-    @callback
-    def _unsub() -> None:
-        unsub()
-
-    connection.subscriptions[msg["id"]] = _unsub
+    connection.subscriptions[msg["id"]] = unsub
 
 
 # -- list_devices --
@@ -64,16 +56,14 @@ def websocket_subscribe_device_list(
 
 @websocket_api.websocket_command({vol.Required("type"): "eppgrid/list_devices"})
 @callback
+@_require_manager
 def websocket_list_devices(
     hass: HomeAssistant,
     connection: websocket_api.ActiveConnection,
     msg: dict[str, Any],
+    manager: Any,
 ) -> None:
     """List discovered EPP devices."""
-    manager = _get_manager(hass)
-    if manager is None:
-        _send_not_loaded(connection, msg["id"])
-        return
     connection.send_result(
         msg["id"],
         {
@@ -93,16 +83,14 @@ def websocket_list_devices(
     }
 )
 @websocket_api.async_response
+@_require_manager
 async def websocket_set_show_room_calibration_tutorial(
     hass: HomeAssistant,
     connection: websocket_api.ActiveConnection,
     msg: dict[str, Any],
+    manager: Any,
 ) -> None:
     """Persist the global show_room_calibration_tutorial flag."""
-    manager = _get_manager(hass)
-    if manager is None:
-        _send_not_loaded(connection, msg["id"])
-        return
     new_value = msg["value"]
     if manager._store.show_room_calibration_tutorial == new_value:
         connection.send_result(msg["id"])
@@ -123,16 +111,14 @@ async def websocket_set_show_room_calibration_tutorial(
     }
 )
 @callback
+@_require_manager
 def websocket_get_config(
     hass: HomeAssistant,
     connection: websocket_api.ActiveConnection,
     msg: dict[str, Any],
+    manager: Any,
 ) -> None:
     """Get stored config for a device."""
-    manager = _get_manager(hass)
-    if manager is None:
-        _send_not_loaded(connection, msg["id"])
-        return
     config = manager._store.get_device(msg["mac"])
     # Return a shallow copy to avoid mutating the stored config
     response = dict(config) if config else {}
@@ -153,20 +139,14 @@ def websocket_get_config(
     }
 )
 @websocket_api.async_response
+@_require_manager(check_firmware=True)
 async def websocket_set_setup(
     hass: HomeAssistant,
     connection: websocket_api.ActiveConnection,
     msg: dict[str, Any],
+    manager: Any,
 ) -> None:
     """Save perspective calibration for a device."""
-    manager = _get_manager(hass)
-    if manager is None:
-        _send_not_loaded(connection, msg["id"])
-        return
-    proto_err = _check_firmware_version(manager, msg["mac"])
-    if proto_err:
-        _send_firmware_version_error(connection, msg["id"], proto_err)
-        return
     mac = msg["mac"]
     device_config = manager._store.devices.setdefault(mac, {})
     device_config["calibration"] = {
@@ -214,20 +194,14 @@ async def websocket_set_setup(
     }
 )
 @websocket_api.async_response
+@_require_manager(check_firmware=True)
 async def websocket_set_room_layout(
     hass: HomeAssistant,
     connection: websocket_api.ActiveConnection,
     msg: dict[str, Any],
+    manager: Any,
 ) -> None:
     """Save room layout, zones, and furniture for a device."""
-    manager = _get_manager(hass)
-    if manager is None:
-        _send_not_loaded(connection, msg["id"])
-        return
-    proto_err = _check_firmware_version(manager, msg["mac"])
-    if proto_err:
-        _send_firmware_version_error(connection, msg["id"], proto_err)
-        return
     mac = msg["mac"]
     device_config = manager._store.devices.setdefault(mac, {})
     device_config["room_layout"] = {
@@ -253,16 +227,14 @@ async def websocket_set_room_layout(
 
 @websocket_api.websocket_command({vol.Required("type"): "eppgrid/list_configurations"})
 @callback
+@_require_manager
 def websocket_list_configurations(
     hass: HomeAssistant,
     connection: websocket_api.ActiveConnection,
     msg: dict[str, Any],
+    manager: Any,
 ) -> None:
     """List saved configurations."""
-    manager = _get_manager(hass)
-    if manager is None:
-        _send_not_loaded(connection, msg["id"])
-        return
     connection.send_result(msg["id"], {"configurations": manager._store.configurations})
 
 
@@ -274,16 +246,14 @@ def websocket_list_configurations(
     }
 )
 @websocket_api.async_response
+@_require_manager
 async def websocket_save_configuration(
     hass: HomeAssistant,
     connection: websocket_api.ActiveConnection,
     msg: dict[str, Any],
+    manager: Any,
 ) -> None:
     """Save a named configuration."""
-    manager = _get_manager(hass)
-    if manager is None:
-        _send_not_loaded(connection, msg["id"])
-        return
     manager._store.configurations[msg["name"]] = msg["configuration"]
     await manager._store.async_save()
     connection.send_result(msg["id"])
@@ -296,16 +266,14 @@ async def websocket_save_configuration(
     }
 )
 @websocket_api.async_response
+@_require_manager
 async def websocket_delete_configuration(
     hass: HomeAssistant,
     connection: websocket_api.ActiveConnection,
     msg: dict[str, Any],
+    manager: Any,
 ) -> None:
     """Delete a saved configuration."""
-    manager = _get_manager(hass)
-    if manager is None:
-        _send_not_loaded(connection, msg["id"])
-        return
     manager._store.configurations.pop(msg["name"], None)
     await manager._store.async_save()
     connection.send_result(msg["id"])
@@ -455,16 +423,14 @@ def _build_entity_key_map(entities: list) -> dict[str, int]:
     }
 )
 @websocket_api.async_response
+@_require_manager
 async def websocket_subscribe_device(
     hass: HomeAssistant,
     connection: websocket_api.ActiveConnection,
     msg: dict[str, Any],
+    manager: Any,
 ) -> None:
     """Open a session connection for a device. Closes on unsubscribe."""
-    manager = _get_manager(hass)
-    if manager is None:
-        _send_not_loaded(connection, msg["id"])
-        return
     mac = msg["mac"]
     try:
         device_conn = await manager.async_open_session(mac)
@@ -507,17 +473,14 @@ async def websocket_subscribe_device(
     }
 )
 @websocket_api.async_response
+@_require_manager
 async def websocket_subscribe_raw_targets(
     hass: HomeAssistant,
     connection: websocket_api.ActiveConnection,
     msg: dict[str, Any],
+    manager: Any,
 ) -> None:
     """Stream raw target positions from the device session."""
-    manager = _get_manager(hass)
-    if manager is None:
-        _send_not_loaded(connection, msg["id"])
-        return
-
     mac = msg["mac"]
     device_conn = manager.get_session(mac)
     if device_conn is None:
@@ -586,17 +549,14 @@ async def websocket_subscribe_raw_targets(
     }
 )
 @websocket_api.async_response
+@_require_manager
 async def websocket_subscribe_grid_targets(
     hass: HomeAssistant,
     connection: websocket_api.ActiveConnection,
     msg: dict[str, Any],
+    manager: Any,
 ) -> None:
     """Stream target positions, zone state, and sensor data from the device session."""
-    manager = _get_manager(hass)
-    if manager is None:
-        _send_not_loaded(connection, msg["id"])
-        return
-
     mac = msg["mac"]
     device_conn = manager.get_session(mac)
     if device_conn is None:
@@ -777,20 +737,14 @@ async def websocket_subscribe_grid_targets(
     }
 )
 @callback
+@_require_manager(check_firmware=True)
 def websocket_set_entity_enabled(
     hass: HomeAssistant,
     connection: websocket_api.ActiveConnection,
     msg: dict[str, Any],
+    manager: Any,
 ) -> None:
     """Enable or disable an ESPHome entity on a managed device."""
-    manager = _get_manager(hass)
-    if manager is None:
-        _send_not_loaded(connection, msg["id"])
-        return
-    proto_err = _check_firmware_version(manager, msg["mac"])
-    if proto_err:
-        _send_firmware_version_error(connection, msg["id"], proto_err)
-        return
     ent_reg = er.async_get(hass)
     if msg["enabled"]:
         ent_reg.async_update_entity(msg["entity_id"], disabled_by=None)
@@ -852,20 +806,14 @@ _SETTINGS_KEYS = (
     }
 )
 @websocket_api.async_response
+@_require_manager(check_firmware=True)
 async def websocket_set_settings(
     hass: HomeAssistant,
     connection: websocket_api.ActiveConnection,
     msg: dict[str, Any],
+    manager: Any,
 ) -> None:
     """Save all device settings in one call."""
-    manager = _get_manager(hass)
-    if manager is None:
-        _send_not_loaded(connection, msg["id"])
-        return
-    proto_err = _check_firmware_version(manager, msg["mac"])
-    if proto_err:
-        _send_firmware_version_error(connection, msg["id"], proto_err)
-        return
     mac = msg["mac"]
     device_config = manager._store.devices.setdefault(mac, {})
     new_settings = {k: msg[k] for k in _SETTINGS_KEYS}
@@ -942,20 +890,14 @@ async def websocket_set_settings(
     }
 )
 @websocket_api.async_response
+@_require_manager(check_firmware=True)
 async def websocket_set_distance_override(
     hass: HomeAssistant,
     connection: websocket_api.ActiveConnection,
     msg: dict[str, Any],
+    manager: Any,
 ) -> None:
     """Push distance override to device without persisting."""
-    manager = _get_manager(hass)
-    if manager is None:
-        _send_not_loaded(connection, msg["id"])
-        return
-    proto_err = _check_firmware_version(manager, msg["mac"])
-    if proto_err:
-        _send_firmware_version_error(connection, msg["id"], proto_err)
-        return
     mac = msg["mac"]
     session = manager.get_session(mac)
     if session is None:
@@ -991,20 +933,14 @@ async def websocket_set_distance_override(
     }
 )
 @websocket_api.async_response
+@_require_manager(check_firmware=True)
 async def websocket_set_pipeline(
     hass: HomeAssistant,
     connection: websocket_api.ActiveConnection,
     msg: dict[str, Any],
+    manager: Any,
 ) -> None:
     """Save pipeline settings."""
-    manager = _get_manager(hass)
-    if manager is None:
-        _send_not_loaded(connection, msg["id"])
-        return
-    proto_err = _check_firmware_version(manager, msg["mac"])
-    if proto_err:
-        _send_firmware_version_error(connection, msg["id"], proto_err)
-        return
     mac = msg["mac"]
     device_config = manager._store.devices.setdefault(mac, {})
     device_config["pipeline"] = {
