@@ -210,7 +210,11 @@ export class FlasherController implements ReactiveController {
 	private _unsubOta(mac: string): void {
 		const unsub = this._otaUnsubs[mac];
 		if (unsub) {
-			unsub();
+			try {
+				unsub();
+			} catch {
+				/* stale subscription — invoke can throw if the socket died */
+			}
 			delete this._otaUnsubs[mac];
 		}
 	}

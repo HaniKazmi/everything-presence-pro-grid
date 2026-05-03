@@ -873,6 +873,34 @@ describe("FlasherController", () => {
 			expect((ctrl as any)._unsubDeviceList).toBeUndefined();
 		});
 
+		it("OTA success flow tolerates a throwing unsub callback without leaving state half-done", async () => {
+			// _unsubOta historically called the stored callback without
+			// try/catch. A stale subscription whose .then() resolved on a
+			// dead socket can throw on invoke; in the success path that
+			// would abort _otaSuccess before the auto-dismiss timer was
+			// scheduled and before _resetOtaTimeout ran, leaving the
+			// otaStates entry stuck on "success" forever.
+			vi.useFakeTimers();
+			const throwingUnsub = vi.fn(() => {
+				throw new Error("stale subscription");
+			});
+			hass.connection.subscribeMessage = vi
+				.fn()
+				.mockResolvedValue(throwingUnsub);
+
+			await ctrl.startOta("AA:BB:CC:DD:EE:01");
+			const callback = hass.connection.subscribeMessage.mock.calls[0][0];
+
+			expect(() => callback({ state: "success" })).not.toThrow();
+			expect(ctrl.otaStates["AA:BB:CC:DD:EE:01"].state).toBe("success");
+
+			// Auto-dismiss fires — proves the success path completed
+			// past the throwing unsub.
+			vi.advanceTimersByTime(5000);
+			expect(ctrl.otaStates["AA:BB:CC:DD:EE:01"]).toBeUndefined();
+			vi.useRealTimers();
+		});
+
 		it("hostDisconnected cleans up OTA subscriptions and timeouts", async () => {
 			vi.useFakeTimers();
 			await ctrl.startOta("AA:BB:CC:DD:EE:01");
