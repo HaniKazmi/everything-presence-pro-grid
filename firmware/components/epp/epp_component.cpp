@@ -150,6 +150,19 @@ void EPPComponent::loop() {
   if (display_interval_ms_ > 0 && now - last_display_publish_ms_ >= display_interval_ms_) {
     last_display_publish_ms_ = now;
 
+    // Skip publish_state when the payload matches the last publish so the
+    // empty-string flood (when no targets are active) doesn't spam HA every
+    // display tick. ESPHome text_sensor doesn't dedupe string publishes.
+    auto publish_text_if_changed = [](esphome::text_sensor::TextSensor *sensor,
+                                       const char *value, std::string &cache,
+                                       bool &has_cache) {
+      if (sensor == nullptr) return;
+      if (has_cache && cache == value) return;
+      sensor->publish_state(value);
+      cache = value;
+      has_cache = true;
+    };
+
     // Publish raw target positions (pre-transform, smoothed)
     for (int i = 0; i < NUM_TARGETS; i++) {
       if (raw_target_sensors_[i] != nullptr) {
@@ -158,9 +171,13 @@ void EPPComponent::loop() {
           snprintf(buf, sizeof(buf), "%.0f,%.0f",
                    win.targets[i].median_x,
                    win.targets[i].median_y);
-          raw_target_sensors_[i]->publish_state(buf);
+          publish_text_if_changed(raw_target_sensors_[i], buf,
+                                  last_raw_target_text_[i],
+                                  has_last_raw_target_text_[i]);
         } else {
-          raw_target_sensors_[i]->publish_state("");
+          publish_text_if_changed(raw_target_sensors_[i], "",
+                                  last_raw_target_text_[i],
+                                  has_last_raw_target_text_[i]);
         }
       }
     }
@@ -177,9 +194,13 @@ void EPPComponent::loop() {
           char buf[64];
           snprintf(buf, sizeof(buf), "%.0f,%.0f,%s",
                    result.targets[i].x, result.targets[i].y, status_str);
-          target_position_sensors_[i]->publish_state(buf);
+          publish_text_if_changed(target_position_sensors_[i], buf,
+                                  last_target_position_text_[i],
+                                  has_last_target_position_text_[i]);
         } else {
-          target_position_sensors_[i]->publish_state("");
+          publish_text_if_changed(target_position_sensors_[i], "",
+                                  last_target_position_text_[i],
+                                  has_last_target_position_text_[i]);
         }
       }
     }

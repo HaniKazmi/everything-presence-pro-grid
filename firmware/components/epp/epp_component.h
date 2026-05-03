@@ -249,6 +249,15 @@ class EPPComponent : public esphome::Component {
   int8_t last_occupancy_published_ = -1;
   int8_t last_mmwave_published_ = -1;
 
+  // Cached last-published text for the Display block's text_sensor outputs.
+  // Same rationale as the binary_sensor caches above: the empty-string publish
+  // when no targets are present floods HA every display tick (e.g. 4 Hz). Skip
+  // when the new payload matches the cached one.
+  std::string last_raw_target_text_[NUM_TARGETS]{};
+  std::string last_target_position_text_[NUM_TARGETS]{};
+  bool has_last_raw_target_text_[NUM_TARGETS]{};
+  bool has_last_target_position_text_[NUM_TARGETS]{};
+
   // Boot settling — gate relay state changes until the device has either
   // received its first frame or waited out BOOT_SETTLE_MS. Template switches
   // re-fire turn_on/turn_off on boot from HA's restored state, and acting on
