@@ -19,6 +19,7 @@ import type { EPPGridPanel } from "../eppgrid-panel.js";
 import "../eppgrid-panel.js";
 import {
 	CELL_OVERLAY_ENTRY,
+	CELL_OVERLAY_SUPPRESS,
 	CELL_ROOM_BIT,
 	cellSetOverlay,
 	cellSetZone,
@@ -427,6 +428,31 @@ describe("Per-target status parity", () => {
 		// Zone 1 must accelerate to handoff_timeout, not the full timeout.
 		// pendingSince = now - (timeout - handoff_timeout) = now - (5 - 1) = now - 4
 		expect(st.pendingSince).not.toBeNull();
+		expect(st.pendingSince).toBeCloseTo(tNow - 4, 0);
+	});
+
+	it("overlay-exit handoff fires when target moves onto a SUPPRESS cell", () => {
+		// Mirrors firmware Step 2b: an active target that lands on a SUPPRESS
+		// cell early-continues without setting target_zone_curr (firmware) /
+		// targetZoneCurr (frontend), so the handoff loop must treat that as
+		// "left room". Otherwise the engines diverge: firmware fires the
+		// handoff, frontend doesn't.
+		a._targets = [makeTarget(450, 450, 5)];
+		a._runLocalZoneEngine(); // tick 1: zone 1 occupied via overlay entry
+		a._runLocalZoneEngine(); // tick 2: target in confirmedTargets
+
+		// Make cell (8, 1) (room cell, zone 0) a SUPPRESS cell.
+		a._grid[1 * 20 + 8] = cellSetOverlay(CELL_ROOM_BIT, CELL_OVERLAY_SUPPRESS);
+
+		// Move target onto the SUPPRESS cell — still actively tracked.
+		// Target at x=150, y=450 → col 8.5, row 1.5 → cell (8, 1).
+		const tNow = Date.now() / 1000;
+		a._targets = [makeTarget(150, 450, 5)];
+		a._runLocalZoneEngine();
+
+		const st = a._zoneEngineState.localZoneState.get(1);
+		expect(st.pendingSince).not.toBeNull();
+		// Accelerated to handoff_timeout=1s (zone 1 timeout=5s, handoff=1s).
 		expect(st.pendingSince).toBeCloseTo(tNow - 4, 0);
 	});
 

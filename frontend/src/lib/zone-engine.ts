@@ -126,7 +126,6 @@ export function runLocalZoneEngine(
 	const targetSignal: Map<number, number> = new Map();
 	const targetZonePrev: (number | null)[] = [null, null, null];
 	const targetZoneCurr: (number | null)[] = [null, null, null];
-	const targetLeftRoom: boolean[] = [false, false, false];
 
 	for (let i = 0; i < MAX_TARGETS && i < params.targets.length; i++) {
 		const t = params.targets[i];
@@ -151,7 +150,6 @@ export function runLocalZoneEngine(
 			params.roomDepth,
 		);
 		if (!pos) {
-			targetLeftRoom[i] = true;
 			state.targetPrev[i] = null;
 			state.targetGateCount[i] = 0;
 			continue;
@@ -159,7 +157,6 @@ export function runLocalZoneEngine(
 		const col = Math.floor(pos.col);
 		const row = Math.floor(pos.row);
 		if (col < 0 || col >= GRID_COLS || row < 0 || row >= GRID_ROWS) {
-			targetLeftRoom[i] = true;
 			state.targetPrev[i] = null;
 			state.targetGateCount[i] = 0;
 			continue;
@@ -167,7 +164,6 @@ export function runLocalZoneEngine(
 		const idx = row * GRID_COLS + col;
 		const cellVal = params.grid[idx];
 		if (!cellIsInside(cellVal)) {
-			targetLeftRoom[i] = true;
 			state.targetPrev[i] = null;
 			state.targetGateCount[i] = 0;
 			continue;
@@ -319,7 +315,11 @@ export function runLocalZoneEngine(
 	for (let i = 0; i < MAX_TARGETS; i++) {
 		const t = i < params.targets.length ? params.targets[i] : null;
 		const isGone = !t || t.x == null || t.y == null;
-		const leftRoom = !isGone && targetLeftRoom[i];
+		// Mirror firmware Step 2b: an active target counts as "left room"
+		// whenever it failed to land in a zone this tick. That covers
+		// out-of-grid, non-room cells, AND the CELL_OVERLAY_SUPPRESS
+		// early-continue (which doesn't set targetZoneCurr).
+		const leftRoom = !isGone && targetZoneCurr[i] === null;
 		const lastZid = state.lastZone[i];
 		if ((isGone || leftRoom) && state.lastOnOverlay[i] && lastZid !== null) {
 			const st = state.localZoneState.get(lastZid);
