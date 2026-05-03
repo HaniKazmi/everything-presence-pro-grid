@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import logging
+from collections.abc import Coroutine
 from dataclasses import dataclass
 from typing import Any
 
@@ -98,6 +99,10 @@ class DeviceManager:
         self._device_list_callbacks: list[Any] = []
         # Unsub callables for ESPHome config-entry update listeners, keyed by entry_id
         self._entry_update_unsubs: dict[str, Any] = {}
+        # Tracks fire-and-forget tasks scheduled by event handlers so
+        # async_stop can drain them. Tasks self-remove via add_done_callback
+        # so the set stays bounded under steady state.
+        self._pending_tasks: set[asyncio.Task] = set()
 
     @callback
     def on_device_list_changed(self, cb: Any) -> Any:
@@ -119,6 +124,18 @@ class DeviceManager:
                 cb()
             except Exception:
                 _LOGGER.exception("Device list change callback failed")
+
+    def _spawn(self, coro: Coroutine[Any, Any, Any]) -> asyncio.Task:
+        """Schedule a fire-and-forget coroutine and track the task.
+
+        Tracking is required so async_stop can await in-flight work
+        before tearing down — HA 2026.4+ pytest fails the test on any
+        task that survives the config entry.
+        """
+        task = self._hass.async_create_task(coro)
+        self._pending_tasks.add(task)
+        task.add_done_callback(self._pending_tasks.discard)
+        return task
 
     async def async_start(self) -> None:
         """Start discovery and event listeners."""
@@ -149,7 +166,7 @@ class DeviceManager:
                     ):
                         continue
                 self._pushing.add(mac)
-                self._hass.async_create_task(self._on_device_available(mac))
+                self._spawn(self._on_device_available(mac))
 
     @callback
     def _schedule_entity_update_clear(self, mac: str, delay: float = 60.0) -> None:
@@ -193,6 +210,14 @@ class DeviceManager:
         if self._pending_closes:
             await asyncio.gather(*self._pending_closes.values(), return_exceptions=True)
             self._pending_closes.clear()
+        # Drain any other in-flight tasks before returning. They might still
+        # write to self._hass which is fine — but we must observe their
+        # completion so they don't outlive the config entry. Run before
+        # the connection drain so disconnects scheduled by callbacks
+        # (e.g. _on_state_changed → async_close_session) are visible to
+        # the disconnect-gather below.
+        if self._pending_tasks:
+            await asyncio.gather(*list(self._pending_tasks), return_exceptions=True)
         for conn in self._active_connections.values():
             await conn.async_disconnect()
         self._active_connections.clear()
@@ -495,7 +520,7 @@ class DeviceManager:
                 mac = _extract_mac(device)
                 if mac and mac in self.devices and self.devices[mac].device_id == entry.device_id:
                     return
-        self._hass.async_create_task(self.async_discover())
+        self._spawn(self.async_discover())
 
     @callback
     def _on_state_changed(self, event: Any) -> None:
@@ -574,7 +599,7 @@ class DeviceManager:
         # refresh.
         if mac not in self._pushing:
             self._pushing.add(mac)
-            self._hass.async_create_task(self._on_device_available(mac))
+            self._spawn(self._on_device_available(mac))
         else:
             self._fire_device_list_changed()
 
@@ -618,7 +643,7 @@ class DeviceManager:
             return
 
         if action == "remove":
-            self._hass.async_create_task(self._on_device_removed(mac))
+            self._spawn(self._on_device_removed(mac))
             return
 
         # Update (rename, area change, etc.) — refresh the cached friendly

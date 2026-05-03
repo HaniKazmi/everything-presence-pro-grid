@@ -1182,6 +1182,22 @@ class TestDeviceManager:
         # Clean up so the test's own teardown is leak-free.
         await manager.async_stop()
 
+    async def test_async_stop_awaits_pending_tasks(self, hass: HomeAssistant, manager: DeviceManager) -> None:
+        """Tasks spawned by event handlers are tracked and awaited by async_stop
+        so they don't leak past the config entry's lifetime."""
+        completed = asyncio.Event()
+
+        async def slow_work():
+            await asyncio.sleep(0.01)
+            completed.set()
+
+        manager._spawn(slow_work())
+        assert manager._pending_tasks
+
+        await manager.async_stop()
+        assert completed.is_set()
+        assert not manager._pending_tasks
+
     async def test_read_current_connection_count_returns_value(
         self, hass: HomeAssistant, manager: DeviceManager
     ) -> None:
