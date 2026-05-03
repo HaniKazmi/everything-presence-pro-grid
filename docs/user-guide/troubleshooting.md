@@ -19,30 +19,40 @@ A `Heap Min Free` reading below ~5 KB means the device has come close to running
 
 ## Free up memory by disabling BLE
 
-The biggest memory consumer on the wifi/ethernet-ble-co2 firmware is **Bluetooth Proxy** with active scanning — typically 30-80 KB resident, plus transient spikes during scan-result processing. If you're not using the device to relay BLE devices (Xiaomi temperature sensors, presence beacons, etc.) to Home Assistant, you can free most of that memory at runtime.
+If `Heap Min Free` keeps dipping into single-digit KB and reboots correlate, you can disable BLE scanning to give yourself more headroom. Measured costs of BLE-on with **no proxied devices connected**:
 
-Toggle the **BLE Scan** switch off under **Settings → Devices & services → ESPHome → \[your device\] → Configuration**. The device will reboot once to drop any active proxy connections, then come back up with scanning disabled — and the OFF state persists across future reboots. Re-enable any time by toggling the switch back on.
+| Metric | BLE off | BLE on | Cost of BLE-on |
+|---|---|---|---|
+| Heap Free (steady-state) | ~76 KB | ~71 KB | -4 KB |
+| Heap Largest Block | ~53 KB | ~43 KB | -10 KB |
+| Heap Min Free (worst-case dip) | ~54 KB | ~35 KB | -20 KB |
 
-The BLE controller stack itself stays loaded either way (about 10-15 KB), so this isn't a full BLE-off, but it does reclaim 15-30 KB of scan and processing buffers, which is usually enough to take a memory-pressured device out of the OOM danger zone.
+**Add ~5-10 KB resident heap per BLE device proxied through the EPP** (each open GATT connection holds its own client state, characteristic cache, and notification handlers). On the wifi-ble-co2 variant the proxy is configured for up to 3 simultaneous connections — proxying 3 active devices can therefore eat another 15-30 KB on top of the table above, plus more transient heap during their notification traffic. If you have a busy proxy and see `Heap Min Free` near zero, the trade-off shifts: you may need to either cut proxied devices or disable the scan entirely.
 
-## Collect diagnostics
+The always-resident cost of just-scanning-no-proxied-devices is small (~4 KB), but BLE causes ~20 KB transient spikes during scan-result processing — that's where the real headroom goes when something else (network, sensor activity) needs heap at the same moment.
+
+Toggle the **BLE Scan** switch off under **Settings → Devices & services → ESPHome → \[your device\] → Configuration**. The device reboots once to drop any active proxy GATT connections, then comes back up with scanning disabled — and the OFF state persists across future reboots. Re-enable any time by toggling the switch back on.
+
+The BLE controller stack itself stays loaded either way (~10-15 KB), so this isn't a full BLE-off — it stops the active scan and (after the reboot) drops any in-flight proxy connections. Most users don't need this knob; it's mostly a safety valve if you have heavy proxied-BLE load or are seeing OOM-driven reboots.
+
+## Reporting an issue
+
+If you've worked through the relevant feature-page Troubleshooting table and the sections above and the problem isn't covered, open a GitHub issue. To get a useful diagnosis fast, gather the diagnostics and debug logs *before* filing.
+
+### 1. Collect diagnostics
 
 1. In Home Assistant, go to **Settings → Devices & services**.
 2. Find **Everything Presence Pro Grid** in the integration list.
 3. Click the three-dot menu on the integration card → **Download diagnostics**.
-4. Save the JSON file and attach it to the issue.
+4. Save the JSON file — you'll attach it to the issue below.
 
-## Capture debug logs
+### 2. Capture debug logs
 
 If the bug is something the integration logs about (errors in HA system logs, the panel showing a connection error, an automation behaving wrong), capture debug logs *before* reproducing the issue. Firmware logs stream out via the integration into Home Assistant's standard log system, but to actually see them you need both the firmware *and* the integration to be logging.
 
-**1. Raise the firmware log level for the relevant components.**
+**Raise the firmware log level for the relevant components.** Under [Settings → Logging](settings/logging.md) in the panel, set the components you care about to **Debug**. For zone-related issues that's typically **Zone Engine**; for connectivity issues, **Network** or **System**.
 
-Under [Settings → Logging](settings/logging.md) in the panel, set the components you care about to **Debug**. For zone-related issues that's typically **Zone Engine**; for connectivity issues, **Network** or **System**.
-
-**2. Enable debug logging on the integration in Home Assistant.**
-
-Go to **Settings → Devices & services → Everything Presence Pro Grid → ⋮ → Enable debug logging**.
+**Enable debug logging on the integration in Home Assistant.** Go to **Settings → Devices & services → Everything Presence Pro Grid → ⋮ → Enable debug logging**.
 
 ![Enabling debug logging.](../images/settings/logging/debug-logging.png "Enabling debug logging.")
 
@@ -54,17 +64,13 @@ data:
     custom_components.eppgrid: debug
 ```
 
-**3. Reproduce the bug.**
+**Reproduce the bug.** You can watch logs live at **Settings → System → Logs** in Home Assistant if you want to see messages as they appear. Firmware messages appear inline with the integration's own output.
 
-You can watch logs live at **Settings → System → Logs** in Home Assistant if you want to see messages as they appear. Firmware messages appear inline with the integration's own output.
-
-**4. Download the captured logs.**
-
-If you used the **Enable debug logging** option on the integration page, then click **Disable debug logging** on the same page. Home Assistant writes the captured logs to a file and downloads it; attach it to the issue alongside the diagnostics JSON.
+**Download the captured logs.** If you used the **Enable debug logging** option on the integration page, then click **Disable debug logging** on the same page. Home Assistant writes the captured logs to a file and downloads it; attach it to the issue alongside the diagnostics JSON.
 
 ![Disabling debug logging.](../images/settings/logging/disabling-debug-logging.png "Disabling debug logging.")
 
-## Open the issue
+### 3. File the issue
 
 Open the issue at [github.com/clintongormley/everything-presence-pro-grid/issues](https://github.com/clintongormley/everything-presence-pro-grid/issues).
 
