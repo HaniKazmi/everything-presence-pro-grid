@@ -196,8 +196,8 @@ class EPPComponent : public esphome::Component {
   // Sensor presence inputs (references to raw hardware binary sensors)
   esphome::binary_sensor::BinarySensor *static_presence_sensor_{nullptr};
   esphome::binary_sensor::BinarySensor *motion_presence_sensor_{nullptr};
-  float static_timeout_{10.0f};
-  float motion_timeout_{10.0f};
+  float static_timeout_{DEFAULT_STATIC_TIMEOUT_S};
+  float motion_timeout_{DEFAULT_MOTION_TIMEOUT_S};
 
   // Sensor presence outputs (zone engine processed state)
   esphome::binary_sensor::BinarySensor *static_presence_output_{nullptr};

@@ -50,11 +50,16 @@ struct ProcessingResult {
 // Internal runtime state per zone
 // ---------------------------------------------------------------------------
 
+// Default sensor presence timeouts (seconds). Single source of truth for the
+// engine and the ESPHome component glue — keeps the two from drifting apart.
+constexpr float DEFAULT_STATIC_TIMEOUT_S = 10.0f;
+constexpr float DEFAULT_MOTION_TIMEOUT_S = 10.0f;
+
 struct SensorInput {
     bool static_on = false;
     bool motion_on = false;
-    float static_timeout = 10.0f;   // seconds
-    float motion_timeout = 10.0f;   // seconds
+    float static_timeout = DEFAULT_STATIC_TIMEOUT_S;
+    float motion_timeout = DEFAULT_MOTION_TIMEOUT_S;
 };
 
 struct ZoneRuntime {
