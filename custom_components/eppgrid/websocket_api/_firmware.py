@@ -9,6 +9,7 @@ import voluptuous as vol
 from homeassistant.components import websocket_api
 from homeassistant.core import HomeAssistant
 from homeassistant.core import callback
+from homeassistant.helpers.event import async_call_later
 
 from ..const import DOMAIN
 from . import _LOGGER
@@ -16,7 +17,10 @@ from . import _OTA_LOG_CATEGORY
 from . import _OTA_LOG_LEVEL
 from . import _require_manager
 from . import _send_exception
-from . import _send_no_firmware_variant
+
+# Outer safety net: if no terminal state arrives within 5 minutes after the
+# OTA starts, emit `state: error` so the UI doesn't spin forever.
+_OTA_OUTER_TIMEOUT_S = 300
 
 # -- update_firmware (trigger OTA) --
 
@@ -36,73 +40,15 @@ async def websocket_update_firmware(
     msg: dict[str, Any],
     manager: Any,
 ) -> None:
-    """Trigger firmware OTA update via set_update_manifest action."""
-    from ..const import OTA_MANIFEST_BASE_URL
+    """Trigger firmware OTA update — delegates to DeviceManager.async_trigger_ota."""
+    from homeassistant.exceptions import HomeAssistantError
 
-    mac = msg["mac"]
-    dev = manager.devices.get(mac)
-    if dev is None:
-        connection.send_error(
-            msg["id"],
-            "not_found",
-            "Device not found",
-            translation_domain=DOMAIN,
-            translation_key="device_not_found",
-        )
-        return
-
-    # Derive firmware variant from build flags
-    from ..const import FIRMWARE_VARIANTS
-
-    flags = manager._build_flags.get(mac, {})
-    if not flags:
-        connection.send_error(
-            msg["id"],
-            "build_flags_unknown",
-            "Device build flags not yet available",
-            translation_domain=DOMAIN,
-            translation_key="build_flags_unavailable",
-        )
-        return
-    network = "ethernet" if flags.get("ethernet_enabled") else "wifi"
-    variant = FIRMWARE_VARIANTS.get(network)
-    if variant is None:
-        _send_no_firmware_variant(connection, msg["id"], network)
-        return
-    manifest_url = f"{OTA_MANIFEST_BASE_URL}/{variant}.json"
-
-    if dev.host is None:
-        connection.send_error(
-            msg["id"],
-            "not_available",
-            "Device host unknown",
-            translation_domain=DOMAIN,
-            translation_key="device_host_unknown",
-        )
-        return
-
-    from ..device_manager import DeviceConnection
-
-    conn = DeviceConnection(dev.host)
     try:
-        await conn.async_connect()
-        svc = conn._services.get("set_update_manifest")
-        if svc is None:
-            connection.send_error(
-                msg["id"],
-                "not_supported",
-                "Device does not support OTA update",
-                translation_domain=DOMAIN,
-                translation_key="ota_unsupported",
-            )
-            return
-        assert conn._client is not None  # async_connect succeeded
-        await conn._client.execute_service(svc, {"url": manifest_url})
-        connection.send_result(msg["id"])
-    except Exception as err:
+        await manager.async_trigger_ota(msg["mac"])
+    except HomeAssistantError as err:
         _send_exception(connection, msg["id"], "update_failed", err)
-    finally:
-        await conn.async_disconnect()
+        return
+    connection.send_result(msg["id"])
 
 
 # -- subscribe_ota_progress --
@@ -129,7 +75,10 @@ async def websocket_subscribe_ota_progress(
     if device_conn is None:
         with contextlib.suppress(Exception):
             device_conn = await manager.async_open_session(mac)
-    if device_conn is None:
+    if device_conn is None or device_conn._client is None:
+        # `_client is None` means the connection raced to close between the
+        # session lookup and here; treat it the same as "no session" rather
+        # than letting subsequent execute_service calls AttributeError.
         connection.send_error(
             msg["id"],
             "no_session",
@@ -139,13 +88,21 @@ async def websocket_subscribe_ota_progress(
         )
         return
 
+    # Start sentinel: latched once we've seen evidence that the device is
+    # mid-OTA — either explicit `in_progress=True`, or a `latest != current`
+    # reading. We need both signals because a fast OTA can complete between
+    # subscribe time and the first state delivery, leaving the panel stuck
+    # on "updating" forever if we waited for `in_progress=True`.
     was_in_progress = False
+    ever_active = False  # stricter: True only after seeing in_progress=True
     done = False  # shared guard: once a terminal event is sent, stop
+    timer_cancel: Any = None  # async_call_later cancel handle for the outer timeout
 
     # Ensure device logs are subscribed so _on_log callbacks fire
     from aioesphomeapi import LogLevel as ESPLogLevel
 
-    if device_conn._unsub_logs is None:
+    started_log_sub = device_conn._unsub_logs is None
+    if started_log_sub:
         device_conn.subscribe_logs(ESPLogLevel.LOG_LEVEL_ERROR)
 
     # Firmware silences the ESPHome logger to NONE on boot, so even ERROR
@@ -155,22 +112,63 @@ async def websocket_subscribe_ota_progress(
     # frontend. Older firmware that doesn't expose this action is left
     # alone (older firmware also doesn't silence to NONE, so it works).
     log_svc = device_conn._services.get("epp_set_log_level")
+    bumped_log_level = False
     if log_svc is not None:
         try:
             await device_conn._client.execute_service(log_svc, {"category": _OTA_LOG_CATEGORY, "level": _OTA_LOG_LEVEL})
+            bumped_log_level = True
         except Exception:
             _LOGGER.debug("Failed to bump device log level for OTA visibility", exc_info=True)
 
     @callback
+    def _arm_timer() -> None:
+        nonlocal timer_cancel
+        if timer_cancel is not None or done:
+            return
+        timer_cancel = async_call_later(hass, _OTA_OUTER_TIMEOUT_S, _on_timeout)
+
+    @callback
+    def _on_timeout(_now: Any) -> None:
+        nonlocal done, timer_cancel
+        timer_cancel = None
+        if done:
+            return
+        done = True
+        connection.send_message(
+            websocket_api.event_message(
+                msg["id"],
+                {
+                    "state": "error",
+                    "message": "OTA update timed out",
+                    "error_key": "flasher.errors.ota_timeout",
+                },
+            )
+        )
+
+    @callback
+    def _cancel_timer() -> None:
+        nonlocal timer_cancel
+        if timer_cancel is not None:
+            timer_cancel()
+            timer_cancel = None
+
+    @callback
     def _on_state(state: Any) -> None:
-        nonlocal was_in_progress, done
+        nonlocal was_in_progress, ever_active, done
         from aioesphomeapi import UpdateState
 
         if done or not isinstance(state, UpdateState):
             return
 
-        if state.in_progress:
+        # Latch start sentinel from either signal — see the variable comment.
+        if state.in_progress or (
+            state.latest_version and state.current_version and state.latest_version != state.current_version
+        ):
             was_in_progress = True
+            _arm_timer()
+
+        if state.in_progress:
+            ever_active = True
             progress = state.progress if state.has_progress else None
             connection.send_message(
                 websocket_api.event_message(
@@ -181,30 +179,39 @@ async def websocket_subscribe_ota_progress(
                     },
                 )
             )
-        elif was_in_progress:
-            was_in_progress = False
+            return
+
+        # in_progress=False
+        if not was_in_progress:
+            return  # baseline / pre-OTA — nothing to report
+
+        if state.current_version and state.current_version == state.latest_version:
             done = True
-            if state.current_version and state.current_version == state.latest_version:
-                connection.send_message(
-                    websocket_api.event_message(
-                        msg["id"],
-                        {
-                            "state": "success",
-                            "version": state.current_version,
-                        },
-                    )
+            _cancel_timer()
+            connection.send_message(
+                websocket_api.event_message(
+                    msg["id"],
+                    {
+                        "state": "success",
+                        "version": state.current_version,
+                    },
                 )
-            else:
-                connection.send_message(
-                    websocket_api.event_message(
-                        msg["id"],
-                        {
-                            "state": "error",
-                            "message": "Update failed — firmware version unchanged",
-                            "error_key": "flasher.errors.ota_failed_version_unchanged",
-                        },
-                    )
+            )
+        elif ever_active:
+            # We saw in_progress=True earlier and now it's False with the
+            # version unchanged — actual install failure.
+            done = True
+            _cancel_timer()
+            connection.send_message(
+                websocket_api.event_message(
+                    msg["id"],
+                    {
+                        "state": "error",
+                        "message": "Update failed — firmware version unchanged",
+                        "error_key": "flasher.errors.ota_failed_version_unchanged",
+                    },
                 )
+            )
 
     @callback
     def _on_log(log_msg: Any) -> None:
@@ -235,6 +242,7 @@ async def websocket_subscribe_ota_progress(
         if not any(tag in text for tag in ("http_request.ota", "http_request.update", "http_request.idf")):
             return
         done = True
+        _cancel_timer()
         # Extract message after the ESPHome component tag
         # Format: [E][http_request.ota:294]: Actual message here
         parts = text.split("]: ", 1)
@@ -253,12 +261,30 @@ async def websocket_subscribe_ota_progress(
     device_conn.add_log_callback(_on_log)
     connection.send_result(msg["id"])
 
+    async def _async_revert_log_level() -> None:
+        # Restore the firmware's `system` category to whatever the user has
+        # configured (or "None" if unconfigured). Without this, the device
+        # keeps emitting ERROR logs after the OTA panel closes.
+        stored_level = manager._store.devices.get(mac, {}).get("log_levels", {}).get(_OTA_LOG_CATEGORY, "None")
+        try:
+            await device_conn._client.execute_service(log_svc, {"category": _OTA_LOG_CATEGORY, "level": stored_level})
+        except Exception:
+            _LOGGER.debug("Failed to revert device log level after OTA", exc_info=True)
+
     @callback
     def _unsub() -> None:
+        _cancel_timer()
         device_conn.unsubscribe_states(_on_state)
         device_conn.remove_log_callback(_on_log)
         if not had_session:
-            hass.async_create_task(manager.async_close_session(mac))
+            # Closing the session tears down the connection — anything we
+            # bumped on the device side is moot; skip the revert.
+            manager.schedule_close_session(mac)
+            return
+        if bumped_log_level and log_svc is not None:
+            hass.async_create_task(_async_revert_log_level())
+        if started_log_sub:
+            device_conn.unsubscribe_logs()
 
     connection.subscriptions[msg["id"]] = _unsub
 

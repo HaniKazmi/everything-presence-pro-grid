@@ -57,6 +57,7 @@ async def setup_integration(hass: HomeAssistant, config_entry: MockConfigEntry) 
         mock_dm._push_config_to_device = AsyncMock()
         mock_dm._push_pipeline_to_device = AsyncMock()
         mock_dm._entity_update_macs = set()
+        mock_dm._connection_failed = set()
         # Mirror the real method's behavioral effect (add mac to the guard set)
         # so tests that assert on _entity_update_macs still hold. The cancel /
         # stop semantics are covered directly by test_device_manager.py.
@@ -2309,6 +2310,66 @@ class TestWebSocketSubscriptions:
             translation_key="connection_failed",
         )
 
+    async def test_subscribe_device_connection_error_fires_only_on_transition(
+        self, hass: HomeAssistant, config_entry: MockConfigEntry
+    ) -> None:
+        """A flurry of subscribe_device failures for the same mac must only
+        fire `_fire_device_list_changed` once — repeated fires spam every
+        device-list subscriber on every retry, and the device list itself
+        hasn't actually changed between attempts."""
+        from aioesphomeapi.core import SocketClosedAPIError
+
+        mock_dm = await setup_integration(hass, config_entry)
+        mock_dm.async_open_session = AsyncMock(side_effect=SocketClosedAPIError("EOF received"))
+
+        from custom_components.eppgrid.websocket_api import websocket_subscribe_device
+
+        msg = {"id": 26, "type": "eppgrid/subscribe_device", "mac": "AA:BB:CC:DD:EE:FF"}
+        await call_async_handler(hass, websocket_subscribe_device, MagicMock(), msg)
+        msg2 = {"id": 27, "type": "eppgrid/subscribe_device", "mac": "AA:BB:CC:DD:EE:FF"}
+        await call_async_handler(hass, websocket_subscribe_device, MagicMock(), msg2)
+
+        # Two failures, one transition — fired once.
+        assert mock_dm._fire_device_list_changed.call_count == 1
+
+    async def test_subscribe_device_recovery_re_arms_failure_fire(
+        self, hass: HomeAssistant, config_entry: MockConfigEntry
+    ) -> None:
+        """After a successful connect clears the 'failing' flag, the next
+        failure is again a transition and fires the broadcast."""
+        from aioesphomeapi.core import SocketClosedAPIError
+
+        mock_dm = await setup_integration(hass, config_entry)
+        mock_dm.async_open_session = AsyncMock(side_effect=SocketClosedAPIError("boom"))
+
+        from custom_components.eppgrid.websocket_api import websocket_subscribe_device
+
+        # First failure → fires
+        await call_async_handler(
+            hass,
+            websocket_subscribe_device,
+            MagicMock(),
+            {"id": 28, "type": "eppgrid/subscribe_device", "mac": "AA:BB:CC:DD:EE:FF"},
+        )
+        # Now a successful connect
+        mock_dm.async_open_session = AsyncMock(return_value=MagicMock())
+        await call_async_handler(
+            hass,
+            websocket_subscribe_device,
+            MagicMock(subscriptions={}),
+            {"id": 29, "type": "eppgrid/subscribe_device", "mac": "AA:BB:CC:DD:EE:FF"},
+        )
+        # Failures resume — should fire again.
+        mock_dm.async_open_session = AsyncMock(side_effect=SocketClosedAPIError("boom"))
+        prev_count = mock_dm._fire_device_list_changed.call_count
+        await call_async_handler(
+            hass,
+            websocket_subscribe_device,
+            MagicMock(),
+            {"id": 30, "type": "eppgrid/subscribe_device", "mac": "AA:BB:CC:DD:EE:FF"},
+        )
+        assert mock_dm._fire_device_list_changed.call_count == prev_count + 1
+
     async def test_subscribe_device_not_found(self, hass: HomeAssistant, config_entry: MockConfigEntry) -> None:
         """subscribe_device returns error when device not available."""
         mock_dm = await setup_integration(hass, config_entry)
@@ -2407,6 +2468,72 @@ class TestWebSocketSubscriptions:
         mock_device_conn.subscribe_states.assert_called_once()
         assert 25 in connection.subscriptions
 
+    async def test_raw_targets_handles_malformed_position(
+        self, hass: HomeAssistant, config_entry: MockConfigEntry
+    ) -> None:
+        """A garbled 'x,y' string from the device must not crash the state
+        callback (e.g. firmware bug emits a non-numeric token); skip the
+        update silently rather than blow up the subscription."""
+        from aioesphomeapi import TextSensorInfo
+        from aioesphomeapi import TextSensorState
+
+        mock_dm = await setup_integration(hass, config_entry)
+        mock_device_conn = MagicMock()
+        mock_device_conn._entities = [
+            TextSensorInfo(object_id="raw_target_1", key=1, name="Raw Target 1"),
+        ]
+        mock_device_conn.subscribe_states = MagicMock()
+        mock_device_conn.unsubscribe_states = MagicMock()
+        mock_dm.get_session = MagicMock(return_value=mock_device_conn)
+
+        from custom_components.eppgrid.websocket_api import websocket_subscribe_raw_targets
+
+        connection = MagicMock()
+        connection.subscriptions = {}
+        msg = {"id": 26, "type": "eppgrid/subscribe_raw_targets", "mac": "AA:BB:CC:DD:EE:FF"}
+
+        await call_async_handler(hass, websocket_subscribe_raw_targets, connection, msg)
+        on_state = mock_device_conn.subscribe_states.call_args[0][0]
+        connection.send_message.reset_mock()
+
+        # Single-field state — parts[1] would IndexError.
+        on_state(TextSensorState(key=1, state="single", missing_state=False))
+        # Non-numeric — float() would ValueError.
+        on_state(TextSensorState(key=1, state="abc,def", missing_state=False))
+        # Both should be silently dropped — no event, no exception.
+        connection.send_message.assert_not_called()
+
+    async def test_grid_targets_handles_malformed_position(
+        self, hass: HomeAssistant, config_entry: MockConfigEntry
+    ) -> None:
+        """Same guard for the grid-targets subscriber, which parses the same
+        firmware-emitted 'x,y[,status]' format but for `Target N Position`."""
+        from aioesphomeapi import TextSensorInfo
+        from aioesphomeapi import TextSensorState
+
+        mock_dm = await setup_integration(hass, config_entry)
+        mock_device_conn = MagicMock()
+        mock_device_conn._entities = [
+            TextSensorInfo(object_id="target_1_position", key=1, name="Target 1 Position"),
+        ]
+        mock_device_conn.subscribe_states = MagicMock()
+        mock_device_conn.unsubscribe_states = MagicMock()
+        mock_dm.get_session = MagicMock(return_value=mock_device_conn)
+
+        from custom_components.eppgrid.websocket_api import websocket_subscribe_grid_targets
+
+        connection = MagicMock()
+        connection.subscriptions = {}
+        msg = {"id": 27, "type": "eppgrid/subscribe_grid_targets", "mac": "AA:BB:CC:DD:EE:FF"}
+
+        await call_async_handler(hass, websocket_subscribe_grid_targets, connection, msg)
+        on_state = mock_device_conn.subscribe_states.call_args[0][0]
+        connection.send_message.reset_mock()
+
+        on_state(TextSensorState(key=1, state="single", missing_state=False))
+        on_state(TextSensorState(key=1, state="abc,def,active", missing_state=False))
+        connection.send_message.assert_not_called()
+
 
 class TestSubscribeDeviceList:
     """Tests for eppgrid/subscribe_device_list."""
@@ -2488,77 +2615,44 @@ class TestSubscribeDeviceList:
 
 
 class TestUpdateFirmware:
-    """Tests for eppgrid/update_firmware."""
+    """Tests for eppgrid/update_firmware. The handler is a thin wrapper that
+    delegates to `DeviceManager.async_trigger_ota`; URL/variant logic is
+    exercised by test_device_manager.py.
+    """
 
-    async def test_update_firmware_calls_set_update_manifest(
+    async def test_update_firmware_delegates_to_manager(
         self, hass: HomeAssistant, config_entry: MockConfigEntry
     ) -> None:
-        """update_firmware calls set_update_manifest via temp connection."""
+        """Successful OTA trigger awaits manager.async_trigger_ota and sends result."""
         mock_dm = await setup_integration(hass, config_entry)
-        mock_dm.devices = {"AA:BB:CC:DD:EE:FF": MagicMock(host="192.168.1.50")}
-        mock_dm._build_flags = {"AA:BB:CC:DD:EE:FF": {"bluetooth_enabled": True, "co2_enabled": True}}
-
-        mock_svc = MagicMock()
-        mock_conn = MagicMock()
-        mock_conn.async_connect = AsyncMock()
-        mock_conn.async_disconnect = AsyncMock()
-        mock_conn._services = {"set_update_manifest": mock_svc}
-        mock_conn._client = MagicMock()
-        mock_conn._client.execute_service = AsyncMock()
+        mock_dm.async_trigger_ota = AsyncMock()
 
         from custom_components.eppgrid.websocket_api import websocket_update_firmware
 
         connection = MagicMock()
         msg = {"id": 20, "type": "eppgrid/update_firmware", "mac": "AA:BB:CC:DD:EE:FF"}
 
-        with patch("custom_components.eppgrid.device_manager.DeviceConnection", return_value=mock_conn):
-            await call_async_handler(hass, websocket_update_firmware, connection, msg)
+        await call_async_handler(hass, websocket_update_firmware, connection, msg)
 
-        connection.send_result.assert_called_once()
-        mock_conn._client.execute_service.assert_awaited_once()
-        call_args = mock_conn._client.execute_service.call_args[0]
-        assert call_args[0] is mock_svc
-        # Pinned-version manifest on GitHub Pages — same origin as the OTA bin
-        # so the ESP32 only opens one TLS context. Going through the GitHub
-        # release URL chains a second TLS context (signed S3 redirect) and
-        # exhausts mbedtls heap on the device.
-        url = call_args[1]["url"]
-        assert url.endswith("/wifi-ble-co2.json"), url
-        assert "clintongormley.github.io/everything-presence-pro-grid/fw/v" in url, url
-        mock_conn.async_disconnect.assert_awaited_once()
+        mock_dm.async_trigger_ota.assert_awaited_once_with("AA:BB:CC:DD:EE:FF")
+        connection.send_result.assert_called_once_with(20)
+        connection.send_error.assert_not_called()
 
-    async def test_update_firmware_ethernet_variant(self, hass: HomeAssistant, config_entry: MockConfigEntry) -> None:
-        """update_firmware derives ethernet variant from build flags."""
+    async def test_update_firmware_propagates_home_assistant_error_translation(
+        self, hass: HomeAssistant, config_entry: MockConfigEntry
+    ) -> None:
+        """When async_trigger_ota raises HomeAssistantError with translation
+        metadata, the websocket reply preserves it via _send_exception."""
+        from homeassistant.exceptions import HomeAssistantError
+
         mock_dm = await setup_integration(hass, config_entry)
-        mock_dm.devices = {"AA:BB:CC:DD:EE:FF": MagicMock(host="192.168.1.50")}
-        mock_dm._build_flags = {
-            "AA:BB:CC:DD:EE:FF": {"ethernet_enabled": True, "bluetooth_enabled": True, "co2_enabled": True}
-        }
-
-        mock_conn = MagicMock()
-        mock_conn.async_connect = AsyncMock()
-        mock_conn.async_disconnect = AsyncMock()
-        mock_conn._services = {"set_update_manifest": MagicMock()}
-        mock_conn._client = MagicMock()
-        mock_conn._client.execute_service = AsyncMock()
-
-        from custom_components.eppgrid.websocket_api import websocket_update_firmware
-
-        connection = MagicMock()
-        msg = {"id": 20, "type": "eppgrid/update_firmware", "mac": "AA:BB:CC:DD:EE:FF"}
-
-        with patch("custom_components.eppgrid.device_manager.DeviceConnection", return_value=mock_conn):
-            await call_async_handler(hass, websocket_update_firmware, connection, msg)
-
-        call_args = mock_conn._client.execute_service.call_args[0]
-        url = call_args[1]["url"]
-        assert url.endswith("/ethernet-ble-co2.json"), url
-        assert "clintongormley.github.io/everything-presence-pro-grid/fw/v" in url, url
-
-    async def test_update_firmware_device_not_found(self, hass: HomeAssistant, config_entry: MockConfigEntry) -> None:
-        """update_firmware returns error when device not found."""
-        mock_dm = await setup_integration(hass, config_entry)
-        mock_dm.devices = {}
+        mock_dm.async_trigger_ota = AsyncMock(
+            side_effect=HomeAssistantError(
+                "Device AA:BB:CC:DD:EE:FF not found",
+                translation_domain=DOMAIN,
+                translation_key="device_not_found",
+            )
+        )
 
         from custom_components.eppgrid.websocket_api import websocket_update_firmware
 
@@ -2567,59 +2661,13 @@ class TestUpdateFirmware:
 
         await call_async_handler(hass, websocket_update_firmware, connection, msg)
 
-        connection.send_error.assert_called_once_with(
-            21,
-            "not_found",
-            "Device not found",
-            translation_domain=DOMAIN,
-            translation_key="device_not_found",
-        )
-
-    async def test_update_firmware_build_flags_unknown(
-        self, hass: HomeAssistant, config_entry: MockConfigEntry
-    ) -> None:
-        """update_firmware returns error when build flags not yet available."""
-        mock_dm = await setup_integration(hass, config_entry)
-        mock_dm.devices = {"AA:BB:CC:DD:EE:FF": MagicMock(host="192.168.1.50")}
-        mock_dm._build_flags = {"AA:BB:CC:DD:EE:FF": {}}
-
-        from custom_components.eppgrid.websocket_api import websocket_update_firmware
-
-        connection = MagicMock()
-        msg = {"id": 22, "type": "eppgrid/update_firmware", "mac": "AA:BB:CC:DD:EE:FF"}
-
-        await call_async_handler(hass, websocket_update_firmware, connection, msg)
-
-        connection.send_error.assert_called_once_with(
-            22,
-            "build_flags_unknown",
-            "Device build flags not yet available",
-            translation_domain=DOMAIN,
-            translation_key="build_flags_unavailable",
-        )
-
-    async def test_update_firmware_device_host_unknown(
-        self, hass: HomeAssistant, config_entry: MockConfigEntry
-    ) -> None:
-        """update_firmware returns error when device host is unknown."""
-        mock_dm = await setup_integration(hass, config_entry)
-        mock_dm.devices = {"AA:BB:CC:DD:EE:FF": MagicMock(host=None)}
-        mock_dm._build_flags = {"AA:BB:CC:DD:EE:FF": {"ethernet_enabled": False}}
-
-        from custom_components.eppgrid.websocket_api import websocket_update_firmware
-
-        connection = MagicMock()
-        msg = {"id": 23, "type": "eppgrid/update_firmware", "mac": "AA:BB:CC:DD:EE:FF"}
-
-        await call_async_handler(hass, websocket_update_firmware, connection, msg)
-
-        connection.send_error.assert_called_once_with(
-            23,
-            "not_available",
-            "Device host unknown",
-            translation_domain=DOMAIN,
-            translation_key="device_host_unknown",
-        )
+        connection.send_result.assert_not_called()
+        connection.send_error.assert_called_once()
+        args, kwargs = connection.send_error.call_args
+        assert args[0] == 21
+        assert args[1] == "update_failed"
+        assert kwargs["translation_domain"] == DOMAIN
+        assert kwargs["translation_key"] == "device_not_found"
 
     async def test_update_firmware_not_ready(self, hass: HomeAssistant) -> None:
         """update_firmware returns error when integration not loaded."""
@@ -3133,7 +3181,7 @@ class TestSubscriptionCallbacks:
         mock_device_conn.unsubscribe_states.assert_called_once()
 
     async def test_subscribe_device_unsub(self, hass: HomeAssistant, config_entry: MockConfigEntry) -> None:
-        """subscribe_device unsub callback closes session."""
+        """subscribe_device unsub callback closes session via the deduped scheduler."""
         mock_dm = await setup_integration(hass, config_entry)
         mock_conn = MagicMock()
         mock_dm.async_open_session = AsyncMock(return_value=mock_conn)
@@ -3150,38 +3198,7 @@ class TestSubscriptionCallbacks:
         connection.subscriptions[46]()
         await hass.async_block_till_done()
 
-        mock_dm.async_close_session.assert_called()
-
-
-class TestUpdateFirmwareError:
-    """Test update_firmware exception path."""
-
-    async def test_update_firmware_service_error(self, hass: HomeAssistant, config_entry: MockConfigEntry) -> None:
-        """update_firmware returns error when execute_service raises."""
-        mock_dm = await setup_integration(hass, config_entry)
-        mock_dm.devices = {"AA:BB:CC:DD:EE:FF": MagicMock(host="192.168.1.50")}
-        mock_dm._build_flags = {"AA:BB:CC:DD:EE:FF": {"ethernet_enabled": False}}
-
-        mock_conn = MagicMock()
-        mock_conn.async_connect = AsyncMock()
-        mock_conn.async_disconnect = AsyncMock()
-        mock_conn._services = {"set_update_manifest": MagicMock()}
-        mock_conn._client = MagicMock()
-        mock_conn._client.execute_service = AsyncMock(side_effect=Exception("OTA failed"))
-
-        from custom_components.eppgrid.websocket_api import websocket_update_firmware
-
-        connection = MagicMock()
-        msg = {"id": 50, "type": "eppgrid/update_firmware", "mac": "AA:BB:CC:DD:EE:FF"}
-
-        with patch("custom_components.eppgrid.device_manager.DeviceConnection", return_value=mock_conn):
-            await call_async_handler(hass, websocket_update_firmware, connection, msg)
-
-        connection.send_error.assert_called_once()
-        args = connection.send_error.call_args[0]
-        assert args[1] == "update_failed"
-        assert "OTA failed" in args[2]
-        mock_conn.async_disconnect.assert_awaited_once()
+        mock_dm.schedule_close_session.assert_called_with("AA:BB:CC:DD:EE:FF")
 
 
 class TestWebSocketDistanceOverride:
@@ -3243,7 +3260,10 @@ class TestWebSocketDistanceOverride:
         connection.send_result.assert_called_once_with(99)
 
     async def test_set_distance_override_no_session(self, hass: HomeAssistant, config_entry: MockConfigEntry) -> None:
-        """set_distance_override is a no-op when no session exists."""
+        """When no active session exists, set_distance_override must return an
+        error with translation_key=`no_active_session`. Silently sending
+        `success` was misleading: the override never reached the device, so
+        the slider in the UI lied about taking effect."""
         mock_dm = await setup_integration(hass, config_entry)
         mock_dm.get_session.return_value = None
 
@@ -3261,7 +3281,14 @@ class TestWebSocketDistanceOverride:
 
         await call_async_handler(hass, websocket_set_distance_override, connection, msg)
 
-        connection.send_result.assert_called_once_with(100)
+        connection.send_result.assert_not_called()
+        connection.send_error.assert_called_once_with(
+            100,
+            "no_session",
+            "No active session — call subscribe_device first",
+            translation_domain=DOMAIN,
+            translation_key="no_active_session",
+        )
         mock_dm._store.async_save.assert_not_awaited()
 
     async def test_set_distance_override_requires_admin(

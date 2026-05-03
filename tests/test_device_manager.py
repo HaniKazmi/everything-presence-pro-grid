@@ -612,6 +612,138 @@ class TestDeviceManager:
         device_entry = next(d for d in result if d["mac"] == "AA:BB:CC:DD:EE:01")
         assert device_entry["available"] is True
 
+    async def test_open_session_awaits_pending_close(self, hass: HomeAssistant, manager: DeviceManager) -> None:
+        """A pending async_close_session for the same mac must complete before
+        a new async_open_session opens. Otherwise a quick close→reopen returns
+        the about-to-be-closed connection — the close then disconnects the
+        live session out from under the new subscriber."""
+        manager.devices["AA:BB:CC:DD:EE:FF"] = ManagedDevice(mac="AA:BB:CC:DD:EE:FF", name="EPP", host="192.168.1.50")
+
+        # Pre-existing connection in the active map
+        existing = MagicMock()
+        existing.async_disconnect = AsyncMock()
+        existing.connected = True
+        manager._active_connections["AA:BB:CC:DD:EE:FF"] = existing
+
+        # Manually schedule a close like the websocket _unsub would
+        manager.schedule_close_session("AA:BB:CC:DD:EE:FF")
+
+        with patch("custom_components.eppgrid.device_manager.DeviceConnection") as mock_conn_cls:
+            new_conn = mock_conn_cls.return_value
+            new_conn.async_connect = AsyncMock()
+            new_conn.async_disconnect = AsyncMock()
+            new_conn.connected = True
+            # Open session should await the pending close, then create fresh
+            opened = await manager.async_open_session("AA:BB:CC:DD:EE:FF")
+
+        assert opened is new_conn  # not the existing/about-to-close conn
+        existing.async_disconnect.assert_awaited_once()
+        new_conn.async_connect.assert_awaited_once()
+
+    async def test_schedule_close_session_dedupes(self, hass: HomeAssistant, manager: DeviceManager) -> None:
+        """Scheduling close twice while one is in flight must not create a
+        second task — close is idempotent on the active map but starting a
+        second task would race the first."""
+        manager.devices["AA:BB:CC:DD:EE:FF"] = ManagedDevice(mac="AA:BB:CC:DD:EE:FF", name="EPP", host="192.168.1.50")
+        # Slow disconnect keeps the close task in flight long enough to
+        # observe the dedupe behaviour.
+        release = asyncio.Event()
+        existing = MagicMock()
+
+        async def slow_disconnect() -> None:
+            await release.wait()
+
+        existing.async_disconnect = AsyncMock(side_effect=slow_disconnect)
+        existing.connected = True
+        manager._active_connections["AA:BB:CC:DD:EE:FF"] = existing
+
+        first_task = manager.schedule_close_session("AA:BB:CC:DD:EE:FF")
+        second_task = manager.schedule_close_session("AA:BB:CC:DD:EE:FF")
+        assert first_task is second_task
+
+        release.set()
+        await first_task
+
+    async def test_open_session_re_drains_pending_close_inside_lock(
+        self, hass: HomeAssistant, manager: DeviceManager
+    ) -> None:
+        """`async_open_session` checks `_pending_closes` BOTH before and
+        inside the lock. The in-lock check guards the race where a close
+        gets scheduled while open is queued for the lock — forcing this
+        timing in test is brittle, so we verify the in-lock check exists
+        by counting `_pending_closes.get(mac)` invocations instead."""
+        mac = "AA:BB:CC:DD:EE:FF"
+        manager.devices[mac] = ManagedDevice(mac=mac, name="EPP", host="192.168.1.50")
+
+        get_calls: list[str] = []
+
+        class CountingDict(dict):
+            def get(self, key, default=None):
+                if key == mac:
+                    get_calls.append("call")
+                return super().get(key, default)
+
+        manager._pending_closes = CountingDict(manager._pending_closes)  # type: ignore[assignment]
+
+        with patch("custom_components.eppgrid.device_manager.DeviceConnection") as mock_conn_cls:
+            conn = mock_conn_cls.return_value
+            conn.async_connect = AsyncMock()
+            conn.async_disconnect = AsyncMock()
+            conn.connected = True
+            await manager.async_open_session(mac)
+
+        # Pre-lock check + in-lock check = at least 2 lookups for the mac.
+        assert len(get_calls) >= 2, f"expected at least 2 _pending_closes.get calls, got {get_calls}"
+
+    async def test_state_changed_offline_transition_uses_schedule_close(
+        self, hass: HomeAssistant, manager: DeviceManager
+    ) -> None:
+        """The offline-transition path in `_on_state_changed` previously did
+        a raw `hass.async_create_task(self.async_close_session(...))`, leaving
+        a close task that wasn't tracked by `_pending_closes` and could
+        outlive `async_stop()`. It must route through `schedule_close_session`
+        so the task is tracked + drained on stop."""
+        mac = "AA:BB:CC:DD:EE:FF"
+        manager.devices[mac] = ManagedDevice(mac=mac, name="EPP", host="192.168.1.50")
+        existing = MagicMock()
+        existing.async_disconnect = AsyncMock()
+        existing.connected = True
+        manager._active_connections[mac] = existing
+
+        # Wire up the registry entries the handler walks to find the mac.
+        ent_reg = er.async_get(hass)
+        dev_reg = dr.async_get(hass)
+        config_entry = MockConfigEntry(domain="esphome", data={})
+        config_entry.add_to_hass(hass)
+        device = dev_reg.async_get_or_create(
+            config_entry_id=config_entry.entry_id,
+            identifiers={("esphome", mac)},
+            connections={(dr.CONNECTION_NETWORK_MAC, mac)},
+            manufacturer="Everything Smart Technology",
+            model="Everything Presence Pro Grid",
+        )
+        manager.devices[mac].device_id = device.id
+        ent = ent_reg.async_get_or_create(
+            domain="sensor",
+            platform="esphome",
+            unique_id="firmware_version_aa",
+            device_id=device.id,
+            suggested_object_id="fw",
+        )
+
+        # Synthesize the offline transition event the way HA fires it.
+        from homeassistant.core import State
+
+        old = State(ent.entity_id, "online")
+        new = State(ent.entity_id, STATE_UNAVAILABLE)
+        event = MagicMock()
+        event.data = {"old_state": old, "new_state": new, "entity_id": ent.entity_id}
+
+        with patch.object(manager, "schedule_close_session") as mock_sched:
+            manager._on_state_changed(event)
+
+        mock_sched.assert_called_once_with(mac)
+
     async def test_open_and_close_session(self, hass: HomeAssistant, manager: DeviceManager) -> None:
         """Open session creates a connection, close session cleans it up."""
         manager.devices["AA:BB:CC:DD:EE:FF"] = ManagedDevice(mac="AA:BB:CC:DD:EE:FF", name="EPP", host="192.168.1.50")
@@ -738,6 +870,46 @@ class TestDeviceManager:
 
             mock_conn.async_disconnect.assert_awaited()
 
+    async def test_on_device_removed_clears_connection_failed(
+        self, hass: HomeAssistant, manager: DeviceManager
+    ) -> None:
+        """Removing a device must drop its mac from `_connection_failed`.
+        Otherwise a same-MAC re-discovery would inherit the stale failing
+        flag and suppress the first failure-transition broadcast."""
+        mac = "AA:BB:CC:DD:EE:FF"
+        manager.devices[mac] = ManagedDevice(mac=mac, name="EPP", host="192.168.1.50")
+        manager._connection_failed.add(mac)
+
+        await manager._on_device_removed(mac)
+        assert mac not in manager._connection_failed
+
+    async def test_stop_awaits_pending_closes(self, hass: HomeAssistant, manager: DeviceManager) -> None:
+        """async_stop must drain `_pending_closes` so a slow-disconnect close
+        task can't outlive teardown and keep running against a manager that
+        is supposed to be stopped."""
+        manager.devices["AA:BB:CC:DD:EE:FF"] = ManagedDevice(mac="AA:BB:CC:DD:EE:FF", name="EPP", host="192.168.1.50")
+
+        release = asyncio.Event()
+        existing = MagicMock()
+
+        async def slow_disconnect() -> None:
+            await release.wait()
+
+        existing.async_disconnect = AsyncMock(side_effect=slow_disconnect)
+        existing.connected = True
+        manager._active_connections["AA:BB:CC:DD:EE:FF"] = existing
+
+        # Schedule a close — this creates a pending task in _pending_closes.
+        manager.schedule_close_session("AA:BB:CC:DD:EE:FF")
+        assert "AA:BB:CC:DD:EE:FF" in manager._pending_closes
+
+        # async_stop must complete even though the close is still in flight.
+        # Release just before stop so the task can finish during the drain.
+        release.set()
+        await manager.async_stop()
+        # All pending close tasks drained.
+        assert manager._pending_closes == {}
+
     async def test_schedule_entity_update_clear_cancels_on_stop(
         self, hass: HomeAssistant, manager: DeviceManager
     ) -> None:
@@ -853,6 +1025,176 @@ class TestDeviceManager:
 
         result = manager.read_current_connection_count(device.id)
         assert result is None
+
+
+# ---------------------------------------------------------------------------
+# async_trigger_ota tests
+# ---------------------------------------------------------------------------
+
+
+class TestAsyncTriggerOta:
+    """Tests for DeviceManager.async_trigger_ota — manifest URL/variant logic."""
+
+    def _setup_device(self, manager: DeviceManager, *, host: str | None = "192.168.1.50") -> None:
+        manager.devices["AA:BB:CC:DD:EE:FF"] = ManagedDevice(mac="AA:BB:CC:DD:EE:FF", name="EPP", host=host)
+
+    def _make_mock_conn(self, *, has_service: bool = True) -> MagicMock:
+        mock_conn = MagicMock()
+        mock_conn.async_connect = AsyncMock()
+        mock_conn.async_disconnect = AsyncMock()
+        mock_conn._client = MagicMock()
+        mock_conn._client.execute_service = AsyncMock()
+        mock_conn._services = {"set_update_manifest": MagicMock()} if has_service else {}
+        return mock_conn
+
+    async def test_calls_set_update_manifest_with_wifi_variant(
+        self, hass: HomeAssistant, manager: DeviceManager
+    ) -> None:
+        self._setup_device(manager)
+        manager._build_flags["AA:BB:CC:DD:EE:FF"] = {
+            "bluetooth_enabled": True,
+            "co2_enabled": True,
+        }
+        mock_conn = self._make_mock_conn()
+
+        with patch("custom_components.eppgrid.device_manager.DeviceConnection", return_value=mock_conn):
+            await manager.async_trigger_ota("AA:BB:CC:DD:EE:FF")
+
+        mock_conn._client.execute_service.assert_awaited_once()
+        svc, payload = mock_conn._client.execute_service.call_args[0]
+        assert svc is mock_conn._services["set_update_manifest"]
+        url = payload["url"]
+        # Pinned-version manifest on GitHub Pages — same origin as the OTA bin
+        # so the ESP32 only opens one TLS context.
+        assert url.endswith("/wifi-ble-co2.json"), url
+        assert "clintongormley.github.io/everything-presence-pro-grid/fw/v" in url, url
+        mock_conn.async_disconnect.assert_awaited_once()
+
+    async def test_uses_ethernet_variant_when_flagged(self, hass: HomeAssistant, manager: DeviceManager) -> None:
+        self._setup_device(manager)
+        manager._build_flags["AA:BB:CC:DD:EE:FF"] = {
+            "ethernet_enabled": True,
+            "bluetooth_enabled": True,
+            "co2_enabled": True,
+        }
+        mock_conn = self._make_mock_conn()
+
+        with patch("custom_components.eppgrid.device_manager.DeviceConnection", return_value=mock_conn):
+            await manager.async_trigger_ota("AA:BB:CC:DD:EE:FF")
+
+        url = mock_conn._client.execute_service.call_args[0][1]["url"]
+        assert url.endswith("/ethernet-ble-co2.json"), url
+
+    async def test_raises_device_not_found(self, hass: HomeAssistant, manager: DeviceManager) -> None:
+        from homeassistant.exceptions import HomeAssistantError
+
+        with pytest.raises(HomeAssistantError) as excinfo:
+            await manager.async_trigger_ota("AA:BB:CC:DD:EE:FF")
+        assert excinfo.value.translation_key == "device_not_found"
+
+    async def test_raises_device_host_unknown(self, hass: HomeAssistant, manager: DeviceManager) -> None:
+        from homeassistant.exceptions import HomeAssistantError
+
+        self._setup_device(manager, host=None)
+        with pytest.raises(HomeAssistantError) as excinfo:
+            await manager.async_trigger_ota("AA:BB:CC:DD:EE:FF")
+        assert excinfo.value.translation_key == "device_host_unknown"
+
+    async def test_raises_build_flags_unavailable(self, hass: HomeAssistant, manager: DeviceManager) -> None:
+        from homeassistant.exceptions import HomeAssistantError
+
+        self._setup_device(manager)
+        # No build flags cached
+        with pytest.raises(HomeAssistantError) as excinfo:
+            await manager.async_trigger_ota("AA:BB:CC:DD:EE:FF")
+        assert excinfo.value.translation_key == "build_flags_unavailable"
+
+    async def test_raises_ota_unsupported_when_service_missing(
+        self, hass: HomeAssistant, manager: DeviceManager
+    ) -> None:
+        from homeassistant.exceptions import HomeAssistantError
+
+        self._setup_device(manager)
+        manager._build_flags["AA:BB:CC:DD:EE:FF"] = {"bluetooth_enabled": True, "co2_enabled": True}
+        mock_conn = self._make_mock_conn(has_service=False)
+
+        with (
+            patch("custom_components.eppgrid.device_manager.DeviceConnection", return_value=mock_conn),
+            pytest.raises(HomeAssistantError) as excinfo,
+        ):
+            await manager.async_trigger_ota("AA:BB:CC:DD:EE:FF")
+        assert excinfo.value.translation_key == "ota_unsupported"
+        # Connection still cleaned up after failure
+        mock_conn.async_disconnect.assert_awaited_once()
+
+    async def test_wraps_unexpected_exception(self, hass: HomeAssistant, manager: DeviceManager) -> None:
+        """Transport errors must be wrapped in a HomeAssistantError that
+        carries translation metadata so the websocket / Repairs surfaces
+        can localize them — the docstring promises a translation_key on
+        every failure path."""
+        from homeassistant.exceptions import HomeAssistantError
+
+        self._setup_device(manager)
+        manager._build_flags["AA:BB:CC:DD:EE:FF"] = {"bluetooth_enabled": True, "co2_enabled": True}
+        mock_conn = self._make_mock_conn()
+        mock_conn._client.execute_service.side_effect = ConnectionError("boom")
+
+        with (
+            patch("custom_components.eppgrid.device_manager.DeviceConnection", return_value=mock_conn),
+            pytest.raises(HomeAssistantError) as excinfo,
+        ):
+            await manager.async_trigger_ota("AA:BB:CC:DD:EE:FF")
+        assert excinfo.value.translation_key == "ota_trigger_failed"
+        assert excinfo.value.translation_domain
+        mock_conn.async_disconnect.assert_awaited_once()
+
+    async def test_concurrent_trigger_ota_rejects_second_caller(
+        self, hass: HomeAssistant, manager: DeviceManager
+    ) -> None:
+        """While an OTA is in flight for a mac, a second concurrent call
+        must fail-fast rather than firing a duplicate OTA — otherwise we'd
+        race two manifest pushes and possibly two reboots."""
+        from homeassistant.exceptions import HomeAssistantError
+
+        self._setup_device(manager)
+        manager._build_flags["AA:BB:CC:DD:EE:FF"] = {"bluetooth_enabled": True, "co2_enabled": True}
+        mock_conn = self._make_mock_conn()
+
+        connect_started = asyncio.Event()
+        release = asyncio.Event()
+
+        async def slow_connect() -> None:
+            connect_started.set()
+            await release.wait()
+
+        mock_conn.async_connect.side_effect = slow_connect
+
+        with patch("custom_components.eppgrid.device_manager.DeviceConnection", return_value=mock_conn):
+            first = asyncio.create_task(manager.async_trigger_ota("AA:BB:CC:DD:EE:FF"))
+            await connect_started.wait()
+
+            with pytest.raises(HomeAssistantError) as excinfo:
+                await manager.async_trigger_ota("AA:BB:CC:DD:EE:FF")
+            assert excinfo.value.translation_key == "ota_in_progress"
+
+            release.set()
+            await first
+
+    async def test_lock_released_after_failure(self, hass: HomeAssistant, manager: DeviceManager) -> None:
+        """A failed OTA still releases the lock so the user can retry."""
+        from homeassistant.exceptions import HomeAssistantError
+
+        self._setup_device(manager)
+        manager._build_flags["AA:BB:CC:DD:EE:FF"] = {"bluetooth_enabled": True, "co2_enabled": True}
+        mock_conn = self._make_mock_conn()
+        mock_conn._client.execute_service.side_effect = ConnectionError("boom")
+
+        with patch("custom_components.eppgrid.device_manager.DeviceConnection", return_value=mock_conn):
+            with pytest.raises(HomeAssistantError):
+                await manager.async_trigger_ota("AA:BB:CC:DD:EE:FF")
+            # Second call should succeed after first failed
+            mock_conn._client.execute_service.side_effect = None
+            await manager.async_trigger_ota("AA:BB:CC:DD:EE:FF")
 
 
 # ---------------------------------------------------------------------------
