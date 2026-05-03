@@ -68,14 +68,22 @@ void EPPComponent::loop() {
     }
     window_.feed(raw_inputs, NUM_TARGETS, now);
 
-    // Stage 2: Get smoothed raw, transform to grid coordinates
+    // Stage 2: Get smoothed raw, transform to grid coordinates.
+    // Hoist has_perspective() out of the inner loop: pre-calibration the
+    // transform is identity, so we can pass median_x/median_y straight through
+    // without paying the function-call overhead and identity branch per slot.
+    const bool xform = transform_.has_perspective();
     const auto &win = window_.output();
     TargetInput grid_inputs[NUM_TARGETS];
     for (int i = 0; i < NUM_TARGETS; i++) {
       if (win.targets[i].active) {
-        auto [rx, ry] = transform_.apply(
-            win.targets[i].median_x, win.targets[i].median_y);
-        grid_inputs[i] = {rx, ry, true};
+        if (xform) {
+          auto [rx, ry] = transform_.apply(
+              win.targets[i].median_x, win.targets[i].median_y);
+          grid_inputs[i] = {rx, ry, true};
+        } else {
+          grid_inputs[i] = {win.targets[i].median_x, win.targets[i].median_y, true};
+        }
       } else {
         grid_inputs[i] = {0.0f, 0.0f, false};
       }
@@ -88,7 +96,13 @@ void EPPComponent::loop() {
     // lands on a non-overlay room cell.
     for (int i = 0; i < NUM_TARGETS; i++) {
       if (raw_inputs[i].active) {
-        auto [fx, fy] = transform_.apply(raw_inputs[i].x, raw_inputs[i].y);
+        float fx = raw_inputs[i].x;
+        float fy = raw_inputs[i].y;
+        if (xform) {
+          auto [tx, ty] = transform_.apply(fx, fy);
+          fx = tx;
+          fy = ty;
+        }
         int cell = grid_.xy_to_cell(fx, fy);
         if (cell != -1 && grid_.cell_is_room(cell)) {
           if (grid_.cell_overlay(cell) == CELL_OVERLAY_ENTRY) {
