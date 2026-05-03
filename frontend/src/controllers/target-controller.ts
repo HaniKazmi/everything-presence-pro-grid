@@ -1,9 +1,9 @@
-import type { ReactiveController, ReactiveControllerHost } from "lit";
+import type { ReactiveController } from "lit";
 import { DEBUG_LOG_MAX } from "../constants.js";
 import { mapTargetToGridCell } from "../lib/coordinates.js";
 import { cellIsInside, cellZone, GRID_COLS, GRID_ROWS } from "../lib/grid.js";
 import { computeHeatmapColors } from "../lib/heatmap.js";
-import { resolveZoneParams } from "../lib/zone-defaults.js";
+import { resolveZoneParams, type ZoneConfig } from "../lib/zone-defaults.js";
 import {
 	createZoneEngineState,
 	runLocalZoneEngine,
@@ -12,14 +12,10 @@ import {
 } from "../lib/zone-engine.js";
 import type { RawTarget } from "../types.js";
 import type { TargetData } from "./device-controller.js";
+import type { PanelHost } from "./panel-host.js";
 
-/**
- * Host interface — the subset of the panel that this controller reads/writes.
- *
- * Typed as `Record<string, any>` for the same reason as `GridHost` (see
- * grid-state-controller.ts) — trade-off is no tsc catch on typos here.
- */
-export type TargetHost = ReactiveControllerHost & Record<string, any>;
+// TargetHost re-export kept so existing test imports keep working without churn.
+export type { PanelHost as TargetHost } from "./panel-host.js";
 
 /**
  * TargetController manages target data, sensor state, zone state, zone engine,
@@ -30,9 +26,9 @@ export type TargetHost = ReactiveControllerHost & Record<string, any>;
  * test compatibility.  This controller groups the related logic.
  */
 export class TargetController implements ReactiveController {
-	private host: TargetHost;
+	private host: PanelHost;
 
-	constructor(host: TargetHost) {
+	constructor(host: PanelHost) {
 		this.host = host;
 		host.addController(this);
 	}
@@ -108,7 +104,8 @@ export class TargetController implements ReactiveController {
 			grid: this.host._grid,
 			roomWidth: this.host._roomWidth,
 			roomDepth: this.host._roomDepth,
-			zoneConfigs: slots.slice(1),
+			// slots is [Zone0Config, ZoneConfig|null × 7]; slice(1) is named zones only.
+			zoneConfigs: slots.slice(1) as (ZoneConfig | null)[],
 			roomType: z0.type,
 			roomTrigger: z0.trigger,
 			roomRenew: z0.renew,
@@ -256,7 +253,7 @@ export class TargetController implements ReactiveController {
 	computeHeatmapColors(): Map<number, string> {
 		return computeHeatmapColors(
 			this.host._zoneState.target_counts,
-			this.host._zoneConfigs.slice(1),
+			this.host._zoneConfigs.slice(1) as (ZoneConfig | null)[],
 		);
 	}
 

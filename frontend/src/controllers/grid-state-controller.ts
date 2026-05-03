@@ -1,4 +1,4 @@
-import type { ReactiveController, ReactiveControllerHost } from "lit";
+import type { ReactiveController } from "lit";
 import {
 	applyOverlayPaintToCell,
 	applyPaintToCell,
@@ -39,24 +39,16 @@ import {
 	ZONE_COLORS,
 	type Zone0Config,
 	type ZoneConfig,
+	type ZoneSlots,
 } from "../lib/zone-defaults.js";
+import type { PanelHost } from "./panel-host.js";
+
+// GridHost re-export kept so existing test imports keep working without churn.
+export type { PanelHost as GridHost } from "./panel-host.js";
 
 function overlayModeToKind(mode: OverlayMode): number | null {
 	return mode === null ? null : OVERLAY_MODE_TO_KIND[mode];
 }
-
-/**
- * Host interface — the subset of the panel that this controller reads/writes.
- *
- * Currently typed as `Record<string, any>` so the panel can keep its `@state`
- * properties `private` (a strict interface would require either making them
- * public or threading `as unknown as GridHost` casts at every construction
- * site). Trade-off: typos like `this.host._zoneCofig` won't be caught by tsc
- * — reviewers must catch them. The migration to a strict interface is tracked
- * separately and will land alongside moving `ZoneSlots` out of `eppgrid-panel`
- * to break the circular type dep.
- */
-export type GridHost = ReactiveControllerHost & Record<string, any>;
 
 /**
  * Serialize a zone slot for storage / wire. Non-custom types drop timing —
@@ -94,9 +86,9 @@ export function serializeSlot(
 }
 
 export class GridStateController implements ReactiveController {
-	private host: GridHost;
+	private host: PanelHost;
 
-	constructor(host: GridHost) {
+	constructor(host: PanelHost) {
 		this.host = host;
 		host.addController(this);
 	}
@@ -223,7 +215,7 @@ export class GridStateController implements ReactiveController {
 			color,
 			type: "default",
 		};
-		this.host._zoneConfigs = configs;
+		this.host._zoneConfigs = configs as unknown as ZoneSlots;
 		this.host._activeZone = firstEmpty; // slot index = 1-based zone number
 		this.host._dirty = true;
 	}
@@ -239,7 +231,7 @@ export class GridStateController implements ReactiveController {
 			...this.host._zoneConfigs,
 		];
 		configs[slot] = null;
-		this.host._zoneConfigs = configs;
+		this.host._zoneConfigs = configs as unknown as ZoneSlots;
 		if (this.host._activeZone === slot) {
 			this.host._activeZone = null;
 		}
@@ -463,19 +455,15 @@ export class GridStateController implements ReactiveController {
 	}
 
 	async saveConfiguration(): Promise<void> {
-		const name = (this.host._configurationName as string).trim();
+		const name = this.host._configurationName.trim();
 		if (!name) return;
-		const zones = (
-			this.host._zoneConfigs as (ZoneConfig | Zone0Config | null)[]
-		).map((z, i) => serializeSlot(z, i));
+		const zones = this.host._zoneConfigs.map((z, i) => serializeSlot(z, i));
 		const configuration = {
-			grid: Array.from(this.host._grid as Uint8Array),
+			grid: Array.from(this.host._grid),
 			zones,
-			roomWidth: this.host._roomWidth as number,
-			roomDepth: this.host._roomDepth as number,
-			furniture: (this.host._furniture as FurnitureItem[]).map((f) => ({
-				...f,
-			})),
+			roomWidth: this.host._roomWidth,
+			roomDepth: this.host._roomDepth,
+			furniture: this.host._furniture.map((f) => ({ ...f })),
 			settings: this.host._buildSparseSettings(),
 		};
 		await this.host.hass.callWS({
@@ -542,7 +530,7 @@ export class GridStateController implements ReactiveController {
 		this.host._zoneConfigs = Array.from(
 			{ length: NUM_ZONE_SLOTS },
 			(_, i) => zones[i] ?? null,
-		);
+		) as unknown as ZoneSlots;
 		this.host._roomWidth = cfg.roomWidth;
 		this.host._roomDepth = cfg.roomDepth;
 		this.host._furniture = (cfg.furniture || []).map((f: any) => ({
@@ -554,15 +542,19 @@ export class GridStateController implements ReactiveController {
 		// which restores every field to its canonical default value.
 		const s = cfg.settings;
 		const hasSettings = s != null && typeof s === "object";
+		// SETTINGS_FIELD_MAP keys cover panel-internal settings fields, but the
+		// loop indexes by `string` so tsc can't prove the index is a known
+		// PanelHost key. Cast once per loop body.
+		const hostAsRecord = this.host as unknown as Record<string, unknown>;
 		if (hasSettings) {
 			for (const [key, prop] of SETTINGS_FIELD_MAP) {
-				snapshot.settings.set(prop, (this.host as any)[prop]);
+				snapshot.settings.set(prop, hostAsRecord[prop]);
 				if (key === "entities") {
 					const sparse =
 						"entities" in s ? (s as Record<string, any>).entities : undefined;
-					this.host[prop] = { ...ENTITY_DEFAULTS, ...(sparse || {}) };
+					hostAsRecord[prop] = { ...ENTITY_DEFAULTS, ...(sparse || {}) };
 				} else {
-					this.host[prop] =
+					hostAsRecord[prop] =
 						key in s ? (s as Record<string, any>)[key] : SETTINGS_DEFAULTS[key];
 				}
 			}
@@ -601,7 +593,7 @@ export class GridStateController implements ReactiveController {
 				this.host._showConfigurationRestore = snapshot.showConfigurationRestore;
 				this.host._dirty = snapshot.dirty;
 				for (const [prop, value] of snapshot.settings) {
-					this.host[prop] = value;
+					hostAsRecord[prop] = value;
 				}
 				this.host.requestUpdate();
 				throw err;
@@ -686,7 +678,7 @@ export class GridStateController implements ReactiveController {
 			});
 			// Commit pruned slots and filtered furniture only after the
 			// backend acknowledges the layout save.
-			this.host._zoneConfigs = prunedSlots;
+			this.host._zoneConfigs = prunedSlots as unknown as ZoneSlots;
 			this.host._furniture = filteredFurniture;
 			// Save settings after layout — only needed when auto distances
 			// may have changed; manual distances don't change with layout.

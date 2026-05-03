@@ -11,6 +11,35 @@ export interface ZoneConfig extends Zone0Config {
 	color: string;
 }
 
+/**
+ * Length-8 tuple of zone configurations.
+ * Slot 0 is always `Zone0Config` (the room-boundary zone).
+ * Slots 1-7 hold named zones (`ZoneConfig | null`).
+ */
+export type ZoneSlots = readonly [
+	Zone0Config,
+	ZoneConfig | null,
+	ZoneConfig | null,
+	ZoneConfig | null,
+	ZoneConfig | null,
+	ZoneConfig | null,
+	ZoneConfig | null,
+	ZoneConfig | null,
+];
+
+// Slot 0 carries only `type` for non-custom — timing is resolved from
+// ZONE_TYPE_DEFAULTS at read/push time (see resolveZoneParams).
+export const INITIAL_ZONE_SLOTS: ZoneSlots = [
+	{ type: "default" },
+	null,
+	null,
+	null,
+	null,
+	null,
+	null,
+	null,
+];
+
 export const ZONE_TYPE_DEFAULTS: Record<
 	string,
 	{ trigger: number; renew: number; timeout: number; handoff_timeout: number }

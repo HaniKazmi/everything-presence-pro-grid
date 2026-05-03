@@ -16,6 +16,7 @@ import {
 	GridStateController,
 	serializeSlot,
 } from "./controllers/grid-state-controller.js";
+import type { PanelHost } from "./controllers/panel-host.js";
 import { TargetController } from "./controllers/target-controller.js";
 import type { PaintAction } from "./lib/cell-painting.js";
 import { parseConfig } from "./lib/config-serialization.js";
@@ -75,9 +76,11 @@ import {
 } from "./lib/view-hash.js";
 import {
 	getZoneThresholds,
+	INITIAL_ZONE_SLOTS,
 	resolveZoneParams,
 	type Zone0Config,
 	type ZoneConfig,
+	type ZoneSlots,
 } from "./lib/zone-defaults.js";
 import type { ZoneEngineResult, ZoneEngineState } from "./lib/zone-engine.js";
 import { setupLocalize } from "./localize.js";
@@ -88,34 +91,8 @@ import {
 import { buttonStyles, dialogStyles, headerStyles } from "./styles.js";
 import type { DeviceInfo, HaAddResult, RawTarget, Target } from "./types.js";
 
-/**
- * Length-8 tuple of zone configurations.
- * Slot 0 is always `Zone0Config` (the room-boundary zone).
- * Slots 1-7 hold named zones (`ZoneConfig | null`).
- */
-export type ZoneSlots = readonly [
-	Zone0Config,
-	ZoneConfig | null,
-	ZoneConfig | null,
-	ZoneConfig | null,
-	ZoneConfig | null,
-	ZoneConfig | null,
-	ZoneConfig | null,
-	ZoneConfig | null,
-];
-
-// Slot 0 carries only `type` for non-custom — timing is resolved from
-// ZONE_TYPE_DEFAULTS at read/push time (see resolveZoneParams).
-export const INITIAL_ZONE_SLOTS: ZoneSlots = [
-	{ type: "default" },
-	null,
-	null,
-	null,
-	null,
-	null,
-	null,
-	null,
-];
+// ZoneSlots / INITIAL_ZONE_SLOTS moved to lib/zone-defaults.ts so the
+// controllers can import them without a circular type dep on this module.
 
 type SensorState = {
 	occupancy: boolean;
@@ -332,10 +309,14 @@ export class EPPGridPanel extends LitElement {
 
 	// Device controller — owns WS subscriptions and device loading
 	private _deviceCtrl = new DeviceController(this);
-	// Grid state controller — owns zone/furniture/template/paint/save logic
-	private _gridCtrl = new GridStateController(this);
+	// Grid state controller — owns zone/furniture/template/paint/save logic.
+	// Cast: GridStateController's host interface lists every panel `_field`
+	// it touches, but those fields are TypeScript-private here. The cast
+	// formalises the friend-class relationship without making the state
+	// publicly accessible to other modules.
+	private _gridCtrl = new GridStateController(this as unknown as PanelHost);
 	// Target controller — owns target/sensor/zone state processing, zone engine, debug logging
-	private _targetCtrl = new TargetController(this);
+	private _targetCtrl = new TargetController(this as unknown as PanelHost);
 	// Flasher controller — owns OTA flash state and flashable device list
 	private _flasherCtrl = new FlasherController(this);
 	private _localize: import("./localize.js").LocalizeFn = Object.assign(

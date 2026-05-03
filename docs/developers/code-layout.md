@@ -54,6 +54,7 @@ TypeScript/Lit panel. Runs inside the Home Assistant iframe.
     - `grid-state-controller.ts` — mutable grid state (cells, room boundary, overlays).
     - `flasher-controller.ts` — USB flasher state machine.
     - `ota-controller.ts`, `protocol-controller.ts` — OTA progress, protocol/version banners.
+    - `panel-host.ts` — typed `PanelHost` interface that declares every panel `_field`/`_method` the controllers touch. Replaces the previous `Record<string, any>` shape so tsc catches typos.
 - **`lib/`** — pure-logic modules (no Lit, no HA, testable in isolation):
     - `zone-engine.ts` — state-machine replica of the firmware's zone engine. Kept deliberately in sync so the frontend previews match firmware behaviour.
     - `perspective.ts` — homography math (solve + apply + invert).

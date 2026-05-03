@@ -14,8 +14,8 @@ export interface TargetData {
 		motion_presence: boolean;
 		target_presence: boolean;
 		mmwave: boolean;
-		static_state?: string;
-		motion_state?: string;
+		static_state?: "A" | "P" | "I";
+		motion_state?: "A" | "P" | "I";
 		occupancy_state?: boolean;
 		illuminance: number | null;
 		temperature: number | null;
