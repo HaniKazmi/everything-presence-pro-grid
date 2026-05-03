@@ -1,3 +1,13 @@
+# Explicit esp32_ble declaration so the BLE controller is initialized at
+# boot. esp32_ble_tracker / bluetooth_proxy depend on it but apparently
+# don't pull it in strongly enough on the ESPHome version used by our
+# release-time GitHub Actions builds — without this, the tracker logs
+# "Cannot start scan while ESP32BLE is disabled" and BLE stays a no-op
+# regardless of switch state. The implicit pull-in worked in v0.97.0
+# only because esp32_improv (since removed in PR #149) brought it in.
+esp32_ble:
+  enable_on_boot: true
+
 esp32_ble_tracker:
   scan_parameters:
     interval: 1100ms

@@ -1,7 +1,7 @@
 esphome:
   project:
     name: EverythingSmartTechnology.Everything Presence Pro
-    version: "0.99.0"
+    version: "0.99.1"
   on_boot:
     - priority: 200
       then:
@@ -486,12 +486,18 @@ api:
               logger.set_log_level("esp_eth", log_level);
               logger.set_log_level("phy", log_level);
             } else if (category == "ble") {
+              // ESP-IDF BLE controller layers
               logger.set_log_level("bt", log_level);
               logger.set_log_level("btm", log_level);
               logger.set_log_level("bta", log_level);
               logger.set_log_level("hci", log_level);
               logger.set_log_level("gap", log_level);
               logger.set_log_level("controller", log_level);
+              // ESPHome layers — without these the user sees nothing useful
+              // from the panel's "BLE → Debug" toggle (no scan results, no
+              // proxy connection events, etc).
+              logger.set_log_level("esp32_ble_tracker", log_level);
+              logger.set_log_level("bluetooth_proxy", log_level);
             } else if (category == "co2") {
               logger.set_log_level("scd4x", log_level);
             }

@@ -55,6 +55,27 @@ def _find_switch_by_id(switches: list, switch_id: str) -> dict | None:
     return None
 
 
+def test_esp32_ble_component_explicitly_declared() -> None:
+    """The esp32_ble component must be explicitly declared.
+
+    esp32_ble_tracker / bluetooth_proxy depend on esp32_ble, but on the
+    ESPHome version used by our release-time GitHub Actions builds the
+    implicit pull-in apparently isn't strong enough — without an explicit
+    declaration the controller stays "disabled" and the tracker logs
+    `Cannot start scan while ESP32BLE is disabled` for every start_scan
+    call, leaving BLE proxy as a complete no-op. Was masked in v0.97.0
+    because esp32_improv (removed in PR #149) brought esp32_ble in
+    transitively.
+    """
+    doc = _load_bluetooth_base()
+    assert "esp32_ble" in doc, (
+        "bluetooth-base.yaml must declare the `esp32_ble:` component "
+        "explicitly so the BLE controller initializes at boot. Without "
+        "this, the implicit pull-in via esp32_ble_tracker / bluetooth_proxy "
+        "doesn't fire on some ESPHome versions and BLE stays a no-op."
+    )
+
+
 def test_ble_scan_toggle_switch_is_present() -> None:
     """A user-facing switch must control whether the BLE scan runs."""
     doc = _load_bluetooth_base()
