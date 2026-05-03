@@ -225,7 +225,7 @@ describe("epp-live-sidebar DOM events", () => {
 	it("detection zones link fires view-change event", () => {
 		const el = document.createElement("epp-live-sidebar") as any;
 		el.zoneConfigs = new Array(7).fill(null);
-		el.perspective = [1, 0, 0, 0, 1, 0, 0, 0];
+		el.hasPerspective = true;
 		const tpl = el.render();
 		const c = renderTo(tpl);
 

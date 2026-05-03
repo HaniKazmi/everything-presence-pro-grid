@@ -262,7 +262,6 @@ describe("_closeDeviceSession", () => {
 			{
 				x: 1,
 				y: 2,
-				speed: 0,
 				status: "active",
 				signal: 5,
 			},
@@ -429,14 +428,12 @@ describe("raw target display subscription", () => {
 			{
 				x: 100,
 				y: 200,
-				speed: 1,
 				status: "active",
 				signal: 3,
 			},
 			{
 				x: 300,
 				y: 400,
-				speed: 0,
 				status: "inactive",
 				signal: 0,
 			},
@@ -486,14 +483,12 @@ describe("raw target display subscription", () => {
 			{
 				x: 100,
 				y: 200,
-				speed: 1,
 				status: "active",
 				signal: 3,
 			},
 			{
 				x: 300,
 				y: 400,
-				speed: 0,
 				status: "inactive",
 				signal: 0,
 			},
@@ -534,7 +529,6 @@ describe("raw target display subscription", () => {
 			{
 				x: 100,
 				y: 200,
-				speed: 1,
 				status: "active",
 				signal: 3,
 			},
@@ -608,21 +602,18 @@ describe("raw targets event writing", () => {
 			{
 				x: 10,
 				y: 20,
-				speed: 0,
 				status: "active",
 				signal: 5,
 			},
 			{
 				x: 30,
 				y: 40,
-				speed: 0,
 				status: "pending",
 				signal: 3,
 			},
 			{
 				x: 0,
 				y: 0,
-				speed: 0,
 				status: "inactive",
 				signal: 0,
 			},

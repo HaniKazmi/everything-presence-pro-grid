@@ -193,9 +193,7 @@ describe("TargetController", () => {
 	// -------------------------------------------------------------------------
 	describe("handleTargetData", () => {
 		it("stores targets on host._targets", () => {
-			const targets = [
-				{ x: 100, y: 200, speed: 0, status: "active", signal: 50 },
-			];
+			const targets = [{ x: 100, y: 200, status: "active", signal: 50 }];
 			ctrl.handleTargetData(makeTargetData({ targets: targets as any }));
 			expect(host._targets).toBe(targets);
 		});
@@ -284,9 +282,7 @@ describe("TargetController", () => {
 			const originalZoneState = host._zoneState;
 			ctrl.handleTargetData(
 				makeTargetData({
-					targets: [
-						{ x: 1, y: 2, speed: 0, status: "active", signal: 50 },
-					] as any,
+					targets: [{ x: 1, y: 2, status: "active", signal: 50 }] as any,
 					sensors: {
 						occupancy: true,
 						static_presence: true,
@@ -315,17 +311,13 @@ describe("TargetController", () => {
 			host._view = "settings";
 			ctrl.handleTargetData(
 				makeTargetData({
-					targets: [
-						{ x: 1, y: 2, speed: 0, status: "active", signal: 50 },
-					] as any,
+					targets: [{ x: 1, y: 2, status: "active", signal: 50 }] as any,
 				}),
 			);
 			const frozenTargets = host._targets;
 
 			host._view = "live";
-			const newTargets = [
-				{ x: 3, y: 4, speed: 0, status: "active", signal: 80 },
-			] as any;
+			const newTargets = [{ x: 3, y: 4, status: "active", signal: 80 }] as any;
 			const newSensors = {
 				occupancy: true,
 				static_presence: false,
@@ -749,7 +741,7 @@ describe("TargetController", () => {
 		});
 
 		it("mutates the internal ZoneEngineState across calls", () => {
-			host._targets = [{ x: 0, y: 0, speed: 0, status: "active", signal: 100 }];
+			host._targets = [{ x: 0, y: 0, status: "active", signal: 100 }];
 			ctrl.runLocalZoneEngine();
 			ctrl.runLocalZoneEngine();
 			// The gate-count for target 0 should have advanced
@@ -765,7 +757,6 @@ describe("TargetController", () => {
 				{
 					x: (centerCol - GRID_COLS / 2 + 0.5) * 300, // mm
 					y: centerRow * 300 + 150, // mm
-					speed: 0,
 					status: "active",
 					signal: 80,
 				},
@@ -780,9 +771,7 @@ describe("TargetController", () => {
 
 		it("does NOT build frontend debug log when _showDebugLog is false", () => {
 			host._showDebugLog = false;
-			host._targets = [
-				{ x: 100, y: 100, speed: 0, status: "active", signal: 80 },
-			];
+			host._targets = [{ x: 100, y: 100, status: "active", signal: 80 }];
 			ctrl.runLocalZoneEngine();
 			expect(host._debugLogLines.length).toBe(0);
 		});

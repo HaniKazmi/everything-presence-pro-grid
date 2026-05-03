@@ -436,8 +436,17 @@ export const CORNER_OFFSET_LABELS: [string, string][] = [
 // Corner capture duration (seconds)
 export const CAPTURE_DURATION_S = 5;
 
+// LD2450 hardware tracks at most 3 targets concurrently — the colour palette
+// must stay in lock-step with this cap.
+export const MAX_TARGETS = 3;
+
 // Target dot colors (1 per target, high contrast)
 export const TARGET_COLORS = ["#2196F3", "#FF5722", "#4CAF50"]; // blue, red-orange, green
+if (TARGET_COLORS.length !== MAX_TARGETS) {
+	throw new Error(
+		`TARGET_COLORS palette (${TARGET_COLORS.length}) must match MAX_TARGETS (${MAX_TARGETS})`,
+	);
+}
 
 export const DEBUG_LOG_MAX = 100;
 

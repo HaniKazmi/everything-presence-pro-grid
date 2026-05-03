@@ -1,3 +1,4 @@
+import { FOV_X_EXTENT } from "../constants.js";
 import { GRID_CELL_MM, GRID_COLS, MAX_RANGE } from "./grid.js";
 
 /**
@@ -46,9 +47,6 @@ export function mapTargetToGridCell(
 
 	return { col, row };
 }
-
-// FOV geometry constants (120-degree wedge)
-const FOV_X_EXTENT = MAX_RANGE * Math.sin(Math.PI / 3); // ~5196
 
 /** Map raw sensor coords to percentage in the FOV view (marking step). */
 export function rawToFovPct(

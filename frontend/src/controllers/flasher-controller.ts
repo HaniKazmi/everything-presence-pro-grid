@@ -1,11 +1,27 @@
 import type { ReactiveController, ReactiveControllerHost } from "lit";
 import type { WifiNetwork } from "../lib/improv-serial.js";
+import { safeUnsub } from "../lib/safe-unsub.js";
 import type {
 	FlashableDevice,
 	HaAddResult,
 	OtaDeviceState,
 	UsbFlashState,
 } from "../types.js";
+
+/**
+ * Backend supplies the firmware base URL — validate it's https before we
+ * splice it into manifest URLs or hand it to the esp-web-flasher iframe.
+ * Rejects javascript:, http:, file:, and other unsafe schemes.
+ */
+function sanitizeFirmwareBaseUrl(raw: unknown): string {
+	if (typeof raw !== "string" || raw === "") return "";
+	try {
+		const u = new URL(raw);
+		return u.protocol === "https:" ? raw : "";
+	} catch {
+		return "";
+	}
+}
 
 export class FlasherController implements ReactiveController {
 	flashableDevices: FlashableDevice[] = [];
@@ -255,7 +271,7 @@ export class FlasherController implements ReactiveController {
 				type: "eppgrid/list_flashable_devices",
 			});
 			this.flashableDevices = resp.devices;
-			this.firmwareBaseUrl = resp.firmware_base_url ?? "";
+			this.firmwareBaseUrl = sanitizeFirmwareBaseUrl(resp.firmware_base_url);
 			this.firmwareVersion = resp.latest_firmware_version ?? "";
 		} catch {
 			this.flashableDevices = [];
@@ -289,19 +305,13 @@ export class FlasherController implements ReactiveController {
 
 	unsubscribeDeviceList(): void {
 		this._deviceListGen++;
-		if (this._unsubDeviceList) {
-			try {
-				this._unsubDeviceList();
-			} catch {
-				/* stale subscription */
-			}
-			this._unsubDeviceList = undefined;
-		}
+		safeUnsub(this._unsubDeviceList);
+		this._unsubDeviceList = undefined;
 	}
 
 	private _applyDeviceList(resp: any): void {
 		this.flashableDevices = resp.devices ?? [];
-		this.firmwareBaseUrl = resp.firmware_base_url ?? "";
+		this.firmwareBaseUrl = sanitizeFirmwareBaseUrl(resp.firmware_base_url);
 		this.firmwareVersion = resp.latest_firmware_version ?? "";
 		this.integrationVersion = resp.integration_version ?? "";
 		this.loading = false;

@@ -37,7 +37,7 @@ function makeTarget(
 	signal: number,
 	status: "active" | "pending" | "inactive" = "active",
 ) {
-	return { x, y, signal, speed: 0, status };
+	return { x, y, signal, status };
 }
 
 function makeNullTarget() {
@@ -45,7 +45,6 @@ function makeNullTarget() {
 		x: null as number | null,
 		y: null as number | null,
 		signal: 0,
-		speed: 0,
 		status: "inactive" as const,
 	};
 }
@@ -1115,9 +1114,7 @@ describe("stale zone cleanup", () => {
 		grid[0] = CELL_ROOM_BIT; // zone 0
 		grid[1] = cellSetZone(CELL_ROOM_BIT, 1); // zone 1
 
-		const targets = [
-			{ x: 0, y: 0, speed: 0, status: "active" as const, signal: 9 },
-		];
+		const targets = [{ x: 0, y: 0, status: "active" as const, signal: 9 }];
 		const params = makeDefaultParams({
 			grid,
 			targets,

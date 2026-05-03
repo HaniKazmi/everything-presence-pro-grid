@@ -148,6 +148,27 @@ describe("FlasherController", () => {
 			await ctrl.loadDevices();
 			expect(ctrl.firmwareBaseUrl).toBe("");
 		});
+
+		it("rejects non-https firmwareBaseUrl values", async () => {
+			for (const bad of [
+				"http://example.com/fw",
+				"javascript:alert(1)",
+				"file:///etc/passwd",
+				"/api/fw",
+				"not a url",
+				42,
+				null,
+			]) {
+				ctrl.hass = {
+					callWS: vi
+						.fn()
+						.mockResolvedValue({ devices: [], firmware_base_url: bad }),
+					connection: { subscribeMessage: vi.fn() },
+				};
+				await ctrl.loadDevices();
+				expect(ctrl.firmwareBaseUrl).toBe("");
+			}
+		});
 	});
 
 	// --- subscribeDeviceList ---
@@ -180,14 +201,14 @@ describe("FlasherController", () => {
 				.mockImplementation((cb: any) => {
 					cb({
 						devices,
-						firmware_base_url: "/api/fw",
+						firmware_base_url: "https://example.com/fw",
 						latest_firmware_version: "2.0",
 					});
 					return Promise.resolve(vi.fn());
 				});
 			await ctrl.subscribeDeviceList();
 			expect(ctrl.flashableDevices).toEqual(devices);
-			expect(ctrl.firmwareBaseUrl).toBe("/api/fw");
+			expect(ctrl.firmwareBaseUrl).toBe("https://example.com/fw");
 			expect(ctrl.firmwareVersion).toBe("2.0");
 			expect(ctrl.loading).toBe(false);
 		});

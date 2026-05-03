@@ -131,10 +131,17 @@ export function getZoneThresholds(
 					};
 		}
 	}
+	// Should be unreachable: zid is either 0 (handled above) or 1..MAX_ZONES
+	// with a non-null cfg. If we get here, log so the gap is visible, then fall
+	// back to the canonical defaults rather than a hard-coded magic-number set.
+	console.warn(
+		`getZoneThresholds: no thresholds for zid=${zid}, falling back to defaults`,
+	);
+	const d = ZONE_TYPE_DEFAULTS.default;
 	return {
-		trigger: 5,
-		renew: 3,
-		timeout: 10,
-		handoffTimeout: 3,
+		trigger: d.trigger,
+		renew: d.renew,
+		timeout: d.timeout,
+		handoffTimeout: d.handoff_timeout,
 	};
 }

@@ -330,7 +330,6 @@ describe("_renderLiveGrid target rendering branches", () => {
 				y: 2000,
 				raw_x: 1500,
 				raw_y: 2000,
-				speed: 0,
 				status: "active" as const,
 				signal: 5,
 			},
@@ -339,7 +338,6 @@ describe("_renderLiveGrid target rendering branches", () => {
 				y: 0,
 				raw_x: 0,
 				raw_y: 0,
-				speed: 0,
 				status: "inactive" as const,
 				signal: 0,
 			},
@@ -643,7 +641,7 @@ describe("epp-live-sidebar zone info toggles", () => {
 			color: ZONE_COLORS[0],
 			type: "default",
 		};
-		el.perspective = [1, 0, 0, 0, 1, 0, 0, 0];
+		el.hasPerspective = true;
 		el.zoneState = {
 			occupancy: { 1: true },
 			target_counts: { 1: 2 },

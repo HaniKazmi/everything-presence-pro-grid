@@ -320,6 +320,7 @@ export function getResizeCursor(handle: string, rotationDeg: number): string {
 	const baseAngle = (Math.atan2(sx, -sy) * 180) / Math.PI;
 	const wrapped = (((baseAngle + rotationDeg) % 180) + 180) % 180;
 	const snapped = (Math.round(wrapped / 45) * 45) % 180;
+	// snapped is one of {0, 45, 90, 135} by construction
 	switch (snapped) {
 		case 0:
 			return "ns-resize";
@@ -327,10 +328,8 @@ export function getResizeCursor(handle: string, rotationDeg: number): string {
 			return "nesw-resize";
 		case 90:
 			return "ew-resize";
-		case 135:
-			return "nwse-resize";
 		default:
-			return "default";
+			return "nwse-resize";
 	}
 }
 

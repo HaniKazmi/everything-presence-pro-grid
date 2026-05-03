@@ -50,6 +50,33 @@ describe("solvePerspective", () => {
 		}
 	});
 
+	it("solves a wide-range mm-scale system to high precision", () => {
+		// Real-world calibration uses src in mm (range ~6000) and dst in mm
+		// (range ~5000). Without pre-scaling source coords, the Gaussian elim
+		// matrix has rows whose magnitudes span ~7 orders (mm² cross-terms vs
+		// unit rows), which loses precision through floating-point roundoff.
+		const src = [
+			{ x: -2000, y: 1500 },
+			{ x: 2500, y: 1800 },
+			{ x: 3000, y: 5500 },
+			{ x: -3000, y: 5000 },
+		];
+		const dst = [
+			{ x: 0, y: 0 },
+			{ x: 4000, y: 0 },
+			{ x: 4000, y: 5000 },
+			{ x: 0, y: 5000 },
+		];
+		const h = solvePerspective(src, dst);
+		expect(h).not.toBeNull();
+		if (!h) return;
+		for (let i = 0; i < 4; i++) {
+			const got = applyPerspective(h, src[i].x, src[i].y);
+			expect(got.x).toBeCloseTo(dst[i].x, 6);
+			expect(got.y).toBeCloseTo(dst[i].y, 6);
+		}
+	});
+
 	it("returns null for collinear/degenerate points", () => {
 		// All source points on a line
 		const src = [

@@ -267,7 +267,7 @@ describe("epp-grid cell events", () => {
 describe("epp-grid target rendering", () => {
 	it("renders target dots for active targets", async () => {
 		const targets: Target[] = [
-			{ x: 1500, y: 2000, speed: 0, status: "active", signal: 7 },
+			{ x: 1500, y: 2000, status: "active", signal: 7 },
 		];
 		const el = createGrid({ targets });
 		document.body.appendChild(el);
@@ -281,7 +281,7 @@ describe("epp-grid target rendering", () => {
 
 	it("does not render dots for inactive targets", async () => {
 		const targets: Target[] = [
-			{ x: 1500, y: 2000, speed: 0, status: "inactive", signal: 0 },
+			{ x: 1500, y: 2000, status: "inactive", signal: 0 },
 		];
 		const el = createGrid({ targets });
 		document.body.appendChild(el);
@@ -295,7 +295,7 @@ describe("epp-grid target rendering", () => {
 
 	it("renders pending targets with reduced opacity", async () => {
 		const targets: Target[] = [
-			{ x: 1500, y: 2000, speed: 0, status: "pending", signal: 5 },
+			{ x: 1500, y: 2000, status: "pending", signal: 5 },
 		];
 		const el = createGrid({ targets });
 		document.body.appendChild(el);
@@ -310,7 +310,7 @@ describe("epp-grid target rendering", () => {
 
 	it("renders signal badge for active targets with signal > 0", async () => {
 		const targets: Target[] = [
-			{ x: 1500, y: 2000, speed: 0, status: "active", signal: 7 },
+			{ x: 1500, y: 2000, status: "active", signal: 7 },
 		];
 		const el = createGrid({ targets });
 		document.body.appendChild(el);
@@ -327,7 +327,7 @@ describe("epp-grid target rendering", () => {
 
 	it("falls back to targetPrevXY for pending targets off-grid", async () => {
 		const targets: Target[] = [
-			{ x: 999999, y: 999999, speed: 0, status: "pending", signal: 5 },
+			{ x: 999999, y: 999999, status: "pending", signal: 5 },
 		];
 		const el = createGrid({
 			targets,
@@ -823,7 +823,7 @@ describe("epp-grid darkness (sensor FOV)", () => {
 describe("epp-grid target-click event", () => {
 	it("dispatches target-click event when target dot is clicked", async () => {
 		const targets: Target[] = [
-			{ x: 1500, y: 2000, speed: 0, status: "active", signal: 7 },
+			{ x: 1500, y: 2000, status: "active", signal: 7 },
 		];
 		const el = createGrid({ targets });
 		document.body.appendChild(el);
@@ -848,7 +848,7 @@ describe("epp-grid target-click event", () => {
 describe("epp-grid target dot cursor guard", () => {
 	it("target dot has clickable class when not editable", async () => {
 		const targets: Target[] = [
-			{ x: 1500, y: 2000, speed: 0, status: "active", signal: 7 },
+			{ x: 1500, y: 2000, status: "active", signal: 7 },
 		];
 		const el = createGrid({ targets, editable: false });
 		document.body.appendChild(el);
@@ -863,7 +863,7 @@ describe("epp-grid target dot cursor guard", () => {
 
 	it("target dot does not have clickable class when editable", async () => {
 		const targets: Target[] = [
-			{ x: 1500, y: 2000, speed: 0, status: "active", signal: 7 },
+			{ x: 1500, y: 2000, status: "active", signal: 7 },
 		];
 		const el = createGrid({ targets, editable: true });
 		document.body.appendChild(el);
@@ -899,7 +899,7 @@ describe("epp-grid target dot cursor guard", () => {
 
 	it("click on target dot in edit mode does not dispatch target-click", async () => {
 		const targets: Target[] = [
-			{ x: 1500, y: 2000, speed: 0, status: "active", signal: 7 },
+			{ x: 1500, y: 2000, status: "active", signal: 7 },
 		];
 		const el = createGrid({ targets, editable: true });
 		document.body.appendChild(el);
@@ -955,7 +955,7 @@ describe("epp-grid dismissedTargets", () => {
 
 	it("hides a target whose dismissed cell matches its current cell", async () => {
 		const targets: Target[] = [
-			{ x: 1500, y: 2000, speed: 0, status: "active", signal: 7 },
+			{ x: 1500, y: 2000, status: "active", signal: 7 },
 		];
 		// Target is at cell 130 — dismissed at cell 130 → should be hidden
 		const dismissedTargets = new Map([[0, 130]]);
@@ -971,7 +971,7 @@ describe("epp-grid dismissedTargets", () => {
 
 	it("shows a target that has moved away from its dismissed cell and dispatches target-undismissed", async () => {
 		const targets: Target[] = [
-			{ x: 1800, y: 2000, speed: 0, status: "active", signal: 7 },
+			{ x: 1800, y: 2000, status: "active", signal: 7 },
 		];
 		// Target is now at cell 131, but was dismissed at cell 130 → event fires
 		// and the parent (simulated by a listener here) reassigns the Map.
@@ -999,7 +999,7 @@ describe("epp-grid dismissedTargets", () => {
 
 	it("dispatches target-undismissed event when target moves away from dismissed cell", async () => {
 		const targets: Target[] = [
-			{ x: 1800, y: 2000, speed: 0, status: "active", signal: 7 },
+			{ x: 1800, y: 2000, status: "active", signal: 7 },
 		];
 		// Target is now at cell 131, but was dismissed at cell 130
 		const dismissedTargets = new Map([[0, 130]]);
@@ -1023,7 +1023,7 @@ describe("epp-grid dismissedTargets", () => {
 		// The child must treat dismissedTargets as a one-way prop. The parent
 		// owns the map; the child only dispatches the target-undismissed event.
 		const targets: Target[] = [
-			{ x: 1800, y: 2000, speed: 0, status: "active", signal: 7 },
+			{ x: 1800, y: 2000, status: "active", signal: 7 },
 		];
 		const dismissedTargets = new Map([[0, 130]]);
 		const el = createGrid({ targets, dismissedTargets });
@@ -1042,7 +1042,7 @@ describe("epp-grid dismissedTargets", () => {
 		// Once the parent has handled the event and cleared the dismiss, further
 		// re-renders (e.g. unrelated property changes) must not re-fire the event.
 		const targets: Target[] = [
-			{ x: 1800, y: 2000, speed: 0, status: "active", signal: 7 },
+			{ x: 1800, y: 2000, status: "active", signal: 7 },
 		];
 		const dismissedTargets = new Map([[0, 130]]);
 		const el = createGrid({ targets, dismissedTargets });
@@ -1077,7 +1077,7 @@ describe("epp-grid interference target suppression", () => {
 		grid[130] = cellSetOverlay(grid[130], CELL_OVERLAY_INTERFERENCE);
 
 		const targets: Target[] = [
-			{ x: 1500, y: 2000, speed: 0, status: "active", signal: 7 },
+			{ x: 1500, y: 2000, status: "active", signal: 7 },
 		];
 		const el = createGrid({ targets, grid, occupancy: {} });
 		document.body.appendChild(el);
@@ -1096,7 +1096,7 @@ describe("epp-grid interference target suppression", () => {
 		grid[130] = cellSetZone(grid[130], 1);
 
 		const targets: Target[] = [
-			{ x: 1500, y: 2000, speed: 0, status: "active", signal: 7 },
+			{ x: 1500, y: 2000, status: "active", signal: 7 },
 		];
 		// Zone 1 is occupied
 		const el = createGrid({ targets, grid, occupancy: { 1: true } });
@@ -1194,7 +1194,7 @@ describe("epp-grid target dot bounds check", () => {
 
 	it("does not render a target whose mapped column is just past maxCol", async () => {
 		const targets: Target[] = [
-			{ x: 3300, y: 2100, speed: 0, status: "active", signal: 7 },
+			{ x: 3300, y: 2100, status: "active", signal: 7 },
 		];
 		const el = createGrid({ targets });
 		document.body.appendChild(el);
@@ -1209,7 +1209,7 @@ describe("epp-grid target dot bounds check", () => {
 	it("does not render a target whose mapped row is just past maxRow", async () => {
 		// row = (maxRow+1)*300 = 15*300 = 4500
 		const targets: Target[] = [
-			{ x: 1500, y: 4500, speed: 0, status: "active", signal: 7 },
+			{ x: 1500, y: 4500, status: "active", signal: 7 },
 		];
 		const el = createGrid({ targets });
 		document.body.appendChild(el);
@@ -1224,7 +1224,7 @@ describe("epp-grid target dot bounds check", () => {
 	it("still renders a target whose mapped cell is exactly at maxCol", async () => {
 		// col = 5 + 3000/300 = 15 = maxCol → must still render (boundary inclusive)
 		const targets: Target[] = [
-			{ x: 3000, y: 2100, speed: 0, status: "active", signal: 7 },
+			{ x: 3000, y: 2100, status: "active", signal: 7 },
 		];
 		const el = createGrid({ targets });
 		document.body.appendChild(el);
@@ -1244,8 +1244,8 @@ describe("epp-grid target dot keying (per-target identity)", () => {
 
 	it("renders each target dot with its own color (TARGET_COLORS[i])", async () => {
 		const targets: Target[] = [
-			{ x: 1500, y: 2000, speed: 0, status: "active", signal: 7 },
-			{ x: 1800, y: 2000, speed: 0, status: "active", signal: 9 },
+			{ x: 1500, y: 2000, status: "active", signal: 7 },
+			{ x: 1800, y: 2000, status: "active", signal: 9 },
 		];
 		const el = createGrid({ targets });
 		document.body.appendChild(el);
@@ -1267,8 +1267,8 @@ describe("epp-grid target dot keying (per-target identity)", () => {
 		// Two active targets at distinct positions/signals.
 		const el = createGrid({
 			targets: [
-				{ x: 1500, y: 2000, speed: 0, status: "active", signal: 7 },
-				{ x: 1800, y: 2000, speed: 0, status: "active", signal: 9 },
+				{ x: 1500, y: 2000, status: "active", signal: 7 },
+				{ x: 1800, y: 2000, status: "active", signal: 9 },
 			],
 		});
 		document.body.appendChild(el);
@@ -1278,8 +1278,8 @@ describe("epp-grid target dot keying (per-target identity)", () => {
 		// Without keyed rendering, Lit would reuse the first DOM node (with
 		// color/signal of target 0) for the remaining template, leaking state.
 		el.targets = [
-			{ x: 1500, y: 2000, speed: 0, status: "inactive", signal: 0 },
-			{ x: 1800, y: 2000, speed: 0, status: "active", signal: 9 },
+			{ x: 1500, y: 2000, status: "inactive", signal: 0 },
+			{ x: 1800, y: 2000, status: "active", signal: 9 },
 		];
 		await el.updateComplete;
 

@@ -53,7 +53,6 @@ interface Target {
 	raw_y: number;
 	status: TargetStatus;
 	signal: number;
-	speed: number;
 }
 
 function makeTarget(
@@ -62,7 +61,7 @@ function makeTarget(
 	signal: number,
 	status: TargetStatus = "active",
 ): Target {
-	return { x, y, raw_x: x, raw_y: y, status, signal, speed: 0 };
+	return { x, y, raw_x: x, raw_y: y, status, signal };
 }
 
 function createParityPanel(): EPPGridPanel {
@@ -278,9 +277,7 @@ describe("Per-target status parity", () => {
 		a._runLocalZoneEngine(); // tick 2: target added to confirmedTargets
 
 		// Target disappears (sensor stops tracking → x/y null)
-		a._targets = [
-			{ x: null, y: null, speed: 0, status: "inactive" as const, signal: 0 },
-		];
+		a._targets = [{ x: null, y: null, status: "inactive" as const, signal: 0 }];
 		const result = a._runLocalZoneEngine();
 		expect(result.targets[0].status).toBe("pending");
 		// Position/signal are display concerns handled by _renderTargetDots
@@ -293,9 +290,7 @@ describe("Per-target status parity", () => {
 		a._runLocalZoneEngine(); // tick 2: target in confirmedTargets
 
 		// Target disappears
-		a._targets = [
-			{ x: null, y: null, speed: 0, status: "inactive" as const, signal: 0 },
-		];
+		a._targets = [{ x: null, y: null, status: "inactive" as const, signal: 0 }];
 		a._runLocalZoneEngine();
 
 		// Fast-forward past timeout
@@ -333,9 +328,7 @@ describe("Per-target status parity", () => {
 		a._runLocalZoneEngine(); // tick 2: target added to confirmedTargets
 
 		// Target disappears → zone 1 pending
-		a._targets = [
-			{ x: null, y: null, speed: 0, status: "inactive" as const, signal: 0 },
-		];
+		a._targets = [{ x: null, y: null, status: "inactive" as const, signal: 0 }];
 		const r2 = a._runLocalZoneEngine();
 		expect(r2.targets[0].status).toBe("pending");
 
@@ -358,7 +351,7 @@ describe("Per-target status parity", () => {
 		// T1 disappears (sensor stops tracking), T0 stays active
 		a._targets = [
 			makeTarget(450, 450, 5),
-			{ x: null, y: null, speed: 0, status: "inactive" as const, signal: 0 },
+			{ x: null, y: null, status: "inactive" as const, signal: 0 },
 		];
 		const result = a._runLocalZoneEngine();
 		expect(result.targets[0].status).toBe("active");
@@ -378,9 +371,7 @@ describe("Per-target status parity", () => {
 		expect(r2.targets[0].status).toBe("pending");
 
 		// Sensor stops tracking (x/y null) → still pending at same position
-		a._targets = [
-			{ x: null, y: null, speed: 0, status: "inactive" as const, signal: 0 },
-		];
+		a._targets = [{ x: null, y: null, status: "inactive" as const, signal: 0 }];
 		const r3 = a._runLocalZoneEngine();
 		expect(r3.targets[0].status).toBe("pending");
 	});
@@ -532,9 +523,7 @@ describe("Pending target position fallback (_renderTargetDots)", () => {
 		runEngineAndOverwrite();
 
 		// Sensor stops tracking
-		a._targets = [
-			{ x: null, y: null, speed: 0, status: "inactive" as const, signal: 0 },
-		];
+		a._targets = [{ x: null, y: null, status: "inactive" as const, signal: 0 }];
 		runEngineAndOverwrite();
 		expect(a._targets[0].status).toBe("pending");
 

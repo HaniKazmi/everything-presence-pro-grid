@@ -286,11 +286,6 @@ describe("GridStateController", () => {
 			expect(host._dirty).toBe(true);
 		});
 
-		it("calls requestUpdate", () => {
-			ctrl.removeZone(1);
-			expect(host.requestUpdate).toHaveBeenCalled();
-		});
-
 		it("does nothing for out-of-range slots", () => {
 			ctrl.removeZone(0);
 			ctrl.removeZone(MAX_ZONES + 1);

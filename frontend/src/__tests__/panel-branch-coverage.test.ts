@@ -352,7 +352,6 @@ describe("_renderEditor target rendering branches", () => {
 			{
 				x: 1500,
 				y: 2000,
-				speed: 0,
 				status: "pending" as const,
 				signal: 3,
 			},
@@ -370,7 +369,6 @@ describe("_renderEditor target rendering branches", () => {
 			{
 				x: 1500,
 				y: 2000,
-				speed: 0,
 				status: "active" as const,
 				signal: 7,
 			},
@@ -388,7 +386,6 @@ describe("_renderEditor target rendering branches", () => {
 			{
 				x: 1500,
 				y: 2000,
-				speed: 0,
 				status: "pending" as const,
 				signal: 7,
 			},
@@ -411,7 +408,6 @@ describe("_renderLiveGrid target branches", () => {
 			{
 				x: 100,
 				y: 200,
-				speed: 0,
 				status: "active" as const,
 				signal: 5,
 			},
@@ -427,21 +423,18 @@ describe("_renderLiveGrid target branches", () => {
 			{
 				x: 1500,
 				y: 2000,
-				speed: 0,
 				status: "active" as const,
 				signal: 5,
 			},
 			{
 				x: 1000,
 				y: 1000,
-				speed: 0,
 				status: "active" as const,
 				signal: 3,
 			},
 			{
 				x: 2000,
 				y: 3000,
-				speed: 0,
 				status: "active" as const,
 				signal: 7,
 			},
@@ -1169,7 +1162,6 @@ describe("editor target signal display branches", () => {
 			{
 				x: 1500,
 				y: 2000,
-				speed: 0,
 				status: "active" as const,
 				signal: 0,
 			},
@@ -1213,7 +1205,6 @@ describe("live grid hit count and signal", () => {
 			{
 				x: 1500,
 				y: 2000,
-				speed: 0,
 				status: "active" as const,
 				signal: 7,
 			},
@@ -1229,7 +1220,6 @@ describe("live grid hit count and signal", () => {
 			{
 				x: 1500,
 				y: 2000,
-				speed: 0,
 				status: "active" as const,
 				signal: 0,
 			},

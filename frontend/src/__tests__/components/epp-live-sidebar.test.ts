@@ -87,7 +87,7 @@ describe("epp-live-sidebar element", () => {
 
 	it("renders zone section when perspective is set", () => {
 		const el = document.createElement("epp-live-sidebar") as any;
-		el.perspective = [1, 0, 0, 0, 1, 0, 0, 0];
+		el.hasPerspective = true;
 		el.zoneConfigs = new Array(7).fill(null);
 		el.zoneConfigs[0] = {
 			name: "Kitchen",
@@ -115,7 +115,7 @@ describe("epp-live-sidebar element", () => {
 
 	it("does not render zone section when perspective is null", () => {
 		const el = document.createElement("epp-live-sidebar") as any;
-		el.perspective = null;
+		el.hasPerspective = false;
 		el.zoneConfigs = new Array(7).fill(null);
 		el.zoneConfigs[0] = {
 			name: "Kitchen",
@@ -176,7 +176,7 @@ describe("epp-live-sidebar element", () => {
 
 	it("fires view-change event when detection zones link is clicked", () => {
 		const el = document.createElement("epp-live-sidebar") as any;
-		el.perspective = [1, 0, 0, 0, 1, 0, 0, 0];
+		el.hasPerspective = true;
 		el.zoneConfigs = new Array(7).fill(null);
 		el.zoneState = { occupancy: {}, target_counts: {}, frame_count: 0 };
 
@@ -316,7 +316,7 @@ describe("epp-live-sidebar element", () => {
 
 	it("renders configured zone dot with the zone's color as background", () => {
 		const el = document.createElement("epp-live-sidebar") as any;
-		el.perspective = [1, 0, 0, 0, 1, 0, 0, 0];
+		el.hasPerspective = true;
 		el.zoneConfigs = new Array(7).fill(null);
 		el.zoneConfigs[0] = {
 			name: "Kitchen",
@@ -346,7 +346,7 @@ describe("epp-live-sidebar element", () => {
 
 	it("renders occupied configured zone dot with colored glow", () => {
 		const el = document.createElement("epp-live-sidebar") as any;
-		el.perspective = [1, 0, 0, 0, 1, 0, 0, 0];
+		el.hasPerspective = true;
 		el.zoneConfigs = new Array(7).fill(null);
 		el.zoneConfigs[0] = {
 			name: "Kitchen",
@@ -374,7 +374,7 @@ describe("epp-live-sidebar element", () => {
 
 	it("renders rest-of-room dot with white background and gray border", () => {
 		const el = document.createElement("epp-live-sidebar") as any;
-		el.perspective = [1, 0, 0, 0, 1, 0, 0, 0];
+		el.hasPerspective = true;
 		el.zoneConfigs = new Array(7).fill(null);
 		el.zoneState = {
 			occupancy: { 0: false },
@@ -397,7 +397,7 @@ describe("epp-live-sidebar element", () => {
 
 	it("renders occupied rest-of-room with gray glow", () => {
 		const el = document.createElement("epp-live-sidebar") as any;
-		el.perspective = [1, 0, 0, 0, 1, 0, 0, 0];
+		el.hasPerspective = true;
 		el.zoneConfigs = new Array(7).fill(null);
 		el.zoneState = {
 			occupancy: { 0: true },
@@ -417,7 +417,7 @@ describe("epp-live-sidebar element", () => {
 
 	it("renders rest-of-room zone even with no configured zones", () => {
 		const el = document.createElement("epp-live-sidebar") as any;
-		el.perspective = [1, 0, 0, 0, 1, 0, 0, 0];
+		el.hasPerspective = true;
 		el.zoneConfigs = new Array(7).fill(null);
 		el.zoneState = {
 			occupancy: { 0: true },
