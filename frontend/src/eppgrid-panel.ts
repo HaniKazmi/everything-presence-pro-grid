@@ -426,7 +426,7 @@ export class EPPGridPanel extends LitElement {
 		pctX: number;
 		pctY: number;
 	} | null = null;
-	private _dismissedTargets: Map<number, number> = new Map();
+	@state() private _dismissedTargets: Map<number, number> = new Map();
 	@state() private _isPainting = false;
 	private _justPainted = false;
 	@state() private _paintAction: PaintAction = "set";
@@ -2181,7 +2181,6 @@ export class EPPGridPanel extends LitElement {
 			}
 		}
 		this._closeTargetMenu();
-		this.requestUpdate();
 	}
 
 	private async _setOverlay(kind: number): Promise<void> {

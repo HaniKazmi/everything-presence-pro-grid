@@ -331,4 +331,25 @@ describe("panel handles target-undismissed from <epp-grid>", () => {
 
 		document.body.removeChild(c);
 	});
+
+	it("schedules a re-render when _dismissedTargets is reassigned", async () => {
+		// Regression for Copilot review on PR 168: `_dismissedTargets` was a
+		// non-reactive private field. `_handleTargetUndismissed` reassigned it
+		// without `requestUpdate()`, so the child kept seeing the old Map
+		// until some unrelated state change happened to trigger a re-render.
+		// The field must be `@state` so reassignment alone schedules an
+		// update — both for `_handleTargetUndismissed` and for `_dismissTarget`
+		// (which previously patched around the gap with a manual
+		// `requestUpdate()`).
+		const a = createPanel() as any;
+		document.body.appendChild(a);
+		// Drain any pending updates from initial mount so the test only
+		// observes the effect of the field reassignment.
+		while (a.isUpdatePending) await a.updateComplete;
+
+		a._dismissedTargets = new Map([[0, 130]]);
+		expect(a.isUpdatePending).toBe(true);
+
+		document.body.removeChild(a);
+	});
 });
