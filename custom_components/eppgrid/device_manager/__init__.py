@@ -28,6 +28,7 @@ from ._connection import _DEVICE_LOGGER
 from ._connection import DeviceConnection
 from ._helpers import ZONE_TYPE_DEFAULTS as ZONE_TYPE_DEFAULTS  # re-export for tests
 from ._helpers import _compare_firmware_version
+from ._helpers import _compute_pipeline
 from ._helpers import _extract_host
 from ._helpers import _extract_mac
 from ._helpers import _raise_service_unavailable as _raise_service_unavailable  # re-export for tests
@@ -586,8 +587,6 @@ class DeviceManager:
 
     async def _push_pipeline_to_device(self, mac: str) -> None:
         """Recompute pipeline intervals and push to device."""
-        from ..websocket_api import _compute_pipeline
-
         config = self._store.devices.get(mac, {})
         session = self.get_session(mac)
         raw_subs = session.raw_target_subs if session else 0
@@ -665,8 +664,6 @@ class DeviceManager:
             await asyncio.wait_for(conn.async_connect(), timeout=30)
             await conn.async_push_config(config)
             # Push pipeline directly (no subscribers on temp connections)
-            from ..websocket_api import _compute_pipeline
-
             pipeline = _compute_pipeline(config, 0, 0)
             svc = conn._services.get("epp_set_pipeline")
             if svc:

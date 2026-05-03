@@ -14,10 +14,9 @@ from ..const import DOMAIN
 from . import _LOGGER
 from . import _OTA_LOG_CATEGORY
 from . import _OTA_LOG_LEVEL
-from . import _get_manager
+from . import _require_manager
 from . import _send_exception
 from . import _send_no_firmware_variant
-from . import _send_not_loaded
 
 # -- update_firmware (trigger OTA) --
 
@@ -29,18 +28,15 @@ from . import _send_not_loaded
     }
 )
 @websocket_api.async_response
+@_require_manager
 async def websocket_update_firmware(
     hass: HomeAssistant,
     connection: websocket_api.ActiveConnection,
     msg: dict[str, Any],
+    manager: Any,
 ) -> None:
     """Trigger firmware OTA update via set_update_manifest action."""
     from ..const import OTA_MANIFEST_BASE_URL
-
-    manager = _get_manager(hass)
-    if manager is None:
-        _send_not_loaded(connection, msg["id"])
-        return
 
     mac = msg["mac"]
     dev = manager.devices.get(mac)
@@ -118,20 +114,17 @@ async def websocket_update_firmware(
     }
 )
 @websocket_api.async_response
+@_require_manager
 async def websocket_subscribe_ota_progress(
     hass: HomeAssistant,
     connection: websocket_api.ActiveConnection,
     msg: dict[str, Any],
+    manager: Any,
 ) -> None:
     """Subscribe to OTA firmware update progress for a device."""
-    manager = _get_manager(hass)
-    if manager is None:
-        _send_not_loaded(connection, msg["id"])
-        return
-
     mac = msg["mac"]
-    had_session = manager.get_session(mac) is not None
     device_conn = manager.get_session(mac)
+    had_session = device_conn is not None
     if device_conn is None:
         with contextlib.suppress(Exception):
             device_conn = await manager.async_open_session(mac)
@@ -281,16 +274,14 @@ async def websocket_subscribe_ota_progress(
     }
 )
 @websocket_api.async_response
+@_require_manager
 async def websocket_dismiss_target(
     hass: HomeAssistant,
     connection: websocket_api.ActiveConnection,
     msg: dict[str, Any],
+    manager: Any,
 ) -> None:
     """Dismiss a target at a specific cell (ephemeral, firmware-only)."""
-    manager = _get_manager(hass)
-    if manager is None:
-        _send_not_loaded(connection, msg["id"])
-        return
     mac = msg["mac"]
     dev = manager.devices.get(mac)
     if not dev or not dev.host:

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import functools
+import inspect
 import json
 import logging
 from pathlib import Path
@@ -13,6 +15,7 @@ from homeassistant.core import HomeAssistant
 
 from ..const import DOMAIN
 from ..const import NUM_ZONE_SLOTS
+from ..device_manager._helpers import _compare_firmware_version
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -180,37 +183,6 @@ def async_register_websocket_commands(hass: HomeAssistant, manager: Any) -> None
     websocket_api.async_register_command(hass, websocket_add_esphome_device)
 
 
-_TARGET_ENTITY_KEYS = ("target_xy", "target_active", "target_signal", "target_zone", "target_count")
-_ZONE_ENTITY_KEYS = ("zone_presence", "zone_target_count")
-
-
-def _compute_pipeline(
-    config: dict[str, Any],
-    raw_target_subs: int,
-    grid_target_subs: int,
-) -> dict[str, int]:
-    """Derive all pipeline intervals from current settings and subscriber counts."""
-    settings = config.get("settings", {})
-    pipeline = config.get("pipeline", {})
-
-    target_rate = settings.get("target_update_rate_ms", 1000)
-    zone_rate = settings.get("zone_update_rate_ms", 1000)
-
-    # Entity flags are stored flat in settings (e.g., settings["zone_presence"])
-    any_target = any(settings.get(k) for k in _TARGET_ENTITY_KEYS)
-    any_zone = any(settings.get(k) for k in _ZONE_ENTITY_KEYS)
-
-    has_display_sub = raw_target_subs > 0 or grid_target_subs > 0
-
-    return {
-        "entity_target_interval": target_rate if any_target else 0,
-        "entity_zone_interval": zone_rate if any_zone else 0,
-        "display_interval": 200 if has_display_sub else 0,
-        "zone_state_interval": 1000 if grid_target_subs > 0 else 0,
-        "window_duration": pipeline.get("window_duration", 1000),
-    }
-
-
 def _get_manager(hass: HomeAssistant) -> Any:
     """Get the device manager."""
     return hass.data.get(DOMAIN)
@@ -218,8 +190,6 @@ def _get_manager(hass: HomeAssistant) -> Any:
 
 def _check_firmware_version(manager: Any, mac: str) -> str | None:
     """Check firmware version compatibility. Returns error code or None if OK."""
-    from ..device_manager import _compare_firmware_version
-
     dev = manager.devices.get(mac)
     if dev is None:
         return None  # Unknown device — let the command handle it
@@ -230,6 +200,56 @@ def _check_firmware_version(manager: Any, mac: str) -> str | None:
     if status == "compatible":
         return None
     return status
+
+
+def _require_manager(func=None, *, check_firmware: bool = False):
+    """Inject the device manager as a 4th positional arg.
+
+    Short-circuits with `not_ready` when the integration is unloaded. With
+    `check_firmware=True`, also runs `_check_firmware_version(manager, msg["mac"])`
+    and short-circuits with the matching firmware-version error before the handler
+    is invoked. Works for both sync (`@callback`) and async (`@async_response`)
+    handlers — picks the wrapper shape via `iscoroutinefunction`.
+    """
+
+    def decorate(fn):
+        if inspect.iscoroutinefunction(fn):
+
+            @functools.wraps(fn)
+            async def async_wrapper(
+                hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict[str, Any]
+            ) -> None:
+                manager = _get_manager(hass)
+                if manager is None:
+                    _send_not_loaded(connection, msg["id"])
+                    return
+                if check_firmware:
+                    proto_err = _check_firmware_version(manager, msg["mac"])
+                    if proto_err:
+                        _send_firmware_version_error(connection, msg["id"], proto_err)
+                        return
+                await fn(hass, connection, msg, manager)
+
+            return async_wrapper
+
+        @functools.wraps(fn)
+        def sync_wrapper(hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict[str, Any]) -> None:
+            manager = _get_manager(hass)
+            if manager is None:
+                _send_not_loaded(connection, msg["id"])
+                return
+            if check_firmware:
+                proto_err = _check_firmware_version(manager, msg["mac"])
+                if proto_err:
+                    _send_firmware_version_error(connection, msg["id"], proto_err)
+                    return
+            fn(hass, connection, msg, manager)
+
+        return sync_wrapper
+
+    if func is None:
+        return decorate
+    return decorate(func)
 
 
 # Submodule re-exports — must come after the helpers above (_get_manager,

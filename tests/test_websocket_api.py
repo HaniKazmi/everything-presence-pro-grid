@@ -3489,3 +3489,203 @@ def test_send_exception_falls_back_to_str_for_plain_exception():
     connection = MagicMock()
     ws_module._send_exception(connection, 7, "delete_failed", err)
     connection.send_error.assert_called_once_with(7, "delete_failed", "boom")
+
+
+class TestRequireManagerDecorator:
+    """Tests for the _require_manager decorator that injects manager + guards on not_ready/firmware."""
+
+    async def test_sync_handler_passes_manager_when_loaded(
+        self, hass: HomeAssistant, config_entry: MockConfigEntry
+    ) -> None:
+        """Sync handler is invoked with manager as 4th arg when integration is loaded."""
+        mock_dm = await setup_integration(hass, config_entry)
+
+        from homeassistant.core import callback
+
+        from custom_components.eppgrid.websocket_api import _require_manager
+
+        captured: dict = {}
+
+        @_require_manager
+        @callback
+        def handler(hass_, conn_, msg_, manager_):
+            captured["manager"] = manager_
+            captured["msg_id"] = msg_["id"]
+
+        connection = MagicMock()
+        msg = {"id": 1}
+        handler(hass, connection, msg)
+
+        assert captured["manager"] is mock_dm
+        assert captured["msg_id"] == 1
+        connection.send_error.assert_not_called()
+
+    async def test_sync_handler_returns_not_ready_when_unloaded(self, hass: HomeAssistant) -> None:
+        """Sync handler short-circuits with not_ready error when manager is None."""
+        from homeassistant.core import callback
+
+        from custom_components.eppgrid.websocket_api import _require_manager
+
+        called = False
+
+        @_require_manager
+        @callback
+        def handler(hass_, conn_, msg_, manager_):
+            nonlocal called
+            called = True
+
+        connection = MagicMock()
+        handler(hass, connection, {"id": 5})
+
+        assert called is False
+        connection.send_error.assert_called_once_with(
+            5,
+            "not_ready",
+            "Integration not loaded",
+            translation_domain=DOMAIN,
+            translation_key="integration_not_loaded",
+        )
+
+    async def test_async_handler_passes_manager_when_loaded(
+        self, hass: HomeAssistant, config_entry: MockConfigEntry
+    ) -> None:
+        """Async handler is awaited with manager as 4th arg when integration is loaded."""
+        mock_dm = await setup_integration(hass, config_entry)
+
+        from custom_components.eppgrid.websocket_api import _require_manager
+
+        captured: dict = {}
+
+        @_require_manager
+        async def handler(hass_, conn_, msg_, manager_):
+            captured["manager"] = manager_
+
+        connection = MagicMock()
+        await handler(hass, connection, {"id": 1})
+
+        assert captured["manager"] is mock_dm
+        connection.send_error.assert_not_called()
+
+    async def test_async_handler_returns_not_ready_when_unloaded(self, hass: HomeAssistant) -> None:
+        """Async handler short-circuits with not_ready error when manager is None."""
+        from custom_components.eppgrid.websocket_api import _require_manager
+
+        called = False
+
+        @_require_manager
+        async def handler(hass_, conn_, msg_, manager_):
+            nonlocal called
+            called = True
+
+        connection = MagicMock()
+        await handler(hass, connection, {"id": 8})
+
+        assert called is False
+        connection.send_error.assert_called_once_with(
+            8,
+            "not_ready",
+            "Integration not loaded",
+            translation_domain=DOMAIN,
+            translation_key="integration_not_loaded",
+        )
+
+    async def test_check_firmware_blocks_when_behind(self, hass: HomeAssistant, config_entry: MockConfigEntry) -> None:
+        """check_firmware=True path sends firmware_behind error and skips handler."""
+        from custom_components.eppgrid.device_manager import ManagedDevice
+
+        mock_dm = await setup_integration(hass, config_entry)
+        mock_dm.devices = {
+            "AA:BB:CC:DD:EE:FF": ManagedDevice(mac="AA:BB:CC:DD:EE:FF", name="EPP", host="192.168.1.50"),
+        }
+        mock_dm.read_firmware_version.return_value = "0.1.0"
+
+        from custom_components.eppgrid.websocket_api import _require_manager
+
+        called = False
+
+        @_require_manager(check_firmware=True)
+        async def handler(hass_, conn_, msg_, manager_):
+            nonlocal called
+            called = True
+
+        connection = MagicMock()
+        await handler(hass, connection, {"id": 9, "mac": "AA:BB:CC:DD:EE:FF"})
+
+        assert called is False
+        connection.send_error.assert_called_once()
+        args = connection.send_error.call_args[0]
+        assert args[1] == "firmware_behind"
+
+    async def test_check_firmware_passes_through_when_compatible(
+        self, hass: HomeAssistant, config_entry: MockConfigEntry
+    ) -> None:
+        """check_firmware=True path runs handler when firmware version matches."""
+        from custom_components.eppgrid.const import FIRMWARE_VERSION
+        from custom_components.eppgrid.device_manager import ManagedDevice
+
+        mock_dm = await setup_integration(hass, config_entry)
+        mock_dm.devices = {
+            "AA:BB:CC:DD:EE:FF": ManagedDevice(mac="AA:BB:CC:DD:EE:FF", name="EPP", host="192.168.1.50"),
+        }
+        mock_dm.read_firmware_version.return_value = FIRMWARE_VERSION
+
+        from custom_components.eppgrid.websocket_api import _require_manager
+
+        called = False
+
+        @_require_manager(check_firmware=True)
+        async def handler(hass_, conn_, msg_, manager_):
+            nonlocal called
+            called = True
+
+        connection = MagicMock()
+        await handler(hass, connection, {"id": 10, "mac": "AA:BB:CC:DD:EE:FF"})
+
+        assert called is True
+        connection.send_error.assert_not_called()
+
+    async def test_check_firmware_propagates_unavailable(
+        self, hass: HomeAssistant, config_entry: MockConfigEntry
+    ) -> None:
+        """check_firmware=True path returns 'unavailable' wire code when fw_ver is None."""
+        from custom_components.eppgrid.device_manager import ManagedDevice
+
+        mock_dm = await setup_integration(hass, config_entry)
+        mock_dm.devices = {
+            "AA:BB:CC:DD:EE:FF": ManagedDevice(mac="AA:BB:CC:DD:EE:FF", name="EPP", host="192.168.1.50"),
+        }
+        mock_dm.read_firmware_version.return_value = None
+
+        from custom_components.eppgrid.websocket_api import _require_manager
+
+        @_require_manager(check_firmware=True)
+        async def handler(hass_, conn_, msg_, manager_):
+            pytest.fail("handler should not be called when firmware is unavailable")
+
+        connection = MagicMock()
+        await handler(hass, connection, {"id": 11, "mac": "AA:BB:CC:DD:EE:FF"})
+
+        connection.send_error.assert_called_once()
+        args = connection.send_error.call_args[0]
+        kwargs = connection.send_error.call_args.kwargs
+        assert args[1] == "unavailable"
+        assert kwargs.get("translation_key") == "device_not_available"
+
+
+class TestFlashablePayload:
+    """Tests for _flashable_payload helper that builds the subscribe/list flashable response."""
+
+    async def test_flashable_payload_shape(self, hass: HomeAssistant, config_entry: MockConfigEntry) -> None:
+        """Helper returns devices, firmware base URL, latest firmware version, integration version."""
+        mock_dm = await setup_integration(hass, config_entry)
+        mock_dm.list_flashable_devices = AsyncMock(return_value=[{"mac": "AA:BB"}])
+
+        from custom_components.eppgrid.const import FIRMWARE_VERSION
+        from custom_components.eppgrid.websocket_api._flasher import _flashable_payload
+
+        payload = await _flashable_payload(mock_dm)
+
+        assert payload["devices"] == [{"mac": "AA:BB"}]
+        assert payload["firmware_base_url"] == "/api/eppgrid/firmware"
+        assert payload["latest_firmware_version"] == f"v{FIRMWARE_VERSION}"
+        assert "integration_version" in payload
