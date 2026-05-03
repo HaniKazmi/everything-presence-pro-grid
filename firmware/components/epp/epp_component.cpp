@@ -511,99 +511,121 @@ void EPPComponent::restore_from_nvs_() {
     return;
   }
 
-  uint8_t version = 0;
-  if (nvs_get_u8(handle, "version", &version) != ESP_OK || version != NVS_SCHEMA_VERSION) {
-    ESP_LOGW(TAG, "NVS schema version mismatch (got %d, expected %d), skipping restore",
-             version, NVS_SCHEMA_VERSION);
-    nvs_close(handle);
-    return;
-  }
+  // Per-blob version gating: each blob (perspective, grid, zones, relay)
+  // tracks its own schema version. A bump to one schema invalidates only
+  // that blob; the others restore independently. See epp_nvs_layout.h.
 
   // Restore perspective (8 floats + room_width + room_depth = 40 bytes)
-  size_t len = sizeof(persp_cache_);
-  if (nvs_get_blob(handle, "persp", persp_cache_, &len) == ESP_OK && len == sizeof(persp_cache_)) {
-    transform_.set_coefficients(persp_cache_, persp_cache_[8], persp_cache_[9]);
-    has_persp_cache_ = true;
-    ESP_LOGI(TAG, "Restored perspective from NVS");
+  uint8_t persp_v = 0;
+  nvs_get_u8(handle, "persp_v", &persp_v);
+  if (should_load_blob(persp_v, PERSP_SCHEMA_V)) {
+    size_t len = sizeof(persp_cache_);
+    if (nvs_get_blob(handle, "persp", persp_cache_, &len) == ESP_OK && len == sizeof(persp_cache_)) {
+      transform_.set_coefficients(persp_cache_, persp_cache_[8], persp_cache_[9]);
+      has_persp_cache_ = true;
+      ESP_LOGI(TAG, "Restored perspective from NVS");
+    }
+  } else if (persp_v != 0) {
+    ESP_LOGW(TAG, "Perspective NVS schema mismatch (stored=%u, expected=%u), skipping",
+             persp_v, PERSP_SCHEMA_V);
   }
 
   // Restore grid (GRID_CELL_COUNT cell bytes + origin_x + origin_y).
   // GRID_BLOB_SIZE is centralised in epp_nvs_layout.h and pinned by a
   // static_assert there.
-  len = GRID_BLOB_SIZE;
-  uint8_t grid_buf[GRID_BLOB_SIZE];
-  if (nvs_get_blob(handle, "grid", grid_buf, &len) == ESP_OK && len == GRID_BLOB_SIZE) {
-    float origin_x, origin_y;
-    memcpy(&origin_x, grid_buf + GRID_CELL_COUNT, sizeof(float));
-    memcpy(&origin_y, grid_buf + GRID_CELL_COUNT + sizeof(float), sizeof(float));
-    grid_ = Grid(origin_x, origin_y);
-    grid_.load_from_bytes(grid_buf, GRID_CELL_COUNT);
-    zone_engine_.set_grid(grid_);
-    // Seed the idempotency cache so a republish of the same grid won't
-    // trigger a redundant flash write on first connect after boot.
-    memcpy(last_grid_blob_, grid_buf, sizeof(last_grid_blob_));
-    has_grid_cache_ = true;
-    ESP_LOGI(TAG, "Restored grid from NVS (origin %.0f, %.0f)", origin_x, origin_y);
+  uint8_t grid_v = 0;
+  nvs_get_u8(handle, "grid_v", &grid_v);
+  if (should_load_blob(grid_v, GRID_SCHEMA_V)) {
+    size_t len = GRID_BLOB_SIZE;
+    uint8_t grid_buf[GRID_BLOB_SIZE];
+    if (nvs_get_blob(handle, "grid", grid_buf, &len) == ESP_OK && len == GRID_BLOB_SIZE) {
+      float origin_x, origin_y;
+      memcpy(&origin_x, grid_buf + GRID_CELL_COUNT, sizeof(float));
+      memcpy(&origin_y, grid_buf + GRID_CELL_COUNT + sizeof(float), sizeof(float));
+      grid_ = Grid(origin_x, origin_y);
+      grid_.load_from_bytes(grid_buf, GRID_CELL_COUNT);
+      zone_engine_.set_grid(grid_);
+      // Seed the idempotency cache so a republish of the same grid won't
+      // trigger a redundant flash write on first connect after boot.
+      memcpy(last_grid_blob_, grid_buf, sizeof(last_grid_blob_));
+      has_grid_cache_ = true;
+      ESP_LOGI(TAG, "Restored grid from NVS (origin %.0f, %.0f)", origin_x, origin_y);
+    }
+  } else if (grid_v != 0) {
+    ESP_LOGW(TAG, "Grid NVS schema mismatch (stored=%u, expected=%u), skipping",
+             grid_v, GRID_SCHEMA_V);
   }
 
   // Restore relay settings
-  uint8_t relay_trig = 0;
-  if (nvs_get_u8(handle, "relay_trig", &relay_trig) == ESP_OK) {
-    if (relay_trig <= static_cast<uint8_t>(RelayTriggerMode::OCCUPANCY)) {
-      relay_trigger_mode_ = static_cast<RelayTriggerMode>(relay_trig);
-    } else {
-      ESP_LOGW(TAG, "Invalid relay trigger mode %d in NVS, defaulting to DISABLED", relay_trig);
-      relay_trigger_mode_ = RelayTriggerMode::DISABLED;
+  uint8_t relay_v = 0;
+  nvs_get_u8(handle, "relay_v", &relay_v);
+  if (should_load_blob(relay_v, RELAY_SCHEMA_V)) {
+    uint8_t relay_trig = 0;
+    if (nvs_get_u8(handle, "relay_trig", &relay_trig) == ESP_OK) {
+      if (relay_trig <= static_cast<uint8_t>(RelayTriggerMode::OCCUPANCY)) {
+        relay_trigger_mode_ = static_cast<RelayTriggerMode>(relay_trig);
+      } else {
+        ESP_LOGW(TAG, "Invalid relay trigger mode %d in NVS, defaulting to DISABLED", relay_trig);
+        relay_trigger_mode_ = RelayTriggerMode::DISABLED;
+      }
+      uint8_t relay_cont = 0;
+      nvs_get_u8(handle, "relay_cont", &relay_cont);
+      if (relay_cont <= static_cast<uint8_t>(RelayContactMode::NORMALLY_CLOSED)) {
+        relay_contact_mode_ = static_cast<RelayContactMode>(relay_cont);
+      } else {
+        ESP_LOGW(TAG, "Invalid relay contact mode %d in NVS, defaulting to NO", relay_cont);
+        relay_contact_mode_ = RelayContactMode::NORMALLY_OPEN;
+      }
+      ESP_LOGI(TAG, "Restored relay settings from NVS (trigger=%d, contact=%d)",
+               static_cast<int>(relay_trigger_mode_), static_cast<int>(relay_contact_mode_));
     }
-    uint8_t relay_cont = 0;
-    nvs_get_u8(handle, "relay_cont", &relay_cont);
-    if (relay_cont <= static_cast<uint8_t>(RelayContactMode::NORMALLY_CLOSED)) {
-      relay_contact_mode_ = static_cast<RelayContactMode>(relay_cont);
-    } else {
-      ESP_LOGW(TAG, "Invalid relay contact mode %d in NVS, defaulting to NO", relay_cont);
-      relay_contact_mode_ = RelayContactMode::NORMALLY_OPEN;
-    }
-    ESP_LOGI(TAG, "Restored relay settings from NVS (trigger=%d, contact=%d)",
-             static_cast<int>(relay_trigger_mode_), static_cast<int>(relay_contact_mode_));
+  } else if (relay_v != 0) {
+    ESP_LOGW(TAG, "Relay NVS schema mismatch (stored=%u, expected=%u), skipping",
+             relay_v, RELAY_SCHEMA_V);
   }
 
   // Restore zones (stored as JSON string)
-  size_t str_len = 0;
-  if (nvs_get_str(handle, "zones", nullptr, &str_len) == ESP_OK && str_len > 1) {
-    // nvs_get_str writes str_len bytes (payload + trailing null) into the
-    // buffer, so allocate the full capacity and trim the null afterward.
-    // Allocating str_len - 1 would let nvs_get_str write one byte past the
-    // std::string's logical end into its internal terminator slot (UB).
-    std::string zones_str(str_len, '\0');
-    esp_err_t err = nvs_get_str(handle, "zones", &zones_str[0], &str_len);
-    if (err != ESP_OK) {
-      ESP_LOGW(TAG, "Failed to read zones from NVS: %s", esp_err_to_name(err));
-      nvs_close(handle);
-      return;
-    }
-    // Trim the embedded null terminator that nvs_get_str wrote at the end.
-    if (!zones_str.empty() && zones_str.back() == '\0') {
-      zones_str.pop_back();
-    }
-    nvs_close(handle);  // Close before calling set_zones (which re-opens for save)
-    // Parse and apply but don't re-save — call the shared parsing helper.
-    JsonDocument doc;
-    DeserializationError err = deserializeJson(doc, zones_str);
-    if (!err) {
-      ZoneConfig configs[MAX_ZONE_SLOTS];
-      int count = 0;
-      parse_zone_configs(doc, configs, count);
+  uint8_t zones_v = 0;
+  nvs_get_u8(handle, "zones_v", &zones_v);
+  if (should_load_blob(zones_v, ZONES_SCHEMA_V)) {
+    size_t str_len = 0;
+    if (nvs_get_str(handle, "zones", nullptr, &str_len) == ESP_OK && str_len > 1) {
+      // nvs_get_str writes str_len bytes (payload + trailing null) into the
+      // buffer, so allocate the full capacity and trim the null afterward.
+      // Allocating str_len - 1 would let nvs_get_str write one byte past the
+      // std::string's logical end into its internal terminator slot (UB).
+      std::string zones_str(str_len, '\0');
+      esp_err_t err = nvs_get_str(handle, "zones", &zones_str[0], &str_len);
+      if (err != ESP_OK) {
+        ESP_LOGW(TAG, "Failed to read zones from NVS: %s", esp_err_to_name(err));
+        nvs_close(handle);
+        return;
+      }
+      // Trim the embedded null terminator that nvs_get_str wrote at the end.
+      if (!zones_str.empty() && zones_str.back() == '\0') {
+        zones_str.pop_back();
+      }
+      // Parse and apply but don't re-save — call the shared parsing helper.
+      JsonDocument doc;
+      DeserializationError parse_err = deserializeJson(doc, zones_str);
+      if (!parse_err) {
+        ZoneConfig configs[MAX_ZONE_SLOTS];
+        int count = 0;
+        parse_zone_configs(doc, configs, count);
 
-      zone_engine_.set_zones(configs, count);
-      last_zones_json_ = zones_str;
-      has_zones_cache_ = true;  // seed idempotency cache (see set_zones)
-      ESP_LOGI(TAG, "Restored %d zones from NVS", count);
-    } else {
-      // Without this log, a corrupt blob silently drops all zones at boot.
-      // The user would see no zones in HA and no clue why.
-      ESP_LOGW(TAG, "Corrupt zones JSON in NVS, skipping restore: %s", err.c_str());
+        zone_engine_.set_zones(configs, count);
+        last_zones_json_ = zones_str;
+        has_zones_cache_ = true;  // seed idempotency cache (see set_zones)
+        ESP_LOGI(TAG, "Restored %d zones from NVS", count);
+      } else {
+        // Without this log, a corrupt blob silently drops all zones at boot.
+        // The user would see no zones in HA and no clue why.
+        ESP_LOGW(TAG, "Corrupt zones JSON in NVS, skipping restore: %s", parse_err.c_str());
+      }
     }
-    return;
+  } else if (zones_v != 0) {
+    ESP_LOGW(TAG, "Zones NVS schema mismatch (stored=%u, expected=%u), skipping",
+             zones_v, ZONES_SCHEMA_V);
   }
 
   nvs_close(handle);
@@ -622,7 +644,8 @@ void EPPComponent::save_perspective_to_nvs_() {
     return;
   }
 
-  nvs_set_u8(handle, "version", NVS_SCHEMA_VERSION);
+  // Per-blob version key: bumping PERSP_SCHEMA_V invalidates only this blob.
+  nvs_set_u8(handle, "persp_v", PERSP_SCHEMA_V);
   nvs_set_blob(handle, "persp", persp_cache_, sizeof(persp_cache_));
   nvs_commit(handle);
   nvs_close(handle);
@@ -646,7 +669,7 @@ void EPPComponent::save_grid_to_nvs_() {
   memcpy(buf + GRID_CELL_COUNT, &ox, sizeof(float));
   memcpy(buf + GRID_CELL_COUNT + sizeof(float), &oy, sizeof(float));
 
-  nvs_set_u8(handle, "version", NVS_SCHEMA_VERSION);
+  nvs_set_u8(handle, "grid_v", GRID_SCHEMA_V);
   nvs_set_blob(handle, "grid", buf, sizeof(buf));
   nvs_commit(handle);
   nvs_close(handle);
@@ -662,7 +685,7 @@ void EPPComponent::save_zones_to_nvs_(const std::string &zones_json) {
 
   last_zones_json_ = zones_json;
   has_zones_cache_ = true;
-  nvs_set_u8(handle, "version", NVS_SCHEMA_VERSION);
+  nvs_set_u8(handle, "zones_v", ZONES_SCHEMA_V);
   nvs_set_str(handle, "zones", zones_json.c_str());
   nvs_commit(handle);
   nvs_close(handle);
@@ -676,7 +699,7 @@ void EPPComponent::save_relay_to_nvs_() {
     return;
   }
 
-  nvs_set_u8(handle, "version", NVS_SCHEMA_VERSION);
+  nvs_set_u8(handle, "relay_v", RELAY_SCHEMA_V);
   nvs_set_u8(handle, "relay_trig", static_cast<uint8_t>(relay_trigger_mode_));
   nvs_set_u8(handle, "relay_cont", static_cast<uint8_t>(relay_contact_mode_));
   nvs_commit(handle);
