@@ -2853,7 +2853,7 @@ class TestWebSocketSubscriptions:
 
         mock_device_conn = MagicMock()
         mock_device_conn._entities = []
-        mock_device_conn.subscribe_states = MagicMock()
+        mock_device_conn.subscribe_states = AsyncMock()
         mock_device_conn.unsubscribe_states = MagicMock()
         mock_dm.get_session = MagicMock(return_value=mock_device_conn)
 
@@ -2890,7 +2890,7 @@ class TestWebSocketSubscriptions:
 
         mock_device_conn = MagicMock()
         mock_device_conn._entities = []
-        mock_device_conn.subscribe_states = MagicMock()
+        mock_device_conn.subscribe_states = AsyncMock()
         mock_device_conn.unsubscribe_states = MagicMock()
         mock_dm.get_session = MagicMock(return_value=mock_device_conn)
 
@@ -3235,7 +3235,7 @@ class TestSubscriptionCallbacks:
 
         mock_device_conn = MagicMock()
         mock_device_conn._entities = [raw0, raw1]
-        mock_device_conn.subscribe_states = MagicMock()
+        mock_device_conn.subscribe_states = AsyncMock()
         mock_device_conn.unsubscribe_states = MagicMock()
         mock_dm.get_session = MagicMock(return_value=mock_device_conn)
 
@@ -3271,7 +3271,7 @@ class TestSubscriptionCallbacks:
 
         mock_device_conn = MagicMock()
         mock_device_conn._entities = [raw0]
-        mock_device_conn.subscribe_states = MagicMock()
+        mock_device_conn.subscribe_states = AsyncMock()
         mock_device_conn.unsubscribe_states = MagicMock()
         mock_dm.get_session = MagicMock(return_value=mock_device_conn)
 
@@ -3304,7 +3304,7 @@ class TestSubscriptionCallbacks:
 
         mock_device_conn = MagicMock()
         mock_device_conn._entities = [raw0]
-        mock_device_conn.subscribe_states = MagicMock()
+        mock_device_conn.subscribe_states = AsyncMock()
         mock_device_conn.unsubscribe_states = MagicMock()
         mock_dm.get_session = MagicMock(return_value=mock_device_conn)
 
@@ -3331,7 +3331,7 @@ class TestSubscriptionCallbacks:
 
         mock_device_conn = MagicMock()
         mock_device_conn._entities = []
-        mock_device_conn.subscribe_states = MagicMock()
+        mock_device_conn.subscribe_states = AsyncMock()
         mock_device_conn.unsubscribe_states = MagicMock()
         mock_dm.get_session = MagicMock(return_value=mock_device_conn)
 
@@ -3359,7 +3359,7 @@ class TestSubscriptionCallbacks:
 
         mock_device_conn = MagicMock()
         mock_device_conn._entities = [target0]
-        mock_device_conn.subscribe_states = MagicMock()
+        mock_device_conn.subscribe_states = AsyncMock()
         mock_device_conn.unsubscribe_states = MagicMock()
         mock_dm.get_session = MagicMock(return_value=mock_device_conn)
 
@@ -3398,7 +3398,7 @@ class TestSubscriptionCallbacks:
 
         mock_device_conn = MagicMock()
         mock_device_conn._entities = [target0]
-        mock_device_conn.subscribe_states = MagicMock()
+        mock_device_conn.subscribe_states = AsyncMock()
         mock_device_conn.unsubscribe_states = MagicMock()
         mock_dm.get_session = MagicMock(return_value=mock_device_conn)
 
@@ -3433,7 +3433,7 @@ class TestSubscriptionCallbacks:
 
         mock_device_conn = MagicMock()
         mock_device_conn._entities = [zone_state_entity]
-        mock_device_conn.subscribe_states = MagicMock()
+        mock_device_conn.subscribe_states = AsyncMock()
         mock_device_conn.unsubscribe_states = MagicMock()
         mock_dm.get_session = MagicMock(return_value=mock_device_conn)
 
@@ -3484,7 +3484,7 @@ class TestSubscriptionCallbacks:
 
         mock_device_conn = MagicMock()
         mock_device_conn._entities = [occupancy]
-        mock_device_conn.subscribe_states = MagicMock()
+        mock_device_conn.subscribe_states = AsyncMock()
         mock_device_conn.unsubscribe_states = MagicMock()
         mock_dm.get_session = MagicMock(return_value=mock_device_conn)
 
@@ -3518,7 +3518,7 @@ class TestSubscriptionCallbacks:
 
         mock_device_conn = MagicMock()
         mock_device_conn._entities = [temp]
-        mock_device_conn.subscribe_states = MagicMock()
+        mock_device_conn.subscribe_states = AsyncMock()
         mock_device_conn.unsubscribe_states = MagicMock()
         mock_dm.get_session = MagicMock(return_value=mock_device_conn)
 
@@ -3559,7 +3559,7 @@ class TestSubscriptionCallbacks:
 
         mock_device_conn = MagicMock()
         mock_device_conn._entities = [co2_entity, target0]
-        mock_device_conn.subscribe_states = MagicMock()
+        mock_device_conn.subscribe_states = AsyncMock()
         mock_device_conn.unsubscribe_states = MagicMock()
         mock_dm.get_session = MagicMock(return_value=mock_device_conn)
 
@@ -3593,7 +3593,7 @@ class TestSubscriptionCallbacks:
 
         mock_device_conn = MagicMock()
         mock_device_conn._entities = []
-        mock_device_conn.subscribe_states = MagicMock()
+        mock_device_conn.subscribe_states = AsyncMock()
         mock_device_conn.unsubscribe_states = MagicMock()
         mock_dm.get_session = MagicMock(return_value=mock_device_conn)
 

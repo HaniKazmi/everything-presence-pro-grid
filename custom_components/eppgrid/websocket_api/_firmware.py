@@ -258,7 +258,7 @@ async def websocket_subscribe_ota_progress(
             )
         )
 
-    device_conn.subscribe_states(_on_state)
+    await device_conn.subscribe_states(_on_state)
     device_conn.add_log_callback(_on_log)
     connection.send_result(msg["id"])
 

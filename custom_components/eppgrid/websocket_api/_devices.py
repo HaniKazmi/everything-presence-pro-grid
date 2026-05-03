@@ -583,7 +583,7 @@ async def websocket_subscribe_raw_targets(
             raw_targets[idx] = {"raw_x": None, "raw_y": None}
         connection.send_message(websocket_api.event_message(msg["id"], {"targets": list(raw_targets)}))
 
-    device_conn.subscribe_states(_on_state)
+    await device_conn.subscribe_states(_on_state)
     connection.send_result(msg["id"])
 
     device_conn.raw_target_subs += 1
@@ -763,7 +763,7 @@ async def websocket_subscribe_grid_targets(
             field = numeric_sensor_keys[state.key]
             sensors[field] = None if math.isnan(state.state) else state.state
 
-    device_conn.subscribe_states(_on_state)
+    await device_conn.subscribe_states(_on_state)
     connection.send_result(msg["id"])
 
     device_conn.grid_target_subs += 1

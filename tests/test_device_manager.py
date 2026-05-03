@@ -101,8 +101,8 @@ class TestDeviceConnection:
 
             cb1 = MagicMock()
             cb2 = MagicMock()
-            conn.subscribe_states(cb1)
-            conn.subscribe_states(cb2)
+            await conn.subscribe_states(cb1)
+            await conn.subscribe_states(cb2)
 
             # Simulate a state dispatch
             conn._dispatch_state("fake_state")
@@ -122,11 +122,37 @@ class TestDeviceConnection:
             await conn.async_connect()
 
             cb = MagicMock()
-            conn.subscribe_states(cb)
+            await conn.subscribe_states(cb)
             conn.unsubscribe_states(cb)
 
             conn._dispatch_state("state")
             cb.assert_not_called()
+
+    async def test_subscribe_states_race_subscribes_once(self) -> None:
+        """Two concurrent subscribe_states calls must only call the underlying
+        client.subscribe_states once."""
+        conn = DeviceConnection("192.168.1.100")
+        with patch("custom_components.eppgrid.device_manager._connection.APIClient") as mock_cls:
+            mock_client = mock_cls.return_value
+            mock_client.connect = AsyncMock()
+            mock_client.list_entities_services = AsyncMock(return_value=([], []))
+            mock_client.disconnect = AsyncMock()
+            mock_client.subscribe_states = MagicMock()
+            await conn.async_connect()
+            cb1 = MagicMock()
+            cb2 = MagicMock()
+            await asyncio.gather(conn.subscribe_states(cb1), conn.subscribe_states(cb2))
+            mock_client.subscribe_states.assert_called_once()
+
+    async def test_dispatch_state_isolates_subscriber_exceptions(self) -> None:
+        """A subscriber raising must not stop later subscribers from receiving
+        the state."""
+        conn = DeviceConnection("192.168.1.100")
+        bad = MagicMock(side_effect=RuntimeError("boom"))
+        good = MagicMock()
+        conn._state_subscribers = [bad, good]
+        conn._dispatch_state(MagicMock())
+        good.assert_called_once()
 
     async def test_push_config_perspective(self) -> None:
         """push_config sends perspective coefficients to device."""

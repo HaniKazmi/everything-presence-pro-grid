@@ -61,7 +61,7 @@ def make_mock_device_conn(entities=None, services=None):
     conn = MagicMock()
     conn.connected = True
     conn._entities = entities or []
-    conn.subscribe_states = MagicMock()
+    conn.subscribe_states = AsyncMock()
     conn.unsubscribe_states = MagicMock()
     conn.add_log_callback = MagicMock()
     conn.remove_log_callback = MagicMock()

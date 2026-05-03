@@ -37,6 +37,7 @@ class DeviceConnection:
         self._entities: list = []
         self._state_subscribers: list[Any] = []
         self._states_subscribed: bool = False
+        self._subscribe_lock = asyncio.Lock()
         self._log_callbacks: list[Any] = []
         self._unsub_logs: Any = None
         self.connected: bool = False
@@ -82,12 +83,13 @@ class DeviceConnection:
         self._log_callbacks.clear()
         self._unsub_logs = None
 
-    def subscribe_states(self, cb: Any) -> None:
-        """Add a state subscriber. All subscribers receive every state update."""
-        self._state_subscribers.append(cb)
-        if not self._states_subscribed and self._client is not None:
-            self._states_subscribed = True
-            self._client.subscribe_states(self._dispatch_state)
+    async def subscribe_states(self, cb: Any) -> None:
+        """Add a state subscriber. Idempotent under concurrent callers."""
+        async with self._subscribe_lock:
+            self._state_subscribers.append(cb)
+            if not self._states_subscribed and self._client is not None:
+                self._states_subscribed = True
+                self._client.subscribe_states(self._dispatch_state)
 
     def unsubscribe_states(self, cb: Any) -> None:
         """Remove a state subscriber."""
@@ -95,9 +97,12 @@ class DeviceConnection:
             self._state_subscribers.remove(cb)
 
     def _dispatch_state(self, state: Any) -> None:
-        """Fan out state updates to all subscribers."""
-        for cb in self._state_subscribers:
-            cb(state)
+        """Fan out state updates to all subscribers, isolating exceptions."""
+        for cb in list(self._state_subscribers):
+            try:
+                cb(state)
+            except Exception:
+                _LOGGER.exception("State subscriber raised; isolating")
 
     def add_log_callback(self, cb: Any) -> None:
         """Add a log callback. Receives raw log messages from the device."""
