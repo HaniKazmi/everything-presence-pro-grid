@@ -34,6 +34,7 @@ import {
 	ENTITY_DEFAULTS,
 	SETTINGS_DEFAULTS,
 	SETTINGS_FIELD_MAP,
+	type SettingsHostProp,
 } from "../lib/settings-defaults.js";
 import {
 	ZONE_COLORS,
@@ -522,7 +523,7 @@ export class GridStateController implements ReactiveController {
 			furniture: this.host._furniture,
 			showConfigurationRestore: this.host._showConfigurationRestore,
 			dirty: this.host._dirty,
-			settings: new Map<string, any>(),
+			settings: new Map<SettingsHostProp, unknown>(),
 		};
 
 		// Apply layout
@@ -542,19 +543,23 @@ export class GridStateController implements ReactiveController {
 		// which restores every field to its canonical default value.
 		const s = cfg.settings;
 		const hasSettings = s != null && typeof s === "object";
-		// SETTINGS_FIELD_MAP keys cover panel-internal settings fields, but the
-		// loop indexes by `string` so tsc can't prove the index is a known
-		// PanelHost key. Cast once per loop body.
-		const hostAsRecord = this.host as unknown as Record<string, unknown>;
+		// `prop` is typed as `SettingsHostProp` (a union of literal property
+		// names on PanelHost), so `this.host[prop]` resolves to the real field
+		// type. Indexed assignments need an `any`-typed RHS because the union
+		// members have heterogeneous types — but a typo in the prop name still
+		// fails the compile.
 		if (hasSettings) {
 			for (const [key, prop] of SETTINGS_FIELD_MAP) {
-				snapshot.settings.set(prop, hostAsRecord[prop]);
+				snapshot.settings.set(prop, this.host[prop]);
 				if (key === "entities") {
 					const sparse =
 						"entities" in s ? (s as Record<string, any>).entities : undefined;
-					hostAsRecord[prop] = { ...ENTITY_DEFAULTS, ...(sparse || {}) };
+					(this.host as any)[prop] = {
+						...ENTITY_DEFAULTS,
+						...(sparse || {}),
+					};
 				} else {
-					hostAsRecord[prop] =
+					(this.host as any)[prop] =
 						key in s ? (s as Record<string, any>)[key] : SETTINGS_DEFAULTS[key];
 				}
 			}
@@ -593,7 +598,7 @@ export class GridStateController implements ReactiveController {
 				this.host._showConfigurationRestore = snapshot.showConfigurationRestore;
 				this.host._dirty = snapshot.dirty;
 				for (const [prop, value] of snapshot.settings) {
-					hostAsRecord[prop] = value;
+					(this.host as any)[prop] = value;
 				}
 				this.host.requestUpdate();
 				throw err;

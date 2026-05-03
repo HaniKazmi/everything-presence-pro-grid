@@ -97,6 +97,37 @@ export function isSettingsValueDefault(
 }
 
 /**
+ * Union of every panel property name targeted by `SETTINGS_FIELD_MAP`.
+ * Tightening this from `string` makes the controller's restore loop
+ * type-safe — typos in either column fail the compile, and indexing
+ * the panel host with one of these literals returns the real field
+ * type instead of `unknown`.
+ */
+export type SettingsHostProp =
+	| "_temperatureOffset"
+	| "_humidityOffset"
+	| "_illuminanceOffset"
+	| "_motionTimeout"
+	| "_targetAutoDistance"
+	| "_targetMaxDistance"
+	| "_staticAutoDistance"
+	| "_staticMinDistance"
+	| "_staticMaxDistance"
+	| "_staticTriggerThreshold"
+	| "_staticRenewThreshold"
+	| "_staticTimeout"
+	| "_staticOnDelay"
+	| "_ledMode"
+	| "_ledBrightness"
+	| "_ledPresenceColor"
+	| "_relayTriggerMode"
+	| "_relayContactMode"
+	| "_targetUpdateRateMs"
+	| "_zoneUpdateRateMs"
+	| "_entitiesConfig"
+	| "_logLevels";
+
+/**
  * Mapping from each settings key to the corresponding panel reactive
  * property. The pattern is snake_case → `_camelCase`, with `entities`
  * being the one outlier (`_entitiesConfig`, not `_entities`).
@@ -104,7 +135,9 @@ export function isSettingsValueDefault(
  * Used by `loadConfiguration` to drive the restore field-by-field, and
  * by tests that need to seed the panel with all-default values.
  */
-export const SETTINGS_FIELD_MAP: Array<[SettingsKey, string]> = [
+export const SETTINGS_FIELD_MAP: ReadonlyArray<
+	readonly [SettingsKey, SettingsHostProp]
+> = [
 	["temperature_offset", "_temperatureOffset"],
 	["humidity_offset", "_humidityOffset"],
 	["illuminance_offset", "_illuminanceOffset"],

@@ -11,12 +11,15 @@ import type { RawTarget, Target } from "../types.js";
 /**
  * Structural shape of the panel as far as the controllers are concerned.
  *
- * The panel's `@state` properties are declared `private` for class-level
- * encapsulation, so the panel passes itself in via
- * `new GridStateController(this as unknown as PanelHost)`. From the
- * controllers' perspective, this is a typed bag of fields and methods —
- * tsc catches typos like `this.host._zoneCofig` that the previous
- * `Record<string, any>` shape silently allowed.
+ * The panel passes itself directly: `new GridStateController(this)`. tsc
+ * verifies the panel actually has every `_field` listed here with the
+ * declared type — a future rename or removal of one of these fields
+ * fails the compile, which the previous `Record<string, any>` (and an
+ * `as unknown as PanelHost` cast) would have silently swallowed.
+ *
+ * The `_` prefix is the social marker for "internal panel state" —
+ * external consumers (only `<epp-device-card>` and tests in practice)
+ * shouldn't reach into them.
  *
  * Only fields actually read or written by the controllers belong here.
  * Adding a new field requires both adding it to the panel and listing

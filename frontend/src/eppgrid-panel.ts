@@ -16,7 +16,6 @@ import {
 	GridStateController,
 	serializeSlot,
 } from "./controllers/grid-state-controller.js";
-import type { PanelHost } from "./controllers/panel-host.js";
 import { TargetController } from "./controllers/target-controller.js";
 import type { PaintAction } from "./lib/cell-painting.js";
 import { parseConfig } from "./lib/config-serialization.js";
@@ -310,52 +309,53 @@ export class EPPGridPanel extends LitElement {
 	// Device controller — owns WS subscriptions and device loading
 	private _deviceCtrl = new DeviceController(this);
 	// Grid state controller — owns zone/furniture/template/paint/save logic.
-	// Cast: GridStateController's host interface lists every panel `_field`
-	// it touches, but those fields are TypeScript-private here. The cast
-	// formalises the friend-class relationship without making the state
-	// publicly accessible to other modules.
-	private _gridCtrl = new GridStateController(this as unknown as PanelHost);
+	// Pass `this` directly so tsc verifies the panel structurally satisfies
+	// PanelHost (i.e. that every `_field` PanelHost lists actually exists
+	// here with the declared type). The panel's `@state _field`s are public
+	// so the contract holds — the `_` prefix is the social marker for
+	// internal-only state.
+	private _gridCtrl = new GridStateController(this);
 	// Target controller — owns target/sensor/zone state processing, zone engine, debug logging
-	private _targetCtrl = new TargetController(this as unknown as PanelHost);
+	private _targetCtrl = new TargetController(this);
 	// Flasher controller — owns OTA flash state and flashable device list
 	private _flasherCtrl = new FlasherController(this);
-	private _localize: import("./localize.js").LocalizeFn = Object.assign(
+	_localize: import("./localize.js").LocalizeFn = Object.assign(
 		((k: string) => k) as import("./localize.js").LocalizeFn,
 		{ formatNumber: (v: number, d = 1) => v.toFixed(d), lang: "en" },
 	);
 	private _currentLang = "";
 
 	// Grid data: byte per cell using the encoding above
-	@state() private _grid: Uint8Array = new Uint8Array(GRID_CELL_COUNT);
+	@state() _grid: Uint8Array = new Uint8Array(GRID_CELL_COUNT);
 	// Length-8 zone-slots tuple: slot 0 = room-boundary Zone0Config (always
 	// populated); slots 1-7 = named zones (ZoneConfig | null).
-	@state() private _zoneConfigs: ZoneSlots = INITIAL_ZONE_SLOTS;
-	@state() private _activeZone: number | null = null; // null = none selected, 0 = room, 1-7 = named zones
-	@state() private _targetAutoDistance = true;
-	@state() private _targetMaxDistance = 6.0;
-	@state() private _staticAutoDistance = true;
-	@state() private _staticMinDistance = 0.3;
-	@state() private _staticMaxDistance = 16.0;
-	@state() private _temperatureOffset = 0;
-	@state() private _humidityOffset = 0;
-	@state() private _illuminanceOffset = 0;
-	@state() private _motionTimeout = 5;
-	@state() private _staticTimeout = 30;
-	@state() private _staticTriggerThreshold = 3;
-	@state() private _staticRenewThreshold = 3;
-	@state() private _staticOnDelay = 0;
-	@state() private _logLevels: Record<string, string> = {};
+	@state() _zoneConfigs: ZoneSlots = INITIAL_ZONE_SLOTS;
+	@state() _activeZone: number | null = null; // null = none selected, 0 = room, 1-7 = named zones
+	@state() _targetAutoDistance = true;
+	@state() _targetMaxDistance = 6.0;
+	@state() _staticAutoDistance = true;
+	@state() _staticMinDistance = 0.3;
+	@state() _staticMaxDistance = 16.0;
+	@state() _temperatureOffset = 0;
+	@state() _humidityOffset = 0;
+	@state() _illuminanceOffset = 0;
+	@state() _motionTimeout = 5;
+	@state() _staticTimeout = 30;
+	@state() _staticTriggerThreshold = 3;
+	@state() _staticRenewThreshold = 3;
+	@state() _staticOnDelay = 0;
+	@state() _logLevels: Record<string, string> = {};
 	@state() private _bluetoothEnabled = false;
 	@state() private _co2Enabled = false;
-	@state() private _ledMode = "Manual Control";
-	@state() private _ledBrightness = 1.0;
-	@state() private _ledPresenceColor = "#CC33FF";
-	@state() private _relayTriggerMode = "disabled";
-	@state() private _relayContactMode = "no";
-	@state() private _targetUpdateRateMs = 1000;
-	@state() private _zoneUpdateRateMs = 1000;
-	@state() private _entitiesConfig: Record<string, any> = {};
-	@state() private _sidebarTab: SidebarTab = parseViewHash(
+	@state() _ledMode = "Manual Control";
+	@state() _ledBrightness = 1.0;
+	@state() _ledPresenceColor = "#CC33FF";
+	@state() _relayTriggerMode = "disabled";
+	@state() _relayContactMode = "no";
+	@state() _targetUpdateRateMs = 1000;
+	@state() _zoneUpdateRateMs = 1000;
+	@state() _entitiesConfig: Record<string, any> = {};
+	@state() _sidebarTab: SidebarTab = parseViewHash(
 		typeof location !== "undefined" ? location.hash : "",
 	).sidebarTab;
 	@state() private _panelTab: "config" | "flasher" = "config";
@@ -363,11 +363,11 @@ export class EPPGridPanel extends LitElement {
 	@state() private _showLiveMenu = false;
 	@state() private _showCustomIconPicker = false;
 	@state() private _customIconValue = "";
-	@state() private _furniture: FurnitureItem[] = [];
-	@state() private _selectedFurnitureId: string | null = null;
+	@state() _furniture: FurnitureItem[] = [];
+	@state() _selectedFurnitureId: string | null = null;
 	private _furnitureClipboard: FurnitureItem | null = null;
 	// Non-reactive: pointer drag bookkeeping. Repaint is driven by @state fields the drag handlers update (e.g. _furniture).
-	private _dragState: {
+	_dragState: {
 		type: "move" | "resize" | "rotate";
 		id: string;
 		startX: number;
@@ -382,17 +382,17 @@ export class EPPGridPanel extends LitElement {
 		centerY?: number;
 		startAngle?: number; // angle at drag start
 	} | null = null;
-	@state() private _targets: Target[] = [];
-	@state() private _rawTargets: RawTarget[] = [];
-	@state() private _sensorState: SensorState = createInitialSensorState();
-	@state() private _zoneState: ZoneState = createInitialZoneState();
+	@state() _targets: Target[] = [];
+	@state() _rawTargets: RawTarget[] = [];
+	@state() _sensorState: SensorState = createInitialSensorState();
+	@state() _zoneState: ZoneState = createInitialZoneState();
 	@state() private _showHitCounts = false;
-	@state() private _showDebugLog = false;
-	private _debugLogLines: string[] = [];
-	private _debugLogPrev: string | null = null;
-	@state() private _showBackendDebugLog = false;
-	private _backendDebugLogLines: string[] = [];
-	private _backendDebugLogPrev: string | null = null;
+	@state() _showDebugLog = false;
+	_debugLogLines: string[] = [];
+	_debugLogPrev: string | null = null;
+	@state() _showBackendDebugLog = false;
+	_backendDebugLogLines: string[] = [];
+	_backendDebugLogPrev: string | null = null;
 	// Zone engine state — delegated to TargetController
 	private get _zoneEngineState(): ZoneEngineState {
 		return this._targetCtrl.zoneEngineState;
@@ -400,7 +400,7 @@ export class EPPGridPanel extends LitElement {
 	private set _zoneEngineState(value: ZoneEngineState) {
 		this._targetCtrl.zoneEngineState = value;
 	}
-	@state() private _overlayMode: OverlayMode = null;
+	@state() _overlayMode: OverlayMode = null;
 	@state() private _targetMenu: {
 		x: number;
 		y: number;
@@ -409,26 +409,26 @@ export class EPPGridPanel extends LitElement {
 		pctY: number;
 	} | null = null;
 	@state() private _dismissedTargets: Map<number, number> = new Map();
-	@state() private _isPainting = false;
-	private _justPainted = false;
-	@state() private _paintAction: PaintAction = "set";
-	private _frozenBounds: {
+	@state() _isPainting = false;
+	_justPainted = false;
+	@state() _paintAction: PaintAction = "set";
+	_frozenBounds: {
 		minCol: number;
 		maxCol: number;
 		minRow: number;
 		maxRow: number;
 	} | null = null;
-	@state() private _saving = false;
-	@state() private _dirty = false;
+	@state() _saving = false;
+	@state() _dirty = false;
 	@state() private _showUnsavedDialog = false;
 	private _pendingNavigation: (() => void) | null = null;
-	@state() private _showConfigurationBackup = false;
-	@state() private _showConfigurationRestore = false;
-	@state() private _configurationName = "";
+	@state() _showConfigurationBackup = false;
+	@state() _showConfigurationRestore = false;
+	@state() _configurationName = "";
 
 	// Multi-device support
 	@state() private _devices: DeviceInfo[] = [];
-	@state() private _selectedMac = "";
+	@state() _selectedMac = "";
 	@state() private _loading = true;
 	// Tracks which device we've successfully loaded config for, so
 	// reconnect paths can re-establish the live stream without refetching
@@ -471,15 +471,15 @@ export class EPPGridPanel extends LitElement {
 	// Per-tab state — derived from the URL fragment so each browser tab has
 	// its own view, the sidebar icon (no fragment) returns to live, and
 	// reload preserves the *current* tab's view.
-	@state() private _view: ViewMode = parseViewHash(
+	@state() _view: ViewMode = parseViewHash(
 		typeof location !== "undefined" ? location.hash : "",
 	).view;
 	@state() private _openAccordions: Set<string> = new Set();
 
 	// Perspective transform state (client-side, set after corner marking)
-	@state() private _perspective: number[] | null = null;
-	@state() private _roomWidth = 0; // mm
-	@state() private _roomDepth = 0; // mm
+	@state() _perspective: number[] | null = null;
+	@state() _roomWidth = 0; // mm
+	@state() _roomDepth = 0; // mm
 
 	// Device session + target subscriptions (delegated to _deviceCtrl)
 
@@ -1078,7 +1078,7 @@ export class EPPGridPanel extends LitElement {
 	 * builds the same payload from the live settings-view overrides during an
 	 * active edit session.
 	 */
-	private _buildSettingsPayload(): Record<string, any> {
+	_buildSettingsPayload(): Record<string, any> {
 		const payload: Record<string, any> = {};
 		for (const [key, prop] of SETTINGS_FIELD_MAP) {
 			const value = (this as Record<string, unknown>)[prop];
@@ -1096,7 +1096,7 @@ export class EPPGridPanel extends LitElement {
 	 *
 	 * Stays in sync with `_buildSettingsPayload()` and `SETTINGS_DEFAULTS`.
 	 */
-	private _buildSparseSettings(): Record<string, any> {
+	_buildSparseSettings(): Record<string, any> {
 		const full = this._buildSettingsPayload();
 		const sparse: Record<string, any> = {};
 		for (const [key, value] of Object.entries(full)) {
