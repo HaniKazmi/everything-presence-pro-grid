@@ -35,13 +35,12 @@ static constexpr size_t GRID_BLOB_SIZE = GRID_CELL_COUNT + 2 * sizeof(float);
 // newline. We allow 4 extra bytes of padding/whitespace slack so a stray
 // newline or trailing space from the WS layer doesn't trigger a false
 // rejection. Anything larger is treated as a buggy or malicious caller and
-// rejected before the base64 decoder is invoked. The static_assert below
-// makes sure the constant is large enough to cover a fully-padded encoding
-// of GRID_CELL_COUNT bytes.
+// rejected before the base64 decoder is invoked. The runtime check in
+// tests/test_nvs_layout.cpp exercises the actual base64 encoder to confirm
+// the bound is tight enough.
 static constexpr size_t GRID_BASE64_MAX = ((GRID_CELL_COUNT + 2) / 3) * 4 + 4;
-static_assert(GRID_BASE64_MAX >= ((GRID_CELL_COUNT + 2) / 3) * 4,
-              "GRID_BASE64_MAX must encompass a fully-padded base64 encoding "
-              "of GRID_CELL_COUNT bytes");
+static_assert(GRID_BASE64_MAX >= GRID_CELL_COUNT,
+              "Encoded form must be at least as big as decoded form");
 
 // Per-blob schema versions. Start at 1 so the value 0 (returned by NVS when
 // the key is absent) acts as a sentinel for "missing" in should_load_blob().

@@ -355,9 +355,12 @@ void EPPComponent::loop() {
     // boot_settled_ rationale in epp_component.h. Without this gate the very
     // first loop tick can flip the relay before the LD2450 has produced any
     // frames and before HA has restored template switch state, causing a
-    // brief incorrect output state on every boot.
+    // brief incorrect output state on every boot. Open the gate when either
+    // the first frame has arrived OR the 2s settle window has elapsed — the
+    // grace period ensures a broken/disconnected LD2450 doesn't leave the
+    // relay state machine permanently inert.
     if (!boot_settled_) {
-      if (frame_count_ > 0 && now - boot_ms_ >= BOOT_SETTLE_MS) {
+      if (frame_count_ > 0 || now - boot_ms_ >= BOOT_SETTLE_MS) {
         boot_settled_ = true;
       }
     }
