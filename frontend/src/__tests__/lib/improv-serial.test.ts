@@ -263,6 +263,31 @@ describe("parseImprovPackets", () => {
 		expect(result.packets.length).toBe(2);
 		expect(result.consumed).toBe(pkt1.length + pkt2.length);
 	});
+
+	it("recovers a packet buried in garbled data with many 'I' false-starts", () => {
+		// Stream = many bytes that include 'I' but not the full IMPROV header,
+		// then a real packet, then more garbage.
+		const garblePrefix = new Uint8Array(2000);
+		for (let i = 0; i < garblePrefix.length; i++) {
+			// alternate 'I' (0x49) with non-IMPROV bytes so indexOf-based skipping
+			// has to handle false starts repeatedly
+			garblePrefix[i] = i % 3 === 0 ? 0x49 : 0x20 + (i & 0x3f);
+		}
+		const real = buildImprovPacket(TYPE_RPC_RESULT, [0xaa, 0xbb]);
+		const garbleSuffix = new TextEncoder().encode("trailing log noise");
+
+		const combined = new Uint8Array(
+			garblePrefix.length + real.length + garbleSuffix.length,
+		);
+		combined.set(garblePrefix, 0);
+		combined.set(real, garblePrefix.length);
+		combined.set(garbleSuffix, garblePrefix.length + real.length);
+
+		const { packets } = parseImprovPackets(combined);
+		expect(packets.length).toBe(1);
+		expect(packets[0].type).toBe(TYPE_RPC_RESULT);
+		expect(Array.from(packets[0].data)).toEqual([0xaa, 0xbb]);
+	});
 });
 
 import { readFileSync } from "node:fs";

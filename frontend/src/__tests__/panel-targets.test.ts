@@ -392,6 +392,21 @@ describe("_computeMaxRangeMm", () => {
 		const result = a._computeMaxRangeMm();
 		expect(result).toBe(6000);
 	});
+
+	it("_renderLiveGrid uses cached max-range, not full-grid scan per render", () => {
+		const el = createPanel();
+		const a = el as any;
+		a._targetAutoDistance = true;
+		a._targetMaxDistance = 6;
+
+		const spy = vi.spyOn(a, "_autoDetectionRange");
+
+		a._renderLiveGrid();
+		a._renderLiveGrid();
+		a._renderLiveGrid();
+
+		expect(spy).toHaveBeenCalledTimes(1);
+	});
 });
 
 describe("raw target display subscription", () => {

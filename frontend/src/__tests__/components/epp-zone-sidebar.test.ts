@@ -268,32 +268,154 @@ describe("epp-zone-sidebar events", () => {
 		document.body.removeChild(c);
 	});
 
-	it("fires zone-config-change on name input", () => {
-		const el = createSidebar();
-		(el as any).zoneConfigs = [
-			{ name: "Z1", color: "#ff0000", type: "default" },
-			null,
-			null,
-			null,
-			null,
-			null,
-			null,
-		];
-		const handler = vi.fn();
-		el.addEventListener("zone-config-change", handler);
+	it("fires zone-config-change on name input (debounced)", () => {
+		vi.useFakeTimers();
+		try {
+			const el = createSidebar();
+			(el as any).zoneConfigs = [
+				{ name: "Z1", color: "#ff0000", type: "default" },
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+			];
+			const handler = vi.fn();
+			el.addEventListener("zone-config-change", handler);
 
-		const tpl = (el as any)._renderZoneSidebar();
-		const c = renderTo(tpl);
+			const tpl = (el as any)._renderZoneSidebar();
+			const c = renderTo(tpl);
 
-		const nameInput = c.querySelector(".zone-name-input") as HTMLInputElement;
-		nameInput.value = "Kitchen";
-		nameInput.dispatchEvent(new Event("input", { bubbles: true }));
+			const nameInput = c.querySelector(".zone-name-input") as HTMLInputElement;
+			nameInput.value = "Kitchen";
+			nameInput.dispatchEvent(new Event("input", { bubbles: true }));
 
-		expect(handler).toHaveBeenCalledTimes(1);
-		expect(handler.mock.calls[0][0].detail.index).toBe(0);
-		expect(handler.mock.calls[0][0].detail.updates.name).toBe("Kitchen");
+			// Debounced — does not fire immediately
+			expect(handler).toHaveBeenCalledTimes(0);
+			vi.advanceTimersByTime(200);
+			expect(handler).toHaveBeenCalledTimes(1);
+			expect(handler.mock.calls[0][0].detail.index).toBe(0);
+			expect(handler.mock.calls[0][0].detail.updates.name).toBe("Kitchen");
 
-		document.body.removeChild(c);
+			document.body.removeChild(c);
+		} finally {
+			vi.useRealTimers();
+		}
+	});
+
+	it("flushes pending name update on blur (so Save doesn't race with debounce)", () => {
+		vi.useFakeTimers();
+		try {
+			const el = createSidebar();
+			(el as any).zoneConfigs = [
+				{ name: "Z1", color: "#ff0000", type: "default" },
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+			];
+			const handler = vi.fn();
+			el.addEventListener("zone-config-change", handler);
+
+			const tpl = (el as any)._renderZoneSidebar();
+			const c = renderTo(tpl);
+
+			const nameInput = c.querySelector(".zone-name-input") as HTMLInputElement;
+			nameInput.value = "Hallway";
+			nameInput.dispatchEvent(new Event("input", { bubbles: true }));
+			// User immediately blurs (e.g. clicks the Save button) before debounce expires
+			nameInput.dispatchEvent(new Event("blur", { bubbles: true }));
+
+			// The pending value must be flushed synchronously, not lost
+			expect(handler).toHaveBeenCalledTimes(1);
+			expect(handler.mock.calls[0][0].detail.updates.name).toBe("Hallway");
+
+			document.body.removeChild(c);
+		} finally {
+			vi.useRealTimers();
+		}
+	});
+
+	it("flushes pending name update on disconnect (sidebar unmount within debounce window)", () => {
+		vi.useFakeTimers();
+		try {
+			const el = createSidebar();
+			(el as any).zoneConfigs = [
+				{ name: "Z1", color: "#ff0000", type: "default" },
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+			];
+			document.body.appendChild(el);
+			const handler = vi.fn();
+			el.addEventListener("zone-config-change", handler);
+
+			const tpl = (el as any)._renderZoneSidebar();
+			const c = renderTo(tpl);
+
+			const nameInput = c.querySelector(".zone-name-input") as HTMLInputElement;
+			nameInput.value = "Bedroom";
+			nameInput.dispatchEvent(new Event("input", { bubbles: true }));
+
+			// Sidebar unmounts before debounce timer fires
+			document.body.removeChild(el);
+
+			expect(handler).toHaveBeenCalledTimes(1);
+			expect(handler.mock.calls[0][0].detail.updates.name).toBe("Bedroom");
+
+			document.body.removeChild(c);
+		} finally {
+			vi.useRealTimers();
+		}
+	});
+
+	it("coalesces rapid name keystrokes into a single zone-config-change", () => {
+		vi.useFakeTimers();
+		try {
+			const el = createSidebar();
+			(el as any).zoneConfigs = [
+				{ name: "Z1", color: "#ff0000", type: "default" },
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+			];
+			const handler = vi.fn();
+			el.addEventListener("zone-config-change", handler);
+
+			const tpl = (el as any)._renderZoneSidebar();
+			const c = renderTo(tpl);
+
+			const nameInput = c.querySelector(".zone-name-input") as HTMLInputElement;
+			nameInput.value = "K";
+			nameInput.dispatchEvent(new Event("input", { bubbles: true }));
+			vi.advanceTimersByTime(50);
+			nameInput.value = "Ki";
+			nameInput.dispatchEvent(new Event("input", { bubbles: true }));
+			vi.advanceTimersByTime(50);
+			nameInput.value = "Kit";
+			nameInput.dispatchEvent(new Event("input", { bubbles: true }));
+
+			// Still no fire (debounce keeps resetting)
+			expect(handler).toHaveBeenCalledTimes(0);
+
+			vi.advanceTimersByTime(200);
+
+			expect(handler).toHaveBeenCalledTimes(1);
+			expect(handler.mock.calls[0][0].detail.updates.name).toBe("Kit");
+
+			document.body.removeChild(c);
+		} finally {
+			vi.useRealTimers();
+		}
 	});
 
 	it("fires zone-config-change on color picker input", () => {

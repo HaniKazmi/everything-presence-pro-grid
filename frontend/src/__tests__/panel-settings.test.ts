@@ -231,7 +231,7 @@ describe("connectedCallback and disconnectedCallback", () => {
 		el.connectedCallback();
 
 		expect(addSpy).toHaveBeenCalledWith("beforeunload", expect.any(Function));
-		expect(addSpy).toHaveBeenCalledWith("click", expect.any(Function));
+		expect(addSpy).toHaveBeenCalledWith("keydown", expect.any(Function));
 
 		addSpy.mockRestore();
 		el.disconnectedCallback();
@@ -251,7 +251,7 @@ describe("connectedCallback and disconnectedCallback", () => {
 			"beforeunload",
 			expect.any(Function),
 		);
-		expect(removeSpy).toHaveBeenCalledWith("click", expect.any(Function));
+		expect(removeSpy).toHaveBeenCalledWith("keydown", expect.any(Function));
 
 		removeSpy.mockRestore();
 	});
@@ -307,15 +307,6 @@ describe("_interceptNavigation", () => {
 		expect(result).toBe(true);
 		expect(a._showUnsavedDialog).toBe(true);
 		expect(a._pendingNavigation).toBeNull();
-	});
-});
-
-describe("_dismissTooltips", () => {
-	it("is a function", () => {
-		const el = createPanel();
-		const a = el as any;
-
-		expect(typeof a._dismissTooltips).toBe("function");
 	});
 });
 

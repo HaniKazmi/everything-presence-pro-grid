@@ -517,12 +517,6 @@ export class EPPGridPanel extends LitElement {
 		return true;
 	};
 
-	private _dismissTooltips = () => {
-		this.shadowRoot!.querySelectorAll(".setting-info-tooltip").forEach((t) => {
-			(t as HTMLElement).style.display = "none";
-		});
-	};
-
 	private _onKeyDown = (e: KeyboardEvent): void => {
 		if (this._view !== "editor" || this._sidebarTab !== "furniture") return;
 		if (!this._selectedFurnitureId) return;
@@ -595,7 +589,6 @@ export class EPPGridPanel extends LitElement {
 			// late rejection can't surface as "Uncaught (in promise)".
 		});
 		window.addEventListener("beforeunload", this._beforeUnloadHandler);
-		window.addEventListener("click", this._dismissTooltips);
 		window.addEventListener("keydown", this._onKeyDown);
 		window.addEventListener("hashchange", this._onHashChange);
 
@@ -635,7 +628,6 @@ export class EPPGridPanel extends LitElement {
 		this._closeDeviceSession();
 		this._detachConnectionListeners();
 		window.removeEventListener("beforeunload", this._beforeUnloadHandler);
-		window.removeEventListener("click", this._dismissTooltips);
 		window.removeEventListener("keydown", this._onKeyDown);
 		window.removeEventListener("hashchange", this._onHashChange);
 
@@ -2111,7 +2103,7 @@ export class EPPGridPanel extends LitElement {
 				.heatmapColors=${this._showHitCounts ? this._computeHeatmapColors() : null}
 				.localize=${this._localize}
 				.maxGridPx=${480}
-				.maxRangeMm=${computeMaxRangeMm(this._targetAutoDistance, this._autoDetectionRange(), this._targetMaxDistance)}
+				.maxRangeMm=${this._computeMaxRangeMm()}
 				@furniture-select=${(e: CustomEvent) => {
 					this._selectedFurnitureId = e.detail;
 				}}

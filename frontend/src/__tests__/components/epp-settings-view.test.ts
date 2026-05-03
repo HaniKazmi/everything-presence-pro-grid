@@ -58,6 +58,50 @@ describe("epp-settings-view element", () => {
 		const result = el.render();
 		expect(result).toBeDefined();
 	});
+
+	it("attaches and detaches a window click listener across connect/disconnect", () => {
+		const addSpy = vi.spyOn(window, "addEventListener");
+		const removeSpy = vi.spyOn(window, "removeEventListener");
+		const el = createView() as any;
+		el.connectedCallback();
+		const addedClickHandlers = addSpy.mock.calls
+			.filter((c) => c[0] === "click")
+			.map((c) => c[1]);
+		expect(addedClickHandlers.length).toBeGreaterThanOrEqual(1);
+
+		el.disconnectedCallback();
+		const removedClickHandlers = removeSpy.mock.calls
+			.filter((c) => c[0] === "click")
+			.map((c) => c[1]);
+		// Every click handler attached during connect is removed during disconnect
+		for (const h of addedClickHandlers) {
+			expect(removedClickHandlers).toContain(h);
+		}
+		addSpy.mockRestore();
+		removeSpy.mockRestore();
+	});
+
+	it("hides own tooltips when the window click handler fires", () => {
+		const el = createView() as any;
+		const tooltip1 = { style: { display: "block" } };
+		const tooltip2 = { style: { display: "block" } };
+		Object.defineProperty(el, "shadowRoot", {
+			value: {
+				querySelectorAll: (sel: string) => {
+					if (sel === ".setting-info-tooltip") return [tooltip1, tooltip2];
+					return [];
+				},
+			},
+			configurable: true,
+		});
+
+		// Invoke the handler directly without going through DOM connect/render
+		expect(typeof el._dismissTooltips).toBe("function");
+		el._dismissTooltips();
+
+		expect(tooltip1.style.display).toBe("none");
+		expect(tooltip2.style.display).toBe("none");
+	});
 });
 
 describe("render()", () => {

@@ -48,6 +48,10 @@ export function setupLocalize(hass?: {
 	const strings = LANGUAGES[lang];
 	const fallback = LANGUAGES.en;
 
+	// Cap the cache so a stream of unique formats (e.g. user-supplied data
+	// echoed into a translation key) can't grow unbounded. The translation
+	// catalogue is well under this size, so normal use stays warm.
+	const FORMAT_CACHE_CAP = 256;
 	const formatCache = new Map<string, IntlMessageFormat>();
 	const numberCache = new Map<number, Intl.NumberFormat>();
 
@@ -62,6 +66,11 @@ export function setupLocalize(hass?: {
 		let fmt = formatCache.get(raw);
 		if (!fmt) {
 			fmt = new IntlMessageFormat(raw, lang);
+			if (formatCache.size >= FORMAT_CACHE_CAP) {
+				// Evict the oldest entry. Map iteration is in insertion order.
+				const oldest = formatCache.keys().next().value;
+				if (oldest !== undefined) formatCache.delete(oldest);
+			}
 			formatCache.set(raw, fmt);
 		}
 		return fmt.format(params) as string;

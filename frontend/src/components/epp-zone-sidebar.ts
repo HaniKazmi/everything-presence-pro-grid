@@ -25,6 +25,49 @@ export class EppZoneSidebar extends LitElement {
 		new Map();
 	@property({ attribute: false }) localize: LocalizeFn = defaultLocalize;
 
+	// Debounce zone-name input so each keystroke doesn't trigger a full panel
+	// re-render. The input keeps its DOM value as the user types; the parent
+	// state catches up when typing pauses.
+	private static NAME_DEBOUNCE_MS = 150;
+	private _nameDebounceTimer: ReturnType<typeof setTimeout> | null = null;
+	private _pendingNameUpdate: { index: number; name: string } | null = null;
+
+	private _flushPendingName = (): void => {
+		this._nameDebounceTimer = null;
+		const pending = this._pendingNameUpdate;
+		if (!pending) return;
+		this._pendingNameUpdate = null;
+		this.dispatchEvent(
+			new CustomEvent("zone-config-change", {
+				detail: { index: pending.index, updates: { name: pending.name } },
+				bubbles: true,
+				composed: true,
+			}),
+		);
+		this.dispatchEvent(
+			new CustomEvent("dirty", { bubbles: true, composed: true }),
+		);
+	};
+
+	private _onNameInput(index: number, name: string): void {
+		this._pendingNameUpdate = { index, name };
+		if (this._nameDebounceTimer !== null) clearTimeout(this._nameDebounceTimer);
+		this._nameDebounceTimer = setTimeout(
+			this._flushPendingName,
+			EppZoneSidebar.NAME_DEBOUNCE_MS,
+		);
+	}
+
+	disconnectedCallback(): void {
+		super.disconnectedCallback();
+		// Flush any pending update so unmounting within the debounce window
+		// doesn't drop the user's last keystrokes.
+		if (this._nameDebounceTimer !== null) {
+			clearTimeout(this._nameDebounceTimer);
+			this._flushPendingName();
+		}
+	}
+
 	static styles = [
 		toggleStyles,
 		css`
@@ -261,22 +304,15 @@ export class EppZoneSidebar extends LitElement {
 									.value=${zone.name}
 									@input=${(e: Event) => {
 										const val = (e.target as HTMLInputElement).value;
-										this.dispatchEvent(
-											new CustomEvent("zone-config-change", {
-												detail: {
-													index: i,
-													updates: { name: val },
-												},
-												bubbles: true,
-												composed: true,
-											}),
-										);
-										this.dispatchEvent(
-											new CustomEvent("dirty", {
-												bubbles: true,
-												composed: true,
-											}),
-										);
+										this._onNameInput(i, val);
+									}}
+									@blur=${() => {
+										// Flush so a Save click that blurs the input doesn't race
+										// the debounce and drop the last keystrokes.
+										if (this._nameDebounceTimer !== null) {
+											clearTimeout(this._nameDebounceTimer);
+											this._flushPendingName();
+										}
 									}}
 									@click=${(e: Event) => {
 										e.stopPropagation();
