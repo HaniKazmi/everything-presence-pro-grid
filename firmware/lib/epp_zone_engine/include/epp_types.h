@@ -29,10 +29,11 @@ constexpr int MAX_ZONES = 7;  // named zones 1-7; zone 0 is implicit rest-of-roo
 constexpr int MAX_ZONE_SLOTS = 8;  // zone 0 + zones 1-7
 constexpr int MAX_MOVEMENT_CELLS = 5;  // continuity Chebyshev threshold
 
-// Canonical rolling-window size: 1000ms at 10Hz nominal sensor rate. The
-// signal scale (0–9) is computed against this fixed denominator so that
-// sensor over-delivery cannot dilute the published signal and the firmware's
-// confirmation decision matches what the frontend zone engine sees.
+// Nominal frame count per rolling window: the LD2450 runs at ~10Hz and the
+// rolling window is fixed at 1000ms (RollingWindow::WINDOW_MS), so a
+// healthy stream produces ~10 frames per window. The signal scale (0–9)
+// uses this as its natural maximum, with `min(frame_count, 9)` saturating
+// the published value so sensor over-delivery never inflates it.
 constexpr int CANONICAL_FRAMES = 10;
 
 // Target status
@@ -70,9 +71,10 @@ struct LogEntry {
 constexpr int MAX_LOG_ENTRIES = 16;
 
 // Compute the published signal (0–9 scale) from a frame count.
-// Frames are counted over a fixed CANONICAL_FRAMES window (1000ms @ 10Hz nominal),
-// so the count maps 1:1 onto the signal scale and saturates at 9. Sensor
-// over-delivery (frame_count > CANONICAL_FRAMES) is capped, never inflated.
+// `frame_count` is the number of frames the target was active in the rolling
+// window (RollingWindow::WINDOW_MS = 1000ms). At the nominal 10Hz sensor
+// rate this is naturally bounded at 10, but sensors may over-deliver — the
+// `min(frame_count, 9)` cap keeps the signal bounded at 9 either way.
 inline int frame_count_to_signal(int frame_count) {
     return std::min(frame_count, 9);
 }

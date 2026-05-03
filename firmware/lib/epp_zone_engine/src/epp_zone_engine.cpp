@@ -226,9 +226,10 @@ const ProcessingResult& ZoneEngine::tick(const WindowOutput& window, float times
         }
 
         target_active[i] = true;
-        // Signal = proportion of frames target was active (0-9 scale), computed
-        // against a fixed CANONICAL_FRAMES denominator so over-delivery cannot
-        // dilute it and the frontend's signal-vs-trigger comparison agrees.
+        // Signal = number of frames in the rolling window where the target
+        // was active, capped at 9. Identical to the value the frontend
+        // receives, so the firmware's signal-vs-trigger comparison reaches
+        // the same decision as the frontend's editor preview.
         int signal = frame_count_to_signal(tw.frame_count);
         int cell = grid_.xy_to_cell(tw.median_x, tw.median_y);
 
