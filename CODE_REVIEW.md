@@ -135,27 +135,27 @@ Goal: lock down trust boundaries. Single self-contained PR.
 
 - [ ] **H: Bus-wide `state_changed` listener** (also tracked under PR 2) — see PR 2.
 
-- [ ] **M: `list_devices` does 3-4 entity-registry scans per device** — [device_manager/__init__.py:749-777](custom_components/eppgrid/device_manager/__init__.py#L749-L777)
+- [x] **M: `list_devices` does 3-4 entity-registry scans per device** — [device_manager/__init__.py:749-777](custom_components/eppgrid/device_manager/__init__.py#L749-L777) — _shipped: PR #167_
   Build `{device_id: list[RegistryEntry]}` once; reuse for `list_flashable_devices`. `read_firmware_version` called twice for same id at lines 845 + 854.
 
-- [ ] **M: `async_update_zone_entities` does 16 registry scans (8 zones × 2 suffixes)** — [device_manager/__init__.py:867-972](custom_components/eppgrid/device_manager/__init__.py#L867-L972)
+- [x] **M: `async_update_zone_entities` does 16 registry scans (8 zones × 2 suffixes)** — [device_manager/__init__.py:867-972](custom_components/eppgrid/device_manager/__init__.py#L867-L972) — _shipped: PR #167_
   Use `er.async_entries_for_device(...)` once and dispatch by unique_id substring in a single pass.
 
-- [ ] **M: `_on_device_registry_updated` does O(N) linear scan per event** — `device_manager/__init__.py:472-477`
+- [x] **M: `_on_device_registry_updated` does O(N) linear scan per event** — `device_manager/__init__.py:472-477` — _shipped: PR #167_
   Maintain `device_id → mac` reverse map.
 
-- [ ] **M: `_sync_firmware_repair_issue` re-fires on every device-registry change** — `device_manager/__init__.py:485-500`
+- [x] **M: `_sync_firmware_repair_issue` re-fires on every device-registry change** — `device_manager/__init__.py:485-500` — _shipped: PR #167_
   Skip unless firmware_version actually changed.
 
-- [ ] **L: `list_flashable_devices` missing `include_disabled_entities=True`** — `device_manager/__init__.py:821`. Per `feedback_include_disabled_entities`.
+- [x] **L: `list_flashable_devices` missing `include_disabled_entities=True`** — `device_manager/__init__.py:821`. Per `feedback_include_disabled_entities`. — _shipped: PR #167_
 
-- [ ] **L: Hot-path imports inside `_on_state` callbacks** — `_devices.py:666, 745`
+- [x] **L: Hot-path imports inside `_on_state` callbacks** — `_devices.py:666, 745` — _shipped: PR #167_
   Hoist `import math`, `import json as json_mod`, `from aioesphomeapi import …` to module scope.
 
-- [ ] **L: Storage hit on every device removal** — `device_manager/__init__.py:524`
-  Use `Store._async_schedule_save` for batched debounced writes.
+- [ ] **L: Storage hit on every device removal** — `device_manager/__init__.py:524` — _wontfix: PR #167_
+  Originally proposed: use `Store.async_delay_save` for batched debounced writes. Explored in PR #167, then reverted on review feedback — debouncing trades durability of explicit user-delete actions for a marginal bulk-coalesce win, and a force-restart inside the debounce window can resurrect the deleted config on rediscovery.
 
-- [ ] **L: `_LOGGER.info` chatty per push** — `_connection.py:217, 238, 269, 284, 292, 300, 317, 332, 343, 355`
+- [x] **L: `_LOGGER.info` chatty per push** — `_connection.py:217, 238, 269, 284, 292, 300, 317, 332, 343, 355` — _shipped: PR #167_
   Demote per-section to debug; one info summary at end.
 
 ---
