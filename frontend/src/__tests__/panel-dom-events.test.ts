@@ -900,34 +900,40 @@ describe("_renderZoneSidebar DOM events", () => {
 		}
 	});
 
-	it("zone name input changes name", () => {
-		const s = createSidebar();
-		s.zoneConfigs = [
-			{ name: "Z1", color: "#ff0000", type: "default" },
-			null,
-			null,
-			null,
-			null,
-			null,
-			null,
-		];
-		const tpl = (s as any)._renderZoneSidebar();
-		const c = renderTo(tpl);
+	it("zone name input changes name (debounced)", () => {
+		vi.useFakeTimers();
+		try {
+			const s = createSidebar();
+			s.zoneConfigs = [
+				{ name: "Z1", color: "#ff0000", type: "default" },
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+			];
+			const tpl = (s as any)._renderZoneSidebar();
+			const c = renderTo(tpl);
 
-		const events: CustomEvent[] = [];
-		s.addEventListener("zone-config-change", (e: Event) =>
-			events.push(e as CustomEvent),
-		);
+			const events: CustomEvent[] = [];
+			s.addEventListener("zone-config-change", (e: Event) =>
+				events.push(e as CustomEvent),
+			);
 
-		const nameInput = c.querySelector(".zone-name-input") as HTMLInputElement;
-		if (nameInput) {
-			nameInput.value = "Kitchen";
-			nameInput.dispatchEvent(new Event("input", { bubbles: true }));
-			expect(
-				events.some(
-					(e) => e.detail.index === 0 && e.detail.updates.name === "Kitchen",
-				),
-			).toBe(true);
+			const nameInput = c.querySelector(".zone-name-input") as HTMLInputElement;
+			if (nameInput) {
+				nameInput.value = "Kitchen";
+				nameInput.dispatchEvent(new Event("input", { bubbles: true }));
+				vi.advanceTimersByTime(200);
+				expect(
+					events.some(
+						(e) => e.detail.index === 0 && e.detail.updates.name === "Kitchen",
+					),
+				).toBe(true);
+			}
+		} finally {
+			vi.useRealTimers();
 		}
 	});
 

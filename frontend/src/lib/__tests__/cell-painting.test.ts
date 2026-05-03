@@ -162,12 +162,11 @@ describe("clearZoneFromGrid", () => {
 		expect(clearZoneFromGrid(grid, MAX_ZONES + 1)).toBeNull();
 	});
 
-	it("returns a new grid even when no cells have the zone", () => {
+	it("returns null when no cells have the zone (avoids wasteful clone)", () => {
 		const grid = new Uint8Array(GRID_CELL_COUNT);
 		grid[0] = CELL_ROOM_BIT; // zone 0
 		const result = clearZoneFromGrid(grid, 3);
-		expect(result).not.toBeNull();
-		expect(result).not.toBe(grid); // different reference
+		expect(result).toBeNull();
 	});
 
 	it("handles all valid zone slots", () => {

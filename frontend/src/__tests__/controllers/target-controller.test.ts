@@ -950,6 +950,24 @@ describe("TargetController", () => {
 			expect(allLog).toContain("Room");
 		});
 
+		it("computes allZoneIds once per grid reference (cached across runs)", () => {
+			host._showDebugLog = true;
+			const spy = vi.spyOn(ctrl as any, "_computeAllZoneIds");
+			ctrl.runLocalZoneEngine();
+			ctrl.runLocalZoneEngine();
+			ctrl.runLocalZoneEngine();
+			expect(spy).toHaveBeenCalledTimes(1);
+		});
+
+		it("recomputes allZoneIds when host._grid is replaced", () => {
+			host._showDebugLog = true;
+			const spy = vi.spyOn(ctrl as any, "_computeAllZoneIds");
+			ctrl.runLocalZoneEngine();
+			host._grid = makeSimpleGrid();
+			ctrl.runLocalZoneEngine();
+			expect(spy).toHaveBeenCalledTimes(2);
+		});
+
 		// -----------------------------------------------------------------------
 		// frontend debug log DOM behavior
 		// -----------------------------------------------------------------------

@@ -170,6 +170,55 @@ describe("epp-grid cell events", () => {
 		document.body.removeChild(el);
 	});
 
+	it("coalesces consecutive mouseenters on the same cell", async () => {
+		const el = createGrid({ editable: true });
+		document.body.appendChild(el);
+		await el.updateComplete;
+
+		const events: CustomEvent[] = [];
+		el.addEventListener("cell-paint", (e) => events.push(e as CustomEvent));
+
+		const cell = el.shadowRoot!.querySelector(".cell") as HTMLElement;
+		cell.dispatchEvent(new MouseEvent("mouseenter", { bubbles: true }));
+		cell.dispatchEvent(new MouseEvent("mouseenter", { bubbles: true }));
+		cell.dispatchEvent(new MouseEvent("mouseenter", { bubbles: true }));
+
+		// Re-entering the same cell should not refire — only the first enter dispatches
+		expect(events.length).toBe(1);
+
+		document.body.removeChild(el);
+	});
+
+	it("re-fires mouseenter when entering a different cell", async () => {
+		const el = createGrid({ editable: true });
+		document.body.appendChild(el);
+		await el.updateComplete;
+
+		const events: CustomEvent[] = [];
+		el.addEventListener("cell-paint", (e) => events.push(e as CustomEvent));
+
+		const cells = el.shadowRoot!.querySelectorAll(".cell");
+		const cellA = cells[0] as HTMLElement;
+		const cellB = cells[1] as HTMLElement;
+		expect(cellA).not.toBeNull();
+		expect(cellB).not.toBeNull();
+		cellA.dispatchEvent(new MouseEvent("mouseenter", { bubbles: true }));
+		cellB.dispatchEvent(new MouseEvent("mouseenter", { bubbles: true }));
+		cellA.dispatchEvent(new MouseEvent("mouseenter", { bubbles: true }));
+
+		expect(events.length).toBe(3);
+		expect(events.map((e) => e.detail.index)).toEqual([
+			events[0].detail.index,
+			events[1].detail.index,
+			events[2].detail.index,
+		]);
+		// First and third are different cells (A then B then A again)
+		expect(events[0].detail.index).not.toBe(events[1].detail.index);
+		expect(events[1].detail.index).not.toBe(events[2].detail.index);
+
+		document.body.removeChild(el);
+	});
+
 	it("dispatches cell-paint up on mouseup on grid", async () => {
 		const el = createGrid({ editable: true });
 		document.body.appendChild(el);

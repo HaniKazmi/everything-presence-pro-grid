@@ -146,14 +146,3 @@ export function buildSparseEntities(
 	}
 	return sparse;
 }
-
-/**
- * Reconstruct a full entities dict from a sparse blob: start with the
- * canonical defaults for known entities, then layer the sparse overrides
- * on top. Used by restore.
- */
-export function expandEntities(
-	sparse: Record<string, boolean> | undefined,
-): Record<string, boolean> {
-	return { ...ENTITY_DEFAULTS, ...(sparse || {}) };
-}

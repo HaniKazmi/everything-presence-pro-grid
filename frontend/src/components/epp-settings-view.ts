@@ -175,6 +175,24 @@ export class EppSettingsView extends LitElement {
 
 	@property({ attribute: false }) localize: LocalizeFn = defaultLocalize;
 
+	private _dismissTooltips = (): void => {
+		const root = this.shadowRoot;
+		if (!root) return;
+		root.querySelectorAll(".setting-info-tooltip").forEach((t) => {
+			(t as HTMLElement).style.display = "none";
+		});
+	};
+
+	connectedCallback(): void {
+		super.connectedCallback();
+		window.addEventListener("click", this._dismissTooltips);
+	}
+
+	disconnectedCallback(): void {
+		super.disconnectedCallback();
+		window.removeEventListener("click", this._dismissTooltips);
+	}
+
 	static styles = [
 		accordionStyles,
 		buttonStyles,

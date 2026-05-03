@@ -108,11 +108,9 @@ export function applyOverlayPaintToCell(
 /**
  * Clear all cells of a specific zone back to zone 0 (room default).
  *
- * Returns a new grid with the zone cleared. Does NOT mutate the original.
- *
- * @param grid Current grid
- * @param slot Zone slot to clear (1-based, 1-7)
- * @returns New grid with the zone cleared, or null if slot is invalid or empty
+ * Returns a new grid with the zone cleared, or null when nothing changed
+ * (slot out of range or no cells held that zone). Does NOT mutate the
+ * original. Callers can treat null as "skip the assignment".
  */
 export function clearZoneFromGrid(
 	grid: Uint8Array,
@@ -120,13 +118,20 @@ export function clearZoneFromGrid(
 ): Uint8Array | null {
 	if (slot < 1 || slot > MAX_ZONES) return null;
 
-	const newGrid = new Uint8Array(grid);
-	let changed = false;
+	let firstHit = -1;
 	for (let i = 0; i < GRID_CELL_COUNT; i++) {
-		if (cellZone(newGrid[i]) === slot) {
-			newGrid[i] = cellSetZone(newGrid[i], 0);
-			changed = true;
+		if (cellZone(grid[i]) === slot) {
+			firstHit = i;
+			break;
 		}
 	}
-	return changed ? newGrid : new Uint8Array(grid);
+	if (firstHit === -1) return null;
+
+	const newGrid = new Uint8Array(grid);
+	for (let i = firstHit; i < GRID_CELL_COUNT; i++) {
+		if (cellZone(newGrid[i]) === slot) {
+			newGrid[i] = cellSetZone(newGrid[i], 0);
+		}
+	}
+	return newGrid;
 }

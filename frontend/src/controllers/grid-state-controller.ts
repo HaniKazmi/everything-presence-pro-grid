@@ -31,7 +31,7 @@ import {
 } from "../lib/grid.js";
 import { autoDetectionRange } from "../lib/room-geometry.js";
 import {
-	expandEntities,
+	ENTITY_DEFAULTS,
 	SETTINGS_DEFAULTS,
 	SETTINGS_FIELD_MAP,
 } from "../lib/settings-defaults.js";
@@ -536,9 +536,9 @@ export class GridStateController implements ReactiveController {
 		if (hasSettings) {
 			for (const [key, prop] of SETTINGS_FIELD_MAP) {
 				if (key === "entities") {
-					(this.host as any)[prop] = expandEntities(
-						"entities" in s ? (s as Record<string, any>).entities : undefined,
-					);
+					const sparse =
+						"entities" in s ? (s as Record<string, any>).entities : undefined;
+					(this.host as any)[prop] = { ...ENTITY_DEFAULTS, ...(sparse || {}) };
 				} else {
 					(this.host as any)[prop] =
 						key in s ? (s as Record<string, any>)[key] : SETTINGS_DEFAULTS[key];

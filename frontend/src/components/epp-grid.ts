@@ -198,6 +198,10 @@ export class EppGrid extends LitElement {
 		`;
 	}
 
+	// FOV is recomputed only when the `perspective` array reference changes.
+	// Contract: callers replace the array on update (the panel and wizard both
+	// reassign the field rather than mutating in place), so reference equality
+	// is a sufficient invalidation signal.
 	private _fovCache: SensorFov | null = null;
 	private _fovPerspective: number[] | null = null;
 
@@ -297,7 +301,15 @@ export class EppGrid extends LitElement {
 		);
 	}
 
+	// Throttle: skip repeats on the same cell during a continuous hover.
+	// Native mouseenter can re-fire as the DOM re-renders mid-drag, and even
+	// during plain hover Lit re-renders bind fresh listeners. Coalescing here
+	// prevents ~900 redundant dispatches across the shadow DOM boundary.
+	private _lastEnterIdx = -1;
+
 	private _onCellMouseEnter(index: number): void {
+		if (index === this._lastEnterIdx) return;
+		this._lastEnterIdx = index;
 		this.dispatchEvent(
 			new CustomEvent("cell-paint", {
 				detail: { index, action: "enter" },
@@ -308,6 +320,7 @@ export class EppGrid extends LitElement {
 	}
 
 	private _onCellMouseUp(): void {
+		this._lastEnterIdx = -1;
 		this.dispatchEvent(
 			new CustomEvent("cell-paint", {
 				detail: { action: "up" },

@@ -349,6 +349,31 @@ export class TargetController implements ReactiveController {
 		container.scrollTop = container.scrollHeight;
 	}
 
+	// allZoneIds is recomputed only when the grid reference changes. The
+	// codebase replaces _grid via clone-then-mutate (grid-state-controller and
+	// _setOverlay), so reference equality is a valid invalidation key.
+	private _allZoneIdsCache: Set<number> | null = null;
+	private _allZoneIdsCacheGrid: Uint8Array | null = null;
+
+	private _computeAllZoneIds(grid: Uint8Array): Set<number> {
+		const ids = new Set<number>();
+		for (let i = 0; i < grid.length; i++) {
+			if (cellIsInside(grid[i])) ids.add(cellZone(grid[i]));
+		}
+		return ids;
+	}
+
+	private _getAllZoneIds(): Set<number> {
+		const grid = this.host._grid;
+		if (this._allZoneIdsCache !== null && this._allZoneIdsCacheGrid === grid) {
+			return this._allZoneIdsCache;
+		}
+		const ids = this._computeAllZoneIds(grid);
+		this._allZoneIdsCache = ids;
+		this._allZoneIdsCacheGrid = grid;
+		return ids;
+	}
+
 	/**
 	 * Build the frontend debug log from zone engine results.
 	 * Computes target-to-zone mapping and zone signal levels, then
@@ -398,11 +423,7 @@ export class TargetController implements ReactiveController {
 			targetParts.push(`T${i}:Z${zid ?? 0}:${s}:${sig}`);
 		}
 
-		const allZoneIds = new Set<number>();
-		for (let i = 0; i < this.host._grid.length; i++) {
-			if (cellIsInside(this.host._grid[i]))
-				allZoneIds.add(cellZone(this.host._grid[i]));
-		}
+		const allZoneIds = this._getAllZoneIds();
 		const zoneParts: string[] = [];
 		for (const zid of allZoneIds) {
 			const st = this._zoneEngineState.localZoneState.get(zid);

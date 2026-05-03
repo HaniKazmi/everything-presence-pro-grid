@@ -203,9 +203,11 @@ export function parseImprovPackets(data: Uint8Array): {
 	const packets: ImprovPacket[] = [];
 	const headerLen = IMPROV_HEADER.length;
 
-	let i = 0;
+	const HEADER_FIRST = IMPROV_HEADER[0];
+	let i = data.indexOf(HEADER_FIRST);
+	if (i < 0) return { packets, consumed: 0 };
 	let consumed = 0;
-	while (i <= data.length - headerLen) {
+	while (i >= 0 && i <= data.length - headerLen) {
 		// Look for the IMPROV header
 		let headerFound = true;
 		for (let h = 0; h < headerLen; h++) {
@@ -216,7 +218,7 @@ export function parseImprovPackets(data: Uint8Array): {
 		}
 
 		if (!headerFound) {
-			i++;
+			i = data.indexOf(HEADER_FIRST, i + 1);
 			continue;
 		}
 
@@ -246,8 +248,8 @@ export function parseImprovPackets(data: Uint8Array): {
 		}
 
 		if (checksum !== data[packetEnd - 1]) {
-			// Invalid checksum — skip past this header byte and keep scanning
-			i++;
+			// Invalid checksum — skip to next potential header
+			i = data.indexOf(HEADER_FIRST, i + 1);
 			continue;
 		}
 
@@ -261,6 +263,7 @@ export function parseImprovPackets(data: Uint8Array): {
 			i++;
 		}
 		consumed = i;
+		i = data.indexOf(HEADER_FIRST, i);
 	}
 
 	return { packets, consumed };

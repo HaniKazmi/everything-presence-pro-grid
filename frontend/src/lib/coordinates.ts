@@ -78,30 +78,31 @@ export function getSmoothedValue(
 	newY: number,
 	now: number,
 ): { x: number; y: number; buffer: SmoothBufferEntry[] } {
-	const updated = [...buffer, { x: newX, y: newY, t: now }];
-
-	// Prune readings older than 1 second
+	// Find prune boundary in the input (entries older than 1s are dropped).
 	let start = 0;
-	while (start < updated.length && now - updated[start].t > 1000) {
+	while (start < buffer.length && now - buffer[start].t > 1000) {
 		start++;
 	}
-	const pruned = updated.slice(start);
 
-	if (pruned.length === 0) {
-		return { x: newX, y: newY, buffer: pruned };
+	const len = buffer.length - start + 1;
+	const pruned: SmoothBufferEntry[] = new Array(len);
+	const xs = new Array<number>(len);
+	const ys = new Array<number>(len);
+	for (let i = 0; i < len - 1; i++) {
+		const e = buffer[start + i];
+		pruned[i] = e;
+		xs[i] = e.x;
+		ys[i] = e.y;
 	}
+	pruned[len - 1] = { x: newX, y: newY, t: now };
+	xs[len - 1] = newX;
+	ys[len - 1] = newY;
 
-	const medianOf = (arr: number[]): number => {
-		const sorted = arr.slice().sort((a, b) => a - b);
-		const mid = Math.floor(sorted.length / 2);
-		return sorted.length % 2
-			? sorted[mid]
-			: (sorted[mid - 1] + sorted[mid]) / 2;
-	};
+	xs.sort((a, b) => a - b);
+	ys.sort((a, b) => a - b);
+	const mid = len >> 1;
+	const x = len % 2 ? xs[mid] : (xs[mid - 1] + xs[mid]) / 2;
+	const y = len % 2 ? ys[mid] : (ys[mid - 1] + ys[mid]) / 2;
 
-	return {
-		x: medianOf(pruned.map((s) => s.x)),
-		y: medianOf(pruned.map((s) => s.y)),
-		buffer: pruned,
-	};
+	return { x, y, buffer: pruned };
 }

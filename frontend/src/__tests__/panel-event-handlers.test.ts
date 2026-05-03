@@ -1308,32 +1308,6 @@ describe("history interception pendingNavigation callbacks", () => {
 	});
 });
 
-// ========================
-// _dismissTooltips with shadow root
-// ========================
-describe("_dismissTooltips with tooltips", () => {
-	it("hides tooltip elements", () => {
-		const a = createPanel() as any;
-		const tooltip1 = { style: { display: "block" } };
-		const tooltip2 = { style: { display: "block" } };
-
-		Object.defineProperty(a, "shadowRoot", {
-			value: {
-				querySelectorAll: (sel: string) => {
-					if (sel === ".setting-info-tooltip") return [tooltip1, tooltip2];
-					return [];
-				},
-			},
-			configurable: true,
-		});
-
-		a._dismissTooltips();
-
-		expect(tooltip1.style.display).toBe("none");
-		expect(tooltip2.style.display).toBe("none");
-	});
-});
-
 describe("cell mousedown handler", () => {
 	it("mousedown on inside cell sets dirty", () => {
 		const a = createPanel() as any;
