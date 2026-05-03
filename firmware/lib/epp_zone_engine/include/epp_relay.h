@@ -25,13 +25,12 @@ struct RelayEvalInput {
 };
 
 struct RelayEvalResult {
-    bool should_update;
     bool desired_state;
 };
 
 inline RelayEvalResult evaluate_relay(const RelayEvalInput &input) {
     if (input.trigger_mode == RelayTriggerMode::DISABLED) {
-        return {true, false};
+        return {false};
     }
 
     bool activate = false;
@@ -46,12 +45,12 @@ inline RelayEvalResult evaluate_relay(const RelayEvalInput &input) {
             activate = input.occupancy;
             break;
         default:
-            return {true, false};
+            return {false};
     }
 
     bool desired = (input.contact_mode == RelayContactMode::NORMALLY_OPEN)
                    ? activate : !activate;
-    return {true, desired};
+    return {desired};
 }
 
 }  // namespace epp

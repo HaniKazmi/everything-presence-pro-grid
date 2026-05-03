@@ -3,6 +3,7 @@
 #include "epp_calibration.h"
 
 #include <cmath>
+#include <limits>
 
 TEST_CASE("no perspective set returns input unchanged") {
     epp::SensorTransform transform;
@@ -78,4 +79,34 @@ TEST_CASE("room dimensions are stored") {
 
     CHECK(transform.room_width() == 4500.0f);
     CHECK(transform.room_depth() == 3000.0f);
+}
+
+TEST_CASE("set_coefficients(nullptr) leaves transform unchanged") {
+    epp::SensorTransform transform;
+    CHECK_FALSE(transform.has_perspective());
+
+    transform.set_coefficients(nullptr, 1000.0f, 2000.0f);
+    CHECK_FALSE(transform.has_perspective());
+
+    // Apply should still pass-through
+    auto [rx, ry] = transform.apply(100.0f, 200.0f);
+    CHECK(rx == 100.0f);
+    CHECK(ry == 200.0f);
+}
+
+TEST_CASE("apply rejects NaN/Inf input") {
+    epp::SensorTransform transform;
+    float coeffs[8] = {1.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f};
+    transform.set_coefficients(coeffs, 6000.0f, 6000.0f);
+
+    float nan = std::numeric_limits<float>::quiet_NaN();
+    float inf = std::numeric_limits<float>::infinity();
+
+    auto [rx1, ry1] = transform.apply(nan, 100.0f);
+    CHECK(std::isnan(rx1));
+    CHECK(std::isnan(ry1));
+
+    auto [rx2, ry2] = transform.apply(100.0f, inf);
+    CHECK(std::isnan(rx2));
+    CHECK(std::isnan(ry2));
 }

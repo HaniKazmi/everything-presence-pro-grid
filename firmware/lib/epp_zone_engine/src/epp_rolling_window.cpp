@@ -7,13 +7,10 @@ namespace epp {
 
 namespace {
 
-// RollingWindow can hold up to 16 entries; size the stack buffer accordingly.
-static constexpr int ROLLING_MAX_FRAMES = 16;
-
 static float rolling_median(const float* data, int count) {
     if (count <= 0) return 0.0f;
     if (count == 1) return data[0];
-    float buf[ROLLING_MAX_FRAMES];
+    float buf[RollingWindow::MAX_FRAMES];
     std::copy(data, data + count, buf);
     int mid = count / 2;
     std::nth_element(buf, buf + mid, buf + count);
@@ -36,10 +33,15 @@ void RollingWindow::reset() {
 }
 
 void RollingWindow::expire_old(uint32_t now_ms) {
-    // Walk from tail forward, expiring frames older than window_ms_
+    // Walk from tail forward, expiring frames older than window_ms_.
+    // Guard against out-of-order timestamps: if now_ms < tail_ts the unsigned
+    // subtraction would wrap to a huge value and silently expire valid frames.
+    // Treat that as "no time has passed" and stop expiring.
     while (count_ > 0) {
         int tail = (head_ - count_ + MAX_FRAMES) % MAX_FRAMES;
-        if (now_ms - frames_[tail].timestamp_ms > window_ms_) {
+        uint32_t tail_ts = frames_[tail].timestamp_ms;
+        if (now_ms < tail_ts) break;
+        if (now_ms - tail_ts > window_ms_) {
             --count_;
         } else {
             break;

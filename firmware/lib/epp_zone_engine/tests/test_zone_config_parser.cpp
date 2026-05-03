@@ -151,3 +151,99 @@ TEST_CASE("slot id field is ignored in favour of slot index") {
   CHECK(configs[0].id == 0);  // slot 0
   CHECK(configs[1].id == 1);  // slot 1, not 99
 }
+
+TEST_CASE("slot index beyond MAX_ZONE_SLOTS is rejected (no out-of-range id)") {
+  // Payload with 10 valid slots but only first 8 must be written; slots 8/9
+  // must NOT produce entries with id >= MAX_ZONE_SLOTS.
+  const char *json =
+      "{"
+      "\"zone_slots\":["
+      "{\"trigger\":5,\"renew\":3,\"timeout\":10.0,\"handoff_timeout\":3.0},"
+      "{\"trigger\":5,\"renew\":3,\"timeout\":10.0,\"handoff_timeout\":3.0},"
+      "{\"trigger\":5,\"renew\":3,\"timeout\":10.0,\"handoff_timeout\":3.0},"
+      "{\"trigger\":5,\"renew\":3,\"timeout\":10.0,\"handoff_timeout\":3.0},"
+      "{\"trigger\":5,\"renew\":3,\"timeout\":10.0,\"handoff_timeout\":3.0},"
+      "{\"trigger\":5,\"renew\":3,\"timeout\":10.0,\"handoff_timeout\":3.0},"
+      "{\"trigger\":5,\"renew\":3,\"timeout\":10.0,\"handoff_timeout\":3.0},"
+      "{\"trigger\":5,\"renew\":3,\"timeout\":10.0,\"handoff_timeout\":3.0},"
+      "{\"trigger\":5,\"renew\":3,\"timeout\":10.0,\"handoff_timeout\":3.0},"
+      "{\"trigger\":5,\"renew\":3,\"timeout\":10.0,\"handoff_timeout\":3.0}"
+      "]"
+      "}";
+
+  ZoneConfig configs[MAX_ZONE_SLOTS]{};
+  int count = parse_from_string(json, configs);
+
+  REQUIRE(count == MAX_ZONE_SLOTS);
+  for (int i = 0; i < count; ++i) {
+    CHECK(configs[i].id == i);
+    CHECK(configs[i].id < MAX_ZONE_SLOTS);
+  }
+}
+
+TEST_CASE("nulls cannot push id beyond MAX_ZONE_SLOTS-1") {
+  // Two leading nulls + 8 valid objects means slot indices 2..9. Indices 8-9
+  // would write id=8/9 which exceed valid zone IDs. Must be rejected.
+  const char *json =
+      "{"
+      "\"zone_slots\":["
+      "null,null,"
+      "{\"trigger\":5,\"renew\":3,\"timeout\":10.0,\"handoff_timeout\":3.0},"
+      "{\"trigger\":5,\"renew\":3,\"timeout\":10.0,\"handoff_timeout\":3.0},"
+      "{\"trigger\":5,\"renew\":3,\"timeout\":10.0,\"handoff_timeout\":3.0},"
+      "{\"trigger\":5,\"renew\":3,\"timeout\":10.0,\"handoff_timeout\":3.0},"
+      "{\"trigger\":5,\"renew\":3,\"timeout\":10.0,\"handoff_timeout\":3.0},"
+      "{\"trigger\":5,\"renew\":3,\"timeout\":10.0,\"handoff_timeout\":3.0},"
+      "{\"trigger\":5,\"renew\":3,\"timeout\":10.0,\"handoff_timeout\":3.0},"
+      "{\"trigger\":5,\"renew\":3,\"timeout\":10.0,\"handoff_timeout\":3.0}"
+      "]"
+      "}";
+
+  ZoneConfig configs[MAX_ZONE_SLOTS]{};
+  int count = parse_from_string(json, configs);
+
+  // Only slots 2..7 produce entries (6 entries total). Slots 8, 9 must be dropped.
+  REQUIRE(count == 6);
+  for (int i = 0; i < count; ++i) {
+    CHECK(configs[i].id < MAX_ZONE_SLOTS);
+  }
+  CHECK(configs[0].id == 2);
+  CHECK(configs[5].id == 7);
+}
+
+TEST_CASE("trigger and renew are clamped to [1, 9]") {
+  const char *json =
+      "{"
+      "\"zone_slots\":["
+      "{\"trigger\":0,\"renew\":-3,\"timeout\":10.0,\"handoff_timeout\":3.0},"
+      "{\"trigger\":99,\"renew\":50,\"timeout\":10.0,\"handoff_timeout\":3.0}"
+      "]"
+      "}";
+
+  ZoneConfig configs[MAX_ZONE_SLOTS]{};
+  int count = parse_from_string(json, configs);
+
+  REQUIRE(count == 2);
+  // 0 / -3 → 1
+  CHECK(configs[0].trigger == 1);
+  CHECK(configs[0].renew == 1);
+  // 99 / 50 → 9
+  CHECK(configs[1].trigger == 9);
+  CHECK(configs[1].renew == 9);
+}
+
+TEST_CASE("negative timeout / handoff_timeout are clamped to 0") {
+  const char *json =
+      "{"
+      "\"zone_slots\":["
+      "{\"trigger\":5,\"renew\":3,\"timeout\":-1.0,\"handoff_timeout\":-2.5}"
+      "]"
+      "}";
+
+  ZoneConfig configs[MAX_ZONE_SLOTS]{};
+  int count = parse_from_string(json, configs);
+
+  REQUIRE(count == 1);
+  CHECK(configs[0].timeout == doctest::Approx(0.0f));
+  CHECK(configs[0].handoff_timeout == doctest::Approx(0.0f));
+}

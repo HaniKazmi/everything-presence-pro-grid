@@ -303,13 +303,11 @@ void EPPComponent::loop() {
           result.occupancy,
       };
       auto relay_result = evaluate_relay(relay_input);
-      if (relay_result.should_update) {
-        if (relay_result.desired_state != relay_switch_->state) {
-          if (relay_result.desired_state) {
-            relay_switch_->turn_on();
-          } else {
-            relay_switch_->turn_off();
-          }
+      if (relay_result.desired_state != relay_switch_->state) {
+        if (relay_result.desired_state) {
+          relay_switch_->turn_on();
+        } else {
+          relay_switch_->turn_off();
         }
       }
     }

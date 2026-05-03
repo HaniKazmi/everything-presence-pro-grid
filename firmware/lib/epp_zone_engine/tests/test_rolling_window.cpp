@@ -344,3 +344,28 @@ TEST_CASE("feed after all frames expired starts fresh") {
     CHECK(out.total_frames == 1);
     CHECK(out.targets[0].median_x == doctest::Approx(999.0f));
 }
+
+// TEST 17: out-of-order timestamps don't trigger unsigned-subtraction underflow
+TEST_CASE("out-of-order feed timestamp does not underflow expire_old") {
+    RollingWindow rw(1000);
+
+    TargetInput frame[MAX_TARGETS];
+    make_frame(frame, 1.0f, 0.0f, true);
+    rw.feed(frame, MAX_TARGETS, 5000);  // frame at t=5000ms
+
+    make_frame(frame, 2.0f, 0.0f, true);
+    rw.feed(frame, MAX_TARGETS, 5500);  // frame at t=5500ms (within window)
+
+    CHECK(rw.output().total_frames == 2);
+
+    // Now feed an *earlier* timestamp (clock skew / restart). Without the
+    // underflow guard, (now_ms - tail_ts) wraps to a huge number, exceeding
+    // window_ms_, and would silently drop both prior frames.
+    make_frame(frame, 3.0f, 0.0f, true);
+    rw.feed(frame, MAX_TARGETS, 4000);  // earlier than tail (5000ms)
+
+    auto out = rw.output();
+    // Prior frames must NOT be expired by the underflow path; we keep them
+    // and just append the new frame.
+    CHECK(out.total_frames == 3);
+}

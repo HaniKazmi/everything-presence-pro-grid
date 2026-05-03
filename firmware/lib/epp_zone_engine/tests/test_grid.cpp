@@ -1,5 +1,6 @@
 #define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
 #include <doctest/doctest.h>
+#include <limits>
 #include "epp_grid.h"
 #include "epp_types.h"
 #include "epp_zone_engine.h"
@@ -53,7 +54,7 @@ TEST_CASE("xy_to_cell with origin offset") {
 TEST_CASE("xy_to_cell out of bounds returns -1") {
     epp::Grid grid;
 
-    // Negative coordinates (must be >= 1 cell_size below origin for truncation to produce -1)
+    // Negative coordinates (must use floor, not truncate, so any negative offset is OOB)
     CHECK(grid.xy_to_cell(-300.0f, 0.0f) == -1);
     CHECK(grid.xy_to_cell(0.0f, -300.0f) == -1);
 
@@ -63,6 +64,77 @@ TEST_CASE("xy_to_cell out of bounds returns -1") {
 
     // Last valid cell
     CHECK(grid.xy_to_cell(5999.0f, 5999.0f) == 399);
+}
+
+TEST_CASE("xy_to_cell rejects small negative offsets (no truncate-toward-zero)") {
+    // truncation toward zero would turn -100/300 into 0, producing cell 0 — wrong.
+    epp::Grid grid;
+    CHECK(grid.xy_to_cell(-1.0f, 0.0f) == -1);
+    CHECK(grid.xy_to_cell(-100.0f, 0.0f) == -1);
+    CHECK(grid.xy_to_cell(-299.0f, 0.0f) == -1);
+    CHECK(grid.xy_to_cell(0.0f, -1.0f) == -1);
+    CHECK(grid.xy_to_cell(0.0f, -100.0f) == -1);
+    CHECK(grid.xy_to_cell(0.0f, -299.0f) == -1);
+
+    // Same with origin offset (origin 1000,2000): x in (1000-cell_size, 1000) -> -1
+    epp::Grid offset(1000.0f, 2000.0f);
+    CHECK(offset.xy_to_cell(999.0f, 2000.0f) == -1);
+    CHECK(offset.xy_to_cell(701.0f, 2000.0f) == -1);
+    CHECK(offset.xy_to_cell(1000.0f, 1999.0f) == -1);
+}
+
+TEST_CASE("xy_to_cell rejects NaN and Inf") {
+    epp::Grid grid;
+    float nan = std::numeric_limits<float>::quiet_NaN();
+    float inf = std::numeric_limits<float>::infinity();
+    CHECK(grid.xy_to_cell(nan, 0.0f) == -1);
+    CHECK(grid.xy_to_cell(0.0f, nan) == -1);
+    CHECK(grid.xy_to_cell(nan, nan) == -1);
+    CHECK(grid.xy_to_cell(inf, 0.0f) == -1);
+    CHECK(grid.xy_to_cell(0.0f, -inf) == -1);
+}
+
+TEST_CASE("xy_to_col_row decomposition agrees with xy_to_cell") {
+    epp::Grid grid;
+    int col = -999, row = -999;
+
+    // Inside grid: returns true and yields col/row consistent with xy_to_cell.
+    CHECK(grid.xy_to_col_row(450.0f, 750.0f, col, row));
+    CHECK(col == 1);
+    CHECK(row == 2);
+    CHECK(grid.xy_to_cell(450.0f, 750.0f) == row * grid.cols() + col);
+
+    // Negative offset: returns false (and out-params are undefined for callers).
+    col = -999; row = -999;
+    CHECK_FALSE(grid.xy_to_col_row(-1.0f, 0.0f, col, row));
+    CHECK_FALSE(grid.xy_to_col_row(0.0f, -1.0f, col, row));
+
+    // Beyond extent: returns false.
+    CHECK_FALSE(grid.xy_to_col_row(6000.0f, 0.0f, col, row));
+
+    // NaN: returns false.
+    float nan = std::numeric_limits<float>::quiet_NaN();
+    CHECK_FALSE(grid.xy_to_col_row(nan, 0.0f, col, row));
+}
+
+TEST_CASE("cell_zone / cell_is_room / cell_overlay reject out-of-bounds index") {
+    epp::Grid grid;
+    grid.cell(0) = 0xFF;  // sentinel; if bounds are bypassed reads still return safe defaults
+
+    // Negative
+    CHECK(grid.cell_zone(-1) == 0);
+    CHECK_FALSE(grid.cell_is_room(-1));
+    CHECK(grid.cell_overlay(-1) == 0);
+
+    // Beyond cell_count
+    CHECK(grid.cell_zone(grid.cell_count()) == 0);
+    CHECK_FALSE(grid.cell_is_room(grid.cell_count()));
+    CHECK(grid.cell_overlay(grid.cell_count()) == 0);
+
+    // Far out of range
+    CHECK(grid.cell_zone(99999) == 0);
+    CHECK_FALSE(grid.cell_is_room(99999));
+    CHECK(grid.cell_overlay(99999) == 0);
 }
 
 TEST_CASE("cell_zone extracts zone from cell byte") {
@@ -139,6 +211,24 @@ TEST_CASE("load_from_bytes truncates to cell_count") {
     // cell(4) is backed by the array but not part of the logical grid;
     // load_from_bytes should not have written beyond cell_count()=4
     CHECK(grid.cell(4) == 0x00);
+}
+
+TEST_CASE("load_from_bytes zeros the tail when len < cell_count") {
+    epp::Grid grid;
+    // Pre-load full grid with 0xFF
+    uint8_t prefilled[epp::GRID_CELL_COUNT];
+    for (int i = 0; i < epp::GRID_CELL_COUNT; ++i) prefilled[i] = 0xFF;
+    grid.load_from_bytes(prefilled, epp::GRID_CELL_COUNT);
+    CHECK(grid.cell(epp::GRID_CELL_COUNT - 1) == 0xFF);
+
+    // Now load a shorter buffer — the tail must be zeroed, not left stale.
+    uint8_t shorter[] = {0x01, 0x02, 0x03};
+    grid.load_from_bytes(shorter, 3);
+    CHECK(grid.cell(0) == 0x01);
+    CHECK(grid.cell(1) == 0x02);
+    CHECK(grid.cell(2) == 0x03);
+    CHECK(grid.cell(3) == 0x00);
+    CHECK(grid.cell(epp::GRID_CELL_COUNT - 1) == 0x00);
 }
 
 TEST_CASE("Grid accessors") {
