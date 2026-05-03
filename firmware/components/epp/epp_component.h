@@ -144,7 +144,6 @@ class EPPComponent : public esphome::Component {
     ParsedTarget targets[NUM_TARGETS]{};
   };
   FrameRingBuffer<TargetFrame, FRAME_BUFFER_CAPACITY> frame_buffer_;
-  uint32_t frame_count_ = 0;
   uint32_t frames_dropped_ = 0;  // bumped when push() reports overflow
   uint32_t last_frames_dropped_log_ = 0;  // last frames_dropped_ value logged
   uint32_t last_frames_dropped_log_ts_ = 0;  // ms when last drop log fired

@@ -54,7 +54,6 @@ void EPPComponent::loop() {
   while (frame_buffer_.pop(frame)) {
     // last_frame_ms_ / has_received_frame_ are set in feed_targets so the
     // stale-frame watchdog reflects actual receipt time, not drain time.
-    frame_count_++;
 
     // Stage 1: Feed raw positions into rolling median.
     // NaN guard: LD2450 occasionally emits NaN; without this they'd poison
@@ -427,7 +426,7 @@ void EPPComponent::loop() {
     // grace period ensures a broken/disconnected LD2450 doesn't leave the
     // relay state machine permanently inert.
     if (!boot_settled_) {
-      if (frame_count_ > 0 || now - boot_ms_ >= BOOT_SETTLE_MS) {
+      if (has_received_frame_ || now - boot_ms_ >= BOOT_SETTLE_MS) {
         boot_settled_ = true;
       }
     }
