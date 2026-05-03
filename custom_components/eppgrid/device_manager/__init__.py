@@ -58,6 +58,10 @@ class ManagedDevice:
 class DeviceManager:
     """Discovers ESPHome zone engine devices, manages connections and config."""
 
+    # Per-call disconnect timeout used by async_stop. Class-level so tests
+    # can shorten it via instance attribute without subclassing.
+    _disconnect_timeout: float = 5.0
+
     def __init__(self, hass: HomeAssistant, store: EPPGridStore) -> None:
         self._hass = hass
         self._store = store
@@ -218,8 +222,22 @@ class DeviceManager:
         # the disconnect-gather below.
         if self._pending_tasks:
             await asyncio.gather(*list(self._pending_tasks), return_exceptions=True)
-        for conn in self._active_connections.values():
-            await conn.async_disconnect()
+
+        # Parallel disconnect with a per-call timeout so a single hung
+        # device can't block tearing down the rest of the manager state.
+        async def _safe_disconnect(conn: DeviceConnection) -> None:
+            try:
+                await asyncio.wait_for(conn.async_disconnect(), timeout=self._disconnect_timeout)
+            except TimeoutError:
+                _LOGGER.warning("Timed out disconnecting from %s", conn._host)
+            except Exception:
+                _LOGGER.warning("Error disconnecting from %s", conn._host, exc_info=True)
+
+        if self._active_connections:
+            await asyncio.gather(
+                *(_safe_disconnect(c) for c in self._active_connections.values()),
+                return_exceptions=True,
+            )
         self._active_connections.clear()
 
     async def async_trigger_ota(self, mac: str) -> None:

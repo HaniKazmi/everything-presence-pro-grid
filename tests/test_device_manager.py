@@ -1198,6 +1198,35 @@ class TestDeviceManager:
         assert completed.is_set()
         assert not manager._pending_tasks
 
+    async def test_async_stop_disconnects_in_parallel_with_timeout(
+        self, hass: HomeAssistant, manager: DeviceManager
+    ) -> None:
+        """A device whose disconnect hangs must not block the shutdown of others.
+        async_stop must time out on hung disconnects (return_exceptions style)
+        and continue clearing local state."""
+        # Two connections: one hangs, one returns immediately.
+        fast = MagicMock()
+        fast.async_disconnect = AsyncMock()
+        fast.connected = True
+
+        hung = MagicMock()
+        hung.connected = True
+
+        async def hang(*_a, **_kw):
+            await asyncio.sleep(60)
+
+        hung.async_disconnect = AsyncMock(side_effect=hang)
+
+        manager._active_connections = {"AA:BB:CC:DD:EE:01": fast, "AA:BB:CC:DD:EE:02": hung}
+
+        # Set per-instance timeout very short for the test so the outer
+        # wait_for doesn't trip first.
+        manager._disconnect_timeout = 0.1
+        await asyncio.wait_for(manager.async_stop(), timeout=2.0)
+
+        fast.async_disconnect.assert_awaited_once()
+        assert manager._active_connections == {}
+
     async def test_read_current_connection_count_returns_value(
         self, hass: HomeAssistant, manager: DeviceManager
     ) -> None:
