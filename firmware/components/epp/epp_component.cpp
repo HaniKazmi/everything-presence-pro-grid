@@ -4,6 +4,7 @@
 #include "epp_change_detector.h"
 #include "epp_target_validity.h"
 #include "epp_json_writer.h"
+#include "epp_perspective_parser.h"
 #include "esphome/core/log.h"
 
 #include <ArduinoJson.h>
@@ -415,25 +416,13 @@ void EPPComponent::dismiss_target(int target_index, int cell_index) {
 
 void EPPComponent::set_perspective(const std::string &perspective,
                                    float room_width, float room_depth) {
+  // Strict parser: requires exactly 8 finite floats, no empty fields, no
+  // trailing garbage. See epp_perspective_parser.h for the full contract.
+  // Logging stays here so the parser remains a pure helper testable on host.
   float coeffs[8];
-  int count = 0;
-
-  // Parse comma-separated floats
-  const char *p = perspective.c_str();
-  while (count < 8 && *p != '\0') {
-    char *end;
-    coeffs[count] = strtof(p, &end);
-    if (end == p) {
-      ESP_LOGE(TAG, "Failed to parse perspective coefficient at index %d", count);
-      return;
-    }
-    count++;
-    p = end;
-    if (*p == ',') p++;
-  }
-
-  if (count != 8) {
-    ESP_LOGE(TAG, "Expected 8 perspective coefficients, got %d", count);
+  if (!parse_perspective_coefficients(perspective, coeffs)) {
+    ESP_LOGE(TAG, "Invalid perspective payload (need 8 finite comma-separated floats): %s",
+             perspective.c_str());
     return;
   }
 
