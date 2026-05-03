@@ -227,6 +227,72 @@ class TestSubscribeFlashableDevices:
             # If we keep the subscription alive, an event must have been sent.
             connection.send_message.assert_called()
 
+    async def test_change_during_initial_fetch_is_not_lost(
+        self, hass: HomeAssistant, config_entry: MockConfigEntry
+    ) -> None:
+        """If `_fire_device_list_changed` fires WHILE the initial
+        `_flashable_payload` await is still in flight, the change must not
+        be silently dropped — the callback has to be registered before the
+        fetch starts. Otherwise a new subscriber gets stale data and never
+        sees the in-flight change again."""
+        import asyncio
+
+        mock_dm = await setup_integration(hass, config_entry)
+
+        captured_cb = None
+
+        def capture_on_changed(cb):
+            nonlocal captured_cb
+            captured_cb = cb
+            return lambda: None
+
+        mock_dm.on_device_list_changed = MagicMock(side_effect=capture_on_changed)
+
+        # First call: simulate an in-flight change firing during the await.
+        # Second call (and beyond): return fresh data.
+        fetch_started = asyncio.Event()
+        release_first = asyncio.Event()
+        call_count = 0
+
+        async def maybe_slow_list():
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                fetch_started.set()
+                await release_first.wait()
+                return []  # initial (stale)
+            return [{"mac": "AA:BB:CC:DD:EE:FF", "name": "EPP"}]
+
+        mock_dm.list_flashable_devices = AsyncMock(side_effect=maybe_slow_list)
+
+        from custom_components.eppgrid.websocket_api import websocket_subscribe_flashable_devices
+
+        connection = MagicMock()
+        connection.subscriptions = {}
+        msg = {"id": 200, "type": "eppgrid/subscribe_flashable_devices"}
+
+        # Kick off the handler — @async_response runs the coroutine.
+        websocket_subscribe_flashable_devices(hass, connection, msg)
+        await fetch_started.wait()
+
+        # The change-callback MUST already be registered — otherwise a fire
+        # right now would be lost.
+        assert captured_cb is not None, "on_device_list_changed must be registered before initial fetch"
+
+        # Fire a change while the initial fetch is still pending.
+        captured_cb()
+
+        # Let the initial fetch complete.
+        release_first.set()
+        await hass.async_block_till_done()
+
+        # We should have seen at least two send_message calls: the initial
+        # (stale) payload and the change-triggered (fresh) payload. The
+        # second confirms the fired change wasn't dropped.
+        assert connection.send_message.call_count >= 2, (
+            f"expected initial + change-triggered send, got {connection.send_message.call_count}"
+        )
+
     async def test_initial_send_message_failure_unsubs_device_list_callback(
         self, hass: HomeAssistant, config_entry: MockConfigEntry
     ) -> None:
