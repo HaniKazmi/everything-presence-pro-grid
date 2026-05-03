@@ -1545,7 +1545,12 @@ class TestFirmwareVersion:
         assert _compare_firmware_version("a.b.c") == "firmware_unknown"
 
     def test_compare_firmware_version_zero(self) -> None:
-        """Returns 'firmware_behind' for '0.0.0' (missing entity sentinel)."""
+        """A real '0.0.0' is parseable and compares as 'firmware_behind'.
+
+        Note: '0.0.0' is no longer used anywhere as a synthetic sentinel —
+        ``read_firmware_version`` now returns ``None`` for unknown firmware,
+        precisely so a real '0.0.0' wouldn't collide with the sentinel.
+        """
         assert _compare_firmware_version("0.0.0") == "firmware_behind"
 
     async def test_sync_firmware_repair_issue_skips_unknown(self, hass: HomeAssistant) -> None:
@@ -1626,17 +1631,20 @@ class TestFirmwareVersion:
         result = manager.read_firmware_version(device.id)
         assert result is None
 
-    async def test_read_firmware_version_returns_zero_when_device_id_none(
+    async def test_read_firmware_version_returns_none_when_device_id_none(
         self, hass: HomeAssistant, manager: DeviceManager
     ) -> None:
-        """read_firmware_version returns '0.0.0' when device_id is None."""
-        result = manager.read_firmware_version(None)
-        assert result == "0.0.0"
+        """Without a device_id we have no entity to read — None means 'unknown'.
 
-    async def test_read_firmware_version_returns_zero_when_no_entity(
+        Returning a synthetic '0.0.0' would collide with a real (very old)
+        firmware version and trigger a fake 'firmware_behind' Repairs issue.
+        """
+        assert manager.read_firmware_version(None) is None
+
+    async def test_read_firmware_version_returns_none_when_no_entity(
         self, hass: HomeAssistant, manager: DeviceManager
     ) -> None:
-        """read_firmware_version returns '0.0.0' when no firmware_version entity exists."""
+        """No firmware_version entity → None ('unknown'), not '0.0.0'."""
         dev_reg = dr.async_get(hass)
 
         esphome_entry = MockConfigEntry(
@@ -1653,8 +1661,31 @@ class TestFirmwareVersion:
         )
         # No firmware_version entity created
 
-        result = manager.read_firmware_version(device.id)
-        assert result == "0.0.0"
+        assert manager.read_firmware_version(device.id) is None
+
+    async def test_no_firmware_version_does_not_create_repair_issue(
+        self, hass: HomeAssistant, manager: DeviceManager
+    ) -> None:
+        """A device with no firmware_version entity must not raise a fake
+        'firmware_behind' Repairs issue.
+
+        ``read_firmware_version`` returns ``None`` for unknown firmware, and
+        ``_sync_firmware_repair_issue`` treats ``None`` as 'leave alone' —
+        no synthetic '0.0.0' that the comparator would mark as behind.
+        """
+        from homeassistant.helpers import issue_registry as ir
+
+        from custom_components.eppgrid.device_manager._helpers import _sync_firmware_repair_issue
+
+        fw = manager.read_firmware_version(None)
+        _sync_firmware_repair_issue(
+            hass,
+            mac="AA:BB:CC:DD:EE:FF",
+            device_name="EPP",
+            fw_ver=fw,
+        )
+        issues = ir.async_get(hass).issues
+        assert not any("AA:BB:CC:DD:EE:FF" in k[1] for k in issues)
 
     # --- list_devices firmware_status ---
 
@@ -1701,10 +1732,16 @@ class TestFirmwareVersion:
         assert len(result) == 1
         assert result[0]["firmware_status"] == "compatible"
 
-    async def test_list_devices_firmware_status_firmware_behind(
+    async def test_list_devices_firmware_status_unavailable_when_no_entity(
         self, hass: HomeAssistant, manager: DeviceManager
     ) -> None:
-        """list_devices reports firmware_behind when no firmware_version entity exists."""
+        """list_devices reports 'unavailable' when no firmware_version entity exists.
+
+        Previously a missing entity yielded a synthetic '0.0.0' that compared
+        as 'firmware_behind' — a fake "behind" state for every non-EPP device.
+        With ``read_firmware_version`` now returning ``None``, the ternary in
+        ``list_devices`` short-circuits to 'unavailable' instead.
+        """
         manager.devices["AA:BB:CC:DD:EE:FF"] = ManagedDevice(
             mac="AA:BB:CC:DD:EE:FF",
             name="EPP Device",
@@ -1713,7 +1750,7 @@ class TestFirmwareVersion:
             device_id="fake_device_id",
         )
         result = manager.list_devices()
-        assert result[0]["firmware_status"] == "firmware_behind"
+        assert result[0]["firmware_status"] == "unavailable"
 
     async def test_list_devices_firmware_status_firmware_ahead(
         self, hass: HomeAssistant, manager: DeviceManager
@@ -4854,8 +4891,8 @@ class TestUniqueIdMatchingAnchors:
         )
 
         # Only a "firmware_version_history" sensor exists — the proper
-        # firmware_version sensor is missing, so we should report 0.0.0
-        # (= "old firmware"), not pick up the history sensor's state.
+        # firmware_version sensor is missing, so we should report None
+        # (= "unknown"), not pick up the history sensor's state.
         history = ent_reg.async_get_or_create(
             "sensor",
             "esphome",
@@ -4865,7 +4902,7 @@ class TestUniqueIdMatchingAnchors:
         )
         hass.states.async_set(history.entity_id, "old-history-value")
 
-        assert manager.read_firmware_version(device.id) == "0.0.0"
+        assert manager.read_firmware_version(device.id) is None
 
     async def test_zone_entity_lookup_anchors_zone_index(self, hass: HomeAssistant, manager: DeviceManager) -> None:
         """async_update_zone_entities's single-pass scan must not let

@@ -305,16 +305,21 @@ class DeviceManager:
     ) -> str | None:
         """Read the Firmware Version text sensor value for a device.
 
-        Returns the version string, or None if the entity exists but the
-        state is unavailable/unknown (device offline).
-        Returns "0.0.0" if no firmware_version entity exists (old firmware).
+        Returns the version string, or ``None`` when:
+          * ``device_id`` is unknown (caller has no device to look up)
+          * the entity is unavailable / unknown / empty
+          * the entity does not exist at all (older or non-EPP firmware)
 
-        `entries` lets the caller pass pre-fetched device entries so callers
+        Callers must treat ``None`` as 'unknown' — never compare against a
+        synthetic ``"0.0.0"``, which would collide with a real (very old)
+        firmware version and trigger a fake ``firmware_behind`` Repairs issue.
+
+        ``entries`` lets the caller pass pre-fetched device entries so callers
         looping over many devices don't re-scan the entity registry per
         helper call.
         """
         if device_id is None:
-            return "0.0.0"
+            return None
         if entries is None:
             ent_reg = er.async_get(self._hass)
             entries = er.async_entries_for_device(ent_reg, device_id, include_disabled_entities=True)
@@ -328,7 +333,7 @@ class DeviceManager:
                 if state is not None and state.state not in (None, "unknown", "unavailable", ""):
                     return state.state
                 return None
-        return "0.0.0"
+        return None
 
     def read_current_connection_count(
         self, device_id: str | None, *, entries: list[er.RegistryEntry] | None = None
