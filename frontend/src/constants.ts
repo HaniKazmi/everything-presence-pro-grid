@@ -442,11 +442,13 @@ export const MAX_TARGETS = 3;
 
 // Target dot colors (1 per target, high contrast)
 export const TARGET_COLORS = ["#2196F3", "#FF5722", "#4CAF50"]; // blue, red-orange, green
+/* v8 ignore start — module-load invariant guard, no runtime branch to hit */
 if (TARGET_COLORS.length !== MAX_TARGETS) {
 	throw new Error(
 		`TARGET_COLORS palette (${TARGET_COLORS.length}) must match MAX_TARGETS (${MAX_TARGETS})`,
 	);
 }
+/* v8 ignore stop */
 
 export const DEBUG_LOG_MAX = 100;
 

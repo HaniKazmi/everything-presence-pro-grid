@@ -399,6 +399,15 @@ describe("TargetController", () => {
 			expect(result).toContain("T0→Zone 5(active,10)");
 		});
 
+		it("treats unparseable zone tokens as room (zone 0) instead of NaN", () => {
+			// Pre-fix this would print "Zone NaN" — Number.isFinite guard
+			// in enrichDebugLog falls back to zid=0 when parseInt yields NaN.
+			const result = ctrl.enrichDebugLog("T0:Zfoo:A:5|Zbar:O:1");
+			expect(result).not.toContain("NaN");
+			expect(result).toContain("T0→Room(active,5)");
+			expect(result).toContain("Room: occupied(1)");
+		});
+
 		it("enriches zone occupancy part", () => {
 			const result = ctrl.enrichDebugLog("|Z1:O:1");
 			expect(result).toContain("Hallway: occupied(1)");
