@@ -246,14 +246,14 @@ export class EppFurnitureSidebar extends LitElement {
 									.hass=${this.hass}
 									.value=${this.customIconValue}
 									@value-changed=${(e: CustomEvent) => {
-										// ha-icon-picker emits null on clear, "" on empty input —
-										// preserve the distinction so the panel can tell the
-										// difference between "user cleared" and "user typed
-										// nothing yet".
-										const v = e.detail?.value;
+										// Coerce null/undefined to empty string — the panel
+										// reflects this back into customIconValue and downstream
+										// code (`.trim()`, `<ha-icon icon=...>`) assumes string.
+										// Use `??` (not `||`) so an actual "" the user typed is
+										// preserved verbatim.
 										this.dispatchEvent(
 											new CustomEvent("custom-icon-change", {
-												detail: v === undefined ? "" : v,
+												detail: e.detail?.value ?? "",
 												bubbles: true,
 												composed: true,
 											}),

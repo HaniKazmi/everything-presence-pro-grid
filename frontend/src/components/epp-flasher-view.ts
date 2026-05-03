@@ -559,7 +559,15 @@ export class EppFlasherView extends LitElement {
 	@state() private _showWifiProvisioning = false;
 
 	@state() private _errorPopoverMac: string | null = null;
-	@state() private _retryPendingMac: string | null = null;
+	// Per-mac "retry click in flight" tracking. Stored as a Set so multiple
+	// devices can retry concurrently without one's state stamping over
+	// another's.
+	@state() private _retryPendingMacs: Set<string> = new Set();
+	// Snapshot of the OTA entry for each pending mac, captured at click time.
+	// Whenever the entry reference changes (any update — start, progress,
+	// success, or another error) we know the dispatcher has processed the
+	// retry and can clear the spinner, so the button never gets stuck.
+	private _retryPendingOta: Map<string, OtaDeviceState> = new Map();
 
 	private _dispatchUpdateFirmware(device: FlashableDevice): void {
 		this.dispatchEvent(
@@ -578,7 +586,11 @@ export class EppFlasherView extends LitElement {
 
 	private _dispatchRetryOta(device: FlashableDevice): void {
 		this._errorPopoverMac = null;
-		this._retryPendingMac = device.mac;
+		const next = new Set(this._retryPendingMacs);
+		next.add(device.mac);
+		this._retryPendingMacs = next;
+		const current = this.otaStates[device.mac];
+		if (current) this._retryPendingOta.set(device.mac, current);
 		this.dispatchEvent(
 			new CustomEvent("retry-ota", {
 				detail: { mac: device.mac },
@@ -616,7 +628,7 @@ export class EppFlasherView extends LitElement {
 			case "success":
 				return html`<ha-icon class="ota-success" icon="mdi:check-circle"></ha-icon>`;
 			case "error": {
-				const retryPending = this._retryPendingMac === device.mac;
+				const retryPending = this._retryPendingMacs.has(device.mac);
 				return html`
 					<div class="ota-error">
 						<ha-icon class="ota-error-icon"
@@ -703,13 +715,24 @@ export class EppFlasherView extends LitElement {
 		if (changed.has("usbFlashState") && this.usbFlashState == null) {
 			this._cancelling = false;
 		}
-		// Clear the retry-pending spinner once OTA state moves away from
-		// "error" (the retry actually started, succeeded, or failed again).
-		if (changed.has("otaStates") && this._retryPendingMac) {
-			const next = this.otaStates[this._retryPendingMac];
-			if (!next || next.state !== "error") {
-				this._retryPendingMac = null;
+		// Clear the retry-pending spinner once the dispatcher has handled the
+		// retry. We compare entry references instead of state values: any
+		// update (start, progress, or another error from a failed WS call)
+		// produces a fresh entry, which lets us re-enable the button even if
+		// the retry failed and the state stayed at "error" — otherwise the
+		// button would be permanently stuck.
+		if (changed.has("otaStates") && this._retryPendingMacs.size > 0) {
+			let cleared: Set<string> | null = null;
+			for (const mac of this._retryPendingMacs) {
+				const next = this.otaStates[mac];
+				const snapshot = this._retryPendingOta.get(mac);
+				if (!next || next !== snapshot) {
+					if (cleared === null) cleared = new Set(this._retryPendingMacs);
+					cleared.delete(mac);
+					this._retryPendingOta.delete(mac);
+				}
 			}
+			if (cleared !== null) this._retryPendingMacs = cleared;
 		}
 	}
 

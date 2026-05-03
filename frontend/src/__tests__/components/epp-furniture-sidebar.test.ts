@@ -339,7 +339,7 @@ describe("epp-furniture-sidebar DOM events", () => {
 		document.body.removeChild(c);
 	});
 
-	it("icon picker value-changed forwards null distinctly from empty", () => {
+	it("icon picker value-changed coerces null/undefined to empty string", () => {
 		const el = createSidebar({
 			showCustomIconPicker: true,
 			customIconValue: "mdi:lamp",
@@ -351,17 +351,26 @@ describe("epp-furniture-sidebar DOM events", () => {
 		const c = renderTo(tpl);
 
 		const picker = c.querySelector("ha-icon-picker") as HTMLElement;
+		// Downstream consumers (panel reflects this back into customIconValue,
+		// which is then `.trim()`-ed) require a string — null gets coerced.
 		picker.dispatchEvent(
 			new CustomEvent("value-changed", { detail: { value: null } }),
 		);
 		expect(handler).toHaveBeenCalledTimes(1);
-		expect(handler.mock.calls[0][0].detail).toBeNull();
+		expect(handler.mock.calls[0][0].detail).toBe("");
 
+		// `??` (not `||`) preserves an explicit empty string the user typed.
 		picker.dispatchEvent(
 			new CustomEvent("value-changed", { detail: { value: "" } }),
 		);
 		expect(handler).toHaveBeenCalledTimes(2);
 		expect(handler.mock.calls[1][0].detail).toBe("");
+
+		picker.dispatchEvent(
+			new CustomEvent("value-changed", { detail: { value: undefined } }),
+		);
+		expect(handler).toHaveBeenCalledTimes(3);
+		expect(handler.mock.calls[2][0].detail).toBe("");
 
 		document.body.removeChild(c);
 	});
