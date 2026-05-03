@@ -19,7 +19,7 @@ A `Heap Min Free` reading below ~5 KB means the device has come close to running
 
 ## Free up memory by disabling BLE
 
-If `Heap Min Free` keeps dipping into single-digit KB and reboots correlate, you can disable BLE scanning to give yourself more headroom. Measured costs of BLE-on with no proxied devices connected (your numbers will rise as you add proxied devices — roughly 5-10 KB per active GATT connection):
+If `Heap Min Free` keeps dipping into single-digit KB and reboots correlate, you can disable BLE scanning to give yourself more headroom. Measured costs of BLE-on with **no proxied devices connected**:
 
 | Metric | BLE off | BLE on | Cost of BLE-on |
 |---|---|---|---|
@@ -27,7 +27,9 @@ If `Heap Min Free` keeps dipping into single-digit KB and reboots correlate, you
 | Heap Largest Block | ~53 KB | ~43 KB | -10 KB |
 | Heap Min Free (worst-case dip) | ~54 KB | ~35 KB | -20 KB |
 
-So the always-resident cost is small (~4 KB), but BLE causes ~20 KB transient spikes during scan-result processing — that's where the real headroom goes when something else (network, sensor activity) needs heap at the same moment.
+**Add ~5-10 KB resident heap per BLE device proxied through the EPP** (each open GATT connection holds its own client state, characteristic cache, and notification handlers). On the wifi-ble-co2 variant the proxy is configured for up to 3 simultaneous connections — proxying 3 active devices can therefore eat another 15-30 KB on top of the table above, plus more transient heap during their notification traffic. If you have a busy proxy and see `Heap Min Free` near zero, the trade-off shifts: you may need to either cut proxied devices or disable the scan entirely.
+
+The always-resident cost of just-scanning-no-proxied-devices is small (~4 KB), but BLE causes ~20 KB transient spikes during scan-result processing — that's where the real headroom goes when something else (network, sensor activity) needs heap at the same moment.
 
 Toggle the **BLE Scan** switch off under **Settings → Devices & services → ESPHome → \[your device\] → Configuration**. The device reboots once to drop any active proxy GATT connections, then comes back up with scanning disabled — and the OFF state persists across future reboots. Re-enable any time by toggling the switch back on.
 
