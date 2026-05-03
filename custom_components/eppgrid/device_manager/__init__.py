@@ -821,14 +821,18 @@ class DeviceManager:
                     available = True
                     break
 
-            # Check if an update is available via ESPHome update entity
+            # Check if an update is available via ESPHome update entity. Loop
+            # past disabled / not-yet-published update entities until we find
+            # one with a readable state, otherwise a disabled sibling can mask
+            # a real "update available".
             update_available = False
             for ent_entry in er.async_entries_for_device(ent_reg, device.id, include_disabled_entities=True):
                 if ent_entry.domain == "update" and ent_entry.platform == "esphome":
                     state = self._hass.states.get(ent_entry.entity_id)
-                    if state is not None and state.state == "on":
-                        update_available = True
-                    break
+                    if state is not None:
+                        if state.state == "on":
+                            update_available = True
+                        break
 
             managed_dev = self.devices.get(mac)
             result.append(

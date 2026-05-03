@@ -364,9 +364,11 @@ def _get_entity_states(hass: HomeAssistant, mac: str) -> dict[str, bool]:
         if key is None or key in _FOLLOWER_KEYS:
             continue
         enabled = entry.disabled_by is None
-        # For category keys (zone_presence, target_xy), any enabled = category enabled.
+        # For category keys (zone_presence, target_xy, …) `_apply_entity_states`
+        # bulk-toggles every matching entity, so the getter mirrors that with
+        # AND semantics — the category is enabled only if every entity in it is.
         if key in result:
-            result[key] = result[key] or enabled
+            result[key] = result[key] and enabled
         else:
             result[key] = enabled
     return result

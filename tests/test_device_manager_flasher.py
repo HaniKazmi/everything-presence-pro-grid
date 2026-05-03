@@ -269,3 +269,48 @@ class TestListFlashableDevices:
         assert "update_available" in dev
         assert isinstance(dev["update_available"], bool)
         assert dev["update_available"] is False
+
+    async def test_update_available_skips_disabled_update_entity(self, hass: HomeAssistant, mock_store) -> None:
+        """A disabled (state-less) update entity must not short-circuit the search.
+
+        With include_disabled_entities=True, registry entries appear before
+        their state is published. Loop must continue past a state-less update
+        entity to find a sibling that does have a published state.
+        """
+        dev_reg = dr.async_get(hass)
+        ent_reg = er.async_get(hass)
+
+        _device, esphome_entry = _create_esphome_device(
+            hass,
+            dev_reg,
+            ent_reg,
+            mac="AA:BB:CC:DD:EE:FF",
+            name="Presence Pro Kitchen",
+            host="192.168.1.42",
+        )
+
+        # First update entity: disabled / no state published.
+        ent_reg.async_get_or_create(
+            "update",
+            "esphome",
+            "AA:BB:CC:DD:EE:FF-update_disabled",
+            device_id=_device.id,
+            config_entry=esphome_entry,
+            disabled_by=er.RegistryEntryDisabler.USER,
+        )
+
+        # Second update entity: enabled with state "on".
+        on_entity = ent_reg.async_get_or_create(
+            "update",
+            "esphome",
+            "AA:BB:CC:DD:EE:FF-update",
+            device_id=_device.id,
+            config_entry=esphome_entry,
+        )
+        hass.states.async_set(on_entity.entity_id, "on")
+
+        manager = DeviceManager(hass, mock_store)
+        result = await manager.list_flashable_devices()
+
+        assert len(result) == 1
+        assert result[0]["update_available"] is True
