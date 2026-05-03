@@ -3304,15 +3304,50 @@ class TestEventCallbacks:
         assert "AA:BB:CC:DD:EE:03" not in manager._pushing
         assert len(fire_calls) == 1
 
-    async def test_on_state_changed_ignores_none_states(self, hass: HomeAssistant, manager: DeviceManager) -> None:
-        """Missing old/new state is ignored."""
-        event = MagicMock()
-        event.data = {"entity_id": "sensor.test", "old_state": None, "new_state": MagicMock()}
-
-        with patch.object(manager, "_on_device_available", new_callable=AsyncMock) as mock_avail:
+    async def test_on_state_changed_treats_missing_old_state_as_offline(
+        self, hass: HomeAssistant, manager: DeviceManager
+    ) -> None:
+        """First appearance (old_state=None) is treated as offline → online —
+        that is, indistinguishable from STATE_UNAVAILABLE → value, which fires
+        the config push."""
+        dev_reg = dr.async_get(hass)
+        ent_reg = er.async_get(hass)
+        esphome_entry = MockConfigEntry(domain="esphome", data={"host": "192.168.1.50"})
+        esphome_entry.add_to_hass(hass)
+        device = dev_reg.async_get_or_create(
+            config_entry_id=esphome_entry.entry_id,
+            connections={("mac", "aa:bb:cc:dd:ee:ff")},
+            name="EPP",
+        )
+        entity = ent_reg.async_get_or_create(
+            "sensor",
+            "esphome",
+            unique_id="AA:BB:CC:DD:EE:FF-sensor-firmware_version",
+            config_entry=esphome_entry,
+            device_id=device.id,
+        )
+        manager.devices["AA:BB:CC:DD:EE:FF"] = ManagedDevice(
+            mac="AA:BB:CC:DD:EE:FF", name="EPP", host="192.168.1.50", device_id=device.id
+        )
+        with patch.object(manager, "_push_config_to_device", new_callable=AsyncMock) as mock_push:
+            new_state = MagicMock()
+            new_state.state = "1.2.3"
+            event = MagicMock()
+            event.data = {"entity_id": entity.entity_id, "old_state": None, "new_state": new_state}
             manager._on_state_changed(event)
             await hass.async_block_till_done()
+        mock_push.assert_awaited_once_with("AA:BB:CC:DD:EE:FF")
 
+    async def test_on_state_changed_ignores_missing_new_state(
+        self, hass: HomeAssistant, manager: DeviceManager
+    ) -> None:
+        """Missing new_state means the entity was removed — not an availability
+        event we care about."""
+        with patch.object(manager, "_on_device_available", new_callable=AsyncMock) as mock_avail:
+            event = MagicMock()
+            event.data = {"entity_id": "sensor.test", "old_state": MagicMock(), "new_state": None}
+            manager._on_state_changed(event)
+            await hass.async_block_till_done()
         mock_avail.assert_not_awaited()
 
     async def test_on_state_changed_ignores_non_esphome(self, hass: HomeAssistant, manager: DeviceManager) -> None:

@@ -657,8 +657,13 @@ class DeviceManager:
         """Detect when a managed device becomes available."""
         new_state: State | None = event.data.get("new_state")
         old_state: State | None = event.data.get("old_state")
-        if new_state is None or old_state is None:
+        if new_state is None:
             return
+        # First appearance (old_state=None) is treated as the device just
+        # coming online: register-then-publish-state semantics produce a
+        # None → value transition that's indistinguishable from
+        # STATE_UNAVAILABLE → value from our point of view.
+        old_state_value = old_state.state if old_state is not None else STATE_UNAVAILABLE
 
         # Check if this entity belongs to a managed ESPHome device
         ent_reg = er.async_get(self._hass)
@@ -693,7 +698,7 @@ class DeviceManager:
         if (
             entry.domain == "sensor"
             and "firmware_version" in entry.unique_id
-            and old_state.state in offline_states
+            and old_state_value in offline_states
             and new_state.state not in offline_states
         ):
             fw_ver = self.read_firmware_version(entry.device_id)
@@ -716,7 +721,7 @@ class DeviceManager:
             self._fire_device_list_changed()
             return
 
-        if old_state.state not in offline_states:
+        if old_state_value not in offline_states:
             return
 
         # Device came online — push config once. The `_pushing` guard
