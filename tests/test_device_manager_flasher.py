@@ -314,3 +314,125 @@ class TestListFlashableDevices:
 
         assert len(result) == 1
         assert result[0]["update_available"] is True
+
+    async def test_availability_with_user_disabled_entity_is_live(self, hass: HomeAssistant, mock_store) -> None:
+        """Online device whose only entity is user-disabled is reported available.
+
+        Regression for the availability scan switching to
+        `include_disabled_entities=True`. Before the fix the scan filtered out
+        disabled entities, so a device with all entities user-disabled looked
+        like it had zero entities and was reported as unavailable — even when
+        the underlying device was responding fine. This test pins the new
+        behaviour: a disabled-but-live entity contributes to availability.
+        """
+        dev_reg = dr.async_get(hass)
+        ent_reg = er.async_get(hass)
+
+        device, esphome_entry = _create_esphome_device(
+            hass,
+            dev_reg,
+            ent_reg,
+            mac="AA:BB:CC:DD:EE:FF",
+            name="Presence Pro Disabled",
+            host="192.168.1.42",
+        )
+
+        # Create one entity with a live state, then mark it user-disabled.
+        ent = ent_reg.async_get_or_create(
+            "binary_sensor",
+            "esphome",
+            "AA:BB:CC:DD:EE:FF-occupancy",
+            device_id=device.id,
+            config_entry=esphome_entry,
+        )
+        hass.states.async_set(ent.entity_id, "on")
+        ent_reg.async_update_entity(ent.entity_id, disabled_by=er.RegistryEntryDisabler.USER)
+
+        manager = DeviceManager(hass, mock_store)
+        result = await manager.list_flashable_devices()
+
+        assert len(result) == 1
+        assert result[0]["available"] is True
+
+    async def test_availability_with_only_unavailable_disabled_entity_is_offline(
+        self, hass: HomeAssistant, mock_store
+    ) -> None:
+        """Inverse case: a user-disabled entity that's also `unavailable`
+        should not flip availability to True. Pins that
+        `include_disabled_entities=True` doesn't accidentally treat
+        disabled+unavailable entities as live."""
+        dev_reg = dr.async_get(hass)
+        ent_reg = er.async_get(hass)
+
+        device, esphome_entry = _create_esphome_device(
+            hass,
+            dev_reg,
+            ent_reg,
+            mac="AA:BB:CC:DD:EE:FF",
+            name="Presence Pro Disabled Offline",
+            host="192.168.1.42",
+        )
+
+        ent = ent_reg.async_get_or_create(
+            "binary_sensor",
+            "esphome",
+            "AA:BB:CC:DD:EE:FF-occupancy",
+            device_id=device.id,
+            config_entry=esphome_entry,
+        )
+        hass.states.async_set(ent.entity_id, "unavailable")
+        ent_reg.async_update_entity(ent.entity_id, disabled_by=er.RegistryEntryDisabler.USER)
+
+        manager = DeviceManager(hass, mock_store)
+        result = await manager.list_flashable_devices()
+
+        assert len(result) == 1
+        assert result[0]["available"] is False
+
+    async def test_availability_ignores_non_esphome_entities(self, hass: HomeAssistant, mock_store) -> None:
+        """Live entity from another integration must not flip flashable=available.
+
+        HA devices can aggregate entities from multiple integrations onto one
+        device entry. The flashable availability scan only cares about whether
+        the *ESPHome* side is responsive — a live MQTT/Tasmota/etc sensor on
+        the same device entry shouldn't paper over an offline ESPHome side.
+        """
+        dev_reg = dr.async_get(hass)
+        ent_reg = er.async_get(hass)
+
+        device, esphome_entry = _create_esphome_device(
+            hass,
+            dev_reg,
+            ent_reg,
+            mac="AA:BB:CC:DD:EE:FF",
+            name="Presence Pro Mixed",
+            host="192.168.1.42",
+        )
+
+        # ESPHome sensor: unavailable.
+        esp_ent = ent_reg.async_get_or_create(
+            "binary_sensor",
+            "esphome",
+            "AA:BB:CC:DD:EE:FF-occupancy",
+            device_id=device.id,
+            config_entry=esphome_entry,
+        )
+        hass.states.async_set(esp_ent.entity_id, "unavailable")
+
+        # Foreign-integration sensor on the same device: live.
+        other_entry = MockConfigEntry(domain="other_integration", data={}, title="Other")
+        other_entry.add_to_hass(hass)
+        other_ent = ent_reg.async_get_or_create(
+            "binary_sensor",
+            "other_integration",
+            "AA:BB:CC:DD:EE:FF-other",
+            device_id=device.id,
+            config_entry=other_entry,
+        )
+        hass.states.async_set(other_ent.entity_id, "on")
+
+        manager = DeviceManager(hass, mock_store)
+        result = await manager.list_flashable_devices()
+
+        assert len(result) == 1
+        assert result[0]["available"] is False

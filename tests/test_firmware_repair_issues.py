@@ -319,6 +319,7 @@ async def test_repair_issue_resyncs_on_device_rename(hass: HomeAssistant) -> Non
         esphome_config_entry_id=esphome_entry.entry_id,
         device_id=device.id,
     )
+    manager._device_id_to_mac[device.id] = mac
 
     # Initial sync: issue exists with name "Original"
     from custom_components.eppgrid.device_manager._helpers import _sync_firmware_repair_issue

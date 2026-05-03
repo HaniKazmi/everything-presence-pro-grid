@@ -2341,9 +2341,12 @@ class TestEventCallbacks:
             device_id=device.id,
         )
 
-        # Pre-populate the device as already discovered
+        # Pre-populate the device as already discovered. device_id must match
+        # the registry entry's device_id — the handler now uses that as part
+        # of the early-return check so it can still re-trigger discovery when
+        # a known MAC reappears under a *different* HA device_id (live re-add).
         manager.devices["AA:BB:CC:DD:EE:FF"] = ManagedDevice(
-            mac="AA:BB:CC:DD:EE:FF", name="EPP Known", host="192.168.1.50"
+            mac="AA:BB:CC:DD:EE:FF", name="EPP Known", host="192.168.1.50", device_id=device.id
         )
 
         with patch.object(manager, "async_discover", new_callable=AsyncMock) as mock_discover:
@@ -3101,6 +3104,7 @@ class TestEventCallbacks:
         """Device registry removal cleans up stored settings and runtime state."""
         mac = "AA:BB:CC:DD:EE:FF"
         manager.devices[mac] = ManagedDevice(mac=mac, name="EPP", host="192.168.1.50", device_id="dev123")
+        manager._device_id_to_mac["dev123"] = mac
         manager._store.devices[mac] = {"settings": {"led_mode": "Manual"}}
         manager._build_flags[mac] = {"has_co2": True}
         manager._entity_update_macs.add(mac)
@@ -3125,6 +3129,7 @@ class TestEventCallbacks:
         """Device removal fires device list callbacks."""
         mac = "AA:BB:CC:DD:EE:FF"
         manager.devices[mac] = ManagedDevice(mac=mac, name="EPP", host="192.168.1.50", device_id="dev123")
+        manager._device_id_to_mac["dev123"] = mac
 
         cb = MagicMock()
         unsub = manager.on_device_list_changed(cb)
@@ -3137,6 +3142,212 @@ class TestEventCallbacks:
 
         cb.assert_called_once()
         unsub()
+
+    async def test_device_id_reverse_map_maintained_on_discover_and_remove(
+        self, hass: HomeAssistant, manager: DeviceManager
+    ) -> None:
+        """Discovery populates `_device_id_to_mac`; removal drops the entry.
+
+        The reverse index makes `_on_device_registry_updated` O(1); without
+        this invariant the registry-update path silently goes O(N) again or
+        leaks stale entries on remove.
+        """
+        dev_reg = dr.async_get(hass)
+        ent_reg = er.async_get(hass)
+        esphome_entry = MockConfigEntry(domain="esphome", data={"host": "192.168.1.50"}, title="EPP")
+        esphome_entry.add_to_hass(hass)
+        device = dev_reg.async_get_or_create(
+            config_entry_id=esphome_entry.entry_id,
+            connections={("mac", "aa:bb:cc:dd:ee:ff")},
+            name="EPP",
+            manufacturer="EverythingSmartTechnology",
+            model="Everything Presence Pro",
+        )
+        ent_reg.async_get_or_create(
+            "sensor",
+            "esphome",
+            unique_id="aabbccddeeff-firmware_version",
+            config_entry=esphome_entry,
+            device_id=device.id,
+        )
+
+        await manager.async_discover()
+
+        assert manager._device_id_to_mac.get(device.id) == "AA:BB:CC:DD:EE:FF"
+
+        with patch.object(manager, "async_close_session", new_callable=AsyncMock):
+            event = MagicMock()
+            event.data = {"action": "remove", "device_id": device.id}
+            manager._on_device_registry_updated(event)
+            await hass.async_block_till_done()
+
+        assert device.id not in manager._device_id_to_mac
+
+    async def test_rediscovery_under_new_esphome_entry_swaps_listener(
+        self, hass: HomeAssistant, manager: DeviceManager
+    ) -> None:
+        """When the same MAC is rediscovered under a different ESPHome config
+        entry (e.g. user removed and re-added the integration), the stale
+        entry-update listener for the old entry must be unsubscribed and a
+        new listener registered for the new entry. The stale APIClient
+        session must also be closed and the push guard cleared so the next
+        online transition pushes config on the new connection — otherwise
+        get_session() / _push_config_to_device() keep reusing a client
+        bound to the old host."""
+        mac = "AA:BB:CC:DD:EE:FF"
+
+        old_unsub = MagicMock()
+        new_unsub = MagicMock()
+
+        # Pre-existing state: device known under entry "old_entry", with an
+        # active session and the push guard set.
+        manager.devices[mac] = ManagedDevice(
+            mac=mac,
+            name="EPP",
+            host="192.168.1.50",
+            esphome_config_entry_id="old_entry",
+            device_id="dev_old",
+        )
+        manager._device_id_to_mac["dev_old"] = mac
+        manager._entry_update_unsubs["old_entry"] = old_unsub
+        stale_session = MagicMock()
+        manager._active_connections[mac] = stale_session
+        manager._pushing.add(mac)
+
+        # Build a new device-registry entry with a different config_entry_id.
+        dev_reg = dr.async_get(hass)
+        ent_reg = er.async_get(hass)
+        new_entry = MockConfigEntry(domain="esphome", data={"host": "192.168.1.51"}, title="EPP")
+        new_entry.add_to_hass(hass)
+        new_device = dev_reg.async_get_or_create(
+            config_entry_id=new_entry.entry_id,
+            connections={("mac", mac.lower())},
+            name="EPP",
+            manufacturer="EverythingSmartTechnology",
+            model="Everything Presence Pro",
+        )
+        ent_reg.async_get_or_create(
+            "sensor",
+            "esphome",
+            unique_id=f"{mac}-firmware_version",
+            config_entry=new_entry,
+            device_id=new_device.id,
+        )
+
+        # Patch add_update_listener to track new-entry subscribe.
+        with (
+            patch.object(new_entry, "add_update_listener", return_value=new_unsub),
+            patch.object(manager, "async_close_session", new_callable=AsyncMock) as mock_close,
+        ):
+            await manager.async_discover()
+
+        # Old listener was unsubscribed.
+        old_unsub.assert_called_once()
+        # New listener registered under the new entry id.
+        assert new_entry.entry_id in manager._entry_update_unsubs
+        assert manager._entry_update_unsubs[new_entry.entry_id] is new_unsub
+        # Old entry id no longer tracked.
+        assert "old_entry" not in manager._entry_update_unsubs
+        # Device tracking moved to the new entry / device id.
+        assert manager.devices[mac].esphome_config_entry_id == new_entry.entry_id
+        assert manager.devices[mac].device_id == new_device.id
+        # Stale session closed and push guard cleared so the new entry's
+        # connection lifecycle starts fresh.
+        mock_close.assert_awaited_once_with(mac)
+        assert mac not in manager._pushing
+
+    async def test_entity_create_re_runs_discovery_on_device_id_change(
+        self, hass: HomeAssistant, manager: DeviceManager
+    ) -> None:
+        """`_on_entity_registry_updated` must re-run discovery when an entity
+        for a known MAC arrives under a *different* HA device_id. Without
+        this, the live re-add flow (user removes the ESPHome integration and
+        re-adds it) leaves the rediscovery branch in async_discover dead —
+        the new firmware_version entity arrives via this handler, which
+        previously returned early on `mac in self.devices` regardless of
+        whether the device.id had changed."""
+        mac = "AA:BB:CC:DD:EE:FF"
+        manager.devices[mac] = ManagedDevice(
+            mac=mac,
+            name="EPP",
+            host="192.168.1.50",
+            esphome_config_entry_id="old_entry",
+            device_id="dev_old",
+        )
+        manager._device_id_to_mac["dev_old"] = mac
+
+        dev_reg = dr.async_get(hass)
+        ent_reg = er.async_get(hass)
+        new_entry = MockConfigEntry(domain="esphome", data={"host": "192.168.1.51"}, title="EPP")
+        new_entry.add_to_hass(hass)
+        new_device = dev_reg.async_get_or_create(
+            config_entry_id=new_entry.entry_id,
+            connections={("mac", mac.lower())},
+            name="EPP",
+            manufacturer="EverythingSmartTechnology",
+            model="Everything Presence Pro",
+        )
+        new_entity = ent_reg.async_get_or_create(
+            "sensor",
+            "esphome",
+            unique_id=f"{mac}-firmware_version",
+            config_entry=new_entry,
+            device_id=new_device.id,
+        )
+
+        with patch.object(manager, "async_discover", new_callable=AsyncMock) as mock_discover:
+            event = MagicMock()
+            event.data = {"action": "create", "entity_id": new_entity.entity_id}
+            manager._on_entity_registry_updated(event)
+            await hass.async_block_till_done()
+
+        # Discovery must run because device_id changed for the known MAC.
+        mock_discover.assert_awaited()
+
+    async def test_entity_create_skips_discovery_when_device_id_unchanged(
+        self, hass: HomeAssistant, manager: DeviceManager
+    ) -> None:
+        """Inverse: a create event for a *new entity* on an already-discovered
+        device (same device_id) must NOT re-run discovery — the existing
+        early-return optimisation still applies."""
+        mac = "AA:BB:CC:DD:EE:FF"
+
+        dev_reg = dr.async_get(hass)
+        ent_reg = er.async_get(hass)
+        esphome_entry = MockConfigEntry(domain="esphome", data={"host": "192.168.1.50"}, title="EPP")
+        esphome_entry.add_to_hass(hass)
+        device = dev_reg.async_get_or_create(
+            config_entry_id=esphome_entry.entry_id,
+            connections={("mac", mac.lower())},
+            name="EPP",
+            manufacturer="EverythingSmartTechnology",
+            model="Everything Presence Pro",
+        )
+        manager.devices[mac] = ManagedDevice(
+            mac=mac,
+            name="EPP",
+            host="192.168.1.50",
+            esphome_config_entry_id=esphome_entry.entry_id,
+            device_id=device.id,
+        )
+        manager._device_id_to_mac[device.id] = mac
+
+        # New entity on the same device.
+        new_entity = ent_reg.async_get_or_create(
+            "sensor",
+            "esphome",
+            unique_id=f"{mac}-temperature",
+            config_entry=esphome_entry,
+            device_id=device.id,
+        )
+
+        with patch.object(manager, "async_discover", new_callable=AsyncMock) as mock_discover:
+            event = MagicMock()
+            event.data = {"action": "create", "entity_id": new_entity.entity_id}
+            manager._on_entity_registry_updated(event)
+            await hass.async_block_till_done()
+
+        mock_discover.assert_not_awaited()
 
     async def test_discovery_notifies_subscribers(self, hass: HomeAssistant, manager: DeviceManager) -> None:
         """Discovering a new device fires device list callbacks."""
@@ -3254,6 +3465,7 @@ class TestEventCallbacks:
         """Update events for managed devices fire device list callbacks (e.g. rename)."""
         mac = "AA:BB:CC:DD:EE:FF"
         manager.devices[mac] = ManagedDevice(mac=mac, name="EPP", host="192.168.1.50", device_id="dev123")
+        manager._device_id_to_mac["dev123"] = mac
         manager._store.devices[mac] = {"settings": {}}
 
         cb = MagicMock()
@@ -3269,6 +3481,49 @@ class TestEventCallbacks:
         assert mac in manager._store.devices
         # Callback fired so subscribers re-fetch the list
         cb.assert_called_once()
+
+    async def test_managed_update_skips_repair_sync_when_fw_and_name_unchanged(
+        self, hass: HomeAssistant, manager: DeviceManager
+    ) -> None:
+        """Update events with no firmware-version or name change skip the
+        Repairs re-sync — `_sync_firmware_repair_issue` is the only call in
+        this path that hits the issue registry, and re-firing it on every
+        bus event (area change, label edit, etc.) is pure noise."""
+        mac = "AA:BB:CC:DD:EE:FF"
+        manager.devices[mac] = ManagedDevice(mac=mac, name="EPP", host="192.168.1.50", device_id="dev123")
+        manager._device_id_to_mac["dev123"] = mac
+        manager._store.devices[mac] = {"settings": {}}
+
+        dev_reg = dr.async_get(hass)
+        esphome_entry = MockConfigEntry(domain="esphome", data={"host": "192.168.1.50"}, title="EPP")
+        esphome_entry.add_to_hass(hass)
+        dev_reg.async_get_or_create(
+            config_entry_id=esphome_entry.entry_id,
+            connections={("mac", "aa:bb:cc:dd:ee:ff")},
+            name="EPP",
+            manufacturer="EverythingSmartTechnology",
+            model="Everything Presence Pro",
+        )
+        # The mock device_id "dev123" won't match the real one, but we override
+        # the lookup result through the reverse map. Refit it.
+        real_device = next(d for d in dev_reg.devices.values() if d.name == "EPP")
+        manager.devices[mac].device_id = real_device.id
+        manager._device_id_to_mac.pop("dev123", None)
+        manager._device_id_to_mac[real_device.id] = mac
+
+        with patch("custom_components.eppgrid.device_manager._sync_firmware_repair_issue") as mock_sync:
+            event = MagicMock()
+            event.data = {"action": "update", "device_id": real_device.id}
+            # First call should sync — initial state has no cached value.
+            manager._on_device_registry_updated(event)
+            await hass.async_block_till_done()
+            assert mock_sync.call_count == 1
+
+            # Second call with no fw/name change must NOT re-sync.
+            mock_sync.reset_mock()
+            manager._on_device_registry_updated(event)
+            await hass.async_block_till_done()
+            mock_sync.assert_not_called()
 
     async def test_on_unmanaged_device_updated_does_not_fire(self, hass: HomeAssistant, manager: DeviceManager) -> None:
         """Update events for devices we don't manage don't fire the callback."""
@@ -4218,8 +4473,12 @@ class TestUniqueIdMatchingAnchors:
 
         assert manager.read_firmware_version(device.id) == "0.0.0"
 
-    async def test_find_zone_entity_anchors_zone_index(self, hass: HomeAssistant, manager: DeviceManager) -> None:
-        """_find_zone_entity must not let zone_2_presence match an unrelated _zone_2_presence_extra entity."""
+    async def test_zone_entity_lookup_anchors_zone_index(self, hass: HomeAssistant, manager: DeviceManager) -> None:
+        """async_update_zone_entities's single-pass scan must not let
+        `zone_2_presence` substring-match an unrelated `_zone_2_presence_extra`
+        entity. The anchored `endswith` check is the same protection the old
+        `_find_zone_entity` helper used; this test pins it on the new path.
+        """
         dev_reg = dr.async_get(hass)
         ent_reg = er.async_get(hass)
 
@@ -4230,18 +4489,32 @@ class TestUniqueIdMatchingAnchors:
             connections={(dr.CONNECTION_NETWORK_MAC, "AA:BB:CC:DD:EE:FF")},
             name="EPP",
         )
+        manager.devices["AA:BB:CC:DD:EE:FF"] = ManagedDevice(
+            mac="AA:BB:CC:DD:EE:FF",
+            name="EPP",
+            host="192.168.1.50",
+            device_id=device.id,
+        )
 
         # A non-canonical entity whose object_id happens to contain
-        # `zone_2_presence` as a substring.
-        ent_reg.async_get_or_create(
+        # `zone_2_presence` as a substring. `async_update_zone_entities` must
+        # leave it alone (no rename, no disable) — substring-matching it as
+        # zone 2's presence entity would clobber an unrelated sensor.
+        bogus = ent_reg.async_get_or_create(
             "sensor",
             "esphome",
             "AA:BB:CC:DD:EE:FF-sensor-zone_2_presence_extra",
             device_id=device.id,
             config_entry=esphome_entry,
         )
+        original_disabled_by = ent_reg.async_get(bogus.entity_id).disabled_by
 
-        assert manager._find_zone_entity(ent_reg, device.id, 2, "presence") is None
+        await manager.async_update_zone_entities("AA:BB:CC:DD:EE:FF", [{}, None, None, None, None, None, None, None])
+
+        after = ent_reg.async_get(bogus.entity_id)
+        assert after is not None
+        assert after.name is None
+        assert after.disabled_by == original_disabled_by
 
 
 # ---------------------------------------------------------------------------
