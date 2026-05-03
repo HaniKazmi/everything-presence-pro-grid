@@ -33,7 +33,16 @@ _TIMING_FIELDS = ("trigger", "renew", "timeout", "handoff_timeout")
 # Reusable schema validators for common string fields. Bound lengths and
 # enforce regex shapes at the websocket boundary so unknown / oversized
 # inputs never reach storage or firmware pushes.
-MAC_SCHEMA: vol.All = vol.All(str, vol.Match(r"^([0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}$"))
+# Accept any-case hex in the regex but normalize to uppercase so handlers
+# can compare against `manager.devices` (whose keys are uppercase via
+# `_extract_mac` -> `.upper()`). Without normalization, a lowercase but
+# otherwise valid MAC passes schema validation and then fails the
+# `_require_known_device` lookup, surfacing as a confusing "device_not_found".
+MAC_SCHEMA: vol.All = vol.All(
+    str,
+    vol.Match(r"^([0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}$"),
+    lambda v: v.upper(),
+)
 NAME_SCHEMA: vol.All = vol.All(str, vol.Length(min=1, max=128))
 ENTITY_ID_SCHEMA: vol.All = vol.All(str, vol.Length(min=1, max=255))
 CONFIG_ENTRY_ID_SCHEMA: vol.All = vol.All(str, vol.Length(min=1, max=64))

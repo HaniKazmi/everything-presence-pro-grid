@@ -1061,6 +1061,20 @@ class TestSchemaInputBounds:
         with pytest.raises(vol.Invalid):
             self._validate(handler, payload)
 
+    def test_mac_schema_normalizes_to_uppercase(self) -> None:
+        """MAC_SCHEMA must uppercase any-case input so it matches storage keys.
+
+        manager.devices keys are uppercased via _extract_mac().upper(); without
+        normalization, a lowercase but otherwise valid MAC passes schema
+        validation but then fails the _require_known_device lookup, surfacing
+        as a confusing "device_not_found" for what is actually a known device.
+        """
+        from custom_components.eppgrid.websocket_api import MAC_SCHEMA
+
+        assert MAC_SCHEMA("aa:bb:cc:dd:ee:ff") == "AA:BB:CC:DD:EE:FF"
+        assert MAC_SCHEMA("Aa:Bb:Cc:Dd:Ee:Ff") == "AA:BB:CC:DD:EE:FF"
+        assert MAC_SCHEMA("AA:BB:CC:DD:EE:FF") == "AA:BB:CC:DD:EE:FF"
+
     # ---- Item 2: unknown MAC short-circuits ----
 
     async def test_set_setup_rejects_unknown_mac(self, hass: HomeAssistant, config_entry: MockConfigEntry) -> None:

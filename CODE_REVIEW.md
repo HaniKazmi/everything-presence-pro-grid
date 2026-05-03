@@ -34,7 +34,7 @@ Goal: lock down trust boundaries. Single self-contained PR.
 - [x] **L: `_validate_zone_slots` accepts bool as numeric** — [websocket_api/__init__.py:56-71](custom_components/eppgrid/websocket_api/__init__.py#L56-L71)
   `isinstance(v, (int, float)) and not isinstance(v, bool)`. — _shipped: PR 1 closeout_
 
-- [x] **L: `set_setup` allows negative `room_width`/`room_depth`** — `_devices.py:151-153`. `vol.Range(min=0, max=50)`. — _shipped: PR 1 closeout_
+- [x] **L: `set_setup` allows negative `room_width`/`room_depth`** — `_devices.py:151-153`. `vol.Range(min=0, max=50_000)` mm (firmware uses mm; ~50 m max room). — _shipped: PR 1 closeout_
 
 - [x] **L: `_validate_zone_slots` doesn't bound `name`/`color`/`type` lengths** — [websocket_api/__init__.py:35-72](custom_components/eppgrid/websocket_api/__init__.py#L35-L72) — _shipped: PR 1 closeout_
 
