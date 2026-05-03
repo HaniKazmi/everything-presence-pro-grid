@@ -1537,13 +1537,26 @@ class TestFirmwareVersion:
         """Returns 'firmware_ahead' when device version is newer."""
         assert _compare_firmware_version("99.0.0") == "firmware_ahead"
 
-    def test_compare_firmware_version_invalid(self) -> None:
-        """Returns 'firmware_behind' for unparseable version strings."""
-        assert _compare_firmware_version("not-a-version") == "firmware_behind"
+    def test_compare_firmware_version_unparseable_returns_firmware_unknown(self) -> None:
+        """Unparseable version strings return 'firmware_unknown', not
+        'firmware_behind' — the latter would raise a stale Repairs issue."""
+        assert _compare_firmware_version("not-a-version") == "firmware_unknown"
+        assert _compare_firmware_version("") == "firmware_unknown"
+        assert _compare_firmware_version("a.b.c") == "firmware_unknown"
 
     def test_compare_firmware_version_zero(self) -> None:
         """Returns 'firmware_behind' for '0.0.0' (missing entity sentinel)."""
         assert _compare_firmware_version("0.0.0") == "firmware_behind"
+
+    async def test_sync_firmware_repair_issue_skips_unknown(self, hass: HomeAssistant) -> None:
+        """An unparseable firmware version must not raise a Repairs issue."""
+        from homeassistant.helpers import issue_registry as ir
+
+        from custom_components.eppgrid.device_manager._helpers import _sync_firmware_repair_issue
+
+        _sync_firmware_repair_issue(hass, mac="AA:BB:CC:DD:EE:FF", device_name="EPP", fw_ver="garbage-version")
+        issues = ir.async_get(hass).issues
+        assert not any(k[1].startswith("firmware_") and "AA:BB:CC:DD:EE:FF" in k[1] for k in issues)
 
     # --- read_firmware_version ---
 

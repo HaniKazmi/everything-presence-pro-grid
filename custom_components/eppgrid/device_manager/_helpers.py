@@ -144,7 +144,13 @@ def _compute_pipeline(
 
 
 def _compare_firmware_version(device_version: str) -> str:
-    """Compare device firmware version against required version."""
+    """Compare device firmware version against the integration's pinned version.
+
+    Returns one of: 'compatible', 'firmware_behind', 'firmware_ahead',
+    'firmware_unknown'. ``firmware_unknown`` is returned for unparseable
+    inputs — the caller (Repairs issue, frontend) treats that the same
+    way as an offline device: no issue raised, frontend shows 'unknown'.
+    """
     from packaging.version import Version
 
     from ..const import FIRMWARE_VERSION
@@ -153,7 +159,7 @@ def _compare_firmware_version(device_version: str) -> str:
         dev_ver = Version(device_version)
         req_ver = Version(FIRMWARE_VERSION)
     except Exception:
-        return "firmware_behind"
+        return "firmware_unknown"
     if dev_ver == req_ver:
         return "compatible"
     if dev_ver < req_ver:
@@ -196,6 +202,11 @@ def _sync_firmware_repair_issue(
         "required_version": FIRMWARE_VERSION,
     }
 
+    if status == "firmware_unknown":
+        # Unparseable version → leave any prior issue alone (clearing would
+        # mask a real "behind" state if the parse failure is transient);
+        # never raise a new issue we can't act on.
+        return
     if status == "firmware_behind":
         ir.async_delete_issue(hass, DOMAIN, ahead_id)
         ir.async_create_issue(
