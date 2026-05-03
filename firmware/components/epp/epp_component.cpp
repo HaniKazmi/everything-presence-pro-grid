@@ -389,6 +389,33 @@ float EPPComponent::get_setup_priority() const {
   return esphome::setup_priority::DATA;
 }
 
+void EPPComponent::dump_config() {
+  ESP_LOGCONFIG(TAG, "EPP Zone Engine:");
+  ESP_LOGCONFIG(TAG, "  Firmware Version: %s", FIRMWARE_VERSION_STR);
+  ESP_LOGCONFIG(TAG, "  Throttle intervals (ms, 0 = disabled):");
+  ESP_LOGCONFIG(TAG, "    display:       %u", display_interval_ms_);
+  ESP_LOGCONFIG(TAG, "    zone_state:    %u", zone_state_interval_ms_);
+  ESP_LOGCONFIG(TAG, "    entity_target: %u", entity_target_interval_ms_);
+  ESP_LOGCONFIG(TAG, "    entity_zone:   %u", entity_zone_interval_ms_);
+  ESP_LOGCONFIG(TAG, "    system:        %u (fixed)", SYSTEM_INTERVAL_MS);
+  ESP_LOGCONFIG(TAG, "  Sensor wiring:");
+  ESP_LOGCONFIG(TAG, "    device_tracking:  %s", device_tracking_sensor_ ? "yes" : "no");
+  ESP_LOGCONFIG(TAG, "    firmware_version: %s", firmware_version_sensor_ ? "yes" : "no");
+  ESP_LOGCONFIG(TAG, "    zone_state:       %s", zone_state_sensor_ ? "yes" : "no");
+  ESP_LOGCONFIG(TAG, "    static_input:     %s", static_presence_sensor_ ? "yes" : "no");
+  ESP_LOGCONFIG(TAG, "    motion_input:     %s", motion_presence_sensor_ ? "yes" : "no");
+  ESP_LOGCONFIG(TAG, "    target_count:     %s", target_count_sensor_ ? "yes" : "no");
+  ESP_LOGCONFIG(TAG, "  Sensor timeouts: static=%.1fs motion=%.1fs", static_timeout_, motion_timeout_);
+  ESP_LOGCONFIG(TAG, "  Relay: trigger=%d contact=%d switch=%s",
+                static_cast<int>(relay_trigger_mode_),
+                static_cast<int>(relay_contact_mode_),
+                relay_switch_ ? "wired" : "unwired");
+  ESP_LOGCONFIG(TAG, "  NVS restore status:");
+  ESP_LOGCONFIG(TAG, "    perspective: %s", has_persp_cache_ ? "loaded" : "absent");
+  ESP_LOGCONFIG(TAG, "    grid:        %s", has_grid_cache_ ? "loaded" : "absent");
+  ESP_LOGCONFIG(TAG, "    zones:       %s", has_zones_cache_ ? "loaded" : "absent");
+}
+
 void EPPComponent::feed_targets(float x1, float y1, bool d1,
                                 float x2, float y2, bool d2,
                                 float x3, float y3, bool d3) {

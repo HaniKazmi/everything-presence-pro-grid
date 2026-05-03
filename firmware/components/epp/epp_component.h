@@ -28,6 +28,7 @@ class EPPComponent : public esphome::Component {
  public:
   void setup() override;
   void loop() override;
+  void dump_config() override;
   float get_setup_priority() const override;
 
   /// Called from LD2450 UART lambda with parsed target data
