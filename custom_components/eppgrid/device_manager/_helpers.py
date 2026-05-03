@@ -86,13 +86,17 @@ def _resolve_zone_name(
     if index == 0:
         key = "zone_rest_of_room_target_count" if target_count else "zone_rest_of_room"
         return table.get(key, en[key])
-    # If the name already starts with the localized "Zone"/"Zona" prefix
-    # (or the English default), strip it to avoid "Zone Zone 1".
+    # If the name already starts with any locale's "Zone"/"Zona"/... prefix,
+    # strip it so we don't double-prefix (e.g. user saved "Zona Cocina" under
+    # an es session and is now viewing under en — still want "Zone Cocina",
+    # not "Zone Zona Cocina").
     if zone_name:
-        loc_prefix = table.get("zone_with_name", en["zone_with_name"]).split("{name}")[0].rstrip()
-        en_prefix = en["zone_with_name"].split("{name}")[0].rstrip()
-        for prefix in (loc_prefix, en_prefix):
-            if zone_name.startswith(prefix + " "):
+        prefixes = {
+            loc_table.get("zone_with_name", en["zone_with_name"]).split("{name}")[0].rstrip()
+            for loc_table in ZONE_NAMES.values()
+        }
+        for prefix in prefixes:
+            if prefix and zone_name.startswith(prefix + " "):
                 zone_name = zone_name.removeprefix(prefix + " ")
                 break
 
@@ -226,10 +230,15 @@ def _sync_firmware_repair_issue(
 
 
 def _extract_mac(device: dr.DeviceEntry) -> str | None:
-    """Extract MAC address from device connections, normalised to uppercase."""
+    """Extract MAC address from device connections, normalised to AA:BB:... form.
+
+    Routes through `dr.format_mac` so unformatted inputs (no colons,
+    dash-separated, mixed case) all collapse to the same canonical form,
+    then uppercased to match storage / WS conventions.
+    """
     for conn_type, conn_id in device.connections:
         if conn_type == "mac":
-            return conn_id.upper()
+            return dr.format_mac(conn_id).upper()
     return None
 
 

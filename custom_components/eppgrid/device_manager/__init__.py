@@ -251,7 +251,11 @@ class DeviceManager:
             return "0.0.0"
         ent_reg = er.async_get(self._hass)
         for entry in er.async_entries_for_device(ent_reg, device_id, include_disabled_entities=True):
-            if entry.platform == "esphome" and entry.domain == "sensor" and "firmware_version" in entry.unique_id:
+            if (
+                entry.platform == "esphome"
+                and entry.domain == "sensor"
+                and entry.unique_id.endswith("-firmware_version")
+            ):
                 state = self._hass.states.get(entry.entity_id)
                 if state is not None and state.state not in (None, "unknown", "unavailable", ""):
                     return state.state
@@ -288,7 +292,7 @@ class DeviceManager:
                 continue
             if entry.domain != "sensor":
                 continue
-            if "firmware_version" not in entry.unique_id:
+            if not entry.unique_id.endswith("-firmware_version"):
                 continue
             if entry.device_id is None:
                 continue
@@ -808,7 +812,7 @@ class DeviceManager:
                 if (
                     ent_entry.platform == "esphome"
                     and ent_entry.domain == "sensor"
-                    and "firmware_version" in ent_entry.unique_id
+                    and ent_entry.unique_id.endswith("-firmware_version")
                 ):
                     has_firmware_version = True
                     break
@@ -966,8 +970,8 @@ class DeviceManager:
         self, ent_reg: er.EntityRegistry, device_id: str, zone_index: int, suffix: str = "presence"
     ) -> str | None:
         """Find an ESPHome zone entity_id for a device, zone index, and suffix."""
-        pattern = f"zone_{zone_index}_{suffix}"
+        suffix_match = f"-zone_{zone_index}_{suffix}"
         for entry in ent_reg.entities.values():
-            if entry.device_id == device_id and entry.platform == "esphome" and pattern in entry.unique_id:
+            if entry.device_id == device_id and entry.platform == "esphome" and entry.unique_id.endswith(suffix_match):
                 return entry.entity_id
         return None

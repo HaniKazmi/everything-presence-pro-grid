@@ -15,6 +15,8 @@ from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers import entity_registry as er
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
+from custom_components.eppgrid.const import EPP_MANUFACTURER
+from custom_components.eppgrid.const import EPP_MODEL
 from custom_components.eppgrid.const import MAX_ZONES
 from custom_components.eppgrid.device_manager import DeviceConnection
 from custom_components.eppgrid.device_manager import DeviceManager
@@ -3722,6 +3724,18 @@ class TestHelpers:
         )
         assert _extract_mac(device) is None
 
+    def test_extract_mac_normalizes_unformatted_input(self) -> None:
+        """An unformatted MAC connection (no colons) is still returned in canonical AA:BB:... form."""
+        device = MagicMock()
+        device.connections = {("mac", "aabbccddeeff")}
+        assert _extract_mac(device) == "AA:BB:CC:DD:EE:FF"
+
+    def test_extract_mac_normalizes_dash_separators(self) -> None:
+        """Dash-separated MAC inputs are normalized to colon-separated uppercase."""
+        device = MagicMock()
+        device.connections = {("mac", "aa-bb-cc-dd-ee-ff")}
+        assert _extract_mac(device) == "AA:BB:CC:DD:EE:FF"
+
     async def test_extract_host_no_config_entry(self, hass: HomeAssistant) -> None:
         """Returns None when config_entry_id is None."""
         dev_reg = dr.async_get(hass)
@@ -3754,6 +3768,98 @@ class TestHelpers:
             identifiers={("esphome", "abc")},
         )
         assert _extract_host(device, esphome_entry.entry_id, hass) == "192.168.1.99"
+
+
+class TestUniqueIdMatchingAnchors:
+    """Discovery / firmware-version helpers must anchor unique_id matches.
+
+    Substring matching can false-match e.g. `firmware_version_history` against
+    `firmware_version`; require an explicit `-` separator before the object_id.
+    """
+
+    async def test_async_discover_ignores_firmware_version_substring_entity(
+        self, hass: HomeAssistant, manager: DeviceManager
+    ) -> None:
+        """A sensor whose object_id merely contains 'firmware_version' must not register the device."""
+        dev_reg = dr.async_get(hass)
+        ent_reg = er.async_get(hass)
+
+        esphome_entry = MockConfigEntry(domain="esphome", data={"host": "192.168.1.50"}, title="EPP")
+        esphome_entry.add_to_hass(hass)
+        device = dev_reg.async_get_or_create(
+            config_entry_id=esphome_entry.entry_id,
+            connections={(dr.CONNECTION_NETWORK_MAC, "AA:BB:CC:DD:EE:FF")},
+            name="EPP",
+            manufacturer=EPP_MANUFACTURER,
+            model=EPP_MODEL,
+        )
+
+        # An unrelated sensor whose object_id happens to contain "firmware_version"
+        # as a substring (e.g. a future "firmware_version_history" sensor).
+        ent_reg.async_get_or_create(
+            "sensor",
+            "esphome",
+            "AA:BB:CC:DD:EE:FF-sensor-firmware_version_history",
+            device_id=device.id,
+            config_entry=esphome_entry,
+        )
+
+        await manager.async_discover()
+        assert "AA:BB:CC:DD:EE:FF" not in manager.devices
+
+    async def test_read_firmware_version_ignores_substring_entity(
+        self, hass: HomeAssistant, manager: DeviceManager
+    ) -> None:
+        """read_firmware_version must not pick up a `firmware_version_history` sensor."""
+        dev_reg = dr.async_get(hass)
+        ent_reg = er.async_get(hass)
+
+        esphome_entry = MockConfigEntry(domain="esphome", data={"host": "192.168.1.50"}, title="EPP")
+        esphome_entry.add_to_hass(hass)
+        device = dev_reg.async_get_or_create(
+            config_entry_id=esphome_entry.entry_id,
+            connections={(dr.CONNECTION_NETWORK_MAC, "AA:BB:CC:DD:EE:FF")},
+            name="EPP",
+        )
+
+        # Only a "firmware_version_history" sensor exists — the proper
+        # firmware_version sensor is missing, so we should report 0.0.0
+        # (= "old firmware"), not pick up the history sensor's state.
+        history = ent_reg.async_get_or_create(
+            "sensor",
+            "esphome",
+            "AA:BB:CC:DD:EE:FF-sensor-firmware_version_history",
+            device_id=device.id,
+            config_entry=esphome_entry,
+        )
+        hass.states.async_set(history.entity_id, "old-history-value")
+
+        assert manager.read_firmware_version(device.id) == "0.0.0"
+
+    async def test_find_zone_entity_anchors_zone_index(self, hass: HomeAssistant, manager: DeviceManager) -> None:
+        """_find_zone_entity must not let zone_2_presence match an unrelated _zone_2_presence_extra entity."""
+        dev_reg = dr.async_get(hass)
+        ent_reg = er.async_get(hass)
+
+        esphome_entry = MockConfigEntry(domain="esphome", data={"host": "192.168.1.50"}, title="EPP")
+        esphome_entry.add_to_hass(hass)
+        device = dev_reg.async_get_or_create(
+            config_entry_id=esphome_entry.entry_id,
+            connections={(dr.CONNECTION_NETWORK_MAC, "AA:BB:CC:DD:EE:FF")},
+            name="EPP",
+        )
+
+        # A non-canonical entity whose object_id happens to contain
+        # `zone_2_presence` as a substring.
+        ent_reg.async_get_or_create(
+            "sensor",
+            "esphome",
+            "AA:BB:CC:DD:EE:FF-sensor-zone_2_presence_extra",
+            device_id=device.id,
+            config_entry=esphome_entry,
+        )
+
+        assert manager._find_zone_entity(ent_reg, device.id, 2, "presence") is None
 
 
 # ---------------------------------------------------------------------------
@@ -4169,6 +4275,18 @@ def test_resolve_zone_name_strips_redundant_zone_prefix():
 
     # Names not starting with the prefix still get it
     assert _resolve_zone_name("en", index=1, zone_name="Kitchen", target_count=False) == "Zone Kitchen"
+
+
+def test_resolve_zone_name_strips_prefix_from_other_locale():
+    """A name saved under another locale must still get its prefix stripped.
+
+    Example: user named the zone in Spanish ("Zona Cocina"), then switched HA
+    locale to English. We must not produce "Zone Zona Cocina".
+    """
+    from custom_components.eppgrid.device_manager import _resolve_zone_name
+
+    assert _resolve_zone_name("en", index=1, zone_name="Zona Cocina", target_count=False) == "Zone Cocina"
+    assert _resolve_zone_name("en", index=2, zone_name="Zona Sala", target_count=True) == "Zone Sala Target Count"
 
 
 def test_zone_type_defaults_match_frontend():
