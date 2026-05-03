@@ -148,6 +148,46 @@ describe("FlasherController", () => {
 			await ctrl.loadDevices();
 			expect(ctrl.firmwareBaseUrl).toBe("");
 		});
+
+		it("accepts same-origin relative paths and http(s) URLs", async () => {
+			for (const ok of [
+				"/api/eppgrid/firmware",
+				"/api/fw",
+				"https://example.com/fw",
+				"http://homeassistant.local:8123/api/eppgrid/firmware",
+			]) {
+				ctrl.hass = {
+					callWS: vi
+						.fn()
+						.mockResolvedValue({ devices: [], firmware_base_url: ok }),
+					connection: { subscribeMessage: vi.fn() },
+				};
+				await ctrl.loadDevices();
+				expect(ctrl.firmwareBaseUrl).toBe(ok);
+			}
+		});
+
+		it("rejects unsafe firmwareBaseUrl values", async () => {
+			for (const bad of [
+				"javascript:alert(1)",
+				"data:text/html,<script>alert(1)</script>",
+				"file:///etc/passwd",
+				"vbscript:msgbox(1)",
+				"//evil.example.com/fw",
+				"not a url",
+				42,
+				null,
+			]) {
+				ctrl.hass = {
+					callWS: vi
+						.fn()
+						.mockResolvedValue({ devices: [], firmware_base_url: bad }),
+					connection: { subscribeMessage: vi.fn() },
+				};
+				await ctrl.loadDevices();
+				expect(ctrl.firmwareBaseUrl).toBe("");
+			}
+		});
 	});
 
 	// --- subscribeDeviceList ---
@@ -180,14 +220,14 @@ describe("FlasherController", () => {
 				.mockImplementation((cb: any) => {
 					cb({
 						devices,
-						firmware_base_url: "/api/fw",
+						firmware_base_url: "https://example.com/fw",
 						latest_firmware_version: "2.0",
 					});
 					return Promise.resolve(vi.fn());
 				});
 			await ctrl.subscribeDeviceList();
 			expect(ctrl.flashableDevices).toEqual(devices);
-			expect(ctrl.firmwareBaseUrl).toBe("/api/fw");
+			expect(ctrl.firmwareBaseUrl).toBe("https://example.com/fw");
 			expect(ctrl.firmwareVersion).toBe("2.0");
 			expect(ctrl.loading).toBe(false);
 		});

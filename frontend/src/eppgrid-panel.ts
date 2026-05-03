@@ -56,6 +56,7 @@ import {
 	buildSparseEntities,
 	isSettingsValueDefault,
 	SETTINGS_DEFAULTS,
+	SETTINGS_FIELD_MAP,
 } from "./lib/settings-defaults.js";
 import { persistSelectedMac } from "./lib/storage.js";
 import {
@@ -1090,39 +1091,20 @@ export class EPPGridPanel extends LitElement {
 	/**
 	 * Build the full settings payload sent to `eppgrid/set_settings`.
 	 *
-	 * The fields here MUST stay in sync with `_emitSave()` in
-	 * `components/epp-settings-view.ts` — that method builds the same payload from
-	 * the live settings-view overrides during an active edit session, while this
-	 * method reads the panel's reactive state (which is up-to-date when not in an
-	 * active settings edit). Adding a new settings field requires updating all THREE
-	 * places: this method, `_emitSave()`, AND `SETTINGS_DEFAULTS` in
-	 * `lib/settings-defaults.ts`.
+	 * Derived from `SETTINGS_FIELD_MAP` so the snake_case → panel-property
+	 * mapping has a single source of truth. The fields here MUST stay in sync
+	 * with `_emitSave()` in `components/epp-settings-view.ts` — that method
+	 * builds the same payload from the live settings-view overrides during an
+	 * active edit session.
 	 */
 	private _buildSettingsPayload(): Record<string, any> {
-		return {
-			temperature_offset: this._temperatureOffset,
-			humidity_offset: this._humidityOffset,
-			illuminance_offset: this._illuminanceOffset,
-			motion_timeout: this._motionTimeout,
-			target_auto_distance: this._targetAutoDistance,
-			target_max_distance: this._targetMaxDistance,
-			static_auto_distance: this._staticAutoDistance,
-			static_min_distance: this._staticMinDistance,
-			static_max_distance: this._staticMaxDistance,
-			static_trigger_threshold: this._staticTriggerThreshold,
-			static_renew_threshold: this._staticRenewThreshold,
-			static_timeout: this._staticTimeout,
-			static_on_delay: this._staticOnDelay,
-			led_mode: this._ledMode,
-			led_brightness: this._ledBrightness,
-			led_presence_color: this._ledPresenceColor,
-			relay_trigger_mode: this._relayTriggerMode,
-			relay_contact_mode: this._relayContactMode,
-			target_update_rate_ms: this._targetUpdateRateMs,
-			zone_update_rate_ms: this._zoneUpdateRateMs,
-			entities: this._entitiesConfig || {},
-			log_levels: this._logLevels || {},
-		};
+		const payload: Record<string, any> = {};
+		for (const [key, prop] of SETTINGS_FIELD_MAP) {
+			const value = (this as Record<string, unknown>)[prop];
+			payload[key] =
+				value ?? (SETTINGS_DEFAULTS as Record<string, unknown>)[key];
+		}
+		return payload;
 	}
 
 	/**
@@ -1275,8 +1257,8 @@ export class EPPGridPanel extends LitElement {
 	 */
 	private _mapTargetToPercent(target: Target): { x: number; y: number } {
 		return mapTargetToPercent(
-			target.x,
-			target.y,
+			target.x ?? 0,
+			target.y ?? 0,
 			this._roomWidth,
 			this._roomDepth,
 		);
@@ -1415,6 +1397,7 @@ export class EPPGridPanel extends LitElement {
 	private _mapTargetToGridCell(
 		target: Target,
 	): { col: number; row: number } | null {
+		if (target.x == null || target.y == null) return null;
 		return mapTargetToGridCell(
 			target.x,
 			target.y,
@@ -2396,7 +2379,7 @@ export class EPPGridPanel extends LitElement {
                 .sensorState=${this._sensorState}
                 .zoneState=${this._zoneState}
                 .zoneConfigs=${this._namedZones()}
-                .perspective=${this._perspective}
+                .hasPerspective=${this._perspective != null}
                 .localize=${this._localize}
                 @view-change=${(e: CustomEvent) => {
 									this._guardNavigation(() =>

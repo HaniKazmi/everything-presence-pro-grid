@@ -1,4 +1,5 @@
 import type { ReactiveController, ReactiveControllerHost } from "lit";
+import { safeUnsub } from "../lib/safe-unsub.js";
 import { persistSelectedMac, readStoredMac } from "../lib/storage.js";
 import type { DeviceInfo, RawTarget, Target, TargetStatus } from "../types.js";
 
@@ -40,7 +41,6 @@ export class DeviceController implements ReactiveController {
 	// --- Observable state ---
 	devices: DeviceInfo[] = [];
 	selectedMac = "";
-	loading = true;
 	showRoomCalibrationTutorial = true;
 
 	// --- Callbacks set by the host ---
@@ -191,14 +191,8 @@ export class DeviceController implements ReactiveController {
 
 	unsubscribeDeviceList(): void {
 		this._deviceListGen++;
-		if (this._unsubDeviceList) {
-			try {
-				this._unsubDeviceList();
-			} catch {
-				/* stale subscription */
-			}
-			this._unsubDeviceList = undefined;
-		}
+		safeUnsub(this._unsubDeviceList);
+		this._unsubDeviceList = undefined;
 	}
 
 	private _applyDeviceList(devices: DeviceInfo[]): void {
@@ -371,14 +365,8 @@ export class DeviceController implements ReactiveController {
 
 	closeDeviceSession(): void {
 		this.unsubscribeTargets();
-		if (this._unsubDevice) {
-			try {
-				this._unsubDevice();
-			} catch {
-				/* stale subscription */
-			}
-			this._unsubDevice = undefined;
-		}
+		safeUnsub(this._unsubDevice);
+		this._unsubDevice = undefined;
 	}
 
 	// --- Target subscription ---
@@ -403,14 +391,8 @@ export class DeviceController implements ReactiveController {
 			clearTimeout(this._targetRetryTimer);
 			this._targetRetryTimer = undefined;
 		}
-		if (this._unsubTargets) {
-			try {
-				this._unsubTargets();
-			} catch {
-				/* stale subscription */
-			}
-			this._unsubTargets = undefined;
-		}
+		safeUnsub(this._unsubTargets);
+		this._unsubTargets = undefined;
 	}
 
 	private _subscribeGridTargets(conn: any, mac: string): void {
@@ -421,7 +403,6 @@ export class DeviceController implements ReactiveController {
 					const targets: Target[] = (event.targets || []).map((t: any) => ({
 						x: t.x,
 						y: t.y,
-						speed: 0,
 						status: (t.status as TargetStatus) ?? "inactive",
 						signal: t.signal ?? 0,
 					}));
@@ -531,14 +512,8 @@ export class DeviceController implements ReactiveController {
 
 	unsubscribeDisplay(): void {
 		this._displayGen++;
-		if (this._unsubDisplay) {
-			try {
-				this._unsubDisplay();
-			} catch {
-				/* stale subscription */
-			}
-			this._unsubDisplay = undefined;
-		}
+		safeUnsub(this._unsubDisplay);
+		this._unsubDisplay = undefined;
 	}
 
 	// --- Device selection ---

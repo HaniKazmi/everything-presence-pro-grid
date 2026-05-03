@@ -61,21 +61,6 @@ export class EppOverlaySidebar extends LitElement {
 			color: var(--secondary-text-color, #757575);
 		}
 
-		.level-selector {
-			padding: 4px 0 2px 0;
-		}
-
-		.level-label {
-			font-size: 11px;
-			color: var(--secondary-text-color, #757575);
-			margin-bottom: 4px;
-		}
-
-		.level-buttons {
-			display: flex;
-			gap: 4px;
-		}
-
 	`;
 
 	render() {

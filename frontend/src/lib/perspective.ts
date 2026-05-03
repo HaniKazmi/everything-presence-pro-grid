@@ -10,12 +10,19 @@ export function solvePerspective(
 	src: { x: number; y: number }[],
 	dst: { x: number; y: number }[],
 ): number[] | null {
-	// Build 8x8 system from 4 point pairs
+	// Pre-scale source coords to ~unit magnitude. Source is typically in mm
+	// (range ~6000), and the cross-terms `-sx*rx`, `-sy*rx` are mm² (~1e7),
+	// so without scaling the Gaussian elim matrix rows differ by 6+ orders
+	// of magnitude and lose precision through floating-point roundoff.
+	const Sx = Math.max(1, ...src.map((p) => Math.abs(p.x)));
+	const Sy = Math.max(1, ...src.map((p) => Math.abs(p.y)));
+
+	// Build 8x8 system from 4 point pairs (in scaled source coords)
 	const A: number[][] = [];
 	const b: number[] = [];
 	for (let i = 0; i < 4; i++) {
-		const sx = src[i].x;
-		const sy = src[i].y;
+		const sx = src[i].x / Sx;
+		const sy = src[i].y / Sy;
 		const rx = dst[i].x;
 		const ry = dst[i].y;
 		A.push([sx, sy, 1, 0, 0, 0, -sx * rx, -sy * rx]);
@@ -42,14 +49,25 @@ export function solvePerspective(
 			for (let j = col; j <= n; j++) M[row][j] -= factor * M[col][j];
 		}
 	}
-	// Back-substitution
+	// Back-substitution (solution is in scaled coords)
 	const x = new Array(n);
 	for (let i = n - 1; i >= 0; i--) {
 		x[i] = M[i][n];
 		for (let j = i + 1; j < n; j++) x[i] -= M[i][j] * x[j];
 		x[i] /= M[i][i];
 	}
-	return x;
+	// Unscale: substituting sx = sx'*Sx, sy = sy'*Sy back into the homography
+	// equations gives h0,h3,h6 ÷ Sx and h1,h4,h7 ÷ Sy; h2,h5 unchanged.
+	return [
+		x[0] / Sx,
+		x[1] / Sy,
+		x[2],
+		x[3] / Sx,
+		x[4] / Sy,
+		x[5],
+		x[6] / Sx,
+		x[7] / Sy,
+	];
 }
 
 /** Apply a perspective transform (8 coefficients) to a point. */

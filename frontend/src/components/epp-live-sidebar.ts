@@ -10,8 +10,8 @@ export interface SensorState {
 	motion_presence: boolean;
 	target_presence: boolean;
 	mmwave: boolean;
-	static_state?: string; // "active" | "pending" | "inactive"
-	motion_state?: string; // "active" | "pending" | "inactive"
+	static_state?: "A" | "P" | "I";
+	motion_state?: "A" | "P" | "I";
 	occupancy_state?: boolean;
 	illuminance: number | null;
 	temperature: number | null;
@@ -46,7 +46,7 @@ export class EppLiveSidebar extends LitElement {
 
 	@property({ attribute: false }) zoneConfigs: (ZoneConfig | null)[] = [];
 
-	@property({ attribute: false }) perspective: number[] | null = null;
+	@property({ attribute: false }) hasPerspective = false;
 
 	@property({ attribute: false }) localize: LocalizeFn = defaultLocalize;
 
@@ -288,7 +288,7 @@ export class EppLiveSidebar extends LitElement {
 				)}
 
         ${
-					this.perspective
+					this.hasPerspective
 						? html`
         <hr style="border: none; border-top: 1px solid var(--divider-color, #eee); margin: 10px 12px;"/>
 

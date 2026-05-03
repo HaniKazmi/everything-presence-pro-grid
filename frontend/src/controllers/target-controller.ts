@@ -16,11 +16,8 @@ import type { TargetData } from "./device-controller.js";
 /**
  * Host interface — the subset of the panel that this controller reads/writes.
  *
- * Using `any` for the host reference is intentional: the panel's `@state`
- * properties are private, and tests access them via `(el as any)._prop`.
- * A typed interface would force those properties to be public, which we
- * don't want yet.  The controller is a method-organizer — it groups related
- * logic while the reactive state stays on the panel.
+ * Typed as `Record<string, any>` for the same reason as `GridHost` (see
+ * grid-state-controller.ts) — trade-off is no tsc catch on typos here.
  */
 export type TargetHost = ReactiveControllerHost & Record<string, any>;
 
@@ -221,7 +218,8 @@ export class TargetController implements ReactiveController {
 			.filter(Boolean)
 			.map((s) => {
 				const [tn, z, st, sig] = s.split(":");
-				const zid = parseInt(z?.replace("Z", "") ?? "0", 10);
+				const parsed = parseInt(z?.replace("Z", "") ?? "0", 10);
+				const zid = Number.isFinite(parsed) ? parsed : 0;
 				return `${tn}→${zoneName(zid)}(${statusName[st] ?? st},${sig})`;
 			});
 
@@ -232,7 +230,8 @@ export class TargetController implements ReactiveController {
 			.filter(Boolean)
 			.map((s) => {
 				const [z, st, cnt] = s.split(":");
-				const zid = parseInt(z?.replace("Z", "") ?? "0", 10);
+				const parsed = parseInt(z?.replace("Z", "") ?? "0", 10);
+				const zid = Number.isFinite(parsed) ? parsed : 0;
 				return `${zoneName(zid)}: ${statusName[st] ?? st}(${cnt})`;
 			});
 
@@ -266,6 +265,40 @@ export class TargetController implements ReactiveController {
 	// =====================================================================
 
 	/**
+	 * Shared dedupe + timestamp + cap pipeline for backend / frontend logs.
+	 * Updates the named host fields and appends directly to the visible DOM.
+	 * The push() call mutates the array in place (no Lit re-render); the
+	 * slice() at the cap boundary replaces the array reference, which does
+	 * trigger a Lit re-render — both paths converge on the same final state
+	 * because `_appendToLogContainer` updates the live DOM unconditionally.
+	 */
+	private _appendLog(
+		body: string,
+		prevField: "_backendDebugLogPrev" | "_debugLogPrev",
+		linesField: "_backendDebugLogLines" | "_debugLogLines",
+		containerId: string,
+	): void {
+		if (body === this.host[prevField]) return;
+		this.host[prevField] = body;
+		const ts = new Date().toLocaleTimeString(
+			this.host._localize?.lang ?? "en-GB",
+			{
+				hour12: false,
+				hour: "2-digit",
+				minute: "2-digit",
+				second: "2-digit",
+				fractionalSecondDigits: 1,
+			},
+		);
+		const line = `${ts} ${body}`;
+		this.host[linesField].push(line);
+		if (this.host[linesField].length > DEBUG_LOG_MAX) {
+			this.host[linesField] = this.host[linesField].slice(-DEBUG_LOG_MAX);
+		}
+		this._appendToLogContainer(containerId, line);
+	}
+
+	/**
 	 * Append a backend debug log line (from zone data subscription).
 	 * Deduplicates against previous line and caps at DEBUG_LOG_MAX.
 	 */
@@ -283,29 +316,12 @@ export class TargetController implements ReactiveController {
 		}
 
 		const body = this.enrichDebugLog(enrichedRaw);
-		if (body === this.host._backendDebugLogPrev) return;
-
-		this.host._backendDebugLogPrev = body;
-		const ts = new Date().toLocaleTimeString(
-			this.host._localize?.lang ?? "en-GB",
-			{
-				hour12: false,
-				hour: "2-digit",
-				minute: "2-digit",
-				second: "2-digit",
-				fractionalSecondDigits: 1,
-			},
+		this._appendLog(
+			body,
+			"_backendDebugLogPrev",
+			"_backendDebugLogLines",
+			"backend-debug-log-scroll",
 		);
-		const line = `${ts} ${body}`;
-		this.host._backendDebugLogLines.push(line);
-		if (this.host._backendDebugLogLines.length > DEBUG_LOG_MAX) {
-			this.host._backendDebugLogLines = this.host._backendDebugLogLines.slice(
-				-DEBUG_LOG_MAX,
-			);
-		}
-
-		// Direct DOM append — no Lit re-render needed
-		this._appendToLogContainer("backend-debug-log-scroll", line);
 	}
 
 	/**
@@ -313,27 +329,12 @@ export class TargetController implements ReactiveController {
 	 * Deduplicates against previous line and caps at DEBUG_LOG_MAX.
 	 */
 	private _appendFrontendDebugLog(body: string): void {
-		if (body === this.host._debugLogPrev) return;
-
-		this.host._debugLogPrev = body;
-		const ts = new Date().toLocaleTimeString(
-			this.host._localize?.lang ?? "en-GB",
-			{
-				hour12: false,
-				hour: "2-digit",
-				minute: "2-digit",
-				second: "2-digit",
-				fractionalSecondDigits: 1,
-			},
+		this._appendLog(
+			body,
+			"_debugLogPrev",
+			"_debugLogLines",
+			"debug-log-scroll",
 		);
-		const line = `${ts} ${body}`;
-		this.host._debugLogLines.push(line);
-		if (this.host._debugLogLines.length > DEBUG_LOG_MAX) {
-			this.host._debugLogLines = this.host._debugLogLines.slice(-DEBUG_LOG_MAX);
-		}
-
-		// Direct DOM append — no Lit re-render needed
-		this._appendToLogContainer("debug-log-scroll", line);
 	}
 
 	/**

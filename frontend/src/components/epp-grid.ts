@@ -1,7 +1,7 @@
 import { css, html, LitElement, nothing, type PropertyValues } from "lit";
 import { property } from "lit/decorators.js";
 import { repeat } from "lit/directives/repeat.js";
-import { TARGET_COLORS } from "../constants.js";
+import { MAX_TARGETS, TARGET_COLORS } from "../constants.js";
 import { mapTargetToGridCell } from "../lib/coordinates.js";
 import type { FurnitureItem } from "../lib/furniture.js";
 import {
@@ -176,7 +176,7 @@ export class EppGrid extends LitElement {
 		if (this.dismissedTargets.size === 0) return;
 		for (const [i, dismissedIdx] of this.dismissedTargets) {
 			const t = this.targets[i];
-			if (!t || t.status === "inactive" || t.x == null) continue;
+			if (!t || t.status === "inactive" || t.x == null || t.y == null) continue;
 			const pos = mapTargetToGridCell(t.x, t.y, this.roomWidth, this.roomDepth);
 			if (!pos) continue;
 			const col = Math.floor(pos.col);
@@ -380,12 +380,12 @@ export class EppGrid extends LitElement {
 		return html`
 			<div class="targets-overlay" style="pointer-events: none;">
 				${repeat(
-					this.targets,
+					this.targets.slice(0, MAX_TARGETS),
 					(_t, i) => i,
 					(t, i) => {
 						if (t.status === "inactive") return nothing;
 						let pos =
-							t.x != null
+							t.x != null && t.y != null
 								? mapTargetToGridCell(t.x, t.y, this.roomWidth, this.roomDepth)
 								: null;
 						const onGrid =
@@ -451,7 +451,7 @@ export class EppGrid extends LitElement {
 						return html`
 							<div
 								class="target-dot ${this.editable ? "" : "clickable"}"
-								style="left: ${xPct}%; top: ${yPct}%; background: ${TARGET_COLORS[i] || TARGET_COLORS[0]}; opacity: ${opacity}; transition: opacity 0.5s ease;"
+								style="left: ${xPct}%; top: ${yPct}%; background: ${TARGET_COLORS[i]}; opacity: ${opacity}; transition: opacity 0.5s ease;"
 								@click=${(e: Event) => {
 									if (this.editable) return;
 									e.stopPropagation();

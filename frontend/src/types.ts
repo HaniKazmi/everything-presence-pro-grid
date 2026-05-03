@@ -1,9 +1,8 @@
 export type TargetStatus = "active" | "pending" | "inactive";
 
 export interface Target {
-	x: number;
-	y: number;
-	speed: number;
+	x: number | null;
+	y: number | null;
 	status: TargetStatus;
 	signal: number;
 }

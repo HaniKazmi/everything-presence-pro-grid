@@ -55,7 +55,6 @@ describe("DeviceController", () => {
 		it("initializes with default state", () => {
 			expect(ctrl.devices).toEqual([]);
 			expect(ctrl.selectedMac).toBe("");
-			expect(ctrl.loading).toBe(true);
 		});
 	});
 
@@ -753,7 +752,7 @@ describe("DeviceController", () => {
 			});
 
 			expect(onTargetData).toHaveBeenCalledWith({
-				targets: [{ x: 100, y: 200, speed: 0, status: "active", signal: 50 }],
+				targets: [{ x: 100, y: 200, status: "active", signal: 50 }],
 				sensors: {
 					occupancy: true,
 					static_presence: false,

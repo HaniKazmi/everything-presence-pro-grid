@@ -37,7 +37,6 @@ export interface ZoneEngineParams {
 		x: number | null;
 		y: number | null;
 		signal: number;
-		speed: number;
 		status: string;
 	}[];
 	grid: Uint8Array;

@@ -40,43 +40,15 @@ export const OVERLAY_MODE_TO_KIND: Record<NonNullable<OverlayMode>, number> = {
 	suppress: CELL_OVERLAY_SUPPRESS,
 };
 
-/** Get room bounds with 1-cell padding around inside cells. */
-export function getRoomBounds(grid: Uint8Array): {
+interface GridBounds {
 	minCol: number;
 	maxCol: number;
 	minRow: number;
 	maxRow: number;
-} {
-	let minCol = GRID_COLS;
-	let maxCol = 0;
-	let minRow = GRID_ROWS;
-	let maxRow = 0;
-	for (let i = 0; i < GRID_CELL_COUNT; i++) {
-		if (cellIsInside(grid[i])) {
-			const col = i % GRID_COLS;
-			const row = Math.floor(i / GRID_COLS);
-			if (col < minCol) minCol = col;
-			if (col > maxCol) maxCol = col;
-			if (row < minRow) minRow = row;
-			if (row > maxRow) maxRow = row;
-		}
-	}
-	// Add 1-cell padding
-	return {
-		minCol: Math.max(0, minCol - 1),
-		maxCol: Math.min(GRID_COLS - 1, maxCol + 1),
-		minRow: Math.max(0, minRow - 1),
-		maxRow: Math.min(GRID_ROWS - 1, maxRow + 1),
-	};
 }
 
 /** Get raw room bounds without padding (only actual inside cells). */
-export function getRawRoomBounds(grid: Uint8Array): {
-	minCol: number;
-	maxCol: number;
-	minRow: number;
-	maxRow: number;
-} {
+export function getRawRoomBounds(grid: Uint8Array): GridBounds {
 	let minCol = GRID_COLS;
 	let maxCol = 0;
 	let minRow = GRID_ROWS;
@@ -92,6 +64,17 @@ export function getRawRoomBounds(grid: Uint8Array): {
 		}
 	}
 	return { minCol, maxCol, minRow, maxRow };
+}
+
+/** Get room bounds with 1-cell padding around inside cells. */
+export function getRoomBounds(grid: Uint8Array): GridBounds {
+	const { minCol, maxCol, minRow, maxRow } = getRawRoomBounds(grid);
+	return {
+		minCol: Math.max(0, minCol - 1),
+		maxCol: Math.min(GRID_COLS - 1, maxCol + 1),
+		minRow: Math.max(0, minRow - 1),
+		maxRow: Math.min(GRID_ROWS - 1, maxRow + 1),
+	};
 }
 
 /** Initialize a grid from room dimensions (mm). Room is centered horizontally. */

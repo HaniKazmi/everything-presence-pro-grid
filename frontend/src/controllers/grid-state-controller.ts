@@ -48,11 +48,13 @@ function overlayModeToKind(mode: OverlayMode): number | null {
 /**
  * Host interface — the subset of the panel that this controller reads/writes.
  *
- * Using `any` for the host reference is intentional: the panel's `@state`
- * properties are private, and tests access them via `(el as any)._prop`.
- * A typed interface would force those properties to be public, which we
- * don't want yet.  The controller is a method-organizer — it groups related
- * logic while the reactive state stays on the panel.
+ * Currently typed as `Record<string, any>` so the panel can keep its `@state`
+ * properties `private` (a strict interface would require either making them
+ * public or threading `as unknown as GridHost` casts at every construction
+ * site). Trade-off: typos like `this.host._zoneCofig` won't be caught by tsc
+ * — reviewers must catch them. The migration to a strict interface is tracked
+ * separately and will land alongside moving `ZoneSlots` out of `eppgrid-panel`
+ * to break the circular type dep.
  */
 export type GridHost = ReactiveControllerHost & Record<string, any>;
 
@@ -204,15 +206,15 @@ export class GridStateController implements ReactiveController {
 		const firstEmpty = configs.findIndex((z, idx) => idx > 0 && z === null);
 		if (firstEmpty === -1) return; // All 7 named slots full
 
-		// Pick first unused color
+		// Pick first unused color. ZONE_COLORS.length === MAX_ZONES (7), so when
+		// adding the Nth named zone (N <= 7) at most N-1 colors are taken — find
+		// always returns a value.
 		const usedColors = new Set(
 			configs
 				.filter((z, idx): z is ZoneConfig => idx > 0 && z !== null)
 				.map((z) => (z as ZoneConfig).color),
 		);
-		const color =
-			ZONE_COLORS.find((c) => !usedColors.has(c)) ??
-			ZONE_COLORS[(firstEmpty - 1) % ZONE_COLORS.length];
+		const color = ZONE_COLORS.find((c) => !usedColors.has(c)) as string;
 		const name =
 			this.host._localize?.("live.debug.zone_n", { n: firstEmpty }) ??
 			`Zone ${firstEmpty}`;
@@ -242,7 +244,6 @@ export class GridStateController implements ReactiveController {
 			this.host._activeZone = null;
 		}
 		this.host._dirty = true;
-		this.host.requestUpdate();
 	}
 
 	// =====================================================================
@@ -446,7 +447,7 @@ export class GridStateController implements ReactiveController {
 
 	async fetchConfigurations(): Promise<void> {
 		try {
-			const resp = await (this.host as any).hass.callWS({
+			const resp = await this.host.hass.callWS({
 				type: "eppgrid/list_configurations",
 			});
 			const dict = resp.configurations || {};
@@ -475,9 +476,9 @@ export class GridStateController implements ReactiveController {
 			furniture: (this.host._furniture as FurnitureItem[]).map((f) => ({
 				...f,
 			})),
-			settings: (this.host as any)._buildSparseSettings(),
+			settings: this.host._buildSparseSettings(),
 		};
-		await (this.host as any).hass.callWS({
+		await this.host.hass.callWS({
 			type: "eppgrid/save_configuration",
 			name,
 			configuration,
@@ -559,9 +560,9 @@ export class GridStateController implements ReactiveController {
 				if (key === "entities") {
 					const sparse =
 						"entities" in s ? (s as Record<string, any>).entities : undefined;
-					(this.host as any)[prop] = { ...ENTITY_DEFAULTS, ...(sparse || {}) };
+					this.host[prop] = { ...ENTITY_DEFAULTS, ...(sparse || {}) };
 				} else {
-					(this.host as any)[prop] =
+					this.host[prop] =
 						key in s ? (s as Record<string, any>)[key] : SETTINGS_DEFAULTS[key];
 				}
 			}
@@ -584,10 +585,10 @@ export class GridStateController implements ReactiveController {
 		// defaults+blob values), satisfying the WS schema.
 		if (hasSettings) {
 			try {
-				await (this.host as any).hass.callWS({
+				await this.host.hass.callWS({
 					type: "eppgrid/set_settings",
 					mac: this.host._selectedMac,
-					...(this.host as any)._buildSettingsPayload(),
+					...this.host._buildSettingsPayload(),
 				});
 			} catch (err) {
 				// Settings push failed — restore pre-load snapshot so the
@@ -600,7 +601,7 @@ export class GridStateController implements ReactiveController {
 				this.host._showConfigurationRestore = snapshot.showConfigurationRestore;
 				this.host._dirty = snapshot.dirty;
 				for (const [prop, value] of snapshot.settings) {
-					(this.host as any)[prop] = value;
+					this.host[prop] = value;
 				}
 				this.host.requestUpdate();
 				throw err;
@@ -611,7 +612,7 @@ export class GridStateController implements ReactiveController {
 	}
 
 	async deleteConfiguration(name: string): Promise<void> {
-		await (this.host as any).hass.callWS({
+		await this.host.hass.callWS({
 			type: "eppgrid/delete_configuration",
 			name,
 		});
@@ -799,10 +800,15 @@ export class GridStateController implements ReactiveController {
 			this.host._dirty = false;
 			this.host._view = "live";
 		} catch (e) {
+			// Stay on settings page, keep dirty. Always log for diagnostics;
+			// also notify the host so it can surface the failure in the UI.
 			console.error("Failed to save settings:", e);
-			// Stay on settings page, keep dirty
+			this.onError?.("save_settings", e);
 		} finally {
 			this.host._saving = false;
 		}
 	}
+
+	/** Optional host hook for surfacing controller errors to the UI. */
+	onError?: (op: string, error: unknown) => void;
 }
