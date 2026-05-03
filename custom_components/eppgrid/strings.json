@@ -42,10 +42,17 @@
       "title": "{device_name} firmware update required",
       "fix_flow": {
         "step": {
-          "init": {
+          "confirm": {
             "title": "Update {device_name} firmware",
             "description": "The Everything Presence Pro Grid integration expects firmware **{required_version}** but **{device_name}** is running **{current_version}**. Click **Submit** to install the required firmware over the air now. The device will reboot once flashing completes — this usually takes about a minute. Some integration features may not work correctly until the firmware is updated."
+          },
+          "failed": {
+            "title": "Update failed",
+            "description": "The firmware update for **{device_name}** did not complete. Most likely cause: the device went offline or the OTA download failed mid-flash. Check the device, then click **Submit** to try again.\n\nDetails: {error}"
           }
+        },
+        "progress": {
+          "installing": "Installing firmware **{required_version}** on **{device_name}**. The device will download the firmware over the air, reboot, and reconnect. This usually takes about a minute."
         },
         "error": {
           "ota_trigger_failed": "Could not start the firmware update. The device may be offline or unreachable, its build flags may not be cached yet, or its firmware may be too old to support OTA updates from the integration. See Home Assistant logs for details, then try again."

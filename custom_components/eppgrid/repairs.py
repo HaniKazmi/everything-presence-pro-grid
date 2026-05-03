@@ -1,9 +1,15 @@
 """Repairs fix flow for firmware-version mismatch issues.
 
 When `_sync_firmware_repair_issue` raises a `firmware_behind_{mac}` issue,
-HA shows a "Submit" button on the Repairs UI. Clicking it walks the user
-through this flow, which triggers an OTA update via the same
-`set_update_manifest` API action the EPP Grid panel uses.
+HA shows a Submit button on the Repairs UI. Clicking it walks the user
+through this flow:
+
+  1. confirm  — show device name + version delta, ask the user to confirm
+  2. progress — kick off OTA + wait for the device to come back on the
+                matching firmware version. Spinner UX matches the ESPHome
+                native Update entity.
+  3. finish   — success: close the dialog as Repaired
+     failed   — error: keep the dialog open with a retry button
 
 `firmware_ahead_{mac}` issues are intentionally not fixable from here:
 the resolution is to update the integration via HACS, which we have no
@@ -12,7 +18,9 @@ way to drive from a Repairs flow.
 
 from __future__ import annotations
 
+import asyncio
 import logging
+import time
 from typing import Any
 
 import voluptuous as vol
@@ -23,19 +31,28 @@ from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import issue_registry as ir
 
 from .const import DOMAIN
+from .const import FIRMWARE_VERSION
 
 _LOGGER = logging.getLogger(__name__)
 
 _FIRMWARE_BEHIND_PREFIX = "firmware_behind_"
 
+# How long to wait for the device to come back on the new firmware before we
+# give up and offer the user a retry. Worst case OTA: ~90 s download + ~15 s
+# reboot + ~15 s reconnect + headroom for a flaky connection.
+_OTA_COMPLETION_TIMEOUT_S = 5 * 60
+
+# Poll interval while waiting for the firmware_version sensor to flip to the
+# new value.
+_OTA_POLL_INTERVAL_S = 2
+
 
 async def _trigger_ota(hass: HomeAssistant, mac: str) -> None:
     """Trigger an OTA firmware update on a device.
 
-    Thin wrapper over `DeviceManager.async_trigger_ota` so the OTA-trigger
-    logic stays in one place — shared with the panel's update_firmware
-    websocket handler. Raises HomeAssistantError on failure (no manager,
-    device, build flags, variant, host, service call failure).
+    Thin wrapper over `DeviceManager.async_trigger_ota`. Raises
+    HomeAssistantError on failure (no manager, device, build flags, variant,
+    host, or service call failure).
     """
     manager = hass.data.get(DOMAIN)
     if manager is None:
@@ -50,35 +67,131 @@ class FirmwareUpdateRepairFlow(RepairsFlow):
         """Initialize the flow."""
         super().__init__()
         self._mac = mac
+        self._ota_task: asyncio.Future[None] | None = None
+        self._error_message: str | None = None
+
+    # -- entry / dispatch ----------------------------------------------------
 
     async def async_step_init(self, user_input: dict[str, Any] | None = None) -> data_entry_flow.FlowResult:
-        """Confirm with the user, then trigger the OTA."""
-        errors: dict[str, str] | None = None
-        if user_input is not None:
-            try:
-                await _trigger_ota(self.hass, self._mac)
-            except HomeAssistantError as err:
-                # Keep the dialog open and surface the failure so the user
-                # can retry — the most common causes (device offline, build
-                # flags not yet cached) are transient.
-                _LOGGER.warning("OTA fix flow for %s failed: %s", self._mac, err)
-                errors = {"base": "ota_trigger_failed"}
-            else:
-                return self.async_create_entry(data={})
+        """Entry point — delegate to the confirm step.
 
-        # Pull device_name + version placeholders from the issue itself so the
-        # confirmation dialog shows the same info the user saw on the issue.
-        issue_registry = ir.async_get(self.hass)
-        placeholders: dict[str, str] | None = None
-        if issue := issue_registry.async_get_issue(DOMAIN, self.issue_id):
-            placeholders = dict(issue.translation_placeholders or {})
+        The confirm step lives at `step_id="confirm"` (not `init`) because
+        the Repairs UI auto-confirms a form on the init step with an empty
+        schema, skipping the dialog entirely.
+        """
+        return await self.async_step_confirm(user_input=None)
+
+    # -- step: confirm -------------------------------------------------------
+
+    async def async_step_confirm(self, user_input: dict[str, Any] | None = None) -> data_entry_flow.FlowResult:
+        """Show the confirm dialog. On submit, kick off OTA + show progress."""
+        if user_input is not None:
+            self._start_ota_task()
+            return await self.async_step_progress(user_input=None)
 
         return self.async_show_form(
-            step_id="init",
+            step_id="confirm",
+            data_schema=vol.Schema({}),
+            description_placeholders=self._issue_placeholders(),
+        )
+
+    # -- step: progress ------------------------------------------------------
+
+    async def async_step_progress(self, user_input: dict[str, Any] | None = None) -> data_entry_flow.FlowResult:
+        """Show a spinner while the OTA task runs; transition when it ends."""
+        if self._ota_task is None:
+            # Defensive: should never be None when we reach this step from
+            # confirm, but if Repairs UI re-enters the step somehow we want
+            # to recover by re-starting the task rather than crashing.
+            self._start_ota_task()
+            assert self._ota_task is not None
+
+        if not self._ota_task.done():
+            return self.async_show_progress(
+                step_id="progress",
+                progress_action="installing",
+                progress_task=self._ota_task,
+                description_placeholders=self._issue_placeholders(),
+            )
+
+        # Task done — branch on outcome
+        exc = self._ota_task.exception()
+        if exc is not None:
+            self._error_message = str(exc)
+            _LOGGER.warning("OTA fix flow for %s failed: %s", self._mac, exc)
+            return self.async_show_progress_done(next_step_id="failed")
+        return self.async_show_progress_done(next_step_id="finish")
+
+    # -- step: finish (success terminal) -------------------------------------
+
+    async def async_step_finish(self, user_input: dict[str, Any] | None = None) -> data_entry_flow.FlowResult:
+        """Successful completion — close the dialog as Repaired."""
+        return self.async_create_entry(data={})
+
+    # -- step: failed (error terminal with retry) ----------------------------
+
+    async def async_step_failed(self, user_input: dict[str, Any] | None = None) -> data_entry_flow.FlowResult:
+        """Show the error and offer a retry. Submitting kicks the OTA again."""
+        if user_input is not None:
+            # Retry — clear stale state and re-run from progress
+            self._ota_task = None
+            self._error_message = None
+            self._start_ota_task()
+            return await self.async_step_progress(user_input=None)
+
+        placeholders = self._issue_placeholders()
+        placeholders["error"] = self._error_message or ""
+        return self.async_show_form(
+            step_id="failed",
             data_schema=vol.Schema({}),
             description_placeholders=placeholders,
-            errors=errors,
         )
+
+    # -- helpers -------------------------------------------------------------
+
+    def _start_ota_task(self) -> None:
+        """Kick off the background OTA + version-match-poll task."""
+        self._ota_task = self.hass.async_create_task(self._run_ota_task())
+
+    async def _run_ota_task(self) -> None:
+        """Trigger the OTA, then poll firmware_version until it matches.
+
+        Returning before the device reports the matching version would tell
+        the user "Repaired" while the OTA was still flashing — same problem
+        as the original implementation. Polling matches the UX of the
+        ESPHome Update entity, which only flips state once flashing
+        completes and the device reconnects.
+
+        Raises HomeAssistantError on trigger failure or on timeout.
+        """
+        manager = self.hass.data[DOMAIN]
+        await _trigger_ota(self.hass, self._mac)
+
+        dev = manager.devices.get(self._mac)
+        device_id = dev.device_id if dev is not None else None
+        deadline = time.monotonic() + _OTA_COMPLETION_TIMEOUT_S
+        while time.monotonic() < deadline:
+            fw_ver = manager.read_firmware_version(device_id)
+            if fw_ver == FIRMWARE_VERSION:
+                return
+            await asyncio.sleep(_OTA_POLL_INTERVAL_S)
+
+        raise HomeAssistantError(
+            f"OTA started but {self._mac} did not come back on firmware "
+            f"{FIRMWARE_VERSION} within {_OTA_COMPLETION_TIMEOUT_S}s — check "
+            "the device manually."
+        )
+
+    def _issue_placeholders(self) -> dict[str, str]:
+        """Return the original issue's translation placeholders.
+
+        Used by both the confirm and progress dialogs so the text refers to
+        the same device + version delta the user saw on the Repairs entry.
+        """
+        issue_registry = ir.async_get(self.hass)
+        if issue := issue_registry.async_get_issue(DOMAIN, self.issue_id):
+            return dict(issue.translation_placeholders or {})
+        return {}
 
 
 async def async_create_fix_flow(

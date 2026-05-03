@@ -1,10 +1,14 @@
 """Repairs fix flow that triggers an OTA from the firmware_behind issue.
 
 The Repairs framework lets us mark issues as `is_fixable=True` and provide
-a `RepairsFlow` so that clicking "Submit" in HA Settings → Repairs runs
-a defined action. For firmware_behind issues, that action is the same
-OTA trigger the EPP Grid panel exposes — so users can update without
-opening the panel at all.
+a `RepairsFlow` so that clicking Submit in HA Settings → Repairs runs a
+defined action. The flow has three user-visible steps:
+
+  1. confirm — show the device name + version delta, ask the user to confirm
+  2. progress — kick off the OTA in a background task; show a spinner
+     while we poll the device's firmware_version sensor for the matching
+     value (the same UX as the ESPHome native Update entity)
+  3. finish (success) or failed (with retry) — terminal screens
 
 firmware_ahead issues stay unfixable: the device is on a newer version
 than the integration expects, and the resolution is to update the
@@ -13,6 +17,8 @@ integration via HACS — which we can't drive from a Repairs flow.
 
 from __future__ import annotations
 
+import asyncio
+from typing import Any
 from unittest.mock import AsyncMock
 from unittest.mock import patch
 
@@ -35,40 +41,43 @@ def _bump(version: str, *, kind: str) -> str:
     raise ValueError(kind)
 
 
-async def test_firmware_behind_issue_is_fixable(hass: HomeAssistant) -> None:
-    """Behind-version issues must be is_fixable=True so the Submit button appears.
+def _make_flow(hass: HomeAssistant, mac: str = "AA:BB:CC:DD:EE:01") -> Any:
+    """Build a flow instance with required attributes wired up.
 
-    The whole point of the fix flow is that the user can resolve the issue
-    from Repairs without opening the EPP Grid panel; that requires
-    is_fixable=True on the underlying issue.
+    The Repairs framework normally sets these via `async_init`; for unit tests
+    we just bypass that machinery and assign directly.
     """
+    from custom_components.eppgrid.repairs import FirmwareUpdateRepairFlow
+
+    flow = FirmwareUpdateRepairFlow(mac=mac)
+    flow.hass = hass
+    flow.handler = DOMAIN
+    flow.issue_id = f"firmware_behind_{mac}"
+    return flow
+
+
+# ---------------------------------------------------------------------------
+# Issue fixability and flow dispatch
+# ---------------------------------------------------------------------------
+
+
+async def test_firmware_behind_issue_is_fixable(hass: HomeAssistant) -> None:
     behind = _bump(FIRMWARE_VERSION, kind="behind")
     _sync_firmware_repair_issue(hass, mac="AA:BB:CC:DD:EE:40", device_name="Living Room", fw_ver=behind)
 
     issue = ir.async_get(hass).async_get_issue(DOMAIN, "firmware_behind_AA:BB:CC:DD:EE:40")
-    assert issue is not None
-    assert issue.is_fixable is True, (
-        "firmware_behind issue must be is_fixable=True so the Submit button appears in Repairs UI"
-    )
+    assert issue is not None and issue.is_fixable is True
 
 
 async def test_firmware_ahead_issue_stays_unfixable(hass: HomeAssistant) -> None:
-    """Ahead-version issues are not fixable — user must update the integration.
-
-    The remediation for `firmware_ahead` is to upgrade the integration via
-    HACS, which we have no way to trigger from a Repairs flow. Marking it
-    fixable would mislead the user into thinking we can resolve it.
-    """
     ahead = _bump(FIRMWARE_VERSION, kind="ahead")
     _sync_firmware_repair_issue(hass, mac="AA:BB:CC:DD:EE:41", device_name="Bedroom", fw_ver=ahead)
 
     issue = ir.async_get(hass).async_get_issue(DOMAIN, "firmware_ahead_AA:BB:CC:DD:EE:41")
-    assert issue is not None
-    assert issue.is_fixable is False, "firmware_ahead is not user-fixable from a Repairs flow"
+    assert issue is not None and issue.is_fixable is False
 
 
 async def test_create_fix_flow_returns_handler_for_firmware_behind(hass: HomeAssistant) -> None:
-    """`async_create_fix_flow` must return a RepairsFlow for firmware_behind."""
     from homeassistant.components.repairs import RepairsFlow
 
     from custom_components.eppgrid.repairs import async_create_fix_flow
@@ -78,136 +87,235 @@ async def test_create_fix_flow_returns_handler_for_firmware_behind(hass: HomeAss
 
 
 async def test_create_fix_flow_raises_for_unknown_issue_id(hass: HomeAssistant) -> None:
-    """Unknown issue ids must raise — silently returning a generic flow would
-    confuse the user with a fix dialog that does nothing useful.
-    """
     from custom_components.eppgrid.repairs import async_create_fix_flow
 
     with pytest.raises(HomeAssistantError):
-        await async_create_fix_flow(hass, "some_other_unrelated_issue_id", data=None)
+        await async_create_fix_flow(hass, "some_other_issue_id", data=None)
 
 
-async def test_fix_flow_triggers_ota_on_confirm(hass: HomeAssistant) -> None:
-    """Submitting the confirm step must call the manager's OTA trigger.
+# ---------------------------------------------------------------------------
+# init / confirm steps — show the dialog (don't auto-submit)
+# ---------------------------------------------------------------------------
 
-    Without this assertion, a regression that broke the OTA call (or
-    forgot to wire it up at all) would leave users with a Submit button
-    that quietly succeeds without actually updating the firmware.
+
+async def test_init_step_shows_confirm_form_not_immediate_create_entry(hass: HomeAssistant) -> None:
+    """The flow's first step must show a confirm form — *not* immediately
+    create_entry — so the user gets a chance to read what's about to happen
+    and cancel.
+
+    A previous version of this flow returned the form from `step_id="init"`
+    with an empty schema, which the Repairs UI auto-confirmed: the user
+    clicked the issue and saw "Repaired" instantly with no dialog. The fix
+    is to use `step_id="confirm"` (the documented confirm-step convention).
     """
-    from custom_components.eppgrid.repairs import FirmwareUpdateRepairFlow
-
-    mac = "AA:BB:CC:DD:EE:43"
-    flow = FirmwareUpdateRepairFlow(mac=mac)
-    flow.hass = hass
-    flow.handler = DOMAIN
-    flow.issue_id = f"firmware_behind_{mac}"
-
-    # Step 1: init shows the confirm form
+    flow = _make_flow(hass)
     result = await flow.async_step_init(user_input=None)
-    assert result["type"] == "form"
-    assert result["step_id"] == "init"
 
-    # Step 2: submitting triggers OTA via the manager
-    with patch("custom_components.eppgrid.repairs._trigger_ota", new=AsyncMock()) as mock_trigger:
-        result = await flow.async_step_init(user_input={})
+    assert result["type"] == "form", (
+        "init must show a form so the user can confirm — got "
+        f"type={result['type']!r}, which would skip the dialog entirely"
+    )
+    assert result["step_id"] == "confirm", (
+        f"step_id must be 'confirm' so the Repairs UI renders a confirm dialog. "
+        f"Got step_id={result['step_id']!r}, which the UI may auto-confirm with no dialog."
+    )
 
-    mock_trigger.assert_awaited_once_with(hass, mac)
-    assert result["type"] == "create_entry", "successful OTA trigger must close the flow with create_entry"
 
-
-async def test_fix_flow_re_shows_form_on_failure(hass: HomeAssistant) -> None:
-    """A failed OTA trigger must re-show the confirm form with an error key.
-
-    Without this, a transient failure (device offline, build flags missing,
-    network glitch) would just bubble up as a generic error in the Repairs
-    UI with no way for the user to retry. Better UX is to keep the dialog
-    open, surface a readable message, and let them click Submit again.
+async def test_confirm_step_passes_through_issue_placeholders(hass: HomeAssistant) -> None:
+    """Confirm dialog must show the device name + version delta from the issue
+    placeholders so the user knows what they're about to update.
     """
-    from custom_components.eppgrid.repairs import FirmwareUpdateRepairFlow
-
+    behind = _bump(FIRMWARE_VERSION, kind="behind")
     mac = "AA:BB:CC:DD:EE:50"
-    flow = FirmwareUpdateRepairFlow(mac=mac)
-    flow.hass = hass
-    flow.handler = DOMAIN
-    flow.issue_id = f"firmware_behind_{mac}"
+    _sync_firmware_repair_issue(hass, mac=mac, device_name="Bedroom", fw_ver=behind)
 
-    failing = AsyncMock(side_effect=HomeAssistantError("Device offline"))
-    with patch("custom_components.eppgrid.repairs._trigger_ota", new=failing):
-        result = await flow.async_step_init(user_input={})
+    flow = _make_flow(hass, mac=mac)
+    result = await flow.async_step_init(user_input=None)
 
-    assert result["type"] == "form", "failed OTA must keep the dialog open instead of aborting"
-    assert result["step_id"] == "init"
-    assert result.get("errors"), "result must include an errors mapping so the UI shows the failure reason"
+    placeholders = result.get("description_placeholders") or {}
+    assert placeholders.get("device_name") == "Bedroom"
+    assert placeholders.get("current_version") == behind
+    assert placeholders.get("required_version") == FIRMWARE_VERSION
 
 
-async def test_trigger_ota_wraps_aioesphomeapi_errors(hass: HomeAssistant) -> None:
-    """aioesphomeapi connection failures must surface as HomeAssistantError.
+# ---------------------------------------------------------------------------
+# progress step — spinner while OTA + version-match-poll runs
+# ---------------------------------------------------------------------------
 
-    Raw aioesphomeapi exceptions don't have a translation key and would show
-    in the Repairs UI as untranslated technical text. Wrapping them in
-    HomeAssistantError keeps the user-facing surface stable and lets us
-    attach translation keys for localized messages.
+
+async def _pending_task() -> None:
+    """A coroutine that never completes — used so async_create_task gives us
+    a Task whose `.done()` stays False during the test.
     """
-    from aioesphomeapi import APIConnectionError
+    await asyncio.Event().wait()
 
+
+async def test_confirm_submit_transitions_to_progress(hass: HomeAssistant) -> None:
+    """Submitting the confirm form must transition to a progress step that
+    shows a spinner — same UX as the ESPHome native Update entity. Going
+    straight from confirm → create_entry would tell the user "Repaired"
+    before the OTA has even finished downloading.
+    """
+    flow = _make_flow(hass)
+
+    with patch.object(flow, "_run_ota_task", new=_pending_task):
+        try:
+            result = await flow.async_step_confirm(user_input={})
+            assert result["type"] == "progress", (
+                f"submitting confirm must show progress, got type={result['type']!r}. "
+                "Returning create_entry here would dismiss the dialog before the "
+                "OTA has actually completed."
+            )
+        finally:
+            if flow._ota_task is not None:
+                flow._ota_task.cancel()
+
+
+async def test_progress_step_shows_spinner_while_task_runs(hass: HomeAssistant) -> None:
+    """While the OTA task hasn't finished, the progress step keeps the
+    spinner visible (`type=progress`). Returning `progress_done` here would
+    dismiss the spinner before the OTA actually completes."""
+    flow = _make_flow(hass)
+    flow._ota_task = asyncio.get_running_loop().create_task(_pending_task())
+    try:
+        result = await flow.async_step_progress(user_input=None)
+        assert result["type"] == "progress"
+        assert result.get("progress_action") == "installing"
+    finally:
+        flow._ota_task.cancel()
+
+
+async def test_progress_step_completes_when_task_done_successfully(hass: HomeAssistant) -> None:
+    """When the OTA task finishes cleanly, progress transitions to finish
+    (which closes the dialog as Repaired)."""
+    flow = _make_flow(hass)
+    fut = asyncio.get_running_loop().create_future()
+    fut.set_result(None)
+    flow._ota_task = fut
+
+    result = await flow.async_step_progress(user_input=None)
+    assert result["type"] == "progress_done"
+    assert result["step_id"] == "finish"
+
+
+async def test_progress_step_transitions_to_failed_on_task_exception(hass: HomeAssistant) -> None:
+    """An exception in the OTA task must surface to a failed step (with retry)
+    rather than bubbling up as an unhandled flow error."""
+    flow = _make_flow(hass)
+    fut = asyncio.get_running_loop().create_future()
+    fut.set_exception(HomeAssistantError("device offline"))
+    flow._ota_task = fut
+
+    result = await flow.async_step_progress(user_input=None)
+    assert result["type"] == "progress_done"
+    assert result["step_id"] == "failed"
+
+
+async def test_finish_step_creates_entry(hass: HomeAssistant) -> None:
+    """The terminal success step closes the flow with create_entry."""
+    flow = _make_flow(hass)
+    result = await flow.async_step_finish(user_input=None)
+    assert result["type"] == "create_entry"
+
+
+async def test_failed_step_offers_retry(hass: HomeAssistant) -> None:
+    """The failed step must show a form (so the user can retry) — not
+    abort the flow."""
+    flow = _make_flow(hass)
+    flow._error_message = "Device offline"
+
+    result = await flow.async_step_failed(user_input=None)
+    assert result["type"] == "form"
+    assert result["step_id"] == "failed"
+
+
+async def test_failed_step_retry_resets_and_returns_to_progress(hass: HomeAssistant) -> None:
+    """Submitting the failed form must clear state and re-run the OTA task."""
+    flow = _make_flow(hass)
+    failed = asyncio.get_running_loop().create_future()
+    failed.set_exception(HomeAssistantError("first try failed"))
+    # Consume the exception so it's not flagged as unretrieved during teardown.
+    failed.exception()
+    flow._ota_task = failed
+    flow._error_message = "first try failed"
+
+    with patch.object(flow, "_run_ota_task", new=_pending_task):
+        try:
+            result = await flow.async_step_failed(user_input={})
+
+            assert result["type"] == "progress", "retry must kick the flow back into the progress step"
+            assert flow._ota_task is not None and not flow._ota_task.done(), (
+                "retry must replace the previous (failed) task with a fresh one"
+            )
+        finally:
+            if flow._ota_task is not None and not flow._ota_task.done():
+                flow._ota_task.cancel()
+
+
+# ---------------------------------------------------------------------------
+# OTA task — trigger + poll-for-version-match
+# ---------------------------------------------------------------------------
+
+
+async def test_run_ota_task_triggers_then_waits_for_version_match(hass: HomeAssistant) -> None:
+    """The background task must trigger the OTA *and then* wait for the
+    device's firmware_version sensor to report the new version. Returning
+    immediately after set_update_manifest would tell the user "done" before
+    the device has even finished downloading.
+    """
     from custom_components.eppgrid.device_manager import DeviceManager
     from custom_components.eppgrid.device_manager import ManagedDevice
-    from custom_components.eppgrid.repairs import _trigger_ota
     from custom_components.eppgrid.storage import EPPGridStore
 
-    mac = "AA:BB:CC:DD:EE:51"
+    mac = "AA:BB:CC:DD:EE:60"
     manager = DeviceManager(hass, EPPGridStore(hass))
     manager.devices[mac] = ManagedDevice(mac=mac, name="X", host="192.168.1.99", device_id="dev1")
-    manager._build_flags[mac] = {"ethernet_enabled": False}
     hass.data[DOMAIN] = manager
 
-    mock_conn = AsyncMock()
-    mock_conn.async_connect = AsyncMock(side_effect=APIConnectionError("connection refused"))
-    mock_conn._client = None
+    trigger_called = AsyncMock()
+    read_calls = [0]
+
+    def fake_read(_device_id):
+        read_calls[0] += 1
+        if read_calls[0] == 1:
+            return _bump(FIRMWARE_VERSION, kind="behind")
+        return FIRMWARE_VERSION
+
+    flow = _make_flow(hass, mac=mac)
 
     with (
-        patch("custom_components.eppgrid.device_manager.DeviceConnection", return_value=mock_conn),
-        pytest.raises(HomeAssistantError),
+        patch.object(manager, "async_trigger_ota", new=trigger_called),
+        patch.object(manager, "read_firmware_version", side_effect=fake_read),
+        patch("custom_components.eppgrid.repairs.asyncio.sleep", new=AsyncMock()),
     ):
-        await _trigger_ota(hass, mac)
-    mock_conn.async_disconnect.assert_awaited_once()
+        await flow._run_ota_task()
+
+    trigger_called.assert_awaited_once_with(mac)
+    assert read_calls[0] >= 2, "task must keep polling until the firmware_version matches the required version"
 
 
-async def test_trigger_ota_calls_set_update_manifest(hass: HomeAssistant) -> None:
-    """The shared OTA trigger must call the device's set_update_manifest service.
-
-    This is the same OTA path the panel uses — the fix flow MUST go through
-    the same code so we don't introduce a parallel implementation that can
-    drift out of sync (different URL, different service name, etc.).
+async def test_run_ota_task_times_out_when_firmware_never_matches(hass: HomeAssistant) -> None:
+    """If the device never reports the matching version, the task must time
+    out so the flow can show the failed step rather than spinning forever.
     """
-    from custom_components.eppgrid.const import OTA_MANIFEST_BASE_URL
     from custom_components.eppgrid.device_manager import DeviceManager
     from custom_components.eppgrid.device_manager import ManagedDevice
-    from custom_components.eppgrid.repairs import _trigger_ota
     from custom_components.eppgrid.storage import EPPGridStore
 
-    mac = "AA:BB:CC:DD:EE:44"
+    mac = "AA:BB:CC:DD:EE:61"
     manager = DeviceManager(hass, EPPGridStore(hass))
     manager.devices[mac] = ManagedDevice(mac=mac, name="X", host="192.168.1.99", device_id="dev1")
-    manager._build_flags[mac] = {"ethernet_enabled": False}
-
     hass.data[DOMAIN] = manager
 
-    # Patch DeviceConnection so we don't open a real socket
-    mock_client = AsyncMock()
-    mock_client.execute_service = AsyncMock()
-    mock_conn = AsyncMock()
-    mock_conn._services = {"set_update_manifest": object()}
-    mock_conn._client = mock_client
+    behind = _bump(FIRMWARE_VERSION, kind="behind")
+    flow = _make_flow(hass, mac=mac)
+    times = iter([0, 0, 999_999])
 
-    with patch("custom_components.eppgrid.device_manager.DeviceConnection", return_value=mock_conn):
-        await _trigger_ota(hass, mac)
-
-    mock_conn.async_connect.assert_awaited_once()
-    mock_client.execute_service.assert_awaited_once()
-    args, _ = mock_client.execute_service.call_args
-    # Second arg is the dict of service variables; should contain the manifest URL
-    assert "url" in args[1]
-    assert OTA_MANIFEST_BASE_URL in args[1]["url"]
-    assert args[1]["url"].endswith("wifi-ble-co2.json")
-    mock_conn.async_disconnect.assert_awaited_once()
+    with (
+        patch.object(manager, "async_trigger_ota", new=AsyncMock()),
+        patch.object(manager, "read_firmware_version", return_value=behind),
+        patch("custom_components.eppgrid.repairs.asyncio.sleep", new=AsyncMock()),
+        patch("custom_components.eppgrid.repairs.time.monotonic", side_effect=lambda: next(times)),
+        pytest.raises(HomeAssistantError),
+    ):
+        await flow._run_ota_task()

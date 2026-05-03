@@ -42,10 +42,17 @@
       "title": "{device_name}: actualización de firmware necesaria",
       "fix_flow": {
         "step": {
-          "init": {
+          "confirm": {
             "title": "Actualizar el firmware de {device_name}",
             "description": "La integración Everything Presence Pro Grid requiere el firmware **{required_version}**, pero **{device_name}** está ejecutando **{current_version}**. Pulsa **Enviar** para instalar el firmware por aire ahora. El dispositivo se reiniciará al terminar — suele tardar alrededor de un minuto. Algunas funciones de la integración pueden no funcionar correctamente hasta que se actualice el firmware."
+          },
+          "failed": {
+            "title": "La actualización ha fallado",
+            "description": "La actualización del firmware de **{device_name}** no se completó. Causa más probable: el dispositivo se desconectó o la descarga OTA falló a mitad. Comprueba el dispositivo y pulsa **Enviar** para reintentar.\n\nDetalles: {error}"
           }
+        },
+        "progress": {
+          "installing": "Instalando el firmware **{required_version}** en **{device_name}**. El dispositivo descargará el firmware por aire, se reiniciará y volverá a conectarse. Suele tardar alrededor de un minuto."
         },
         "error": {
           "ota_trigger_failed": "No se ha podido iniciar la actualización del firmware. Puede que el dispositivo esté desconectado o no sea accesible, que sus indicadores de compilación aún no estén en caché, o que su firmware sea demasiado antiguo para admitir actualizaciones OTA desde la integración. Consulta los registros de Home Assistant para más detalles e inténtalo de nuevo."
