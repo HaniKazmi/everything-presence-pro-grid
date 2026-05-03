@@ -345,27 +345,35 @@ TEST_CASE("feed after all frames expired starts fresh") {
     CHECK(out.targets[0].median_x == doctest::Approx(999.0f));
 }
 
-// TEST 17: out-of-order timestamps don't trigger unsigned-subtraction underflow
-TEST_CASE("out-of-order feed timestamp does not underflow expire_old") {
+// TEST 17: out-of-order timestamp resets the buffer (clock anomaly handling).
+// The window assumes monotonic timestamps; the only time `now_ms < tail_ts`
+// is on a clock reset / restart. Resetting the window is safer than leaving
+// timestamp-disordered frames in the ring (which a later in-order feed would
+// then fail to expire correctly).
+TEST_CASE("out-of-order feed resets the window without underflow") {
     RollingWindow rw(1000);
 
     TargetInput frame[MAX_TARGETS];
     make_frame(frame, 1.0f, 0.0f, true);
-    rw.feed(frame, MAX_TARGETS, 5000);  // frame at t=5000ms
-
+    rw.feed(frame, MAX_TARGETS, 5000);
     make_frame(frame, 2.0f, 0.0f, true);
-    rw.feed(frame, MAX_TARGETS, 5500);  // frame at t=5500ms (within window)
-
+    rw.feed(frame, MAX_TARGETS, 5500);
     CHECK(rw.output().total_frames == 2);
 
-    // Now feed an *earlier* timestamp (clock skew / restart). Without the
-    // underflow guard, (now_ms - tail_ts) wraps to a huge number, exceeding
-    // window_ms_, and would silently drop both prior frames.
+    // Earlier timestamp arrives — must NOT cause unsigned underflow that
+    // silently drops valid frames. Treated as anomaly: ring resets and the
+    // new frame becomes the new tail.
     make_frame(frame, 3.0f, 0.0f, true);
-    rw.feed(frame, MAX_TARGETS, 4000);  // earlier than tail (5000ms)
+    rw.feed(frame, MAX_TARGETS, 4000);
+    CHECK(rw.output().total_frames == 1);
 
+    // Subsequent in-order feeds work normally and don't leave stale frames
+    // behind a no-longer-monotonic tail (the regression path Copilot flagged).
+    make_frame(frame, 4.0f, 0.0f, true);
+    rw.feed(frame, MAX_TARGETS, 6000);
     auto out = rw.output();
-    // Prior frames must NOT be expired by the underflow path; we keep them
-    // and just append the new frame.
-    CHECK(out.total_frames == 3);
+    // 6000-1000=5000; only the 4000ms frame is older, but it was reset above
+    // and the only remaining frame is at 6000ms.
+    CHECK(out.total_frames == 1);
+    CHECK(out.targets[0].median_x == doctest::Approx(4.0f));
 }

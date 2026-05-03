@@ -33,14 +33,20 @@ void RollingWindow::reset() {
 }
 
 void RollingWindow::expire_old(uint32_t now_ms) {
-    // Walk from tail forward, expiring frames older than window_ms_.
-    // Guard against out-of-order timestamps: if now_ms < tail_ts the unsigned
-    // subtraction would wrap to a huge value and silently expire valid frames.
-    // Treat that as "no time has passed" and stop expiring.
+    // The window assumes monotonic timestamps. If `now_ms` is older than any
+    // frame in the buffer, the caller's clock has gone backwards (restart /
+    // reset). The buffer's monotonic ordering is no longer meaningful, so
+    // discard everything and start fresh — this is safer than leaving
+    // disordered frames behind a no-longer-monotonic tail (which a later
+    // in-order feed would then fail to expire correctly).
     while (count_ > 0) {
         int tail = (head_ - count_ + MAX_FRAMES) % MAX_FRAMES;
         uint32_t tail_ts = frames_[tail].timestamp_ms;
-        if (now_ms < tail_ts) break;
+        if (now_ms < tail_ts) {
+            count_ = 0;
+            head_ = 0;
+            return;
+        }
         if (now_ms - tail_ts > window_ms_) {
             --count_;
         } else {

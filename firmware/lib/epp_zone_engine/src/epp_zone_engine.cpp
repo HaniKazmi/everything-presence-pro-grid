@@ -49,13 +49,17 @@ void ZoneEngine::set_grid(const Grid& grid) {
     grid_ = grid;
     // Per-target prev-cell coords are indexed by the OLD grid's coordinate
     // system; reset them so the next tick computes fresh continuity from the
-    // new grid. Zone state is intentionally preserved (only set_zones resets).
+    // new grid. dismissed_cell_ is also a cell-index reference under the OLD
+    // grid — keeping it would silently suppress occupancy at whatever room
+    // location the same index now points to.
+    // Zone state is intentionally preserved (only set_zones resets).
     for (int i = 0; i < MAX_TARGETS; ++i) {
         target_has_prev_[i] = false;
         target_has_prev_xy_[i] = false;
         target_gate_count_[i] = 0;
         target_overlay_sticky_[i] = false;
         target_last_zone_[i] = -1;
+        dismissed_cell_[i] = -1;
     }
 }
 

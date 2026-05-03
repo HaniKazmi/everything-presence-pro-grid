@@ -24,11 +24,16 @@ bool Grid::xy_to_col_row(float x, float y, int &col, int &row) const {
     // produces a negative col/row, not a truncate-toward-zero 0.
     float fx = (x - origin_x_) / static_cast<float>(cell_size_);
     float fy = (y - origin_y_) / static_cast<float>(cell_size_);
+    // Bounds-check in FLOAT space before casting. Casting a finite-but-huge
+    // float (e.g. from malformed perspective coefficients producing 1e20)
+    // to int is undefined when it exceeds INT_MAX. Comparing in float space
+    // is safe because both sides are finite.
+    if (fx < 0.0f || fy < 0.0f) return false;
+    if (fx >= static_cast<float>(cols_) || fy >= static_cast<float>(rows_)) return false;
+    // After the bounds check, fx and fy are in [0, cols_/rows_), so the
+    // floor + cast is well-defined.
     int c = static_cast<int>(std::floor(fx));
     int r = static_cast<int>(std::floor(fy));
-    if (c < 0 || c >= cols_ || r < 0 || r >= rows_) {
-        return false;
-    }
     col = c;
     row = r;
     return true;
@@ -58,6 +63,9 @@ int Grid::cell_overlay(int cell_index) const {
 }
 
 void Grid::load_from_bytes(const uint8_t* data, int len) {
+    // Public API takes a signed int — clamp negative input to 0 so we never
+    // walk a negative index into cells_[] (which would corrupt memory).
+    if (len < 0) return;
     int count = std::min(len, cell_count());
     for (int i = 0; i < count; ++i) {
         cells_[i] = data[i];

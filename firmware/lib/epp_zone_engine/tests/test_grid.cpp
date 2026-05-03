@@ -94,6 +94,18 @@ TEST_CASE("xy_to_cell rejects NaN and Inf") {
     CHECK(grid.xy_to_cell(0.0f, -inf) == -1);
 }
 
+TEST_CASE("xy_to_cell rejects huge finite values without UB float-to-int cast") {
+    // From malformed perspective coefficients we can get extremely large but
+    // finite coords. Cast to int is UB when the float exceeds INT range, so
+    // the bounds check must happen in float space before the cast.
+    epp::Grid grid;
+    CHECK(grid.xy_to_cell(1.0e20f, 0.0f) == -1);
+    CHECK(grid.xy_to_cell(0.0f, 1.0e20f) == -1);
+    CHECK(grid.xy_to_cell(-1.0e20f, 0.0f) == -1);
+    CHECK(grid.xy_to_cell(std::numeric_limits<float>::max(), 0.0f) == -1);
+    CHECK(grid.xy_to_cell(std::numeric_limits<float>::lowest(), 0.0f) == -1);
+}
+
 TEST_CASE("xy_to_col_row decomposition agrees with xy_to_cell") {
     epp::Grid grid;
     int col = -999, row = -999;
@@ -211,6 +223,22 @@ TEST_CASE("load_from_bytes truncates to cell_count") {
     // cell(4) is backed by the array but not part of the logical grid;
     // load_from_bytes should not have written beyond cell_count()=4
     CHECK(grid.cell(4) == 0x00);
+}
+
+TEST_CASE("load_from_bytes ignores negative len without OOB write") {
+    epp::Grid grid;
+    // Pre-fill with a known pattern.
+    uint8_t prefilled[3] = {0x11, 0x22, 0x33};
+    grid.load_from_bytes(prefilled, 3);
+    CHECK(grid.cell(0) == 0x11);
+
+    // Negative len: must be a no-op, not write at cells_[-5..].
+    uint8_t dummy = 0xFF;
+    grid.load_from_bytes(&dummy, -5);
+    // Original contents preserved (the negative-len call did nothing).
+    CHECK(grid.cell(0) == 0x11);
+    CHECK(grid.cell(1) == 0x22);
+    CHECK(grid.cell(2) == 0x33);
 }
 
 TEST_CASE("load_from_bytes zeros the tail when len < cell_count") {

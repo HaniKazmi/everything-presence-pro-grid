@@ -545,6 +545,30 @@ TEST_CASE("set_zones clears dismissed_cell_ for all targets") {
     CHECK(r.zone_occupancy[1]);
 }
 
+TEST_CASE("set_grid clears dismissed_cell_ across coordinate-system change") {
+    // Reproduces the Copilot review concern: dismiss target at cell N under
+    // grid A; switching to grid B re-uses cell index N at a different room
+    // location, which would silently suppress occupancy until the target
+    // moves elsewhere unless set_grid clears the dismiss state.
+    ZoneEngine engine = make_parity_engine();
+    int zone1_cell = 1 * GRID_COLS + 9;
+    float zone1_x = X_OFF + 450.0f;
+
+    // Confirm + dismiss target 0 at zone 1 cell.
+    engine.tick(make_window_1(zone1_x, 450.0f, 5), 100.0f);
+    engine.dismiss_target(0, zone1_cell);
+
+    // Re-load the grid (e.g. user edited room layout). Build a fresh grid so
+    // the engine's stored grid is replaced.
+    Grid new_grid = make_parity_grid();
+    engine.set_grid(new_grid);
+
+    // Target back at the (now-meaningfully-different) cell that previously
+    // held the dismiss must be processed normally.
+    const ProcessingResult& r = engine.tick(make_window_1(zone1_x, 450.0f, 5), 101.0f);
+    CHECK(r.zone_occupancy[1]);
+}
+
 TEST_CASE("set_zones drops a zone that is no longer configured") {
     ZoneEngine engine = make_parity_engine();
     // Confirm zone 1 occupied
