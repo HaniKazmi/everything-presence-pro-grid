@@ -30,8 +30,15 @@ export async function flashFirmware(
 		onMac?: (mac: string) => void;
 		beforeFlash?: (mac: string | undefined) => Promise<void>;
 		baseUrl?: string;
+		accessToken?: string;
 	},
 ): Promise<void> {
+	// The firmware proxy is now auth-required, so panel fetches must carry
+	// the HA bearer token. Same-origin cookies aren't reliable across HA
+	// reverse-proxy setups; an explicit Authorization header is.
+	const fetchInit: RequestInit | undefined = options?.accessToken
+		? { headers: { Authorization: `Bearer ${options.accessToken}` } }
+		: undefined;
 	// Prevent Transport.disconnect() from closing the port — reopening a
 	// CH340 serial port after Transport closes it leaves the port in a
 	// zombie state (opens but no data flows). Instead, we let Transport
@@ -76,7 +83,7 @@ export async function flashFirmware(
 		}
 		const base = options.baseUrl;
 		const manifestUrl = `${base}/everything-presence-pro-${variant}-manifest.json`;
-		const manifestResp = await fetch(manifestUrl);
+		const manifestResp = await fetch(manifestUrl, fetchInit);
 		if (!manifestResp.ok) {
 			throw Object.assign(new Error("Failed to download firmware manifest"), {
 				errorKey: "usb.errors.manifest_download_failed",
@@ -93,7 +100,7 @@ export async function flashFirmware(
 
 		const fileArray: { data: Uint8Array; address: number }[] = [];
 		for (const part of parts) {
-			const resp = await fetch(`${baseUrl}${part.path}`);
+			const resp = await fetch(`${baseUrl}${part.path}`, fetchInit);
 			if (!resp.ok) {
 				throw Object.assign(
 					new Error(`Failed to download firmware file: ${part.path}`),
