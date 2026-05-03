@@ -545,6 +545,50 @@ TEST_CASE("set_zones clears dismissed_cell_ for all targets") {
     CHECK(r.zone_occupancy[1]);
 }
 
+TEST_CASE("set_raw_fps changes the signal denominator floor") {
+    // signal = (frame_count * 9 + frames/2) / frames, where frames =
+    // max(window.total_frames, raw_fps_). With raw_fps_=10 and total_frames=5
+    // the denominator is clamped UP to 10, so frame_count=5 yields signal=5.
+    // Lowering raw_fps_ to 5 lets the denominator collapse to 5, so the same
+    // frame_count=5 yields signal=9.
+    ZoneEngine engine = make_parity_engine();
+
+    // Default RAW_FPS=10 path: 5 frames of presence on overlay cell → signal 5.
+    {
+        WindowOutput wo = make_window_1(X_OFF + 450.0f, 450.0f, 5);
+        wo.total_frames = 5;
+        wo.targets[0].on_overlay = true;
+        const ProcessingResult& r = engine.tick(wo, 100.0f);
+        REQUIRE(r.target_count >= 1);
+        // signal = (5*9 + 10/2)/10 = 50/10 = 5
+        CHECK(r.targets[0].signal == 5);
+    }
+
+    // Override raw_fps to 5 — same frame_count now hits signal 9.
+    engine.set_raw_fps(5);
+    CHECK(engine.raw_fps() == 5);
+
+    {
+        // Reset engine state so the previous tick doesn't bias the next.
+        ZoneEngine fresh = make_parity_engine();
+        fresh.set_raw_fps(5);
+
+        WindowOutput wo = make_window_1(X_OFF + 450.0f, 450.0f, 5);
+        wo.total_frames = 5;
+        wo.targets[0].on_overlay = true;
+        const ProcessingResult& r = fresh.tick(wo, 100.0f);
+        REQUIRE(r.target_count >= 1);
+        // signal = (5*9 + 5/2)/5 = 47/5 = 9 (clamped to 9)
+        CHECK(r.targets[0].signal == 9);
+    }
+
+    // raw_fps <= 0 falls back to the RAW_FPS default.
+    engine.set_raw_fps(0);
+    CHECK(engine.raw_fps() == RAW_FPS);
+    engine.set_raw_fps(-3);
+    CHECK(engine.raw_fps() == RAW_FPS);
+}
+
 TEST_CASE("set_grid clears dismissed_cell_ across coordinate-system change") {
     // Reproduces the Copilot review concern: dismiss target at cell N under
     // grid A; switching to grid B re-uses cell index N at a different room

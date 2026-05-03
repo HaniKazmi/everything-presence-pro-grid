@@ -11,8 +11,10 @@ public:
     explicit RollingWindow(uint32_t window_ms = 1000);
 
     /// Feed a frame with its timestamp (ms). Expires frames older than window_ms.
-    /// Assumes monotonic timestamps; out-of-order (now_ms < tail_ts) is treated
-    /// as "no time has passed" — no frames are expired by the underflow path.
+    /// Assumes monotonic timestamps. If `timestamp_ms` is older than any frame
+    /// already in the buffer (clock reset / restart), the buffer is reset and
+    /// the new frame becomes the new tail — leaving disordered frames behind a
+    /// no-longer-monotonic tail would silently break later in-order expiry.
     void feed(const TargetInput targets[], int target_count, uint32_t timestamp_ms);
 
     /// Compute current output (median of frames within window).

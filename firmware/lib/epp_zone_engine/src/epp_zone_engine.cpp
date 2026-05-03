@@ -51,8 +51,11 @@ void ZoneEngine::set_grid(const Grid& grid) {
     // system; reset them so the next tick computes fresh continuity from the
     // new grid. dismissed_cell_ is also a cell-index reference under the OLD
     // grid — keeping it would silently suppress occupancy at whatever room
-    // location the same index now points to.
-    // Zone state is intentionally preserved (only set_zones resets).
+    // location the same index now points to. target_log_zone_ /
+    // target_log_in_room_ are also OLD-grid-relative; carrying them across
+    // would emit spurious "left zone" / "below threshold" entries on the
+    // first post-edit tick. Zone state is intentionally preserved (only
+    // set_zones resets).
     for (int i = 0; i < MAX_TARGETS; ++i) {
         target_has_prev_[i] = false;
         target_has_prev_xy_[i] = false;
@@ -60,6 +63,8 @@ void ZoneEngine::set_grid(const Grid& grid) {
         target_overlay_sticky_[i] = false;
         target_last_zone_[i] = -1;
         dismissed_cell_[i] = -1;
+        target_log_zone_[i] = -1;
+        target_log_in_room_[i] = false;
     }
 }
 
