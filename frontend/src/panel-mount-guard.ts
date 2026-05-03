@@ -125,8 +125,13 @@ export function installPanelMountGuard(): void {
 export function uninstallPanelMountGuard(): void {
 	const w = window as any;
 	if (!w.__eppGridMountGuardInstalled) return;
-	if (w.__eppGridMountGuardTeardown) {
-		w.__eppGridMountGuardTeardown();
+	// A corrupt or externally-replaced teardown shouldn't be able to leave
+	// the guard wedged with the install flag set — type-check and try/catch
+	// around the call so the globals are always cleared.
+	if (typeof w.__eppGridMountGuardTeardown === "function") {
+		try {
+			w.__eppGridMountGuardTeardown();
+		} catch {}
 	}
 	delete w.__eppGridMountGuardInstalled;
 	delete w.__eppGridMountGuardTeardown;

@@ -315,6 +315,29 @@ describe("installPanelMountGuard", () => {
 		expect((window as any).__eppGridMountGuardTeardown).not.toBe(teardownSpy);
 	});
 
+	it("uninstallPanelMountGuard clears globals even when the teardown closure throws", () => {
+		// A corrupt or externally-replaced global teardown shouldn't be able
+		// to leave the mount guard wedged. uninstall must always finish
+		// clearing the globals so a subsequent install doesn't see a stale
+		// flag and silently skip.
+		installPanelMountGuard();
+		(window as any).__eppGridMountGuardTeardown = () => {
+			throw new Error("teardown blew up");
+		};
+
+		expect(() => uninstallPanelMountGuard()).not.toThrow();
+		expect((window as any).__eppGridMountGuardInstalled).toBeUndefined();
+		expect((window as any).__eppGridMountGuardTeardown).toBeUndefined();
+	});
+
+	it("uninstallPanelMountGuard tolerates a non-function teardown global", () => {
+		(window as any).__eppGridMountGuardInstalled = true;
+		(window as any).__eppGridMountGuardTeardown = "not a function" as any;
+
+		expect(() => uninstallPanelMountGuard()).not.toThrow();
+		expect((window as any).__eppGridMountGuardInstalled).toBeUndefined();
+	});
+
 	it("uninstallPanelMountGuard removes the listener and clears the flag", () => {
 		installPanelMountGuard();
 		expect((window as any).__eppGridMountGuardInstalled).toBe(true);
