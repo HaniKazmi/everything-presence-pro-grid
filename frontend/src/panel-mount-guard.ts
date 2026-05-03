@@ -88,27 +88,46 @@ export function ensureObserversAttached(): void {
 	if (host) attachHostObserver(host);
 }
 
+// Per-module teardown closure — captures THIS module's listener function
+// identity and observer references, so a future install (potentially from a
+// freshly loaded module instance) can tear it down via the window-stashed
+// reference even though our module-level state is unreachable from there.
+function makeTeardown(): () => void {
+	return () => {
+		document.removeEventListener("visibilitychange", handleVisibilityChange);
+		observedHost?.observer.disconnect();
+		observedResolver?.observer.disconnect();
+		observedHost = null;
+		observedResolver = null;
+	};
+}
+
 export function installPanelMountGuard(): void {
 	// Tear down any previous install first. The module-level flag survives
-	// across module reloads / repeat-install calls, but the observers and
-	// listener references in the previous module instance can't be cleaned
-	// up from here — they belong to the old lexical scope. Always re-attach
-	// from the current scope so we end up with exactly one listener bound to
-	// the current module's references.
-	if ((window as any).__eppGridMountGuardInstalled) {
-		uninstallPanelMountGuard();
+	// across module reloads, but the listener identity and observer
+	// references from the previous module instance aren't reachable from
+	// this module's lexical scope — calling removeEventListener with the
+	// new module's `handleVisibilityChange` reference would be a no-op,
+	// stacking listeners. The previous install stashed its teardown
+	// closure on `window`, so invoke that to release the old refs.
+	const w = window as any;
+	if (w.__eppGridMountGuardTeardown) {
+		try {
+			w.__eppGridMountGuardTeardown();
+		} catch {}
 	}
-	(window as any).__eppGridMountGuardInstalled = true;
+	w.__eppGridMountGuardInstalled = true;
 	document.addEventListener("visibilitychange", handleVisibilityChange);
 	ensureObserversAttached();
+	w.__eppGridMountGuardTeardown = makeTeardown();
 }
 
 export function uninstallPanelMountGuard(): void {
-	if (!(window as any).__eppGridMountGuardInstalled) return;
-	document.removeEventListener("visibilitychange", handleVisibilityChange);
-	observedHost?.observer.disconnect();
-	observedResolver?.observer.disconnect();
-	observedHost = null;
-	observedResolver = null;
-	delete (window as any).__eppGridMountGuardInstalled;
+	const w = window as any;
+	if (!w.__eppGridMountGuardInstalled) return;
+	if (w.__eppGridMountGuardTeardown) {
+		w.__eppGridMountGuardTeardown();
+	}
+	delete w.__eppGridMountGuardInstalled;
+	delete w.__eppGridMountGuardTeardown;
 }

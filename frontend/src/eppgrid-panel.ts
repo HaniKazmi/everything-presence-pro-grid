@@ -510,6 +510,12 @@ export class EPPGridPanel extends LitElement {
 
 	private _originalPushState: typeof history.pushState | null = null;
 	private _originalReplaceState: typeof history.replaceState | null = null;
+	// The wrapper functions this instance installed onto `history`. Track
+	// them so disconnect can detect a later instance overwriting them and
+	// skip the restore in that case (otherwise we'd un-wrap the live
+	// instance and silently disable its navigation interception).
+	private _wrappedPushState: typeof history.pushState | null = null;
+	private _wrappedReplaceState: typeof history.replaceState | null = null;
 
 	private _interceptNavigation = (): boolean => {
 		if (!this._dirty) return false;
@@ -612,8 +618,10 @@ export class EPPGridPanel extends LitElement {
 			w.__eppOriginalReplaceState as typeof history.replaceState;
 		this._originalPushState = origPush;
 		this._originalReplaceState = origReplace;
-		history.pushState = this._wrapHistoryMethod(origPush);
-		history.replaceState = this._wrapHistoryMethod(origReplace);
+		this._wrappedPushState = this._wrapHistoryMethod(origPush);
+		this._wrappedReplaceState = this._wrapHistoryMethod(origReplace);
+		history.pushState = this._wrappedPushState;
+		history.replaceState = this._wrappedReplaceState;
 	}
 
 	private _wrapHistoryMethod(
@@ -646,10 +654,25 @@ export class EPPGridPanel extends LitElement {
 		window.removeEventListener("keydown", this._onKeyDown);
 		window.removeEventListener("hashchange", this._onHashChange);
 
-		// Restore original history methods
-		if (this._originalPushState) history.pushState = this._originalPushState;
-		if (this._originalReplaceState)
+		// Restore original history methods — but only if our wrapper is
+		// still the installed one. A later panel instance may have
+		// overlapping-mounted and put its own wrapper on top; restoring
+		// the bare original here would silently disable that live
+		// instance's navigation interception.
+		if (
+			this._originalPushState &&
+			history.pushState === this._wrappedPushState
+		) {
+			history.pushState = this._originalPushState;
+		}
+		if (
+			this._originalReplaceState &&
+			history.replaceState === this._wrappedReplaceState
+		) {
 			history.replaceState = this._originalReplaceState;
+		}
+		this._wrappedPushState = null;
+		this._wrappedReplaceState = null;
 	}
 
 	private _attachConnectionListeners(conn: any): void {

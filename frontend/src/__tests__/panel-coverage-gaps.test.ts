@@ -160,6 +160,32 @@ describe("disconnectedCallback restores history methods", () => {
 		a.disconnectedCallback();
 	});
 
+	it("first instance disconnect does NOT clobber a still-connected second instance's wrapper", () => {
+		// Two instances overlap (e.g. mid-remount the new instance connects
+		// before the old one disconnects). Both wrap from the same global
+		// truly-original. After the first disconnects, history.pushState
+		// must still be the second instance's wrapper — unconditionally
+		// restoring the bare original would silently disable the live
+		// instance's interception.
+		delete (window as any).__eppOriginalPushState;
+		delete (window as any).__eppOriginalReplaceState;
+
+		const first = createPanel() as any;
+		first.hass = null;
+		first.connectedCallback();
+
+		const second = createPanel() as any;
+		second.hass = null;
+		second.connectedCallback();
+		const secondWrapper = history.pushState;
+
+		first.disconnectedCallback();
+
+		expect(history.pushState).toBe(secondWrapper);
+
+		second.disconnectedCallback();
+	});
+
 	it("disconnect after a second panel instance restores the same truly-original pushState", () => {
 		// Two instances connect in sequence (e.g. panel remount). The
 		// second's _originalPushState was previously captured AFTER the

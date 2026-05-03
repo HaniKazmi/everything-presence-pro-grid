@@ -292,6 +292,29 @@ describe("installPanelMountGuard", () => {
 		spy.mockRestore();
 	});
 
+	it("a second install invokes the previous module's teardown closure", () => {
+		// Cross-module-reload scenario: the OLD module's listener and
+		// observer references aren't reachable from the new module's
+		// scope. Without a globally-stashed teardown, calling
+		// removeEventListener with the new module's `handleVisibilityChange`
+		// reference doesn't match the old listener — so the old listener
+		// stays attached and we'd stack a second one. The teardown closure
+		// captures the old module's references, so storing it on `window`
+		// lets the new module reach them.
+		installPanelMountGuard();
+		const oldTeardown = (window as any).__eppGridMountGuardTeardown;
+		expect(typeof oldTeardown).toBe("function");
+
+		const teardownSpy = vi.fn(oldTeardown);
+		(window as any).__eppGridMountGuardTeardown = teardownSpy;
+
+		installPanelMountGuard();
+
+		expect(teardownSpy).toHaveBeenCalledTimes(1);
+		// New install must replace the teardown with its own.
+		expect((window as any).__eppGridMountGuardTeardown).not.toBe(teardownSpy);
+	});
+
 	it("uninstallPanelMountGuard removes the listener and clears the flag", () => {
 		installPanelMountGuard();
 		expect((window as any).__eppGridMountGuardInstalled).toBe(true);
