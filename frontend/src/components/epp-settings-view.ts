@@ -469,11 +469,11 @@ export class EppSettingsView extends LitElement {
 		><ha-icon icon="mdi:restart"></ha-icon></button>`;
 	}
 
-	// Per-render tooltip ID counter. infoTip() is deterministic within a
-	// render pass, so resetting here in willUpdate gives each call a stable
-	// position-based ID (1, 2, 3, …) that's reproduced on every re-render.
-	// Avoids DOM churn / unstable aria-describedby targets without the
-	// duplicate-ID risk of keying by tip text (some texts are reused in
+	// Per-render tooltip ID counter. Reset at the top of render() (see
+	// below); infoTip() is deterministic within a render pass, so each call
+	// gets a stable position-based ID (1, 2, 3, …) reproduced on every
+	// re-render. Avoids DOM churn / unstable aria-describedby targets without
+	// the duplicate-ID risk of keying by tip text (some texts are reused in
 	// multiple places, e.g. info.target_auto_range in both detection rows).
 	private _tipIdCounter = 0;
 	private _openTooltip: HTMLElement | null = null;
