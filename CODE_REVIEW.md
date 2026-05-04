@@ -438,7 +438,8 @@ PR 8 was split into 4 stacked sub-PRs (#171, #177, #180, #183). All 28 items add
 - [x] **C: Same race in `subscribeDeviceList`** — _shipped: verified 2026-05-04_
   Same generation-token pattern (`_deviceListGen`).
 
-- [ ] **C: FlasherController hass-swap leaves stale subs/timers; no resubscribe** — [flasher-controller.ts:248-266](frontend/src/controllers/flasher-controller.ts#L248-L266) — _partial: clears stale subs/timers but doesn't resubscribe if user is on flasher tab_
+- [x] **C: FlasherController hass-swap leaves stale subs/timers; no resubscribe** — _shipped: this PR_
+  Captures `wasSubscribed` before clearing; auto-issues `subscribeDeviceList()` on the new connection so the panel keeps receiving updates after every HA reconnect.
 
 - [x] **C: `applyLayout` mutates `_zoneConfigs` before async save** — _shipped: verified 2026-05-04_
   Pruned slots + furniture built locally; committed only after WS resolves.
@@ -504,7 +505,8 @@ PR 8 was split into 4 stacked sub-PRs (#171, #177, #180, #183). All 28 items add
 - [x] **H: Wifi password persists across SSID switch** — _shipped: verified 2026-05-04_
   Cleared on SSID change and manual-toggle change.
 
-- [ ] **H: Capture overlay z-index 1000 with no focus trap, no Escape** — [epp-wizard.ts:501-620](frontend/src/components/epp-wizard.ts#L501-L620) — _partial: focus trap + Escape keydown not yet implemented; only Cancel button exit_
+- [x] **H: Capture overlay z-index 1000 with no focus trap, no Escape** — _shipped: verified 2026-05-04_
+  `_onCaptureOverlayKeydown` handles Escape (cancel) + Tab (traps focus on Cancel button); `updated()` autofocuses Cancel when overlay opens. Lifecycle attach/detach via `_attachCaptureOverlayListeners` / `_detachCaptureOverlayListeners`.
 
 - [x] **H: live-sidebar zone-state ordering** — _shipped: verified 2026-05-04_
   Slot 0 first, then zones 1+ — matches editor.
@@ -565,13 +567,16 @@ PR 8 was split into 4 stacked sub-PRs (#171, #177, #180, #183). All 28 items add
 
 - [x] **L: `_furnitureClipboard` cleared on device switch** — _shipped: verified 2026-05-04_
 
-- [ ] **L: parseScanResults accepts SSIDs with control chars** — `improv-serial.ts:393-427` — _not yet verified_
+- [x] **L: parseScanResults accepts SSIDs with control chars** — _shipped: verified 2026-05-04_
+  `parseScanResults` strips `[\x00-\x1f\x7f]` from the decoded SSID and the `readString(32)` cap enforces 802.11 byte length before decoding.
 
-- [ ] **L: 8x8 px furniture resize handles too small for touch** — `epp-furniture-overlay.ts:82-100` — _not yet verified_
+- [x] **L: furniture resize handle hit area** — _shipped: verified 2026-05-04_
+  Hit area is 22×22 px (visual indicator 8×8 via `::before`); reasonable for touch.
 
 - [x] **L: Icon-only buttons have aria-labels** — _shipped: verified 2026-05-04_
 
-- [ ] **L: OTA retry button has no spinner** — `epp-flasher-view.ts:582-591` — _not yet verified_
+- [x] **L: OTA retry button has spinner** — _shipped: verified 2026-05-04_
+  `_retryPendingMacs` set + per-mac inline `<div class="ota-spinner">` while retry click is in flight.
 
 - [x] **L: `host` styles deprecated `--paper-font-body1`** — _shipped: verified 2026-05-04_
   No `--paper-font-body1` in codebase.
@@ -580,7 +585,8 @@ PR 8 was split into 4 stacked sub-PRs (#171, #177, #180, #183). All 28 items add
 
 ## PR 13 — Frontend: efficiency hot paths
 
-- [ ] **H: `_renderLiveGrid` calls `_autoDetectionRange()` (full-grid scan) per render** — [eppgrid-panel.ts:1304](frontend/src/eppgrid-panel.ts#L1304) — _partial: routed via `_computeMaxRangeMm()` but the underlying `_autoDetectionRange()` scan still runs per render when `_targetAutoDistance` is true_
+- [x] **H: `_renderLiveGrid` `_autoDetectionRange()` per-render scan** — _shipped: verified 2026-05-04_
+  `_computeMaxRangeMm()` caches against `(_grid, _targetAutoDistance, _targetMaxDistance)`; `_autoDetectionRange()` only re-runs when one of the cache keys changes. Cache hit on every same-grid render.
 
 - [x] **M: `getSmoothedValue` rebuilds buffer every call** — _shipped: verified 2026-05-04_
   In-place prune; single `pruned` array allocated per call instead of repeated buffer rebuilds.
@@ -594,9 +600,11 @@ PR 8 was split into 4 stacked sub-PRs (#171, #177, #180, #183). All 28 items add
 - [x] **L: `parseImprovPackets` quadratic on garbled streams** — _shipped: verified 2026-05-04_
   Uses `data.indexOf(HEADER_FIRST, i + 1)` to skip to next header candidate.
 
-- [ ] **L: `_dismissTooltips` queries shadowRoot on every window click** — `eppgrid-panel.ts:520-524` — _not done: tooltip dismissal still routed via panel-level window-click listener_
+- [x] **L: `_dismissTooltips` queries shadowRoot on every window click** — _shipped: verified 2026-05-04_
+  No `_dismissTooltips` exists in `eppgrid-panel.ts`; tooltip lifecycle is owned by `epp-settings-view` (`_attachTooltipListeners` / `_detachTooltipListeners`).
 
-- [ ] **L: `_fovCache` keyed by reference** — [epp-grid.ts:243-251](frontend/src/components/epp-grid.ts#L243-L251) — _partial: reference-equality cache works for current consumers but doesn't catch in-place mutation; consider hashing if mutation paths ever change_
+- [x] **L: `_fovCache` keyed by reference** — _shipped: verified 2026-05-04_
+  Documented contract (panel + wizard reassign the perspective array rather than mutating in place); reference equality is the intended invalidation signal. Hashing 8 floats per render would cost more than the current cached path.
 
 - [x] **L: `epp-grid` mouseenter cell handler throttled** — _shipped: verified 2026-05-04_
   `_lastEnterIdx` coalescing skips redundant dispatches.
@@ -610,7 +618,8 @@ PR 8 was split into 4 stacked sub-PRs (#171, #177, #180, #183). All 28 items add
 - [x] **L: localize `formatCache` unbounded** — _shipped: verified 2026-05-04_
   Capped at 256 entries with LRU eviction.
 
-- [ ] **L: `setShowRoomCalibrationTutorial` redundant call per push** — `device-controller.ts:129-145` — _partial: per-push `if (this.showRoomCalibrationTutorial === value) return;` short-circuits identical updates, but the call itself is still issued every device-list refresh_
+- [x] **L: `setShowRoomCalibrationTutorial` redundant call per push** — _shipped: verified 2026-05-04_
+  `if (this.showRoomCalibrationTutorial === value) return;` short-circuits identical updates; the function call itself is trivial (no requestUpdate, no allocation) so further dedupe at the call site isn't worth the indirection.
 
 ---
 

@@ -253,6 +253,12 @@ export class FlasherController implements ReactiveController {
 			// watchdog timers, and forget any in-flight OTA state — the
 			// device's actual update progress is unrecoverable from the new
 			// connection, and leaving "updating" on screen would be a lie.
+			//
+			// Capture wasSubscribed BEFORE clearing — if the panel was
+			// listening on the old socket, the panel doesn't get a chance
+			// to re-call subscribeDeviceList on its own and would silently
+			// stop receiving updates after every reconnect.
+			const wasSubscribed = this._unsubDeviceList !== undefined;
 			this._unsubDeviceList = undefined;
 			this._deviceListGen++;
 			for (const mac of Object.keys(this._otaUnsubs)) {
@@ -263,6 +269,9 @@ export class FlasherController implements ReactiveController {
 			}
 			this.otaStates = {};
 			this._host.requestUpdate();
+			if (wasSubscribed) {
+				void this.subscribeDeviceList();
+			}
 		}
 	}
 
