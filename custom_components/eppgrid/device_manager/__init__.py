@@ -60,6 +60,11 @@ class DeviceManager:
     # Per-call disconnect timeout used by async_stop. Class-level so tests
     # can shorten it via instance attribute without subclassing.
     _disconnect_timeout: float = 5.0
+    # Bound on the task-drain phase of async_stop. A hung
+    # _on_device_available / _on_device_removed / async_discover task
+    # would otherwise block unload indefinitely; on timeout the surviving
+    # tasks are cancelled and we move on.
+    _stop_timeout: float = 5.0
 
     def __init__(self, hass: HomeAssistant, store: EPPGridStore) -> None:
         self._hass = hass
@@ -197,40 +202,90 @@ class DeviceManager:
         self._entity_update_clear_cancels.pop(mac, None)
 
     async def async_stop(self) -> None:
-        """Stop listeners and close all connections."""
+        """Stop listeners and close all connections.
+
+        Order matters:
+
+        1. Cancel event/state listeners synchronously so no NEW work is
+           spawned while we drain.
+        2. Drain in-flight tasks (``_pending_tasks`` then
+           ``_pending_closes``) under a bounded ``wait_for``. The tracked
+           tasks (``_on_device_available``, ``_on_device_removed``,
+           ``async_discover``, ``schedule_close_session``) all perform
+           network I/O with no internal stop-time timeout, so a hung
+           device must not block unload — survivors are cancelled and
+           awaited again to settle.
+        3. Drop ESPHome entry-update listeners *after* the task drain.
+           Clearing earlier would let an in-flight ``async_discover``
+           re-register a listener via ``_ensure_esphome_entry_listener``
+           and leak it past stop.
+        4. Disconnect all active connections in parallel, each bounded by
+           ``_disconnect_timeout``. On timeout we force the local cleanup
+           via ``_release_references()`` because aioesphomeapi's
+           ``_on_stop`` only fires after ``client.disconnect()`` finishes
+           — a cancelled ``wait_for`` would otherwise leave the
+           ``DeviceConnection`` half-initialised.
+        """
+        # Phase 1: stop new work being spawned.
         for unsub in self._unsub_listeners:
             unsub()
         self._unsub_listeners.clear()
-        for unsub in self._entry_update_unsubs.values():
-            unsub()
-        self._entry_update_unsubs.clear()
         for cancel in self._entity_update_clear_cancels.values():
             cancel()
         self._entity_update_clear_cancels.clear()
-        # Drain any in-flight close tasks scheduled via schedule_close_session
-        # so a slow disconnect can't outlive teardown and keep running against
-        # a stopped manager.
-        if self._pending_closes:
-            await asyncio.gather(*self._pending_closes.values(), return_exceptions=True)
-            self._pending_closes.clear()
-        # Drain any other in-flight tasks before returning. They might still
-        # write to self._hass which is fine — but we must observe their
-        # completion so they don't outlive the config entry. Run before
-        # the connection drain so disconnects scheduled by callbacks
-        # (e.g. _on_state_changed → async_close_session) are visible to
-        # the disconnect-gather below.
-        if self._pending_tasks:
-            await asyncio.gather(*list(self._pending_tasks), return_exceptions=True)
 
-        # Parallel disconnect with a per-call timeout so a single hung
-        # device can't block tearing down the rest of the manager state.
+        # Phase 2: drain tracked tasks with a bounded timeout. _pending_tasks
+        # is awaited before _pending_closes because state-change callbacks
+        # may schedule fresh closes onto _pending_closes; running tasks
+        # first lets those schedule first, then the closes drain in one go.
+        async def _drain(tasks: list[asyncio.Task], label: str) -> None:
+            if not tasks:
+                return
+            try:
+                await asyncio.wait_for(
+                    asyncio.gather(*tasks, return_exceptions=True),
+                    timeout=self._stop_timeout,
+                )
+            except TimeoutError:
+                still_running = [t for t in tasks if not t.done()]
+                _LOGGER.warning(
+                    "Timed out draining %s on stop; cancelling %d remaining task(s)",
+                    label,
+                    len(still_running),
+                )
+                for t in still_running:
+                    t.cancel()
+                # Give cancelled tasks a tick to settle so we don't leave
+                # warning-noise CancelledErrors after stop returns.
+                await asyncio.gather(*still_running, return_exceptions=True)
+
+        await _drain(list(self._pending_tasks), "_pending_tasks")
+        await _drain(list(self._pending_closes.values()), "_pending_closes")
+        self._pending_closes.clear()
+
+        # Phase 3: ESPHome entry-update listeners — unsub AFTER tasks
+        # drained so a still-running async_discover can't re-register one
+        # via _ensure_esphome_entry_listener mid-shutdown.
+        for unsub in self._entry_update_unsubs.values():
+            unsub()
+        self._entry_update_unsubs.clear()
+
+        # Phase 4: bounded parallel disconnect.
         async def _safe_disconnect(conn: DeviceConnection) -> None:
             try:
                 await asyncio.wait_for(conn.async_disconnect(), timeout=self._disconnect_timeout)
             except TimeoutError:
-                _LOGGER.warning("Timed out disconnecting from %s", conn._host)
+                _LOGGER.warning(
+                    "Timed out disconnecting from %s; forcing local cleanup",
+                    conn._host,
+                )
+                # wait_for cancelled async_disconnect mid-flight, so
+                # _on_stop won't run; release references locally to
+                # avoid a phantom-connected wrapper.
+                conn._release_references()
             except Exception:
                 _LOGGER.warning("Error disconnecting from %s", conn._host, exc_info=True)
+                conn._release_references()
 
         if self._active_connections:
             await asyncio.gather(

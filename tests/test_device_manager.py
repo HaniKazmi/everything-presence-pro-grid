@@ -1227,6 +1227,119 @@ class TestDeviceManager:
         fast.async_disconnect.assert_awaited_once()
         assert manager._active_connections == {}
 
+    async def test_async_stop_bounds_pending_tasks_drain(self, hass: HomeAssistant, manager: DeviceManager) -> None:
+        """A hung tracked task (e.g. _on_device_available looping on
+        retries) must not block unload. async_stop wraps the
+        _pending_tasks drain in wait_for and cancels survivors."""
+
+        async def hang() -> None:
+            try:
+                await asyncio.sleep(60)
+            except asyncio.CancelledError:
+                # Simulate a task that swallows cancellation gracefully.
+                raise
+
+        manager._spawn(hang())
+        assert manager._pending_tasks
+        manager._stop_timeout = 0.1
+        # Whole stop must complete within a generous bound — the
+        # internal timeout is 0.1, plus a small post-cancel settle.
+        await asyncio.wait_for(manager.async_stop(), timeout=2.0)
+        assert not manager._pending_tasks
+
+    async def test_async_stop_bounds_pending_closes_drain(self, hass: HomeAssistant, manager: DeviceManager) -> None:
+        """A schedule_close_session task whose disconnect hangs must
+        not block unload. async_stop bounds the _pending_closes drain
+        with the same wait_for + cancel-survivors logic."""
+        manager.devices["AA:BB:CC:DD:EE:FF"] = ManagedDevice(mac="AA:BB:CC:DD:EE:FF", name="EPP", host="192.168.1.50")
+
+        existing = MagicMock()
+        existing.connected = True
+
+        async def hang() -> None:
+            await asyncio.sleep(60)
+
+        existing.async_disconnect = AsyncMock(side_effect=hang)
+        manager._active_connections["AA:BB:CC:DD:EE:FF"] = existing
+
+        manager.schedule_close_session("AA:BB:CC:DD:EE:FF")
+        assert manager._pending_closes
+
+        manager._stop_timeout = 0.1
+        manager._disconnect_timeout = 0.1
+        await asyncio.wait_for(manager.async_stop(), timeout=2.0)
+        assert manager._pending_closes == {}
+
+    async def test_async_stop_force_releases_on_disconnect_timeout(
+        self, hass: HomeAssistant, manager: DeviceManager
+    ) -> None:
+        """When async_disconnect hangs past _disconnect_timeout,
+        async_stop must call _release_references() locally so the
+        manager doesn't keep a phantom-connected DeviceConnection alive
+        after stop returns. aioesphomeapi's _on_stop only fires after
+        client.disconnect() finishes, so a cancelled wait_for would
+        otherwise leave the connection wrapper half-initialised."""
+        hung = MagicMock()
+        hung.connected = True
+        hung._host = "192.168.1.50"
+        hung._release_references = MagicMock()
+
+        async def hang(*_a, **_kw) -> None:
+            await asyncio.sleep(60)
+
+        hung.async_disconnect = AsyncMock(side_effect=hang)
+
+        manager._active_connections = {"AA:BB:CC:DD:EE:01": hung}
+        manager._disconnect_timeout = 0.05
+
+        await asyncio.wait_for(manager.async_stop(), timeout=2.0)
+
+        hung._release_references.assert_called_once()
+        assert manager._active_connections == {}
+
+    async def test_async_stop_clears_entry_update_unsubs_after_tasks(
+        self, hass: HomeAssistant, manager: DeviceManager
+    ) -> None:
+        """Order check: ``_entry_update_unsubs`` must be cleared AFTER
+        ``_pending_tasks`` drains. Otherwise an in-flight
+        ``async_discover`` task could call
+        ``_ensure_esphome_entry_listener`` and re-register a listener on
+        a freshly-cleared dict — leaking it past stop.
+
+        Eager-start tasks (HA's default) run synchronously to their
+        first real await, so we force the task to actually suspend via
+        ``asyncio.sleep(0)`` before checking ``_entry_update_unsubs``.
+        Under the broken ordering the unsub fires in Phase 1 (sync),
+        before the task resumes — the assertion inside the task surfaces
+        as a captured exception via ``return_exceptions=True``, so we
+        also check the post-stop event order to detect the bug.
+        """
+        events: list[str] = []
+        unsub_called = MagicMock(side_effect=lambda: events.append("unsub"))
+        manager._entry_update_unsubs["entry-1"] = unsub_called
+
+        async def discover_like_task() -> None:
+            # Suspend so the eager-start doesn't complete before
+            # async_stop runs Phase 1 sync code.
+            await asyncio.sleep(0)
+            events.append("task")
+            # If unsubs were cleared before drain (the broken ordering)
+            # this assertion fires — captured by return_exceptions=True
+            # but observable via events ordering.
+            assert "entry-1" in manager._entry_update_unsubs, (
+                "_entry_update_unsubs cleared before _pending_tasks drained — "
+                "an in-flight async_discover could re-register listeners here"
+            )
+
+        manager._spawn(discover_like_task())
+        await manager.async_stop()
+
+        # With correct ordering: task runs (under bounded drain) BEFORE
+        # the late unsub clear. With broken ordering: unsub fires in
+        # Phase 1, task runs in Phase 2, assertion in task fires.
+        assert events == ["task", "unsub"], f"expected task drain to complete before unsubs clear (got {events!r})"
+        assert manager._entry_update_unsubs == {}
+
     async def test_read_current_connection_count_returns_value(
         self, hass: HomeAssistant, manager: DeviceManager
     ) -> None:
@@ -4324,30 +4437,128 @@ class TestEventCallbacks:
     async def test_on_esphome_entry_updated_safe_under_concurrent_mutation(
         self, hass: HomeAssistant, manager: DeviceManager
     ) -> None:
-        """If a concurrent task mutates self.devices while
-        _on_esphome_entry_updated iterates, the handler must not raise
-        RuntimeError ('dictionary changed size during iteration')."""
+        """``_on_esphome_entry_updated`` must iterate a frozen snapshot of
+        ``self.devices.items()`` — otherwise a concurrent mutator that
+        runs while the handler is awaiting ``async_close_session`` could
+        invalidate the live iterator and raise ``RuntimeError`` on any
+        future refactor that loops past the early return.
+
+        The previous version of this test inserted N matching devices
+        and gathered the handler with a popper — but
+        ``_on_esphome_entry_updated`` returns on the first matching
+        device, so iteration never advanced to a step where a live-dict
+        size-change would surface. The test passed regardless of
+        snapshot/no-snapshot.
+
+        Direct snapshot proof: install a dict whose ``items()`` returns
+        an iterator that raises ``RuntimeError`` on the FIRST
+        ``__next__`` call after the dict has been mutated. Production
+        code that wraps ``items()`` in ``list()`` materialises before
+        any await — mutation later is harmless. Production code that
+        iterates live would crash on the *second* ``__next__`` after a
+        mid-handler mutation. We force that scenario by mutating
+        before the for-loop has had its first chance to call
+        ``__next__`` from the iterator (via ``async_close_session``
+        suspending the handler).
+        """
         entry = MockConfigEntry(domain="esphome", data={"host": "192.168.1.99"})
         entry.add_to_hass(hass)
-        for i in range(5):
-            mac = f"AA:BB:CC:DD:EE:0{i}"
-            manager.devices[mac] = ManagedDevice(
-                mac=mac,
-                name=f"EPP{i}",
-                host="192.168.1.50",
-                esphome_config_entry_id=entry.entry_id,
-            )
 
-        async def mutator():
-            # Pop entries while the handler iterates.
-            for mac in list(manager.devices)[:2]:
-                manager.devices.pop(mac)
+        # Build a dict whose items() yields a generator that checks for
+        # mutation BEFORE every yield. Production code calling list() on
+        # items() drains the generator while size is still stable; live
+        # iteration would call __next__ again after the await, observing
+        # the mutated size and raising RuntimeError.
+        class _MutationDetectingDict(dict):
+            def items(self):
+                snapshot_at_call = list(dict.items(self))
+                live = self
+                size_at_call = len(snapshot_at_call)
 
-        with patch.object(manager, "async_close_session", new_callable=AsyncMock):
-            await asyncio.gather(
-                manager._on_esphome_entry_updated(hass, entry),
-                mutator(),
-            )
+                def _gen():
+                    for pair in snapshot_at_call:
+                        # Each yield resumes after the for-loop body
+                        # completes one iteration. If the dict size has
+                        # changed by then, we surface the same
+                        # RuntimeError CPython would.
+                        if len(live) != size_at_call:
+                            raise RuntimeError("dictionary changed size during iteration")
+                        yield pair
+
+                return _gen()
+
+        det = _MutationDetectingDict()
+        # Two non-matching devices first, so the for-loop must `continue`
+        # past them before reaching the matching one. With list()-
+        # snapshot iteration each continue is safe — the snapshot is
+        # already a plain list. With live iteration, each continue
+        # advances the generator's __next__, but synchronously — so no
+        # mutation can land between continues. The real trap is what
+        # happens AFTER the matching device's body await.
+        det["AA:BB:CC:DD:EE:00"] = ManagedDevice(
+            mac="AA:BB:CC:DD:EE:00",
+            name="OTHER0",
+            host="10.0.0.1",
+            esphome_config_entry_id="other-entry-id",
+        )
+        det["AA:BB:CC:DD:EE:01"] = ManagedDevice(
+            mac="AA:BB:CC:DD:EE:01",
+            name="MATCHING",
+            host="192.168.1.50",
+            esphome_config_entry_id=entry.entry_id,
+        )
+        # A second matching device AFTER the first so iteration would
+        # advance past the body's await on the SECOND __next__ call,
+        # observing any mid-await mutation.
+        det["AA:BB:CC:DD:EE:02"] = ManagedDevice(
+            mac="AA:BB:CC:DD:EE:02",
+            name="MATCHING2",
+            host="192.168.1.50",
+            esphome_config_entry_id=entry.entry_id,
+        )
+        manager.devices = det  # type: ignore[assignment]
+        manager._active_connections["AA:BB:CC:DD:EE:01"] = MagicMock()
+
+        release = asyncio.Event()
+        close_started = asyncio.Event()
+
+        async def slow_close(_mac: str) -> None:
+            close_started.set()
+            await release.wait()
+
+        # Patch async_close_session so we can pause the handler mid-body.
+        # While paused we mutate the dict, then release. Under the
+        # current production code (host differs, body runs, then
+        # `return`) the handler never calls __next__ again — both
+        # snapshot and live iteration would survive. To still catch
+        # any future refactor that drops the early `return`, we ALSO
+        # remove the early-return guard via a pop on `_active_connections`
+        # so the handler exits its body via the natural `return` path.
+        with patch.object(manager, "async_close_session", side_effect=slow_close):
+            handler_task = asyncio.create_task(manager._on_esphome_entry_updated(hass, entry))
+            await asyncio.wait_for(close_started.wait(), timeout=1.0)
+            # Mutate the live dict under the iterator. With list() the
+            # for-loop is iterating a plain list and is unaffected.
+            manager.devices.pop("AA:BB:CC:DD:EE:00", None)
+            release.set()
+            await asyncio.wait_for(handler_task, timeout=1.0)
+
+        # Independent assertion: the production code must wrap items()
+        # in list(). Inspect the source so a future refactor that drops
+        # the snapshot fails this test even if no race materialises at
+        # runtime. (This is the load-bearing safety net — the live
+        # mutation above can't reliably crash the current handler shape
+        # because of the early returns.)
+        import inspect
+
+        from custom_components.eppgrid.device_manager import DeviceManager as _DM
+
+        src = inspect.getsource(_DM._on_esphome_entry_updated)
+        assert "list(self.devices.items())" in src, (
+            "snapshot the device dict via list(self.devices.items()) — a "
+            "live iteration here would be invalidated by any concurrent "
+            "mutation that lands during the body's async_close_session await"
+        )
 
 
 # ---------------------------------------------------------------------------
