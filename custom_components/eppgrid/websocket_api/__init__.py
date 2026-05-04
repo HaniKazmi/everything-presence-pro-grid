@@ -276,6 +276,13 @@ def _check_firmware_version(manager: Any, mac: str) -> str | None:
     status = _compare_firmware_version(fw_ver)
     if status == "compatible":
         return None
+    if status is None:
+        # Unparseable version. `_push_config_to_device`'s gate also rejects
+        # this case — without this branch, `_check_firmware_version` would
+        # return None (looks compatible), the handler would persist storage
+        # and respond OK, while the underlying push silently skipped, leaving
+        # HA state diverged from the device.
+        return "unavailable"
     return status
 
 
