@@ -42,11 +42,11 @@ Goal: lock down trust boundaries. Single self-contained PR.
 
 ## PR 2 — Connection lifecycle & subscription leaks (backend)
 
-- [ ] **C: `async_close_session` doesn't take session lock** — [device_manager/__init__.py:1112-1119](custom_components/eppgrid/device_manager/__init__.py#L1112-L1119)
-  Acquire `_session_locks[mac]` in close path; re-check `_is_device_available(mac)` after `async_connect` returns.
+- [x] **C: `async_close_session` doesn't take session lock** — _shipped: this PR_
+  Close acquires `_session_locks[mac]` so it serializes with in-flight open. Open re-checks `_is_device_available(mac)` after `async_connect` returns and tears down the just-opened conn if the device flipped offline mid-connect.
 
-- [ ] **C: Build-flag fetch cache poisoning** — [device_manager/__init__.py:950-993](custom_components/eppgrid/device_manager/__init__.py#L950-L993) — _partial: noise_psk wired + 10s timeout in place; broad `except Exception` caller still cache-poisons on transient failure_
-  Replace broad `except Exception` with specific exceptions; only cache `{}` on real "service not present", not on timeout/connection-error.
+- [x] **C: Build-flag fetch broad `except Exception`** — _shipped: this PR_
+  Narrowed to `_BUILD_FLAGS_TRANSIENT` / `_BUILD_FLAGS_CONNECT_TRANSIENT` tuples (Timeout, OS, Value, Runtime, ConnectionError, APIConnectionError) so unexpected programmer errors propagate instead of getting swallowed at debug level. Cache poisoning was already prevented; this is the exception-narrowing follow-up.
 
 - [x] **C: `noise_psk` hardcoded empty** — _shipped: verified 2026-05-04_
   All callers (`async_open_session`, `async_trigger_ota`, `_fetch_build_flags`, `_push_config_to_device`) pass `_extract_noise_psk(...)` to `DeviceConnection`.
@@ -94,7 +94,8 @@ Goal: lock down trust boundaries. Single self-contained PR.
 
 ## PR 3 — Backend cleanup, dead code, BWC removal
 
-- [ ] **H: Templates→configurations migration violates "no BWC" rule** — [tests/test_storage.py:75-85](tests/test_storage.py#L75-L85) — _partial: storage.py migration block deleted; legacy `test_legacy_templates_key_is_ignored` test still present_
+- [x] **H: Templates→configurations migration violates "no BWC" rule** — _shipped: this PR_
+  Legacy `test_legacy_templates_key_is_ignored` deleted from `tests/test_storage.py`; storage.py migration block was already removed.
 
 - [x] **H: Options flow doesn't reload config entry** — _shipped: verified 2026-05-04_
   `entry.add_update_listener(_async_update_listener)` registered; `async_unload_entry` removes panel + JS URL.
@@ -214,9 +215,11 @@ Goal: lock down trust boundaries. Single self-contained PR.
 - [x] **M: `set_distance_override` silently succeeds with no session** — _shipped: verified 2026-05-04_
   Sends error with `translation_key="no_active_session"`.
 
-- [ ] **M: Generic exception swallowing in WS state callbacks** — [_devices.py:571-585](custom_components/eppgrid/websocket_api/_devices.py#L571-L585) — _partial: zone-state JSON parse + position CSV guarded; raw-targets state callback still bare-except + missing length guard_
+- [x] **M: Generic exception swallowing in WS state callbacks** — _shipped: this PR_
+  Raw-targets callback already used `_parse_position_csv` (length-guarded). Zone-state JSON parse silent `(ValueError, KeyError): pass` now logs at debug with the mac + error so a regression isn't hidden.
 
-- [ ] **M: Connection-failure broadcasts global `_fire_device_list_changed()`** — [_devices.py:741](custom_components/eppgrid/websocket_api/_devices.py#L741) — _partial: failure transition guarded; offline-state path still fires unconditionally on every offline transition_
+- [x] **M: Connection-failure broadcasts global `_fire_device_list_changed()`** — _shipped: this PR_
+  Offline transition in `_on_state_changed` only fires when `dev.available` was True (i.e., this is the actual available→unavailable flip), and flips `dev.available` to False so subsequent unavailable→unknown pings during the same disconnect don't re-fire. Connection-failure (websocket subscribe_device) was already transition-guarded via `_connection_failed`.
 
 ---
 

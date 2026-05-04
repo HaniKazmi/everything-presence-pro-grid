@@ -1035,6 +1035,88 @@ class TestDeviceManager:
         seeded.async_disconnect.assert_awaited_once()
         fresh.async_connect.assert_awaited_once()
 
+    async def test_close_session_serializes_with_in_flight_open(
+        self, hass: HomeAssistant, manager: DeviceManager
+    ) -> None:
+        """`async_close_session` called concurrently with an in-flight
+        `async_open_session` must wait for the per-mac lock so it tears down
+        the session open just established.
+
+        Without the lock, close runs first against an empty `_active_connections`
+        (open is still inside `async_connect`), pops nothing, and returns. Open
+        then stores its fresh conn — orphaning a live session the caller of
+        close believed was already gone."""
+        mac = "AA:BB:CC:DD:EE:FF"
+        manager.devices[mac] = ManagedDevice(mac=mac, name="EPP", host="192.168.1.50")
+
+        connect_started = asyncio.Event()
+        connect_release = asyncio.Event()
+
+        async def slow_connect() -> None:
+            connect_started.set()
+            await connect_release.wait()
+
+        with patch("custom_components.eppgrid.device_manager.DeviceConnection") as mock_conn_cls:
+            mock_conn = mock_conn_cls.return_value
+            mock_conn.async_connect = slow_connect
+            mock_conn.async_disconnect = AsyncMock()
+            mock_conn.connected = True
+
+            open_task = asyncio.create_task(manager.async_open_session(mac))
+            await connect_started.wait()
+
+            close_task = asyncio.create_task(manager.async_close_session(mac))
+            # Yield so close can attempt to grab the lock.
+            await asyncio.sleep(0)
+            await asyncio.sleep(0)
+            assert not close_task.done(), (
+                "async_close_session ran while async_open_session still held "
+                "the per-mac lock — race window allows orphaned sessions"
+            )
+
+            connect_release.set()
+            opened = await asyncio.wait_for(open_task, timeout=2.0)
+            await asyncio.wait_for(close_task, timeout=2.0)
+
+        assert opened is mock_conn
+        # Close ran AFTER open and tore down the session it had just stored.
+        mock_conn.async_disconnect.assert_awaited_once()
+        assert manager.get_session(mac) is None
+
+    async def test_open_session_rechecks_availability_after_connect(
+        self, hass: HomeAssistant, manager: DeviceManager
+    ) -> None:
+        """If the device transitions to unavailable while `async_connect` is in
+        flight, `async_open_session` must disconnect the just-opened conn and
+        return None instead of stranding a live session against a device HA
+        already knows is gone."""
+        mac = "AA:BB:CC:DD:EE:FF"
+        manager.devices[mac] = ManagedDevice(mac=mac, name="EPP", host="192.168.1.50")
+
+        # First availability check (pre-lock) returns True; second (post-connect) returns False.
+        avail_calls: list[bool] = []
+
+        def fake_avail(check_mac: str) -> bool:
+            available = len(avail_calls) == 0
+            avail_calls.append(available)
+            return available
+
+        with (
+            patch.object(manager, "_is_device_available", side_effect=fake_avail),
+            patch("custom_components.eppgrid.device_manager.DeviceConnection") as mock_conn_cls,
+        ):
+            mock_conn = mock_conn_cls.return_value
+            mock_conn.async_connect = AsyncMock()
+            mock_conn.async_disconnect = AsyncMock()
+            mock_conn.connected = True
+
+            result = await manager.async_open_session(mac)
+
+        assert result is None, "open_session must return None when device went unavailable mid-connect"
+        mock_conn.async_disconnect.assert_awaited_once()
+        assert mac not in manager._active_connections
+        assert len(avail_calls) >= 2, "expected pre-lock + post-connect availability checks"
+
     async def test_multiple_state_changes_push_config_once(self, hass: HomeAssistant, manager: DeviceManager) -> None:
         """Multiple entities becoming available should only push config once."""
         dev_reg = dr.async_get(hass)
@@ -3280,7 +3362,11 @@ class TestEventCallbacks:
         )
 
         manager.devices["AA:BB:CC:DD:EE:03"] = ManagedDevice(
-            mac="AA:BB:CC:DD:EE:03", name="EPP", host="192.168.1.52", device_id=device.id
+            mac="AA:BB:CC:DD:EE:03",
+            name="EPP",
+            host="192.168.1.52",
+            device_id=device.id,
+            available=True,  # Was online — value→unknown is the actual transition.
         )
         manager._pushing.add("AA:BB:CC:DD:EE:03")
 
@@ -3303,6 +3389,106 @@ class TestEventCallbacks:
 
         assert "AA:BB:CC:DD:EE:03" not in manager._pushing
         assert len(fire_calls) == 1
+
+    async def test_offline_transition_fires_broadcast_only_on_actual_transition(
+        self, hass: HomeAssistant, manager: DeviceManager
+    ) -> None:
+        """A redundant offline→offline state change for a device already known
+        to be unavailable must not re-fire `_fire_device_list_changed` — every
+        device-list subscriber would otherwise get spammed for each
+        unavailable→unknown ping during a long disconnect."""
+        dev_reg = dr.async_get(hass)
+        ent_reg = er.async_get(hass)
+
+        esphome_entry = MockConfigEntry(domain="esphome", data={"host": "192.168.1.55"})
+        esphome_entry.add_to_hass(hass)
+        device = dev_reg.async_get_or_create(
+            config_entry_id=esphome_entry.entry_id,
+            connections={("mac", "aa:bb:cc:dd:ee:09")},
+            name="EPP Device 9",
+        )
+        entity = ent_reg.async_get_or_create(
+            "sensor",
+            "esphome",
+            unique_id="AA:BB:CC:DD:EE:09-sensor-temperature",
+            config_entry=esphome_entry,
+            device_id=device.id,
+        )
+        manager.devices["AA:BB:CC:DD:EE:09"] = ManagedDevice(
+            mac="AA:BB:CC:DD:EE:09",
+            name="EPP",
+            host="192.168.1.55",
+            device_id=device.id,
+            available=False,  # Already known offline (e.g. set by a prior offline event)
+        )
+
+        fire_calls: list[None] = []
+        manager.on_device_list_changed(lambda: fire_calls.append(None))
+
+        # Synthesize an unavailable → unknown event (still offline either way).
+        old = MagicMock()
+        old.state = STATE_UNAVAILABLE
+        new = MagicMock()
+        new.state = "unknown"
+        event = MagicMock()
+        event.data = {"entity_id": entity.entity_id, "old_state": old, "new_state": new}
+
+        manager._on_state_changed(event)
+        await hass.async_block_till_done()
+
+        assert fire_calls == [], (
+            "Redundant offline→offline transition fired _fire_device_list_changed "
+            "even though the device-list state did not change"
+        )
+
+    async def test_offline_transition_first_time_fires_and_marks_unavailable(
+        self, hass: HomeAssistant, manager: DeviceManager
+    ) -> None:
+        """First offline transition (was available, now offline) must fire the
+        broadcast AND flip `dev.available` to False so the next redundant
+        offline event is correctly skipped."""
+        dev_reg = dr.async_get(hass)
+        ent_reg = er.async_get(hass)
+
+        esphome_entry = MockConfigEntry(domain="esphome", data={"host": "192.168.1.56"})
+        esphome_entry.add_to_hass(hass)
+        device = dev_reg.async_get_or_create(
+            config_entry_id=esphome_entry.entry_id,
+            connections={("mac", "aa:bb:cc:dd:ee:0a")},
+            name="EPP Device 10",
+        )
+        entity = ent_reg.async_get_or_create(
+            "sensor",
+            "esphome",
+            unique_id="AA:BB:CC:DD:EE:0A-sensor-temperature",
+            config_entry=esphome_entry,
+            device_id=device.id,
+        )
+        manager.devices["AA:BB:CC:DD:EE:0A"] = ManagedDevice(
+            mac="AA:BB:CC:DD:EE:0A",
+            name="EPP",
+            host="192.168.1.56",
+            device_id=device.id,
+            available=True,  # Was online
+        )
+
+        fire_calls: list[None] = []
+        manager.on_device_list_changed(lambda: fire_calls.append(None))
+
+        old = MagicMock()
+        old.state = "25.5"
+        new = MagicMock()
+        new.state = STATE_UNAVAILABLE
+        event = MagicMock()
+        event.data = {"entity_id": entity.entity_id, "old_state": old, "new_state": new}
+
+        manager._on_state_changed(event)
+        await hass.async_block_till_done()
+
+        assert len(fire_calls) == 1, "first offline transition must fire broadcast"
+        assert manager.devices["AA:BB:CC:DD:EE:0A"].available is False, (
+            "dev.available must flip to False so redundant offline events are skipped"
+        )
 
     async def test_on_state_changed_treats_missing_old_state_as_offline(
         self, hass: HomeAssistant, manager: DeviceManager
@@ -3397,7 +3583,11 @@ class TestEventCallbacks:
         )
 
         manager.devices["AA:BB:CC:DD:EE:FF"] = ManagedDevice(
-            mac="AA:BB:CC:DD:EE:FF", name="EPP", host="192.168.1.50", device_id=device.id
+            mac="AA:BB:CC:DD:EE:FF",
+            name="EPP",
+            host="192.168.1.50",
+            device_id=device.id,
+            available=True,  # Was online — value→unavailable is the actual transition.
         )
         manager._pushing.add("AA:BB:CC:DD:EE:FF")
 

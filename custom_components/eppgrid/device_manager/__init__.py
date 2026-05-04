@@ -9,6 +9,7 @@ from collections.abc import Coroutine
 from dataclasses import dataclass
 from typing import Any
 
+from aioesphomeapi import APIConnectionError
 from aioesphomeapi import LogLevel
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import STATE_UNAVAILABLE
@@ -40,6 +41,26 @@ from ._helpers import _sync_firmware_repair_issue
 from ._helpers import is_valid_zone_slots_shape
 
 _LOGGER = logging.getLogger(__name__)
+
+# Transient errors that justify retrying the build-flags fetch on next call.
+# Anything else (AttributeError, TypeError, ...) signals a programmer bug and
+# should propagate so the test suite catches it instead of getting silently
+# swallowed at debug level.
+_BUILD_FLAGS_TRANSIENT: tuple[type[BaseException], ...] = (
+    TimeoutError,
+    asyncio.TimeoutError,
+    OSError,
+    ValueError,
+    RuntimeError,
+    APIConnectionError,
+)
+_BUILD_FLAGS_CONNECT_TRANSIENT: tuple[type[BaseException], ...] = (
+    TimeoutError,
+    asyncio.TimeoutError,
+    OSError,
+    ConnectionError,
+    APIConnectionError,
+)
 
 
 @dataclass
@@ -738,7 +759,15 @@ class DeviceManager:
             self._pushing.discard(mac)
             if mac in self._active_connections:
                 self.schedule_close_session(mac)
-            self._fire_device_list_changed()
+            # Only fire the broadcast on the actual available→unavailable
+            # transition. ESPHome streams an unavailable→unknown ping while a
+            # device is disconnected, and per-entity offline events for the
+            # same device would otherwise spam every device-list subscriber
+            # for each entity-flip during a single disconnect.
+            dev = self.devices.get(mac)
+            if dev is not None and dev.available:
+                dev.available = False
+                self._fire_device_list_changed()
             return
 
         if old_state_value not in offline_states:
@@ -965,8 +994,8 @@ class DeviceManager:
         if session is not None:
             try:
                 flags = await session.async_fetch_build_flags()
-            except Exception:
-                _LOGGER.debug("build_flags fetch via session failed for %s", mac, exc_info=True)
+            except _BUILD_FLAGS_TRANSIENT as err:
+                _LOGGER.debug("build_flags fetch via session failed for %s: %s", mac, err)
                 return
             self._build_flags[mac] = flags
             if flags:
@@ -981,14 +1010,14 @@ class DeviceManager:
             await asyncio.wait_for(conn.async_connect(), timeout=30)
             try:
                 flags = await conn.async_fetch_build_flags()
-            except Exception:
-                _LOGGER.debug("build_flags fetch via fresh conn failed for %s", mac, exc_info=True)
+            except _BUILD_FLAGS_TRANSIENT as err:
+                _LOGGER.debug("build_flags fetch via fresh conn failed for %s: %s", mac, err)
                 return
             self._build_flags[mac] = flags
             if flags:
                 self._fire_device_list_changed()
-        except Exception:
-            _LOGGER.debug("Failed to connect for build_flags fetch from %s", mac, exc_info=True)
+        except _BUILD_FLAGS_CONNECT_TRANSIENT as err:
+            _LOGGER.debug("Failed to connect for build_flags fetch from %s: %s", mac, err)
         finally:
             await conn.async_disconnect()
 
@@ -1101,6 +1130,13 @@ class DeviceManager:
                 noise_psk=_extract_noise_psk(dev.esphome_config_entry_id, self._hass),
             )
             await asyncio.wait_for(conn.async_connect(), timeout=30)
+            # Re-check availability after the connect: if HA flipped the
+            # device offline while we were inside async_connect, storing the
+            # new conn would strand a live session against a device the rest
+            # of the system already considers gone.
+            if not self._is_device_available(mac):
+                await conn.async_disconnect()
+                return None
             self._active_connections[mac] = conn
             _LOGGER.info("Opened session for %s (%s)", dev.name, mac)
             # Subscribe to device logs if log levels are configured
@@ -1110,13 +1146,22 @@ class DeviceManager:
             return conn
 
     async def async_close_session(self, mac: str) -> None:
-        """Close the frontend session connection for a device."""
-        conn = self._active_connections.pop(mac, None)
-        if conn is not None:
-            await conn.async_disconnect()
-            dev = self.devices.get(mac)
-            name = dev.name if dev else mac
-            _LOGGER.info("Closed session for %s (%s)", name, mac)
+        """Close the frontend session connection for a device.
+
+        Acquires the per-mac session lock so a close issued concurrently
+        with an in-flight open serializes after it. Without the lock, close
+        could run against an empty `_active_connections` (open is still
+        inside `async_connect`) and return a no-op while open then stores a
+        live conn the caller of close believed was torn down.
+        """
+        lock = self._session_locks.setdefault(mac, asyncio.Lock())
+        async with lock:
+            conn = self._active_connections.pop(mac, None)
+            if conn is not None:
+                await conn.async_disconnect()
+                dev = self.devices.get(mac)
+                name = dev.name if dev else mac
+                _LOGGER.info("Closed session for %s (%s)", name, mac)
 
     @callback
     def schedule_close_session(self, mac: str) -> asyncio.Task:
