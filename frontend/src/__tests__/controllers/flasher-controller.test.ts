@@ -910,6 +910,85 @@ describe("FlasherController", () => {
 				connection: { subscribeMessage: vi.fn().mockResolvedValue(vi.fn()) },
 			};
 
+			// Synchronous post-swap: the stale unsub is dropped immediately
+			// (the resubscribe is async and runs on a microtask).
+			expect((ctrl as any)._unsubDeviceList).toBeUndefined();
+		});
+
+		it("connection swap auto-resubscribes the device-list on the new connection", async () => {
+			// Without resubscribe, the panel stops getting device-list updates
+			// until the user navigates away and back. The flasher tab silently
+			// goes stale on every HA reconnect — bad UX with no error surface.
+			const staleUnsub = vi.fn();
+			hass.connection.subscribeMessage = vi.fn().mockResolvedValue(staleUnsub);
+			await ctrl.subscribeDeviceList();
+			expect((ctrl as any)._unsubDeviceList).toBe(staleUnsub);
+
+			const newUnsub = vi.fn();
+			const newSubscribe = vi.fn().mockResolvedValue(newUnsub);
+			ctrl.hass = {
+				callWS: vi.fn(),
+				connection: { subscribeMessage: newSubscribe },
+			};
+
+			// Microtask drain so the awaited resubscribe in `set hass` resolves.
+			await Promise.resolve();
+			await Promise.resolve();
+
+			expect(newSubscribe).toHaveBeenCalledWith(expect.any(Function), {
+				type: "eppgrid/subscribe_flashable_devices",
+			});
+			expect((ctrl as any)._unsubDeviceList).toBe(newUnsub);
+			// Stale unsub belongs to the dead socket — must not be invoked.
+			expect(staleUnsub).not.toHaveBeenCalled();
+		});
+
+		it("connection swap auto-resubscribes even when prior subscribe was still in-flight", async () => {
+			// `_unsubDeviceList` is only assigned after `subscribeMessage()`
+			// resolves. If a HA reconnect happens while the original subscribe
+			// is still pending, gating resubscribe on `_unsubDeviceList`
+			// silently misses this race and the panel ends up stale even
+			// though the user clearly intended to be subscribed.
+			let resolveOld: (unsub: () => void) => void = () => {};
+			const oldUnsub = vi.fn();
+			const oldSubPromise = new Promise<() => void>((r) => {
+				resolveOld = r;
+			});
+			hass.connection.subscribeMessage = vi.fn().mockReturnValue(oldSubPromise);
+
+			void ctrl.subscribeDeviceList();
+			expect((ctrl as any)._unsubDeviceList).toBeUndefined();
+
+			const newUnsub = vi.fn();
+			const newSubscribe = vi.fn().mockResolvedValue(newUnsub);
+			ctrl.hass = {
+				callWS: vi.fn(),
+				connection: { subscribeMessage: newSubscribe },
+			};
+
+			// Old subscribe finally resolves; generation token discards it.
+			resolveOld(oldUnsub);
+			for (let i = 0; i < 5; i++) await Promise.resolve();
+
+			expect(newSubscribe).toHaveBeenCalledWith(expect.any(Function), {
+				type: "eppgrid/subscribe_flashable_devices",
+			});
+			expect((ctrl as any)._unsubDeviceList).toBe(newUnsub);
+		});
+
+		it("connection swap does NOT auto-resubscribe when there was no prior subscription", async () => {
+			// If the panel was never listening on the old conn, swapping in a
+			// new conn shouldn't kick off a fresh subscription unprompted —
+			// `subscribeDeviceList()` is the panel's responsibility on mount.
+			const newSubscribe = vi.fn().mockResolvedValue(vi.fn());
+			ctrl.hass = {
+				callWS: vi.fn(),
+				connection: { subscribeMessage: newSubscribe },
+			};
+			await Promise.resolve();
+			await Promise.resolve();
+
+			expect(newSubscribe).not.toHaveBeenCalled();
 			expect((ctrl as any)._unsubDeviceList).toBeUndefined();
 		});
 

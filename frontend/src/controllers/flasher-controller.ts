@@ -58,6 +58,12 @@ export class FlasherController implements ReactiveController {
 	// (un)subscribe and connection swap so a late-resolving subscribeMessage
 	// promise drops its unsub instead of stashing it on a torn-down controller.
 	private _deviceListGen = 0;
+	// Subscription *intent* — true between subscribeDeviceList() entry and
+	// unsubscribeDeviceList()/hostDisconnected(). Distinct from
+	// `_unsubDeviceList`, which only tracks *completed* subscriptions; we
+	// need intent so a connection swap mid-`subscribeMessage()` still
+	// triggers resubscribe instead of silently dropping the request.
+	private _wantDeviceListSub = false;
 
 	constructor(host: ReactiveControllerHost) {
 		this._host = host;
@@ -66,6 +72,7 @@ export class FlasherController implements ReactiveController {
 
 	hostConnected(): void {}
 	hostDisconnected(): void {
+		this._wantDeviceListSub = false;
 		this.unsubscribeDeviceList();
 		this._tearDownSerialPort();
 		for (const mac of Object.keys(this._otaUnsubs)) {
@@ -253,6 +260,14 @@ export class FlasherController implements ReactiveController {
 			// watchdog timers, and forget any in-flight OTA state — the
 			// device's actual update progress is unrecoverable from the new
 			// connection, and leaving "updating" on screen would be a lie.
+			//
+			// Use subscription *intent* (`_wantDeviceListSub`), not the
+			// completed-subscription flag (`_unsubDeviceList`): if the panel
+			// fired off subscribeDeviceList() without awaiting and the swap
+			// lands while subscribeMessage() is still pending, the unsub
+			// hasn't been stashed yet — gating on it would silently drop the
+			// request and leave the flasher tab stale after the reconnect.
+			const wantsSub = this._wantDeviceListSub;
 			this._unsubDeviceList = undefined;
 			this._deviceListGen++;
 			for (const mac of Object.keys(this._otaUnsubs)) {
@@ -263,6 +278,13 @@ export class FlasherController implements ReactiveController {
 			}
 			this.otaStates = {};
 			this._host.requestUpdate();
+			if (wantsSub) {
+				// .catch in case subscribeDeviceList ever throws outside its
+				// try/catch (loadDevices / sanitizeFirmwareBaseUrl etc.) —
+				// fire-and-forget without a rejection handler would surface
+				// as an unhandled promise rejection.
+				void this.subscribeDeviceList().catch(() => {});
+			}
 		}
 	}
 
@@ -287,7 +309,16 @@ export class FlasherController implements ReactiveController {
 	}
 
 	async subscribeDeviceList(): Promise<void> {
-		this.unsubscribeDeviceList();
+		// Mark intent first, then inline the unsubscribe-style teardown
+		// (gen bump + safeUnsub of any prior unsub). We can't reuse
+		// unsubscribeDeviceList() here because it clears
+		// `_wantDeviceListSub` — and we need that flag to stay true so a
+		// connection swap landing while subscribeMessage() is in flight
+		// still triggers a resubscribe.
+		this._wantDeviceListSub = true;
+		this._deviceListGen++;
+		safeUnsub(this._unsubDeviceList);
+		this._unsubDeviceList = undefined;
 		if (!this._hass) return;
 		const token = ++this._deviceListGen;
 		try {
@@ -310,6 +341,7 @@ export class FlasherController implements ReactiveController {
 	}
 
 	unsubscribeDeviceList(): void {
+		this._wantDeviceListSub = false;
 		this._deviceListGen++;
 		safeUnsub(this._unsubDeviceList);
 		this._unsubDeviceList = undefined;
