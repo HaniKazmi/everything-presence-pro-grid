@@ -1561,12 +1561,13 @@ class TestFirmwareVersion:
         """Returns 'firmware_ahead' when device version is newer."""
         assert _compare_firmware_version("99.0.0") == "firmware_ahead"
 
-    def test_compare_firmware_version_unparseable_returns_firmware_unknown(self) -> None:
-        """Unparseable version strings return 'firmware_unknown', not
-        'firmware_behind' — the latter would raise a stale Repairs issue."""
-        assert _compare_firmware_version("not-a-version") == "firmware_unknown"
-        assert _compare_firmware_version("") == "firmware_unknown"
-        assert _compare_firmware_version("a.b.c") == "firmware_unknown"
+    def test_compare_firmware_version_unparseable_returns_none(self) -> None:
+        """Unparseable version strings return None so callers can normalize
+        to 'unavailable'. Returning a raw 'firmware_unknown' would leak to
+        the frontend, whose firmware-status union doesn't recognise it."""
+        assert _compare_firmware_version("not-a-version") is None
+        assert _compare_firmware_version("") is None
+        assert _compare_firmware_version("a.b.c") is None
 
     def test_compare_firmware_version_zero(self) -> None:
         """A real '0.0.0' is parseable and compares as 'firmware_behind'.
@@ -1815,6 +1816,50 @@ class TestFirmwareVersion:
         )
         result = manager.list_devices()
         assert result[0]["firmware_status"] == "firmware_ahead"
+
+    async def test_list_devices_unparseable_firmware_version_reports_unavailable(
+        self, hass: HomeAssistant, manager: DeviceManager
+    ) -> None:
+        """An unparseable firmware version must surface as 'unavailable' to
+        the frontend, not as a raw 'firmware_unknown' string the UI doesn't
+        know about. Frontend firmware-status types only enumerate
+        compatible / firmware_behind / firmware_ahead / unavailable / unknown."""
+        dev_reg = dr.async_get(hass)
+        ent_reg = er.async_get(hass)
+
+        esphome_entry = MockConfigEntry(
+            domain="esphome",
+            data={"host": "192.168.1.50"},
+            title="EPP Device",
+        )
+        esphome_entry.add_to_hass(hass)
+
+        device = dev_reg.async_get_or_create(
+            config_entry_id=esphome_entry.entry_id,
+            connections={("mac", "aa:bb:cc:dd:ee:ff")},
+            name="EPP Device",
+        )
+
+        fw_entry = ent_reg.async_get_or_create(
+            "sensor",
+            "esphome",
+            unique_id="AA:BB:CC:DD:EE:FF-sensor-firmware_version",
+            suggested_object_id="epp_firmware_version",
+            config_entry=esphome_entry,
+            device_id=device.id,
+        )
+        # A live but unparseable value (truncated git describe, garbled OTA, …)
+        hass.states.async_set(fw_entry.entity_id, "garbage")
+
+        manager.devices["AA:BB:CC:DD:EE:FF"] = ManagedDevice(
+            mac="AA:BB:CC:DD:EE:FF",
+            name="EPP Device",
+            host="192.168.1.50",
+            available=True,
+            device_id=device.id,
+        )
+        result = manager.list_devices()
+        assert result[0]["firmware_status"] == "unavailable"
 
     async def test_list_devices_reads_firmware_version_live(self, hass: HomeAssistant, manager: DeviceManager) -> None:
         """list_devices picks up firmware version changes without re-discovery."""

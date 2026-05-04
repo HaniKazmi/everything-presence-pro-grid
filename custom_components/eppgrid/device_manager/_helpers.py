@@ -143,13 +143,14 @@ def _compute_pipeline(
     }
 
 
-def _compare_firmware_version(device_version: str) -> str:
+def _compare_firmware_version(device_version: str) -> str | None:
     """Compare device firmware version against the integration's pinned version.
 
-    Returns one of: 'compatible', 'firmware_behind', 'firmware_ahead',
-    'firmware_unknown'. ``firmware_unknown`` is returned for unparseable
-    inputs — the caller (Repairs issue, frontend) treats that the same
-    way as an offline device: no issue raised, frontend shows 'unknown'.
+    Returns one of: 'compatible', 'firmware_behind', 'firmware_ahead', or
+    ``None`` for unparseable inputs. Callers normalize ``None`` to
+    'unavailable' so the frontend's firmware-status union
+    (compatible/firmware_behind/firmware_ahead/unavailable/unknown) only
+    ever sees values it knows how to render.
     """
     from packaging.version import Version
 
@@ -159,7 +160,7 @@ def _compare_firmware_version(device_version: str) -> str:
         dev_ver = Version(device_version)
         req_ver = Version(FIRMWARE_VERSION)
     except Exception:
-        return "firmware_unknown"
+        return None
     if dev_ver == req_ver:
         return "compatible"
     if dev_ver < req_ver:
@@ -196,17 +197,17 @@ def _sync_firmware_repair_issue(
         return
 
     status = _compare_firmware_version(fw_ver)
+    if status is None:
+        # Unparseable version → leave any prior issue alone (clearing would
+        # mask a real "behind" state if the parse failure is transient);
+        # never raise a new issue we can't act on.
+        return
     placeholders = {
         "device_name": device_name,
         "current_version": fw_ver,
         "required_version": FIRMWARE_VERSION,
     }
 
-    if status == "firmware_unknown":
-        # Unparseable version → leave any prior issue alone (clearing would
-        # mask a real "behind" state if the parse failure is transient);
-        # never raise a new issue we can't act on.
-        return
     if status == "firmware_behind":
         ir.async_delete_issue(hass, DOMAIN, ahead_id)
         ir.async_create_issue(

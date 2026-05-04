@@ -981,7 +981,9 @@ class DeviceManager:
                     "available": self._is_device_available(mac, entries=entries),
                     "configured": config is not None,
                     "area": area_name,
-                    "firmware_status": ("unavailable" if fw_ver is None else _compare_firmware_version(fw_ver)),
+                    "firmware_status": (
+                        (_compare_firmware_version(fw_ver) if fw_ver is not None else None) or "unavailable"
+                    ),
                     "current_connection_count": self.read_current_connection_count(dev.device_id, entries=entries),
                     **self._build_flags.get(mac, {}),
                 }
@@ -1071,7 +1073,7 @@ class DeviceManager:
                         (fw_ver or sw_fallback) if has_firmware_version and managed_dev is not None else sw_fallback
                     ),
                     "firmware_status": (
-                        ("unavailable" if fw_ver is None else _compare_firmware_version(fw_ver))
+                        ((_compare_firmware_version(fw_ver) if fw_ver is not None else None) or "unavailable")
                         if has_firmware_version and managed_dev is not None
                         else "unknown"
                     ),
