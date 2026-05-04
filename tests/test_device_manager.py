@@ -4752,6 +4752,134 @@ class TestEventCallbacks:
         finally:
             await manager.async_stop()
 
+    async def test_refresh_state_listener_safe_under_concurrent_device_mutation(
+        self, hass: HomeAssistant, manager: DeviceManager
+    ) -> None:
+        """``_refresh_state_listener`` is invoked from event callbacks
+        (async_discover, _on_device_removed, …) while other tasks may
+        concurrently add or remove entries from ``self.devices``. If the
+        rebuild iterates the live dict, a concurrent mutation raises
+        ``RuntimeError: dictionary changed size during iteration``.
+        """
+        # Inspect the source to lock in the snapshot — a runtime test
+        # is brittle here because the rebuild's only awaitable step
+        # (async_track_state_change_event) is wrapped synchronously, so
+        # we can't reliably interleave a mutator. The source-level
+        # assertion catches any future refactor that drops the list().
+        import inspect
+
+        from custom_components.eppgrid.device_manager import DeviceManager as _DM
+
+        src = inspect.getsource(_DM._refresh_state_listener)
+        assert "list(self.devices.values())" in src, (
+            "_refresh_state_listener must iterate a snapshot via "
+            "list(self.devices.values()) — a concurrent add/remove during "
+            "rebuild would otherwise invalidate the live iterator"
+        )
+
+        # Behaviour smoke test: mutating self.devices during the rebuild
+        # must not raise. We simulate a mutation by patching
+        # async_entries_for_device to mutate self.devices on its first
+        # call, then yield results. Without the snapshot the next loop
+        # step would observe the size-change.
+        from homeassistant.helpers import device_registry as _dr
+        from homeassistant.helpers import entity_registry as _er
+
+        dev_reg = _dr.async_get(hass)
+        esphome_entry = MockConfigEntry(domain="esphome", data={"host": "192.168.1.50"}, title="EPP")
+        esphome_entry.add_to_hass(hass)
+        device_a = dev_reg.async_get_or_create(
+            config_entry_id=esphome_entry.entry_id,
+            connections={("mac", "aa:bb:cc:dd:ee:01")},
+            name="EPP A",
+        )
+        device_b = dev_reg.async_get_or_create(
+            config_entry_id=esphome_entry.entry_id,
+            connections={("mac", "aa:bb:cc:dd:ee:02")},
+            name="EPP B",
+        )
+        manager.devices["AA:BB:CC:DD:EE:01"] = ManagedDevice(
+            mac="AA:BB:CC:DD:EE:01", name="EPP A", host="192.168.1.50", device_id=device_a.id
+        )
+        manager.devices["AA:BB:CC:DD:EE:02"] = ManagedDevice(
+            mac="AA:BB:CC:DD:EE:02", name="EPP B", host="192.168.1.51", device_id=device_b.id
+        )
+
+        original_entries = _er.async_entries_for_device
+        first_call = [True]
+
+        def mutating_entries_for_device(*args, **kwargs):
+            if first_call[0]:
+                first_call[0] = False
+                # Mutate while loop is mid-rebuild — would crash live
+                # iterator on next __next__ without the list() snapshot.
+                manager.devices.pop("AA:BB:CC:DD:EE:02", None)
+            return original_entries(*args, **kwargs)
+
+        with patch(
+            "custom_components.eppgrid.device_manager.er.async_entries_for_device",
+            side_effect=mutating_entries_for_device,
+        ):
+            # Must NOT raise.
+            manager._refresh_state_listener()
+
+    async def test_async_discover_refreshes_state_listener_when_device_id_changes(
+        self, hass: HomeAssistant, manager: DeviceManager
+    ) -> None:
+        """If an already-managed MAC is rediscovered under a different HA
+        device_id (the integration re-add flow), the entity_id set
+        attached to that mac changes — the targeted state-change tracker
+        must be rebuilt to pick up the new entity_ids. ``found_new`` is
+        false on this path, so the rebuild must also fire on
+        ``ids_changed``."""
+        dev_reg = dr.async_get(hass)
+        ent_reg = er.async_get(hass)
+
+        # New ESPHome entry + device representing the post-re-add state.
+        new_entry = MockConfigEntry(domain="esphome", data={"host": "192.168.1.50"}, title="EPP-new")
+        new_entry.add_to_hass(hass)
+        new_device = dev_reg.async_get_or_create(
+            config_entry_id=new_entry.entry_id,
+            connections={("mac", "aa:bb:cc:dd:ee:ff")},
+            name="EPP",
+            manufacturer=EPP_MANUFACTURER,
+            model=EPP_MODEL,
+        )
+        ent_reg.async_get_or_create(
+            "sensor",
+            "esphome",
+            unique_id="AA:BB:CC:DD:EE:FF-sensor-firmware_version",
+            config_entry=new_entry,
+            device_id=new_device.id,
+        )
+
+        # Pre-populate manager.devices with the OLD (now-stale) device_id
+        # and entry_id — both differ from what async_discover will find
+        # in the registry. async_discover sees the same MAC under
+        # different IDs (the re-add flow) and must rebuild the state
+        # listener so it tracks the freshly-created entity_ids, not the
+        # ones attached to the dead device_id.
+        manager.devices["AA:BB:CC:DD:EE:FF"] = ManagedDevice(
+            mac="AA:BB:CC:DD:EE:FF",
+            name="EPP",
+            host="192.168.1.50",
+            esphome_config_entry_id="stale-entry-id",
+            device_id="stale-device-id",
+        )
+
+        with (
+            patch.object(manager, "_refresh_state_listener") as mock_refresh,
+            patch.object(manager, "async_update_zone_entities", new_callable=AsyncMock),
+        ):
+            await manager.async_discover()
+
+        # Existing-mac rediscovery with new IDs must trigger a rebuild
+        # so the listener tracks the new entity_ids.
+        mock_refresh.assert_called()
+        # Manager state updated to point at the new IDs.
+        assert manager.devices["AA:BB:CC:DD:EE:FF"].device_id == new_device.id
+        assert manager.devices["AA:BB:CC:DD:EE:FF"].esphome_config_entry_id == new_entry.entry_id
+
 
 # ---------------------------------------------------------------------------
 # Stale connection and start/stop tests

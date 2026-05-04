@@ -225,7 +225,10 @@ class DeviceManager:
             self._state_track_unsub = None
         ent_reg = er.async_get(self._hass)
         entity_ids: list[str] = []
-        for dev in self.devices.values():
+        # Iterate a snapshot of values — this method runs from event
+        # callbacks, and a concurrent task could add or remove devices
+        # mid-rebuild, raising RuntimeError on the live iterator.
+        for dev in list(self.devices.values()):
             if dev.device_id is None:
                 continue
             for entry in er.async_entries_for_device(ent_reg, dev.device_id, include_disabled_entities=True):
@@ -519,6 +522,7 @@ class DeviceManager:
         dev_reg = dr.async_get(self._hass)
 
         found_new = False
+        ids_changed = False
         for entry in ent_reg.entities.values():
             if entry.platform != "esphome":
                 continue
@@ -544,6 +548,16 @@ class DeviceManager:
 
             is_new = mac not in self.devices
             existing = self.devices.get(mac)
+            # Detect re-add flows where the same MAC reappears under a
+            # different HA device_id or ESPHome config_entry_id. The
+            # entity_ids attached to that mac change, so the targeted
+            # state-change tracker must be rebuilt — found_new alone
+            # (which triggers the rebuild below) wouldn't catch this
+            # case and we'd stay subscribed to the dead entity_ids.
+            if existing is not None and (
+                existing.device_id != device.id or existing.esphome_config_entry_id != entry.config_entry_id
+            ):
+                ids_changed = True
             if existing is not None and existing.device_id and existing.device_id != device.id:
                 self._device_id_to_mac.pop(existing.device_id, None)
             # If the same MAC is rediscovered under a different ESPHome
@@ -601,8 +615,14 @@ class DeviceManager:
                     zone_slots = empty_zone_slots()
                 await self.async_update_zone_entities(mac, zone_slots)
 
-        if found_new:
+        # Rebuild the state-change tracker on either a brand-new device
+        # OR on an existing device's HA registry IDs changing — entity
+        # set could have shifted under a re-add. _fire_device_list_changed
+        # only triggers for new devices to preserve the existing semantics
+        # (frontend doesn't need to refetch on a silent IP/device_id swap).
+        if found_new or ids_changed:
             self._refresh_state_listener()
+        if found_new:
             self._fire_device_list_changed()
 
     def _maybe_sync_repair_issue(self, mac: str, *, device_name: str, fw_ver: str | None) -> None:
