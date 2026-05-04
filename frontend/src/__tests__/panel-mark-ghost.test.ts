@@ -237,9 +237,10 @@ describe("_dismissTarget", () => {
 });
 
 describe("_setOverlay", () => {
-	it("sets interference overlay on the target's cell and calls applyLayout", async () => {
+	it("sets interference overlay on the target's cell and persists via WS without dirty/view-switch", async () => {
 		const a = createPanel() as any;
 		a._gridCtrl = { applyLayout: vi.fn().mockResolvedValue(undefined) };
+		a._view = "live";
 		const { x, y, idx } = insideCellCoords(3000, 4000);
 		a._targetMenu = makeMenuDetail(x, y, 0);
 
@@ -248,8 +249,16 @@ describe("_setOverlay", () => {
 		await a._setOverlay(CELL_OVERLAY_INTERFERENCE);
 
 		expect(cellOverlay(a._grid[idx])).toBe(CELL_OVERLAY_INTERFERENCE);
-		expect(a._dirty).toBe(true);
-		expect(a._gridCtrl.applyLayout).toHaveBeenCalledOnce();
+		// One-shot save: should not mark the layout dirty or switch views
+		expect(a._dirty).toBe(false);
+		expect(a._view).toBe("live");
+		// Should not go through applyLayout (which has side effects)
+		expect(a._gridCtrl.applyLayout).not.toHaveBeenCalled();
+		// Should call set_room_layout WS endpoint directly
+		const callWS = a.hass.callWS as ReturnType<typeof vi.fn>;
+		expect(callWS).toHaveBeenCalledWith(
+			expect.objectContaining({ type: "eppgrid/set_room_layout" }),
+		);
 		expect(a._targetMenu).toBeNull();
 	});
 
@@ -262,7 +271,97 @@ describe("_setOverlay", () => {
 		await a._setOverlay(CELL_OVERLAY_SUPPRESS);
 
 		expect(cellOverlay(a._grid[idx])).toBe(CELL_OVERLAY_SUPPRESS);
-		expect(a._gridCtrl.applyLayout).toHaveBeenCalledOnce();
+		expect(
+			(a.hass.callWS as ReturnType<typeof vi.fn>).mock.calls[0][0].type,
+		).toBe("eppgrid/set_room_layout");
+	});
+
+	it("includes serialized furniture in the WS payload", async () => {
+		const a = createPanel() as any;
+		const { x, y } = insideCellCoords(3000, 4000);
+		a._furniture = [
+			{
+				id: "f1",
+				type: "icon",
+				icon: "mdi:sofa",
+				label: "Sofa",
+				x: 100,
+				y: 200,
+				width: 600,
+				height: 400,
+				rotation: 30,
+				lockAspect: false,
+			},
+		];
+		a._targetMenu = makeMenuDetail(x, y, 0);
+
+		await a._setOverlay(CELL_OVERLAY_INTERFERENCE);
+
+		const callArg = (a.hass.callWS as ReturnType<typeof vi.fn>).mock
+			.calls[0][0];
+		expect(callArg.furniture).toEqual([
+			{
+				type: "icon",
+				icon: "mdi:sofa",
+				label: "Sofa",
+				x: 100,
+				y: 200,
+				width: 600,
+				height: 400,
+				rotation: 30,
+				lockAspect: false,
+			},
+		]);
+	});
+
+	it("reverts grid mutation when WS save fails", async () => {
+		const a = createPanel() as any;
+		const { x, y, idx } = insideCellCoords(3000, 4000);
+		const before = a._grid[idx];
+		a.hass.callWS = vi.fn().mockRejectedValue(new Error("boom"));
+		a._targetMenu = makeMenuDetail(x, y, 0);
+
+		await a._setOverlay(CELL_OVERLAY_INTERFERENCE);
+
+		expect(cellOverlay(a._grid[idx])).toBe(cellOverlay(before));
+		expect(a._dirty).toBe(false);
+	});
+
+	it("rollback only reverts the mutated cell — preserves concurrent edits", async () => {
+		const a = createPanel() as any;
+		const { x, y, idx } = insideCellCoords(3000, 4000);
+		// Pick a different inside cell on the same row.
+		const otherIdx = idx + 1;
+		const otherOriginal = a._grid[otherIdx];
+		const ourOriginal = a._grid[idx];
+
+		// Resolve the WS save AFTER the test makes a concurrent edit.
+		let resolveWs: (() => void) | undefined;
+		a.hass.callWS = vi.fn().mockImplementation(
+			() =>
+				new Promise<void>((_resolve, reject) => {
+					resolveWs = () => reject(new Error("boom"));
+				}),
+		);
+		a._targetMenu = makeMenuDetail(x, y, 0);
+
+		const setOverlayPromise = a._setOverlay(CELL_OVERLAY_INTERFERENCE);
+
+		// While the WS call is "in flight", simulate the user editing
+		// another cell on the same grid.
+		const concurrentEdit = new Uint8Array(a._grid);
+		concurrentEdit[otherIdx] = 0xff;
+		a._grid = concurrentEdit;
+
+		// Now reject the WS save.
+		resolveWs!();
+		await setOverlayPromise;
+
+		// Our optimistic cell rolled back to its original value…
+		expect(cellOverlay(a._grid[idx])).toBe(cellOverlay(ourOriginal));
+		// …but the concurrent edit on the OTHER cell survived.
+		expect(a._grid[otherIdx]).toBe(0xff);
+		expect(a._grid[otherIdx]).not.toBe(otherOriginal);
 	});
 
 	it("does nothing when _targetMenu is null", async () => {

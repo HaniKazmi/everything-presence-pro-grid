@@ -511,7 +511,9 @@ describe("_renderBoundaryTypeControls DOM events", () => {
 					(e) => e.type === "zone0-change" && e.detail.type === "transit",
 				),
 			).toBe(true);
-			expect(events.some((e) => e.type === "dirty")).toBe(true);
+			// dirty is no longer emitted by the sidebar; the panel sets _dirty
+			// from zone0-change directly.
+			expect(events.some((e) => e.type === "dirty")).toBe(false);
 		}
 	});
 
@@ -1195,7 +1197,7 @@ describe("_renderConfigurationRestoreDialog DOM events", () => {
 			{
 				name: "T1",
 				grid: new Array(GRID_CELL_COUNT).fill(0),
-				zones: [],
+				zones: new Array(8).fill(null),
 				roomWidth: 3000,
 				roomDepth: 4000,
 			},

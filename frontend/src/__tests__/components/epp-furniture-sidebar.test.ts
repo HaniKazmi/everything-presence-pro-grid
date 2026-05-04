@@ -338,4 +338,86 @@ describe("epp-furniture-sidebar DOM events", () => {
 		}
 		document.body.removeChild(c);
 	});
+
+	it("icon picker value-changed coerces null/undefined to empty string", () => {
+		const el = createSidebar({
+			showCustomIconPicker: true,
+			customIconValue: "mdi:lamp",
+		});
+		const handler = vi.fn();
+		el.addEventListener("custom-icon-change", handler);
+
+		const tpl = (el as any)._renderFurnitureSidebar();
+		const c = renderTo(tpl);
+
+		const picker = c.querySelector("ha-icon-picker") as HTMLElement;
+		// Downstream consumers (panel reflects this back into customIconValue,
+		// which is then `.trim()`-ed) require a string — null gets coerced.
+		picker.dispatchEvent(
+			new CustomEvent("value-changed", { detail: { value: null } }),
+		);
+		expect(handler).toHaveBeenCalledTimes(1);
+		expect(handler.mock.calls[0][0].detail).toBe("");
+
+		// `??` (not `||`) preserves an explicit empty string the user typed.
+		picker.dispatchEvent(
+			new CustomEvent("value-changed", { detail: { value: "" } }),
+		);
+		expect(handler).toHaveBeenCalledTimes(2);
+		expect(handler.mock.calls[1][0].detail).toBe("");
+
+		picker.dispatchEvent(
+			new CustomEvent("value-changed", { detail: { value: undefined } }),
+		);
+		expect(handler).toHaveBeenCalledTimes(3);
+		expect(handler.mock.calls[2][0].detail).toBe("");
+
+		document.body.removeChild(c);
+	});
+
+	it("rotation input parses fractional degrees (parseFloat)", () => {
+		const el = createSidebar({
+			furniture: [{ ...SAMPLE_FURNITURE, id: "f1", rotation: 0 }],
+			selectedFurnitureId: "f1",
+		});
+		const handler = vi.fn();
+		el.addEventListener("furniture-update", handler);
+		const tpl = (el as any)._renderFurnitureSidebar();
+		const c = renderTo(tpl);
+		const inputs = c.querySelectorAll(
+			".furn-dims input",
+		) as NodeListOf<HTMLInputElement>;
+		inputs[2].value = "12.5";
+		inputs[2].dispatchEvent(new Event("change"));
+		const calls = handler.mock.calls;
+		const last = calls[calls.length - 1][0].detail.updates.rotation;
+		expect(last).toBeCloseTo(12.5, 6);
+		document.body.removeChild(c);
+	});
+
+	it("rotation input wraps negatives to 0..360 (e.g. -90 → 270)", () => {
+		const el = createSidebar({
+			furniture: [{ ...SAMPLE_FURNITURE, id: "f1", rotation: 0 }],
+			selectedFurnitureId: "f1",
+		});
+		const handler = vi.fn();
+		el.addEventListener("furniture-update", handler);
+		const tpl = (el as any)._renderFurnitureSidebar();
+		const c = renderTo(tpl);
+		const inputs = c.querySelectorAll(
+			".furn-dims input",
+		) as NodeListOf<HTMLInputElement>;
+		inputs[2].value = "-90";
+		inputs[2].dispatchEvent(new Event("change"));
+		const calls = handler.mock.calls;
+		const last = calls[calls.length - 1][0].detail.updates.rotation;
+		expect(last).toBe(270);
+
+		inputs[2].value = "450";
+		inputs[2].dispatchEvent(new Event("change"));
+		const calls2 = handler.mock.calls;
+		const last2 = calls2[calls2.length - 1][0].detail.updates.rotation;
+		expect(last2).toBe(90);
+		document.body.removeChild(c);
+	});
 });

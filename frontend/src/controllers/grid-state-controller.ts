@@ -288,6 +288,7 @@ export class GridStateController implements ReactiveController {
 		id: string,
 		type: "move" | "resize" | "rotate",
 		handle?: string,
+		rotation?: number,
 	): void {
 		e.preventDefault();
 		e.stopPropagation();
@@ -296,6 +297,10 @@ export class GridStateController implements ReactiveController {
 			(f) => f.id === id,
 		);
 		if (!item) return;
+		// Prefer the rotation forwarded by the overlay event (captured at the
+		// moment of the click) so resize/move stay correct even if the parent
+		// array got swapped between render and event dispatch.
+		const startRotation = rotation ?? item.rotation;
 
 		// For rotate, find the item's center on screen
 		let centerX = 0,
@@ -328,7 +333,7 @@ export class GridStateController implements ReactiveController {
 			origY: item.y,
 			origW: item.width,
 			origH: item.height,
-			origRot: item.rotation,
+			origRot: startRotation,
 			handle,
 			centerX,
 			centerY,

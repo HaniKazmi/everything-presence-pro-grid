@@ -44,7 +44,7 @@ function makeSimplePerspective(): number[] {
 describe("computeSensorFov", () => {
 	it("returns sensor position and direction from perspective", () => {
 		const p = makeSimplePerspective();
-		const fov = computeSensorFov(p);
+		const fov = computeSensorFov(p)!;
 		expect(fov.sensorPos).toBeDefined();
 		expect(typeof fov.sensorPos.x).toBe("number");
 		expect(typeof fov.sensorPos.y).toBe("number");
@@ -54,7 +54,7 @@ describe("computeSensorFov", () => {
 
 	it("direction vector is normalized", () => {
 		const p = makeSimplePerspective();
-		const fov = computeSensorFov(p);
+		const fov = computeSensorFov(p)!;
 		const len = Math.sqrt(fov.dirX * fov.dirX + fov.dirY * fov.dirY);
 		expect(len).toBeCloseTo(1, 6);
 	});
@@ -63,7 +63,18 @@ describe("computeSensorFov", () => {
 		const p = makeSimplePerspective();
 		const fov = computeSensorFov(p);
 		// Y direction should be positive (forward into room)
-		expect(fov.dirY).toBeGreaterThan(0);
+		expect(fov!.dirY).toBeGreaterThan(0);
+	});
+
+	it("returns null for an all-zeros perspective (degenerate)", () => {
+		const fov = computeSensorFov([0, 0, 0, 0, 0, 0, 0, 0]);
+		expect(fov).toBeNull();
+	});
+
+	it("returns null when origin and ahead points coincide (zero-length direction)", () => {
+		// h0..h5 = 0 and h6=h7=0 → origin == ahead == (0,0)
+		const fov = computeSensorFov([0, 0, 5, 0, 0, 5, 0, 0]);
+		expect(fov).toBeNull();
 	});
 });
 
@@ -83,7 +94,7 @@ describe("getSensorRoomPosition", () => {
 	it("sensor position matches the origin transform", () => {
 		const p = makeSimplePerspective();
 		const pos = getSensorRoomPosition(p);
-		const fov = computeSensorFov(p);
+		const fov = computeSensorFov(p)!;
 		expect(pos!.x).toBeCloseTo(fov.sensorPos.x, 6);
 		expect(pos!.y).toBeCloseTo(fov.sensorPos.y, 6);
 	});
@@ -96,7 +107,7 @@ describe("isCellInSensorRange", () => {
 
 	it("returns true for cell at sensor position", () => {
 		const p = makeSimplePerspective();
-		const fov = computeSensorFov(p);
+		const fov = computeSensorFov(p)!;
 		// Place cell near sensor position
 		const roomCols = Math.ceil(3000 / GRID_CELL_MM);
 		const startCol = Math.floor((GRID_COLS - roomCols) / 2);

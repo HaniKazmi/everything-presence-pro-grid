@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { defaultLocalize, setupLocalize } from "../localize.js";
 
 describe("setupLocalize", () => {
@@ -180,6 +180,54 @@ describe("setupLocalize", () => {
 			const r2 = localize.formatNumber(2.5, 1);
 			expect(r1).toBe("1.5");
 			expect(r2).toBe("2.5");
+		});
+	});
+
+	describe("malformed ICU patterns", () => {
+		it("returns the raw key when the cached IntlMessageFormat constructor throws", () => {
+			const localize = setupLocalize();
+			// Stray opening brace — IntlMessageFormat treats it as syntax error.
+			const result = localize("{value, plural, one {", { value: 1 });
+			expect(typeof result).toBe("string");
+			// Falls back to raw string, not a thrown exception.
+			expect(result).toBe("{value, plural, one {");
+		});
+
+		it("returns the raw key when format() throws (e.g. missing param)", () => {
+			const localize = setupLocalize();
+			// Plural with no `other` branch + missing arg → format() throws.
+			const result = localize("{x, plural, one {a}}", {});
+			expect(typeof result).toBe("string");
+		});
+
+		it("caches malformed-pattern failures so subsequent calls don't re-throw", () => {
+			const localize = setupLocalize();
+			const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+			// Repeated calls with the same malformed key should each return
+			// the raw string without re-throwing (the failure is cached).
+			expect(() => {
+				for (let i = 0; i < 50; i++) localize("{bad", { x: i });
+			}).not.toThrow();
+			expect(localize("{bad", { x: 1 })).toBe("{bad");
+			errSpy.mockRestore();
+		});
+
+		it("does NOT cache format() failures — recovers when caller fixes params", () => {
+			const localize = setupLocalize();
+			// Plural without an `other` branch + missing arg → format() throws.
+			// We deliberately don't cache this kind of failure because it's
+			// usually a call-site bug; once the caller passes the right param,
+			// subsequent calls should succeed.
+			expect(() =>
+				localize("{count, plural, one {a} other {b}}", {}),
+			).not.toThrow();
+			// Same key with a valid param now formats successfully.
+			expect(localize("{count, plural, one {a} other {b}}", { count: 1 })).toBe(
+				"a",
+			);
+			expect(localize("{count, plural, one {a} other {b}}", { count: 5 })).toBe(
+				"b",
+			);
 		});
 	});
 });

@@ -94,7 +94,7 @@ export class EppLiveSidebar extends LitElement {
     }
 
     .live-sensor-dot.on {
-      background: #4CAF50;
+      background: var(--success-color, #4caf50);
     }
 
     .live-sensor-dot.off {
@@ -193,7 +193,8 @@ export class EppLiveSidebar extends LitElement {
 			},
 		];
 
-		// Zone occupancy entries: always include rest-of-room, plus configured zones
+		// Zone occupancy entries: rest-of-room (slot 0) first to match editor
+		// ordering, then configured named zones in slot order.
 		const zoneDefs: {
 			id: string;
 			label: string;
@@ -201,6 +202,17 @@ export class EppLiveSidebar extends LitElement {
 			info: string;
 			color: string | null;
 		}[] = [];
+		const rorOccupied = zs.occupancy[0] ?? false;
+		const rorCount = zs.target_counts[0] ?? 0;
+		zoneDefs.push({
+			id: "zone_0",
+			label: this.localize("sidebar.rest_of_room"),
+			on: rorOccupied,
+			info: this.localize("info.rest_of_room_occupancy", {
+				count: rorCount,
+			}),
+			color: null,
+		});
 		for (let i = 0; i < MAX_ZONES; i++) {
 			const zone = this.zoneConfigs[i];
 			if (!zone) continue;
@@ -215,18 +227,6 @@ export class EppLiveSidebar extends LitElement {
 				color: zone.color,
 			});
 		}
-		// Rest-of-room zone (slot 0) — always shown
-		const rorOccupied = zs.occupancy[0] ?? false;
-		const rorCount = zs.target_counts[0] ?? 0;
-		zoneDefs.push({
-			id: "zone_0",
-			label: this.localize("sidebar.rest_of_room"),
-			on: rorOccupied,
-			info: this.localize("info.rest_of_room_occupancy", {
-				count: rorCount,
-			}),
-			color: null,
-		});
 
 		// Environment sensors
 		const envSensors: { id: string; label: string; value: string }[] = [];
@@ -269,6 +269,8 @@ export class EppLiveSidebar extends LitElement {
             <span class="live-sensor-label">${s.label}</span>
             <span class="live-sensor-state ${s.on ? "detected" : ""}">${s.on ? this.localize("live.detected") : this.localize("live.clear")}</span>
             <button class="live-sensor-info-btn"
+              type="button"
+              aria-label=${this.localize("live.show_info")}
               @click=${() => {
 								this._expandedSensorInfo =
 									this._expandedSensorInfo === s.id ? null : s.id;
@@ -315,6 +317,8 @@ export class EppLiveSidebar extends LitElement {
             <span class="live-sensor-label">${s.label}</span>
             <span class="live-sensor-state ${s.on ? "detected" : ""}">${s.on ? this.localize("live.detected") : this.localize("live.clear")}</span>
             <button class="live-sensor-info-btn"
+              type="button"
+              aria-label=${this.localize("live.show_info")}
               @click=${() => {
 								this._expandedSensorInfo =
 									this._expandedSensorInfo === s.id ? null : s.id;

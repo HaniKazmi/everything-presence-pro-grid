@@ -183,8 +183,20 @@ export class EppFurnitureSidebar extends LitElement {
 								</label>
 								<label>
 									${this.localize("dimensions.rotation")}
-									<input type="number" step="5" .value=${String(Math.round(selected.rotation))}
-										@change=${(e: Event) => this._fireUpdate(selected.id, { rotation: parseInt((e.target as HTMLInputElement).value, 10) % 360 })}
+									<input type="number" step="5" .value=${String(
+										// Render the stored value (trimmed to one decimal place
+										// to avoid long floats from free-rotate drags) so what
+										// the user sees matches what's saved and emitted.
+										Math.round(selected.rotation * 10) / 10,
+									)}
+										@change=${(e: Event) => {
+											const v = parseFloat(
+												(e.target as HTMLInputElement).value,
+											);
+											if (!Number.isFinite(v)) return;
+											const wrapped = ((v % 360) + 360) % 360;
+											this._fireUpdate(selected.id, { rotation: wrapped });
+										}}
 									/>
 								</label>
 							</div>
@@ -234,9 +246,14 @@ export class EppFurnitureSidebar extends LitElement {
 									.hass=${this.hass}
 									.value=${this.customIconValue}
 									@value-changed=${(e: CustomEvent) => {
+										// Coerce null/undefined to empty string — the panel
+										// reflects this back into customIconValue and downstream
+										// code (`.trim()`, `<ha-icon icon=...>`) assumes string.
+										// Use `??` (not `||`) so an actual "" the user typed is
+										// preserved verbatim.
 										this.dispatchEvent(
 											new CustomEvent("custom-icon-change", {
-												detail: e.detail.value || "",
+												detail: e.detail?.value ?? "",
 												bubbles: true,
 												composed: true,
 											}),

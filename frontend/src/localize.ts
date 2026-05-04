@@ -52,8 +52,22 @@ export function setupLocalize(hass?: {
 	// echoed into a translation key) can't grow unbounded. The translation
 	// catalogue is well under this size, so normal use stays warm.
 	const FORMAT_CACHE_CAP = 256;
-	const formatCache = new Map<string, IntlMessageFormat>();
+	// `null` entries mark patterns whose IntlMessageFormat constructor threw
+	// (a permanently malformed ICU pattern), so repeated calls return raw
+	// immediately instead of paying the constructor/throw cost on every render
+	// tick. format()-time failures are intentionally NOT cached — those are
+	// usually call-site bugs (missing param) that recover once fixed.
+	const formatCache = new Map<string, IntlMessageFormat | null>();
 	const numberCache = new Map<number, Intl.NumberFormat>();
+
+	const cacheSet = (key: string, value: IntlMessageFormat | null): void => {
+		if (formatCache.size >= FORMAT_CACHE_CAP && !formatCache.has(key)) {
+			// Evict the oldest entry. Map iteration is in insertion order.
+			const oldest = formatCache.keys().next().value;
+			if (oldest !== undefined) formatCache.delete(oldest);
+		}
+		formatCache.set(key, value);
+	};
 
 	const localize = ((key: string, params?: Params): string => {
 		const raw =
@@ -63,17 +77,31 @@ export function setupLocalize(hass?: {
 
 		if (!params) return raw;
 
-		let fmt = formatCache.get(raw);
-		if (!fmt) {
-			fmt = new IntlMessageFormat(raw, lang);
-			if (formatCache.size >= FORMAT_CACHE_CAP) {
-				// Evict the oldest entry. Map iteration is in insertion order.
-				const oldest = formatCache.keys().next().value;
-				if (oldest !== undefined) formatCache.delete(oldest);
+		let fmt: IntlMessageFormat | null | undefined;
+		if (formatCache.has(raw)) {
+			fmt = formatCache.get(raw);
+			if (fmt === null) return raw; // known bad — skip the throw
+		} else {
+			try {
+				fmt = new IntlMessageFormat(raw, lang);
+			} catch {
+				// Malformed ICU pattern — cache the failure so we don't
+				// re-throw on every subsequent call with the same key.
+				cacheSet(raw, null);
+				return raw;
 			}
-			formatCache.set(raw, fmt);
+			cacheSet(raw, fmt);
 		}
-		return fmt.format(params) as string;
+		try {
+			return (fmt as IntlMessageFormat).format(params) as string;
+		} catch {
+			// format() failures are usually call-site bugs (e.g. missing
+			// param for a plural). Don't cache — once the caller fixes the
+			// params, subsequent calls should succeed. The compiled format
+			// instance stays in the cache, so we don't pay the constructor
+			// cost again on retry.
+			return raw;
+		}
 	}) as LocalizeFn;
 
 	localize.formatNumber = (value: number, decimals = 1): string => {

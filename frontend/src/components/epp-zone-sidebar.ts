@@ -44,9 +44,6 @@ export class EppZoneSidebar extends LitElement {
 				composed: true,
 			}),
 		);
-		this.dispatchEvent(
-			new CustomEvent("dirty", { bubbles: true, composed: true }),
-		);
 	};
 
 	private _onNameInput(index: number, name: string): void {
@@ -281,12 +278,6 @@ export class EppZoneSidebar extends LitElement {
 															composed: true,
 														}),
 													);
-													this.dispatchEvent(
-														new CustomEvent("dirty", {
-															bubbles: true,
-															composed: true,
-														}),
-													);
 												}}
 												@click=${(e: Event) => e.stopPropagation()}
 											/>
@@ -336,6 +327,8 @@ export class EppZoneSidebar extends LitElement {
 								/>
 								<button
 									class="zone-remove-btn"
+									type="button"
+									aria-label=${this.localize("zones.remove_zone")}
 									@click=${(e: Event) => {
 										e.stopPropagation();
 										this.dispatchEvent(
@@ -390,12 +383,6 @@ export class EppZoneSidebar extends LitElement {
 		this.dispatchEvent(
 			new CustomEvent<Partial<Zone0Config>>("zone0-change", {
 				detail: updates,
-				bubbles: true,
-				composed: true,
-			}),
-		);
-		this.dispatchEvent(
-			new CustomEvent("dirty", {
 				bubbles: true,
 				composed: true,
 			}),
@@ -608,12 +595,6 @@ export class EppZoneSidebar extends LitElement {
 									composed: true,
 								}),
 							);
-							this.dispatchEvent(
-								new CustomEvent("dirty", {
-									bubbles: true,
-									composed: true,
-								}),
-							);
 						}}
 						@click=${(e: Event) => e.stopPropagation()}
 					>
@@ -647,12 +628,6 @@ export class EppZoneSidebar extends LitElement {
 									composed: true,
 								}),
 							);
-							this.dispatchEvent(
-								new CustomEvent("dirty", {
-									bubbles: true,
-									composed: true,
-								}),
-							);
 						}}
 						@click=${(e: Event) => e.stopPropagation()}
 					/>
@@ -681,12 +656,6 @@ export class EppZoneSidebar extends LitElement {
 											renew: Number((e.target as HTMLInputElement).value),
 										},
 									},
-									bubbles: true,
-									composed: true,
-								}),
-							);
-							this.dispatchEvent(
-								new CustomEvent("dirty", {
 									bubbles: true,
 									composed: true,
 								}),
@@ -724,12 +693,6 @@ export class EppZoneSidebar extends LitElement {
 										composed: true,
 									}),
 								);
-								this.dispatchEvent(
-									new CustomEvent("dirty", {
-										bubbles: true,
-										composed: true,
-									}),
-								);
 							}
 						}}
 						@click=${(e: Event) => e.stopPropagation()}
@@ -760,12 +723,6 @@ export class EppZoneSidebar extends LitElement {
 											index,
 											updates: { handoff_timeout: v },
 										},
-										bubbles: true,
-										composed: true,
-									}),
-								);
-								this.dispatchEvent(
-									new CustomEvent("dirty", {
 										bubbles: true,
 										composed: true,
 									}),

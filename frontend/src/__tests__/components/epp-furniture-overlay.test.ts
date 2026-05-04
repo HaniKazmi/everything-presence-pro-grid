@@ -301,6 +301,60 @@ describe("epp-furniture-overlay events", () => {
 		document.body.removeChild(c);
 	});
 
+	it("forwards item rotation in furniture-pointer-down resize detail", () => {
+		const rotated: FurnitureItem = { ...ICON_FURNITURE, id: "rot1" };
+		const el = createOverlay({
+			furniture: [rotated],
+			selectedFurnitureId: "rot1",
+		});
+		const ptrHandler = vi.fn();
+		el.addEventListener("furniture-pointer-down", ptrHandler);
+
+		const c = renderTo((el as any).render());
+		const handle = c.querySelector(".furn-handle-se") as HTMLElement;
+		handle.dispatchEvent(
+			new PointerEvent("pointerdown", {
+				clientX: 100,
+				clientY: 100,
+				bubbles: true,
+			}),
+		);
+		const detail = ptrHandler.mock.calls[0][0].detail;
+		expect(detail.type).toBe("resize");
+		expect(detail.rotation).toBe(45);
+		document.body.removeChild(c);
+	});
+
+	it("forwards item rotation in furniture-pointer-down move detail", () => {
+		const rotated: FurnitureItem = { ...ICON_FURNITURE, id: "rot2" };
+		const el = createOverlay({
+			furniture: [rotated],
+			selectedFurnitureId: "rot2",
+		});
+		const ptrHandler = vi.fn();
+		el.addEventListener("furniture-pointer-down", ptrHandler);
+
+		const c = renderTo((el as any).render());
+		const item = c.querySelector(
+			'.furniture-item[data-id="rot2"]',
+		) as HTMLElement;
+		item.dispatchEvent(
+			new PointerEvent("pointerdown", {
+				clientX: 100,
+				clientY: 100,
+				bubbles: true,
+			}),
+		);
+		// move detail is fired second (after furniture-select fires nothing on
+		// furniture-pointer-down listener); pick the move event by type.
+		const moveCall = ptrHandler.mock.calls.find(
+			(c) => c[0].detail?.type === "move",
+		);
+		expect(moveCall).toBeTruthy();
+		expect(moveCall![0].detail.rotation).toBe(45);
+		document.body.removeChild(c);
+	});
+
 	it("fires furniture-pointer-down with rotate type on rotate handle", () => {
 		const el = createOverlay({
 			furniture: [SAMPLE_FURNITURE],

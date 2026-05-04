@@ -315,11 +315,34 @@ describe("Editor view event wiring", () => {
 		expect(a._zoneConfigs[0].handoff_timeout).toBe(1);
 	});
 
-	it("dirty sets _dirty to true", () => {
+	it("zone-config-change marks _dirty (panel-side responsibility)", () => {
 		const [el, container] = editorPanel();
+		const a = el as any;
+		// Seed a zone in slot 1 so the handler accepts the update.
+		a._zoneConfigs = [
+			{
+				type: "default",
+				trigger: 5,
+				renew: 3,
+				timeout: 10,
+				handoff_timeout: 3,
+			},
+			{ name: "Z1", color: "#ff0000", type: "default" as const },
+			null,
+			null,
+			null,
+			null,
+			null,
+			null,
+		];
 		const sidebar = container.querySelector("epp-zone-sidebar")!;
-		sidebar.dispatchEvent(new CustomEvent("dirty", { bubbles: true }));
-		expect((el as any)._dirty).toBe(true);
+		sidebar.dispatchEvent(
+			new CustomEvent("zone-config-change", {
+				detail: { index: 0, updates: { name: "Renamed" } },
+				bubbles: true,
+			}),
+		);
+		expect(a._dirty).toBe(true);
 	});
 
 	it("furniture-add calls _addFurniture", () => {

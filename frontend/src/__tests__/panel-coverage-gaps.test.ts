@@ -651,9 +651,10 @@ describe("epp-live-sidebar zone info toggles", () => {
 		const c = renderTo(tpl);
 
 		const infoBtns = c.querySelectorAll(".live-sensor-info-btn");
-		// Zone info should be beyond first 5 sensor buttons (occupancy, static, motion, target, mmwave)
-		if (infoBtns.length > 5) {
-			(infoBtns[5] as HTMLElement).click();
+		// Zone info should be beyond first 5 sensor buttons (occupancy, static, motion, target, mmwave).
+		// Slot 0 (rest-of-room) renders first, then named zones in slot order.
+		if (infoBtns.length > 6) {
+			(infoBtns[6] as HTMLElement).click();
 			expect(el._expandedSensorInfo).toBe("zone_1");
 		}
 		document.body.removeChild(c);
@@ -885,7 +886,13 @@ describe("_renderConfigurationRestoreDialog DOM events", () => {
 	it("delete button calls _deleteConfiguration", async () => {
 		const a = createPanel() as any;
 		a._gridCtrl.configurations = [
-			{ name: "T1", grid: [], zones: [], roomWidth: 3000, roomDepth: 4000 },
+			{
+				name: "T1",
+				grid: [],
+				zones: new Array(8).fill(null),
+				roomWidth: 3000,
+				roomDepth: 4000,
+			},
 		];
 		a.hass.callWS = vi.fn().mockImplementation((msg: any) => {
 			if (msg.type === "eppgrid/delete_configuration")
@@ -1213,6 +1220,53 @@ describe("backend debug log copy and clear buttons", () => {
 			copyBtn.click();
 			expect(writeTextMock).toHaveBeenCalledWith("line1\nline2");
 		}
+	});
+
+	it("backend debug copy swallows clipboard rejection", async () => {
+		const a = createPanel() as any;
+		a._showBackendDebugLog = true;
+		a._backendDebugLogLines = ["line1"];
+		const tpl = a._renderBackendDebugLog();
+		const c = document.createElement("div");
+		render(tpl, c);
+
+		const writeTextMock = vi.fn().mockRejectedValue(new Error("denied"));
+		Object.defineProperty(navigator, "clipboard", {
+			value: { writeText: writeTextMock },
+			writable: true,
+			configurable: true,
+		});
+		const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+		const copyBtn = c.querySelector(".debug-log-btn") as HTMLElement;
+		copyBtn.click();
+		// Wait one microtask for the promise rejection to surface to .catch
+		await new Promise((r) => setTimeout(r, 0));
+		expect(warn).toHaveBeenCalled();
+		warn.mockRestore();
+	});
+
+	it("frontend debug copy swallows clipboard rejection", async () => {
+		const a = createPanel() as any;
+		a._showDebugLog = true;
+		a._debugLogLines = ["line1"];
+		const tpl = a._renderDebugLog();
+		const c = document.createElement("div");
+		render(tpl, c);
+
+		const writeTextMock = vi.fn().mockRejectedValue(new Error("denied"));
+		Object.defineProperty(navigator, "clipboard", {
+			value: { writeText: writeTextMock },
+			writable: true,
+			configurable: true,
+		});
+		const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+		const copyBtn = c.querySelector(".debug-log-btn") as HTMLElement;
+		copyBtn.click();
+		await new Promise((r) => setTimeout(r, 0));
+		expect(warn).toHaveBeenCalled();
+		warn.mockRestore();
 	});
 });
 

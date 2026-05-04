@@ -28,12 +28,13 @@ export interface SensorFov {
  * (0, 1000) in sensor-space. We transform both through the perspective to
  * get the room-space position and direction.
  */
-export function computeSensorFov(perspective: number[]): SensorFov {
+export function computeSensorFov(perspective: number[]): SensorFov | null {
 	const origin = applyPerspective(perspective, 0, 0);
 	const ahead = applyPerspective(perspective, 0, 1000);
 	const dx = ahead.x - origin.x;
 	const dy = ahead.y - origin.y;
 	const len = Math.sqrt(dx * dx + dy * dy);
+	if (!Number.isFinite(len) || len < 1e-6) return null;
 	return { sensorPos: origin, dirX: dx / len, dirY: dy / len };
 }
 

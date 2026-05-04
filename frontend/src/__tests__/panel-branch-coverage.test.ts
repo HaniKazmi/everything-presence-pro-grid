@@ -798,14 +798,14 @@ describe("_renderConfigurationRestoreDialog item events", () => {
 			{
 				name: "T1",
 				grid: new Array(GRID_CELL_COUNT).fill(0),
-				zones: [],
+				zones: new Array(8).fill(null),
 				roomWidth: 5000,
 				roomDepth: 6000,
 			},
 			{
 				name: "T2",
 				grid: new Array(GRID_CELL_COUNT).fill(0),
-				zones: [],
+				zones: new Array(8).fill(null),
 				roomWidth: 3000,
 				roomDepth: 4000,
 			},

@@ -543,7 +543,7 @@ describe("render() WiFi provisioning — connected state", () => {
 		const c = renderTo(tpl);
 
 		expect(
-			c.querySelector(".confirm-actions ha-button[raised]"),
+			c.querySelector('.confirm-actions ha-button[appearance="accent"]'),
 		).not.toBeNull();
 	});
 
@@ -714,7 +714,7 @@ describe("render() WiFi provisioning — not connected state", () => {
 		const c = renderTo(tpl);
 
 		expect(
-			c.querySelector(".confirm-actions ha-button[raised]"),
+			c.querySelector('.confirm-actions ha-button[appearance="accent"]'),
 		).not.toBeNull();
 	});
 
@@ -726,7 +726,9 @@ describe("render() WiFi provisioning — not connected state", () => {
 		const tpl = (el as any).render();
 		const c = renderTo(tpl);
 
-		const btn = c.querySelector(".confirm-actions ha-button[raised]") as any;
+		const btn = c.querySelector(
+			'.confirm-actions ha-button[appearance="accent"]',
+		) as any;
 		expect(btn.disabled).toBe(true);
 	});
 
@@ -738,7 +740,9 @@ describe("render() WiFi provisioning — not connected state", () => {
 		const tpl = (el as any).render();
 		const c = renderTo(tpl);
 
-		const btn = c.querySelector(".confirm-actions ha-button[raised]") as any;
+		const btn = c.querySelector(
+			'.confirm-actions ha-button[appearance="accent"]',
+		) as any;
 		expect(btn.disabled).toBe(false);
 	});
 
@@ -857,6 +861,53 @@ describe("WiFi provisioning DOM event handlers", () => {
 		input.dispatchEvent(new Event("input"));
 
 		expect((el as any)._selectedSsid).toBe("HiddenNet");
+	});
+
+	it("clears _wifiPassword when SSID changes via dropdown selection", async () => {
+		const el = createView();
+		(el as any)._showWifiProvisioning = true;
+		(el as any)._wifiConnected = false;
+		(el as any)._selectedSsid = "OldNet";
+		(el as any)._wifiPassword = "oldpass";
+		(el as any).wifiNetworks = [
+			{ ssid: "OldNet", rssi: -50, authRequired: false },
+			{ ssid: "NewNet", rssi: -60, authRequired: true },
+		];
+		document.body.appendChild(el);
+		await el.updateComplete;
+
+		const select = el.shadowRoot!.querySelector("ha-select") as any;
+		select.dispatchEvent(
+			new CustomEvent("selected", { detail: { value: "NewNet" } }),
+		);
+
+		expect((el as any)._selectedSsid).toBe("NewNet");
+		expect((el as any)._wifiPassword).toBe("");
+	});
+
+	it("clears _wifiPassword when manual SSID checkbox is toggled", async () => {
+		const el = createView();
+		(el as any)._showWifiProvisioning = true;
+		(el as any)._wifiConnected = false;
+		(el as any)._manualSsid = false;
+		(el as any)._selectedSsid = "Whatever";
+		(el as any)._wifiPassword = "pw";
+		document.body.appendChild(el);
+		await el.updateComplete;
+
+		const checkbox = el.shadowRoot!.querySelector("ha-checkbox") as any;
+		checkbox.checked = true;
+		checkbox.dispatchEvent(new Event("change"));
+
+		expect((el as any)._wifiPassword).toBe("");
+	});
+
+	it("clears _wifiPassword on cancel", async () => {
+		const el = createView();
+		(el as any)._showWifiProvisioning = true;
+		(el as any)._wifiPassword = "secret";
+		(el as any)._dispatchCancel();
+		expect((el as any)._wifiPassword).toBe("");
 	});
 
 	it("password input updates _wifiPassword", async () => {
@@ -1019,7 +1070,7 @@ describe("USB flash view — state-driven", () => {
 
 		expect(c.textContent).toContain("192.168.1.42");
 		expect(
-			c.querySelector(".confirm-actions ha-button[raised]"),
+			c.querySelector('.confirm-actions ha-button[appearance="accent"]'),
 		).not.toBeNull();
 	});
 
@@ -1036,7 +1087,7 @@ describe("USB flash view — state-driven", () => {
 		expect(c.querySelector(".usb-error")).not.toBeNull();
 		expect(c.textContent).toContain("usb.errors.flash_failed");
 		expect(
-			c.querySelector(".confirm-actions ha-button[raised]"),
+			c.querySelector('.confirm-actions ha-button[appearance="accent"]'),
 		).not.toBeNull();
 	});
 
@@ -1101,7 +1152,7 @@ describe("USB flash view — state-driven", () => {
 
 		const root = el.shadowRoot!;
 		const flashBtn = root.querySelector(
-			".confirm-actions ha-button[raised]",
+			'.confirm-actions ha-button[appearance="accent"]',
 		) as HTMLElement;
 		flashBtn.click();
 
@@ -1126,7 +1177,7 @@ describe("USB flash view — state-driven", () => {
 
 		const root = el.shadowRoot!;
 		const retryBtn = root.querySelector(
-			".confirm-actions ha-button[raised]",
+			'.confirm-actions ha-button[appearance="accent"]',
 		) as HTMLElement;
 		retryBtn.click();
 
@@ -1359,7 +1410,7 @@ describe("wifi complete cleanup", () => {
 
 		const root = el.shadowRoot!;
 		const btn = root.querySelector(
-			".confirm-actions ha-button[raised]",
+			'.confirm-actions ha-button[appearance="accent"]',
 		) as HTMLElement;
 		btn.click();
 

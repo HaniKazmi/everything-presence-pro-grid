@@ -59,49 +59,10 @@ describe("epp-settings-view element", () => {
 		expect(result).toBeDefined();
 	});
 
-	it("attaches and detaches a window click listener across connect/disconnect", () => {
-		const addSpy = vi.spyOn(window, "addEventListener");
-		const removeSpy = vi.spyOn(window, "removeEventListener");
-		const el = createView() as any;
-		el.connectedCallback();
-		const addedClickHandlers = addSpy.mock.calls
-			.filter((c) => c[0] === "click")
-			.map((c) => c[1]);
-		expect(addedClickHandlers.length).toBeGreaterThanOrEqual(1);
-
-		el.disconnectedCallback();
-		const removedClickHandlers = removeSpy.mock.calls
-			.filter((c) => c[0] === "click")
-			.map((c) => c[1]);
-		// Every click handler attached during connect is removed during disconnect
-		for (const h of addedClickHandlers) {
-			expect(removedClickHandlers).toContain(h);
-		}
-		addSpy.mockRestore();
-		removeSpy.mockRestore();
-	});
-
-	it("hides own tooltips when the window click handler fires", () => {
-		const el = createView() as any;
-		const tooltip1 = { style: { display: "block" } };
-		const tooltip2 = { style: { display: "block" } };
-		Object.defineProperty(el, "shadowRoot", {
-			value: {
-				querySelectorAll: (sel: string) => {
-					if (sel === ".setting-info-tooltip") return [tooltip1, tooltip2];
-					return [];
-				},
-			},
-			configurable: true,
-		});
-
-		// Invoke the handler directly without going through DOM connect/render
-		expect(typeof el._dismissTooltips).toBe("function");
-		el._dismissTooltips();
-
-		expect(tooltip1.style.display).toBe("none");
-		expect(tooltip2.style.display).toBe("none");
-	});
+	// The previous window-level _dismissTooltips listener has been replaced
+	// by per-tooltip pointer-down/scroll/resize/Escape handlers wired in
+	// infoTip(); see "infoTip a11y and listener cleanup" below for the
+	// equivalent behavioral coverage.
 });
 
 describe("render()", () => {
@@ -1356,7 +1317,7 @@ describe("_resetSlider edge cases", () => {
 		expect((sv as any)._overrides.motionTimeout).toBe(5);
 	});
 
-	it("resetSlider updates save-btn via shadowRoot when btn present", () => {
+	it("resetSlider marks _localDirty so the save button enables on next render", () => {
 		const sv = createView();
 		const row = document.createElement("div");
 		row.className = "setting-row";
@@ -1370,19 +1331,8 @@ describe("_resetSlider edge cases", () => {
 		row.appendChild(slider);
 		row.appendChild(display);
 
-		// Mock shadowRoot with a save-btn
-		const btn = document.createElement("button");
-		btn.className = "save-btn";
-		btn.disabled = true;
-		Object.defineProperty(sv, "shadowRoot", {
-			value: {
-				querySelector: (sel: string) => (sel === ".save-btn" ? btn : null),
-			},
-			configurable: true,
-		});
-
 		(sv as any)._resetSlider(row, 5, "motionTimeout");
-		expect(btn.disabled).toBe(false);
+		expect((sv as any)._localDirty).toBe(true);
 	});
 
 	it("_resetSlider with offset key where display has NaN content skips adjusted display", () => {
@@ -1586,6 +1536,100 @@ describe("infoTip tooltip toggle branches", () => {
 		// tooltip should be hidden by the close-all loop
 		expect(tooltip?.style.display).toBe("none");
 		document.body.removeChild(c);
+	});
+});
+
+describe("infoTip a11y and listener cleanup", () => {
+	function mountAttached(sv: any): {
+		container: HTMLDivElement;
+		btn: HTMLElement;
+		tooltip: HTMLElement;
+	} {
+		const c = document.createElement("div");
+		document.body.appendChild(c);
+		c.appendChild(sv);
+		// Force render so shadowRoot mounts; infoTip output is normally inside render(),
+		// so test with a single tip rendered into a host DIV inside shadow.
+		// Easiest: render the infoTip template into an attached container and
+		// mock shadowRoot to reach it.
+		const tipHost = document.createElement("div");
+		document.body.appendChild(tipHost);
+		render(sv.infoTip("aria tip text"), tipHost);
+		const btn = tipHost.querySelector(".setting-info") as HTMLElement;
+		const tooltip = tipHost.querySelector(
+			".setting-info-tooltip",
+		) as HTMLElement;
+		Object.defineProperty(sv, "shadowRoot", {
+			value: { querySelectorAll: () => [tooltip] },
+			configurable: true,
+		});
+		return { container: c, btn, tooltip };
+	}
+
+	it("button has aria-describedby pointing to the tooltip element id", () => {
+		const sv = createView() as any;
+		const { container, btn, tooltip } = mountAttached(sv);
+		const describedBy = btn.getAttribute("aria-describedby");
+		expect(describedBy).toBeTruthy();
+		expect(tooltip.id).toBe(describedBy);
+		document.body.removeChild(container);
+	});
+
+	it("Escape key closes an open tooltip", () => {
+		const sv = createView() as any;
+		const { container, btn, tooltip } = mountAttached(sv);
+		btn.click();
+		expect(tooltip.style.display).toBe("block");
+		document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
+		expect(tooltip.style.display).toBe("none");
+		document.body.removeChild(container);
+	});
+
+	it("scroll closes an open tooltip", () => {
+		const sv = createView() as any;
+		const { container, btn, tooltip } = mountAttached(sv);
+		btn.click();
+		expect(tooltip.style.display).toBe("block");
+		window.dispatchEvent(new Event("scroll"));
+		expect(tooltip.style.display).toBe("none");
+		document.body.removeChild(container);
+	});
+
+	it("resize closes an open tooltip", () => {
+		const sv = createView() as any;
+		const { container, btn, tooltip } = mountAttached(sv);
+		btn.click();
+		expect(tooltip.style.display).toBe("block");
+		window.dispatchEvent(new Event("resize"));
+		expect(tooltip.style.display).toBe("none");
+		document.body.removeChild(container);
+	});
+
+	it("outside pointerdown closes an open tooltip", () => {
+		const sv = createView() as any;
+		const { container, btn, tooltip } = mountAttached(sv);
+		btn.click();
+		expect(tooltip.style.display).toBe("block");
+		document.body.dispatchEvent(
+			new PointerEvent("pointerdown", { bubbles: true, composed: true }),
+		);
+		expect(tooltip.style.display).toBe("none");
+		document.body.removeChild(container);
+	});
+
+	it("disconnectedCallback removes document/window listeners (no leak)", () => {
+		const sv = createView() as any;
+		const { container, btn, tooltip } = mountAttached(sv);
+		btn.click();
+		expect(tooltip.style.display).toBe("block");
+		// Detach and reset — listeners should be gone.
+		sv.disconnectedCallback();
+		// Re-display the tooltip and dispatch Escape; since listener was removed,
+		// the tooltip should remain visible.
+		tooltip.style.display = "block";
+		document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
+		expect(tooltip.style.display).toBe("block");
+		document.body.removeChild(container);
 	});
 });
 
@@ -1849,22 +1893,14 @@ describe("renderRelay() @selected handlers", () => {
 	});
 });
 
-describe("_fireDirty with save-btn in shadowRoot", () => {
-	it("enables save-btn when btn is found in shadowRoot", () => {
+describe("_fireDirty marks _localDirty and emits dirty event", () => {
+	it("sets _localDirty so save-btn enables via the next render pass", () => {
 		const sv = createView();
-		const btn = document.createElement("button");
-		btn.className = "save-btn";
-		btn.disabled = true;
-
-		Object.defineProperty(sv, "shadowRoot", {
-			value: {
-				querySelector: (sel: string) => (sel === ".save-btn" ? btn : null),
-			},
-			configurable: true,
-		});
-
+		const events: Event[] = [];
+		sv.addEventListener("dirty", (e) => events.push(e));
 		(sv as any)._fireDirty();
-		expect(btn.disabled).toBe(false);
+		expect((sv as any)._localDirty).toBe(true);
+		expect(events.length).toBe(1);
 	});
 });
 

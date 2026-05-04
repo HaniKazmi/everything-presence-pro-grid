@@ -419,17 +419,23 @@ export function parseScanResults(data: Uint8Array): WifiNetwork | null {
 	const decoder = new TextDecoder();
 	let offset = 0;
 
-	const readString = (): string | null => {
+	const readString = (maxBytes = Number.POSITIVE_INFINITY): string | null => {
 		if (offset >= data.length) return null;
 		const len = data[offset++];
 		if (offset + len > data.length) return null;
-		const value = decoder.decode(data.slice(offset, offset + len));
+		// Truncate by *bytes* before decoding so the UTF-8 boundary stays
+		// the source of truth (slicing a JS string clamps code units, not
+		// bytes — multibyte chars would let the result exceed the limit).
+		const readLen = Math.min(len, maxBytes);
+		const value = decoder.decode(data.slice(offset, offset + readLen));
 		offset += len;
 		return value;
 	};
 
-	const ssid = readString();
-	if (ssid === null) return null;
+	// 802.11 caps SSID at 32 octets; enforce here before decoding so a
+	// misbehaving device can't push an unbounded UTF-8 buffer into the UI.
+	const ssidRaw = readString(32);
+	if (ssidRaw === null) return null;
 
 	const rssiStr = readString();
 	if (rssiStr === null) return null;
@@ -439,6 +445,12 @@ export function parseScanResults(data: Uint8Array): WifiNetwork | null {
 
 	const rssi = Number.parseInt(rssiStr, 10);
 	if (Number.isNaN(rssi)) return null;
+
+	// Strip ASCII control characters (incl. NUL, BEL, ESC) so a malformed
+	// device payload can't inject terminal escapes or zero-width junk into
+	// the UI. Byte-length is already capped above by readString(32).
+	// biome-ignore lint/suspicious/noControlCharactersInRegex: intentional for SSID sanitisation
+	const ssid = ssidRaw.replace(/[\x00-\x1f\x7f]/g, "");
 
 	return {
 		ssid,
