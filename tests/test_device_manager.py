@@ -18,6 +18,7 @@ from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.eppgrid.const import EPP_MANUFACTURER
 from custom_components.eppgrid.const import EPP_MODEL
+from custom_components.eppgrid.const import FIRMWARE_VERSION
 from custom_components.eppgrid.const import MAX_ZONES
 from custom_components.eppgrid.device_manager import DeviceConnection
 from custom_components.eppgrid.device_manager import DeviceManager
@@ -3627,7 +3628,10 @@ class TestEventCallbacks:
         session.async_fetch_build_flags = AsyncMock(side_effect=ConnectionError("boom"))
         manager._active_connections[mac] = session
 
-        with patch.object(manager, "_push_pipeline_to_device", new_callable=AsyncMock):
+        with (
+            patch.object(manager, "read_firmware_version", return_value=FIRMWARE_VERSION),
+            patch.object(manager, "_push_pipeline_to_device", new_callable=AsyncMock),
+        ):
             result = await manager._push_config_to_device(mac)
 
         assert result is True  # push succeeded; only flags fetch failed
@@ -3641,7 +3645,10 @@ class TestEventCallbacks:
         manager.devices[mac] = ManagedDevice(mac=mac, name="EPP", host="192.168.1.50")
         store.devices[mac] = {"settings": {}}
 
-        with patch("custom_components.eppgrid.device_manager.DeviceConnection") as mock_cls:
+        with (
+            patch.object(manager, "read_firmware_version", return_value=FIRMWARE_VERSION),
+            patch("custom_components.eppgrid.device_manager.DeviceConnection") as mock_cls,
+        ):
             conn = mock_cls.return_value
             conn.async_connect = AsyncMock()
             conn.async_disconnect = AsyncMock()
@@ -3668,9 +3675,12 @@ class TestEventCallbacks:
         mock_conn.async_fetch_build_flags = AsyncMock(return_value={})
         mock_conn.async_disconnect = AsyncMock()
 
-        with patch(
-            "custom_components.eppgrid.device_manager.DeviceConnection",
-            return_value=mock_conn,
+        with (
+            patch.object(manager, "read_firmware_version", return_value=FIRMWARE_VERSION),
+            patch(
+                "custom_components.eppgrid.device_manager.DeviceConnection",
+                return_value=mock_conn,
+            ),
         ):
             await manager._push_config_to_device("AA:BB:CC:DD:EE:FF")
 
@@ -3690,9 +3700,12 @@ class TestEventCallbacks:
         mock_conn.async_push_config = AsyncMock(side_effect=ConnectionError("timeout"))
         mock_conn.async_disconnect = AsyncMock()
 
-        with patch(
-            "custom_components.eppgrid.device_manager.DeviceConnection",
-            return_value=mock_conn,
+        with (
+            patch.object(manager, "read_firmware_version", return_value=FIRMWARE_VERSION),
+            patch(
+                "custom_components.eppgrid.device_manager.DeviceConnection",
+                return_value=mock_conn,
+            ),
         ):
             # Should not raise
             await manager._push_config_to_device("AA:BB:CC:DD:EE:FF")
@@ -3726,7 +3739,8 @@ class TestEventCallbacks:
         session_conn.async_fetch_build_flags = AsyncMock(return_value={})
         manager._active_connections[mac] = session_conn
 
-        result = await manager._push_config_to_device(mac)
+        with patch.object(manager, "read_firmware_version", return_value=FIRMWARE_VERSION):
+            result = await manager._push_config_to_device(mac)
 
         assert result is True
         session_conn.async_push_config.assert_awaited_once()
@@ -3747,9 +3761,12 @@ class TestEventCallbacks:
         mock_conn.async_fetch_build_flags = AsyncMock(return_value={})
         mock_conn.async_disconnect = AsyncMock()
 
-        with patch(
-            "custom_components.eppgrid.device_manager.DeviceConnection",
-            return_value=mock_conn,
+        with (
+            patch.object(manager, "read_firmware_version", return_value=FIRMWARE_VERSION),
+            patch(
+                "custom_components.eppgrid.device_manager.DeviceConnection",
+                return_value=mock_conn,
+            ),
         ):
             result = await manager._push_config_to_device(mac)
 
@@ -3777,9 +3794,12 @@ class TestEventCallbacks:
         mock_conn.async_fetch_build_flags = AsyncMock(return_value={})
         mock_conn.async_disconnect = AsyncMock()
 
-        with patch(
-            "custom_components.eppgrid.device_manager.DeviceConnection",
-            return_value=mock_conn,
+        with (
+            patch.object(manager, "read_firmware_version", return_value=FIRMWARE_VERSION),
+            patch(
+                "custom_components.eppgrid.device_manager.DeviceConnection",
+                return_value=mock_conn,
+            ),
         ):
             result = await manager._push_config_to_device(mac)
 
@@ -3802,10 +3822,149 @@ class TestEventCallbacks:
         session_conn.async_disconnect = AsyncMock()
         manager._active_connections[mac] = session_conn
 
-        result = await manager._push_config_to_device(mac)
+        with patch.object(manager, "read_firmware_version", return_value=FIRMWARE_VERSION):
+            result = await manager._push_config_to_device(mac)
 
         assert result is False
         assert mac not in manager._active_connections
+
+    # --- version-gated push: skip on firmware mismatch ---
+
+    async def test_push_config_skipped_when_firmware_behind(
+        self,
+        hass: HomeAssistant,
+        store: EPPGridStore,
+        manager: DeviceManager,
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        """When the device firmware is behind the integration's pinned version,
+        skip the push entirely — pushing a config the firmware can't parse risks
+        the device misinterpreting fields whose format may have changed.
+
+        Returns True so the caller's backoff doesn't retry; the device keeps
+        running with its NVS-persisted settings until OTA brings it current.
+        The Repairs flow alerts the user separately.
+        """
+        mac = "AA:BB:CC:DD:EE:FF"
+        store.devices[mac] = {"calibration": {"perspective": [1.0] * 8}}
+        manager.devices[mac] = ManagedDevice(mac=mac, name="EPP", host="192.168.1.50")
+
+        session_conn = MagicMock()
+        session_conn.connected = True
+        session_conn.async_push_config = AsyncMock()
+        manager._active_connections[mac] = session_conn
+
+        with (
+            patch.object(manager, "read_firmware_version", return_value="0.1.0"),
+            caplog.at_level("WARNING"),
+        ):
+            result = await manager._push_config_to_device(mac)
+
+        assert result is True
+        session_conn.async_push_config.assert_not_awaited()
+        assert any("0.1.0" in rec.message and "behind" in rec.message.lower() for rec in caplog.records)
+
+    async def test_push_config_skipped_when_firmware_ahead(
+        self,
+        hass: HomeAssistant,
+        store: EPPGridStore,
+        manager: DeviceManager,
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        """When the device firmware is ahead, skip the push: a newer firmware
+        may have added required fields the older integration doesn't send."""
+        mac = "AA:BB:CC:DD:EE:FF"
+        store.devices[mac] = {"calibration": {"perspective": [1.0] * 8}}
+        manager.devices[mac] = ManagedDevice(mac=mac, name="EPP", host="192.168.1.50")
+
+        session_conn = MagicMock()
+        session_conn.connected = True
+        session_conn.async_push_config = AsyncMock()
+        manager._active_connections[mac] = session_conn
+
+        with (
+            patch.object(manager, "read_firmware_version", return_value="99.0.0"),
+            caplog.at_level("WARNING"),
+        ):
+            result = await manager._push_config_to_device(mac)
+
+        assert result is True
+        session_conn.async_push_config.assert_not_awaited()
+        assert any("99.0.0" in rec.message and "ahead" in rec.message.lower() for rec in caplog.records)
+
+    async def test_push_config_skipped_when_firmware_unparseable(
+        self,
+        hass: HomeAssistant,
+        store: EPPGridStore,
+        manager: DeviceManager,
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        """An unparseable firmware version string blocks the push: if we can't
+        compare, we can't risk pushing an incompatible format."""
+        mac = "AA:BB:CC:DD:EE:FF"
+        store.devices[mac] = {"calibration": {"perspective": [1.0] * 8}}
+        manager.devices[mac] = ManagedDevice(mac=mac, name="EPP", host="192.168.1.50")
+
+        session_conn = MagicMock()
+        session_conn.connected = True
+        session_conn.async_push_config = AsyncMock()
+        manager._active_connections[mac] = session_conn
+
+        with (
+            patch.object(manager, "read_firmware_version", return_value="not-a-version"),
+            caplog.at_level("WARNING"),
+        ):
+            result = await manager._push_config_to_device(mac)
+
+        assert result is True
+        session_conn.async_push_config.assert_not_awaited()
+        assert any("not-a-version" in rec.message for rec in caplog.records)
+
+    async def test_push_config_returns_false_when_firmware_unknown(
+        self, hass: HomeAssistant, store: EPPGridStore, manager: DeviceManager
+    ) -> None:
+        """If the firmware_version sensor isn't readable yet (transient race
+        on connect), return False so the caller's backoff retries once the
+        sensor populates — distinct from the 'incompatible' skip path which
+        returns True to suppress retries."""
+        mac = "AA:BB:CC:DD:EE:FF"
+        store.devices[mac] = {"calibration": {"perspective": [1.0] * 8}}
+        manager.devices[mac] = ManagedDevice(mac=mac, name="EPP", host="192.168.1.50")
+
+        session_conn = MagicMock()
+        session_conn.connected = True
+        session_conn.async_push_config = AsyncMock()
+        manager._active_connections[mac] = session_conn
+
+        with patch.object(manager, "read_firmware_version", return_value=None):
+            result = await manager._push_config_to_device(mac)
+
+        assert result is False
+        session_conn.async_push_config.assert_not_awaited()
+
+    async def test_push_config_proceeds_when_firmware_compatible(
+        self, hass: HomeAssistant, store: EPPGridStore, manager: DeviceManager
+    ) -> None:
+        """When firmware version matches the integration's pinned version,
+        the push proceeds normally."""
+        mac = "AA:BB:CC:DD:EE:FF"
+        store.devices[mac] = {"calibration": {"perspective": [1.0] * 8}}
+        manager.devices[mac] = ManagedDevice(mac=mac, name="EPP", host="192.168.1.50")
+
+        session_conn = MagicMock()
+        session_conn.connected = True
+        session_conn.raw_target_subs = 0
+        session_conn.grid_target_subs = 0
+        session_conn.async_push_config = AsyncMock()
+        session_conn.async_execute_service = AsyncMock()
+        session_conn.async_fetch_build_flags = AsyncMock(return_value={})
+        manager._active_connections[mac] = session_conn
+
+        with patch.object(manager, "read_firmware_version", return_value=FIRMWARE_VERSION):
+            result = await manager._push_config_to_device(mac)
+
+        assert result is True
+        session_conn.async_push_config.assert_awaited_once()
 
     async def test_on_device_available_retries_with_backoff(self, hass: HomeAssistant, manager: DeviceManager) -> None:
         """A failing first push retries with bounded exponential backoff
@@ -5791,9 +5950,12 @@ class TestBuildFlags:
         mock_conn.async_fetch_build_flags = AsyncMock(return_value=expected_flags)
         mock_conn.async_disconnect = AsyncMock()
 
-        with patch(
-            "custom_components.eppgrid.device_manager.DeviceConnection",
-            return_value=mock_conn,
+        with (
+            patch.object(manager, "read_firmware_version", return_value=FIRMWARE_VERSION),
+            patch(
+                "custom_components.eppgrid.device_manager.DeviceConnection",
+                return_value=mock_conn,
+            ),
         ):
             result = await manager._push_config_to_device(mac)
 
@@ -5820,7 +5982,8 @@ class TestBuildFlags:
         session_conn.async_fetch_build_flags = AsyncMock(return_value=expected_flags)
         manager._active_connections[mac] = session_conn
 
-        result = await manager._push_config_to_device(mac)
+        with patch.object(manager, "read_firmware_version", return_value=FIRMWARE_VERSION):
+            result = await manager._push_config_to_device(mac)
 
         assert result is True
         session_conn.async_fetch_build_flags.assert_awaited_once()
@@ -5841,9 +6004,12 @@ class TestBuildFlags:
         mock_conn.async_fetch_build_flags = AsyncMock(return_value={})
         mock_conn.async_disconnect = AsyncMock()
 
-        with patch(
-            "custom_components.eppgrid.device_manager.DeviceConnection",
-            return_value=mock_conn,
+        with (
+            patch.object(manager, "read_firmware_version", return_value=FIRMWARE_VERSION),
+            patch(
+                "custom_components.eppgrid.device_manager.DeviceConnection",
+                return_value=mock_conn,
+            ),
         ):
             await manager._push_config_to_device(mac)
             # second save — must not re-fetch
@@ -5915,7 +6081,8 @@ class TestBuildFlags:
         session_conn.async_fetch_build_flags = AsyncMock(return_value={})
         manager._active_connections[mac] = session_conn
 
-        result = await manager._push_config_to_device(mac)
+        with patch.object(manager, "read_firmware_version", return_value=FIRMWARE_VERSION):
+            result = await manager._push_config_to_device(mac)
 
         assert result is True
         session_conn.async_fetch_build_flags.assert_not_awaited()
@@ -5937,9 +6104,12 @@ class TestBuildFlags:
         mock_conn.async_fetch_build_flags = AsyncMock(return_value={})
         mock_conn.async_disconnect = AsyncMock()
 
-        with patch(
-            "custom_components.eppgrid.device_manager.DeviceConnection",
-            return_value=mock_conn,
+        with (
+            patch.object(manager, "read_firmware_version", return_value=FIRMWARE_VERSION),
+            patch(
+                "custom_components.eppgrid.device_manager.DeviceConnection",
+                return_value=mock_conn,
+            ),
         ):
             result = await manager._push_config_to_device(mac)
 

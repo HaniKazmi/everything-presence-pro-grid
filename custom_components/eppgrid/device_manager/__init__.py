@@ -24,6 +24,7 @@ from homeassistant.helpers.event import async_call_later
 
 from ..const import EPP_MANUFACTURER
 from ..const import EPP_MODEL
+from ..const import FIRMWARE_VERSION
 from ..const import MAX_ZONES
 from ..const import empty_zone_slots
 from ..storage import EPPGridStore
@@ -1001,6 +1002,40 @@ class DeviceManager:
         dev = self.devices.get(mac)
         if dev is None or dev.host is None:
             return False
+
+        # Gate on firmware compatibility: the wire format for zones,
+        # calibration, and pipeline can change between firmware versions,
+        # and pushing a stale-shaped payload to a mismatched firmware
+        # risks the device interpreting fields incorrectly. The Repairs
+        # flow surfaces a fixable issue so the user can OTA from the UI;
+        # meanwhile the device keeps running on its NVS-persisted config.
+        fw_ver = self.read_firmware_version(dev.device_id)
+        if fw_ver is None:
+            # Sensor not yet readable — common transient race during the
+            # device's initial reconnect (firmware_version arrives a beat
+            # after the first online entity). Return False so the caller's
+            # bounded backoff retries once the sensor populates; if it
+            # never does, the backoff gives up after 9s.
+            _LOGGER.debug("Skipping push to %s: firmware_version not yet readable", mac)
+            return False
+        status = _compare_firmware_version(fw_ver)
+        if status != "compatible":
+            reason = (
+                "behind" if status == "firmware_behind" else "ahead" if status == "firmware_ahead" else "unparseable"
+            )
+            _LOGGER.warning(
+                "Skipping config push to %s (%s): device firmware %s is %s the integration's pinned %s. "
+                "Device retains its persisted settings; OTA from Repairs to apply new config.",
+                dev.name,
+                mac,
+                fw_ver,
+                reason,
+                FIRMWARE_VERSION,
+            )
+            # Return True so _on_device_available's backoff doesn't retry —
+            # the version won't change without an OTA, which goes through a
+            # full offline→online cycle that resets _pushing.
+            return True
 
         # Prefer existing session connection (avoids ESP32 concurrent connection limit)
         session_conn = self.get_session(mac)
