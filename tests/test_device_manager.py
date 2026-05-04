@@ -1182,6 +1182,232 @@ class TestDeviceManager:
         # Clean up so the test's own teardown is leak-free.
         await manager.async_stop()
 
+    async def test_async_stop_awaits_pending_tasks(self, hass: HomeAssistant, manager: DeviceManager) -> None:
+        """Tasks spawned by event handlers are tracked and awaited by async_stop
+        so they don't leak past the config entry's lifetime."""
+        completed = asyncio.Event()
+
+        async def slow_work():
+            await asyncio.sleep(0.01)
+            completed.set()
+
+        manager._spawn(slow_work())
+        assert manager._pending_tasks
+
+        await manager.async_stop()
+        assert completed.is_set()
+        assert not manager._pending_tasks
+
+    async def test_async_stop_disconnects_in_parallel_with_timeout(
+        self, hass: HomeAssistant, manager: DeviceManager
+    ) -> None:
+        """A device whose disconnect hangs must not block the shutdown of others.
+        async_stop must time out on hung disconnects (return_exceptions style)
+        and continue clearing local state."""
+        # Two connections: one hangs, one returns immediately.
+        fast = MagicMock()
+        fast.async_disconnect = AsyncMock()
+        fast.connected = True
+
+        hung = MagicMock()
+        hung.connected = True
+
+        async def hang(*_a, **_kw):
+            await asyncio.sleep(60)
+
+        hung.async_disconnect = AsyncMock(side_effect=hang)
+
+        manager._active_connections = {"AA:BB:CC:DD:EE:01": fast, "AA:BB:CC:DD:EE:02": hung}
+
+        # Set per-instance timeout very short for the test so the outer
+        # wait_for doesn't trip first.
+        manager._disconnect_timeout = 0.1
+        await asyncio.wait_for(manager.async_stop(), timeout=2.0)
+
+        fast.async_disconnect.assert_awaited_once()
+        assert manager._active_connections == {}
+
+    async def test_async_stop_bounds_pending_tasks_drain(self, hass: HomeAssistant, manager: DeviceManager) -> None:
+        """A hung tracked task (e.g. _on_device_available looping on
+        retries) must not block unload. async_stop wraps the
+        _pending_tasks drain in wait_for and cancels survivors."""
+
+        async def hang() -> None:
+            try:
+                await asyncio.sleep(60)
+            except asyncio.CancelledError:
+                # Simulate a task that swallows cancellation gracefully.
+                raise
+
+        manager._spawn(hang())
+        assert manager._pending_tasks
+        manager._stop_timeout = 0.1
+        # Whole stop must complete within a generous bound — the
+        # internal timeout is 0.1, plus a small post-cancel settle.
+        await asyncio.wait_for(manager.async_stop(), timeout=2.0)
+        assert not manager._pending_tasks
+
+    async def test_async_stop_bounds_pending_closes_drain(self, hass: HomeAssistant, manager: DeviceManager) -> None:
+        """A schedule_close_session task whose disconnect hangs must
+        not block unload. async_stop bounds the _pending_closes drain
+        with the same wait_for + cancel-survivors logic."""
+        manager.devices["AA:BB:CC:DD:EE:FF"] = ManagedDevice(mac="AA:BB:CC:DD:EE:FF", name="EPP", host="192.168.1.50")
+
+        existing = MagicMock()
+        existing.connected = True
+
+        async def hang() -> None:
+            await asyncio.sleep(60)
+
+        existing.async_disconnect = AsyncMock(side_effect=hang)
+        manager._active_connections["AA:BB:CC:DD:EE:FF"] = existing
+
+        manager.schedule_close_session("AA:BB:CC:DD:EE:FF")
+        assert manager._pending_closes
+
+        manager._stop_timeout = 0.1
+        manager._disconnect_timeout = 0.1
+        await asyncio.wait_for(manager.async_stop(), timeout=2.0)
+        assert manager._pending_closes == {}
+
+    async def test_async_stop_force_releases_on_disconnect_timeout(
+        self, hass: HomeAssistant, manager: DeviceManager
+    ) -> None:
+        """When async_disconnect hangs past _disconnect_timeout,
+        async_stop must call _release_references() locally so the
+        manager doesn't keep a phantom-connected DeviceConnection alive
+        after stop returns. aioesphomeapi's _on_stop only fires after
+        client.disconnect() finishes, so a cancelled wait_for would
+        otherwise leave the connection wrapper half-initialised."""
+        hung = MagicMock()
+        hung.connected = True
+        hung._host = "192.168.1.50"
+        hung._release_references = MagicMock()
+
+        async def hang(*_a, **_kw) -> None:
+            await asyncio.sleep(60)
+
+        hung.async_disconnect = AsyncMock(side_effect=hang)
+
+        manager._active_connections = {"AA:BB:CC:DD:EE:01": hung}
+        manager._disconnect_timeout = 0.05
+
+        await asyncio.wait_for(manager.async_stop(), timeout=2.0)
+
+        hung._release_references.assert_called_once()
+        assert manager._active_connections == {}
+
+    async def test_async_stop_clears_entry_update_unsubs_in_phase_one(
+        self, hass: HomeAssistant, manager: DeviceManager
+    ) -> None:
+        """``_entry_update_unsubs`` must be cleared in Phase 1, BEFORE
+        the task drain. Otherwise the listeners stay live during Phase 1
+        and 2: a concurrent ``hass.config_entries.async_update_entry()``
+        could fire ``_on_esphome_entry_updated`` against a manager
+        that's already half-shut.
+
+        The matching invariant — that an in-flight ``async_discover``
+        can't re-register a freshly-cleared listener — is held by the
+        ``_stopping`` flag, verified separately by
+        ``test_async_stop_blocks_new_entry_listener_registration``.
+        """
+        events: list[str] = []
+        unsub_called = MagicMock(side_effect=lambda: events.append("unsub"))
+        manager._entry_update_unsubs["entry-1"] = unsub_called
+
+        async def discover_like_task() -> None:
+            # Suspend so the eager-start doesn't complete before
+            # async_stop runs Phase 1 sync code.
+            await asyncio.sleep(0)
+            events.append("task")
+
+        manager._spawn(discover_like_task())
+        await manager.async_stop()
+
+        # Phase 1 is synchronous and runs before the task drain — the
+        # unsub must fire before the task resumes from its sleep(0).
+        assert events == ["unsub", "task"], (
+            f"expected entry-update unsub to fire in Phase 1 before task drain (got {events!r})"
+        )
+        assert manager._entry_update_unsubs == {}
+
+    async def test_async_stop_blocks_new_entry_listener_registration(
+        self, hass: HomeAssistant, manager: DeviceManager
+    ) -> None:
+        """Once ``async_stop`` has begun, ``_ensure_esphome_entry_listener``
+        refuses to register new listeners — otherwise an in-flight
+        ``async_discover`` could re-attach a callback we just
+        unsubscribed in Phase 1, leaking it past stop.
+        """
+        entry = MockConfigEntry(domain="esphome", data={"host": "192.168.1.50"})
+        entry.add_to_hass(hass)
+        manager._stopping = True
+        manager._ensure_esphome_entry_listener(entry.entry_id)
+        assert entry.entry_id not in manager._entry_update_unsubs
+
+    async def test_async_stop_post_cancel_drain_is_bounded(self, hass: HomeAssistant, manager: DeviceManager) -> None:
+        """The post-cancel ``gather`` in ``async_stop._drain`` is wrapped
+        in its own ``wait_for(_stop_timeout)``. Without that bound a
+        slow-to-cooperate cancellation would extend ``async_stop`` past
+        ``_stop_timeout`` — the post-cancel gather would await the task
+        for as long as it took to settle, defeating the whole point of
+        ``_stop_timeout`` as an upper bound on the drain phase.
+
+        We verify the bound by patching ``asyncio.gather`` (used inside
+        ``_drain``) so that the SECOND gather call — the post-cancel
+        one — surfaces as a ``TimeoutError`` from ``wait_for``. If the
+        second gather is unwrapped, no ``TimeoutError`` is possible
+        and the task bound has been silently bypassed.
+        """
+        # We rely on asyncio.wait_for-vs-gather call counting in
+        # ``_drain``: gather is called once for the outer drain (which
+        # times out, triggering the cancel branch) and a second time
+        # for the post-cancel drain (which we want to bound).
+        original_gather = asyncio.gather
+        gather_calls: list[asyncio.Future] = []
+
+        def hang_second_gather(*args, **kwargs):
+            # First call: real gather (outer drain). Second call onward:
+            # an awaitable that never completes — the only way out of
+            # the inner wait_for is via its timeout. If the production
+            # code does NOT wrap in wait_for, async_stop hangs forever
+            # and the outer wait_for(timeout=2.0) trips, raising
+            # TimeoutError out of async_stop.
+            if len(gather_calls) == 0:
+                gather_calls.append(original_gather(*args, **kwargs))
+                return gather_calls[0]
+            never = asyncio.get_event_loop().create_future()
+            gather_calls.append(never)
+            return never
+
+        async def cooperative_hang() -> None:
+            try:
+                await asyncio.sleep(60)
+            except asyncio.CancelledError:
+                # Honour cancel — the outer drain's gather will collect
+                # this and return cleanly. The bound we're testing is
+                # specifically the inner gather.
+                raise
+
+        manager._spawn(cooperative_hang())
+        manager._stop_timeout = 0.1
+
+        with patch.object(asyncio, "gather", side_effect=hang_second_gather):
+            # If the production code wraps the inner gather in
+            # ``wait_for(_stop_timeout)``, async_stop completes within
+            # ~0.2s (outer drain timeout + inner suppressed timeout).
+            # If unwrapped, async_stop hangs on the never-completing
+            # second gather and the outer wait_for(2.0) trips.
+            await asyncio.wait_for(manager.async_stop(), timeout=2.0)
+
+        # Sanity: both the outer and inner gather paths were exercised.
+        # Phase 2 invokes _drain twice (pending_tasks, pending_closes);
+        # the first _drain hits the cancel branch and calls gather a
+        # second time, which is the call the bound wraps.
+        assert len(gather_calls) >= 2, (
+            f"expected at least 2 gather calls (outer drain + bounded inner), got {len(gather_calls)}"
+        )
+
     async def test_read_current_connection_count_returns_value(
         self, hass: HomeAssistant, manager: DeviceManager
     ) -> None:
@@ -1254,6 +1480,18 @@ class TestDeviceManager:
 
         result = manager.read_current_connection_count(device.id)
         assert result is None
+
+    async def test_manage_log_subscription_does_not_mutate_global_logger_level(
+        self, hass: HomeAssistant, manager: DeviceManager
+    ) -> None:
+        """App code must not override the user's logger: config — firmware
+        filtering already drops messages we don't want to see in HA."""
+        from custom_components.eppgrid.device_manager._connection import _DEVICE_LOGGER
+
+        pre = _DEVICE_LOGGER.level
+        conn = MagicMock()
+        DeviceManager._manage_log_subscription(conn, {"log_levels": {"general": "Debug"}})
+        assert _DEVICE_LOGGER.level == pre
 
 
 # ---------------------------------------------------------------------------
@@ -3533,6 +3771,34 @@ class TestEventCallbacks:
         assert result is False
         assert mac not in manager._active_connections
 
+    async def test_on_device_available_retries_with_backoff(self, hass: HomeAssistant, manager: DeviceManager) -> None:
+        """A failing first push retries with bounded exponential backoff
+        (3 attempts, capped) and re-checks availability between them."""
+        mac = "AA:BB:CC:DD:EE:FF"
+        manager.devices[mac] = ManagedDevice(mac=mac, name="EPP", host="192.168.1.50")
+
+        attempts = 0
+
+        async def push(_mac: str) -> bool:
+            nonlocal attempts
+            attempts += 1
+            return attempts >= 3  # succeed on the third call
+
+        with (
+            patch.object(manager, "_push_config_to_device", side_effect=push),
+            patch.object(manager, "async_close_session", new_callable=AsyncMock) as mock_close,
+            patch.object(manager, "_is_device_available", return_value=True),
+            patch("custom_components.eppgrid.device_manager.asyncio.sleep", new=AsyncMock()),
+        ):
+            await manager._on_device_available(mac)
+
+        assert attempts == 3
+        # Session is closed exactly once — before the backoff loop, not
+        # on every iteration. Closing on every retry would tear down a
+        # user-opened panel session that arrived during the 1s/3s/9s
+        # window, surfacing as a flaky reconnect.
+        mock_close.assert_awaited_once_with(mac)
+
     async def test_on_device_available_retries_after_stale_connection(
         self, hass: HomeAssistant, store: EPPGridStore, manager: DeviceManager
     ) -> None:
@@ -3548,20 +3814,22 @@ class TestEventCallbacks:
                 manager, "_push_config_to_device", new_callable=AsyncMock, side_effect=push_results
             ) as mock_push,
             patch.object(manager, "async_close_session", new_callable=AsyncMock) as mock_close,
+            patch.object(manager, "_is_device_available", return_value=True),
             patch("custom_components.eppgrid.device_manager.asyncio.sleep", new_callable=AsyncMock) as mock_sleep,
         ):
             await manager._on_device_available(mac)
 
         assert mock_push.await_count == 2
         mock_close.assert_awaited_once_with(mac)
-        mock_sleep.assert_awaited_once_with(5)
+        # First retry uses the smallest delay in the backoff schedule (1s).
+        mock_sleep.assert_awaited_once_with(1.0)
         # Guard stays set on success (not discarded)
         assert mac in manager._pushing
 
-    async def test_on_device_available_clears_guard_after_both_failures(
+    async def test_on_device_available_clears_guard_after_all_failures(
         self, hass: HomeAssistant, store: EPPGridStore, manager: DeviceManager
     ) -> None:
-        """_on_device_available clears _pushing guard only after both attempts fail."""
+        """_on_device_available clears _pushing guard only after all attempts fail."""
         mac = "AA:BB:CC:DD:EE:FF"
         store.devices[mac] = {"calibration": {"perspective": [1.0] * 8}}
         manager.devices[mac] = ManagedDevice(mac=mac, name="EPP", host="192.168.1.50")
@@ -3569,12 +3837,41 @@ class TestEventCallbacks:
 
         with (
             patch.object(manager, "_push_config_to_device", new_callable=AsyncMock, return_value=False) as mock_push,
+            patch.object(manager, "async_close_session", new_callable=AsyncMock) as mock_close,
+            patch.object(manager, "_is_device_available", return_value=True),
+            patch("custom_components.eppgrid.device_manager.asyncio.sleep", new_callable=AsyncMock) as mock_sleep,
+        ):
+            await manager._on_device_available(mac)
+
+        # Initial push + 3 retries = 4 total
+        assert mock_push.await_count == 4
+        # 3 backoff sleeps with the bounded schedule.
+        assert [c.args for c in mock_sleep.await_args_list] == [(1.0,), (3.0,), (9.0,)]
+        # Session torn down ONCE before the loop, not on every iteration —
+        # so a user-reconnect mid-backoff isn't flushed by the next retry.
+        mock_close.assert_awaited_once_with(mac)
+        assert mac not in manager._pushing
+
+    async def test_on_device_available_aborts_when_offline_during_retry(
+        self, hass: HomeAssistant, manager: DeviceManager
+    ) -> None:
+        """If the device drops offline mid-retry, abort and clear the guard."""
+        mac = "AA:BB:CC:DD:EE:FF"
+        manager.devices[mac] = ManagedDevice(mac=mac, name="EPP", host="192.168.1.50")
+        manager._pushing.add(mac)
+
+        # First availability check happens after the first sleep — return False
+        # to simulate the device dropping offline during the retry window.
+        with (
+            patch.object(manager, "_push_config_to_device", new_callable=AsyncMock, return_value=False) as mock_push,
             patch.object(manager, "async_close_session", new_callable=AsyncMock),
+            patch.object(manager, "_is_device_available", return_value=False),
             patch("custom_components.eppgrid.device_manager.asyncio.sleep", new_callable=AsyncMock),
         ):
             await manager._on_device_available(mac)
 
-        assert mock_push.await_count == 2
+        # Initial push only — bailed before any retry push.
+        assert mock_push.await_count == 1
         assert mac not in manager._pushing
 
     async def test_on_device_available_skips_push_when_entity_update_guard_set(
@@ -3596,6 +3893,42 @@ class TestEventCallbacks:
         # Guard stays set — cleared by 60-second timer, not by skip path
         assert mac in manager._entity_update_macs
         assert mac in manager._pushing
+
+    async def test_on_device_available_does_not_close_user_session_during_backoff(
+        self, hass: HomeAssistant, manager: DeviceManager
+    ) -> None:
+        """Closing the session on every retry tears down a user-opened
+        session if they reconnect mid-backoff. Close only once, before
+        the backoff loop — even when the loop runs through several
+        iterations before succeeding."""
+        mac = "AA:BB:CC:DD:EE:FF"
+        manager.devices[mac] = ManagedDevice(mac=mac, name="EPP", host="192.168.1.50")
+
+        close_count = 0
+
+        async def fake_close(_mac: str) -> None:
+            nonlocal close_count
+            close_count += 1
+
+        push_attempts = 0
+
+        async def fake_push(_mac: str) -> bool:
+            nonlocal push_attempts
+            push_attempts += 1
+            # First push fails; second push (first retry) also fails;
+            # third push succeeds. With the broken code this would close
+            # 3 times total (initial fail + 2 retry tops). With the fix it's 1.
+            return push_attempts >= 3
+
+        with (
+            patch.object(manager, "_push_config_to_device", side_effect=fake_push),
+            patch.object(manager, "async_close_session", side_effect=fake_close),
+            patch.object(manager, "_is_device_available", return_value=True),
+            patch("custom_components.eppgrid.device_manager.asyncio.sleep", new=AsyncMock()),
+        ):
+            await manager._on_device_available(mac)
+
+        assert close_count == 1, f"session must be closed exactly once before the loop (got {close_count})"
 
     async def test_on_device_removed_cleans_up(self, hass: HomeAssistant, manager: DeviceManager) -> None:
         """Device registry removal cleans up stored settings and runtime state."""
@@ -4212,6 +4545,130 @@ class TestEventCallbacks:
 
         # Listener was unsubscribed — host in our cache stays at the old value.
         assert manager.devices[mac].host == "192.168.1.50"
+
+    async def test_on_esphome_entry_updated_safe_under_concurrent_mutation(
+        self, hass: HomeAssistant, manager: DeviceManager
+    ) -> None:
+        """``_on_esphome_entry_updated`` must iterate a frozen snapshot of
+        the device map — otherwise a concurrent mutator that runs while
+        the handler is awaiting ``async_close_session`` would invalidate
+        the live iterator.
+
+        We do NOT pin the iteration phrase via ``inspect.getsource`` —
+        equivalent safe refactors (``tuple(...)``, a local ``snapshot =
+        list(self.devices.items())``, ``for k in list(self.devices):``)
+        are all acceptable.
+
+        The contract a snapshot guarantees is: by the time the handler
+        first awaits, every device pair has already been observed. The
+        broken alternative (a live ``dict_items`` view) holds an
+        iterator that hasn't been fully consumed — the iterator's
+        ``__next__`` could still fire after the await, and a concurrent
+        mutator landing during that await would crash with
+        ``RuntimeError: dictionary changed size during iteration``.
+
+        We probe BOTH halves:
+
+        1. Install a ``dict`` whose ``items()`` returns a generator
+           that records when each pair is consumed and raises
+           ``RuntimeError`` on the next ``__next__`` if the dict has
+           been mutated. A faithful snapshot consumes ALL pairs before
+           the handler suspends; a live view leaves pairs unconsumed.
+        2. Pause the handler at its first ``await`` and verify the
+           generator has been fully exhausted (i.e. all three device
+           pairs were consumed) — this is the load-bearing assertion
+           that fails under live ``self.devices.items()``.
+        3. Mutate the dict while the handler is suspended and verify
+           it completes cleanly. With a snapshot the for-loop is over
+           a frozen list, so the mutation is harmless; with a live
+           view the post-await ``__next__`` would raise.
+        """
+        entry = MockConfigEntry(domain="esphome", data={"host": "192.168.1.99"})
+        entry.add_to_hass(hass)
+
+        consumed: list[str] = []
+
+        class _SnapshotProbingDict(dict):
+            def items(self):
+                snapshot_at_call = list(dict.items(self))
+                live = self
+                size_at_call = len(snapshot_at_call)
+
+                def _gen():
+                    for pair in snapshot_at_call:
+                        # Mirror CPython's live-iteration semantics: if
+                        # the dict has changed size since this generator
+                        # was created, raise on the next ``__next__``.
+                        if len(live) != size_at_call:
+                            raise RuntimeError("dictionary changed size during iteration")
+                        consumed.append(pair[0])
+                        yield pair
+
+                return _gen()
+
+        det = _SnapshotProbingDict()
+        # Layout: matching device FIRST so the body's await fires
+        # immediately after one consumed pair. Two non-matching devices
+        # AFTER it so a faithful snapshot will have consumed all three
+        # by the time the for-loop's iterator was drained into ``list()``;
+        # a live view would only have consumed one pair and would have
+        # to keep iterating after the await.
+        det["AA:BB:CC:DD:EE:01"] = ManagedDevice(
+            mac="AA:BB:CC:DD:EE:01",
+            name="MATCHING",
+            host="192.168.1.50",
+            esphome_config_entry_id=entry.entry_id,
+        )
+        det["AA:BB:CC:DD:EE:02"] = ManagedDevice(
+            mac="AA:BB:CC:DD:EE:02",
+            name="OTHER1",
+            host="10.0.0.1",
+            esphome_config_entry_id="other-entry-id-1",
+        )
+        det["AA:BB:CC:DD:EE:03"] = ManagedDevice(
+            mac="AA:BB:CC:DD:EE:03",
+            name="OTHER2",
+            host="10.0.0.2",
+            esphome_config_entry_id="other-entry-id-2",
+        )
+        manager.devices = det  # type: ignore[assignment]
+        manager._active_connections["AA:BB:CC:DD:EE:01"] = MagicMock()
+
+        release = asyncio.Event()
+        close_started = asyncio.Event()
+
+        async def slow_close(_mac: str) -> None:
+            close_started.set()
+            await release.wait()
+
+        with patch.object(manager, "async_close_session", side_effect=slow_close):
+            handler_task = asyncio.create_task(manager._on_esphome_entry_updated(hass, entry))
+            await asyncio.wait_for(close_started.wait(), timeout=1.0)
+
+            # Load-bearing assertion: by the time the handler is awaiting
+            # async_close_session, the iteration must have already
+            # consumed every device pair — that's the snapshot contract.
+            # A live ``self.devices.items()`` view would have stopped at
+            # the matching device (one consumed), leaving the next two
+            # pairs to be consumed AFTER the await — which would raise
+            # because of the mutation we're about to perform.
+            assert consumed == [
+                "AA:BB:CC:DD:EE:01",
+                "AA:BB:CC:DD:EE:02",
+                "AA:BB:CC:DD:EE:03",
+            ], (
+                "expected the iteration target to be a fully-materialised "
+                f"snapshot before the first await; got {consumed!r} — "
+                "production code must wrap self.devices.items() in list()/"
+                "tuple()/local snapshot rather than holding a live view."
+            )
+
+            # Mutate while the handler is suspended. Snapshot iteration
+            # is unaffected (frozen list); live iteration would crash
+            # on the next __next__.
+            manager.devices.pop("AA:BB:CC:DD:EE:02", None)
+            release.set()
+            await asyncio.wait_for(handler_task, timeout=1.0)
 
 
 # ---------------------------------------------------------------------------

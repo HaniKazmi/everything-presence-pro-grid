@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import logging
+from collections.abc import Coroutine
 from dataclasses import dataclass
 from typing import Any
 
@@ -26,7 +27,6 @@ from ..const import EPP_MODEL
 from ..const import MAX_ZONES
 from ..const import empty_zone_slots
 from ..storage import EPPGridStore
-from ._connection import _DEVICE_LOGGER
 from ._connection import DeviceConnection
 from ._helpers import ZONE_TYPE_DEFAULTS as ZONE_TYPE_DEFAULTS  # re-export for tests
 from ._helpers import _compare_firmware_version
@@ -56,6 +56,15 @@ class ManagedDevice:
 
 class DeviceManager:
     """Discovers ESPHome zone engine devices, manages connections and config."""
+
+    # Per-call disconnect timeout used by async_stop. Class-level so tests
+    # can shorten it via instance attribute without subclassing.
+    _disconnect_timeout: float = 5.0
+    # Bound on the task-drain phase of async_stop. A hung
+    # _on_device_available / _on_device_removed / async_discover task
+    # would otherwise block unload indefinitely; on timeout the surviving
+    # tasks are cancelled and we move on.
+    _stop_timeout: float = 5.0
 
     def __init__(self, hass: HomeAssistant, store: EPPGridStore) -> None:
         self._hass = hass
@@ -98,6 +107,15 @@ class DeviceManager:
         self._device_list_callbacks: list[Any] = []
         # Unsub callables for ESPHome config-entry update listeners, keyed by entry_id
         self._entry_update_unsubs: dict[str, Any] = {}
+        # Tracks fire-and-forget tasks scheduled by event handlers so
+        # async_stop can drain them. Tasks self-remove via add_done_callback
+        # so the set stays bounded under steady state.
+        self._pending_tasks: set[asyncio.Task] = set()
+        # Flipped at the very top of async_stop. Guards
+        # `_ensure_esphome_entry_listener` so an in-flight async_discover
+        # can't re-register a listener after Phase 1 has already cleared
+        # `_entry_update_unsubs`.
+        self._stopping: bool = False
 
     @callback
     def on_device_list_changed(self, cb: Any) -> Any:
@@ -119,6 +137,18 @@ class DeviceManager:
                 cb()
             except Exception:
                 _LOGGER.exception("Device list change callback failed")
+
+    def _spawn(self, coro: Coroutine[Any, Any, Any]) -> asyncio.Task:
+        """Schedule a fire-and-forget coroutine and track the task.
+
+        Tracking is required so async_stop can await in-flight work
+        before tearing down — HA 2026.4+ pytest fails the test on any
+        task that survives the config entry.
+        """
+        task = self._hass.async_create_task(coro)
+        self._pending_tasks.add(task)
+        task.add_done_callback(self._pending_tasks.discard)
+        return task
 
     async def async_start(self) -> None:
         """Start discovery and event listeners."""
@@ -149,7 +179,7 @@ class DeviceManager:
                     ):
                         continue
                 self._pushing.add(mac)
-                self._hass.async_create_task(self._on_device_available(mac))
+                self._spawn(self._on_device_available(mac))
 
     @callback
     def _schedule_entity_update_clear(self, mac: str, delay: float = 60.0) -> None:
@@ -177,7 +207,38 @@ class DeviceManager:
         self._entity_update_clear_cancels.pop(mac, None)
 
     async def async_stop(self) -> None:
-        """Stop listeners and close all connections."""
+        """Stop listeners and close all connections.
+
+        Order matters:
+
+        1. Set ``_stopping`` so ``_ensure_esphome_entry_listener`` refuses
+           to re-register listeners, then cancel event/state listeners
+           and drop ``_entry_update_unsubs`` synchronously so no NEW work
+           is spawned (and no entry-update callbacks fire) while we drain.
+        2. Drain in-flight tasks (``_pending_tasks`` then
+           ``_pending_closes``) under a bounded ``wait_for``. The tracked
+           tasks (``_on_device_available``, ``_on_device_removed``,
+           ``async_discover``, ``schedule_close_session``) all perform
+           network I/O with no internal stop-time timeout, so a hung
+           device must not block unload — survivors are cancelled and
+           awaited again to settle.
+        3. Disconnect all active connections in parallel, each bounded by
+           ``_disconnect_timeout``. On timeout we force the local cleanup
+           via ``_release_references()`` because aioesphomeapi's
+           ``_on_stop`` only fires after ``client.disconnect()`` finishes
+           — a cancelled ``wait_for`` would otherwise leave the
+           ``DeviceConnection`` half-initialised.
+        """
+        self._stopping = True
+
+        # Phase 1: stop new work being spawned. With ``_stopping`` set,
+        # any in-flight ``async_discover`` that resumes during the task
+        # drain will hit the guard in ``_ensure_esphome_entry_listener``
+        # and decline to re-register — so it's safe to clear the
+        # entry-update unsubs now, BEFORE the drain. Doing so closes the
+        # window where a concurrent ``hass.config_entries.async_update_entry``
+        # could fire ``_on_esphome_entry_updated`` against a manager
+        # that's already half-shut.
         for unsub in self._unsub_listeners:
             unsub()
         self._unsub_listeners.clear()
@@ -187,14 +248,71 @@ class DeviceManager:
         for cancel in self._entity_update_clear_cancels.values():
             cancel()
         self._entity_update_clear_cancels.clear()
-        # Drain any in-flight close tasks scheduled via schedule_close_session
-        # so a slow disconnect can't outlive teardown and keep running against
-        # a stopped manager.
-        if self._pending_closes:
-            await asyncio.gather(*self._pending_closes.values(), return_exceptions=True)
-            self._pending_closes.clear()
-        for conn in self._active_connections.values():
-            await conn.async_disconnect()
+
+        # Phase 2: drain tracked tasks with a bounded timeout. _pending_tasks
+        # is awaited before _pending_closes because state-change callbacks
+        # may schedule fresh closes onto _pending_closes; running tasks
+        # first lets those schedule first, then the closes drain in one go.
+        async def _drain(tasks: list[asyncio.Task], label: str) -> None:
+            if not tasks:
+                return
+            try:
+                await asyncio.wait_for(
+                    asyncio.gather(*tasks, return_exceptions=True),
+                    timeout=self._stop_timeout,
+                )
+            except TimeoutError:
+                still_running = [t for t in tasks if not t.done()]
+                _LOGGER.warning(
+                    "Timed out draining %s on stop; cancelling %d remaining task(s)",
+                    label,
+                    len(still_running),
+                )
+                for t in still_running:
+                    t.cancel()
+                # Give cancelled tasks a tick to settle. Bound this too —
+                # a task that suppresses CancelledError would otherwise
+                # block async_stop indefinitely, defeating _stop_timeout
+                # as a hard upper bound.
+                with contextlib.suppress(TimeoutError):
+                    await asyncio.wait_for(
+                        asyncio.gather(*still_running, return_exceptions=True),
+                        timeout=self._stop_timeout,
+                    )
+                still_alive = sum(1 for t in still_running if not t.done())
+                if still_alive:
+                    _LOGGER.error(
+                        "%d %s task(s) ignored cancellation on stop; leaking",
+                        still_alive,
+                        label,
+                    )
+
+        await _drain(list(self._pending_tasks), "_pending_tasks")
+        await _drain(list(self._pending_closes.values()), "_pending_closes")
+        self._pending_closes.clear()
+
+        # Phase 3: bounded parallel disconnect.
+        async def _safe_disconnect(conn: DeviceConnection) -> None:
+            try:
+                await asyncio.wait_for(conn.async_disconnect(), timeout=self._disconnect_timeout)
+            except TimeoutError:
+                _LOGGER.warning(
+                    "Timed out disconnecting from %s; forcing local cleanup",
+                    conn._host,
+                )
+                # wait_for cancelled async_disconnect mid-flight, so
+                # _on_stop won't run; release references locally to
+                # avoid a phantom-connected wrapper.
+                conn._release_references()
+            except Exception:
+                _LOGGER.warning("Error disconnecting from %s", conn._host, exc_info=True)
+                conn._release_references()
+
+        if self._active_connections:
+            await asyncio.gather(
+                *(_safe_disconnect(c) for c in self._active_connections.values()),
+                return_exceptions=True,
+            )
         self._active_connections.clear()
 
     async def async_trigger_ota(self, mac: str) -> None:
@@ -495,7 +613,7 @@ class DeviceManager:
                 mac = _extract_mac(device)
                 if mac and mac in self.devices and self.devices[mac].device_id == entry.device_id:
                     return
-        self._hass.async_create_task(self.async_discover())
+        self._spawn(self.async_discover())
 
     @callback
     def _on_state_changed(self, event: Any) -> None:
@@ -574,13 +692,18 @@ class DeviceManager:
         # refresh.
         if mac not in self._pushing:
             self._pushing.add(mac)
-            self._hass.async_create_task(self._on_device_available(mac))
+            self._spawn(self._on_device_available(mac))
         else:
             self._fire_device_list_changed()
 
     @callback
     def _ensure_esphome_entry_listener(self, entry_id: str | None) -> None:
         """Register an ESPHome config-entry update listener once per entry."""
+        # Refuse to register during shutdown — async_stop already cleared
+        # `_entry_update_unsubs` in Phase 1, and re-registering here would
+        # leak the listener past stop.
+        if self._stopping:
+            return
         if entry_id is None or entry_id in self._entry_update_unsubs:
             return
         entry = self._hass.config_entries.async_get_entry(entry_id)
@@ -591,7 +714,7 @@ class DeviceManager:
     async def _on_esphome_entry_updated(self, hass: HomeAssistant, entry: ConfigEntry) -> None:
         """Pick up IP changes from the ESPHome integration without an HA restart."""
         new_host = entry.data.get("host")
-        for mac, dev in self.devices.items():
+        for mac, dev in list(self.devices.items()):
             if dev.esphome_config_entry_id != entry.entry_id:
                 continue
             if dev.host == new_host:
@@ -618,7 +741,7 @@ class DeviceManager:
             return
 
         if action == "remove":
-            self._hass.async_create_task(self._on_device_removed(mac))
+            self._spawn(self._on_device_removed(mac))
             return
 
         # Update (rename, area change, etc.) — refresh the cached friendly
@@ -697,10 +820,26 @@ class DeviceManager:
 
         _LOGGER.info("Device %s became available, pushing config", mac)
         if not await self._push_config_to_device(mac):
-            # Close stale connection and retry after device stabilises
+            # Bounded exponential backoff. Re-check availability between
+            # attempts so we don't keep hammering a device HA already
+            # knows is offline.
+            #
+            # Close the (likely-stale) session ONCE before the loop, not
+            # on every iteration: the first push failed because of that
+            # session, but subsequent retries should leave whatever
+            # session the user might have opened mid-backoff alone — the
+            # 1s/3s/9s window is long enough for a panel reconnect, and
+            # tearing it down on the next iteration would surface as a
+            # flaky reconnect.
             await self.async_close_session(mac)
-            await asyncio.sleep(5)
-            if not await self._push_config_to_device(mac):
+            for delay in (1.0, 3.0, 9.0):
+                await asyncio.sleep(delay)
+                if not self._is_device_available(mac):
+                    self._pushing.discard(mac)
+                    return
+                if await self._push_config_to_device(mac):
+                    break
+            else:
                 self._pushing.discard(mac)
 
         self._fire_device_list_changed()
@@ -723,9 +862,6 @@ class DeviceManager:
                 (esphome_level_map.get(v, LogLevel.LOG_LEVEL_WARN) for v in active_levels),
                 default=LogLevel.LOG_LEVEL_WARN,
             )
-            # Set Python logger to DEBUG so HA doesn't filter any messages;
-            # firmware-side filtering controls what actually gets sent.
-            _DEVICE_LOGGER.setLevel(logging.DEBUG)
             conn.subscribe_logs(esphome_level)
         else:
             conn.unsubscribe_logs()
