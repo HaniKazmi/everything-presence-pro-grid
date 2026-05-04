@@ -42,92 +42,96 @@ Goal: lock down trust boundaries. Single self-contained PR.
 
 ## PR 2 — Connection lifecycle & subscription leaks (backend)
 
-- [ ] **C: `async_close_session` doesn't take session lock** — [device_manager/__init__.py:706-731](custom_components/eppgrid/device_manager/__init__.py#L706-L731)
-  Acquire `_session_locks[mac]` in close path; re-check `_is_device_available(mac)` after `async_connect` returns.
+- [x] **C: `async_close_session` doesn't take session lock** — _shipped: this PR_
+  Close acquires `_session_locks[mac]` so it serializes with in-flight open. Open re-checks `_is_device_available(mac)` after `async_connect` returns and tears down the just-opened conn if the device flipped offline mid-connect.
 
-- [ ] **C: Build-flag fetch poisons cache forever on transient failure** — [_connection.py:144-164](custom_components/eppgrid/device_manager/_connection.py#L144-L164)
-  Replace `except (json.JSONDecodeError, Exception)` with specific exceptions; only cache `{}` on real "service not present", not on timeout/connection-error. Bump default timeout from 2 → 5–10s.
+- [x] **C: Build-flag fetch broad `except Exception`** — _shipped: this PR_
+  Narrowed to `_BUILD_FLAGS_TRANSIENT` / `_BUILD_FLAGS_CONNECT_TRANSIENT` tuples (Timeout, OS, Value, Runtime, ConnectionError, APIConnectionError) so unexpected programmer errors propagate instead of getting swallowed at debug level. Cache poisoning was already prevented; this is the exception-narrowing follow-up.
 
-- [ ] **C: `noise_psk` hardcoded empty** — [_connection.py:31, 50](custom_components/eppgrid/device_manager/_connection.py#L31)
-  Pull `noise_psk` from the ESPHome config entry data; pass to `DeviceConnection`.
+- [x] **C: `noise_psk` hardcoded empty** — _shipped: verified 2026-05-04_
+  All callers (`async_open_session`, `async_trigger_ota`, `_fetch_build_flags`, `_push_config_to_device`) pass `_extract_noise_psk(...)` to `DeviceConnection`.
 
-- [ ] **H: `_compare_firmware_version` swallows parse errors as `firmware_behind`** — [_helpers.py:114-129](custom_components/eppgrid/device_manager/_helpers.py#L114-L129)
-  Return `"firmware_unknown"` for unparseable versions. Don't raise repairs issue on unknown.
+- [x] **H: `_compare_firmware_version` swallows parse errors as `firmware_behind`** — _shipped: verified 2026-05-04_
+  Returns `None` on parse failure; `_sync_firmware_repair_issue` short-circuits when status is None — no false-positive repairs issue.
 
-- [ ] **H: `read_firmware_version(device_id=None)` returns `"0.0.0"` and triggers fake "behind" repairs** — [device_manager/__init__.py:242-258](custom_components/eppgrid/device_manager/__init__.py#L242-L258)
-  Return `None`; audit callers to treat None as "unknown — no issue".
+- [x] **H: `read_firmware_version` returns `"0.0.0"`** — _shipped: verified 2026-05-04_
+  Returns `None` for missing/unavailable entities; callers handle None as "unknown".
 
-- [ ] **H: Dict mutation during iteration in `_on_esphome_entry_updated`** — [device_manager/__init__.py:450-462](custom_components/eppgrid/device_manager/__init__.py#L450-L462)
-  Iterate `list(self.devices.items())`.
+- [x] **H: Dict mutation during iteration in `_on_esphome_entry_updated`** — _shipped: verified 2026-05-04_
+  Iterates `list(self.devices.items())` snapshot.
 
-- [ ] **H: Fire-and-forget tasks not tracked** — [device_manager/__init__.py:126, 355, 416, 433, 482](custom_components/eppgrid/device_manager/__init__.py)
-  Add `self._pending_tasks: set[asyncio.Task]`; `task.add_done_callback(self._pending_tasks.discard)`; await all in `async_stop`.
+- [x] **H: Fire-and-forget tasks not tracked** — _shipped: verified 2026-05-04_
+  `_spawn` helper adds tasks to `_pending_tasks` set + done-callback discard; awaited in `async_stop` Phase 2.
 
-- [ ] **H: `async_stop` disconnects sequentially with no timeout** — [device_manager/__init__.py:153-166](custom_components/eppgrid/device_manager/__init__.py#L153-L166)
-  `asyncio.gather(*..., return_exceptions=True)` with timeout.
+- [x] **H: `async_stop` disconnects sequentially with no timeout** — _shipped: verified 2026-05-04_
+  Phase 3 uses `asyncio.gather(*_safe_disconnect(...), return_exceptions=True)` with per-disconnect `_disconnect_timeout`.
 
-- [ ] **H: OTA opens a fresh `DeviceConnection` instead of reusing session** — [device_manager/__init__.py:217-240](custom_components/eppgrid/device_manager/__init__.py#L217-L240)
-  Prefer `self.get_session(mac)`; fall back to temp connection only if no session.
+- [x] **H: OTA opens a fresh `DeviceConnection` instead of reusing session** — _shipped: verified 2026-05-04_
+  `async_trigger_ota` prefers `get_session(mac)`; only falls back to fresh connection when no session exists.
 
-- [ ] **H: OTA path reaches into `conn._client` / `conn._services`** — multiple sites
-  Add `DeviceConnection.async_execute_service(name, payload, timeout=...)` and route all 4 sites through it.
+- [x] **H: OTA path reaches into `conn._client` / `conn._services`** — _shipped: verified 2026-05-04_
+  `DeviceConnection.async_execute_service` abstraction in place; OTA paths route through it.
 
-- [ ] **M: `_on_state_changed` listens to literal `"state_changed"` for entire HA bus** — [device_manager/__init__.py:104](custom_components/eppgrid/device_manager/__init__.py#L104)
-  Use `async_track_state_change_event` keyed on managed entity_ids; refresh on registry events. Use `EVENT_STATE_CHANGED` constant.
+- [x] **M: `_on_state_changed` listens to literal `"state_changed"` for entire HA bus** — _shipped: verified 2026-05-04_
+  Uses `async_track_state_change_event` keyed on the managed entity_ids list (`_refresh_state_listener`).
 
-- [ ] **M: `_on_state_changed` early-returns on `old_state is None`, missing first appearance** — `device_manager/__init__.py:362-363`
-  Treat `old_state is None` as `STATE_UNAVAILABLE` for the firmware-version transition.
+- [x] **M: `_on_state_changed` early-returns on `old_state is None`** — _shipped: verified 2026-05-04_
+  Treats `old_state is None` as `STATE_UNAVAILABLE`.
 
-- [ ] **M: `subscribe_states` race + missing exception isolation** — [_connection.py:85-100](custom_components/eppgrid/device_manager/_connection.py#L85-L100)
-  Async-lock the subscribe path; per-callback `try/except` in `_dispatch_state` (mirror `_fire_device_list_changed`).
+- [x] **M: `subscribe_states` race + missing exception isolation** — _shipped: verified 2026-05-04_
+  `_subscribe_lock` serializes subscribe path; `_dispatch_state` isolates per-callback exceptions.
 
-- [ ] **M: `_on_device_available` retry hangs without bounded backoff** — [device_manager/__init__.py:553-560](custom_components/eppgrid/device_manager/__init__.py#L553-L560)
-  Exponential backoff with max attempts; re-check device state between retries.
+- [x] **M: `_on_device_available` retry hangs without bounded backoff** — _shipped: verified 2026-05-04_
+  Bounded exponential backoff (1s/3s/9s) with availability re-check between retries.
 
-- [ ] **L: `_release_references` called twice on async_disconnect path** — [_connection.py:46-72](custom_components/eppgrid/device_manager/_connection.py#L46-L72)
-  Document idempotency or only fire from `_on_stop`.
+- [x] **L: `_release_references` called twice on async_disconnect path** — _shipped: verified 2026-05-04_
+  Single fire path via `_on_stop`; client-presence guard prevents double-release.
 
-- [ ] **L: `_DEVICE_LOGGER.setLevel(DEBUG)` global mutation** — [device_manager/__init__.py:582](custom_components/eppgrid/device_manager/__init__.py#L582)
-  Don't mutate logger from app code; let `logger:` config own it.
+- [x] **L: `_DEVICE_LOGGER.setLevel(DEBUG)` global mutation** — _shipped: verified 2026-05-04_
+  No `setLevel` mutation in app code.
 
 ---
 
 ## PR 3 — Backend cleanup, dead code, BWC removal
 
-- [ ] **H: Templates→configurations migration violates "no BWC" rule** — [storage.py:39-54](custom_components/eppgrid/storage.py#L39-L54)
-  Delete migration block + `test_storage.py` migration tests.
+- [x] **H: Templates→configurations migration violates "no BWC" rule** — _shipped: this PR_
+  Legacy `test_legacy_templates_key_is_ignored` deleted from `tests/test_storage.py`; storage.py migration block was already removed.
 
-- [ ] **H: Options flow doesn't reload config entry** — [config_flow.py:46-61](custom_components/eppgrid/config_flow.py#L46-L61), [__init__.py:37-56](custom_components/eppgrid/__init__.py#L37-L56)
-  Register `entry.add_update_listener(...)` that calls `async_reload(entry.entry_id)`; have `async_unload_entry` call `frontend.async_remove_panel` and `remove_extra_js_url`.
+- [x] **H: Options flow doesn't reload config entry** — _shipped: verified 2026-05-04_
+  `entry.add_update_listener(_async_update_listener)` registered; `async_unload_entry` removes panel + JS URL.
 
-- [ ] **H: Frontend resources accumulate across reloads** — [__init__.py:59-68](custom_components/eppgrid/__init__.py#L59-L68)
-  Track last-registered URL in `hass.data[DOMAIN+"_js_url"]`; remove old before adding new.
+- [x] **H: Frontend resources accumulate across reloads** — _shipped: verified 2026-05-04_
+  `_JS_URL_KEY` tracks last-registered URL; old removed before new added.
 
-- [ ] **M: `manifest.json` read with blocking I/O at module-import time, twice** — [diagnostics.py:17](custom_components/eppgrid/diagnostics.py#L17), [websocket_api/__init__.py:19](custom_components/eppgrid/websocket_api/__init__.py#L19)
-  Use `async_get_loaded_integration(hass, DOMAIN).version` at request time.
+- [x] **M: `manifest.json` read with blocking I/O at module-import time** — _shipped: verified 2026-05-04_
+  Both `diagnostics.py` and `websocket_api/__init__.py` use `async_get_loaded_integration(hass, DOMAIN).version` at request time.
 
-- [ ] **M: `EMPTY_ZONE_SLOTS` is module-level mutable** — [const.py:17](custom_components/eppgrid/const.py#L17)
-  Function returning fresh copy, or `MappingProxyType`.
+- [x] **M: `EMPTY_ZONE_SLOTS` is module-level mutable** — _shipped: verified 2026-05-04_
+  Replaced with `empty_zone_slots()` function returning a fresh list of fresh dicts.
 
-- [ ] **M: `_REGISTERED` private cross-module import** — [websocket_api/__init__.py:24](custom_components/eppgrid/websocket_api/__init__.py#L24)
-  Drop the guard or expose `async_unregister_websocket_commands`.
+- [x] **M: `_REGISTERED` private cross-module import** — _shipped: verified 2026-05-04_
+  Guard removed.
 
-- [ ] **M: `set_setup` reads `room_layout` from a dict it just popped** — [_devices.py:178-199](custom_components/eppgrid/websocket_api/_devices.py#L178-L199)
-  Always pass `EMPTY_ZONE_SLOTS`; remove dead `.get("room_layout", {}).get(...)`.
+- [x] **M: `set_setup` reads `room_layout` from a dict it just popped** — _shipped: verified 2026-05-04_
+  Dead `.get("room_layout", {}).get(...)` removed; uses `empty_zone_slots()`.
 
-- [ ] **M: `delete_esphome_device` `break` placement makes loop look at first `update` entity only** — `device_manager/__init__.py:828-834`. Move `break` inside the `if state is not None` block.
+- [x] **M: `delete_esphome_device` `break` placement** — _n/a_
+  No `delete_esphome_device` loop with mis-placed break in current code; existing breaks are correctly nested.
 
-- [ ] **M: `_get_entity_states` "any enabled" semantics for category keys** — [_devices.py:399-402](custom_components/eppgrid/websocket_api/_devices.py#L399-L402)
-  Use AND (all enabled) or expose tri-state.
+- [x] **M: `_get_entity_states` "any enabled" semantics** — _shipped: verified 2026-05-04_
+  Uses AND semantics for category keys (`result[key] = result[key] and enabled`).
 
-- [ ] **L: `get_device(mac)` is a thin wrapper duplicating `self.devices.get(mac)`** — [storage.py:67-69](custom_components/eppgrid/storage.py#L67-L69). Inline & delete.
+- [x] **L: `get_device(mac)` is a thin wrapper** — _shipped: verified 2026-05-04_
+  Removed.
 
-- [ ] **L: `_resolve_zone_name` only strips one locale's prefix** — [_helpers.py:91-101](custom_components/eppgrid/device_manager/_helpers.py#L91-L101). Strip every locale's prefix.
+- [x] **L: `_resolve_zone_name` only strips one locale's prefix** — _shipped: verified 2026-05-04_
+  Builds set of all locale prefixes and strips each.
 
-- [ ] **L: `_extract_mac` doesn't normalize via `dr.format_mac`** — [_helpers.py:198-203](custom_components/eppgrid/device_manager/_helpers.py#L198-L203).
+- [x] **L: `_extract_mac` doesn't normalize via `dr.format_mac`** — _shipped: verified 2026-05-04_
+  Uses `dr.format_mac(conn_id).upper()`.
 
-- [ ] **L: Substring matching for `firmware_version`/zone unique_ids** — `device_manager/__init__.py:253, 290, 814, 970`
-  Use `endswith()` + separator check, or anchor with regex.
+- [x] **L: Substring matching for `firmware_version`/zone unique_ids** — _shipped: verified 2026-05-04_
+  All checks use `.endswith("-firmware_version")` or `.endswith(f"-zone_{i}_...")` with proper separators.
 
 ---
 
@@ -162,59 +166,60 @@ Goal: lock down trust boundaries. Single self-contained PR.
 
 ## PR 5 — WebSocket DRY (decorators / boilerplate consolidation)
 
-- [ ] **M: `_get_manager` + `_send_not_loaded` boilerplate at top of every handler**
-  `_require_manager` decorator (sync + async variants) injecting `manager` as 4th arg.
+- [x] **M: `_require_manager` decorator + handler boilerplate consolidation** — _shipped: verified 2026-05-04_
+  `@_require_manager` decorator (sync + async) in `websocket_api/__init__.py` injects `manager` as 4th arg; used across all handlers.
 
-- [ ] **M: `_check_firmware_version` block duplicated 6×** — `_devices.py:166-168, 227-229, 790-792, 865-867, 955-957, 1004-1006`
-  Roll into the same decorator.
+- [x] **M: `_check_firmware_version` block deduplicated** — _shipped: verified 2026-05-04_
+  `@_require_manager(check_firmware=True)` decorator handles all 5 sites at once.
 
-- [ ] **L: `_send_update` shape duplicated** — `_flasher.py:36-48, 84-93`. Helper `_flashable_payload(manager)`.
+- [x] **L: `_send_update` shape consolidated** — _shipped: verified 2026-05-04_
+  `_flashable_payload(hass, manager)` helper extracted.
 
-- [ ] **L: Wrapping `_unsub` callbacks with no-op closures** — `_devices.py:55-59`, `_flasher.py:59-63`
-  Store `unsub` directly.
+- [x] **L: `_unsub` callback closures** — _shipped: verified 2026-05-04_
+  Direct `unsub` stored where possible; `_flasher.py` wrapper retained because it manages a `closed` flag + task cancellation (not boilerplate).
 
-- [ ] **L: `_compute_pipeline` lives in websocket_api but only consumed by device_manager** — circular-import-prone
-  Move to `device_manager/_helpers.py` (or new `_pipeline.py`).
+- [x] **L: `_compute_pipeline` location** — _shipped: verified 2026-05-04_
+  Lives in `device_manager/_helpers.py`.
 
-- [ ] **L: Late `from ..device_manager import _compare_firmware_version` inside hot path** — `websocket_api/__init__.py:221`
-  Hoist to module-level.
+- [x] **L: Late `_compare_firmware_version` import** — _shipped: verified 2026-05-04_
+  Hoisted to module-level in `websocket_api/__init__.py`.
 
-- [ ] **L: `had_session = ...` then re-call `manager.get_session(mac)`** — `_firmware.py:133-138`
-  Consolidate.
+- [x] **L: `had_session` consolidation** — _shipped: verified 2026-05-04_
+  Single `manager.get_session(mac)` call cached in `device_conn`; `had_session = device_conn is not None` derived.
 
 ---
 
 ## PR 6 — OTA correctness & resilience
 
-- [ ] **H: `update_firmware` reimplements `manager.async_trigger_ota` and uses `assert _client is not None`** — [_firmware.py:87-108](custom_components/eppgrid/websocket_api/_firmware.py#L87-L108)
-  Replace body with `await manager.async_trigger_ota(mac)`; catch `HomeAssistantError` and feed to `_send_exception`.
+- [x] **H: `update_firmware` reimplements `manager.async_trigger_ota`** — _shipped: verified 2026-05-04_
+  Delegates to `manager.async_trigger_ota(msg["mac"])` with `HomeAssistantError` catch + `_send_exception`.
 
-- [ ] **H: `subscribe_ota_progress` leaks log subscription / firmware log level** — [_firmware.py:154-155, 263-269](custom_components/eppgrid/websocket_api/_firmware.py#L154-L155)
-  Track whether subscription/log-level changed; revert in `_unsub`.
+- [x] **H: `subscribe_ota_progress` leaks log subscription / firmware log level** — _shipped: verified 2026-05-04_
+  `started_log_sub` + `bumped_log_level` flags; `_unsub` reverts both via `unsubscribe_logs()` and `_async_revert_log_level()`.
 
-- [ ] **H: OTA "in_progress" terminal-state race** — `_firmware.py:170-213`
-  Treat first `in_progress=True` OR `latest_version != current_version` as start sentinel; add 5-min outer timeout that emits `state: error`.
+- [x] **H: OTA "in_progress" terminal-state race** — _shipped: verified 2026-05-04_
+  Dual-sentinel latching (`in_progress=True` OR version-mismatch); arms 5-min outer timeout (`_OTA_OUTER_TIMEOUT_S`); emits `state: error` if timeout fires.
 
-- [ ] **H: `subscribe_ota_progress` no None-check on `_client`** — `_firmware.py:163-168, 166`
-  Guard `if device_conn._client is None: return` (or bake into `async_execute_service` from PR 2).
+- [x] **H: `subscribe_ota_progress` no None-check on `_client`** — _shipped: verified 2026-05-04_
+  Guards `device_conn is None or device_conn._client is None` before proceeding.
 
-- [ ] **M: Concurrent OTA on same device unguarded** — `device_manager/__init__.py:168` + `_firmware.py:32`
-  Per-mac `_ota_locks: dict[str, asyncio.Lock]` like `_session_locks`.
+- [x] **M: Concurrent OTA on same device unguarded** — _shipped: verified 2026-05-04_
+  `_ota_locks: dict[str, asyncio.Lock]` mirrors `_session_locks`; fast-fails with `ota_in_progress` error if already locked.
 
-- [ ] **M: `subscribe_device` `_unsub` schedules close via `async_create_task` — race with re-subscribe** — [_devices.py:493-497](custom_components/eppgrid/websocket_api/_devices.py#L493-L497)
-  Refcount sessions, or have `async_open_session` await any pending close for that mac.
+- [x] **M: `subscribe_device` `_unsub` race with re-subscribe** — _shipped: verified 2026-05-04_
+  Uses `manager.schedule_close_session(mac)` (refcounted + pending-task tracked); `async_open_session` awaits any pending close.
 
-- [ ] **M: `_send_update` in `subscribe_flashable_devices` not guarded against connection close** — `_flasher.py:36-57`
-  Track in-flight task; cancel in `_unsub`; wrap `send_message` in try/except.
+- [x] **M: `_send_update` in `subscribe_flashable_devices` unguarded** — _shipped: verified 2026-05-04_
+  In-flight tasks tracked in `in_flight` set; `_unsub` cancels them; `send_message` wrapped in try/except.
 
-- [ ] **M: `set_distance_override` silently succeeds when no session** — `_devices.py:959-976`
-  Send error with `translation_key="no_active_session"`.
+- [x] **M: `set_distance_override` silently succeeds with no session** — _shipped: verified 2026-05-04_
+  Sends error with `translation_key="no_active_session"`.
 
-- [ ] **M: Generic exception swallowing in WS state callbacks** — `_devices.py:555-558, 676-678, 697-738`
-  Wrap parse with `try/except (ValueError, IndexError)`; validate `len(parts) >= 2`; extract shared helper.
+- [x] **M: Generic exception swallowing in WS state callbacks** — _shipped: this PR_
+  Raw-targets callback already used `_parse_position_csv` (length-guarded). Zone-state JSON parse silent `(ValueError, KeyError): pass` now logs at debug with the mac + error so a regression isn't hidden.
 
-- [ ] **M: Connection-failure broadcasts global `_fire_device_list_changed()`** — `_devices.py:472-473`
-  Scope to affected MAC, only fire on actual transition.
+- [x] **M: Connection-failure broadcasts global `_fire_device_list_changed()`** — _shipped: this PR_
+  Offline transition in `_on_state_changed` only fires when `dev.available` was True (i.e., this is the actual available→unavailable flip), and flips `dev.available` to False so subsequent unavailable→unknown pings during the same disconnect don't re-fire. Connection-failure (websocket subscribe_device) was already transition-guarded via `_connection_failed`.
 
 ---
 
@@ -377,204 +382,238 @@ PR 8 was split into 4 stacked sub-PRs (#171, #177, #180, #183). All 28 items add
 
 ## PR 9 — Frontend: zone-engine parity (project-critical drift)
 
-- [ ] **C: Frontend compares `signal` (0–9), firmware compares `frame_count`** — [zone-engine.ts:267-291](frontend/src/lib/zone-engine.ts#L267-L291) vs [epp_zone_engine.cpp:310,338](firmware/lib/epp_zone_engine/src/epp_zone_engine.cpp)
-  Pick one space (recommend: firmware publishes `frame_count` per target and frontend compares against that). Update `feedback_engine_sync` if semantics intentionally diverge.
+- [x] **C: Frontend compares `signal` (0–9), firmware compares `frame_count`** — _shipped: commit 00c77ffb (2026-05-03)_
+  Frontend now receives pre-converted `signal = min(frame_count, 9)`; firmware switched to `signal >= clamp_threshold(t)`. Both compare same semantic; rolling window hardcoded to 1000ms.
 
-- [ ] **C: Overlay-exit handoff uses different "previous zone" source** — [zone-engine.ts:324-359](frontend/src/lib/zone-engine.ts#L324-L359)
-  Add `lastZone: (number|null)[]` to `ZoneEngineState`; mirror firmware `target_last_zone_` semantics (set when in a zone, clear only after handoff fires).
+- [x] **C: Overlay-exit handoff uses different "previous zone" source** — _shipped: commits 00c77ffb + a9e809d1_
+  `lastZone: (number | null)[]` + `lastOnOverlay: boolean[]` in `ZoneEngineState`; handoff loop iterates `MAX_TARGETS` matching firmware `target_last_zone_`.
 
-- [ ] **M: `runLocalZoneEngine` hardcodes `staticTimeout: 10, motionTimeout: 10`** — [target-controller.ts:122-126](frontend/src/controllers/target-controller.ts#L122-L126)
-  Use `host._staticTimeout` / `host._motionTimeout` for true preview parity.
+- [x] **M: `runLocalZoneEngine` hardcodes timeouts** — _shipped: commit 00c77ffb_
+  Forwards `this.host._staticTimeout` / `this.host._motionTimeout` for editor preview parity.
 
 ---
 
 ## PR 10 — Frontend: render() purity / Lit reactivity
 
-- [ ] **C: `_renderEditor` mutates `_targets[i].status` and `_sensorState` during render** — [eppgrid-panel.ts:2447-2461](frontend/src/eppgrid-panel.ts#L2447-L2461)
-  Build new objects (`_targets.map(...)`) and reassign; or derive editor view from a getter.
+- [x] **C: `_renderEditor` mutates `_targets[i].status` and `_sensorState`** — _shipped: verified 2026-05-04_
+  `_renderEditor` now builds fresh `editorTargets` via `_targets.map(...)` spread; `_sensorState` mutation removed.
 
-- [ ] **C: `runLocalZoneEngine` reads `_targets` while panel mutates them after engine** — [eppgrid-panel.ts:2452](frontend/src/eppgrid-panel.ts#L2452)
-  Don't mutate `_targets` after engine runs; pass `engineResult.targets` to children.
+- [x] **C: `runLocalZoneEngine` reads `_targets` while panel mutates them** — _shipped: verified 2026-05-04_
+  Engine output flows to children via `editorTargets`; `_targets` never mutated post-engine.
 
-- [ ] **C: `epp-grid` mutates parent's `dismissedTargets` Map and dispatches event during render** — [epp-grid.ts:358-374](frontend/src/components/epp-grid.ts#L358-L374)
-  Move undismiss detection to `willUpdate`/`updated`; never dispatch from `render()`.
+- [x] **C: `epp-grid` mutates parent's `dismissedTargets` during render** — _shipped: verified 2026-05-04_
+  Undismiss detection moved to `willUpdate`; event dispatched there, never from `render()`.
 
-- [ ] **H: Wizard RAF loop never cancelled on disconnect** — [epp-wizard.ts:130-187](frontend/src/components/epp-wizard.ts#L130-L187)
-  `disconnectedCallback` sets `_wizardCaptureCancelled = true`; store and `cancelAnimationFrame`.
+- [x] **H: Wizard RAF loop never cancelled on disconnect** — _shipped: verified 2026-05-04_
+  `disconnectedCallback` sets `_wizardCaptureCancelled = true` + stores/cancels `_captureRafId`.
 
-- [ ] **H: Stale closure on `raw` in env offset slider input** — [epp-settings-view.ts:322-344](frontend/src/components/epp-settings-view.ts#L322-L344)
-  Recompute `raw` from live state per input event.
+- [x] **H: Stale closure on `raw` in env offset slider** — _shipped: verified 2026-05-04_
+  Handler recomputes `liveReading` and `liveRaw` per input event.
 
-- [ ] **H: target-dot `targets.map((t,i) => ...)` is unkeyed → pills/colors leak across nodes** — [epp-grid.ts:396-426](frontend/src/components/epp-grid.ts#L396-L426)
-  Use `repeat()` directive with stable key.
+- [x] **H: target-dot unkeyed map** — _shipped: verified 2026-05-04_
+  Uses `repeat(targets.slice(0, MAX_TARGETS), (_t, i) => i, ...)` with stable key.
 
-- [ ] **H: Off-by-one in target-dot bounds check** — [epp-grid.ts:334-339](frontend/src/components/epp-grid.ts#L334-L339)
-  Compare against `maxCol`/`maxRow`, not `minCol + visCols`.
+- [x] **H: Off-by-one in target-dot bounds check** — _shipped: verified 2026-05-04_
+  Compares against `maxCol`/`maxRow` inclusive.
 
-- [ ] **M: `_zoneEngineState.localZoneState` Map mutations don't notify Lit** — [eppgrid-panel.ts:414-419, 2540](frontend/src/eppgrid-panel.ts#L414-L419)
-  Reassign or version-bump after engine runs.
+- [x] **M: `localZoneState` Map mutations** — _shipped: verified 2026-05-04_
+  Engine state delegated to `TargetController`; Map passed read-only to children.
 
-- [ ] **M: `_dragState` not @state; comment about reactive intent missing** — `eppgrid-panel.ts:387-401`. Move into controller, or annotate.
+- [x] **M: `_dragState` not @state** — _shipped: verified 2026-05-04_
+  Documented as intentionally non-reactive; reactive `@state` fields drive repaint.
 
-- [ ] **M: `_setText(el.nextElementSibling!, ...)` null-deref risk** — `epp-settings-view.ts:340, 497, 539, 561, 584, 599, 611, 623, 636, 1036`
-  Use `parentElement.querySelector(".setting-value")` or stored ref; null-guard.
+- [x] **M: `_setText(el.nextElementSibling, ...)` null-deref** — _shipped: verified 2026-05-04_
+  Refactored to `_setSettingValue(slider, text)` using `slider.parentElement?.querySelector(".setting-value")` with `instanceof HTMLElement` guard.
 
-- [ ] **M: settings-view `requestUpdate()` in `ha-select` handlers contradicts no-reactive-render rule** — `epp-settings-view.ts:773, 813, 952, 967, 1019, 1097, 1116`. Document or refactor.
+- [x] **M: settings-view `requestUpdate()` in `ha-select` handlers** — _shipped: verified 2026-05-04_
+  Each `requestUpdate()` documented inline with the necessity (e.g. "keeps captured `current` in sync").
 
-- [ ] **M: `_resetSlider` parses display "—" with `parseFloat` returning NaN** — `epp-settings-view.ts:370-385`. Write em dash on NaN.
+- [x] **M: `_resetSlider` parses display "—" with `parseFloat`** — _shipped: verified 2026-05-04_
+  `Number.isNaN` check explicitly preserves em dash on NaN.
 
 ---
 
 ## PR 11 — Frontend: subscription/lifecycle leaks (controllers)
 
-- [ ] **C: Subscription leak race in `_subscribeGridTargets`/`subscribeDisplay`** — [device-controller.ts:371-438, 442-470](frontend/src/controllers/device-controller.ts#L371-L438)
-  Generation token; in `.then()`, only assign unsub if token matches; else immediately call `unsub()`.
+- [x] **C: Subscription leak race in `_subscribeGridTargets`/`subscribeDisplay`** — _shipped: verified 2026-05-04_
+  Generation token (`_targetsGen`); `.then()` discards stale unsub if token mismatches.
 
-- [ ] **C: Same race in `subscribeDeviceList`** — `device-controller.ts:145-162` and `flasher-controller.ts:217-230`. Apply same generation-token fix.
+- [x] **C: Same race in `subscribeDeviceList`** — _shipped: verified 2026-05-04_
+  Same generation-token pattern (`_deviceListGen`).
 
-- [ ] **C: FlasherController hass-swap leaves stale subs/timers; no resubscribe** — [flasher-controller.ts:193-195](frontend/src/controllers/flasher-controller.ts#L193-L195)
-  Detect `value.connection !== oldConn`, drop stale unsubs, clear `_otaUnsubs`/`_otaTimeouts`/in-progress otaStates, resubscribe if user is on flasher tab.
+- [ ] **C: FlasherController hass-swap leaves stale subs/timers; no resubscribe** — [flasher-controller.ts:248-266](frontend/src/controllers/flasher-controller.ts#L248-L266) — _partial: clears stale subs/timers but doesn't resubscribe if user is on flasher tab_
 
-- [ ] **C: `applyLayout` mutates `_zoneConfigs` before async save** — [grid-state-controller.ts:588-607](frontend/src/controllers/grid-state-controller.ts#L588-L607)
-  Build pruned slots locally; commit only after WS resolves (mirror furniture pattern).
+- [x] **C: `applyLayout` mutates `_zoneConfigs` before async save** — _shipped: verified 2026-05-04_
+  Pruned slots + furniture built locally; committed only after WS resolves.
 
-- [ ] **C: `loadConfiguration` mutates host state then awaits `set_settings` with no rollback** — `grid-state-controller.ts:519-572`
-  Snapshot pre-restore; rollback on failure or surface error banner.
+- [x] **C: `loadConfiguration` mutates host state then awaits `set_settings`** — _shipped: verified 2026-05-04_
+  Snapshots pre-restore; rolls back on WS failure.
 
-- [ ] **H: `subscribeTargets` invokes stale unsub without try/catch** — `device-controller.ts:343-346`. Use existing `unsubscribeTargets()`.
+- [x] **H: `subscribeTargets` invokes stale unsub without try/catch** — _shipped: verified 2026-05-04_
+  Delegates to `unsubscribeTargets()` (uses `safeUnsub()`).
 
-- [ ] **H: `_handleOtaEvent` clears watchdog timer before checking state** — `flasher-controller.ts:95-128`. Move `_resetOtaTimeout` inside each `case`; default re-arms.
+- [x] **H: `_handleOtaEvent` clears watchdog timer before checking state** — _shipped: verified 2026-05-04_
+  `_resetOtaTimeout` moved inside each case; default leaves watchdog armed (intentional).
 
-- [ ] **H: `_otaSuccess` 5s setTimeout not in `_otaTimeouts` map** — `flasher-controller.ts:134-140`. Track and clear in `hostDisconnected`.
+- [x] **H: `_otaSuccess` 5s setTimeout not in `_otaTimeouts` map** — _shipped: verified 2026-05-04_
+  Tracked in `_otaTimeouts[mac]`; cleared in `hostDisconnected`.
 
-- [ ] **H: `setCancelledDeviceIpHint` 8s timeout not cleared on hostDisconnected** — `flasher-controller.ts:23, 320-333, 42-53`. Clear in `hostDisconnected`.
+- [x] **H: `setCancelledDeviceIpHint` 8s timeout not cleared on hostDisconnected** — _shipped: verified 2026-05-04_
+  `_cancelledIpTimeout` cleared in `hostDisconnected`.
 
-- [ ] **H: `_applyDeviceList` crashes if backend omits `devices`** — `device-controller.ts:154`. Default to `[]`.
+- [x] **H: `_applyDeviceList` crashes if backend omits `devices`** — _shipped: verified 2026-05-04_
+  `?? []` fallback.
 
-- [ ] **H: Hardcoded English "Zone N" in `addZone`** — [grid-state-controller.ts:217](frontend/src/controllers/grid-state-controller.ts#L217)
-  Use `localize("live.debug.zone_n", { n: firstEmpty })`.
+- [x] **H: Hardcoded English "Zone N" in `addZone`** — _shipped: verified 2026-05-04_
+  Uses `this.host._localize?.("live.debug.zone_n", { n: firstEmpty })` with English fallback.
 
-- [ ] **H: `_initRetryTimer` orphaned across disconnect/in-flight init** — [eppgrid-panel.ts:783-813, 629-635](frontend/src/eppgrid-panel.ts#L783-L813)
-  Guard `setTimeout` with `if (this.isConnected)`; check at top of timer callback.
+- [x] **H: `_initRetryTimer` orphaned across disconnect** — _shipped: verified 2026-05-04_
+  Guards `setTimeout` callback with `if (!this.isConnected) return`.
 
-- [ ] **H: `history.pushState/replaceState` wrap state can be poisoned across panel instances** — `eppgrid-panel.ts:603-608, 642-645`
-  Stash truly-original on `window.__eppOriginalPushState` once; chain off it.
+- [x] **H: `history.pushState/replaceState` wrap state poisoning** — _shipped: verified 2026-05-04_
+  Originals stashed on `window.__eppOriginalPushState` / `__eppOriginalReplaceState` once.
 
-- [ ] **M: Connection-swap branch in `device-controller` forgets `_unsubDeviceList` and `_targetRetryTimer`** — `device-controller.ts:84-92`. Reset both.
+- [x] **M: Connection-swap branch forgets `_unsubDeviceList` / `_targetRetryTimer`** — _shipped: verified 2026-05-04_
+  Both cleared in connection-swap branch.
 
-- [ ] **M: `loadDeviceConfig` returns null on concurrent re-entry** — `device-controller.ts:237-258`. Dedupe via per-mac in-flight promise.
+- [x] **M: `loadDeviceConfig` returns null on concurrent re-entry** — _shipped: verified 2026-05-04_
+  Dedupes via per-mac `_loadConfigInFlight` promise.
 
-- [ ] **M: Backend-supplied `devices` array sorted in place** — `device-controller.ts:122-124, 176-178`. Defensive `[...devices].sort(...)`.
+- [x] **M: Backend-supplied `devices` array sorted in place** — _shipped: verified 2026-05-04_
+  Defensive `[...result.devices].sort(...)`.
 
-- [ ] **M: `_handleUsbFlash` doesn't await port.close()** — [eppgrid-panel.ts:3157-3162](frontend/src/eppgrid-panel.ts#L3157-L3162). Await close, mirror `_handleFlasherCancel`.
+- [x] **M: `_handleUsbFlash` doesn't await port.close()** — _shipped: verified 2026-05-04_
+  `await port.close().catch(() => {})` at both sites.
 
-- [ ] **M: `panel-mount-guard` double-install on module reload leaves old listener attached** — [panel-mount-guard.ts:91-106](frontend/src/panel-mount-guard.ts#L91-L106). Uninstall first if flag set.
+- [x] **M: `panel-mount-guard` double-install on module reload** — _shipped: verified 2026-05-04_
+  Tears down prior install via `window.__eppGridMountGuardTeardown` first.
 
-- [ ] **M: `_handleUsbFlash` cancel reported as `flash_failed` because `lastStep="flashing"`** — `eppgrid-panel.ts:3036-3044, 3145-3191`. On `flasher.errors.flash_cancelled`, call `resetUsbState()` instead of error UI.
+- [x] **M: `_handleUsbFlash` cancel reported as `flash_failed`** — _shipped: verified 2026-05-04_
+  `flash_cancelled` triggers `resetUsbState()` instead of error UI.
 
-- [ ] **M: `runWifiScan` reader release/re-acquire orphans WeakMap pending-read entries** — [usb-flash-service.ts:270-321](frontend/src/lib/usb-flash-service.ts#L270-L321), [improv-serial.ts:20-23](frontend/src/lib/improv-serial.ts#L20-L23)
-  Add `releaseReader(r)` helper that also `_pendingReads.delete(r)`.
+- [x] **M: `runWifiScan` reader release/re-acquire orphans WeakMap entries** — _shipped: verified 2026-05-04_
+  `releaseReader()` helper cleans `_pendingReads` WeakMap entry on release.
 
-- [ ] **L: `serialPort.close()` in `hostDisconnected` doesn't release reader/writer locks** — `flasher-controller.ts:42-53`. Common cleanup helper.
+- [x] **L: `serialPort.close()` doesn't release reader/writer locks** — _shipped: verified 2026-05-04_
+  `_tearDownSerialPort` releases `_serialReader` / `_serialWriter` locks before close.
 
 ---
 
 ## PR 12 — Frontend: components polish (UX, a11y, theming)
 
-- [ ] **H: Tooltip listener leaks (no outside-click/Escape/scroll listener)** — [epp-settings-view.ts:418-443](frontend/src/components/epp-settings-view.ts#L418-L443)
-  Use `<ha-tooltip>` (Web Awesome) or wire pointer-down/scroll/resize close listeners; add `aria-describedby`.
+- [x] **H: Tooltip listener leaks** — _shipped: verified 2026-05-04_
+  `_attachTooltipListeners` / `_detachTooltipListeners` wire keydown, pointerdown, scroll, resize.
 
-- [ ] **H: Wifi password persists across SSID switch in flasher** — [epp-flasher-view.ts:805-813](frontend/src/components/epp-flasher-view.ts#L805-L813)
-  Clear `_wifiPassword` whenever SSID changes; on cancel.
+- [x] **H: Wifi password persists across SSID switch** — _shipped: verified 2026-05-04_
+  Cleared on SSID change and manual-toggle change.
 
-- [ ] **H: Capture overlay z-index 1000 with no focus trap, no Escape** — [epp-wizard.ts:446-457](frontend/src/components/epp-wizard.ts#L446-L457)
-  Focus-trap + keydown listener for Escape; focus Cancel on open.
+- [ ] **H: Capture overlay z-index 1000 with no focus trap, no Escape** — [epp-wizard.ts:501-620](frontend/src/components/epp-wizard.ts#L501-L620) — _partial: focus trap + Escape keydown not yet implemented; only Cancel button exit_
 
-- [ ] **H: live-sidebar zone-state ordering puts slot 0 last; editor puts it first** — [epp-live-sidebar.ts:202-229](frontend/src/components/epp-live-sidebar.ts#L202-L229)
-  Match editor ordering (slot 0 first).
+- [x] **H: live-sidebar zone-state ordering** — _shipped: verified 2026-05-04_
+  Slot 0 first, then zones 1+ — matches editor.
 
-- [ ] **H: epp-furniture-overlay forwards rotation only as cursor; resize handles don't carry rotation** — [epp-furniture-overlay.ts:225-235](frontend/src/components/epp-furniture-overlay.ts#L225-L235)
-  Forward rotation in event detail or have parent always read `item.rotation` at drag start.
+- [x] **H: epp-furniture-overlay rotation in event detail** — _shipped: verified 2026-05-04_
+  Rotation included in event detail for move/resize/rotate handlers.
 
-- [ ] **H: applyPerspective returns NaN for all-zeros perspective; downstream consumers don't guard** — [room-geometry.ts:31-38](frontend/src/lib/room-geometry.ts#L31-L38)
-  Return null when `len < 1e-6`; reject all-zeros in `parseCalibration`.
+- [x] **H: applyPerspective NaN guard** — _shipped: verified 2026-05-04_
+  `computeSensorFov()` returns null when `len < 1e-6`.
 
-- [ ] **H: parseFurniture accepts `f.x = "potato"` via `??`** — [config-serialization.ts:96-109](frontend/src/lib/config-serialization.ts#L96-L109)
-  Coerce + validate types.
+- [x] **H: parseFurniture type validation** — _shipped: verified 2026-05-04_
+  Uses `toFiniteNumber()` / `toPositiveSize()` / `toNonEmptyString()` validators.
 
-- [ ] **M: `_setOverlay` triggers full layout save + view-switch on each click** — [eppgrid-panel.ts:2179-2191](frontend/src/eppgrid-panel.ts#L2179-L2191)
-  Add narrow `eppgrid/set_overlay_cell` WS endpoint; or wrap in try/catch and don't set `_dirty` for one-shot.
+- [x] **M: `_setOverlay` narrow endpoint** — _shipped: verified 2026-05-04_
+  Uses `eppgrid/set_room_layout` without view switch.
 
-- [ ] **M: Hardcoded colors in many components violate `feedback_ha_theming`** — see `epp-flasher-view.ts:117-140`, `epp-live-sidebar.ts:97`, `epp-wizard.ts:342, 355, 410, 638`, `epp-grid.ts:38-40, 132`. Replace with `var(--success-color)` etc.
+- [x] **M: Hardcoded colors → theme variables** — _shipped: verified 2026-05-04_
+  Components use `var(--success-color)` etc.
 
-- [ ] **M: `mwc-list-item` style hint / `--mdc-theme-primary`** — `epp-flasher-view.ts:249-251`
-  Use `appearance="accent"` consistently; drop mwc theme override.
+- [x] **M: `mwc-list-item` removed** — _shipped: verified 2026-05-04_
+  No mwc-list-item in codebase.
 
-- [ ] **M: Repeated `@closed=${e => e.stopPropagation()}` on every ha-select** — settings-view 7+ sites
-  Extract `stopClosed = (e) => e.stopPropagation()`.
+- [x] **M: `_stopClosed` handler extracted** — _shipped: verified 2026-05-04_
+  Single shared handler reused across 17 ha-select uses.
 
-- [ ] **M: zone-sidebar dispatches both `zone-config-change` and `dirty` events** — `epp-zone-sidebar.ts:241-247, 274-279, 354-366` etc. Drop redundant `dirty` events.
+- [x] **M: zone-sidebar redundant `dirty` events dropped** — _shipped: verified 2026-05-04_
+  Only `zone-config-change` dispatched.
 
-- [ ] **M: `_fireDirty` directly mutates `.save-btn.disabled` (bypasses Lit)** — `epp-settings-view.ts:391-394, 1242-1245`. Throttle parent re-renders or derive disabled from a getter.
+- [x] **M: `_fireDirty` flag instead of DOM mutation** — _shipped: verified 2026-05-04_
+  Sets `_localDirty` flag + dispatches event; no `.save-btn.disabled` mutation.
 
-- [ ] **M: ha-icon-picker `e.detail.value || ""` swallows undefined** — `epp-furniture-sidebar.ts:236-244`. Distinguish null from empty.
+- [x] **M: ha-icon-picker `??` operator** — _shipped: verified 2026-05-04_
+  `e.detail?.value ?? ""` preserves empty distinction.
 
-- [ ] **M: `parseInt(value, 10)` on furniture rotation drops decimals** — `epp-furniture-sidebar.ts:174-189`. `parseFloat`.
+- [x] **M: Rotation `parseFloat`** — _shipped: verified 2026-05-04_
+  Accepts decimals.
 
-- [ ] **M: rotation modulo with negative numbers shows -90 instead of 270** — `epp-furniture-sidebar.ts:187`. `((x % 360) + 360) % 360`.
+- [x] **M: Rotation modulo handles negatives** — _shipped: verified 2026-05-04_
+  `((v % 360) + 360) % 360`.
 
-- [ ] **M: Wizard `_smoothBuffer` not cleared on cancel** — `epp-wizard.ts:66, 90-105`.
+- [x] **M: Wizard `_smoothBuffer` cleared on cancel** — _shipped: verified 2026-05-04_
+  Reset to empty array in `_wizardExit()`.
 
-- [ ] **M: Wizard chip click doesn't null `_perspective`** — `epp-wizard.ts:776-787`.
+- [x] **M: Wizard chip click clears `_perspective`** — _shipped: verified 2026-05-04_
+  Set to null on corner mark.
 
-- [ ] **M: `_renderConfigurationRestoreDialog` shows un-loadable templates** — `eppgrid-panel.ts:2698-2700`. Filter by length=8.
+- [x] **M: Configuration restore dialog filters un-loadable templates** — _shipped: verified 2026-05-04_
+  Filtered by `zones.length === 8`.
 
-- [ ] **L: Repeated entity-toggle handler inlined 8× in settings-view** — `epp-settings-view.ts:689-871`. Use existing `entityToggleHandler`.
+- [x] **L: `entityToggleHandler` extracted** — _shipped: verified 2026-05-04_
+  Single handler reused across 17 toggles.
 
-- [ ] **L: `intl-messageformat` compile errors uncaught** — [localize.ts:54-68](frontend/src/localize.ts#L54-L68). Try/catch fallback to identity.
+- [x] **L: `intl-messageformat` compile errors caught** — _shipped: verified 2026-05-04_
+  Try/catch on constructor + format() with fallback to raw string.
 
-- [ ] **L: `navigator.clipboard.writeText` not awaited; rejection silent** — `eppgrid-panel.ts:2792-2796, 2860-2862`. Add catch or transient "Copied" indicator.
+- [x] **L: `navigator.clipboard.writeText`** — _shipped: verified 2026-05-04_
+  No clipboard write operations in current code.
 
-- [ ] **L: `_furnitureClipboard` survives forever** — `eppgrid-panel.ts:386`. Clear on device switch.
+- [x] **L: `_furnitureClipboard` cleared on device switch** — _shipped: verified 2026-05-04_
 
-- [ ] **L: parseScanResults accepts SSIDs with control chars** — `improv-serial.ts:393-427`. Strip ` -`; clamp length.
+- [ ] **L: parseScanResults accepts SSIDs with control chars** — `improv-serial.ts:393-427` — _not yet verified_
 
-- [ ] **L: 8x8 px furniture resize handles too small for touch** — `epp-furniture-overlay.ts:82-100`. Larger transparent hit area.
+- [ ] **L: 8x8 px furniture resize handles too small for touch** — `epp-furniture-overlay.ts:82-100` — _not yet verified_
 
-- [ ] **L: Icon-only buttons missing `aria-label`** — `epp-live-sidebar.ts:271-278, 317-324`, `epp-zone-sidebar.ts:301-313`.
+- [x] **L: Icon-only buttons have aria-labels** — _shipped: verified 2026-05-04_
 
-- [ ] **L: OTA retry button has no spinner** — `epp-flasher-view.ts:582-591`. Per `project_ota_feedback`.
+- [ ] **L: OTA retry button has no spinner** — `epp-flasher-view.ts:582-591` — _not yet verified_
 
-- [ ] **L: `host` styles use deprecated `--paper-font-body1_-_font-family`** — `eppgrid-panel.ts:158-166`. Use `--ha-font-family-body`.
+- [x] **L: `host` styles deprecated `--paper-font-body1`** — _shipped: verified 2026-05-04_
+  No `--paper-font-body1` in codebase.
 
 ---
 
 ## PR 13 — Frontend: efficiency hot paths
 
-- [ ] **H: `_renderLiveGrid` calls `_autoDetectionRange()` (full-grid scan) per render** — [eppgrid-panel.ts:2114](frontend/src/eppgrid-panel.ts#L2114)
-  Use cached `_computeMaxRangeMm()`.
+- [ ] **H: `_renderLiveGrid` calls `_autoDetectionRange()` (full-grid scan) per render** — [eppgrid-panel.ts:1304](frontend/src/eppgrid-panel.ts#L1304) — _partial: routed via `_computeMaxRangeMm()` but the underlying `_autoDetectionRange()` scan still runs per render when `_targetAutoDistance` is true_
 
-- [ ] **M: `getSmoothedValue` rebuilds buffer every call** — [coordinates.ts:75-107](frontend/src/lib/coordinates.ts#L75-L107). Circular buffer or in-place prune.
+- [x] **M: `getSmoothedValue` rebuilds buffer every call** — _shipped: verified 2026-05-04_
+  In-place prune; single `pruned` array allocated per call instead of repeated buffer rebuilds.
 
-- [ ] **M: `_buildFrontendDebugLog` walks grid + targets 3-4× per push** — [target-controller.ts:357-432](frontend/src/controllers/target-controller.ts#L357-L432). Cache `allZoneIds` invalidated on layout change.
+- [x] **M: `_buildFrontendDebugLog` walks grid + targets 3-4× per push** — _shipped: verified 2026-05-04_
+  `_allZoneIdsCache` keyed by grid reference; computed once per layout change.
 
-- [ ] **M: `clearZoneFromGrid` returns fresh Uint8Array even when unchanged** — [cell-painting.ts:117-132](frontend/src/lib/cell-painting.ts#L117-L132). Return null/grid identity when unchanged.
+- [x] **M: `clearZoneFromGrid` returns fresh Uint8Array even when unchanged** — _shipped: verified 2026-05-04_
+  Returns `null` when no cells changed.
 
-- [ ] **L: `parseImprovPackets` quadratic on garbled streams** — `improv-serial.ts:199-267`. `Uint8Array.indexOf` to next `'I'`.
+- [x] **L: `parseImprovPackets` quadratic on garbled streams** — _shipped: verified 2026-05-04_
+  Uses `data.indexOf(HEADER_FIRST, i + 1)` to skip to next header candidate.
 
-- [ ] **L: `_dismissTooltips` queries shadowRoot on every window click** — `eppgrid-panel.ts:520-524`. Settings view should manage own listener.
+- [ ] **L: `_dismissTooltips` queries shadowRoot on every window click** — `eppgrid-panel.ts:520-524` — _not done: tooltip dismissal still routed via panel-level window-click listener_
 
-- [ ] **L: `_fovCache` keyed by reference** — `epp-grid.ts:201-211`. Either hash contents or document contract.
+- [ ] **L: `_fovCache` keyed by reference** — [epp-grid.ts:243-251](frontend/src/components/epp-grid.ts#L243-L251) — _partial: reference-equality cache works for current consumers but doesn't catch in-place mutation; consider hashing if mutation paths ever change_
 
-- [ ] **L: `epp-grid` mouseenter cell handler not throttled** — `epp-grid.ts:280-283`. ~900 events per drag.
+- [x] **L: `epp-grid` mouseenter cell handler throttled** — _shipped: verified 2026-05-04_
+  `_lastEnterIdx` coalescing skips redundant dispatches.
 
-- [ ] **L: zone-sidebar zone-name input never debounced** — `epp-zone-sidebar.ts:258-300`.
+- [x] **L: zone-sidebar zone-name input debounced** — _shipped: verified 2026-05-04_
+  `NAME_DEBOUNCE_MS = 150` with flush on blur.
 
-- [ ] **L: `expandEntities` helper is a one-liner; consider inlining** — `settings-defaults.ts:155-159`.
+- [x] **L: `expandEntities` helper** — _n/a_
+  No `expandEntities` helper present in current code; relevant logic lives in `buildSparseEntities` (multi-line, not an inline candidate).
 
-- [ ] **L: localize `formatCache` unbounded** — `localize.ts:51, 62-66`. LRU cap.
+- [x] **L: localize `formatCache` unbounded** — _shipped: verified 2026-05-04_
+  Capped at 256 entries with LRU eviction.
 
-- [ ] **L: `setShowRoomCalibrationTutorial` redundant call per push** — `device-controller.ts:151-153`. Already deduped internally; trivial.
+- [ ] **L: `setShowRoomCalibrationTutorial` redundant call per push** — `device-controller.ts:129-145` — _partial: per-push `if (this.showRoomCalibrationTutorial === value) return;` short-circuits identical updates, but the call itself is still issued every device-list refresh_
 
 ---
 

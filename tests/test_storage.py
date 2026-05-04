@@ -71,20 +71,3 @@ class TestEPPGridStore:
         await store2.async_load()
         assert store2.devices["AA:BB:CC:DD:EE:01"]["name"] == "device1"
         assert store2.devices["AA:BB:CC:DD:EE:02"]["name"] == "device2"
-
-    async def test_legacy_templates_key_is_ignored(self, hass: HomeAssistant) -> None:
-        """Legacy `templates` key from pre-rename storage is not migrated."""
-        seed_store = EPPGridStore(hass)
-        await seed_store._store.async_save(
-            {
-                "devices": {},
-                "templates": {"Bedroom": {"grid": [0], "zones": []}},
-                "sidebar_panel": True,
-                "show_room_calibration_tutorial": True,
-            }
-        )
-
-        store = EPPGridStore(hass)
-        await store.async_load()
-
-        assert store.configurations == {}

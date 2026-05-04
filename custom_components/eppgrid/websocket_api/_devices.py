@@ -752,8 +752,15 @@ async def websocket_subscribe_grid_targets(
                             },
                         )
                     )
-                except (ValueError, KeyError):
-                    pass
+                except (ValueError, KeyError) as err:
+                    # Malformed zone-state JSON from firmware (truncated buffer,
+                    # boot-time garbage). Drop the frame but log so we don't lose
+                    # visibility when a real parse bug regresses.
+                    _LOGGER.debug(
+                        "subscribe_grid_targets: bad zone-state JSON for %s: %s",
+                        mac,
+                        err,
+                    )
 
         elif isinstance(state, BinarySensorState):
             if state.key in binary_sensor_keys:
