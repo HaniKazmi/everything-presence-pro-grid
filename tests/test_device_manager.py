@@ -3843,7 +3843,7 @@ class TestEventCallbacks:
 
         Returns True so the caller's backoff doesn't retry; the device keeps
         running with its NVS-persisted settings until OTA brings it current.
-        The Repairs flow alerts the user separately.
+        Build flags are still fetched so the Repairs OTA path stays available.
         """
         mac = "AA:BB:CC:DD:EE:FF"
         store.devices[mac] = {"calibration": {"perspective": [1.0] * 8}}
@@ -3856,13 +3856,22 @@ class TestEventCallbacks:
 
         with (
             patch.object(manager, "read_firmware_version", return_value="0.1.0"),
+            patch.object(manager, "_fetch_build_flags", new_callable=AsyncMock) as mock_fetch,
             caplog.at_level("WARNING"),
         ):
             result = await manager._push_config_to_device(mac)
 
         assert result is True
         session_conn.async_push_config.assert_not_awaited()
-        assert any("0.1.0" in rec.message and "behind" in rec.message.lower() for rec in caplog.records)
+        # behind is the only status that's actually fixable from Repairs;
+        # warning text should mention OTA path here.
+        assert any(
+            "0.1.0" in rec.message and "behind" in rec.message.lower() and "OTA" in rec.message
+            for rec in caplog.records
+        )
+        # Build flags fetched so OTA via Repairs has the data it needs
+        # to build the manifest URL even when the push itself is skipped.
+        mock_fetch.assert_awaited_once_with(mac)
 
     async def test_push_config_skipped_when_firmware_ahead(
         self,
@@ -3872,7 +3881,11 @@ class TestEventCallbacks:
         caplog: pytest.LogCaptureFixture,
     ) -> None:
         """When the device firmware is ahead, skip the push: a newer firmware
-        may have added required fields the older integration doesn't send."""
+        may have added required fields the older integration doesn't send.
+
+        This case is NOT fixable from Repairs (user must update the
+        integration via HACS); the warning must not point them at OTA.
+        """
         mac = "AA:BB:CC:DD:EE:FF"
         store.devices[mac] = {"calibration": {"perspective": [1.0] * 8}}
         manager.devices[mac] = ManagedDevice(mac=mac, name="EPP", host="192.168.1.50")
@@ -3884,13 +3897,18 @@ class TestEventCallbacks:
 
         with (
             patch.object(manager, "read_firmware_version", return_value="99.0.0"),
+            patch.object(manager, "_fetch_build_flags", new_callable=AsyncMock) as mock_fetch,
             caplog.at_level("WARNING"),
         ):
             result = await manager._push_config_to_device(mac)
 
         assert result is True
         session_conn.async_push_config.assert_not_awaited()
-        assert any("99.0.0" in rec.message and "ahead" in rec.message.lower() for rec in caplog.records)
+        ahead_records = [rec for rec in caplog.records if "99.0.0" in rec.message]
+        assert ahead_records, "expected a warning mentioning the firmware version"
+        # firmware_ahead has no Repairs fix flow — don't direct users there.
+        assert all("OTA" not in rec.message for rec in ahead_records)
+        mock_fetch.assert_awaited_once_with(mac)
 
     async def test_push_config_skipped_when_firmware_unparseable(
         self,
@@ -3900,7 +3918,9 @@ class TestEventCallbacks:
         caplog: pytest.LogCaptureFixture,
     ) -> None:
         """An unparseable firmware version string blocks the push: if we can't
-        compare, we can't risk pushing an incompatible format."""
+        compare, we can't risk pushing an incompatible format. No Repairs
+        issue is raised for unparseable, so the warning must not promise one.
+        """
         mac = "AA:BB:CC:DD:EE:FF"
         store.devices[mac] = {"calibration": {"perspective": [1.0] * 8}}
         manager.devices[mac] = ManagedDevice(mac=mac, name="EPP", host="192.168.1.50")
@@ -3912,21 +3932,31 @@ class TestEventCallbacks:
 
         with (
             patch.object(manager, "read_firmware_version", return_value="not-a-version"),
+            patch.object(manager, "_fetch_build_flags", new_callable=AsyncMock) as mock_fetch,
             caplog.at_level("WARNING"),
         ):
             result = await manager._push_config_to_device(mac)
 
         assert result is True
         session_conn.async_push_config.assert_not_awaited()
-        assert any("not-a-version" in rec.message for rec in caplog.records)
+        unparseable_records = [rec for rec in caplog.records if "not-a-version" in rec.message]
+        assert unparseable_records, "expected a warning mentioning the firmware version"
+        # No Repairs flow exists for unparseable — don't claim there's one.
+        assert all("Repairs" not in rec.message for rec in unparseable_records)
+        mock_fetch.assert_awaited_once_with(mac)
 
-    async def test_push_config_returns_false_when_firmware_unknown(
+    async def test_push_config_skipped_when_firmware_unknown(
         self, hass: HomeAssistant, store: EPPGridStore, manager: DeviceManager
     ) -> None:
-        """If the firmware_version sensor isn't readable yet (transient race
-        on connect), return False so the caller's backoff retries once the
-        sensor populates — distinct from the 'incompatible' skip path which
-        returns True to suppress retries."""
+        """If the firmware_version sensor isn't readable yet, skip the push but
+        leave the active session intact — returning False would route through
+        `_on_device_available`'s 'failed push' branch, which calls
+        `async_close_session(mac)` and tears down a perfectly healthy
+        user-opened websocket session even though no transport error occurred.
+
+        Race recovery happens in `_on_state_changed`'s firmware_version-arrival
+        hook, which re-spawns `_on_device_available` once the version is known.
+        """
         mac = "AA:BB:CC:DD:EE:FF"
         store.devices[mac] = {"calibration": {"perspective": [1.0] * 8}}
         manager.devices[mac] = ManagedDevice(mac=mac, name="EPP", host="192.168.1.50")
@@ -3936,11 +3966,76 @@ class TestEventCallbacks:
         session_conn.async_push_config = AsyncMock()
         manager._active_connections[mac] = session_conn
 
-        with patch.object(manager, "read_firmware_version", return_value=None):
+        with (
+            patch.object(manager, "read_firmware_version", return_value=None),
+            patch.object(manager, "_fetch_build_flags", new_callable=AsyncMock) as mock_fetch,
+        ):
             result = await manager._push_config_to_device(mac)
 
-        assert result is False
+        # True so _on_device_available's backoff doesn't tear down the session.
+        assert result is True
         session_conn.async_push_config.assert_not_awaited()
+        # Session is left alone — the race resolves via the arrival hook.
+        assert mac in manager._active_connections
+        # Still fetch build_flags so OTA via Repairs has the data it needs.
+        mock_fetch.assert_awaited_once_with(mac)
+
+    async def test_firmware_version_arrival_retriggers_push(self, hass: HomeAssistant, manager: DeviceManager) -> None:
+        """When the firmware_version sensor transitions from offline to a real
+        value, re-spawn `_on_device_available` so a push that was previously
+        skipped during the reconnect race actually runs now.
+
+        Reproduces the production race: the temperature sensor arrives first
+        and triggers `_on_device_available`, which calls `_push_config_to_device`
+        — but `firmware_version` hasn't published yet, so the gate skips the
+        push and returns True. `_pushing` stays set, debouncing further state
+        changes (including `firmware_version` finally arriving). Without a
+        dedicated retrigger on firmware_version arrival, the device runs on
+        stale config until the next offline→online cycle.
+        """
+        from homeassistant.const import STATE_UNAVAILABLE
+
+        dev_reg = dr.async_get(hass)
+        ent_reg = er.async_get(hass)
+
+        esphome_entry = MockConfigEntry(domain="esphome", data={"host": "192.168.1.50"}, title="EPP")
+        esphome_entry.add_to_hass(hass)
+        device = dev_reg.async_get_or_create(
+            config_entry_id=esphome_entry.entry_id,
+            connections={("mac", "aa:bb:cc:dd:ee:ff")},
+            name="EPP",
+        )
+        fw_entry = ent_reg.async_get_or_create(
+            "sensor",
+            "esphome",
+            unique_id="AA:BB:CC:DD:EE:FF-sensor-firmware_version",
+            config_entry=esphome_entry,
+            device_id=device.id,
+        )
+
+        mac = "AA:BB:CC:DD:EE:FF"
+        manager.devices[mac] = ManagedDevice(mac=mac, name="EPP", host="192.168.1.50", device_id=device.id)
+        # Simulate the prior race: another entity already triggered the
+        # initial push, the gate skipped it because fw_ver was None, and
+        # _pushing is left set so subsequent state changes don't kick off
+        # parallel push tasks.
+        manager._pushing.add(mac)
+        # Seed firmware_version as offline so the upcoming transition is
+        # offline→value, not None→value (the latter would also clear
+        # _pushing via the existing offline branch and pass for the wrong
+        # reason).
+        hass.states.async_set(fw_entry.entity_id, STATE_UNAVAILABLE)
+        await hass.async_block_till_done()
+        # Re-add since the above transition's offline branch cleared it.
+        manager._pushing.add(mac)
+
+        with patch.object(manager, "_on_device_available", new_callable=AsyncMock) as mock_avail:
+            hass.bus.async_listen("state_changed", manager._on_state_changed)
+            # firmware_version transitions from unavailable to a real value
+            hass.states.async_set(fw_entry.entity_id, FIRMWARE_VERSION)
+            await hass.async_block_till_done()
+
+        mock_avail.assert_awaited_with(mac)
 
     async def test_push_config_proceeds_when_firmware_compatible(
         self, hass: HomeAssistant, store: EPPGridStore, manager: DeviceManager

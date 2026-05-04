@@ -4019,6 +4019,52 @@ class TestProtocolVersionGuard:
         assert kwargs.get("translation_domain") == DOMAIN
         assert kwargs.get("translation_key") == "device_not_available"
 
+    async def test_firmware_unparseable_blocks_command(
+        self, hass: HomeAssistant, config_entry: MockConfigEntry
+    ) -> None:
+        """An unparseable firmware version must short-circuit admin commands
+        the same way an unreadable one does. Otherwise the websocket would
+        persist HA storage AND respond OK while ``_push_config_to_device``
+        silently skips the actual push (its gate also rejects unparseable),
+        leaving HA state diverged from device state.
+        """
+        from custom_components.eppgrid.device_manager import ManagedDevice
+
+        mock_dm = await setup_integration(hass, config_entry)
+        mock_dm.devices = {
+            "AA:BB:CC:DD:EE:FF": ManagedDevice(
+                mac="AA:BB:CC:DD:EE:FF",
+                name="EPP",
+                host="192.168.1.50",
+            )
+        }
+        mock_dm.read_firmware_version.return_value = "not-a-version"
+
+        from custom_components.eppgrid.websocket_api import websocket_set_setup
+
+        connection = MagicMock()
+        msg = {
+            "id": 23,
+            "type": "eppgrid/set_setup",
+            "mac": "AA:BB:CC:DD:EE:FF",
+            "perspective": [1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0],
+            "room_width": 3000.0,
+            "room_depth": 4000.0,
+        }
+
+        await call_async_handler(hass, websocket_set_setup, connection, msg)
+
+        # Command must short-circuit with an error, not silently succeed.
+        connection.send_error.assert_called_once()
+        connection.send_result.assert_not_called()
+        # Routes through the existing device_not_available translation key —
+        # adding a dedicated "firmware_unparseable" key would require strings
+        # work that's out of scope for what is realistically a never-shipped
+        # version string.
+        kwargs = connection.send_error.call_args.kwargs
+        assert kwargs.get("translation_domain") == DOMAIN
+        assert kwargs.get("translation_key") == "device_not_available"
+
     async def test_firmware_ahead_error_carries_translation_metadata(
         self, hass: HomeAssistant, config_entry: MockConfigEntry
     ) -> None:

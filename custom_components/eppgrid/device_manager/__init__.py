@@ -729,6 +729,18 @@ class DeviceManager:
                     device_name=self.devices[mac].name,
                     fw_ver=fw_ver,
                 )
+                # Re-spawn the push: the version-gated push in
+                # `_push_config_to_device` returns True (skip) when
+                # `fw_ver` is unknown, so the initial `_on_device_available`
+                # exits without entering its retry loop and leaves
+                # `_pushing` set. Now that we know the version, kick off
+                # another attempt — `_pushing` stays set throughout
+                # (debouncing concurrent state-changes), and the second
+                # call's `_push_config_to_device` sees the real version
+                # so the gate resolves to compatible/incompatible
+                # instead of unknown.
+                if mac in self._pushing:
+                    self._spawn(self._on_device_available(mac))
 
         if new_state.state in offline_states:
             # Device went offline — allow a fresh push when it comes back and
@@ -1006,35 +1018,56 @@ class DeviceManager:
         # Gate on firmware compatibility: the wire format for zones,
         # calibration, and pipeline can change between firmware versions,
         # and pushing a stale-shaped payload to a mismatched firmware
-        # risks the device interpreting fields incorrectly. The Repairs
-        # flow surfaces a fixable issue so the user can OTA from the UI;
-        # meanwhile the device keeps running on its NVS-persisted config.
+        # risks the device interpreting fields incorrectly. The device
+        # keeps running on its NVS-persisted config; the Repairs OTA
+        # flow (firmware_behind only) is the recovery path.
         fw_ver = self.read_firmware_version(dev.device_id)
-        if fw_ver is None:
-            # Sensor not yet readable — common transient race during the
-            # device's initial reconnect (firmware_version arrives a beat
-            # after the first online entity). Return False so the caller's
-            # bounded backoff retries once the sensor populates; if it
-            # never does, the backoff gives up after 9s.
-            _LOGGER.debug("Skipping push to %s: firmware_version not yet readable", mac)
-            return False
-        status = _compare_firmware_version(fw_ver)
+        status = _compare_firmware_version(fw_ver) if fw_ver is not None else None
         if status != "compatible":
-            reason = (
-                "behind" if status == "firmware_behind" else "ahead" if status == "firmware_ahead" else "unparseable"
-            )
-            _LOGGER.warning(
-                "Skipping config push to %s (%s): device firmware %s is %s the integration's pinned %s. "
-                "Device retains its persisted settings; OTA from Repairs to apply new config.",
-                dev.name,
-                mac,
-                fw_ver,
-                reason,
-                FIRMWARE_VERSION,
-            )
-            # Return True so _on_device_available's backoff doesn't retry —
-            # the version won't change without an OTA, which goes through a
-            # full offline→online cycle that resets _pushing.
+            if fw_ver is None:
+                # Sensor not yet readable — typical reconnect race where
+                # another entity transitions online before firmware_version
+                # publishes. Recovery happens in `_on_state_changed`'s
+                # firmware_version-arrival hook, which clears `_pushing`
+                # and re-spawns `_on_device_available`.
+                _LOGGER.debug("Skipping push to %s: firmware_version not yet readable", mac)
+            elif status == "firmware_behind":
+                _LOGGER.warning(
+                    "Skipping config push to %s (%s): device firmware %s is behind the integration's "
+                    "pinned %s. Device retains its persisted settings; run the OTA from Repairs to "
+                    "apply new config.",
+                    dev.name,
+                    mac,
+                    fw_ver,
+                    FIRMWARE_VERSION,
+                )
+            elif status == "firmware_ahead":
+                _LOGGER.warning(
+                    "Skipping config push to %s (%s): device firmware %s is ahead of the integration's "
+                    "pinned %s. Device retains its persisted settings; update the integration via HACS "
+                    "to apply new config.",
+                    dev.name,
+                    mac,
+                    fw_ver,
+                    FIRMWARE_VERSION,
+                )
+            else:
+                _LOGGER.warning(
+                    "Skipping config push to %s (%s): device firmware %s could not be parsed. "
+                    "Device retains its persisted settings.",
+                    dev.name,
+                    mac,
+                    fw_ver,
+                )
+            # Still cache build flags so async_trigger_ota can build the
+            # manifest URL — the Repairs OTA path must work even when the
+            # config push itself is skipped.
+            await self._fetch_build_flags(mac)
+            # Return True so `_on_device_available` doesn't tear down the
+            # active session via its push-failure backoff. The version
+            # won't change without an OTA (cycles offline→online and
+            # resets `_pushing`); the race case recovers via the
+            # firmware_version-arrival hook in `_on_state_changed`.
             return True
 
         # Prefer existing session connection (avoids ESP32 concurrent connection limit)
