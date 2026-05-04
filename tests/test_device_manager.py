@@ -4037,6 +4037,111 @@ class TestEventCallbacks:
 
         mock_avail.assert_awaited_with(mac)
 
+    async def test_firmware_version_empty_string_then_value_retriggers_push(
+        self, hass: HomeAssistant, manager: DeviceManager
+    ) -> None:
+        """Some firmware variants publish an empty string before the real
+        version arrives. `read_firmware_version` already treats `""` as
+        'no data' (same as unavailable/unknown); the firmware_version
+        arrival hook must use the same definition for its old-state guard,
+        otherwise `"" → real_version` slips past the guard and the push is
+        never retried until the next reconnect.
+        """
+        from homeassistant.const import STATE_UNAVAILABLE
+
+        dev_reg = dr.async_get(hass)
+        ent_reg = er.async_get(hass)
+
+        esphome_entry = MockConfigEntry(domain="esphome", data={"host": "192.168.1.50"}, title="EPP")
+        esphome_entry.add_to_hass(hass)
+        device = dev_reg.async_get_or_create(
+            config_entry_id=esphome_entry.entry_id,
+            connections={("mac", "aa:bb:cc:dd:ee:ff")},
+            name="EPP",
+        )
+        fw_entry = ent_reg.async_get_or_create(
+            "sensor",
+            "esphome",
+            unique_id="AA:BB:CC:DD:EE:FF-sensor-firmware_version",
+            config_entry=esphome_entry,
+            device_id=device.id,
+        )
+
+        mac = "AA:BB:CC:DD:EE:FF"
+        manager.devices[mac] = ManagedDevice(mac=mac, name="EPP", host="192.168.1.50", device_id=device.id)
+
+        # Drive the sensor through unavailable → "" before real version.
+        # The first transition (unavailable → "") is the case the existing
+        # late-arrival test guards: must NOT raise a Repairs issue. The
+        # follow-up "" → real_version transition is the case Copilot
+        # flagged: must still retrigger the push.
+        hass.bus.async_listen("state_changed", manager._on_state_changed)
+        hass.states.async_set(fw_entry.entity_id, STATE_UNAVAILABLE)
+        await hass.async_block_till_done()
+        manager._pushing.add(mac)
+        hass.states.async_set(fw_entry.entity_id, "")
+        await hass.async_block_till_done()
+        # Re-set the guard — empty-string-as-offline should also clear it,
+        # but we want to assert the retrigger fires whether or not it does.
+        manager._pushing.add(mac)
+
+        with patch.object(manager, "_on_device_available", new_callable=AsyncMock) as mock_avail:
+            hass.states.async_set(fw_entry.entity_id, FIRMWARE_VERSION)
+            await hass.async_block_till_done()
+
+        mock_avail.assert_awaited_with(mac)
+
+    async def test_push_config_serialized_per_mac(
+        self, hass: HomeAssistant, store: EPPGridStore, manager: DeviceManager
+    ) -> None:
+        """Concurrent `_push_config_to_device` calls for the same mac must
+        be serialized — ESP32 devices have a hard concurrent-connection
+        limit, and the firmware_version-arrival re-spawn can land while an
+        earlier `_on_device_available` is still mid-fetch_build_flags.
+        Without a lock, two pushes would open overlapping connections.
+        """
+        mac = "AA:BB:CC:DD:EE:FF"
+        store.devices[mac] = {"calibration": {"perspective": [1.0] * 8}}
+        manager.devices[mac] = ManagedDevice(mac=mac, name="EPP", host="192.168.1.50")
+
+        in_flight = 0
+        max_in_flight = 0
+        push_started = asyncio.Event()
+        push_release = asyncio.Event()
+
+        async def slow_push(*args: object, **kwargs: object) -> None:
+            nonlocal in_flight, max_in_flight
+            in_flight += 1
+            max_in_flight = max(max_in_flight, in_flight)
+            push_started.set()
+            await push_release.wait()
+            in_flight -= 1
+
+        session = MagicMock()
+        session.connected = True
+        session.raw_target_subs = 0
+        session.grid_target_subs = 0
+        session.async_push_config = AsyncMock(side_effect=slow_push)
+        session.async_execute_service = AsyncMock()
+        session.async_fetch_build_flags = AsyncMock(return_value={})
+        manager._active_connections[mac] = session
+
+        with patch.object(manager, "read_firmware_version", return_value=FIRMWARE_VERSION):
+            task_a = asyncio.create_task(manager._push_config_to_device(mac))
+            await push_started.wait()
+            push_started.clear()
+            # B starts while A is mid-push. Without a lock, both reach
+            # session.async_push_config and max_in_flight observes 2.
+            task_b = asyncio.create_task(manager._push_config_to_device(mac))
+            # Yield a few times so task_b has every chance to enter
+            # async_push_config if it could.
+            for _ in range(10):
+                await asyncio.sleep(0)
+            push_release.set()
+            await asyncio.gather(task_a, task_b)
+
+        assert max_in_flight == 1, f"pushes overlapped (max concurrent: {max_in_flight}); lock missing"
+
     async def test_push_config_proceeds_when_firmware_compatible(
         self, hass: HomeAssistant, store: EPPGridStore, manager: DeviceManager
     ) -> None:

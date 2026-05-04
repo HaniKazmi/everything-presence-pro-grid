@@ -92,6 +92,12 @@ class DeviceManager:
         # One connection per device, kept alive for the frontend session
         self._active_connections: dict[str, DeviceConnection] = {}
         self._session_locks: dict[str, asyncio.Lock] = {}
+        # Serializes `_push_config_to_device` per mac. Without this, the
+        # firmware_version-arrival re-spawn in `_on_state_changed` could
+        # land while the initial `_on_device_available` is still mid-
+        # `_fetch_build_flags`, opening overlapping connections to the
+        # same device — ESP32 has a hard concurrent-connection limit.
+        self._push_locks: dict[str, asyncio.Lock] = {}
         # Serializes async_trigger_ota for a given mac. Held only while the
         # set_update_manifest call is in flight; concurrent callers fail-fast
         # with `ota_in_progress` rather than firing a duplicate OTA.
@@ -716,11 +722,18 @@ class DeviceManager:
         # new_state.state directly, so we treat empty string the same as
         # unavailable/unknown — read_firmware_version is the single source
         # of truth for "is this a real firmware version".
+        # `read_firmware_version` treats unavailable, unknown, AND empty
+        # string as 'no data'. Mirror that here for the transition guard;
+        # otherwise `unavailable → "" → real_version` would slip past
+        # because the second transition has `old_state=""` which the
+        # narrower `offline_states` set wouldn't match, and the push
+        # retrigger would never fire.
+        fw_offline_states = (STATE_UNAVAILABLE, STATE_UNKNOWN, "")
         if (
             entry.domain == "sensor"
             and "firmware_version" in entry.unique_id
-            and old_state_value in offline_states
-            and new_state.state not in offline_states
+            and old_state_value in fw_offline_states
+            and new_state.state not in fw_offline_states
         ):
             fw_ver = self.read_firmware_version(entry.device_id)
             if fw_ver is not None:
@@ -1006,7 +1019,18 @@ class DeviceManager:
             await conn.async_disconnect()
 
     async def _push_config_to_device(self, mac: str) -> bool:
-        """Push config to device, preferring an existing session connection."""
+        """Push config to device, preferring an existing session connection.
+
+        Serialized per mac via `_push_locks` so concurrent invocations
+        (e.g., the initial state-change spawn racing the firmware_version-
+        arrival re-spawn) don't open overlapping connections to the same
+        device — ESP32 has a hard concurrent-connection limit.
+        """
+        async with self._push_locks.setdefault(mac, asyncio.Lock()):
+            return await self._do_push_config_to_device(mac)
+
+    async def _do_push_config_to_device(self, mac: str) -> bool:
+        """Inner push body. Always called with `_push_locks[mac]` held."""
         config = self._store.devices.get(mac)
         if config is None:
             await self._fetch_build_flags(mac)
