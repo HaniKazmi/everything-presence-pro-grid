@@ -65,14 +65,27 @@ def make_mock_device_conn(entities=None, services=None):
     conn.unsubscribe_states = MagicMock()
     conn.add_log_callback = MagicMock()
     conn.remove_log_callback = MagicMock()
-    # By default, expose epp_set_log_level so subscribe_ota_progress can bump
-    # the device's log level. Pass services={} to simulate older firmware
-    # without the action.
+    # By default, async_execute_service succeeds (firmware exposes
+    # epp_set_log_level). Pass services={} to simulate older firmware
+    # without the action — that path raises HomeAssistantError, which
+    # the handler catches.
     if services is None:
         services = {"epp_set_log_level": MagicMock()}
     conn._services = services
     conn._client = MagicMock()
     conn._client.execute_service = AsyncMock()
+
+    # Match real DeviceConnection.async_execute_service: succeed when the
+    # service is in _services, raise HomeAssistantError otherwise.
+    async def _async_execute_service(name, payload=None, *, timeout=30.0, return_response=False):
+        from homeassistant.exceptions import HomeAssistantError
+
+        svc = conn._services.get(name)
+        if svc is None:
+            raise HomeAssistantError(f"Service {name} not available")
+        return await conn._client.execute_service(svc, payload or {}, return_response=return_response)
+
+    conn.async_execute_service = AsyncMock(side_effect=_async_execute_service)
     return conn
 
 
@@ -180,7 +193,9 @@ class TestSubscribeOtaProgress:
         msg = {"id": 1, "type": "eppgrid/subscribe_ota_progress", "mac": "AA:BB:CC:DD:EE:FF"}
         await call_async_handler(hass, websocket_subscribe_ota_progress, connection, msg)
 
-        device_conn._client.execute_service.assert_awaited_once_with(log_svc, {"category": "system", "level": "Error"})
+        device_conn.async_execute_service.assert_awaited_once_with(
+            "epp_set_log_level", {"category": "system", "level": "Error"}
+        )
 
     async def test_skips_log_bump_when_service_missing(
         self,
@@ -199,6 +214,9 @@ class TestSubscribeOtaProgress:
         msg = {"id": 1, "type": "eppgrid/subscribe_ota_progress", "mac": "AA:BB:CC:DD:EE:FF"}
         await call_async_handler(hass, websocket_subscribe_ota_progress, connection, msg)
 
+        # async_execute_service is invoked but raises HomeAssistantError because
+        # the service isn't in _services — handler swallows the error and
+        # subscription proceeds.
         device_conn._client.execute_service.assert_not_awaited()
         connection.send_result.assert_called_once_with(1)
 
@@ -809,14 +827,18 @@ class TestSubscribeOtaProgress:
         await call_async_handler(hass, websocket_subscribe_ota_progress, connection, msg)
 
         # Bump-up call
-        device_conn._client.execute_service.assert_awaited_once_with(log_svc, {"category": "system", "level": "Error"})
+        device_conn._client.execute_service.assert_awaited_once_with(
+            log_svc, {"category": "system", "level": "Error"}, return_response=False
+        )
         device_conn._client.execute_service.reset_mock()
 
         connection.subscriptions[1]()
         await hass.async_block_till_done()
 
         # Revert call: stored config has no log_levels for this mac, so revert to None
-        device_conn._client.execute_service.assert_awaited_once_with(log_svc, {"category": "system", "level": "None"})
+        device_conn._client.execute_service.assert_awaited_once_with(
+            log_svc, {"category": "system", "level": "None"}, return_response=False
+        )
 
     async def test_unsubscribe_reverts_to_stored_log_level(
         self,
@@ -844,7 +866,7 @@ class TestSubscribeOtaProgress:
         await hass.async_block_till_done()
 
         device_conn._client.execute_service.assert_awaited_once_with(
-            log_svc, {"category": "system", "level": "Warning"}
+            log_svc, {"category": "system", "level": "Warning"}, return_response=False
         )
 
     async def test_unsubscribe_skips_log_level_revert_when_not_bumped(

@@ -143,8 +143,15 @@ def _compute_pipeline(
     }
 
 
-def _compare_firmware_version(device_version: str) -> str:
-    """Compare device firmware version against required version."""
+def _compare_firmware_version(device_version: str) -> str | None:
+    """Compare device firmware version against the integration's pinned version.
+
+    Returns one of: 'compatible', 'firmware_behind', 'firmware_ahead', or
+    ``None`` for unparseable inputs. Callers normalize ``None`` to
+    'unavailable' so the frontend's firmware-status union
+    (compatible/firmware_behind/firmware_ahead/unavailable/unknown) only
+    ever sees values it knows how to render.
+    """
     from packaging.version import Version
 
     from ..const import FIRMWARE_VERSION
@@ -153,7 +160,7 @@ def _compare_firmware_version(device_version: str) -> str:
         dev_ver = Version(device_version)
         req_ver = Version(FIRMWARE_VERSION)
     except Exception:
-        return "firmware_behind"
+        return None
     if dev_ver == req_ver:
         return "compatible"
     if dev_ver < req_ver:
@@ -190,6 +197,11 @@ def _sync_firmware_repair_issue(
         return
 
     status = _compare_firmware_version(fw_ver)
+    if status is None:
+        # Unparseable version → leave any prior issue alone (clearing would
+        # mask a real "behind" state if the parse failure is transient);
+        # never raise a new issue we can't act on.
+        return
     placeholders = {
         "device_name": device_name,
         "current_version": fw_ver,

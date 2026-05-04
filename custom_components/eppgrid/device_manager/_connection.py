@@ -173,6 +173,32 @@ class DeviceConnection:
             self._unsub_logs = None
             _LOGGER.debug("Unsubscribed from device logs from %s", self._host)
 
+    async def async_execute_service(
+        self,
+        name: str,
+        payload: dict[str, Any] | None = None,
+        *,
+        timeout: float = 30.0,
+        return_response: bool = False,
+    ) -> Any:
+        """Execute a named ESPHome user service over this connection.
+
+        Single entry point for callers — replaces direct ``conn._services``
+        and ``conn._client`` reach-throughs. Raises ``HomeAssistantError``
+        with a translation key when the service isn't available or the
+        connection is dead, so WS handlers can map the failure to a
+        user-facing message.
+        """
+        if self._client is None:
+            _raise_service_unavailable(name)
+        svc = self._services.get(name)
+        if svc is None:
+            _raise_service_unavailable(name)
+        return await asyncio.wait_for(
+            self._client.execute_service(svc, payload or {}, return_response=return_response),
+            timeout=timeout,
+        )
+
     async def async_fetch_build_flags(self, timeout: float = 10.0) -> dict[str, Any]:
         """Fetch build flags from the device via the get_build_flags action.
 

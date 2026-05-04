@@ -15,6 +15,7 @@ from homeassistant.const import STATE_UNKNOWN
 from homeassistant.core import HomeAssistant
 from homeassistant.core import State
 from homeassistant.core import callback
+from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import area_registry as ar
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers import entity_registry as er
@@ -208,8 +209,6 @@ class DeviceManager:
         Raises HomeAssistantError with a translation_key on every failure
         path so callers can map the failure to a user-facing message.
         """
-        from homeassistant.exceptions import HomeAssistantError
-
         from ..const import DOMAIN as _DOMAIN
         from ..const import FIRMWARE_VARIANTS
         from ..const import OTA_MANIFEST_BASE_URL
@@ -253,27 +252,14 @@ class DeviceManager:
                 translation_key="ota_in_progress",
             )
         async with lock:
-            conn = DeviceConnection(
-                dev.host,
-                noise_psk=_extract_noise_psk(dev.esphome_config_entry_id, self._hass),
-            )
-            try:
+            # Prefer the live session if one exists — opening a second connection
+            # would race against the device's per-API-client connection cap.
+            session = self.get_session(mac)
+            if session is not None:
                 try:
-                    await conn.async_connect()
-                    svc = conn._services.get("set_update_manifest")
-                    if svc is None:
-                        raise HomeAssistantError(
-                            f"Device {mac} firmware does not expose set_update_manifest",
-                            translation_domain=_DOMAIN,
-                            translation_key="ota_unsupported",
-                        )
-                    if conn._client is None:
-                        raise HomeAssistantError(
-                            f"Device {mac} client unavailable",
-                            translation_domain=_DOMAIN,
-                            translation_key="device_not_available",
-                        )
-                    await conn._client.execute_service(svc, {"url": manifest_url})
+                    await session.async_execute_service("set_update_manifest", {"url": manifest_url})
+                    _LOGGER.info("Triggered OTA via session for %s (manifest=%s)", mac, manifest_url)
+                    return
                 except HomeAssistantError:
                     raise
                 except Exception as err:
@@ -283,14 +269,33 @@ class DeviceManager:
                     # translation metadata so the websocket / Repairs surfaces
                     # can localize the message — the docstring promises a
                     # translation_key on every failure path.
-                    _LOGGER.warning("OTA trigger for %s failed", mac, exc_info=True)
+                    _LOGGER.warning("OTA via session for %s failed", mac, exc_info=True)
                     raise HomeAssistantError(
                         f"Could not contact device {mac}: {err}",
                         translation_domain=_DOMAIN,
                         translation_key="ota_trigger_failed",
                         translation_placeholders={"mac": mac, "error": str(err)},
                     ) from err
-                _LOGGER.info("Triggered OTA for %s (manifest=%s)", mac, manifest_url)
+
+            # No session — fall back to a fresh, short-lived connection.
+            conn = DeviceConnection(
+                dev.host,
+                noise_psk=_extract_noise_psk(dev.esphome_config_entry_id, self._hass),
+            )
+            try:
+                await conn.async_connect()
+                await conn.async_execute_service("set_update_manifest", {"url": manifest_url})
+                _LOGGER.info("Triggered OTA via temp conn for %s (manifest=%s)", mac, manifest_url)
+            except HomeAssistantError:
+                raise
+            except Exception as err:
+                _LOGGER.warning("OTA temp-conn for %s failed", mac, exc_info=True)
+                raise HomeAssistantError(
+                    f"Could not contact device {mac}: {err}",
+                    translation_domain=_DOMAIN,
+                    translation_key="ota_trigger_failed",
+                    translation_placeholders={"mac": mac, "error": str(err)},
+                ) from err
             finally:
                 # Best-effort cleanup. A failure here would otherwise mask
                 # the real OTA error (or surface a non-HA exception that the
@@ -305,16 +310,21 @@ class DeviceManager:
     ) -> str | None:
         """Read the Firmware Version text sensor value for a device.
 
-        Returns the version string, or None if the entity exists but the
-        state is unavailable/unknown (device offline).
-        Returns "0.0.0" if no firmware_version entity exists (old firmware).
+        Returns the version string, or ``None`` when:
+          * ``device_id`` is unknown (caller has no device to look up)
+          * the entity is unavailable / unknown / empty
+          * the entity does not exist at all (older or non-EPP firmware)
 
-        `entries` lets the caller pass pre-fetched device entries so callers
+        Callers must treat ``None`` as 'unknown' — never compare against a
+        synthetic ``"0.0.0"``, which would collide with a real (very old)
+        firmware version and trigger a fake ``firmware_behind`` Repairs issue.
+
+        ``entries`` lets the caller pass pre-fetched device entries so callers
         looping over many devices don't re-scan the entity registry per
         helper call.
         """
         if device_id is None:
-            return "0.0.0"
+            return None
         if entries is None:
             ent_reg = er.async_get(self._hass)
             entries = er.async_entries_for_device(ent_reg, device_id, include_disabled_entities=True)
@@ -328,7 +338,7 @@ class DeviceManager:
                 if state is not None and state.state not in (None, "unknown", "unavailable", ""):
                     return state.state
                 return None
-        return "0.0.0"
+        return None
 
     def read_current_connection_count(
         self, device_id: str | None, *, entries: list[er.RegistryEntry] | None = None
@@ -731,11 +741,12 @@ class DeviceManager:
 
         # Push via session if available, otherwise skip (device will get it on next full push)
         if session is not None and session.connected:
-            svc = session._services.get("epp_set_pipeline")
-            if svc:
-                assert session._client is not None  # connected → client set
-                await session._client.execute_service(svc, pipeline)
+            try:
+                await session.async_execute_service("epp_set_pipeline", pipeline)
                 _LOGGER.info("Pushed pipeline to %s", mac)
+            except HomeAssistantError:
+                # Service not available on older firmware — silently skip.
+                _LOGGER.debug("Device %s does not expose epp_set_pipeline", mac)
 
     async def _fetch_build_flags(self, mac: str) -> None:
         """Fetch and cache build flags from a device.
@@ -818,10 +829,8 @@ class DeviceManager:
             await conn.async_push_config(config)
             # Push pipeline directly (no subscribers on temp connections)
             pipeline = _compute_pipeline(config, 0, 0)
-            svc = conn._services.get("epp_set_pipeline")
-            if svc:
-                assert conn._client is not None  # async_connect succeeded
-                await conn._client.execute_service(svc, pipeline)
+            with contextlib.suppress(HomeAssistantError):
+                await conn.async_execute_service("epp_set_pipeline", pipeline)
             if mac not in self._build_flags:
                 with contextlib.suppress(Exception):
                     self._build_flags[mac] = await conn.async_fetch_build_flags()
@@ -972,7 +981,9 @@ class DeviceManager:
                     "available": self._is_device_available(mac, entries=entries),
                     "configured": config is not None,
                     "area": area_name,
-                    "firmware_status": ("unavailable" if fw_ver is None else _compare_firmware_version(fw_ver)),
+                    "firmware_status": (
+                        (_compare_firmware_version(fw_ver) if fw_ver is not None else None) or "unavailable"
+                    ),
                     "current_connection_count": self.read_current_connection_count(dev.device_id, entries=entries),
                     **self._build_flags.get(mac, {}),
                 }
@@ -1062,7 +1073,7 @@ class DeviceManager:
                         (fw_ver or sw_fallback) if has_firmware_version and managed_dev is not None else sw_fallback
                     ),
                     "firmware_status": (
-                        ("unavailable" if fw_ver is None else _compare_firmware_version(fw_ver))
+                        ((_compare_firmware_version(fw_ver) if fw_ver is not None else None) or "unavailable")
                         if has_firmware_version and managed_dev is not None
                         else "unknown"
                     ),

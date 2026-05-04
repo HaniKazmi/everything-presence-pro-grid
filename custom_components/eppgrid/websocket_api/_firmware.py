@@ -9,6 +9,7 @@ import voluptuous as vol
 from homeassistant.components import websocket_api
 from homeassistant.core import HomeAssistant
 from homeassistant.core import callback
+from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.event import async_call_later
 
 from ..const import DOMAIN
@@ -112,14 +113,19 @@ async def websocket_subscribe_ota_progress(
     # system log level to Error here so OTA failures actually reach the
     # frontend. Older firmware that doesn't expose this action is left
     # alone (older firmware also doesn't silence to NONE, so it works).
-    log_svc = device_conn._services.get("epp_set_log_level")
     bumped_log_level = False
-    if log_svc is not None:
-        try:
-            await device_conn._client.execute_service(log_svc, {"category": _OTA_LOG_CATEGORY, "level": _OTA_LOG_LEVEL})
-            bumped_log_level = True
-        except Exception:
-            _LOGGER.debug("Failed to bump device log level for OTA visibility", exc_info=True)
+    try:
+        await device_conn.async_execute_service(
+            "epp_set_log_level",
+            {"category": _OTA_LOG_CATEGORY, "level": _OTA_LOG_LEVEL},
+        )
+        bumped_log_level = True
+    except HomeAssistantError:
+        # Older firmware doesn't expose epp_set_log_level — fine; the
+        # ESPHome OTA logger isn't silenced on those builds anyway.
+        _LOGGER.debug("Device %s does not expose epp_set_log_level", mac)
+    except Exception:
+        _LOGGER.debug("Failed to bump device log level for OTA visibility", exc_info=True)
 
     @callback
     def _arm_timer() -> None:
@@ -268,7 +274,10 @@ async def websocket_subscribe_ota_progress(
         # keeps emitting ERROR logs after the OTA panel closes.
         stored_level = manager._store.devices.get(mac, {}).get("log_levels", {}).get(_OTA_LOG_CATEGORY, "None")
         try:
-            await device_conn._client.execute_service(log_svc, {"category": _OTA_LOG_CATEGORY, "level": stored_level})
+            await device_conn.async_execute_service(
+                "epp_set_log_level",
+                {"category": _OTA_LOG_CATEGORY, "level": stored_level},
+            )
         except Exception:
             _LOGGER.debug("Failed to revert device log level after OTA", exc_info=True)
 
@@ -282,7 +291,7 @@ async def websocket_subscribe_ota_progress(
             # bumped on the device side is moot; skip the revert.
             manager.schedule_close_session(mac)
             return
-        if bumped_log_level and log_svc is not None:
+        if bumped_log_level:
             hass.async_create_task(_async_revert_log_level())
         if started_log_sub:
             device_conn.unsubscribe_logs()
