@@ -116,6 +116,9 @@ class DeviceManager:
         # can't re-register a listener after Phase 1 has already cleared
         # `_entry_update_unsubs`.
         self._stopping: bool = False
+        # Unsub callable for the targeted state-change tracker. Rebuilt
+        # whenever the managed-device set changes — see _refresh_state_listener.
+        self._state_track_unsub: Any = None
 
     @callback
     def on_device_list_changed(self, cb: Any) -> Any:
@@ -156,8 +159,9 @@ class DeviceManager:
         self._unsub_listeners.append(
             self._hass.bus.async_listen(er.EVENT_ENTITY_REGISTRY_UPDATED, self._on_entity_registry_updated)
         )
-        # Listen for state changes to detect device availability
-        self._unsub_listeners.append(self._hass.bus.async_listen("state_changed", self._on_state_changed))
+        # Targeted state-change tracker; rebuilt on each managed-device
+        # change so we only see events for entities we care about.
+        self._refresh_state_listener()
         # Listen for device removal to clean up stored settings
         self._unsub_listeners.append(
             self._hass.bus.async_listen(dr.EVENT_DEVICE_REGISTRY_UPDATED, self._on_device_registry_updated)
@@ -206,6 +210,34 @@ class DeviceManager:
         self._entity_update_macs.discard(mac)
         self._entity_update_clear_cancels.pop(mac, None)
 
+    @callback
+    def _refresh_state_listener(self) -> None:
+        """Rebuild the targeted state-change tracker.
+
+        Drops the previous unsub, computes the entity_id set across every
+        managed device, and registers ``async_track_state_change_event``
+        for that set. Called on start and whenever managed devices change.
+        """
+        from homeassistant.helpers.event import async_track_state_change_event
+
+        if self._state_track_unsub is not None:
+            self._state_track_unsub()
+            self._state_track_unsub = None
+        ent_reg = er.async_get(self._hass)
+        entity_ids: list[str] = []
+        # Iterate a snapshot of values — this method runs from event
+        # callbacks, and a concurrent task could add or remove devices
+        # mid-rebuild, raising RuntimeError on the live iterator.
+        for dev in list(self.devices.values()):
+            if dev.device_id is None:
+                continue
+            for entry in er.async_entries_for_device(ent_reg, dev.device_id, include_disabled_entities=True):
+                if entry.platform == "esphome":
+                    entity_ids.append(entry.entity_id)
+        if not entity_ids:
+            return
+        self._state_track_unsub = async_track_state_change_event(self._hass, entity_ids, self._on_state_changed)
+
     async def async_stop(self) -> None:
         """Stop listeners and close all connections.
 
@@ -245,6 +277,9 @@ class DeviceManager:
         for unsub in self._entry_update_unsubs.values():
             unsub()
         self._entry_update_unsubs.clear()
+        if self._state_track_unsub is not None:
+            self._state_track_unsub()
+            self._state_track_unsub = None
         for cancel in self._entity_update_clear_cancels.values():
             cancel()
         self._entity_update_clear_cancels.clear()
@@ -487,6 +522,7 @@ class DeviceManager:
         dev_reg = dr.async_get(self._hass)
 
         found_new = False
+        ids_changed = False
         for entry in ent_reg.entities.values():
             if entry.platform != "esphome":
                 continue
@@ -512,6 +548,16 @@ class DeviceManager:
 
             is_new = mac not in self.devices
             existing = self.devices.get(mac)
+            # Detect re-add flows where the same MAC reappears under a
+            # different HA device_id or ESPHome config_entry_id. The
+            # entity_ids attached to that mac change, so the targeted
+            # state-change tracker must be rebuilt — found_new alone
+            # (which triggers the rebuild below) wouldn't catch this
+            # case and we'd stay subscribed to the dead entity_ids.
+            if existing is not None and (
+                existing.device_id != device.id or existing.esphome_config_entry_id != entry.config_entry_id
+            ):
+                ids_changed = True
             if existing is not None and existing.device_id and existing.device_id != device.id:
                 self._device_id_to_mac.pop(existing.device_id, None)
             # If the same MAC is rediscovered under a different ESPHome
@@ -569,6 +615,13 @@ class DeviceManager:
                     zone_slots = empty_zone_slots()
                 await self.async_update_zone_entities(mac, zone_slots)
 
+        # Rebuild the state-change tracker on either a brand-new device
+        # OR on an existing device's HA registry IDs changing — entity
+        # set could have shifted under a re-add. _fire_device_list_changed
+        # only triggers for new devices to preserve the existing semantics
+        # (frontend doesn't need to refetch on a silent IP/device_id swap).
+        if found_new or ids_changed:
+            self._refresh_state_listener()
         if found_new:
             self._fire_device_list_changed()
 
@@ -599,6 +652,10 @@ class DeviceManager:
         entry = ent_reg.async_get(entity_id)
         if entry is None or entry.platform != "esphome":
             return
+        # New ESPHome entity — refresh the targeted state-change tracker so
+        # the new entity_id gets included, whether it's on a brand-new
+        # device (about to be discovered below) or an existing managed one.
+        self._refresh_state_listener()
         # Skip only if the entity's device is already discovered AND the
         # underlying HA device.id matches what we have. If device.id changed
         # for a known MAC (the user removed and re-added the ESPHome
@@ -620,8 +677,13 @@ class DeviceManager:
         """Detect when a managed device becomes available."""
         new_state: State | None = event.data.get("new_state")
         old_state: State | None = event.data.get("old_state")
-        if new_state is None or old_state is None:
+        if new_state is None:
             return
+        # First appearance (old_state=None) is treated as the device just
+        # coming online: register-then-publish-state semantics produce a
+        # None → value transition that's indistinguishable from
+        # STATE_UNAVAILABLE → value from our point of view.
+        old_state_value = old_state.state if old_state is not None else STATE_UNAVAILABLE
 
         # Check if this entity belongs to a managed ESPHome device
         ent_reg = er.async_get(self._hass)
@@ -656,7 +718,7 @@ class DeviceManager:
         if (
             entry.domain == "sensor"
             and "firmware_version" in entry.unique_id
-            and old_state.state in offline_states
+            and old_state_value in offline_states
             and new_state.state not in offline_states
         ):
             fw_ver = self.read_firmware_version(entry.device_id)
@@ -679,7 +741,7 @@ class DeviceManager:
             self._fire_device_list_changed()
             return
 
-        if old_state.state not in offline_states:
+        if old_state_value not in offline_states:
             return
 
         # Device came online — push config once. The `_pushing` guard
@@ -792,6 +854,7 @@ class DeviceManager:
         # A delayed-save here can resurrect the deleted config if HA is
         # force-restarted within the debounce window.
         await self._store.async_save()
+        self._refresh_state_listener()
         self._fire_device_list_changed()
         _LOGGER.info("Cleaned up settings for removed device %s", mac)
 

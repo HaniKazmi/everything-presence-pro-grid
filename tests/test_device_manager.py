@@ -11,6 +11,7 @@ from unittest.mock import patch
 import pytest
 from homeassistant.const import STATE_UNAVAILABLE
 from homeassistant.core import HomeAssistant
+from homeassistant.core import callback
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers import entity_registry as er
 from pytest_homeassistant_custom_component.common import MockConfigEntry
@@ -3303,15 +3304,50 @@ class TestEventCallbacks:
         assert "AA:BB:CC:DD:EE:03" not in manager._pushing
         assert len(fire_calls) == 1
 
-    async def test_on_state_changed_ignores_none_states(self, hass: HomeAssistant, manager: DeviceManager) -> None:
-        """Missing old/new state is ignored."""
-        event = MagicMock()
-        event.data = {"entity_id": "sensor.test", "old_state": None, "new_state": MagicMock()}
-
-        with patch.object(manager, "_on_device_available", new_callable=AsyncMock) as mock_avail:
+    async def test_on_state_changed_treats_missing_old_state_as_offline(
+        self, hass: HomeAssistant, manager: DeviceManager
+    ) -> None:
+        """First appearance (old_state=None) is treated as offline → online —
+        that is, indistinguishable from STATE_UNAVAILABLE → value, which fires
+        the config push."""
+        dev_reg = dr.async_get(hass)
+        ent_reg = er.async_get(hass)
+        esphome_entry = MockConfigEntry(domain="esphome", data={"host": "192.168.1.50"})
+        esphome_entry.add_to_hass(hass)
+        device = dev_reg.async_get_or_create(
+            config_entry_id=esphome_entry.entry_id,
+            connections={("mac", "aa:bb:cc:dd:ee:ff")},
+            name="EPP",
+        )
+        entity = ent_reg.async_get_or_create(
+            "sensor",
+            "esphome",
+            unique_id="AA:BB:CC:DD:EE:FF-sensor-firmware_version",
+            config_entry=esphome_entry,
+            device_id=device.id,
+        )
+        manager.devices["AA:BB:CC:DD:EE:FF"] = ManagedDevice(
+            mac="AA:BB:CC:DD:EE:FF", name="EPP", host="192.168.1.50", device_id=device.id
+        )
+        with patch.object(manager, "_push_config_to_device", new_callable=AsyncMock) as mock_push:
+            new_state = MagicMock()
+            new_state.state = "1.2.3"
+            event = MagicMock()
+            event.data = {"entity_id": entity.entity_id, "old_state": None, "new_state": new_state}
             manager._on_state_changed(event)
             await hass.async_block_till_done()
+        mock_push.assert_awaited_once_with("AA:BB:CC:DD:EE:FF")
 
+    async def test_on_state_changed_ignores_missing_new_state(
+        self, hass: HomeAssistant, manager: DeviceManager
+    ) -> None:
+        """Missing new_state means the entity was removed — not an availability
+        event we care about."""
+        with patch.object(manager, "_on_device_available", new_callable=AsyncMock) as mock_avail:
+            event = MagicMock()
+            event.data = {"entity_id": "sensor.test", "old_state": MagicMock(), "new_state": None}
+            manager._on_state_changed(event)
+            await hass.async_block_till_done()
         mock_avail.assert_not_awaited()
 
     async def test_on_state_changed_ignores_non_esphome(self, hass: HomeAssistant, manager: DeviceManager) -> None:
@@ -4670,6 +4706,180 @@ class TestEventCallbacks:
             release.set()
             await asyncio.wait_for(handler_task, timeout=1.0)
 
+    async def test_state_change_listener_does_not_fire_for_unrelated_entities(
+        self, hass: HomeAssistant, manager: DeviceManager
+    ) -> None:
+        """The listener must only see state changes for managed ESPHome entities,
+        not every state change on the HA bus."""
+        dev_reg = dr.async_get(hass)
+        ent_reg = er.async_get(hass)
+        esphome_entry = MockConfigEntry(domain="esphome", data={"host": "192.168.1.50"})
+        esphome_entry.add_to_hass(hass)
+        device = dev_reg.async_get_or_create(
+            config_entry_id=esphome_entry.entry_id,
+            connections={("mac", "aa:bb:cc:dd:ee:ff")},
+            name="EPP",
+        )
+        ent_reg.async_get_or_create(
+            "sensor",
+            "esphome",
+            unique_id="AA:BB:CC:DD:EE:FF-sensor-temperature",
+            config_entry=esphome_entry,
+            device_id=device.id,
+        )
+        manager.devices["AA:BB:CC:DD:EE:FF"] = ManagedDevice(
+            mac="AA:BB:CC:DD:EE:FF", name="EPP", host="192.168.1.50", device_id=device.id
+        )
+        # Other-domain entity not under management.
+        other = MockConfigEntry(domain="hue", data={})
+        other.add_to_hass(hass)
+        ent_reg.async_get_or_create("light", "hue", unique_id="hue_1", config_entry=other)
+
+        fired: list[str] = []
+        orig = manager._on_state_changed
+
+        @callback
+        def spy(evt):
+            fired.append(evt.data.get("entity_id", ""))
+            orig(evt)
+
+        manager._on_state_changed = spy  # type: ignore[assignment]
+        await manager.async_start()
+        try:
+            hass.states.async_set("light.hue_1", "on")
+            await hass.async_block_till_done()
+            assert "light.hue_1" not in fired
+        finally:
+            await manager.async_stop()
+
+    async def test_refresh_state_listener_safe_under_concurrent_device_mutation(
+        self, hass: HomeAssistant, manager: DeviceManager
+    ) -> None:
+        """``_refresh_state_listener`` is invoked from event callbacks
+        (async_discover, _on_device_removed, …) while other tasks may
+        concurrently add or remove entries from ``self.devices``. If the
+        rebuild iterates the live dict, a concurrent mutation raises
+        ``RuntimeError: dictionary changed size during iteration``.
+        """
+        # Inspect the source to lock in the snapshot — a runtime test
+        # is brittle here because the rebuild's only awaitable step
+        # (async_track_state_change_event) is wrapped synchronously, so
+        # we can't reliably interleave a mutator. The source-level
+        # assertion catches any future refactor that drops the list().
+        import inspect
+
+        from custom_components.eppgrid.device_manager import DeviceManager as _DM
+
+        src = inspect.getsource(_DM._refresh_state_listener)
+        assert "list(self.devices.values())" in src, (
+            "_refresh_state_listener must iterate a snapshot via "
+            "list(self.devices.values()) — a concurrent add/remove during "
+            "rebuild would otherwise invalidate the live iterator"
+        )
+
+        # Behaviour smoke test: mutating self.devices during the rebuild
+        # must not raise. We simulate a mutation by patching
+        # async_entries_for_device to mutate self.devices on its first
+        # call, then yield results. Without the snapshot the next loop
+        # step would observe the size-change.
+        from homeassistant.helpers import device_registry as _dr
+        from homeassistant.helpers import entity_registry as _er
+
+        dev_reg = _dr.async_get(hass)
+        esphome_entry = MockConfigEntry(domain="esphome", data={"host": "192.168.1.50"}, title="EPP")
+        esphome_entry.add_to_hass(hass)
+        device_a = dev_reg.async_get_or_create(
+            config_entry_id=esphome_entry.entry_id,
+            connections={("mac", "aa:bb:cc:dd:ee:01")},
+            name="EPP A",
+        )
+        device_b = dev_reg.async_get_or_create(
+            config_entry_id=esphome_entry.entry_id,
+            connections={("mac", "aa:bb:cc:dd:ee:02")},
+            name="EPP B",
+        )
+        manager.devices["AA:BB:CC:DD:EE:01"] = ManagedDevice(
+            mac="AA:BB:CC:DD:EE:01", name="EPP A", host="192.168.1.50", device_id=device_a.id
+        )
+        manager.devices["AA:BB:CC:DD:EE:02"] = ManagedDevice(
+            mac="AA:BB:CC:DD:EE:02", name="EPP B", host="192.168.1.51", device_id=device_b.id
+        )
+
+        original_entries = _er.async_entries_for_device
+        first_call = [True]
+
+        def mutating_entries_for_device(*args, **kwargs):
+            if first_call[0]:
+                first_call[0] = False
+                # Mutate while loop is mid-rebuild — would crash live
+                # iterator on next __next__ without the list() snapshot.
+                manager.devices.pop("AA:BB:CC:DD:EE:02", None)
+            return original_entries(*args, **kwargs)
+
+        with patch(
+            "custom_components.eppgrid.device_manager.er.async_entries_for_device",
+            side_effect=mutating_entries_for_device,
+        ):
+            # Must NOT raise.
+            manager._refresh_state_listener()
+
+    async def test_async_discover_refreshes_state_listener_when_device_id_changes(
+        self, hass: HomeAssistant, manager: DeviceManager
+    ) -> None:
+        """If an already-managed MAC is rediscovered under a different HA
+        device_id (the integration re-add flow), the entity_id set
+        attached to that mac changes — the targeted state-change tracker
+        must be rebuilt to pick up the new entity_ids. ``found_new`` is
+        false on this path, so the rebuild must also fire on
+        ``ids_changed``."""
+        dev_reg = dr.async_get(hass)
+        ent_reg = er.async_get(hass)
+
+        # New ESPHome entry + device representing the post-re-add state.
+        new_entry = MockConfigEntry(domain="esphome", data={"host": "192.168.1.50"}, title="EPP-new")
+        new_entry.add_to_hass(hass)
+        new_device = dev_reg.async_get_or_create(
+            config_entry_id=new_entry.entry_id,
+            connections={("mac", "aa:bb:cc:dd:ee:ff")},
+            name="EPP",
+            manufacturer=EPP_MANUFACTURER,
+            model=EPP_MODEL,
+        )
+        ent_reg.async_get_or_create(
+            "sensor",
+            "esphome",
+            unique_id="AA:BB:CC:DD:EE:FF-sensor-firmware_version",
+            config_entry=new_entry,
+            device_id=new_device.id,
+        )
+
+        # Pre-populate manager.devices with the OLD (now-stale) device_id
+        # and entry_id — both differ from what async_discover will find
+        # in the registry. async_discover sees the same MAC under
+        # different IDs (the re-add flow) and must rebuild the state
+        # listener so it tracks the freshly-created entity_ids, not the
+        # ones attached to the dead device_id.
+        manager.devices["AA:BB:CC:DD:EE:FF"] = ManagedDevice(
+            mac="AA:BB:CC:DD:EE:FF",
+            name="EPP",
+            host="192.168.1.50",
+            esphome_config_entry_id="stale-entry-id",
+            device_id="stale-device-id",
+        )
+
+        with (
+            patch.object(manager, "_refresh_state_listener") as mock_refresh,
+            patch.object(manager, "async_update_zone_entities", new_callable=AsyncMock),
+        ):
+            await manager.async_discover()
+
+        # Existing-mac rediscovery with new IDs must trigger a rebuild
+        # so the listener tracks the new entity_ids.
+        mock_refresh.assert_called()
+        # Manager state updated to point at the new IDs.
+        assert manager.devices["AA:BB:CC:DD:EE:FF"].device_id == new_device.id
+        assert manager.devices["AA:BB:CC:DD:EE:FF"].esphome_config_entry_id == new_entry.entry_id
+
 
 # ---------------------------------------------------------------------------
 # Stale connection and start/stop tests
@@ -4750,7 +4960,10 @@ class TestSessionLifecycle:
         with patch.object(manager, "async_discover", new_callable=AsyncMock):
             await manager.async_start()
 
-        assert len(manager._unsub_listeners) == 3
+        # Two bus listeners: entity_registry_updated and device_registry_updated.
+        # The state-change tracker is targeted (async_track_state_change_event)
+        # and lives on _state_track_unsub, not _unsub_listeners.
+        assert len(manager._unsub_listeners) == 2
 
         # Cleanup
         await manager.async_stop()
