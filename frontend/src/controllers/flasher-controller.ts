@@ -309,12 +309,13 @@ export class FlasherController implements ReactiveController {
 	}
 
 	async subscribeDeviceList(): Promise<void> {
-		// Set intent BEFORE the inner unsubscribeDeviceList() bumps it down,
-		// so a connection swap during this call still sees we want to be
-		// subscribed.
+		// Mark intent first, then inline the unsubscribe-style teardown
+		// (gen bump + safeUnsub of any prior unsub). We can't reuse
+		// unsubscribeDeviceList() here because it clears
+		// `_wantDeviceListSub` — and we need that flag to stay true so a
+		// connection swap landing while subscribeMessage() is in flight
+		// still triggers a resubscribe.
 		this._wantDeviceListSub = true;
-		// Don't route through unsubscribeDeviceList() here — it would clear
-		// the intent flag we just set. Manually drop the prior unsub.
 		this._deviceListGen++;
 		safeUnsub(this._unsubDeviceList);
 		this._unsubDeviceList = undefined;
