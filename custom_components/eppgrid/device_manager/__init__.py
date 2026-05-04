@@ -111,6 +111,11 @@ class DeviceManager:
         # async_stop can drain them. Tasks self-remove via add_done_callback
         # so the set stays bounded under steady state.
         self._pending_tasks: set[asyncio.Task] = set()
+        # Flipped at the very top of async_stop. Guards
+        # `_ensure_esphome_entry_listener` so an in-flight async_discover
+        # can't re-register a listener after Phase 1 has already cleared
+        # `_entry_update_unsubs`.
+        self._stopping: bool = False
 
     @callback
     def on_device_list_changed(self, cb: Any) -> Any:
@@ -206,8 +211,10 @@ class DeviceManager:
 
         Order matters:
 
-        1. Cancel event/state listeners synchronously so no NEW work is
-           spawned while we drain.
+        1. Set ``_stopping`` so ``_ensure_esphome_entry_listener`` refuses
+           to re-register listeners, then cancel event/state listeners
+           and drop ``_entry_update_unsubs`` synchronously so no NEW work
+           is spawned (and no entry-update callbacks fire) while we drain.
         2. Drain in-flight tasks (``_pending_tasks`` then
            ``_pending_closes``) under a bounded ``wait_for``. The tracked
            tasks (``_on_device_available``, ``_on_device_removed``,
@@ -215,21 +222,29 @@ class DeviceManager:
            network I/O with no internal stop-time timeout, so a hung
            device must not block unload — survivors are cancelled and
            awaited again to settle.
-        3. Drop ESPHome entry-update listeners *after* the task drain.
-           Clearing earlier would let an in-flight ``async_discover``
-           re-register a listener via ``_ensure_esphome_entry_listener``
-           and leak it past stop.
-        4. Disconnect all active connections in parallel, each bounded by
+        3. Disconnect all active connections in parallel, each bounded by
            ``_disconnect_timeout``. On timeout we force the local cleanup
            via ``_release_references()`` because aioesphomeapi's
            ``_on_stop`` only fires after ``client.disconnect()`` finishes
            — a cancelled ``wait_for`` would otherwise leave the
            ``DeviceConnection`` half-initialised.
         """
-        # Phase 1: stop new work being spawned.
+        self._stopping = True
+
+        # Phase 1: stop new work being spawned. With ``_stopping`` set,
+        # any in-flight ``async_discover`` that resumes during the task
+        # drain will hit the guard in ``_ensure_esphome_entry_listener``
+        # and decline to re-register — so it's safe to clear the
+        # entry-update unsubs now, BEFORE the drain. Doing so closes the
+        # window where a concurrent ``hass.config_entries.async_update_entry``
+        # could fire ``_on_esphome_entry_updated`` against a manager
+        # that's already half-shut.
         for unsub in self._unsub_listeners:
             unsub()
         self._unsub_listeners.clear()
+        for unsub in self._entry_update_unsubs.values():
+            unsub()
+        self._entry_update_unsubs.clear()
         for cancel in self._entity_update_clear_cancels.values():
             cancel()
         self._entity_update_clear_cancels.clear()
@@ -255,22 +270,28 @@ class DeviceManager:
                 )
                 for t in still_running:
                     t.cancel()
-                # Give cancelled tasks a tick to settle so we don't leave
-                # warning-noise CancelledErrors after stop returns.
-                await asyncio.gather(*still_running, return_exceptions=True)
+                # Give cancelled tasks a tick to settle. Bound this too —
+                # a task that suppresses CancelledError would otherwise
+                # block async_stop indefinitely, defeating _stop_timeout
+                # as a hard upper bound.
+                with contextlib.suppress(TimeoutError):
+                    await asyncio.wait_for(
+                        asyncio.gather(*still_running, return_exceptions=True),
+                        timeout=self._stop_timeout,
+                    )
+                still_alive = sum(1 for t in still_running if not t.done())
+                if still_alive:
+                    _LOGGER.error(
+                        "%d %s task(s) ignored cancellation on stop; leaking",
+                        still_alive,
+                        label,
+                    )
 
         await _drain(list(self._pending_tasks), "_pending_tasks")
         await _drain(list(self._pending_closes.values()), "_pending_closes")
         self._pending_closes.clear()
 
-        # Phase 3: ESPHome entry-update listeners — unsub AFTER tasks
-        # drained so a still-running async_discover can't re-register one
-        # via _ensure_esphome_entry_listener mid-shutdown.
-        for unsub in self._entry_update_unsubs.values():
-            unsub()
-        self._entry_update_unsubs.clear()
-
-        # Phase 4: bounded parallel disconnect.
+        # Phase 3: bounded parallel disconnect.
         async def _safe_disconnect(conn: DeviceConnection) -> None:
             try:
                 await asyncio.wait_for(conn.async_disconnect(), timeout=self._disconnect_timeout)
@@ -678,6 +699,11 @@ class DeviceManager:
     @callback
     def _ensure_esphome_entry_listener(self, entry_id: str | None) -> None:
         """Register an ESPHome config-entry update listener once per entry."""
+        # Refuse to register during shutdown — async_stop already cleared
+        # `_entry_update_unsubs` in Phase 1, and re-registering here would
+        # leak the listener past stop.
+        if self._stopping:
+            return
         if entry_id is None or entry_id in self._entry_update_unsubs:
             return
         entry = self._hass.config_entries.async_get_entry(entry_id)
@@ -797,8 +823,16 @@ class DeviceManager:
             # Bounded exponential backoff. Re-check availability between
             # attempts so we don't keep hammering a device HA already
             # knows is offline.
+            #
+            # Close the (likely-stale) session ONCE before the loop, not
+            # on every iteration: the first push failed because of that
+            # session, but subsequent retries should leave whatever
+            # session the user might have opened mid-backoff alone — the
+            # 1s/3s/9s window is long enough for a panel reconnect, and
+            # tearing it down on the next iteration would surface as a
+            # flaky reconnect.
+            await self.async_close_session(mac)
             for delay in (1.0, 3.0, 9.0):
-                await self.async_close_session(mac)
                 await asyncio.sleep(delay)
                 if not self._is_device_available(mac):
                     self._pushing.discard(mac)
