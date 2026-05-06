@@ -188,14 +188,26 @@ class DeviceConnection:
         with a translation key when the service isn't available or the
         connection is dead, so WS handlers can map the failure to a
         user-facing message.
+
+        ``return_response=False`` (default) is fire-and-forget: the message
+        is sent and the call returns immediately. We forward ``None`` to
+        aioesphomeapi (its own fire-and-forget sentinel) rather than
+        ``False``, because ``False`` arms an ``ExecuteServiceResponse``
+        listener that ESPHome never fulfils for ``SUPPORTS_RESPONSE_NONE``
+        services — the wait would block for the full timeout, and forever
+        for actions like ``set_update_manifest`` whose handler reboots the
+        device mid-execution.
         """
         if self._client is None:
             _raise_service_unavailable(name)
         svc = self._services.get(name)
         if svc is None:
             _raise_service_unavailable(name)
+        if not return_response:
+            await self._client.execute_service(svc, payload or {}, return_response=None)
+            return None
         return await asyncio.wait_for(
-            self._client.execute_service(svc, payload or {}, return_response=return_response),
+            self._client.execute_service(svc, payload or {}, return_response=True),
             timeout=timeout,
         )
 

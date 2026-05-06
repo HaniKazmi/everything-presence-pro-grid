@@ -448,9 +448,60 @@ class TestDeviceConnection:
         conn._services = {"epp_dismiss_target": svc}
         conn._client.execute_service = AsyncMock()
         await conn.async_execute_service("epp_dismiss_target", {"target_index": 0, "cell_index": 1})
+        # Default is fire-and-forget: wrapper must pass `return_response=None`
+        # so aioesphomeapi sends without waiting for an ack. Passing False
+        # would arm an ExecuteServiceResponse listener that ESPHome never
+        # fulfils for SUPPORTS_RESPONSE_NONE services — the wait would block
+        # for the full timeout (and forever in the OTA case where the
+        # firmware reboots mid-handler).
         conn._client.execute_service.assert_awaited_once_with(
-            svc, {"target_index": 0, "cell_index": 1}, return_response=False
+            svc, {"target_index": 0, "cell_index": 1}, return_response=None
         )
+
+    async def test_async_execute_service_does_not_block_when_firmware_never_acks(self) -> None:
+        """Fire-and-forget calls must not wait for a response.
+
+        Regression: c7b06f21 routed all service calls through a wrapper that
+        defaulted return_response=False, which made aioesphomeapi wait for an
+        ExecuteServiceResponse that ESPHome never sends for
+        SUPPORTS_RESPONSE_NONE services. set_update_manifest reboots the
+        device mid-handler, so the wait never resolved and OTA appeared to
+        fail even though the firmware accepted the URL.
+        """
+        conn = DeviceConnection("192.168.1.100")
+        conn._client = MagicMock()
+        svc = MagicMock()
+        conn._services = {"set_update_manifest": svc}
+
+        # Simulate aioesphomeapi's fire-and-forget path: when called with
+        # return_response=None it returns immediately without awaiting any
+        # response_event. If the wrapper passes False instead, this mock
+        # would never see return_response=None — which the assertion below
+        # would catch.
+        conn._client.execute_service = AsyncMock(return_value=None)
+
+        # No timeout needed because there's nothing to wait for. Use a tight
+        # timeout to guard against accidental future wait_for re-introduction.
+        await asyncio.wait_for(
+            conn.async_execute_service("set_update_manifest", {"url": "http://example/m.json"}),
+            timeout=0.5,
+        )
+        conn._client.execute_service.assert_awaited_once_with(
+            svc, {"url": "http://example/m.json"}, return_response=None
+        )
+
+    async def test_async_execute_service_waits_when_response_requested(self) -> None:
+        """When the caller asks for a response, the wrapper must wait and return it."""
+        conn = DeviceConnection("192.168.1.100")
+        conn._client = MagicMock()
+        svc = MagicMock()
+        conn._services = {"slow_with_response": svc}
+        sentinel = MagicMock()
+        conn._client.execute_service = AsyncMock(return_value=sentinel)
+
+        result = await conn.async_execute_service("slow_with_response", {"x": 1}, return_response=True)
+        assert result is sentinel
+        conn._client.execute_service.assert_awaited_once_with(svc, {"x": 1}, return_response=True)
 
     async def test_async_execute_service_raises_when_service_missing(self) -> None:
         from homeassistant.exceptions import HomeAssistantError
@@ -470,7 +521,8 @@ class TestDeviceConnection:
         with pytest.raises(HomeAssistantError):
             await conn.async_execute_service("epp_dismiss_target", {})
 
-    async def test_async_execute_service_honours_timeout(self) -> None:
+    async def test_async_execute_service_honours_timeout_when_awaiting_response(self) -> None:
+        """Timeout only applies when waiting for a response — fire-and-forget has nothing to await."""
         conn = DeviceConnection("192.168.1.100")
         conn._client = MagicMock()
         svc = MagicMock()
@@ -481,7 +533,7 @@ class TestDeviceConnection:
 
         conn._client.execute_service = MagicMock(side_effect=hang)
         with pytest.raises((TimeoutError, asyncio.TimeoutError)):
-            await conn.async_execute_service("slow", {}, timeout=0.05)
+            await conn.async_execute_service("slow", {}, timeout=0.05, return_response=True)
 
 
 # ---------------------------------------------------------------------------
