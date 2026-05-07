@@ -206,7 +206,13 @@ describe("panel device list transitions", () => {
 		expect(closeSpy).toHaveBeenCalled();
 	});
 
-	it("clears live sensor and zone state when the session closes", async () => {
+	it("clears high-frequency live state on session close, preserves env sensors", async () => {
+		// Targets / occupancy / presence flags are cleared because stale flags
+		// are visibly misleading on the live grid. Env sensor values are
+		// preserved so the env-offset slider's render output (`raw + offset`)
+		// stays the same across the offline cycle — otherwise Lit would
+		// clobber the user's drag-set DOM value with "—" then with the raw
+		// reading on reconnect.
 		const dev1 = mockDeviceInfo("aa", "Alpha");
 		const { el, a, pushDeviceList } = await mountPanel([dev1]);
 		a._sensorState = {
@@ -229,17 +235,19 @@ describe("panel device list transitions", () => {
 		pushDeviceList([]);
 		await el.updateComplete;
 
+		// Cleared.
 		expect(a._sensorState.occupancy).toBe(false);
 		expect(a._sensorState.static_presence).toBe(false);
 		expect(a._sensorState.motion_presence).toBe(false);
 		expect(a._sensorState.target_presence).toBe(false);
-		expect(a._sensorState.illuminance).toBeNull();
-		expect(a._sensorState.temperature).toBeNull();
-		expect(a._sensorState.humidity).toBeNull();
-		expect(a._sensorState.co2).toBeNull();
 		expect(a._zoneState.occupancy).toEqual({});
 		expect(a._zoneState.target_counts).toEqual({});
 		expect(a._zoneState.frame_count).toBe(0);
+		// Preserved (slow-changing, kept across the offline window).
+		expect(a._sensorState.illuminance).toBe(500);
+		expect(a._sensorState.temperature).toBe(22);
+		expect(a._sensorState.humidity).toBe(40);
+		expect(a._sensorState.co2).toBe(600);
 	});
 
 	it("resets the zone engine state when the session closes", async () => {

@@ -863,9 +863,24 @@ export class EPPGridPanel extends LitElement {
 			// state (perspective, furniture, zones) is intentionally kept
 			// so the user returns to where they were when the device
 			// comes back.
+			//
+			// Env sensor values (temperature/humidity/illuminance/co2) are
+			// preserved across the close: the offset-slider render computes
+			// `raw + offset` from these values. Going to null produces "—"
+			// which Lit then clobbers the @input-set DOM value with, and
+			// after reconnect the display ends up at the live reading rather
+			// than the user's drag value. Env readings change slowly so a
+			// few-second-stale value is preferable to the clobber.
+			const prev = this._sensorState;
 			this._targets = [];
 			this._rawTargets = [];
-			this._sensorState = createInitialSensorState();
+			this._sensorState = {
+				...createInitialSensorState(),
+				temperature: prev.temperature,
+				humidity: prev.humidity,
+				illuminance: prev.illuminance,
+				co2: prev.co2,
+			};
 			this._zoneState = createInitialZoneState();
 			this._targetCtrl.resetZoneEngineState();
 		};
@@ -1819,7 +1834,41 @@ export class EPPGridPanel extends LitElement {
       </div>`;
 		}
 
-		if (this._deviceCtrl.reconnecting) {
+		const dev = this._devices.find((d) => d.mac === this._selectedMac);
+		// Missing-from-list is treated as offline so a transient empty
+		// device list during HA reload shows the offline banner instead
+		// of falling through to a half-rendered grid without data.
+		const isOffline =
+			!!this._selectedMac && (!dev || dev.firmware_status === "unavailable");
+		const protocolOk = !dev || dev.firmware_status === "compatible";
+
+		// Compute the inline status banner for settings-view editing.
+		// While the user is editing settings, swapping the whole template out
+		// for a connection banner unmounts <epp-settings-view>, which wipes
+		// its private `_overrides` (every unsaved toggle / slider edit). HA
+		// debounces ESPHome reloads 30s after a disabled_by change, so a
+		// settings save reliably triggers a brief offline window 30s later
+		// — long enough to lose any in-flight edits the user made after
+		// clicking Save. Inline the banner above the settings view instead.
+		let settingsStatusBanner: any = nothing;
+		if (this._view === "settings" && this._selectedMac) {
+			if (this._deviceCtrl.reconnecting) {
+				settingsStatusBanner = html`
+					<div class="protocol-fullpage protocol-fullpage-info">
+						<ha-icon icon="mdi:connection"></ha-icon>
+						<p>${this._localize("connection.connecting")}</p>
+					</div>
+				`;
+			} else if (this._deviceCtrl.connectionFailed || isOffline) {
+				settingsStatusBanner = this._renderConnectionBanner();
+			} else if (!protocolOk) {
+				settingsStatusBanner = this._renderProtocolBanner();
+			}
+		}
+
+		const inSettingsEdit = this._view === "settings" && this._selectedMac;
+
+		if (this._deviceCtrl.reconnecting && !inSettingsEdit) {
 			return html`<div class="tab-layout">
 				${this._renderTabBar()}
 				<div class="panel">
@@ -1833,14 +1882,7 @@ export class EPPGridPanel extends LitElement {
 			</div>`;
 		}
 
-		const dev = this._devices.find((d) => d.mac === this._selectedMac);
-		// Missing-from-list is treated as offline so a transient empty
-		// device list during HA reload shows the offline banner instead
-		// of falling through to a half-rendered grid without data.
-		const isOffline =
-			!!this._selectedMac && (!dev || dev.firmware_status === "unavailable");
-
-		if (this._deviceCtrl.connectionFailed || isOffline) {
+		if ((this._deviceCtrl.connectionFailed || isOffline) && !inSettingsEdit) {
 			return html`<div class="tab-layout">
 				${this._renderTabBar()}
 				<div class="panel">
@@ -1851,9 +1893,7 @@ export class EPPGridPanel extends LitElement {
 			</div>`;
 		}
 
-		const protocolOk = !dev || dev.firmware_status === "compatible";
-
-		if (!protocolOk) {
+		if (!protocolOk && !inSettingsEdit) {
 			return html`<div class="tab-layout">
 				${this._renderTabBar()}
 				<div class="panel">
@@ -1866,7 +1906,7 @@ export class EPPGridPanel extends LitElement {
 
 		const content =
 			this._view === "settings"
-				? this._renderSettings()
+				? this._renderSettings(settingsStatusBanner)
 				: this._view === "editor" && this._perspective
 					? this._renderEditor()
 					: this._renderLiveOverview();
@@ -2440,10 +2480,11 @@ export class EPPGridPanel extends LitElement {
 		);
 	}
 
-	private _renderSettings() {
+	private _renderSettings(statusBanner: unknown = nothing) {
 		return html`
       <div class="panel">
         ${this._renderHeader()}
+        ${statusBanner}
         <epp-settings-view
           .sensorState=${this._sensorState}
           .targetAutoDistance=${this._targetAutoDistance}

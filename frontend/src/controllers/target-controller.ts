@@ -64,7 +64,34 @@ export class TargetController implements ReactiveController {
 	 * Updates host's _targets, _sensorState, _zoneState, and debug log.
 	 */
 	handleTargetData(data: TargetData): void {
-		if (this.host._view === "settings") return;
+		if (this.host._view === "settings") {
+			// Env-offset sliders display `raw + offset` where raw is derived
+			// from the live sensor reading. Propagating live updates mid-drag
+			// makes the displayed value bounce as the sensor fluctuates.
+			// Snapshot model: populate any field that's currently null
+			// (fresh load, post-reconnect onSessionClosed clear), then freeze.
+			// Targets/zones are skipped entirely — they'd re-render the panel
+			// at the 5Hz target rate and fight slider drag handlers.
+			const cur = this.host._sensorState;
+			const s = data.sensors;
+			const updates: Partial<typeof cur> = {};
+			if (cur.temperature == null && s.temperature != null) {
+				updates.temperature = s.temperature;
+			}
+			if (cur.humidity == null && s.humidity != null) {
+				updates.humidity = s.humidity;
+			}
+			if (cur.illuminance == null && s.illuminance != null) {
+				updates.illuminance = s.illuminance;
+			}
+			if (cur.co2 == null && s.co2 != null) {
+				updates.co2 = s.co2;
+			}
+			if (Object.keys(updates).length > 0) {
+				this.host._sensorState = { ...cur, ...updates };
+			}
+			return;
+		}
 		this.host._targets = data.targets;
 		this.host._sensorState = data.sensors;
 		if (data.zones) {

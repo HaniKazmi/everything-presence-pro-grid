@@ -2989,6 +2989,81 @@ class TestWebSocketSubscriptions:
         # Both should be silently dropped — no event, no exception.
         connection.send_message.assert_not_called()
 
+    async def test_grid_targets_pushes_env_sensor_updates(
+        self, hass: HomeAssistant, config_entry: MockConfigEntry
+    ) -> None:
+        """Numeric env-sensor state events must push to the frontend.
+
+        Without this push, env values stay stuck at em-dashes after a
+        reconnect: targets and zone-state events piggy-back env values, so
+        when there's no target movement and no zone activity the frontend
+        never gets the env reading.
+        """
+        from aioesphomeapi import SensorInfo
+        from aioesphomeapi import SensorState
+
+        mock_dm = await setup_integration(hass, config_entry)
+        mock_device_conn = MagicMock()
+        mock_device_conn._entities = [
+            SensorInfo(object_id="temperature", key=10, name="Temperature"),
+        ]
+        mock_device_conn.subscribe_states = AsyncMock()
+        mock_device_conn.unsubscribe_states = MagicMock()
+        mock_dm.get_session = MagicMock(return_value=mock_device_conn)
+
+        from custom_components.eppgrid.websocket_api import websocket_subscribe_grid_targets
+
+        connection = MagicMock()
+        connection.subscriptions = {}
+        msg = {"id": 99, "type": "eppgrid/subscribe_grid_targets", "mac": "AA:BB:CC:DD:EE:FF"}
+
+        await call_async_handler(hass, websocket_subscribe_grid_targets, connection, msg)
+        on_state = mock_device_conn.subscribe_states.await_args[0][0]
+        connection.send_message.reset_mock()
+
+        on_state(SensorState(key=10, state=22.5, missing_state=False))
+
+        connection.send_message.assert_called()
+        # Inspect the most recent message; the env reading must be embedded.
+        last_call = connection.send_message.call_args
+        # event_message returns a dict; assert temperature reached the payload.
+        payload = last_call[0][0]
+        assert payload.get("event", {}).get("sensors", {}).get("temperature") == 22.5
+
+    async def test_grid_targets_pushes_binary_sensor_updates(
+        self, hass: HomeAssistant, config_entry: MockConfigEntry
+    ) -> None:
+        """Binary-sensor state events must push to the frontend too — same
+        reason as the env-sensor case above.
+        """
+        from aioesphomeapi import BinarySensorInfo
+        from aioesphomeapi import BinarySensorState
+
+        mock_dm = await setup_integration(hass, config_entry)
+        mock_device_conn = MagicMock()
+        mock_device_conn._entities = [
+            BinarySensorInfo(object_id="occupancy", key=20, name="Occupancy"),
+        ]
+        mock_device_conn.subscribe_states = AsyncMock()
+        mock_device_conn.unsubscribe_states = MagicMock()
+        mock_dm.get_session = MagicMock(return_value=mock_device_conn)
+
+        from custom_components.eppgrid.websocket_api import websocket_subscribe_grid_targets
+
+        connection = MagicMock()
+        connection.subscriptions = {}
+        msg = {"id": 100, "type": "eppgrid/subscribe_grid_targets", "mac": "AA:BB:CC:DD:EE:FF"}
+
+        await call_async_handler(hass, websocket_subscribe_grid_targets, connection, msg)
+        on_state = mock_device_conn.subscribe_states.await_args[0][0]
+        connection.send_message.reset_mock()
+
+        on_state(BinarySensorState(key=20, state=True, missing_state=False))
+
+        connection.send_message.assert_called()
+        payload = connection.send_message.call_args[0][0]
+        assert payload.get("event", {}).get("sensors", {}).get("occupancy") is True
+
     async def test_grid_targets_handles_malformed_position(
         self, hass: HomeAssistant, config_entry: MockConfigEntry
     ) -> None:
@@ -3551,8 +3626,12 @@ class TestSubscriptionCallbacks:
         state = BinarySensorState(key=400, state=True, missing_state=False)
         on_state(state)
 
-        # Binary sensor updates don't trigger send_message (only target positions do)
-        connection.send_message.assert_not_called()
+        # Binary sensor updates push immediately so the frontend reflects
+        # changes that arrive between target / zone-state events (otherwise
+        # post-reconnect with quiet targets, sensor state stays stuck).
+        connection.send_message.assert_called_once()
+        payload = connection.send_message.call_args[0][0]
+        assert payload["event"]["sensors"]["occupancy"] is True
 
     async def test_grid_targets_on_state_numeric_sensor(
         self, hass: HomeAssistant, config_entry: MockConfigEntry
@@ -3585,12 +3664,19 @@ class TestSubscriptionCallbacks:
         state = SensorState(key=500, state=22.5, missing_state=False)
         on_state(state)
 
-        # NaN handling — should not trigger send_message either
+        # First message: real value reaches the frontend.
+        assert connection.send_message.call_count == 1
+        first = connection.send_message.call_args_list[0][0][0]
+        assert first["event"]["sensors"]["temperature"] == 22.5
+
+        # NaN is converted to None and pushed — the frontend uses None to
+        # render an em-dash; without the push it would keep showing the
+        # last real value, which is misleading.
         nan_state = SensorState(key=500, state=float("nan"), missing_state=False)
         on_state(nan_state)
-
-        # Numeric sensor updates don't trigger send_message (only target positions do)
-        connection.send_message.assert_not_called()
+        assert connection.send_message.call_count == 2
+        second = connection.send_message.call_args_list[1][0][0]
+        assert second["event"]["sensors"]["temperature"] is None
 
     async def test_grid_targets_on_state_co2_sensor(self, hass: HomeAssistant, config_entry: MockConfigEntry) -> None:
         """CO2 SensorState updates sensors.co2 in accumulated state."""
