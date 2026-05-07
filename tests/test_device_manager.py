@@ -5514,6 +5514,87 @@ class TestEventCallbacks:
 
 
 # ---------------------------------------------------------------------------
+# Debounced push request tests
+# ---------------------------------------------------------------------------
+
+
+class TestRequestPush:
+    """Tests for DeviceManager._request_push — the trailing-debounce wrapper.
+
+    The frontend's calibration / delete-calibration / save flows fire 3
+    sequential WS commands (set_settings → set_setup → set_room_layout) for
+    a single user action. Each WS handler used to `await _push_config_to_device`,
+    fanning out into 3 full config pushes within ~10ms. _request_push
+    collapses these into a single trailing-debounced push.
+    """
+
+    async def test_coalesces_rapid_fire_calls(self, hass: HomeAssistant, manager: DeviceManager) -> None:
+        """Three calls inside the debounce window collapse into one push."""
+        mac = "AA:BB:CC:DD:EE:FF"
+        with patch.object(manager, "_push_config_to_device", new_callable=AsyncMock) as mock_push:
+            manager._request_push(mac, delay=0.05)
+            manager._request_push(mac, delay=0.05)
+            manager._request_push(mac, delay=0.05)
+            # Wait past the debounce window for the trailing fire.
+            await asyncio.sleep(0.1)
+            await hass.async_block_till_done()
+
+        mock_push.assert_awaited_once_with(mac)
+
+    async def test_separate_macs_each_push(self, hass: HomeAssistant, manager: DeviceManager) -> None:
+        """Debounce is per-mac — calls for different devices don't collapse."""
+        with patch.object(manager, "_push_config_to_device", new_callable=AsyncMock) as mock_push:
+            manager._request_push("AA:BB:CC:DD:EE:01", delay=0.05)
+            manager._request_push("AA:BB:CC:DD:EE:02", delay=0.05)
+            await asyncio.sleep(0.1)
+            await hass.async_block_till_done()
+
+        assert mock_push.await_count == 2
+        called_macs = {call.args[0] for call in mock_push.await_args_list}
+        assert called_macs == {"AA:BB:CC:DD:EE:01", "AA:BB:CC:DD:EE:02"}
+
+    async def test_calls_separated_by_more_than_delay_each_push(
+        self, hass: HomeAssistant, manager: DeviceManager
+    ) -> None:
+        """Calls for the same mac with a gap larger than `delay` produce two pushes."""
+        mac = "AA:BB:CC:DD:EE:FF"
+        with patch.object(manager, "_push_config_to_device", new_callable=AsyncMock) as mock_push:
+            manager._request_push(mac, delay=0.03)
+            await asyncio.sleep(0.08)  # well past the first window
+            await hass.async_block_till_done()
+            manager._request_push(mac, delay=0.03)
+            await asyncio.sleep(0.08)
+            await hass.async_block_till_done()
+
+        assert mock_push.await_count == 2
+
+    async def test_request_push_does_not_schedule_after_stop(self, hass: HomeAssistant, manager: DeviceManager) -> None:
+        """async_stop sets _stopping; subsequent _request_push calls are no-ops."""
+        manager._stopping = True
+        with patch.object(manager, "_push_config_to_device", new_callable=AsyncMock) as mock_push:
+            manager._request_push("AA:BB:CC:DD:EE:FF", delay=0.05)
+            await asyncio.sleep(0.1)
+            await hass.async_block_till_done()
+
+        mock_push.assert_not_awaited()
+
+    async def test_async_stop_drains_pending_pushes(self, hass: HomeAssistant, manager: DeviceManager) -> None:
+        """A push pending in the debounce window is cancelled on async_stop.
+
+        Without this, the timer task would outlive the config entry and HA
+        2026.4+ pytest fixtures fail the test for leaked tasks.
+        """
+        with patch.object(manager, "_push_config_to_device", new_callable=AsyncMock) as mock_push:
+            manager._request_push("AA:BB:CC:DD:EE:FF", delay=0.5)  # long delay
+            # Don't wait — call async_stop while the timer is still pending.
+            await manager.async_stop()
+
+        mock_push.assert_not_awaited()
+        # Pending tracking dict empty after stop.
+        assert not manager._pending_pushes
+
+
+# ---------------------------------------------------------------------------
 # Stale connection and start/stop tests
 # ---------------------------------------------------------------------------
 

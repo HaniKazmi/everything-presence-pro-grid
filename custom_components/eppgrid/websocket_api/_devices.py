@@ -209,13 +209,18 @@ async def websocket_set_setup(
     device_config["settings"] = settings
     await manager._store.async_save()
 
-    # Push calibration to device
-    push_ok = await manager._push_config_to_device(mac)
+    # Schedule a debounced push. The frontend's calibration / delete flows
+    # fire 3 sequential WS commands (set_settings → set_setup → set_room_layout)
+    # for one user action; using _request_push instead of awaiting the push
+    # collapses them into a single push that runs after the last save lands.
+    manager._request_push(mac)
 
-    # Apply entity registry changes after push, with reconnect guard
+    # Apply entity registry changes with reconnect guard. Arm the guard
+    # unconditionally (matching set_settings) so the upcoming entity-state
+    # toggle's ESPHome-reload doesn't trigger a redundant push, regardless
+    # of whether the deferred config push has fired yet.
     if deleting:
-        if push_ok:
-            manager._schedule_entity_update_clear(mac)
+        manager._schedule_entity_update_clear(mac)
         _apply_entity_states(hass, mac, {"target_xy": False})
 
     # `room_layout` was popped above when calibration changed, so the zone
@@ -261,10 +266,11 @@ async def websocket_set_room_layout(
     }
     await manager._store.async_save()
 
-    # Push config to device if connected
+    # Schedule a debounced push (coalesces with concurrent set_setup /
+    # set_settings calls in the same calibration flow).
     dev = manager.devices.get(mac)
     if dev and dev.host:
-        await manager._push_config_to_device(mac)
+        manager._request_push(mac)
 
     # Update ESPHome entity enable/disable/rename
     await manager.async_update_zone_entities(mac, msg["zone_slots"])
@@ -924,7 +930,9 @@ async def websocket_set_settings(
     if log_levels is not None:
         device_config["log_levels"] = log_levels
     await manager._store.async_save()
-    await manager._push_config_to_device(mac)
+    # Schedule a debounced push (coalesces with set_setup / set_room_layout
+    # calls in the same flow — see _request_push docstring).
+    manager._request_push(mac)
     # Auto-enable/disable relay switch entity based on trigger mode
     relay_enabled = msg["relay_trigger_mode"] != "disabled"
     manager._schedule_entity_update_clear(mac)

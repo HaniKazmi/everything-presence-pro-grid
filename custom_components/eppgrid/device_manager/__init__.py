@@ -127,6 +127,13 @@ class DeviceManager:
         # before opening so a quick close→reopen doesn't return a connection
         # that the close task is about to disconnect.
         self._pending_closes: dict[str, asyncio.Task] = {}
+        # Trailing-debounce timers for `_request_push`, keyed by mac. The
+        # frontend's calibration / save flows fire 3 sequential WS commands
+        # for one user action; without coalescing each one would fan out
+        # into a full config push. async_stop cancels any pending timers
+        # so they don't outlive the config entry (HA 2026.4+ pytest fails
+        # the test if a task survives unload).
+        self._pending_pushes: dict[str, asyncio.Task] = {}
         # Macs whose last subscribe_device attempt failed to open a session.
         # Only the *transition* from "OK" → "failing" fires the device-list
         # broadcast; consecutive retries against the same already-failing
@@ -311,6 +318,13 @@ class DeviceManager:
         for cancel in self._entity_update_clear_cancels.values():
             cancel()
         self._entity_update_clear_cancels.clear()
+        # Cancel pending debounce timers from `_request_push`. They're
+        # `asyncio.sleep` waits — cancellation propagates as CancelledError
+        # which the helper swallows. Done before Phase 2's task drain so
+        # cancelled tasks settle in the same `_drain` round.
+        for task in self._pending_pushes.values():
+            task.cancel()
+        self._pending_pushes.clear()
 
         # Phase 2: drain tracked tasks with a bounded timeout. _pending_tasks
         # is awaited before _pending_closes because state-change callbacks
@@ -988,6 +1002,45 @@ class DeviceManager:
             conn.subscribe_logs(esphome_level)
         else:
             conn.unsubscribe_logs()
+
+    def _request_push(self, mac: str, delay: float = 0.1) -> None:
+        """Request a debounced config push for `mac` (trailing-edge).
+
+        Multiple rapid-fire calls within `delay` seconds collapse into a
+        single push that runs `delay` after the LAST call. The frontend's
+        calibration / delete-calibration / save flows each fire 3 sequential
+        WS commands (set_settings → set_setup → set_room_layout) for a
+        single user action; without this coalescing each handler does its
+        own full _push_config_to_device, so a save fans out into 3 pushes
+        within ~10ms (plus duplicate pipeline pushes).
+
+        Push reads storage at fire time, so any saves completed before then
+        are captured. Handlers must `await store.async_save()` before calling
+        _request_push so the eventual push sees the latest data.
+
+        Fire-and-forget: callers don't await completion. If you need
+        push_ok, call _push_config_to_device directly instead.
+        """
+        if self._stopping:
+            return
+        if (existing := self._pending_pushes.get(mac)) is not None and not existing.done():
+            existing.cancel()
+
+        async def _delayed_push() -> None:
+            try:
+                await asyncio.sleep(delay)
+            except asyncio.CancelledError:
+                return
+            await self._push_config_to_device(mac)
+
+        task = self._hass.async_create_task(_delayed_push())
+        self._pending_pushes[mac] = task
+
+        def _drop(_: asyncio.Task) -> None:
+            if self._pending_pushes.get(mac) is task:
+                self._pending_pushes.pop(mac, None)
+
+        task.add_done_callback(_drop)
 
     async def _push_pipeline_to_device(self, mac: str) -> None:
         """Recompute pipeline intervals and push to device."""
