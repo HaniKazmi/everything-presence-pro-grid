@@ -46,7 +46,7 @@ If you can't use HACS:
 
 | Symptom | Likely cause | Fix |
 | --- | --- | --- |
-| HACS doesn't list the integration | The custom repository hasn't been added yet (Everything Presence Pro Grid is not in HACS's default list) | Open **HACS** → kebab menu (⋮) → **Custom repositories**. Add `https://github.com/clintongormley/everything-presence-pro-grid` as type **Integration**, then refresh HACS and search again. |
+| HACS doesn't list the integration | The custom repository hasn't been added yet (Everything Presence Pro Grid is not in HACS's default list) | Open **HACS** → kebab menu (⋮) → **Custom repositories**. Add `https://github.com/clintongormley/everything-presence-pro-grid` as type **Integration**. The integration then appears in the HACS list — reload the page if it doesn't show up immediately. |
 | Integration installed but the panel doesn't appear in the HA sidebar | Integration entry hasn't been added yet, or you're signed in as a non-admin user | Confirm you're signed in as an administrator (the panel is admin-only). Otherwise go to **Settings → Devices & services → Add integration** and add **Everything Presence Pro Grid**. If the panel still doesn't appear, hard-refresh the HA web UI (**Ctrl-F5** / **Cmd-Shift-R**). |
 | "Integration update required" banner appears immediately after install | Your device firmware is newer than the integration release you've just installed | Either update the integration to a newer release in HACS, or downgrade the firmware to match. |
 | Manual install done but panel still not appearing | `custom_components/eppgrid/` is in the wrong place, or nested one level too deep | Verify the `eppgrid/` directory sits directly under your HA config's `custom_components/` folder, and check HA logs for import errors. |
