@@ -7,9 +7,7 @@ import logging
 import os
 
 from homeassistant.components import panel_custom
-from homeassistant.components.frontend import add_extra_js_url
 from homeassistant.components.frontend import async_remove_panel
-from homeassistant.components.frontend import remove_extra_js_url
 from homeassistant.components.http import StaticPathConfig
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
@@ -28,9 +26,6 @@ FRONTEND_DIR = os.path.join(os.path.dirname(__file__), "frontend")
 # HTTP component. Static path registration can only happen once per HA process
 # and will error on duplicate registration, so we guard it with a flag.
 _STATIC_PATH_REGISTERED_KEY = f"{DOMAIN}_static_path_registered"
-# Key tracking the last-registered JS module URL so reloads can remove the
-# previous URL before adding the new one (otherwise URLs accumulate).
-_JS_URL_KEY = f"{DOMAIN}_js_url"
 # Key tracking whether the sidebar panel was registered, so unload can remove
 # it without warning when the user had it disabled.
 _PANEL_REGISTERED_KEY = f"{DOMAIN}_panel_registered"
@@ -49,8 +44,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     manager = DeviceManager(hass, store)
 
-    # Register the frontend bundle as a global module URL so the Lovelace
-    # cards are available on any dashboard, not just the sidebar panel page.
+    # Register the static path so panel_custom can fetch the bundled JS module.
     module_url = await _register_frontend_resources(hass)
 
     if store.sidebar_panel:
@@ -81,20 +75,16 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     if hass.data.pop(_PANEL_REGISTERED_KEY, False):
         async_remove_panel(hass, DOMAIN, warn_if_unknown=False)
 
-    js_url = hass.data.pop(_JS_URL_KEY, None)
-    if js_url is not None:
-        remove_extra_js_url(hass, js_url)
-
     return True
 
 
 async def _register_frontend_resources(hass: HomeAssistant) -> str:
-    """Register the static path and add the JS bundle as a global frontend module.
+    """Register the static path serving the bundled JS module.
 
-    Returns the versioned module URL. The static path is registered only once
-    per HA process. The JS URL is recomputed on every call (so reloads pick up
-    new bundles) and the previously-registered URL is removed first to keep
-    the global list from accumulating stale entries.
+    Returns the versioned module URL for `panel_custom.async_register_panel` to
+    load on panel access. The static path is registered only once per HA
+    process. The hash is recomputed on every call so reloads pick up new
+    bundles via the cache-bust query string.
     """
     if not hass.data.get(_STATIC_PATH_REGISTERED_KEY):
         await hass.http.async_register_static_paths(
@@ -114,17 +104,17 @@ async def _register_frontend_resources(hass: HomeAssistant) -> str:
     except OSError:
         js_hash = "0"
 
-    module_url = f"/{DOMAIN}_static/eppgrid-panel.js?v={js_hash}"
-    previous_url = hass.data.get(_JS_URL_KEY)
-    if previous_url is not None:
-        remove_extra_js_url(hass, previous_url)
-    add_extra_js_url(hass, module_url)
-    hass.data[_JS_URL_KEY] = module_url
-    return module_url
+    return f"/{DOMAIN}_static/eppgrid-panel.js?v={js_hash}"
 
 
 async def _register_panel(hass: HomeAssistant, module_url: str) -> None:
-    """Register the frontend sidebar panel."""
+    """Register the frontend sidebar panel.
+
+    The panel is admin-only: HA hides the sidebar entry for non-admin users
+    and rejects direct URL access. Mutating WS commands are already gated by
+    @websocket_api.require_admin (PR #174); locking the panel down keeps the
+    UX consistent — non-admins don't see a panel they can't usefully use.
+    """
     await panel_custom.async_register_panel(
         hass=hass,
         frontend_url_path=DOMAIN,
@@ -132,6 +122,6 @@ async def _register_panel(hass: HomeAssistant, module_url: str) -> None:
         module_url=module_url,
         sidebar_title="Everything Presence Pro Grid",
         sidebar_icon="mdi:radar",
-        require_admin=False,
+        require_admin=True,
         config={},
     )
