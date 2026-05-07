@@ -317,12 +317,17 @@ class DeviceManager:
             cancel()
         self._entity_update_clear_cancels.clear()
         # Cancel pending debounce timers from `_request_push`. They're
-        # `asyncio.sleep` waits — cancellation propagates as CancelledError
-        # which the helper swallows. Done before Phase 2's task drain so
-        # cancelled tasks settle in the same `_drain` round.
-        for task in self._pending_pushes.values():
-            task.cancel()
-        self._pending_pushes.clear()
+        # `asyncio.sleep` waits, so cancellation lands inside the helper's
+        # CancelledError handler which returns cleanly. Await the gather
+        # here (instead of relying on Phase 2's drain) so a degenerate
+        # async_stop with no other pending tasks still yields to the loop
+        # and lets the cancellations settle before the manager goes away.
+        if self._pending_pushes:
+            push_tasks = list(self._pending_pushes.values())
+            self._pending_pushes.clear()
+            for task in push_tasks:
+                task.cancel()
+            await asyncio.gather(*push_tasks, return_exceptions=True)
 
         # Phase 2: drain tracked tasks with a bounded timeout. _pending_tasks
         # is awaited before _pending_closes because state-change callbacks
