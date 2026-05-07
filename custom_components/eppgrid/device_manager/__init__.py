@@ -934,6 +934,11 @@ class DeviceManager:
         # tasks.  The 60-second timer in websocket_set_settings handles cleanup.
         if mac in self._entity_update_macs:
             _LOGGER.debug("Skipping redundant push for %s (entity update guard)", mac)
+            # Must broadcast the false→true transition even when skipping the
+            # push, else the frontend's recovery hook (onSelectedAvailable)
+            # never runs and its WS state subs stay attached to the
+            # torn-down DeviceConnection.
+            self._fire_device_list_changed()
             return
 
         _LOGGER.info("Device %s became available, pushing config", mac)
