@@ -208,17 +208,10 @@ async def websocket_set_setup(
         settings["target_xy"] = False
     device_config["settings"] = settings
     await manager._store.async_save()
-
-    # Schedule a debounced push. The frontend's calibration / delete flows
-    # fire 3 sequential WS commands (set_settings → set_setup → set_room_layout)
-    # for one user action; using _request_push instead of awaiting the push
-    # collapses them into a single push that runs after the last save lands.
     manager._request_push(mac)
 
-    # Apply entity registry changes with reconnect guard. Arm the guard
-    # unconditionally (matching set_settings) so the upcoming entity-state
-    # toggle's ESPHome-reload doesn't trigger a redundant push, regardless
-    # of whether the deferred config push has fired yet.
+    # Arm the guard before _apply_entity_states triggers an ESPHome reload,
+    # so the reconnect doesn't fire a redundant push.
     if deleting:
         manager._schedule_entity_update_clear(mac)
         _apply_entity_states(hass, mac, {"target_xy": False})
@@ -265,9 +258,6 @@ async def websocket_set_room_layout(
         "furniture": msg.get("furniture", []),
     }
     await manager._store.async_save()
-
-    # Schedule a debounced push (coalesces with concurrent set_setup /
-    # set_settings calls in the same calibration flow).
     dev = manager.devices.get(mac)
     if dev and dev.host:
         manager._request_push(mac)
@@ -930,8 +920,6 @@ async def websocket_set_settings(
     if log_levels is not None:
         device_config["log_levels"] = log_levels
     await manager._store.async_save()
-    # Schedule a debounced push (coalesces with set_setup / set_room_layout
-    # calls in the same flow — see _request_push docstring).
     manager._request_push(mac)
     # Auto-enable/disable relay switch entity based on trigger mode
     relay_enabled = msg["relay_trigger_mode"] != "disabled"

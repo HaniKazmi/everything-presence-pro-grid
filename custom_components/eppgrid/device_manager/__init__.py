@@ -127,12 +127,10 @@ class DeviceManager:
         # before opening so a quick close→reopen doesn't return a connection
         # that the close task is about to disconnect.
         self._pending_closes: dict[str, asyncio.Task] = {}
-        # Trailing-debounce timers for `_request_push`, keyed by mac. The
-        # frontend's calibration / save flows fire 3 sequential WS commands
-        # for one user action; without coalescing each one would fan out
-        # into a full config push. async_stop cancels any pending timers
-        # so they don't outlive the config entry (HA 2026.4+ pytest fails
-        # the test if a task survives unload).
+        # Pending debounce timer per mac for `_request_push`. The dict key
+        # supports cancel-prev-on-new-request; tasks are also tracked in
+        # `_pending_tasks` (via _spawn) so async_stop's drain catches any
+        # that escape the Phase 1 cancel loop.
         self._pending_pushes: dict[str, asyncio.Task] = {}
         # Macs whose last subscribe_device attempt failed to open a session.
         # Only the *transition* from "OK" → "failing" fires the device-list
@@ -1007,19 +1005,11 @@ class DeviceManager:
         """Request a debounced config push for `mac` (trailing-edge).
 
         Multiple rapid-fire calls within `delay` seconds collapse into a
-        single push that runs `delay` after the LAST call. The frontend's
-        calibration / delete-calibration / save flows each fire 3 sequential
-        WS commands (set_settings → set_setup → set_room_layout) for a
-        single user action; without this coalescing each handler does its
-        own full _push_config_to_device, so a save fans out into 3 pushes
-        within ~10ms (plus duplicate pipeline pushes).
+        single push that runs `delay` after the LAST call. Push reads
+        storage at fire time — callers must `await store.async_save()` first.
 
-        Push reads storage at fire time, so any saves completed before then
-        are captured. Handlers must `await store.async_save()` before calling
-        _request_push so the eventual push sees the latest data.
-
-        Fire-and-forget: callers don't await completion. If you need
-        push_ok, call _push_config_to_device directly instead.
+        Fire-and-forget. If you need push_ok, call _push_config_to_device
+        directly.
         """
         if self._stopping:
             return
@@ -1033,7 +1023,11 @@ class DeviceManager:
                 return
             await self._push_config_to_device(mac)
 
-        task = self._hass.async_create_task(_delayed_push())
+        # _spawn tracks the task in `_pending_tasks` so async_stop's Phase 2
+        # drain catches it as a backstop; the per-mac dict below lets us
+        # cancel the pending timer eagerly in Phase 1 and supports the
+        # cancel-prev-on-new-request pattern for coalescing.
+        task = self._spawn(_delayed_push())
         self._pending_pushes[mac] = task
 
         def _drop(_: asyncio.Task) -> None:
