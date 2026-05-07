@@ -18,8 +18,7 @@ import type { RawTarget, Target } from "../types.js";
  * `as unknown as PanelHost` cast) would have silently swallowed.
  *
  * The `_` prefix is the social marker for "internal panel state" —
- * external consumers (only `<epp-device-card>` and tests in practice)
- * shouldn't reach into them.
+ * external consumers (tests in practice) shouldn't reach into them.
  *
  * Only fields actually read or written by the controllers belong here.
  * Adding a new field requires both adding it to the panel and listing

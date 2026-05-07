@@ -28,7 +28,7 @@ If you can't use HACS:
 ## After installing
 
 1. Go to **Settings → Devices & services → Add integration**, search for **Everything Presence Pro Grid**, and add the entry.
-2. The **Everything Presence Pro Grid** panel appears in the HA sidebar for administrator users. Non-admin users don't see the panel; they can still view Lovelace cards built on top of EPP Grid entities on any shared dashboard. If the panel doesn't show up for you and you are an admin, hard-refresh the HA web UI (Ctrl-F5 / Cmd-Shift-R).
+2. The **Everything Presence Pro Grid** panel appears in the HA sidebar for administrator users only — Home Assistant hides it from non-admin users. If the panel doesn't show up for you and you are an admin, hard-refresh the HA web UI (Ctrl-F5 / Cmd-Shift-R). Non-admin users can still see EPP Grid entities (zone presence, target positions, environment sensors) on any shared dashboard via the standard Home Assistant entity cards.
 3. The panel starts empty. See [Flashing firmware](flashing-firmware.md) to put Everything Presence Pro Grid firmware on your first device.
 
 ![Everything Presence Pro Grid panel in the HA sidebar, empty state — no devices yet.](../images/installation/empty-panel.png)

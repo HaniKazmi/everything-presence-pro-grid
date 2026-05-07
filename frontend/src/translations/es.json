@@ -7,8 +7,7 @@
 		"close": "Cerrar",
 		"add": "Añadir",
 		"discard": "Descartar",
-		"loading": "Cargando...",
-		"card_description": "Configuración de dispositivos, calibración, editor de zonas y flasheo de firmware"
+		"loading": "Cargando..."
 	},
 	"furniture": {
 		"armchair": "Sillón",

@@ -49,7 +49,7 @@ TypeScript/Lit panel. Runs inside the Home Assistant iframe.
     - `epp-wizard.ts` — calibration wizard (guide + corner capture).
     - `epp-flasher-view.ts` — firmware flasher UI.
     - `epp-zone-sidebar.ts`, `epp-overlay-sidebar.ts`, `epp-furniture-sidebar.ts`, `epp-furniture-overlay.ts`, `epp-live-sidebar.ts` — editor-mode sidebars.
-    - `epp-settings-view.ts`, `epp-device-card.ts`, `epp-flasher-card.ts` — supporting UI.
+    - `epp-settings-view.ts` — supporting UI.
 - **`controllers/`** — Lit reactive controllers:
     - `grid-state-controller.ts` — mutable grid state (cells, room boundary, overlays).
     - `flasher-controller.ts` — USB flasher state machine.

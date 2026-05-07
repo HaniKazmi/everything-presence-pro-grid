@@ -32,7 +32,6 @@ Frontend (eppgrid-panel.ts — orchestrator)
   │   ├── epp-wizard.ts — calibration wizard (guide, corners, capture)
   │   ├── epp-settings-view.ts — device settings (accordions, ranges, reporting)
   │   ├── epp-flasher-view.ts — USB/Wi-Fi firmware flasher flow
-  │   ├── epp-device-card.ts — device picker card in the panel header
   │   ├── epp-grid.ts — shared grid renderer (live + editor)
   │   ├── epp-live-sidebar.ts — sensor/zone status display
   │   ├── epp-zone-sidebar.ts — zone list + type controls

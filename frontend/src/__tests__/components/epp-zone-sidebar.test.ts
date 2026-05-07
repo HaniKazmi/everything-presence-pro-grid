@@ -465,6 +465,33 @@ describe("epp-zone-sidebar events", () => {
 		document.body.removeChild(c);
 	});
 
+	it("seeds custom-type sliders with current params on boundary type→custom switch", () => {
+		// Switching zone 0 INTO 'custom' must populate trigger/renew/timeout/handoff_timeout
+		// so the user has a sane starting point — non-custom types resolve these from
+		// ZONE_TYPE_DEFAULTS on read, but custom needs them persisted.
+		const el = createSidebar({ activeZone: 0 });
+		el.zone0 = { type: "default" };
+		const handler = vi.fn();
+		el.addEventListener("zone0-change", handler);
+
+		const tpl = (el as any)._renderBoundaryTypeControls();
+		const c = renderTo(tpl);
+
+		const select = c.querySelector(".sensitivity-select") as HTMLSelectElement;
+		select.value = "custom";
+		select.dispatchEvent(new Event("change", { bubbles: true }));
+
+		expect(handler).toHaveBeenCalledTimes(1);
+		const detail = handler.mock.calls[0][0].detail;
+		expect(detail.type).toBe("custom");
+		expect(typeof detail.trigger).toBe("number");
+		expect(typeof detail.renew).toBe("number");
+		expect(typeof detail.timeout).toBe("number");
+		expect(typeof detail.handoff_timeout).toBe("number");
+
+		document.body.removeChild(c);
+	});
+
 	it("fires zone0-change (only) on boundary type change", () => {
 		const el = createSidebar({ activeZone: 0 });
 		const z0Handler = vi.fn();

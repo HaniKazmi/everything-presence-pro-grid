@@ -124,19 +124,6 @@ describe("panel HA reconnect handling", () => {
 		}
 	});
 
-	it("shows the reconnecting UI when used as a Lovelace card with a disconnected hass", async () => {
-		await import("../components/epp-device-card.js");
-		const card = document.createElement("epp-device-card") as any;
-		card.hass = mockHass(false);
-		document.body.appendChild(card);
-		await card.updateComplete;
-		const panel = card.shadowRoot.querySelector("eppgrid-panel");
-		await panel.updateComplete;
-		const serialised = (panel.shadowRoot?.innerHTML ?? "").toLowerCase();
-		expect(serialised).toMatch(/home assistant|reconnect/);
-		document.body.removeChild(card);
-	});
-
 	it("requests a re-render when a 'ready' event fires after disconnect", async () => {
 		const el = document.createElement("eppgrid-panel") as EPPGridPanel;
 		const hass = mockHass(true);

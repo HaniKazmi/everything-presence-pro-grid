@@ -93,7 +93,6 @@ everything-presence-pro-grid/
 │   │   │   ├── flasher-controller.ts     # Serial port + USB flash state machine
 │   │   │   └── panel-host.ts             # Typed `PanelHost` interface declaring every panel field/method the controllers touch (friend-class shape)
 │   │   ├── components/
-│   │   │   ├── epp-device-card.ts        # Lovelace card wrapper around <eppgrid-panel>
 │   │   │   ├── epp-wizard.ts             # Calibration wizard (guide, corners, capture)
 │   │   │   ├── epp-flasher-view.ts       # USB flash + WiFi provisioning UI
 │   │   │   ├── epp-settings-view.ts      # Device settings (accordions, ranges)
@@ -211,11 +210,12 @@ It does **no** signal processing — that's all firmware.
 ### Integration Lifecycle (`__init__.py`)
 
 `async_setup_entry` creates the store, starts the device manager, and registers
-WebSocket commands. The bundled JS module is exposed at
-`/eppgrid_static/eppgrid-panel.js?v={hash}` (MD5 cache-buster) and added as a
-global `extra_js_url`, so `<epp-device-card>` and the dashboard strategy are
-available everywhere — not just on the sidebar panel page. The sidebar panel
-itself is registered conditionally on the `sidebar_panel` config flag.
+WebSocket commands. The bundled JS module is served at
+`/eppgrid_static/eppgrid-panel.js?v={hash}` (MD5 cache-buster) and registered
+as the panel's webcomponent module via `panel_custom.async_register_panel`.
+The sidebar panel is registered conditionally on the `sidebar_panel` config
+flag and is admin-only (`require_admin=True`); HA hides it from non-admin
+users and rejects direct URL access.
 
 ### Device Manager (`device_manager/`)
 
@@ -283,20 +283,13 @@ Rollup bundles `src/index.ts` → minified ES module at
 TypeScript with strict mode and experimental decorators for Lit.
 Biome for linting/formatting.
 
-### Embedding Surfaces
+### Embedding
 
-The bundle exposes two ways to mount the same panel:
-
-1. **Sidebar panel** — `panel_custom` registers `<eppgrid-panel>` as a
-   full-screen webcomponent on the `/eppgrid` URL.
-2. **Lovelace card** — `<epp-device-card>` is a thin Lit wrapper that mounts
-   `<eppgrid-panel>` on any dashboard. A built-in dashboard *strategy*
-   (`EPPGridStrategy`, registered as `customStrategies.eppgrid`) generates a
-   single-card view automatically.
-
-Both reuse the same `eppgrid-panel.js` bundle, registered both as a custom
-panel module and as a global `extra_js_url` so the card is available on every
-dashboard.
+`panel_custom.async_register_panel` registers `<eppgrid-panel>` as a
+full-screen webcomponent on the `/eppgrid` URL with `require_admin=True`.
+The panel is the only mounting surface — no Lovelace card or dashboard
+strategy is exposed, since both would have wrapped the same full-screen UI
+without the admin gate, breaking the access-control model.
 
 ### Panel Architecture
 
@@ -333,7 +326,6 @@ sidebars.
 - `<epp-overlay-sidebar>` — entry-point / interference / suppress paint controls
 - `<epp-furniture-sidebar>` — sticker catalog, custom icons
 - `<epp-furniture-overlay>` — drag, resize, rotate furniture items
-- `<epp-device-card>` — Lovelace card wrapper around `<eppgrid-panel>`
 
 **State flow:** Controllers own cross-cutting state (device, grid, targets,
 flasher). Components receive data as properties and fire `CustomEvent`s for
