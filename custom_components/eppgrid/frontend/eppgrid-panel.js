@@ -2099,7 +2099,7 @@ const dt={attribute:!0,type:String,converter:E,reflect:!1,hasChanged:m},At=(t=dt
               .value=${String(o.zoneUpdateRateMs??this.zoneUpdateRateMs)}
               .options=${n}
               .disabled=${!r}
-              @selected=${t=>{const e=t.detail.value;e&&(this._overrides.zoneUpdateRateMs=Number(e),this._fireDirty())}}
+              @selected=${t=>{const e=t.detail.value;e&&(this._overrides.zoneUpdateRateMs=Number(e),this._fireDirty(),this.requestUpdate())}}
               @closed=${this._stopClosed}>
             </ha-select>
           </div>
@@ -2132,7 +2132,7 @@ const dt={attribute:!0,type:String,converter:E,reflect:!1,hasChanged:m},At=(t=dt
               .value=${String(o.targetUpdateRateMs??this.targetUpdateRateMs)}
               .options=${n}
               .disabled=${!a}
-              @selected=${t=>{const e=t.detail.value;e&&(this._overrides.targetUpdateRateMs=Number(e),this._fireDirty())}}
+              @selected=${t=>{const e=t.detail.value;e&&(this._overrides.targetUpdateRateMs=Number(e),this._fireDirty(),this.requestUpdate())}}
               @closed=${this._stopClosed}>
             </ha-select>
           </div>
