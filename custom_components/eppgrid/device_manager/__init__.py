@@ -132,6 +132,12 @@ class DeviceManager:
         # `_pending_tasks` (via _spawn) so async_stop's drain catches any
         # that escape the Phase 1 cancel loop.
         self._pending_pushes: dict[str, asyncio.Task] = {}
+        # Macs whose last debounced push returned False (no host, exception,
+        # offline mid-reload). The entity-update guard normally suppresses
+        # _on_device_available's reconnect push as redundant — but when a
+        # debounced push has already failed, the device is unsynced and we
+        # need that reconnect push as a recovery path.
+        self._failed_pushes: set[str] = set()
         # Macs whose last subscribe_device attempt failed to open a session.
         # Only the *transition* from "OK" → "failing" fires the device-list
         # broadcast; consecutive retries against the same already-failing
@@ -949,7 +955,7 @@ class DeviceManager:
         # Don't clear the guard here — multiple entities cycle through
         # unavailable→available during an ESPHome reload, creating multiple
         # tasks.  The 60-second timer in websocket_set_settings handles cleanup.
-        if mac in self._entity_update_macs:
+        if mac in self._entity_update_macs and mac not in self._failed_pushes:
             _LOGGER.debug("Skipping redundant push for %s (entity update guard)", mac)
             # Must broadcast the false→true transition even when skipping the
             # push, else the frontend's recovery hook (onSelectedAvailable)
@@ -957,6 +963,10 @@ class DeviceManager:
             # torn-down DeviceConnection.
             self._fire_device_list_changed()
             return
+        # Recovery path: if a debounced push failed (likely fired during the
+        # ESPHome reload that armed the guard), drop the marker and fall
+        # through to push so the device gets the latest config.
+        self._failed_pushes.discard(mac)
 
         _LOGGER.info("Device %s became available, pushing config", mac)
         if not await self._push_config_to_device(mac):
@@ -1037,7 +1047,13 @@ class DeviceManager:
             # concurrent _request_push calls (no event-loop yields here).
             if self._pending_pushes.get(mac) is task:
                 del self._pending_pushes[mac]
-            await self._push_config_to_device(mac)
+            ok = await self._push_config_to_device(mac)
+            # Track failure so _on_device_available's entity-update-guard
+            # branch can run a recovery push instead of silently skipping.
+            if ok:
+                self._failed_pushes.discard(mac)
+            else:
+                self._failed_pushes.add(mac)
 
         # _spawn tracks the task in `_pending_tasks` so async_stop's Phase 2
         # drain catches it as a backstop.
