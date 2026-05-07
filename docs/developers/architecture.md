@@ -67,8 +67,9 @@ everything-presence-pro-grid/
 │   │   ├── _devices.py            # Device list/config, sessions, settings, pipeline
 │   │   ├── _firmware.py           # OTA, dismiss target
 │   │   └── _flasher.py            # Flashable devices, ESPHome device CRUD
-│   ├── firmware_proxy.py        # CORS-free proxy for firmware binaries from GitHub Releases
-│   ├── diagnostics.py           # HA diagnostics dump (entry + per-device snapshots)
+│   ├── firmware_proxy.py        # Auth-required proxy for firmware binaries from GitHub Releases
+│   ├── diagnostics.py           # HA diagnostics dump (entry + per-device snapshots, MAC/host redacted)
+│   ├── repairs.py               # Repairs flow: triggers OTA from firmware_behind_<mac>, polls version sensor
 │   ├── zone_name_translations.py # Zone entity name translation via entity_registry
 │   ├── strings.json             # HA UI strings (config flow)
 │   ├── translations/            # HA-managed locale translations
@@ -78,8 +79,7 @@ everything-presence-pro-grid/
 ├── frontend/
 │   ├── src/
 │   │   ├── eppgrid-panel.ts         # Orchestrator (view routing, controllers, inlined views)
-│   │   ├── index.ts                 # Export entry; registers card + dashboard strategy
-│   │   ├── strategy.ts              # Lovelace dashboard strategy (auto-generates the view)
+│   │   ├── index.ts                 # Module entry — re-exports EPPGridPanel
 │   │   ├── panel-mount-guard.ts     # Re-mount guard for HA frontend rebuilds
 │   │   ├── localize.ts              # IntlMessageFormat translation factory
 │   │   ├── translations/            # en.json, es.json (nested string keys)
@@ -126,6 +126,7 @@ everything-presence-pro-grid/
 ├── firmware/
 │   ├── components/epp/          # Custom ESPHome component
 │   ├── lib/epp_zone_engine/     # C++ zone engine library + tests
+│   ├── lib/epp_component_helpers/ # Header-only host-testable helpers (NVS layout, ring buffer, JSON writer, etc.) + tests
 │   ├── common/                  # Shared ESPHome YAML fragments (LD2450, SEN0609, CO2, BLE, ethernet, base)
 │   └── variants/                # 2 firmware variants: wifi-ble-co2, ethernet-ble-co2
 ├── docs/
@@ -249,8 +250,7 @@ Persists per-device config (calibration, room layout, zone slots, sensor
 settings) and **saved configurations** (named room layouts the user can
 restore — calibration + zones + furniture + settings) via HA's `Store` API.
 Settings are stored sparsely: only fields that differ from `SETTINGS_DEFAULTS`
-are written, and missing fields are filled from defaults on restore. A legacy
-`templates` key is one-time migrated to `configurations` on first load.
+are written, and missing fields are filled from defaults on restore.
 
 ### WebSocket API (`websocket_api/`)
 
@@ -261,12 +261,24 @@ subscriptions parse ESPHome text sensor updates into structured events:
 - `subscribe_grid_targets` — grid positions + zone state + sensor data
 
 Config commands (`set_setup`, `set_room_layout`, `set_settings`,
-`save_configuration`, `list_configurations`, `delete_configuration`,
-`apply_configuration`, etc.) check config protocol compatibility before
-executing, then save to storage and push to the device. An `update_firmware`
-command triggers OTA. The integration also exposes a `/api/eppgrid/firmware/`
-HTTP view (`firmware_proxy.py`) that proxies to the version-pinned GitHub
-Release, dodging GitHub's missing CORS headers for the in-browser flasher.
+`set_distance_override`, `set_entity_enabled`, `save_configuration`,
+`list_configurations`, `delete_configuration`,
+`set_show_room_calibration_tutorial`) check config protocol compatibility
+before executing, then save to storage and push to the device.
+Configuration *application* is client-side: the panel reads a saved
+configuration via `list_configurations`/`get_config` and replays it as a
+sequence of the regular set_* commands — there is no server-side
+`apply_configuration` command. An `update_firmware` command triggers OTA;
+`subscribe_ota_progress` streams the live progress events. `dismiss_target`
+is a read-side helper for ghost-target dismissal. The integration also
+exposes a `/api/eppgrid/firmware/` HTTP view (`firmware_proxy.py`) that
+proxies to the version-pinned GitHub Release, dodging GitHub's missing
+CORS headers for the in-browser flasher; it requires HA bearer auth, caps
+the body at 16 MiB, and times out after 60 s.
+
+State-mutating commands carry `@websocket_api.require_admin`. Read-only
+`list_*` / `subscribe_*` / `get_config` / `dismiss_target` are open to
+any authenticated user.
 
 A `diagnostics.py` module supplies HA's standard diagnostics download
 (integration entry + per-device entity snapshots) for support cases.
@@ -531,9 +543,16 @@ before pushing config and the frontend renders the same expansion live.
 
 ### C++ (doctest)
 
-Tests in `firmware/lib/epp_zone_engine/tests/`: zone engine, zone-engine
-logging, parity (frontend↔firmware fixtures), grid, calibration, rolling
-window, zone-config parser, relay.
+Two host-testable libraries, each with its own CMake build and CTest run:
+
+- `firmware/lib/epp_zone_engine/tests/`: zone engine, zone-engine
+  logging, parity (frontend↔firmware fixtures), grid, calibration, rolling
+  window, zone-config parser, relay.
+- `firmware/lib/epp_component_helpers/tests/`: NVS layout, frame ring
+  buffer, frame staleness, change detector, indexed setter, JSON writer,
+  perspective parser, relay publish, target validity.
+
+The pre-push hook builds and tests both when firmware code changes.
 
 ### TypeScript (vitest)
 

@@ -8,7 +8,7 @@ Everything Presence Pro Grid is four subsystems (Python integration, TypeScript/
 - **Node.js** (LTS) and `npm` — for the frontend build and tests.
 - **CMake** and a C++17 compiler — for the zone engine library tests (only needed if you touch firmware).
 - **ESPHome CLI** — for firmware compile, if you're building firmware locally. `pip install esphome` works.
-- **`lcov`** (optional) — used by the pre-push hook for C++ coverage on firmware changes. `brew install lcov` on macOS. Without it, the hook skips C++ coverage but still runs C++ tests.
+- **`lcov`** (optional) — used by the pre-push hook for C++ coverage on firmware changes. `brew install lcov` on macOS. Without it, the hook skips C++ coverage but still runs C++ tests. (`epp_component_helpers/` is header-only, so coverage is implicit in its host tests; lcov only measures `epp_zone_engine/`'s `src/`.)
 
 A locally-running Home Assistant is helpful but not required for running the test suite — the Python tests use `pytest-homeassistant-custom-component`, which provides fixtures that don't need a real HA instance.
 
@@ -83,17 +83,26 @@ npx vitest run --coverage
 - Covers components, controllers, and `lib/` modules.
 - **Per-file coverage thresholds** (from `frontend/vitest.config.ts`): lines 90%, branches 85%, functions 90%, statements 90%. Vitest fails the run if any file falls below these, which fails the push and CI.
 
-### C++ zone engine
+### C++ libraries
+
+There are two host-testable libraries under `firmware/lib/`:
 
 ```bash
+# Zone engine — the main pipeline (rolling window, perspective, zone state machine)
 cd firmware/lib/epp_zone_engine
+cmake -B build -S . -DCMAKE_BUILD_TYPE=Coverage
+cmake --build build
+ctest --test-dir build --output-on-failure
+
+# Component helpers — small pure helpers extracted from components/epp/
+cd ../epp_component_helpers
 cmake -B build -S . -DCMAKE_BUILD_TYPE=Coverage
 cmake --build build
 ctest --test-dir build --output-on-failure
 ```
 
-- Only needed if you touch firmware code. The hook runs this automatically when firmware files change.
-- Coverage floor (hook-enforced): 90%, measured with `lcov`.
+- Only needed if you touch firmware code. The hook runs both when firmware files change.
+- Coverage floor (hook-enforced): 90% lines on `epp_zone_engine/src/*.cpp`, measured with `lcov`. `epp_component_helpers/` is header-only (templated/inline) so lcov sees nothing in `src/`; coverage there is implicit in its host tests.
 
 ### Docs
 
@@ -109,7 +118,7 @@ There are no unit tests for docs — `--strict` is the verification.
 
 In order, on every `git push`:
 
-1. **Docs check** — if model files change (Python integration code or frontend source under `lib/`, `controllers/`, `components/`, or top-level), warns (non-blocking) if `docs/developers/architecture.md` or `docs/developers/data-catalog.md` wasn't also updated.
+1. **Docs check** — for *structural* changes (file add / rename / delete) under the doc-described surface area, **blocks** the push unless `docs/developers/architecture.md` or `docs/developers/data-catalog.md` was also updated. Pure modifications produce a non-blocking warning. See `scripts/check-docs-update.sh`.
 2. **Strings check** — if entity files changed with likely user-facing string edits, fails if `strings.json` wasn't also updated.
 3. **Translations check** — `strings.json` ↔ `translations/en.json` must be identical (copy one to the other if you change strings).
 4. **Python format** — `ruff format --check`.
