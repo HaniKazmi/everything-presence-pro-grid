@@ -50,6 +50,9 @@ Per-target output from the zone engine, exposed as up to three target slots. The
 
 Target-level entities also require a calibrated room.
 
+!!! note
+    When a target slot is inactive (i.e. the LD2450 isn't currently tracking that slot), `target_<N>_x`, `_y`, `_signal`, and `_zone` all report `unknown` rather than a numeric value. Gate any numeric automation or graph on the matching `target_<N>_active` so the inactive period doesn't appear as a `0` or as a missing value of unclear cause.
+
 ## Environmental
 
 Climate readings from the on-board sensors. They report room state independently of presence detection. Each toggle controls whether the matching Home Assistant entity is exposed.

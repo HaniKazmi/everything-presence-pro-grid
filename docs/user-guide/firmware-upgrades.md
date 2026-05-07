@@ -13,9 +13,12 @@ When the integration detects a device is on older firmware than expected, it rai
 1. Open **Settings → Repairs**.
 2. Click the **{device_name} firmware update required** entry.
 3. Click **Submit** to start the upgrade. The dialog shows a spinner while the device downloads, flashes, reboots, and reconnects.
-4. On success the dialog closes; on failure it shows the error and a Retry button.
+4. On success the dialog closes; on failure it shows the error message — click **Submit** again to retry.
 
 This is the path most users will take when upgrading the integration.
+
+!!! note
+    The Repairs dialog waits up to three minutes for the device to come back on the new version before reporting a timeout. The flash itself can occasionally take longer than that on a slow link or a busy device. If the dialog times out but the device looks healthy, check the **Flash Firmware** tab in the EPP Grid panel for live status — the OTA may still complete in the background and the Repairs entry will clear itself when the device reports the new version.
 
 ### From the EPP Grid panel's Flash Firmware tab
 
