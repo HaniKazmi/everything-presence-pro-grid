@@ -4531,6 +4531,37 @@ class TestEventCallbacks:
         assert mac in manager._entity_update_macs
         assert mac in manager._pushing
 
+    async def test_on_device_available_broadcasts_online_under_entity_update_guard(
+        self, hass: HomeAssistant, store: EPPGridStore, manager: DeviceManager
+    ) -> None:
+        """Entity-update-guard skip path must still broadcast device-back-online.
+
+        ESPHome reload triggered by an entity-registry change flips the device
+        offline (which fires _fire_device_list_changed with available=False),
+        then online. _on_device_available sets dev.available=True; if the
+        guard-skip path returns without firing the broadcast, the frontend's
+        recovery hook (device-controller.ts: onSelectedAvailable on false→true
+        transition) never runs, the WS subscription stays attached to the
+        torn-down session, and the user sees a stuck target until they refresh.
+        """
+        mac = "AA:BB:CC:DD:EE:FF"
+        store.devices[mac] = {"calibration": {"perspective": [1.0] * 8}}
+        # Pre-condition: device was previously broadcast as offline
+        # (the offline branch in _on_state_changed flipped this to False
+        # and fired _fire_device_list_changed). The frontend now expects
+        # a corresponding True broadcast to drive its recovery path.
+        manager.devices[mac] = ManagedDevice(mac=mac, name="EPP", host="192.168.1.50", available=False)
+        manager._entity_update_macs.add(mac)
+        manager._pushing.add(mac)
+
+        with patch.object(manager, "_fire_device_list_changed") as mock_fire:
+            await manager._on_device_available(mac)
+
+        # The available flip itself is unconditional — already correct.
+        assert manager.devices[mac].available is True
+        # The broadcast must fire so subscribers see false→true.
+        mock_fire.assert_called_once()
+
     async def test_on_device_available_does_not_close_user_session_during_backoff(
         self, hass: HomeAssistant, manager: DeviceManager
     ) -> None:
