@@ -27,7 +27,9 @@ Frontend (eppgrid-panel.ts — orchestrator)
   ├── controllers/
   │   ├── device-controller.ts — WS subscriptions, device loading
   │   ├── grid-state-controller.ts — grid/zone/furniture mutation, saved configurations
-  │   └── target-controller.ts — target/sensor/zone state, zone engine, debug logs
+  │   ├── target-controller.ts — target/sensor/zone state, zone engine, debug logs
+  │   ├── flasher-controller.ts — serial port + USB flash state machine
+  │   └── panel-host.ts — typed PanelHost interface declaring every panel field/method the controllers touch
   ├── components/
   │   ├── epp-wizard.ts — calibration wizard (guide, corners, capture)
   │   ├── epp-settings-view.ts — device settings (accordions, ranges, reporting)
@@ -86,6 +88,22 @@ All entities are created by ESPHome firmware with `disabled_by_default` where ap
 ## 2. Live Streaming
 
 Two websocket subscriptions, both using the same device session connection.
+
+### `subscribe_device_list` — fleet view
+
+Broadcasts the live device list to the panel's home view. Initial fetch is delivered immediately on subscribe; subsequent events fire when the device manager adds, removes, renames, or updates availability/firmware status of any managed device.
+
+**Request:** `{ "type": "eppgrid/subscribe_device_list" }`
+
+**Event payload:** the same shape as the `list_devices` response; subscribers replay it through their reducer to keep the device list current.
+
+### `subscribe_flashable_devices` — flasher view
+
+Broadcasts the live flashable-devices list (every ESPHome device matching the Everything Presence Pro hardware signature, regardless of which firmware it currently runs). Initial fetch is delivered on subscribe; subsequent events fire on add / remove / availability change / firmware-version flip after OTA.
+
+**Request:** `{ "type": "eppgrid/subscribe_flashable_devices" }`
+
+**Event payload:** the same shape as the `list_flashable_devices` response.
 
 ### `subscribe_device` — session lifecycle
 
@@ -265,7 +283,7 @@ Non-custom types (`default` / `bed` / `seating` / `transit`) carry only `type` (
 
 Wire-protocol-wise this is a 0.94.0-or-newer contract. Earlier firmware (0.93.x) received zone 0 as top-level `room_type`/`room_trigger`/`room_renew`/`room_timeout`/`room_handoff_timeout` fields; those have been removed. No migration — the single-user project re-applies the layout once after upgrade.
 
-Each cell in `grid_bytes` is a uint8 with bit layout: bit 0 = room (inside/outside), bits 1-3 = zone (0-7), bit 4 = entry/exit overlay (bypasses gating on entry, uses handoff timeout on exit), bits 5-7 = interference level (0=none, 1=interference source, 2=suppress detection).
+Each cell in `grid_bytes` is a uint8 with bit layout: bit 0 = room (inside/outside), bits 1-3 = zone (0-7), bits 4-5 = 4-state overlay enum (`0` none, `1` entry/exit, `2` interference, `3` suppress), bits 6-7 unused. Pinned by `CELL_ROOM_BIT` / `CELL_ZONE_MASK` / `CELL_OVERLAY_MASK` in `frontend/src/lib/grid.ts` and the matching constants in `firmware/lib/epp_zone_engine/include/epp_grid.h`.
 
 ### `set_entity_enabled`
 
@@ -331,6 +349,20 @@ Pipeline intervals are derived by `_compute_pipeline` from the device's stored `
 | `zone_state_interval` | `1000` when a frontend grid subscription is open, else `0` |
 
 The firmware rolling-median window is fixed at 1000ms (10 frames at the LD2450's nominal 10Hz). Signal is `min(frame_count, 9)` over that window, so it stays bounded on sensor over-delivery and matches the comparison space the frontend uses.
+
+### `dismiss_target`
+
+Marks a single target slot as dismissed at a given grid cell so the firmware's ghost-suppression logic can ignore that target when it next appears in that cell. Used by the panel's "Mark as ghost" UI.
+
+**Request:** `{ "type": "eppgrid/dismiss_target", "mac": str, "target_index": 0..2, "cell_index": -1..GRID_CELL_COUNT-1 }`
+
+`cell_index = -1` means "any cell" (clears the dismiss flag for that target). Read-only from an authorisation perspective — open to any authenticated user.
+
+### `set_show_room_calibration_tutorial`
+
+Per-device toggle for the calibration-tutorial overlay shown above the wizard. Persisted alongside the rest of the device's settings.
+
+**Request:** `{ "type": "eppgrid/set_show_room_calibration_tutorial", "mac": str, "enabled": bool }`
 
 ### Saved-Configuration Commands
 
