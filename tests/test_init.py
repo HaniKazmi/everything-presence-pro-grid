@@ -239,6 +239,11 @@ async def test_register_panel(hass: HomeAssistant) -> None:
     mock_panel.assert_awaited_once()
     call_kwargs = mock_panel.call_args[1]
     assert call_kwargs["module_url"] == module_url
+    # Panel is admin-only: HA hides the sidebar entry for non-admin users and
+    # rejects direct URL access. The integration's mutating WS commands are
+    # already gated by @require_admin (PR #174); locking the panel down keeps
+    # the UX consistent — non-admins don't see a panel they can't usefully use.
+    assert call_kwargs["require_admin"] is True
 
 
 async def test_register_frontend_resources_registers_static_path_and_js(hass: HomeAssistant) -> None:

@@ -124,7 +124,14 @@ async def _register_frontend_resources(hass: HomeAssistant) -> str:
 
 
 async def _register_panel(hass: HomeAssistant, module_url: str) -> None:
-    """Register the frontend sidebar panel."""
+    """Register the frontend sidebar panel.
+
+    The panel is admin-only: HA hides the sidebar entry for non-admin users
+    and rejects direct URL access. Mutating WS commands are already gated by
+    @require_admin (PR #174); locking the panel down keeps the UX consistent
+    — non-admins don't see a panel they can't usefully use. Lovelace cards
+    registered via add_extra_js_url remain available on any dashboard.
+    """
     await panel_custom.async_register_panel(
         hass=hass,
         frontend_url_path=DOMAIN,
@@ -132,6 +139,6 @@ async def _register_panel(hass: HomeAssistant, module_url: str) -> None:
         module_url=module_url,
         sidebar_title="Everything Presence Pro Grid",
         sidebar_icon="mdi:radar",
-        require_admin=False,
+        require_admin=True,
         config={},
     )
