@@ -127,6 +127,17 @@ class DeviceManager:
         # before opening so a quick close→reopen doesn't return a connection
         # that the close task is about to disconnect.
         self._pending_closes: dict[str, asyncio.Task] = {}
+        # Pending debounce timer per mac for `_request_push`. The dict key
+        # supports cancel-prev-on-new-request; tasks are also tracked in
+        # `_pending_tasks` (via _spawn) so async_stop's drain catches any
+        # that escape the Phase 1 cancel loop.
+        self._pending_pushes: dict[str, asyncio.Task] = {}
+        # Macs whose last debounced push returned False (no host, exception,
+        # offline mid-reload). The entity-update guard normally suppresses
+        # _on_device_available's reconnect push as redundant — but when a
+        # debounced push has already failed, the device is unsynced and we
+        # need that reconnect push as a recovery path.
+        self._failed_pushes: set[str] = set()
         # Macs whose last subscribe_device attempt failed to open a session.
         # Only the *transition* from "OK" → "failing" fires the device-list
         # broadcast; consecutive retries against the same already-failing
@@ -311,6 +322,18 @@ class DeviceManager:
         for cancel in self._entity_update_clear_cancels.values():
             cancel()
         self._entity_update_clear_cancels.clear()
+        # Cancel pending debounce timers from `_request_push`. They're
+        # `asyncio.sleep` waits, so cancellation lands inside the helper's
+        # CancelledError handler which returns cleanly. Await the gather
+        # here (instead of relying on Phase 2's drain) so a degenerate
+        # async_stop with no other pending tasks still yields to the loop
+        # and lets the cancellations settle before the manager goes away.
+        if self._pending_pushes:
+            push_tasks = list(self._pending_pushes.values())
+            self._pending_pushes.clear()
+            for task in push_tasks:
+                task.cancel()
+            await asyncio.gather(*push_tasks, return_exceptions=True)
 
         # Phase 2: drain tracked tasks with a bounded timeout. _pending_tasks
         # is awaited before _pending_closes because state-change callbacks
@@ -932,7 +955,7 @@ class DeviceManager:
         # Don't clear the guard here — multiple entities cycle through
         # unavailable→available during an ESPHome reload, creating multiple
         # tasks.  The 60-second timer in websocket_set_settings handles cleanup.
-        if mac in self._entity_update_macs:
+        if mac in self._entity_update_macs and mac not in self._failed_pushes:
             _LOGGER.debug("Skipping redundant push for %s (entity update guard)", mac)
             # Must broadcast the false→true transition even when skipping the
             # push, else the frontend's recovery hook (onSelectedAvailable)
@@ -940,6 +963,10 @@ class DeviceManager:
             # torn-down DeviceConnection.
             self._fire_device_list_changed()
             return
+        # Recovery path: if a debounced push failed (likely fired during the
+        # ESPHome reload that armed the guard), drop the marker and fall
+        # through to push so the device gets the latest config.
+        self._failed_pushes.discard(mac)
 
         _LOGGER.info("Device %s became available, pushing config", mac)
         if not await self._push_config_to_device(mac):
@@ -988,6 +1015,59 @@ class DeviceManager:
             conn.subscribe_logs(esphome_level)
         else:
             conn.unsubscribe_logs()
+
+    def _request_push(self, mac: str, delay: float = 0.1) -> None:
+        """Request a debounced config push for `mac` (trailing-edge).
+
+        Multiple rapid-fire calls within `delay` seconds collapse into a
+        single push that runs `delay` after the LAST call. Push reads
+        storage at fire time — callers must `await store.async_save()` first.
+
+        Fire-and-forget. If you need push_ok, call _push_config_to_device
+        directly.
+        """
+        if self._stopping:
+            return
+        # _pending_pushes only tracks the debounce-sleep phase. Once a task
+        # transitions into the actual push (post-sleep), it removes itself
+        # from the dict so this cancel path can't interrupt an in-flight
+        # network write — a concurrent _request_push schedules a follow-up
+        # instead, which serialises behind the running one via _push_locks.
+        if (existing := self._pending_pushes.get(mac)) is not None and not existing.done():
+            existing.cancel()
+
+        task: asyncio.Task
+
+        async def _delayed_push() -> None:
+            try:
+                await asyncio.sleep(delay)
+            except asyncio.CancelledError:
+                return
+            # Sync section between sleep-end and the next await: atomic vs.
+            # concurrent _request_push calls (no event-loop yields here).
+            if self._pending_pushes.get(mac) is task:
+                del self._pending_pushes[mac]
+            ok = await self._push_config_to_device(mac)
+            # Track failure so _on_device_available's entity-update-guard
+            # branch can run a recovery push instead of silently skipping.
+            if ok:
+                self._failed_pushes.discard(mac)
+            else:
+                self._failed_pushes.add(mac)
+
+        # _spawn tracks the task in `_pending_tasks` so async_stop's Phase 2
+        # drain catches it as a backstop.
+        task = self._spawn(_delayed_push())
+        self._pending_pushes[mac] = task
+
+        def _drop(_: asyncio.Task) -> None:
+            # Cancellation path: task didn't reach the in-flight removal,
+            # so the dict still points at us. Identity check protects
+            # against a newer task taking our slot before we settle.
+            if self._pending_pushes.get(mac) is task:
+                self._pending_pushes.pop(mac, None)
+
+        task.add_done_callback(_drop)
 
     async def _push_pipeline_to_device(self, mac: str) -> None:
         """Recompute pipeline intervals and push to device."""

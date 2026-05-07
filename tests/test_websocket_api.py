@@ -56,6 +56,12 @@ async def setup_integration(hass: HomeAssistant, config_entry: MockConfigEntry) 
         mock_dm.list_devices.return_value = []
         mock_dm._push_config_to_device = AsyncMock()
         mock_dm._push_pipeline_to_device = AsyncMock()
+        # _request_push is the debounced fire-and-forget wrapper that WS
+        # handlers call instead of `await _push_config_to_device(mac)` —
+        # mocked here as a sync MagicMock so handler tests can assert it
+        # was scheduled. The trailing-debounce semantics are tested
+        # directly in TestRequestPush.
+        mock_dm._request_push = MagicMock()
         mock_dm._entity_update_macs = set()
         mock_dm._connection_failed = set()
         # Mirror the real method's behavioral effect (add mac to the guard set)
@@ -310,7 +316,7 @@ class TestWebSocketSetSetup:
         assert cal["room_depth"] == 4000.0
 
         mock_dm._store.async_save.assert_awaited()
-        mock_dm._push_config_to_device.assert_awaited_with("AA:BB:CC:DD:EE:FF")
+        mock_dm._request_push.assert_called_with("AA:BB:CC:DD:EE:FF")
         connection.send_result.assert_called_once_with(3)
 
     async def test_set_setup_updates_zone_entities_with_valid_empty_shape(
@@ -531,7 +537,7 @@ class TestWebSocketSetRoomLayout:
         assert layout["zone_slots"] == zone_slots
         assert layout["zone_slots"][0]["type"] == "default"
         mock_dm._store.async_save.assert_awaited()
-        mock_dm._push_config_to_device.assert_awaited()
+        mock_dm._request_push.assert_called_with("AA:BB:CC:DD:EE:FF")
         mock_dm.async_update_zone_entities.assert_awaited_with("AA:BB:CC:DD:EE:FF", zone_slots)
         connection.send_result.assert_called_once_with(5)
 
@@ -1544,7 +1550,7 @@ class TestWebSocketSettings:
         assert settings["led_brightness"] == 1.0
         assert settings["led_presence_color"] == "#CC33FF"
         mock_dm._store.async_save.assert_awaited()
-        mock_dm._push_config_to_device.assert_awaited_with("AA:BB:CC:DD:EE:FF")
+        mock_dm._request_push.assert_called_with("AA:BB:CC:DD:EE:FF")
         connection.send_result.assert_called_once_with(11)
 
     async def test_set_settings_stores_led_values(self, hass: HomeAssistant, config_entry: MockConfigEntry) -> None:

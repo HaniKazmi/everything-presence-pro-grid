@@ -208,14 +208,12 @@ async def websocket_set_setup(
         settings["target_xy"] = False
     device_config["settings"] = settings
     await manager._store.async_save()
+    manager._request_push(mac)
 
-    # Push calibration to device
-    push_ok = await manager._push_config_to_device(mac)
-
-    # Apply entity registry changes after push, with reconnect guard
+    # Arm the guard before _apply_entity_states triggers an ESPHome reload,
+    # so the reconnect doesn't fire a redundant push.
     if deleting:
-        if push_ok:
-            manager._schedule_entity_update_clear(mac)
+        manager._schedule_entity_update_clear(mac)
         _apply_entity_states(hass, mac, {"target_xy": False})
 
     # `room_layout` was popped above when calibration changed, so the zone
@@ -260,11 +258,9 @@ async def websocket_set_room_layout(
         "furniture": msg.get("furniture", []),
     }
     await manager._store.async_save()
-
-    # Push config to device if connected
     dev = manager.devices.get(mac)
     if dev and dev.host:
-        await manager._push_config_to_device(mac)
+        manager._request_push(mac)
 
     # Update ESPHome entity enable/disable/rename
     await manager.async_update_zone_entities(mac, msg["zone_slots"])
@@ -924,7 +920,7 @@ async def websocket_set_settings(
     if log_levels is not None:
         device_config["log_levels"] = log_levels
     await manager._store.async_save()
-    await manager._push_config_to_device(mac)
+    manager._request_push(mac)
     # Auto-enable/disable relay switch entity based on trigger mode
     relay_enabled = msg["relay_trigger_mode"] != "disabled"
     manager._schedule_entity_update_clear(mac)

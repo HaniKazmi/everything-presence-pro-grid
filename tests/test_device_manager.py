@@ -4562,6 +4562,30 @@ class TestEventCallbacks:
         # The broadcast must fire so subscribers see false→true.
         mock_fire.assert_called_once()
 
+    async def test_on_device_available_pushes_when_failed_push_pending(
+        self, hass: HomeAssistant, store: EPPGridStore, manager: DeviceManager
+    ) -> None:
+        """Recovery path: entity-update guard skips redundant pushes, but a
+        failed debounced push (e.g. fired while ESPHome was reloading and the
+        device was offline) leaves the device unsynced. When _on_device_available
+        runs with the guard armed AND a failure marker for this mac, push
+        anyway and clear the marker.
+        """
+        mac = "AA:BB:CC:DD:EE:FF"
+        store.devices[mac] = {"calibration": {"perspective": [1.0] * 8}}
+        manager.devices[mac] = ManagedDevice(mac=mac, name="EPP", host="192.168.1.50")
+        # Both flags set: guard armed (would normally skip) AND a failed push
+        # is pending (must override skip).
+        manager._entity_update_macs.add(mac)
+        manager._failed_pushes.add(mac)
+
+        with patch.object(manager, "_push_config_to_device", AsyncMock(return_value=True)) as mock_push:
+            await manager._on_device_available(mac)
+
+        mock_push.assert_awaited_once_with(mac)
+        # Marker cleared after recovery push.
+        assert mac not in manager._failed_pushes
+
     async def test_on_device_available_does_not_close_user_session_during_backoff(
         self, hass: HomeAssistant, manager: DeviceManager
     ) -> None:
@@ -5511,6 +5535,174 @@ class TestEventCallbacks:
         # Manager state updated to point at the new IDs.
         assert manager.devices["AA:BB:CC:DD:EE:FF"].device_id == new_device.id
         assert manager.devices["AA:BB:CC:DD:EE:FF"].esphome_config_entry_id == new_entry.entry_id
+
+
+# ---------------------------------------------------------------------------
+# Debounced push request tests
+# ---------------------------------------------------------------------------
+
+
+class TestRequestPush:
+    """Tests for DeviceManager._request_push — the trailing-debounce wrapper.
+
+    The frontend's calibration / delete-calibration / save flows fire 3
+    sequential WS commands (set_settings → set_setup → set_room_layout) for
+    a single user action. Each WS handler used to `await _push_config_to_device`,
+    fanning out into 3 full config pushes within ~10ms. _request_push
+    collapses these into a single trailing-debounced push.
+    """
+
+    async def test_coalesces_rapid_fire_calls(self, hass: HomeAssistant, manager: DeviceManager) -> None:
+        """Three calls inside the debounce window collapse into one push."""
+        mac = "AA:BB:CC:DD:EE:FF"
+        with patch.object(manager, "_push_config_to_device", new_callable=AsyncMock) as mock_push:
+            manager._request_push(mac, delay=0.05)
+            manager._request_push(mac, delay=0.05)
+            manager._request_push(mac, delay=0.05)
+            # Wait past the debounce window for the trailing fire.
+            await asyncio.sleep(0.1)
+            await hass.async_block_till_done()
+
+        mock_push.assert_awaited_once_with(mac)
+
+    async def test_separate_macs_each_push(self, hass: HomeAssistant, manager: DeviceManager) -> None:
+        """Debounce is per-mac — calls for different devices don't collapse."""
+        with patch.object(manager, "_push_config_to_device", new_callable=AsyncMock) as mock_push:
+            manager._request_push("AA:BB:CC:DD:EE:01", delay=0.05)
+            manager._request_push("AA:BB:CC:DD:EE:02", delay=0.05)
+            await asyncio.sleep(0.1)
+            await hass.async_block_till_done()
+
+        assert mock_push.await_count == 2
+        called_macs = {call.args[0] for call in mock_push.await_args_list}
+        assert called_macs == {"AA:BB:CC:DD:EE:01", "AA:BB:CC:DD:EE:02"}
+
+    async def test_calls_separated_by_more_than_delay_each_push(
+        self, hass: HomeAssistant, manager: DeviceManager
+    ) -> None:
+        """Calls for the same mac with a gap larger than `delay` produce two pushes."""
+        mac = "AA:BB:CC:DD:EE:FF"
+        with patch.object(manager, "_push_config_to_device", new_callable=AsyncMock) as mock_push:
+            manager._request_push(mac, delay=0.03)
+            await asyncio.sleep(0.08)  # well past the first window
+            await hass.async_block_till_done()
+            manager._request_push(mac, delay=0.03)
+            await asyncio.sleep(0.08)
+            await hass.async_block_till_done()
+
+        assert mock_push.await_count == 2
+
+    async def test_request_push_does_not_schedule_after_stop(self, hass: HomeAssistant, manager: DeviceManager) -> None:
+        """async_stop sets _stopping; subsequent _request_push calls are no-ops."""
+        manager._stopping = True
+        with patch.object(manager, "_push_config_to_device", new_callable=AsyncMock) as mock_push:
+            manager._request_push("AA:BB:CC:DD:EE:FF", delay=0.05)
+            await asyncio.sleep(0.1)
+            await hass.async_block_till_done()
+
+        mock_push.assert_not_awaited()
+
+    async def test_async_stop_drains_pending_pushes(self, hass: HomeAssistant, manager: DeviceManager) -> None:
+        """A push pending in the debounce window is cancelled on async_stop.
+
+        Without this, the timer task would outlive the config entry and HA
+        2026.4+ pytest fixtures fail the test for leaked tasks.
+        """
+        with patch.object(manager, "_push_config_to_device", new_callable=AsyncMock) as mock_push:
+            manager._request_push("AA:BB:CC:DD:EE:FF", delay=0.5)  # long delay
+            # Don't wait — call async_stop while the timer is still pending.
+            await manager.async_stop()
+
+        mock_push.assert_not_awaited()
+        # Pending tracking dict empty after stop.
+        assert not manager._pending_pushes
+
+    async def test_failed_push_marks_mac_for_retry(
+        self, hass: HomeAssistant, store: EPPGridStore, manager: DeviceManager
+    ) -> None:
+        """If the debounced push fails (e.g. fires while ESPHome is reloading
+        and the device is offline), the mac is recorded so the next
+        _on_device_available run can recover instead of skipping under the
+        entity-update guard.
+        """
+        mac = "AA:BB:CC:DD:EE:FF"
+        store.devices[mac] = {"calibration": {"perspective": [1.0] * 8}}
+        manager.devices[mac] = ManagedDevice(mac=mac, name="EPP", host="192.168.1.50")
+
+        # Push returns False — simulates the device being offline mid-reload.
+        with patch.object(manager, "_push_config_to_device", AsyncMock(return_value=False)):
+            manager._request_push(mac, delay=0.02)
+            await asyncio.sleep(0.08)
+            await hass.async_block_till_done()
+
+        assert mac in manager._failed_pushes
+
+    async def test_successful_push_clears_failed_marker(
+        self, hass: HomeAssistant, store: EPPGridStore, manager: DeviceManager
+    ) -> None:
+        """A successful push clears any previous failure marker for the mac."""
+        mac = "AA:BB:CC:DD:EE:FF"
+        store.devices[mac] = {"calibration": {"perspective": [1.0] * 8}}
+        manager.devices[mac] = ManagedDevice(mac=mac, name="EPP", host="192.168.1.50")
+        manager._failed_pushes.add(mac)  # pretend a previous failure left a marker
+
+        with patch.object(manager, "_push_config_to_device", AsyncMock(return_value=True)):
+            manager._request_push(mac, delay=0.02)
+            await asyncio.sleep(0.08)
+            await hass.async_block_till_done()
+
+        assert mac not in manager._failed_pushes
+
+    async def test_does_not_cancel_in_flight_push(self, hass: HomeAssistant, manager: DeviceManager) -> None:
+        """A new _request_push during an in-flight push must not cancel it.
+
+        Regression: previously _pending_pushes[mac] tracked the task across
+        both the debounce-sleep phase AND the actual push phase. A new
+        _request_push call would see the not-done task and cancel it,
+        raising CancelledError mid _push_config_to_device — interrupting
+        a network write and leaving the device unsynced. The fix removes
+        the entry once the task transitions from sleep to push, so a
+        concurrent request schedules a follow-up timer instead.
+        """
+        mac = "AA:BB:CC:DD:EE:FF"
+        push_started = asyncio.Event()
+        push_can_finish = asyncio.Event()
+        cancelled = False
+
+        async def slow_push(_mac: str) -> bool:
+            nonlocal cancelled
+            push_started.set()
+            try:
+                await push_can_finish.wait()
+            except asyncio.CancelledError:
+                cancelled = True
+                raise
+            return True
+
+        with patch.object(manager, "_push_config_to_device", side_effect=slow_push) as mock_push:
+            manager._request_push(mac, delay=0.02)
+            # Wait until the first push is actually running (past the sleep).
+            await asyncio.wait_for(push_started.wait(), timeout=1.0)
+            # The task has removed itself from _pending_pushes during its
+            # sync transition between sleep-end and the push await.
+            assert mac not in manager._pending_pushes
+
+            # Issue a second request while the first is in-flight.
+            manager._request_push(mac, delay=0.02)
+            # Yield once so the new timer task gets registered.
+            await asyncio.sleep(0)
+            # New timer is registered; first push is still running.
+            assert mac in manager._pending_pushes
+            assert not cancelled
+
+            # Let the first push finish.
+            push_can_finish.set()
+            # Give the second timer time to elapse and push to fire.
+            await asyncio.sleep(0.1)
+            await hass.async_block_till_done()
+
+        assert mock_push.await_count == 2
+        assert not cancelled
 
 
 # ---------------------------------------------------------------------------
