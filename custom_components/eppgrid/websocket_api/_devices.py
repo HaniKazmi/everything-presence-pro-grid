@@ -765,10 +765,34 @@ async def websocket_subscribe_grid_targets(
         elif isinstance(state, BinarySensorState):
             if state.key in binary_sensor_keys:
                 sensors[binary_sensor_keys[state.key]] = state.state
+                # Push the update — without this, env/binary sensor changes
+                # only reach the frontend when piggy-backed on a target or
+                # zone-state event. After a reconnect with no target movement
+                # and quiet zone state, env sliders stay at "—" indefinitely.
+                connection.send_message(
+                    websocket_api.event_message(
+                        msg["id"],
+                        {
+                            "targets": list(targets),
+                            "sensors": dict(sensors),
+                            "zones": dict(zones),
+                        },
+                    )
+                )
 
         elif isinstance(state, SensorState) and state.key in numeric_sensor_keys:
             field = numeric_sensor_keys[state.key]
             sensors[field] = None if math.isnan(state.state) else state.state
+            connection.send_message(
+                websocket_api.event_message(
+                    msg["id"],
+                    {
+                        "targets": list(targets),
+                        "sensors": dict(sensors),
+                        "zones": dict(zones),
+                    },
+                )
+            )
 
     await device_conn.subscribe_states(_on_state)
     connection.send_result(msg["id"])

@@ -254,6 +254,47 @@ describe("target data flow via DeviceController", () => {
 	});
 });
 
+describe("onSessionClosed (env sensor preservation)", () => {
+	it("preserves env sensor values across session close", async () => {
+		// Why: env-offset slider displays compute `raw + offset` from
+		// _sensorState.{illuminance,temperature,humidity,co2}. If those go
+		// to null during a transient device-offline window, Lit's render
+		// produces "—" and clobbers the user's drag-set DOM value. After
+		// reconnect, render produces `reading` and the display ends up
+		// showing the raw live reading instead of the user's edit.
+		// Preserve env values so the render output (and thus Lit's cache)
+		// stays the same across the offline cycle.
+		const el = createPanel();
+		const a = el as any;
+		await a._subscribeDevices();
+		a._sensorState = {
+			occupancy: true,
+			static_presence: true,
+			motion_presence: true,
+			target_presence: true,
+			mmwave: true,
+			illuminance: 100,
+			temperature: 22,
+			humidity: 50,
+			co2: 400,
+		};
+		a._targets = [{ x: 1, y: 2, status: "active", signal: 5 }];
+
+		a._deviceCtrl.onSessionClosed();
+
+		// High-frequency state (targets, occupancy/presence flags) is cleared
+		// because stale flags are visibly misleading on the live grid.
+		expect(a._targets).toEqual([]);
+		expect(a._sensorState.occupancy).toBe(false);
+		expect(a._sensorState.static_presence).toBe(false);
+		// Env values stay so the offset slider's render output is stable.
+		expect(a._sensorState.illuminance).toBe(100);
+		expect(a._sensorState.temperature).toBe(22);
+		expect(a._sensorState.humidity).toBe(50);
+		expect(a._sensorState.co2).toBe(400);
+	});
+});
+
 describe("_closeDeviceSession", () => {
 	it("clears targets and rawTargets", () => {
 		const el = createPanel();

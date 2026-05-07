@@ -845,6 +845,101 @@ describe("dirty event", () => {
 });
 
 describe("setting-change event", () => {
+	it("env offset slider must NOT propagate via setting-change during drag", () => {
+		// Why: the slider's display math is `liveReading - liveOffset + drag`.
+		// `liveOffset` reads the panel prop. If we propagate every @input via
+		// setting-change, the panel's prop chases the drag, which makes
+		// `liveOffset == drag`, collapsing the math to `liveReading` — the
+		// displayed value stops responding to drag (or "wiggles" depending on
+		// render timing). The pre-existing pattern uses _overrides locally and
+		// _fireDirty for the dirty flag; setting-change is reserved for things
+		// the panel must know about during edit (e.g. distance auto-toggle).
+		const sv = createView({ temperatureOffset: 0 });
+		sv.sensorState = {
+			occupancy: false,
+			static_presence: false,
+			motion_presence: false,
+			target_presence: false,
+			illuminance: null,
+			temperature: 22,
+			humidity: null,
+			co2: null,
+		};
+		const tpl = (sv as any).renderEnvOffset(
+			"Temperature",
+			() => sv.sensorState.temperature,
+			"temperature",
+			-10,
+			10,
+			0.1,
+			"°C",
+			1,
+			"Tip",
+		);
+		const c = renderTo(tpl);
+
+		const events: { key: string; value: unknown }[] = [];
+		sv.addEventListener("setting-change", ((e: CustomEvent) => {
+			events.push(e.detail);
+		}) as EventListener);
+
+		const slider = c.querySelector(".setting-range") as HTMLInputElement;
+		slider.value = "1.5";
+		slider.dispatchEvent(new Event("input"));
+
+		// _overrides must capture the drag value so save reads it correctly.
+		expect((sv as any)._overrides.temperatureOffset).toBe(1.5);
+		// But the panel must NOT be told via setting-change.
+		expect(events.some((e) => e.key === "temperatureOffset")).toBe(false);
+		document.body.removeChild(c);
+	});
+
+	it("env offset slider produces monotonic display across rapid drag events", () => {
+		// Reproduces the user-reported "wiggle": with setting-change propagation,
+		// the panel prop chases the drag mid-event-burst, so the displayed value
+		// (set via _setSettingValue from the @input handler) stops increasing.
+		// This test exercises the @input handler directly with a stable prop and
+		// asserts the display walks monotonically with the drag.
+		const sv = createView({ temperatureOffset: 0 });
+		sv.sensorState = {
+			occupancy: false,
+			static_presence: false,
+			motion_presence: false,
+			target_presence: false,
+			illuminance: null,
+			temperature: 22,
+			humidity: null,
+			co2: null,
+		};
+		const tpl = (sv as any).renderEnvOffset(
+			"Temperature",
+			() => sv.sensorState.temperature,
+			"temperature",
+			-10,
+			10,
+			0.1,
+			"°C",
+			1,
+			"Tip",
+		);
+		const c = renderTo(tpl);
+		const slider = c.querySelector(".setting-range") as HTMLInputElement;
+		const display = slider.parentElement?.querySelector(
+			".setting-value",
+		) as HTMLElement;
+
+		const observed: string[] = [];
+		for (const v of ["1", "2", "3", "4", "5"]) {
+			slider.value = v;
+			slider.dispatchEvent(new Event("input"));
+			observed.push(display.textContent ?? "");
+		}
+
+		// Reading is 22, saved offset 0, so display should be 22 + drag.
+		expect(observed).toEqual(["23.0", "24.0", "25.0", "26.0", "27.0"]);
+		document.body.removeChild(c);
+	});
+
 	it("fires setting-change on target auto range toggle", () => {
 		const sv = createView({ targetAutoDistance: true });
 		const tpl = (sv as any).renderDetectionRanges();
@@ -1288,7 +1383,12 @@ describe("resetBtn click handler", () => {
 		document.body.removeChild(c);
 	});
 
-	it("resetBtn click without key does not fire setting-change", () => {
+	it("env offset reset does not fire setting-change (preserves drag math)", () => {
+		// Why: env offset sliders must NOT propagate to the panel during edit
+		// (see "env offset slider must NOT propagate via setting-change" above).
+		// The reset path goes through resetBtn(0) without a key, so _resetSlider
+		// updates _overrides locally and the @click handler fires _fireDirty —
+		// no setting-change. Save reads the new value from _overrides via _emitSave.
 		const sv = createView({ illuminanceOffset: 5 });
 		sv.sensorState = {
 			occupancy: false,
@@ -1300,7 +1400,6 @@ describe("resetBtn click handler", () => {
 			humidity: null,
 			co2: null,
 		};
-		// renderEnvOffset uses resetBtn(0) without a key
 		const tpl = (sv as any).renderEnvOffset(
 			"Illuminance",
 			105,
@@ -1322,8 +1421,8 @@ describe("resetBtn click handler", () => {
 		const infoSpan = c.querySelector(".setting-info") as HTMLElement;
 		if (infoSpan) infoSpan.click();
 
-		// No setting-change should fire since resetBtn(0) has no key
 		expect(events.length).toBe(0);
+		expect((sv as any)._overrides.illuminanceOffset).toBe(0);
 		document.body.removeChild(c);
 	});
 });

@@ -304,6 +304,104 @@ describe("render() handles offline device", () => {
 	});
 });
 
+describe("render() preserves settings view across transient device states", () => {
+	// HA debounces ESPHome config-entry reloads 30s after the last entity
+	// disabled_by change, so saving an entity toggle in eppgrid causes the
+	// device to flicker offline ~30s later. The settings view's `_overrides`
+	// are private LitElement state — if the view is unmounted during that
+	// window, unsaved edits are wiped. Keep the settings view mounted.
+
+	it("keeps epp-settings-view mounted when device is offline", () => {
+		const a = createPanel() as any;
+		a._view = "settings";
+		a._devices = [
+			{
+				mac: "AA:BB:CC:DD:EE:01",
+				name: "Test",
+				host: null,
+				available: false,
+				configured: true,
+				firmware_status: "unavailable",
+			},
+		];
+		a._selectedMac = "AA:BB:CC:DD:EE:01";
+
+		const result = a.render();
+		const str = JSON.stringify(result);
+
+		expect(str).toContain("epp-settings-view");
+		// Status is still surfaced inline so the user knows save will fail.
+		expect(str).toContain("connection.offline");
+	});
+
+	it("keeps epp-settings-view mounted when device is reconnecting", () => {
+		const a = createPanel() as any;
+		a._view = "settings";
+		a._devices = [
+			{
+				mac: "AA:BB:CC:DD:EE:01",
+				name: "Test",
+				host: null,
+				available: true,
+				configured: true,
+				firmware_status: "compatible",
+			},
+		];
+		a._selectedMac = "AA:BB:CC:DD:EE:01";
+		// Force the controller's reconnecting flag via its private backing.
+		(a._deviceCtrl as any)._reconnecting = true;
+
+		const result = a.render();
+		const str = JSON.stringify(result);
+
+		expect(str).toContain("epp-settings-view");
+		expect(str).toContain("connection.connecting");
+	});
+
+	it("keeps epp-settings-view mounted when firmware is incompatible", () => {
+		const a = createPanel() as any;
+		a._view = "settings";
+		a._devices = [
+			{
+				mac: "AA:BB:CC:DD:EE:01",
+				name: "Test",
+				host: null,
+				available: true,
+				configured: true,
+				firmware_status: "firmware_behind",
+			},
+		];
+		a._selectedMac = "AA:BB:CC:DD:EE:01";
+
+		const result = a.render();
+		const str = JSON.stringify(result);
+
+		expect(str).toContain("epp-settings-view");
+	});
+
+	it("falls back to full-page banner when not in settings view", () => {
+		const a = createPanel() as any;
+		a._view = "live";
+		a._devices = [
+			{
+				mac: "AA:BB:CC:DD:EE:01",
+				name: "Test",
+				host: null,
+				available: false,
+				configured: true,
+				firmware_status: "unavailable",
+			},
+		];
+		a._selectedMac = "AA:BB:CC:DD:EE:01";
+
+		const result = a.render();
+		const str = JSON.stringify(result);
+
+		expect(str).not.toContain("epp-settings-view");
+		expect(str).toContain("connection.offline");
+	});
+});
+
 describe("_renderHeader", () => {
 	it("returns defined result", () => {
 		const a = createPanel() as any;

@@ -696,9 +696,10 @@ export class EppSettingsView extends LitElement {
 							e: Event,
 						) => {
 							const el = e.target as HTMLInputElement;
-							this._overrides.motionTimeout = Number(el.value);
+							const v = Number(el.value);
+							this._overrides.motionTimeout = v;
 							this._setSettingValue(el, el.value);
-							this._fireDirty();
+							this._fireChange("motionTimeout", v);
 						}} /><span class="setting-value">${this.motionTimeout}</span><span class="setting-unit">s</span></span>
             ${this.resetBtn(5, "motionTimeout")}${this.infoTip(this.localize("info.motion_timeout"))}
           </div>
@@ -711,9 +712,10 @@ export class EppSettingsView extends LitElement {
 							e: Event,
 						) => {
 							const el = e.target as HTMLInputElement;
-							this._overrides.staticOnDelay = Number(el.value);
+							const v = Number(el.value);
+							this._overrides.staticOnDelay = v;
 							this._setSettingValue(el, el.value);
-							this._fireDirty();
+							this._fireChange("staticOnDelay", v);
 						}} /><span class="setting-value">${this.staticOnDelay}</span><span class="setting-unit">s</span></span>
             ${this.resetBtn(0, "staticOnDelay")}${this.infoTip(this.localize("info.presence_delay"))}
           </div>
@@ -723,9 +725,10 @@ export class EppSettingsView extends LitElement {
 							e: Event,
 						) => {
 							const el = e.target as HTMLInputElement;
-							this._overrides.staticTimeout = Number(el.value);
+							const v = Number(el.value);
+							this._overrides.staticTimeout = v;
 							this._setSettingValue(el, el.value);
-							this._fireDirty();
+							this._fireChange("staticTimeout", v);
 						}} /><span class="setting-value">${this.staticTimeout}</span><span class="setting-unit">s</span></span>
             ${this.resetBtn(30, "staticTimeout")}${this.infoTip(this.localize("info.static_timeout"))}
           </div>
@@ -735,9 +738,10 @@ export class EppSettingsView extends LitElement {
 							e: Event,
 						) => {
 							const el = e.target as HTMLInputElement;
-							this._overrides.staticTriggerThreshold = Number(el.value);
+							const v = Number(el.value);
+							this._overrides.staticTriggerThreshold = v;
 							this._setSettingValue(el, el.value);
-							this._fireDirty();
+							this._fireChange("staticTriggerThreshold", v);
 						}} /><span class="setting-value">${this.staticTriggerThreshold}</span><span class="setting-unit"></span></span>
             ${this.resetBtn(3, "staticTriggerThreshold")}${this.infoTip(this.localize("info.trigger_threshold"))}
           </div>
@@ -747,9 +751,10 @@ export class EppSettingsView extends LitElement {
 							e: Event,
 						) => {
 							const el = e.target as HTMLInputElement;
-							this._overrides.staticRenewThreshold = Number(el.value);
+							const v = Number(el.value);
+							this._overrides.staticRenewThreshold = v;
 							this._setSettingValue(el, el.value);
-							this._fireDirty();
+							this._fireChange("staticRenewThreshold", v);
 						}} /><span class="setting-value">${this.staticRenewThreshold}</span><span class="setting-unit"></span></span>
             ${this.resetBtn(3, "staticRenewThreshold")}${this.infoTip(this.localize("info.renew_threshold"))}
           </div>
@@ -776,7 +781,10 @@ export class EppSettingsView extends LitElement {
 			const key = el.dataset.entityKey!;
 			if (!this._overrides.entities) this._overrides.entities = {};
 			this._overrides.entities[key] = el.checked;
-			this._fireDirty();
+			this._fireChange("entitiesConfig", {
+				...(this.entitiesConfig || {}),
+				...this._overrides.entities,
+			});
 		};
 
 		const o = this._overrides;
@@ -852,11 +860,12 @@ export class EppSettingsView extends LitElement {
               @selected=${(e: CustomEvent<{ value: string }>) => {
 								const val = e.detail.value;
 								if (val) {
-									this._overrides.zoneUpdateRateMs = Number(val);
-									this._fireDirty();
+									const v = Number(val);
+									this._overrides.zoneUpdateRateMs = v;
+									this._fireChange("zoneUpdateRateMs", v);
 									// requestUpdate is required: ha-select doesn't keep the
 									// user's pick visible on its own — only `.value` does, and
-									// _fireDirty alone won't re-evaluate the binding once the
+									// _fireChange alone won't re-evaluate the binding once the
 									// parent's `dirty` prop is already true.
 									this.requestUpdate();
 								}
@@ -896,8 +905,9 @@ export class EppSettingsView extends LitElement {
               @selected=${(e: CustomEvent<{ value: string }>) => {
 								const val = e.detail.value;
 								if (val) {
-									this._overrides.targetUpdateRateMs = Number(val);
-									this._fireDirty();
+									const v = Number(val);
+									this._overrides.targetUpdateRateMs = v;
+									this._fireChange("targetUpdateRateMs", v);
 									// requestUpdate is required: see zone update rate handler.
 									this.requestUpdate();
 								}
@@ -1005,7 +1015,10 @@ export class EppSettingsView extends LitElement {
 										if (!this._overrides.logLevels)
 											this._overrides.logLevels = {};
 										this._overrides.logLevels[c.key] = val;
-										this._fireDirty();
+										this._fireChange("logLevels", {
+											...(this.logLevels || {}),
+											...this._overrides.logLevels,
+										});
 										// requestUpdate keeps the captured `current` in sync with
 										// `_overrides.logLevels[c.key]` so the `val === current`
 										// early return works on subsequent picks.
@@ -1023,7 +1036,10 @@ export class EppSettingsView extends LitElement {
 									if (!this._overrides.logLevels)
 										this._overrides.logLevels = {};
 									this._overrides.logLevels[c.key] = "None";
-									this._fireDirty();
+									this._fireChange("logLevels", {
+										...(this.logLevels || {}),
+										...this._overrides.logLevels,
+									});
 									// requestUpdate refreshes the ha-select's `.value` binding
 									// so the dropdown displays "None" after reset.
 									this.requestUpdate();
@@ -1077,7 +1093,7 @@ export class EppSettingsView extends LitElement {
 							const val = e.detail.value;
 							if (val) {
 								this._overrides.ledMode = val;
-								this._fireDirty();
+								this._fireChange("ledMode", val);
 								// requestUpdate is required: changing mode shows/hides the
 								// brightness slider and presence color rows downstream.
 								this.requestUpdate();
@@ -1095,12 +1111,10 @@ export class EppSettingsView extends LitElement {
 							e: Event,
 						) => {
 							const el = e.target as HTMLInputElement;
-							this._overrides.ledBrightness = parseFloat(el.value);
-							this._setSettingValue(
-								el,
-								`${Math.round(parseFloat(el.value) * 100)}%`,
-							);
-							this._fireDirty();
+							const v = parseFloat(el.value);
+							this._overrides.ledBrightness = v;
+							this._setSettingValue(el, `${Math.round(v * 100)}%`);
+							this._fireChange("ledBrightness", v);
 						}} /><span class="setting-value">${Math.round(brightness * 100)}%</span></span>
             ${this.resetBtn(1.0, "ledBrightness")}${this.infoTip(this.localize("info.led_brightness"))}
           </div>`
@@ -1112,10 +1126,9 @@ export class EppSettingsView extends LitElement {
           <div class="setting-row">
             <label>${this.localize("settings.led_presence_color")}</label>
             <input type="color" .value=${color} @input=${(e: Event) => {
-							this._overrides.ledPresenceColor = (
-								e.target as HTMLInputElement
-							).value;
-							this._fireDirty();
+							const v = (e.target as HTMLInputElement).value;
+							this._overrides.ledPresenceColor = v;
+							this._fireChange("ledPresenceColor", v);
 						}} />
             ${this.infoTip(this.localize("info.led_presence_color"))}
           </div>`

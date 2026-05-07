@@ -279,10 +279,26 @@ describe("TargetController", () => {
 			expect(host._backendDebugLogLines.length).toBe(0);
 		});
 
-		it("skips all state updates when host._view is 'settings'", () => {
+		it("populates null env sensors once on entry / after reconnect in settings view", () => {
+			// Env-offset slider displays compute `raw + offset` where raw is
+			// derived from the live reading. Continuously updating the live
+			// reading mid-drag makes the displayed value bounce as the sensor
+			// fluctuates. Snapshot-on-first-event gives the user a stable
+			// reference: populate when null (fresh load or post-reconnect
+			// onSessionClosed clear), then freeze.
 			host._view = "settings";
+			host._sensorState = {
+				occupancy: false,
+				static_presence: false,
+				motion_presence: false,
+				target_presence: false,
+				mmwave: false,
+				illuminance: null,
+				temperature: null,
+				humidity: null,
+				co2: null,
+			};
 			const originalTargets = host._targets;
-			const originalSensorState = host._sensorState;
 			const originalZoneState = host._zoneState;
 			ctrl.handleTargetData(
 				makeTargetData({
@@ -307,8 +323,90 @@ describe("TargetController", () => {
 				}),
 			);
 			expect(host._targets).toBe(originalTargets);
-			expect(host._sensorState).toBe(originalSensorState);
 			expect(host._zoneState).toBe(originalZoneState);
+			// First populate: env values land so the user isn't staring at em-dashes.
+			expect(host._sensorState.temperature).toBe(22);
+			expect(host._sensorState.humidity).toBe(50);
+			expect(host._sensorState.illuminance).toBe(100);
+			expect(host._sensorState.co2).toBe(400);
+			// Non-env sensor fields stay frozen.
+			expect(host._sensorState.occupancy).toBe(false);
+			expect(host._sensorState.target_presence).toBe(false);
+		});
+
+		it("freezes env sensors in settings view once already populated", () => {
+			// After the first populate, further env state events must not
+			// disturb the slider drag. The user only sees fresh values on
+			// the next entry to settings (after a roundtrip through live)
+			// or after a reconnect cycle.
+			host._view = "settings";
+			host._sensorState = {
+				occupancy: false,
+				static_presence: false,
+				motion_presence: false,
+				target_presence: false,
+				mmwave: false,
+				illuminance: 100,
+				temperature: 22,
+				humidity: 50,
+				co2: 400,
+			};
+			const originalRef = host._sensorState;
+			ctrl.handleTargetData(
+				makeTargetData({
+					sensors: {
+						occupancy: true,
+						static_presence: true,
+						motion_presence: true,
+						target_presence: true,
+						mmwave: false,
+						illuminance: 105, // different — must NOT propagate
+						temperature: 22.5, // different — must NOT propagate
+						humidity: 51, // different — must NOT propagate
+						co2: 410, // different — must NOT propagate
+					},
+				}),
+			);
+			expect(host._sensorState).toBe(originalRef);
+			expect(host._sensorState.illuminance).toBe(100);
+			expect(host._sensorState.temperature).toBe(22);
+		});
+
+		it("populates only the null env fields, leaves populated ones frozen", () => {
+			// Mixed case: temperature already populated, humidity null. Only
+			// humidity should be filled in; temperature stays at its drag-stable
+			// value.
+			host._view = "settings";
+			host._sensorState = {
+				occupancy: false,
+				static_presence: false,
+				motion_presence: false,
+				target_presence: false,
+				mmwave: false,
+				illuminance: 100,
+				temperature: 22, // populated
+				humidity: null, // null
+				co2: null, // null
+			};
+			ctrl.handleTargetData(
+				makeTargetData({
+					sensors: {
+						occupancy: false,
+						static_presence: false,
+						motion_presence: false,
+						target_presence: false,
+						mmwave: false,
+						illuminance: 999, // populated, must not change
+						temperature: 99, // populated, must not change
+						humidity: 50, // null → populate
+						co2: 400, // null → populate
+					},
+				}),
+			);
+			expect(host._sensorState.temperature).toBe(22);
+			expect(host._sensorState.illuminance).toBe(100);
+			expect(host._sensorState.humidity).toBe(50);
+			expect(host._sensorState.co2).toBe(400);
 		});
 
 		it("resumes state updates when host._view is not 'settings'", () => {
