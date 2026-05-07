@@ -1198,6 +1198,64 @@ describe("renderEntities entity toggle @change handlers", () => {
 		const result = (sv as any).renderEntities();
 		expect(result).toBeDefined();
 	});
+
+	// Regression for "rate dropdown allows change once, then not again":
+	// PR #168 (da1bd018) removed `this.requestUpdate()` from the rate dropdown
+	// @selected handlers with the wrong claim that `ha-select` shows the
+	// user's picked value internally. Without requestUpdate, the second click
+	// doesn't trigger a re-render — the override is set but `.value` never
+	// flows back to `ha-select`, so the displayed value stays stuck.
+
+	it("zone update rate @selected handler calls requestUpdate", () => {
+		const sv = createView({
+			entitiesConfig: { zone_presence: true },
+			zoneUpdateRateMs: 1000,
+		});
+		Object.defineProperty(sv, "shadowRoot", {
+			value: { querySelector: () => null, querySelectorAll: () => [] },
+			configurable: true,
+		});
+		const requestUpdateSpy = vi.spyOn(sv, "requestUpdate");
+
+		const tpl = (sv as any).renderEntities();
+		const c = renderTo(tpl);
+
+		const selects = c.querySelectorAll("ha-select");
+		// First select is the zone rate dropdown (zone_presence section)
+		const zoneSelect = selects[0] as HTMLElement;
+		zoneSelect.dispatchEvent(
+			new CustomEvent("selected", { bubbles: true, detail: { value: "200" } }),
+		);
+
+		expect((sv as any)._overrides.zoneUpdateRateMs).toBe(200);
+		expect(requestUpdateSpy).toHaveBeenCalled();
+		document.body.removeChild(c);
+	});
+
+	it("target update rate @selected handler calls requestUpdate", () => {
+		const sv = createView({
+			entitiesConfig: { target_xy: true },
+			targetUpdateRateMs: 1000,
+		});
+		Object.defineProperty(sv, "shadowRoot", {
+			value: { querySelector: () => null, querySelectorAll: () => [] },
+			configurable: true,
+		});
+		const requestUpdateSpy = vi.spyOn(sv, "requestUpdate");
+
+		const tpl = (sv as any).renderEntities();
+		const c = renderTo(tpl);
+
+		const selects = c.querySelectorAll("ha-select");
+		const targetSelect = selects[selects.length - 1] as HTMLElement;
+		targetSelect.dispatchEvent(
+			new CustomEvent("selected", { bubbles: true, detail: { value: "500" } }),
+		);
+
+		expect((sv as any)._overrides.targetUpdateRateMs).toBe(500);
+		expect(requestUpdateSpy).toHaveBeenCalled();
+		document.body.removeChild(c);
+	});
 });
 
 describe("resetBtn click handler", () => {

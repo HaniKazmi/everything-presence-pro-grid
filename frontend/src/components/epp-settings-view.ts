@@ -854,8 +854,11 @@ export class EppSettingsView extends LitElement {
 								if (val) {
 									this._overrides.zoneUpdateRateMs = Number(val);
 									this._fireDirty();
-									// No requestUpdate: no sibling row reads this override and
-									// ha-select already shows the user's picked value.
+									// requestUpdate is required: ha-select doesn't keep the
+									// user's pick visible on its own — only `.value` does, and
+									// _fireDirty alone won't re-evaluate the binding once the
+									// parent's `dirty` prop is already true.
+									this.requestUpdate();
 								}
 							}}
               @closed=${this._stopClosed}>
@@ -895,8 +898,8 @@ export class EppSettingsView extends LitElement {
 								if (val) {
 									this._overrides.targetUpdateRateMs = Number(val);
 									this._fireDirty();
-									// No requestUpdate: no sibling row reads this override and
-									// ha-select already shows the user's picked value.
+									// requestUpdate is required: see zone update rate handler.
+									this.requestUpdate();
 								}
 							}}
               @closed=${this._stopClosed}>
