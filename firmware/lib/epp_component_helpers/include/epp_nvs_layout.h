@@ -1,20 +1,20 @@
 #pragma once
 //
-// NVS layout constants and per-blob version gating.
+// NVS layout constants and global schema version.
 //
-// The EPP component persists four independent blobs to NVS — perspective,
-// grid, zones, relay. Each blob has its own schema version so that changing
-// one blob's layout doesn't invalidate the others. The previous design
-// (single global `version` key) forced re-flashing all blobs whenever any
-// schema bumped, even though the unchanged ones were still readable.
+// The EPP component persists four blobs to NVS — perspective, grid, zones,
+// relay — under the "epp" namespace. A single schema version gates the whole
+// set: on a version mismatch, restore_from_nvs_ erases the namespace and
+// starts fresh. There is no migration code (project policy `feedback_no_bwc`)
+// and the blobs are tightly coupled in practice — a partial restore (e.g. a
+// painted grid with no zone configs, or a perspective with no painted cells)
+// produces an unusable device, so wiping all four is the same outcome the
+// user gets from reconfiguring one.
 //
-// To bump a schema:
+// To bump the schema:
 //   1. Change the on-flash byte layout in epp_component.cpp's save_*_to_nvs_().
-//   2. Increment the matching *_SCHEMA_V constant below by one.
-//   3. Add or update a host test in tests/test_nvs_layout.cpp.
-//
-// Per project memory `feedback_no_bwc`: bumping a version causes the next
-// boot to drop the blob entirely. Users will reconfigure. No migration code.
+//   2. Increment NVS_SCHEMA_VERSION below by one.
+//   3. Update tests/test_nvs_layout.cpp.
 
 #include <cstddef>
 #include <cstdint>
@@ -43,24 +43,12 @@ static constexpr size_t GRID_BASE64_MAX = ((GRID_CELL_COUNT + 2) / 3) * 4 + 4;
 static_assert(GRID_BASE64_MAX >= GRID_CELL_COUNT,
               "Encoded form must be at least as big as decoded form");
 
-// Per-blob schema versions. Start at 1 so the value 0 (returned by NVS when
-// the key is absent) acts as a sentinel for "missing" in should_load_blob().
-static constexpr uint8_t PERSP_SCHEMA_V = 1;
-static constexpr uint8_t GRID_SCHEMA_V  = 1;
-static constexpr uint8_t ZONES_SCHEMA_V = 1;
-static constexpr uint8_t RELAY_SCHEMA_V = 1;
-
-/// Decide whether a stored blob should be loaded.
-///
-/// Returns true only if the stored version exactly matches the expected
-/// (current firmware) version. A stored 0 means the version key was missing,
-/// which we treat as "no compatible blob present" so the caller skips it.
-/// Older or newer stored versions are also rejected — there is no migration
-/// code, by project policy.
-inline constexpr bool should_load_blob(uint8_t stored_version,
-                                       uint8_t expected_version) {
-  if (stored_version == 0) return false;
-  return stored_version == expected_version;
-}
+// Schema version of the persisted NVS blob set. Bump on any on-flash byte
+// layout change. 0 is the "absent key" sentinel returned by nvs_get_u8 on
+// fresh install. The current value is 2 because pre-0.100 firmware wrote a
+// global `version=2` key alongside today's blob layouts; matching that value
+// means existing installs migrate without a wipe — the per-blob refactor in
+// 0.100 didn't actually change any blob's byte layout.
+static constexpr uint8_t NVS_SCHEMA_VERSION = 2;
 
 }  // namespace epp

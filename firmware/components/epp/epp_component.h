@@ -122,9 +122,6 @@ class EPPComponent : public esphome::Component {
   }
 
  protected:
-  // Per-blob NVS schema versions live in epp_nvs_layout.h. Each save_*_to_nvs_
-  // writes its own version key (persp_v, grid_v, zones_v, relay_v) so changing
-  // one blob's layout doesn't invalidate the others. See PR-8 item #2.
   // Derived from esphome.project.version in yaml. ESPHome defines the macro
   // during codegen; the fallback covers builds outside ESPHome (unit tests).
   #ifndef ESPHOME_PROJECT_VERSION
