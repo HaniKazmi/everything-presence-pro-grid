@@ -2561,14 +2561,16 @@ class TestApplyEntityStates:
             assert "env_co2" in result
             assert "env_co2_calibrate" not in result
 
-    async def test_get_entity_states_category_uses_all_enabled_semantics(
+    async def test_get_entity_states_zone_partial_disable_reports_on(
         self, hass: HomeAssistant, config_entry: MockConfigEntry
     ) -> None:
-        """Category key (e.g. zone_presence) is True only when ALL entities in the category are enabled.
+        """Zone-key partial-disable pattern: any enabled = category on.
 
-        _apply_entity_states bulk-toggles every entity for a category, so the
-        getter must mirror that — anything-enabled would silently flip to True
-        the moment a single matching entity is enabled.
+        Regression: PR #172 (dbc58479) flipped the OR semantics to AND for
+        category keys. async_update_zone_entities INTEGRATION-disables
+        unused zone slots (4-7) even under the "on" state, so AND would
+        always read off whenever unused slots exist. OR is the original,
+        correct behavior — preserved here.
         """
         from homeassistant.helpers.entity_registry import RegistryEntryDisabler
 
@@ -2581,27 +2583,30 @@ class TestApplyEntityStates:
 
         zone0 = MagicMock()
         zone0.unique_id = "AA:BB:CC:DD:EE:FF-sensor-zone_0_presence"
-        zone0.disabled_by = None  # enabled
+        zone0.disabled_by = None
 
-        zone1 = MagicMock()
-        zone1.unique_id = "AA:BB:CC:DD:EE:FF-sensor-zone_1_presence"
-        zone1.disabled_by = RegistryEntryDisabler.USER  # disabled
+        zone4 = MagicMock()  # unused slot, INTEGRATION-disabled by async_update_zone_entities
+        zone4.unique_id = "AA:BB:CC:DD:EE:FF-sensor-zone_4_presence"
+        zone4.disabled_by = RegistryEntryDisabler.INTEGRATION
 
         with (
             patch("custom_components.eppgrid.websocket_api._devices.er.async_get"),
             patch("custom_components.eppgrid.websocket_api._devices.er.async_entries_for_device") as mock_entries,
         ):
-            mock_entries.return_value = [zone0, zone1]
+            mock_entries.return_value = [zone0, zone4]
 
             result = _get_entity_states(hass, "AA:BB:CC:DD:EE:FF")
 
-        # Mixed state ⇒ category reports disabled.
-        assert result["zone_presence"] is False
+        assert result["zone_presence"] is True
 
-    async def test_get_entity_states_category_all_enabled_returns_true(
+    async def test_get_entity_states_category_off_when_all_disabled(
         self, hass: HomeAssistant, config_entry: MockConfigEntry
     ) -> None:
-        """Category key is True when all entities in the category are enabled."""
+        """Category reports off only when every matching entry is disabled
+        (regardless of the disabler — INTEGRATION or USER).
+        """
+        from homeassistant.helpers.entity_registry import RegistryEntryDisabler
+
         from custom_components.eppgrid.device_manager import ManagedDevice
         from custom_components.eppgrid.websocket_api import _get_entity_states
 
@@ -2611,11 +2616,11 @@ class TestApplyEntityStates:
 
         zone0 = MagicMock()
         zone0.unique_id = "AA:BB:CC:DD:EE:FF-sensor-zone_0_presence"
-        zone0.disabled_by = None
+        zone0.disabled_by = RegistryEntryDisabler.INTEGRATION
 
         zone1 = MagicMock()
         zone1.unique_id = "AA:BB:CC:DD:EE:FF-sensor-zone_1_presence"
-        zone1.disabled_by = None
+        zone1.disabled_by = RegistryEntryDisabler.INTEGRATION
 
         with (
             patch("custom_components.eppgrid.websocket_api._devices.er.async_get"),
@@ -2625,7 +2630,44 @@ class TestApplyEntityStates:
 
             result = _get_entity_states(hass, "AA:BB:CC:DD:EE:FF")
 
-        assert result["zone_presence"] is True
+        assert result["zone_presence"] is False
+
+    async def test_get_entity_states_target_category_or_semantics(
+        self, hass: HomeAssistant, config_entry: MockConfigEntry
+    ) -> None:
+        """Target category (target_xy) follows the same any-enabled rule.
+
+        A USER-disabled sibling doesn't flip the toggle off — the user is
+        still receiving data from the enabled siblings. _apply_entity_states
+        already preserves USER-disabled entries on subsequent toggles, so
+        OR semantics is consistent.
+        """
+        from homeassistant.helpers.entity_registry import RegistryEntryDisabler
+
+        from custom_components.eppgrid.device_manager import ManagedDevice
+        from custom_components.eppgrid.websocket_api import _get_entity_states
+
+        mock_dm = await setup_integration(hass, config_entry)
+        mock_dm.devices["AA:BB:CC:DD:EE:FF"] = ManagedDevice(mac="AA:BB:CC:DD:EE:FF", name="EPP", host="192.168.1.50")
+        mock_dm.devices["AA:BB:CC:DD:EE:FF"].device_id = "dev123"
+
+        target_x = MagicMock()
+        target_x.unique_id = "AA:BB:CC:DD:EE:FF-sensor-target_0_x"
+        target_x.disabled_by = None
+
+        target_y = MagicMock()
+        target_y.unique_id = "AA:BB:CC:DD:EE:FF-sensor-target_0_y"
+        target_y.disabled_by = RegistryEntryDisabler.USER
+
+        with (
+            patch("custom_components.eppgrid.websocket_api._devices.er.async_get"),
+            patch("custom_components.eppgrid.websocket_api._devices.er.async_entries_for_device") as mock_entries,
+        ):
+            mock_entries.return_value = [target_x, target_y]
+
+            result = _get_entity_states(hass, "AA:BB:CC:DD:EE:FF")
+
+        assert result["target_xy"] is True
 
 
 class TestWebSocketEntityEnabled:

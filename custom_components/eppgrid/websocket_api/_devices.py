@@ -394,6 +394,13 @@ def _get_entity_states(hass: HomeAssistant, mac: str) -> dict[str, bool]:
 
     Follower keys (e.g. env_co2_calibrate) are excluded — the toggle state
     should reflect only the primary entity, not its followers.
+
+    For category keys (zone_presence, target_xy, …): any-enabled means
+    the category is on. `async_update_zone_entities` legitimately leaves
+    zone-key entries partially INTEGRATION-disabled (unused slots 4-7),
+    so AND semantics would falsely report off whenever those slots exist.
+    A USER-manually-disabled sibling is also fine to mask — the user is
+    still receiving data from the enabled siblings.
     """
     manager = _get_manager(hass)
     if manager is None:
@@ -411,11 +418,8 @@ def _get_entity_states(hass: HomeAssistant, mac: str) -> dict[str, bool]:
         if key is None or key in _FOLLOWER_KEYS:
             continue
         enabled = entry.disabled_by is None
-        # For category keys (zone_presence, target_xy, …) `_apply_entity_states`
-        # bulk-toggles every matching entity, so the getter mirrors that with
-        # AND semantics — the category is enabled only if every entity in it is.
         if key in result:
-            result[key] = result[key] and enabled
+            result[key] = result[key] or enabled
         else:
             result[key] = enabled
     return result
