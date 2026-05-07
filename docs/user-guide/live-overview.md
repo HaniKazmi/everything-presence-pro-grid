@@ -8,7 +8,8 @@ The grid is a top-down view of your room after calibration. Each cell is a 30cm 
 
 - **White cells** are inside the room but don't belong to any named zone. They make up the "Rest of room" fallback.
 - **Grey cells** are outside the room.
-- **Grey cells with cross-hatching** are outside the field of view of the target-tracking sensor.
+- **Grey cells with cross-hatching** are outside the LD2450's 120° field of view, so the sensor can never see them.
+- **White cells with cross-hatching** are inside the field of view but past the **Max distance** you configured under [Settings → Detection Ranges](settings/detection-ranges.md). The sensor *could* see those cells but you've told it not to. Lowering Max distance turns more inside-room cells into this state.
 - **Detection zones** are drawn as coloured regions using the colour you picked in the zones editor.
 - **Overlays** show as hatched patterns: Entry/Exit cells use a grey 45° diagonal stripe; Interference cells use a single red -45° diagonal stripe; Suppress cells use red cross-hatching (both diagonals).
 - **Furniture** sits on top of zones and overlays as a visual layer.

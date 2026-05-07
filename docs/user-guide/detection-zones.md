@@ -68,15 +68,17 @@ Each zone has a **type**, which picks sensible defaults for four behaviour thres
 
 The zone presence algorithm works as follows:
 
-- A zone entity starts in state **clear**.
-- When a target appears in the zone with a *signal strength* at or above the **Trigger** threshold, the zone changes to **detected**.
-- When the target disappears from the zone (without being handed off — see below), the zone moves to an internal **pending** state. The zone entity continues to report **detected**.
-- If a target reappears in the zone with a signal strength at or above the lower **Renew** threshold, the zone clears the internal **pending** state and continues reporting **detected**.
-- If no target reappears within **Presence timeout** seconds, the zone entity switches back to **clear**.
+- A zone entity starts in state **Clear**.
+- When a target appears in the zone with a *signal strength* at or above the **Trigger** threshold, the zone changes to **Detected**.
+- When the target disappears from the zone (without being handed off — see below), the zone moves to an internal **Pending** state. The zone entity continues to report **Detected**.
+- If a target reappears in the zone with a signal strength at or above the lower **Renew** threshold, the zone clears the internal **Pending** state and continues reporting **Detected**.
+- If no target reappears within **Presence timeout** seconds, the zone entity switches back to **Clear**.
+
+[How detection works](how-detection-works.md#the-zone-state-machine) covers the state machine in more detail, including the firmware's internal **Occupied** state (which is what HA reports as **Detected**).
 
 ### Handoff
 
-When a target moves to an adjacent zone instead of just vanishing, the source zone still enters the internal **pending** state, but it only waits for **Handoff timeout** seconds before clearing. The target has been *handed off* to its neighbour.
+When a target moves to an adjacent zone instead of just vanishing, the source zone still enters the internal **Pending** state, but it only waits for **Handoff timeout** seconds before clearing. The target has been *handed off* to its neighbour.
 
 Entrances and exits work the same way, since targets there appear and disappear without a continuous track. Cells marked with the **Entry/Exit overlay** (see [Overlays](overlays.md)) always use the **Handoff timeout** in place of the **Presence timeout**.
 
