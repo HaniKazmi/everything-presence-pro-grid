@@ -5593,6 +5593,57 @@ class TestRequestPush:
         # Pending tracking dict empty after stop.
         assert not manager._pending_pushes
 
+    async def test_does_not_cancel_in_flight_push(self, hass: HomeAssistant, manager: DeviceManager) -> None:
+        """A new _request_push during an in-flight push must not cancel it.
+
+        Regression: previously _pending_pushes[mac] tracked the task across
+        both the debounce-sleep phase AND the actual push phase. A new
+        _request_push call would see the not-done task and cancel it,
+        raising CancelledError mid _push_config_to_device — interrupting
+        a network write and leaving the device unsynced. The fix removes
+        the entry once the task transitions from sleep to push, so a
+        concurrent request schedules a follow-up timer instead.
+        """
+        mac = "AA:BB:CC:DD:EE:FF"
+        push_started = asyncio.Event()
+        push_can_finish = asyncio.Event()
+        cancelled = False
+
+        async def slow_push(_mac: str) -> bool:
+            nonlocal cancelled
+            push_started.set()
+            try:
+                await push_can_finish.wait()
+            except asyncio.CancelledError:
+                cancelled = True
+                raise
+            return True
+
+        with patch.object(manager, "_push_config_to_device", side_effect=slow_push) as mock_push:
+            manager._request_push(mac, delay=0.02)
+            # Wait until the first push is actually running (past the sleep).
+            await asyncio.wait_for(push_started.wait(), timeout=1.0)
+            # The task has removed itself from _pending_pushes during its
+            # sync transition between sleep-end and the push await.
+            assert mac not in manager._pending_pushes
+
+            # Issue a second request while the first is in-flight.
+            manager._request_push(mac, delay=0.02)
+            # Yield once so the new timer task gets registered.
+            await asyncio.sleep(0)
+            # New timer is registered; first push is still running.
+            assert mac in manager._pending_pushes
+            assert not cancelled
+
+            # Let the first push finish.
+            push_can_finish.set()
+            # Give the second timer time to elapse and push to fire.
+            await asyncio.sleep(0.1)
+            await hass.async_block_till_done()
+
+        assert mock_push.await_count == 2
+        assert not cancelled
+
 
 # ---------------------------------------------------------------------------
 # Stale connection and start/stop tests

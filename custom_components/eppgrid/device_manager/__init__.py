@@ -1018,24 +1018,36 @@ class DeviceManager:
         """
         if self._stopping:
             return
+        # _pending_pushes only tracks the debounce-sleep phase. Once a task
+        # transitions into the actual push (post-sleep), it removes itself
+        # from the dict so this cancel path can't interrupt an in-flight
+        # network write — a concurrent _request_push schedules a follow-up
+        # instead, which serialises behind the running one via _push_locks.
         if (existing := self._pending_pushes.get(mac)) is not None and not existing.done():
             existing.cancel()
+
+        task: asyncio.Task
 
         async def _delayed_push() -> None:
             try:
                 await asyncio.sleep(delay)
             except asyncio.CancelledError:
                 return
+            # Sync section between sleep-end and the next await: atomic vs.
+            # concurrent _request_push calls (no event-loop yields here).
+            if self._pending_pushes.get(mac) is task:
+                del self._pending_pushes[mac]
             await self._push_config_to_device(mac)
 
         # _spawn tracks the task in `_pending_tasks` so async_stop's Phase 2
-        # drain catches it as a backstop; the per-mac dict below lets us
-        # cancel the pending timer eagerly in Phase 1 and supports the
-        # cancel-prev-on-new-request pattern for coalescing.
+        # drain catches it as a backstop.
         task = self._spawn(_delayed_push())
         self._pending_pushes[mac] = task
 
         def _drop(_: asyncio.Task) -> None:
+            # Cancellation path: task didn't reach the in-flight removal,
+            # so the dict still points at us. Identity check protects
+            # against a newer task taking our slot before we settle.
             if self._pending_pushes.get(mac) is task:
                 self._pending_pushes.pop(mac, None)
 
