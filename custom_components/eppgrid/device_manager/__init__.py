@@ -934,13 +934,10 @@ class DeviceManager:
         # tasks.  The 60-second timer in websocket_set_settings handles cleanup.
         if mac in self._entity_update_macs:
             _LOGGER.debug("Skipping redundant push for %s (entity update guard)", mac)
-            # The offline branch in _on_state_changed broadcast available=False
-            # when ESPHome reload tore the connection down. The frontend's
-            # recovery path (device-controller.ts: onSelectedAvailable on
-            # false→true) waits for the matching True broadcast to reopen the
-            # session. Without firing it here, the panel's WS state subs stay
-            # attached to a torn-down DeviceConnection and the user sees a
-            # stuck target until they refresh.
+            # Must broadcast the false→true transition even when skipping the
+            # push, else the frontend's recovery hook (onSelectedAvailable)
+            # never runs and its WS state subs stay attached to the
+            # torn-down DeviceConnection.
             self._fire_device_list_changed()
             return
 
