@@ -733,32 +733,43 @@ void EPPComponent::set_relay(const std::string &trigger_mode, const std::string 
 // ---------------------------------------------------------------------------
 
 void EPPComponent::restore_from_nvs_() {
-  // Open RW because we may need to wipe and re-stamp the version on a
-  // mismatch. nvs_open with NVS_READWRITE creates the namespace if it doesn't
-  // exist yet, so the very first boot also lands here cleanly.
+  // Open RW because we may need to wipe and/or stamp the version key.
+  // nvs_open(RW) creates the namespace if it doesn't exist, so any error
+  // here is a real init / corruption / partition problem — not a normal
+  // first-boot path.
   nvs_handle_t handle;
-  if (nvs_open(NVS_NAMESPACE, NVS_READWRITE, &handle) != ESP_OK) {
-    ESP_LOGD(TAG, "No NVS namespace found, starting fresh");
+  esp_err_t open_err = nvs_open(NVS_NAMESPACE, NVS_READWRITE, &handle);
+  if (open_err != ESP_OK) {
+    ESP_LOGE(TAG, "Failed to open NVS namespace: %s", esp_err_to_name(open_err));
     return;
   }
 
   // Single global schema gate. The four blobs (perspective, grid, zones,
   // relay) are coupled in practice — losing any one leaves the device
   // unusable until the user reconfigures, at which point HA repushes the
-  // others anyway — so version mismatch wipes the whole namespace rather
-  // than restoring a partial set.
+  // others anyway — so a real version mismatch wipes the whole namespace
+  // rather than restoring a partial set.
+  //
+  // stored_version == 0 (key absent) means a firmware that didn't write
+  // this key: a truly fresh install, or a 0.100.x install that used the
+  // since-removed per-blob version keys. Both cases stamp the current
+  // version and then fall through to load whatever blobs are present —
+  // the blob byte layouts are stable across that era so anything stored
+  // is still readable.
   uint8_t stored_version = 0;
   nvs_get_u8(handle, "version", &stored_version);
-  if (stored_version != NVS_SCHEMA_VERSION) {
-    if (stored_version != 0) {
-      ESP_LOGW(TAG, "NVS schema mismatch (stored=%u, expected=%u), wiping namespace",
-               stored_version, NVS_SCHEMA_VERSION);
-      nvs_erase_all(handle);
-    }
+  if (stored_version != 0 && stored_version != NVS_SCHEMA_VERSION) {
+    ESP_LOGW(TAG, "NVS schema mismatch (stored=%u, expected=%u), wiping namespace",
+             stored_version, NVS_SCHEMA_VERSION);
+    nvs_erase_all(handle);
     nvs_set_u8(handle, "version", NVS_SCHEMA_VERSION);
     nvs_commit(handle);
     nvs_close(handle);
     return;
+  }
+  if (stored_version == 0) {
+    nvs_set_u8(handle, "version", NVS_SCHEMA_VERSION);
+    nvs_commit(handle);
   }
 
   // Restore perspective (8 floats + room_width + room_depth = 40 bytes)
