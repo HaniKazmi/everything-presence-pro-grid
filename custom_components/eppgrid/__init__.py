@@ -128,9 +128,10 @@ async def _register_panel(hass: HomeAssistant, module_url: str) -> None:
 
     The panel is admin-only: HA hides the sidebar entry for non-admin users
     and rejects direct URL access. Mutating WS commands are already gated by
-    @require_admin (PR #174); locking the panel down keeps the UX consistent
-    — non-admins don't see a panel they can't usefully use. Lovelace cards
-    registered via add_extra_js_url remain available on any dashboard.
+    @websocket_api.require_admin (PR #174); locking the panel down keeps the
+    UX consistent — non-admins don't see a panel they can't usefully use.
+    Lovelace cards registered via add_extra_js_url remain available on any
+    dashboard.
     """
     await panel_custom.async_register_panel(
         hass=hass,

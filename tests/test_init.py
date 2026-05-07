@@ -241,8 +241,9 @@ async def test_register_panel(hass: HomeAssistant) -> None:
     assert call_kwargs["module_url"] == module_url
     # Panel is admin-only: HA hides the sidebar entry for non-admin users and
     # rejects direct URL access. The integration's mutating WS commands are
-    # already gated by @require_admin (PR #174); locking the panel down keeps
-    # the UX consistent — non-admins don't see a panel they can't usefully use.
+    # already gated by @websocket_api.require_admin (PR #174); locking the
+    # panel down keeps the UX consistent — non-admins don't see a panel they
+    # can't usefully use.
     assert call_kwargs["require_admin"] is True
 
 
