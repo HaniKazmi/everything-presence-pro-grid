@@ -163,6 +163,7 @@ void ZoneEngine::dismiss_target(int target_index, int cell_index) {
     target_gate_count_[target_index] = 0;
     target_overlay_sticky_[target_index] = false;
     target_last_zone_[target_index] = -1;
+    stuck_has_ref_[target_index] = false;
 }
 
 void ZoneEngine::set_stuck_target_timeout(float seconds) {
@@ -249,6 +250,7 @@ const ProcessingResult& ZoneEngine::tick(const WindowOutput& window, float times
             target_has_signal[i] = true;
             target_has_prev_[i] = false;
             target_gate_count_[i] = 0;
+            stuck_has_ref_[i] = false;
             continue;
         }
 
@@ -271,6 +273,7 @@ const ProcessingResult& ZoneEngine::tick(const WindowOutput& window, float times
         // stuck_target_timeout_s_ seconds → auto-dismiss via the same path
         // as a manual click-dismiss. 0 disables.
         if (stuck_target_timeout_s_ > 0.0f) {
+            // Bit-exact comparison is intentional: LD2450 produces deterministic per-tick coordinates, and any 1mm jitter from a real human breaks the streak. See design doc.
             if (stuck_has_ref_[i] &&
                 tw.median_x == stuck_ref_x_[i] &&
                 tw.median_y == stuck_ref_y_[i]) {
@@ -278,9 +281,8 @@ const ProcessingResult& ZoneEngine::tick(const WindowOutput& window, float times
                     log_(LogLevel::INFO,
                          "T%d auto-dismissed (stuck at %.1f,%.1f for %.1fs)",
                          i, tw.median_x, tw.median_y, stuck_target_timeout_s_);
-                    stuck_has_ref_[i] = false;
                     dismiss_target(i, cell);
-                    // dismiss_target reset target_has_prev_/gate/overlay/last_zone for us.
+                    // dismiss_target reset target_has_prev_/gate/overlay/last_zone/stuck for us.
                     // Skip remaining per-target work — the dismiss collapses the zone.
                     continue;
                 }
