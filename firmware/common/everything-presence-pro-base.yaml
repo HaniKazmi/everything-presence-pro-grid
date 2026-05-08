@@ -343,6 +343,13 @@ api:
             // is managed by the zone engine via set_motion_timeout()
             id(motion_timeout) = 1;
             id(epp_component).set_motion_timeout(timeout);
+    - action: epp_set_stuck_target_timeout
+      variables:
+        timeout: float
+      then:
+        - lambda: |-
+            ESP_LOGI("epp", "epp_set_stuck_target_timeout: timeout=%.1fs", timeout);
+            id(epp_component).set_stuck_target_timeout(timeout);
     - action: epp_set_tracking
       variables:
         max_range: float
@@ -1101,23 +1108,6 @@ number:
               lambda: 'return id(led_mode_select).current_option() != "Manual Control" && id(api_id).is_connected();'
             then:
               - script.execute: control_leds
-
-  - platform: template
-    name: "Stuck Target Timeout"
-    id: stuck_target_timeout
-    icon: mdi:account-question-outline
-    entity_category: config
-    min_value: 0
-    max_value: 3600
-    initial_value: 300
-    optimistic: true
-    step: 1
-    restore_value: true
-    mode: box
-    unit_of_measurement: s
-    on_value:
-      then:
-        - lambda: 'id(epp_component).set_stuck_target_timeout(x);'
 
 button:
   - platform: restart
