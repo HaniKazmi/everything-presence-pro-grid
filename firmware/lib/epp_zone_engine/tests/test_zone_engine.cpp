@@ -1219,3 +1219,26 @@ TEST_CASE("target going inactive resets stuck-target state") {
     const ProcessingResult& r_after = engine.tick(make_window_1(X, Y, 3), t + 9.2f);
     CHECK_FALSE(r_after.zone_occupancy[1]);
 }
+
+TEST_CASE("auto-dismissed target re-confirms after moving away and back") {
+    ZoneEngine engine = make_parity_engine();
+    engine.set_stuck_target_timeout(5.0f);
+
+    float t = 100.0f;
+    const float X_Z1 = X_OFF + 450.0f;
+    const float Y_Z1 = 450.0f;
+    const float X_OFFCELL = X_OFF + 750.0f;
+    const float Y_OFFCELL = 450.0f;
+
+    engine.tick(make_window_1(X_Z1, Y_Z1, 3), t);
+    const ProcessingResult& r_dismiss = engine.tick(make_window_1(X_Z1, Y_Z1, 3), t + 5.1f);
+    CHECK_FALSE(r_dismiss.zone_occupancy[1]);
+
+    const ProcessingResult& r_held = engine.tick(make_window_1(X_Z1, Y_Z1, 3), t + 5.2f);
+    CHECK_FALSE(r_held.zone_occupancy[1]);
+
+    engine.tick(make_window_1(X_OFFCELL, Y_OFFCELL, 3), t + 5.3f);
+
+    const ProcessingResult& r_return = engine.tick(make_window_1(X_Z1, Y_Z1, 3), t + 5.4f);
+    CHECK(r_return.zone_occupancy[1]);
+}
