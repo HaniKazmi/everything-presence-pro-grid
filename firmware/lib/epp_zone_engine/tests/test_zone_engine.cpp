@@ -1182,3 +1182,18 @@ TEST_CASE("stuck timer resets when coordinates change by any amount") {
     const ProcessingResult& r_dismiss = engine.tick(make_window_1(X, Y, 3), t + 11.0f);
     CHECK_FALSE(r_dismiss.zone_occupancy[1]);
 }
+
+TEST_CASE("stuck-target timeout of 0 disables auto-dismiss") {
+    ZoneEngine engine = make_parity_engine();
+    engine.set_stuck_target_timeout(0.0f);
+
+    float t = 100.0f;
+    const float X = X_OFF + 450.0f;
+    const float Y = 450.0f;
+
+    for (int n = 0; n < 100; ++n) {
+        engine.tick(make_window_1(X, Y, 3), t + static_cast<float>(n));
+    }
+    const ProcessingResult& r = engine.tick(make_window_1(X, Y, 3), t + 100.5f);
+    CHECK(r.zone_occupancy[1]);
+}
