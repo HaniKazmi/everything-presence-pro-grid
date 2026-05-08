@@ -111,6 +111,7 @@ Pure-logic modules — no Lit, no HA, testable in isolation.
 - `config-serialization.ts` — saved-configuration encode / decode.
 - `configuration-thumbnail.ts` — SVG thumbnail of a saved configuration.
 - `view-hash.ts` — URL fragment ↔ ViewState encoding (`#zones`, `#overlays`, `#furniture`, `#settings`).
+- `help-url.ts` — `(panelTab, view, sidebarTab)` → contextual user-guide URL (drives the help icon in the panel tab-bar).
 - `storage.ts` — `localStorage` helper (e.g. selected device MAC).
 - `safe-unsub.ts` — wrapper around HA WebSocket unsubscribe callbacks that swallows the "stale subscription" error from already-torn-down connections.
 - `improv-serial.ts` — Improv Serial protocol implementation.

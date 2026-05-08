@@ -116,6 +116,7 @@ everything-presence-pro-grid/
 │   │       ├── furniture.ts              # Furniture model + sticker definitions
 │   │       ├── heatmap.ts                # Per-zone CSS color resolution
 │   │       ├── view-hash.ts              # URL fragment ↔ ViewState encoding
+│   │       ├── help-url.ts               # Panel state → contextual user-guide URL
 │   │       ├── storage.ts                # localStorage helper (selected device MAC)
 │   │       ├── safe-unsub.ts             # HA WS unsubscribe wrapper (swallows stale-subscription errors)
 │   │       ├── usb-flash-service.ts      # esptool.js orchestration + manifest fetch
@@ -499,6 +500,9 @@ component and the live sidebar.
 
 **view-hash.ts** — URL fragment ↔ `ViewState` (view + sidebar tab) encoding
 for per-tab view persistence.
+
+**help-url.ts** — Pure mapping from `(panelTab, view, sidebarTab)` to the
+matching user-guide page URL, used by the help icon in the panel tab-bar.
 
 **storage.ts** — `localStorage` helper for cross-tab device-selection memory
 (`persistSelectedMac`).
