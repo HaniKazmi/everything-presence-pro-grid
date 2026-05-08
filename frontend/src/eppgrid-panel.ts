@@ -42,6 +42,7 @@ import {
 	MAX_RANGE,
 	type OverlayMode,
 } from "./lib/grid.js";
+import { getHelpUrl } from "./lib/help-url.js";
 import { applyPerspective, getInversePerspective } from "./lib/perspective.js";
 import {
 	autoDetectionRange,
@@ -1609,6 +1610,23 @@ export class EPPGridPanel extends LitElement {
       border-bottom-color: var(--app-header-text-color, white);
     }
 
+    .tab-help {
+      margin-left: auto;
+      display: inline-flex;
+      align-items: center;
+      padding: 12px 16px;
+      color: var(--app-header-text-color, white);
+      opacity: 0.7;
+      text-decoration: none;
+      cursor: pointer;
+      --mdc-icon-size: 24px;
+    }
+
+    .tab-help:hover,
+    .tab-help:focus-visible {
+      opacity: 1;
+    }
+
     .primary-btn {
       padding: 10px 24px;
       border-radius: 10px;
@@ -1695,6 +1713,18 @@ export class EPPGridPanel extends LitElement {
 							this._flasherCtrl.subscribeDeviceList();
 						}
 					}}>${this._localize("tabs.flash_firmware")}</button>
+				<a class="tab-help"
+					href=${getHelpUrl({
+						panelTab: this._panelTab,
+						view: this._view,
+						sidebarTab: this._sidebarTab,
+					})}
+					target="_blank"
+					rel="noopener noreferrer"
+					aria-label=${this._localize("tabs.help")}
+				>
+					<ha-icon icon="mdi:help-circle-outline"></ha-icon>
+				</a>
 			</div>
 		`;
 	}

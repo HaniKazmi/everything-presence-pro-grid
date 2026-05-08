@@ -1,6 +1,6 @@
 import { render } from "lit";
 import { describe, expect, it, vi } from "vitest";
-import { type EPPGridPanel } from "../eppgrid-panel.js";
+import type { EPPGridPanel } from "../eppgrid-panel.js";
 import "../eppgrid-panel.js";
 import "../components/epp-live-sidebar.js";
 import "../components/epp-zone-sidebar.js";
@@ -11,6 +11,7 @@ import "../components/epp-grid.js";
 import { GRID_CELL_COUNT } from "../lib/grid.js";
 import { DOCS_BASE_URL } from "../lib/help-url.js";
 import { createZoneEngineState } from "../lib/zone-engine.js";
+import { setupLocalize } from "../localize.js";
 
 function createPanel(): EPPGridPanel {
 	const el = document.createElement("eppgrid-panel") as EPPGridPanel;
@@ -81,6 +82,7 @@ function createPanel(): EPPGridPanel {
 	a._zoneEngineState = createZoneEngineState();
 	a._showCustomIconPicker = false;
 	a._haConnected = true;
+	a._localize = setupLocalize();
 	return el;
 }
 
@@ -131,7 +133,9 @@ describe("tab-bar help link", () => {
 			a._sidebarTab = "zones";
 			a._panelTab = "config";
 		});
-		expect(findHelpLink(c).href).toBe(`${DOCS_BASE_URL}user-guide/live-overview/`);
+		expect(findHelpLink(c).href).toBe(
+			`${DOCS_BASE_URL}user-guide/live-overview/`,
+		);
 	});
 
 	it("links to detection-zones on editor + zones", () => {
