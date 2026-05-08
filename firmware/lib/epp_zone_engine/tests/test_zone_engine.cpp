@@ -1197,3 +1197,25 @@ TEST_CASE("stuck-target timeout of 0 disables auto-dismiss") {
     const ProcessingResult& r = engine.tick(make_window_1(X, Y, 3), t + 100.5f);
     CHECK(r.zone_occupancy[1]);
 }
+
+TEST_CASE("target going inactive resets stuck-target state") {
+    ZoneEngine engine = make_parity_engine();
+    engine.set_stuck_target_timeout(5.0f);
+
+    float t = 100.0f;
+    const float X = X_OFF + 450.0f;
+    const float Y = 450.0f;
+
+    engine.tick(make_window_1(X, Y, 3), t);
+    engine.tick(make_window_1(X, Y, 3), t + 2.5f);
+
+    engine.tick(make_window_1(X, Y, 0), t + 3.0f);
+    engine.tick(make_window_1(X, Y, 0), t + 3.5f);
+
+    engine.tick(make_window_1(X, Y, 3), t + 4.0f);
+    const ProcessingResult& r_within = engine.tick(make_window_1(X, Y, 3), t + 8.8f);
+    CHECK(r_within.zone_occupancy[1]);
+
+    const ProcessingResult& r_after = engine.tick(make_window_1(X, Y, 3), t + 9.2f);
+    CHECK_FALSE(r_after.zone_occupancy[1]);
+}
