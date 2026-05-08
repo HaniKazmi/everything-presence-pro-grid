@@ -11,9 +11,10 @@ export interface HelpUrlState {
 	sidebarTab: SidebarTab;
 }
 
-const VIEW_TO_SLUG: Readonly<Record<ViewMode, string>> = {
+type NonEditorView = Exclude<ViewMode, "editor">;
+
+const VIEW_TO_SLUG: Readonly<Record<NonEditorView, string>> = {
 	live: "user-guide/live-overview/",
-	editor: "user-guide/detection-zones/", // overridden by sidebarTab below
 	settings: "user-guide/settings/",
 	tutorial: "user-guide/calibration/",
 	calibrate: "user-guide/calibration/",
