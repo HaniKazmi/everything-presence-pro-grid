@@ -45,6 +45,7 @@ export const SETTINGS_DEFAULTS = {
 	motion_timeout: 5,
 	target_auto_distance: true,
 	target_max_distance: 6.0,
+	stuck_target_timeout: 300,
 	static_auto_distance: true,
 	static_min_distance: 0.3,
 	static_max_distance: 16.0,
@@ -110,6 +111,7 @@ export type SettingsHostProp =
 	| "_motionTimeout"
 	| "_targetAutoDistance"
 	| "_targetMaxDistance"
+	| "_stuckTargetTimeout"
 	| "_staticAutoDistance"
 	| "_staticMinDistance"
 	| "_staticMaxDistance"
@@ -144,6 +146,7 @@ export const SETTINGS_FIELD_MAP: ReadonlyArray<
 	["motion_timeout", "_motionTimeout"],
 	["target_auto_distance", "_targetAutoDistance"],
 	["target_max_distance", "_targetMaxDistance"],
+	["stuck_target_timeout", "_stuckTargetTimeout"],
 	["static_auto_distance", "_staticAutoDistance"],
 	["static_min_distance", "_staticMinDistance"],
 	["static_max_distance", "_staticMaxDistance"],

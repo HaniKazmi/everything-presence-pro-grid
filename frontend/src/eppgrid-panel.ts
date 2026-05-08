@@ -334,6 +334,7 @@ export class EPPGridPanel extends LitElement {
 	@state() _activeZone: number | null = null; // null = none selected, 0 = room, 1-7 = named zones
 	@state() _targetAutoDistance = true;
 	@state() _targetMaxDistance = 6.0;
+	@state() _stuckTargetTimeout = 300;
 	@state() _staticAutoDistance = true;
 	@state() _staticMinDistance = 0.3;
 	@state() _staticMaxDistance = 16.0;
@@ -949,6 +950,7 @@ export class EPPGridPanel extends LitElement {
 		this._motionTimeout = s.motionTimeout;
 		this._targetAutoDistance = s.targetAutoDistance;
 		this._targetMaxDistance = s.targetMaxDistance;
+		this._stuckTargetTimeout = s.stuckTargetTimeout;
 		this._staticAutoDistance = s.staticAutoDistance;
 		this._staticMinDistance = s.staticMinDistance;
 		this._staticMaxDistance = s.staticMaxDistance;
@@ -1979,6 +1981,7 @@ export class EPPGridPanel extends LitElement {
 					motion_timeout: this._motionTimeout,
 					target_auto_distance: this._targetAutoDistance,
 					target_max_distance: this._targetMaxDistance,
+					stuck_target_timeout: this._stuckTargetTimeout,
 					static_auto_distance: this._staticAutoDistance,
 					static_min_distance: this._staticMinDistance,
 					static_max_distance: this._staticMaxDistance,
@@ -2519,6 +2522,7 @@ export class EPPGridPanel extends LitElement {
           .sensorState=${this._sensorState}
           .targetAutoDistance=${this._targetAutoDistance}
           .targetMaxDistance=${this._targetMaxDistance}
+          .stuckTargetTimeout=${this._stuckTargetTimeout}
           .staticAutoDistance=${this._staticAutoDistance}
           .staticMinDistance=${this._staticMinDistance}
           .staticMaxDistance=${this._staticMaxDistance}

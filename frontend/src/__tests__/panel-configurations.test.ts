@@ -213,6 +213,7 @@ describe("_buildSettingsPayload", () => {
 		a._motionTimeout = 10;
 		a._targetAutoDistance = false;
 		a._targetMaxDistance = 5.0;
+		a._stuckTargetTimeout = 120;
 		a._staticAutoDistance = false;
 		a._staticMinDistance = 0.5;
 		a._staticMaxDistance = 12.0;
@@ -240,6 +241,7 @@ describe("_buildSettingsPayload", () => {
 			motion_timeout: 10,
 			target_auto_distance: false,
 			target_max_distance: 5.0,
+			stuck_target_timeout: 120,
 			static_auto_distance: false,
 			static_min_distance: 0.5,
 			static_max_distance: 12.0,
@@ -257,8 +259,8 @@ describe("_buildSettingsPayload", () => {
 			entities: { zone_presence: true },
 			log_levels: { esp32: "Warning" },
 		});
-		// Exactly 22 keys — no extras, no omissions
-		expect(Object.keys(payload)).toHaveLength(22);
+		// Exactly 23 keys — no extras, no omissions
+		expect(Object.keys(payload)).toHaveLength(23);
 	});
 });
 
