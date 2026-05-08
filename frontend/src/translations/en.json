@@ -315,7 +315,8 @@
 	},
 	"tabs": {
 		"device_configuration": "Device Configuration",
-		"flash_firmware": "Flash Firmware"
+		"flash_firmware": "Flash Firmware",
+		"help": "Open user guide"
 	},
 	"flasher": {
 		"title": "Flash Firmware",
