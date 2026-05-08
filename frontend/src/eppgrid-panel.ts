@@ -42,7 +42,7 @@ import {
 	MAX_RANGE,
 	type OverlayMode,
 } from "./lib/grid.js";
-import { getHelpUrl } from "./lib/help-url.js";
+import { getHelpUrl, type PanelTab } from "./lib/help-url.js";
 import { applyPerspective, getInversePerspective } from "./lib/perspective.js";
 import {
 	autoDetectionRange,
@@ -359,7 +359,7 @@ export class EPPGridPanel extends LitElement {
 	@state() _sidebarTab: SidebarTab = parseViewHash(
 		typeof location !== "undefined" ? location.hash : "",
 	).sidebarTab;
-	@state() private _panelTab: "config" | "flasher" = "config";
+	@state() private _panelTab: PanelTab = "config";
 	@state() private _showDeleteCalibrationDialog = false;
 	@state() private _showLiveMenu = false;
 	@state() private _showCustomIconPicker = false;
