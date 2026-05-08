@@ -11,13 +11,24 @@
 // same outcome the user gets from reconfiguring one.
 //
 // Now that we have shipped to real users, a schema bump wipes everyone's
-// painted grid, zones, perspective and relay config on upgrade. Prefer
-// additive byte-layout changes (append new fields, leave old layout
-// readable) over rewriting. If a true breaking change is unavoidable, write
-// a migration that reads the old version and rewrites the new one before
-// bumping NVS_SCHEMA_VERSION, and call out the wipe in the release notes.
+// painted grid, zones, perspective and relay config on upgrade. Any change
+// that alters a stored blob's byte length is effectively a wipe today:
+// restore_from_nvs_ in epp_component.cpp checks `persp_len == sizeof(...)`
+// and `grid_len == GRID_BLOB_SIZE` with strict equality and silently skips
+// non-matching blobs, so even an "additive" append of a new field falls
+// through to defaults unless restore is taught to accept the previous
+// length and default the new field.
 //
-// To bump the schema (only when no migration is feasible):
+// Before bumping the schema or changing a blob's layout:
+//   - Prefer adding a new NVS key for new state instead of rewriting an
+//     existing blob — new keys default cleanly when absent.
+//   - If you must change an existing blob, update restore_from_nvs_ to
+//     accept the previous blob length and populate the new field from a
+//     default, then write the new layout back the next time it's saved.
+//   - Bump NVS_SCHEMA_VERSION only when no migration is feasible; call out
+//     the wipe in the release notes.
+//
+// To bump the schema (last resort, wipes user config):
 //   1. Change the on-flash byte layout in epp_component.cpp's save_*_to_nvs_().
 //   2. Increment NVS_SCHEMA_VERSION below by one.
 //   3. Update tests/test_nvs_layout.cpp.
