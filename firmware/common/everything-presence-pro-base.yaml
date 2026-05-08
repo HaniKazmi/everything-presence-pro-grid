@@ -1,7 +1,7 @@
 esphome:
   project:
     name: EverythingSmartTechnology.Everything Presence Pro
-    version: "0.101.0"
+    version: "0.102.0"
   on_boot:
     - priority: 200
       then:
@@ -1101,6 +1101,23 @@ number:
               lambda: 'return id(led_mode_select).current_option() != "Manual Control" && id(api_id).is_connected();'
             then:
               - script.execute: control_leds
+
+  - platform: template
+    name: "Stuck Target Timeout"
+    id: stuck_target_timeout
+    icon: mdi:account-question-outline
+    entity_category: config
+    min_value: 0
+    max_value: 3600
+    initial_value: 300
+    optimistic: true
+    step: 1
+    restore_value: true
+    mode: box
+    unit_of_measurement: s
+    on_value:
+      then:
+        - lambda: 'id(epp_component).set_stuck_target_timeout(x);'
 
 button:
   - platform: restart
