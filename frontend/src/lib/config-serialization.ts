@@ -39,6 +39,7 @@ export interface ParsedSettings {
 	motionTimeout: number;
 	targetAutoDistance: boolean;
 	targetMaxDistance: number;
+	stuckTargetTimeout: number;
 	staticAutoDistance: boolean;
 	staticMinDistance: number;
 	staticMaxDistance: number;
@@ -231,6 +232,7 @@ export function parseSettings(
 		motionTimeout: s.motion_timeout ?? 5,
 		targetAutoDistance: s.target_auto_distance ?? true,
 		targetMaxDistance: s.target_max_distance ?? 6,
+		stuckTargetTimeout: s.stuck_target_timeout ?? 300,
 		staticAutoDistance: s.static_auto_distance ?? true,
 		staticMinDistance: s.static_min_distance ?? 0.3,
 		staticMaxDistance: s.static_max_distance ?? 16,

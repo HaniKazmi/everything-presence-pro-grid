@@ -31,6 +31,20 @@ The SEN0609 mmWave radar reports a single "someone here / not here" signal. Rang
 
 **Presence timeout** is important for the [sensor-assisted clear](../how-detection-works.md#sensor-assisted-clear): once the static sensor reports inactive (and the motion sensor is also inactive, and no zone is currently *occupied*), every *pending* zone is cleared immediately. Lowering this timeout speeds that up, at the cost of clearing zones a little more quickly after someone genuinely leaves.
 
+## Target sensor (LD2450)
+
+Range and the auto/manual toggle for the LD2450 live under [Detection ranges](detection-ranges.md). The control here governs how the engine handles a target that gets stuck.
+
+![Target sensor calibration.](../../images/settings/sensor-calibration/target.png "Target sensor calibration.")
+
+| Control | Default | Notes |
+| --- | --- | --- |
+| **Stuck target timeout** | 300 s | A target reported at exactly the same `(x, y)` for this long is auto-dismissed by the firmware, the same way a manual click-dismiss in the [live overview](../live-overview.md) does. Range 0–600 s. Set to **0** to disable. |
+
+The radar occasionally fixates on a phantom — a fan blade in just the right position, a reflection off a glass cabinet — and reports it at byte-identical coordinates indefinitely. A real person never sits perfectly still at the radar's resolution, so this rule is safe by default. The dismissed target re-appears the moment the radar reports it at any different coordinates, so it'll come back if it was real.
+
+See [How detection works → Auto-dismiss for stuck targets](../how-detection-works.md#auto-dismiss-for-stuck-targets) for the full pipeline.
+
 ## Environmental offsets
 
 The environmental sensors support fixed offsets that nudge the on-board temperature, humidity, and illuminance readings towards a reference instrument. The device runs warm and is often mounted high in a corner, so temperature and humidity readings drift accordingly. An offset gets the average closer to truth, but it doesn't make the sensor accurate. See [Hardware → Environmental sensors](../hardware.md#environmental-sensors).

@@ -131,6 +131,7 @@ export class EppSettingsView extends LitElement {
 
 	@property({ type: Boolean }) targetAutoDistance = true;
 	@property({ type: Number }) targetMaxDistance = 6.0;
+	@property({ type: Number }) stuckTargetTimeout = 300;
 	@property({ type: Boolean }) staticAutoDistance = true;
 	@property({ type: Number }) staticMinDistance = 0.3;
 	@property({ type: Number }) staticMaxDistance = 16.0;
@@ -760,6 +761,22 @@ export class EppSettingsView extends LitElement {
           </div>
         </div>
         <div class="setting-group">
+          <h4>${this.localize("settings.target_sensor")}</h4>
+          <div class="setting-row">
+            <label>${this.localize("settings.stuck_target_timeout")}</label>
+            <span class="setting-input-unit"><input type="range" class="setting-range" .value=${String(this.stuckTargetTimeout)} min="0" max="600" step="1" @input=${(
+							e: Event,
+						) => {
+							const el = e.target as HTMLInputElement;
+							const v = Number(el.value);
+							this._overrides.stuckTargetTimeout = v;
+							this._setSettingValue(el, el.value);
+							this._fireChange("stuckTargetTimeout", v);
+						}} /><span class="setting-value">${this.stuckTargetTimeout}</span><span class="setting-unit">s</span></span>
+            ${this.resetBtn(300, "stuckTargetTimeout")}${this.infoTip(this.localize("info.stuck_target_timeout"))}
+          </div>
+        </div>
+        <div class="setting-group">
           <h4>${this.localize("settings.environmental")}</h4>
           ${this.renderEnvOffset(this.localize("settings.illuminance_offset"), () => this.sensorState.illuminance, "illuminance", -500, 500, 1, "lux", 1, this.localize("info.illuminance_offset"), 0)}
           ${this.renderEnvOffset(this.localize("settings.humidity_offset"), () => this.sensorState.humidity, "humidity", -50, 50, 0.1, "%", 1, this.localize("info.humidity_offset"), 0, 100)}
@@ -1283,6 +1300,7 @@ export class EppSettingsView extends LitElement {
 				detail: {
 					target_auto_distance: targetAuto,
 					target_max_distance: targetMaxDist,
+					stuck_target_timeout: o.stuckTargetTimeout ?? this.stuckTargetTimeout,
 					static_auto_distance: staticAuto,
 					static_min_distance: staticMinDist,
 					static_max_distance: staticMaxDist,

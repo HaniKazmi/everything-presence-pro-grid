@@ -129,6 +129,20 @@ flowchart LR
 
 Use it when you need to limit the range of the sensors, for instance where you have two sensors in a room, each monitoring half the room. It is not possible to limit the range of the motion sensor in the way you can with the target and static sensors. Using the mmWave presence entity allows you to divide the room cleanly into two independent zones. Disabled by default; enable it under Settings → Entities.
 
+## Auto-dismiss for stuck targets
+
+The LD2450 occasionally fixates on a phantom — a fan blade caught at just the right phase, a reflection off a glass cabinet, a stationary heat source — and reports it at byte-identical coordinates for as long as the misread persists. Without intervention, that phantom holds whatever zone it lands on permanently *occupied*.
+
+The firmware handles this independently of the zone state machine:
+
+- Each tracker slot keeps a small dwell counter.
+- Every tick, if the slot's reported `(x, y)` matches the previous tick's bit-for-bit, the counter rolls forward; if any byte differs, the counter resets.
+- Once the counter exceeds the configured timeout (default 5 minutes, configurable in [Sensor calibration → Target sensor](settings/sensor-calibration.md#target-sensor-ld2450)), the firmware auto-dismisses that target through the same path as a manual click-dismiss in the [live overview](live-overview.md). The zone collapses to *clear* if no other targets remain, and the dismissed slot is suppressed at that cell until the radar reports it somewhere different.
+
+A real person never sits perfectly still at the radar's millimetre-level reporting resolution — even motionless breathing or micro-movements show up as 1–3 mm jitter — so the byte-exact rule effectively ignores anyone real. Only a sensor genuinely stuck on a phantom triggers it. Setting the timeout to 0 disables the feature entirely if you'd prefer to handle it via overlays.
+
+A target that auto-dismissed re-appears immediately if the radar later reports it at any different coordinates, so a real person who happened to dwell unusually still won't be permanently lost — they'll come back the instant they shift.
+
 ## Sensor-assisted clear
 
 The Bed zone holds the *pending* state for ten minutes. That's deliberate, since someone asleep in bed can drop off the radar for whole minutes at a time. The downside is that a stale *pending* state can keep an **Occupancy** or **mmWave Presence** entity `on` long after the room is actually empty.

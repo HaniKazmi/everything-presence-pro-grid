@@ -1136,3 +1136,134 @@ TEST_CASE("over-delivered window: published signal matches firmware comparison t
     CHECK_FALSE(r.zone_occupancy[0]);
     CHECK(r.targets[0].signal == 5);
 }
+
+TEST_CASE("stuck target auto-dismissed after timeout") {
+    ZoneEngine engine = make_parity_engine();
+    engine.set_stuck_target_timeout(5.0f);  // 5 second timeout for fast test
+
+    float t = 100.0f;
+    const float STUCK_X = X_OFF + 450.0f;  // zone 1 cell
+    const float STUCK_Y = 450.0f;
+
+    // Confirm the target into zone 1 (trigger=3, instant on first tick)
+    const ProcessingResult& r0 = engine.tick(make_window_1(STUCK_X, STUCK_Y, 3), t);
+    CHECK(r0.zone_occupancy[1]);
+
+    // Hold identical coords just under the threshold — still occupied
+    const ProcessingResult& r1 = engine.tick(make_window_1(STUCK_X, STUCK_Y, 3), t + 4.9f);
+    CHECK(r1.zone_occupancy[1]);
+
+    // Cross the 5s threshold — auto-dismiss fires, zone collapses to CLEAR
+    const ProcessingResult& r2 = engine.tick(make_window_1(STUCK_X, STUCK_Y, 3), t + 5.1f);
+    CHECK_FALSE(r2.zone_occupancy[1]);
+}
+
+TEST_CASE("stuck timer resets when coordinates change by any amount") {
+    ZoneEngine engine = make_parity_engine();
+    engine.set_stuck_target_timeout(5.0f);
+
+    float t = 100.0f;
+    const float X = X_OFF + 450.0f;
+    const float Y = 450.0f;
+
+    // Hold identical coords for nearly the full timeout
+    engine.tick(make_window_1(X, Y, 3), t);
+    engine.tick(make_window_1(X, Y, 3), t + 4.9f);
+
+    // One tick at a 1mm-different y inside the same cell — must reset the timer
+    const ProcessingResult& r_jitter = engine.tick(make_window_1(X, Y + 1.0f, 3), t + 5.0f);
+    CHECK(r_jitter.zone_occupancy[1]);
+
+    // Resume identical coords — must take another full timeout window from here
+    const ProcessingResult& r_brief = engine.tick(make_window_1(X, Y, 3), t + 5.5f);
+    CHECK(r_brief.zone_occupancy[1]);  // ~0.0s elapsed since last reset, well below 5s
+
+    // Cross the new timeout boundary (timer reset at t+5.5; +5.0s threshold = t+10.5)
+    const ProcessingResult& r_dismiss = engine.tick(make_window_1(X, Y, 3), t + 11.0f);
+    CHECK_FALSE(r_dismiss.zone_occupancy[1]);
+}
+
+TEST_CASE("stuck-target timeout of 0 disables auto-dismiss") {
+    ZoneEngine engine = make_parity_engine();
+    engine.set_stuck_target_timeout(0.0f);
+
+    float t = 100.0f;
+    const float X = X_OFF + 450.0f;
+    const float Y = 450.0f;
+
+    for (int n = 0; n < 100; ++n) {
+        engine.tick(make_window_1(X, Y, 3), t + static_cast<float>(n));
+    }
+    const ProcessingResult& r = engine.tick(make_window_1(X, Y, 3), t + 100.5f);
+    CHECK(r.zone_occupancy[1]);
+}
+
+TEST_CASE("target going inactive resets stuck-target state") {
+    ZoneEngine engine = make_parity_engine();
+    engine.set_stuck_target_timeout(5.0f);
+
+    float t = 100.0f;
+    const float X = X_OFF + 450.0f;
+    const float Y = 450.0f;
+
+    engine.tick(make_window_1(X, Y, 3), t);
+    engine.tick(make_window_1(X, Y, 3), t + 2.5f);
+
+    engine.tick(make_window_1(X, Y, 0), t + 3.0f);
+    engine.tick(make_window_1(X, Y, 0), t + 3.5f);
+
+    engine.tick(make_window_1(X, Y, 3), t + 4.0f);
+    const ProcessingResult& r_within = engine.tick(make_window_1(X, Y, 3), t + 8.8f);
+    CHECK(r_within.zone_occupancy[1]);
+
+    const ProcessingResult& r_after = engine.tick(make_window_1(X, Y, 3), t + 9.2f);
+    CHECK_FALSE(r_after.zone_occupancy[1]);
+}
+
+TEST_CASE("auto-dismissed target re-confirms after moving away and back") {
+    ZoneEngine engine = make_parity_engine();
+    engine.set_stuck_target_timeout(5.0f);
+
+    float t = 100.0f;
+    const float X_Z1 = X_OFF + 450.0f;
+    const float Y_Z1 = 450.0f;
+    const float X_OFFCELL = X_OFF + 750.0f;
+    const float Y_OFFCELL = 450.0f;
+
+    engine.tick(make_window_1(X_Z1, Y_Z1, 3), t);
+    const ProcessingResult& r_dismiss = engine.tick(make_window_1(X_Z1, Y_Z1, 3), t + 5.1f);
+    CHECK_FALSE(r_dismiss.zone_occupancy[1]);
+
+    const ProcessingResult& r_held = engine.tick(make_window_1(X_Z1, Y_Z1, 3), t + 5.2f);
+    CHECK_FALSE(r_held.zone_occupancy[1]);
+
+    engine.tick(make_window_1(X_OFFCELL, Y_OFFCELL, 3), t + 5.3f);
+
+    const ProcessingResult& r_return = engine.tick(make_window_1(X_Z1, Y_Z1, 3), t + 5.4f);
+    CHECK(r_return.zone_occupancy[1]);
+}
+
+TEST_CASE("stuck-target tracking is per-slot") {
+    ZoneEngine engine = make_parity_engine();
+    engine.set_stuck_target_timeout(5.0f);
+
+    float t = 100.0f;
+    const float X_STUCK = X_OFF + 450.0f;
+    const float Y_STUCK = 450.0f;
+
+    auto wo_for = [&](float t_offset) {
+        return make_window_2(X_STUCK, Y_STUCK, 3,
+                             X_STUCK, Y_STUCK + t_offset, 3);
+    };
+
+    engine.tick(wo_for(0.1f), t);
+    engine.tick(wo_for(0.2f), t + 1.0f);
+    engine.tick(wo_for(0.3f), t + 2.0f);
+    engine.tick(wo_for(0.4f), t + 3.0f);
+    engine.tick(wo_for(0.5f), t + 4.0f);
+    const ProcessingResult& r = engine.tick(wo_for(0.6f), t + 5.1f);
+
+    CHECK(r.zone_occupancy[1]);
+    CHECK(r.targets[0].status == TargetStatus::INACTIVE);
+    CHECK(r.targets[1].status == TargetStatus::ACTIVE);
+}

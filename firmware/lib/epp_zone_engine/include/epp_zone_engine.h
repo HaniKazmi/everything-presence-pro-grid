@@ -84,6 +84,7 @@ public:
     const ProcessingResult& tick(const WindowOutput& window, float timestamp,
                                  const SensorInput& sensors = SensorInput{});
     void dismiss_target(int target_index, int cell_index);
+    void set_stuck_target_timeout(float seconds);
 
 private:
     Grid grid_;
@@ -102,6 +103,15 @@ private:
     int target_last_zone_[MAX_TARGETS]{};   // last zone while in-room (-1 = unknown)
     int dismissed_cell_[MAX_TARGETS]{};     // cell index target was dismissed at, or -1
     bool target_overlay_sticky_[MAX_TARGETS]{};  // last in-room on_overlay value
+
+    // Stuck-target tracking — dwelling at exactly the same (x, y) for
+    // stuck_target_timeout_s_ seconds triggers an auto-dismiss via
+    // dismiss_target(). 0 disables the feature.
+    float stuck_target_timeout_s_ = 0.0f;
+    float stuck_ref_x_[MAX_TARGETS]{};
+    float stuck_ref_y_[MAX_TARGETS]{};
+    float stuck_since_s_[MAX_TARGETS]{};   // first-tick timestamp at ref coords
+    bool  stuck_has_ref_[MAX_TARGETS]{};
 
     // Per-target log state (for transition-only logging)
     int target_log_zone_[MAX_TARGETS]{};      // zone confirmed in last tick (-1 = none)

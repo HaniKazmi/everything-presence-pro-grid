@@ -722,6 +722,7 @@ export class GridStateController implements ReactiveController {
 					motion_timeout: this.host._motionTimeout,
 					target_auto_distance: this.host._targetAutoDistance,
 					target_max_distance: targetMaxDist,
+					stuck_target_timeout: this.host._stuckTargetTimeout,
 					static_auto_distance: this.host._staticAutoDistance,
 					static_min_distance: staticMinDist,
 					static_max_distance: staticMaxDist,
@@ -780,6 +781,8 @@ export class GridStateController implements ReactiveController {
 				payload.target_auto_distance ?? this.host._targetAutoDistance;
 			this.host._targetMaxDistance =
 				payload.target_max_distance ?? this.host._targetMaxDistance;
+			this.host._stuckTargetTimeout =
+				payload.stuck_target_timeout ?? this.host._stuckTargetTimeout;
 			this.host._staticAutoDistance =
 				payload.static_auto_distance ?? this.host._staticAutoDistance;
 			this.host._staticMinDistance =

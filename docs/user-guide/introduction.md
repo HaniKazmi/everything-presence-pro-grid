@@ -37,6 +37,7 @@ The original firmware does basic "in zone or not" detection on the device and fo
 - **Furniture layout.** Drop furniture stickers on the grid so the live overview is easy to read. Visual only — they don't affect detection.
 - **On-chip processing.** Home Assistant gets a single `Occupancy` binary sensor plus per-zone presence sensors, instead of a constant stream of target coordinates.
 - **Smoothed positions.** Brief radar jitter is filtered out before it reaches the zone engine, so zones don't flap when a target is near a boundary.
+- **Auto-dismiss for stuck targets.** A target reported at exactly the same coordinates for several minutes is automatically dropped, so a phantom the radar got fixated on stops keeping a zone occupied. The threshold is configurable; set it to 0 to disable.
 - **Quiet network.** Only what Home Assistant needs goes across the wire.
 - **Built-in flasher.** Install and update firmware from the panel.
 

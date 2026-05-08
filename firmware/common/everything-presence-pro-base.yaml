@@ -1,7 +1,7 @@
 esphome:
   project:
     name: EverythingSmartTechnology.Everything Presence Pro
-    version: "0.101.0"
+    version: "0.102.0"
   on_boot:
     - priority: 200
       then:
@@ -343,6 +343,13 @@ api:
             // is managed by the zone engine via set_motion_timeout()
             id(motion_timeout) = 1;
             id(epp_component).set_motion_timeout(timeout);
+    - action: epp_set_stuck_target_timeout
+      variables:
+        timeout: float
+      then:
+        - lambda: |-
+            ESP_LOGI("epp", "epp_set_stuck_target_timeout: timeout=%.1fs", timeout);
+            id(epp_component).set_stuck_target_timeout(timeout);
     - action: epp_set_tracking
       variables:
         max_range: float
