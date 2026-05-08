@@ -40,9 +40,11 @@ def _discover_links(root: Path) -> list[str]:
 
 
 def _network_available() -> bool:
+    # Some HA test environments patch DNS to raise RuntimeError instead of OSError —
+    # treat any failure as "network unavailable" so the test skips cleanly.
     try:
         socket.gethostbyname("docs.everythingsmart.io")
-    except OSError:
+    except Exception:
         return False
     return True
 
