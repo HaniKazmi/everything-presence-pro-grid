@@ -315,7 +315,8 @@
 	},
 	"tabs": {
 		"device_configuration": "Configuración del dispositivo",
-		"flash_firmware": "Instalar firmware"
+		"flash_firmware": "Instalar firmware",
+		"help": "Abrir la guía del usuario"
 	},
 	"flasher": {
 		"title": "Instalar firmware",
