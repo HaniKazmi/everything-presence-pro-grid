@@ -1242,3 +1242,28 @@ TEST_CASE("auto-dismissed target re-confirms after moving away and back") {
     const ProcessingResult& r_return = engine.tick(make_window_1(X_Z1, Y_Z1, 3), t + 5.4f);
     CHECK(r_return.zone_occupancy[1]);
 }
+
+TEST_CASE("stuck-target tracking is per-slot") {
+    ZoneEngine engine = make_parity_engine();
+    engine.set_stuck_target_timeout(5.0f);
+
+    float t = 100.0f;
+    const float X_STUCK = X_OFF + 450.0f;
+    const float Y_STUCK = 450.0f;
+
+    auto wo_for = [&](float t_offset) {
+        return make_window_2(X_STUCK, Y_STUCK, 3,
+                             X_STUCK, Y_STUCK + t_offset, 3);
+    };
+
+    engine.tick(wo_for(0.1f), t);
+    engine.tick(wo_for(0.2f), t + 1.0f);
+    engine.tick(wo_for(0.3f), t + 2.0f);
+    engine.tick(wo_for(0.4f), t + 3.0f);
+    engine.tick(wo_for(0.5f), t + 4.0f);
+    const ProcessingResult& r = engine.tick(wo_for(0.6f), t + 5.1f);
+
+    CHECK(r.zone_occupancy[1]);
+    CHECK(r.targets[0].status == TargetStatus::INACTIVE);
+    CHECK(r.targets[1].status == TargetStatus::ACTIVE);
+}
