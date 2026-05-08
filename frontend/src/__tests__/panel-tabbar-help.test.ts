@@ -95,7 +95,7 @@ function renderPanel(setup: (a: any) => void): HTMLElement {
 
 function findHelpLink(container: HTMLElement): HTMLAnchorElement {
 	const link = container.querySelector(
-		'.tab-bar a[aria-label="Open user guide"]',
+		".tab-bar a.tab-help",
 	) as HTMLAnchorElement | null;
 	expect(link).not.toBeNull();
 	return link as HTMLAnchorElement;
@@ -124,6 +124,16 @@ describe("tab-bar help link", () => {
 		const icon = link.querySelector("ha-icon");
 		expect(icon).not.toBeNull();
 		expect(icon?.getAttribute("icon")).toBe("mdi:help-circle-outline");
+	});
+
+	it("has aria-label from the tabs.help translation key", () => {
+		const c = renderPanel((a) => {
+			a._view = "live";
+			a._sidebarTab = "zones";
+			a._panelTab = "config";
+		});
+		const link = findHelpLink(c);
+		expect(link.getAttribute("aria-label")).toBe(setupLocalize()("tabs.help"));
 	});
 
 	it("links to live-overview on the live view", () => {
