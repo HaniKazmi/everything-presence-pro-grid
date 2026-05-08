@@ -35,6 +35,8 @@ The SEN0609 mmWave radar reports a single "someone here / not here" signal. Rang
 
 Range and the auto/manual toggle for the LD2450 live under [Detection ranges](detection-ranges.md). The control here governs how the engine handles a target that gets stuck.
 
+![Target sensor calibration.](../../images/settings/sensor-calibration/target.png "Target sensor calibration.")
+
 | Control | Default | Notes |
 | --- | --- | --- |
 | **Stuck target timeout** | 300 s | A target reported at exactly the same `(x, y)` for this long is auto-dismissed by the firmware, the same way a manual click-dismiss in the [live overview](../live-overview.md) does. Range 0–600 s. Set to **0** to disable. |
