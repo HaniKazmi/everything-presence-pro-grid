@@ -32,11 +32,25 @@ export const ENTITY_DEFAULTS: Record<string, boolean> = {
  * - Restore: when a saved configuration omits a field, the field is
  *   reset to the value here
  *
- * MUST stay in sync with the panel's `@state` initial values in
- * `eppgrid-panel.ts` and with the `_buildSettingsPayload()` helper.
- * Adding a new settings field requires updating all THREE places:
- * `_buildSettingsPayload()` in `eppgrid-panel.ts`, `_emitSave()` in
- * `components/epp-settings-view.ts`, AND this map.
+ * Adding a settings field touches every site that mirrors this map.
+ * For a scalar field (no entity toggles, no rate flags) that means:
+ *   - this map (default value)
+ *   - the property union below (`SettingsHostProp`)
+ *   - `SETTINGS_FIELD_MAP` (snake_case ↔ panel-property tuple)
+ *   - `@state _xxx` initializer in `eppgrid-panel.ts`
+ *   - `_buildSettingsPayload()` payload in `eppgrid-panel.ts`
+ *   - `@property xxx` declaration on `EppSettingsView`
+ *   - the rendering site in `EppSettingsView` and `_emitSave()` payload
+ *   - `ParsedSettings` + `parseSettings()` in `lib/config-serialization.ts`
+ *   - `PanelHost` interface in `controllers/panel-host.ts`
+ *   - `GridStateController.applyLayout`'s `set_settings` payload and
+ *     `saveSettings` back-sync in `controllers/grid-state-controller.ts`
+ *   - translation keys (label + info) in `translations/en.json` and
+ *     `translations/es.json`
+ *
+ * Test fixtures driven by `SETTINGS_FIELD_MAP` (e.g. `seedDefaultPanelState`)
+ * pick up the new field automatically; tests that hand-build payloads
+ * (e.g. `_buildSettingsPayload` shape tests) need the field added explicitly.
  */
 export const SETTINGS_DEFAULTS = {
 	temperature_offset: 0,
