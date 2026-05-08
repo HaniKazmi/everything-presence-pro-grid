@@ -69,7 +69,7 @@ If the device can't be reached or the integration and firmware versions don't li
 | --- | --- | --- |
 | The grid is blank or shows no sensor data | Device is offline | Check **Settings → Devices & Services → ESPHome** — the device should be listed and marked online. |
 | Targets jump around or drift outside walls | Calibration is off | Re-run the calibration wizard. See [Calibration](calibration.md). |
-| Target stuck on a fixed cell with nobody there | Interference source at that cell (fan, curtain, reflective surface) | Add an Interference overlay at that cell — fixes it preventively. If it's still problematic, escalate to Suppress. See [Overlays](overlays.md). The device also auto-dismisses targets that report identical coordinates for a configurable duration (entity **Stuck Target Timeout**, default 5 minutes — set to `0` to disable). |
+| Target stuck on a fixed cell with nobody there | Interference source at that cell (fan, curtain, reflective surface) | Add an Interference overlay at that cell — fixes it preventively. If it's still problematic, escalate to Suppress. See [Overlays](overlays.md). The firmware also auto-dismisses targets that report identical coordinates for the **Stuck target timeout** (default 5 minutes, set to `0` to disable, configured under [Sensor calibration → Target sensor](settings/sensor-calibration.md#target-sensor-ld2450)). |
 
 Still stuck? See [Troubleshooting](troubleshooting.md) for how to open an issue.
 
