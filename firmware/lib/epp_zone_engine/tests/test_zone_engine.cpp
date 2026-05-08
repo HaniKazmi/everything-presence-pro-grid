@@ -1157,3 +1157,28 @@ TEST_CASE("stuck target auto-dismissed after timeout") {
     const ProcessingResult& r2 = engine.tick(make_window_1(STUCK_X, STUCK_Y, 3), t + 5.1f);
     CHECK_FALSE(r2.zone_occupancy[1]);
 }
+
+TEST_CASE("stuck timer resets when coordinates change by any amount") {
+    ZoneEngine engine = make_parity_engine();
+    engine.set_stuck_target_timeout(5.0f);
+
+    float t = 100.0f;
+    const float X = X_OFF + 450.0f;
+    const float Y = 450.0f;
+
+    // Hold identical coords for nearly the full timeout
+    engine.tick(make_window_1(X, Y, 3), t);
+    engine.tick(make_window_1(X, Y, 3), t + 4.9f);
+
+    // One tick at a 1mm-different y inside the same cell — must reset the timer
+    const ProcessingResult& r_jitter = engine.tick(make_window_1(X, Y + 1.0f, 3), t + 5.0f);
+    CHECK(r_jitter.zone_occupancy[1]);
+
+    // Resume identical coords — must take another full timeout window from here
+    const ProcessingResult& r_brief = engine.tick(make_window_1(X, Y, 3), t + 5.5f);
+    CHECK(r_brief.zone_occupancy[1]);  // ~0.0s elapsed since last reset, well below 5s
+
+    // Cross the new timeout boundary (timer reset at t+5.5; +5.0s threshold = t+10.5)
+    const ProcessingResult& r_dismiss = engine.tick(make_window_1(X, Y, 3), t + 11.0f);
+    CHECK_FALSE(r_dismiss.zone_occupancy[1]);
+}
