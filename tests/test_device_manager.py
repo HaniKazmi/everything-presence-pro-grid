@@ -267,10 +267,12 @@ class TestDeviceConnection:
         svc_motion.name = "epp_set_motion_timeout"
         svc_tracking = MagicMock()
         svc_tracking.name = "epp_set_tracking"
+        svc_stuck = MagicMock()
+        svc_stuck.name = "epp_set_stuck_target_timeout"
         svc_static = MagicMock()
         svc_static.name = "epp_set_static_presence"
 
-        services = [svc_env, svc_motion, svc_tracking, svc_static]
+        services = [svc_env, svc_motion, svc_tracking, svc_stuck, svc_static]
 
         with patch("custom_components.eppgrid.device_manager._connection.APIClient") as mock_cls:
             mock_client = mock_cls.return_value
@@ -287,6 +289,7 @@ class TestDeviceConnection:
                         "illuminance_offset": 10.0,
                         "motion_timeout": 8.0,
                         "target_max_distance": 4.5,
+                        "stuck_target_timeout": 120.0,
                         "static_min_distance": 0.5,
                         "static_max_distance": 12.0,
                         "static_trigger_threshold": 4,
@@ -313,6 +316,9 @@ class TestDeviceConnection:
             # tracking: meters converted to millimeters
             assert payloads["epp_set_tracking"] == {"max_range": 4500.0}
 
+            # stuck_target_timeout: value passed through
+            assert payloads["epp_set_stuck_target_timeout"] == {"timeout": 120.0}
+
             # static_presence: thresholds inverted (10 - value),
             # trigger_range set to max_distance, led_enabled hardcoded True
             assert payloads["epp_set_static_presence"] == {
@@ -336,10 +342,12 @@ class TestDeviceConnection:
         svc_motion.name = "epp_set_motion_timeout"
         svc_tracking = MagicMock()
         svc_tracking.name = "epp_set_tracking"
+        svc_stuck = MagicMock()
+        svc_stuck.name = "epp_set_stuck_target_timeout"
         svc_static = MagicMock()
         svc_static.name = "epp_set_static_presence"
 
-        services = [svc_env, svc_motion, svc_tracking, svc_static]
+        services = [svc_env, svc_motion, svc_tracking, svc_stuck, svc_static]
 
         with patch("custom_components.eppgrid.device_manager._connection.APIClient") as mock_cls:
             mock_client = mock_cls.return_value
@@ -361,6 +369,7 @@ class TestDeviceConnection:
             }
             assert payloads["epp_set_motion_timeout"] == {"timeout": 5.0}
             assert payloads["epp_set_tracking"] == {"max_range": 6000.0}
+            assert payloads["epp_set_stuck_target_timeout"] == {"timeout": 300.0}
             assert payloads["epp_set_static_presence"] == {
                 "min_range": 0.3,
                 "max_range": 16.0,
@@ -2747,7 +2756,7 @@ class TestPushConfig:
             assert slot["handoff_timeout"] == 10.0
 
     async def test_push_config_settings(self) -> None:
-        """push_config reads unified settings key and pushes to 4 firmware actions."""
+        """push_config reads unified settings key and pushes to 5 firmware actions."""
         conn = DeviceConnection("192.168.1.100")
 
         mock_env = MagicMock()
@@ -2756,6 +2765,8 @@ class TestPushConfig:
         mock_motion.name = "epp_set_motion_timeout"
         mock_tracking = MagicMock()
         mock_tracking.name = "epp_set_tracking"
+        mock_stuck = MagicMock()
+        mock_stuck.name = "epp_set_stuck_target_timeout"
         mock_static = MagicMock()
         mock_static.name = "epp_set_static_presence"
 
@@ -2763,7 +2774,7 @@ class TestPushConfig:
             mock_client = mock_cls.return_value
             mock_client.connect = AsyncMock()
             mock_client.list_entities_services = AsyncMock(
-                return_value=([], [mock_env, mock_motion, mock_tracking, mock_static])
+                return_value=([], [mock_env, mock_motion, mock_tracking, mock_stuck, mock_static])
             )
             mock_client.execute_service = AsyncMock()
 
@@ -2776,6 +2787,7 @@ class TestPushConfig:
                         "illuminance_offset": -10.0,
                         "motion_timeout": 5.0,
                         "target_max_distance": 4.0,
+                        "stuck_target_timeout": 240.0,
                         "static_min_distance": 0.3,
                         "static_max_distance": 8.0,
                         "static_trigger_threshold": 3,
@@ -2786,8 +2798,8 @@ class TestPushConfig:
                 }
             )
 
-            # All 4 firmware actions should be called
-            assert mock_client.execute_service.await_count == 4
+            # All 5 firmware actions should be called
+            assert mock_client.execute_service.await_count == 5
 
             calls = mock_client.execute_service.call_args_list
 
@@ -2807,6 +2819,10 @@ class TestPushConfig:
             # tracking
             tracking_data = call_by_service["epp_set_tracking"]
             assert tracking_data["max_range"] == 4000.0  # meters → mm
+
+            # stuck target timeout
+            stuck_data = call_by_service["epp_set_stuck_target_timeout"]
+            assert stuck_data["timeout"] == 240.0
 
             # static presence: firmware inversion
             static_data = call_by_service["epp_set_static_presence"]

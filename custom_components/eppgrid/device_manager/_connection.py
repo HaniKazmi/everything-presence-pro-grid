@@ -383,6 +383,15 @@ class DeviceConnection:
                 _LOGGER.debug("Pushed tracking to %s", self._host)
                 pushed.append("tracking")
 
+            svc = self._services.get("epp_set_stuck_target_timeout")
+            if svc:
+                await self._client.execute_service(
+                    svc,
+                    {"timeout": settings.get("stuck_target_timeout", 300.0)},
+                )
+                _LOGGER.debug("Pushed stuck_target_timeout to %s", self._host)
+                pushed.append("stuck_target_timeout")
+
             svc = self._services.get("epp_set_static_presence")
             if svc:
                 await self._client.execute_service(
