@@ -1136,3 +1136,24 @@ TEST_CASE("over-delivered window: published signal matches firmware comparison t
     CHECK_FALSE(r.zone_occupancy[0]);
     CHECK(r.targets[0].signal == 5);
 }
+
+TEST_CASE("stuck target auto-dismissed after timeout") {
+    ZoneEngine engine = make_parity_engine();
+    engine.set_stuck_target_timeout(5.0f);  // 5 second timeout for fast test
+
+    float t = 100.0f;
+    const float STUCK_X = X_OFF + 450.0f;  // zone 1 cell
+    const float STUCK_Y = 450.0f;
+
+    // Confirm the target into zone 1 (trigger=3, instant on first tick)
+    const ProcessingResult& r0 = engine.tick(make_window_1(STUCK_X, STUCK_Y, 3), t);
+    CHECK(r0.zone_occupancy[1]);
+
+    // Hold identical coords just under the threshold — still occupied
+    const ProcessingResult& r1 = engine.tick(make_window_1(STUCK_X, STUCK_Y, 3), t + 4.9f);
+    CHECK(r1.zone_occupancy[1]);
+
+    // Cross the 5s threshold — auto-dismiss fires, zone collapses to CLEAR
+    const ProcessingResult& r2 = engine.tick(make_window_1(STUCK_X, STUCK_Y, 3), t + 5.1f);
+    CHECK_FALSE(r2.zone_occupancy[1]);
+}

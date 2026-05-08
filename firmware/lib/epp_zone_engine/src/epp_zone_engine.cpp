@@ -43,6 +43,10 @@ ZoneEngine::ZoneEngine() {
         dismissed_cell_[i] = -1;
     }
     std::memset(target_log_in_room_, 0, sizeof(target_log_in_room_));
+    std::memset(stuck_ref_x_, 0, sizeof(stuck_ref_x_));
+    std::memset(stuck_ref_y_, 0, sizeof(stuck_ref_y_));
+    std::memset(stuck_since_s_, 0, sizeof(stuck_since_s_));
+    std::memset(stuck_has_ref_, 0, sizeof(stuck_has_ref_));
 }
 
 void ZoneEngine::set_grid(const Grid& grid) {
@@ -65,6 +69,7 @@ void ZoneEngine::set_grid(const Grid& grid) {
         dismissed_cell_[i] = -1;
         target_log_zone_[i] = -1;
         target_log_in_room_[i] = false;
+        stuck_has_ref_[i] = false;
     }
 }
 
@@ -116,6 +121,7 @@ void ZoneEngine::set_zones(const ZoneConfig zones[], int count) {
         target_last_zone_[i] = -1;
         dismissed_cell_[i] = -1;
         target_overlay_sticky_[i] = false;
+        stuck_has_ref_[i] = false;
     }
 
     // Reset sensor state
@@ -157,6 +163,10 @@ void ZoneEngine::dismiss_target(int target_index, int cell_index) {
     target_gate_count_[target_index] = 0;
     target_overlay_sticky_[target_index] = false;
     target_last_zone_[target_index] = -1;
+}
+
+void ZoneEngine::set_stuck_target_timeout(float seconds) {
+    stuck_target_timeout_s_ = seconds < 0.0f ? 0.0f : seconds;
 }
 
 int ZoneEngine::find_zone_index(int zone_id) const {
@@ -222,6 +232,7 @@ const ProcessingResult& ZoneEngine::tick(const WindowOutput& window, float times
             // Target gone: clear tracking state
             target_has_prev_[i] = false;
             target_gate_count_[i] = 0;
+            stuck_has_ref_[i] = false;
             continue;
         }
 
@@ -254,6 +265,31 @@ const ProcessingResult& ZoneEngine::tick(const WindowOutput& window, float times
         } else if (dismissed_cell_[i] >= 0) {
             // Target moved to a different cell — clear dismiss
             dismissed_cell_[i] = -1;
+        }
+
+        // Stuck-target detection: dwell at exactly the same (x, y) for
+        // stuck_target_timeout_s_ seconds → auto-dismiss via the same path
+        // as a manual click-dismiss. 0 disables.
+        if (stuck_target_timeout_s_ > 0.0f) {
+            if (stuck_has_ref_[i] &&
+                tw.median_x == stuck_ref_x_[i] &&
+                tw.median_y == stuck_ref_y_[i]) {
+                if (timestamp - stuck_since_s_[i] >= stuck_target_timeout_s_) {
+                    log_(LogLevel::INFO,
+                         "T%d auto-dismissed (stuck at %.1f,%.1f for %.1fs)",
+                         i, tw.median_x, tw.median_y, stuck_target_timeout_s_);
+                    stuck_has_ref_[i] = false;
+                    dismiss_target(i, cell);
+                    // dismiss_target reset target_has_prev_/gate/overlay/last_zone for us.
+                    // Skip remaining per-target work — the dismiss collapses the zone.
+                    continue;
+                }
+            } else {
+                stuck_ref_x_[i] = tw.median_x;
+                stuck_ref_y_[i] = tw.median_y;
+                stuck_since_s_[i] = timestamp;
+                stuck_has_ref_[i] = true;
+            }
         }
 
         // Interference suppress: skip this cell entirely
