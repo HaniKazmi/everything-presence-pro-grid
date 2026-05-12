@@ -424,7 +424,7 @@ const flasherStyles = css`
   }
 
   ha-select,
-  ha-textfield {
+  ha-input {
     width: 100%;
   }
 
@@ -861,19 +861,19 @@ export class EppFlasherView extends LitElement {
             ${
 							showManual
 								? html`
-                <ha-textfield
+                <ha-input
                   .label=${this.localize("flasher.enter_ssid")}
                   autocomplete="off"
                   .value=${this._selectedSsid}
                   @input=${(e: Event) => {
 										this._selectedSsid = (e.target as any).value;
 									}}
-                ></ha-textfield>
+                ></ha-input>
               `
 								: nothing
 						}
 
-            <ha-textfield
+            <ha-input
               .label=${this.localize("flasher.wifi_password")}
               type=${this._showPassword ? "text" : "password"}
               autocomplete="new-password"
@@ -881,7 +881,7 @@ export class EppFlasherView extends LitElement {
               @input=${(e: Event) => {
 								this._wifiPassword = (e.target as any).value;
 							}}
-            ></ha-textfield>
+            ></ha-input>
 
             <ha-formfield
               data-show-password

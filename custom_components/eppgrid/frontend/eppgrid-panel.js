@@ -419,7 +419,7 @@ const dt={attribute:!0,type:String,converter:E,reflect:!1,hasChanged:m},At=(t=dt
   }
 
   ha-select,
-  ha-textfield {
+  ha-input {
     width: 100%;
   }
 
@@ -586,21 +586,21 @@ const dt={attribute:!0,type:String,converter:E,reflect:!1,hasChanged:m},At=(t=dt
             </ha-formfield>
 
             ${e?$`
-                <ha-textfield
+                <ha-input
                   .label=${this.localize("flasher.enter_ssid")}
                   autocomplete="off"
                   .value=${this._selectedSsid}
                   @input=${t=>{this._selectedSsid=t.target.value}}
-                ></ha-textfield>
+                ></ha-input>
               `:J}
 
-            <ha-textfield
+            <ha-input
               .label=${this.localize("flasher.wifi_password")}
               type=${this._showPassword?"text":"password"}
               autocomplete="new-password"
               .value=${this._wifiPassword}
               @input=${t=>{this._wifiPassword=t.target.value}}
-            ></ha-textfield>
+            ></ha-input>
 
             <ha-formfield
               data-show-password
