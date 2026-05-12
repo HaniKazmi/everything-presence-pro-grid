@@ -677,7 +677,9 @@ describe("render() WiFi provisioning — not connected state", () => {
 		const tpl = (el as any).render();
 		const c = renderTo(tpl);
 
-		expect(c.querySelector("ha-input:not([type='password'])")).not.toBeNull();
+		expect(
+			c.querySelector("ha-textfield:not([type='password'])"),
+		).not.toBeNull();
 	});
 
 	it("does not show manual SSID text input when _manualSsid=false", () => {
@@ -691,7 +693,7 @@ describe("render() WiFi provisioning — not connected state", () => {
 		const tpl = (el as any).render();
 		const c = renderTo(tpl);
 
-		expect(c.querySelector("ha-input:not([type='password'])")).toBeNull();
+		expect(c.querySelector("ha-textfield:not([type='password'])")).toBeNull();
 	});
 
 	it("shows password field", () => {
@@ -701,7 +703,33 @@ describe("render() WiFi provisioning — not connected state", () => {
 		const tpl = (el as any).render();
 		const c = renderTo(tpl);
 
-		expect(c.querySelector("ha-input[type='password']")).not.toBeNull();
+		expect(c.querySelector("ha-textfield[type='password']")).not.toBeNull();
+	});
+
+	it("renders ha-input when registered, ha-textfield otherwise", () => {
+		const el = createView();
+		(el as any)._showWifiProvisioning = true;
+		(el as any)._wifiConnected = false;
+		(el as any)._manualSsid = true;
+
+		const fallbackContainer = renderTo((el as any).render());
+		expect(fallbackContainer.querySelector("ha-textfield")).not.toBeNull();
+		expect(fallbackContainer.querySelector("ha-input")).toBeNull();
+
+		const spy = vi
+			.spyOn(customElements, "get")
+			.mockImplementation((name) =>
+				name === "ha-input"
+					? (class extends HTMLElement {} as unknown as CustomElementConstructor)
+					: undefined,
+			);
+		try {
+			const upgradedContainer = renderTo((el as any).render());
+			expect(upgradedContainer.querySelector("ha-input")).not.toBeNull();
+			expect(upgradedContainer.querySelector("ha-textfield")).toBeNull();
+		} finally {
+			spy.mockRestore();
+		}
 	});
 
 	it("shows Configure WiFi button", () => {
@@ -852,7 +880,9 @@ describe("WiFi provisioning DOM event handlers", () => {
 		await el.updateComplete;
 
 		const root = el.shadowRoot!;
-		const input = root.querySelector("ha-input:not([type='password'])") as any;
+		const input = root.querySelector(
+			"ha-textfield:not([type='password'])",
+		) as any;
 		input.value = "HiddenNet";
 		input.dispatchEvent(new Event("input"));
 
@@ -914,7 +944,7 @@ describe("WiFi provisioning DOM event handlers", () => {
 		await el.updateComplete;
 
 		const root = el.shadowRoot!;
-		const input = root.querySelector("ha-input[type='password']") as any;
+		const input = root.querySelector("ha-textfield[type='password']") as any;
 		input.value = "mypassword";
 		input.dispatchEvent(new Event("input"));
 
@@ -928,7 +958,7 @@ describe("WiFi provisioning DOM event handlers", () => {
 		const tpl = (el as any).render();
 		const c = renderTo(tpl);
 
-		expect(c.querySelector("ha-input[type='password']")).not.toBeNull();
+		expect(c.querySelector("ha-textfield[type='password']")).not.toBeNull();
 		const toggle = c.querySelector(
 			"ha-formfield[data-show-password] ha-checkbox",
 		) as any;
@@ -944,9 +974,9 @@ describe("WiFi provisioning DOM event handlers", () => {
 		const tpl = (el as any).render();
 		const c = renderTo(tpl);
 
-		expect(c.querySelector("ha-input[type='password']")).toBeNull();
+		expect(c.querySelector("ha-textfield[type='password']")).toBeNull();
 		const pwField = c.querySelector(
-			"ha-input[autocomplete='new-password']",
+			"ha-textfield[autocomplete='new-password']",
 		) as any;
 		expect(pwField).not.toBeNull();
 		expect(pwField.getAttribute("type")).toBe("text");
