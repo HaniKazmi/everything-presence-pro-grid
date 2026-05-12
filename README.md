@@ -3,6 +3,7 @@
 [![Tests](https://github.com/clintongormley/everything-presence-pro-grid/actions/workflows/tests.yml/badge.svg)](https://github.com/clintongormley/everything-presence-pro-grid/actions/workflows/tests.yml)
 [![HACS Validation](https://github.com/clintongormley/everything-presence-pro-grid/actions/workflows/hacs.yml/badge.svg)](https://github.com/clintongormley/everything-presence-pro-grid/actions/workflows/hacs.yml)
 [![Hassfest](https://github.com/clintongormley/everything-presence-pro-grid/actions/workflows/hassfest.yml/badge.svg)](https://github.com/clintongormley/everything-presence-pro-grid/actions/workflows/hassfest.yml)
+[![Active installations](https://img.shields.io/badge/dynamic/json?color=41BDF5&logo=home-assistant&label=active%20installations&suffix=%20installs&cacheSeconds=15600&url=https://analytics.home-assistant.io/custom_integrations.json&query=$.eppgrid.total)](https://analytics.home-assistant.io/)
 
 Everything Presence Pro Grid is a Home Assistant integration for the [Everything Presence Pro](https://shop.everythingsmart.io/products/everything-presence-pro) mmWave radar sensor. It ships with custom firmware that runs all the detection work — target smoothing, zone tracking, presence logic — on the device itself. The integration provides a Home Assistant panel for configuration, calibration, live overview, and firmware flashing, built around a calibrated grid that matches the real geometry of your room.
 
