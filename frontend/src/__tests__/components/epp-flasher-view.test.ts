@@ -706,6 +706,32 @@ describe("render() WiFi provisioning — not connected state", () => {
 		expect(c.querySelector("ha-textfield[type='password']")).not.toBeNull();
 	});
 
+	it("renders ha-input when registered, ha-textfield otherwise", () => {
+		const el = createView();
+		(el as any)._showWifiProvisioning = true;
+		(el as any)._wifiConnected = false;
+		(el as any)._manualSsid = true;
+
+		const fallbackContainer = renderTo((el as any).render());
+		expect(fallbackContainer.querySelector("ha-textfield")).not.toBeNull();
+		expect(fallbackContainer.querySelector("ha-input")).toBeNull();
+
+		const spy = vi
+			.spyOn(customElements, "get")
+			.mockImplementation((name) =>
+				name === "ha-input"
+					? (class extends HTMLElement {} as unknown as CustomElementConstructor)
+					: undefined,
+			);
+		try {
+			const upgradedContainer = renderTo((el as any).render());
+			expect(upgradedContainer.querySelector("ha-input")).not.toBeNull();
+			expect(upgradedContainer.querySelector("ha-textfield")).toBeNull();
+		} finally {
+			spy.mockRestore();
+		}
+	});
+
 	it("shows Configure WiFi button", () => {
 		const el = createView();
 		(el as any)._showWifiProvisioning = true;

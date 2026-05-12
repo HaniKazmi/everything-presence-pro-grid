@@ -10,6 +10,7 @@ import {
 } from "@mdi/js";
 import { css, html, LitElement, nothing } from "lit";
 import { property, state } from "lit/decorators.js";
+import { literal, html as staticHtml } from "lit/static-html.js";
 import type { WifiNetwork } from "../lib/improv-serial.js";
 import { defaultLocalize, type LocalizeFn } from "../localize.js";
 import type {
@@ -424,6 +425,7 @@ const flasherStyles = css`
   }
 
   ha-select,
+  ha-input,
   ha-textfield {
     width: 100%;
   }
@@ -858,30 +860,38 @@ export class EppFlasherView extends LitElement {
               ></ha-checkbox>
             </ha-formfield>
 
-            ${
-							showManual
-								? html`
-                <ha-textfield
+            ${(() => {
+							// ha-input shipped in HA 2026.4 and replaces ha-textfield (removed in
+							// 2026.5). Fall back to ha-textfield on older HA where ha-input isn't
+							// registered yet — the integration's hacs.json still supports 2025.2+.
+							const inputTag = customElements.get("ha-input")
+								? literal`ha-input`
+								: literal`ha-textfield`;
+							const ssidField = showManual
+								? staticHtml`
+                <${inputTag}
                   .label=${this.localize("flasher.enter_ssid")}
                   autocomplete="off"
                   .value=${this._selectedSsid}
                   @input=${(e: Event) => {
 										this._selectedSsid = (e.target as any).value;
 									}}
-                ></ha-textfield>
+                ></${inputTag}>
               `
-								: nothing
-						}
-
-            <ha-textfield
-              .label=${this.localize("flasher.wifi_password")}
-              type=${this._showPassword ? "text" : "password"}
-              autocomplete="new-password"
-              .value=${this._wifiPassword}
-              @input=${(e: Event) => {
-								this._wifiPassword = (e.target as any).value;
-							}}
-            ></ha-textfield>
+								: nothing;
+							const passwordField = staticHtml`
+              <${inputTag}
+                .label=${this.localize("flasher.wifi_password")}
+                type=${this._showPassword ? "text" : "password"}
+                autocomplete="new-password"
+                .value=${this._wifiPassword}
+                @input=${(e: Event) => {
+									this._wifiPassword = (e.target as any).value;
+								}}
+              ></${inputTag}>
+            `;
+							return html`${ssidField}${passwordField}`;
+						})()}
 
             <ha-formfield
               data-show-password
