@@ -286,9 +286,7 @@ describe("CELL_ZONE_AND_OVERLAY_MASK", () => {
 	});
 
 	it("equals CELL_ZONE_MASK | CELL_OVERLAY_MASK", () => {
-		expect(CELL_ZONE_AND_OVERLAY_MASK).toBe(
-			CELL_ZONE_MASK | CELL_OVERLAY_MASK,
-		);
+		expect(CELL_ZONE_AND_OVERLAY_MASK).toBe(CELL_ZONE_MASK | CELL_OVERLAY_MASK);
 	});
 });
 
@@ -306,8 +304,8 @@ describe("gridHasInsideRoom", () => {
 
 	it("returns false when only non-room bits are set", () => {
 		const grid = new Uint8Array(GRID_CELL_COUNT);
-		grid[0] = CELL_ZONE_MASK;     // zone bits but no room bit
-		grid[1] = CELL_OVERLAY_MASK;  // overlay bits but no room bit
+		grid[0] = CELL_ZONE_MASK; // zone bits but no room bit
+		grid[1] = CELL_OVERLAY_MASK; // overlay bits but no room bit
 		expect(gridHasInsideRoom(grid)).toBe(false);
 	});
 });
@@ -409,9 +407,7 @@ describe("alignTemplateGrid", () => {
 		]);
 		// Current room: only top-left cell at (5, 5). The translated zone-1
 		// position (6, 6) is not inside-room in current — should be dropped.
-		const current = buildGrid([
-			[5, 5, CELL_ROOM_BIT],
-		]);
+		const current = buildGrid([[5, 5, CELL_ROOM_BIT]]);
 
 		const result = alignTemplateGrid(template, current);
 
@@ -430,14 +426,14 @@ describe("alignTemplateGrid", () => {
 		]);
 		// Current room top-left at (GRID_ROWS - 1, GRID_COLS - 1). The template
 		// would translate (0, 1) to (GRID_ROWS - 1, GRID_COLS) — out of bounds.
-		const current = buildGrid([
-			[GRID_ROWS - 1, GRID_COLS - 1, CELL_ROOM_BIT],
-		]);
+		const current = buildGrid([[GRID_ROWS - 1, GRID_COLS - 1, CELL_ROOM_BIT]]);
 
 		const result = alignTemplateGrid(template, current);
 
 		// (GRID_ROWS - 1, GRID_COLS - 1) gets zone 1 (translated from (0, 0)).
-		expect(cellZone(result[(GRID_ROWS - 1) * GRID_COLS + (GRID_COLS - 1)])).toBe(1);
+		expect(
+			cellZone(result[(GRID_ROWS - 1) * GRID_COLS + (GRID_COLS - 1)]),
+		).toBe(1);
 		// No crash, no garbage in adjacent rows from row-wrap.
 	});
 
@@ -459,7 +455,9 @@ describe("alignTemplateGrid", () => {
 		const result = alignTemplateGrid(template, current);
 
 		expect(cellOverlay(result[5 * GRID_COLS + 7])).toBe(CELL_OVERLAY_ENTRY);
-		expect(cellOverlay(result[6 * GRID_COLS + 6])).toBe(CELL_OVERLAY_INTERFERENCE);
+		expect(cellOverlay(result[6 * GRID_COLS + 6])).toBe(
+			CELL_OVERLAY_INTERFERENCE,
+		);
 		expect(cellOverlay(result[6 * GRID_COLS + 7])).toBe(CELL_OVERLAY_SUPPRESS);
 	});
 
@@ -493,11 +491,9 @@ describe("alignTemplateGrid", () => {
 
 		// Template has zone bits but NO inside-room bits.
 		const template = buildGrid([
-			[5, 5, (1 << 1)], // zone 1, but bit 0 (room) is NOT set
+			[5, 5, 1 << 1], // zone 1, but bit 0 (room) is NOT set
 		]);
-		const current = buildGrid([
-			[5, 5, CELL_ROOM_BIT],
-		]);
+		const current = buildGrid([[5, 5, CELL_ROOM_BIT]]);
 
 		const result = alignTemplateGrid(template, current);
 

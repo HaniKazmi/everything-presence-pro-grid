@@ -786,7 +786,9 @@ describe("GridStateController", () => {
 				},
 			];
 
-			const applySpy = vi.spyOn(ctrl, "applyLayout").mockResolvedValue(undefined);
+			const applySpy = vi
+				.spyOn(ctrl, "applyLayout")
+				.mockResolvedValue(undefined);
 
 			await ctrl.loadConfiguration("Aligned");
 
