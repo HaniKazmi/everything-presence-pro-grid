@@ -398,4 +398,27 @@ describe("alignTemplateGrid", () => {
 		// Offset = (+5, +3). Zone 1 was at (1, 3) → translates to (6, 6).
 		expect(cellZone(result[6 * GRID_COLS + 6])).toBe(1);
 	});
+
+	it("silently drops template zones that translate outside current inside-room", () => {
+		// Template room: 2x2 at (5,5)-(6,6). Zone 1 at (6, 6).
+		const template = buildGrid([
+			[5, 5, CELL_ROOM_BIT],
+			[5, 6, CELL_ROOM_BIT],
+			[6, 5, CELL_ROOM_BIT],
+			[6, 6, CELL_ROOM_BIT | (1 << 1)],
+		]);
+		// Current room: only top-left cell at (5, 5). The translated zone-1
+		// position (6, 6) is not inside-room in current — should be dropped.
+		const current = buildGrid([
+			[5, 5, CELL_ROOM_BIT],
+		]);
+
+		const result = alignTemplateGrid(template, current);
+
+		// Cell (6, 6) is NOT inside-room in current, so it gets no zone bits.
+		expect(cellIsInside(result[6 * GRID_COLS + 6])).toBe(false);
+		expect(cellZone(result[6 * GRID_COLS + 6])).toBe(0);
+		// Cell (5, 5) is inside-room in current; no zone was at its source either.
+		expect(cellZone(result[5 * GRID_COLS + 5])).toBe(0);
+	});
 });
