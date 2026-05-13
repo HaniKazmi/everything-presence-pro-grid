@@ -90,7 +90,8 @@ export function gridHasInsideRoom(grid: Uint8Array): boolean {
  * Translate template zone/overlay bits to align with the current grid's
  * inside-room footprint. Inside-room bits come from `currentGrid`; template
  * bits that fall outside the current inside-room (or out of bounds) are
- * silently dropped. See spec for full edge-case behavior.
+ * silently dropped. The function is otherwise pure but emits a `console.warn`
+ * in the two fallback branches (empty current grid, or empty template grid).
  */
 export function alignTemplateGrid(
 	templateGrid: Uint8Array,
@@ -102,7 +103,7 @@ export function alignTemplateGrid(
 	// Empty-current fallback: today's verbatim restore.
 	if (!cHasRoom) {
 		console.warn(
-			"alignTemplateGrid: current grid has no inside-room cells; falling back to verbatim template copy",
+			"[eppgrid] alignTemplateGrid: current grid has no inside-room cells; falling back to verbatim template copy",
 		);
 		return new Uint8Array(templateGrid);
 	}
@@ -121,7 +122,7 @@ export function alignTemplateGrid(
 		dc = cBounds.minCol - tBounds.minCol;
 	} else {
 		console.warn(
-			"alignTemplateGrid: template has no inside-room cells; falling back to offset (0,0)",
+			"[eppgrid] alignTemplateGrid: template has no inside-room cells; falling back to offset (0,0)",
 		);
 	}
 

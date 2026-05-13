@@ -877,7 +877,8 @@ describe("_renderConfigurationRestoreDialog DOM events", () => {
 		expect(card).not.toBeNull();
 		card.click();
 		// Async loadConfiguration -> applyLayout chain; wait for it.
-		// loadConfiguration always sets _dirty=true and closes the dialog.
+		// For a valid config (no early return or thrown error), loadConfiguration
+		// sets _dirty=true synchronously before its WS push.
 		// Room dims are NOT restored from the template when the device already
 		// has a calibrated grid (currentHasRoom=true); they stay at 3000/4000.
 		await vi.waitFor(() => {
