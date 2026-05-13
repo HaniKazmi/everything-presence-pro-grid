@@ -876,9 +876,12 @@ describe("_renderConfigurationRestoreDialog DOM events", () => {
 		const card = c.querySelector(".configuration-card") as HTMLElement;
 		expect(card).not.toBeNull();
 		card.click();
-		// Async loadTemplate -> applyLayout chain; wait for it.
+		// Async loadConfiguration -> applyLayout chain; wait for it.
+		// loadConfiguration always sets _dirty=true and closes the dialog.
+		// Room dims are NOT restored from the template when the device already
+		// has a calibrated grid (currentHasRoom=true); they stay at 3000/4000.
 		await vi.waitFor(() => {
-			expect(a._roomWidth).toBe(5000);
+			expect(a._dirty).toBe(true);
 		});
 		document.body.removeChild(c);
 	});

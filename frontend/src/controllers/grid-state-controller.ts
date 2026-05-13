@@ -18,11 +18,13 @@ import {
 	updateFurnitureItem,
 } from "../lib/furniture.js";
 import {
+	alignTemplateGrid,
 	cellIsInside,
 	cellZone,
 	GRID_CELL_MM,
 	GRID_COLS,
 	getRoomBounds,
+	gridHasInsideRoom,
 	initGridFromRoom,
 	MAX_ZONES,
 	NUM_ZONE_SLOTS,
@@ -531,14 +533,21 @@ export class GridStateController implements ReactiveController {
 			settings: new Map<SettingsHostProp, unknown>(),
 		};
 
-		// Apply layout
-		this.host._grid = new Uint8Array(cfg.grid);
+		// Apply layout. alignTemplateGrid translates template zone/overlay bits
+		// to match the current inside-room footprint. When the current grid has
+		// no inside-room cells (uncalibrated device), it falls back to a verbatim
+		// copy — in that case we also restore room dims from the backup.
+		const templateGrid = new Uint8Array(cfg.grid);
+		const currentHasRoom = gridHasInsideRoom(this.host._grid);
+		this.host._grid = alignTemplateGrid(templateGrid, this.host._grid);
 		this.host._zoneConfigs = Array.from(
 			{ length: NUM_ZONE_SLOTS },
 			(_, i) => zones[i] ?? null,
 		) as unknown as ZoneSlots;
-		this.host._roomWidth = cfg.roomWidth;
-		this.host._roomDepth = cfg.roomDepth;
+		if (!currentHasRoom) {
+			this.host._roomWidth = cfg.roomWidth;
+			this.host._roomDepth = cfg.roomDepth;
+		}
 		this.host._furniture = (cfg.furniture || []).map((f: any) => ({
 			...f,
 		}));

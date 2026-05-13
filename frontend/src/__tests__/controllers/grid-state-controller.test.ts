@@ -7,8 +7,10 @@ import {
 	CELL_OVERLAY_NONE,
 	CELL_OVERLAY_SUPPRESS,
 	CELL_ROOM_BIT,
+	cellIsInside,
 	cellOverlay,
 	cellSetOverlay,
+	cellZone,
 	GRID_CELL_COUNT,
 	getRoomBounds,
 	MAX_ZONES,
@@ -738,6 +740,68 @@ describe("GridStateController", () => {
 			});
 			expect(host._furniture).toHaveLength(1);
 			expect(host._furniture[0]).toMatchObject({ id: "f_x", icon: "mdi:sofa" });
+			applySpy.mockRestore();
+		});
+
+		it("aligns template zones to current room footprint and preserves current room dims", async () => {
+			// Pre-populate a non-empty current grid: room at rows 5-6, cols 6-7.
+			host._grid = new Uint8Array(GRID_CELL_COUNT);
+			host._grid[5 * 20 + 6] = CELL_ROOM_BIT;
+			host._grid[5 * 20 + 7] = CELL_ROOM_BIT;
+			host._grid[6 * 20 + 6] = CELL_ROOM_BIT;
+			host._grid[6 * 20 + 7] = CELL_ROOM_BIT;
+			host._roomWidth = 2000;
+			host._roomDepth = 2000;
+
+			// Template grid: room at rows 2-3, cols 3-4, with zone 1 at (2, 4).
+			const templateGridArr = Array.from({ length: GRID_CELL_COUNT }, () => 0);
+			templateGridArr[2 * 20 + 3] = CELL_ROOM_BIT;
+			templateGridArr[2 * 20 + 4] = CELL_ROOM_BIT | (1 << 1); // zone 1
+			templateGridArr[3 * 20 + 3] = CELL_ROOM_BIT;
+			templateGridArr[3 * 20 + 4] = CELL_ROOM_BIT;
+
+			ctrl.configurations = [
+				{
+					name: "Aligned",
+					grid: templateGridArr,
+					zones: [
+						{
+							type: "default" as const,
+							trigger: 5,
+							renew: 3,
+							timeout: 10,
+							handoff_timeout: 3,
+						},
+						{ name: "Zone 1", color: ZONE_COLORS[0], type: "default" as const },
+						null,
+						null,
+						null,
+						null,
+						null,
+						null,
+					],
+					roomWidth: 2400,
+					roomDepth: 3600,
+					furniture: [],
+				},
+			];
+
+			const applySpy = vi.spyOn(ctrl, "applyLayout").mockResolvedValue(undefined);
+
+			await ctrl.loadConfiguration("Aligned");
+
+			// Current room dims preserved (NOT 2400 / 3600 from backup).
+			expect(host._roomWidth).toBe(2000);
+			expect(host._roomDepth).toBe(2000);
+			// Current inside-room footprint preserved.
+			expect(cellIsInside(host._grid[5 * 20 + 6])).toBe(true);
+			expect(cellIsInside(host._grid[6 * 20 + 7])).toBe(true);
+			expect(cellIsInside(host._grid[2 * 20 + 3])).toBe(false); // template's old position
+			// Zone 1 translated by (+3, +3): from (2, 4) to (5, 7).
+			expect(cellZone(host._grid[5 * 20 + 7])).toBe(1);
+			// Original zone position has no zone in the result.
+			expect(cellZone(host._grid[2 * 20 + 4])).toBe(0);
+
 			applySpy.mockRestore();
 		});
 
