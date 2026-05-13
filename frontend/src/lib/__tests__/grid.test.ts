@@ -462,4 +462,29 @@ describe("alignTemplateGrid", () => {
 		expect(cellOverlay(result[6 * GRID_COLS + 6])).toBe(CELL_OVERLAY_INTERFERENCE);
 		expect(cellOverlay(result[6 * GRID_COLS + 7])).toBe(CELL_OVERLAY_SUPPRESS);
 	});
+
+	it("takes inside-room bits exclusively from current grid when current is non-empty", () => {
+		// Template room at (2, 2)-(3, 3). Current room at (5, 5)-(6, 6) — DISJOINT.
+		const template = buildGrid([
+			[2, 2, CELL_ROOM_BIT],
+			[2, 3, CELL_ROOM_BIT],
+			[3, 2, CELL_ROOM_BIT],
+			[3, 3, CELL_ROOM_BIT],
+		]);
+		const current = buildGrid([
+			[5, 5, CELL_ROOM_BIT],
+			[5, 6, CELL_ROOM_BIT],
+			[6, 5, CELL_ROOM_BIT],
+			[6, 6, CELL_ROOM_BIT],
+		]);
+
+		const result = alignTemplateGrid(template, current);
+
+		// Template's inside-room positions are NOT inside-room in result.
+		expect(cellIsInside(result[2 * GRID_COLS + 2])).toBe(false);
+		expect(cellIsInside(result[3 * GRID_COLS + 3])).toBe(false);
+		// Current's inside-room positions ARE inside-room in result.
+		expect(cellIsInside(result[5 * GRID_COLS + 5])).toBe(true);
+		expect(cellIsInside(result[6 * GRID_COLS + 6])).toBe(true);
+	});
 });
