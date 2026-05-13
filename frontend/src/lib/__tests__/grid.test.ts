@@ -440,4 +440,26 @@ describe("alignTemplateGrid", () => {
 		expect(cellZone(result[(GRID_ROWS - 1) * GRID_COLS + (GRID_COLS - 1)])).toBe(1);
 		// No crash, no garbage in adjacent rows from row-wrap.
 	});
+
+	it("translates overlay bits (entry/interference/suppress) under the same offset", () => {
+		const template = buildGrid([
+			[2, 3, CELL_ROOM_BIT],
+			[2, 4, CELL_ROOM_BIT | (CELL_OVERLAY_ENTRY << CELL_OVERLAY_SHIFT)],
+			[3, 3, CELL_ROOM_BIT | (CELL_OVERLAY_INTERFERENCE << CELL_OVERLAY_SHIFT)],
+			[3, 4, CELL_ROOM_BIT | (CELL_OVERLAY_SUPPRESS << CELL_OVERLAY_SHIFT)],
+		]);
+		// Current shifted by (+3, +3).
+		const current = buildGrid([
+			[5, 6, CELL_ROOM_BIT],
+			[5, 7, CELL_ROOM_BIT],
+			[6, 6, CELL_ROOM_BIT],
+			[6, 7, CELL_ROOM_BIT],
+		]);
+
+		const result = alignTemplateGrid(template, current);
+
+		expect(cellOverlay(result[5 * GRID_COLS + 7])).toBe(CELL_OVERLAY_ENTRY);
+		expect(cellOverlay(result[6 * GRID_COLS + 6])).toBe(CELL_OVERLAY_INTERFERENCE);
+		expect(cellOverlay(result[6 * GRID_COLS + 7])).toBe(CELL_OVERLAY_SUPPRESS);
+	});
 });
