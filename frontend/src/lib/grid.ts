@@ -87,6 +87,25 @@ export function gridHasInsideRoom(grid: Uint8Array): boolean {
 }
 
 /**
+ * Compute the cell-space bounding-box offset between two grids' inside-room
+ * footprints. Returns `(0, 0)` if either grid has no inside-room cells.
+ */
+export function computeAlignmentOffset(
+	templateGrid: Uint8Array,
+	currentGrid: Uint8Array,
+): { dr: number; dc: number } {
+	if (!gridHasInsideRoom(templateGrid) || !gridHasInsideRoom(currentGrid)) {
+		return { dr: 0, dc: 0 };
+	}
+	const tBounds = getRawRoomBounds(templateGrid);
+	const cBounds = getRawRoomBounds(currentGrid);
+	return {
+		dr: cBounds.minRow - tBounds.minRow,
+		dc: cBounds.minCol - tBounds.minCol,
+	};
+}
+
+/**
  * Translate template zone/overlay bits to align with the current grid's
  * inside-room footprint. Inside-room bits come from `currentGrid`; template
  * bits that fall outside the current inside-room (or out of bounds) are
@@ -100,7 +119,7 @@ export function alignTemplateGrid(
 	const tHasRoom = gridHasInsideRoom(templateGrid);
 	const cHasRoom = gridHasInsideRoom(currentGrid);
 
-	// Empty-current fallback: today's verbatim restore.
+	// Empty-current fallback: verbatim template copy.
 	if (!cHasRoom) {
 		console.warn(
 			"[eppgrid] alignTemplateGrid: current grid has no inside-room cells; falling back to verbatim template copy",
@@ -113,18 +132,12 @@ export function alignTemplateGrid(
 		result[i] = currentGrid[i] & CELL_ROOM_BIT;
 	}
 
-	let dr = 0;
-	let dc = 0;
-	if (tHasRoom) {
-		const tBounds = getRawRoomBounds(templateGrid);
-		const cBounds = getRawRoomBounds(currentGrid);
-		dr = cBounds.minRow - tBounds.minRow;
-		dc = cBounds.minCol - tBounds.minCol;
-	} else {
+	if (!tHasRoom) {
 		console.warn(
 			"[eppgrid] alignTemplateGrid: template has no inside-room cells; falling back to offset (0,0)",
 		);
 	}
+	const { dr, dc } = computeAlignmentOffset(templateGrid, currentGrid);
 
 	for (let r = 0; r < GRID_ROWS; r++) {
 		for (let c = 0; c < GRID_COLS; c++) {

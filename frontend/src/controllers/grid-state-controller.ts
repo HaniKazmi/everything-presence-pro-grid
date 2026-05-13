@@ -21,9 +21,9 @@ import {
 	alignTemplateGrid,
 	cellIsInside,
 	cellZone,
+	computeAlignmentOffset,
 	GRID_CELL_MM,
 	GRID_COLS,
-	getRawRoomBounds,
 	getRoomBounds,
 	gridHasInsideRoom,
 	initGridFromRoom,
@@ -557,15 +557,7 @@ export class GridStateController implements ReactiveController {
 			// dim-correction for the assumed-centered render anchor. See
 			// epp-furniture-overlay.ts: furniture x is mm from startCol, which
 			// depends on roomWidth.
-			const tHasRoom = gridHasInsideRoom(templateGrid);
-			let dr = 0;
-			let dc = 0;
-			if (tHasRoom) {
-				const tBounds = getRawRoomBounds(templateGrid);
-				const cBounds = getRawRoomBounds(this.host._grid);
-				dr = cBounds.minRow - tBounds.minRow;
-				dc = cBounds.minCol - tBounds.minCol;
-			}
+			const { dr, dc } = computeAlignmentOffset(templateGrid, this.host._grid);
 			const backupRoomCols = Math.ceil(cfg.roomWidth / GRID_CELL_MM);
 			const currentRoomCols = Math.ceil(this.host._roomWidth / GRID_CELL_MM);
 			const startColB = Math.floor((GRID_COLS - backupRoomCols) / 2);
