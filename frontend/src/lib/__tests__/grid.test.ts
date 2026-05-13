@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+	alignTemplateGrid,
 	CELL_OVERLAY_ENTRY,
 	CELL_OVERLAY_INTERFERENCE,
 	CELL_OVERLAY_MASK,
@@ -308,5 +309,46 @@ describe("gridHasInsideRoom", () => {
 		grid[0] = CELL_ZONE_MASK;     // zone bits but no room bit
 		grid[1] = CELL_OVERLAY_MASK;  // overlay bits but no room bit
 		expect(gridHasInsideRoom(grid)).toBe(false);
+	});
+});
+
+describe("alignTemplateGrid", () => {
+	// Helper: build a grid by marking specific cells with bits.
+	// Each entry is [row, col, bits-to-OR-in].
+	function buildGrid(cells: Array<[number, number, number]>): Uint8Array {
+		const grid = new Uint8Array(GRID_CELL_COUNT);
+		for (const [r, c, bits] of cells) {
+			grid[r * GRID_COLS + c] |= bits;
+		}
+		return grid;
+	}
+
+	it("aligns identical footprints with offset (0,0) and preserves zones", () => {
+		// Template: 2x2 room at rows 5-6, cols 5-6. Cell (5,5) has zone 1.
+		const template = buildGrid([
+			[5, 5, CELL_ROOM_BIT | (1 << 1)], // inside + zone 1
+			[5, 6, CELL_ROOM_BIT],
+			[6, 5, CELL_ROOM_BIT],
+			[6, 6, CELL_ROOM_BIT],
+		]);
+		// Current: same inside-room footprint, no zones.
+		const current = buildGrid([
+			[5, 5, CELL_ROOM_BIT],
+			[5, 6, CELL_ROOM_BIT],
+			[6, 5, CELL_ROOM_BIT],
+			[6, 6, CELL_ROOM_BIT],
+		]);
+
+		const result = alignTemplateGrid(template, current);
+
+		// All four cells still inside-room.
+		expect(cellIsInside(result[5 * GRID_COLS + 5])).toBe(true);
+		expect(cellIsInside(result[5 * GRID_COLS + 6])).toBe(true);
+		expect(cellIsInside(result[6 * GRID_COLS + 5])).toBe(true);
+		expect(cellIsInside(result[6 * GRID_COLS + 6])).toBe(true);
+		// Zone 1 lands on the same cell.
+		expect(cellZone(result[5 * GRID_COLS + 5])).toBe(1);
+		// Other inside-room cells have zone 0.
+		expect(cellZone(result[5 * GRID_COLS + 6])).toBe(0);
 	});
 });

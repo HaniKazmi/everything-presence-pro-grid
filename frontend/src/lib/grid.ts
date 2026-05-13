@@ -86,6 +86,31 @@ export function gridHasInsideRoom(grid: Uint8Array): boolean {
 	return false;
 }
 
+/**
+ * Translate template zone/overlay bits to align with the current grid's
+ * inside-room footprint. Inside-room bits come from `currentGrid`; template
+ * bits that fall outside the current inside-room (or out of bounds) are
+ * silently dropped. See spec for full edge-case behavior.
+ */
+export function alignTemplateGrid(
+	templateGrid: Uint8Array,
+	currentGrid: Uint8Array,
+): Uint8Array {
+	const result = new Uint8Array(GRID_CELL_COUNT);
+	// Start: copy inside-room bits from current.
+	for (let i = 0; i < GRID_CELL_COUNT; i++) {
+		result[i] = currentGrid[i] & CELL_ROOM_BIT;
+	}
+	// Copy template zone/overlay bits onto cells that are inside-room in current.
+	for (let i = 0; i < GRID_CELL_COUNT; i++) {
+		const tBits = templateGrid[i] & CELL_ZONE_AND_OVERLAY_MASK;
+		if (tBits === 0) continue;
+		if ((result[i] & CELL_ROOM_BIT) === 0) continue;
+		result[i] |= tBits;
+	}
+	return result;
+}
+
 /** Initialize a grid from room dimensions (mm). Room is centered horizontally. */
 export function initGridFromRoom(
 	roomWidth: number,
