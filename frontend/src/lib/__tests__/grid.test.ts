@@ -375,4 +375,27 @@ describe("alignTemplateGrid", () => {
 		// Old zone position is empty (zone 0).
 		expect(cellZone(result[2 * GRID_COLS + 4])).toBe(0);
 	});
+
+	it("uses independent min row and min col so notched corners still align walls", () => {
+		// Template: left wall at col 3, top wall at row 0, but cell (0, 3) is OUTSIDE
+		// (notched). Inside cells: (0, 4), (1, 3), (1, 4). Zone 1 at (1, 3).
+		const template = buildGrid([
+			[0, 4, CELL_ROOM_BIT],
+			[1, 3, CELL_ROOM_BIT | (1 << 1)],
+			[1, 4, CELL_ROOM_BIT],
+		]);
+		// Current: same room shape (notched corner at (5, 6)), shifted +5 rows / +3 cols.
+		const current = buildGrid([
+			[5, 7, CELL_ROOM_BIT],
+			[6, 6, CELL_ROOM_BIT],
+			[6, 7, CELL_ROOM_BIT],
+		]);
+
+		const result = alignTemplateGrid(template, current);
+
+		// Template bounding-box corner = (min_row=0 from (0,4), min_col=3 from (1,3)) = (0, 3).
+		// Current bounding-box corner = (min_row=5 from (5,7), min_col=6 from (6,6)) = (5, 6).
+		// Offset = (+5, +3). Zone 1 was at (1, 3) → translates to (6, 6).
+		expect(cellZone(result[6 * GRID_COLS + 6])).toBe(1);
+	});
 });
