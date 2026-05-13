@@ -486,6 +486,31 @@ describe("alignTemplateGrid", () => {
 		expect(cellIsInside(result[6 * GRID_COLS + 6])).toBe(true);
 	});
 
+	it("drops zone bits set on template cells that are NOT inside-room (tHasRoom branch)", () => {
+		// Template has a valid 2x2 inside-room footprint AND a stray zone-1 bit
+		// outside the room. The stray bit should be ignored.
+		const template = buildGrid([
+			[5, 5, CELL_ROOM_BIT],
+			[5, 6, CELL_ROOM_BIT],
+			[6, 5, CELL_ROOM_BIT],
+			[6, 6, CELL_ROOM_BIT],
+			[0, 0, 1 << 1], // stray zone 1 outside the template room (no CELL_ROOM_BIT)
+		]);
+		const current = buildGrid([
+			[5, 5, CELL_ROOM_BIT],
+			[5, 6, CELL_ROOM_BIT],
+			[6, 5, CELL_ROOM_BIT],
+			[6, 6, CELL_ROOM_BIT],
+		]);
+
+		const result = alignTemplateGrid(template, current);
+
+		// Stray bit at (0, 0) is dropped — not copied to (0, 0) of result.
+		expect(cellZone(result[0 * GRID_COLS + 0])).toBe(0);
+		// Result room cells have no zones (template's inside cells had no zones either).
+		expect(cellZone(result[5 * GRID_COLS + 5])).toBe(0);
+	});
+
 	it("falls back to offset (0,0) when template has no inside-room cells", () => {
 		const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
 

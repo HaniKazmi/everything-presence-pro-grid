@@ -128,8 +128,10 @@ export function alignTemplateGrid(
 
 	for (let r = 0; r < GRID_ROWS; r++) {
 		for (let c = 0; c < GRID_COLS; c++) {
-			const tBits =
-				templateGrid[r * GRID_COLS + c] & CELL_ZONE_AND_OVERLAY_MASK;
+			const srcIdx = r * GRID_COLS + c;
+			const srcCell = templateGrid[srcIdx];
+			if (tHasRoom && (srcCell & CELL_ROOM_BIT) === 0) continue;
+			const tBits = srcCell & CELL_ZONE_AND_OVERLAY_MASK;
 			if (tBits === 0) continue;
 			const r2 = r + dr;
 			const c2 = c + dc;
