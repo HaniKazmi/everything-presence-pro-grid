@@ -96,29 +96,35 @@ export function alignTemplateGrid(
 	templateGrid: Uint8Array,
 	currentGrid: Uint8Array,
 ): Uint8Array {
+	const tHasRoom = gridHasInsideRoom(templateGrid);
+	const cHasRoom = gridHasInsideRoom(currentGrid);
+
+	// Empty-current fallback: today's verbatim restore.
+	if (!cHasRoom) {
+		console.warn(
+			"alignTemplateGrid: current grid has no inside-room cells; falling back to verbatim template copy",
+		);
+		return new Uint8Array(templateGrid);
+	}
+
 	const result = new Uint8Array(GRID_CELL_COUNT);
-	// Inside-room bits come from current.
 	for (let i = 0; i < GRID_CELL_COUNT; i++) {
 		result[i] = currentGrid[i] & CELL_ROOM_BIT;
 	}
 
-	// Compute bounding-box top-left of inside-room cells in each grid.
-	const tHasRoom = gridHasInsideRoom(templateGrid);
-	const cHasRoom = gridHasInsideRoom(currentGrid);
 	let dr = 0;
 	let dc = 0;
-	if (tHasRoom && cHasRoom) {
+	if (tHasRoom) {
 		const tBounds = getRawRoomBounds(templateGrid);
 		const cBounds = getRawRoomBounds(currentGrid);
 		dr = cBounds.minRow - tBounds.minRow;
 		dc = cBounds.minCol - tBounds.minCol;
-	} else if (!tHasRoom) {
+	} else {
 		console.warn(
 			"alignTemplateGrid: template has no inside-room cells; falling back to offset (0,0)",
 		);
 	}
 
-	// Translate template zone/overlay bits onto cells that are inside-room in current.
 	for (let r = 0; r < GRID_ROWS; r++) {
 		for (let c = 0; c < GRID_COLS; c++) {
 			const tBits = templateGrid[r * GRID_COLS + c] & CELL_ZONE_AND_OVERLAY_MASK;

@@ -507,4 +507,25 @@ describe("alignTemplateGrid", () => {
 		expect(warnSpy).toHaveBeenCalled();
 		warnSpy.mockRestore();
 	});
+
+	it("returns template grid copied verbatim when current has no inside-room cells", () => {
+		const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+		const template = buildGrid([
+			[2, 3, CELL_ROOM_BIT],
+			[2, 4, CELL_ROOM_BIT | (1 << 1)],
+			[3, 3, CELL_ROOM_BIT | (CELL_OVERLAY_ENTRY << CELL_OVERLAY_SHIFT)],
+		]);
+		const current = new Uint8Array(GRID_CELL_COUNT); // all zeros
+
+		const result = alignTemplateGrid(template, current);
+
+		// Template bits 0-5 are copied verbatim (including inside-room bits).
+		expect(cellIsInside(result[2 * GRID_COLS + 3])).toBe(true);
+		expect(cellIsInside(result[2 * GRID_COLS + 4])).toBe(true);
+		expect(cellZone(result[2 * GRID_COLS + 4])).toBe(1);
+		expect(cellOverlay(result[3 * GRID_COLS + 3])).toBe(CELL_OVERLAY_ENTRY);
+		expect(warnSpy).toHaveBeenCalled();
+		warnSpy.mockRestore();
+	});
 });
