@@ -3655,7 +3655,7 @@ const _t=Symbol.for(""),pt=t=>{if(t?.r===_t)return t?._$litStatic$},ft=(t,...e)=
             .initialStep=${"tutorial"===this._view?"guide":"corners"}
             @dismiss-tutorial=${()=>this._onDismissTutorial()}
             @begin-corners=${()=>{this._view="calibrate"}}
-            @calibration-complete=${async t=>{const{perspective:e,roomWidth:i,roomDepth:s}=t.detail;this._perspective=e,this._roomWidth=i,this._roomDepth=s,this._initGridFromRoom(),this._view="live",this._entitiesConfig={...this._entitiesConfig,zone_presence:!0},await this._gridCtrl.applyLayout().catch(t=>{console.error("Failed to apply layout after calibration",t)})}}
+            @calibration-complete=${async t=>{const{perspective:e,roomWidth:i,roomDepth:s}=t.detail;this._perspective=e,this._roomWidth=i,this._roomDepth=s,this._initGridFromRoom(),this._furniture=[],this._view="live",this._entitiesConfig={...this._entitiesConfig,zone_presence:!0},await this._gridCtrl.applyLayout().catch(t=>{console.error("Failed to apply layout after calibration",t)})}}
           @wizard-cancel=${()=>{this._view="live"}}
           ></epp-wizard>
         </div>

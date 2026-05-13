@@ -1848,6 +1848,9 @@ export class EPPGridPanel extends LitElement {
 							this._roomWidth = roomWidth;
 							this._roomDepth = roomDepth;
 							this._initGridFromRoom();
+							// Furniture is anchored to the old room dimensions/footprint; clear it
+							// so the user re-places it under the new calibration.
+							this._furniture = [];
 							this._view = "live";
 							// set_setup enables zone_presence — update local state
 							this._entitiesConfig = {

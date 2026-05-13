@@ -640,6 +640,38 @@ describe("Wizard completion event wiring", () => {
 		expect(a._grid).toEqual(expected);
 	});
 
+	it("calibration-complete clears furniture", () => {
+		const [el, container] = wizardPanel();
+		const a = el as any;
+		// Pre-populate furniture so we can verify it gets cleared.
+		a._furniture = [
+			{
+				id: "f1",
+				type: "icon",
+				icon: "mdi:sofa",
+				label: "sofa",
+				x: 600,
+				y: 300,
+				width: 600,
+				height: 400,
+				rotation: 0,
+				lockAspect: false,
+			},
+		];
+		const wizard = container.querySelector("epp-wizard")!;
+		wizard.dispatchEvent(
+			new CustomEvent("calibration-complete", {
+				detail: {
+					perspective: [1, 0, 0, 0, 1, 0, 0, 0],
+					roomWidth: 4000,
+					roomDepth: 5000,
+				},
+				bubbles: true,
+			}),
+		);
+		expect(a._furniture).toEqual([]);
+	});
+
 	it("wizard-cancel returns to live", () => {
 		const [el, container] = wizardPanel();
 		const a = el as any;
