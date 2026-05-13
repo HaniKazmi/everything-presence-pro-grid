@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
 	alignTemplateGrid,
 	CELL_OVERLAY_ENTRY,
@@ -486,5 +486,25 @@ describe("alignTemplateGrid", () => {
 		// Current's inside-room positions ARE inside-room in result.
 		expect(cellIsInside(result[5 * GRID_COLS + 5])).toBe(true);
 		expect(cellIsInside(result[6 * GRID_COLS + 6])).toBe(true);
+	});
+
+	it("falls back to offset (0,0) when template has no inside-room cells", () => {
+		const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+		// Template has zone bits but NO inside-room bits.
+		const template = buildGrid([
+			[5, 5, (1 << 1)], // zone 1, but bit 0 (room) is NOT set
+		]);
+		const current = buildGrid([
+			[5, 5, CELL_ROOM_BIT],
+		]);
+
+		const result = alignTemplateGrid(template, current);
+
+		// Offset is (0, 0): zone 1 lands at template's original (5, 5) AND survives
+		// the clip because current's (5, 5) is inside-room.
+		expect(cellZone(result[5 * GRID_COLS + 5])).toBe(1);
+		expect(warnSpy).toHaveBeenCalled();
+		warnSpy.mockRestore();
 	});
 });

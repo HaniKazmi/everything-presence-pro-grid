@@ -103,10 +103,20 @@ export function alignTemplateGrid(
 	}
 
 	// Compute bounding-box top-left of inside-room cells in each grid.
-	const tBounds = getRawRoomBounds(templateGrid);
-	const cBounds = getRawRoomBounds(currentGrid);
-	const dr = cBounds.minRow - tBounds.minRow;
-	const dc = cBounds.minCol - tBounds.minCol;
+	const tHasRoom = gridHasInsideRoom(templateGrid);
+	const cHasRoom = gridHasInsideRoom(currentGrid);
+	let dr = 0;
+	let dc = 0;
+	if (tHasRoom && cHasRoom) {
+		const tBounds = getRawRoomBounds(templateGrid);
+		const cBounds = getRawRoomBounds(currentGrid);
+		dr = cBounds.minRow - tBounds.minRow;
+		dc = cBounds.minCol - tBounds.minCol;
+	} else if (!tHasRoom) {
+		console.warn(
+			"alignTemplateGrid: template has no inside-room cells; falling back to offset (0,0)",
+		);
+	}
 
 	// Translate template zone/overlay bits onto cells that are inside-room in current.
 	for (let r = 0; r < GRID_ROWS; r++) {
