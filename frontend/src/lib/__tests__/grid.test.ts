@@ -16,6 +16,7 @@ import {
 	cellSetOverlay,
 	cellSetZone,
 	cellZone,
+	computeAlignmentOffset,
 	GRID_CELL_COUNT,
 	GRID_COLS,
 	GRID_ROWS,
@@ -307,6 +308,59 @@ describe("gridHasInsideRoom", () => {
 		grid[0] = CELL_ZONE_MASK; // zone bits but no room bit
 		grid[1] = CELL_OVERLAY_MASK; // overlay bits but no room bit
 		expect(gridHasInsideRoom(grid)).toBe(false);
+	});
+});
+
+describe("computeAlignmentOffset", () => {
+	function buildGrid(cells: Array<[number, number, number]>): Uint8Array {
+		const grid = new Uint8Array(GRID_CELL_COUNT);
+		for (const [r, c, bits] of cells) {
+			grid[r * GRID_COLS + c] |= bits;
+		}
+		return grid;
+	}
+
+	it("returns the diff of bounding-box top-left corners when both grids have inside-room cells", () => {
+		const template = buildGrid([
+			[2, 3, CELL_ROOM_BIT],
+			[3, 4, CELL_ROOM_BIT],
+		]);
+		const current = buildGrid([
+			[5, 6, CELL_ROOM_BIT],
+			[6, 7, CELL_ROOM_BIT],
+		]);
+		expect(computeAlignmentOffset(template, current)).toEqual({ dr: 3, dc: 3 });
+	});
+
+	it("returns (0, 0) when template has no inside-room cells", () => {
+		const template = new Uint8Array(GRID_CELL_COUNT);
+		const current = buildGrid([[5, 5, CELL_ROOM_BIT]]);
+		expect(computeAlignmentOffset(template, current)).toEqual({ dr: 0, dc: 0 });
+	});
+
+	it("returns (0, 0) when current has no inside-room cells", () => {
+		const template = buildGrid([[5, 5, CELL_ROOM_BIT]]);
+		const current = new Uint8Array(GRID_CELL_COUNT);
+		expect(computeAlignmentOffset(template, current)).toEqual({ dr: 0, dc: 0 });
+	});
+
+	it("honors precomputed hasInsideRoom flags without re-scanning", () => {
+		const template = buildGrid([[2, 3, CELL_ROOM_BIT]]);
+		const current = buildGrid([[5, 6, CELL_ROOM_BIT]]);
+		// If we lie and say either is empty, the helper returns (0, 0).
+		expect(computeAlignmentOffset(template, current, false, true)).toEqual({
+			dr: 0,
+			dc: 0,
+		});
+		expect(computeAlignmentOffset(template, current, true, false)).toEqual({
+			dr: 0,
+			dc: 0,
+		});
+		// If we tell the truth, we get the normal offset.
+		expect(computeAlignmentOffset(template, current, true, true)).toEqual({
+			dr: 3,
+			dc: 3,
+		});
 	});
 });
 

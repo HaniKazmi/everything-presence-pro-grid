@@ -1095,8 +1095,7 @@ describe("GridStateController", () => {
 				.mockResolvedValue(undefined);
 			await ctrl.loadConfiguration("WithFurniture");
 
-			// dr = 5 - 2 = 3, dc = 6 - 3 = 3. roomWidth unchanged so dim correction = 0.
-			// new_x = 600 + 3 * 300 = 1500. new_y = 300 + 3 * 300 = 1200.
+			// Offset (+3, +3) in mm; no dim correction → furniture at (1500, 1200).
 			expect(host._furniture).toHaveLength(1);
 			expect(host._furniture[0].x).toBe(1500);
 			expect(host._furniture[0].y).toBe(1200);
@@ -1166,10 +1165,7 @@ describe("GridStateController", () => {
 				.mockResolvedValue(undefined);
 			await ctrl.loadConfiguration("DimChange");
 
-			// dr = 0 - 0 = 0. dc = 5 - 5 = 0 (same minCol).
-			// backupCols = 10, currentCols = 17. startColB = (20-10)/2 = 5. startColC = (20-17)/2 = 1.
-			// dxMm = (0 + 5 - 1) * 300 = 1200. dyMm = 0.
-			// new_x = 1200 + 1200 = 2400.
+			// Offset (0, 0); dim correction +1200 mm → furniture at (2400, 0).
 			expect(host._furniture).toHaveLength(1);
 			expect(host._furniture[0].x).toBe(2400);
 			expect(host._furniture[0].y).toBe(0);
