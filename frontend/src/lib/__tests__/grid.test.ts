@@ -351,4 +351,28 @@ describe("alignTemplateGrid", () => {
 		// Other inside-room cells have zone 0.
 		expect(cellZone(result[5 * GRID_COLS + 6])).toBe(0);
 	});
+
+	it("translates zones by the bounding-box-corner offset", () => {
+		// Template room top-left at (2, 3); zone 1 at (2, 4).
+		const template = buildGrid([
+			[2, 3, CELL_ROOM_BIT],
+			[2, 4, CELL_ROOM_BIT | (1 << 1)],
+			[3, 3, CELL_ROOM_BIT],
+			[3, 4, CELL_ROOM_BIT],
+		]);
+		// Current room top-left at (5, 6).
+		const current = buildGrid([
+			[5, 6, CELL_ROOM_BIT],
+			[5, 7, CELL_ROOM_BIT],
+			[6, 6, CELL_ROOM_BIT],
+			[6, 7, CELL_ROOM_BIT],
+		]);
+
+		const result = alignTemplateGrid(template, current);
+
+		// Offset (+3, +3): zone 1 was at (2, 4), now at (5, 7).
+		expect(cellZone(result[5 * GRID_COLS + 7])).toBe(1);
+		// Old zone position is empty (zone 0).
+		expect(cellZone(result[2 * GRID_COLS + 4])).toBe(0);
+	});
 });

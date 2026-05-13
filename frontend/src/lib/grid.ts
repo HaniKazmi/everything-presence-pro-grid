@@ -97,17 +97,31 @@ export function alignTemplateGrid(
 	currentGrid: Uint8Array,
 ): Uint8Array {
 	const result = new Uint8Array(GRID_CELL_COUNT);
-	// Start: copy inside-room bits from current.
+	// Inside-room bits come from current.
 	for (let i = 0; i < GRID_CELL_COUNT; i++) {
 		result[i] = currentGrid[i] & CELL_ROOM_BIT;
 	}
-	// Copy template zone/overlay bits onto cells that are inside-room in current.
-	for (let i = 0; i < GRID_CELL_COUNT; i++) {
-		const tBits = templateGrid[i] & CELL_ZONE_AND_OVERLAY_MASK;
-		if (tBits === 0) continue;
-		if ((result[i] & CELL_ROOM_BIT) === 0) continue;
-		result[i] |= tBits;
+
+	// Compute bounding-box top-left of inside-room cells in each grid.
+	const tBounds = getRawRoomBounds(templateGrid);
+	const cBounds = getRawRoomBounds(currentGrid);
+	const dr = cBounds.minRow - tBounds.minRow;
+	const dc = cBounds.minCol - tBounds.minCol;
+
+	// Translate template zone/overlay bits onto cells that are inside-room in current.
+	for (let r = 0; r < GRID_ROWS; r++) {
+		for (let c = 0; c < GRID_COLS; c++) {
+			const tBits = templateGrid[r * GRID_COLS + c] & CELL_ZONE_AND_OVERLAY_MASK;
+			if (tBits === 0) continue;
+			const r2 = r + dr;
+			const c2 = c + dc;
+			if (r2 < 0 || r2 >= GRID_ROWS || c2 < 0 || c2 >= GRID_COLS) continue;
+			const destIdx = r2 * GRID_COLS + c2;
+			if ((result[destIdx] & CELL_ROOM_BIT) === 0) continue;
+			result[destIdx] |= tBits;
+		}
 	}
+
 	return result;
 }
 
