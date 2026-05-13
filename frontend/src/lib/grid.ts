@@ -89,12 +89,18 @@ export function gridHasInsideRoom(grid: Uint8Array): boolean {
 /**
  * Compute the cell-space bounding-box offset between two grids' inside-room
  * footprints. Returns `(0, 0)` if either grid has no inside-room cells.
+ * Callers that have already computed the `hasInsideRoom` flags for either
+ * grid can pass them to avoid the redundant scans.
  */
 export function computeAlignmentOffset(
 	templateGrid: Uint8Array,
 	currentGrid: Uint8Array,
+	templateHasRoom?: boolean,
+	currentHasRoom?: boolean,
 ): { dr: number; dc: number } {
-	if (!gridHasInsideRoom(templateGrid) || !gridHasInsideRoom(currentGrid)) {
+	const tHasRoom = templateHasRoom ?? gridHasInsideRoom(templateGrid);
+	const cHasRoom = currentHasRoom ?? gridHasInsideRoom(currentGrid);
+	if (!tHasRoom || !cHasRoom) {
 		return { dr: 0, dc: 0 };
 	}
 	const tBounds = getRawRoomBounds(templateGrid);
@@ -137,7 +143,12 @@ export function alignTemplateGrid(
 			"[eppgrid] alignTemplateGrid: template has no inside-room cells; falling back to offset (0,0)",
 		);
 	}
-	const { dr, dc } = computeAlignmentOffset(templateGrid, currentGrid);
+	const { dr, dc } = computeAlignmentOffset(
+		templateGrid,
+		currentGrid,
+		tHasRoom,
+		cHasRoom,
+	);
 
 	for (let r = 0; r < GRID_ROWS; r++) {
 		for (let c = 0; c < GRID_COLS; c++) {

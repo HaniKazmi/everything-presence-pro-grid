@@ -343,6 +343,25 @@ describe("computeAlignmentOffset", () => {
 		const current = new Uint8Array(GRID_CELL_COUNT);
 		expect(computeAlignmentOffset(template, current)).toEqual({ dr: 0, dc: 0 });
 	});
+
+	it("honors precomputed hasInsideRoom flags without re-scanning", () => {
+		const template = buildGrid([[2, 3, CELL_ROOM_BIT]]);
+		const current = buildGrid([[5, 6, CELL_ROOM_BIT]]);
+		// If we lie and say either is empty, the helper returns (0, 0).
+		expect(computeAlignmentOffset(template, current, false, true)).toEqual({
+			dr: 0,
+			dc: 0,
+		});
+		expect(computeAlignmentOffset(template, current, true, false)).toEqual({
+			dr: 0,
+			dc: 0,
+		});
+		// If we tell the truth, we get the normal offset.
+		expect(computeAlignmentOffset(template, current, true, true)).toEqual({
+			dr: 3,
+			dc: 3,
+		});
+	});
 });
 
 describe("alignTemplateGrid", () => {
