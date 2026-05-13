@@ -2,10 +2,13 @@ import { describe, expect, it } from "vitest";
 import {
 	CELL_OVERLAY_ENTRY,
 	CELL_OVERLAY_INTERFERENCE,
+	CELL_OVERLAY_MASK,
 	CELL_OVERLAY_NONE,
 	CELL_OVERLAY_SHIFT,
 	CELL_OVERLAY_SUPPRESS,
 	CELL_ROOM_BIT,
+	CELL_ZONE_AND_OVERLAY_MASK,
+	CELL_ZONE_MASK,
 	cellIsInside,
 	cellOverlay,
 	cellSetInside,
@@ -17,6 +20,7 @@ import {
 	GRID_ROWS,
 	getRawRoomBounds,
 	getRoomBounds,
+	gridHasInsideRoom,
 	initGridFromRoom,
 	MAX_ZONES,
 } from "../grid.js";
@@ -272,5 +276,37 @@ describe("cellSetOverlay", () => {
 		]) {
 			expect(cellOverlay(cellSetOverlay(CELL_ROOM_BIT, k))).toBe(k);
 		}
+	});
+});
+
+describe("CELL_ZONE_AND_OVERLAY_MASK", () => {
+	it("covers bits 1-5", () => {
+		expect(CELL_ZONE_AND_OVERLAY_MASK).toBe(0b00111110);
+	});
+
+	it("equals CELL_ZONE_MASK | CELL_OVERLAY_MASK", () => {
+		expect(CELL_ZONE_AND_OVERLAY_MASK).toBe(
+			CELL_ZONE_MASK | CELL_OVERLAY_MASK,
+		);
+	});
+});
+
+describe("gridHasInsideRoom", () => {
+	it("returns false for an all-zero grid", () => {
+		const grid = new Uint8Array(GRID_CELL_COUNT);
+		expect(gridHasInsideRoom(grid)).toBe(false);
+	});
+
+	it("returns true when any cell has the room bit set", () => {
+		const grid = new Uint8Array(GRID_CELL_COUNT);
+		grid[42] = CELL_ROOM_BIT;
+		expect(gridHasInsideRoom(grid)).toBe(true);
+	});
+
+	it("returns false when only non-room bits are set", () => {
+		const grid = new Uint8Array(GRID_CELL_COUNT);
+		grid[0] = CELL_ZONE_MASK;     // zone bits but no room bit
+		grid[1] = CELL_OVERLAY_MASK;  // overlay bits but no room bit
+		expect(gridHasInsideRoom(grid)).toBe(false);
 	});
 });

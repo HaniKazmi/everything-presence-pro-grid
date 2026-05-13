@@ -7,6 +7,7 @@ export const CELL_ZONE_MASK = 0x0e; // bits 1-3
 export const CELL_ZONE_SHIFT = 1;
 export const CELL_OVERLAY_MASK = 0x30; // bits 4-5
 export const CELL_OVERLAY_SHIFT = 4;
+export const CELL_ZONE_AND_OVERLAY_MASK = 0x3e; // bits 1-5
 export const CELL_OVERLAY_NONE = 0;
 export const CELL_OVERLAY_ENTRY = 1;
 export const CELL_OVERLAY_INTERFERENCE = 2;
@@ -75,6 +76,14 @@ export function getRoomBounds(grid: Uint8Array): GridBounds {
 		minRow: Math.max(0, minRow - 1),
 		maxRow: Math.min(GRID_ROWS - 1, maxRow + 1),
 	};
+}
+
+/** Returns true if any cell has the inside-room bit set. */
+export function gridHasInsideRoom(grid: Uint8Array): boolean {
+	for (let i = 0; i < GRID_CELL_COUNT; i++) {
+		if (cellIsInside(grid[i])) return true;
+	}
+	return false;
 }
 
 /** Initialize a grid from room dimensions (mm). Room is centered horizontally. */
