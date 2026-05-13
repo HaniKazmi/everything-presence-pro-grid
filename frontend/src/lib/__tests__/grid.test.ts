@@ -421,4 +421,23 @@ describe("alignTemplateGrid", () => {
 		// Cell (5, 5) is inside-room in current; no zone was at its source either.
 		expect(cellZone(result[5 * GRID_COLS + 5])).toBe(0);
 	});
+
+	it("silently drops template zones that translate out of grid bounds", () => {
+		// Template room top-left at (0, 0), zone 1 at (0, 0).
+		const template = buildGrid([
+			[0, 0, CELL_ROOM_BIT | (1 << 1)],
+			[0, 1, CELL_ROOM_BIT],
+		]);
+		// Current room top-left at (GRID_ROWS - 1, GRID_COLS - 1). The template
+		// would translate (0, 1) to (GRID_ROWS - 1, GRID_COLS) — out of bounds.
+		const current = buildGrid([
+			[GRID_ROWS - 1, GRID_COLS - 1, CELL_ROOM_BIT],
+		]);
+
+		const result = alignTemplateGrid(template, current);
+
+		// (GRID_ROWS - 1, GRID_COLS - 1) gets zone 1 (translated from (0, 0)).
+		expect(cellZone(result[(GRID_ROWS - 1) * GRID_COLS + (GRID_COLS - 1)])).toBe(1);
+		// No crash, no garbage in adjacent rows from row-wrap.
+	});
 });
