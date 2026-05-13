@@ -18,11 +18,14 @@ import {
 	updateFurnitureItem,
 } from "../lib/furniture.js";
 import {
+	alignTemplateGrid,
 	cellIsInside,
 	cellZone,
 	GRID_CELL_MM,
 	GRID_COLS,
+	getRawRoomBounds,
 	getRoomBounds,
+	gridHasInsideRoom,
 	initGridFromRoom,
 	MAX_ZONES,
 	NUM_ZONE_SLOTS,
@@ -531,17 +534,50 @@ export class GridStateController implements ReactiveController {
 			settings: new Map<SettingsHostProp, unknown>(),
 		};
 
-		// Apply layout
-		this.host._grid = new Uint8Array(cfg.grid);
+		// Apply layout. alignTemplateGrid translates template zone/overlay bits
+		// to match the current inside-room footprint. When the current grid has
+		// no inside-room cells (uncalibrated device), it falls back to a verbatim
+		// copy — in that case we also restore room dims from the backup and skip
+		// furniture translation.
+		const templateGrid = new Uint8Array(cfg.grid);
+		const currentHasRoom = gridHasInsideRoom(this.host._grid);
+		this.host._grid = alignTemplateGrid(templateGrid, this.host._grid);
 		this.host._zoneConfigs = Array.from(
 			{ length: NUM_ZONE_SLOTS },
 			(_, i) => zones[i] ?? null,
 		) as unknown as ZoneSlots;
-		this.host._roomWidth = cfg.roomWidth;
-		this.host._roomDepth = cfg.roomDepth;
-		this.host._furniture = (cfg.furniture || []).map((f: any) => ({
-			...f,
-		}));
+		if (!currentHasRoom) {
+			this.host._roomWidth = cfg.roomWidth;
+			this.host._roomDepth = cfg.roomDepth;
+			this.host._furniture = (cfg.furniture || []).map((f: any) => ({
+				...f,
+			}));
+		} else {
+			// Translate furniture by the same cell offset zones got, plus a
+			// dim-correction for the assumed-centered render anchor. See
+			// epp-furniture-overlay.ts: furniture x is mm from startCol, which
+			// depends on roomWidth.
+			const tHasRoom = gridHasInsideRoom(templateGrid);
+			let dr = 0;
+			let dc = 0;
+			if (tHasRoom) {
+				const tBounds = getRawRoomBounds(templateGrid);
+				const cBounds = getRawRoomBounds(this.host._grid);
+				dr = cBounds.minRow - tBounds.minRow;
+				dc = cBounds.minCol - tBounds.minCol;
+			}
+			const backupRoomCols = Math.ceil(cfg.roomWidth / GRID_CELL_MM);
+			const currentRoomCols = Math.ceil(this.host._roomWidth / GRID_CELL_MM);
+			const startColB = Math.floor((GRID_COLS - backupRoomCols) / 2);
+			const startColC = Math.floor((GRID_COLS - currentRoomCols) / 2);
+			const dxMm = (dc + startColB - startColC) * GRID_CELL_MM;
+			const dyMm = dr * GRID_CELL_MM;
+			this.host._furniture = (cfg.furniture || []).map((f: any) => ({
+				...f,
+				x: f.x + dxMm,
+				y: f.y + dyMm,
+			}));
+		}
 
 		// Apply settings (skip only when missing — undefined/null means "no settings
 		// in blob, leave device as-is"). An empty object {} means "all defaults",

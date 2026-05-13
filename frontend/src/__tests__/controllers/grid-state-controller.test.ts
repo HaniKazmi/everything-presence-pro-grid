@@ -7,9 +7,12 @@ import {
 	CELL_OVERLAY_NONE,
 	CELL_OVERLAY_SUPPRESS,
 	CELL_ROOM_BIT,
+	cellIsInside,
 	cellOverlay,
 	cellSetOverlay,
+	cellZone,
 	GRID_CELL_COUNT,
+	GRID_COLS,
 	getRoomBounds,
 	MAX_ZONES,
 } from "../../lib/grid.js";
@@ -741,6 +744,70 @@ describe("GridStateController", () => {
 			applySpy.mockRestore();
 		});
 
+		it("aligns template zones to current room footprint and preserves current room dims", async () => {
+			// Pre-populate a non-empty current grid: room at rows 5-6, cols 6-7.
+			host._grid = new Uint8Array(GRID_CELL_COUNT);
+			host._grid[5 * GRID_COLS + 6] = CELL_ROOM_BIT;
+			host._grid[5 * GRID_COLS + 7] = CELL_ROOM_BIT;
+			host._grid[6 * GRID_COLS + 6] = CELL_ROOM_BIT;
+			host._grid[6 * GRID_COLS + 7] = CELL_ROOM_BIT;
+			host._roomWidth = 2000;
+			host._roomDepth = 2000;
+
+			// Template grid: room at rows 2-3, cols 3-4, with zone 1 at (2, 4).
+			const templateGridArr = Array.from({ length: GRID_CELL_COUNT }, () => 0);
+			templateGridArr[2 * GRID_COLS + 3] = CELL_ROOM_BIT;
+			templateGridArr[2 * GRID_COLS + 4] = CELL_ROOM_BIT | (1 << 1); // zone 1
+			templateGridArr[3 * GRID_COLS + 3] = CELL_ROOM_BIT;
+			templateGridArr[3 * GRID_COLS + 4] = CELL_ROOM_BIT;
+
+			ctrl.configurations = [
+				{
+					name: "Aligned",
+					grid: templateGridArr,
+					zones: [
+						{
+							type: "default" as const,
+							trigger: 5,
+							renew: 3,
+							timeout: 10,
+							handoff_timeout: 3,
+						},
+						{ name: "Zone 1", color: ZONE_COLORS[0], type: "default" as const },
+						null,
+						null,
+						null,
+						null,
+						null,
+						null,
+					],
+					roomWidth: 2400,
+					roomDepth: 3600,
+					furniture: [],
+				},
+			];
+
+			const applySpy = vi
+				.spyOn(ctrl, "applyLayout")
+				.mockResolvedValue(undefined);
+
+			await ctrl.loadConfiguration("Aligned");
+
+			// Current room dims preserved (NOT 2400 / 3600 from backup).
+			expect(host._roomWidth).toBe(2000);
+			expect(host._roomDepth).toBe(2000);
+			// Current inside-room footprint preserved.
+			expect(cellIsInside(host._grid[5 * GRID_COLS + 6])).toBe(true);
+			expect(cellIsInside(host._grid[6 * GRID_COLS + 7])).toBe(true);
+			expect(cellIsInside(host._grid[2 * GRID_COLS + 3])).toBe(false); // template's old position
+			// Zone 1 translated by (+3, +3): from (2, 4) to (5, 7).
+			expect(cellZone(host._grid[5 * GRID_COLS + 7])).toBe(1);
+			// Original zone position has no zone in the result.
+			expect(cellZone(host._grid[2 * GRID_COLS + 4])).toBe(0);
+
+			applySpy.mockRestore();
+		});
+
 		it("populates all 8 slots so length is 8", async () => {
 			await ctrl.loadConfiguration("Loaded");
 			expect(host._zoneConfigs).toHaveLength(MAX_ZONES + 1);
@@ -964,6 +1031,152 @@ describe("GridStateController", () => {
 			await expect(ctrl.loadConfiguration("BadNamedColor")).rejects.toThrow(
 				/old format/,
 			);
+		});
+
+		it("translates furniture by the cell offset when room dims match", async () => {
+			// Same-roomWidth scenario: only inside-room cells moved.
+			// Current room footprint at rows 5-6, cols 6-7.
+			host._grid = new Uint8Array(GRID_CELL_COUNT);
+			host._grid[5 * GRID_COLS + 6] = CELL_ROOM_BIT;
+			host._grid[5 * GRID_COLS + 7] = CELL_ROOM_BIT;
+			host._grid[6 * GRID_COLS + 6] = CELL_ROOM_BIT;
+			host._grid[6 * GRID_COLS + 7] = CELL_ROOM_BIT;
+			host._roomWidth = 3000;
+			host._roomDepth = 3000;
+
+			// Backup: same dims, room at rows 2-3 cols 3-4, furniture at (600, 300) mm.
+			const templateGridArr = Array.from({ length: GRID_CELL_COUNT }, () => 0);
+			templateGridArr[2 * GRID_COLS + 3] = CELL_ROOM_BIT;
+			templateGridArr[2 * GRID_COLS + 4] = CELL_ROOM_BIT;
+			templateGridArr[3 * GRID_COLS + 3] = CELL_ROOM_BIT;
+			templateGridArr[3 * GRID_COLS + 4] = CELL_ROOM_BIT;
+
+			ctrl.configurations = [
+				{
+					name: "WithFurniture",
+					grid: templateGridArr,
+					zones: [
+						{
+							type: "default" as const,
+							trigger: 5,
+							renew: 3,
+							timeout: 10,
+							handoff_timeout: 3,
+						},
+						null,
+						null,
+						null,
+						null,
+						null,
+						null,
+						null,
+					],
+					roomWidth: 3000,
+					roomDepth: 3000,
+					furniture: [
+						{
+							id: "f1",
+							type: "icon" as const,
+							icon: "mdi:sofa",
+							label: "sofa",
+							x: 600,
+							y: 300,
+							width: 600,
+							height: 400,
+							rotation: 0,
+							lockAspect: false,
+						},
+					],
+				},
+			];
+
+			const applySpy = vi
+				.spyOn(ctrl, "applyLayout")
+				.mockResolvedValue(undefined);
+			await ctrl.loadConfiguration("WithFurniture");
+
+			// dr = 5 - 2 = 3, dc = 6 - 3 = 3. roomWidth unchanged so dim correction = 0.
+			// new_x = 600 + 3 * 300 = 1500. new_y = 300 + 3 * 300 = 1200.
+			expect(host._furniture).toHaveLength(1);
+			expect(host._furniture[0].x).toBe(1500);
+			expect(host._furniture[0].y).toBe(1200);
+
+			applySpy.mockRestore();
+		});
+
+		it("translates furniture with dim correction when roomWidth differs", async () => {
+			// Current: roomWidth=5000 (17 cols), inside-room cells at rows 0-1 cols 5-6.
+			host._grid = new Uint8Array(GRID_CELL_COUNT);
+			host._grid[0 * GRID_COLS + 5] = CELL_ROOM_BIT;
+			host._grid[0 * GRID_COLS + 6] = CELL_ROOM_BIT;
+			host._grid[1 * GRID_COLS + 5] = CELL_ROOM_BIT;
+			host._grid[1 * GRID_COLS + 6] = CELL_ROOM_BIT;
+			host._roomWidth = 5000;
+			host._roomDepth = 3000;
+
+			// Backup: roomWidth=3000 (10 cols), inside-room cells at rows 0-1 cols 5-6 (same minCol),
+			// furniture at (1200, 0).
+			const templateGridArr = Array.from({ length: GRID_CELL_COUNT }, () => 0);
+			templateGridArr[0 * GRID_COLS + 5] = CELL_ROOM_BIT;
+			templateGridArr[0 * GRID_COLS + 6] = CELL_ROOM_BIT;
+			templateGridArr[1 * GRID_COLS + 5] = CELL_ROOM_BIT;
+			templateGridArr[1 * GRID_COLS + 6] = CELL_ROOM_BIT;
+
+			ctrl.configurations = [
+				{
+					name: "DimChange",
+					grid: templateGridArr,
+					zones: [
+						{
+							type: "default" as const,
+							trigger: 5,
+							renew: 3,
+							timeout: 10,
+							handoff_timeout: 3,
+						},
+						null,
+						null,
+						null,
+						null,
+						null,
+						null,
+						null,
+					],
+					roomWidth: 3000,
+					roomDepth: 3000,
+					furniture: [
+						{
+							id: "f1",
+							type: "icon" as const,
+							icon: "mdi:sofa",
+							label: "sofa",
+							x: 1200,
+							y: 0,
+							width: 600,
+							height: 400,
+							rotation: 0,
+							lockAspect: false,
+						},
+					],
+				},
+			];
+
+			const applySpy = vi
+				.spyOn(ctrl, "applyLayout")
+				.mockResolvedValue(undefined);
+			await ctrl.loadConfiguration("DimChange");
+
+			// dr = 0 - 0 = 0. dc = 5 - 5 = 0 (same minCol).
+			// backupCols = 10, currentCols = 17. startColB = (20-10)/2 = 5. startColC = (20-17)/2 = 1.
+			// dxMm = (0 + 5 - 1) * 300 = 1200. dyMm = 0.
+			// new_x = 1200 + 1200 = 2400.
+			expect(host._furniture).toHaveLength(1);
+			expect(host._furniture[0].x).toBe(2400);
+			expect(host._furniture[0].y).toBe(0);
+			// roomWidth/roomDepth preserved at current values (not 3000 from backup).
+			expect(host._roomWidth).toBe(5000);
+
+			applySpy.mockRestore();
 		});
 
 		it("throws when a named slot is not null and not an object", async () => {

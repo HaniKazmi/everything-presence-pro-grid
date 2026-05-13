@@ -7,6 +7,7 @@ export const CELL_ZONE_MASK = 0x0e; // bits 1-3
 export const CELL_ZONE_SHIFT = 1;
 export const CELL_OVERLAY_MASK = 0x30; // bits 4-5
 export const CELL_OVERLAY_SHIFT = 4;
+export const CELL_ZONE_AND_OVERLAY_MASK = 0x3e; // bits 1-5
 export const CELL_OVERLAY_NONE = 0;
 export const CELL_OVERLAY_ENTRY = 1;
 export const CELL_OVERLAY_INTERFERENCE = 2;
@@ -75,6 +76,73 @@ export function getRoomBounds(grid: Uint8Array): GridBounds {
 		minRow: Math.max(0, minRow - 1),
 		maxRow: Math.min(GRID_ROWS - 1, maxRow + 1),
 	};
+}
+
+/** Returns true if any cell has the inside-room bit set. */
+export function gridHasInsideRoom(grid: Uint8Array): boolean {
+	for (let i = 0; i < GRID_CELL_COUNT; i++) {
+		if (cellIsInside(grid[i])) return true;
+	}
+	return false;
+}
+
+/**
+ * Translate template zone/overlay bits to align with the current grid's
+ * inside-room footprint. Inside-room bits come from `currentGrid`; template
+ * bits that fall outside the current inside-room (or out of bounds) are
+ * silently dropped. The function is otherwise pure but emits a `console.warn`
+ * in the two fallback branches (empty current grid, or empty template grid).
+ */
+export function alignTemplateGrid(
+	templateGrid: Uint8Array,
+	currentGrid: Uint8Array,
+): Uint8Array {
+	const tHasRoom = gridHasInsideRoom(templateGrid);
+	const cHasRoom = gridHasInsideRoom(currentGrid);
+
+	// Empty-current fallback: today's verbatim restore.
+	if (!cHasRoom) {
+		console.warn(
+			"[eppgrid] alignTemplateGrid: current grid has no inside-room cells; falling back to verbatim template copy",
+		);
+		return new Uint8Array(templateGrid);
+	}
+
+	const result = new Uint8Array(GRID_CELL_COUNT);
+	for (let i = 0; i < GRID_CELL_COUNT; i++) {
+		result[i] = currentGrid[i] & CELL_ROOM_BIT;
+	}
+
+	let dr = 0;
+	let dc = 0;
+	if (tHasRoom) {
+		const tBounds = getRawRoomBounds(templateGrid);
+		const cBounds = getRawRoomBounds(currentGrid);
+		dr = cBounds.minRow - tBounds.minRow;
+		dc = cBounds.minCol - tBounds.minCol;
+	} else {
+		console.warn(
+			"[eppgrid] alignTemplateGrid: template has no inside-room cells; falling back to offset (0,0)",
+		);
+	}
+
+	for (let r = 0; r < GRID_ROWS; r++) {
+		for (let c = 0; c < GRID_COLS; c++) {
+			const srcIdx = r * GRID_COLS + c;
+			const srcCell = templateGrid[srcIdx];
+			if (tHasRoom && (srcCell & CELL_ROOM_BIT) === 0) continue;
+			const tBits = srcCell & CELL_ZONE_AND_OVERLAY_MASK;
+			if (tBits === 0) continue;
+			const r2 = r + dr;
+			const c2 = c + dc;
+			if (r2 < 0 || r2 >= GRID_ROWS || c2 < 0 || c2 >= GRID_COLS) continue;
+			const destIdx = r2 * GRID_COLS + c2;
+			if ((result[destIdx] & CELL_ROOM_BIT) === 0) continue;
+			result[destIdx] |= tBits;
+		}
+	}
+
+	return result;
 }
 
 /** Initialize a grid from room dimensions (mm). Room is centered horizontally. */
