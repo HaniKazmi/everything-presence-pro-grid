@@ -22,30 +22,34 @@ Practical guidance:
 
 ## Mounting height (1.3–2.0 m)
 
-Mount between 1.3 m and 2.0 m above the floor, and angle the device slightly down so the aim reaches about 1 m height in the opposite corner of the room.
+Mount the device between 1.3 m and 2.0 m above the floor — above the head of someone seated, below standard ceiling height. The LD2450's 70° vertical field of view is generous enough that with horizontal aim, the cone covers head-to-toe across most of the room.
 
-The useful detection height is around 1 m, waist level for an adult. Aimed horizontally, the upper half of the cone clears adult head height and catches nothing useful. Tilting the device down a few degrees moves that coverage into the 0.5–1.5 m band where bodies are.
+![Side view: sensor at 1.5 m on the wall, horizontal aim. The 70° vertical cone covers head-to-toe across the room, with a small blind triangle below the cone close to the sensor.](../images/placement/height-pitch.svg){ width="80%" }
 
-![Side view: sensor at 1.5 m, aim horizontal. The upper half of the cone sits well above adult head height.](../images/placement/height-pitch.svg){ width="80%" }
+Close to the device — within about 2 m horizontally — the cone hasn't yet reached the floor, so the lower body of someone standing right next to the sensor falls below the cone's lower edge. Pick a corner that puts the zones you care about at least a couple of metres out from the device, not right beneath it.
 
-![Side view: sensor at 1.5 m tilted slightly downward. The cone now covers the 0.5–1.5 m range across the room.](../images/placement/height-pitch-tilted.svg){ width="80%" }
-
-For a tall room, bias toward the lower end of the range. For a long narrow room, bias toward the upper end so the cone reaches further down the room before the aim line drops below useful height.
-
-Close to the sensor the cone is narrow in height — within a metre or so of the mount, someone can be below the lower edge before detection catches. Pick a corner that puts the zones you care about a few metres out from the device, not right underneath.
+You don't normally need to tilt the device. The cone is wide enough vertically that horizontal aim covers the useful body-height range across the whole tracking circle.
 
 ## Ceiling mount (not supported)
 
-Although the Everything Presence Pro ships with a ceiling mount, mounting the device on the ceiling is not recommended and is not supported by this integration. From directly overhead, the LD2450's 35° vertical cone only reaches the floor in a small circle immediately beneath. For a 2.5 m ceiling, the usable coverage circle is roughly 1.6 m across. Everything outside that small circle falls below the cone's edge and out of detection.
+The Everything Presence Pro ships with a ceiling mount, but ceiling mounting is not recommended and is not supported by this integration. The HLK-LD2450 datasheet itself specifies wall mounting, because the radar's geometry doesn't translate to a ceiling install.
 
-The LD2450's vertical FOV is designed for wall mounting. From the ceiling, most of the room ends up in the cone's blind spot regardless of how you orient the device, and calibration can't correct for it.
+Coverage isn't the issue. The LD2450's 70° vertical cone lights up a roughly 3.5 m circle on the floor from a 2.5 m ceiling, which would be fine for a small room. The problem is that ceiling mount loses a dimension.
+
+The LD2450 reports each target as two coordinates: a **lateral** position (left–right across the radar's view) and a **forward distance** from the sensor. The zone engine uses both to figure out which floor zone someone is in.
+
+Wall-mounted, that maps cleanly to the room: lateral = left–right across the room, forward distance = depth from the wall. You get a real 2D (X,Y) floor position.
+
+When ceiling-mounted with the radar pointing down, the lateral position still tracks left–right along one floor axis, but forward distance is now essentially the gap between the ceiling and the top of the person — dominated by their height, not by where they're standing.
+
+You can still tell left from right (X), but you can't tell which end of the room someone is in (Y), and movement along the perpendicular floor axis is invisible to the radar entirely. Zones laid out across the floor can't be distinguished. Calibration can't fix this issue: the missing axis is a hardware limit, not a calibration offset.
+
+![Side-by-side comparison: wall mount reports lateral + depth as floor coordinates; ceiling mount reports lateral + a vertical gap dominated by the person's height.](../images/placement/ceiling-mount-fov.svg){ width="80%" }
 
 !!! warning
     Ceiling mounting is not currently supported. If you've mounted a device on the ceiling in a previous installation, move it to a wall corner before running calibration.
 
     If you have a good use case for ceiling mounting, open an issue with your rationale and we can discuss it.
-
-![Top-down view: ceiling-mounted sensor. The LD2450's 120° × 35° FOV projects to a thin strip on the floor, missing most of the room.](../images/placement/ceiling-mount-fov.svg){ width="80%" }
 
 ## Tracking range vs static-presence range
 
@@ -74,7 +78,7 @@ Known noise sources (ceiling fans, billowing curtains, large reflective surfaces
 - **Room:** 4 m × 5 m with one door, a ceiling fan in the centre, and a sofa against the long wall opposite the door.
 - **Mount location:** the corner diagonally opposite the door, above the side table.
 - **Orientation:** angled towards the opposite corner, so the 120° FOV covers the whole floor.
-- **Mount height:** 1.3 m, tilted slightly to include people seated on the sofas.
+- **Mount height:** 1.3 m, aimed horizontally.
 - **Zone of interest:**
     - "Sofas" — ~1 m from the sensor, comfortably inside the 6 m tracking circle.
 - **Follow-ups after calibration:**

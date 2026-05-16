@@ -22,9 +22,8 @@ The original firmware does basic "in zone or not" detection on the device and fo
 
 - **Noise.** Target coordinates aren't smoothed. The radar is jittery, and that jitter produces unreliable zone transitions.
 - **Distortion.** The radar's native view is distorted, so straight walls don't appear straight. That makes laying out a room tricky.
-- **Limited zones.** Only four detection zones and two exclusion zones, all rectangular and aligned with the sensor. Combined with the distortion above, a real rectangular zone isn't rectangular when drawn against the radar's coordinates.
+- **Limited zones.** Only four detection zones and two exclusion zones, all rectangular and aligned with the sensor. Combined with the distortion above, a real rectangular zone isn't rectangular when drawn against the radar's coordinates. (***Note:*** *the original firmware now provides polygonal zones.*)
 - **Coarse settings.** A target is either in a zone or it isn't. There's no way to express where it came from (the doorway vs. mid-room), how long it's been there, or how long since it last moved — which matters when someone is asleep.
-- **Resolution mismatch.** The configurator draws at 5 cm precision but the LD2450 actually resolves at about 36 cm. The detail in the UI overstates what the sensor sees.
 - **Chattiness.** Every device streams high volumes of coordinate updates that Home Assistant mostly discards. With 10–15 sensors that adds up.
 
 ## What this integration does differently

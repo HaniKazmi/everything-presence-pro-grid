@@ -28,7 +28,7 @@
   <!-- Wedges (back to front: PIR, SEN0609, LD2450) -->
   <path d="M 60,130 L 143.36,43.68 A 120,120 0 0,1 143.36,216.32 Z" class="wedge pir-fill pir-stroke"/>
   <path d="M 60,130 L 210.35,75.28 A 160,160 0 0,1 210.35,184.72 Z" class="wedge sen0609-fill sen0609-stroke"/>
-  <path d="M 60,130 L 117.22,111.95 A 60,60 0 0,1 117.22,148.05 Z" class="wedge ld2450-fill ld2450-stroke"/>
+  <path d="M 60,130 L 109.15,95.59 A 60,60 0 0,1 109.15,164.41 Z" class="wedge ld2450-fill ld2450-stroke"/>
 
   <!-- Centerline -->
   <line x1="60" y1="130" x2="220" y2="130" class="axis"/>
@@ -44,7 +44,7 @@
 
   <!-- Legend -->
   <circle cx="100" cy="260" r="5" class="ld2450-swatch"/>
-  <text x="112" y="264" class="label body">Tracking · 35°</text>
+  <text x="112" y="264" class="label body">Tracking · 70°</text>
 
   <circle cx="260" cy="260" r="5" class="sen0609-swatch"/>
   <text x="272" y="264" class="label body">Static · 40°</text>
