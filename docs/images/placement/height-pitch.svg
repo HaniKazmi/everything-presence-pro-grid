@@ -1,4 +1,4 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 220" preserveAspectRatio="xMidYMid meet">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 360 230" preserveAspectRatio="xMidYMid meet">
   <style>
     .label { fill: #444; font-family: -apple-system, system-ui, sans-serif; }
     .body { font-size: 11px; }
@@ -10,6 +10,7 @@
     .anglearc { fill: none; stroke: #444; stroke-width: 1; opacity: 0.7; }
     .bracket { stroke: #444; stroke-width: 1; fill: none; opacity: 0.7; }
     .person { fill: #444; opacity: 0.75; }
+    .blind { fill: #E53935; fill-opacity: 0.10; stroke: #E53935; stroke-width: 1; stroke-dasharray: 3 2; opacity: 0.7; }
     @media (prefers-color-scheme: dark) {
       .label { fill: #ddd; }
       .wall, .bracket { stroke: #ddd; }
@@ -18,42 +19,44 @@
     }
   </style>
 
-  <!-- Pitch cone aimed horizontally from sensor at 1.5 m mount -->
-  <!-- endpoints: sensor (40,147.5), upper edge (183.06,102.39), lower edge (183.06,192.61); 150 px = 6 m range -->
-  <path d="M 40,147.5 L 183.06,102.39 A 150,150 0 0,1 183.06,192.61 Z" class="wedge"/>
+  <!-- Cone clipped by ceiling (y=122.5, 2.5 m above floor) and floor (y=185) -->
+  <!-- Sensor at (40, 147.5), 1.5 m above floor, 70° vertical FOV, horizontal aim, 6 m range -->
+  <!-- Verts: sensor → up-edge meets ceiling → along ceiling → arc clockwise to where arc meets floor → along floor → lower-edge meets floor → back to sensor -->
+  <path d="M 40,147.5 L 75.70,122.5 L 187.9,122.5 A 150,150 0 0,1 185.22,185 L 93.56,185 Z" class="wedge"/>
 
-  <!-- Aim centre-line -->
+  <!-- Aim centre-line (horizontal) -->
   <line x1="40" y1="147.5" x2="190" y2="147.5" class="axis"/>
 
-  <!-- Wall -->
-  <line x1="40" y1="30" x2="40" y2="185" class="wall"/>
+  <!-- Blind triangle: close to sensor, below cone, above floor -->
+  <path d="M 40,147.5 L 40,185 L 93.56,185 Z" class="blind"/>
 
-  <!-- Floor -->
-  <line x1="20" y1="185" x2="300" y2="185" class="wall"/>
+  <!-- Wall, ceiling, floor -->
+  <line x1="40" y1="122.5" x2="40" y2="185" class="wall"/>
+  <line x1="20" y1="122.5" x2="340" y2="122.5" class="wall"/>
+  <line x1="20" y1="185" x2="340" y2="185" class="wall"/>
 
   <!-- Mount-height bracket (1.5 m) -->
   <path d="M 35,147.5 L 30,147.5 L 30,185 L 35,185" class="bracket"/>
   <text x="27" y="170" text-anchor="end" class="label body">1.5 m</text>
 
-  <!-- Angle indicator near sensor -->
-  <path d="M 57.17,142.09 A 18,18 0 0,1 57.17,152.91" class="anglearc"/>
-  <text x="63" y="151" class="label body">35°</text>
+  <!-- 70° angle indicator (half-angle 35° at radius 22.5 from sensor) -->
+  <path d="M 58.43,134.60 A 22.5,22.5 0 0,1 58.43,160.40" class="anglearc"/>
+  <text x="66" y="151" class="label body">70°</text>
 
-  <!-- Floor label -->
-  <text x="300" y="181" text-anchor="end" class="label caption">floor</text>
+  <!-- Ceiling / floor labels -->
+  <text x="335" y="118" text-anchor="end" class="label caption">ceiling</text>
+  <text x="335" y="181" text-anchor="end" class="label caption">floor</text>
 
-  <!-- Floor-reach bracket: lower cone edge meets floor at 1.5 m / tan(17.5°) ≈ 4.76 m -->
-  <path d="M 40,190 L 40,195 L 158.94,195 L 158.94,190" class="bracket"/>
-  <text x="99.47" y="210" text-anchor="middle" class="label body">~4.8 m</text>
+  <!-- Blind-zone caption -->
+  <text x="70" y="210" text-anchor="middle" class="label caption">blind close to sensor</text>
 
-  <!-- Person (1.75 m = 43.75 px) at 2.5 m from the wall, 25 px/m scale -->
-  <!-- head top = y=141.25, feet = y=185; centre x=102.5 -->
-  <circle cx="102.5" cy="144.25" r="3" class="person"/>
-  <path d="M 99,147.25 L 106,147.25 L 106,185 L 104,185 L 104,165 L 101,165 L 101,185 L 99,185 Z" class="person"/>
+  <!-- Person A (1.75 m, at 1 m horizontal): lower legs in blind triangle -->
+  <circle cx="65" cy="144.25" r="3" class="person"/>
+  <path d="M 61.5,147.25 L 68.5,147.25 L 68.5,185 L 66.5,185 L 66.5,165 L 63.5,165 L 63.5,185 L 61.5,185 Z" class="person"/>
 
-  <!-- Person-height bracket (1.75 m) -->
-  <path d="M 109,141.25 L 114,141.25 L 114,185 L 109,185" class="bracket"/>
-  <text x="117" y="166" class="label body">1.75 m</text>
+  <!-- Person B (1.75 m, at 4 m horizontal): fully in cone -->
+  <circle cx="140" cy="144.25" r="3" class="person"/>
+  <path d="M 136.5,147.25 L 143.5,147.25 L 143.5,185 L 141.5,185 L 141.5,165 L 138.5,165 L 138.5,185 L 136.5,185 Z" class="person"/>
 
   <!-- Sensor -->
   <circle cx="40" cy="147.5" r="4" class="sensor"/>

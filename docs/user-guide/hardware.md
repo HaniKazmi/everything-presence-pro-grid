@@ -19,7 +19,7 @@ Two mmWave radars cover different jobs.
 
 The [LD2450](https://www.tinytronics.nl/product_files/006000_HLK-LD2450-Instruction-Manual.pdf) is the workhorse. It reports 2D coordinates for up to three moving targets, which Everything Presence Pro Grid uses to drive zone detection and target-count entities.
 
-- **Field of view:** 120° horizontal × 35° vertical.
+- **Field of view:** 120° horizontal × 70° vertical.
 - **Tracking depth:** up to 6 m.
 - **Concurrent targets:** up to 3.
 - **Strength:** reports each person's 2D position in the room.
