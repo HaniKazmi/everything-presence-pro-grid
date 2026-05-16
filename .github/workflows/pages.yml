@@ -52,12 +52,11 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           mkdir -p artifacts fw
-          # GitHub's "latest" pointer is set deliberately by the Firmware
-          # Release workflow: only firmware-changing releases use make_latest=true,
-          # so /releases/latest always points at a release that has firmware
-          # binaries. No scanning needed.
-          # Tolerate the 404 case (no releases yet, or API hiccup) so docs
-          # can still deploy without a release present.
+          # Every release builds firmware and gets marked as the latest
+          # release (see .github/workflows/firmware-release.yml), so
+          # /releases/latest always ships firmware binaries. Tolerate the
+          # 404 case (no releases yet, or API hiccup) so docs can still
+          # deploy without a release present.
           LATEST=$(gh api '/repos/${{ github.repository }}/releases/latest' --jq '.tag_name // ""' 2>/dev/null || true)
           if [ -z "$LATEST" ]; then
             echo "No latest release found — Pages will have no fw/ content"
@@ -66,7 +65,7 @@ jobs:
           echo "Latest release: $LATEST"
           gh release download "$LATEST" -D artifacts --pattern 'everything-presence-pro-*'
           if ! ls artifacts/*.bin >/dev/null 2>&1; then
-            echo "::error::Latest release $LATEST has no firmware binaries — release was misconfigured (should not have been marked as latest)"
+            echo "::error::Latest release $LATEST has no firmware binaries — firmware-release workflow should attach them on every tag push"
             exit 1
           fi
           VERSION="${LATEST#v}" ARTIFACTS=artifacts ./.github/scripts/stage-firmware.sh
