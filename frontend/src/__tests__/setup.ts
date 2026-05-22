@@ -1,16 +1,17 @@
 /**
- * Vitest setup file: fix Node.js 25 localStorage conflict.
+ * Vitest setup file: fix the Node.js built-in localStorage conflict.
  *
- * Node 25 ships a built-in `globalThis.localStorage` that is a plain
- * object (no setItem/getItem/removeItem) unless `--localstorage-file`
- * is provided.  Happy-dom provides a proper Storage implementation
- * but Node's built-in sometimes shadows it.  We detect and fix this.
+ * Node ships a built-in `globalThis.localStorage` that shadows happy-dom's
+ * Storage but isn't usable without `--localstorage-file`. The exact broken
+ * shape varies by Node version:
+ *   - Node 25 exposes a plain object with no setItem/getItem/removeItem.
+ *   - Node 26 exposes a getter that returns `undefined`.
+ * In both cases the test environment is left without a working Storage, so
+ * we detect either shape and install a Map-backed Storage.
  */
 
-if (
-	typeof globalThis.localStorage === "object" &&
-	typeof globalThis.localStorage.setItem !== "function"
-) {
+const existingStorage = globalThis.localStorage as Storage | undefined;
+if (!existingStorage || typeof existingStorage.setItem !== "function") {
 	const store = new Map<string, string>();
 
 	const storage: Storage = {
