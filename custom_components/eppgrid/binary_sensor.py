@@ -10,6 +10,7 @@ from homeassistant.components.binary_sensor import BinarySensorDeviceClass
 from homeassistant.components.binary_sensor import BinarySensorEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
@@ -66,6 +67,7 @@ class _PlatformProxy:
             new_entities.extend(self._build_zone_entities(group, aggregator))
         if new_entities:
             self._async_add(new_entities)
+        self._apply_area_assignments(groups)
         # Remove entities for deleted groups / removed zones.
         active_uids = self._compute_active_uids(groups)
         for uid in list(self._entities.keys()):
@@ -103,6 +105,16 @@ class _PlatformProxy:
             self._entities[uid] = e
             out.append(e)
         return out
+
+    def _apply_area_assignments(self, groups: list[dict[str, Any]]) -> None:
+        """Ensure each group's HA device record reflects its stored area_id."""
+        dr_ = dr.async_get(self._hass)
+        for g in groups:
+            if not g.get("area_id"):
+                continue
+            dev = dr_.async_get_device(identifiers={(DOMAIN, f"device_group:{g['id']}")})
+            if dev is not None and dev.area_id != g["area_id"]:
+                dr_.async_update_device(dev.id, area_id=g["area_id"])
 
     def _compute_active_uids(self, groups: list[dict[str, Any]]) -> set[str]:
         uids: set[str] = set()

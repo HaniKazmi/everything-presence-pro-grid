@@ -9,6 +9,7 @@ import pytest
 from homeassistant.const import STATE_OFF
 from homeassistant.const import STATE_ON
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers import area_registry as ar
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers import entity_registry as er
 from pytest_homeassistant_custom_component.common import MockConfigEntry
@@ -225,6 +226,40 @@ async def test_zone_group_aggregates_members(hass: HomeAssistant, integration_wi
     )
     await hass.async_block_till_done()
     assert hass.states.get(helper).state == STATE_ON
+
+
+async def test_group_area_id_applied_to_device_registry(
+    hass: HomeAssistant,
+    config_entry: MockConfigEntry,
+    enable_custom_integrations,
+) -> None:
+    """area_id stored on the group must be reflected in the HA device registry."""
+    ar_ = ar.async_get(hass)
+    area = ar_.async_create("Bedroom")
+
+    er_ = er.async_get(hass)
+    a = er_.async_get_or_create(
+        "binary_sensor",
+        "esphome",
+        "AA:BB:CC:DD:EE:FF-binary_sensor-occupancy",
+    )
+    hass.states.async_set(a.entity_id, STATE_OFF)
+
+    assert await hass.config_entries.async_setup(config_entry.entry_id)
+    await hass.async_block_till_done()
+
+    manager = hass.data[DOMAIN]
+    group = await manager.device_groups.async_create(
+        name="Bedroom Presence",
+        sources=["AA:BB:CC:DD:EE:FF"],
+        area_id=area.id,
+    )
+    await hass.async_block_till_done()
+
+    dr_ = dr.async_get(hass)
+    dev = dr_.async_get_device(identifiers={(DOMAIN, f"device_group:{group['id']}")})
+    assert dev is not None
+    assert dev.area_id == area.id
 
 
 async def test_passthrough_zone_entity_uses_configured_zone_name(
