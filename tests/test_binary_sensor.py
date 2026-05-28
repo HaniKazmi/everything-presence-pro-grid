@@ -107,3 +107,121 @@ async def test_helper_has_virtual_device_in_registry(hass: HomeAssistant, integr
     device = dr_.async_get_device(identifiers={(DOMAIN, f"device_group:{group['id']}")})
     assert device is not None
     assert device.name == "Master Bedroom Presence"
+
+
+@pytest.fixture
+async def integration_with_group_and_zones(
+    hass: HomeAssistant, config_entry: MockConfigEntry, enable_custom_integrations
+) -> dict:
+    er_ = er.async_get(hass)
+    # Source A: occupancy + zone_2_presence (named "Bed Left")
+    a_occ = er_.async_get_or_create(
+        "binary_sensor",
+        "esphome",
+        "AA:BB:CC:DD:EE:FF-binary_sensor-occupancy",
+    )
+    a_z2 = er_.async_get_or_create(
+        "binary_sensor",
+        "esphome",
+        "AA:BB:CC:DD:EE:FF-binary_sensor-zone_2_presence",
+    )
+    # Source B: occupancy + zone_3_presence (named "Bed Right")
+    b_occ = er_.async_get_or_create(
+        "binary_sensor",
+        "esphome",
+        "11:22:33:44:55:66-binary_sensor-occupancy",
+    )
+    b_z3 = er_.async_get_or_create(
+        "binary_sensor",
+        "esphome",
+        "11:22:33:44:55:66-binary_sensor-zone_3_presence",
+    )
+    for e in (a_occ, a_z2, b_occ, b_z3):
+        hass.states.async_set(e.entity_id, STATE_OFF)
+
+    assert await hass.config_entries.async_setup(config_entry.entry_id)
+    await hass.async_block_till_done()
+
+    manager = hass.data[DOMAIN]
+    # Seed zone names into store so zone_name_fn returns something.
+    manager._store.devices["AA:BB:CC:DD:EE:FF"] = {
+        "room_layout": [
+            {"type": "default"},
+            None,
+            {"name": "Bed Left", "type": "presence", "color": "#ff0000"},
+            None,
+            None,
+            None,
+            None,
+            None,
+        ],
+    }
+    manager._store.devices["11:22:33:44:55:66"] = {
+        "room_layout": [
+            {"type": "default"},
+            None,
+            None,
+            {"name": "Bed Right", "type": "presence", "color": "#ff0000"},
+            None,
+            None,
+            None,
+            None,
+        ],
+    }
+
+    group = await manager.device_groups.async_create(
+        name="Master Bedroom Presence",
+        sources=["AA:BB:CC:DD:EE:FF", "11:22:33:44:55:66"],
+    )
+    # Add a zone group merging bed-left + bed-right
+    await manager.device_groups.async_update(
+        id=group["id"],
+        name=group["name"],
+        sources=group["sources"],
+        area_id=None,
+        zone_groups=[
+            {
+                "id": "zg1",
+                "name": "Bed",
+                "members": [
+                    {"mac": "AA:BB:CC:DD:EE:FF", "zone_index": 2},
+                    {"mac": "11:22:33:44:55:66", "zone_index": 3},
+                ],
+            }
+        ],
+    )
+    await hass.async_block_till_done()
+    return {
+        "group_id": group["id"],
+        "source_a_occ": a_occ.entity_id,
+        "source_a_z2": a_z2.entity_id,
+        "source_b_occ": b_occ.entity_id,
+        "source_b_z3": b_z3.entity_id,
+    }
+
+
+async def test_zone_group_entity_created(hass: HomeAssistant, integration_with_group_and_zones: dict) -> None:
+    group_id = integration_with_group_and_zones["group_id"]
+    er_ = er.async_get(hass)
+    eid = er_.async_get_entity_id(
+        "binary_sensor",
+        DOMAIN,
+        f"eppgrid_device_group_{group_id}_zone_group_zg1",
+    )
+    assert eid is not None
+
+
+async def test_zone_group_aggregates_members(hass: HomeAssistant, integration_with_group_and_zones: dict) -> None:
+    group_id = integration_with_group_and_zones["group_id"]
+    er_ = er.async_get(hass)
+    helper = er_.async_get_entity_id(
+        "binary_sensor",
+        DOMAIN,
+        f"eppgrid_device_group_{group_id}_zone_group_zg1",
+    )
+    hass.states.async_set(
+        integration_with_group_and_zones["source_b_z3"],
+        STATE_ON,
+    )
+    await hass.async_block_till_done()
+    assert hass.states.get(helper).state == STATE_ON
