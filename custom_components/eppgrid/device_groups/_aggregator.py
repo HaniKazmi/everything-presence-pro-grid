@@ -10,6 +10,7 @@ from typing import TypedDict
 from homeassistant.core import Event
 from homeassistant.core import HomeAssistant
 from homeassistant.core import callback
+from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.event import async_track_state_change_event
 
 from ..const import NUM_ZONE_SLOTS
@@ -51,6 +52,7 @@ class Aggregator:
         self._zone_name_fn = zone_name_fn
         self._notify = notify or (lambda: None)
         self._unsub_state: Callable[[], None] | None = None
+        self._unsub_registry: Callable[[], None] | None = None
         self._entity_listeners: dict[str, list[Callable[[], None]]] = {}
         self.outputs: _Outputs = {
             "presence": {},
@@ -61,11 +63,17 @@ class Aggregator:
     async def async_start(self) -> None:
         self._recompute_all()
         self._resubscribe()
+        self._unsub_registry = self._hass.bus.async_listen(
+            er.EVENT_ENTITY_REGISTRY_UPDATED, self._on_registry_event
+        )
 
     async def async_stop(self) -> None:
         if self._unsub_state is not None:
             self._unsub_state()
             self._unsub_state = None
+        if self._unsub_registry is not None:
+            self._unsub_registry()
+            self._unsub_registry = None
 
     def update_definition(self, new_def: dict[str, Any]) -> None:
         """Replace the group definition. Re-resolves sources and re-subscribes."""
@@ -126,6 +134,26 @@ class Aggregator:
         if self._snapshot() != prev:
             self._notify()
             # Fire per-output listeners on any change. Entities are idempotent.
+            for cbs in self._entity_listeners.values():
+                for cb in cbs:
+                    cb()
+
+    @callback
+    def _on_registry_event(self, event: Event) -> None:
+        """Re-resolve and re-subscribe when a tracked entity's registration changes.
+
+        Cheap filter: only react to binary_sensor entity-registry updates. We
+        deliberately re-resolve on any binary_sensor change — it's a tiny set
+        of operations and avoids hardcoding which MACs/slots we care about.
+        """
+        entity_id = event.data.get("entity_id", "")
+        if not entity_id.startswith("binary_sensor."):
+            return
+        prev = self._snapshot()
+        self._recompute_all()
+        self._resubscribe()
+        if self._snapshot() != prev:
+            self._notify()
             for cbs in self._entity_listeners.values():
                 for cb in cbs:
                     cb()

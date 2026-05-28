@@ -148,3 +148,29 @@ class TestZoneAggregation:
             assert agg.outputs["zone_groups"]["zg1"] is True
         finally:
             await agg.async_stop()
+
+
+class TestRegistryUpdates:
+    async def test_aggregator_re_resolves_on_registry_event(
+        self, hass: HomeAssistant, group_def: dict
+    ) -> None:
+        """If a source entity is registered AFTER aggregator starts, it should pick it up."""
+        a = _register(hass, "AA:BB:CC:DD:EE:FF", "occupancy")
+        _set_state(hass, a, STATE_OFF)
+
+        agg = Aggregator(
+            hass, group_def,
+            device_name_fn=lambda m: m,
+            zone_name_fn=lambda m, i: f"Zone {i}",
+        )
+        await agg.async_start()
+        try:
+            # Initially, source B's occupancy isn't registered.
+            # Now register and set its state.
+            b = _register(hass, "11:22:33:44:55:66", "occupancy")
+            _set_state(hass, b, STATE_ON)
+            await hass.async_block_till_done()
+
+            assert agg.outputs["presence"]["occupancy"] is True
+        finally:
+            await agg.async_stop()
