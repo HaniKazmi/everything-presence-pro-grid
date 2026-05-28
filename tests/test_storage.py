@@ -24,6 +24,7 @@ class TestEPPGridStore:
         assert store.configurations == {}
         assert store.sidebar_panel is True
         assert store.show_room_calibration_tutorial is True
+        assert store.device_groups == []
 
     async def test_save_and_load_roundtrip(self, hass: HomeAssistant, store: EPPGridStore) -> None:
         """Data survives save/load cycle."""
