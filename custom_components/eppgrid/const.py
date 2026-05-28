@@ -77,3 +77,19 @@ FIRMWARE_VARIANTS = {
     "wifi": "wifi-ble-co2",
     "ethernet": "ethernet-ble-co2",
 }
+
+# -- Device Groups -----------------------------------------------------------
+# Binary presence slots a source EPP device may expose. Order is the order
+# entities are added on the helper side.
+PRESENCE_SLOTS: tuple[str, ...] = (
+    "occupancy",
+    "static_presence",
+    "motion_presence",
+    "target_presence",
+    "mmwave_presence",
+)
+
+# Storage caps — keep WebSocket payloads bounded even if a client misbehaves.
+MAX_DEVICE_GROUPS = 32
+MAX_ZONE_GROUPS_PER_DEVICE_GROUP = 16
+MAX_SOURCES_PER_DEVICE_GROUP = 8
