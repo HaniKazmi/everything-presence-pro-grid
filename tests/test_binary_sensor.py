@@ -225,3 +225,34 @@ async def test_zone_group_aggregates_members(hass: HomeAssistant, integration_wi
     )
     await hass.async_block_till_done()
     assert hass.states.get(helper).state == STATE_ON
+
+
+async def test_passthrough_zone_entity_uses_configured_zone_name(
+    hass: HomeAssistant,
+    integration_with_group_and_zones: dict,
+) -> None:
+    """Passthrough zone entity name should use the user-configured zone name, not 'Zone N'."""
+    er_ = er.async_get(hass)
+
+    # Source A zone 2 is NOT in a zone group — it appears as a passthrough.
+    # The fixture seeds zone_name as "Bed Left" for AA:BB:CC:DD:EE:FF zone 2.
+    # BUT the zone_group merges zone 2 from A and zone 3 from B, so both are grouped.
+    # Let's create a standalone group without zone_groups to get a passthrough.
+    manager = hass.data[DOMAIN]
+    standalone = await manager.device_groups.async_create(
+        name="Single Sensor Group",
+        sources=["AA:BB:CC:DD:EE:FF"],
+    )
+    await hass.async_block_till_done()
+
+    uid = f"eppgrid_device_group_{standalone['id']}_zone_pass_AA:BB:CC:DD:EE:FF_2"
+    entry = er_.async_get_entity_id("binary_sensor", DOMAIN, uid)
+    assert entry is not None, "Passthrough zone entity not found"
+
+    state = hass.states.get(entry)
+    assert state is not None
+    # The entity friendly name is composed of device name + entity name.
+    # The entity's _attr_name should be "Bed Left", not "Zone 2".
+    assert state.attributes.get("friendly_name", "").endswith("Bed Left"), (
+        f"Expected entity name 'Bed Left', got friendly_name={state.attributes.get('friendly_name')!r}"
+    )

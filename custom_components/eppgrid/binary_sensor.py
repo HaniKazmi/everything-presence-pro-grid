@@ -234,7 +234,7 @@ class DeviceGroupZonePassthroughEntity(BinarySensorEntity):
         self._aggregator = aggregator
         self._unsub: Callable[[], None] | None = None
         self._attr_unique_id = f"eppgrid_device_group_{group['id']}_zone_pass_{mac}_{zone_index}"
-        self._attr_name = f"Zone {zone_index}"
+        self._attr_name = aggregator._zone_name_fn(mac, zone_index) or f"Zone {zone_index}"
         self._attr_device_info = DeviceInfo(
             identifiers={(DOMAIN, f"device_group:{group['id']}")},
             name=group["name"],
