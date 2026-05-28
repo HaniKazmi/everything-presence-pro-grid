@@ -1,0 +1,82 @@
+"""Tests for the (mac, slot) -> entity_id resolver."""
+
+from __future__ import annotations
+
+from homeassistant.core import HomeAssistant
+from homeassistant.helpers import entity_registry as er
+
+from custom_components.eppgrid.device_groups._registry import build_source_states
+from custom_components.eppgrid.device_groups._registry import resolve_entity_id
+
+
+def _add_entity(hass: HomeAssistant, mac: str, slot: str, *, disabled: bool = False) -> str:
+    """Register a fake ESPHome binary_sensor with the integration's unique_id pattern."""
+    registry = er.async_get(hass)
+    entry = registry.async_get_or_create(
+        domain="binary_sensor",
+        platform="esphome",
+        unique_id=f"{mac}-binary_sensor-{slot}",
+        original_name=slot.replace("_", " ").title(),
+    )
+    if disabled:
+        registry.async_update_entity(entry.entity_id, disabled_by=er.RegistryEntryDisabler.USER)
+    return entry.entity_id
+
+
+class TestResolveEntityId:
+    async def test_returns_entity_id_for_enabled_source(self, hass: HomeAssistant) -> None:
+        entity_id = _add_entity(hass, "AA:BB:CC:DD:EE:FF", "occupancy")
+        result = resolve_entity_id(hass, "AA:BB:CC:DD:EE:FF", "occupancy")
+        assert result == entity_id
+
+    async def test_returns_none_for_missing_source(self, hass: HomeAssistant) -> None:
+        assert resolve_entity_id(hass, "AA:BB:CC:DD:EE:FF", "occupancy") is None
+
+    async def test_returns_entity_id_even_when_disabled(self, hass: HomeAssistant) -> None:
+        """Caller decides what disabled means; resolver just locates the entity."""
+        entity_id = _add_entity(hass, "AA:BB:CC:DD:EE:FF", "static_presence", disabled=True)
+        result = resolve_entity_id(hass, "AA:BB:CC:DD:EE:FF", "static_presence")
+        assert result == entity_id
+
+
+class TestBuildSourceStates:
+    async def test_builds_source_state_for_known_macs(self, hass: HomeAssistant) -> None:
+        _add_entity(hass, "AA:BB:CC:DD:EE:FF", "occupancy")
+        _add_entity(hass, "AA:BB:CC:DD:EE:FF", "static_presence", disabled=True)
+        _add_entity(hass, "AA:BB:CC:DD:EE:FF", "zone_2_presence")
+
+        def name_for(mac: str) -> str:
+            return {"AA:BB:CC:DD:EE:FF": "Master Bedroom Left"}.get(mac, mac)
+
+        def zone_name_for(mac: str, idx: int) -> str | None:
+            return {("AA:BB:CC:DD:EE:FF", 2): "Bed Left"}.get((mac, idx))
+
+        sources = build_source_states(
+            hass,
+            macs=["AA:BB:CC:DD:EE:FF"],
+            device_name_fn=name_for,
+            zone_name_fn=zone_name_for,
+        )
+        assert len(sources) == 1
+        src = sources[0]
+        assert src.mac == "AA:BB:CC:DD:EE:FF"
+        assert src.name == "Master Bedroom Left"
+        assert src.enabled_presence == ["occupancy"]  # static_presence is disabled
+        assert len(src.zones) == 1
+        assert src.zones[0].index == 2
+        assert src.zones[0].name == "Bed Left"
+        assert src.zones[0].enabled is True
+
+    async def test_skips_unknown_macs_gracefully(self, hass: HomeAssistant) -> None:
+        sources = build_source_states(
+            hass,
+            macs=["DEAD:DEAD:DEAD:DEAD:DEAD:DE"],
+            device_name_fn=lambda m: m,
+            zone_name_fn=lambda m, i: None,
+        )
+        # No entries in the registry → empty enabled_presence + zones, but the
+        # SourceState still exists so the caller can mark the group as needing
+        # repair.
+        assert len(sources) == 1
+        assert sources[0].enabled_presence == []
+        assert sources[0].zones == []
