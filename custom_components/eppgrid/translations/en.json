@@ -47,6 +47,15 @@
     "entity_not_on_device": { "message": "Entity does not belong to this device" },
     "too_many_configurations": { "message": "Cannot store more than {max} configurations — delete one first" }
   },
+  "entity": {
+    "binary_sensor": {
+      "device_group_occupancy": { "name": "Occupancy" },
+      "device_group_static_presence": { "name": "Static presence" },
+      "device_group_motion_presence": { "name": "Motion presence" },
+      "device_group_target_presence": { "name": "Target presence" },
+      "device_group_mmwave_presence": { "name": "mmWave presence" }
+    }
+  },
   "issues": {
     "firmware_behind": {
       "title": "{device_name} firmware update required",
