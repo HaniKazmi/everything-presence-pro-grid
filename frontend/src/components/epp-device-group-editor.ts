@@ -94,6 +94,14 @@ export class EppDeviceGroupEditor extends LitElement {
 					@input=${(e: Event) =>
 						this._update({ name: (e.target as HTMLInputElement).value })}
 				/>
+				<ha-area-picker
+					.hass=${this.hass}
+					.value=${this._draft.area_id ?? ""}
+					@value-changed=${(e: CustomEvent) => {
+						e.stopPropagation();
+						this._update({ area_id: (e.detail.value as string) || null });
+					}}
+				></ha-area-picker>
 			</div>
 
 			<div class="section">

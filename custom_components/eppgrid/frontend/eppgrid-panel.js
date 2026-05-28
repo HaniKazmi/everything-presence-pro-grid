@@ -3393,6 +3393,11 @@ const _t=Symbol.for(""),pt=t=>{if(t?.r===_t)return t?._$litStatic$},ft=(t,...e)=
 					placeholder="Master Bedroom Presence"
 					@input=${t=>this._update({name:t.target.value})}
 				/>
+				<ha-area-picker
+					.hass=${this.hass}
+					.value=${this._draft.area_id??""}
+					@value-changed=${t=>{t.stopPropagation(),this._update({area_id:t.detail.value||null})}}
+				></ha-area-picker>
 			</div>
 
 			<div class="section">
