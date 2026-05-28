@@ -82,6 +82,7 @@ nav:
     - Calibration: user-guide/calibration.md
     - Live overview: user-guide/live-overview.md
     - Detection zones: user-guide/detection-zones.md
+    - Device groups: user-guide/device-groups.md
     - Overlays: user-guide/overlays.md
     - How detection works: user-guide/how-detection-works.md
     - Furniture: user-guide/furniture.md
