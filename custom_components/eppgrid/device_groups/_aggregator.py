@@ -12,6 +12,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.core import callback
 from homeassistant.helpers.event import async_track_state_change_event
 
+from ..const import NUM_ZONE_SLOTS
 from ..const import PRESENCE_SLOTS
 from ._aggregation import or_presence
 from ._registry import resolve_entity_id
@@ -72,14 +73,25 @@ class Aggregator:
         self._recompute_all()
         self._resubscribe()
 
-    def attach_entity_listener(self, key: str, cb: Callable[[], None]) -> None:
+    def attach_entity_listener(self, key: str, cb: Callable[[], None]) -> Callable[[], None]:
         """Attach a per-output-key listener that fires on any change.
 
         Keys: presence slot name (e.g. "occupancy"), or "zone_group:<id>",
         or "zone_pass:<mac>:<idx>". The listener is invoked on every recompute
         cycle that produced any change; entities are expected to be idempotent.
+
+        Returns an unsubscribe callable. Entities should call it from
+        `async_will_remove_from_hass` to avoid invoking `async_write_ha_state`
+        on removed entities.
         """
         self._entity_listeners.setdefault(key, []).append(cb)
+
+        def _unsub() -> None:
+            cbs = self._entity_listeners.get(key)
+            if cbs is not None and cb in cbs:
+                cbs.remove(cb)
+
+        return _unsub
 
     # -- Tracked entity IDs ---------------------------------------------------
 
@@ -92,7 +104,7 @@ class Aggregator:
                     ids.append(eid)
             # Track all 8 zone-presence slots; cheap and avoids re-subscribing
             # when the user defines a new zone.
-            for i in range(1, 8):
+            for i in range(1, NUM_ZONE_SLOTS):
                 eid = resolve_entity_id(self._hass, mac, f"zone_{i}_presence")
                 if eid:
                     ids.append(eid)
@@ -150,7 +162,7 @@ class Aggregator:
         # Passthroughs: anything registered, not in a group, with a configured zone name.
         passthroughs: dict[tuple[str, int], bool | None] = {}
         for mac in sources:
-            for i in range(1, 8):
+            for i in range(1, NUM_ZONE_SLOTS):
                 if (mac, i) in grouped_keys:
                     continue
                 if resolve_entity_id(self._hass, mac, f"zone_{i}_presence") is None:
