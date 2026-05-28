@@ -41,7 +41,7 @@ def build_source_states(
     for mac in macs:
         enabled_presence: list[str] = []
         for slot in PRESENCE_SLOTS:
-            entity_id = registry.async_get_entity_id("binary_sensor", "esphome", f"{mac}-binary_sensor-{slot}")
+            entity_id = resolve_entity_id(hass, mac, slot)
             entry = registry.async_get(entity_id) if entity_id else None
             if entry is not None and not entry.disabled:
                 enabled_presence.append(slot)
@@ -51,9 +51,7 @@ def build_source_states(
             name = zone_name_fn(mac, i)
             if name is None:
                 continue
-            entity_id = registry.async_get_entity_id(
-                "binary_sensor", "esphome", f"{mac}-binary_sensor-zone_{i}_presence"
-            )
+            entity_id = resolve_entity_id(hass, mac, f"zone_{i}_presence")
             entry = registry.async_get(entity_id) if entity_id else None
             enabled = entry is not None and not entry.disabled
             zones.append(ZoneState(index=i, name=name, enabled=enabled))
