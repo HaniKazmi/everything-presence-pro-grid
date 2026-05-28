@@ -230,3 +230,32 @@ async def websocket_delete_device_group(
     if dev is not None:
         dr_.async_remove_device(dev.id)
     connection.send_result(msg["id"], {})
+
+
+# -- subscribe --------------------------------------------------------------
+
+
+@websocket_api.require_admin
+@websocket_api.websocket_command({vol.Required("type"): "eppgrid/subscribe_device_groups"})
+@callback
+@_require_manager
+def websocket_subscribe_device_groups(
+    hass: HomeAssistant,
+    connection: websocket_api.ActiveConnection,
+    msg: dict[str, Any],
+    manager: Any,
+) -> None:
+    @callback
+    def _send_update() -> None:
+        groups = manager.device_groups.list_groups()
+        connection.send_message(
+            websocket_api.event_message(
+                msg["id"],
+                {"device_groups": [_serialize_group(hass, g, manager) for g in groups]},
+            )
+        )
+
+    unsub = manager.device_groups.on_change(_send_update)
+    connection.send_result(msg["id"])
+    _send_update()
+    connection.subscriptions[msg["id"]] = unsub

@@ -11,8 +11,6 @@ from homeassistant.helpers import entity_registry as er
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 from pytest_homeassistant_custom_component.typing import WebSocketGenerator
 
-from custom_components.eppgrid.const import DOMAIN
-
 
 @pytest.fixture(autouse=True)
 def _stub_frontend_deps(hass):
@@ -150,3 +148,42 @@ class TestDelete:
         await client.send_json_auto_id({"type": "eppgrid/list_device_groups"})
         msg = await client.receive_json()
         assert msg["result"]["device_groups"] == []
+
+
+class TestSubscribe:
+    async def test_subscribe_sends_initial_state(
+        self,
+        hass: HomeAssistant,
+        setup_with_sources: None,
+        hass_ws_client: WebSocketGenerator,
+    ) -> None:
+        client = await hass_ws_client(hass)
+        await client.send_json_auto_id({"type": "eppgrid/subscribe_device_groups"})
+        ack = await client.receive_json()
+        assert ack["success"] is True
+        evt = await client.receive_json()
+        assert evt["type"] == "event"
+        assert evt["event"]["device_groups"] == []
+
+    async def test_subscribe_fires_on_create(
+        self,
+        hass: HomeAssistant,
+        setup_with_sources: None,
+        hass_ws_client: WebSocketGenerator,
+    ) -> None:
+        client = await hass_ws_client(hass)
+        await client.send_json_auto_id({"type": "eppgrid/subscribe_device_groups"})
+        await client.receive_json()  # ack
+        await client.receive_json()  # initial event
+
+        await client.send_json_auto_id({
+            "type": "eppgrid/create_device_group",
+            "name": "A", "sources": ["AA:BB:CC:DD:EE:FF"],
+        })
+        # Either result-of-create or subscription event arrives first; accept either.
+        msgs = []
+        for _ in range(2):
+            msgs.append(await client.receive_json())
+        events = [m for m in msgs if m.get("type") == "event"]
+        assert events, "expected a subscription event after create"
+        assert len(events[0]["event"]["device_groups"]) == 1

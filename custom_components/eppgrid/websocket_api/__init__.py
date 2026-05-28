@@ -451,6 +451,7 @@ def async_register_websocket_commands(hass: HomeAssistant, manager: Any) -> None
     websocket_api.async_register_command(hass, websocket_create_device_group)
     websocket_api.async_register_command(hass, websocket_update_device_group)
     websocket_api.async_register_command(hass, websocket_delete_device_group)
+    websocket_api.async_register_command(hass, websocket_subscribe_device_groups)
 
 
 def _get_manager(hass: HomeAssistant) -> Any:
@@ -554,6 +555,7 @@ def _require_manager(func=None, *, check_firmware: bool = False):
 from ._device_groups import websocket_create_device_group  # noqa: E402
 from ._device_groups import websocket_delete_device_group  # noqa: E402
 from ._device_groups import websocket_list_device_groups  # noqa: E402
+from ._device_groups import websocket_subscribe_device_groups  # noqa: E402
 from ._device_groups import websocket_update_device_group  # noqa: E402
 from ._devices import _apply_entity_states  # noqa: E402, F401
 from ._devices import _build_entity_key_map  # noqa: E402, F401
