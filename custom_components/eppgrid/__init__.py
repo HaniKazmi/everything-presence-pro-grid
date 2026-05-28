@@ -10,6 +10,7 @@ from homeassistant.components import panel_custom
 from homeassistant.components.frontend import async_remove_panel
 from homeassistant.components.http import StaticPathConfig
 from homeassistant.config_entries import ConfigEntry
+from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
 
 from .const import DOMAIN
@@ -65,6 +66,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     try:
         await manager.async_start()
         hass.data[DOMAIN] = manager
+        await hass.config_entries.async_forward_entry_setups(
+            entry, [Platform.BINARY_SENSOR]
+        )
 
         # Register the panel LAST. HA never calls async_unload_entry for a
         # failed setup, so registering it before a fallible step would leave
@@ -98,6 +102,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Unload a config entry."""
+    await hass.config_entries.async_unload_platforms(entry, [Platform.BINARY_SENSOR])
     manager = hass.data.pop(DOMAIN, None)
     if manager is not None:
         await manager.async_stop()
