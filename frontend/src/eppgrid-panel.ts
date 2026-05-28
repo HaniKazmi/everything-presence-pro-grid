@@ -13,7 +13,9 @@ import type { EppWizard } from "./components/epp-wizard.js";
 import { renderSaveCancelBar } from "./components/save-cancel-bar.js";
 import "./components/epp-overlay-sidebar.js";
 import "./components/epp-zone-sidebar.js";
+import "./views/epp-device-groups-view.js";
 import { DeviceController } from "./controllers/device-controller.js";
+import { DeviceGroupsController } from "./controllers/device-groups-controller.js";
 import { FlasherController } from "./controllers/flasher-controller.js";
 import {
 	GridStateController,
@@ -404,6 +406,8 @@ export class EPPGridPanel extends LitElement {
 			this._requestFlasherDeleteConfirm();
 		return ctrl;
 	})();
+	// Device groups controller — owns group CRUD and WS subscription
+	@state() private _deviceGroupsCtrl?: DeviceGroupsController;
 	// Navigation guard — owns the unsaved-changes guard (beforeunload,
 	// hashchange, the shared history-interception registry entry) and the
 	// pending-navigation queue behind the dialog. Pass `this` directly so
@@ -736,6 +740,11 @@ export class EPPGridPanel extends LitElement {
 		if (changedProps.has("hass") && this.hass) {
 			this._deviceCtrl.hass = this.hass;
 			this._flasherCtrl.hass = this.hass;
+			if (this.hass.connection && !this._deviceGroupsCtrl) {
+				this._deviceGroupsCtrl = new DeviceGroupsController(
+					this.hass.connection,
+				);
+			}
 			const conn = this.hass.connection;
 			if (conn) {
 				// HA keeps pushing `hass` to panels it has already removed
@@ -1737,6 +1746,11 @@ export class EPPGridPanel extends LitElement {
 							this._flasherCtrl.subscribeDeviceList();
 						}
 					}}>${this._localize("tabs.flash_firmware")}</button>
+				<button class="tab ${this._panelTab === "device-groups" ? "active" : ""}"
+					@click=${() => {
+						this._flasherCtrl.resetUsbState();
+						this._panelTab = "device-groups";
+					}}>Device Groups</button>
 				<a class="tab-help"
 					href=${getHelpUrl({
 						panelTab: this._panelTab,
@@ -1808,6 +1822,21 @@ export class EPPGridPanel extends LitElement {
 					}}
 				></epp-flasher-view>
 				${this._renderFlasherDeleteConfirmDialog()}
+			</div>`;
+		}
+
+		if (this._panelTab === "device-groups") {
+			return html`<div class="tab-layout">
+				${this._renderTabBar()}
+				${
+					this._deviceGroupsCtrl
+						? html`<epp-device-groups-view
+								.hass=${this.hass}
+								.controller=${this._deviceGroupsCtrl}
+								.availableDevices=${this._devices}
+							></epp-device-groups-view>`
+						: html`<div class="panel">${this._localize("common.loading")}</div>`
+				}
 			</div>`;
 		}
 
