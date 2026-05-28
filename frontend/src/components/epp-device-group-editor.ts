@@ -1,8 +1,10 @@
 import { css, html, LitElement, nothing } from "lit";
 import { property, state } from "lit/decorators.js";
 
+import "./epp-zone-merge-list.js";
 import type {
 	DeviceGroup,
+	DeviceGroupSource,
 	DeviceGroupZoneGroup,
 	DeviceInfo,
 } from "../types.js";
@@ -62,6 +64,12 @@ export class EppDeviceGroupEditor extends LitElement {
 	@property({ attribute: false }) hass!: { [key: string]: unknown };
 	@property({ attribute: false }) availableDevices: DeviceInfo[] = [];
 	@property({ attribute: false }) existingGroup: DeviceGroup | null = null;
+	// Map of every known source by MAC, used to render the zone merge UI for
+	// any selected source. Populated by the parent view from cached groups.
+	@property({ attribute: false }) sourcesByMac: Record<
+		string,
+		DeviceGroupSource
+	> = {};
 
 	@state() private _draft: EditorDraft = {
 		id: null,
@@ -126,6 +134,18 @@ export class EppDeviceGroupEditor extends LitElement {
 				)}
 			</div>
 
+			<div class="section">
+				<h3>Zones</h3>
+				<epp-zone-merge-list
+					.sources=${this._draftSources()}
+					.zoneGroups=${this._draft.zone_groups}
+					@zone-groups-changed=${(e: CustomEvent) => {
+						e.stopPropagation();
+						this._update({ zone_groups: e.detail.zone_groups });
+					}}
+				></epp-zone-merge-list>
+			</div>
+
 			<div class="actions">
 				${
 					this._draft.id !== null
@@ -136,6 +156,15 @@ export class EppDeviceGroupEditor extends LitElement {
 				<button @click=${this._save} ?disabled=${!this._canSave()}>Save</button>
 			</div>
 		`;
+	}
+
+	private _draftSources(): DeviceGroupSource[] {
+		// Resolve currently-selected MACs against known sources. Sources we
+		// haven't seen yet (e.g. just-checked devices that aren't in any saved
+		// group) simply aren't rendered for merging — user must save first.
+		return this._draft.sourceMacs
+			.map((mac) => this.sourcesByMac[mac])
+			.filter((s): s is DeviceGroupSource => Boolean(s));
 	}
 
 	private _canSave(): boolean {

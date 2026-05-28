@@ -3,7 +3,7 @@ import { property, state } from "lit/decorators.js";
 
 import "../components/epp-device-group-editor.js";
 import type { DeviceGroupsController } from "../controllers/device-groups-controller.js";
-import type { DeviceGroup, DeviceInfo } from "../types.js";
+import type { DeviceGroup, DeviceGroupSource, DeviceInfo } from "../types.js";
 
 export class EppDeviceGroupsView extends LitElement {
 	static styles = css`
@@ -59,6 +59,7 @@ export class EppDeviceGroupsView extends LitElement {
 					.hass=${this.hass}
 					.availableDevices=${this.availableDevices}
 					.existingGroup=${this._editingGroup}
+					.sourcesByMac=${this._sourcesByMac()}
 					@save=${this._handleSave}
 					@cancel=${this._handleCancel}
 					@delete=${this._handleDelete}
@@ -91,6 +92,16 @@ export class EppDeviceGroupsView extends LitElement {
 						)
 			}
 		`;
+	}
+
+	private _sourcesByMac(): Record<string, DeviceGroupSource> {
+		const map: Record<string, DeviceGroupSource> = {};
+		for (const g of this._groups) {
+			for (const s of g.sources) {
+				map[s.mac] = s;
+			}
+		}
+		return map;
 	}
 
 	private async _handleSave(e: CustomEvent) {
