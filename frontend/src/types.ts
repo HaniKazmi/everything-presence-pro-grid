@@ -97,3 +97,63 @@ export interface OtaDeviceState {
 	errorKey: string | null;
 	errorParams?: Record<string, string | number>;
 }
+
+// -- Device Groups --------------------------------------------------------
+
+export const PRESENCE_SLOTS = [
+	"occupancy",
+	"static_presence",
+	"motion_presence",
+	"target_presence",
+	"mmwave_presence",
+] as const;
+export type PresenceSlot = (typeof PRESENCE_SLOTS)[number];
+
+export interface DeviceGroupZoneMember {
+	mac: string;
+	zone_index: number;
+}
+
+export interface DeviceGroupZoneGroup {
+	id: string;
+	name: string;
+	members: DeviceGroupZoneMember[];
+}
+
+export interface DeviceGroupSourceZone {
+	index: number;
+	name: string;
+	enabled: boolean;
+}
+
+export interface DeviceGroupSource {
+	mac: string;
+	name: string;
+	available: boolean;
+	enabled_presence: PresenceSlot[];
+	zones: DeviceGroupSourceZone[];
+}
+
+export type ExposedZoneEntity =
+	| { kind: "group"; id: string; name: string; available: boolean }
+	| {
+			kind: "passthrough";
+			mac: string;
+			zone_index: number;
+			name: string;
+			available: boolean;
+	  };
+
+export interface DeviceGroupExposedEntities {
+	presence: PresenceSlot[];
+	zones: ExposedZoneEntity[];
+}
+
+export interface DeviceGroup {
+	id: string;
+	name: string;
+	area_id: string | null;
+	sources: DeviceGroupSource[];
+	zone_groups: DeviceGroupZoneGroup[];
+	exposed_entities: DeviceGroupExposedEntities;
+}
