@@ -102,26 +102,23 @@ class DeviceGroupManager:
         zone_groups: list[dict[str, Any]],
     ) -> dict[str, Any]:
         # Check existence before validation so unknown-id always raises KeyError.
-        idx_found = next(
-            (idx for idx, g in enumerate(self._store.device_groups) if g["id"] == id),
+        idx = next(
+            (i for i, g in enumerate(self._store.device_groups) if g["id"] == id),
             None,
         )
-        if idx_found is None:
+        if idx is None:
             raise KeyError(id)
         self._validate(name=name, sources=sources, zone_groups=zone_groups)
-        for idx, g in enumerate(self._store.device_groups):
-            if g["id"] == id:
-                self._store.device_groups[idx] = {
-                    "id": id,
-                    "name": name,
-                    "area_id": area_id,
-                    "sources": list(sources),
-                    "zone_groups": [dict(zg) for zg in zone_groups],
-                }
-                await self._store.async_save()
-                self._fire_change()
-                return dict(self._store.device_groups[idx])
-        raise KeyError(id)
+        self._store.device_groups[idx] = {
+            "id": id,
+            "name": name,
+            "area_id": area_id,
+            "sources": list(sources),
+            "zone_groups": [dict(zg) for zg in zone_groups],
+        }
+        await self._store.async_save()
+        self._fire_change()
+        return dict(self._store.device_groups[idx])
 
     async def async_delete(self, group_id: str) -> None:
         for idx, g in enumerate(self._store.device_groups):

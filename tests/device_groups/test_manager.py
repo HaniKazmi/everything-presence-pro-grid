@@ -85,6 +85,29 @@ class TestValidation:
         with pytest.raises(ValueError, match="sources"):
             await manager.async_create(name="A", sources=macs)
 
+    async def test_name_too_long_rejected(self, manager: DeviceGroupManager) -> None:
+        with pytest.raises(ValueError, match="name"):
+            await manager.async_create(name="x" * 129, sources=["AA:BB:CC:DD:EE:FF"])
+
+    async def test_too_many_groups_rejected(self, hass, store, manager: DeviceGroupManager) -> None:
+        from custom_components.eppgrid.const import MAX_DEVICE_GROUPS
+
+        for i in range(MAX_DEVICE_GROUPS):
+            await manager.async_create(name=f"G{i}", sources=["AA:BB:CC:DD:EE:FF"])
+        with pytest.raises(ValueError, match="too many device groups"):
+            await manager.async_create(name="overflow", sources=["AA:BB:CC:DD:EE:FF"])
+
+    async def test_malformed_zone_group_rejected(self, manager: DeviceGroupManager) -> None:
+        group = await manager.async_create(name="A", sources=["AA:BB:CC:DD:EE:FF"])
+        with pytest.raises(ValueError, match="zone group"):
+            await manager.async_update(
+                id=group["id"],
+                name="A",
+                sources=["AA:BB:CC:DD:EE:FF"],
+                area_id=None,
+                zone_groups=[{"id": "g1", "name": "Bed", "members": [{"mac": "AA:BB:CC:DD:EE:FF"}]}],
+            )
+
 
 class TestPersistence:
     async def test_changes_persist_across_manager_lifecycle(self, hass: HomeAssistant, store: EPPGridStore) -> None:
