@@ -38,10 +38,14 @@ async def setup_with_sources(
 ) -> None:
     er_ = er.async_get(hass)
     er_.async_get_or_create(
-        "binary_sensor", "esphome", "AA:BB:CC:DD:EE:FF-binary_sensor-occupancy",
+        "binary_sensor",
+        "esphome",
+        "AA:BB:CC:DD:EE:FF-binary_sensor-occupancy",
     )
     er_.async_get_or_create(
-        "binary_sensor", "esphome", "11:22:33:44:55:66-binary_sensor-occupancy",
+        "binary_sensor",
+        "esphome",
+        "11:22:33:44:55:66-binary_sensor-occupancy",
     )
     assert await hass.config_entries.async_setup(config_entry.entry_id)
     await hass.async_block_till_done()
@@ -69,11 +73,13 @@ class TestCreate:
         hass_ws_client: WebSocketGenerator,
     ) -> None:
         client = await hass_ws_client(hass)
-        await client.send_json_auto_id({
-            "type": "eppgrid/create_device_group",
-            "name": "Master Bedroom",
-            "sources": ["AA:BB:CC:DD:EE:FF"],
-        })
+        await client.send_json_auto_id(
+            {
+                "type": "eppgrid/create_device_group",
+                "name": "Master Bedroom",
+                "sources": ["AA:BB:CC:DD:EE:FF"],
+            }
+        )
         msg = await client.receive_json()
         assert msg["success"] is True
         assert msg["result"]["device_group"]["id"]
@@ -87,11 +93,13 @@ class TestCreate:
         hass_ws_client: WebSocketGenerator,
     ) -> None:
         client = await hass_ws_client(hass)
-        await client.send_json_auto_id({
-            "type": "eppgrid/create_device_group",
-            "name": "",
-            "sources": ["AA:BB:CC:DD:EE:FF"],
-        })
+        await client.send_json_auto_id(
+            {
+                "type": "eppgrid/create_device_group",
+                "name": "",
+                "sources": ["AA:BB:CC:DD:EE:FF"],
+            }
+        )
         msg = await client.receive_json()
         assert msg["success"] is False
 
@@ -104,21 +112,25 @@ class TestUpdate:
         hass_ws_client: WebSocketGenerator,
     ) -> None:
         client = await hass_ws_client(hass)
-        await client.send_json_auto_id({
-            "type": "eppgrid/create_device_group",
-            "name": "Old",
-            "sources": ["AA:BB:CC:DD:EE:FF"],
-        })
+        await client.send_json_auto_id(
+            {
+                "type": "eppgrid/create_device_group",
+                "name": "Old",
+                "sources": ["AA:BB:CC:DD:EE:FF"],
+            }
+        )
         created = (await client.receive_json())["result"]["device_group"]
 
-        await client.send_json_auto_id({
-            "type": "eppgrid/update_device_group",
-            "group_id": created["id"],
-            "name": "New",
-            "sources": ["AA:BB:CC:DD:EE:FF", "11:22:33:44:55:66"],
-            "area_id": "bedroom",
-            "zone_groups": [],
-        })
+        await client.send_json_auto_id(
+            {
+                "type": "eppgrid/update_device_group",
+                "group_id": created["id"],
+                "name": "New",
+                "sources": ["AA:BB:CC:DD:EE:FF", "11:22:33:44:55:66"],
+                "area_id": "bedroom",
+                "zone_groups": [],
+            }
+        )
         msg = await client.receive_json()
         assert msg["success"] is True
         assert msg["result"]["device_group"]["name"] == "New"
@@ -133,15 +145,21 @@ class TestDelete:
         hass_ws_client: WebSocketGenerator,
     ) -> None:
         client = await hass_ws_client(hass)
-        await client.send_json_auto_id({
-            "type": "eppgrid/create_device_group",
-            "name": "A", "sources": ["AA:BB:CC:DD:EE:FF"],
-        })
+        await client.send_json_auto_id(
+            {
+                "type": "eppgrid/create_device_group",
+                "name": "A",
+                "sources": ["AA:BB:CC:DD:EE:FF"],
+            }
+        )
         gid = (await client.receive_json())["result"]["device_group"]["id"]
 
-        await client.send_json_auto_id({
-            "type": "eppgrid/delete_device_group", "group_id": gid,
-        })
+        await client.send_json_auto_id(
+            {
+                "type": "eppgrid/delete_device_group",
+                "group_id": gid,
+            }
+        )
         msg = await client.receive_json()
         assert msg["success"] is True
 
@@ -176,10 +194,13 @@ class TestSubscribe:
         await client.receive_json()  # ack
         await client.receive_json()  # initial event
 
-        await client.send_json_auto_id({
-            "type": "eppgrid/create_device_group",
-            "name": "A", "sources": ["AA:BB:CC:DD:EE:FF"],
-        })
+        await client.send_json_auto_id(
+            {
+                "type": "eppgrid/create_device_group",
+                "name": "A",
+                "sources": ["AA:BB:CC:DD:EE:FF"],
+            }
+        )
         # Either result-of-create or subscription event arrives first; accept either.
         msgs = []
         for _ in range(2):

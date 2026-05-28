@@ -69,14 +69,16 @@ def _project_zones(
                 continue
             if (src.mac, zone.index) in grouped_keys:
                 continue
-            passthroughs.append({
-                "kind": "passthrough",
-                "mac": src.mac,
-                "zone_index": zone.index,
-                "name": zone.name,
-                "available": True,
-                "_source_name": src.name,  # stripped after collision resolution
-            })
+            passthroughs.append(
+                {
+                    "kind": "passthrough",
+                    "mac": src.mac,
+                    "zone_index": zone.index,
+                    "name": zone.name,
+                    "available": True,
+                    "_source_name": src.name,  # stripped after collision resolution
+                }
+            )
 
     # Resolve name collisions by prefixing source name.
     name_counts = Counter(p["name"] for p in passthroughs)
@@ -91,20 +93,22 @@ def _project_zones(
     for group in zone_groups:
         any_enabled = False
         for member in group["members"]:
-            src = source_by_mac.get(member["mac"])
-            if src is None:
+            member_src = source_by_mac.get(member["mac"])
+            if member_src is None:
                 continue
-            for zone in src.zones:
+            for zone in member_src.zones:
                 if zone.index == member["zone_index"] and zone.enabled:
                     any_enabled = True
                     break
             if any_enabled:
                 break
-        grouped_out.append({
-            "kind": "group",
-            "id": group["id"],
-            "name": group["name"],
-            "available": any_enabled,
-        })
+        grouped_out.append(
+            {
+                "kind": "group",
+                "id": group["id"],
+                "name": group["name"],
+                "available": any_enabled,
+            }
+        )
 
     return grouped_out + passthroughs

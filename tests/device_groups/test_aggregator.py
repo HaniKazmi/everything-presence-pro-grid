@@ -151,15 +151,14 @@ class TestZoneAggregation:
 
 
 class TestRegistryUpdates:
-    async def test_aggregator_re_resolves_on_registry_event(
-        self, hass: HomeAssistant, group_def: dict
-    ) -> None:
+    async def test_aggregator_re_resolves_on_registry_event(self, hass: HomeAssistant, group_def: dict) -> None:
         """If a source entity is registered AFTER aggregator starts, it should pick it up."""
         a = _register(hass, "AA:BB:CC:DD:EE:FF", "occupancy")
         _set_state(hass, a, STATE_OFF)
 
         agg = Aggregator(
-            hass, group_def,
+            hass,
+            group_def,
             device_name_fn=lambda m: m,
             zone_name_fn=lambda m, i: f"Zone {i}",
         )

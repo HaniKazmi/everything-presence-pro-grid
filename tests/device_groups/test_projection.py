@@ -13,7 +13,6 @@ def _source(mac: str, name: str, enabled_presence: list[str], zones: list[ZoneSt
 
 
 class TestPresenceProjection:
-
     def test_no_sources_exposes_nothing(self) -> None:
         result = derive_exposed_entities(sources=[], zone_groups=[])
         assert result["presence"] == []
@@ -35,7 +34,6 @@ class TestPresenceProjection:
 
 
 class TestZoneProjection:
-
     def test_unmerged_zones_pass_through_with_original_name(self) -> None:
         sources = [
             _source("AA", "Left", [], [ZoneState(index=2, name="Desk", enabled=True)]),
@@ -127,13 +125,23 @@ class TestZoneProjection:
     def test_zones_sorted_by_source_then_index(self) -> None:
         """Stable order for UI/registry: source order, then zone_index."""
         sources = [
-            _source("AA", "Left", [], [
-                ZoneState(index=3, name="Sofa", enabled=True),
-                ZoneState(index=2, name="Desk", enabled=True),
-            ]),
-            _source("BB", "Right", [], [
-                ZoneState(index=1, name="Door", enabled=True),
-            ]),
+            _source(
+                "AA",
+                "Left",
+                [],
+                [
+                    ZoneState(index=3, name="Sofa", enabled=True),
+                    ZoneState(index=2, name="Desk", enabled=True),
+                ],
+            ),
+            _source(
+                "BB",
+                "Right",
+                [],
+                [
+                    ZoneState(index=1, name="Door", enabled=True),
+                ],
+            ),
         ]
         result = derive_exposed_entities(sources=sources, zone_groups=[])
         names = [z["name"] for z in result["zones"]]

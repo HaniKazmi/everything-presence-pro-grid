@@ -63,9 +63,7 @@ class Aggregator:
     async def async_start(self) -> None:
         self._recompute_all()
         self._resubscribe()
-        self._unsub_registry = self._hass.bus.async_listen(
-            er.EVENT_ENTITY_REGISTRY_UPDATED, self._on_registry_event
-        )
+        self._unsub_registry = self._hass.bus.async_listen(er.EVENT_ENTITY_REGISTRY_UPDATED, self._on_registry_event)
 
     async def async_stop(self) -> None:
         if self._unsub_state is not None:
