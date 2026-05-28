@@ -59,7 +59,6 @@ export class EppDeviceGroupsView extends LitElement {
 					.hass=${this.hass}
 					.availableDevices=${this.availableDevices}
 					.existingGroup=${this._editingGroup}
-					.liveSources=${this._editingGroup?.sources ?? []}
 					@save=${this._handleSave}
 					@cancel=${this._handleCancel}
 					@delete=${this._handleDelete}

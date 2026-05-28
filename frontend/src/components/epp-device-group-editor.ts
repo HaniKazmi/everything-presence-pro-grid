@@ -1,15 +1,11 @@
 import { css, html, LitElement, nothing } from "lit";
 import { property, state } from "lit/decorators.js";
 
-import { deriveExposedEntities } from "../lib/device-groups-projection.js";
 import type {
 	DeviceGroup,
-	DeviceGroupSource,
 	DeviceGroupZoneGroup,
 	DeviceInfo,
 } from "../types.js";
-
-import "./epp-zone-merge-list.js";
 
 interface EditorDraft {
 	id: string | null;
@@ -66,7 +62,6 @@ export class EppDeviceGroupEditor extends LitElement {
 	@property({ attribute: false }) hass!: { [key: string]: unknown };
 	@property({ attribute: false }) availableDevices: DeviceInfo[] = [];
 	@property({ attribute: false }) existingGroup: DeviceGroup | null = null;
-	@property({ attribute: false }) liveSources: DeviceGroupSource[] = [];
 
 	@state() private _draft: EditorDraft = {
 		id: null,
@@ -89,10 +84,6 @@ export class EppDeviceGroupEditor extends LitElement {
 	}
 
 	render() {
-		const projection = deriveExposedEntities(
-			this.liveSources,
-			this._draft.zone_groups,
-		);
 		return html`
 			<div class="section">
 				<h3>Basics</h3>
@@ -125,29 +116,6 @@ export class EppDeviceGroupEditor extends LitElement {
 					</div>
 				`,
 				)}
-			</div>
-
-			<div class="section">
-				<h3>Exposed presence sensors</h3>
-				${
-					projection.presence.length === 0
-						? html`<em>None — enable presence entities on at least one source first.</em>`
-						: html`<ul>${projection.presence.map((p) => html`<li>${p}</li>`)}</ul>`
-				}
-			</div>
-
-			<div class="section">
-				<h3>Zones</h3>
-				<epp-zone-merge-list
-					.sources=${this.liveSources}
-					.zoneGroups=${this._draft.zone_groups}
-					@zone-groups-changed=${(e: CustomEvent) => {
-						e.stopPropagation();
-						this._update({ zone_groups: e.detail.zone_groups });
-					}}
-				></epp-zone-merge-list>
-				<h4>Will expose:</h4>
-				<ul>${projection.zones.map((z) => html`<li>${z.name}</li>`)}</ul>
 			</div>
 
 			<div class="actions">
