@@ -15,11 +15,6 @@ from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.eppgrid.const import DOMAIN
 
-pytestmark = pytest.mark.xfail(
-    reason="device_groups manager wiring lands in Task 9",
-    strict=False,
-)
-
 
 @pytest.fixture(autouse=True)
 def _stub_frontend_deps(hass):
@@ -40,7 +35,11 @@ def _stub_frontend_deps(hass):
 
 
 @pytest.fixture
-async def integration_with_group(hass: HomeAssistant, config_entry: MockConfigEntry) -> dict:
+async def integration_with_group(
+    hass: HomeAssistant,
+    config_entry: MockConfigEntry,
+    enable_custom_integrations,
+) -> dict:
     """Set up the integration with one device group and two fake source entities."""
     er_ = er.async_get(hass)
     a = er_.async_get_or_create(

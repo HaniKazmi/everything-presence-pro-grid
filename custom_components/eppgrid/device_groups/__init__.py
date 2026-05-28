@@ -13,6 +13,7 @@ from ..const import MAX_DEVICE_GROUPS
 from ..const import MAX_SOURCES_PER_DEVICE_GROUP
 from ..const import MAX_ZONE_GROUPS_PER_DEVICE_GROUP
 from ..storage import EPPGridStore
+from ._aggregator import Aggregator
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -28,14 +29,56 @@ class DeviceGroupManager:
         self._hass = hass
         self._store = store
         self._listeners: list[Callable[[], None]] = []
+        self._aggregators: dict[str, Aggregator] = {}
+        self._platform_proxy: Any = None
+        self._device_name_fn: Callable[[str], str] = lambda m: m
+        self._zone_name_fn: Callable[[str, int], str | None] = lambda m, i: None
 
     async def async_start(self) -> None:
-        """Initialize state from the store. No-op for now."""
-        return None
+        """Initialize state from the store — spawn an aggregator per group."""
+        for group in self._store.device_groups:
+            await self._spawn_aggregator(group)
 
     async def async_stop(self) -> None:
-        """Stop the manager. No-op for now."""
+        """Stop all aggregators and clear state."""
+        for agg in self._aggregators.values():
+            await agg.async_stop()
+        self._aggregators.clear()
         self._listeners.clear()
+        self._platform_proxy = None
+
+    # -- Aggregator management ------------------------------------------------
+
+    def set_callbacks(
+        self,
+        device_name_fn: Callable[[str], str],
+        zone_name_fn: Callable[[str, int], str | None],
+    ) -> None:
+        """Wire up the data sources the aggregators need (DeviceManager + Store)."""
+        self._device_name_fn = device_name_fn
+        self._zone_name_fn = zone_name_fn
+
+    def attach_platform(self, proxy: Any) -> None:
+        """Register the binary_sensor platform proxy. Called once at platform setup."""
+        self._platform_proxy = proxy
+
+    def get_aggregator(self, group_id: str) -> Aggregator | None:
+        return self._aggregators.get(group_id)
+
+    async def _spawn_aggregator(self, group: dict[str, Any]) -> None:
+        agg = Aggregator(
+            self._hass,
+            group,
+            device_name_fn=self._device_name_fn,
+            zone_name_fn=self._zone_name_fn,
+            notify=self._on_aggregator_changed,
+        )
+        await agg.async_start()
+        self._aggregators[group["id"]] = agg
+
+    def _on_aggregator_changed(self) -> None:
+        if self._platform_proxy is not None:
+            self._platform_proxy.sync_all(self.list_groups())
 
     # -- Listener registration ------------------------------------------------
 
@@ -89,6 +132,9 @@ class DeviceGroupManager:
         }
         self._store.device_groups.append(group)
         await self._store.async_save()
+        await self._spawn_aggregator(group)
+        if self._platform_proxy is not None:
+            self._platform_proxy.sync_all(self.list_groups())
         self._fire_change()
         return dict(group)
 
@@ -117,6 +163,11 @@ class DeviceGroupManager:
             "zone_groups": [dict(zg) for zg in zone_groups],
         }
         await self._store.async_save()
+        agg = self._aggregators.get(id)
+        if agg is not None:
+            agg.update_definition(self._store.device_groups[idx])
+        if self._platform_proxy is not None:
+            self._platform_proxy.sync_all(self.list_groups())
         self._fire_change()
         return dict(self._store.device_groups[idx])
 
@@ -125,6 +176,11 @@ class DeviceGroupManager:
             if g["id"] == group_id:
                 del self._store.device_groups[idx]
                 await self._store.async_save()
+                agg = self._aggregators.pop(group_id, None)
+                if agg is not None:
+                    await agg.async_stop()
+                if self._platform_proxy is not None:
+                    self._platform_proxy.sync_all(self.list_groups())
                 self._fire_change()
                 return
         raise KeyError(group_id)

@@ -43,6 +43,18 @@ def _hash_file(path: str) -> str:
         return hashlib.md5(f.read()).hexdigest()[:8]
 
 
+def _zone_name(store: EPPGridStore, mac: str, zone_index: int) -> str | None:
+    """Look up a zone's user-set name from the per-device room_layout."""
+    device = store.devices.get(mac, {})
+    layout = device.get("room_layout", [])
+    if zone_index < 0 or zone_index >= len(layout):
+        return None
+    slot = layout[zone_index]
+    if slot is None:
+        return None
+    return slot.get("name")
+
+
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up Everything Presence Pro Grid from a config entry."""
     store = EPPGridStore(hass)
@@ -53,6 +65,18 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     # Register the static path unconditionally so Lovelace dashboards can
     # fetch the bundled JS module even when the sidebar panel is disabled.
     await _register_frontend_resources(hass)
+
+    from .device_groups import DeviceGroupManager
+
+    device_groups_manager = DeviceGroupManager(hass, store)
+    # Attach as a sibling on the existing DeviceManager so callers can reach it
+    # via `hass.data[DOMAIN].device_groups`. Created here (before the manager is
+    # published) but started inside the try below so a failure unwinds cleanly.
+    manager.device_groups = device_groups_manager  # type: ignore[attr-defined]
+    device_groups_manager.set_callbacks(
+        device_name_fn=lambda mac: store.devices.get(mac, {}).get("name") or mac,
+        zone_name_fn=lambda mac, i: _zone_name(store, mac, i),
+    )
 
     # WS command registration is idempotent; the handlers look the manager up
     # via hass.data[DOMAIN] and tolerate it being absent, so registering them
@@ -66,9 +90,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     try:
         await manager.async_start()
         hass.data[DOMAIN] = manager
-        await hass.config_entries.async_forward_entry_setups(
-            entry, [Platform.BINARY_SENSOR]
-        )
+        await device_groups_manager.async_start()
+        await hass.config_entries.async_forward_entry_setups(entry, [Platform.BINARY_SENSOR])
 
         # Register the panel LAST. HA never calls async_unload_entry for a
         # failed setup, so registering it before a fallible step would leave
@@ -88,6 +111,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         # e.g. turn ConfigEntryNotReady (retry later) into a permanent
         # SETUP_ERROR.
         try:
+            await device_groups_manager.async_stop()
+        except Exception:
+            _LOGGER.exception("device_groups_manager.async_stop failed during setup unwind")
+        try:
             await manager.async_stop()
         except Exception:
             _LOGGER.exception("manager.async_stop failed during setup unwind")
@@ -105,6 +132,8 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     await hass.config_entries.async_unload_platforms(entry, [Platform.BINARY_SENSOR])
     manager = hass.data.pop(DOMAIN, None)
     if manager is not None:
+        if hasattr(manager, "device_groups"):
+            await manager.device_groups.async_stop()
         await manager.async_stop()
 
     await async_apply_panel_visibility(hass, False)
