@@ -535,6 +535,36 @@ describe("epp-zone-sidebar events", () => {
 	});
 });
 
+describe("epp-zone-sidebar type select reflects saved value on first render", () => {
+	async function activeSelectValue(el: EppZoneSidebar): Promise<string> {
+		document.body.appendChild(el);
+		try {
+			await (el as any).updateComplete;
+			const select = (el as any).renderRoot.querySelector(
+				".sensitivity-select",
+			) as HTMLSelectElement;
+			return select.value;
+		} finally {
+			document.body.removeChild(el);
+		}
+	}
+
+	it("shows the saved type as selected for a named zone (not the first option)", async () => {
+		const el = createSidebar({ activeZone: 1 });
+		(el as any).zoneConfigs = [
+			{ name: "Z1", color: "#ff0000", type: "seating" },
+			...new Array(6).fill(null),
+		];
+		expect(await activeSelectValue(el)).toBe("seating");
+	});
+
+	it("shows the saved type as selected for the boundary (not the first option)", async () => {
+		const el = createSidebar({ activeZone: 0 });
+		el.zone0 = { type: "seating" };
+		expect(await activeSelectValue(el)).toBe("seating");
+	});
+});
+
 describe("epp-zone-sidebar occupancy glow", () => {
 	it("boundary zone dot shows glow when occupied", () => {
 		const localZoneState = new Map([

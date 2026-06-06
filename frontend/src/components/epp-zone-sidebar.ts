@@ -205,6 +205,22 @@ export class EppZoneSidebar extends LitElement {
 		return this._renderZoneSidebar();
 	}
 
+	// A native <select>'s value can't be set via a property binding in the same
+	// render that creates its <option>s — lit commits the select's bindings
+	// before the options exist, so the browser falls back to the first option
+	// ("Default"). We stamp the intended value as data-value (an attribute,
+	// which commits fine) and sync select.value here, after the options exist.
+	// The `!== want` guard skips the only real cost (the DOM write) on the
+	// frequent no-op re-renders (e.g. live occupancy updates).
+	updated() {
+		for (const sel of this.renderRoot.querySelectorAll<HTMLSelectElement>(
+			".sensitivity-select",
+		)) {
+			const want = sel.dataset.value;
+			if (want != null && sel.value !== want) sel.value = want;
+		}
+	}
+
 	private _renderZoneSidebar() {
 		return html`
 			<div class="zone-scroll-area">
@@ -413,7 +429,7 @@ export class EppZoneSidebar extends LitElement {
 					<select
 						class="sensitivity-select"
 						style="flex: 1; min-width: 0;"
-						.value=${z0.type}
+						data-value=${z0.type}
 						@change=${(e: Event) => {
 							const val = (e.target as HTMLSelectElement)
 								.value as Zone0Config["type"];
@@ -572,7 +588,7 @@ export class EppZoneSidebar extends LitElement {
 					<select
 						class="sensitivity-select"
 						style="flex: 1; min-width: 0;"
-						.value=${zone.type}
+						data-value=${zone.type}
 						@change=${(e: Event) => {
 							const val = (e.target as HTMLSelectElement)
 								.value as ZoneConfig["type"];
