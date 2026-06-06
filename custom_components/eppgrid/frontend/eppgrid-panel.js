@@ -2037,12 +2037,12 @@ const _t=Symbol.for(""),pt=t=>{if(t?.r===_t)return t?._$litStatic$},ft=(t,...e)=
           </div>
           <div class="setting-row">
             <label>${this.localize("settings.trigger_threshold")}</label>
-            <span class="setting-input-unit"><input type="range" class="setting-range" min="0" max="9" .value=${String(this.staticTriggerThreshold)} @input=${t=>{const e=t.target,i=Number(e.value);this._overrides.staticTriggerThreshold=i,this._setSettingValue(e,e.value),this._fireChange("staticTriggerThreshold",i)}} /><span class="setting-value">${this.staticTriggerThreshold}</span><span class="setting-unit"></span></span>
+            <span class="setting-input-unit"><input type="range" class="setting-range" min="1" max="9" .value=${String(this.staticTriggerThreshold)} @input=${t=>{const e=t.target,i=Number(e.value);this._overrides.staticTriggerThreshold=i,this._setSettingValue(e,e.value),this._fireChange("staticTriggerThreshold",i)}} /><span class="setting-value">${this.staticTriggerThreshold}</span><span class="setting-unit"></span></span>
             ${this.resetBtn(3,"staticTriggerThreshold")}${this.infoTip(this.localize("info.trigger_threshold"))}
           </div>
           <div class="setting-row">
             <label>${this.localize("settings.renew_threshold")}</label>
-            <span class="setting-input-unit"><input type="range" class="setting-range" min="0" max="9" .value=${String(this.staticRenewThreshold)} @input=${t=>{const e=t.target,i=Number(e.value);this._overrides.staticRenewThreshold=i,this._setSettingValue(e,e.value),this._fireChange("staticRenewThreshold",i)}} /><span class="setting-value">${this.staticRenewThreshold}</span><span class="setting-unit"></span></span>
+            <span class="setting-input-unit"><input type="range" class="setting-range" min="1" max="9" .value=${String(this.staticRenewThreshold)} @input=${t=>{const e=t.target,i=Number(e.value);this._overrides.staticRenewThreshold=i,this._setSettingValue(e,e.value),this._fireChange("staticRenewThreshold",i)}} /><span class="setting-value">${this.staticRenewThreshold}</span><span class="setting-unit"></span></span>
             ${this.resetBtn(3,"staticRenewThreshold")}${this.infoTip(this.localize("info.renew_threshold"))}
           </div>
         </div>

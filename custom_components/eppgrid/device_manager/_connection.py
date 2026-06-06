@@ -19,6 +19,7 @@ from ..const import GRID_COLS
 from ._helpers import _ESPHOME_TO_PYTHON_LOG
 from ._helpers import _expand_zone_slot
 from ._helpers import _raise_service_unavailable
+from ._helpers import _static_presence_args
 from ._helpers import is_valid_zone_slots_shape
 
 _LOGGER = logging.getLogger(__name__)
@@ -248,19 +249,7 @@ class DeviceConnection:
             )
         svc = self._services.get("epp_set_static_presence")
         if svc:
-            await self._client.execute_service(
-                svc,
-                {
-                    "min_range": override.get("static_min_distance", 0.3),
-                    "max_range": override.get("static_max_distance", 16.0),
-                    "trigger_range": override.get("static_max_distance", 16.0),
-                    "trigger_sensitivity": 10 - override.get("static_trigger_threshold", 3),
-                    "sustain_sensitivity": 10 - override.get("static_renew_threshold", 3),
-                    "timeout": override.get("static_timeout", 30.0),
-                    "on_delay": override.get("static_on_delay", 0.0),
-                    "led_enabled": True,
-                },
-            )
+            await self._client.execute_service(svc, _static_presence_args(override))
 
     async def async_dismiss_target(self, target_index: int, cell_index: int) -> None:
         """Send dismiss target command to firmware."""
@@ -394,19 +383,7 @@ class DeviceConnection:
 
             svc = self._services.get("epp_set_static_presence")
             if svc:
-                await self._client.execute_service(
-                    svc,
-                    {
-                        "min_range": settings.get("static_min_distance", 0.3),
-                        "max_range": settings.get("static_max_distance", 16.0),
-                        "trigger_range": settings.get("static_max_distance", 16.0),
-                        "trigger_sensitivity": 10 - settings.get("static_trigger_threshold", 3),
-                        "sustain_sensitivity": 10 - settings.get("static_renew_threshold", 3),
-                        "timeout": settings.get("static_timeout", 30.0),
-                        "on_delay": settings.get("static_on_delay", 0.0),
-                        "led_enabled": True,
-                    },
-                )
+                await self._client.execute_service(svc, _static_presence_args(settings))
                 _LOGGER.debug("Pushed static_presence to %s", self._host)
                 pushed.append("static_presence")
 

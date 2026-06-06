@@ -735,7 +735,7 @@ export class EppSettingsView extends LitElement {
           </div>
           <div class="setting-row">
             <label>${this.localize("settings.trigger_threshold")}</label>
-            <span class="setting-input-unit"><input type="range" class="setting-range" min="0" max="9" .value=${String(this.staticTriggerThreshold)} @input=${(
+            <span class="setting-input-unit"><input type="range" class="setting-range" min="1" max="9" .value=${String(this.staticTriggerThreshold)} @input=${(
 							e: Event,
 						) => {
 							const el = e.target as HTMLInputElement;
@@ -748,7 +748,7 @@ export class EppSettingsView extends LitElement {
           </div>
           <div class="setting-row">
             <label>${this.localize("settings.renew_threshold")}</label>
-            <span class="setting-input-unit"><input type="range" class="setting-range" min="0" max="9" .value=${String(this.staticRenewThreshold)} @input=${(
+            <span class="setting-input-unit"><input type="range" class="setting-range" min="1" max="9" .value=${String(this.staticRenewThreshold)} @input=${(
 							e: Event,
 						) => {
 							const el = e.target as HTMLInputElement;
