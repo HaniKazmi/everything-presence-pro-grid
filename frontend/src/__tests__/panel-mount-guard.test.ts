@@ -201,6 +201,36 @@ describe("checkAndRemount", () => {
 
 		expect(host.children.length).toBe(0);
 	});
+
+	it("removes duplicate eppgrid-panel children, keeping the first", () => {
+		// Reproduces the disconnect/rebuild duplication: our guard wins the
+		// race and mounts a panel into a fresh empty host, then HA's
+		// ha-panel-custom (oldPanel undefined → _cleanupPanel skipped) appends
+		// its OWN panel. Two <eppgrid-panel> end up in the host. The guard must
+		// converge back to exactly one, keeping the already-established first.
+		const haRoot = buildHaShadowTree(true);
+		(haRoot as any).hass = { any: "value" };
+		document.body.appendChild(haRoot);
+
+		const host = haRoot
+			.shadowRoot!.querySelector("home-assistant-main")!
+			.shadowRoot!.querySelector("partial-panel-resolver")!
+			.querySelector("ha-panel-custom") as HTMLElement;
+		(host as any).panel = {
+			config: { _panel_custom: { name: "eppgrid-panel" } },
+		};
+		const first = document.createElement("eppgrid-panel");
+		host.appendChild(first); // guard's panel
+		host.appendChild(document.createElement("eppgrid-panel")); // HA's panel
+
+		checkAndRemount();
+
+		const panels = Array.from(host.children).filter(
+			(c) => c.tagName.toLowerCase() === "eppgrid-panel",
+		);
+		expect(panels).toHaveLength(1);
+		expect(panels[0]).toBe(first);
+	});
 });
 
 describe("installPanelMountGuard", () => {
@@ -464,6 +494,40 @@ describe("installPanelMountGuard MutationObserver", () => {
 		newHost.removeChild(newHost.firstElementChild!);
 		await flushMicrotasks();
 		expect(newHost.children.length).toBe(1);
+	});
+
+	it("removes the duplicate when HA appends its own panel after the guard mounts one", async () => {
+		// The real disconnect/rebuild race: guard mounts panel A into a fresh
+		// host, then HA's ha-panel-custom appends its own panel B. The host
+		// observer must fire on B's insertion and dedup back to a single panel.
+		const haRoot = buildHaShadowTree(true);
+		(haRoot as any).hass = { any: "value" };
+		document.body.appendChild(haRoot);
+		const host = haRoot
+			.shadowRoot!.querySelector("home-assistant-main")!
+			.shadowRoot!.querySelector("partial-panel-resolver")!
+			.querySelector("ha-panel-custom") as HTMLElement;
+		(host as any).panel = {
+			config: { _panel_custom: { name: "eppgrid-panel" } },
+		};
+		const guardPanel = document.createElement("eppgrid-panel");
+		host.appendChild(guardPanel); // guard already mounted one
+
+		Object.defineProperty(document, "visibilityState", {
+			value: "visible",
+			configurable: true,
+		});
+		installPanelMountGuard();
+
+		// HA now appends its own panel into the same host.
+		host.appendChild(document.createElement("eppgrid-panel"));
+		await flushMicrotasks();
+
+		const panels = Array.from(host.children).filter(
+			(c) => c.tagName.toLowerCase() === "eppgrid-panel",
+		);
+		expect(panels).toHaveLength(1);
+		expect(panels[0]).toBe(guardPanel);
 	});
 
 	it("does not remount when the configured panel is not eppgrid-panel", async () => {

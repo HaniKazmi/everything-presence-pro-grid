@@ -30,12 +30,34 @@ export function remountEppPanel(host: HTMLElement): void {
 	host.appendChild(el);
 }
 
+// HA's ha-panel-custom appends its OWN eppgrid-panel when its `panel` property
+// is first set on a fresh host (after a disconnect/rebuild, oldPanel is
+// undefined so HA skips _cleanupPanel and appends unconditionally). If our
+// mount guard wins the race and has already mounted a panel into that empty
+// host, both survive — the frontend renders twice. Collapse any such duplicates
+// back to one, keeping the first (already-established) panel; the extras are
+// torn down via their own disconnectedCallback. Live data flows through the
+// stable hass.connection subscriptions, so the survivor stays fully live.
+function removeDuplicateEppPanels(host: HTMLElement): void {
+	const panels = Array.from(host.children).filter(
+		(c) => c.tagName.toLowerCase() === "eppgrid-panel",
+	);
+	for (let i = 1; i < panels.length; i++) {
+		panels[i].remove();
+	}
+}
+
 export function checkAndRemount(): void {
 	const host = findEppPanelHost();
 	if (!host) return;
+	if ((host as any).panel?.config?._panel_custom?.name !== "eppgrid-panel") {
+		return;
+	}
 	if (isEppPanelMissing(host)) {
 		remountEppPanel(host);
+		return;
 	}
+	removeDuplicateEppPanels(host);
 }
 
 const handleVisibilityChange = (): void => {
