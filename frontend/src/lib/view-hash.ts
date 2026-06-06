@@ -26,7 +26,7 @@ export interface ViewState {
 	sidebarTab: SidebarTab;
 }
 
-const DEFAULT_SIDEBAR_TAB: SidebarTab = "zones";
+export const DEFAULT_SIDEBAR_TAB: SidebarTab = "zones";
 
 // Single source of truth for the URL fragment ↔ ViewState mapping.
 // Editor sub-tabs (`#zones`, `#overlays`, `#furniture`) live alongside
