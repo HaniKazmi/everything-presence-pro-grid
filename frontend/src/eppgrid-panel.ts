@@ -68,6 +68,7 @@ import {
 	runWifiScan,
 } from "./lib/usb-flash-service.js";
 import {
+	DEFAULT_SIDEBAR_TAB,
 	parseViewHash,
 	type SidebarTab,
 	type ViewMode,
@@ -684,6 +685,16 @@ export class EPPGridPanel extends LitElement {
 				this._currentLang = newLang;
 				this._localize = setupLocalize(this.hass);
 			}
+		}
+		// `_sidebarTab` is the editor's sub-tab — meaningful only when
+		// `_view === "editor"`. Six code paths set `_view = "live"` without
+		// touching `_sidebarTab`, leaving stale values (e.g. "furniture") that
+		// downstream consumers wrongly treat as live signal — the original case
+		// was furniture staying draggable on the live overview after a save,
+		// where a stray click marked the panel dirty. Enforce the invariant
+		// here so no caller has to remember.
+		if (changed.has("_view") && this._view !== "editor") {
+			this._sidebarTab = DEFAULT_SIDEBAR_TAB;
 		}
 		if (changed.has("_view") || changed.has("_sidebarTab")) {
 			this._syncHashFromState();
