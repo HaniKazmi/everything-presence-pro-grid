@@ -319,8 +319,9 @@ class TestDeviceConnection:
             # stuck_target_timeout: value passed through
             assert payloads["epp_set_stuck_target_timeout"] == {"timeout": 120.0}
 
-            # static_presence: thresholds inverted (10 - value),
-            # trigger_range set to max_distance, led_enabled hardcoded True
+            # static_presence: thresholds inverted (10 - value) onto the chip's
+            # 1-9 sensitivity range, trigger_range set to max_distance,
+            # led_enabled hardcoded True
             assert payloads["epp_set_static_presence"] == {
                 "min_range": 0.5,
                 "max_range": 12.0,
@@ -380,6 +381,48 @@ class TestDeviceConnection:
                 "on_delay": 0.0,
                 "led_enabled": True,
             }
+
+    async def test_push_config_threshold_inverts_within_1_to_9(self) -> None:
+        """Threshold 1-9 inverts to chip sensitivity 1-9 as 10 - threshold.
+
+        Both the UI threshold and the chip's setSensitivity run 1-9. A
+        threshold of 1 (easiest to trigger) maps to the chip maximum 9, and a
+        threshold of 9 (hardest) maps to the chip minimum 1. Legacy values
+        outside 1-9 (e.g. a 0 stored when the slider allowed it) are clamped so
+        they never emit an out-of-range sensitivity.
+        """
+
+        async def push(trigger: int, renew: int) -> dict:
+            conn = DeviceConnection("192.168.1.100")
+            svc_static = MagicMock()
+            svc_static.name = "epp_set_static_presence"
+            with patch("custom_components.eppgrid.device_manager._connection.APIClient") as mock_cls:
+                mock_client = mock_cls.return_value
+                mock_client.connect = AsyncMock()
+                mock_client.list_entities_services = AsyncMock(return_value=([], [svc_static]))
+                mock_client.execute_service = AsyncMock()
+
+                await conn.async_connect()
+                await conn.async_push_config(
+                    {
+                        "settings": {
+                            "static_trigger_threshold": trigger,
+                            "static_renew_threshold": renew,
+                        }
+                    }
+                )
+                calls = mock_client.execute_service.await_args_list
+                return {c.args[0].name: c.args[1] for c in calls}["epp_set_static_presence"]
+
+        # Endpoints of the valid 1-9 range
+        p = await push(1, 9)
+        assert p["trigger_sensitivity"] == 9  # 10 - 1
+        assert p["sustain_sensitivity"] == 1  # 10 - 9
+
+        # Legacy out-of-range thresholds are clamped to 1-9 before inverting
+        p = await push(0, 10)
+        assert p["trigger_sensitivity"] == 9  # clamp 0 -> 1, 10 - 1
+        assert p["sustain_sensitivity"] == 1  # clamp 10 -> 9, 10 - 9
 
     async def test_fetch_build_flags_returns_empty_when_service_missing(self) -> None:
         """No get_build_flags service -> cacheable empty result."""

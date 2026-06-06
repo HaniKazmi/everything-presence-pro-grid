@@ -26,8 +26,8 @@ The SEN0609 mmWave radar reports a single "someone here / not here" signal. Rang
 | --- | --- | --- |
 | **Presence delay** | 0 s | Delay before the sensor first reports presence. Filters brief false positives. Range 0–30 s, in 0.5 s steps. |
 | **Presence timeout** | 30 s | Time after the last detection before the sensor clears. Range 0–120 s. |
-| **Trigger threshold** | 3 | On-chip sensitivity for *first* detection. 0–9. Higher = harder to trigger. |
-| **Renew threshold** | 3 | On-chip sensitivity for *sustaining* detection. 0–9. Higher = harder to maintain. |
+| **Trigger threshold** | 3 | On-chip sensitivity for *first* detection. 1–9. Higher = harder to trigger. |
+| **Renew threshold** | 3 | On-chip sensitivity for *sustaining* detection. 1–9. Higher = harder to maintain. |
 
 **Presence timeout** is important for the [sensor-assisted clear](../how-detection-works.md#sensor-assisted-clear): once the static sensor reports inactive (and the motion sensor is also inactive, and no zone is currently *occupied*), every *pending* zone is cleared immediately. Lowering this timeout speeds that up, at the cost of clearing zones a little more quickly after someone genuinely leaves.
 

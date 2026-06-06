@@ -65,6 +65,33 @@ def _expand_zone_slot(slot: dict[str, Any]) -> dict[str, Any]:
     return expanded
 
 
+def _static_presence_args(source: dict[str, Any]) -> dict[str, Any]:
+    """Build the epp_set_static_presence service payload from a settings or
+    distance-override dict.
+
+    Shared by both push paths so the field set and the threshold inversion
+    stay in lockstep. Both the UI threshold and the chip's setSensitivity run
+    1-9; threshold is "higher = harder to trigger" and sensitivity is "higher
+    = more sensitive", so they invert as ``10 - threshold`` (1->9 .. 9->1).
+    Thresholds are clamped to 1-9 to guard against legacy values stored when
+    the slider still allowed 0, which would otherwise emit an out-of-range 10.
+    """
+
+    def _sensitivity(key: str) -> int:
+        return 10 - max(1, min(9, source.get(key, 3)))
+
+    return {
+        "min_range": source.get("static_min_distance", 0.3),
+        "max_range": source.get("static_max_distance", 16.0),
+        "trigger_range": source.get("static_max_distance", 16.0),
+        "trigger_sensitivity": _sensitivity("static_trigger_threshold"),
+        "sustain_sensitivity": _sensitivity("static_renew_threshold"),
+        "timeout": source.get("static_timeout", 30.0),
+        "on_delay": source.get("static_on_delay", 0.0),
+        "led_enabled": True,
+    }
+
+
 def _resolve_zone_name(
     language: str,
     *,
