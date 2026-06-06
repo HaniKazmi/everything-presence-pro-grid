@@ -73,6 +73,23 @@ describe("lib/help-url", () => {
 			).toBe(`${DOCS_BASE_URL}user-guide/calibration/`);
 		});
 
+		it("maps panelTab=device-groups to user-guide/device-groups/ regardless of view", () => {
+			expect(
+				getHelpUrl({
+					panelTab: "device-groups",
+					view: "live",
+					sidebarTab: "zones",
+				}),
+			).toBe(`${DOCS_BASE_URL}user-guide/device-groups/`);
+			expect(
+				getHelpUrl({
+					panelTab: "device-groups",
+					view: "editor",
+					sidebarTab: "furniture",
+				}),
+			).toBe(`${DOCS_BASE_URL}user-guide/device-groups/`);
+		});
+
 		it("maps panelTab=flasher to user-guide/flashing-firmware/ regardless of view", () => {
 			expect(
 				getHelpUrl({ panelTab: "flasher", view: "live", sidebarTab: "zones" }),

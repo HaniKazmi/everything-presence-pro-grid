@@ -289,6 +289,57 @@ A `diagnostics.py` module supplies HA's standard diagnostics download
 See [data-catalog.md](data-catalog.md) for the complete
 data field inventory.
 
+### Device Groups (`device_groups/`)
+
+A device group combines several physical EPP Grid devices into one logical
+presence sensor, exposing **merged** presence + zone `binary_sensor` entities
+under a single HA device. This lets a user cover one room with multiple radars
+and consume a single occupancy entity that is `on` when *any* member sees
+presence.
+
+The feature does no signal processing of its own — it OR-aggregates the
+member devices' existing ESPHome presence/zone entities:
+
+- **`DeviceGroupManager` (`device_groups/__init__.py`)** — CRUD owner. Create /
+  update / delete validate the constraints in `const.py` (`MAX_DEVICE_GROUPS`,
+  `MAX_SOURCES_PER_DEVICE_GROUP`, `MAX_ZONE_GROUPS_PER_DEVICE_GROUP`), persist
+  to `storage.py`, (re)spawn an `Aggregator` per group, fire change listeners
+  (consumed by the WS subscription), and ask the binary_sensor platform to
+  reconcile entities. Delete also removes the group's HA device-registry entry.
+- **`Aggregator` (`_aggregator.py`)** — one per group. Subscribes to the member
+  entities' state changes via `async_track_state_change_event` and recomputes
+  three output maps: `presence[slot]`, `zone_groups[zg_id]`, and
+  `zone_passthroughs[(mac, idx)]`. Each is OR-aggregated by the pure
+  `or_presence()` in `_aggregation.py` (`on` if any source is `on`, `off` if
+  all available sources are `off`, `None` if nothing contributes —
+  `unknown`/`unavailable` are ignored).
+- **`_registry.py`** — resolves a `(mac, slot)` to a concrete ESPHome
+  `entity_id`, and builds the per-source `SourceState` (which presence slots are
+  enabled and which zones are configured/named) used for projection.
+- **`_projection.py` — `derive_exposed_entities()`** — pure function mapping a
+  group definition + source state to the list of entities the group *will*
+  expose: presence is the union of enabled slots; each zone group becomes one
+  merged entity; ungrouped enabled zones pass through, name-collision-resolved
+  with a source-name prefix. **This is mirrored verbatim in the frontend**
+  (`lib/device-groups-projection.ts`) so the editor can preview entities without
+  a round trip — keep the two in sync (see *Firmware ↔ TypeScript Sync* for the
+  general policy; the same discipline applies here).
+- **`binary_sensor.py`** — the `Platform.BINARY_SENSOR` platform, forwarded from
+  `async_setup_entry`. A `_PlatformProxy.sync_all()` reconciles live entities to
+  the current group definitions (presence / zone-group / zone-passthrough
+  entity classes), wiring each to its aggregator output key, and applies each
+  group's `area_id` to the HA device registry.
+- **WS API (`websocket_api/_device_groups.py`)** — admin-only list / create /
+  update / delete / subscribe commands. See data-catalog.md for the message
+  schemas. Note the wire param is `group_id` (not `id`) because HA reserves
+  top-level `id` for the message envelope.
+
+Frontend side: `controllers/device-groups-controller.ts` is the WS client
+(subscribe + CRUD), `views/epp-device-groups-view.ts` is the list/editor host
+wired into the panel's **Device Groups** tab, and the
+`components/epp-device-group-editor.ts` + `components/epp-zone-merge-list.ts`
+components edit one group (basics + source selection + zone merging).
+
 ## TypeScript Frontend
 
 ### Build System

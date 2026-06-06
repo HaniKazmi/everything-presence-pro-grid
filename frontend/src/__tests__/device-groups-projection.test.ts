@@ -66,6 +66,90 @@ describe("deriveExposedEntities — zones", () => {
 		expect(names).toEqual(["Left Desk", "Right Desk"]);
 	});
 
+	it("passthrough zones are sorted by index within a source", () => {
+		const result = deriveExposedEntities(
+			[
+				source(
+					"AA",
+					"Left",
+					[],
+					[
+						{ index: 3, name: "Far", enabled: true },
+						{ index: 1, name: "Near", enabled: true },
+					],
+				),
+			],
+			[],
+		);
+		expect(result.zones.map((z) => z.name)).toEqual(["Near", "Far"]);
+	});
+
+	it("disabled zones are not exposed as passthroughs", () => {
+		const result = deriveExposedEntities(
+			[
+				source(
+					"AA",
+					"Left",
+					[],
+					[
+						{ index: 1, name: "On", enabled: true },
+						{ index: 2, name: "Off", enabled: false },
+					],
+				),
+			],
+			[],
+		);
+		expect(result.zones.map((z) => z.name)).toEqual(["On"]);
+	});
+
+	it("a group whose members are all disabled is exposed as unavailable", () => {
+		const result = deriveExposedEntities(
+			[source("AA", "Left", [], [{ index: 2, name: "Bed L", enabled: false }])],
+			[{ id: "g1", name: "Bed", members: [{ mac: "AA", zone_index: 2 }] }],
+		);
+		expect(result.zones).toEqual([
+			{ kind: "group", id: "g1", name: "Bed", available: false },
+		]);
+	});
+
+	it("a group member pointing at an unknown source is ignored", () => {
+		const result = deriveExposedEntities(
+			[source("AA", "Left", [], [{ index: 2, name: "Bed L", enabled: true }])],
+			[
+				{
+					id: "g1",
+					name: "Bed",
+					members: [
+						{ mac: "AA", zone_index: 2 },
+						{ mac: "ZZ", zone_index: 9 },
+					],
+				},
+			],
+		);
+		expect(result.zones).toEqual([
+			{ kind: "group", id: "g1", name: "Bed", available: true },
+		]);
+	});
+
+	it("a group member pointing at a non-existent zone index does not enable the group", () => {
+		const result = deriveExposedEntities(
+			[source("AA", "Left", [], [{ index: 2, name: "Bed L", enabled: true }])],
+			[{ id: "g1", name: "Bed", members: [{ mac: "AA", zone_index: 99 }] }],
+		);
+		// The group is unavailable (its only member resolves to no real zone),
+		// and the real zone 2 — never actually grouped — still passes through.
+		expect(result.zones).toEqual([
+			{ kind: "group", id: "g1", name: "Bed", available: false },
+			{
+				kind: "passthrough",
+				mac: "AA",
+				zone_index: 2,
+				name: "Bed L",
+				available: true,
+			},
+		]);
+	});
+
 	it("a zone in a group is excluded from passthroughs", () => {
 		const result = deriveExposedEntities(
 			[
