@@ -10,6 +10,32 @@
  * we detect either shape and install a Map-backed Storage.
  */
 
+/**
+ * Stop happy-dom's MutationObserver from losing its callback to the GC.
+ *
+ * happy-dom stores each observer listener's callback in a `WeakRef`
+ * (mutation-observer/MutationObserverListener) and, on the next mutation,
+ * `deref()`s it — if the GC already collected the callback the listener is
+ * silently spliced out and the mutation never fires. Real browsers hold
+ * observer callbacks strongly, so this only bites in the test env, and only
+ * under memory pressure (full-suite runs cross job boundaries while the GC
+ * runs), producing load-dependent flakes like panel-mount-guard's
+ * "re-attaches the inner observer" test. Holding WeakRef targets strongly in
+ * tests matches browser semantics. happy-dom's other WeakRef uses are caches
+ * cleared explicitly on mutation, so retaining them for a short-lived test
+ * run is harmless, and our own code uses no WeakRef.
+ */
+class StrongRef<T extends object> {
+	#target: T;
+	constructor(target: T) {
+		this.#target = target;
+	}
+	deref(): T | undefined {
+		return this.#target;
+	}
+}
+globalThis.WeakRef = StrongRef as unknown as typeof WeakRef;
+
 const existingStorage = globalThis.localStorage as Storage | undefined;
 if (!existingStorage || typeof existingStorage.setItem !== "function") {
 	const store = new Map<string, string>();
