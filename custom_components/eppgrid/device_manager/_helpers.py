@@ -13,6 +13,7 @@ from homeassistant.helpers import device_registry as dr
 
 from ..const import DOMAIN
 from ..const import NUM_ZONE_SLOTS
+from ..const import STATIC_ON_DELAY_MAX
 
 # Mirror of frontend ZONE_TYPE_DEFAULTS — test_zone_type_defaults_match_frontend
 # asserts the two agree. Non-custom zones store only `type`; the backend
@@ -75,6 +76,9 @@ def _static_presence_args(source: dict[str, Any]) -> dict[str, Any]:
     = more sensitive", so they invert as ``10 - threshold`` (1->9 .. 9->1).
     Thresholds are clamped to 1-9 to guard against legacy values stored when
     the slider still allowed 0, which would otherwise emit an out-of-range 10.
+    The on-delay is likewise clamped to the DFRobot C4001 range [0, 2]s to
+    guard against legacy values stored when the slider allowed up to 30s; the
+    sensor silently rejects anything above its limit otherwise.
     """
 
     def _sensitivity(key: str) -> int:
@@ -87,7 +91,7 @@ def _static_presence_args(source: dict[str, Any]) -> dict[str, Any]:
         "trigger_sensitivity": _sensitivity("static_trigger_threshold"),
         "sustain_sensitivity": _sensitivity("static_renew_threshold"),
         "timeout": source.get("static_timeout", 30.0),
-        "on_delay": source.get("static_on_delay", 0.0),
+        "on_delay": min(max(source.get("static_on_delay", 0.0), 0.0), STATIC_ON_DELAY_MAX),
         "led_enabled": True,
     }
 

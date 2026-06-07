@@ -1002,6 +1002,61 @@ class TestSchemaInputBounds:
         # No exception
         self._validate(websocket_set_room_layout, payload)
 
+    # ---- static_on_delay hardware bounds (DFRobot C4001: 0-2s) ----
+
+    @staticmethod
+    def _set_settings_payload(on_delay: float) -> dict:
+        """A complete valid set_settings payload with a given static_on_delay."""
+        return {
+            "id": 1,
+            "type": "eppgrid/set_settings",
+            "mac": "AA:BB:CC:DD:EE:FF",
+            "temperature_offset": 0.0,
+            "humidity_offset": 0.0,
+            "illuminance_offset": 0.0,
+            "motion_timeout": 5.0,
+            "target_auto_distance": True,
+            "target_max_distance": 4.0,
+            "stuck_target_timeout": 120.0,
+            "static_auto_distance": False,
+            "static_min_distance": 0.3,
+            "static_max_distance": 8.0,
+            "static_trigger_threshold": 3,
+            "static_renew_threshold": 3,
+            "static_timeout": 30.0,
+            "static_on_delay": on_delay,
+            "led_mode": "Manual Control",
+            "led_brightness": 1.0,
+            "led_presence_color": "#CC33FF",
+            "relay_trigger_mode": "disabled",
+            "relay_contact_mode": "no",
+        }
+
+    def test_static_on_delay_rejects_above_hardware_max(self) -> None:
+        """static_on_delay above 2s exceeds the DFRobot C4001 trigger-delay range."""
+        import voluptuous as vol
+
+        from custom_components.eppgrid.websocket_api import websocket_set_settings
+
+        with pytest.raises(vol.Invalid):
+            self._validate(websocket_set_settings, self._set_settings_payload(2.5))
+
+    def test_static_on_delay_rejects_negative(self) -> None:
+        """static_on_delay must not be negative."""
+        import voluptuous as vol
+
+        from custom_components.eppgrid.websocket_api import websocket_set_settings
+
+        with pytest.raises(vol.Invalid):
+            self._validate(websocket_set_settings, self._set_settings_payload(-0.5))
+
+    def test_static_on_delay_accepts_hardware_bounds(self) -> None:
+        """static_on_delay of 0s and 2s (the hardware limits) pass validation."""
+        from custom_components.eppgrid.websocket_api import websocket_set_settings
+
+        self._validate(websocket_set_settings, self._set_settings_payload(0.0))
+        self._validate(websocket_set_settings, self._set_settings_payload(2.0))
+
     # ---- Item 2: malformed MAC format ----
 
     @pytest.mark.parametrize(

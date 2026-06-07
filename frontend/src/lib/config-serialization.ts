@@ -11,6 +11,12 @@ import {
 	type ZoneConfig,
 } from "./zone-defaults.js";
 
+// DFRobot C4001 static-presence trigger delay ("on delay") hardware limit.
+// The sensor accepts 0-2s; values up to 30 were storable under the old slider,
+// so a stale stored value must be clamped on load or the set_settings schema
+// (which now rejects >2) would fail a save where the slider was left untouched.
+export const STATIC_ON_DELAY_MAX = 2;
+
 // Coerce an unknown stored `type` to a valid key. Pre-0.95 layouts used
 // "normal"/"thoroughfare"/"rest" — those (and anything else unrecognised)
 // fall through to "default" so the <select> has a matching option.
@@ -239,7 +245,10 @@ export function parseSettings(
 		staticTriggerThreshold: s.static_trigger_threshold ?? 3,
 		staticRenewThreshold: s.static_renew_threshold ?? 3,
 		staticTimeout: s.static_timeout ?? 30,
-		staticOnDelay: s.static_on_delay ?? 0,
+		staticOnDelay: Math.min(
+			Math.max(s.static_on_delay ?? 0, 0),
+			STATIC_ON_DELAY_MAX,
+		),
 		entities: entities || {},
 		logLevels: logLevels ?? {},
 		ledMode: s.led_mode ?? "Manual Control",

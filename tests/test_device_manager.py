@@ -333,6 +333,49 @@ class TestDeviceConnection:
                 "led_enabled": True,
             }
 
+    async def test_push_config_clamps_stale_on_delay_to_hardware_max(self) -> None:
+        """A stored static_on_delay above 2s is clamped to the C4001 limit before push."""
+        conn = DeviceConnection("192.168.1.100")
+
+        svc_static = MagicMock()
+        svc_static.name = "epp_set_static_presence"
+        services = [svc_static]
+
+        with patch("custom_components.eppgrid.device_manager._connection.APIClient") as mock_cls:
+            mock_client = mock_cls.return_value
+            mock_client.connect = AsyncMock()
+            mock_client.list_entities_services = AsyncMock(return_value=([], services))
+            mock_client.execute_service = AsyncMock()
+
+            await conn.async_connect()
+            # 15.0 was storable under the old (max=30) slider; firmware caps at 2s.
+            await conn.async_push_config({"settings": {"static_on_delay": 15.0}})
+
+            calls = mock_client.execute_service.await_args_list
+            payloads = {c.args[0].name: c.args[1] for c in calls}
+            assert payloads["epp_set_static_presence"]["on_delay"] == 2.0
+
+    async def test_push_distance_override_clamps_stale_on_delay(self) -> None:
+        """A stored static_on_delay above 2s is clamped when pushed via override."""
+        conn = DeviceConnection("192.168.1.100")
+
+        svc_static = MagicMock()
+        svc_static.name = "epp_set_static_presence"
+        services = [svc_static]
+
+        with patch("custom_components.eppgrid.device_manager._connection.APIClient") as mock_cls:
+            mock_client = mock_cls.return_value
+            mock_client.connect = AsyncMock()
+            mock_client.list_entities_services = AsyncMock(return_value=([], services))
+            mock_client.execute_service = AsyncMock()
+
+            await conn.async_connect()
+            await conn.async_push_distance_override({"static_on_delay": 15.0})
+
+            calls = mock_client.execute_service.await_args_list
+            payloads = {c.args[0].name: c.args[1] for c in calls}
+            assert payloads["epp_set_static_presence"]["on_delay"] == 2.0
+
     async def test_push_config_settings_defaults(self) -> None:
         """Missing settings keys fall back to correct defaults."""
         conn = DeviceConnection("192.168.1.100")
