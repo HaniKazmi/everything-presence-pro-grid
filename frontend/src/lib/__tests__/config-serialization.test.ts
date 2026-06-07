@@ -539,6 +539,19 @@ describe("parseSettings", () => {
 		expect(s.staticOnDelay).toBe(2);
 	});
 
+	it("clamps a stale static_on_delay above the 2s hardware limit", () => {
+		// Values up to 30 were storable under the old slider; the C4001 caps at
+		// 2s and the set_settings schema now rejects >2, so the loaded value
+		// must be clamped or a save (without touching the slider) would fail.
+		const s = parseSettings({ static_on_delay: 15 });
+		expect(s.staticOnDelay).toBe(2);
+	});
+
+	it("clamps a negative static_on_delay to 0", () => {
+		const s = parseSettings({ static_on_delay: -5 });
+		expect(s.staticOnDelay).toBe(0);
+	});
+
 	it("passes entities from separate argument", () => {
 		const s = parseSettings({}, { room_occupancy: true, room_presence: false });
 		expect(s.entities).toEqual({ room_occupancy: true, room_presence: false });

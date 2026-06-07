@@ -1,5 +1,6 @@
 import { css, html, LitElement, nothing } from "lit";
 import { property } from "lit/decorators.js";
+import { STATIC_ON_DELAY_MAX } from "../lib/config-serialization.js";
 import {
 	autoDetectionRange,
 	getGridRoomMetrics,
@@ -709,7 +710,7 @@ export class EppSettingsView extends LitElement {
           <h4>${this.localize("settings.static_sensor")}</h4>
           <div class="setting-row">
             <label>${this.localize("settings.presence_delay")}</label>
-            <span class="setting-input-unit"><input type="range" class="setting-range" .value=${String(this.staticOnDelay)} min="0" max="30" step="0.5" @input=${(
+            <span class="setting-input-unit"><input type="range" class="setting-range" .value=${String(this.staticOnDelay)} min="0" max=${String(STATIC_ON_DELAY_MAX)} step="0.1" @input=${(
 							e: Event,
 						) => {
 							const el = e.target as HTMLInputElement;

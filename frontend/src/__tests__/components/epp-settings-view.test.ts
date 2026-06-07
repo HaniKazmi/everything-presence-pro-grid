@@ -692,6 +692,34 @@ describe("renderEnvOffset", () => {
 	});
 });
 
+describe("presence delay (static on-delay) slider", () => {
+	function findPresenceDelaySlider(sv: EppSettingsView): HTMLInputElement {
+		const rows = Array.from(
+			sv.shadowRoot!.querySelectorAll(".setting-row"),
+		) as HTMLElement[];
+		const row = rows.find(
+			(r) =>
+				r.querySelector("label")?.textContent?.trim() ===
+				"settings.presence_delay",
+		);
+		if (!row) throw new Error("Presence delay row not found");
+		return row.querySelector(".setting-range") as HTMLInputElement;
+	}
+
+	it("clamps slider range to the DFRobot C4001 hardware limits (0-2s, 0.1 step)", async () => {
+		const sv = createView({ staticOnDelay: 0 });
+		document.body.appendChild(sv);
+		sv.openAccordions = new Set(["sensitivity"]);
+		await sv.updateComplete;
+
+		const slider = findPresenceDelaySlider(sv);
+		expect(slider.min).toBe("0");
+		expect(slider.max).toBe("2");
+		expect(slider.step).toBe("0.1");
+		document.body.removeChild(sv);
+	});
+});
+
 describe("infoTip", () => {
 	it("returns a defined template", () => {
 		const sv = createView();

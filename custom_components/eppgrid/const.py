@@ -10,6 +10,11 @@ GRID_CELL_SIZE_MM = 300  # Fixed 300mm x 300mm cells
 # ESPHome API
 DEFAULT_PORT = 6053
 
+# DFRobot C4001 static-presence trigger delay ("on delay") hardware limit.
+# The sensor's setLatency trigger parameter accepts 0-2s (0.01s resolution);
+# values above this are silently rejected by the sensor.
+STATIC_ON_DELAY_MAX = 2.0
+
 MAX_ZONES = 7
 NUM_ZONE_SLOTS = MAX_ZONES + 1  # 8: zone 0 + named zones 1-7
 

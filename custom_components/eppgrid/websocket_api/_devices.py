@@ -18,6 +18,7 @@ from homeassistant.helpers import entity_registry as er
 from ..const import DOMAIN
 from ..const import GRID_COLS
 from ..const import GRID_ROWS
+from ..const import STATIC_ON_DELAY_MAX
 from ..const import empty_zone_slots
 from . import _LOGGER
 from . import CONFIGURATION_DICT_SCHEMA
@@ -883,7 +884,7 @@ _SETTINGS_KEYS = (
         vol.Required("static_trigger_threshold"): vol.Coerce(int),
         vol.Required("static_renew_threshold"): vol.Coerce(int),
         vol.Required("static_timeout"): vol.Coerce(float),
-        vol.Required("static_on_delay"): vol.Coerce(float),
+        vol.Required("static_on_delay"): vol.All(vol.Coerce(float), vol.Range(min=0, max=STATIC_ON_DELAY_MAX)),
         vol.Required("led_mode"): vol.In(["Manual Control", "Presence", "Environmental", "Environmental + Presence"]),
         vol.Required("led_brightness"): vol.All(vol.Coerce(float), vol.Range(min=0.1, max=1.0)),
         vol.Required("led_presence_color"): vol.Match(r"^#[0-9A-Fa-f]{6}$"),
