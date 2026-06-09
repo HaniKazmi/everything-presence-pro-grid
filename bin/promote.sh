@@ -29,12 +29,18 @@ fi
 
 TAG="v$VERSION"
 
-# Confirm the release exists and learn its current state.
-if ! PRERELEASE=$(gh release view "$TAG" --json isPrerelease --jq '.isPrerelease' 2>/dev/null); then
-  echo "error: no GitHub release found for $TAG" >&2
-  echo "  (has the tag been pushed and has the firmware-release workflow finished?)" >&2
+# Confirm the release exists and learn its current state. Capture stderr (via
+# 2>&1) so a gh failure surfaces its real cause instead of being silently
+# misattributed to a missing release — the error could equally be auth,
+# network, rate-limiting, or running outside the repo. On success gh writes
+# only the bool to stdout, so VIEW holds "true"/"false".
+if ! VIEW=$(gh release view "$TAG" --json isPrerelease --jq '.isPrerelease' 2>&1); then
+  echo "error: could not read GitHub release $TAG:" >&2
+  printf '  %s\n' "$VIEW" >&2
+  echo "  (if it doesn't exist, has the tag been pushed and the firmware-release workflow finished?)" >&2
   exit 1
 fi
+PRERELEASE="$VIEW"
 
 if [ "$PRERELEASE" != "true" ]; then
   echo "$TAG is already a full release; nothing to do."

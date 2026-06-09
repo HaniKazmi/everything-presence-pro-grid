@@ -16,7 +16,7 @@ SCRIPT = REPO_ROOT / "bin" / "promote.sh"
 GH_STUB = """#!/usr/bin/env bash
 if [ "$1" = "release" ] && [ "$2" = "view" ]; then
   if [ -n "${GH_STUB_VIEW_FAIL:-}" ]; then
-    echo "release not found" >&2
+    echo "release not found (simulated by gh stub)" >&2
     exit 1
   fi
   echo "${GH_STUB_PRERELEASE:-true}"
@@ -84,3 +84,6 @@ def test_errors_when_release_missing(tmp_path: Path):
     result = _run(tmp_path, "1.2.3", GH_STUB_VIEW_FAIL="1")
     assert result.returncode != 0
     assert _edit_log(tmp_path) == ""
+    # gh's own error must be surfaced, not swallowed and misattributed to a
+    # missing release (it could equally be an auth/network/cwd failure).
+    assert "simulated by gh stub" in (result.stdout + result.stderr)
