@@ -8,7 +8,7 @@ everything-presence-pro-grid/
 ├── frontend/                    # TypeScript/Lit panel
 ├── firmware/                    # ESPHome + C++ libs
 ├── docs/                        # This site
-├── scripts/hooks/pre-push       # Pre-push hook (required to be set up)
+├── .githooks/pre-push           # Pre-push hook (required to be set up)
 ├── scripts/pre-push-fast.sh     # Lightweight pre-push gate (run manually)
 ├── tests/                       # Python tests
 ├── .github/workflows/           # CI

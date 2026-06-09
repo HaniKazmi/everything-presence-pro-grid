@@ -37,13 +37,12 @@ pip install -r requirements-docs.txt
 
 ## Install the pre-push hook
 
-The repository ships a pre-push hook at `scripts/hooks/pre-push` that runs format, lint, tests, and coverage across Python, TypeScript, and C++ before every push. It's not optional for this project — CI runs the same checks and they need to pass.
+The repository ships a pre-push hook at `.githooks/pre-push` that runs format, lint, tests, and coverage across Python, TypeScript, and C++ before every push. It's not optional for this project — CI runs the same checks and they need to pass.
 
-Install it:
+Install it (points `core.hooksPath` at the version-controlled `.githooks/` dir, so it works in the main checkout and every worktree):
 
 ```bash
-ln -sf ../../scripts/hooks/pre-push .git/hooks/pre-push
-chmod +x scripts/hooks/pre-push
+bash bin/install-hooks.sh
 ```
 
 ## Building the frontend bundle
@@ -133,7 +132,7 @@ In order, on every `git push`:
 If any step fails, the push aborts. Fix the issue, re-stage, and push again.
 
 !!! tip
-    Running the hook locally via `./scripts/hooks/pre-push origin main` is a faster way to catch failures than waiting for a rejected push.
+    Running the hook locally via `./.githooks/pre-push origin main` is a faster way to catch failures than waiting for a rejected push.
 
 ## PR process
 

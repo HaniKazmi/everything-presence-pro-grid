@@ -37,6 +37,11 @@ fi
 
 changed_files=$(git diff --name-only "$DIFF_RANGE" 2>/dev/null || echo "")
 
+# Only run a language's (slower) gates when files for that language changed —
+# the cheap docs/translations drift checks below always run.
+py_changed=$(echo "$changed_files" | grep -E '\.py$' || true)
+ts_changed=$(echo "$changed_files" | grep -E '^frontend/' || true)
+
 step "Docs check"
 if bash "$ROOT/scripts/check-docs-update.sh" "$DIFF_RANGE"; then
     pass "Docs check"
@@ -80,7 +85,9 @@ else
     fail "Translations — see errors above"
 fi
 
-# -- Python --
+# -- Python (only if Python code changed) --
+
+if [ -n "$py_changed" ]; then
 
 step "Python format check"
 if ruff format --check "$ROOT/custom_components/" "$ROOT/tests/" "$ROOT/firmware/" 2>&1; then
@@ -105,6 +112,8 @@ if (unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE; python -m pytest "$ROOT/tests/" 
 else
     fail "Python tests + coverage"
 fi
+
+fi # python changed
 
 # -- C++ (only if firmware code changed) --
 
@@ -170,7 +179,9 @@ rm -rf "$CPP_BUILD" "$HELPERS_BUILD"
 
 fi # firmware changed
 
-# -- TypeScript --
+# -- TypeScript (only if the frontend changed) --
+
+if [ -n "$ts_changed" ]; then
 
 step "TypeScript format check"
 if (cd "$FRONTEND" && npx biome format src/) 2>&1; then
@@ -199,6 +210,8 @@ if (cd "$FRONTEND" && npx vitest run --coverage) 2>&1; then
 else
     fail "TypeScript tests + coverage"
 fi
+
+fi # frontend changed
 
 # -- Result --
 
