@@ -7,7 +7,9 @@
 #          bin/release.sh 0.93.0-alpha.1
 #
 # After the PR merges, push the v<version> tag to trigger the firmware
-# release workflow.
+# release workflow. That workflow publishes the release as a PRE-RELEASE
+# (never auto-marked "latest"). Once tested, promote it with
+# `bin/promote.sh <version>`.
 
 set -euo pipefail
 
@@ -136,6 +138,13 @@ After merge, push the tag to trigger the firmware-release workflow:
 \`\`\`
 git tag $TAG
 git push origin $TAG
+\`\`\`
+
+The release is published as a **pre-release** (never auto-marked latest).
+Once you've tested it, promote it to the latest full release:
+
+\`\`\`
+bin/promote.sh $VERSION
 \`\`\`
 "
 

@@ -139,6 +139,7 @@ everything-presence-pro-grid/
 │   └── user-guide/              # End-user documentation
 ├── tests/                       # Python tests (pytest)
 ├── bin/release.sh               # Release-PR helper
+├── bin/promote.sh               # Promote a pre-release to latest
 ├── pyproject.toml               # Python config (ruff)
 └── .github/workflows/           # CI: tests, firmware builds, release, pages, codeql
 ```
@@ -613,11 +614,15 @@ changes.
 `manifest.json` ≠ tag, or if the three firmware-version files (manifest
 template, `FIRMWARE_VERSION`, etc.) disagree. If the tag bumps the firmware
 version it compiles the variants, generates ESP Web Tools manifests, and
-publishes them as release assets. Tags `make_latest=true` only for
-firmware-changing non-pre-release tags; pre-releases (`-alpha`, `-beta`,
-`-rc`) are never auto-promoted.
+publishes them as release assets. **Every release is published as a
+pre-release** (`prerelease=true`, `make_latest=false`) — none are ever
+auto-marked the GitHub `latest`. After testing, promote with
+`bin/promote.sh <version>` (which runs `gh release edit v<version>
+--prerelease=false --latest=true`).
 
 **pages.yml** — Triggers on push to main *and* on `release: released`.
 Stages `fw/` from the GitHub `latest` release via `gh api /releases/latest`
-(simpler than scanning + filtering). Promoting a pre-release to latest in
-the GitHub UI re-fires this workflow without needing a fresh tag.
+(simpler than scanning + filtering). Since releases start as pre-releases,
+`fw/latest/` stays on the previous promoted release until you promote the
+new one; promotion fires `release: released`, re-running this workflow
+without needing a fresh tag.

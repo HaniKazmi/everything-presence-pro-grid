@@ -197,7 +197,7 @@ This site. MkDocs Material source.
 - **`hassfest.yml`** — HA integration metadata validation.
 - **`codeql.yml`** — CodeQL analysis (Python, JS/TS, C/C++).
 - **`pages.yml`** — builds and deploys this docs site to GitHub Pages, and stages `fw/` from the GitHub `latest` release. Triggers on push to main *and* on `release: released`, so promoting a pre-release to latest republishes Pages without needing a fresh tag.
-- **`firmware-release.yml`** — on tag push, validates that the manifest, `manifest.json`, and `FIRMWARE_VERSION` all agree (via `.github/scripts/validate-release.sh`), then compiles the firmware variants and uploads ESP Web Tools manifests + binaries as release assets. Marks the release as `latest` only when the tag bumps the firmware version and isn't a pre-release.
+- **`firmware-release.yml`** — on tag push, validates that the manifest, `manifest.json`, and `FIRMWARE_VERSION` all agree (via `.github/scripts/validate-release.sh`), then compiles the firmware variants and uploads ESP Web Tools manifests + binaries as release assets. Publishes every release as a **pre-release** (never auto-marked `latest`); promote it after testing with `bin/promote.sh <version>`.
 
 ---
 
