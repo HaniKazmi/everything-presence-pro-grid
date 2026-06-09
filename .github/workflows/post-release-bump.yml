@@ -75,13 +75,17 @@ jobs:
           # Forward-only guard: only bump if NEXT > CURRENT (semver tuple
           # comparison of the X.Y.Z parts). Promoting an old release also fires
           # this event; without the guard it could regress main's version.
-          if NEXT="$NEXT" CURRENT="$CURRENT" python3 -c "
+          #
+          # Print a boolean instead of encoding the result in the exit code, so a
+          # Python crash (e.g. a malformed version) fails the step loudly under
+          # `set -e` rather than being mistaken for "not ahead" and silently skipped.
+          AHEAD=$(NEXT="$NEXT" CURRENT="$CURRENT" python3 -c "
           import os
           def parts(v):
               return tuple(int(x) for x in v.split('-')[0].split('.'))
-          import sys
-          sys.exit(0 if parts(os.environ['NEXT']) > parts(os.environ['CURRENT']) else 1)
-          "; then
+          print('true' if parts(os.environ['NEXT']) > parts(os.environ['CURRENT']) else 'false')
+          ")
+          if [ "$AHEAD" = "true" ]; then
             echo "do_bump=true" >> "$GITHUB_OUTPUT"
             echo "Next minor $NEXT is ahead of current manifest version $CURRENT; will open bump PR."
             bin/bump-version.sh "$NEXT"
