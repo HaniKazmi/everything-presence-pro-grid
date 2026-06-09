@@ -1,0 +1,136 @@
+name: Post-release bump
+
+# Rolls main forward to the next minor once a release is PROMOTED, so unreleased
+# work no longer carries the just-released version.
+#
+# Why `release: released` (promotion) and NOT tag push:
+#   firmware-release.yml publishes EVERY v* tag as a PRE-release (never the
+#   GitHub "latest"). A release only goes live later via `bin/promote.sh`
+#   (`gh release edit v<version> --prerelease=false --latest=true`), which fires
+#   the GitHub `release: released` event. Bumping on tag push would therefore
+#   fire for an unfinished, untested release; bumping on promotion fires exactly
+#   once the release is actually live.
+#
+# Forward-only guard: promoting an OLD release (e.g. patching a previous minor)
+# also fires `release: released`. We compare the promoted version against the
+# current manifest.json version and SKIP if it would not move main forward, so
+# an old promotion can never regress main's version.
+#
+# Requires a RELEASE_PAT repo secret (fine-grained PAT, contents:write +
+# pull-requests:write) and the repo "Allow auto-merge" setting enabled — the
+# bump PR must be opened by a PAT so it triggers the required status checks; a
+# GITHUB_TOKEN-created PR never does and can't be auto-merged.
+
+on:
+  release:
+    types: [released]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  bump:
+    runs-on: ubuntu-latest
+    name: Bump main to next minor
+    steps:
+      # The bump PR must be opened by a PAT/App token, NOT the default
+      # GITHUB_TOKEN: GitHub deliberately does not trigger `on: pull_request`
+      # workflows for token-created PRs, so a GITHUB_TOKEN-created PR never runs
+      # the required status checks and stays permanently blocked by the main
+      # protection ruleset (no bypass), making auto-merge impossible. Create a
+      # fine-grained PAT with contents:write + pull-requests:write and store it
+      # as the RELEASE_PAT repo secret.
+      - name: Ensure release token is configured
+        env:
+          RELEASE_PAT: ${{ secrets.RELEASE_PAT }}
+        run: |
+          if [ -z "$RELEASE_PAT" ]; then
+            echo "::error::RELEASE_PAT secret is not set. Create a fine-grained PAT with contents:write + pull-requests:write and add it as the RELEASE_PAT repo secret. Without it the bump PR is created by GITHUB_TOKEN, never triggers the required status checks, and cannot be auto-merged."
+            exit 1
+          fi
+
+      - uses: actions/checkout@v5
+        with:
+          ref: main
+
+      - name: Compute next minor and decide whether to bump
+        id: bump
+        env:
+          VERSION: ${{ github.event.release.tag_name }}
+        run: |
+          # Strip a leading "v" from the tag (e.g. v1.0.4 -> 1.0.4).
+          VERSION="${VERSION#v}"
+          # Validate the promoted version against the same semver contract the
+          # rest of the release tooling enforces.
+          bin/bump-version.sh --validate "$VERSION"
+
+          NEXT=$(VERSION="$VERSION" python3 -c "import os; mj, mn, _ = os.environ['VERSION'].split('-')[0].split('.'); print(f'{mj}.{int(mn)+1}.0')")
+          echo "next=$NEXT" >> "$GITHUB_OUTPUT"
+
+          CURRENT=$(python3 -c "import json; print(json.load(open('custom_components/eppgrid/manifest.json'))['version'])")
+
+          # Forward-only guard: only bump if NEXT > CURRENT (semver tuple
+          # comparison of the X.Y.Z parts). Promoting an old release also fires
+          # this event; without the guard it could regress main's version.
+          if NEXT="$NEXT" CURRENT="$CURRENT" python3 -c "
+          import os
+          def parts(v):
+              return tuple(int(x) for x in v.split('-')[0].split('.'))
+          import sys
+          sys.exit(0 if parts(os.environ['NEXT']) > parts(os.environ['CURRENT']) else 1)
+          "; then
+            echo "do_bump=true" >> "$GITHUB_OUTPUT"
+            echo "Next minor $NEXT is ahead of current manifest version $CURRENT; will open bump PR."
+            bin/bump-version.sh "$NEXT"
+          else
+            echo "do_bump=false" >> "$GITHUB_OUTPUT"
+            echo "Next minor $NEXT is not ahead of current manifest version $CURRENT (likely an old release was promoted); skipping bump."
+          fi
+
+      - name: Open next-minor bump PR
+        id: cpr
+        if: steps.bump.outputs.do_bump == 'true'
+        uses: peter-evans/create-pull-request@v7
+        with:
+          # PAT (not GITHUB_TOKEN) so the PR triggers the required status checks
+          # — see the "Ensure release token is configured" step above.
+          token: ${{ secrets.RELEASE_PAT }}
+          # Version-less branch name: HACS rejects version numbers in branch names.
+          branch: chore/post-release-bump
+          base: main
+          delete-branch: true
+          title: "chore: bump to ${{ steps.bump.outputs.next }} for development"
+          commit-message: "chore: bump version to ${{ steps.bump.outputs.next }}"
+          body: |
+            Post-release bump of `manifest.json` to `${{ steps.bump.outputs.next }}`.
+
+            Release `${{ github.event.release.tag_name }}` was promoted to a full
+            release; this rolls `main` forward to the next minor so unreleased work
+            no longer carries the just-released version. Touches **only**
+            `custom_components/eppgrid/manifest.json` — never `const.py`
+            (`FIRMWARE_VERSION`) or firmware YAML. Auto-merged by the
+            post-release-bump workflow.
+
+      # main requires a PR (can't push directly), but the bump is trivial,
+      # machine-generated, and already verified by bin/bump-version.sh — so
+      # enable auto-merge: GitHub merges once the required status checks pass.
+      # (Immediate `--merge` would fail here because the ruleset's checks are
+      # still pending right after the PR opens.) Retry briefly: GitHub computes
+      # mergeability asynchronously right after the PR is created.
+      - name: Enable auto-merge on the bump PR
+        if: steps.cpr.outputs.pull-request-number
+        env:
+          GH_TOKEN: ${{ secrets.RELEASE_PAT }}
+          PR: ${{ steps.cpr.outputs.pull-request-number }}
+        run: |
+          for attempt in 1 2 3 4 5 6; do
+            if gh pr merge "$PR" --auto --merge --delete-branch; then
+              echo "Auto-merge enabled for bump PR #$PR; it will merge once checks pass."
+              exit 0
+            fi
+            echo "enable-auto-merge attempt $attempt failed (mergeability may still be computing); retrying in 5s..."
+            sleep 5
+          done
+          echo "::error::failed to enable auto-merge on bump PR #$PR after retries"
+          exit 1

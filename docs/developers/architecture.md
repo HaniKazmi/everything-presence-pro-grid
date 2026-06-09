@@ -588,6 +588,8 @@ coverage.
 - **firmware-release.yml** — Tag-triggered firmware build + ESP Web Tools
   manifest publish
 - **pages.yml** — Stages `fw/` from the GitHub `latest` release for OTA
+- **post-release-bump.yml** — On `release: released`, rolls `main` forward
+  to the next minor (manifest only)
 - **codeql.yml** — CodeQL static analysis
 - **hacs.yml** — HACS repository structure validation
 - **hassfest.yml** — manifest.json schema validation
@@ -626,3 +628,15 @@ Stages `fw/` from the GitHub `latest` release via `gh api /releases/latest`
 `fw/latest/` stays on the previous promoted release until you promote the
 new one; promotion fires `release: released`, re-running this workflow
 without needing a fresh tag.
+
+**post-release-bump.yml** — Triggers on `release: released` (promotion), not
+on tag push: every tag is published as a pre-release, so bumping at tag time
+would fire for an unfinished release. On promotion it computes the next minor
+from the released tag and, **only if that is strictly ahead of the current
+`manifest.json` version** (forward-only guard, so promoting an old release
+can't regress `main`), runs `bin/bump-version.sh <next>` (manifest only —
+never `FIRMWARE_VERSION` or firmware YAML) and opens an auto-merging
+`chore/post-release-bump` PR. The PR is created with a `RELEASE_PAT`
+fine-grained secret (contents + PRs write) — a `GITHUB_TOKEN` PR wouldn't
+trigger the required status checks the `main` ruleset demands — and needs the
+repo's "Allow auto-merge" setting enabled.
