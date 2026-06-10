@@ -1913,7 +1913,6 @@ const _t=Symbol.for(""),pt=t=>{if(t?.r===_t)return t?._$litStatic$},ft=(t,...e)=
   .setting-info ha-icon {
     --mdc-icon-size: 18px;
     color: var(--primary-text-color, #212121);
-    cursor: default;
   }
 
   epp-info-tip {

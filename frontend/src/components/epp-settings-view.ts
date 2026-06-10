@@ -100,7 +100,6 @@ const settingControlStyles = css`
   .setting-info ha-icon {
     --mdc-icon-size: 18px;
     color: var(--primary-text-color, #212121);
-    cursor: default;
   }
 
   epp-info-tip {
