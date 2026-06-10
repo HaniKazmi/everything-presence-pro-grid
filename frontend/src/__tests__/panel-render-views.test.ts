@@ -1245,13 +1245,6 @@ describe("epp-live-sidebar via panel", () => {
 		expect(result).toBeDefined();
 	});
 
-	it("renders with expanded sensor info", () => {
-		const el = document.createElement("epp-live-sidebar") as any;
-		el._expandedSensorInfo = "occupancy";
-		const result = el.render();
-		expect(result).toBeDefined();
-	});
-
 	it("renders without configured zones (still shows rest-of-room)", () => {
 		const el = document.createElement("epp-live-sidebar") as any;
 		el.zoneConfigs = new Array(7).fill(null);

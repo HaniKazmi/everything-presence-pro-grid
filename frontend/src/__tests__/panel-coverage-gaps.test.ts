@@ -650,13 +650,12 @@ describe("epp-live-sidebar zone info toggles", () => {
 		const tpl = el.render();
 		const c = renderTo(tpl);
 
-		const infoBtns = c.querySelectorAll(".live-sensor-info-btn");
-		// Zone info should be beyond first 5 sensor buttons (occupancy, static, motion, target, mmwave).
-		// Slot 0 (rest-of-room) renders first, then named zones in slot order.
-		if (infoBtns.length > 6) {
-			(infoBtns[6] as HTMLElement).click();
-			expect(el._expandedSensorInfo).toBe("zone_1");
-		}
+		// Zone tips come after the 5 sensor tips (occupancy, static, motion,
+		// target, mmwave); slot 0 (rest-of-room) renders first, then named
+		// zones in slot order. Tooltip toggling is covered in epp-info-tip.test.ts.
+		const tips = c.querySelectorAll("epp-info-tip");
+		expect(tips.length).toBe(7);
+		expect((tips[6] as any).text).toBe("info.zone_occupancy");
 		document.body.removeChild(c);
 	});
 });

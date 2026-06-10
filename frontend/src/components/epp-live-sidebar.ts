@@ -1,8 +1,9 @@
-import { css, html, LitElement, nothing } from "lit";
-import { property, state } from "lit/decorators.js";
+import { css, html, LitElement, nothing, type TemplateResult } from "lit";
+import { property } from "lit/decorators.js";
 import { MAX_ZONES } from "../lib/grid.js";
 import type { ZoneConfig } from "../lib/zone-defaults.js";
 import { defaultLocalize, type LocalizeFn } from "../localize.js";
+import "./epp-info-tip.js";
 
 export interface SensorState {
 	occupancy: boolean;
@@ -49,8 +50,6 @@ export class EppLiveSidebar extends LitElement {
 	@property({ attribute: false }) hasPerspective = false;
 
 	@property({ attribute: false }) localize: LocalizeFn = defaultLocalize;
-
-	@state() private _expandedSensorInfo: string | null = null;
 
 	static styles = css`
     :host {
@@ -127,29 +126,26 @@ export class EppLiveSidebar extends LitElement {
       margin-left: auto;
     }
 
-    .live-sensor-info-btn {
-      background: none;
-      border: none;
-      color: var(--secondary-text-color, #aaa);
-      cursor: pointer;
-      padding: 2px;
-      flex-shrink: 0;
-      display: flex;
-      align-items: center;
-    }
-
-    .live-sensor-info-btn:hover {
-      color: var(--primary-color, #03a9f4);
-    }
-
-    .live-sensor-info-text {
-      font-size: 12px;
-      color: var(--secondary-text-color, #757575);
-      padding: 2px 12px 8px 30px;
-      line-height: 1.4;
-    }
-
   `;
+
+	// Shared row layout for presence and zone sensors. The dot is the only
+	// part that differs (on/off class vs. an inline-coloured zone dot), so it
+	// is passed in; the label, state badge, and info tip stay defined once.
+	private renderSensorRow(
+		label: string,
+		on: boolean,
+		info: string,
+		dot: TemplateResult,
+	) {
+		return html`
+      <div class="live-sensor-row">
+        ${dot}
+        <span class="live-sensor-label">${label}</span>
+        <span class="live-sensor-state ${on ? "detected" : ""}">${on ? this.localize("live.detected") : this.localize("live.clear")}</span>
+        <epp-info-tip .text=${info} .localize=${this.localize}></epp-info-tip>
+      </div>
+    `;
+	}
 
 	render() {
 		const ss = this.sensorState;
@@ -262,31 +258,13 @@ export class EppLiveSidebar extends LitElement {
 		return html`
       <div style="padding: 8px 0;">
         <div class="live-section-header">${this.localize("live.presence")}</div>
-        ${sensorDefs.map(
-					(s) => html`
-          <div class="live-sensor-row">
-            <div class="live-sensor-dot ${s.on ? "on" : "off"}"></div>
-            <span class="live-sensor-label">${s.label}</span>
-            <span class="live-sensor-state ${s.on ? "detected" : ""}">${s.on ? this.localize("live.detected") : this.localize("live.clear")}</span>
-            <button class="live-sensor-info-btn"
-              type="button"
-              aria-label=${this.localize("live.show_info")}
-              @click=${() => {
-								this._expandedSensorInfo =
-									this._expandedSensorInfo === s.id ? null : s.id;
-							}}
-            >
-              <ha-icon icon="mdi:information-outline" style="--mdc-icon-size: 16px;"></ha-icon>
-            </button>
-          </div>
-          ${
-						this._expandedSensorInfo === s.id
-							? html`
-            <div class="live-sensor-info-text">${s.info}</div>
-          `
-							: nothing
-					}
-        `,
+        ${sensorDefs.map((s) =>
+					this.renderSensorRow(
+						s.label,
+						s.on,
+						s.info,
+						html`<div class="live-sensor-dot ${s.on ? "on" : "off"}"></div>`,
+					),
 				)}
 
         ${
@@ -303,38 +281,20 @@ export class EppLiveSidebar extends LitElement {
 						}),
 					);
 				}}>${this.localize("sidebar.detection_zones")}</button>
-        ${zoneDefs.map(
-					(s) => html`
-          <div class="live-sensor-row">
-            <div
+        ${zoneDefs.map((s) =>
+					this.renderSensorRow(
+						s.label,
+						s.on,
+						s.info,
+						html`<div
               class="live-sensor-dot"
               style=${
 								s.color
 									? `background: ${s.color};${s.on ? ` box-shadow: 0 0 6px 2px ${s.color};` : ""}`
 									: `background: #fff; border: 1px solid #ccc;${s.on ? " box-shadow: 0 0 6px 2px #999;" : ""}`
 							}
-            ></div>
-            <span class="live-sensor-label">${s.label}</span>
-            <span class="live-sensor-state ${s.on ? "detected" : ""}">${s.on ? this.localize("live.detected") : this.localize("live.clear")}</span>
-            <button class="live-sensor-info-btn"
-              type="button"
-              aria-label=${this.localize("live.show_info")}
-              @click=${() => {
-								this._expandedSensorInfo =
-									this._expandedSensorInfo === s.id ? null : s.id;
-							}}
-            >
-              <ha-icon icon="mdi:information-outline" style="--mdc-icon-size: 16px;"></ha-icon>
-            </button>
-          </div>
-          ${
-						this._expandedSensorInfo === s.id
-							? html`
-            <div class="live-sensor-info-text">${s.info}</div>
-          `
-							: nothing
-					}
-        `,
+            ></div>`,
+					),
 				)}
         `
 						: nothing

@@ -757,33 +757,20 @@ describe("furniture overlay all handle events", () => {
 });
 
 // =========================================================
-// _infoTip click handler
+// _infoTip — delegates to the shared <epp-info-tip>; click/toggle behavior
+// is covered in epp-info-tip.test.ts.
 // =========================================================
-describe("_infoTip DOM click handler", () => {
-	it("click toggles tooltip display", () => {
+describe("_infoTip DOM rendering", () => {
+	it("renders an epp-info-tip with the tip text", () => {
 		const sv = createSettingsView() as any;
-
-		// Create mock shadowRoot that will be used by the handler
-		const tooltips: HTMLElement[] = [];
-		Object.defineProperty(sv, "shadowRoot", {
-			value: {
-				querySelectorAll: (sel: string) => {
-					if (sel === ".setting-info-tooltip") return tooltips;
-					return [];
-				},
-			},
-			configurable: true,
-		});
-
 		const tpl = sv.infoTip("Test tip");
 		const c = document.createElement("div");
 		document.body.appendChild(c);
 		render(tpl, c);
 
-		const infoSpan = c.querySelector(".setting-info") as HTMLElement;
-		if (infoSpan) {
-			infoSpan.click();
-		}
+		const tip = c.querySelector("epp-info-tip") as any;
+		expect(tip).not.toBeNull();
+		expect(tip.text).toBe("Test tip");
 		document.body.removeChild(c);
 	});
 });
