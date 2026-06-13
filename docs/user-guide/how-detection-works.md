@@ -129,6 +129,9 @@ flowchart LR
 
 Use it when you need to limit the range of the sensors, for instance where you have two sensors in a room, each monitoring half the room. It is not possible to limit the range of the motion sensor in the way you can with the target and static sensors. Using the mmWave presence entity allows you to divide the room cleanly into two independent zones. Disabled by default; enable it under Settings → Entities.
 
+!!! tip
+    The motion sensor's range can't be tuned — with a clear line of sight it reacts to movement up to 12 m away, including through an open doorway into the next room, which can flip **Occupancy** `on` when no one is actually in the room. **mmWave Presence** leaves the motion sensor out, so where this is a problem, automate on **mmWave Presence** instead.
+
 ## Auto-dismiss for stuck targets
 
 The LD2450 occasionally fixates on a phantom — a fan blade caught at just the right phase, a reflection off a glass cabinet, a stationary heat source — and reports it at byte-identical coordinates for as long as the misread persists. Without intervention, that phantom holds whatever zone it lands on permanently *occupied*.

@@ -1,0 +1,98 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 240" preserveAspectRatio="xMidYMid meet">
+  <style>
+    .label { fill: #444; font-family: -apple-system, system-ui, sans-serif; }
+    .body { font-size: 11px; }
+    .caption { font-size: 10px; opacity: 0.8; }
+    .title { font-size: 11px; font-weight: 600; }
+    .sensor { fill: #E53935; }
+    .wall { fill: none; stroke: #444; stroke-width: 2; }
+    .nextroom { fill: #999; fill-opacity: 0.10; stroke: #888; stroke-width: 1; stroke-dasharray: 4 3; }
+    .room-bad { fill: #E53935; fill-opacity: 0.07; }
+    .room-good { fill: #2E7D32; fill-opacity: 0.09; }
+    .leak { fill: #E53935; fill-opacity: 0.28; }
+    .sight-bad { fill: none; stroke: #E53935; stroke-width: 1.4; stroke-dasharray: 4 3; }
+    .sight-good { fill: none; stroke: #2E7D32; stroke-width: 1.4; stroke-dasharray: 4 3; }
+    .person { fill: #555; }
+    .person-off { fill: #555; opacity: 0.4; }
+    .divider { stroke: #bbb; stroke-width: 1; stroke-dasharray: 3 4; }
+    .wallhit { fill: #2E7D32; }
+    text.bad { fill: #E53935; }
+    text.good { fill: #2E7D32; }
+    @media (prefers-color-scheme: dark) {
+      .label { fill: #ddd; }
+      .wall { stroke: #ddd; }
+      .nextroom { stroke: #bbb; }
+    }
+  </style>
+
+  <!-- ===================== Panel A: aimed at the door ===================== -->
+  <text x="100" y="18" text-anchor="middle" class="label title">Aimed at the door</text>
+
+  <!-- next room beyond the doorway -->
+  <rect x="92" y="38" width="84" height="42" class="nextroom"/>
+  <text x="134" y="33" text-anchor="middle" class="label caption">another room</text>
+
+  <!-- escaping beam through the open doorway -->
+  <polygon points="100,80 132,80 163,40 121,40" class="leak"/>
+
+  <!-- room + faint motion coverage -->
+  <rect x="30" y="80" width="120" height="130" class="room-bad"/>
+  <!-- walls, with a gap for the door in the top wall (x 100..132) -->
+  <line x1="30" y1="80" x2="100" y2="80" class="wall"/>
+  <line x1="132" y1="80" x2="150" y2="80" class="wall"/>
+  <line x1="150" y1="80" x2="150" y2="210" class="wall"/>
+  <line x1="30" y1="210" x2="150" y2="210" class="wall"/>
+  <line x1="30" y1="80" x2="30" y2="210" class="wall"/>
+  <text x="116" y="92" text-anchor="middle" class="label caption">door</text>
+
+  <!-- line of sight straight through the doorway to the distant person -->
+  <line x1="32" y1="208" x2="138" y2="55" class="sight-bad"/>
+
+  <!-- distant person in the next room -->
+  <g>
+    <circle cx="138" cy="53" r="2.6" class="person"/>
+    <rect x="135.6" y="55.5" width="4.8" height="7" rx="2.2" class="person"/>
+  </g>
+  <text x="150" y="48" class="label caption bad">&#8776; 12 m</text>
+
+  <!-- sensor -->
+  <circle cx="32" cy="208" r="4" class="sensor"/>
+
+  <text x="100" y="228" text-anchor="middle" class="label caption bad">sees 12 m into the next room</text>
+
+  <!-- divider -->
+  <line x1="200" y1="28" x2="200" y2="216" class="divider"/>
+
+  <!-- ===================== Panel B: aimed at a wall ===================== -->
+  <text x="300" y="18" text-anchor="middle" class="label title">Aimed at a wall</text>
+
+  <!-- next room beyond the doorway (no one detected) -->
+  <rect x="290" y="38" width="84" height="42" class="nextroom"/>
+  <text x="332" y="33" text-anchor="middle" class="label caption">another room</text>
+
+  <!-- room + faint motion coverage -->
+  <rect x="235" y="80" width="120" height="130" class="room-good"/>
+  <!-- walls, with a gap for the door in the top wall (x 300..332) -->
+  <line x1="235" y1="80" x2="300" y2="80" class="wall"/>
+  <line x1="332" y1="80" x2="355" y2="80" class="wall"/>
+  <line x1="355" y1="80" x2="355" y2="210" class="wall"/>
+  <line x1="235" y1="210" x2="355" y2="210" class="wall"/>
+  <line x1="235" y1="80" x2="235" y2="210" class="wall"/>
+  <text x="316" y="92" text-anchor="middle" class="label caption">door</text>
+
+  <!-- line of sight aimed across the room into the opposite wall -->
+  <line x1="353" y1="208" x2="237" y2="82" class="sight-good"/>
+  <circle cx="237" cy="82" r="2.4" class="wallhit"/>
+  <text x="242" y="104" class="label caption good">hits the wall</text>
+
+  <!-- person in the next room, off the line of sight -->
+  <g>
+    <circle cx="343" cy="53" r="2.6" class="person-off"/>
+    <rect x="340.6" y="55.5" width="4.8" height="7" rx="2.2" class="person-off"/>
+  </g>
+
+  <!-- sensor -->
+  <circle cx="353" cy="208" r="4" class="sensor"/>
+
+  <text x="300" y="228" text-anchor="middle" class="label caption good">line of sight stops at the wall</text>
+</svg>
