@@ -1,5 +1,9 @@
 import { safeUnsub } from "../lib/safe-unsub.js";
-import type { DeviceGroup, DeviceGroupZoneGroup } from "../types.js";
+import type {
+	DeviceGroup,
+	DeviceGroupSource,
+	DeviceGroupZoneGroup,
+} from "../types.js";
 
 /**
  * Minimal slice of the HA Connection API the controller needs. Matches
@@ -15,6 +19,9 @@ export interface WsConnection {
 
 interface SubscribeEvent {
 	device_groups: DeviceGroup[];
+	/** Source state (zones + presence) for every managed device, so the editor
+	 * can show a device's zones as soon as it is selected. */
+	candidate_sources?: DeviceGroupSource[];
 }
 
 interface CreateUpdateResult {
@@ -26,6 +33,7 @@ export class DeviceGroupsController {
 	private _unsub: (() => void) | null = null;
 	private _listeners: Array<(groups: DeviceGroup[]) => void> = [];
 	private _cache: DeviceGroup[] = [];
+	private _candidateSources: DeviceGroupSource[] = [];
 
 	constructor(connection: WsConnection) {
 		this._conn = connection;
@@ -33,6 +41,12 @@ export class DeviceGroupsController {
 
 	get groups(): DeviceGroup[] {
 		return this._cache;
+	}
+
+	/** Every managed device as a candidate source (with its zones), refreshed on
+	 * each subscription event. */
+	get candidateSources(): DeviceGroupSource[] {
+		return this._candidateSources;
 	}
 
 	onChange(callback: (groups: DeviceGroup[]) => void): () => void {
@@ -47,6 +61,7 @@ export class DeviceGroupsController {
 		this._unsub = await this._conn.subscribeMessage<SubscribeEvent>(
 			(event) => {
 				this._cache = event.device_groups;
+				this._candidateSources = event.candidate_sources ?? [];
 				for (const cb of this._listeners) cb(this._cache);
 			},
 			{ type: "eppgrid/subscribe_device_groups" },

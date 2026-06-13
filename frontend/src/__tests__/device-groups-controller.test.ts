@@ -28,6 +28,32 @@ describe("DeviceGroupsController", () => {
 		expect(changes[0]).toEqual([]);
 	});
 
+	it("captures candidate_sources from the subscription event", async () => {
+		const conn = makeConnection();
+		const candidate = {
+			mac: "AA:BB:CC:DD:EE:FF",
+			name: "Spare",
+			available: true,
+			enabled_presence: [],
+			zones: [{ index: 1, name: "Hall", enabled: true }],
+		};
+		conn.subscribeMessage.mockImplementationOnce(async (cb, _msg) => {
+			cb({ device_groups: [], candidate_sources: [candidate] });
+			return () => {};
+		});
+		const ctrl = new DeviceGroupsController(conn as unknown as never);
+		expect(ctrl.candidateSources).toEqual([]);
+		await ctrl.subscribe();
+		expect(ctrl.candidateSources).toEqual([candidate]);
+	});
+
+	it("defaults candidate_sources to [] when the event omits it", async () => {
+		const conn = makeConnection();
+		const ctrl = new DeviceGroupsController(conn as unknown as never);
+		await ctrl.subscribe();
+		expect(ctrl.candidateSources).toEqual([]);
+	});
+
 	it("exposes the cached groups via the groups getter", async () => {
 		const conn = makeConnection();
 		const group = {

@@ -1,5 +1,6 @@
 import { css, html, LitElement, nothing } from "lit";
 import { property, state } from "lit/decorators.js";
+import { literal, html as staticHtml } from "lit/static-html.js";
 
 import "./epp-zone-merge-list.js";
 import type {
@@ -22,22 +23,26 @@ interface EditorDraft {
  */
 export class EppDeviceGroupEditor extends LitElement {
 	static styles = css`
-		:host { display: block; padding: 1rem; }
+		:host {
+			display: block;
+			max-width: 600px;
+			padding: 1rem;
+		}
 		.section { margin-bottom: 1.5rem; }
 		.section h3 { margin: 0 0 .5rem 0; }
-		.row { display: flex; gap: .5rem; margin-bottom: .25rem; }
+		.field { margin-bottom: 1rem; }
+		ha-input,
+		ha-textfield,
+		ha-area-picker {
+			display: block;
+			width: 100%;
+		}
+		.device-row { display: block; padding: .15rem 0; }
 		.actions {
 			display: flex;
 			gap: .5rem;
 			justify-content: flex-end;
 			margin-top: 1rem;
-		}
-		input[type="text"] {
-			width: 100%;
-			padding: .5rem;
-			border: 1px solid var(--divider-color);
-			background: var(--card-background-color);
-			color: var(--primary-text-color);
 		}
 		button {
 			padding: .5rem 1rem;
@@ -65,7 +70,9 @@ export class EppDeviceGroupEditor extends LitElement {
 	@property({ attribute: false }) availableDevices: DeviceInfo[] = [];
 	@property({ attribute: false }) existingGroup: DeviceGroup | null = null;
 	// Map of every known source by MAC, used to render the zone merge UI for
-	// any selected source. Populated by the parent view from cached groups.
+	// any selected source. Populated by the parent view from the candidate
+	// sources (every managed device) so a device's zones show as soon as it is
+	// toggled — not only after the group is saved.
 	@property({ attribute: false }) sourcesByMac: Record<
 		string,
 		DeviceGroupSource
@@ -93,15 +100,8 @@ export class EppDeviceGroupEditor extends LitElement {
 
 	render() {
 		return html`
-			<div class="section">
-				<h3>Basics</h3>
-				<input
-					type="text"
-					.value=${this._draft.name}
-					placeholder="Master Bedroom Presence"
-					@input=${(e: Event) =>
-						this._update({ name: (e.target as HTMLInputElement).value })}
-				/>
+			<div class="field">${this._renderNameField()}</div>
+			<div class="field">
 				<ha-area-picker
 					.hass=${this.hass}
 					.value=${this._draft.area_id ?? ""}
@@ -115,22 +115,8 @@ export class EppDeviceGroupEditor extends LitElement {
 			<div class="section">
 				<h3>Source devices</h3>
 				${this.availableDevices.map(
-					(d) => html`
-					<div class="row">
-						<label>
-							<input
-								type="checkbox"
-								.checked=${this._draft.sourceMacs.includes(d.mac)}
-								@change=${(e: Event) =>
-									this._toggleSource(
-										d.mac,
-										(e.target as HTMLInputElement).checked,
-									)}
-							/>
-							${d.name} (${d.mac})
-						</label>
-					</div>
-				`,
+					(d) =>
+						html`<div class="device-row">${this._renderDeviceToggle(d)}</div>`,
 				)}
 			</div>
 
@@ -158,10 +144,52 @@ export class EppDeviceGroupEditor extends LitElement {
 		`;
 	}
 
+	// HA-native text field. ha-input shipped in 2026.4 (replaces ha-textfield,
+	// removed in 2026.5); fall back to ha-textfield on older HA.
+	private _renderNameField() {
+		const tag = customElements.get("ha-input")
+			? literal`ha-input`
+			: literal`ha-textfield`;
+		return staticHtml`
+			<${tag}
+				data-testid="name-field"
+				.label=${"Device name"}
+				.value=${this._draft.name}
+				@input=${(e: Event) =>
+					this._update({ name: (e.target as HTMLInputElement).value })}
+			></${tag}>
+		`;
+	}
+
+	// HA-native toggle per device, labelled with the device name. Falls back to
+	// a plain checkbox where ha-switch isn't registered in this HA version.
+	private _renderDeviceToggle(d: DeviceInfo) {
+		const checked = this._draft.sourceMacs.includes(d.mac);
+		const onChange = (e: Event) =>
+			this._toggleSource(d.mac, (e.target as HTMLInputElement).checked);
+		const control = customElements.get("ha-switch")
+			? html`<ha-switch
+					data-testid="device-toggle"
+					data-mac=${d.mac}
+					.checked=${checked}
+					@change=${onChange}
+				></ha-switch>`
+			: html`<input
+					type="checkbox"
+					data-testid="device-toggle"
+					data-mac=${d.mac}
+					.checked=${checked}
+					@change=${onChange}
+				/>`;
+		return html`<ha-formfield .label=${`${d.name} (${d.mac})`}
+			>${control}</ha-formfield
+		>`;
+	}
+
 	private _draftSources(): DeviceGroupSource[] {
-		// Resolve currently-selected MACs against known sources. Sources we
-		// haven't seen yet (e.g. just-checked devices that aren't in any saved
-		// group) simply aren't rendered for merging — user must save first.
+		// Resolve currently-selected MACs against known sources (every managed
+		// device is present in sourcesByMac), so toggling a device immediately
+		// surfaces its zones in the merge UI.
 		return this._draft.sourceMacs
 			.map((mac) => this.sourcesByMac[mac])
 			.filter((s): s is DeviceGroupSource => Boolean(s));

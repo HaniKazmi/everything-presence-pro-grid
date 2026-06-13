@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import "../../views/epp-device-groups-view.js";
-import type { DeviceGroup } from "../../types.js";
+import type { DeviceGroup, DeviceGroupSource } from "../../types.js";
 import type { EppDeviceGroupsView } from "../../views/epp-device-groups-view.js";
 
 function makeGroup(over: Partial<DeviceGroup> = {}): DeviceGroup {
@@ -32,6 +32,7 @@ interface FakeController {
 	create: ReturnType<typeof vi.fn>;
 	update: ReturnType<typeof vi.fn>;
 	delete: ReturnType<typeof vi.fn>;
+	candidateSources: DeviceGroupSource[];
 	emit(groups: DeviceGroup[]): void;
 }
 
@@ -47,6 +48,7 @@ function makeController(): FakeController {
 		create: vi.fn().mockResolvedValue(undefined),
 		update: vi.fn().mockResolvedValue(undefined),
 		delete: vi.fn().mockResolvedValue(undefined),
+		candidateSources: [],
 		emit(groups: DeviceGroup[]) {
 			cb?.(groups);
 		},
@@ -326,8 +328,18 @@ describe("epp-device-groups-view", () => {
 		expect(console.error).toHaveBeenCalled();
 	});
 
-	it("passes a sourcesByMac map built from cached groups to the editor", async () => {
+	it("passes a sourcesByMac map (group sources + all candidate devices) to the editor", async () => {
 		const ctrl = makeController();
+		// A device not in any group is still a candidate source, so the editor
+		// can show its zones the moment it is toggled.
+		const candidate: DeviceGroupSource = {
+			mac: "ZZ",
+			name: "Spare",
+			available: true,
+			enabled_presence: [],
+			zones: [{ index: 1, name: "Hall", enabled: true }],
+		};
+		ctrl.candidateSources = [candidate];
 		const el = await fixture(ctrl);
 		ctrl.emit([makeGroup()]);
 		await el.updateComplete;
@@ -336,6 +348,6 @@ describe("epp-device-groups-view", () => {
 		const editor = el.shadowRoot!.querySelector("epp-device-group-editor") as {
 			sourcesByMac: Record<string, unknown>;
 		};
-		expect(Object.keys(editor.sourcesByMac)).toEqual(["AA"]);
+		expect(Object.keys(editor.sourcesByMac).sort()).toEqual(["AA", "ZZ"]);
 	});
 });

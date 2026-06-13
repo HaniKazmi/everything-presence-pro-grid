@@ -11,6 +11,8 @@ from homeassistant.helpers import entity_registry as er
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 from pytest_homeassistant_custom_component.typing import WebSocketGenerator
 
+from custom_components.eppgrid.const import DOMAIN
+
 
 @pytest.fixture(autouse=True)
 def _stub_frontend_deps(hass):
@@ -182,6 +184,37 @@ class TestSubscribe:
         evt = await client.receive_json()
         assert evt["type"] == "event"
         assert evt["event"]["device_groups"] == []
+        # candidate_sources is always present so the editor can render device
+        # zones before a group is saved.
+        assert "candidate_sources" in evt["event"]
+
+    async def test_subscribe_candidate_sources_expose_device_zones(
+        self,
+        hass: HomeAssistant,
+        setup_with_sources: None,
+        hass_ws_client: WebSocketGenerator,
+    ) -> None:
+        """Every managed device appears as a candidate source with its zones, so
+        the editor can show a device's zones the moment it's toggled."""
+        mac = "AA:BB:CC:DD:EE:FF"
+        manager = hass.data[DOMAIN]
+        # Present this MAC as a managed device with a named, enabled zone.
+        manager.devices[mac] = object()
+        manager._store.devices[mac] = {
+            "name": "Bedroom Sensor",
+            "room_layout": {"zone_slots": [{"type": "default"}, None, {"name": "Desk"}, None, None, None, None, None]},
+        }
+        er.async_get(hass).async_get_or_create("binary_sensor", "esphome", f"{mac}-binary_sensor-zone_2_presence")
+
+        client = await hass_ws_client(hass)
+        await client.send_json_auto_id({"type": "eppgrid/subscribe_device_groups"})
+        await client.receive_json()  # ack
+        evt = await client.receive_json()
+
+        cands = {c["mac"]: c for c in evt["event"]["candidate_sources"]}
+        assert mac in cands
+        assert cands[mac]["name"] == "Bedroom Sensor"
+        assert {"index": 2, "name": "Desk", "enabled": True} in cands[mac]["zones"]
 
     async def test_subscribe_fires_on_create(
         self,

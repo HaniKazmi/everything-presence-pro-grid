@@ -96,11 +96,13 @@ export class EppDeviceGroupsView extends LitElement {
 
 	private _sourcesByMac(): Record<string, DeviceGroupSource> {
 		const map: Record<string, DeviceGroupSource> = {};
+		// Saved-group sources first (cover a device no longer reported by the
+		// manager), then every managed device's current source state so the
+		// editor has zones for any device the moment it is toggled.
 		for (const g of this._groups) {
-			for (const s of g.sources) {
-				map[s.mac] = s;
-			}
+			for (const s of g.sources) map[s.mac] = s;
 		}
+		for (const s of this.controller.candidateSources) map[s.mac] = s;
 		return map;
 	}
 

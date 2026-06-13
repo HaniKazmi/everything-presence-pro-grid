@@ -14,6 +14,7 @@ from homeassistant.core import callback
 from ..const import DOMAIN
 from ..const import MAX_SOURCES_PER_DEVICE_GROUP
 from ..const import MAX_ZONE_GROUPS_PER_DEVICE_GROUP
+from ..device_groups._projection import SourceState
 from ..device_groups._projection import derive_exposed_entities
 from ..device_groups._registry import build_source_states
 from ..device_groups._registry import zone_name_from_store
@@ -46,28 +47,41 @@ def _require_manager(func):
     return wrapper
 
 
-def _serialize_group(hass: HomeAssistant, group: dict[str, Any], manager: Any) -> dict[str, Any]:
-    """Return the full WS payload for a device group, with exposed_entities."""
-    sources = build_source_states(
+def _build_sources(hass: HomeAssistant, macs: list[str], manager: Any) -> list[SourceState]:
+    return build_source_states(
         hass,
-        macs=group["sources"],
+        macs=macs,
         device_name_fn=lambda mac: manager._store.devices.get(mac, {}).get("name") or mac,
         zone_name_fn=lambda mac, i: zone_name_from_store(manager._store, mac, i),
     )
+
+
+def _serialize_source(s: SourceState, manager: Any) -> dict[str, Any]:
+    return {
+        "mac": s.mac,
+        "name": s.name,
+        "available": s.mac in manager.devices,
+        "enabled_presence": s.enabled_presence,
+        "zones": [{"index": z.index, "name": z.name, "enabled": z.enabled} for z in s.zones],
+    }
+
+
+def _candidate_sources(hass: HomeAssistant, manager: Any) -> list[dict[str, Any]]:
+    """Source state (zones + enabled presence) for every managed device, so the
+    editor can show a device's zones the moment it is toggled — not only after
+    the group is saved."""
+    sources = _build_sources(hass, list(manager.devices), manager)
+    return [_serialize_source(s, manager) for s in sources]
+
+
+def _serialize_group(hass: HomeAssistant, group: dict[str, Any], manager: Any) -> dict[str, Any]:
+    """Return the full WS payload for a device group, with exposed_entities."""
+    sources = _build_sources(hass, group["sources"], manager)
     return {
         "id": group["id"],
         "name": group["name"],
         "area_id": group["area_id"],
-        "sources": [
-            {
-                "mac": s.mac,
-                "name": s.name,
-                "available": s.mac in manager.devices,
-                "enabled_presence": s.enabled_presence,
-                "zones": [{"index": z.index, "name": z.name, "enabled": z.enabled} for z in s.zones],
-            }
-            for s in sources
-        ],
+        "sources": [_serialize_source(s, manager) for s in sources],
         "zone_groups": group["zone_groups"],
         "exposed_entities": derive_exposed_entities(sources, group["zone_groups"]),
     }
@@ -240,7 +254,10 @@ def websocket_subscribe_device_groups(
         connection.send_message(
             websocket_api.event_message(
                 msg["id"],
-                {"device_groups": [_serialize_group(hass, g, manager) for g in groups]},
+                {
+                    "device_groups": [_serialize_group(hass, g, manager) for g in groups],
+                    "candidate_sources": _candidate_sources(hass, manager),
+                },
             )
         )
 
