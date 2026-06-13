@@ -162,7 +162,8 @@ _ZONE_GROUP_SCHEMA = vol.Schema(
                 vol.Schema(
                     {
                         vol.Required("mac"): MAC_SCHEMA,
-                        vol.Required("zone_index"): vol.All(int, vol.Range(min=1, max=7)),
+                        # zone 0 is the "rest of room" zone; 1-7 are named zones.
+                        vol.Required("zone_index"): vol.All(int, vol.Range(min=0, max=7)),
                     }
                 )
             ],

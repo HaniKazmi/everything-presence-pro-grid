@@ -10,7 +10,10 @@ import type {
  * what the rest of the panel uses (see device-controller.ts).
  */
 export interface WsConnection {
-	sendMessage(msg: object): Promise<unknown>;
+	// NOTE: must be sendMessagePromise (resolves with the result / rejects on
+	// error), NOT connection.sendMessage which is fire-and-forget and returns
+	// void — awaiting that yields undefined and swallows backend errors.
+	sendMessagePromise<T>(msg: object): Promise<T>;
 	subscribeMessage<T>(
 		callback: (msg: T) => void,
 		msg: object,
@@ -84,9 +87,8 @@ export class DeviceGroupsController {
 			sources,
 		};
 		if (areaId !== undefined) payload.area_id = areaId;
-		const result = (await this._conn.sendMessage(
-			payload,
-		)) as CreateUpdateResult;
+		const result =
+			await this._conn.sendMessagePromise<CreateUpdateResult>(payload);
 		return result.device_group;
 	}
 
@@ -100,19 +102,19 @@ export class DeviceGroupsController {
 		// NOTE: HA WS framework reserves top-level `id` for message envelope,
 		// so the backend schema uses `group_id`. The controller's API takes
 		// `id` (natural for callers) and translates to `group_id` on the wire.
-		const result = (await this._conn.sendMessage({
+		const result = await this._conn.sendMessagePromise<CreateUpdateResult>({
 			type: "eppgrid/update_device_group",
 			group_id: args.id,
 			name: args.name,
 			sources: args.sources,
 			area_id: args.area_id,
 			zone_groups: args.zone_groups,
-		})) as CreateUpdateResult;
+		});
 		return result.device_group;
 	}
 
 	async delete(id: string): Promise<void> {
-		await this._conn.sendMessage({
+		await this._conn.sendMessagePromise({
 			type: "eppgrid/delete_device_group",
 			group_id: id,
 		});
