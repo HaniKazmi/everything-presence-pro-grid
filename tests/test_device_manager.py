@@ -1344,9 +1344,8 @@ class TestDeviceManager:
             mock_conn.connected = True
 
             await manager.async_open_session(mac)
-            # The re-push is spawned as a tracked task — flush the loop.
-            await asyncio.sleep(0)
-            await asyncio.sleep(0)
+            # The re-push is spawned as a tracked task — wait for it.
+            await hass.async_block_till_done()
 
         mock_push.assert_awaited_with(mac)
 
@@ -1369,8 +1368,7 @@ class TestDeviceManager:
             mock_conn.connected = True
 
             await manager.async_open_session(mac)
-            await asyncio.sleep(0)
-            await asyncio.sleep(0)
+            await hass.async_block_till_done()
 
         mock_push.assert_not_awaited()
 
