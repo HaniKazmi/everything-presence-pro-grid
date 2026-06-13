@@ -167,33 +167,35 @@ function renderTo(template: any): HTMLDivElement {
 }
 
 describe("live overview DOM events (panel inline)", () => {
-	it("clicking menu dots toggles _showLiveMenu", () => {
-		const a = createPanel() as any;
-		a._showLiveMenu = false;
-		const tpl = a._renderLiveOverview();
-		const c = renderTo(tpl);
+	/** Drive the live-overview kebab's item-select wiring for the given id. */
+	function selectLiveItem(c: HTMLElement, id: string): void {
+		const kebab = c.querySelector("epp-kebab-menu") as HTMLElement;
+		expect(kebab, "live overview should render an epp-kebab-menu").toBeTruthy();
+		kebab.dispatchEvent(
+			new CustomEvent("item-select", {
+				detail: { id },
+				bubbles: true,
+				composed: true,
+			}),
+		);
+	}
 
-		const menuBtns = c.querySelectorAll(".sidebar-menu-btn");
-		const menuBtn = menuBtns[menuBtns.length - 1] as HTMLElement;
-		if (menuBtn) {
-			menuBtn.click();
-			expect(a._showLiveMenu).toBe(true);
-		}
+	it("selecting detection zones enters the zones editor", () => {
+		const a = createPanel() as any;
+		a._perspective = [1, 0, 0, 0, 1, 0, 0, 0];
+		const c = renderTo(a._renderLiveOverview());
+		selectLiveItem(c, "zones");
+		expect(a._view).toBe("editor");
+		expect(a._sidebarTab).toBe("zones");
 	});
 
-	it("live menu items set _view and _sidebarTab directly", () => {
+	it("selecting overlays enters the overlays editor", () => {
 		const a = createPanel() as any;
-		a._showLiveMenu = true;
-		const tpl = a._renderLiveOverview();
-		const c = renderTo(tpl);
-
-		const items = c.querySelectorAll(".sidebar-menu-item");
-		if (items.length > 0) {
-			// First item should be "Detection zones" (if perspective exists)
-			(items[0] as HTMLElement).click();
-			expect(a._view).toBe("editor");
-			expect(a._sidebarTab).toBe("zones");
-		}
+		a._perspective = [1, 0, 0, 0, 1, 0, 0, 0];
+		const c = renderTo(a._renderLiveOverview());
+		selectLiveItem(c, "overlays");
+		expect(a._view).toBe("editor");
+		expect(a._sidebarTab).toBe("overlays");
 	});
 
 	it("panel _renderLiveOverview renders epp-live-sidebar directly", () => {

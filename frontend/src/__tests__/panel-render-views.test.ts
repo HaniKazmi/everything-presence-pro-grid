@@ -681,29 +681,33 @@ describe("_renderLiveOverview", () => {
 		expect(c.querySelector("epp-grid")).toBeNull();
 	});
 
-	it("renders with live menu open on panel", () => {
+	it("renders the live-overview kebab with all entries when calibrated", () => {
 		const a = createPanel() as any;
 		a._perspective = [1, 0, 0, 0, 1, 0, 0, 0];
-		a._showLiveMenu = true;
 		const c = renderTo(a._renderLiveOverview());
-		expect(c.querySelector(".sidebar-menu")).not.toBeNull();
+		const kebab = c.querySelector("epp-kebab-menu") as unknown as {
+			items: { id?: string; divider?: true }[];
+		};
+		expect(kebab).not.toBeNull();
 		// Zones/overlays/furniture + settings + calibration + delete +
 		// backup + restore.
-		expect(c.querySelectorAll(".sidebar-menu-item").length).toBe(8);
-		expect(c.textContent).toContain("menu.delete_calibration");
+		const ids = kebab.items.filter((i) => !i.divider).map((i) => i.id);
+		expect(ids.length).toBe(8);
+		expect(ids).toContain("delete_calibration");
 	});
 
-	it("renders with live menu open and no perspective on panel", () => {
+	it("hides editor + delete-calibration entries when uncalibrated", () => {
 		const a = createPanel() as any;
 		a._perspective = null;
-		a._showLiveMenu = true;
 		const c = renderTo(a._renderLiveOverview());
-		expect(c.querySelector(".sidebar-menu")).not.toBeNull();
+		const kebab = c.querySelector("epp-kebab-menu") as unknown as {
+			items: { id?: string; divider?: true }[];
+		};
+		expect(kebab).not.toBeNull();
+		const ids = kebab.items.filter((i) => !i.divider).map((i) => i.id);
 		// Editor entries and delete-calibration are hidden without a
 		// calibration: settings + calibration + backup + restore remain.
-		expect(c.querySelectorAll(".sidebar-menu-item").length).toBe(4);
-		expect(c.textContent).not.toContain("menu.furniture");
-		expect(c.textContent).not.toContain("menu.delete_calibration");
+		expect(ids).toEqual(["settings", "calibration", "backup", "restore"]);
 	});
 });
 

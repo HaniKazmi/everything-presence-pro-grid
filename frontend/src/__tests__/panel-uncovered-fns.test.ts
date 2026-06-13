@@ -105,7 +105,6 @@ function createPanel(): EPPGridPanel {
 	a._configurationName = "";
 	a._fovCache = null;
 	a._fovPerspective = null;
-	a._showLiveMenu = false;
 	return el;
 }
 
@@ -178,27 +177,22 @@ describe("_renderLiveGrid inline event handlers", () => {
 // _renderLiveOverview menu: _changePlacement (line 1103)
 // ---------------------------------------------------------
 describe("_renderLiveOverview menu room calibration button", () => {
-	it("@click on room calibration calls _changePlacement", () => {
+	it("selecting room calibration calls _changePlacement", () => {
 		const a = createPanel() as any;
-		a._showLiveMenu = true;
 		a._perspective = [1, 0, 0, 0, 1, 0, 0, 0];
 		const spy = vi.spyOn(a, "_changePlacement").mockImplementation(() => {});
-		const tpl = a._renderLiveOverview();
-		const c = renderTo(tpl);
+		const c = renderTo(a._renderLiveOverview());
 
-		// Find the menu item whose text includes "room_calibration" (localize returns key)
-		const items = c.querySelectorAll(
-			".sidebar-menu-item",
-		) as NodeListOf<HTMLElement>;
-		let clicked = false;
-		for (const item of items) {
-			if (item.textContent?.includes("room_calibration")) {
-				item.click();
-				clicked = true;
-				break;
-			}
-		}
-		expect(clicked).toBe(true);
+		// The live-overview kebab wires item-select to the panel's handler.
+		const kebab = c.querySelector("epp-kebab-menu") as HTMLElement;
+		expect(kebab).not.toBeNull();
+		kebab.dispatchEvent(
+			new CustomEvent("item-select", {
+				detail: { id: "calibration" },
+				bubbles: true,
+				composed: true,
+			}),
+		);
 		expect(spy).toHaveBeenCalled();
 	});
 });
