@@ -26,12 +26,12 @@ def zone_name_from_store(store: Any, mac: str, zone_index: int) -> str | None:
     device = store.devices.get(mac, {})
     layout = device.get("room_layout", {})
     slots = layout.get("zone_slots", []) if isinstance(layout, dict) else []
-    if zone_index < 0 or zone_index >= len(slots):
-        return None
-    slot = slots[zone_index]
-    if slot is None:
-        return None
-    return slot.get("name")
+    slot = slots[zone_index] if 0 <= zone_index < len(slots) else None
+    name = slot.get("name") if slot else None
+    if name is None and zone_index == 0:
+        # Zone 0 is the always-present "rest of room" zone.
+        return "Rest of room"
+    return name
 
 
 def resolve_entity_id(hass: HomeAssistant, mac: str, slot: str) -> str | None:
@@ -68,7 +68,7 @@ def build_source_states(
                 enabled_presence.append(slot)
 
         zones: list[ZoneState] = []
-        for i in range(1, NUM_ZONE_SLOTS):  # zone 0 is "rest of room", skip
+        for i in range(NUM_ZONE_SLOTS):  # zone 0 is the "rest of room" zone
             name = zone_name_fn(mac, i)
             if name is None:
                 continue

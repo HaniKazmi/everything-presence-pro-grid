@@ -133,9 +133,9 @@ class Aggregator:
                 eid = resolve_entity_id(self._hass, mac, slot)
                 if eid:
                     ids.append(eid)
-            # Track all 8 zone-presence slots; cheap and avoids re-subscribing
-            # when the user defines a new zone.
-            for i in range(1, NUM_ZONE_SLOTS):
+            # Track all zone-presence slots (incl. zone 0 "rest of room"); cheap
+            # and avoids re-subscribing when the user defines a new zone.
+            for i in range(NUM_ZONE_SLOTS):
                 eid = resolve_entity_id(self._hass, mac, f"zone_{i}_presence")
                 if eid:
                     ids.append(eid)
@@ -239,7 +239,7 @@ class Aggregator:
         # don't materialise permanently-unavailable helpers.
         passthroughs: dict[tuple[str, int], bool | None] = {}
         for mac in sources:
-            for i in range(1, NUM_ZONE_SLOTS):
+            for i in range(NUM_ZONE_SLOTS):  # incl. zone 0 "rest of room"
                 if (mac, i) in grouped_keys:
                     continue
                 if not self._entity_enabled(mac, f"zone_{i}_presence"):

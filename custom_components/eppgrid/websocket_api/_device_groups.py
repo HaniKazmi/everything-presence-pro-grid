@@ -47,11 +47,20 @@ def _require_manager(func):
     return wrapper
 
 
+def _device_name(manager: Any, mac: str) -> str:
+    """Human-friendly device name — prefer the managed device's name, then the
+    stored name, and only fall back to the MAC as a last resort."""
+    dev = manager.devices.get(mac)
+    if dev is not None and getattr(dev, "name", None):
+        return dev.name
+    return manager._store.devices.get(mac, {}).get("name") or mac
+
+
 def _build_sources(hass: HomeAssistant, macs: list[str], manager: Any) -> list[SourceState]:
     return build_source_states(
         hass,
         macs=macs,
-        device_name_fn=lambda mac: manager._store.devices.get(mac, {}).get("name") or mac,
+        device_name_fn=lambda mac: _device_name(manager, mac),
         zone_name_fn=lambda mac, i: zone_name_from_store(manager._store, mac, i),
     )
 

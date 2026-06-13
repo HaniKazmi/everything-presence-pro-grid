@@ -52,6 +52,19 @@ class TestZoneNameFromStore:
     def test_unknown_mac_returns_none(self) -> None:
         assert zone_name_from_store(_FakeStore({}), "ZZ:ZZ:ZZ:ZZ:ZZ:ZZ", 2) is None
 
+    def test_zone_0_defaults_to_rest_of_room(self) -> None:
+        """Zone 0 is the always-present 'rest of room' zone; with no user name it
+        falls back to 'Rest of room' (so it can be exposed/merged)."""
+        store = _FakeStore({"AA": {"room_layout": {"zone_slots": [{"type": "default"}, None]}}})
+        assert zone_name_from_store(store, "AA", 0) == "Rest of room"
+
+    def test_zone_0_uses_explicit_name_when_set(self) -> None:
+        store = _FakeStore({"AA": {"room_layout": {"zone_slots": [{"name": "Entrance"}, None]}}})
+        assert zone_name_from_store(store, "AA", 0) == "Entrance"
+
+    def test_zone_0_defaults_to_rest_of_room_with_no_layout(self) -> None:
+        assert zone_name_from_store(_FakeStore({"AA": {}}), "AA", 0) == "Rest of room"
+
 
 def _add_entity(hass: HomeAssistant, mac: str, slot: str, *, disabled: bool = False) -> str:
     """Register a fake ESPHome binary_sensor with the integration's unique_id pattern."""
@@ -110,6 +123,23 @@ class TestBuildSourceStates:
         assert src.zones[0].index == 2
         assert src.zones[0].name == "Bed Left"
         assert src.zones[0].enabled is True
+
+    async def test_includes_zone_0_rest_of_room_when_enabled(self, hass: HomeAssistant) -> None:
+        """Zone 0 (rest of room) is exposed like any other zone when its entity
+        is enabled and it has a name (defaulted to 'Rest of room')."""
+        _add_entity(hass, "AA:BB:CC:DD:EE:FF", "zone_0_presence")
+
+        sources = build_source_states(
+            hass,
+            macs=["AA:BB:CC:DD:EE:FF"],
+            device_name_fn=lambda m: m,
+            zone_name_fn=lambda m, i: "Rest of room" if i == 0 else None,
+        )
+        zone_indexes = [z.index for z in sources[0].zones]
+        assert 0 in zone_indexes
+        zone0 = next(z for z in sources[0].zones if z.index == 0)
+        assert zone0.name == "Rest of room"
+        assert zone0.enabled is True
 
     async def test_skips_unknown_macs_gracefully(self, hass: HomeAssistant) -> None:
         sources = build_source_states(

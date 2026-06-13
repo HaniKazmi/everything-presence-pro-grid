@@ -63,7 +63,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     # published) but started inside the try below so a failure unwinds cleanly.
     manager.device_groups = device_groups_manager  # type: ignore[attr-defined]
     device_groups_manager.set_callbacks(
-        device_name_fn=lambda mac: store.devices.get(mac, {}).get("name") or mac,
+        device_name_fn=lambda mac: (
+            getattr(manager.devices.get(mac), "name", None) or store.devices.get(mac, {}).get("name") or mac
+        ),
         zone_name_fn=lambda mac, i: zone_name_from_store(store, mac, i),
     )
 

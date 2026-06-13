@@ -216,6 +216,27 @@ class TestSubscribe:
         assert cands[mac]["name"] == "Bedroom Sensor"
         assert {"index": 2, "name": "Desk", "enabled": True} in cands[mac]["zones"]
 
+    async def test_candidate_source_prefers_managed_device_name(
+        self,
+        hass: HomeAssistant,
+        setup_with_sources: None,
+        hass_ws_client: WebSocketGenerator,
+    ) -> None:
+        """The friendly device name (not the MAC) identifies a source/zone."""
+        from types import SimpleNamespace
+
+        mac = "AA:BB:CC:DD:EE:FF"
+        manager = hass.data[DOMAIN]
+        manager.devices[mac] = SimpleNamespace(name="Living Room")
+
+        client = await hass_ws_client(hass)
+        await client.send_json_auto_id({"type": "eppgrid/subscribe_device_groups"})
+        await client.receive_json()  # ack
+        evt = await client.receive_json()
+
+        cands = {c["mac"]: c for c in evt["event"]["candidate_sources"]}
+        assert cands[mac]["name"] == "Living Room"
+
     async def test_subscribe_fires_on_create(
         self,
         hass: HomeAssistant,

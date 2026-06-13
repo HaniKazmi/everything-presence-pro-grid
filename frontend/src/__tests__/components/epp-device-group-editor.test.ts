@@ -351,6 +351,26 @@ describe("epp-device-group-editor", () => {
 		expect((await detail).area_id).toBeNull();
 	});
 
+	it("previews the presence sensors that will be created", async () => {
+		const el = await fixture();
+		el.availableDevices = DEVICES;
+		el.sourcesByMac = {
+			AA: { ...SOURCE_AA, enabled_presence: ["occupancy", "mmwave_presence"] },
+		};
+		await el.updateComplete;
+		// nothing selected yet -> no preview
+		expect(
+			el.shadowRoot!.querySelector('[data-testid="sensors-preview"]'),
+		).toBeNull();
+
+		setToggle(el, "AA", true);
+		await el.updateComplete;
+		const chips = [
+			...el.shadowRoot!.querySelectorAll('[data-testid="sensor-chip"]'),
+		].map((c) => c.textContent!.trim());
+		expect(chips).toEqual(["Occupancy", "mmWave presence"]);
+	});
+
 	// Keep last: registering HA elements is global for the test environment, so
 	// this exercises the ha-input/ha-switch branches while every test above
 	// covers the ha-textfield/checkbox fallbacks.

@@ -3,12 +3,21 @@ import { property, state } from "lit/decorators.js";
 import { literal, html as staticHtml } from "lit/static-html.js";
 
 import "./epp-zone-merge-list.js";
+import { deriveExposedEntities } from "../lib/device-groups-projection.js";
 import type {
 	DeviceGroup,
 	DeviceGroupSource,
 	DeviceGroupZoneGroup,
 	DeviceInfo,
 } from "../types.js";
+
+const PRESENCE_LABELS: Record<string, string> = {
+	occupancy: "Occupancy",
+	static_presence: "Static presence",
+	motion_presence: "Motion presence",
+	target_presence: "Target presence",
+	mmwave_presence: "mmWave presence",
+};
 
 interface EditorDraft {
 	id: string | null;
@@ -37,6 +46,19 @@ export class EppDeviceGroupEditor extends LitElement {
 			width: 100%;
 		}
 		.device-row { display: block; padding: .15rem 0; }
+		.chips { display: flex; flex-wrap: wrap; gap: .4rem; }
+		.chip {
+			padding: .2rem .6rem;
+			border-radius: 999px;
+			background: var(--primary-color);
+			color: var(--text-primary-color);
+			font-size: .85rem;
+		}
+		.chip.zone {
+			background: var(--secondary-background-color);
+			color: var(--primary-text-color);
+			border: 1px solid var(--divider-color);
+		}
 		.actions {
 			display: flex;
 			gap: .5rem;
@@ -131,6 +153,8 @@ export class EppDeviceGroupEditor extends LitElement {
 				></epp-zone-merge-list>
 			</div>
 
+			${this._renderSensorsPreview()}
+
 			<div class="actions">
 				${
 					this._draft.id !== null
@@ -139,6 +163,35 @@ export class EppDeviceGroupEditor extends LitElement {
 				}
 				<button class="secondary" @click=${this._cancel}>Cancel</button>
 				<button @click=${this._save} ?disabled=${!this._canSave()}>Save</button>
+			</div>
+		`;
+	}
+
+	// Live preview of the entities this group will create — presence sensors
+	// (the union of enabled slots across sources) plus zone entities — computed
+	// with the same projection the backend uses.
+	private _renderSensorsPreview() {
+		const exposed = deriveExposedEntities(
+			this._draftSources(),
+			this._draft.zone_groups,
+		);
+		if (exposed.presence.length === 0 && exposed.zones.length === 0) {
+			return nothing;
+		}
+		return html`
+			<div class="section">
+				<h3>Sensors that will be created</h3>
+				<div class="chips" data-testid="sensors-preview">
+					${exposed.presence.map(
+						(p) =>
+							html`<span class="chip" data-testid="sensor-chip"
+								>${PRESENCE_LABELS[p] ?? p}</span
+							>`,
+					)}
+					${exposed.zones.map(
+						(z) => html`<span class="chip zone">${z.name}</span>`,
+					)}
+				</div>
 			</div>
 		`;
 	}
