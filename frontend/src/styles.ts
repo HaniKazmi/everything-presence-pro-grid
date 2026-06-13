@@ -285,6 +285,28 @@ export const toggleStyles = css`
   }
 `;
 
+/** Item-row + remove-button styling shared by the zone and furniture sidebars. */
+export const sidebarRowStyles = css`
+  .sidebar-item-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .sidebar-remove-btn {
+    background: none;
+    border: none;
+    color: var(--secondary-text-color, #757575);
+    cursor: pointer;
+    padding: 4px;
+    border-radius: 4px;
+  }
+
+  .sidebar-remove-btn:hover {
+    color: var(--error-color, #f44336);
+  }
+`;
+
 export const headerStyles = css`
   .panel-header {
     display: flex;

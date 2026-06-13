@@ -65,7 +65,7 @@ function createPanel(): EPPGridPanel {
 	a._zoneState = { occupancy: {}, target_counts: {}, frame_count: 0 };
 	a._openAccordions = new Set();
 	a._showUnsavedDialog = false;
-	a._pendingNavigation = null;
+	a._navGuard._pendingNavigation = null;
 	a._saving = false;
 	a._showDeleteCalibrationDialog = false;
 	a._showConfigurationBackup = false;
@@ -85,7 +85,6 @@ function createPanel(): EPPGridPanel {
 	a._staticMinDistance = 0.3;
 	a._staticMaxDistance = 16;
 	// Zone 0 defaults live on _zoneConfigs[0]; set up above.
-	a._showHitCounts = false;
 	a._zoneEngineState = createZoneEngineState();
 	a._showCustomIconPicker = false;
 	a._customIconValue = "";
@@ -485,8 +484,11 @@ describe("_onFurniturePointerDown with rotate type", () => {
 			},
 		];
 
-		// Mock nested shadow DOM: host -> epp-grid -> epp-furniture-overlay -> .furniture-item
+		// Mock nested shadow DOM: host -> epp-grid -> epp-furniture-overlay -> .furniture-item.
+		// The controller queries all .furniture-item elements and matches
+		// dataset.id in JS (no id interpolation into the selector).
 		const mockFurnitureItem = {
+			dataset: { id: "f1" },
 			getBoundingClientRect: () => ({
 				left: 100,
 				top: 100,
@@ -495,8 +497,8 @@ describe("_onFurniturePointerDown with rotate type", () => {
 			}),
 		};
 		const overlayShadow = {
-			querySelector: (sel: string) =>
-				sel.includes("f1") ? mockFurnitureItem : null,
+			querySelectorAll: (sel: string) =>
+				sel === ".furniture-item" ? [mockFurnitureItem] : [],
 		};
 		const overlay = { shadowRoot: overlayShadow };
 		const eppGridShadow = {

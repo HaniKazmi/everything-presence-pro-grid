@@ -11,6 +11,9 @@ import {
 } from "../grid.js";
 import {
 	createZoneEngineState,
+	dismissTarget,
+	resetForGridChange,
+	resetForZoneConfigChange,
 	runLocalZoneEngine,
 	type ZoneEngineParams,
 	type ZoneEngineState,
@@ -1103,6 +1106,414 @@ describe("interference zones", () => {
 		// Zone should still be occupied (or at least pending), not cleared
 		const zs = state.localZoneState.get(1);
 		expect(zs?.occupied).toBe(true);
+	});
+});
+
+describe("inactive-target tracking (firmware !tw.active parity)", () => {
+	// The shared fixture cannot express "x/y non-null but signal=0": its C++
+	// harness derives active from frames, so frames=0 always means
+	// not-tracking there. The backend DOES send such targets (pending echo
+	// with last-known position, signal 0) — they correspond to firmware
+	// tw.active=false and must clear continuity/gating identically.
+	it("signal=0 while still tracked clears continuity and gating", () => {
+		const state = createZoneEngineState();
+		const now = 100;
+
+		// Tick 1: zone 0 (gated thresh 7), signal 7 → gate=1, prev recorded.
+		const r1 = runLocalZoneEngine(
+			state,
+			makeDefaultParams({ targets: [makeTarget(150, 150, 7)], now }),
+		);
+		expect(r1.occupancy[0]).toBe(false);
+
+		// Tick 2: same position but signal=0 → firmware-equivalent of
+		// tw.active=false → tracking must be cleared.
+		runLocalZoneEngine(
+			state,
+			makeDefaultParams({ targets: [makeTarget(150, 150, 0)], now: now + 1 }),
+		);
+		expect(state.targetPrev[0]).toBeNull();
+		expect(state.targetGateCount[0]).toBe(0);
+
+		// Tick 3: target reactivates at the same cell. Without the clear it
+		// would inherit continuity and confirm immediately; the firmware
+		// restarts gating instead (gate=1, not confirmed).
+		const r3 = runLocalZoneEngine(
+			state,
+			makeDefaultParams({ targets: [makeTarget(150, 150, 7)], now: now + 2 }),
+		);
+		expect(r3.occupancy[0]).toBe(false);
+	});
+
+	it("pending-echo target (signal=0) does not count as active for cleanup", () => {
+		const state = createZoneEngineState();
+		const now = 100;
+		const grid = makeParityGrid();
+		grid[1 * GRID_COLS + 9] = cellSetOverlay(grid[29], CELL_OVERLAY_ENTRY);
+		// Occupy zone 1 (single tick — first-tick confirm registers target 0).
+		runLocalZoneEngine(
+			state,
+			makeDefaultParams({ targets: [makeTarget(450, 450, 5)], grid, now }),
+		);
+		expect(state.localZoneState.get(1)?.confirmedTargets.has(0)).toBe(true);
+
+		// Backend pending echo: position present, signal 0. Zone goes
+		// pending and the target reports pending (not inactive).
+		const r = runLocalZoneEngine(
+			state,
+			makeDefaultParams({
+				targets: [makeTarget(450, 450, 0)],
+				grid,
+				now: now + 1,
+			}),
+		);
+		expect(r.occupancy[1]).toBe(true);
+		expect(r.targets[0].status).toBe("pending");
+	});
+});
+
+describe("unconfigured zones (firmware find_zone_index parity)", () => {
+	it("painted-but-unconfigured zone never confirms and gets no state", () => {
+		const state = createZoneEngineState();
+		const grid = makeParityGrid();
+		// Paint cell (10,1) as zone 2; zone 2 has no config (slot null).
+		grid[1 * GRID_COLS + 10] = cellSetZone(CELL_ROOM_BIT, 2);
+		const params = makeDefaultParams({
+			targets: [makeTarget(750, 450, 9)], // cell (10,1)
+			grid,
+		});
+		runLocalZoneEngine(state, params);
+		const result = runLocalZoneEngine(state, params);
+		expect(result.occupancy[2]).toBe(false);
+		expect(state.localZoneState.has(2)).toBe(false);
+		// Position is still recorded for continuity (firmware else-branch).
+		expect(state.targetPrev[0]).toEqual({ col: 10, row: 1 });
+	});
+
+	it("zone state is dropped when its config disappears between ticks", () => {
+		const state = createZoneEngineState();
+		const now = 100;
+		const grid = makeParityGrid();
+		grid[1 * GRID_COLS + 9] = cellSetOverlay(grid[29], CELL_OVERLAY_ENTRY);
+		// Occupy configured zone 1.
+		runLocalZoneEngine(
+			state,
+			makeDefaultParams({ targets: [makeTarget(450, 450, 5)], grid, now }),
+		);
+		expect(state.localZoneState.get(1)?.occupied).toBe(true);
+
+		// Same grid, but zone 1's config is now null (slot deleted).
+		const result = runLocalZoneEngine(
+			state,
+			makeDefaultParams({
+				targets: [],
+				grid,
+				zoneConfigs: new Array(MAX_ZONES).fill(null),
+				now: now + 1,
+			}),
+		);
+		expect(result.occupancy[1]).toBe(false);
+		expect(state.localZoneState.has(1)).toBe(false);
+	});
+});
+
+// Grid with an entry overlay on the zone-1 cell (index 29) so a single tick
+// confirms — mirrors make_parity_engine's grid in the C++ engine tests.
+function makeOverlayGrid(): Uint8Array {
+	const grid = makeParityGrid();
+	grid[1 * GRID_COLS + 9] = cellSetOverlay(grid[29], CELL_OVERLAY_ENTRY);
+	return grid;
+}
+const ZONE1_CELL = 1 * GRID_COLS + 9;
+
+describe("dismissTarget (firmware dismiss_target parity)", () => {
+	let state: ZoneEngineState;
+	let grid: Uint8Array;
+
+	beforeEach(() => {
+		state = createZoneEngineState();
+		grid = makeOverlayGrid();
+	});
+
+	it("collapses the zone to CLEAR when the last evidence is dismissed", () => {
+		runLocalZoneEngine(
+			state,
+			makeDefaultParams({ targets: [makeTarget(450, 450, 5)], grid, now: 100 }),
+		);
+		expect(state.localZoneState.get(1)?.occupied).toBe(true);
+
+		dismissTarget(state, 0, ZONE1_CELL, grid);
+		const st = state.localZoneState.get(1);
+		expect(st?.occupied).toBe(false);
+		expect(st?.pendingSince).toBeNull();
+		expect(state.dismissedCells[0]).toBe(ZONE1_CELL);
+	});
+
+	it("skips the target while it stays at the dismissed cell", () => {
+		runLocalZoneEngine(
+			state,
+			makeDefaultParams({ targets: [makeTarget(450, 450, 5)], grid, now: 100 }),
+		);
+		dismissTarget(state, 0, ZONE1_CELL, grid);
+
+		// Same position, max signal — still dismissed, zone stays clear.
+		const r = runLocalZoneEngine(
+			state,
+			makeDefaultParams({ targets: [makeTarget(450, 450, 9)], grid, now: 101 }),
+		);
+		expect(r.occupancy[1]).toBe(false);
+	});
+
+	it("clears the dismissal when the target moves to a different cell", () => {
+		runLocalZoneEngine(
+			state,
+			makeDefaultParams({ targets: [makeTarget(450, 450, 5)], grid, now: 100 }),
+		);
+		dismissTarget(state, 0, ZONE1_CELL, grid);
+
+		// Target moves to a zone-0 cell: dismissal clears, gating restarts
+		// (dismiss also reset prev), confirming on the second tick.
+		runLocalZoneEngine(
+			state,
+			makeDefaultParams({ targets: [makeTarget(150, 150, 7)], grid, now: 101 }),
+		);
+		expect(state.dismissedCells[0]).toBe(-1);
+		const r = runLocalZoneEngine(
+			state,
+			makeDefaultParams({
+				targets: [makeTarget(150, 150, 7)],
+				grid,
+				now: 101.5,
+			}),
+		);
+		expect(r.occupancy[0]).toBe(true);
+	});
+
+	it("keeps the zone occupied when other targets remain confirmed", () => {
+		runLocalZoneEngine(
+			state,
+			makeDefaultParams({
+				targets: [makeTarget(450, 450, 5), makeTarget(450, 450, 5)],
+				grid,
+				now: 100,
+			}),
+		);
+		const st = state.localZoneState.get(1);
+		expect(st?.confirmedTargets.has(0)).toBe(true);
+		expect(st?.confirmedTargets.has(1)).toBe(true);
+
+		dismissTarget(state, 0, ZONE1_CELL, grid);
+		expect(st?.occupied).toBe(true);
+		expect(st?.confirmedTargets.has(0)).toBe(false);
+		expect(st?.confirmedTargets.has(1)).toBe(true);
+	});
+
+	it("out-of-range target index is a no-op", () => {
+		dismissTarget(state, -1, ZONE1_CELL, grid);
+		dismissTarget(state, 3, ZONE1_CELL, grid);
+		expect(state.dismissedCells).toEqual([-1, -1, -1]);
+	});
+});
+
+describe("stuck-target auto-dismiss (engine-level)", () => {
+	// Occupancy-level behaviour is pinned by the shared fixture
+	// (test_stuck_target_auto_dismissed / test_dismissed_target_clears_on_move);
+	// these cover the knob the fixture defaults away from.
+	it("stuckTargetTimeout=0 (default) disables auto-dismiss", () => {
+		const state = createZoneEngineState();
+		const grid = makeOverlayGrid();
+		for (let i = 0; i < 5; i++) {
+			const r = runLocalZoneEngine(
+				state,
+				makeDefaultParams({
+					targets: [makeTarget(450, 450, 5)],
+					grid,
+					now: 100 + i * 300,
+				}),
+			);
+			expect(r.occupancy[1]).toBe(true);
+		}
+		expect(state.dismissedCells[0]).toBe(-1);
+	});
+
+	it("coordinate jitter breaks the stuck streak (bit-exact comparison)", () => {
+		const state = createZoneEngineState();
+		const grid = makeOverlayGrid();
+		const base = makeDefaultParams({
+			targets: [makeTarget(450, 450, 5)],
+			grid,
+			stuckTargetTimeout: 5,
+			now: 100,
+		});
+		runLocalZoneEngine(state, base);
+		// 1mm of movement resets the reference each time — never dismissed.
+		for (let i = 1; i <= 4; i++) {
+			const r = runLocalZoneEngine(
+				state,
+				makeDefaultParams({
+					targets: [makeTarget(450 + (i % 2), 450, 5)],
+					grid,
+					stuckTargetTimeout: 5,
+					now: 100 + i * 3,
+				}),
+			);
+			expect(r.occupancy[1]).toBe(true);
+		}
+		expect(state.dismissedCells[0]).toBe(-1);
+	});
+});
+
+describe("reset semantics (firmware set_grid / set_zones parity)", () => {
+	let state: ZoneEngineState;
+	let grid: Uint8Array;
+
+	beforeEach(() => {
+		state = createZoneEngineState();
+		grid = makeOverlayGrid();
+	});
+
+	it("resetForGridChange resets gating (mirror: set_zones resets per-target gating state)", () => {
+		// First gating tick for zone 0 (gated threshold 7).
+		runLocalZoneEngine(
+			state,
+			makeDefaultParams({ targets: [makeTarget(150, 150, 7)], grid, now: 100 }),
+		);
+		resetForGridChange(state);
+		// Next tick must be treated as a FIRST gating tick again.
+		const r = runLocalZoneEngine(
+			state,
+			makeDefaultParams({ targets: [makeTarget(150, 150, 7)], grid, now: 101 }),
+		);
+		expect(r.occupancy[0]).toBe(false);
+	});
+
+	it("resetForGridChange clears dismissals (mirror: set_grid clears dismissed_cell_)", () => {
+		runLocalZoneEngine(
+			state,
+			makeDefaultParams({ targets: [makeTarget(450, 450, 5)], grid, now: 100 }),
+		);
+		dismissTarget(state, 0, ZONE1_CELL, grid);
+
+		// Grid edit: the dismissed cell index now references a different room
+		// location — the dismissal must not survive.
+		resetForGridChange(state);
+		expect(state.dismissedCells[0]).toBe(-1);
+		const r = runLocalZoneEngine(
+			state,
+			makeDefaultParams({ targets: [makeTarget(450, 450, 5)], grid, now: 101 }),
+		);
+		expect(r.occupancy[1]).toBe(true);
+	});
+
+	it("resetForGridChange preserves zone occupancy state (only set_zones resets it)", () => {
+		runLocalZoneEngine(
+			state,
+			makeDefaultParams({ targets: [makeTarget(450, 450, 5)], grid, now: 100 }),
+		);
+		resetForGridChange(state);
+		expect(state.localZoneState.get(1)?.occupied).toBe(true);
+	});
+
+	it("resetForZoneConfigChange resets zone occupancy state", () => {
+		runLocalZoneEngine(
+			state,
+			makeDefaultParams({ targets: [makeTarget(450, 450, 5)], grid, now: 100 }),
+		);
+		resetForZoneConfigChange(state);
+		expect(state.localZoneState.size).toBe(0);
+		const r = runLocalZoneEngine(
+			state,
+			makeDefaultParams({ targets: [], grid, now: 101 }),
+		);
+		expect(r.occupancy[1]).toBe(false);
+	});
+
+	it("resetForZoneConfigChange clears dismissals (mirror: set_zones clears dismissed_cell_)", () => {
+		runLocalZoneEngine(
+			state,
+			makeDefaultParams({ targets: [makeTarget(450, 450, 5)], grid, now: 100 }),
+		);
+		dismissTarget(state, 0, ZONE1_CELL, grid);
+		resetForZoneConfigChange(state);
+		// Target back at the previously-dismissed cell — confirms normally.
+		const r = runLocalZoneEngine(
+			state,
+			makeDefaultParams({ targets: [makeTarget(450, 450, 5)], grid, now: 101 }),
+		);
+		expect(r.occupancy[1]).toBe(true);
+	});
+
+	it("resetForZoneConfigChange resets the sensor presence state machine", () => {
+		runLocalZoneEngine(
+			state,
+			makeDefaultParams({
+				targets: [],
+				grid,
+				staticPresence: true,
+				motionPresence: true,
+				now: 100,
+			}),
+		);
+		expect(state.staticState).toBe("active");
+		expect(state.sensorsEverActive).toBe(true);
+
+		resetForZoneConfigChange(state);
+		expect(state.staticState).toBe("inactive");
+		expect(state.motionState).toBe("inactive");
+		expect(state.staticPendingSince).toBeNull();
+		expect(state.motionPendingSince).toBeNull();
+		expect(state.sensorsEverActive).toBe(false);
+	});
+});
+
+describe("overlay-exit handoff consume gating (Step 2b)", () => {
+	it("does NOT consume lastZone/lastOnOverlay when the zone is unconfigured", () => {
+		// Mirrors the firmware fix: Step 2b used to consume the handoff state
+		// even when find_zone_index returned -1 (disabled zone), throwing the
+		// state away without ever using it. Both engines now consume only
+		// when the zone lookup succeeds.
+		const state = createZoneEngineState();
+		const grid = makeParityGrid();
+		// Paint (10,1) as zone 2 with an entry overlay; zone 2 has no config.
+		grid[1 * GRID_COLS + 10] = cellSetOverlay(
+			cellSetZone(CELL_ROOM_BIT, 2),
+			CELL_OVERLAY_ENTRY,
+		);
+
+		// Tick 1: target on the unconfigured zone-2 entry cell.
+		runLocalZoneEngine(
+			state,
+			makeDefaultParams({ targets: [makeTarget(750, 450, 9)], grid, now: 100 }),
+		);
+		expect(state.lastZone[0]).toBe(2);
+		expect(state.lastOnOverlay[0]).toBe(true);
+
+		// Tick 2: target gone. Zone 2 is unconfigured → no runtime to
+		// accelerate → the handoff state must NOT be consumed.
+		runLocalZoneEngine(
+			state,
+			makeDefaultParams({ targets: [], grid, now: 101 }),
+		);
+		expect(state.lastZone[0]).toBe(2);
+		expect(state.lastOnOverlay[0]).toBe(true);
+	});
+
+	it("consumes lastZone/lastOnOverlay when the zone is configured", () => {
+		const state = createZoneEngineState();
+		const grid = makeOverlayGrid();
+		runLocalZoneEngine(
+			state,
+			makeDefaultParams({ targets: [makeTarget(450, 450, 5)], grid, now: 100 }),
+		);
+		expect(state.lastZone[0]).toBe(1);
+		expect(state.lastOnOverlay[0]).toBe(true);
+
+		runLocalZoneEngine(
+			state,
+			makeDefaultParams({ targets: [], grid, now: 101 }),
+		);
+		expect(state.lastZone[0]).toBeNull();
+		expect(state.lastOnOverlay[0]).toBe(false);
 	});
 });
 

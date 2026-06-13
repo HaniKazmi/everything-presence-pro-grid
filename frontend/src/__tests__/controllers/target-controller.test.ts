@@ -3,7 +3,10 @@ import { DEBUG_LOG_MAX } from "../../constants.js";
 import type { TargetData } from "../../controllers/device-controller.js";
 import { TargetController } from "../../controllers/target-controller.js";
 import {
+	CELL_OVERLAY_ENTRY,
 	CELL_ROOM_BIT,
+	cellSetOverlay,
+	cellSetZone,
 	GRID_CELL_COUNT,
 	GRID_COLS,
 	GRID_ROWS,
@@ -54,10 +57,16 @@ function mockHost() {
 		_grid: new Uint8Array(GRID_CELL_COUNT),
 		_roomWidth: 6000,
 		_roomDepth: 6000,
+		// Identity perspective: raw sensor coords pass straight through to
+		// room-space mm, so a raw target at (x,y) lands in cell (x/300, y/300).
+		_perspective: [1, 0, 0, 0, 1, 0, 0, 0] as number[] | null,
 
 		// Sensor timeouts forwarded to runLocalZoneEngine (panel defaults).
 		_staticTimeout: 30,
 		_motionTimeout: 5,
+		// Stuck-target auto-dismiss timeout forwarded to the engine (panel
+		// default 300s — far beyond any test's wall-clock span).
+		_stuckTargetTimeout: 300,
 
 		// Debug log (frontend)
 		_showDebugLog: false,
@@ -195,6 +204,67 @@ describe("TargetController", () => {
 	// -------------------------------------------------------------------------
 	// handleTargetData
 	// -------------------------------------------------------------------------
+	describe("handleTargetData prev-XY tracking (moved out of _renderLiveGrid)", () => {
+		it("records last in-room XY for active targets in live view", () => {
+			host._view = "live";
+			ctrl.handleTargetData(
+				makeTargetData({
+					targets: [{ x: 1500, y: 2000, status: "active", signal: 50 }] as any,
+				}),
+			);
+			expect(ctrl.zoneEngineState.targetPrevXY[0]).toEqual({
+				x: 1500,
+				y: 2000,
+			});
+		});
+
+		it("does not record XY for non-active targets", () => {
+			host._view = "live";
+			ctrl.handleTargetData(
+				makeTargetData({
+					targets: [{ x: 1500, y: 2000, status: "pending", signal: 50 }] as any,
+				}),
+			);
+			expect(ctrl.zoneEngineState.targetPrevXY[0]).toBeNull();
+		});
+
+		it("does not record XY for targets without coordinates", () => {
+			host._view = "live";
+			ctrl.handleTargetData(
+				makeTargetData({
+					targets: [{ x: null, y: null, status: "active", signal: 50 }] as any,
+				}),
+			);
+			expect(ctrl.zoneEngineState.targetPrevXY[0]).toBeNull();
+		});
+	});
+
+	describe("handleTargetData editor engine tick", () => {
+		it("ticks the local zone engine and caches the result in editor view", () => {
+			host._view = "editor";
+			const spy = vi.spyOn(ctrl, "runLocalZoneEngine");
+			ctrl.handleTargetData(makeTargetData());
+			expect(spy).toHaveBeenCalledTimes(1);
+			expect(ctrl.editorEngineResult).toBe(spy.mock.results[0].value);
+		});
+
+		it("does not tick the engine in live view", () => {
+			host._view = "live";
+			const spy = vi.spyOn(ctrl, "runLocalZoneEngine");
+			ctrl.handleTargetData(makeTargetData());
+			expect(spy).not.toHaveBeenCalled();
+			expect(ctrl.editorEngineResult).toBeNull();
+		});
+
+		it("resetZoneEngineState clears the cached engine result", () => {
+			host._view = "editor";
+			ctrl.handleTargetData(makeTargetData());
+			expect(ctrl.editorEngineResult).not.toBeNull();
+			ctrl.resetZoneEngineState();
+			expect(ctrl.editorEngineResult).toBeNull();
+		});
+	});
+
 	describe("handleTargetData", () => {
 		it("stores targets on host._targets", () => {
 			const targets = [{ x: 100, y: 200, status: "active", signal: 50 }];
@@ -469,6 +539,131 @@ describe("TargetController", () => {
 	});
 
 	// -------------------------------------------------------------------------
+	// Overlay-tracker wiring (raw stream → onOverlay → engine)
+	// -------------------------------------------------------------------------
+	describe("overlay tracker wiring", () => {
+		// Zone 1 spanning cols 8-11, row 1; cell (9,1) is an entry overlay.
+		// roomWidth 6000 → roomStartCol 0, so a raw/median (x,y) maps to
+		// cell (floor(x/300), floor(y/300)) under the identity perspective.
+		const ENTRY_COL = 9;
+		const ENTRY_ROW = 1;
+		// Centre of cell (9,1): x∈[2700,3000), y∈[300,600).
+		const ENTRY_X = 2850;
+		const ENTRY_Y = 450;
+		// A plain room cell in the same zone, two cols away.
+		const PLAIN_X = 2250; // cell (7,1)
+
+		beforeEach(() => {
+			host._view = "editor";
+			const grid = new Uint8Array(GRID_CELL_COUNT);
+			for (let c = 6; c <= 11; c++) {
+				grid[ENTRY_ROW * GRID_COLS + c] = cellSetZone(CELL_ROOM_BIT, 1);
+			}
+			const eidx = ENTRY_ROW * GRID_COLS + ENTRY_COL;
+			grid[eidx] = cellSetOverlay(grid[eidx], CELL_OVERLAY_ENTRY);
+			host._grid = grid;
+			// Zone 1 with a high trigger so only the overlay instant-entry path
+			// (threshold → 1) can confirm a low-signal first appearance.
+			host._zoneConfigs = [
+				host._zoneConfigs[0],
+				{
+					type: "custom",
+					trigger: 8,
+					renew: 8,
+					timeout: 10,
+					handoff_timeout: 3,
+				},
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+			] as any[];
+		});
+
+		it("a raw frame on the entry cell sets onOverlay, confirming the zone", () => {
+			// Raw frame lands on the entry cell → tracker sets the sticky flag.
+			ctrl.handleRawTargetData([{ raw_x: ENTRY_X, raw_y: ENTRY_Y }] as any);
+			// Median frame: a low-signal target on a PLAIN cell. Without the raw
+			// touch this would be gated; the raw onOverlay forces instant entry.
+			ctrl.handleTargetData(
+				makeTargetData({
+					targets: [
+						{ x: PLAIN_X, y: ENTRY_Y, status: "active", signal: 1 },
+					] as any,
+				}),
+			);
+			expect(ctrl.editorEngineResult?.occupancy[1]).toBe(true);
+		});
+
+		it("without a raw overlay touch a low-signal target is gated", () => {
+			// No raw frame; median fallback feeds the plain cell → no overlay.
+			ctrl.handleTargetData(
+				makeTargetData({
+					targets: [
+						{ x: PLAIN_X, y: ENTRY_Y, status: "active", signal: 1 },
+					] as any,
+				}),
+			);
+			expect(ctrl.editorEngineResult?.occupancy[1]).toBe(false);
+		});
+
+		it("slot reuse resets the sticky overlay flag", () => {
+			// Target A touches the entry cell via raw, confirming the zone.
+			ctrl.handleRawTargetData([{ raw_x: ENTRY_X, raw_y: ENTRY_Y }] as any);
+			ctrl.handleTargetData(
+				makeTargetData({
+					targets: [
+						{ x: ENTRY_X, y: ENTRY_Y, status: "active", signal: 1 },
+					] as any,
+				}),
+			);
+			expect(ctrl.editorEngineResult?.occupancy[1]).toBe(true);
+
+			// Target A disappears (inactive raw frame) — flag latched.
+			ctrl.handleRawTargetData([{ raw_x: null, raw_y: null }] as any);
+			ctrl.handleTargetData(makeTargetData({ targets: [] as any }));
+
+			// Slot reused by a brand-new target B appearing mid-room on a PLAIN
+			// cell: inactive→active resets the stale flag, so B is gated.
+			ctrl.handleRawTargetData([{ raw_x: PLAIN_X, raw_y: ENTRY_Y }] as any);
+			ctrl.handleTargetData(
+				makeTargetData({
+					// Fresh engine state would be ideal, but the zone is still
+					// occupied from A; assert B's onOverlay didn't leak by checking
+					// the tracker flag directly.
+					targets: [
+						{ x: PLAIN_X, y: ENTRY_Y, status: "active", signal: 1 },
+					] as any,
+				}),
+			);
+			// The tracker's slot-0 flag must be cleared (B on a plain cell).
+			expect((ctrl as any)._overlayTracker.onOverlay[0]).toBe(false);
+		});
+
+		it("falls back to median positions when no raw frame arrives", () => {
+			// No raw stream: a median frame on the ENTRY cell still arms onOverlay
+			// (frontend-only degradation path).
+			ctrl.handleTargetData(
+				makeTargetData({
+					targets: [
+						{ x: ENTRY_X, y: ENTRY_Y, status: "active", signal: 1 },
+					] as any,
+				}),
+			);
+			expect(ctrl.editorEngineResult?.occupancy[1]).toBe(true);
+		});
+
+		it("resetEngineForGridChange clears the tracker flags", () => {
+			ctrl.handleRawTargetData([{ raw_x: ENTRY_X, raw_y: ENTRY_Y }] as any);
+			expect((ctrl as any)._overlayTracker.onOverlay[0]).toBe(true);
+			ctrl.resetEngineForGridChange();
+			expect((ctrl as any)._overlayTracker.onOverlay[0]).toBe(false);
+		});
+	});
+
+	// -------------------------------------------------------------------------
 	// enrichDebugLog
 	// -------------------------------------------------------------------------
 	describe("enrichDebugLog", () => {
@@ -651,6 +846,30 @@ describe("TargetController", () => {
 			expect(host._backendDebugLogLines.length).toBe(1);
 		});
 
+		it("resets the line array when the container remounts (Copy all matches the display)", () => {
+			// A view switch destroys and recreates the live view; the fresh
+			// container starts empty (placeholder only) while the backing
+			// array still holds the old lines — "Copy all" would then copy
+			// lines that aren't displayed.
+			ctrl.appendBackendDebugLog("T0:Z1:A:5|Z1:O:1");
+			ctrl.appendBackendDebugLog("T0:Z1:A:7|Z1:O:1");
+			expect(host._backendDebugLogLines.length).toBe(2);
+
+			// Simulate remount: new empty container with just the placeholder.
+			const fresh = document.createElement("div");
+			fresh.id = "backend-debug-log-scroll";
+			const placeholder = document.createElement("div");
+			placeholder.textContent = "Waiting for events...";
+			fresh.appendChild(placeholder);
+			host._mockBackendContainer = fresh;
+
+			ctrl.appendBackendDebugLog("T0:Z1:A:9|Z1:O:1");
+
+			expect(host._backendDebugLogLines.length).toBe(1);
+			expect(host._backendDebugLogLines[0]).toContain("9");
+			expect(fresh.querySelectorAll(".debug-log-line").length).toBe(1);
+		});
+
 		it("skips sensor-prefix injection when log already has 3 sections", () => {
 			ctrl.appendBackendDebugLog("S:A M:I Occ:1|T0:Z1:A:5|Z1:O:1");
 			expect(host._backendDebugLogLines.length).toBe(1);
@@ -677,39 +896,6 @@ describe("TargetController", () => {
 			expect(host._backendDebugLogLines[0]).toContain("Static: active");
 			expect(host._backendDebugLogLines[0]).toContain("Motion: active");
 			expect(host._backendDebugLogLines[0]).toContain("Occ: on");
-		});
-	});
-
-	// -------------------------------------------------------------------------
-	// computeHeatmapColors
-	// -------------------------------------------------------------------------
-	describe("computeHeatmapColors", () => {
-		it("returns a Map", () => {
-			const result = ctrl.computeHeatmapColors();
-			expect(result).toBeInstanceOf(Map);
-		});
-
-		it("returns colours for zones with non-zero target counts", () => {
-			host._zoneConfigs = [
-				host._zoneConfigs[0],
-				{ name: "Study", color: "#56B4E9", type: "default" },
-				null,
-				null,
-				null,
-				null,
-				null,
-				null,
-			];
-			host._zoneState.target_counts = { 1: 3 };
-			const result = ctrl.computeHeatmapColors();
-			// Zone 1 has hits so it should have an entry
-			expect(result.has(1)).toBe(true);
-		});
-
-		it("returns empty map when target_counts is empty", () => {
-			host._zoneState.target_counts = {};
-			const result = ctrl.computeHeatmapColors();
-			expect(result.size).toBe(0);
 		});
 	});
 
@@ -1139,6 +1325,134 @@ describe("TargetController", () => {
 				ctrl.runLocalZoneEngine();
 				expect(container.scrollTop).toBe(500);
 			});
+		});
+	});
+
+	// =========================================================================
+	// Zone-engine reset / dismiss delegation (firmware set_grid / set_zones /
+	// dismiss_target parity at the controller boundary)
+	// =========================================================================
+	describe("zone-engine reset / dismiss delegation", () => {
+		/** Grid: room cell at (1,1) carrying zone 1 + entry overlay. */
+		function installZone1Grid(): number {
+			const grid = new Uint8Array(GRID_CELL_COUNT);
+			const idx = 1 * GRID_COLS + 1;
+			grid[idx] = cellSetOverlay(
+				cellSetZone(CELL_ROOM_BIT, 1),
+				CELL_OVERLAY_ENTRY,
+			);
+			host._grid = grid;
+			host._zoneConfigs = [
+				host._zoneConfigs[0],
+				{
+					name: "Zone 1",
+					color: "#ff0000",
+					type: "custom",
+					trigger: 3,
+					renew: 2,
+					timeout: 5,
+					handoff_timeout: 1,
+				},
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+			];
+			return idx;
+		}
+
+		it("resetEngineForGridChange clears per-target tracking, keeps zone state", () => {
+			const st = ctrl.zoneEngineState;
+			st.targetPrev[0] = { col: 1, row: 1 };
+			st.targetGateCount[0] = 1;
+			st.dismissedCells[0] = 12;
+			st.lastZone[0] = 1;
+			st.lastOnOverlay[0] = true;
+			st.localZoneState.set(1, {
+				occupied: true,
+				pendingSince: null,
+				confirmedTargets: new Set([0]),
+			});
+
+			ctrl.resetEngineForGridChange();
+
+			expect(st.targetPrev[0]).toBeNull();
+			expect(st.targetGateCount[0]).toBe(0);
+			expect(st.dismissedCells[0]).toBe(-1);
+			expect(st.lastZone[0]).toBeNull();
+			expect(st.lastOnOverlay[0]).toBe(false);
+			// Zone occupancy survives a grid edit (only set_zones resets it).
+			expect(st.localZoneState.get(1)?.occupied).toBe(true);
+		});
+
+		it("resetEngineForZoneConfigChange also clears zone + sensor state", () => {
+			const st = ctrl.zoneEngineState;
+			st.localZoneState.set(1, {
+				occupied: true,
+				pendingSince: null,
+				confirmedTargets: new Set([0]),
+			});
+			st.staticState = "active";
+			st.sensorsEverActive = true;
+
+			ctrl.resetEngineForZoneConfigChange();
+
+			expect(st.localZoneState.size).toBe(0);
+			expect(st.staticState).toBe("inactive");
+			expect(st.sensorsEverActive).toBe(false);
+		});
+
+		it("dismissTarget collapses the zone in the local engine", () => {
+			const idx = installZone1Grid();
+			host._targets = [
+				{ x: 450, y: 450, raw_x: 450, raw_y: 450, status: "active", signal: 5 },
+			];
+			host._roomWidth = 6000;
+			host._roomDepth = 6000;
+			ctrl.runLocalZoneEngine();
+			expect(ctrl.zoneEngineState.localZoneState.get(1)?.occupied).toBe(true);
+
+			ctrl.dismissTarget(0, idx);
+
+			const st = ctrl.zoneEngineState.localZoneState.get(1);
+			expect(st?.occupied).toBe(false);
+			expect(ctrl.zoneEngineState.dismissedCells[0]).toBe(idx);
+		});
+
+		it("runLocalZoneEngine forwards _stuckTargetTimeout (auto-dismiss fires)", () => {
+			vi.useFakeTimers();
+			try {
+				vi.setSystemTime(new Date("2026-06-10T12:00:00Z"));
+				host._stuckTargetTimeout = 5;
+				installZone1Grid();
+				host._targets = [
+					{
+						x: 450,
+						y: 450,
+						raw_x: 450,
+						raw_y: 450,
+						status: "active",
+						signal: 5,
+					},
+				];
+				host._roomWidth = 6000;
+				host._roomDepth = 6000;
+
+				let result = ctrl.runLocalZoneEngine();
+				expect(result.occupancy[1]).toBe(true);
+
+				// Bit-identical coordinates 6s later → past the 5s timeout.
+				vi.setSystemTime(new Date("2026-06-10T12:00:06Z"));
+				result = ctrl.runLocalZoneEngine();
+				expect(result.occupancy[1]).toBe(false);
+				expect(ctrl.zoneEngineState.dismissedCells[0]).toBeGreaterThanOrEqual(
+					0,
+				);
+			} finally {
+				vi.useRealTimers();
+			}
 		});
 	});
 });

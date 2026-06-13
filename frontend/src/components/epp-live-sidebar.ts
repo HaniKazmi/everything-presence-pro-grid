@@ -1,4 +1,4 @@
-import { css, html, LitElement, nothing, type TemplateResult } from "lit";
+import { css, html, LitElement, nothing } from "lit";
 import { property } from "lit/decorators.js";
 import { MAX_ZONES } from "../lib/grid.js";
 import type { ZoneConfig } from "../lib/zone-defaults.js";
@@ -20,7 +20,10 @@ export interface SensorState {
 	co2: number | null;
 }
 
-export interface ZoneState {
+// Backend zone snapshot for the live view. Named "summary" to avoid
+// colliding with the zone engine's per-zone ZoneState (occupied /
+// pendingSince / confirmedTargets), which is an unrelated shape.
+export interface ZoneStateSummary {
 	occupancy: Record<number, boolean>;
 	target_counts: Record<number, number>;
 	frame_count: number;
@@ -39,7 +42,7 @@ export class EppLiveSidebar extends LitElement {
 		co2: null,
 	};
 
-	@property({ attribute: false }) zoneState: ZoneState = {
+	@property({ attribute: false }) zoneState: ZoneStateSummary = {
 		occupancy: {},
 		target_counts: {},
 		frame_count: 0,
@@ -115,7 +118,7 @@ export class EppLiveSidebar extends LitElement {
     }
 
     .live-sensor-state.detected {
-      color: #4CAF50;
+      color: var(--success-color, #4caf50);
       font-weight: 500;
     }
 
@@ -128,23 +131,40 @@ export class EppLiveSidebar extends LitElement {
 
   `;
 
-	// Shared row layout for presence and zone sensors. The dot is the only
-	// part that differs (on/off class vs. an inline-coloured zone dot), so it
-	// is passed in; the label, state badge, and info tip stay defined once.
-	private renderSensorRow(
-		label: string,
-		on: boolean,
-		info: string,
-		dot: TemplateResult,
-	) {
+	/**
+	 * One row shared by the presence and zone sections. Zone rows carry a
+	 * `color` key (null = rest-of-room white dot) and style the dot inline;
+	 * presence rows omit it and use the on/off class dot. The label, state
+	 * badge, and shared <epp-info-tip> are defined once here.
+	 */
+	private _renderRow(s: {
+		id: string;
+		label: string;
+		on: boolean;
+		info: string;
+		color?: string | null;
+	}) {
+		const dot =
+			s.color !== undefined
+				? html`
+					<div
+						class="live-sensor-dot"
+						style=${
+							s.color
+								? `background: ${s.color};${s.on ? ` box-shadow: 0 0 6px 2px ${s.color};` : ""}`
+								: `background: #fff; border: 1px solid #ccc;${s.on ? " box-shadow: 0 0 6px 2px #999;" : ""}`
+						}
+					></div>
+				`
+				: html`<div class="live-sensor-dot ${s.on ? "on" : "off"}"></div>`;
 		return html`
-      <div class="live-sensor-row">
-        ${dot}
-        <span class="live-sensor-label">${label}</span>
-        <span class="live-sensor-state ${on ? "detected" : ""}">${on ? this.localize("live.detected") : this.localize("live.clear")}</span>
-        <epp-info-tip .text=${info} .localize=${this.localize}></epp-info-tip>
-      </div>
-    `;
+			<div class="live-sensor-row">
+				${dot}
+				<span class="live-sensor-label">${s.label}</span>
+				<span class="live-sensor-state ${s.on ? "detected" : ""}">${s.on ? this.localize("live.detected") : this.localize("live.clear")}</span>
+				<epp-info-tip .text=${s.info} .localize=${this.localize}></epp-info-tip>
+			</div>
+		`;
 	}
 
 	render() {
@@ -258,14 +278,7 @@ export class EppLiveSidebar extends LitElement {
 		return html`
       <div style="padding: 8px 0;">
         <div class="live-section-header">${this.localize("live.presence")}</div>
-        ${sensorDefs.map((s) =>
-					this.renderSensorRow(
-						s.label,
-						s.on,
-						s.info,
-						html`<div class="live-sensor-dot ${s.on ? "on" : "off"}"></div>`,
-					),
-				)}
+        ${sensorDefs.map((s) => this._renderRow(s))}
 
         ${
 					this.hasPerspective
@@ -281,21 +294,7 @@ export class EppLiveSidebar extends LitElement {
 						}),
 					);
 				}}>${this.localize("sidebar.detection_zones")}</button>
-        ${zoneDefs.map((s) =>
-					this.renderSensorRow(
-						s.label,
-						s.on,
-						s.info,
-						html`<div
-              class="live-sensor-dot"
-              style=${
-								s.color
-									? `background: ${s.color};${s.on ? ` box-shadow: 0 0 6px 2px ${s.color};` : ""}`
-									: `background: #fff; border: 1px solid #ccc;${s.on ? " box-shadow: 0 0 6px 2px #999;" : ""}`
-							}
-            ></div>`,
-					),
-				)}
+        ${zoneDefs.map((s) => this._renderRow(s))}
         `
 						: nothing
 				}

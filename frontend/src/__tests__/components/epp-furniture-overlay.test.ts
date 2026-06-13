@@ -486,3 +486,38 @@ describe("epp-furniture-overlay default localize", () => {
 		expect(el.localize("another.key")).toBe("another.key");
 	});
 });
+
+describe("touch support CSS", () => {
+	it("disables touch-action on draggable furniture surfaces", () => {
+		// Without touch-action: none the browser claims the touch gesture for
+		// scrolling mid-drag, firing pointercancel and wedging the drag.
+		const cssText = (
+			(customElements.get("epp-furniture-overlay") as any).styles as {
+				cssText: string;
+			}
+		).cssText;
+		expect(cssText).toMatch(/\.furniture-item\s*{[^}]*touch-action:\s*none/);
+		expect(cssText).toMatch(/\.furn-handle\s*{[^}]*touch-action:\s*none/);
+		expect(cssText).toMatch(
+			/\.furn-rotate-handle\s*{[^}]*touch-action:\s*none/,
+		);
+	});
+});
+
+describe("FLOOR_PLAN_SVGS own-property lookup", () => {
+	it("falls back to ha-icon for an svg item whose icon name hits the prototype chain", async () => {
+		// "constructor" is truthy via Object.prototype on a plain-object SVG
+		// catalog — a truthiness check would try to render it as a floor-plan
+		// SVG with viewBox undefined.
+		const el = createOverlay({
+			furniture: [{ ...SAMPLE_FURNITURE, type: "svg", icon: "constructor" }],
+		});
+		document.body.appendChild(el);
+		await (el as any).updateComplete;
+
+		expect(el.shadowRoot!.querySelector(".furn-svg")).toBeNull();
+		expect(el.shadowRoot!.querySelector("ha-icon")).not.toBeNull();
+
+		document.body.removeChild(el);
+	});
+});

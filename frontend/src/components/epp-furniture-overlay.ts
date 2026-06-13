@@ -4,7 +4,8 @@ import { unsafeSVG } from "lit/directives/unsafe-svg.js";
 import { FLOOR_PLAN_SVGS } from "../constants.js";
 import type { FurnitureItem } from "../lib/furniture.js";
 import { getResizeCursor, mmToPx } from "../lib/furniture.js";
-import { GRID_CELL_MM, GRID_COLS } from "../lib/grid.js";
+import { roomStartCol } from "../lib/grid.js";
+import type { SidebarTab } from "../lib/view-hash.js";
 import { defaultLocalize, type LocalizeFn } from "../localize.js";
 
 export class EppFurnitureOverlay extends LitElement {
@@ -16,7 +17,7 @@ export class EppFurnitureOverlay extends LitElement {
 	@property({ type: Number }) minRow = 0;
 	@property({ type: Number }) visCols = 20;
 	@property({ type: Number }) visRows = 20;
-	@property({ attribute: false }) sidebarTab = "zones";
+	@property({ attribute: false }) sidebarTab: SidebarTab = "zones";
 	@property({ attribute: false }) localize: LocalizeFn = defaultLocalize;
 
 	static styles = css`
@@ -43,6 +44,9 @@ export class EppFurnitureOverlay extends LitElement {
 			opacity: 0.6;
 		}
 
+		/* touch-action: none on every draggable surface — otherwise the
+		   browser claims the touch gesture for scrolling mid-drag and fires
+		   pointercancel, wedging the drag. */
 		.furniture-item {
 			position: absolute;
 			display: flex;
@@ -55,6 +59,7 @@ export class EppFurnitureOverlay extends LitElement {
 			cursor: grab;
 			transform-origin: center center;
 			user-select: none;
+			touch-action: none;
 		}
 
 		.furniture-item:hover {
@@ -89,6 +94,7 @@ export class EppFurnitureOverlay extends LitElement {
 			display: flex;
 			align-items: center;
 			justify-content: center;
+			touch-action: none;
 		}
 
 		/* Visible square (8×8) sits centered inside the larger touch area. */
@@ -137,6 +143,7 @@ export class EppFurnitureOverlay extends LitElement {
 			cursor: grab;
 			pointer-events: auto;
 			color: #fff;
+			touch-action: none;
 		}
 
 		.furn-delete-btn {
@@ -212,8 +219,7 @@ export class EppFurnitureOverlay extends LitElement {
 	render() {
 		if (!this.furniture.length) return nothing;
 
-		const roomCols = Math.ceil(this.roomWidth / GRID_CELL_MM);
-		const startCol = Math.floor((GRID_COLS - roomCols) / 2);
+		const startCol = roomStartCol(this.roomWidth);
 		const step = this.cellPx + 1;
 
 		const interactive = this.sidebarTab === "furniture";
@@ -238,7 +244,9 @@ export class EppFurnitureOverlay extends LitElement {
 							@pointerdown=${(e: PointerEvent) => this._onItemPointerDown(e, item.id)}
 						>
 							${
-								item.type === "svg" && FLOOR_PLAN_SVGS[item.icon]
+								// Object.hasOwn: a plain-object catalog makes prototype
+								// members ("constructor", …) truthy under bare indexing.
+								item.type === "svg" && Object.hasOwn(FLOOR_PLAN_SVGS, item.icon)
 									? svg`<svg viewBox="${FLOOR_PLAN_SVGS[item.icon].viewBox}" preserveAspectRatio="none" class="furn-svg">
 										${unsafeSVG(FLOOR_PLAN_SVGS[item.icon].content)}
 									</svg>`

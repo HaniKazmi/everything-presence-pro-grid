@@ -22,8 +22,8 @@ import {
 	cellIsInside,
 	cellZone,
 	computeAlignmentOffset,
+	GRID_CELL_COUNT,
 	GRID_CELL_MM,
-	GRID_COLS,
 	getRoomBounds,
 	gridHasInsideRoom,
 	initGridFromRoom,
@@ -31,9 +31,11 @@ import {
 	NUM_ZONE_SLOTS,
 	OVERLAY_MODE_TO_KIND,
 	type OverlayMode,
+	roomStartCol,
 } from "../lib/grid.js";
-import { autoDetectionRange } from "../lib/room-geometry.js";
+import { autoDetectionRange, boundsToRoomMm } from "../lib/room-geometry.js";
 import {
+	cloneSettingsDefault,
 	ENTITY_DEFAULTS,
 	SETTINGS_DEFAULTS,
 	SETTINGS_FIELD_MAP,
@@ -89,8 +91,42 @@ export function serializeSlot(
 	return slot;
 }
 
+/**
+ * Serialize a furniture item for the `set_room_layout` wire payload.
+ * Exactly these nine fields — the local-only `id` is intentionally dropped
+ * (the backend regenerates ids on load via parseFurniture).
+ */
+export function serializeFurniture(f: FurnitureItem): Record<string, unknown> {
+	return {
+		type: f.type,
+		icon: f.icon,
+		label: f.label,
+		x: f.x,
+		y: f.y,
+		width: f.width,
+		height: f.height,
+		rotation: f.rotation,
+		lockAspect: f.lockAspect,
+	};
+}
+
+/** Operations that can fail and surface through {@link GridStateController.onError}. */
+export type GridOp =
+	| "apply_layout"
+	| "save_settings"
+	| "save_configuration"
+	| "load_configuration";
+
 export class GridStateController implements ReactiveController {
 	private host: PanelHost;
+
+	/**
+	 * Optional host hook for surfacing controller errors to the UI. The op
+	 * name doubles as the `errors.*` translation-key suffix for the panel's
+	 * dismissible error banner. The panel wires this at construction so
+	 * failures surface even for ops that run before/without attachment.
+	 */
+	onError?: (op: GridOp, error: unknown) => void;
 
 	constructor(host: PanelHost) {
 		this.host = host;
@@ -131,11 +167,16 @@ export class GridStateController implements ReactiveController {
 		this.host._isPainting = true;
 		this.host._frozenBounds = this.host._getVisibleRoomBounds();
 		this.applyPaintToCell(index);
+		// pointerup ends a stroke released outside the grid; pointercancel ends
+		// one the browser takes over (touch-scroll) — without it the stroke
+		// stays live and the next touch anywhere keeps painting.
 		const onUp = () => {
 			this.onCellMouseUp();
-			window.removeEventListener("mouseup", onUp);
+			window.removeEventListener("pointerup", onUp);
+			window.removeEventListener("pointercancel", onUp);
 		};
-		window.addEventListener("mouseup", onUp);
+		window.addEventListener("pointerup", onUp);
+		window.addEventListener("pointercancel", onUp);
 	}
 
 	onCellMouseEnter(index: number): void {
@@ -175,10 +216,14 @@ export class GridStateController implements ReactiveController {
 		}
 		if (newValue === null || newValue === this.host._grid[index]) return;
 
+		// Clone-then-mutate: _grid is a Lit @state, so the reference swap
+		// alone schedules the re-render (no requestUpdate needed).
 		this.host._grid = new Uint8Array(this.host._grid);
 		this.host._grid[index] = newValue;
 		this.host._dirty = true;
-		this.host.requestUpdate();
+		// Grid changed → per-target continuity/dismiss state is stale
+		// (firmware set_grid semantics).
+		this.host._zoneEngineGridChanged();
 	}
 
 	initGridFromRoom(): void {
@@ -186,6 +231,7 @@ export class GridStateController implements ReactiveController {
 			this.host._roomWidth,
 			this.host._roomDepth,
 		);
+		this.host._zoneEngineGridChanged();
 	}
 
 	// =====================================================================
@@ -222,6 +268,9 @@ export class GridStateController implements ReactiveController {
 		this.host._zoneConfigs = configs as unknown as ZoneSlots;
 		this.host._activeZone = firstEmpty; // slot index = 1-based zone number
 		this.host._dirty = true;
+		// Zone configs changed → full engine reset (firmware set_zones
+		// semantics: every ZoneRuntime back to CLEAR).
+		this.host._zoneEngineZoneConfigChanged();
 	}
 
 	removeZone(slot: number): void {
@@ -240,6 +289,9 @@ export class GridStateController implements ReactiveController {
 			this.host._activeZone = null;
 		}
 		this.host._dirty = true;
+		// Covers both the grid mutation (cleared cells) and the config
+		// change — the zone-config reset is a superset of the grid reset.
+		this.host._zoneEngineZoneConfigChanged();
 	}
 
 	// =====================================================================
@@ -310,13 +362,26 @@ export class GridStateController implements ReactiveController {
 			centerY = 0,
 			startAngle = 0;
 		if (type === "rotate") {
-			// Pierce through epp-grid -> epp-furniture-overlay shadow DOMs
-			const el = this.host.shadowRoot
+			// Pierce through epp-grid -> epp-furniture-overlay shadow DOMs.
+			// Match data-id in JS rather than interpolating the id into an
+			// attribute selector: ids come from stored config blobs, and a
+			// crafted id with quotes/brackets would make querySelector throw
+			// a SyntaxError (CSS.escape-d strings additionally trip
+			// happy-dom's stricter selector parser in tests).
+			const overlayRoot = this.host.shadowRoot
 				?.querySelector("epp-grid")
-				?.shadowRoot?.querySelector("epp-furniture-overlay")
-				?.shadowRoot?.querySelector(
-					`.furniture-item[data-id="${id}"]`,
-				) as HTMLElement | null;
+				?.shadowRoot?.querySelector("epp-furniture-overlay")?.shadowRoot;
+			let el: HTMLElement | null = null;
+			if (overlayRoot) {
+				for (const candidate of overlayRoot.querySelectorAll<HTMLElement>(
+					".furniture-item",
+				)) {
+					if (candidate.dataset.id === id) {
+						el = candidate;
+						break;
+					}
+				}
+			}
 			if (el) {
 				const rect = el.getBoundingClientRect();
 				centerX = rect.left + rect.width / 2;
@@ -344,13 +409,18 @@ export class GridStateController implements ReactiveController {
 		};
 
 		const onMove = (ev: PointerEvent) => this.onFurnitureDrag(ev);
+		// pointercancel fires instead of pointerup when the browser takes the
+		// gesture over (touch-scroll); without it the drag wedges permanently
+		// and the next touch anywhere keeps dragging.
 		const onUp = () => {
 			this.host._dragState = null;
 			window.removeEventListener("pointermove", onMove);
 			window.removeEventListener("pointerup", onUp);
+			window.removeEventListener("pointercancel", onUp);
 		};
 		window.addEventListener("pointermove", onMove);
 		window.addEventListener("pointerup", onUp);
+		window.addEventListener("pointercancel", onUp);
 	}
 
 	onFurnitureDrag(e: PointerEvent): void {
@@ -373,14 +443,12 @@ export class GridStateController implements ReactiveController {
 			const item = (this.host._furniture as FurnitureItem[]).find(
 				(f) => f.id === ds.id,
 			);
-			// Compute visible grid bounds in room-relative mm
-			const bounds = this.host._getVisibleRoomBounds();
-			const roomCols = Math.ceil(this.host._roomWidth / GRID_CELL_MM);
-			const startCol = Math.floor((GRID_COLS - roomCols) / 2);
-			const visMinX = (bounds.minCol - startCol) * GRID_CELL_MM;
-			const visMaxX = (bounds.maxCol + 1 - startCol) * GRID_CELL_MM;
-			const visMinY = bounds.minRow * GRID_CELL_MM; // startRow = 0
-			const visMaxY = (bounds.maxRow + 1) * GRID_CELL_MM;
+			// Clamp to the FOV-aware visible bounds (not the physical room
+			// bounds) so a drag can't park furniture in hidden cells.
+			const mm = boundsToRoomMm(
+				this.host._getVisibleRoomBounds(),
+				this.host._roomWidth,
+			);
 			const pos = clampFurnitureMove(
 				ds.origX,
 				ds.origY,
@@ -389,10 +457,10 @@ export class GridStateController implements ReactiveController {
 				cellPx,
 				item?.width ?? 0,
 				item?.height ?? 0,
-				visMinX,
-				visMaxX,
-				visMinY,
-				visMaxY,
+				mm.minX,
+				mm.maxX,
+				mm.minY,
+				mm.maxY,
 				ds.origRot,
 			);
 			this.updateFurniture(ds.id, pos);
@@ -475,17 +543,31 @@ export class GridStateController implements ReactiveController {
 			furniture: this.host._furniture.map((f) => ({ ...f })),
 			settings: this.host._buildSparseSettings(),
 		};
-		await this.host.hass.callWS({
-			type: "eppgrid/save_configuration",
-			name,
-			configuration,
-		});
+		try {
+			await this.host.hass.callWS({
+				type: "eppgrid/save_configuration",
+				name,
+				configuration,
+			});
+		} catch (err) {
+			this.onError?.("save_configuration", err);
+			throw err;
+		}
 		this.host._showConfigurationBackup = false;
 		this.host._configurationName = "";
 		await this.fetchConfigurations();
 	}
 
 	async loadConfiguration(name: string): Promise<void> {
+		try {
+			await this._loadConfiguration(name);
+		} catch (err) {
+			this.onError?.("load_configuration", err);
+			throw err;
+		}
+	}
+
+	private async _loadConfiguration(name: string): Promise<void> {
 		const cfg = this.configurations.find((t) => t.name === name);
 		if (!cfg) return;
 		const zones = cfg.zones || [];
@@ -515,6 +597,18 @@ export class GridStateController implements ReactiveController {
 			if (!isNamedZoneShape(zones[i])) {
 				throw oldFormatError;
 			}
+		}
+		// Grid is fail-closed like zones: a saved configuration has a re-save
+		// recourse, so corrupt data errors loudly instead of silently loading
+		// a half-empty room. (Contrast with parseGrid in config-serialization,
+		// which zero-pad-repairs the device's own stored layout blob — there
+		// is no re-save recourse for that path.)
+		if (
+			!Array.isArray(cfg.grid) ||
+			cfg.grid.length !== GRID_CELL_COUNT ||
+			!cfg.grid.every((v) => typeof v === "number" && Number.isFinite(v))
+		) {
+			throw oldFormatError;
 		}
 
 		// Snapshot pre-load state so we can roll back if the BEFORE-applyLayout
@@ -564,10 +658,8 @@ export class GridStateController implements ReactiveController {
 				templateHasRoom,
 				currentHasRoom,
 			);
-			const backupRoomCols = Math.ceil(cfg.roomWidth / GRID_CELL_MM);
-			const currentRoomCols = Math.ceil(this.host._roomWidth / GRID_CELL_MM);
-			const startColB = Math.floor((GRID_COLS - backupRoomCols) / 2);
-			const startColC = Math.floor((GRID_COLS - currentRoomCols) / 2);
+			const startColB = roomStartCol(cfg.roomWidth);
+			const startColC = roomStartCol(this.host._roomWidth);
 			const dxMm = (dc + startColB - startColC) * GRID_CELL_MM;
 			const dyMm = dr * GRID_CELL_MM;
 			this.host._furniture = (cfg.furniture || []).map((f: any) => ({
@@ -598,13 +690,27 @@ export class GridStateController implements ReactiveController {
 						...(sparse || {}),
 					};
 				} else {
+					// cloneSettingsDefault (not SETTINGS_DEFAULTS[key]) so
+					// object-valued defaults (log_levels) land in host state
+					// as fresh copies — the canonical objects are frozen and
+					// must never be aliased into mutable panel state.
+					// Host cast: prop is a UNION of property names whose value
+					// types differ, so a union-keyed write demands the (never)
+					// intersection type — the cast is about the heterogeneous
+					// host index, not the RHS (cloneSettingsDefault is now
+					// generically typed to the key's real value type).
 					(this.host as any)[prop] =
-						key in s ? (s as Record<string, any>)[key] : SETTINGS_DEFAULTS[key];
+						key in s
+							? (s as Record<string, any>)[key]
+							: cloneSettingsDefault(key);
 				}
 			}
 		}
 
 		this.host._showConfigurationRestore = false;
+		// Loaded configuration replaced grid AND zone configs — full engine
+		// reset (firmware receives set_grid + set_zones on apply).
+		this.host._zoneEngineZoneConfigChanged();
 		// Mark dirty before auto-apply: if applyLayout throws (e.g. websocket
 		// failure), the UI state has changed but the backend hasn't, so the
 		// user needs an Apply button to retry. On success, applyLayout clears
@@ -628,7 +734,9 @@ export class GridStateController implements ReactiveController {
 				});
 			} catch (err) {
 				// Settings push failed — restore pre-load snapshot so the
-				// panel doesn't claim a state the device doesn't have.
+				// panel doesn't claim a state the device doesn't have. Every
+				// restored field is a Lit @state, so the assignments schedule
+				// the re-render themselves.
 				this.host._grid = snapshot.grid;
 				this.host._zoneConfigs = snapshot.zoneConfigs;
 				this.host._roomWidth = snapshot.roomWidth;
@@ -639,7 +747,6 @@ export class GridStateController implements ReactiveController {
 				for (const [prop, value] of snapshot.settings) {
 					(this.host as any)[prop] = value;
 				}
-				this.host.requestUpdate();
 				throw err;
 			}
 		}
@@ -690,40 +797,29 @@ export class GridStateController implements ReactiveController {
 		const bounds = getRoomBounds(this.host._grid);
 		let filteredFurniture = this.host._furniture as FurnitureItem[];
 		if (bounds.minCol <= bounds.maxCol && bounds.minRow <= bounds.maxRow) {
-			const roomCols = Math.ceil(this.host._roomWidth / GRID_CELL_MM);
-			const startCol = Math.floor((GRID_COLS - roomCols) / 2);
-			const visMinX = (bounds.minCol - startCol) * GRID_CELL_MM;
-			const visMaxX = (bounds.maxCol + 1 - startCol) * GRID_CELL_MM;
-			const visMinY = bounds.minRow * GRID_CELL_MM;
-			const visMaxY = (bounds.maxRow + 1) * GRID_CELL_MM;
+			const mm = boundsToRoomMm(bounds, this.host._roomWidth);
 			filteredFurniture = filteredFurniture.filter(
-				(f) => !isFurnitureOutsideGrid(f, visMinX, visMaxX, visMinY, visMaxY),
+				(f) => !isFurnitureOutsideGrid(f, mm.minX, mm.maxX, mm.minY, mm.maxY),
 			);
 		}
+
+		// References at save time: edits made while the WS round-trip is in
+		// flight replace these (clone-then-mutate everywhere), so reference
+		// inequality afterwards means "the user kept editing" — those edits
+		// were NOT saved and must stay dirty / un-clobbered.
+		const gridAtSave = this.host._grid;
+		const zonesAtSave = this.host._zoneConfigs;
+		const furnitureAtSave = this.host._furniture;
 
 		this.host._saving = true;
 		try {
 			await this.host.hass.callWS({
 				type: "eppgrid/set_room_layout",
 				mac: this.host._selectedMac,
-				grid_bytes: Array.from(this.host._grid),
+				grid_bytes: Array.from(gridAtSave),
 				zone_slots: prunedSlots.map((z, idx) => serializeSlot(z, idx)),
-				furniture: filteredFurniture.map((f) => ({
-					type: f.type,
-					icon: f.icon,
-					label: f.label,
-					x: f.x,
-					y: f.y,
-					width: f.width,
-					height: f.height,
-					rotation: f.rotation,
-					lockAspect: f.lockAspect,
-				})),
+				furniture: filteredFurniture.map(serializeFurniture),
 			});
-			// Commit pruned slots and filtered furniture only after the
-			// backend acknowledges the layout save.
-			this.host._zoneConfigs = prunedSlots as unknown as ZoneSlots;
-			this.host._furniture = filteredFurniture;
 			// Save settings after layout — only needed when auto distances
 			// may have changed; manual distances don't change with layout.
 			if (this.host._targetAutoDistance || this.host._staticAutoDistance) {
@@ -733,49 +829,63 @@ export class GridStateController implements ReactiveController {
 					this.host._perspective,
 					this.host._grid,
 				);
+				const targetMaxDefault = SETTINGS_DEFAULTS.target_max_distance;
+				const staticMaxDefault = SETTINGS_DEFAULTS.static_max_distance;
 				const targetMaxDist = this.host._targetAutoDistance
 					? autoRange > 0
-						? Math.min(autoRange, 6)
-						: 6
+						? Math.min(autoRange, targetMaxDefault)
+						: targetMaxDefault
 					: this.host._targetMaxDistance;
 				const staticMinDist = this.host._staticAutoDistance
-					? 0.3
+					? SETTINGS_DEFAULTS.static_min_distance
 					: this.host._staticMinDistance;
 				const staticMaxDist = this.host._staticAutoDistance
 					? autoRange > 0
-						? Math.min(autoRange, 16)
-						: 16
+						? Math.min(autoRange, staticMaxDefault)
+						: staticMaxDefault
 					: this.host._staticMaxDistance;
 
+				// Base payload from SETTINGS_FIELD_MAP via the host's
+				// _buildSettingsPayload, then the three auto-computed distance
+				// overrides on top — a hand-built field list here silently
+				// missed new settings fields (the drift hazard catalogued in
+				// settings-defaults.ts).
 				await this.host.hass.callWS({
 					type: "eppgrid/set_settings",
 					mac: this.host._selectedMac,
-					temperature_offset: this.host._temperatureOffset,
-					humidity_offset: this.host._humidityOffset,
-					illuminance_offset: this.host._illuminanceOffset,
-					motion_timeout: this.host._motionTimeout,
-					target_auto_distance: this.host._targetAutoDistance,
+					...this.host._buildSettingsPayload(),
 					target_max_distance: targetMaxDist,
-					stuck_target_timeout: this.host._stuckTargetTimeout,
-					static_auto_distance: this.host._staticAutoDistance,
 					static_min_distance: staticMinDist,
 					static_max_distance: staticMaxDist,
-					static_trigger_threshold: this.host._staticTriggerThreshold,
-					static_renew_threshold: this.host._staticRenewThreshold,
-					static_timeout: this.host._staticTimeout,
-					static_on_delay: this.host._staticOnDelay,
-					led_mode: this.host._ledMode,
-					led_brightness: this.host._ledBrightness,
-					led_presence_color: this.host._ledPresenceColor,
-					relay_trigger_mode: this.host._relayTriggerMode,
-					relay_contact_mode: this.host._relayContactMode,
-					entities: this.host._entitiesConfig || {},
 				});
 			}
-			this.host._dirty = false;
-			this.host._selectedFurnitureId = null;
-			this.host._overlayMode = null;
-			this.host._view = "live";
+			// Commit pruned slots / filtered furniture and clear _dirty only
+			// after every save acknowledged AND only if the user didn't edit
+			// meanwhile: the pruned/filtered copies were derived from the
+			// pre-save state and would clobber newer edits, and in-flight
+			// edits were never sent — the Apply button must survive them.
+			const editedDuringSave =
+				this.host._grid !== gridAtSave ||
+				this.host._zoneConfigs !== zonesAtSave ||
+				this.host._furniture !== furnitureAtSave;
+			if (!editedDuringSave) {
+				this.host._zoneConfigs = prunedSlots as unknown as ZoneSlots;
+				this.host._furniture = filteredFurniture;
+				this.host._dirty = false;
+				// Navigation is scoped by editedDuringSave too: when edits
+				// survived the save, silently switching to the live view would
+				// hide the user's dirty work mid-edit — stay in the editor.
+				this.host._selectedFurnitureId = null;
+				this.host._overlayMode = null;
+				this.host._view = "live";
+			}
+			// The device just ran set_grid + set_zones for this layout —
+			// mirror its full reset so the local engine starts the next
+			// editor session from the same state as the firmware.
+			this.host._zoneEngineZoneConfigChanged();
+		} catch (err) {
+			this.onError?.("apply_layout", err);
+			throw err;
 		} finally {
 			this.host._saving = false;
 		}
@@ -784,58 +894,28 @@ export class GridStateController implements ReactiveController {
 	async saveSettings(payload: Record<string, any>): Promise<void> {
 		this.host._saving = true;
 		try {
+			// Whitelist payload keys against SETTINGS_FIELD_MAP so a stray key
+			// (caller typo, stale field) never reaches the WS schema.
+			const sanitized: Record<string, any> = {};
+			for (const [key] of SETTINGS_FIELD_MAP) {
+				if (key in payload) {
+					sanitized[key] = payload[key];
+				}
+			}
 			await this.host.hass.callWS({
 				type: "eppgrid/set_settings",
 				mac: this.host._selectedMac,
-				...payload,
+				...sanitized,
 			});
-			// Update panel state with saved values so settings page shows
-			// correct state if reopened before a full config reload
-			if (payload.entities) {
-				this.host._entitiesConfig = payload.entities;
+			// Mirror saved values back into panel state so the settings page
+			// shows the correct state if reopened before a full config reload.
+			// Driven by SETTINGS_FIELD_MAP — the previous hand-written 21-field
+			// mirror silently dropped newly added settings.
+			for (const [key, prop] of SETTINGS_FIELD_MAP) {
+				if (key in sanitized && sanitized[key] != null) {
+					(this.host as any)[prop] = sanitized[key];
+				}
 			}
-			this.host._temperatureOffset =
-				payload.temperature_offset ?? this.host._temperatureOffset;
-			this.host._humidityOffset =
-				payload.humidity_offset ?? this.host._humidityOffset;
-			this.host._illuminanceOffset =
-				payload.illuminance_offset ?? this.host._illuminanceOffset;
-			this.host._motionTimeout =
-				payload.motion_timeout ?? this.host._motionTimeout;
-			this.host._staticTimeout =
-				payload.static_timeout ?? this.host._staticTimeout;
-			this.host._staticTriggerThreshold =
-				payload.static_trigger_threshold ?? this.host._staticTriggerThreshold;
-			this.host._staticRenewThreshold =
-				payload.static_renew_threshold ?? this.host._staticRenewThreshold;
-			this.host._staticOnDelay =
-				payload.static_on_delay ?? this.host._staticOnDelay;
-			this.host._logLevels = payload.log_levels ?? this.host._logLevels;
-			this.host._targetAutoDistance =
-				payload.target_auto_distance ?? this.host._targetAutoDistance;
-			this.host._targetMaxDistance =
-				payload.target_max_distance ?? this.host._targetMaxDistance;
-			this.host._stuckTargetTimeout =
-				payload.stuck_target_timeout ?? this.host._stuckTargetTimeout;
-			this.host._staticAutoDistance =
-				payload.static_auto_distance ?? this.host._staticAutoDistance;
-			this.host._staticMinDistance =
-				payload.static_min_distance ?? this.host._staticMinDistance;
-			this.host._staticMaxDistance =
-				payload.static_max_distance ?? this.host._staticMaxDistance;
-			this.host._ledMode = payload.led_mode ?? this.host._ledMode;
-			this.host._ledBrightness =
-				payload.led_brightness ?? this.host._ledBrightness;
-			this.host._ledPresenceColor =
-				payload.led_presence_color ?? this.host._ledPresenceColor;
-			this.host._relayTriggerMode =
-				payload.relay_trigger_mode ?? this.host._relayTriggerMode;
-			this.host._relayContactMode =
-				payload.relay_contact_mode ?? this.host._relayContactMode;
-			this.host._targetUpdateRateMs =
-				payload.target_update_rate_ms ?? this.host._targetUpdateRateMs;
-			this.host._zoneUpdateRateMs =
-				payload.zone_update_rate_ms ?? this.host._zoneUpdateRateMs;
 			this.host._dirty = false;
 			this.host._view = "live";
 		} catch (e) {
@@ -847,7 +927,4 @@ export class GridStateController implements ReactiveController {
 			this.host._saving = false;
 		}
 	}
-
-	/** Optional host hook for surfacing controller errors to the UI. */
-	onError?: (op: string, error: unknown) => void;
 }

@@ -7,6 +7,8 @@ import base64
 import contextlib
 import json
 import logging
+from collections.abc import Callable
+from dataclasses import dataclass
 from typing import Any
 
 from aioesphomeapi import APIClient
@@ -16,14 +18,59 @@ from aioesphomeapi import UserService
 from ..const import DEFAULT_PORT
 from ..const import GRID_CELL_SIZE_MM
 from ..const import GRID_COLS
+from ..const import ZONES_JSON_MAX
 from ._helpers import _ESPHOME_TO_PYTHON_LOG
 from ._helpers import _expand_zone_slot
+from ._helpers import _raise_device_not_connected
 from ._helpers import _raise_service_unavailable
 from ._helpers import _static_presence_args
 from ._helpers import is_valid_zone_slots_shape
 
 _LOGGER = logging.getLogger(__name__)
 _DEVICE_LOGGER = logging.getLogger(f"{__name__}.device_logs")
+
+
+def _fan_out(callbacks: list[Any], invoke: Callable[[Any], None], label: str) -> None:
+    """Invoke ``invoke(cb)`` for every callback, isolating failures.
+
+    Shared drop-on-failure policy for the state and log fan-out paths: a
+    callback that raises must not stop later callbacks or propagate into
+    aioesphomeapi's packet path, and is dropped after logging once —
+    keeping it registered would flood HA logs at the device's emit rate
+    (potentially many Hz on a busy device).
+    """
+    failed: list[Any] = []
+    for cb in list(callbacks):
+        try:
+            invoke(cb)
+        except Exception:
+            _LOGGER.exception("%s raised; dropping it", label)
+            failed.append(cb)
+    for cb in failed:
+        with contextlib.suppress(ValueError):
+            callbacks.remove(cb)
+
+
+@dataclass
+class OtaWatcherState:
+    """Shared OTA-progress watcher state for one connection.
+
+    Owned by ``websocket_api._firmware.websocket_subscribe_ota_progress``:
+    N concurrent watchers share ONE device log subscription and ONE
+    log-level bump, reverted only when the last watcher releases. Lives on
+    the ``DeviceConnection`` so the state dies with the connection instead
+    of leaking across reconnects.
+    """
+
+    watchers: int = 0
+    started_log_sub: bool = False
+    bumped_log_level: bool = False
+
+    def reset(self) -> None:
+        """Drop all watcher state — the owning connection is gone."""
+        self.watchers = 0
+        self.started_log_sub = False
+        self.bumped_log_level = False
 
 
 class DeviceConnection:
@@ -44,6 +91,18 @@ class DeviceConnection:
         self.connected: bool = False
         self.raw_target_subs: int = 0
         self.grid_target_subs: int = 0
+        # See OtaWatcherState — shared per-connection OTA watcher bookkeeping.
+        self.ota: OtaWatcherState = OtaWatcherState()
+
+    @property
+    def entities(self) -> list:
+        """Entities advertised by the device at connect time (read-only)."""
+        return self._entities
+
+    @property
+    def is_log_subscribed(self) -> bool:
+        """True when a device-log subscription is active on this connection."""
+        return self._unsub_logs is not None
 
     async def async_connect(self) -> None:
         """Connect to the device and cache available services."""
@@ -57,7 +116,23 @@ class DeviceConnection:
         try:
             await client.connect(on_stop=_on_stop, login=True)
             entities, services = await client.list_entities_services()
+        except asyncio.CancelledError:
+            # CancelledError must be cleaned up too: callers typically wrap
+            # us in asyncio.wait_for, so a timeout firing between a
+            # successful connect() and the entity listing lands here. Without
+            # the disconnect, the connected APIClient is orphaned
+            # (`self._client` was never assigned, so nothing can ever close
+            # it) and holds one of the ESP32's hard-limited API slots
+            # forever. disconnect(force=True) tears down synchronously inside
+            # aioesphomeapi (no internal awaits), so the cleanup can neither
+            # be interrupted by a second cancellation nor stretch the
+            # caller's deadline; the bare `raise` preserves the original
+            # cancellation so the caller's timeout machinery can classify it.
+            await client.disconnect(force=True)
+            raise
         except Exception:
+            # Plain failures clean up gracefully — only the cancel path above
+            # needs the synchronous force teardown.
             await client.disconnect()
             raise
         self._client = client
@@ -92,6 +167,9 @@ class DeviceConnection:
         self._states_subscribed = False
         self._log_callbacks.clear()
         self._unsub_logs = None
+        # OTA watcher state is per-connection: a dead connection took its
+        # log subscription and level bump with it.
+        self.ota.reset()
 
     async def subscribe_states(self, cb: Any) -> None:
         """Add a state subscriber. Idempotent under concurrent callers.
@@ -115,22 +193,9 @@ class DeviceConnection:
             self._state_subscribers.remove(cb)
 
     def _dispatch_state(self, state: Any) -> None:
-        """Fan out state updates to all subscribers, isolating exceptions.
-
-        A subscriber that raises is dropped after logging once — keeping
-        it registered would flood HA logs at the device's state-update
-        rate (potentially many Hz on a busy device).
-        """
-        failed: list[Any] = []
-        for cb in list(self._state_subscribers):
-            try:
-                cb(state)
-            except Exception:
-                _LOGGER.exception("State subscriber raised; dropping subscriber")
-                failed.append(cb)
-        for cb in failed:
-            with contextlib.suppress(ValueError):
-                self._state_subscribers.remove(cb)
+        """Fan out state updates to all subscribers — see `_fan_out` for the
+        shared isolation / drop-on-failure policy."""
+        _fan_out(self._state_subscribers, lambda cb: cb(state), "State subscriber")
 
     def add_log_callback(self, cb: Any) -> None:
         """Add a log callback. Receives raw log messages from the device."""
@@ -161,18 +226,39 @@ class DeviceConnection:
             text = text.rstrip()
             if text:
                 _DEVICE_LOGGER.log(py_level, "[%s] %s", self._host, text)
-            for cb in self._log_callbacks:
-                cb(msg)
+            # Same isolation / drop-on-failure policy as _dispatch_state.
+            _fan_out(self._log_callbacks, lambda cb: cb(msg), "Log callback")
 
         self._unsub_logs = self._client.subscribe_logs(_on_log, log_level=log_level)
         _LOGGER.debug("Subscribed to device logs from %s (level=%s)", self._host, log_level)
 
     def unsubscribe_logs(self) -> None:
-        """Stop receiving device log messages."""
-        if self._unsub_logs is not None:
-            self._unsub_logs()
-            self._unsub_logs = None
-            _LOGGER.debug("Unsubscribed from device logs from %s", self._host)
+        """Stop receiving device log messages AND stop the device sending them.
+
+        Dropping the local callback alone is not enough: per aioesphomeapi
+        semantics the DEVICE keeps streaming log frames for the rest of the
+        connection's lifetime — wasted radio/CPU on the device and wasted
+        frame parsing here. A fresh subscribe at ``LOG_LEVEL_NONE`` tells
+        the device to stop; its local callback is released immediately
+        (it exists only to carry the level change to the device).
+        """
+        if self._unsub_logs is None:
+            return
+        self._unsub_logs()
+        self._unsub_logs = None
+        if self._client is not None:
+            try:
+                unsub_none = self._client.subscribe_logs(lambda _msg: None, log_level=LogLevel.LOG_LEVEL_NONE)
+                unsub_none()
+            except Exception:
+                # Connection already dead or dying (async_disconnect calls us
+                # right before disconnect) — the stream stops with it anyway.
+                _LOGGER.debug(
+                    "Could not send LOG_LEVEL_NONE to %s; connection is going away",
+                    self._host,
+                    exc_info=True,
+                )
+        _LOGGER.debug("Unsubscribed from device logs from %s", self._host)
 
     async def async_execute_service(
         self,
@@ -238,9 +324,14 @@ class DeviceConnection:
         return decoded
 
     async def async_push_distance_override(self, override: dict[str, Any]) -> None:
-        """Push distance override to device without persisting."""
+        """Push distance override to device without persisting.
+
+        Raises ``HomeAssistantError`` when the client is dead (``_on_stop``
+        racing the push) — a silent no-op would report success to the
+        websocket caller while the override never reached the device.
+        """
         if self._client is None:
-            return
+            _raise_device_not_connected("push distance override")
         svc = self._services.get("epp_set_tracking")
         if svc:
             await self._client.execute_service(
@@ -259,9 +350,15 @@ class DeviceConnection:
         await self._client.execute_service(service, {"target_index": target_index, "cell_index": cell_index})
 
     async def async_push_config(self, config: dict[str, Any]) -> None:
-        """Push perspective, grid, and zones to the device."""
+        """Push perspective, grid, and zones to the device.
+
+        Raises ``HomeAssistantError`` when the client is dead (``_on_stop``
+        racing the push between ``get_session`` and this call) — a silent
+        no-op would make ``_do_push_config_to_device`` return True, leaving
+        the device unsynced with the ``_failed_pushes`` recovery never armed.
+        """
         if self._client is None:
-            return
+            _raise_device_not_connected("push config")
 
         # Per-section detail at debug; one info summary at the end. Push
         # happens on every reconnect so 10 lines per device used to flood the
@@ -329,14 +426,30 @@ class DeviceConnection:
                     # / wire stays lean, firmware sees a fully-populated record.
                     expanded_slots = [_expand_zone_slot(s) if s is not None else None for s in zone_slots]
                     zone_data = {"zone_slots": expanded_slots}
-                    await self._client.execute_service(
-                        service,
-                        {
-                            "zones_json": json.dumps(zone_data),
-                        },
-                    )
-                    _LOGGER.debug("Pushed %d zones to %s", len(named), self._host)
-                    pushed.append(f"zones={len(named)}")
+                    zones_json = json.dumps(zone_data)
+                    zones_json_bytes = len(zones_json.encode("utf-8"))
+                    if zones_json_bytes > ZONES_JSON_MAX:
+                        # Payload exceeds the firmware's hard cap (ZONES_JSON_MAX in
+                        # epp_zone_config_parser.h). The firmware would reject it on
+                        # device, so skip the push rather than store a silently-broken
+                        # config. The websocket validator should catch this first; this
+                        # guard is belt-and-braces for expanded payloads or future drift.
+                        _LOGGER.warning(
+                            "Skipping zone push to %s — serialised zones_json is %d bytes "
+                            "(cap %d). Payload after timing expansion is too large for firmware.",
+                            self._host,
+                            zones_json_bytes,
+                            ZONES_JSON_MAX,
+                        )
+                    else:
+                        await self._client.execute_service(
+                            service,
+                            {
+                                "zones_json": zones_json,
+                            },
+                        )
+                        _LOGGER.debug("Pushed %d zones to %s", len(named), self._host)
+                        pushed.append(f"zones={len(named)}")
 
         # Push device settings from unified settings key
         settings = config.get("settings")

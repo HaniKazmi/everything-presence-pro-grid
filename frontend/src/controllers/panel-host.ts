@@ -1,5 +1,8 @@
 import type { ReactiveControllerHost } from "lit";
-import type { SensorState, ZoneState } from "../components/epp-live-sidebar.js";
+import type {
+	SensorState,
+	ZoneStateSummary,
+} from "../components/epp-live-sidebar.js";
 import type { PaintAction } from "../lib/cell-painting.js";
 import type { FurnitureItem } from "../lib/furniture.js";
 import type { OverlayMode } from "../lib/grid.js";
@@ -117,11 +120,19 @@ export interface PanelHost extends ReactiveControllerHost {
 	_buildSettingsPayload: () => Record<string, any>;
 	_buildSparseSettings: () => Record<string, any>;
 
+	// Zone-engine reset hooks (declared on the panel, delegating to
+	// TargetController). GridStateController calls these whenever it applies
+	// a grid / zone-config edit, mirroring the firmware's set_grid /
+	// set_zones resets so the editor-preview engine never runs new inputs
+	// against stale tracking state.
+	_zoneEngineGridChanged: () => void;
+	_zoneEngineZoneConfigChanged: () => void;
+
 	// Targets / sensors / zones (TargetController-side)
 	_targets: Target[];
 	_rawTargets: RawTarget[];
 	_sensorState: SensorState;
-	_zoneState: ZoneState;
+	_zoneState: ZoneStateSummary;
 	_showDebugLog: boolean;
 	_showBackendDebugLog: boolean;
 	_debugLogLines: string[];

@@ -21,10 +21,15 @@
 
 namespace epp {
 
-// Number of LD2450 hardware targets. Distinct from the engine's MAX_TARGETS
-// (which is the post-processing slot count); kept at namespace scope so it can
-// be referenced in EPPComponent::feed_targets's parameter array bounds.
+// Number of LD2450 hardware targets — also the engine's post-processing slot
+// count (MAX_TARGETS). They are distinct concepts (hardware slots vs. engine
+// slots) that must currently agree: loop() copies frame.targets[NUM_TARGETS]
+// into WindowOutput / engine arrays sized MAX_TARGETS — if they diverge, the
+// per-target loops silently read or write out of bounds. The assert below
+// enforces the agreement at compile time.
 inline constexpr int NUM_TARGETS = 3;
+static_assert(NUM_TARGETS == MAX_TARGETS,
+              "LD2450 hardware target count must match the zone engine's MAX_TARGETS");
 
 struct ParsedTarget {
   float x = 0.0f;       // mm, sensor coordinate space (transformed)
@@ -159,6 +164,11 @@ class EPPComponent : public esphome::Component {
   RollingWindow window_;
   ZoneEngine zone_engine_;
   bool target_touched_overlay_[MAX_TARGETS]{};
+  // Previous raw-frame active state per slot. The overlay-touch flag above is
+  // sticky; without tracking the inactive→active transition, a brand-new
+  // target reusing slot i would silently inherit the previous occupant's
+  // overlay-touch history (see Stage 2b in loop()).
+  bool target_prev_raw_active_[MAX_TARGETS]{};
 
   // NVS persistence
   void restore_from_nvs_();
@@ -237,7 +247,11 @@ class EPPComponent : public esphome::Component {
   uint32_t last_zone_state_ms_ = 0;
   uint32_t last_system_ms_ = 0;
 
-  // Cached zone result
+  // Cached zone result for the publish throttles. Only the fields BEFORE the
+  // log buffer are maintained — loop() copies offsetof(ProcessingResult, log)
+  // bytes per drained frame; log[] / log_count stay at their zero brace-init
+  // values (engine log entries are flushed to the ESP log at drain time, never
+  // read from this cache).
   ProcessingResult last_zone_result_{};
   // Cached window output (rolling-median view) of the most recent frame
   // processed. Used by the Display throttle when no new frames arrived this

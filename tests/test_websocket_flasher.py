@@ -37,15 +37,15 @@ async def setup_integration(hass: HomeAssistant, config_entry: MockConfigEntry) 
         mock_dm = mock_dm_cls.return_value
         mock_dm.async_start = AsyncMock()
         mock_dm.async_stop = AsyncMock()
-        mock_dm._store = MagicMock()
-        mock_dm._store.devices = {}
-        mock_dm._store.configurations = {}
-        mock_dm._store.async_save = AsyncMock()
+        mock_dm.store = MagicMock()
+        mock_dm.store.devices = {}
+        mock_dm.store.configurations = {}
+        mock_dm.store.async_save = AsyncMock()
         mock_dm.devices = {}
         mock_dm.list_devices.return_value = []
         mock_dm.list_flashable_devices = AsyncMock(return_value=[])
         mock_dm._push_config_to_device = AsyncMock()
-        mock_dm._push_pipeline_to_device = AsyncMock()
+        mock_dm.async_push_pipeline_to_device = AsyncMock()
         mock_dm._entity_update_macs = set()
         mock_dm.async_update_zone_entities = AsyncMock()
         mock_dm.async_open_session = AsyncMock(return_value=None)
@@ -492,6 +492,23 @@ class TestSubscribeFlashableDevices:
 class TestDeleteEsphomeDevice:
     """Tests for eppgrid/delete_esphome_device."""
 
+    @staticmethod
+    def _add_epp_device(hass: HomeAssistant, esphome_entry: MockConfigEntry) -> None:
+        """Register an EPP-signature device for the entry in the device registry."""
+        from homeassistant.helpers import device_registry as dr
+
+        from custom_components.eppgrid.const import EPP_MANUFACTURER
+        from custom_components.eppgrid.const import EPP_MODEL
+
+        dev_reg = dr.async_get(hass)
+        dev_reg.async_get_or_create(
+            config_entry_id=esphome_entry.entry_id,
+            connections={(dr.CONNECTION_NETWORK_MAC, "aa:bb:cc:dd:ee:ff")},
+            name="EPP",
+            manufacturer=EPP_MANUFACTURER,
+            model=EPP_MODEL,
+        )
+
     async def test_deletes_config_entry(self, hass: HomeAssistant, config_entry: MockConfigEntry) -> None:
         """delete_esphome_device calls hass.config_entries.async_remove."""
         await setup_integration(hass, config_entry)
@@ -499,6 +516,7 @@ class TestDeleteEsphomeDevice:
         # Create a real ESPHome config entry so async_get_entry finds it
         esphome_entry = MockConfigEntry(domain="esphome", data={"host": "192.168.1.42"})
         esphome_entry.add_to_hass(hass)
+        self._add_epp_device(hass, esphome_entry)
 
         from custom_components.eppgrid.websocket_api import websocket_delete_esphome_device
 
@@ -516,12 +534,52 @@ class TestDeleteEsphomeDevice:
         connection.send_result.assert_called_once_with(2)
         connection.send_error.assert_not_called()
 
+    async def test_delete_rejects_non_epp_esphome_entry(
+        self, hass: HomeAssistant, config_entry: MockConfigEntry
+    ) -> None:
+        """An ESPHome entry whose device doesn't carry the EPP
+        manufacturer/model signature must not be deletable through this
+        command — an admin panel client could otherwise remove ANY ESPHome
+        integration in the installation."""
+        from homeassistant.helpers import device_registry as dr
+
+        await setup_integration(hass, config_entry)
+
+        esphome_entry = MockConfigEntry(domain="esphome", data={"host": "192.168.1.42"})
+        esphome_entry.add_to_hass(hass)
+        dev_reg = dr.async_get(hass)
+        dev_reg.async_get_or_create(
+            config_entry_id=esphome_entry.entry_id,
+            connections={(dr.CONNECTION_NETWORK_MAC, "aa:bb:cc:dd:ee:01")},
+            name="Some other ESPHome node",
+            manufacturer="OtherVendor",
+            model="OtherModel",
+        )
+
+        from custom_components.eppgrid.websocket_api import websocket_delete_esphome_device
+
+        connection = MagicMock()
+        msg = {
+            "id": 4,
+            "type": "eppgrid/delete_esphome_device",
+            "config_entry_id": esphome_entry.entry_id,
+        }
+
+        with patch.object(hass.config_entries, "async_remove", new_callable=AsyncMock) as mock_remove:
+            await call_async_handler(hass, websocket_delete_esphome_device, connection, msg)
+
+        mock_remove.assert_not_awaited()
+        connection.send_result.assert_not_called()
+        connection.send_error.assert_called_once()
+        assert connection.send_error.call_args[0][1] == "not_epp_device"
+
     async def test_delete_fails(self, hass: HomeAssistant, config_entry: MockConfigEntry) -> None:
         """delete_esphome_device sends error when async_remove raises."""
         await setup_integration(hass, config_entry)
 
         esphome_entry = MockConfigEntry(domain="esphome", data={"host": "192.168.1.42"})
         esphome_entry.add_to_hass(hass)
+        self._add_epp_device(hass, esphome_entry)
 
         from custom_components.eppgrid.websocket_api import websocket_delete_esphome_device
 
@@ -541,6 +599,29 @@ class TestDeleteEsphomeDevice:
             await call_async_handler(hass, websocket_delete_esphome_device, connection, msg)
 
         connection.send_error.assert_called_once_with(3, "delete_failed", "not found")
+        connection.send_result.assert_not_called()
+
+    async def test_delete_esphome_device_requires_admin(
+        self, hass: HomeAssistant, config_entry: MockConfigEntry
+    ) -> None:
+        """Non-admin users cannot delete ESPHome devices."""
+        from homeassistant.exceptions import Unauthorized
+
+        await setup_integration(hass, config_entry)
+
+        from custom_components.eppgrid.websocket_api import websocket_delete_esphome_device
+
+        connection = MagicMock()
+        connection.user.is_admin = False
+        msg = {
+            "id": 5,
+            "type": "eppgrid/delete_esphome_device",
+            "config_entry_id": "some-entry-id",
+        }
+
+        with pytest.raises(Unauthorized):
+            await call_async_handler(hass, websocket_delete_esphome_device, connection, msg)
+
         connection.send_result.assert_not_called()
 
     async def test_delete_rejects_non_esphome_entry(self, hass: HomeAssistant, config_entry: MockConfigEntry) -> None:
@@ -808,3 +889,24 @@ class TestAddEsphomeDevice:
         msg_id, payload = connection.send_result.call_args[0]
         assert msg_id == 8
         assert payload == {"type": "added"}
+
+    async def test_add_esphome_device_requires_admin(self, hass: HomeAssistant, config_entry: MockConfigEntry) -> None:
+        """Non-admin users cannot add ESPHome devices."""
+        from homeassistant.exceptions import Unauthorized
+
+        await setup_integration(hass, config_entry)
+
+        from custom_components.eppgrid.websocket_api import websocket_add_esphome_device
+
+        connection = MagicMock()
+        connection.user.is_admin = False
+        msg = {
+            "id": 9,
+            "type": "eppgrid/add_esphome_device",
+            "host": "192.168.1.99",
+        }
+
+        with pytest.raises(Unauthorized):
+            await call_async_handler(hass, websocket_add_esphome_device, connection, msg)
+
+        connection.send_result.assert_not_called()

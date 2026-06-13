@@ -104,15 +104,62 @@ class TestDiagnosticDump:
             "office_zone_1_presence",
             config_entry=config_entry,
             device_id=device.id,
+            suggested_object_id="office_zone_1_presence",
         )
         entity_id = ent_entry.entity_id
+        assert entity_id == "binary_sensor.office_zone_1_presence"
         hass.states.async_set(entity_id, "on")
 
         result = await async_get_config_entry_diagnostics(hass, config_entry)
 
-        # MAC keys are reindexed; the inner entity-state dict is preserved.
+        # MAC keys are reindexed; entity_ids inside are re-keyed too — the
+        # device-name prefix ("office") is replaced by the device index so a
+        # default ESPHome name embedding the MAC can't leak through the key.
         assert "device_0" in result["entity_states"]
-        assert result["entity_states"]["device_0"][entity_id] == "on"
+        assert result["entity_states"]["device_0"]["binary_sensor.device_0_zone_1_presence"] == "on"
+        assert entity_id not in result["entity_states"]["device_0"]
+
+    async def test_entity_ids_do_not_leak_mac_fragment_for_default_named_device(
+        self, hass: HomeAssistant, config_entry: MockConfigEntry, manager: DeviceManager, store: EPPGridStore
+    ) -> None:
+        """Default ESPHome device names embed the MAC's last 6 hex digits,
+        and entity_ids inherit that as their object_id prefix — so the
+        entity_state KEYS would leak the MAC despite field redaction.
+        Diagnostics must re-key entity_ids by the device index."""
+        import json
+
+        mac = "AA:BB:CC:DD:EE:FF"
+
+        dev_reg = dr.async_get(hass)
+        device = dev_reg.async_get_or_create(
+            config_entry_id=config_entry.entry_id,
+            identifiers={("esphome", "test_device")},
+            name="Everything Presence Pro DDEEFF",
+        )
+        manager.devices[mac] = ManagedDevice(
+            mac=mac, name="Everything Presence Pro DDEEFF", host="192.168.1.100", device_id=device.id
+        )
+        # Stored display name keeps list_devices' `name` field (which is not
+        # part of this fix) out of the full-dump assertion below — the leak
+        # under test is the entity_id KEY prefix.
+        store.devices[mac] = {"name": "Office"}
+
+        ent_reg = er.async_get(hass)
+        ent_entry = ent_reg.async_get_or_create(
+            "sensor",
+            "esphome",
+            "AA:BB:CC:DD:EE:FF-sensor-firmware_version",
+            config_entry=config_entry,
+            device_id=device.id,
+            suggested_object_id="everything_presence_pro_ddeeff_firmware_version",
+        )
+        hass.states.async_set(ent_entry.entity_id, "0.99.0")
+
+        result = await async_get_config_entry_diagnostics(hass, config_entry)
+
+        serialized = json.dumps(result).lower()
+        assert "ddeeff" not in serialized
+        assert result["entity_states"]["device_0"]["sensor.device_0_firmware_version"] == "0.99.0"
 
     async def test_entity_states_skips_devices_without_device_id(
         self, hass: HomeAssistant, config_entry: MockConfigEntry, manager: DeviceManager
@@ -160,6 +207,106 @@ class TestDiagnosticDump:
         # MAC-keyed dicts get reindexed so the key itself doesn't leak.
         assert mac not in result["stored_configs"]
         assert mac not in result["entity_states"]
+
+    async def test_entity_ids_do_not_leak_mac_fragment_for_renamed_device(
+        self, hass: HomeAssistant, config_entry: MockConfigEntry, manager: DeviceManager, store: EPPGridStore
+    ) -> None:
+        """A device renamed to e.g. 'Office' still has entity_ids slugged from its
+        OLD default name (e.g. sensor.everything_presence_pro_ddeeff_firmware_version).
+        The device's `name` field can also carry the MAC hex fragment if the user
+        renamed it to something else but the stored name is still the default.
+        Diagnostics must redact the MAC hex fragments from all keys/strings
+        regardless of the current device name."""
+        import json
+
+        mac = "AA:BB:CC:DD:EE:FF"
+        # The user renamed the device to "Office" in HA
+        dev_reg = dr.async_get(hass)
+        device = dev_reg.async_get_or_create(
+            config_entry_id=config_entry.entry_id,
+            identifiers={("esphome", "test_device_renamed")},
+            name="Office",
+        )
+        manager.devices[mac] = ManagedDevice(mac=mac, name="Office", host="192.168.1.100", device_id=device.id)
+        store.devices[mac] = {"name": "Office"}
+
+        ent_reg = er.async_get(hass)
+        # entity_id is still slugged from the OLD default name that embedded the MAC fragment
+        ent_entry = ent_reg.async_get_or_create(
+            "sensor",
+            "esphome",
+            "AA:BB:CC:DD:EE:FF-sensor-firmware_version",
+            config_entry=config_entry,
+            device_id=device.id,
+            suggested_object_id="everything_presence_pro_ddeeff_firmware_version",
+        )
+        hass.states.async_set(ent_entry.entity_id, "0.99.0")
+
+        result = await async_get_config_entry_diagnostics(hass, config_entry)
+
+        serialized = json.dumps(result).lower()
+        # The MAC fragment must not appear anywhere — even though current device
+        # name is "Office" (doesn't match "ddeeff"), the entity_id still embeds it.
+        assert "ddeeff" not in serialized, (
+            f"MAC fragment 'ddeeff' leaked in diagnostics dump for renamed device:\n{serialized}"
+        )
+
+    async def test_user_named_config_and_zone_with_mac_fragment_redacted(
+        self, hass: HomeAssistant, config_entry: MockConfigEntry, manager: DeviceManager, store: EPPGridStore
+    ) -> None:
+        """A user who names a saved config, zone, or area after the device's
+        last-6 hex (e.g. 'ddeeff') would leak the MAC fragment when pasting
+        diagnostics into a public issue. The scrub must reach user-typed
+        string values nested in stored_configs and configurations, not just
+        the auto-generated entity_id keys and device names."""
+        import json
+
+        mac = "AA:BB:CC:DD:EE:FF"  # fragment "ddeeff"
+        manager.devices[mac] = ManagedDevice(mac=mac, name="Office", host="192.168.1.100")
+
+        # Per-device stored config with a user-typed zone name embedding the fragment.
+        store.devices[mac] = {
+            "zones": [{"name": "ddeeff corner"}],
+            "settings": {"timeout": 10},
+        }
+        # Name-keyed saved configuration whose value carries the fragment.
+        store.configurations["living room"] = {"label": "Living ddeeff", "grid_bytes": [0] * 400}
+        # A non-fragment config name + value must pass through untouched.
+        store.configurations["bedroom"] = {"grid_bytes": [1, 2, 3]}
+
+        result = await async_get_config_entry_diagnostics(hass, config_entry)
+
+        serialized = json.dumps(result).lower()
+        assert "ddeeff" not in serialized, f"MAC fragment leaked in user-named fields:\n{serialized}"
+
+        # The user-typed zone name was scrubbed.
+        assert result["stored_configs"]["device_0"]["zones"][0]["name"] == "redacted corner"
+        # The fragment-bearing config value was scrubbed; non-string data preserved.
+        assert result["configurations"]["living room"]["label"] == "Living redacted"
+        assert result["configurations"]["living room"]["grid_bytes"] == [0] * 400
+        # Non-fragment config passes through unchanged.
+        assert result["configurations"]["bedroom"]["grid_bytes"] == [1, 2, 3]
+
+    async def test_user_named_area_with_mac_fragment_redacted(
+        self, hass: HomeAssistant, config_entry: MockConfigEntry, manager: DeviceManager
+    ) -> None:
+        """devices_list[].area is a user-typed string that can also leak the
+        MAC fragment if a user names an area after the hex suffix."""
+        import json
+
+        mac = "AA:BB:CC:DD:EE:FF"
+        manager.devices[mac] = ManagedDevice(mac=mac, name="Office", host="192.168.1.100")
+
+        with patch.object(
+            manager,
+            "list_devices",
+            return_value=[{"mac": mac, "name": "Office", "area": "ddeeff den"}],
+        ):
+            result = await async_get_config_entry_diagnostics(hass, config_entry)
+
+        serialized = json.dumps(result).lower()
+        assert "ddeeff" not in serialized
+        assert result["devices"][0]["area"] == "redacted den"
 
     async def test_integration_version_uses_loader(
         self, hass: HomeAssistant, config_entry: MockConfigEntry, manager: DeviceManager

@@ -9,6 +9,7 @@ from unittest.mock import MagicMock
 from unittest.mock import patch
 
 import pytest
+from aioesphomeapi import LogLevel
 from homeassistant.const import STATE_UNAVAILABLE
 from homeassistant.core import HomeAssistant
 from homeassistant.core import callback
@@ -123,7 +124,43 @@ class TestDeviceConnection:
                 await conn.async_connect()
 
             assert not conn.connected
-            mock_client.disconnect.assert_awaited_once()
+            # Plain failures clean up gracefully (no force).
+            mock_client.disconnect.assert_awaited_once_with()
+
+    async def test_connect_cancelled_mid_handshake_disconnects(self) -> None:
+        """Cancellation between a successful connect() and the entity/service
+        listing must still disconnect the client. Callers typically wrap
+        async_connect in asyncio.wait_for(..., 30); CancelledError is a
+        BaseException, so a bare `except Exception` cleanup misses it — the
+        connected APIClient is then orphaned (self._client never assigned, no
+        handle to close it) and holds one of the ESP32's hard-limited API
+        slots forever. The cleanup must use disconnect(force=True): the force
+        path is synchronous inside aioesphomeapi, so it can neither be
+        interrupted by a second cancellation nor stretch the caller's
+        deadline."""
+        conn = DeviceConnection("192.168.1.100")
+
+        with patch("custom_components.eppgrid.device_manager._connection.APIClient") as mock_cls:
+            mock_client = mock_cls.return_value
+            mock_client.connect = AsyncMock()
+            listing_started = asyncio.Event()
+
+            async def hung_listing() -> None:
+                listing_started.set()
+                await asyncio.Event().wait()  # blocks until cancelled
+
+            mock_client.list_entities_services = AsyncMock(side_effect=hung_listing)
+            mock_client.disconnect = AsyncMock()
+
+            task = asyncio.create_task(conn.async_connect())
+            await listing_started.wait()
+            task.cancel()
+            with pytest.raises(asyncio.CancelledError):
+                await task
+
+            assert not conn.connected
+            assert conn._client is None
+            mock_client.disconnect.assert_awaited_once_with(force=True)
 
     async def test_subscribe_states_fans_out(self) -> None:
         """subscribe_states dispatches to all subscribers."""
@@ -208,6 +245,100 @@ class TestDeviceConnection:
         assert bad.call_count == 1
         assert good.call_count == 2
 
+    async def test_on_log_isolates_callback_exceptions(self) -> None:
+        """A log callback raising must not stop later callbacks from receiving
+        the message, nor propagate into aioesphomeapi's packet path."""
+        conn = DeviceConnection("192.168.1.100")
+        conn._client = MagicMock()
+        bad = MagicMock(side_effect=RuntimeError("boom"))
+        good = MagicMock()
+        conn.add_log_callback(bad)
+        conn.add_log_callback(good)
+        conn.subscribe_logs()
+        on_log = conn._client.subscribe_logs.call_args.args[0]
+
+        msg = MagicMock()
+        msg.level = LogLevel.LOG_LEVEL_INFO
+        msg.message = b"hello"
+        on_log(msg)  # must not raise
+        good.assert_called_once_with(msg)
+
+    async def test_on_log_drops_failed_callback(self) -> None:
+        """A log callback that raises is dropped after logging once — mirrors
+        _dispatch_state: keeping it registered would flood HA logs at the
+        device's log-emit rate."""
+        conn = DeviceConnection("192.168.1.100")
+        conn._client = MagicMock()
+        bad = MagicMock(side_effect=RuntimeError("boom"))
+        good = MagicMock()
+        conn.add_log_callback(bad)
+        conn.add_log_callback(good)
+        conn.subscribe_logs()
+        on_log = conn._client.subscribe_logs.call_args.args[0]
+
+        msg = MagicMock()
+        msg.level = LogLevel.LOG_LEVEL_INFO
+        msg.message = b"hello"
+        on_log(msg)
+        # Bad callback dropped; only good remains.
+        assert conn._log_callbacks == [good]
+        # Second message only hits good — bad isn't called again.
+        on_log(msg)
+        assert bad.call_count == 1
+        assert good.call_count == 2
+
+    async def test_unsubscribe_logs_stops_device_stream(self) -> None:
+        """Dropping the local log callback alone leaves the DEVICE streaming
+        log frames for the rest of the connection's lifetime (aioesphomeapi
+        semantics) — unsubscribing must send a fresh subscribe at
+        LOG_LEVEL_NONE so the device actually stops sending."""
+        conn = DeviceConnection("192.168.1.100")
+        conn._client = MagicMock()
+        conn.connected = True
+        local_unsub = MagicMock()
+        none_unsub = MagicMock()
+        conn._client.subscribe_logs = MagicMock(side_effect=[local_unsub, none_unsub])
+
+        conn.subscribe_logs(LogLevel.LOG_LEVEL_DEBUG)
+        conn.unsubscribe_logs()
+
+        # The original local subscription is dropped...
+        local_unsub.assert_called_once()
+        # ...and a second subscribe at LOG_LEVEL_NONE told the device to stop.
+        assert conn._client.subscribe_logs.call_count == 2
+        none_call = conn._client.subscribe_logs.call_args_list[1]
+        assert none_call.kwargs.get("log_level") == LogLevel.LOG_LEVEL_NONE
+        # The NONE subscription's local callback is released immediately —
+        # it exists only to carry the level change to the device.
+        none_unsub.assert_called_once()
+        assert conn._unsub_logs is None
+
+    async def test_unsubscribe_logs_noop_when_not_subscribed(self) -> None:
+        """unsubscribe without a prior subscribe must not message the device —
+        _manage_log_subscription calls it on every push when logs are off."""
+        conn = DeviceConnection("192.168.1.100")
+        conn._client = MagicMock()
+        conn.connected = True
+        conn.unsubscribe_logs()
+        conn._client.subscribe_logs.assert_not_called()
+
+    async def test_unsubscribe_logs_tolerates_dead_connection(self) -> None:
+        """Sending LOG_LEVEL_NONE over a half-dead connection must not raise —
+        async_disconnect calls unsubscribe_logs right before disconnect."""
+        from aioesphomeapi import APIConnectionError
+
+        conn = DeviceConnection("192.168.1.100")
+        conn._client = MagicMock()
+        conn.connected = True
+        local_unsub = MagicMock()
+        conn._client.subscribe_logs = MagicMock(side_effect=[local_unsub, APIConnectionError("dead")])
+
+        conn.subscribe_logs(LogLevel.LOG_LEVEL_DEBUG)
+        conn.unsubscribe_logs()  # must not raise
+
+        local_unsub.assert_called_once()
+        assert conn._unsub_logs is None
+
     async def test_subscribe_states_raises_when_disconnected(self) -> None:
         """Subscribing on a closed connection must raise rather than silently
         appending — otherwise the caller gets back success but never receives
@@ -250,11 +381,19 @@ class TestDeviceConnection:
             assert call_args[0][0] == mock_service
             assert call_args[0][1]["room_width"] == 3000.0
 
-    async def test_push_config_no_client(self) -> None:
-        """push_config is a no-op when not connected."""
+    async def test_push_config_no_client_raises(self) -> None:
+        """push_config on a dead client must raise, not silently no-op.
+
+        _on_stop can clear _client between get_session and the push; a silent
+        return makes _do_push_config_to_device report success, leaving the
+        device unsynced with the _failed_pushes recovery never armed.
+        """
+        from homeassistant.exceptions import HomeAssistantError
+
         conn = DeviceConnection("192.168.1.100")
-        # Should not raise
-        await conn.async_push_config({"calibration": {"perspective": [1.0] * 8}})
+        with pytest.raises(HomeAssistantError) as excinfo:
+            await conn.async_push_config({"calibration": {"perspective": [1.0] * 8}})
+        assert excinfo.value.translation_key == "device_not_connected"
 
     async def test_push_config_settings_translation(self) -> None:
         """Settings values are correctly translated to firmware service calls."""
@@ -375,6 +514,17 @@ class TestDeviceConnection:
             calls = mock_client.execute_service.await_args_list
             payloads = {c.args[0].name: c.args[1] for c in calls}
             assert payloads["epp_set_static_presence"]["on_delay"] == 2.0
+
+    async def test_push_distance_override_no_client_raises(self) -> None:
+        """push_distance_override on a dead client must raise, aligned with
+        async_push_config — a silent no-op reports success to the websocket
+        caller while the override never reaches the device."""
+        from homeassistant.exceptions import HomeAssistantError
+
+        conn = DeviceConnection("192.168.1.100")
+        with pytest.raises(HomeAssistantError) as excinfo:
+            await conn.async_push_distance_override({"target_max_distance": 6.0})
+        assert excinfo.value.translation_key == "device_not_connected"
 
     async def test_push_config_settings_defaults(self) -> None:
         """Missing settings keys fall back to correct defaults."""
@@ -639,6 +789,12 @@ class TestDeviceConnection:
 class TestDeviceManager:
     """Tests for DeviceManager discovery and session management."""
 
+    async def test_exposes_public_store(self, hass: HomeAssistant) -> None:
+        """DeviceManager.store returns the store passed at construction."""
+        s = EPPGridStore(hass)
+        m = DeviceManager(hass, s)
+        assert m.store is s
+
     async def test_discover_finds_firmware_version_device(self, hass: HomeAssistant, manager: DeviceManager) -> None:
         """Discover finds ESPHome devices with firmware_version entity."""
         dev_reg = dr.async_get(hass)
@@ -792,6 +948,62 @@ class TestDeviceManager:
         await manager.async_discover()
         assert len(manager.devices) == 0
 
+    async def test_rediscovery_preserves_runtime_availability(
+        self, hass: HomeAssistant, manager: DeviceManager
+    ) -> None:
+        """Re-running async_discover must not reset a device's runtime state.
+
+        async_discover re-runs whenever a new ESPHome entity appears anywhere.
+        Recreating the ManagedDevice resets `available` to the dataclass
+        default (False), so the next real offline transition fails the
+        `dev.available` guard in `_on_state_changed` and never fires the
+        device-list broadcast — the panel shows the device available through
+        the whole outage.
+        """
+        dev_reg = dr.async_get(hass)
+        ent_reg = er.async_get(hass)
+
+        esphome_entry = MockConfigEntry(domain="esphome", data={"host": "192.168.1.50"}, title="EPP")
+        esphome_entry.add_to_hass(hass)
+        device = dev_reg.async_get_or_create(
+            config_entry_id=esphome_entry.entry_id,
+            connections={("mac", "aa:bb:cc:dd:ee:ff")},
+            name="EPP",
+            manufacturer="EverythingSmartTechnology",
+            model="Everything Presence Pro",
+        )
+        entity = ent_reg.async_get_or_create(
+            "sensor",
+            "esphome",
+            unique_id="AA:BB:CC:DD:EE:FF-sensor-firmware_version",
+            config_entry=esphome_entry,
+            device_id=device.id,
+        )
+
+        await manager.async_discover()
+        mac = "AA:BB:CC:DD:EE:FF"
+        # Device came online at some point after the initial discovery.
+        manager.devices[mac].available = True
+
+        # A new ESPHome entity appearing anywhere re-runs discovery.
+        await manager.async_discover()
+        assert manager.devices[mac].available is True, "rediscovery reset runtime availability"
+
+        # The next real offline transition must still fire the broadcast.
+        fire_calls: list[None] = []
+        manager.on_device_list_changed(lambda _devices: fire_calls.append(None))
+        old = MagicMock()
+        old.state = "1.2.3"
+        new = MagicMock()
+        new.state = STATE_UNAVAILABLE
+        event = MagicMock()
+        event.data = {"entity_id": entity.entity_id, "old_state": old, "new_state": new}
+        manager._on_state_changed(event)
+        await hass.async_block_till_done()
+
+        assert len(fire_calls) == 1, "offline transition after rediscovery must fire broadcast"
+        assert manager.devices[mac].available is False
+
     async def test_list_devices(self, hass: HomeAssistant, manager: DeviceManager) -> None:
         """list_devices returns serializable device list."""
         manager.devices["AA:BB:CC:DD:EE:FF"] = ManagedDevice(
@@ -807,6 +1019,31 @@ class TestDeviceManager:
         assert result[0]["available"] is True
         assert result[0]["configured"] is False
         assert result[0]["current_connection_count"] is None
+
+    async def test_list_devices_build_flags_cannot_override_reserved_keys(
+        self, hass: HomeAssistant, manager: DeviceManager
+    ) -> None:
+        """Cached build flags from the device must not clobber the base
+        device fields — a buggy/malicious firmware returning e.g.
+        `{"name": ..., "host": ...}` from get_build_flags would otherwise
+        rewrite identity fields in the frontend payload."""
+        manager.devices["AA:BB:CC:DD:EE:FF"] = ManagedDevice(
+            mac="AA:BB:CC:DD:EE:FF",
+            name="EPP Device",
+            host="192.168.1.50",
+        )
+        manager._build_flags["AA:BB:CC:DD:EE:FF"] = {
+            "name": "EVIL",
+            "host": "6.6.6.6",
+            "firmware_status": "compatible",
+            "model": "pro",
+        }
+        result = manager.list_devices()
+        assert result[0]["name"] == "EPP Device"
+        assert result[0]["host"] == "192.168.1.50"
+        assert result[0]["firmware_status"] == "unavailable"
+        # Non-colliding flags still pass through.
+        assert result[0]["model"] == "pro"
 
     async def test_list_devices_with_stored_config(
         self, hass: HomeAssistant, store: EPPGridStore, manager: DeviceManager
@@ -1014,37 +1251,6 @@ class TestDeviceManager:
         release.set()
         await first_task
 
-    async def test_open_session_re_drains_pending_close_inside_lock(
-        self, hass: HomeAssistant, manager: DeviceManager
-    ) -> None:
-        """`async_open_session` checks `_pending_closes` BOTH before and
-        inside the lock. The in-lock check guards the race where a close
-        gets scheduled while open is queued for the lock — forcing this
-        timing in test is brittle, so we verify the in-lock check exists
-        by counting `_pending_closes.get(mac)` invocations instead."""
-        mac = "AA:BB:CC:DD:EE:FF"
-        manager.devices[mac] = ManagedDevice(mac=mac, name="EPP", host="192.168.1.50")
-
-        get_calls: list[str] = []
-
-        class CountingDict(dict):
-            def get(self, key, default=None):
-                if key == mac:
-                    get_calls.append("call")
-                return super().get(key, default)
-
-        manager._pending_closes = CountingDict(manager._pending_closes)  # type: ignore[assignment]
-
-        with patch("custom_components.eppgrid.device_manager.DeviceConnection") as mock_conn_cls:
-            conn = mock_conn_cls.return_value
-            conn.async_connect = AsyncMock()
-            conn.async_disconnect = AsyncMock()
-            conn.connected = True
-            await manager.async_open_session(mac)
-
-        # Pre-lock check + in-lock check = at least 2 lookups for the mac.
-        assert len(get_calls) >= 2, f"expected at least 2 _pending_closes.get calls, got {get_calls}"
-
     async def test_state_changed_offline_transition_uses_schedule_close(
         self, hass: HomeAssistant, manager: DeviceManager
     ) -> None:
@@ -1182,6 +1388,56 @@ class TestDeviceManager:
         assert result is fresh
         seeded.async_disconnect.assert_awaited_once()
         fresh.async_connect.assert_awaited_once()
+
+    async def test_open_session_close_scheduled_while_queued_does_not_deadlock(
+        self, hass: HomeAssistant, manager: DeviceManager
+    ) -> None:
+        """A close scheduled while a second open is QUEUED on the per-mac lock
+        must not deadlock. Interleaving: open A holds the lock through a slow
+        `async_connect`; open B queues on the lock; close C is scheduled (the
+        device flipped offline) and its lock acquisition queues behind B. If B
+        awaited the pending close while HOLDING the lock, B would wait on C
+        and C on B's lock — a permanent per-mac hang."""
+        mac = "AA:BB:CC:DD:EE:FF"
+        manager.devices[mac] = ManagedDevice(mac=mac, name="EPP", host="192.168.1.50")
+
+        connect_started = asyncio.Event()
+        connect_release = asyncio.Event()
+
+        async def slow_connect() -> None:
+            connect_started.set()
+            await connect_release.wait()
+
+        with patch("custom_components.eppgrid.device_manager.DeviceConnection") as mock_conn_cls:
+            mock_conn = mock_conn_cls.return_value
+            mock_conn.async_connect = slow_connect
+            mock_conn.async_disconnect = AsyncMock()
+            mock_conn.connected = True
+
+            open_a = asyncio.create_task(manager.async_open_session(mac))
+            await connect_started.wait()  # A holds the lock, inside connect
+
+            open_b = asyncio.create_task(manager.async_open_session(mac))
+            # Yield so B passes the pre-lock drain and queues on the lock.
+            await asyncio.sleep(0)
+            await asyncio.sleep(0)
+            assert not open_b.done()
+
+            # Device flips offline while B is queued → close C is scheduled.
+            close_c = manager.schedule_close_session(mac)
+
+            # A finishes connect, stores the conn, releases the lock.
+            connect_release.set()
+
+            results = await asyncio.wait_for(asyncio.gather(open_a, open_b, close_c), timeout=5)
+
+        assert results[0] is mock_conn
+        assert results[1] is mock_conn
+        # The queued close ran after B released the lock and tore the
+        # just-stored session down — that ordering is correct: C pops
+        # `_active_connections` and disconnects.
+        mock_conn.async_disconnect.assert_awaited_once()
+        assert manager.get_session(mac) is None
 
     async def test_close_session_serializes_with_in_flight_open(
         self, hass: HomeAssistant, manager: DeviceManager
@@ -1412,6 +1668,30 @@ class TestDeviceManager:
 
         # Clean up so the test's own teardown is leak-free.
         await manager.async_stop()
+
+    async def test_schedule_entity_update_clear_public_wrapper(
+        self, hass: HomeAssistant, manager: DeviceManager
+    ) -> None:
+        """The public schedule_entity_update_clear wrapper (the surface WS
+        handlers call) arms the entity-update guard set and schedules the clear
+        timer with the default delay. The private method forwards an explicit
+        delay. This is the contract the websocket-API tests rely on when they
+        assert only that the call was made."""
+        from custom_components.eppgrid.device_manager import _ENTITY_UPDATE_CLEAR_DEFAULT
+
+        mac = "AA:BB:CC:DD:EE:FF"
+
+        with patch("custom_components.eppgrid.device_manager.async_call_later") as mock_later:
+            manager.schedule_entity_update_clear(mac)
+
+            assert mac in manager._entity_update_macs
+            assert mac in manager._entity_update_clear_cancels
+            assert mock_later.call_args[0][1] == _ENTITY_UPDATE_CLEAR_DEFAULT
+
+            manager._schedule_entity_update_clear(mac, 5.0)
+
+            assert mac in manager._entity_update_macs
+            assert mock_later.call_args[0][1] == 5.0
 
     async def test_async_stop_awaits_pending_tasks(self, hass: HomeAssistant, manager: DeviceManager) -> None:
         """Tasks spawned by event handlers are tracked and awaited by async_stop
@@ -1800,6 +2080,39 @@ class TestAsyncTriggerOta:
             await manager.async_trigger_ota(mac)
 
         mock_cls.assert_called_once_with("192.168.1.50", noise_psk="abcdef==")
+
+    async def test_temp_conn_connect_timeout_wrapped_as_ota_trigger_failed(
+        self, hass: HomeAssistant, manager: DeviceManager
+    ) -> None:
+        """The OTA temp-connection fallback bounds the connect with a timeout.
+
+        A device that accepts the TCP connection but never completes the
+        ESPHome handshake used to hang async_trigger_ota forever — the temp
+        connection now goes through `_temp_connection`, whose connect is
+        wrapped in `asyncio.wait_for`. The timeout surfaces as the standard
+        `ota_trigger_failed` HomeAssistantError.
+        """
+        from homeassistant.exceptions import HomeAssistantError
+
+        self._setup_device(manager)
+        manager._build_flags["AA:BB:CC:DD:EE:FF"] = {"ethernet_enabled": False}
+        # Shrink the class-level default (30 s) for the test.
+        manager._temp_connection_timeout = 0.05
+
+        async def _hang() -> None:
+            await asyncio.Event().wait()
+
+        mock_conn = self._make_mock_conn()
+        mock_conn.async_connect = AsyncMock(side_effect=_hang)
+
+        with (
+            patch("custom_components.eppgrid.device_manager.DeviceConnection", return_value=mock_conn),
+            pytest.raises(HomeAssistantError) as excinfo,
+        ):
+            await asyncio.wait_for(manager.async_trigger_ota("AA:BB:CC:DD:EE:FF"), timeout=5)
+
+        assert excinfo.value.translation_key == "ota_trigger_failed"
+        mock_conn.async_disconnect.assert_awaited_once()
 
     async def test_uses_ethernet_variant_when_flagged(self, hass: HomeAssistant, manager: DeviceManager) -> None:
         self._setup_device(manager)
@@ -3150,6 +3463,55 @@ class TestPushConfig:
 
             mock_client.execute_service.assert_not_awaited()
 
+    async def test_push_config_skips_oversized_zone_payload(self, caplog: pytest.LogCaptureFixture) -> None:
+        """Zone push must be skipped with a warning when the serialised payload
+        exceeds ZONES_JSON_MAX — belt-and-braces guard for payloads that somehow
+        pass the websocket validator but are still too large after expansion.
+        """
+        import logging
+
+        from custom_components.eppgrid.const import ZONES_JSON_MAX
+
+        conn = DeviceConnection("192.168.1.100")
+        mock_zones = MagicMock()
+        mock_zones.name = "epp_set_zones"
+
+        # Build a zone_slots payload whose JSON exceeds ZONES_JSON_MAX after
+        # expansion. Use a custom-type slot so _expand_zone_slot preserves user
+        # timing — avoiding type-default lookup which is harder to inflate.
+        # A single name of 8 KB+ is more than enough (normal max is 64 chars).
+        fat_name = "x" * (ZONES_JSON_MAX + 1)
+        zone_slots = [
+            {"type": "default"},
+            {
+                "name": fat_name,
+                "color": "#aabbcc",
+                "type": "custom",
+                "trigger": 5,
+                "renew": 3,
+                "timeout": 10.0,
+                "handoff_timeout": 3.0,
+            },
+        ] + [None] * 6
+
+        with patch("custom_components.eppgrid.device_manager._connection.APIClient") as mock_cls:
+            mock_client = mock_cls.return_value
+            mock_client.connect = AsyncMock()
+            mock_client.list_entities_services = AsyncMock(return_value=([], [mock_zones]))
+            mock_client.execute_service = AsyncMock()
+
+            await conn.async_connect()
+            with caplog.at_level(
+                logging.WARNING,
+                logger="custom_components.eppgrid.device_manager",
+            ):
+                await conn.async_push_config({"room_layout": {"zone_slots": zone_slots}})
+
+        # Service must NOT have been called — payload is too large
+        mock_client.execute_service.assert_not_awaited()
+        # The specific oversized-payload warning must have been emitted
+        assert any("Skipping zone push" in rec.getMessage() for rec in caplog.records)
+
     async def test_push_config_already_connected_noop(self) -> None:
         """async_connect is a no-op when already connected."""
         conn = DeviceConnection("192.168.1.100")
@@ -3178,7 +3540,13 @@ class TestEventCallbacks:
     async def test_on_entity_registry_updated_triggers_discover(
         self, hass: HomeAssistant, manager: DeviceManager
     ) -> None:
-        """New ESPHome entity creation triggers re-discovery."""
+        """New ESPHome entity creation triggers re-discovery.
+
+        The device carries the EPP manufacturer/model signature — the
+        handler pre-filters on it, so an unsigned device would be skipped
+        (see test_entity_create_non_epp_device_skips_discover_and_listener).
+        """
+        manager._discover_debounce = 0.01
         dev_reg = dr.async_get(hass)
         ent_reg = er.async_get(hass)
 
@@ -3193,6 +3561,8 @@ class TestEventCallbacks:
             config_entry_id=esphome_entry.entry_id,
             connections={("mac", "ff:ee:dd:cc:bb:aa")},
             name="EPP New",
+            manufacturer=EPP_MANUFACTURER,
+            model=EPP_MODEL,
         )
 
         entity = ent_reg.async_get_or_create(
@@ -3242,6 +3612,8 @@ class TestEventCallbacks:
             config_entry_id=esphome_entry.entry_id,
             connections={("mac", "aa:bb:cc:dd:ee:ff")},
             name="EPP Known",
+            manufacturer=EPP_MANUFACTURER,
+            model=EPP_MODEL,
         )
 
         entity = ent_reg.async_get_or_create(
@@ -3291,6 +3663,145 @@ class TestEventCallbacks:
             await hass.async_block_till_done()
 
         mock_discover.assert_not_awaited()
+
+    async def test_entity_create_burst_debounces_discover(self, hass: HomeAssistant, manager: DeviceManager) -> None:
+        """A burst of entity-create events for one new EPP device collapses
+        into exactly ONE discovery run after the debounce window — discovery
+        is a full entity-registry scan, so N entities must not cost N scans."""
+        manager._discover_debounce = 0.05
+        dev_reg = dr.async_get(hass)
+        ent_reg = er.async_get(hass)
+
+        esphome_entry = MockConfigEntry(domain="esphome", data={"host": "192.168.1.50"}, title="EPP New")
+        esphome_entry.add_to_hass(hass)
+        device = dev_reg.async_get_or_create(
+            config_entry_id=esphome_entry.entry_id,
+            connections={("mac", "ff:ee:dd:cc:bb:aa")},
+            name="EPP New",
+            manufacturer=EPP_MANUFACTURER,
+            model=EPP_MODEL,
+        )
+        entities = [
+            ent_reg.async_get_or_create(
+                "sensor",
+                "esphome",
+                unique_id=f"FF:EE:DD:CC:BB:AA-sensor-{i}",
+                config_entry=esphome_entry,
+                device_id=device.id,
+            )
+            for i in range(5)
+        ]
+
+        with patch.object(manager, "async_discover", new_callable=AsyncMock) as mock_discover:
+            for entity in entities:
+                event = MagicMock()
+                event.data = {"action": "create", "entity_id": entity.entity_id}
+                manager._on_entity_registry_updated(event)
+            await hass.async_block_till_done()
+
+        mock_discover.assert_awaited_once()
+
+    async def test_entity_create_non_epp_device_skips_discover_and_listener(
+        self, hass: HomeAssistant, manager: DeviceManager
+    ) -> None:
+        """An entity created on a clearly non-EPP ESPHome device must trigger
+        neither a discovery spawn nor a state-listener rebuild — adding a
+        50-entity non-EPP device used to cause an O(N²) burst."""
+        dev_reg = dr.async_get(hass)
+        ent_reg = er.async_get(hass)
+
+        esphome_entry = MockConfigEntry(domain="esphome", data={"host": "192.168.1.60"}, title="Acme")
+        esphome_entry.add_to_hass(hass)
+        device = dev_reg.async_get_or_create(
+            config_entry_id=esphome_entry.entry_id,
+            connections={("mac", "11:22:33:44:55:66")},
+            name="Acme Widget",
+            manufacturer="Acme Corp",
+            model="Widget 3000",
+        )
+        entity = ent_reg.async_get_or_create(
+            "sensor",
+            "esphome",
+            unique_id="11:22:33:44:55:66-sensor-temperature",
+            config_entry=esphome_entry,
+            device_id=device.id,
+        )
+
+        with (
+            patch.object(manager, "async_discover", new_callable=AsyncMock) as mock_discover,
+            patch.object(manager, "_refresh_state_listener") as mock_refresh,
+        ):
+            event = MagicMock()
+            event.data = {"action": "create", "entity_id": entity.entity_id}
+            manager._on_entity_registry_updated(event)
+            await hass.async_block_till_done()
+
+        mock_discover.assert_not_awaited()
+        mock_refresh.assert_not_called()
+
+    async def test_async_stop_cancels_pending_discover(self, hass: HomeAssistant, manager: DeviceManager) -> None:
+        """A pending debounced discovery must be cancelled by async_stop, not
+        left to fire against a torn-down manager."""
+        manager._discover_debounce = 30.0
+        with patch.object(manager, "async_discover", new_callable=AsyncMock) as mock_discover:
+            manager._request_discover()
+            assert manager._pending_discover is not None
+            await manager.async_stop()
+        mock_discover.assert_not_awaited()
+        assert manager._pending_discover is None
+
+    async def test_request_discover_noop_after_stop(self, hass: HomeAssistant, manager: DeviceManager) -> None:
+        """_request_discover must not schedule once the manager is stopping."""
+        manager._stopping = True
+        manager._request_discover()
+        assert manager._pending_discover is None
+        await hass.async_block_till_done()
+
+    async def test_on_state_changed_value_to_value_skips_registry_lookups(
+        self, hass: HomeAssistant, manager: DeviceManager
+    ) -> None:
+        """The hot path: a plain value→value sensor update on a tracked entity
+        must bail before paying any registry lookups — every state change of
+        every tracked entity lands here."""
+        old = MagicMock()
+        old.state = "21.0"
+        new = MagicMock()
+        new.state = "21.5"
+        event = MagicMock()
+        event.data = {"entity_id": "sensor.epp_temperature", "old_state": old, "new_state": new}
+
+        with (
+            patch("custom_components.eppgrid.device_manager.er.async_get") as mock_er,
+            patch("custom_components.eppgrid.device_manager.dr.async_get") as mock_dr,
+        ):
+            manager._on_state_changed(event)
+
+        mock_er.assert_not_called()
+        mock_dr.assert_not_called()
+
+    async def test_fire_device_list_changed_computes_payload_once(
+        self, hass: HomeAssistant, manager: DeviceManager
+    ) -> None:
+        """One change event with N subscribers computes list_devices() exactly
+        once and hands every subscriber the same payload object."""
+        received: list = []
+        manager.on_device_list_changed(received.append)
+        manager.on_device_list_changed(received.append)
+
+        with patch.object(manager, "list_devices", wraps=manager.list_devices) as mock_list:
+            manager._fire_device_list_changed()
+
+        assert mock_list.call_count == 1
+        assert len(received) == 2
+        assert received[0] is received[1]
+
+    async def test_fire_device_list_changed_skips_payload_without_subscribers(
+        self, hass: HomeAssistant, manager: DeviceManager
+    ) -> None:
+        """No subscribers → no payload computation at all."""
+        with patch.object(manager, "list_devices") as mock_list:
+            manager._fire_device_list_changed()
+        mock_list.assert_not_called()
 
     async def test_on_state_changed_pushes_config(self, hass: HomeAssistant, manager: DeviceManager) -> None:
         """Device coming online triggers config push."""
@@ -3385,7 +3896,7 @@ class TestEventCallbacks:
         manager._pushing.add(mac)
 
         fire_calls: list[None] = []
-        manager.on_device_list_changed(lambda: fire_calls.append(None))
+        manager.on_device_list_changed(lambda _devices: fire_calls.append(None))
 
         with patch.object(manager, "_on_device_available", new_callable=AsyncMock) as mock_avail:
             old_state = MagicMock()
@@ -3526,7 +4037,7 @@ class TestEventCallbacks:
         manager._pushing.add("AA:BB:CC:DD:EE:03")
 
         fire_calls: list[None] = []
-        manager.on_device_list_changed(lambda: fire_calls.append(None))
+        manager.on_device_list_changed(lambda _devices: fire_calls.append(None))
 
         old_state = MagicMock()
         old_state.state = "25.5"
@@ -3578,7 +4089,7 @@ class TestEventCallbacks:
         )
 
         fire_calls: list[None] = []
-        manager.on_device_list_changed(lambda: fire_calls.append(None))
+        manager.on_device_list_changed(lambda _devices: fire_calls.append(None))
 
         # Synthesize an unavailable → unknown event (still offline either way).
         old = MagicMock()
@@ -3628,7 +4139,7 @@ class TestEventCallbacks:
         )
 
         fire_calls: list[None] = []
-        manager.on_device_list_changed(lambda: fire_calls.append(None))
+        manager.on_device_list_changed(lambda _devices: fire_calls.append(None))
 
         old = MagicMock()
         old.state = "25.5"
@@ -4171,6 +4682,34 @@ class TestEventCallbacks:
 
         assert result is False
         assert mac not in manager._active_connections
+
+    async def test_push_config_dead_session_client_returns_false(
+        self, hass: HomeAssistant, store: EPPGridStore, manager: DeviceManager
+    ) -> None:
+        """A session whose APIClient died between get_session and the push
+        (_on_stop racing the push) must surface as push failure, not success.
+
+        With async_push_config silently no-opping on a dead client,
+        _do_push_config_to_device returned True — the device was left
+        unsynced and the _failed_pushes recovery never armed.
+        """
+        mac = "AA:BB:CC:DD:EE:FF"
+        store.devices[mac] = {"calibration": {"perspective": [1.0] * 8}}
+        manager.devices[mac] = ManagedDevice(mac=mac, name="EPP", host="192.168.1.50")
+
+        # Real DeviceConnection in the dying-client state: get_session's
+        # `connected` check passed, then _on_stop cleared _client before the
+        # push body ran.
+        dead_conn = DeviceConnection("192.168.1.50")
+        dead_conn.connected = True
+        assert dead_conn._client is None
+        manager._active_connections[mac] = dead_conn
+
+        with patch.object(manager, "read_firmware_version", return_value=FIRMWARE_VERSION):
+            result = await manager._push_config_to_device(mac)
+
+        assert result is False, "dead-client push must report failure so retry logic arms"
+        assert mac not in manager._active_connections  # stale session torn down
 
     # --- version-gated push: skip on firmware mismatch ---
 
@@ -4749,6 +5288,44 @@ class TestEventCallbacks:
         assert mac not in manager._entity_update_macs
         assert "Living Room" in manager._store.configurations
 
+    async def test_on_device_removed_clears_push_runtime_state(
+        self, hass: HomeAssistant, manager: DeviceManager
+    ) -> None:
+        """Removal must also drop per-mac push runtime state: the push lock,
+        the failed-push marker, any pending debounced push, and the pending
+        entity-update-clear timer — otherwise a removed mac leaks entries
+        (and a live timer) past the device's lifetime."""
+        mac = "AA:BB:CC:DD:EE:FF"
+        manager.devices[mac] = ManagedDevice(mac=mac, name="EPP", host="192.168.1.50", device_id="dev123")
+        manager._device_id_to_mac["dev123"] = mac
+        manager._push_locks[mac] = asyncio.Lock()
+        manager._failed_pushes.add(mac)
+        # Short-delay debounced push: still pending when removal lands. The
+        # delay must be long enough that removal wins the race, short enough
+        # that an UNcancelled task would have fired by block_till_done below.
+        manager._request_push(mac, delay=0.01)
+        assert mac in manager._pending_pushes
+        pending_push = manager._pending_pushes[mac]
+        manager._schedule_entity_update_clear(mac)
+        assert mac in manager._entity_update_clear_cancels
+
+        with (
+            patch.object(manager, "async_close_session", new_callable=AsyncMock),
+            patch.object(manager, "_push_config_to_device", new_callable=AsyncMock) as mock_push,
+        ):
+            await manager._on_device_removed(mac)
+            await hass.async_block_till_done()
+
+        assert mac not in manager._push_locks
+        assert mac not in manager._failed_pushes
+        assert mac not in manager._pending_pushes
+        # The debounce task swallows its CancelledError (returns cleanly), so
+        # assert on the observable effect: the push body never ran.
+        assert pending_push.done()
+        mock_push.assert_not_awaited()
+        assert mac not in manager._entity_update_clear_cancels
+        assert mac not in manager._entity_update_macs
+
     async def test_on_device_removed_notifies_subscribers(self, hass: HomeAssistant, manager: DeviceManager) -> None:
         """Device removal fires device list callbacks."""
         mac = "AA:BB:CC:DD:EE:FF"
@@ -4890,6 +5467,7 @@ class TestEventCallbacks:
         the new firmware_version entity arrives via this handler, which
         previously returned early on `mac in self.devices` regardless of
         whether the device.id had changed."""
+        manager._discover_debounce = 0.01
         mac = "AA:BB:CC:DD:EE:FF"
         manager.devices[mac] = ManagedDevice(
             mac=mac,
@@ -5895,6 +6473,234 @@ class TestSessionLifecycle:
         await manager.async_stop()
         assert len(manager._unsub_listeners) == 0
 
+    async def test_async_start_treats_unknown_states_as_offline(
+        self, hass: HomeAssistant, manager: DeviceManager
+    ) -> None:
+        """async_start must not push to a device whose entities are all unknown.
+
+        The startup probe shares `_is_device_available` semantics: `unknown`
+        (and missing) states count as offline. The previous hand-rolled probe
+        only treated `unavailable` as offline, so an all-unknown device got a
+        doomed connect/push attempt at startup.
+        """
+        dev_reg = dr.async_get(hass)
+        ent_reg = er.async_get(hass)
+        esphome_entry = MockConfigEntry(domain="esphome", data={"host": "192.168.1.50"}, title="EPP")
+        esphome_entry.add_to_hass(hass)
+        device = dev_reg.async_get_or_create(
+            config_entry_id=esphome_entry.entry_id,
+            connections={("mac", "aa:bb:cc:dd:ee:ff")},
+            name="EPP",
+        )
+        entity = ent_reg.async_get_or_create(
+            "sensor",
+            "esphome",
+            unique_id="AA:BB:CC:DD:EE:FF-sensor-temperature",
+            config_entry=esphome_entry,
+            device_id=device.id,
+        )
+        hass.states.async_set(entity.entity_id, "unknown")
+        await hass.async_block_till_done()
+
+        mac = "AA:BB:CC:DD:EE:FF"
+        manager.devices[mac] = ManagedDevice(mac=mac, name="EPP", host="192.168.1.50", device_id=device.id)
+
+        with (
+            patch.object(manager, "async_discover", new_callable=AsyncMock),
+            patch.object(manager, "_on_device_available", new_callable=AsyncMock) as mock_avail,
+        ):
+            await manager.async_start()
+            await hass.async_block_till_done()
+
+        mock_avail.assert_not_awaited()
+        assert mac not in manager._pushing
+        await manager.async_stop()
+
+
+# ---------------------------------------------------------------------------
+# set_connection_failed tests
+# ---------------------------------------------------------------------------
+
+
+class TestSetConnectionFailed:
+    """Transition semantics of the public `set_connection_failed` accessor.
+
+    The only-fire-on-transition broadcast behaviour used to live in the
+    `subscribe_device` websocket handler (mutating `_connection_failed`
+    directly); it now lives here so the handler can stay a thin delegate.
+    """
+
+    MAC = "AA:BB:CC:DD:EE:FF"
+
+    async def test_failure_broadcasts_only_on_transition(self, hass: HomeAssistant, manager: DeviceManager) -> None:
+        cb = MagicMock()
+        manager.on_device_list_changed(cb)
+
+        manager.set_connection_failed(self.MAC, True)
+        assert cb.call_count == 1
+        # Repeated failures against an already-failing mac are silent.
+        manager.set_connection_failed(self.MAC, True)
+        assert cb.call_count == 1
+
+    async def test_recovery_re_arms_failure_broadcast(self, hass: HomeAssistant, manager: DeviceManager) -> None:
+        cb = MagicMock()
+        manager.on_device_list_changed(cb)
+
+        manager.set_connection_failed(self.MAC, True)
+        assert cb.call_count == 1
+        # Clearing never broadcasts...
+        manager.set_connection_failed(self.MAC, False)
+        assert cb.call_count == 1
+        # ...but re-arms the next failure as a transition.
+        manager.set_connection_failed(self.MAC, True)
+        assert cb.call_count == 2
+
+
+# ---------------------------------------------------------------------------
+# Session refcounting tests
+# ---------------------------------------------------------------------------
+
+
+class TestSessionRefcounting:
+    """Refcounted sessions: N subscribers share one connection and only the
+    last release closes it. Force-close paths (device offline, removal,
+    shutdown) bypass the count and reset it."""
+
+    MAC = "AA:BB:CC:DD:EE:FF"
+
+    def _seed(self, manager: DeviceManager) -> None:
+        manager.devices[self.MAC] = ManagedDevice(mac=self.MAC, name="EPP", host="192.168.1.50")
+
+    @staticmethod
+    def _make_conn() -> MagicMock:
+        conn = MagicMock()
+        conn.async_connect = AsyncMock()
+        conn.async_disconnect = AsyncMock()
+        conn.connected = True
+        return conn
+
+    async def test_second_subscriber_release_closes_not_first(
+        self, hass: HomeAssistant, manager: DeviceManager
+    ) -> None:
+        """Two subscribers on the same mac: the first release must NOT close
+        the shared session (the second subscriber's streams ride on it); the
+        second release closes it — disconnect awaited exactly once, after the
+        second release."""
+        self._seed(manager)
+        with patch("custom_components.eppgrid.device_manager.DeviceConnection") as mock_cls:
+            mock_cls.side_effect = lambda *a, **kw: self._make_conn()
+
+            conn = await manager.async_open_session(self.MAC)
+            conn2 = await manager.async_open_session(self.MAC)
+            assert conn2 is conn  # shared session
+
+            # First release: session stays up.
+            assert manager.release_session(self.MAC, conn) is None
+            await hass.async_block_till_done()
+            conn.async_disconnect.assert_not_awaited()
+            assert manager.get_session(self.MAC) is conn
+
+            # Second (last) release: session closes.
+            close_task = manager.release_session(self.MAC, conn)
+            assert close_task is not None
+            await close_task
+            conn.async_disconnect.assert_awaited_once()
+            assert manager.get_session(self.MAC) is None
+
+    async def test_release_is_safe_against_double_release(self, hass: HomeAssistant, manager: DeviceManager) -> None:
+        """A stale second release for an already-closed session must be a
+        no-op — it must not decrement a count that now belongs to nobody nor
+        schedule a spurious close."""
+        self._seed(manager)
+        with patch("custom_components.eppgrid.device_manager.DeviceConnection") as mock_cls:
+            mock_cls.side_effect = lambda *a, **kw: self._make_conn()
+
+            conn = await manager.async_open_session(self.MAC)
+            close_task = manager.release_session(self.MAC, conn)
+            assert close_task is not None
+            await close_task
+
+            # Second release of the same (now closed) reference: no-op.
+            assert manager.release_session(self.MAC, conn) is None
+            await hass.async_block_till_done()
+            conn.async_disconnect.assert_awaited_once()
+
+    async def test_force_close_bypasses_count_and_resets(self, hass: HomeAssistant, manager: DeviceManager) -> None:
+        """The device-offline transition force-closes the session regardless
+        of how many subscribers hold references, and resets the counter so a
+        later open starts fresh."""
+        self._seed(manager)
+        with patch("custom_components.eppgrid.device_manager.DeviceConnection") as mock_cls:
+            mock_cls.side_effect = lambda *a, **kw: self._make_conn()
+
+            conn = await manager.async_open_session(self.MAC)
+            await manager.async_open_session(self.MAC)  # count = 2
+
+            # Offline transition routes through schedule_close_session (pinned
+            # by test_state_changed_offline_transition_uses_schedule_close).
+            await manager.schedule_close_session(self.MAC)
+            conn.async_disconnect.assert_awaited_once()
+            assert manager.get_session(self.MAC) is None
+
+            # Counter was reset: a fresh open needs only ONE release to close.
+            conn2 = await manager.async_open_session(self.MAC)
+            assert conn2 is not conn
+            close_task = manager.release_session(self.MAC, conn2)
+            assert close_task is not None
+            await close_task
+            conn2.async_disconnect.assert_awaited_once()
+
+    async def test_stale_release_does_not_close_new_session(self, hass: HomeAssistant, manager: DeviceManager) -> None:
+        """A release carrying a reference to a force-closed connection must
+        not touch the replacement session another subscriber opened — the
+        old reference died with the force-close."""
+        self._seed(manager)
+        with patch("custom_components.eppgrid.device_manager.DeviceConnection") as mock_cls:
+            mock_cls.side_effect = lambda *a, **kw: self._make_conn()
+
+            conn1 = await manager.async_open_session(self.MAC)
+            await manager.schedule_close_session(self.MAC)  # force close (device offline)
+            conn2 = await manager.async_open_session(self.MAC)
+            assert conn2 is not conn1
+
+            # Stale release for conn1: must not decrement conn2's count.
+            assert manager.release_session(self.MAC, conn1) is None
+            await hass.async_block_till_done()
+            conn2.async_disconnect.assert_not_awaited()
+            assert manager.get_session(self.MAC) is conn2
+
+            # conn2's single reference still closes it.
+            close_task = manager.release_session(self.MAC, conn2)
+            assert close_task is not None
+            await close_task
+            conn2.async_disconnect.assert_awaited_once()
+
+    async def test_async_stop_clears_refcounts(self, hass: HomeAssistant, manager: DeviceManager) -> None:
+        """async_stop force-closes everything; counters must not survive it."""
+        self._seed(manager)
+        with patch("custom_components.eppgrid.device_manager.DeviceConnection") as mock_cls:
+            mock_cls.side_effect = lambda *a, **kw: self._make_conn()
+            await manager.async_open_session(self.MAC)
+            await manager.async_open_session(self.MAC)
+
+        await manager.async_stop()
+        assert manager._session_refcounts == {}
+
+    async def test_device_removed_force_closes_with_subscribers(
+        self, hass: HomeAssistant, manager: DeviceManager
+    ) -> None:
+        """_on_device_removed must keep force-closing regardless of count."""
+        self._seed(manager)
+        with patch("custom_components.eppgrid.device_manager.DeviceConnection") as mock_cls:
+            mock_cls.side_effect = lambda *a, **kw: self._make_conn()
+            conn = await manager.async_open_session(self.MAC)
+            await manager.async_open_session(self.MAC)  # count = 2
+
+            await manager._on_device_removed(self.MAC)
+
+        conn.async_disconnect.assert_awaited_once()
+        assert manager._session_refcounts == {}
+
 
 # ---------------------------------------------------------------------------
 # Zone entity management tests
@@ -6054,6 +6860,99 @@ class TestZoneEntities:
         # Zone 1 should remain user-disabled
         zone1 = ent_reg.async_get(zone1_entry.entity_id)
         assert zone1.disabled_by == er.RegistryEntryDisabler.USER
+
+    async def test_update_zone_entities_respects_user_disabled_zone0(
+        self, hass: HomeAssistant, manager: DeviceManager
+    ) -> None:
+        """Zone-0 presence ("Rest of Room") with disabled_by=USER is not re-enabled.
+
+        The zone-0 branch lacked the USER skip-guard that the named-zone and
+        target-count branches have, so a user who manually disabled the
+        Rest of Room presence entity got it force-re-enabled on every zone
+        update.
+        """
+        dev_reg = dr.async_get(hass)
+        ent_reg = er.async_get(hass)
+
+        esphome_entry = MockConfigEntry(domain="esphome", data={"host": "192.168.1.50"}, title="EPP")
+        esphome_entry.add_to_hass(hass)
+
+        device = dev_reg.async_get_or_create(
+            config_entry_id=esphome_entry.entry_id,
+            connections={("mac", "aa:bb:cc:dd:ee:ff")},
+            name="EPP",
+        )
+
+        zone0_entry = ent_reg.async_get_or_create(
+            "binary_sensor",
+            "esphome",
+            unique_id="AA:BB:CC:DD:EE:FF-binary_sensor-zone_0_presence",
+            config_entry=esphome_entry,
+            device_id=device.id,
+        )
+        # User explicitly disabled the Rest of Room presence entity
+        ent_reg.async_update_entity(zone0_entry.entity_id, disabled_by=er.RegistryEntryDisabler.USER)
+
+        manager.devices["AA:BB:CC:DD:EE:FF"] = ManagedDevice(
+            mac="AA:BB:CC:DD:EE:FF", name="EPP", host="192.168.1.50", device_id=device.id
+        )
+        manager._store.devices["AA:BB:CC:DD:EE:FF"] = {"settings": {"zone_presence": True}}
+
+        zone_slots = [
+            {"type": "default", "trigger": 5, "renew": 3, "timeout": 10.0, "handoff_timeout": 3.0},
+        ] + [None] * MAX_ZONES
+        await manager.async_update_zone_entities("AA:BB:CC:DD:EE:FF", zone_slots)
+
+        zone0 = ent_reg.async_get(zone0_entry.entity_id)
+        assert zone0.disabled_by == er.RegistryEntryDisabler.USER, (
+            "zone 0 presence must stay user-disabled, not be force-re-enabled"
+        )
+
+    async def test_update_zone_entities_disable_does_not_overwrite_user_disabler(
+        self, hass: HomeAssistant, manager: DeviceManager
+    ) -> None:
+        """Disabling an unused zone must not stamp INTEGRATION over a USER disabler.
+
+        If the user disabled the entity by hand and the zone is later deleted,
+        overwriting USER with INTEGRATION would make a future zone re-create
+        silently re-enable an entity the user wanted off.
+        """
+        dev_reg = dr.async_get(hass)
+        ent_reg = er.async_get(hass)
+
+        esphome_entry = MockConfigEntry(domain="esphome", data={"host": "192.168.1.50"}, title="EPP")
+        esphome_entry.add_to_hass(hass)
+
+        device = dev_reg.async_get_or_create(
+            config_entry_id=esphome_entry.entry_id,
+            connections={("mac", "aa:bb:cc:dd:ee:ff")},
+            name="EPP",
+        )
+
+        zone1_entry = ent_reg.async_get_or_create(
+            "binary_sensor",
+            "esphome",
+            unique_id="AA:BB:CC:DD:EE:FF-binary_sensor-zone_1_presence",
+            config_entry=esphome_entry,
+            device_id=device.id,
+        )
+        ent_reg.async_update_entity(zone1_entry.entity_id, disabled_by=er.RegistryEntryDisabler.USER)
+
+        manager.devices["AA:BB:CC:DD:EE:FF"] = ManagedDevice(
+            mac="AA:BB:CC:DD:EE:FF", name="EPP", host="192.168.1.50", device_id=device.id
+        )
+        manager._store.devices["AA:BB:CC:DD:EE:FF"] = {"settings": {"zone_presence": True}}
+
+        # Zone 1 does not exist → disable path runs for its entities.
+        zone_slots = [
+            {"type": "default", "trigger": 5, "renew": 3, "timeout": 10.0, "handoff_timeout": 3.0},
+        ] + [None] * MAX_ZONES
+        await manager.async_update_zone_entities("AA:BB:CC:DD:EE:FF", zone_slots)
+
+        zone1 = ent_reg.async_get(zone1_entry.entity_id)
+        assert zone1.disabled_by == er.RegistryEntryDisabler.USER, (
+            "disable path must not overwrite a USER disabler with INTEGRATION"
+        )
 
     async def test_update_zone_entities_unknown_device(self, hass: HomeAssistant, manager: DeviceManager) -> None:
         """Unknown device is a no-op."""
@@ -6440,7 +7339,32 @@ class TestZoneEntities:
 
 
 class TestHelpers:
-    """Tests for _extract_mac, _extract_host."""
+    """Tests for _extract_mac, _extract_host, _expand_zone_slot."""
+
+    def test_expand_zone_slot_maps_legacy_types_to_closest_semantics(self) -> None:
+        """Pre-0.95 layouts stored `rest` / `thoroughfare` zone types.
+
+        They must expand to the timing of their closest modern equivalents —
+        rest→bed (600 s timeout: someone sleeping must not time out) and
+        thoroughfare→transit (3 s: walk-through spaces clear fast) — NOT to
+        the generic `default` row (10 s), which would break bedrooms saved
+        on old layouts.
+        """
+        from custom_components.eppgrid.device_manager import ZONE_TYPE_DEFAULTS
+        from custom_components.eppgrid.device_manager._helpers import _expand_zone_slot
+
+        rest = _expand_zone_slot({"name": "Bed", "color": "#aabbcc", "type": "rest"})
+        for field, value in ZONE_TYPE_DEFAULTS["bed"].items():
+            assert rest[field] == value, f"rest.{field} should match bed defaults"
+
+        thoroughfare = _expand_zone_slot({"name": "Hall", "color": "#aabbcc", "type": "thoroughfare"})
+        for field, value in ZONE_TYPE_DEFAULTS["transit"].items():
+            assert thoroughfare[field] == value, f"thoroughfare.{field} should match transit defaults"
+
+        # Unrecognised types still fall back to the default row.
+        unknown = _expand_zone_slot({"name": "X", "color": "#aabbcc", "type": "mystery"})
+        for field, value in ZONE_TYPE_DEFAULTS["default"].items():
+            assert unknown[field] == value
 
     async def test_extract_mac_no_mac_connection(self, hass: HomeAssistant) -> None:
         """Returns None when device has no MAC connection."""
@@ -6609,6 +7533,93 @@ class TestUniqueIdMatchingAnchors:
         assert after.name is None
         assert after.disabled_by == original_disabled_by
 
+    async def test_read_current_connection_count_ignores_substring_entity(
+        self, hass: HomeAssistant, manager: DeviceManager
+    ) -> None:
+        """read_current_connection_count must anchor on `-current_connections`.
+
+        A sensor whose object_id merely ends in the words
+        `current_connections` mid-identifier (no `-` separator) must not be
+        picked up as the Current Connections sensor.
+        """
+        dev_reg = dr.async_get(hass)
+        ent_reg = er.async_get(hass)
+
+        esphome_entry = MockConfigEntry(domain="esphome", data={"host": "192.168.1.50"}, title="EPP")
+        esphome_entry.add_to_hass(hass)
+        device = dev_reg.async_get_or_create(
+            config_entry_id=esphome_entry.entry_id,
+            connections={(dr.CONNECTION_NETWORK_MAC, "AA:BB:CC:DD:EE:FF")},
+            name="EPP",
+        )
+        bogus = ent_reg.async_get_or_create(
+            "sensor",
+            "esphome",
+            "AA:BB:CC:DD:EE:FF-sensor-max_current_connections",
+            device_id=device.id,
+            config_entry=esphome_entry,
+        )
+        hass.states.async_set(bogus.entity_id, "7")
+
+        assert manager.read_current_connection_count(device.id) is None
+
+    async def test_on_state_changed_firmware_arrival_hook_ignores_substring_entity(
+        self, hass: HomeAssistant, manager: DeviceManager
+    ) -> None:
+        """The firmware_version-arrival hook in `_on_state_changed` must anchor
+        on `-firmware_version`, not substring-match.
+
+        With a real firmware_version sensor already live, an unrelated
+        `firmware_version_history` sensor transitioning offline→value would
+        otherwise trip the hook and re-spawn `_on_device_available`.
+        """
+        dev_reg = dr.async_get(hass)
+        ent_reg = er.async_get(hass)
+
+        esphome_entry = MockConfigEntry(domain="esphome", data={"host": "192.168.1.50"}, title="EPP")
+        esphome_entry.add_to_hass(hass)
+        device = dev_reg.async_get_or_create(
+            config_entry_id=esphome_entry.entry_id,
+            connections={(dr.CONNECTION_NETWORK_MAC, "AA:BB:CC:DD:EE:FF")},
+            name="EPP",
+        )
+        fw_entry = ent_reg.async_get_or_create(
+            "sensor",
+            "esphome",
+            "AA:BB:CC:DD:EE:FF-sensor-firmware_version",
+            device_id=device.id,
+            config_entry=esphome_entry,
+        )
+        history = ent_reg.async_get_or_create(
+            "sensor",
+            "esphome",
+            "AA:BB:CC:DD:EE:FF-sensor-firmware_version_history",
+            device_id=device.id,
+            config_entry=esphome_entry,
+        )
+        mac = "AA:BB:CC:DD:EE:FF"
+        manager.devices[mac] = ManagedDevice(mac=mac, name="EPP", host="192.168.1.50", device_id=device.id)
+        # Real firmware version is readable, so a substring match would let
+        # the hook proceed all the way to the re-spawn.
+        hass.states.async_set(fw_entry.entity_id, FIRMWARE_VERSION)
+        manager._pushing.add(mac)
+
+        with patch.object(manager, "_on_device_available", new_callable=AsyncMock) as mock_avail:
+            old_state = MagicMock()
+            old_state.state = STATE_UNAVAILABLE
+            new_state = MagicMock()
+            new_state.state = "some-history-value"
+            event = MagicMock()
+            event.data = {
+                "entity_id": history.entity_id,
+                "old_state": old_state,
+                "new_state": new_state,
+            }
+            manager._on_state_changed(event)
+            await hass.async_block_till_done()
+
+        mock_avail.assert_not_awaited()
+
 
 # ---------------------------------------------------------------------------
 # Build flags tests
@@ -6755,6 +7766,72 @@ class TestBuildFlags:
         assert result is True
         session_conn.async_fetch_build_flags.assert_awaited_once()
         assert manager._build_flags[mac] == expected_flags
+
+    async def test_push_path_build_flags_arrival_broadcasts_session_conn(
+        self, hass: HomeAssistant, store: EPPGridStore, manager: DeviceManager
+    ) -> None:
+        """First build-flags arrival via the session push path fires the
+        device-list broadcast, same as `_fetch_build_flags` does elsewhere.
+
+        The previous inline `contextlib.suppress(Exception)` fetch cached the
+        flags silently — the frontend never learned the device's variant until
+        an unrelated change re-fired the broadcast.
+        """
+        mac = "AA:BB:CC:DD:EE:FF"
+        store.devices[mac] = {"calibration": {"perspective": [1.0] * 8}}
+        manager.devices[mac] = ManagedDevice(mac=mac, name="EPP", host="192.168.1.50")
+
+        expected_flags = {"co2_enabled": True}
+
+        session_conn = MagicMock()
+        session_conn.connected = True
+        session_conn.raw_target_subs = 0
+        session_conn.grid_target_subs = 0
+        session_conn.async_push_config = AsyncMock()
+        session_conn.async_execute_service = AsyncMock()
+        session_conn.async_fetch_build_flags = AsyncMock(return_value=expected_flags)
+        manager._active_connections[mac] = session_conn
+
+        cb = MagicMock()
+        manager.on_device_list_changed(cb)
+
+        with patch.object(manager, "read_firmware_version", return_value=FIRMWARE_VERSION):
+            assert await manager._push_config_to_device(mac) is True
+
+        assert manager._build_flags[mac] == expected_flags
+        cb.assert_called()
+
+    async def test_push_path_build_flags_arrival_broadcasts_temp_conn(
+        self, hass: HomeAssistant, store: EPPGridStore, manager: DeviceManager
+    ) -> None:
+        """Same as the session-path test, for the temporary-connection push."""
+        mac = "AA:BB:CC:DD:EE:FF"
+        store.devices[mac] = {"calibration": {"perspective": [1.0] * 8}}
+        manager.devices[mac] = ManagedDevice(mac=mac, name="EPP", host="192.168.1.50")
+
+        expected_flags = {"bluetooth_enabled": True}
+
+        mock_conn = MagicMock()
+        mock_conn.async_connect = AsyncMock()
+        mock_conn.async_push_config = AsyncMock()
+        mock_conn.async_execute_service = AsyncMock()
+        mock_conn.async_fetch_build_flags = AsyncMock(return_value=expected_flags)
+        mock_conn.async_disconnect = AsyncMock()
+
+        cb = MagicMock()
+        manager.on_device_list_changed(cb)
+
+        with (
+            patch.object(manager, "read_firmware_version", return_value=FIRMWARE_VERSION),
+            patch(
+                "custom_components.eppgrid.device_manager.DeviceConnection",
+                return_value=mock_conn,
+            ),
+        ):
+            assert await manager._push_config_to_device(mac) is True
+
+        assert manager._build_flags[mac] == expected_flags
+        cb.assert_called()
 
     async def test_push_config_negative_caches_empty_flags(
         self, hass: HomeAssistant, store: EPPGridStore, manager: DeviceManager

@@ -107,7 +107,7 @@ Broadcasts the live flashable-devices list (every ESPHome device matching the Ev
 
 ### `subscribe_device` — session lifecycle
 
-Opens the aioesphomeapi connection. Closes on unsubscribe.
+Opens the aioesphomeapi connection. Sessions are refcounted per device: every successful open (`subscribe_device` or `subscribe_ota_progress`, from any client) takes one reference via `DeviceManager.async_open_session`, every unsubscribe releases one via `DeviceManager.release_session`, and the connection only closes when the last reference is released — two panel clients on the same device share one connection and the first unsubscribe doesn't tear down the second client's streams. Force-close paths (device offline transition, device removal, host change, config-entry unload) bypass the count and reset it; stale releases against a force-closed connection are identity-checked no-ops.
 
 **Request:** `{ "type": "eppgrid/subscribe_device", "mac": str }`
 
@@ -210,7 +210,7 @@ Returns discovered EPP devices.
 
 `firmware_status` is `"compatible"`, `"firmware_behind"`, or `"firmware_ahead"` — comparing the device's `Firmware Version` text sensor to the integration's `FIRMWARE_VERSION` using semver.
 
-The build flag fields (`bluetooth_enabled`, `co2_enabled`, `ethernet_enabled`, `board_revision`, `sensor_variant`, `firmware_channel`, `model`) are optional — they are only present after the device has connected and build flags have been fetched via the `get_build_flags` API action.
+The build flag fields (`bluetooth_enabled`, `co2_enabled`, `ethernet_enabled`, `board_revision`, `sensor_variant`, `firmware_channel`, `model`) are optional — they are only present after the device has connected and build flags have been fetched via the `get_build_flags` API action. Build flags are merged without overriding the base fields above (`mac`, `name`, `host`, `available`, `configured`, `area`, `firmware_status`, `current_connection_count`) — flag data comes from the device and must not rewrite identity fields.
 
 ### `get_config`
 
@@ -227,16 +227,20 @@ Triggers OTA firmware update on a device via the `set_update_manifest` API actio
 
 ### `subscribe_ota_progress`
 
-Subscribes to OTA firmware update progress for a device. Opens a session if needed. Subscribes to ESPHome `UpdateState` entity changes and device log messages to forward progress, success, and error events to the frontend. Uses a shared `done` flag so only one terminal event (success or error) is sent.
+Subscribes to OTA firmware update progress for a device. Takes one refcounted session reference via `async_open_session` (shared with `subscribe_device` — see the session-lifecycle section). Subscribes to ESPHome `UpdateState` entity changes and device log messages to forward progress, success, and error events to the frontend. Uses a shared `done` flag so only one terminal event (success or error) is sent.
+
+N concurrent OTA watchers on the same device share ONE device log subscription and ONE `epp_set_log_level` bump (tracked in the `OtaWatcherState` dataclass on the `DeviceConnection`); the bump is reverted to the stored level — and the log subscription dropped — only when the last watcher unsubscribes, and skipped entirely when that release also closes the session.
+
+When the device session can't be opened (device offline/unknown, or the connection raced to close), the command returns the standard no-session error: code `no_session`, translation key `no_active_session`.
 
 **Request:** `{ "type": "eppgrid/subscribe_ota_progress", "mac": str }`
 
 **Events:**
 - `{ "state": "updating", "progress": float|null }` — download progress (0-100 or null for indeterminate)
 - `{ "state": "success", "version": str }` — update complete, versions match
-- `{ "state": "error", "message": str }` — update failed (log error, version mismatch, or connection lost)
+- `{ "state": "error", "message": str, "error_key": str }` — update failed (log error, version mismatch, or timeout). `error_key` is a frontend translation key (`flasher.errors.*`) — the frontend renders errors exclusively through it. Log-derived failures use `flasher.errors.ota_device_error`, whose translation interpolates the cleaned device text via the `{message}` placeholder.
 
-The handler also monitors device log messages for `http_request.ota` and `http_request.update` errors, forwarding the actual error message immediately. Closes the session on unsubscribe if it was opened by this handler.
+The handler also monitors device log messages for `http_request.ota` and `http_request.update` errors, forwarding the actual error message immediately. Unsubscribe releases the session reference; the manager closes the connection when no other subscriber holds one.
 
 ### Firmware Version Guard
 
@@ -258,7 +262,9 @@ Saves perspective calibration. Clears room layout. Pushes to device. Sets `setti
 
 Saves grid, zones, furniture. Pushes config to device. Updates zone entity enable/disable/rename via `async_update_zone_entities`. Zone presence entities are named `"Zone {name}"` (e.g. `"Zone Armchair"`), target count entities `"Zone {name} Target Count"`. Zone 0 uses `"Zone Rest of Room"` / `"Zone Rest of Room Target Count"`.
 
-**Request:** `{ "type": "eppgrid/set_room_layout", "mac": str, "grid_bytes": int[], "zone_slots": ZoneSlot[8], "furniture": list }`
+**Request:** `{ "type": "eppgrid/set_room_layout", "mac": str, "grid_bytes": int[400], "zone_slots": ZoneSlot[8], "furniture": FurnitureItem[] }`
+
+`grid_bytes` must contain exactly `GRID_COLS * GRID_ROWS` (400) entries — firmware rejects partial grids, so the schema does too. Each `furniture` item is validated against the shape the frontend serializes (`type`/`icon`/`label` bounded strings, **required** finite `x`/`y`/`width`/`height` geometry, optional finite `rotation`, `lockAspect` bool, optional bounded `id`; unknown keys rejected) and the list's serialized JSON is capped at 64 KiB.
 
 `zone_slots` is a fixed-length-8 array. Slot 0 is zone 0 (always present, no name/color); slots 1-7 are named zones or `null` when unused.
 
@@ -279,7 +285,9 @@ ZoneConfig = Zone0Config & {
 }
 ```
 
-Non-custom types (`default` / `bed` / `seating` / `transit`) carry only `type` (plus `name` / `color` on named slots) in storage and on the websocket. Their timing is resolved from `ZONE_TYPE_DEFAULTS` — defined in `frontend/src/lib/zone-defaults.ts` and mirrored in `custom_components/eppgrid/device_manager/_helpers.py`. The backend expands non-custom slots with those defaults just before pushing to firmware. **Firmware is type-agnostic** — it only sees expanded timing fields and never knows the type names. Adding/renaming a type or tweaking defaults therefore requires only a frontend + backend code change; HA restart triggers a re-push that propagates new values to the device. Upgrading the defaults = bump both tables; `test_zone_type_defaults_match_frontend` fails if they drift. Layouts saved before this change — with type values `"normal"`, `"thoroughfare"`, or `"rest"` — still load, but silently fall through to the Default timing row; re-pick Default / Transit / Seating in the panel to restore intended behaviour.
+The timing types are load-bearing, not stylistic: the websocket validator (`_validate_slot_timing`) normalises `trigger`/`renew` to **int** and `timeout`/`handoff_timeout` to **float** before storage. The firmware's ArduinoJson extraction is type-strict — a float-typed `"trigger": 7.0` in the pushed JSON would silently fall back to the default (5) on older parsers — so storage and pushes must keep trigger/renew as JSON integers. The firmware parser (`epp_zone_config_parser.h`) additionally tolerates float-typed timing as defense-in-depth, rounding half-up to match the validator.
+
+Non-custom types (`default` / `bed` / `seating` / `transit`) carry only `type` (plus `name` / `color` on named slots) in storage and on the websocket. Their timing is resolved from `ZONE_TYPE_DEFAULTS` — defined in `frontend/src/lib/zone-defaults.ts` and mirrored in `custom_components/eppgrid/device_manager/_helpers.py`. The backend expands non-custom slots with those defaults just before pushing to firmware. **Firmware is type-agnostic** — it only sees expanded timing fields and never knows the type names. Adding/renaming a type or tweaking defaults therefore requires only a frontend + backend code change; HA restart triggers a re-push that propagates new values to the device. Upgrading the defaults = bump both tables; `test_zone_type_defaults_match_frontend` fails if they drift. Layouts saved before this change — with legacy type values — still load: the backend maps `"rest"`→`bed` timing (600 s timeout) and `"thoroughfare"`→`transit` timing (3 s) via `_LEGACY_ZONE_TYPE_MAP` in `_helpers.py` (the stored `type` string itself is left untouched); `"normal"` and anything else unrecognised falls through to the Default timing row. NOTE: the frontend's display-side normalization in `frontend/src/lib/config-serialization.ts` still shows all legacy types as Default — aligning it with the backend mapping is a tracked frontend task.
 
 Wire-protocol-wise this is a 0.94.0-or-newer contract. Earlier firmware (0.93.x) received zone 0 as top-level `room_type`/`room_trigger`/`room_renew`/`room_timeout`/`room_handoff_timeout` fields; those were removed before public release. Any further wire-format change must keep the existing fields readable or ship a migration — the public-release contract is what users have running.
 
@@ -287,7 +295,7 @@ Each cell in `grid_bytes` is a uint8 with bit layout: bit 0 = room (inside/outsi
 
 ### `set_entity_enabled`
 
-Enables/disables an ESPHome entity.
+Enables/disables an ESPHome entity. Scoped to the requested device: the `entity_id` must belong to `mac`'s HA device, otherwise the command returns `entity_not_on_device` (or `entity_not_found` for unknown entity ids).
 
 **Request:** `{ "type": "eppgrid/set_entity_enabled", "mac": str, "entity_id": str, "enabled": bool }`
 
@@ -356,7 +364,9 @@ Marks a single target slot as dismissed at a given grid cell so the firmware's g
 
 **Request:** `{ "type": "eppgrid/dismiss_target", "mac": str, "target_index": 0..2, "cell_index": -1..GRID_CELL_COUNT-1 }`
 
-`cell_index = -1` means "any cell" (clears the dismiss flag for that target). Read-only from an authorisation perspective — open to any authenticated user.
+`cell_index = -1` means "any cell" (clears the dismiss flag for that target).
+
+Errors: `device_not_found` for an unknown MAC (standard `_require_known_device` check), `no_session` / `no_active_session` when no live session exists (including known-but-offline devices), `dismiss_failed` when the firmware service call fails.
 
 ### `set_show_room_calibration_tutorial`
 
@@ -371,6 +381,8 @@ Per-device toggle for the calibration-tutorial overlay shown above the wizard. P
 | `list_configurations` | List saved configurations (grid + zones + sparse settings) |
 | `save_configuration` | Save the current configuration under a name |
 | `delete_configuration` | Delete a saved configuration |
+
+`save_configuration` caps each blob's serialized JSON at 256 KiB (measured as UTF-8 bytes, matching what HA storage writes) and the store at 50 named configurations — saving a new name beyond that returns `too_many_configurations`; overwriting an existing name is always allowed.
 
 Restoring a configuration is a frontend-side operation: the configuration
 dialog applies the saved `grid_bytes`/`zone_slots`/`settings` into panel
@@ -406,7 +418,7 @@ Returns all ESPHome devices matching EPP manufacturer/model, regardless of wheth
 
 #### `delete_esphome_device`
 
-Removes an ESPHome config entry (used to clean up after flashing).
+Removes an ESPHome config entry (used to clean up after flashing). Scoped to EPP hardware: the entry must be an ESPHome entry (`only_esphome_can_be_deleted` otherwise) AND own at least one device-registry entry carrying the EPP manufacturer/model signature — otherwise the command returns `not_epp_device`. Entries with no registered devices yet are rejected (fail-closed).
 
 **Request:** `{ "type": "eppgrid/delete_esphome_device", "config_entry_id": str }`
 
@@ -509,3 +521,5 @@ The integration implements the HA diagnostics platform (`diagnostics.py`). Users
 | `stored_configs` | Raw `EPPGridStore.devices` — per-device calibration, room layout, settings |
 | `configurations` | Raw `EPPGridStore.configurations` — saved configurations |
 | `entity_states` | Per-device dict of `{entity_id: state_value}` for all HA entities (including disabled) |
+
+Redaction: `mac` / `host` fields are redacted via `async_redact_data`; MAC-keyed dicts (`stored_configs`, `entity_states`) are re-keyed to stable `device_N` indices; and entity_ids inside `entity_states` have their device-name prefix replaced by the same `device_N` index — default ESPHome device names embed the MAC's last hex digits, which would otherwise leak through the entity_id keys.

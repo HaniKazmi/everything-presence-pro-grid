@@ -1,4 +1,5 @@
 import {
+	cellCenterMm,
 	cellIsInside,
 	GRID_CELL_COUNT,
 	GRID_CELL_MM,
@@ -6,6 +7,7 @@ import {
 	GRID_ROWS,
 	getRawRoomBounds,
 	MAX_RANGE,
+	roomStartCol,
 } from "./grid.js";
 import { applyPerspective } from "./perspective.js";
 
@@ -78,10 +80,7 @@ export function classifyCellInSensor(
 	if (!fov) return "in_range"; // no calibration — allow all
 
 	// Cell centre in room-space mm
-	const roomCols = Math.ceil(roomWidth / GRID_CELL_MM);
-	const startCol = Math.floor((GRID_COLS - roomCols) / 2);
-	const rx = (col - startCol + 0.5) * GRID_CELL_MM;
-	const ry = (row + 0.5) * GRID_CELL_MM;
+	const { x: rx, y: ry } = cellCenterMm(col, row, roomWidth);
 
 	// Vector from sensor to cell in room-space
 	const dx = rx - fov.sensorPos.x;
@@ -126,17 +125,22 @@ export function isCellInSensorRange(
 }
 
 /**
- * Room bounds (with 1-cell padding) of inside cells that the sensor could
- * physically reach — i.e. that are not out of the FOV cone.  Cells that are
- * inside but beyond the user's configured max range stay in bounds so the
- * "beyond-max-range" decoration can be drawn on them; only true blind-spot
- * cells (outside the 120° cone or past MAX_RANGE) collapse the grid.
+ * Single scan over the grid's visible cells: inside cells that are not
+ * out-of-cone (cells beyond the configured max range still count — they get
+ * a "beyond-max-range" decoration but must not collapse anything).
+ *
+ * Returns the UNPADDED cell bounds (minCol > maxCol when nothing is
+ * visible). The optional `onVisibleCell` callback fires once per visible
+ * cell so callers (e.g. `getGridRoomMetrics`'s furthest-distance fold) can
+ * piggyback per-cell work onto the same pass instead of re-classifying
+ * every cell in a second loop.
  */
-export function getVisibleRoomBounds(
+export function visibleCellBounds(
 	grid: Uint8Array,
 	fov: SensorFov | null,
 	roomWidth: number,
 	maxRangeMm: number,
+	onVisibleCell?: (col: number, row: number) => void,
 ): { minCol: number; maxCol: number; minRow: number; maxRow: number } {
 	let minCol = GRID_COLS;
 	let maxCol = 0;
@@ -155,13 +159,52 @@ export function getVisibleRoomBounds(
 		if (col > maxCol) maxCol = col;
 		if (row < minRow) minRow = row;
 		if (row > maxRow) maxRow = row;
+		onVisibleCell?.(col, row);
 	}
-	if (minCol > maxCol) return { minCol, maxCol, minRow, maxRow };
+	return { minCol, maxCol, minRow, maxRow };
+}
+
+/**
+ * Room bounds (with 1-cell padding) of inside cells that the sensor could
+ * physically reach — i.e. that are not out of the FOV cone.  Cells that are
+ * inside but beyond the user's configured max range stay in bounds so the
+ * "beyond-max-range" decoration can be drawn on them; only true blind-spot
+ * cells (outside the 120° cone or past MAX_RANGE) collapse the grid.
+ */
+export function getVisibleRoomBounds(
+	grid: Uint8Array,
+	fov: SensorFov | null,
+	roomWidth: number,
+	maxRangeMm: number,
+): { minCol: number; maxCol: number; minRow: number; maxRow: number } {
+	const bounds = visibleCellBounds(grid, fov, roomWidth, maxRangeMm);
+	const { minCol, maxCol, minRow, maxRow } = bounds;
+	if (minCol > maxCol) return bounds;
 	return {
 		minCol: Math.max(0, minCol - 1),
 		maxCol: Math.min(GRID_COLS - 1, maxCol + 1),
 		minRow: Math.max(0, minRow - 1),
 		maxRow: Math.min(GRID_ROWS - 1, maxRow + 1),
+	};
+}
+
+/**
+ * Convert cell-space bounds (e.g. from `getRoomBounds` or
+ * `getVisibleRoomBounds`) to room-relative mm extents — the coordinate
+ * space furniture positions live in. The caller chooses which bounds to
+ * pass: physical room bounds vs FOV-aware visible bounds carry different
+ * semantics (save-filtering vs drag-clamping) and must not be conflated.
+ */
+export function boundsToRoomMm(
+	bounds: { minCol: number; maxCol: number; minRow: number; maxRow: number },
+	roomWidthMm: number,
+): { minX: number; maxX: number; minY: number; maxY: number } {
+	const startCol = roomStartCol(roomWidthMm);
+	return {
+		minX: (bounds.minCol - startCol) * GRID_CELL_MM,
+		maxX: (bounds.maxCol + 1 - startCol) * GRID_CELL_MM,
+		minY: bounds.minRow * GRID_CELL_MM, // startRow = 0 (sensor at front wall)
+		maxY: (bounds.maxRow + 1) * GRID_CELL_MM,
 	};
 }
 
@@ -211,16 +254,13 @@ export function autoDetectionRange(
 	// Compute max room-space distance from sensor to any room cell
 	const sensorPos = getSensorRoomPosition(perspective);
 	if (sensorPos) {
-		const roomCols = Math.ceil(roomWidth / GRID_CELL_MM);
-		const startCol = Math.floor((GRID_COLS - roomCols) / 2);
 		let maxDistMm = 0;
 		const raw = getRawRoomBounds(grid);
 		for (let r = raw.minRow; r <= raw.maxRow; r++) {
 			for (let c = raw.minCol; c <= raw.maxCol; c++) {
 				const idx = r * GRID_COLS + c;
 				if (!cellIsInside(grid[idx])) continue;
-				const rx = (c - startCol + 0.5) * GRID_CELL_MM;
-				const ry = (r + 0.5) * GRID_CELL_MM;
+				const { x: rx, y: ry } = cellCenterMm(c, r, roomWidth);
 				const dx = rx - sensorPos.x;
 				const dy = ry - sensorPos.y;
 				const dist = Math.sqrt(dx * dx + dy * dy);
@@ -239,26 +279,65 @@ export function autoDetectionRange(
 	return Math.ceil(m * 2) / 2;
 }
 
+/** A wizard corner point: marked position plus optional wall offsets (mm). */
+interface CornerPoint {
+	raw_x: number;
+	raw_y: number;
+	/** Distance from the nearest side wall when the corner couldn't be reached. */
+	offset_side?: number;
+	/** Distance from the nearest front/back wall when the corner couldn't be reached. */
+	offset_fb?: number;
+}
+
 /**
  * Compute room dimensions from wizard corner measurements.
  *
- * Width = distance between corners 0 and 1.
- * Depth = average of distance(corner 0, corner 3) and distance(corner 1, corner 2).
+ * Width = wall-to-wall span along the front wall (corners 0↔1).
+ * Depth = average of the left (0↔3) and right (1↔2) wall-to-wall spans.
  *
- * @param corners Array of 4 corner points with raw_x, raw_y coordinates
+ * Corners may be MARKED away from the true wall intersection (offsets):
+ * the raw distance between two marked points then under-measures the
+ * wall span. Sensor coordinates are metric (a rigid transform of room
+ * space), so we recover the span exactly: project out the cross-wall
+ * offset delta, then add both corners' along-wall offsets back:
+ *
+ *   span = sqrt(dist² − (Δcross)²) + offsetA + offsetB
+ *
+ * For width the along-wall offsets are the side offsets and the cross
+ * component is the fb-offset delta; for depth it's the reverse. The
+ * sqrt argument is clamped at 0 so nonsense offsets degrade gracefully
+ * instead of producing NaN.
+ *
+ * @param corners Array of 4 corner points (offsets optional, in mm)
  * @returns { width, depth } in integer mm
  */
-export function autoComputeRoomDimensions(
-	corners: { raw_x: number; raw_y: number }[],
-): { width: number; depth: number } {
-	const dist = (
-		a: { raw_x: number; raw_y: number },
-		b: { raw_x: number; raw_y: number },
-	): number => Math.sqrt((a.raw_x - b.raw_x) ** 2 + (a.raw_y - b.raw_y) ** 2);
+export function autoComputeRoomDimensions(corners: CornerPoint[]): {
+	width: number;
+	depth: number;
+} {
+	const dist = (a: CornerPoint, b: CornerPoint): number =>
+		Math.sqrt((a.raw_x - b.raw_x) ** 2 + (a.raw_y - b.raw_y) ** 2);
 
-	const width = Math.round(dist(corners[0], corners[1]));
-	const depthLeft = dist(corners[0], corners[3]);
-	const depthRight = dist(corners[1], corners[2]);
+	const span = (
+		a: CornerPoint,
+		b: CornerPoint,
+		alongA: number,
+		alongB: number,
+		crossA: number,
+		crossB: number,
+	): number => {
+		const d = dist(a, b);
+		const cross = crossA - crossB;
+		return Math.sqrt(Math.max(d * d - cross * cross, 0)) + alongA + alongB;
+	};
+
+	const os = (c: CornerPoint) => c.offset_side ?? 0;
+	const ofb = (c: CornerPoint) => c.offset_fb ?? 0;
+	const [c0, c1, c2, c3] = corners;
+
+	const width = Math.round(span(c0, c1, os(c0), os(c1), ofb(c0), ofb(c1)));
+	const depthLeft = span(c0, c3, ofb(c0), ofb(c3), os(c0), os(c3));
+	const depthRight = span(c1, c2, ofb(c1), ofb(c2), os(c1), os(c2));
 	const depth = Math.round((depthLeft + depthRight) / 2);
 
 	return { width, depth };
@@ -317,63 +396,51 @@ export function getGridRoomMetrics(
 	fov?: SensorFov | null,
 	maxRangeMm?: number,
 ): { widthM: number; depthM: number; furthestM: number } | null {
-	const roomCols = Math.ceil(roomWidth / GRID_CELL_MM);
-	const startCol = Math.floor((GRID_COLS - roomCols) / 2);
+	// Classification only applies when both fov and maxRangeMm are supplied
+	// (matching isCellInSensorRange's callers); otherwise scan with fov=null,
+	// which classifyCellInSensor short-circuits to "in_range" for free.
+	const classifyFov = fov && maxRangeMm != null ? fov : null;
+	const classifyRange = maxRangeMm ?? 0;
 
-	// Compute bounds first, then compute furthest distance in a second pass.
-	let minCol = GRID_COLS;
-	let maxCol = 0;
-	let minRow = GRID_ROWS;
-	let maxRow = 0;
+	// Sensor position: prefer fov (when provided), then perspective. When
+	// known up-front, the furthest-distance fold rides along the bounds scan
+	// so each cell is classified exactly once.
+	const sensorPos = fov?.sensorPos ?? getSensorRoomPosition(perspective);
 
 	let maxDistSq = 0;
+	const foldFurthest =
+		(sensorMmX: number, sensorMmY: number) => (col: number, row: number) => {
+			const { x: cellMmX, y: cellMmY } = cellCenterMm(col, row, roomWidth);
+			const dx = cellMmX - sensorMmX;
+			const dy = cellMmY - sensorMmY;
+			const distSq = dx * dx + dy * dy;
+			if (distSq > maxDistSq) maxDistSq = distSq;
+		};
 
-	// First pass: determine bounds (needed for fallback sensor position)
-	for (let i = 0; i < GRID_CELL_COUNT; i++) {
-		if (!cellIsInside(grid[i])) continue;
-		const col = i % GRID_COLS;
-		const row = Math.floor(i / GRID_COLS);
-		if (
-			fov &&
-			maxRangeMm != null &&
-			classifyCellInSensor(col, row, fov, roomWidth, maxRangeMm) ===
-				"out_of_cone"
-		)
-			continue;
-		if (col < minCol) minCol = col;
-		if (col > maxCol) maxCol = col;
-		if (row < minRow) minRow = row;
-		if (row > maxRow) maxRow = row;
-	}
+	const bounds = visibleCellBounds(
+		grid,
+		classifyFov,
+		roomWidth,
+		classifyRange,
+		sensorPos ? foldFurthest(sensorPos.x, sensorPos.y) : undefined,
+	);
+	if (bounds.minCol > bounds.maxCol) return null;
 
-	if (minCol > maxCol) return null;
+	const widthMm = (bounds.maxCol - bounds.minCol + 1) * GRID_CELL_MM;
+	const depthMm = (bounds.maxRow - bounds.minRow + 1) * GRID_CELL_MM;
 
-	const widthMm = (maxCol - minCol + 1) * GRID_CELL_MM;
-	const depthMm = (maxRow - minRow + 1) * GRID_CELL_MM;
-
-	// Sensor position: prefer fov (when provided), then perspective, then fallback
-	const sensorPos = fov?.sensorPos ?? getSensorRoomPosition(perspective);
-	const sensorMmX = sensorPos ? sensorPos.x : widthMm / 2;
-	const sensorMmY = sensorPos ? sensorPos.y : 0;
-
-	// Second pass: furthest visible cell from sensor
-	for (let i = 0; i < GRID_CELL_COUNT; i++) {
-		if (!cellIsInside(grid[i])) continue;
-		const col = i % GRID_COLS;
-		const row = Math.floor(i / GRID_COLS);
-		if (
-			fov &&
-			maxRangeMm != null &&
-			classifyCellInSensor(col, row, fov, roomWidth, maxRangeMm) ===
-				"out_of_cone"
-		)
-			continue;
-		const cellMmX = (col - startCol + 0.5) * GRID_CELL_MM;
-		const cellMmY = (row + 0.5) * GRID_CELL_MM;
-		const dx = cellMmX - sensorMmX;
-		const dy = cellMmY - sensorMmY;
-		const distSq = dx * dx + dy * dy;
-		if (distSq > maxDistSq) maxDistSq = distSq;
+	if (!sensorPos) {
+		// No sensor position known — its fallback (top-centre of the visible
+		// width) needs the bounds first, so fold in a second scan. fov must
+		// be null here (a SensorFov always carries sensorPos), making the
+		// re-scan classification-free.
+		visibleCellBounds(
+			grid,
+			classifyFov,
+			roomWidth,
+			classifyRange,
+			foldFurthest(widthMm / 2, 0),
+		);
 	}
 
 	return {

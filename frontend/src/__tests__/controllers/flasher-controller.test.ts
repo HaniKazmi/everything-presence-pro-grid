@@ -408,7 +408,7 @@ describe("FlasherController", () => {
 		it("initializes serialPort to null", () => {
 			const freshHost = mockHost();
 			const freshCtrl = new FlasherController(freshHost);
-			expect((freshCtrl as any)._serialPort).toBeNull();
+			expect(freshCtrl.serialPort).toBeNull();
 		});
 	});
 
@@ -457,9 +457,9 @@ describe("FlasherController", () => {
 	});
 
 	describe("resetUsbState", () => {
-		it("clears USB flash state", () => {
+		it("clears USB flash state", async () => {
 			ctrl.updateUsbState({ step: "flashing" });
-			ctrl.resetUsbState();
+			await ctrl.resetUsbState();
 			expect(ctrl.usbFlashState).toBeNull();
 			expect(ctrl.wifiNetworks).toEqual([]);
 		});
@@ -475,12 +475,141 @@ describe("FlasherController", () => {
 			ctrl.resetUsbState();
 			expect(ctrl.serialPort).toBeNull();
 		});
+
+		it("closes an open serial port and releases its locks", async () => {
+			// The panel's tab-bar buttons call resetUsbState directly when the
+			// user switches tabs mid-flash. Without close() the OS keeps the
+			// port open and unreachable until the page reloads.
+			const reader = { releaseLock: vi.fn() };
+			const writer = { releaseLock: vi.fn() };
+			const port = { close: vi.fn().mockResolvedValue(undefined) };
+			(ctrl as any)._flow._serialReader = reader;
+			(ctrl as any)._flow._serialWriter = writer;
+			ctrl.serialPort = port as any;
+
+			await ctrl.resetUsbState();
+
+			expect(reader.releaseLock).toHaveBeenCalled();
+			expect(writer.releaseLock).toHaveBeenCalled();
+			expect(port.close).toHaveBeenCalledTimes(1);
+			expect(ctrl.serialPort).toBeNull();
+			expect((ctrl as any)._flow._serialReader).toBeNull();
+			expect((ctrl as any)._flow._serialWriter).toBeNull();
+		});
+
+		it("awaits port.close before resolving", async () => {
+			let resolveClose!: () => void;
+			const port = {
+				close: vi.fn().mockReturnValue(
+					new Promise<void>((r) => {
+						resolveClose = r;
+					}),
+				),
+			};
+			ctrl.serialPort = port as any;
+
+			let settled = false;
+			const p = ctrl.resetUsbState().then(() => {
+				settled = true;
+			});
+			await new Promise((r) => setTimeout(r, 0));
+			expect(settled).toBe(false);
+
+			resolveClose();
+			await p;
+			expect(settled).toBe(true);
+		});
+
+		it("aborts an in-flight wifi check and closes the port only after it settles", async () => {
+			// Mirrors the panel's flasher-cancel teardown: abort the
+			// queryImprovState poll, wait for it to settle (so its reader
+			// lock is released), THEN close the port — close() rejects while
+			// a lock is still held, leaving the port half-open.
+			const abort = { abort: vi.fn() };
+			let settleWifi!: () => void;
+			const wifiPromise = new Promise<void>((r) => {
+				settleWifi = r;
+			});
+			(ctrl as any)._flow._wifiCheckAbort = abort;
+			(ctrl as any)._flow._wifiCheckPromise = wifiPromise;
+			const port = { close: vi.fn().mockResolvedValue(undefined) };
+			ctrl.serialPort = port as any;
+
+			const p = ctrl.resetUsbState();
+			expect(abort.abort).toHaveBeenCalledTimes(1);
+			expect(port.close).not.toHaveBeenCalled();
+
+			settleWifi();
+			await p;
+
+			expect(port.close).toHaveBeenCalledTimes(1);
+			expect((ctrl as any)._flow._wifiCheckAbort).toBeNull();
+			expect((ctrl as any)._flow._wifiCheckPromise).toBeNull();
+		});
+
+		it("defers the usbFlashState clear until the port teardown resolves (cancelling feedback)", async () => {
+			// epp-flasher-view keeps its "Cancelling…" button up only while
+			// usbFlashState is non-null. Clearing it before close() resolves
+			// re-renders the variant picker while the port is still unwinding
+			// (~1-2s), making the cancel click look like it skipped a step.
+			ctrl.updateUsbState({ step: "wifi_check" });
+			let resolveClose!: () => void;
+			const port = {
+				close: vi.fn().mockReturnValue(
+					new Promise<void>((r) => {
+						resolveClose = r;
+					}),
+				),
+			};
+			ctrl.serialPort = port as any;
+
+			const p = ctrl.resetUsbState();
+			await new Promise((r) => setTimeout(r, 0));
+			expect(ctrl.usbFlashState).toEqual({ step: "wifi_check" });
+
+			resolveClose();
+			await p;
+			expect(ctrl.usbFlashState).toBeNull();
+		});
+
+		it("keeps usbFlashState non-null while an aborted in-flight wifi check settles", async () => {
+			ctrl.updateUsbState({ step: "wifi_check" });
+			let settleWifi!: () => void;
+			(ctrl as any)._flow._wifiCheckAbort = { abort: vi.fn() };
+			(ctrl as any)._flow._wifiCheckPromise = new Promise<void>((r) => {
+				settleWifi = r;
+			});
+			ctrl.serialPort = {
+				close: vi.fn().mockResolvedValue(undefined),
+			} as any;
+
+			const p = ctrl.resetUsbState();
+			await new Promise((r) => setTimeout(r, 0));
+			expect(ctrl.usbFlashState).toEqual({ step: "wifi_check" });
+
+			settleWifi();
+			await p;
+			expect(ctrl.usbFlashState).toBeNull();
+		});
+
+		it("tolerates a rejecting in-flight wifi check", async () => {
+			(ctrl as any)._flow._wifiCheckAbort = { abort: vi.fn() };
+			(ctrl as any)._flow._wifiCheckPromise = Promise.reject(
+				new Error("aborted"),
+			);
+			const port = { close: vi.fn().mockResolvedValue(undefined) };
+			ctrl.serialPort = port as any;
+
+			await ctrl.resetUsbState();
+
+			expect(port.close).toHaveBeenCalledTimes(1);
+		});
 	});
 
 	describe("hostDisconnected with USB", () => {
 		it("closes serial port if open", () => {
 			const mockPort = { close: vi.fn().mockResolvedValue(undefined) };
-			(ctrl as any)._serialPort = mockPort;
+			(ctrl as any)._flow._serialPort = mockPort;
 			ctrl.hostDisconnected();
 			expect(mockPort.close).toHaveBeenCalled();
 		});
@@ -493,9 +622,9 @@ describe("FlasherController", () => {
 			const reader = { releaseLock: vi.fn() };
 			const writer = { releaseLock: vi.fn() };
 			const port = { close: vi.fn().mockResolvedValue(undefined) };
-			(ctrl as any)._serialReader = reader;
-			(ctrl as any)._serialWriter = writer;
-			(ctrl as any)._serialPort = port;
+			(ctrl as any)._flow._serialReader = reader;
+			(ctrl as any)._flow._serialWriter = writer;
+			(ctrl as any)._flow._serialPort = port;
 
 			ctrl.hostDisconnected();
 
@@ -1121,6 +1250,204 @@ describe("FlasherController", () => {
 				"flasher.errors.update_timeout",
 			);
 			vi.useRealTimers();
+		});
+
+		// --- otaStates immutability ---
+		// The panel binds `.otaStates=${ctrl.otaStates}` on epp-flasher-view.
+		// Lit dirty-checks by reference, so in-place mutation of the Record
+		// means progress/success/error NEVER repaint unless unrelated hass
+		// churn happens to re-render the panel. Every transition must
+		// reassign the Record.
+		describe("otaStates immutability", () => {
+			it("reassigns otaStates when startOta begins", async () => {
+				const before = ctrl.otaStates;
+				await ctrl.startOta("AA:BB:CC:DD:EE:01");
+				expect(ctrl.otaStates).not.toBe(before);
+			});
+
+			it("reassigns otaStates on a progress event", async () => {
+				await ctrl.startOta("AA:BB:CC:DD:EE:01");
+				const callback = hass.connection.subscribeMessage.mock.calls[0][0];
+				const before = ctrl.otaStates;
+				callback({ state: "updating", progress: 65 });
+				expect(ctrl.otaStates).not.toBe(before);
+			});
+
+			it("reassigns otaStates on success and on the auto-dismiss delete", async () => {
+				vi.useFakeTimers();
+				await ctrl.startOta("AA:BB:CC:DD:EE:01");
+				const callback = hass.connection.subscribeMessage.mock.calls[0][0];
+				const beforeSuccess = ctrl.otaStates;
+				callback({ state: "success" });
+				expect(ctrl.otaStates).not.toBe(beforeSuccess);
+
+				const beforeDismiss = ctrl.otaStates;
+				vi.advanceTimersByTime(5000);
+				expect(ctrl.otaStates).not.toBe(beforeDismiss);
+				expect(ctrl.otaStates["AA:BB:CC:DD:EE:01"]).toBeUndefined();
+				vi.useRealTimers();
+			});
+
+			it("reassigns otaStates on an error event", async () => {
+				await ctrl.startOta("AA:BB:CC:DD:EE:01");
+				const callback = hass.connection.subscribeMessage.mock.calls[0][0];
+				const before = ctrl.otaStates;
+				callback({ state: "error" });
+				expect(ctrl.otaStates).not.toBe(before);
+			});
+
+			it("reassigns otaStates on watchdog timeout", async () => {
+				vi.useFakeTimers();
+				await ctrl.startOta("AA:BB:CC:DD:EE:01");
+				const before = ctrl.otaStates;
+				vi.advanceTimersByTime(15000);
+				expect(ctrl.otaStates).not.toBe(before);
+				vi.useRealTimers();
+			});
+
+			it("reassigns otaStates on dismissOtaError", async () => {
+				await ctrl.startOta("AA:BB:CC:DD:EE:01");
+				const callback = hass.connection.subscribeMessage.mock.calls[0][0];
+				callback({ state: "error" });
+				const before = ctrl.otaStates;
+				ctrl.dismissOtaError("AA:BB:CC:DD:EE:01");
+				expect(ctrl.otaStates).not.toBe(before);
+				expect(ctrl.otaStates["AA:BB:CC:DD:EE:01"]).toBeUndefined();
+			});
+
+			it("reassigns otaStates when a device goes offline mid-OTA", async () => {
+				await ctrl.startOta("AA:BB:CC:DD:EE:01");
+				ctrl.flashableDevices = [
+					{
+						mac: "AA:BB:CC:DD:EE:01",
+						name: "Test",
+						host: "192.168.1.10",
+						available: false,
+						firmware_type: "eppgrid",
+						firmware_version: "1.0.0",
+						esphome_config_entry_id: "entry-1",
+						update_available: true,
+						firmware_status: "firmware_behind",
+					},
+				];
+				const before = ctrl.otaStates;
+				(ctrl as any)._checkOtaDevicesOffline();
+				expect(ctrl.otaStates).not.toBe(before);
+			});
+		});
+
+		// --- startOta guards ---
+		describe("startOta guards", () => {
+			it("two rapid startOta for the same mac issue only one update_firmware call", async () => {
+				const p1 = ctrl.startOta("AA:BB:CC:DD:EE:01");
+				const p2 = ctrl.startOta("AA:BB:CC:DD:EE:01");
+				await Promise.all([p1, p2]);
+
+				expect(
+					hass.callWS.mock.calls.filter(
+						(c: any[]) => c[0].type === "eppgrid/update_firmware",
+					),
+				).toHaveLength(1);
+				expect(hass.connection.subscribeMessage).toHaveBeenCalledTimes(1);
+			});
+
+			it("startOta for a different mac is not blocked by another device updating", async () => {
+				await ctrl.startOta("AA:BB:CC:DD:EE:01");
+				await ctrl.startOta("AA:BB:CC:DD:EE:02");
+
+				expect(
+					hass.callWS.mock.calls.filter(
+						(c: any[]) => c[0].type === "eppgrid/update_firmware",
+					),
+				).toHaveLength(2);
+			});
+
+			it("a late-resolving OTA subscription after hostDisconnected is immediately unsubscribed", async () => {
+				let resolveSub!: (unsub: () => void) => void;
+				const unsub = vi.fn();
+				hass.connection.subscribeMessage = vi.fn().mockImplementation(
+					() =>
+						new Promise<() => void>((resolve) => {
+							resolveSub = resolve;
+						}),
+				);
+
+				const p = ctrl.startOta("AA:BB:CC:DD:EE:01");
+				// Let callWS settle so subscribeMessage is in flight.
+				await new Promise((r) => setTimeout(r, 0));
+				ctrl.hostDisconnected();
+				resolveSub(unsub);
+				await p;
+
+				expect(unsub).toHaveBeenCalledTimes(1);
+				expect((ctrl as any)._otaUnsubs["AA:BB:CC:DD:EE:01"]).toBeUndefined();
+			});
+
+			it("a late-resolving OTA subscription after a connection swap is immediately unsubscribed", async () => {
+				let resolveSub!: (unsub: () => void) => void;
+				const unsub = vi.fn();
+				hass.connection.subscribeMessage = vi.fn().mockImplementation(
+					() =>
+						new Promise<() => void>((resolve) => {
+							resolveSub = resolve;
+						}),
+				);
+
+				const p = ctrl.startOta("AA:BB:CC:DD:EE:01");
+				await new Promise((r) => setTimeout(r, 0));
+				// HA reconnect: new connection object.
+				ctrl.hass = {
+					callWS: vi.fn(),
+					connection: { subscribeMessage: vi.fn().mockResolvedValue(vi.fn()) },
+				};
+				resolveSub(unsub);
+				await p;
+
+				expect(unsub).toHaveBeenCalledTimes(1);
+				expect((ctrl as any)._otaUnsubs["AA:BB:CC:DD:EE:01"]).toBeUndefined();
+			});
+
+			it("startOta replaces a stale subscription for the same mac without orphaning its unsub", async () => {
+				// Defensive: if a subscription somehow survives for this mac
+				// (e.g. an error state that never delivered its event), a new
+				// startOta must release it instead of overwriting the record
+				// entry and leaking the server-side subscription.
+				const oldUnsub = vi.fn();
+				(ctrl as any)._otaUnsubs["AA:BB:CC:DD:EE:01"] = oldUnsub;
+				ctrl.otaStates = {
+					"AA:BB:CC:DD:EE:01": {
+						state: "error",
+						progress: null,
+						errorKey: "flasher.errors.update_failed_generic",
+					},
+				};
+
+				await ctrl.startOta("AA:BB:CC:DD:EE:01");
+
+				expect(oldUnsub).toHaveBeenCalledTimes(1);
+				expect((ctrl as any)._otaUnsubs["AA:BB:CC:DD:EE:01"]).not.toBe(
+					oldUnsub,
+				);
+			});
+		});
+
+		// --- device-reported error messages ---
+		it("stores errorParams.message from a device error event so the view can interpolate it", async () => {
+			await ctrl.startOta("AA:BB:CC:DD:EE:01");
+
+			const callback = hass.connection.subscribeMessage.mock.calls[0][0];
+			callback({
+				state: "error",
+				error_key: "flasher.errors.ota_device_error",
+				message: "ESP_ERR_HTTP_CONNECT",
+			});
+
+			expect(ctrl.otaStates["AA:BB:CC:DD:EE:01"]).toEqual({
+				state: "error",
+				progress: null,
+				errorKey: "flasher.errors.ota_device_error",
+				errorParams: { message: "ESP_ERR_HTTP_CONNECT" },
+			});
 		});
 	});
 });

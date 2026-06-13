@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import json
 import math
+from collections.abc import Callable
 from typing import Any
+from typing import Literal
 
 import voluptuous as vol
 from aioesphomeapi import BinarySensorState
@@ -23,12 +25,17 @@ from ..const import empty_zone_slots
 from . import _LOGGER
 from . import CONFIGURATION_DICT_SCHEMA
 from . import ENTITY_ID_SCHEMA
+from . import FINITE_FLOAT_SCHEMA
+from . import FURNITURE_SCHEMA
 from . import MAC_SCHEMA
 from . import NAME_SCHEMA
+from . import _connection_is_closed
 from . import _get_manager
 from . import _require_known_device
 from . import _require_manager
+from . import _send_no_session
 from . import _validate_zone_slots
+from . import finite_float
 
 
 def _parse_position_csv(raw: str) -> tuple[float, float, str | None] | None:
@@ -55,6 +62,7 @@ def _parse_position_csv(raw: str) -> tuple[float, float, str | None] | None:
 
 
 @websocket_api.websocket_command({vol.Required("type"): "eppgrid/subscribe_device_list"})
+@websocket_api.require_admin
 @callback
 @_require_manager
 def websocket_subscribe_device_list(
@@ -66,13 +74,18 @@ def websocket_subscribe_device_list(
     """Subscribe to device list changes. Sends initial list immediately."""
 
     @callback
-    def _send_update() -> None:
+    def _send_update(devices: list[dict[str, Any]] | None = None) -> None:
+        # Change events hand us the payload the manager computed ONCE for
+        # all subscribers; only the on-subscribe initial send (no payload)
+        # fetches its own snapshot.
+        if devices is None:
+            devices = manager.list_devices()
         connection.send_message(
             websocket_api.event_message(
                 msg["id"],
                 {
-                    "devices": manager.list_devices(),
-                    "show_room_calibration_tutorial": manager._store.show_room_calibration_tutorial,
+                    "devices": devices,
+                    "show_room_calibration_tutorial": manager.store.show_room_calibration_tutorial,
                 },
             )
         )
@@ -89,6 +102,7 @@ def websocket_subscribe_device_list(
 
 
 @websocket_api.websocket_command({vol.Required("type"): "eppgrid/list_devices"})
+@websocket_api.require_admin
 @callback
 @_require_manager
 def websocket_list_devices(
@@ -102,7 +116,7 @@ def websocket_list_devices(
         msg["id"],
         {
             "devices": manager.list_devices(),
-            "show_room_calibration_tutorial": manager._store.show_room_calibration_tutorial,
+            "show_room_calibration_tutorial": manager.store.show_room_calibration_tutorial,
         },
     )
 
@@ -127,12 +141,12 @@ async def websocket_set_show_room_calibration_tutorial(
 ) -> None:
     """Persist the global show_room_calibration_tutorial flag."""
     new_value = msg["value"]
-    if manager._store.show_room_calibration_tutorial == new_value:
+    if manager.store.show_room_calibration_tutorial == new_value:
         connection.send_result(msg["id"])
         return
-    manager._store.show_room_calibration_tutorial = new_value
-    await manager._store.async_save()
-    manager._fire_device_list_changed()
+    manager.store.show_room_calibration_tutorial = new_value
+    await manager.store.async_save()
+    manager.fire_device_list_changed()
     connection.send_result(msg["id"])
 
 
@@ -145,6 +159,7 @@ async def websocket_set_show_room_calibration_tutorial(
         vol.Required("mac"): MAC_SCHEMA,
     }
 )
+@websocket_api.require_admin
 @callback
 @_require_manager
 def websocket_get_config(
@@ -154,7 +169,7 @@ def websocket_get_config(
     manager: Any,
 ) -> None:
     """Get stored config for a device."""
-    config = manager._store.devices.get(msg["mac"])
+    config = manager.store.devices.get(msg["mac"])
     # Return a shallow copy to avoid mutating the stored config
     response = dict(config) if config else {}
     response["entities"] = _get_entity_states(hass, msg["mac"])
@@ -168,15 +183,15 @@ def websocket_get_config(
     {
         vol.Required("type"): "eppgrid/set_setup",
         vol.Required("mac"): MAC_SCHEMA,
-        vol.Required("perspective"): vol.All([vol.Coerce(float)], vol.Length(min=8, max=8)),
+        vol.Required("perspective"): vol.All([FINITE_FLOAT_SCHEMA], vol.Length(min=8, max=8)),
         # `room_width` / `room_depth` are millimetres (the firmware grid uses
         # GRID_CELL_SIZE_MM=300 mm cells and the connection layer feeds these
         # straight into the grid push). 0 is the "delete calibration" sentinel
         # (handled in the body). 50 000 mm = 50 m, far above any real room —
         # rejects negatives and absurd-large values that would otherwise be
         # persisted before the firmware push silently no-ops them.
-        vol.Required("room_width"): vol.All(vol.Coerce(float), vol.Range(min=0, max=50_000)),
-        vol.Required("room_depth"): vol.All(vol.Coerce(float), vol.Range(min=0, max=50_000)),
+        vol.Required("room_width"): finite_float(min=0, max=50_000),
+        vol.Required("room_depth"): finite_float(min=0, max=50_000),
     }
 )
 @websocket_api.require_admin
@@ -192,7 +207,7 @@ async def websocket_set_setup(
     if not _require_known_device(connection, manager, msg):
         return
     mac = msg["mac"]
-    device_config = manager._store.devices.setdefault(mac, {})
+    device_config = manager.store.devices.setdefault(mac, {})
     device_config["calibration"] = {
         "perspective": msg["perspective"],
         "room_width": msg["room_width"],
@@ -208,13 +223,14 @@ async def websocket_set_setup(
     if deleting:
         settings["target_xy"] = False
     device_config["settings"] = settings
-    await manager._store.async_save()
-    manager._request_push(mac)
+    await manager.store.async_save()
+    manager.request_push(mac)
 
-    # Arm the guard before _apply_entity_states triggers an ESPHome reload,
-    # so the reconnect doesn't fire a redundant push.
+    # Arm the reload guard BEFORE any entity-registry mutation — both
+    # _apply_entity_states and async_update_zone_entities can trigger an
+    # ESPHome reload, and the reconnect must not fire a redundant push.
+    manager.schedule_entity_update_clear(mac)
     if deleting:
-        manager._schedule_entity_update_clear(mac)
         _apply_entity_states(hass, mac, {"target_xy": False})
 
     # `room_layout` was popped above when calibration changed, so the zone
@@ -231,12 +247,15 @@ async def websocket_set_setup(
     {
         vol.Required("type"): "eppgrid/set_room_layout",
         vol.Required("mac"): MAC_SCHEMA,
+        # Firmware rejects any grid push that isn't exactly the full grid, so
+        # require all GRID_COLS*GRID_ROWS entries — a short list would persist
+        # to storage and then silently fail every subsequent config push.
         vol.Required("grid_bytes"): vol.All(
             [vol.All(int, vol.Range(min=0, max=255))],
-            vol.Length(min=1, max=GRID_COLS * GRID_ROWS),
+            vol.Length(min=GRID_COLS * GRID_ROWS, max=GRID_COLS * GRID_ROWS),
         ),
         vol.Required("zone_slots"): _validate_zone_slots,
-        vol.Optional("furniture", default=[]): list,
+        vol.Optional("furniture", default=[]): FURNITURE_SCHEMA,
     }
 )
 @websocket_api.require_admin
@@ -252,17 +271,22 @@ async def websocket_set_room_layout(
     if not _require_known_device(connection, manager, msg):
         return
     mac = msg["mac"]
-    device_config = manager._store.devices.setdefault(mac, {})
+    device_config = manager.store.devices.setdefault(mac, {})
     device_config["room_layout"] = {
         "grid_bytes": msg["grid_bytes"],
         "zone_slots": msg["zone_slots"],
         "furniture": msg.get("furniture", []),
     }
-    await manager._store.async_save()
-    dev = manager.devices.get(mac)
-    if dev and dev.host:
-        manager._request_push(mac)
+    await manager.store.async_save()
+    # No host gate: the debounced push reads the device at fire time and
+    # no-ops safely (marking the mac for the failed-push recovery path)
+    # when the host is still unknown.
+    manager.request_push(mac)
 
+    # Arm the reload guard BEFORE the zone-entity registry mutations — they
+    # can trigger an ESPHome reload, and the reconnect must not fire a
+    # redundant push.
+    manager.schedule_entity_update_clear(mac)
     # Update ESPHome entity enable/disable/rename
     await manager.async_update_zone_entities(mac, msg["zone_slots"])
 
@@ -273,6 +297,7 @@ async def websocket_set_room_layout(
 
 
 @websocket_api.websocket_command({vol.Required("type"): "eppgrid/list_configurations"})
+@websocket_api.require_admin
 @callback
 @_require_manager
 def websocket_list_configurations(
@@ -282,7 +307,13 @@ def websocket_list_configurations(
     manager: Any,
 ) -> None:
     """List saved configurations."""
-    connection.send_result(msg["id"], {"configurations": manager._store.configurations})
+    connection.send_result(msg["id"], {"configurations": manager.store.configurations})
+
+
+# Cap on the number of stored named configurations. Each blob can be up to
+# _MAX_CONFIGURATION_JSON_BYTES, so without a count cap a client could grow
+# .storage/eppgrid without bound, one save_configuration call at a time.
+_MAX_CONFIGURATIONS = 50
 
 
 @websocket_api.websocket_command(
@@ -302,8 +333,21 @@ async def websocket_save_configuration(
     manager: Any,
 ) -> None:
     """Save a named configuration."""
-    manager._store.configurations[msg["name"]] = msg["configuration"]
-    await manager._store.async_save()
+    configurations = manager.store.configurations
+    # Overwriting an existing name is always allowed — only NEW names count
+    # against the cap.
+    if msg["name"] not in configurations and len(configurations) >= _MAX_CONFIGURATIONS:
+        connection.send_error(
+            msg["id"],
+            "too_many_configurations",
+            f"Cannot store more than {_MAX_CONFIGURATIONS} configurations — delete one first",
+            translation_domain=DOMAIN,
+            translation_key="too_many_configurations",
+            translation_placeholders={"max": str(_MAX_CONFIGURATIONS)},
+        )
+        return
+    configurations[msg["name"]] = msg["configuration"]
+    await manager.store.async_save()
     connection.send_result(msg["id"])
 
 
@@ -323,8 +367,8 @@ async def websocket_delete_configuration(
     manager: Any,
 ) -> None:
     """Delete a saved configuration."""
-    manager._store.configurations.pop(msg["name"], None)
-    await manager._store.async_save()
+    manager.store.configurations.pop(msg["name"], None)
+    await manager.store.async_save()
     connection.send_result(msg["id"])
 
 
@@ -477,6 +521,7 @@ def _build_entity_key_map(entities: list) -> dict[str, int]:
         vol.Required("mac"): MAC_SCHEMA,
     }
 )
+@websocket_api.require_admin
 @websocket_api.async_response
 @_require_manager
 async def websocket_subscribe_device(
@@ -485,18 +530,22 @@ async def websocket_subscribe_device(
     msg: dict[str, Any],
     manager: Any,
 ) -> None:
-    """Open a session connection for a device. Closes on unsubscribe."""
+    """Open a session connection for a device.
+
+    Sessions are refcounted: each successful subscribe takes one reference,
+    each unsubscribe releases one, and the manager closes the connection
+    only when the LAST reference is released (see
+    `DeviceManager.async_open_session` / `release_session`).
+    """
     mac = msg["mac"]
     try:
         device_conn = await manager.async_open_session(mac)
     except Exception as err:
         _LOGGER.warning("Failed to open session for %s: %s", mac, err)
-        # Only broadcast on the OK→failing transition. Repeated failures
-        # against an already-failing mac don't represent a state change for
-        # device-list subscribers and would spam every consumer on every retry.
-        if mac not in manager._connection_failed:
-            manager._connection_failed.add(mac)
-            manager._fire_device_list_changed()
+        # The manager broadcasts only on the OK→failing transition — repeated
+        # failures against an already-failing mac don't represent a state
+        # change for device-list subscribers.
+        manager.set_connection_failed(mac, True)
         connection.send_error(
             msg["id"],
             "connection_failed",
@@ -506,6 +555,9 @@ async def websocket_subscribe_device(
         )
         return
     if device_conn is None:
+        # Wire code stays `not_found` (not `device_not_found`): the frontend
+        # dispatches on it — device-controller.ts treats `connection_failed`
+        # and `not_found` as "connection failed" when opening a session.
         connection.send_error(
             msg["id"],
             "not_found",
@@ -516,12 +568,79 @@ async def websocket_subscribe_device(
         return
     # Successful open clears the failure flag so the next failure (if any)
     # is a transition and re-fires the broadcast.
-    manager._connection_failed.discard(mac)
+    manager.set_connection_failed(mac, False)
     connection.send_result(msg["id"])
+
+    released = False
 
     @callback
     def _unsub() -> None:
-        manager.schedule_close_session(mac)
+        # Release (not force-close) the session reference this subscriber
+        # took via async_open_session: other clients subscribed to the same
+        # device share the connection, and the manager only closes it when
+        # the last reference is released. The `released` guard keeps a
+        # double-invoked unsub from stealing someone else's reference.
+        nonlocal released
+        if released:
+            return
+        released = True
+        manager.release_session(mac, device_conn)
+
+    connection.subscriptions[msg["id"]] = _unsub
+    if _connection_is_closed(connection):
+        # The WS connection closed while we were awaiting async_open_session:
+        # HA's async_handle_close already ran (iterating + clearing the
+        # subscriptions it had at close time) and will NOT cancel this
+        # background task, so the unsub we just registered will never be
+        # invoked. Release the refcount the open took, now — otherwise it
+        # leaks (the ESP32 API slot stays held until a force-close). The
+        # `released` guard makes this safe vs. a later unsub.
+        _unsub()
+
+
+# -- target stream subscriptions (raw + grid) --
+
+
+async def _start_target_stream(
+    hass: HomeAssistant,
+    connection: websocket_api.ActiveConnection,
+    msg: dict[str, Any],
+    manager: Any,
+    *,
+    counter_attr: Literal["raw_target_subs", "grid_target_subs"],
+    make_on_state: Callable[[Any], Callable[[Any], None]],
+) -> None:
+    """Shared scaffolding for `subscribe_raw_targets` / `subscribe_grid_targets`.
+
+    Session lookup with the standard no-session error, the per-stream state
+    callback (built by ``make_on_state`` from the live session), the
+    subscriber-counter increment (``counter_attr``) with a pipeline kick,
+    and the symmetric unsubscribe.
+    """
+    mac = msg["mac"]
+    device_conn = manager.get_session(mac)
+    if device_conn is None:
+        _send_no_session(connection, msg["id"])
+        return
+
+    on_state = make_on_state(device_conn)
+    await device_conn.subscribe_states(on_state)
+    connection.send_result(msg["id"])
+
+    setattr(device_conn, counter_attr, getattr(device_conn, counter_attr) + 1)
+    hass.async_create_task(manager.async_push_pipeline_to_device(mac))
+
+    @callback
+    def _unsub() -> None:
+        device_conn.unsubscribe_states(on_state)
+        setattr(device_conn, counter_attr, getattr(device_conn, counter_attr) - 1)
+        # Re-fetch the manager instead of closing over `manager`: the unsub
+        # can fire after a config-entry unload tore that manager down, and
+        # the fresh lookup returning None skips the pipeline kick instead of
+        # poking a dead manager.
+        mgr = _get_manager(hass)
+        if mgr:
+            hass.async_create_task(mgr.async_push_pipeline_to_device(mac))
 
     connection.subscriptions[msg["id"]] = _unsub
 
@@ -535,6 +654,7 @@ async def websocket_subscribe_device(
         vol.Required("mac"): MAC_SCHEMA,
     }
 )
+@websocket_api.require_admin
 @websocket_api.async_response
 @_require_manager
 async def websocket_subscribe_raw_targets(
@@ -544,62 +664,46 @@ async def websocket_subscribe_raw_targets(
     manager: Any,
 ) -> None:
     """Stream raw target positions from the device session."""
-    mac = msg["mac"]
-    device_conn = manager.get_session(mac)
-    if device_conn is None:
-        connection.send_error(
-            msg["id"],
-            "no_session",
-            "No active session — call subscribe_device first",
-            translation_domain=DOMAIN,
-            translation_key="no_active_session",
-        )
-        return
 
-    key_map = _build_entity_key_map(device_conn._entities)
+    def _make_on_state(device_conn: Any) -> Any:
+        key_map = _build_entity_key_map(device_conn.entities)
 
-    # Map raw target sensor keys to indices (display names are 1-based)
-    raw_keys = {}
-    for i in range(3):
-        name = f"Raw Target {i + 1}"
-        if name in key_map:
-            raw_keys[key_map[name]] = i
+        # Map raw target sensor keys to indices (display names are 1-based)
+        raw_keys = {}
+        for i in range(3):
+            name = f"Raw Target {i + 1}"
+            if name in key_map:
+                raw_keys[key_map[name]] = i
 
-    # Accumulated state
-    raw_targets: list[dict[str, float | None]] = [{"raw_x": None, "raw_y": None} for _ in range(3)]
+        # Accumulated state
+        raw_targets: list[dict[str, float | None]] = [{"raw_x": None, "raw_y": None} for _ in range(3)]
 
-    @callback
-    def _on_state(state: Any) -> None:
-        if not isinstance(state, TextSensorState):
-            return
-        if state.key not in raw_keys:
-            return
-        idx = raw_keys[state.key]
-        if state.state:
-            parsed = _parse_position_csv(state.state)
-            if parsed is None:
-                return  # garbled firmware emit — drop silently
-            raw_targets[idx] = {"raw_x": parsed[0], "raw_y": parsed[1]}
-        else:
-            raw_targets[idx] = {"raw_x": None, "raw_y": None}
-        connection.send_message(websocket_api.event_message(msg["id"], {"targets": list(raw_targets)}))
+        @callback
+        def _on_state(state: Any) -> None:
+            if not isinstance(state, TextSensorState):
+                return
+            if state.key not in raw_keys:
+                return
+            idx = raw_keys[state.key]
+            if state.state:
+                parsed = _parse_position_csv(state.state)
+                if parsed is None:
+                    return  # garbled firmware emit — drop silently
+                raw_targets[idx] = {"raw_x": parsed[0], "raw_y": parsed[1]}
+            else:
+                raw_targets[idx] = {"raw_x": None, "raw_y": None}
+            connection.send_message(websocket_api.event_message(msg["id"], {"targets": list(raw_targets)}))
 
-    await device_conn.subscribe_states(_on_state)
-    connection.send_result(msg["id"])
+        return _on_state
 
-    device_conn.raw_target_subs += 1
-    if manager:
-        hass.async_create_task(manager._push_pipeline_to_device(mac))
-
-    @callback
-    def _unsub() -> None:
-        device_conn.unsubscribe_states(_on_state)
-        device_conn.raw_target_subs -= 1
-        mgr = _get_manager(hass)
-        if mgr:
-            hass.async_create_task(mgr._push_pipeline_to_device(mac))
-
-    connection.subscriptions[msg["id"]] = _unsub
+    await _start_target_stream(
+        hass,
+        connection,
+        msg,
+        manager,
+        counter_attr="raw_target_subs",
+        make_on_state=_make_on_state,
+    )
 
 
 # -- subscribe_grid_targets --
@@ -611,6 +715,7 @@ async def websocket_subscribe_raw_targets(
         vol.Required("mac"): MAC_SCHEMA,
     }
 )
+@websocket_api.require_admin
 @websocket_api.async_response
 @_require_manager
 async def websocket_subscribe_grid_targets(
@@ -621,169 +726,63 @@ async def websocket_subscribe_grid_targets(
 ) -> None:
     """Stream target positions, zone state, and sensor data from the device session."""
     mac = msg["mac"]
-    device_conn = manager.get_session(mac)
-    if device_conn is None:
-        connection.send_error(
-            msg["id"],
-            "no_session",
-            "No active session — call subscribe_device first",
-            translation_domain=DOMAIN,
-            translation_key="no_active_session",
-        )
-        return
 
-    key_map = _build_entity_key_map(device_conn._entities)
+    def _make_on_state(device_conn: Any) -> Any:
+        key_map = _build_entity_key_map(device_conn.entities)
 
-    # Map target position sensor keys to indices (display names are 1-based)
-    target_keys = {}
-    for i in range(3):
-        name = f"Target {i + 1} Position"
-        if name in key_map:
-            target_keys[key_map[name]] = i
+        # Map target position sensor keys to indices (display names are 1-based)
+        target_keys = {}
+        for i in range(3):
+            name = f"Target {i + 1} Position"
+            if name in key_map:
+                target_keys[key_map[name]] = i
 
-    # Zone state text sensor key
-    zone_state_key = key_map.get("Zone State")
+        # Zone state text sensor key
+        zone_state_key = key_map.get("Zone State")
 
-    # Binary sensor keys for sensors dict
-    binary_sensor_keys = {}
-    for name, field in (
-        ("Occupancy", "occupancy"),
-        ("Static Presence", "static_presence"),
-        ("Motion Presence", "motion_presence"),
-        ("Zone Tracking", "target_presence"),
-        ("mmWave Presence", "mmwave"),
-    ):
-        if name in key_map:
-            binary_sensor_keys[key_map[name]] = field
+        # Binary sensor keys for sensors dict
+        binary_sensor_keys = {}
+        for name, field in (
+            ("Occupancy", "occupancy"),
+            ("Static Presence", "static_presence"),
+            ("Motion Presence", "motion_presence"),
+            ("Zone Tracking", "target_presence"),
+            ("mmWave Presence", "mmwave"),
+        ):
+            if name in key_map:
+                binary_sensor_keys[key_map[name]] = field
 
-    # Numeric sensor keys for environmental data
-    numeric_sensor_keys = {}
-    for name, field in (
-        ("Temperature", "temperature"),
-        ("Humidity", "humidity"),
-        ("Illuminance", "illuminance"),
-        ("CO2", "co2"),
-    ):
-        if name in key_map:
-            numeric_sensor_keys[key_map[name]] = field
+        # Numeric sensor keys for environmental data
+        numeric_sensor_keys = {}
+        for name, field in (
+            ("Temperature", "temperature"),
+            ("Humidity", "humidity"),
+            ("Illuminance", "illuminance"),
+            ("CO2", "co2"),
+        ):
+            if name in key_map:
+                numeric_sensor_keys[key_map[name]] = field
 
-    # Accumulated state
-    targets: list[dict[str, float | int | str | None]] = [
-        {"x": None, "y": None, "signal": 0, "status": "inactive"} for _ in range(3)
-    ]
-    sensors: dict[str, Any] = {
-        "occupancy": False,
-        "static_presence": False,
-        "motion_presence": False,
-        "target_presence": False,
-        "mmwave": False,
-        "temperature": None,
-        "humidity": None,
-        "illuminance": None,
-        "co2": None,
-    }
-    zones: dict[str, Any] = {"occupancy": {}, "target_counts": {}, "frame_count": 0}
+        # Accumulated state
+        targets: list[dict[str, float | int | str | None]] = [
+            {"x": None, "y": None, "signal": 0, "status": "inactive"} for _ in range(3)
+        ]
+        sensors: dict[str, Any] = {
+            "occupancy": False,
+            "static_presence": False,
+            "motion_presence": False,
+            "target_presence": False,
+            "mmwave": False,
+            "temperature": None,
+            "humidity": None,
+            "illuminance": None,
+            "co2": None,
+        }
+        zones: dict[str, Any] = {"occupancy": {}, "target_counts": {}, "frame_count": 0}
 
-    @callback
-    def _on_state(state: Any) -> None:
-        if isinstance(state, TextSensorState):
-            if state.key in target_keys:
-                idx = target_keys[state.key]
-                if state.state:
-                    parsed = _parse_position_csv(state.state)
-                    if parsed is None:
-                        return  # garbled firmware emit — drop silently
-                    targets[idx]["x"] = parsed[0]
-                    targets[idx]["y"] = parsed[1]
-                    # Status comes from position text sensor (active/pending)
-                    if parsed[2] is not None:
-                        targets[idx]["status"] = parsed[2]
-                else:
-                    targets[idx] = {"x": None, "y": None, "signal": 0, "status": "inactive"}
-                # Send full event on each position update (5Hz)
-                connection.send_message(
-                    websocket_api.event_message(
-                        msg["id"],
-                        {
-                            "targets": list(targets),
-                            "sensors": dict(sensors),
-                            "zones": dict(zones),
-                        },
-                    )
-                )
-            elif zone_state_key is not None and state.key == zone_state_key and state.state:
-                # Parse zone state JSON (1Hz)
-                try:
-                    zs = json.loads(state.state)
-                    # Update target signal/status
-                    for i, t in enumerate(zs.get("targets", [])):
-                        if i < 3:
-                            targets[i]["signal"] = t.get("signal", 0)
-                            targets[i]["status"] = t.get("status", "inactive")
-                    # Update zone data
-                    zone_occ = zs.get("zones", {}).get("occupancy", [])
-                    zones["occupancy"] = {str(i): v for i, v in enumerate(zone_occ)}
-                    zones["frame_count"] = zs.get("frame_count", 0)
-                    debug_log = zs.get("debug_log")
-                    if debug_log:
-                        zones["debug_log"] = debug_log
-                    sensors["target_presence"] = zs.get("zones", {}).get("tracking", False)
-                    # Parse sensor presence states from firmware
-                    static_state = zs.get("static_state")
-                    if static_state is not None:
-                        sensors["static_state"] = static_state
-                    motion_state = zs.get("motion_state")
-                    if motion_state is not None:
-                        sensors["motion_state"] = motion_state
-                    fw_occupancy = zs.get("occupancy")
-                    if fw_occupancy is not None:
-                        sensors["occupancy_state"] = fw_occupancy
-                    fw_mmwave = zs.get("mmwave")
-                    if fw_mmwave is not None:
-                        sensors["mmwave"] = fw_mmwave
-                    # Send event on zone state update (not just target position updates)
-                    # so sensor state changes appear in the log without delay
-                    connection.send_message(
-                        websocket_api.event_message(
-                            msg["id"],
-                            {
-                                "targets": list(targets),
-                                "sensors": dict(sensors),
-                                "zones": dict(zones),
-                            },
-                        )
-                    )
-                except (ValueError, KeyError) as err:
-                    # Malformed zone-state JSON from firmware (truncated buffer,
-                    # boot-time garbage). Drop the frame but log so we don't lose
-                    # visibility when a real parse bug regresses.
-                    _LOGGER.debug(
-                        "subscribe_grid_targets: bad zone-state JSON for %s: %s",
-                        mac,
-                        err,
-                    )
-
-        elif isinstance(state, BinarySensorState):
-            if state.key in binary_sensor_keys:
-                sensors[binary_sensor_keys[state.key]] = state.state
-                # Push the update — without this, env/binary sensor changes
-                # only reach the frontend when piggy-backed on a target or
-                # zone-state event. After a reconnect with no target movement
-                # and quiet zone state, env sliders stay at "—" indefinitely.
-                connection.send_message(
-                    websocket_api.event_message(
-                        msg["id"],
-                        {
-                            "targets": list(targets),
-                            "sensors": dict(sensors),
-                            "zones": dict(zones),
-                        },
-                    )
-                )
-
-        elif isinstance(state, SensorState) and state.key in numeric_sensor_keys:
-            field = numeric_sensor_keys[state.key]
-            sensors[field] = None if math.isnan(state.state) else state.state
+        @callback
+        def _emit() -> None:
+            """Send the full accumulated snapshot to the subscriber."""
             connection.send_message(
                 websocket_api.event_message(
                     msg["id"],
@@ -795,22 +794,100 @@ async def websocket_subscribe_grid_targets(
                 )
             )
 
-    await device_conn.subscribe_states(_on_state)
-    connection.send_result(msg["id"])
+        @callback
+        def _on_state(state: Any) -> None:
+            if isinstance(state, TextSensorState):
+                if state.key in target_keys:
+                    idx = target_keys[state.key]
+                    if state.state:
+                        parsed = _parse_position_csv(state.state)
+                        if parsed is None:
+                            return  # garbled firmware emit — drop silently
+                        targets[idx]["x"] = parsed[0]
+                        targets[idx]["y"] = parsed[1]
+                        # Status comes from position text sensor (active/pending)
+                        if parsed[2] is not None:
+                            targets[idx]["status"] = parsed[2]
+                    else:
+                        targets[idx] = {"x": None, "y": None, "signal": 0, "status": "inactive"}
+                    # Send full event on each position update (5Hz)
+                    _emit()
+                elif zone_state_key is not None and state.key == zone_state_key and state.state:
+                    # Parse zone state JSON (1Hz). The try block is scoped to
+                    # parse/normalize only — a send-path bug must fail loudly
+                    # (the fan-out's drop policy handles it), not be demoted
+                    # to a silently dropped frame.
+                    try:
+                        zs = json.loads(state.state)
+                        # Update target signal/status
+                        for i, t in enumerate(zs.get("targets", [])):
+                            if i < 3:
+                                targets[i]["signal"] = t.get("signal", 0)
+                                targets[i]["status"] = t.get("status", "inactive")
+                        # Update zone data
+                        zone_occ = zs.get("zones", {}).get("occupancy", [])
+                        zones["occupancy"] = {str(i): v for i, v in enumerate(zone_occ)}
+                        zones["frame_count"] = zs.get("frame_count", 0)
+                        debug_log = zs.get("debug_log")
+                        if debug_log:
+                            zones["debug_log"] = debug_log
+                        sensors["target_presence"] = zs.get("zones", {}).get("tracking", False)
+                        # Parse sensor presence states from firmware
+                        static_state = zs.get("static_state")
+                        if static_state is not None:
+                            sensors["static_state"] = static_state
+                        motion_state = zs.get("motion_state")
+                        if motion_state is not None:
+                            sensors["motion_state"] = motion_state
+                        fw_occupancy = zs.get("occupancy")
+                        if fw_occupancy is not None:
+                            sensors["occupancy_state"] = fw_occupancy
+                        fw_mmwave = zs.get("mmwave")
+                        if fw_mmwave is not None:
+                            sensors["mmwave"] = fw_mmwave
+                    except (ValueError, KeyError, TypeError, AttributeError) as err:
+                        # Malformed zone-state JSON from firmware (truncated buffer,
+                        # boot-time garbage), or valid JSON of the wrong shape
+                        # (non-dict root → AttributeError on .get; scalar `targets` →
+                        # TypeError on enumerate). Drop the frame but log so we don't
+                        # lose visibility when a real parse bug regresses. Letting any
+                        # of these escape would make DeviceConnection._dispatch_state
+                        # drop this subscriber permanently, silently freezing the
+                        # client's grid stream.
+                        _LOGGER.debug(
+                            "subscribe_grid_targets: bad zone-state JSON for %s: %s",
+                            mac,
+                            err,
+                        )
+                        return
+                    # Send on zone state update (not just target position
+                    # updates) so sensor state changes appear without delay.
+                    _emit()
 
-    device_conn.grid_target_subs += 1
-    if manager:
-        hass.async_create_task(manager._push_pipeline_to_device(mac))
+            elif isinstance(state, BinarySensorState):
+                if state.key in binary_sensor_keys:
+                    sensors[binary_sensor_keys[state.key]] = state.state
+                    # Push the update — without this, env/binary sensor changes
+                    # only reach the frontend when piggy-backed on a target or
+                    # zone-state event. After a reconnect with no target movement
+                    # and quiet zone state, env sliders stay at "—" indefinitely.
+                    _emit()
 
-    @callback
-    def _unsub() -> None:
-        device_conn.unsubscribe_states(_on_state)
-        device_conn.grid_target_subs -= 1
-        mgr = _get_manager(hass)
-        if mgr:
-            hass.async_create_task(mgr._push_pipeline_to_device(mac))
+            elif isinstance(state, SensorState) and state.key in numeric_sensor_keys:
+                field = numeric_sensor_keys[state.key]
+                sensors[field] = None if math.isnan(state.state) else state.state
+                _emit()
 
-    connection.subscriptions[msg["id"]] = _unsub
+        return _on_state
+
+    await _start_target_stream(
+        hass,
+        connection,
+        msg,
+        manager,
+        counter_attr="grid_target_subs",
+        make_on_state=_make_on_state,
+    )
 
 
 # -- set_entity_enabled --
@@ -833,8 +910,55 @@ def websocket_set_entity_enabled(
     msg: dict[str, Any],
     manager: Any,
 ) -> None:
-    """Enable or disable an ESPHome entity on a managed device."""
+    """Enable or disable an ESPHome entity on a managed device.
+
+    Scoped to entities belonging to `msg["mac"]`'s HA device — without the
+    ownership check this admin command could toggle ANY entity in the
+    installation (e.g. disable someone's alarm panel).
+    """
+    if not _require_known_device(connection, manager, msg):
+        return
+    dev = manager.devices[msg["mac"]]
+    if dev.device_id is None:
+        # HA device not resolved yet (ESPHome entry still setting up) — we
+        # can't verify ownership, so fail closed.
+        connection.send_error(
+            msg["id"],
+            "device_not_available",
+            "Device not available",
+            translation_domain=DOMAIN,
+            translation_key="device_not_available",
+        )
+        return
     ent_reg = er.async_get(hass)
+    # Registry lookup by entity_id includes disabled entities (unlike
+    # `async_entries_for_device`, which needs include_disabled_entities=True)
+    # — essential here since this command's whole job is re-enabling them.
+    entry = ent_reg.async_get(msg["entity_id"])
+    if entry is None:
+        # Curated error — letting async_update_entity raise KeyError would
+        # surface as an opaque unknown_error to the frontend.
+        connection.send_error(
+            msg["id"],
+            "entity_not_found",
+            "Entity not found",
+            translation_domain=DOMAIN,
+            translation_key="entity_not_found",
+        )
+        return
+    if entry.device_id != dev.device_id:
+        connection.send_error(
+            msg["id"],
+            "entity_not_on_device",
+            "Entity does not belong to this device",
+            translation_domain=DOMAIN,
+            translation_key="entity_not_on_device",
+        )
+        return
+    # Arm the reload guard BEFORE the registry write — toggling an ESPHome
+    # entity triggers an integration reload, and the reconnect must not fire
+    # a redundant push.
+    manager.schedule_entity_update_clear(msg["mac"])
     if msg["enabled"]:
         ent_reg.async_update_entity(msg["entity_id"], disabled_by=None)
     else:
@@ -871,22 +995,22 @@ _SETTINGS_KEYS = (
     {
         vol.Required("type"): "eppgrid/set_settings",
         vol.Required("mac"): MAC_SCHEMA,
-        vol.Required("temperature_offset"): vol.Coerce(float),
-        vol.Required("humidity_offset"): vol.Coerce(float),
-        vol.Required("illuminance_offset"): vol.Coerce(float),
-        vol.Required("motion_timeout"): vol.Coerce(float),
+        vol.Required("temperature_offset"): FINITE_FLOAT_SCHEMA,
+        vol.Required("humidity_offset"): FINITE_FLOAT_SCHEMA,
+        vol.Required("illuminance_offset"): FINITE_FLOAT_SCHEMA,
+        vol.Required("motion_timeout"): FINITE_FLOAT_SCHEMA,
         vol.Required("target_auto_distance"): bool,
-        vol.Required("target_max_distance"): vol.Coerce(float),
-        vol.Required("stuck_target_timeout"): vol.All(vol.Coerce(float), vol.Range(min=0, max=600)),
+        vol.Required("target_max_distance"): FINITE_FLOAT_SCHEMA,
+        vol.Required("stuck_target_timeout"): finite_float(min=0, max=600),
         vol.Required("static_auto_distance"): bool,
-        vol.Required("static_min_distance"): vol.Coerce(float),
-        vol.Required("static_max_distance"): vol.Coerce(float),
+        vol.Required("static_min_distance"): FINITE_FLOAT_SCHEMA,
+        vol.Required("static_max_distance"): FINITE_FLOAT_SCHEMA,
         vol.Required("static_trigger_threshold"): vol.Coerce(int),
         vol.Required("static_renew_threshold"): vol.Coerce(int),
-        vol.Required("static_timeout"): vol.Coerce(float),
-        vol.Required("static_on_delay"): vol.All(vol.Coerce(float), vol.Range(min=0, max=STATIC_ON_DELAY_MAX)),
+        vol.Required("static_timeout"): FINITE_FLOAT_SCHEMA,
+        vol.Required("static_on_delay"): finite_float(min=0, max=STATIC_ON_DELAY_MAX),
         vol.Required("led_mode"): vol.In(["Manual Control", "Presence", "Environmental", "Environmental + Presence"]),
-        vol.Required("led_brightness"): vol.All(vol.Coerce(float), vol.Range(min=0.1, max=1.0)),
+        vol.Required("led_brightness"): finite_float(min=0.1, max=1.0),
         vol.Required("led_presence_color"): vol.Match(r"^#[0-9A-Fa-f]{6}$"),
         vol.Required("relay_trigger_mode"): vol.In(["disabled", "motion", "presence", "occupancy"]),
         vol.Required("relay_contact_mode"): vol.In(["no", "nc"]),
@@ -909,7 +1033,7 @@ async def websocket_set_settings(
     if not _require_known_device(connection, manager, msg):
         return
     mac = msg["mac"]
-    device_config = manager._store.devices.setdefault(mac, {})
+    device_config = manager.store.devices.setdefault(mac, {})
     new_settings = {k: msg[k] for k in _SETTINGS_KEYS}
     # Preserve entity toggle and rate flags — they're managed by entity toggles,
     # not by the settings form payload.
@@ -927,11 +1051,10 @@ async def websocket_set_settings(
     ):
         if key in old_settings:
             new_settings[key] = old_settings[key]
-    device_config["settings"] = new_settings
-    if "target_update_rate_ms" in msg:
-        new_settings["target_update_rate_ms"] = msg["target_update_rate_ms"]
-    if "zone_update_rate_ms" in msg:
-        new_settings["zone_update_rate_ms"] = msg["zone_update_rate_ms"]
+    # Optional rate keys in the payload override the preserved values.
+    for key in ("target_update_rate_ms", "zone_update_rate_ms"):
+        if key in msg:
+            new_settings[key] = msg[key]
     # Persist entity flags before push so _push_config_to_device sees correct flags
     entities = msg.get("entities")
     if entities:
@@ -946,20 +1069,21 @@ async def websocket_set_settings(
         )
         for ekey in persisted_entity_keys:
             if ekey in entities:
-                device_config.setdefault("settings", {})[ekey] = entities[ekey]
+                new_settings[ekey] = entities[ekey]
+    device_config["settings"] = new_settings
     log_levels = msg.get("log_levels")
     if log_levels is not None:
         device_config["log_levels"] = log_levels
-    await manager._store.async_save()
-    manager._request_push(mac)
+    await manager.store.async_save()
+    manager.request_push(mac)
     # Auto-enable/disable relay switch entity based on trigger mode
     relay_enabled = msg["relay_trigger_mode"] != "disabled"
-    manager._schedule_entity_update_clear(mac)
+    manager.schedule_entity_update_clear(mac)
     _apply_entity_states(hass, mac, {"relay_output": relay_enabled})
     # Manage device log subscription on the active session (if any)
     session_conn = manager.get_session(mac)
     if session_conn is not None:
-        manager._manage_log_subscription(session_conn, device_config)
+        manager.manage_log_subscription(session_conn, device_config)
     if entities:
         _apply_entity_states(hass, mac, entities)
         # Zone entities need layout-aware handling: enable zone_0 + named zones only
@@ -972,7 +1096,7 @@ async def websocket_set_settings(
             if zone_slots is None:
                 zone_slots = empty_zone_slots()
             await manager.async_update_zone_entities(mac, zone_slots)
-        await manager._push_pipeline_to_device(mac)
+        await manager.async_push_pipeline_to_device(mac)
     connection.send_result(msg["id"])
 
 
@@ -983,9 +1107,9 @@ async def websocket_set_settings(
     {
         vol.Required("type"): "eppgrid/set_distance_override",
         vol.Required("mac"): MAC_SCHEMA,
-        vol.Required("target_max_distance"): vol.Coerce(float),
-        vol.Required("static_min_distance"): vol.Coerce(float),
-        vol.Required("static_max_distance"): vol.Coerce(float),
+        vol.Required("target_max_distance"): FINITE_FLOAT_SCHEMA,
+        vol.Required("static_min_distance"): FINITE_FLOAT_SCHEMA,
+        vol.Required("static_max_distance"): FINITE_FLOAT_SCHEMA,
     }
 )
 @websocket_api.require_admin
@@ -1004,15 +1128,9 @@ async def websocket_set_distance_override(
         # Don't lie to the frontend with `success` — the override never
         # reaches the device when no session is open, so the slider in the
         # UI would silently fail to take effect.
-        connection.send_error(
-            msg["id"],
-            "no_session",
-            "No active session — call subscribe_device first",
-            translation_domain=DOMAIN,
-            translation_key="no_active_session",
-        )
+        _send_no_session(connection, msg["id"])
         return
-    device_config = manager._store.devices.get(mac, {})
+    device_config = manager.store.devices.get(mac, {})
     stored_settings = device_config.get("settings", {})
     override = {
         "target_max_distance": msg["target_max_distance"],

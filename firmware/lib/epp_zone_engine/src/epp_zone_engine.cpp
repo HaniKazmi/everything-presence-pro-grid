@@ -29,24 +29,13 @@ void ZoneEngine::log_(LogLevel level, const char* fmt, ...) {
 // ---------------------------------------------------------------------------
 
 ZoneEngine::ZoneEngine() {
-    std::memset(target_prev_col_, 0, sizeof(target_prev_col_));
-    std::memset(target_prev_row_, 0, sizeof(target_prev_row_));
-    std::memset(target_has_prev_, 0, sizeof(target_has_prev_));
-    std::memset(target_prev_x_, 0, sizeof(target_prev_x_));
-    std::memset(target_prev_y_, 0, sizeof(target_prev_y_));
-    std::memset(target_has_prev_xy_, 0, sizeof(target_has_prev_xy_));
-    std::memset(target_gate_count_, 0, sizeof(target_gate_count_));
-    std::memset(target_overlay_sticky_, 0, sizeof(target_overlay_sticky_));
+    // Every array/scalar member is already zero-initialized by its in-class
+    // brace initializer; only the -1 "unknown" sentinels need explicit setup.
     for (int i = 0; i < MAX_TARGETS; ++i) {
         target_log_zone_[i] = -1;
         target_last_zone_[i] = -1;
         dismissed_cell_[i] = -1;
     }
-    std::memset(target_log_in_room_, 0, sizeof(target_log_in_room_));
-    std::memset(stuck_ref_x_, 0, sizeof(stuck_ref_x_));
-    std::memset(stuck_ref_y_, 0, sizeof(stuck_ref_y_));
-    std::memset(stuck_since_s_, 0, sizeof(stuck_since_s_));
-    std::memset(stuck_has_ref_, 0, sizeof(stuck_has_ref_));
 }
 
 void ZoneEngine::set_grid(const Grid& grid) {
@@ -548,10 +537,13 @@ const ProcessingResult& ZoneEngine::tick(const WindowOutput& window, float times
                     log_(LogLevel::DEBUG, "T%d overlay exit handoff: zone %d, handoff=%.1fs",
                          i, prev_zid, rt.config.handoff_timeout);
                 }
+                // Consume: don't re-fire on subsequent ticks. Only when the
+                // zone lookup succeeded — consuming for a disabled zone would
+                // throw the handoff state away without ever using it (the TS
+                // engine mirrors this exactly).
+                target_last_zone_[i] = -1;
+                target_overlay_sticky_[i] = false;
             }
-            // Consume: don't re-fire on subsequent ticks
-            target_last_zone_[i] = -1;
-            target_overlay_sticky_[i] = false;
         }
     }
 

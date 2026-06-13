@@ -3,6 +3,9 @@
 
 #include <ArduinoJson.h>
 
+#include <cstring>
+#include <string>
+
 #include "epp_types.h"
 #include "epp_zone_engine.h"
 #include "epp_zone_config_parser.h"
@@ -78,6 +81,73 @@ TEST_CASE("zone 0 timing values from wire are respected") {
   CHECK(configs[0].renew == 1);
   CHECK(configs[0].timeout == doctest::Approx(30.0f));
   CHECK(configs[0].handoff_timeout == doctest::Approx(10.0f));
+}
+
+TEST_CASE("float-typed trigger/renew parse to the wire value, not the default") {
+  // Regression: the HA validator briefly normalised timing values to float
+  // in storage, so a custom zone arrived as "trigger": 7.0. ArduinoJson v7's
+  // `|` operator is type-strict — is<int>() is false for a float-typed
+  // value — so an int-default extraction (`z["trigger"] | 5`) silently
+  // returned the DEFAULT (5/3) instead of the user's timing. The parser must
+  // tolerate float-typed integers as defense-in-depth.
+  const char *json =
+      "{"
+      "\"zone_slots\":["
+      "{\"type\":\"custom\",\"trigger\":7.0,\"renew\":4.0,\"timeout\":30.0,\"handoff_timeout\":5.0},"
+      "null,null,null,null,null,null,null"
+      "]"
+      "}";
+
+  ZoneConfig configs[MAX_ZONE_SLOTS]{};
+  int count = parse_from_string(json, configs);
+
+  REQUIRE(count == 1);
+  CHECK(configs[0].trigger == 7);
+  CHECK(configs[0].renew == 4);
+  CHECK(configs[0].timeout == doctest::Approx(30.0f));
+  CHECK(configs[0].handoff_timeout == doctest::Approx(5.0f));
+}
+
+TEST_CASE("non-integral trigger/renew round to nearest (matching backend half-up)") {
+  // Nothing legitimate sends 6.6, but legacy storage predating the websocket
+  // validator could. Round-to-nearest matches the backend's half-up coercion
+  // so device and HA agree on the effective timing.
+  const char *json =
+      "{"
+      "\"zone_slots\":["
+      "{\"trigger\":6.6,\"renew\":2.4,\"timeout\":10.0,\"handoff_timeout\":3.0},"
+      "null,null,null,null,null,null,null"
+      "]"
+      "}";
+
+  ZoneConfig configs[MAX_ZONE_SLOTS]{};
+  int count = parse_from_string(json, configs);
+
+  REQUIRE(count == 1);
+  CHECK(configs[0].trigger == 7);
+  CHECK(configs[0].renew == 2);
+}
+
+TEST_CASE("half-tie trigger/renew round half-up, not to-even (pins std::lround vs rint)") {
+  // 6.5 is an exact half-way tie. std::lround(6.5) == 7 (half-up). A
+  // hypothetical rint-to-even swap would give 6 (6 is even). This assertion
+  // pins the half-up direction so that device and backend always agree.
+  // A matching tie case (_round_half_up(2.5)==3) is asserted in
+  // test_websocket_api.py::TestZoneSlotsValidator::test_round_half_up_pins_half_up_against_bankers_rounding.
+  const char *json =
+      "{"
+      "\"zone_slots\":["
+      "{\"trigger\":6.5,\"renew\":2.5,\"timeout\":10.0,\"handoff_timeout\":3.0},"
+      "null,null,null,null,null,null,null"
+      "]"
+      "}";
+
+  ZoneConfig configs[MAX_ZONE_SLOTS]{};
+  int count = parse_from_string(json, configs);
+
+  REQUIRE(count == 1);
+  CHECK(configs[0].trigger == 7);  // lround half-up; rint-to-even would give 6
+  CHECK(configs[0].renew == 3);    // lround half-up; rint-to-even would give 2
 }
 
 TEST_CASE("null at zone_slots[0] emits no zone-0 entry") {
@@ -281,4 +351,146 @@ TEST_CASE("negative timeout / handoff_timeout are clamped to 0") {
   REQUIRE(count == 1);
   CHECK(configs[0].timeout == doctest::Approx(0.0f));
   CHECK(configs[0].handoff_timeout == doctest::Approx(0.0f));
+}
+
+// ---------------------------------------------------------------------------
+// parse_zones_json — size-capped entry point.
+//
+// deserializeJson on an unbounded string lets a large LAN payload force a
+// matching transient heap allocation on the 320KB-heap ESP32 (ArduinoJson v7
+// grows its pool on demand). parse_zones_json applies ZONES_JSON_MAX BEFORE
+// deserializing; both set_zones() and the NVS boot-restore path in
+// epp_component.cpp go through it so the two can't drift.
+// ---------------------------------------------------------------------------
+
+TEST_CASE("parse_zones_json rejects payloads larger than ZONES_JSON_MAX before parsing") {
+  // Valid-looking prefix padded past the cap. Content doesn't matter — the
+  // size gate must fire before the parser ever sees the bytes.
+  std::string big = "{\"zone_slots\":[]}";
+  big.append(ZONES_JSON_MAX + 1 - big.size(), ' ');
+  REQUIRE(big.size() == ZONES_JSON_MAX + 1);
+
+  ZoneConfig configs[MAX_ZONE_SLOTS]{};
+  int count = 0;
+  CHECK(parse_zones_json(big.c_str(), big.size(), configs, count) ==
+        ZonesJsonStatus::TOO_LARGE);
+  CHECK(count == 0);
+}
+
+TEST_CASE("parse_zones_json accepts a payload of exactly ZONES_JSON_MAX bytes") {
+  // Valid JSON padded with trailing whitespace to exactly the cap — proves
+  // the boundary is inclusive (size > cap rejects, size == cap parses).
+  std::string json =
+      "{\"zone_slots\":["
+      "{\"trigger\":7,\"renew\":2,\"timeout\":20.0,\"handoff_timeout\":5.0}"
+      "]}";
+  json.append(ZONES_JSON_MAX - json.size(), ' ');
+  REQUIRE(json.size() == ZONES_JSON_MAX);
+
+  ZoneConfig configs[MAX_ZONE_SLOTS]{};
+  int count = 0;
+  CHECK(parse_zones_json(json.c_str(), json.size(), configs, count) ==
+        ZonesJsonStatus::OK);
+  REQUIRE(count == 1);
+  CHECK(configs[0].trigger == 7);
+  CHECK(configs[0].renew == 2);
+}
+
+TEST_CASE("parse_zones_json surfaces malformed JSON as PARSE_ERROR with a message") {
+  const char *bad = "{\"zone_slots\":[";
+
+  ZoneConfig configs[MAX_ZONE_SLOTS]{};
+  int count = 0;
+  const char *error = nullptr;
+  CHECK(parse_zones_json(bad, std::strlen(bad), configs, count, &error) ==
+        ZonesJsonStatus::PARSE_ERROR);
+  CHECK(count == 0);
+  REQUIRE(error != nullptr);
+  CHECK(std::strlen(error) > 0);
+}
+
+TEST_CASE("ZONES_JSON_MAX leaves ample headroom over a typical full payload") {
+  // Typical-worst payload the backend sends: all 8 slots fully populated
+  // with timing fields plus the frontend-only metadata fields the firmware
+  // ignores (id/name/color/type), ASCII names.
+  std::string json = "{\"zone_slots\":[";
+  for (int i = 0; i < MAX_ZONE_SLOTS; ++i) {
+    if (i > 0) json += ",";
+    json +=
+        "{\"id\":7,\"name\":\"A fairly long user-chosen zone name\","
+        "\"color\":\"#a1b2c3\",\"type\":\"sleeping_area\","
+        "\"trigger\":9,\"renew\":9,\"timeout\":86400.5,\"handoff_timeout\":86400.5}";
+  }
+  json += "]}";
+
+  // Require >= 2x headroom so typical payloads never brush the cap.
+  CHECK(json.size() * 2 <= ZONES_JSON_MAX);
+
+  ZoneConfig configs[MAX_ZONE_SLOTS]{};
+  int count = 0;
+  CHECK(parse_zones_json(json.c_str(), json.size(), configs, count) ==
+        ZonesJsonStatus::OK);
+  CHECK(count == MAX_ZONE_SLOTS);
+}
+
+TEST_CASE("ZONES_JSON_MAX accepts the worst frontend-producible payload (BWC)") {
+  // The HA websocket boundary caps zone names at 64 chars and restricts
+  // `type` to a fixed vocabulary (longest value 12 chars) — but configs
+  // stored before the vocab restriction may carry types up to the old
+  // 32-char cap, and the backend still pushes those. json.dumps escapes
+  // each non-ASCII char as a 6-byte \uXXXX sequence. A payload of 7 named
+  // slots with fully-escaped maximal names and legacy 32-char types plus
+  // full timing is the largest input a legitimate backend can produce — the
+  // firmware cap must never reject it, or those users' zones silently stop
+  // applying on push (BWC).
+  std::string name;   // 64 chars x 6 bytes escaped
+  for (int i = 0; i < 64; ++i) name += "\\u4e2d";
+  std::string type;   // legacy 32-char cap x 6 bytes escaped
+  for (int i = 0; i < 32; ++i) type += "\\u4e2d";
+
+  std::string json = "{\"zone_slots\":[";
+  // zone 0: type + timing only
+  json += "{\"type\":\"" + type + "\","
+          "\"trigger\":9,\"renew\":9,\"timeout\":-2.2250738585072014e-308,"
+          "\"handoff_timeout\":-2.2250738585072014e-308}";
+  for (int i = 1; i < MAX_ZONE_SLOTS; ++i) {
+    json += ",{\"name\":\"" + name + "\",\"color\":\"#a1b2c3\","
+            "\"type\":\"" + type + "\","
+            "\"trigger\":-2.2250738585072014e-308,\"renew\":9,"
+            "\"timeout\":-2.2250738585072014e-308,"
+            "\"handoff_timeout\":-2.2250738585072014e-308}";
+  }
+  json += "]}";
+
+  CHECK(json.size() <= ZONES_JSON_MAX);
+
+  ZoneConfig configs[MAX_ZONE_SLOTS]{};
+  int count = 0;
+  CHECK(parse_zones_json(json.c_str(), json.size(), configs, count) ==
+        ZonesJsonStatus::OK);
+  CHECK(count == MAX_ZONE_SLOTS);
+}
+
+TEST_CASE("parse_zones_json zeroes count on TOO_LARGE even when caller passes dirty count") {
+  std::string big = "{\"zone_slots\":[]}";
+  big.append(ZONES_JSON_MAX + 1 - big.size(), ' ');
+  REQUIRE(big.size() == ZONES_JSON_MAX + 1);
+
+  ZoneConfig configs[MAX_ZONE_SLOTS]{};
+  int count = 99;  // dirty — must be zeroed by parse_zones_json
+  CHECK(parse_zones_json(big.c_str(), big.size(), configs, count) ==
+        ZonesJsonStatus::TOO_LARGE);
+  CHECK(count == 0);
+}
+
+TEST_CASE("parse_zones_json zeroes count on PARSE_ERROR even when caller passes dirty count") {
+  const char *bad = "{\"zone_slots\":[";
+
+  ZoneConfig configs[MAX_ZONE_SLOTS]{};
+  int count = 42;  // dirty — must be zeroed by parse_zones_json
+  const char *error = nullptr;
+  CHECK(parse_zones_json(bad, std::strlen(bad), configs, count, &error) ==
+        ZonesJsonStatus::PARSE_ERROR);
+  CHECK(count == 0);
+  REQUIRE(error != nullptr);
 }

@@ -29,6 +29,11 @@ _STATIC_PATH_REGISTERED_KEY = f"{DOMAIN}_static_path_registered"
 # Key tracking whether the sidebar panel was registered, so unload can remove
 # it without warning when the user had it disabled.
 _PANEL_REGISTERED_KEY = f"{DOMAIN}_panel_registered"
+# Key marking that the firmware proxy view has been registered.
+# HomeAssistantView.register appends a fresh route on every call (no dedupe),
+# so an unguarded call would stack duplicate /api/eppgrid/firmware routes on
+# each config-entry reload. Like the static path, register once per process.
+_PROXY_VIEW_REGISTERED_KEY = f"{DOMAIN}_proxy_view_registered"
 
 
 def _hash_file(path: str) -> str:
@@ -44,26 +49,51 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     manager = DeviceManager(hass, store)
 
-    # Register the static path so panel_custom can fetch the bundled JS module.
-    module_url = await _register_frontend_resources(hass)
+    # Register the static path unconditionally so Lovelace dashboards can
+    # fetch the bundled JS module even when the sidebar panel is disabled.
+    await _register_frontend_resources(hass)
 
-    if store.sidebar_panel:
-        await _register_panel(hass, module_url)
-        hass.data[_PANEL_REGISTERED_KEY] = True
-
-    hass.data[DOMAIN] = manager
+    # WS command registration is idempotent; the handlers look the manager up
+    # via hass.data[DOMAIN] and tolerate it being absent, so registering them
+    # before the manager is published is safe.
     async_register_websocket_commands(hass, manager)
-    hass.http.register_view(FirmwareProxyView())
-    await manager.async_start()
 
-    entry.async_on_unload(entry.add_update_listener(_async_update_listener))
+    if not hass.data.get(_PROXY_VIEW_REGISTERED_KEY):
+        hass.http.register_view(FirmwareProxyView())
+        hass.data[_PROXY_VIEW_REGISTERED_KEY] = True
+
+    try:
+        await manager.async_start()
+        hass.data[DOMAIN] = manager
+
+        # Register the panel LAST. HA never calls async_unload_entry for a
+        # failed setup, so registering it before a fallible step would leave
+        # a stale panel behind and every retry would die on panel_custom's
+        # "Overwriting panel" ValueError until restart.
+        await async_apply_panel_visibility(hass, store.sidebar_panel)
+    except Exception:
+        # Unwind so a retry starts from a clean slate: don't leak a
+        # half-started manager (or its listeners) and don't leave a panel
+        # registered that the retry can't overwrite.
+        hass.data.pop(DOMAIN, None)
+        try:
+            await async_apply_panel_visibility(hass, False)
+        except Exception:
+            _LOGGER.exception("async_apply_panel_visibility(False) failed during setup unwind")
+        # A raising cleanup must not mask the original setup error — it would
+        # e.g. turn ConfigEntryNotReady (retry later) into a permanent
+        # SETUP_ERROR.
+        try:
+            await manager.async_stop()
+        except Exception:
+            _LOGGER.exception("manager.async_stop failed during setup unwind")
+        raise
+
+    # Options changes are applied directly by the options flow (store write +
+    # panel registration/removal) — deliberately no update listener: a reload
+    # here would tear down every ESPHome connection just to flip a toggle.
 
     return True
-
-
-async def _async_update_listener(hass: HomeAssistant, entry: ConfigEntry) -> None:
-    """Reload the integration when options change."""
-    await hass.config_entries.async_reload(entry.entry_id)
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
@@ -72,10 +102,30 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     if manager is not None:
         await manager.async_stop()
 
-    if hass.data.pop(_PANEL_REGISTERED_KEY, False):
-        async_remove_panel(hass, DOMAIN, warn_if_unknown=False)
+    await async_apply_panel_visibility(hass, False)
 
     return True
+
+
+async def async_apply_panel_visibility(hass: HomeAssistant, visible: bool) -> None:
+    """Register or remove the sidebar panel so it matches ``visible``.
+
+    Idempotent: registering is skipped when the panel is already up, and
+    removal is skipped when it never was. Used by setup/unload and called
+    directly by the options flow so a sidebar toggle doesn't need a full
+    config-entry reload.
+    """
+    if visible:
+        if hass.data.get(_PANEL_REGISTERED_KEY):
+            return
+        # Re-deriving the module URL is cheap: the static path registration
+        # inside is guarded once-per-process; only the cache-bust hash is
+        # recomputed.
+        module_url = await _register_frontend_resources(hass)
+        await _register_panel(hass, module_url)
+        hass.data[_PANEL_REGISTERED_KEY] = True
+    elif hass.data.pop(_PANEL_REGISTERED_KEY, False):
+        async_remove_panel(hass, DOMAIN, warn_if_unknown=False)
 
 
 async def _register_frontend_resources(hass: HomeAssistant) -> str:

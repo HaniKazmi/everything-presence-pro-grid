@@ -1,22 +1,41 @@
 /**
- * Zone engine parity tests.
+ * Zone-engine parity tests.
  *
- * These tests verify that the frontend's _runLocalZoneEngine() produces the
- * same zone occupancy results as the Python backend's ZoneEngine._tick() for
- * identical inputs. Each test here has a mirror in tests/test_zone_engine_parity.py.
+ * SHARED-FIXTURE CONTRACT
+ * `frontend/src/lib/zone-engine.ts` is a TS port of the firmware engine
+ * (`firmware/lib/epp_zone_engine/src/epp_zone_engine.cpp`) and MUST produce
+ * identical zone-state decisions. Both engines are driven by the SAME fixture:
  *
- * To keep the two in sync:
- *   - Grid: 20×20, room cells at cols 8-11 rows 0-3 (1200×1200mm room)
- *   - Zone 1 painted on cell (9,1) = grid index 29
- *   - Room (zone 0) on all other room cells
- *   - Room dimensions: 1200×1200mm → startCol=8
- *   - Target at (450, 450) maps to col 9.5 → cell (9,1) = zone 1
- *   - Target at (150, 150) maps to col 8.5 → cell (8,0) = zone 0 (room)
+ *   firmware/lib/epp_zone_engine/tests/fixtures/parity_scenarios.json
+ *
+ *   - C++ side: firmware/lib/epp_zone_engine/tests/test_parity.cpp (doctest)
+ *   - TS side:  the "Shared-fixture parity" describe below (vitest)
+ *
+ * EDIT THE FIXTURE → RUN BOTH SUITES:
+ *   cd firmware/lib/epp_zone_engine/build && \
+ *     cmake --build . --target epp_parity_tests && ./tests/epp_parity_tests
+ *   cd frontend && npx vitest run src/__tests__/panel-zone-engine-parity.test.ts
+ *
+ * Scenarios that fail on one engine because of a known divergence are tagged
+ * in the fixture (`known_divergence.ts` / `known_divergence.cpp`) and tracked
+ * for Task 7.2. The TS side runs tagged scenarios via `it.fails` so the suite
+ * turns loud the moment a divergence is fixed; the C++ side skips them with a
+ * logged KNOWN-DIVERGENCE message. Fix the engine → delete the tag.
+ *
+ * Fixture schema: firmware/lib/epp_zone_engine/tests/fixtures/README.md.
+ *
+ * The describes after the fixture block are TS-engine specifics: panel-path
+ * integration and internals (pendingSince, targetPrevXY, lastZone) that the
+ * shared fixture cannot express. The fixture block is the parity source of
+ * truth — do not add hand-written mirrors of fixture scenarios here.
  */
 
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { beforeEach, describe, expect, it } from "vitest";
 import type { EPPGridPanel } from "../eppgrid-panel.js";
 import "../eppgrid-panel.js";
+import { mapTargetToGridCell } from "../lib/coordinates.js";
 import {
 	CELL_OVERLAY_ENTRY,
 	CELL_OVERLAY_SUPPRESS,
@@ -24,10 +43,457 @@ import {
 	cellSetOverlay,
 	cellSetZone,
 	GRID_CELL_COUNT,
+	GRID_CELL_MM,
 	GRID_COLS,
+	roomStartCol,
 } from "../lib/grid.js";
+import { OverlayTracker } from "../lib/overlay-tracker.js";
+import type { ZoneConfig } from "../lib/zone-defaults.js";
+import {
+	createZoneEngineState,
+	runLocalZoneEngine,
+	type ZoneEngineParams,
+} from "../lib/zone-engine.js";
 
-const _MAX_ZONES = 7;
+// ---------------------------------------------------------------------------
+// Shared fixture loading
+// ---------------------------------------------------------------------------
+
+interface FixtureTick {
+	t: number;
+	// `on_overlay` per target: an explicit raw-frame entry-overlay override
+	// expressing a RAW touch the MEDIAN position never visits (the component
+	// tracks raw frames; this harness only sees medians). Mirrors the C++
+	// harness's optional per-target on_overlay field.
+	targets: { x: number; y: number; frames: number; on_overlay?: boolean }[];
+	sensors?: {
+		static_on?: boolean;
+		motion_on?: boolean;
+		static_timeout?: number;
+		motion_timeout?: number;
+	};
+}
+
+interface FixtureExpectedTarget {
+	status: "active" | "pending" | "inactive";
+	x?: number;
+	y?: number;
+	signal?: number;
+}
+
+interface FixtureExpected {
+	zone_occupancy: Record<string, boolean>;
+	targets?: FixtureExpectedTarget[];
+}
+
+interface FixtureScenario {
+	known_divergence?: { ts?: string; cpp?: string };
+	stuck_target_timeout?: number;
+	ticks: FixtureTick[];
+	expected: FixtureExpected[];
+}
+
+interface ParityFixtures {
+	grid: {
+		room_cells: [number, number][];
+		zone_cells: Record<string, [number, number][]>;
+		overlay_entry_cells?: [number, number][];
+		overlay_suppress_cells?: [number, number][];
+	};
+	zones: Record<
+		string,
+		{
+			type: string;
+			trigger: number;
+			renew: number;
+			timeout: number;
+			handoff_timeout: number;
+		}
+	>;
+	scenarios: Record<string, FixtureScenario>;
+}
+
+const FIXTURE_PATH = join(
+	__dirname,
+	"..",
+	"..",
+	"..",
+	"firmware",
+	"lib",
+	"epp_zone_engine",
+	"tests",
+	"fixtures",
+	"parity_scenarios.json",
+);
+
+const fixtures = JSON.parse(
+	readFileSync(FIXTURE_PATH, "utf8"),
+) as ParityFixtures;
+
+// ---------------------------------------------------------------------------
+// Fixture → engine-params interpretation layer.
+//
+// The reference interpretation is test_parity.cpp (build_grid / build_zones /
+// build_window); each helper below is a line-for-line mirror. The single
+// genuine translation is the coordinate frame:
+//
+//   C++ harness grid: origin (0,0), 20×20 cells of 300mm
+//                     → col = floor(x / 300), row = floor(y / 300)
+//   TS engine:        room-space mm, room centred horizontally
+//                     → col = roomStartCol(roomWidth) + x / 300, row = y / 300
+//
+// So roomWidth/roomDepth are derived from the fixture's room cells and every
+// fixture x is shifted left by startCol·300, making both harnesses resolve
+// identical grid cells for identical fixture coordinates.
+// ---------------------------------------------------------------------------
+
+/** Mirror of test_parity.cpp build_grid(). */
+function buildFixtureGrid(g: ParityFixtures["grid"]): Uint8Array {
+	const grid = new Uint8Array(GRID_CELL_COUNT);
+	for (const [col, row] of g.room_cells) {
+		grid[row * GRID_COLS + col] = CELL_ROOM_BIT;
+	}
+	for (const [zidStr, cells] of Object.entries(g.zone_cells)) {
+		const zid = Number(zidStr);
+		for (const [col, row] of cells) {
+			grid[row * GRID_COLS + col] = cellSetZone(CELL_ROOM_BIT, zid);
+		}
+	}
+	for (const [col, row] of g.overlay_entry_cells ?? []) {
+		const idx = row * GRID_COLS + col;
+		grid[idx] = cellSetOverlay(grid[idx], CELL_OVERLAY_ENTRY);
+	}
+	for (const [col, row] of g.overlay_suppress_cells ?? []) {
+		const idx = row * GRID_COLS + col;
+		grid[idx] = cellSetOverlay(grid[idx], CELL_OVERLAY_SUPPRESS);
+	}
+	return grid;
+}
+
+/** Derive room dimensions + x shift from the fixture's room cells. */
+function fixtureRoomGeometry(g: ParityFixtures["grid"]): {
+	roomWidth: number;
+	roomDepth: number;
+	xOffsetMm: number;
+} {
+	let minCol = GRID_COLS;
+	let maxCol = -1;
+	let maxRow = -1;
+	for (const [col, row] of g.room_cells) {
+		if (col < minCol) minCol = col;
+		if (col > maxCol) maxCol = col;
+		if (row > maxRow) maxRow = row;
+	}
+	const roomWidth = (maxCol - minCol + 1) * GRID_CELL_MM;
+	const roomDepth = (maxRow + 1) * GRID_CELL_MM;
+	// Sanity check: the TS engine centres the room horizontally. If the
+	// fixture grid ever places the room at different columns, every mapped
+	// coordinate would silently shift one or more cells — fail loudly instead.
+	if (roomStartCol(roomWidth) !== minCol) {
+		throw new Error(
+			`parity fixture grid places the room at col ${minCol}, but the TS ` +
+				`engine centres a ${roomWidth}mm room at col ${roomStartCol(roomWidth)}` +
+				" — fixture coordinates would silently shift; fix the fixture grid",
+		);
+	}
+	return { roomWidth, roomDepth, xOffsetMm: minCol * GRID_CELL_MM };
+}
+
+/**
+ * Mirror of test_parity.cpp build_zones(). The C++ harness ignores the
+ * fixture's `type` field and applies the explicit thresholds to every zone;
+ * mapping each zone to TS type "custom" gives the explicit values the same
+ * authority (non-custom TS types would override them with type defaults).
+ */
+function buildFixtureZoneParams(
+	zones: ParityFixtures["zones"],
+): Pick<
+	ZoneEngineParams,
+	| "zoneConfigs"
+	| "roomType"
+	| "roomTrigger"
+	| "roomRenew"
+	| "roomTimeout"
+	| "roomHandoffTimeout"
+> {
+	const z0 = zones["0"];
+	if (!z0) throw new Error("parity fixture: zones must define zone 0");
+	const zoneConfigs: (ZoneConfig | null)[] = [
+		null,
+		null,
+		null,
+		null,
+		null,
+		null,
+		null,
+	];
+	for (const [zidStr, cfg] of Object.entries(zones)) {
+		const zid = Number(zidStr);
+		if (zid === 0) continue;
+		zoneConfigs[zid - 1] = {
+			name: `Zone ${zid}`,
+			color: "#000000",
+			type: "custom",
+			trigger: cfg.trigger,
+			renew: cfg.renew,
+			timeout: cfg.timeout,
+			handoff_timeout: cfg.handoff_timeout,
+		};
+	}
+	return {
+		zoneConfigs,
+		roomType: "custom",
+		roomTrigger: z0.trigger,
+		roomRenew: z0.renew,
+		roomTimeout: z0.timeout,
+		roomHandoffTimeout: z0.handoff_timeout,
+	};
+}
+
+/**
+ * Mirror of test_parity.cpp build_window(): `frames > 0` means the sensor is
+ * tracking (x/y in mm, signal = min(frames, 9) per frame_count_to_signal);
+ * `frames == 0` sets active=false in the C++ harness, whose TS equivalent is
+ * x/y null ("sensor not tracking"). Fixture x is shifted into the TS engine's
+ * room-relative frame (see coordinate note above).
+ */
+function buildFixtureTargets(
+	tick: FixtureTick,
+	xOffsetMm: number,
+): ZoneEngineParams["targets"] {
+	return tick.targets.map((t) =>
+		t.frames > 0
+			? {
+					x: t.x - xOffsetMm,
+					y: t.y,
+					signal: Math.min(t.frames, 9),
+					status: "active",
+				}
+			: { x: null, y: null, signal: 0, status: "inactive" },
+	);
+}
+
+/**
+ * Mirror of test_parity.cpp run_scenario()'s "Simulate component raw-frame
+ * overlay tracking" block (epp_component.cpp Stage 2b). The fixture carries no
+ * raw frames, so this feeds the OverlayTracker the MEDIAN positions each tick
+ * (sticky, with slot-reuse reset) and then lets an explicit per-target
+ * `on_overlay` override win — exactly as the C++ harness does. Keep this thin
+ * mirror in lockstep with the C++ block and the component.
+ */
+function applyFixtureOverlay(
+	targets: ZoneEngineParams["targets"],
+	tick: FixtureTick,
+	tracker: OverlayTracker,
+	grid: Uint8Array,
+	roomWidth: number,
+	roomDepth: number,
+): void {
+	tracker.update(
+		targets.map((t) => ({
+			active: t.status === "active",
+			x: t.x,
+			y: t.y,
+		})),
+		grid,
+		roomWidth,
+		roomDepth,
+	);
+	const flags = tracker.onOverlay;
+	for (let i = 0; i < targets.length; i++) {
+		// Tracker first, then explicit override wins (C++ harness order).
+		const override = tick.targets[i]?.on_overlay;
+		targets[i].onOverlay = override ?? flags[i] ?? false;
+	}
+}
+
+/**
+ * Structural guards — mirror of the REQUIRE guards in test_parity.cpp
+ * run_scenario(). Called at collection time so a malformed scenario fails the
+ * whole suite loudly (even for known-divergence scenarios, which `it.fails`
+ * would otherwise mask).
+ */
+function validateScenario(name: string, s: FixtureScenario): void {
+	const fail = (msg: string): never => {
+		throw new Error(`parity fixture scenario "${name}": ${msg}`);
+	};
+	if (!Array.isArray(s.ticks) || s.ticks.length === 0) {
+		fail('"ticks" must be a non-empty array');
+	}
+	if (!Array.isArray(s.expected)) fail('"expected" must be an array');
+	if (s.ticks.length !== s.expected.length) {
+		fail(
+			`ticks (${s.ticks.length}) and expected (${s.expected.length}) lengths differ`,
+		);
+	}
+	s.ticks.forEach((tick, i) => {
+		if (typeof tick.t !== "number") fail(`tick ${i}: missing numeric "t"`);
+		if (!Array.isArray(tick.targets)) {
+			fail(`tick ${i}: missing "targets" array`);
+		}
+		// Mirror of the C++ window builder's REQUIRE(t.contains("frames"/"x"/"y")):
+		// buildFixtureTargets reads frames/x/y off every target, so a missing
+		// field would silently produce NaN coordinates instead of failing.
+		tick.targets?.forEach((t, j) => {
+			if (typeof t.frames !== "number") {
+				fail(`tick ${i} target ${j}: missing numeric "frames"`);
+			}
+			if (typeof t.x !== "number") {
+				fail(`tick ${i} target ${j}: missing numeric "x"`);
+			}
+			if (typeof t.y !== "number") {
+				fail(`tick ${i} target ${j}: missing numeric "y"`);
+			}
+		});
+	});
+	s.expected.forEach((exp, i) => {
+		if (typeof exp.zone_occupancy !== "object" || exp.zone_occupancy === null) {
+			fail(`expected ${i}: missing "zone_occupancy" object`);
+		}
+		exp.targets?.forEach((t, j) => {
+			if (!["active", "pending", "inactive"].includes(t.status)) {
+				fail(`expected ${i} target ${j}: invalid "status"`);
+			}
+			// x and y are read as a pair in both harnesses — one without the
+			// other would read undefined; require both or neither.
+			if ((t.x === undefined) !== (t.y === undefined)) {
+				fail(`expected ${i} target ${j}: "x" and "y" must be given together`);
+			}
+		});
+	});
+}
+
+/**
+ * Structural guards for the shared grid/zones config — mirror of the
+ * REQUIRE(grid_config.contains("room_cells"/"zone_cells")) guards in the C++
+ * build_grid()/build_zones(). The config is shared across every scenario, so
+ * this is checked once at collection time; a malformed grid would otherwise
+ * silently build an empty room (no rooms, no zones) and quietly mis-test.
+ */
+function validateFixtureConfig(f: ParityFixtures): void {
+	if (!f.grid || typeof f.grid !== "object") {
+		throw new Error('parity fixture: missing "grid" object');
+	}
+	if (!Array.isArray(f.grid.room_cells)) {
+		throw new Error('parity fixture grid: missing "room_cells" array');
+	}
+	if (
+		typeof f.grid.zone_cells !== "object" ||
+		f.grid.zone_cells === null ||
+		Array.isArray(f.grid.zone_cells)
+	) {
+		throw new Error('parity fixture grid: missing "zone_cells" object');
+	}
+	if (typeof f.zones !== "object" || f.zones === null) {
+		throw new Error('parity fixture: missing "zones" object');
+	}
+	// Mirror of build_zones()'s REQUIRE on each zone's threshold keys.
+	for (const [zid, cfg] of Object.entries(f.zones)) {
+		for (const key of ["trigger", "renew", "timeout", "handoff_timeout"]) {
+			if (typeof (cfg as Record<string, unknown>)[key] !== "number") {
+				throw new Error(
+					`parity fixture zone "${zid}": missing numeric "${key}"`,
+				);
+			}
+		}
+	}
+}
+
+describe("Shared-fixture parity (parity_scenarios.json drives both engines)", () => {
+	validateFixtureConfig(fixtures);
+	const scenarioEntries = Object.entries(fixtures.scenarios);
+	const geometry = fixtureRoomGeometry(fixtures.grid);
+	const grid = buildFixtureGrid(fixtures.grid);
+	const zoneParams = buildFixtureZoneParams(fixtures.zones);
+
+	// Mirror of REQUIRE(!scenarios.empty()): an empty scenarios object would
+	// otherwise register zero tests and report success while testing nothing.
+	it("fixture provides at least one scenario", () => {
+		expect(scenarioEntries.length).toBeGreaterThan(0);
+	});
+
+	for (const [name, scenario] of scenarioEntries) {
+		validateScenario(name, scenario);
+
+		// KNOWN-DIVERGENCE(7.2): scenarios tagged `known_divergence.ts` are
+		// expected to fail on THIS engine until Task 7.2 fixes the divergence.
+		// `it.fails` passes while they fail and fails loudly once they pass —
+		// at which point Task 7.2 deletes the fixture tag.
+		const tsTag = scenario.known_divergence?.ts;
+		const itFn = tsTag ? it.fails : it;
+		const title = tsTag ? `${name} [KNOWN-DIVERGENCE(7.2): ${tsTag}]` : name;
+
+		itFn(title, () => {
+			const state = createZoneEngineState();
+			// Fresh per scenario — mirrors the C++ harness's per-scenario
+			// target_on_overlay/target_prev_active reset.
+			const overlayTracker = new OverlayTracker();
+			scenario.ticks.forEach((tick, i) => {
+				const targets = buildFixtureTargets(tick, geometry.xOffsetMm);
+				applyFixtureOverlay(
+					targets,
+					tick,
+					overlayTracker,
+					grid,
+					geometry.roomWidth,
+					geometry.roomDepth,
+				);
+				const result = runLocalZoneEngine(state, {
+					targets,
+					grid,
+					roomWidth: geometry.roomWidth,
+					roomDepth: geometry.roomDepth,
+					...zoneParams,
+					// Mirror of the C++ harness's SensorInput build: absent
+					// fields keep the defaults (off, 10s timeouts).
+					staticPresence: tick.sensors?.static_on ?? false,
+					motionPresence: tick.sensors?.motion_on ?? false,
+					staticTimeout: tick.sensors?.static_timeout ?? 10,
+					motionTimeout: tick.sensors?.motion_timeout ?? 10,
+					// Mirror of engine.set_stuck_target_timeout (0 = disabled).
+					stuckTargetTimeout: scenario.stuck_target_timeout ?? 0,
+					// Fixture-driven clock — never Date.now(), so timeout
+					// scenarios are exact instead of wall-clock approximations.
+					now: tick.t,
+				});
+
+				const expected = scenario.expected[i];
+				for (const [zidStr, expOcc] of Object.entries(
+					expected.zone_occupancy,
+				)) {
+					expect(
+						result.occupancy[Number(zidStr)],
+						`tick ${i}: zone ${zidStr} occupancy`,
+					).toBe(expOcc);
+				}
+
+				expected.targets?.forEach((expT, j) => {
+					// Mirror of REQUIRE(j < result.target_count).
+					expect(
+						result.targets.length,
+						`tick ${i}: target ${j} missing from result`,
+					).toBeGreaterThan(j);
+					expect(result.targets[j].status, `tick ${i}: target ${j}`).toBe(
+						expT.status,
+					);
+					// expT.x / expT.y / expT.signal are asserted by the C++ suite
+					// only: the TS engine reports status alone (pending-position
+					// display is a render concern handled via targetPrevXY).
+				});
+			});
+		});
+	}
+});
+
+// ---------------------------------------------------------------------------
+// TS-engine specifics.
+//
+// Everything below exercises behaviour the shared fixture cannot express:
+// the panel/TargetController integration path, engine-internal state
+// (pendingSince, lastZone, targetPrevXY), inputs the C++ harness cannot
+// produce (signal=0 while still tracked — frames=0 forces active=false
+// there), and editor-only concerns (unsaved grid overrides, dot rendering).
+// ---------------------------------------------------------------------------
 
 /** Room: 1200×1200mm, centered in 20-col grid → cols 8-11, rows 0-3. */
 function makeParityGrid(): Uint8Array {
@@ -100,7 +566,7 @@ function createParityPanel(): EPPGridPanel {
 	return el;
 }
 
-describe("Zone engine parity (mirrors test_zone_engine_parity.py)", () => {
+describe("TS-engine specifics: zone occupancy via panel path", () => {
 	let el: EPPGridPanel;
 	let a: any;
 
@@ -241,7 +707,7 @@ describe("Zone engine parity (mirrors test_zone_engine_parity.py)", () => {
 	});
 });
 
-describe("Per-target status parity", () => {
+describe("TS-engine specifics: per-target status via panel path", () => {
 	let el: EPPGridPanel;
 	let a: any;
 
@@ -270,12 +736,11 @@ describe("Per-target status parity", () => {
 	});
 
 	it("target disappears while zone pending → status=pending with last position", () => {
-		// Two active ticks are needed: the first tick creates the zone state and
-		// occupies it; the second tick registers the target in confirmedTargets so
-		// the pending check can identify which target was last in the zone.
+		// A single active tick both occupies the zone AND registers the
+		// target in confirmedTargets (first-tick confirm — parity with the
+		// firmware's unconditional `rt.confirmed_targets |= (1 << i)`).
 		a._targets = [makeTarget(450, 450, 5)];
-		a._runLocalZoneEngine(); // tick 1: zone created and occupied
-		a._runLocalZoneEngine(); // tick 2: target added to confirmedTargets
+		a._runLocalZoneEngine(); // zone occupied + target in confirmedTargets
 
 		// Target disappears (sensor stops tracking → x/y null)
 		a._targets = [{ x: null, y: null, status: "inactive" as const, signal: 0 }];
@@ -285,10 +750,8 @@ describe("Per-target status parity", () => {
 	});
 
 	it("zone clears after timeout → status=inactive", () => {
-		// Two active ticks to register the target in confirmedTargets (see above).
 		a._targets = [makeTarget(450, 450, 5)];
-		a._runLocalZoneEngine(); // tick 1: zone occupied
-		a._runLocalZoneEngine(); // tick 2: target in confirmedTargets
+		a._runLocalZoneEngine(); // zone occupied + target in confirmedTargets
 
 		// Target disappears
 		a._targets = [{ x: null, y: null, status: "inactive" as const, signal: 0 }];
@@ -313,8 +776,7 @@ describe("Per-target status parity", () => {
 		// Target was in room, then moves outside while still tracked.
 		// Zone goes pending, target shows at last in-room position.
 		a._targets = [makeTarget(450, 450, 5)];
-		a._runLocalZoneEngine(); // tick 1: zone occupied
-		a._runLocalZoneEngine(); // tick 2: target in confirmedTargets
+		a._runLocalZoneEngine(); // zone occupied + target in confirmedTargets
 
 		// Target moves outside room but still tracked with signal
 		a._targets = [makeTarget(-900, 150, 9)];
@@ -323,10 +785,8 @@ describe("Per-target status parity", () => {
 	});
 
 	it("target reappears during pending → back to active", () => {
-		// Two active ticks to register target in confirmedTargets (lazy init).
 		a._targets = [makeTarget(450, 450, 5)];
-		a._runLocalZoneEngine(); // tick 1: zone created and occupied
-		a._runLocalZoneEngine(); // tick 2: target added to confirmedTargets
+		a._runLocalZoneEngine(); // zone occupied + target in confirmedTargets
 
 		// Target disappears → zone 1 pending
 		a._targets = [{ x: null, y: null, status: "inactive" as const, signal: 0 }];
@@ -360,10 +820,8 @@ describe("Per-target status parity", () => {
 	});
 
 	it("tracking outside room then sensor stops → pending throughout", () => {
-		// Two active ticks to register target in confirmedTargets.
 		a._targets = [makeTarget(450, 450, 5)];
-		a._runLocalZoneEngine(); // tick 1
-		a._runLocalZoneEngine(); // tick 2: target in confirmedTargets
+		a._runLocalZoneEngine(); // zone occupied + target in confirmedTargets
 
 		// Target moves outside room but still tracked with signal →
 		// immediately pending at last in-room position (not active)
@@ -378,15 +836,15 @@ describe("Per-target status parity", () => {
 	});
 
 	it("signal=0 but tracking (x/y non-null) in pending zone → status=pending", () => {
+		// Not expressible in the shared fixture: the C++ harness derives
+		// active from frames, so frames=0 always means "not tracking" there.
 		// Occupy zone 1 first so zone has state.
 		a._targets = [makeTarget(450, 450, 5)];
-		a._runLocalZoneEngine(); // tick 1: zone occupied
-		a._runLocalZoneEngine(); // tick 2: target in confirmedTargets
+		a._runLocalZoneEngine(); // zone occupied + target in confirmedTargets
 
-		// Same position but signal=0: zone goes pending, target is pending.
-		// signal=0 means targetZoneCurr is never set (signal <= 0 → continue),
-		// so inRoom=false → pending check runs → finds target in pending zone.
-		// Matches backend: frame_count=0 → tw.active=False → pending check.
+		// Same position but signal=0: the firmware-equivalent of
+		// tw.active=false — tracking clears, the zone goes pending, and the
+		// target reports pending from the pending-zone membership check.
 		a._targets = [makeTarget(450, 450, 0)];
 		const result = a._runLocalZoneEngine();
 		expect(result.targets[0].status).toBe("pending");
@@ -395,8 +853,7 @@ describe("Per-target status parity", () => {
 	it("handoff: target moves from zone 1 to zone 0, zone 1 goes pending", () => {
 		// Establish zone 1 occupied (overlay entry → immediate, no gating needed).
 		a._targets = [makeTarget(450, 450, 5)];
-		a._runLocalZoneEngine(); // tick 1: zone 1 occupied
-		a._runLocalZoneEngine(); // tick 2: target in confirmedTargets for zone 1
+		a._runLocalZoneEngine(); // zone 1 occupied + target in confirmedTargets
 
 		// Target moves to zone 0; zone 0 needs 2 ticks to confirm via gating.
 		a._targets = [makeTarget(150, 150, 7)];
@@ -411,54 +868,12 @@ describe("Per-target status parity", () => {
 		expect(result.occupancy[1]).toBe(true);
 	});
 
-	it("overlay-exit handoff fires when target list shrinks to empty", () => {
-		// Mirrors firmware behaviour: target_last_zone_ persists across ticks
-		// regardless of how many targets the next tick happens to contain.
-		// Custom zone 1 has overlay entry at (9,1), timeout=5s, handoff_timeout=1s.
-		a._targets = [makeTarget(450, 450, 5)];
-		a._runLocalZoneEngine(); // tick 1: zone 1 occupied (overlay entry)
-		a._runLocalZoneEngine(); // tick 2: target in confirmedTargets
-
-		// Backend sends an empty targets list — sensor lost the target entirely.
-		a._targets = [];
-		const tNow = Date.now() / 1000;
-		a._runLocalZoneEngine();
-
-		const st = a._zoneEngineState.localZoneState.get(1);
-		// Zone 1 must accelerate to handoff_timeout, not the full timeout.
-		// pendingSince = now - (timeout - handoff_timeout) = now - (5 - 1) = now - 4
-		expect(st.pendingSince).not.toBeNull();
-		expect(st.pendingSince).toBeCloseTo(tNow - 4, 0);
-	});
-
-	it("overlay-exit handoff fires when target moves onto a SUPPRESS cell", () => {
-		// Mirrors firmware Step 2b: an active target that lands on a SUPPRESS
-		// cell early-continues without setting target_zone_curr (firmware) /
-		// targetZoneCurr (frontend), so the handoff loop must treat that as
-		// "left room". Otherwise the engines diverge: firmware fires the
-		// handoff, frontend doesn't.
-		a._targets = [makeTarget(450, 450, 5)];
-		a._runLocalZoneEngine(); // tick 1: zone 1 occupied via overlay entry
-		a._runLocalZoneEngine(); // tick 2: target in confirmedTargets
-
-		// Make cell (8, 1) (room cell, zone 0) a SUPPRESS cell.
-		a._grid[1 * 20 + 8] = cellSetOverlay(CELL_ROOM_BIT, CELL_OVERLAY_SUPPRESS);
-
-		// Move target onto the SUPPRESS cell — still actively tracked.
-		// Target at x=150, y=450 → col 8.5, row 1.5 → cell (8, 1).
-		const tNow = Date.now() / 1000;
-		a._targets = [makeTarget(150, 450, 5)];
-		a._runLocalZoneEngine();
-
-		const st = a._zoneEngineState.localZoneState.get(1);
-		expect(st.pendingSince).not.toBeNull();
-		// Accelerated to handoff_timeout=1s (zone 1 timeout=5s, handoff=1s).
-		expect(st.pendingSince).toBeCloseTo(tNow - 4, 0);
-	});
-
 	it("overlay-exit handoff: lastZone is consumed and does not re-fire", () => {
 		// After the handoff fires, lastZone[i] should be cleared so subsequent
 		// empty-target ticks don't keep accelerating the same zone.
+		// (Occupancy-level handoff timing is covered by the shared fixture's
+		// test_overlay_exit_handoff / test_overlay_exit_handoff_suppress_cell;
+		// this checks the engine-internal consume gating.)
 		a._targets = [makeTarget(450, 450, 5)];
 		a._runLocalZoneEngine();
 		a._runLocalZoneEngine();
@@ -515,7 +930,10 @@ describe("Pending target position fallback (_renderTargetDots)", () => {
 		if (!t || t.status === "inactive") return null;
 
 		const prevXY = a._zoneEngineState.targetPrevXY[0];
-		let pos = t.x != null ? a._mapTargetToGridCell(t) : null;
+		let pos =
+			t.x != null
+				? mapTargetToGridCell(t.x, t.y, a._roomWidth, a._roomDepth)
+				: null;
 		const onGrid =
 			pos &&
 			pos.col >= minCol &&
@@ -523,7 +941,7 @@ describe("Pending target position fallback (_renderTargetDots)", () => {
 			pos.row >= minRow &&
 			pos.row <= minRow + visRows;
 		if (t.status === "pending" && !onGrid && prevXY) {
-			pos = a._mapTargetToGridCell({ ...t, x: prevXY.x, y: prevXY.y });
+			pos = mapTargetToGridCell(prevXY.x, prevXY.y, a._roomWidth, a._roomDepth);
 		}
 		if (!pos) return null;
 		return {

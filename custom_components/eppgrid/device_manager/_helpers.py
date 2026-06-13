@@ -12,8 +12,20 @@ from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import device_registry as dr
 
 from ..const import DOMAIN
+from ..const import EPP_MANUFACTURER
+from ..const import EPP_MODEL
 from ..const import NUM_ZONE_SLOTS
 from ..const import STATIC_ON_DELAY_MAX
+from ..zone_name_translations import ZONE_NAMES
+
+# Every locale's "Zone"/"Zona"/... prefix (the text before the `{name}`
+# placeholder in each `zone_with_name` template). Built once at import time so
+# _resolve_zone_name doesn't rebuild it on every call. Used to strip a stale
+# prefix saved under one locale before re-prefixing under another.
+_ZONE_NAME_PREFIXES: frozenset[str] = frozenset(
+    loc_table.get("zone_with_name", ZONE_NAMES["en"]["zone_with_name"]).split("{name}")[0].rstrip()
+    for loc_table in ZONE_NAMES.values()
+)
 
 # Mirror of frontend ZONE_TYPE_DEFAULTS — test_zone_type_defaults_match_frontend
 # asserts the two agree. Non-custom zones store only `type`; the backend
@@ -23,6 +35,18 @@ ZONE_TYPE_DEFAULTS: dict[str, dict[str, float]] = {
     "bed": {"trigger": 8, "renew": 2, "timeout": 600.0, "handoff_timeout": 10.0},
     "seating": {"trigger": 7, "renew": 1, "timeout": 30.0, "handoff_timeout": 10.0},
     "transit": {"trigger": 3, "renew": 2, "timeout": 3.0, "handoff_timeout": 1.0},
+}
+
+# Pre-0.95 layouts stored `rest` / `thoroughfare` zone types. Map them to
+# the timing of their closest modern equivalents — rest→bed (600 s timeout:
+# someone sleeping must not time out) and thoroughfare→transit (3 s) — NOT
+# the generic `default` row (10 s), which would break bedrooms saved on old
+# layouts. The frontend's display-side mapping (LEGACY_ZONE_TYPE_MAP in
+# frontend/src/lib/config-serialization.ts) mirrors this table and must stay
+# in sync.
+_LEGACY_ZONE_TYPE_MAP: dict[str, str] = {
+    "rest": "bed",
+    "thoroughfare": "transit",
 }
 
 
@@ -52,12 +76,17 @@ def _expand_zone_slot(slot: dict[str, Any]) -> dict[str, Any]:
     Custom: user-supplied timing is authoritative.
     Non-custom: ZONE_TYPE_DEFAULTS always wins (stored timing is overwritten,
     not defaulted — keeps the defaults-table the single source of truth).
+    Legacy pre-0.95 types resolve via _LEGACY_ZONE_TYPE_MAP; the stored
+    `type` value itself is left untouched (firmware ignores it — see
+    epp_zone_config_parser.h).
     """
     if slot.get("type") == "custom":
         return dict(slot)
     # `type` is guaranteed to be a string by _validate_zone_slots at the ws boundary;
     # the dict[str, Any] type erases that, hence the ignore.
-    defaults = ZONE_TYPE_DEFAULTS.get(slot.get("type"), ZONE_TYPE_DEFAULTS["default"])  # type: ignore[arg-type]
+    zone_type: str = slot.get("type")  # type: ignore[assignment]
+    zone_type = _LEGACY_ZONE_TYPE_MAP.get(zone_type, zone_type)
+    defaults = ZONE_TYPE_DEFAULTS.get(zone_type, ZONE_TYPE_DEFAULTS["default"])
     expanded = dict(slot)
     expanded["trigger"] = defaults["trigger"]
     expanded["renew"] = defaults["renew"]
@@ -109,8 +138,6 @@ def _resolve_zone_name(
     `target_count=True` selects the '... Target Count' variant.
     Falls back to English when the requested language is absent.
     """
-    from ..zone_name_translations import ZONE_NAMES
-
     base_lang = language.split("-")[0]
     table = ZONE_NAMES.get(language) or ZONE_NAMES.get(base_lang) or ZONE_NAMES["en"]
     en = ZONE_NAMES["en"]
@@ -122,11 +149,7 @@ def _resolve_zone_name(
     # an es session and is now viewing under en — still want "Zone Cocina",
     # not "Zone Zona Cocina").
     if zone_name:
-        prefixes = {
-            loc_table.get("zone_with_name", en["zone_with_name"]).split("{name}")[0].rstrip()
-            for loc_table in ZONE_NAMES.values()
-        }
-        for prefix in prefixes:
+        for prefix in _ZONE_NAME_PREFIXES:
             if prefix and zone_name.startswith(prefix + " "):
                 zone_name = zone_name.removeprefix(prefix + " ")
                 break
@@ -143,6 +166,21 @@ def _raise_service_unavailable(service: str) -> NoReturn:
         translation_domain=DOMAIN,
         translation_key="service_not_available",
         translation_placeholders={"service": service},
+    )
+
+
+def _raise_device_not_connected(operation: str) -> NoReturn:
+    """Raise translation-keyed HomeAssistantError for a dead connection.
+
+    Used by push paths that previously no-opped when ``_client`` was None
+    (``_on_stop`` racing the push): silently returning made callers report
+    success while nothing reached the device, so their failure/retry paths
+    never armed.
+    """
+    raise HomeAssistantError(
+        f"Cannot {operation}: device connection is closed",
+        translation_domain=DOMAIN,
+        translation_key="device_not_connected",
     )
 
 
@@ -268,6 +306,15 @@ def _sync_firmware_repair_issue(
     else:
         ir.async_delete_issue(hass, DOMAIN, behind_id)
         ir.async_delete_issue(hass, DOMAIN, ahead_id)
+
+
+def _is_epp_device(device: dr.DeviceEntry) -> bool:
+    """Return True when a HA device carries the EPP manufacturer/model signature.
+
+    Shared by discovery, the entity-create pre-filter, and the delete-guard so
+    the check cannot drift between call sites.
+    """
+    return device.manufacturer == EPP_MANUFACTURER and device.model == EPP_MODEL
 
 
 def _extract_mac(device: dr.DeviceEntry) -> str | None:

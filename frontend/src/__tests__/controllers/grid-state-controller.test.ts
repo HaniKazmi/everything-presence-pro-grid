@@ -1,5 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { GridStateController } from "../../controllers/grid-state-controller.js";
+import {
+	GridStateController,
+	serializeFurniture,
+} from "../../controllers/grid-state-controller.js";
 import type { FurnitureItem, FurnitureSticker } from "../../lib/furniture.js";
 import {
 	CELL_OVERLAY_ENTRY,
@@ -16,6 +19,7 @@ import {
 	getRoomBounds,
 	MAX_ZONES,
 } from "../../lib/grid.js";
+import { SETTINGS_DEFAULTS } from "../../lib/settings-defaults.js";
 import {
 	ZONE_COLORS,
 	type Zone0Config,
@@ -48,6 +52,8 @@ function mockHost(overrides: Record<string, any> = {}) {
 		updateComplete: Promise.resolve(true),
 		// Settings (subset — extended via overrides per test).
 		_motionTimeout: 5 as number,
+		_logLevels: {} as Record<string, string>,
+		_entitiesConfig: {} as Record<string, boolean>,
 		_localize: undefined as
 			| ((key: string, params?: Record<string, any>) => string)
 			| undefined,
@@ -84,6 +90,10 @@ function mockHost(overrides: Record<string, any> = {}) {
 		_getVisibleRoomBounds() {
 			return getRoomBounds(this._grid);
 		},
+		// Zone-engine reset hooks (PanelHost contract) — spies so the wiring
+		// tests can assert the controller fires them at edit points.
+		_zoneEngineGridChanged: vi.fn(),
+		_zoneEngineZoneConfigChanged: vi.fn(),
 		_buildSettingsPayload() {
 			return {
 				temperature_offset: 0,
@@ -909,6 +919,58 @@ describe("GridStateController", () => {
 			expect(host._motionTimeout).toBe(beforeMotionTimeout);
 		});
 
+		it("rejects a configuration whose grid is too short (fail-closed like zones)", async () => {
+			// Note the asymmetry with parseGrid (config-serialization), which
+			// repairs the device's own stored layout by zero-padding: a saved
+			// configuration has a re-save recourse, so corrupt data fails
+			// loudly instead of silently loading a half-empty room.
+			ctrl.configurations = [
+				{ name: "ShortGrid", ...TEMPLATE_DATA, grid: [1, 2, 3] },
+			];
+			const beforeGrid = host._grid;
+			await expect(ctrl.loadConfiguration("ShortGrid")).rejects.toThrow(
+				/old format/,
+			);
+			expect(host._grid).toBe(beforeGrid);
+		});
+
+		it("rejects a configuration whose grid contains non-numeric entries", async () => {
+			const corrupt = Array.from({ length: GRID_CELL_COUNT }, () => 0);
+			(corrupt as unknown[])[5] = "evil";
+			ctrl.configurations = [
+				{ name: "BadGrid", ...TEMPLATE_DATA, grid: corrupt },
+			];
+			await expect(ctrl.loadConfiguration("BadGrid")).rejects.toThrow(
+				/old format/,
+			);
+		});
+
+		it("rejects a configuration whose grid is missing entirely", async () => {
+			ctrl.configurations = [
+				{ name: "NoGrid", ...TEMPLATE_DATA, grid: undefined as any },
+			];
+			await expect(ctrl.loadConfiguration("NoGrid")).rejects.toThrow(
+				/old format/,
+			);
+		});
+
+		it("restores object-valued setting defaults as clones, not the canonical objects", async () => {
+			// SETTINGS_DEFAULTS is the canonical source of truth; handing its
+			// log_levels object to host state by reference means one future
+			// in-place mutation corrupts the default for every later restore.
+			const applySpy = vi
+				.spyOn(ctrl, "applyLayout")
+				.mockResolvedValue(undefined);
+			ctrl.configurations = [
+				{ name: "EmptySettings", ...TEMPLATE_DATA, settings: {} },
+			];
+			await ctrl.loadConfiguration("EmptySettings");
+			expect(host._logLevels).toEqual(SETTINGS_DEFAULTS.log_levels);
+			expect(host._logLevels).not.toBe(SETTINGS_DEFAULTS.log_levels);
+			expect(host._entitiesConfig).not.toBe(SETTINGS_DEFAULTS.entities);
+			applySpy.mockRestore();
+		});
+
 		it("throws on old-format configuration (length-7 zones)", async () => {
 			ctrl.configurations = [
 				{
@@ -1491,6 +1553,155 @@ describe("GridStateController", () => {
 	// =========================================================================
 	// applyPaintToCell(index)
 	// =========================================================================
+	describe("applyLayout() in-flight edit tracking", () => {
+		function deferredRoomLayoutWS() {
+			let resolveWS: (v: unknown) => void = () => {};
+			host.hass.callWS.mockImplementation((msg: any) => {
+				if (msg.type === "eppgrid/set_room_layout") {
+					return new Promise((r) => {
+						resolveWS = r;
+					});
+				}
+				return Promise.resolve({});
+			});
+			return () => resolveWS({});
+		}
+
+		it("keeps _dirty when the grid is painted while the save is in flight", async () => {
+			host._dirty = true;
+			const resolve = deferredRoomLayoutWS();
+
+			const inFlight = ctrl.applyLayout();
+			// Paint during the await (clone-then-mutate replaces the reference)
+			const painted = new Uint8Array(host._grid);
+			painted[7] = CELL_ROOM_BIT;
+			host._grid = painted;
+			resolve();
+			await inFlight;
+
+			expect(host._dirty).toBe(true);
+			expect(host._grid).toBe(painted);
+		});
+
+		it("does not clobber furniture replaced while the save is in flight", async () => {
+			host._dirty = true;
+			const resolve = deferredRoomLayoutWS();
+
+			const inFlight = ctrl.applyLayout();
+			const newItem: FurnitureItem = {
+				id: "f_new",
+				type: "icon",
+				icon: "mdi:sofa",
+				label: "Sofa",
+				x: 0,
+				y: 0,
+				width: 600,
+				height: 400,
+				rotation: 0,
+				lockAspect: false,
+			};
+			host._furniture = [newItem];
+			resolve();
+			await inFlight;
+
+			expect(host._furniture).toEqual([newItem]);
+			expect(host._dirty).toBe(true);
+		});
+
+		it("stays in the editor when edits were made during the save", async () => {
+			// Pre-fix: applyLayout preserved dirty edits made during an
+			// in-flight save but STILL navigated to the live view — silently
+			// hiding the surviving edits from the user.
+			host._dirty = true;
+			host._view = "editor";
+			host._selectedFurnitureId = "f1";
+			host._overlayMode = "interference";
+			const resolve = deferredRoomLayoutWS();
+
+			const inFlight = ctrl.applyLayout();
+			const painted = new Uint8Array(host._grid);
+			painted[7] = CELL_ROOM_BIT;
+			host._grid = painted;
+			resolve();
+			await inFlight;
+
+			expect(host._dirty).toBe(true);
+			expect(host._view).toBe("editor");
+			expect(host._selectedFurnitureId).toBe("f1");
+			expect(host._overlayMode).toBe("interference");
+		});
+
+		it("navigates to live and resets selection when nothing changed during the save", async () => {
+			host._dirty = true;
+			host._view = "editor";
+			host._selectedFurnitureId = "f1";
+			host._overlayMode = "interference";
+			const resolve = deferredRoomLayoutWS();
+
+			const inFlight = ctrl.applyLayout();
+			resolve();
+			await inFlight;
+
+			expect(host._dirty).toBe(false);
+			expect(host._view).toBe("live");
+			expect(host._selectedFurnitureId).toBeNull();
+			expect(host._overlayMode).toBeNull();
+		});
+
+		it("clears _dirty when nothing changed during the save", async () => {
+			host._dirty = true;
+			const resolve = deferredRoomLayoutWS();
+			const inFlight = ctrl.applyLayout();
+			resolve();
+			await inFlight;
+			expect(host._dirty).toBe(false);
+		});
+	});
+
+	describe("onError routing", () => {
+		it("routes applyLayout WS failure through onError and rethrows", async () => {
+			const onError = vi.fn();
+			ctrl.onError = onError;
+			host.hass.callWS.mockRejectedValue(new Error("layout boom"));
+
+			await expect(ctrl.applyLayout()).rejects.toThrow("layout boom");
+			expect(onError).toHaveBeenCalledWith("apply_layout", expect.any(Error));
+		});
+
+		it("routes saveConfiguration WS failure through onError and rethrows", async () => {
+			const onError = vi.fn();
+			ctrl.onError = onError;
+			host._configurationName = "My backup";
+			host.hass.callWS.mockRejectedValue(new Error("save boom"));
+
+			await expect(ctrl.saveConfiguration()).rejects.toThrow("save boom");
+			expect(onError).toHaveBeenCalledWith(
+				"save_configuration",
+				expect.any(Error),
+			);
+		});
+
+		it("routes loadConfiguration failure through onError and rethrows", async () => {
+			const onError = vi.fn();
+			ctrl.onError = onError;
+			ctrl.configurations = [
+				{
+					name: "Old",
+					grid: Array.from({ length: GRID_CELL_COUNT }, () => 0),
+					zones: [],
+					roomWidth: 0,
+					roomDepth: 0,
+				},
+			];
+
+			await expect(ctrl.loadConfiguration("Old")).rejects.toThrow(/old format/);
+			expect(onError).toHaveBeenCalledWith(
+				"load_configuration",
+				expect.any(Error),
+			);
+		});
+	});
+
 	describe("applyPaintToCell(index)", () => {
 		it("does nothing when _activeZone is null", () => {
 			host._activeZone = null;
@@ -1522,11 +1733,11 @@ describe("GridStateController", () => {
 			expect(host._dirty).toBe(true);
 		});
 
-		it("calls requestUpdate", () => {
+		it("does not call requestUpdate (grid is @state — assignment schedules the update)", () => {
 			host._activeZone = 0;
 			host._paintAction = "set";
 			ctrl.applyPaintToCell(5);
-			expect(host.requestUpdate).toHaveBeenCalled();
+			expect(host.requestUpdate).not.toHaveBeenCalled();
 		});
 
 		it("paints a zone onto an inside cell", () => {
@@ -1558,7 +1769,6 @@ describe("GridStateController", () => {
 			// Calibrated room dimensions must be preserved (perspective depends on them)
 			expect(host._roomWidth).toBe(3000);
 			expect(host._roomDepth).toBe(3000);
-			expect(host.requestUpdate).toHaveBeenCalled();
 		});
 	});
 
@@ -1647,8 +1857,8 @@ describe("GridStateController", () => {
 	// =========================================================================
 	// onCellMouseDown / onUp lambda coverage
 	// =========================================================================
-	describe("onCellMouseDown mouseup cleanup", () => {
-		it("zone painting: mouseup clears isPainting via onUp lambda", () => {
+	describe("onCellMouseDown pointerup cleanup", () => {
+		it("zone painting: pointerup clears isPainting via onUp lambda", () => {
 			host._sidebarTab = "zones";
 			host._activeZone = 1;
 			host._grid[5] = CELL_ROOM_BIT;
@@ -1672,7 +1882,7 @@ describe("GridStateController", () => {
 			addSpy.mockRestore();
 		});
 
-		it("interference painting: mouseup clears isPainting via onUp lambda", () => {
+		it("interference painting: pointerup clears isPainting via onUp lambda", () => {
 			host._overlayMode = "interference";
 			host._grid[5] = CELL_ROOM_BIT;
 
@@ -1693,7 +1903,7 @@ describe("GridStateController", () => {
 			addSpy.mockRestore();
 		});
 
-		it("entry painting: mouseup clears isPainting via onUp lambda", () => {
+		it("entry painting: pointerup clears isPainting via onUp lambda", () => {
 			host._overlayMode = "entry";
 			host._grid[5] = CELL_ROOM_BIT;
 
@@ -1744,8 +1954,8 @@ describe("GridStateController", () => {
 
 			ctrl.onCellMouseDown(5);
 			expect(host._isPainting).toBe(true);
-			// Clean up the mouseup listener
-			window.dispatchEvent(new Event("mouseup"));
+			// Clean up the stroke-end listeners
+			window.dispatchEvent(new PointerEvent("pointerup"));
 		});
 	});
 
@@ -1831,6 +2041,89 @@ describe("GridStateController", () => {
 			expect(host._dragState.centerY).toBe(115); // 100 + 30/2
 			expect(host._dragState.startAngle).not.toBe(0);
 		});
+
+		it("escapes crafted furniture ids in the querySelector (no SyntaxError)", () => {
+			// Furniture ids come from stored config blobs — a crafted id with
+			// quotes/brackets must not blow up the attribute selector.
+			const craftedId = 'f"]<img src=x>';
+			const item: FurnitureItem = {
+				id: craftedId,
+				type: "icon",
+				icon: "",
+				label: "",
+				x: 500,
+				y: 500,
+				width: 600,
+				height: 300,
+				rotation: 45,
+				lockAspect: false,
+			};
+			host._furniture = [item];
+
+			const furnitureEl = document.createElement("div");
+			furnitureEl.classList.add("furniture-item");
+			furnitureEl.setAttribute("data-id", craftedId);
+			furnitureEl.getBoundingClientRect = () =>
+				({
+					left: 200,
+					top: 100,
+					width: 60,
+					height: 30,
+					right: 260,
+					bottom: 130,
+					x: 200,
+					y: 100,
+					toJSON: () => {},
+				}) as DOMRect;
+
+			const overlayShadow = document.createElement("div");
+			overlayShadow.appendChild(furnitureEl);
+			const overlay = document.createElement("div");
+			Object.defineProperty(overlay, "shadowRoot", { value: overlayShadow });
+
+			const eppGridShadow = document.createElement("div");
+			eppGridShadow.appendChild(overlay);
+			const origGridQS = eppGridShadow.querySelector.bind(eppGridShadow);
+			eppGridShadow.querySelector = ((sel: string) => {
+				if (sel === "epp-furniture-overlay") return overlay;
+				return origGridQS(sel);
+			}) as any;
+
+			const eppGrid = document.createElement("div");
+			Object.defineProperty(eppGrid, "shadowRoot", { value: eppGridShadow });
+
+			const hostShadow = document.createElement("div");
+			hostShadow.appendChild(eppGrid);
+			const origHostQS = hostShadow.querySelector.bind(hostShadow);
+			hostShadow.querySelector = ((sel: string) => {
+				if (sel === "epp-grid") return eppGrid;
+				return origHostQS(sel);
+			}) as any;
+
+			host.shadowRoot = hostShadow as any;
+
+			const ev = new PointerEvent("pointerdown", {
+				clientX: 250,
+				clientY: 130,
+			});
+			const addSpy = vi
+				.spyOn(window, "addEventListener")
+				.mockImplementation(() => {});
+
+			// try/finally so a failing assertion can't leak the
+			// addEventListener mock into later tests in this file.
+			try {
+				expect(() =>
+					ctrl.onFurniturePointerDown(ev, craftedId, "rotate"),
+				).not.toThrow();
+			} finally {
+				addSpy.mockRestore();
+			}
+
+			// And the element was actually FOUND (center computed from rect)
+			expect(host._dragState.centerX).toBe(230);
+			expect(host._dragState.centerY).toBe(115);
+		});
 	});
 
 	describe("onFurnitureDrag", () => {
@@ -1897,6 +2190,170 @@ describe("GridStateController", () => {
 			// The furniture item should have moved (not silently aborted)
 			const updated = host._furniture[0];
 			expect(updated.x).not.toBe(500);
+		});
+	});
+
+	// =========================================================================
+	// Touch input: pointercancel must end drags and paint strokes — a
+	// touch-scroll takeover fires pointercancel instead of pointerup, and
+	// without cleanup the next touch anywhere keeps dragging/painting.
+	// =========================================================================
+	describe("pointercancel cleanup (touch)", () => {
+		const dragItem: FurnitureItem = {
+			id: "f1",
+			type: "icon",
+			icon: "mdi:sofa",
+			label: "Sofa",
+			x: 500,
+			y: 500,
+			width: 600,
+			height: 300,
+			rotation: 0,
+			lockAspect: false,
+		};
+
+		it("pointercancel during a furniture drag clears _dragState and removes window listeners", () => {
+			host._furniture = [dragItem];
+			const removeSpy = vi.spyOn(window, "removeEventListener");
+
+			ctrl.onFurniturePointerDown(
+				new PointerEvent("pointerdown", { clientX: 5, clientY: 5 }),
+				"f1",
+				"move",
+			);
+			expect(host._dragState).not.toBeNull();
+
+			window.dispatchEvent(new PointerEvent("pointercancel"));
+
+			expect(host._dragState).toBeNull();
+			const removed = removeSpy.mock.calls.map((c) => c[0]);
+			expect(removed).toContain("pointermove");
+			removeSpy.mockRestore();
+		});
+
+		it("pointercancel during painting ends the stroke", () => {
+			host._sidebarTab = "zones";
+			host._activeZone = 1;
+			host._grid[5] = CELL_ROOM_BIT;
+
+			ctrl.onCellMouseDown(5);
+			expect(host._isPainting).toBe(true);
+
+			window.dispatchEvent(new PointerEvent("pointercancel"));
+
+			expect(host._isPainting).toBe(false);
+			expect(host._frozenBounds).toBeNull();
+		});
+
+		it("painting stroke ends on window pointerup (released outside the grid)", () => {
+			host._sidebarTab = "zones";
+			host._activeZone = 1;
+			host._grid[5] = CELL_ROOM_BIT;
+
+			ctrl.onCellMouseDown(5);
+			expect(host._isPainting).toBe(true);
+
+			window.dispatchEvent(new PointerEvent("pointerup"));
+
+			expect(host._isPainting).toBe(false);
+		});
+	});
+
+	// =========================================================================
+	// Zone-engine reset wiring — every applied grid / zone-config edit must
+	// fire the matching PanelHost reset hook (mirror of the firmware's
+	// set_grid / set_zones resets on the local editor-preview engine).
+	// =========================================================================
+	describe("zone-engine reset wiring", () => {
+		it("applyPaintToCell fires _zoneEngineGridChanged when a cell changes", () => {
+			host._activeZone = 0;
+			host._paintAction = "set";
+			ctrl.applyPaintToCell(5);
+			expect(host._zoneEngineGridChanged).toHaveBeenCalledTimes(1);
+			expect(host._zoneEngineZoneConfigChanged).not.toHaveBeenCalled();
+		});
+
+		it("applyPaintToCell does NOT fire when the cell value is unchanged", () => {
+			host._activeZone = null; // paint is a no-op
+			ctrl.applyPaintToCell(5);
+			expect(host._zoneEngineGridChanged).not.toHaveBeenCalled();
+		});
+
+		it("initGridFromRoom fires _zoneEngineGridChanged", () => {
+			ctrl.initGridFromRoom();
+			expect(host._zoneEngineGridChanged).toHaveBeenCalledTimes(1);
+		});
+
+		it("addZone fires _zoneEngineZoneConfigChanged", () => {
+			host._zoneConfigs = emptyZoneSlots();
+			ctrl.addZone();
+			expect(host._zoneEngineZoneConfigChanged).toHaveBeenCalledTimes(1);
+		});
+
+		it("removeZone fires _zoneEngineZoneConfigChanged", () => {
+			host._zoneConfigs = emptyZoneSlots();
+			ctrl.addZone();
+			(host._zoneEngineZoneConfigChanged as any).mockClear();
+			ctrl.removeZone(1);
+			expect(host._zoneEngineZoneConfigChanged).toHaveBeenCalledTimes(1);
+		});
+
+		it("removeZone of an empty slot does not fire", () => {
+			host._zoneConfigs = emptyZoneSlots();
+			ctrl.removeZone(3);
+			expect(host._zoneEngineZoneConfigChanged).not.toHaveBeenCalled();
+		});
+
+		it("applyLayout fires _zoneEngineZoneConfigChanged after a successful save", async () => {
+			host = mockHost({
+				_selectedMac: "AA:BB:CC:DD:EE:FF",
+				_targetAutoDistance: false,
+				_staticAutoDistance: false,
+			});
+			ctrl = new GridStateController(host as any);
+			host.hass.callWS.mockResolvedValue({});
+			await ctrl.applyLayout();
+			expect(host._zoneEngineZoneConfigChanged).toHaveBeenCalledTimes(1);
+		});
+
+		it("applyLayout does NOT fire when the save fails", async () => {
+			host = mockHost({
+				_selectedMac: "AA:BB:CC:DD:EE:FF",
+				_targetAutoDistance: false,
+				_staticAutoDistance: false,
+			});
+			ctrl = new GridStateController(host as any);
+			host.hass.callWS.mockRejectedValue(new Error("ws down"));
+			await expect(ctrl.applyLayout()).rejects.toThrow("ws down");
+			expect(host._zoneEngineZoneConfigChanged).not.toHaveBeenCalled();
+		});
+	});
+});
+
+describe("serializeFurniture", () => {
+	it("maps exactly the 9 wire fields and drops the local-only id", () => {
+		const item: FurnitureItem = {
+			id: "f_local_123",
+			type: "svg",
+			icon: "armchair",
+			label: "furniture.armchair",
+			x: 150,
+			y: 600,
+			width: 800,
+			height: 900,
+			rotation: 45,
+			lockAspect: true,
+		};
+		expect(serializeFurniture(item)).toEqual({
+			type: "svg",
+			icon: "armchair",
+			label: "furniture.armchair",
+			x: 150,
+			y: 600,
+			width: 800,
+			height: 900,
+			rotation: 45,
+			lockAspect: true,
 		});
 	});
 });

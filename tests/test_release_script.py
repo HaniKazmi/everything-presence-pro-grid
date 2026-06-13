@@ -280,20 +280,18 @@ def test_macro_form_header_is_left_unchanged(tmp_path: Path):
     assert header.read_text() == macro_header, "release script must leave macro-form header untouched"
 
 
-def test_pushes_and_opens_pr(tmp_path: Path, monkeypatch):
-    repo = tmp_path / "repo"
-    repo.mkdir()
-    _init_repo(repo)
-
-    # Shim gh and git push into a fake bin dir that records calls.
-    # Keep fake_bin outside the git repo so it doesn't dirty the working tree.
+def _make_fake_tools(tmp_path: Path, *, push_exit: int = 0, gh_exit: int = 0) -> tuple[Path, Path]:
+    """Create a fake bin dir shimming `gh` (fully) and `git push` (only),
+    logging calls. Returns (fake_bin, log). Keep fake_bin outside the git
+    repo so it doesn't dirty the working tree."""
     fake_bin = tmp_path / "fake_bin"
     fake_bin.mkdir()
     log = tmp_path / "calls.log"
 
-    # fake gh records arguments and exits success
+    # fake gh records arguments and exits with the configured status.
     (fake_bin / "gh").write_text(
-        f'#!/usr/bin/env bash\necho "gh $*" >> "{log}"\necho https://github.com/fake/repo/pull/1\n'
+        f'#!/usr/bin/env bash\necho "gh $*" >> "{log}"\n'
+        + (f"exit {gh_exit}\n" if gh_exit else "echo https://github.com/fake/repo/pull/1\n")
     )
     (fake_bin / "gh").chmod(0o755)
 
@@ -301,24 +299,208 @@ def test_pushes_and_opens_pr(tmp_path: Path, monkeypatch):
     # records pushes then forwards to real git for everything else.
     real_git = subprocess.check_output(["which", "git"], text=True).strip()
     (fake_bin / "git").write_text(
-        f'#!/usr/bin/env bash\nif [ "$1" = "push" ]; then echo "git $*" >> "{log}"; exit 0; fi\nexec {real_git} "$@"\n'
+        f'#!/usr/bin/env bash\nif [ "$1" = "push" ]; then echo "git $*" >> "{log}"; exit {push_exit}; fi\n'
+        f'exec {real_git} "$@"\n'
     )
     (fake_bin / "git").chmod(0o755)
+    return fake_bin, log
 
+
+def _run_with_fake_tools(repo: Path, fake_bin: Path, *args: str) -> subprocess.CompletedProcess:
     env = _clean_env({"PATH": f"{fake_bin}:{os.environ['PATH']}"})
-    result = subprocess.run(
-        ["bash", str(SCRIPT), "0.93.0"],
+    return subprocess.run(
+        ["bash", str(SCRIPT), *args],
         cwd=repo,
         capture_output=True,
         text=True,
         env=env,
     )
+
+
+def test_pushes_and_opens_pr(tmp_path: Path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _init_repo(repo)
+    fake_bin, log = _make_fake_tools(tmp_path)
+
+    result = _run_with_fake_tools(repo, fake_bin, "0.93.0")
     assert result.returncode == 0, result.stdout + result.stderr
 
     call_log = log.read_text()
     assert "git push" in call_log
     assert "gh pr create" in call_log
     assert "release-v0.93.0" in call_log
+
+
+def test_aborts_loudly_when_ls_remote_fails(tmp_path: Path):
+    """When origin is configured but `git ls-remote` fails (offline, auth),
+    the duplicate-tag guard must abort loudly, not silently pass."""
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _init_repo(repo)
+    _git("remote", "add", "origin", str(tmp_path / "missing.git"), cwd=repo)
+
+    result = _run(repo, "0.93.0")
+    assert result.returncode != 0
+    combined = result.stdout + result.stderr
+    assert "ls-remote" in combined, f"expected a loud ls-remote error, got:\n{combined}"
+    # Must abort before creating the release branch.
+    branches = _git("branch", "--list", "release-v0.93.0", cwd=repo, capture_output=True, text=True).stdout
+    assert "release-v0.93.0" not in branches
+
+
+def test_single_line_manifest_not_corrupted(tmp_path: Path):
+    """A greedy sed (`"version": ".*"`) would eat every key after "version"
+    on the same line. The manifest bump must use the non-greedy [^"]* form
+    (delegated to bump-version.sh)."""
+    _init_repo(tmp_path)
+    (tmp_path / "custom_components" / "eppgrid" / "manifest.json").write_text(
+        '{"version": "0.92.0", "domain": "eppgrid"}\n'
+    )
+    _git("add", ".", cwd=tmp_path)
+    _git("commit", "-qm", "compact manifest", cwd=tmp_path)
+
+    result = _run(tmp_path, "0.93.0", "--no-push")
+    assert result.returncode == 0, result.stdout + result.stderr
+
+    _git("checkout", "-q", "release-v0.93.0", cwd=tmp_path)
+    manifest = (tmp_path / "custom_components" / "eppgrid" / "manifest.json").read_text()
+    assert '"version": "0.93.0"' in manifest
+    assert '"domain": "eppgrid"' in manifest, f"greedy sed corrupted the manifest:\n{manifest}"
+
+
+def test_pr_body_uses_const_py_firmware_version(tmp_path: Path):
+    """For an integration-only release the PR body must state the REAL
+    firmware version from const.py, not the previous git tag (they diverge:
+    e.g. tag v1.0.4 vs FIRMWARE_VERSION 1.0.0)."""
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _init_repo(repo)  # tag v0.92.0
+    # Diverge const.py from the tag, post-tag (integration-only change).
+    (repo / "custom_components" / "eppgrid" / "const.py").write_text('FIRMWARE_VERSION = "0.90.0"\n')
+    _git("add", ".", cwd=repo)
+    _git("commit", "-qm", "chore: diverge firmware const from tag", cwd=repo)
+
+    fake_bin, log = _make_fake_tools(tmp_path)
+    result = _run_with_fake_tools(repo, fake_bin, "0.93.0")
+    assert result.returncode == 0, result.stdout + result.stderr
+
+    call_log = log.read_text()
+    assert "gh pr create" in call_log
+    assert "`0.90.0`" in call_log, f"PR body must cite const.py firmware version:\n{call_log}"
+    assert "v0.92.0" not in call_log.split("gh pr create", 1)[1], (
+        "PR body must not cite the previous git tag as the firmware version"
+    )
+
+
+def test_failure_after_branch_creation_cleans_up(tmp_path: Path):
+    """If a step fails after `git checkout -b`, the script must return the
+    repo to main and delete the local release branch so a rerun isn't
+    blocked by the on-main / clean-tree pre-flights."""
+    _init_repo(tmp_path)
+    # Remove the manifest so the version-bump step fails mid-release.
+    _git("rm", "-q", "custom_components/eppgrid/manifest.json", cwd=tmp_path)
+    _git("commit", "-qm", "chore: drop manifest", cwd=tmp_path)
+
+    result = _run(tmp_path, "0.93.0", "--no-push")
+    assert result.returncode != 0
+
+    head = _git("rev-parse", "--abbrev-ref", "HEAD", cwd=tmp_path, capture_output=True, text=True).stdout.strip()
+    assert head == "main", f"repo left on {head!r} after mid-release failure"
+    branches = _git("branch", "--list", "release-v0.93.0", cwd=tmp_path, capture_output=True, text=True).stdout
+    assert "release-v0.93.0" not in branches, "stale release branch left behind"
+    status = _git("status", "--porcelain", cwd=tmp_path, capture_output=True, text=True).stdout
+    assert status.strip() == "", f"working tree left dirty:\n{status}"
+
+
+def test_pr_create_failure_after_push_prints_recovery(tmp_path: Path):
+    """When the branch was already pushed, a failed `gh pr create` must NOT
+    delete the branch; it must print explicit recovery steps (rerunning
+    release.sh is blocked by its pre-flights)."""
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _init_repo(repo)
+    fake_bin, log = _make_fake_tools(tmp_path, gh_exit=1)
+
+    result = _run_with_fake_tools(repo, fake_bin, "0.93.0")
+    assert result.returncode != 0
+    assert "git push" in log.read_text()  # push happened first
+
+    combined = result.stdout + result.stderr
+    assert "pushed" in combined.lower()
+    assert "gh pr create --head release-v0.93.0" in combined, f"missing recovery steps:\n{combined}"
+    # The pushed branch is the recovery artifact — it must survive locally.
+    branches = _git("branch", "--list", "release-v0.93.0", cwd=repo, capture_output=True, text=True).stdout
+    assert "release-v0.93.0" in branches
+
+
+def test_pre_existing_branch_survives_name_collision(tmp_path: Path):
+    """If release-v<version> already exists (with unique commits), and
+    `git checkout -b` fails on the name collision, the script must NOT delete
+    the pre-existing branch — its commits must survive intact."""
+    _init_repo(tmp_path)  # main branch, tag v0.92.0
+
+    # Create the release branch manually with a unique commit.
+    _git("checkout", "-qb", "release-v0.93.0", cwd=tmp_path)
+    (tmp_path / "unique_file.txt").write_text("important work\n")
+    _git("add", ".", cwd=tmp_path)
+    _git("commit", "-qm", "important: unique commit on pre-existing branch", cwd=tmp_path)
+    unique_sha = _git("rev-parse", "HEAD", cwd=tmp_path, capture_output=True, text=True).stdout.strip()
+    _git("checkout", "-q", "main", cwd=tmp_path)
+
+    # Run the script — it will fail because release-v0.93.0 already exists.
+    result = _run(tmp_path, "0.93.0", "--no-push")
+    assert result.returncode != 0, "expected failure on branch name collision"
+
+    # The pre-existing branch must still exist.
+    branches = _git("branch", "--list", "release-v0.93.0", cwd=tmp_path, capture_output=True, text=True).stdout
+    assert "release-v0.93.0" in branches, "pre-existing branch was deleted by the trap"
+
+    # Its unique commit must still be reachable.
+    log = _git("log", "release-v0.93.0", "--oneline", cwd=tmp_path, capture_output=True, text=True).stdout
+    assert unique_sha[:7] in log, f"unique commit {unique_sha[:7]} lost; log:\n{log}"
+
+
+def test_push_failure_cleans_up_local_branch(tmp_path: Path):
+    """When git push fails (PUSHED stays false), the trap must return to main
+    and delete the local release branch — the on-main / clean-tree pre-flights
+    would otherwise block a rerun."""
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _init_repo(repo)
+    fake_bin, _log = _make_fake_tools(tmp_path, push_exit=1)
+
+    result = _run_with_fake_tools(repo, fake_bin, "0.93.0")
+    assert result.returncode != 0
+
+    # Must be back on main
+    head = _git("rev-parse", "--abbrev-ref", "HEAD", cwd=repo, capture_output=True, text=True).stdout.strip()
+    assert head == "main", f"repo left on {head!r} after push failure"
+
+    # Release branch must have been deleted
+    branches = _git("branch", "--list", "release-v0.93.0", cwd=repo, capture_output=True, text=True).stdout
+    assert "release-v0.93.0" not in branches, "release branch was not cleaned up after push failure"
+
+
+def test_aborts_on_garbled_fw_version(tmp_path: Path):
+    """When FIRMWARE_VERSION cannot be read from const.py (garbled or absent),
+    the script must abort loudly before creating a release branch."""
+    _init_repo(tmp_path)
+    # Overwrite const.py with content that has no FIRMWARE_VERSION assignment
+    (tmp_path / "custom_components" / "eppgrid" / "const.py").write_text("# no version here\n")
+    _git("add", ".", cwd=tmp_path)
+    _git("commit", "-qm", "chore: garble const.py", cwd=tmp_path)
+
+    result = _run(tmp_path, "0.93.0", "--no-push")
+    assert result.returncode != 0
+    combined = result.stdout + result.stderr
+    # Must mention FIRMWARE_VERSION or const.py so the user knows what went wrong
+    assert "firmware_version" in combined.lower() or "const.py" in combined.lower(), (
+        f"expected loud abort for garbled const.py:\n{combined}"
+    )
+    # Must abort before creating the release branch
+    branches = _git("branch", "--list", "release-v0.93.0", cwd=tmp_path, capture_output=True, text=True).stdout
+    assert "release-v0.93.0" not in branches, "release branch created despite garbled const.py"
 
 
 def test_does_not_leak_to_parent_git_dir_via_env(tmp_path: Path, monkeypatch):

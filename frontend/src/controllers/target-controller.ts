@@ -2,10 +2,14 @@ import type { ReactiveController } from "lit";
 import { DEBUG_LOG_MAX } from "../constants.js";
 import { mapTargetToGridCell } from "../lib/coordinates.js";
 import { cellIsInside, cellZone, GRID_COLS, GRID_ROWS } from "../lib/grid.js";
-import { computeHeatmapColors } from "../lib/heatmap.js";
+import { OverlayTracker } from "../lib/overlay-tracker.js";
+import { applyPerspective } from "../lib/perspective.js";
 import { resolveZoneParams, type ZoneConfig } from "../lib/zone-defaults.js";
 import {
 	createZoneEngineState,
+	dismissTarget,
+	resetForGridChange,
+	resetForZoneConfigChange,
 	runLocalZoneEngine,
 	type ZoneEngineResult,
 	type ZoneEngineState,
@@ -43,6 +47,20 @@ export class TargetController implements ReactiveController {
 
 	private _zoneEngineState: ZoneEngineState = createZoneEngineState();
 
+	// Mirror of the firmware component's raw-frame sticky entry-overlay tracker
+	// (epp_component.cpp Stage 2b). On-device this is driven by RAW radar frames
+	// at 10 Hz; here it's fed from the raw-target stream (handleRawTargetData),
+	// falling back to median positions when no raw frame arrived this cycle (the
+	// raw stream is unavailable in some editor states — a frontend-only
+	// degradation the on-device component never hits). Its per-slot flags feed
+	// each engine target's `onOverlay`.
+	private _overlayTracker = new OverlayTracker();
+
+	// True when a raw frame fed the tracker since the last engine tick. The raw
+	// stream is authoritative (matches the component); the median fallback only
+	// runs when no raw frame arrived. Reset after each engine tick.
+	private _rawFedThisCycle = false;
+
 	get zoneEngineState(): ZoneEngineState {
 		return this._zoneEngineState;
 	}
@@ -51,8 +69,62 @@ export class TargetController implements ReactiveController {
 		this._zoneEngineState = value;
 	}
 
+	// Latest editor engine tick, refreshed per target frame (see
+	// handleTargetData). Renders read this instead of ticking the engine —
+	// _renderEditor used to tick once per render, including pointermove-driven
+	// renders, advancing engine time faster than real target frames.
+	private _editorEngineResult: ZoneEngineResult | null = null;
+
+	get editorEngineResult(): ZoneEngineResult | null {
+		return this._editorEngineResult;
+	}
+
 	resetZoneEngineState(): void {
 		this._zoneEngineState = createZoneEngineState();
+		this._editorEngineResult = null;
+		this._overlayTracker.reset();
+		this._rawFedThisCycle = false;
+	}
+
+	/**
+	 * Mirror of firmware set_grid's per-target reset — called whenever the
+	 * panel applies a grid edit (paint, overlay, template load). Continuity
+	 * coords, gating, dismissals and stuck refs are old-grid-relative; zone
+	 * occupancy state is preserved.
+	 */
+	resetEngineForGridChange(): void {
+		resetForGridChange(this._zoneEngineState);
+		// The tracker's latched flags are cell-based and OLD-grid-relative, so a
+		// grid edit invalidates them — reset alongside the engine's overlay
+		// sticky (firmware set_grid clears target_overlay_sticky_).
+		this._overlayTracker.reset();
+		this._rawFedThisCycle = false;
+	}
+
+	/**
+	 * Mirror of firmware set_zones — called whenever the panel applies a
+	 * zone-config edit (add/remove zone, threshold/type change). Resets
+	 * per-target tracking AND all zone runtimes + sensor presence state.
+	 */
+	resetEngineForZoneConfigChange(): void {
+		resetForZoneConfigChange(this._zoneEngineState);
+		// firmware set_zones also clears target_overlay_sticky_ — mirror it.
+		this._overlayTracker.reset();
+		this._rawFedThisCycle = false;
+	}
+
+	/**
+	 * Mirror the panel's dismiss-target action into the local engine so the
+	 * editor preview collapses the zone immediately, exactly like the
+	 * firmware's dismiss_target service does on-device.
+	 */
+	dismissTarget(targetIndex: number, cellIndex: number): void {
+		dismissTarget(
+			this._zoneEngineState,
+			targetIndex,
+			cellIndex,
+			this.host._grid,
+		);
 	}
 
 	// =====================================================================
@@ -104,6 +176,42 @@ export class TargetController implements ReactiveController {
 				this.appendBackendDebugLog(data.zones.debug_log);
 			}
 		}
+		if (this.host._view === "live") {
+			// Track last in-room position for the live overview's pending-target
+			// display. Live uses backend status — "active" means the target is
+			// inside the SAVED room grid. (Editor view skips this: there the
+			// local zone engine maintains targetPrevXY against the edited grid.)
+			// Done here, per data frame, so renders stay pure functions of state.
+			const prevXY = this._zoneEngineState.targetPrevXY;
+			for (let i = 0; i < data.targets.length && i < prevXY.length; i++) {
+				const t = data.targets[i];
+				if (t.x != null && t.y != null && t.status === "active") {
+					prevXY[i] = { x: t.x, y: t.y };
+				}
+			}
+		} else if (this.host._view === "editor") {
+			// Feed the overlay tracker from the MEDIAN positions only when the
+			// raw stream didn't already feed it this cycle (raw is authoritative
+			// and matches the component). The median path is a frontend-only
+			// fallback for editor states where the raw stream isn't flowing.
+			if (!this._rawFedThisCycle) {
+				this._overlayTracker.update(
+					this.host._targets.map((t) => ({
+						active: t.status === "active",
+						x: t.x,
+						y: t.y,
+					})),
+					this.host._grid,
+					this.host._roomWidth,
+					this.host._roomDepth,
+				);
+			}
+			// Tick the local engine once per target frame and cache the result
+			// for _renderEditor — renders between frames reuse the cache.
+			this.runLocalZoneEngine();
+			// Next cycle decides raw-vs-median afresh.
+			this._rawFedThisCycle = false;
+		}
 	}
 
 	/**
@@ -112,6 +220,31 @@ export class TargetController implements ReactiveController {
 	handleRawTargetData(rawTargets: RawTarget[]): void {
 		if (this.host._view === "settings") return;
 		this.host._rawTargets = rawTargets;
+		// Feed the overlay tracker from the RAW stream — the authoritative path,
+		// mirroring the firmware component (epp_component.cpp Stage 2b runs on
+		// raw frames). Raw coords are sensor-space; apply the client-side
+		// perspective to reach the room-space mm frame the tracker maps from
+		// (the component applies transform_.apply(fx, fy) before xy_to_cell).
+		const h = this.host._perspective;
+		const targets = rawTargets.map((t) => {
+			if (t.raw_x == null || t.raw_y == null) {
+				return { active: false, x: null, y: null };
+			}
+			if (h) {
+				const p = applyPerspective(h, t.raw_x, t.raw_y);
+				return { active: true, x: p.x, y: p.y };
+			}
+			// No perspective yet (pre-calibration) — can't reach room space;
+			// treat as not-tracking so a stale flag isn't set from raw space.
+			return { active: false, x: null, y: null };
+		});
+		this._overlayTracker.update(
+			targets,
+			this.host._grid,
+			this.host._roomWidth,
+			this.host._roomDepth,
+		);
+		this._rawFedThisCycle = true;
 	}
 
 	// =====================================================================
@@ -126,8 +259,14 @@ export class TargetController implements ReactiveController {
 		const ss = this.host._sensorState;
 		const slots = this.host._zoneConfigs;
 		const z0 = resolveZoneParams(slots[0]);
+		// Attach each target's sticky entry-overlay flag (index-aligned) from the
+		// tracker, mirroring the firmware feeding zone_input.targets[i].on_overlay.
+		const overlayFlags = this._overlayTracker.onOverlay;
 		const result = runLocalZoneEngine(this._zoneEngineState, {
-			targets: this.host._targets,
+			targets: this.host._targets.map((t, i) => ({
+				...t,
+				onOverlay: overlayFlags[i] ?? false,
+			})),
 			grid: this.host._grid,
 			roomWidth: this.host._roomWidth,
 			roomDepth: this.host._roomDepth,
@@ -144,6 +283,7 @@ export class TargetController implements ReactiveController {
 			// pending-state behaviour mirrors the firmware's.
 			staticTimeout: this.host._staticTimeout,
 			motionTimeout: this.host._motionTimeout,
+			stuckTargetTimeout: this.host._stuckTargetTimeout,
 		});
 
 		// Engine mutates `localZoneState` (a Map) in place. Lit's
@@ -161,6 +301,7 @@ export class TargetController implements ReactiveController {
 			this._buildFrontendDebugLog(result);
 		}
 
+		this._editorEngineResult = result;
 		return result;
 	}
 
@@ -271,30 +412,15 @@ export class TargetController implements ReactiveController {
 	}
 
 	// =====================================================================
-	// Heatmap delegation
-	// =====================================================================
-
-	/**
-	 * Compute rgba overlay colour per zone based on hit counts.
-	 */
-	computeHeatmapColors(): Map<number, string> {
-		return computeHeatmapColors(
-			this.host._zoneState.target_counts,
-			this.host._zoneConfigs.slice(1) as (ZoneConfig | null)[],
-		);
-	}
-
-	// =====================================================================
 	// Debug log line management
 	// =====================================================================
 
 	/**
 	 * Shared dedupe + timestamp + cap pipeline for backend / frontend logs.
-	 * Updates the named host fields and appends directly to the visible DOM.
-	 * The push() call mutates the array in place (no Lit re-render); the
-	 * slice() at the cap boundary replaces the array reference, which does
-	 * trigger a Lit re-render — both paths converge on the same final state
-	 * because `_appendToLogContainer` updates the live DOM unconditionally.
+	 * The line arrays are plain fields (NOT Lit @state), so neither push()
+	 * nor the cap-slice triggers a re-render — the visible DOM is updated
+	 * imperatively by `_appendToLogContainer`, and the arrays exist solely
+	 * to back the "Copy all" button.
 	 */
 	private _appendLog(
 		body: string,
@@ -304,6 +430,19 @@ export class TargetController implements ReactiveController {
 	): void {
 		if (body === this.host[prevField]) return;
 		this.host[prevField] = body;
+		// Container remount (a view switch destroys and recreates the live
+		// view while the toggle stays on) leaves a fresh, empty container
+		// but a full backing array — "Copy all" would copy lines that are
+		// no longer displayed. Reset the array whenever the container holds
+		// no rendered log lines.
+		const container = this.host.shadowRoot?.getElementById(containerId);
+		if (
+			container &&
+			!container.querySelector(".debug-log-line") &&
+			this.host[linesField].length > 0
+		) {
+			this.host[linesField] = [];
+		}
 		const ts = new Date().toLocaleTimeString(
 			this.host._localize?.lang ?? "en-GB",
 			{

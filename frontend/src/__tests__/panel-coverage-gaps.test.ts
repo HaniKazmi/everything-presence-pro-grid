@@ -69,7 +69,7 @@ function createPanel(): EPPGridPanel {
 	a._zoneState = { occupancy: {}, target_counts: {}, frame_count: 0 };
 	a._openAccordions = new Set();
 	a._showUnsavedDialog = false;
-	a._pendingNavigation = null;
+	a._navGuard._pendingNavigation = null;
 	a._saving = false;
 	a._showDeleteCalibrationDialog = false;
 	a._showConfigurationBackup = false;
@@ -81,7 +81,6 @@ function createPanel(): EPPGridPanel {
 	a._staticMinDistance = 0.3;
 	a._staticMaxDistance = 16;
 	// Zone 0 defaults live on _zoneConfigs[0]; set up above.
-	a._showHitCounts = false;
 	a._zoneEngineState = createZoneEngineState();
 	a._showCustomIconPicker = false;
 	a._customIconValue = "";
@@ -135,15 +134,15 @@ function renderTo(tpl: any): HTMLDivElement {
 // Branch: disconnectedCallback restores original push/replace
 // =========================================================
 describe("disconnectedCallback restores history methods", () => {
-	it("restores originalPushState and originalReplaceState", () => {
+	it("stashes the truly-original push/replaceState on window at connect", () => {
+		// The originals live in a module-level window stash (the guard keeps
+		// only a per-instance replaceState reference for _replaceHash).
 		const a = createPanel() as any;
 		a.hass = null;
 		a.connectedCallback();
 
-		const origPush = a._originalPushState;
-		const origReplace = a._originalReplaceState;
-		expect(origPush).toBeDefined();
-		expect(origReplace).toBeDefined();
+		expect((window as any).__eppOriginalPushState).toBeDefined();
+		expect((window as any).__eppOriginalReplaceState).toBeDefined();
 
 		a.disconnectedCallback();
 
@@ -151,10 +150,8 @@ describe("disconnectedCallback restores history methods", () => {
 		// No assertion needed beyond not throwing
 	});
 
-	it("handles null originalPushState/originalReplaceState", () => {
+	it("handles a disconnect without a prior connect (nothing registered)", () => {
 		const a = createPanel() as any;
-		a._originalPushState = null;
-		a._originalReplaceState = null;
 
 		// Should not throw
 		a.disconnectedCallback();
@@ -186,15 +183,81 @@ describe("disconnectedCallback restores history methods", () => {
 		second.disconnectedCallback();
 	});
 
+	it("LATER instance disconnect (duplicate-panel cleanup) keeps the survivor's interception live", () => {
+		// The mount guard's dedup path: the guard mounts panel A into a fresh
+		// host, HA appends its own duplicate B, removeDuplicateEppPanels keeps
+		// A and removes B. B connected last, so B's wrapper sits on top; if
+		// B's disconnect restores the BARE original (because "my wrapper is
+		// the installed one"), the still-connected A is left with NO
+		// interception — HA-router navigation while dirty then discards
+		// unsaved edits without the unsaved-changes dialog.
+		delete (window as any).__eppOriginalPushState;
+		delete (window as any).__eppOriginalReplaceState;
+
+		const first = createPanel() as any;
+		first.hass = null;
+		first.connectedCallback();
+
+		const second = createPanel() as any;
+		second.hass = null;
+		second.connectedCallback();
+
+		// Dedup removes the LATER duplicate; the established first survives.
+		second.disconnectedCallback();
+
+		first._dirty = true;
+		history.pushState({}, "", "/dup-cleanup-push");
+		expect(first._showUnsavedDialog).toBe(true);
+		expect(typeof first._navGuard._pendingNavigation).toBe("function");
+
+		// replaceState interception must survive the same ordering.
+		first._showUnsavedDialog = false;
+		first._navGuard._pendingNavigation = null;
+		history.replaceState({}, "", "/dup-cleanup-replace");
+		expect(first._showUnsavedDialog).toBe(true);
+		expect(typeof first._navGuard._pendingNavigation).toBe("function");
+
+		first._navGuard._pendingNavigation = null;
+		first._dirty = false;
+		first.disconnectedCallback();
+	});
+
+	it("FIRST instance disconnect keeps the still-connected second instance's interception live", () => {
+		// Symmetric ordering: mid-remount overlap where the OLD instance
+		// disconnects after the new one connected. The survivor's dirty
+		// guard must still be consulted on history navigation.
+		delete (window as any).__eppOriginalPushState;
+		delete (window as any).__eppOriginalReplaceState;
+
+		const first = createPanel() as any;
+		first.hass = null;
+		first.connectedCallback();
+
+		const second = createPanel() as any;
+		second.hass = null;
+		second.connectedCallback();
+
+		first.disconnectedCallback();
+
+		second._dirty = true;
+		history.pushState({}, "", "/overlap-push");
+		expect(second._showUnsavedDialog).toBe(true);
+		expect(typeof second._navGuard._pendingNavigation).toBe("function");
+
+		second._navGuard._pendingNavigation = null;
+		second._dirty = false;
+		second.disconnectedCallback();
+	});
+
 	it("disconnect after a second panel instance restores the same truly-original pushState", () => {
-		// Two instances connect in sequence (e.g. panel remount). The
-		// second's _originalPushState was previously captured AFTER the
-		// first wrapped — i.e. it's the first's wrapper. Restoring it on
-		// disconnect "uninstalls" the second but leaves the first's wrapper
-		// in place, and a *third* mount would chain its wrap on top of
-		// that wrap, growing the chain unboundedly across remounts. Stash
-		// the truly-original on window once and chain off it instead so
-		// every instance sees the same bare original.
+		// Two instances connect in sequence (e.g. panel remount). An
+		// instance must never capture another instance's wrapper as its
+		// "original": restoring a wrapper on disconnect would leave it
+		// installed, and a *third* mount would chain its wrap on top of
+		// that wrap, growing the chain unboundedly across remounts. The
+		// truly-original is stashed on window once and every register call
+		// chains off it, so the stash stays the same bare function no
+		// matter how many instances come and go.
 		delete (window as any).__eppOriginalPushState;
 		delete (window as any).__eppOriginalReplaceState;
 
@@ -208,9 +271,9 @@ describe("disconnectedCallback restores history methods", () => {
 		second.hass = null;
 		second.connectedCallback();
 
-		// Second instance must capture the SAME truly-original, not the
-		// first instance's wrapper.
-		expect(second._originalPushState).toBe(trulyOriginal);
+		// The second connect must keep the SAME truly-original in the
+		// stash, not overwrite it with the first instance's wrapper.
+		expect((window as any).__eppOriginalPushState).toBe(trulyOriginal);
 
 		second.disconnectedCallback();
 		first.disconnectedCallback();
@@ -226,10 +289,10 @@ describe("disconnectedCallback restores history methods", () => {
 		a._dirty = true;
 
 		history.pushState({}, "", "/test-push");
-		expect(a._pendingNavigation).toBeInstanceOf(Function);
+		expect(a._navGuard._pendingNavigation).toBeInstanceOf(Function);
 		// Execute the pending navigation to cover the lambda
-		a._pendingNavigation();
-		a._pendingNavigation = null;
+		a._navGuard._pendingNavigation();
+		a._navGuard._pendingNavigation = null;
 		a.disconnectedCallback();
 	});
 
@@ -239,24 +302,24 @@ describe("disconnectedCallback restores history methods", () => {
 		a._dirty = true;
 
 		history.replaceState({}, "", "/test-replace");
-		expect(a._pendingNavigation).toBeInstanceOf(Function);
+		expect(a._navGuard._pendingNavigation).toBeInstanceOf(Function);
 		// Execute the pending navigation to cover the lambda
-		a._pendingNavigation();
-		a._pendingNavigation = null;
+		a._navGuard._pendingNavigation();
+		a._navGuard._pendingNavigation = null;
 		a.disconnectedCallback();
 	});
 });
 
 // =========================================================
-// Branch: _applyPaintToCell when activeZone is null
+// Branch: applyPaintToCell when activeZone is null
 // =========================================================
-describe("_applyPaintToCell edge cases", () => {
+describe("applyPaintToCell edge cases", () => {
 	it("returns early when _activeZone is null", () => {
 		const a = createPanel() as any;
 		a._activeZone = null;
 		const gridBefore = new Uint8Array(a._grid);
 
-		a._applyPaintToCell(0);
+		a._gridCtrl.applyPaintToCell(0);
 
 		// Grid should be unchanged
 		expect(a._grid).toEqual(gridBefore);
@@ -269,7 +332,7 @@ describe("_applyPaintToCell edge cases", () => {
 		// Cell at index 0 is not inside room -> painting zone on outside cell returns null
 		a._grid[0] = 0; // outside
 
-		a._applyPaintToCell(0);
+		a._gridCtrl.applyPaintToCell(0);
 		expect(a._grid[0]).toBe(0); // unchanged
 	});
 });
@@ -298,7 +361,7 @@ describe("_removeZone grid clearing branch", () => {
 // Branch: _addZone color fallback when all colors used
 // =========================================================
 describe("_addZone color fallback", () => {
-	it("uses modulo fallback when all colors are in use", () => {
+	it("picks the only unused color when six are already taken", () => {
 		const a = createPanel() as any;
 		// Fill named-zone slots 1-6 with colors 0-5; slot 7 is the first
 		// empty named slot.
@@ -313,8 +376,10 @@ describe("_addZone color fallback", () => {
 		a._addZone(); // fills slot 7
 
 		expect(a._zoneConfigs[7]).not.toBeNull();
-		// Should pick a color (may or may not repeat)
-		expect(a._zoneConfigs[7].color).toBeDefined();
+		// ZONE_COLORS.length === MAX_ZONES, so the last unused palette entry
+		// is always available for the seventh zone.
+		expect(a._zoneConfigs[7].color).toBe(ZONE_COLORS[6]);
+		expect(a._zoneConfigs[7].type).toBe("default");
 	});
 });
 
@@ -342,10 +407,14 @@ describe("_renderLiveGrid target rendering branches", () => {
 				signal: 0,
 			},
 		];
-		a._showHitCounts = true;
 
-		const tpl = a._renderLiveGrid();
-		expect(tpl).toBeDefined();
+		const c = renderTo(a._renderLiveGrid());
+		const grid = c.querySelector("epp-grid") as any;
+		expect(grid).not.toBeNull();
+		expect(grid.targets).toHaveLength(2);
+		expect(grid.targets[0].status).toBe("active");
+		expect(grid.targets[1].status).toBe("inactive");
+		document.body.removeChild(c);
 	});
 
 	it("renders with grid metrics (via EppGrid)", () => {
@@ -355,8 +424,13 @@ describe("_renderLiveGrid target rendering branches", () => {
 		el.roomDepth = 4000;
 		el.perspective = [1, 0, 0, 0, 1, 0, 0, 0];
 		el.localize = (k: string) => k;
-		const tpl = el._renderGridDimensions();
-		expect(tpl).toBeDefined();
+		const c = renderTo(
+			el._renderGridDimensions({ widthM: 3, depthM: 4, furthestM: 4.5 }),
+		);
+		const dims = c.querySelector(".grid-dimensions");
+		expect(dims).not.toBeNull();
+		expect(dims!.textContent).toContain("live.grid_dimensions");
+		document.body.removeChild(c);
 	});
 });
 
@@ -364,6 +438,15 @@ describe("_renderLiveGrid target rendering branches", () => {
 // Live overview menu branches (now inline in panel)
 // =========================================================
 describe("live overview menu branches (panel inline)", () => {
+	/** Find a rendered menu item by its localize key, asserting it exists. */
+	function menuItem(c: HTMLElement, key: string): HTMLElement {
+		const item = Array.from(c.querySelectorAll(".sidebar-menu-item")).find(
+			(i) => i.textContent?.includes(key),
+		);
+		expect(item, `menu item ${key} should render`).toBeTruthy();
+		return item as HTMLElement;
+	}
+
 	it("renders menu with furniture button when perspective exists", () => {
 		const a = createPanel() as any;
 		a._showLiveMenu = true;
@@ -371,8 +454,8 @@ describe("live overview menu branches (panel inline)", () => {
 		const tpl = a._renderLiveOverview();
 		const c = renderTo(tpl);
 
-		const items = c.querySelectorAll(".sidebar-menu-item");
-		expect(items.length).toBeGreaterThan(2);
+		expect(c.querySelectorAll(".sidebar-menu-item").length).toBe(8);
+		menuItem(c, "menu.furniture");
 		document.body.removeChild(c);
 	});
 
@@ -383,9 +466,11 @@ describe("live overview menu branches (panel inline)", () => {
 		const tpl = a._renderLiveOverview();
 		const c = renderTo(tpl);
 
-		// Should have fewer menu items
-		const items = c.querySelectorAll(".sidebar-menu-item");
-		expect(items).toBeDefined();
+		// Editor entries and delete-calibration are hidden without a
+		// calibration: settings + calibration + backup + restore remain.
+		expect(c.querySelectorAll(".sidebar-menu-item").length).toBe(4);
+		expect(c.textContent).not.toContain("menu.furniture");
+		expect(c.textContent).not.toContain("menu.detection_zones");
 		document.body.removeChild(c);
 	});
 
@@ -396,16 +481,9 @@ describe("live overview menu branches (panel inline)", () => {
 		const tpl = a._renderLiveOverview();
 		const c = renderTo(tpl);
 
-		const items = c.querySelectorAll(".sidebar-menu-item");
-		for (let i = 0; i < items.length; i++) {
-			const text = items[i].textContent || "";
-			if (text.includes("menu.furniture")) {
-				(items[i] as HTMLElement).click();
-				expect(a._view).toBe("editor");
-				expect(a._sidebarTab).toBe("furniture");
-				break;
-			}
-		}
+		menuItem(c, "menu.furniture").click();
+		expect(a._view).toBe("editor");
+		expect(a._sidebarTab).toBe("furniture");
 		document.body.removeChild(c);
 	});
 
@@ -416,15 +494,8 @@ describe("live overview menu branches (panel inline)", () => {
 		const tpl = a._renderLiveOverview();
 		const c = renderTo(tpl);
 
-		const items = c.querySelectorAll(".sidebar-menu-item");
-		for (let i = 0; i < items.length; i++) {
-			const text = items[i].textContent || "";
-			if (text.includes("menu.settings")) {
-				(items[i] as HTMLElement).click();
-				expect(a._view).toBe("settings");
-				break;
-			}
-		}
+		menuItem(c, "menu.settings").click();
+		expect(a._view).toBe("settings");
 		document.body.removeChild(c);
 	});
 
@@ -435,15 +506,8 @@ describe("live overview menu branches (panel inline)", () => {
 		const tpl = a._renderLiveOverview();
 		const c = renderTo(tpl);
 
-		const items = c.querySelectorAll(".sidebar-menu-item");
-		for (let i = 0; i < items.length; i++) {
-			const text = items[i].textContent || "";
-			if (text.includes("menu.delete_calibration")) {
-				(items[i] as HTMLElement).click();
-				expect(a._showDeleteCalibrationDialog).toBe(true);
-				break;
-			}
-		}
+		menuItem(c, "menu.delete_calibration").click();
+		expect(a._showDeleteCalibrationDialog).toBe(true);
 		document.body.removeChild(c);
 	});
 
@@ -454,15 +518,8 @@ describe("live overview menu branches (panel inline)", () => {
 		const tpl = a._renderLiveOverview();
 		const c = renderTo(tpl);
 
-		const items = c.querySelectorAll(".sidebar-menu-item");
-		for (let i = 0; i < items.length; i++) {
-			const text = items[i].textContent || "";
-			if (text.includes("dialogs.backup_configuration")) {
-				(items[i] as HTMLElement).click();
-				expect(a._showConfigurationBackup).toBe(true);
-				break;
-			}
-		}
+		menuItem(c, "dialogs.backup_configuration").click();
+		expect(a._showConfigurationBackup).toBe(true);
 		document.body.removeChild(c);
 	});
 
@@ -473,17 +530,10 @@ describe("live overview menu branches (panel inline)", () => {
 		const tpl = a._renderLiveOverview();
 		const c = renderTo(tpl);
 
-		const items = c.querySelectorAll(".sidebar-menu-item");
-		for (let i = 0; i < items.length; i++) {
-			const text = items[i].textContent || "";
-			if (text.includes("dialogs.restore_configuration")) {
-				(items[i] as HTMLElement).click();
-				await vi.waitFor(() => {
-					expect(a._showConfigurationRestore).toBe(true);
-				});
-				break;
-			}
-		}
+		menuItem(c, "dialogs.restore_configuration").click();
+		await vi.waitFor(() => {
+			expect(a._showConfigurationRestore).toBe(true);
+		});
 		document.body.removeChild(c);
 	});
 });
@@ -497,14 +547,13 @@ describe("_renderDetectionRanges branches", () => {
 		const tpl = (sv as any).renderDetectionRanges();
 		const c = renderTo(tpl);
 
-		// Find static auto range toggle
+		// Target auto + static auto toggles.
 		const checkboxes = c.querySelectorAll('input[type="checkbox"]');
-		if (checkboxes.length >= 2) {
-			const staticCb = checkboxes[1] as HTMLInputElement;
-			staticCb.checked = false;
-			staticCb.dispatchEvent(new Event("change"));
-			expect((sv as any)._overrides.staticAutoDistance).toBe(false);
-		}
+		expect(checkboxes.length).toBe(2);
+		const staticCb = checkboxes[1] as HTMLInputElement;
+		staticCb.checked = false;
+		staticCb.dispatchEvent(new Event("change"));
+		expect((sv as any)._overrides.staticAutoDistance).toBe(false);
 		document.body.removeChild(c);
 	});
 
@@ -513,19 +562,18 @@ describe("_renderDetectionRanges branches", () => {
 		const tpl = (sv as any).renderDetectionRanges();
 		const c = renderTo(tpl);
 
-		const ranges = c.querySelectorAll(".setting-range");
-		// Find static min distance (should be 3rd or 4th range)
-		for (let i = 0; i < ranges.length; i++) {
-			const r = ranges[i] as HTMLInputElement;
-			if (r.min === "0.3" || r.min === "0.2") {
-				const span = document.createElement("span");
-				span.textContent = "0.3";
-				r.parentNode?.insertBefore(span, r.nextSibling);
-				r.value = "0.5";
-				r.dispatchEvent(new Event("input"));
-				break;
-			}
-		}
+		const ranges = c.querySelectorAll(
+			".setting-range",
+		) as NodeListOf<HTMLInputElement>;
+		// target max, static min, static max.
+		expect(ranges.length).toBe(3);
+		const staticMin = ranges[1];
+		staticMin.value = "0.5";
+		staticMin.dispatchEvent(new Event("input"));
+		expect((sv as any)._overrides.staticMinDistance).toBe(0.5);
+		expect(
+			staticMin.parentElement?.querySelector(".setting-value")?.textContent,
+		).toBe("0.5");
 		document.body.removeChild(c);
 	});
 
@@ -534,18 +582,17 @@ describe("_renderDetectionRanges branches", () => {
 		const tpl = (sv as any).renderDetectionRanges();
 		const c = renderTo(tpl);
 
-		const ranges = c.querySelectorAll(".setting-range");
-		for (let i = 0; i < ranges.length; i++) {
-			const r = ranges[i] as HTMLInputElement;
-			if (r.max === "16") {
-				const span = document.createElement("span");
-				span.textContent = "16";
-				r.parentNode?.insertBefore(span, r.nextSibling);
-				r.value = "12";
-				r.dispatchEvent(new Event("input"));
-				break;
-			}
-		}
+		const ranges = c.querySelectorAll(
+			".setting-range",
+		) as NodeListOf<HTMLInputElement>;
+		const staticMax = ranges[2];
+		expect(staticMax.max).toBe("16");
+		staticMax.value = "12";
+		staticMax.dispatchEvent(new Event("input"));
+		expect((sv as any)._overrides.staticMaxDistance).toBe(12);
+		expect(
+			staticMax.parentElement?.querySelector(".setting-value")?.textContent,
+		).toBe("12.0");
 		document.body.removeChild(c);
 	});
 });
@@ -554,24 +601,38 @@ describe("_renderDetectionRanges branches", () => {
 // _renderSensitivities DOM event handlers
 // =========================================================
 describe("_renderSensitivities DOM events", () => {
-	it("all range inputs fire input handler without error", () => {
+	it("slider input updates the value display and records an override", () => {
 		const sv = createSettingsView();
 		const tpl = (sv as any).renderSensitivities();
 		const c = renderTo(tpl);
 
-		const ranges = c.querySelectorAll(".setting-range");
-		expect(ranges.length).toBeGreaterThan(0);
-		ranges.forEach((r: any) => {
-			const range = r as HTMLInputElement;
-			if (range.nextElementSibling) {
-				const _origText = range.nextElementSibling.textContent;
-				const currentVal = range.value;
-				range.value = currentVal; // trigger input event with same value
-				range.dispatchEvent(new Event("input"));
-				// Handler should update nextElementSibling text to range.value
-				expect(range.nextElementSibling.textContent).toBeDefined();
-			}
-		});
+		const ranges = c.querySelectorAll(
+			".setting-range",
+		) as NodeListOf<HTMLInputElement>;
+		// 6 sensitivity sliders + 3 environmental offset sliders.
+		expect(ranges.length).toBe(9);
+
+		// First slider: motion presence timeout.
+		const motion = ranges[0];
+		motion.value = "42";
+		motion.dispatchEvent(new Event("input"));
+		expect((sv as any)._overrides.motionTimeout).toBe(42);
+		expect(
+			motion.parentElement?.querySelector(".setting-value")?.textContent,
+		).toBe("42");
+
+		// Env-offset slider: with no live reading the display stays an em dash
+		// but the override is still recorded.
+		const offset = Array.from(ranges).find(
+			(r) => r.dataset.offsetKey === "temperature",
+		) as HTMLInputElement;
+		expect(offset).toBeTruthy();
+		offset.value = "2";
+		offset.dispatchEvent(new Event("input"));
+		expect((sv as any)._overrides.temperatureOffset).toBe(2);
+		expect(
+			offset.parentElement?.querySelector(".setting-value")?.textContent,
+		).toBe("—");
 		document.body.removeChild(c);
 	});
 });
@@ -597,9 +658,8 @@ describe("_renderEnvOffset null reading branch", () => {
 
 		// Should render with dash for adjusted value
 		const valueSpan = c.querySelector(".setting-value");
-		if (valueSpan) {
-			expect(valueSpan.textContent).toContain("\u2014");
-		}
+		expect(valueSpan).not.toBeNull();
+		expect(valueSpan!.textContent).toBe("\u2014");
 		document.body.removeChild(c);
 	});
 
@@ -619,12 +679,15 @@ describe("_renderEnvOffset null reading branch", () => {
 		const c = renderTo(tpl);
 
 		const range = c.querySelector(".setting-range") as HTMLInputElement;
-		if (range?.nextElementSibling) {
-			range.value = "5";
-			range.dispatchEvent(new Event("input"));
-			// With null reading, adjusted should show em-dash
-			expect(range.nextElementSibling.textContent).toBe("\u2014");
-		}
+		expect(range).not.toBeNull();
+		range.value = "5";
+		range.dispatchEvent(new Event("input"));
+		// With null reading, adjusted still shows the em-dash but the
+		// override is recorded for save.
+		expect(
+			range.parentElement?.querySelector(".setting-value")?.textContent,
+		).toBe("\u2014");
+		expect((sv as any)._overrides.test_keyOffset).toBe(5);
 		document.body.removeChild(c);
 	});
 });
@@ -661,190 +724,12 @@ describe("epp-live-sidebar zone info toggles", () => {
 });
 
 // =========================================================
-// _renderFurnitureOverlay pointerdown events (via epp-furniture-overlay component)
-// =========================================================
-describe("_renderFurnitureOverlay DOM events", () => {
-	it("pointerdown on furniture item triggers move via furniture-select event", () => {
-		const a = createPanel() as any;
-		a._furniture = [
-			{
-				id: "f1",
-				type: "svg",
-				icon: "armchair",
-				label: "Chair",
-				x: 100,
-				y: 200,
-				width: 800,
-				height: 800,
-				rotation: 0,
-				lockAspect: false,
-			},
-		];
-		a._sidebarTab = "furniture";
-		a._selectedFurnitureId = null;
-
-		const tpl = a._renderFurnitureOverlay(28, 0, 0, 20, 20);
-		const c = renderTo(tpl);
-
-		const overlay = c.querySelector("epp-furniture-overlay") as any;
-		if (overlay) {
-			const item = overlay.shadowRoot?.querySelector(
-				".furniture-item",
-			) as HTMLElement;
-			if (item) {
-				const addSpy = vi
-					.spyOn(window, "addEventListener")
-					.mockImplementation(() => {});
-				item.dispatchEvent(
-					new PointerEvent("pointerdown", {
-						clientX: 500,
-						clientY: 300,
-						bubbles: true,
-						composed: true,
-					}),
-				);
-				// The overlay fires furniture-select which the panel listens for
-				expect(a._selectedFurnitureId).toBe("f1");
-				addSpy.mockRestore();
-			}
-		}
-		document.body.removeChild(c);
-	});
-
-	it("resize handle pointerdown", () => {
-		const a = createPanel() as any;
-		a._furniture = [
-			{
-				id: "f1",
-				type: "svg",
-				icon: "armchair",
-				label: "Chair",
-				x: 100,
-				y: 200,
-				width: 800,
-				height: 800,
-				rotation: 0,
-				lockAspect: false,
-			},
-		];
-		a._sidebarTab = "furniture";
-		a._selectedFurnitureId = "f1";
-
-		const tpl = a._renderFurnitureOverlay(28, 0, 0, 20, 20);
-		const c = renderTo(tpl);
-
-		const overlay = c.querySelector("epp-furniture-overlay") as any;
-		if (overlay) {
-			const handles = overlay.shadowRoot?.querySelectorAll(".furn-handle");
-			if (handles && handles.length > 0) {
-				const addSpy = vi
-					.spyOn(window, "addEventListener")
-					.mockImplementation(() => {});
-				handles[0].dispatchEvent(
-					new PointerEvent("pointerdown", {
-						clientX: 500,
-						clientY: 300,
-						bubbles: true,
-						composed: true,
-					}),
-				);
-				expect(a._dragState).not.toBeNull();
-				addSpy.mockRestore();
-			}
-		}
-		document.body.removeChild(c);
-	});
-
-	it("rotate handle pointerdown", () => {
-		const a = createPanel() as any;
-		a._furniture = [
-			{
-				id: "f1",
-				type: "svg",
-				icon: "armchair",
-				label: "Chair",
-				x: 100,
-				y: 200,
-				width: 800,
-				height: 800,
-				rotation: 0,
-				lockAspect: false,
-			},
-		];
-		a._sidebarTab = "furniture";
-		a._selectedFurnitureId = "f1";
-
-		const tpl = a._renderFurnitureOverlay(28, 0, 0, 20, 20);
-		const c = renderTo(tpl);
-
-		const overlay = c.querySelector("epp-furniture-overlay") as any;
-		if (overlay) {
-			const rotateHandle = overlay.shadowRoot?.querySelector(
-				".furn-rotate-handle",
-			) as HTMLElement;
-			if (rotateHandle) {
-				const addSpy = vi
-					.spyOn(window, "addEventListener")
-					.mockImplementation(() => {});
-				rotateHandle.dispatchEvent(
-					new PointerEvent("pointerdown", {
-						clientX: 500,
-						clientY: 300,
-						bubbles: true,
-						composed: true,
-					}),
-				);
-				expect(a._dragState?.type).toBe("rotate");
-				addSpy.mockRestore();
-			}
-		}
-		document.body.removeChild(c);
-	});
-
-	it("delete button on furniture overlay", () => {
-		const a = createPanel() as any;
-		a._furniture = [
-			{
-				id: "f1",
-				type: "svg",
-				icon: "armchair",
-				label: "Chair",
-				x: 100,
-				y: 200,
-				width: 800,
-				height: 800,
-				rotation: 0,
-				lockAspect: false,
-			},
-		];
-		a._sidebarTab = "furniture";
-		a._selectedFurnitureId = "f1";
-
-		const tpl = a._renderFurnitureOverlay(28, 0, 0, 20, 20);
-		const c = renderTo(tpl);
-
-		const overlay = c.querySelector("epp-furniture-overlay") as any;
-		if (overlay) {
-			const deleteBtn = overlay.shadowRoot?.querySelector(
-				".furn-delete-btn",
-			) as HTMLElement;
-			if (deleteBtn) {
-				deleteBtn.dispatchEvent(
-					new PointerEvent("pointerdown", { bubbles: true, composed: true }),
-				);
-				expect(a._furniture.length).toBe(0);
-			}
-		}
-		document.body.removeChild(c);
-	});
-});
-
-// =========================================================
 // Template load dialog: load and delete button clicks
 // =========================================================
-describe("_renderConfigurationRestoreDialog DOM events", () => {
-	it("load button calls _loadConfiguration", async () => {
+describe("configuration dialog events via _renderGlobalDialogs", () => {
+	it("configuration-load event calls _loadConfiguration", async () => {
 		const a = createPanel() as any;
+		a._showConfigurationRestore = true;
 		a._gridCtrl.configurations = [
 			{
 				name: "T1",
@@ -869,25 +754,26 @@ describe("_renderConfigurationRestoreDialog DOM events", () => {
 				roomDepth: 6000,
 			},
 		];
-		const tpl = a._renderConfigurationRestoreDialog();
+		const tpl = a._renderGlobalDialogs();
 		const c = renderTo(tpl);
 
-		const card = c.querySelector(".configuration-card") as HTMLElement;
-		expect(card).not.toBeNull();
-		card.click();
+		const dialogs = c.querySelector("epp-configuration-dialogs") as HTMLElement;
+		expect(dialogs).not.toBeNull();
+		dialogs.dispatchEvent(
+			new CustomEvent("configuration-load", { detail: "T1" }),
+		);
 		// Async loadConfiguration -> applyLayout chain; wait for it.
 		// For a valid config (no early return or thrown error), loadConfiguration
 		// sets _dirty=true synchronously before its WS push.
-		// Room dims are NOT restored from the template when the device already
-		// has a calibrated grid (currentHasRoom=true); they stay at 3000/4000.
 		await vi.waitFor(() => {
 			expect(a._dirty).toBe(true);
 		});
 		document.body.removeChild(c);
 	});
 
-	it("delete button calls _deleteConfiguration", async () => {
+	it("configuration-delete event calls _deleteConfiguration", async () => {
 		const a = createPanel() as any;
+		a._showConfigurationRestore = true;
 		a._gridCtrl.configurations = [
 			{
 				name: "T1",
@@ -904,14 +790,14 @@ describe("_renderConfigurationRestoreDialog DOM events", () => {
 				return Promise.resolve({ configurations: {} });
 			return Promise.resolve({});
 		});
-		const tpl = a._renderConfigurationRestoreDialog();
+		const tpl = a._renderGlobalDialogs();
 		const c = renderTo(tpl);
 
-		const deleteBtn = c.querySelector(
-			".configuration-card-delete",
-		) as HTMLElement;
-		expect(deleteBtn).not.toBeNull();
-		deleteBtn.click();
+		const dialogs = c.querySelector("epp-configuration-dialogs") as HTMLElement;
+		expect(dialogs).not.toBeNull();
+		dialogs.dispatchEvent(
+			new CustomEvent("configuration-delete", { detail: "T1" }),
+		);
 		// Wait for async _deleteConfiguration to complete
 		await vi.waitFor(() => {
 			expect(a._gridCtrl.configurations.length).toBe(0);
@@ -923,9 +809,10 @@ describe("_renderConfigurationRestoreDialog DOM events", () => {
 // =========================================================
 // _renderTemplateSaveDialog: save button click
 // =========================================================
-describe("_renderConfigurationBackupDialog DOM events", () => {
-	it("save button calls _saveConfiguration", async () => {
+describe("configuration-save event via _renderGlobalDialogs", () => {
+	it("calls _saveConfiguration and closes the backup dialog", async () => {
 		const a = createPanel() as any;
+		a._showConfigurationBackup = true;
 		a._configurationName = "Test";
 		a.hass.callWS = vi.fn().mockImplementation((msg: any) => {
 			if (msg.type === "eppgrid/save_configuration") return Promise.resolve({});
@@ -933,16 +820,15 @@ describe("_renderConfigurationBackupDialog DOM events", () => {
 				return Promise.resolve({ configurations: {} });
 			return Promise.resolve({});
 		});
-		const tpl = a._renderConfigurationBackupDialog();
+		const tpl = a._renderGlobalDialogs();
 		const c = renderTo(tpl);
 
-		const primaryBtn = c.querySelector(".wizard-btn-primary") as HTMLElement;
-		if (primaryBtn) {
-			primaryBtn.click();
-			await vi.waitFor(() => {
-				expect(a._showConfigurationBackup).toBe(false);
-			});
-		}
+		const dialogs = c.querySelector("epp-configuration-dialogs") as HTMLElement;
+		expect(dialogs).not.toBeNull();
+		dialogs.dispatchEvent(new CustomEvent("configuration-save"));
+		await vi.waitFor(() => {
+			expect(a._showConfigurationBackup).toBe(false);
+		});
 		document.body.removeChild(c);
 	});
 });
@@ -967,13 +853,12 @@ describe("epp-furniture-sidebar icon picker event", () => {
 		const c = renderTo(tpl);
 
 		const picker = c.querySelector("ha-icon-picker") as HTMLElement;
-		if (picker) {
-			picker.dispatchEvent(
-				new CustomEvent("value-changed", { detail: { value: "mdi:lamp" } }),
-			);
-			expect(handler).toHaveBeenCalledTimes(1);
-			expect(handler.mock.calls[0][0].detail).toBe("mdi:lamp");
-		}
+		expect(picker).not.toBeNull();
+		picker.dispatchEvent(
+			new CustomEvent("value-changed", { detail: { value: "mdi:lamp" } }),
+		);
+		expect(handler).toHaveBeenCalledTimes(1);
+		expect(handler.mock.calls[0][0].detail).toBe("mdi:lamp");
 		document.body.removeChild(c);
 	});
 });
@@ -1034,9 +919,13 @@ describe("_renderWizard capture overlay branches (via EppWizard)", () => {
 		const tpl = a._renderWizard();
 		const c = renderTo(tpl);
 
-		// Should render capture overlay with cancel button
-		const cancelBtn = c.querySelector(".capture-cancel-btn, .wizard-btn-back");
-		expect(cancelBtn).toBeDefined();
+		const overlay = c.querySelector(".capture-overlay");
+		expect(overlay).not.toBeNull();
+		const fill = overlay!.querySelector(".capture-fill") as HTMLElement;
+		expect(fill.getAttribute("style")).toContain("width: 50%");
+		const cancelBtn = overlay!.querySelector(".wizard-btn-back");
+		expect(cancelBtn).not.toBeNull();
+		expect(cancelBtn!.textContent).toContain("common.cancel");
 		document.body.removeChild(c);
 	});
 
@@ -1045,7 +934,10 @@ describe("_renderWizard capture overlay branches (via EppWizard)", () => {
 		a._wizardCapturing = true;
 		a._wizardCapturePaused = true;
 		const tpl = a._renderWizard();
-		expect(tpl).toBeDefined();
+		const c = renderTo(tpl);
+		expect(c.querySelector(".capture-overlay")).not.toBeNull();
+		expect(c.textContent).toContain("wizard.paused");
+		document.body.removeChild(c);
 	});
 });
 
@@ -1055,22 +947,26 @@ describe("_renderWizard capture overlay branches (via EppWizard)", () => {
 // _renderGlobalDialogs: template and unsaved dialogs
 // =========================================================
 describe("_renderGlobalDialogs branch coverage", () => {
-	it("renders template save dialog", () => {
+	it("renders the configuration dialogs component for backup", () => {
 		const a = createPanel() as any;
 		a._showConfigurationBackup = true;
 		a._configurationName = "test";
 		const tpl = a._renderGlobalDialogs();
 		const c = renderTo(tpl);
-		expect(c.querySelectorAll(".template-dialog").length).toBeGreaterThan(0);
+		const dialogs = c.querySelector("epp-configuration-dialogs") as any;
+		expect(dialogs).not.toBeNull();
+		expect(dialogs.showBackup).toBe(true);
 		document.body.removeChild(c);
 	});
 
-	it("renders template load dialog", () => {
+	it("renders the configuration dialogs component for restore", () => {
 		const a = createPanel() as any;
 		a._showConfigurationRestore = true;
 		const tpl = a._renderGlobalDialogs();
 		const c = renderTo(tpl);
-		expect(c.querySelectorAll(".template-dialog").length).toBeGreaterThan(0);
+		const dialogs = c.querySelector("epp-configuration-dialogs") as any;
+		expect(dialogs).not.toBeNull();
+		expect(dialogs.showRestore).toBe(true);
 		document.body.removeChild(c);
 	});
 
@@ -1097,6 +993,7 @@ describe("_renderGlobalDialogs branch coverage", () => {
 		const tpl = a._renderGlobalDialogs();
 		const c = renderTo(tpl);
 		expect(c.querySelectorAll(".template-dialog").length).toBe(0);
+		expect(c.querySelector("epp-configuration-dialogs")).toBeNull();
 		document.body.removeChild(c);
 	});
 });
@@ -1120,7 +1017,7 @@ describe("render view branching", () => {
 		a._selectedMac = "AA:BB:CC:DD:EE:01";
 		const tpl = a.render();
 		const c = renderTo(tpl);
-		expect(c.innerHTML).not.toBe("");
+		expect(c.querySelector("epp-settings-view")).not.toBeNull();
 		document.body.removeChild(c);
 	});
 });
@@ -1156,12 +1053,11 @@ describe("stopPropagation handlers in zone sidebar", () => {
 		const colorPicker = c.querySelector(
 			".zone-color-picker",
 		) as HTMLInputElement;
-		if (colorPicker) {
-			const event = new MouseEvent("click", { bubbles: true });
-			const stopSpy = vi.spyOn(event, "stopPropagation");
-			colorPicker.dispatchEvent(event);
-			expect(stopSpy).toHaveBeenCalled();
-		}
+		expect(colorPicker).not.toBeNull();
+		const event = new MouseEvent("click", { bubbles: true });
+		const stopSpy = vi.spyOn(event, "stopPropagation");
+		colorPicker.dispatchEvent(event);
+		expect(stopSpy).toHaveBeenCalled();
 		document.body.removeChild(c);
 	});
 });
@@ -1174,7 +1070,9 @@ describe("_runLocalZoneEngine target with no grid mapping", () => {
 		a._roomDepth = 0;
 		a._targets = [{ x: 100, y: 200, signal: 100, status: "active" }];
 		const result = a._runLocalZoneEngine();
-		expect(result).toBeDefined();
+		// The unmappable target is skipped: no zone reports occupancy and no
+		// per-target previous position is recorded.
+		expect(Object.values(result.occupancy)).not.toContain(true);
 		expect(a._zoneEngineState.targetPrev[0]).toBeNull();
 	});
 });
@@ -1189,15 +1087,15 @@ describe("backend debug log copy and clear buttons", () => {
 		const c = document.createElement("div");
 		render(tpl, c);
 
+		// The panel's default localize returns raw keys in this harness.
 		const buttons = c.querySelectorAll(".debug-log-btn");
 		const clearBtn = Array.from(buttons).find(
-			(b) => b.textContent?.trim() === "Clear",
+			(b) => b.textContent?.trim() === "live.debug.clear",
 		) as HTMLElement;
-		if (clearBtn) {
-			clearBtn.click();
-			expect(a._backendDebugLogLines).toEqual([]);
-			expect(a._backendDebugLogPrev).toBeNull();
-		}
+		expect(clearBtn).toBeTruthy();
+		clearBtn.click();
+		expect(a._backendDebugLogLines).toEqual([]);
+		expect(a._backendDebugLogPrev).toBeNull();
 	});
 
 	it("copy button calls clipboard.writeText", () => {
@@ -1217,12 +1115,11 @@ describe("backend debug log copy and clear buttons", () => {
 
 		const buttons = c.querySelectorAll(".debug-log-btn");
 		const copyBtn = Array.from(buttons).find(
-			(b) => b.textContent?.trim() === "Copy all",
+			(b) => b.textContent?.trim() === "live.debug.copy_all",
 		) as HTMLElement;
-		if (copyBtn) {
-			copyBtn.click();
-			expect(writeTextMock).toHaveBeenCalledWith("line1\nline2");
-		}
+		expect(copyBtn).toBeTruthy();
+		copyBtn.click();
+		expect(writeTextMock).toHaveBeenCalledWith("line1\nline2");
 	});
 
 	it("backend debug copy swallows clipboard rejection", async () => {
@@ -1275,9 +1172,12 @@ describe("backend debug log copy and clear buttons", () => {
 
 describe("settings slider input handlers", () => {
 	it("static max distance slider clamps below min", () => {
+		// staticMinDistance must exceed the slider's own min="2.4" — happy-dom
+		// clamps the assigned value to the markup min before the handler runs,
+		// so a smaller floor would never exercise the handler's clamp branch.
 		const sv = createSettingsView({
 			staticAutoDistance: false,
-			staticMinDistance: 2,
+			staticMinDistance: 3,
 			staticMaxDistance: 10,
 			targetAutoDistance: false,
 			targetMaxDistance: 4,
@@ -1291,30 +1191,13 @@ describe("settings slider input handlers", () => {
 		) as NodeListOf<HTMLInputElement>;
 		// The static max distance slider is the last range input
 		const staticMax = ranges[ranges.length - 1];
-		if (staticMax) {
-			staticMax.value = "1";
-			staticMax.dispatchEvent(new Event("input"));
-			// Value should be clamped to staticMinDistance + 0.1
-			expect(sv.staticMaxDistance).toBeGreaterThanOrEqual(sv.staticMinDistance);
-		}
-	});
-});
-
-describe("template delete button", () => {
-	it("delete button calls _deleteTemplate", () => {
-		const a = createPanel() as any;
-		a._showConfigurationRestore = true;
-		a._savedTemplates = [{ name: "test-tmpl", data: {} }];
-		a._deleteTemplate = vi.fn();
-		const tpl = a._renderConfigurationRestoreDialog();
-		const c = document.createElement("div");
-		render(tpl, c);
-
-		const removeBtn = c.querySelector(".zone-remove-btn") as HTMLElement;
-		if (removeBtn) {
-			removeBtn.click();
-			expect(a._deleteTemplate).toHaveBeenCalledWith("test-tmpl");
-		}
+		expect(staticMax).toBeTruthy();
+		staticMax.value = "1";
+		staticMax.dispatchEvent(new Event("input"));
+		// Clamped to staticMinDistance (3) + 0.1, both in the input and in
+		// the override that will be saved.
+		expect(staticMax.value).toBe("3.1");
+		expect((sv as any)._overrides.staticMaxDistance).toBe(3.1);
 	});
 });
 

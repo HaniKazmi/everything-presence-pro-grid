@@ -70,7 +70,7 @@ function createPanel(): EPPGridPanel {
 	a._zoneState = { occupancy: {}, target_counts: {}, frame_count: 0 };
 	a._openAccordions = new Set();
 	a._showUnsavedDialog = false;
-	a._pendingNavigation = null;
+	a._navGuard._pendingNavigation = null;
 	a._saving = false;
 	a._showDeleteCalibrationDialog = false;
 	a._showConfigurationBackup = false;
@@ -82,7 +82,6 @@ function createPanel(): EPPGridPanel {
 	a._staticMinDistance = 0.3;
 	a._staticMaxDistance = 16;
 	// Zone 0 defaults live on _zoneConfigs[0]; set up above.
-	a._showHitCounts = false;
 	a._zoneEngineState = createZoneEngineState();
 	a._showCustomIconPicker = false;
 	a._customIconValue = "";
@@ -373,6 +372,41 @@ describe("_renderWizardCorners DOM events (via EppWizard)", () => {
 });
 
 describe("_renderSaveCancelButtons DOM events", () => {
+	it("save button applies the layout (editor-only bar)", async () => {
+		const a = createPanel() as any;
+		a._view = "editor";
+		a._dirty = true;
+		a._selectedMac = "AA:BB:CC:DD:EE:01";
+		const callWS = vi.fn().mockResolvedValue({});
+		a.hass = { callWS };
+		const tpl = a._renderSaveCancelButtons();
+		const c = renderTo(tpl);
+
+		(c.querySelector(".wizard-btn-primary") as HTMLElement).click();
+		await vi.waitFor(() => {
+			expect(callWS).toHaveBeenCalledWith(
+				expect.objectContaining({ type: "eppgrid/set_room_layout" }),
+			);
+		});
+	});
+
+	it("save button swallows applyLayout rejections (banner handles them)", async () => {
+		const a = createPanel() as any;
+		a._view = "editor";
+		a._dirty = true;
+		a._selectedMac = "AA:BB:CC:DD:EE:01";
+		a.hass = { callWS: vi.fn().mockRejectedValue(new Error("boom")) };
+		const tpl = a._renderSaveCancelButtons();
+		const c = renderTo(tpl);
+
+		(c.querySelector(".wizard-btn-primary") as HTMLElement).click();
+		// The rejection is routed to the controller-error banner; the click
+		// handler's .catch keeps it from surfacing as an unhandled rejection.
+		await vi.waitFor(() => {
+			expect(a._controllerError).toBe("apply_layout");
+		});
+	});
+
 	it("cancel button resets view", async () => {
 		const a = createPanel() as any;
 		a._view = "editor";
@@ -778,11 +812,14 @@ describe("_renderZoneSidebar DOM events", () => {
 			events.push(e as CustomEvent),
 		);
 
-		const zoneItems = c.querySelectorAll(".zone-item");
-		if (zoneItems.length > 0) {
-			(zoneItems[0] as HTMLElement).click();
-			expect(events.some((e) => e.detail.zone === 0)).toBe(true);
-		}
+		// The zone-0 row is a real <button> (keyboard a11y); the click
+		// handler lives there, not on the .zone-item container.
+		const rowBtn = c.querySelector(
+			".zone-item button.sidebar-item-row",
+		) as HTMLElement;
+		expect(rowBtn).not.toBeNull();
+		rowBtn.click();
+		expect(events.some((e) => e.detail.zone === 0)).toBe(true);
 	});
 
 	it("named zone click", () => {
@@ -839,7 +876,7 @@ describe("_renderZoneSidebar DOM events", () => {
 			events.push(e as CustomEvent),
 		);
 
-		const removeBtn = c.querySelector(".zone-remove-btn") as HTMLElement;
+		const removeBtn = c.querySelector(".sidebar-remove-btn") as HTMLElement;
 		if (removeBtn) {
 			removeBtn.click();
 			expect(events.some((e) => e.detail.slot === 1)).toBe(true);
@@ -1079,7 +1116,7 @@ describe("epp-furniture-sidebar DOM events", () => {
 		const tpl = (el as any)._renderFurnitureSidebar();
 		const c = renderTo(tpl);
 
-		const removeBtn = c.querySelector(".zone-remove-btn") as HTMLElement;
+		const removeBtn = c.querySelector(".sidebar-remove-btn") as HTMLElement;
 		if (removeBtn) {
 			removeBtn.click();
 			expect(handler).toHaveBeenCalledTimes(1);
@@ -1150,45 +1187,39 @@ describe("_renderUncalibratedFov DOM events (via EppWizard)", () => {
 	});
 });
 
-describe("_renderConfigurationBackupDialog DOM events", () => {
-	it("configuration name input and save", () => {
+describe("configuration dialog component events", () => {
+	it("configuration-name-change and backup-cancel update panel state", () => {
 		const a = createPanel() as any;
-		const tpl = a._renderConfigurationBackupDialog();
+		a._showConfigurationBackup = true;
+		const tpl = a._renderGlobalDialogs();
 		const c = renderTo(tpl);
 
-		const input = c.querySelector(
-			".configuration-name-input",
-		) as HTMLInputElement;
-		if (input) {
-			input.value = "My Template";
-			input.dispatchEvent(new Event("input"));
-			expect(a._configurationName).toBe("My Template");
-		}
+		const dialogs = c.querySelector("epp-configuration-dialogs") as HTMLElement;
+		expect(dialogs).not.toBeNull();
+		dialogs.dispatchEvent(
+			new CustomEvent("configuration-name-change", { detail: "My Template" }),
+		);
+		expect(a._configurationName).toBe("My Template");
 
-		const cancel = c.querySelector(".wizard-btn-back") as HTMLElement;
-		if (cancel) {
-			cancel.click();
-			expect(a._showConfigurationBackup).toBe(false);
-		}
+		dialogs.dispatchEvent(new CustomEvent("backup-cancel"));
+		expect(a._showConfigurationBackup).toBe(false);
 	});
-});
 
-describe("_renderConfigurationRestoreDialog DOM events", () => {
-	it("close button works", () => {
+	it("restore-close clears the restore flag", () => {
 		const a = createPanel() as any;
 		a._showConfigurationRestore = true;
-		const tpl = a._renderConfigurationRestoreDialog();
+		const tpl = a._renderGlobalDialogs();
 		const c = renderTo(tpl);
 
-		const closeBtn = c.querySelector(".wizard-btn-back") as HTMLElement;
-		if (closeBtn) {
-			closeBtn.click();
-			expect(a._showConfigurationRestore).toBe(false);
-		}
+		const dialogs = c.querySelector("epp-configuration-dialogs") as HTMLElement;
+		expect(dialogs).not.toBeNull();
+		dialogs.dispatchEvent(new CustomEvent("restore-close"));
+		expect(a._showConfigurationRestore).toBe(false);
 	});
 
-	it("load and delete buttons with configurations", () => {
+	it("configuration-load calls _loadConfiguration with the name", () => {
 		const a = createPanel() as any;
+		a._showConfigurationRestore = true;
 		a._gridCtrl.configurations = [
 			{
 				name: "T1",
@@ -1198,13 +1229,17 @@ describe("_renderConfigurationRestoreDialog DOM events", () => {
 				roomDepth: 4000,
 			},
 		];
+		const spy = vi.spyOn(a, "_loadConfiguration").mockResolvedValue(undefined);
 
-		const tpl = a._renderConfigurationRestoreDialog();
+		const tpl = a._renderGlobalDialogs();
 		const c = renderTo(tpl);
 
-		const card = c.querySelector(".configuration-card") as HTMLElement;
-		expect(card).not.toBeNull();
-		card.click();
+		const dialogs = c.querySelector("epp-configuration-dialogs") as HTMLElement;
+		expect(dialogs).not.toBeNull();
+		dialogs.dispatchEvent(
+			new CustomEvent("configuration-load", { detail: "T1" }),
+		);
+		expect(spy).toHaveBeenCalledWith("T1");
 	});
 });
 
@@ -1267,7 +1302,7 @@ describe("_renderEditor DOM events", () => {
 		const a = createPanel() as any;
 		a._view = "editor";
 		a._showUnsavedDialog = true;
-		a._pendingNavigation = () => {};
+		a._navGuard._pendingNavigation = () => {};
 		// Unsaved dialog is rendered by _renderGlobalDialogs, not _renderEditor
 		const tpl = a._renderGlobalDialogs();
 		const c = renderTo(tpl);

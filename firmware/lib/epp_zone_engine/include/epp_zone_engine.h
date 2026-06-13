@@ -5,6 +5,7 @@
 #include "epp_types.h"
 
 #include <algorithm>
+#include <cstddef>
 #include <cstdint>
 
 namespace epp {
@@ -41,10 +42,29 @@ struct ProcessingResult {
     bool occupancy = false;
     bool mmwave = false;
 
-    // Diagnostic log entries produced during this tick
+    // Diagnostic log entries produced during this tick.
+    // Keep log/log_count LAST: ZoneEngine::tick()'s reset and the component's
+    // publish cache both use offsetof(ProcessingResult, log) to skip the
+    // ~1.5 KB buffer when clearing/copying the fields above.
     LogEntry log[MAX_LOG_ENTRIES]{};
     int log_count = 0;
 };
+
+// Invariant: log/log_count must be last. ZoneEngine::tick()'s reset and the
+// component's publish cache both copy offsetof(ProcessingResult, log) bytes —
+// any field appended after log_count would be silently excluded. Pin the layout
+// at compile time so a future field addition fails loudly instead of silently.
+// Both asserts are exact (== rather than >= / < alignof): no padding exists
+// between log and log_count or after log_count today, so a field inserted
+// anywhere behind log — or padding appearing from a type change — forces
+// re-derivation of this invariant rather than slipping through a slack bound.
+static_assert(offsetof(ProcessingResult, log_count) ==
+                  offsetof(ProcessingResult, log) + sizeof(ProcessingResult::log),
+              "log_count must immediately follow log — no fields or padding in between");
+static_assert(sizeof(ProcessingResult) - offsetof(ProcessingResult, log_count) -
+                  sizeof(ProcessingResult::log_count) == 0,
+              "nothing may follow log_count (fields or tail padding) — the "
+              "partial-copy/reset idiom excludes them");
 
 // ---------------------------------------------------------------------------
 // Internal runtime state per zone
@@ -125,7 +145,7 @@ private:
     bool sensors_ever_active_ = false;  // true once any sensor has been ACTIVE
     bool prev_occupancy_ = false;       // previous tick's occupancy for transition logging
 
-    ProcessingResult result_;
+    ProcessingResult result_{};
 
     /// Find the ZoneRuntime index for a given zone_id. Returns -1 if not found.
     /// Invariant: slot index == config.id; established by parse_zone_configs.

@@ -1,7 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
 import type { EPPGridPanel } from "../eppgrid-panel.js";
 import "../eppgrid-panel.js";
+import { mmToPx, pxToMm } from "../lib/furniture.js";
 import { GRID_CELL_COUNT } from "../lib/grid.js";
+import { getZoneThresholds, resolveZoneParams } from "../lib/zone-defaults.js";
 import { createZoneEngineState } from "../lib/zone-engine.js";
 
 function createPanel(): EPPGridPanel {
@@ -55,7 +57,7 @@ function createPanel(): EPPGridPanel {
 	a._zoneState = { occupancy: {}, target_counts: {}, frame_count: 0 };
 	a._openAccordions = new Set();
 	a._showUnsavedDialog = false;
-	a._pendingNavigation = null;
+	a._navGuard._pendingNavigation = null;
 	a._saving = false;
 	a._showDeleteCalibrationDialog = false;
 	a._showConfigurationBackup = false;
@@ -67,7 +69,6 @@ function createPanel(): EPPGridPanel {
 	a._staticMinDistance = 0.3;
 	a._staticMaxDistance = 16;
 	// Zone 0 defaults live on _zoneConfigs[0]; set up above.
-	a._showHitCounts = false;
 	a._zoneEngineState = createZoneEngineState();
 	a._showCustomIconPicker = false;
 	a._customIconValue = "";
@@ -77,35 +78,9 @@ function createPanel(): EPPGridPanel {
 	return el;
 }
 
-describe("_toggleAccordion", () => {
-	it("adds an accordion id when not present", () => {
-		const a = createPanel() as any;
-		a._openAccordions = new Set();
-
-		a._toggleAccordion("detection");
-
-		expect(a._openAccordions.has("detection")).toBe(true);
-	});
-
-	it("removes an accordion id when already present", () => {
-		const a = createPanel() as any;
-		a._openAccordions = new Set(["detection"]);
-
-		a._toggleAccordion("detection");
-
-		expect(a._openAccordions.has("detection")).toBe(false);
-	});
-
-	it("opening one accordion closes the other", () => {
-		const a = createPanel() as any;
-		a._openAccordions = new Set(["detection"]);
-
-		a._toggleAccordion("sensitivity");
-
-		expect(a._openAccordions.has("detection")).toBe(false);
-		expect(a._openAccordions.has("sensitivity")).toBe(true);
-	});
-});
+// The panel's accordion toggling lives in <epp-settings-view> (its
+// toggleAccordion + the panel's @accordion-toggle listener); the panel's
+// duplicate _toggleAccordion was dead code and has been removed.
 
 describe("_getRoomBounds", () => {
 	it("returns bounds for empty grid", () => {
@@ -118,20 +93,18 @@ describe("_getRoomBounds", () => {
 	});
 });
 
-describe("_mmToPx and _pxToMm", () => {
+describe("mmToPx and pxToMm (lib/furniture)", () => {
 	it("converts mm to px", () => {
-		const a = createPanel() as any;
 		// mmToPx formula: (mm / 300) * (cellPx + 1)
 		// 300mm with cellPx=28 -> (300/300) * 29 = 29
-		const px = a._mmToPx(300, 28);
+		const px = mmToPx(300, 28);
 		expect(px).toBeCloseTo(29, 0);
 	});
 
 	it("converts px to mm", () => {
-		const a = createPanel() as any;
 		// pxToMm formula: (px / (cellPx + 1)) * 300
 		// 29px with cellPx=28 -> (29/29) * 300 = 300
-		const mm = a._pxToMm(29, 28);
+		const mm = pxToMm(29, 28);
 		expect(mm).toBeCloseTo(300, 0);
 	});
 });
@@ -170,22 +143,26 @@ describe("_onCellMouseUp", () => {
 	});
 });
 
-describe("_computeHeatmapColors", () => {
-	it("returns a Map", () => {
-		const a = createPanel() as any;
-		const result = a._computeHeatmapColors();
-		expect(result).toBeInstanceOf(Map);
-	});
-});
+describe("getZoneThresholds (lib/zone-defaults)", () => {
+	function thresholdsFor(a: any, zid: number) {
+		const z0 = resolveZoneParams(a._zoneConfigs[0]);
+		return getZoneThresholds(
+			zid,
+			a._zoneConfigs.slice(1),
+			z0.type,
+			z0.trigger,
+			z0.renew,
+			z0.timeout,
+			z0.handoff_timeout,
+		);
+	}
 
-describe("_getZoneThresholds", () => {
 	it("returns thresholds for boundary zone", () => {
 		const a = createPanel() as any;
-		const result = a._getZoneThresholds(0);
+		const result = thresholdsFor(a, 0);
 		expect(result).toHaveProperty("trigger");
 		expect(result).toHaveProperty("renew");
 		expect(result).toHaveProperty("timeout");
-		expect(result).toHaveProperty("handoffTimeout");
 		expect(result).toHaveProperty("handoffTimeout");
 	});
 
@@ -211,7 +188,7 @@ describe("_getZoneThresholds", () => {
 			null,
 		];
 
-		const result = a._getZoneThresholds(1);
+		const result = thresholdsFor(a, 1);
 		expect(result.trigger).toBe(7);
 		expect(result.renew).toBe(5);
 		expect(result.timeout).toBe(15);
@@ -266,7 +243,7 @@ describe("_beforeUnloadHandler", () => {
 		const event = new Event("beforeunload") as BeforeUnloadEvent;
 		const preventSpy = vi.spyOn(event, "preventDefault");
 
-		a._beforeUnloadHandler(event);
+		a._navGuard._beforeUnloadHandler(event);
 
 		expect(preventSpy).toHaveBeenCalled();
 	});
@@ -279,7 +256,7 @@ describe("_beforeUnloadHandler", () => {
 		const event = new Event("beforeunload") as BeforeUnloadEvent;
 		const preventSpy = vi.spyOn(event, "preventDefault");
 
-		a._beforeUnloadHandler(event);
+		a._navGuard._beforeUnloadHandler(event);
 
 		expect(preventSpy).not.toHaveBeenCalled();
 	});
@@ -291,7 +268,7 @@ describe("_interceptNavigation", () => {
 		const a = el as any;
 		a._dirty = false;
 
-		const result = a._interceptNavigation();
+		const result = a._navGuard._interceptNavigation();
 
 		expect(result).toBe(false);
 		expect(a._showUnsavedDialog).toBe(false);
@@ -302,11 +279,11 @@ describe("_interceptNavigation", () => {
 		const a = el as any;
 		a._dirty = true;
 
-		const result = a._interceptNavigation();
+		const result = a._navGuard._interceptNavigation();
 
 		expect(result).toBe(true);
 		expect(a._showUnsavedDialog).toBe(true);
-		expect(a._pendingNavigation).toBeNull();
+		expect(a._navGuard._pendingNavigation).toBeNull();
 	});
 });
 
@@ -457,7 +434,7 @@ describe("history navigation interception", () => {
 		history.pushState({}, "", "/test");
 
 		expect(a._showUnsavedDialog).toBe(true);
-		expect(a._pendingNavigation).not.toBeNull();
+		expect(a._navGuard._pendingNavigation).not.toBeNull();
 
 		el.disconnectedCallback();
 		// Ensure originals are restored
@@ -474,7 +451,7 @@ describe("history navigation interception", () => {
 		history.replaceState({}, "", "/test");
 
 		expect(a._showUnsavedDialog).toBe(true);
-		expect(a._pendingNavigation).not.toBeNull();
+		expect(a._navGuard._pendingNavigation).not.toBeNull();
 
 		el.disconnectedCallback();
 	});

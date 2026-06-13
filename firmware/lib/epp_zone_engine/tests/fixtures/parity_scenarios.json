@@ -7,13 +7,17 @@
       [8, 3], [9, 3], [10, 3], [11, 3]
     ],
     "zone_cells": {
-      "1": [[9, 1]]
+      "1": [[9, 1], [9, 2]],
+      "2": [[10, 1]],
+      "3": [[11, 1]]
     },
-    "overlay_entry_cells": [[9, 1]]
+    "overlay_entry_cells": [[9, 1]],
+    "overlay_suppress_cells": [[8, 1]]
   },
   "zones": {
     "0": {"type": "normal", "trigger": 5, "renew": 3, "timeout": 10.0, "handoff_timeout": 3.0},
-    "1": {"type": "custom", "trigger": 3, "renew": 2, "timeout": 5.0, "handoff_timeout": 1.0}
+    "1": {"type": "custom", "trigger": 3, "renew": 2, "timeout": 5.0, "handoff_timeout": 1.0},
+    "2": {"type": "custom", "trigger": 0, "renew": 2, "timeout": 5.0, "handoff_timeout": 1.0}
   },
   "scenarios": {
     "test_no_targets_all_clear": {
@@ -377,6 +381,226 @@
         },
         {
           "zone_occupancy": {"1": false}
+        }
+      ]
+    },
+    "test_stale_prev_cleared_when_target_absent": {
+      "ticks": [
+        {"t": 100.0, "targets": [{"x": 2550, "y": 150, "frames": 7}]},
+        {"t": 101.0, "targets": []},
+        {"t": 102.0, "targets": [{"x": 2550, "y": 150, "frames": 7}]}
+      ],
+      "expected": [
+        {
+          "zone_occupancy": {"0": false}
+        },
+        {
+          "zone_occupancy": {"0": false}
+        },
+        {
+          "zone_occupancy": {"0": false}
+        }
+      ]
+    },
+    "test_unconfigured_zone_never_occupies": {
+      "ticks": [
+        {"t": 100.0, "targets": [{"x": 3450, "y": 450, "frames": 9}]},
+        {"t": 101.0, "targets": [{"x": 3450, "y": 450, "frames": 9}]}
+      ],
+      "expected": [
+        {
+          "zone_occupancy": {"3": false}
+        },
+        {
+          "zone_occupancy": {"3": false}
+        }
+      ]
+    },
+    "test_unconfigured_zone_still_provides_continuity": {
+      "ticks": [
+        {"t": 100.0, "targets": [{"x": 3450, "y": 450, "frames": 5}]},
+        {"t": 101.0, "targets": [{"x": 3450, "y": 150, "frames": 5}]}
+      ],
+      "expected": [
+        {
+          "zone_occupancy": {"0": false, "3": false}
+        },
+        {
+          "zone_occupancy": {"0": true, "3": false}
+        }
+      ]
+    },
+    "test_trigger_zero_clamps_gated_threshold": {
+      "ticks": [
+        {"t": 100.0, "targets": [{"x": 3150, "y": 450, "frames": 2}]},
+        {"t": 101.0, "targets": [{"x": 3150, "y": 450, "frames": 2}]}
+      ],
+      "expected": [
+        {
+          "zone_occupancy": {"2": false}
+        },
+        {
+          "zone_occupancy": {"2": false}
+        }
+      ]
+    },
+    "test_trigger_zero_confirms_after_gating": {
+      "ticks": [
+        {"t": 100.0, "targets": [{"x": 3150, "y": 450, "frames": 3}]},
+        {"t": 101.0, "targets": [{"x": 3150, "y": 450, "frames": 3}]}
+      ],
+      "expected": [
+        {
+          "zone_occupancy": {"2": false}
+        },
+        {
+          "zone_occupancy": {"2": true}
+        }
+      ]
+    },
+    "test_overlay_neighbourhood_does_not_bypass_gating": {
+      "ticks": [
+        {"t": 100.0, "targets": [{"x": 2850, "y": 750, "frames": 3}]},
+        {"t": 101.0, "targets": [{"x": 2850, "y": 750, "frames": 3}]}
+      ],
+      "expected": [
+        {
+          "zone_occupancy": {"1": false}
+        },
+        {
+          "zone_occupancy": {"1": false}
+        }
+      ]
+    },
+    "test_raw_overlay_touch_bypasses_gating": {
+      "ticks": [
+        {"t": 100.0, "targets": [{"x": 2850, "y": 750, "frames": 2, "on_overlay": true}]}
+      ],
+      "expected": [
+        {
+          "zone_occupancy": {"1": true}
+        }
+      ]
+    },
+    "test_stale_overlay_touch_cleared_on_slot_reuse": {
+      "ticks": [
+        {"t": 100.0, "targets": [{"x": 2850, "y": 450, "frames": 5}]},
+        {"t": 101.0, "targets": []},
+        {"t": 103.0, "targets": []},
+        {"t": 103.5, "targets": [{"x": 2850, "y": 750, "frames": 3}]}
+      ],
+      "expected": [
+        {
+          "zone_occupancy": {"1": true}
+        },
+        {
+          "zone_occupancy": {"1": true}
+        },
+        {
+          "zone_occupancy": {"1": false}
+        },
+        {
+          "zone_occupancy": {"1": false}
+        }
+      ]
+    },
+    "test_stuck_target_auto_dismissed": {
+      "stuck_target_timeout": 5.0,
+      "ticks": [
+        {"t": 100.0, "targets": [{"x": 2850, "y": 450, "frames": 5}]},
+        {"t": 103.0, "targets": [{"x": 2850, "y": 450, "frames": 5}]},
+        {"t": 105.5, "targets": [{"x": 2850, "y": 450, "frames": 5}]},
+        {"t": 106.0, "targets": [{"x": 2850, "y": 450, "frames": 5}]}
+      ],
+      "expected": [
+        {
+          "zone_occupancy": {"1": true}
+        },
+        {
+          "zone_occupancy": {"1": true}
+        },
+        {
+          "zone_occupancy": {"1": false},
+          "targets": [{"status": "inactive"}]
+        },
+        {
+          "zone_occupancy": {"1": false},
+          "targets": [{"status": "inactive"}]
+        }
+      ]
+    },
+    "test_dismissed_target_clears_on_move": {
+      "stuck_target_timeout": 5.0,
+      "ticks": [
+        {"t": 100.0, "targets": [{"x": 2850, "y": 450, "frames": 5}]},
+        {"t": 106.0, "targets": [{"x": 2850, "y": 450, "frames": 5}]},
+        {"t": 107.0, "targets": [{"x": 2550, "y": 750, "frames": 7}]},
+        {"t": 107.5, "targets": [{"x": 2550, "y": 750, "frames": 7}]}
+      ],
+      "expected": [
+        {
+          "zone_occupancy": {"1": true}
+        },
+        {
+          "zone_occupancy": {"1": false}
+        },
+        {
+          "zone_occupancy": {"0": false, "1": false}
+        },
+        {
+          "zone_occupancy": {"0": true, "1": false}
+        }
+      ]
+    },
+    "test_force_clear_tick_still_reports_pending": {
+      "ticks": [
+        {"t": 100.0, "targets": [{"x": 2550, "y": 150, "frames": 7}],
+         "sensors": {"static_on": true, "static_timeout": 1.0}},
+        {"t": 100.5, "targets": [{"x": 2550, "y": 150, "frames": 7}],
+         "sensors": {"static_on": true, "static_timeout": 1.0}},
+        {"t": 101.0, "targets": [{"x": 2550, "y": 150, "frames": 0}],
+         "sensors": {"static_on": false, "static_timeout": 1.0}},
+        {"t": 102.5, "targets": [{"x": 2550, "y": 150, "frames": 0}],
+         "sensors": {"static_on": false, "static_timeout": 1.0}},
+        {"t": 103.0, "targets": [{"x": 2550, "y": 150, "frames": 0}],
+         "sensors": {"static_on": false, "static_timeout": 1.0}}
+      ],
+      "expected": [
+        {
+          "zone_occupancy": {"0": false}
+        },
+        {
+          "zone_occupancy": {"0": true}
+        },
+        {
+          "zone_occupancy": {"0": true},
+          "targets": [{"status": "pending", "x": 2550, "y": 150}]
+        },
+        {
+          "zone_occupancy": {"0": false},
+          "targets": [{"status": "pending", "x": 2550, "y": 150}]
+        },
+        {
+          "zone_occupancy": {"0": false},
+          "targets": [{"status": "inactive"}]
+        }
+      ]
+    },
+    "test_overlay_exit_handoff_suppress_cell": {
+      "ticks": [
+        {"t": 100.0, "targets": [{"x": 2850, "y": 450, "frames": 5}]},
+        {"t": 101.0, "targets": [{"x": 2550, "y": 450, "frames": 5}]},
+        {"t": 102.5, "targets": [{"x": 2550, "y": 450, "frames": 5}]}
+      ],
+      "expected": [
+        {
+          "zone_occupancy": {"0": false, "1": true}
+        },
+        {
+          "zone_occupancy": {"0": false, "1": true}
+        },
+        {
+          "zone_occupancy": {"0": false, "1": false}
         }
       ]
     }

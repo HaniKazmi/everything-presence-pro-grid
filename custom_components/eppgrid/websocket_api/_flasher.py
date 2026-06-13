@@ -36,6 +36,7 @@ async def _flashable_payload(hass: HomeAssistant, manager: Any) -> dict[str, Any
 
 
 @websocket_api.websocket_command({vol.Required("type"): "eppgrid/subscribe_flashable_devices"})
+@websocket_api.require_admin
 @websocket_api.async_response
 @_require_manager
 async def websocket_subscribe_flashable_devices(
@@ -73,7 +74,11 @@ async def websocket_subscribe_flashable_devices(
             _LOGGER.debug("send_message failed for flashable_devices subscriber", exc_info=True)
 
     @callback
-    def _on_changed() -> None:
+    def _on_changed(_devices: list[dict[str, Any]] | None = None) -> None:
+        # `_devices` is the shared `list_devices()` payload the manager
+        # fans out to all device-list subscribers; the flashable view needs
+        # the richer async `list_flashable_devices()` payload instead, so
+        # the argument is accepted (per the callback contract) but unused.
         if closed:
             return
         task = hass.async_create_task(_send_update())
@@ -121,6 +126,7 @@ async def websocket_subscribe_flashable_devices(
 
 
 @websocket_api.websocket_command({vol.Required("type"): "eppgrid/list_flashable_devices"})
+@websocket_api.require_admin
 @websocket_api.async_response
 @_require_manager
 async def websocket_list_flashable_devices(
@@ -167,6 +173,25 @@ async def websocket_delete_esphome_device(
             "Only ESPHome config entries can be deleted by this command",
             translation_domain=DOMAIN,
             translation_key="only_esphome_can_be_deleted",
+        )
+        return
+    # Scope to EPP hardware: the entry must own at least one device carrying
+    # the EPP manufacturer/model signature (same check discovery uses).
+    # Without this, an admin panel client could remove ANY ESPHome
+    # integration in the installation through this command. Fail-closed:
+    # an entry with no registered devices yet is also rejected.
+    from homeassistant.helpers import device_registry as dr
+
+    from ..device_manager._helpers import _is_epp_device
+
+    dev_reg = dr.async_get(hass)
+    if not any(_is_epp_device(device) for device in dr.async_entries_for_config_entry(dev_reg, msg["config_entry_id"])):
+        connection.send_error(
+            msg["id"],
+            "not_epp_device",
+            "Config entry is not an Everything Presence Pro device",
+            translation_domain=DOMAIN,
+            translation_key="not_epp_device",
         )
         return
     try:

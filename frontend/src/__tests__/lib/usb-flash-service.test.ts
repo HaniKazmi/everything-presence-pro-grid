@@ -17,6 +17,7 @@ vi.mock("../../lib/improv-serial.js", () => ({
 			r?.releaseLock?.();
 		} catch {}
 	}),
+	drainSerial: vi.fn().mockResolvedValue(undefined),
 	CMD_WIFI_SETTINGS: 0x01,
 	CMD_GET_CURRENT_STATE: 0x02,
 	TYPE_CURRENT_STATE: 0x01,
@@ -94,6 +95,7 @@ import { ESPLoader, Transport } from "esptool-js";
 import {
 	buildScanCommand,
 	buildWifiCommand,
+	drainSerial,
 	parseScanResults,
 	readImprovResponse,
 	sendImprovPacket,
@@ -255,16 +257,19 @@ describe("flashFirmware", () => {
 		).rejects.toThrow("Failed to download firmware file");
 	});
 
-	it("calls onProgress with percentage via reportProgress callback", async () => {
+	it("calls onProgress with the OVERALL percentage via reportProgress callback", async () => {
 		const port = mockPort();
 		const onProgress = vi.fn();
 
-		// Intercept writeFlash and invoke reportProgress synchronously
+		// fileArray byte sizes: 3 × 1024 (mockBinary parts) + 8192 (otadata)
+		// = 11264 total. Half of file 0 = 512/11264 ≈ 5%; all of file 0 =
+		// 1024/11264 ≈ 9%. esptool's written/total are per-file, so a naive
+		// written/total would report 50/100 here.
 		const loaderInstance = {
 			main: vi.fn().mockResolvedValue("ESP32"),
 			writeFlash: vi.fn().mockImplementation(({ reportProgress }) => {
-				reportProgress(0, 50, 100); // 50%
-				reportProgress(0, 100, 100); // 100%
+				reportProgress(0, 50, 100); // half of file 0
+				reportProgress(0, 100, 100); // all of file 0
 				return Promise.resolve(undefined);
 			}),
 			after: vi.fn().mockResolvedValue(undefined),
@@ -277,8 +282,41 @@ describe("flashFirmware", () => {
 			baseUrl: TEST_BASE_URL,
 		});
 
-		expect(onProgress).toHaveBeenCalledWith(50);
-		expect(onProgress).toHaveBeenCalledWith(100);
+		expect(onProgress).toHaveBeenCalledWith(5);
+		expect(onProgress).toHaveBeenCalledWith(9);
+	});
+
+	it("accumulates progress across multi-part manifests and the appended otadata (never jumps backward)", async () => {
+		const port = mockPort();
+		const onProgress = vi.fn();
+
+		const loaderInstance = {
+			main: vi.fn().mockResolvedValue("ESP32"),
+			writeFlash: vi.fn().mockImplementation(({ reportProgress }) => {
+				// Walk every file part to completion, as esptool does.
+				reportProgress(0, 1024, 1024);
+				reportProgress(1, 1024, 1024);
+				reportProgress(2, 1024, 1024);
+				reportProgress(3, 4096, 8192); // otadata half-written
+				reportProgress(3, 8192, 8192);
+				return Promise.resolve(undefined);
+			}),
+			after: vi.fn().mockResolvedValue(undefined),
+		};
+		vi.mocked(ESPLoader).mockImplementationOnce(function () {
+			return loaderInstance as any;
+		});
+
+		await flashFirmware(port, "wifi-ble-co2", onProgress, {
+			baseUrl: TEST_BASE_URL,
+		});
+
+		const reported = onProgress.mock.calls.map((c) => c[0]);
+		// 1024/11264→9%, 2048/11264→18%, 3072/11264→27%, 7168/11264→64%, 100%
+		expect(reported).toEqual([9, 18, 27, 64, 100]);
+		for (let i = 1; i < reported.length; i++) {
+			expect(reported[i]).toBeGreaterThanOrEqual(reported[i - 1]);
+		}
 	});
 
 	it("disconnects transport on flash error", async () => {
@@ -621,6 +659,31 @@ describe("flashFirmware", () => {
 		// The no-op override was called (did not throw)
 		expect(closeCalledDuringFlash).toBe(true);
 	});
+
+	it("restores port.close even when transport.disconnect() throws (CH340 zombie-port guard)", async () => {
+		// If disconnect() throws, skipping the restore leaves port.close as
+		// the no-op stub forever — every later close() silently does nothing
+		// and the CH340 port zombies until a page reload.
+		const port = mockPort();
+		const closeMock = port.close as ReturnType<typeof vi.fn>;
+
+		vi.mocked(Transport).mockImplementationOnce(function () {
+			return {
+				connect: vi.fn(),
+				disconnect: vi.fn().mockRejectedValue(new Error("disconnect failed")),
+				device: {},
+			} as any;
+		});
+
+		await expect(
+			flashFirmware(port, "wifi-ble-co2", vi.fn(), { baseUrl: TEST_BASE_URL }),
+		).rejects.toThrow("disconnect failed");
+
+		// flashFirmware restores the (bound) real close; calling close()
+		// must reach the original implementation, not the no-op stub.
+		await port.close();
+		expect(closeMock).toHaveBeenCalledTimes(1);
+	});
 });
 
 describe("runWifiScan", () => {
@@ -744,6 +807,26 @@ describe("runWifiScan", () => {
 			handshakeRetryDelay: 0,
 		});
 		expect(port.open).not.toHaveBeenCalled();
+	});
+
+	it("delegates the pre-handshake drain phase to the drainSerial helper", async () => {
+		const { port } = mockPort();
+
+		vi.mocked(readImprovResponse)
+			.mockResolvedValueOnce({
+				packets: [{ type: 0x01, data: new Uint8Array([0x02]) }],
+				buffer: [],
+			})
+			.mockRejectedValueOnce(new Error("timeout"));
+
+		await runWifiScan(port, {
+			retryDelay: 0,
+			drainDelay: 123,
+			handshakeDelay: 0,
+			handshakeRetryDelay: 0,
+		});
+
+		expect(drainSerial).toHaveBeenCalledWith(expect.anything(), 123);
 	});
 
 	it("gets writer and reader from port streams", async () => {
@@ -1128,6 +1211,56 @@ describe("runWifiScan", () => {
 		} catch (err: any) {
 			expect(err.errorKey).toBe("usb.errors.no_device_response");
 		}
+	});
+
+	it("releases the writer when port.readable disappears mid-scan (device unplugged)", async () => {
+		// `port.readable!.getReader()` in the scan loop throws when the
+		// device is unplugged mid-scan (readable becomes null). The writer
+		// acquired in _connectImprov must not stay locked on that rethrow.
+		const mockWriter = {
+			write: vi.fn().mockResolvedValue(undefined),
+			releaseLock: vi.fn(),
+			close: vi.fn().mockResolvedValue(undefined),
+			closed: Promise.resolve(undefined),
+			abort: vi.fn().mockResolvedValue(undefined),
+			desiredSize: 1024,
+			ready: Promise.resolve(undefined),
+		} as unknown as WritableStreamDefaultWriter<Uint8Array>;
+
+		const realReadable = {
+			getReader: vi.fn().mockImplementation(() => ({
+				read: vi.fn().mockImplementation(() => new Promise(() => {})),
+				cancel: vi.fn().mockResolvedValue(undefined),
+				releaseLock: vi.fn(),
+				closed: Promise.resolve(undefined),
+			})),
+		};
+
+		// _connectImprov touches port.readable 3 times (open-check, drain
+		// reader, handshake reader); the 4th access is the scan loop's
+		// getReader — by then the device has been unplugged.
+		let readableAccess = 0;
+		const port = {
+			open: vi.fn().mockResolvedValue(undefined),
+			close: vi.fn().mockResolvedValue(undefined),
+			setSignals: vi.fn().mockResolvedValue(undefined),
+			writable: { getWriter: vi.fn().mockReturnValue(mockWriter) },
+			get readable() {
+				readableAccess++;
+				return readableAccess <= 3 ? realReadable : null;
+			},
+		} as unknown as SerialPort;
+
+		await expect(
+			runWifiScan(port, {
+				retryDelay: 0,
+				drainDelay: 0,
+				handshakeDelay: 0,
+				handshakeRetryDelay: 0,
+			}),
+		).rejects.toThrow();
+
+		expect(mockWriter.releaseLock).toHaveBeenCalled();
 	});
 });
 
@@ -1527,7 +1660,10 @@ describe("queryImprovState", () => {
 		expect(result.reader).toBeDefined();
 	});
 
-	it("returns PROVISIONED + ip=0.0.0.0 when credentials saved but DHCP failing", async () => {
+	it("returns PROVISIONED + ip=undefined when credentials saved but DHCP failing", async () => {
+		// detectIpAddress exhausting its budget on a persistent 0.0.0.0 means
+		// "no usable IP" — the contract is ip: undefined, NOT a "0.0.0.0"
+		// sentinel string that every caller would have to know to compare.
 		(readImprovResponse as any).mockImplementation(async () => {
 			return {
 				packets: [
@@ -1547,9 +1683,9 @@ describe("queryImprovState", () => {
 			};
 		});
 		const port = mockPortReady();
-		const result = await queryImprovState(port);
+		const result = await queryImprovState(port, { readDelay: 300 });
 		expect(result.state).toBe("PROVISIONED");
-		expect(result.ip).toBe("0.0.0.0");
+		expect(result.ip).toBeUndefined();
 	});
 
 	it("keeps polling when url shows 0.0.0.0 until a real IP arrives", async () => {

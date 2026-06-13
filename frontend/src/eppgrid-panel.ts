@@ -1,55 +1,48 @@
 import { css, html, LitElement, nothing, type PropertyValues } from "lit";
 import { property, state } from "lit/decorators.js";
 
+import "./components/epp-configuration-dialogs.js";
 import "./components/epp-flasher-view.js";
-import "./components/epp-furniture-overlay.js";
 import "./components/epp-furniture-sidebar.js";
 import "./components/epp-grid.js";
 import "./components/epp-live-sidebar.js";
+import type { ZoneStateSummary } from "./components/epp-live-sidebar.js";
 import "./components/epp-settings-view.js";
 import "./components/epp-wizard.js";
+import type { EppWizard } from "./components/epp-wizard.js";
+import { renderSaveCancelBar } from "./components/save-cancel-bar.js";
 import "./components/epp-overlay-sidebar.js";
 import "./components/epp-zone-sidebar.js";
 import { DeviceController } from "./controllers/device-controller.js";
 import { FlasherController } from "./controllers/flasher-controller.js";
 import {
 	GridStateController,
+	serializeFurniture,
 	serializeSlot,
 } from "./controllers/grid-state-controller.js";
+import { NavigationGuardController } from "./controllers/navigation-guard.js";
 import { TargetController } from "./controllers/target-controller.js";
 import type { PaintAction } from "./lib/cell-painting.js";
 import { parseConfig } from "./lib/config-serialization.js";
-import { renderConfigurationThumbnail } from "./lib/configuration-thumbnail.js";
-import { mapTargetToGridCell, mapTargetToPercent } from "./lib/coordinates.js";
-import {
-	type FurnitureItem,
-	type FurnitureSticker,
-	mmToPx,
-	pxToMm,
-} from "./lib/furniture.js";
+import { mapTargetToGridCell, targetCellIndex } from "./lib/coordinates.js";
+import type { FurnitureItem, FurnitureSticker } from "./lib/furniture.js";
 import {
 	CELL_OVERLAY_INTERFERENCE,
 	CELL_OVERLAY_SUPPRESS,
 	cellIsInside,
 	cellSetOverlay,
 	GRID_CELL_COUNT,
-	GRID_CELL_MM,
-	GRID_COLS,
-	GRID_ROWS,
-	getRawRoomBounds,
 	getRoomBounds,
 	initGridFromRoom,
 	MAX_RANGE,
 	type OverlayMode,
 } from "./lib/grid.js";
 import { getHelpUrl, type PanelTab } from "./lib/help-url.js";
-import { applyPerspective, getInversePerspective } from "./lib/perspective.js";
 import {
 	autoDetectionRange,
+	boundsToRoomMm,
 	computeMaxRangeMm,
 	computeSensorFov,
-	getGridRoomMetrics,
-	getSensorRoomPosition,
 	getVisibleRoomBounds,
 	type SensorFov,
 } from "./lib/room-geometry.js";
@@ -61,24 +54,14 @@ import {
 } from "./lib/settings-defaults.js";
 import { persistSelectedMac } from "./lib/storage.js";
 import {
-	detectIpAddress,
-	flashFirmware,
-	queryImprovState,
-	runWifiProvision,
-	runWifiScan,
-} from "./lib/usb-flash-service.js";
-import {
 	DEFAULT_SIDEBAR_TAB,
 	parseViewHash,
 	type SidebarTab,
 	type ViewMode,
 	type ViewState,
-	viewHash,
 } from "./lib/view-hash.js";
 import {
-	getZoneThresholds,
 	INITIAL_ZONE_SLOTS,
-	resolveZoneParams,
 	type Zone0Config,
 	type ZoneConfig,
 	type ZoneSlots,
@@ -90,7 +73,7 @@ import {
 	installPanelMountGuard,
 } from "./panel-mount-guard.js";
 import { buttonStyles, dialogStyles, headerStyles } from "./styles.js";
-import type { DeviceInfo, HaAddResult, RawTarget, Target } from "./types.js";
+import type { DeviceInfo, RawTarget, Target } from "./types.js";
 
 // ZoneSlots / INITIAL_ZONE_SLOTS moved to lib/zone-defaults.ts so the
 // controllers can import them without a circular type dep on this module.
@@ -107,9 +90,9 @@ type SensorState = {
 	co2: number | null;
 };
 
-// Factory — returns a fresh object each call. Sensor state is mutated in-place
-// during render (see `_sensorState.occupancy = ...` in render paths), so
-// handing out the same reference would corrupt future resets.
+// Factory — returns a fresh object each call so resets and the
+// settings-view snapshot merge (`{ ...createInitialSensorState(), ... }` in
+// onSessionClosed) never alias a shared object.
 const createInitialSensorState = (): SensorState => ({
 	occupancy: false,
 	static_presence: false,
@@ -122,13 +105,7 @@ const createInitialSensorState = (): SensorState => ({
 	co2: null,
 });
 
-type ZoneState = {
-	occupancy: Record<number, boolean>;
-	target_counts: Record<number, number>;
-	frame_count: number;
-};
-
-const createInitialZoneState = (): ZoneState => ({
+const createInitialZoneState = (): ZoneStateSummary => ({
 	occupancy: {},
 	target_counts: {},
 	frame_count: 0,
@@ -150,6 +127,31 @@ const panelStyles = css`
     max-width: 1100px;
     margin: 0 auto;
     font-size: 14px;
+  }
+
+  .controller-error-banner {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: 12px 16px 0;
+    padding: 10px 12px;
+    border-radius: 8px;
+    background: var(--error-color, #db4437);
+    color: var(--text-primary-color, #fff);
+    font-size: 14px;
+  }
+
+  .controller-error-banner span {
+    flex: 1;
+  }
+
+  .controller-error-dismiss {
+    display: flex;
+    background: none;
+    border: none;
+    color: inherit;
+    cursor: pointer;
+    padding: 2px;
   }
 `;
 
@@ -305,6 +307,10 @@ const liveMenuStyles = css`
   }
 `;
 
+// The shared history-interception registry (unsaved-changes navigation
+// guard) lives in controllers/navigation-guard.ts together with the
+// NavigationGuardController that joins/leaves it per panel instance.
+
 export class EPPGridPanel extends LitElement {
 	@property({ attribute: false }) hass: any;
 
@@ -316,11 +322,32 @@ export class EPPGridPanel extends LitElement {
 	// here with the declared type). The panel's `@state _field`s are public
 	// so the contract holds — the `_` prefix is the social marker for
 	// internal-only state.
-	private _gridCtrl = new GridStateController(this);
+	// The IIFE wires the error hook at construction (not connectedCallback)
+	// so failures surface even when ops run before/without attachment.
+	private _gridCtrl = (() => {
+		const ctrl = new GridStateController(this);
+		ctrl.onError = (op) => {
+			this._controllerError = op;
+		};
+		return ctrl;
+	})();
 	// Target controller — owns target/sensor/zone state processing, zone engine, debug logging
 	private _targetCtrl = new TargetController(this);
-	// Flasher controller — owns OTA flash state and flashable device list
-	private _flasherCtrl = new FlasherController(this);
+	// Flasher controller — owns OTA flash state, flashable device list, and
+	// the USB flash / WiFi-provisioning flow. The IIFE wires the
+	// delete-confirm hook at construction (same rationale as _gridCtrl's
+	// error hook): the flow must never run without a confirmation path.
+	private _flasherCtrl = (() => {
+		const ctrl = new FlasherController(this);
+		ctrl.confirmDeleteOriginalFirmware = () =>
+			this._requestFlasherDeleteConfirm();
+		return ctrl;
+	})();
+	// Navigation guard — owns the unsaved-changes guard (beforeunload,
+	// hashchange, the shared history-interception registry entry) and the
+	// pending-navigation queue behind the dialog. Pass `this` directly so
+	// tsc verifies the panel structurally satisfies NavigationGuardHost.
+	private _navGuard = new NavigationGuardController(this);
 	_localize: import("./localize.js").LocalizeFn = Object.assign(
 		((k: string) => k) as import("./localize.js").LocalizeFn,
 		{ formatNumber: (v: number, d = 1) => v.toFixed(d), lang: "en" },
@@ -357,12 +384,16 @@ export class EPPGridPanel extends LitElement {
 	@state() _relayContactMode = "no";
 	@state() _targetUpdateRateMs = 1000;
 	@state() _zoneUpdateRateMs = 1000;
-	@state() _entitiesConfig: Record<string, any> = {};
+	@state() _entitiesConfig: Record<string, boolean> = {};
 	@state() _sidebarTab: SidebarTab = parseViewHash(
 		typeof location !== "undefined" ? location.hash : "",
 	).sidebarTab;
 	@state() private _panelTab: PanelTab = "config";
 	@state() private _showDeleteCalibrationDialog = false;
+	// Themed replacement for the old window.confirm() in the USB flash flow:
+	// the flow's beforeFlash hook awaits the promise while the dialog is up.
+	@state() private _showFlasherDeleteConfirm = false;
+	private _flasherDeleteConfirmResolve: ((ok: boolean) => void) | null = null;
 	@state() private _showLiveMenu = false;
 	@state() private _showCustomIconPicker = false;
 	@state() private _customIconValue = "";
@@ -388,8 +419,7 @@ export class EPPGridPanel extends LitElement {
 	@state() _targets: Target[] = [];
 	@state() _rawTargets: RawTarget[] = [];
 	@state() _sensorState: SensorState = createInitialSensorState();
-	@state() _zoneState: ZoneState = createInitialZoneState();
-	@state() private _showHitCounts = false;
+	@state() _zoneState: ZoneStateSummary = createInitialZoneState();
 	@state() _showDebugLog = false;
 	_debugLogLines: string[] = [];
 	_debugLogPrev: string | null = null;
@@ -423,8 +453,14 @@ export class EPPGridPanel extends LitElement {
 	} | null = null;
 	@state() _saving = false;
 	@state() _dirty = false;
-	@state() private _showUnsavedDialog = false;
-	private _pendingNavigation: (() => void) | null = null;
+	// Failed grid-controller op (applyLayout/saveSettings/save/load
+	// configuration) — rendered as a dismissible banner; the op name doubles
+	// as the `errors.*` translation-key suffix. Cleared when a new op starts
+	// or the user dismisses it.
+	@state() private _controllerError: string | null = null;
+	// Not `private`: part of the NavigationGuardHost contract (the guard
+	// raises/clears it; the panel renders the dialog).
+	@state() _showUnsavedDialog = false;
 	@state() _showConfigurationBackup = false;
 	@state() _showConfigurationRestore = false;
 	@state() _configurationName = "";
@@ -486,29 +522,6 @@ export class EPPGridPanel extends LitElement {
 
 	// Device session + target subscriptions (delegated to _deviceCtrl)
 
-	private _beforeUnloadHandler = (e: BeforeUnloadEvent) => {
-		if (this._dirty) {
-			e.preventDefault();
-			e.returnValue = "";
-		}
-	};
-
-	private _originalPushState: typeof history.pushState | null = null;
-	private _originalReplaceState: typeof history.replaceState | null = null;
-	// The wrapper functions this instance installed onto `history`. Track
-	// them so disconnect can detect a later instance overwriting them and
-	// skip the restore in that case (otherwise we'd un-wrap the live
-	// instance and silently disable its navigation interception).
-	private _wrappedPushState: typeof history.pushState | null = null;
-	private _wrappedReplaceState: typeof history.replaceState | null = null;
-
-	private _interceptNavigation = (): boolean => {
-		if (!this._dirty) return false;
-		this._showUnsavedDialog = true;
-		this._pendingNavigation = null; // no specific action — just allow navigation on discard
-		return true;
-	};
-
 	private _onKeyDown = (e: KeyboardEvent): void => {
 		if (this._view !== "editor" || this._sidebarTab !== "furniture") return;
 		if (!this._selectedFurnitureId) return;
@@ -550,19 +563,16 @@ export class EPPGridPanel extends LitElement {
 			e.preventDefault();
 			const id = `f_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
 			const cb = this._furnitureClipboard;
-			const bounds = this._getRoomBounds();
-			const roomCols = Math.ceil(this._roomWidth / GRID_CELL_MM);
-			const startCol = Math.floor((GRID_COLS - roomCols) / 2);
-			const visMinX = (bounds.minCol - startCol) * GRID_CELL_MM;
-			const visMaxX = (bounds.maxCol + 1 - startCol) * GRID_CELL_MM;
-			const visMinY = bounds.minRow * GRID_CELL_MM;
-			const visMaxY = (bounds.maxRow + 1) * GRID_CELL_MM;
+			// Paste clamps to the PHYSICAL room bounds (drag clamps to the
+			// FOV-aware visible bounds) — a paste must not silently relocate
+			// furniture that legitimately sits in an out-of-FOV corner.
+			const mm = boundsToRoomMm(this._getRoomBounds(), this._roomWidth);
 			const offset = 300; // 1 cell offset so paste is visible
 			const newItem: FurnitureItem = {
 				...cb,
 				id,
-				x: Math.max(visMinX, Math.min(visMaxX - cb.width, cb.x + offset)),
-				y: Math.max(visMinY, Math.min(visMaxY - cb.height, cb.y + offset)),
+				x: Math.max(mm.minX, Math.min(mm.maxX - cb.width, cb.x + offset)),
+				y: Math.max(mm.minY, Math.min(mm.maxY - cb.height, cb.y + offset)),
 			};
 			this._furniture = [...this._furniture, newItem];
 			this._selectedFurnitureId = newItem.id;
@@ -580,51 +590,9 @@ export class EPPGridPanel extends LitElement {
 			// _initialize traps its own failures; guard here so that any
 			// late rejection can't surface as "Uncaught (in promise)".
 		});
-		window.addEventListener("beforeunload", this._beforeUnloadHandler);
+		// beforeunload / hashchange / history interception are owned by
+		// _navGuard (hostConnected ran in super.connectedCallback() above).
 		window.addEventListener("keydown", this._onKeyDown);
-		window.addEventListener("hashchange", this._onHashChange);
-
-		// Intercept HA's client-side routing. pushState/replaceState do
-		// not fire hashchange/popstate even when the hash changes, so
-		// after delegating we sync if (and only if) the hash moved.
-		// Stash the truly-original (pre-wrap) on window once: a second
-		// panel instance would otherwise capture the first's wrapper as
-		// "original", chaining wrappers and making it impossible to
-		// restore the bare browser implementation on disconnect.
-		const w = window as any;
-		if (!w.__eppOriginalPushState) {
-			w.__eppOriginalPushState = history.pushState.bind(history);
-		}
-		if (!w.__eppOriginalReplaceState) {
-			w.__eppOriginalReplaceState = history.replaceState.bind(history);
-		}
-		const origPush = w.__eppOriginalPushState as typeof history.pushState;
-		const origReplace =
-			w.__eppOriginalReplaceState as typeof history.replaceState;
-		this._originalPushState = origPush;
-		this._originalReplaceState = origReplace;
-		this._wrappedPushState = this._wrapHistoryMethod(origPush);
-		this._wrappedReplaceState = this._wrapHistoryMethod(origReplace);
-		history.pushState = this._wrappedPushState;
-		history.replaceState = this._wrappedReplaceState;
-	}
-
-	private _wrapHistoryMethod(
-		original: typeof history.pushState,
-	): typeof history.pushState {
-		return (data, unused, url) => {
-			if (this._interceptNavigation()) {
-				this._pendingNavigation = () => {
-					original(data, unused, url);
-					window.dispatchEvent(new PopStateEvent("popstate"));
-					this._onHashChange();
-				};
-				return;
-			}
-			const before = location.hash;
-			original(data, unused, url);
-			if (location.hash !== before) this._onHashChange();
-		};
 	}
 
 	disconnectedCallback(): void {
@@ -635,29 +603,9 @@ export class EPPGridPanel extends LitElement {
 		}
 		this._closeDeviceSession();
 		this._detachConnectionListeners();
-		window.removeEventListener("beforeunload", this._beforeUnloadHandler);
+		// beforeunload / hashchange / history-interception teardown is owned
+		// by _navGuard (hostDisconnected ran in super.disconnectedCallback()).
 		window.removeEventListener("keydown", this._onKeyDown);
-		window.removeEventListener("hashchange", this._onHashChange);
-
-		// Restore original history methods — but only if our wrapper is
-		// still the installed one. A later panel instance may have
-		// overlapping-mounted and put its own wrapper on top; restoring
-		// the bare original here would silently disable that live
-		// instance's navigation interception.
-		if (
-			this._originalPushState &&
-			history.pushState === this._wrappedPushState
-		) {
-			history.pushState = this._originalPushState;
-		}
-		if (
-			this._originalReplaceState &&
-			history.replaceState === this._wrappedReplaceState
-		) {
-			history.replaceState = this._originalReplaceState;
-		}
-		this._wrappedPushState = null;
-		this._wrappedReplaceState = null;
 	}
 
 	private _attachConnectionListeners(conn: any): void {
@@ -697,37 +645,18 @@ export class EPPGridPanel extends LitElement {
 			this._sidebarTab = DEFAULT_SIDEBAR_TAB;
 		}
 		if (changed.has("_view") || changed.has("_sidebarTab")) {
-			this._syncHashFromState();
+			this._navGuard.syncHashFromState();
 		}
-	}
-
-	/**
-	 * Write the URL fragment via the un-patched replaceState (saved in
-	 * connectedCallback) so panel-driven hash updates don't re-enter
-	 * the dirty-navigation interceptor.
-	 */
-	private _replaceHash(hash: string): void {
-		if (typeof location === "undefined") return;
-		if (hash === location.hash) return;
-		const target = `${location.pathname}${location.search}${hash}`;
-		const replace =
-			this._originalReplaceState ?? history.replaceState.bind(history);
-		// Preserve history.state so HA's router state isn't clobbered.
-		replace(history.state, "", target);
-	}
-
-	private _syncHashFromState(): void {
-		this._replaceHash(
-			viewHash({ view: this._view, sidebarTab: this._sidebarTab }),
-		);
 	}
 
 	/**
 	 * Move to a target view + sub-tab. Centralises the side effects
 	 * (overlay-mode reset, range widening) so click handlers and
-	 * URL-driven navigation behave the same.
+	 * URL-driven navigation behave the same. Not `private`: it's part of
+	 * the NavigationGuardHost contract (the guard applies hash-driven
+	 * navigation through it).
 	 */
-	private _applyView(state: ViewState): void {
+	_applyView(state: ViewState): void {
 		this._view = state.view;
 		this._sidebarTab = state.sidebarTab;
 		if (state.view === "editor" && state.sidebarTab !== "overlays") {
@@ -742,38 +671,31 @@ export class EPPGridPanel extends LitElement {
 		}
 	}
 
-	/**
-	 * React to external hash changes (browser back/forward, sidebar
-	 * icon, manual URL edit). When dirty, snap the URL back so the
-	 * queued navigation only fires once the user discards.
-	 */
-	private _onHashChange = (): void => {
-		const next = parseViewHash(location.hash);
-		if (next.view === this._view && next.sidebarTab === this._sidebarTab) {
-			return;
-		}
-		if (this._dirty) {
-			this._replaceHash(
-				viewHash({ view: this._view, sidebarTab: this._sidebarTab }),
-			);
-		}
-		this._guardNavigation(() => this._applyView(next));
-	};
-
 	updated(changedProps: PropertyValues): void {
 		if (changedProps.has("hass") && this.hass) {
 			this._deviceCtrl.hass = this.hass;
 			this._flasherCtrl.hass = this.hass;
 			const conn = this.hass.connection;
 			if (conn) {
-				this._attachConnectionListeners(conn);
+				// HA keeps pushing `hass` to panels it has already removed
+				// from the DOM, and Lit still runs the update cycle on those
+				// zombies. Re-attaching here would undo disconnectedCallback's
+				// teardown and pin the dead panel in memory via the
+				// connection's listener list.
+				if (this.isConnected) {
+					this._attachConnectionListeners(conn);
+				}
 				if (typeof conn.connected === "boolean") {
 					this._haConnected = conn.connected;
 				}
 			}
 			if (!this._haConnected) return;
 			if (this._loading && !this._devices.length) {
-				this._initialize();
+				this._initialize().catch(() => {
+					// _initialize traps its own failures; guard here (as at the
+					// other call sites) so a late rejection can't surface as
+					// "Uncaught (in promise)".
+				});
 			} else if (
 				this._selectedMac &&
 				this._isSelectedDeviceAvailable() &&
@@ -798,14 +720,42 @@ export class EPPGridPanel extends LitElement {
 	 * may not yet be populated.
 	 */
 	private _ensureSession(mac: string): void {
+		// A zombie panel (removed from the DOM while async work was still in
+		// flight) must not (re)open device sessions nothing will ever close.
+		if (!this.isConnected) return;
 		if (this._loadedConfigMac === mac) {
+			// reopenSession traps its own failures; .catch guards a late
+			// rejection surfacing as "Uncaught (in promise)".
 			this._deviceCtrl.reopenSession(mac).catch(() => {});
 		} else {
+			// _loadDeviceConfig traps its own failures; .catch guards a late
+			// rejection surfacing as "Uncaught (in promise)".
 			this._loadDeviceConfig(mac).catch(() => {});
 		}
 	}
 
+	// In-flight _initialize run, shared by concurrent callers (see below).
+	private _initializeInFlight: Promise<void> | null = null;
+
 	private async _initialize(): Promise<void> {
+		// Dedupe concurrent runs: while `_loading && !_devices.length`, every
+		// `hass` property push re-enters _initialize via updated(), and each
+		// run tears down and re-creates the device-list subscription (~2
+		// subscribes + 1 unsub per mount). Concurrent callers share the
+		// in-flight run instead.
+		if (this._initializeInFlight) return this._initializeInFlight;
+		const promise = this._runInitialize();
+		this._initializeInFlight = promise;
+		try {
+			await promise;
+		} finally {
+			if (this._initializeInFlight === promise) {
+				this._initializeInFlight = null;
+			}
+		}
+	}
+
+	private async _runInitialize(): Promise<void> {
 		if (!this.hass) return;
 		if (!this.isConnected) return;
 		const isRetry = this._initRetryTimer !== undefined;
@@ -813,7 +763,12 @@ export class EPPGridPanel extends LitElement {
 			clearTimeout(this._initRetryTimer);
 			this._initRetryTimer = undefined;
 		}
-		if (!isRetry) {
+		if (!isRetry && this._devices.length === 0) {
+			// Only show the loading screen on a genuinely empty panel. On a
+			// reconnect re-init (_onHaReady) the device list is still in
+			// memory; flipping `_loading` would swap the whole UI for the
+			// loading screen — a flash on every reconnect, and an unmount of
+			// the settings view mid-edit.
 			this._loading = true;
 		}
 		this._deviceCtrl.hass = this.hass;
@@ -833,6 +788,8 @@ export class EPPGridPanel extends LitElement {
 			this._loading = false;
 			this._initRetryTimer = setTimeout(() => {
 				if (!this.isConnected) return;
+				// _initialize traps its own failures; .catch guards a late
+				// rejection surfacing as "Uncaught (in promise)".
 				this._initialize().catch(() => {});
 			}, 2000);
 			return;
@@ -846,6 +803,9 @@ export class EPPGridPanel extends LitElement {
 
 	private async _subscribeDevices(): Promise<void> {
 		this._deviceCtrl.hass = this.hass;
+		// Lets the controller defer the auto-switch to another device while
+		// the user has unsaved edits (see _applyDeviceList's dirty-guard).
+		this._deviceCtrl.isHostDirty = () => this._dirty;
 		this._deviceCtrl.onDeviceListChanged = () => {
 			const prevMac = this._selectedMac;
 			this._devices = this._deviceCtrl.devices;
@@ -896,6 +856,11 @@ export class EPPGridPanel extends LitElement {
 			};
 			this._zoneState = createInitialZoneState();
 			this._targetCtrl.resetZoneEngineState();
+			// Clear the UI hide-map too: it's keyed by cell index and would
+			// otherwise carry across a device/session switch, briefly hiding a
+			// target sitting on a previously-dismissed cell on the new device
+			// (mirrors the engine's dismissedCells reset).
+			this._dismissedTargets = new Map();
 		};
 		await this._deviceCtrl.subscribeDeviceList();
 		this._devices = this._deviceCtrl.devices;
@@ -923,6 +888,13 @@ export class EPPGridPanel extends LitElement {
 			this._targetCtrl.handleRawTargetData(rawTargets);
 		};
 		const config = await this._deviceCtrl.loadDeviceConfig(mac);
+		// Re-check after the await (mirroring _initialize): if the panel was
+		// removed while the load was in flight, don't apply config to a dead
+		// element, and close whatever session survived the teardown race.
+		if (!this.isConnected) {
+			this._deviceCtrl.closeDeviceSession();
+			return;
+		}
 		if (this._selectedMac !== mac) {
 			this._deviceCtrl.closeDeviceSession();
 			return;
@@ -1006,10 +978,6 @@ export class EPPGridPanel extends LitElement {
 		this._gridCtrl.onCellMouseUp();
 	}
 
-	private _applyPaintToCell(index: number): void {
-		this._gridCtrl.applyPaintToCell(index);
-	}
-
 	// -- Zone management --
 
 	private _addZone(): void {
@@ -1038,16 +1006,6 @@ export class EPPGridPanel extends LitElement {
 		this._gridCtrl.updateFurniture(id, updates);
 	}
 
-	/** Convert mm in room-space to px in the visible grid */
-	private _mmToPx(mm: number, cellPx: number): number {
-		return mmToPx(mm, cellPx);
-	}
-
-	/** Convert px delta back to mm */
-	private _pxToMm(px: number, cellPx: number): number {
-		return pxToMm(px, cellPx);
-	}
-
 	private _onFurniturePointerDown(
 		e: PointerEvent,
 		id: string,
@@ -1065,9 +1023,39 @@ export class EPPGridPanel extends LitElement {
 	// -- Grid cell display helpers --
 
 	/** Return named-zone slots (indices 1..7) as the length-7 array that
-	 * downstream components and helpers expect. */
+	 * downstream components and helpers expect. Memoised on the _zoneConfigs
+	 * reference (clone-then-mutate everywhere) so child components see a
+	 * stable array identity across re-renders and skip needless updates. */
+	private _namedZonesCache: (ZoneConfig | null)[] | null = null;
+	private _namedZonesCacheConfigs: ZoneSlots | null = null;
+
 	private _namedZones(): (ZoneConfig | null)[] {
-		return this._zoneConfigs.slice(1) as (ZoneConfig | null)[];
+		if (
+			this._namedZonesCache === null ||
+			this._namedZonesCacheConfigs !== this._zoneConfigs
+		) {
+			this._namedZonesCache = this._zoneConfigs.slice(
+				1,
+			) as (ZoneConfig | null)[];
+			this._namedZonesCacheConfigs = this._zoneConfigs;
+		}
+		return this._namedZonesCache;
+	}
+
+	/** Memoised `{ occupancy }` binding for the wizard views — rebuilt only
+	 * when occupancy flips so re-renders don't hand the wizard a fresh object
+	 * (defeating its dirty-check) on every panel render. */
+	private _wizardSensorStateCache: { occupancy: boolean } | null = null;
+
+	private _getWizardSensorState(): { occupancy: boolean } {
+		const occupancy = this._sensorState.occupancy;
+		if (
+			this._wizardSensorStateCache === null ||
+			this._wizardSensorStateCache.occupancy !== occupancy
+		) {
+			this._wizardSensorStateCache = { occupancy };
+		}
+		return this._wizardSensorStateCache;
 	}
 
 	/** Compute the bounding box of inside-room cells (for zoom) */
@@ -1097,6 +1085,7 @@ export class EPPGridPanel extends LitElement {
 
 	/** Save the current grid and zone config to the backend */
 	private async _applyLayout(): Promise<void> {
+		this._controllerError = null;
 		return this._gridCtrl.applyLayout();
 	}
 
@@ -1167,6 +1156,7 @@ export class EPPGridPanel extends LitElement {
 	}
 
 	private async _saveSettings(payload?: Record<string, any>): Promise<void> {
+		this._controllerError = null;
 		return this._gridCtrl.saveSettings(payload || {});
 	}
 
@@ -1201,19 +1191,21 @@ export class EPPGridPanel extends LitElement {
 	}
 
 	private _pushWidenedDistanceOverride(): void {
+		// Auto-distance widens to the sensor maxima — the canonical defaults
+		// in SETTINGS_DEFAULTS, not panel-local magic numbers.
 		if (this._targetAutoDistance || this._staticAutoDistance) {
 			this.hass
 				?.callWS({
 					type: "eppgrid/set_distance_override",
 					mac: this._selectedMac,
 					target_max_distance: this._targetAutoDistance
-						? 6
+						? SETTINGS_DEFAULTS.target_max_distance
 						: this._targetMaxDistance,
 					static_min_distance: this._staticAutoDistance
-						? 0.3
+						? SETTINGS_DEFAULTS.static_min_distance
 						: this._staticMinDistance,
 					static_max_distance: this._staticAutoDistance
-						? 16
+						? SETTINGS_DEFAULTS.static_max_distance
 						: this._staticMaxDistance,
 				})
 				?.catch(() => {});
@@ -1221,7 +1213,7 @@ export class EPPGridPanel extends LitElement {
 	}
 
 	private _enterEditor(tab: SidebarTab): void {
-		this._guardNavigation(() =>
+		this._navGuard.guardNavigation(() =>
 			this._applyView({ view: "editor", sidebarTab: tab }),
 		);
 	}
@@ -1233,14 +1225,18 @@ export class EPPGridPanel extends LitElement {
 	}
 
 	private async _saveConfiguration(): Promise<void> {
+		this._controllerError = null;
 		try {
 			await this._gridCtrl.saveConfiguration();
 		} catch (err) {
+			// Banner state is set by the controller's onError hook; this
+			// catch just keeps the rejection from surfacing as unhandled.
 			console.error("Failed to save configuration", err);
 		}
 	}
 
 	private async _loadConfiguration(name: string): Promise<void> {
+		this._controllerError = null;
 		try {
 			await this._gridCtrl.loadConfiguration(name);
 		} catch (err) {
@@ -1262,33 +1258,6 @@ export class EPPGridPanel extends LitElement {
 	}
 
 	// -- Coordinate mapping (perspective transform) --
-
-	/**
-	 * Map a target to percentage coordinates for the editor grid.
-	 * Uses the backend's already-transformed x/y (perspective applied server-side).
-	 */
-	private _mapTargetToPercent(target: Target): { x: number; y: number } {
-		return mapTargetToPercent(
-			target.x ?? 0,
-			target.y ?? 0,
-			this._roomWidth,
-			this._roomDepth,
-		);
-	}
-
-	/** Compute the inverse perspective (room→sensor) from the forward perspective. */
-	private _getInversePerspective(): number[] | null {
-		return getInversePerspective(this._perspective);
-	}
-
-	/** Apply a perspective transform (8 coefficients) to a point. */
-	private _applyPerspective(
-		h: number[],
-		x: number,
-		y: number,
-	): { x: number; y: number } {
-		return applyPerspective(h, x, y);
-	}
 
 	/** Check if a grid cell (col, row) is within the sensor's FOV and range.
 	 *  Works in sensor-space: transform cell's room-space position back to
@@ -1340,53 +1309,6 @@ export class EPPGridPanel extends LitElement {
 		return value;
 	}
 
-	// Configuration card metrics cache — keyed by configuration object reference.
-	// Invalidated when perspective or max-range changes (FOV inputs).
-	// fetchConfigurations returns fresh objects each call, so stale entries drop
-	// naturally via WeakMap GC when the old array is replaced.
-	private _configurationMetricsCache = new WeakMap<
-		object,
-		{
-			perspective: number[] | null;
-			maxRangeMm: number;
-			widthM: number;
-			depthM: number;
-		}
-	>();
-
-	private _getConfigurationMetrics(t: {
-		grid: number[];
-		roomWidth: number;
-		roomDepth: number;
-	}): { widthM: number; depthM: number } {
-		const perspective = this._perspective;
-		const maxRangeMm = this._computeMaxRangeMm();
-		const cached = this._configurationMetricsCache.get(t);
-		if (
-			cached &&
-			cached.perspective === perspective &&
-			cached.maxRangeMm === maxRangeMm
-		) {
-			return { widthM: cached.widthM, depthM: cached.depthM };
-		}
-		const metrics = getGridRoomMetrics(
-			new Uint8Array(t.grid),
-			t.roomWidth,
-			perspective,
-			this._getSensorFov(),
-			maxRangeMm,
-		);
-		const widthM = metrics ? metrics.widthM : t.roomWidth / 1000;
-		const depthM = metrics ? metrics.depthM : t.roomDepth / 1000;
-		this._configurationMetricsCache.set(t, {
-			perspective,
-			maxRangeMm,
-			widthM,
-			depthM,
-		});
-		return { widthM, depthM };
-	}
-
 	/**
 	 * Max range for the editor grid.  When auto-distance is on the firmware
 	 * is widened to MAX_RANGE during editing (_pushWidenedDistanceOverride),
@@ -1398,49 +1320,7 @@ export class EPPGridPanel extends LitElement {
 			: this._targetMaxDistance * 1000;
 	}
 
-	/** Get raw room bounds without padding (only actual inside cells) */
-	private _getRawRoomBounds(): {
-		minCol: number;
-		maxCol: number;
-		minRow: number;
-		maxRow: number;
-	} {
-		return getRawRoomBounds(this._grid);
-	}
-
-	/** Map a target to a fractional grid cell position (col, row) */
-	private _mapTargetToGridCell(
-		target: Target,
-	): { col: number; row: number } | null {
-		if (target.x == null || target.y == null) return null;
-		return mapTargetToGridCell(
-			target.x,
-			target.y,
-			this._roomWidth,
-			this._roomDepth,
-		);
-	}
-
 	// -- Device selector --
-
-	/** Guard navigation when dirty — shows dialog and queues the action */
-	private _guardNavigation(action: () => void): void {
-		if (this._dirty) {
-			this._pendingNavigation = action;
-			this._showUnsavedDialog = true;
-		} else {
-			action();
-		}
-	}
-
-	private _discardAndNavigate(): void {
-		this._dirty = false;
-		this._showUnsavedDialog = false;
-		if (this._pendingNavigation) {
-			this._pendingNavigation();
-			this._pendingNavigation = null;
-		}
-	}
 
 	// -- Styles --
 
@@ -1658,8 +1538,34 @@ export class EPPGridPanel extends LitElement {
 
 	private _renderGlobalDialogs() {
 		return html`
-      ${this._showConfigurationBackup ? this._renderConfigurationBackupDialog() : nothing}
-      ${this._showConfigurationRestore ? this._renderConfigurationRestoreDialog() : nothing}
+      ${
+				this._showConfigurationBackup || this._showConfigurationRestore
+					? html`<epp-configuration-dialogs
+            .localize=${this._localize}
+            .showBackup=${this._showConfigurationBackup}
+            .showRestore=${this._showConfigurationRestore}
+            .configurations=${this._getConfigurations()}
+            .configurationName=${this._configurationName}
+            .perspective=${this._perspective}
+            .maxRangeMm=${this._computeMaxRangeMm()}
+            .sensorFov=${this._getSensorFov()}
+            @configuration-name-change=${(e: CustomEvent<string>) => {
+							this._configurationName = e.detail;
+						}}
+            @configuration-save=${() => this._saveConfiguration()}
+            @configuration-load=${(e: CustomEvent<string>) =>
+							this._loadConfiguration(e.detail)}
+            @configuration-delete=${(e: CustomEvent<string>) =>
+							this._deleteConfiguration(e.detail)}
+            @backup-cancel=${() => {
+							this._showConfigurationBackup = false;
+						}}
+            @restore-close=${() => {
+							this._showConfigurationRestore = false;
+						}}
+          ></epp-configuration-dialogs>`
+					: nothing
+			}
       ${
 				this._showUnsavedDialog
 					? html`
@@ -1669,13 +1575,10 @@ export class EPPGridPanel extends LitElement {
               <p class="overlay-help">${this._localize("dialogs.unsaved_changes_body")}</p>
               <div class="template-dialog-actions">
                 <button class="wizard-btn wizard-btn-back"
-                  @click=${() => {
-										this._showUnsavedDialog = false;
-										this._pendingNavigation = null;
-									}}
+                  @click=${() => this._navGuard.cancelPendingNavigation()}
                 >${this._localize("common.cancel")}</button>
                 <button class="wizard-btn wizard-btn-primary" style="background: var(--error-color, #f44336);"
-                  @click=${this._discardAndNavigate}
+                  @click=${() => this._navGuard.discardAndNavigate()}
                 >${this._localize("common.discard")}</button>
               </div>
             </div>
@@ -1708,18 +1611,56 @@ export class EPPGridPanel extends LitElement {
     `;
 	}
 
+	// Host hook for FlasherController.confirmDeleteOriginalFirmware — shows
+	// the themed delete-confirm dialog and resolves with the user's choice.
+	private _requestFlasherDeleteConfirm(): Promise<boolean> {
+		// Only one confirm can be pending; treat a stale one as cancelled so
+		// its awaiting flow unwinds instead of hanging forever.
+		this._flasherDeleteConfirmResolve?.(false);
+		this._showFlasherDeleteConfirm = true;
+		return new Promise<boolean>((resolve) => {
+			this._flasherDeleteConfirmResolve = resolve;
+		});
+	}
+
+	private _resolveFlasherDeleteConfirm(ok: boolean): void {
+		this._showFlasherDeleteConfirm = false;
+		this._flasherDeleteConfirmResolve?.(ok);
+		this._flasherDeleteConfirmResolve = null;
+	}
+
+	private _renderFlasherDeleteConfirmDialog() {
+		if (!this._showFlasherDeleteConfirm) return nothing;
+		return html`
+			<div class="template-dialog">
+				<div class="template-dialog-card">
+					<h3>${this._localize("flasher.confirm_delete_title")}</h3>
+					<p class="overlay-help">${this._localize("flasher.confirm_delete_message")}</p>
+					<div class="template-dialog-actions">
+						<button class="wizard-btn wizard-btn-back"
+							@click=${() => this._resolveFlasherDeleteConfirm(false)}
+						>${this._localize("common.cancel")}</button>
+						<button class="wizard-btn wizard-btn-primary" style="background: var(--error-color, #f44336);"
+							@click=${() => this._resolveFlasherDeleteConfirm(true)}
+						>${this._localize("common.delete")}</button>
+					</div>
+				</div>
+			</div>
+		`;
+	}
+
 	private _renderTabBar() {
 		return html`
 			<div class="tab-bar">
 				<button class="tab ${this._panelTab === "config" ? "active" : ""}"
 					@click=${() => {
-						this._flasherCtrl.resetUsbState();
+						void this._flasherCtrl.resetUsbState();
 						this._panelTab = "config";
 						this._loadDevices();
 					}}>${this._localize("tabs.device_configuration")}</button>
 				<button class="tab ${this._panelTab === "flasher" ? "active" : ""}"
 					@click=${() => {
-						this._flasherCtrl.resetUsbState();
+						void this._flasherCtrl.resetUsbState();
 						this._panelTab = "flasher";
 						if (this._flasherCtrl.loading) {
 							this._flasherCtrl.hass = this.hass;
@@ -1747,53 +1688,72 @@ export class EPPGridPanel extends LitElement {
 			return html`<div class="tab-layout">
 				${this._renderTabBar()}
 				<epp-flasher-view
-					.hass=${this.hass}
 					.flashableDevices=${this._flasherCtrl.flashableDevices}
 					.loading=${this._flasherCtrl.loading}
 					.localize=${this._localize}
 					.usbFlashState=${this._flasherCtrl.usbFlashState}
 					.wifiNetworks=${this._flasherCtrl.wifiNetworks}
-					.firmwareBaseUrl=${this._flasherCtrl.firmwareBaseUrl}
 					.firmwareVersion=${this._flasherCtrl.firmwareVersion}
 					.integrationVersion=${this._flasherCtrl.integrationVersion}
 					.otaStates=${this._flasherCtrl.otaStates}
 					.cancelledDeviceIpHint=${this._flasherCtrl.cancelledDeviceIpHint}
 					@flash-complete=${() => {
-						this._flasherCtrl.resetUsbState();
+						void this._flasherCtrl.resetUsbState();
 						this._loadDevices();
 						this._panelTab = "config";
 					}}
 					@usb-flash=${(e: CustomEvent) => {
-						this._handleUsbFlash(e.detail.variant);
+						void this._flasherCtrl.handleUsbFlash(e.detail.variant);
 					}}
 					@usb-wifi-config=${() => {
-						this._handleUsbWifiConfig();
+						void this._flasherCtrl.handleUsbWifiConfig();
 					}}
-					@usb-retry=${this._handleUsbRetry}
-					@retry-ha-add=${this._handleRetryHaAdd}
-					@flasher-cancel=${this._handleFlasherCancel}
+					@usb-retry=${() => {
+						this._flasherCtrl.handleUsbRetry();
+					}}
+					@retry-ha-add=${() => {
+						void this._flasherCtrl.handleRetryHaAdd();
+					}}
+					@flasher-cancel=${() => {
+						void this._flasherCtrl.handleFlasherCancel();
+					}}
 					@wifi-scan=${() => {
-						this._handleWifiScan();
+						void this._flasherCtrl.handleWifiScan();
 					}}
 					@wifi-provision=${(e: CustomEvent) => {
-						this._handleWifiProvision(e.detail.ssid, e.detail.password);
+						void this._flasherCtrl.handleWifiProvision(
+							e.detail.ssid,
+							e.detail.password,
+						);
 					}}
 					@update-firmware=${(e: CustomEvent) => {
 						this._flasherCtrl.startOta(e.detail.mac);
 					}}
 					@retry-ota=${(e: CustomEvent) => {
+						// Clear the error AND start a fresh OTA — dismissing alone
+						// made "Retry" a two-click flow (the second click being the
+						// Update button that reappeared).
 						this._flasherCtrl.dismissOtaError(e.detail.mac);
-					}}
-					@wifi-complete=${() => {
-						this._flasherCtrl.resetUsbState();
-						this._loadDevices();
-						this._panelTab = "config";
+						this._flasherCtrl.startOta(e.detail.mac);
 					}}
 				></epp-flasher-view>
+				${this._renderFlasherDeleteConfirmDialog()}
 			</div>`;
 		}
 
-		if (this.hass?.connection?.connected === false || !this._haConnected) {
+		// While the user is editing settings, swapping the whole template out
+		// for a connection/loading screen unmounts <epp-settings-view>, which
+		// wipes its private `_overrides` (every unsaved toggle / slider edit).
+		// HA debounces ESPHome reloads 30s after a disabled_by change, so a
+		// settings save reliably triggers a brief offline window 30s later —
+		// long enough to lose any in-flight edits the user made after
+		// clicking Save. Every full-page status branch below must honour
+		// this and inline a banner above the settings view instead.
+		const inSettingsEdit = this._view === "settings" && this._selectedMac;
+		const haDisconnected =
+			this.hass?.connection?.connected === false || !this._haConnected;
+
+		if (haDisconnected && !inSettingsEdit) {
 			return html`<div class="tab-layout">
 				${this._renderTabBar()}
 				<div class="panel">
@@ -1805,7 +1765,7 @@ export class EPPGridPanel extends LitElement {
 			</div>`;
 		}
 
-		if (this._loading) {
+		if (this._loading && !inSettingsEdit) {
 			return html`<div class="tab-layout">
 				${this._renderTabBar()}
 				<div class="loading-container">${this._localize("common.loading")}</div>
@@ -1841,10 +1801,8 @@ export class EPPGridPanel extends LitElement {
         <div class="panel">
           ${this._renderHeader()}
           <epp-wizard
-            .hass=${this.hass}
-            .selectedMac=${this._selectedMac}
             .rawTargets=${this._rawTargets}
-            .sensorState=${{ occupancy: this._sensorState.occupancy }}
+            .sensorState=${this._getWizardSensorState()}
             .localize=${this._localize}
             .initialRoomWidth=${this._roomWidth}
             .initialRoomDepth=${this._roomDepth}
@@ -1853,25 +1811,7 @@ export class EPPGridPanel extends LitElement {
             @begin-corners=${() => {
 							this._view = "calibrate";
 						}}
-            @calibration-complete=${async (e: CustomEvent) => {
-							const { perspective, roomWidth, roomDepth } = e.detail;
-							this._perspective = perspective;
-							this._roomWidth = roomWidth;
-							this._roomDepth = roomDepth;
-							this._initGridFromRoom();
-							// Furniture is anchored to the old room dimensions/footprint; clear it
-							// so the user re-places it under the new calibration.
-							this._furniture = [];
-							this._view = "live";
-							// set_setup enables zone_presence — update local state
-							this._entitiesConfig = {
-								...this._entitiesConfig,
-								zone_presence: true,
-							};
-							await this._gridCtrl.applyLayout().catch((err: unknown) => {
-								console.error("Failed to apply layout after calibration", err);
-							});
-						}}
+            @wizard-save=${(e: CustomEvent) => this._onWizardSave(e)}
           @wizard-cancel=${() => {
 						this._view = "live";
 					}}
@@ -1888,17 +1828,19 @@ export class EPPGridPanel extends LitElement {
 			!!this._selectedMac && (!dev || dev.firmware_status === "unavailable");
 		const protocolOk = !dev || dev.firmware_status === "compatible";
 
-		// Compute the inline status banner for settings-view editing.
-		// While the user is editing settings, swapping the whole template out
-		// for a connection banner unmounts <epp-settings-view>, which wipes
-		// its private `_overrides` (every unsaved toggle / slider edit). HA
-		// debounces ESPHome reloads 30s after a disabled_by change, so a
-		// settings save reliably triggers a brief offline window 30s later
-		// — long enough to lose any in-flight edits the user made after
-		// clicking Save. Inline the banner above the settings view instead.
+		// Compute the inline status banner for settings-view editing (see the
+		// `inSettingsEdit` comment above for why the full-page branches must
+		// not unmount the settings view).
 		let settingsStatusBanner: any = nothing;
-		if (this._view === "settings" && this._selectedMac) {
-			if (this._deviceCtrl.reconnecting) {
+		if (inSettingsEdit) {
+			if (haDisconnected) {
+				settingsStatusBanner = html`
+					<div class="protocol-fullpage protocol-fullpage-info">
+						<ha-icon icon="mdi:connection"></ha-icon>
+						<p>${this._localize("connection.ha_reconnecting")}</p>
+					</div>
+				`;
+			} else if (this._deviceCtrl.reconnecting) {
 				settingsStatusBanner = html`
 					<div class="protocol-fullpage protocol-fullpage-info">
 						<ha-icon icon="mdi:connection"></ha-icon>
@@ -1911,8 +1853,6 @@ export class EPPGridPanel extends LitElement {
 				settingsStatusBanner = this._renderProtocolBanner();
 			}
 		}
-
-		const inSettingsEdit = this._view === "settings" && this._selectedMac;
 
 		if (this._deviceCtrl.reconnecting && !inSettingsEdit) {
 			return html`<div class="tab-layout">
@@ -1957,7 +1897,53 @@ export class EPPGridPanel extends LitElement {
 					? this._renderEditor()
 					: this._renderLiveOverview();
 
-		return html`<div class="tab-layout">${this._renderTabBar()}${content}${this._renderGlobalDialogs()}</div>`;
+		return html`<div class="tab-layout">${this._renderTabBar()}${this._renderControllerErrorBanner()}${content}${this._renderGlobalDialogs()}</div>`;
+	}
+
+	/**
+	 * Persist a finished calibration from the wizard.
+	 *
+	 * Contract: the wizard validates + computes the homography, dispatches
+	 * `wizard-save` with the payload and disables its Save button; the panel
+	 * owns the `eppgrid/set_setup` call (matching how every other view
+	 * persists). On success the panel navigates to live, unmounting the
+	 * wizard; on failure it calls `saveFailed()` on the wizard element so the
+	 * wizard re-enables Save and shows a localized error.
+	 */
+	private async _onWizardSave(e: CustomEvent): Promise<void> {
+		// currentTarget is only valid during synchronous dispatch — capture it
+		// before the first await.
+		const wizard = e.currentTarget as EppWizard;
+		const { perspective, roomWidth, roomDepth } = e.detail;
+		try {
+			await this.hass.callWS({
+				type: "eppgrid/set_setup",
+				mac: this._selectedMac,
+				perspective,
+				room_width: roomWidth,
+				room_depth: roomDepth,
+			});
+		} catch (err) {
+			console.error("Failed to save calibration", err);
+			wizard.saveFailed();
+			return;
+		}
+		this._perspective = perspective;
+		this._roomWidth = roomWidth;
+		this._roomDepth = roomDepth;
+		this._initGridFromRoom();
+		// Furniture is anchored to the old room dimensions/footprint; clear it
+		// so the user re-places it under the new calibration.
+		this._furniture = [];
+		this._view = "live";
+		// set_setup enables zone_presence — update local state
+		this._entitiesConfig = {
+			...this._entitiesConfig,
+			zone_presence: true,
+		};
+		await this._gridCtrl.applyLayout().catch((err: unknown) => {
+			console.error("Failed to apply layout after calibration", err);
+		});
 	}
 
 	private async _deleteCalibration(): Promise<void> {
@@ -1965,7 +1951,7 @@ export class EPPGridPanel extends LitElement {
 		this._perspective = null;
 		this._roomWidth = 0;
 		this._roomDepth = 0;
-		this._grid = new Uint8Array(GRID_COLS * GRID_ROWS);
+		this._grid = new Uint8Array(GRID_CELL_COUNT);
 		this._zoneConfigs = INITIAL_ZONE_SLOTS;
 		this._furniture = [];
 		// set_setup will disable zone_presence and target_xy — update local state
@@ -1974,41 +1960,26 @@ export class EPPGridPanel extends LitElement {
 			zone_presence: false,
 			target_xy: false,
 		};
-		// Reset auto distances to maximums and persist before clearing
-		// calibration, so _push_config_to_device sends the correct values.
+		// Reset auto distances to the canonical default maximums and persist
+		// before clearing calibration, so _push_config_to_device sends the
+		// correct values.
 		if (this._targetAutoDistance) {
-			this._targetMaxDistance = 6;
+			this._targetMaxDistance = SETTINGS_DEFAULTS.target_max_distance;
 		}
 		if (this._staticAutoDistance) {
-			this._staticMinDistance = 0.3;
-			this._staticMaxDistance = 16;
+			this._staticMinDistance = SETTINGS_DEFAULTS.static_min_distance;
+			this._staticMaxDistance = SETTINGS_DEFAULTS.static_max_distance;
 		}
 		// Clear calibration and layout on the backend
 		try {
 			if (this._targetAutoDistance || this._staticAutoDistance) {
+				// Full payload from SETTINGS_FIELD_MAP via _buildSettingsPayload
+				// (the distance resets above flow in through panel state) — a
+				// hand-built field list here silently missed new settings.
 				await this.hass.callWS({
 					type: "eppgrid/set_settings",
 					mac: this._selectedMac,
-					temperature_offset: this._temperatureOffset,
-					humidity_offset: this._humidityOffset,
-					illuminance_offset: this._illuminanceOffset,
-					motion_timeout: this._motionTimeout,
-					target_auto_distance: this._targetAutoDistance,
-					target_max_distance: this._targetMaxDistance,
-					stuck_target_timeout: this._stuckTargetTimeout,
-					static_auto_distance: this._staticAutoDistance,
-					static_min_distance: this._staticMinDistance,
-					static_max_distance: this._staticMaxDistance,
-					static_trigger_threshold: this._staticTriggerThreshold,
-					static_renew_threshold: this._staticRenewThreshold,
-					static_timeout: this._staticTimeout,
-					static_on_delay: this._staticOnDelay,
-					led_mode: this._ledMode,
-					led_brightness: this._ledBrightness,
-					led_presence_color: this._ledPresenceColor,
-					relay_trigger_mode: this._relayTriggerMode,
-					relay_contact_mode: this._relayContactMode,
-					entities: this._entitiesConfig || {},
+					...this._buildSettingsPayload(),
 				});
 			}
 			await this.hass.callWS({
@@ -2035,7 +2006,7 @@ export class EPPGridPanel extends LitElement {
 	}
 
 	private _changePlacement(): void {
-		this._guardNavigation(() =>
+		this._navGuard.guardNavigation(() =>
 			this._applyView({
 				view: this._deviceCtrl.showRoomCalibrationTutorial
 					? "tutorial"
@@ -2077,7 +2048,7 @@ export class EPPGridPanel extends LitElement {
           @selected=${(e: CustomEvent<{ value: string }>) => {
 						const val = e.detail.value;
 						if (!val || val === this._selectedMac) return;
-						this._guardNavigation(async () => {
+						this._navGuard.guardNavigation(async () => {
 							this._closeDeviceSession();
 							this._selectedMac = val;
 							persistSelectedMac(val);
@@ -2092,6 +2063,30 @@ export class EPPGridPanel extends LitElement {
         ></ha-select>
       </div>
     `;
+	}
+
+	/**
+	 * Dismissible banner for failed grid-controller operations (apply
+	 * layout, save settings, save/load configuration). The op name set by
+	 * the controller's onError hook selects the `errors.*` translation.
+	 */
+	private _renderControllerErrorBanner() {
+		if (!this._controllerError) return nothing;
+		return html`
+			<div class="controller-error-banner" role="alert">
+				<ha-icon icon="mdi:alert-circle-outline"></ha-icon>
+				<span>${this._localize(`errors.${this._controllerError}`)}</span>
+				<button
+					class="controller-error-dismiss"
+					aria-label=${this._localize("common.close")}
+					@click=${() => {
+						this._controllerError = null;
+					}}
+				>
+					<ha-icon icon="mdi:close"></ha-icon>
+				</button>
+			</div>
+		`;
 	}
 
 	private _renderProtocolBanner() {
@@ -2176,21 +2171,10 @@ export class EPPGridPanel extends LitElement {
 	}
 
 	private _renderLiveGrid() {
-		// Track last in-room position for pending display (live overview
-		// uses backend status — active means target is in saved room grid)
-		for (let i = 0; i < this._targets.length; i++) {
-			const t = this._targets[i];
-			if (t.x != null && t.y != null && t.status === "active") {
-				this._zoneEngineState.targetPrevXY[i] = { x: t.x, y: t.y };
-			}
-		}
-
-		// Build backend occupancy map
-		const occupancy: Record<number, boolean> = {};
-		for (const [k, v] of Object.entries(this._zoneState.occupancy)) {
-			occupancy[Number(k)] = v as boolean;
-		}
-
+		// Pure render: last-in-room-position tracking for the pending-target
+		// display lives in TargetController.handleTargetData (per data frame),
+		// and the backend occupancy map is passed through by reference so
+		// epp-grid's dirty-check only fires on real zone-state frames.
 		return html`
 			<epp-grid
 				.grid=${this._grid}
@@ -2202,10 +2186,8 @@ export class EPPGridPanel extends LitElement {
 				.furniture=${this._furniture}
 				.selectedFurnitureId=${this._selectedFurnitureId}
 				.sidebarTab=${this._sidebarTab}
-				.showHitCounts=${this._showHitCounts}
-				.occupancy=${occupancy}
+				.occupancy=${this._zoneState.occupancy}
 				.targetPrevXY=${this._zoneEngineState.targetPrevXY}
-				.heatmapColors=${this._showHitCounts ? this._computeHeatmapColors() : null}
 				.localize=${this._localize}
 				.maxGridPx=${480}
 				.maxRangeMm=${this._computeMaxRangeMm()}
@@ -2244,13 +2226,12 @@ export class EPPGridPanel extends LitElement {
 		this._targetMenu = null;
 	}
 
+	// Wraps the shared bounds-checked helper; keeps the -1 sentinel the
+	// panel's callers test with `idx >= 0` / `idx < 0`.
 	private _targetCellIndex(x: number, y: number): number {
 		const pos = mapTargetToGridCell(x, y, this._roomWidth, this._roomDepth);
 		if (!pos) return -1;
-		const col = Math.floor(pos.col);
-		const row = Math.floor(pos.row);
-		if (col < 0 || col >= GRID_COLS || row < 0 || row >= GRID_ROWS) return -1;
-		return row * GRID_COLS + col;
+		return targetCellIndex(pos) ?? -1;
 	}
 
 	/**
@@ -2272,6 +2253,10 @@ export class EPPGridPanel extends LitElement {
 		if (idx >= 0) {
 			this._dismissedTargets = new Map(this._dismissedTargets);
 			this._dismissedTargets.set(targetIndex, idx);
+			// Mirror the dismiss into the local zone engine so the editor
+			// preview collapses the zone immediately — same semantics as the
+			// firmware's dismiss_target service applied on-device below.
+			this._targetCtrl.dismissTarget(targetIndex, idx);
 
 			try {
 				await this.hass.callWS({
@@ -2299,6 +2284,7 @@ export class EPPGridPanel extends LitElement {
 		const next = new Uint8Array(this._grid);
 		next[idx] = optimisticByte;
 		this._grid = next;
+		this._zoneEngineGridChanged();
 		this._closeTargetMenu();
 		// One-shot save: persist directly without going through applyLayout
 		// (which prunes zones, filters furniture, switches view, and clears
@@ -2309,17 +2295,7 @@ export class EPPGridPanel extends LitElement {
 				mac: this._selectedMac,
 				grid_bytes: Array.from(this._grid),
 				zone_slots: this._zoneConfigs.map((z, i) => serializeSlot(z, i)),
-				furniture: this._furniture.map((f) => ({
-					type: f.type,
-					icon: f.icon,
-					label: f.label,
-					x: f.x,
-					y: f.y,
-					width: f.width,
-					height: f.height,
-					rotation: f.rotation,
-					lockAspect: f.lockAspect,
-				})),
+				furniture: this._furniture.map(serializeFurniture),
 			});
 		} catch (err) {
 			// Roll back ONLY the cell we mutated, and only if it still holds our
@@ -2353,26 +2329,25 @@ export class EPPGridPanel extends LitElement {
 		`;
 	}
 
+	// Editor-only save bar: rendered exclusively from _renderEditor (the
+	// settings view renders its own bar inside <epp-settings-view>), so the
+	// handlers call the editor flows directly — the old per-view ternaries
+	// were dead branches.
 	private _renderSaveCancelButtons() {
-		const saveHandler =
-			this._view === "settings" ? this._saveSettings : this._applyLayout;
-		return html`
-      <div class="save-cancel-bar">
-        <button class="wizard-btn wizard-btn-back"
-          @click=${() => {
-						if (this._view === "editor") {
-							this._cancelEditor();
-						} else {
-							this._cancelSettings();
-						}
-					}}
-        >${this._localize("common.cancel")}</button>
-        <button class="wizard-btn wizard-btn-primary"
-          ?disabled=${this._saving || !this._dirty}
-          @click=${saveHandler}
-        >${this._saving ? this._localize("common.saving") : this._localize("common.save")}</button>
-      </div>
-    `;
+		return renderSaveCancelBar({
+			saving: this._saving,
+			dirty: this._dirty,
+			localize: this._localize,
+			onSave: () => {
+				// applyLayout traps its own failures (controller onError
+				// banner); .catch guards a late rejection surfacing as
+				// "Uncaught (in promise)".
+				this._applyLayout().catch(() => {});
+			},
+			onCancel: () => {
+				this._cancelEditor();
+			},
+		});
 	}
 
 	private _renderLiveOverview() {
@@ -2381,7 +2356,7 @@ export class EPPGridPanel extends LitElement {
 			: html`<epp-wizard
             mode="uncalibrated-fov"
             .rawTargets=${this._rawTargets}
-            .sensorState=${{ occupancy: this._sensorState.occupancy }}
+            .sensorState=${this._getWizardSensorState()}
             .localize=${this._localize}
             @start-calibration=${() => this._changePlacement()}
           ></epp-wizard>`;
@@ -2442,7 +2417,7 @@ export class EPPGridPanel extends LitElement {
 												: nothing
 										}
                     <button class="sidebar-menu-item" @click=${() => {
-											this._guardNavigation(() =>
+											this._navGuard.guardNavigation(() =>
 												this._applyView({
 													view: "settings",
 													sidebarTab: this._sidebarTab,
@@ -2492,7 +2467,7 @@ export class EPPGridPanel extends LitElement {
                 .hasPerspective=${this._perspective != null}
                 .localize=${this._localize}
                 @view-change=${(e: CustomEvent) => {
-									this._guardNavigation(() =>
+									this._navGuard.guardNavigation(() =>
 										this._applyView({
 											view: e.detail.view,
 											sidebarTab: e.detail.sidebarTab ?? this._sidebarTab,
@@ -2505,17 +2480,6 @@ export class EPPGridPanel extends LitElement {
         </div>
       </div>
     `;
-	}
-
-	private _toggleAccordion(id: string) {
-		this._openAccordions = this._openAccordions.has(id)
-			? new Set()
-			: new Set([id]);
-	}
-
-	/** Get the sensor position in room-space mm by transforming sensor origin (0,0). */
-	private _getSensorRoomPosition(): { x: number; y: number } | null {
-		return getSensorRoomPosition(this._perspective);
 	}
 
 	private _autoDetectionRange(): number {
@@ -2585,11 +2549,16 @@ export class EPPGridPanel extends LitElement {
 	}
 
 	private _renderEditor() {
-		// Run local zone engine replica and compute occupancy for editor view.
+		// Editor occupancy preview comes from the local zone engine replica.
+		// The engine ticks once per target frame (TargetController.
+		// handleTargetData) and caches its result; renders read the cache so
+		// pointermove-driven re-renders don't advance engine time. The lazy
+		// fallback covers the first render before any frame has arrived.
 		// IMPORTANT: this method must be a pure function of state — do NOT
 		// mutate `_targets[i].status` or `_sensorState`. Build derived data
 		// in local variables and route the children off those.
-		const engineResult = this._runLocalZoneEngine();
+		const engineResult =
+			this._targetCtrl.editorEngineResult ?? this._runLocalZoneEngine();
 		const editorOccupancy = engineResult.occupancy;
 
 		// Build a NEW targets array overlaying engine-computed status onto
@@ -2643,10 +2612,8 @@ export class EPPGridPanel extends LitElement {
                 .sidebarTab=${this._sidebarTab}
                 .editable=${true}
                 .activeZone=${this._activeZone}
-                .showHitCounts=${this._showHitCounts}
                 .occupancy=${editorOccupancy}
                 .targetPrevXY=${this._zoneEngineState.targetPrevXY}
-                .heatmapColors=${this._showHitCounts ? this._computeHeatmapColors() : null}
                 .localize=${this._localize}
                 .maxGridPx=${480}
                 .maxRangeMm=${this._editorMaxRangeMm()}
@@ -2719,6 +2686,8 @@ export class EPPGridPanel extends LitElement {
 											configs[slot] = { ...current, ...updates };
 											this._zoneConfigs = configs as unknown as ZoneSlots;
 											this._dirty = true;
+											// Engine input changed → firmware set_zones reset.
+											this._zoneEngineZoneConfigChanged();
 										}}
                     @zone0-change=${(e: CustomEvent<Partial<Zone0Config>>) => {
 											const current = this._zoneConfigs[0];
@@ -2726,6 +2695,8 @@ export class EPPGridPanel extends LitElement {
 											next[0] = { ...current, ...e.detail };
 											this._zoneConfigs = next as unknown as ZoneSlots;
 											this._dirty = true;
+											// Engine input changed → firmware set_zones reset.
+											this._zoneEngineZoneConfigChanged();
 										}}
                   ></epp-zone-sidebar>`
 								: this._sidebarTab === "overlays"
@@ -2779,878 +2750,129 @@ export class EPPGridPanel extends LitElement {
     `;
 	}
 
-	private _renderConfigurationBackupDialog() {
-		return html`
-      <div class="template-dialog">
-        <div class="template-dialog-card">
-          <h3>${this._localize("dialogs.backup_configuration")}</h3>
-          <input
-            type="text"
-            class="configuration-name-input"
-            placeholder="${this._localize("dialogs.configuration_name")}"
-            .value=${this._configurationName}
-            @input=${(e: Event) => {
-							this._configurationName = (e.target as HTMLInputElement).value;
-						}}
-          />
-          <div class="template-dialog-actions">
-            <button
-              class="wizard-btn wizard-btn-back"
-              @click=${() => {
-								this._showConfigurationBackup = false;
-							}}
-            >${this._localize("common.cancel")}</button>
-            <button
-              class="wizard-btn wizard-btn-primary"
-              ?disabled=${!this._configurationName.trim()}
-              @click=${() => this._saveConfiguration()}
-            >${this._localize("common.save")}</button>
-          </div>
-        </div>
-      </div>
-    `;
-	}
-
-	private _renderConfigurationRestoreDialog() {
-		// Only show configurations whose zone array fits the current slot
-		// schema (length = 8). Older or malformed entries are filtered out
-		// because loading them would fail.
-		const configurations = this._getConfigurations().filter(
-			(t: { zones?: unknown }) =>
-				Array.isArray(t.zones) && t.zones.length === 8,
-		);
-		return html`
-      <div class="template-dialog">
-        <div class="template-dialog-card">
-          <h3>${this._localize("dialogs.restore_configuration")}</h3>
-          ${
-						configurations.length === 0
-							? html`<p class="overlay-help">${this._localize("dialogs.no_configurations")}</p>`
-							: html`<div class="configuration-card-grid">
-                  ${configurations.map(
-										(t) => html`
-                    <div class="configuration-card"
-                      role="button"
-                      tabindex="0"
-                      @click=${() => this._loadConfiguration(t.name)}
-                      @keydown=${(e: KeyboardEvent) => {
-												if (e.key === "Enter" || e.key === " ") {
-													e.preventDefault();
-													this._loadConfiguration(t.name);
-												}
-											}}
-                    >
-                      <button class="configuration-card-delete"
-                        type="button"
-                        aria-label="${this._localize("common.delete")}"
-                        @click=${(e: Event) => {
-													e.stopPropagation();
-													this._deleteConfiguration(t.name);
-												}}
-                        @keydown=${(e: KeyboardEvent) => {
-													e.stopPropagation();
-												}}
-                      >
-                        <ha-icon icon="mdi:close"></ha-icon>
-                      </button>
-                      <div class="configuration-card-thumbnail">
-                        ${renderConfigurationThumbnail(
-													t.grid,
-													// New schema: zones is length-8 with slot 0 =
-													// Zone0Config and slots 1-7 = named zones. The
-													// thumbnail only uses the named zones (for cell
-													// colouring, indexed by zoneId-1), so strip slot 0.
-													(t.zones?.slice(1) as (ZoneConfig | null)[]) ??
-														new Array(7).fill(null),
-													t.roomWidth,
-													t.roomDepth,
-													t.furniture ?? [],
-												)}
-                      </div>
-                      <div class="configuration-card-info">
-                        <div class="configuration-card-name">${t.name}</div>
-                        <div class="configuration-card-size">${(() => {
-													// Same FOV-aware metrics the live footer uses; cached
-													// per template to avoid re-scanning the grid every render.
-													const { widthM, depthM } =
-														this._getConfigurationMetrics(t);
-													return `${this._localize.formatNumber(widthM, 1)}m × ${this._localize.formatNumber(depthM, 1)}m`;
-												})()}</div>
-                      </div>
-                    </div>
-                  `,
-									)}
-                </div>`
-					}
-          <div class="template-dialog-actions">
-            <button
-              class="wizard-btn wizard-btn-back"
-              @click=${() => {
-								this._showConfigurationRestore = false;
-							}}
-            >${this._localize("common.close")}</button>
-          </div>
-        </div>
-      </div>
-    `;
-	}
-
 	/** Run local zone engine replica — delegated to TargetController. */
 	private _runLocalZoneEngine(): ZoneEngineResult {
 		return this._targetCtrl.runLocalZoneEngine();
 	}
 
-	/** Enrich a raw debug log string — delegated to TargetController. */
-	private _enrichDebugLog(raw: string): string {
-		return this._targetCtrl.enrichDebugLog(raw);
+	/**
+	 * Zone-engine reset hooks (PanelHost contract). Called whenever a grid /
+	 * zone-config edit is applied so the local engine mirrors the firmware's
+	 * set_grid / set_zones resets. Not `private`: part of the PanelHost
+	 * structural interface used by GridStateController.
+	 */
+	_zoneEngineGridChanged(): void {
+		this._targetCtrl.resetEngineForGridChange();
+		// Symmetry with the engine's dismissedCells reset — drop the UI
+		// hide-map so a grid change can't keep hiding a target on a cell
+		// index that no longer maps to the same physical location.
+		this._dismissedTargets = new Map();
 	}
 
-	/** Compute rgba overlay colour per zone — delegated to TargetController. */
-	private _computeHeatmapColors(): Map<number, string> {
-		return this._targetCtrl.computeHeatmapColors();
+	_zoneEngineZoneConfigChanged(): void {
+		this._targetCtrl.resetEngineForZoneConfigChange();
+		this._dismissedTargets = new Map();
 	}
 
-	/** Get trigger/renew/timeout for a zone from the current editor state. */
-	private _getZoneThresholds(zid: number): {
-		trigger: number;
-		renew: number;
-		timeout: number;
-		handoffTimeout: number;
-	} {
-		const z0 = resolveZoneParams(this._zoneConfigs[0]);
-		return getZoneThresholds(
-			zid,
-			this._namedZones(),
-			z0.type,
-			z0.trigger,
-			z0.renew,
-			z0.timeout,
-			z0.handoff_timeout,
-		);
+	/**
+	 * Shared renderer for the two collapsible debug-log sections (frontend
+	 * zone-engine log in the editor, backend log on the live overview) —
+	 * previously two ~70-line near-identical templates that only differed in
+	 * which state fields and scroll container they target. The log lines
+	 * themselves are appended imperatively by TargetController (see
+	 * _appendToLogContainer); this template only renders the chrome and the
+	 * waiting-for-events placeholder.
+	 */
+	private _renderDebugLogSection(
+		showField: "_showDebugLog" | "_showBackendDebugLog",
+		linesField: "_debugLogLines" | "_backendDebugLogLines",
+		prevField: "_debugLogPrev" | "_backendDebugLogPrev",
+		containerId: string,
+	) {
+		const show = this[showField];
+		return html`
+      <div style="margin-top: 8px; min-width: 0;">
+        <div style="display: flex; align-items: center; gap: 4px;">
+          <button
+            class="live-section-header live-section-link"
+            style="font-size: 12px; gap: 4px; min-width: 0; overflow: hidden;"
+            @click=${() => {
+							this[showField] = !this[showField];
+							if (!this[showField]) {
+								this[linesField] = [];
+								this[prevField] = null;
+							}
+						}}
+          >
+            <ha-icon icon=${show ? "mdi:chevron-down" : "mdi:chevron-right"} style="--mdc-icon-size: 14px;"></ha-icon>
+            ${this._localize("live.debug.detection_events")}
+          </button>
+          ${
+						show
+							? html`
+            <div style="margin-left: auto; display: flex; gap: 4px;">
+              <button
+                class="debug-log-btn"
+                @click=${() => {
+									navigator.clipboard
+										.writeText(this[linesField].join("\n"))
+										.catch((err) =>
+											console.warn("Clipboard write failed", err),
+										);
+								}}
+              >${this._localize("live.debug.copy_all")}</button>
+              <button
+                class="debug-log-btn"
+                @click=${() => {
+									this[linesField] = [];
+									this[prevField] = null;
+									const el = this.shadowRoot?.getElementById(containerId);
+									if (el) {
+										el.innerHTML = "";
+										const placeholder = document.createElement("div");
+										placeholder.style.cssText =
+											"color: var(--secondary-text-color, #999); font-style: italic;";
+										placeholder.textContent = this._localize(
+											"live.debug.waiting_for_events",
+										);
+										el.appendChild(placeholder);
+									}
+								}}
+              >${this._localize("live.debug.clear")}</button>
+            </div>
+          `
+							: nothing
+					}
+        </div>
+        ${
+					show
+						? html`
+          <div class="debug-log-container" id=${containerId}>
+            <div style="color: var(--secondary-text-color, #999); font-style: italic;">${this._localize("live.debug.waiting_for_events")}</div>
+          </div>
+        `
+						: nothing
+				}
+      </div>
+    `;
 	}
 
 	private _renderBackendDebugLog() {
-		return html`
-      <div style="margin-top: 8px; min-width: 0;">
-        <div style="display: flex; align-items: center; gap: 4px;">
-          <button
-            class="live-section-header live-section-link"
-            style="font-size: 12px; gap: 4px; min-width: 0; overflow: hidden;"
-            @click=${() => {
-							this._showBackendDebugLog = !this._showBackendDebugLog;
-							if (!this._showBackendDebugLog) {
-								this._backendDebugLogLines = [];
-								this._backendDebugLogPrev = null;
-							}
-						}}
-          >
-            <ha-icon icon=${this._showBackendDebugLog ? "mdi:chevron-down" : "mdi:chevron-right"} style="--mdc-icon-size: 14px;"></ha-icon>
-            ${this._localize("live.debug.detection_events")}
-          </button>
-          ${
-						this._showBackendDebugLog
-							? html`
-            <div style="margin-left: auto; display: flex; gap: 4px;">
-              <button
-                class="debug-log-btn"
-                @click=${() => {
-									navigator.clipboard
-										.writeText(this._backendDebugLogLines.join("\n"))
-										.catch((err) =>
-											console.warn("Clipboard write failed", err),
-										);
-								}}
-              >${this._localize("live.debug.copy_all")}</button>
-              <button
-                class="debug-log-btn"
-                @click=${() => {
-									this._backendDebugLogLines = [];
-									this._backendDebugLogPrev = null;
-									const el = this.shadowRoot?.getElementById(
-										"backend-debug-log-scroll",
-									);
-									if (el) {
-										el.innerHTML = "";
-										const placeholder = document.createElement("div");
-										placeholder.style.cssText =
-											"color: var(--secondary-text-color, #999); font-style: italic;";
-										placeholder.textContent = this._localize(
-											"live.debug.waiting_for_events",
-										);
-										el.appendChild(placeholder);
-									}
-								}}
-              >${this._localize("live.debug.clear")}</button>
-            </div>
-          `
-							: nothing
-					}
-        </div>
-        ${
-					this._showBackendDebugLog
-						? html`
-          <div class="debug-log-container" id="backend-debug-log-scroll">
-            <div style="color: var(--secondary-text-color, #999); font-style: italic;">${this._localize("live.debug.waiting_for_events")}</div>
-          </div>
-        `
-						: nothing
-				}
-      </div>
-    `;
+		return this._renderDebugLogSection(
+			"_showBackendDebugLog",
+			"_backendDebugLogLines",
+			"_backendDebugLogPrev",
+			"backend-debug-log-scroll",
+		);
 	}
 
 	private _renderDebugLog() {
-		return html`
-      <div style="margin-top: 8px; min-width: 0;">
-        <div style="display: flex; align-items: center; gap: 4px;">
-          <button
-            class="live-section-header live-section-link"
-            style="font-size: 12px; gap: 4px; min-width: 0; overflow: hidden;"
-            @click=${() => {
-							this._showDebugLog = !this._showDebugLog;
-							if (!this._showDebugLog) {
-								this._debugLogLines = [];
-								this._debugLogPrev = null;
-							}
-						}}
-          >
-            <ha-icon icon=${this._showDebugLog ? "mdi:chevron-down" : "mdi:chevron-right"} style="--mdc-icon-size: 14px;"></ha-icon>
-            ${this._localize("live.debug.detection_events")}
-          </button>
-          ${
-						this._showDebugLog
-							? html`
-            <div style="margin-left: auto; display: flex; gap: 4px;">
-              <button
-                class="debug-log-btn"
-                @click=${() => {
-									navigator.clipboard
-										.writeText(this._debugLogLines.join("\n"))
-										.catch((err) =>
-											console.warn("Clipboard write failed", err),
-										);
-								}}
-              >${this._localize("live.debug.copy_all")}</button>
-              <button
-                class="debug-log-btn"
-                @click=${() => {
-									this._debugLogLines = [];
-									this._debugLogPrev = null;
-									const el =
-										this.shadowRoot?.getElementById("debug-log-scroll");
-									if (el) {
-										el.innerHTML = "";
-										const placeholder = document.createElement("div");
-										placeholder.style.cssText =
-											"color: var(--secondary-text-color, #999); font-style: italic;";
-										placeholder.textContent = this._localize(
-											"live.debug.waiting_for_events",
-										);
-										el.appendChild(placeholder);
-									}
-								}}
-              >${this._localize("live.debug.clear")}</button>
-            </div>
-          `
-							: nothing
-					}
-        </div>
-        ${
-					this._showDebugLog
-						? html`
-          <div class="debug-log-container" id="debug-log-scroll">
-            <div style="color: var(--secondary-text-color, #999); font-style: italic;">${this._localize("live.debug.waiting_for_events")}</div>
-          </div>
-        `
-						: nothing
-				}
-      </div>
-    `;
-	}
-
-	private _renderFurnitureOverlay(
-		cellPx: number,
-		minCol: number,
-		minRow: number,
-		visCols: number,
-		visRows: number,
-	) {
-		if (!this._furniture.length) return nothing;
-
-		return html`
-			<epp-furniture-overlay
-				.furniture=${this._furniture}
-				.selectedFurnitureId=${this._selectedFurnitureId}
-				.roomWidth=${this._roomWidth}
-				.cellPx=${cellPx}
-				.minCol=${minCol}
-				.minRow=${minRow}
-				.visCols=${visCols}
-				.visRows=${visRows}
-				.sidebarTab=${this._sidebarTab}
-				.localize=${this._localize}
-				@furniture-select=${(e: CustomEvent) => {
-					this._selectedFurnitureId = e.detail;
-				}}
-				@furniture-pointer-down=${(e: CustomEvent) => {
-					const { e: ptrEvent, id, type, handle, rotation } = e.detail;
-					this._onFurniturePointerDown(ptrEvent, id, type, handle, rotation);
-				}}
-				@furniture-delete=${(e: CustomEvent) => {
-					this._removeFurniture(e.detail);
-				}}
-			></epp-furniture-overlay>
-		`;
-	}
-
-	private async _handleUsbWifiConfig(): Promise<void> {
-		const ctrl = this._flasherCtrl;
-		if (ctrl.opRunning) {
-			ctrl.updateUsbState({
-				step: "error",
-				errorKey: "usb.errors.serial_port_busy",
-				fatal: true,
-			});
-			return;
-		}
-		const myOp = ctrl.opId;
-		ctrl.opRunning = true;
-		try {
-			if (!ctrl.serialPort) {
-				ctrl.updateUsbState({ step: "connecting" });
-				ctrl.serialPort = await navigator.serial.requestPort();
-			}
-			if (ctrl.opId !== myOp) {
-				ctrl.opRunning = false;
-				return;
-			}
-
-			ctrl.updateUsbState({ step: "wifi_scan" });
-			const { writer, reader, networks } = await runWifiScan(ctrl.serialPort);
-			if (ctrl.opId !== myOp) {
-				ctrl.opRunning = false;
-				return;
-			}
-
-			ctrl.wifiNetworks = networks;
-			ctrl.updateUsbState({ step: "wifi_provision" });
-
-			(ctrl as any)._serialWriter = writer;
-			(ctrl as any)._serialReader = reader;
-			ctrl.opRunning = false;
-		} catch (err: any) {
-			ctrl.opRunning = false;
-			if (ctrl.opId !== myOp) return;
-			if (err?.name === "NotFoundError") {
-				ctrl.resetUsbState();
-				return;
-			}
-			const lastStep = ctrl.usbFlashState?.step;
-			const e = err as {
-				errorKey?: string;
-				errorParams?: Record<string, unknown>;
-				message?: string;
-			};
-			ctrl.updateUsbState({
-				step: "error",
-				lastStep,
-				errorKey: e.errorKey ?? "wifi.errors.scan_failed",
-				errorParams: e.errorParams as
-					| Record<string, string | number>
-					| undefined,
-			});
-		}
-	}
-
-	private async _handleUsbFlash(variant: string): Promise<void> {
-		const ctrl = this._flasherCtrl;
-		if (ctrl.opRunning) {
-			ctrl.updateUsbState({
-				step: "error",
-				errorKey: "usb.errors.serial_port_busy",
-				fatal: true,
-			});
-			return;
-		}
-		const myOp = ctrl.opId;
-		ctrl.opRunning = true;
-		try {
-			// Step 1: Request serial port
-			ctrl.updateUsbState({ step: "connecting" });
-			const port = await navigator.serial.requestPort();
-			if (ctrl.opId !== myOp) {
-				ctrl.opRunning = false;
-				return;
-			}
-			ctrl.serialPort = port;
-
-			// Step 2: Flash firmware
-			ctrl.updateUsbState({ step: "flashing", progress: 0 });
-			await flashFirmware(
-				port,
-				variant,
-				(pct) => {
-					ctrl.updateUsbState({ step: "flashing", progress: pct });
-				},
-				{
-					baseUrl: ctrl.firmwareBaseUrl,
-					accessToken: this.hass?.auth?.accessToken,
-					beforeFlash: async (mac: string | undefined) => {
-						if (!mac) return;
-						const matched = ctrl.flashableDevices.find(
-							(d) => d.mac.toUpperCase() === mac,
-						);
-						if (
-							matched?.firmware_type === "original" &&
-							matched?.esphome_config_entry_id
-						) {
-							const ok = window.confirm(
-								this._localize("flasher.confirm_delete_message"),
-							);
-							if (!ok)
-								throw Object.assign(new Error("Flash cancelled"), {
-									errorKey: "flasher.errors.flash_cancelled",
-								});
-							await ctrl.deleteEsphomeDevice(matched.esphome_config_entry_id);
-						}
-					},
-				},
-			);
-			if (ctrl.opId !== myOp) {
-				ctrl.opRunning = false;
-				return;
-			}
-
-			if (variant.startsWith("ethernet")) {
-				// Ethernet variants have no WiFi — skip provisioning
-				await port.close().catch(() => {});
-				ctrl.serialPort = null;
-				ctrl.opRunning = false;
-				ctrl.updateUsbState({ step: "complete", variant });
-				return;
-			}
-
-			// Step 3: Check if device is already provisioned (firmware-upgrade path)
-			ctrl.updateUsbState({ step: "wifi_check" });
-			let skipIp: string | null = null;
-			let skipWriter: WritableStreamDefaultWriter<Uint8Array> | null = null;
-			let skipReader: ReadableStreamDefaultReader<Uint8Array> | null = null;
-			try {
-				// After a fresh flash the device cold-boots, loads creds from NVS, then
-				// re-associates with WiFi + gets DHCP. The Improv URL (which carries the
-				// IP we need) only shows up after that full sequence — often 7-10s, up
-				// to 20s on a slow AP. Use a generous readDelay so we don't fall through
-				// to wifi_scan on a device that actually has valid creds.
-				// AbortController + in-flight promise tracking so
-				// _handleFlasherCancel can both signal abort AND await the
-				// op's settlement before closing the port (otherwise the
-				// reader lock is still held when close() runs and close
-				// rejects, leaving the port open and unusable for retries).
-				const abortCtrl = new AbortController();
-				(ctrl as any)._wifiCheckAbort = abortCtrl;
-				const queryPromise = queryImprovState(
-					port,
-					{ readDelay: 30000 },
-					{ signal: abortCtrl.signal },
-				);
-				(ctrl as any)._wifiCheckPromise = queryPromise;
-				const info = await queryPromise;
-				(ctrl as any)._wifiCheckAbort = null;
-				(ctrl as any)._wifiCheckPromise = null;
-				if (info.state === "PROVISIONED" && info.ip && info.ip !== "0.0.0.0") {
-					skipIp = info.ip;
-					skipWriter = info.writer;
-					skipReader = info.reader;
-				} else {
-					try {
-						info.writer.releaseLock();
-					} catch {}
-					try {
-						info.reader.releaseLock();
-					} catch {}
-				}
-			} catch {
-				// Fall through to scan flow — runWifiScan has its own handshake-with-retry.
-			}
-
-			if (ctrl.opId !== myOp) {
-				ctrl.opRunning = false;
-				return;
-			}
-
-			if (skipIp && skipWriter && skipReader) {
-				// Device is already on the network — release the query's serial locks
-				// so `runWifiScan` can re-acquire them if the user clicks the
-				// "Configure WiFi" override. Keep the port itself open and attached
-				// to ctrl.serialPort for that override path.
-				try {
-					skipReader.releaseLock();
-				} catch {}
-				try {
-					skipWriter.releaseLock();
-				} catch {}
-				ctrl.updateUsbState({
-					step: "wifi_configured",
-					ip: skipIp,
-					autoSkipped: true,
-				});
-				ctrl.opRunning = false;
-				await this._addToHa(skipIp);
-				return;
-			}
-
-			// Step 4: WiFi scan
-			ctrl.updateUsbState({ step: "wifi_scan" });
-			const { writer, reader, networks } = await runWifiScan(port);
-			if (ctrl.opId !== myOp) {
-				ctrl.opRunning = false;
-				return;
-			}
-
-			ctrl.wifiNetworks = networks;
-			ctrl.updateUsbState({ step: "wifi_provision" });
-
-			(ctrl as any)._serialWriter = writer;
-			(ctrl as any)._serialReader = reader;
-			ctrl.opRunning = false;
-		} catch (err: any) {
-			if (ctrl.opId !== myOp) {
-				ctrl.opRunning = false;
-				return;
-			}
-			if (err?.name === "NotFoundError") {
-				// User cancelled port picker
-				ctrl.resetUsbState();
-				return;
-			}
-			const e = err as {
-				errorKey?: string;
-				errorParams?: Record<string, unknown>;
-				message?: string;
-				name?: string;
-			};
-			// User-cancel from the original-firmware confirm dialog throws
-			// flasher.errors.flash_cancelled. The pre-fix path landed in the
-			// generic "error" UI because lastStep was already "flashing";
-			// surface this as a clean reset so the user can pick a different
-			// device or retry without a confusing failure banner.
-			if (e.errorKey === "flasher.errors.flash_cancelled") {
-				if (ctrl.serialPort) {
-					try {
-						await ctrl.serialPort.close().catch(() => {});
-					} catch {}
-					ctrl.serialPort = null;
-				}
-				ctrl.opRunning = false;
-				ctrl.resetUsbState();
-				return;
-			}
-			const lastStep = ctrl.usbFlashState?.step;
-			// Clean up port on error — don't leave it dangling. Await the
-			// close so the "error" UI renders only after the port is fully
-			// released (unawaited close left the port lock pending and the
-			// next retry surfaced as "serial port busy").
-			if (ctrl.serialPort) {
-				try {
-					await ctrl.serialPort.close().catch(() => {});
-				} catch {}
-				ctrl.serialPort = null;
-			}
-			const msg = e.message ?? "Unknown error";
-			const isPortBusy = /already open|already closed/i.test(msg);
-			const isDisconnect =
-				/stream stopped|NetworkError|disconnected|break|lost|No response from device/i.test(
-					msg,
-				);
-			const fallbackKey = isPortBusy
-				? "usb.errors.serial_port_busy"
-				: isDisconnect
-					? "usb.errors.device_disconnected"
-					: "usb.errors.flash_failed";
-			ctrl.opRunning = false;
-			ctrl.updateUsbState({
-				step: "error",
-				lastStep,
-				variant,
-				errorKey: e.errorKey ?? fallbackKey,
-				errorParams: e.errorParams as
-					| Record<string, string | number>
-					| undefined,
-				fatal: isPortBusy || e.errorKey === "usb.errors.serial_port_busy",
-			});
-		}
-	}
-
-	private async _handleWifiProvision(
-		ssid: string,
-		password: string,
-	): Promise<void> {
-		const ctrl = this._flasherCtrl;
-		const myOp = ctrl.opId;
-		const port = ctrl.serialPort;
-		if (!port?.writable || !port?.readable) {
-			ctrl.updateUsbState({
-				step: "error",
-				errorKey: "usb.errors.serial_port_unavailable",
-			});
-			return;
-		}
-
-		// Release any old reader/writer locks before getting fresh ones
-		try {
-			(ctrl as any)._serialReader?.releaseLock();
-		} catch {}
-		try {
-			(ctrl as any)._serialWriter?.releaseLock();
-		} catch {}
-
-		const writer = port.writable.getWriter();
-		const reader = port.readable.getReader();
-		(ctrl as any)._serialWriter = writer;
-		(ctrl as any)._serialReader = reader;
-
-		try {
-			ctrl.updateUsbState({ step: "wifi_connecting" });
-			console.debug(`[wifi-provision] sending WIFI_SETTINGS ssid="${ssid}"`);
-			await runWifiProvision(writer, ssid, password);
-			if (ctrl.opId !== myOp) return;
-
-			// Wait for PROVISIONED state (creds saved to NVS)
-			ctrl.updateUsbState({ step: "reading_ip" });
-			const ip = await detectIpAddress(reader, writer, 60000);
-			if (ctrl.opId !== myOp) return;
-
-			reader.releaseLock();
-			writer.releaseLock();
-
-			(ctrl as any)._serialReader = null;
-			(ctrl as any)._serialWriter = null;
-			await port.close().catch(() => {});
-			ctrl.serialPort = null;
-
-			// WiFi side succeeded. Intermediate state while HA-add runs.
-			ctrl.updateUsbState({ step: "wifi_configured", ip });
-
-			await this._addToHa(ip);
-		} catch (err: any) {
-			try {
-				(ctrl as any)._serialReader?.releaseLock();
-			} catch {}
-			try {
-				(ctrl as any)._serialWriter?.releaseLock();
-			} catch {}
-			(ctrl as any)._serialReader = null;
-			(ctrl as any)._serialWriter = null;
-			if (ctrl.opId !== myOp) return;
-			const lastStep = ctrl.usbFlashState?.step;
-			const e = err as {
-				errorKey?: string;
-				errorParams?: Record<string, unknown>;
-				message?: string;
-			};
-			ctrl.updateUsbState({
-				step: "error",
-				lastStep,
-				errorKey: e.errorKey ?? "wifi.errors.provisioning_failed",
-				errorParams: e.errorParams as
-					| Record<string, string | number>
-					| undefined,
-			});
-		}
-	}
-
-	// After a fresh WiFi association the device's API socket / mDNS / DHCP can
-	// take up to ~50s to settle. Retry at a steady 10s cadence so the UI has
-	// predictable progress rather than front-loaded flurry + long silence.
-	private static readonly HA_ADD_RETRY_DELAY_MS = 10_000;
-	private static readonly HA_ADD_MAX_ATTEMPTS = 6;
-
-	private async _addToHaWithRetry(ip: string): Promise<HaAddResult> {
-		const ctrl = this._flasherCtrl;
-		const myOp = ctrl.opId;
-		const maxAttempts = EPPGridPanel.HA_ADD_MAX_ATTEMPTS;
-		const delay = EPPGridPanel.HA_ADD_RETRY_DELAY_MS;
-
-		for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-			if (attempt > 1) {
-				ctrl.updateUsbState({
-					step: "wifi_configured",
-					ip,
-					haAddAttempt: attempt,
-					haAddMaxAttempts: maxAttempts,
-				});
-				const cancelled = await this._sleepUntilOpChanges(delay, myOp);
-				if (cancelled) return { type: "cannot_connect" };
-			}
-
-			let haAdd: HaAddResult;
-			try {
-				haAdd = await ctrl.addEsphomeDevice(ip);
-			} catch (err) {
-				const msg = (err as { message?: string })?.message;
-				return { type: "failed", reason: msg ?? "unknown" };
-			}
-			if (ctrl.opId !== myOp) return haAdd;
-			if (haAdd.type !== "cannot_connect") return haAdd;
-		}
-		return { type: "cannot_connect" };
-	}
-
-	// Sleep up to `ms`, waking early (returning true) if opId changes so cancel
-	// doesn't have to wait out the full backoff. Polls at 250ms granularity.
-	private async _sleepUntilOpChanges(
-		ms: number,
-		expectedOpId: number,
-	): Promise<boolean> {
-		const ctrl = this._flasherCtrl;
-		const step = 250;
-		let remaining = ms;
-		while (remaining > 0) {
-			if (ctrl.opId !== expectedOpId) return true;
-			const chunk = Math.min(remaining, step);
-			await new Promise((r) => setTimeout(r, chunk));
-			remaining -= chunk;
-		}
-		return ctrl.opId !== expectedOpId;
-	}
-
-	private async _addToHa(ip: string): Promise<void> {
-		const ctrl = this._flasherCtrl;
-		const myOp = ctrl.opId;
-
-		const haAdd = await this._addToHaWithRetry(ip);
-		if (ctrl.opId !== myOp) return;
-
-		ctrl.updateUsbState({ step: "complete", ip, haAdd });
-	}
-
-	private async _handleRetryHaAdd(): Promise<void> {
-		const ctrl = this._flasherCtrl;
-		const state = ctrl.usbFlashState;
-		if (state?.step !== "complete" || !state.ip) return;
-
-		const ip = state.ip;
-		const myOp = ctrl.opId;
-		ctrl.updateUsbState({ step: "wifi_configured", ip });
-		const haAdd = await this._addToHaWithRetry(ip);
-		if (ctrl.opId !== myOp) return;
-		ctrl.updateUsbState({ step: "complete", ip, haAdd });
-	}
-
-	private _handleUsbRetry = (): void => {
-		const ctrl = this._flasherCtrl;
-		const state = ctrl.usbFlashState;
-		const lastStep = state?.lastStep;
-		const variant = state?.variant;
-		try {
-			(ctrl as any)._serialReader?.releaseLock();
-		} catch {}
-		try {
-			(ctrl as any)._serialWriter?.releaseLock();
-		} catch {}
-		(ctrl as any)._serialReader = null;
-		(ctrl as any)._serialWriter = null;
-		// Route retry to the step that actually failed. Flash-phase failures
-		// (connecting, flashing, wifi_check) re-run the full flash; WiFi-phase
-		// failures retry the WiFi config flow (which prompts for a new port).
-		const isFlashPhase =
-			lastStep === "connecting" ||
-			lastStep === "flashing" ||
-			lastStep === "wifi_check";
-		if (isFlashPhase && variant) {
-			this._handleUsbFlash(variant);
-		} else {
-			this._handleUsbWifiConfig();
-		}
-	};
-
-	private async _handleFlasherCancel(): Promise<void> {
-		const ctrl = this._flasherCtrl;
-		const state = ctrl.usbFlashState;
-		if (state?.step === "wifi_configured" && state.ip) {
-			ctrl.setCancelledDeviceIpHint(state.ip);
-		}
-		// Abort any in-flight polling (queryImprovState during wifi_check).
-		const abortCtrl = (ctrl as any)._wifiCheckAbort;
-		const inFlight = (ctrl as any)._wifiCheckPromise as
-			| Promise<unknown>
-			| undefined;
-		if (abortCtrl?.abort) {
-			abortCtrl.abort();
-			(ctrl as any)._wifiCheckAbort = null;
-		}
-		const port = ctrl.serialPort;
-		ctrl.bumpOpId();
-		ctrl.opRunning = false;
-		// Wait for the aborted op to actually settle before closing the
-		// port — otherwise close() runs while the reader lock is still
-		// held, rejects with "the port has a readable or writable stream",
-		// and the port stays open + unusable for the next flash attempt.
-		if (inFlight) {
-			try {
-				await inFlight;
-			} catch {}
-			(ctrl as any)._wifiCheckPromise = null;
-		}
-		if (port) {
-			try {
-				await port.close();
-			} catch {}
-		}
-		ctrl.resetUsbState();
-	}
-
-	private async _handleWifiScan(): Promise<void> {
-		const ctrl = this._flasherCtrl;
-		if (!ctrl.serialPort) return;
-		ctrl.bumpOpId();
-		const myOp = ctrl.opId;
-		try {
-			ctrl.updateUsbState({ step: "wifi_scan" });
-			const writer = (ctrl as any)._serialWriter;
-			const reader = (ctrl as any)._serialReader;
-			// Release old locks before re-scanning
-			try {
-				reader?.releaseLock();
-			} catch {}
-			try {
-				writer?.releaseLock();
-			} catch {}
-
-			const result = await runWifiScan(ctrl.serialPort);
-			if (ctrl.opId !== myOp) {
-				// Cancelled or superseded while the scan was in flight — release
-				// the fresh locks and bail out so we don't resurrect the flow.
-				try {
-					result.reader.releaseLock();
-				} catch {}
-				try {
-					result.writer.releaseLock();
-				} catch {}
-				return;
-			}
-			(ctrl as any)._serialWriter = result.writer;
-			(ctrl as any)._serialReader = result.reader;
-			ctrl.wifiNetworks = result.networks;
-			ctrl.updateUsbState({ step: "wifi_provision" });
-		} catch (err: any) {
-			if (ctrl.opId !== myOp) return;
-			console.error("WiFi scan failed:", err);
-			const lastStep = ctrl.usbFlashState?.step;
-			const e = err as {
-				errorKey?: string;
-				errorParams?: Record<string, unknown>;
-				message?: string;
-			};
-			ctrl.updateUsbState({
-				step: "error",
-				lastStep,
-				errorKey: e.errorKey ?? "wifi.errors.scan_failed",
-				errorParams: e.errorParams as
-					| Record<string, string | number>
-					| undefined,
-			});
-		}
+		return this._renderDebugLogSection(
+			"_showDebugLog",
+			"_debugLogLines",
+			"_debugLogPrev",
+			"debug-log-scroll",
+		);
 	}
 }
 

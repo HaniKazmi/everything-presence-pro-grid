@@ -11,6 +11,7 @@ import { solvePerspective } from "../perspective.js";
 import {
 	autoComputeRoomDimensions,
 	autoDetectionRange,
+	boundsToRoomMm,
 	classifyCellInSensor,
 	computeMaxRangeMm,
 	computeSensorFov,
@@ -21,6 +22,7 @@ import {
 	median,
 	medianPoint,
 	type SensorFov,
+	visibleCellBounds,
 } from "../room-geometry.js";
 
 // Helper: create a simple identity-like perspective where sensor-space ≈ room-space
@@ -351,6 +353,58 @@ describe("autoComputeRoomDimensions", () => {
 		const result = autoComputeRoomDimensions(corners);
 		expect(result.width).toBe(500);
 	});
+
+	it("adds corner offsets back so dims are wall-to-wall (65cm plant corner)", () => {
+		// The wizard's own example: room is 4000x5000mm wall-to-wall, but a
+		// plant blocks corner 3 (back-left), so the user marked it 650mm from
+		// the left wall and 650mm from the back wall. Sensor space == room
+		// space here, so the marked points are (hand-computed):
+		const corners = [
+			{ raw_x: 0, raw_y: 0, offset_side: 0, offset_fb: 0 },
+			{ raw_x: 4000, raw_y: 0, offset_side: 0, offset_fb: 0 },
+			{ raw_x: 4000, raw_y: 5000, offset_side: 0, offset_fb: 0 },
+			{ raw_x: 650, raw_y: 4350, offset_side: 650, offset_fb: 650 },
+		];
+		// width = dist(c0,c1) = 4000 (no side offsets on corners 0/1).
+		// depthLeft: dist(c0,c3) = sqrt(650² + 4350²) = sqrt(19,345,000);
+		//   the along-wall component is sqrt(19,345,000 − 650²) = 4350,
+		//   plus fb offsets (0 + 650) = 5000.
+		// depthRight = dist(c1,c2) = 5000. depth = (5000+5000)/2 = 5000.
+		const result = autoComputeRoomDimensions(corners);
+		expect(result.width).toBe(4000);
+		expect(result.depth).toBe(5000);
+	});
+
+	it("adds symmetric offsets back (marks 100mm inside every wall)", () => {
+		// User can't touch any wall and marks 100mm inside each one.
+		// Room is 4000x5000 wall-to-wall.
+		const corners = [
+			{ raw_x: 100, raw_y: 100, offset_side: 100, offset_fb: 100 },
+			{ raw_x: 3900, raw_y: 100, offset_side: 100, offset_fb: 100 },
+			{ raw_x: 3900, raw_y: 4900, offset_side: 100, offset_fb: 100 },
+			{ raw_x: 100, raw_y: 4900, offset_side: 100, offset_fb: 100 },
+		];
+		// width = (3900-100) + 100 + 100 = 4000
+		// depth = (4900-100) + 100 + 100 = 5000 on both sides
+		const result = autoComputeRoomDimensions(corners);
+		expect(result.width).toBe(4000);
+		expect(result.depth).toBe(5000);
+	});
+
+	it("clamps the along-wall component at zero for nonsense offsets", () => {
+		// Offsets larger than the marked-point separation would make
+		// dist² − Δoffset² negative; the sqrt must clamp to 0 instead of NaN.
+		const corners = [
+			{ raw_x: 0, raw_y: 0, offset_side: 0, offset_fb: 0 },
+			{ raw_x: 100, raw_y: 0, offset_side: 0, offset_fb: 0 },
+			{ raw_x: 100, raw_y: 100, offset_side: 9000, offset_fb: 0 },
+			{ raw_x: 0, raw_y: 100, offset_side: 0, offset_fb: 0 },
+		];
+		const result = autoComputeRoomDimensions(corners);
+		expect(Number.isFinite(result.width)).toBe(true);
+		expect(Number.isFinite(result.depth)).toBe(true);
+		expect(result.depth).toBeGreaterThanOrEqual(0);
+	});
 });
 
 describe("median", () => {
@@ -603,5 +657,82 @@ describe("getGridRoomMetrics", () => {
 		const coneLimited = getGridRoomMetrics(grid, 3000, null, fov, 6000);
 		expect(coneLimited).not.toBeNull();
 		expect(coneLimited!.depthM).toBeLessThan(full!.depthM);
+	});
+
+	it("classifies each cell at most once (single shared scan)", () => {
+		// classifyCellInSensor reads fov.dirX exactly once per invocation
+		// (the cone dot-product), so counting dirX getter accesses counts
+		// classifications. The bounds pass and the furthest-distance pass
+		// must share one scan instead of re-classifying every cell.
+		const grid = new Uint8Array(GRID_CELL_COUNT);
+		let insideCells = 0;
+		for (let r = 1; r < 6; r++) {
+			for (let c = 7; c <= 12; c++) {
+				grid[r * GRID_COLS + c] = CELL_ROOM_BIT;
+				insideCells++;
+			}
+		}
+
+		let dirXReads = 0;
+		const countingFov: SensorFov = {
+			sensorPos: { x: 900, y: 0 },
+			get dirX() {
+				dirXReads++;
+				return 0;
+			},
+			dirY: 1,
+		} as SensorFov;
+
+		const result = getGridRoomMetrics(grid, 1800, null, countingFov, 6000);
+		expect(result).not.toBeNull();
+		expect(dirXReads).toBeLessThanOrEqual(insideCells);
+	});
+});
+
+describe("visibleCellBounds", () => {
+	it("returns unpadded bounds that getVisibleRoomBounds pads by one cell", () => {
+		const grid = initGridFromRoom(3000, 3000);
+		const raw = visibleCellBounds(grid, null, 3000, 6000);
+		const padded = getVisibleRoomBounds(grid, null, 3000, 6000);
+		expect(padded.minCol).toBe(Math.max(0, raw.minCol - 1));
+		expect(padded.maxCol).toBe(Math.min(GRID_COLS - 1, raw.maxCol + 1));
+		expect(padded.minRow).toBe(Math.max(0, raw.minRow - 1));
+		expect(padded.maxRow).toBe(Math.min(GRID_ROWS - 1, raw.maxRow + 1));
+	});
+
+	it("invokes the per-cell callback once per visible cell", () => {
+		const grid = new Uint8Array(GRID_CELL_COUNT);
+		grid[2 * GRID_COLS + 9] = CELL_ROOM_BIT;
+		grid[3 * GRID_COLS + 9] = CELL_ROOM_BIT;
+		const seen: [number, number][] = [];
+		visibleCellBounds(grid, null, 600, 6000, (col, row) =>
+			seen.push([col, row]),
+		);
+		expect(seen).toEqual([
+			[9, 2],
+			[9, 3],
+		]);
+	});
+});
+
+describe("boundsToRoomMm", () => {
+	it("converts cell-space bounds to room-relative mm extents", () => {
+		// 3000mm room → startCol 5. Bounds covering exactly the room
+		// (cols 5-14, rows 0-9) span 0..3000mm in both axes.
+		const mm = boundsToRoomMm(
+			{ minCol: 5, maxCol: 14, minRow: 0, maxRow: 9 },
+			3000,
+		);
+		expect(mm).toEqual({ minX: 0, maxX: 3000, minY: 0, maxY: 3000 });
+	});
+
+	it("yields negative minX for padded bounds left of the room", () => {
+		const mm = boundsToRoomMm(
+			{ minCol: 4, maxCol: 15, minRow: 0, maxRow: 10 },
+			3000,
+		);
+		expect(mm.minX).toBe(-300);
+		expect(mm.maxX).toBe(3300);
+		expect(mm.maxY).toBe(3300);
 	});
 });
