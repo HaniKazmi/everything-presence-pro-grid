@@ -3901,6 +3901,11 @@ class TestWebSocketSubscriptions:
         connection.send_result.assert_called_once_with(23)
         mock_device_conn.subscribe_states.assert_awaited_once()
         assert 23 in connection.subscriptions
+        # Subscriber counted at manager/mac level (NOT on the connection), and
+        # released via the manager on unsubscribe — with matching kind strings.
+        mock_dm.note_target_subscribe.assert_called_once_with("AA:BB:CC:DD:EE:FF", "raw_target_subs")
+        connection.subscriptions[23]()
+        mock_dm.note_target_unsubscribe.assert_called_once_with("AA:BB:CC:DD:EE:FF", "raw_target_subs")
 
     async def test_subscribe_grid_targets_no_session(self, hass: HomeAssistant, config_entry: MockConfigEntry) -> None:
         """subscribe_grid_targets returns error without active session."""
@@ -3938,6 +3943,11 @@ class TestWebSocketSubscriptions:
         connection.send_result.assert_called_once_with(25)
         mock_device_conn.subscribe_states.assert_awaited_once()
         assert 25 in connection.subscriptions
+        # Subscriber counted at manager/mac level (NOT on the connection), and
+        # released via the manager on unsubscribe — with matching kind strings.
+        mock_dm.note_target_subscribe.assert_called_once_with("AA:BB:CC:DD:EE:FF", "grid_target_subs")
+        connection.subscriptions[25]()
+        mock_dm.note_target_unsubscribe.assert_called_once_with("AA:BB:CC:DD:EE:FF", "grid_target_subs")
 
     async def test_raw_targets_handles_malformed_position(
         self, hass: HomeAssistant, config_entry: MockConfigEntry

@@ -145,10 +145,10 @@ class TestSubscriberCountsSurviveSessionReplacement:
     """
 
     def _fresh_session(self) -> MagicMock:
-        """A just-reopened connection: its own per-connection counters are 0."""
+        """A just-reopened connection. It carries NO subscriber counters of its
+        own — emission gating is driven entirely by the manager's per-mac
+        `_target_subs`, so the pipeline must survive this fresh connection."""
         session = MagicMock()
-        session.raw_target_subs = 0
-        session.grid_target_subs = 0
         session.async_execute_service = AsyncMock()
         session.connected = True
         return session

@@ -559,6 +559,7 @@ class DeviceManager:
             )
         self._active_connections.clear()
         self._session_refcounts.clear()
+        self._target_subs.clear()
 
     async def async_trigger_ota(self, mac: str) -> None:
         """Trigger firmware OTA update on a device.
