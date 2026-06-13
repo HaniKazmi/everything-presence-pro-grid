@@ -114,8 +114,8 @@ class TestZoneProjection:
         result = derive_exposed_entities(sources=sources, zone_groups=zone_groups)
         assert result["zones"][0]["available"] is True
 
-    def test_group_with_no_members_excluded(self) -> None:
-        """A zone group whose member list is empty doesn't expose an entity."""
+    def test_group_with_no_members_projected_unavailable(self) -> None:
+        """A zone group with no members is still projected, marked unavailable."""
         zone_groups = [{"id": "g1", "name": "Empty", "members": []}]
         result = derive_exposed_entities(sources=[], zone_groups=zone_groups)
         assert result["zones"] == [

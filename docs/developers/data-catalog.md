@@ -494,7 +494,7 @@ definition with resolved, read-time fields — each source carries its display
     "exposed_entities": {
         "presence": ["occupancy", "static_presence"],
         "zones": [
-            { "kind": "group", "id": "zg_1a2b3c4d", "name": "Bed", "available": true },
+            { "kind": "group", "id": "zg_1a2b3c4d", "name": "Zone Bed", "available": true },
             { "kind": "passthrough", "mac": "AA:BB:CC:DD:EE:FF", "zone_index": 3, "name": "Desk", "available": true }
         ]
     }
@@ -599,7 +599,7 @@ temporary connection (e.g., on-boot push when no frontend is open).
                 "id": str,
                 "name": str,        # 1-128 chars
                 "members": [
-                    {"mac": str, "zone_index": int},   # zone_index 1-7
+                    {"mac": str, "zone_index": int},   # zone_index 0-7 (0 = rest of room)
                     ...                                 # 0-16 members
                 ],
             },

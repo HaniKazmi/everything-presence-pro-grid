@@ -21,8 +21,8 @@ _LOGGER = logging.getLogger(__name__)
 class DeviceGroupManager:
     """CRUD + change notifications for device groups.
 
-    Aggregation runtime (entity wiring) is added in a later task — this layer
-    is intentionally narrow so it stays unit-testable without HA entity setup.
+    Also owns the per-group `Aggregator` lifecycle and asks the binary_sensor
+    platform (via `_platform_proxy`) to reconcile entities when groups change.
     """
 
     def __init__(self, hass: HomeAssistant, store: EPPGridStore) -> None:

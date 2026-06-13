@@ -57,8 +57,10 @@ def build_source_states(
 
     `device_name_fn(mac)` returns the device's display name (typically from DeviceManager).
     `zone_name_fn(mac, idx)` returns the user-named zone label (from EPPGridStore.devices), or None.
-    A zone is "available" if its entity is registered AND not disabled, AND the
-    user has actually configured it (has a name from zone_name_fn).
+    A zone is included whenever the user has configured it (zone_name_fn returns
+    a name); its `enabled` flag is True only when the zone entity is registered
+    and not disabled, so grouping can still mark a disabled/missing zone's output
+    unavailable.
     """
     registry = er.async_get(hass)
     sources: list[SourceState] = []
