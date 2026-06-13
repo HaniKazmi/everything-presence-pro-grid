@@ -97,14 +97,19 @@ class _PlatformProxy:
         out: list[BinarySensorEntity] = []
         for zg in group.get("zone_groups", []):
             uid = f"eppgrid_device_group_{group['id']}_zone_group_{zg['id']}"
-            if uid in self._entities:
+            existing = self._entities.get(uid)
+            if isinstance(existing, DeviceGroupZoneGroupEntity):
+                # Refresh the name so a zone-group rename updates the entity.
+                existing.update_name(zg["name"])
                 continue
             e = DeviceGroupZoneGroupEntity(group, zg, aggregator)
             self._entities[uid] = e
             out.append(e)
         for mac, idx in aggregator.outputs.get("zone_passthroughs", {}):
             uid = f"eppgrid_device_group_{group['id']}_zone_pass_{mac}_{idx}"
-            if uid in self._entities:
+            existing = self._entities.get(uid)
+            if isinstance(existing, DeviceGroupZonePassthroughEntity):
+                existing.update_name(aggregator._zone_name_fn(mac, idx) or f"Zone {idx}")
                 continue
             e = DeviceGroupZonePassthroughEntity(group, mac, idx, aggregator)
             self._entities[uid] = e
@@ -226,6 +231,13 @@ class DeviceGroupZoneGroupEntity(BinarySensorEntity):
             model="Device Group",
         )
 
+    def update_name(self, name: str) -> None:
+        """Refresh the entity name (e.g. after a zone-group rename) and push it."""
+        if self._attr_name != name:
+            self._attr_name = name
+            if self.hass is not None:
+                self.async_write_ha_state()
+
     @property
     def is_on(self) -> bool | None:
         return self._aggregator.outputs["zone_groups"].get(self._zg_id)
@@ -274,6 +286,13 @@ class DeviceGroupZonePassthroughEntity(BinarySensorEntity):
             manufacturer="Everything Presence Pro Grid",
             model="Device Group",
         )
+
+    def update_name(self, name: str) -> None:
+        """Refresh the entity name (e.g. after a zone rename) and push it."""
+        if self._attr_name != name:
+            self._attr_name = name
+            if self.hass is not None:
+                self.async_write_ha_state()
 
     @property
     def is_on(self) -> bool | None:

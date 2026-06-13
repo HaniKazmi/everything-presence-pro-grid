@@ -125,7 +125,13 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Unload a config entry."""
-    await hass.config_entries.async_unload_platforms(entry, [Platform.BINARY_SENSOR])
+    # If the platform won't unload, report failure and keep the manager/panel in
+    # place — HA then treats the entry as still loaded rather than orphaning the
+    # device-group entities.
+    unload_ok = await hass.config_entries.async_unload_platforms(entry, [Platform.BINARY_SENSOR])
+    if not unload_ok:
+        return False
+
     manager = hass.data.pop(DOMAIN, None)
     if manager is not None:
         if hasattr(manager, "device_groups"):

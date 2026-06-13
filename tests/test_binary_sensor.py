@@ -253,6 +253,39 @@ async def test_zone_group_entity_created(hass: HomeAssistant, integration_with_g
     assert eid is not None
 
 
+async def test_renaming_zone_group_updates_entity_name(
+    hass: HomeAssistant, integration_with_group_and_zones: dict
+) -> None:
+    """Renaming a zone group must update the existing helper entity's friendly
+    name (sync_all skips re-creating existing uids, so it must refresh names)."""
+    gid = integration_with_group_and_zones["group_id"]
+    er_ = er.async_get(hass)
+    eid = er_.async_get_entity_id("binary_sensor", DOMAIN, f"eppgrid_device_group_{gid}_zone_group_zg1")
+    assert eid is not None
+    assert hass.states.get(eid).attributes["friendly_name"].endswith("Bed")
+
+    manager = hass.data[DOMAIN]
+    await manager.device_groups.async_update(
+        id=gid,
+        name="Master Bedroom Presence",
+        sources=["AA:BB:CC:DD:EE:FF", "11:22:33:44:55:66"],
+        area_id=None,
+        zone_groups=[
+            {
+                "id": "zg1",
+                "name": "Bedroom",
+                "members": [
+                    {"mac": "AA:BB:CC:DD:EE:FF", "zone_index": 2},
+                    {"mac": "11:22:33:44:55:66", "zone_index": 3},
+                ],
+            }
+        ],
+    )
+    await hass.async_block_till_done()
+
+    assert hass.states.get(eid).attributes["friendly_name"].endswith("Bedroom")
+
+
 async def test_zone_group_aggregates_members(hass: HomeAssistant, integration_with_group_and_zones: dict) -> None:
     group_id = integration_with_group_and_zones["group_id"]
     er_ = er.async_get(hass)

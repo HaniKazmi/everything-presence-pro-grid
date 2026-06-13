@@ -198,6 +198,41 @@ async def test_unload_entry_no_manager(hass: HomeAssistant, config_entry: MockCo
     assert result is True
 
 
+async def test_unload_entry_returns_false_when_platform_unload_fails(
+    hass: HomeAssistant, config_entry: MockConfigEntry
+) -> None:
+    """If the binary_sensor platform fails to unload, async_unload_entry must
+    return False and leave the manager published, so HA keeps the entry loaded
+    rather than orphaning entities/devices."""
+    if hass.http is None:
+        hass.http = MagicMock()
+
+    with (
+        patch("custom_components.eppgrid.DeviceManager") as mock_dm_cls,
+        patch(
+            "custom_components.eppgrid._register_frontend_resources",
+            new_callable=AsyncMock,
+            return_value="/eppgrid_static/eppgrid-panel.js?v=deadbeef",
+        ),
+        patch("custom_components.eppgrid._register_panel", new_callable=AsyncMock),
+        patch(
+            "homeassistant.config_entries.ConfigEntries.async_unload_platforms",
+            new_callable=AsyncMock,
+            return_value=False,
+        ),
+    ):
+        mock_dm = mock_dm_cls.return_value
+        mock_dm.async_start = AsyncMock()
+        mock_dm.async_stop = AsyncMock()
+        await async_setup_entry(hass, config_entry)
+
+        result = await async_unload_entry(hass, config_entry)
+
+    assert result is False
+    assert DOMAIN in hass.data
+    mock_dm.async_stop.assert_not_awaited()
+
+
 async def test_options_update_does_not_reload_entry(hass: HomeAssistant, config_entry: MockConfigEntry) -> None:
     """Options changes are applied directly by the options flow — no update listener, no reload.
 
