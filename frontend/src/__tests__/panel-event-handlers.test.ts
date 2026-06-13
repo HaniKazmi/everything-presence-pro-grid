@@ -262,22 +262,8 @@ describe("_renderSaveCancelButtons inline handlers", () => {
 // _renderLiveOverview inline handlers
 // ========================
 describe("_renderLiveOverview inline handlers", () => {
-	it("live menu toggle on panel", () => {
-		const a = createPanel() as any;
-		a._showLiveMenu = false;
-		// Replicate panel inline handler
-		a._showLiveMenu = !a._showLiveMenu;
-		expect(a._showLiveMenu).toBe(true);
-	});
-
-	it("live menu close on click on panel", () => {
-		const a = createPanel() as any;
-		a._showLiveMenu = true;
-		// Replicate panel inline handler
-		a._showLiveMenu = false;
-		expect(a._showLiveMenu).toBe(false);
-	});
-
+	// The live-overview menu's open/close is now owned by <epp-kebab-menu>
+	// (covered in its own tests); the panel only maps item ids to actions.
 	it("detection zones button", () => {
 		const a = createPanel() as any;
 		a._enterEditor("zones");

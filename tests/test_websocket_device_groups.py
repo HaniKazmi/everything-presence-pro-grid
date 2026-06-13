@@ -1,0 +1,302 @@
+"""Tests for device_groups websocket commands."""
+
+from __future__ import annotations
+
+from unittest.mock import AsyncMock
+from unittest.mock import patch
+
+import pytest
+from homeassistant.core import HomeAssistant
+from homeassistant.helpers import entity_registry as er
+from pytest_homeassistant_custom_component.common import MockConfigEntry
+from pytest_homeassistant_custom_component.typing import WebSocketGenerator
+
+from custom_components.eppgrid.const import DOMAIN
+
+
+@pytest.fixture(autouse=True)
+def _stub_frontend_deps(hass):
+    """The integration hard-depends on frontend/panel_custom (no hass_frontend
+    in CI). Mark them loaded so dependency resolution passes, and stub panel
+    registration so a real config-entry setup works without a built frontend."""
+    hass.config.components.add("frontend")
+    hass.config.components.add("panel_custom")
+    with (
+        patch(
+            "custom_components.eppgrid._register_frontend_resources",
+            new_callable=AsyncMock,
+            return_value="/eppgrid_static/eppgrid-panel.js?v=test",
+        ),
+        patch("custom_components.eppgrid._register_panel", new_callable=AsyncMock),
+    ):
+        yield
+
+
+@pytest.fixture
+async def setup_with_sources(
+    hass: HomeAssistant,
+    config_entry: MockConfigEntry,
+    enable_custom_integrations: None,
+) -> None:
+    er_ = er.async_get(hass)
+    er_.async_get_or_create(
+        "binary_sensor",
+        "esphome",
+        "AA:BB:CC:DD:EE:FF-binary_sensor-occupancy",
+    )
+    er_.async_get_or_create(
+        "binary_sensor",
+        "esphome",
+        "11:22:33:44:55:66-binary_sensor-occupancy",
+    )
+    assert await hass.config_entries.async_setup(config_entry.entry_id)
+    await hass.async_block_till_done()
+
+
+class TestList:
+    async def test_list_empty(
+        self,
+        hass: HomeAssistant,
+        setup_with_sources: None,
+        hass_ws_client: WebSocketGenerator,
+    ) -> None:
+        client = await hass_ws_client(hass)
+        await client.send_json_auto_id({"type": "eppgrid/list_device_groups"})
+        msg = await client.receive_json()
+        assert msg["success"] is True
+        assert msg["result"]["device_groups"] == []
+
+
+class TestCreate:
+    async def test_create_returns_record_with_id(
+        self,
+        hass: HomeAssistant,
+        setup_with_sources: None,
+        hass_ws_client: WebSocketGenerator,
+    ) -> None:
+        client = await hass_ws_client(hass)
+        await client.send_json_auto_id(
+            {
+                "type": "eppgrid/create_device_group",
+                "name": "Master Bedroom",
+                "sources": ["AA:BB:CC:DD:EE:FF"],
+            }
+        )
+        msg = await client.receive_json()
+        assert msg["success"] is True
+        assert msg["result"]["device_group"]["id"]
+        assert msg["result"]["device_group"]["name"] == "Master Bedroom"
+        assert "exposed_entities" in msg["result"]["device_group"]
+
+    async def test_create_rejects_missing_name(
+        self,
+        hass: HomeAssistant,
+        setup_with_sources: None,
+        hass_ws_client: WebSocketGenerator,
+    ) -> None:
+        client = await hass_ws_client(hass)
+        await client.send_json_auto_id(
+            {
+                "type": "eppgrid/create_device_group",
+                "name": "",
+                "sources": ["AA:BB:CC:DD:EE:FF"],
+            }
+        )
+        msg = await client.receive_json()
+        assert msg["success"] is False
+
+
+class TestUpdate:
+    async def test_update_full_payload(
+        self,
+        hass: HomeAssistant,
+        setup_with_sources: None,
+        hass_ws_client: WebSocketGenerator,
+    ) -> None:
+        client = await hass_ws_client(hass)
+        await client.send_json_auto_id(
+            {
+                "type": "eppgrid/create_device_group",
+                "name": "Old",
+                "sources": ["AA:BB:CC:DD:EE:FF"],
+            }
+        )
+        created = (await client.receive_json())["result"]["device_group"]
+
+        await client.send_json_auto_id(
+            {
+                "type": "eppgrid/update_device_group",
+                "group_id": created["id"],
+                "name": "New",
+                "sources": ["AA:BB:CC:DD:EE:FF", "11:22:33:44:55:66"],
+                "area_id": "bedroom",
+                "zone_groups": [],
+            }
+        )
+        msg = await client.receive_json()
+        assert msg["success"] is True
+        assert msg["result"]["device_group"]["name"] == "New"
+        assert msg["result"]["device_group"]["sources"][0]["mac"] == "AA:BB:CC:DD:EE:FF"
+
+    async def test_update_accepts_zone_0_rest_of_room_member(
+        self,
+        hass: HomeAssistant,
+        setup_with_sources: None,
+        hass_ws_client: WebSocketGenerator,
+    ) -> None:
+        """A merged zone may include zone 0 (rest of room) — zone_index 0 must
+        pass schema validation."""
+        client = await hass_ws_client(hass)
+        await client.send_json_auto_id(
+            {
+                "type": "eppgrid/create_device_group",
+                "name": "G",
+                "sources": ["AA:BB:CC:DD:EE:FF"],
+            }
+        )
+        created = (await client.receive_json())["result"]["device_group"]
+
+        await client.send_json_auto_id(
+            {
+                "type": "eppgrid/update_device_group",
+                "group_id": created["id"],
+                "name": "G",
+                "sources": ["AA:BB:CC:DD:EE:FF"],
+                "area_id": None,
+                "zone_groups": [
+                    {
+                        "id": "zg1",
+                        "name": "Whole room",
+                        "members": [{"mac": "AA:BB:CC:DD:EE:FF", "zone_index": 0}],
+                    }
+                ],
+            }
+        )
+        msg = await client.receive_json()
+        assert msg["success"] is True
+        assert msg["result"]["device_group"]["zone_groups"][0]["members"][0]["zone_index"] == 0
+
+
+class TestDelete:
+    async def test_delete_removes_record(
+        self,
+        hass: HomeAssistant,
+        setup_with_sources: None,
+        hass_ws_client: WebSocketGenerator,
+    ) -> None:
+        client = await hass_ws_client(hass)
+        await client.send_json_auto_id(
+            {
+                "type": "eppgrid/create_device_group",
+                "name": "A",
+                "sources": ["AA:BB:CC:DD:EE:FF"],
+            }
+        )
+        gid = (await client.receive_json())["result"]["device_group"]["id"]
+
+        await client.send_json_auto_id(
+            {
+                "type": "eppgrid/delete_device_group",
+                "group_id": gid,
+            }
+        )
+        msg = await client.receive_json()
+        assert msg["success"] is True
+
+        await client.send_json_auto_id({"type": "eppgrid/list_device_groups"})
+        msg = await client.receive_json()
+        assert msg["result"]["device_groups"] == []
+
+
+class TestSubscribe:
+    async def test_subscribe_sends_initial_state(
+        self,
+        hass: HomeAssistant,
+        setup_with_sources: None,
+        hass_ws_client: WebSocketGenerator,
+    ) -> None:
+        client = await hass_ws_client(hass)
+        await client.send_json_auto_id({"type": "eppgrid/subscribe_device_groups"})
+        ack = await client.receive_json()
+        assert ack["success"] is True
+        evt = await client.receive_json()
+        assert evt["type"] == "event"
+        assert evt["event"]["device_groups"] == []
+        # candidate_sources is always present so the editor can render device
+        # zones before a group is saved.
+        assert "candidate_sources" in evt["event"]
+
+    async def test_subscribe_candidate_sources_expose_device_zones(
+        self,
+        hass: HomeAssistant,
+        setup_with_sources: None,
+        hass_ws_client: WebSocketGenerator,
+    ) -> None:
+        """Every managed device appears as a candidate source with its zones, so
+        the editor can show a device's zones the moment it's toggled."""
+        mac = "AA:BB:CC:DD:EE:FF"
+        manager = hass.data[DOMAIN]
+        # Present this MAC as a managed device with a named, enabled zone.
+        manager.devices[mac] = object()
+        manager._store.devices[mac] = {
+            "name": "Bedroom Sensor",
+            "room_layout": {"zone_slots": [{"type": "default"}, None, {"name": "Desk"}, None, None, None, None, None]},
+        }
+        er.async_get(hass).async_get_or_create("binary_sensor", "esphome", f"{mac}-binary_sensor-zone_2_presence")
+
+        client = await hass_ws_client(hass)
+        await client.send_json_auto_id({"type": "eppgrid/subscribe_device_groups"})
+        await client.receive_json()  # ack
+        evt = await client.receive_json()
+
+        cands = {c["mac"]: c for c in evt["event"]["candidate_sources"]}
+        assert mac in cands
+        assert cands[mac]["name"] == "Bedroom Sensor"
+        assert {"index": 2, "name": "Zone Desk", "enabled": True} in cands[mac]["zones"]
+
+    async def test_candidate_source_prefers_managed_device_name(
+        self,
+        hass: HomeAssistant,
+        setup_with_sources: None,
+        hass_ws_client: WebSocketGenerator,
+    ) -> None:
+        """The friendly device name (not the MAC) identifies a source/zone."""
+        from types import SimpleNamespace
+
+        mac = "AA:BB:CC:DD:EE:FF"
+        manager = hass.data[DOMAIN]
+        manager.devices[mac] = SimpleNamespace(name="Living Room")
+
+        client = await hass_ws_client(hass)
+        await client.send_json_auto_id({"type": "eppgrid/subscribe_device_groups"})
+        await client.receive_json()  # ack
+        evt = await client.receive_json()
+
+        cands = {c["mac"]: c for c in evt["event"]["candidate_sources"]}
+        assert cands[mac]["name"] == "Living Room"
+
+    async def test_subscribe_fires_on_create(
+        self,
+        hass: HomeAssistant,
+        setup_with_sources: None,
+        hass_ws_client: WebSocketGenerator,
+    ) -> None:
+        client = await hass_ws_client(hass)
+        await client.send_json_auto_id({"type": "eppgrid/subscribe_device_groups"})
+        await client.receive_json()  # ack
+        await client.receive_json()  # initial event
+
+        await client.send_json_auto_id(
+            {
+                "type": "eppgrid/create_device_group",
+                "name": "A",
+                "sources": ["AA:BB:CC:DD:EE:FF"],
+            }
+        )
+        # Either result-of-create or subscription event arrives first; accept either.
+        msgs = []
+        for _ in range(2):
+            msgs.append(await client.receive_json())
+        events = [m for m in msgs if m.get("type") == "event"]
+        assert events, "expected a subscription event after create"
+        assert len(events[0]["event"]["device_groups"]) == 1

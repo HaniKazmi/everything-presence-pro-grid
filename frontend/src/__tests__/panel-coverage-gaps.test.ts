@@ -438,50 +438,49 @@ describe("_renderLiveGrid target rendering branches", () => {
 // Live overview menu branches (now inline in panel)
 // =========================================================
 describe("live overview menu branches (panel inline)", () => {
-	/** Find a rendered menu item by its localize key, asserting it exists. */
-	function menuItem(c: HTMLElement, key: string): HTMLElement {
-		const item = Array.from(c.querySelectorAll(".sidebar-menu-item")).find(
-			(i) => i.textContent?.includes(key),
+	/** The live-overview kebab menu element from a rendered overview. */
+	function kebab(c: HTMLElement): HTMLElement {
+		const el = c.querySelector("epp-kebab-menu");
+		expect(el, "live overview should render an epp-kebab-menu").toBeTruthy();
+		return el as HTMLElement;
+	}
+	/** Selectable (non-divider) menu entries the panel builds. */
+	function selectable(a: any): { id: string; label: string }[] {
+		return a._liveMenuItems().filter((i: any) => !i.divider);
+	}
+	/** Drive the kebab's item-select wiring for the given id. */
+	function select(c: HTMLElement, id: string): void {
+		kebab(c).dispatchEvent(
+			new CustomEvent("item-select", {
+				detail: { id },
+				bubbles: true,
+				composed: true,
+			}),
 		);
-		expect(item, `menu item ${key} should render`).toBeTruthy();
-		return item as HTMLElement;
 	}
 
-	it("renders menu with furniture button when perspective exists", () => {
+	it("offers all eight entries (incl. furniture) when perspective exists", () => {
 		const a = createPanel() as any;
-		a._showLiveMenu = true;
 		a._perspective = [1, 0, 0, 0, 1, 0, 0, 0];
-		const tpl = a._renderLiveOverview();
-		const c = renderTo(tpl);
-
-		expect(c.querySelectorAll(".sidebar-menu-item").length).toBe(8);
-		menuItem(c, "menu.furniture");
-		document.body.removeChild(c);
+		const ids = selectable(a).map((i) => i.id);
+		expect(ids.length).toBe(8);
+		expect(ids).toContain("furniture");
 	});
 
-	it("renders menu without zone/furniture buttons when no perspective", () => {
+	it("hides the editor entries when there is no perspective", () => {
 		const a = createPanel() as any;
-		a._showLiveMenu = true;
 		a._perspective = null;
-		const tpl = a._renderLiveOverview();
-		const c = renderTo(tpl);
-
+		const ids = selectable(a).map((i) => i.id);
 		// Editor entries and delete-calibration are hidden without a
 		// calibration: settings + calibration + backup + restore remain.
-		expect(c.querySelectorAll(".sidebar-menu-item").length).toBe(4);
-		expect(c.textContent).not.toContain("menu.furniture");
-		expect(c.textContent).not.toContain("menu.detection_zones");
-		document.body.removeChild(c);
+		expect(ids).toEqual(["settings", "calibration", "backup", "restore"]);
 	});
 
 	it("furniture menu item sets _view and _sidebarTab", () => {
 		const a = createPanel() as any;
-		a._showLiveMenu = true;
 		a._perspective = [1, 0, 0, 0, 1, 0, 0, 0];
-		const tpl = a._renderLiveOverview();
-		const c = renderTo(tpl);
-
-		menuItem(c, "menu.furniture").click();
+		const c = renderTo(a._renderLiveOverview());
+		select(c, "furniture");
 		expect(a._view).toBe("editor");
 		expect(a._sidebarTab).toBe("furniture");
 		document.body.removeChild(c);
@@ -489,51 +488,49 @@ describe("live overview menu branches (panel inline)", () => {
 
 	it("settings menu item sets _view to settings", () => {
 		const a = createPanel() as any;
-		a._showLiveMenu = true;
 		a._perspective = [1, 0, 0, 0, 1, 0, 0, 0];
-		const tpl = a._renderLiveOverview();
-		const c = renderTo(tpl);
-
-		menuItem(c, "menu.settings").click();
+		const c = renderTo(a._renderLiveOverview());
+		select(c, "settings");
 		expect(a._view).toBe("settings");
 		document.body.removeChild(c);
 	});
 
 	it("delete calibration menu item sets _showDeleteCalibrationDialog", () => {
 		const a = createPanel() as any;
-		a._showLiveMenu = true;
 		a._perspective = [1, 0, 0, 0, 1, 0, 0, 0];
-		const tpl = a._renderLiveOverview();
-		const c = renderTo(tpl);
-
-		menuItem(c, "menu.delete_calibration").click();
+		const c = renderTo(a._renderLiveOverview());
+		select(c, "delete_calibration");
 		expect(a._showDeleteCalibrationDialog).toBe(true);
 		document.body.removeChild(c);
 	});
 
 	it("save configuration menu item sets _showConfigurationBackup", () => {
 		const a = createPanel() as any;
-		a._showLiveMenu = true;
 		a._perspective = [1, 0, 0, 0, 1, 0, 0, 0];
-		const tpl = a._renderLiveOverview();
-		const c = renderTo(tpl);
-
-		menuItem(c, "dialogs.backup_configuration").click();
+		const c = renderTo(a._renderLiveOverview());
+		select(c, "backup");
 		expect(a._showConfigurationBackup).toBe(true);
 		document.body.removeChild(c);
 	});
 
 	it("load configuration menu item sets _showConfigurationRestore", async () => {
 		const a = createPanel() as any;
-		a._showLiveMenu = true;
 		a._perspective = [1, 0, 0, 0, 1, 0, 0, 0];
-		const tpl = a._renderLiveOverview();
-		const c = renderTo(tpl);
-
-		menuItem(c, "dialogs.restore_configuration").click();
+		const c = renderTo(a._renderLiveOverview());
+		select(c, "restore");
 		await vi.waitFor(() => {
 			expect(a._showConfigurationRestore).toBe(true);
 		});
+		document.body.removeChild(c);
+	});
+
+	it("calibration menu item triggers a placement change", () => {
+		const a = createPanel() as any;
+		a._perspective = [1, 0, 0, 0, 1, 0, 0, 0];
+		const spy = vi.spyOn(a, "_changePlacement").mockImplementation(() => {});
+		const c = renderTo(a._renderLiveOverview());
+		select(c, "calibration");
+		expect(spy).toHaveBeenCalled();
 		document.body.removeChild(c);
 	});
 });

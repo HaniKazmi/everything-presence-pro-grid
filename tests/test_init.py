@@ -19,6 +19,30 @@ from custom_components.eppgrid import async_unload_entry
 from custom_components.eppgrid.const import DOMAIN
 
 
+@pytest.fixture(autouse=True)
+def _mock_platform_forward():
+    """Stub the binary_sensor platform forward/unload.
+
+    These tests drive async_setup_entry/async_unload_entry directly (not via
+    hass.config_entries.async_setup), so the entry never reaches the LOADED
+    state that async_forward_entry_setups requires. The device-groups feature
+    added that forward; patch it here so the setup-orchestration assertions
+    below stay focused on __init__ wiring, not platform loading.
+    """
+    with (
+        patch(
+            "homeassistant.config_entries.ConfigEntries.async_forward_entry_setups",
+            new_callable=AsyncMock,
+        ),
+        patch(
+            "homeassistant.config_entries.ConfigEntries.async_unload_platforms",
+            new_callable=AsyncMock,
+            return_value=True,
+        ),
+    ):
+        yield
+
+
 async def test_setup_entry_registers_manager(hass: HomeAssistant, config_entry: MockConfigEntry) -> None:
     """Setup creates a DeviceManager and stores it in hass.data."""
     if hass.http is None:
@@ -32,6 +56,10 @@ async def test_setup_entry_registers_manager(hass: HomeAssistant, config_entry: 
             return_value="/eppgrid_static/eppgrid-panel.js?v=deadbeef",
         ),
         patch("custom_components.eppgrid._register_panel", new_callable=AsyncMock),
+        patch(
+            "homeassistant.config_entries.ConfigEntries.async_forward_entry_setups",
+            new_callable=AsyncMock,
+        ),
     ):
         mock_dm = mock_dm_cls.return_value
         mock_dm.async_start = AsyncMock()
@@ -58,6 +86,10 @@ async def test_setup_entry_registers_frontend_resources_always(
             return_value="/eppgrid_static/eppgrid-panel.js?v=deadbeef",
         ) as mock_resources,
         patch("custom_components.eppgrid._register_panel", new_callable=AsyncMock) as mock_panel,
+        patch(
+            "homeassistant.config_entries.ConfigEntries.async_forward_entry_setups",
+            new_callable=AsyncMock,
+        ),
     ):
         mock_store = mock_store_cls.return_value
         mock_store.async_load = AsyncMock()
@@ -82,6 +114,10 @@ async def test_setup_entry_registers_panel_when_enabled(hass: HomeAssistant, con
             "custom_components.eppgrid._register_frontend_resources", new_callable=AsyncMock, return_value=module_url
         ),
         patch("custom_components.eppgrid._register_panel", new_callable=AsyncMock) as mock_panel,
+        patch(
+            "homeassistant.config_entries.ConfigEntries.async_forward_entry_setups",
+            new_callable=AsyncMock,
+        ),
     ):
         mock_dm = mock_dm_cls.return_value
         mock_dm.async_start = AsyncMock()
@@ -104,6 +140,10 @@ async def test_setup_entry_skips_panel_when_disabled(hass: HomeAssistant, config
             return_value="/eppgrid_static/eppgrid-panel.js?v=deadbeef",
         ),
         patch("custom_components.eppgrid._register_panel", new_callable=AsyncMock) as mock_panel,
+        patch(
+            "homeassistant.config_entries.ConfigEntries.async_forward_entry_setups",
+            new_callable=AsyncMock,
+        ),
     ):
         mock_store = mock_store_cls.return_value
         mock_store.async_load = AsyncMock()
@@ -128,13 +168,21 @@ async def test_unload_entry_stops_manager(hass: HomeAssistant, config_entry: Moc
             return_value="/eppgrid_static/eppgrid-panel.js?v=deadbeef",
         ),
         patch("custom_components.eppgrid._register_panel", new_callable=AsyncMock),
+        patch(
+            "homeassistant.config_entries.ConfigEntries.async_forward_entry_setups",
+            new_callable=AsyncMock,
+        ),
+        patch(
+            "homeassistant.config_entries.ConfigEntries.async_unload_platforms",
+            new_callable=AsyncMock,
+        ),
     ):
         mock_dm = mock_dm_cls.return_value
         mock_dm.async_start = AsyncMock()
         mock_dm.async_stop = AsyncMock()
         await async_setup_entry(hass, config_entry)
 
-    result = await async_unload_entry(hass, config_entry)
+        result = await async_unload_entry(hass, config_entry)
     assert result is True
     assert DOMAIN not in hass.data
     mock_dm.async_stop.assert_awaited_once()
@@ -142,8 +190,47 @@ async def test_unload_entry_stops_manager(hass: HomeAssistant, config_entry: Moc
 
 async def test_unload_entry_no_manager(hass: HomeAssistant, config_entry: MockConfigEntry) -> None:
     """Unload succeeds even if no manager was stored."""
-    result = await async_unload_entry(hass, config_entry)
+    with patch(
+        "homeassistant.config_entries.ConfigEntries.async_unload_platforms",
+        new_callable=AsyncMock,
+    ):
+        result = await async_unload_entry(hass, config_entry)
     assert result is True
+
+
+async def test_unload_entry_returns_false_when_platform_unload_fails(
+    hass: HomeAssistant, config_entry: MockConfigEntry
+) -> None:
+    """If the binary_sensor platform fails to unload, async_unload_entry must
+    return False and leave the manager published, so HA keeps the entry loaded
+    rather than orphaning entities/devices."""
+    if hass.http is None:
+        hass.http = MagicMock()
+
+    with (
+        patch("custom_components.eppgrid.DeviceManager") as mock_dm_cls,
+        patch(
+            "custom_components.eppgrid._register_frontend_resources",
+            new_callable=AsyncMock,
+            return_value="/eppgrid_static/eppgrid-panel.js?v=deadbeef",
+        ),
+        patch("custom_components.eppgrid._register_panel", new_callable=AsyncMock),
+        patch(
+            "homeassistant.config_entries.ConfigEntries.async_unload_platforms",
+            new_callable=AsyncMock,
+            return_value=False,
+        ),
+    ):
+        mock_dm = mock_dm_cls.return_value
+        mock_dm.async_start = AsyncMock()
+        mock_dm.async_stop = AsyncMock()
+        await async_setup_entry(hass, config_entry)
+
+        result = await async_unload_entry(hass, config_entry)
+
+    assert result is False
+    assert DOMAIN in hass.data
+    mock_dm.async_stop.assert_not_awaited()
 
 
 async def test_options_update_does_not_reload_entry(hass: HomeAssistant, config_entry: MockConfigEntry) -> None:
@@ -164,6 +251,10 @@ async def test_options_update_does_not_reload_entry(hass: HomeAssistant, config_
         ),
         patch("custom_components.eppgrid._register_panel", new_callable=AsyncMock),
         patch.object(hass.config_entries, "async_reload", new_callable=AsyncMock) as mock_reload,
+        patch(
+            "homeassistant.config_entries.ConfigEntries.async_forward_entry_setups",
+            new_callable=AsyncMock,
+        ),
     ):
         mock_dm = mock_dm_cls.return_value
         mock_dm.async_start = AsyncMock()
@@ -228,6 +319,14 @@ async def test_unload_entry_removes_panel(hass: HomeAssistant, config_entry: Moc
         ),
         patch("custom_components.eppgrid._register_panel", new_callable=AsyncMock),
         patch("custom_components.eppgrid.async_remove_panel") as mock_remove_panel,
+        patch(
+            "homeassistant.config_entries.ConfigEntries.async_forward_entry_setups",
+            new_callable=AsyncMock,
+        ),
+        patch(
+            "homeassistant.config_entries.ConfigEntries.async_unload_platforms",
+            new_callable=AsyncMock,
+        ),
     ):
         mock_dm = mock_dm_cls.return_value
         mock_dm.async_start = AsyncMock()
@@ -254,6 +353,14 @@ async def test_unload_entry_skips_panel_when_not_registered(hass: HomeAssistant,
         ),
         patch("custom_components.eppgrid._register_panel", new_callable=AsyncMock),
         patch("custom_components.eppgrid.async_remove_panel") as mock_remove_panel,
+        patch(
+            "homeassistant.config_entries.ConfigEntries.async_forward_entry_setups",
+            new_callable=AsyncMock,
+        ),
+        patch(
+            "homeassistant.config_entries.ConfigEntries.async_unload_platforms",
+            new_callable=AsyncMock,
+        ),
     ):
         mock_store = mock_store_cls.return_value
         mock_store.async_load = AsyncMock()
@@ -506,6 +613,40 @@ async def test_setup_entry_unwinds_on_panel_failure(hass: HomeAssistant, config_
     assert DOMAIN not in hass.data
     assert _PANEL_REGISTERED_KEY not in hass.data
     mock_dm.async_stop.assert_awaited_once()
+
+
+async def test_setup_unwind_unloads_binary_sensor_platform(hass: HomeAssistant, config_entry: MockConfigEntry) -> None:
+    """If a step after the binary_sensor forward fails, the unwind unloads the
+    platform so a retry doesn't leak orphaned helper entities."""
+    if hass.http is None:
+        hass.http = MagicMock()
+
+    with (
+        patch("custom_components.eppgrid.DeviceManager") as mock_dm_cls,
+        patch(
+            "custom_components.eppgrid._register_frontend_resources",
+            new_callable=AsyncMock,
+            return_value="/eppgrid_static/eppgrid-panel.js?v=deadbeef",
+        ),
+        patch(
+            "custom_components.eppgrid._register_panel",
+            new_callable=AsyncMock,
+            side_effect=ValueError("Overwriting panel eppgrid"),
+        ),
+        patch(
+            "homeassistant.config_entries.ConfigEntries.async_unload_platforms",
+            new_callable=AsyncMock,
+            return_value=True,
+        ) as mock_unload,
+    ):
+        mock_dm = mock_dm_cls.return_value
+        mock_dm.async_start = AsyncMock()
+        mock_dm.async_stop = AsyncMock()
+
+        with pytest.raises(ValueError):
+            await async_setup_entry(hass, config_entry)
+
+        mock_unload.assert_awaited_once()
 
 
 async def test_setup_entry_registers_panel_after_manager_start(

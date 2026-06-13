@@ -428,6 +428,83 @@ Triggers the ESPHome config flow for a given host (used to add a freshly-flashed
 
 **Request:** `{ "type": "eppgrid/add_esphome_device", "host": str }`
 
+### Device-Group Commands
+
+All device-group commands are admin-only (`@websocket_api.require_admin`) and
+handled in `websocket_api/_device_groups.py`. Inputs are validated at the
+boundary (name 1-128 chars; 1-8 uppercase MACs matching the standard
+`AA:BB:...` format; ≤16 zone groups, ≤16 members each). Failures return
+`invalid_input`; an unknown `group_id` returns `not_found`; a not-yet-loaded
+manager returns `device_groups_unavailable`.
+
+> **Wire-param note:** create/update/delete take **`group_id`**, not `id` — HA
+> reserves top-level `id` for the message envelope.
+
+#### `list_device_groups`
+
+**Request:** `{ "type": "eppgrid/list_device_groups" }`
+**Response:** `{ "device_groups": [<group>, ...] }`
+
+#### `create_device_group`
+
+**Request:** `{ "type": "eppgrid/create_device_group", "name": str, "sources": [MAC, ...], "area_id"?: str | null }`
+**Response:** `{ "device_group": <group> }`
+
+#### `update_device_group`
+
+**Request:** `{ "type": "eppgrid/update_device_group", "group_id": str, "name": str, "sources": [MAC, ...], "area_id": str | null, "zone_groups": [<zone_group>, ...] }`
+**Response:** `{ "device_group": <group> }`
+
+#### `delete_device_group`
+
+Also removes the group's HA device-registry entry and its exposed entities.
+
+**Request:** `{ "type": "eppgrid/delete_device_group", "group_id": str }`
+**Response:** `{}`
+
+#### `subscribe_device_groups`
+
+Streams the full group list on subscribe and again on any create/update/delete.
+
+**Request:** `{ "type": "eppgrid/subscribe_device_groups" }`
+**Event:** `{ "device_groups": [<group>, ...] }`
+
+The serialized `<group>` shape (see `_serialize_group`) augments the stored
+definition with resolved, read-time fields — each source carries its display
+`name`, `available` flag, `enabled_presence` slots and `zones`
+(`{index, name, enabled}`), plus a derived `exposed_entities`:
+
+```json
+{
+    "id": "…",
+    "name": "Master Bedroom",
+    "area_id": "bedroom",
+    "sources": [
+        {
+            "mac": "AA:BB:CC:DD:EE:FF",
+            "name": "Bedroom Left",
+            "available": true,
+            "enabled_presence": ["occupancy", "static_presence"],
+            "zones": [{ "index": 2, "name": "Bed", "enabled": true }]
+        }
+    ],
+    "zone_groups": [
+        { "id": "zg_1a2b3c4d", "name": "Bed", "members": [{ "mac": "AA:BB:CC:DD:EE:FF", "zone_index": 2 }] }
+    ],
+    "exposed_entities": {
+        "presence": ["occupancy", "static_presence"],
+        "zones": [
+            { "kind": "group", "id": "zg_1a2b3c4d", "name": "Zone Bed", "available": true },
+            { "kind": "passthrough", "mac": "AA:BB:CC:DD:EE:FF", "zone_index": 3, "name": "Desk", "available": true }
+        ]
+    }
+}
+```
+
+`exposed_entities` is computed by `derive_exposed_entities` (mirrored in the
+frontend's `lib/device-groups-projection.ts`) and is never persisted — see
+section 5 and architecture.md → *Device Groups*.
+
 ## 4. Firmware Data Pipeline
 
 ```
@@ -506,6 +583,38 @@ All config is pushed to the device on save and on reconnect. The push
 prefers the existing frontend session connection when one is active
 (avoids the ESP32 concurrent connection limit); otherwise it creates a
 temporary connection (e.g., on-boot push when no frontend is open).
+
+**Device groups** are persisted separately in `EPPGridStore.device_groups`
+(added by the v1→v2 store migration) as a list of definitions:
+
+```python
+[
+    {
+        "id": str,                  # UUID hex, server-assigned
+        "name": str,                # 1-128 chars
+        "area_id": str | None,      # HA area applied to the group's device
+        "sources": [str, ...],      # 1-8 member MACs (uppercase)
+        "zone_groups": [
+            {
+                "id": str,
+                "name": str,        # 1-128 chars
+                "members": [
+                    {"mac": str, "zone_index": int},   # zone_index 0-7 (0 = rest of room)
+                    ...                                 # 0-16 members
+                ],
+            },
+            ...                     # up to MAX_ZONE_GROUPS_PER_DEVICE_GROUP (16)
+        ],
+    },
+    ...                             # up to MAX_DEVICE_GROUPS (32)
+]
+```
+
+Only the *definition* is stored. The exposed entity list (`exposed_entities`)
+is derived at read time by `device_groups/_projection.py` and is never
+persisted. Live presence/zone state is held in the per-group runtime
+`Aggregator`, not in the store. See architecture.md → *Device Groups* for the
+aggregation and entity-creation flow.
 
 ## 6. Diagnostics
 

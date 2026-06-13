@@ -3,7 +3,7 @@ import type { SidebarTab, ViewMode } from "./view-hash.js";
 export const DOCS_BASE_URL =
 	"https://clintongormley.github.io/everything-presence-pro-grid/";
 
-export type PanelTab = "config" | "flasher";
+export type PanelTab = "config" | "flasher" | "device-groups";
 
 export interface HelpUrlState {
 	panelTab: PanelTab;
@@ -29,6 +29,9 @@ const EDITOR_TAB_TO_SLUG: Readonly<Record<SidebarTab, string>> = {
 export function getHelpUrl(state: HelpUrlState): string {
 	if (state.panelTab === "flasher") {
 		return `${DOCS_BASE_URL}user-guide/flashing-firmware/`;
+	}
+	if (state.panelTab === "device-groups") {
+		return `${DOCS_BASE_URL}user-guide/device-groups/`;
 	}
 	const slug =
 		state.view === "editor"

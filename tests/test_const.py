@@ -29,3 +29,31 @@ class TestEmptyZoneSlots:
         b = empty_zone_slots()
         assert b[0]["type"] == "default"
         assert b[1] is None
+
+
+def test_presence_slots_match_data_catalog() -> None:
+    """PRESENCE_SLOTS must be the 5 binary presence sensors EPP exposes."""
+    from custom_components.eppgrid.const import PRESENCE_SLOTS
+
+    assert PRESENCE_SLOTS == (
+        "occupancy",
+        "static_presence",
+        "motion_presence",
+        "target_presence",
+        "mmwave_presence",
+    )
+
+
+def test_max_device_groups_is_bounded() -> None:
+    """A finite cap protects storage from runaway entries."""
+    from custom_components.eppgrid.const import MAX_DEVICE_GROUPS
+
+    assert isinstance(MAX_DEVICE_GROUPS, int)
+    assert 1 <= MAX_DEVICE_GROUPS <= 100
+
+
+def test_max_zone_groups_per_device_group_is_bounded() -> None:
+    from custom_components.eppgrid.const import MAX_ZONE_GROUPS_PER_DEVICE_GROUP
+
+    assert isinstance(MAX_ZONE_GROUPS_PER_DEVICE_GROUP, int)
+    assert 1 <= MAX_ZONE_GROUPS_PER_DEVICE_GROUP <= 32

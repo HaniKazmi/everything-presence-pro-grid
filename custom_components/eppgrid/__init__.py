@@ -10,9 +10,11 @@ from homeassistant.components import panel_custom
 from homeassistant.components.frontend import async_remove_panel
 from homeassistant.components.http import StaticPathConfig
 from homeassistant.config_entries import ConfigEntry
+from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
 
 from .const import DOMAIN
+from .device_groups._registry import zone_name_from_store
 from .device_manager import DeviceManager
 from .firmware_proxy import FirmwareProxyView
 from .storage import EPPGridStore
@@ -53,6 +55,20 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     # fetch the bundled JS module even when the sidebar panel is disabled.
     await _register_frontend_resources(hass)
 
+    from .device_groups import DeviceGroupManager
+
+    device_groups_manager = DeviceGroupManager(hass, store)
+    # Attach as a sibling on the existing DeviceManager so callers can reach it
+    # via `hass.data[DOMAIN].device_groups`. Created here (before the manager is
+    # published) but started inside the try below so a failure unwinds cleanly.
+    manager.device_groups = device_groups_manager  # type: ignore[attr-defined]
+    device_groups_manager.set_callbacks(
+        device_name_fn=lambda mac: (
+            getattr(manager.devices.get(mac), "name", None) or store.devices.get(mac, {}).get("name") or mac
+        ),
+        zone_name_fn=lambda mac, i: zone_name_from_store(store, mac, i),
+    )
+
     # WS command registration is idempotent; the handlers look the manager up
     # via hass.data[DOMAIN] and tolerate it being absent, so registering them
     # before the manager is published is safe.
@@ -65,6 +81,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     try:
         await manager.async_start()
         hass.data[DOMAIN] = manager
+        await device_groups_manager.async_start()
+        await hass.config_entries.async_forward_entry_setups(entry, [Platform.BINARY_SENSOR])
 
         # Register the panel LAST. HA never calls async_unload_entry for a
         # failed setup, so registering it before a fallible step would leave
@@ -76,6 +94,13 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         # half-started manager (or its listeners) and don't leave a panel
         # registered that the retry can't overwrite.
         hass.data.pop(DOMAIN, None)
+        # If the binary_sensor platform was already forwarded before the failing
+        # step, unload it so a retry doesn't leave orphaned helper entities
+        # bound to a now-stopped manager. Safe (no-op) if it never loaded.
+        try:
+            await hass.config_entries.async_unload_platforms(entry, [Platform.BINARY_SENSOR])
+        except Exception:
+            _LOGGER.exception("async_unload_platforms failed during setup unwind")
         try:
             await async_apply_panel_visibility(hass, False)
         except Exception:
@@ -83,6 +108,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         # A raising cleanup must not mask the original setup error — it would
         # e.g. turn ConfigEntryNotReady (retry later) into a permanent
         # SETUP_ERROR.
+        try:
+            await device_groups_manager.async_stop()
+        except Exception:
+            _LOGGER.exception("device_groups_manager.async_stop failed during setup unwind")
         try:
             await manager.async_stop()
         except Exception:
@@ -98,8 +127,17 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Unload a config entry."""
+    # If the platform won't unload, report failure and keep the manager/panel in
+    # place — HA then treats the entry as still loaded rather than orphaning the
+    # device-group entities.
+    unload_ok = await hass.config_entries.async_unload_platforms(entry, [Platform.BINARY_SENSOR])
+    if not unload_ok:
+        return False
+
     manager = hass.data.pop(DOMAIN, None)
     if manager is not None:
+        if hasattr(manager, "device_groups"):
+            await manager.device_groups.async_stop()
         await manager.async_stop()
 
     await async_apply_panel_visibility(hass, False)

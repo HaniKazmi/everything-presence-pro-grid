@@ -5,7 +5,9 @@ import "./components/epp-configuration-dialogs.js";
 import "./components/epp-flasher-view.js";
 import "./components/epp-furniture-sidebar.js";
 import "./components/epp-grid.js";
+import "./components/epp-kebab-menu.js";
 import "./components/epp-live-sidebar.js";
+import type { KebabEntry } from "./components/epp-kebab-menu.js";
 import type { ZoneStateSummary } from "./components/epp-live-sidebar.js";
 import "./components/epp-settings-view.js";
 import "./components/epp-wizard.js";
@@ -13,7 +15,9 @@ import type { EppWizard } from "./components/epp-wizard.js";
 import { renderSaveCancelBar } from "./components/save-cancel-bar.js";
 import "./components/epp-overlay-sidebar.js";
 import "./components/epp-zone-sidebar.js";
+import "./views/epp-device-groups-view.js";
 import { DeviceController } from "./controllers/device-controller.js";
+import { DeviceGroupsController } from "./controllers/device-groups-controller.js";
 import { FlasherController } from "./controllers/flasher-controller.js";
 import {
 	GridStateController,
@@ -317,55 +321,6 @@ const liveMenuStyles = css`
   .sidebar-header .sidebar-title {
     padding: 0;
   }
-
-  .sidebar-menu-wrapper {
-    position: relative;
-  }
-
-  .sidebar-menu-btn {
-    background: none;
-    border: none;
-    color: var(--secondary-text-color, #757575);
-    cursor: pointer;
-    padding: 4px;
-    border-radius: 6px;
-    display: flex;
-  }
-
-  .sidebar-menu-btn:hover {
-    background: var(--secondary-background-color, #f0f0f0);
-  }
-
-  .sidebar-menu {
-    position: absolute;
-    top: 100%;
-    right: 0;
-    background: var(--card-background-color, #fff);
-    border: 1px solid var(--divider-color, #e0e0e0);
-    border-radius: 10px;
-    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
-    z-index: 100;
-    min-width: 220px;
-    padding: 4px 0;
-  }
-
-  .sidebar-menu-item {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    width: 100%;
-    padding: 8px 14px;
-    border: none;
-    background: none;
-    color: var(--primary-text-color, #212121);
-    font-size: 13px;
-    cursor: pointer;
-    text-align: left;
-  }
-
-  .sidebar-menu-item:hover {
-    background: var(--secondary-background-color, #f5f5f5);
-  }
 `;
 
 // The shared history-interception registry (unsaved-changes navigation
@@ -404,6 +359,8 @@ export class EPPGridPanel extends LitElement {
 			this._requestFlasherDeleteConfirm();
 		return ctrl;
 	})();
+	// Device groups controller — owns group CRUD and WS subscription
+	@state() private _deviceGroupsCtrl?: DeviceGroupsController;
 	// Navigation guard — owns the unsaved-changes guard (beforeunload,
 	// hashchange, the shared history-interception registry entry) and the
 	// pending-navigation queue behind the dialog. Pass `this` directly so
@@ -455,7 +412,6 @@ export class EPPGridPanel extends LitElement {
 	// the flow's beforeFlash hook awaits the promise while the dialog is up.
 	@state() private _showFlasherDeleteConfirm = false;
 	private _flasherDeleteConfirmResolve: ((ok: boolean) => void) | null = null;
-	@state() private _showLiveMenu = false;
 	@state() private _showCustomIconPicker = false;
 	@state() private _customIconValue = "";
 	@state() _furniture: FurnitureItem[] = [];
@@ -736,6 +692,11 @@ export class EPPGridPanel extends LitElement {
 		if (changedProps.has("hass") && this.hass) {
 			this._deviceCtrl.hass = this.hass;
 			this._flasherCtrl.hass = this.hass;
+			if (this.hass.connection && !this._deviceGroupsCtrl) {
+				this._deviceGroupsCtrl = new DeviceGroupsController(
+					this.hass.connection,
+				);
+			}
 			const conn = this.hass.connection;
 			if (conn) {
 				// HA keeps pushing `hass` to panels it has already removed
@@ -1279,6 +1240,98 @@ export class EPPGridPanel extends LitElement {
 		);
 	}
 
+	// Items for the live-overview kebab. Editor entries (zones/overlays/
+	// furniture) and the delete-calibration entry are gated on having a
+	// calibration (`_perspective`), matching the old inline menu exactly.
+	private _liveMenuItems(): KebabEntry[] {
+		const items: KebabEntry[] = [];
+		if (this._perspective) {
+			items.push(
+				{
+					id: "zones",
+					label: this._localize("menu.detection_zones"),
+					icon: "mdi:vector-square",
+				},
+				{
+					id: "overlays",
+					label: this._localize("menu.overlays"),
+					icon: "mdi:blur",
+				},
+				{
+					id: "furniture",
+					label: this._localize("menu.furniture"),
+					icon: "mdi:sofa",
+				},
+			);
+		}
+		items.push({
+			id: "settings",
+			label: this._localize("menu.settings"),
+			icon: "mdi:cog",
+		});
+		items.push({ divider: true });
+		items.push({
+			id: "calibration",
+			label: this._localize("menu.room_calibration"),
+			icon: "mdi:target",
+		});
+		if (this._perspective) {
+			items.push({
+				id: "delete_calibration",
+				label: this._localize("menu.delete_calibration"),
+				icon: "mdi:delete",
+				danger: true,
+			});
+		}
+		items.push({ divider: true });
+		items.push(
+			{
+				id: "backup",
+				label: this._localize("dialogs.backup_configuration"),
+				icon: "mdi:content-save",
+			},
+			{
+				id: "restore",
+				label: this._localize("dialogs.restore_configuration"),
+				icon: "mdi:folder-open",
+			},
+		);
+		return items;
+	}
+
+	private _onLiveMenuSelect = async (
+		e: CustomEvent<{ id: string }>,
+	): Promise<void> => {
+		switch (e.detail.id) {
+			case "zones":
+			case "overlays":
+			case "furniture":
+				this._enterEditor(e.detail.id as SidebarTab);
+				break;
+			case "settings":
+				this._navGuard.guardNavigation(() =>
+					this._applyView({
+						view: "settings",
+						sidebarTab: this._sidebarTab,
+					}),
+				);
+				break;
+			case "calibration":
+				this._changePlacement();
+				break;
+			case "delete_calibration":
+				this._showDeleteCalibrationDialog = true;
+				break;
+			case "backup":
+				this._showConfigurationBackup = true;
+				break;
+			case "restore":
+				await this._gridCtrl.fetchConfigurations();
+				this._showConfigurationRestore = true;
+				break;
+		}
+	};
+
 	// -- Configuration management (backend WS API) --
 
 	private _getConfigurations() {
@@ -1737,6 +1790,11 @@ export class EPPGridPanel extends LitElement {
 							this._flasherCtrl.subscribeDeviceList();
 						}
 					}}>${this._localize("tabs.flash_firmware")}</button>
+				<button class="tab ${this._panelTab === "device-groups" ? "active" : ""}"
+					@click=${() => {
+						void this._flasherCtrl.resetUsbState();
+						this._panelTab = "device-groups";
+					}}>Device Groups</button>
 				<a class="tab-help"
 					href=${getHelpUrl({
 						panelTab: this._panelTab,
@@ -1808,6 +1866,21 @@ export class EPPGridPanel extends LitElement {
 					}}
 				></epp-flasher-view>
 				${this._renderFlasherDeleteConfirmDialog()}
+			</div>`;
+		}
+
+		if (this._panelTab === "device-groups") {
+			return html`<div class="tab-layout">
+				${this._renderTabBar()}
+				${
+					this._deviceGroupsCtrl
+						? html`<epp-device-groups-view
+								.hass=${this.hass}
+								.controller=${this._deviceGroupsCtrl}
+								.availableDevices=${this._devices}
+							></epp-device-groups-view>`
+						: html`<div class="panel">${this._localize("common.loading")}</div>`
+				}
 			</div>`;
 		}
 
@@ -2434,9 +2507,6 @@ export class EPPGridPanel extends LitElement {
 		return html`
       <div class="panel" @click=${(e: MouseEvent) => {
 				if (!(e.target instanceof Element)) return;
-				if (this._showLiveMenu && !e.target.closest(".sidebar-menu-wrapper")) {
-					this._showLiveMenu = false;
-				}
 				if (this._targetMenu && !e.target.closest(".target-menu")) {
 					this._closeTargetMenu();
 				}
@@ -2453,81 +2523,10 @@ export class EPPGridPanel extends LitElement {
           <div class="zone-sidebar">
             <div class="sidebar-header">
               <span class="sidebar-title" style="margin-right: auto;">${this._localize("sidebar.live_overview")}</span>
-              <div class="sidebar-menu-wrapper">
-                <button class="sidebar-menu-btn" @click=${() => {
-									this._showLiveMenu = !this._showLiveMenu;
-								}}>
-                  <ha-icon icon="mdi:dots-vertical" style="--mdc-icon-size: 20px;"></ha-icon>
-                </button>
-                ${
-									this._showLiveMenu
-										? html`
-                  <div class="sidebar-menu" @click=${() => {
-										this._showLiveMenu = false;
-									}}>
-                    ${
-											this._perspective
-												? html`
-                      <button class="sidebar-menu-item" @click=${() => {
-												this._enterEditor("zones");
-											}}>
-                        <ha-icon icon="mdi:vector-square" style="--mdc-icon-size: 18px;"></ha-icon> ${this._localize("menu.detection_zones")}
-                      </button>
-                      <button class="sidebar-menu-item" @click=${() => {
-												this._enterEditor("overlays");
-											}}>
-                        <ha-icon icon="mdi:blur" style="--mdc-icon-size: 18px;"></ha-icon> ${this._localize("menu.overlays")}
-                      </button>
-                      <button class="sidebar-menu-item" @click=${() => {
-												this._enterEditor("furniture");
-											}}>
-                        <ha-icon icon="mdi:sofa" style="--mdc-icon-size: 18px;"></ha-icon> ${this._localize("menu.furniture")}
-                      </button>
-                    `
-												: nothing
-										}
-                    <button class="sidebar-menu-item" @click=${() => {
-											this._navGuard.guardNavigation(() =>
-												this._applyView({
-													view: "settings",
-													sidebarTab: this._sidebarTab,
-												}),
-											);
-										}}>
-                      <ha-icon icon="mdi:cog" style="--mdc-icon-size: 18px;"></ha-icon> ${this._localize("menu.settings")}
-                    </button>
-                    <hr style="border: none; border-top: 1px solid var(--divider-color, #eee); margin: 4px 0;"/>
-                    <button class="sidebar-menu-item" @click=${() => this._changePlacement()}>
-                      <ha-icon icon="mdi:target" style="--mdc-icon-size: 18px;"></ha-icon> ${this._localize("menu.room_calibration")}
-                    </button>
-                    ${
-											this._perspective
-												? html`
-                      <button class="sidebar-menu-item" style="color: var(--error-color, #f44336);" @click=${() => {
-												this._showDeleteCalibrationDialog = true;
-											}}>
-                        <ha-icon icon="mdi:delete" style="--mdc-icon-size: 18px;"></ha-icon> ${this._localize("menu.delete_calibration")}
-                      </button>
-                    `
-												: nothing
-										}
-                    <hr style="border: none; border-top: 1px solid var(--divider-color, #eee); margin: 4px 0;"/>
-                    <button class="sidebar-menu-item" @click=${() => {
-											this._showConfigurationBackup = true;
-										}}>
-                      <ha-icon icon="mdi:content-save" style="--mdc-icon-size: 18px;"></ha-icon> ${this._localize("dialogs.backup_configuration")}
-                    </button>
-                    <button class="sidebar-menu-item" @click=${async () => {
-											await this._gridCtrl.fetchConfigurations();
-											this._showConfigurationRestore = true;
-										}}>
-                      <ha-icon icon="mdi:folder-open" style="--mdc-icon-size: 18px;"></ha-icon> ${this._localize("dialogs.restore_configuration")}
-                    </button>
-                  </div>
-                `
-										: nothing
-								}
-              </div>
+              <epp-kebab-menu
+                .items=${this._liveMenuItems()}
+                @item-select=${this._onLiveMenuSelect}
+              ></epp-kebab-menu>
             </div>
             <div class="sidebar-scroll">
               <epp-live-sidebar
