@@ -5433,6 +5433,7 @@ class TestEventCallbacks:
         manager._store.devices[mac] = {"settings": {"led_mode": "Manual"}}
         manager._build_flags[mac] = {"has_co2": True}
         manager._entity_update_macs.add(mac)
+        manager.note_target_subscribe(mac, "grid_target_subs")
 
         # Pre-populate configurations that should survive
         manager._store.configurations["Living Room"] = {"grid_bytes": [1, 2, 3]}
@@ -5448,6 +5449,7 @@ class TestEventCallbacks:
         assert mac not in manager.devices
         assert mac not in manager._build_flags
         assert mac not in manager._entity_update_macs
+        assert mac not in manager._target_subs
         assert "Living Room" in manager._store.configurations
 
     async def test_on_device_removed_clears_push_runtime_state(

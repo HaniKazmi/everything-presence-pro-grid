@@ -1165,6 +1165,7 @@ class DeviceManager:
         self._session_locks.pop(mac, None)
         self._ota_locks.pop(mac, None)
         self._push_locks.pop(mac, None)
+        self._target_subs.pop(mac, None)
         self._connection_failed.discard(mac)
         self._entity_update_macs.discard(mac)
         self._failed_pushes.discard(mac)
@@ -1334,7 +1335,7 @@ class DeviceManager:
         this instead of mutating the ephemeral connection.
         """
         counts = self._target_subs.setdefault(mac, {"raw_target_subs": 0, "grid_target_subs": 0})
-        counts[kind] = counts.get(kind, 0) + 1
+        counts[kind] += 1
 
     @callback
     def note_target_unsubscribe(self, mac: str, kind: str) -> None:
@@ -1350,7 +1351,7 @@ class DeviceManager:
         if counts is None:
             return
         counts[kind] = max(0, counts.get(kind, 0) - 1)
-        if counts["raw_target_subs"] == 0 and counts["grid_target_subs"] == 0:
+        if sum(counts.values()) == 0:
             self._target_subs.pop(mac, None)
 
     async def _push_pipeline_to_device(self, mac: str) -> None:
