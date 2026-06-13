@@ -1985,6 +1985,9 @@ const Fi=Symbol.for(""),Pi=e=>{if(e?.r===Fi)return e?._$litStatic$},Ui=(e,...t)=
       overflow: hidden;
       text-overflow: ellipsis;
       white-space: nowrap;
+      /* Extra vertical room so a subscript (e.g. the ₂ in CO₂) isn't
+         clipped by overflow: hidden, which is needed for the ellipsis. */
+      line-height: 1.5;
     }
 
     .live-sensor-state {
