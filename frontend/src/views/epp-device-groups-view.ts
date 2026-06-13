@@ -48,6 +48,11 @@ export class EppDeviceGroupsView extends LitElement {
 		this._unsub = this.controller.onChange((groups) => {
 			this._groups = groups;
 		});
+		// Seed from the controller's cache. The controller is panel-owned and
+		// subscribe() is idempotent — after switching tabs and back, the
+		// remounted view re-subscribes but no fresh event fires, so without this
+		// the list would render empty until the next change.
+		this._groups = this.controller.groups;
 		this.controller.subscribe();
 	}
 

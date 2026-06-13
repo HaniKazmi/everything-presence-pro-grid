@@ -252,7 +252,7 @@ class TestSubscribe:
         cands = {c["mac"]: c for c in evt["event"]["candidate_sources"]}
         assert mac in cands
         assert cands[mac]["name"] == "Bedroom Sensor"
-        assert {"index": 2, "name": "Desk", "enabled": True} in cands[mac]["zones"]
+        assert {"index": 2, "name": "Zone Desk", "enabled": True} in cands[mac]["zones"]
 
     async def test_candidate_source_prefers_managed_device_name(
         self,

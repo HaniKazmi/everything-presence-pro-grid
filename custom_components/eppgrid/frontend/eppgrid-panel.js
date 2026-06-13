@@ -3439,7 +3439,7 @@ const Fi=Symbol.for(""),Pi=e=>{if(e?.r===Fi)return e?._$litStatic$},Ui=(e,...t)=
 		button.danger {
 			background: var(--error-color);
 		}
-	`,e([ge({attribute:!1})],Qs.prototype,"hass",void 0),e([ge({attribute:!1})],Qs.prototype,"availableDevices",void 0),e([ge({attribute:!1})],Qs.prototype,"existingGroup",void 0),e([ge({attribute:!1})],Qs.prototype,"sourcesByMac",void 0),e([ue()],Qs.prototype,"_draft",void 0),customElements.define("epp-device-group-editor",Qs);class Hs extends le{constructor(){super(...arguments),this.availableDevices=[],this._groups=[],this._editingGroup=null,this._creatingNew=!1,this._unsub=null}connectedCallback(){super.connectedCallback(),this._unsub=this.controller.onChange(e=>{this._groups=e}),this.controller.subscribe()}disconnectedCallback(){super.disconnectedCallback(),this._unsub?.()}render(){return this._editingGroup||this._creatingNew?Y`
+	`,e([ge({attribute:!1})],Qs.prototype,"hass",void 0),e([ge({attribute:!1})],Qs.prototype,"availableDevices",void 0),e([ge({attribute:!1})],Qs.prototype,"existingGroup",void 0),e([ge({attribute:!1})],Qs.prototype,"sourcesByMac",void 0),e([ue()],Qs.prototype,"_draft",void 0),customElements.define("epp-device-group-editor",Qs);class Hs extends le{constructor(){super(...arguments),this.availableDevices=[],this._groups=[],this._editingGroup=null,this._creatingNew=!1,this._unsub=null}connectedCallback(){super.connectedCallback(),this._unsub=this.controller.onChange(e=>{this._groups=e}),this._groups=this.controller.groups,this.controller.subscribe()}disconnectedCallback(){super.disconnectedCallback(),this._unsub?.()}render(){return this._editingGroup||this._creatingNew?Y`
 				<div class="content">
 					<epp-device-group-editor
 						.hass=${this.hass}

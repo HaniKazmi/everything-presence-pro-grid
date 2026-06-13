@@ -11,6 +11,7 @@ from homeassistant.components.binary_sensor import BinarySensorEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import device_registry as dr
+from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
@@ -89,10 +90,19 @@ class _PlatformProxy:
         self._apply_area_assignments(groups, force=reconcile_area)
         # Remove entities for deleted groups / removed zones.
         active_uids = self._compute_active_uids(groups)
+        ent_reg = er.async_get(self._hass)
         for uid in list(self._entities.keys()):
             if uid not in active_uids:
                 e = self._entities.pop(uid)
-                self._hass.async_create_task(e.async_remove(force_remove=True))
+                entity_id = e.entity_id
+                if entity_id and ent_reg.async_get(entity_id):
+                    # Purge the registry entry too — removing only the live
+                    # entity would leave a merged-away zone lingering as an
+                    # "unavailable" entity on the device page. Registry removal
+                    # also tears down the running entity.
+                    ent_reg.async_remove(entity_id)
+                else:
+                    self._hass.async_create_task(e.async_remove(force_remove=True))
 
     def _build_presence_entities(self, group: dict[str, Any], aggregator: Aggregator) -> list[BinarySensorEntity]:
         out: list[BinarySensorEntity] = []

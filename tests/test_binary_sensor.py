@@ -346,8 +346,48 @@ async def test_colliding_passthrough_zone_entities_are_source_prefixed(
         "binary_sensor", DOMAIN, f"eppgrid_device_group_{group['id']}_zone_pass_11:22:33:44:55:66_3"
     )
     assert a_eid and b_eid
-    assert hass.states.get(a_eid).attributes["friendly_name"].endswith("Left Bedroom Desk")
-    assert hass.states.get(b_eid).attributes["friendly_name"].endswith("Right Bedroom Desk")
+    assert hass.states.get(a_eid).attributes["friendly_name"].endswith("Left Bedroom Zone Desk")
+    assert hass.states.get(b_eid).attributes["friendly_name"].endswith("Right Bedroom Zone Desk")
+
+
+async def test_merging_a_zone_purges_its_passthrough_entity(
+    hass: HomeAssistant,
+    config_entry: MockConfigEntry,
+    enable_custom_integrations,
+) -> None:
+    """Merging a zone into a group must fully remove its old passthrough entity
+    from the registry — not leave it lingering as 'unavailable'."""
+    er_ = er.async_get(hass)
+    occ = er_.async_get_or_create("binary_sensor", "esphome", "AA:BB:CC:DD:EE:FF-binary_sensor-occupancy")
+    z2 = er_.async_get_or_create("binary_sensor", "esphome", "AA:BB:CC:DD:EE:FF-binary_sensor-zone_2_presence")
+    hass.states.async_set(occ.entity_id, STATE_OFF)
+    hass.states.async_set(z2.entity_id, STATE_OFF)
+
+    assert await hass.config_entries.async_setup(config_entry.entry_id)
+    await hass.async_block_till_done()
+
+    manager = hass.data[DOMAIN]
+    manager._store.devices["AA:BB:CC:DD:EE:FF"] = {
+        "name": "Dev",
+        "room_layout": {"zone_slots": [{"type": "default"}, None, {"name": "Desk"}, None, None, None, None, None]},
+    }
+    group = await manager.device_groups.async_create(name="G", sources=["AA:BB:CC:DD:EE:FF"])
+    await hass.async_block_till_done()
+
+    pass_uid = f"eppgrid_device_group_{group['id']}_zone_pass_AA:BB:CC:DD:EE:FF_2"
+    assert er_.async_get_entity_id("binary_sensor", DOMAIN, pass_uid) is not None
+
+    # Merge zone 2 into a named zone group.
+    await manager.device_groups.async_update(
+        id=group["id"],
+        name="G",
+        sources=["AA:BB:CC:DD:EE:FF"],
+        area_id=None,
+        zone_groups=[{"id": "zg1", "name": "Bed", "members": [{"mac": "AA:BB:CC:DD:EE:FF", "zone_index": 2}]}],
+    )
+    await hass.async_block_till_done()
+
+    assert er_.async_get_entity_id("binary_sensor", DOMAIN, pass_uid) is None
 
 
 async def test_group_area_id_applied_to_device_registry(

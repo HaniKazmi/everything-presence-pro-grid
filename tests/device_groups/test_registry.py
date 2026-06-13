@@ -39,7 +39,8 @@ class TestZoneNameFromStore:
                 }
             }
         )
-        assert zone_name_from_store(store, "AA:BB:CC:DD:EE:FF", 2) == "Bed"
+        # Named zones use the same "Zone {name}" structure as the real sensors.
+        assert zone_name_from_store(store, "AA:BB:CC:DD:EE:FF", 2) == "Zone Bed"
         # An empty (None) slot has no name.
         assert zone_name_from_store(store, "AA:BB:CC:DD:EE:FF", 1) is None
         # Out-of-range index.
@@ -52,18 +53,14 @@ class TestZoneNameFromStore:
     def test_unknown_mac_returns_none(self) -> None:
         assert zone_name_from_store(_FakeStore({}), "ZZ:ZZ:ZZ:ZZ:ZZ:ZZ", 2) is None
 
-    def test_zone_0_defaults_to_rest_of_room(self) -> None:
-        """Zone 0 is the always-present 'rest of room' zone; with no user name it
-        falls back to 'Rest of room' (so it can be exposed/merged)."""
+    def test_zone_0_is_rest_of_room(self) -> None:
+        """Zone 0 is the always-present rest-of-room zone, named like the real
+        sensor ('Zone Rest of Room') regardless of any slot-0 name."""
         store = _FakeStore({"AA": {"room_layout": {"zone_slots": [{"type": "default"}, None]}}})
-        assert zone_name_from_store(store, "AA", 0) == "Rest of room"
+        assert zone_name_from_store(store, "AA", 0) == "Zone Rest of Room"
 
-    def test_zone_0_uses_explicit_name_when_set(self) -> None:
-        store = _FakeStore({"AA": {"room_layout": {"zone_slots": [{"name": "Entrance"}, None]}}})
-        assert zone_name_from_store(store, "AA", 0) == "Entrance"
-
-    def test_zone_0_defaults_to_rest_of_room_with_no_layout(self) -> None:
-        assert zone_name_from_store(_FakeStore({"AA": {}}), "AA", 0) == "Rest of room"
+    def test_zone_0_is_rest_of_room_with_no_layout(self) -> None:
+        assert zone_name_from_store(_FakeStore({"AA": {}}), "AA", 0) == "Zone Rest of Room"
 
 
 def _add_entity(hass: HomeAssistant, mac: str, slot: str, *, disabled: bool = False) -> str:

@@ -33,6 +33,7 @@ interface FakeController {
 	update: ReturnType<typeof vi.fn>;
 	delete: ReturnType<typeof vi.fn>;
 	candidateSources: DeviceGroupSource[];
+	groups: DeviceGroup[];
 	emit(groups: DeviceGroup[]): void;
 }
 
@@ -49,7 +50,9 @@ function makeController(): FakeController {
 		update: vi.fn().mockResolvedValue(undefined),
 		delete: vi.fn().mockResolvedValue(undefined),
 		candidateSources: [],
+		groups: [],
 		emit(groups: DeviceGroup[]) {
+			this.groups = groups;
 			cb?.(groups);
 		},
 	};
@@ -98,6 +101,19 @@ describe("epp-device-groups-view", () => {
 		const ctrl = makeController();
 		const el = await fixture(ctrl);
 		expect(el.shadowRoot!.textContent).toContain("No device groups yet.");
+	});
+
+	it("seeds the list from the controller cache on connect (survives tab switches)", async () => {
+		const ctrl = makeController();
+		// Controller already has cached groups (it's panel-owned and stays
+		// subscribed across tab switches) — the freshly-mounted view must show
+		// them without waiting for a new event.
+		ctrl.groups = [makeGroup()];
+		const el = await fixture(ctrl);
+		expect(el.shadowRoot!.querySelector(".group-row")).not.toBeNull();
+		expect(el.shadowRoot!.querySelector(".group-name")!.textContent).toBe(
+			"Bedroom",
+		);
 	});
 
 	it("wraps both the list and the editor in a centred .content container", async () => {

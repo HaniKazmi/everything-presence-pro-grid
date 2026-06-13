@@ -10,28 +10,31 @@ from homeassistant.helpers import entity_registry as er
 
 from ..const import NUM_ZONE_SLOTS
 from ..const import PRESENCE_SLOTS
+from ..device_manager._helpers import _resolve_zone_name
 from ._projection import SourceState
 from ._projection import ZoneState
 
 
 def zone_name_from_store(store: Any, mac: str, zone_index: int) -> str | None:
-    """Look up a zone's user-set name from a device's stored room_layout.
+    """Display name for a device's zone, matching the device's own zone sensor.
 
     `room_layout` is persisted as a dict ``{grid_bytes, zone_slots, furniture}``
     (see websocket set_room_layout); zone names live at
-    ``room_layout["zone_slots"][zone_index]["name"]``. Shared by the integration
-    setup (zone_name_fn callback) and the WS serializer so the lookup lives in
-    one place.
+    ``room_layout["zone_slots"][zone_index]["name"]``. The returned name uses the
+    same structural naming as the real per-zone sensors — ``Zone {name}`` for a
+    named zone, ``Zone Rest of Room`` for zone 0 — so a device group's zones read
+    identically to the device's own sensors. Returns None for an unconfigured
+    (unnamed) named-zone slot. Shared by the integration setup (zone_name_fn
+    callback) and the WS serializer so the lookup lives in one place.
     """
     device = store.devices.get(mac, {})
     layout = device.get("room_layout", {})
     slots = layout.get("zone_slots", []) if isinstance(layout, dict) else []
     slot = slots[zone_index] if 0 <= zone_index < len(slots) else None
     name = slot.get("name") if slot else None
-    if name is None and zone_index == 0:
-        # Zone 0 is the always-present "rest of room" zone.
-        return "Rest of room"
-    return name
+    if zone_index != 0 and name is None:
+        return None
+    return _resolve_zone_name("en", index=zone_index, zone_name=name, target_count=False)
 
 
 def resolve_entity_id(hass: HomeAssistant, mac: str, slot: str) -> str | None:
