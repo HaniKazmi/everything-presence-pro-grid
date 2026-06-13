@@ -102,6 +102,42 @@ async def test_helper_occupancy_turns_on_when_source_on(hass: HomeAssistant, int
     assert hass.states.get(helper).state == STATE_ON
 
 
+async def test_presence_entity_name_is_translation_driven(
+    hass: HomeAssistant,
+    config_entry: MockConfigEntry,
+    enable_custom_integrations,
+) -> None:
+    """Presence helper names come from the translation_key (strings.json), not a
+    hardcoded title-cased _attr_name — so `mmwave_presence` renders as
+    'mmWave presence', not 'Mmwave Presence'."""
+    er_ = er.async_get(hass)
+    src = er_.async_get_or_create(
+        "binary_sensor",
+        "esphome",
+        "AA:BB:CC:DD:EE:FF-binary_sensor-mmwave_presence",
+    )
+    hass.states.async_set(src.entity_id, STATE_OFF)
+
+    assert await hass.config_entries.async_setup(config_entry.entry_id)
+    await hass.async_block_till_done()
+
+    manager = hass.data[DOMAIN]
+    group = await manager.device_groups.async_create(
+        name="Master Bedroom Presence",
+        sources=["AA:BB:CC:DD:EE:FF"],
+    )
+    await hass.async_block_till_done()
+
+    eid = er_.async_get_entity_id(
+        "binary_sensor",
+        DOMAIN,
+        f"eppgrid_device_group_{group['id']}_mmwave_presence",
+    )
+    entry = er_.async_get(eid)
+    assert entry.translation_key == "device_group_mmwave_presence"
+    assert entry.original_name == "mmWave presence"
+
+
 async def test_helper_has_virtual_device_in_registry(hass: HomeAssistant, integration_with_group: dict) -> None:
     group = integration_with_group["group"]
     dr_ = dr.async_get(hass)
@@ -260,6 +296,54 @@ async def test_group_area_id_applied_to_device_registry(
     dev = dr_.async_get_device(identifiers={(DOMAIN, f"device_group:{group['id']}")})
     assert dev is not None
     assert dev.area_id == area.id
+
+
+async def test_clearing_group_area_id_clears_device_registry_area(
+    hass: HomeAssistant,
+    config_entry: MockConfigEntry,
+    enable_custom_integrations,
+) -> None:
+    """Setting a group's area_id back to None must clear the HA device-registry
+    area assignment — otherwise the virtual device stays stuck in the old area."""
+    ar_ = ar.async_get(hass)
+    area = ar_.async_create("Bedroom")
+
+    er_ = er.async_get(hass)
+    a = er_.async_get_or_create(
+        "binary_sensor",
+        "esphome",
+        "AA:BB:CC:DD:EE:FF-binary_sensor-occupancy",
+    )
+    hass.states.async_set(a.entity_id, STATE_OFF)
+
+    assert await hass.config_entries.async_setup(config_entry.entry_id)
+    await hass.async_block_till_done()
+
+    manager = hass.data[DOMAIN]
+    group = await manager.device_groups.async_create(
+        name="Bedroom Presence",
+        sources=["AA:BB:CC:DD:EE:FF"],
+        area_id=area.id,
+    )
+    await hass.async_block_till_done()
+
+    dr_ = dr.async_get(hass)
+    dev = dr_.async_get_device(identifiers={(DOMAIN, f"device_group:{group['id']}")})
+    assert dev is not None and dev.area_id == area.id
+
+    # Clear the area.
+    await manager.device_groups.async_update(
+        id=group["id"],
+        name=group["name"],
+        sources=group["sources"],
+        area_id=None,
+        zone_groups=[],
+    )
+    await hass.async_block_till_done()
+
+    dev = dr_.async_get_device(identifiers={(DOMAIN, f"device_group:{group['id']}")})
+    assert dev is not None
+    assert dev.area_id is None
 
 
 async def test_passthrough_zone_entity_uses_configured_zone_name(

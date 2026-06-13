@@ -12,12 +12,13 @@ from homeassistant.helpers import entity_registry as er
 from custom_components.eppgrid.device_groups._aggregator import Aggregator
 
 
-def _register(hass: HomeAssistant, mac: str, slot: str) -> str:
+def _register(hass: HomeAssistant, mac: str, slot: str, *, disabled: bool = False) -> str:
     registry = er.async_get(hass)
     entry = registry.async_get_or_create(
         domain="binary_sensor",
         platform="esphome",
         unique_id=f"{mac}-binary_sensor-{slot}",
+        disabled_by=er.RegistryEntryDisabler.USER if disabled else None,
     )
     return entry.entity_id
 
@@ -146,6 +147,86 @@ class TestZoneAggregation:
         await agg.async_start()
         try:
             assert agg.outputs["zone_groups"]["zg1"] is True
+        finally:
+            await agg.async_stop()
+
+
+class TestPresenceSlotExposure:
+    async def test_only_exposes_presence_slots_with_an_enabled_source(
+        self, hass: HomeAssistant, group_def: dict
+    ) -> None:
+        """A presence slot is exposed only if some source has that entity
+        enabled — mirrors derive_exposed_entities. Sources here register only
+        `occupancy`, so the other slots must be absent from the outputs."""
+        a = _register(hass, "AA:BB:CC:DD:EE:FF", "occupancy")
+        b = _register(hass, "11:22:33:44:55:66", "occupancy")
+        _set_state(hass, a, STATE_OFF)
+        _set_state(hass, b, STATE_OFF)
+
+        agg = Aggregator(
+            hass,
+            group_def,
+            device_name_fn=lambda m: m,
+            zone_name_fn=lambda m, i: f"Zone {i}",
+        )
+        await agg.async_start()
+        try:
+            assert "occupancy" in agg.outputs["presence"]
+            assert "static_presence" not in agg.outputs["presence"]
+            assert "motion_presence" not in agg.outputs["presence"]
+        finally:
+            await agg.async_stop()
+
+    async def test_disabled_presence_slot_is_not_exposed(self, hass: HomeAssistant, group_def: dict) -> None:
+        """A registered-but-disabled source entity does not expose its slot."""
+        _register(hass, "AA:BB:CC:DD:EE:FF", "occupancy", disabled=True)
+        _register(hass, "11:22:33:44:55:66", "occupancy", disabled=True)
+
+        agg = Aggregator(
+            hass,
+            group_def,
+            device_name_fn=lambda m: m,
+            zone_name_fn=lambda m, i: f"Zone {i}",
+        )
+        await agg.async_start()
+        try:
+            assert "occupancy" not in agg.outputs["presence"]
+        finally:
+            await agg.async_stop()
+
+
+class TestPassthroughExposure:
+    async def test_enabled_ungrouped_zone_is_exposed_as_passthrough(self, hass: HomeAssistant, group_def: dict) -> None:
+        z = _register(hass, "AA:BB:CC:DD:EE:FF", "zone_4_presence")
+        _set_state(hass, z, STATE_OFF)
+
+        agg = Aggregator(
+            hass,
+            group_def,
+            device_name_fn=lambda m: m,
+            zone_name_fn=lambda m, i: f"Zone {i}",
+        )
+        await agg.async_start()
+        try:
+            assert ("AA:BB:CC:DD:EE:FF", 4) in agg.outputs["zone_passthroughs"]
+        finally:
+            await agg.async_stop()
+
+    async def test_disabled_zone_is_not_exposed_as_passthrough(self, hass: HomeAssistant, group_def: dict) -> None:
+        """A registered-but-disabled zone entity (even with a configured name)
+        must not produce a passthrough helper — it would be permanently
+        unavailable."""
+        _register(hass, "AA:BB:CC:DD:EE:FF", "zone_4_presence", disabled=True)
+
+        agg = Aggregator(
+            hass,
+            group_def,
+            device_name_fn=lambda m: m,
+            zone_name_fn=lambda m, i: f"Zone {i}",
+        )
+        await agg.async_start()
+        try:
+            assert ("AA:BB:CC:DD:EE:FF", 4) not in agg.outputs["zone_passthroughs"]
         finally:
             await agg.async_stop()
 

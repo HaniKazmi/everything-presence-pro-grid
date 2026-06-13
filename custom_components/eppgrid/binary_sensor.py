@@ -107,14 +107,20 @@ class _PlatformProxy:
         return out
 
     def _apply_area_assignments(self, groups: list[dict[str, Any]]) -> None:
-        """Ensure each group's HA device record reflects its stored area_id."""
+        """Ensure each group's HA device record reflects its stored area_id.
+
+        A cleared area_id (None) is synced too, so removing a group's area also
+        clears the device-registry assignment instead of leaving it stuck in
+        the old area.
+        """
         dr_ = dr.async_get(self._hass)
         for g in groups:
-            if not g.get("area_id"):
-                continue
             dev = dr_.async_get_device(identifiers={(DOMAIN, f"device_group:{g['id']}")})
-            if dev is not None and dev.area_id != g["area_id"]:
-                dr_.async_update_device(dev.id, area_id=g["area_id"])
+            if dev is None:
+                continue
+            target = g.get("area_id")
+            if dev.area_id != target:
+                dr_.async_update_device(dev.id, area_id=target)
 
     def _compute_active_uids(self, groups: list[dict[str, Any]]) -> set[str]:
         uids: set[str] = set()
@@ -148,8 +154,9 @@ class DeviceGroupPresenceEntity(BinarySensorEntity):
         self._aggregator = aggregator
         self._unsub: Callable[[], None] | None = None
         self._attr_unique_id = f"eppgrid_device_group_{group['id']}_{slot}"
+        # Name is i18n-driven from strings.json — do NOT set _attr_name, which
+        # would override the localised name (and the "mmWave presence" casing).
         self._attr_translation_key = f"device_group_{slot}"
-        self._attr_name = slot.replace("_", " ").title()
         self._attr_device_class = _PRESENCE_DEVICE_CLASS.get(slot)
         self._attr_device_info = DeviceInfo(
             identifiers={(DOMAIN, f"device_group:{group['id']}")},

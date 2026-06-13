@@ -170,11 +170,26 @@ class Aggregator:
         st = self._hass.states.get(eid)
         return st.state if st else None
 
+    def _entity_enabled(self, mac: str, slot: str) -> bool:
+        """True if the source entity is registered and not disabled.
+
+        Mirrors build_source_states/derive_exposed_entities so the platform
+        only materialises helpers for entities the user actually has enabled.
+        """
+        eid = resolve_entity_id(self._hass, mac, slot)
+        if eid is None:
+            return False
+        entry = er.async_get(self._hass).async_get(eid)
+        return entry is not None and not entry.disabled
+
     def _recompute_all(self) -> None:
         sources = self._def["sources"]
-        # Presence
+        # Presence: expose a slot only if at least one source has that entity
+        # enabled (registered + not disabled), matching derive_exposed_entities.
         presence: dict[str, bool | None] = {}
         for slot in PRESENCE_SLOTS:
+            if not any(self._entity_enabled(m, slot) for m in sources):
+                continue
             presence[slot] = or_presence([self._state_of(m, slot) for m in sources])
         # Zone groups
         zg_state: dict[str, bool | None] = {}
@@ -185,13 +200,15 @@ class Aggregator:
                 grouped_keys.add((m["mac"], m["zone_index"]))
                 states.append(self._state_of(m["mac"], f"zone_{m['zone_index']}_presence"))
             zg_state[zg["id"]] = or_presence(states)
-        # Passthroughs: anything registered, not in a group, with a configured zone name.
+        # Passthroughs: enabled (registered + not disabled) zone entities, not in
+        # a group, with a configured zone name. Disabled zones are skipped so we
+        # don't materialise permanently-unavailable helpers.
         passthroughs: dict[tuple[str, int], bool | None] = {}
         for mac in sources:
             for i in range(1, NUM_ZONE_SLOTS):
                 if (mac, i) in grouped_keys:
                     continue
-                if resolve_entity_id(self._hass, mac, f"zone_{i}_presence") is None:
+                if not self._entity_enabled(mac, f"zone_{i}_presence"):
                     continue
                 if self._zone_name_fn(mac, i) is None:
                     continue
