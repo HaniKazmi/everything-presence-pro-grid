@@ -1792,7 +1792,7 @@ export class EPPGridPanel extends LitElement {
 					}}>${this._localize("tabs.flash_firmware")}</button>
 				<button class="tab ${this._panelTab === "device-groups" ? "active" : ""}"
 					@click=${() => {
-						this._flasherCtrl.resetUsbState();
+						void this._flasherCtrl.resetUsbState();
 						this._panelTab = "device-groups";
 					}}>Device Groups</button>
 				<a class="tab-help"

@@ -5,10 +5,10 @@ Groups let you combine 2 or more physical sensors into a single virtual device
 in Home Assistant — so automations can target "Master Bedroom" without ORing
 multiple sensors by hand.
 
-A device group exposes:
+![Device groups page.](../images/device-groups/) A device group exposes:
 
-- One **occupancy** binary sensor that is on if any source sensor's occupancy
-  is on.
+- One **occupancy** binary sensor that is on if any source sensor's occupancy is
+  on.
 - The same for **static presence**, **motion presence**, **target presence**,
   and **mmWave presence** — each only created if at least one source has that
   entity enabled.
@@ -29,16 +29,16 @@ unavailable only when every source is unavailable.
 5. Optionally choose an **Area** to assign the virtual device (and its source
    devices) to.
 6. Under **Source devices**, toggle on the sensors it should aggregate.
-7. To combine zones from different sensors into one binary sensor, click
-   **Add a merged zone**, tick **two or more** zones, give the merged zone a
-   name (e.g. "Bed"), and click **Merge**. The merged zone appears under
-   **Merged zones**; each one becomes a single binary sensor.
+7. To combine zones from different sensors into one binary sensor, click **Add a
+   merged zone**, tick **two or more** zones, give the merged zone a name (e.g.
+   "Bed"), and click **Merge**. The merged zone appears under **Merged zones**;
+   each one becomes a single binary sensor.
 8. **Sensors that will be created** previews the exact entities the group will
    expose.
 9. Click **Save**.
 
-The new virtual device appears under **Settings → Devices & Services → EPP Grid**
-with all its aggregated entities.
+The new virtual device appears under **Settings → Devices & Services → EPP
+Grid** with all its aggregated entities.
 
 ## Editing or deleting
 
@@ -53,9 +53,9 @@ just that zone.
 
 ## What happens when…
 
-| Event | Behavior |
-|---|---|
-| A source device goes offline | It's ignored. Helper still tracks the rest. |
-| You delete a zone on a source | If it was in a merge group, the group keeps its definition but the entity goes unavailable. Add another zone to the group or delete it. |
-| You rename a source device or zone | Display names update; the helper's entities keep their unique IDs and don't break. |
-| You remove a source device entirely | Its MAC drops out of the group's source list. If the group has no remaining sources, it becomes a stub. |
+| Event                               | Behavior                                                                                                                                |
+| ----------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
+| A source device goes offline        | It's ignored. Helper still tracks the rest.                                                                                             |
+| You delete a zone on a source       | If it was in a merge group, the group keeps its definition but the entity goes unavailable. Add another zone to the group or delete it. |
+| You rename a source device or zone  | Display names update; the helper's entities keep their unique IDs and don't break.                                                      |
+| You remove a source device entirely | The group keeps it in its source list but shows it as unavailable, and the helper ignores it. Edit the group to remove or replace it.   |
