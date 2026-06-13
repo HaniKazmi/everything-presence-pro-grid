@@ -627,19 +627,24 @@ async def _start_target_stream(
     await device_conn.subscribe_states(on_state)
     connection.send_result(msg["id"])
 
-    setattr(device_conn, counter_attr, getattr(device_conn, counter_attr) + 1)
+    # Count the subscriber on the manager, keyed by mac — NOT on `device_conn`.
+    # The count must outlive this connection: when the device flaps and the
+    # session is reopened on a fresh connection, a per-connection counter would
+    # reset to zero and the recomputed pipeline would silence the device while
+    # this subscription is still live (the "target disappears" freeze).
+    manager.note_target_subscribe(mac, counter_attr)
     hass.async_create_task(manager.async_push_pipeline_to_device(mac))
 
     @callback
     def _unsub() -> None:
         device_conn.unsubscribe_states(on_state)
-        setattr(device_conn, counter_attr, getattr(device_conn, counter_attr) - 1)
         # Re-fetch the manager instead of closing over `manager`: the unsub
         # can fire after a config-entry unload tore that manager down, and
-        # the fresh lookup returning None skips the pipeline kick instead of
-        # poking a dead manager.
+        # the fresh lookup returning None skips the decrement + pipeline kick
+        # instead of poking a dead manager.
         mgr = _get_manager(hass)
         if mgr:
+            mgr.note_target_unsubscribe(mac, counter_attr)
             hass.async_create_task(mgr.async_push_pipeline_to_device(mac))
 
     connection.subscriptions[msg["id"]] = _unsub

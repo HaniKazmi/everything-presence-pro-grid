@@ -31,11 +31,11 @@ class TestEndToEndPipelineFlow:
         }
 
         mock_session = MagicMock()
-        mock_session.raw_target_subs = 0
-        mock_session.grid_target_subs = 1  # Frontend connected
         mock_session.async_execute_service = AsyncMock()
         mock_session.connected = True
         mock_dm.get_session = MagicMock(return_value=mock_session)
+        # Frontend connected: one grid subscriber, tracked per-mac.
+        mock_dm._target_subs = {mac: {"raw_target_subs": 0, "grid_target_subs": 1}}
 
         # Use the real _push_pipeline_to_device method
         mock_dm._push_pipeline_to_device = lambda m: DeviceManager._push_pipeline_to_device(mock_dm, m)
@@ -58,11 +58,11 @@ class TestEndToEndPipelineFlow:
         mock_dm._store.devices[mac] = {}
 
         mock_session = MagicMock()
-        mock_session.raw_target_subs = 0
-        mock_session.grid_target_subs = 0
         mock_session.async_execute_service = AsyncMock()
         mock_session.connected = True
         mock_dm.get_session = MagicMock(return_value=mock_session)
+        # No frontend subscribers tracked for this mac.
+        mock_dm._target_subs = {}
 
         mock_dm._push_pipeline_to_device = lambda m: DeviceManager._push_pipeline_to_device(mock_dm, m)
 
@@ -85,11 +85,11 @@ class TestEndToEndPipelineFlow:
         mock_dm._store.devices[mac] = {}
 
         mock_session = MagicMock()
-        mock_session.raw_target_subs = 1  # Calibration wizard open
-        mock_session.grid_target_subs = 0
         mock_session.async_execute_service = AsyncMock()
         mock_session.connected = True
         mock_dm.get_session = MagicMock(return_value=mock_session)
+        # Calibration wizard open: one raw subscriber, tracked per-mac.
+        mock_dm._target_subs = {mac: {"raw_target_subs": 1, "grid_target_subs": 0}}
 
         mock_dm._push_pipeline_to_device = lambda m: DeviceManager._push_pipeline_to_device(mock_dm, m)
 
@@ -118,11 +118,10 @@ class TestEndToEndPipelineFlow:
         }
 
         mock_session = MagicMock()
-        mock_session.raw_target_subs = 0
-        mock_session.grid_target_subs = 0
         mock_session.async_execute_service = AsyncMock()
         mock_session.connected = True
         mock_dm.get_session = MagicMock(return_value=mock_session)
+        mock_dm._target_subs = {}
 
         mock_dm._push_pipeline_to_device = lambda m: DeviceManager._push_pipeline_to_device(mock_dm, m)
 
@@ -132,3 +131,114 @@ class TestEndToEndPipelineFlow:
         assert call_args[0][0] == "epp_set_pipeline"
         pipeline = call_args[0][1]
         assert pipeline["entity_target_interval"] == 0  # Rate ignored, entities all off
+
+
+class TestSubscriberCountsSurviveSessionReplacement:
+    """Regression for the v1.1.0 'target disappears in editor' freeze.
+
+    The subscriber counts that gate device emission must live at manager/mac
+    level, NOT on the ephemeral ``DeviceConnection``. When a device flaps and
+    the session is torn down and reopened, the fresh connection's own counters
+    start at zero — if the pipeline is computed from those, the device is told
+    'no grid subscribers' and stops emitting zone-state, freezing every
+    connected client until a page refresh re-subscribes.
+    """
+
+    def _fresh_session(self) -> MagicMock:
+        """A just-reopened connection: its own per-connection counters are 0."""
+        session = MagicMock()
+        session.raw_target_subs = 0
+        session.grid_target_subs = 0
+        session.async_execute_service = AsyncMock()
+        session.connected = True
+        return session
+
+    def _bind_real_sub_tracking(self, mock_dm: MagicMock) -> None:
+        """Bind the REAL subscriber-tracking + pipeline-push methods onto the
+        MagicMock manager so the per-mac counting logic actually runs (the
+        mock would otherwise no-op these and hide the behavior)."""
+        mock_dm._target_subs = {}
+        mock_dm.note_target_subscribe = lambda m, k: DeviceManager.note_target_subscribe(mock_dm, m, k)
+        mock_dm.note_target_unsubscribe = lambda m, k: DeviceManager.note_target_unsubscribe(mock_dm, m, k)
+        mock_dm._push_pipeline_to_device = lambda m: DeviceManager._push_pipeline_to_device(mock_dm, m)
+
+    async def test_grid_sub_survives_session_reopen(self, hass: HomeAssistant, config_entry: MockConfigEntry) -> None:
+        """A grid subscriber recorded per-mac keeps zone_state emission on
+        after the session is replaced by a fresh (zero-counter) connection."""
+        mock_dm = await setup_integration(hass, config_entry)
+        mac = "AA:BB:CC:DD:EE:FF"
+        mock_dm._store.devices[mac] = {}
+        self._bind_real_sub_tracking(mock_dm)
+
+        # Frontend holds an active grid-targets subscription.
+        mock_dm.note_target_subscribe(mac, "grid_target_subs")
+
+        # Device flapped → brand-new connection replaces the old session.
+        fresh_session = self._fresh_session()
+        mock_dm.get_session = MagicMock(return_value=fresh_session)
+
+        await mock_dm._push_pipeline_to_device(mac)
+
+        pipeline = fresh_session.async_execute_service.await_args[0][1]
+        assert pipeline["zone_state_interval"] == 1000
+        assert pipeline["display_interval"] == 200
+
+    async def test_raw_sub_survives_session_reopen(self, hass: HomeAssistant, config_entry: MockConfigEntry) -> None:
+        """A raw subscriber recorded per-mac keeps display emission on after a
+        session reopen (calibration wizard staying open across a flap)."""
+        mock_dm = await setup_integration(hass, config_entry)
+        mac = "AA:BB:CC:DD:EE:FF"
+        mock_dm._store.devices[mac] = {}
+        self._bind_real_sub_tracking(mock_dm)
+
+        mock_dm.note_target_subscribe(mac, "raw_target_subs")
+
+        fresh_session = self._fresh_session()
+        mock_dm.get_session = MagicMock(return_value=fresh_session)
+
+        await mock_dm._push_pipeline_to_device(mac)
+
+        pipeline = fresh_session.async_execute_service.await_args[0][1]
+        assert pipeline["display_interval"] == 200
+        assert pipeline["zone_state_interval"] == 0  # raw only — no zone state
+
+    async def test_unsubscribe_disables_emission(self, hass: HomeAssistant, config_entry: MockConfigEntry) -> None:
+        """When the last grid subscriber goes away, zone-state emission stops."""
+        mock_dm = await setup_integration(hass, config_entry)
+        mac = "AA:BB:CC:DD:EE:FF"
+        mock_dm._store.devices[mac] = {}
+        self._bind_real_sub_tracking(mock_dm)
+
+        mock_dm.note_target_subscribe(mac, "grid_target_subs")
+        mock_dm.note_target_unsubscribe(mac, "grid_target_subs")
+
+        fresh_session = self._fresh_session()
+        mock_dm.get_session = MagicMock(return_value=fresh_session)
+
+        await mock_dm._push_pipeline_to_device(mac)
+
+        pipeline = fresh_session.async_execute_service.await_args[0][1]
+        assert pipeline["zone_state_interval"] == 0
+        assert pipeline["display_interval"] == 0
+
+    async def test_unsubscribe_never_goes_negative(self, hass: HomeAssistant, config_entry: MockConfigEntry) -> None:
+        """A stray unsubscribe (its increment landed on a since-replaced
+        connection) must not drive the count below zero and wrongly re-enable
+        emission on the next subscribe."""
+        mock_dm = await setup_integration(hass, config_entry)
+        mac = "AA:BB:CC:DD:EE:FF"
+        mock_dm._store.devices[mac] = {}
+        self._bind_real_sub_tracking(mock_dm)
+
+        # Unsubscribe with no matching subscribe — must floor at 0.
+        mock_dm.note_target_unsubscribe(mac, "grid_target_subs")
+        mock_dm.note_target_subscribe(mac, "grid_target_subs")
+
+        fresh_session = self._fresh_session()
+        mock_dm.get_session = MagicMock(return_value=fresh_session)
+
+        await mock_dm._push_pipeline_to_device(mac)
+
+        pipeline = fresh_session.async_execute_service.await_args[0][1]
+        # One real subscriber → emission on (count floored, not -1+1=0).
+        assert pipeline["zone_state_interval"] == 1000

@@ -177,6 +177,18 @@ class DeviceManager:
         # close paths (device offline/removed, shutdown) bypass the count and
         # reset it — the session is dead regardless of who holds references.
         self._session_refcounts: dict[str, int] = {}
+        # Live frontend target-stream subscriber counts, keyed by mac then by
+        # stream kind ("raw_target_subs" / "grid_target_subs"). These gate the
+        # device's emission pipeline (see `_compute_pipeline`). They live HERE,
+        # at the manager/mac level, NOT on the ephemeral `DeviceConnection`:
+        # a device flap tears the connection down and reopens a fresh one whose
+        # own counters would start at zero, so a pipeline computed from those
+        # would tell the device "no subscribers" and silence it while clients
+        # are still subscribed — the v1.1.0 "target disappears in the editor"
+        # freeze. Keyed by mac, the counts survive connection replacement, and
+        # `async_open_session` re-pushes the pipeline on reopen so emission
+        # resumes without a page refresh.
+        self._target_subs: dict[str, dict[str, int]] = {}
         self._session_locks: dict[str, asyncio.Lock] = {}
         # Serializes `_push_config_to_device` per mac. Without this, the
         # firmware_version-arrival re-spawn in `_on_state_changed` could
@@ -1312,12 +1324,45 @@ class DeviceManager:
 
         task.add_done_callback(_drop)
 
+    @callback
+    def note_target_subscribe(self, mac: str, kind: str) -> None:
+        """Record one new frontend target-stream subscriber for `mac`.
+
+        `kind` is the stream counter name ("raw_target_subs" /
+        "grid_target_subs"). Counts are held per-mac (see `_target_subs`) so
+        they survive connection replacement — the WS subscribe handler calls
+        this instead of mutating the ephemeral connection.
+        """
+        counts = self._target_subs.setdefault(mac, {"raw_target_subs": 0, "grid_target_subs": 0})
+        counts[kind] = counts.get(kind, 0) + 1
+
+    @callback
+    def note_target_unsubscribe(self, mac: str, kind: str) -> None:
+        """Record the loss of one frontend target-stream subscriber for `mac`.
+
+        Floors at zero: a subscriber's increment can land on a connection that
+        was later replaced while its `_unsub` fires against the surviving
+        per-mac count, so a stray decrement must not drive the count negative
+        (which would otherwise leave emission wrongly gated after the next
+        subscribe). Drops the mac entry once both counts reach zero.
+        """
+        counts = self._target_subs.get(mac)
+        if counts is None:
+            return
+        counts[kind] = max(0, counts.get(kind, 0) - 1)
+        if counts["raw_target_subs"] == 0 and counts["grid_target_subs"] == 0:
+            self._target_subs.pop(mac, None)
+
     async def _push_pipeline_to_device(self, mac: str) -> None:
         """Recompute pipeline intervals and push to device."""
         config = self._store.devices.get(mac, {})
         session = self.get_session(mac)
-        raw_subs = session.raw_target_subs if session else 0
-        grid_subs = session.grid_target_subs if session else 0
+        # Subscriber counts come from the per-mac map, NOT `session`: a freshly
+        # reopened connection's own counters are zero even while clients are
+        # subscribed (see `_target_subs`).
+        counts = self._target_subs.get(mac, {})
+        raw_subs = counts.get("raw_target_subs", 0)
+        grid_subs = counts.get("grid_target_subs", 0)
 
         pipeline = _compute_pipeline(config, raw_subs, grid_subs)
 
@@ -1611,6 +1656,15 @@ class DeviceManager:
             config = self._store.devices.get(mac)
             if config:
                 self._manage_log_subscription(conn, config)
+            # A reopened connection comes up with its emission pipeline at the
+            # device's defaults. If frontend subscribers are already tracked for
+            # this mac — they survive the connection swap (see `_target_subs`) —
+            # re-push the pipeline so target/zone emission resumes immediately
+            # instead of staying silent until a page refresh re-subscribes.
+            # Spawned (not awaited) to avoid an extra round-trip inside the
+            # session lock; the push reads the just-stored connection.
+            if self._target_subs.get(mac):
+                self._spawn(self._push_pipeline_to_device(mac))
             return conn
 
     @callback
