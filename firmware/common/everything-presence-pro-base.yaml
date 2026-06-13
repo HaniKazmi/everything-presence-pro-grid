@@ -6,7 +6,26 @@ esphome:
     - priority: 200
       then:
         - lambda: |-
-            id(logger_id).set_log_level(ESPHOME_LOG_LEVEL_NONE);
+            auto &logger = *id(logger_id);
+            logger.set_log_level(ESPHOME_LOG_LEVEL_NONE);
+            // `system` is the global default level (set_log_level with no
+            // tag), which ESPHome uses as the fallback for any tag WITHOUT
+            // an explicit override. Pin every category tag to NONE here so
+            // raising `system` to Debug only surfaces genuinely
+            // uncategorised tags (api, ota, uart, light, switch, ...) and
+            // never leaks epp/sensor/led/networking/ble/co2 logs the user
+            // didn't enable. Keep this list in sync with the
+            // epp_set_log_level category mapping below (enforced by
+            // tests/test_firmware_log_category_mapping.py).
+            for (const char *tag : {
+                   "epp", "sensor", "text_sensor", "binary_sensor",
+                   "control_leds",
+                   "wifi", "esp_netif", "dhcp", "eth", "esp_eth", "phy",
+                   "bt", "btm", "bta", "hci", "gap", "controller",
+                   "esp32_ble_tracker", "bluetooth_proxy",
+                   "scd4x"}) {
+              logger.set_log_level(tag, ESPHOME_LOG_LEVEL_NONE);
+            }
     - priority: 375
       then:
         - delay: 200ms
@@ -477,6 +496,14 @@ api:
               logger.set_log_level(log_level);
             } else if (category == "epp") {
               logger.set_log_level("epp", log_level);
+              // Zone/target/motion entity states ('Zone N Target Count',
+              // 'Target N Position', 'Motion Presence') are emitted under
+              // ESPHome's shared framework tags, not the `epp` tag. Group
+              // them with the zone engine so they appear here and NOT under
+              // `system`.
+              logger.set_log_level("sensor", log_level);
+              logger.set_log_level("text_sensor", log_level);
+              logger.set_log_level("binary_sensor", log_level);
             } else if (category == "led") {
               logger.set_log_level("control_leds", log_level);
             } else if (category == "networking") {

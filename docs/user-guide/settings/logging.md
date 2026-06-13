@@ -10,11 +10,10 @@ Each row is a logical group of log tags inside the firmware. Set the level high 
 
 ![Logging settings.](../../images/settings/logging/logging.png "Logging settings.")
 
-
 | Component | What it covers |
 | --- | --- |
-| **System** | Framework-level logs: OTA, API client, mDNS, I²C, sensor drivers (LD2450, SHTC3, BH1750, SEN0609). |
-| **Zone Engine** | The zone-detection engine itself: target tracking, cell mapping, the zone state machine, configuration changes. Raise this when a zone is misbehaving. |
+| **System** | Everything not owned by another row: OTA, API client, mDNS, I²C, the radar feed (LD2450) and other sensor drivers (SHTC3, BH1750, SEN0609), plus control entities (lights, switches, numbers, selects, buttons). Zone and target entity updates do **not** appear here — they belong to Zone Engine. |
+| **Zone Engine** | The zone-detection engine itself: target tracking, cell mapping, the zone state machine, configuration changes — and the zone/target/motion entity states (zone target counts, target positions, Motion Presence). Raise this when a zone is misbehaving. |
 | **LED** | LED control script: mode transitions and the decision tree that picks the displayed colour. |
 | **Network** | Wi-Fi or Ethernet connection events, DHCP, link state. |
 | **Bluetooth** | BLE scanner and proxy logs. Only shown when Bluetooth is enabled on the device. |
