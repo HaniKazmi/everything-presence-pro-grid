@@ -82,7 +82,6 @@ nav:
     - Calibration: user-guide/calibration.md
     - Live overview: user-guide/live-overview.md
     - Detection zones: user-guide/detection-zones.md
-    - Device groups: user-guide/device-groups.md
     - Overlays: user-guide/overlays.md
     - How detection works: user-guide/how-detection-works.md
     - Furniture: user-guide/furniture.md
@@ -94,6 +93,7 @@ nav:
       - Sensor calibration: user-guide/settings/sensor-calibration.md
       - LED and relay: user-guide/settings/led-relay.md
       - Logging: user-guide/settings/logging.md
+    - Device groups: user-guide/device-groups.md
     - Automations: user-guide/automations.md
     - Firmware upgrades: user-guide/firmware-upgrades.md
     - Troubleshooting: user-guide/troubleshooting.md

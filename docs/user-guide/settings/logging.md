@@ -42,4 +42,4 @@ Each row has a **↺ reset** button that returns just that component to **None**
 
 ## Where to next
 
-- **[Automations →](../automations.md)** — wire Occupancy and zone-presence entities into Home Assistant automations.
+- **[Device groups →](../device-groups.md)** — combine several sensors into one virtual presence device for whole-room coverage.

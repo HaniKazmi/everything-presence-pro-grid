@@ -5,7 +5,9 @@ Groups let you combine 2 or more physical sensors into a single virtual device
 in Home Assistant — so automations can target "Master Bedroom" without ORing
 multiple sensors by hand.
 
-![Device groups page.](../images/device-groups/) A device group exposes:
+![Device Groups Listing Page.](../images/device-groups/listing.png "Device Groups Listing Page")
+
+A device group exposes:
 
 - One **occupancy** binary sensor that is on if any source sensor's occupancy is
   on.
@@ -37,6 +39,8 @@ unavailable only when every source is unavailable.
    expose.
 9. Click **Save**.
 
+![Device Groups Editor.](../images/device-groups/form.png "Device Group Editor")
+
 The new virtual device appears under **Settings → Devices & Services → EPP
 Grid** with all its aggregated entities.
 
@@ -59,3 +63,7 @@ just that zone.
 | You delete a zone on a source       | If it was in a merge group, the group keeps its definition but the entity goes unavailable. Add another zone to the group or delete it. |
 | You rename a source device or zone  | Display names update; the helper's entities keep their unique IDs and don't break.                                                      |
 | You remove a source device entirely | The group keeps it in its source list but shows it as unavailable, and the helper ignores it. Edit the group to remove or replace it.   |
+
+## Where to next
+
+- **[Automations →](automations.md)** — put the group's Occupancy and zone-presence entities to use with worked examples.
