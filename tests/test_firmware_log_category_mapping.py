@@ -95,10 +95,26 @@ def _category_set_log_level_calls(category: str) -> set[str]:
     return set(re.findall(r'logger\.set_log_level\(\s*"([^"]+)"\s*,', branch))
 
 
+def _mapping_categories() -> set[str]:
+    """Every category the `epp_set_log_level` action branches on.
+
+    Discovered from the firmware itself (`category == "<name>"`), so a new
+    category added to the mapping is picked up automatically — the
+    boot-pin invariant below then enforces coverage for it too, instead of
+    silently ignoring it because a hardcoded list wasn't updated."""
+    body = _set_log_level_action_lambda()
+    return set(re.findall(r'category\s*==\s*"([^"]+)"', body))
+
+
 def _all_per_tag_category_tags() -> set[str]:
-    """Union of every tag set by any per-tag category branch."""
+    """Union of every tag set by any per-tag category branch.
+
+    Categories are discovered from the firmware mapping (everything except
+    `system`, which sets the global default level rather than a per-tag
+    override) so the boot-pin invariant covers every per-tag category that
+    exists, not just a hardcoded subset."""
     tags: set[str] = set()
-    for category in PER_TAG_CATEGORIES:
+    for category in _mapping_categories() - {"system"}:
         tags |= _category_set_log_level_calls(category)
     return tags
 
@@ -204,4 +220,24 @@ def test_boot_pins_every_per_tag_category_tag_to_none() -> None:
     assert not missing, (
         "These category tags are not pinned to NONE on boot, so raising the "
         f"`system` (global) level will leak them: {sorted(missing)}"
+    )
+
+
+def test_mapping_categories_match_the_known_set() -> None:
+    """The firmware's category set must stay the documented known set.
+
+    `_all_per_tag_category_tags()` discovers categories from the mapping,
+    so a newly added category is automatically enforced by the boot-pin
+    test above. This test is the matching tripwire for the other
+    direction: if a category is added, removed, or renamed in the
+    firmware, fail loudly so the maintainer revisits `PER_TAG_CATEGORIES`,
+    the docs, and the panel UI instead of silently drifting.
+    """
+    expected = {"system", *PER_TAG_CATEGORIES}
+    actual = _mapping_categories()
+    assert actual == expected, (
+        "epp_set_log_level categories changed. Update PER_TAG_CATEGORIES (and "
+        "the boot pins, docs, and panel UI) to match.\n"
+        f"  added:   {sorted(actual - expected)}\n"
+        f"  removed: {sorted(expected - actual)}"
     )
