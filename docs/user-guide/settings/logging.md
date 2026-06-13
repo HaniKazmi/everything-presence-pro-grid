@@ -33,7 +33,7 @@ The levels are cumulative: Debug includes everything below it.
 
 ## Reading the logs
 
-Setting the firmware level here is only half the picture: messages don't reach Home Assistant's logs until you also enable debug logging on the integration. See [Troubleshooting → Capture debug logs](../troubleshooting.md#capture-debug-logs) for the full walkthrough.
+Setting the firmware level here is only half the picture: messages don't reach Home Assistant's logs until you also enable debug logging on the integration. See [Troubleshooting → Capture debug logs](../troubleshooting.md#2-capture-debug-logs) for the full walkthrough.
 
 ## Resetting
 
