@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+from typing import Any
 
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import entity_registry as er
@@ -11,6 +12,26 @@ from ..const import NUM_ZONE_SLOTS
 from ..const import PRESENCE_SLOTS
 from ._projection import SourceState
 from ._projection import ZoneState
+
+
+def zone_name_from_store(store: Any, mac: str, zone_index: int) -> str | None:
+    """Look up a zone's user-set name from a device's stored room_layout.
+
+    `room_layout` is persisted as a dict ``{grid_bytes, zone_slots, furniture}``
+    (see websocket set_room_layout); zone names live at
+    ``room_layout["zone_slots"][zone_index]["name"]``. Shared by the integration
+    setup (zone_name_fn callback) and the WS serializer so the lookup lives in
+    one place.
+    """
+    device = store.devices.get(mac, {})
+    layout = device.get("room_layout", {})
+    slots = layout.get("zone_slots", []) if isinstance(layout, dict) else []
+    if zone_index < 0 or zone_index >= len(slots):
+        return None
+    slot = slots[zone_index]
+    if slot is None:
+        return None
+    return slot.get("name")
 
 
 def resolve_entity_id(hass: HomeAssistant, mac: str, slot: str) -> str | None:

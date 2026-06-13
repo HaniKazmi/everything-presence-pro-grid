@@ -180,30 +180,35 @@ async def integration_with_group_and_zones(
     await hass.async_block_till_done()
 
     manager = hass.data[DOMAIN]
-    # Seed zone names into store so zone_name_fn returns something.
+    # Seed zone names into store so zone_name_fn returns something. room_layout
+    # is persisted as a dict with a zone_slots list (the real storage shape).
     manager._store.devices["AA:BB:CC:DD:EE:FF"] = {
-        "room_layout": [
-            {"type": "default"},
-            None,
-            {"name": "Bed Left", "type": "presence", "color": "#ff0000"},
-            None,
-            None,
-            None,
-            None,
-            None,
-        ],
+        "room_layout": {
+            "zone_slots": [
+                {"type": "default"},
+                None,
+                {"name": "Bed Left", "type": "presence", "color": "#ff0000"},
+                None,
+                None,
+                None,
+                None,
+                None,
+            ],
+        },
     }
     manager._store.devices["11:22:33:44:55:66"] = {
-        "room_layout": [
-            {"type": "default"},
-            None,
-            None,
-            {"name": "Bed Right", "type": "presence", "color": "#ff0000"},
-            None,
-            None,
-            None,
-            None,
-        ],
+        "room_layout": {
+            "zone_slots": [
+                {"type": "default"},
+                None,
+                None,
+                {"name": "Bed Right", "type": "presence", "color": "#ff0000"},
+                None,
+                None,
+                None,
+                None,
+            ],
+        },
     }
 
     group = await manager.device_groups.async_create(
@@ -344,6 +349,91 @@ async def test_clearing_group_area_id_clears_device_registry_area(
     dev = dr_.async_get_device(identifiers={(DOMAIN, f"device_group:{group['id']}")})
     assert dev is not None
     assert dev.area_id is None
+
+
+async def test_presence_change_does_not_overwrite_manual_area(
+    hass: HomeAssistant,
+    config_entry: MockConfigEntry,
+    enable_custom_integrations,
+) -> None:
+    """Area reconciliation must happen only on group CRUD, not on every presence
+    transition — otherwise a manual area the user sets on the group device gets
+    reverted on the next motion event."""
+    er_ = er.async_get(hass)
+    a = er_.async_get_or_create(
+        "binary_sensor",
+        "esphome",
+        "AA:BB:CC:DD:EE:FF-binary_sensor-occupancy",
+    )
+    hass.states.async_set(a.entity_id, STATE_OFF)
+
+    assert await hass.config_entries.async_setup(config_entry.entry_id)
+    await hass.async_block_till_done()
+
+    manager = hass.data[DOMAIN]
+    group = await manager.device_groups.async_create(
+        name="Bedroom Presence",
+        sources=["AA:BB:CC:DD:EE:FF"],
+    )  # no stored area_id
+    await hass.async_block_till_done()
+
+    ar_ = ar.async_get(hass)
+    area = ar_.async_create("Bedroom")
+    dr_ = dr.async_get(hass)
+    dev = dr_.async_get_device(identifiers={(DOMAIN, f"device_group:{group['id']}")})
+    # User manually assigns the group device to an area in HA.
+    dr_.async_update_device(dev.id, area_id=area.id)
+
+    # A presence transition fires the aggregator's notify -> platform sync.
+    hass.states.async_set(a.entity_id, STATE_ON)
+    await hass.async_block_till_done()
+
+    dev = dr_.async_get_device(identifiers={(DOMAIN, f"device_group:{group['id']}")})
+    assert dev.area_id == area.id
+
+
+async def test_late_created_group_device_gets_configured_area(
+    hass: HomeAssistant,
+    config_entry: MockConfigEntry,
+    enable_custom_integrations,
+) -> None:
+    """If a group's device is first created by a state/registry-driven sync
+    (its source was enabled after the group was created), the configured
+    area_id must still be applied to the device."""
+    ar_ = ar.async_get(hass)
+    area = ar_.async_create("Bedroom")
+
+    er_ = er.async_get(hass)
+    # Source registered but DISABLED -> no presence slot -> no entity/device yet.
+    a = er_.async_get_or_create(
+        "binary_sensor",
+        "esphome",
+        "AA:BB:CC:DD:EE:FF-binary_sensor-occupancy",
+        disabled_by=er.RegistryEntryDisabler.USER,
+    )
+
+    assert await hass.config_entries.async_setup(config_entry.entry_id)
+    await hass.async_block_till_done()
+
+    manager = hass.data[DOMAIN]
+    group = await manager.device_groups.async_create(
+        name="Bedroom Presence",
+        sources=["AA:BB:CC:DD:EE:FF"],
+        area_id=area.id,
+    )
+    await hass.async_block_till_done()
+
+    dr_ = dr.async_get(hass)
+    # No device yet — the only source slot is disabled.
+    assert dr_.async_get_device(identifiers={(DOMAIN, f"device_group:{group['id']}")}) is None
+
+    # Enable the source -> registry event -> sync creates the entity + device.
+    er_.async_update_entity(a.entity_id, disabled_by=None)
+    await hass.async_block_till_done()
+
+    dev = dr_.async_get_device(identifiers={(DOMAIN, f"device_group:{group['id']}")})
+    assert dev is not None
+    assert dev.area_id == area.id
 
 
 async def test_passthrough_zone_entity_uses_configured_zone_name(

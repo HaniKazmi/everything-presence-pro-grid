@@ -14,6 +14,7 @@ from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
 
 from .const import DOMAIN
+from .device_groups._registry import zone_name_from_store
 from .device_manager import DeviceManager
 from .firmware_proxy import FirmwareProxyView
 from .storage import EPPGridStore
@@ -43,18 +44,6 @@ def _hash_file(path: str) -> str:
         return hashlib.md5(f.read()).hexdigest()[:8]
 
 
-def _zone_name(store: EPPGridStore, mac: str, zone_index: int) -> str | None:
-    """Look up a zone's user-set name from the per-device room_layout."""
-    device = store.devices.get(mac, {})
-    layout = device.get("room_layout", [])
-    if zone_index < 0 or zone_index >= len(layout):
-        return None
-    slot = layout[zone_index]
-    if slot is None:
-        return None
-    return slot.get("name")
-
-
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up Everything Presence Pro Grid from a config entry."""
     store = EPPGridStore(hass)
@@ -75,7 +64,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     manager.device_groups = device_groups_manager  # type: ignore[attr-defined]
     device_groups_manager.set_callbacks(
         device_name_fn=lambda mac: store.devices.get(mac, {}).get("name") or mac,
-        zone_name_fn=lambda mac, i: _zone_name(store, mac, i),
+        zone_name_fn=lambda mac, i: zone_name_from_store(store, mac, i),
     )
 
     # WS command registration is idempotent; the handlers look the manager up
@@ -103,6 +92,13 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         # half-started manager (or its listeners) and don't leave a panel
         # registered that the retry can't overwrite.
         hass.data.pop(DOMAIN, None)
+        # If the binary_sensor platform was already forwarded before the failing
+        # step, unload it so a retry doesn't leave orphaned helper entities
+        # bound to a now-stopped manager. Safe (no-op) if it never loaded.
+        try:
+            await hass.config_entries.async_unload_platforms(entry, [Platform.BINARY_SENSOR])
+        except Exception:
+            _LOGGER.exception("async_unload_platforms failed during setup unwind")
         try:
             await async_apply_panel_visibility(hass, False)
         except Exception:

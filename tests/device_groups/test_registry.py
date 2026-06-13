@@ -7,6 +7,50 @@ from homeassistant.helpers import entity_registry as er
 
 from custom_components.eppgrid.device_groups._registry import build_source_states
 from custom_components.eppgrid.device_groups._registry import resolve_entity_id
+from custom_components.eppgrid.device_groups._registry import zone_name_from_store
+
+
+class _FakeStore:
+    def __init__(self, devices: dict) -> None:
+        self.devices = devices
+
+
+class TestZoneNameFromStore:
+    def test_reads_name_from_zone_slots_dict(self) -> None:
+        """room_layout is persisted as {grid_bytes, zone_slots, furniture};
+        zone names live at room_layout['zone_slots'][idx]['name']."""
+        store = _FakeStore(
+            {
+                "AA:BB:CC:DD:EE:FF": {
+                    "room_layout": {
+                        "grid_bytes": [0] * 400,
+                        "zone_slots": [
+                            {"name": "Room", "type": "default"},
+                            None,
+                            {"name": "Bed", "type": "presence"},
+                            None,
+                            None,
+                            None,
+                            None,
+                            None,
+                        ],
+                        "furniture": [],
+                    }
+                }
+            }
+        )
+        assert zone_name_from_store(store, "AA:BB:CC:DD:EE:FF", 2) == "Bed"
+        # An empty (None) slot has no name.
+        assert zone_name_from_store(store, "AA:BB:CC:DD:EE:FF", 1) is None
+        # Out-of-range index.
+        assert zone_name_from_store(store, "AA:BB:CC:DD:EE:FF", 7) is None
+
+    def test_missing_layout_returns_none(self) -> None:
+        store = _FakeStore({"AA:BB:CC:DD:EE:FF": {}})
+        assert zone_name_from_store(store, "AA:BB:CC:DD:EE:FF", 2) is None
+
+    def test_unknown_mac_returns_none(self) -> None:
+        assert zone_name_from_store(_FakeStore({}), "ZZ:ZZ:ZZ:ZZ:ZZ:ZZ", 2) is None
 
 
 def _add_entity(hass: HomeAssistant, mac: str, slot: str, *, disabled: bool = False) -> str:

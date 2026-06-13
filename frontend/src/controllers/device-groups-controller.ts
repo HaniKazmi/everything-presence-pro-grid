@@ -1,3 +1,4 @@
+import { safeUnsub } from "../lib/safe-unsub.js";
 import type { DeviceGroup, DeviceGroupZoneGroup } from "../types.js";
 
 /**
@@ -53,7 +54,7 @@ export class DeviceGroupsController {
 	}
 
 	unsubscribe(): void {
-		this._unsub?.();
+		safeUnsub(this._unsub);
 		this._unsub = null;
 	}
 

@@ -74,10 +74,22 @@ class Aggregator:
             self._unsub_registry = None
 
     def update_definition(self, new_def: dict[str, Any]) -> None:
-        """Replace the group definition. Re-resolves sources and re-subscribes."""
+        """Replace the group definition. Re-resolves sources, re-subscribes, and
+        refreshes existing entities so a group edit isn't shown as stale state
+        until the next member state change."""
         self._def = new_def
         self._recompute_all()
         self._resubscribe()
+        self._fire_entity_listeners()
+
+    def _fire_entity_listeners(self) -> None:
+        """Notify per-output entity listeners that outputs may have changed.
+
+        Entities are idempotent (they re-read the current aggregator output).
+        """
+        for cbs in self._entity_listeners.values():
+            for cb in cbs:
+                cb()
 
     def attach_entity_listener(self, key: str, cb: Callable[[], None]) -> Callable[[], None]:
         """Attach a per-output-key listener that fires on any change.
@@ -131,10 +143,7 @@ class Aggregator:
         self._recompute_all()
         if self._snapshot() != prev:
             self._notify()
-            # Fire per-output listeners on any change. Entities are idempotent.
-            for cbs in self._entity_listeners.values():
-                for cb in cbs:
-                    cb()
+            self._fire_entity_listeners()
 
     @callback
     def _on_registry_event(self, event: Event) -> None:
@@ -152,9 +161,7 @@ class Aggregator:
         self._resubscribe()
         if self._snapshot() != prev:
             self._notify()
-            for cbs in self._entity_listeners.values():
-                for cb in cbs:
-                    cb()
+            self._fire_entity_listeners()
 
     def _snapshot(self) -> tuple:
         return (

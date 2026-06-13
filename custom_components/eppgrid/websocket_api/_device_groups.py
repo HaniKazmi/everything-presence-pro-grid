@@ -16,6 +16,8 @@ from ..const import MAX_SOURCES_PER_DEVICE_GROUP
 from ..const import MAX_ZONE_GROUPS_PER_DEVICE_GROUP
 from ..device_groups._projection import derive_exposed_entities
 from ..device_groups._registry import build_source_states
+from ..device_groups._registry import zone_name_from_store
+from . import MAC_SCHEMA
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -44,24 +46,13 @@ def _require_manager(func):
     return wrapper
 
 
-def _zone_name(manager: Any, mac: str, i: int) -> str | None:
-    device = manager._store.devices.get(mac, {})
-    layout = device.get("room_layout", [])
-    if i < 0 or i >= len(layout):
-        return None
-    slot = layout[i]
-    if slot is None:
-        return None
-    return slot.get("name")
-
-
 def _serialize_group(hass: HomeAssistant, group: dict[str, Any], manager: Any) -> dict[str, Any]:
     """Return the full WS payload for a device group, with exposed_entities."""
     sources = build_source_states(
         hass,
         macs=group["sources"],
         device_name_fn=lambda mac: manager._store.devices.get(mac, {}).get("name") or mac,
-        zone_name_fn=lambda mac, i: _zone_name(manager, mac, i),
+        zone_name_fn=lambda mac, i: zone_name_from_store(manager._store, mac, i),
     )
     return {
         "id": group["id"],
@@ -104,13 +95,11 @@ def websocket_list_device_groups(
 
 # -- create -----------------------------------------------------------------
 
-_MAC_RE = r"^([0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}$"
-
 _CREATE_SCHEMA = {
     vol.Required("type"): "eppgrid/create_device_group",
     vol.Required("name"): vol.All(str, vol.Length(min=1, max=128)),
     vol.Required("sources"): vol.All(
-        [vol.All(str, vol.Match(_MAC_RE), lambda v: v.upper())],
+        [MAC_SCHEMA],
         vol.Length(min=1, max=MAX_SOURCES_PER_DEVICE_GROUP),
     ),
     vol.Optional("area_id"): vol.Any(None, vol.All(str, vol.Length(min=1, max=128))),
@@ -149,7 +138,7 @@ _ZONE_GROUP_SCHEMA = vol.Schema(
             [
                 vol.Schema(
                     {
-                        vol.Required("mac"): vol.All(str, vol.Match(_MAC_RE), lambda v: v.upper()),
+                        vol.Required("mac"): MAC_SCHEMA,
                         vol.Required("zone_index"): vol.All(int, vol.Range(min=1, max=7)),
                     }
                 )
@@ -164,7 +153,7 @@ _UPDATE_SCHEMA = {
     vol.Required("group_id"): vol.All(str, vol.Length(min=1, max=64)),
     vol.Required("name"): vol.All(str, vol.Length(min=1, max=128)),
     vol.Required("sources"): vol.All(
-        [vol.All(str, vol.Match(_MAC_RE), lambda v: v.upper())],
+        [MAC_SCHEMA],
         vol.Length(min=1, max=MAX_SOURCES_PER_DEVICE_GROUP),
     ),
     vol.Required("area_id"): vol.Any(None, vol.All(str, vol.Length(min=1, max=128))),

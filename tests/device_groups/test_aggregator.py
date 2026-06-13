@@ -254,3 +254,27 @@ class TestRegistryUpdates:
             assert agg.outputs["presence"]["occupancy"] is True
         finally:
             await agg.async_stop()
+
+
+class TestUpdateDefinition:
+    async def test_update_definition_refreshes_existing_entities(self, hass: HomeAssistant, group_def: dict) -> None:
+        """A group edit (update_definition) must fire entity listeners so the
+        already-created helper entities re-read their state, rather than showing
+        stale values until the next member state change."""
+        a = _register(hass, "AA:BB:CC:DD:EE:FF", "occupancy")
+        _set_state(hass, a, STATE_ON)
+
+        agg = Aggregator(
+            hass,
+            group_def,
+            device_name_fn=lambda m: m,
+            zone_name_fn=lambda m, i: f"Zone {i}",
+        )
+        await agg.async_start()
+        try:
+            fired: list[bool] = []
+            agg.attach_entity_listener("occupancy", lambda: fired.append(True))
+            agg.update_definition(group_def)
+            assert fired, "update_definition did not fire entity listeners"
+        finally:
+            await agg.async_stop()

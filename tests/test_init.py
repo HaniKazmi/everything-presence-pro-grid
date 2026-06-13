@@ -580,6 +580,40 @@ async def test_setup_entry_unwinds_on_panel_failure(hass: HomeAssistant, config_
     mock_dm.async_stop.assert_awaited_once()
 
 
+async def test_setup_unwind_unloads_binary_sensor_platform(hass: HomeAssistant, config_entry: MockConfigEntry) -> None:
+    """If a step after the binary_sensor forward fails, the unwind unloads the
+    platform so a retry doesn't leak orphaned helper entities."""
+    if hass.http is None:
+        hass.http = MagicMock()
+
+    with (
+        patch("custom_components.eppgrid.DeviceManager") as mock_dm_cls,
+        patch(
+            "custom_components.eppgrid._register_frontend_resources",
+            new_callable=AsyncMock,
+            return_value="/eppgrid_static/eppgrid-panel.js?v=deadbeef",
+        ),
+        patch(
+            "custom_components.eppgrid._register_panel",
+            new_callable=AsyncMock,
+            side_effect=ValueError("Overwriting panel eppgrid"),
+        ),
+        patch(
+            "homeassistant.config_entries.ConfigEntries.async_unload_platforms",
+            new_callable=AsyncMock,
+            return_value=True,
+        ) as mock_unload,
+    ):
+        mock_dm = mock_dm_cls.return_value
+        mock_dm.async_start = AsyncMock()
+        mock_dm.async_stop = AsyncMock()
+
+        with pytest.raises(ValueError):
+            await async_setup_entry(hass, config_entry)
+
+        mock_unload.assert_awaited_once()
+
+
 async def test_setup_entry_registers_panel_after_manager_start(
     hass: HomeAssistant, config_entry: MockConfigEntry
 ) -> None:

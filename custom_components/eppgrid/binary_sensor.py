@@ -50,13 +50,18 @@ class _PlatformProxy:
         # unique_id -> entity
         self._entities: dict[str, BinarySensorEntity] = {}
 
-    def sync_all(self, groups: list[dict[str, Any]]) -> None:
+    def sync_all(self, groups: list[dict[str, Any]], *, reconcile_area: bool = True) -> None:
         """Reconcile entities to match the set of groups + their outputs.
 
         Adds new entities for: presence slots present in aggregator.outputs,
         zone groups defined on the group, and passthrough zones present in
         aggregator.outputs. Removes entities that no longer belong (e.g. when
         a group is deleted or a zone group is removed).
+
+        `reconcile_area` writes each group's stored area_id to the HA device
+        registry; pass False for state-driven syncs (every presence change)
+        so we don't continuously overwrite an area the user set manually — area
+        only changes via group CRUD.
         """
         new_entities: list[BinarySensorEntity] = []
         for group in groups:
@@ -67,7 +72,7 @@ class _PlatformProxy:
             new_entities.extend(self._build_zone_entities(group, aggregator))
         if new_entities:
             self._async_add(new_entities)
-        self._apply_area_assignments(groups)
+        self._apply_area_assignments(groups, force=reconcile_area)
         # Remove entities for deleted groups / removed zones.
         active_uids = self._compute_active_uids(groups)
         for uid in list(self._entities.keys()):
@@ -106,12 +111,18 @@ class _PlatformProxy:
             out.append(e)
         return out
 
-    def _apply_area_assignments(self, groups: list[dict[str, Any]]) -> None:
-        """Ensure each group's HA device record reflects its stored area_id.
+    def _apply_area_assignments(self, groups: list[dict[str, Any]], *, force: bool) -> None:
+        """Reconcile each group's HA device area to its stored area_id.
 
-        A cleared area_id (None) is synced too, so removing a group's area also
-        clears the device-registry assignment instead of leaving it stuck in
-        the old area.
+        ``force`` (group CRUD): the stored area_id is authoritative — set it
+        unconditionally, including clearing to None when the user removes the
+        area.
+
+        not ``force`` (state-driven sync): only apply an *initial* area to a
+        device that has none yet. This covers a device first created by a late
+        state/registry sync (e.g. its source was enabled after the group was
+        created) without overwriting an area the user set manually on every
+        presence change.
         """
         dr_ = dr.async_get(self._hass)
         for g in groups:
@@ -119,7 +130,10 @@ class _PlatformProxy:
             if dev is None:
                 continue
             target = g.get("area_id")
-            if dev.area_id != target:
+            if force:
+                if dev.area_id != target:
+                    dr_.async_update_device(dev.id, area_id=target)
+            elif dev.area_id is None and target is not None:
                 dr_.async_update_device(dev.id, area_id=target)
 
     def _compute_active_uids(self, groups: list[dict[str, Any]]) -> set[str]:

@@ -77,8 +77,11 @@ class DeviceGroupManager:
         self._aggregators[group["id"]] = agg
 
     def _on_aggregator_changed(self) -> None:
+        # State-driven sync (a member's presence/zone changed): reconcile the
+        # entity set but NOT the device area, so a manual area assignment isn't
+        # reverted on every motion event. Area only changes via group CRUD.
         if self._platform_proxy is not None:
-            self._platform_proxy.sync_all(self.list_groups())
+            self._platform_proxy.sync_all(self.list_groups(), reconcile_area=False)
 
     # -- Listener registration ------------------------------------------------
 
