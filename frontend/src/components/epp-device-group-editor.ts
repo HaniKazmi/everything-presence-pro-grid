@@ -3,6 +3,7 @@ import { property, state } from "lit/decorators.js";
 import { literal, html as staticHtml } from "lit/static-html.js";
 
 import "./epp-zone-merge-list.js";
+import { exposedSensorChips } from "../lib/device-groups-labels.js";
 import { deriveExposedEntities } from "../lib/device-groups-projection.js";
 import type {
 	DeviceGroup,
@@ -10,14 +11,6 @@ import type {
 	DeviceGroupZoneGroup,
 	DeviceInfo,
 } from "../types.js";
-
-const PRESENCE_LABELS: Record<string, string> = {
-	occupancy: "Occupancy",
-	static_presence: "Static presence",
-	motion_presence: "Motion presence",
-	target_presence: "Target presence",
-	mmwave_presence: "mmWave presence",
-};
 
 interface EditorDraft {
 	id: string | null;
@@ -28,24 +21,51 @@ interface EditorDraft {
 }
 
 /**
- * Editor for one device group. Fires `save` (full payload), `cancel`, or `delete`.
+ * Editor for one device group. Fires `save` (full payload) or `cancel`.
+ * Deletion is handled from the list view's per-group kebab, not here.
  */
 export class EppDeviceGroupEditor extends LitElement {
 	static styles = css`
-		:host {
-			display: block;
-			padding: 1rem;
+		:host { display: block; }
+		.card-content {
+			padding: 16px;
+			display: flex;
+			flex-direction: column;
+			gap: 16px;
 		}
-		.section { margin-bottom: 1.5rem; }
-		.section h3 { margin: 0 0 .5rem 0; }
-		.field { margin-bottom: 1rem; }
+		.field { display: block; }
 		ha-input,
 		ha-textfield,
 		ha-area-picker {
 			display: block;
 			width: 100%;
 		}
-		.device-row { display: block; padding: .15rem 0; }
+		.section h3 {
+			margin: 0 0 .5rem 0;
+			font-size: 15px;
+			font-weight: 600;
+		}
+		.source-box {
+			border: 1px solid var(--divider-color, #e0e0e0);
+			border-radius: 10px;
+			padding: 2px 12px;
+		}
+		.source-row {
+			display: flex;
+			align-items: center;
+			gap: 12px;
+			padding: 6px 0;
+			min-height: 36px;
+		}
+		.source-row + .source-row {
+			border-top: 1px solid var(--divider-color, #e0e0e0);
+		}
+		.source-name {
+			flex: 1;
+			min-width: 0;
+			font-size: 14px;
+			color: var(--primary-text-color, #212121);
+		}
 		.chips { display: flex; flex-wrap: wrap; gap: .4rem; }
 		.chip {
 			padding: .2rem .6rem;
@@ -63,27 +83,8 @@ export class EppDeviceGroupEditor extends LitElement {
 			display: flex;
 			gap: .5rem;
 			justify-content: flex-end;
-			margin-top: 1rem;
-		}
-		button {
-			padding: .5rem 1rem;
-			cursor: pointer;
-			background: var(--primary-color);
-			color: var(--text-primary-color);
-			border: none;
-			border-radius: 4px;
-		}
-		button:disabled {
-			opacity: .5;
-			cursor: not-allowed;
-		}
-		button.secondary {
-			background: none;
-			color: var(--primary-text-color);
-			border: 1px solid var(--divider-color);
-		}
-		button.danger {
-			background: var(--error-color);
+			align-items: center;
+			margin-top: 4px;
 		}
 	`;
 
@@ -121,49 +122,51 @@ export class EppDeviceGroupEditor extends LitElement {
 
 	render() {
 		return html`
-			<div class="field">${this._renderNameField()}</div>
-			<div class="field">
-				<ha-area-picker
-					.hass=${this.hass}
-					.value=${this._draft.area_id ?? ""}
-					@value-changed=${(e: CustomEvent) => {
-						e.stopPropagation();
-						this._update({ area_id: (e.detail.value as string) || null });
-					}}
-				></ha-area-picker>
-			</div>
+			<ha-card>
+				<div class="card-content">
+					<div class="field">${this._renderNameField()}</div>
+					<div class="field">
+						<ha-area-picker
+							.hass=${this.hass}
+							.value=${this._draft.area_id ?? ""}
+							@value-changed=${(e: CustomEvent) => {
+								e.stopPropagation();
+								this._update({ area_id: (e.detail.value as string) || null });
+							}}
+						></ha-area-picker>
+					</div>
 
-			<div class="section">
-				<h3>Source devices</h3>
-				${this.availableDevices.map(
-					(d) =>
-						html`<div class="device-row">${this._renderDeviceToggle(d)}</div>`,
-				)}
-			</div>
+					<div class="section">
+						<h3>Source devices</h3>
+						<div class="source-box">
+							${this.availableDevices.map((d) => this._renderSourceRow(d))}
+						</div>
+					</div>
 
-			<div class="section">
-				<h3>Zones</h3>
-				<epp-zone-merge-list
-					.sources=${this._draftSources()}
-					.zoneGroups=${this._draft.zone_groups}
-					@zone-groups-changed=${(e: CustomEvent) => {
-						e.stopPropagation();
-						this._update({ zone_groups: e.detail.zone_groups });
-					}}
-				></epp-zone-merge-list>
-			</div>
+					<div class="section">
+						<epp-zone-merge-list
+							.sources=${this._draftSources()}
+							.zoneGroups=${this._draft.zone_groups}
+							@zone-groups-changed=${(e: CustomEvent) => {
+								e.stopPropagation();
+								this._update({ zone_groups: e.detail.zone_groups });
+							}}
+						></epp-zone-merge-list>
+					</div>
 
-			${this._renderSensorsPreview()}
+					${this._renderSensorsPreview()}
 
-			<div class="actions">
-				${
-					this._draft.id !== null
-						? html`<button class="danger" @click=${this._delete}>Delete</button>`
-						: nothing
-				}
-				<button class="secondary" @click=${this._cancel}>Cancel</button>
-				<button @click=${this._save} ?disabled=${!this._canSave()}>Save</button>
-			</div>
+					<div class="actions">
+						<ha-button @click=${this._cancel}>Cancel</ha-button>
+						<ha-button
+							appearance="accent"
+							.disabled=${!this._canSave()}
+							@click=${this._save}
+							>Save</ha-button
+						>
+					</div>
+				</div>
+			</ha-card>
 		`;
 	}
 
@@ -182,14 +185,13 @@ export class EppDeviceGroupEditor extends LitElement {
 			<div class="section">
 				<h3>Sensors that will be created</h3>
 				<div class="chips" data-testid="sensors-preview">
-					${exposed.presence.map(
-						(p) =>
-							html`<span class="chip" data-testid="sensor-chip"
-								>${PRESENCE_LABELS[p] ?? p}</span
+					${exposedSensorChips(exposed).map(
+						(s) =>
+							html`<span
+								class="chip ${s.kind === "zone" ? "zone" : ""}"
+								data-testid="sensor-chip"
+								>${s.name}</span
 							>`,
-					)}
-					${exposed.zones.map(
-						(z) => html`<span class="chip zone">${z.name}</span>`,
 					)}
 				</div>
 			</div>
@@ -213,9 +215,9 @@ export class EppDeviceGroupEditor extends LitElement {
 		`;
 	}
 
-	// HA-native toggle per device, labelled with the device name. Falls back to
-	// a plain checkbox where ha-switch isn't registered in this HA version.
-	private _renderDeviceToggle(d: DeviceInfo) {
+	// One row per device: name on the left, an HA toggle on the right. Falls
+	// back to a plain checkbox where ha-switch isn't registered.
+	private _renderSourceRow(d: DeviceInfo) {
 		const checked = this._draft.sourceMacs.includes(d.mac);
 		const onChange = (e: Event) =>
 			this._toggleSource(d.mac, (e.target as HTMLInputElement).checked);
@@ -233,9 +235,11 @@ export class EppDeviceGroupEditor extends LitElement {
 					.checked=${checked}
 					@change=${onChange}
 				/>`;
-		return html`<ha-formfield .label=${`${d.name} (${d.mac})`}
-			>${control}</ha-formfield
-		>`;
+		const label = d.area ? `${d.name} (${d.area})` : d.name;
+		return html`<div class="source-row">
+			<span class="source-name">${label}</span>
+			${control}
+		</div>`;
 	}
 
 	private _draftSources(): DeviceGroupSource[] {
@@ -281,17 +285,6 @@ export class EppDeviceGroupEditor extends LitElement {
 	private _cancel() {
 		this.dispatchEvent(
 			new CustomEvent("cancel", { bubbles: true, composed: true }),
-		);
-	}
-
-	private _delete() {
-		if (!this._draft.id) return;
-		this.dispatchEvent(
-			new CustomEvent("delete", {
-				detail: { id: this._draft.id },
-				bubbles: true,
-				composed: true,
-			}),
 		);
 	}
 }

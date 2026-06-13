@@ -39,10 +39,13 @@ function toggle(el: EppDeviceGroupEditor, mac: string): HTMLInputElement {
 		`[data-testid="device-toggle"][data-mac="${mac}"]`,
 	) as HTMLInputElement;
 }
-function saveBtn(el: EppDeviceGroupEditor): HTMLButtonElement {
-	return [...el.shadowRoot!.querySelectorAll("button")].find(
-		(b) => b.textContent?.trim() === "Save",
-	) as HTMLButtonElement;
+function actionBtn(el: EppDeviceGroupEditor, label: string): HTMLElement {
+	return [...el.shadowRoot!.querySelectorAll("ha-button")].find(
+		(b) => b.textContent?.trim() === label,
+	) as HTMLElement;
+}
+function saveBtn(el: EppDeviceGroupEditor): HTMLElement {
+	return actionBtn(el, "Save");
 }
 function setName(el: EppDeviceGroupEditor, value: string): void {
 	const f = nameField(el);
@@ -127,6 +130,59 @@ describe("epp-device-group-editor", () => {
 		]);
 	});
 
+	it("frames the editor in an ha-card", async () => {
+		const el = await fixture();
+		el.availableDevices = DEVICES;
+		await el.updateComplete;
+		expect(el.shadowRoot!.querySelector("ha-card")).not.toBeNull();
+	});
+
+	it("shows each source device's name but not its mac", async () => {
+		const el = await fixture();
+		el.availableDevices = [
+			{ ...DEVICES[0], mac: "28:05:A5:11:22:33", name: "Kitchen" },
+		];
+		await el.updateComplete;
+		const row = el.shadowRoot!.querySelector(".source-row") as HTMLElement;
+		expect(row.textContent).toContain("Kitchen");
+		expect(row.textContent).not.toContain("28:05:A5:11:22:33");
+	});
+
+	it("shows the device's area name in parentheses after the name", async () => {
+		const el = await fixture();
+		el.availableDevices = [
+			{ ...DEVICES[0], name: "Kitchen", area: "Downstairs" },
+		];
+		await el.updateComplete;
+		const name = el.shadowRoot!.querySelector(".source-name") as HTMLElement;
+		expect(name.textContent!.trim()).toBe("Kitchen (Downstairs)");
+	});
+
+	it("puts all the source rows in a single box", async () => {
+		const el = await fixture();
+		el.availableDevices = DEVICES;
+		await el.updateComplete;
+		const boxes = el.shadowRoot!.querySelectorAll(".source-box");
+		expect(boxes.length).toBe(1);
+		expect(boxes[0].querySelectorAll(".source-row").length).toBe(2);
+	});
+
+	it("renders the device name before its toggle in the row", async () => {
+		const el = await fixture();
+		el.availableDevices = DEVICES;
+		await el.updateComplete;
+		const row = el.shadowRoot!.querySelector(".source-row") as HTMLElement;
+		const name = row.querySelector(".source-name") as HTMLElement;
+		const tog = row.querySelector(
+			'[data-testid="device-toggle"]',
+		) as HTMLElement;
+		expect(name).not.toBeNull();
+		// name comes before the toggle in document order (toggle sits on the right)
+		expect(
+			name.compareDocumentPosition(tog) & Node.DOCUMENT_POSITION_FOLLOWING,
+		).toBeTruthy();
+	});
+
 	it("does not render a 'Basics' heading", async () => {
 		const el = await fixture();
 		el.availableDevices = DEVICES;
@@ -141,14 +197,16 @@ describe("epp-device-group-editor", () => {
 		const el = await fixture();
 		el.availableDevices = DEVICES;
 		await el.updateComplete;
-		expect(saveBtn(el).disabled).toBe(true);
+		expect((saveBtn(el) as HTMLButtonElement).disabled).toBe(true);
 	});
 
-	it("does not render a Delete button when creating a new group", async () => {
+	it("never renders a Delete button (deletion lives in the list kebab)", async () => {
 		const el = await fixture();
 		el.availableDevices = DEVICES;
+		el.sourcesByMac = { AA: SOURCE_AA };
+		el.existingGroup = EXISTING;
 		await el.updateComplete;
-		const del = [...el.shadowRoot!.querySelectorAll("button")].find(
+		const del = [...el.shadowRoot!.querySelectorAll("ha-button")].find(
 			(b) => b.textContent?.trim() === "Delete",
 		);
 		expect(del).toBeUndefined();
@@ -163,10 +221,6 @@ describe("epp-device-group-editor", () => {
 		expect(nameField(el).value).toBe("Bedroom");
 		expect(toggle(el, "AA").checked).toBe(true);
 		expect(toggle(el, "BB").checked).toBe(false);
-		const del = [...el.shadowRoot!.querySelectorAll("button")].find(
-			(b) => b.textContent?.trim() === "Delete",
-		);
-		expect(del).toBeDefined();
 	});
 
 	it("enables Save once a name and a source are chosen", async () => {
@@ -176,7 +230,7 @@ describe("epp-device-group-editor", () => {
 		setName(el, "Office");
 		setToggle(el, "AA", true);
 		await el.updateComplete;
-		expect(saveBtn(el).disabled).toBe(false);
+		expect((saveBtn(el) as HTMLButtonElement).disabled).toBe(false);
 	});
 
 	it("toggling a source off removes it from the draft", async () => {
@@ -188,7 +242,7 @@ describe("epp-device-group-editor", () => {
 		setToggle(el, "AA", false);
 		await el.updateComplete;
 		// only source removed -> Save disabled
-		expect(saveBtn(el).disabled).toBe(true);
+		expect((saveBtn(el) as HTMLButtonElement).disabled).toBe(true);
 	});
 
 	it("emits save with the trimmed payload", async () => {
@@ -221,29 +275,9 @@ describe("epp-device-group-editor", () => {
 		const detail = new Promise<void>((resolve) => {
 			el.addEventListener("cancel", () => resolve(), { once: true });
 		});
-		const cancel = [...el.shadowRoot!.querySelectorAll("button")].find(
-			(b) => b.textContent?.trim() === "Cancel",
-		) as HTMLButtonElement;
+		const cancel = actionBtn(el, "Cancel");
 		cancel.click();
 		await expect(detail).resolves.toBeUndefined();
-	});
-
-	it("emits delete with the group id", async () => {
-		const el = await fixture();
-		el.availableDevices = DEVICES;
-		el.sourcesByMac = { AA: SOURCE_AA };
-		el.existingGroup = EXISTING;
-		await el.updateComplete;
-		const detail = new Promise<{ id: string }>((resolve) => {
-			el.addEventListener("delete", (e) => resolve((e as CustomEvent).detail), {
-				once: true,
-			});
-		});
-		const del = [...el.shadowRoot!.querySelectorAll("button")].find(
-			(b) => b.textContent?.trim() === "Delete",
-		) as HTMLButtonElement;
-		del.click();
-		expect((await detail).id).toBe("g1");
 	});
 
 	it("renders selected sources' zones in the merge list", async () => {
@@ -368,7 +402,8 @@ describe("epp-device-group-editor", () => {
 		const chips = [
 			...el.shadowRoot!.querySelectorAll('[data-testid="sensor-chip"]'),
 		].map((c) => c.textContent!.trim());
-		expect(chips).toEqual(["Occupancy", "mmWave presence"]);
+		// sorted alphabetically across all exposed sensors (presence + zones)
+		expect(chips).toEqual(["Desk", "mmWave presence", "Occupancy"]);
 	});
 
 	// Keep last: registering HA elements is global for the test environment, so

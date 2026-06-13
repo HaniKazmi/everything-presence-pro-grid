@@ -1,16 +1,28 @@
 import { css, html, LitElement, nothing } from "lit";
 import { property, state } from "lit/decorators.js";
+import { literal, html as staticHtml } from "lit/static-html.js";
 
+import "./epp-kebab-menu.js";
+import { EDIT_DELETE_KEBAB_ITEMS } from "../lib/device-groups-labels.js";
 import type {
 	DeviceGroupSource,
 	DeviceGroupZoneGroup,
 	DeviceGroupZoneMember,
 } from "../types.js";
 
-interface CheckableZone {
+/** One enabled zone, with its device and zone names resolved for display. */
+interface ZoneEntry {
 	mac: string;
+	deviceName: string;
 	index: number;
-	label: string;
+	zoneName: string;
+}
+
+/** A device row in a device → zones grid. */
+interface DeviceZones {
+	mac: string;
+	name: string;
+	zones: ZoneEntry[];
 }
 
 interface MergeDraft {
@@ -31,61 +43,86 @@ function parseKey(key: string): DeviceGroupZoneMember {
 }
 
 /**
- * Zone merge editor. Lists each selected device's zones; "Create merged zone"
- * reveals checkboxes + a name field, and merged zones appear under their own
- * section with edit/delete.
+ * Zone merge editor. Available zones render as a device → zones grid in a
+ * single box. "Create merged zone" turns each zone into a checkbox (on the
+ * right) and reveals a name field; merging emits a zone group. Merged zones
+ * list in their own boxes, each showing its members as the same grid, with a
+ * kebab (Edit/Delete).
  *
  * Emits "zone-groups-changed" CustomEvent<{zone_groups: DeviceGroupZoneGroup[]}>.
  */
 export class EppZoneMergeList extends LitElement {
 	static styles = css`
 		:host { display: block; }
-		.head {
+		h4 { margin: 0 0 .5rem 0; font-size: 15px; font-weight: 600; }
+		.zone-box {
+			border: 1px solid var(--divider-color, #e0e0e0);
+			border-radius: 10px;
+			padding: 4px 12px;
+		}
+		.zone-grid {
+			display: grid;
+			grid-template-columns: max-content 1fr;
+			gap: 0 16px;
+			align-items: start;
+		}
+		.zt-device {
+			display: flex;
+			align-items: center;
+			min-height: 36px;
+			font-size: 14px;
+			font-weight: 500;
+			color: var(--primary-text-color, #212121);
+		}
+		.zt-device::after { content: ":"; }
+		.zt-zones { display: flex; flex-direction: column; }
+		.zt-zone {
 			display: flex;
 			align-items: center;
 			justify-content: space-between;
+			gap: 8px;
+			/* Reserve the checkbox's height up front so rows don't jump when
+			   "Create merged zone" reveals the checkboxes. */
+			min-height: 36px;
+			font-size: 14px;
+			color: var(--primary-text-color, #212121);
+		}
+		label.zt-zone { cursor: pointer; }
+		.zt-zone-name { min-width: 0; }
+		.zt-zone ha-checkbox,
+		.zt-zone input { flex-shrink: 0; margin: 0; }
+		.empty { color: var(--secondary-text-color, #757575); }
+		.merge-name { display: block; width: 100%; margin-top: 12px; }
+		.actions {
+			display: flex;
+			justify-content: flex-end;
 			gap: .5rem;
+			margin-top: 12px;
 		}
-		h4 { margin: 0 0 .25rem 0; }
-		.merged-section { margin-top: 1rem; }
-		button {
-			background: none;
-			border: 1px solid var(--divider-color);
-			border-radius: 4px;
-			padding: .25rem .6rem;
-			cursor: pointer;
-			color: var(--primary-text-color);
-		}
-		button:disabled { opacity: .5; cursor: not-allowed; }
-		.zone-item { display: block; padding: .2rem 0; }
-		label.zone-item { cursor: pointer; }
-		.name {
-			width: 100%;
-			padding: .4rem;
+		.merged-section { margin-top: 1.5rem; }
+		.merged-zone {
 			margin-bottom: .5rem;
-			border: 1px solid var(--divider-color);
-			border-radius: 4px;
-			background: var(--card-background-color);
-			color: var(--primary-text-color);
+			padding: 6px 6px 8px 12px;
+			background: var(--card-background-color, #fff);
+			border: 1px solid var(--divider-color, #e0e0e0);
+			border-radius: 10px;
 		}
-		.merge-actions { display: flex; gap: .5rem; margin-top: .5rem; }
-		.empty { color: var(--secondary-text-color); }
-		.group {
-			margin-bottom: .5rem;
-			padding: .5rem;
-			background: var(--secondary-background-color);
-			border-radius: 4px;
-		}
-		.group-head {
+		.mz-head {
 			display: flex;
 			align-items: center;
 			justify-content: space-between;
 			gap: .5rem;
 		}
 		.group-name { font-weight: 600; }
-		.group-actions { display: flex; gap: .25rem; }
-		.member { padding: .15rem 0; color: var(--secondary-text-color); }
-		.x { color: var(--error-color); border-color: var(--error-color); }
+		.mz-head epp-kebab-menu { margin: -6px 0; }
+		.member-grid .zt-device,
+		.member-grid .zt-zone {
+			min-height: 28px;
+			font-weight: 400;
+			color: var(--secondary-text-color, #757575);
+		}
+		ha-input,
+		ha-textfield { display: block; width: 100%; }
 	`;
 
 	@property({ attribute: false }) sources: DeviceGroupSource[] = [];
@@ -94,18 +131,25 @@ export class EppZoneMergeList extends LitElement {
 	@state() private _merge: MergeDraft | null = null;
 
 	render() {
+		const merging = this._merge !== null;
+		const devices = this._tableDevices(
+			merging ? this._checkableZones() : this._ungroupedZones(),
+		);
 		return html`
-			<div class="head">
-				<h4>Available zones</h4>
-				${
-					this._merge
-						? nothing
-						: html`<button data-testid="create-merge" @click=${this._startCreate}>
-								Create merged zone
-							</button>`
-				}
-			</div>
-			${this._merge ? this._renderMergeForm() : this._renderAvailable()}
+			<h4>Available zones</h4>
+			${this._renderAvailable(devices, merging)}
+			${
+				merging
+					? this._renderMergeControls()
+					: html`<div class="actions">
+							<ha-button
+								appearance="accent"
+								data-testid="create-merge"
+								@click=${this._startCreate}
+								>Add a merged zone</ha-button
+							>
+						</div>`
+			}
 			${
 				this.zoneGroups.length
 					? html`<div class="merged-section">
@@ -117,127 +161,198 @@ export class EppZoneMergeList extends LitElement {
 		`;
 	}
 
+	private _renderAvailable(devices: DeviceZones[], merging: boolean) {
+		if (!devices.length) {
+			return html`<p class="empty">No available zones.</p>`;
+		}
+		return html`<div class="zone-box">
+			<div class="zone-grid">
+				${devices.map(
+					(dev) => html`
+						<div class="zt-device" data-testid="zone-table-device">
+							${dev.name}
+						</div>
+						<div class="zt-zones">
+							${dev.zones.map((z) => this._renderZoneCell(z, merging))}
+						</div>
+					`,
+				)}
+			</div>
+		</div>`;
+	}
+
+	private _renderZoneCell(z: ZoneEntry, merging: boolean) {
+		if (!merging) {
+			return html`<div class="zt-zone" data-testid="available-zone">
+				<span class="zt-zone-name">${z.zoneName}</span>
+			</div>`;
+		}
+		const k = zoneKey(z.mac, z.index);
+		const checked = this._merge?.checked.has(k) ?? false;
+		const onChange = (e: Event) =>
+			this._toggleCheck(k, (e.target as HTMLInputElement).checked);
+		const box = customElements.get("ha-checkbox")
+			? html`<ha-checkbox
+					data-testid="merge-checkbox"
+					data-key=${k}
+					.checked=${checked}
+					@change=${onChange}
+				></ha-checkbox>`
+			: html`<input
+					type="checkbox"
+					data-testid="merge-checkbox"
+					data-key=${k}
+					.checked=${checked}
+					@change=${onChange}
+				/>`;
+		return html`<label class="zt-zone" data-testid="available-zone">
+			<span class="zt-zone-name">${z.zoneName}</span>${box}
+		</label>`;
+	}
+
+	private _renderMergeControls() {
+		const m = this._merge as MergeDraft;
+		return html`
+			${this._renderNameField(m.name)}
+			<div class="actions">
+				<ha-button data-testid="merge-cancel" @click=${this._cancelMerge}
+					>Cancel</ha-button
+				>
+				<ha-button
+					appearance="accent"
+					data-testid="merge-confirm"
+					.disabled=${!this._canMerge()}
+					@click=${this._confirmMerge}
+					>${m.editingId ? "Save" : "Merge"}</ha-button
+				>
+			</div>
+		`;
+	}
+
+	// HA-native text field for the merged-zone name. ha-input shipped in 2026.4
+	// (replaces ha-textfield, removed in 2026.5); fall back on older HA.
+	private _renderNameField(value: string) {
+		const tag = customElements.get("ha-input")
+			? literal`ha-input`
+			: literal`ha-textfield`;
+		return staticHtml`
+			<${tag}
+				class="merge-name"
+				data-testid="merge-name"
+				.label=${"Merged zone name"}
+				.value=${value}
+				@input=${(e: Event) => {
+					this._merge = {
+						...(this._merge as MergeDraft),
+						name: (e.target as HTMLInputElement).value,
+					};
+				}}
+			></${tag}>
+		`;
+	}
+
+	private _renderMergedGroup(g: DeviceGroupZoneGroup) {
+		const devices = this._tableDevices(
+			g.members.map((m) => this._resolveMember(m)),
+		);
+		return html`<div class="merged-zone" data-testid="merged-zone">
+			<div class="mz-head">
+				<span class="group-name">Zone ${g.name}</span>
+				<epp-kebab-menu
+					.items=${EDIT_DELETE_KEBAB_ITEMS}
+					@item-select=${(e: CustomEvent<{ id: string }>) =>
+						this._onKebab(g, e.detail.id)}
+				></epp-kebab-menu>
+			</div>
+			<div class="zone-grid member-grid">
+				${devices.map(
+					(dev) => html`
+						<div class="zt-device" data-testid="merged-member-device">
+							${dev.name}
+						</div>
+						<div class="zt-zones">
+							${dev.zones.map(
+								(z) => html`<div
+									class="zt-zone"
+									data-testid="merged-member-zone"
+								>
+									<span class="zt-zone-name">${z.zoneName}</span>
+								</div>`,
+							)}
+						</div>
+					`,
+				)}
+			</div>
+		</div>`;
+	}
+
+	private _onKebab(g: DeviceGroupZoneGroup, id: string) {
+		if (id === "edit") this._startEdit(g);
+		else if (id === "delete") this._deleteGroup(g.id);
+	}
+
+	// Resolve a zone member's device + zone names (graceful when unknown).
+	private _resolveMember(m: DeviceGroupZoneMember): ZoneEntry {
+		const src = this.sources.find((s) => s.mac === m.mac);
+		const zone = src?.zones.find((z) => z.index === m.zone_index);
+		return {
+			mac: m.mac,
+			deviceName: src?.name ?? "Unknown device",
+			index: m.zone_index,
+			zoneName: zone?.name ?? `Zone ${m.zone_index}`,
+		};
+	}
+
 	// Enabled zones not currently in any merged group.
-	private _ungroupedZones(): CheckableZone[] {
+	private _ungroupedZones(): ZoneEntry[] {
 		const grouped = new Set(
 			this.zoneGroups.flatMap((g) =>
 				g.members.map((m) => zoneKey(m.mac, m.zone_index)),
 			),
 		);
-		const out: CheckableZone[] = [];
+		const out: ZoneEntry[] = [];
 		for (const src of this.sources) {
 			for (const z of src.zones) {
 				if (!z.enabled) continue;
 				if (grouped.has(zoneKey(src.mac, z.index))) continue;
 				out.push({
 					mac: src.mac,
+					deviceName: src.name,
 					index: z.index,
-					label: `${src.name} → ${z.name}`,
+					zoneName: z.name,
 				});
 			}
 		}
 		return out;
 	}
 
-	private _renderAvailable() {
-		const zones = this._ungroupedZones();
-		if (!zones.length) {
-			return html`<p class="empty">No available zones.</p>`;
-		}
-		return html`${zones.map(
-			(z) =>
-				html`<div class="zone-item" data-testid="available-zone">${z.label}</div>`,
-		)}`;
-	}
-
 	// Zones offered with checkboxes while merging: the ungrouped zones, plus —
 	// when editing — the group's own current members.
-	private _checkableZones(): CheckableZone[] {
+	private _checkableZones(): ZoneEntry[] {
 		const zones = this._ungroupedZones();
 		const g =
 			this._merge?.editingId != null
 				? this.zoneGroups.find((x) => x.id === this._merge?.editingId)
 				: undefined;
 		if (g) {
-			for (const m of g.members) {
-				zones.push({
-					mac: m.mac,
-					index: m.zone_index,
-					label: this._memberLabel(m),
-				});
-			}
+			for (const m of g.members) zones.push(this._resolveMember(m));
 		}
 		return zones;
 	}
 
-	private _renderMergeForm() {
-		const m = this._merge as MergeDraft;
-		return html`
-			<input
-				class="name"
-				data-testid="merge-name"
-				.value=${m.name}
-				placeholder="Merged zone name"
-				@input=${(e: Event) => {
-					this._merge = { ...m, name: (e.target as HTMLInputElement).value };
-				}}
-			/>
-			${this._checkableZones().map((z) => {
-				const k = zoneKey(z.mac, z.index);
-				return html`<label class="zone-item">
-					<input
-						type="checkbox"
-						data-testid="merge-checkbox"
-						data-key=${k}
-						.checked=${m.checked.has(k)}
-						@change=${(e: Event) =>
-							this._toggleCheck(k, (e.target as HTMLInputElement).checked)}
-					/>
-					${z.label}
-				</label>`;
-			})}
-			<div class="merge-actions">
-				<button
-					data-testid="merge-confirm"
-					?disabled=${!this._canMerge()}
-					@click=${this._confirmMerge}
-				>
-					${m.editingId ? "Save" : "Merge"}
-				</button>
-				<button data-testid="merge-cancel" @click=${this._cancelMerge}>
-					Cancel
-				</button>
-			</div>
-		`;
-	}
-
-	private _renderMergedGroup(g: DeviceGroupZoneGroup) {
-		return html`<div class="group" data-testid="merged-zone">
-			<div class="group-head">
-				<span class="group-name">Zone ${g.name}</span>
-				<span class="group-actions">
-					<button data-testid="edit-merge" @click=${() => this._startEdit(g)}>
-						Edit
-					</button>
-					<button
-						class="x"
-						data-testid="delete-merge"
-						@click=${() => this._deleteGroup(g.id)}
-					>
-						Delete
-					</button>
-				</span>
-			</div>
-			${g.members.map(
-				(mem) => html`<div class="member">${this._memberLabel(mem)}</div>`,
-			)}
-		</div>`;
-	}
-
-	private _memberLabel(m: DeviceGroupZoneMember): string {
-		const src = this.sources.find((s) => s.mac === m.mac);
-		const zone = src?.zones.find((z) => z.index === m.zone_index);
-		return `${src?.name ?? "Unknown device"} → ${zone?.name ?? `Zone ${m.zone_index}`}`;
+	// Group zone entries by device, preserving first-seen order, so each device
+	// appears once with all of its zones beside it.
+	private _tableDevices(entries: ZoneEntry[]): DeviceZones[] {
+		const byMac = new Map<string, DeviceZones>();
+		for (const e of entries) {
+			let dev = byMac.get(e.mac);
+			if (!dev) {
+				dev = { mac: e.mac, name: e.deviceName, zones: [] };
+				byMac.set(e.mac, dev);
+			}
+			dev.zones.push(e);
+		}
+		return [...byMac.values()];
 	}
 
 	private _startCreate() {
@@ -264,7 +379,7 @@ export class EppZoneMergeList extends LitElement {
 		return (
 			!!this._merge &&
 			this._merge.name.trim() !== "" &&
-			this._merge.checked.size >= 1
+			this._merge.checked.size >= 2
 		);
 	}
 

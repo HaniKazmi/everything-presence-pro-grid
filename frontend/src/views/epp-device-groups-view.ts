@@ -1,8 +1,13 @@
-import { css, html, LitElement } from "lit";
+import { css, html, LitElement, nothing } from "lit";
 import { property, state } from "lit/decorators.js";
 
 import "../components/epp-device-group-editor.js";
+import "../components/epp-kebab-menu.js";
 import type { DeviceGroupsController } from "../controllers/device-groups-controller.js";
+import {
+	EDIT_DELETE_KEBAB_ITEMS,
+	exposedSensorChips,
+} from "../lib/device-groups-labels.js";
 import type { DeviceGroup, DeviceGroupSource, DeviceInfo } from "../types.js";
 
 export class EppDeviceGroupsView extends LitElement {
@@ -12,25 +17,71 @@ export class EppDeviceGroupsView extends LitElement {
 			max-width: 600px;
 			margin: 0 auto;
 		}
-		.group-row {
-			display: flex;
-			align-items: center;
-			padding: .75rem;
-			border-bottom: 1px solid var(--divider-color);
-			cursor: pointer;
+		.card-header {
+			font-size: 18px;
+			font-weight: 400;
+			line-height: 48px;
+			padding: 8px 16px 0;
+			color: var(--ha-card-header-color, var(--primary-text-color, #212121));
 		}
-		.group-row:hover { background: var(--secondary-background-color); }
-		.group-name { font-weight: 600; }
-		.meta { color: var(--secondary-text-color); font-size: .85rem; }
-		.add-btn {
-			margin-bottom: 1rem;
-			padding: .5rem 1rem;
-			cursor: pointer;
+		.card-content {
+			padding: 16px;
+			display: flex;
+			flex-direction: column;
+			gap: 12px;
+		}
+		.group-card {
+			display: flex;
+			align-items: flex-start;
+			gap: 12px;
+			padding: 12px 16px;
+			background: var(--card-background-color, #fff);
+			border: 1px solid var(--divider-color, #e0e0e0);
+			border-radius: 10px;
+		}
+		.group-info { flex: 1; min-width: 0; }
+		.group-name {
+			font-size: 14px;
+			font-weight: 600;
+			color: var(--primary-text-color, #212121);
+		}
+		.group-devices {
+			font-size: 13px;
+			color: var(--secondary-text-color, #757575);
+			margin-top: 4px;
+		}
+		.group-sensors {
+			display: flex;
+			align-items: baseline;
+			flex-wrap: wrap;
+			gap: 6px;
+			font-size: 13px;
+			color: var(--secondary-text-color, #757575);
+			margin-top: 6px;
+		}
+		.chip {
+			padding: 2px 10px;
+			border-radius: 999px;
 			background: var(--primary-color);
 			color: var(--text-primary-color);
-			border: none;
-			border-radius: 4px;
+			font-size: 12px;
 		}
+		.chip.zone {
+			background: var(--secondary-background-color);
+			color: var(--primary-text-color);
+			border: 1px solid var(--divider-color);
+		}
+		.empty {
+			color: var(--secondary-text-color, #757575);
+			text-align: center;
+			padding: 8px 0;
+		}
+		.footer {
+			display: flex;
+			justify-content: flex-end;
+			margin-top: 4px;
+		}
+		epp-kebab-menu { flex-shrink: 0; margin: -6px -8px -6px 0; }
 	`;
 
 	@property({ attribute: false }) hass!: { [key: string]: unknown };
@@ -72,39 +123,79 @@ export class EppDeviceGroupsView extends LitElement {
 						.sourcesByMac=${this._sourcesByMac()}
 						@save=${this._handleSave}
 						@cancel=${this._handleCancel}
-						@delete=${this._handleDelete}
 					></epp-device-group-editor>
 				</div>
 			`;
 		}
 		return html`
 			<div class="content">
-			<button class="add-btn" @click=${() => (this._creatingNew = true)}>
-				+ Add device group
-			</button>
-			${
-				this._groups.length === 0
-					? html`<p>No device groups yet.</p>`
-					: this._groups.map(
-							(g) => html`
-					<div class="group-row" @click=${() => (this._editingGroup = g)}>
-						<div>
-							<div class="group-name">${g.name}</div>
-							<div class="meta">
-								${g.sources.length} source${g.sources.length === 1 ? "" : "s"} ·
-								${
-									g.exposed_entities.presence.length +
-									g.exposed_entities.zones.length
-								}
-								entities
-							</div>
+				<ha-card>
+					<div class="card-header">Device Groups</div>
+					<div class="card-content">
+						${
+							this._groups.length === 0
+								? html`<p class="empty">No device groups yet.</p>`
+								: this._groups.map((g) => this._renderGroupCard(g))
+						}
+						<div class="footer">
+							<ha-button
+								appearance="accent"
+								data-testid="create-group"
+								@click=${() => {
+									this._creatingNew = true;
+								}}
+							>
+								Add a device group
+							</ha-button>
 						</div>
 					</div>
-				`,
-						)
-			}
+				</ha-card>
 			</div>
 		`;
+	}
+
+	private _renderGroupCard(g: DeviceGroup) {
+		const devices = g.sources
+			.map((s) => s.name)
+			.sort((a, b) => a.localeCompare(b, undefined, { numeric: true }))
+			.join(", ");
+		const sensors = exposedSensorChips(g.exposed_entities);
+		return html`
+			<div class="group-card">
+				<div class="group-info">
+					<div class="group-name">${g.name}</div>
+					${
+						devices
+							? html`<div class="group-devices">${devices}</div>`
+							: nothing
+					}
+					${
+						sensors.length
+							? html`<div class="group-sensors">
+									${sensors.map(
+										(s) =>
+											html`<span
+												class="chip ${s.kind === "zone" ? "zone" : ""}"
+												data-testid="sensor-chip"
+												>${s.name}</span
+											>`,
+									)}
+								</div>`
+							: nothing
+					}
+				</div>
+				<epp-kebab-menu
+					.items=${EDIT_DELETE_KEBAB_ITEMS}
+					@item-select=${(e: CustomEvent<{ id: string }>) =>
+						this._onKebab(g, e.detail.id)}
+				></epp-kebab-menu>
+			</div>
+		`;
+	}
+
+	private _onKebab(g: DeviceGroup, id: string) {
+		if (id === "edit") this._editingGroup = g;
+		else if (id === "delete") this._deleteById(g.id);
 	}
 
 	private _sourcesByMac(): Record<string, DeviceGroupSource> {
@@ -142,11 +233,10 @@ export class EppDeviceGroupsView extends LitElement {
 		this._creatingNew = false;
 	}
 
-	private async _handleDelete(e: CustomEvent) {
-		e.stopPropagation();
+	private async _deleteById(id: string) {
 		if (!confirm("Delete this device group?")) return;
 		try {
-			await this.controller.delete(e.detail.id);
+			await this.controller.delete(id);
 			this._editingGroup = null;
 		} catch (err) {
 			console.error("Failed to delete device group", err);

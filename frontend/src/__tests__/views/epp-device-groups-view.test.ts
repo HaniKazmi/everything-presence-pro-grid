@@ -70,6 +70,26 @@ async function fixture(ctrl: FakeController): Promise<EppDeviceGroupsView> {
 	return el;
 }
 
+function createBtn(el: EppDeviceGroupsView): HTMLElement {
+	return el.shadowRoot!.querySelector(
+		'[data-testid="create-group"]',
+	) as HTMLElement;
+}
+function groupCards(el: EppDeviceGroupsView): HTMLElement[] {
+	return [...el.shadowRoot!.querySelectorAll(".group-card")] as HTMLElement[];
+}
+// The view wires the kebab via its `item-select` event, so drive it directly.
+function kebabSelect(el: EppDeviceGroupsView, id: string, idx = 0): void {
+	const menus = [...el.shadowRoot!.querySelectorAll("epp-kebab-menu")];
+	menus[idx].dispatchEvent(
+		new CustomEvent("item-select", {
+			detail: { id },
+			bubbles: true,
+			composed: true,
+		}),
+	);
+}
+
 describe("epp-device-groups-view", () => {
 	let confirmSpy: ReturnType<typeof vi.fn>;
 	let alertSpy: ReturnType<typeof vi.fn>;
@@ -97,6 +117,14 @@ describe("epp-device-groups-view", () => {
 		expect(unsub).toHaveBeenCalledTimes(1);
 	});
 
+	it("frames the list in an ha-card headed 'Device Groups'", async () => {
+		const ctrl = makeController();
+		const el = await fixture(ctrl);
+		const card = el.shadowRoot!.querySelector("ha-card");
+		expect(card).not.toBeNull();
+		expect(card!.textContent).toContain("Device Groups");
+	});
+
 	it("shows the empty state when there are no groups", async () => {
 		const ctrl = makeController();
 		const el = await fixture(ctrl);
@@ -110,7 +138,7 @@ describe("epp-device-groups-view", () => {
 		// them without waiting for a new event.
 		ctrl.groups = [makeGroup()];
 		const el = await fixture(ctrl);
-		expect(el.shadowRoot!.querySelector(".group-row")).not.toBeNull();
+		expect(el.shadowRoot!.querySelector(".group-card")).not.toBeNull();
 		expect(el.shadowRoot!.querySelector(".group-name")!.textContent).toBe(
 			"Bedroom",
 		);
@@ -120,33 +148,44 @@ describe("epp-device-groups-view", () => {
 		const ctrl = makeController();
 		const el = await fixture(ctrl);
 		// list view
-		expect(el.shadowRoot!.querySelector(".content .add-btn")).not.toBeNull();
+		expect(
+			el.shadowRoot!.querySelector('.content [data-testid="create-group"]'),
+		).not.toBeNull();
 		// editor view
-		(el.shadowRoot!.querySelector(".add-btn") as HTMLButtonElement).click();
+		createBtn(el).click();
 		await el.updateComplete;
 		expect(
 			el.shadowRoot!.querySelector(".content epp-device-group-editor"),
 		).not.toBeNull();
 	});
 
-	it("renders a row per group with source/entity counts", async () => {
+	function sensorChips(el: EppDeviceGroupsView): string[] {
+		return [
+			...el.shadowRoot!.querySelectorAll('[data-testid="sensor-chip"]'),
+		].map((c) => c.textContent!.trim());
+	}
+
+	it("renders a card per group: device names + sensor lozenges (no labels)", async () => {
 		const ctrl = makeController();
 		const el = await fixture(ctrl);
 		ctrl.emit([makeGroup()]);
 		await el.updateComplete;
-		const row = el.shadowRoot!.querySelector(".group-row");
-		expect(row).not.toBeNull();
+		expect(groupCards(el).length).toBe(1);
 		expect(el.shadowRoot!.querySelector(".group-name")!.textContent).toBe(
 			"Bedroom",
 		);
-		// 1 source (singular), 1 presence + 1 zone = 2 entities
-		expect(el.shadowRoot!.querySelector(".meta")!.textContent).toContain(
-			"1 source",
-		);
-		expect(el.shadowRoot!.querySelector(".meta")!.textContent).toContain("2");
+		// device name shown, not the mac, and no "Devices:" label
+		const devices = el.shadowRoot!.querySelector(".group-devices")!.textContent;
+		expect(devices).toContain("Left");
+		expect(devices).not.toContain("Devices:");
+		// sensors rendered as lozenges (chips), with no "Sensors:" label
+		expect(
+			el.shadowRoot!.querySelector(".group-sensors")!.textContent,
+		).not.toContain("Sensors:");
+		expect(sensorChips(el)).toEqual(["Bed", "Occupancy"]);
 	});
 
-	it("pluralises the source count", async () => {
+	it("sorts the device names and the sensor lozenges", async () => {
 		const ctrl = makeController();
 		const el = await fixture(ctrl);
 		ctrl.emit([
@@ -154,31 +193,74 @@ describe("epp-device-groups-view", () => {
 				sources: [
 					{
 						mac: "AA",
-						name: "L",
+						name: "Zeta",
 						available: true,
 						enabled_presence: [],
 						zones: [],
 					},
 					{
 						mac: "BB",
-						name: "R",
+						name: "Alpha",
 						available: true,
 						enabled_presence: [],
 						zones: [],
 					},
 				],
+				exposed_entities: {
+					presence: ["occupancy"],
+					zones: [
+						{ kind: "group", id: "z1", name: "Window", available: true },
+						{ kind: "group", id: "z2", name: "Bed", available: true },
+					],
+				},
 			}),
 		]);
 		await el.updateComplete;
-		expect(el.shadowRoot!.querySelector(".meta")!.textContent).toContain(
-			"2 sources",
-		);
+		expect(
+			el.shadowRoot!.querySelector(".group-devices")!.textContent,
+		).toContain("Alpha, Zeta");
+		expect(sensorChips(el)).toEqual(["Bed", "Occupancy", "Window"]);
 	});
 
-	it("opens a blank editor from the Add button", async () => {
+	it("renders Edit + a divider + a danger Delete (with icons) in the kebab", async () => {
 		const ctrl = makeController();
 		const el = await fixture(ctrl);
-		(el.shadowRoot!.querySelector(".add-btn") as HTMLButtonElement).click();
+		ctrl.emit([makeGroup()]);
+		await el.updateComplete;
+		const menu = el.shadowRoot!.querySelector("epp-kebab-menu") as unknown as {
+			items: { id?: string; icon?: string; danger?: boolean; divider?: true }[];
+		};
+		expect(menu.items.map((i) => i.id ?? "divider")).toEqual([
+			"edit",
+			"divider",
+			"delete",
+		]);
+		expect(menu.items[0].icon).toBeTruthy();
+		expect(menu.items[2].danger).toBe(true);
+		expect(menu.items[2].icon).toBeTruthy();
+	});
+
+	it("renders only the name when a group has no devices or sensors", async () => {
+		const ctrl = makeController();
+		const el = await fixture(ctrl);
+		ctrl.emit([
+			makeGroup({
+				sources: [],
+				exposed_entities: { presence: [], zones: [] },
+			}),
+		]);
+		await el.updateComplete;
+		expect(el.shadowRoot!.querySelector(".group-name")!.textContent).toBe(
+			"Bedroom",
+		);
+		expect(el.shadowRoot!.querySelector(".group-devices")).toBeNull();
+		expect(el.shadowRoot!.querySelector(".group-sensors")).toBeNull();
+	});
+
+	it("opens a blank editor from the Create button", async () => {
+		const ctrl = makeController();
+		const el = await fixture(ctrl);
+		createBtn(el).click();
 		await el.updateComplete;
 		const editor = el.shadowRoot!.querySelector("epp-device-group-editor") as {
 			existingGroup: DeviceGroup | null;
@@ -187,12 +269,12 @@ describe("epp-device-groups-view", () => {
 		expect(editor!.existingGroup).toBeNull();
 	});
 
-	it("opens the editor for an existing group when its row is clicked", async () => {
+	it("opens the editor for an existing group from the kebab Edit item", async () => {
 		const ctrl = makeController();
 		const el = await fixture(ctrl);
 		ctrl.emit([makeGroup()]);
 		await el.updateComplete;
-		(el.shadowRoot!.querySelector(".group-row") as HTMLElement).click();
+		kebabSelect(el, "edit");
 		await el.updateComplete;
 		const editor = el.shadowRoot!.querySelector("epp-device-group-editor") as {
 			existingGroup: DeviceGroup | null;
@@ -203,7 +285,7 @@ describe("epp-device-groups-view", () => {
 	it("create path calls controller.create and returns to the list", async () => {
 		const ctrl = makeController();
 		const el = await fixture(ctrl);
-		(el.shadowRoot!.querySelector(".add-btn") as HTMLButtonElement).click();
+		createBtn(el).click();
 		await el.updateComplete;
 		const editor = el.shadowRoot!.querySelector(
 			"epp-device-group-editor",
@@ -227,7 +309,7 @@ describe("epp-device-groups-view", () => {
 		const el = await fixture(ctrl);
 		ctrl.emit([makeGroup()]);
 		await el.updateComplete;
-		(el.shadowRoot!.querySelector(".group-row") as HTMLElement).click();
+		kebabSelect(el, "edit");
 		await el.updateComplete;
 		const editor = el.shadowRoot!.querySelector(
 			"epp-device-group-editor",
@@ -254,7 +336,7 @@ describe("epp-device-groups-view", () => {
 		const ctrl = makeController();
 		ctrl.create.mockRejectedValueOnce(new Error("boom"));
 		const el = await fixture(ctrl);
-		(el.shadowRoot!.querySelector(".add-btn") as HTMLButtonElement).click();
+		createBtn(el).click();
 		await el.updateComplete;
 		const editor = el.shadowRoot!.querySelector(
 			"epp-device-group-editor",
@@ -278,7 +360,7 @@ describe("epp-device-groups-view", () => {
 	it("cancel returns to the list", async () => {
 		const ctrl = makeController();
 		const el = await fixture(ctrl);
-		(el.shadowRoot!.querySelector(".add-btn") as HTMLButtonElement).click();
+		createBtn(el).click();
 		await el.updateComplete;
 		const editor = el.shadowRoot!.querySelector(
 			"epp-device-group-editor",
@@ -290,45 +372,23 @@ describe("epp-device-groups-view", () => {
 		expect(el.shadowRoot!.querySelector("epp-device-group-editor")).toBeNull();
 	});
 
-	it("delete path calls controller.delete after confirmation", async () => {
+	it("kebab Delete calls controller.delete after confirmation", async () => {
 		const ctrl = makeController();
 		const el = await fixture(ctrl);
 		ctrl.emit([makeGroup()]);
 		await el.updateComplete;
-		(el.shadowRoot!.querySelector(".group-row") as HTMLElement).click();
-		await el.updateComplete;
-		const editor = el.shadowRoot!.querySelector(
-			"epp-device-group-editor",
-		) as HTMLElement;
-		editor.dispatchEvent(
-			new CustomEvent("delete", {
-				detail: { id: "g1" },
-				bubbles: true,
-				composed: true,
-			}),
-		);
+		kebabSelect(el, "delete");
 		await Promise.resolve();
 		expect(ctrl.delete).toHaveBeenCalledWith("g1");
 	});
 
-	it("delete is a no-op when the user cancels the confirm", async () => {
+	it("kebab Delete is a no-op when the user cancels the confirm", async () => {
 		confirmSpy.mockReturnValue(false);
 		const ctrl = makeController();
 		const el = await fixture(ctrl);
 		ctrl.emit([makeGroup()]);
 		await el.updateComplete;
-		(el.shadowRoot!.querySelector(".group-row") as HTMLElement).click();
-		await el.updateComplete;
-		const editor = el.shadowRoot!.querySelector(
-			"epp-device-group-editor",
-		) as HTMLElement;
-		editor.dispatchEvent(
-			new CustomEvent("delete", {
-				detail: { id: "g1" },
-				bubbles: true,
-				composed: true,
-			}),
-		);
+		kebabSelect(el, "delete");
 		await Promise.resolve();
 		expect(ctrl.delete).not.toHaveBeenCalled();
 	});
@@ -339,18 +399,7 @@ describe("epp-device-groups-view", () => {
 		const el = await fixture(ctrl);
 		ctrl.emit([makeGroup()]);
 		await el.updateComplete;
-		(el.shadowRoot!.querySelector(".group-row") as HTMLElement).click();
-		await el.updateComplete;
-		const editor = el.shadowRoot!.querySelector(
-			"epp-device-group-editor",
-		) as HTMLElement;
-		editor.dispatchEvent(
-			new CustomEvent("delete", {
-				detail: { id: "g1" },
-				bubbles: true,
-				composed: true,
-			}),
-		);
+		kebabSelect(el, "delete");
 		await Promise.resolve();
 		await Promise.resolve();
 		expect(ctrl.delete).toHaveBeenCalledWith("g1");
@@ -372,7 +421,7 @@ describe("epp-device-groups-view", () => {
 		const el = await fixture(ctrl);
 		ctrl.emit([makeGroup()]);
 		await el.updateComplete;
-		(el.shadowRoot!.querySelector(".group-row") as HTMLElement).click();
+		kebabSelect(el, "edit");
 		await el.updateComplete;
 		const editor = el.shadowRoot!.querySelector("epp-device-group-editor") as {
 			sourcesByMac: Record<string, unknown>;
