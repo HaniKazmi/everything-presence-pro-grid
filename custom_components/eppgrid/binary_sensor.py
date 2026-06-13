@@ -121,12 +121,14 @@ class _PlatformProxy:
         out: list[BinarySensorEntity] = []
         for zg in group.get("zone_groups", []):
             uid = f"eppgrid_device_group_{group['id']}_zone_group_{zg['id']}"
+            # A merged zone is a zone sensor too — name it "Zone {name}".
+            name = f"Zone {zg['name']}"
             existing = self._entities.get(uid)
             if isinstance(existing, DeviceGroupZoneGroupEntity):
                 # Refresh the name so a zone-group rename updates the entity.
-                existing.update_name(zg["name"])
+                existing.update_name(name)
                 continue
-            e = DeviceGroupZoneGroupEntity(group, zg, aggregator)
+            e = DeviceGroupZoneGroupEntity(group, zg, name, aggregator)
             self._entities[uid] = e
             out.append(e)
         for (mac, idx), name in _passthrough_names(aggregator).items():
@@ -241,13 +243,14 @@ class DeviceGroupZoneGroupEntity(BinarySensorEntity):
         self,
         group: dict[str, Any],
         zone_group: dict[str, Any],
+        name: str,
         aggregator: Aggregator,
     ) -> None:
         self._zg_id = zone_group["id"]
         self._aggregator = aggregator
         self._unsub: Callable[[], None] | None = None
         self._attr_unique_id = f"eppgrid_device_group_{group['id']}_zone_group_{zone_group['id']}"
-        self._attr_name = zone_group["name"]
+        self._attr_name = name
         self._attr_device_info = DeviceInfo(
             identifiers={(DOMAIN, f"device_group:{group['id']}")},
             name=group["name"],

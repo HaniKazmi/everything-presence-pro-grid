@@ -76,7 +76,7 @@ class TestZoneProjection:
         ]
         result = derive_exposed_entities(sources=sources, zone_groups=zone_groups)
         assert result["zones"] == [
-            {"kind": "group", "id": "g1", "name": "Bed", "available": True},
+            {"kind": "group", "id": "g1", "name": "Zone Bed", "available": True},
         ]
 
     def test_group_with_only_disabled_members_marked_unavailable(self) -> None:
@@ -92,7 +92,7 @@ class TestZoneProjection:
         ]
         result = derive_exposed_entities(sources=sources, zone_groups=zone_groups)
         assert result["zones"] == [
-            {"kind": "group", "id": "g1", "name": "Bed", "available": False},
+            {"kind": "group", "id": "g1", "name": "Zone Bed", "available": False},
         ]
 
     def test_group_partially_available_is_available(self) -> None:
@@ -119,7 +119,7 @@ class TestZoneProjection:
         zone_groups = [{"id": "g1", "name": "Empty", "members": []}]
         result = derive_exposed_entities(sources=[], zone_groups=zone_groups)
         assert result["zones"] == [
-            {"kind": "group", "id": "g1", "name": "Empty", "available": False},
+            {"kind": "group", "id": "g1", "name": "Zone Empty", "available": False},
         ]
 
     def test_zones_sorted_by_source_then_index(self) -> None:

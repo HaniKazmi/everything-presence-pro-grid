@@ -3261,7 +3261,7 @@ const Fi=Symbol.for(""),Pi=e=>{if(e?.r===Fi)return e?._$litStatic$},Ui=(e,...t)=
 			</div>
 		`}_renderMergedGroup(e){return Y`<div class="group" data-testid="merged-zone">
 			<div class="group-head">
-				<span class="group-name">${e.name}</span>
+				<span class="group-name">Zone ${e.name}</span>
 				<span class="group-actions">
 					<button data-testid="edit-merge" @click=${()=>this._startEdit(e)}>
 						Edit
@@ -3355,7 +3355,7 @@ const Fi=Symbol.for(""),Pi=e=>{if(e?.r===Fi)return e?._$litStatic$},Ui=(e,...t)=
 				<button class="secondary" @click=${this._cancel}>Cancel</button>
 				<button @click=${this._save} ?disabled=${!this._canSave()}>Save</button>
 			</div>
-		`}_renderSensorsPreview(){const e=function(e,t){const i=new Set;for(const t of e)for(const e of t.enabled_presence)i.add(e);const s=Os.filter(e=>i.has(e)),r=new Set;for(const e of t)for(const t of e.members)r.add(`${t.mac}|${t.zone_index}`);const o=[];for(const t of e){const e=[...t.zones].sort((e,t)=>e.index-t.index);for(const i of e)i.enabled&&(r.has(`${t.mac}|${i.index}`)||o.push({kind:"passthrough",mac:t.mac,zone_index:i.index,name:i.name,available:!0,_sourceName:t.name}))}const n=new Map;for(const e of o)n.set(e.name,(n.get(e.name)??0)+1);for(const e of o)(n.get(e.name)??0)>1&&(e.name=`${e._sourceName} ${e.name}`);const a=o.map(e=>({kind:"passthrough",mac:e.mac,zone_index:e.zone_index,name:e.name,available:e.available})),c=[],l=new Map(e.map(e=>[e.mac,e]));for(const e of t){let t=!1;for(const i of e.members){const e=l.get(i.mac);if(!e)continue;const s=e.zones.find(e=>e.index===i.zone_index);if(s?.enabled){t=!0;break}}c.push({kind:"group",id:e.id,name:e.name,available:t})}return{presence:s,zones:[...c,...a]}}(this._draftSources(),this._draft.zone_groups);return 0===e.presence.length&&0===e.zones.length?J:Y`
+		`}_renderSensorsPreview(){const e=function(e,t){const i=new Set;for(const t of e)for(const e of t.enabled_presence)i.add(e);const s=Os.filter(e=>i.has(e)),r=new Set;for(const e of t)for(const t of e.members)r.add(`${t.mac}|${t.zone_index}`);const o=[];for(const t of e){const e=[...t.zones].sort((e,t)=>e.index-t.index);for(const i of e)i.enabled&&(r.has(`${t.mac}|${i.index}`)||o.push({kind:"passthrough",mac:t.mac,zone_index:i.index,name:i.name,available:!0,_sourceName:t.name}))}const n=new Map;for(const e of o)n.set(e.name,(n.get(e.name)??0)+1);for(const e of o)(n.get(e.name)??0)>1&&(e.name=`${e._sourceName} ${e.name}`);const a=o.map(e=>({kind:"passthrough",mac:e.mac,zone_index:e.zone_index,name:e.name,available:e.available})),c=[],l=new Map(e.map(e=>[e.mac,e]));for(const e of t){let t=!1;for(const i of e.members){const e=l.get(i.mac);if(!e)continue;const s=e.zones.find(e=>e.index===i.zone_index);if(s?.enabled){t=!0;break}}c.push({kind:"group",id:e.id,name:`Zone ${e.name}`,available:t})}return{presence:s,zones:[...c,...a]}}(this._draftSources(),this._draft.zone_groups);return 0===e.presence.length&&0===e.zones.length?J:Y`
 			<div class="section">
 				<h3>Sensors that will be created</h3>
 				<div class="chips" data-testid="sensors-preview">

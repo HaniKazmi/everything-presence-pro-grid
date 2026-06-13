@@ -214,7 +214,7 @@ export class EppZoneMergeList extends LitElement {
 	private _renderMergedGroup(g: DeviceGroupZoneGroup) {
 		return html`<div class="group" data-testid="merged-zone">
 			<div class="group-head">
-				<span class="group-name">${g.name}</span>
+				<span class="group-name">Zone ${g.name}</span>
 				<span class="group-actions">
 					<button data-testid="edit-merge" @click=${() => this._startEdit(g)}>
 						Edit

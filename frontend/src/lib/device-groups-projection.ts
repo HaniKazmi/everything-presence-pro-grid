@@ -98,7 +98,8 @@ export function deriveExposedEntities(
 		groupedOut.push({
 			kind: "group",
 			id: g.id,
-			name: g.name,
+			// Merged zones are zone sensors too — name them "Zone {name}".
+			name: `Zone ${g.name}`,
 			available: anyEnabled,
 		});
 	}

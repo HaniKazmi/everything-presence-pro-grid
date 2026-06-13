@@ -174,7 +174,7 @@ describe("epp-zone-merge-list", () => {
 		];
 		await el.updateComplete;
 		expect($(el, '[data-testid="merged-zone"]')).not.toBeNull();
-		expect($(el, ".group-name")!.textContent!.trim()).toBe("Bed");
+		expect($(el, ".group-name")!.textContent!.trim()).toBe("Zone Bed");
 		const members = $all(el, ".member").map((m) => m.textContent!.trim());
 		expect(members).toEqual(["Left → Desk", "Right → Couch"]);
 		// Grouped zones are no longer offered as available.

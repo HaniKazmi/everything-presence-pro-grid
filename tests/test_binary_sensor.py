@@ -262,7 +262,7 @@ async def test_renaming_zone_group_updates_entity_name(
     er_ = er.async_get(hass)
     eid = er_.async_get_entity_id("binary_sensor", DOMAIN, f"eppgrid_device_group_{gid}_zone_group_zg1")
     assert eid is not None
-    assert hass.states.get(eid).attributes["friendly_name"].endswith("Bed")
+    assert hass.states.get(eid).attributes["friendly_name"].endswith("Zone Bed")
 
     manager = hass.data[DOMAIN]
     await manager.device_groups.async_update(
@@ -283,7 +283,7 @@ async def test_renaming_zone_group_updates_entity_name(
     )
     await hass.async_block_till_done()
 
-    assert hass.states.get(eid).attributes["friendly_name"].endswith("Bedroom")
+    assert hass.states.get(eid).attributes["friendly_name"].endswith("Zone Bedroom")
 
 
 async def test_zone_group_aggregates_members(hass: HomeAssistant, integration_with_group_and_zones: dict) -> None:

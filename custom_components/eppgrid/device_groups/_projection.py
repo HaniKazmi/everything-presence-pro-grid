@@ -121,7 +121,9 @@ def _project_zones(
             {
                 "kind": "group",
                 "id": group["id"],
-                "name": group["name"],
+                # Merged zones are zone sensors too — name them like the rest
+                # ("Zone {name}").
+                "name": f"Zone {group['name']}",
                 "available": any_enabled,
             }
         )

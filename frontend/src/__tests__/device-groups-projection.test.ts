@@ -108,7 +108,7 @@ describe("deriveExposedEntities — zones", () => {
 			[{ id: "g1", name: "Bed", members: [{ mac: "AA", zone_index: 2 }] }],
 		);
 		expect(result.zones).toEqual([
-			{ kind: "group", id: "g1", name: "Bed", available: false },
+			{ kind: "group", id: "g1", name: "Zone Bed", available: false },
 		]);
 	});
 
@@ -127,7 +127,7 @@ describe("deriveExposedEntities — zones", () => {
 			],
 		);
 		expect(result.zones).toEqual([
-			{ kind: "group", id: "g1", name: "Bed", available: true },
+			{ kind: "group", id: "g1", name: "Zone Bed", available: true },
 		]);
 	});
 
@@ -139,7 +139,7 @@ describe("deriveExposedEntities — zones", () => {
 		// The group is unavailable (its only member resolves to no real zone),
 		// and the real zone 2 — never actually grouped — still passes through.
 		expect(result.zones).toEqual([
-			{ kind: "group", id: "g1", name: "Bed", available: false },
+			{ kind: "group", id: "g1", name: "Zone Bed", available: false },
 			{
 				kind: "passthrough",
 				mac: "AA",
@@ -168,7 +168,7 @@ describe("deriveExposedEntities — zones", () => {
 			],
 		);
 		expect(result.zones).toEqual([
-			{ kind: "group", id: "g1", name: "Bed", available: true },
+			{ kind: "group", id: "g1", name: "Zone Bed", available: true },
 		]);
 	});
 });

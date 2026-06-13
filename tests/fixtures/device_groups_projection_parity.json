@@ -92,7 +92,7 @@
       "zone_groups": [{ "id": "g1", "name": "Bed", "members": [{ "mac": "AA", "zone_index": 2 }, { "mac": "BB", "zone_index": 3 }] }],
       "expected": {
         "presence": [],
-        "zones": [{ "kind": "group", "id": "g1", "name": "Bed", "available": true }]
+        "zones": [{ "kind": "group", "id": "g1", "name": "Zone Bed", "available": true }]
       }
     },
     {
@@ -103,7 +103,7 @@
       "zone_groups": [{ "id": "g1", "name": "Bed", "members": [{ "mac": "AA", "zone_index": 2 }] }],
       "expected": {
         "presence": [],
-        "zones": [{ "kind": "group", "id": "g1", "name": "Bed", "available": false }]
+        "zones": [{ "kind": "group", "id": "g1", "name": "Zone Bed", "available": false }]
       }
     },
     {
@@ -123,7 +123,7 @@
       "expected": {
         "presence": ["occupancy"],
         "zones": [
-          { "kind": "group", "id": "g1", "name": "Bed Group", "available": true },
+          { "kind": "group", "id": "g1", "name": "Zone Bed Group", "available": true },
           { "kind": "passthrough", "mac": "AA", "zone_index": 4, "name": "Desk", "available": true }
         ]
       }
