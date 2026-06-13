@@ -278,3 +278,51 @@ class TestUpdateDefinition:
             assert fired, "update_definition did not fire entity listeners"
         finally:
             await agg.async_stop()
+
+
+class TestVisibleChange:
+    async def test_disabling_a_source_fires_visible_change(self, hass: HomeAssistant, group_def: dict) -> None:
+        """Disabling a source entity removes its exposed slot, so the
+        visible-change callback fires (lets the WS layer re-push exposed_entities)."""
+        a = _register(hass, "AA:BB:CC:DD:EE:FF", "occupancy")
+        _set_state(hass, a, STATE_OFF)
+
+        visible: list[bool] = []
+        agg = Aggregator(
+            hass,
+            group_def,
+            device_name_fn=lambda m: m,
+            zone_name_fn=lambda m, i: f"Zone {i}",
+            notify_visible_change=lambda: visible.append(True),
+        )
+        await agg.async_start()
+        try:
+            assert "occupancy" in agg.outputs["presence"]
+            er.async_get(hass).async_update_entity(a, disabled_by=er.RegistryEntryDisabler.USER)
+            await hass.async_block_till_done()
+            assert "occupancy" not in agg.outputs["presence"]
+            assert visible, "visible-change callback did not fire on source disable"
+        finally:
+            await agg.async_stop()
+
+    async def test_on_off_transition_does_not_fire_visible_change(self, hass: HomeAssistant, group_def: dict) -> None:
+        """A plain on/off transition does not change the exposed set, so the
+        visible-change callback must NOT fire (avoids spamming WS subscribers)."""
+        a = _register(hass, "AA:BB:CC:DD:EE:FF", "occupancy")
+        _set_state(hass, a, STATE_OFF)
+
+        visible: list[bool] = []
+        agg = Aggregator(
+            hass,
+            group_def,
+            device_name_fn=lambda m: m,
+            zone_name_fn=lambda m, i: f"Zone {i}",
+            notify_visible_change=lambda: visible.append(True),
+        )
+        await agg.async_start()
+        try:
+            _set_state(hass, a, STATE_ON)
+            await hass.async_block_till_done()
+            assert not visible
+        finally:
+            await agg.async_stop()

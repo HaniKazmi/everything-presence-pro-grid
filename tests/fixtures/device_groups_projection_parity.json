@@ -1,0 +1,132 @@
+{
+  "_comment": "SHARED PARITY FIXTURE. derive_exposed_entities (Python, custom_components/eppgrid/device_groups/_projection.py) and deriveExposedEntities (TS, frontend/src/lib/device-groups-projection.ts) MUST produce identical output for these inputs. Driven by tests/device_groups/test_projection_parity.py (pytest) and frontend/src/__tests__/device-groups-projection-parity.test.ts (vitest). Edit a scenario -> run BOTH suites.",
+  "scenarios": [
+    {
+      "name": "empty sources expose nothing",
+      "sources": [],
+      "zone_groups": [],
+      "expected": { "presence": [], "zones": [] }
+    },
+    {
+      "name": "presence is the union of enabled slots in canonical order",
+      "sources": [
+        { "mac": "AA", "name": "Left", "enabled_presence": ["occupancy"], "zones": [] },
+        { "mac": "BB", "name": "Right", "enabled_presence": ["static_presence", "occupancy"], "zones": [] }
+      ],
+      "zone_groups": [],
+      "expected": { "presence": ["occupancy", "static_presence"], "zones": [] }
+    },
+    {
+      "name": "single ungrouped enabled zone passes through",
+      "sources": [
+        { "mac": "AA", "name": "Left", "enabled_presence": [], "zones": [{ "index": 2, "name": "Desk", "enabled": true }] }
+      ],
+      "zone_groups": [],
+      "expected": {
+        "presence": [],
+        "zones": [{ "kind": "passthrough", "mac": "AA", "zone_index": 2, "name": "Desk", "available": true }]
+      }
+    },
+    {
+      "name": "passthrough zones are sorted by index within a source",
+      "sources": [
+        {
+          "mac": "AA",
+          "name": "Left",
+          "enabled_presence": [],
+          "zones": [
+            { "index": 3, "name": "Far", "enabled": true },
+            { "index": 1, "name": "Near", "enabled": true }
+          ]
+        }
+      ],
+      "zone_groups": [],
+      "expected": {
+        "presence": [],
+        "zones": [
+          { "kind": "passthrough", "mac": "AA", "zone_index": 1, "name": "Near", "available": true },
+          { "kind": "passthrough", "mac": "AA", "zone_index": 3, "name": "Far", "available": true }
+        ]
+      }
+    },
+    {
+      "name": "passthrough name collisions get a source-name prefix",
+      "sources": [
+        { "mac": "AA", "name": "Left", "enabled_presence": [], "zones": [{ "index": 2, "name": "Desk", "enabled": true }] },
+        { "mac": "BB", "name": "Right", "enabled_presence": [], "zones": [{ "index": 3, "name": "Desk", "enabled": true }] }
+      ],
+      "zone_groups": [],
+      "expected": {
+        "presence": [],
+        "zones": [
+          { "kind": "passthrough", "mac": "AA", "zone_index": 2, "name": "Left Desk", "available": true },
+          { "kind": "passthrough", "mac": "BB", "zone_index": 3, "name": "Right Desk", "available": true }
+        ]
+      }
+    },
+    {
+      "name": "disabled zones are excluded from passthroughs",
+      "sources": [
+        {
+          "mac": "AA",
+          "name": "Left",
+          "enabled_presence": [],
+          "zones": [
+            { "index": 1, "name": "On", "enabled": true },
+            { "index": 2, "name": "Off", "enabled": false }
+          ]
+        }
+      ],
+      "zone_groups": [],
+      "expected": {
+        "presence": [],
+        "zones": [{ "kind": "passthrough", "mac": "AA", "zone_index": 1, "name": "On", "available": true }]
+      }
+    },
+    {
+      "name": "grouped zones become one available group entity and drop from passthroughs",
+      "sources": [
+        { "mac": "AA", "name": "Left", "enabled_presence": [], "zones": [{ "index": 2, "name": "Bed L", "enabled": true }] },
+        { "mac": "BB", "name": "Right", "enabled_presence": [], "zones": [{ "index": 3, "name": "Bed R", "enabled": true }] }
+      ],
+      "zone_groups": [{ "id": "g1", "name": "Bed", "members": [{ "mac": "AA", "zone_index": 2 }, { "mac": "BB", "zone_index": 3 }] }],
+      "expected": {
+        "presence": [],
+        "zones": [{ "kind": "group", "id": "g1", "name": "Bed", "available": true }]
+      }
+    },
+    {
+      "name": "a group whose members are all disabled is unavailable",
+      "sources": [
+        { "mac": "AA", "name": "Left", "enabled_presence": [], "zones": [{ "index": 2, "name": "Bed L", "enabled": false }] }
+      ],
+      "zone_groups": [{ "id": "g1", "name": "Bed", "members": [{ "mac": "AA", "zone_index": 2 }] }],
+      "expected": {
+        "presence": [],
+        "zones": [{ "kind": "group", "id": "g1", "name": "Bed", "available": false }]
+      }
+    },
+    {
+      "name": "groups come before passthroughs in the zones list",
+      "sources": [
+        {
+          "mac": "AA",
+          "name": "Left",
+          "enabled_presence": ["occupancy"],
+          "zones": [
+            { "index": 2, "name": "Bed", "enabled": true },
+            { "index": 4, "name": "Desk", "enabled": true }
+          ]
+        }
+      ],
+      "zone_groups": [{ "id": "g1", "name": "Bed Group", "members": [{ "mac": "AA", "zone_index": 2 }] }],
+      "expected": {
+        "presence": ["occupancy"],
+        "zones": [
+          { "kind": "group", "id": "g1", "name": "Bed Group", "available": true },
+          { "kind": "passthrough", "mac": "AA", "zone_index": 4, "name": "Desk", "available": true }
+        ]
+      }
+    }
+  ]
+}

@@ -45,12 +45,17 @@ class Aggregator:
         device_name_fn: Callable[[str], str],
         zone_name_fn: Callable[[str, int], str | None],
         notify: Callable[[], None] | None = None,
+        notify_visible_change: Callable[[], None] | None = None,
     ) -> None:
         self._hass = hass
         self._def = group_def
         self._device_name_fn = device_name_fn
         self._zone_name_fn = zone_name_fn
         self._notify = notify or (lambda: None)
+        # Fired when the SET of exposed outputs changes (a slot/zone appears or
+        # disappears, e.g. a source entity is enabled/disabled) — not on every
+        # on/off transition. Lets the WS layer re-push exposed_entities.
+        self._notify_visible_change = notify_visible_change or (lambda: None)
         self._unsub_state: Callable[[], None] | None = None
         self._unsub_registry: Callable[[], None] | None = None
         self._entity_listeners: dict[str, list[Callable[[], None]]] = {}
@@ -157,11 +162,25 @@ class Aggregator:
         if not entity_id.startswith("binary_sensor."):
             return
         prev = self._snapshot()
+        prev_sig = self._set_signature()
         self._recompute_all()
         self._resubscribe()
         if self._snapshot() != prev:
             self._notify()
             self._fire_entity_listeners()
+        # A registry change (enable/disable of a source entity) can add or remove
+        # an exposed output; tell the WS layer to re-push exposed_entities. Gated
+        # on the set so on/off transitions (which never change the set) don't.
+        if self._set_signature() != prev_sig:
+            self._notify_visible_change()
+
+    def _set_signature(self) -> tuple:
+        """The SET of exposed output keys (ignoring their on/off values)."""
+        return (
+            tuple(sorted(self.outputs["presence"].keys())),
+            tuple(sorted(self.outputs["zone_groups"].keys())),
+            tuple(sorted(self.outputs["zone_passthroughs"].keys())),
+        )
 
     def _snapshot(self) -> tuple:
         return (

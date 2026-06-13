@@ -72,6 +72,10 @@ class DeviceGroupManager:
             device_name_fn=self._device_name_fn,
             zone_name_fn=self._zone_name_fn,
             notify=self._on_aggregator_changed,
+            # When a source entity is enabled/disabled the exposed-entity set
+            # changes; re-push so the panel's preview doesn't go stale until the
+            # next CRUD/reload.
+            notify_visible_change=self._fire_change,
         )
         await agg.async_start()
         self._aggregators[group["id"]] = agg
