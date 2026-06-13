@@ -7,7 +7,11 @@ import type { DeviceGroup, DeviceGroupSource, DeviceInfo } from "../types.js";
 
 export class EppDeviceGroupsView extends LitElement {
 	static styles = css`
-		:host { display: block; padding: 1rem; }
+		:host { display: block; padding: 16px; }
+		.content {
+			max-width: 600px;
+			margin: 0 auto;
+		}
 		.group-row {
 			display: flex;
 			align-items: center;
@@ -55,18 +59,21 @@ export class EppDeviceGroupsView extends LitElement {
 	render() {
 		if (this._editingGroup || this._creatingNew) {
 			return html`
-				<epp-device-group-editor
-					.hass=${this.hass}
-					.availableDevices=${this.availableDevices}
-					.existingGroup=${this._editingGroup}
-					.sourcesByMac=${this._sourcesByMac()}
-					@save=${this._handleSave}
-					@cancel=${this._handleCancel}
-					@delete=${this._handleDelete}
-				></epp-device-group-editor>
+				<div class="content">
+					<epp-device-group-editor
+						.hass=${this.hass}
+						.availableDevices=${this.availableDevices}
+						.existingGroup=${this._editingGroup}
+						.sourcesByMac=${this._sourcesByMac()}
+						@save=${this._handleSave}
+						@cancel=${this._handleCancel}
+						@delete=${this._handleDelete}
+					></epp-device-group-editor>
+				</div>
 			`;
 		}
 		return html`
+			<div class="content">
 			<button class="add-btn" @click=${() => (this._creatingNew = true)}>
 				+ Add device group
 			</button>
@@ -91,6 +98,7 @@ export class EppDeviceGroupsView extends LitElement {
 				`,
 						)
 			}
+			</div>
 		`;
 	}
 

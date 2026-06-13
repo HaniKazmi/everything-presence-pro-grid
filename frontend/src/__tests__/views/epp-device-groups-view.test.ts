@@ -100,6 +100,19 @@ describe("epp-device-groups-view", () => {
 		expect(el.shadowRoot!.textContent).toContain("No device groups yet.");
 	});
 
+	it("wraps both the list and the editor in a centred .content container", async () => {
+		const ctrl = makeController();
+		const el = await fixture(ctrl);
+		// list view
+		expect(el.shadowRoot!.querySelector(".content .add-btn")).not.toBeNull();
+		// editor view
+		(el.shadowRoot!.querySelector(".add-btn") as HTMLButtonElement).click();
+		await el.updateComplete;
+		expect(
+			el.shadowRoot!.querySelector(".content epp-device-group-editor"),
+		).not.toBeNull();
+	});
+
 	it("renders a row per group with source/entity counts", async () => {
 		const ctrl = makeController();
 		const el = await fixture(ctrl);

@@ -3335,7 +3335,6 @@ const Fi=Symbol.for(""),Pi=e=>{if(e?.r===Fi)return e?._$litStatic$},Ui=(e,...t)=
 		>`}_draftSources(){return this._draft.sourceMacs.map(e=>this.sourcesByMac[e]).filter(e=>Boolean(e))}_canSave(){return""!==this._draft.name.trim()&&this._draft.sourceMacs.length>=1}_update(e){this._draft={...this._draft,...e}}_toggleSource(e,t){const i=t?[...this._draft.sourceMacs,e]:this._draft.sourceMacs.filter(t=>t!==e);this._update({sourceMacs:i})}_save(){this.dispatchEvent(new CustomEvent("save",{detail:{id:this._draft.id,name:this._draft.name.trim(),sources:this._draft.sourceMacs,area_id:this._draft.area_id,zone_groups:this._draft.zone_groups},bubbles:!0,composed:!0}))}_cancel(){this.dispatchEvent(new CustomEvent("cancel",{bubbles:!0,composed:!0}))}_delete(){this._draft.id&&this.dispatchEvent(new CustomEvent("delete",{detail:{id:this._draft.id},bubbles:!0,composed:!0}))}}Ps.styles=n`
 		:host {
 			display: block;
-			max-width: 600px;
 			padding: 1rem;
 		}
 		.section { margin-bottom: 1.5rem; }
@@ -3375,16 +3374,19 @@ const Fi=Symbol.for(""),Pi=e=>{if(e?.r===Fi)return e?._$litStatic$},Ui=(e,...t)=
 			background: var(--error-color);
 		}
 	`,e([ge({attribute:!1})],Ps.prototype,"hass",void 0),e([ge({attribute:!1})],Ps.prototype,"availableDevices",void 0),e([ge({attribute:!1})],Ps.prototype,"existingGroup",void 0),e([ge({attribute:!1})],Ps.prototype,"sourcesByMac",void 0),e([ue()],Ps.prototype,"_draft",void 0),customElements.define("epp-device-group-editor",Ps);class Us extends le{constructor(){super(...arguments),this.availableDevices=[],this._groups=[],this._editingGroup=null,this._creatingNew=!1,this._unsub=null}connectedCallback(){super.connectedCallback(),this._unsub=this.controller.onChange(e=>{this._groups=e}),this.controller.subscribe()}disconnectedCallback(){super.disconnectedCallback(),this._unsub?.()}render(){return this._editingGroup||this._creatingNew?Y`
-				<epp-device-group-editor
-					.hass=${this.hass}
-					.availableDevices=${this.availableDevices}
-					.existingGroup=${this._editingGroup}
-					.sourcesByMac=${this._sourcesByMac()}
-					@save=${this._handleSave}
-					@cancel=${this._handleCancel}
-					@delete=${this._handleDelete}
-				></epp-device-group-editor>
+				<div class="content">
+					<epp-device-group-editor
+						.hass=${this.hass}
+						.availableDevices=${this.availableDevices}
+						.existingGroup=${this._editingGroup}
+						.sourcesByMac=${this._sourcesByMac()}
+						@save=${this._handleSave}
+						@cancel=${this._handleCancel}
+						@delete=${this._handleDelete}
+					></epp-device-group-editor>
+				</div>
 			`:Y`
+			<div class="content">
 			<button class="add-btn" @click=${()=>this._creatingNew=!0}>
 				+ Add device group
 			</button>
@@ -3400,8 +3402,13 @@ const Fi=Symbol.for(""),Pi=e=>{if(e?.r===Fi)return e?._$litStatic$},Ui=(e,...t)=
 						</div>
 					</div>
 				`)}
+			</div>
 		`}_sourcesByMac(){const e={};for(const t of this._groups)for(const i of t.sources)e[i.mac]=i;for(const t of this.controller.candidateSources)e[t.mac]=t;return e}async _handleSave(e){e.stopPropagation();const t=e.detail;try{t.id?await this.controller.update(t):await this.controller.create(t.name,t.sources,t.area_id),this._editingGroup=null,this._creatingNew=!1}catch(e){console.error("Failed to save device group",e),alert(`Save failed: ${e instanceof Error?e.message:String(e)}`)}}_handleCancel(e){e.stopPropagation(),this._editingGroup=null,this._creatingNew=!1}async _handleDelete(e){if(e.stopPropagation(),confirm("Delete this device group?"))try{await this.controller.delete(e.detail.id),this._editingGroup=null}catch(e){console.error("Failed to delete device group",e)}}}function Os(e){if(e)try{e()}catch(e){console.debug("safeUnsub: callback threw (ignored):",e)}}Us.styles=n`
-		:host { display: block; padding: 1rem; }
+		:host { display: block; padding: 16px; }
+		.content {
+			max-width: 600px;
+			margin: 0 auto;
+		}
 		.group-row {
 			display: flex;
 			align-items: center;

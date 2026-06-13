@@ -25,7 +25,6 @@ export class EppDeviceGroupEditor extends LitElement {
 	static styles = css`
 		:host {
 			display: block;
-			max-width: 600px;
 			padding: 1rem;
 		}
 		.section { margin-bottom: 1.5rem; }
