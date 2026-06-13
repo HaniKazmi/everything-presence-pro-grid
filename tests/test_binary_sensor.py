@@ -302,6 +302,54 @@ async def test_zone_group_aggregates_members(hass: HomeAssistant, integration_wi
     assert hass.states.get(helper).state == STATE_ON
 
 
+async def test_colliding_passthrough_zone_entities_are_source_prefixed(
+    hass: HomeAssistant,
+    config_entry: MockConfigEntry,
+    enable_custom_integrations,
+) -> None:
+    """When two sources expose a passthrough zone with the same name, the helper
+    entity names are disambiguated with the source device name — matching the
+    projection/preview (e.g. 'Left Bedroom Desk' / 'Right Bedroom Desk')."""
+    er_ = er.async_get(hass)
+    for mac in ("AA:BB:CC:DD:EE:FF", "11:22:33:44:55:66"):
+        occ = er_.async_get_or_create("binary_sensor", "esphome", f"{mac}-binary_sensor-occupancy")
+        hass.states.async_set(occ.entity_id, STATE_OFF)
+    a_z = er_.async_get_or_create("binary_sensor", "esphome", "AA:BB:CC:DD:EE:FF-binary_sensor-zone_2_presence")
+    b_z = er_.async_get_or_create("binary_sensor", "esphome", "11:22:33:44:55:66-binary_sensor-zone_3_presence")
+    hass.states.async_set(a_z.entity_id, STATE_OFF)
+    hass.states.async_set(b_z.entity_id, STATE_OFF)
+
+    assert await hass.config_entries.async_setup(config_entry.entry_id)
+    await hass.async_block_till_done()
+
+    manager = hass.data[DOMAIN]
+    # Device names + a same-named "Desk" zone on each source (zones NOT merged).
+    manager._store.devices["AA:BB:CC:DD:EE:FF"] = {
+        "name": "Left Bedroom",
+        "room_layout": {"zone_slots": [{"type": "default"}, None, {"name": "Desk"}, None, None, None, None, None]},
+    }
+    manager._store.devices["11:22:33:44:55:66"] = {
+        "name": "Right Bedroom",
+        "room_layout": {"zone_slots": [{"type": "default"}, None, None, {"name": "Desk"}, None, None, None, None]},
+    }
+
+    group = await manager.device_groups.async_create(
+        name="Combined",
+        sources=["AA:BB:CC:DD:EE:FF", "11:22:33:44:55:66"],
+    )
+    await hass.async_block_till_done()
+
+    a_eid = er_.async_get_entity_id(
+        "binary_sensor", DOMAIN, f"eppgrid_device_group_{group['id']}_zone_pass_AA:BB:CC:DD:EE:FF_2"
+    )
+    b_eid = er_.async_get_entity_id(
+        "binary_sensor", DOMAIN, f"eppgrid_device_group_{group['id']}_zone_pass_11:22:33:44:55:66_3"
+    )
+    assert a_eid and b_eid
+    assert hass.states.get(a_eid).attributes["friendly_name"].endswith("Left Bedroom Desk")
+    assert hass.states.get(b_eid).attributes["friendly_name"].endswith("Right Bedroom Desk")
+
+
 async def test_group_area_id_applied_to_device_registry(
     hass: HomeAssistant,
     config_entry: MockConfigEntry,

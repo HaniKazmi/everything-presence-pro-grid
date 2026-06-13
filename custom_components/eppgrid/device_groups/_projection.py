@@ -16,6 +16,19 @@ from typing import TypedDict
 from ..const import PRESENCE_SLOTS
 
 
+def resolve_name_collisions(names: list[str], source_names: list[str]) -> list[str]:
+    """Disambiguate passthrough zone names by prefixing the source name.
+
+    A name is left as-is when it is unique; when the same name appears for more
+    than one zone it is prefixed with its source device name (e.g. two "Desk"
+    zones become "Left Bedroom Desk" / "Right Bedroom Desk"). Shared by the
+    projection (preview) and the binary_sensor platform (real entities) so the
+    two never disagree.
+    """
+    counts = Counter(names)
+    return [f"{src} {name}" if counts[name] > 1 else name for name, src in zip(names, source_names, strict=True)]
+
+
 @dataclass(frozen=True)
 class ZoneState:
     index: int
@@ -81,10 +94,12 @@ def _project_zones(
             )
 
     # Resolve name collisions by prefixing source name.
-    name_counts = Counter(p["name"] for p in passthroughs)
-    for p in passthroughs:
-        if name_counts[p["name"]] > 1:
-            p["name"] = f"{p['_source_name']} {p['name']}"
+    resolved = resolve_name_collisions(
+        [p["name"] for p in passthroughs],
+        [p["_source_name"] for p in passthroughs],
+    )
+    for p, name in zip(passthroughs, resolved, strict=True):
+        p["name"] = name
         del p["_source_name"]
 
     # Grouped entities.

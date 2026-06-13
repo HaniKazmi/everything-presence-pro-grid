@@ -96,6 +96,14 @@ class Aggregator:
             for cb in cbs:
                 cb()
 
+    def zone_name(self, mac: str, zone_index: int) -> str | None:
+        """User-set name for a source zone (or None)."""
+        return self._zone_name_fn(mac, zone_index)
+
+    def device_name(self, mac: str) -> str:
+        """Display name for a source device."""
+        return self._device_name_fn(mac)
+
     def attach_entity_listener(self, key: str, cb: Callable[[], None]) -> Callable[[], None]:
         """Attach a per-output-key listener that fires on any change.
 

@@ -17,6 +17,7 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from .const import DOMAIN
 from .const import PRESENCE_SLOTS
 from .device_groups._aggregator import Aggregator
+from .device_groups._projection import resolve_name_collisions
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -27,6 +28,19 @@ _PRESENCE_DEVICE_CLASS: dict[str, BinarySensorDeviceClass | None] = {
     "target_presence": BinarySensorDeviceClass.OCCUPANCY,
     "mmwave_presence": BinarySensorDeviceClass.OCCUPANCY,
 }
+
+
+def _passthrough_names(aggregator: Aggregator) -> dict[tuple[str, int], str]:
+    """Collision-resolved display names for a group's passthrough zones.
+
+    Uses the same `resolve_name_collisions` rule as the projection/preview so the
+    created entity names match what the panel shows (e.g. two "Desk" zones
+    become "Left Bedroom Desk" / "Right Bedroom Desk").
+    """
+    keys = list(aggregator.outputs.get("zone_passthroughs", {}))
+    raw = [aggregator.zone_name(mac, idx) or f"Zone {idx}" for mac, idx in keys]
+    sources = [aggregator.device_name(mac) for mac, _ in keys]
+    return dict(zip(keys, resolve_name_collisions(raw, sources), strict=True))
 
 
 async def async_setup_entry(
@@ -105,13 +119,13 @@ class _PlatformProxy:
             e = DeviceGroupZoneGroupEntity(group, zg, aggregator)
             self._entities[uid] = e
             out.append(e)
-        for mac, idx in aggregator.outputs.get("zone_passthroughs", {}):
+        for (mac, idx), name in _passthrough_names(aggregator).items():
             uid = f"eppgrid_device_group_{group['id']}_zone_pass_{mac}_{idx}"
             existing = self._entities.get(uid)
             if isinstance(existing, DeviceGroupZonePassthroughEntity):
-                existing.update_name(aggregator._zone_name_fn(mac, idx) or f"Zone {idx}")
+                existing.update_name(name)
                 continue
-            e = DeviceGroupZonePassthroughEntity(group, mac, idx, aggregator)
+            e = DeviceGroupZonePassthroughEntity(group, mac, idx, name, aggregator)
             self._entities[uid] = e
             out.append(e)
         return out
@@ -272,6 +286,7 @@ class DeviceGroupZonePassthroughEntity(BinarySensorEntity):
         group: dict[str, Any],
         mac: str,
         zone_index: int,
+        name: str,
         aggregator: Aggregator,
     ) -> None:
         self._mac = mac
@@ -279,7 +294,8 @@ class DeviceGroupZonePassthroughEntity(BinarySensorEntity):
         self._aggregator = aggregator
         self._unsub: Callable[[], None] | None = None
         self._attr_unique_id = f"eppgrid_device_group_{group['id']}_zone_pass_{mac}_{zone_index}"
-        self._attr_name = aggregator._zone_name_fn(mac, zone_index) or f"Zone {zone_index}"
+        # Collision-resolved name supplied by the platform (matches the preview).
+        self._attr_name = name
         self._attr_device_info = DeviceInfo(
             identifiers={(DOMAIN, f"device_group:{group['id']}")},
             name=group["name"],
