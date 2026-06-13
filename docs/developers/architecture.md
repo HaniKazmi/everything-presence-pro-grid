@@ -338,7 +338,19 @@ Frontend side: `controllers/device-groups-controller.ts` is the WS client
 (subscribe + CRUD), `views/epp-device-groups-view.ts` is the list/editor host
 wired into the panel's **Device Groups** tab, and the
 `components/epp-device-group-editor.ts` + `components/epp-zone-merge-list.ts`
-components edit one group (basics + source selection + zone merging).
+components edit one group (basics + source selection + zone merging). Two
+shared helpers back the UI:
+
+- **`components/epp-kebab-menu.ts`** — a reusable ⋮ overflow menu used by the
+  group list cards, the merged-zone boxes, and (after migration) the panel's
+  live-overview menu. It renders HA's native `ha-button-menu` + `ha-list-item`
+  when those are registered and falls back to a self-contained popover under
+  older HA / happy-dom; it supports left icons, dividers, and a danger item,
+  and emits `item-select` `{id}`.
+- **`lib/device-groups-labels.ts`** — `PRESENCE_LABELS`, `exposedSensorChips()`
+  (the group's presence + zone sensors as one sorted, numeric-aware chip list),
+  and `EDIT_DELETE_KEBAB_ITEMS` (the shared Edit/Delete kebab items), so the
+  list view and the editor render identical, consistent labels.
 
 ## TypeScript Frontend
 

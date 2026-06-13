@@ -24,20 +24,32 @@ unavailable only when every source is unavailable.
 
 1. Open the Everything Presence Pro Grid panel.
 2. Switch to the **Device Groups** tab.
-3. Click **+ Add device group**.
-4. Give it a name (e.g. "Master Bedroom Presence").
-5. Tick the source devices it should aggregate.
-6. Optionally drag zones from the available list into a merge group, and name
-   that group (e.g. "Bed"). Each merge group becomes one binary sensor.
-7. Click **Save**.
+3. Click **Add a device group**.
+4. Enter a **Device name**.
+5. Optionally choose an **Area** to assign the virtual device (and its source
+   devices) to.
+6. Under **Source devices**, toggle on the sensors it should aggregate.
+7. To combine zones from different sensors into one binary sensor, click
+   **Add a merged zone**, tick **two or more** zones, give the merged zone a
+   name (e.g. "Bed"), and click **Merge**. The merged zone appears under
+   **Merged zones**; each one becomes a single binary sensor.
+8. **Sensors that will be created** previews the exact entities the group will
+   expose.
+9. Click **Save**.
 
 The new virtual device appears under **Settings → Devices & Services → EPP Grid**
 with all its aggregated entities.
 
 ## Editing or deleting
 
-Click any device group in the list to reopen the editor. Save to apply
-changes, or click **Delete** to remove the group and all its helper entities.
+Each device group in the list has a **⋮ menu**:
+
+- **Edit** reopens the editor — change the name, sources, area, or merged zones
+  and **Save**.
+- **Delete** removes the group and all its helper entities.
+
+A merged zone has its own **⋮ menu** inside the editor for editing or removing
+just that zone.
 
 ## What happens when…
 
