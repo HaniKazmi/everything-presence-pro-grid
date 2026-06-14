@@ -356,6 +356,8 @@ Pipeline intervals are derived by `_compute_pipeline` from the device's stored `
 | `display_interval` | `200` when a frontend raw or grid subscription is open, else `0` |
 | `zone_state_interval` | `1000` when a frontend grid subscription is open, else `0` |
 
+The subscriber counts that gate `display_interval` / `zone_state_interval` are held on the `DeviceManager` keyed by MAC (`_target_subs`), incremented/decremented by the `subscribe_raw_targets` / `subscribe_grid_targets` handlers via `note_target_subscribe` / `note_target_unsubscribe`. They deliberately do **not** live on the `DeviceConnection`: a device flap tears the connection down and reopens a fresh one whose own counters would reset to zero, so a pipeline recomputed from those would tell the device "no subscribers" and silence target/zone emission while clients are still subscribed — the v1.1.0 "target disappears in the editor" freeze. Keyed by MAC the counts survive connection replacement, the decrement floors at zero (a stray unsubscribe whose increment landed on a since-replaced connection can't drive it negative), and `async_open_session` re-pushes the pipeline on reopen so emission resumes without a page refresh.
+
 The firmware rolling-median window is fixed at 1000ms (10 frames at the LD2450's nominal 10Hz). Signal is `min(frame_count, 9)` over that window, so it stays bounded on sensor over-delivery and matches the comparison space the frontend uses.
 
 ### `dismiss_target`

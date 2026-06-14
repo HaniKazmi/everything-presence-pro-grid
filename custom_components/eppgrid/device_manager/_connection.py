@@ -89,8 +89,6 @@ class DeviceConnection:
         self._log_callbacks: list[Any] = []
         self._unsub_logs: Any = None
         self.connected: bool = False
-        self.raw_target_subs: int = 0
-        self.grid_target_subs: int = 0
         # See OtaWatcherState — shared per-connection OTA watcher bookkeeping.
         self.ota: OtaWatcherState = OtaWatcherState()
 

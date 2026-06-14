@@ -1322,6 +1322,56 @@ class TestDeviceManager:
             # After close, get_session returns None
             assert manager.get_session("AA:BB:CC:DD:EE:FF") is None
 
+    async def test_open_session_repushes_pipeline_when_subscribers_tracked(
+        self, hass: HomeAssistant, manager: DeviceManager
+    ) -> None:
+        """Reopening a session while a frontend subscriber is still tracked
+        re-pushes the emission pipeline, so a device flap can't leave the
+        device silent until a page refresh (the 'target disappears' freeze)."""
+        mac = "AA:BB:CC:DD:EE:FF"
+        manager.devices[mac] = ManagedDevice(mac=mac, name="EPP", host="192.168.1.50")
+        manager._store.devices[mac] = {}
+        # A grid subscriber survives the connection swap (per-mac count).
+        manager.note_target_subscribe(mac, "grid_target_subs")
+
+        with (
+            patch("custom_components.eppgrid.device_manager.DeviceConnection") as mock_conn_cls,
+            patch.object(manager, "_push_pipeline_to_device", new=AsyncMock()) as mock_push,
+        ):
+            mock_conn = mock_conn_cls.return_value
+            mock_conn.async_connect = AsyncMock()
+            mock_conn.async_disconnect = AsyncMock()
+            mock_conn.connected = True
+
+            await manager.async_open_session(mac)
+            # The re-push is spawned as a tracked task — wait for it.
+            await hass.async_block_till_done()
+
+        mock_push.assert_awaited_with(mac)
+
+    async def test_open_session_no_repush_without_subscribers(
+        self, hass: HomeAssistant, manager: DeviceManager
+    ) -> None:
+        """A first session open with no tracked subscribers must NOT push a
+        pipeline (avoids a redundant all-zero push on every connect)."""
+        mac = "AA:BB:CC:DD:EE:FF"
+        manager.devices[mac] = ManagedDevice(mac=mac, name="EPP", host="192.168.1.50")
+        manager._store.devices[mac] = {}
+
+        with (
+            patch("custom_components.eppgrid.device_manager.DeviceConnection") as mock_conn_cls,
+            patch.object(manager, "_push_pipeline_to_device", new=AsyncMock()) as mock_push,
+        ):
+            mock_conn = mock_conn_cls.return_value
+            mock_conn.async_connect = AsyncMock()
+            mock_conn.async_disconnect = AsyncMock()
+            mock_conn.connected = True
+
+            await manager.async_open_session(mac)
+            await hass.async_block_till_done()
+
+        mock_push.assert_not_awaited()
+
     async def test_open_session_unknown_device(self, hass: HomeAssistant, manager: DeviceManager) -> None:
         """Open session returns None for unknown device."""
         conn = await manager.async_open_session("00:00:00:00:00:00")
@@ -4703,8 +4753,6 @@ class TestEventCallbacks:
 
         session_conn = MagicMock()
         session_conn.connected = True
-        session_conn.raw_target_subs = 0
-        session_conn.grid_target_subs = 0
         session_conn.async_push_config = AsyncMock()
         session_conn.async_execute_service = AsyncMock()
         session_conn.async_fetch_build_flags = AsyncMock(return_value={})
@@ -5118,8 +5166,6 @@ class TestEventCallbacks:
 
         session = MagicMock()
         session.connected = True
-        session.raw_target_subs = 0
-        session.grid_target_subs = 0
         session.async_push_config = AsyncMock(side_effect=slow_push)
         session.async_execute_service = AsyncMock()
         session.async_fetch_build_flags = AsyncMock(return_value={})
@@ -5152,8 +5198,6 @@ class TestEventCallbacks:
 
         session_conn = MagicMock()
         session_conn.connected = True
-        session_conn.raw_target_subs = 0
-        session_conn.grid_target_subs = 0
         session_conn.async_push_config = AsyncMock()
         session_conn.async_execute_service = AsyncMock()
         session_conn.async_fetch_build_flags = AsyncMock(return_value={})
@@ -5387,6 +5431,7 @@ class TestEventCallbacks:
         manager._store.devices[mac] = {"settings": {"led_mode": "Manual"}}
         manager._build_flags[mac] = {"has_co2": True}
         manager._entity_update_macs.add(mac)
+        manager.note_target_subscribe(mac, "grid_target_subs")
 
         # Pre-populate configurations that should survive
         manager._store.configurations["Living Room"] = {"grid_bytes": [1, 2, 3]}
@@ -5402,6 +5447,7 @@ class TestEventCallbacks:
         assert mac not in manager.devices
         assert mac not in manager._build_flags
         assert mac not in manager._entity_update_macs
+        assert mac not in manager._target_subs
         assert "Living Room" in manager._store.configurations
 
     async def test_on_device_removed_clears_push_runtime_state(
@@ -7869,8 +7915,6 @@ class TestBuildFlags:
 
         session_conn = MagicMock()
         session_conn.connected = True
-        session_conn.raw_target_subs = 0
-        session_conn.grid_target_subs = 0
         session_conn.async_push_config = AsyncMock()
         session_conn.async_execute_service = AsyncMock()
         session_conn.async_fetch_build_flags = AsyncMock(return_value=expected_flags)
@@ -7901,8 +7945,6 @@ class TestBuildFlags:
 
         session_conn = MagicMock()
         session_conn.connected = True
-        session_conn.raw_target_subs = 0
-        session_conn.grid_target_subs = 0
         session_conn.async_push_config = AsyncMock()
         session_conn.async_execute_service = AsyncMock()
         session_conn.async_fetch_build_flags = AsyncMock(return_value=expected_flags)
@@ -7988,8 +8030,6 @@ class TestBuildFlags:
 
         session_conn = MagicMock()
         session_conn.connected = True
-        session_conn.raw_target_subs = 0
-        session_conn.grid_target_subs = 0
         session_conn.async_fetch_build_flags = AsyncMock(return_value={})
         manager._active_connections[mac] = session_conn
 
@@ -8034,8 +8074,6 @@ class TestBuildFlags:
 
         session_conn = MagicMock()
         session_conn.connected = True
-        session_conn.raw_target_subs = 0
-        session_conn.grid_target_subs = 0
         session_conn.async_push_config = AsyncMock()
         session_conn.async_execute_service = AsyncMock()
         session_conn.async_fetch_build_flags = AsyncMock(return_value={})
@@ -8087,8 +8125,6 @@ class TestBuildFlags:
 
         session_conn = MagicMock()
         session_conn.connected = True
-        session_conn.raw_target_subs = 0
-        session_conn.grid_target_subs = 0
         session_conn.async_fetch_build_flags = AsyncMock(return_value={})
         manager._active_connections[mac] = session_conn
 
