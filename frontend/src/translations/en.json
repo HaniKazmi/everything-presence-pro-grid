@@ -49,7 +49,8 @@
 		"window": "Window",
 		"custom_icon": "Custom icon",
 		"custom": "Custom",
-		"search_placeholder": "Search furniture..."
+		"search_placeholder": "Search furniture...",
+		"remove": "Remove"
 	},
 	"corners": {
 		"front_left": "Front-left",

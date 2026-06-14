@@ -8,7 +8,9 @@ import {
 	filterAndSortStickers,
 } from "../lib/furniture.js";
 import { defaultLocalize, type LocalizeFn } from "../localize.js";
-import { buttonStyles, dialogStyles, sidebarRowStyles } from "../styles.js";
+import { dialogStyles, sidebarRowStyles } from "../styles.js";
+import "../ui/epp-button.js";
+import "../ui/epp-icon-button.js";
 
 export class EppFurnitureSidebar extends LitElement {
 	@property({ attribute: false }) furniture: FurnitureItem[] = [];
@@ -21,7 +23,6 @@ export class EppFurnitureSidebar extends LitElement {
 
 	static styles = [
 		dialogStyles,
-		buttonStyles,
 		sidebarRowStyles,
 		css`
 			:host {
@@ -31,22 +32,22 @@ export class EppFurnitureSidebar extends LitElement {
 			.furn-selected-info {
 				display: flex;
 				flex-direction: column;
-				gap: 8px;
-				padding: 8px;
-				border: 2px solid var(--primary-color, #03a9f4);
-				border-radius: 8px;
-				margin-bottom: 8px;
+				gap: var(--epp-space-2, 8px);
+				padding: var(--epp-space-2, 8px);
+				border: 2px solid var(--epp-accent, var(--primary-color, #03a9f4));
+				border-radius: var(--epp-radius-sm, 8px);
+				margin-bottom: var(--epp-space-2, 8px);
 			}
 
 			.furn-dims {
 				display: flex;
-				gap: 6px;
+				gap: var(--epp-space-1, 6px);
 			}
 
 			.furn-dims label {
 				flex: 1;
-				font-size: 11px;
-				color: var(--secondary-text-color, #757575);
+				font-size: var(--epp-font-xs, 11px);
+				color: var(--epp-text-muted, var(--secondary-text-color, #757575));
 				display: flex;
 				flex-direction: column;
 				gap: 2px;
@@ -54,10 +55,10 @@ export class EppFurnitureSidebar extends LitElement {
 
 			.furn-dims input {
 				width: 100%;
-				padding: 4px;
+				padding: var(--epp-space-1, 4px);
 				border: 1px solid var(--divider-color, #e0e0e0);
-				border-radius: 4px;
-				font-size: 12px;
+				border-radius: var(--epp-radius-sm, 4px);
+				font-size: var(--epp-font-xs, 12px);
 				box-sizing: border-box;
 				background: var(--card-background-color, #fff);
 				color: var(--primary-text-color, #212121);
@@ -68,11 +69,11 @@ export class EppFurnitureSidebar extends LitElement {
 				top: 0;
 				z-index: 2;
 				width: 100%;
-				padding: 6px 8px;
-				margin-bottom: 6px;
+				padding: var(--epp-space-1, 6px) var(--epp-space-2, 8px);
+				margin-bottom: var(--epp-space-1, 6px);
 				border: 1px solid var(--divider-color, #e0e0e0);
-				border-radius: 4px;
-				font-size: 12px;
+				border-radius: var(--epp-radius-sm, 4px);
+				font-size: var(--epp-font-xs, 12px);
 				box-sizing: border-box;
 				background: var(--card-background-color, #fff);
 				color: var(--primary-text-color, #212121);
@@ -81,7 +82,7 @@ export class EppFurnitureSidebar extends LitElement {
 			.furn-catalog {
 				display: grid;
 				grid-template-columns: 1fr 1fr;
-				gap: 4px;
+				gap: var(--epp-space-1, 4px);
 				overflow-y: auto;
 				flex: 1;
 				min-height: 0;
@@ -91,13 +92,13 @@ export class EppFurnitureSidebar extends LitElement {
 				display: flex;
 				flex-direction: column;
 				align-items: center;
-				gap: 4px;
-				padding: 8px 4px;
+				gap: var(--epp-space-1, 4px);
+				padding: var(--epp-space-2, 8px) var(--epp-space-1, 4px);
 				border: 1px solid var(--divider-color, #e0e0e0);
-				border-radius: 8px;
+				border-radius: var(--epp-radius-sm, 8px);
 				background: var(--card-background-color, #fff);
 				cursor: pointer;
-				font-size: 11px;
+				font-size: var(--epp-font-xs, 11px);
 				color: var(--primary-text-color, #212121);
 				text-align: center;
 				transition: background 0.15s;
@@ -146,9 +147,7 @@ export class EppFurnitureSidebar extends LitElement {
 							<div class="sidebar-item-row">
 								<ha-icon icon="${selected.icon}" style="--mdc-icon-size: 20px;"></ha-icon>
 								<strong>${this.localize(selected.label)}</strong>
-								<button class="sidebar-remove-btn" @click=${() => this._fireRemove(selected.id)}>
-									<ha-icon icon="mdi:close"></ha-icon>
-								</button>
+								<epp-icon-button icon="mdi:close" label=${this.localize("furniture.remove")} class="sidebar-remove-btn" @click=${() => this._fireRemove(selected.id)}></epp-icon-button>
 							</div>
 							<div class="furn-dims">
 								<label>
@@ -254,7 +253,7 @@ export class EppFurnitureSidebar extends LitElement {
 										: nothing
 								}
 								<div class="template-dialog-actions">
-									<button class="wizard-btn wizard-btn-back"
+									<epp-button variant="text" class="wizard-btn wizard-btn-back"
 										@click=${() => {
 											this.dispatchEvent(
 												new CustomEvent("custom-icon-toggle", {
@@ -270,8 +269,8 @@ export class EppFurnitureSidebar extends LitElement {
 												}),
 											);
 										}}
-									>${this.localize("common.cancel")}</button>
-									<button class="wizard-btn wizard-btn-primary"
+									>${this.localize("common.cancel")}</epp-button>
+									<epp-button variant="primary" class="wizard-btn wizard-btn-primary"
 										?disabled=${!this.customIconValue.trim()}
 										@click=${() => {
 											this.dispatchEvent(
@@ -295,7 +294,7 @@ export class EppFurnitureSidebar extends LitElement {
 												}),
 											);
 										}}
-									>${this.localize("common.add")}</button>
+									>${this.localize("common.add")}</epp-button>
 								</div>
 							</div>
 						</div>

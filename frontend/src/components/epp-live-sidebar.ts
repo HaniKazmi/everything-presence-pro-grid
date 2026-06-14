@@ -4,6 +4,7 @@ import { MAX_ZONES } from "../lib/grid.js";
 import type { ZoneConfig } from "../lib/zone-defaults.js";
 import { defaultLocalize, type LocalizeFn } from "../localize.js";
 import "./epp-info-tip.js";
+import "../ui/epp-button.js";
 
 export interface SensorState {
 	occupancy: boolean;
@@ -63,7 +64,7 @@ export class EppLiveSidebar extends LitElement {
       cursor: pointer;
       background: none;
       border: none;
-      color: var(--primary-color, #03a9f4);
+      color: var(--epp-accent, var(--primary-color, #03a9f4));
     }
 
     .live-section-link:hover {
@@ -71,20 +72,20 @@ export class EppLiveSidebar extends LitElement {
     }
 
     .live-section-header {
-      font-size: 11px;
+      font-size: var(--epp-font-xs, 11px);
       font-weight: 600;
-      color: var(--secondary-text-color, #888);
+      color: var(--epp-text-muted, var(--secondary-text-color, #888));
       text-transform: uppercase;
       letter-spacing: 0.5px;
-      padding: 4px 12px 6px;
+      padding: var(--epp-space-1, 4px) var(--epp-space-3, 12px) var(--epp-space-1, 6px);
     }
 
     .live-sensor-row {
       display: flex;
       align-items: center;
-      gap: 8px;
-      padding: 6px 12px;
-      font-size: 13px;
+      gap: var(--epp-space-2, 8px);
+      padding: var(--epp-space-1, 6px) var(--epp-space-3, 12px);
+      font-size: var(--epp-font-sm, 13px);
     }
 
     .live-sensor-dot {
@@ -96,11 +97,11 @@ export class EppLiveSidebar extends LitElement {
     }
 
     .live-sensor-dot.on {
-      background: var(--success-color, #4caf50);
+      background: var(--epp-success, var(--success-color, #4caf50));
     }
 
     .live-sensor-dot.off {
-      background: var(--disabled-text-color, #bbb);
+      background: var(--epp-text-disabled, var(--disabled-text-color, #bbb));
     }
 
     .live-sensor-label {
@@ -115,20 +116,20 @@ export class EppLiveSidebar extends LitElement {
     }
 
     .live-sensor-state {
-      font-size: 12px;
-      color: var(--secondary-text-color, #888);
+      font-size: var(--epp-font-xs, 12px);
+      color: var(--epp-text-muted, var(--secondary-text-color, #888));
       flex-shrink: 0;
     }
 
     .live-sensor-state.detected {
-      color: var(--success-color, #4caf50);
+      color: var(--epp-success, var(--success-color, #4caf50));
       font-weight: 500;
     }
 
     .live-sensor-value {
-      font-size: 13px;
+      font-size: var(--epp-font-sm, 13px);
       font-weight: 500;
-      color: var(--primary-text-color, #212121);
+      color: var(--epp-text, var(--primary-text-color, #212121));
       margin-left: auto;
     }
 
@@ -288,7 +289,7 @@ export class EppLiveSidebar extends LitElement {
 						? html`
         <hr style="border: none; border-top: 1px solid var(--divider-color, #eee); margin: 10px 12px;"/>
 
-        <button class="live-section-header live-section-link" @click=${() => {
+        <epp-button variant="text" class="live-section-link live-section-header" @click=${() => {
 					this.dispatchEvent(
 						new CustomEvent("view-change", {
 							detail: { view: "editor", sidebarTab: "zones" },
@@ -296,7 +297,7 @@ export class EppLiveSidebar extends LitElement {
 							composed: true,
 						}),
 					);
-				}}>${this.localize("sidebar.detection_zones")}</button>
+				}}>${this.localize("sidebar.detection_zones")}</epp-button>
         ${zoneDefs.map((s) => this._renderRow(s))}
         `
 						: nothing

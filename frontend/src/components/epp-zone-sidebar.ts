@@ -10,7 +10,8 @@ import {
 import "./epp-zone-color-picker.js";
 import type { ZoneState } from "../lib/zone-engine.js";
 import { defaultLocalize, type LocalizeFn } from "../localize.js";
-import { sidebarRowStyles, toggleStyles } from "../styles.js";
+import { sidebarRowStyles } from "../styles.js";
+import "../ui/epp-icon-button.js";
 
 export class EppZoneSidebar extends LitElement {
 	@property({ attribute: false }) zoneConfigs: (ZoneConfig | null)[] = [];
@@ -68,7 +69,6 @@ export class EppZoneSidebar extends LitElement {
 	}
 
 	static styles = [
-		toggleStyles,
 		sidebarRowStyles,
 		css`
 			:host {
@@ -80,22 +80,22 @@ export class EppZoneSidebar extends LitElement {
 				border: none;
 				border-bottom: 1px solid var(--divider-color, #e0e0e0);
 				background: transparent;
-				font-size: 14px;
+				font-size: var(--epp-font-base, 14px);
 				color: var(--primary-text-color, #212121);
-				padding: 2px 4px;
+				padding: 2px var(--epp-space-1, 4px);
 				min-width: 0;
 			}
 
 			.zone-name-input:focus {
 				outline: none;
-				border-bottom: 1px solid var(--primary-color, #03a9f4);
+				border-bottom: 1px solid var(--epp-accent, var(--primary-color, #03a9f4));
 			}
 
 			.sensitivity-select {
-				padding: 2px 4px;
+				padding: 2px var(--epp-space-1, 4px);
 				border: 1px solid var(--divider-color, #e0e0e0);
 				border-radius: 4px;
-				font-size: 12px;
+				font-size: var(--epp-font-xs, 12px);
 				background: var(--card-background-color, #fff);
 				color: var(--primary-text-color, #212121);
 				cursor: pointer;
@@ -114,8 +114,8 @@ export class EppZoneSidebar extends LitElement {
 			.zone-item {
 				display: flex;
 				flex-direction: column;
-				gap: 4px;
-				padding: 6px 8px;
+				gap: var(--epp-space-1, 4px);
+				padding: 6px var(--epp-space-2, 8px);
 				border-radius: 8px;
 				cursor: pointer;
 				border: 2px solid var(--divider-color, #e0e0e0);
@@ -127,7 +127,7 @@ export class EppZoneSidebar extends LitElement {
 			}
 
 			.zone-item.active {
-				border-color: var(--primary-color, #03a9f4);
+				border-color: var(--epp-accent, var(--primary-color, #03a9f4));
 			}
 
 			/* Reset for the zone-0 row, which is a real <button> for keyboard
@@ -151,7 +151,7 @@ export class EppZoneSidebar extends LitElement {
 			.zone-separator {
 				border: none;
 				border-top: 1px solid var(--divider-color, #e0e0e0);
-				margin: 4px 0;
+				margin: var(--epp-space-1, 4px) 0;
 				flex-shrink: 0;
 			}
 
@@ -164,7 +164,7 @@ export class EppZoneSidebar extends LitElement {
 
 			.zone-name {
 				flex: 1;
-				font-size: 14px;
+				font-size: var(--epp-font-base, 14px);
 			}
 
 			.add-zone-btn {
@@ -176,9 +176,9 @@ export class EppZoneSidebar extends LitElement {
 				border: 2px dashed var(--divider-color, #e0e0e0);
 				border-radius: 8px;
 				background: none;
-				color: var(--primary-color, #03a9f4);
+				color: var(--epp-accent, var(--primary-color, #03a9f4));
 				cursor: pointer;
-				font-size: 14px;
+				font-size: var(--epp-font-base, 14px);
 				transition: background 0.2s;
 			}
 
@@ -332,10 +332,11 @@ export class EppZoneSidebar extends LitElement {
 										);
 									}}
 								/>
-								<button
+								<epp-icon-button
+									icon="mdi:close"
+									label=${this.localize("zones.remove_zone")}
+									variant="danger"
 									class="sidebar-remove-btn"
-									type="button"
-									aria-label=${this.localize("zones.remove_zone")}
 									@click=${(e: Event) => {
 										e.stopPropagation();
 										this.dispatchEvent(
@@ -346,9 +347,7 @@ export class EppZoneSidebar extends LitElement {
 											}),
 										);
 									}}
-								>
-									<ha-icon icon="mdi:close"></ha-icon>
-								</button>
+								></epp-icon-button>
 							</div>
 							${
 								this.activeZone === slot

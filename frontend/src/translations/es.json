@@ -49,7 +49,8 @@
 		"window": "Ventana",
 		"custom_icon": "Icono personalizado",
 		"custom": "Personalizado",
-		"search_placeholder": "Buscar mobiliario..."
+		"search_placeholder": "Buscar mobiliario...",
+		"remove": "Eliminar"
 	},
 	"corners": {
 		"front_left": "Frente-izquierda",
