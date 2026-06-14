@@ -45,7 +45,7 @@ export class EppOverlaySidebar extends LitElement {
 		.overlay-scroll-area {
 			display: flex;
 			flex-direction: column;
-			gap: var(--epp-space-1, 6px);
+			gap: 6px;
 		}
 
 		/* Real <button>s for keyboard access; reset the UA button chrome. */
@@ -53,8 +53,8 @@ export class EppOverlaySidebar extends LitElement {
 			display: flex;
 			flex-direction: column;
 			gap: var(--epp-space-1, 4px);
-			padding: var(--epp-space-1, 6px) var(--epp-space-2, 8px);
-			border-radius: var(--epp-radius-sm, 8px);
+			padding: 6px var(--epp-space-2, 8px);
+			border-radius: 8px;
 			cursor: pointer;
 			border: 2px solid var(--divider-color, #e0e0e0);
 			transition: border-color 0.2s;

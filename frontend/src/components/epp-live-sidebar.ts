@@ -61,9 +61,6 @@ export class EppLiveSidebar extends LitElement {
     }
 
     .live-section-link {
-      cursor: pointer;
-      background: none;
-      border: none;
       color: var(--epp-accent, var(--primary-color, #03a9f4));
     }
 
@@ -77,14 +74,14 @@ export class EppLiveSidebar extends LitElement {
       color: var(--epp-text-muted, var(--secondary-text-color, #888));
       text-transform: uppercase;
       letter-spacing: 0.5px;
-      padding: var(--epp-space-1, 4px) var(--epp-space-3, 12px) var(--epp-space-1, 6px);
+      padding: var(--epp-space-1, 4px) var(--epp-space-3, 12px) 6px;
     }
 
     .live-sensor-row {
       display: flex;
       align-items: center;
       gap: var(--epp-space-2, 8px);
-      padding: var(--epp-space-1, 6px) var(--epp-space-3, 12px);
+      padding: 6px var(--epp-space-3, 12px);
       font-size: var(--epp-font-sm, 13px);
     }
 
