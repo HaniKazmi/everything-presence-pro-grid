@@ -333,10 +333,14 @@ describe("sensor-assisted clear", () => {
 			firedKey = e.detail.key;
 		}) as EventListener);
 
-		const checkboxes = c.querySelectorAll('input[type="checkbox"]');
-		const cb = checkboxes[checkboxes.length - 1] as HTMLInputElement;
-		cb.checked = false;
-		cb.dispatchEvent(new Event("change"));
+		const toggles = c.querySelectorAll("epp-toggle");
+		const toggle = toggles[toggles.length - 1] as HTMLElement;
+		toggle.dispatchEvent(
+			new CustomEvent("value-changed", {
+				detail: { value: false },
+				bubbles: true,
+			}),
+		);
 		expect((sv as any)._overrides.assistedClearEnabled).toBe(false);
 		expect(firedKey).toBe("assistedClearEnabled");
 		document.body.removeChild(c);
