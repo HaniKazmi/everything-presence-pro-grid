@@ -641,6 +641,335 @@ describe("runLocalZoneEngine", () => {
 		expect(result.occupancy[1]).toBe(true);
 	});
 
+	it("assisted-clear: disabled falls back to per-zone timeout", () => {
+		const now = Date.now() / 1000;
+		const base = {
+			staticPresence: true,
+			staticTimeout: 1,
+			motionPresence: true,
+			motionTimeout: 1,
+			assistedClearEnabled: false,
+		};
+		// Zone 1 (custom, trigger=3) needs two present ticks to confirm OCCUPIED.
+		runLocalZoneEngine(
+			state,
+			makeDefaultParams({ ...base, targets: [makeTarget(450, 450, 5)], now }),
+		);
+		runLocalZoneEngine(
+			state,
+			makeDefaultParams({
+				...base,
+				targets: [makeTarget(450, 450, 5)],
+				now: now + 1,
+			}),
+		);
+		// Target gone at now+2 -> zone PENDING_CLEAR (5s timeout, expires ~now+7).
+		runLocalZoneEngine(
+			state,
+			makeDefaultParams({ ...base, targets: [makeNullTarget()], now: now + 2 }),
+		);
+		// Sensors off at now+3 -> pending -> inactive ~now+4.
+		runLocalZoneEngine(
+			state,
+			makeDefaultParams({
+				...base,
+				staticPresence: false,
+				motionPresence: false,
+				targets: [makeNullTarget()],
+				now: now + 3,
+			}),
+		);
+		runLocalZoneEngine(
+			state,
+			makeDefaultParams({
+				...base,
+				staticPresence: false,
+				motionPresence: false,
+				targets: [makeNullTarget()],
+				now: now + 4,
+			}),
+		);
+		// Feature OFF -> zone stays until its 5s timeout; still occupied at now+5.
+		const r1 = runLocalZoneEngine(
+			state,
+			makeDefaultParams({
+				...base,
+				staticPresence: false,
+				motionPresence: false,
+				targets: [makeNullTarget()],
+				now: now + 5,
+			}),
+		);
+		expect(r1.occupancy[1]).toBe(true);
+		// Past the zone's own 5s timeout (PENDING_CLEAR started at now+2) -> cleared.
+		const r2 = runLocalZoneEngine(
+			state,
+			makeDefaultParams({
+				...base,
+				staticPresence: false,
+				motionPresence: false,
+				targets: [makeNullTarget()],
+				now: now + 7.5,
+			}),
+		);
+		expect(r2.occupancy[1]).toBe(false);
+	});
+
+	it("assisted-clear: grace delay holds then clears", () => {
+		const now = Date.now() / 1000;
+		const base = {
+			staticTimeout: 1,
+			motionTimeout: 1,
+			assistedClearEnabled: true,
+			assistedClearTimeout: 2,
+		};
+		// Two present ticks confirm zone 1 OCCUPIED.
+		runLocalZoneEngine(
+			state,
+			makeDefaultParams({
+				...base,
+				staticPresence: true,
+				motionPresence: true,
+				targets: [makeTarget(450, 450, 5)],
+				now,
+			}),
+		);
+		runLocalZoneEngine(
+			state,
+			makeDefaultParams({
+				...base,
+				staticPresence: true,
+				motionPresence: true,
+				targets: [makeTarget(450, 450, 5)],
+				now: now + 1,
+			}),
+		);
+		// Target gone at now+2 (sensors still on) -> zone PENDING_CLEAR.
+		runLocalZoneEngine(
+			state,
+			makeDefaultParams({
+				...base,
+				staticPresence: true,
+				motionPresence: true,
+				targets: [makeNullTarget()],
+				now: now + 2,
+			}),
+		);
+		// Sensors off at now+3 -> pending -> inactive ~now+4 -> grace timer starts.
+		runLocalZoneEngine(
+			state,
+			makeDefaultParams({
+				...base,
+				staticPresence: false,
+				motionPresence: false,
+				targets: [makeNullTarget()],
+				now: now + 3,
+			}),
+		);
+		runLocalZoneEngine(
+			state,
+			makeDefaultParams({
+				...base,
+				staticPresence: false,
+				motionPresence: false,
+				targets: [makeNullTarget()],
+				now: now + 4,
+			}),
+		);
+		// Within grace (now+5 < grace-start now+4 + 2s) -> still occupied.
+		const r1 = runLocalZoneEngine(
+			state,
+			makeDefaultParams({
+				...base,
+				staticPresence: false,
+				motionPresence: false,
+				targets: [makeNullTarget()],
+				now: now + 5,
+			}),
+		);
+		expect(r1.occupancy[1]).toBe(true); // within grace
+		// Grace elapsed (now+6.5 >= now+6) and earlier than the zone's own 5s
+		// timeout (~now+7) -> assisted clear fires.
+		const r2 = runLocalZoneEngine(
+			state,
+			makeDefaultParams({
+				...base,
+				staticPresence: false,
+				motionPresence: false,
+				targets: [makeNullTarget()],
+				now: now + 6.5,
+			}),
+		);
+		expect(r2.occupancy[1]).toBe(false); // grace elapsed
+	});
+
+	it("assisted-clear: timeout 0 clears immediately (legacy)", () => {
+		const now = Date.now() / 1000;
+		const base = {
+			staticTimeout: 1,
+			motionTimeout: 1,
+			assistedClearEnabled: true,
+			assistedClearTimeout: 0,
+		};
+		// Two present ticks confirm zone 1 OCCUPIED.
+		runLocalZoneEngine(
+			state,
+			makeDefaultParams({
+				...base,
+				staticPresence: true,
+				motionPresence: true,
+				targets: [makeTarget(450, 450, 5)],
+				now,
+			}),
+		);
+		runLocalZoneEngine(
+			state,
+			makeDefaultParams({
+				...base,
+				staticPresence: true,
+				motionPresence: true,
+				targets: [makeTarget(450, 450, 5)],
+				now: now + 1,
+			}),
+		);
+		// Target gone at now+2 -> zone PENDING_CLEAR.
+		runLocalZoneEngine(
+			state,
+			makeDefaultParams({
+				...base,
+				staticPresence: true,
+				motionPresence: true,
+				targets: [makeNullTarget()],
+				now: now + 2,
+			}),
+		);
+		// Sensors off at now+3 -> pending.
+		runLocalZoneEngine(
+			state,
+			makeDefaultParams({
+				...base,
+				staticPresence: false,
+				motionPresence: false,
+				targets: [makeNullTarget()],
+				now: now + 3,
+			}),
+		);
+		// Inactive ~now+4 -> timeout 0 -> grace timer starts and clears same tick.
+		const r = runLocalZoneEngine(
+			state,
+			makeDefaultParams({
+				...base,
+				staticPresence: false,
+				motionPresence: false,
+				targets: [makeNullTarget()],
+				now: now + 4.5,
+			}),
+		);
+		expect(r.occupancy[1]).toBe(false);
+	});
+
+	it("assisted-clear: grace timer resets when a sensor re-activates", () => {
+		const now = Date.now() / 1000;
+		const base = {
+			staticTimeout: 1,
+			motionTimeout: 1,
+			assistedClearEnabled: true,
+			assistedClearTimeout: 2,
+		};
+		// Two present ticks confirm zone 1 OCCUPIED.
+		runLocalZoneEngine(
+			state,
+			makeDefaultParams({
+				...base,
+				staticPresence: true,
+				motionPresence: true,
+				targets: [makeTarget(450, 450, 5)],
+				now,
+			}),
+		);
+		runLocalZoneEngine(
+			state,
+			makeDefaultParams({
+				...base,
+				staticPresence: true,
+				motionPresence: true,
+				targets: [makeTarget(450, 450, 5)],
+				now: now + 0.5,
+			}),
+		);
+		// Target gone at now+1 (sensors still on) -> zone PENDING_CLEAR
+		// (pending_since=now+1, self-clears at now+6).
+		runLocalZoneEngine(
+			state,
+			makeDefaultParams({
+				...base,
+				staticPresence: true,
+				motionPresence: true,
+				targets: [makeNullTarget()],
+				now: now + 1,
+			}),
+		);
+		// Sensors off at now+2 -> both pending.
+		runLocalZoneEngine(
+			state,
+			makeDefaultParams({
+				...base,
+				staticPresence: false,
+				motionPresence: false,
+				targets: [makeNullTarget()],
+				now: now + 2,
+			}),
+		);
+		// now+3 -> both inactive; grace timer starts (would clear at now+5).
+		runLocalZoneEngine(
+			state,
+			makeDefaultParams({
+				...base,
+				staticPresence: false,
+				motionPresence: false,
+				targets: [makeNullTarget()],
+				now: now + 3,
+			}),
+		);
+		// now+4 -> motion re-activates; empty condition breaks -> timer CANCELLED.
+		runLocalZoneEngine(
+			state,
+			makeDefaultParams({
+				...base,
+				staticPresence: false,
+				motionPresence: true,
+				targets: [makeNullTarget()],
+				now: now + 4,
+			}),
+		);
+		// now+4.5 -> motion off again -> motion pending.
+		runLocalZoneEngine(
+			state,
+			makeDefaultParams({
+				...base,
+				staticPresence: false,
+				motionPresence: false,
+				targets: [makeNullTarget()],
+				now: now + 4.5,
+			}),
+		);
+		// now+5.5 -> motion inactive again; grace RESTARTS (0s elapsed). Without the
+		// reset, the original grace (started now+3, 2s) would have cleared at now+5;
+		// with the reset the timer restarted at now+5.5 and the per-zone self-clear
+		// (now+6) hasn't fired yet, so the zone is STILL occupied.
+		const r = runLocalZoneEngine(
+			state,
+			makeDefaultParams({
+				...base,
+				staticPresence: false,
+				motionPresence: false,
+				targets: [makeNullTarget()],
+				now: now + 5.5,
+			}),
+		);
+		expect(r.occupancy[1]).toBe(true); // grace timer was reset
+	});
+
 	it("overlay exit accelerates pending clear (handoff timeout)", () => {
 		const now = Date.now() / 1000;
 		const grid = makeParityGrid();
