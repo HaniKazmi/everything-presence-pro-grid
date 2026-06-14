@@ -52,6 +52,7 @@ export class EppFurnitureOverlay extends LitElement {
 			display: flex;
 			align-items: center;
 			justify-content: center;
+			/* fixed: contrast over furniture fill, not themeable */
 			border: 1px solid rgba(0, 0, 0, 0.3);
 			border-radius: 4px;
 			background: transparent;
@@ -63,17 +64,19 @@ export class EppFurnitureOverlay extends LitElement {
 		}
 
 		.furniture-item:hover {
-			border-color: var(--primary-color, #03a9f4);
+			border-color: var(--epp-accent, var(--primary-color, #03a9f4));
 		}
 
 		.furniture-item.selected {
-			outline: 2px solid var(--primary-color, #03a9f4);
+			outline: 2px solid var(--epp-accent, var(--primary-color, #03a9f4));
 			outline-offset: -1px;
-			box-shadow: 0 0 8px rgba(3, 169, 244, 0.4);
+			box-shadow: 0 0 8px
+				color-mix(in srgb, var(--epp-accent, #03a9f4) 40%, transparent);
 			z-index: 10;
 		}
 
 		.furniture-item ha-icon {
+			/* fixed: contrast over furniture fill, not themeable */
 			color: rgba(0, 0, 0, 0.6);
 			pointer-events: none;
 		}
@@ -102,8 +105,8 @@ export class EppFurnitureOverlay extends LitElement {
 			content: "";
 			width: 8px;
 			height: 8px;
-			background: var(--primary-color, #03a9f4);
-			border: 1px solid var(--card-background-color, #fff);
+			background: var(--epp-accent, var(--primary-color, #03a9f4));
+			border: 1px solid var(--epp-accent-text, #fff);
 			border-radius: 2px;
 		}
 
@@ -123,7 +126,7 @@ export class EppFurnitureOverlay extends LitElement {
 			transform: translateX(-50%);
 			width: 2px;
 			height: 32px;
-			background: var(--primary-color, #03a9f4);
+			background: var(--epp-accent, var(--primary-color, #03a9f4));
 			pointer-events: none;
 		}
 
@@ -134,15 +137,15 @@ export class EppFurnitureOverlay extends LitElement {
 			transform: translateX(-50%);
 			width: 20px;
 			height: 20px;
-			background: var(--primary-color, #03a9f4);
-			border: 2px solid #fff;
+			background: var(--epp-accent, var(--primary-color, #03a9f4));
+			border: 2px solid var(--epp-accent-text, #fff);
 			border-radius: 50%;
 			display: flex;
 			align-items: center;
 			justify-content: center;
 			cursor: grab;
 			pointer-events: auto;
-			color: #fff;
+			color: var(--epp-accent-text, #fff);
 			touch-action: none;
 		}
 
@@ -152,15 +155,15 @@ export class EppFurnitureOverlay extends LitElement {
 			right: -4px;
 			width: 20px;
 			height: 20px;
-			background: var(--error-color, #f44336);
-			border: 1px solid #fff;
+			background: var(--epp-danger, var(--error-color, #f44336));
+			border: 1px solid var(--epp-accent-text, #fff);
 			border-radius: 50%;
 			display: flex;
 			align-items: center;
 			justify-content: center;
 			cursor: pointer;
 			pointer-events: auto;
-			color: #fff;
+			color: var(--epp-accent-text, #fff);
 		}
 	`;
 
