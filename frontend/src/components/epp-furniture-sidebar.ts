@@ -147,7 +147,7 @@ export class EppFurnitureSidebar extends LitElement {
 							<div class="sidebar-item-row">
 								<ha-icon icon="${selected.icon}" style="--mdc-icon-size: 20px;"></ha-icon>
 								<strong>${this.localize(selected.label)}</strong>
-								<epp-icon-button icon="mdi:close" label=${this.localize("furniture.remove")} class="sidebar-remove-btn" @click=${() => this._fireRemove(selected.id)}></epp-icon-button>
+								<epp-icon-button icon="mdi:close" label=${this.localize("furniture.remove")} variant="danger" class="sidebar-remove-btn" @click=${() => this._fireRemove(selected.id)}></epp-icon-button>
 							</div>
 							<div class="furn-dims">
 								<label>
