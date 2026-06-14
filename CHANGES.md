@@ -4,7 +4,7 @@ User-facing changes to Everything Presence Pro Grid. For full release assets
 and firmware downloads, see the
 [GitHub releases page](https://github.com/clintongormley/everything-presence-pro-grid/releases).
 
-## v1.1.0 — unreleased
+## v1.1.0 — 2026-06-14
 
 ### New features
 
@@ -27,22 +27,9 @@ and firmware downloads, see the
 
 - The Logging settings always show the **Bluetooth** and **CO₂** log-level
   rows instead of hiding them based on the build.
-- Info and help tooltips are now consistent across the panel — one
-  click-to-open style, with only one open at a time.
-- Added the Everything Presence Pro Grid logo to the panel's tab bar.
-- Over-the-air updates fail fast with a clear message when the selected
-  firmware hasn't been published yet, instead of stalling for ~3 minutes and
-  reporting a misleading flash error.
 
 ### Fixes
 
-- Live targets no longer freeze in the zone editor or live overview after the
-  device connection briefly drops (for example, while saving settings) — the
-  position updates again without needing a page refresh.
-- The status LED no longer stays stuck on the "Network Connecting" animation
-  after a brief reconnection.
-- The CO₂ label no longer clips the subscript "2" in the live sidebar.
-- Heap diagnostic sensors keep their long-term statistics.
 - Setting the firmware **System** log category to Debug no longer floods the
   log with messages from other categories.
 
