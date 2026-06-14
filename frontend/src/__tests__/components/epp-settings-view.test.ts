@@ -2144,7 +2144,9 @@ describe("logging accordion", () => {
 		document.body.removeChild(c);
 	});
 
-	it("renders all base log level rows when open", () => {
+	it("renders every log level row when open, including BLE and CO2", () => {
+		// BLE and CO2 are no longer gated on device build flags, so all six
+		// categories appear together regardless of what hardware is fitted.
 		const sv = createView({
 			openAccordions: new Set(["logging"]),
 			logLevels: {
@@ -2163,59 +2165,15 @@ describe("logging accordion", () => {
 		expect(texts).toContain("settings.log_epp");
 		expect(texts).toContain("settings.log_led");
 		expect(texts).toContain("settings.log_networking");
-		document.body.removeChild(c);
-	});
-
-	it("hides BLE row when bluetooth_enabled is false", () => {
-		const sv = createView({
-			openAccordions: new Set(["logging"]),
-			logLevels: { ble: "Warning" },
-			bluetoothEnabled: false,
-		});
-		const tpl = sv.render();
-		const c = renderTo(tpl);
-
-		const labels = c.querySelectorAll(".setting-row label");
-		const texts = [...labels].map((l) => l.textContent);
-		expect(texts).not.toContain("settings.log_ble");
-		document.body.removeChild(c);
-	});
-
-	it("shows BLE row when bluetooth_enabled is true", () => {
-		const sv = createView({
-			openAccordions: new Set(["logging"]),
-			logLevels: { ble: "Warning" },
-			bluetoothEnabled: true,
-		});
-		const tpl = sv.render();
-		const c = renderTo(tpl);
-
-		const labels = c.querySelectorAll(".setting-row label");
-		const texts = [...labels].map((l) => l.textContent);
 		expect(texts).toContain("settings.log_ble");
+		expect(texts).toContain("settings.log_co2");
 		document.body.removeChild(c);
 	});
 
-	it("hides CO2 row when co2_enabled is false", () => {
-		const sv = createView({
-			openAccordions: new Set(["logging"]),
-			logLevels: { co2: "Warning" },
-			co2Enabled: false,
-		});
-		const tpl = sv.render();
-		const c = renderTo(tpl);
-
-		const labels = c.querySelectorAll(".setting-row label");
-		const texts = [...labels].map((l) => l.textContent);
-		expect(texts).not.toContain("settings.log_co2");
-		document.body.removeChild(c);
-	});
-
-	it("shows CO2 row when co2Enabled is true", async () => {
+	it("always shows the CO2 row regardless of device hardware", async () => {
 		const sv = createView({
 			openAccordions: new Set(["logging"]),
 			logLevels: {},
-			co2Enabled: true,
 		});
 		document.body.appendChild(sv);
 		await sv.updateComplete;

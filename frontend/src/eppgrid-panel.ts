@@ -393,7 +393,6 @@ export class EPPGridPanel extends LitElement {
 	@state() _staticRenewThreshold = 3;
 	@state() _staticOnDelay = 0;
 	@state() _logLevels: Record<string, string> = {};
-	@state() private _bluetoothEnabled = false;
 	@state() private _co2Enabled = false;
 	@state() _ledMode = "Manual Control";
 	@state() _ledBrightness = 1.0;
@@ -926,7 +925,6 @@ export class EPPGridPanel extends LitElement {
 		}
 		const dev = this._devices.find((d) => d.mac === mac);
 		if (dev) {
-			this._bluetoothEnabled = dev.bluetooth_enabled ?? false;
 			this._co2Enabled = dev.co2_enabled ?? false;
 		}
 	}
@@ -2590,7 +2588,6 @@ export class EPPGridPanel extends LitElement {
           .staticRenewThreshold=${this._staticRenewThreshold}
           .staticOnDelay=${this._staticOnDelay}
           .logLevels=${this._logLevels}
-          .bluetoothEnabled=${this._bluetoothEnabled}
           .co2Enabled=${this._co2Enabled}
           .ledMode=${this._ledMode}
           .ledBrightness=${this._ledBrightness}
