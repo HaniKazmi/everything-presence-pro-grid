@@ -253,7 +253,9 @@ describe("_renderWizardGuide DOM events (via EppWizard)", () => {
 			cancelFired = true;
 		});
 
-		const backBtn = c.querySelector(".wizard-btn-back") as HTMLElement;
+		const backBtn = c.querySelector(
+			"epp-button[variant='text']",
+		) as HTMLElement;
 		if (backBtn) {
 			backBtn.click();
 			expect(cancelFired).toBe(true);
@@ -265,7 +267,9 @@ describe("_renderWizardGuide DOM events (via EppWizard)", () => {
 		const tpl = a._renderWizardGuide();
 		const c = renderTo(tpl);
 
-		const primaryBtn = c.querySelector(".wizard-btn-primary") as HTMLElement;
+		const primaryBtn = c.querySelector(
+			"epp-button[variant='primary']",
+		) as HTMLElement;
 		if (primaryBtn) {
 			primaryBtn.click();
 			expect(a._setupStep).toBe("corners");
@@ -305,16 +309,22 @@ describe("_renderWizardCorners DOM events (via EppWizard)", () => {
 		const tpl = a._renderWizardCorners();
 		const c = renderTo(tpl);
 
-		const offsets = c.querySelectorAll(
-			".offset-input",
-		) as NodeListOf<HTMLInputElement>;
+		const offsets = c.querySelectorAll(".offset-input");
 		if (offsets.length >= 2) {
-			offsets[0].value = "50";
-			offsets[0].dispatchEvent(new Event("input"));
+			offsets[0].dispatchEvent(
+				new CustomEvent("value-changed", {
+					detail: { value: "50" },
+					bubbles: true,
+				}),
+			);
 			expect(a._wizardOffsetSide).toBe("50");
 
-			offsets[1].value = "30";
-			offsets[1].dispatchEvent(new Event("input"));
+			offsets[1].dispatchEvent(
+				new CustomEvent("value-changed", {
+					detail: { value: "30" },
+					bubbles: true,
+				}),
+			);
 			expect(a._wizardOffsetFb).toBe("30");
 		}
 	});
@@ -330,7 +340,9 @@ describe("_renderWizardCorners DOM events (via EppWizard)", () => {
 			cancelFired = true;
 		});
 
-		const backBtn = c.querySelector(".wizard-btn-back") as HTMLElement;
+		const backBtn = c.querySelector(
+			"epp-button[variant='text']",
+		) as HTMLElement;
 		if (backBtn) {
 			backBtn.click();
 			expect(cancelFired).toBe(true);
@@ -343,8 +355,10 @@ describe("_renderWizardCorners DOM events (via EppWizard)", () => {
 		const tpl = a._renderWizardCorners();
 		const c = renderTo(tpl);
 
-		const primaryBtn = c.querySelector(".wizard-btn-primary") as HTMLElement;
-		if (primaryBtn && !primaryBtn.hasAttribute("disabled")) {
+		const primaryBtn = c.querySelector(
+			"epp-button[variant='primary']",
+		) as HTMLElement & { disabled: boolean };
+		if (primaryBtn && !primaryBtn.disabled) {
 			primaryBtn.click();
 			expect(a._wizardCapturing).toBe(true);
 			// Cancel to stop animation
@@ -364,7 +378,9 @@ describe("_renderWizardCorners DOM events (via EppWizard)", () => {
 		const tpl = a._renderWizardCorners();
 		const c = renderTo(tpl);
 
-		const primaryBtn = c.querySelector(".wizard-btn-primary") as HTMLElement;
+		const primaryBtn = c.querySelector(
+			"epp-button[variant='primary']",
+		) as HTMLElement;
 		if (primaryBtn) {
 			primaryBtn.click();
 			// Should have computed perspective
@@ -1183,7 +1199,7 @@ describe("_renderUncalibratedFov DOM events (via EppWizard)", () => {
 			startFired = true;
 		});
 
-		const btn = c.querySelector(".wizard-btn-primary") as HTMLElement;
+		const btn = c.querySelector("epp-button[variant='primary']") as HTMLElement;
 		expect(btn).not.toBeNull();
 		expect(c.querySelector(".live-nav-link")).toBeNull();
 		btn.click();

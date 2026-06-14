@@ -343,12 +343,14 @@ describe("wizard corner offset edge cases (via EppWizard)", () => {
 
 		const c = renderTo(el._renderWizardCorners());
 
-		const offsets = c.querySelectorAll(
-			".offset-input",
-		) as NodeListOf<HTMLInputElement>;
+		const offsets = c.querySelectorAll(".offset-input");
 		expect(offsets.length).toBe(2);
-		offsets[0].value = "50";
-		offsets[0].dispatchEvent(new Event("input"));
+		offsets[0].dispatchEvent(
+			new CustomEvent("value-changed", {
+				detail: { value: "50" },
+				bubbles: true,
+			}),
+		);
 		// The keystroke is kept in wizard state, but the null corner is left
 		// untouched (no offset to attach it to yet).
 		expect(el._wizardOffsetSide).toBe("50");
