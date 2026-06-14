@@ -385,7 +385,7 @@ describe("renderConfigurationThumbnail", () => {
 		const outlinedRects = Array.from(svgEl.querySelectorAll("rect")).filter(
 			(r) =>
 				r.getAttribute("fill") === "none" &&
-				r.getAttribute("stroke")?.includes("rgba(0,0,0"),
+				r.getAttribute("stroke") === "currentColor",
 		);
 		expect(outlinedRects.length).toBe(1);
 	});

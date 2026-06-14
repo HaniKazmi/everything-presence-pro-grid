@@ -32,6 +32,9 @@ export const dialogStyles = css`
     display: flex;
     align-items: center;
     justify-content: center;
+    /* Themed ink so the currentColor floor-plan art + icon-fallback rect read
+       in both light and dark mode (matches the grid furniture overlay). */
+    color: var(--epp-text-muted, var(--secondary-text-color, #757575));
   }
 
   .configuration-card-thumbnail svg {
