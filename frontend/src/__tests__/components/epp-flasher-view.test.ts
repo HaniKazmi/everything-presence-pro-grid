@@ -210,7 +210,7 @@ describe("device list buttons", () => {
 		const el = createView({ flashableDevices: [device] });
 		const tpl = (el as any).render();
 		const c = renderTo(tpl);
-		const btns = c.querySelectorAll(".device-row ha-button");
+		const btns = c.querySelectorAll(".device-row epp-button");
 		expect(btns.length).toBe(0);
 	});
 
@@ -229,7 +229,7 @@ describe("device list buttons", () => {
 		const el = createView({ flashableDevices: [device] });
 		const tpl = (el as any).render();
 		const c = renderTo(tpl);
-		const btn = c.querySelector(".device-row ha-button");
+		const btn = c.querySelector(".device-row epp-button");
 		expect(btn).not.toBeNull();
 		expect(btn!.textContent).toContain("flasher.update");
 	});
@@ -249,7 +249,7 @@ describe("device list buttons", () => {
 		const el = createView({ flashableDevices: [device] });
 		const tpl = (el as any).render();
 		const c = renderTo(tpl);
-		const btns = c.querySelectorAll(".device-row ha-button");
+		const btns = c.querySelectorAll(".device-row epp-button");
 		expect(btns.length).toBe(0);
 	});
 
@@ -626,8 +626,10 @@ describe("render() WiFi provisioning", () => {
 		const tpl = (el as any).render();
 		const c = renderTo(tpl);
 
-		// Scan button is the second ha-button in .confirm-actions (not raised)
-		const btns = c.querySelectorAll(".confirm-actions ha-button:not([raised])");
+		// Scan button is the second epp-button in .confirm-actions (not raised)
+		const btns = c.querySelectorAll(
+			".confirm-actions epp-button:not([raised])",
+		);
 		expect(btns.length).toBeGreaterThanOrEqual(2);
 	});
 
@@ -725,9 +727,8 @@ describe("render() WiFi provisioning", () => {
 		const tpl = (el as any).render();
 		const c = renderTo(tpl);
 
-		expect(
-			c.querySelector("ha-textfield:not([type='password'])"),
-		).not.toBeNull();
+		// The SSID field is an epp-field (type=text); the password stays native.
+		expect(c.querySelector("epp-field")).not.toBeNull();
 	});
 
 	it("does not show manual SSID text input when _manualSsid=false", () => {
@@ -740,7 +741,7 @@ describe("render() WiFi provisioning", () => {
 		const tpl = (el as any).render();
 		const c = renderTo(tpl);
 
-		expect(c.querySelector("ha-textfield:not([type='password'])")).toBeNull();
+		expect(c.querySelector("epp-field")).toBeNull();
 	});
 
 	it("shows password field", () => {
@@ -752,7 +753,9 @@ describe("render() WiFi provisioning", () => {
 		expect(c.querySelector("ha-textfield[type='password']")).not.toBeNull();
 	});
 
-	it("renders ha-input when registered, ha-textfield otherwise", () => {
+	it("renders ha-input when registered, ha-textfield otherwise (password field)", () => {
+		// The password field keeps the native tag-switch (epp-field has no
+		// password masking); this asserts that fallback still works for it.
 		const el = createView();
 		(el as any).usbFlashState = { step: "wifi_provision" };
 		(el as any)._manualSsid = true;
@@ -784,7 +787,7 @@ describe("render() WiFi provisioning", () => {
 		const c = renderTo(tpl);
 
 		expect(
-			c.querySelector('.confirm-actions ha-button[appearance="accent"]'),
+			c.querySelector('.confirm-actions epp-button[variant="primary"]'),
 		).not.toBeNull();
 	});
 
@@ -796,7 +799,7 @@ describe("render() WiFi provisioning", () => {
 		const c = renderTo(tpl);
 
 		const btn = c.querySelector(
-			'.confirm-actions ha-button[appearance="accent"]',
+			'.confirm-actions epp-button[variant="primary"]',
 		) as any;
 		expect(btn.disabled).toBe(true);
 	});
@@ -809,7 +812,7 @@ describe("render() WiFi provisioning", () => {
 		const c = renderTo(tpl);
 
 		const btn = c.querySelector(
-			'.confirm-actions ha-button[appearance="accent"]',
+			'.confirm-actions epp-button[variant="primary"]',
 		) as any;
 		expect(btn.disabled).toBe(false);
 	});
@@ -871,9 +874,9 @@ describe("render() WiFi provisioning", () => {
 		const tpl = (el as any).render();
 		const c = renderTo(tpl);
 
-		// Scan button is the second non-raised ha-button in .confirm-actions
+		// Scan button is the second non-raised epp-button in .confirm-actions
 		const nonRaisedBtns = c.querySelectorAll(
-			".confirm-actions ha-button:not([raised])",
+			".confirm-actions epp-button:not([raised])",
 		);
 		const scanBtn = nonRaisedBtns[1] as HTMLElement;
 		expect(scanBtn).not.toBeNull();
@@ -934,11 +937,11 @@ describe("WiFi provisioning DOM event handlers", () => {
 		await el.updateComplete;
 
 		const root = el.shadowRoot!;
-		const input = root.querySelector(
-			"ha-textfield:not([type='password'])",
-		) as any;
-		input.value = "HiddenNet";
-		input.dispatchEvent(new Event("input"));
+		// SSID is now an epp-field — it emits a single value-changed event.
+		const field = root.querySelector("epp-field") as any;
+		field.dispatchEvent(
+			new CustomEvent("value-changed", { detail: { value: "HiddenNet" } }),
+		);
 
 		expect((el as any)._selectedSsid).toBe("HiddenNet");
 	});
@@ -1143,7 +1146,7 @@ describe("USB flash view — state-driven", () => {
 
 		expect(c.textContent).toContain("192.168.1.42");
 		expect(
-			c.querySelector('.confirm-actions ha-button[appearance="accent"]'),
+			c.querySelector('.confirm-actions epp-button[variant="primary"]'),
 		).not.toBeNull();
 	});
 
@@ -1160,7 +1163,7 @@ describe("USB flash view — state-driven", () => {
 		expect(c.querySelector(".usb-error")).not.toBeNull();
 		expect(c.textContent).toContain("usb.errors.flash_failed");
 		expect(
-			c.querySelector('.confirm-actions ha-button[appearance="accent"]'),
+			c.querySelector('.confirm-actions epp-button[variant="primary"]'),
 		).not.toBeNull();
 	});
 
@@ -1175,7 +1178,7 @@ describe("USB flash view — state-driven", () => {
 		const tpl = (el as any).render();
 		const c = renderTo(tpl);
 		// Should have Start over only, no Retry
-		const btns = c.querySelectorAll(".confirm-actions ha-button");
+		const btns = c.querySelectorAll(".confirm-actions epp-button");
 		expect(btns.length).toBe(1); // Start over only
 	});
 
@@ -1188,7 +1191,7 @@ describe("USB flash view — state-driven", () => {
 		};
 		const tpl = (el as any).render();
 		const c = renderTo(tpl);
-		const btns = c.querySelectorAll(".confirm-actions ha-button");
+		const btns = c.querySelectorAll(".confirm-actions epp-button");
 		expect(btns.length).toBe(2); // Start over + Retry
 	});
 
@@ -1225,7 +1228,7 @@ describe("USB flash view — state-driven", () => {
 
 		const root = el.shadowRoot!;
 		const flashBtn = root.querySelector(
-			'.confirm-actions ha-button[appearance="accent"]',
+			'.confirm-actions epp-button[variant="primary"]',
 		) as HTMLElement;
 		flashBtn.click();
 
@@ -1250,7 +1253,7 @@ describe("USB flash view — state-driven", () => {
 
 		const root = el.shadowRoot!;
 		const retryBtn = root.querySelector(
-			'.confirm-actions ha-button[appearance="accent"]',
+			'.confirm-actions epp-button[variant="primary"]',
 		) as HTMLElement;
 		retryBtn.click();
 
@@ -1269,7 +1272,7 @@ describe("USB flash view — state-driven", () => {
 
 		const root = el.shadowRoot!;
 		const cancelBtn = root.querySelector(
-			".confirm-actions ha-button:not([raised])",
+			".confirm-actions epp-button:not([raised])",
 		) as HTMLElement;
 		cancelBtn.click();
 
@@ -1285,7 +1288,7 @@ describe("USB flash view — state-driven", () => {
 		await el.updateComplete;
 
 		const root = el.shadowRoot!;
-		const variantBtns = root.querySelectorAll(".variant-selector ha-button");
+		const variantBtns = root.querySelectorAll(".variant-selector epp-button");
 		// Second button is ethernet
 		(variantBtns[1] as HTMLElement).click();
 
@@ -1301,7 +1304,7 @@ describe("USB flash view — state-driven", () => {
 		await el.updateComplete;
 
 		const root = el.shadowRoot!;
-		const variantBtns = root.querySelectorAll(".variant-selector ha-button");
+		const variantBtns = root.querySelectorAll(".variant-selector epp-button");
 		// First button is wifi
 		(variantBtns[0] as HTMLElement).click();
 
@@ -1346,15 +1349,15 @@ describe("wifi_configured state", () => {
 		expect(c.querySelector("ha-circular-progress")).toBeTruthy();
 		expect(c.querySelector("ha-spinner")).toBeNull();
 		// Should show only a Cancel button in this transient state
-		expect(c.querySelectorAll("ha-button").length).toBe(1);
-		expect(c.querySelector("ha-button")!.textContent).toContain(
+		expect(c.querySelectorAll("epp-button").length).toBe(1);
+		expect(c.querySelector("epp-button")!.textContent).toContain(
 			"flasher.cancel",
 		);
 	});
 });
 
 describe("variant selector styling", () => {
-	it("USB flash variant selector also uses appearance attribute", async () => {
+	it("USB flash variant selector uses variant attribute (selected=primary)", async () => {
 		const el = createView();
 		(el as any)._showUsbFlash = true;
 		(el as any).usbFlashState = null;
@@ -1363,9 +1366,9 @@ describe("variant selector styling", () => {
 		await el.updateComplete;
 
 		const root = el.shadowRoot!;
-		const btns = root.querySelectorAll(".variant-selector ha-button");
-		expect((btns[0] as any).getAttribute("appearance")).toBe("outlined");
-		expect((btns[1] as any).getAttribute("appearance")).toBe("accent");
+		const btns = root.querySelectorAll(".variant-selector epp-button");
+		expect((btns[0] as any).getAttribute("variant")).toBe("neutral");
+		expect((btns[1] as any).getAttribute("variant")).toBe("primary");
 	});
 });
 
@@ -1465,7 +1468,7 @@ describe("wifi complete cleanup", () => {
 
 		const root = el.shadowRoot!;
 		const btn = root.querySelector(
-			'.confirm-actions ha-button[appearance="accent"]',
+			'.confirm-actions epp-button[variant="primary"]',
 		) as HTMLElement;
 		btn.click();
 
@@ -1482,7 +1485,7 @@ describe("OTA inline rendering", () => {
 		const tpl = (el as any).render();
 		const c = renderTo(tpl);
 
-		const btn = c.querySelector(".device-row ha-button");
+		const btn = c.querySelector(".device-row epp-button");
 		expect(btn).not.toBeNull();
 		expect(btn!.textContent).toContain("flasher.update");
 	});
@@ -1503,7 +1506,7 @@ describe("OTA inline rendering", () => {
 		const c = renderTo(tpl);
 
 		expect(c.querySelector(".ota-progress")).not.toBeNull();
-		expect(c.querySelector(".device-row ha-button")).toBeNull();
+		expect(c.querySelector(".device-row epp-button")).toBeNull();
 	});
 
 	it("renders firmware version in device row", () => {
@@ -1551,7 +1554,7 @@ describe("OTA inline rendering", () => {
 		const c = renderTo(tpl);
 
 		expect(c.querySelector(".ota-error")).not.toBeNull();
-		const retryBtn = c.querySelector(".ota-error ha-button");
+		const retryBtn = c.querySelector(".ota-error epp-button");
 		expect(retryBtn).not.toBeNull();
 		expect(retryBtn!.textContent).toContain("flasher.ota_retry");
 	});
@@ -1703,7 +1706,7 @@ describe("OTA inline rendering", () => {
 
 		expect(c.querySelector(".ota-error")).not.toBeNull();
 		// Retry button should NOT be present since device is unavailable
-		expect(c.querySelector(".ota-error ha-button")).toBeNull();
+		expect(c.querySelector(".ota-error epp-button")).toBeNull();
 	});
 
 	it("renders the device-reported message interpolated into the error popover", () => {
@@ -1801,7 +1804,7 @@ describe("complete state haAdd branches", () => {
 			root.querySelector('ha-icon[icon="mdi:check-circle-outline"]'),
 		).toBeTruthy();
 		expect(root.textContent).toContain("192.168.1.42");
-		const buttons = Array.from(root.querySelectorAll("ha-button")).map(
+		const buttons = Array.from(root.querySelectorAll("epp-button")).map(
 			(b) => b.textContent?.trim() ?? "",
 		);
 		expect(buttons).toEqual(
@@ -1818,7 +1821,7 @@ describe("complete state haAdd branches", () => {
 		expect(
 			root.querySelector('ha-icon[icon="mdi:check-circle-outline"]'),
 		).toBeTruthy();
-		const buttons = Array.from(root.querySelectorAll("ha-button")).map(
+		const buttons = Array.from(root.querySelectorAll("epp-button")).map(
 			(b) => b.textContent?.trim() ?? "",
 		);
 		expect(buttons).toEqual(
@@ -1846,7 +1849,7 @@ describe("complete state haAdd branches", () => {
 		expect(
 			root.querySelector('ha-icon[icon="mdi:alert-outline"]'),
 		).toBeTruthy();
-		const buttons = Array.from(root.querySelectorAll("ha-button")).map(
+		const buttons = Array.from(root.querySelectorAll("epp-button")).map(
 			(b) => b.textContent?.trim() ?? "",
 		);
 		expect(buttons).toEqual(
@@ -1885,7 +1888,7 @@ describe("complete state haAdd branches", () => {
 		expect(localizeSpy).toHaveBeenCalledWith("flasher.ha_add.failed", {
 			reason: "invalid_auth",
 		});
-		const buttons = Array.from(root.querySelectorAll("ha-button")).map(
+		const buttons = Array.from(root.querySelectorAll("epp-button")).map(
 			(b) => b.textContent?.trim() ?? "",
 		);
 		expect(buttons).toEqual(
@@ -1899,7 +1902,7 @@ describe("complete state haAdd branches", () => {
 	it("retry button dispatches retry-ha-add event", async () => {
 		const view = await renderWithHaAdd({ type: "cannot_connect" });
 		const root = view.shadowRoot!;
-		const retryBtn = Array.from(root.querySelectorAll("ha-button")).find((b) =>
+		const retryBtn = Array.from(root.querySelectorAll("epp-button")).find((b) =>
 			/retry/i.test(b.textContent ?? ""),
 		);
 		expect(retryBtn).toBeTruthy();
@@ -1912,7 +1915,7 @@ describe("complete state haAdd branches", () => {
 	it("flash another button dispatches flasher-cancel event", async () => {
 		const view = await renderWithHaAdd({ type: "added" });
 		const root = view.shadowRoot!;
-		const btn = Array.from(root.querySelectorAll("ha-button")).find((b) =>
+		const btn = Array.from(root.querySelectorAll("epp-button")).find((b) =>
 			/flash.another|flash_another/i.test(b.textContent ?? ""),
 		);
 		expect(btn).toBeTruthy();
@@ -1930,7 +1933,7 @@ describe("complete state haAdd branches", () => {
 		});
 		const view = await renderWithHaAdd({ type: "cannot_connect" });
 		const root = view.shadowRoot!;
-		const btn = Array.from(root.querySelectorAll("ha-button")).find((b) =>
+		const btn = Array.from(root.querySelectorAll("epp-button")).find((b) =>
 			/copy/i.test(b.textContent ?? ""),
 		);
 		(btn as HTMLElement).click();
@@ -1949,7 +1952,7 @@ describe("error state — buttons", () => {
 		document.body.appendChild(view);
 		await view.updateComplete;
 		const root = view.shadowRoot!;
-		const buttons = Array.from(root.querySelectorAll("ha-button")).map(
+		const buttons = Array.from(root.querySelectorAll("epp-button")).map(
 			(b) => b.textContent?.trim() ?? "",
 		);
 		expect(buttons).toEqual(
@@ -2065,7 +2068,7 @@ describe("cancelling feedback", () => {
 		await el.updateComplete;
 
 		expect((el as any)._cancelling).toBe(true);
-		const btn = [...el.shadowRoot!.querySelectorAll("ha-button")].find((b) =>
+		const btn = [...el.shadowRoot!.querySelectorAll("epp-button")].find((b) =>
 			b.textContent?.includes("flasher.cancelling"),
 		);
 		expect(btn).toBeDefined();
@@ -2116,7 +2119,7 @@ describe("cancel on wifi_configured", () => {
 		});
 		const tpl = (el as any).render();
 		const c = renderTo(tpl);
-		const cancelBtn = [...c.querySelectorAll("ha-button")].find((b) =>
+		const cancelBtn = [...c.querySelectorAll("epp-button")].find((b) =>
 			b.textContent?.includes("flasher.cancel"),
 		);
 		expect(cancelBtn).toBeDefined();
@@ -2130,7 +2133,7 @@ describe("error screen migration", () => {
 		});
 		const tpl = (el as any).render();
 		const c = renderTo(tpl);
-		const startOverBtn = [...c.querySelectorAll("ha-button")].find((b) =>
+		const startOverBtn = [...c.querySelectorAll("epp-button")].find((b) =>
 			b.textContent?.includes("flasher.start_over"),
 		);
 		expect(startOverBtn).toBeDefined();
@@ -2142,7 +2145,7 @@ describe("error screen migration", () => {
 		});
 		const tpl = (el as any).render();
 		const c = renderTo(tpl);
-		const retryBtn = [...c.querySelectorAll("ha-button")].find((b) =>
+		const retryBtn = [...c.querySelectorAll("epp-button")].find((b) =>
 			b.textContent?.includes("flasher.usb_retry"),
 		);
 		expect(retryBtn).toBeDefined();
@@ -2158,11 +2161,11 @@ describe("idle variant picker", () => {
 		(el as any)._showUsbFlash = true;
 		const tpl = (el as any).render();
 		const c = renderTo(tpl);
-		const cancelBtn = [...c.querySelectorAll("ha-button")].find((b) =>
+		const cancelBtn = [...c.querySelectorAll("epp-button")].find((b) =>
 			b.textContent?.includes("flasher.cancel"),
 		);
 		expect(cancelBtn).toBeDefined();
-		const backBtn = [...c.querySelectorAll("ha-button")].find((b) =>
+		const backBtn = [...c.querySelectorAll("epp-button")].find((b) =>
 			b.textContent?.includes("flasher.usb_back"),
 		);
 		expect(backBtn).toBeUndefined();

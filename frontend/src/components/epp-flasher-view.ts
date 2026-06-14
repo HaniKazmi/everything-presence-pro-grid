@@ -12,6 +12,8 @@ import { css, html, LitElement, nothing, type TemplateResult } from "lit";
 import { property, state } from "lit/decorators.js";
 import { literal, html as staticHtml } from "lit/static-html.js";
 import { DocumentListenerGroup } from "../lib/document-listeners.js";
+import "../ui/epp-button.js";
+import "../ui/epp-field.js";
 import type { WifiNetwork } from "../lib/improv-serial.js";
 import { defaultLocalize, type LocalizeFn } from "../localize.js";
 import type {
@@ -671,10 +673,11 @@ export class EppFlasherView extends LitElement {
 						></ha-icon>
 						${
 							device.available
-								? html`<ha-button
+								? html`<epp-button
+									variant="neutral"
 									@click=${() => this._dispatchRetryOta(device)}>
 									${this.localize("flasher.ota_retry")}
-								</ha-button>`
+								</epp-button>`
 								: nothing
 						}
 						${
@@ -758,11 +761,12 @@ export class EppFlasherView extends LitElement {
 			? this.localize("flasher.cancelling")
 			: this.localize("flasher.cancel");
 		const cls = extraClass ?? "";
-		return html`<ha-button
+		return html`<epp-button
+			variant="neutral"
 			class=${cls}
 			@click=${this._dispatchCancel}
 			?disabled=${this._cancelling}
-		>${label}</ha-button>`;
+		>${label}</epp-button>`;
 	}
 
 	private async _copyIp(ip: string): Promise<void> {
@@ -845,26 +849,32 @@ export class EppFlasherView extends LitElement {
               ></ha-checkbox>
             </ha-formfield>
 
+            ${
+							showManual
+								? html`
+                <epp-field
+                  type="text"
+                  .label=${this.localize("flasher.enter_ssid")}
+                  .value=${this._selectedSsid}
+                  @value-changed=${(e: CustomEvent<{ value: string }>) => {
+										this._selectedSsid = e.detail.value;
+									}}
+                ></epp-field>
+              `
+								: nothing
+						}
+
             ${(() => {
-							// ha-input shipped in HA 2026.4 and replaces ha-textfield (removed in
-							// 2026.5). Fall back to ha-textfield on older HA where ha-input isn't
-							// registered yet — the integration's hacs.json still supports 2025.2+.
+							// Password masking depends on the input's `type` attribute
+							// (text vs password), which epp-field does NOT support — keep
+							// the native control here. ha-input shipped in HA 2026.4 and
+							// replaces ha-textfield (removed in 2026.5); fall back to
+							// ha-textfield on older HA where ha-input isn't registered yet —
+							// the integration's hacs.json still supports 2025.2+.
 							const inputTag = customElements.get("ha-input")
 								? literal`ha-input`
 								: literal`ha-textfield`;
-							const ssidField = showManual
-								? staticHtml`
-                <${inputTag}
-                  .label=${this.localize("flasher.enter_ssid")}
-                  autocomplete="off"
-                  .value=${this._selectedSsid}
-                  @input=${(e: Event) => {
-										this._selectedSsid = (e.target as any).value;
-									}}
-                ></${inputTag}>
-              `
-								: nothing;
-							const passwordField = staticHtml`
+							return staticHtml`
               <${inputTag}
                 .label=${this.localize("flasher.wifi_password")}
                 type=${this._showPassword ? "text" : "password"}
@@ -875,7 +885,6 @@ export class EppFlasherView extends LitElement {
 								}}
               ></${inputTag}>
             `;
-							return html`${ssidField}${passwordField}`;
 						})()}
 
             <ha-formfield
@@ -892,16 +901,16 @@ export class EppFlasherView extends LitElement {
 
             <div class="confirm-actions">
               ${this._renderCancelButton()}
-              <ha-button @click=${this._dispatchWifiScan}>
+              <epp-button variant="neutral" @click=${this._dispatchWifiScan}>
                 ${this.localize("flasher.scan")}
-              </ha-button>
-              <ha-button
-                appearance="accent"
-                .disabled=${!this._selectedSsid}
+              </epp-button>
+              <epp-button
+                variant="primary"
+                ?disabled=${!this._selectedSsid}
                 @click=${this._dispatchWifiProvision}
               >
                 ${this.localize("flasher.connect")}
-              </ha-button>
+              </epp-button>
             </div>
           </div>
         </ha-card>
@@ -959,10 +968,10 @@ export class EppFlasherView extends LitElement {
 			: isEppgrid &&
 					(device.update_available ||
 						device.firmware_status === "firmware_behind")
-				? html`<ha-button
-							appearance="accent"
+				? html`<epp-button
+							variant="primary"
 							@click=${() => this._dispatchUpdateFirmware(device)}
-						>${this.localize("flasher.update")}</ha-button>`
+						>${this.localize("flasher.update")}</epp-button>`
 				: nothing;
 
 		return { badges, action };
@@ -1124,15 +1133,15 @@ export class EppFlasherView extends LitElement {
 							<p>${state.errorKey ? this.localize(state.errorKey, state.errorParams) : ""}</p>
 						</div>
 						<div class="confirm-actions">
-							<ha-button @click=${this._dispatchCancel}>
+							<epp-button variant="neutral" @click=${this._dispatchCancel}>
 								${this.localize("flasher.start_over")}
-							</ha-button>
+							</epp-button>
 							${
 								state.fatal
 									? nothing
-									: html`<ha-button appearance="accent" @click=${this._dispatchUsbRetry}>
+									: html`<epp-button variant="primary" @click=${this._dispatchUsbRetry}>
 								${this.localize("flasher.usb_retry")}
-							</ha-button>`
+							</epp-button>`
 							}
 						</div>
 					</div>
@@ -1176,13 +1185,13 @@ export class EppFlasherView extends LitElement {
 						${
 							state.autoSkipped
 								? html`<div class="wifi-override-row">
-									<ha-button
+									<epp-button
 										class="wifi-override-link"
-										appearance="plain"
+										variant="text"
 										@click=${this._dispatchWifiScan}
 									>
 										${this.localize("flasher.configure_wifi_override")}
-									</ha-button>
+									</epp-button>
 								</div>`
 								: nothing
 						}
@@ -1209,7 +1218,7 @@ export class EppFlasherView extends LitElement {
 							</div>
 							<div class="confirm-actions">
 								<a href="/config/devices/dashboard">
-									<ha-button appearance="accent">${this.localize("flasher.go_to_devices")}</ha-button>
+									<epp-button variant="primary">${this.localize("flasher.go_to_devices")}</epp-button>
 								</a>
 							</div>
 						</div>
@@ -1244,25 +1253,25 @@ export class EppFlasherView extends LitElement {
 						<div class="confirm-actions">
 							${
 								success
-									? html`<ha-button appearance="accent" @click=${this._dispatchFlashComplete}>
+									? html`<epp-button variant="primary" @click=${this._dispatchFlashComplete}>
 									${this.localize("flasher.go_to_config")}
-								</ha-button>`
+								</epp-button>`
 									: haAdd?.type === "needs_auth"
 										? html`<a href="/config/integrations/dashboard">
-										<ha-button appearance="accent">${this.localize("flasher.go_to_integrations")}</ha-button>
+										<epp-button variant="primary">${this.localize("flasher.go_to_integrations")}</epp-button>
 									</a>`
 										: html`
-										<ha-button @click=${() => this._copyIp(ip ?? "")}>
+										<epp-button variant="neutral" @click=${() => this._copyIp(ip ?? "")}>
 											${this.localize("flasher.copy_ip")}
-										</ha-button>
-										<ha-button appearance="accent" @click=${this._dispatchRetryHaAdd}>
+										</epp-button>
+										<epp-button variant="primary" @click=${this._dispatchRetryHaAdd}>
 											${this.localize("flasher.retry_ha_add")}
-										</ha-button>
+										</epp-button>
 									`
 							}
-							<ha-button @click=${this._dispatchCancel}>
+							<epp-button variant="neutral" @click=${this._dispatchCancel}>
 								${this.localize("flasher.flash_another")}
-							</ha-button>
+							</epp-button>
 						</div>
 					</div>
 				</ha-card>
@@ -1339,26 +1348,26 @@ export class EppFlasherView extends LitElement {
 					<div class="card-content">
 						<p class="usb-select-label">${this.localize("flasher.select_variant")}</p>
 						<div class="variant-selector">
-							<ha-button
+							<epp-button
 								class="${this._selectedVariant === "wifi" ? "selected" : "unselected"}"
-								appearance="${this._selectedVariant === "wifi" ? "accent" : "outlined"}"
+								variant="${this._selectedVariant === "wifi" ? "primary" : "neutral"}"
 								@click=${() => {
 									this._selectedVariant = "wifi";
 								}}
-							>${this.localize("flasher.wifi")}</ha-button>
-							<ha-button
+							>${this.localize("flasher.wifi")}</epp-button>
+							<epp-button
 								class="${this._selectedVariant === "ethernet" ? "selected" : "unselected"}"
-								appearance="${this._selectedVariant === "ethernet" ? "accent" : "outlined"}"
+								variant="${this._selectedVariant === "ethernet" ? "primary" : "neutral"}"
 								@click=${() => {
 									this._selectedVariant = "ethernet";
 								}}
-							>${this.localize("flasher.ethernet")}</ha-button>
+							>${this.localize("flasher.ethernet")}</epp-button>
 						</div>
 						<div class="confirm-actions">
 							${this._renderCancelButton()}
-							<ha-button appearance="accent" @click=${this._dispatchUsbFlash}>
+							<epp-button variant="primary" @click=${this._dispatchUsbFlash}>
 								${this.localize("flasher.usb_flash")}
-							</ha-button>
+							</epp-button>
 						</div>
 					</div>
 				</ha-card>
