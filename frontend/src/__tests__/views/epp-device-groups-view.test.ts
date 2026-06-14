@@ -196,7 +196,7 @@ describe("epp-device-groups-view", () => {
 		expect(
 			el.shadowRoot!.querySelector(".group-sensors")!.textContent,
 		).not.toContain("Sensors:");
-		expect(sensorChips(el)).toEqual(["Bed", "Occupancy"]);
+		expect(sensorChips(el)).toEqual(["Occupancy", "Bed"]);
 	});
 
 	it("sorts the device names and the sensor lozenges", async () => {
@@ -233,7 +233,7 @@ describe("epp-device-groups-view", () => {
 		expect(
 			el.shadowRoot!.querySelector(".group-devices")!.textContent,
 		).toContain("Alpha, Zeta");
-		expect(sensorChips(el)).toEqual(["Bed", "Occupancy", "Window"]);
+		expect(sensorChips(el)).toEqual(["Occupancy", "Bed", "Window"]);
 	});
 
 	it("renders Edit + a divider + a danger Delete (with icons) in the kebab", async () => {

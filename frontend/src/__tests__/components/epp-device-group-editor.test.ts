@@ -561,8 +561,8 @@ describe("epp-device-group-editor", () => {
 		const chips = [
 			...el.shadowRoot!.querySelectorAll('[data-testid="sensor-chip"]'),
 		].map((c) => c.textContent!.trim());
-		// sorted alphabetically across all exposed sensors (presence + zones)
-		expect(chips).toEqual(["Desk", "mmWave presence", "Occupancy"]);
+		// Occupancy first, then the remaining presence sensors, then zones
+		expect(chips).toEqual(["Occupancy", "mmWave presence", "Desk"]);
 	});
 
 	// Keep last: registering HA elements is global for the test environment, so

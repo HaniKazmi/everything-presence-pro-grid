@@ -352,9 +352,11 @@ shared helpers back the UI:
   older HA / happy-dom; it supports left icons, dividers, and a danger item,
   and emits `item-select` `{id}`.
 - **`lib/device-groups-labels.ts`** — `PRESENCE_LABELS`, `exposedSensorChips()`
-  (the group's presence + zone sensors as one sorted, numeric-aware chip list),
-  and `EDIT_DELETE_KEBAB_ITEMS` (the shared Edit/Delete kebab items), so the
-  list view and the editor render identical, consistent labels.
+  (the group's presence + zone sensors as one chip list: Occupancy first, then
+  the remaining presence sensors alphabetically, then the zones alphabetically,
+  with numeric-aware name comparison), and `EDIT_DELETE_KEBAB_ITEMS` (the shared
+  Edit/Delete kebab items), so the list view and the editor render identical,
+  consistent labels.
 - **`components/epp-confirm-dialog.ts`** — a reusable themed modal (reusing the
   panel's shared `dialogStyles`) for confirm/alert prompts; the device-groups
   view uses it for delete-confirm and save/delete errors instead of the

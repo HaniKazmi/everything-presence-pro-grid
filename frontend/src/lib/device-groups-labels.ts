@@ -23,20 +23,36 @@ export interface SensorChip {
 	kind: "presence" | "zone";
 }
 
-/** Every sensor a group exposes as a chip ({name, kind}), sorted by name, so
- *  the list view and the editor preview render the same sorted lozenges. */
+/** Every sensor a group exposes as a chip ({name, kind}), in a stable order so
+ *  the list view and the editor preview render the same lozenges: Occupancy
+ *  first, then the remaining presence sensors alphabetically, then the zones
+ *  alphabetically. Name comparison is i18n-, case-, and numeric-aware ("Zone 2"
+ *  before "Zone 10"), so the order doesn't hinge on a label's capitalisation. */
 export function exposedSensorChips(exposed: {
 	presence: string[];
 	zones: { name: string }[];
 }): SensorChip[] {
-	const chips: SensorChip[] = [
+	// Rank groups the chips into bands (Occupancy / other presence / zones);
+	// names order the chips within a band.
+	const ranked = [
 		...exposed.presence.map((p) => ({
 			name: PRESENCE_LABELS[p] ?? p,
 			kind: "presence" as const,
+			rank: p === "occupancy" ? 0 : 1,
 		})),
-		...exposed.zones.map((z) => ({ name: z.name, kind: "zone" as const })),
+		...exposed.zones.map((z) => ({
+			name: z.name,
+			kind: "zone" as const,
+			rank: 2,
+		})),
 	];
-	return chips.sort((a, b) =>
-		a.name.localeCompare(b.name, undefined, { numeric: true }),
+	ranked.sort(
+		(a, b) =>
+			a.rank - b.rank ||
+			a.name.localeCompare(b.name, undefined, {
+				numeric: true,
+				sensitivity: "base",
+			}),
 	);
+	return ranked.map(({ name, kind }) => ({ name, kind }));
 }
