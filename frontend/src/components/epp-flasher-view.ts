@@ -211,7 +211,7 @@ const flasherStyles = css`
     background: var(--epp-danger, var(--error-color, #f44336));
     color: white;
     padding: var(--epp-space-2, 8px) var(--epp-space-3, 12px);
-    border-radius: var(--epp-radius-sm, 8px);
+    border-radius: var(--epp-radius-sm, 6px);
     font-size: var(--epp-font-xs, 12px);
     white-space: nowrap;
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
@@ -234,7 +234,7 @@ const flasherStyles = css`
     margin-bottom: var(--epp-space-4, 16px);
     background: var(--info-color, #2196f3);
     color: white;
-    border-radius: var(--epp-radius-sm, 8px);
+    border-radius: var(--epp-radius-sm, 6px);
   }
   .update-banner ha-icon {
     --mdc-icon-size: 24px;
@@ -292,7 +292,7 @@ const flasherStyles = css`
     gap: var(--epp-space-4, 16px);
     padding: var(--epp-space-4, 16px);
     border: 1px solid var(--epp-border, var(--divider-color, #e0e0e0));
-    border-radius: var(--epp-radius-md, 12px);
+    border-radius: var(--epp-radius-md, 10px);
     cursor: pointer;
     transition: background 0.15s;
   }
@@ -335,7 +335,7 @@ const flasherStyles = css`
 
   .usb-connect-btn {
     padding: var(--epp-space-2, 8px) 20px;
-    border-radius: var(--epp-radius-sm, 8px);
+    border-radius: var(--epp-radius-sm, 6px);
     border: none;
     cursor: pointer;
     font-size: var(--epp-font-base, 14px);
