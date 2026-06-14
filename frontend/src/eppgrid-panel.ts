@@ -77,8 +77,8 @@ import {
 	installPanelMountGuard,
 } from "./panel-mount-guard.js";
 import { buttonStyles, dialogStyles, headerStyles } from "./styles.js";
-import { tokens } from "./ui/tokens.js";
 import type { DeviceInfo, RawTarget, Target } from "./types.js";
+import { tokens } from "./ui/tokens.js";
 
 // ZoneSlots / INITIAL_ZONE_SLOTS moved to lib/zone-defaults.ts so the
 // controllers can import them without a circular type dep on this module.
