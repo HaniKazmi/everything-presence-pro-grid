@@ -250,3 +250,101 @@ describe("tab-bar logo", () => {
 		expect(logo?.getAttribute("aria-label")).toBeTruthy();
 	});
 });
+
+describe("device-groups unsaved-changes guard", () => {
+	const stubCtrl = () => ({
+		onChange: () => () => {},
+		groups: [],
+		subscribe: () => {},
+		candidateSources: [],
+	});
+
+	it("sets _dirty from the device-groups view's form-dirty-changed", () => {
+		const el = createPanel();
+		const a = el as any;
+		a._panelTab = "device-groups";
+		a._deviceGroupsCtrl = stubCtrl();
+		const c = document.createElement("div");
+		document.body.appendChild(c);
+		render(a.render(), c);
+		const view = c.querySelector("epp-device-groups-view") as HTMLElement;
+		expect(view).not.toBeNull();
+		view.dispatchEvent(
+			new CustomEvent("form-dirty-changed", {
+				detail: { dirty: true },
+				bubbles: true,
+				composed: true,
+			}),
+		);
+		expect(a._dirty).toBe(true);
+		document.body.removeChild(c);
+	});
+
+	it("guards a tab switch while dirty: shows the unsaved dialog and stays put", () => {
+		const el = createPanel();
+		const a = el as any;
+		a._dirty = true;
+		a._panelTab = "device-groups";
+		a._showUnsavedDialog = false;
+		const c = document.createElement("div");
+		render(a.render(), c);
+		const tabs = [
+			...c.querySelectorAll(".tab-bar button.tab"),
+		] as HTMLElement[];
+		tabs[1].click(); // Flash Firmware tab
+		expect(a._panelTab).toBe("device-groups"); // navigation queued, not applied
+		expect(a._showUnsavedDialog).toBe(true);
+	});
+
+	it("switches tabs immediately when not dirty", () => {
+		const el = createPanel();
+		const a = el as any;
+		a._dirty = false;
+		a._panelTab = "device-groups";
+		const c = document.createElement("div");
+		render(a.render(), c);
+		const tabs = [
+			...c.querySelectorAll(".tab-bar button.tab"),
+		] as HTMLElement[];
+		tabs[1].click();
+		expect(a._panelTab).toBe("flasher");
+		expect(a._showUnsavedDialog).toBe(false);
+	});
+
+	it("renders the unsaved-changes dialog on the device-groups tab (so the guard is visible)", () => {
+		const el = createPanel();
+		const a = el as any;
+		a._panelTab = "device-groups";
+		a._deviceGroupsCtrl = stubCtrl();
+		a._showUnsavedDialog = true;
+		const c = document.createElement("div");
+		render(a.render(), c);
+		// the panel's global dialogs (incl. the unsaved-changes dialog) must be
+		// rendered on this tab, not only on the config tab
+		expect(c.querySelector(".template-dialog")).not.toBeNull();
+	});
+
+	it("renders the unsaved-changes dialog on the flasher tab too", () => {
+		const el = createPanel();
+		const a = el as any;
+		a._panelTab = "flasher";
+		a._showUnsavedDialog = true;
+		const c = document.createElement("div");
+		render(a.render(), c);
+		expect(c.querySelector(".template-dialog")).not.toBeNull();
+	});
+
+	it("renders the unsaved-changes dialog even on a full-page status branch", () => {
+		// Global dialogs render once at the top of render(), so even a full-page
+		// status screen (e.g. HA disconnected) that early-returns its own layout
+		// still shows the guard dialog instead of silently blocking navigation.
+		const el = createPanel();
+		const a = el as any;
+		a._haConnected = false; // → disconnected full-page branch
+		a._view = "live";
+		a._showUnsavedDialog = true;
+		const c = document.createElement("div");
+		render(a.render(), c);
+		expect(c.querySelector(".template-dialog")).not.toBeNull();
+	});
+});

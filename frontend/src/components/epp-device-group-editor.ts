@@ -20,9 +20,27 @@ interface EditorDraft {
 	zone_groups: DeviceGroupZoneGroup[];
 }
 
+/** Canonical string for a draft, order-insensitive where order is irrelevant
+ *  (source toggles, group members), so dirty-tracking ignores reorderings. */
+function canon(d: EditorDraft): string {
+	return JSON.stringify({
+		name: d.name,
+		area_id: d.area_id,
+		sourceMacs: [...d.sourceMacs].sort(),
+		zone_groups: [...d.zone_groups]
+			.map((g) => ({
+				id: g.id,
+				name: g.name,
+				members: g.members.map((m) => `${m.mac}|${m.zone_index}`).sort(),
+			}))
+			.sort((a, b) => a.id.localeCompare(b.id)),
+	});
+}
+
 /**
- * Editor for one device group. Fires `save` (full payload) or `cancel`.
- * Deletion is handled from the list view's per-group kebab, not here.
+ * Editor for one device group. Fires `save` (full payload) or `cancel`, and
+ * `dirty-changed` ({dirty}) whenever the form diverges from / returns to its
+ * loaded state. Deletion is handled from the list view's per-group kebab.
  */
 export class EppDeviceGroupEditor extends LitElement {
 	static styles = css`
@@ -66,6 +84,17 @@ export class EppDeviceGroupEditor extends LitElement {
 			font-size: 14px;
 			color: var(--primary-text-color, #212121);
 		}
+		.source-row.missing .source-name { color: var(--warning-color, #ff9800); }
+		.missing-tag { color: var(--secondary-text-color, #757575); font-size: 13px; }
+		.missing-warning {
+			display: flex;
+			align-items: center;
+			gap: 6px;
+			margin-top: 6px;
+			font-size: 13px;
+			color: var(--warning-color, #ff9800);
+		}
+		.missing-warning ha-icon { --mdc-icon-size: 18px; }
 		.chips { display: flex; flex-wrap: wrap; gap: .4rem; }
 		.chip {
 			padding: .2rem .6rem;
@@ -82,7 +111,7 @@ export class EppDeviceGroupEditor extends LitElement {
 		.actions {
 			display: flex;
 			gap: .5rem;
-			justify-content: flex-end;
+			justify-content: space-between;
 			align-items: center;
 			margin-top: 4px;
 		}
@@ -108,19 +137,53 @@ export class EppDeviceGroupEditor extends LitElement {
 		zone_groups: [],
 	};
 
+	// Canonical snapshot of the loaded form; the form is "dirty" when the
+	// current draft diverges from it. Last dirty value emitted, so we only
+	// fire `dirty-changed` on a transition.
+	private _pristine = canon(this._draft);
+	private _emittedDirty = false;
+
 	willUpdate(changed: Map<string, unknown>) {
-		if (changed.has("existingGroup") && this.existingGroup) {
-			this._draft = {
-				id: this.existingGroup.id,
-				name: this.existingGroup.name,
-				area_id: this.existingGroup.area_id,
-				sourceMacs: this.existingGroup.sources.map((s) => s.mac),
-				zone_groups: this.existingGroup.zone_groups,
-			};
+		if (changed.has("existingGroup")) {
+			this._draft = this.existingGroup
+				? {
+						id: this.existingGroup.id,
+						name: this.existingGroup.name,
+						area_id: this.existingGroup.area_id,
+						sourceMacs: this.existingGroup.sources.map((s) => s.mac),
+						zone_groups: this.existingGroup.zone_groups,
+					}
+				: {
+						id: null,
+						name: "",
+						area_id: null,
+						sourceMacs: [],
+						zone_groups: [],
+					};
+			this._pristine = canon(this._draft);
 		}
 	}
 
+	updated() {
+		const dirty = this._isDirty();
+		if (dirty !== this._emittedDirty) {
+			this._emittedDirty = dirty;
+			this.dispatchEvent(
+				new CustomEvent("dirty-changed", {
+					detail: { dirty },
+					bubbles: true,
+					composed: true,
+				}),
+			);
+		}
+	}
+
+	private _isDirty(): boolean {
+		return canon(this._draft) !== this._pristine;
+	}
+
 	render() {
+		const missing = this._missingSources();
 		return html`
 			<ha-card>
 				<div class="card-content">
@@ -140,7 +203,17 @@ export class EppDeviceGroupEditor extends LitElement {
 						<h3>Source devices</h3>
 						<div class="source-box">
 							${this.availableDevices.map((d) => this._renderSourceRow(d))}
+							${missing.map((s) => this._renderMissingSourceRow(s))}
 						</div>
+						${
+							missing.length
+								? html`<div class="missing-warning" data-testid="missing-warning">
+										<ha-icon icon="mdi:alert"></ha-icon>
+										Some source devices no longer exist. Turn them off and save
+										to remove them.
+									</div>`
+								: nothing
+						}
 					</div>
 
 					<div class="section">
@@ -160,7 +233,7 @@ export class EppDeviceGroupEditor extends LitElement {
 						<ha-button @click=${this._cancel}>Cancel</ha-button>
 						<ha-button
 							appearance="accent"
-							.disabled=${!this._canSave()}
+							.disabled=${!(this._canSave() && this._isDirty())}
 							@click=${this._save}
 							>Save</ha-button
 						>
@@ -215,30 +288,53 @@ export class EppDeviceGroupEditor extends LitElement {
 		`;
 	}
 
-	// One row per device: name on the left, an HA toggle on the right. Falls
-	// back to a plain checkbox where ha-switch isn't registered.
+	// One row per device: name on the left, an HA toggle on the right.
 	private _renderSourceRow(d: DeviceInfo) {
-		const checked = this._draft.sourceMacs.includes(d.mac);
+		const label = d.area ? `${d.name} (${d.area})` : d.name;
+		return html`<div class="source-row">
+			<span class="source-name">${label}</span>
+			${this._toggleControl(d.mac)}
+		</div>`;
+	}
+
+	// HA toggle for a source MAC; falls back to a checkbox where ha-switch
+	// isn't registered.
+	private _toggleControl(mac: string) {
+		const checked = this._draft.sourceMacs.includes(mac);
 		const onChange = (e: Event) =>
-			this._toggleSource(d.mac, (e.target as HTMLInputElement).checked);
-		const control = customElements.get("ha-switch")
+			this._toggleSource(mac, (e.target as HTMLInputElement).checked);
+		return customElements.get("ha-switch")
 			? html`<ha-switch
 					data-testid="device-toggle"
-					data-mac=${d.mac}
+					data-mac=${mac}
 					.checked=${checked}
 					@change=${onChange}
 				></ha-switch>`
 			: html`<input
 					type="checkbox"
 					data-testid="device-toggle"
-					data-mac=${d.mac}
+					data-mac=${mac}
 					.checked=${checked}
 					@change=${onChange}
 				/>`;
-		const label = d.area ? `${d.name} (${d.area})` : d.name;
-		return html`<div class="source-row">
-			<span class="source-name">${label}</span>
-			${control}
+	}
+
+	// Sources still referenced by the group whose device no longer exists
+	// (backend reports available: false). Shown as removable rows so the user
+	// can drop them.
+	private _missingSources(): { mac: string; name: string }[] {
+		if (!this.existingGroup) return [];
+		return this.existingGroup.sources
+			.filter((s) => !s.available && this._draft.sourceMacs.includes(s.mac))
+			.map((s) => ({ mac: s.mac, name: s.name }));
+	}
+
+	private _renderMissingSourceRow(s: { mac: string; name: string }) {
+		return html`<div class="source-row missing" data-testid="missing-source">
+			<span class="source-name"
+				>${s.name}<span class="missing-tag"> — no longer available</span></span
+			>
+			${this._toggleControl(s.mac)}
 		</div>`;
 	}
 
@@ -260,10 +356,20 @@ export class EppDeviceGroupEditor extends LitElement {
 	}
 
 	private _toggleSource(mac: string, on: boolean) {
-		const next = on
-			? [...this._draft.sourceMacs, mac]
-			: this._draft.sourceMacs.filter((m) => m !== mac);
-		this._update({ sourceMacs: next });
+		if (on) {
+			this._update({ sourceMacs: [...this._draft.sourceMacs, mac] });
+			return;
+		}
+		// Removing a source: also drop it from any merged zone, and drop merged
+		// zones left with no members — otherwise the saved group keeps zone
+		// members referencing a device that is no longer a source (they'd show
+		// as "Unknown device" on reload).
+		this._update({
+			sourceMacs: this._draft.sourceMacs.filter((m) => m !== mac),
+			zone_groups: this._draft.zone_groups
+				.map((g) => ({ ...g, members: g.members.filter((m) => m.mac !== mac) }))
+				.filter((g) => g.members.length > 0),
+		});
 	}
 
 	private _save() {

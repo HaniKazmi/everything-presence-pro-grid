@@ -1774,25 +1774,28 @@ export class EPPGridPanel extends LitElement {
 			<div class="tab-bar">
 				${EPP_LOGO}
 				<button class="tab ${this._panelTab === "config" ? "active" : ""}"
-					@click=${() => {
-						void this._flasherCtrl.resetUsbState();
-						this._panelTab = "config";
-						this._loadDevices();
-					}}>${this._localize("tabs.device_configuration")}</button>
+					@click=${() =>
+						this._navGuard.guardNavigation(() => {
+							void this._flasherCtrl.resetUsbState();
+							this._panelTab = "config";
+							this._loadDevices();
+						})}>${this._localize("tabs.device_configuration")}</button>
 				<button class="tab ${this._panelTab === "flasher" ? "active" : ""}"
-					@click=${() => {
-						void this._flasherCtrl.resetUsbState();
-						this._panelTab = "flasher";
-						if (this._flasherCtrl.loading) {
-							this._flasherCtrl.hass = this.hass;
-							this._flasherCtrl.subscribeDeviceList();
-						}
-					}}>${this._localize("tabs.flash_firmware")}</button>
+					@click=${() =>
+						this._navGuard.guardNavigation(() => {
+							void this._flasherCtrl.resetUsbState();
+							this._panelTab = "flasher";
+							if (this._flasherCtrl.loading) {
+								this._flasherCtrl.hass = this.hass;
+								this._flasherCtrl.subscribeDeviceList();
+							}
+						})}>${this._localize("tabs.flash_firmware")}</button>
 				<button class="tab ${this._panelTab === "device-groups" ? "active" : ""}"
-					@click=${() => {
-						void this._flasherCtrl.resetUsbState();
-						this._panelTab = "device-groups";
-					}}>Device Groups</button>
+					@click=${() =>
+						this._navGuard.guardNavigation(() => {
+							void this._flasherCtrl.resetUsbState();
+							this._panelTab = "device-groups";
+						})}>Device Groups</button>
 				<a class="tab-help"
 					href=${getHelpUrl({
 						panelTab: this._panelTab,
@@ -1810,6 +1813,14 @@ export class EPPGridPanel extends LitElement {
 	}
 
 	render() {
+		// Global dialogs (incl. the unsaved-changes guard dialog) render once,
+		// unconditionally — every tab/status branch below early-returns its own
+		// layout, so rendering the dialogs per-branch repeatedly dropped them on
+		// some branches and left navigation blocked with no visible dialog.
+		return html`${this._renderTabContent()}${this._renderGlobalDialogs()}`;
+	}
+
+	private _renderTabContent() {
 		if (this._panelTab === "flasher") {
 			return html`<div class="tab-layout">
 				${this._renderTabBar()}
@@ -1876,6 +1887,9 @@ export class EPPGridPanel extends LitElement {
 								.hass=${this.hass}
 								.controller=${this._deviceGroupsCtrl}
 								.availableDevices=${this._devices}
+								@form-dirty-changed=${(e: CustomEvent<{ dirty: boolean }>) => {
+									this._dirty = e.detail.dirty;
+								}}
 							></epp-device-groups-view>`
 						: html`<div class="panel">${this._localize("common.loading")}</div>`
 				}
@@ -1925,11 +1939,12 @@ export class EPPGridPanel extends LitElement {
 				${this._renderTabBar()}
 				<div class="empty-state">
 					<p>${this._localize("flasher.no_eppgrid_devices")}</p>
-					<button class="primary-btn" @click=${() => {
-						this._panelTab = "flasher";
-						this._flasherCtrl.hass = this.hass;
-						this._flasherCtrl.subscribeDeviceList();
-					}}>
+					<button class="primary-btn" @click=${() =>
+						this._navGuard.guardNavigation(() => {
+							this._panelTab = "flasher";
+							this._flasherCtrl.hass = this.hass;
+							this._flasherCtrl.subscribeDeviceList();
+						})}>
 							${this._localize("flasher.flash_from_tab")}
 					</button>
 				</div>
@@ -2005,7 +2020,6 @@ export class EPPGridPanel extends LitElement {
 						<p>${this._localize("connection.connecting")}</p>
 					</div>
 				</div>
-				${this._renderGlobalDialogs()}
 			</div>`;
 		}
 
@@ -2016,7 +2030,6 @@ export class EPPGridPanel extends LitElement {
 					${this._renderHeader()}
 					${this._renderConnectionBanner()}
 				</div>
-				${this._renderGlobalDialogs()}
 			</div>`;
 		}
 
@@ -2027,7 +2040,6 @@ export class EPPGridPanel extends LitElement {
 					${this._renderHeader()}
 					${this._renderProtocolBanner()}
 				</div>
-				${this._renderGlobalDialogs()}
 			</div>`;
 		}
 
@@ -2038,7 +2050,7 @@ export class EPPGridPanel extends LitElement {
 					? this._renderEditor()
 					: this._renderLiveOverview();
 
-		return html`<div class="tab-layout">${this._renderTabBar()}${this._renderControllerErrorBanner()}${content}${this._renderGlobalDialogs()}</div>`;
+		return html`<div class="tab-layout">${this._renderTabBar()}${this._renderControllerErrorBanner()}${content}</div>`;
 	}
 
 	/**
