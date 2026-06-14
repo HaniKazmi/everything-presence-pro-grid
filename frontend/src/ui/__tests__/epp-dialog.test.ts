@@ -57,4 +57,14 @@ describe("epp-dialog", () => {
 		document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
 		expect(dismissed).toBe(0);
 	});
+
+	it("falls back to label for aria-label when there is no heading", async () => {
+		const el = await fixture(true);
+		el.label = "Confirm action";
+		await el.updateComplete;
+		expect(
+			el.shadowRoot!.querySelector(".card")!.getAttribute("aria-label"),
+		).toBe("Confirm action");
+		expect(el.shadowRoot!.querySelector("h3")).toBeNull();
+	});
 });

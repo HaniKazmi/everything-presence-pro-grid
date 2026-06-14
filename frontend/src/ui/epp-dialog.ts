@@ -34,7 +34,7 @@ export class EppDialog extends LitElement {
       display: flex;
       flex-direction: column;
       gap: var(--epp-space-4, 16px);
-      box-shadow: var(--epp-elevation-2, 0 4px 24px rgba(0, 0, 0, 0.15));
+      box-shadow: var(--epp-elevation-2, 0 6px 20px rgba(0, 0, 0, 0.18));
     }
     h3 {
       margin: 0;
