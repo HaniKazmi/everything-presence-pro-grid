@@ -176,7 +176,7 @@ export const settingStyles = css`
 
   .setting-group h4 {
     margin: 0 0 var(--epp-space-3, 12px);
-    font-size: var(--epp-font-sm, 14px);
+    font-size: var(--epp-font-base, 14px);
     font-weight: var(--epp-weight-semibold, 600);
     color: var(--epp-text, var(--primary-text-color, #212121));
   }
@@ -197,7 +197,7 @@ export const settingStyles = css`
   }
 
   .setting-row label:not(.toggle-switch) {
-    font-size: var(--epp-font-sm, 14px);
+    font-size: var(--epp-font-base, 14px);
     color: var(--epp-text, var(--primary-text-color, #212121));
     flex: 1;
     min-width: 120px;
@@ -206,9 +206,9 @@ export const settingStyles = css`
   .setting-input-unit {
     display: flex;
     align-items: center;
-    gap: var(--epp-space-1-5, 6px);
-    font-size: var(--epp-font-xs, 13px);
-    color: var(--epp-text-secondary, var(--secondary-text-color, #757575));
+    gap: 6px;
+    font-size: var(--epp-font-sm, 13px);
+    color: var(--epp-text-muted, var(--secondary-text-color, #757575));
     flex: 1;
     min-width: 0;
     justify-content: flex-end;
@@ -221,8 +221,8 @@ export const settingStyles = css`
   }
 
   .setting-value {
-    font-size: var(--epp-font-sm, 14px);
-    color: var(--epp-text-secondary, var(--secondary-text-color, #757575));
+    font-size: var(--epp-font-base, 14px);
+    color: var(--epp-text-muted, var(--secondary-text-color, #757575));
     font-weight: var(--epp-weight-medium, 500);
     display: inline-block;
     width: 36px;
@@ -233,8 +233,8 @@ export const settingStyles = css`
   .setting-unit {
     display: inline-block;
     width: 24px;
-    font-size: var(--epp-font-xs, 13px);
-    color: var(--epp-text-secondary, var(--secondary-text-color, #757575));
+    font-size: var(--epp-font-sm, 13px);
+    color: var(--epp-text-muted, var(--secondary-text-color, #757575));
     flex-shrink: 0;
   }
 `;
