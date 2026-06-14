@@ -77,6 +77,22 @@ export const ZONE_COLORS = [
 	"#F3AC94", // pale orange
 ];
 
+// Quick-pick presets shown in the zone colour popover: the 7 colour-blind
+// pales (ZONE_COLORS) plus a row of richer tones (Material Design 300/400
+// series) for more expressive choice. Superset of ZONE_COLORS so the
+// auto-assigned default always appears as a selectable preset. 13 presets +
+// 1 custom swatch = 14 cells at 5-per-row. Auto-assignment and validation
+// still use ZONE_COLORS only.
+export const ZONE_PRESET_COLORS = [
+	...ZONE_COLORS,
+	"#4FC3F7", // brighter blue
+	"#9CCC65", // green
+	"#F06292", // pink/magenta
+	"#FFD54F", // amber
+	"#4DB6AC", // teal
+	"#7986CB", // indigo
+];
+
 export interface ZoneThresholds {
 	trigger: number;
 	renew: number;
