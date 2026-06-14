@@ -545,11 +545,15 @@ describe("_renderDetectionRanges branches", () => {
 		const c = renderTo(tpl);
 
 		// Target auto + static auto toggles.
-		const checkboxes = c.querySelectorAll('input[type="checkbox"]');
-		expect(checkboxes.length).toBe(2);
-		const staticCb = checkboxes[1] as HTMLInputElement;
-		staticCb.checked = false;
-		staticCb.dispatchEvent(new Event("change"));
+		const toggles = c.querySelectorAll("epp-toggle");
+		expect(toggles.length).toBe(2);
+		const staticToggle = toggles[1] as HTMLElement;
+		staticToggle.dispatchEvent(
+			new CustomEvent("value-changed", {
+				detail: { value: false },
+				bubbles: true,
+			}),
+		);
 		expect((sv as any)._overrides.staticAutoDistance).toBe(false);
 		document.body.removeChild(c);
 	});

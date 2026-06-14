@@ -48,21 +48,22 @@ function createView(): EppSettingsView {
 }
 
 describe("settings toggles render ha-switch when registered", () => {
-	it("entity rows render ha-switch with data-entity-key (no raw checkboxes)", () => {
+	it("entity rows render epp-toggle with data-entity-key (no raw checkboxes)", () => {
 		const sv = createView();
 		const c = renderTo((sv as any).renderEntities());
 
+		// epp-toggle wraps the ha-switch in shadow DOM; outer element is epp-toggle
 		expect(c.querySelector('input[type="checkbox"]')).toBeNull();
-		const switches = c.querySelectorAll("ha-switch");
-		expect(switches.length).toBe(16);
-		const occupancy = [...switches].find(
-			(s) => (s as HTMLElement).dataset.entityKey === "room_occupancy",
+		const toggles = c.querySelectorAll("epp-toggle");
+		expect(toggles.length).toBe(16);
+		const occupancy = c.querySelector(
+			'epp-toggle[data-entity-key="room_occupancy"]',
 		);
-		expect(occupancy).toBeDefined();
+		expect(occupancy).not.toBeNull();
 		document.body.removeChild(c);
 	});
 
-	it("ha-switch change updates entity overrides and fires dirty", () => {
+	it("epp-toggle value-changed updates entity overrides and fires dirty", () => {
 		const sv = createView();
 		const c = renderTo((sv as any).renderEntities());
 
@@ -71,11 +72,16 @@ describe("settings toggles render ha-switch when registered", () => {
 			dirtyFired = true;
 		});
 
-		const occupancy = [...c.querySelectorAll("ha-switch")].find(
-			(s) => (s as HTMLElement).dataset.entityKey === "room_occupancy",
-		) as HaSwitchStub;
-		occupancy.checked = false;
-		occupancy.dispatchEvent(new Event("change"));
+		const occupancy = c.querySelector(
+			'epp-toggle[data-entity-key="room_occupancy"]',
+		) as HTMLElement;
+		expect(occupancy).not.toBeNull();
+		occupancy.dispatchEvent(
+			new CustomEvent("value-changed", {
+				detail: { value: false },
+				bubbles: true,
+			}),
+		);
 
 		expect((sv as any)._overrides.entities?.room_occupancy).toBe(false);
 		expect(dirtyFired).toBe(true);
@@ -87,14 +93,16 @@ describe("settings toggles render ha-switch when registered", () => {
 		sv.perspective = null;
 		const c = renderTo((sv as any).renderEntities());
 
-		const zonePresence = [...c.querySelectorAll("ha-switch")].find(
-			(s) => (s as HTMLElement).dataset.entityKey === "zone_presence",
-		) as HaSwitchStub;
+		const zonePresence = c.querySelector(
+			'epp-toggle[data-entity-key="zone_presence"]',
+		) as any;
+		expect(zonePresence).not.toBeNull();
+		// epp-toggle exposes .disabled as a property
 		expect(zonePresence.disabled).toBe(true);
 		document.body.removeChild(c);
 	});
 
-	it("detection-range auto toggles render ha-switch and fire setting-change", () => {
+	it("detection-range auto toggles render epp-toggle and fire setting-change", () => {
 		const sv = createView();
 		(sv as any).targetAutoDistance = true;
 		const c = renderTo((sv as any).renderDetectionRanges());
@@ -104,11 +112,15 @@ describe("settings toggles render ha-switch when registered", () => {
 			events.push(e.detail);
 		}) as EventListener);
 
-		const switches = c.querySelectorAll("ha-switch");
-		expect(switches.length).toBe(2);
-		const target = switches[0] as HaSwitchStub;
-		target.checked = false;
-		target.dispatchEvent(new Event("change"));
+		const toggles = c.querySelectorAll("epp-toggle");
+		expect(toggles.length).toBe(2);
+		const target = toggles[0] as HTMLElement;
+		target.dispatchEvent(
+			new CustomEvent("value-changed", {
+				detail: { value: false },
+				bubbles: true,
+			}),
+		);
 
 		expect(events.some((e) => e.key === "targetAutoDistance")).toBe(true);
 		document.body.removeChild(c);

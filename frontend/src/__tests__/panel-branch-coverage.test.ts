@@ -576,8 +576,7 @@ describe("_renderEntities fallback branches", () => {
 		const sv = createSettingsView({ entitiesConfig: {} });
 		const c = renderTo((sv as any).renderEntities());
 		const checked = (key: string) =>
-			(c.querySelector(`input[data-entity-key="${key}"]`) as HTMLInputElement)
-				.checked;
+			(c.querySelector(`epp-toggle[data-entity-key="${key}"]`) as any).checked;
 		// Defaults: occupancy + zone presence on, everything else off.
 		expect(checked("room_occupancy")).toBe(true);
 		expect(checked("zone_presence")).toBe(true);

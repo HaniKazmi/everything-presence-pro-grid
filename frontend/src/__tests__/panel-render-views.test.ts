@@ -894,7 +894,7 @@ describe("_renderSettingsSection (via EppSettingsView)", () => {
 		const c = renderTo(sv.renderSettingsSection("reporting"));
 		expect(c.textContent).toContain("entities.room_level");
 		// 6 room + 2 zone + 4 target + 4 environmental toggles.
-		expect(c.querySelectorAll('input[type="checkbox"]').length).toBe(16);
+		expect(c.querySelectorAll("epp-toggle").length).toBe(16);
 	});
 
 	it("returns nothing for unknown section", () => {
@@ -1027,12 +1027,10 @@ describe("_infoTip (via EppSettingsView)", () => {
 });
 
 describe("_renderEntities (via EppSettingsView)", () => {
-	function toggle(c: HTMLElement, key: string): HTMLInputElement {
-		const input = c.querySelector(
-			`input[data-entity-key="${key}"]`,
-		) as HTMLInputElement;
-		expect(input).not.toBeNull();
-		return input;
+	function toggle(c: HTMLElement, key: string): any {
+		const el = c.querySelector(`epp-toggle[data-entity-key="${key}"]`) as any;
+		expect(el).not.toBeNull();
+		return el;
 	}
 
 	it("renders reporting toggles", () => {
