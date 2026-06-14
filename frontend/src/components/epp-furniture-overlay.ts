@@ -52,10 +52,10 @@ export class EppFurnitureOverlay extends LitElement {
 			display: flex;
 			align-items: center;
 			justify-content: center;
-			/* fixed: contrast over furniture fill, not themeable */
-			border: 1px solid rgba(0, 0, 0, 0.3);
+			border: 1px solid var(--epp-border, var(--divider-color, #e0e0e0));
 			border-radius: 4px;
 			background: transparent;
+			color: var(--epp-text-muted, var(--secondary-text-color, #757575));
 			pointer-events: auto;
 			cursor: grab;
 			transform-origin: center center;
@@ -76,8 +76,6 @@ export class EppFurnitureOverlay extends LitElement {
 		}
 
 		.furniture-item ha-icon {
-			/* fixed: contrast over furniture fill, not themeable */
-			color: rgba(0, 0, 0, 0.6);
 			pointer-events: none;
 		}
 

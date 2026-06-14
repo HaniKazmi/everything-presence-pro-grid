@@ -23,8 +23,8 @@ export class EppIconButton extends LitElement {
       justify-content: center;
       padding: 0;
     }
-    button:hover { color: var(--epp-text, var(--primary-text-color, #212121)); }
-    .danger:hover { color: var(--epp-danger, var(--error-color, #f44336)); }
+    button:hover { color: var(--epp-icon-button-color, var(--epp-text, var(--primary-text-color, #212121))); }
+    .danger:hover { color: var(--epp-icon-button-color, var(--epp-danger, var(--error-color, #f44336))); }
     button:focus-visible {
       outline: var(--epp-focus-ring, 2px solid var(--primary-color, #03a9f4));
       outline-offset: 2px;

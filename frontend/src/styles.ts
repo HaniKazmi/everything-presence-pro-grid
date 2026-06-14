@@ -69,6 +69,10 @@ export const dialogStyles = css`
     --epp-icon-button-color: #fff;
     --epp-control-height: var(--epp-control-height-sm, 32px);
   }
+
+  .configuration-card-delete:hover {
+    background: var(--epp-danger, var(--error-color, #f44336));
+  }
 `;
 
 export const buttonStyles = css`
@@ -101,7 +105,7 @@ export const settingStyles = css`
   .settings-section {
     display: flex;
     flex-direction: column;
-    gap: 4px;
+    gap: var(--epp-space-3, 12px);
   }
 
   /* .setting-group is superseded by epp-card; kept for any legacy references. */
