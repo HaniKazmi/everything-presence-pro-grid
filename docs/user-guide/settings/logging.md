@@ -8,6 +8,8 @@ The controls live under **Settings → Logging** in the panel.
 
 Each row is a logical group of log tags inside the firmware. Set the level high to see more from that group. Leave it at **None** to use the firmware's compiled-in default (effectively quiet: errors and the firmware's own boot output).
 
+Every component is always listed, whether or not the matching hardware is fitted. A row with no hardware behind it — CO2 on a device without the module — simply stays silent.
+
 ![Logging settings.](../../images/settings/logging/logging.png "Logging settings.")
 
 | Component | What it covers |
@@ -16,8 +18,8 @@ Each row is a logical group of log tags inside the firmware. Set the level high 
 | **Zone Engine** | The zone-detection engine itself: target tracking, cell mapping, the zone state machine, configuration changes — and the zone/target/motion entity states (zone target counts, target positions, Motion Presence). Raise this when a zone is misbehaving. |
 | **LED** | LED control script: mode transitions and the decision tree that picks the displayed colour. |
 | **Network** | Wi-Fi or Ethernet connection events, DHCP, link state. |
-| **Bluetooth** | BLE scanner and proxy logs. Only shown when Bluetooth is enabled on the device. |
-| **CO2** | SCD4x sensor logs. Only shown when the optional CO₂ module is fitted and enabled. |
+| **Bluetooth** | BLE scanner and proxy logs. |
+| **CO2** | SCD4x sensor logs. |
 
 ## Levels
 
