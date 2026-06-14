@@ -127,8 +127,8 @@ describe("settings toggles render ha-switch when registered", () => {
 	});
 });
 
-describe("renderSaveCancelBar renders ha-button when registered", () => {
-	it("renders ha-button save/cancel with disabled state and wires handlers", () => {
+describe("renderSaveCancelBar renders epp-button", () => {
+	it("renders epp-button save/cancel with disabled state and wires handlers", () => {
 		const onSave = vi.fn();
 		const onCancel = vi.fn();
 		const c = renderTo(
@@ -141,21 +141,25 @@ describe("renderSaveCancelBar renders ha-button when registered", () => {
 			}),
 		);
 
+		// No raw light-DOM <button> leaks; the bar renders epp-button only
+		// (epp-button keeps its own <button> in shadow DOM).
 		expect(c.querySelector("button")).toBeNull();
-		const save = c.querySelector("ha-button.save-btn") as HaButtonStub;
-		const cancel = c.querySelector("ha-button.cancel-btn") as HaButtonStub;
+		const save = c.querySelector("epp-button.save-btn") as HTMLElement & {
+			disabled: boolean;
+		};
+		const cancel = c.querySelector("epp-button.cancel-btn") as HTMLElement;
 		expect(save).not.toBeNull();
 		expect(cancel).not.toBeNull();
 		expect(save.disabled).toBe(false);
 
-		(save as unknown as HTMLElement).click();
-		(cancel as unknown as HTMLElement).click();
+		save.click();
+		cancel.click();
 		expect(onSave).toHaveBeenCalledTimes(1);
 		expect(onCancel).toHaveBeenCalledTimes(1);
 		document.body.removeChild(c);
 	});
 
-	it("disables the save ha-button while saving or when not dirty", () => {
+	it("disables the save epp-button while saving or when not dirty", () => {
 		const c1 = renderTo(
 			renderSaveCancelBar({
 				saving: true,
@@ -166,7 +170,11 @@ describe("renderSaveCancelBar renders ha-button when registered", () => {
 			}),
 		);
 		expect(
-			(c1.querySelector("ha-button.save-btn") as HaButtonStub).disabled,
+			(
+				c1.querySelector("epp-button.save-btn") as HTMLElement & {
+					disabled: boolean;
+				}
+			).disabled,
 		).toBe(true);
 		expect(c1.textContent).toContain("common.saving");
 		document.body.removeChild(c1);
@@ -181,7 +189,11 @@ describe("renderSaveCancelBar renders ha-button when registered", () => {
 			}),
 		);
 		expect(
-			(c2.querySelector("ha-button.save-btn") as HaButtonStub).disabled,
+			(
+				c2.querySelector("epp-button.save-btn") as HTMLElement & {
+					disabled: boolean;
+				}
+			).disabled,
 		).toBe(true);
 		document.body.removeChild(c2);
 	});

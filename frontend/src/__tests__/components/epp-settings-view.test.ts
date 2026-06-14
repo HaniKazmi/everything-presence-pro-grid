@@ -955,8 +955,8 @@ describe("renderSaveCancelButtons", () => {
 		const tpl = (sv as any).renderSaveCancelButtons();
 		const c = renderTo(tpl);
 
-		expect(c.querySelector(".wizard-btn-back")).not.toBeNull();
-		expect(c.querySelector(".wizard-btn-primary")).not.toBeNull();
+		expect(c.querySelector("epp-button.cancel-btn")).not.toBeNull();
+		expect(c.querySelector("epp-button.save-btn")).not.toBeNull();
 		document.body.removeChild(c);
 	});
 
@@ -965,7 +965,9 @@ describe("renderSaveCancelButtons", () => {
 		const tpl = (sv as any).renderSaveCancelButtons();
 		const c = renderTo(tpl);
 
-		const saveBtn = c.querySelector(".wizard-btn-primary") as HTMLButtonElement;
+		const saveBtn = c.querySelector("epp-button.save-btn") as HTMLElement & {
+			disabled: boolean;
+		};
 		if (saveBtn) {
 			expect(saveBtn.disabled).toBe(true);
 		}
@@ -977,7 +979,9 @@ describe("renderSaveCancelButtons", () => {
 		const tpl = (sv as any).renderSaveCancelButtons();
 		const c = renderTo(tpl);
 
-		const saveBtn = c.querySelector(".wizard-btn-primary") as HTMLButtonElement;
+		const saveBtn = c.querySelector("epp-button.save-btn") as HTMLElement & {
+			disabled: boolean;
+		};
 		if (saveBtn) {
 			expect(saveBtn.disabled).toBe(true);
 		}
@@ -994,7 +998,7 @@ describe("renderSaveCancelButtons", () => {
 			cancelFired = true;
 		});
 
-		const cancelBtn = c.querySelector(".wizard-btn-back") as HTMLElement;
+		const cancelBtn = c.querySelector("epp-button.cancel-btn") as HTMLElement;
 		if (cancelBtn) {
 			cancelBtn.click();
 			expect(cancelFired).toBe(true);
@@ -1012,7 +1016,7 @@ describe("renderSaveCancelButtons", () => {
 			saveFired = true;
 		});
 
-		const saveBtn = c.querySelector(".wizard-btn-primary") as HTMLElement;
+		const saveBtn = c.querySelector("epp-button.save-btn") as HTMLElement;
 		if (saveBtn) {
 			saveBtn.click();
 			expect(saveFired).toBe(true);

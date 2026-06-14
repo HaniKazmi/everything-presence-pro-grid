@@ -400,7 +400,7 @@ describe("_renderSaveCancelButtons DOM events", () => {
 		const tpl = a._renderSaveCancelButtons();
 		const c = renderTo(tpl);
 
-		(c.querySelector(".wizard-btn-primary") as HTMLElement).click();
+		(c.querySelector("epp-button.save-btn") as HTMLElement).click();
 		await vi.waitFor(() => {
 			expect(callWS).toHaveBeenCalledWith(
 				expect.objectContaining({ type: "eppgrid/set_room_layout" }),
@@ -417,7 +417,7 @@ describe("_renderSaveCancelButtons DOM events", () => {
 		const tpl = a._renderSaveCancelButtons();
 		const c = renderTo(tpl);
 
-		(c.querySelector(".wizard-btn-primary") as HTMLElement).click();
+		(c.querySelector("epp-button.save-btn") as HTMLElement).click();
 		// The rejection is routed to the controller-error banner; the click
 		// handler's .catch keeps it from surfacing as an unhandled rejection.
 		await vi.waitFor(() => {
@@ -442,7 +442,7 @@ describe("_renderSaveCancelButtons DOM events", () => {
 		const tpl = a._renderSaveCancelButtons();
 		const c = renderTo(tpl);
 
-		const backBtn = c.querySelector(".wizard-btn-back") as HTMLElement;
+		const backBtn = c.querySelector("epp-button.cancel-btn") as HTMLElement;
 		if (backBtn) {
 			backBtn.click();
 			await vi.waitFor(() => {
