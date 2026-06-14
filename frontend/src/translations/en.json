@@ -330,6 +330,7 @@
 	"tabs": {
 		"device_configuration": "Device Configuration",
 		"flash_firmware": "Flash Firmware",
+		"device_groups": "Device Groups",
 		"help": "Open user guide"
 	},
 	"flasher": {

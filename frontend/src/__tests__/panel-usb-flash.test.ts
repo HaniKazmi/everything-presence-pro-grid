@@ -426,7 +426,7 @@ describe("flasher delete-confirm dialog", () => {
 
 	function getDialogButton(label: string): HTMLElement {
 		const buttons = container.querySelectorAll(
-			".template-dialog .template-dialog-actions button",
+			".template-dialog .template-dialog-actions epp-button",
 		);
 		const btn = Array.from(buttons).find((b) =>
 			b.textContent?.includes(label),

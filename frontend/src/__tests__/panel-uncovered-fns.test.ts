@@ -406,7 +406,7 @@ describe("_renderProtocolBanner update firmware button", () => {
 		a._panelTab = "config";
 		const tpl = a._renderProtocolBanner();
 		const c = renderTo(tpl);
-		const btn = c.querySelector(".wizard-btn-primary") as HTMLElement;
+		const btn = c.querySelector('epp-button[variant="primary"]') as HTMLElement;
 		expect(btn).not.toBeNull();
 		btn.click();
 		expect(a._panelTab).toBe("flasher");

@@ -1254,7 +1254,9 @@ describe("render delete calibration dialog event", () => {
 		const tpl = a.render();
 		const c = renderTo(tpl);
 
-		const backBtn = c.querySelector(".wizard-btn-back") as HTMLElement;
+		const backBtn = c.querySelector(
+			'epp-button[variant="text"]',
+		) as HTMLElement;
 		if (backBtn) {
 			backBtn.click();
 			expect(a._showDeleteCalibrationDialog).toBe(false);
@@ -1315,7 +1317,7 @@ describe("_renderEditor DOM events", () => {
 		const dialogs = c.querySelectorAll(".template-dialog");
 		if (dialogs.length > 0) {
 			const btn = dialogs[dialogs.length - 1].querySelector(
-				".wizard-btn-back",
+				'epp-button[variant="text"]',
 			) as HTMLElement;
 			if (btn) {
 				btn.click();
