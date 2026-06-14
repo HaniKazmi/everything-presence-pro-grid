@@ -65,6 +65,17 @@ describe("exposedSensorChips", () => {
 		]);
 	});
 
+	it("orders names case-insensitively (case never trumps the base letter)", () => {
+		// A naive case-sensitive / ASCII sort would put "Zebra" (capital Z, 0x5A)
+		// before "apple" (0x61); the comparison is case-insensitive so it does not.
+		expect(
+			exposedSensorChips({
+				presence: [],
+				zones: [{ name: "Zebra" }, { name: "apple" }],
+			}).map((c) => c.name),
+		).toEqual(["apple", "Zebra"]);
+	});
+
 	it("sorts zone names numerically (Zone 2 before Zone 10)", () => {
 		expect(
 			exposedSensorChips({

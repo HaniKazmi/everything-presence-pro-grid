@@ -26,8 +26,8 @@ export interface SensorChip {
 /** Every sensor a group exposes as a chip ({name, kind}), in a stable order so
  *  the list view and the editor preview render the same lozenges: Occupancy
  *  first, then the remaining presence sensors alphabetically, then the zones
- *  alphabetically. Name comparison is i18n- and numeric-aware ("Zone 2" before
- *  "Zone 10"). */
+ *  alphabetically. Name comparison is i18n-, case-, and numeric-aware ("Zone 2"
+ *  before "Zone 10"), so the order doesn't hinge on a label's capitalisation. */
 export function exposedSensorChips(exposed: {
 	presence: string[];
 	zones: { name: string }[];
@@ -49,7 +49,10 @@ export function exposedSensorChips(exposed: {
 	ranked.sort(
 		(a, b) =>
 			a.rank - b.rank ||
-			a.name.localeCompare(b.name, undefined, { numeric: true }),
+			a.name.localeCompare(b.name, undefined, {
+				numeric: true,
+				sensitivity: "base",
+			}),
 	);
 	return ranked.map(({ name, kind }) => ({ name, kind }));
 }
