@@ -1,6 +1,7 @@
 import { css, html, LitElement, nothing } from "lit";
 import { property, state } from "lit/decorators.js";
 
+import "../components/epp-confirm-dialog.js";
 import "../components/epp-device-group-editor.js";
 import "../components/epp-kebab-menu.js";
 import type { DeviceGroupsController } from "../controllers/device-groups-controller.js";
@@ -50,6 +51,15 @@ export class EppDeviceGroupsView extends LitElement {
 			color: var(--secondary-text-color, #757575);
 			margin-top: 4px;
 		}
+		.group-warning {
+			display: flex;
+			align-items: center;
+			gap: 6px;
+			margin-top: 4px;
+			font-size: 13px;
+			color: var(--warning-color, #ff9800);
+		}
+		.group-warning ha-icon { --mdc-icon-size: 18px; }
 		.group-sensors {
 			display: flex;
 			align-items: baseline;
@@ -91,6 +101,14 @@ export class EppDeviceGroupsView extends LitElement {
 	@state() private _groups: DeviceGroup[] = [];
 	@state() private _editingGroup: DeviceGroup | null = null;
 	@state() private _creatingNew = false;
+	// True while the open editor has unsaved changes; mirrored up to the panel
+	// (`form-dirty-changed`) so its nav guard warns before leaving.
+	@state() private _editorDirty = false;
+	// The single themed confirm/alert dialog, configured per use.
+	@state() private _dialog:
+		| { kind: "delete"; id: string }
+		| { kind: "error"; heading: string; message: string }
+		| null = null;
 
 	private _unsub: (() => void) | null = null;
 
@@ -113,20 +131,30 @@ export class EppDeviceGroupsView extends LitElement {
 	}
 
 	render() {
-		if (this._editingGroup || this._creatingNew) {
-			return html`
-				<div class="content">
-					<epp-device-group-editor
-						.hass=${this.hass}
-						.availableDevices=${this.availableDevices}
-						.existingGroup=${this._editingGroup}
-						.sourcesByMac=${this._sourcesByMac()}
-						@save=${this._handleSave}
-						@cancel=${this._handleCancel}
-					></epp-device-group-editor>
-				</div>
-			`;
-		}
+		const body =
+			this._editingGroup || this._creatingNew
+				? this._renderEditor()
+				: this._renderList();
+		return html`${body}${this._renderDialog()}`;
+	}
+
+	private _renderEditor() {
+		return html`
+			<div class="content">
+				<epp-device-group-editor
+					.hass=${this.hass}
+					.availableDevices=${this.availableDevices}
+					.existingGroup=${this._editingGroup}
+					.sourcesByMac=${this._sourcesByMac()}
+					@save=${this._handleSave}
+					@cancel=${this._handleCancel}
+					@dirty-changed=${this._onEditorDirty}
+				></epp-device-group-editor>
+			</div>
+		`;
+	}
+
+	private _renderList() {
 		return html`
 			<div class="content">
 				<ha-card>
@@ -160,10 +188,19 @@ export class EppDeviceGroupsView extends LitElement {
 			.sort((a, b) => a.localeCompare(b, undefined, { numeric: true }))
 			.join(", ");
 		const sensors = exposedSensorChips(g.exposed_entities);
+		const hasMissing = g.sources.some((s) => !s.available);
 		return html`
 			<div class="group-card">
 				<div class="group-info">
 					<div class="group-name">${g.name}</div>
+					${
+						hasMissing
+							? html`<div class="group-warning" data-testid="group-warning">
+									<ha-icon icon="mdi:alert"></ha-icon>
+									Some source devices no longer exist
+								</div>`
+							: nothing
+					}
 					${
 						devices
 							? html`<div class="group-devices">${devices}</div>`
@@ -195,7 +232,83 @@ export class EppDeviceGroupsView extends LitElement {
 
 	private _onKebab(g: DeviceGroup, id: string) {
 		if (id === "edit") this._editingGroup = g;
-		else if (id === "delete") this._deleteById(g.id);
+		else if (id === "delete") this._dialog = { kind: "delete", id: g.id };
+	}
+
+	// The editor reports its dirty state; mirror it and bubble a
+	// `form-dirty-changed` up to the panel so its nav guard can warn before a
+	// tab switch / browser navigation / page unload.
+	private _onEditorDirty(e: CustomEvent<{ dirty: boolean }>) {
+		e.stopPropagation();
+		this._setDirty(e.detail.dirty);
+	}
+
+	private _setDirty(dirty: boolean) {
+		if (dirty === this._editorDirty) return;
+		this._editorDirty = dirty;
+		this.dispatchEvent(
+			new CustomEvent("form-dirty-changed", {
+				detail: { dirty },
+				bubbles: true,
+				composed: true,
+			}),
+		);
+	}
+
+	private _closeEditor() {
+		this._setDirty(false);
+		this._editingGroup = null;
+		this._creatingNew = false;
+	}
+
+	private _renderDialog() {
+		const d = this._dialog;
+		const cfg =
+			d?.kind === "delete"
+				? {
+						heading: "Delete device group?",
+						message: "This removes the group and all its helper entities.",
+						confirmLabel: "Delete",
+						danger: true,
+						hideCancel: false,
+					}
+				: d?.kind === "error"
+					? {
+							heading: d.heading,
+							message: d.message,
+							confirmLabel: "OK",
+							danger: false,
+							hideCancel: true,
+						}
+					: {
+							heading: "",
+							message: "",
+							confirmLabel: "OK",
+							danger: false,
+							hideCancel: false,
+						};
+		return html`<epp-confirm-dialog
+			.open=${d !== null}
+			.heading=${cfg.heading}
+			.message=${cfg.message}
+			.confirmLabel=${cfg.confirmLabel}
+			.danger=${cfg.danger}
+			.hideCancel=${cfg.hideCancel}
+			@confirm=${this._onDialogConfirm}
+			@cancel=${this._onDialogCancel}
+		></epp-confirm-dialog>`;
+	}
+
+	private _onDialogConfirm() {
+		const d = this._dialog;
+		this._dialog = null;
+		if (!d) return;
+		if (d.kind === "delete") this._deleteById(d.id);
+		// "error" just dismisses.
+	}
+
+	private _onDialogCancel() {
+		this._dialog = null;
 	}
 
 	private _sourcesByMac(): Record<string, DeviceGroupSource> {
@@ -219,27 +332,36 @@ export class EppDeviceGroupsView extends LitElement {
 			} else {
 				await this.controller.create(d.name, d.sources, d.area_id);
 			}
-			this._editingGroup = null;
-			this._creatingNew = false;
+			this._closeEditor();
 		} catch (err) {
 			console.error("Failed to save device group", err);
-			alert(`Save failed: ${err instanceof Error ? err.message : String(err)}`);
+			this._dialog = {
+				kind: "error",
+				heading: "Save failed",
+				message: err instanceof Error ? err.message : String(err),
+			};
 		}
 	}
 
 	private _handleCancel(e: CustomEvent) {
 		e.stopPropagation();
-		this._editingGroup = null;
-		this._creatingNew = false;
+		// Cancel is an explicit discard — close immediately (and clear the dirty
+		// flag so navigation isn't blocked). The unsaved-changes warning is only
+		// for *navigating away* (tab switch / browser nav), handled by the panel.
+		this._closeEditor();
 	}
 
 	private async _deleteById(id: string) {
-		if (!confirm("Delete this device group?")) return;
 		try {
 			await this.controller.delete(id);
-			this._editingGroup = null;
+			this._closeEditor();
 		} catch (err) {
 			console.error("Failed to delete device group", err);
+			this._dialog = {
+				kind: "error",
+				heading: "Delete failed",
+				message: err instanceof Error ? err.message : String(err),
+			};
 		}
 	}
 }

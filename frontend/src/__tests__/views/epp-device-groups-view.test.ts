@@ -90,20 +90,34 @@ function kebabSelect(el: EppDeviceGroupsView, id: string, idx = 0): void {
 	);
 }
 
-describe("epp-device-groups-view", () => {
-	let confirmSpy: ReturnType<typeof vi.fn>;
-	let alertSpy: ReturnType<typeof vi.fn>;
+// The view confirms destructive actions and surfaces errors with an in-panel
+// epp-confirm-dialog rather than window.confirm/alert. These reach into the
+// dialog's shadow root to drive its buttons.
+function dialogEl(el: EppDeviceGroupsView): {
+	open: boolean;
+	heading: string;
+	message: string;
+	shadowRoot: ShadowRoot | null;
+} | null {
+	return el.shadowRoot!.querySelector("epp-confirm-dialog") as never;
+}
+function clickDialog(
+	el: EppDeviceGroupsView,
+	which: "confirm" | "cancel",
+): void {
+	(
+		dialogEl(el)!.shadowRoot!.querySelector(
+			`[data-testid="dialog-${which}"]`,
+		) as HTMLElement
+	).click();
+}
 
+describe("epp-device-groups-view", () => {
 	beforeEach(() => {
-		confirmSpy = vi.fn().mockReturnValue(true);
-		alertSpy = vi.fn();
-		vi.stubGlobal("confirm", confirmSpy);
-		vi.stubGlobal("alert", alertSpy);
 		vi.spyOn(console, "error").mockImplementation(() => {});
 	});
 
 	afterEach(() => {
-		vi.unstubAllGlobals();
 		vi.restoreAllMocks();
 	});
 
@@ -240,6 +254,38 @@ describe("epp-device-groups-view", () => {
 		expect(menu.items[2].icon).toBeTruthy();
 	});
 
+	it("flags a group that references devices which no longer exist", async () => {
+		const ctrl = makeController();
+		const el = await fixture(ctrl);
+		ctrl.emit([
+			makeGroup({
+				sources: [
+					{
+						mac: "28:DEAD",
+						name: "28:DEAD",
+						available: false,
+						enabled_presence: [],
+						zones: [],
+					},
+				],
+			}),
+		]);
+		await el.updateComplete;
+		const warn = el.shadowRoot!.querySelector('[data-testid="group-warning"]');
+		expect(warn).not.toBeNull();
+		expect(warn!.textContent!.toLowerCase()).toContain("no longer");
+	});
+
+	it("does not flag a group whose source devices are all available", async () => {
+		const ctrl = makeController();
+		const el = await fixture(ctrl);
+		ctrl.emit([makeGroup()]); // default source is available
+		await el.updateComplete;
+		expect(
+			el.shadowRoot!.querySelector('[data-testid="group-warning"]'),
+		).toBeNull();
+	});
+
 	it("renders only the name when a group has no devices or sensors", async () => {
 		const ctrl = makeController();
 		const el = await fixture(ctrl);
@@ -332,7 +378,7 @@ describe("epp-device-groups-view", () => {
 		expect(ctrl.update).toHaveBeenCalledWith(payload);
 	});
 
-	it("surfaces a save failure with an alert and keeps the editor open", async () => {
+	it("surfaces a save failure in an error dialog and keeps the editor open", async () => {
 		const ctrl = makeController();
 		ctrl.create.mockRejectedValueOnce(new Error("boom"));
 		const el = await fixture(ctrl);
@@ -351,13 +397,15 @@ describe("epp-device-groups-view", () => {
 		await Promise.resolve();
 		await Promise.resolve();
 		await el.updateComplete;
-		expect(alertSpy).toHaveBeenCalledWith("Save failed: boom");
+		expect(dialogEl(el)!.open).toBe(true);
+		expect(dialogEl(el)!.heading).toBe("Save failed");
+		expect(dialogEl(el)!.message).toContain("boom");
 		expect(
 			el.shadowRoot!.querySelector("epp-device-group-editor"),
 		).not.toBeNull();
 	});
 
-	it("cancel returns to the list", async () => {
+	it("cancel returns to the list immediately with no dialog", async () => {
 		const ctrl = makeController();
 		const el = await fixture(ctrl);
 		createBtn(el).click();
@@ -370,40 +418,114 @@ describe("epp-device-groups-view", () => {
 		);
 		await el.updateComplete;
 		expect(el.shadowRoot!.querySelector("epp-device-group-editor")).toBeNull();
+		expect(dialogEl(el)!.open).toBe(false);
 	});
 
-	it("kebab Delete calls controller.delete after confirmation", async () => {
+	it("cancel discards a dirty form immediately (no confirm) and clears dirty", async () => {
+		const ctrl = makeController();
+		const el = await fixture(ctrl);
+		const seen: boolean[] = [];
+		el.addEventListener("form-dirty-changed", (e) =>
+			seen.push((e as CustomEvent).detail.dirty),
+		);
+		createBtn(el).click();
+		await el.updateComplete;
+		const editor = el.shadowRoot!.querySelector(
+			"epp-device-group-editor",
+		) as HTMLElement;
+		editor.dispatchEvent(
+			new CustomEvent("dirty-changed", {
+				detail: { dirty: true },
+				bubbles: true,
+				composed: true,
+			}),
+		);
+		editor.dispatchEvent(
+			new CustomEvent("cancel", { bubbles: true, composed: true }),
+		);
+		await el.updateComplete;
+		// editor closed straight away, no discard dialog
+		expect(el.shadowRoot!.querySelector("epp-device-group-editor")).toBeNull();
+		expect(dialogEl(el)!.open).toBe(false);
+		// dirty went true (edit) then false (cancel cleared it)
+		expect(seen).toEqual([true, false]);
+	});
+
+	it("relays the editor's dirty state up as form-dirty-changed", async () => {
+		const ctrl = makeController();
+		const el = await fixture(ctrl);
+		const seen: boolean[] = [];
+		el.addEventListener("form-dirty-changed", (e) =>
+			seen.push((e as CustomEvent).detail.dirty),
+		);
+		createBtn(el).click();
+		await el.updateComplete;
+		const editor = el.shadowRoot!.querySelector(
+			"epp-device-group-editor",
+		) as HTMLElement;
+		editor.dispatchEvent(
+			new CustomEvent("dirty-changed", {
+				detail: { dirty: true },
+				bubbles: true,
+				composed: true,
+			}),
+		);
+		// closing the editor (cancel on a clean form) reports not-dirty again
+		editor.dispatchEvent(
+			new CustomEvent("dirty-changed", {
+				detail: { dirty: false },
+				bubbles: true,
+				composed: true,
+			}),
+		);
+		expect(seen).toEqual([true, false]);
+	});
+
+	it("kebab Delete confirms in a dialog before calling controller.delete", async () => {
 		const ctrl = makeController();
 		const el = await fixture(ctrl);
 		ctrl.emit([makeGroup()]);
 		await el.updateComplete;
 		kebabSelect(el, "delete");
+		await el.updateComplete;
+		expect(ctrl.delete).not.toHaveBeenCalled(); // dialog first
+		expect(dialogEl(el)!.open).toBe(true);
+		clickDialog(el, "confirm");
 		await Promise.resolve();
 		expect(ctrl.delete).toHaveBeenCalledWith("g1");
 	});
 
-	it("kebab Delete is a no-op when the user cancels the confirm", async () => {
-		confirmSpy.mockReturnValue(false);
+	it("kebab Delete is a no-op when the dialog is dismissed", async () => {
 		const ctrl = makeController();
 		const el = await fixture(ctrl);
 		ctrl.emit([makeGroup()]);
 		await el.updateComplete;
 		kebabSelect(el, "delete");
+		await el.updateComplete;
+		clickDialog(el, "cancel");
 		await Promise.resolve();
 		expect(ctrl.delete).not.toHaveBeenCalled();
+		expect(dialogEl(el)!.open).toBe(false);
 	});
 
-	it("logs a delete failure without throwing", async () => {
+	it("surfaces a delete failure in an error dialog without throwing", async () => {
 		const ctrl = makeController();
 		ctrl.delete.mockRejectedValueOnce(new Error("nope"));
 		const el = await fixture(ctrl);
 		ctrl.emit([makeGroup()]);
 		await el.updateComplete;
 		kebabSelect(el, "delete");
+		await el.updateComplete;
+		clickDialog(el, "confirm");
 		await Promise.resolve();
 		await Promise.resolve();
+		await el.updateComplete;
 		expect(ctrl.delete).toHaveBeenCalledWith("g1");
 		expect(console.error).toHaveBeenCalled();
+		// the failure is shown to the user, not just logged
+		expect(dialogEl(el)!.open).toBe(true);
+		expect(dialogEl(el)!.heading).toBe("Delete failed");
+		expect(dialogEl(el)!.message).toContain("nope");
 	});
 
 	it("passes a sourcesByMac map (group sources + all candidate devices) to the editor", async () => {

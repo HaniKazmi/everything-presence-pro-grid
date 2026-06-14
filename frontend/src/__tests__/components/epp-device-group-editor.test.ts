@@ -106,6 +106,24 @@ const EXISTING: DeviceGroup = {
 	exposed_entities: { presence: [], zones: [] },
 };
 
+// A group referencing a source device that no longer exists (available: false,
+// name fell back to the MAC) alongside a still-present source.
+const DEAD_SOURCE: DeviceGroupSource = {
+	mac: "28:DEAD",
+	name: "28:DEAD",
+	available: false,
+	enabled_presence: [],
+	zones: [],
+};
+const EXISTING_WITH_MISSING: DeviceGroup = {
+	id: "g2",
+	name: "Stale",
+	area_id: null,
+	sources: [SOURCE_AA, DEAD_SOURCE],
+	zone_groups: [],
+	exposed_entities: { presence: [], zones: [] },
+};
+
 describe("epp-device-group-editor", () => {
 	it("is registered as a custom element", () => {
 		expect(customElements.get("epp-device-group-editor")).toBeDefined();
@@ -231,6 +249,147 @@ describe("epp-device-group-editor", () => {
 		setToggle(el, "AA", true);
 		await el.updateComplete;
 		expect((saveBtn(el) as HTMLButtonElement).disabled).toBe(false);
+	});
+
+	it("keeps Save disabled when editing until a change is made", async () => {
+		const el = await fixture();
+		el.availableDevices = DEVICES;
+		el.sourcesByMac = { AA: SOURCE_AA };
+		el.existingGroup = EXISTING; // already valid (name + source)
+		await el.updateComplete;
+		// valid but pristine -> Save stays disabled
+		expect((saveBtn(el) as HTMLButtonElement).disabled).toBe(true);
+		setName(el, "Bedroom 2");
+		await el.updateComplete;
+		expect((saveBtn(el) as HTMLButtonElement).disabled).toBe(false);
+	});
+
+	it("re-disables Save when an edit is reverted to the original", async () => {
+		const el = await fixture();
+		el.availableDevices = DEVICES;
+		el.sourcesByMac = { AA: SOURCE_AA };
+		el.existingGroup = EXISTING;
+		await el.updateComplete;
+		setName(el, "Changed");
+		await el.updateComplete;
+		expect((saveBtn(el) as HTMLButtonElement).disabled).toBe(false);
+		setName(el, "Bedroom"); // back to the pristine value
+		await el.updateComplete;
+		expect((saveBtn(el) as HTMLButtonElement).disabled).toBe(true);
+	});
+
+	it("emits dirty-changed true then false as the form is changed and reverted", async () => {
+		const el = await fixture();
+		el.availableDevices = DEVICES;
+		el.sourcesByMac = { AA: SOURCE_AA };
+		const seen: boolean[] = [];
+		el.addEventListener("dirty-changed", (e) =>
+			seen.push((e as CustomEvent).detail.dirty),
+		);
+		el.existingGroup = EXISTING; // load -> pristine, no emit
+		await el.updateComplete;
+		setName(el, "X");
+		await el.updateComplete;
+		setName(el, "Bedroom");
+		await el.updateComplete;
+		expect(seen).toEqual([true, false]);
+	});
+
+	it("flags a missing source device with a warning + a removable row", async () => {
+		const el = await fixture();
+		el.availableDevices = DEVICES; // AA, BB — note: 28:DEAD is gone
+		el.sourcesByMac = { AA: SOURCE_AA };
+		el.existingGroup = EXISTING_WITH_MISSING;
+		await el.updateComplete;
+		// a warning note is shown
+		expect(
+			el.shadowRoot!.querySelector('[data-testid="missing-warning"]'),
+		).not.toBeNull();
+		// the missing device is listed as its own row (with a toggle to drop it)
+		const row = el.shadowRoot!.querySelector('[data-testid="missing-source"]');
+		expect(row).not.toBeNull();
+		expect(row!.textContent).toContain("28:DEAD");
+		expect(toggle(el, "28:DEAD")).not.toBeNull();
+	});
+
+	it("toggling off a missing source drops it from the save payload", async () => {
+		const el = await fixture();
+		el.availableDevices = DEVICES;
+		el.sourcesByMac = { AA: SOURCE_AA };
+		el.existingGroup = EXISTING_WITH_MISSING;
+		await el.updateComplete;
+		setToggle(el, "28:DEAD", false);
+		await el.updateComplete;
+		const detail = new Promise<Record<string, unknown>>((resolve) => {
+			el.addEventListener("save", (e) => resolve((e as CustomEvent).detail), {
+				once: true,
+			});
+		});
+		saveBtn(el).click();
+		expect((await detail).sources).toEqual(["AA"]);
+	});
+
+	it("removing a source prunes its merged-zone members and drops empty merged zones", async () => {
+		const el = await fixture();
+		el.availableDevices = DEVICES; // AA, BB
+		el.sourcesByMac = { AA: SOURCE_AA, BB: SOURCE_BB };
+		el.existingGroup = {
+			id: "g3",
+			name: "Mixed",
+			area_id: null,
+			sources: [SOURCE_AA, SOURCE_BB],
+			zone_groups: [
+				{
+					id: "zgX",
+					name: "Span",
+					members: [
+						{ mac: "AA", zone_index: 2 },
+						{ mac: "BB", zone_index: 3 },
+					],
+				},
+				{ id: "zgY", name: "Solo", members: [{ mac: "BB", zone_index: 3 }] },
+			],
+			exposed_entities: { presence: [], zones: [] },
+		};
+		await el.updateComplete;
+		setToggle(el, "BB", false); // remove BB
+		await el.updateComplete;
+		const detail = new Promise<Record<string, unknown>>((resolve) => {
+			el.addEventListener("save", (e) => resolve((e as CustomEvent).detail), {
+				once: true,
+			});
+		});
+		saveBtn(el).click();
+		const payload = await detail;
+		expect(payload.sources).toEqual(["AA"]);
+		// zgX keeps only AA's member; zgY (BB-only) is dropped entirely
+		expect(payload.zone_groups).toEqual([
+			{ id: "zgX", name: "Span", members: [{ mac: "AA", zone_index: 2 }] },
+		]);
+	});
+
+	it("does not show a missing-source warning when every source is present", async () => {
+		const el = await fixture();
+		el.availableDevices = DEVICES;
+		el.sourcesByMac = { AA: SOURCE_AA };
+		el.existingGroup = EXISTING; // only SOURCE_AA, which is available
+		await el.updateComplete;
+		expect(
+			el.shadowRoot!.querySelector('[data-testid="missing-warning"]'),
+		).toBeNull();
+		expect(
+			el.shadowRoot!.querySelector('[data-testid="missing-source"]'),
+		).toBeNull();
+	});
+
+	it("renders Cancel to the left of Save", async () => {
+		const el = await fixture();
+		el.availableDevices = DEVICES;
+		await el.updateComplete;
+		const labels = [...el.shadowRoot!.querySelectorAll("ha-button")].map((b) =>
+			b.textContent?.trim(),
+		);
+		expect(labels.indexOf("Cancel")).toBeLessThan(labels.indexOf("Save"));
 	});
 
 	it("toggling a source off removes it from the draft", async () => {

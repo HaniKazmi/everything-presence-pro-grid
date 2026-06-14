@@ -351,6 +351,17 @@ shared helpers back the UI:
   (the group's presence + zone sensors as one sorted, numeric-aware chip list),
   and `EDIT_DELETE_KEBAB_ITEMS` (the shared Edit/Delete kebab items), so the
   list view and the editor render identical, consistent labels.
+- **`components/epp-confirm-dialog.ts`** — a reusable themed modal (reusing the
+  panel's shared `dialogStyles`) for confirm/alert prompts; the device-groups
+  view uses it for delete-confirm and save/delete errors instead of the
+  browser's `window.confirm`/`alert`.
+
+The editor tracks unsaved changes (an order-insensitive `canon()` snapshot) and
+emits `dirty-changed`; the view relays it to the panel as `form-dirty-changed`,
+which feeds the panel's `NavigationGuardController` so leaving with unsaved
+edits (tab switch, browser nav, page unload) warns via the shared unsaved-
+changes dialog. The panel renders its global dialogs once, unconditionally, in
+`render()` so every tab/status branch shows them.
 
 ## TypeScript Frontend
 
