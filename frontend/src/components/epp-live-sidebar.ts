@@ -69,7 +69,7 @@ export class EppLiveSidebar extends LitElement {
     }
 
     .live-section-header {
-      font-size: var(--epp-font-xs, 11px);
+      font-size: 11px;
       font-weight: 600;
       color: var(--epp-text-muted, var(--secondary-text-color, #888));
       text-transform: uppercase;

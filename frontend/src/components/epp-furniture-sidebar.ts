@@ -46,7 +46,7 @@ export class EppFurnitureSidebar extends LitElement {
 
 			.furn-dims label {
 				flex: 1;
-				font-size: var(--epp-font-xs, 11px);
+				font-size: 11px;
 				color: var(--epp-text-muted, var(--secondary-text-color, #757575));
 				display: flex;
 				flex-direction: column;
@@ -57,7 +57,7 @@ export class EppFurnitureSidebar extends LitElement {
 				width: 100%;
 				padding: var(--epp-space-1, 4px);
 				border: 1px solid var(--divider-color, #e0e0e0);
-				border-radius: var(--epp-radius-sm, 4px);
+				border-radius: 4px;
 				font-size: var(--epp-font-xs, 12px);
 				box-sizing: border-box;
 				background: var(--card-background-color, #fff);
@@ -72,7 +72,7 @@ export class EppFurnitureSidebar extends LitElement {
 				padding: 6px var(--epp-space-2, 8px);
 				margin-bottom: 6px;
 				border: 1px solid var(--divider-color, #e0e0e0);
-				border-radius: var(--epp-radius-sm, 4px);
+				border-radius: 4px;
 				font-size: var(--epp-font-xs, 12px);
 				box-sizing: border-box;
 				background: var(--card-background-color, #fff);
@@ -98,7 +98,7 @@ export class EppFurnitureSidebar extends LitElement {
 				border-radius: 8px;
 				background: var(--card-background-color, #fff);
 				cursor: pointer;
-				font-size: var(--epp-font-xs, 11px);
+				font-size: 11px;
 				color: var(--primary-text-color, #212121);
 				text-align: center;
 				transition: background 0.15s;

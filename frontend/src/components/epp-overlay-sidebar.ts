@@ -93,7 +93,7 @@ export class EppOverlaySidebar extends LitElement {
 		}
 
 		.overlay-hint {
-			font-size: var(--epp-font-xs, 11px);
+			font-size: 11px;
 			color: var(--epp-text-muted, var(--secondary-text-color, #757575));
 		}
 
