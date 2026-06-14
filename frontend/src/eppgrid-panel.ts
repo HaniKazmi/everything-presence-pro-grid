@@ -1,6 +1,7 @@
 import { css, html, LitElement, nothing, type PropertyValues } from "lit";
 import { property, state } from "lit/decorators.js";
 
+import "./ui/index.js";
 import "./components/epp-configuration-dialogs.js";
 import "./components/epp-flasher-view.js";
 import "./components/epp-furniture-sidebar.js";
