@@ -34,12 +34,12 @@ export class EppInfoTip extends LitElement {
         cursor: pointer;
         display: inline-flex;
         align-items: center;
-        color: var(--secondary-text-color, #757575);
+        color: var(--epp-text-muted, var(--secondary-text-color, #757575));
         font: inherit;
       }
 
       button:hover {
-        color: var(--primary-color, #03a9f4);
+        color: var(--epp-accent, var(--primary-color, #03a9f4));
       }
 
       ha-icon {
@@ -49,13 +49,13 @@ export class EppInfoTip extends LitElement {
       .info-tip-tooltip {
         display: none;
         position: fixed;
-        background: var(--card-background-color, #fff);
-        border: 1px solid var(--divider-color, #e0e0e0);
-        border-radius: 8px;
-        padding: 10px 12px;
-        font-size: 12px;
-        color: var(--primary-text-color, #212121);
-        box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+        background: var(--epp-surface, var(--card-background-color, #fff));
+        border: 1px solid var(--epp-border, var(--divider-color, #e0e0e0));
+        border-radius: var(--epp-radius-md, 8px);
+        padding: var(--epp-space-2, 10px) var(--epp-space-3, 12px);
+        font-size: var(--epp-font-xs, 12px);
+        color: var(--epp-text, var(--primary-text-color, #212121));
+        box-shadow: var(--epp-elevation-1, 0 2px 8px rgba(0, 0, 0, 0.15));
         white-space: normal;
         width: 240px;
         z-index: 9999;
