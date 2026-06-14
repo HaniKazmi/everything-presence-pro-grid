@@ -165,19 +165,20 @@ export const settingStyles = css`
     gap: 4px;
   }
 
+  /* .setting-group is superseded by epp-card; kept for any legacy references. */
   .setting-group {
-    background: var(--card-background-color, #fff);
-    border-radius: 12px;
-    padding: 16px;
-    margin-bottom: 12px;
-    border: 1px solid var(--divider-color, #e0e0e0);
+    background: var(--epp-surface, var(--card-background-color, #fff));
+    border-radius: var(--epp-radius-md, 12px);
+    padding: var(--epp-space-4, 16px);
+    margin-bottom: var(--epp-space-3, 12px);
+    border: 1px solid var(--epp-border, var(--divider-color, #e0e0e0));
   }
 
   .setting-group h4 {
-    margin: 0 0 12px;
-    font-size: 14px;
-    font-weight: 600;
-    color: var(--primary-text-color, #212121);
+    margin: 0 0 var(--epp-space-3, 12px);
+    font-size: var(--epp-font-sm, 14px);
+    font-weight: var(--epp-weight-semibold, 600);
+    color: var(--epp-text, var(--primary-text-color, #212121));
   }
 
   .setting-row {
@@ -185,9 +186,9 @@ export const settingStyles = css`
     align-items: center;
     justify-content: space-between;
     flex-wrap: wrap;
-    padding: 8px 0;
-    gap: 4px;
-    border-bottom: 1px solid var(--divider-color, #f0f0f0);
+    padding: var(--epp-space-2, 8px) 0;
+    gap: var(--epp-space-1, 4px);
+    border-bottom: 1px solid var(--epp-border, var(--divider-color, #f0f0f0));
   }
 
   .setting-row:last-child {
@@ -196,8 +197,8 @@ export const settingStyles = css`
   }
 
   .setting-row label:not(.toggle-switch) {
-    font-size: 14px;
-    color: var(--primary-text-color, #212121);
+    font-size: var(--epp-font-sm, 14px);
+    color: var(--epp-text, var(--primary-text-color, #212121));
     flex: 1;
     min-width: 120px;
   }
@@ -205,9 +206,9 @@ export const settingStyles = css`
   .setting-input-unit {
     display: flex;
     align-items: center;
-    gap: 6px;
-    font-size: 13px;
-    color: var(--secondary-text-color, #757575);
+    gap: var(--epp-space-1-5, 6px);
+    font-size: var(--epp-font-xs, 13px);
+    color: var(--epp-text-secondary, var(--secondary-text-color, #757575));
     flex: 1;
     min-width: 0;
     justify-content: flex-end;
@@ -220,9 +221,9 @@ export const settingStyles = css`
   }
 
   .setting-value {
-    font-size: 14px;
-    color: var(--secondary-text-color, #757575);
-    font-weight: 500;
+    font-size: var(--epp-font-sm, 14px);
+    color: var(--epp-text-secondary, var(--secondary-text-color, #757575));
+    font-weight: var(--epp-weight-medium, 500);
     display: inline-block;
     width: 36px;
     text-align: right;
@@ -232,8 +233,8 @@ export const settingStyles = css`
   .setting-unit {
     display: inline-block;
     width: 24px;
-    font-size: 13px;
-    color: var(--secondary-text-color, #757575);
+    font-size: var(--epp-font-xs, 13px);
+    color: var(--epp-text-secondary, var(--secondary-text-color, #757575));
     flex-shrink: 0;
   }
 `;

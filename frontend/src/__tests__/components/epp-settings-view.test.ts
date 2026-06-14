@@ -2397,7 +2397,7 @@ describe("LED settings section", () => {
 
 		const body = c.querySelector(".accordion-body");
 		expect(body).not.toBeNull();
-		expect(body!.querySelector(".setting-group")).not.toBeNull();
+		expect(body!.querySelector("epp-card")).not.toBeNull();
 		document.body.removeChild(c);
 	});
 

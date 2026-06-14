@@ -13,7 +13,6 @@ import { defaultLocalize, type LocalizeFn } from "../localize.js";
 import { buttonStyles, settingStyles, toggleStyles } from "../styles.js";
 import "./epp-info-tip.js";
 import "../ui/epp-card.js";
-import "../ui/epp-section-row.js";
 import "../ui/epp-toggle.js";
 import { renderSaveCancelBar } from "./save-cancel-bar.js";
 
@@ -673,8 +672,10 @@ export class EppSettingsView extends LitElement {
 		return html`
       <div class="settings-section">
         ${metrics ? html`<p style="font-size: 13px; color: var(--secondary-text-color, #757575); margin: 0 0 12px;">${this.localize("settings.furthest_point")} <span style="font-weight: 700; color: var(--error-color, #db4437);">${this.localize.formatNumber(metrics.furthestM, 1)}m</span></p>` : nothing}
-        <div class="setting-group">
-          <h4>${this.localize("settings.target_sensor")}</h4>
+        <epp-card heading=${this.localize("settings.target_sensor")}>
+          <!-- .setting-row conversion to epp-section-row is deferred: _resetSlider
+               uses closest(".setting-row") and slider rows don't map cleanly to
+               the label/control shape. -->
           <div class="setting-row">
             <label>${this.localize("settings.auto")}</label>
             <epp-toggle
@@ -704,9 +705,9 @@ export class EppSettingsView extends LitElement {
 							}} /><span class="setting-value">${this.localize.formatNumber(targetVal, 1)}</span><span class="setting-unit">m</span></span>
             ${this.resetBtn(targetAutoVal, "targetMaxDistance")}${this.infoTip(this.localize("info.target_max_distance"))}
           </div>
-        </div>
-        <div class="setting-group">
-          <h4>${this.localize("settings.static_sensor")}</h4>
+        </epp-card>
+        <epp-card heading=${this.localize("settings.static_sensor")}>
+          <!-- .setting-row conversion deferred — see comment above -->
           <div class="setting-row">
             <label>${this.localize("settings.auto")}</label>
             <epp-toggle
@@ -762,7 +763,7 @@ export class EppSettingsView extends LitElement {
 							}} /><span class="setting-value">${this.localize.formatNumber(staticMaxVal, 1)}</span><span class="setting-unit">m</span></span>
             ${this.resetBtn(staticMaxAutoVal, "staticMaxDistance")}${this.infoTip(this.localize("info.static_max_distance"))}
           </div>
-        </div>
+        </epp-card>
       </div>
     `;
 	}
@@ -870,24 +871,27 @@ export class EppSettingsView extends LitElement {
       <div class="settings-section">
         ${groups.map(
 					(g) => html`
-        <div class="setting-group">
-          <h4>${this.localize(g.title)}</h4>
+        <epp-card heading=${this.localize(g.title)}>
+          <!-- .setting-row conversion to epp-section-row is deferred: _resetSlider
+               uses closest(".setting-row") and slider rows don't map cleanly to
+               the label/control shape. -->
           ${g.rows.map((row) => this.renderSliderRow(row))}
-        </div>
+        </epp-card>
         `,
 				)}
-        <div class="setting-group">
-          <h4>${this.localize("settings.assisted_clear")}</h4>
+        <epp-card heading=${this.localize("settings.assisted_clear")}>
+          <!-- .setting-row conversion deferred — see comment above -->
           <div class="setting-row">
             <label>${this.localize("settings.assisted_clear_enabled")}</label>
-            ${this.renderToggle({
-							checked: this.assistedClearEnabled,
-							onChange: (e: Event) => {
-								const checked = (e.target as HTMLInputElement).checked;
+            <epp-toggle
+              .checked=${this.assistedClearEnabled}
+              @value-changed=${(e: CustomEvent<{ value: boolean }>) => {
+								e.stopPropagation();
+								const checked = e.detail.value;
 								this._overrides.assistedClearEnabled = checked;
 								this._fireChange("assistedClearEnabled", checked);
-							},
-						})}
+							}}
+            ></epp-toggle>
             ${this.infoTip(this.localize("info.assisted_clear_enabled"))}
           </div>
           ${this.renderSliderRow({
@@ -901,13 +905,13 @@ export class EppSettingsView extends LitElement {
 						tip: "info.assisted_clear_timeout",
 						disabled: !this.assistedClearEnabled,
 					})}
-        </div>
-        <div class="setting-group">
-          <h4>${this.localize("settings.environmental")}</h4>
+        </epp-card>
+        <epp-card heading=${this.localize("settings.environmental")}>
+          <!-- .setting-row conversion deferred — see comment above -->
           ${this.renderEnvOffset(this.localize("settings.illuminance_offset"), () => this.sensorState.illuminance, "illuminance", -500, 500, 1, "lux", 1, this.localize("info.illuminance_offset"), 0)}
           ${this.renderEnvOffset(this.localize("settings.humidity_offset"), () => this.sensorState.humidity, "humidity", -50, 50, 0.1, "%", 1, this.localize("info.humidity_offset"), 0, 100)}
           ${this.renderEnvOffset(this.localize("settings.temperature_offset"), () => this.sensorState.temperature, "temperature", -20, 20, 0.1, "°C", 1, this.localize("info.temperature_offset"))}
-        </div>
+        </epp-card>
       </div>
     `;
 	}
@@ -1079,12 +1083,14 @@ export class EppSettingsView extends LitElement {
 
 		return html`
       <div class="settings-section">
-        <div class="setting-group">
-          <h4>${this.localize("entities.room_level")}</h4>
+        <epp-card heading=${this.localize("entities.room_level")}>
+          <!-- .setting-row conversion to epp-section-row is deferred: _resetSlider
+               uses closest(".setting-row") and slider rows don't map cleanly to
+               the label/control shape. -->
           ${rows(ROOM_TOGGLES)}
-        </div>
-        <div class="setting-group">
-          <h4>${this.localize("entities.zone_level")}</h4>
+        </epp-card>
+        <epp-card heading=${this.localize("entities.zone_level")}>
+          <!-- .setting-row conversion deferred — see comment above -->
           ${rows(ZONE_TOGGLES)}
           <div class="setting-row">
             <label>${this.localize("settings.update_rate")}</label>
@@ -1108,9 +1114,9 @@ export class EppSettingsView extends LitElement {
               @closed=${this._stopClosed}>
             </ha-select>
           </div>
-        </div>
-        <div class="setting-group">
-          <h4>${this.localize("entities.target_level")}</h4>
+        </epp-card>
+        <epp-card heading=${this.localize("entities.target_level")}>
+          <!-- .setting-row conversion deferred — see comment above -->
           ${rows(TARGET_TOGGLES)}
           <div class="setting-row">
             <label>${this.localize("settings.update_rate")}</label>
@@ -1131,11 +1137,11 @@ export class EppSettingsView extends LitElement {
               @closed=${this._stopClosed}>
             </ha-select>
           </div>
-        </div>
-        <div class="setting-group">
-          <h4>${this.localize("settings.environmental")}</h4>
+        </epp-card>
+        <epp-card heading=${this.localize("settings.environmental")}>
+          <!-- .setting-row conversion deferred — see comment above -->
           ${rows(ENV_TOGGLES)}
-        </div>
+        </epp-card>
       </div>
     `;
 	}
@@ -1145,7 +1151,10 @@ export class EppSettingsView extends LitElement {
 
 		return html`
       <div class="settings-section">
-        <div class="setting-group">
+        <epp-card>
+          <!-- .setting-row conversion to epp-section-row is deferred: _resetSlider
+               uses closest(".setting-row") and slider rows don't map cleanly to
+               the label/control shape. -->
           ${LOG_CATEGORIES.map((c) => {
 						const overrides = this._overrides.logLevels || {};
 						const current = overrides[c.key] ?? this.logLevels[c.key] ?? "None";
@@ -1195,7 +1204,7 @@ export class EppSettingsView extends LitElement {
               </div>
             `;
 					})}
-        </div>
+        </epp-card>
       </div>
     `;
 	}
@@ -1211,8 +1220,10 @@ export class EppSettingsView extends LitElement {
 
 		return html`
       <div class="settings-section">
-        <div class="setting-group">
-          <h4>${this.localize("settings.led")}</h4>
+        <epp-card heading=${this.localize("settings.led")}>
+          <!-- .setting-row conversion to epp-section-row is deferred: _resetSlider
+               uses closest(".setting-row") and slider rows don't map cleanly to
+               the label/control shape. -->
           <div class="setting-row">
             <label>${this.localize("settings.led_mode")}</label>
             <ha-select class="wide-select" .value=${mode} .options=${modes} @selected=${(
@@ -1262,7 +1273,7 @@ export class EppSettingsView extends LitElement {
           </div>`
 							: nothing
 					}
-        </div>
+        </epp-card>
       </div>
     `;
 	}
@@ -1281,8 +1292,10 @@ export class EppSettingsView extends LitElement {
 
 		return html`
       <div class="settings-section">
-        <div class="setting-group">
-          <h4>${this.localize("settings.relay")}</h4>
+        <epp-card heading=${this.localize("settings.relay")}>
+          <!-- .setting-row conversion to epp-section-row is deferred: _resetSlider
+               uses closest(".setting-row") and slider rows don't map cleanly to
+               the label/control shape. -->
           <div class="setting-row">
             <label>${this.localize("settings.relay_trigger_mode")}</label>
             <ha-select class="wide-select"
@@ -1327,7 +1340,7 @@ export class EppSettingsView extends LitElement {
           `
 							: nothing
 					}
-        </div>
+        </epp-card>
       </div>
     `;
 	}

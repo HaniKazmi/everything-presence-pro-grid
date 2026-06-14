@@ -263,8 +263,11 @@ describe("render() dispatches to correct view", () => {
 		a._view = "live";
 		a._showDeleteCalibrationDialog = true;
 		const c = renderTo(a.render());
-		expect(c.querySelector(".template-dialog")).not.toBeNull();
-		expect(c.textContent).toContain("dialogs.delete_calibration_title");
+		const dialog = c.querySelector("epp-dialog[open]");
+		expect(dialog).not.toBeNull();
+		expect(dialog?.getAttribute("heading")).toContain(
+			"dialogs.delete_calibration_title",
+		);
 	});
 });
 
@@ -547,7 +550,9 @@ describe("_renderWizardCorners (via EppWizard)", () => {
 		expect(warning).not.toBeNull();
 		expect(warning.getAttribute("style")).toContain("visibility: visible");
 		expect(warning.textContent).toContain("wizard.no_target");
-		const mark = c.querySelector(".wizard-btn-primary") as HTMLButtonElement;
+		const mark = c.querySelector(
+			"epp-button[variant='primary']",
+		) as HTMLElement & { disabled: boolean };
 		expect(mark.disabled).toBe(true);
 	});
 
@@ -557,7 +562,9 @@ describe("_renderWizardCorners (via EppWizard)", () => {
 		const c = renderTo(a._renderWizardCorners());
 		const warning = c.querySelector(".no-target-warning") as HTMLElement;
 		expect(warning.getAttribute("style")).toContain("visibility: hidden");
-		const mark = c.querySelector(".wizard-btn-primary") as HTMLButtonElement;
+		const mark = c.querySelector(
+			"epp-button[variant='primary']",
+		) as HTMLElement & { disabled: boolean };
 		expect(mark.disabled).toBe(false);
 		expect(mark.textContent).toContain("wizard.mark_corner");
 	});
@@ -572,7 +579,9 @@ describe("_renderWizardCorners (via EppWizard)", () => {
 		const warning = c.querySelector(".no-target-warning") as HTMLElement;
 		expect(warning.getAttribute("style")).toContain("visibility: visible");
 		expect(warning.textContent).toContain("wizard.multiple_targets");
-		const mark = c.querySelector(".wizard-btn-primary") as HTMLButtonElement;
+		const mark = c.querySelector(
+			"epp-button[variant='primary']",
+		) as HTMLElement & { disabled: boolean };
 		expect(mark.disabled).toBe(true);
 	});
 
@@ -587,7 +596,9 @@ describe("_renderWizardCorners (via EppWizard)", () => {
 		const c = renderTo(a._renderWizardCorners());
 		expect(c.querySelectorAll(".corner-chip.done").length).toBe(4);
 		expect(c.textContent).toContain("wizard.save_prompt");
-		const save = c.querySelector(".wizard-btn-primary") as HTMLButtonElement;
+		const save = c.querySelector(
+			"epp-button[variant='primary']",
+		) as HTMLElement & { disabled: boolean };
 		expect(save.textContent).toContain("common.save");
 		expect(save.disabled).toBe(false);
 	});
@@ -602,7 +613,9 @@ describe("_renderWizardCorners (via EppWizard)", () => {
 		];
 		a._wizardSaving = true;
 		const c = renderTo(a._renderWizardCorners());
-		const save = c.querySelector(".wizard-btn-primary") as HTMLButtonElement;
+		const save = c.querySelector(
+			"epp-button[variant='primary']",
+		) as HTMLElement & { disabled: boolean };
 		expect(save.disabled).toBe(true);
 		expect(save.textContent).toContain("common.saving");
 	});
@@ -841,7 +854,10 @@ describe("_renderSettings", () => {
 		const sv = await renderSettings(a);
 		const body = sv.shadowRoot!.querySelector(".accordion-body");
 		expect(body).not.toBeNull();
-		expect(body!.textContent).toContain("settings.target_sensor");
+		// Heading is now in epp-card shadow DOM; check the heading attribute.
+		expect(
+			body!.querySelector('epp-card[heading="settings.target_sensor"]'),
+		).not.toBeNull();
 	});
 
 	it("renders with open sensitivity accordion", async () => {
@@ -851,7 +867,10 @@ describe("_renderSettings", () => {
 		const sv = await renderSettings(a);
 		const body = sv.shadowRoot!.querySelector(".accordion-body");
 		expect(body).not.toBeNull();
-		expect(body!.textContent).toContain("settings.motion_sensor");
+		// Heading is now in epp-card shadow DOM; check the heading attribute.
+		expect(
+			body!.querySelector('epp-card[heading="settings.motion_sensor"]'),
+		).not.toBeNull();
 	});
 
 	it("renders with open reporting accordion", async () => {
@@ -861,7 +880,10 @@ describe("_renderSettings", () => {
 		const sv = await renderSettings(a);
 		const body = sv.shadowRoot!.querySelector(".accordion-body");
 		expect(body).not.toBeNull();
-		expect(body!.textContent).toContain("entities.room_level");
+		// Heading is now in epp-card shadow DOM; check the heading attribute.
+		expect(
+			body!.querySelector('epp-card[heading="entities.room_level"]'),
+		).not.toBeNull();
 	});
 
 	it("renders with all accordions open", async () => {
@@ -877,14 +899,20 @@ describe("_renderSettingsSection (via EppSettingsView)", () => {
 	it("renders detection section", () => {
 		const sv = createSettingsView() as any;
 		const c = renderTo(sv.renderSettingsSection("detection"));
-		expect(c.textContent).toContain("settings.target_sensor");
+		// Heading is now in epp-card shadow DOM; check the heading attribute.
+		expect(
+			c.querySelector('epp-card[heading="settings.target_sensor"]'),
+		).not.toBeNull();
 		expect(c.querySelectorAll(".setting-range").length).toBe(3);
 	});
 
 	it("renders sensitivity section", () => {
 		const sv = createSettingsView() as any;
 		const c = renderTo(sv.renderSettingsSection("sensitivity"));
-		expect(c.textContent).toContain("settings.motion_sensor");
+		// Heading is now in epp-card shadow DOM; check the heading attribute.
+		expect(
+			c.querySelector('epp-card[heading="settings.motion_sensor"]'),
+		).not.toBeNull();
 		// 6 sensitivity sliders + assisted-clear timeout + 3 environmental offset sliders.
 		expect(c.querySelectorAll(".setting-range").length).toBe(10);
 	});
@@ -892,7 +920,10 @@ describe("_renderSettingsSection (via EppSettingsView)", () => {
 	it("renders reporting section", () => {
 		const sv = createSettingsView() as any;
 		const c = renderTo(sv.renderSettingsSection("reporting"));
-		expect(c.textContent).toContain("entities.room_level");
+		// Heading is now in epp-card shadow DOM; check the heading attribute.
+		expect(
+			c.querySelector('epp-card[heading="entities.room_level"]'),
+		).not.toBeNull();
 		// 6 room + 2 zone + 4 target + 4 environmental toggles.
 		expect(c.querySelectorAll("epp-toggle").length).toBe(16);
 	});
@@ -948,7 +979,10 @@ describe("_renderSensitivities (via EppSettingsView)", () => {
 	it("renders sensitivity section with sensor state", () => {
 		const sv = createSettingsView();
 		const c = renderTo((sv as any).renderSensitivities());
-		expect(c.textContent).toContain("settings.environmental");
+		// Heading is now in epp-card shadow DOM; check the heading attribute.
+		expect(
+			c.querySelector('epp-card[heading="settings.environmental"]'),
+		).not.toBeNull();
 		expect(c.querySelectorAll(".setting-range").length).toBe(10);
 	});
 });
@@ -1143,8 +1177,11 @@ describe("_renderEditor", () => {
 		a._showUnsavedDialog = true;
 		a._grid = initGridFromRoom(3000, 4000);
 		const c = renderTo(a.render());
-		expect(c.querySelector(".template-dialog")).not.toBeNull();
-		expect(c.textContent).toContain("dialogs.unsaved_changes");
+		const dialog = c.querySelector("epp-dialog[open]");
+		expect(dialog).not.toBeNull();
+		expect(dialog?.getAttribute("heading")).toContain(
+			"dialogs.unsaved_changes",
+		);
 	});
 
 	it("renders editor with targets", () => {
@@ -1508,10 +1545,10 @@ describe("epp-furniture-sidebar renders via component", () => {
 			customIconValue: "mdi:lamp",
 		});
 		const c = renderTo((el as any)._renderFurnitureSidebar());
-		expect(c.querySelector(".template-dialog")).not.toBeNull();
+		expect(c.querySelector("epp-dialog[open]")).not.toBeNull();
 		expect(c.querySelector("ha-icon-picker")).not.toBeNull();
 		const add = c.querySelector(
-			".template-dialog .wizard-btn-primary",
+			"epp-dialog[open] .wizard-btn-primary",
 		) as HTMLButtonElement;
 		expect(add.disabled).toBe(false);
 	});
@@ -1523,7 +1560,7 @@ describe("epp-furniture-sidebar renders via component", () => {
 		});
 		const c = renderTo((el as any)._renderFurnitureSidebar());
 		const add = c.querySelector(
-			".template-dialog .wizard-btn-primary",
+			"epp-dialog[open] .wizard-btn-primary",
 		) as HTMLButtonElement;
 		expect(add.disabled).toBe(true);
 	});
