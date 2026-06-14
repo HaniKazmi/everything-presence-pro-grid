@@ -77,6 +77,7 @@ import {
 	installPanelMountGuard,
 } from "./panel-mount-guard.js";
 import { buttonStyles, dialogStyles, headerStyles } from "./styles.js";
+import { tokens } from "./ui/tokens.js";
 import type { DeviceInfo, RawTarget, Target } from "./types.js";
 
 // ZoneSlots / INITIAL_ZONE_SLOTS moved to lib/zone-defaults.ts so the
@@ -1441,6 +1442,7 @@ export class EPPGridPanel extends LitElement {
 	// -- Styles --
 
 	static styles = [
+		tokens,
 		hostStyles,
 		panelStyles,
 		dialogStyles,
