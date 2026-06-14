@@ -33,12 +33,32 @@ from custom_components.eppgrid.device_manager._helpers import _sync_firmware_rep
 
 
 def _bump(version: str, *, kind: str) -> str:
-    major, minor, _patch = (int(p) for p in version.split("."))
+    # Parse the numeric release with packaging.version.Version — the same
+    # library _compare_firmware_version uses — so a pre-release FIRMWARE_VERSION
+    # like "1.1.0-rc.1" works (naive int(split(".")) chokes on "0-rc").
+    from packaging.version import Version
+
+    major, minor = (*Version(version).release, 0, 0)[:2]
     if kind == "behind":
         return f"{major}.{max(minor - 1, 0)}.0" if minor > 0 else f"{max(major - 1, 0)}.99.0"
     if kind == "ahead":
         return f"{major}.{minor + 1}.0"
     raise ValueError(kind)
+
+
+def test_bump_handles_prerelease_firmware_version() -> None:
+    """_bump must tolerate a pre-release FIRMWARE_VERSION (e.g. an -rc release).
+
+    Production comparison (_compare_firmware_version) uses
+    packaging.version.Version, which parses "1.1.0-rc.1" fine. The test helper
+    must too — a firmware-changing pre-release bumps FIRMWARE_VERSION to
+    "X.Y.Z-rc.N", and naive int(split(".")) chokes on the "0-rc" segment.
+    """
+    from packaging.version import Version
+
+    pre = "1.1.0-rc.1"
+    assert Version(_bump(pre, kind="behind")) < Version(pre)
+    assert Version(_bump(pre, kind="ahead")) > Version(pre)
 
 
 def _make_flow(hass: HomeAssistant, mac: str = "AA:BB:CC:DD:EE:01") -> Any:
