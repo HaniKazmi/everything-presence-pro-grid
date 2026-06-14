@@ -36,6 +36,7 @@ export class EppIconButton extends LitElement {
 	render() {
 		return html`
       <button
+        type="button"
         class=${this.variant}
         aria-label=${this.label || nothing}
         ?disabled=${this.disabled}

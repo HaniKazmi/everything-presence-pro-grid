@@ -57,4 +57,22 @@ describe("epp-field", () => {
 		// It must be stopped at the wrapper, not propagated to consumers.
 		expect(count).toBe(0);
 	});
+
+	// In this test env neither ha-input nor ha-textfield is registered, so the
+	// native <input> fallback is used — which has no visible label, hence the
+	// aria-label.
+	it("sets aria-label on the native input fallback", async () => {
+		const el = await fixture();
+		const control = el.shadowRoot!.querySelector("[data-field-control]")!;
+		expect(control.tagName).toBe("INPUT");
+		expect(control.getAttribute("aria-label")).toBe("Room name");
+	});
+
+	it("omits aria-label on the native input when label is empty", async () => {
+		const el = document.createElement("epp-field") as EppField;
+		document.body.appendChild(el);
+		await el.updateComplete;
+		const control = el.shadowRoot!.querySelector("[data-field-control]")!;
+		expect(control.hasAttribute("aria-label")).toBe(false);
+	});
 });

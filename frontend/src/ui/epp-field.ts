@@ -1,4 +1,4 @@
-import { css, LitElement } from "lit";
+import { css, LitElement, nothing } from "lit";
 import { property } from "lit/decorators.js";
 import { literal, html as staticHtml } from "lit/static-html.js";
 
@@ -22,6 +22,11 @@ export class EppField extends LitElement {
 		: customElements.get("ha-textfield")
 			? literal`ha-textfield`
 			: literal`input`;
+
+	// The ha-* controls render their own visible label from `.label`; a native
+	// <input> does not, so only the fallback path needs an explicit aria-label.
+	private readonly _isNativeInput =
+		!customElements.get("ha-input") && !customElements.get("ha-textfield");
 
 	static styles = css`
     :host { display: block; }
@@ -65,6 +70,7 @@ export class EppField extends LitElement {
           data-field-control
           type=${this.type}
           .label=${this.label}
+          aria-label=${this._isNativeInput ? this.label || nothing : nothing}
           .value=${this.value}
           ?disabled=${this.disabled}
           @input=${this._onInput}

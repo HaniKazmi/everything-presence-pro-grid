@@ -8,10 +8,6 @@ export class EppToggle extends LitElement {
 	@property({ type: Boolean }) checked = false;
 	@property({ type: Boolean }) disabled = false;
 
-	// Whether ha-switch exists is fixed for the element's lifetime — resolve once
-	// rather than querying the registry on every render.
-	private readonly _useHaSwitch = !!customElements.get("ha-switch");
-
 	static styles = [
 		toggleStyles,
 		css`
@@ -43,7 +39,10 @@ export class EppToggle extends LitElement {
 	};
 
 	render() {
-		const control = this._useHaSwitch
+		// Re-check per render rather than caching: customElements is monotonic, so
+		// an ha-switch registered after this element was constructed must still be
+		// picked up (a cached miss would lock us into the checkbox fallback).
+		const control = customElements.get("ha-switch")
 			? html`<ha-switch
           data-toggle-control
           .checked=${this.checked}
