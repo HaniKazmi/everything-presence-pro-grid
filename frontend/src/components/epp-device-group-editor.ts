@@ -1,7 +1,10 @@
 import { css, html, LitElement, nothing } from "lit";
 import { property, state } from "lit/decorators.js";
-import { literal, html as staticHtml } from "lit/static-html.js";
 
+import "../ui/epp-button.js";
+import "../ui/epp-card.js";
+import "../ui/epp-field.js";
+import "../ui/epp-toggle.js";
 import "./epp-zone-merge-list.js";
 import { exposedSensorChips } from "../lib/device-groups-labels.js";
 import { deriveExposedEntities } from "../lib/device-groups-projection.js";
@@ -46,74 +49,82 @@ export class EppDeviceGroupEditor extends LitElement {
 	static styles = css`
 		:host { display: block; }
 		.card-content {
-			padding: 16px;
+			padding: var(--epp-space-4, 16px);
 			display: flex;
 			flex-direction: column;
-			gap: 16px;
+			gap: var(--epp-space-4, 16px);
 		}
 		.field { display: block; }
-		ha-input,
-		ha-textfield,
 		ha-area-picker {
 			display: block;
 			width: 100%;
 		}
 		.section h3 {
-			margin: 0 0 .5rem 0;
-			font-size: 15px;
-			font-weight: 600;
+			margin: 0 0 var(--epp-space-2, 8px) 0;
+			font-size: var(--epp-font-md, 15px);
+			font-weight: var(--epp-weight-semibold, 600);
 		}
+		/* Kept as an in-place tokenised container rather than <epp-card>: it's a
+		   tight inset list of toggle rows (2px 12px padding, internal row
+		   dividers, 10px radius), not a card-padded surface — epp-card bakes in
+		   16px padding + 16px radius on its shadow .card with no external
+		   override, which would loosen the row list and change its look. */
 		.source-box {
-			border: 1px solid var(--divider-color, #e0e0e0);
-			border-radius: 10px;
-			padding: 2px 12px;
+			border: 1px solid var(--epp-border, var(--divider-color, #e0e0e0));
+			border-radius: var(--epp-radius-md, 10px);
+			padding: 2px var(--epp-space-3, 12px);
 		}
 		.source-row {
 			display: flex;
 			align-items: center;
-			gap: 12px;
+			gap: var(--epp-space-3, 12px);
 			padding: 6px 0;
 			min-height: 36px;
 		}
 		.source-row + .source-row {
-			border-top: 1px solid var(--divider-color, #e0e0e0);
+			border-top: 1px solid var(--epp-border, var(--divider-color, #e0e0e0));
 		}
 		.source-name {
 			flex: 1;
 			min-width: 0;
-			font-size: 14px;
-			color: var(--primary-text-color, #212121);
+			font-size: var(--epp-font-base, 14px);
+			color: var(--epp-text, var(--primary-text-color, #212121));
 		}
-		.source-row.missing .source-name { color: var(--warning-color, #ff9800); }
-		.missing-tag { color: var(--secondary-text-color, #757575); font-size: 13px; }
+		.source-row.missing .source-name {
+			color: var(--epp-warning, var(--warning-color, #ff9800));
+		}
+		.missing-tag {
+			color: var(--epp-text-muted, var(--secondary-text-color, #757575));
+			font-size: var(--epp-font-sm, 13px);
+		}
 		.missing-warning {
 			display: flex;
 			align-items: center;
 			gap: 6px;
 			margin-top: 6px;
-			font-size: 13px;
-			color: var(--warning-color, #ff9800);
+			font-size: var(--epp-font-sm, 13px);
+			color: var(--epp-warning, var(--warning-color, #ff9800));
 		}
 		.missing-warning ha-icon { --mdc-icon-size: 18px; }
-		.chips { display: flex; flex-wrap: wrap; gap: .4rem; }
+		.chips { display: flex; flex-wrap: wrap; gap: var(--epp-space-1, 4px); }
 		.chip {
-			padding: .2rem .6rem;
-			border-radius: 999px;
-			background: var(--primary-color);
-			color: var(--text-primary-color);
-			font-size: .85rem;
+			padding: 2px var(--epp-space-2, 8px);
+			border-radius: var(--epp-radius-pill, 9999px);
+			background: var(--epp-accent, var(--primary-color, #03a9f4));
+			color: var(--epp-accent-text, var(--text-primary-color, #fff));
+			font-size: var(--epp-font-sm, 13px);
 		}
 		.chip.zone {
-			background: var(--secondary-background-color);
-			color: var(--primary-text-color);
-			border: 1px solid var(--divider-color);
+			background: var(--epp-surface-2, var(--secondary-background-color, #f5f5f5));
+			color: var(--epp-text, var(--primary-text-color, #212121));
+			border: 1px solid var(--epp-border, var(--divider-color, #e0e0e0));
 		}
 		.actions {
 			display: flex;
-			gap: .5rem;
+			gap: var(--epp-space-2, 8px);
 			justify-content: space-between;
 			align-items: center;
-			margin-top: 4px;
+			margin-top: var(--epp-space-1, 4px);
 		}
 	`;
 
@@ -230,12 +241,12 @@ export class EppDeviceGroupEditor extends LitElement {
 					${this._renderSensorsPreview()}
 
 					<div class="actions">
-						<ha-button @click=${this._cancel}>Cancel</ha-button>
-						<ha-button
-							appearance="accent"
+						<epp-button variant="text" @click=${this._cancel}>Cancel</epp-button>
+						<epp-button
+							variant="primary"
 							.disabled=${!(this._canSave() && this._isDirty())}
 							@click=${this._save}
-							>Save</ha-button
+							>Save</epp-button
 						>
 					</div>
 				</div>
@@ -271,20 +282,20 @@ export class EppDeviceGroupEditor extends LitElement {
 		`;
 	}
 
-	// HA-native text field. ha-input shipped in 2026.4 (replaces ha-textfield,
-	// removed in 2026.5); fall back to ha-textfield on older HA.
+	// Name field. epp-field picks ha-input / ha-textfield / native input
+	// internally and emits one normalized `value-changed`.
 	private _renderNameField() {
-		const tag = customElements.get("ha-input")
-			? literal`ha-input`
-			: literal`ha-textfield`;
-		return staticHtml`
-			<${tag}
+		return html`
+			<epp-field
 				data-testid="name-field"
+				type="text"
 				.label=${"Device name"}
 				.value=${this._draft.name}
-				@input=${(e: Event) =>
-					this._update({ name: (e.target as HTMLInputElement).value })}
-			></${tag}>
+				@value-changed=${(e: CustomEvent) => {
+					e.stopPropagation();
+					this._update({ name: e.detail.value as string });
+				}}
+			></epp-field>
 		`;
 	}
 
@@ -297,26 +308,20 @@ export class EppDeviceGroupEditor extends LitElement {
 		</div>`;
 	}
 
-	// HA toggle for a source MAC; falls back to a checkbox where ha-switch
-	// isn't registered.
+	// Per-source on/off toggle. The handler closes over `mac` so the right
+	// device toggles regardless of the event target. epp-field/epp-toggle wraps
+	// ha-switch / checkbox internally; data-mac stays on the host for targeting.
 	private _toggleControl(mac: string) {
 		const checked = this._draft.sourceMacs.includes(mac);
-		const onChange = (e: Event) =>
-			this._toggleSource(mac, (e.target as HTMLInputElement).checked);
-		return customElements.get("ha-switch")
-			? html`<ha-switch
-					data-testid="device-toggle"
-					data-mac=${mac}
-					.checked=${checked}
-					@change=${onChange}
-				></ha-switch>`
-			: html`<input
-					type="checkbox"
-					data-testid="device-toggle"
-					data-mac=${mac}
-					.checked=${checked}
-					@change=${onChange}
-				/>`;
+		return html`<epp-toggle
+			data-testid="device-toggle"
+			data-mac=${mac}
+			.checked=${checked}
+			@value-changed=${(e: CustomEvent) => {
+				e.stopPropagation();
+				this._toggleSource(mac, e.detail.value as boolean);
+			}}
+		></epp-toggle>`;
 	}
 
 	// Sources still referenced by the group whose device no longer exists
