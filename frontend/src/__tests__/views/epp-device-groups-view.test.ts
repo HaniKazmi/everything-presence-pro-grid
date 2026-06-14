@@ -398,6 +398,7 @@ describe("epp-device-groups-view", () => {
 		await Promise.resolve();
 		await el.updateComplete;
 		expect(dialogEl(el)!.open).toBe(true);
+		expect(dialogEl(el)!.heading).toBe("Save failed");
 		expect(dialogEl(el)!.message).toContain("boom");
 		expect(
 			el.shadowRoot!.querySelector("epp-device-group-editor"),
@@ -523,6 +524,7 @@ describe("epp-device-groups-view", () => {
 		expect(console.error).toHaveBeenCalled();
 		// the failure is shown to the user, not just logged
 		expect(dialogEl(el)!.open).toBe(true);
+		expect(dialogEl(el)!.heading).toBe("Delete failed");
 		expect(dialogEl(el)!.message).toContain("nope");
 	});
 

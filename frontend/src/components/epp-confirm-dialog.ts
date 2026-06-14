@@ -50,7 +50,12 @@ export class EppConfirmDialog extends LitElement {
 		if (!this.open) return nothing;
 		return html`
 			<div class="template-dialog">
-				<div class="template-dialog-card" role="dialog" aria-modal="true">
+				<div
+					class="template-dialog-card"
+					role="dialog"
+					aria-modal="true"
+					aria-label=${this.heading || this.confirmLabel}
+				>
 					${this.heading ? html`<h3>${this.heading}</h3>` : nothing}
 					${this.message ? html`<p class="message">${this.message}</p>` : nothing}
 					<div class="template-dialog-actions">

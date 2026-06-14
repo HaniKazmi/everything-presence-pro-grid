@@ -107,7 +107,7 @@ export class EppDeviceGroupsView extends LitElement {
 	// The single themed confirm/alert dialog, configured per use.
 	@state() private _dialog:
 		| { kind: "delete"; id: string }
-		| { kind: "error"; message: string }
+		| { kind: "error"; heading: string; message: string }
 		| null = null;
 
 	private _unsub: (() => void) | null = null;
@@ -274,7 +274,7 @@ export class EppDeviceGroupsView extends LitElement {
 					}
 				: d?.kind === "error"
 					? {
-							heading: "Save failed",
+							heading: d.heading,
 							message: d.message,
 							confirmLabel: "OK",
 							danger: false,
@@ -337,6 +337,7 @@ export class EppDeviceGroupsView extends LitElement {
 			console.error("Failed to save device group", err);
 			this._dialog = {
 				kind: "error",
+				heading: "Save failed",
 				message: err instanceof Error ? err.message : String(err),
 			};
 		}
@@ -358,6 +359,7 @@ export class EppDeviceGroupsView extends LitElement {
 			console.error("Failed to delete device group", err);
 			this._dialog = {
 				kind: "error",
+				heading: "Delete failed",
 				message: err instanceof Error ? err.message : String(err),
 			};
 		}

@@ -3321,7 +3321,12 @@ const Fi=Symbol.for(""),Pi=e=>{if(e?.r===Fi)return e?._$litStatic$},Ui=(e,...t)=
 			}
 		`],e([ge({attribute:!1})],Us.prototype,"zoneConfigs",void 0),e([ge({attribute:!1})],Us.prototype,"activeZone",void 0),e([ge({attribute:!1})],Us.prototype,"zone0",void 0),e([ge({attribute:!1})],Us.prototype,"localZoneState",void 0),e([ge({attribute:!1})],Us.prototype,"localize",void 0),customElements.get("epp-zone-sidebar")||customElements.define("epp-zone-sidebar",Us);class Os extends le{constructor(){super(...arguments),this.open=!1,this.heading="",this.message="",this.confirmLabel="Confirm",this.cancelLabel="Cancel",this.danger=!1,this.hideCancel=!1,this._onKeydown=e=>{this.open&&"Escape"===e.key&&this._cancel()}}connectedCallback(){super.connectedCallback(),document.addEventListener("keydown",this._onKeydown)}disconnectedCallback(){super.disconnectedCallback(),document.removeEventListener("keydown",this._onKeydown)}render(){return this.open?$`
 			<div class="template-dialog">
-				<div class="template-dialog-card" role="dialog" aria-modal="true">
+				<div
+					class="template-dialog-card"
+					role="dialog"
+					aria-modal="true"
+					aria-label=${this.heading||this.confirmLabel}
+				>
 					${this.heading?$`<h3>${this.heading}</h3>`:J}
 					${this.message?$`<p class="message">${this.message}</p>`:J}
 					<div class="template-dialog-actions">
@@ -3716,7 +3721,7 @@ const Fi=Symbol.for(""),Pi=e=>{if(e?.r===Fi)return e?._$litStatic$},Ui=(e,...t)=
 					@item-select=${t=>this._onKebab(e,t.detail.id)}
 				></epp-kebab-menu>
 			</div>
-		`}_onKebab(e,t){"edit"===t?this._editingGroup=e:"delete"===t&&(this._dialog={kind:"delete",id:e.id})}_onEditorDirty(e){e.stopPropagation(),this._setDirty(e.detail.dirty)}_setDirty(e){e!==this._editorDirty&&(this._editorDirty=e,this.dispatchEvent(new CustomEvent("form-dirty-changed",{detail:{dirty:e},bubbles:!0,composed:!0})))}_closeEditor(){this._setDirty(!1),this._editingGroup=null,this._creatingNew=!1}_renderDialog(){const e=this._dialog,t="delete"===e?.kind?{heading:"Delete device group?",message:"This removes the group and all its helper entities.",confirmLabel:"Delete",danger:!0,hideCancel:!1}:"error"===e?.kind?{heading:"Save failed",message:e.message,confirmLabel:"OK",danger:!1,hideCancel:!0}:{heading:"",message:"",confirmLabel:"OK",danger:!1,hideCancel:!1};return $`<epp-confirm-dialog
+		`}_onKebab(e,t){"edit"===t?this._editingGroup=e:"delete"===t&&(this._dialog={kind:"delete",id:e.id})}_onEditorDirty(e){e.stopPropagation(),this._setDirty(e.detail.dirty)}_setDirty(e){e!==this._editorDirty&&(this._editorDirty=e,this.dispatchEvent(new CustomEvent("form-dirty-changed",{detail:{dirty:e},bubbles:!0,composed:!0})))}_closeEditor(){this._setDirty(!1),this._editingGroup=null,this._creatingNew=!1}_renderDialog(){const e=this._dialog,t="delete"===e?.kind?{heading:"Delete device group?",message:"This removes the group and all its helper entities.",confirmLabel:"Delete",danger:!0,hideCancel:!1}:"error"===e?.kind?{heading:e.heading,message:e.message,confirmLabel:"OK",danger:!1,hideCancel:!0}:{heading:"",message:"",confirmLabel:"OK",danger:!1,hideCancel:!1};return $`<epp-confirm-dialog
 			.open=${null!==e}
 			.heading=${t.heading}
 			.message=${t.message}
@@ -3725,7 +3730,7 @@ const Fi=Symbol.for(""),Pi=e=>{if(e?.r===Fi)return e?._$litStatic$},Ui=(e,...t)=
 			.hideCancel=${t.hideCancel}
 			@confirm=${this._onDialogConfirm}
 			@cancel=${this._onDialogCancel}
-		></epp-confirm-dialog>`}_onDialogConfirm(){const e=this._dialog;this._dialog=null,e&&"delete"===e.kind&&this._deleteById(e.id)}_onDialogCancel(){this._dialog=null}_sourcesByMac(){const e={};for(const t of this._groups)for(const i of t.sources)e[i.mac]=i;for(const t of this.controller.candidateSources)e[t.mac]=t;return e}async _handleSave(e){e.stopPropagation();const t=e.detail;try{t.id?await this.controller.update(t):await this.controller.create(t.name,t.sources,t.area_id),this._closeEditor()}catch(e){console.error("Failed to save device group",e),this._dialog={kind:"error",message:e instanceof Error?e.message:String(e)}}}_handleCancel(e){e.stopPropagation(),this._closeEditor()}async _deleteById(e){try{await this.controller.delete(e),this._closeEditor()}catch(e){console.error("Failed to delete device group",e),this._dialog={kind:"error",message:e instanceof Error?e.message:String(e)}}}}function Ws(e){if(e)try{e()}catch(e){console.debug("safeUnsub: callback threw (ignored):",e)}}Js.styles=n`
+		></epp-confirm-dialog>`}_onDialogConfirm(){const e=this._dialog;this._dialog=null,e&&"delete"===e.kind&&this._deleteById(e.id)}_onDialogCancel(){this._dialog=null}_sourcesByMac(){const e={};for(const t of this._groups)for(const i of t.sources)e[i.mac]=i;for(const t of this.controller.candidateSources)e[t.mac]=t;return e}async _handleSave(e){e.stopPropagation();const t=e.detail;try{t.id?await this.controller.update(t):await this.controller.create(t.name,t.sources,t.area_id),this._closeEditor()}catch(e){console.error("Failed to save device group",e),this._dialog={kind:"error",heading:"Save failed",message:e instanceof Error?e.message:String(e)}}}_handleCancel(e){e.stopPropagation(),this._closeEditor()}async _deleteById(e){try{await this.controller.delete(e),this._closeEditor()}catch(e){console.error("Failed to delete device group",e),this._dialog={kind:"error",heading:"Delete failed",message:e instanceof Error?e.message:String(e)}}}}function Ws(e){if(e)try{e()}catch(e){console.debug("safeUnsub: callback threw (ignored):",e)}}Js.styles=n`
 		:host { display: block; padding: 16px; }
 		.content {
 			max-width: 600px;
