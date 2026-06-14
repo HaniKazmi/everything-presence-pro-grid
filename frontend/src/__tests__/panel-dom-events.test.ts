@@ -1271,7 +1271,7 @@ describe("render delete calibration dialog event", () => {
 		const c = renderTo(tpl);
 
 		const backBtn = c.querySelector(
-			'epp-button[variant="text"]',
+			'epp-dialog[open] epp-button[variant="text"]',
 		) as HTMLElement;
 		if (backBtn) {
 			backBtn.click();
@@ -1330,7 +1330,7 @@ describe("_renderEditor DOM events", () => {
 		const c = renderTo(tpl);
 
 		// Find cancel button inside unsaved dialog
-		const dialogs = c.querySelectorAll(".template-dialog");
+		const dialogs = c.querySelectorAll("epp-dialog[open]");
 		if (dialogs.length > 0) {
 			const btn = dialogs[dialogs.length - 1].querySelector(
 				'epp-button[variant="text"]',

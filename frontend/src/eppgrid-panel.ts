@@ -2,6 +2,7 @@ import { css, html, LitElement, nothing, type PropertyValues } from "lit";
 import { property, state } from "lit/decorators.js";
 
 import "./ui/index.js";
+import "./ui/epp-dialog.js";
 import "./components/epp-configuration-dialogs.js";
 import "./components/epp-flasher-view.js";
 import "./components/epp-furniture-sidebar.js";
@@ -1693,48 +1694,40 @@ export class EPPGridPanel extends LitElement {
           ></epp-configuration-dialogs>`
 					: nothing
 			}
-      ${
-				this._showUnsavedDialog
-					? html`
-          <div class="template-dialog">
-            <div class="template-dialog-card">
-              <h3>${this._localize("dialogs.unsaved_changes")}</h3>
-              <p class="overlay-help">${this._localize("dialogs.unsaved_changes_body")}</p>
-              <div class="template-dialog-actions">
-                <epp-button variant="text"
-                  @click=${() => this._navGuard.cancelPendingNavigation()}
-                >${this._localize("common.cancel")}</epp-button>
-                <epp-button variant="danger"
-                  @click=${() => this._navGuard.discardAndNavigate()}
-                >${this._localize("common.discard")}</epp-button>
-              </div>
-            </div>
-          </div>
-        `
-					: nothing
-			}
-      ${
-				this._showDeleteCalibrationDialog
-					? html`
-          <div class="template-dialog">
-            <div class="template-dialog-card">
-              <h3>${this._localize("dialogs.delete_calibration_title")}</h3>
-              <p class="overlay-help">${this._localize("dialogs.delete_calibration_body")}</p>
-              <div class="template-dialog-actions">
-                <epp-button variant="text"
-                  @click=${() => {
-										this._showDeleteCalibrationDialog = false;
-									}}
-                >${this._localize("common.cancel")}</epp-button>
-                <epp-button variant="danger"
-                  @click=${this._deleteCalibration}
-                >${this._localize("common.delete")}</epp-button>
-              </div>
-            </div>
-          </div>
-        `
-					: nothing
-			}
+      <epp-dialog
+				?open=${this._showUnsavedDialog}
+				heading=${this._localize("dialogs.unsaved_changes")}
+				@dialog-dismiss=${() => this._navGuard.cancelPendingNavigation()}
+			>
+				<p class="overlay-help">${this._localize("dialogs.unsaved_changes_body")}</p>
+				<div slot="actions">
+					<epp-button variant="text"
+						@click=${() => this._navGuard.cancelPendingNavigation()}
+					>${this._localize("common.cancel")}</epp-button>
+					<epp-button variant="danger"
+						@click=${() => this._navGuard.discardAndNavigate()}
+					>${this._localize("common.discard")}</epp-button>
+				</div>
+			</epp-dialog>
+      <epp-dialog
+				?open=${this._showDeleteCalibrationDialog}
+				heading=${this._localize("dialogs.delete_calibration_title")}
+				@dialog-dismiss=${() => {
+					this._showDeleteCalibrationDialog = false;
+				}}
+			>
+				<p class="overlay-help">${this._localize("dialogs.delete_calibration_body")}</p>
+				<div slot="actions">
+					<epp-button variant="text"
+						@click=${() => {
+							this._showDeleteCalibrationDialog = false;
+						}}
+					>${this._localize("common.cancel")}</epp-button>
+					<epp-button variant="danger"
+						@click=${this._deleteCalibration}
+					>${this._localize("common.delete")}</epp-button>
+				</div>
+			</epp-dialog>
     `;
 	}
 
@@ -1757,22 +1750,22 @@ export class EPPGridPanel extends LitElement {
 	}
 
 	private _renderFlasherDeleteConfirmDialog() {
-		if (!this._showFlasherDeleteConfirm) return nothing;
 		return html`
-			<div class="template-dialog">
-				<div class="template-dialog-card">
-					<h3>${this._localize("flasher.confirm_delete_title")}</h3>
-					<p class="overlay-help">${this._localize("flasher.confirm_delete_message")}</p>
-					<div class="template-dialog-actions">
-						<epp-button variant="text"
-							@click=${() => this._resolveFlasherDeleteConfirm(false)}
-						>${this._localize("common.cancel")}</epp-button>
-						<epp-button variant="danger"
-							@click=${() => this._resolveFlasherDeleteConfirm(true)}
-						>${this._localize("common.delete")}</epp-button>
-					</div>
+			<epp-dialog
+				?open=${this._showFlasherDeleteConfirm}
+				heading=${this._localize("flasher.confirm_delete_title")}
+				@dialog-dismiss=${() => this._resolveFlasherDeleteConfirm(false)}
+			>
+				<p class="overlay-help">${this._localize("flasher.confirm_delete_message")}</p>
+				<div slot="actions">
+					<epp-button variant="text"
+						@click=${() => this._resolveFlasherDeleteConfirm(false)}
+					>${this._localize("common.cancel")}</epp-button>
+					<epp-button variant="danger"
+						@click=${() => this._resolveFlasherDeleteConfirm(true)}
+					>${this._localize("common.delete")}</epp-button>
 				</div>
-			</div>
+			</epp-dialog>
 		`;
 	}
 

@@ -1,43 +1,6 @@
 import { css } from "lit";
 
 export const dialogStyles = css`
-  .template-dialog {
-    position: fixed;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    background: rgba(0, 0, 0, 0.4);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    z-index: 100;
-  }
-
-  .template-dialog-card {
-    background: var(--card-background-color, #fff);
-    border-radius: 16px;
-    padding: 24px;
-    min-width: 320px;
-    max-width: 440px;
-    display: flex;
-    flex-direction: column;
-    gap: 16px;
-    box-shadow: 0 4px 24px rgba(0, 0, 0, 0.15);
-  }
-
-  .template-dialog-card h3 {
-    margin: 0;
-    font-size: 18px;
-    font-weight: 500;
-  }
-
-  .template-dialog-actions {
-    display: flex;
-    justify-content: flex-end;
-    gap: 12px;
-  }
-
   .configuration-card-grid {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));

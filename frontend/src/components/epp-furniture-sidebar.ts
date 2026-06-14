@@ -10,6 +10,7 @@ import {
 import { defaultLocalize, type LocalizeFn } from "../localize.js";
 import { dialogStyles, sidebarRowStyles } from "../styles.js";
 import "../ui/epp-button.js";
+import "../ui/epp-dialog.js";
 import "../ui/epp-icon-button.js";
 
 export class EppFurnitureSidebar extends LitElement {
@@ -219,90 +220,92 @@ export class EppFurnitureSidebar extends LitElement {
 					<span>${this.localize("furniture.custom_icon")}</span>
 				</button>
 			</div>
-			${
-				this.showCustomIconPicker
-					? html`
-						<div class="template-dialog">
-							<div class="template-dialog-card">
-								<h3>${this.localize("furniture.custom_icon")}</h3>
-								<ha-icon-picker
-									.hass=${this.hass}
-									.value=${this.customIconValue}
-									@value-changed=${(e: CustomEvent) => {
-										// Coerce null/undefined to empty string — the panel
-										// reflects this back into customIconValue and downstream
-										// code (`.trim()`, `<ha-icon icon=...>`) assumes string.
-										// Use `??` (not `||`) so an actual "" the user typed is
-										// preserved verbatim.
-										this.dispatchEvent(
-											new CustomEvent("custom-icon-change", {
-												detail: e.detail?.value ?? "",
-												bubbles: true,
-												composed: true,
-											}),
-										);
-									}}
-								></ha-icon-picker>
-								${
-									this.customIconValue.trim()
-										? html`
-											<div style="text-align: center;">
-												<ha-icon icon="${this.customIconValue.trim()}" style="--mdc-icon-size: 48px;"></ha-icon>
-											</div>
-										`
-										: nothing
-								}
-								<div class="template-dialog-actions">
-									<epp-button variant="text" class="wizard-btn wizard-btn-back"
-										@click=${() => {
-											this.dispatchEvent(
-												new CustomEvent("custom-icon-toggle", {
-													bubbles: true,
-													composed: true,
-												}),
-											);
-											this.dispatchEvent(
-												new CustomEvent("custom-icon-change", {
-													detail: "",
-													bubbles: true,
-													composed: true,
-												}),
-											);
-										}}
-									>${this.localize("common.cancel")}</epp-button>
-									<epp-button variant="primary" class="wizard-btn wizard-btn-primary"
-										?disabled=${!this.customIconValue.trim()}
-										@click=${() => {
-											this.dispatchEvent(
-												new CustomEvent("furniture-add-custom", {
-													detail: this.customIconValue.trim(),
-													bubbles: true,
-													composed: true,
-												}),
-											);
-											this.dispatchEvent(
-												new CustomEvent("custom-icon-change", {
-													detail: "",
-													bubbles: true,
-													composed: true,
-												}),
-											);
-											this.dispatchEvent(
-												new CustomEvent("custom-icon-toggle", {
-													bubbles: true,
-													composed: true,
-												}),
-											);
-										}}
-									>${this.localize("common.add")}</epp-button>
-								</div>
+			<epp-dialog
+				?open=${this.showCustomIconPicker}
+				heading=${this.localize("furniture.custom_icon")}
+				@dialog-dismiss=${this._cancelCustomIcon}
+			>
+				<ha-icon-picker
+					.hass=${this.hass}
+					.value=${this.customIconValue}
+					@value-changed=${(e: CustomEvent) => {
+						// Coerce null/undefined to empty string — the panel
+						// reflects this back into customIconValue and downstream
+						// code (`.trim()`, `<ha-icon icon=...>`) assumes string.
+						// Use `??` (not `||`) so an actual "" the user typed is
+						// preserved verbatim.
+						this.dispatchEvent(
+							new CustomEvent("custom-icon-change", {
+								detail: e.detail?.value ?? "",
+								bubbles: true,
+								composed: true,
+							}),
+						);
+					}}
+				></ha-icon-picker>
+				${
+					this.customIconValue.trim()
+						? html`
+							<div style="text-align: center;">
+								<ha-icon icon="${this.customIconValue.trim()}" style="--mdc-icon-size: 48px;"></ha-icon>
 							</div>
-						</div>
-					`
-					: nothing
-			}
+						`
+						: nothing
+				}
+				<div slot="actions">
+					<epp-button variant="text" class="wizard-btn wizard-btn-back"
+						@click=${this._cancelCustomIcon}
+					>${this.localize("common.cancel")}</epp-button>
+					<epp-button variant="primary" class="wizard-btn wizard-btn-primary"
+						?disabled=${!this.customIconValue.trim()}
+						@click=${() => {
+							this.dispatchEvent(
+								new CustomEvent("furniture-add-custom", {
+									detail: this.customIconValue.trim(),
+									bubbles: true,
+									composed: true,
+								}),
+							);
+							this.dispatchEvent(
+								new CustomEvent("custom-icon-change", {
+									detail: "",
+									bubbles: true,
+									composed: true,
+								}),
+							);
+							this.dispatchEvent(
+								new CustomEvent("custom-icon-toggle", {
+									bubbles: true,
+									composed: true,
+								}),
+							);
+						}}
+					>${this.localize("common.add")}</epp-button>
+				</div>
+			</epp-dialog>
 		`;
 	}
+
+	/**
+	 * Custom-icon-picker dismiss/cancel: closes the picker and clears any
+	 * pending icon value. Shared by the Cancel button and Escape
+	 * (`dialog-dismiss`) so both paths behave identically.
+	 */
+	private _cancelCustomIcon = (): void => {
+		this.dispatchEvent(
+			new CustomEvent("custom-icon-toggle", {
+				bubbles: true,
+				composed: true,
+			}),
+		);
+		this.dispatchEvent(
+			new CustomEvent("custom-icon-change", {
+				detail: "",
+				bubbles: true,
+				composed: true,
+			}),
+		);
+	};
 
 	private _fireAdd(sticker: FurnitureSticker): void {
 		this.dispatchEvent(

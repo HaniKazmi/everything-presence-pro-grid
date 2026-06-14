@@ -400,7 +400,7 @@ describe("epp-flasher-view inline event handlers", () => {
 });
 
 // =========================================================
-// Flasher delete-confirm dialog — themed template-dialog
+// Flasher delete-confirm dialog — themed <epp-dialog>
 // replacement for the old window.confirm()
 // =========================================================
 describe("flasher delete-confirm dialog", () => {
@@ -426,7 +426,7 @@ describe("flasher delete-confirm dialog", () => {
 
 	function getDialogButton(label: string): HTMLElement {
 		const buttons = container.querySelectorAll(
-			".template-dialog .template-dialog-actions epp-button",
+			'epp-dialog[open] [slot="actions"] epp-button',
 		);
 		const btn = Array.from(buttons).find((b) =>
 			b.textContent?.includes(label),
@@ -440,12 +440,12 @@ describe("flasher delete-confirm dialog", () => {
 		expect(typeof ctrl.confirmDeleteOriginalFirmware).toBe("function");
 	});
 
-	it("shows the themed template-dialog when the flow requests confirmation", () => {
+	it("shows the themed dialog when the flow requests confirmation", () => {
 		const ctrl = (panel as any)._flasherCtrl;
 		void ctrl.confirmDeleteOriginalFirmware();
 		rerender();
 
-		const dialog = container.querySelector(".template-dialog");
+		const dialog = container.querySelector("epp-dialog[open]");
 		expect(dialog).not.toBeNull();
 		expect(dialog?.textContent).toContain("flasher.confirm_delete_message");
 	});
@@ -459,7 +459,7 @@ describe("flasher delete-confirm dialog", () => {
 
 		await expect(promise).resolves.toBe(true);
 		rerender();
-		expect(container.querySelector(".template-dialog")).toBeNull();
+		expect(container.querySelector("epp-dialog[open]")).toBeNull();
 	});
 
 	it("resolves false and closes the dialog when the user cancels", async () => {
@@ -471,7 +471,7 @@ describe("flasher delete-confirm dialog", () => {
 
 		await expect(promise).resolves.toBe(false);
 		rerender();
-		expect(container.querySelector(".template-dialog")).toBeNull();
+		expect(container.querySelector("epp-dialog[open]")).toBeNull();
 	});
 
 	it("does not use window.confirm", async () => {
@@ -485,6 +485,22 @@ describe("flasher delete-confirm dialog", () => {
 		await promise;
 
 		expect(confirmSpy).not.toHaveBeenCalled();
+	});
+
+	it("resolves false when dismissed via Escape (dialog-dismiss)", async () => {
+		const ctrl = (panel as any)._flasherCtrl;
+		const promise = ctrl.confirmDeleteOriginalFirmware();
+		rerender();
+
+		const dialog = container.querySelector("epp-dialog[open]") as HTMLElement;
+		expect(dialog).not.toBeNull();
+		// Escape emits dialog-dismiss; the awaited confirm must unwind as
+		// declined rather than hang forever.
+		dialog.dispatchEvent(new CustomEvent("dialog-dismiss"));
+
+		await expect(promise).resolves.toBe(false);
+		rerender();
+		expect(container.querySelector("epp-dialog[open]")).toBeNull();
 	});
 
 	it("resolves a stale pending confirm as cancelled when a new one starts", async () => {

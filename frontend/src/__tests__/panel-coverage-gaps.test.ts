@@ -976,7 +976,7 @@ describe("_renderGlobalDialogs branch coverage", () => {
 		a._showUnsavedDialog = true;
 		const tpl = a._renderGlobalDialogs();
 		const c = renderTo(tpl);
-		expect(c.querySelectorAll(".template-dialog").length).toBeGreaterThan(0);
+		expect(c.querySelectorAll("epp-dialog[open]").length).toBeGreaterThan(0);
 		document.body.removeChild(c);
 	});
 
@@ -985,7 +985,7 @@ describe("_renderGlobalDialogs branch coverage", () => {
 		a._showDeleteCalibrationDialog = true;
 		const tpl = a._renderGlobalDialogs();
 		const c = renderTo(tpl);
-		expect(c.querySelectorAll(".template-dialog").length).toBeGreaterThan(0);
+		expect(c.querySelectorAll("epp-dialog[open]").length).toBeGreaterThan(0);
 		document.body.removeChild(c);
 	});
 
@@ -993,8 +993,33 @@ describe("_renderGlobalDialogs branch coverage", () => {
 		const a = createPanel() as any;
 		const tpl = a._renderGlobalDialogs();
 		const c = renderTo(tpl);
-		expect(c.querySelectorAll(".template-dialog").length).toBe(0);
+		expect(c.querySelectorAll("epp-dialog[open]").length).toBe(0);
 		expect(c.querySelector("epp-configuration-dialogs")).toBeNull();
+		document.body.removeChild(c);
+	});
+
+	it("unsaved-changes dialog-dismiss cancels the pending navigation (Escape)", () => {
+		const a = createPanel() as any;
+		a._showUnsavedDialog = true;
+		const cancelSpy = vi.spyOn(a._navGuard, "cancelPendingNavigation");
+		const tpl = a._renderGlobalDialogs();
+		const c = renderTo(tpl);
+		const dialog = c.querySelector("epp-dialog[open]") as HTMLElement;
+		expect(dialog).not.toBeNull();
+		dialog.dispatchEvent(new CustomEvent("dialog-dismiss"));
+		expect(cancelSpy).toHaveBeenCalledTimes(1);
+		document.body.removeChild(c);
+	});
+
+	it("delete-calibration dialog-dismiss closes the dialog (Escape)", () => {
+		const a = createPanel() as any;
+		a._showDeleteCalibrationDialog = true;
+		const tpl = a._renderGlobalDialogs();
+		const c = renderTo(tpl);
+		const dialog = c.querySelector("epp-dialog[open]") as HTMLElement;
+		expect(dialog).not.toBeNull();
+		dialog.dispatchEvent(new CustomEvent("dialog-dismiss"));
+		expect(a._showDeleteCalibrationDialog).toBe(false);
 		document.body.removeChild(c);
 	});
 });

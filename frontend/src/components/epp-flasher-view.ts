@@ -250,36 +250,6 @@ const flasherStyles = css`
     text-decoration: underline;
   }
 
-  .usb-section {
-    display: flex;
-    align-items: center;
-    gap: var(--epp-space-4, 16px);
-    padding: var(--epp-space-3, 12px) var(--epp-space-2, 8px);
-  }
-
-  .usb-icon {
-    --mdc-icon-size: 32px;
-    color: var(--epp-text-muted, var(--secondary-text-color, #757575));
-    flex-shrink: 0;
-  }
-
-  .usb-section-text {
-    flex: 1;
-    min-width: 0;
-  }
-
-  .usb-title {
-    font-size: var(--epp-font-base, 14px);
-    font-weight: var(--epp-weight-medium, 500);
-    color: var(--epp-text, var(--primary-text-color, #212121));
-  }
-
-  .usb-description {
-    font-size: var(--epp-font-sm, 13px);
-    color: var(--epp-text-muted, var(--secondary-text-color, #757575));
-    margin-top: 2px;
-  }
-
   .usb-actions {
     display: flex;
     flex-direction: column;
@@ -331,18 +301,6 @@ const flasherStyles = css`
     font-size: var(--epp-font-sm, 13px);
     color: var(--epp-text-muted, var(--secondary-text-color, #757575));
     margin-top: 2px;
-  }
-
-  .usb-connect-btn {
-    padding: var(--epp-space-2, 8px) 20px;
-    border-radius: var(--epp-radius-sm, 6px);
-    border: none;
-    cursor: pointer;
-    font-size: var(--epp-font-base, 14px);
-    font-weight: var(--epp-weight-medium, 500);
-    background: var(--epp-accent, var(--primary-color, #03a9f4));
-    color: var(--epp-accent-text, var(--text-primary-color, #fff));
-    flex-shrink: 0;
   }
 
   .browser-warning {
