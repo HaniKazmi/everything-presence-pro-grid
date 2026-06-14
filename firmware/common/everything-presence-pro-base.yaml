@@ -886,9 +886,21 @@ script:
           white: 0%
           transition_length: 500ms
       - delay: 550ms
-      - light.turn_on:
-          id: led_rgb
-          effect: "Network Connecting"
+      # Only latch the looping effect if the API is STILL down. An ESPHome
+      # config-entry reload (settings save that flips an entity's disabled_by)
+      # produces a disconnect immediately followed by a reconnect; during this
+      # 550ms delay a mode script (control_leds_manual/_presence/...) may have
+      # already set the final LED state. Applying the effect unconditionally
+      # would land after it and leave the LED stuck on "Network Connecting"
+      # until the next client connect/disconnect. Re-checking here closes that
+      # race — control_leds' `mode: restart` can't cancel this in-flight delay.
+      - if:
+          condition:
+            lambda: 'return !id(api_id).is_connected();'
+          then:
+            - light.turn_on:
+                id: led_rgb
+                effect: "Network Connecting"
 
   # Manual control - turn off
   - id: control_leds_manual
