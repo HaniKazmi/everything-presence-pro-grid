@@ -1,31 +1,22 @@
 import { css, html, LitElement, nothing } from "lit";
 import { property } from "lit/decorators.js";
-import { dialogStyles } from "../styles.js";
+import "../ui/epp-dialog.js";
+import "../ui/epp-button.js";
 
 /**
- * Themed modal confirm/alert dialog, reusing the panel's shared
- * `.template-dialog` styling so it matches every other dialog. The caller owns
- * the `open` property; the dialog emits `confirm` / `cancel` (it does not close
- * itself). Set `hideCancel` for a single-button alert, `danger` to render the
- * confirm action in the error colour.
+ * Themed modal confirm/alert dialog, composed from <epp-dialog> so it matches
+ * every other dialog. The caller owns `open`; the dialog emits `confirm` /
+ * `cancel` (it does not close itself). Set `hideCancel` for a single-button
+ * alert, `danger` to render the confirm action in the error colour.
  */
 export class EppConfirmDialog extends LitElement {
-	static styles = [
-		dialogStyles,
-		css`
-			.message {
-				margin: 0;
-				font-size: 14px;
-				color: var(--secondary-text-color, #757575);
-			}
-			ha-button.danger {
-				color: var(--error-color, #f44336);
-				--primary-color: var(--error-color, #f44336);
-				--mdc-theme-primary: var(--error-color, #f44336);
-				--ha-button-text-color: var(--error-color, #f44336);
-			}
-		`,
-	];
+	static styles = css`
+		.message {
+			margin: 0;
+			font-size: var(--epp-font-base, 14px);
+			color: var(--epp-text-muted, var(--secondary-text-color, #757575));
+		}
+	`;
 
 	@property({ type: Boolean }) open = false;
 	@property() heading = "";
@@ -36,54 +27,36 @@ export class EppConfirmDialog extends LitElement {
 	/** Alert mode: only the confirm/OK button is shown. */
 	@property({ type: Boolean }) hideCancel = false;
 
-	connectedCallback(): void {
-		super.connectedCallback();
-		document.addEventListener("keydown", this._onKeydown);
-	}
-
-	disconnectedCallback(): void {
-		super.disconnectedCallback();
-		document.removeEventListener("keydown", this._onKeydown);
-	}
-
 	render() {
-		if (!this.open) return nothing;
 		return html`
-			<div class="template-dialog">
-				<div
-					class="template-dialog-card"
-					role="dialog"
-					aria-modal="true"
-					aria-label=${this.heading || this.confirmLabel}
-				>
-					${this.heading ? html`<h3>${this.heading}</h3>` : nothing}
-					${this.message ? html`<p class="message">${this.message}</p>` : nothing}
-					<div class="template-dialog-actions">
-						${
-							this.hideCancel
-								? nothing
-								: html`<ha-button
-										data-testid="dialog-cancel"
-										@click=${this._cancel}
-										>${this.cancelLabel}</ha-button
-									>`
-						}
-						<ha-button
-							appearance="accent"
-							class=${this.danger ? "danger" : ""}
-							data-testid="dialog-confirm"
-							@click=${this._confirm}
-							>${this.confirmLabel}</ha-button
-						>
-					</div>
+			<epp-dialog
+				?open=${this.open}
+				.heading=${this.heading}
+				.label=${this.heading || this.confirmLabel}
+				@dialog-dismiss=${this._cancel}
+			>
+				${this.message ? html`<p class="message">${this.message}</p>` : nothing}
+				<div slot="actions">
+					${
+						this.hideCancel
+							? nothing
+							: html`<epp-button
+									variant="text"
+									data-testid="dialog-cancel"
+									@click=${this._cancel}
+									>${this.cancelLabel}</epp-button
+								>`
+					}
+					<epp-button
+						variant=${this.danger ? "danger" : "primary"}
+						data-testid="dialog-confirm"
+						@click=${this._confirm}
+						>${this.confirmLabel}</epp-button
+					>
 				</div>
-			</div>
+			</epp-dialog>
 		`;
 	}
-
-	private _onKeydown = (e: KeyboardEvent): void => {
-		if (this.open && e.key === "Escape") this._cancel();
-	};
 
 	private _confirm() {
 		this.dispatchEvent(
