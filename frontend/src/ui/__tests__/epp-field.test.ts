@@ -75,4 +75,41 @@ describe("epp-field", () => {
 		const control = el.shadowRoot!.querySelector("[data-field-control]")!;
 		expect(control.hasAttribute("aria-label")).toBe(false);
 	});
+
+	it("passes a placeholder through to the control", async () => {
+		const el = document.createElement("epp-field") as EppField;
+		el.placeholder = "e.g. 65";
+		document.body.appendChild(el);
+		await el.updateComplete;
+		const control = el.shadowRoot!.querySelector("[data-field-control]")!;
+		expect(control.getAttribute("placeholder")).toBe("e.g. 65");
+	});
+
+	it("omits placeholder when not set", async () => {
+		const el = await fixture();
+		const control = el.shadowRoot!.querySelector("[data-field-control]")!;
+		expect(control.hasAttribute("placeholder")).toBe(false);
+	});
+
+	it("passes number min/max/step through", async () => {
+		const el = document.createElement("epp-field") as EppField;
+		el.type = "number";
+		el.min = "0";
+		el.max = "100";
+		el.step = "1";
+		document.body.appendChild(el);
+		await el.updateComplete;
+		const control = el.shadowRoot!.querySelector("[data-field-control]")!;
+		expect(control.getAttribute("min")).toBe("0");
+		expect(control.getAttribute("max")).toBe("100");
+		expect(control.getAttribute("step")).toBe("1");
+	});
+
+	it("omits min/max/step when not set", async () => {
+		const el = await fixture();
+		const control = el.shadowRoot!.querySelector("[data-field-control]")!;
+		expect(control.hasAttribute("min")).toBe(false);
+		expect(control.hasAttribute("max")).toBe(false);
+		expect(control.hasAttribute("step")).toBe(false);
+	});
 });

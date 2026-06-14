@@ -13,6 +13,12 @@ export class EppField extends LitElement {
 	@property({ type: String }) type: "text" | "number" = "text";
 	@property({ type: String }) unit = "";
 	@property({ type: Boolean }) disabled = false;
+	/** Short hint shown inside an empty field (disappears on input). */
+	@property({ type: String }) placeholder = "";
+	/** Numeric bounds/step — only meaningful for `type="number"`. */
+	@property({ type: String }) min = "";
+	@property({ type: String }) max = "";
+	@property({ type: String }) step = "";
 
 	// Resolve the control tag once: which ha-* element exists is fixed for the
 	// element's lifetime, and `literal` parts must be static within a template —
@@ -31,7 +37,14 @@ export class EppField extends LitElement {
 	static styles = css`
     :host { display: block; }
     .field { display: flex; align-items: center; gap: var(--epp-space-2, 8px); }
-    .field > [data-field-control] { flex: 1; min-width: 0; }
+    .field > [data-field-control] {
+      flex: 1;
+      min-width: 0;
+      /* Size the control's label/value/placeholder to the design type scale
+         rather than HA's larger field default (kept the field labels oversized). */
+      font-size: var(--epp-font-base, 14px);
+      --mdc-typography-subtitle1-font-size: var(--epp-font-base, 14px);
+    }
     .unit {
       color: var(--epp-text-muted, var(--secondary-text-color, #757575));
       font-size: var(--epp-font-sm, 13px);
@@ -71,6 +84,10 @@ export class EppField extends LitElement {
           type=${this.type}
           .label=${this.label}
           aria-label=${this._isNativeInput ? this.label || nothing : nothing}
+          placeholder=${this.placeholder || nothing}
+          min=${this.min || nothing}
+          max=${this.max || nothing}
+          step=${this.step || nothing}
           .value=${this.value}
           ?disabled=${this.disabled}
           @input=${this._onInput}

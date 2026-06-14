@@ -868,7 +868,9 @@ export class EppWizard extends LitElement {
           <epp-field
             class="offset-input"
             type="number"
-            label="${this.localize("wizard.distance_from_side", { wall: this.localize(sideLabel) })}"
+            min="0"
+            step="1"
+            placeholder="${this.localize("wizard.distance_from_side", { wall: this.localize(sideLabel) })}"
             .value=${this._wizardOffsetSide}
             @value-changed=${(e: CustomEvent) => {
 							e.stopPropagation();
@@ -884,7 +886,9 @@ export class EppWizard extends LitElement {
           <epp-field
             class="offset-input"
             type="number"
-            label="${this.localize("wizard.distance_from_side", { wall: this.localize(fbLabel) })}"
+            min="0"
+            step="1"
+            placeholder="${this.localize("wizard.distance_from_side", { wall: this.localize(fbLabel) })}"
             .value=${this._wizardOffsetFb}
             @value-changed=${(e: CustomEvent) => {
 							e.stopPropagation();
