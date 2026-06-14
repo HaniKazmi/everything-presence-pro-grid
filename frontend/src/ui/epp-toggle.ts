@@ -1,4 +1,4 @@
-import { css, html, LitElement } from "lit";
+import { css, html, LitElement, nothing } from "lit";
 import { property } from "lit/decorators.js";
 import { toggleStyles } from "../styles.js";
 
@@ -59,7 +59,9 @@ export class EppToggle extends LitElement {
           />
           <span class="toggle-slider"></span>
         </label>`;
-		return html`<div class="row"><span class="label">${this.label}</span>${control}</div>`;
+		// Omit the label span entirely when empty (e.g. when an enclosing row
+		// supplies the label) so it doesn't leave an empty flex item + gap.
+		return html`<div class="row">${this.label ? html`<span class="label">${this.label}</span>` : nothing}${control}</div>`;
 	}
 }
 

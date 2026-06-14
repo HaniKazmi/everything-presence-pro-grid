@@ -20,12 +20,15 @@ export class EppTooltip extends LitElement {
       white-space: nowrap;
       box-shadow: var(--epp-elevation-1, 0 2px 8px rgba(0, 0, 0, 0.12));
       opacity: 0;
+      /* visibility:hidden (not just opacity) removes it from the a11y tree
+         while inactive so screen readers don't announce hidden hint text. */
+      visibility: hidden;
       pointer-events: none;
-      transition: opacity 0.12s;
+      transition: opacity 0.12s, visibility 0.12s;
       z-index: 9999;
     }
     :host(:hover) .tip,
-    :host(:focus-within) .tip { opacity: 1; }
+    :host(:focus-within) .tip { opacity: 1; visibility: visible; }
   `;
 
 	render() {

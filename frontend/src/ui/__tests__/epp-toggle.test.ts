@@ -40,4 +40,12 @@ describe("epp-toggle", () => {
 		control.dispatchEvent(new Event("change", { bubbles: true }));
 		expect(received).toBe(false);
 	});
+
+	it("omits the label span entirely when label is empty", async () => {
+		const el = document.createElement("epp-toggle") as EppToggle;
+		document.body.appendChild(el);
+		await el.updateComplete;
+		// No empty flex item / gap artifact when an enclosing row owns the label.
+		expect(el.shadowRoot!.querySelector(".label")).toBeNull();
+	});
 });
