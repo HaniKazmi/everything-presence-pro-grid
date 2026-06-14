@@ -46,7 +46,7 @@ describe("epp-configuration-dialogs element", () => {
 	it("renders nothing when neither dialog is open", () => {
 		const el = createDialogs() as any;
 		const c = renderTo(el.render());
-		expect(c.querySelectorAll(".template-dialog").length).toBe(0);
+		expect(c.querySelectorAll("epp-dialog").length).toBe(0);
 		document.body.removeChild(c);
 	});
 });
@@ -58,9 +58,12 @@ describe("backup dialog", () => {
 			configurationName: "Test",
 		}) as any;
 		const c = renderTo(el.render());
+		// The name input is now an <epp-field> carrying the same class.
 		const input = c.querySelector(
 			".configuration-name-input",
-		) as HTMLInputElement;
+		) as HTMLElement & {
+			value: string;
+		};
 		expect(input).not.toBeNull();
 		expect(input.value).toBe("Test");
 		document.body.removeChild(c);
@@ -72,11 +75,15 @@ describe("backup dialog", () => {
 		el.addEventListener("configuration-name-change", handler);
 		const c = renderTo(el.render());
 
-		const input = c.querySelector(
-			".configuration-name-input",
-		) as HTMLInputElement;
-		input.value = "My Layout";
-		input.dispatchEvent(new Event("input"));
+		// epp-field emits a `value-changed` CustomEvent with { detail: { value } }.
+		const input = c.querySelector(".configuration-name-input") as HTMLElement;
+		input.dispatchEvent(
+			new CustomEvent("value-changed", {
+				detail: { value: "My Layout" },
+				bubbles: true,
+				composed: true,
+			}),
+		);
 
 		expect(handler).toHaveBeenCalledTimes(1);
 		expect(handler.mock.calls[0][0].detail).toBe("My Layout");
@@ -94,6 +101,21 @@ describe("backup dialog", () => {
 		document.body.removeChild(c);
 	});
 
+	it("epp-dialog dismiss (Escape) dispatches backup-cancel", () => {
+		const el = createDialogs({ showBackup: true }) as any;
+		const handler = vi.fn();
+		el.addEventListener("backup-cancel", handler);
+		const c = renderTo(el.render());
+
+		// The dialog shell emits `dialog-dismiss` on Escape; the component
+		// forwards it to its existing close handler (backup-cancel).
+		(c.querySelector("epp-dialog") as HTMLElement).dispatchEvent(
+			new CustomEvent("dialog-dismiss", { bubbles: true, composed: true }),
+		);
+		expect(handler).toHaveBeenCalledTimes(1);
+		document.body.removeChild(c);
+	});
+
 	it("save button dispatches configuration-save", () => {
 		const el = createDialogs({
 			showBackup: true,
@@ -103,7 +125,10 @@ describe("backup dialog", () => {
 		el.addEventListener("configuration-save", handler);
 		const c = renderTo(el.render());
 
-		const saveBtn = c.querySelector(".wizard-btn-primary") as HTMLButtonElement;
+		// Save is now an <epp-button> (variant="primary") with the same class.
+		const saveBtn = c.querySelector(".wizard-btn-primary") as HTMLElement & {
+			disabled: boolean;
+		};
 		expect(saveBtn.disabled).toBe(false);
 		saveBtn.click();
 		expect(handler).toHaveBeenCalledTimes(1);
@@ -116,7 +141,9 @@ describe("backup dialog", () => {
 			configurationName: "   ",
 		}) as any;
 		const c = renderTo(el.render());
-		const saveBtn = c.querySelector(".wizard-btn-primary") as HTMLButtonElement;
+		const saveBtn = c.querySelector(".wizard-btn-primary") as HTMLElement & {
+			disabled: boolean;
+		};
 		expect(saveBtn.disabled).toBe(true);
 		document.body.removeChild(c);
 	});
@@ -378,6 +405,16 @@ describe("restore dialog events", () => {
 		const onClose = vi.fn();
 		const c = renderRestore({ "restore-close": onClose });
 		(c.querySelector(".wizard-btn-back") as HTMLElement).click();
+		expect(onClose).toHaveBeenCalledTimes(1);
+		document.body.removeChild(c);
+	});
+
+	it("epp-dialog dismiss (Escape) dispatches restore-close", () => {
+		const onClose = vi.fn();
+		const c = renderRestore({ "restore-close": onClose });
+		(c.querySelector("epp-dialog") as HTMLElement).dispatchEvent(
+			new CustomEvent("dialog-dismiss", { bubbles: true, composed: true }),
+		);
 		expect(onClose).toHaveBeenCalledTimes(1);
 		document.body.removeChild(c);
 	});

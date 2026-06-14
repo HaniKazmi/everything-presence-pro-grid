@@ -5,7 +5,11 @@ import type { FurnitureItem } from "../lib/furniture.js";
 import { getGridRoomMetrics, type SensorFov } from "../lib/room-geometry.js";
 import type { Zone0Config, ZoneConfig } from "../lib/zone-defaults.js";
 import { defaultLocalize, type LocalizeFn } from "../localize.js";
-import { buttonStyles, dialogStyles } from "../styles.js";
+import { dialogStyles } from "../styles.js";
+import "../ui/epp-button.js";
+import "../ui/epp-dialog.js";
+import "../ui/epp-field.js";
+import "../ui/epp-icon-button.js";
 
 /**
  * Saved-configuration entry as cached by `GridStateController`. Declared
@@ -53,11 +57,10 @@ export class EppConfigurationDialogs extends LitElement {
 
 	static styles = [
 		dialogStyles,
-		buttonStyles,
 		css`
       .overlay-help {
-        font-size: 13px;
-        color: var(--secondary-text-color, #757575);
+        font-size: var(--epp-font-sm, 13px);
+        color: var(--epp-text-muted, var(--secondary-text-color, #757575));
         margin: 0;
       }
     `,
@@ -125,34 +128,34 @@ export class EppConfigurationDialogs extends LitElement {
 
 	private _renderBackupDialog() {
 		return html`
-      <div class="template-dialog">
-        <div class="template-dialog-card">
-          <h3>${this.localize("dialogs.backup_configuration")}</h3>
-          <input
-            type="text"
-            class="configuration-name-input"
-            placeholder="${this.localize("dialogs.configuration_name")}"
-            .value=${this.configurationName}
-            @input=${(e: Event) => {
-							this._dispatch(
-								"configuration-name-change",
-								(e.target as HTMLInputElement).value,
-							);
-						}}
-          />
-          <div class="template-dialog-actions">
-            <button
-              class="wizard-btn wizard-btn-back"
-              @click=${() => this._dispatch("backup-cancel")}
-            >${this.localize("common.cancel")}</button>
-            <button
-              class="wizard-btn wizard-btn-primary"
-              ?disabled=${!this.configurationName.trim()}
-              @click=${() => this._dispatch("configuration-save")}
-            >${this.localize("common.save")}</button>
-          </div>
+      <epp-dialog
+        ?open=${this.showBackup}
+        heading=${this.localize("dialogs.backup_configuration")}
+        @dialog-dismiss=${() => this._dispatch("backup-cancel")}
+      >
+        <epp-field
+          class="configuration-name-input"
+          type="text"
+          placeholder="${this.localize("dialogs.configuration_name")}"
+          .value=${this.configurationName}
+          @value-changed=${(e: CustomEvent<{ value: string }>) => {
+						this._dispatch("configuration-name-change", e.detail.value);
+					}}
+        ></epp-field>
+        <div slot="actions">
+          <epp-button
+            class="wizard-btn-back"
+            variant="text"
+            @click=${() => this._dispatch("backup-cancel")}
+          >${this.localize("common.cancel")}</epp-button>
+          <epp-button
+            class="wizard-btn-primary"
+            variant="primary"
+            ?disabled=${!this.configurationName.trim()}
+            @click=${() => this._dispatch("configuration-save")}
+          >${this.localize("common.save")}</epp-button>
         </div>
-      </div>
+      </epp-dialog>
     `;
 	}
 
@@ -165,77 +168,79 @@ export class EppConfigurationDialogs extends LitElement {
 				Array.isArray(t.zones) && t.zones.length === 8,
 		);
 		return html`
-      <div class="template-dialog">
-        <div class="template-dialog-card">
-          <h3>${this.localize("dialogs.restore_configuration")}</h3>
-          ${
-						configurations.length === 0
-							? html`<p class="overlay-help">${this.localize("dialogs.no_configurations")}</p>`
-							: html`<div class="configuration-card-grid">
-                  ${configurations.map(
-										(t) => html`
-                    <div class="configuration-card"
-                      role="button"
-                      tabindex="0"
-                      @click=${() => this._dispatch("configuration-load", t.name)}
-                      @keydown=${(e: KeyboardEvent) => {
-												if (e.key === "Enter" || e.key === " ") {
-													e.preventDefault();
-													this._dispatch("configuration-load", t.name);
-												}
+      <epp-dialog
+        ?open=${this.showRestore}
+        heading=${this.localize("dialogs.restore_configuration")}
+        @dialog-dismiss=${() => this._dispatch("restore-close")}
+      >
+        ${
+					configurations.length === 0
+						? html`<p class="overlay-help">${this.localize("dialogs.no_configurations")}</p>`
+						: html`<div class="configuration-card-grid">
+                ${configurations.map(
+									(t) => html`
+                  <div class="configuration-card"
+                    role="button"
+                    tabindex="0"
+                    @click=${() => this._dispatch("configuration-load", t.name)}
+                    @keydown=${(e: KeyboardEvent) => {
+											if (e.key === "Enter" || e.key === " ") {
+												e.preventDefault();
+												this._dispatch("configuration-load", t.name);
+											}
+										}}
+                  >
+                    <epp-icon-button
+                      class="configuration-card-delete"
+                      icon="mdi:delete"
+                      label="${this.localize("common.delete")}"
+                      variant="danger"
+                      @click=${(e: Event) => {
+												e.stopPropagation();
+												this._dispatch("configuration-delete", t.name);
 											}}
-                    >
-                      <button class="configuration-card-delete"
-                        type="button"
-                        aria-label="${this.localize("common.delete")}"
-                        @click=${(e: Event) => {
-													e.stopPropagation();
-													this._dispatch("configuration-delete", t.name);
-												}}
-                        @keydown=${(e: KeyboardEvent) => {
-													e.stopPropagation();
-												}}
-                      >
-                        <ha-icon icon="mdi:close"></ha-icon>
-                      </button>
-                      <div class="configuration-card-thumbnail">
-                        ${renderConfigurationThumbnail(
-													t.grid,
-													// New schema: zones is length-8 with slot 0 =
-													// Zone0Config and slots 1-7 = named zones. The
-													// thumbnail only uses the named zones (for cell
-													// colouring, indexed by zoneId-1), so strip slot 0.
-													(t.zones?.slice(1) as (ZoneConfig | null)[]) ??
-														new Array(7).fill(null),
-													t.roomWidth,
-													t.roomDepth,
-													t.furniture ?? [],
-												)}
-                      </div>
-                      <div class="configuration-card-info">
-                        <div class="configuration-card-name">${t.name}</div>
-                        <div class="configuration-card-size">${(() => {
-													// Same FOV-aware metrics the live footer uses; cached
-													// per configuration to avoid re-scanning the grid
-													// every render.
-													const { widthM, depthM } =
-														this._getConfigurationMetrics(t);
-													return `${this.localize.formatNumber(widthM, 1)}m × ${this.localize.formatNumber(depthM, 1)}m`;
-												})()}</div>
-                      </div>
+                      @keydown=${(e: KeyboardEvent) => {
+												e.stopPropagation();
+											}}
+                    ></epp-icon-button>
+                    <div class="configuration-card-thumbnail">
+                      ${renderConfigurationThumbnail(
+												t.grid,
+												// New schema: zones is length-8 with slot 0 =
+												// Zone0Config and slots 1-7 = named zones. The
+												// thumbnail only uses the named zones (for cell
+												// colouring, indexed by zoneId-1), so strip slot 0.
+												(t.zones?.slice(1) as (ZoneConfig | null)[]) ??
+													new Array(7).fill(null),
+												t.roomWidth,
+												t.roomDepth,
+												t.furniture ?? [],
+											)}
                     </div>
-                  `,
-									)}
-                </div>`
-					}
-          <div class="template-dialog-actions">
-            <button
-              class="wizard-btn wizard-btn-back"
-              @click=${() => this._dispatch("restore-close")}
-            >${this.localize("common.close")}</button>
-          </div>
+                    <div class="configuration-card-info">
+                      <div class="configuration-card-name">${t.name}</div>
+                      <div class="configuration-card-size">${(() => {
+												// Same FOV-aware metrics the live footer uses; cached
+												// per configuration to avoid re-scanning the grid
+												// every render.
+												const { widthM, depthM } =
+													this._getConfigurationMetrics(t);
+												return `${this.localize.formatNumber(widthM, 1)}m × ${this.localize.formatNumber(depthM, 1)}m`;
+											})()}</div>
+                    </div>
+                  </div>
+                `,
+								)}
+              </div>`
+				}
+        <div slot="actions">
+          <epp-button
+            class="wizard-btn-back"
+            variant="text"
+            @click=${() => this._dispatch("restore-close")}
+          >${this.localize("common.close")}</epp-button>
         </div>
-      </div>
+      </epp-dialog>
     `;
 	}
 }

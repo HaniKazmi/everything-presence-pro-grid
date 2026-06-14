@@ -38,27 +38,16 @@ export const dialogStyles = css`
     gap: 12px;
   }
 
-  .configuration-name-input {
-    width: 100%;
-    padding: 10px 12px;
-    border: 1px solid var(--divider-color, #e0e0e0);
-    border-radius: 8px;
-    font-size: 15px;
-    box-sizing: border-box;
-    background: var(--card-background-color, #fff);
-    color: var(--primary-text-color, #212121);
-  }
-
   .configuration-card-grid {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
-    gap: 12px;
+    gap: var(--epp-space-3, 12px);
   }
 
   .configuration-card {
     position: relative;
-    border: 1px solid var(--divider-color, #e0e0e0);
-    border-radius: 8px;
+    border: 1px solid var(--epp-border, var(--divider-color, #e0e0e0));
+    border-radius: var(--epp-radius-sm, 6px);
     overflow: hidden;
     cursor: pointer;
     transition: box-shadow 0.15s;
@@ -68,15 +57,14 @@ export const dialogStyles = css`
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
   }
 
-  .configuration-card:focus-visible,
-  .configuration-card-delete:focus-visible {
+  .configuration-card:focus-visible {
     outline: 2px solid var(--primary-color, #03a9f4);
     outline-offset: 2px;
   }
 
   .configuration-card-thumbnail {
-    background: var(--secondary-background-color, #f5f5f5);
-    padding: 8px;
+    background: var(--epp-surface-2, var(--secondary-background-color, #f5f5f5));
+    padding: var(--epp-space-2, 8px);
     aspect-ratio: 1;
     display: flex;
     align-items: center;
@@ -89,12 +77,13 @@ export const dialogStyles = css`
   }
 
   .configuration-card-info {
-    padding: 6px 8px;
+    /* 6px has no spacing token; left literal. 8px → --epp-space-2. */
+    padding: 6px var(--epp-space-2, 8px);
   }
 
   .configuration-card-name {
-    font-size: 12px;
-    font-weight: 500;
+    font-size: var(--epp-font-xs, 12px);
+    font-weight: var(--epp-weight-medium, 500);
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -102,33 +91,14 @@ export const dialogStyles = css`
 
   .configuration-card-size {
     font-size: 10px;
-    color: var(--secondary-text-color, #757575);
+    color: var(--epp-text-muted, var(--secondary-text-color, #757575));
   }
 
   .configuration-card-delete {
     position: absolute;
-    top: 4px;
-    right: 4px;
-    width: 22px;
-    height: 22px;
-    border-radius: 50%;
-    border: none;
-    background: rgba(0, 0, 0, 0.4);
-    color: #fff;
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    padding: 0;
+    top: var(--epp-space-1, 4px);
+    right: var(--epp-space-1, 4px);
     z-index: 1;
-  }
-
-  .configuration-card-delete:hover {
-    background: var(--error-color, #f44336);
-  }
-
-  .configuration-card-delete ha-icon {
-    --mdc-icon-size: 14px;
   }
 `;
 
