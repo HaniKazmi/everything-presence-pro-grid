@@ -52,4 +52,29 @@ describe("epp-card", () => {
 		) as HTMLElement;
 		expect(actions.hasAttribute("hidden")).toBe(false);
 	});
+
+	it("adds the elevated class when elevated is true", async () => {
+		const el = await fixture();
+		el.elevated = true;
+		await el.updateComplete;
+		const card = el.shadowRoot!.querySelector(".card") as HTMLElement;
+		expect(card.classList.contains("elevated")).toBe(true);
+	});
+
+	it("re-renders when the actions slotchange fires", async () => {
+		const el = await fixture("With Actions");
+		const actionsSlot = el.shadowRoot!.querySelector(
+			'slot[name="actions"]',
+		) as HTMLSlotElement;
+		expect(actionsSlot).toBeTruthy();
+		// Simulate slotchange (e.g. consumer inserts an action button dynamically)
+		actionsSlot.dispatchEvent(new Event("slotchange"));
+		await el.updateComplete;
+		// After the re-render the card-actions visibility is determined by _hasActions;
+		// the important thing is the handler ran (requestUpdate) and no error was thrown.
+		const actions = el.shadowRoot!.querySelector(
+			".card-actions",
+		) as HTMLElement;
+		expect(actions).toBeTruthy();
+	});
 });

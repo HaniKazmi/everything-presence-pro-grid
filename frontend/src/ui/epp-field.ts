@@ -62,9 +62,12 @@ export class EppField extends LitElement {
 	}
 }
 
+/* v8 ignore start — the already-defined path only triggers on HA panel
+   re-import (module re-eval), unreachable in a single test environment */
 if (!customElements.get("epp-field")) {
 	customElements.define("epp-field", EppField);
 }
+/* v8 ignore stop */
 
 declare global {
 	interface HTMLElementTagNameMap {

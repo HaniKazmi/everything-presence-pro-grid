@@ -60,9 +60,12 @@ export class EppToggle extends LitElement {
 	}
 }
 
+/* v8 ignore start — the already-defined path only triggers on HA panel
+   re-import (module re-eval), unreachable in a single test environment */
 if (!customElements.get("epp-toggle")) {
 	customElements.define("epp-toggle", EppToggle);
 }
+/* v8 ignore stop */
 
 declare global {
 	interface HTMLElementTagNameMap {

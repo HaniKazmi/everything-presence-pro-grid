@@ -46,9 +46,12 @@ export class EppIconButton extends LitElement {
 	}
 }
 
+/* v8 ignore start — the already-defined path only triggers on HA panel
+   re-import (module re-eval), unreachable in a single test environment */
 if (!customElements.get("epp-icon-button")) {
 	customElements.define("epp-icon-button", EppIconButton);
 }
+/* v8 ignore stop */
 
 declare global {
 	interface HTMLElementTagNameMap {

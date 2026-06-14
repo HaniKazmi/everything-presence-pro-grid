@@ -49,4 +49,14 @@ describe("epp-button", () => {
 		el.shadowRoot!.querySelector("button")!.click();
 		expect(clicked).toBe(true);
 	});
+
+	it("renders an ha-icon when icon is set", async () => {
+		const el = document.createElement("epp-button") as EppButton;
+		el.icon = "mdi:content-save";
+		document.body.appendChild(el);
+		await el.updateComplete;
+		const icon = el.shadowRoot!.querySelector("ha-icon");
+		expect(icon).toBeTruthy();
+		expect(icon!.getAttribute("icon")).toBe("mdi:content-save");
+	});
 });
