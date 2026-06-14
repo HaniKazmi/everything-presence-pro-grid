@@ -25,6 +25,17 @@ describe("epp-icon-button", () => {
 		).toBe("Remove zone");
 	});
 
+	it("omits aria-label entirely when label is empty", async () => {
+		const el = document.createElement("epp-icon-button") as EppIconButton;
+		el.icon = "mdi:delete";
+		document.body.appendChild(el);
+		await el.updateComplete;
+		// An empty aria-label is worse for AT than none — the attribute must be absent.
+		expect(
+			el.shadowRoot!.querySelector("button")!.hasAttribute("aria-label"),
+		).toBe(false);
+	});
+
 	it("blocks clicks when disabled", async () => {
 		const el = await fixture();
 		el.disabled = true;

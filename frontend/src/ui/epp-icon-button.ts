@@ -1,4 +1,4 @@
-import { css, html, LitElement } from "lit";
+import { css, html, LitElement, nothing } from "lit";
 import { property } from "lit/decorators.js";
 
 /** Token-styled icon button. `label` is required (aria-label). */
@@ -37,7 +37,7 @@ export class EppIconButton extends LitElement {
 		return html`
       <button
         class=${this.variant}
-        aria-label=${this.label}
+        aria-label=${this.label || nothing}
         ?disabled=${this.disabled}
       >
         <ha-icon icon=${this.icon}></ha-icon>
