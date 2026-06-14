@@ -106,7 +106,7 @@ export class EppFurnitureOverlay extends LitElement {
 			width: 8px;
 			height: 8px;
 			background: var(--epp-accent, var(--primary-color, #03a9f4));
-			border: 1px solid var(--epp-accent-text, #fff);
+			border: 1px solid var(--epp-surface, var(--card-background-color, #fff));
 			border-radius: 2px;
 		}
 
