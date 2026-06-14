@@ -8,6 +8,7 @@ import "../ui/epp-toggle.js";
 import "./epp-zone-merge-list.js";
 import { exposedSensorChips } from "../lib/device-groups-labels.js";
 import { deriveExposedEntities } from "../lib/device-groups-projection.js";
+import { chipStyles } from "../styles.js";
 import type {
 	DeviceGroup,
 	DeviceGroupSource,
@@ -46,7 +47,9 @@ function canon(d: EditorDraft): string {
  * loaded state. Deletion is handled from the list view's per-group kebab.
  */
 export class EppDeviceGroupEditor extends LitElement {
-	static styles = css`
+	static styles = [
+		chipStyles,
+		css`
 		:host { display: block; }
 		.card-content {
 			padding: var(--epp-space-4, 16px);
@@ -107,18 +110,6 @@ export class EppDeviceGroupEditor extends LitElement {
 		}
 		.missing-warning ha-icon { --mdc-icon-size: 18px; }
 		.chips { display: flex; flex-wrap: wrap; gap: var(--epp-space-1, 4px); }
-		.chip {
-			padding: 2px var(--epp-space-2, 8px);
-			border-radius: var(--epp-radius-pill, 9999px);
-			background: var(--epp-accent, var(--primary-color, #03a9f4));
-			color: var(--epp-accent-text, var(--text-primary-color, #fff));
-			font-size: var(--epp-font-sm, 13px);
-		}
-		.chip.zone {
-			background: var(--epp-surface-2, var(--secondary-background-color, #f5f5f5));
-			color: var(--epp-text, var(--primary-text-color, #212121));
-			border: 1px solid var(--epp-border, var(--divider-color, #e0e0e0));
-		}
 		.actions {
 			display: flex;
 			gap: var(--epp-space-2, 8px);
@@ -126,7 +117,8 @@ export class EppDeviceGroupEditor extends LitElement {
 			align-items: center;
 			margin-top: var(--epp-space-1, 4px);
 		}
-	`;
+	`,
+	];
 
 	@property({ attribute: false }) hass!: { [key: string]: unknown };
 	@property({ attribute: false }) availableDevices: DeviceInfo[] = [];

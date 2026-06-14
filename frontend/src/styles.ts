@@ -284,6 +284,24 @@ export const sidebarRowStyles = css`
   }
 `;
 
+/** Sensor/zone chip pills shared by the device-group editor, the device-groups
+ *  view, and the zone-merge list. Consumers keep their own `.chips` /
+ *  `.group-sensors` flex wrapper locally. */
+export const chipStyles = css`
+  .chip {
+    padding: 2px var(--epp-space-2, 8px);
+    border-radius: var(--epp-radius-pill, 9999px);
+    background: var(--epp-accent, var(--primary-color, #03a9f4));
+    color: var(--epp-accent-text, var(--text-primary-color, #fff));
+    font-size: var(--epp-font-sm, 13px);
+  }
+  .chip.zone {
+    background: var(--epp-surface-2, var(--secondary-background-color, #f5f5f5));
+    color: var(--epp-text, var(--primary-text-color, #212121));
+    border: 1px solid var(--epp-border, var(--divider-color, #e0e0e0));
+  }
+`;
+
 export const headerStyles = css`
   .panel-header {
     display: flex;

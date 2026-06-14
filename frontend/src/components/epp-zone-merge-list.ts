@@ -1,7 +1,8 @@
 import { css, html, LitElement, nothing } from "lit";
 import { property, state } from "lit/decorators.js";
-import { literal, html as staticHtml } from "lit/static-html.js";
 
+import "../ui/epp-button.js";
+import "../ui/epp-field.js";
 import "./epp-kebab-menu.js";
 import { EDIT_DELETE_KEBAB_ITEMS } from "../lib/device-groups-labels.js";
 import type {
@@ -54,25 +55,34 @@ function parseKey(key: string): DeviceGroupZoneMember {
 export class EppZoneMergeList extends LitElement {
 	static styles = css`
 		:host { display: block; }
-		h4 { margin: 0 0 .5rem 0; font-size: 15px; font-weight: 600; }
+		h4 {
+			margin: 0 0 var(--epp-space-2, 8px) 0;
+			font-size: var(--epp-font-md, 15px);
+			font-weight: var(--epp-weight-semibold, 600);
+		}
+		/* Kept as an in-place tokenised container rather than <epp-card>: it's a
+		   tight inset grid of zone rows (4px 12px padding, 10px radius), not a
+		   card-padded surface — epp-card bakes in 16px padding + 16px radius on
+		   its shadow .card with no external override, which would loosen the dense
+		   row grid and change its look (same judgment as the editor's .source-box). */
 		.zone-box {
-			border: 1px solid var(--divider-color, #e0e0e0);
-			border-radius: 10px;
-			padding: 4px 12px;
+			border: 1px solid var(--epp-border, var(--divider-color, #e0e0e0));
+			border-radius: var(--epp-radius-md, 10px);
+			padding: var(--epp-space-1, 4px) var(--epp-space-3, 12px);
 		}
 		.zone-grid {
 			display: grid;
 			grid-template-columns: max-content 1fr;
-			gap: 0 16px;
+			gap: 0 var(--epp-space-4, 16px);
 			align-items: start;
 		}
 		.zt-device {
 			display: flex;
 			align-items: center;
 			min-height: 36px;
-			font-size: 14px;
-			font-weight: 500;
-			color: var(--primary-text-color, #212121);
+			font-size: var(--epp-font-base, 14px);
+			font-weight: var(--epp-weight-medium, 500);
+			color: var(--epp-text, var(--primary-text-color, #212121));
 		}
 		.zt-device::after { content: ":"; }
 		.zt-zones { display: flex; flex-direction: column; }
@@ -80,49 +90,50 @@ export class EppZoneMergeList extends LitElement {
 			display: flex;
 			align-items: center;
 			justify-content: space-between;
-			gap: 8px;
+			gap: var(--epp-space-2, 8px);
 			/* Reserve the checkbox's height up front so rows don't jump when
 			   "Create merged zone" reveals the checkboxes. */
 			min-height: 36px;
-			font-size: 14px;
-			color: var(--primary-text-color, #212121);
+			font-size: var(--epp-font-base, 14px);
+			color: var(--epp-text, var(--primary-text-color, #212121));
 		}
 		label.zt-zone { cursor: pointer; }
 		.zt-zone-name { min-width: 0; }
 		.zt-zone ha-checkbox,
 		.zt-zone input { flex-shrink: 0; margin: 0; }
-		.empty { color: var(--secondary-text-color, #757575); }
-		.merge-name { display: block; width: 100%; margin-top: 12px; }
+		.empty { color: var(--epp-text-muted, var(--secondary-text-color, #757575)); }
+		.merge-name { display: block; width: 100%; margin-top: var(--epp-space-3, 12px); }
 		.actions {
 			display: flex;
 			justify-content: flex-end;
-			gap: .5rem;
-			margin-top: 12px;
+			gap: var(--epp-space-2, 8px);
+			margin-top: var(--epp-space-3, 12px);
 		}
-		.merged-section { margin-top: 1.5rem; }
+		.merged-section { margin-top: var(--epp-space-5, 24px); }
+		/* Also a tight inset list (head row + dense member grid, 6px/8px/12px
+		   padding, 10px radius), not a card surface — kept as a tokenised <div>
+		   for the same reason as .zone-box. */
 		.merged-zone {
-			margin-bottom: .5rem;
-			padding: 6px 6px 8px 12px;
-			background: var(--card-background-color, #fff);
-			border: 1px solid var(--divider-color, #e0e0e0);
-			border-radius: 10px;
+			margin-bottom: var(--epp-space-2, 8px);
+			padding: 6px 6px 8px var(--epp-space-3, 12px);
+			background: var(--epp-surface, var(--card-background-color, #fff));
+			border: 1px solid var(--epp-border, var(--divider-color, #e0e0e0));
+			border-radius: var(--epp-radius-md, 10px);
 		}
 		.mz-head {
 			display: flex;
 			align-items: center;
 			justify-content: space-between;
-			gap: .5rem;
+			gap: var(--epp-space-2, 8px);
 		}
-		.group-name { font-weight: 600; }
+		.group-name { font-weight: var(--epp-weight-semibold, 600); }
 		.mz-head epp-kebab-menu { margin: -6px 0; }
 		.member-grid .zt-device,
 		.member-grid .zt-zone {
 			min-height: 28px;
 			font-weight: 400;
-			color: var(--secondary-text-color, #757575);
+			color: var(--epp-text-muted, var(--secondary-text-color, #757575));
 		}
-		ha-input,
-		ha-textfield { display: block; width: 100%; }
 	`;
 
 	@property({ attribute: false }) sources: DeviceGroupSource[] = [];
@@ -142,11 +153,11 @@ export class EppZoneMergeList extends LitElement {
 				merging
 					? this._renderMergeControls()
 					: html`<div class="actions">
-							<ha-button
-								appearance="accent"
+							<epp-button
+								variant="primary"
 								data-testid="create-merge"
 								@click=${this._startCreate}
-								>Add a merged zone</ha-button
+								>Add a merged zone</epp-button
 							>
 						</div>`
 			}
@@ -215,39 +226,41 @@ export class EppZoneMergeList extends LitElement {
 		return html`
 			${this._renderNameField(m.name)}
 			<div class="actions">
-				<ha-button data-testid="merge-cancel" @click=${this._cancelMerge}
-					>Cancel</ha-button
+				<epp-button
+					variant="text"
+					data-testid="merge-cancel"
+					@click=${this._cancelMerge}
+					>Cancel</epp-button
 				>
-				<ha-button
-					appearance="accent"
+				<epp-button
+					variant="primary"
 					data-testid="merge-confirm"
 					.disabled=${!this._canMerge()}
 					@click=${this._confirmMerge}
-					>${m.editingId ? "Save" : "Merge"}</ha-button
+					>${m.editingId ? "Save" : "Merge"}</epp-button
 				>
 			</div>
 		`;
 	}
 
-	// HA-native text field for the merged-zone name. ha-input shipped in 2026.4
-	// (replaces ha-textfield, removed in 2026.5); fall back on older HA.
+	// Merged-zone name. epp-field picks ha-input / ha-textfield / native input
+	// internally and emits one normalized `value-changed`.
 	private _renderNameField(value: string) {
-		const tag = customElements.get("ha-input")
-			? literal`ha-input`
-			: literal`ha-textfield`;
-		return staticHtml`
-			<${tag}
+		return html`
+			<epp-field
 				class="merge-name"
 				data-testid="merge-name"
+				type="text"
 				.label=${"Merged zone name"}
 				.value=${value}
-				@input=${(e: Event) => {
+				@value-changed=${(e: CustomEvent) => {
+					e.stopPropagation();
 					this._merge = {
 						...(this._merge as MergeDraft),
-						name: (e.target as HTMLInputElement).value,
+						name: e.detail.value as string,
 					};
 				}}
-			></${tag}>
+			></epp-field>
 		`;
 	}
 

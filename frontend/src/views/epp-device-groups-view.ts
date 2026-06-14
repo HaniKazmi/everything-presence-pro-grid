@@ -11,10 +11,13 @@ import {
 	EDIT_DELETE_KEBAB_ITEMS,
 	exposedSensorChips,
 } from "../lib/device-groups-labels.js";
+import { chipStyles } from "../styles.js";
 import type { DeviceGroup, DeviceGroupSource, DeviceInfo } from "../types.js";
 
 export class EppDeviceGroupsView extends LitElement {
-	static styles = css`
+	static styles = [
+		chipStyles,
+		css`
 		:host { display: block; padding: 16px; }
 		.content {
 			max-width: 600px;
@@ -69,18 +72,6 @@ export class EppDeviceGroupsView extends LitElement {
 			color: var(--epp-text-muted, var(--secondary-text-color, #757575));
 			margin-top: 6px;
 		}
-		.chip {
-			padding: 2px var(--epp-space-2, 8px);
-			border-radius: var(--epp-radius-pill, 9999px);
-			background: var(--epp-accent, var(--primary-color, #03a9f4));
-			color: var(--epp-accent-text, var(--text-primary-color, #fff));
-			font-size: var(--epp-font-sm, 13px);
-		}
-		.chip.zone {
-			background: var(--epp-surface-2, var(--secondary-background-color, #f5f5f5));
-			color: var(--epp-text, var(--primary-text-color, #212121));
-			border: 1px solid var(--epp-border, var(--divider-color, #e0e0e0));
-		}
 		.empty {
 			color: var(--epp-text-muted, var(--secondary-text-color, #757575));
 			text-align: center;
@@ -93,7 +84,8 @@ export class EppDeviceGroupsView extends LitElement {
 		}
 		epp-card { display: block; }
 		epp-kebab-menu { flex-shrink: 0; margin: -6px -8px -6px 0; }
-	`;
+	`,
+	];
 
 	@property({ attribute: false }) hass!: { [key: string]: unknown };
 	@property({ attribute: false }) controller!: DeviceGroupsController;
