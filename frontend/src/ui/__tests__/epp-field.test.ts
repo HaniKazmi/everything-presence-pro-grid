@@ -42,4 +42,19 @@ describe("epp-field", () => {
 		control.dispatchEvent(new Event("input", { bubbles: true }));
 		expect(received).toBe("Office");
 	});
+
+	it("swallows the inner control's own value-changed so consumers get only ours", async () => {
+		const el = await fixture();
+		let count = 0;
+		el.addEventListener("value-changed", () => {
+			count++;
+		});
+		const control = el.shadowRoot!.querySelector("[data-field-control]")!;
+		// Simulate an inner ha-* element firing its own composed value-changed.
+		control.dispatchEvent(
+			new CustomEvent("value-changed", { bubbles: true, composed: true }),
+		);
+		// It must be stopped at the wrapper, not propagated to consumers.
+		expect(count).toBe(0);
+	});
 });

@@ -23,6 +23,11 @@ export const tokens = css`
     --epp-border: var(--divider-color, #e0e0e0);
     --epp-surface: var(--card-background-color, #fff);
     --epp-surface-2: var(--secondary-background-color, #f5f5f5);
+    /* tooltip is a contrast bubble — ink-on-paper inverted, made explicit so
+       theme authors get a clean override point and a softened --epp-text can't
+       silently change the tooltip background */
+    --epp-tooltip-bg: var(--primary-text-color, #212121);
+    --epp-tooltip-text: var(--card-background-color, #fff);
 
     /* spacing — 4px base */
     --epp-space-1: 4px;

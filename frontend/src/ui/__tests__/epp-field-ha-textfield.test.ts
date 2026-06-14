@@ -1,15 +1,15 @@
 import { describe, expect, it } from "vitest";
 
 // Register ha-textfield stub but NOT ha-input — we test the middle branch.
-// The branch in epp-field's render() checks customElements.get("ha-input")
-// first (false), then customElements.get("ha-textfield") (true).
-// Each vitest test file runs in its own happy-dom window, so this stub
-// does not affect other test files.
+// epp-field resolves its tag once at construction (class-field initializer):
+// it checks customElements.get("ha-input") first (false), then
+// customElements.get("ha-textfield") (true), so the stub must exist before the
+// fixture constructs an element. Each vitest test file runs in its own
+// worker/window, so this stub does not affect other test files.
 if (!customElements.get("ha-textfield")) {
 	customElements.define("ha-textfield", class extends HTMLElement {});
 }
 
-// Static import — the branch is evaluated at render() time, not module-load time.
 import "../epp-field.js";
 import type { EppField } from "../epp-field.js";
 

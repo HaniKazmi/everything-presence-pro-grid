@@ -51,11 +51,11 @@ export class EppInfoTip extends LitElement {
         position: fixed;
         background: var(--epp-surface, var(--card-background-color, #fff));
         border: 1px solid var(--epp-border, var(--divider-color, #e0e0e0));
-        border-radius: var(--epp-radius-md, 8px);
-        padding: var(--epp-space-2, 10px) var(--epp-space-3, 12px);
+        border-radius: var(--epp-radius-md, 10px);
+        padding: var(--epp-space-2, 8px) var(--epp-space-3, 12px);
         font-size: var(--epp-font-xs, 12px);
         color: var(--epp-text, var(--primary-text-color, #212121));
-        box-shadow: var(--epp-elevation-1, 0 2px 8px rgba(0, 0, 0, 0.15));
+        box-shadow: var(--epp-elevation-1, 0 2px 8px rgba(0, 0, 0, 0.12));
         white-space: normal;
         width: 240px;
         z-index: 9999;

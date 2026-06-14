@@ -1,17 +1,16 @@
 import { describe, expect, it } from "vitest";
 
-// Register ha-input stub BEFORE importing epp-field.
-// The branch in epp-field's render() checks customElements.get("ha-input")
-// at call time, so the stub only needs to be present when render() runs —
-// not necessarily before the module is loaded.
-// Because each vitest test file runs in its own happy-dom window, this stub
-// does not affect other test files.
+// Register the ha-input stub before any epp-field element is constructed.
+// epp-field resolves its control tag once, in a class-field initializer that
+// runs at construction time (`customElements.get("ha-input")`), so the stub
+// must exist before `document.createElement("epp-field")` is called in the
+// fixture below — registering it at module top satisfies that.
+// Because each vitest test file runs in its own worker/window, this stub does
+// not affect other test files.
 if (!customElements.get("ha-input")) {
 	customElements.define("ha-input", class extends HTMLElement {});
 }
 
-// Static import is fine — the branch is evaluated at render() time, not at
-// module-load time.
 import "../epp-field.js";
 import type { EppField } from "../epp-field.js";
 

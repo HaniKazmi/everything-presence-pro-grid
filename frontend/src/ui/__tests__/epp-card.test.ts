@@ -61,20 +61,25 @@ describe("epp-card", () => {
 		expect(card.classList.contains("elevated")).toBe(true);
 	});
 
-	it("re-renders when the actions slotchange fires", async () => {
+	it("reveals the actions footer when an action is added dynamically", async () => {
+		// Start with no actions → footer hidden.
 		const el = await fixture("With Actions");
-		const actionsSlot = el.shadowRoot!.querySelector(
-			'slot[name="actions"]',
-		) as HTMLSlotElement;
-		expect(actionsSlot).toBeTruthy();
-		// Simulate slotchange (e.g. consumer inserts an action button dynamically)
-		actionsSlot.dispatchEvent(new Event("slotchange"));
-		await el.updateComplete;
-		// After the re-render the card-actions visibility is determined by _hasActions;
-		// the important thing is the handler ran (requestUpdate) and no error was thrown.
 		const actions = el.shadowRoot!.querySelector(
 			".card-actions",
 		) as HTMLElement;
-		expect(actions).toBeTruthy();
+		expect(actions.hasAttribute("hidden")).toBe(true);
+
+		// Consumer inserts an action button after first render, then the slot fires.
+		const btn = document.createElement("button");
+		btn.setAttribute("slot", "actions");
+		el.appendChild(btn);
+		const actionsSlot = el.shadowRoot!.querySelector(
+			'slot[name="actions"]',
+		) as HTMLSlotElement;
+		actionsSlot.dispatchEvent(new Event("slotchange"));
+		await el.updateComplete;
+
+		// The slotchange handler must have re-rendered and un-hidden the footer.
+		expect(actions.hasAttribute("hidden")).toBe(false);
 	});
 });

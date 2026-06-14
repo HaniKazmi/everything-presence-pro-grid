@@ -12,13 +12,13 @@ export class EppTooltip extends LitElement {
       bottom: calc(100% + 6px);
       left: 50%;
       transform: translateX(-50%);
-      background: var(--epp-text, #0c0d10);
-      color: var(--epp-surface, #fff);
+      background: var(--epp-tooltip-bg, var(--primary-text-color, #212121));
+      color: var(--epp-tooltip-text, var(--card-background-color, #fff));
       border-radius: var(--epp-radius-sm, 6px);
       padding: var(--epp-space-1, 4px) var(--epp-space-2, 8px);
       font-size: var(--epp-font-xs, 12px);
       white-space: nowrap;
-      box-shadow: var(--epp-elevation-1, 0 4px 14px rgba(0, 0, 0, 0.4));
+      box-shadow: var(--epp-elevation-1, 0 2px 8px rgba(0, 0, 0, 0.12));
       opacity: 0;
       pointer-events: none;
       transition: opacity 0.12s;

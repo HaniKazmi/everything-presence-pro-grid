@@ -40,6 +40,8 @@ describe("design tokens", () => {
 			"--epp-border",
 			"--epp-surface",
 			"--epp-surface-2",
+			"--epp-tooltip-bg",
+			"--epp-tooltip-text",
 			"--epp-space-1",
 			"--epp-space-2",
 			"--epp-space-3",

@@ -14,6 +14,15 @@ export class EppField extends LitElement {
 	@property({ type: String }) unit = "";
 	@property({ type: Boolean }) disabled = false;
 
+	// Resolve the control tag once: which ha-* element exists is fixed for the
+	// element's lifetime, and `literal` parts must be static within a template —
+	// re-resolving in render() would risk a full DOM teardown if it ever changed.
+	private readonly _tag = customElements.get("ha-input")
+		? literal`ha-input`
+		: customElements.get("ha-textfield")
+			? literal`ha-textfield`
+			: literal`input`;
+
 	static styles = css`
     :host { display: block; }
     .field { display: flex; align-items: center; gap: var(--epp-space-2, 8px); }
@@ -26,8 +35,8 @@ export class EppField extends LitElement {
   `;
 
 	private _onInput = (e: Event) => {
-		// Stop the inner control's composed input/value-changed from leaking past
-		// the wrapper; consumers listen only for our single re-emitted event.
+		// Read the value from the inner control's `input` event and re-emit a
+		// single normalized `value-changed`. Stop the inner `input` here.
 		e.stopPropagation();
 		const value = (e.target as HTMLInputElement).value;
 		this.value = value;
@@ -40,12 +49,16 @@ export class EppField extends LitElement {
 		);
 	};
 
+	// Some HA controls (e.g. ha-input) also fire their OWN composed
+	// `value-changed`. Swallow it so consumers of <epp-field> receive exactly
+	// one `value-changed` — the normalized one from `_onInput` above — and not
+	// the inner element's event leaking across the shadow boundary.
+	private _onInnerValueChanged = (e: Event) => {
+		e.stopPropagation();
+	};
+
 	render() {
-		const tag = customElements.get("ha-input")
-			? literal`ha-input`
-			: customElements.get("ha-textfield")
-				? literal`ha-textfield`
-				: literal`input`;
+		const tag = this._tag;
 		return staticHtml`
       <div class="field">
         <${tag}
@@ -55,6 +68,7 @@ export class EppField extends LitElement {
           .value=${this.value}
           ?disabled=${this.disabled}
           @input=${this._onInput}
+          @value-changed=${this._onInnerValueChanged}
         ></${tag}>
         ${this.unit ? staticHtml`<span class="unit">${this.unit}</span>` : ""}
       </div>
