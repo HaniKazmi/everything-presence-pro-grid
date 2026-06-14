@@ -1700,14 +1700,12 @@ export class EPPGridPanel extends LitElement {
 				@dialog-dismiss=${() => this._navGuard.cancelPendingNavigation()}
 			>
 				<p class="overlay-help">${this._localize("dialogs.unsaved_changes_body")}</p>
-				<div slot="actions">
-					<epp-button variant="text"
-						@click=${() => this._navGuard.cancelPendingNavigation()}
-					>${this._localize("common.cancel")}</epp-button>
-					<epp-button variant="danger"
-						@click=${() => this._navGuard.discardAndNavigate()}
-					>${this._localize("common.discard")}</epp-button>
-				</div>
+				<epp-button slot="actions" variant="text"
+					@click=${() => this._navGuard.cancelPendingNavigation()}
+				>${this._localize("common.cancel")}</epp-button>
+				<epp-button slot="actions" variant="danger"
+					@click=${() => this._navGuard.discardAndNavigate()}
+				>${this._localize("common.discard")}</epp-button>
 			</epp-dialog>
       <epp-dialog
 				?open=${this._showDeleteCalibrationDialog}
@@ -1717,16 +1715,14 @@ export class EPPGridPanel extends LitElement {
 				}}
 			>
 				<p class="overlay-help">${this._localize("dialogs.delete_calibration_body")}</p>
-				<div slot="actions">
-					<epp-button variant="text"
-						@click=${() => {
-							this._showDeleteCalibrationDialog = false;
-						}}
-					>${this._localize("common.cancel")}</epp-button>
-					<epp-button variant="danger"
-						@click=${this._deleteCalibration}
-					>${this._localize("common.delete")}</epp-button>
-				</div>
+				<epp-button slot="actions" variant="text"
+					@click=${() => {
+						this._showDeleteCalibrationDialog = false;
+					}}
+				>${this._localize("common.cancel")}</epp-button>
+				<epp-button slot="actions" variant="danger"
+					@click=${this._deleteCalibration}
+				>${this._localize("common.delete")}</epp-button>
 			</epp-dialog>
     `;
 	}
@@ -1757,14 +1753,12 @@ export class EPPGridPanel extends LitElement {
 				@dialog-dismiss=${() => this._resolveFlasherDeleteConfirm(false)}
 			>
 				<p class="overlay-help">${this._localize("flasher.confirm_delete_message")}</p>
-				<div slot="actions">
-					<epp-button variant="text"
-						@click=${() => this._resolveFlasherDeleteConfirm(false)}
-					>${this._localize("common.cancel")}</epp-button>
-					<epp-button variant="danger"
-						@click=${() => this._resolveFlasherDeleteConfirm(true)}
-					>${this._localize("common.delete")}</epp-button>
-				</div>
+				<epp-button slot="actions" variant="text"
+					@click=${() => this._resolveFlasherDeleteConfirm(false)}
+				>${this._localize("common.cancel")}</epp-button>
+				<epp-button slot="actions" variant="danger"
+					@click=${() => this._resolveFlasherDeleteConfirm(true)}
+				>${this._localize("common.delete")}</epp-button>
 			</epp-dialog>
 		`;
 	}

@@ -36,24 +36,24 @@ export class EppConfirmDialog extends LitElement {
 				@dialog-dismiss=${this._cancel}
 			>
 				${this.message ? html`<p class="message">${this.message}</p>` : nothing}
-				<div slot="actions">
-					${
-						this.hideCancel
-							? nothing
-							: html`<epp-button
-									variant="text"
-									data-testid="dialog-cancel"
-									@click=${this._cancel}
-									>${this.cancelLabel}</epp-button
-								>`
-					}
-					<epp-button
-						variant=${this.danger ? "danger" : "primary"}
-						data-testid="dialog-confirm"
-						@click=${this._confirm}
-						>${this.confirmLabel}</epp-button
-					>
-				</div>
+				${
+					this.hideCancel
+						? nothing
+						: html`<epp-button
+								slot="actions"
+								variant="text"
+								data-testid="dialog-cancel"
+								@click=${this._cancel}
+								>${this.cancelLabel}</epp-button
+							>`
+				}
+				<epp-button
+					slot="actions"
+					variant=${this.danger ? "danger" : "primary"}
+					data-testid="dialog-confirm"
+					@click=${this._confirm}
+					>${this.confirmLabel}</epp-button
+				>
 			</epp-dialog>
 		`;
 	}

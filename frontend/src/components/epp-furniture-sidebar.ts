@@ -252,11 +252,10 @@ export class EppFurnitureSidebar extends LitElement {
 						`
 						: nothing
 				}
-				<div slot="actions">
-					<epp-button variant="text" class="wizard-btn wizard-btn-back"
+				<epp-button slot="actions" variant="text" class="wizard-btn wizard-btn-back"
 						@click=${this._cancelCustomIcon}
 					>${this.localize("common.cancel")}</epp-button>
-					<epp-button variant="primary" class="wizard-btn wizard-btn-primary"
+					<epp-button slot="actions" variant="primary" class="wizard-btn wizard-btn-primary"
 						?disabled=${!this.customIconValue.trim()}
 						@click=${() => {
 							this.dispatchEvent(
@@ -281,7 +280,6 @@ export class EppFurnitureSidebar extends LitElement {
 							);
 						}}
 					>${this.localize("common.add")}</epp-button>
-				</div>
 			</epp-dialog>
 		`;
 	}

@@ -142,19 +142,19 @@ export class EppConfigurationDialogs extends LitElement {
 						this._dispatch("configuration-name-change", e.detail.value);
 					}}
         ></epp-field>
-        <div slot="actions">
-          <epp-button
-            class="wizard-btn-back"
-            variant="text"
-            @click=${() => this._dispatch("backup-cancel")}
-          >${this.localize("common.cancel")}</epp-button>
-          <epp-button
-            class="wizard-btn-primary"
-            variant="primary"
-            ?disabled=${!this.configurationName.trim()}
-            @click=${() => this._dispatch("configuration-save")}
-          >${this.localize("common.save")}</epp-button>
-        </div>
+        <epp-button
+          slot="actions"
+          class="wizard-btn-back"
+          variant="text"
+          @click=${() => this._dispatch("backup-cancel")}
+        >${this.localize("common.cancel")}</epp-button>
+        <epp-button
+          slot="actions"
+          class="wizard-btn-primary"
+          variant="primary"
+          ?disabled=${!this.configurationName.trim()}
+          @click=${() => this._dispatch("configuration-save")}
+        >${this.localize("common.save")}</epp-button>
       </epp-dialog>
     `;
 	}
@@ -233,13 +233,12 @@ export class EppConfigurationDialogs extends LitElement {
 								)}
               </div>`
 				}
-        <div slot="actions">
-          <epp-button
-            class="wizard-btn-back"
-            variant="text"
-            @click=${() => this._dispatch("restore-close")}
-          >${this.localize("common.close")}</epp-button>
-        </div>
+        <epp-button
+          slot="actions"
+          class="wizard-btn-back"
+          variant="text"
+          @click=${() => this._dispatch("restore-close")}
+        >${this.localize("common.close")}</epp-button>
       </epp-dialog>
     `;
 	}
