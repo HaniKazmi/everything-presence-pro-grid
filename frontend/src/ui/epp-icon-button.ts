@@ -14,7 +14,7 @@ export class EppIconButton extends LitElement {
       cursor: pointer;
       border: none;
       background: transparent;
-      color: var(--epp-text-muted, var(--secondary-text-color, #757575));
+      color: var(--epp-icon-button-color, var(--epp-text-muted, var(--secondary-text-color, #757575)));
       width: var(--epp-control-height, 40px);
       height: var(--epp-control-height, 40px);
       border-radius: var(--epp-radius-md, 10px);

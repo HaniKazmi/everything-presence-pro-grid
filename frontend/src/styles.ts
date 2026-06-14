@@ -99,6 +99,12 @@ export const dialogStyles = css`
     top: var(--epp-space-1, 4px);
     right: var(--epp-space-1, 4px);
     z-index: 1;
+    /* fixed dark scrim so the icon stays legible over the thumbnail image,
+       not themed (must stay dark in any theme) */
+    background: rgba(0, 0, 0, 0.4);
+    border-radius: var(--epp-radius-pill, 9999px);
+    --epp-icon-button-color: #fff;
+    --epp-control-height: var(--epp-control-height-sm, 32px);
   }
 `;
 
