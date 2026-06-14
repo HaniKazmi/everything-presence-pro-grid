@@ -508,7 +508,11 @@ const flasherStyles = css`
   }
 
   .wifi-override-link {
-    color: var(--primary-color);
+    background: none;
+    border: none;
+    padding: 0;
+    font: inherit;
+    color: var(--epp-accent, var(--primary-color, #03a9f4));
     cursor: pointer;
     text-decoration: underline;
     font-size: 0.9em;
@@ -854,6 +858,7 @@ export class EppFlasherView extends LitElement {
 								? html`
                 <epp-field
                   type="text"
+                  autocomplete="off"
                   .label=${this.localize("flasher.enter_ssid")}
                   .value=${this._selectedSsid}
                   @value-changed=${(e: CustomEvent<{ value: string }>) => {
@@ -1185,13 +1190,13 @@ export class EppFlasherView extends LitElement {
 						${
 							state.autoSkipped
 								? html`<div class="wifi-override-row">
-									<epp-button
+									<button
 										class="wifi-override-link"
-										variant="text"
+										type="button"
 										@click=${this._dispatchWifiScan}
 									>
 										${this.localize("flasher.configure_wifi_override")}
-									</epp-button>
+									</button>
 								</div>`
 								: nothing
 						}

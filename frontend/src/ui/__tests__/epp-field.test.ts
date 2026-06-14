@@ -91,6 +91,21 @@ describe("epp-field", () => {
 		expect(control.hasAttribute("placeholder")).toBe(false);
 	});
 
+	it("passes autocomplete through to the control", async () => {
+		const el = document.createElement("epp-field") as EppField;
+		el.autocomplete = "off";
+		document.body.appendChild(el);
+		await el.updateComplete;
+		const control = el.shadowRoot!.querySelector("[data-field-control]")!;
+		expect(control.getAttribute("autocomplete")).toBe("off");
+	});
+
+	it("omits autocomplete when not set", async () => {
+		const el = await fixture();
+		const control = el.shadowRoot!.querySelector("[data-field-control]")!;
+		expect(control.hasAttribute("autocomplete")).toBe(false);
+	});
+
 	it("passes number min/max/step through", async () => {
 		const el = document.createElement("epp-field") as EppField;
 		el.type = "number";

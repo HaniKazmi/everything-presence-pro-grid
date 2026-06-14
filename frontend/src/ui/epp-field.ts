@@ -19,6 +19,8 @@ export class EppField extends LitElement {
 	@property({ type: String }) min = "";
 	@property({ type: String }) max = "";
 	@property({ type: String }) step = "";
+	/** Passed through to the control (e.g. "off" to suppress browser autofill). */
+	@property({ type: String }) autocomplete = "";
 
 	// Resolve the control tag once: which ha-* element exists is fixed for the
 	// element's lifetime, and `literal` parts must be static within a template —
@@ -88,6 +90,7 @@ export class EppField extends LitElement {
           min=${this.min || nothing}
           max=${this.max || nothing}
           step=${this.step || nothing}
+          autocomplete=${this.autocomplete || nothing}
           .value=${this.value}
           ?disabled=${this.disabled}
           @input=${this._onInput}
