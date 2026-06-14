@@ -4,7 +4,6 @@ import { MAX_ZONES } from "../lib/grid.js";
 import type { ZoneConfig } from "../lib/zone-defaults.js";
 import { defaultLocalize, type LocalizeFn } from "../localize.js";
 import "./epp-info-tip.js";
-import "../ui/epp-button.js";
 
 export interface SensorState {
 	occupancy: boolean;
@@ -61,6 +60,9 @@ export class EppLiveSidebar extends LitElement {
     }
 
     .live-section-link {
+      cursor: pointer;
+      background: none;
+      border: none;
       color: var(--epp-accent, var(--primary-color, #03a9f4));
     }
 
@@ -286,7 +288,7 @@ export class EppLiveSidebar extends LitElement {
 						? html`
         <hr style="border: none; border-top: 1px solid var(--divider-color, #eee); margin: 10px 12px;"/>
 
-        <epp-button variant="text" class="live-section-link live-section-header" @click=${() => {
+        <button class="live-section-header live-section-link" @click=${() => {
 					this.dispatchEvent(
 						new CustomEvent("view-change", {
 							detail: { view: "editor", sidebarTab: "zones" },
@@ -294,7 +296,7 @@ export class EppLiveSidebar extends LitElement {
 							composed: true,
 						}),
 					);
-				}}>${this.localize("sidebar.detection_zones")}</epp-button>
+				}}>${this.localize("sidebar.detection_zones")}</button>
         ${zoneDefs.map((s) => this._renderRow(s))}
         `
 						: nothing

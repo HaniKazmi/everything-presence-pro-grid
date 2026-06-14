@@ -168,7 +168,7 @@ export const settingStyles = css`
   /* .setting-group is superseded by epp-card; kept for any legacy references. */
   .setting-group {
     background: var(--epp-surface, var(--card-background-color, #fff));
-    border-radius: var(--epp-radius-md, 12px);
+    border-radius: var(--epp-radius-md, 10px);
     padding: var(--epp-space-4, 16px);
     margin-bottom: var(--epp-space-3, 12px);
     border: 1px solid var(--epp-border, var(--divider-color, #e0e0e0));
