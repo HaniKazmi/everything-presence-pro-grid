@@ -24,7 +24,7 @@ export interface UsbFlashHost {
 	/**
 	 * Host hook — ask the user to confirm deleting an original-firmware
 	 * device's old ESPHome config entry before flashing over it. The panel
-	 * wires this to its themed template-dialog. Resolves true to proceed
+	 * wires this to its themed epp-dialog. Resolves true to proceed
 	 * (delete + flash) or false to abort the flash cleanly. When the hook
 	 * is not wired, the flow aborts (safe default — never delete without
 	 * an explicit confirmation).

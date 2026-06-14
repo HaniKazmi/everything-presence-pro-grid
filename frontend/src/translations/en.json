@@ -49,7 +49,8 @@
 		"window": "Window",
 		"custom_icon": "Custom icon",
 		"custom": "Custom",
-		"search_placeholder": "Search furniture..."
+		"search_placeholder": "Search furniture...",
+		"remove": "Remove"
 	},
 	"corners": {
 		"front_left": "Front-left",
@@ -80,7 +81,7 @@
 		"walk_instruction": "Walk to each corner of the room and click Mark. The sensor will record your position over {duration} seconds.",
 		"corner_step": "Corner {index}/4: Walk to the {corner}",
 		"distance_from": "Distance from:",
-		"distance_from_side": "Distance from {wall} (cm)",
+		"distance_from_side": "{wall} (cm)",
 		"front_wall_label": "Front wall (sensor side)",
 		"back_wall_label": "Back wall",
 		"sensor": "Sensor",
@@ -330,6 +331,7 @@
 	"tabs": {
 		"device_configuration": "Device Configuration",
 		"flash_firmware": "Flash Firmware",
+		"device_groups": "Device Groups",
 		"help": "Open user guide"
 	},
 	"flasher": {

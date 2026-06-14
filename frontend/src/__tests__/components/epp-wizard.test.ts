@@ -181,7 +181,7 @@ describe("wizard-save event contract", () => {
 		el.addEventListener("wizard-save", (e) => events.push(e as CustomEvent));
 
 		const saveBtn = Array.from(
-			el.shadowRoot!.querySelectorAll<HTMLButtonElement>("button"),
+			el.shadowRoot!.querySelectorAll("epp-button"),
 		).find((b) => b.textContent?.includes("common.save"))!;
 		saveBtn.click();
 
@@ -212,7 +212,7 @@ describe("wizard-save event contract", () => {
 		el.addEventListener("wizard-save", (e) => events.push(e as CustomEvent));
 
 		const saveBtn = Array.from(
-			el.shadowRoot!.querySelectorAll<HTMLButtonElement>("button"),
+			el.shadowRoot!.querySelectorAll("epp-button"),
 		).find((b) => b.textContent?.includes("common.save"))!;
 		saveBtn.click();
 		await el.updateComplete;
@@ -239,8 +239,10 @@ describe("wizard-save event contract", () => {
 		expect(error).not.toBeNull();
 		expect(error!.textContent).toContain("wizard.save_failed");
 		const saveBtn = Array.from(
-			el.shadowRoot!.querySelectorAll<HTMLButtonElement>("button"),
-		).find((b) => b.textContent?.includes("common.save"))!;
+			el.shadowRoot!.querySelectorAll("epp-button"),
+		).find((b) => b.textContent?.includes("common.save")) as HTMLElement & {
+			disabled: boolean;
+		};
 		expect(saveBtn.disabled).toBe(false);
 	});
 
@@ -268,13 +270,15 @@ describe("offset edits after all corners marked", () => {
 		await el.updateComplete;
 
 		const depthBefore = a._wizardRoomDepth;
-		const sideInput = el.shadowRoot!.querySelectorAll(
-			".offset-input",
-		)[1] as HTMLInputElement;
+		const sideInput = el.shadowRoot!.querySelectorAll(".offset-input")[1]!;
 		// Corner 3's fb offset goes from 65cm to 100cm → depth grows by
 		// half the 350mm delta (depth averages left/right sides).
-		sideInput.value = "100";
-		sideInput.dispatchEvent(new Event("input"));
+		sideInput.dispatchEvent(
+			new CustomEvent("value-changed", {
+				detail: { value: "100" },
+				bubbles: true,
+			}),
+		);
 
 		expect(a._wizardCorners[3].offset_fb).toBe(1000);
 		expect(a._wizardRoomDepth).toBe(depthBefore + 175);
@@ -347,9 +351,9 @@ describe("don't show tutorial again checkbox", () => {
 		cb.checked = true;
 		cb.dispatchEvent(new Event("change"));
 
-		const beginBtn = Array.from(
-			root.querySelectorAll<HTMLButtonElement>("button"),
-		).find((b) => b.textContent?.includes("wizard.begin_marking"))!;
+		const beginBtn = Array.from(root.querySelectorAll("epp-button")).find((b) =>
+			b.textContent?.includes("wizard.begin_marking"),
+		)!;
 		beginBtn.click();
 
 		expect(events).toHaveLength(1);
@@ -367,9 +371,9 @@ describe("don't show tutorial again checkbox", () => {
 		});
 
 		const root = el.shadowRoot!;
-		const beginBtn = Array.from(
-			root.querySelectorAll<HTMLButtonElement>("button"),
-		).find((b) => b.textContent?.includes("wizard.begin_marking"))!;
+		const beginBtn = Array.from(root.querySelectorAll("epp-button")).find((b) =>
+			b.textContent?.includes("wizard.begin_marking"),
+		)!;
 		beginBtn.click();
 
 		expect(fired).toBe(false);

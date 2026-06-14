@@ -321,7 +321,7 @@ describe("device-groups unsaved-changes guard", () => {
 		render(a.render(), c);
 		// the panel's global dialogs (incl. the unsaved-changes dialog) must be
 		// rendered on this tab, not only on the config tab
-		expect(c.querySelector(".template-dialog")).not.toBeNull();
+		expect(c.querySelector("epp-dialog[open]")).not.toBeNull();
 	});
 
 	it("renders the unsaved-changes dialog on the flasher tab too", () => {
@@ -331,7 +331,7 @@ describe("device-groups unsaved-changes guard", () => {
 		a._showUnsavedDialog = true;
 		const c = document.createElement("div");
 		render(a.render(), c);
-		expect(c.querySelector(".template-dialog")).not.toBeNull();
+		expect(c.querySelector("epp-dialog[open]")).not.toBeNull();
 	});
 
 	it("renders the unsaved-changes dialog even on a full-page status branch", () => {
@@ -345,6 +345,6 @@ describe("device-groups unsaved-changes guard", () => {
 		a._showUnsavedDialog = true;
 		const c = document.createElement("div");
 		render(a.render(), c);
-		expect(c.querySelector(".template-dialog")).not.toBeNull();
+		expect(c.querySelector("epp-dialog[open]")).not.toBeNull();
 	});
 });

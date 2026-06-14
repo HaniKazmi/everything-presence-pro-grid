@@ -18,8 +18,10 @@ import {
 	medianPoint,
 } from "../lib/room-geometry.js";
 import { defaultLocalize, type LocalizeFn } from "../localize.js";
-import { buttonStyles, headerStyles, settingStyles } from "../styles.js";
+import { buttonStyles, settingStyles } from "../styles.js";
 import type { RawTarget, WizardCorner } from "../types.js";
+import "../ui/epp-button.js";
+import "../ui/epp-field.js";
 
 export type SetupStep = "guide" | "corners";
 
@@ -314,7 +316,6 @@ export class EppWizard extends LitElement {
 	// --- Styles ---
 	static styles = [
 		buttonStyles,
-		headerStyles,
 		settingStyles,
 		css`
       :host {
@@ -325,17 +326,17 @@ export class EppWizard extends LitElement {
         max-width: 560px;
         width: 100%;
         background: var(--card-background-color, #fff);
-        border-radius: 16px;
+        border-radius: var(--epp-radius-lg, 16px);
         padding: 32px;
         display: flex;
         flex-direction: column;
-        gap: 24px;
+        gap: var(--epp-space-5, 24px);
         box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
       }
 
       .wizard-card h2 {
         margin: 0;
-        font-size: 22px;
+        font-size: var(--epp-font-2xl, 20px);
         font-weight: 500;
       }
 
@@ -350,14 +351,14 @@ export class EppWizard extends LitElement {
         display: flex;
         flex-direction: column;
         gap: 6px;
-        font-size: 14px;
+        font-size: var(--epp-font-base, 14px);
         font-weight: 500;
         color: var(--secondary-text-color, #757575);
       }
 
       .wizard-card input[type="text"] {
         width: 100%;
-        padding: 10px 12px;
+        padding: 10px var(--epp-space-3, 12px);
         border: 1px solid var(--divider-color, #e0e0e0);
         border-radius: 8px;
         font-size: 15px;
@@ -369,7 +370,7 @@ export class EppWizard extends LitElement {
       .wizard-actions {
         display: flex;
         justify-content: space-between;
-        gap: 12px;
+        gap: var(--epp-space-3, 12px);
       }
 
       .wizard-btn-secondary {
@@ -431,27 +432,27 @@ export class EppWizard extends LitElement {
 
       .no-target-warning {
         color: var(--error-color, #f44336);
-        font-size: 13px;
+        font-size: var(--epp-font-sm, 13px);
         text-align: center;
       }
 
       .save-error {
         color: var(--error-color, #f44336);
-        font-size: 13px;
+        font-size: var(--epp-font-sm, 13px);
         text-align: center;
         margin: 0;
       }
 
       .corner-progress {
         display: flex;
-        gap: 8px;
+        gap: var(--epp-space-2, 8px);
         flex-wrap: wrap;
       }
 
       .corner-chip {
         padding: 5px 11px;
-        border-radius: 16px;
-        font-size: 13px;
+        border-radius: var(--epp-radius-lg, 16px);
+        font-size: var(--epp-font-sm, 13px);
         background: var(--secondary-background-color, #e0e0e0);
         color: var(--secondary-text-color, #757575);
         cursor: pointer;
@@ -475,7 +476,7 @@ export class EppWizard extends LitElement {
       }
 
       .corner-arrow {
-        font-size: 18px;
+        font-size: var(--epp-font-xl, 18px);
         color: var(--disabled-text-color, #ccc);
         font-weight: bold;
       }
@@ -492,11 +493,11 @@ export class EppWizard extends LitElement {
       .corner-offsets {
         display: flex;
         align-items: center;
-        gap: 8px;
+        gap: var(--epp-space-2, 8px);
       }
 
       .offset-label {
-        font-size: 13px;
+        font-size: var(--epp-font-sm, 13px);
         color: var(--secondary-text-color, #888);
         white-space: nowrap;
         flex-shrink: 0;
@@ -517,8 +518,8 @@ export class EppWizard extends LitElement {
 
       .capture-overlay-content {
         background: var(--card-background-color, #fff);
-        padding: 24px 32px;
-        border-radius: 16px;
+        padding: var(--epp-space-5, 24px) 32px;
+        border-radius: var(--epp-radius-lg, 16px);
         text-align: center;
         box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
       }
@@ -526,10 +527,10 @@ export class EppWizard extends LitElement {
       .offset-input {
         flex: 1;
         width: 100%;
-        padding: 14px 12px 6px;
+        padding: 14px var(--epp-space-3, 12px) 6px;
         border: 1px solid var(--divider-color, #e0e0e0);
-        border-radius: 10px;
-        font-size: 16px;
+        border-radius: var(--epp-radius-md, 10px);
+        font-size: var(--epp-font-lg, 16px);
         box-sizing: border-box;
         background: var(--card-background-color, #fff);
         color: var(--primary-text-color, #212121);
@@ -537,7 +538,7 @@ export class EppWizard extends LitElement {
 
       .offset-input::placeholder {
         color: var(--secondary-text-color, #888);
-        font-size: 13px;
+        font-size: var(--epp-font-sm, 13px);
       }
 
       .offset-input:focus {
@@ -548,7 +549,7 @@ export class EppWizard extends LitElement {
       .capture-progress {
         display: flex;
         align-items: center;
-        gap: 12px;
+        gap: var(--epp-space-3, 12px);
         width: 100%;
       }
 
@@ -568,13 +569,13 @@ export class EppWizard extends LitElement {
       }
 
       .capture-progress span {
-        font-size: 13px;
+        font-size: var(--epp-font-sm, 13px);
         color: var(--secondary-text-color, #757575);
         white-space: nowrap;
       }
 
       .dont-show-again {
-        margin-top: 16px;
+        margin-top: var(--epp-space-4, 16px);
       }
     `,
 	];
@@ -613,12 +614,12 @@ export class EppWizard extends LitElement {
               </div>
               <span>${this.localize("wizard.recording", { current: Math.round(this._wizardCaptureProgress * CAPTURE_DURATION_S), total: CAPTURE_DURATION_S })}</span>
             </div>
-            <p style="margin: 8px 0 0; font-size: 13px; color: ${this._wizardCapturePaused ? "var(--error-color, #e53935)" : "var(--secondary-text-color)"};">
+            <p style="margin: 8px 0 0; font-size: var(--epp-font-sm, 13px); color: ${this._wizardCapturePaused ? "var(--error-color, #e53935)" : "var(--secondary-text-color)"};">
               ${this._wizardCapturePaused ? this.localize("wizard.paused") : this.localize("wizard.stand_still")}
             </p>
             <button
               class="wizard-btn wizard-btn-back"
-              style="margin-top: 12px;"
+              style="margin-top: var(--epp-space-3, 12px);"
               @click=${() => this._wizardCancelCapture()}
             >${this.localize("common.cancel")}</button>
           </div>
@@ -744,28 +745,28 @@ export class EppWizard extends LitElement {
 		return html`
       <div style="max-width: 560px; margin: 0 auto;">
         <div class="setting-group">
-          <h4 style="text-align: center; margin-bottom: 16px;">${this.localize("wizard.how_calibration_works")}</h4>
+          <h4 style="text-align: center; margin-bottom: var(--epp-space-4, 16px);">${this.localize("wizard.how_calibration_works")}</h4>
 
           ${roomDiagram}
 
-          <div style="display: flex; flex-direction: column; gap: 14px; padding: 16px 4px 0;">
+          <div style="display: flex; flex-direction: column; gap: 14px; padding: var(--epp-space-4, 16px) 4px 0;">
             <div style="display: flex; align-items: flex-start; gap: 10px;">
-              <div style="min-width: 22px; height: 22px; border-radius: 50%; background: #4CAF50; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: bold; color: white;">1</div>
-              <div style="font-size: 13px;">
+              <div style="min-width: 22px; height: 22px; border-radius: 50%; background: #4CAF50; display: flex; align-items: center; justify-content: center; font-size: var(--epp-font-xs, 12px); font-weight: bold; color: white;">1</div>
+              <div style="font-size: var(--epp-font-sm, 13px);">
                 ${unsafeHTML(this.localize("wizard.walk_instruction_full"))}
               </div>
             </div>
 
             <div style="display: flex; align-items: flex-start; gap: 10px;">
-              <div style="min-width: 22px; height: 22px; border-radius: 50%; background: #FF9800; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: bold; color: white;">!</div>
-              <div style="font-size: 13px;">
+              <div style="min-width: 22px; height: 22px; border-radius: 50%; background: #FF9800; display: flex; align-items: center; justify-content: center; font-size: var(--epp-font-xs, 12px); font-weight: bold; color: white;">!</div>
+              <div style="font-size: var(--epp-font-sm, 13px);">
                 ${unsafeHTML(this.localize("wizard.cant_reach"))}
               </div>
             </div>
 
             <div style="display: flex; align-items: flex-start; gap: 10px;">
               <ha-icon icon="mdi:information-outline" style="--mdc-icon-size: 20px; color: var(--primary-color); flex-shrink: 0; margin-top: 1px;"></ha-icon>
-              <div style="font-size: 13px; color: var(--secondary-text-color, #757575);">
+              <div style="font-size: var(--epp-font-sm, 13px); color: var(--secondary-text-color, #757575);">
                 ${this.localize("wizard.corner_sensor_hint")}
               </div>
             </div>
@@ -782,14 +783,14 @@ export class EppWizard extends LitElement {
         </ha-formfield>
 
         <div style="display: flex; justify-content: space-between; margin-top: 20px;">
-          <button class="wizard-btn wizard-btn-back"
+          <epp-button variant="text"
             @click=${() => {
 							this._fireCancel();
 						}}
-          >${this.localize("common.cancel")}</button>
-          <button class="wizard-btn wizard-btn-primary"
+          >${this.localize("common.cancel")}</epp-button>
+          <epp-button variant="primary"
             @click=${() => this._onBeginMarking()}
-          >${this.localize("wizard.begin_marking")}</button>
+          >${this.localize("wizard.begin_marking")}</epp-button>
         </div>
       </div>
     `;
@@ -864,15 +865,16 @@ export class EppWizard extends LitElement {
 
         <div class="corner-offsets">
           <span class="offset-label">${this.localize("wizard.distance_from")}</span>
-          <input
-            type="number"
+          <epp-field
             class="offset-input"
+            type="number"
             min="0"
             step="1"
             placeholder="${this.localize("wizard.distance_from_side", { wall: this.localize(sideLabel) })}"
             .value=${this._wizardOffsetSide}
-            @input=${(e: Event) => {
-							this._wizardOffsetSide = (e.target as HTMLInputElement).value;
+            @value-changed=${(e: CustomEvent) => {
+							e.stopPropagation();
+							this._wizardOffsetSide = e.detail.value;
 							const val = 10 * (parseFloat(this._wizardOffsetSide) || 0);
 							const corner = this._wizardCorners[idx];
 							if (corner) {
@@ -880,16 +882,17 @@ export class EppWizard extends LitElement {
 								this._recomputeDimsIfAllMarked();
 							}
 						}}
-          />
-          <input
-            type="number"
+          ></epp-field>
+          <epp-field
             class="offset-input"
+            type="number"
             min="0"
             step="1"
             placeholder="${this.localize("wizard.distance_from_side", { wall: this.localize(fbLabel) })}"
             .value=${this._wizardOffsetFb}
-            @input=${(e: Event) => {
-							this._wizardOffsetFb = (e.target as HTMLInputElement).value;
+            @value-changed=${(e: CustomEvent) => {
+							e.stopPropagation();
+							this._wizardOffsetFb = e.detail.value;
 							const val = 10 * (parseFloat(this._wizardOffsetFb) || 0);
 							const corner = this._wizardCorners[idx];
 							if (corner) {
@@ -897,7 +900,7 @@ export class EppWizard extends LitElement {
 								this._recomputeDimsIfAllMarked();
 							}
 						}}
-          />
+          ></epp-field>
         </div>
 
         ${this._renderMiniSensorView()}
@@ -914,7 +917,7 @@ export class EppWizard extends LitElement {
           </p>
         `
 						: html`
-          <p style="font-size: 13px; color: var(--secondary-text-color); margin: 12px 0 4px;">
+          <p style="font-size: var(--epp-font-sm, 13px); color: var(--secondary-text-color); margin: var(--epp-space-3, 12px) 0 4px;">
             ${this.localize("wizard.save_prompt")}
           </p>
         `
@@ -927,31 +930,31 @@ export class EppWizard extends LitElement {
 				}
 
         <div class="wizard-actions">
-          <button
-            class="wizard-btn wizard-btn-back"
+          <epp-button
+            variant="text"
             @click=${() => {
 							this._fireCancel();
 						}}
-          >${this.localize("common.cancel")}</button>
+          >${this.localize("common.cancel")}</epp-button>
           ${
 						allMarked
 							? html`
-            <button
-              class="wizard-btn wizard-btn-primary"
+            <epp-button
+              variant="primary"
               ?disabled=${this._wizardSaving}
               @click=${() => this._wizardFinish()}
             >
               ${this._wizardSaving ? this.localize("common.saving") : this.localize("common.save")}
-            </button>
+            </epp-button>
           `
 							: html`
-            <button
-              class="wizard-btn wizard-btn-primary"
+            <epp-button
+              variant="primary"
               ?disabled=${!hasTarget || tooManyTargets || this._wizardCapturing}
               @click=${() => this._wizardStartCapture()}
             >
               ${this.localize("wizard.mark_corner", { corner: this.localize(label) })}
-            </button>
+            </epp-button>
           `
 					}
         </div>
@@ -1056,7 +1059,7 @@ export class EppWizard extends LitElement {
 			ey2 = cy + maxR * Math.sin(a2);
 
 		return html`
-      <div style="display: flex; flex-direction: column; align-items: center; padding: 24px;">
+      <div style="display: flex; flex-direction: column; align-items: center; padding: var(--epp-space-5, 24px);">
         <svg viewBox="0 0 320 210" width="320" height="210" style="display: block;">
           <!-- Sensor at top center -->
           <rect x="${cx - 6}" y="0" width="12" height="8" rx="3" fill="${fovColor}"/>
@@ -1108,16 +1111,14 @@ export class EppWizard extends LitElement {
 					}
         </svg>
 
-        <button
-          class="wizard-btn wizard-btn-primary"
-          style="margin-top: 16px; display: inline-flex; align-items: center; gap: 8px;"
+        <epp-button
+          variant="primary"
+          icon="mdi:target"
+          style="margin-top: var(--epp-space-4, 16px);"
           @click=${() => {
 						this._fireStartCalibration();
 					}}
-        >
-          <ha-icon icon="mdi:target" style="--mdc-icon-size: 16px;"></ha-icon>
-          ${this.localize("wizard.calibrate_room_size")}
-        </button>
+        >${this.localize("wizard.calibrate_room_size")}</epp-button>
       </div>
     `;
 	}

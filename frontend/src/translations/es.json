@@ -49,7 +49,8 @@
 		"window": "Ventana",
 		"custom_icon": "Icono personalizado",
 		"custom": "Personalizado",
-		"search_placeholder": "Buscar mobiliario..."
+		"search_placeholder": "Buscar mobiliario...",
+		"remove": "Eliminar"
 	},
 	"corners": {
 		"front_left": "Frente-izquierda",
@@ -80,7 +81,7 @@
 		"walk_instruction": "Camina hasta cada esquina de la habitación y haz clic en Marcar. El sensor registrará tu posición durante {duration} segundos.",
 		"corner_step": "Esquina {index}/4: Camina hasta la {corner}",
 		"distance_from": "Distancia desde:",
-		"distance_from_side": "Distancia desde {wall} (cm)",
+		"distance_from_side": "{wall} (cm)",
 		"front_wall_label": "Pared frontal (lado del sensor)",
 		"back_wall_label": "Pared del fondo",
 		"sensor": "Sensor",
@@ -330,6 +331,7 @@
 	"tabs": {
 		"device_configuration": "Configuración del dispositivo",
 		"flash_firmware": "Instalar firmware",
+		"device_groups": "Grupos de dispositivos",
 		"help": "Abrir la guía del usuario"
 	},
 	"flasher": {

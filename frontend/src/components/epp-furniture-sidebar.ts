@@ -8,7 +8,10 @@ import {
 	filterAndSortStickers,
 } from "../lib/furniture.js";
 import { defaultLocalize, type LocalizeFn } from "../localize.js";
-import { buttonStyles, dialogStyles, sidebarRowStyles } from "../styles.js";
+import { dialogStyles, sidebarRowStyles } from "../styles.js";
+import "../ui/epp-button.js";
+import "../ui/epp-dialog.js";
+import "../ui/epp-icon-button.js";
 
 export class EppFurnitureSidebar extends LitElement {
 	@property({ attribute: false }) furniture: FurnitureItem[] = [];
@@ -21,7 +24,6 @@ export class EppFurnitureSidebar extends LitElement {
 
 	static styles = [
 		dialogStyles,
-		buttonStyles,
 		sidebarRowStyles,
 		css`
 			:host {
@@ -31,11 +33,11 @@ export class EppFurnitureSidebar extends LitElement {
 			.furn-selected-info {
 				display: flex;
 				flex-direction: column;
-				gap: 8px;
-				padding: 8px;
-				border: 2px solid var(--primary-color, #03a9f4);
+				gap: var(--epp-space-2, 8px);
+				padding: var(--epp-space-2, 8px);
+				border: 2px solid var(--epp-accent, var(--primary-color, #03a9f4));
 				border-radius: 8px;
-				margin-bottom: 8px;
+				margin-bottom: var(--epp-space-2, 8px);
 			}
 
 			.furn-dims {
@@ -46,7 +48,7 @@ export class EppFurnitureSidebar extends LitElement {
 			.furn-dims label {
 				flex: 1;
 				font-size: 11px;
-				color: var(--secondary-text-color, #757575);
+				color: var(--epp-text-muted, var(--secondary-text-color, #757575));
 				display: flex;
 				flex-direction: column;
 				gap: 2px;
@@ -54,10 +56,10 @@ export class EppFurnitureSidebar extends LitElement {
 
 			.furn-dims input {
 				width: 100%;
-				padding: 4px;
+				padding: var(--epp-space-1, 4px);
 				border: 1px solid var(--divider-color, #e0e0e0);
 				border-radius: 4px;
-				font-size: 12px;
+				font-size: var(--epp-font-xs, 12px);
 				box-sizing: border-box;
 				background: var(--card-background-color, #fff);
 				color: var(--primary-text-color, #212121);
@@ -68,11 +70,11 @@ export class EppFurnitureSidebar extends LitElement {
 				top: 0;
 				z-index: 2;
 				width: 100%;
-				padding: 6px 8px;
+				padding: 6px var(--epp-space-2, 8px);
 				margin-bottom: 6px;
 				border: 1px solid var(--divider-color, #e0e0e0);
 				border-radius: 4px;
-				font-size: 12px;
+				font-size: var(--epp-font-xs, 12px);
 				box-sizing: border-box;
 				background: var(--card-background-color, #fff);
 				color: var(--primary-text-color, #212121);
@@ -81,7 +83,7 @@ export class EppFurnitureSidebar extends LitElement {
 			.furn-catalog {
 				display: grid;
 				grid-template-columns: 1fr 1fr;
-				gap: 4px;
+				gap: var(--epp-space-1, 4px);
 				overflow-y: auto;
 				flex: 1;
 				min-height: 0;
@@ -91,8 +93,8 @@ export class EppFurnitureSidebar extends LitElement {
 				display: flex;
 				flex-direction: column;
 				align-items: center;
-				gap: 4px;
-				padding: 8px 4px;
+				gap: var(--epp-space-1, 4px);
+				padding: var(--epp-space-2, 8px) var(--epp-space-1, 4px);
 				border: 1px solid var(--divider-color, #e0e0e0);
 				border-radius: 8px;
 				background: var(--card-background-color, #fff);
@@ -146,9 +148,7 @@ export class EppFurnitureSidebar extends LitElement {
 							<div class="sidebar-item-row">
 								<ha-icon icon="${selected.icon}" style="--mdc-icon-size: 20px;"></ha-icon>
 								<strong>${this.localize(selected.label)}</strong>
-								<button class="sidebar-remove-btn" @click=${() => this._fireRemove(selected.id)}>
-									<ha-icon icon="mdi:close"></ha-icon>
-								</button>
+								<epp-icon-button icon="mdi:close" label=${this.localize("furniture.remove")} variant="danger" class="sidebar-remove-btn" @click=${() => this._fireRemove(selected.id)}></epp-icon-button>
 							</div>
 							<div class="furn-dims">
 								<label>
@@ -220,90 +220,90 @@ export class EppFurnitureSidebar extends LitElement {
 					<span>${this.localize("furniture.custom_icon")}</span>
 				</button>
 			</div>
-			${
-				this.showCustomIconPicker
-					? html`
-						<div class="template-dialog">
-							<div class="template-dialog-card">
-								<h3>${this.localize("furniture.custom_icon")}</h3>
-								<ha-icon-picker
-									.hass=${this.hass}
-									.value=${this.customIconValue}
-									@value-changed=${(e: CustomEvent) => {
-										// Coerce null/undefined to empty string — the panel
-										// reflects this back into customIconValue and downstream
-										// code (`.trim()`, `<ha-icon icon=...>`) assumes string.
-										// Use `??` (not `||`) so an actual "" the user typed is
-										// preserved verbatim.
-										this.dispatchEvent(
-											new CustomEvent("custom-icon-change", {
-												detail: e.detail?.value ?? "",
-												bubbles: true,
-												composed: true,
-											}),
-										);
-									}}
-								></ha-icon-picker>
-								${
-									this.customIconValue.trim()
-										? html`
-											<div style="text-align: center;">
-												<ha-icon icon="${this.customIconValue.trim()}" style="--mdc-icon-size: 48px;"></ha-icon>
-											</div>
-										`
-										: nothing
-								}
-								<div class="template-dialog-actions">
-									<button class="wizard-btn wizard-btn-back"
-										@click=${() => {
-											this.dispatchEvent(
-												new CustomEvent("custom-icon-toggle", {
-													bubbles: true,
-													composed: true,
-												}),
-											);
-											this.dispatchEvent(
-												new CustomEvent("custom-icon-change", {
-													detail: "",
-													bubbles: true,
-													composed: true,
-												}),
-											);
-										}}
-									>${this.localize("common.cancel")}</button>
-									<button class="wizard-btn wizard-btn-primary"
-										?disabled=${!this.customIconValue.trim()}
-										@click=${() => {
-											this.dispatchEvent(
-												new CustomEvent("furniture-add-custom", {
-													detail: this.customIconValue.trim(),
-													bubbles: true,
-													composed: true,
-												}),
-											);
-											this.dispatchEvent(
-												new CustomEvent("custom-icon-change", {
-													detail: "",
-													bubbles: true,
-													composed: true,
-												}),
-											);
-											this.dispatchEvent(
-												new CustomEvent("custom-icon-toggle", {
-													bubbles: true,
-													composed: true,
-												}),
-											);
-										}}
-									>${this.localize("common.add")}</button>
-								</div>
+			<epp-dialog
+				?open=${this.showCustomIconPicker}
+				heading=${this.localize("furniture.custom_icon")}
+				@dialog-dismiss=${this._cancelCustomIcon}
+			>
+				<ha-icon-picker
+					.hass=${this.hass}
+					.value=${this.customIconValue}
+					@value-changed=${(e: CustomEvent) => {
+						// Coerce null/undefined to empty string — the panel
+						// reflects this back into customIconValue and downstream
+						// code (`.trim()`, `<ha-icon icon=...>`) assumes string.
+						// Use `??` (not `||`) so an actual "" the user typed is
+						// preserved verbatim.
+						this.dispatchEvent(
+							new CustomEvent("custom-icon-change", {
+								detail: e.detail?.value ?? "",
+								bubbles: true,
+								composed: true,
+							}),
+						);
+					}}
+				></ha-icon-picker>
+				${
+					this.customIconValue.trim()
+						? html`
+							<div style="text-align: center;">
+								<ha-icon icon="${this.customIconValue.trim()}" style="--mdc-icon-size: 48px;"></ha-icon>
 							</div>
-						</div>
-					`
-					: nothing
-			}
+						`
+						: nothing
+				}
+				<epp-button slot="actions" variant="text" class="wizard-btn wizard-btn-back"
+						@click=${this._cancelCustomIcon}
+					>${this.localize("common.cancel")}</epp-button>
+					<epp-button slot="actions" variant="primary" class="wizard-btn wizard-btn-primary"
+						?disabled=${!this.customIconValue.trim()}
+						@click=${() => {
+							this.dispatchEvent(
+								new CustomEvent("furniture-add-custom", {
+									detail: this.customIconValue.trim(),
+									bubbles: true,
+									composed: true,
+								}),
+							);
+							this.dispatchEvent(
+								new CustomEvent("custom-icon-change", {
+									detail: "",
+									bubbles: true,
+									composed: true,
+								}),
+							);
+							this.dispatchEvent(
+								new CustomEvent("custom-icon-toggle", {
+									bubbles: true,
+									composed: true,
+								}),
+							);
+						}}
+					>${this.localize("common.add")}</epp-button>
+			</epp-dialog>
 		`;
 	}
+
+	/**
+	 * Custom-icon-picker dismiss/cancel: closes the picker and clears any
+	 * pending icon value. Shared by the Cancel button and Escape
+	 * (`dialog-dismiss`) so both paths behave identically.
+	 */
+	private _cancelCustomIcon = (): void => {
+		this.dispatchEvent(
+			new CustomEvent("custom-icon-toggle", {
+				bubbles: true,
+				composed: true,
+			}),
+		);
+		this.dispatchEvent(
+			new CustomEvent("custom-icon-change", {
+				detail: "",
+				bubbles: true,
+				composed: true,
+			}),
+		);
+	};
 
 	private _fireAdd(sticker: FurnitureSticker): void {
 		this.dispatchEvent(

@@ -210,11 +210,15 @@ describe("renderDetectionRanges", () => {
 			firedKey = e.detail.key;
 		}) as EventListener);
 
-		const checkboxes = c.querySelectorAll('input[type="checkbox"]');
-		if (checkboxes.length > 0) {
-			const cb = checkboxes[0] as HTMLInputElement;
-			cb.checked = false;
-			cb.dispatchEvent(new Event("change"));
+		const toggles = c.querySelectorAll("epp-toggle");
+		if (toggles.length > 0) {
+			const toggle = toggles[0] as HTMLElement;
+			toggle.dispatchEvent(
+				new CustomEvent("value-changed", {
+					detail: { value: false },
+					bubbles: true,
+				}),
+			);
 			expect((sv as any)._overrides.targetAutoDistance).toBe(false);
 			expect(firedKey).toBe("targetAutoDistance");
 		}
@@ -329,10 +333,14 @@ describe("sensor-assisted clear", () => {
 			firedKey = e.detail.key;
 		}) as EventListener);
 
-		const checkboxes = c.querySelectorAll('input[type="checkbox"]');
-		const cb = checkboxes[checkboxes.length - 1] as HTMLInputElement;
-		cb.checked = false;
-		cb.dispatchEvent(new Event("change"));
+		const toggles = c.querySelectorAll("epp-toggle");
+		const toggle = toggles[toggles.length - 1] as HTMLElement;
+		toggle.dispatchEvent(
+			new CustomEvent("value-changed", {
+				detail: { value: false },
+				bubbles: true,
+			}),
+		);
 		expect((sv as any)._overrides.assistedClearEnabled).toBe(false);
 		expect(firedKey).toBe("assistedClearEnabled");
 		document.body.removeChild(c);
@@ -933,7 +941,7 @@ describe("renderEntities", () => {
 		const tpl = (sv as any).renderEntities();
 		const c = renderTo(tpl);
 
-		const toggles = c.querySelectorAll('input[type="checkbox"]');
+		const toggles = c.querySelectorAll("epp-toggle");
 		expect(toggles.length).toBeGreaterThan(0);
 		document.body.removeChild(c);
 	});
@@ -951,8 +959,8 @@ describe("renderSaveCancelButtons", () => {
 		const tpl = (sv as any).renderSaveCancelButtons();
 		const c = renderTo(tpl);
 
-		expect(c.querySelector(".wizard-btn-back")).not.toBeNull();
-		expect(c.querySelector(".wizard-btn-primary")).not.toBeNull();
+		expect(c.querySelector("epp-button.cancel-btn")).not.toBeNull();
+		expect(c.querySelector("epp-button.save-btn")).not.toBeNull();
 		document.body.removeChild(c);
 	});
 
@@ -961,7 +969,9 @@ describe("renderSaveCancelButtons", () => {
 		const tpl = (sv as any).renderSaveCancelButtons();
 		const c = renderTo(tpl);
 
-		const saveBtn = c.querySelector(".wizard-btn-primary") as HTMLButtonElement;
+		const saveBtn = c.querySelector("epp-button.save-btn") as HTMLElement & {
+			disabled: boolean;
+		};
 		if (saveBtn) {
 			expect(saveBtn.disabled).toBe(true);
 		}
@@ -973,7 +983,9 @@ describe("renderSaveCancelButtons", () => {
 		const tpl = (sv as any).renderSaveCancelButtons();
 		const c = renderTo(tpl);
 
-		const saveBtn = c.querySelector(".wizard-btn-primary") as HTMLButtonElement;
+		const saveBtn = c.querySelector("epp-button.save-btn") as HTMLElement & {
+			disabled: boolean;
+		};
 		if (saveBtn) {
 			expect(saveBtn.disabled).toBe(true);
 		}
@@ -990,7 +1002,7 @@ describe("renderSaveCancelButtons", () => {
 			cancelFired = true;
 		});
 
-		const cancelBtn = c.querySelector(".wizard-btn-back") as HTMLElement;
+		const cancelBtn = c.querySelector("epp-button.cancel-btn") as HTMLElement;
 		if (cancelBtn) {
 			cancelBtn.click();
 			expect(cancelFired).toBe(true);
@@ -1008,7 +1020,7 @@ describe("renderSaveCancelButtons", () => {
 			saveFired = true;
 		});
 
-		const saveBtn = c.querySelector(".wizard-btn-primary") as HTMLElement;
+		const saveBtn = c.querySelector("epp-button.save-btn") as HTMLElement;
 		if (saveBtn) {
 			saveBtn.click();
 			expect(saveFired).toBe(true);
@@ -1147,11 +1159,15 @@ describe("setting-change event", () => {
 			events.push(e.detail);
 		}) as EventListener);
 
-		const checkboxes = c.querySelectorAll('input[type="checkbox"]');
-		if (checkboxes.length > 0) {
-			const cb = checkboxes[0] as HTMLInputElement;
-			cb.checked = false;
-			cb.dispatchEvent(new Event("change"));
+		const toggles = c.querySelectorAll("epp-toggle");
+		if (toggles.length > 0) {
+			const toggle = toggles[0] as HTMLElement;
+			toggle.dispatchEvent(
+				new CustomEvent("value-changed", {
+					detail: { value: false },
+					bubbles: true,
+				}),
+			);
 			expect(events.some((e) => e.key === "targetAutoDistance")).toBe(true);
 		}
 		document.body.removeChild(c);
@@ -1333,14 +1349,17 @@ describe("renderEntities entity toggle @change handlers", () => {
 			dirtyFired = true;
 		});
 
-		const checkboxes = c.querySelectorAll('input[type="checkbox"]');
-		const occupancyCb = [...checkboxes].find(
-			(cb) => (cb as HTMLInputElement).dataset.entityKey === "room_occupancy",
-		) as HTMLInputElement | undefined;
-		expect(occupancyCb).toBeDefined();
-		if (occupancyCb) {
-			occupancyCb.checked = false;
-			occupancyCb.dispatchEvent(new Event("change"));
+		const toggle = c.querySelector(
+			'epp-toggle[data-entity-key="room_occupancy"]',
+		) as HTMLElement | undefined;
+		expect(toggle).toBeDefined();
+		if (toggle) {
+			toggle.dispatchEvent(
+				new CustomEvent("value-changed", {
+					detail: { value: false },
+					bubbles: true,
+				}),
+			);
 			expect((sv as any)._overrides.entities?.room_occupancy).toBe(false);
 			expect(dirtyFired).toBe(true);
 		}
@@ -1352,14 +1371,16 @@ describe("renderEntities entity toggle @change handlers", () => {
 		const tpl = (sv as any).renderEntities();
 		const c = renderTo(tpl);
 
-		const checkboxes = c.querySelectorAll('input[type="checkbox"]');
-		const cb = [...checkboxes].find(
-			(cb) =>
-				(cb as HTMLInputElement).dataset.entityKey === "room_static_presence",
-		) as HTMLInputElement | undefined;
-		if (cb) {
-			cb.checked = true;
-			cb.dispatchEvent(new Event("change"));
+		const toggle = c.querySelector(
+			'epp-toggle[data-entity-key="room_static_presence"]',
+		) as HTMLElement | undefined;
+		if (toggle) {
+			toggle.dispatchEvent(
+				new CustomEvent("value-changed", {
+					detail: { value: true },
+					bubbles: true,
+				}),
+			);
 			expect((sv as any)._overrides.entities?.room_static_presence).toBe(true);
 		}
 		document.body.removeChild(c);
@@ -1370,14 +1391,16 @@ describe("renderEntities entity toggle @change handlers", () => {
 		const tpl = (sv as any).renderEntities();
 		const c = renderTo(tpl);
 
-		const checkboxes = c.querySelectorAll('input[type="checkbox"]');
-		const cb = [...checkboxes].find(
-			(cb) =>
-				(cb as HTMLInputElement).dataset.entityKey === "room_motion_presence",
-		) as HTMLInputElement | undefined;
-		if (cb) {
-			cb.checked = true;
-			cb.dispatchEvent(new Event("change"));
+		const toggle = c.querySelector(
+			'epp-toggle[data-entity-key="room_motion_presence"]',
+		) as HTMLElement | undefined;
+		if (toggle) {
+			toggle.dispatchEvent(
+				new CustomEvent("value-changed", {
+					detail: { value: true },
+					bubbles: true,
+				}),
+			);
 			expect((sv as any)._overrides.entities?.room_motion_presence).toBe(true);
 		}
 		document.body.removeChild(c);
@@ -1388,14 +1411,16 @@ describe("renderEntities entity toggle @change handlers", () => {
 		const tpl = (sv as any).renderEntities();
 		const c = renderTo(tpl);
 
-		const checkboxes = c.querySelectorAll('input[type="checkbox"]');
-		const cb = [...checkboxes].find(
-			(cb) =>
-				(cb as HTMLInputElement).dataset.entityKey === "room_target_presence",
-		) as HTMLInputElement | undefined;
-		if (cb) {
-			cb.checked = true;
-			cb.dispatchEvent(new Event("change"));
+		const toggle = c.querySelector(
+			'epp-toggle[data-entity-key="room_target_presence"]',
+		) as HTMLElement | undefined;
+		if (toggle) {
+			toggle.dispatchEvent(
+				new CustomEvent("value-changed", {
+					detail: { value: true },
+					bubbles: true,
+				}),
+			);
 			expect((sv as any)._overrides.entities?.room_target_presence).toBe(true);
 		}
 		document.body.removeChild(c);
@@ -1406,13 +1431,16 @@ describe("renderEntities entity toggle @change handlers", () => {
 		const tpl = (sv as any).renderEntities();
 		const c = renderTo(tpl);
 
-		const checkboxes = c.querySelectorAll('input[type="checkbox"]');
-		const cb = [...checkboxes].find(
-			(cb) => (cb as HTMLInputElement).dataset.entityKey === "zone_presence",
-		) as HTMLInputElement | undefined;
-		if (cb) {
-			cb.checked = false;
-			cb.dispatchEvent(new Event("change"));
+		const toggle = c.querySelector(
+			'epp-toggle[data-entity-key="zone_presence"]',
+		) as HTMLElement | undefined;
+		if (toggle) {
+			toggle.dispatchEvent(
+				new CustomEvent("value-changed", {
+					detail: { value: false },
+					bubbles: true,
+				}),
+			);
 			expect((sv as any)._overrides.entities?.zone_presence).toBe(false);
 		}
 		document.body.removeChild(c);
@@ -1423,13 +1451,16 @@ describe("renderEntities entity toggle @change handlers", () => {
 		const tpl = (sv as any).renderEntities();
 		const c = renderTo(tpl);
 
-		const checkboxes = c.querySelectorAll('input[type="checkbox"]');
-		const cb = [...checkboxes].find(
-			(cb) => (cb as HTMLInputElement).dataset.entityKey === "target_xy",
-		) as HTMLInputElement | undefined;
-		if (cb) {
-			cb.checked = true;
-			cb.dispatchEvent(new Event("change"));
+		const toggle = c.querySelector('epp-toggle[data-entity-key="target_xy"]') as
+			| HTMLElement
+			| undefined;
+		if (toggle) {
+			toggle.dispatchEvent(
+				new CustomEvent("value-changed", {
+					detail: { value: true },
+					bubbles: true,
+				}),
+			);
 			expect((sv as any)._overrides.entities?.target_xy).toBe(true);
 		}
 		document.body.removeChild(c);
@@ -1440,13 +1471,16 @@ describe("renderEntities entity toggle @change handlers", () => {
 		const tpl = (sv as any).renderEntities();
 		const c = renderTo(tpl);
 
-		const checkboxes = c.querySelectorAll('input[type="checkbox"]');
-		const cb = [...checkboxes].find(
-			(cb) => (cb as HTMLInputElement).dataset.entityKey === "target_active",
-		) as HTMLInputElement | undefined;
-		if (cb) {
-			cb.checked = true;
-			cb.dispatchEvent(new Event("change"));
+		const toggle = c.querySelector(
+			'epp-toggle[data-entity-key="target_active"]',
+		) as HTMLElement | undefined;
+		if (toggle) {
+			toggle.dispatchEvent(
+				new CustomEvent("value-changed", {
+					detail: { value: true },
+					bubbles: true,
+				}),
+			);
 			expect((sv as any)._overrides.entities?.target_active).toBe(true);
 		}
 		document.body.removeChild(c);
@@ -1457,13 +1491,16 @@ describe("renderEntities entity toggle @change handlers", () => {
 		const tpl = (sv as any).renderEntities();
 		const c = renderTo(tpl);
 
-		const checkboxes = c.querySelectorAll('input[type="checkbox"]');
-		const cb = [...checkboxes].find(
-			(cb) => (cb as HTMLInputElement).dataset.entityKey === "env_illuminance",
-		) as HTMLInputElement | undefined;
-		if (cb) {
-			cb.checked = true;
-			cb.dispatchEvent(new Event("change"));
+		const toggle = c.querySelector(
+			'epp-toggle[data-entity-key="env_illuminance"]',
+		) as HTMLElement | undefined;
+		if (toggle) {
+			toggle.dispatchEvent(
+				new CustomEvent("value-changed", {
+					detail: { value: true },
+					bubbles: true,
+				}),
+			);
 			expect((sv as any)._overrides.entities?.env_illuminance).toBe(true);
 		}
 		document.body.removeChild(c);
@@ -1474,13 +1511,16 @@ describe("renderEntities entity toggle @change handlers", () => {
 		const tpl = (sv as any).renderEntities();
 		const c = renderTo(tpl);
 
-		const checkboxes = c.querySelectorAll('input[type="checkbox"]');
-		const cb = [...checkboxes].find(
-			(cb) => (cb as HTMLInputElement).dataset.entityKey === "env_humidity",
-		) as HTMLInputElement | undefined;
-		if (cb) {
-			cb.checked = true;
-			cb.dispatchEvent(new Event("change"));
+		const toggle = c.querySelector(
+			'epp-toggle[data-entity-key="env_humidity"]',
+		) as HTMLElement | undefined;
+		if (toggle) {
+			toggle.dispatchEvent(
+				new CustomEvent("value-changed", {
+					detail: { value: true },
+					bubbles: true,
+				}),
+			);
 			expect((sv as any)._overrides.entities?.env_humidity).toBe(true);
 		}
 		document.body.removeChild(c);
@@ -1491,13 +1531,16 @@ describe("renderEntities entity toggle @change handlers", () => {
 		const tpl = (sv as any).renderEntities();
 		const c = renderTo(tpl);
 
-		const checkboxes = c.querySelectorAll('input[type="checkbox"]');
-		const cb = [...checkboxes].find(
-			(cb) => (cb as HTMLInputElement).dataset.entityKey === "env_temperature",
-		) as HTMLInputElement | undefined;
-		if (cb) {
-			cb.checked = true;
-			cb.dispatchEvent(new Event("change"));
+		const toggle = c.querySelector(
+			'epp-toggle[data-entity-key="env_temperature"]',
+		) as HTMLElement | undefined;
+		if (toggle) {
+			toggle.dispatchEvent(
+				new CustomEvent("value-changed", {
+					detail: { value: true },
+					bubbles: true,
+				}),
+			);
 			expect((sv as any)._overrides.entities?.env_temperature).toBe(true);
 		}
 		document.body.removeChild(c);
@@ -1508,13 +1551,16 @@ describe("renderEntities entity toggle @change handlers", () => {
 		const tpl = (sv as any).renderEntities();
 		const c = renderTo(tpl);
 
-		const checkboxes = c.querySelectorAll('input[type="checkbox"]');
-		const cb = [...checkboxes].find(
-			(cb) => (cb as HTMLInputElement).dataset.entityKey === "env_co2",
-		) as HTMLInputElement | undefined;
-		if (cb) {
-			cb.checked = true;
-			cb.dispatchEvent(new Event("change"));
+		const toggle = c.querySelector('epp-toggle[data-entity-key="env_co2"]') as
+			| HTMLElement
+			| undefined;
+		if (toggle) {
+			toggle.dispatchEvent(
+				new CustomEvent("value-changed", {
+					detail: { value: true },
+					bubbles: true,
+				}),
+			);
 			expect((sv as any)._overrides.entities?.env_co2).toBe(true);
 		}
 		document.body.removeChild(c);
@@ -1527,13 +1573,16 @@ describe("renderEntities entity toggle @change handlers", () => {
 		const tpl = (sv as any).renderEntities();
 		const c = renderTo(tpl);
 
-		const checkboxes = c.querySelectorAll('input[type="checkbox"]');
-		const cb = [...checkboxes].find(
-			(cb) => (cb as HTMLInputElement).dataset.entityKey === "zone_presence",
-		) as HTMLInputElement | undefined;
-		if (cb) {
-			cb.checked = false;
-			cb.dispatchEvent(new Event("change"));
+		const toggle = c.querySelector(
+			'epp-toggle[data-entity-key="zone_presence"]',
+		) as HTMLElement | undefined;
+		if (toggle) {
+			toggle.dispatchEvent(
+				new CustomEvent("value-changed", {
+					detail: { value: false },
+					bubbles: true,
+				}),
+			);
 			// Both keys should be present in overrides
 			expect((sv as any)._overrides.entities.room_occupancy).toBe(true);
 			expect((sv as any)._overrides.entities.zone_presence).toBe(false);
@@ -1921,11 +1970,15 @@ describe("target auto range toggle (checked=true branch)", () => {
 			events.push(e.detail);
 		}) as EventListener);
 
-		const checkboxes = c.querySelectorAll('input[type="checkbox"]');
-		// First checkbox = target auto
-		const cb = checkboxes[0] as HTMLInputElement;
-		cb.checked = true;
-		cb.dispatchEvent(new Event("change"));
+		const toggles = c.querySelectorAll("epp-toggle");
+		// First epp-toggle = target auto
+		const toggle = toggles[0] as HTMLElement;
+		toggle.dispatchEvent(
+			new CustomEvent("value-changed", {
+				detail: { value: true },
+				bubbles: true,
+			}),
+		);
 
 		// targetMaxDistance should NOT be in events (only fired when !checked)
 		expect(events.some((e) => e.key === "targetMaxDistance")).toBe(false);
@@ -1943,11 +1996,15 @@ describe("target auto range toggle (checked=true branch)", () => {
 			events.push(e.detail);
 		}) as EventListener);
 
-		const checkboxes = c.querySelectorAll('input[type="checkbox"]');
-		// Second checkbox = static auto
-		const cb = checkboxes[1] as HTMLInputElement;
-		cb.checked = true;
-		cb.dispatchEvent(new Event("change"));
+		const toggles = c.querySelectorAll("epp-toggle");
+		// Second epp-toggle = static auto
+		const toggle = toggles[1] as HTMLElement;
+		toggle.dispatchEvent(
+			new CustomEvent("value-changed", {
+				detail: { value: true },
+				bubbles: true,
+			}),
+		);
 
 		expect(events.some((e) => e.key === "staticMinDistance")).toBe(false);
 		expect(events.some((e) => e.key === "staticAutoDistance")).toBe(true);
@@ -2348,7 +2405,7 @@ describe("LED settings section", () => {
 
 		const body = c.querySelector(".accordion-body");
 		expect(body).not.toBeNull();
-		expect(body!.querySelector(".setting-group")).not.toBeNull();
+		expect(body!.querySelector("epp-card")).not.toBeNull();
 		document.body.removeChild(c);
 	});
 

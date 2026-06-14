@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import "../../components/epp-confirm-dialog.js";
 import type { EppConfirmDialog } from "../../components/epp-confirm-dialog.js";
+import type { EppDialog } from "../../ui/epp-dialog.js";
 
 async function fixture(
 	props: Partial<EppConfirmDialog> = {},
@@ -12,6 +13,9 @@ async function fixture(
 	return el;
 }
 
+function dialog(el: EppConfirmDialog): EppDialog | null {
+	return el.shadowRoot!.querySelector("epp-dialog");
+}
 function confirmBtn(el: EppConfirmDialog): HTMLElement | null {
 	return el.shadowRoot!.querySelector('[data-testid="dialog-confirm"]');
 }
@@ -24,10 +28,13 @@ describe("epp-confirm-dialog", () => {
 		expect(customElements.get("epp-confirm-dialog")).toBeDefined();
 	});
 
-	it("renders nothing while closed", async () => {
+	it("registers the underlying epp-dialog primitive", () => {
+		expect(customElements.get("epp-dialog")).toBeDefined();
+	});
+
+	it("renders a closed epp-dialog while closed", async () => {
 		const el = await fixture({ open: false, heading: "Hi", message: "There" });
-		expect(el.shadowRoot!.querySelector(".template-dialog-card")).toBeNull();
-		expect(confirmBtn(el)).toBeNull();
+		expect(dialog(el)!.open).toBe(false);
 	});
 
 	it("renders heading, message and both buttons when open", async () => {
@@ -38,9 +45,10 @@ describe("epp-confirm-dialog", () => {
 			confirmLabel: "Delete",
 			cancelLabel: "Keep",
 		});
-		expect(el.shadowRoot!.querySelector("h3")!.textContent).toContain(
-			"Delete group?",
-		);
+		const d = dialog(el)!;
+		await d.updateComplete;
+		expect(d.open).toBe(true);
+		expect(d.heading).toBe("Delete group?");
 		expect(el.shadowRoot!.textContent).toContain("This removes its entities.");
 		expect(confirmBtn(el)!.textContent!.trim()).toBe("Delete");
 		expect(cancelBtn(el)!.textContent!.trim()).toBe("Keep");
@@ -85,7 +93,12 @@ describe("epp-confirm-dialog", () => {
 
 	it("marks the confirm button danger when danger is set", async () => {
 		const el = await fixture({ open: true, danger: true });
-		expect(confirmBtn(el)!.classList.contains("danger")).toBe(true);
+		expect(confirmBtn(el)!.getAttribute("variant")).toBe("danger");
+	});
+
+	it("uses the primary variant for the confirm button when not danger", async () => {
+		const el = await fixture({ open: true });
+		expect(confirmBtn(el)!.getAttribute("variant")).toBe("primary");
 	});
 
 	it("ignores Escape after closing", async () => {
@@ -102,11 +115,9 @@ describe("epp-confirm-dialog", () => {
 
 	it("renders just the confirm button when heading/message are empty", async () => {
 		const el = await fixture({ open: true, confirmLabel: "OK" });
-		expect(el.shadowRoot!.querySelector("h3")).toBeNull();
 		expect(el.shadowRoot!.querySelector(".message")).toBeNull();
-		expect(
-			el.shadowRoot!.querySelector(".template-dialog-card"),
-		).not.toBeNull();
+		expect(dialog(el)).not.toBeNull();
+		expect(dialog(el)!.open).toBe(true);
 		expect(confirmBtn(el)).not.toBeNull();
 	});
 

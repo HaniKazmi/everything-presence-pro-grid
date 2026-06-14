@@ -177,6 +177,30 @@ describe("epp-furniture-sidebar DOM events", () => {
 		document.body.removeChild(c);
 	});
 
+	it("custom icon picker dialog-dismiss (Escape) fires toggle and change events", () => {
+		const el = createSidebar({
+			showCustomIconPicker: true,
+			customIconValue: "mdi:lamp",
+		});
+		const toggleHandler = vi.fn();
+		const changeHandler = vi.fn();
+		el.addEventListener("custom-icon-toggle", toggleHandler);
+		el.addEventListener("custom-icon-change", changeHandler);
+
+		const tpl = (el as any)._renderFurnitureSidebar();
+		const c = renderTo(tpl);
+
+		const dialog = c.querySelector("epp-dialog[open]") as HTMLElement;
+		expect(dialog).not.toBeNull();
+		// Escape emits dialog-dismiss; must behave exactly like the Cancel
+		// button (close the picker + clear the pending value).
+		dialog.dispatchEvent(new CustomEvent("dialog-dismiss"));
+		expect(toggleHandler).toHaveBeenCalledTimes(1);
+		expect(changeHandler).toHaveBeenCalledTimes(1);
+		expect(changeHandler.mock.calls[0][0].detail).toBe("");
+		document.body.removeChild(c);
+	});
+
 	it("custom icon picker add fires furniture-add-custom", () => {
 		const el = createSidebar({
 			showCustomIconPicker: true,

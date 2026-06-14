@@ -161,7 +161,7 @@ export function renderConfigurationThumbnail(
 				: "";
 			furnitureElements.push(
 				svg`<rect x="${fx}" y="${fy}" width="${fw}" height="${fh}"
-					fill="none" stroke="rgba(0,0,0,0.4)" stroke-width="0.15"
+					fill="none" stroke="currentColor" stroke-opacity="0.6" stroke-width="0.15"
 					rx="0.1" transform="${transform}" />`,
 			);
 		}

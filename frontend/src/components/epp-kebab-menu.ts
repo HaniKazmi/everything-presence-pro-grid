@@ -1,6 +1,7 @@
 import { mdiDotsVertical } from "@mdi/js";
 import { css, html, LitElement, nothing } from "lit";
 import { property, state } from "lit/decorators.js";
+import "../ui/epp-icon-button.js";
 
 export interface KebabItem {
 	id: string;
@@ -32,30 +33,16 @@ function isDivider(e: KebabEntry): e is KebabDivider {
 export class EppKebabMenu extends LitElement {
 	static styles = css`
 		:host { position: relative; display: inline-flex; }
-		.trigger {
-			display: inline-flex;
-			align-items: center;
-			justify-content: center;
-			width: 36px;
-			height: 36px;
-			padding: 0;
-			border: none;
-			border-radius: 50%;
-			background: none;
-			cursor: pointer;
-			color: var(--secondary-text-color, #757575);
-		}
-		.trigger:hover { background: var(--secondary-background-color, #f5f5f5); }
 		.menu {
 			position: absolute;
 			top: 100%;
 			right: 0;
 			z-index: 20;
 			min-width: 160px;
-			padding: 4px 0;
-			background: var(--card-background-color, #fff);
-			border: 1px solid var(--divider-color, #e0e0e0);
-			border-radius: 8px;
+			padding: var(--epp-space-1, 4px) 0;
+			background: var(--epp-surface, var(--card-background-color, #fff));
+			border: 1px solid var(--epp-border, var(--divider-color, #e0e0e0));
+			border-radius: var(--epp-radius-sm, 6px);
 			box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
 		}
 		.item {
@@ -63,24 +50,24 @@ export class EppKebabMenu extends LitElement {
 			align-items: center;
 			gap: 10px;
 			width: 100%;
-			padding: 8px 16px;
+			padding: var(--epp-space-2, 8px) var(--epp-space-4, 16px);
 			border: none;
 			background: none;
 			text-align: left;
-			font-size: 14px;
+			font-size: var(--epp-font-base, 14px);
 			cursor: pointer;
-			color: var(--primary-text-color, #212121);
+			color: var(--epp-text, var(--primary-text-color, #212121));
 		}
-		.item:hover { background: var(--secondary-background-color, #f5f5f5); }
-		.item.danger { color: var(--error-color, #f44336); }
+		.item:hover { background: var(--epp-surface-2, var(--secondary-background-color, #f5f5f5)); }
+		.item.danger { color: var(--epp-danger, var(--error-color, #f44336)); }
 		.item ha-icon { --mdc-icon-size: 18px; }
 		.kebab-divider {
 			height: 0;
-			margin: 4px 0;
+			margin: var(--epp-space-1, 4px) 0;
 			border: none;
-			border-top: 1px solid var(--divider-color, #e0e0e0);
+			border-top: 1px solid var(--epp-border, var(--divider-color, #e0e0e0));
 		}
-		ha-list-item.danger { color: var(--error-color, #f44336); }
+		ha-list-item.danger { color: var(--epp-danger, var(--error-color, #f44336)); }
 	`;
 
 	@property({ attribute: false }) items: KebabEntry[] = [];
@@ -151,14 +138,12 @@ export class EppKebabMenu extends LitElement {
 
 	private _renderFallback() {
 		return html`
-			<button
-				class="trigger"
+			<epp-icon-button
 				data-testid="kebab-trigger"
-				aria-label="More"
+				icon="mdi:dots-vertical"
+				label="More"
 				@click=${this._toggle}
-			>
-				<ha-icon icon="mdi:dots-vertical"></ha-icon>
-			</button>
+			></epp-icon-button>
 			${
 				this._open
 					? html`<div class="menu">

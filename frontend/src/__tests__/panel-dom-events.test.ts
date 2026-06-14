@@ -253,7 +253,9 @@ describe("_renderWizardGuide DOM events (via EppWizard)", () => {
 			cancelFired = true;
 		});
 
-		const backBtn = c.querySelector(".wizard-btn-back") as HTMLElement;
+		const backBtn = c.querySelector(
+			"epp-button[variant='text']",
+		) as HTMLElement;
 		if (backBtn) {
 			backBtn.click();
 			expect(cancelFired).toBe(true);
@@ -265,7 +267,9 @@ describe("_renderWizardGuide DOM events (via EppWizard)", () => {
 		const tpl = a._renderWizardGuide();
 		const c = renderTo(tpl);
 
-		const primaryBtn = c.querySelector(".wizard-btn-primary") as HTMLElement;
+		const primaryBtn = c.querySelector(
+			"epp-button[variant='primary']",
+		) as HTMLElement;
 		if (primaryBtn) {
 			primaryBtn.click();
 			expect(a._setupStep).toBe("corners");
@@ -305,16 +309,22 @@ describe("_renderWizardCorners DOM events (via EppWizard)", () => {
 		const tpl = a._renderWizardCorners();
 		const c = renderTo(tpl);
 
-		const offsets = c.querySelectorAll(
-			".offset-input",
-		) as NodeListOf<HTMLInputElement>;
+		const offsets = c.querySelectorAll(".offset-input");
 		if (offsets.length >= 2) {
-			offsets[0].value = "50";
-			offsets[0].dispatchEvent(new Event("input"));
+			offsets[0].dispatchEvent(
+				new CustomEvent("value-changed", {
+					detail: { value: "50" },
+					bubbles: true,
+				}),
+			);
 			expect(a._wizardOffsetSide).toBe("50");
 
-			offsets[1].value = "30";
-			offsets[1].dispatchEvent(new Event("input"));
+			offsets[1].dispatchEvent(
+				new CustomEvent("value-changed", {
+					detail: { value: "30" },
+					bubbles: true,
+				}),
+			);
 			expect(a._wizardOffsetFb).toBe("30");
 		}
 	});
@@ -330,7 +340,9 @@ describe("_renderWizardCorners DOM events (via EppWizard)", () => {
 			cancelFired = true;
 		});
 
-		const backBtn = c.querySelector(".wizard-btn-back") as HTMLElement;
+		const backBtn = c.querySelector(
+			"epp-button[variant='text']",
+		) as HTMLElement;
 		if (backBtn) {
 			backBtn.click();
 			expect(cancelFired).toBe(true);
@@ -343,8 +355,10 @@ describe("_renderWizardCorners DOM events (via EppWizard)", () => {
 		const tpl = a._renderWizardCorners();
 		const c = renderTo(tpl);
 
-		const primaryBtn = c.querySelector(".wizard-btn-primary") as HTMLElement;
-		if (primaryBtn && !primaryBtn.hasAttribute("disabled")) {
+		const primaryBtn = c.querySelector(
+			"epp-button[variant='primary']",
+		) as HTMLElement & { disabled: boolean };
+		if (primaryBtn && !primaryBtn.disabled) {
 			primaryBtn.click();
 			expect(a._wizardCapturing).toBe(true);
 			// Cancel to stop animation
@@ -364,7 +378,9 @@ describe("_renderWizardCorners DOM events (via EppWizard)", () => {
 		const tpl = a._renderWizardCorners();
 		const c = renderTo(tpl);
 
-		const primaryBtn = c.querySelector(".wizard-btn-primary") as HTMLElement;
+		const primaryBtn = c.querySelector(
+			"epp-button[variant='primary']",
+		) as HTMLElement;
 		if (primaryBtn) {
 			primaryBtn.click();
 			// Should have computed perspective
@@ -384,7 +400,7 @@ describe("_renderSaveCancelButtons DOM events", () => {
 		const tpl = a._renderSaveCancelButtons();
 		const c = renderTo(tpl);
 
-		(c.querySelector(".wizard-btn-primary") as HTMLElement).click();
+		(c.querySelector("epp-button.save-btn") as HTMLElement).click();
 		await vi.waitFor(() => {
 			expect(callWS).toHaveBeenCalledWith(
 				expect.objectContaining({ type: "eppgrid/set_room_layout" }),
@@ -401,7 +417,7 @@ describe("_renderSaveCancelButtons DOM events", () => {
 		const tpl = a._renderSaveCancelButtons();
 		const c = renderTo(tpl);
 
-		(c.querySelector(".wizard-btn-primary") as HTMLElement).click();
+		(c.querySelector("epp-button.save-btn") as HTMLElement).click();
 		// The rejection is routed to the controller-error banner; the click
 		// handler's .catch keeps it from surfacing as an unhandled rejection.
 		await vi.waitFor(() => {
@@ -426,7 +442,7 @@ describe("_renderSaveCancelButtons DOM events", () => {
 		const tpl = a._renderSaveCancelButtons();
 		const c = renderTo(tpl);
 
-		const backBtn = c.querySelector(".wizard-btn-back") as HTMLElement;
+		const backBtn = c.querySelector("epp-button.cancel-btn") as HTMLElement;
 		if (backBtn) {
 			backBtn.click();
 			await vi.waitFor(() => {
@@ -1183,7 +1199,7 @@ describe("_renderUncalibratedFov DOM events (via EppWizard)", () => {
 			startFired = true;
 		});
 
-		const btn = c.querySelector(".wizard-btn-primary") as HTMLElement;
+		const btn = c.querySelector("epp-button[variant='primary']") as HTMLElement;
 		expect(btn).not.toBeNull();
 		expect(c.querySelector(".live-nav-link")).toBeNull();
 		btn.click();
@@ -1254,7 +1270,9 @@ describe("render delete calibration dialog event", () => {
 		const tpl = a.render();
 		const c = renderTo(tpl);
 
-		const backBtn = c.querySelector(".wizard-btn-back") as HTMLElement;
+		const backBtn = c.querySelector(
+			'epp-dialog[open] epp-button[variant="text"]',
+		) as HTMLElement;
 		if (backBtn) {
 			backBtn.click();
 			expect(a._showDeleteCalibrationDialog).toBe(false);
@@ -1312,10 +1330,10 @@ describe("_renderEditor DOM events", () => {
 		const c = renderTo(tpl);
 
 		// Find cancel button inside unsaved dialog
-		const dialogs = c.querySelectorAll(".template-dialog");
+		const dialogs = c.querySelectorAll("epp-dialog[open]");
 		if (dialogs.length > 0) {
 			const btn = dialogs[dialogs.length - 1].querySelector(
-				".wizard-btn-back",
+				'epp-button[variant="text"]',
 			) as HTMLElement;
 			if (btn) {
 				btn.click();

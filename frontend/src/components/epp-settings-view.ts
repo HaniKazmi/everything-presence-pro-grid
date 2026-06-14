@@ -12,6 +12,8 @@ import {
 import { defaultLocalize, type LocalizeFn } from "../localize.js";
 import { buttonStyles, settingStyles, toggleStyles } from "../styles.js";
 import "./epp-info-tip.js";
+import "../ui/epp-card.js";
+import "../ui/epp-toggle.js";
 import { renderSaveCancelBar } from "./save-cancel-bar.js";
 
 /** Option shape consumed by ha-select's `.options` property. */
@@ -370,26 +372,6 @@ export class EppSettingsView extends LitElement {
 		return this._geomCache;
 	}
 
-	/**
-	 * Themed toggle switch. Renders `ha-switch` when it's registered in this
-	 * HA frontend (Web Awesome, 2026.x); falls back to the hand-rolled
-	 * checkbox toggle so the view stays usable on HA versions where
-	 * ha-switch isn't registered in the panel's scope.
-	 */
-	private renderToggle(opts: {
-		checked: boolean;
-		disabled?: boolean;
-		/** Set as data-entity-key so the shared @change handler can route. */
-		entityKey?: string;
-		onChange: (e: Event) => void;
-	}) {
-		const { checked, disabled = false, entityKey, onChange } = opts;
-		if (customElements.get("ha-switch")) {
-			return html`<ha-switch data-entity-key=${entityKey ?? nothing} .checked=${checked} .disabled=${disabled} @change=${onChange}></ha-switch>`;
-		}
-		return html`<label class="toggle-switch"><input type="checkbox" data-entity-key=${entityKey ?? nothing} .checked=${checked} .disabled=${disabled} @change=${onChange} /><span class="toggle-slider"></span></label>`;
-	}
-
 	// Tooltip lifecycle (open/close + outside-click/Escape/scroll/resize) is
 	// owned by the shared <epp-info-tip> component rendered by infoTip().
 	static styles = [
@@ -551,7 +533,7 @@ export class EppSettingsView extends LitElement {
 		const adjusted =
 			raw != null
 				? this.localize.formatNumber(clamp(raw + offset), precision)
-				: "\u2014";
+				: "—";
 		return html`
       <div class="setting-row">
         <label>${label}</label>
@@ -560,7 +542,7 @@ export class EppSettingsView extends LitElement {
 				) => {
 					const el = e.target as HTMLInputElement;
 					const off = parseFloat(el.value);
-					// Pull live reading and offset at event time \u2014 the closure must
+					// Pull live reading and offset at event time — the closure must
 					// not rely on render-time values, since `sensorState` updates
 					// between renders while the slider remains bound.
 					const liveReading = getReading();
@@ -569,7 +551,7 @@ export class EppSettingsView extends LitElement {
 					const val =
 						liveRaw != null
 							? this.localize.formatNumber(clamp(liveRaw + off), precision)
-							: "\u2014";
+							: "—";
 					this._setSettingValue(el, val);
 					this._overrides[`${offsetKey}Offset`] = off;
 					this._fireDirty();
@@ -690,22 +672,25 @@ export class EppSettingsView extends LitElement {
 		return html`
       <div class="settings-section">
         ${metrics ? html`<p style="font-size: 13px; color: var(--secondary-text-color, #757575); margin: 0 0 12px;">${this.localize("settings.furthest_point")} <span style="font-weight: 700; color: var(--error-color, #db4437);">${this.localize.formatNumber(metrics.furthestM, 1)}m</span></p>` : nothing}
-        <div class="setting-group">
-          <h4>${this.localize("settings.target_sensor")}</h4>
+        <epp-card heading=${this.localize("settings.target_sensor")}>
+          <!-- .setting-row conversion to epp-section-row is deferred: _resetSlider
+               uses closest(".setting-row") and slider rows don't map cleanly to
+               the label/control shape. -->
           <div class="setting-row">
             <label>${this.localize("settings.auto")}</label>
-            ${this.renderToggle({
-							checked: this.targetAutoDistance,
-							onChange: (e: Event) => {
-								const checked = (e.target as HTMLInputElement).checked;
+            <epp-toggle
+              .checked=${this.targetAutoDistance}
+              @value-changed=${(e: CustomEvent<{ value: boolean }>) => {
+								e.stopPropagation();
+								const checked = e.detail.value;
 								if (!checked) {
 									this._overrides.targetMaxDistance = targetVal;
 									this._fireChange("targetMaxDistance", targetVal);
 								}
 								this._overrides.targetAutoDistance = checked;
 								this._fireChange("targetAutoDistance", checked);
-							},
-						})}
+							}}
+            ></epp-toggle>
             ${this.infoTip(this.localize("info.target_auto_range"))}
           </div>
           <div class="setting-row${this.targetAutoDistance ? " row-disabled" : ""}">
@@ -720,15 +705,16 @@ export class EppSettingsView extends LitElement {
 							}} /><span class="setting-value">${this.localize.formatNumber(targetVal, 1)}</span><span class="setting-unit">m</span></span>
             ${this.resetBtn(targetAutoVal, "targetMaxDistance")}${this.infoTip(this.localize("info.target_max_distance"))}
           </div>
-        </div>
-        <div class="setting-group">
-          <h4>${this.localize("settings.static_sensor")}</h4>
+        </epp-card>
+        <epp-card heading=${this.localize("settings.static_sensor")}>
+          <!-- .setting-row conversion deferred — see comment above -->
           <div class="setting-row">
             <label>${this.localize("settings.auto")}</label>
-            ${this.renderToggle({
-							checked: this.staticAutoDistance,
-							onChange: (e: Event) => {
-								const checked = (e.target as HTMLInputElement).checked;
+            <epp-toggle
+              .checked=${this.staticAutoDistance}
+              @value-changed=${(e: CustomEvent<{ value: boolean }>) => {
+								e.stopPropagation();
+								const checked = e.detail.value;
 								if (!checked) {
 									this._overrides.staticMinDistance = 0.3;
 									this._fireChange("staticMinDistance", 0.3);
@@ -737,8 +723,8 @@ export class EppSettingsView extends LitElement {
 								}
 								this._overrides.staticAutoDistance = checked;
 								this._fireChange("staticAutoDistance", checked);
-							},
-						})}
+							}}
+            ></epp-toggle>
             ${this.infoTip(this.localize("info.target_auto_range"))}
           </div>
           <div class="setting-row${this.staticAutoDistance ? " row-disabled" : ""}">
@@ -777,7 +763,7 @@ export class EppSettingsView extends LitElement {
 							}} /><span class="setting-value">${this.localize.formatNumber(staticMaxVal, 1)}</span><span class="setting-unit">m</span></span>
             ${this.resetBtn(staticMaxAutoVal, "staticMaxDistance")}${this.infoTip(this.localize("info.static_max_distance"))}
           </div>
-        </div>
+        </epp-card>
       </div>
     `;
 	}
@@ -885,24 +871,27 @@ export class EppSettingsView extends LitElement {
       <div class="settings-section">
         ${groups.map(
 					(g) => html`
-        <div class="setting-group">
-          <h4>${this.localize(g.title)}</h4>
+        <epp-card heading=${this.localize(g.title)}>
+          <!-- .setting-row conversion to epp-section-row is deferred: _resetSlider
+               uses closest(".setting-row") and slider rows don't map cleanly to
+               the label/control shape. -->
           ${g.rows.map((row) => this.renderSliderRow(row))}
-        </div>
+        </epp-card>
         `,
 				)}
-        <div class="setting-group">
-          <h4>${this.localize("settings.assisted_clear")}</h4>
+        <epp-card heading=${this.localize("settings.assisted_clear")}>
+          <!-- .setting-row conversion deferred — see comment above -->
           <div class="setting-row">
             <label>${this.localize("settings.assisted_clear_enabled")}</label>
-            ${this.renderToggle({
-							checked: this.assistedClearEnabled,
-							onChange: (e: Event) => {
-								const checked = (e.target as HTMLInputElement).checked;
+            <epp-toggle
+              .checked=${this.assistedClearEnabled}
+              @value-changed=${(e: CustomEvent<{ value: boolean }>) => {
+								e.stopPropagation();
+								const checked = e.detail.value;
 								this._overrides.assistedClearEnabled = checked;
 								this._fireChange("assistedClearEnabled", checked);
-							},
-						})}
+							}}
+            ></epp-toggle>
             ${this.infoTip(this.localize("info.assisted_clear_enabled"))}
           </div>
           ${this.renderSliderRow({
@@ -916,13 +905,13 @@ export class EppSettingsView extends LitElement {
 						tip: "info.assisted_clear_timeout",
 						disabled: !this.assistedClearEnabled,
 					})}
-        </div>
-        <div class="setting-group">
-          <h4>${this.localize("settings.environmental")}</h4>
+        </epp-card>
+        <epp-card heading=${this.localize("settings.environmental")}>
+          <!-- .setting-row conversion deferred — see comment above -->
           ${this.renderEnvOffset(this.localize("settings.illuminance_offset"), () => this.sensorState.illuminance, "illuminance", -500, 500, 1, "lux", 1, this.localize("info.illuminance_offset"), 0)}
           ${this.renderEnvOffset(this.localize("settings.humidity_offset"), () => this.sensorState.humidity, "humidity", -50, 50, 0.1, "%", 1, this.localize("info.humidity_offset"), 0, 100)}
-          ${this.renderEnvOffset(this.localize("settings.temperature_offset"), () => this.sensorState.temperature, "temperature", -20, 20, 0.1, "\u00b0C", 1, this.localize("info.temperature_offset"))}
-        </div>
+          ${this.renderEnvOffset(this.localize("settings.temperature_offset"), () => this.sensorState.temperature, "temperature", -20, 20, 0.1, "°C", 1, this.localize("info.temperature_offset"))}
+        </epp-card>
       </div>
     `;
 	}
@@ -931,17 +920,20 @@ export class EppSettingsView extends LitElement {
 	private renderEntityToggleRow(
 		d: ToggleRowDescriptor,
 		isOn: (key: string, fallback: boolean) => boolean,
-		onChange: (e: Event) => void,
+		onChange: (key: string, value: boolean) => void,
 	) {
 		return html`
       <div class="setting-row">
         <label>${this.localize(d.label)}</label>
-        ${this.renderToggle({
-					checked: isOn(d.key, d.defaultValue),
-					disabled: d.disabled,
-					entityKey: d.key,
-					onChange,
-				})}
+        <epp-toggle
+          data-entity-key=${d.key}
+          .checked=${isOn(d.key, d.defaultValue)}
+          .disabled=${d.disabled ?? false}
+          @value-changed=${(e: CustomEvent<{ value: boolean }>) => {
+						e.stopPropagation();
+						onChange(d.key, e.detail.value);
+					}}
+        ></epp-toggle>
         ${this.infoTip(this.localize(d.tip))}
       </div>
     `;
@@ -954,11 +946,9 @@ export class EppSettingsView extends LitElement {
 		const isOn = (key: string, fallback: boolean) =>
 			overrides[key] ?? saved[key] ?? fallback;
 
-		const entityToggleHandler = (e: Event) => {
-			const el = e.target as HTMLInputElement;
-			const key = el.dataset.entityKey!;
+		const entityToggleHandler = (key: string, value: boolean) => {
 			if (!this._overrides.entities) this._overrides.entities = {};
-			this._overrides.entities[key] = el.checked;
+			this._overrides.entities[key] = value;
 			this._fireChange("entitiesConfig", {
 				...(this.entitiesConfig || {}),
 				...this._overrides.entities,
@@ -1093,12 +1083,14 @@ export class EppSettingsView extends LitElement {
 
 		return html`
       <div class="settings-section">
-        <div class="setting-group">
-          <h4>${this.localize("entities.room_level")}</h4>
+        <epp-card heading=${this.localize("entities.room_level")}>
+          <!-- .setting-row conversion to epp-section-row is deferred: _resetSlider
+               uses closest(".setting-row") and slider rows don't map cleanly to
+               the label/control shape. -->
           ${rows(ROOM_TOGGLES)}
-        </div>
-        <div class="setting-group">
-          <h4>${this.localize("entities.zone_level")}</h4>
+        </epp-card>
+        <epp-card heading=${this.localize("entities.zone_level")}>
+          <!-- .setting-row conversion deferred — see comment above -->
           ${rows(ZONE_TOGGLES)}
           <div class="setting-row">
             <label>${this.localize("settings.update_rate")}</label>
@@ -1122,9 +1114,9 @@ export class EppSettingsView extends LitElement {
               @closed=${this._stopClosed}>
             </ha-select>
           </div>
-        </div>
-        <div class="setting-group">
-          <h4>${this.localize("entities.target_level")}</h4>
+        </epp-card>
+        <epp-card heading=${this.localize("entities.target_level")}>
+          <!-- .setting-row conversion deferred — see comment above -->
           ${rows(TARGET_TOGGLES)}
           <div class="setting-row">
             <label>${this.localize("settings.update_rate")}</label>
@@ -1145,11 +1137,11 @@ export class EppSettingsView extends LitElement {
               @closed=${this._stopClosed}>
             </ha-select>
           </div>
-        </div>
-        <div class="setting-group">
-          <h4>${this.localize("settings.environmental")}</h4>
+        </epp-card>
+        <epp-card heading=${this.localize("settings.environmental")}>
+          <!-- .setting-row conversion deferred — see comment above -->
           ${rows(ENV_TOGGLES)}
-        </div>
+        </epp-card>
       </div>
     `;
 	}
@@ -1159,7 +1151,10 @@ export class EppSettingsView extends LitElement {
 
 		return html`
       <div class="settings-section">
-        <div class="setting-group">
+        <epp-card>
+          <!-- .setting-row conversion to epp-section-row is deferred: _resetSlider
+               uses closest(".setting-row") and slider rows don't map cleanly to
+               the label/control shape. -->
           ${LOG_CATEGORIES.map((c) => {
 						const overrides = this._overrides.logLevels || {};
 						const current = overrides[c.key] ?? this.logLevels[c.key] ?? "None";
@@ -1209,7 +1204,7 @@ export class EppSettingsView extends LitElement {
               </div>
             `;
 					})}
-        </div>
+        </epp-card>
       </div>
     `;
 	}
@@ -1225,8 +1220,10 @@ export class EppSettingsView extends LitElement {
 
 		return html`
       <div class="settings-section">
-        <div class="setting-group">
-          <h4>${this.localize("settings.led")}</h4>
+        <epp-card heading=${this.localize("settings.led")}>
+          <!-- .setting-row conversion to epp-section-row is deferred: _resetSlider
+               uses closest(".setting-row") and slider rows don't map cleanly to
+               the label/control shape. -->
           <div class="setting-row">
             <label>${this.localize("settings.led_mode")}</label>
             <ha-select class="wide-select" .value=${mode} .options=${modes} @selected=${(
@@ -1276,7 +1273,7 @@ export class EppSettingsView extends LitElement {
           </div>`
 							: nothing
 					}
-        </div>
+        </epp-card>
       </div>
     `;
 	}
@@ -1295,8 +1292,10 @@ export class EppSettingsView extends LitElement {
 
 		return html`
       <div class="settings-section">
-        <div class="setting-group">
-          <h4>${this.localize("settings.relay")}</h4>
+        <epp-card heading=${this.localize("settings.relay")}>
+          <!-- .setting-row conversion to epp-section-row is deferred: _resetSlider
+               uses closest(".setting-row") and slider rows don't map cleanly to
+               the label/control shape. -->
           <div class="setting-row">
             <label>${this.localize("settings.relay_trigger_mode")}</label>
             <ha-select class="wide-select"
@@ -1341,7 +1340,7 @@ export class EppSettingsView extends LitElement {
           `
 							: nothing
 					}
-        </div>
+        </epp-card>
       </div>
     `;
 	}

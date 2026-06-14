@@ -17,45 +17,56 @@ async function fixture(): Promise<EppDeviceGroupEditor> {
 	return el;
 }
 
-// HA components (ha-input/ha-switch) aren't registered under happy-dom, so the
-// editor falls back to ha-textfield / a checkbox; both expose value/checked +
-// input/change the same way. We target by data-testid to stay widget-agnostic.
+// The editor now composes the epp-* primitives (epp-field for the name,
+// epp-toggle per source, epp-button for the actions). Each carries the
+// component's data-testid on its host and emits a single value-changed
+// ({ detail: { value } }); we target by data-testid and drive that event to
+// stay widget-agnostic.
 function nameField(
 	el: EppDeviceGroupEditor,
-): HTMLInputElement & { label: string } {
+): HTMLElement & { value: string; label: string } {
 	return el.shadowRoot!.querySelector(
 		'[data-testid="name-field"]',
-	) as HTMLInputElement & {
+	) as HTMLElement & {
+		value: string;
 		label: string;
 	};
 }
-function deviceToggles(el: EppDeviceGroupEditor): HTMLInputElement[] {
+function deviceToggles(el: EppDeviceGroupEditor): HTMLElement[] {
 	return [
 		...el.shadowRoot!.querySelectorAll('[data-testid="device-toggle"]'),
-	] as HTMLInputElement[];
+	] as HTMLElement[];
 }
-function toggle(el: EppDeviceGroupEditor, mac: string): HTMLInputElement {
+function toggle(
+	el: EppDeviceGroupEditor,
+	mac: string,
+): HTMLElement & { checked: boolean } {
 	return el.shadowRoot!.querySelector(
 		`[data-testid="device-toggle"][data-mac="${mac}"]`,
-	) as HTMLInputElement;
+	) as HTMLElement & { checked: boolean };
 }
 function actionBtn(el: EppDeviceGroupEditor, label: string): HTMLElement {
-	return [...el.shadowRoot!.querySelectorAll("ha-button")].find(
+	return [...el.shadowRoot!.querySelectorAll("epp-button")].find(
 		(b) => b.textContent?.trim() === label,
 	) as HTMLElement;
 }
 function saveBtn(el: EppDeviceGroupEditor): HTMLElement {
 	return actionBtn(el, "Save");
 }
+function emitValueChanged(target: HTMLElement, value: unknown): void {
+	target.dispatchEvent(
+		new CustomEvent("value-changed", {
+			detail: { value },
+			bubbles: true,
+			composed: true,
+		}),
+	);
+}
 function setName(el: EppDeviceGroupEditor, value: string): void {
-	const f = nameField(el);
-	f.value = value;
-	f.dispatchEvent(new Event("input"));
+	emitValueChanged(nameField(el), value);
 }
 function setToggle(el: EppDeviceGroupEditor, mac: string, on: boolean): void {
-	const t = toggle(el, mac);
-	t.checked = on;
-	t.dispatchEvent(new Event("change"));
+	emitValueChanged(toggle(el, mac), on);
 }
 
 const DEVICES: DeviceInfo[] = [
@@ -224,7 +235,7 @@ describe("epp-device-group-editor", () => {
 		el.sourcesByMac = { AA: SOURCE_AA };
 		el.existingGroup = EXISTING;
 		await el.updateComplete;
-		const del = [...el.shadowRoot!.querySelectorAll("ha-button")].find(
+		const del = [...el.shadowRoot!.querySelectorAll("epp-button")].find(
 			(b) => b.textContent?.trim() === "Delete",
 		);
 		expect(del).toBeUndefined();
@@ -386,7 +397,7 @@ describe("epp-device-group-editor", () => {
 		const el = await fixture();
 		el.availableDevices = DEVICES;
 		await el.updateComplete;
-		const labels = [...el.shadowRoot!.querySelectorAll("ha-button")].map((b) =>
+		const labels = [...el.shadowRoot!.querySelectorAll("epp-button")].map((b) =>
 			b.textContent?.trim(),
 		);
 		expect(labels.indexOf("Cancel")).toBeLessThan(labels.indexOf("Save"));
@@ -566,9 +577,11 @@ describe("epp-device-group-editor", () => {
 	});
 
 	// Keep last: registering HA elements is global for the test environment, so
-	// this exercises the ha-input/ha-switch branches while every test above
-	// covers the ha-textfield/checkbox fallbacks.
-	it("uses HA-native ha-input and ha-switch when they are registered", async () => {
+	// this exercises the ha-input/ha-switch branches inside the primitives while
+	// every test above covers the ha-textfield/checkbox fallbacks. The editor
+	// now delegates to epp-field / epp-toggle, which render the HA-native widget
+	// in their own shadow root when it is registered.
+	it("uses HA-native ha-input and ha-switch (via the primitives) when registered", async () => {
 		if (!customElements.get("ha-input")) {
 			customElements.define("ha-input", class extends HTMLElement {});
 		}
@@ -578,7 +591,25 @@ describe("epp-device-group-editor", () => {
 		const el = await fixture();
 		el.availableDevices = DEVICES;
 		await el.updateComplete;
-		expect(el.shadowRoot!.querySelector("ha-input")).not.toBeNull();
-		expect(el.shadowRoot!.querySelectorAll("ha-switch").length).toBe(2);
+		// The editor composes the primitives...
+		const field = el.shadowRoot!.querySelector(
+			'epp-field[data-testid="name-field"]',
+		) as HTMLElement;
+		const toggles = [
+			...el.shadowRoot!.querySelectorAll(
+				'epp-toggle[data-testid="device-toggle"]',
+			),
+		] as HTMLElement[];
+		expect(field).not.toBeNull();
+		expect(toggles.length).toBe(2);
+		// ...and the primitives use the HA-native widgets when registered.
+		await (field as HTMLElement & { updateComplete: Promise<unknown> })
+			.updateComplete;
+		expect(field.shadowRoot!.querySelector("ha-input")).not.toBeNull();
+		for (const t of toggles) {
+			await (t as HTMLElement & { updateComplete: Promise<unknown> })
+				.updateComplete;
+			expect(t.shadowRoot!.querySelector("ha-switch")).not.toBeNull();
+		}
 	});
 });

@@ -49,7 +49,7 @@ export class FlasherController implements ReactiveController {
 	/**
 	 * Host hook — ask the user to confirm deleting an original-firmware
 	 * device's old ESPHome config entry before flashing over it. The panel
-	 * wires this to its themed template-dialog (see
+	 * wires this to its themed epp-dialog (see
 	 * `_requestFlasherDeleteConfirm`). Unwired, the flow aborts the flash
 	 * rather than deleting without confirmation.
 	 */

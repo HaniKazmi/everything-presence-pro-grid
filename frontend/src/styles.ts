@@ -1,64 +1,16 @@
 import { css } from "lit";
 
 export const dialogStyles = css`
-  .template-dialog {
-    position: fixed;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    background: rgba(0, 0, 0, 0.4);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    z-index: 100;
-  }
-
-  .template-dialog-card {
-    background: var(--card-background-color, #fff);
-    border-radius: 16px;
-    padding: 24px;
-    min-width: 320px;
-    max-width: 440px;
-    display: flex;
-    flex-direction: column;
-    gap: 16px;
-    box-shadow: 0 4px 24px rgba(0, 0, 0, 0.15);
-  }
-
-  .template-dialog-card h3 {
-    margin: 0;
-    font-size: 18px;
-    font-weight: 500;
-  }
-
-  .template-dialog-actions {
-    display: flex;
-    justify-content: flex-end;
-    gap: 12px;
-  }
-
-  .configuration-name-input {
-    width: 100%;
-    padding: 10px 12px;
-    border: 1px solid var(--divider-color, #e0e0e0);
-    border-radius: 8px;
-    font-size: 15px;
-    box-sizing: border-box;
-    background: var(--card-background-color, #fff);
-    color: var(--primary-text-color, #212121);
-  }
-
   .configuration-card-grid {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
-    gap: 12px;
+    gap: var(--epp-space-3, 12px);
   }
 
   .configuration-card {
     position: relative;
-    border: 1px solid var(--divider-color, #e0e0e0);
-    border-radius: 8px;
+    border: 1px solid var(--epp-border, var(--divider-color, #e0e0e0));
+    border-radius: var(--epp-radius-sm, 6px);
     overflow: hidden;
     cursor: pointer;
     transition: box-shadow 0.15s;
@@ -68,19 +20,21 @@ export const dialogStyles = css`
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
   }
 
-  .configuration-card:focus-visible,
-  .configuration-card-delete:focus-visible {
+  .configuration-card:focus-visible {
     outline: 2px solid var(--primary-color, #03a9f4);
     outline-offset: 2px;
   }
 
   .configuration-card-thumbnail {
-    background: var(--secondary-background-color, #f5f5f5);
-    padding: 8px;
+    background: var(--epp-surface-2, var(--secondary-background-color, #f5f5f5));
+    padding: var(--epp-space-2, 8px);
     aspect-ratio: 1;
     display: flex;
     align-items: center;
     justify-content: center;
+    /* Themed ink so the currentColor floor-plan art + icon-fallback rect read
+       in both light and dark mode (matches the grid furniture overlay). */
+    color: var(--epp-text-muted, var(--secondary-text-color, #757575));
   }
 
   .configuration-card-thumbnail svg {
@@ -89,12 +43,13 @@ export const dialogStyles = css`
   }
 
   .configuration-card-info {
-    padding: 6px 8px;
+    /* 6px has no spacing token; left literal. 8px → --epp-space-2. */
+    padding: 6px var(--epp-space-2, 8px);
   }
 
   .configuration-card-name {
-    font-size: 12px;
-    font-weight: 500;
+    font-size: var(--epp-font-xs, 12px);
+    font-weight: var(--epp-weight-medium, 500);
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -102,33 +57,24 @@ export const dialogStyles = css`
 
   .configuration-card-size {
     font-size: 10px;
-    color: var(--secondary-text-color, #757575);
+    color: var(--epp-text-muted, var(--secondary-text-color, #757575));
   }
 
   .configuration-card-delete {
     position: absolute;
-    top: 4px;
-    right: 4px;
-    width: 22px;
-    height: 22px;
-    border-radius: 50%;
-    border: none;
-    background: rgba(0, 0, 0, 0.4);
-    color: #fff;
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    padding: 0;
+    top: var(--epp-space-1, 4px);
+    right: var(--epp-space-1, 4px);
     z-index: 1;
+    /* fixed dark scrim so the icon stays legible over the thumbnail image,
+       not themed (must stay dark in any theme) */
+    background: rgba(0, 0, 0, 0.4);
+    border-radius: var(--epp-radius-pill, 9999px);
+    --epp-icon-button-color: #fff;
+    --epp-control-height: var(--epp-control-height-sm, 32px);
   }
 
   .configuration-card-delete:hover {
-    background: var(--error-color, #f44336);
-  }
-
-  .configuration-card-delete ha-icon {
-    --mdc-icon-size: 14px;
+    background: var(--epp-danger, var(--error-color, #f44336));
   }
 `;
 
@@ -162,22 +108,23 @@ export const settingStyles = css`
   .settings-section {
     display: flex;
     flex-direction: column;
-    gap: 4px;
+    gap: var(--epp-space-3, 12px);
   }
 
+  /* .setting-group is superseded by epp-card; kept for any legacy references. */
   .setting-group {
-    background: var(--card-background-color, #fff);
-    border-radius: 12px;
-    padding: 16px;
-    margin-bottom: 12px;
-    border: 1px solid var(--divider-color, #e0e0e0);
+    background: var(--epp-surface, var(--card-background-color, #fff));
+    border-radius: var(--epp-radius-md, 10px);
+    padding: var(--epp-space-4, 16px);
+    margin-bottom: var(--epp-space-3, 12px);
+    border: 1px solid var(--epp-border, var(--divider-color, #e0e0e0));
   }
 
   .setting-group h4 {
-    margin: 0 0 12px;
-    font-size: 14px;
-    font-weight: 600;
-    color: var(--primary-text-color, #212121);
+    margin: 0 0 var(--epp-space-3, 12px);
+    font-size: var(--epp-font-base, 14px);
+    font-weight: var(--epp-weight-semibold, 600);
+    color: var(--epp-text, var(--primary-text-color, #212121));
   }
 
   .setting-row {
@@ -185,9 +132,9 @@ export const settingStyles = css`
     align-items: center;
     justify-content: space-between;
     flex-wrap: wrap;
-    padding: 8px 0;
-    gap: 4px;
-    border-bottom: 1px solid var(--divider-color, #f0f0f0);
+    padding: var(--epp-space-2, 8px) 0;
+    gap: var(--epp-space-1, 4px);
+    border-bottom: 1px solid var(--epp-border, var(--divider-color, #f0f0f0));
   }
 
   .setting-row:last-child {
@@ -196,8 +143,8 @@ export const settingStyles = css`
   }
 
   .setting-row label:not(.toggle-switch) {
-    font-size: 14px;
-    color: var(--primary-text-color, #212121);
+    font-size: var(--epp-font-base, 14px);
+    color: var(--epp-text, var(--primary-text-color, #212121));
     flex: 1;
     min-width: 120px;
   }
@@ -206,8 +153,8 @@ export const settingStyles = css`
     display: flex;
     align-items: center;
     gap: 6px;
-    font-size: 13px;
-    color: var(--secondary-text-color, #757575);
+    font-size: var(--epp-font-sm, 13px);
+    color: var(--epp-text-muted, var(--secondary-text-color, #757575));
     flex: 1;
     min-width: 0;
     justify-content: flex-end;
@@ -220,9 +167,9 @@ export const settingStyles = css`
   }
 
   .setting-value {
-    font-size: 14px;
-    color: var(--secondary-text-color, #757575);
-    font-weight: 500;
+    font-size: var(--epp-font-base, 14px);
+    color: var(--epp-text-muted, var(--secondary-text-color, #757575));
+    font-weight: var(--epp-weight-medium, 500);
     display: inline-block;
     width: 36px;
     text-align: right;
@@ -232,8 +179,8 @@ export const settingStyles = css`
   .setting-unit {
     display: inline-block;
     width: 24px;
-    font-size: 13px;
-    color: var(--secondary-text-color, #757575);
+    font-size: var(--epp-font-sm, 13px);
+    color: var(--epp-text-muted, var(--secondary-text-color, #757575));
     flex-shrink: 0;
   }
 `;
@@ -304,6 +251,24 @@ export const sidebarRowStyles = css`
 
   .sidebar-remove-btn:hover {
     color: var(--error-color, #f44336);
+  }
+`;
+
+/** Sensor/zone chip pills shared by the device-group editor, the device-groups
+ *  view, and the zone-merge list. Consumers keep their own `.chips` /
+ *  `.group-sensors` flex wrapper locally. */
+export const chipStyles = css`
+  .chip {
+    padding: 2px var(--epp-space-2, 8px);
+    border-radius: var(--epp-radius-pill, 9999px);
+    background: var(--epp-accent, var(--primary-color, #03a9f4));
+    color: var(--epp-accent-text, var(--text-primary-color, #fff));
+    font-size: var(--epp-font-sm, 13px);
+  }
+  .chip.zone {
+    background: var(--epp-surface-2, var(--secondary-background-color, #f5f5f5));
+    color: var(--epp-text, var(--primary-text-color, #212121));
+    border: 1px solid var(--epp-border, var(--divider-color, #e0e0e0));
   }
 `;
 

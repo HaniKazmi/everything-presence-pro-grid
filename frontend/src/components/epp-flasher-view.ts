@@ -12,6 +12,8 @@ import { css, html, LitElement, nothing, type TemplateResult } from "lit";
 import { property, state } from "lit/decorators.js";
 import { literal, html as staticHtml } from "lit/static-html.js";
 import { DocumentListenerGroup } from "../lib/document-listeners.js";
+import "../ui/epp-button.js";
+import "../ui/epp-field.js";
 import type { WifiNetwork } from "../lib/improv-serial.js";
 import { defaultLocalize, type LocalizeFn } from "../localize.js";
 import type {
@@ -41,7 +43,7 @@ function wifiIconPath(rssi: number, authRequired: boolean): string {
 const flasherStyles = css`
   :host {
     display: block;
-    padding: 16px;
+    padding: var(--epp-space-4, 16px);
   }
 
   .flasher-content {
@@ -49,36 +51,36 @@ const flasherStyles = css`
     margin: 0 auto;
     display: flex;
     flex-direction: column;
-    gap: 16px;
+    gap: var(--epp-space-4, 16px);
   }
 
   .card-header {
-    font-size: 18px;
-    font-weight: 400;
+    font-size: var(--epp-font-xl, 18px);
+    font-weight: var(--epp-weight-regular, 400);
     line-height: 48px;
-    padding: 8px 16px 0;
-    color: var(--ha-card-header-color, var(--primary-text-color, #212121));
+    padding: var(--epp-space-2, 8px) var(--epp-space-4, 16px) 0;
+    color: var(--ha-card-header-color, var(--epp-text, var(--primary-text-color, #212121)));
   }
 
   .card-content {
-    padding: 16px;
+    padding: var(--epp-space-4, 16px);
   }
 
   .device-list {
     display: flex;
     flex-direction: column;
-    gap: 8px;
+    gap: var(--epp-space-2, 8px);
   }
 
   .device-row {
     display: flex;
     align-items: center;
-    gap: 12px;
-    padding: 12px 16px;
+    gap: var(--epp-space-3, 12px);
+    padding: var(--epp-space-3, 12px) var(--epp-space-4, 16px);
     min-height: 60px;
-    background: var(--card-background-color, #fff);
-    border: 1px solid var(--divider-color, #e0e0e0);
-    border-radius: 10px;
+    background: var(--epp-surface, var(--card-background-color, #fff));
+    border: 1px solid var(--epp-border, var(--divider-color, #e0e0e0));
+    border-radius: var(--epp-radius-md, 10px);
   }
   .device-info-faded {
     opacity: 0.5;
@@ -90,50 +92,50 @@ const flasherStyles = css`
   }
 
   .device-name {
-    font-size: 14px;
-    font-weight: 500;
-    color: var(--primary-text-color, #212121);
+    font-size: var(--epp-font-base, 14px);
+    font-weight: var(--epp-weight-medium, 500);
+    color: var(--epp-text, var(--primary-text-color, #212121));
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
   }
 
   .device-mac {
-    font-weight: 400;
-    color: var(--secondary-text-color, #757575);
+    font-weight: var(--epp-weight-regular, 400);
+    color: var(--epp-text-muted, var(--secondary-text-color, #757575));
   }
   .device-host {
-    font-size: 12px;
-    color: var(--secondary-text-color, #757575);
+    font-size: var(--epp-font-xs, 12px);
+    color: var(--epp-text-muted, var(--secondary-text-color, #757575));
     margin-top: 2px;
   }
 
   .firmware-badge {
     font-size: 11px;
-    font-weight: 600;
-    padding: 2px 8px;
-    border-radius: 10px;
+    font-weight: var(--epp-weight-semibold, 600);
+    padding: 2px var(--epp-space-2, 8px);
+    border-radius: var(--epp-radius-md, 10px);
     flex-shrink: 0;
   }
 
   .firmware-badge-original {
-    background: color-mix(in srgb, var(--warning-color, #ff9800) 12%, transparent);
-    color: var(--warning-color, #ff9800);
+    background: color-mix(in srgb, var(--epp-warning, var(--warning-color, #ff9800)) 12%, transparent);
+    color: var(--epp-warning, var(--warning-color, #ff9800));
   }
 
   .firmware-badge-offline {
-    background: color-mix(in srgb, var(--secondary-text-color, #757575) 12%, transparent);
-    color: var(--secondary-text-color, #757575);
+    background: color-mix(in srgb, var(--epp-text-muted, var(--secondary-text-color, #757575)) 12%, transparent);
+    color: var(--epp-text-muted, var(--secondary-text-color, #757575));
   }
 
   .firmware-badge-behind {
-    background: var(--warning-color, #ff9800);
+    background: var(--epp-warning, var(--warning-color, #ff9800));
     color: var(--text-primary-color, #fff);
   }
 
   .firmware-badge-online {
-    background: color-mix(in srgb, var(--success-color, #4caf50) 12%, transparent);
-    color: var(--success-color, #4caf50);
+    background: color-mix(in srgb, var(--epp-success, var(--success-color, #4caf50)) 12%, transparent);
+    color: var(--epp-success, var(--success-color, #4caf50));
   }
 
   .firmware-badge-ahead {
@@ -156,12 +158,12 @@ const flasherStyles = css`
   }
   .ota-track {
     fill: none;
-    stroke: var(--divider-color, #e0e0e0);
+    stroke: var(--epp-border, var(--divider-color, #e0e0e0));
     stroke-width: 3;
   }
   .ota-fill {
     fill: none;
-    stroke: var(--primary-color, #03a9f4);
+    stroke: var(--epp-accent, var(--primary-color, #03a9f4));
     stroke-width: 3;
     stroke-linecap: round;
     transition: stroke-dashoffset 0.3s ease;
@@ -169,14 +171,14 @@ const flasherStyles = css`
   .ota-pct {
     position: absolute;
     font-size: 10px;
-    font-weight: 600;
-    color: var(--primary-text-color, #212121);
+    font-weight: var(--epp-weight-semibold, 600);
+    color: var(--epp-text, var(--primary-text-color, #212121));
   }
   .ota-spinner {
     width: 31px;
     height: 31px;
-    border: 3px solid var(--divider-color, #e0e0e0);
-    border-top-color: var(--primary-color, #03a9f4);
+    border: 3px solid var(--epp-border, var(--divider-color, #e0e0e0));
+    border-top-color: var(--epp-accent, var(--primary-color, #03a9f4));
     border-radius: 50%;
     box-sizing: border-box;
     animation: ota-spin 0.8s linear infinite;
@@ -187,52 +189,52 @@ const flasherStyles = css`
   }
   .ota-success {
     --mdc-icon-size: 36px;
-    color: var(--success-color, #4caf50);
+    color: var(--epp-success, var(--success-color, #4caf50));
     flex-shrink: 0;
   }
   .ota-error {
     display: flex;
     align-items: center;
-    gap: 4px;
+    gap: var(--epp-space-1, 4px);
     position: relative;
     flex-shrink: 0;
   }
   .ota-error-icon {
     --mdc-icon-size: 20px;
-    color: var(--error-color, #f44336);
+    color: var(--epp-danger, var(--error-color, #f44336));
     cursor: pointer;
   }
   .ota-error-popover {
     position: absolute;
     bottom: 100%;
     right: 0;
-    background: var(--error-color, #f44336);
+    background: var(--epp-danger, var(--error-color, #f44336));
     color: white;
-    padding: 8px 12px;
-    border-radius: 8px;
-    font-size: 12px;
+    padding: var(--epp-space-2, 8px) var(--epp-space-3, 12px);
+    border-radius: var(--epp-radius-sm, 6px);
+    font-size: var(--epp-font-xs, 12px);
     white-space: nowrap;
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
     z-index: 10;
-    margin-bottom: 4px;
+    margin-bottom: var(--epp-space-1, 4px);
   }
 
   .integration-version {
     font-size: 0.8em;
     font-weight: normal;
     opacity: 0.7;
-    margin-left: 8px;
+    margin-left: var(--epp-space-2, 8px);
   }
 
   .update-banner {
     display: flex;
     align-items: flex-start;
-    gap: 12px;
-    padding: 16px;
-    margin-bottom: 16px;
+    gap: var(--epp-space-3, 12px);
+    padding: var(--epp-space-4, 16px);
+    margin-bottom: var(--epp-space-4, 16px);
     background: var(--info-color, #2196f3);
     color: white;
-    border-radius: 8px;
+    border-radius: var(--epp-radius-sm, 6px);
   }
   .update-banner ha-icon {
     --mdc-icon-size: 24px;
@@ -240,63 +242,33 @@ const flasherStyles = css`
     margin-top: 2px;
   }
   .update-banner p {
-    margin: 4px 0 8px;
+    margin: var(--epp-space-1, 4px) 0 var(--epp-space-2, 8px);
   }
   .update-banner .update-link {
     color: white;
-    font-weight: 500;
+    font-weight: var(--epp-weight-medium, 500);
     text-decoration: underline;
-  }
-
-  .usb-section {
-    display: flex;
-    align-items: center;
-    gap: 16px;
-    padding: 12px 8px;
-  }
-
-  .usb-icon {
-    --mdc-icon-size: 32px;
-    color: var(--secondary-text-color, #757575);
-    flex-shrink: 0;
-  }
-
-  .usb-section-text {
-    flex: 1;
-    min-width: 0;
-  }
-
-  .usb-title {
-    font-size: 14px;
-    font-weight: 500;
-    color: var(--primary-text-color, #212121);
-  }
-
-  .usb-description {
-    font-size: 13px;
-    color: var(--secondary-text-color, #757575);
-    margin-top: 2px;
   }
 
   .usb-actions {
     display: flex;
     flex-direction: column;
-    gap: 12px;
+    gap: var(--epp-space-3, 12px);
   }
 
   .usb-action {
     display: flex;
     align-items: center;
-    gap: 16px;
-    padding: 16px;
-    border: 1px solid var(--divider-color, #e0e0e0);
-    border-radius: 12px;
+    gap: var(--epp-space-4, 16px);
+    padding: var(--epp-space-4, 16px);
+    border: 1px solid var(--epp-border, var(--divider-color, #e0e0e0));
+    border-radius: var(--epp-radius-md, 10px);
     cursor: pointer;
     transition: background 0.15s;
   }
 
   .usb-action:hover {
-    background: var(--secondary-background-color, #f5f5f5);
+    background: var(--epp-surface-2, var(--secondary-background-color, #f5f5f5));
   }
 
   .usb-action-disabled {
@@ -310,7 +282,7 @@ const flasherStyles = css`
 
   .usb-action ha-icon {
     --mdc-icon-size: 28px;
-    color: var(--primary-color, #03a9f4);
+    color: var(--epp-accent, var(--primary-color, #03a9f4));
     flex-shrink: 0;
   }
 
@@ -320,108 +292,96 @@ const flasherStyles = css`
   }
 
   .usb-action-title {
-    font-size: 14px;
-    font-weight: 500;
-    color: var(--primary-text-color, #212121);
+    font-size: var(--epp-font-base, 14px);
+    font-weight: var(--epp-weight-medium, 500);
+    color: var(--epp-text, var(--primary-text-color, #212121));
   }
 
   .usb-action-desc {
-    font-size: 13px;
-    color: var(--secondary-text-color, #757575);
+    font-size: var(--epp-font-sm, 13px);
+    color: var(--epp-text-muted, var(--secondary-text-color, #757575));
     margin-top: 2px;
   }
 
-  .usb-connect-btn {
-    padding: 8px 20px;
-    border-radius: 8px;
-    border: none;
-    cursor: pointer;
-    font-size: 14px;
-    font-weight: 500;
-    background: var(--primary-color, #03a9f4);
-    color: var(--text-primary-color, #fff);
-    flex-shrink: 0;
-  }
-
   .browser-warning {
-    margin-top: 8px;
-    font-size: 12px;
-    color: var(--warning-color, #ff9800);
+    margin-top: var(--epp-space-2, 8px);
+    font-size: var(--epp-font-xs, 12px);
+    color: var(--epp-warning, var(--warning-color, #ff9800));
   }
 
   .usb-select-label {
-    margin: 0 0 12px;
-    font-size: 14px;
-    color: var(--secondary-text-color, #757575);
+    margin: 0 0 var(--epp-space-3, 12px);
+    font-size: var(--epp-font-base, 14px);
+    color: var(--epp-text-muted, var(--secondary-text-color, #757575));
   }
 
   .usb-error {
     text-align: center;
-    padding: 24px 0;
-    color: var(--error-color, #f44336);
+    padding: var(--epp-space-5, 24px) 0;
+    color: var(--epp-danger, var(--error-color, #f44336));
   }
 
   .usb-error ha-icon {
     --mdc-icon-size: 48px;
-    margin-bottom: 8px;
+    margin-bottom: var(--epp-space-2, 8px);
   }
 
   .usb-error p {
     margin: 0;
-    font-size: 14px;
+    font-size: var(--epp-font-base, 14px);
   }
 
   .usb-complete {
     text-align: center;
-    padding: 24px 0;
-    color: var(--success-color, #4caf50);
+    padding: var(--epp-space-5, 24px) 0;
+    color: var(--epp-success, var(--success-color, #4caf50));
     max-width: 400px;
     margin: 0 auto;
   }
 
   .usb-complete ha-icon {
     --mdc-icon-size: 48px;
-    margin-bottom: 16px;
+    margin-bottom: var(--epp-space-4, 16px);
   }
 
   .usb-complete p {
-    margin: 4px 0;
-    font-size: 14px;
+    margin: var(--epp-space-1, 4px) 0;
+    font-size: var(--epp-font-base, 14px);
   }
 
   .usb-ip {
-    color: var(--primary-text-color, #212121);
-    font-weight: 500;
-    margin-top: 4px;
+    color: var(--epp-text, var(--primary-text-color, #212121));
+    font-weight: var(--epp-weight-medium, 500);
+    margin-top: var(--epp-space-1, 4px);
   }
 
   .ha-add-result {
-    color: var(--secondary-text-color);
-    font-size: 14px;
-    margin-top: 8px;
+    color: var(--epp-text-muted, var(--secondary-text-color));
+    font-size: var(--epp-font-base, 14px);
+    margin-top: var(--epp-space-2, 8px);
   }
 
   .usb-status {
     text-align: center;
-    padding: 24px 0;
+    padding: var(--epp-space-5, 24px) 0;
   }
 
   .usb-status p {
     margin: 0;
-    font-size: 14px;
-    color: var(--primary-text-color, #212121);
+    font-size: var(--epp-font-base, 14px);
+    color: var(--epp-text, var(--primary-text-color, #212121));
   }
 
   .usb-hint {
-    margin-top: 12px !important;
-    font-size: 12px !important;
-    color: var(--secondary-text-color, #757575) !important;
+    margin-top: var(--epp-space-3, 12px) !important;
+    font-size: var(--epp-font-xs, 12px) !important;
+    color: var(--epp-text-muted, var(--secondary-text-color, #757575)) !important;
   }
 
   .wifi-form {
     display: flex;
     flex-direction: column;
-    gap: 12px;
+    gap: var(--epp-space-3, 12px);
   }
 
   ha-select,
@@ -431,8 +391,8 @@ const flasherStyles = css`
   }
 
   .usb-progress {
-    margin-top: 16px;
-    background: var(--divider-color, #e0e0e0);
+    margin-top: var(--epp-space-4, 16px);
+    background: var(--epp-border, var(--divider-color, #e0e0e0));
     border-radius: 4px;
     height: 8px;
     position: relative;
@@ -441,7 +401,7 @@ const flasherStyles = css`
 
   .usb-progress-bar {
     height: 100%;
-    background: var(--primary-color, #03a9f4);
+    background: var(--epp-accent, var(--primary-color, #03a9f4));
     border-radius: 4px;
     transition: width 0.3s ease;
   }
@@ -449,64 +409,68 @@ const flasherStyles = css`
   .usb-progress span {
     display: block;
     text-align: center;
-    margin-top: 8px;
-    font-size: 13px;
-    color: var(--secondary-text-color, #757575);
+    margin-top: var(--epp-space-2, 8px);
+    font-size: var(--epp-font-sm, 13px);
+    color: var(--epp-text-muted, var(--secondary-text-color, #757575));
   }
 
   .flasher-loading {
-    padding: 32px 24px;
+    padding: 32px var(--epp-space-5, 24px);
     text-align: center;
-    color: var(--secondary-text-color, #757575);
-    font-size: 14px;
+    color: var(--epp-text-muted, var(--secondary-text-color, #757575));
+    font-size: var(--epp-font-base, 14px);
   }
 
   .flasher-empty {
-    padding: 24px 16px 32px;
+    padding: var(--epp-space-5, 24px) var(--epp-space-4, 16px) 32px;
     text-align: center;
-    color: var(--secondary-text-color, #757575);
+    color: var(--epp-text-muted, var(--secondary-text-color, #757575));
   }
 
   .flasher-empty ha-icon {
     --mdc-icon-size: 48px;
-    margin-bottom: 8px;
+    margin-bottom: var(--epp-space-2, 8px);
     opacity: 0.5;
   }
 
   .flasher-empty p {
     margin: 0;
-    font-size: 14px;
+    font-size: var(--epp-font-base, 14px);
   }
 
   .variant-selector {
     display: flex;
-    gap: 12px;
-    margin-bottom: 16px;
+    gap: var(--epp-space-3, 12px);
+    margin-bottom: var(--epp-space-4, 16px);
   }
 
 
   .confirm-actions {
     display: flex;
     justify-content: flex-end;
-    gap: 12px;
+    gap: var(--epp-space-3, 12px);
   }
 
   .ha-add-progress {
     display: flex;
     align-items: center;
-    gap: 12px;
-    margin-top: 16px;
-    color: var(--secondary-text-color);
-    font-size: 14px;
+    gap: var(--epp-space-3, 12px);
+    margin-top: var(--epp-space-4, 16px);
+    color: var(--epp-text-muted, var(--secondary-text-color));
+    font-size: var(--epp-font-base, 14px);
   }
 
   .wifi-override-row {
-    margin-top: 12px;
+    margin-top: var(--epp-space-3, 12px);
     text-align: center;
   }
 
   .wifi-override-link {
-    color: var(--primary-color);
+    background: none;
+    border: none;
+    padding: 0;
+    font: inherit;
+    color: var(--epp-accent, var(--primary-color, #03a9f4));
     cursor: pointer;
     text-decoration: underline;
     font-size: 0.9em;
@@ -518,7 +482,7 @@ const flasherStyles = css`
 
   .cancelled-ip-hint {
     padding: 10px 14px;
-    margin-bottom: 12px;
+    margin-bottom: var(--epp-space-3, 12px);
     background: var(--info-color, #3b82f6);
     color: var(--text-primary-color, white);
     border-radius: 4px;
@@ -671,10 +635,11 @@ export class EppFlasherView extends LitElement {
 						></ha-icon>
 						${
 							device.available
-								? html`<ha-button
+								? html`<epp-button
+									variant="neutral"
 									@click=${() => this._dispatchRetryOta(device)}>
 									${this.localize("flasher.ota_retry")}
-								</ha-button>`
+								</epp-button>`
 								: nothing
 						}
 						${
@@ -758,11 +723,12 @@ export class EppFlasherView extends LitElement {
 			? this.localize("flasher.cancelling")
 			: this.localize("flasher.cancel");
 		const cls = extraClass ?? "";
-		return html`<ha-button
+		return html`<epp-button
+			variant="neutral"
 			class=${cls}
 			@click=${this._dispatchCancel}
 			?disabled=${this._cancelling}
-		>${label}</ha-button>`;
+		>${label}</epp-button>`;
 	}
 
 	private async _copyIp(ip: string): Promise<void> {
@@ -845,26 +811,33 @@ export class EppFlasherView extends LitElement {
               ></ha-checkbox>
             </ha-formfield>
 
+            ${
+							showManual
+								? html`
+                <epp-field
+                  type="text"
+                  autocomplete="off"
+                  .label=${this.localize("flasher.enter_ssid")}
+                  .value=${this._selectedSsid}
+                  @value-changed=${(e: CustomEvent<{ value: string }>) => {
+										this._selectedSsid = e.detail.value;
+									}}
+                ></epp-field>
+              `
+								: nothing
+						}
+
             ${(() => {
-							// ha-input shipped in HA 2026.4 and replaces ha-textfield (removed in
-							// 2026.5). Fall back to ha-textfield on older HA where ha-input isn't
-							// registered yet — the integration's hacs.json still supports 2025.2+.
+							// Password masking depends on the input's `type` attribute
+							// (text vs password), which epp-field does NOT support — keep
+							// the native control here. ha-input shipped in HA 2026.4 and
+							// replaces ha-textfield (removed in 2026.5); fall back to
+							// ha-textfield on older HA where ha-input isn't registered yet —
+							// the integration's hacs.json still supports 2025.2+.
 							const inputTag = customElements.get("ha-input")
 								? literal`ha-input`
 								: literal`ha-textfield`;
-							const ssidField = showManual
-								? staticHtml`
-                <${inputTag}
-                  .label=${this.localize("flasher.enter_ssid")}
-                  autocomplete="off"
-                  .value=${this._selectedSsid}
-                  @input=${(e: Event) => {
-										this._selectedSsid = (e.target as any).value;
-									}}
-                ></${inputTag}>
-              `
-								: nothing;
-							const passwordField = staticHtml`
+							return staticHtml`
               <${inputTag}
                 .label=${this.localize("flasher.wifi_password")}
                 type=${this._showPassword ? "text" : "password"}
@@ -875,7 +848,6 @@ export class EppFlasherView extends LitElement {
 								}}
               ></${inputTag}>
             `;
-							return html`${ssidField}${passwordField}`;
 						})()}
 
             <ha-formfield
@@ -892,16 +864,16 @@ export class EppFlasherView extends LitElement {
 
             <div class="confirm-actions">
               ${this._renderCancelButton()}
-              <ha-button @click=${this._dispatchWifiScan}>
+              <epp-button variant="neutral" @click=${this._dispatchWifiScan}>
                 ${this.localize("flasher.scan")}
-              </ha-button>
-              <ha-button
-                appearance="accent"
-                .disabled=${!this._selectedSsid}
+              </epp-button>
+              <epp-button
+                variant="primary"
+                ?disabled=${!this._selectedSsid}
                 @click=${this._dispatchWifiProvision}
               >
                 ${this.localize("flasher.connect")}
-              </ha-button>
+              </epp-button>
             </div>
           </div>
         </ha-card>
@@ -959,10 +931,10 @@ export class EppFlasherView extends LitElement {
 			: isEppgrid &&
 					(device.update_available ||
 						device.firmware_status === "firmware_behind")
-				? html`<ha-button
-							appearance="accent"
+				? html`<epp-button
+							variant="primary"
 							@click=${() => this._dispatchUpdateFirmware(device)}
-						>${this.localize("flasher.update")}</ha-button>`
+						>${this.localize("flasher.update")}</epp-button>`
 				: nothing;
 
 		return { badges, action };
@@ -1124,15 +1096,15 @@ export class EppFlasherView extends LitElement {
 							<p>${state.errorKey ? this.localize(state.errorKey, state.errorParams) : ""}</p>
 						</div>
 						<div class="confirm-actions">
-							<ha-button @click=${this._dispatchCancel}>
+							<epp-button variant="neutral" @click=${this._dispatchCancel}>
 								${this.localize("flasher.start_over")}
-							</ha-button>
+							</epp-button>
 							${
 								state.fatal
 									? nothing
-									: html`<ha-button appearance="accent" @click=${this._dispatchUsbRetry}>
+									: html`<epp-button variant="primary" @click=${this._dispatchUsbRetry}>
 								${this.localize("flasher.usb_retry")}
-							</ha-button>`
+							</epp-button>`
 							}
 						</div>
 					</div>
@@ -1176,13 +1148,13 @@ export class EppFlasherView extends LitElement {
 						${
 							state.autoSkipped
 								? html`<div class="wifi-override-row">
-									<ha-button
+									<button
 										class="wifi-override-link"
-										appearance="plain"
+										type="button"
 										@click=${this._dispatchWifiScan}
 									>
 										${this.localize("flasher.configure_wifi_override")}
-									</ha-button>
+									</button>
 								</div>`
 								: nothing
 						}
@@ -1209,7 +1181,7 @@ export class EppFlasherView extends LitElement {
 							</div>
 							<div class="confirm-actions">
 								<a href="/config/devices/dashboard">
-									<ha-button appearance="accent">${this.localize("flasher.go_to_devices")}</ha-button>
+									<epp-button variant="primary">${this.localize("flasher.go_to_devices")}</epp-button>
 								</a>
 							</div>
 						</div>
@@ -1244,25 +1216,25 @@ export class EppFlasherView extends LitElement {
 						<div class="confirm-actions">
 							${
 								success
-									? html`<ha-button appearance="accent" @click=${this._dispatchFlashComplete}>
+									? html`<epp-button variant="primary" @click=${this._dispatchFlashComplete}>
 									${this.localize("flasher.go_to_config")}
-								</ha-button>`
+								</epp-button>`
 									: haAdd?.type === "needs_auth"
 										? html`<a href="/config/integrations/dashboard">
-										<ha-button appearance="accent">${this.localize("flasher.go_to_integrations")}</ha-button>
+										<epp-button variant="primary">${this.localize("flasher.go_to_integrations")}</epp-button>
 									</a>`
 										: html`
-										<ha-button @click=${() => this._copyIp(ip ?? "")}>
+										<epp-button variant="neutral" @click=${() => this._copyIp(ip ?? "")}>
 											${this.localize("flasher.copy_ip")}
-										</ha-button>
-										<ha-button appearance="accent" @click=${this._dispatchRetryHaAdd}>
+										</epp-button>
+										<epp-button variant="primary" @click=${this._dispatchRetryHaAdd}>
 											${this.localize("flasher.retry_ha_add")}
-										</ha-button>
+										</epp-button>
 									`
 							}
-							<ha-button @click=${this._dispatchCancel}>
+							<epp-button variant="neutral" @click=${this._dispatchCancel}>
 								${this.localize("flasher.flash_another")}
-							</ha-button>
+							</epp-button>
 						</div>
 					</div>
 				</ha-card>
@@ -1339,26 +1311,26 @@ export class EppFlasherView extends LitElement {
 					<div class="card-content">
 						<p class="usb-select-label">${this.localize("flasher.select_variant")}</p>
 						<div class="variant-selector">
-							<ha-button
+							<epp-button
 								class="${this._selectedVariant === "wifi" ? "selected" : "unselected"}"
-								appearance="${this._selectedVariant === "wifi" ? "accent" : "outlined"}"
+								variant="${this._selectedVariant === "wifi" ? "primary" : "neutral"}"
 								@click=${() => {
 									this._selectedVariant = "wifi";
 								}}
-							>${this.localize("flasher.wifi")}</ha-button>
-							<ha-button
+							>${this.localize("flasher.wifi")}</epp-button>
+							<epp-button
 								class="${this._selectedVariant === "ethernet" ? "selected" : "unselected"}"
-								appearance="${this._selectedVariant === "ethernet" ? "accent" : "outlined"}"
+								variant="${this._selectedVariant === "ethernet" ? "primary" : "neutral"}"
 								@click=${() => {
 									this._selectedVariant = "ethernet";
 								}}
-							>${this.localize("flasher.ethernet")}</ha-button>
+							>${this.localize("flasher.ethernet")}</epp-button>
 						</div>
 						<div class="confirm-actions">
 							${this._renderCancelButton()}
-							<ha-button appearance="accent" @click=${this._dispatchUsbFlash}>
+							<epp-button variant="primary" @click=${this._dispatchUsbFlash}>
 								${this.localize("flasher.usb_flash")}
-							</ha-button>
+							</epp-button>
 						</div>
 					</div>
 				</ha-card>

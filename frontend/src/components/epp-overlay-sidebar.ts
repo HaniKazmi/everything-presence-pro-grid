@@ -52,8 +52,8 @@ export class EppOverlaySidebar extends LitElement {
 		.overlay-item {
 			display: flex;
 			flex-direction: column;
-			gap: 4px;
-			padding: 6px 8px;
+			gap: var(--epp-space-1, 4px);
+			padding: 6px var(--epp-space-2, 8px);
 			border-radius: 8px;
 			cursor: pointer;
 			border: 2px solid var(--divider-color, #e0e0e0);
@@ -70,13 +70,13 @@ export class EppOverlaySidebar extends LitElement {
 		}
 
 		.overlay-item.active {
-			border-color: var(--primary-color, #03a9f4);
+			border-color: var(--epp-accent, var(--primary-color, #03a9f4));
 		}
 
 		.overlay-item-row {
 			display: flex;
 			align-items: center;
-			gap: 8px;
+			gap: var(--epp-space-2, 8px);
 		}
 
 		.overlay-dot {
@@ -84,17 +84,17 @@ export class EppOverlaySidebar extends LitElement {
 			height: 16px;
 			border-radius: 50%;
 			flex-shrink: 0;
-			border: 1px solid #ccc;
+			border: 1px solid var(--epp-border, #ccc);
 		}
 
 		.overlay-name {
 			flex: 1;
-			font-size: 14px;
+			font-size: var(--epp-font-base, 14px);
 		}
 
 		.overlay-hint {
 			font-size: 11px;
-			color: var(--secondary-text-color, #757575);
+			color: var(--epp-text-muted, var(--secondary-text-color, #757575));
 		}
 
 	`;

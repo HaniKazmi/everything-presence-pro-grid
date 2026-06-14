@@ -1,6 +1,8 @@
 import { css, html, LitElement, nothing } from "lit";
 import { property, state } from "lit/decorators.js";
 
+import "../ui/epp-button.js";
+import "../ui/epp-card.js";
 import "../components/epp-confirm-dialog.js";
 import "../components/epp-device-group-editor.js";
 import "../components/epp-kebab-menu.js";
@@ -9,55 +11,56 @@ import {
 	EDIT_DELETE_KEBAB_ITEMS,
 	exposedSensorChips,
 } from "../lib/device-groups-labels.js";
+import { chipStyles } from "../styles.js";
 import type { DeviceGroup, DeviceGroupSource, DeviceInfo } from "../types.js";
 
 export class EppDeviceGroupsView extends LitElement {
-	static styles = css`
+	static styles = [
+		chipStyles,
+		css`
 		:host { display: block; padding: 16px; }
 		.content {
 			max-width: 600px;
 			margin: 0 auto;
 		}
 		.card-header {
-			font-size: 18px;
+			font-size: var(--epp-font-xl, 18px);
 			font-weight: 400;
 			line-height: 48px;
-			padding: 8px 16px 0;
+			padding: var(--epp-space-2, 8px) var(--epp-space-4, 16px) 0;
 			color: var(--ha-card-header-color, var(--primary-text-color, #212121));
 		}
 		.card-content {
-			padding: 16px;
+			padding: var(--epp-space-4, 16px);
 			display: flex;
 			flex-direction: column;
-			gap: 12px;
+			gap: var(--epp-space-3, 12px);
 		}
+		/* epp-card supplies the surface (border/radius/padding); .group-card is the
+		   flex row laid out inside its default slot. */
 		.group-card {
 			display: flex;
 			align-items: flex-start;
-			gap: 12px;
-			padding: 12px 16px;
-			background: var(--card-background-color, #fff);
-			border: 1px solid var(--divider-color, #e0e0e0);
-			border-radius: 10px;
+			gap: var(--epp-space-3, 12px);
 		}
 		.group-info { flex: 1; min-width: 0; }
 		.group-name {
-			font-size: 14px;
-			font-weight: 600;
-			color: var(--primary-text-color, #212121);
+			font-size: var(--epp-font-base, 14px);
+			font-weight: var(--epp-weight-semibold, 600);
+			color: var(--epp-text, var(--primary-text-color, #212121));
 		}
 		.group-devices {
-			font-size: 13px;
-			color: var(--secondary-text-color, #757575);
-			margin-top: 4px;
+			font-size: var(--epp-font-sm, 13px);
+			color: var(--epp-text-muted, var(--secondary-text-color, #757575));
+			margin-top: var(--epp-space-1, 4px);
 		}
 		.group-warning {
 			display: flex;
 			align-items: center;
 			gap: 6px;
-			margin-top: 4px;
-			font-size: 13px;
-			color: var(--warning-color, #ff9800);
+			margin-top: var(--epp-space-1, 4px);
+			font-size: var(--epp-font-sm, 13px);
+			color: var(--epp-warning, var(--warning-color, #ff9800));
 		}
 		.group-warning ha-icon { --mdc-icon-size: 18px; }
 		.group-sensors {
@@ -65,34 +68,24 @@ export class EppDeviceGroupsView extends LitElement {
 			align-items: baseline;
 			flex-wrap: wrap;
 			gap: 6px;
-			font-size: 13px;
-			color: var(--secondary-text-color, #757575);
+			font-size: var(--epp-font-sm, 13px);
+			color: var(--epp-text-muted, var(--secondary-text-color, #757575));
 			margin-top: 6px;
 		}
-		.chip {
-			padding: 2px 10px;
-			border-radius: 999px;
-			background: var(--primary-color);
-			color: var(--text-primary-color);
-			font-size: 12px;
-		}
-		.chip.zone {
-			background: var(--secondary-background-color);
-			color: var(--primary-text-color);
-			border: 1px solid var(--divider-color);
-		}
 		.empty {
-			color: var(--secondary-text-color, #757575);
+			color: var(--epp-text-muted, var(--secondary-text-color, #757575));
 			text-align: center;
-			padding: 8px 0;
+			padding: var(--epp-space-2, 8px) 0;
 		}
 		.footer {
 			display: flex;
 			justify-content: flex-end;
-			margin-top: 4px;
+			margin-top: var(--epp-space-1, 4px);
 		}
+		epp-card { display: block; }
 		epp-kebab-menu { flex-shrink: 0; margin: -6px -8px -6px 0; }
-	`;
+	`,
+	];
 
 	@property({ attribute: false }) hass!: { [key: string]: unknown };
 	@property({ attribute: false }) controller!: DeviceGroupsController;
@@ -166,15 +159,15 @@ export class EppDeviceGroupsView extends LitElement {
 								: this._groups.map((g) => this._renderGroupCard(g))
 						}
 						<div class="footer">
-							<ha-button
-								appearance="accent"
+							<epp-button
+								variant="primary"
 								data-testid="create-group"
 								@click=${() => {
 									this._creatingNew = true;
 								}}
 							>
 								Add a device group
-							</ha-button>
+							</epp-button>
 						</div>
 					</div>
 				</ha-card>
@@ -190,43 +183,45 @@ export class EppDeviceGroupsView extends LitElement {
 		const sensors = exposedSensorChips(g.exposed_entities);
 		const hasMissing = g.sources.some((s) => !s.available);
 		return html`
-			<div class="group-card">
-				<div class="group-info">
-					<div class="group-name">${g.name}</div>
-					${
-						hasMissing
-							? html`<div class="group-warning" data-testid="group-warning">
-									<ha-icon icon="mdi:alert"></ha-icon>
-									Some source devices no longer exist
-								</div>`
-							: nothing
-					}
-					${
-						devices
-							? html`<div class="group-devices">${devices}</div>`
-							: nothing
-					}
-					${
-						sensors.length
-							? html`<div class="group-sensors">
-									${sensors.map(
-										(s) =>
-											html`<span
-												class="chip ${s.kind === "zone" ? "zone" : ""}"
-												data-testid="sensor-chip"
-												>${s.name}</span
-											>`,
-									)}
-								</div>`
-							: nothing
-					}
+			<epp-card>
+				<div class="group-card">
+					<div class="group-info">
+						<div class="group-name">${g.name}</div>
+						${
+							hasMissing
+								? html`<div class="group-warning" data-testid="group-warning">
+										<ha-icon icon="mdi:alert"></ha-icon>
+										Some source devices no longer exist
+									</div>`
+								: nothing
+						}
+						${
+							devices
+								? html`<div class="group-devices">${devices}</div>`
+								: nothing
+						}
+						${
+							sensors.length
+								? html`<div class="group-sensors">
+										${sensors.map(
+											(s) =>
+												html`<span
+													class="chip ${s.kind === "zone" ? "zone" : ""}"
+													data-testid="sensor-chip"
+													>${s.name}</span
+												>`,
+										)}
+									</div>`
+								: nothing
+						}
+					</div>
+					<epp-kebab-menu
+						.items=${EDIT_DELETE_KEBAB_ITEMS}
+						@item-select=${(e: CustomEvent<{ id: string }>) =>
+							this._onKebab(g, e.detail.id)}
+					></epp-kebab-menu>
 				</div>
-				<epp-kebab-menu
-					.items=${EDIT_DELETE_KEBAB_ITEMS}
-					@item-select=${(e: CustomEvent<{ id: string }>) =>
-						this._onKebab(g, e.detail.id)}
-				></epp-kebab-menu>
-			</div>
+			</epp-card>
 		`;
 	}
 

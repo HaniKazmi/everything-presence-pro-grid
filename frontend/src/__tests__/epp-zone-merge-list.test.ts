@@ -68,10 +68,18 @@ async function startMerge(el: EppZoneMergeList): Promise<void> {
 	($(el, '[data-testid="create-merge"]') as HTMLElement).click();
 	await el.updateComplete;
 }
+// The name field is now an <epp-field> (carrying the merge-name data-testid on
+// its host); it emits a single value-changed ({ detail: { value } }). Drive that
+// event directly to stay widget-agnostic.
 async function setMergeName(el: EppZoneMergeList, name: string): Promise<void> {
-	const input = $(el, '[data-testid="merge-name"]') as HTMLInputElement;
-	input.value = name;
-	input.dispatchEvent(new Event("input"));
+	const field = $(el, '[data-testid="merge-name"]') as HTMLElement;
+	field.dispatchEvent(
+		new CustomEvent("value-changed", {
+			detail: { value: name },
+			bubbles: true,
+			composed: true,
+		}),
+	);
 	await el.updateComplete;
 }
 async function check(
@@ -359,7 +367,9 @@ describe("epp-zone-merge-list", () => {
 
 	// Keep last: registering HA elements is global for the test environment.
 	// Exercises the ha-input / ha-checkbox branches; every test above covers the
-	// ha-textfield / checkbox fallbacks.
+	// ha-textfield / checkbox fallbacks. The name field is now an <epp-field>,
+	// which renders ha-input inside ITS OWN shadow root; the zone-selection
+	// control stays a direct ha-checkbox in this component's shadow root.
 	it("uses HA-native ha-input and ha-checkbox when registered", async () => {
 		for (const name of ["ha-input", "ha-checkbox"]) {
 			if (!customElements.get(name)) {
@@ -371,7 +381,10 @@ describe("epp-zone-merge-list", () => {
 		el.zoneGroups = [];
 		await el.updateComplete;
 		await startMerge(el);
-		expect(el.shadowRoot!.querySelector("ha-input")).not.toBeNull();
+		const field = $(el, '[data-testid="merge-name"]') as HTMLElement;
+		await (field as HTMLElement & { updateComplete: Promise<unknown> })
+			.updateComplete;
+		expect(field.shadowRoot!.querySelector("ha-input")).not.toBeNull();
 		expect(el.shadowRoot!.querySelectorAll("ha-checkbox").length).toBe(2);
 	});
 });

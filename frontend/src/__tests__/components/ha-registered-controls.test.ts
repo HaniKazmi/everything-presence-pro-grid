@@ -1,8 +1,8 @@
 /**
  * Exercises the ha-* branches of the guarded control helpers.
  *
- * `epp-settings-view` and the shared save/cancel bar render `ha-switch` /
- * `ha-button` when those elements are registered (real HA frontend) and
+ * `epp-settings-view` and the shared save/cancel bar render `ha-switch`
+ * when those elements are registered (real HA frontend) and
  * fall back to hand-rolled controls otherwise. The regular test files run
  * without HA elements registered, so they cover the fallback branch; this
  * file registers stubs FIRST (a customElements.define can't be undone
@@ -22,12 +22,8 @@ class HaSwitchStub extends HTMLElement {
 	checked = false;
 	disabled = false;
 }
-class HaButtonStub extends HTMLElement {
-	disabled = false;
-}
 class HaSpinnerStub extends HTMLElement {}
 customElements.define("ha-switch", HaSwitchStub);
-customElements.define("ha-button", HaButtonStub);
 customElements.define("ha-spinner", HaSpinnerStub);
 
 function renderTo(tpl: unknown): HTMLDivElement {
@@ -48,21 +44,22 @@ function createView(): EppSettingsView {
 }
 
 describe("settings toggles render ha-switch when registered", () => {
-	it("entity rows render ha-switch with data-entity-key (no raw checkboxes)", () => {
+	it("entity rows render epp-toggle with data-entity-key (no raw checkboxes)", () => {
 		const sv = createView();
 		const c = renderTo((sv as any).renderEntities());
 
+		// epp-toggle wraps the ha-switch in shadow DOM; outer element is epp-toggle
 		expect(c.querySelector('input[type="checkbox"]')).toBeNull();
-		const switches = c.querySelectorAll("ha-switch");
-		expect(switches.length).toBe(16);
-		const occupancy = [...switches].find(
-			(s) => (s as HTMLElement).dataset.entityKey === "room_occupancy",
+		const toggles = c.querySelectorAll("epp-toggle");
+		expect(toggles.length).toBe(16);
+		const occupancy = c.querySelector(
+			'epp-toggle[data-entity-key="room_occupancy"]',
 		);
-		expect(occupancy).toBeDefined();
+		expect(occupancy).not.toBeNull();
 		document.body.removeChild(c);
 	});
 
-	it("ha-switch change updates entity overrides and fires dirty", () => {
+	it("epp-toggle value-changed updates entity overrides and fires dirty", () => {
 		const sv = createView();
 		const c = renderTo((sv as any).renderEntities());
 
@@ -71,11 +68,16 @@ describe("settings toggles render ha-switch when registered", () => {
 			dirtyFired = true;
 		});
 
-		const occupancy = [...c.querySelectorAll("ha-switch")].find(
-			(s) => (s as HTMLElement).dataset.entityKey === "room_occupancy",
-		) as HaSwitchStub;
-		occupancy.checked = false;
-		occupancy.dispatchEvent(new Event("change"));
+		const occupancy = c.querySelector(
+			'epp-toggle[data-entity-key="room_occupancy"]',
+		) as HTMLElement;
+		expect(occupancy).not.toBeNull();
+		occupancy.dispatchEvent(
+			new CustomEvent("value-changed", {
+				detail: { value: false },
+				bubbles: true,
+			}),
+		);
 
 		expect((sv as any)._overrides.entities?.room_occupancy).toBe(false);
 		expect(dirtyFired).toBe(true);
@@ -87,14 +89,16 @@ describe("settings toggles render ha-switch when registered", () => {
 		sv.perspective = null;
 		const c = renderTo((sv as any).renderEntities());
 
-		const zonePresence = [...c.querySelectorAll("ha-switch")].find(
-			(s) => (s as HTMLElement).dataset.entityKey === "zone_presence",
-		) as HaSwitchStub;
+		const zonePresence = c.querySelector(
+			'epp-toggle[data-entity-key="zone_presence"]',
+		) as any;
+		expect(zonePresence).not.toBeNull();
+		// epp-toggle exposes .disabled as a property
 		expect(zonePresence.disabled).toBe(true);
 		document.body.removeChild(c);
 	});
 
-	it("detection-range auto toggles render ha-switch and fire setting-change", () => {
+	it("detection-range auto toggles render epp-toggle and fire setting-change", () => {
 		const sv = createView();
 		(sv as any).targetAutoDistance = true;
 		const c = renderTo((sv as any).renderDetectionRanges());
@@ -104,19 +108,23 @@ describe("settings toggles render ha-switch when registered", () => {
 			events.push(e.detail);
 		}) as EventListener);
 
-		const switches = c.querySelectorAll("ha-switch");
-		expect(switches.length).toBe(2);
-		const target = switches[0] as HaSwitchStub;
-		target.checked = false;
-		target.dispatchEvent(new Event("change"));
+		const toggles = c.querySelectorAll("epp-toggle");
+		expect(toggles.length).toBe(2);
+		const target = toggles[0] as HTMLElement;
+		target.dispatchEvent(
+			new CustomEvent("value-changed", {
+				detail: { value: false },
+				bubbles: true,
+			}),
+		);
 
 		expect(events.some((e) => e.key === "targetAutoDistance")).toBe(true);
 		document.body.removeChild(c);
 	});
 });
 
-describe("renderSaveCancelBar renders ha-button when registered", () => {
-	it("renders ha-button save/cancel with disabled state and wires handlers", () => {
+describe("renderSaveCancelBar renders epp-button", () => {
+	it("renders epp-button save/cancel with disabled state and wires handlers", () => {
 		const onSave = vi.fn();
 		const onCancel = vi.fn();
 		const c = renderTo(
@@ -129,21 +137,25 @@ describe("renderSaveCancelBar renders ha-button when registered", () => {
 			}),
 		);
 
+		// No raw light-DOM <button> leaks; the bar renders epp-button only
+		// (epp-button keeps its own <button> in shadow DOM).
 		expect(c.querySelector("button")).toBeNull();
-		const save = c.querySelector("ha-button.save-btn") as HaButtonStub;
-		const cancel = c.querySelector("ha-button.cancel-btn") as HaButtonStub;
+		const save = c.querySelector("epp-button.save-btn") as HTMLElement & {
+			disabled: boolean;
+		};
+		const cancel = c.querySelector("epp-button.cancel-btn") as HTMLElement;
 		expect(save).not.toBeNull();
 		expect(cancel).not.toBeNull();
 		expect(save.disabled).toBe(false);
 
-		(save as unknown as HTMLElement).click();
-		(cancel as unknown as HTMLElement).click();
+		save.click();
+		cancel.click();
 		expect(onSave).toHaveBeenCalledTimes(1);
 		expect(onCancel).toHaveBeenCalledTimes(1);
 		document.body.removeChild(c);
 	});
 
-	it("disables the save ha-button while saving or when not dirty", () => {
+	it("disables the save epp-button while saving or when not dirty", () => {
 		const c1 = renderTo(
 			renderSaveCancelBar({
 				saving: true,
@@ -154,7 +166,11 @@ describe("renderSaveCancelBar renders ha-button when registered", () => {
 			}),
 		);
 		expect(
-			(c1.querySelector("ha-button.save-btn") as HaButtonStub).disabled,
+			(
+				c1.querySelector("epp-button.save-btn") as HTMLElement & {
+					disabled: boolean;
+				}
+			).disabled,
 		).toBe(true);
 		expect(c1.textContent).toContain("common.saving");
 		document.body.removeChild(c1);
@@ -169,7 +185,11 @@ describe("renderSaveCancelBar renders ha-button when registered", () => {
 			}),
 		);
 		expect(
-			(c2.querySelector("ha-button.save-btn") as HaButtonStub).disabled,
+			(
+				c2.querySelector("epp-button.save-btn") as HTMLElement & {
+					disabled: boolean;
+				}
+			).disabled,
 		).toBe(true);
 		document.body.removeChild(c2);
 	});

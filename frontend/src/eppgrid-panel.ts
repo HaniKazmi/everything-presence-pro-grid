@@ -1,6 +1,7 @@
 import { css, html, LitElement, nothing, type PropertyValues } from "lit";
 import { property, state } from "lit/decorators.js";
 
+import "./ui/index.js";
 import "./components/epp-configuration-dialogs.js";
 import "./components/epp-flasher-view.js";
 import "./components/epp-furniture-sidebar.js";
@@ -78,6 +79,7 @@ import {
 } from "./panel-mount-guard.js";
 import { buttonStyles, dialogStyles, headerStyles } from "./styles.js";
 import type { DeviceInfo, RawTarget, Target } from "./types.js";
+import { tokens } from "./ui/tokens.js";
 
 // ZoneSlots / INITIAL_ZONE_SLOTS moved to lib/zone-defaults.ts so the
 // controllers can import them without a circular type dep on this module.
@@ -1441,6 +1443,7 @@ export class EPPGridPanel extends LitElement {
 	// -- Styles --
 
 	static styles = [
+		tokens,
 		hostStyles,
 		panelStyles,
 		dialogStyles,
@@ -1598,7 +1601,7 @@ export class EPPGridPanel extends LitElement {
       display: flex;
       border-bottom: 1px solid var(--divider-color, #e0e0e0);
       background: var(--app-header-background-color, var(--primary-color));
-      padding: 0 16px;
+      padding: 0 var(--epp-space-4, 16px);
       flex-shrink: 0;
     }
 
@@ -1606,17 +1609,17 @@ export class EPPGridPanel extends LitElement {
       align-self: center;
       width: 40px;
       height: 40px;
-      margin-right: 12px;
+      margin-right: var(--epp-space-3, 12px);
       flex-shrink: 0;
     }
 
     .tab {
-      padding: 12px 20px;
+      padding: var(--epp-space-3, 12px) 20px;
       border: none;
       background: none;
       color: var(--app-header-text-color, white);
       cursor: pointer;
-      font-size: 14px;
+      font-size: var(--epp-font-base, 14px);
       font-weight: 500;
       opacity: 0.7;
       border-bottom: 3px solid transparent;
@@ -1631,12 +1634,12 @@ export class EPPGridPanel extends LitElement {
       margin-left: auto;
       display: inline-flex;
       align-items: center;
-      padding: 12px 16px;
+      padding: var(--epp-space-3, 12px) var(--epp-space-4, 16px);
       color: var(--app-header-text-color, white);
       opacity: 0.7;
       text-decoration: none;
       cursor: pointer;
-      --mdc-icon-size: 24px;
+      --mdc-icon-size: var(--epp-space-5, 24px);
     }
 
     .tab-help:hover,
@@ -1690,48 +1693,36 @@ export class EPPGridPanel extends LitElement {
           ></epp-configuration-dialogs>`
 					: nothing
 			}
-      ${
-				this._showUnsavedDialog
-					? html`
-          <div class="template-dialog">
-            <div class="template-dialog-card">
-              <h3>${this._localize("dialogs.unsaved_changes")}</h3>
-              <p class="overlay-help">${this._localize("dialogs.unsaved_changes_body")}</p>
-              <div class="template-dialog-actions">
-                <button class="wizard-btn wizard-btn-back"
-                  @click=${() => this._navGuard.cancelPendingNavigation()}
-                >${this._localize("common.cancel")}</button>
-                <button class="wizard-btn wizard-btn-primary" style="background: var(--error-color, #f44336);"
-                  @click=${() => this._navGuard.discardAndNavigate()}
-                >${this._localize("common.discard")}</button>
-              </div>
-            </div>
-          </div>
-        `
-					: nothing
-			}
-      ${
-				this._showDeleteCalibrationDialog
-					? html`
-          <div class="template-dialog">
-            <div class="template-dialog-card">
-              <h3>${this._localize("dialogs.delete_calibration_title")}</h3>
-              <p class="overlay-help">${this._localize("dialogs.delete_calibration_body")}</p>
-              <div class="template-dialog-actions">
-                <button class="wizard-btn wizard-btn-back"
-                  @click=${() => {
-										this._showDeleteCalibrationDialog = false;
-									}}
-                >${this._localize("common.cancel")}</button>
-                <button class="wizard-btn wizard-btn-primary" style="background: var(--error-color, #f44336);"
-                  @click=${this._deleteCalibration}
-                >${this._localize("common.delete")}</button>
-              </div>
-            </div>
-          </div>
-        `
-					: nothing
-			}
+      <epp-dialog
+				?open=${this._showUnsavedDialog}
+				heading=${this._localize("dialogs.unsaved_changes")}
+				@dialog-dismiss=${() => this._navGuard.cancelPendingNavigation()}
+			>
+				<p class="overlay-help">${this._localize("dialogs.unsaved_changes_body")}</p>
+				<epp-button slot="actions" variant="text"
+					@click=${() => this._navGuard.cancelPendingNavigation()}
+				>${this._localize("common.cancel")}</epp-button>
+				<epp-button slot="actions" variant="danger"
+					@click=${() => this._navGuard.discardAndNavigate()}
+				>${this._localize("common.discard")}</epp-button>
+			</epp-dialog>
+      <epp-dialog
+				?open=${this._showDeleteCalibrationDialog}
+				heading=${this._localize("dialogs.delete_calibration_title")}
+				@dialog-dismiss=${() => {
+					this._showDeleteCalibrationDialog = false;
+				}}
+			>
+				<p class="overlay-help">${this._localize("dialogs.delete_calibration_body")}</p>
+				<epp-button slot="actions" variant="text"
+					@click=${() => {
+						this._showDeleteCalibrationDialog = false;
+					}}
+				>${this._localize("common.cancel")}</epp-button>
+				<epp-button slot="actions" variant="danger"
+					@click=${this._deleteCalibration}
+				>${this._localize("common.delete")}</epp-button>
+			</epp-dialog>
     `;
 	}
 
@@ -1754,22 +1745,20 @@ export class EPPGridPanel extends LitElement {
 	}
 
 	private _renderFlasherDeleteConfirmDialog() {
-		if (!this._showFlasherDeleteConfirm) return nothing;
 		return html`
-			<div class="template-dialog">
-				<div class="template-dialog-card">
-					<h3>${this._localize("flasher.confirm_delete_title")}</h3>
-					<p class="overlay-help">${this._localize("flasher.confirm_delete_message")}</p>
-					<div class="template-dialog-actions">
-						<button class="wizard-btn wizard-btn-back"
-							@click=${() => this._resolveFlasherDeleteConfirm(false)}
-						>${this._localize("common.cancel")}</button>
-						<button class="wizard-btn wizard-btn-primary" style="background: var(--error-color, #f44336);"
-							@click=${() => this._resolveFlasherDeleteConfirm(true)}
-						>${this._localize("common.delete")}</button>
-					</div>
-				</div>
-			</div>
+			<epp-dialog
+				?open=${this._showFlasherDeleteConfirm}
+				heading=${this._localize("flasher.confirm_delete_title")}
+				@dialog-dismiss=${() => this._resolveFlasherDeleteConfirm(false)}
+			>
+				<p class="overlay-help">${this._localize("flasher.confirm_delete_message")}</p>
+				<epp-button slot="actions" variant="text"
+					@click=${() => this._resolveFlasherDeleteConfirm(false)}
+				>${this._localize("common.cancel")}</epp-button>
+				<epp-button slot="actions" variant="danger"
+					@click=${() => this._resolveFlasherDeleteConfirm(true)}
+				>${this._localize("common.delete")}</epp-button>
+			</epp-dialog>
 		`;
 	}
 
@@ -1799,7 +1788,7 @@ export class EPPGridPanel extends LitElement {
 						this._navGuard.guardNavigation(() => {
 							void this._flasherCtrl.resetUsbState();
 							this._panelTab = "device-groups";
-						})}>Device Groups</button>
+						})}>${this._localize("tabs.device_groups")}</button>
 				<a class="tab-help"
 					href=${getHelpUrl({
 						panelTab: this._panelTab,
@@ -1943,14 +1932,14 @@ export class EPPGridPanel extends LitElement {
 				${this._renderTabBar()}
 				<div class="empty-state">
 					<p>${this._localize("flasher.no_eppgrid_devices")}</p>
-					<button class="primary-btn" @click=${() =>
+					<epp-button variant="primary" @click=${() =>
 						this._navGuard.guardNavigation(() => {
 							this._panelTab = "flasher";
 							this._flasherCtrl.hass = this.hass;
 							this._flasherCtrl.subscribeDeviceList();
 						})}>
 							${this._localize("flasher.flash_from_tab")}
-					</button>
+					</epp-button>
 				</div>
 			</div>`;
 		}
@@ -2266,7 +2255,7 @@ export class EPPGridPanel extends LitElement {
 				<p>${message}</p>
 				${
 					isBehind
-						? html`<button class="wizard-btn wizard-btn-primary"
+						? html`<epp-button variant="primary"
 						@click=${() => {
 							this._panelTab = "flasher";
 							if (this._flasherCtrl.loading) {
@@ -2274,7 +2263,7 @@ export class EPPGridPanel extends LitElement {
 								this._flasherCtrl.subscribeDeviceList();
 							}
 						}}
-					>${this._localize("protocol.update_firmware")}</button>`
+					>${this._localize("protocol.update_firmware")}</epp-button>`
 						: nothing
 				}
 				${
@@ -2299,9 +2288,9 @@ export class EPPGridPanel extends LitElement {
 				<div class="protocol-fullpage protocol-fullpage-info">
 					<ha-icon icon="mdi:access-point-off"></ha-icon>
 					<p>${this._localize("connection.offline")}</p>
-					<button class="wizard-btn wizard-btn-primary"
+					<epp-button variant="primary"
 						@click=${() => this._retryConnection()}
-					>${this._localize("connection.retry")}</button>
+					>${this._localize("connection.retry")}</epp-button>
 				</div>
 			`;
 		}
@@ -2314,9 +2303,9 @@ export class EPPGridPanel extends LitElement {
 				<p>${this._localize("connection.failed")}</p>
 				${count != null ? html`<p>${this._localize("connection.client_count", { count })}</p>` : nothing}
 				<p style="opacity: 0.7; font-size: 0.9em">${this._localize("connection.check_connections")}</p>
-				<button class="wizard-btn wizard-btn-primary"
+				<epp-button variant="primary"
 					@click=${() => this._retryConnection()}
-				>${this._localize("connection.retry")}</button>
+				>${this._localize("connection.retry")}</epp-button>
 			</div>
 		`;
 	}
