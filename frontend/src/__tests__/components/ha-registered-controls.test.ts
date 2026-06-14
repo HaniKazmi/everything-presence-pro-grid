@@ -1,8 +1,8 @@
 /**
  * Exercises the ha-* branches of the guarded control helpers.
  *
- * `epp-settings-view` and the shared save/cancel bar render `ha-switch` /
- * `ha-button` when those elements are registered (real HA frontend) and
+ * `epp-settings-view` and the shared save/cancel bar render `ha-switch`
+ * when those elements are registered (real HA frontend) and
  * fall back to hand-rolled controls otherwise. The regular test files run
  * without HA elements registered, so they cover the fallback branch; this
  * file registers stubs FIRST (a customElements.define can't be undone
@@ -22,12 +22,8 @@ class HaSwitchStub extends HTMLElement {
 	checked = false;
 	disabled = false;
 }
-class HaButtonStub extends HTMLElement {
-	disabled = false;
-}
 class HaSpinnerStub extends HTMLElement {}
 customElements.define("ha-switch", HaSwitchStub);
-customElements.define("ha-button", HaButtonStub);
 customElements.define("ha-spinner", HaSpinnerStub);
 
 function renderTo(tpl: unknown): HTMLDivElement {
