@@ -549,7 +549,8 @@ For older firmware (pre-1.2.0) that still publishes a `"debug_log"` string field
 | --- | --- |
 | `sa` / `sp` / `sc` | static presence active / pending / cleared |
 | `ma` / `mp` / `mc` | motion presence active / pending / cleared |
-| `zo:Z` / `zp:Z` / `zc:Z` | zone Z occupied / clearing / cleared |
+| `zo:Z` / `zp:Z` | zone Z occupied / clearing |
+| `zc:Z:r` | zone Z cleared, reason `r` (see legend below) |
 | `oo` / `of` | room occupancy on / off |
 | `wo` / `wf` | mmWave on / off |
 | `fc:Z` | zone Z sensor-assisted force-clear |
@@ -558,6 +559,17 @@ For older firmware (pre-1.2.0) that still publishes a `"debug_log"` string field
 | `tl:T` | target T left the room |
 | `tm:T:Za:Zb` | target T moved from zone Za to Zb |
 | `xd:n` | n events dropped (firmware queue / JSON-budget overflow) |
+
+Zone-clear reason `r` (the `zc:Z:r` suffix):
+
+| `r` | reason |
+| --- | --- |
+| `t` | timeout — the zone's normal clear timeout elapsed |
+| `h` | handoff — the last confirmed target moved to another zone |
+| `o` | overlay exit — the last confirmed target vanished from an entry-overlay cell |
+| `f` | force — sensor-assisted force-clear (both presence sensors idle) |
+
+A `zc:Z` with no `:r` suffix (forward/back-compat) renders as a plain "cleared".
 
 ## 5. Configuration Storage
 
