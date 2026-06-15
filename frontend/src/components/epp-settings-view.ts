@@ -386,8 +386,8 @@ export class EppSettingsView extends LitElement {
       }
 
       .settings-container {
-        width: 560px;
-        max-width: 100%;
+        max-width: var(--epp-content-max, 720px);
+        width: 100%;
         margin: 0 auto;
         padding: 0 16px;
         box-sizing: border-box;

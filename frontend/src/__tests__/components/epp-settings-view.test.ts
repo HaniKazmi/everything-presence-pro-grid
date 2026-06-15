@@ -2990,3 +2990,13 @@ describe("cached room geometry (5Hz live stream perf)", () => {
 		expect(sv._getGeometry()).toBe(g2);
 	});
 });
+
+describe("desktop max-width centering", () => {
+	it("settings content caps width via --epp-content-max token and centers on desktop", () => {
+		const cssText = (EppSettingsView as any).styles
+			.map((s: { cssText?: string }) => s.cssText ?? String(s))
+			.join("\n");
+		expect(cssText).toContain("max-width: var(--epp-content-max");
+		expect(cssText).toContain("margin: 0 auto");
+	});
+});

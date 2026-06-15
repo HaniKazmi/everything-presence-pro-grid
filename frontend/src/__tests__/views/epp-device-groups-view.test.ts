@@ -551,3 +551,16 @@ describe("epp-device-groups-view", () => {
 		expect(Object.keys(editor.sourcesByMac).sort()).toEqual(["AA", "ZZ"]);
 	});
 });
+
+describe("desktop max-width centering", () => {
+	it("device groups content caps width via --epp-content-max token and centers on desktop", () => {
+		const DeviceGroupsViewClass = customElements.get(
+			"epp-device-groups-view",
+		) as any;
+		const cssText = (DeviceGroupsViewClass as any).styles
+			.map((s: { cssText?: string }) => s.cssText ?? String(s))
+			.join("\n");
+		expect(cssText).toContain("max-width: var(--epp-content-max");
+		expect(cssText).toContain("margin: 0 auto");
+	});
+});

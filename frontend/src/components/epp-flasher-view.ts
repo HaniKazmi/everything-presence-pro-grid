@@ -47,7 +47,7 @@ const flasherStyles = css`
   }
 
   .flasher-content {
-    max-width: 600px;
+    max-width: var(--epp-content-max, 720px);
     margin: 0 auto;
     display: flex;
     flex-direction: column;

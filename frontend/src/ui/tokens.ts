@@ -63,5 +63,8 @@ export const tokens = css`
     --epp-control-height: 40px;
     --epp-control-height-sm: 32px;
     --epp-focus-ring: 2px solid var(--primary-color, #03a9f4);
+
+    /* layout — centered reading column for non-grid views */
+    --epp-content-max: 720px;
   }
 `;

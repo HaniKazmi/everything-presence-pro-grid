@@ -20,7 +20,7 @@ export class EppDeviceGroupsView extends LitElement {
 		css`
 		:host { display: block; padding: 16px; }
 		.content {
-			max-width: 600px;
+			max-width: var(--epp-content-max, 720px);
 			margin: 0 auto;
 		}
 		.card-header {
