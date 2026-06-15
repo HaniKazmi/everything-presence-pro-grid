@@ -4724,6 +4724,7 @@ class TestSubscriptionCallbacks:
                 "mmwave": True,
                 "frame_count": 42,
                 "debug_log": "test debug",
+                "ev": ["zo:0", "sc"],
             }
         )
         state = TextSensorState(key=300, state=zone_json, missing_state=False)
@@ -4736,6 +4737,53 @@ class TestSubscriptionCallbacks:
         assert event["event"]["zones"]["debug_log"] == "test debug"
         assert event["event"]["sensors"]["target_presence"] is True
         assert event["event"]["sensors"]["mmwave"] is True
+        assert event["event"]["zones"]["events"] == ["zo:0", "sc"]
+
+    async def test_grid_targets_zone_state_without_events(
+        self, hass: HomeAssistant, config_entry: MockConfigEntry
+    ) -> None:
+        """Zone state JSON without 'ev' key omits 'events' from the emitted payload (BWC)."""
+        import json
+
+        mock_dm = await setup_integration(hass, config_entry)
+
+        zone_state_entity = MagicMock()
+        zone_state_entity.key = 300
+        zone_state_entity.name = "Zone State"
+
+        mock_device_conn = MagicMock()
+        mock_device_conn.entities = [zone_state_entity]
+        mock_device_conn.subscribe_states = AsyncMock()
+        mock_device_conn.unsubscribe_states = MagicMock()
+        mock_dm.get_session = MagicMock(return_value=mock_device_conn)
+
+        from custom_components.eppgrid.websocket_api import websocket_subscribe_grid_targets
+
+        connection = MagicMock()
+        connection.subscriptions = {}
+        msg = {"id": 43, "type": "eppgrid/subscribe_grid_targets", "mac": "AA:BB:CC:DD:EE:FF"}
+
+        await call_async_handler(hass, websocket_subscribe_grid_targets, connection, msg)
+
+        on_state = mock_device_conn.subscribe_states.await_args[0][0]
+
+        from aioesphomeapi import TextSensorState
+
+        # Old firmware: no 'ev' key present
+        zone_json = json.dumps(
+            {
+                "targets": [{"signal": 60, "status": "active"}],
+                "zones": {"occupancy": [True, False, False], "tracking": True},
+                "frame_count": 10,
+                "debug_log": "old firmware",
+            }
+        )
+        state = TextSensorState(key=300, state=zone_json, missing_state=False)
+        on_state(state)
+
+        connection.send_message.assert_called_once()
+        event = connection.send_message.call_args[0][0]
+        assert "events" not in event["event"]["zones"]
 
     async def test_grid_targets_drops_wrong_shape_zone_state_frames(
         self, hass: HomeAssistant, config_entry: MockConfigEntry

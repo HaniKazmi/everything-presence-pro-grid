@@ -848,6 +848,9 @@ async def websocket_subscribe_grid_targets(
                         debug_log = zs.get("debug_log")
                         if debug_log:
                             zones["debug_log"] = debug_log
+                        events = zs.get("ev")
+                        if events:
+                            zones["events"] = events
                         sensors["target_presence"] = zs.get("zones", {}).get("tracking", False)
                         # Parse sensor presence states from firmware
                         static_state = zs.get("static_state")
