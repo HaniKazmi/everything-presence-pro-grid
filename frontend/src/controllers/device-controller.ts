@@ -34,6 +34,7 @@ export interface TargetData {
 		target_counts: Record<number, number>;
 		frame_count: number;
 		debug_log?: string;
+		events?: string[];
 	} | null;
 }
 
@@ -577,6 +578,7 @@ export class DeviceController implements ReactiveController {
 							target_counts: event.zones.target_counts ?? {},
 							frame_count: event.zones.frame_count ?? 0,
 							debug_log: event.zones.debug_log,
+							events: event.zones.events,
 						}
 					: null;
 				this.onTargetData?.({ targets, sensors, zones });
