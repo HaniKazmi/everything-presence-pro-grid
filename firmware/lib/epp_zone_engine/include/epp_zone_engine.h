@@ -61,6 +61,9 @@ static_assert(offsetof(ProcessingResult, events) ==
                   offsetof(ProcessingResult, log_count) +
                       sizeof(ProcessingResult::log_count),
               "events must immediately follow log_count");
+static_assert(offsetof(ProcessingResult, event_count) ==
+                  offsetof(ProcessingResult, events) + sizeof(ProcessingResult::events),
+              "event_count must immediately follow events");
 static_assert(sizeof(ProcessingResult) - offsetof(ProcessingResult, event_count) -
                   sizeof(ProcessingResult::event_count) == 0,
               "nothing may follow event_count — the partial-copy/reset idiom excludes it");
