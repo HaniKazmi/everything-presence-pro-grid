@@ -519,6 +519,56 @@ TEST_CASE("event: assisted-clear of an empty room emits FORCE_CLEAR for the zone
     const Event* ze = find_event_p0(r, EventType::ZONE, 0);
     REQUIRE(ze != nullptr);
     CHECK(ze->p1 == 0);  // 0 == clear
+    CHECK(ze->p2 == 3);  // 3 == force (sensor-assisted)
+}
+
+TEST_CASE("event: zone CLEAR via timeout carries reason 0 (p2==0)") {
+    ZoneEngine engine = make_engine();
+    // Occupy zone 0 (no overlay → gating) so the clear is a plain timeout, not
+    // an overlay-exit handoff.
+    engine.tick(make_window_1(X_OFF + 150, 150, 7), 100.0f);
+    engine.tick(make_window_1(X_OFF + 150, 150, 7), 100.5f);  // continuous → occupied
+    engine.tick(make_window_0(), 101.0f);  // target gone → PENDING_CLEAR (timeout)
+    // Zone 0 timeout is 10s — clear well past it.
+    const ProcessingResult& r = engine.tick(make_window_0(), 112.0f);
+    REQUIRE_FALSE(r.zone_occupancy[0]);
+    const Event* ze = find_event_p0(r, EventType::ZONE, 0);
+    REQUIRE(ze != nullptr);
+    CHECK(ze->p1 == 0);  // clear
+    CHECK(ze->p2 == 0);  // timeout
+}
+
+TEST_CASE("event: zone CLEAR via handoff carries reason 1 (p2==1)") {
+    ZoneEngine engine = make_engine();
+    // Occupy zone 1 (entry overlay → immediate).
+    engine.tick(make_window_1(X_OFF + 450, 450, 5), 100.0f);
+    // Target moves to zone 0 → handoff accelerates zone 1's pending clear to its
+    // 1s handoff_timeout. Two ticks in zone 0 confirm it (gating) while zone 1
+    // counts down.
+    engine.tick(make_window_1(X_OFF + 150, 150, 7), 100.1f);  // handoff fires
+    // Past zone 1's handoff_timeout (1s from ~100.1) → zone 1 clears via handoff.
+    const ProcessingResult& r = engine.tick(make_window_1(X_OFF + 150, 150, 7), 101.5f);
+    REQUIRE_FALSE(r.zone_occupancy[1]);
+    const Event* ze = find_event_p0(r, EventType::ZONE, 1);
+    REQUIRE(ze != nullptr);
+    CHECK(ze->p1 == 0);  // clear
+    CHECK(ze->p2 == 1);  // handoff
+}
+
+TEST_CASE("event: zone CLEAR via overlay exit carries reason 2 (p2==2)") {
+    ZoneEngine engine = make_engine();
+    // Occupy zone 1 (entry overlay → immediate). The target's last in-room cell
+    // is the entry-overlay cell, so when it disappears Step 2b accelerates the
+    // pending clear via the overlay-exit path (reason 2).
+    engine.tick(make_window_1(X_OFF + 450, 450, 5), 100.0f);
+    engine.tick(make_window_0(), 100.1f);  // target gone from overlay cell → overlay exit
+    // Past zone 1's handoff_timeout (1s) → clears via overlay exit.
+    const ProcessingResult& r = engine.tick(make_window_0(), 101.5f);
+    REQUIRE_FALSE(r.zone_occupancy[1]);
+    const Event* ze = find_event_p0(r, EventType::ZONE, 1);
+    REQUIRE(ze != nullptr);
+    CHECK(ze->p1 == 0);  // clear
+    CHECK(ze->p2 == 2);  // overlay exit
 }
 
 TEST_CASE("event: handoff between zones emits TARGET_MOVED") {

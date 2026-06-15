@@ -89,6 +89,12 @@ struct ZoneRuntime {
     ZoneState state = ZoneState::CLEAR;
     float pending_since = -1.0f;
     uint8_t confirmed_targets = 0;  // bitmask (bits 0-2 for targets 0-2)
+    // Why this zone last entered pending (and will report on the next CLEAR):
+    // 0=timeout, 1=handoff, 2=overlay-exit, 3=force. Set at every pending-entry
+    // and at force-clear, so it is always current before a zone reaches CLEAR
+    // (no separate reset needed — see the deferred ZONE log emit). Mirrors the
+    // TS replica's ZoneState.clearReason.
+    uint8_t clear_reason = 0;  // 0=timeout default
 };
 
 // ---------------------------------------------------------------------------

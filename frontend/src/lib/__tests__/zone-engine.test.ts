@@ -2006,7 +2006,8 @@ describe("detection-log events", () => {
 			})(),
 		);
 		expect(pending.events).toContain("zp:1");
-		// Past zone timeout (5s) → CLEAR → zc:1.
+		// Past zone timeout → CLEAR. The target disappeared from the entry-overlay
+		// cell, so Step 2b accelerated the pending clear via overlay-exit → zc:1:o.
 		const cleared = runLocalZoneEngine(
 			state,
 			(() => {
@@ -2018,7 +2019,7 @@ describe("detection-log events", () => {
 				return p;
 			})(),
 		);
-		expect(cleared.events).toContain("zc:1");
+		expect(cleared.events).toContain("zc:1:o");
 	});
 
 	it("sensor-assisted force-clear emits fc:<zid>", () => {
@@ -2084,8 +2085,9 @@ describe("detection-log events", () => {
 		expect(result.occupancy[1]).toBe(false);
 		expect(result.events).toContain("fc:1");
 		// The force-clear rewrites the zone to CLEAR; the deferred zone log must
-		// emit the final transition zc:1 too (mirrors firmware deferred logging).
-		expect(result.events).toContain("zc:1");
+		// emit the final transition with the force reason (zc:1:f) too (mirrors
+		// firmware deferred logging).
+		expect(result.events).toContain("zc:1:f");
 	});
 
 	it("target entering a zone emits te:<i>:<zid>", () => {
@@ -2177,6 +2179,142 @@ describe("detection-log events", () => {
 		// Same bit-identical coords past the timeout → auto-dismiss.
 		const dismissed = runLocalZoneEngine(state, mk(now + 4));
 		expect(dismissed.events).toContain("td:0:3");
+	});
+});
+
+// ---------------------------------------------------------------------------
+// Zone-clear reason wire code (zc:Z:r — r = t/h/o/f). Mirrors the firmware
+// engine's per-zone clear_reason: 0=timeout, 1=handoff, 2=overlay, 3=force.
+// ---------------------------------------------------------------------------
+describe("detection-log events: zone-clear reason", () => {
+	let state: ZoneEngineState;
+
+	beforeEach(() => {
+		state = createZoneEngineState();
+	});
+
+	it("timeout clear (no overlay, no sensors) emits zc:Z:t", () => {
+		const now = Date.now() / 1000;
+		// Zone 0 (room): no overlay, trigger=5, timeout=10. Confirm via gating
+		// (two present ticks) so the target's last in-room cell is NOT an
+		// overlay cell — the clear is then a plain timeout, not overlay-exit.
+		const mk = (t: number, targets: ZoneEngineParams["targets"]) =>
+			makeDefaultParams({ targets, now: t });
+		runLocalZoneEngine(state, mk(now, [makeTarget(150, 150, 7)])); // gate 1
+		const occ = runLocalZoneEngine(
+			state,
+			mk(now + 0.1, [makeTarget(150, 150, 7)]),
+		); // continuous → occupied
+		expect(occ.occupancy[0]).toBe(true);
+		// Target gone → PENDING (timeout reason).
+		runLocalZoneEngine(state, mk(now + 1, [makeNullTarget()]));
+		// Past zone 0's 10s timeout → CLEAR via timeout.
+		const cleared = runLocalZoneEngine(state, mk(now + 12, [makeNullTarget()]));
+		expect(cleared.occupancy[0]).toBe(false);
+		expect(cleared.events).toContain("zc:0:t");
+	});
+
+	it("handoff clear (target moves to another zone) emits zc:Z:h", () => {
+		const now = Date.now() / 1000;
+		const grid = makeParityGrid();
+		grid[29] = cellSetOverlay(grid[29], CELL_OVERLAY_ENTRY); // zone 1 entry overlay
+		const mk = (t: number, targets: ZoneEngineParams["targets"]) => {
+			const p = makeDefaultParams({ targets, now: t });
+			p.grid = grid;
+			return p;
+		};
+		// Occupy zone 1 (overlay entry → immediate).
+		runLocalZoneEngine(state, mk(now, [makeTarget(450, 450, 5)]));
+		// Target moves to zone 0 (in-room, so overlay-exit does NOT fire) →
+		// handoff accelerates zone 1's pending clear with reason=handoff.
+		runLocalZoneEngine(state, mk(now + 0.1, [makeTarget(150, 150, 7)]));
+		// Past zone 1's handoff_timeout (1s) → zone 1 clears via handoff.
+		const cleared = runLocalZoneEngine(
+			state,
+			mk(now + 1.5, [makeTarget(150, 150, 7)]),
+		);
+		expect(cleared.occupancy[1]).toBe(false);
+		expect(cleared.events).toContain("zc:1:h");
+	});
+
+	it("overlay-exit clear (target vanishes from overlay cell) emits zc:Z:o", () => {
+		const now = Date.now() / 1000;
+		const grid = makeParityGrid();
+		grid[29] = cellSetOverlay(grid[29], CELL_OVERLAY_ENTRY); // zone 1 entry overlay
+		const mk = (t: number, targets: ZoneEngineParams["targets"]) => {
+			const p = makeDefaultParams({ targets, now: t });
+			p.grid = grid;
+			return p;
+		};
+		// Occupy zone 1 (overlay entry → immediate).
+		runLocalZoneEngine(state, mk(now, [makeTarget(450, 450, 5)]));
+		// Target disappears from the overlay cell → Step 2b accelerates with
+		// reason=overlay.
+		runLocalZoneEngine(state, mk(now + 0.1, [makeNullTarget()]));
+		// Past zone 1's handoff_timeout (1s) → clears via overlay exit.
+		const cleared = runLocalZoneEngine(
+			state,
+			mk(now + 1.5, [makeNullTarget()]),
+		);
+		expect(cleared.occupancy[1]).toBe(false);
+		expect(cleared.events).toContain("zc:1:o");
+	});
+
+	it("force-clear (sensor-assisted) emits zc:Z:f", () => {
+		const now = Date.now() / 1000;
+		// No overlay: occupy zone 1 via gating so overlay-exit does not pre-empt
+		// the force-clear (matches the existing fc:<zid> test setup).
+		const base = { staticTimeout: 1, motionTimeout: 1 };
+		const mk = (o: Partial<ZoneEngineParams>) =>
+			makeDefaultParams({ ...base, ...o });
+		runLocalZoneEngine(
+			state,
+			mk({
+				targets: [makeTarget(450, 450, 5)],
+				staticPresence: true,
+				motionPresence: true,
+				now,
+			}),
+		);
+		runLocalZoneEngine(
+			state,
+			mk({
+				targets: [makeTarget(450, 450, 5)],
+				staticPresence: true,
+				motionPresence: true,
+				now: now + 0.1,
+			}),
+		);
+		runLocalZoneEngine(
+			state,
+			mk({
+				targets: [makeNullTarget()],
+				staticPresence: true,
+				motionPresence: true,
+				now: now + 1,
+			}),
+		);
+		runLocalZoneEngine(
+			state,
+			mk({
+				targets: [makeNullTarget()],
+				staticPresence: false,
+				motionPresence: false,
+				now: now + 2,
+			}),
+		);
+		const cleared = runLocalZoneEngine(
+			state,
+			mk({
+				targets: [makeNullTarget()],
+				staticPresence: false,
+				motionPresence: false,
+				now: now + 3.5,
+			}),
+		);
+		expect(cleared.occupancy[1]).toBe(false);
+		expect(cleared.events).toContain("fc:1");
+		expect(cleared.events).toContain("zc:1:f");
 	});
 });
 

@@ -1516,6 +1516,7 @@ describe("TargetController", () => {
 				occupied: true,
 				pendingSince: null,
 				confirmedTargets: new Set([0]),
+				clearReason: 0,
 			});
 
 			ctrl.resetEngineForGridChange();
@@ -1535,6 +1536,7 @@ describe("TargetController", () => {
 				occupied: true,
 				pendingSince: null,
 				confirmedTargets: new Set([0]),
+				clearReason: 0,
 			});
 			st.staticState = "active";
 			st.sensorsEverActive = true;

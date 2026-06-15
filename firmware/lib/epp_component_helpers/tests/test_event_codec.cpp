@@ -33,9 +33,18 @@ TEST_CASE("sensor codes") {
 }
 
 TEST_CASE("zone + room codes") {
-  CHECK(code({EventType::ZONE, 3, 1, 0}) == "zo:3");
-  CHECK(code({EventType::ZONE, 3, 2, 0}) == "zp:3");
-  CHECK(code({EventType::ZONE, 3, 0, 0}) == "zc:3");
+  CHECK(code({EventType::ZONE, 3, 1, 0}) == "zo:3");  // occupied — no reason
+  CHECK(code({EventType::ZONE, 3, 2, 0}) == "zp:3");  // pending — no reason
+  // CLEAR carries a reason char from p2: 0=timeout, 1=handoff, 2=overlay, 3=force.
+  CHECK(code({EventType::ZONE, 3, 0, 0}) == "zc:3:t");
+  CHECK(code({EventType::ZONE, 3, 0, 1}) == "zc:3:h");
+  CHECK(code({EventType::ZONE, 3, 0, 2}) == "zc:3:o");
+  CHECK(code({EventType::ZONE, 3, 0, 3}) == "zc:3:f");
+  // Out-of-range p2 clamps to timeout so a malformed event stays valid.
+  CHECK(code({EventType::ZONE, 3, 0, 9}) == "zc:3:t");
+  // p2 is ignored for occupied/pending (no reason in the wire code).
+  CHECK(code({EventType::ZONE, 3, 1, 3}) == "zo:3");
+  CHECK(code({EventType::ZONE, 3, 2, 3}) == "zp:3");
   CHECK(code({EventType::OCCUPANCY, 1, 0, 0}) == "oo");
   CHECK(code({EventType::OCCUPANCY, 0, 0, 0}) == "of");
   CHECK(code({EventType::MMWAVE, 1, 0, 0}) == "wo");

@@ -83,7 +83,9 @@ constexpr int MAX_LOG_ENTRIES = 16;
 enum class EventType : uint8_t {
     STATIC = 0,          // p0 = sensor state (0 active / 1 pending / 2 inactive)
     MOTION = 1,          // p0 = sensor state
-    ZONE = 2,            // p0 = zone id, p1 = zone state (0 clear / 1 occupied / 2 pending)
+    ZONE = 2,            // p0 = zone id, p1 = zone state (0 clear / 1 occupied / 2 pending),
+                         //   p2 = clear reason (0 timeout / 1 handoff / 2 overlay / 3 force), only when p1==0
+
     OCCUPANCY = 3,       // p0 = 1 on / 0 off
     MMWAVE = 4,          // p0 = 1 on / 0 off
     FORCE_CLEAR = 5,     // p0 = zone id

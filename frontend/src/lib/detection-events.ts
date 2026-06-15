@@ -8,7 +8,9 @@
  * Wire-code contract (head token → rendered intent):
  *   sa/sp/sc        Static presence detected / fading… / cleared
  *   ma/mp/mc        Motion presence detected / fading… / cleared
- *   zo:Z/zp:Z/zc:Z  {Zone} occupied / clearing… / cleared
+ *   zo:Z/zp:Z       {Zone} occupied / clearing…
+ *   zc:Z:r          {Zone} cleared — r = t(timeout, or absent) / h(handoff) /
+ *                   o(overlay exit) / f(force, sensor-assisted)
  *   oo / of         Room occupied / empty
  *   wo / wf         mmWave on / off
  *   fc:Z            {Zone} force-cleared (both sensors idle)
@@ -81,13 +83,25 @@ export function formatEvent(
 		case "wf":
 			return t("live.events.mmwave_off");
 
-		// --- zone occupancy (zo:Z / zp:Z / zc:Z) ---
+		// --- zone occupancy (zo:Z / zp:Z / zc:Z:r) ---
 		case "zo":
 			return t("live.events.zone_occupied", { zone: zone(1) });
 		case "zp":
 			return t("live.events.zone_clearing", { zone: zone(1) });
-		case "zc":
-			return t("live.events.zone_cleared", { zone: zone(1) });
+		case "zc": {
+			// zc:Z:r — r is the clear reason (t/h/o/f). Absent r (legacy or
+			// forward-compat) renders as the plain timeout/default cleared line.
+			const reason = parts[2];
+			const key =
+				reason === "h"
+					? "live.events.zone_cleared_handoff"
+					: reason === "o"
+						? "live.events.zone_cleared_overlay"
+						: reason === "f"
+							? "live.events.zone_cleared_force"
+							: "live.events.zone_cleared";
+			return t(key, { zone: zone(1) });
+		}
 
 		// --- force-clear (fc:Z) ---
 		case "fc":

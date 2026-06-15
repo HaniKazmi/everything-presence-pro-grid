@@ -550,6 +550,7 @@ const ProcessingResult& ZoneEngine::tick(const WindowOutput& window, float times
             if (src_rt.confirmed_targets == 0 && src_rt.state == ZoneState::OCCUPIED) {
                 src_rt.state = ZoneState::PENDING_CLEAR;
                 src_rt.pending_since = timestamp - (src_rt.config.timeout - src_rt.config.handoff_timeout);
+                src_rt.clear_reason = 1;  // handoff
             }
         }
     }
@@ -577,8 +578,10 @@ const ProcessingResult& ZoneEngine::tick(const WindowOutput& window, float times
                     if (rt.state == ZoneState::OCCUPIED) {
                         rt.state = ZoneState::PENDING_CLEAR;
                         rt.pending_since = accel;
+                        rt.clear_reason = 2;  // overlay
                     } else if (rt.state == ZoneState::PENDING_CLEAR && rt.pending_since > accel) {
                         rt.pending_since = accel;
+                        rt.clear_reason = 2;  // overlay (overlay-exit now drives the sooner clear)
                     }
                     log_(LogLevel::DEBUG, "T%d overlay exit handoff: zone %d, handoff=%.1fs",
                          i, prev_zid, rt.config.handoff_timeout);
@@ -615,6 +618,7 @@ const ProcessingResult& ZoneEngine::tick(const WindowOutput& window, float times
                 if (!confirmed) {
                     rt.state = ZoneState::PENDING_CLEAR;
                     rt.pending_since = timestamp;
+                    rt.clear_reason = 0;  // timeout
                 }
                 break;
 
@@ -784,6 +788,7 @@ const ProcessingResult& ZoneEngine::tick(const WindowOutput& window, float times
                 if (zones_[zi].state == ZoneState::PENDING_CLEAR) {
                     int zid = zones_[zi].config.id;
                     emit_event_(EventType::FORCE_CLEAR, zid);
+                    zones_[zi].clear_reason = 3;  // force — set before CLEAR so the deferred ZONE log reports force
                     zones_[zi].state = ZoneState::CLEAR;
                     zones_[zi].pending_since = -1.0f;
                     zones_[zi].confirmed_targets = 0;
@@ -803,7 +808,10 @@ const ProcessingResult& ZoneEngine::tick(const WindowOutput& window, float times
         ZoneRuntime& rt = zones_[zi];
         int zone_id = rt.config.id;
         if (rt.state != prev_zone_state[zone_id]) {
-            emit_event_(EventType::ZONE, zone_id, zone_state_index(rt.state));
+            // p2 = clear reason (0=timeout/1=handoff/2=overlay/3=force), only
+            // meaningful for a CLEAR transition; 0 for occupied/pending.
+            emit_event_(EventType::ZONE, zone_id, zone_state_index(rt.state),
+                        rt.state == ZoneState::CLEAR ? rt.clear_reason : 0);
         }
     }
 

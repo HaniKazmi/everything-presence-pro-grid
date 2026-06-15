@@ -63,6 +63,42 @@ describe("formatEvent", () => {
 		expect(formatEvent("zc:0", zoneName, targetLabel, t)).toContain("Room");
 	});
 
+	it("renders each zone-clear reason (zc:Z:r)", () => {
+		// Explicit timeout reason → plain zone_cleared key.
+		expect(formatEvent("zc:1:t", zoneName, targetLabel, t)).toContain(
+			"live.events.zone_cleared",
+		);
+		expect(formatEvent("zc:1:t", zoneName, targetLabel, t)).toContain("Zone 1");
+		// Handoff / overlay / force each get their own key.
+		expect(formatEvent("zc:1:h", zoneName, targetLabel, t)).toContain(
+			"live.events.zone_cleared_handoff",
+		);
+		expect(formatEvent("zc:2:o", zoneName, targetLabel, t)).toContain(
+			"live.events.zone_cleared_overlay",
+		);
+		expect(formatEvent("zc:2:o", zoneName, targetLabel, t)).toContain("Zone 2");
+		expect(formatEvent("zc:0:f", zoneName, targetLabel, t)).toContain(
+			"live.events.zone_cleared_force",
+		);
+		expect(formatEvent("zc:0:f", zoneName, targetLabel, t)).toContain("Room");
+	});
+
+	it("renders a reasonless zc:Z as the plain cleared line (forward-compat)", () => {
+		const out = formatEvent("zc:3", zoneName, targetLabel, t);
+		expect(out).toContain("live.events.zone_cleared");
+		// Not one of the reason-specific keys.
+		expect(out).not.toContain("zone_cleared_handoff");
+		expect(out).not.toContain("zone_cleared_overlay");
+		expect(out).not.toContain("zone_cleared_force");
+		expect(out).toContain("Zone 3");
+	});
+
+	it("treats an unknown zc reason char as the plain cleared line", () => {
+		const out = formatEvent("zc:1:x", zoneName, targetLabel, t);
+		expect(out).toContain("live.events.zone_cleared");
+		expect(out).not.toContain("zone_cleared_handoff");
+	});
+
 	it("resolves zone name for force-clear", () => {
 		expect(formatEvent("fc:1", zoneName, targetLabel, t)).toContain(
 			"force_clear",

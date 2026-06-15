@@ -9,7 +9,10 @@
 // Wire-code contract (Event -> code):
 //   STATIC         p0=state(0 active/1 pending/2 inactive)  -> sa / sp / sc
 //   MOTION         p0=state                                 -> ma / mp / mc
-//   ZONE           p0=zid, p1=state(0 clear/1 occ/2 pending)-> zc:Z / zo:Z / zp:Z
+//   ZONE           p0=zid, p1=state(0 clear/1 occ/2 pending),
+//                  p2=clear reason (0 timeout/1 handoff/2 overlay/3 force, p1==0
+//                  only)                                     -> zc:Z:r / zo:Z / zp:Z
+//                  r = t(timeout) / h(handoff) / o(overlay) / f(force)
 //   OCCUPANCY      p0=on                                    -> oo / of
 //   MMWAVE         p0=on                                    -> wo / wf
 //   FORCE_CLEAR    p0=zid                                   -> fc:Z
@@ -46,8 +49,18 @@ inline void format_event_code(const Event &e, char *out, size_t n) {
       std::snprintf(out, n, "m%c", suffix(e.p0));
       break;
     case EventType::ZONE: {
-      const char *prefix = e.p1 == 1 ? "zo" : e.p1 == 2 ? "zp" : "zc";
-      std::snprintf(out, n, "%s:%d", prefix, e.p0);
+      if (e.p1 == 1) {
+        std::snprintf(out, n, "zo:%d", e.p0);
+      } else if (e.p1 == 2) {
+        std::snprintf(out, n, "zp:%d", e.p0);
+      } else {
+        // CLEAR carries a reason char from p2 (0=timeout/1=handoff/2=overlay/
+        // 3=force); clamp out-of-range p2 to timeout so a malformed event still
+        // produces a valid code.
+        static const char kReason[4] = {'t', 'h', 'o', 'f'};
+        char r = (e.p2 >= 0 && e.p2 <= 3) ? kReason[e.p2] : 't';
+        std::snprintf(out, n, "zc:%d:%c", e.p0, r);
+      }
       break;
     }
     case EventType::OCCUPANCY:

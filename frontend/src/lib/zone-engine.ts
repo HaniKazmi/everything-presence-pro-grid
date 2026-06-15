@@ -18,6 +18,11 @@ export interface ZoneState {
 	occupied: boolean;
 	pendingSince: number | null;
 	confirmedTargets: Set<number>;
+	// Why this zone last entered pending (and will report on the next clear):
+	// 0=timeout, 1=handoff, 2=overlay-exit, 3=force. Set at every pending-entry
+	// and at force-clear, so it is always current before a zone reaches clear.
+	// Mirrors firmware ZoneRuntime.clear_reason.
+	clearReason: 0 | 1 | 2 | 3;
 }
 
 export interface ZoneEngineState {
@@ -250,6 +255,7 @@ function getOrCreateZoneState(state: ZoneEngineState, zid: number): ZoneState {
 			occupied: false,
 			pendingSince: null,
 			confirmedTargets: new Set(),
+			clearReason: 0,
 		};
 		state.localZoneState.set(zid, st);
 	}
@@ -700,6 +706,7 @@ function stepHandoffDetection(ctx: TickContext): void {
 			);
 			const { timeout, handoffTimeout } = handoffThresholds;
 			srcSt.pendingSince = now - (timeout - handoffTimeout);
+			srcSt.clearReason = 1; // handoff
 		}
 	}
 }
@@ -750,8 +757,10 @@ function stepOverlayExitHandoff(ctx: TickContext): void {
 						const accel = now - (th.timeout - th.handoffTimeout);
 						if (st.pendingSince === null) {
 							st.pendingSince = accel;
+							st.clearReason = 2; // overlay
 						} else if (st.pendingSince > accel) {
 							st.pendingSince = accel;
+							st.clearReason = 2; // overlay (overlay-exit drives the sooner clear)
 						}
 					}
 				}
@@ -806,6 +815,7 @@ function stepZoneStateMachine(ctx: TickContext): void {
 		} else if (st.pendingSince === null) {
 			if (!confirmed) {
 				st.pendingSince = now;
+				st.clearReason = 0; // timeout
 			}
 		} else {
 			if (confirmed) {
@@ -999,6 +1009,7 @@ function stepForceClear(ctx: TickContext): void {
 				// cpp:776). The deferred zone-transition log then also emits the
 				// zc:Z for the resulting CLEAR state.
 				ctx.events.push(`fc:${zid}`);
+				st.clearReason = 3; // force — set before clear so the deferred zone log reports force
 				st.occupied = false;
 				st.pendingSince = null;
 				st.confirmedTargets.clear();
@@ -1083,6 +1094,13 @@ function stepZoneTransitionLog(
 		if (kind === prev) continue;
 		if (kind === "occupied") ctx.events.push(`zo:${zid}`);
 		else if (kind === "pending") ctx.events.push(`zp:${zid}`);
-		else ctx.events.push(`zc:${zid}`);
+		else {
+			// clear — carry the reason char (mirror firmware emit p2 → codec):
+			// 0=timeout→t, 1=handoff→h, 2=overlay→o, 3=force→f.
+			ctx.events.push(`zc:${zid}:${CLEAR_REASON_CHARS[st.clearReason]}`);
+		}
 	}
 }
+
+/** Clear-reason index → wire-code char (mirror firmware codec's {t,h,o,f}). */
+const CLEAR_REASON_CHARS = ["t", "h", "o", "f"] as const;
