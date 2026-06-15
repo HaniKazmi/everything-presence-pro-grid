@@ -4785,6 +4785,98 @@ class TestSubscriptionCallbacks:
         event = connection.send_message.call_args[0][0]
         assert "events" not in event["event"]["zones"]
 
+    async def test_grid_targets_malformed_ev_string_is_dropped(
+        self, hass: HomeAssistant, config_entry: MockConfigEntry
+    ) -> None:
+        """Zone state JSON with 'ev' as a bare string (not a list) must not reach the frontend."""
+        import json
+
+        mock_dm = await setup_integration(hass, config_entry)
+
+        zone_state_entity = MagicMock()
+        zone_state_entity.key = 300
+        zone_state_entity.name = "Zone State"
+
+        mock_device_conn = MagicMock()
+        mock_device_conn.entities = [zone_state_entity]
+        mock_device_conn.subscribe_states = AsyncMock()
+        mock_device_conn.unsubscribe_states = MagicMock()
+        mock_dm.get_session = MagicMock(return_value=mock_device_conn)
+
+        from custom_components.eppgrid.websocket_api import websocket_subscribe_grid_targets
+
+        connection = MagicMock()
+        connection.subscriptions = {}
+        msg = {"id": 44, "type": "eppgrid/subscribe_grid_targets", "mac": "AA:BB:CC:DD:EE:FF"}
+
+        await call_async_handler(hass, websocket_subscribe_grid_targets, connection, msg)
+
+        on_state = mock_device_conn.subscribe_states.await_args[0][0]
+
+        from aioesphomeapi import TextSensorState
+
+        # Malformed: 'ev' is a bare string, not a list
+        zone_json = json.dumps(
+            {
+                "targets": [{"signal": 60, "status": "active"}],
+                "zones": {"occupancy": [True, False, False], "tracking": True},
+                "frame_count": 5,
+                "ev": "zo:1",
+            }
+        )
+        state = TextSensorState(key=300, state=zone_json, missing_state=False)
+        on_state(state)
+
+        connection.send_message.assert_called_once()
+        event = connection.send_message.call_args[0][0]
+        assert "events" not in event["event"]["zones"]
+
+    async def test_grid_targets_malformed_ev_mixed_types_strips_non_strings(
+        self, hass: HomeAssistant, config_entry: MockConfigEntry
+    ) -> None:
+        """Zone state JSON with mixed-type 'ev' items: non-string items are silently dropped."""
+        import json
+
+        mock_dm = await setup_integration(hass, config_entry)
+
+        zone_state_entity = MagicMock()
+        zone_state_entity.key = 300
+        zone_state_entity.name = "Zone State"
+
+        mock_device_conn = MagicMock()
+        mock_device_conn.entities = [zone_state_entity]
+        mock_device_conn.subscribe_states = AsyncMock()
+        mock_device_conn.unsubscribe_states = MagicMock()
+        mock_dm.get_session = MagicMock(return_value=mock_device_conn)
+
+        from custom_components.eppgrid.websocket_api import websocket_subscribe_grid_targets
+
+        connection = MagicMock()
+        connection.subscriptions = {}
+        msg = {"id": 45, "type": "eppgrid/subscribe_grid_targets", "mac": "AA:BB:CC:DD:EE:FF"}
+
+        await call_async_handler(hass, websocket_subscribe_grid_targets, connection, msg)
+
+        on_state = mock_device_conn.subscribe_states.await_args[0][0]
+
+        from aioesphomeapi import TextSensorState
+
+        # Malformed: 'ev' contains mixed types — only string items should pass through
+        zone_json = json.dumps(
+            {
+                "targets": [{"signal": 60, "status": "active"}],
+                "zones": {"occupancy": [True, False, False], "tracking": True},
+                "frame_count": 5,
+                "ev": ["zo:1", 5, "sc"],
+            }
+        )
+        state = TextSensorState(key=300, state=zone_json, missing_state=False)
+        on_state(state)
+
+        connection.send_message.assert_called_once()
+        event = connection.send_message.call_args[0][0]
+        assert event["event"]["zones"]["events"] == ["zo:1", "sc"]
+
     async def test_grid_targets_events_not_re_emitted_on_target_position(
         self, hass: HomeAssistant, config_entry: MockConfigEntry
     ) -> None:

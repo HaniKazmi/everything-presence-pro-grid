@@ -849,8 +849,13 @@ async def websocket_subscribe_grid_targets(
                         if debug_log:
                             zones["debug_log"] = debug_log
                         events = zs.get("ev")
-                        if events:
-                            zones["events"] = events
+                        if isinstance(events, list):
+                            # Defensive: only forward string codes. A malformed
+                            # `ev` (non-list, or non-string items) must never reach
+                            # the frontend, which treats events as string[].
+                            valid_events = [e for e in events if isinstance(e, str)]
+                            if valid_events:
+                                zones["events"] = valid_events
                         sensors["target_presence"] = zs.get("zones", {}).get("tracking", False)
                         # Parse sensor presence states from firmware
                         static_state = zs.get("static_state")
