@@ -24,6 +24,20 @@ void ZoneEngine::log_(LogLevel level, const char* fmt, ...) {
     result_.log_count++;
 }
 
+// Map sensor/zone enums to the structured-event param index. The indices must
+// stay in sync with emit_event_'s sensor_name[]/zone_name[] tables and the wire
+// codec's suffix/prefix order (see epp_event_codec.h): sensor 0=active/1=pending/
+// 2=inactive; zone 0=clear/1=occupied/2=pending.
+static int sensor_state_index(SensorPresenceState s) {
+    return s == SensorPresenceState::ACTIVE ? 0 :
+           s == SensorPresenceState::PENDING ? 1 : 2;
+}
+
+static int zone_state_index(ZoneState s) {
+    return s == ZoneState::OCCUPIED ? 1 :
+           s == ZoneState::PENDING_CLEAR ? 2 : 0;
+}
+
 void ZoneEngine::emit_event_(EventType type, int p0, int p1, int p2) {
     if (result_.event_count < MAX_EVENTS) {
         Event& e = result_.events[result_.event_count++];
@@ -731,14 +745,10 @@ const ProcessingResult& ZoneEngine::tick(const WindowOutput& window, float times
 
     // Emit sensor state transitions (event + serial)
     if (static_state_ != prev_static) {
-        emit_event_(EventType::STATIC,
-                    static_state_ == SensorPresenceState::ACTIVE ? 0 :
-                    static_state_ == SensorPresenceState::PENDING ? 1 : 2);
+        emit_event_(EventType::STATIC, sensor_state_index(static_state_));
     }
     if (motion_state_ != prev_motion) {
-        emit_event_(EventType::MOTION,
-                    motion_state_ == SensorPresenceState::ACTIVE ? 0 :
-                    motion_state_ == SensorPresenceState::PENDING ? 1 : 2);
+        emit_event_(EventType::MOTION, sensor_state_index(motion_state_));
     }
 
     result_.static_state = static_state_;
@@ -793,9 +803,7 @@ const ProcessingResult& ZoneEngine::tick(const WindowOutput& window, float times
         ZoneRuntime& rt = zones_[zi];
         int zone_id = rt.config.id;
         if (rt.state != prev_zone_state[zone_id]) {
-            emit_event_(EventType::ZONE, zone_id,
-                        rt.state == ZoneState::OCCUPIED ? 1 :
-                        rt.state == ZoneState::PENDING_CLEAR ? 2 : 0);
+            emit_event_(EventType::ZONE, zone_id, zone_state_index(rt.state));
         }
     }
 
