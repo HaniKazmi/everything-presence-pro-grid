@@ -330,16 +330,20 @@ void EPPComponent::loop() {
                result.frame_count);
 
       // Structured detection-log events accumulated across the ~10 ticks since
-      // the last publish, serialized as the JSON array body, then cleared.
+      // the last publish, serialized as the JSON array body.
       event_queue_.serialize(w);
       w.printf("]}");
-      event_queue_.clear();
       if (!w.ok()) {
         ESP_LOGW(TAG, "zone-state JSON truncated to %u/%u bytes",
                  (unsigned)w.size(), (unsigned)sizeof(json));
       }
       zone_state_sensor_->publish_state(json);
     }
+
+    // Drain the event queue every interval regardless of sensor presence.
+    // If the zone-state sensor is unwired, events would otherwise accumulate
+    // forever (overflowing CAP and inflating dropped_ unboundedly).
+    event_queue_.clear();
   }
 
   // Timer 3: Entity target (structured HA entities, user Hz)
