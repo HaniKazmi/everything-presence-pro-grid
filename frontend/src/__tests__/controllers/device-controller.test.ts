@@ -748,6 +748,7 @@ describe("DeviceController", () => {
 					occupancy: { 1: true },
 					target_counts: { 1: 2 },
 					frame_count: 5,
+					events: ["zo:1"],
 				},
 			});
 
@@ -769,6 +770,7 @@ describe("DeviceController", () => {
 					target_counts: { 1: 2 },
 					frame_count: 5,
 					debug_log: undefined,
+					events: ["zo:1"],
 				},
 			});
 		});

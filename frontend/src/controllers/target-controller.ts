@@ -326,15 +326,20 @@ export class TargetController implements ReactiveController {
 	 * Legacy:     "T0:Z1:A:5 T1:Z0:P:3|Z0:O:1 Z1:O:1"
 	 * Enriched:   "Static: active, Motion: pending, Occ: on | T0→Hallway(active,5) | Hallway: occupied(1)"
 	 */
-	enrichDebugLog(raw: string): string {
+	private _zoneNameResolver(): (zid: number) => string {
 		const t = this.host._localize;
-		const zoneName = (zid: number): string => {
+		return (zid: number): string => {
 			if (zid === 0) return t("live.debug.room");
 			const cfg = this.host._zoneConfigs[zid];
 			return cfg && "name" in cfg
 				? cfg.name
 				: t("live.debug.zone_n", { n: zid });
 		};
+	}
+
+	enrichDebugLog(raw: string): string {
+		const t = this.host._localize;
+		const zoneName = this._zoneNameResolver();
 		const statusName: Record<string, string> = {
 			A: t("live.debug.active"),
 			P: t("live.debug.pending"),
@@ -522,13 +527,7 @@ export class TargetController implements ReactiveController {
 	 */
 	appendBackendEvents(events: string[]): void {
 		const t = this.host._localize;
-		const zoneName = (zid: number): string => {
-			if (zid === 0) return t("live.debug.room");
-			const cfg = this.host._zoneConfigs[zid];
-			return cfg && "name" in cfg
-				? cfg.name
-				: t("live.debug.zone_n", { n: zid });
-		};
+		const zoneName = this._zoneNameResolver();
 		const targetLabel = (tid: number): string =>
 			t("live.debug.target_n", { n: tid + 1 });
 		for (const code of events) {
