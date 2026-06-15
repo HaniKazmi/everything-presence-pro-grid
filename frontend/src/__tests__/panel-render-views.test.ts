@@ -265,16 +265,15 @@ describe("render() dispatches to correct view", () => {
 		a._isMobile = true;
 		a._grid = initGridFromRoom(3000, 4000);
 		const c = renderTo(a._renderEditor());
-		// Bottom sheet present, with the grid full-width and the sidebar content
-		// inside it; the desktop side-by-side layout is gone.
+		// Unified editor-shell with epp-sheet present for both mobile and desktop.
 		const sheet = c.querySelector("epp-sheet");
 		expect(sheet).not.toBeNull();
-		expect(c.querySelector(".editor-mobile")).not.toBeNull();
+		expect(c.querySelector(".editor-shell")).not.toBeNull();
 		expect(c.querySelector(".editor-layout")).toBeNull();
 		expect(c.querySelector(".zone-sidebar")).toBeNull();
-		// Grid full-width in the mobile grid-container.
+		// Grid in the grid-column grid-container.
 		const grid = c.querySelector(
-			".editor-mobile .grid-container epp-grid",
+			".editor-shell .grid-container epp-grid",
 		) as any;
 		expect(grid).not.toBeNull();
 		expect(grid.editable).toBe(true);
@@ -285,16 +284,21 @@ describe("render() dispatches to correct view", () => {
 		expect(tabs.length).toBe(3);
 	});
 
-	it("keeps the desktop side-by-side editor layout when _isMobile is false", () => {
+	it("renders the unified editor-shell with epp-sheet for desktop layout", () => {
 		const a = createPanel() as any;
 		a._view = "editor";
 		// _isMobile defaults to false (happy-dom matchMedia matches:false).
 		a._grid = initGridFromRoom(3000, 4000);
 		const c = renderTo(a._renderEditor());
-		expect(c.querySelector(".editor-layout")).not.toBeNull();
-		expect(c.querySelector(".zone-sidebar")).not.toBeNull();
-		expect(c.querySelector("epp-sheet")).toBeNull();
+		// Both desktop and mobile now use .editor-shell + epp-sheet.
+		expect(c.querySelector(".editor-shell")).not.toBeNull();
+		expect(c.querySelector("epp-sheet")).not.toBeNull();
+		// Old two-branch classes are gone.
+		expect(c.querySelector(".editor-layout")).toBeNull();
 		expect(c.querySelector(".editor-mobile")).toBeNull();
+		// Sidebar tabs in the sheet peek on desktop too.
+		const sheet = c.querySelector("epp-sheet")!;
+		expect(sheet.querySelector('[slot="peek"] .sidebar-tabs')).not.toBeNull();
 	});
 
 	it("switches sub-tab from the mobile sheet peek without leaving the editor", () => {
@@ -442,8 +446,9 @@ describe("render() dispatches to correct view", () => {
 		a._isMobile = true;
 		a._grid = initGridFromRoom(3000, 4000);
 		const c = renderTo(a._renderEditor());
+		// Unified editor-shell: grid lives in .editor-shell .grid-container.
 		const grid = c.querySelector(
-			".editor-mobile .grid-container epp-grid",
+			".editor-shell .grid-container epp-grid",
 		) as HTMLElement;
 		expect(grid).not.toBeNull();
 		// User has a zone selected and we are NOT in the just-painted window.
@@ -477,6 +482,38 @@ describe("render() dispatches to correct view", () => {
 			new MouseEvent("click", { bubbles: true, composed: true }),
 		);
 		expect(a._activeZone).toBeNull();
+	});
+
+	it("editor renders one epp-sheet with the sidebar tabs in its peek (desktop)", () => {
+		const a = createPanel() as any;
+		a._view = "editor";
+		a._isMobile = false;
+		a._grid = initGridFromRoom(3000, 4000);
+		a._dirty = false;
+		const c = renderTo(a._renderEditor());
+		const sheet = c.querySelector("epp-sheet");
+		expect(sheet).not.toBeNull();
+		expect(sheet!.querySelector('[slot="peek"] .sidebar-tabs')).not.toBeNull();
+	});
+
+	it("desktop editor shows the Save/Cancel bar even when clean", () => {
+		const a = createPanel() as any;
+		a._view = "editor";
+		a._isMobile = false;
+		a._grid = initGridFromRoom(3000, 4000);
+		a._dirty = false;
+		const c = renderTo(a._renderEditor());
+		expect(c.querySelector('[slot="actions"] .save-cancel-bar')).not.toBeNull();
+	});
+
+	it("mobile editor hides the Save/Cancel bar when clean", () => {
+		const a = createPanel() as any;
+		a._view = "editor";
+		a._isMobile = true;
+		a._grid = initGridFromRoom(3000, 4000);
+		a._dirty = false;
+		const c = renderTo(a._renderEditor());
+		expect(c.querySelector('[slot="actions"]')).toBeNull();
 	});
 
 	it("flips _isMobile when the media query change fires", () => {

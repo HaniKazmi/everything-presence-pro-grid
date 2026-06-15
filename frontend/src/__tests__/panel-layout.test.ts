@@ -240,13 +240,14 @@ describe("editor layout structure", () => {
 		const container = document.createElement("div");
 		render(result, container);
 
-		const editorLayout = container.querySelector(".editor-layout");
-		expect(editorLayout).not.toBeNull();
-		const leftCol = editorLayout!.firstElementChild as HTMLElement;
+		// Unified editor-shell replaces old .editor-layout.
+		const editorShell = container.querySelector(".editor-shell");
+		expect(editorShell).not.toBeNull();
+		const leftCol = editorShell!.firstElementChild as HTMLElement;
 		expect(leftCol.classList.contains("grid-column")).toBe(true);
 	});
 
-	it("sidebar content is wrapped in sidebar-scroll", () => {
+	it("sidebar content is rendered inside epp-sheet in the unified editor", () => {
 		const el = createPanel();
 		const a = el as any;
 		a._view = "editor";
@@ -255,10 +256,11 @@ describe("editor layout structure", () => {
 		const container = document.createElement("div");
 		render(result, container);
 
-		const sidebar = container.querySelector(".zone-sidebar");
-		expect(sidebar).not.toBeNull();
-		const scroll = sidebar!.querySelector(".sidebar-scroll");
-		expect(scroll).not.toBeNull();
+		// The old .zone-sidebar/.sidebar-scroll structure is replaced by epp-sheet.
+		const sheet = container.querySelector("epp-sheet");
+		expect(sheet).not.toBeNull();
+		// Sidebar content (zones tab by default) is inside the sheet.
+		expect(sheet!.querySelector("epp-zone-sidebar")).not.toBeNull();
 	});
 
 	it("grid-container click uses composedPath to detect furniture items", () => {

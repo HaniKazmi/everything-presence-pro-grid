@@ -3006,51 +3006,28 @@ export class EPPGridPanel extends LitElement {
 			}
 		};
 
-		if (this._isMobile) {
-			return html`
-      <div class="panel" @click=${onPanelClick}>
-        ${this._renderHeader()}
-        <div
-          class="editor-mobile"
-          @focusin=${this._onEditorFocusIn}
-          @focusout=${this._onEditorFocusOut}
-        >
-          <div class="grid-container" @click=${onGridContainerClick}>
-            ${gridTemplate}
-          </div>
-          <epp-sheet inline open>
-            <div slot="peek">${this._renderSidebarTabs()}</div>
-            ${this._renderSidebarContent()}
-            ${this._dirty && !this._editorTextFocused ? html`<div slot="actions">${this._renderSaveCancelButtons()}</div>` : nothing}
-          </epp-sheet>
-        </div>
-      </div>
-    `;
-		}
+		const actions = html`<div slot="actions">${this._renderSaveCancelButtons()}</div>`;
+		const footer = this._isMobile
+			? this._dirty && !this._editorTextFocused
+				? actions
+				: nothing
+			: actions;
 
 		return html`
       <div class="panel" @click=${onPanelClick}>
         ${this._renderHeader()}
-        <div class="editor-layout">
+        <div class="editor-shell" @focusin=${this._onEditorFocusIn} @focusout=${this._onEditorFocusOut}>
           <div class="grid-column">
             <div class="grid-container" @click=${onGridContainerClick}>
-            ${gridTemplate}
+              ${gridTemplate}
             </div>
             ${this._sidebarTab === "zones" || this._sidebarTab === "overlays" ? this._renderDebugLog() : nothing}
           </div>
-          <div class="zone-sidebar scrollable">
-            <div class="sidebar-title">${
-							this._sidebarTab === "furniture"
-								? this._localize("sidebar.furniture")
-								: this._sidebarTab === "overlays"
-									? this._localize("sidebar.overlays")
-									: this._localize("sidebar.detection_zones")
-						}</div>
-            <div class="sidebar-scroll">
+          <epp-sheet inline open class="editor-controls">
+            <div slot="peek">${this._renderSidebarTabs()}</div>
             ${this._renderSidebarContent()}
-            </div>
-            ${this._renderSaveCancelButtons()}
-          </div>
+            ${footer}
+          </epp-sheet>
         </div>
       </div>
     `;
