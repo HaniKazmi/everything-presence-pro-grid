@@ -24,6 +24,31 @@ void ZoneEngine::log_(LogLevel level, const char* fmt, ...) {
     result_.log_count++;
 }
 
+void ZoneEngine::emit_event_(EventType type, int p0, int p1, int p2) {
+    if (result_.event_count < MAX_EVENTS) {
+        Event& e = result_.events[result_.event_count++];
+        e.type = type;
+        e.p0 = (int16_t)p0;
+        e.p1 = (int16_t)p1;
+        e.p2 = (int16_t)p2;
+    }
+    static const char* sensor_name[3] = {"active", "pending", "inactive"};
+    static const char* zone_name[3] = {"clear", "occupied", "pending"};
+    switch (type) {
+        case EventType::STATIC:        log_(LogLevel::INFO, "Static: %s", sensor_name[p0]); break;
+        case EventType::MOTION:        log_(LogLevel::INFO, "Motion: %s", sensor_name[p0]); break;
+        case EventType::ZONE:          log_(LogLevel::INFO, "Zone %d: %s", p0, zone_name[p1]); break;
+        case EventType::OCCUPANCY:     log_(LogLevel::INFO, "Occupancy: %s", p0 ? "on" : "off"); break;
+        case EventType::MMWAVE:        log_(LogLevel::INFO, "mmWave: %s", p0 ? "on" : "off"); break;
+        case EventType::FORCE_CLEAR:   log_(LogLevel::INFO, "Zone %d: force-clear", p0); break;
+        case EventType::STUCK_DISMISS: log_(LogLevel::INFO, "T%d auto-dismissed (stuck %ds)", p0, p1); break;
+        case EventType::TARGET_ENTERED:log_(LogLevel::DEBUG, "T%d entered zone %d", p0, p1); break;
+        case EventType::TARGET_LEFT:   log_(LogLevel::DEBUG, "T%d left room", p0); break;
+        case EventType::TARGET_MOVED:  log_(LogLevel::DEBUG, "T%d handoff zone %d -> zone %d", p0, p1, p2); break;
+        case EventType::EVENTS_DROPPED: break;
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Construction / configuration
 // ---------------------------------------------------------------------------
@@ -120,6 +145,7 @@ void ZoneEngine::set_zones(const ZoneConfig zones[], int count) {
     motion_pending_since_ = -1.0f;
     sensors_ever_active_ = false;
     prev_occupancy_ = false;
+    prev_mmwave_ = false;
 }
 
 void ZoneEngine::dismiss_target(int target_index, int cell_index) {
@@ -186,9 +212,10 @@ const ProcessingResult& ZoneEngine::tick(const WindowOutput& window, float times
     SensorPresenceState prev_static = static_state_;
     SensorPresenceState prev_motion = motion_state_;
 
-    // Clear result (skip zeroing log buffer — log_count gates access)
+    // Clear result (skip zeroing log/event buffers — *_count gates access)
     std::memset(&result_, 0, offsetof(ProcessingResult, log));
     result_.log_count = 0;
+    result_.event_count = 0;
     result_.frame_count = window.total_frames;
 
     // Per-zone tracking: confirmed flag, best signal, and target count
