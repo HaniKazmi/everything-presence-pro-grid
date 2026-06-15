@@ -389,11 +389,22 @@ export const layoutStyles = css`
     color: var(--primary-text-color, #212121);
   }
 
-  /* Mobile editor: grid full-width, controls in a persistent bottom sheet.
-     This container only renders below 820px (the _isMobile branch), so these
-     rules never affect the desktop layout. */
-  .editor-mobile {
-    display: block;
+  /* Unified editor shell: flex row on desktop (grid left, controls right). */
+  .editor-shell {
+    display: flex;
+    gap: 24px;
+    align-items: stretch;
+  }
+
+  .editor-shell > .grid-column {
+    flex: 1 1 auto;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .editor-shell > .editor-controls {
+    flex: 0 0 320px;
   }
 
   /* Sidebar-tab switcher — rendered in the mobile bottom-sheet peek only. */
@@ -422,20 +433,18 @@ export const layoutStyles = css`
   }
 
   @media (max-width: 819px) {
-    /* Mobile editor (.editor-mobile): full-height flex column that grows to
-       fill the .panel below the header. The grid container is fixed-height
-       (flex:0 0 auto, sized ≤50% viewport by the grid's own cap), and the
+    /* Unified editor shell: stacks to a column on mobile (grid top, sheet below
+       filling height). The grid column is fixed-height (flex:0 0 auto) and the
        inline <epp-sheet> fills the rest and owns its own scroll. */
-    .editor-mobile {
-      display: flex;
+    .editor-shell {
       flex-direction: column;
       flex: 1;
       min-height: 0;
     }
-    .editor-mobile > .grid-container {
+    .editor-shell > .grid-column {
       flex: 0 0 auto;
     }
-    .editor-mobile > epp-sheet {
+    .editor-shell > .editor-controls {
       flex: 1 1 auto;
       min-height: 0;
     }

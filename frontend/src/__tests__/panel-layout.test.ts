@@ -164,6 +164,20 @@ describe("layout styles", () => {
 		expect(mediaIdx).toBeGreaterThan(gridColBaseIdx);
 	});
 
+	it("editor-shell is a flex row at desktop width", () => {
+		const css = layoutStyles.cssText;
+		expect(css).toContain(".editor-shell");
+		const shell = css.slice(css.indexOf(".editor-shell"));
+		expect(shell).toMatch(/display:\s*flex/);
+	});
+
+	it("editor-shell stacks to a column below the breakpoint", () => {
+		const css = layoutStyles.cssText;
+		const mq = css.slice(css.indexOf("@media (max-width: 819px)"));
+		expect(mq).toContain(".editor-shell");
+		expect(mq).toMatch(/flex-direction:\s*column/);
+	});
+
 	it("mobile .panel sets min-width: 0 to drop the flex min-content floor", () => {
 		// Bug 1: :host is display:flex; .panel is its flex item, defaulting to
 		// min-width:auto → floored at the grid's min-content (~maxGridPx), which
