@@ -128,8 +128,9 @@ describe("layout styles", () => {
 	});
 
 	it("grid-column constrains width to grid via max-width: min-content", () => {
-		// Match the base (desktop) rule, identified by min-width — a separate
-		// mobile media-query rule also targets .grid-column (max-width: 100%).
+		// Match the base rule, identified by min-width. The mobile width cap is
+		// applied via the higher-specificity .editor-shell > .grid-column rule
+		// inside the @media block (not a bare .grid-column override).
 		const match = layoutCss.match(/\.grid-column\s*\{([^}]*min-width[^}]*)\}/);
 		expect(match).not.toBeNull();
 		const gridColCss = match![1];
@@ -150,15 +151,29 @@ describe("layout styles", () => {
 	it("layout mobile overrides come after their base rules (cascade order)", () => {
 		// Media queries add NO specificity; at equal specificity the LATER rule in
 		// the concatenated cssText wins. The mobile @media (max-width: 819px) block
-		// overrides .grid-column (max-width:100%), so it MUST come after the base
-		// .grid-column (max-width:min-content) declaration — otherwise the base wins
-		// and the grid overflows on phones.
+		// must come after the base .grid-column (max-width:min-content) declaration
+		// — otherwise the base wins and the grid overflows on phones.
 		const gridColBaseIdx = layoutCss.indexOf("min-content");
 		const mediaIdx = layoutCss.indexOf("@media (max-width: 819px)");
 
 		expect(gridColBaseIdx).toBeGreaterThan(-1);
 		expect(mediaIdx).toBeGreaterThan(-1);
 		expect(mediaIdx).toBeGreaterThan(gridColBaseIdx);
+	});
+
+	it("mobile .editor-shell > .grid-column caps width to 100% (at winning specificity)", () => {
+		// The base .editor-shell > .grid-column sets max-width: none for desktop.
+		// The mobile override must apply max-width: 100% at the same specificity
+		// (0,2,0) inside the @media block so the cap actually wins — a bare
+		// .grid-column rule (0,1,0) would be overridden by the desktop scoped rule.
+		const mq = layoutCss.slice(layoutCss.indexOf("@media (max-width: 819px)"));
+		const scopedRuleStart = mq.indexOf(".editor-shell > .grid-column");
+		expect(scopedRuleStart).toBeGreaterThan(-1);
+		const scopedRule = mq.slice(
+			scopedRuleStart,
+			mq.indexOf("}", scopedRuleStart),
+		);
+		expect(scopedRule).toMatch(/max-width:\s*100%/);
 	});
 
 	it("editor-shell is a flex row at desktop width", () => {

@@ -417,15 +417,12 @@ export const layoutStyles = css`
     }
     .editor-shell > .grid-column {
       flex: 0 0 auto;
+      max-width: 100%;
     }
     .editor-shell > .editor-controls,
     .editor-shell > .live-controls {
       flex: 1 1 auto;
       min-height: 0;
-    }
-    .grid-column {
-      max-width: 100%;
-      flex: 0 0 auto;
     }
   }
 `;
@@ -829,10 +826,11 @@ export class EPPGridPanel extends LitElement {
 			this._sidebarTab = DEFAULT_SIDEBAR_TAB;
 		}
 		// `_editorTextFocused` (hides the mobile Save/Cancel bar while a text
-		// field is focused) is only meaningful inside the mobile editor. A
-		// focusout isn't guaranteed when the `.editor-mobile` container unmounts
-		// — leaving the editor, or rotating to a ≥820px (desktop) layout while an
-		// input is focused — so clear it whenever we're not in the mobile editor,
+		// field is focused) is only meaningful in the mobile editor. Leaving the
+		// editor view entirely, or crossing to the ≥820px (desktop) breakpoint
+		// while an input is focused, may not fire a focusout on `.editor-shell`
+		// (e.g. a breakpoint change re-evaluates `_isMobile` without any DOM
+		// focus event) — so clear it whenever we're not in the mobile editor,
 		// otherwise a stale `true` would keep the bar hidden on re-entry (with
 		// nothing focused) and block Save.
 		if (
@@ -2964,11 +2962,7 @@ export class EPPGridPanel extends LitElement {
 		// `.grid` check is always null for grid taps and would wrongly deselect.
 		const onPanelClick = (e: Event) => {
 			const el = e.target as HTMLElement;
-			if (
-				!el.closest(".grid-container") &&
-				!el.closest(".zone-sidebar") &&
-				!el.closest("epp-sheet")
-			) {
+			if (!el.closest(".grid-container") && !el.closest("epp-sheet")) {
 				if (!this._justPainted) this._activeZone = null;
 			}
 		};
