@@ -1065,7 +1065,17 @@ function stepZoneTransitionLog(
 	prevZoneKind: Map<number, ZoneStateKind>,
 ): void {
 	const { state } = ctx;
-	for (const [zid, st] of state.localZoneState) {
+	// Emit in ASCENDING zone-id order to match the firmware, whose deferred
+	// transition loop walks zones_[zi] for zi in [0, zone_count_) and indexes
+	// zones_ by zone id (set_zones: zones_[zc.id]). localZoneState is a Map in
+	// first-touched order, so iterating it directly would emit zone events in a
+	// different order whenever a higher-id zone is occupied before a lower-id
+	// one — a real event-parity divergence the detection-log parity test
+	// catches. Sort the keys so both engines emit identical event sequences.
+	const zids = [...state.localZoneState.keys()].sort((a, b) => a - b);
+	for (const zid of zids) {
+		const st = state.localZoneState.get(zid);
+		if (!st) continue;
 		const kind = zoneStateKind(st);
 		// Zones absent from the snapshot were CLEAR before this tick (firmware's
 		// prev_zone_state[] defaults every slot to CLEAR).
