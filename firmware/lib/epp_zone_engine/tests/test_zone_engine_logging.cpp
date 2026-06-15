@@ -99,6 +99,26 @@ static bool has_debug(const ProcessingResult& r, const char* substr) {
 }
 
 // ---------------------------------------------------------------------------
+// Structured-event search helpers
+// ---------------------------------------------------------------------------
+
+// Return a pointer to the first event of `type`, or nullptr if none.
+static const Event* find_event(const ProcessingResult& r, EventType type) {
+    for (int i = 0; i < r.event_count; ++i) {
+        if (r.events[i].type == type) return &r.events[i];
+    }
+    return nullptr;
+}
+
+// Return a pointer to the first event of `type` whose p0 matches, or nullptr.
+static const Event* find_event_p0(const ProcessingResult& r, EventType type, int p0) {
+    for (int i = 0; i < r.event_count; ++i) {
+        if (r.events[i].type == type && r.events[i].p0 == p0) return &r.events[i];
+    }
+    return nullptr;
+}
+
+// ---------------------------------------------------------------------------
 // Infrastructure tests
 // ---------------------------------------------------------------------------
 
@@ -380,4 +400,147 @@ TEST_CASE("log: occupancy unchanged → no occupancy log") {
     engine.tick(make_window_0(), 100.0f);
     const ProcessingResult& r = engine.tick(make_window_0(), 101.0f);
     CHECK_FALSE(has_info(r, "Occupancy"));
+}
+
+// ---------------------------------------------------------------------------
+// Structured detection-log events (Event buffer, parallel to LogEntry)
+// ---------------------------------------------------------------------------
+
+TEST_CASE("event: result starts with zero events") {
+    ZoneEngine engine = make_engine();
+    const ProcessingResult& r = engine.tick(make_window_0(), 100.0f);
+    CHECK(r.event_count == 0);
+}
+
+TEST_CASE("event: static sensor activation emits STATIC active (p0==0)") {
+    ZoneEngine engine = make_engine();
+    SensorInput sensors;
+    sensors.static_on = true;
+    sensors.static_timeout = 5.0f;
+    const ProcessingResult& r = engine.tick(make_window_0(), 100.0f, sensors);
+    REQUIRE(r.static_state == SensorPresenceState::ACTIVE);
+    const Event* e = find_event(r, EventType::STATIC);
+    REQUIRE(e != nullptr);
+    CHECK(e->p0 == 0);  // 0 == active
+    // Serial parity preserved alongside the structured event.
+    CHECK(has_info(r, "Static: active"));
+}
+
+TEST_CASE("event: motion sensor activation emits MOTION active (p0==0)") {
+    ZoneEngine engine = make_engine();
+    SensorInput sensors;
+    sensors.motion_on = true;
+    sensors.motion_timeout = 3.0f;
+    const ProcessingResult& r = engine.tick(make_window_0(), 100.0f, sensors);
+    const Event* e = find_event(r, EventType::MOTION);
+    REQUIRE(e != nullptr);
+    CHECK(e->p0 == 0);  // 0 == active
+}
+
+TEST_CASE("event: target entering a zone emits ZONE occupied (p1==1)") {
+    ZoneEngine engine = make_engine();
+    // Zone 1 (entry overlay, trigger=3) → confirmed on first tick.
+    const ProcessingResult& r = engine.tick(make_window_1(X_OFF + 450, 450, 3), 100.0f);
+    REQUIRE(r.zone_occupancy[1]);
+    const Event* e = find_event_p0(r, EventType::ZONE, 1);  // zone id 1
+    REQUIRE(e != nullptr);
+    CHECK(e->p1 == 1);  // 1 == occupied
+    // The same tick also emits TARGET_ENTERED for the entering target.
+    const Event* te = find_event(r, EventType::TARGET_ENTERED);
+    REQUIRE(te != nullptr);
+    CHECK(te->p0 == 0);  // target id 0
+    CHECK(te->p1 == 1);  // zone id 1
+}
+
+TEST_CASE("event: zone OCCUPIED -> PENDING emits ZONE pending (p1==2)") {
+    ZoneEngine engine = make_engine();
+    engine.tick(make_window_1(X_OFF + 450, 450, 5), 100.0f);  // occupy zone 1
+    const ProcessingResult& r = engine.tick(make_window_0(), 101.0f);  // target gone -> pending
+    const Event* e = find_event_p0(r, EventType::ZONE, 1);
+    REQUIRE(e != nullptr);
+    CHECK(e->p1 == 2);  // 2 == pending
+}
+
+TEST_CASE("event: occupancy turning on emits OCCUPANCY (p0==1)") {
+    ZoneEngine engine = make_engine();
+    const ProcessingResult& r = engine.tick(make_window_1(X_OFF + 450, 450, 5), 100.0f);
+    REQUIRE(r.occupancy);
+    const Event* e = find_event(r, EventType::OCCUPANCY);
+    REQUIRE(e != nullptr);
+    CHECK(e->p0 == 1);  // on
+}
+
+TEST_CASE("event: mmwave turning on emits MMWAVE (p0==1)") {
+    ZoneEngine engine = make_engine();
+    // Zone OCCUPIED with no sensors -> mmwave on (combines static + tracker).
+    const ProcessingResult& r = engine.tick(make_window_1(X_OFF + 450, 450, 5), 100.0f);
+    REQUIRE(r.mmwave);
+    const Event* e = find_event(r, EventType::MMWAVE);
+    REQUIRE(e != nullptr);
+    CHECK(e->p0 == 1);  // on
+}
+
+TEST_CASE("event: assisted-clear of an empty room emits FORCE_CLEAR for the zone") {
+    ZoneEngine engine = make_engine();
+    float t = 100.0f;
+    SensorInput sensors;
+    // Short sensor timeouts so they expire well before the zone's own 10s timeout.
+    sensors.static_on = true;  sensors.static_timeout = 1.0f;
+    sensors.motion_on = true;  sensors.motion_timeout = 1.0f;
+
+    // Confirm zone 0 (no overlay → 2 gating ticks) so we exercise the
+    // sensor-assisted clear path without overlay exit handoff.
+    engine.tick(make_window_1(X_OFF + 150, 150, 7), t, sensors);
+    engine.tick(make_window_1(X_OFF + 150, 150, 7), t + 0.5f, sensors);
+    engine.tick(make_window_0(), t + 1.0f, sensors);  // zone 0 -> PENDING_CLEAR
+
+    // Both sensors go inactive; once they expire the empty room is force-cleared.
+    sensors.static_on = false;  sensors.motion_on = false;
+    engine.tick(make_window_0(), t + 2.0f, sensors);  // sensors pending
+    const ProcessingResult& r = engine.tick(make_window_0(), t + 3.5f, sensors);
+    REQUIRE_FALSE(r.zone_occupancy[0]);  // force-cleared
+    const Event* e = find_event_p0(r, EventType::FORCE_CLEAR, 0);  // zone id 0
+    REQUIRE(e != nullptr);
+    // The force-clear tick must also surface the resulting ZONE clear transition.
+    const Event* ze = find_event_p0(r, EventType::ZONE, 0);
+    REQUIRE(ze != nullptr);
+    CHECK(ze->p1 == 0);  // 0 == clear
+}
+
+TEST_CASE("event: handoff between zones emits TARGET_MOVED") {
+    ZoneEngine engine = make_engine();
+    engine.tick(make_window_1(X_OFF + 450, 450, 5), 100.0f);  // zone 1
+    const ProcessingResult& r = engine.tick(make_window_1(X_OFF + 150, 150, 7), 101.0f);
+    const Event* e = find_event(r, EventType::TARGET_MOVED);
+    REQUIRE(e != nullptr);
+    CHECK(e->p0 == 0);  // target id 0
+    CHECK(e->p1 == 1);  // from zone 1
+    CHECK(e->p2 == 0);  // to zone 0
+}
+
+TEST_CASE("event: stuck target auto-dismiss emits STUCK_DISMISS with seconds") {
+    ZoneEngine engine = make_engine();
+    engine.set_stuck_target_timeout(5.0f);
+    float t = 100.0f;
+    const float X = X_OFF + 450.0f;
+    const float Y = 450.0f;
+    engine.tick(make_window_1(X, Y, 3), t);
+    engine.tick(make_window_1(X, Y, 3), t + 4.9f);
+    const ProcessingResult& r = engine.tick(make_window_1(X, Y, 3), t + 5.1f);
+    const Event* e = find_event(r, EventType::STUCK_DISMISS);
+    REQUIRE(e != nullptr);
+    CHECK(e->p0 == 0);  // target id 0
+    CHECK(e->p1 == 5);  // 5s timeout
+}
+
+TEST_CASE("event: target leaving the room (unconfirmed) emits TARGET_LEFT") {
+    ZoneEngine engine = make_engine();
+    float t = 100.0f;
+    // Target in room (zone 0 cell) but below trigger → never confirmed, but
+    // in_room is set. Then it leaves the room while still active.
+    engine.tick(make_window_1(X_OFF + 150, 150, 2), t);  // in-room, unconfirmed
+    const ProcessingResult& r = engine.tick(make_window_1(9000, 9000, 9), t + 1.0f);
+    const Event* e = find_event(r, EventType::TARGET_LEFT);
+    REQUIRE(e != nullptr);
+    CHECK(e->p0 == 0);  // target id 0
 }
