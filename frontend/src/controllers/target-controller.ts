@@ -1,8 +1,6 @@
 import type { ReactiveController } from "lit";
 import { DEBUG_LOG_MAX } from "../constants.js";
-import { mapTargetToGridCell } from "../lib/coordinates.js";
 import { formatEvent } from "../lib/detection-events.js";
-import { cellIsInside, cellZone, GRID_COLS, GRID_ROWS } from "../lib/grid.js";
 import { OverlayTracker } from "../lib/overlay-tracker.js";
 import { applyPerspective } from "../lib/perspective.js";
 import { resolveZoneParams, type ZoneConfig } from "../lib/zone-defaults.js";
@@ -541,19 +539,6 @@ export class TargetController implements ReactiveController {
 	}
 
 	/**
-	 * Append a frontend debug log line (from local zone engine).
-	 * Deduplicates against previous line and caps at DEBUG_LOG_MAX.
-	 */
-	private _appendFrontendDebugLog(body: string): void {
-		this._appendLog(
-			body,
-			"_debugLogPrev",
-			"_debugLogLines",
-			"debug-log-scroll",
-		);
-	}
-
-	/**
 	 * Append a log line to a scrollable debug-log container by ID.
 	 * Clears any placeholder on first real line and caps at DEBUG_LOG_MAX.
 	 */
@@ -576,107 +561,22 @@ export class TargetController implements ReactiveController {
 		container.scrollTop = container.scrollHeight;
 	}
 
-	// allZoneIds is recomputed only when the grid reference changes. The
-	// codebase replaces _grid via clone-then-mutate (grid-state-controller and
-	// _setOverlay), so reference equality is a valid invalidation key.
-	private _allZoneIdsCache: Set<number> | null = null;
-	private _allZoneIdsCacheGrid: Uint8Array | null = null;
-
-	private _computeAllZoneIds(grid: Uint8Array): Set<number> {
-		const ids = new Set<number>();
-		for (let i = 0; i < grid.length; i++) {
-			if (cellIsInside(grid[i])) ids.add(cellZone(grid[i]));
-		}
-		return ids;
-	}
-
-	private _getAllZoneIds(): Set<number> {
-		const grid = this.host._grid;
-		if (this._allZoneIdsCache !== null && this._allZoneIdsCacheGrid === grid) {
-			return this._allZoneIdsCache;
-		}
-		const ids = this._computeAllZoneIds(grid);
-		this._allZoneIdsCache = ids;
-		this._allZoneIdsCacheGrid = grid;
-		return ids;
-	}
-
 	/**
-	 * Build the frontend debug log from zone engine results.
-	 * Computes target-to-zone mapping and zone signal levels, then
-	 * formats and appends the debug log line.
+	 * Render the local zone-engine replica's detection-log events (Phase 6).
+	 * The replica emits the SAME compact wire codes as the firmware engine
+	 * (see zone-engine.ts / detection-events.ts); each is mapped through the
+	 * SAME formatEvent mapper as backend events (appendBackendEvents) so the
+	 * editor preview and the live device read identically. Each event is a
+	 * discrete occurrence and is appended WITHOUT dedup (via _appendLogLine).
 	 */
 	private _buildFrontendDebugLog(result: ZoneEngineResult): void {
-		const MAX_TARGETS = 3;
-		// Compute target→zone mapping for debug log
-		const targetZoneCurr: (number | null)[] = [null, null, null];
-		for (let i = 0; i < MAX_TARGETS && i < this.host._targets.length; i++) {
-			const t = this.host._targets[i];
-			if (t.x == null || t.y == null || t.signal <= 0) continue;
-			const pos = mapTargetToGridCell(
-				t.x,
-				t.y,
-				this.host._roomWidth,
-				this.host._roomDepth,
-			);
-			if (!pos) continue;
-			const col = Math.floor(pos.col);
-			const row = Math.floor(pos.row);
-			if (col < 0 || col >= GRID_COLS || row < 0 || row >= GRID_ROWS) continue;
-			const idx = row * GRID_COLS + col;
-			if (!cellIsInside(this.host._grid[idx])) continue;
-			targetZoneCurr[i] = cellZone(this.host._grid[idx]);
+		const t = this.host._localize;
+		const zoneName = this._zoneNameResolver();
+		const targetLabel = (tid: number): string =>
+			t("live.debug.target_n", { n: tid + 1 });
+		for (const code of result.events) {
+			const body = formatEvent(code, zoneName, targetLabel, t);
+			this._appendLogLine(body, "_debugLogLines", "debug-log-scroll");
 		}
-
-		// Compute best signal per zone (matches firmware zone_signal[])
-		const zoneSignal: Map<number, number> = new Map();
-		for (let i = 0; i < MAX_TARGETS && i < this.host._targets.length; i++) {
-			const t = this.host._targets[i];
-			if (t.x == null || t.y == null || t.signal <= 0) continue;
-			const zid = targetZoneCurr[i];
-			if (zid !== null) {
-				zoneSignal.set(zid, Math.max(zoneSignal.get(zid) ?? 0, t.signal));
-			}
-		}
-
-		const targetParts: string[] = [];
-		for (let i = 0; i < MAX_TARGETS && i < this.host._targets.length; i++) {
-			const t = this.host._targets[i];
-			if (t.x == null || t.y == null) continue;
-			const sig = t.signal;
-			if (sig <= 0) continue;
-			const zid = targetZoneCurr[i];
-			const s = result.targets[i]?.status === "pending" ? "P" : "A";
-			targetParts.push(`T${i}:Z${zid ?? 0}:${s}:${sig}`);
-		}
-
-		const allZoneIds = this._getAllZoneIds();
-		const zoneParts: string[] = [];
-		for (const zid of allZoneIds) {
-			const st = this._zoneEngineState.localZoneState.get(zid);
-			if (st?.occupied) {
-				const state = st.pendingSince !== null ? "P" : "O";
-				zoneParts.push(`Z${zid}:${state}:${zoneSignal.get(zid) ?? 0}`);
-			}
-		}
-		// Sensor state prefix
-		const staticCode =
-			result.staticState === "active"
-				? "A"
-				: result.staticState === "pending"
-					? "P"
-					: "I";
-		const motionCode =
-			result.motionState === "active"
-				? "A"
-				: result.motionState === "pending"
-					? "P"
-					: "I";
-		const occCode = result.sensorOccupancy ? "1" : "0";
-		const sensorPrefix = `S:${staticCode} M:${motionCode} Occ:${occCode}`;
-
-		const raw = `${sensorPrefix}|${targetParts.join(" ")}|${zoneParts.join(" ")}`;
-		const body = this.enrichDebugLog(raw);
-		this._appendFrontendDebugLog(body);
 	}
 }
