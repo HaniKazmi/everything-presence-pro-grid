@@ -8,6 +8,7 @@
 #define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
 #include <doctest/doctest.h>
 
+#include <algorithm>
 #include <cstring>
 #include <string>
 
@@ -59,14 +60,99 @@ TEST_CASE("EventQueue serializes pushed events as JSON array body") {
   CHECK(std::string(b) == "\"zo:0\",\"sc\"");
 }
 
-TEST_CASE("EventQueue overflow keeps newest, prepends xd marker") {
+TEST_CASE("EventQueue overflow keeps newest, appends xd marker at the end") {
   EventQueue q;
   for (int i = 0; i < 35; ++i)
     q.push({EventType::TARGET_LEFT, (int16_t)(i % 3), 0, 0});
   char b[512];
   BoundedWriter w(b, sizeof(b));
   q.serialize(w);
-  CHECK(std::string(b).rfind("\"xd:3\"", 0) == 0);
+  // The drop marker is now APPENDED (last array element), not prepended, so the
+  // budget math (reserve room for ]} + the marker) stays correct. 35 pushes
+  // into a CAP=32 queue drops the 3 oldest.
+  std::string s(b);
+  CHECK(s.size() >= 6);
+  CHECK(s.substr(s.size() - 6) == "\"xd:3\"");
+}
+
+TEST_CASE("EventQueue budget-aware serialize never overflows and reports drops") {
+  // Mirror the component: a realistic ~306-byte fixed prefix lands in a
+  // char[512] BoundedWriter, leaving only ~205 bytes for the "ev" body. Push
+  // far more events (the longest codes) than can fit, then close with "]}".
+  // serialize() must stop early so the whole payload still fits (w.ok()), and
+  // account for every un-emitted + overflow-dropped event via a single xd
+  // marker.
+  EventQueue q;
+  for (int i = 0; i < 60; ++i)  // 60 pushes: 28 overflow-dropped (CAP=32)
+    q.push({EventType::TARGET_MOVED, 1, 1, 2});  // "tm:1:1:2" — the longest code
+
+  char json[512];
+  BoundedWriter w(json, sizeof(json));
+  // Representative ~306-byte prefix (3 targets + 8 zones + sensor fields +
+  // frame_count), ending exactly where the component opens the "ev" array.
+  w.printf(
+      "{\"targets\":[{\"signal\":100,\"status\":\"moving\"},"
+      "{\"signal\":80,\"status\":\"stationary\"},"
+      "{\"signal\":0,\"status\":\"inactive\"}],"
+      "\"zones\":{\"occupancy\":[true,false,true,false,true,false,true,false],"
+      "\"tracking\":true},"
+      "\"static_state\":\"A\",\"motion_state\":\"P\",\"occupancy\":true,"
+      "\"mmwave\":true,\"frame_count\":42,\"ev\":[");
+  CHECK(w.ok() == true);
+  // A realistic full prefix (3 targets + 8 zones + sensor fields + frame_count)
+  // is ~290-310 bytes, leaving only ~200 bytes of the char[512] for the body.
+  CHECK(w.size() >= 280);
+
+  q.serialize(w);
+  w.printf("]}");
+
+  // NO truncation: serialize stopped early to leave room for "]}" and the
+  // marker, so the whole payload fits.
+  CHECK(w.ok() == true);
+
+  std::string s(json);
+  REQUIRE(s.size() >= 2);
+  CHECK(s.substr(s.size() - 2) == "]}");
+  // Some events didn't fit — there must be an xd marker accounting for them.
+  CHECK(s.find("\"xd:") != std::string::npos);
+
+  // Structurally balanced JSON: equal [ vs ], { vs }, and quotes paired.
+  auto count = [&](char c) {
+    return (long)std::count(s.begin(), s.end(), c);
+  };
+  CHECK(count('[') == count(']'));
+  CHECK(count('{') == count('}'));
+  CHECK(count('"') % 2 == 0);
+}
+
+TEST_CASE("EventQueue budget-aware serialize uses all budget when it just fits") {
+  // A tiny number of events fits with room to spare — no xd marker, full body.
+  EventQueue q;
+  q.push({EventType::ZONE, 0, 1, 0});
+  q.push({EventType::STATIC, 2, 0, 0});
+  char b[128];
+  BoundedWriter w(b, sizeof(b));
+  q.serialize(w);
+  w.printf("]}");
+  CHECK(w.ok() == true);
+  CHECK(std::string(b) == "\"zo:0\",\"sc\"]}");
+}
+
+TEST_CASE("EventQueue serialize stops before overflowing a tight buffer") {
+  // Buffer with only enough room for a couple of codes plus the reserve. The
+  // un-emitted events must surface as an xd marker and the result must close
+  // cleanly when the caller writes "]}".
+  EventQueue q;
+  for (int i = 0; i < 10; ++i) q.push({EventType::TARGET_MOVED, 1, 2, 3});
+  char b[40];
+  BoundedWriter w(b, sizeof(b));
+  q.serialize(w);
+  w.printf("]}");
+  CHECK(w.ok() == true);
+  std::string s(b);
+  REQUIRE(s.size() >= 2);
+  CHECK(s.substr(s.size() - 2) == "]}");
+  CHECK(s.find("\"xd:") != std::string::npos);
 }
 
 TEST_CASE("EventQueue clear resets size and dropped") {

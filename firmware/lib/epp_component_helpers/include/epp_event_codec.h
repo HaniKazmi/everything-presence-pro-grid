@@ -21,6 +21,7 @@
 
 #include <cstddef>
 #include <cstdio>
+#include <cstring>
 
 #include "epp_json_writer.h"
 #include "epp_types.h"
@@ -71,6 +72,10 @@ inline void format_event_code(const Event &e, char *out, size_t n) {
       std::snprintf(out, n, "tm:%d:%d:%d", e.p0, e.p1, e.p2);
       break;
     case EventType::EVENTS_DROPPED:
+      // p0 is the (int16_t)-cast dropped total from EventQueue::serialize. The
+      // cast is safe by construction: the max droppable per publish window is
+      // small (a few busy ticks' worth, well under int16_t's 32767), so it
+      // never wraps to a negative or surprising value.
       std::snprintf(out, n, "xd:%d", e.p0);
       break;
     default:
@@ -83,12 +88,36 @@ inline void format_event_code(const Event &e, char *out, size_t n) {
 // per-tick events here every tick and serializes + clears once per ~1Hz publish
 // so a one-tick event isn't lost in the ~9/10 ticks that don't publish.
 //
-// On overflow the OLDEST event is dropped (the freshest activity is the most
-// useful to show) and a counter is bumped; serialize() prepends an "xd:<n>"
-// marker so the panel can surface the gap.
+// Two independent caps protect the wire format, and BOTH funnel into one xd
+// marker so the panel sees a single "events dropped" gap:
+//
+//   * CAP (32) caps RETENTION. Each engine tick can emit up to MAX_EVENTS=16
+//     events and ~10 ticks elapse between publishes, so a worst-case burst is
+//     ~160 events. We don't retain all of them — the freshest activity is the
+//     most useful to show — so on overflow the OLDEST event is evicted and
+//     dropped_ is bumped. 32 is a small, cheap-to-shift ring that comfortably
+//     holds a couple of busy ticks' worth of distinct transitions.
+//   * serialize()'s budget caps WIRE SIZE. The zone-state JSON lives in a fixed
+//     char[512]; after the ~306-byte prefix only ~205 bytes remain for the "ev"
+//     body, which fits far fewer than 32 of the longest codes. serialize() is
+//     therefore budget-aware: it stops emitting before it would overflow the
+//     BoundedWriter, reserving room for the caller's trailing "]}" AND for a
+//     final drop marker.
+//
+// serialize() reports (overflow-dropped + un-emitted-for-budget) as ONE
+// appended "xd:<total>" marker so the panel can surface the gap. The marker is
+// appended (not prepended) so the reserve math is exact.
 class EventQueue {
  public:
   static constexpr int CAP = 32;
+
+  // Bytes serialize() holds back from the BoundedWriter so the tail always
+  // fits: 2 for the caller's trailing "]}" plus a worst-case drop marker as the
+  // last array element. The marker is `,"xd:NNNNN"` = 1 (comma) + 1 (open
+  // quote) + 3 ("xd:") + up to 5 digits + 1 (close quote) = 11 bytes. Total 13.
+  // (Held-back budget is generous-by-design: it guarantees the closing bytes
+  // and the marker always fit even when every event was truncated.)
+  static constexpr size_t CLOSING_RESERVE = 13;
 
   // Append an event, evicting the oldest (and counting the drop) if full.
   void push(const Event &e) {
@@ -103,18 +132,45 @@ class EventQueue {
   }
 
   // Write the comma-separated JSON-array BODY (no surrounding []), each event a
-  // quoted code. If events were dropped, prepend a quoted "xd:<dropped_>".
+  // quoted code. Budget-aware: stops emitting before it would overflow `w`,
+  // holding back CLOSING_RESERVE bytes for the caller's trailing "]}" and a
+  // final drop marker. Any events that don't fit (plus the queue-overflow
+  // drops) are reported as ONE appended "xd:<total>" marker — guaranteed to fit
+  // thanks to the reserve — so the panel always receives valid JSON.
   void serialize(BoundedWriter &w) const {
     bool first = true;
     char code[24];
-    if (dropped_ > 0) {
-      const Event marker{EventType::EVENTS_DROPPED, (int16_t) dropped_, 0, 0};
-      format_event_code(marker, code, sizeof(code));
-      w.printf("\"%s\"", code);
+
+    // How much body we can write before we MUST stop to leave room for the
+    // closing bytes + marker. remaining() includes the NUL slot; once it would
+    // dip below CLOSING_RESERVE we stop. Guard against a writer so small the
+    // reserve doesn't even fit (then we emit nothing but the marker still has
+    // room because the caller sized for at least the prefix + reserve).
+    int truncated = 0;
+    int i = 0;
+    for (; i < count_; ++i) {
+      format_event_code(buf_[i], code, sizeof(code));
+      // Bytes this element would add: optional comma + 2 quotes + code length.
+      size_t add = (first ? 0u : 1u) + 2u + std::strlen(code);
+      // After writing, remaining() drops by `add`; we must still keep
+      // CLOSING_RESERVE for "]}" + the marker. If it wouldn't, stop here and
+      // count this and every later event as truncated.
+      if (w.remaining() < add + CLOSING_RESERVE) break;
+      w.printf("%s\"%s\"", first ? "" : ",", code);
       first = false;
     }
-    for (int i = 0; i < count_; ++i) {
-      format_event_code(buf_[i], code, sizeof(code));
+    truncated = count_ - i;
+
+    // Total gap = queue-overflow drops + events we couldn't fit on the wire.
+    // dropped_ can only grow by at most one per push() over a small window, so
+    // the sum stays well within int16_t; the cast in the marker is safe by
+    // construction (see EVENTS_DROPPED note below).
+    int total_dropped = dropped_ + truncated;
+    if (total_dropped > 0) {
+      const Event marker{EventType::EVENTS_DROPPED, (int16_t) total_dropped, 0,
+                         0};
+      format_event_code(marker, code, sizeof(code));
+      // Fits because of CLOSING_RESERVE (we stopped early to keep room for it).
       w.printf("%s\"%s\"", first ? "" : ",", code);
       first = false;
     }
