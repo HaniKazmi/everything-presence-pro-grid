@@ -381,7 +381,7 @@ export const layoutStyles = css`
     flex: 0 0 320px;
   }
 
-  /* Sidebar-tab switcher — rendered in the mobile bottom-sheet peek only. */
+  /* Sidebar-tab switcher — rendered in the epp-sheet peek at every breakpoint. */
   .sidebar-tabs {
     display: flex;
     gap: 4px;
@@ -2770,7 +2770,6 @@ export class EPPGridPanel extends LitElement {
               .zoneConfigs=${this._namedZones()}
               .hasPerspective=${this._perspective != null}
               .localize=${this._localize}
-              ?capHeightToHalfViewport=${this._isMobile}
               @view-change=${(e: CustomEvent) => {
 								this._navGuard.guardNavigation(() =>
 									this._applyView({
@@ -2975,11 +2974,12 @@ export class EPPGridPanel extends LitElement {
 		};
 
 		const actions = html`<div slot="actions">${this._renderSaveCancelButtons()}</div>`;
-		const footer = this._isMobile
-			? this._dirty && !this._editorTextFocused
+		// Desktop always shows the Save/Cancel bar; mobile hides it while clean or
+		// while a text field is focused (the soft keyboard would cover the field).
+		const footer =
+			!this._isMobile || (this._dirty && !this._editorTextFocused)
 				? actions
-				: nothing
-			: actions;
+				: nothing;
 
 		return html`
       <div class="panel" @click=${onPanelClick}>
@@ -3003,8 +3003,8 @@ export class EPPGridPanel extends LitElement {
 
 	/**
 	 * The `_sidebarTab`-conditional sidebar component block
-	 * (zones/overlays/furniture). Extracted from `_renderEditor` so both the
-	 * desktop sidebar and the mobile bottom-sheet body render it verbatim —
+	 * (zones/overlays/furniture). Extracted from `_renderEditor` so the unified
+	 * `epp-sheet` body renders it verbatim at every breakpoint —
 	 * the bindings are unchanged from the original inline markup.
 	 */
 	private _renderSidebarContent() {

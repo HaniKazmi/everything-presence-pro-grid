@@ -86,12 +86,19 @@ describe("epp-sheet", () => {
 	});
 });
 
-test("epp-sheet defines a >=820px side-panel presentation that hides the handle", () => {
+test("epp-sheet defines a >=820px side-panel presentation that hides only the nub (.handle), not the whole handle-bar (peek stays visible)", () => {
 	const css = EppSheet.styles.cssText;
 	expect(css).toContain("@media (min-width: 820px)");
 	const desktopBlock = css.slice(css.indexOf("@media (min-width: 820px)"));
-	expect(desktopBlock).toContain(".handle-bar");
+	// The nub itself must be hidden on desktop …
+	expect(desktopBlock).toContain(".handle");
 	expect(desktopBlock).toContain("display: none");
+	// … but the whole bar (which carries the peek slot) must NOT be hidden.
+	// Ensure there is no ".handle-bar { display: none }" rule in the desktop block.
+	const handleBarDisplayNone = /\.handle-bar\s*\{[^}]*display\s*:\s*none/.test(
+		desktopBlock,
+	);
+	expect(handleBarDisplayNone).toBe(false);
 });
 
 test("epp-sheet panel mode is relative-flow, not fixed", () => {

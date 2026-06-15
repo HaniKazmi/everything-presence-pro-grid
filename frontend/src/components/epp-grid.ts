@@ -45,6 +45,13 @@ const OVERLAY_STRIPE_CSS: Record<number, string> = {
 	[CELL_OVERLAY_SUPPRESS]: `background-image: ${overlayStripeGradient(CELL_OVERLAY_SUPPRESS, 5)};`,
 };
 
+// Minimum measured height (px) to use the desktop height-fit path. If the
+// panel sits low on a short viewport, the computed available height can be a
+// small positive (e.g. 26px), which collapses fitCellPx toward 1px. Below this
+// floor we treat the height as unmeasured (0) so the grid falls back to
+// width-fit and the page can scroll instead of collapsing the cells.
+const DESKTOP_MIN_HEIGHT_PX = 200;
+
 export class EppGrid extends LitElement {
 	@property({ attribute: false }) grid: Uint8Array = new Uint8Array(0);
 	@property({ attribute: false }) zoneConfigs: (ZoneConfig | null)[] = [];
@@ -301,7 +308,9 @@ export class EppGrid extends LitElement {
 		/* v8 ignore next -- window.innerHeight read has no layout effect under happy-dom */
 		const availHeightPx = this.capHeightToHalfViewport
 			? window.innerHeight * 0.45
-			: this._availHeightPx;
+			: this._availHeightPx >= DESKTOP_MIN_HEIGHT_PX
+				? this._availHeightPx
+				: 0;
 		// Vertical chrome mirrors the width chrome: 2px border (×2) + (visRows-1)
 		// ×1px gaps. Subtract it so the cells fit the height budget exactly.
 		const gridChromeHpx = availHeightPx > 0 ? 4 + (visRows - 1) : 0;

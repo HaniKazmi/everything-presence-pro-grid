@@ -106,7 +106,7 @@ export class EppSheet extends LitElement {
         flex: 1 1 auto;
         min-height: 0;
       }
-      .handle-bar {
+      .handle {
         display: none;
       }
     }
