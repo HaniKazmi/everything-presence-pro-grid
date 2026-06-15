@@ -23,6 +23,11 @@ add_executable(epp_helpers_json_writer_tests
 )
 target_link_libraries(epp_helpers_json_writer_tests PRIVATE epp_component_helpers doctest::doctest)
 
+add_executable(epp_helpers_event_codec_tests
+    test_event_codec.cpp
+)
+target_link_libraries(epp_helpers_event_codec_tests PRIVATE epp_component_helpers doctest::doctest)
+
 add_executable(epp_helpers_perspective_parser_tests
     test_perspective_parser.cpp
 )
@@ -63,6 +68,7 @@ doctest_discover_tests(epp_helpers_change_detector_tests)
 doctest_discover_tests(epp_helpers_frame_ring_buffer_tests)
 doctest_discover_tests(epp_helpers_target_validity_tests)
 doctest_discover_tests(epp_helpers_json_writer_tests)
+doctest_discover_tests(epp_helpers_event_codec_tests)
 doctest_discover_tests(epp_helpers_perspective_parser_tests)
 doctest_discover_tests(epp_helpers_relay_publish_tests)
 doctest_discover_tests(epp_helpers_frame_staleness_tests)
