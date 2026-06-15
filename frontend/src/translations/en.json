@@ -241,7 +241,8 @@
 			"room": "Room",
 			"no_targets": "no targets",
 			"all_clear": "all clear",
-			"zone_n": "Zone {n}"
+			"zone_n": "Zone {n}",
+			"target_n": "Target {n}"
 		},
 		"events": {
 			"static_active": "Static presence detected",

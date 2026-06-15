@@ -1,6 +1,7 @@
 import type { ReactiveController } from "lit";
 import { DEBUG_LOG_MAX } from "../constants.js";
 import { mapTargetToGridCell } from "../lib/coordinates.js";
+import { formatEvent } from "../lib/detection-events.js";
 import { cellIsInside, cellZone, GRID_COLS, GRID_ROWS } from "../lib/grid.js";
 import { OverlayTracker } from "../lib/overlay-tracker.js";
 import { applyPerspective } from "../lib/perspective.js";
@@ -172,8 +173,15 @@ export class TargetController implements ReactiveController {
 				target_counts: data.zones.target_counts,
 				frame_count: data.zones.frame_count,
 			};
-			if (this.host._showBackendDebugLog && data.zones.debug_log) {
-				this.appendBackendDebugLog(data.zones.debug_log);
+			if (this.host._showBackendDebugLog) {
+				// New firmware streams discrete semantic events; old firmware only
+				// sends the legacy snapshot string. Prefer events when present,
+				// fall back to the snapshot enrichment path for BWC.
+				if (data.zones.events && data.zones.events.length > 0) {
+					this.appendBackendEvents(data.zones.events);
+				} else if (data.zones.debug_log) {
+					this.appendBackendDebugLog(data.zones.debug_log);
+				}
 			}
 		}
 		if (this.host._view === "live") {
@@ -432,6 +440,21 @@ export class TargetController implements ReactiveController {
 	): void {
 		if (body === this.host[prevField]) return;
 		this.host[prevField] = body;
+		this._appendLogLine(body, linesField, containerId);
+	}
+
+	/**
+	 * Timestamp + remount-reset + cap + DOM-append for a single log line,
+	 * WITHOUT the consecutive-duplicate dedup. `_appendLog` layers dedup on
+	 * top of this (snapshot strings repeat frame-to-frame); discrete
+	 * detection events skip dedup and call this directly (each event is a
+	 * distinct occurrence, even two identical codes in a row).
+	 */
+	private _appendLogLine(
+		body: string,
+		linesField: "_backendDebugLogLines" | "_debugLogLines",
+		containerId: string,
+	): void {
 		// Container remount (a view switch destroys and recreates the live
 		// view while the toggle stays on) leaves a fresh, empty container
 		// but a full backing array — "Copy all" would copy lines that are
@@ -487,6 +510,35 @@ export class TargetController implements ReactiveController {
 			"_backendDebugLogLines",
 			"backend-debug-log-scroll",
 		);
+	}
+
+	/**
+	 * Render discrete backend detection-log events (new firmware path). Each
+	 * wire code (e.g. "zo:1", "sc", "te:0:3") is mapped to a friendly,
+	 * localized line via formatEvent and appended WITHOUT dedup — each event
+	 * is a distinct occurrence. The zone-name / target-label resolvers mirror
+	 * enrichDebugLog's: zone 0 → the room, a configured slot → its name,
+	 * otherwise "Zone N"; targets are rendered 1-based.
+	 */
+	appendBackendEvents(events: string[]): void {
+		const t = this.host._localize;
+		const zoneName = (zid: number): string => {
+			if (zid === 0) return t("live.debug.room");
+			const cfg = this.host._zoneConfigs[zid];
+			return cfg && "name" in cfg
+				? cfg.name
+				: t("live.debug.zone_n", { n: zid });
+		};
+		const targetLabel = (tid: number): string =>
+			t("live.debug.target_n", { n: tid + 1 });
+		for (const code of events) {
+			const body = formatEvent(code, zoneName, targetLabel, t);
+			this._appendLogLine(
+				body,
+				"_backendDebugLogLines",
+				"backend-debug-log-scroll",
+			);
+		}
 	}
 
 	/**

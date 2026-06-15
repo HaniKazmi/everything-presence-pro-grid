@@ -98,6 +98,12 @@ function mockHost() {
 					"live.debug.no_targets": "no targets",
 					"live.debug.all_clear": "all clear",
 					"live.debug.zone_n": `Zone ${params?.n ?? ""}`,
+					"live.debug.target_n": `Target ${params?.n ?? ""}`,
+					// Detection-event lines (subset used by tests).
+					"live.events.zone_occupied": `${params?.zone ?? ""} occupied`,
+					"live.events.zone_cleared": `${params?.zone ?? ""} cleared`,
+					"live.events.static_cleared": "Static presence cleared",
+					"live.events.target_entered": `${params?.target ?? ""} entered ${params?.zone ?? ""}`,
 				};
 				return map[key] ?? key;
 			},
@@ -343,6 +349,90 @@ describe("TargetController", () => {
 						target_counts: {},
 						frame_count: 1,
 						debug_log: "T0:Z1:A:5|Z1:O:1",
+					},
+				}),
+			);
+			expect(host._backendDebugLogLines.length).toBe(0);
+		});
+
+		it("renders backend events via formatEvent when zones.events present", () => {
+			host._showBackendDebugLog = true;
+			host._zoneConfigs = [
+				host._zoneConfigs[0],
+				{ name: "Lounge", color: "#fff", type: "default" },
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+			];
+			ctrl.handleTargetData(
+				makeTargetData({
+					zones: {
+						occupancy: {},
+						target_counts: {},
+						frame_count: 1,
+						events: ["zo:1", "sc"],
+					},
+				}),
+			);
+			expect(host._backendDebugLogLines.length).toBe(2);
+			expect(host._backendDebugLogLines[0]).toContain("Lounge");
+		});
+
+		it("falls back to debug_log enrichment when events absent (old firmware)", () => {
+			host._showBackendDebugLog = true;
+			ctrl.handleTargetData(
+				makeTargetData({
+					zones: {
+						occupancy: {},
+						target_counts: {},
+						frame_count: 1,
+						debug_log: "T0:Z1:A:5|Z1:O:1",
+					},
+				}),
+			);
+			expect(host._backendDebugLogLines.length).toBe(1);
+		});
+
+		it("prefers events over debug_log when both present", () => {
+			host._showBackendDebugLog = true;
+			host._zoneConfigs = [
+				host._zoneConfigs[0],
+				{ name: "Lounge", color: "#fff", type: "default" },
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+			];
+			ctrl.handleTargetData(
+				makeTargetData({
+					zones: {
+						occupancy: {},
+						target_counts: {},
+						frame_count: 1,
+						events: ["zo:1"],
+						debug_log: "T0:Z1:A:5|Z1:O:1",
+					},
+				}),
+			);
+			// One line — the event, not the snapshot.
+			expect(host._backendDebugLogLines.length).toBe(1);
+			expect(host._backendDebugLogLines[0]).toContain("Lounge");
+		});
+
+		it("does not append backend events when _showBackendDebugLog is false", () => {
+			host._showBackendDebugLog = false;
+			ctrl.handleTargetData(
+				makeTargetData({
+					zones: {
+						occupancy: {},
+						target_counts: {},
+						frame_count: 1,
+						events: ["zo:1", "sc"],
 					},
 				}),
 			);
@@ -896,6 +986,93 @@ describe("TargetController", () => {
 			expect(host._backendDebugLogLines[0]).toContain("Static: active");
 			expect(host._backendDebugLogLines[0]).toContain("Motion: active");
 			expect(host._backendDebugLogLines[0]).toContain("Occ: on");
+		});
+	});
+
+	// -------------------------------------------------------------------------
+	// appendBackendEvents
+	// -------------------------------------------------------------------------
+	describe("appendBackendEvents", () => {
+		let container: HTMLDivElement;
+
+		beforeEach(() => {
+			host._zoneConfigs = [
+				host._zoneConfigs[0],
+				{ name: "Lounge", color: "#fff", type: "default" },
+				null,
+				null,
+				null,
+				null,
+				null,
+				null,
+			];
+			container = document.createElement("div");
+			container.id = "backend-debug-log-scroll";
+			host._mockBackendContainer = container;
+		});
+
+		it("appends one DOM line per event", () => {
+			ctrl.appendBackendEvents(["zo:1", "sc"]);
+			expect(container.children.length).toBe(2);
+			for (const child of Array.from(container.children)) {
+				expect(child.className).toBe("debug-log-line");
+			}
+		});
+
+		it("resolves the zone name for zone events", () => {
+			ctrl.appendBackendEvents(["zo:1"]);
+			expect(host._backendDebugLogLines[0]).toContain("Lounge");
+		});
+
+		it("resolves zone 0 to the room label", () => {
+			ctrl.appendBackendEvents(["zo:0"]);
+			expect(host._backendDebugLogLines[0]).toContain("Room");
+		});
+
+		it("falls back to 'Zone N' for an unconfigured zone id", () => {
+			ctrl.appendBackendEvents(["zo:5"]);
+			expect(host._backendDebugLogLines[0]).toContain("Zone 5");
+		});
+
+		it("resolves a 0-based target index to a 1-based target label", () => {
+			ctrl.appendBackendEvents(["te:0:1"]);
+			// target index 0 → "Target 1"; zone 1 → "Lounge"
+			expect(host._backendDebugLogLines[0]).toContain("Target 1");
+			expect(host._backendDebugLogLines[0]).toContain("Lounge");
+		});
+
+		it("does NOT deduplicate consecutive identical events (each is discrete)", () => {
+			ctrl.appendBackendEvents(["sc", "sc"]);
+			expect(container.children.length).toBe(2);
+			expect(host._backendDebugLogLines.length).toBe(2);
+		});
+
+		it("returns an unknown code verbatim (forward-compat)", () => {
+			ctrl.appendBackendEvents(["zz:9"]);
+			expect(host._backendDebugLogLines[0]).toContain("zz:9");
+		});
+
+		it("maintains the backing array for copy-all and caps at DEBUG_LOG_MAX", () => {
+			const many = Array.from(
+				{ length: DEBUG_LOG_MAX + 5 },
+				(_, i) => `xd:${i}`,
+			);
+			ctrl.appendBackendEvents(many);
+			expect(host._backendDebugLogLines.length).toBeLessThanOrEqual(
+				DEBUG_LOG_MAX,
+			);
+			expect(container.children.length).toBeLessThanOrEqual(DEBUG_LOG_MAX);
+		});
+
+		it("does NOT call host.requestUpdate", () => {
+			ctrl.appendBackendEvents(["zo:1"]);
+			expect(host.requestUpdate).not.toHaveBeenCalled();
+		});
+
+		it("handles a missing container gracefully", () => {
+			host._mockBackendContainer = null;
+			expect(() => ctrl.appendBackendEvents(["zo:1"])).not.toThrow();
+			expect(host._backendDebugLogLines.length).toBe(1);
 		});
 	});
 

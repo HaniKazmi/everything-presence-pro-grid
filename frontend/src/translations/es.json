@@ -241,7 +241,8 @@
 			"room": "Habitación",
 			"no_targets": "sin objetivos",
 			"all_clear": "todo despejado",
-			"zone_n": "Zona {n}"
+			"zone_n": "Zona {n}",
+			"target_n": "Objetivo {n}"
 		},
 		"events": {
 			"static_active": "Presencia estática detectada",
