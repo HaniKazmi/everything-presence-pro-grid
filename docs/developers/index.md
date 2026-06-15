@@ -18,6 +18,7 @@ For the full picture of how these communicate, see [Architecture](architecture.m
 - **[Architecture](architecture.md)** — how firmware, integration, and frontend fit together. Start here for a mental model of the whole system.
 - **[Data catalog](data-catalog.md)** — inventory of the data that flows between layers. Reference material when you're wiring up a new entity or tracing a bug.
 - **[Code layout](code-layout.md)** — repo-level walkthrough. "Where does X live?"
+- **[Design system](design-system.md)** — the frontend's token + primitive design system (`--epp-*` tokens, `epp-*` primitives, theming rules). Read this before any panel UI work.
 - **[Contributing](contributing.md)** — dev-environment setup, how to run the tests the pre-push hook enforces, PR process.
 
 ## Starting to contribute
