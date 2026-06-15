@@ -22,6 +22,7 @@
 #include <cstddef>
 #include <cstdio>
 
+#include "epp_json_writer.h"
 #include "epp_types.h"
 
 namespace epp {
@@ -77,5 +78,60 @@ inline void format_event_code(const Event &e, char *out, size_t n) {
       break;
   }
 }
+
+// Accumulating queue of detection-log events. The component pushes the engine's
+// per-tick events here every tick and serializes + clears once per ~1Hz publish
+// so a one-tick event isn't lost in the ~9/10 ticks that don't publish.
+//
+// On overflow the OLDEST event is dropped (the freshest activity is the most
+// useful to show) and a counter is bumped; serialize() prepends an "xd:<n>"
+// marker so the panel can surface the gap.
+class EventQueue {
+ public:
+  static constexpr int CAP = 32;
+
+  // Append an event, evicting the oldest (and counting the drop) if full.
+  void push(const Event &e) {
+    if (count_ == CAP) {
+      // Drop oldest: shift everything down one slot. CAP is small (32) and
+      // this only runs on overflow, so the linear shift is negligible.
+      for (int i = 1; i < CAP; ++i) buf_[i - 1] = buf_[i];
+      --count_;
+      ++dropped_;
+    }
+    buf_[count_++] = e;
+  }
+
+  // Write the comma-separated JSON-array BODY (no surrounding []), each event a
+  // quoted code. If events were dropped, prepend a quoted "xd:<dropped_>".
+  void serialize(BoundedWriter &w) const {
+    bool first = true;
+    char code[24];
+    if (dropped_ > 0) {
+      const Event marker{EventType::EVENTS_DROPPED, (int16_t) dropped_, 0, 0};
+      format_event_code(marker, code, sizeof(code));
+      w.printf("\"%s\"", code);
+      first = false;
+    }
+    for (int i = 0; i < count_; ++i) {
+      format_event_code(buf_[i], code, sizeof(code));
+      w.printf("%s\"%s\"", first ? "" : ",", code);
+      first = false;
+    }
+  }
+
+  void clear() {
+    count_ = 0;
+    dropped_ = 0;
+  }
+
+  int size() const { return count_; }
+  int dropped() const { return dropped_; }
+
+ private:
+  Event buf_[CAP]{};
+  int count_ = 0;
+  int dropped_ = 0;
+};
 
 }  // namespace epp
